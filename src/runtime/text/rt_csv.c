@@ -286,15 +286,101 @@ static rt_string parse_field(csv_parser *p, bool *at_line_end) {
 /// @brief Parse a single row (line) of CSV.
 static void *parse_row(csv_parser *p) {
     void *row = rt_seq_new();
+    rt_seq_set_owns_elements(row, 1);
     bool at_line_end = false;
 
     // Use do-while to ensure we process trailing empty fields after delimiter
     do {
         rt_string field = parse_field(p, &at_line_end);
         rt_seq_push(row, (void *)field);
+        if (field)
+            rt_string_unref(field);
     } while (!at_line_end);
 
     return row;
+}
+
+static bool validate_field(csv_parser *p, bool *at_line_end) {
+    *at_line_end = false;
+
+    if (parser_eof(p)) {
+        *at_line_end = true;
+        return true;
+    }
+
+    if (parser_peek(p) == '"') {
+        parser_consume(p);
+        bool closed = false;
+        while (!parser_eof(p)) {
+            char c = parser_consume(p);
+            if (c == '"') {
+                if (parser_peek(p) == '"') {
+                    parser_consume(p);
+                } else {
+                    closed = true;
+                    break;
+                }
+            }
+        }
+        if (!closed)
+            return false;
+
+        if (!parser_eof(p)) {
+            char c = parser_peek(p);
+            if (c == p->delim) {
+                parser_consume(p);
+            } else if (c == '\r') {
+                parser_consume(p);
+                if (parser_peek(p) == '\n')
+                    parser_consume(p);
+                *at_line_end = true;
+            } else if (c == '\n') {
+                parser_consume(p);
+                *at_line_end = true;
+            } else {
+                return false;
+            }
+        } else {
+            *at_line_end = true;
+        }
+        return true;
+    }
+
+    while (!parser_eof(p)) {
+        char c = parser_peek(p);
+        if (c == p->delim || c == '\r' || c == '\n')
+            break;
+        if (c == '"')
+            return false;
+        parser_consume(p);
+    }
+
+    if (!parser_eof(p)) {
+        char c = parser_peek(p);
+        if (c == p->delim) {
+            parser_consume(p);
+        } else if (c == '\r') {
+            parser_consume(p);
+            if (parser_peek(p) == '\n')
+                parser_consume(p);
+            *at_line_end = true;
+        } else if (c == '\n') {
+            parser_consume(p);
+            *at_line_end = true;
+        }
+    } else {
+        *at_line_end = true;
+    }
+    return true;
+}
+
+static bool validate_row(csv_parser *p) {
+    bool at_line_end = false;
+    do {
+        if (!validate_field(p, &at_line_end))
+            return false;
+    } while (!at_line_end);
+    return true;
 }
 
 //=============================================================================
@@ -527,13 +613,34 @@ void *rt_csv_parse_with(rt_string text, rt_string delim) {
     parser_init(&p, input, len, d);
 
     void *rows = rt_seq_new();
+    rt_seq_set_owns_elements(rows, 1);
 
     while (!parser_eof(&p)) {
         void *row = parse_row(&p);
         rt_seq_push(rows, row);
+        if (row && rt_obj_release_check0(row))
+            rt_obj_free(row);
     }
 
     return rows;
+}
+
+int8_t rt_csv_is_valid(rt_string text) {
+    if (!text)
+        return 0;
+
+    const char *input = rt_string_cstr(text);
+    size_t len = (size_t)rt_str_len(text);
+    if (len == 0)
+        return 1;
+
+    csv_parser p;
+    parser_init(&p, input, len, DEFAULT_DELIMITER);
+    while (!parser_eof(&p)) {
+        if (!validate_row(&p))
+            return 0;
+    }
+    return 1;
 }
 
 /// @brief Formats a Seq of strings as a single CSV line.

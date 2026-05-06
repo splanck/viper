@@ -3,20 +3,23 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
+//===----------------------------------------------------------------------===//
+//
 // File: src/runtime/text/rt_serialize.h
-// Purpose: Unified serialization interface providing format-agnostic dispatch
-// (JSON, XML, YAML, TOML, CSV) via a format enum or content auto-detection.
-//
+// Purpose: Unified serialization façade for Viper.Data.Serialize. Provides
+//          format-agnostic parse/format/convert/detect operations over JSON,
+//          XML, YAML, TOML, and CSV via a single rt_format_t enum or
+//          heuristic auto-detection.
 // Key invariants:
-//   - Format is selected by enum or auto-detected from text content.
-//   - All serialize operations produce a string; deserialize produces a value.
-//   - Format-specific errors return NULL; no trapping on bad input.
-//
+//   - Format is selected by rt_format_t enum value or auto-detected from content.
+//   - All format operations produce a string; parse operations produce a value.
+//   - Parse failures return NULL and record a message via rt_serialize_error().
+//   - No trapping on bad input — all errors propagate as NULL/empty returns.
 // Ownership/Lifetime:
-//   - Returned values and strings are newly allocated; caller must release.
-//   - Input strings are borrowed for the duration of the call.
-//
-// Links: src/runtime/text/rt_serialize.c (implementation), src/runtime/core/rt_string.h
+//   - Returned values and strings are newly heap-allocated; caller must release.
+//   - Input rt_string arguments are borrowed for the duration of each call.
+// Links: src/runtime/text/rt_serialize.c (implementation),
+//        src/runtime/text/rt_json.h, rt_xml.h, rt_yaml.h, rt_toml.h, rt_csv.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -77,10 +80,11 @@ int8_t rt_serialize_is_valid(rt_string text, int64_t format);
 
 /// @brief Detect the format of a text string.
 /// @details Heuristically detects the format based on content:
-///          - Starts with '{' or a JSON-style '[' array → JSON
+///          - Starts with a valid JSON object/array, or JSON-looking '{'/'[' → JSON
 ///          - Starts with '<' → XML
-///          - Contains '---' at start → YAML
-///          - Contains '[section]' or 'key = value' → TOML
+///          - Starts with a standalone '---' document marker → YAML
+///          - Contains a valid TOML '[section]' or 'key = value' first line → TOML
+///          - Contains a valid YAML 'key: value' first line → YAML
 ///          - Contains commas on the first line → CSV
 /// @param text Text to detect.
 /// @return Format enum, or -1 if unrecognized.

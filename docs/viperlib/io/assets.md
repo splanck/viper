@@ -1,3 +1,9 @@
+---
+status: active
+audience: public
+last-verified: 2026-05-06
+---
+
 # Viper.IO.Assets
 
 Asset management system for loading embedded and packed resources.
@@ -59,6 +65,7 @@ Returns names of all available assets (embedded + all mounted packs).
 
 Mount a `.vpa` pack file for asset resolution. Returns 1 on success, 0 on failure.
 Pack files next to the executable are auto-mounted at startup.
+If the pack opens but its path cannot be recorded, the mount fails and the pack handle is closed.
 
 ### Assets.Unmount(path: String) -> Integer
 
@@ -81,6 +88,7 @@ When `Assets.Load("sprites/hero.png")` is called:
 
 This means existing code keeps working during development (step 3), and packaged apps find their assets automatically (steps 1-2).
 Loose filesystem fallback only loads regular files. Asset names and mount paths containing embedded NUL bytes are rejected.
+Asset lookup, mounting, unmounting, listing, and lazy initialization are synchronized internally so concurrent readers cannot race with pack mount changes.
 
 ## VPA Format
 

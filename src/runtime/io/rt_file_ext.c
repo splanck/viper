@@ -39,6 +39,7 @@ typedef struct {
     uint8_t *data;
 } file_bytes_impl;
 
+/// @brief Return a direct pointer to the raw data buffer of a Bytes GC object.
 static inline uint8_t *file_bytes_data(void *obj) {
     return obj ? ((file_bytes_impl *)obj)->data : NULL;
 }
@@ -85,6 +86,10 @@ static inline uint8_t *file_bytes_data(void *obj) {
 #define PATH_MAX 4096
 #endif
 
+/// @brief Build a temp-file path sidecar to `path` in the same parent directory.
+/// @details Combines the parent directory prefix, `prefix`, PID, pointer identity,
+///          and `attempt` counter to produce a collision-resistant name. Returns a
+///          heap-allocated string; caller must free. Returns NULL on alloc failure.
 static char *rt_fileext_make_parent_temp_path(const char *path, const char *prefix, unsigned attempt) {
     size_t path_len = strlen(path);
     size_t parent_len = 0;
@@ -131,11 +136,13 @@ static char *rt_fileext_make_parent_temp_path(const char *path, const char *pref
 // On Windows, _read/_write take unsigned int; on POSIX they take size_t.
 // These wrappers suppress C4267 truncation warnings on MSVC.
 #if RT_PLATFORM_WINDOWS
+/// @brief POSIX-compatible `read` wrapper that clamps `count` to UINT_MAX to suppress MSVC C4267.
 static inline ssize_t rt_posix_read(int fd, void *buf, size_t count) {
     unsigned int chunk = count > (size_t)UINT_MAX ? UINT_MAX : (unsigned int)count;
     return read(fd, buf, chunk);
 }
 
+/// @brief POSIX-compatible `write` wrapper that clamps `count` to UINT_MAX to suppress MSVC C4267.
 static inline ssize_t rt_posix_write(int fd, const void *buf, size_t count) {
     unsigned int chunk = count > (size_t)UINT_MAX ? UINT_MAX : (unsigned int)count;
     return write(fd, buf, chunk);
@@ -146,6 +153,7 @@ static inline ssize_t rt_posix_write(int fd, const void *buf, size_t count) {
 #endif
 
 #if RT_PLATFORM_WINDOWS
+/// @brief Open a file at a UTF-8 path via `_wopen` (Windows), converting through wide-char.
 static int rt_fileext_open(const char *path, int flags, int pmode) {
     wchar_t *wide = rt_file_path_utf8_to_wide(path);
     if (!wide)
@@ -155,6 +163,7 @@ static int rt_fileext_open(const char *path, int flags, int pmode) {
     return fd;
 }
 
+/// @brief Stat a file at a UTF-8 path via `_wstat` (Windows), converting through wide-char.
 static int rt_fileext_stat_path(const char *path, struct stat *st) {
     wchar_t *wide = rt_file_path_utf8_to_wide(path);
     if (!wide)
@@ -164,6 +173,7 @@ static int rt_fileext_stat_path(const char *path, struct stat *st) {
     return rc;
 }
 
+/// @brief Delete a file at a UTF-8 path via `_wunlink` (Windows), converting through wide-char.
 static int rt_fileext_unlink(const char *path) {
     wchar_t *wide = rt_file_path_utf8_to_wide(path);
     if (!wide)
@@ -173,6 +183,7 @@ static int rt_fileext_unlink(const char *path) {
     return rc;
 }
 
+/// @brief Set file access/modification times at a UTF-8 path via `_wutime` (Windows).
 static int rt_fileext_utime(const char *path, struct _utimbuf *times) {
     wchar_t *wide = rt_file_path_utf8_to_wide(path);
     if (!wide)
@@ -205,10 +216,13 @@ static int rt_fileext_write_all_fd(int fd, const uint8_t *data, size_t len) {
     return 1;
 }
 
+/// @brief Build the `.viper-tmp.<pid>.<ptr>.<attempt>` sidecar path used by atomic writes (Windows).
 static char *rt_fileext_make_temp_path(const char *path, unsigned attempt) {
     return rt_fileext_make_parent_temp_path(path, ".viper-tmp.", attempt);
 }
 
+/// @brief Atomically replace `dst` with `src` using MoveFileExW (Windows).
+/// @details Uses MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH for crash-safe overwrite.
 static int rt_fileext_replace_utf8(const char *src, const char *dst) {
     wchar_t *wsrc = rt_file_path_utf8_to_wide(src);
     wchar_t *wdst = rt_file_path_utf8_to_wide(dst);
@@ -251,10 +265,13 @@ static int rt_fileext_write_all_fd(int fd, const uint8_t *data, size_t len) {
     return 1;
 }
 
+/// @brief Build the `.viper-tmp.<pid>.<ptr>.<attempt>` sidecar path used by atomic writes (POSIX).
 static char *rt_fileext_make_temp_path(const char *path, unsigned attempt) {
     return rt_fileext_make_parent_temp_path(path, ".viper-tmp.", attempt);
 }
 
+/// @brief Atomically replace `dst` with `src` using `rename(2)` (POSIX).
+/// @details `rename` is atomic within a single filesystem by POSIX guarantee.
 static int rt_fileext_replace_utf8(const char *src, const char *dst) {
     return rename(src, dst) == 0 ? 1 : 0;
 }
@@ -386,6 +403,7 @@ static int rt_fileext_sync_parent_dir(const char *path) {
 #endif
 }
 
+/// @brief Close `fd` and trap with `context` message if `close(2)` fails.
 static void rt_fileext_close_or_trap(int fd, const char *context) {
     if (close(fd) != 0)
         rt_trap(context);
@@ -456,6 +474,7 @@ static int rt_fileext_same_existing_file(const char *src_path, const char *dst_p
 #endif
 }
 
+/// @brief Return 1 if `mode` (from stat) indicates a regular file; 0 otherwise.
 static int rt_fileext_is_regular_mode(int mode) {
 #if RT_PLATFORM_WINDOWS
     return (mode & _S_IFREG) != 0;
@@ -574,13 +593,15 @@ rt_string rt_io_file_read_all_text(rt_string path) {
             close(fd);
             rt_trap("Viper.IO.File.ReadAllText: failed to read file");
         }
-        if (n == 0)
-            break;
+        if (n == 0) {
+            free(buf);
+            close(fd);
+            rt_trap("Viper.IO.File.ReadAllText: file changed while reading");
+        }
         off += (size_t)n;
     }
     close(fd);
-    // If short read, shrink to actual bytes read.
-    rt_string s = rt_string_from_bytes(buf, off);
+    rt_string s = rt_string_from_bytes(buf, size);
     free(buf);
     if (!s)
         rt_trap("Viper.IO.File.ReadAllText: allocation failed");
@@ -697,17 +718,20 @@ void *rt_io_file_read_all_bytes(rt_string path) {
             (void)close(fd);
             rt_trap("Viper.IO.File.ReadAllBytes: failed to read file");
         }
-        if (n == 0)
-            break;
+        if (n == 0) {
+            free(buf);
+            (void)close(fd);
+            rt_trap("Viper.IO.File.ReadAllBytes: file changed while reading");
+        }
         off += (size_t)n;
     }
     (void)close(fd);
 
     /* O-02: Use memcpy into the raw bytes buffer instead of per-byte rt_bytes_set */
-    void *bytes = rt_bytes_new((int64_t)off);
+    void *bytes = rt_bytes_new((int64_t)size);
     uint8_t *dst = file_bytes_data(bytes);
     if (dst)
-        memcpy(dst, buf, off);
+        memcpy(dst, buf, size);
 
     free(buf);
     return bytes;
@@ -728,6 +752,8 @@ void rt_io_file_write_all_bytes(rt_string path, void *bytes) {
     /* IO-H-1: use raw data pointer instead of per-byte rt_bytes_get() —
        eliminates O(n) function calls in favour of a single write() */
     int64_t len = rt_bytes_len(bytes);
+    if (len < 0 || (uint64_t)len > (uint64_t)SIZE_MAX)
+        rt_trap("Viper.IO.File.WriteAllBytes: invalid Bytes length");
     const uint8_t *src = file_bytes_data(bytes);
     if (!rt_fileext_write_atomic_utf8(cpath, src, (size_t)len, 1))
         rt_trap("Viper.IO.File.WriteAllBytes: failed to write file");
@@ -785,8 +811,11 @@ void *rt_io_file_read_all_lines(rt_string path) {
             (void)close(fd);
             rt_trap("Viper.IO.File.ReadAllLines: failed to read file");
         }
-        if (n == 0)
-            break;
+        if (n == 0) {
+            free(buf);
+            (void)close(fd);
+            rt_trap("Viper.IO.File.ReadAllLines: file changed while reading");
+        }
         off += (size_t)n;
     }
     (void)close(fd);
@@ -1144,6 +1173,8 @@ int64_t rt_file_modified(rt_string path) {
 
     struct stat st;
     if (rt_fileext_stat_path(cpath, &st) != 0)
+        return 0;
+    if (!rt_fileext_is_regular_mode(st.st_mode))
         return 0;
 
     return (int64_t)st.st_mtime;

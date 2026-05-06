@@ -42,7 +42,7 @@
 /// @brief Initial buffer capacity for new streams.
 #define MEMSTREAM_INITIAL_CAPACITY 64
 
-/// @brief Bytes implementation structure (must match rt_bytes.c).
+/// @brief Bytes implementation structure layout (must match rt_bytes.c).
 typedef struct rt_bytes_impl {
     int64_t len;   ///< Number of bytes.
     uint8_t *data; ///< Byte storage.
@@ -288,6 +288,7 @@ int64_t rt_memstream_read_i8(void *obj) {
     return (int64_t)val;
 }
 
+/// @brief Write 1 byte (low 8 bits of `value`). Advances pos by 1.
 void rt_memstream_write_i8(void *obj, int64_t value) {
     if (!obj) {
         rt_trap("MemStream.WriteI8: null stream");
@@ -300,6 +301,7 @@ void rt_memstream_write_i8(void *obj, int64_t value) {
     ms->pos++;
 }
 
+/// @brief Read 1 byte as unsigned uint8 (zero-extended to int64). Advances pos by 1.
 int64_t rt_memstream_read_u8(void *obj) {
     if (!obj) {
         rt_trap("MemStream.ReadU8: null stream");
@@ -313,6 +315,7 @@ int64_t rt_memstream_read_u8(void *obj) {
     return (int64_t)val;
 }
 
+/// @brief Write 1 byte (low 8 bits of `value`). Advances pos by 1.
 void rt_memstream_write_u8(void *obj, int64_t value) {
     if (!obj) {
         rt_trap("MemStream.WriteU8: null stream");
@@ -325,6 +328,7 @@ void rt_memstream_write_u8(void *obj, int64_t value) {
     ms->pos++;
 }
 
+/// @brief Read 2 bytes as signed int16 (little-endian, sign-extended to int64). Advances pos by 2.
 int64_t rt_memstream_read_i16(void *obj) {
     if (!obj) {
         rt_trap("MemStream.ReadI16: null stream");
@@ -339,6 +343,7 @@ int64_t rt_memstream_read_i16(void *obj) {
     return (int64_t)val;
 }
 
+/// @brief Write 2 bytes (low 16 bits of `value`, little-endian). Advances pos by 2.
 void rt_memstream_write_i16(void *obj, int64_t value) {
     if (!obj) {
         rt_trap("MemStream.WriteI16: null stream");
@@ -353,6 +358,7 @@ void rt_memstream_write_i16(void *obj, int64_t value) {
     ms->pos += 2;
 }
 
+/// @brief Read 2 bytes as unsigned uint16 (little-endian, zero-extended to int64). Advances pos by 2.
 int64_t rt_memstream_read_u16(void *obj) {
     if (!obj) {
         rt_trap("MemStream.ReadU16: null stream");
@@ -367,6 +373,7 @@ int64_t rt_memstream_read_u16(void *obj) {
     return (int64_t)val;
 }
 
+/// @brief Write 2 bytes (low 16 bits of `value`, little-endian). Advances pos by 2.
 void rt_memstream_write_u16(void *obj, int64_t value) {
     if (!obj) {
         rt_trap("MemStream.WriteU16: null stream");
@@ -381,6 +388,7 @@ void rt_memstream_write_u16(void *obj, int64_t value) {
     ms->pos += 2;
 }
 
+/// @brief Read 4 bytes as signed int32 (little-endian, sign-extended to int64). Advances pos by 4.
 int64_t rt_memstream_read_i32(void *obj) {
     if (!obj) {
         rt_trap("MemStream.ReadI32: null stream");
@@ -396,6 +404,7 @@ int64_t rt_memstream_read_i32(void *obj) {
     return (int64_t)val;
 }
 
+/// @brief Write 4 bytes (low 32 bits of `value`, little-endian). Advances pos by 4.
 void rt_memstream_write_i32(void *obj, int64_t value) {
     if (!obj) {
         rt_trap("MemStream.WriteI32: null stream");
@@ -412,6 +421,7 @@ void rt_memstream_write_i32(void *obj, int64_t value) {
     ms->pos += 4;
 }
 
+/// @brief Read 4 bytes as unsigned uint32 (little-endian, zero-extended to int64). Advances pos by 4.
 int64_t rt_memstream_read_u32(void *obj) {
     if (!obj) {
         rt_trap("MemStream.ReadU32: null stream");
@@ -427,6 +437,7 @@ int64_t rt_memstream_read_u32(void *obj) {
     return (int64_t)val;
 }
 
+/// @brief Write 4 bytes (low 32 bits of `value`, little-endian). Advances pos by 4.
 void rt_memstream_write_u32(void *obj, int64_t value) {
     if (!obj) {
         rt_trap("MemStream.WriteU32: null stream");
@@ -443,6 +454,7 @@ void rt_memstream_write_u32(void *obj, int64_t value) {
     ms->pos += 4;
 }
 
+/// @brief Read 8 bytes as signed int64 (little-endian). Advances pos by 8.
 int64_t rt_memstream_read_i64(void *obj) {
     if (!obj) {
         rt_trap("MemStream.ReadI64: null stream");
@@ -459,6 +471,7 @@ int64_t rt_memstream_read_i64(void *obj) {
     return (int64_t)val;
 }
 
+/// @brief Write 8 bytes (`value`, little-endian). Advances pos by 8.
 void rt_memstream_write_i64(void *obj, int64_t value) {
     if (!obj) {
         rt_trap("MemStream.WriteI64: null stream");
@@ -502,6 +515,7 @@ double rt_memstream_read_f32(void *obj) {
     return (double)f;
 }
 
+/// @brief Write 4 bytes as IEEE-754 float (double → float cast, little-endian). Advances pos by 4.
 void rt_memstream_write_f32(void *obj, double value) {
     if (!obj) {
         rt_trap("MemStream.WriteF32: null stream");
@@ -540,6 +554,7 @@ double rt_memstream_read_f64(void *obj) {
     return d;
 }
 
+/// @brief Write 8 bytes as IEEE-754 double (little-endian). Advances pos by 8.
 void rt_memstream_write_f64(void *obj, double value) {
     if (!obj) {
         rt_trap("MemStream.WriteF64: null stream");

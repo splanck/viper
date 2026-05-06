@@ -40,6 +40,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <limits.h>
 
 // Platform-specific includes
 #if defined(__linux__)
@@ -63,9 +64,18 @@
 // Stub platform
 #endif
 
-// Helper to create rt_string from C string
+/// @brief Allocate a fresh rt_string from a C string, returning NULL for NULL input.
 static inline rt_string str_from_cstr(const char *s) {
     return s ? rt_string_from_bytes(s, strlen(s)) : NULL;
+}
+
+/// @brief Clamp a millisecond timeout to the range accepted by POSIX poll(2) / kevent(2).
+static int watcher_timeout_to_int(int64_t ms) {
+    if (ms < 0)
+        return -1;
+    if (ms > INT_MAX)
+        return INT_MAX;
+    return (int)ms;
 }
 
 #define WATCHER_EVENT_QUEUE_SIZE 64
@@ -497,18 +507,18 @@ void rt_watcher_start(void *obj) {
     if (w->is_watching)
         rt_trap("Watcher.Start: already watching");
 
-    const char *cpath = rt_string_cstr(w->watch_path);
-
 #if defined(__linux__)
     w->inotify_fd = inotify_init1(IN_NONBLOCK);
     if (w->inotify_fd < 0)
         rt_trap("Watcher.Start: failed to initialize inotify");
 
     uint32_t mask = IN_CREATE | IN_DELETE | IN_MODIFY | IN_MOVED_FROM | IN_MOVED_TO;
-    if (!w->is_directory)
+    const char *watch_target =
+        rt_string_cstr(w->is_directory ? (rt_string)w->watch_path : (rt_string)w->watch_dir_path);
+    if (w->is_directory)
         mask |= IN_DELETE_SELF | IN_MOVE_SELF;
 
-    w->watch_descriptor = inotify_add_watch(w->inotify_fd, cpath, mask);
+    w->watch_descriptor = inotify_add_watch(w->inotify_fd, watch_target, mask);
     if (w->watch_descriptor < 0) {
         close(w->inotify_fd);
         w->inotify_fd = -1;
@@ -516,6 +526,7 @@ void rt_watcher_start(void *obj) {
     }
 
 #elif defined(__APPLE__)
+    const char *cpath = rt_string_cstr(w->watch_path);
     w->kqueue_fd = kqueue();
     if (w->kqueue_fd < 0)
         rt_trap("Watcher.Start: failed to create kqueue");
@@ -676,16 +687,17 @@ int64_t rt_watcher_poll_for(void *obj, int64_t ms) {
     struct pollfd pfd;
     pfd.fd = w->inotify_fd;
     pfd.events = POLLIN;
-    int timeout = ms < 0 ? -1 : (int)ms;
+    int timeout = watcher_timeout_to_int(ms);
     if (poll(&pfd, 1, timeout) > 0 && (pfd.revents & POLLIN)) {
         watcher_read_inotify_events(w);
     }
 #elif defined(__APPLE__)
-    watcher_read_kqueue_events(w, (int)ms);
+    watcher_read_kqueue_events(w, watcher_timeout_to_int(ms));
 #elif defined(_WIN32)
     if (w->pending_read) {
-        DWORD wait_result =
-            WaitForSingleObject(w->overlapped.hEvent, ms < 0 ? INFINITE : (DWORD)ms);
+        DWORD timeout =
+            ms < 0 ? INFINITE : (ms > (int64_t)0xFFFFFFFEu ? 0xFFFFFFFEu : (DWORD)ms);
+        DWORD wait_result = WaitForSingleObject(w->overlapped.hEvent, timeout);
         if (wait_result == WAIT_OBJECT_0) {
             watcher_read_windows_events(w);
         }

@@ -9,13 +9,13 @@
 // Purpose: Validate Viper.Data.Xml (rt_xml_*) parse/create/format/query API.
 // Key invariants: Parse produces correct node tree; attributes are readable;
 //                 formatted output round-trips through parse.
-// Ownership/Lifetime: XML node objects use tree-based ownership; do not call
-//                     rt_obj_release_check0/rt_obj_free on them.
+// Ownership/Lifetime: XML node objects are refcounted; parent links retain children.
 //
 //===----------------------------------------------------------------------===//
 
 #include "viper/runtime/rt.h"
 
+#include "rt_object.h"
 #include "rt_string.h"
 #include "rt_xml.h"
 
@@ -40,11 +40,20 @@ static int str_eq_c(rt_string s, const char *expected) {
     return result;
 }
 
+static int str_eq_bytes(rt_string s, const char *expected, size_t len) {
+    return s && (size_t)rt_str_len(s) == len && memcmp(rt_string_cstr(s), expected, len) == 0;
+}
+
 static int str_contains_c(rt_string s, const char *needle) {
     const char *cstr = rt_string_cstr(s);
     if (!cstr)
         return 0;
     return strstr(cstr, needle) != NULL;
+}
+
+static void release_obj(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
 }
 
 static void test_parse_simple(void) {
@@ -79,8 +88,8 @@ static void test_parse_simple(void) {
     check("child text content == 'world'", str_eq_c(text_content, "world"));
     rt_string_unref(text_content);
 
-    // XML node objects (parse, element, child_at) use tree-based ownership —
-    // rt_obj_release_check0 / rt_obj_free must NOT be called on them.
+    // Child references are borrowed from the parsed document; releasing the
+    // document later releases the tree.
 }
 
 static void test_is_valid(void) {
@@ -132,15 +141,25 @@ static void test_create_and_format(void) {
 
 static void test_escape_unescape(void) {
     printf("rt_xml escape / unescape:\n");
-    rt_string special = S("a < b & c > d");
+    rt_string special = S("a < b & c > d \"quoted\" 'apos'");
     rt_string escaped = rt_xml_escape(special);
     check("escaped contains &lt;", str_contains_c(escaped, "&lt;"));
     check("escaped contains &amp;", str_contains_c(escaped, "&amp;"));
     check("escaped contains &gt;", str_contains_c(escaped, "&gt;"));
+    check("escaped contains &quot;", str_contains_c(escaped, "&quot;"));
+    check("escaped contains &apos;", str_contains_c(escaped, "&apos;"));
 
     rt_string unescaped = rt_xml_unescape(escaped);
     check("unescape roundtrip", rt_str_eq(special, unescaped));
 
+    const char entity_after_nul[] = {'a', '\0', '&', 'a', 'm', 'p', ';', 'b'};
+    const char unescaped_bytes[] = {'a', '\0', '&', 'b'};
+    rt_string with_nul = rt_string_from_bytes(entity_after_nul, sizeof(entity_after_nul));
+    rt_string unescaped_nul = rt_xml_unescape(with_nul);
+    check("unescape scans past embedded NUL", str_eq_bytes(unescaped_nul, unescaped_bytes, sizeof(unescaped_bytes)));
+
+    rt_string_unref(unescaped_nul);
+    rt_string_unref(with_nul);
     rt_string_unref(unescaped);
     rt_string_unref(escaped);
     rt_string_unref(special);
@@ -212,6 +231,92 @@ static void test_invalid_node_creation(void) {
     rt_string_unref(cdata);
 }
 
+static void test_whitespace_doctype_and_invalid_chars(void) {
+    printf("rt_xml whitespace, doctype, invalid chars:\n");
+
+    rt_string xml = S("<root> </root>");
+    void *doc = rt_xml_parse(xml);
+    rt_string_unref(xml);
+    check("whitespace text doc parses", doc != NULL);
+    void *root = rt_xml_root(doc);
+    check("whitespace text node is preserved", rt_xml_child_count(root) == 1);
+    rt_string text = rt_xml_text_content(root);
+    check("whitespace text content preserved", str_eq_c(text, " "));
+    rt_string_unref(text);
+    release_obj(doc);
+
+    rt_string with_doctype = S("<!DOCTYPE root [<!ELEMENT root (#PCDATA)>]><root>ok</root>");
+    doc = rt_xml_parse(with_doctype);
+    rt_string_unref(with_doctype);
+    check("doctype internal subset parses", doc != NULL);
+    root = rt_xml_root(doc);
+    text = rt_xml_text_content(root);
+    check("doctype document text content", str_eq_c(text, "ok"));
+    rt_string_unref(text);
+    release_obj(doc);
+
+    const char invalid_bytes[] = {'<', 'r', 'o', 'o', 't', '>', '\x01',
+                                  '<', '/', 'r', 'o', 'o', 't', '>'};
+    rt_string invalid = rt_string_from_bytes(invalid_bytes, sizeof(invalid_bytes));
+    check("invalid XML control char rejected", !rt_xml_is_valid(invalid));
+    rt_string_unref(invalid);
+}
+
+static void test_retained_attr_and_appended_child(void) {
+    printf("rt_xml retained attr and appended child:\n");
+
+    rt_string xml = S("<root id=\"42\"/>");
+    void *doc = rt_xml_parse(xml);
+    rt_string_unref(xml);
+    check("attr retention doc parses", doc != NULL);
+    void *root = rt_xml_root(doc);
+    rt_string id_key = S("id");
+    rt_string attr = rt_xml_attr(root, id_key);
+    check("attr value before caller release", str_eq_c(attr, "42"));
+    rt_string_unref(attr);
+    attr = rt_xml_attr(root, id_key);
+    check("attr value survives caller release", str_eq_c(attr, "42"));
+    rt_string_unref(attr);
+    rt_string_unref(id_key);
+    release_obj(doc);
+
+    rt_string parent_tag = S("parent");
+    rt_string child_tag = S("child");
+    void *parent = rt_xml_element(parent_tag);
+    void *child = rt_xml_element(child_tag);
+    rt_string_unref(parent_tag);
+    rt_string_unref(child_tag);
+    rt_xml_append(parent, child);
+    release_obj(child);
+    rt_string formatted = rt_xml_format(parent);
+    check("append retains child for parent", str_contains_c(formatted, "<child/>"));
+    rt_string_unref(formatted);
+    release_obj(parent);
+}
+
+static void test_mixed_content_pretty_round_trip(void) {
+    printf("rt_xml mixed content pretty formatting:\n");
+
+    rt_string xml = S("<p>Hello <b>world</b>!</p>");
+    void *doc = rt_xml_parse(xml);
+    rt_string_unref(xml);
+    check("mixed content parses", doc != NULL);
+    void *root = rt_xml_root(doc);
+
+    rt_string pretty = rt_xml_format_pretty(root, 2);
+    check("mixed content stays inline", str_eq_c(pretty, "<p>Hello <b>world</b>!</p>"));
+
+    void *round_trip = rt_xml_parse(pretty);
+    check("pretty mixed content reparses", round_trip != NULL);
+    rt_string text = rt_xml_text_content(rt_xml_root(round_trip));
+    check("pretty mixed content text unchanged", str_eq_c(text, "Hello world!"));
+
+    rt_string_unref(text);
+    rt_string_unref(pretty);
+    release_obj(round_trip);
+    release_obj(doc);
+}
+
 int main(void) {
     printf("=== RTXmlTests ===\n");
     test_parse_simple();
@@ -221,6 +326,9 @@ int main(void) {
     test_children();
     test_root_and_path_find();
     test_invalid_node_creation();
+    test_whitespace_doctype_and_invalid_chars();
+    test_retained_attr_and_appended_child();
+    test_mixed_content_pretty_round_trip();
     printf("All XML tests passed.\n");
     return 0;
 }

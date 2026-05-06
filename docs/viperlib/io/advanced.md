@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-22
+last-verified: 2026-05-06
 ---
 
 # Advanced IO
@@ -368,7 +368,7 @@ Compression traps on:
 - Invalid compression level (must be 1-9)
 - Invalid or truncated compressed data
 - Reserved GZIP flags, malformed optional headers, header CRC mismatches, trailer CRC32 mismatches, or trailer size mismatches
-- Corrupted DEFLATE stream
+- Corrupted DEFLATE streams, including truncated Huffman symbols and malformed dynamic-code repeat runs
 - Trailing non-padding data after the final DEFLATE block
 - Inflated output exceeding the runtime safety cap (256 MiB)
 
@@ -515,10 +515,11 @@ watcher.Stop()
 - Creating a watcher traps if the path does not exist
 - The watcher must be started with `Start()` before events can be received
 - `Poll()` returns immediately with `EVENT_NONE` if no event is pending
-- `PollFor(ms)` waits up to the specified milliseconds for an event
+- `PollFor(ms)` waits up to the specified milliseconds for an event; very large positive timeouts are clamped to the largest supported platform wait value
 - After receiving an event, use `EventPath()` and `EventType()` to get details
 - Multiple events may be queued; call `Poll()` repeatedly to drain them
 - Directory watches are non-recursive
+- On Linux and Windows, single-file watches monitor the parent directory and filter by filename, so deleting and recreating the file at the same path can still produce a later `EVENT_CREATED`
 - macOS directory watches report the watched directory path for queued events because `kqueue` does not provide child entry names
 - Platform-specific behavior may vary slightly for edge cases
 

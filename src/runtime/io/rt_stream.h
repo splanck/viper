@@ -3,6 +3,8 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
+//===----------------------------------------------------------------------===//
+//
 // File: src/runtime/io/rt_stream.h
 // Purpose: Unified stream interface abstracting BinFile and MemStream, providing a common API for
 // read/write/seek regardless of the backing storage type.
@@ -37,6 +39,7 @@ extern "C" {
 // Stream Type Constants
 //=========================================================================
 
+/// @brief Discriminant tag identifying the backing store of a Stream object.
 typedef enum {
     RT_STREAM_TYPE_BINFILE = 0,
     RT_STREAM_TYPE_MEMSTREAM = 1,

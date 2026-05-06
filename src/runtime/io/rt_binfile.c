@@ -129,6 +129,15 @@ static int binfile_prepare_seek(rt_binfile_impl *bf) {
     return 1;
 }
 
+/// @brief Open a binary file at a UTF-8 path using the given stdio mode string.
+///
+/// On Windows, converts `path` to UTF-16 with `rt_file_path_utf8_to_wide`
+/// and calls `_wfopen`; on POSIX, calls `fopen` directly. Returns NULL
+/// on conversion failure or when the underlying open fails.
+///
+/// @param path UTF-8 file path.
+/// @param mode stdio mode string (e.g., "rb", "wb", "r+b").
+/// @return Opened `FILE *`, or NULL on failure.
 static FILE *rt_binfile_fopen_utf8(const char *path, const char *mode) {
 #if defined(_WIN32)
     wchar_t *wide_path = rt_file_path_utf8_to_wide(path);

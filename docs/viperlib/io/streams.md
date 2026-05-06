@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-22
+last-verified: 2026-05-06
 ---
 
 # Streams & Buffers
@@ -67,6 +67,8 @@ Unified stream abstraction providing a common interface over file and memory str
 `OpenFile`, `OpenMemory`, and `OpenBytes` create streams that own their backing `BinFile` or `MemStream`; `Close()` releases that backing object. `FromBinFile` and `FromMemStream` retain the existing object for the wrapper's lifetime, so the wrapper remains valid even if another owner releases its reference. Closing the wrapper releases the wrapper's retained reference.
 
 All operations except `Close()` trap on a null or already-closed stream. `Write(bytes)` also traps when `bytes` is null. This avoids silent reads from or writes to invalid backing objects.
+
+`Read(count)` is a short-read API for both file-backed and memory-backed streams: if fewer than `count` bytes remain, it returns a `Bytes` object containing only the available bytes instead of trapping.
 
 ### Zia Example
 
@@ -433,6 +435,8 @@ LineReader automatically handles all common line ending formats:
 | `PeekChar()` | Integer | View next character without consuming (0-255 or -1)          |
 | `ReadAll()`  | String  | Read all remaining content as a string                       |
 
+`ReadAll()` traps if the remaining byte count cannot be represented by the host allocation size.
+
 ### Zia Example
 
 ```rust
@@ -543,7 +547,7 @@ Buffered text file writer with configurable line endings.
 | `Close()`       | void    | Close the file and release resources |
 | `Write(text)`   | void    | Write string without newline         |
 | `WriteLn(text)` | void    | Write string followed by newline     |
-| `WriteChar(ch)` | void    | Write single character (0-255)       |
+| `WriteChar(ch)` | void    | Write single character (0-255); traps outside that range |
 | `Flush()`       | void    | Flush buffered output to disk        |
 
 ### Platform Newlines
@@ -692,6 +696,8 @@ Positioned binary read/write buffer for constructing and parsing binary data in 
 
 - `WriteStr()` uses the runtime string byte length, so embedded NUL bytes are preserved.
 - `WriteStr()` and `WriteBytes()` trap if the payload length cannot fit in their signed 32-bit length prefix.
+- Signed integer readers sign-extend their declared width: `ReadI16*()` returns -32768..32767, `ReadI32*()` returns signed 32-bit values, and `ReadI64*()` preserves the full signed 64-bit bit pattern.
+- Constructors and growth trap if the requested capacity exceeds the host platform's addressable allocation size.
 
 ### Zia Example
 

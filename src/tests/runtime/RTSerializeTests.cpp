@@ -43,6 +43,25 @@ static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, (int64_t)strlen(s));
 }
 
+static void release_obj(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static void map_set_string(void *map, const char *key, const char *value) {
+    rt_string k = make_str(key);
+    rt_string v = make_str(value);
+    rt_map_set(map, k, (void *)v);
+    rt_string_unref(v);
+    rt_string_unref(k);
+}
+
+static void map_set_obj(void *map, const char *key, void *value) {
+    rt_string k = make_str(key);
+    rt_map_set(map, k, value);
+    rt_string_unref(k);
+}
+
 //=============================================================================
 // Format metadata tests
 //=============================================================================
@@ -180,6 +199,8 @@ static void test_detect_json() {
     ASSERT(rt_serialize_detect(make_str("{\"key\":\"value\"}")) == RT_FORMAT_JSON,
            "detect JSON obj");
     ASSERT(rt_serialize_detect(make_str("[1,2,3]")) == RT_FORMAT_JSON, "detect JSON arr");
+    ASSERT(rt_serialize_detect(make_str("[\"x\"]")) == RT_FORMAT_JSON, "detect JSON string arr");
+    ASSERT(rt_serialize_detect(make_str("[1,2")) == RT_FORMAT_JSON, "detect invalid JSON arr");
 }
 
 static void test_detect_xml() {
@@ -206,6 +227,7 @@ static void test_detect_null() {
     ASSERT(rt_serialize_detect(make_str("")) == -1, "detect empty = -1");
     ASSERT(rt_serialize_detect(make_str("   \n\t  ")) == -1, "detect whitespace = -1");
     ASSERT(rt_serialize_detect(make_str("just words")) == -1, "plain text is unknown");
+    ASSERT(rt_serialize_detect(make_str("http://example.com/a:b")) == -1, "URL is unknown");
     ASSERT(rt_serialize_detect(make_str("name,age\nAlice,30\n")) == RT_FORMAT_CSV, "detect CSV");
 }
 
@@ -219,6 +241,24 @@ static void test_invalid_json_parse_reports_error() {
     ASSERT(parsed == NULL, "invalid JSON parse returns NULL");
     rt_string err = rt_serialize_error();
     ASSERT(err != NULL && rt_str_len(err) > 0, "invalid JSON sets serialize error");
+}
+
+static void test_invalid_xml_parse_reports_error() {
+    void *parsed = rt_serialize_parse(make_str("<a><b></a>"), RT_FORMAT_XML);
+    ASSERT(parsed == NULL, "invalid XML parse returns NULL");
+    rt_string err = rt_serialize_error();
+    ASSERT(err != NULL && rt_str_len(err) > 0, "invalid XML sets serialize error");
+}
+
+static void test_invalid_csv_parse_reports_error_without_trap() {
+    rt_string invalid = make_str("\"unterminated");
+    ASSERT(rt_serialize_is_valid(invalid, RT_FORMAT_CSV) == 0, "invalid CSV is not valid");
+
+    void *parsed = rt_serialize_parse(invalid, RT_FORMAT_CSV);
+    ASSERT(parsed == NULL, "invalid CSV parse returns NULL");
+    rt_string err = rt_serialize_error();
+    ASSERT(err != NULL && strstr(rt_string_cstr(err), "CSV") != NULL,
+           "invalid CSV sets serialize error");
 }
 
 //=============================================================================
@@ -260,6 +300,32 @@ static void test_convert_xml_to_json() {
     ASSERT(strstr(rt_string_cstr(json_out), "\"item\"") != NULL, "XML->JSON output has child key");
     ASSERT(strstr(rt_string_cstr(json_out), "\"@attrs\"") != NULL,
            "XML->JSON output preserves attributes");
+    ASSERT(strstr(rt_string_cstr(json_out), "\"@text\"") != NULL,
+           "XML->JSON output uses @text for mixed element text");
+    ASSERT(strstr(rt_string_cstr(json_out), "\"#text\"") == NULL,
+           "XML->JSON output does not use legacy #text");
+}
+
+static void test_format_xml_from_generic_attrs_and_text() {
+    void *root = rt_map_new();
+    void *attrs = rt_map_new();
+    map_set_string(attrs, "id", "42");
+    map_set_obj(root, "@attrs", attrs);
+    map_set_string(root, "@text", "hello");
+    map_set_string(root, "child", "world");
+
+    rt_string xml_out = rt_serialize_format(root, RT_FORMAT_XML);
+    ASSERT(xml_out != NULL, "generic @attrs/@text XML formatting");
+    ASSERT(strstr(rt_string_cstr(xml_out), "id=\"42\"") != NULL,
+           "generic XML output preserves @attrs");
+    ASSERT(strstr(rt_string_cstr(xml_out), "hello") != NULL,
+           "generic XML output preserves @text");
+    ASSERT(strstr(rt_string_cstr(xml_out), "<child>world</child>") != NULL,
+           "generic XML output preserves child elements");
+
+    rt_string_unref(xml_out);
+    release_obj(attrs);
+    release_obj(root);
 }
 
 static void test_convert_json_to_toml_and_csv() {
@@ -328,12 +394,15 @@ int main() {
     test_detect_null();
     test_auto_parse_json();
     test_invalid_json_parse_reports_error();
+    test_invalid_xml_parse_reports_error();
+    test_invalid_csv_parse_reports_error_without_trap();
 
     // Conversion
     test_convert_json_to_yaml();
     test_convert_json_to_json();
     test_convert_json_to_xml();
     test_convert_xml_to_json();
+    test_format_xml_from_generic_attrs_and_text();
     test_convert_json_to_toml_and_csv();
 
     // Safety

@@ -118,6 +118,15 @@ static void archive_release_temp_object(void *obj) {
         rt_obj_free(obj);
 }
 
+/// @brief Extract a UTF-8 C path from an `rt_string`, trapping on failure.
+///
+/// Converts a Viper string to a null-terminated C path via
+/// `rt_file_path_from_vstr`. Traps with `context` if the path is
+/// NULL, empty, or the conversion fails (e.g., invalid encoding).
+///
+/// @param path    Viper string containing the file path.
+/// @param context Trap message to emit if the path is unusable.
+/// @return Non-null, non-empty UTF-8 C string.
 static const char *archive_require_path(rt_string path, const char *context) {
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr((const ViperString *)path, &cpath) || !cpath || *cpath == '\0')
@@ -125,6 +134,14 @@ static const char *archive_require_path(rt_string path, const char *context) {
     return cpath;
 }
 
+/// @brief Borrow a null-terminated view of an entry name from an `rt_string`.
+///
+/// Returns the raw UTF-8 pointer inside `name` as a C string without
+/// copying. Returns NULL if `name` is empty, NULL, or contains an
+/// embedded null byte (which would truncate the ZIP entry name).
+///
+/// @param name Viper string containing the entry name.
+/// @return Borrowed C string pointer, or NULL if the name is invalid.
 static const char *archive_entry_name_cstr(rt_string name) {
     const uint8_t *data = NULL;
     size_t len = rt_file_string_view((const ViperString *)name, &data);
@@ -238,6 +255,17 @@ static void archive_write_exact_posix(int fd, const uint8_t *src, size_t total, 
 }
 #endif
 
+/// @brief Build a unique temporary file path adjacent to `path`.
+///
+/// Constructs a sidecar name in the same directory as `path` using the
+/// current process ID, the `path` pointer address, and `attempt` as
+/// entropy. The caller must `free()` the returned string. Returns NULL
+/// on allocation failure or if `snprintf` overflows the 96-byte suffix
+/// buffer (which cannot happen in practice given pid + pointer width).
+///
+/// @param path    Base path whose parent directory receives the temp file.
+/// @param attempt Iteration counter to differentiate multiple tries.
+/// @return Heap-allocated temp path, or NULL on failure.
 static char *archive_make_temp_path(const char *path, unsigned attempt) {
     size_t path_len = strlen(path);
     size_t parent_len = 0;
@@ -273,6 +301,15 @@ static char *archive_make_temp_path(const char *path, unsigned attempt) {
     return tmp;
 }
 
+/// @brief Atomically rename `src` to `dst`, replacing any existing file.
+///
+/// On Windows uses `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING |
+/// MOVEFILE_WRITE_THROUGH`; on POSIX uses `rename(2)`. Both are
+/// atomic on a single filesystem.
+///
+/// @param src UTF-8 source path.
+/// @param dst UTF-8 destination path.
+/// @return 1 on success, 0 on failure.
 static int archive_replace_utf8(const char *src, const char *dst) {
 #ifdef _WIN32
     wchar_t *wsrc = rt_file_path_utf8_to_wide(src);
@@ -291,6 +328,13 @@ static int archive_replace_utf8(const char *src, const char *dst) {
 #endif
 }
 
+/// @brief Delete a file at a UTF-8 path, ignoring errors.
+///
+/// Cross-platform wrapper: `DeleteFileW` on Windows (after wide
+/// conversion), `unlink(2)` on POSIX. Used for temp-file cleanup
+/// where best-effort removal is sufficient.
+///
+/// @param path UTF-8 path of the file to delete.
 static void archive_unlink_utf8(const char *path) {
 #ifdef _WIN32
     wchar_t *wide = rt_file_path_utf8_to_wide(path);
@@ -303,6 +347,15 @@ static void archive_unlink_utf8(const char *path) {
 #endif
 }
 
+/// @brief fsync the directory that contains `path` (POSIX only).
+///
+/// Required on Linux/macOS to guarantee the directory entry for a
+/// newly renamed file survives a crash. No-op on Windows (the
+/// `MOVEFILE_WRITE_THROUGH` flag handles this there). Returns 1 on
+/// success, 0 on any error.
+///
+/// @param path UTF-8 path of the newly placed file.
+/// @return 1 if the parent directory was fsynced successfully, 0 otherwise.
 static int archive_sync_parent_dir(const char *path) {
 #ifdef _WIN32
     (void)path;
@@ -449,16 +502,33 @@ static void archive_write_bytes_to_path(const char *cpath, void *data) {
     archive_write_file_all_utf8(cpath, src, total, "Archive: failed to write destination file");
 }
 
+/// @brief Return 1 if `c` is a path separator (`/` or `\`), 0 otherwise.
 static int archive_is_sep(char c) {
     return c == '/' || c == '\\';
 }
 
+/// @brief Return the length of `path` with trailing separators stripped.
+///
+/// Leaves at least one character so that a path consisting of only
+/// separators (e.g., `"/"`) is not reduced to zero length.
+///
+/// @param path String to trim (not modified).
+/// @param len  Initial length to trim down from.
+/// @return Trimmed length (>= 1).
 static size_t archive_trim_trailing_seps(const char *path, size_t len) {
     while (len > 1 && archive_is_sep(path[len - 1]))
         --len;
     return len;
 }
 
+/// @brief Return 1 if `path` is a symlink or reparse point, 0 otherwise.
+///
+/// Uses `lstat(2)` on POSIX and `GetFileAttributesW` on Windows. Does
+/// not follow the link — the check is on the link itself, which is
+/// exactly what the traversal guard needs.
+///
+/// @param path UTF-8 path to inspect.
+/// @return 1 if the entry is a symlink / reparse point, 0 otherwise.
 static int archive_path_is_reparse_or_symlink(const char *path) {
 #ifdef _WIN32
     wchar_t *wide = rt_file_path_utf8_to_wide(path);
@@ -477,6 +547,16 @@ static int archive_path_is_reparse_or_symlink(const char *path) {
 #endif
 }
 
+/// @brief Trap if any path component (or the leaf) is a symlink / reparse point.
+///
+/// Walks each intermediate prefix of `path` starting after `root_len`
+/// characters (the known-safe root, e.g., the extraction directory).
+/// If `include_leaf` is true, the full path is also checked. This
+/// defends against TOCTOU symlink-swapping attacks during extraction.
+///
+/// @param path         Full UTF-8 path to inspect.
+/// @param root_len     Number of leading bytes that are already trusted.
+/// @param include_leaf If non-zero, also check the final path component.
 static void archive_reject_symlink_components(const char *path, size_t root_len, int include_leaf) {
     if (!path)
         return;
@@ -647,6 +727,14 @@ static void archive_free_entries(rt_archive_t *ar) {
     }
 }
 
+/// @brief Free a partially-constructed entry array on parse failure.
+///
+/// Releases the `name` allocation for each of the first `count` entries,
+/// then frees the array itself. Used as the cleanup path inside
+/// `parse_central_directory` when an error is detected mid-parse.
+///
+/// @param entries Array of zip_entry_t to release (may be NULL).
+/// @param count   Number of entries whose `name` fields are initialized.
 static void archive_free_entry_array(zip_entry_t *entries, int count) {
     if (!entries)
         return;
@@ -1126,6 +1214,16 @@ static char *ensure_trailing_slash(char *name) {
     return new_name;
 }
 
+/// @brief Insert a pre-boxed value into a map under a C-string key.
+///
+/// Wraps the C string in a const `rt_string` (no allocation), calls
+/// `rt_map_set`, then releases the temporary key string. Convenience
+/// for the `Info` implementation which builds a flat map of boxed
+/// primitives.
+///
+/// @param map      Target `rt_map` object.
+/// @param key_cstr Null-terminated key string (borrowed for the call).
+/// @param boxed    Boxed primitive value (Map takes a reference).
 static void archive_map_set_boxed(void *map, const char *key_cstr, void *boxed) {
     rt_string key = rt_const_cstr(key_cstr);
     rt_map_set(map, key, boxed);

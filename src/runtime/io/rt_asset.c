@@ -39,6 +39,7 @@
 #include <windows.h>
 #else
 #include <dirent.h>
+#include <pthread.h>
 #include <strings.h>
 #include <sys/stat.h>
 #endif
@@ -85,8 +86,52 @@ static struct {
     int initialized;
 } g_asset_mgr;
 
+#ifdef _WIN32
+static INIT_ONCE g_asset_lock_once = INIT_ONCE_STATIC_INIT;
+static CRITICAL_SECTION g_asset_lock;
+
+/// @brief `InitOnce` callback that initializes the asset manager critical section.
+static BOOL CALLBACK asset_init_lock(PINIT_ONCE once, PVOID parameter, PVOID *context) {
+    (void)once;
+    (void)parameter;
+    (void)context;
+    InitializeCriticalSection(&g_asset_lock);
+    return TRUE;
+}
+
+/// @brief Acquire the asset-manager lock (Windows CRITICAL_SECTION, lazy-initialized).
+static void asset_lock(void) {
+    InitOnceExecuteOnce(&g_asset_lock_once, asset_init_lock, NULL, NULL);
+    EnterCriticalSection(&g_asset_lock);
+}
+
+/// @brief Release the asset-manager lock.
+static void asset_unlock(void) {
+    LeaveCriticalSection(&g_asset_lock);
+}
+#else
+static pthread_mutex_t g_asset_lock = PTHREAD_MUTEX_INITIALIZER;
+
+/// @brief Acquire the asset-manager lock (POSIX mutex).
+static void asset_lock(void) {
+    pthread_mutex_lock(&g_asset_lock);
+}
+
+/// @brief Release the asset-manager lock.
+static void asset_unlock(void) {
+    pthread_mutex_unlock(&g_asset_lock);
+}
+#endif
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+/// @brief Borrow a null-terminated view of an asset name from an `rt_string`.
+///
+/// Returns NULL if `name` is empty or contains an embedded null byte
+/// (which would produce a silent truncation on strcmp-based lookups).
+///
+/// @param name Viper string containing the asset name.
+/// @return Borrowed C string pointer, or NULL if the name is invalid.
 static const char *asset_name_cstr(rt_string name) {
     const uint8_t *data = NULL;
     size_t len = rt_file_string_view((const ViperString *)name, &data);
@@ -98,6 +143,7 @@ static const char *asset_name_cstr(rt_string name) {
 }
 
 #ifdef _WIN32
+/// @brief Open a file at a UTF-8 path in binary-read mode (Windows wide-string path).
 static FILE *asset_fopen_utf8(const char *path) {
     wchar_t *wide = rt_file_path_utf8_to_wide(path);
     if (!wide)
@@ -107,6 +153,14 @@ static FILE *asset_fopen_utf8(const char *path) {
     return fp;
 }
 
+/// @brief Stat a regular file at a UTF-8 path and return its size (Windows).
+///
+/// Returns 0 for missing files, directories, and reparse points.
+/// Writes the file size in bytes to `*out_size` when non-NULL.
+///
+/// @param path     UTF-8 file path.
+/// @param out_size Out-parameter for size in bytes (may be NULL).
+/// @return 1 if the path is a regular readable file, 0 otherwise.
 static int asset_regular_file_size(const char *path, uint64_t *out_size) {
     if (out_size)
         *out_size = 0;
@@ -128,10 +182,19 @@ static int asset_regular_file_size(const char *path, uint64_t *out_size) {
     return 1;
 }
 #else
+/// @brief Open a file at a UTF-8 path in binary-read mode (POSIX).
 static FILE *asset_fopen_utf8(const char *path) {
     return fopen(path, "rb");
 }
 
+/// @brief Stat a regular file at a UTF-8 path and return its size (POSIX).
+///
+/// Returns 0 for missing files, directories, and special files.
+/// Writes the file size in bytes to `*out_size` when non-NULL.
+///
+/// @param path     UTF-8 file path.
+/// @param out_size Out-parameter for size in bytes (may be NULL).
+/// @return 1 if the path is a regular readable file, 0 otherwise.
 static int asset_regular_file_size(const char *path, uint64_t *out_size) {
     if (out_size)
         *out_size = 0;
@@ -222,8 +285,13 @@ static void discover_packs(const char *dir) {
         if (g_asset_mgr.pack_count < RT_ASSET_MAX_PACKS) {
             vpa_archive_t *archive = vpa_open_file(path);
             if (archive) {
+                char *path_copy = strdup(path);
+                if (!path_copy) {
+                    vpa_close(archive);
+                    continue;
+                }
                 g_asset_mgr.packs[g_asset_mgr.pack_count] = archive;
-                g_asset_mgr.pack_paths[g_asset_mgr.pack_count] = strdup(path);
+                g_asset_mgr.pack_paths[g_asset_mgr.pack_count] = path_copy;
                 g_asset_mgr.pack_count++;
             }
         }
@@ -252,8 +320,13 @@ static void discover_packs(const char *dir) {
         if (g_asset_mgr.pack_count < RT_ASSET_MAX_PACKS) {
             vpa_archive_t *archive = vpa_open_file(path);
             if (archive) {
+                char *path_copy = strdup(path);
+                if (!path_copy) {
+                    vpa_close(archive);
+                    continue;
+                }
                 g_asset_mgr.packs[g_asset_mgr.pack_count] = archive;
-                g_asset_mgr.pack_paths[g_asset_mgr.pack_count] = strdup(path);
+                g_asset_mgr.pack_paths[g_asset_mgr.pack_count] = path_copy;
                 g_asset_mgr.pack_count++;
             }
         }
@@ -264,7 +337,10 @@ static void discover_packs(const char *dir) {
 
 /// @brief Ensure the asset manager is initialized (lazy init on first use).
 static void ensure_init(void) {
-    if (!g_asset_mgr.initialized)
+    asset_lock();
+    int initialized = g_asset_mgr.initialized;
+    asset_unlock();
+    if (!initialized)
         rt_asset_init(NULL, 0);
 }
 
@@ -276,8 +352,11 @@ static void ensure_init(void) {
 ///          also scans the .app bundle's Resources directory. Idempotent — safe
 ///          to call multiple times; only the first call has effect.
 void rt_asset_init(const uint8_t *blob, uint64_t size) {
-    if (g_asset_mgr.initialized)
+    asset_lock();
+    if (g_asset_mgr.initialized) {
+        asset_unlock();
         return;
+    }
     g_asset_mgr.initialized = 1;
 
     // Parse embedded blob (explicit argument)
@@ -306,6 +385,7 @@ void rt_asset_init(const uint8_t *blob, uint64_t size) {
 #endif
         free(exe_dir);
     }
+    asset_unlock();
 }
 
 // ─── rt_asset_load ──────────────────────────────────────────────────────────
@@ -323,7 +403,9 @@ void *rt_asset_load(rt_string name) {
     if (!cname || *cname == '\0')
         return NULL;
     size_t data_size = 0;
+    asset_lock();
     uint8_t *data = asset_find_data(cname, &data_size);
+    asset_unlock();
     if (!data)
         return NULL;
 
@@ -352,7 +434,9 @@ void *rt_asset_load_bytes(rt_string name) {
     if (!cname || *cname == '\0')
         return NULL;
     size_t data_size = 0;
+    asset_lock();
     uint8_t *data = asset_find_data(cname, &data_size);
+    asset_unlock();
     if (!data)
         return NULL;
 
@@ -373,20 +457,28 @@ int64_t rt_asset_exists(rt_string name) {
     if (!cname || *cname == '\0')
         return 0;
 
+    asset_lock();
     // Check embedded
-    if (g_asset_mgr.embedded && vpa_find(g_asset_mgr.embedded, cname))
+    if (g_asset_mgr.embedded && vpa_find(g_asset_mgr.embedded, cname)) {
+        asset_unlock();
         return 1;
+    }
 
     // Check mounted packs
     for (int i = g_asset_mgr.pack_count - 1; i >= 0; --i) {
-        if (g_asset_mgr.packs[i] && vpa_find(g_asset_mgr.packs[i], cname))
+        if (g_asset_mgr.packs[i] && vpa_find(g_asset_mgr.packs[i], cname)) {
+            asset_unlock();
             return 1;
+        }
     }
 
     // Check filesystem
-    if (asset_regular_file_size(cname, NULL))
+    if (asset_regular_file_size(cname, NULL)) {
+        asset_unlock();
         return 1;
+    }
 
+    asset_unlock();
     return 0;
 }
 
@@ -402,11 +494,14 @@ int64_t rt_asset_size(rt_string name) {
     if (!cname || *cname == '\0')
         return 0;
 
+    asset_lock();
     // Check embedded
     if (g_asset_mgr.embedded) {
         const vpa_entry_t *e = vpa_find(g_asset_mgr.embedded, cname);
-        if (e)
+        if (e) {
+            asset_unlock();
             return (int64_t)e->data_size;
+        }
     }
 
     // Check mounted packs
@@ -414,15 +509,20 @@ int64_t rt_asset_size(rt_string name) {
         if (!g_asset_mgr.packs[i])
             continue;
         const vpa_entry_t *e = vpa_find(g_asset_mgr.packs[i], cname);
-        if (e)
+        if (e) {
+            asset_unlock();
             return (int64_t)e->data_size;
+        }
     }
 
     // Check filesystem
     uint64_t fs_size = 0;
-    if (asset_regular_file_size(cname, &fs_size) && fs_size <= INT64_MAX)
+    if (asset_regular_file_size(cname, &fs_size) && fs_size <= INT64_MAX) {
+        asset_unlock();
         return (int64_t)fs_size;
+    }
 
+    asset_unlock();
     return 0;
 }
 
@@ -435,6 +535,7 @@ void *rt_asset_list(void) {
     void *seq = rt_seq_new();
     rt_seq_set_owns_elements(seq, 1);
 
+    asset_lock();
     // Add embedded asset names
     if (g_asset_mgr.embedded) {
         for (uint32_t i = 0; i < g_asset_mgr.embedded->count; i++) {
@@ -457,6 +558,7 @@ void *rt_asset_list(void) {
         }
     }
 
+    asset_unlock();
     return seq;
 }
 
@@ -468,9 +570,6 @@ int64_t rt_asset_mount(rt_string path) {
         return 0;
     ensure_init();
 
-    if (g_asset_mgr.pack_count >= RT_ASSET_MAX_PACKS)
-        return 0;
-
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr((const ViperString *)path, &cpath) || !cpath || *cpath == '\0')
         return 0;
@@ -478,9 +577,23 @@ int64_t rt_asset_mount(rt_string path) {
     if (!archive)
         return 0;
 
+    char *path_copy = strdup(cpath);
+    if (!path_copy) {
+        vpa_close(archive);
+        return 0;
+    }
+
+    asset_lock();
+    if (g_asset_mgr.pack_count >= RT_ASSET_MAX_PACKS) {
+        asset_unlock();
+        free(path_copy);
+        vpa_close(archive);
+        return 0;
+    }
     g_asset_mgr.packs[g_asset_mgr.pack_count] = archive;
-    g_asset_mgr.pack_paths[g_asset_mgr.pack_count] = strdup(cpath);
+    g_asset_mgr.pack_paths[g_asset_mgr.pack_count] = path_copy;
     g_asset_mgr.pack_count++;
+    asset_unlock();
     return 1;
 }
 
@@ -496,6 +609,7 @@ int64_t rt_asset_unmount(rt_string path) {
     if (!rt_file_path_from_vstr((const ViperString *)path, &cpath) || !cpath || *cpath == '\0')
         return 0;
 
+    asset_lock();
     // Find the pack by path (search from end for LIFO behavior)
     for (int i = g_asset_mgr.pack_count - 1; i >= 0; --i) {
         if (!g_asset_mgr.pack_paths[i])
@@ -530,9 +644,11 @@ int64_t rt_asset_unmount(rt_string path) {
             g_asset_mgr.pack_count--;
             g_asset_mgr.packs[g_asset_mgr.pack_count] = NULL;
             g_asset_mgr.pack_paths[g_asset_mgr.pack_count] = NULL;
+            asset_unlock();
             return 1;
         }
     }
 
+    asset_unlock();
     return 0;
 }

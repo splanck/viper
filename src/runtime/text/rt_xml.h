@@ -3,21 +3,23 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// File: src/runtime/text/rt_xml.h
-// Purpose: XML parsing and formatting utilities for Viper.Data.Xml, handling elements, attributes,
-// text nodes, comments, and CDATA with a reference-counted tree API.
+//===----------------------------------------------------------------------===//
 //
+// File: src/runtime/text/rt_xml.h
+// Purpose: XML parsing and tree-building API for Viper.Data.Xml. Supports
+//          elements, attributes, text nodes, comments, and CDATA sections
+//          with a reference-counted node tree and compact/pretty serialisation.
 // Key invariants:
 //   - Parses well-formed XML; returns NULL on malformed input.
-//   - Supports elements, attributes, text content, comments, and CDATA sections.
 //   - Tree nodes are reference-counted; children are retained by their parent.
-//   - rt_xml_serialize produces compact XML; rt_xml_serialize_pretty produces indented output.
-//
+//   - rt_xml_format produces compact output; rt_xml_format_pretty adds indentation.
+//   - All node handles carry RT_XML_NODE_CLASS_ID; wrong-type handles return safe defaults.
 // Ownership/Lifetime:
 //   - Returned node objects start with refcount 1; caller owns the root.
-//   - Child nodes are retained by their parent; releasing the root releases all children.
-//
-// Links: src/runtime/text/rt_xml.c (implementation), src/runtime/core/rt_string.h
+//   - Releasing the root releases all children transitively.
+//   - rt_xml_append/rt_xml_insert retain the child; caller may release its own ref.
+// Links: src/runtime/text/rt_xml.c (implementation),
+//        src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -154,7 +156,7 @@ void *rt_xml_attr_names(void *node);
 
 /// @brief Get child nodes.
 /// @param node Element or document node.
-/// @return Seq of child nodes.
+/// @return Seq of child nodes retained by the returned sequence.
 void *rt_xml_children(void *node);
 
 /// @brief Get number of children.
@@ -177,18 +179,20 @@ void *rt_xml_child(void *node, rt_string tag);
 /// @brief Get all child elements with tag.
 /// @param node Element or document node.
 /// @param tag Tag name to match.
-/// @return Seq of matching element nodes.
+/// @return Seq of matching element nodes retained by the returned sequence.
 void *rt_xml_children_by_tag(void *node, rt_string tag);
 
 /// @brief Append a child node.
 /// @param node Parent element or document node.
 /// @param child Node to append.
+/// @note The parent retains @p child; callers may keep or release their own reference.
 void rt_xml_append(void *node, void *child);
 
 /// @brief Insert a child at index.
 /// @param node Parent element or document node.
 /// @param index 0-based position.
 /// @param child Node to insert.
+/// @note The parent retains @p child; callers may keep or release their own reference.
 void rt_xml_insert(void *node, int64_t index, void *child);
 
 /// @brief Remove a child node.
@@ -252,9 +256,9 @@ rt_string rt_xml_format_pretty(void *node, int64_t indent);
 // Utility
 //=========================================================================
 
-/// @brief Escape special XML characters in text.
+/// @brief Escape XML special characters, including quotes.
 /// @param text Text to escape.
-/// @return Escaped string with &amp; &lt; &gt; etc.
+/// @return Escaped string with &amp;, &lt;, &gt;, &quot;, and &apos;.
 rt_string rt_xml_escape(rt_string text);
 
 /// @brief Unescape XML entities in text.

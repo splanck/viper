@@ -64,12 +64,17 @@
 // Internal Helpers
 //=============================================================================
 
+/// @brief Validate and unwrap a path-fragment string, trapping on NULL, negative length, or illegal
+/// separator characters ('/', '\', ':'). Returns the raw C string pointer on success.
 static const char *tempfile_require_fragment(rt_string fragment, const char *what) {
     const char *cstr = rt_string_cstr(fragment);
     if (!cstr)
         rt_trap(what);
-    for (const char *p = cstr; *p; ++p) {
-        if (*p == '/' || *p == '\\' || *p == ':')
+    int64_t len = rt_str_len(fragment);
+    if (len < 0)
+        rt_trap(what);
+    for (int64_t i = 0; i < len; ++i) {
+        if (cstr[i] == '\0' || cstr[i] == '/' || cstr[i] == '\\' || cstr[i] == ':')
             rt_trap(what);
     }
     return cstr;

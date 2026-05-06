@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-22
+last-verified: 2026-05-06
 ---
 
 # Files & Directories
@@ -37,7 +37,7 @@ File system operations.
 | `Append(path, text)`          | `Void(String, String)` | Appends text to a file; traps on I/O errors                                               |
 | `AppendLine(path, text)`      | `Void(String, String)` | Appends text followed by `\n` to a file (creates if missing)                              |
 | `ReadAllLines(path)`          | `Seq(String)`          | Reads file as a sequence of lines; strips `\n` / `\r\n` terminators (traps on I/O errors) |
-| `Modified(path)`              | `Integer(String)`      | Returns file modification time as Unix timestamp                                          |
+| `Modified(path)`              | `Integer(String)`      | Returns regular-file modification time as Unix timestamp, or 0 if missing or not a file   |
 | `Touch(path)`                 | `Void(String)`         | Creates file or updates its modification time; traps on I/O errors                        |
 
 ### Notes
@@ -45,7 +45,7 @@ File system operations.
 - `AppendLine` always appends a single `\n` byte (no platform newline normalization).
 - `Exists` returns false for directories; use `Dir.Exists` for directory checks.
 - Path strings with embedded NUL bytes are rejected before reaching platform file APIs.
-- `ReadAllText`, `ReadAllBytes`, and `ReadAllLines` require a regular file and trap on directories or special files.
+- `ReadAllText`, `ReadAllBytes`, and `ReadAllLines` require a regular file and trap on directories, special files, I/O errors, or unexpected short reads if the file changes while being read.
 - `WriteAllText`, `WriteAllBytes`, `WriteBytes`, and `WriteLines` write to an exclusive temporary file in the destination directory and then replace the live file. Failed writes trap instead of silently leaving a partial overwrite behind.
 - `Copy` never overwrites an existing destination. `Move` first attempts an in-place replace/rename and only falls back to copy-plus-delete when the source and destination are on different filesystems or volumes.
 - `ReadAllLines` splits on `\n`, `\r`, and `\r\n` and does not include line endings in returned strings. Trailing empty lines are preserved.
@@ -354,6 +354,7 @@ Temporary file and directory creation utilities. Generates unique paths in the s
 - `Create` and `CreateDir` actually create the file or directory on disk
 - `PathWithExt("v", ".txt")` produces a path like `/tmp/v_<unique>.txt`
 - Prefixes and extensions are filename fragments: path separators, drive separators, and traversal syntax are rejected.
+- Prefixes and extensions also reject embedded NUL bytes; generated names are never truncated at a hidden NUL.
 - Temporary files and directories are not automatically cleaned up; the caller is responsible for deletion
 
 ### Zia Example
@@ -538,6 +539,8 @@ Directory operations trap on errors:
 - `Make()` traps if the parent directory doesn't exist or creation fails
 - `Remove()` traps if the directory is not empty or doesn't exist
 - `RemoveAll()` ignores an already-missing top-level directory, but traps if any existing child cannot be removed
+- `RemoveAll()` refuses protected targets such as the filesystem root, `.`, `..`, and the current working directory
+- `Move()` traps if the source directory is missing or the destination already exists
 - `SetCurrent()` traps if the directory doesn't exist
 
 Use `Exists()` to check before performing operations that may fail.
@@ -562,7 +565,7 @@ PRINT names.Length
 ```
 
 All listing functions exclude `.` and `..` entries. If the directory doesn't exist or can't be read, an empty sequence
-is returned.
+is returned. `Entries()` is the strict variant: it traps on open, read, or close errors.
 
 ### Use Cases
 
@@ -684,6 +687,8 @@ The `Norm()` function performs the following transformations:
 | Absolute path detection | Starts with `/` | Starts with `C:\` or `\\` |
 | Example absolute path   | `/home/user`    | `C:\Users\user`           |
 
+Windows drive-relative paths such as `C:logs\app.txt` are not absolute. `Path.Norm()` preserves the `C:` relative prefix instead of converting it to `C:\`, and `Path.Join()` only treats drive-rooted paths such as `C:\logs` as absolute.
+
 ### Use Cases
 
 - **Building file paths:** Use `Join()` to create paths safely
@@ -726,6 +731,7 @@ File globbing utilities for matching file paths against wildcard patterns and fi
 - `Entries` returns both files and directories that match the pattern
 - All listing methods return a `Seq` of full path strings
 - Patterns are matched against the filename component, not the full path (for `Files`/`Entries`)
+- On Windows, both `/` and `\` are treated as path separators for `*`, `?`, `**`, and literal separator matching.
 
 ### Zia Example
 

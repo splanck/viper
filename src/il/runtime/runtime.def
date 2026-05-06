@@ -3582,6 +3582,7 @@ RT_FUNC(CsvFormatLine,      rt_csv_format_line,       "Viper.Text.Csv.FormatLine
 RT_FUNC(CsvFormatLineWith,  rt_csv_format_line_with,  "Viper.Text.Csv.FormatLineWith",  "str(obj,str)")
 RT_FUNC(CsvFormat,          rt_csv_format,            "Viper.Text.Csv.Format",          "str(obj)")
 RT_FUNC(CsvFormatWith,      rt_csv_format_with,       "Viper.Text.Csv.FormatWith",      "str(obj,str)")
+RT_FUNC(CsvIsValid,         rt_csv_is_valid,          "Viper.Text.Csv.IsValid",         "i1(str)")
 
 //=============================================================================
 // TEXT - INI
@@ -9641,6 +9642,7 @@ RT_CLASS_BEGIN("Viper.Text.Csv", Csv, "obj", none)
     RT_METHOD("FormatLine", "str(obj)", CsvFormatLine)
     RT_METHOD("FormatLineWith", "str(obj,str)", CsvFormatLineWith)
     RT_METHOD("FormatWith", "str(obj,str)", CsvFormatWith)
+    RT_METHOD("IsValid", "i1(str)", CsvIsValid)
     RT_METHOD("Parse", "obj(str)", CsvParse)
     RT_METHOD("ParseLine", "seq<str>(str)", CsvParseLine)
     RT_METHOD("ParseLineWith", "seq<str>(str,str)", CsvParseLineWith)

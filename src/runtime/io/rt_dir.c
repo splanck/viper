@@ -73,6 +73,7 @@
 #endif
 
 #if !defined(_WIN32)
+/// @brief Return 1 if `path` is an existing directory (POSIX `stat`), 0 otherwise.
 static int rt_dir_posix_path_is_dir(const char *path) {
     struct stat st;
     return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
@@ -383,6 +384,33 @@ static int rt_dir_win_move_dir(const char *src, const char *dst) {
     return ok ? 1 : 0;
 }
 
+/// @brief Return 1 if the UTF-8 `utf8` path resolves to the current working directory (Windows).
+///
+/// Used by the RemoveAll protection guard to block deletion of the cwd.
+static int rt_dir_win_path_matches_cwd(const char *utf8) {
+    wchar_t *wide = rt_dir_win_utf8_to_wide(utf8);
+    wchar_t *full = wide ? rt_dir_win_absolute_path(wide) : NULL;
+    free(wide);
+    if (!full)
+        return 0;
+
+    DWORD need = GetCurrentDirectoryW(0, NULL);
+    if (need == 0) {
+        free(full);
+        return 0;
+    }
+    wchar_t *cwd = (wchar_t *)malloc(((size_t)need + 1) * sizeof(wchar_t));
+    if (!cwd) {
+        free(full);
+        return 0;
+    }
+    DWORD got = GetCurrentDirectoryW(need + 1, cwd);
+    int matches = got > 0 && _wcsicmp(full, cwd) == 0;
+    free(cwd);
+    free(full);
+    return matches;
+}
+
 /// @brief True if `name` is `.` or `..` (the synthetic directory entries).
 static int rt_dir_win_is_dot_name(const wchar_t *name) {
     return wcscmp(name, L".") == 0 || wcscmp(name, L"..") == 0;
@@ -393,6 +421,47 @@ static int rt_dir_win_delete_file_w(const wchar_t *path) {
     return DeleteFileW(path) ? 1 : 0;
 }
 #endif
+
+/// @brief Return 1 if `cpath` is a protected target that must not be deleted.
+///
+/// Blocks RemoveAll on empty strings, root paths, `"."`, `".."`, and the
+/// process's own current working directory — all of which would be
+/// catastrophic to wipe. Used as a safety gate before recursive deletion.
+static int rt_dir_remove_all_target_is_protected(const char *cpath) {
+    if (!cpath || cpath[0] == '\0')
+        return 1;
+
+    size_t len = strlen(cpath);
+    size_t root_len = rt_dir_root_prefix_len(cpath, len);
+    while (len > root_len && rt_dir_is_sep_char(cpath[len - 1]))
+        --len;
+
+    if (root_len > 0 && len == root_len)
+        return 1;
+    if (len == 1 && cpath[0] == '.')
+        return 1;
+    if (len == 2 && cpath[0] == '.' && cpath[1] == '.')
+        return 1;
+
+#ifdef _WIN32
+    if (rt_dir_win_path_matches_cwd(cpath))
+        return 1;
+#else
+    struct stat st;
+    if (lstat(cpath, &st) == 0 && S_ISDIR(st.st_mode) && !S_ISLNK(st.st_mode)) {
+        char resolved[PATH_MAX];
+        if (realpath(cpath, resolved)) {
+            if (strcmp(resolved, "/") == 0)
+                return 1;
+            char cwd[PATH_MAX];
+            if (getcwd(cwd, sizeof(cwd)) && strcmp(resolved, cwd) == 0)
+                return 1;
+        }
+    }
+#endif
+
+    return 0;
+}
 
 /// @brief Check if a directory exists at the specified path.
 ///
@@ -790,6 +859,14 @@ static int delete_file(const char *path) {
 #endif
 }
 
+/// @brief Recursively delete a directory tree rooted at the C-string `cpath`.
+///
+/// Cross-platform recursive delete: on Windows uses `FindFirstFileW` /
+/// `FindNextFileW` with reparse-point awareness; on POSIX uses
+/// `opendir`/`readdir`/`lstat`. Both platforms use `lstat` to avoid
+/// following symlinks into unrelated trees — only the link itself is
+/// removed, not its target. Returns 1 on success, 0 on failure; the
+/// caller traps on failure.
 static int rt_dir_remove_all_cpath(const char *cpath) {
 #ifdef _WIN32
     wchar_t *dir_path = rt_dir_win_prepare_path(cpath);
@@ -963,6 +1040,10 @@ void rt_dir_remove_all(rt_string path) {
         rt_dir_trap_domain("Dir.RemoveAll: invalid path");
         return;
     }
+    if (rt_dir_remove_all_target_is_protected(cpath)) {
+        rt_dir_trap_domain("Dir.RemoveAll: refusing to remove protected directory");
+        return;
+    }
 
     if (!rt_dir_remove_all_cpath(cpath))
         rt_dir_trap_io("Dir.RemoveAll: failed to remove directory tree");
@@ -1057,6 +1138,8 @@ void *rt_dir_list(rt_string path) {
     if (!dir)
         return result;
 
+    int ok = 1;
+    errno = 0;
     struct dirent *ent;
     while ((ent = readdir(dir)) != NULL) {
         if (strcmp(ent->d_name, ".") != 0 && strcmp(ent->d_name, "..") != 0) {
@@ -1066,7 +1149,12 @@ void *rt_dir_list(rt_string path) {
         }
     }
 
-    closedir(dir);
+    if (errno != 0)
+        ok = 0;
+    if (closedir(dir) != 0)
+        ok = 0;
+    if (!ok)
+        rt_seq_clear(result);
 #endif
 
     return result;
@@ -1192,6 +1280,7 @@ void *rt_dir_entries_seq(rt_string path) {
     if (!dir)
         rt_dir_trap_io("Viper.IO.Dir.Entries: failed to open directory");
 
+    errno = 0;
     struct dirent *ent;
     while ((ent = readdir(dir)) != NULL) {
         if (strcmp(ent->d_name, ".") != 0 && strcmp(ent->d_name, "..") != 0) {
@@ -1201,7 +1290,12 @@ void *rt_dir_entries_seq(rt_string path) {
         }
     }
 
-    closedir(dir);
+    if (errno != 0) {
+        (void)closedir(dir);
+        rt_dir_trap_io("Viper.IO.Dir.Entries: failed to read directory");
+    }
+    if (closedir(dir) != 0)
+        rt_dir_trap_io("Viper.IO.Dir.Entries: failed to close directory");
 #endif
 
     return result;
@@ -1292,16 +1386,25 @@ void *rt_dir_files(rt_string path) {
     if (!dir)
         return result;
 
+    int ok = 1;
+    errno = 0;
     struct dirent *ent;
     while ((ent = readdir(dir)) != NULL) {
         if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
             continue;
 
         char *full = rt_dir_join_child_alloc(cpath, ent->d_name);
-        if (!full)
+        if (!full) {
+            ok = 0;
             break;
+        }
         struct stat st;
-        if (lstat(full, &st) == 0 && S_ISREG(st.st_mode)) {
+        if (lstat(full, &st) != 0) {
+            ok = 0;
+            free(full);
+            break;
+        }
+        if (S_ISREG(st.st_mode)) {
             rt_string name = rt_string_from_bytes(ent->d_name, strlen(ent->d_name));
             rt_seq_push(result, (void *)name);
             rt_string_unref(name);
@@ -1309,7 +1412,12 @@ void *rt_dir_files(rt_string path) {
         free(full);
     }
 
-    closedir(dir);
+    if (errno != 0)
+        ok = 0;
+    if (closedir(dir) != 0)
+        ok = 0;
+    if (!ok)
+        rt_seq_clear(result);
 #endif
 
     return result;
@@ -1424,16 +1532,25 @@ void *rt_dir_dirs(rt_string path) {
     if (!dir)
         return result;
 
+    int ok = 1;
+    errno = 0;
     struct dirent *ent;
     while ((ent = readdir(dir)) != NULL) {
         if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
             continue;
 
         char *full = rt_dir_join_child_alloc(cpath, ent->d_name);
-        if (!full)
+        if (!full) {
+            ok = 0;
             break;
+        }
         struct stat st;
-        if (stat(full, &st) == 0 && S_ISDIR(st.st_mode)) {
+        if (stat(full, &st) != 0) {
+            ok = 0;
+            free(full);
+            break;
+        }
+        if (S_ISDIR(st.st_mode)) {
             rt_string name = rt_string_from_bytes(ent->d_name, strlen(ent->d_name));
             rt_seq_push(result, (void *)name);
             rt_string_unref(name);
@@ -1441,7 +1558,12 @@ void *rt_dir_dirs(rt_string path) {
         free(full);
     }
 
-    closedir(dir);
+    if (errno != 0)
+        ok = 0;
+    if (closedir(dir) != 0)
+        ok = 0;
+    if (!ok)
+        rt_seq_clear(result);
 #endif
 
     return result;
@@ -1701,6 +1823,21 @@ void rt_dir_move(rt_string src, rt_string dst) {
         rt_dir_trap_io("Dir.Move: failed to move directory");
     }
 #else
+    struct stat src_st;
+    if (stat(csrc, &src_st) != 0 || !S_ISDIR(src_st.st_mode)) {
+        rt_dir_trap_not_found("Dir.Move: source directory not found");
+        return;
+    }
+    struct stat dst_st;
+    if (lstat(cdst, &dst_st) == 0) {
+        rt_dir_trap_io("Dir.Move: destination already exists");
+        return;
+    }
+    if (errno != ENOENT) {
+        rt_dir_trap_io("Dir.Move: failed to check destination");
+        return;
+    }
+
     if (rename(csrc, cdst) != 0) {
         rt_dir_trap_io("Dir.Move: failed to move directory");
     }

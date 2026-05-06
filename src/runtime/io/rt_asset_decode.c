@@ -60,6 +60,7 @@ extern rt_string rt_string_from_bytes(const char *data, size_t len);
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+/// @brief Return 1 if `name`'s extension matches `ext` (case-insensitive), 0 otherwise.
 static int iext(const char *name, const char *ext) {
     const char *dot = strrchr(name, '.');
     if (!dot)

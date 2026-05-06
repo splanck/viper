@@ -103,6 +103,7 @@ static inline int64_t bytes_len(void *obj) {
     return ((bytes_impl *)obj)->len;
 }
 
+/// @brief Release a temporary GC object that is no longer needed.
 static void compress_release_temp_object(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
@@ -403,6 +404,8 @@ static int decode_symbol(huffman_tree_t *tree, bit_reader_t *br) {
         return -1;
 
     br_consume(br, len);
+    if (br->error)
+        return -1;
     return symbol;
 }
 
@@ -458,6 +461,7 @@ static void init_fixed_trees_impl(void) {
 }
 
 #ifdef _WIN32
+/// @brief `InitOnce` callback that builds the fixed Huffman trees (Windows).
 static BOOL CALLBACK init_fixed_trees_once_cb(PINIT_ONCE InitOnce, PVOID Parameter, PVOID *Context) {
     (void)InitOnce;
     (void)Parameter;
@@ -467,6 +471,7 @@ static BOOL CALLBACK init_fixed_trees_once_cb(PINIT_ONCE InitOnce, PVOID Paramet
 }
 #endif
 
+/// @brief Ensure the fixed Huffman trees are built exactly once (thread-safe).
 static void init_fixed_trees(void) {
 #ifdef _WIN32
     InitOnceExecuteOnce(&fixed_trees_once, init_fixed_trees_once_cb, NULL, NULL);
@@ -754,6 +759,10 @@ static bool inflate_dynamic(bit_reader_t *br, output_buffer_t *out) {
                 return false;
             }
             uint8_t prev = lengths[i - 1];
+            if (repeat > total_codes - i) {
+                free_huffman_tree(&cl_tree);
+                return false;
+            }
             while (repeat-- > 0 && i < total_codes)
                 lengths[i++] = prev;
         } else if (sym == 17) {
@@ -763,12 +772,20 @@ static bool inflate_dynamic(bit_reader_t *br, output_buffer_t *out) {
                 free_huffman_tree(&cl_tree);
                 return false;
             }
+            if (repeat > total_codes - i) {
+                free_huffman_tree(&cl_tree);
+                return false;
+            }
             while (repeat-- > 0 && i < total_codes)
                 lengths[i++] = 0;
         } else if (sym == 18) {
             // Repeat 0, 11-138 times
             int repeat = br_read(br, 7) + 11;
             if (br->error) {
+                free_huffman_tree(&cl_tree);
+                return false;
+            }
+            if (repeat > total_codes - i) {
                 free_huffman_tree(&cl_tree);
                 return false;
             }

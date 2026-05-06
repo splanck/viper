@@ -76,6 +76,11 @@ rt_string rt_csv_format(void *rows);
 /// @return Newly allocated multi-line CSV string.
 rt_string rt_csv_format_with(void *rows, rt_string delim);
 
+/// @brief Check whether multi-line CSV text is syntactically valid.
+/// @param text CSV text.
+/// @return 1 if valid, 0 otherwise.
+int8_t rt_csv_is_valid(rt_string text);
+
 #ifdef __cplusplus
 }
 #endif

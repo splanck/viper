@@ -426,6 +426,16 @@ static void test_quote_in_unquoted_field_traps() {
     printf("test_quote_in_unquoted_field_traps: PASSED\n");
 }
 
+static void test_is_valid_reports_malformed_without_trapping() {
+    assert(rt_csv_is_valid(make_str("a,b\nc,d\n")) == 1);
+    assert(rt_csv_is_valid(make_str("\"line1\nline2\",b")) == 1);
+    assert(rt_csv_is_valid(make_str("\"unterminated")) == 0);
+    assert(rt_csv_is_valid(make_str("\"a\"b")) == 0);
+    assert(rt_csv_is_valid(make_str("a,b\"c")) == 0);
+
+    printf("test_is_valid_reports_malformed_without_trapping: PASSED\n");
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -474,6 +484,7 @@ int main() {
     test_invalid_char_after_closing_quote_traps();
     test_unterminated_quoted_field_traps();
     test_quote_in_unquoted_field_traps();
+    test_is_valid_reports_malformed_without_trapping();
 
     printf("\nAll RTCsvTests passed!\n");
     return 0;

@@ -185,6 +185,18 @@ static void test_memory_stream_basic() {
         test_result("ReadAll length", rt_bytes_len(remaining) == 5);
     }
 
+    // Test 7: Read past EOF returns a short buffer instead of trapping.
+    {
+        void *stream = rt_stream_open_bytes(make_bytes_str("ABC"));
+        void *read_data = rt_stream_read(stream, 10);
+        test_result("Read past EOF shortens MemStream read", rt_bytes_len(read_data) == 3);
+        test_result("Read past EOF data intact",
+                    rt_bytes_get(read_data, 0) == 'A' && rt_bytes_get(read_data, 1) == 'B' &&
+                        rt_bytes_get(read_data, 2) == 'C');
+        void *empty = rt_stream_read(stream, 10);
+        test_result("Read after EOF returns empty", rt_bytes_len(empty) == 0);
+    }
+
     printf("\n");
 }
 

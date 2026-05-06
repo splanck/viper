@@ -19,6 +19,7 @@
 
 #include <cassert>
 #include <csetjmp>
+#include <cstdint>
 #include <cstring>
 
 //=============================================================================
@@ -137,7 +138,7 @@ static void test_write_read_i32be() {
     void *bb = rt_binbuf_new();
     rt_binbuf_write_i32be(bb, 0xDEADBEEF);
     rt_binbuf_set_position(bb, 0);
-    assert(rt_binbuf_read_i32be(bb) == (int64_t)0xDEADBEEF);
+    assert(rt_binbuf_read_i32be(bb) == (int64_t)(int32_t)0xDEADBEEF);
 }
 
 static void test_write_read_i64le() {
@@ -167,6 +168,25 @@ static void test_endian_byte_order_i16() {
     rt_binbuf_set_position(be, 0);
     assert(rt_binbuf_read_byte(be) == 0x01); // high byte first
     assert(rt_binbuf_read_byte(be) == 0x02); // low byte second
+}
+
+static void test_signed_integer_round_trips() {
+    void *bb = rt_binbuf_new();
+
+    rt_binbuf_write_i16le(bb, -1);
+    rt_binbuf_write_i16be(bb, -2);
+    rt_binbuf_write_i32le(bb, -1);
+    rt_binbuf_write_i32be(bb, -2);
+    rt_binbuf_write_i64le(bb, INT64_MIN);
+    rt_binbuf_write_i64be(bb, -1);
+
+    rt_binbuf_set_position(bb, 0);
+    assert(rt_binbuf_read_i16le(bb) == -1);
+    assert(rt_binbuf_read_i16be(bb) == -2);
+    assert(rt_binbuf_read_i32le(bb) == -1);
+    assert(rt_binbuf_read_i32be(bb) == -2);
+    assert(rt_binbuf_read_i64le(bb) == INT64_MIN);
+    assert(rt_binbuf_read_i64be(bb) == -1);
 }
 
 static void test_write_read_str() {
@@ -396,6 +416,7 @@ int main() {
     test_write_read_i64le();
     test_write_read_i64be();
     test_endian_byte_order_i16();
+    test_signed_integer_round_trips();
     test_write_read_str();
     test_write_read_str_preserves_embedded_nul();
     test_write_read_bytes();

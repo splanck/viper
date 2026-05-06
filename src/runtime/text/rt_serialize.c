@@ -79,10 +79,12 @@ static void clear_error(void) {
     g_last_error = NULL;
 }
 
+/// @brief Return 1 if the thread-local error string is currently non-empty.
 static int has_error(void) {
     return g_last_error && rt_str_len(g_last_error) > 0;
 }
 
+/// @brief Set the thread-local error to `msg` if non-empty, else to `fallback`.
 static void set_error_from_string(rt_string msg, const char *fallback) {
     if (g_last_error)
         rt_string_unref(g_last_error);
@@ -92,29 +94,42 @@ static void set_error_from_string(rt_string msg, const char *fallback) {
         g_last_error = rt_string_from_bytes(fallback, strlen(fallback));
 }
 
+/// @brief Release a GC object reference, freeing it if the refcount drops to zero.
 static void release_obj(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
+/// @brief Return 1 if `obj` is a runtime Seq container.
 static int is_seq_obj(void *obj) {
     return obj && rt_obj_class_id(obj) == RT_SEQ_CLASS_ID;
 }
 
+/// @brief Return 1 if `obj` is a runtime Map container.
 static int is_map_obj(void *obj) {
     return obj && rt_obj_class_id(obj) == RT_MAP_CLASS_ID;
 }
 
+/// @brief Allocate a fresh `rt_string` from the null-terminated C string `s`.
 static rt_string make_cstr(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
+/// @brief Set a map key (given as a C literal) to `value`, releasing the temporary key string.
 static void map_set_cstr(void *map, const char *key, void *value) {
     rt_string k = make_cstr(key);
     rt_map_set(map, k, value);
     rt_string_unref(k);
 }
 
+/// @brief Return 1 if the `rt_string` `s` equals the null-terminated C string `cstr`.
+static int str_eq_cstr(rt_string s, const char *cstr) {
+    return s && cstr && strcmp(rt_string_cstr(s), cstr) == 0;
+}
+
+/// @brief Convert any Viper value to a plain string for use as XML text/attribute content.
+///        NULL→"null", bool→"true"/"false", int/float→numeric, boxed str→unwrapped,
+///        anything else→JSON-formatted fallback.
 static rt_string scalar_to_string(void *obj) {
     if (!obj)
         return make_cstr("null");
@@ -144,14 +159,18 @@ static rt_string scalar_to_string(void *obj) {
     return rt_json_format(obj);
 }
 
+/// @brief Return 1 if `c` is a valid first character for an XML name (letter, `_`, or `:`).
 static int xml_name_start(int c) {
     return isalpha((unsigned char)c) || c == '_' || c == ':';
 }
 
+/// @brief Return 1 if `c` is a valid continuation character for an XML name.
 static int xml_name_char(int c) {
     return isalnum((unsigned char)c) || c == '_' || c == ':' || c == '-' || c == '.';
 }
 
+/// @brief Produce a valid XML element name from `name`, prefixing `fallback` if the first char is invalid.
+///        Invalid continuation characters are replaced with `_`.
 static rt_string sanitized_xml_name(const char *name, const char *fallback) {
     const char *src = (name && *name) ? name : fallback;
     size_t len = strlen(src);
@@ -172,6 +191,10 @@ static rt_string sanitized_xml_name(const char *name, const char *fallback) {
     return result;
 }
 
+/// @brief Recursively convert any Viper value into an XML element named `name`.
+///        Map keys become child elements; `@attrs` keys become XML attributes;
+///        `@text`/`#text` keys become text content; Seq items become `<item>` children;
+///        scalars become element text content.
 static void *generic_to_xml_element(const char *name, void *obj) {
     rt_string tag = sanitized_xml_name(name, "item");
     void *elem = rt_xml_element(tag);
@@ -180,13 +203,46 @@ static void *generic_to_xml_element(const char *name, void *obj) {
         return NULL;
 
     if (is_map_obj(obj)) {
+        rt_string attrs_key = make_cstr("@attrs");
+        void *attrs = rt_map_get(obj, attrs_key);
+        rt_string_unref(attrs_key);
+        if (is_map_obj(attrs)) {
+            void *attr_names = rt_map_keys(attrs);
+            int64_t nattrs = rt_seq_len(attr_names);
+            for (int64_t i = 0; i < nattrs; i++) {
+                rt_string attr_name = (rt_string)rt_seq_get(attr_names, i);
+                rt_string attr_value = scalar_to_string(rt_map_get(attrs, attr_name));
+                rt_xml_set_attr(elem, attr_name, attr_value);
+                rt_string_unref(attr_value);
+            }
+            release_obj(attr_names);
+        }
+
+        rt_string text_key = make_cstr("@text");
+        void *text_value = rt_map_get(obj, text_key);
+        rt_string_unref(text_key);
+        if (!text_value) {
+            rt_string legacy_text_key = make_cstr("#text");
+            text_value = rt_map_get(obj, legacy_text_key);
+            rt_string_unref(legacy_text_key);
+        }
+        if (text_value) {
+            rt_string text = scalar_to_string(text_value);
+            rt_xml_set_text(elem, text);
+            rt_string_unref(text);
+        }
+
         void *keys = rt_map_keys(obj);
         int64_t nkeys = rt_seq_len(keys);
         for (int64_t i = 0; i < nkeys; i++) {
             rt_string key = (rt_string)rt_seq_get(keys, i);
+            if (str_eq_cstr(key, "@attrs") || str_eq_cstr(key, "@text") || str_eq_cstr(key, "#text"))
+                continue;
             void *child = generic_to_xml_element(rt_string_cstr(key), rt_map_get(obj, key));
-            if (child)
+            if (child) {
                 rt_xml_append(elem, child);
+                release_obj(child);
+            }
         }
         release_obj(keys);
         return elem;
@@ -196,8 +252,10 @@ static void *generic_to_xml_element(const char *name, void *obj) {
         int64_t len = rt_seq_len(obj);
         for (int64_t i = 0; i < len; i++) {
             void *child = generic_to_xml_element("item", rt_seq_get(obj, i));
-            if (child)
+            if (child) {
                 rt_xml_append(elem, child);
+                release_obj(child);
+            }
         }
         return elem;
     }
@@ -208,6 +266,8 @@ static void *generic_to_xml_element(const char *name, void *obj) {
     return elem;
 }
 
+/// @brief Serialize `obj` as XML, wrapping non-XML-node values in a `<root>` element first.
+///        `indent > 0` produces pretty-printed output; `indent == 0` produces compact output.
 static rt_string format_xml_from_generic(void *obj, int64_t indent) {
     if (rt_xml_is_node(obj))
         return indent > 0 ? rt_xml_format_pretty(obj, indent) : rt_xml_format(obj);
@@ -222,6 +282,9 @@ static rt_string format_xml_from_generic(void *obj, int64_t indent) {
     return out;
 }
 
+/// @brief Insert `value` under `key` in `map`, promoting to a Seq on the second occurrence.
+///        This implements the XML-to-JSON grouping convention: repeated same-tag siblings
+///        are collected into a sequence rather than silently overwriting the first entry.
 static void add_grouped_child(void *map, rt_string key, void *value) {
     void *existing = rt_map_get(map, key);
     if (!existing) {
@@ -244,6 +307,8 @@ static void add_grouped_child(void *map, rt_string key, void *value) {
 
 static void *xml_to_generic_value(void *node);
 
+/// @brief Convert an XML document node to a generic `Map{tag: value}` representation.
+///        Finds the root element, converts its subtree, and wraps it under the root tag name.
 static void *xml_document_to_generic(void *doc) {
     void *root = rt_xml_root(doc);
     if (!root)
@@ -257,6 +322,10 @@ static void *xml_document_to_generic(void *doc) {
     return map;
 }
 
+/// @brief Recursively convert an XML node to a generic Viper value (Map/Seq/String).
+///        Element attributes go into `@attrs`; mixed text goes into `@text`;
+///        child elements become map entries (grouped into Seq on repeated tags).
+///        Text-only elements with no attributes return the text string directly.
 static void *xml_to_generic_value(void *node) {
     int64_t type = rt_xml_node_type(node);
     if (type == XML_NODE_DOCUMENT)
@@ -317,13 +386,16 @@ static void *xml_to_generic_value(void *node) {
 
     if (text.len > 0) {
         rt_string scalar = rt_string_from_bytes(text.data, text.len);
-        map_set_cstr(map, "#text", (void *)scalar);
+        map_set_cstr(map, "@text", (void *)scalar);
         rt_string_unref(scalar);
     }
     rt_sb_free(&text);
     return map;
 }
 
+/// @brief Serialize `obj` as TOML. Non-map objects are wrapped in a synthetic map
+///        (`items` key for sequences, `value` key for scalars) so TOML's top-level
+///        table requirement is satisfied.
 static rt_string format_toml_from_generic(void *obj) {
     if (is_map_obj(obj))
         return rt_toml_format(obj);
@@ -334,6 +406,8 @@ static rt_string format_toml_from_generic(void *obj) {
     return out;
 }
 
+/// @brief Return 1 if `obj` is a Seq whose every element is also a Seq (i.e., a 2-D table).
+///        An empty Seq is considered valid. Used to decide whether CSV format can be applied directly.
 static int seq_rows_are_sequences(void *obj) {
     if (!is_seq_obj(obj))
         return 0;
@@ -348,12 +422,16 @@ static int seq_rows_are_sequences(void *obj) {
     return 1;
 }
 
+/// @brief Convert `value` to a string and push it as the next cell in the CSV `row` Seq.
 static void seq_push_string_cell(void *row, void *value) {
     rt_string s = scalar_to_string(value);
     rt_seq_push(row, (void *)s);
     rt_string_unref(s);
 }
 
+/// @brief Serialize `obj` as CSV. A 2-D Seq passes through directly; a Map becomes
+///        two-column key-value rows; a flat Seq becomes single-column rows; a scalar
+///        becomes one row with one cell.
 static rt_string format_csv_from_generic(void *obj) {
     if (seq_rows_are_sequences(obj))
         return rt_csv_format(obj);
@@ -400,8 +478,10 @@ static rt_string format_csv_from_generic(void *obj) {
 // Unified Parse
 //=============================================================================
 
-/// @brief Parse `text` according to `format` (JSON/YAML/TOML/INI), returning the resulting tree.
-/// Returns NULL on parse error — call `_error()` for the diagnostic message.
+/// @brief `Serialize.Parse(text, format)` — parse `text` in the given format.
+///        Delegates to the appropriate backend: rt_json_parse, rt_xml_parse, rt_yaml_parse,
+///        rt_toml_parse, or rt_csv_parse. Returns NULL on parse failure; call
+///        `rt_serialize_error()` to retrieve the diagnostic message.
 void *rt_serialize_parse(rt_string text, int64_t format) {
     clear_error();
     if (!text) {
@@ -421,10 +501,8 @@ void *rt_serialize_parse(rt_string text, int64_t format) {
             void *result = rt_xml_parse(text);
             if (!result) {
                 rt_string err = rt_xml_error();
-                if (err && rt_str_len(err) > 0)
-                    g_last_error = err;
-                else
-                    set_error("XML parse error");
+                set_error_from_string(err, "XML parse error");
+                rt_string_unref(err);
             }
             return result;
         }
@@ -448,6 +526,10 @@ void *rt_serialize_parse(rt_string text, int64_t format) {
             return rt_toml_parse(text);
 
         case RT_FORMAT_CSV:
+            if (!rt_csv_is_valid(text)) {
+                set_error("CSV parse error");
+                return NULL;
+            }
             return rt_csv_parse(text);
 
         default:
@@ -559,8 +641,7 @@ int8_t rt_serialize_is_valid(rt_string text, int64_t format) {
             return rt_toml_is_valid(text);
 
         case RT_FORMAT_CSV:
-            /* CSV is always parseable (any text is valid CSV) */
-            return 1;
+            return rt_csv_is_valid(text);
 
         default:
             return 0;
@@ -571,7 +652,7 @@ int8_t rt_serialize_is_valid(rt_string text, int64_t format) {
 // Auto-Detection
 //=============================================================================
 
-/// Skip leading whitespace and return pointer to first non-space char.
+/// @brief Skip leading ASCII whitespace and return a pointer to the first non-space byte.
 static const char *skip_ws(const char *s) {
     while (*s && ((unsigned char)*s <= ' '))
         s++;
@@ -605,7 +686,11 @@ int64_t rt_serialize_detect(rt_string text) {
     if (*s == '\0')
         return -1;
 
-    /* TOML: [section] on first line. Check before JSON array. */
+    /* JSON: valid object or array. Prefer valid JSON arrays over TOML quoted table names. */
+    if ((*s == '{' || *s == '[') && rt_json_is_valid(text))
+        return RT_FORMAT_JSON;
+
+    /* TOML: [section] on first line. */
     if (*s == '[' && s[1] != '\0') {
         const char *p = s + 1;
         int has_comma = 0;
@@ -619,12 +704,12 @@ int64_t rt_serialize_detect(rt_string text) {
             const char *after = p + 1;
             while (*after == ' ' || *after == '\t')
                 after++;
-            if (*after == '\0' || *after == '\n' || *after == '#')
+            if ((*after == '\0' || *after == '\n' || *after == '#') && rt_toml_is_valid(text))
                 return RT_FORMAT_TOML;
         }
     }
 
-    /* JSON: starts with { or [ */
+    /* JSON-looking but invalid still most likely intended as JSON. */
     if (*s == '{' || *s == '[')
         return RT_FORMAT_JSON;
 
@@ -642,16 +727,18 @@ int64_t rt_serialize_detect(rt_string text) {
         const char *eq = line;
         while (*eq && *eq != '\n' && *eq != '=')
             eq++;
-        if (*eq == '=' && eq > line)
+        if (*eq == '=' && eq > line && rt_toml_is_valid(text))
             return RT_FORMAT_TOML;
     }
 
-    /* YAML: indentation-based with colons */
+    /* YAML: mapping-style first line with a colon followed by whitespace/EOL. */
     {
         const char *colon = line;
         while (*colon && *colon != '\n' && *colon != ':')
             colon++;
-        if (*colon == ':')
+        if (*colon == ':' && colon > line &&
+            (colon[1] == '\0' || colon[1] == '\n' || colon[1] == ' ' || colon[1] == '\t') &&
+            rt_yaml_is_valid(text))
             return RT_FORMAT_YAML;
     }
 
@@ -667,8 +754,9 @@ int64_t rt_serialize_detect(rt_string text) {
     return -1;
 }
 
-/// @brief Detect the format from the text content (via `_detect`) and parse with that format.
-/// Convenience for "load this file, figure out what it is" workflows.
+/// @brief `Serialize.AutoParse(text)` — detect the format heuristically and parse with it.
+///        Convenience for "load this file without knowing its format" workflows.
+///        Sets an error and returns NULL if the format cannot be determined.
 void *rt_serialize_auto_parse(rt_string text) {
     int64_t format;
     clear_error();

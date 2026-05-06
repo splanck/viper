@@ -264,6 +264,15 @@ static void test_remove_all_missing_is_success() {
     printf("\n");
 }
 
+static void test_remove_all_protected_paths_trap() {
+    printf("Testing rt_dir_remove_all protected paths:\n");
+
+    EXPECT_TRAP(rt_dir_remove_all(rt_const_cstr(".")));
+    test_result("remove_all current directory traps", true);
+
+    printf("\n");
+}
+
 /// @brief Test rt_dir_list.
 static void test_list() {
     printf("Testing rt_dir_list:\n");
@@ -634,6 +643,27 @@ static void test_move() {
     printf("\n");
 }
 
+static void test_move_existing_destination_traps() {
+    printf("Testing rt_dir_move existing destination:\n");
+
+    const char *base = get_test_base();
+    char src[512], dst[512];
+    snprintf(src, sizeof(src), "%s_move_existing_src", base);
+    snprintf(dst, sizeof(dst), "%s_move_existing_dst", base);
+
+    mkdir_p(src);
+    mkdir_p(dst);
+
+    EXPECT_TRAP(rt_dir_move(rt_const_cstr(src), rt_const_cstr(dst)));
+    test_result("move destination exists traps", rt_dir_exists(rt_const_cstr(src)) == 1 &&
+                                                     rt_dir_exists(rt_const_cstr(dst)) == 1);
+
+    rmdir_p(src);
+    rmdir_p(dst);
+
+    printf("\n");
+}
+
 /// @brief Test empty directory listing.
 static void test_empty_dir() {
     printf("Testing empty directory:\n");
@@ -712,6 +742,7 @@ int main() {
     test_make_all_existing_file_traps();
     test_remove_all();
     test_remove_all_missing_is_success();
+    test_remove_all_protected_paths_trap();
     test_list();
     test_entries();
     test_files();
@@ -723,6 +754,7 @@ int main() {
     test_list_seq_wrappers();
     test_current();
     test_move();
+    test_move_existing_destination_traps();
     test_empty_dir();
     test_nonexistent_dir();
     test_entries_missing_dir_traps();

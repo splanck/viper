@@ -85,6 +85,18 @@ static inline int is_join_sep(char c) {
 #endif
 }
 
+#ifdef _WIN32
+/// @brief Return 1 if `data[0..len-1]` starts with a Windows drive letter prefix (e.g. `C:`).
+static inline int is_drive_letter_path(const char *data, size_t len) {
+    return len >= 2 && isalpha((unsigned char)data[0]) && data[1] == ':';
+}
+
+/// @brief Return 1 if the path has a rooted drive prefix (e.g. `C:\`).
+static inline int is_drive_rooted_path(const char *data, size_t len) {
+    return is_drive_letter_path(data, len) && len >= 3 && is_path_sep(data[2]);
+}
+#endif
+
 /// @brief Get the length of a runtime string safely (null-safe).
 ///
 /// Returns the byte length of a runtime string, handling NULL pointers
@@ -178,8 +190,9 @@ rt_string rt_path_join(rt_string a, rt_string b) {
         return rt_string_from_bytes(b_data, b_len);
 
 #ifdef _WIN32
-    // Check for Windows drive letter (C:) or UNC path
-    if ((b_len >= 2 && isalpha((unsigned char)b_data[0]) && b_data[1] == ':') ||
+    // Check for Windows drive-rooted (C:\foo) or UNC path. A path like C:foo is
+    // drive-relative, not absolute.
+    if (is_drive_rooted_path(b_data, b_len) ||
         (b_len >= 2 && is_path_sep(b_data[0]) && is_path_sep(b_data[1]))) {
         return rt_string_from_bytes(b_data, b_len);
     }
@@ -887,15 +900,18 @@ rt_string rt_path_norm(rt_string path) {
     size_t comp_count = 0;
 
     int is_absolute = 0;
+    int is_drive_relative = 0;
     size_t prefix_len = 0;
 
     // Determine prefix (root portion)
 #ifdef _WIN32
-    if (len >= 2 && isalpha((unsigned char)data[0]) && data[1] == ':') {
+    if (is_drive_letter_path(data, len)) {
         prefix_len = 2;
         if (len >= 3 && is_path_sep(data[2])) {
             prefix_len = 3;
             is_absolute = 1;
+        } else {
+            is_drive_relative = 1;
         }
     } else if (len >= 2 && is_path_sep(data[0]) && is_path_sep(data[1])) {
         // UNC path
@@ -987,7 +1003,8 @@ rt_string rt_path_norm(rt_string path) {
 
     // Add components
     for (size_t j = 0; j < comp_count; j++) {
-        if (j > 0 || (prefix_len > 0 && !is_path_sep(data[prefix_len - 1])))
+        if (j > 0 || (prefix_len > 0 && !is_path_sep(data[prefix_len - 1]) &&
+                      !is_drive_relative))
             rt_sb_append_bytes(&sb, PATH_SEP_STR, 1);
 
         rt_sb_append_bytes(&sb, data + comp_starts[j], comp_ends[j] - comp_starts[j]);

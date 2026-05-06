@@ -355,6 +355,7 @@ RFC 4180-compliant CSV parsing and formatting.
 | `FormatLineWith(fields, delim)` | `String(Seq, String)` | Format fields with custom delimiter                               |
 | `Format(rows)`                  | `String(Seq)`         | Format a Seq of rows into multi-line CSV text                     |
 | `FormatWith(rows, delim)`       | `String(Seq, String)` | Format rows with custom delimiter                                 |
+| `IsValid(text)`                 | `Boolean(String)`     | Check CSV syntax without trapping                                 |
 
 ### Notes
 
@@ -369,6 +370,7 @@ RFC 4180-compliant CSV parsing and formatting.
 - Null fields passed to formatters are emitted as empty fields
 - Runtime string byte length is used, so embedded `NUL` bytes are preserved
 - Parse functions return `Seq` objects (use `Count`, `Get(index)` to access)
+- `IsValid` uses the default comma delimiter and returns false for malformed quoting without trapping
 - `ParseLine` accepts exactly one CSV record; use `Parse` / `ParseWith` for multi-record text
 - Malformed quoted fields trap on unterminated quotes or non-delimiter characters after the closing quote
 - Quotes inside unquoted fields are rejected as malformed CSV
@@ -648,7 +650,7 @@ Unified serialization interface for converting data between JSON, XML, YAML, TOM
 
 ### Notes
 
-- **Auto-detection heuristics:** `{` and JSON-style arrays → JSON, `<` → XML, `---` → YAML, `[section]`/`key = value` → TOML, first-line commas → CSV; unknown plain text returns `-1`
+- **Auto-detection heuristics:** valid JSON objects/arrays and JSON-looking `{`/`[` text → JSON, `<` → XML, standalone `---` → YAML, valid `[section]`/`key = value` → TOML, valid `key: value` → YAML, first-line commas → CSV; unknown plain text returns `-1`
 - `Parse()` returns NULL on error; check `Error()` for details
 - `Convert()` is a convenience for `Format(Parse(text, from), to)` with built-in projections for XML, TOML, and CSV.
 - XML conversion preserves element attributes under an `@attrs` mapping and element text under `@text` when mixed with attributes or child elements.
@@ -733,7 +735,7 @@ XPath-lite path queries. All node values are opaque objects.
 | `Attr(n, name)`           | `String(Object, String)`          | Attribute value (empty string if absent)  |
 | `HasAttr(n, name)`        | `Boolean(Object, String)`         | True if attribute exists                  |
 | `SetAttr(n, name, value)` | `Void(Object, String, String)`    | Set or add attribute                      |
-| `RemoveAttr(n, name)`     | `Void(Object, String)`            | Remove attribute                          |
+| `RemoveAttr(n, name)`     | `Boolean(Object, String)`         | Remove attribute; true if present         |
 | `AttrNames(n)`            | `Seq(Object)`                     | Sequence of attribute name strings        |
 
 ### Navigation
@@ -783,6 +785,7 @@ XPath-lite path queries. All node values are opaque objects.
 - Path syntax for `Find`/`FindAll`: slash-separated tag names from the given node or its direct children (e.g. `"books/book/title"`). A path without `/` remains a recursive tag search.
 - Attribute and child mutations are performed in-place on the node object.
 - `Append` and `Insert` reject non-node children, document children, cycles, and children that already have a parent.
+- `Append` and `Insert` retain the child; callers may keep using the child handle or release their own reference after insertion.
 - `TextContent` is useful for extracting all readable text from a subtree.
 
 ### Zia Example
@@ -897,8 +900,8 @@ model mirrors Viper.Text.Json — strings, integers, doubles, booleans, NULL, ma
 - Explicit multi-document YAML streams separated by `---` parse as a sequence of documents.
 - Anchors, aliases, custom tags, and merge keys are not supported.
 - Flow collections (`[]` and `{}`), quoted keys, comments after scalars, and common quoted-string escapes are supported.
-- `Format` round-trips losslessly for all scalar types, sequences, and mappings.
-- YAML scalars with no explicit type tag are auto-typed (number detection, boolean keywords, etc.).
+- `Format` round-trips losslessly for all scalar types, sequences, and mappings by quoting ambiguous scalars and escaping multiline strings exactly.
+- YAML scalars with no explicit type tag are auto-typed for null, numbers, and YAML 1.2 booleans (`true`/`false`); legacy YAML 1.1 words such as `yes`, `no`, `on`, and `off` remain strings.
 - Tabs in indentation, unexpected over-indentation, invalid quoted-string escapes, and malformed flow collections are rejected.
 
 ### Zia Example

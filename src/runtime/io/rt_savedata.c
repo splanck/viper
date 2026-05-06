@@ -74,8 +74,10 @@ extern rt_string rt_json_stream_error(void *parser);
 // Internal Data Structures
 //=========================================================================
 
+/// @brief Tag distinguishing the stored value variant of a SaveEntry.
 typedef enum { SAVE_INT = 0, SAVE_STR = 1 } SaveEntryType;
 
+/// @brief Singly-linked node holding one key-value pair in the save store.
 typedef struct SaveEntry {
     rt_string key;
     int64_t key_len;
@@ -85,10 +87,11 @@ typedef struct SaveEntry {
     struct SaveEntry *next;
 } SaveEntry;
 
+/// @brief Internal save-data store: game identity, on-disk path, and entry list.
 typedef struct {
-    char *game_name;
-    char *file_path;
-    SaveEntry *entries;
+    char *game_name; ///< Validated game name (alphanumeric, dash, underscore, ≤64 chars).
+    char *file_path; ///< Absolute path to the save JSON file.
+    SaveEntry *entries; ///< Head of the singly-linked entry list.
 } rt_savedata_impl;
 
 //=========================================================================
@@ -116,6 +119,7 @@ static SaveEntry *find_entry(rt_savedata_impl *sd, const char *key, size_t key_l
     return NULL;
 }
 
+/// @brief Release all resources owned by a single entry node and free it.
 static void free_entry(SaveEntry *e) {
     if (e) {
         if (e->key)
@@ -149,6 +153,7 @@ static int savedata_number_to_i64(double value, int64_t *out) {
     return 1;
 }
 
+/// @brief Walk the entry list, freeing every node and setting the head pointer to NULL.
 static void free_all_entries(rt_savedata_impl *sd) {
     SaveEntry *e = sd->entries;
     while (e) {
@@ -211,6 +216,7 @@ static char *savedata_parent_dir_dup(const char *file_path) {
 }
 
 #ifdef _WIN32
+/// @brief Open a file at a UTF-8 path using `_wfopen` (Windows).
 static FILE *savedata_fopen_utf8(const char *path, const wchar_t *mode) {
     wchar_t *wide_path = rt_file_path_utf8_to_wide(path);
     if (!wide_path)
@@ -220,6 +226,7 @@ static FILE *savedata_fopen_utf8(const char *path, const wchar_t *mode) {
     return fp;
 }
 
+/// @brief Delete a file at a UTF-8 path via `_wremove` (Windows).
 static int savedata_remove_utf8(const char *path) {
     wchar_t *wide_path = rt_file_path_utf8_to_wide(path);
     if (!wide_path)
@@ -229,6 +236,7 @@ static int savedata_remove_utf8(const char *path) {
     return rc;
 }
 
+/// @brief Atomically replace `dst` with `src` using `MoveFileExW` (Windows).
 static int savedata_replace_utf8(const char *src, const char *dst) {
     wchar_t *wsrc = rt_file_path_utf8_to_wide(src);
     wchar_t *wdst = rt_file_path_utf8_to_wide(dst);
@@ -243,6 +251,7 @@ static int savedata_replace_utf8(const char *src, const char *dst) {
     return ok ? 1 : 0;
 }
 
+/// @brief Flush and sync an open file to stable storage using `_commit` (Windows).
 static int savedata_sync_file(FILE *fp) {
     return _commit(_fileno(fp)) == 0 ? 1 : 0;
 }
@@ -288,6 +297,7 @@ static int savedata_sync_parent_dir(const char *path) {
     return (err == ERROR_INVALID_HANDLE || err == ERROR_ACCESS_DENIED) ? 1 : 0;
 }
 
+/// @brief Get the size of an open file in bytes using 64-bit seek (Windows).
 static int savedata_file_size(FILE *fp, uint64_t *out_size) {
     if (_fseeki64(fp, 0, SEEK_END) != 0)
         return 0;
@@ -300,22 +310,27 @@ static int savedata_file_size(FILE *fp, uint64_t *out_size) {
     return 1;
 }
 #else
+/// @brief Open a file at a UTF-8 path using `fopen` (POSIX).
 static FILE *savedata_fopen_utf8(const char *path, const char *mode) {
     return fopen(path, mode);
 }
 
+/// @brief Delete a file at a UTF-8 path using `remove` (POSIX).
 static int savedata_remove_utf8(const char *path) {
     return remove(path);
 }
 
+/// @brief Atomically replace `dst` with `src` using `rename(2)` (POSIX).
 static int savedata_replace_utf8(const char *src, const char *dst) {
     return rename(src, dst) == 0 ? 1 : 0;
 }
 
+/// @brief Flush and sync an open file to stable storage using `fsync` (POSIX).
 static int savedata_sync_file(FILE *fp) {
     return fsync(fileno(fp)) == 0 ? 1 : 0;
 }
 
+/// @brief Fsync the parent directory of `path` so rename is crash-durable (POSIX).
 static int savedata_sync_parent_dir(const char *path) {
     char *parent = savedata_parent_dir_dup(path);
     if (!parent)
@@ -329,6 +344,7 @@ static int savedata_sync_parent_dir(const char *path) {
     return ok;
 }
 
+/// @brief Get the size of an open file in bytes using `fseeko`/`ftello` (POSIX).
 static int savedata_file_size(FILE *fp, uint64_t *out_size) {
     if (fseeko(fp, 0, SEEK_END) != 0)
         return 0;
@@ -403,6 +419,7 @@ static char *compute_save_path(const char *game_name) {
     return path;
 }
 
+/// @brief Create all parent directories of `file_path` if they don't exist yet.
 static void ensure_parent_dir(const char *file_path) {
     char *dir = savedata_parent_dir_dup(file_path);
     if (!dir)
@@ -459,6 +476,7 @@ static int savedata_set_int_entry(SaveEntry **head, rt_string key, int64_t value
     return 1;
 }
 
+/// @brief Insert or update a string entry at the head of the list (same semantics as the int variant).
 static int savedata_set_string_entry(SaveEntry **head, rt_string key, rt_string value) {
     if (!head || !key)
         return 0;
@@ -498,6 +516,7 @@ static int savedata_set_string_entry(SaveEntry **head, rt_string key, rt_string 
     return 1;
 }
 
+/// @brief Release a JSON stream parser object via the GC if its refcount drops to zero.
 static void savedata_free_parser(void *parser) {
     if (parser && rt_obj_release_check0(parser))
         rt_obj_free(parser);
@@ -645,6 +664,7 @@ static int savedata_write_atomic(const char *path, const char *data, size_t len)
 // Finalizer
 //=========================================================================
 
+/// @brief GC finalizer: release all entries and C string allocations owned by the SaveData store.
 static void savedata_finalizer(void *obj) {
     rt_savedata_impl *sd = (rt_savedata_impl *)obj;
     free_all_entries(sd);

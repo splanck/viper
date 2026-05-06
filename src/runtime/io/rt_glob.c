@@ -58,9 +58,19 @@
 /// are lowered before comparison. On POSIX the compare is exact.
 static int glob_char_eq(char a, char b) {
 #ifdef _WIN32
+    if ((a == '/' || a == '\\') && (b == '/' || b == '\\'))
+        return 1;
     return tolower((unsigned char)a) == tolower((unsigned char)b);
 #else
     return a == b;
+#endif
+}
+
+static int glob_is_path_sep(char ch) {
+#ifdef _WIN32
+    return ch == '/' || ch == '\\';
+#else
+    return ch == '/';
 #endif
 }
 
@@ -104,7 +114,7 @@ static int glob_match_class(const char **pattern_ptr, char ch, int allow_slash) 
     int has_prev = 0;
     char prev = '\0';
 
-    if (!ch || (ch == '/' && !allow_slash))
+    if (!ch || (glob_is_path_sep(ch) && !allow_slash))
         return 0;
 
     if (*p == '!' || *p == '^') {
@@ -158,8 +168,8 @@ static int glob_match_impl(const char *pattern, const char *text, int allow_slas
             // Check for **
             if (pattern[1] == '*') {
                 pattern += 2;
-                // Skip any following /
-                while (*pattern == '/')
+                // Skip any following path separator.
+                while (glob_is_path_sep(*pattern))
                     pattern++;
 
                 // ** matches everything including /
@@ -184,7 +194,7 @@ static int glob_match_impl(const char *pattern, const char *text, int allow_slas
             // * at end matches everything (except / if not allow_slash)
             if (!*pattern) {
                 while (*text) {
-                    if (*text == '/' && !allow_slash)
+                    if (glob_is_path_sep(*text) && !allow_slash)
                         return 0;
                     text++;
                 }
@@ -193,7 +203,7 @@ static int glob_match_impl(const char *pattern, const char *text, int allow_slas
 
             // Try matching rest of pattern at each position
             while (*text) {
-                if (*text == '/' && !allow_slash) {
+                if (glob_is_path_sep(*text) && !allow_slash) {
                     // Can't skip past /
                     return glob_match_impl(pattern, text, allow_slash);
                 }
@@ -204,7 +214,7 @@ static int glob_match_impl(const char *pattern, const char *text, int allow_slas
             return glob_match_impl(pattern, text, allow_slash);
         } else if (*pattern == '?') {
             // ? matches any single char except /
-            if (!*text || (*text == '/' && !allow_slash))
+            if (!*text || (glob_is_path_sep(*text) && !allow_slash))
                 return 0;
             pattern++;
             text++;
@@ -250,6 +260,7 @@ int8_t rt_glob_match(rt_string path, rt_string pattern) {
     return glob_match_impl(pat, txt, 0) ? 1 : 0;
 }
 
+/// @brief Release a GC object returned by dir-listing helpers if its ref-count hits zero.
 static void glob_release_object(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);

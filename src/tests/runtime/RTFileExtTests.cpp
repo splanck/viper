@@ -611,8 +611,14 @@ static void test_modified() {
     rt_string nonexist = rt_const_cstr(get_missing_path());
     test_result("non-existent returns 0", rt_file_modified(nonexist) == 0);
 
+    char dir_path[512];
+    snprintf(dir_path, sizeof(dir_path), "%s_modified_dir", base);
+    mkdir_p(dir_path);
+    test_result("directory modified returns 0", rt_file_modified(rt_const_cstr(dir_path)) == 0);
+
     // Clean up
     remove_file(file_path);
+    rmdir_p(dir_path);
 
     printf("\n");
 }

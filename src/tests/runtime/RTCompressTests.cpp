@@ -422,6 +422,10 @@ static void test_inflate_truncated_data_traps() {
     void *compressed = make_bytes(invalid, sizeof(invalid));
     EXPECT_TRAP(rt_compress_inflate(compressed));
 
+    uint8_t truncated_fixed_huffman[] = {0x03};
+    void *fixed = make_bytes(truncated_fixed_huffman, sizeof(truncated_fixed_huffman));
+    EXPECT_TRAP(rt_compress_inflate(fixed));
+
     test_result("Truncated input traps", true);
 }
 

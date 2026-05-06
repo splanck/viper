@@ -48,28 +48,32 @@
 // Internal Stream Structure
 //=============================================================================
 
+/// @brief Internal representation of a Stream handle.
 typedef struct {
-    int64_t type;  // RT_STREAM_TYPE_BINFILE or RT_STREAM_TYPE_MEMSTREAM
-    void *wrapped; // The wrapped BinFile or MemStream
-    int8_t owns;   // Whether we own the wrapped object
-    int8_t closed; // Whether Close has been called
+    int64_t type;  ///< RT_STREAM_TYPE_BINFILE or RT_STREAM_TYPE_MEMSTREAM
+    void *wrapped; ///< The wrapped BinFile or MemStream
+    int8_t owns;   ///< Whether this Stream holds a reference on the wrapped object
+    int8_t closed; ///< Set to 1 once Close has been called
 } stream_impl;
 
 //=============================================================================
 // Bytes Access (for MemStream interaction)
 //=============================================================================
 
+/// @brief Mirror of the Bytes GC object header used to read the length field without a full include.
 typedef struct {
-    int64_t len;
-    uint8_t *data;
+    int64_t len;   ///< Number of bytes stored in the buffer.
+    uint8_t *data; ///< Pointer to the raw byte data.
 } bytes_impl;
 
+/// @brief Return the byte count of a Bytes GC object, or 0 for NULL.
 static inline int64_t bytes_len(void *obj) {
     if (!obj)
         return 0;
     return ((bytes_impl *)obj)->len;
 }
 
+/// @brief Decrement the refcount on a GC object and free it when it reaches zero.
 static void stream_release_object(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
@@ -93,6 +97,7 @@ static void stream_release_wrapped(stream_impl *s) {
         stream_release_object(wrapped);
 }
 
+/// @brief Release a Bytes object returned from a BinFile read, freeing it when no longer referenced.
 static void stream_dispose_bytes(void *bytes) {
     if (bytes && rt_obj_release_check0(bytes))
         rt_obj_free(bytes);
@@ -121,6 +126,7 @@ static void *stream_shrink_bytes(void *bytes, int64_t len) {
     return slice;
 }
 
+/// @brief Allocate and zero-initialize a new stream_impl GC object; traps on OOM.
 static stream_impl *stream_alloc(void) {
     stream_impl *s = (stream_impl *)rt_obj_new_i64(0, sizeof(stream_impl));
     if (!s) {
@@ -154,6 +160,7 @@ static stream_impl *stream_require_open(void *stream, const char *context) {
 // Finalizer
 //=============================================================================
 
+/// @brief GC finalizer: releases the wrapped BinFile/MemStream when the stream object is collected.
 static void stream_finalizer(void *obj) {
     stream_impl *s = (stream_impl *)obj;
     stream_release_wrapped(s);
@@ -348,6 +355,13 @@ void *rt_stream_read(void *stream, int64_t count) {
         int64_t read = rt_binfile_read(s->wrapped, bytes, 0, count);
         return stream_shrink_bytes(bytes, read);
     } else {
+        int64_t pos = rt_memstream_get_pos(s->wrapped);
+        int64_t len = rt_memstream_get_len(s->wrapped);
+        int64_t remaining = len > pos ? len - pos : 0;
+        if (remaining <= 0)
+            return rt_bytes_new(0);
+        if (count > remaining)
+            count = remaining;
         return rt_memstream_read_bytes(s->wrapped, count);
     }
 }

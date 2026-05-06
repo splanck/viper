@@ -8,6 +8,7 @@
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 extern "C" {
 #include "rt_box.h"
@@ -29,6 +30,14 @@ static bool str_eq(rt_string value, const char *expected) {
 static void release_obj(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
+}
+
+static void map_set_string(void *map, const char *key, const char *value) {
+    rt_string k = make_str(key);
+    rt_string v = make_str(value);
+    rt_map_set(map, k, (void *)v);
+    release_obj((void *)v);
+    release_obj((void *)k);
 }
 
 static void test_parse_nested_mapping_and_sequence() {
@@ -212,6 +221,101 @@ static void test_overflow_numbers_remain_strings() {
     release_obj((void *)yaml);
 }
 
+static void test_duplicate_keys_are_invalid() {
+    rt_string block = make_str("a: 1\na: 2\n");
+    assert(rt_yaml_is_valid(block) == 0);
+    release_obj((void *)block);
+
+    rt_string flow = make_str("{a: 1, a: 2}\n");
+    assert(rt_yaml_is_valid(flow) == 0);
+    release_obj((void *)flow);
+}
+
+static void test_yaml_12_boolean_keywords_and_plain_hashes() {
+    rt_string yaml =
+        make_str("answer: yes\npower: on\ndisabled: off\ntruth: true\ninf: inf\nnan: nan\nvalue: a#b # comment\n");
+    void *root = rt_yaml_parse(yaml);
+    assert(root != nullptr);
+
+    assert(str_eq(rt_yaml_type_of(rt_map_get(root, rt_const_cstr("answer"))), "string"));
+    assert(str_eq((rt_string)rt_map_get(root, rt_const_cstr("answer")), "yes"));
+    assert(str_eq((rt_string)rt_map_get(root, rt_const_cstr("power")), "on"));
+    assert(str_eq((rt_string)rt_map_get(root, rt_const_cstr("disabled")), "off"));
+    assert(str_eq(rt_yaml_type_of(rt_map_get(root, rt_const_cstr("inf"))), "string"));
+    assert(str_eq(rt_yaml_type_of(rt_map_get(root, rt_const_cstr("nan"))), "string"));
+    assert(str_eq((rt_string)rt_map_get(root, rt_const_cstr("value")), "a#b"));
+    assert(str_eq(rt_yaml_type_of(rt_map_get(root, rt_const_cstr("truth"))), "bool"));
+
+    release_obj(root);
+    release_obj((void *)yaml);
+}
+
+static void test_inline_document_marker_is_plain_scalar() {
+    rt_string yaml = make_str("--- value\n");
+    void *value = rt_yaml_parse(yaml);
+    assert(value != nullptr);
+    assert(str_eq(rt_yaml_type_of(value), "string"));
+    assert(str_eq((rt_string)value, "--- value"));
+
+    release_obj(value);
+    release_obj((void *)yaml);
+}
+
+static void test_malformed_flow_collections_are_invalid() {
+    rt_string missing = make_str("[1,,2]\n");
+    assert(rt_yaml_is_valid(missing) == 0);
+    release_obj((void *)missing);
+
+    rt_string trailing = make_str("[1, 2,]\n");
+    assert(rt_yaml_is_valid(trailing) == 0);
+    release_obj((void *)trailing);
+
+    rt_string empty_value = make_str("{a: }\n");
+    assert(rt_yaml_is_valid(empty_value) == 0);
+    release_obj((void *)empty_value);
+}
+
+static void test_flow_depth_limit_is_invalid() {
+    std::string deep;
+    for (int i = 0; i < 210; ++i)
+        deep.push_back('[');
+    deep += "0";
+    for (int i = 0; i < 210; ++i)
+        deep.push_back(']');
+    deep.push_back('\n');
+
+    rt_string yaml = rt_string_from_bytes(deep.data(), deep.size());
+    assert(rt_yaml_is_valid(yaml) == 0);
+    release_obj((void *)yaml);
+}
+
+static void test_formatter_quotes_ambiguous_and_multiline_strings() {
+    void *map = rt_map_new();
+    map_set_string(map, "inf", ".inf");
+    map_set_string(map, "nan", ".nan");
+    map_set_string(map, "end", "...");
+    map_set_string(map, "multi", "line 1\nline 2\n");
+    map_set_string(map, "trail", "value ");
+
+    rt_string formatted = rt_yaml_format(map);
+    assert(std::strstr(rt_string_cstr(formatted), "inf: \".inf\"") != nullptr);
+    assert(std::strstr(rt_string_cstr(formatted), "nan: \".nan\"") != nullptr);
+    assert(std::strstr(rt_string_cstr(formatted), "end: \"...\"") != nullptr);
+    assert(std::strstr(rt_string_cstr(formatted), "multi: \"line 1\\nline 2\\n\"") != nullptr);
+
+    void *round_trip = rt_yaml_parse(formatted);
+    assert(round_trip != nullptr);
+    assert(str_eq((rt_string)rt_map_get(round_trip, rt_const_cstr("inf")), ".inf"));
+    assert(str_eq((rt_string)rt_map_get(round_trip, rt_const_cstr("nan")), ".nan"));
+    assert(str_eq((rt_string)rt_map_get(round_trip, rt_const_cstr("end")), "..."));
+    assert(str_eq((rt_string)rt_map_get(round_trip, rt_const_cstr("multi")), "line 1\nline 2\n"));
+    assert(str_eq((rt_string)rt_map_get(round_trip, rt_const_cstr("trail")), "value "));
+
+    release_obj(round_trip);
+    release_obj((void *)formatted);
+    release_obj(map);
+}
+
 int main() {
     test_parse_nested_mapping_and_sequence();
     test_sequence_preserves_null_items();
@@ -223,6 +327,12 @@ int main() {
     test_flow_collections_round_trip();
     test_quoted_scalars_comments_and_escapes();
     test_overflow_numbers_remain_strings();
+    test_duplicate_keys_are_invalid();
+    test_yaml_12_boolean_keywords_and_plain_hashes();
+    test_inline_document_marker_is_plain_scalar();
+    test_malformed_flow_collections_are_invalid();
+    test_flow_depth_limit_is_invalid();
+    test_formatter_quotes_ambiguous_and_multiline_strings();
     std::printf("RTYamlTests passed.\n");
     return 0;
 }

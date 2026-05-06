@@ -3,6 +3,8 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
+//===----------------------------------------------------------------------===//
+//
 // File: src/runtime/io/rt_watcher.h
 // Purpose: Poll-based file system watcher for Viper.IO.Watcher, monitoring files and directories
 // for changes via native OS facilities and exposing queued events through Poll/PollFor.
@@ -31,7 +33,7 @@
 extern "C" {
 #endif
 
-/// File system event type constants.
+/// @brief Discriminant tag for file system events reported by a Watcher.
 typedef enum {
     RT_WATCH_EVENT_NONE = 0,
     RT_WATCH_EVENT_CREATED = 1,
@@ -84,11 +86,15 @@ rt_string rt_watcher_event_path(void *obj);
 /// @return Event type (RT_WATCH_EVENT_*).
 int64_t rt_watcher_event_type(void *obj);
 
-// Event type accessors (accept receiver for property dispatch compatibility)
+/// @brief Return RT_WATCH_EVENT_NONE; receiver parameter is unused (property dispatch shim).
 int64_t rt_watcher_event_none(void *self);
+/// @brief Return RT_WATCH_EVENT_CREATED; receiver parameter is unused (property dispatch shim).
 int64_t rt_watcher_event_created(void *self);
+/// @brief Return RT_WATCH_EVENT_MODIFIED; receiver parameter is unused (property dispatch shim).
 int64_t rt_watcher_event_modified(void *self);
+/// @brief Return RT_WATCH_EVENT_DELETED; receiver parameter is unused (property dispatch shim).
 int64_t rt_watcher_event_deleted(void *self);
+/// @brief Return RT_WATCH_EVENT_RENAMED; receiver parameter is unused (property dispatch shim).
 int64_t rt_watcher_event_renamed(void *self);
 
 #ifdef __cplusplus

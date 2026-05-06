@@ -24,10 +24,10 @@ The biggest user-visible new thing is a text-mode baseball-franchise simulator.
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 135 | +135 |
-| Source files | 2,869 | 2,995 | +126 |
-| Production SLOC | 450K | 550K | +100K |
-| Test SLOC | 183K | 227K | +44K |
+| Commits | — | 140 | +140 |
+| Source files | 2,869 | 2,996 | +127 |
+| Production SLOC | 450K | 552K | +102K |
+| Test SLOC | 183K | 228K | +45K |
 | Demo SLOC | 177K | 188K | +11K |
 
 Counts via `scripts/count_sloc.sh`.
@@ -40,6 +40,10 @@ Counts via `scripts/count_sloc.sh`.
 - ALSA write loop handles partial writes and underrun recovery; Linux shutdown no longer hangs waiting on a blocking write; mixer callbacks use a blocking mutex lock (was trylock, causing audible silence during seek/load).
 - Platform audio clocks use widened arithmetic to prevent long-uptime overflow; streaming buffers preserve the old allocation before growing; `Music.Seek` stops and clears the stream on source failure instead of leaving stale audio buffered.
 - The music-scan mutex is now held across the entire per-frame scan rather than acquired and released per candidate, closing a TOCTOU window where a concurrent `Music.Free` could free a track between selection and finalization.
+- `Music.Free` now waits for any in-progress buffer refill to complete before releasing the music handle, closing a race where the streaming thread could write into freed memory after the free returned.
+- `vaud_context_is_destroying()` guard added to `play_sound` and `play_sound_ex`; a secondary check confirms the sound's owning context matches before the mutex is released, preventing use-after-free when a sound is played on a concurrently-shutting-down context.
+- The `buffer_refilling[]` slot array is zeroed on music reuse so stale refill flags from a previous playback cycle cannot suppress legitimate fills on the next play.
+- The streaming fill loop skips any slot that is already being refilled or already has frames, preventing duplicate fill scheduling on the same buffer slot.
 
 ### GUI Library
 
@@ -51,6 +55,8 @@ Seven rounds of widget audits plus an app-registry overhaul.
 - **TrueType rendering** — All table reads bounds-checked; composite glyph point-index alignment implemented; per-contour edge wrapping fixed (was producing phantom fill regions in glyphs like 'O' and '8'); UTF-8 decoder rejects overlong, surrogate, and out-of-range sequences.
 - **Layout & constraints** — NaN/inf rejected on all constraint, margin, padding, flex, spacing, and grid-track setters. Grid and Dock containers purge stale placement metadata when a child is removed, so re-adding a widget does not inherit its old position. Constraint application is now unified across all widget measure functions.
 - **Widget state fixes** — Checkbox `set_indeterminate()` getter+setter; RadioButton group `selected_index` accuracy and deselect callbacks; ProgressBar `set_style()`/`show_percentage()` new APIs and NaN guards; TextInput paste emits a single `on_change`; strdup OOM guards (copy-then-free) across all text-setting paths; Spinner font-size NaN guard.
+- **Font validation** — `vg_font_valid_size()` rejects non-finite, zero, negative, and absurdly large (>1,000,000) font sizes before passing them to the layout engine. `vg_font_metric_to_int()` converts double metrics to `int` with overflow clamping (replaces direct casts that were UB on overflow). `vg_font_load()` now checks `fseek` return values and rejects negative file sizes before allocating, and closes the file handle on both error paths.
+- **FileDialog cross-platform guards** — Path join helper guards against `SIZE_MAX` overflow in `dir_len + sep_len + file_len + 1` before calling `malloc`. `strtok_r`/`strtok_s` and `strdup`/`_strdup` are conditionally selected per platform; OOM on `strdup` is checked and handled before the old path is freed. `S_ISREG` is defined for MSVC builds that do not provide it via `<sys/stat.h>`.
 
 ### Graphics runtime (2D)
 
@@ -187,7 +193,7 @@ Eleven-class `Viper.Localization.*` namespace. Zero external dependencies; en-US
 ### Platform
 
 - macOS: premultiplied RGBA from CoreGraphics correctly unpremultiplied before storage; bare arrow keys no longer map to PageUp/Down/Home/End; `mach_absolute_time` conversion widened to prevent long-uptime overflow. Keyboard input state is now cleared when the window loses focus, preventing stuck keys after Cmd+Tab. Text-input events correctly emit one event per Unicode codepoint, including characters that require UTF-16 surrogate pairs.
-- Linux: X11 clipboard upgraded to full ICCCM CLIPBOARD selection protocol; UTF-8 text input validates every codepoint; XDND URI parsing enforces byte-length bounds; RGBA swizzle reads channel masks from the active X11 Visual instead of assuming layout.
+- Linux: X11 clipboard upgraded to full ICCCM CLIPBOARD selection protocol; UTF-8 text input validates every codepoint; XDND URI parsing enforces byte-length bounds; RGBA swizzle reads channel masks from the active X11 Visual instead of assuming layout. XDND file-drop URIs are now percent-decoded (`%XX` sequences resolved) before the path is passed to the application. `XLookupString` handles `XBufferOverflow` by allocating a heap buffer of the reported size and retrying; if the retry also overflows the event is discarded rather than truncated. `ConfigureNotify` resize events validate `new_w`/`new_h` against `VGFX_MAX_WIDTH`, `VGFX_MAX_HEIGHT`, and `INT32_MAX/4` before updating the framebuffer; out-of-range sizes are rejected. Cursor shape mapping extended: `pointer→XC_hand2`, `text→XC_xterm`, `resize-h→XC_sb_h_double_arrow`, `resize-v→XC_sb_v_double_arrow`.
 - All platforms: `vgfx_cls()` fill and framebuffer presentation rewritten as byte-wise writes (eliminates strict-aliasing UB); Cohen-Sutherland line clipper pre-clips extreme off-screen coordinates; Bresenham error accumulator widened to int64; event queue protected by atomic spinlock.
 
 ### Packaging & distribution
@@ -224,12 +230,12 @@ Six-pass hardening of the `viper install-package` and `viper package` subsystems
 ### Demos & docs
 
 - **Demos** — New text-mode baseball franchise simulator; Crackman rewrite; two new 3D demos; Paint gains layers and undo; ViperIDE file-watcher and context-menu fixes; XENOSCAPE boss/player fixes and macOS package; Chess drag-vs-click detection fix; three localization examples; Windows ARM64 builds for all 3D demos.
-- **Docs** — `viperlib/` coverage extended across all subsystems: 2D graphics split into rendering/effects, tilemaps/layers, shapes/text/UI, and animation/collision/camera; new `viperlib/localization/`; IL Optimizer Correctness Contract; GUI viperlib updated through round-7 APIs. Doxygen coverage pass across all 42 `lib/gui` source files and ~100 runtime files.
+- **Docs** — `viperlib/` coverage extended across all subsystems: 2D graphics split into rendering/effects, tilemaps/layers, shapes/text/UI, and animation/collision/camera; new `viperlib/localization/`; IL Optimizer Correctness Contract; GUI viperlib updated through round-7 APIs. Doxygen/`@brief` coverage pass across all 42 `lib/gui` source files, ~100 runtime files, and every Crypto/Network/Text/Packaging runtime module; all source files received canonical Viper two-separator file headers.
 
 ---
 
 ### Commits
 
-See `git log a91d388db..HEAD -- .` for the full 135-commit history.
+See `git log a91d388db..HEAD -- .` for the full 140-commit history.
 
 <!-- END DRAFT -->

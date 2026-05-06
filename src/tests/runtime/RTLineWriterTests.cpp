@@ -16,6 +16,7 @@
 #include "tests/common/PlatformSkip.h"
 
 #include <cassert>
+#include <csetjmp>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -28,9 +29,30 @@
 #define GETPID getpid
 #endif
 
+namespace {
+static jmp_buf g_trap_jmp;
+static const char *g_last_trap = nullptr;
+static bool g_trap_expected = false;
+} // namespace
+
 extern "C" void vm_trap(const char *msg) {
+    g_last_trap = msg;
+    if (g_trap_expected)
+        longjmp(g_trap_jmp, 1);
     rt_abort(msg);
 }
+
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_trap_expected = true;                                                                    \
+        g_last_trap = nullptr;                                                                     \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
+            expr;                                                                                  \
+            assert(false && "Expected trap did not occur");                                        \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
+        assert(g_last_trap != nullptr);                                                            \
+    } while (0)
 
 static const char *get_test_file() {
     static char path[512];
@@ -399,6 +421,20 @@ static void test_mixed_write_methods() {
     cleanup_test_file();
 }
 
+static void test_write_char_out_of_range_traps() {
+    cleanup_test_file();
+
+    rt_string path = make_string(get_test_file());
+    void *lw = rt_linewriter_open(path);
+    assert(lw != nullptr);
+
+    EXPECT_TRAP(rt_linewriter_write_char(lw, -1));
+    EXPECT_TRAP(rt_linewriter_write_char(lw, 256));
+
+    rt_linewriter_close(lw);
+    cleanup_test_file();
+}
+
 static void test_null_handling() {
     // Null operations should not crash
     rt_linewriter_close(nullptr);
@@ -422,6 +458,7 @@ int main() {
     test_write_ln_empty();
     test_overwrite_existing();
     test_mixed_write_methods();
+    test_write_char_out_of_range_traps();
     test_null_handling();
 
     cleanup_test_file();

@@ -41,13 +41,15 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
+/// @brief Per-channel bookkeeping entry stored in the context's file table.
 typedef struct RtFileChannelEntry {
-    int32_t channel;
-    RtFile file;
-    bool in_use;
-    bool at_eof;
+    int32_t channel; ///< User-visible channel number (1-based; 0 is reserved).
+    RtFile file;     ///< Underlying file handle; fd == -1 when not open.
+    bool in_use;     ///< True when the channel is open and available for I/O.
+    bool at_eof;     ///< Cached EOF flag; set after a read returns EOF.
 } RtFileChannelEntry;
 
+/// @brief Release all open channel entries and free the file table in `ctx`.
 void rt_file_state_cleanup(RtContext *ctx) {
     if (!ctx)
         return;
@@ -73,6 +75,7 @@ void rt_file_state_cleanup(RtContext *ctx) {
     ctx->file_state.capacity = 0;
 }
 
+/// @brief Return the active context, falling back to the legacy context when none is set.
 static inline RtContext *rt_get_or_legacy(void) {
     RtContext *ctx = rt_get_current_context();
     if (!ctx)
@@ -80,21 +83,25 @@ static inline RtContext *rt_get_or_legacy(void) {
     return ctx;
 }
 
+/// @brief Return a typed pointer to the current context's channel entry array.
 static inline RtFileChannelEntry *rtf_entries(void) {
     RtContext *ctx = rt_get_or_legacy();
     return (RtFileChannelEntry *)ctx->file_state.entries;
 }
 
+/// @brief Return a pointer to the current context's channel count field.
 static inline size_t *rtf_count(void) {
     RtContext *ctx = rt_get_or_legacy();
     return &ctx->file_state.count;
 }
 
+/// @brief Return a pointer to the current context's channel table capacity field.
 static inline size_t *rtf_capacity(void) {
     RtContext *ctx = rt_get_or_legacy();
     return &ctx->file_state.capacity;
 }
 
+/// @brief Write `ptr` into the current context's channel entry array pointer.
 static inline void rtf_set_entries(RtFileChannelEntry *ptr) {
     RtContext *ctx = rt_get_or_legacy();
     ctx->file_state.entries = ptr;

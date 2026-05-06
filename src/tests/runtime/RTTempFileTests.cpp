@@ -130,6 +130,16 @@ static void test_tempfile() {
     {
         EXPECT_TRAP(rt_tempfile_path_with_prefix(rt_const_cstr("../bad")));
         EXPECT_TRAP(rt_tempfile_path_with_ext(rt_const_cstr("ok_"), rt_const_cstr("../bad")));
+
+        const char raw_prefix[] = {'o', 'k', '\0', '/', 'b', 'a', 'd'};
+        rt_string nul_prefix = rt_string_from_bytes(raw_prefix, sizeof(raw_prefix));
+        EXPECT_TRAP(rt_tempfile_path_with_prefix(nul_prefix));
+        rt_string_unref(nul_prefix);
+
+        const char raw_ext[] = {'.', 't', 'm', 'p', '\0', '/', 'b', 'a', 'd'};
+        rt_string nul_ext = rt_string_from_bytes(raw_ext, sizeof(raw_ext));
+        EXPECT_TRAP(rt_tempfile_path_with_ext(rt_const_cstr("ok_"), nul_ext));
+        rt_string_unref(nul_ext);
     }
 
     printf("\n");

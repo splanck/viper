@@ -41,6 +41,7 @@
 #include "rt_string.h"
 
 #include <limits.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -87,6 +88,8 @@ static void binbuf_ensure(rt_binbuf_impl *buf, int64_t needed) {
             rt_trap("BinaryBuffer: capacity overflow");
         new_cap *= 2;
     }
+    if ((uint64_t)new_cap > (uint64_t)SIZE_MAX)
+        rt_trap("BinaryBuffer: capacity exceeds platform limit");
 
     uint8_t *new_data = (uint8_t *)realloc(buf->data, (size_t)new_cap);
     if (!new_data)
@@ -143,6 +146,8 @@ void *rt_binbuf_new(void) {
 void *rt_binbuf_new_cap(int64_t capacity) {
     if (capacity < 1)
         capacity = 1;
+    if ((uint64_t)capacity > (uint64_t)SIZE_MAX)
+        rt_trap("BinaryBuffer: capacity exceeds platform limit");
 
     rt_binbuf_impl *buf = (rt_binbuf_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_binbuf_impl));
     if (!buf)
@@ -163,7 +168,11 @@ void *rt_binbuf_new_cap(int64_t capacity) {
 
 void *rt_binbuf_from_bytes(void *bytes_obj) {
     int64_t blen = bytes_obj ? rt_bytes_len(bytes_obj) : 0;
+    if (blen < 0)
+        rt_trap("BinaryBuffer: invalid bytes length");
     int64_t cap = blen > BINBUF_DEFAULT_CAPACITY ? blen : BINBUF_DEFAULT_CAPACITY;
+    if ((uint64_t)cap > (uint64_t)SIZE_MAX)
+        rt_trap("BinaryBuffer: capacity exceeds platform limit");
 
     rt_binbuf_impl *buf = (rt_binbuf_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_binbuf_impl));
     if (!buf)
@@ -365,7 +374,8 @@ int64_t rt_binbuf_read_i16le(void *obj) {
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
     binbuf_check_read(buf, 2);
     int64_t pos = buf->position;
-    int64_t val = (int64_t)buf->data[pos] | ((int64_t)buf->data[pos + 1] << 8);
+    uint16_t raw = (uint16_t)buf->data[pos] | ((uint16_t)buf->data[pos + 1] << 8);
+    int64_t val = (int64_t)(int16_t)raw;
     buf->position += 2;
     return val;
 }
@@ -377,7 +387,8 @@ int64_t rt_binbuf_read_i16be(void *obj) {
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
     binbuf_check_read(buf, 2);
     int64_t pos = buf->position;
-    int64_t val = ((int64_t)buf->data[pos] << 8) | (int64_t)buf->data[pos + 1];
+    uint16_t raw = ((uint16_t)buf->data[pos] << 8) | (uint16_t)buf->data[pos + 1];
+    int64_t val = (int64_t)(int16_t)raw;
     buf->position += 2;
     return val;
 }
@@ -389,8 +400,9 @@ int64_t rt_binbuf_read_i32le(void *obj) {
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
     binbuf_check_read(buf, 4);
     int64_t pos = buf->position;
-    int64_t val = (int64_t)buf->data[pos] | ((int64_t)buf->data[pos + 1] << 8) |
-                  ((int64_t)buf->data[pos + 2] << 16) | ((int64_t)buf->data[pos + 3] << 24);
+    uint32_t raw = (uint32_t)buf->data[pos] | ((uint32_t)buf->data[pos + 1] << 8) |
+                   ((uint32_t)buf->data[pos + 2] << 16) | ((uint32_t)buf->data[pos + 3] << 24);
+    int64_t val = (int64_t)(int32_t)raw;
     buf->position += 4;
     return val;
 }
@@ -402,8 +414,9 @@ int64_t rt_binbuf_read_i32be(void *obj) {
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
     binbuf_check_read(buf, 4);
     int64_t pos = buf->position;
-    int64_t val = ((int64_t)buf->data[pos] << 24) | ((int64_t)buf->data[pos + 1] << 16) |
-                  ((int64_t)buf->data[pos + 2] << 8) | (int64_t)buf->data[pos + 3];
+    uint32_t raw = ((uint32_t)buf->data[pos] << 24) | ((uint32_t)buf->data[pos + 1] << 16) |
+                   ((uint32_t)buf->data[pos + 2] << 8) | (uint32_t)buf->data[pos + 3];
+    int64_t val = (int64_t)(int32_t)raw;
     buf->position += 4;
     return val;
 }
@@ -415,10 +428,11 @@ int64_t rt_binbuf_read_i64le(void *obj) {
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
     binbuf_check_read(buf, 8);
     int64_t pos = buf->position;
-    int64_t val = (int64_t)buf->data[pos] | ((int64_t)buf->data[pos + 1] << 8) |
-                  ((int64_t)buf->data[pos + 2] << 16) | ((int64_t)buf->data[pos + 3] << 24) |
-                  ((int64_t)buf->data[pos + 4] << 32) | ((int64_t)buf->data[pos + 5] << 40) |
-                  ((int64_t)buf->data[pos + 6] << 48) | ((int64_t)buf->data[pos + 7] << 56);
+    uint64_t raw = (uint64_t)buf->data[pos] | ((uint64_t)buf->data[pos + 1] << 8) |
+                   ((uint64_t)buf->data[pos + 2] << 16) | ((uint64_t)buf->data[pos + 3] << 24) |
+                   ((uint64_t)buf->data[pos + 4] << 32) | ((uint64_t)buf->data[pos + 5] << 40) |
+                   ((uint64_t)buf->data[pos + 6] << 48) | ((uint64_t)buf->data[pos + 7] << 56);
+    int64_t val = (int64_t)raw;
     buf->position += 8;
     return val;
 }
@@ -430,10 +444,11 @@ int64_t rt_binbuf_read_i64be(void *obj) {
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
     binbuf_check_read(buf, 8);
     int64_t pos = buf->position;
-    int64_t val = ((int64_t)buf->data[pos] << 56) | ((int64_t)buf->data[pos + 1] << 48) |
-                  ((int64_t)buf->data[pos + 2] << 40) | ((int64_t)buf->data[pos + 3] << 32) |
-                  ((int64_t)buf->data[pos + 4] << 24) | ((int64_t)buf->data[pos + 5] << 16) |
-                  ((int64_t)buf->data[pos + 6] << 8) | (int64_t)buf->data[pos + 7];
+    uint64_t raw = ((uint64_t)buf->data[pos] << 56) | ((uint64_t)buf->data[pos + 1] << 48) |
+                   ((uint64_t)buf->data[pos + 2] << 40) | ((uint64_t)buf->data[pos + 3] << 32) |
+                   ((uint64_t)buf->data[pos + 4] << 24) | ((uint64_t)buf->data[pos + 5] << 16) |
+                   ((uint64_t)buf->data[pos + 6] << 8) | (uint64_t)buf->data[pos + 7];
+    int64_t val = (int64_t)raw;
     buf->position += 8;
     return val;
 }

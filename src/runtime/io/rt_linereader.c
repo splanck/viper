@@ -37,6 +37,7 @@
 #include "rt_string.h"
 
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -63,6 +64,7 @@ typedef struct rt_linereader_impl {
     int has_peeked; ///< Whether we have a peeked character.
 } rt_linereader_impl;
 
+/// @brief Open a text file at UTF-8 path in binary-read mode (platform-aware).
 static FILE *rt_linereader_fopen_utf8(const char *path) {
 #if defined(_WIN32)
     wchar_t *wide_path = rt_file_path_utf8_to_wide(path);
@@ -555,10 +557,19 @@ rt_string rt_linereader_read_all(void *obj) {
         return rt_string_from_bytes("", 0);
     }
 
-    size_t remaining = (end > pos) ? (size_t)(end - pos) : 0;
+    int64_t remaining64 = end > pos ? end - pos : 0;
+    if ((uint64_t)remaining64 > (uint64_t)SIZE_MAX) {
+        rt_trap("LineReader.ReadAll: file too large");
+        return rt_string_from_bytes("", 0);
+    }
+    size_t remaining = (size_t)remaining64;
 
     // Account for any peeked character
     size_t extra = lr->has_peeked ? 1 : 0;
+    if (remaining > SIZE_MAX - extra) {
+        rt_trap("LineReader.ReadAll: file too large");
+        return rt_string_from_bytes("", 0);
+    }
     size_t total = remaining + extra;
 
     if (total == 0) {

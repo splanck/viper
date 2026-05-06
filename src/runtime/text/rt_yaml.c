@@ -9,7 +9,7 @@
 // Purpose: Implements a practical YAML 1.2 subset parser and formatter for the
 //          Viper.Data.Yaml class. Supports scalars (string, int, float, bool,
 //          null), block/flow sequences, block/flow mappings, quoted strings,
-//          comments (#), and multiline strings (| and >).
+//          comments (#), and block scalar parsing (| and >).
 //
 // Key invariants:
 //   - YAML types map to: null→NULL, bool→Box.I1, int→Box.I64,
@@ -190,6 +190,9 @@ static void parser_skip_blank_lines_and_comments(yaml_parser *p) {
     }
 }
 
+/// @brief Count leading spaces on the current line and return the indent depth.
+///        Returns -1 and records an error if a tab is found in the indent region
+///        (YAML 1.2 forbids tabs as indentation).
 static int get_indent_checked(yaml_parser *p) {
     int indent = 0;
     size_t pos = p->pos;
@@ -208,6 +211,7 @@ static int get_indent_checked(yaml_parser *p) {
     return indent;
 }
 
+/// @brief Consume trailing spaces, an optional `#` comment, and the newline after an inline value.
 static void parser_finish_value_line(yaml_parser *p) {
     parser_skip_spaces(p);
     parser_skip_comment(p);
@@ -215,10 +219,10 @@ static void parser_finish_value_line(yaml_parser *p) {
         parser_advance(p);
 }
 
-/// @brief True if (after leading spaces) the current line is exactly `marker` followed by EOL/space/comment.
+/// @brief True if (after leading spaces) the current line is exactly `marker`.
 ///
-/// Used to detect document boundaries (`---`, `...`) without false
-/// positives on lines like `--- something` or `---abc`.
+/// Used to detect document boundaries (`---`, `...`) without silently
+/// discarding inline content on lines like `--- value`.
 static bool parser_at_line_marker(yaml_parser *p, const char *marker) {
     size_t pos = p->pos;
     size_t marker_len = strlen(marker);
@@ -230,8 +234,11 @@ static bool parser_at_line_marker(yaml_parser *p, const char *marker) {
     if (strncmp(p->input + pos, marker, marker_len) != 0)
         return false;
 
-    char next = (pos + marker_len < p->len) ? p->input[pos + marker_len] : '\0';
-    return next == '\0' || next == '\n' || next == ' ' || next == '\t' || next == '#';
+    pos += marker_len;
+    while (pos < p->len && (p->input[pos] == ' ' || p->input[pos] == '\t'))
+        pos++;
+    char next = (pos < p->len) ? p->input[pos] : '\0';
+    return next == '\0' || next == '\n' || next == '#';
 }
 
 /// @brief If the current line starts with `marker`, consume it (and the rest of the line).
@@ -244,8 +251,12 @@ static bool parser_consume_line_marker(yaml_parser *p, const char *marker) {
         parser_advance(p);
     for (const char *m = marker; *m; ++m)
         parser_advance(p);
-    while (!parser_eof(p) && parser_peek(p) != '\n')
-        parser_advance(p);
+    parser_skip_spaces(p);
+    parser_skip_comment(p);
+    if (!parser_eof(p) && parser_peek(p) != '\n') {
+        set_error("unexpected content after document marker", p->line);
+        return false;
+    }
     if (parser_peek(p) == '\n')
         parser_advance(p);
     return true;
@@ -285,9 +296,8 @@ static bool yaml_is_mapping(void *obj) {
 
 /// @brief Case-insensitive whole-string compare against a YAML keyword.
 ///
-/// Used to match the various spellings of YAML's null/true/false
-/// (`null`, `Null`, `NULL`, `~`, `true`, `True`, `TRUE`, `yes`, …)
-/// that the spec considers equivalent.
+/// Used to match the YAML 1.2 spellings we accept for null/true/false
+/// and special float values.
 static bool is_special_value(const char *str, size_t len, const char *value) {
     size_t vlen = strlen(value);
     if (len != vlen)
@@ -297,6 +307,47 @@ static bool is_special_value(const char *str, size_t len, const char *value) {
             return false;
     }
     return true;
+}
+
+/// @brief True if `str` has a decimal float shape, excluding C-only `inf`/`nan`.
+static bool looks_like_decimal_float(const char *str, size_t len) {
+    size_t i = 0;
+    if (i < len && (str[i] == '+' || str[i] == '-'))
+        i++;
+
+    bool digits_before = false;
+    while (i < len && isdigit((unsigned char)str[i])) {
+        digits_before = true;
+        i++;
+    }
+
+    bool has_dot = false;
+    bool digits_after = false;
+    if (i < len && str[i] == '.') {
+        has_dot = true;
+        i++;
+        while (i < len && isdigit((unsigned char)str[i])) {
+            digits_after = true;
+            i++;
+        }
+    }
+
+    bool has_exp = false;
+    if (i < len && (str[i] == 'e' || str[i] == 'E')) {
+        has_exp = true;
+        i++;
+        if (i < len && (str[i] == '+' || str[i] == '-'))
+            i++;
+        bool exp_digits = false;
+        while (i < len && isdigit((unsigned char)str[i])) {
+            exp_digits = true;
+            i++;
+        }
+        if (!exp_digits)
+            return false;
+    }
+
+    return i == len && (has_dot || has_exp) && (digits_before || digits_after);
 }
 
 /// @brief Parse a raw scalar token into its strongest matching Viper type.
@@ -317,13 +368,11 @@ static void *parse_scalar(const char *str, size_t len) {
         return NULL;
     }
 
-    // Boolean
-    if (is_special_value(str, len, "true") || is_special_value(str, len, "yes") ||
-        is_special_value(str, len, "on")) {
+    // Boolean (YAML 1.2 core schema)
+    if (is_special_value(str, len, "true")) {
         return rt_box_i1(1);
     }
-    if (is_special_value(str, len, "false") || is_special_value(str, len, "no") ||
-        is_special_value(str, len, "off")) {
+    if (is_special_value(str, len, "false")) {
         return rt_box_i1(0);
     }
 
@@ -373,12 +422,15 @@ static void *parse_scalar(const char *str, size_t len) {
             return rt_string_from_bytes(str, (int64_t)len);
         }
 
-        // Try float
-        errno = 0;
-        double fval = strtod(buf, &end);
-        if (*end == '\0' && errno != ERANGE) {
-            free(buf);
-            return rt_box_f64(fval);
+        // Try numeric floats. Gate strtod so C-only tokens like `inf`/`nan`
+        // are not accepted as YAML scalars; YAML special floats are handled below.
+        if (looks_like_decimal_float(buf, len)) {
+            errno = 0;
+            double fval = strtod(buf, &end);
+            if (*end == '\0' && errno != ERANGE) {
+                free(buf);
+                return rt_box_f64(fval);
+            }
         }
 
         // Check for special floats
@@ -405,6 +457,7 @@ static void *parse_scalar(const char *str, size_t len) {
     return rt_string_from_bytes(str, (int64_t)len);
 }
 
+/// @brief Convert a single hex digit character to its integer value; returns -1 for non-hex chars.
 static int hex_value(char c) {
     if (c >= '0' && c <= '9')
         return c - '0';
@@ -415,6 +468,8 @@ static int hex_value(char c) {
     return -1;
 }
 
+/// @brief Encode Unicode codepoint `cp` as UTF-8 and append it to `*buf`, growing as needed.
+///        Returns false and leaves the buffer unchanged if `cp` is a surrogate or out of range.
 static bool append_utf8(uint32_t cp, char **buf, size_t *len, size_t *capacity) {
     if (cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF))
         return false;
@@ -828,6 +883,14 @@ static void *parse_block_mapping(yaml_parser *p, int base_indent) {
             p->depth--;
             return NULL;
         }
+        if (rt_map_has(map, key)) {
+            set_error("duplicate mapping key", p->line);
+            yaml_release(value);
+            yaml_release((void *)key);
+            yaml_release(map);
+            p->depth--;
+            return NULL;
+        }
         rt_map_set(map, key, value);
         yaml_release(value);
 
@@ -840,12 +903,15 @@ static void *parse_block_mapping(yaml_parser *p, int base_indent) {
 
 static void *parse_flow_value(yaml_parser *p);
 
+/// @brief Skip spaces, tabs, CR, and LF within a flow collection context.
 static void skip_flow_ws(yaml_parser *p) {
     while (!parser_eof(p) && (parser_peek(p) == ' ' || parser_peek(p) == '\t' ||
                               parser_peek(p) == '\n' || parser_peek(p) == '\r'))
         parser_advance(p);
 }
 
+/// @brief Parse a flow-mapping key: either a quoted string or a plain scalar up to `:` or `}`.
+///        Sets an error and returns NULL if no key material is found.
 static rt_string parse_flow_key(yaml_parser *p) {
     skip_flow_ws(p);
     char c = parser_peek(p);
@@ -865,7 +931,14 @@ static rt_string parse_flow_key(yaml_parser *p) {
     return rt_string_from_bytes(p->input + start, (int64_t)len);
 }
 
+/// @brief Parse a flow sequence `[ item, item, ... ]`, returning an owned `Seq[Any]`.
+///        Rejects trailing commas and unterminated sequences.
 static void *parse_flow_sequence(yaml_parser *p) {
+    if (p->depth >= YAML_MAX_DEPTH) {
+        set_error("sequence nesting depth limit exceeded", p->line);
+        return NULL;
+    }
+    p->depth++;
     parser_advance(p); // [
     void *seq = rt_seq_new();
     rt_seq_set_owns_elements(seq, 1);
@@ -873,13 +946,21 @@ static void *parse_flow_sequence(yaml_parser *p) {
     skip_flow_ws(p);
     if (parser_peek(p) == ']') {
         parser_advance(p);
+        p->depth--;
         return seq;
     }
 
     while (!parser_eof(p)) {
+        if (parser_peek(p) == ',' || parser_peek(p) == ']' || parser_peek(p) == '}') {
+            set_error("expected flow sequence value", p->line);
+            yaml_release(seq);
+            p->depth--;
+            return NULL;
+        }
         void *item = parse_flow_value(p);
         if (!item && yaml_last_error[0] != '\0') {
             yaml_release(seq);
+            p->depth--;
             return NULL;
         }
         rt_seq_push(seq, item);
@@ -892,31 +973,43 @@ static void *parse_flow_sequence(yaml_parser *p) {
             if (parser_peek(p) == ']') {
                 set_error("trailing comma in flow sequence", p->line);
                 yaml_release(seq);
+                p->depth--;
                 return NULL;
             }
             continue;
         }
         if (parser_peek(p) == ']') {
             parser_advance(p);
+            p->depth--;
             return seq;
         }
         set_error("expected ',' or ']' in flow sequence", p->line);
         yaml_release(seq);
+        p->depth--;
         return NULL;
     }
 
     set_error("unterminated flow sequence", p->line);
     yaml_release(seq);
+    p->depth--;
     return NULL;
 }
 
+/// @brief Parse a flow mapping `{ key: value, ... }`, returning an owned `Map[Any,Any]`.
+///        Rejects trailing commas, duplicate keys, and unterminated mappings.
 static void *parse_flow_mapping(yaml_parser *p) {
+    if (p->depth >= YAML_MAX_DEPTH) {
+        set_error("mapping nesting depth limit exceeded", p->line);
+        return NULL;
+    }
+    p->depth++;
     parser_advance(p); // {
     void *map = rt_map_new();
 
     skip_flow_ws(p);
     if (parser_peek(p) == '}') {
         parser_advance(p);
+        p->depth--;
         return map;
     }
 
@@ -924,6 +1017,7 @@ static void *parse_flow_mapping(yaml_parser *p) {
         rt_string key = parse_flow_key(p);
         if (!key) {
             yaml_release(map);
+            p->depth--;
             return NULL;
         }
 
@@ -932,6 +1026,7 @@ static void *parse_flow_mapping(yaml_parser *p) {
             set_error("expected ':' in flow mapping", p->line);
             yaml_release((void *)key);
             yaml_release(map);
+            p->depth--;
             return NULL;
         }
         parser_advance(p);
@@ -940,6 +1035,15 @@ static void *parse_flow_mapping(yaml_parser *p) {
         if (!value && yaml_last_error[0] != '\0') {
             yaml_release((void *)key);
             yaml_release(map);
+            p->depth--;
+            return NULL;
+        }
+        if (rt_map_has(map, key)) {
+            set_error("duplicate mapping key", p->line);
+            yaml_release(value);
+            yaml_release((void *)key);
+            yaml_release(map);
+            p->depth--;
             return NULL;
         }
         rt_map_set(map, key, value);
@@ -953,24 +1057,30 @@ static void *parse_flow_mapping(yaml_parser *p) {
             if (parser_peek(p) == '}') {
                 set_error("trailing comma in flow mapping", p->line);
                 yaml_release(map);
+                p->depth--;
                 return NULL;
             }
             continue;
         }
         if (parser_peek(p) == '}') {
             parser_advance(p);
+            p->depth--;
             return map;
         }
         set_error("expected ',' or '}' in flow mapping", p->line);
         yaml_release(map);
+        p->depth--;
         return NULL;
     }
 
     set_error("unterminated flow mapping", p->line);
     yaml_release(map);
+    p->depth--;
     return NULL;
 }
 
+/// @brief Parse a single value inside a flow collection context (scalar, quoted string,
+///        or nested `[`/`{`). Stops before `,`, `]`, or `}` without consuming them.
 static void *parse_flow_value(yaml_parser *p) {
     skip_flow_ws(p);
     char c = parser_peek(p);
@@ -987,6 +1097,10 @@ static void *parse_flow_value(yaml_parser *p) {
     size_t len = p->pos - start;
     while (len > 0 && isspace((unsigned char)p->input[start + len - 1]))
         len--;
+    if (len == 0) {
+        set_error("expected flow value", p->line);
+        return NULL;
+    }
     return parse_scalar(p->input + start, len);
 }
 
@@ -1021,6 +1135,14 @@ static void *parse_value(yaml_parser *p, int base_indent) {
     if (c == '-' && (content_pos + 1 >= p->len || p->input[content_pos + 1] == ' ' ||
                      p->input[content_pos + 1] == '\n')) {
         return parse_block_sequence(p, indent);
+    }
+
+    if (c == '[' || c == '{') {
+        while (parser_peek(p) == ' ')
+            parser_advance(p);
+        void *flow = (c == '[') ? parse_flow_sequence(p) : parse_flow_mapping(p);
+        parser_finish_value_line(p);
+        return flow;
     }
 
     // Check if it's a mapping (look for ':')
@@ -1143,7 +1265,10 @@ static void *parse_value(yaml_parser *p, int base_indent) {
 
     // Plain scalar
     size_t start = p->pos;
-    while (!parser_eof(p) && parser_peek(p) != '\n' && parser_peek(p) != '#') {
+    while (!parser_eof(p) && parser_peek(p) != '\n') {
+        if (parser_peek(p) == '#' &&
+            (p->pos == start || p->input[p->pos - 1] == ' ' || p->input[p->pos - 1] == '\t'))
+            break;
         if (parser_peek(p) == ':' && (parser_peek_at(p, 1) == ' ' || parser_peek_at(p, 1) == '\n'))
             break;
         parser_advance(p);
@@ -1163,7 +1288,16 @@ static void *parse_value(yaml_parser *p, int base_indent) {
 // Public API - Parsing
 //=============================================================================
 
-/// @brief Parse a YAML string into Viper values (Map, Seq, String, boxed numbers).
+/// @brief `Yaml.Parse(text)` — parse a YAML 1.2 document into Viper values.
+///
+/// YAML types map to: null→NULL, bool→Box.I1, int→Box.I64, float→Box.F64,
+/// string→rt_string, sequence→Seq, mapping→Map. Multi-document streams
+/// (separated by `---`) return a Seq containing one value per document.
+/// Returns NULL both for YAML `null` and for parse failures; call
+/// `rt_yaml_error()` to distinguish the two cases.
+///
+/// @param text UTF-8 YAML source to parse.
+/// @return Owned Viper value, or NULL on empty/null/error.
 void *rt_yaml_parse(rt_string text) {
     clear_error();
 
@@ -1262,12 +1396,15 @@ void *rt_yaml_parse(rt_string text) {
     return first_document;
 }
 
-/// @brief Get the last YAML parse error message (empty if no error).
+/// @brief `Yaml.Error()` — return the last parse error on this thread, or "" if none.
+///        Errors are thread-local so concurrent parses don't clobber each other.
 rt_string rt_yaml_error(void) {
     return rt_string_from_bytes(yaml_last_error, strlen(yaml_last_error));
 }
 
-/// @brief Check whether a string contains valid YAML syntax.
+/// @brief `Yaml.IsValid(text)` — return 1 if `text` parses as valid YAML, 0 otherwise.
+///        Empty input is considered valid (maps to YAML null). Internally calls Parse
+///        and discards the result so no document object is retained.
 int8_t rt_yaml_is_valid(rt_string text) {
     clear_error();
 
@@ -1333,7 +1470,7 @@ static void buf_append_indent(char **buf, size_t *cap, size_t *len, int spaces) 
 /// @brief Decide whether a string needs to be emitted as a quoted YAML scalar.
 ///
 /// Plain scalars are ambiguous when they could be parsed as a
-/// number, boolean, null, or special token (e.g. `yes`, `123`,
+/// number, boolean, null, or special token (e.g. `true`, `123`,
 /// `~`), or contain reserved indicator characters (`:`, `#`, `[`,
 /// `{`, `&`, `*`, etc.) or leading/trailing whitespace. In any of
 /// those cases we wrap them in double quotes for safe round-tripping.
@@ -1341,14 +1478,18 @@ static bool needs_quoting(const char *str) {
     if (!str || !*str)
         return true;
 
-    // Check for special values
-    if (is_special_value(str, strlen(str), "true") || is_special_value(str, strlen(str), "false") ||
-        is_special_value(str, strlen(str), "null") || strcmp(str, "~") == 0 ||
-        is_special_value(str, strlen(str), "yes") || is_special_value(str, strlen(str), "no") ||
-        is_special_value(str, strlen(str), "on") || is_special_value(str, strlen(str), "off"))
+    size_t slen = strlen(str);
+
+    if (strcmp(str, "---") == 0 || strcmp(str, "...") == 0)
         return true;
 
-    if (isspace((unsigned char)str[0]) || isspace((unsigned char)str[strlen(str) - 1]))
+    void *parsed = parse_scalar(str, slen);
+    bool parsed_as_string = parsed && rt_string_is_handle(parsed);
+    yaml_release(parsed);
+    if (!parsed_as_string)
+        return true;
+
+    if (isspace((unsigned char)str[0]) || isspace((unsigned char)str[slen - 1]))
         return true;
 
     // Check first char
@@ -1363,12 +1504,6 @@ static bool needs_quoting(const char *str) {
         if (*p == '\n' || *p == '\r' || *p == ':' || *p == '#')
             return true;
     }
-
-    // Check if it looks like a number
-    char *end;
-    strtod(str, &end);
-    if (*end == '\0')
-        return true;
 
     return false;
 }
@@ -1387,27 +1522,6 @@ static void format_string(
 
     if (!needs_quoting(str)) {
         buf_append(buf, cap, len, str);
-        return;
-    }
-
-    // Check if multiline
-    bool has_newline = strchr(str, '\n') != NULL;
-    if (has_newline) {
-        buf_append(buf, cap, len, "|\n");
-        // Add with indentation
-        int block_indent = indent * (level + 1);
-        const char *p = str;
-        while (*p) {
-            buf_append_indent(buf, cap, len, block_indent);
-            while (*p && *p != '\n') {
-                buf_append_char(buf, cap, len, *p);
-                p++;
-            }
-            if (*p == '\n') {
-                buf_append_char(buf, cap, len, '\n');
-                p++;
-            }
-        }
         return;
     }
 
@@ -1430,8 +1544,20 @@ static void format_string(
             case '\r':
                 buf_append(buf, cap, len, "\\r");
                 break;
+            case '\b':
+                buf_append(buf, cap, len, "\\b");
+                break;
+            case '\f':
+                buf_append(buf, cap, len, "\\f");
+                break;
             default:
-                buf_append_char(buf, cap, len, *p);
+                if ((unsigned char)*p < 0x20) {
+                    char esc[7];
+                    snprintf(esc, sizeof(esc), "\\u%04X", (unsigned char)*p);
+                    buf_append(buf, cap, len, esc);
+                } else {
+                    buf_append_char(buf, cap, len, *p);
+                }
                 break;
         }
     }
@@ -1568,12 +1694,15 @@ static void format_value(void *obj, int indent, int level, char **buf, size_t *c
 // Public API - Formatting
 //=============================================================================
 
-/// @brief Format a Viper value as a YAML string (default 2-space indent).
+/// @brief `Yaml.Format(obj)` — serialize a Viper value as a YAML string (2-space indent).
+///        Delegates to `rt_yaml_format_indent` with `indent=2`.
 rt_string rt_yaml_format(void *obj) {
     return rt_yaml_format_indent(obj, 2);
 }
 
-/// @brief Format a Viper value as a YAML string with the given indent width.
+/// @brief `Yaml.FormatIndent(obj, indent)` — serialize with a custom indent width (1–8).
+///        Values outside [1, 8] are clamped to 2 or 8 respectively.
+///        Output always uses block-style collections and quotes ambiguous scalars.
 rt_string rt_yaml_format_indent(void *obj, int64_t indent) {
     if (indent < 1)
         indent = 2;
@@ -1594,8 +1723,8 @@ rt_string rt_yaml_format_indent(void *obj, int64_t indent) {
 // Public API - Type Inspection
 //=============================================================================
 
-/// @brief Get the YAML type name of a parsed value ("map", "seq", "string", "number", "bool",
-/// "null").
+/// @brief `Yaml.TypeOf(obj)` — return a string describing the YAML type of a parsed value.
+///        Returns "null", "bool", "int", "float", "string", "sequence", "mapping", or "unknown".
 rt_string rt_yaml_type_of(void *obj) {
     if (!obj)
         return rt_string_from_bytes("null", 4);

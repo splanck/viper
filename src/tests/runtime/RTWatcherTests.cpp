@@ -273,6 +273,42 @@ static void test_file_event_path() {
     rmdir_p(base);
 }
 
+#if defined(__linux__)
+static void test_file_recreate_is_detected() {
+    printf("Testing file recreate events...\n");
+
+    const char *base = get_test_base();
+    mkdir_p(base);
+
+    char file_path[512];
+    snprintf(file_path, sizeof(file_path), "%s/recreated.txt", base);
+    create_file(file_path);
+
+    void *w = rt_watcher_new(rt_string_from_bytes(file_path, strlen(file_path)));
+    rt_watcher_start(w);
+    wait_for_event();
+
+    remove_file(file_path);
+    wait_for_event();
+    create_file(file_path);
+
+    bool saw_created = false;
+    for (int i = 0; i < 20; ++i) {
+        int64_t event = rt_watcher_poll_for(w, 100);
+        if (event == RT_WATCH_EVENT_CREATED) {
+            rt_string event_path = rt_watcher_event_path(w);
+            saw_created = strcmp(rt_string_cstr(event_path), file_path) == 0;
+            break;
+        }
+    }
+    test_result("file recreate produces created event", saw_created);
+
+    rt_watcher_stop(w);
+    remove_file(file_path);
+    rmdir_p(base);
+}
+#endif
+
 /// @brief Test watcher traps on null path.
 static void test_null_path_trap() {
     printf("Testing null path trap...\n");
@@ -305,6 +341,9 @@ int main() {
     test_poll_no_events();
     test_directory_event_path();
     test_file_event_path();
+#if defined(__linux__)
+    test_file_recreate_is_detected();
+#endif
     test_null_path_trap();
     test_nonexistent_path_trap();
 

@@ -136,6 +136,20 @@ static void test_glob_match() {
         test_result("character class mismatch", rt_glob_match(path, pattern) == 0);
     }
 
+#ifdef _WIN32
+    // Test 16: Windows backslashes are path separators for wildcard boundaries.
+    {
+        rt_string pattern = rt_const_cstr("dir/*.txt");
+        rt_string path = rt_const_cstr("dir\\hello.txt");
+        test_result("Windows slash pattern matches backslash path", rt_glob_match(path, pattern) == 1);
+    }
+    {
+        rt_string pattern = rt_const_cstr("*.txt");
+        rt_string path = rt_const_cstr("dir\\hello.txt");
+        test_result("Windows * does not cross backslash", rt_glob_match(path, pattern) == 0);
+    }
+#endif
+
     printf("\n");
 }
 

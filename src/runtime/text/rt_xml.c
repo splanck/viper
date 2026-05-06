@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_xml.c
-// Purpose: Implements XML parsing and formatting for the Viper.Text.Xml class
+// Purpose: Implements XML parsing and formatting for the Viper.Data.Xml class
 //          per XML 1.0. Builds a node tree supporting elements, text content,
 //          comments, and CDATA sections. Provides Parse, Format, FormatPretty,
 //          and node navigation (Tag, Attr, SetAttr, Children, TextContent).
@@ -17,7 +17,7 @@
 //   - Text and CDATA nodes carry a text content string.
 //   - Attributes are stored as an rt_map<String, String>.
 //   - Format produces minimal XML (no added whitespace).
-//   - The parser is NOT thread-safe; external synchronization is required.
+//   - Parse and diagnostics use thread-local state.
 //
 // Ownership/Lifetime:
 //   - The node tree is heap-allocated; all nodes are owned by their parent.
@@ -94,6 +94,7 @@ static void clear_error(void) {
     xml_last_error[0] = '\0';
 }
 
+/// @brief Return true if the thread-local error buffer is currently non-empty.
 static bool has_error(void) {
     return xml_last_error[0] != '\0';
 }
@@ -104,9 +105,9 @@ static bool has_error(void) {
 
 /// @brief GC finalizer for XML nodes — cascades release through the tree.
 ///
-/// Releases tag, content, attribute map, and (recursively, via the
-/// children seq's own released items) every child. Children are owned
-/// by their parent, so dropping the root cleans up the entire document.
+/// Releases tag, content, attribute map, and every child retained by
+/// this node. Children are owned by their parent, so dropping the root
+/// cleans up the entire document.
 /// `parent` is a weak pointer and is intentionally not released.
 static void xml_node_finalizer(void *obj) {
     xml_node *node = (xml_node *)obj;
@@ -304,6 +305,8 @@ static bool is_name_char(char c) {
     return isalnum((unsigned char)c) || c == '_' || c == ':' || c == '-' || c == '.';
 }
 
+/// @brief Return true if the null-terminated string `s` is a valid XML 1.0 name.
+///        We restrict to ASCII: letter/underscore/colon start, alnum/underscore/colon/hyphen/dot continue.
 static bool is_valid_xml_name_cstr(const char *s) {
     if (!s || !is_name_start_char(*s))
         return false;
@@ -314,16 +317,50 @@ static bool is_valid_xml_name_cstr(const char *s) {
     return true;
 }
 
+/// @brief Return true if `name` (an `rt_string`) is a valid XML 1.0 element or attribute name.
 static bool is_valid_xml_name(rt_string name) {
     if (!name || rt_str_len(name) <= 0)
         return false;
     return is_valid_xml_name_cstr(rt_string_cstr(name));
 }
 
-static bool contains_bytes(const char *s, const char *needle) {
-    return s && needle && strstr(s, needle) != NULL;
+/// @brief Return true if `needle` appears anywhere within the `len`-byte buffer `s`.
+static bool contains_bytes_n(const char *s, size_t len, const char *needle) {
+    if (!s || !needle)
+        return false;
+    size_t needle_len = strlen(needle);
+    if (needle_len == 0 || needle_len > len)
+        return false;
+    for (size_t i = 0; i + needle_len <= len; i++) {
+        if (memcmp(s + i, needle, needle_len) == 0)
+            return true;
+    }
+    return false;
 }
 
+/// @brief Return true if `s` contains any byte that is illegal in XML 1.0 character data.
+///        Legal control characters are TAB (0x09), LF (0x0A), and CR (0x0D).
+static bool contains_invalid_xml_chars(const char *s, size_t len) {
+    if (!s && len > 0)
+        return true;
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)s[i];
+        if (c < 0x20 && c != 0x09 && c != 0x0A && c != 0x0D)
+            return true;
+    }
+    return false;
+}
+
+/// @brief Return true if every byte in `text` is a legal XML 1.0 character.
+///        NULL is treated as an empty string (valid).
+static bool is_valid_xml_string(rt_string text) {
+    if (!text)
+        return true;
+    return !contains_invalid_xml_chars(rt_string_cstr(text), (size_t)rt_str_len(text));
+}
+
+/// @brief Return true if `codepoint` is a legal XML 1.0 character (per XML 1.0 §2.2).
+///        Rejects surrogates (0xD800–0xDFFF) and the non-characters 0xFFFE and 0xFFFF.
 static bool is_valid_xml_char(uint32_t codepoint) {
     return codepoint == 0x9 || codepoint == 0xA || codepoint == 0xD ||
            (codepoint >= 0x20 && codepoint <= 0xD7FF) ||
@@ -379,21 +416,25 @@ static int decode_entity(const char *str, size_t len, char *out, size_t *consume
 
     // Character reference
     if (str[1] == '#') {
-        unsigned int codepoint = 0;
+        uint32_t codepoint = 0;
         if (len > 2 && str[2] == 'x') {
             if (end == 3)
                 return 0;
             // Hex
             for (size_t i = 3; i < end; i++) {
                 char c = str[i];
+                uint32_t digit;
                 if (c >= '0' && c <= '9')
-                    codepoint = codepoint * 16 + (c - '0');
+                    digit = (uint32_t)(c - '0');
                 else if (c >= 'a' && c <= 'f')
-                    codepoint = codepoint * 16 + (c - 'a' + 10);
+                    digit = (uint32_t)(c - 'a' + 10);
                 else if (c >= 'A' && c <= 'F')
-                    codepoint = codepoint * 16 + (c - 'A' + 10);
+                    digit = (uint32_t)(c - 'A' + 10);
                 else
                     return 0;
+                if (codepoint > (0x10FFFFu - digit) / 16u)
+                    return 0;
+                codepoint = codepoint * 16u + digit;
             }
         } else {
             if (end == 2)
@@ -401,10 +442,12 @@ static int decode_entity(const char *str, size_t len, char *out, size_t *consume
             // Decimal
             for (size_t i = 2; i < end; i++) {
                 char c = str[i];
-                if (c >= '0' && c <= '9')
-                    codepoint = codepoint * 10 + (c - '0');
-                else
+                if (c < '0' || c > '9')
                     return 0;
+                uint32_t digit = (uint32_t)(c - '0');
+                if (codepoint > (0x10FFFFu - digit) / 10u)
+                    return 0;
+                codepoint = codepoint * 10u + digit;
             }
         }
 
@@ -476,11 +519,16 @@ static rt_string parse_attr_value(xml_parser *p) {
     size_t start = p->pos;
     size_t decoded_len = 0;
     while (!parser_eof(p) && parser_peek(p) != quote) {
-        if (parser_peek(p) == '<') {
+        char c = parser_peek(p);
+        if (c == '<') {
             set_error("Invalid '<' in attribute value");
             return NULL;
         }
-        if (parser_peek(p) == '&') {
+        if (contains_invalid_xml_chars(&c, 1)) {
+            set_error("Invalid XML character in attribute value");
+            return NULL;
+        }
+        if (c == '&') {
             char buf[4];
             size_t consumed;
             int n = decode_entity(p->input + p->pos, p->len - p->pos, buf, &consumed);
@@ -509,12 +557,18 @@ static rt_string parse_attr_value(xml_parser *p) {
 
     size_t out_pos = 0;
     while (!parser_eof(p) && parser_peek(p) != quote) {
-        if (parser_peek(p) == '<') {
+        char c = parser_peek(p);
+        if (c == '<') {
             free(buf);
             set_error("Invalid '<' in attribute value");
             return NULL;
         }
-        if (parser_peek(p) == '&') {
+        if (contains_invalid_xml_chars(&c, 1)) {
+            free(buf);
+            set_error("Invalid XML character in attribute value");
+            return NULL;
+        }
+        if (c == '&') {
             char decoded[4];
             size_t consumed;
             int n = decode_entity(p->input + p->pos, p->len - p->pos, decoded, &consumed);
@@ -552,7 +606,12 @@ static rt_string parse_text_content(xml_parser *p) {
     // First pass: find end and calculate decoded length
     size_t decoded_len = 0;
     while (!parser_eof(p) && parser_peek(p) != '<') {
-        if (parser_peek(p) == '&') {
+        char c = parser_peek(p);
+        if (contains_invalid_xml_chars(&c, 1)) {
+            set_error("Invalid XML character in text content");
+            return NULL;
+        }
+        if (c == '&') {
             char buf[4];
             size_t consumed;
             int n = decode_entity(p->input + p->pos, p->len - p->pos, buf, &consumed);
@@ -579,7 +638,13 @@ static rt_string parse_text_content(xml_parser *p) {
 
     size_t out_pos = 0;
     while (!parser_eof(p) && parser_peek(p) != '<') {
-        if (parser_peek(p) == '&') {
+        char c = parser_peek(p);
+        if (contains_invalid_xml_chars(&c, 1)) {
+            free(buf);
+            set_error("Invalid XML character in text content");
+            return NULL;
+        }
+        if (c == '&') {
             char decoded[4];
             size_t consumed;
             int n = decode_entity(p->input + p->pos, p->len - p->pos, decoded, &consumed);
@@ -635,6 +700,10 @@ static void *parse_comment(xml_parser *p) {
         set_error("Invalid XML comment content");
         return NULL;
     }
+    if (contains_invalid_xml_chars(p->input + start, len)) {
+        set_error("Invalid XML character in comment");
+        return NULL;
+    }
 
     void *node = xml_node_new(XML_NODE_COMMENT);
     if (!node)
@@ -662,6 +731,10 @@ static void *parse_cdata(xml_parser *p) {
 
     if (!parser_match(p, "]]>")) {
         set_error("Unterminated CDATA section");
+        return NULL;
+    }
+    if (contains_invalid_xml_chars(p->input + start, len)) {
+        set_error("Invalid XML character in CDATA section");
         return NULL;
     }
 
@@ -705,22 +778,40 @@ static bool skip_doctype(xml_parser *p) {
 
     parser_match(p, "<!DOCTYPE");
 
-    int depth = 1;
-    while (!parser_eof(p) && depth > 0) {
+    int bracket_depth = 0;
+    char quote = '\0';
+    while (!parser_eof(p)) {
         char c = parser_peek(p);
-        if (c == '<')
-            depth++;
-        else if (c == '>')
-            depth--;
+        if (quote) {
+            if (c == quote)
+                quote = '\0';
+            parser_advance(p);
+            continue;
+        }
+        if (c == '"' || c == '\'') {
+            quote = c;
+            parser_advance(p);
+            continue;
+        }
+        if (c == '[') {
+            bracket_depth++;
+            parser_advance(p);
+            continue;
+        }
+        if (c == ']' && bracket_depth > 0) {
+            bracket_depth--;
+            parser_advance(p);
+            continue;
+        }
+        if (c == '>' && bracket_depth == 0) {
+            parser_advance(p);
+            return true;
+        }
         parser_advance(p);
     }
 
-    if (depth > 0) {
-        set_error("Unterminated DOCTYPE declaration");
-        return false;
-    }
-
-    return true;
+    set_error("Unterminated DOCTYPE declaration");
+    return false;
 }
 
 /// @brief Parse a complete element, including attributes and children.
@@ -914,10 +1005,10 @@ static void *parse_element(xml_parser *p) {
 ///
 /// Skips whitespace, then peeks at the upcoming bytes to decide:
 /// comment, CDATA, processing instruction, DOCTYPE (skipped recursively),
-/// element, or text. Drops whitespace-only text nodes so the tree
-/// stays compact. Returns NULL at EOF or when the current segment
-/// produces no node (e.g., whitespace-only text); a real parse error
-/// is signalled via `xml_last_error[0] != 0`.
+/// element, or text. Whitespace-only text nodes are preserved because
+/// they are part of XML character data. Returns NULL at EOF or when the
+/// current segment produces no node; a real parse error is signalled
+/// via `xml_last_error[0] != 0`.
 static void *parse_node(xml_parser *p) {
     if (parser_eof(p))
         return NULL;
@@ -960,22 +1051,6 @@ static void *parse_node(xml_parser *p) {
     // Text content
     rt_string text = parse_text_content(p);
     if (text) {
-        // Skip whitespace-only text nodes
-        const char *s = rt_string_cstr(text);
-        bool all_ws = true;
-        for (size_t i = 0; s[i]; i++) {
-            if (!isspace((unsigned char)s[i])) {
-                all_ws = false;
-                break;
-            }
-        }
-
-        if (all_ws) {
-            if (rt_obj_release_check0((void *)text))
-                rt_obj_free((void *)text);
-            return NULL;
-        }
-
         void *node = xml_node_new(XML_NODE_TEXT);
         if (!node) {
             if (rt_obj_release_check0((void *)text))
@@ -1075,6 +1150,7 @@ static void *parse_document(const char *input, size_t len) {
 /// @param text UTF-8 XML source.
 /// @return Owned document node, or NULL on failure.
 void *rt_xml_parse(rt_string text) {
+    clear_error();
     if (!text || rt_str_len(text) == 0) {
         set_error("Empty XML input");
         return NULL;
@@ -1096,6 +1172,7 @@ rt_string rt_xml_error(void) {
     return rt_string_from_bytes(xml_last_error, strlen(xml_last_error));
 }
 
+/// @brief Return 1 if `node` is a live Viper.Data.Xml node handle; 0 otherwise.
 int8_t rt_xml_is_node(void *node) {
     return node && rt_obj_class_id(node) == RT_XML_NODE_CLASS_ID ? 1 : 0;
 }
@@ -1130,6 +1207,7 @@ int8_t rt_xml_is_valid(rt_string text) {
 /// @param tag Element tag name.
 /// @return Owned element node, or NULL on OOM.
 void *rt_xml_element(rt_string tag) {
+    clear_error();
     if (!is_valid_xml_name(tag)) {
         set_error("Invalid XML element name");
         return NULL;
@@ -1153,6 +1231,12 @@ void *rt_xml_element(rt_string tag) {
 /// @param content Text body (NULL produces an empty text node).
 /// @return Owned text node.
 void *rt_xml_text(rt_string content) {
+    clear_error();
+    if (!is_valid_xml_string(content)) {
+        set_error("Invalid XML character in text content");
+        return NULL;
+    }
+
     void *node = xml_node_new(XML_NODE_TEXT);
     if (!node)
         return NULL;
@@ -1172,10 +1256,16 @@ void *rt_xml_text(rt_string content) {
 /// @param content Comment text.
 /// @return Owned comment node.
 void *rt_xml_comment(rt_string content) {
+    clear_error();
     if (content) {
         const char *s = rt_string_cstr(content);
-        if (contains_bytes(s, "--") || (rt_str_len(content) > 0 && s[rt_str_len(content) - 1] == '-')) {
+        size_t len = (size_t)rt_str_len(content);
+        if (contains_bytes_n(s, len, "--") || (len > 0 && s[len - 1] == '-')) {
             set_error("Invalid XML comment content");
+            return NULL;
+        }
+        if (contains_invalid_xml_chars(s, len)) {
+            set_error("Invalid XML character in comment");
             return NULL;
         }
     }
@@ -1200,9 +1290,18 @@ void *rt_xml_comment(rt_string content) {
 /// @param content Raw CDATA body.
 /// @return Owned CDATA node.
 void *rt_xml_cdata(rt_string content) {
-    if (content && contains_bytes(rt_string_cstr(content), "]]>")) {
-        set_error("Invalid CDATA content");
-        return NULL;
+    clear_error();
+    if (content) {
+        const char *s = rt_string_cstr(content);
+        size_t len = (size_t)rt_str_len(content);
+        if (contains_bytes_n(s, len, "]]>")) {
+            set_error("Invalid CDATA content");
+            return NULL;
+        }
+        if (contains_invalid_xml_chars(s, len)) {
+            set_error("Invalid XML character in CDATA section");
+            return NULL;
+        }
     }
 
     void *node = xml_node_new(XML_NODE_CDATA);
@@ -1222,8 +1321,8 @@ void *rt_xml_cdata(rt_string content) {
 
 /// @brief `XmlNode.NodeType` — return the kind enum (element/text/etc).
 ///
-/// Values match the `rt_xml_node_type_t` enum (0=element, 1=text,
-/// 2=comment, 3=cdata, 4=document). Returns 0 for NULL.
+/// Values match the `rt_xml_node_type_t` enum (1=element, 2=text,
+/// 3=comment, 4=cdata, 5=document). Returns 0 for NULL.
 int64_t rt_xml_node_type(void *node) {
     if (!rt_xml_is_node(node))
         return 0;
@@ -1352,7 +1451,7 @@ rt_string rt_xml_attr(void *node, rt_string name) {
     if (!value)
         return rt_str_empty();
 
-    // value is already retained by rt_map_get
+    rt_obj_retain_maybe(value);
     return (rt_string)value;
 }
 
@@ -1376,10 +1475,15 @@ int8_t rt_xml_has_attr(void *node, rt_string name) {
 /// Silently no-ops on non-element nodes or NULL inputs. Existing
 /// values for the same name are replaced.
 void rt_xml_set_attr(void *node, rt_string name, rt_string value) {
+    clear_error();
     if (!rt_xml_is_node(node) || !name)
         return;
     if (!is_valid_xml_name(name)) {
         set_error("Invalid XML attribute name");
+        return;
+    }
+    if (!is_valid_xml_string(value)) {
+        set_error("Invalid XML character in attribute value");
         return;
     }
 
@@ -1430,8 +1534,8 @@ void *rt_xml_attr_names(void *node) {
 /// @brief `XmlNode.Children` — return a snapshot seq of child nodes.
 ///
 /// Returns a *copy* of the internal seq so the caller can iterate or
-/// mutate it without affecting the parent. The contained node refs
-/// are borrowed (parent retains ownership) — do not release them.
+/// mutate it without affecting the parent. The result seq retains the
+/// children it contains; release the seq when finished.
 void *rt_xml_children(void *node) {
     void *copy = rt_seq_new();
     rt_seq_set_owns_elements(copy, 1);
@@ -1512,7 +1616,8 @@ void *rt_xml_child(void *node, rt_string tag) {
 /// @brief `XmlNode.ChildrenByTag(tag)` — direct children matching `tag`.
 ///
 /// Like `Child(tag)` but returns *all* matches in document order. Only
-/// looks one level deep — for recursive search use `FindAll`.
+/// looks one level deep — for recursive search use `FindAll`. The
+/// result seq retains the returned child nodes.
 void *rt_xml_children_by_tag(void *node, rt_string tag) {
     void *result = rt_seq_new();
     rt_seq_set_owns_elements(result, 1);
@@ -1544,10 +1649,10 @@ void *rt_xml_children_by_tag(void *node, rt_string tag) {
 
 /// @brief `XmlNode.Append(child)` — add `child` to the end of `node.children`.
 ///
-/// Sets the child's `parent` weak pointer. Ownership of the child
-/// transfers to the parent — release tracking flows through the
-/// parent's finalizer.
+/// Sets the child's `parent` weak pointer and retains the child for
+/// the parent, so callers may release their local reference afterward.
 void rt_xml_append(void *node, void *child) {
+    clear_error();
     if (!rt_xml_is_node(node) || !rt_xml_is_node(child) || node == child)
         return;
 
@@ -1574,6 +1679,7 @@ void rt_xml_append(void *node, void *child) {
     }
     cn->parent = n;
 
+    rt_obj_retain_maybe(child);
     rt_seq_push(n->children, child);
 }
 
@@ -1582,6 +1688,7 @@ void rt_xml_append(void *node, void *child) {
 /// Indices past the end clamp to "end of list" (effectively `Append`).
 /// Negative indices are rejected (silent no-op).
 void rt_xml_insert(void *node, int64_t index, void *child) {
+    clear_error();
     if (!rt_xml_is_node(node) || !rt_xml_is_node(child) || node == child || index < 0)
         return;
 
@@ -1611,6 +1718,7 @@ void rt_xml_insert(void *node, int64_t index, void *child) {
     }
     cn->parent = n;
 
+    rt_obj_retain_maybe(child);
     rt_seq_insert(n->children, index, child);
 }
 
@@ -1677,8 +1785,13 @@ void rt_xml_remove_at(void *node, int64_t index) {
 /// updates where the element should hold only its text. No-op for
 /// non-element receivers.
 void rt_xml_set_text(void *node, rt_string text) {
+    clear_error();
     if (!rt_xml_is_node(node))
         return;
+    if (!is_valid_xml_string(text)) {
+        set_error("Invalid XML character in text content");
+        return;
+    }
 
     xml_node *n = (xml_node *)node;
     if (n->type != XML_NODE_ELEMENT)
@@ -1689,6 +1802,8 @@ void rt_xml_set_text(void *node, rt_string text) {
         while (rt_seq_len(n->children) > 0) {
             void *removed = rt_seq_remove(n->children, 0);
             if (removed) {
+                xml_node *rn = (xml_node *)removed;
+                rn->parent = NULL;
                 if (rt_obj_release_check0(removed))
                     rt_obj_free(removed);
             }
@@ -1788,12 +1903,14 @@ static void find_all_recursive(void *node, const char *tag, void *result) {
     }
 }
 
+/// @brief Advance `path` past any leading '/' separators and return the new position.
 static const char *skip_path_separators(const char *path) {
     while (path && *path == '/')
         path++;
     return path;
 }
 
+/// @brief Return a pointer to the first '/' or NUL after the current path segment in `path`.
 static const char *path_segment_end(const char *path) {
     const char *p = path;
     while (*p && *p != '/')
@@ -1801,6 +1918,7 @@ static const char *path_segment_end(const char *path) {
     return p;
 }
 
+/// @brief Return true if `node` is an element whose tag equals the `seg_len`-byte string `seg`.
 static bool element_tag_matches_segment(xml_node *node, const char *seg, size_t seg_len) {
     if (!node || node->type != XML_NODE_ELEMENT || !node->tag)
         return false;
@@ -1808,6 +1926,9 @@ static bool element_tag_matches_segment(xml_node *node, const char *seg, size_t 
     return strlen(tag) == seg_len && strncmp(tag, seg, seg_len) == 0;
 }
 
+/// @brief Recursive helper for slash-path FindAll: walks `path` one segment at a time,
+///        pushing matching nodes into `result`. Handles both the "this node is the match"
+///        and "descend into children" cases.
 static void find_path_all_recursive(void *node, const char *path, void *result) {
     if (!rt_xml_is_node(node))
         return;
@@ -1937,8 +2058,27 @@ static void format_node(void *node, int indent, int level, char **buf, size_t *c
 /// @brief Append the c-string `str` to the growing format buffer.
 static void buf_append(char **buf, size_t *cap, size_t *len, const char *str) {
     size_t slen = strlen(str);
-    while (*len + slen + 1 > *cap) {
+    while (*len + slen + 1 < *len || *len + slen + 1 > *cap) {
         size_t new_cap = (*cap == 0) ? 256 : (*cap * 2);
+        if (new_cap <= *cap)
+            rt_trap("XML format: output length overflow");
+        char *tmp = (char *)realloc(*buf, new_cap);
+        if (!tmp)
+            rt_trap("XML format: memory allocation failed");
+        *buf = tmp;
+        *cap = new_cap;
+    }
+    memcpy(*buf + *len, str, slen);
+    *len += slen;
+    (*buf)[*len] = '\0';
+}
+
+/// @brief Append exactly `slen` bytes from `str` to the growing format buffer.
+static void buf_append_bytes(char **buf, size_t *cap, size_t *len, const char *str, size_t slen) {
+    while (*len + slen + 1 < *len || *len + slen + 1 > *cap) {
+        size_t new_cap = (*cap == 0) ? 256 : (*cap * 2);
+        if (new_cap <= *cap)
+            rt_trap("XML format: output length overflow");
         char *tmp = (char *)realloc(*buf, new_cap);
         if (!tmp)
             rt_trap("XML format: memory allocation failed");
@@ -1954,6 +2094,8 @@ static void buf_append(char **buf, size_t *cap, size_t *len, const char *str) {
 static void buf_append_char(char **buf, size_t *cap, size_t *len, char c) {
     if (*len + 2 > *cap) {
         size_t new_cap = (*cap == 0) ? 256 : (*cap * 2);
+        if (new_cap <= *cap)
+            rt_trap("XML format: output length overflow");
         char *tmp = (char *)realloc(*buf, new_cap);
         if (!tmp)
             rt_trap("XML format: memory allocation failed");
@@ -1976,9 +2118,9 @@ static void buf_append_indent(char **buf, size_t *cap, size_t *len, int spaces) 
 /// Always escapes `&`, `<`, `>`. Quotes (`"` and `'`) are escaped only
 /// when `for_attr` is set — text content can carry literal quotes
 /// freely. This matches the recommendations of XML 1.0 §2.4.
-static void buf_append_escaped(
-    char **buf, size_t *cap, size_t *len, const char *str, int for_attr) {
-    for (size_t i = 0; str[i]; i++) {
+static void buf_append_escaped_bytes(
+    char **buf, size_t *cap, size_t *len, const char *str, size_t slen, int for_attr) {
+    for (size_t i = 0; i < slen; i++) {
         switch (str[i]) {
             case '&':
                 buf_append(buf, cap, len, "&amp;");
@@ -2002,10 +2144,21 @@ static void buf_append_escaped(
                     buf_append_char(buf, cap, len, '\'');
                 break;
             default:
-                buf_append_char(buf, cap, len, str[i]);
+                if (contains_invalid_xml_chars(str + i, 1))
+                    buf_append(buf, cap, len, "&#xFFFD;");
+                else
+                    buf_append_char(buf, cap, len, str[i]);
                 break;
         }
     }
+}
+
+/// @brief Append `str` (an `rt_string`) to the buffer with XML escaping, delegating to `buf_append_escaped_bytes`.
+static void buf_append_escaped(
+    char **buf, size_t *cap, size_t *len, rt_string str, int for_attr) {
+    if (!str)
+        return;
+    buf_append_escaped_bytes(buf, cap, len, rt_string_cstr(str), (size_t)rt_str_len(str), for_attr);
 }
 
 /// @brief Emit a single element (opening tag, attrs, children, closing tag).
@@ -2036,7 +2189,7 @@ static void format_element(
             buf_append_char(buf, cap, len, ' ');
             buf_append(buf, cap, len, rt_string_cstr((rt_string)key));
             buf_append(buf, cap, len, "=\"");
-            buf_append_escaped(buf, cap, len, rt_string_cstr((rt_string)val), 1);
+            buf_append_escaped(buf, cap, len, (rt_string)val, 1);
             buf_append_char(buf, cap, len, '"');
         }
         // Release the keys Seq (its owns_elements finalizer releases the strings)
@@ -2055,30 +2208,33 @@ static void format_element(
 
     buf_append_char(buf, cap, len, '>');
 
-    // Check if only text content
-    bool text_only = true;
+    bool has_text_like = false;
+    bool has_non_text_like = false;
     for (int64_t i = 0; i < nchildren; i++) {
         void *child = rt_seq_get(elem->children, i);
         xml_node *cn = (xml_node *)child;
-        if (cn->type != XML_NODE_TEXT && cn->type != XML_NODE_CDATA)
-            text_only = false;
+        if (cn->type == XML_NODE_TEXT || cn->type == XML_NODE_CDATA)
+            has_text_like = true;
+        else
+            has_non_text_like = true;
         // Borrowed reference — parent owns child, do not release
-        if (!text_only)
-            break;
     }
+    bool text_only = has_text_like && !has_non_text_like;
+    bool mixed_content = has_text_like && has_non_text_like;
+    bool pretty_block = !text_only && !mixed_content && indent > 0;
 
-    if (!text_only && indent > 0)
+    if (pretty_block)
         buf_append_char(buf, cap, len, '\n');
 
     // Children
     for (int64_t i = 0; i < nchildren; i++) {
         void *child = rt_seq_get(elem->children, i);
-        format_node(child, text_only ? 0 : indent, level + 1, buf, cap, len);
+        format_node(child, (text_only || mixed_content) ? 0 : indent, level + 1, buf, cap, len);
         // Borrowed reference — parent owns child, do not release
     }
 
     // Closing tag
-    if (!text_only && indent > 0 && level > 0)
+    if (pretty_block && level > 0)
         buf_append_indent(buf, cap, len, indent * level);
     buf_append(buf, cap, len, "</");
     buf_append(buf, cap, len, rt_string_cstr(elem->tag));
@@ -2102,7 +2258,7 @@ static void format_node(void *node, int indent, int level, char **buf, size_t *c
 
         case XML_NODE_TEXT:
             if (n->content)
-                buf_append_escaped(buf, cap, len, rt_string_cstr(n->content), 0);
+                buf_append_escaped(buf, cap, len, n->content, 0);
             break;
 
         case XML_NODE_COMMENT:
@@ -2110,7 +2266,7 @@ static void format_node(void *node, int indent, int level, char **buf, size_t *c
                 buf_append_indent(buf, cap, len, indent * level);
             buf_append(buf, cap, len, "<!--");
             if (n->content)
-                buf_append(buf, cap, len, rt_string_cstr(n->content));
+                buf_append_bytes(buf, cap, len, rt_string_cstr(n->content), (size_t)rt_str_len(n->content));
             buf_append(buf, cap, len, "-->");
             if (indent > 0)
                 buf_append_char(buf, cap, len, '\n');
@@ -2119,7 +2275,7 @@ static void format_node(void *node, int indent, int level, char **buf, size_t *c
         case XML_NODE_CDATA:
             buf_append(buf, cap, len, "<![CDATA[");
             if (n->content)
-                buf_append(buf, cap, len, rt_string_cstr(n->content));
+                buf_append_bytes(buf, cap, len, rt_string_cstr(n->content), (size_t)rt_str_len(n->content));
             buf_append(buf, cap, len, "]]>");
             break;
 
@@ -2197,10 +2353,8 @@ rt_string rt_xml_format_pretty(void *node, int64_t indent) {
 
 /// @brief `Xml.Escape(text)` — apply XML text-content escaping.
 ///
-/// Escapes `&`, `<`, `>`. Quotes are *not* escaped (they're safe in
-/// text content); use this on attribute values only when the caller
-/// is also wrapping in quotes manually — `Xml.Format` handles the
-/// quote escaping for attributes automatically.
+/// Escapes `&`, `<`, `>`, `"`, and `'` so the result is safe in either
+/// element text or a quoted attribute value.
 rt_string rt_xml_escape(rt_string text) {
     if (!text)
         return rt_str_empty();
@@ -2209,7 +2363,7 @@ rt_string rt_xml_escape(rt_string text) {
     char *buf = NULL;
     size_t cap = 0, len = 0;
 
-    buf_append_escaped(&buf, &cap, &len, src, 0);
+    buf_append_escaped_bytes(&buf, &cap, &len, src, (size_t)rt_str_len(text), 1);
 
     rt_string result = rt_string_from_bytes(buf ? buf : "", (int64_t)len);
     free(buf);
@@ -2226,7 +2380,7 @@ rt_string rt_xml_unescape(rt_string text) {
         return rt_str_empty();
 
     const char *src = rt_string_cstr(text);
-    size_t src_len = strlen(src);
+    size_t src_len = (size_t)rt_str_len(text);
 
     char *buf = malloc(src_len + 1);
     if (!buf)

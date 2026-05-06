@@ -44,14 +44,17 @@ static const size_t kHeaderSize = 32;
 
 // ─── Little-endian read helpers ─────────────────────────────────────────────
 
+/// @brief Read a 2-byte little-endian unsigned integer from an unaligned byte pointer.
 static uint16_t read16LE(const uint8_t *p) {
     return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
 }
 
+/// @brief Read a 4-byte little-endian unsigned integer from an unaligned byte pointer.
 static uint32_t read32LE(const uint8_t *p) {
     return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
+/// @brief Read an 8-byte little-endian unsigned integer from an unaligned byte pointer.
 static uint64_t read64LE(const uint8_t *p) {
     uint64_t v = 0;
     for (int i = 0; i < 8; ++i)
@@ -132,6 +135,7 @@ static vpa_entry_t *parse_toc(const uint8_t *toc_data,
 
 // ─── Sort comparator for binary search ──────────────────────────────────────
 
+/// @brief qsort comparator for vpa_entry_t — orders entries lexicographically by name.
 static int entry_cmp(const void *a, const void *b) {
     const vpa_entry_t *ea = (const vpa_entry_t *)a;
     const vpa_entry_t *eb = (const vpa_entry_t *)b;

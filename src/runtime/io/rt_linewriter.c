@@ -429,7 +429,7 @@ void rt_linewriter_write_ln(void *obj, rt_string text) {
 ///           are silently ignored.
 ///
 /// @note Only the low 8 bits are written; the value is treated as unsigned.
-/// @note Values outside 0-255 are ignored (no write, no error).
+/// @note Values outside 0-255 trap instead of being silently ignored.
 /// @note Traps if obj is NULL or writer is closed.
 /// @note Thread safety: Not thread-safe for the same LineWriter object.
 ///
@@ -447,11 +447,14 @@ void rt_linewriter_write_char(void *obj, int64_t ch) {
         return;
     }
 
-    if (ch >= 0 && ch <= 255) {
-        if (fputc((int)ch, lw->fp) == EOF) {
-            rt_trap("LineWriter.WriteChar: write failed (disk full or I/O error)");
-            return;
-        }
+    if (ch < 0 || ch > 255) {
+        rt_trap("LineWriter.WriteChar: character out of range");
+        return;
+    }
+
+    if (fputc((int)ch, lw->fp) == EOF) {
+        rt_trap("LineWriter.WriteChar: write failed (disk full or I/O error)");
+        return;
     }
 }
 
