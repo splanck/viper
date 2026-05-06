@@ -22,7 +22,7 @@ viper \- Viper project driver, IL tool, and native build frontend
 \fBinstall-package\fR [\fB--target\fR windows|macos|linux-deb|linux-rpm|tarball|all]
 [\fB--build-dir\fR \fIDIR\fR|\fB--stage-dir\fR \fIDIR\fR|\fB--verify-only\fR \fIFILE\fR]
 [\fB--arch\fR arm64|x64] [\fB--stage-only\fR] [\fB--keep-stage-dir\fR]
-[\fB--no-verify\fR] [\fB-o\fR \fIOUTPUT\fR]
+[\fB--macos-pkg-version\fR \fIVERSION\fR] [\fB--no-verify\fR] [\fB-o\fR \fIOUTPUT\fR]
 .br
 .B viper
 \fB-run\fR \fIFILE.il\fR [\fIrun-options\fR]
@@ -70,6 +70,20 @@ points remain available through \fB-run\fR, \fBfront zia\fR, and \fBfront basic\
 \fCcmake --install\fR tree. It can stage from a build tree automatically,
 validate the staged install, emit native installer artifacts, or structurally
 verify an existing installer file.
+.PP
+For staged toolchain packaging, \fBinstall-package\fR requires a detected Viper
+version, detects platform and architecture from the staged \fCviper\fR binary
+when possible, including \fCuniversal\fR for macOS fat Mach-O payloads, and
+rejects native package targets that do not match that staged platform.
+\fB--target all\fR emits only the staged platform's native package type plus a
+portable tarball, with RPM included only when \fCrpmbuild\fR is available. Use
+\fB--macos-pkg-version\fR when the Viper version has suffixes that cannot be
+passed to \fCpkgbuild\fR without lossy truncation. Generated Windows toolchain
+installers add the installed \fCbin\fR directory to the system \fCPath\fR, avoid
+duplicate Viper-owned PATH entries on reinstall, remove only that PATH token on
+uninstall, and register source/IL file associations with the appropriate
+\fBviper run\fR or \fBviper -run\fR command. Linux toolchain packages include
+desktop/MIME association metadata and preserve staged Unix modes.
 .SH BUILD AND RUN OPTIONS
 These options apply to \fBviper run\fR and \fBviper build\fR when relevant, and
 to legacy run modes where noted.

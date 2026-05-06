@@ -56,6 +56,7 @@ struct ToolchainFileEntry {
 struct ToolchainInstallManifest {
     std::string version;
     std::string arch;
+    std::string platform;
     std::vector<ToolchainFileEntry> files;
     std::vector<FileAssoc> fileAssociations;
 

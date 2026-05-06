@@ -2,3 +2,14 @@ project xenoscape
 version 0.1.0
 lang zia
 entry main.zia
+
+# === Package Metadata ===
+package-name Xenoscape
+package-description "A 2D sci-fi sidescroller platformer built with Viper"
+package-identifier org.viper-lang.xenoscape
+package-author "Viper Project"
+package-license MIT
+package-icon packaging/icon.png
+
+# === Assets ===
+asset sounds sounds

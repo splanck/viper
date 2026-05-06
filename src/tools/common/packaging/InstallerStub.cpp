@@ -49,10 +49,14 @@ constexpr uint32_t kOpenExisting = 3u;
 constexpr uint32_t kCreateAlways = 2u;
 constexpr uint32_t kFileAttributeNormal = 0x80u;
 constexpr uint32_t kMoveFileDelayUntilReboot = 0x00000004u;
+constexpr uint32_t kFileOperationDelete = 0x0003u;
+constexpr uint32_t kFileOperationSilentFlags = 0x0414u;
 constexpr uint32_t kRegNone = 0u;
 constexpr uint32_t kRegSz = 1u;
+constexpr uint32_t kRegExpandSz = 2u;
 constexpr uint32_t kErrorFileNotFound = 2u;
 constexpr uint32_t kErrorPathNotFound = 3u;
+constexpr uint32_t kErrorDirNotEmpty = 145u;
 constexpr uint32_t kErrorAlreadyExists = 183u;
 constexpr uint32_t kErrorMoreData = 234u;
 constexpr uint32_t kInstallerCopyChunkBytes = 1024u * 1024u;
@@ -69,17 +73,21 @@ constexpr int32_t kDesktopPathOff = -0x30000;
 constexpr int32_t kMenuPathOff = -0x40000;
 constexpr int32_t kTempPathOff = -0x50000;
 constexpr int32_t kUninstallPathOff = -0x60000;
-constexpr int32_t kHFileOff = -0x60008;
-constexpr int32_t kHOutOff = -0x60010;
-constexpr int32_t kPFileBufOff = -0x60018;
-constexpr int32_t kBytesReadOff = -0x60020;
-constexpr int32_t kBytesWrittenOff = -0x60028;
-constexpr int32_t kRegKeyOff = -0x60030;
-constexpr int32_t kRemainingBytesOff = -0x60038;
-constexpr int32_t kCurrentFileOffsetOff = -0x60040;
-constexpr int32_t kCurrentChunkBytesOff = -0x60048;
-constexpr int32_t kCrcOff = -0x60050;
-constexpr uint32_t kFrameSize = 0x60080;
+constexpr int32_t kPathOriginalOff = -0x70000;
+constexpr int32_t kPathExpectedOff = -0x80000;
+constexpr int32_t kHFileOff = -0x80008;
+constexpr int32_t kHOutOff = -0x80010;
+constexpr int32_t kPFileBufOff = -0x80018;
+constexpr int32_t kBytesReadOff = -0x80020;
+constexpr int32_t kBytesWrittenOff = -0x80028;
+constexpr int32_t kRegKeyOff = -0x80030;
+constexpr int32_t kRemainingBytesOff = -0x80038;
+constexpr int32_t kCurrentFileOffsetOff = -0x80040;
+constexpr int32_t kCurrentChunkBytesOff = -0x80048;
+constexpr int32_t kCrcOff = -0x80050;
+constexpr int32_t kPathUpdatedOff = -0x80058;
+constexpr int32_t kFileOpStructOff = -0x800A0;
+constexpr uint32_t kFrameSize = 0x80100;
 
 enum InstallerIAT : uint32_t {
     kI_ExitProcess = 0,
@@ -98,17 +106,20 @@ enum InstallerIAT : uint32_t {
     kI_lstrcatW = 13,
     kI_lstrlenW = 14,
     kI_lstrcmpW = 15,
-    kI_GetLastError = 16,
-    kI_SHGetFolderPathW = 17,
-    kI_RegCreateKeyW = 18,
-    kI_RegSetValueExW = 19,
-    kI_RegCloseKey = 20,
-    kI_RegOpenKeyW = 21,
-    kI_RegQueryValueExW = 22,
-    kI_RegDeleteValueW = 23,
-    kI_RegDeleteKeyW = 24,
-    kI_MessageBoxW = 25,
-    kI_RtlComputeCrc32 = 26,
+    kI_lstrcmpiW = 16,
+    kI_GetLastError = 17,
+    kI_SHGetFolderPathW = 18,
+    kI_SHFileOperationW = 19,
+    kI_RegCreateKeyW = 20,
+    kI_RegSetValueExW = 21,
+    kI_RegCloseKey = 22,
+    kI_RegOpenKeyW = 23,
+    kI_RegQueryValueExW = 24,
+    kI_RegDeleteValueW = 25,
+    kI_RegDeleteKeyW = 26,
+    kI_MessageBoxW = 27,
+    kI_SendMessageTimeoutW = 28,
+    kI_RtlComputeCrc32 = 29,
 };
 
 enum UninstallerIAT : uint32_t {
@@ -121,14 +132,18 @@ enum UninstallerIAT : uint32_t {
     kU_lstrcatW = 6,
     kU_lstrlenW = 7,
     kU_lstrcmpW = 8,
-    kU_GetLastError = 9,
-    kU_SHGetFolderPathW = 10,
-    kU_RegOpenKeyW = 11,
-    kU_RegCloseKey = 12,
-    kU_RegQueryValueExW = 13,
-    kU_RegDeleteValueW = 14,
-    kU_RegDeleteKeyW = 15,
-    kU_MessageBoxW = 16,
+    kU_lstrcmpiW = 9,
+    kU_GetLastError = 10,
+    kU_SHGetFolderPathW = 11,
+    kU_RegOpenKeyW = 12,
+    kU_RegCreateKeyW = 13,
+    kU_RegCloseKey = 14,
+    kU_RegQueryValueExW = 15,
+    kU_RegDeleteValueW = 16,
+    kU_RegDeleteKeyW = 17,
+    kU_RegSetValueExW = 18,
+    kU_MessageBoxW = 19,
+    kU_SendMessageTimeoutW = 20,
 };
 
 std::vector<PEImport> installerImports() {
@@ -150,8 +165,9 @@ std::vector<PEImport> installerImports() {
           "lstrcatW",
           "lstrlenW",
           "lstrcmpW",
+          "lstrcmpiW",
           "GetLastError"}},
-        {"shell32.dll", {"SHGetFolderPathW"}},
+        {"shell32.dll", {"SHGetFolderPathW", "SHFileOperationW"}},
         {"advapi32.dll",
          {"RegCreateKeyW",
           "RegSetValueExW",
@@ -160,7 +176,7 @@ std::vector<PEImport> installerImports() {
           "RegQueryValueExW",
           "RegDeleteValueW",
           "RegDeleteKeyW"}},
-        {"user32.dll", {"MessageBoxW"}},
+        {"user32.dll", {"MessageBoxW", "SendMessageTimeoutW"}},
         {"ntdll.dll", {"RtlComputeCrc32"}},
     };
 }
@@ -177,15 +193,18 @@ std::vector<PEImport> uninstallerImports() {
           "lstrcatW",
           "lstrlenW",
           "lstrcmpW",
+          "lstrcmpiW",
           "GetLastError"}},
         {"shell32.dll", {"SHGetFolderPathW"}},
         {"advapi32.dll",
          {"RegOpenKeyW",
+          "RegCreateKeyW",
           "RegCloseKey",
           "RegQueryValueExW",
           "RegDeleteValueW",
-          "RegDeleteKeyW"}},
-        {"user32.dll", {"MessageBoxW"}},
+          "RegDeleteKeyW",
+          "RegSetValueExW"}},
+        {"user32.dll", {"MessageBoxW", "SendMessageTimeoutW"}},
     };
 }
 
@@ -274,6 +293,14 @@ std::string registryIdFor(const WindowsPackageLayout &layout) {
     if (!layout.executableName.empty())
         return normalizeExecName(layout.executableName);
     return normalizeExecName(layout.displayName);
+}
+
+std::string windowsPathFragment(std::string text) {
+    for (char &ch : text) {
+        if (ch == '/')
+            ch = '\\';
+    }
+    return text;
 }
 
 std::string uninstallKeyPathFor(const WindowsPackageLayout &layout) {
@@ -412,6 +439,30 @@ void emitCheckedCatStack(InstallerStubGen &gen,
     gen.callIATSlot(catSlot);
 }
 
+void emitCheckedCatReg(InstallerStubGen &gen,
+                       int32_t destOff,
+                       X64Reg srcReg,
+                       uint32_t catSlot,
+                       uint32_t strlenSlot,
+                       uint32_t errorLabel) {
+    gen.movMemReg(X64Reg::RBP, kBytesWrittenOff, srcReg);
+
+    gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, destOff);
+    gen.callIATSlot(strlenSlot);
+    gen.movMemReg(X64Reg::RBP, kBytesReadOff, X64Reg::RAX);
+
+    gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kBytesWrittenOff);
+    gen.callIATSlot(strlenSlot);
+    gen.movRegMem(X64Reg::RDX, X64Reg::RBP, kBytesReadOff);
+    gen.addRegReg(X64Reg::RAX, X64Reg::RDX);
+    gen.cmpRegImm32(X64Reg::RAX, kMaxPathChars - 1);
+    gen.ja(errorLabel);
+
+    gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, destOff);
+    gen.movRegMem(X64Reg::RDX, X64Reg::RBP, kBytesWrittenOff);
+    gen.callIATSlot(catSlot);
+}
+
 void emitCreateDirectoryChecked(InstallerStubGen &gen,
                                 uint32_t createDirSlot,
                                 uint32_t getLastErrorSlot,
@@ -532,11 +583,12 @@ void emitRegSetStackString(InstallerStubGen &gen,
                            uint32_t strlenSlot,
                            uint32_t valueNameOff,
                            int32_t stackBufOff,
+                           uint32_t valueType,
                            uint32_t errorLabel) {
     gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kRegKeyOff);
     gen.leaRipData(X64Reg::RDX, valueNameOff);
     gen.xorRegReg(X64Reg::R8, X64Reg::R8);
-    gen.movRegImm32(X64Reg::R9, kRegSz);
+    gen.movRegImm32(X64Reg::R9, valueType);
     gen.leaRegMem(X64Reg::RAX, X64Reg::RBP, stackBufOff);
     gen.movMemReg(X64Reg::RSP, 0x20, X64Reg::RAX);
 
@@ -549,10 +601,20 @@ void emitRegSetStackString(InstallerStubGen &gen,
     gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kRegKeyOff);
     gen.leaRipData(X64Reg::RDX, valueNameOff);
     gen.xorRegReg(X64Reg::R8, X64Reg::R8);
-    gen.movRegImm32(X64Reg::R9, kRegSz);
+    gen.movRegImm32(X64Reg::R9, valueType);
     gen.callIATSlot(regSetSlot);
     gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
     gen.jnz(errorLabel);
+}
+
+void emitRegSetStackString(InstallerStubGen &gen,
+                           uint32_t regSetSlot,
+                           uint32_t strlenSlot,
+                           uint32_t valueNameOff,
+                           int32_t stackBufOff,
+                           uint32_t errorLabel) {
+    emitRegSetStackString(
+        gen, regSetSlot, strlenSlot, valueNameOff, stackBufOff, kRegSz, errorLabel);
 }
 
 void emitRegSetDefaultStackString(InstallerStubGen &gen,
@@ -575,6 +637,57 @@ void emitRegSetDefaultStackString(InstallerStubGen &gen,
     gen.callIATSlot(regSetSlot);
     gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
     gen.jnz(errorLabel);
+}
+
+void emitRegQueryStackString(InstallerStubGen &gen,
+                             uint32_t querySlot,
+                             uint32_t valueNameOff,
+                             int32_t stackBufOff,
+                             uint32_t bufferBytes,
+                             uint32_t missingLabel) {
+    gen.movMemImm32(X64Reg::RBP, stackBufOff, 0);
+    zeroLocalQword(gen, kBytesReadOff);
+    zeroLocalQword(gen, kBytesWrittenOff);
+    gen.movMemImm32(X64Reg::RBP, kBytesReadOff, bufferBytes);
+    gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kRegKeyOff);
+    gen.leaRipData(X64Reg::RDX, valueNameOff);
+    gen.xorRegReg(X64Reg::R8, X64Reg::R8);
+    gen.leaRegMem(X64Reg::R9, X64Reg::RBP, kBytesWrittenOff);
+    gen.leaRegMem(X64Reg::RAX, X64Reg::RBP, stackBufOff);
+    gen.movMemReg(X64Reg::RSP, 0x20, X64Reg::RAX);
+    gen.leaRegMem(X64Reg::RAX, X64Reg::RBP, kBytesReadOff);
+    gen.movMemReg(X64Reg::RSP, 0x28, X64Reg::RAX);
+    gen.callIATSlot(querySlot);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jnz(missingLabel);
+}
+
+void emitAppendSeparatorIfNonEmpty(InstallerStubGen &gen,
+                                   int32_t destOff,
+                                   uint32_t separatorOff,
+                                   uint32_t catSlot,
+                                   uint32_t strlenSlot,
+                                   uint32_t errorLabel) {
+    const auto lblSkip = gen.newLabel();
+    gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, destOff);
+    gen.callIATSlot(strlenSlot);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jz(lblSkip);
+    emitCheckedCatEmbedded(gen, destOff, separatorOff, catSlot, strlenSlot, errorLabel);
+    gen.bindLabel(lblSkip);
+}
+
+void emitBroadcastEnvironmentChange(InstallerStubGen &gen,
+                                    uint32_t sendSlot,
+                                    uint32_t environmentOff) {
+    gen.movRegImm32(X64Reg::RCX, 0xFFFFu);
+    gen.movRegImm32(X64Reg::RDX, 0x001Au);
+    gen.xorRegReg(X64Reg::R8, X64Reg::R8);
+    gen.leaRipData(X64Reg::R9, environmentOff);
+    storeStackImm64(gen, 0x20, 0x0002u);
+    storeStackImm64(gen, 0x28, 5000u);
+    storeStackImm64(gen, 0x30, 0u);
+    gen.callIATSlot(sendSlot);
 }
 
 void emitRegCreateConstKey(InstallerStubGen &gen,
@@ -757,11 +870,19 @@ void emitRegisterFileAssociations(InstallerStubGen &gen,
     if (ownerMarkerBytes > kMaxPathChars * 2u)
         throw std::runtime_error("Windows registry owner marker is too long");
     const uint32_t ownerMarkerValueOff = gen.embedStringW(ownerMarker);
-    const uint32_t exeNameOff = gen.embedStringW(layout.executableName);
+    const std::string associationExecutable =
+        layout.fileAssociationExecutableRelativePath.empty()
+            ? layout.executableName
+            : windowsPathFragment(layout.fileAssociationExecutableRelativePath);
+    const uint32_t exeNameOff = gen.embedStringW(associationExecutable);
     const uint32_t quoteOff = gen.embedStringW("\"");
-    const uint32_t quotedArgOff = gen.embedStringW("\" \"%1\"");
+    const uint32_t quotedFileArgOff = gen.embedStringW(" \"%1\"");
 
     for (const auto &assoc : layout.fileAssociations) {
+        const uint32_t commandArgsOff =
+            assoc.openCommandArguments.empty()
+                ? 0
+                : gen.embedStringW(" " + assoc.openCommandArguments);
         const uint32_t extKeyOff = gen.embedStringW(extensionKeyFor(assoc));
         const uint32_t progIdOff = gen.embedStringW(assoc.progId);
         emitRegCreateConstKey(gen, createSlot, extKeyOff, errorLabel);
@@ -817,7 +938,12 @@ void emitRegisterFileAssociations(InstallerStubGen &gen,
         emitCheckedCatStack(gen, kTempPathOff, kInstallPathOff, catSlot, strlenSlot, errorLabel);
         emitCheckedCatEmbedded(gen, kTempPathOff, slashOff, catSlot, strlenSlot, errorLabel);
         emitCheckedCatEmbedded(gen, kTempPathOff, exeNameOff, catSlot, strlenSlot, errorLabel);
-        emitCheckedCatEmbedded(gen, kTempPathOff, quotedArgOff, catSlot, strlenSlot, errorLabel);
+        emitCheckedCatEmbedded(gen, kTempPathOff, quoteOff, catSlot, strlenSlot, errorLabel);
+        if (!assoc.openCommandArguments.empty())
+            emitCheckedCatEmbedded(
+                gen, kTempPathOff, commandArgsOff, catSlot, strlenSlot, errorLabel);
+        emitCheckedCatEmbedded(
+            gen, kTempPathOff, quotedFileArgOff, catSlot, strlenSlot, errorLabel);
         emitRegSetDefaultStackString(gen, setValueSlot, strlenSlot, kTempPathOff, errorLabel);
         emitRegCloseIfSet(gen, kRegKeyOff, closeSlot);
     }
@@ -948,6 +1074,366 @@ void emitBuildRootPaths(InstallerStubGen &gen,
             emitCreateDirectoryChecked(gen, createDirSlot, getLastErrorSlot, errorLabel);
         }
     }
+}
+
+void emitComposeInstallPathEntry(InstallerStubGen &gen,
+                                 const WindowsPackageLayout &layout,
+                                 int32_t destOff,
+                                 uint32_t slashOff,
+                                 uint32_t copySlot,
+                                 uint32_t catSlot,
+                                 uint32_t strlenSlot,
+                                 uint32_t errorLabel) {
+    gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, destOff);
+    gen.leaRegMem(X64Reg::RDX, X64Reg::RBP, kInstallPathOff);
+    gen.callIATSlot(copySlot);
+    if (!layout.pathRelativePath.empty()) {
+        emitCheckedCatEmbedded(gen, destOff, slashOff, catSlot, strlenSlot, errorLabel);
+        emitCheckedCatEmbedded(gen,
+                               destOff,
+                               gen.embedStringW(windowsPathFragment(layout.pathRelativePath)),
+                               catSlot,
+                               strlenSlot,
+                               errorLabel);
+    }
+}
+
+void emitCleanInstallRootContents(InstallerStubGen &gen,
+                                  const WindowsPackageLayout &layout,
+                                  uint32_t slashOff,
+                                  uint32_t starOff,
+                                  uint32_t copySlot,
+                                  uint32_t catSlot,
+                                  uint32_t strlenSlot,
+                                  uint32_t fileOperationSlot,
+                                  uint32_t errorLabel) {
+    if (!layout.cleanInstallRootBeforeInstall)
+        return;
+
+    gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kPathExpectedOff);
+    gen.leaRegMem(X64Reg::RDX, X64Reg::RBP, kInstallPathOff);
+    gen.callIATSlot(copySlot);
+    emitCheckedCatEmbedded(gen, kPathExpectedOff, slashOff, catSlot, strlenSlot, errorLabel);
+    emitCheckedCatEmbedded(gen, kPathExpectedOff, starOff, catSlot, strlenSlot, errorLabel);
+    gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kPathExpectedOff);
+    gen.callIATSlot(strlenSlot);
+    gen.cmpRegImm32(X64Reg::RAX, kMaxPathChars - 2);
+    gen.ja(errorLabel);
+    gen.movMemIndexImm16(X64Reg::RBP, X64Reg::RAX, 1, kPathExpectedOff + 2, 0);
+
+    for (int32_t off = 0; off < 56; off += 8)
+        zeroLocalQword(gen, kFileOpStructOff + off);
+    gen.movMemImm32(X64Reg::RBP, kFileOpStructOff + 8, kFileOperationDelete);
+    gen.leaRegMem(X64Reg::RAX, X64Reg::RBP, kPathExpectedOff);
+    gen.movMemReg(X64Reg::RBP, kFileOpStructOff + 16, X64Reg::RAX);
+    gen.movMemImm32(X64Reg::RBP, kFileOpStructOff + 32, kFileOperationSilentFlags);
+    gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kFileOpStructOff);
+    gen.callIATSlot(fileOperationSlot);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jnz(errorLabel);
+    gen.movRegMem(X64Reg::RAX, X64Reg::RBP, kFileOpStructOff + 36);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jnz(errorLabel);
+}
+
+void emitRemovePathEntryTokens(InstallerStubGen &gen,
+                               int32_t currentPathOff,
+                               int32_t entryOff,
+                               int32_t outputPathOff,
+                               uint32_t semicolonOff,
+                               uint32_t copySlot,
+                               uint32_t catSlot,
+                               uint32_t strcmpSlot,
+                               uint32_t strlenSlot,
+                               uint32_t errorLabel);
+
+void emitInstallPathUpdate(InstallerStubGen &gen,
+                           const WindowsPackageLayout &layout,
+                           uint32_t slashOff,
+                           uint32_t semicolonOff,
+                           uint32_t uninstallKeyOff,
+                           uint32_t envKeyOff,
+                           uint32_t regPathValueOff,
+                           uint32_t regOriginalPathOff,
+                           uint32_t regPathEntryOff,
+                           uint32_t environmentOff,
+                           uint32_t createSlot,
+                           uint32_t openSlot,
+                           uint32_t querySlot,
+                           uint32_t setValueSlot,
+                           uint32_t closeSlot,
+                           uint32_t copySlot,
+                           uint32_t catSlot,
+                           uint32_t strcmpSlot,
+                           uint32_t strlenSlot,
+                           uint32_t sendSlot,
+                           uint32_t errorLabel) {
+    if (!layout.addToPath)
+        return;
+    (void)regOriginalPathOff;
+
+    const auto lblDoAppend = gen.newLabel();
+    const auto lblPathMissing = gen.newLabel();
+    const auto lblCheckCurrentPath = gen.newLabel();
+    const auto lblSkipUpdateClose = gen.newLabel();
+    const auto lblSkipUpdate = gen.newLabel();
+
+    emitComposeInstallPathEntry(
+        gen, layout, kUninstallPathOff, slashOff, copySlot, catSlot, strlenSlot, errorLabel);
+
+    emitRegOpenConstKeyIfExists(gen, openSlot, closeSlot, uninstallKeyOff, lblCheckCurrentPath);
+    emitRegQueryStackString(gen,
+                            querySlot,
+                            regPathEntryOff,
+                            kTempPathOff,
+                            kMaxPathChars * 2u,
+                            lblCheckCurrentPath);
+    gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kTempPathOff);
+    gen.leaRegMem(X64Reg::RDX, X64Reg::RBP, kUninstallPathOff);
+    gen.callIATSlot(strcmpSlot);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jnz(lblCheckCurrentPath);
+    emitRegCloseIfSet(gen, kRegKeyOff, closeSlot);
+    gen.jmp(lblSkipUpdate);
+
+    gen.bindLabel(lblCheckCurrentPath);
+    emitRegCloseIfSet(gen, kRegKeyOff, closeSlot);
+    emitRegOpenConstKeyIfExists(gen, openSlot, closeSlot, envKeyOff, lblDoAppend);
+    emitRegQueryStackString(
+        gen, querySlot, regPathValueOff, kPathOriginalOff, kMaxPathChars * 2u, lblDoAppend);
+    gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kTempPathOff);
+    gen.leaRegMem(X64Reg::RDX, X64Reg::RBP, kPathOriginalOff);
+    gen.callIATSlot(copySlot);
+    emitRemovePathEntryTokens(gen,
+                              kTempPathOff,
+                              kUninstallPathOff,
+                              kPathExpectedOff,
+                              semicolonOff,
+                              copySlot,
+                              catSlot,
+                              strcmpSlot,
+                              strlenSlot,
+                              errorLabel);
+    gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kPathExpectedOff);
+    gen.leaRegMem(X64Reg::RDX, X64Reg::RBP, kPathOriginalOff);
+    gen.callIATSlot(strcmpSlot);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jnz(lblSkipUpdateClose);
+    emitRegCloseIfSet(gen, kRegKeyOff, closeSlot);
+    gen.jmp(lblDoAppend);
+
+    gen.bindLabel(lblDoAppend);
+    emitRegCloseIfSet(gen, kRegKeyOff, closeSlot);
+    emitRegCreateConstKey(gen, createSlot, envKeyOff, errorLabel);
+    emitRegQueryStackString(
+        gen, querySlot, regPathValueOff, kPathOriginalOff, kMaxPathChars * 2u, lblPathMissing);
+    gen.bindLabel(lblPathMissing);
+
+    gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kTempPathOff);
+    gen.leaRegMem(X64Reg::RDX, X64Reg::RBP, kPathOriginalOff);
+    gen.callIATSlot(copySlot);
+    emitAppendSeparatorIfNonEmpty(
+        gen, kTempPathOff, semicolonOff, catSlot, strlenSlot, errorLabel);
+    emitCheckedCatStack(
+        gen, kTempPathOff, kUninstallPathOff, catSlot, strlenSlot, errorLabel);
+
+    emitRegSetStackString(gen,
+                          setValueSlot,
+                          strlenSlot,
+                          regPathValueOff,
+                          kTempPathOff,
+                          kRegExpandSz,
+                          errorLabel);
+    emitBroadcastEnvironmentChange(gen, sendSlot, environmentOff);
+    emitRegCloseIfSet(gen, kRegKeyOff, closeSlot);
+    gen.movRegImm32(X64Reg::RAX, 1);
+    gen.movMemReg(X64Reg::RBP, kPathUpdatedOff, X64Reg::RAX);
+    gen.jmp(lblSkipUpdate);
+    gen.bindLabel(lblSkipUpdateClose);
+    emitRegCloseIfSet(gen, kRegKeyOff, closeSlot);
+    gen.bindLabel(lblSkipUpdate);
+}
+
+void emitRestorePathFromOriginalLocal(InstallerStubGen &gen,
+                                      const WindowsPackageLayout &layout,
+                                      uint32_t envKeyOff,
+                                      uint32_t regPathValueOff,
+                                      uint32_t environmentOff,
+                                      uint32_t createSlot,
+                                      uint32_t setValueSlot,
+                                      uint32_t closeSlot,
+                                      uint32_t strlenSlot,
+                                      uint32_t sendSlot) {
+    if (!layout.addToPath)
+        return;
+
+    const auto lblSkip = gen.newLabel();
+    const auto lblClose = gen.newLabel();
+    gen.movRegMem(X64Reg::RAX, X64Reg::RBP, kPathUpdatedOff);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jz(lblSkip);
+    emitRegCreateConstKey(gen, createSlot, envKeyOff, lblSkip);
+    emitRegSetStackString(gen,
+                          setValueSlot,
+                          strlenSlot,
+                          regPathValueOff,
+                          kPathOriginalOff,
+                          kRegExpandSz,
+                          lblClose);
+    emitBroadcastEnvironmentChange(gen, sendSlot, environmentOff);
+    gen.bindLabel(lblClose);
+    emitRegCloseIfSet(gen, kRegKeyOff, closeSlot);
+    gen.bindLabel(lblSkip);
+}
+
+void emitRemovePathEntryTokens(InstallerStubGen &gen,
+                               int32_t currentPathOff,
+                               int32_t entryOff,
+                               int32_t outputPathOff,
+                               uint32_t semicolonOff,
+                               uint32_t copySlot,
+                               uint32_t catSlot,
+                               uint32_t strcmpSlot,
+                               uint32_t strlenSlot,
+                               uint32_t errorLabel) {
+    const auto lblLoop = gen.newLabel();
+    const auto lblFindEnd = gen.newLabel();
+    const auto lblTokenSeparator = gen.newLabel();
+    const auto lblTokenEnd = gen.newLabel();
+    const auto lblProcessToken = gen.newLabel();
+    const auto lblAppendToken = gen.newLabel();
+    const auto lblSkipToken = gen.newLabel();
+    const auto lblContinue = gen.newLabel();
+    const auto lblDone = gen.newLabel();
+
+    (void)copySlot;
+    gen.movMemImm32(X64Reg::RBP, outputPathOff, 0);
+
+    gen.xorRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.bindLabel(lblLoop);
+    gen.movMemReg(X64Reg::RBP, kCurrentFileOffsetOff, X64Reg::RAX);
+
+    gen.bindLabel(lblFindEnd);
+    gen.movzxRegMemIndex16(X64Reg::R11, X64Reg::RBP, X64Reg::RAX, 0, currentPathOff);
+    gen.cmpRegImm32(X64Reg::R11, ';');
+    gen.jz(lblTokenSeparator);
+    gen.testRegReg(X64Reg::R11, X64Reg::R11);
+    gen.jz(lblTokenEnd);
+    gen.addRegImm32(X64Reg::RAX, 2);
+    gen.jmp(lblFindEnd);
+
+    gen.bindLabel(lblTokenSeparator);
+    gen.movMemReg(X64Reg::RBP, kRemainingBytesOff, X64Reg::RAX);
+    gen.movMemIndexImm16(X64Reg::RBP, X64Reg::RAX, 0, currentPathOff, 0);
+    gen.addRegImm32(X64Reg::RAX, 2);
+    gen.movMemReg(X64Reg::RBP, kCurrentChunkBytesOff, X64Reg::RAX);
+    gen.jmp(lblProcessToken);
+
+    gen.bindLabel(lblTokenEnd);
+    gen.movMemReg(X64Reg::RBP, kRemainingBytesOff, X64Reg::RAX);
+    gen.movMemReg(X64Reg::RBP, kCurrentChunkBytesOff, X64Reg::RAX);
+
+    gen.bindLabel(lblProcessToken);
+    gen.movRegMem(X64Reg::R10, X64Reg::RBP, kCurrentFileOffsetOff);
+    gen.movRegMem(X64Reg::R11, X64Reg::RBP, kRemainingBytesOff);
+    gen.cmpRegReg(X64Reg::R10, X64Reg::R11);
+    gen.jz(lblSkipToken);
+    gen.leaRegMemIndex(X64Reg::RCX, X64Reg::RBP, X64Reg::R10, 0, currentPathOff);
+    gen.leaRegMem(X64Reg::RDX, X64Reg::RBP, entryOff);
+    gen.callIATSlot(strcmpSlot);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jz(lblSkipToken);
+
+    gen.bindLabel(lblAppendToken);
+    emitAppendSeparatorIfNonEmpty(
+        gen, outputPathOff, semicolonOff, catSlot, strlenSlot, errorLabel);
+    gen.movRegMem(X64Reg::R10, X64Reg::RBP, kCurrentFileOffsetOff);
+    gen.leaRegMemIndex(X64Reg::RDX, X64Reg::RBP, X64Reg::R10, 0, currentPathOff);
+    emitCheckedCatReg(gen, outputPathOff, X64Reg::RDX, catSlot, strlenSlot, errorLabel);
+
+    gen.bindLabel(lblSkipToken);
+    gen.movRegMem(X64Reg::RAX, X64Reg::RBP, kCurrentChunkBytesOff);
+    gen.movzxRegMemIndex16(X64Reg::R11, X64Reg::RBP, X64Reg::RAX, 0, currentPathOff);
+    gen.testRegReg(X64Reg::R11, X64Reg::R11);
+    gen.jz(lblDone);
+    gen.jmp(lblContinue);
+
+    gen.bindLabel(lblContinue);
+    gen.jmp(lblLoop);
+
+    gen.bindLabel(lblDone);
+}
+
+void emitRestorePathFromUninstallKey(InstallerStubGen &gen,
+                                     const WindowsPackageLayout &layout,
+                                     uint32_t slashOff,
+                                     uint32_t semicolonOff,
+                                     uint32_t uninstallKeyOff,
+                                     uint32_t envKeyOff,
+                                     uint32_t regPathValueOff,
+                                     uint32_t regPathEntryOff,
+                                     uint32_t environmentOff,
+                                     uint32_t openSlot,
+                                     uint32_t createSlot,
+                                     uint32_t setValueSlot,
+                                     uint32_t querySlot,
+                                     uint32_t closeSlot,
+                                     uint32_t copySlot,
+                                     uint32_t catSlot,
+                                     uint32_t strcmpSlot,
+                                     uint32_t strlenSlot,
+                                     uint32_t sendSlot,
+                                     uint32_t errorLabel) {
+    if (!layout.addToPath)
+        return;
+
+    const auto lblSkip = gen.newLabel();
+    const auto lblEntryMissing = gen.newLabel();
+    const auto lblEnvMissing = gen.newLabel();
+
+    emitRegOpenConstKeyIfExists(gen, openSlot, closeSlot, uninstallKeyOff, lblSkip);
+    emitRegQueryStackString(gen,
+                            querySlot,
+                            regPathEntryOff,
+                            kUninstallPathOff,
+                            kMaxPathChars * 2u,
+                            lblEntryMissing);
+    emitRegCloseIfSet(gen, kRegKeyOff, closeSlot);
+
+    emitRegCloseIfSet(gen, kRegKeyOff, closeSlot);
+    gen.movRegImm64(X64Reg::RCX, kHkeyLocalMachine);
+    gen.leaRipData(X64Reg::RDX, envKeyOff);
+    gen.leaRegMem(X64Reg::R8, X64Reg::RBP, kRegKeyOff);
+    gen.callIATSlot(createSlot);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jnz(lblEnvMissing);
+    emitRegQueryStackString(
+        gen, querySlot, regPathValueOff, kTempPathOff, kMaxPathChars * 2u, lblEnvMissing);
+    emitRemovePathEntryTokens(gen,
+                              kTempPathOff,
+                              kUninstallPathOff,
+                              kPathExpectedOff,
+                              semicolonOff,
+                              copySlot,
+                              catSlot,
+                              strcmpSlot,
+                              strlenSlot,
+                              errorLabel);
+    emitRegSetStackString(gen,
+                          setValueSlot,
+                          strlenSlot,
+                          regPathValueOff,
+                          kPathOriginalOff,
+                          kRegExpandSz,
+                          lblEnvMissing);
+    emitBroadcastEnvironmentChange(gen, sendSlot, environmentOff);
+    gen.bindLabel(lblEnvMissing);
+    emitRegCloseIfSet(gen, kRegKeyOff, closeSlot);
+    gen.jmp(lblSkip);
+
+    gen.bindLabel(lblEntryMissing);
+    emitRegCloseIfSet(gen, kRegKeyOff, closeSlot);
+    gen.bindLabel(lblSkip);
 }
 
 void emitExtractFile(InstallerStubGen &gen,
@@ -1134,6 +1620,8 @@ void emitDeleteFile(InstallerStubGen &gen,
     gen.jz(lblOk);
     gen.cmpRegImm32(X64Reg::RAX, kErrorPathNotFound);
     gen.jz(lblOk);
+    gen.cmpRegImm32(X64Reg::RAX, kErrorDirNotEmpty);
+    gen.jz(lblOk);
     gen.jmp(errorLabel);
     gen.bindLabel(lblOk);
 }
@@ -1179,18 +1667,27 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
     const std::string uninstallKey = uninstallKeyPathFor(layout);
 
     const uint32_t slashOff = gen.embedStringW("\\");
+    const uint32_t starOff = gen.embedStringW("*");
+    const uint32_t semicolonOff = gen.embedStringW(";");
+    const uint32_t quoteOff = gen.embedStringW("\"");
     const uint32_t installDirOff = gen.embedStringW(installDir);
     const uint32_t displayNameOff = gen.embedStringW(layout.displayName);
     const uint32_t versionOff = gen.embedStringW(version);
     const uint32_t publisherOff = gen.embedStringW(publisher);
     const uint32_t uninstallKeyOff = gen.embedStringW(uninstallKey);
     const uint32_t uninstallExeOff = gen.embedStringW("uninstall.exe");
+    const uint32_t environmentKeyOff =
+        gen.embedStringW("SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment");
+    const uint32_t environmentOff = gen.embedStringW("Environment");
 
     const uint32_t regDisplayNameOff = gen.embedStringW("DisplayName");
     const uint32_t regDisplayVersionOff = gen.embedStringW("DisplayVersion");
     const uint32_t regPublisherOff = gen.embedStringW("Publisher");
     const uint32_t regInstallLocationOff = gen.embedStringW("InstallLocation");
     const uint32_t regUninstallStringOff = gen.embedStringW("UninstallString");
+    const uint32_t regPathValueOff = gen.embedStringW("Path");
+    const uint32_t regOriginalPathOff = gen.embedStringW("VAPSOriginalPath");
+    const uint32_t regPathEntryOff = gen.embedStringW("VAPSPathEntry");
 
     const uint32_t successTitleOff = gen.embedStringW(layout.displayName + " Setup");
     const uint32_t successMsgOff =
@@ -1215,6 +1712,7 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
     zeroLocalQword(gen, kHOutOff);
     zeroLocalQword(gen, kPFileBufOff);
     zeroLocalQword(gen, kRegKeyOff);
+    zeroLocalQword(gen, kPathUpdatedOff);
 
     gen.xorRegReg(X64Reg::RCX, X64Reg::RCX);
     gen.leaRegMem(X64Reg::RDX, X64Reg::RBP, kSelfPathOff);
@@ -1248,6 +1746,16 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
                        true,
                        lblError);
 
+    emitCleanInstallRootContents(gen,
+                                 layout,
+                                 slashOff,
+                                 starOff,
+                                 kI_lstrcpyW,
+                                 kI_lstrcatW,
+                                 kI_lstrlenW,
+                                 kI_SHFileOperationW,
+                                 lblRollbackError);
+
     for (const auto &dir : layout.installDirectories) {
         emitCreateDirectoryAtRoot(gen,
                                   dir.root,
@@ -1279,6 +1787,28 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
                         kI_RtlComputeCrc32,
                         lblRollbackError);
     }
+
+    emitInstallPathUpdate(gen,
+                          layout,
+                          slashOff,
+                          semicolonOff,
+                          uninstallKeyOff,
+                          environmentKeyOff,
+                          regPathValueOff,
+                          regOriginalPathOff,
+                          regPathEntryOff,
+                          environmentOff,
+                          kI_RegCreateKeyW,
+                          kI_RegOpenKeyW,
+                          kI_RegQueryValueExW,
+                          kI_RegSetValueExW,
+                          kI_RegCloseKey,
+                          kI_lstrcpyW,
+                          kI_lstrcatW,
+                          kI_lstrcmpiW,
+                          kI_lstrlenW,
+                          kI_SendMessageTimeoutW,
+                          lblRollbackError);
 
     gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kUninstallPathOff);
     gen.leaRegMem(X64Reg::RDX, X64Reg::RBP, kInstallPathOff);
@@ -1321,12 +1851,48 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
                           regInstallLocationOff,
                           kInstallPathOff,
                           lblRollbackError);
+    gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kTempPathOff);
+    gen.leaRipData(X64Reg::RDX, quoteOff);
+    gen.callIATSlot(kI_lstrcpyW);
+    emitCheckedCatStack(
+        gen, kTempPathOff, kUninstallPathOff, kI_lstrcatW, kI_lstrlenW, lblRollbackError);
+    emitCheckedCatEmbedded(
+        gen, kTempPathOff, quoteOff, kI_lstrcatW, kI_lstrlenW, lblRollbackError);
     emitRegSetStackString(gen,
                           kI_RegSetValueExW,
                           kI_lstrlenW,
                           regUninstallStringOff,
-                          kUninstallPathOff,
+                          kTempPathOff,
                           lblRollbackError);
+    if (layout.addToPath) {
+        const auto lblSkipPathMetadata = gen.newLabel();
+        gen.movRegMem(X64Reg::RAX, X64Reg::RBP, kPathUpdatedOff);
+        gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+        gen.jz(lblSkipPathMetadata);
+        emitRegSetStackString(gen,
+                              kI_RegSetValueExW,
+                              kI_lstrlenW,
+                              regOriginalPathOff,
+                              kPathOriginalOff,
+                              kRegExpandSz,
+                              lblRollbackError);
+        emitComposeInstallPathEntry(gen,
+                                    layout,
+                                    kTempPathOff,
+                                    slashOff,
+                                    kI_lstrcpyW,
+                                    kI_lstrcatW,
+                                    kI_lstrlenW,
+                                    lblRollbackError);
+        emitRegSetStackString(gen,
+                              kI_RegSetValueExW,
+                              kI_lstrlenW,
+                              regPathEntryOff,
+                              kTempPathOff,
+                              kRegExpandSz,
+                              lblRollbackError);
+        gen.bindLabel(lblSkipPathMetadata);
+    }
     emitRegCloseIfSet(gen, kRegKeyOff, kI_RegCloseKey);
 
     emitRegisterFileAssociations(gen,
@@ -1372,6 +1938,16 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
     emitLocalFreeIfSet(gen, kPFileBufOff, kI_LocalFree);
     emitRegCloseIfSet(gen, kRegKeyOff, kI_RegCloseKey);
     emitCloseLocalHandleIfSet(gen, kHFileOff, kI_CloseHandle);
+    emitRestorePathFromOriginalLocal(gen,
+                                     layout,
+                                     environmentKeyOff,
+                                     regPathValueOff,
+                                     environmentOff,
+                                     kI_RegCreateKeyW,
+                                     kI_RegSetValueExW,
+                                     kI_RegCloseKey,
+                                     kI_lstrlenW,
+                                     kI_SendMessageTimeoutW);
     for (const auto &file : layout.uninstallFiles)
         emitDeleteFile(
             gen,
@@ -1443,8 +2019,14 @@ StubResult buildUninstallerStub(const WindowsPackageLayout &layout, const std::s
     const std::string uninstallKey = uninstallKeyPathFor(layout);
 
     const uint32_t slashOff = gen.embedStringW("\\");
+    const uint32_t semicolonOff = gen.embedStringW(";");
     const uint32_t installDirOff = gen.embedStringW(installDir);
     const uint32_t uninstallKeyOff = gen.embedStringW(uninstallKey);
+    const uint32_t environmentKeyOff =
+        gen.embedStringW("SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment");
+    const uint32_t environmentOff = gen.embedStringW("Environment");
+    const uint32_t regPathValueOff = gen.embedStringW("Path");
+    const uint32_t regPathEntryOff = gen.embedStringW("VAPSPathEntry");
     const uint32_t successTitleOff = gen.embedStringW(layout.displayName + " Uninstall");
     const uint32_t successMsgOff = gen.embedStringW(layout.displayName + " has been uninstalled.");
     const uint32_t errorTitleOff = gen.embedStringW("Uninstall Error");
@@ -1522,6 +2104,8 @@ StubResult buildUninstallerStub(const WindowsPackageLayout &layout, const std::s
         gen.jz(lblMenuPathDone);
         gen.cmpRegImm32(X64Reg::RAX, kErrorPathNotFound);
         gen.jz(lblMenuPathDone);
+        gen.cmpRegImm32(X64Reg::RAX, kErrorDirNotEmpty);
+        gen.jz(lblMenuPathDone);
         gen.jmp(lblError);
         gen.bindLabel(lblMenuPathDone);
     }
@@ -1536,7 +2120,15 @@ StubResult buildUninstallerStub(const WindowsPackageLayout &layout, const std::s
     gen.jz(lblInstallPathDone);
     gen.cmpRegImm32(X64Reg::RAX, kErrorPathNotFound);
     gen.jz(lblInstallPathDone);
+    gen.cmpRegImm32(X64Reg::RAX, kErrorDirNotEmpty);
+    const auto lblScheduleInstallDir = gen.newLabel();
+    gen.jz(lblScheduleInstallDir);
     gen.jmp(lblError);
+    gen.bindLabel(lblScheduleInstallDir);
+    gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kInstallPathOff);
+    gen.xorRegReg(X64Reg::RDX, X64Reg::RDX);
+    gen.movRegImm32(X64Reg::R8, kMoveFileDelayUntilReboot);
+    gen.callIATSlot(kU_MoveFileExW);
     gen.bindLabel(lblInstallPathDone);
 
     emitUnregisterFileAssociations(gen,
@@ -1547,6 +2139,27 @@ StubResult buildUninstallerStub(const WindowsPackageLayout &layout, const std::s
                                    kU_lstrcmpW,
                                    kU_RegDeleteValueW,
                                    kU_RegDeleteKeyW);
+
+    emitRestorePathFromUninstallKey(gen,
+                                    layout,
+                                    slashOff,
+                                    semicolonOff,
+                                    uninstallKeyOff,
+                                    environmentKeyOff,
+                                    regPathValueOff,
+                                    regPathEntryOff,
+                                    environmentOff,
+                                    kU_RegOpenKeyW,
+                                    kU_RegCreateKeyW,
+                                    kU_RegSetValueExW,
+                                    kU_RegQueryValueExW,
+                                    kU_RegCloseKey,
+                                    kU_lstrcpyW,
+                                    kU_lstrcatW,
+                                    kU_lstrcmpiW,
+                                    kU_lstrlenW,
+                                    kU_SendMessageTimeoutW,
+                                    lblError);
 
     gen.movRegImm64(X64Reg::RCX, kHkeyLocalMachine);
     gen.leaRipData(X64Reg::RDX, uninstallKeyOff);

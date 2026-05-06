@@ -163,8 +163,24 @@ std::string detectManifestVersion(const fs::path &stagePrefix) {
 std::string detectHostArch() {
 #if defined(__aarch64__) || defined(_M_ARM64)
     return "arm64";
-#else
+#elif defined(__x86_64__) || defined(_M_X64) || defined(_M_AMD64)
     return "x64";
+#else
+    throw std::runtime_error("unsupported host CPU for toolchain packaging; use a staged "
+                             "toolchain with a recognized native viper binary");
+#endif
+}
+
+std::string detectHostPlatform() {
+#if defined(_WIN32)
+    return "windows";
+#elif defined(__APPLE__)
+    return "macos";
+#elif defined(__linux__)
+    return "linux";
+#else
+    throw std::runtime_error("unsupported host platform for toolchain packaging; use a staged "
+                             "toolchain with a recognized native viper binary");
 #endif
 }
 
@@ -198,7 +214,19 @@ ToolchainFileKind classifyFileKind(const std::string &relativePath) {
     return ToolchainFileKind::Extra;
 }
 
-std::vector<fs::path> gatherFromInstallManifest(const fs::path &stagePrefix, const fs::path &installManifestPath) {
+std::optional<fs::path> lexicalRelativeIfUnder(const fs::path &prefix, const fs::path &path) {
+    const fs::path rel = path.lexically_normal().lexically_relative(prefix.lexically_normal());
+    if (rel.empty() || rel == fs::path("."))
+        return std::nullopt;
+    auto it = rel.begin();
+    if (it == rel.end() || *it == fs::path(".."))
+        return std::nullopt;
+    return rel;
+}
+
+std::vector<fs::path> gatherFromInstallManifest(const fs::path &stagePrefix,
+                                                const fs::path &stageAliasPrefix,
+                                                const fs::path &installManifestPath) {
     std::ifstream in(installManifestPath);
     if (!in)
         throw std::runtime_error("cannot read install manifest: " + installManifestPath.string());
@@ -206,13 +234,17 @@ std::vector<fs::path> gatherFromInstallManifest(const fs::path &stagePrefix, con
     std::vector<fs::path> files;
     std::set<std::string> seen;
     const fs::path normalizedStage = fs::weakly_canonical(stagePrefix);
+    const fs::path normalizedAlias = stageAliasPrefix.lexically_normal();
     std::string line;
     while (std::getline(in, line)) {
         if (line.empty())
             continue;
         fs::path filePath = fs::path(line);
-        if (filePath.is_relative())
+        if (filePath.is_relative()) {
             filePath = normalizedStage / filePath;
+        } else if (auto relViaAlias = lexicalRelativeIfUnder(normalizedAlias, filePath)) {
+            filePath = normalizedStage / *relViaAlias;
+        }
         filePath = filePath.lexically_normal();
         std::error_code ec;
         if (!fs::is_regular_file(filePath, ec) && !fs::is_symlink(filePath, ec))
@@ -365,6 +397,9 @@ ToolchainInstallManifest gatherToolchainInstallManifest(
     const fs::path &stagePrefix,
     std::optional<fs::path> installManifestPath) {
     std::error_code ec;
+    const fs::path absoluteStagePrefix = fs::absolute(stagePrefix, ec);
+    const fs::path stageAlias = (ec ? stagePrefix : absoluteStagePrefix).lexically_normal();
+    ec.clear();
     const fs::path normalizedStage = fs::weakly_canonical(stagePrefix, ec);
     const fs::path stage = ec ? stagePrefix.lexically_normal() : normalizedStage;
     if (!fs::exists(stage) || !fs::is_directory(stage))
@@ -372,13 +407,14 @@ ToolchainInstallManifest gatherToolchainInstallManifest(
 
     std::vector<fs::path> files;
     if (installManifestPath && fs::exists(*installManifestPath))
-        files = gatherFromInstallManifest(stage, *installManifestPath);
+        files = gatherFromInstallManifest(stage, stageAlias, *installManifestPath);
     if (files.empty())
         files = gatherFromStageWalk(stage);
 
     ToolchainInstallManifest manifest;
     manifest.version = detectManifestVersion(stage);
     manifest.arch = detectHostArch();
+    manifest.platform = detectHostPlatform();
     manifest.fileAssociations = defaultToolchainFileAssociations();
     manifest.files.reserve(files.size());
     for (const auto &file : files)
@@ -394,7 +430,16 @@ ToolchainInstallManifest gatherToolchainInstallManifest(
 }
 
 void validateToolchainInstallManifest(const ToolchainInstallManifest &manifest) {
-    validateToolchainArchitecture(manifest.arch);
+    validateToolchainPlatform(manifest.platform);
+    if (manifest.arch == "universal") {
+        if (manifest.platform != "macos") {
+            throw std::runtime_error("universal toolchain architecture is only valid for macOS "
+                                     "toolchain manifests");
+        }
+    } else {
+        validateToolchainArchitecture(manifest.arch);
+    }
+    validateDebVersion(manifest.version, "toolchain package version");
     validatePackageFileAssociations(manifest.fileAssociations);
 
     auto hasBinary = [&](const char *nameNoExt) {

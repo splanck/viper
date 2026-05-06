@@ -50,6 +50,7 @@ struct MacOSToolchainBuildParams {
     std::string outputPath;
     std::string identifier{"org.viper.toolchain"};
     std::string displayName{"Viper Toolchain"};
+    std::string packageVersion; ///< Optional dotted numeric pkgbuild version override.
 };
 
 /// @brief Build a macOS `.pkg` installer for the staged toolchain.

@@ -173,6 +173,56 @@ void InstallerStubGen::movMemImm32(X64Reg base, int32_t disp, uint32_t imm) {
     emit32(imm);
 }
 
+void InstallerStubGen::movMemIndexImm16(X64Reg base,
+                                        X64Reg index,
+                                        uint8_t scaleLog2,
+                                        int32_t disp,
+                                        uint16_t imm) {
+    if (scaleLog2 > 3)
+        throw std::runtime_error("InstallerStubGen: invalid SIB scale");
+    if (regBits(index) == 4)
+        throw std::runtime_error("InstallerStubGen: RSP/R12 cannot be used as SIB index");
+    uint8_t rex = 0x40;
+    if (needsREX_B(base))
+        rex |= 0x01;
+    if (needsREX_B(index))
+        rex |= 0x02;
+    emit(0x66);
+    if (rex != 0x40)
+        emit(rex);
+    emit(0xC7);
+    emitModRM(2, 0, 4);
+    emit(static_cast<uint8_t>((scaleLog2 << 6) | (regBits(index) << 3) | regBits(base)));
+    emit32(static_cast<uint32_t>(disp));
+    emit(static_cast<uint8_t>(imm & 0xFF));
+    emit(static_cast<uint8_t>((imm >> 8) & 0xFF));
+}
+
+void InstallerStubGen::movzxRegMemIndex16(X64Reg dst,
+                                          X64Reg base,
+                                          X64Reg index,
+                                          uint8_t scaleLog2,
+                                          int32_t disp) {
+    if (scaleLog2 > 3)
+        throw std::runtime_error("InstallerStubGen: invalid SIB scale");
+    if (regBits(index) == 4)
+        throw std::runtime_error("InstallerStubGen: RSP/R12 cannot be used as SIB index");
+    uint8_t rex = 0x40;
+    if (needsREX_B(dst))
+        rex |= 0x04;
+    if (needsREX_B(index))
+        rex |= 0x02;
+    if (needsREX_B(base))
+        rex |= 0x01;
+    if (rex != 0x40)
+        emit(rex);
+    emit(0x0F);
+    emit(0xB7);
+    emitModRM(2, regBits(dst), 4);
+    emit(static_cast<uint8_t>((scaleLog2 << 6) | (regBits(index) << 3) | regBits(base)));
+    emit32(static_cast<uint32_t>(disp));
+}
+
 // ============================================================================
 // LEA
 // ============================================================================
@@ -182,6 +232,29 @@ void InstallerStubGen::leaRegMem(X64Reg dst, X64Reg base, int32_t disp) {
     emitREX(true, dst, base);
     emit(0x8D);
     emitModRMDisp32(regBits(dst), base, disp);
+}
+
+void InstallerStubGen::leaRegMemIndex(X64Reg dst,
+                                      X64Reg base,
+                                      X64Reg index,
+                                      uint8_t scaleLog2,
+                                      int32_t disp) {
+    if (scaleLog2 > 3)
+        throw std::runtime_error("InstallerStubGen: invalid SIB scale");
+    if (regBits(index) == 4)
+        throw std::runtime_error("InstallerStubGen: RSP/R12 cannot be used as SIB index");
+    uint8_t rex = 0x48;
+    if (needsREX_B(dst))
+        rex |= 0x04;
+    if (needsREX_B(index))
+        rex |= 0x02;
+    if (needsREX_B(base))
+        rex |= 0x01;
+    emit(rex);
+    emit(0x8D);
+    emitModRM(2, regBits(dst), 4);
+    emit(static_cast<uint8_t>((scaleLog2 << 6) | (regBits(index) << 3) | regBits(base)));
+    emit32(static_cast<uint32_t>(disp));
 }
 
 // ============================================================================

@@ -158,6 +158,15 @@ inline void validateToolchainArchitecture(const std::string &arch,
         throw std::runtime_error(std::string(fieldName) + " must be x64 or arm64: '" + arch + "'");
 }
 
+inline void validateToolchainPlatform(const std::string &platform,
+                                      const char *fieldName = "toolchain platform") {
+    validateSingleLineField(platform, fieldName);
+    if (platform != "windows" && platform != "macos" && platform != "linux") {
+        throw std::runtime_error(std::string(fieldName) +
+                                 " must be windows, macos, or linux: '" + platform + "'");
+    }
+}
+
 inline void validateDebVersion(const std::string &version, const char *fieldName = "version") {
     const auto fail = [&](const std::string &why) {
         throw std::runtime_error(std::string(fieldName) + " is not a valid Debian version: '" +

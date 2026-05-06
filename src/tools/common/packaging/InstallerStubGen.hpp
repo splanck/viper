@@ -92,10 +92,29 @@ class InstallerStubGen {
     /// @brief mov dword [dst + disp32], imm32 (store 32-bit immediate)
     void movMemImm32(X64Reg base, int32_t disp, uint32_t imm);
 
+    /// @brief mov word [base + index * scale + disp32], imm16.
+    /// @param scaleLog2 Scale encoded as log2(bytes): 0, 1, 2, or 3.
+    void movMemIndexImm16(X64Reg base, X64Reg index, uint8_t scaleLog2, int32_t disp, uint16_t imm);
+
+    /// @brief movzx dst, word [base + index * scale + disp32].
+    /// @param scaleLog2 Scale encoded as log2(bytes): 0, 1, 2, or 3.
+    void movzxRegMemIndex16(X64Reg dst,
+                            X64Reg base,
+                            X64Reg index,
+                            uint8_t scaleLog2,
+                            int32_t disp);
+
     // ─── LEA ──────────────────────────────────────────────────────────
 
     /// @brief lea dst, [base + disp32]
     void leaRegMem(X64Reg dst, X64Reg base, int32_t disp);
+
+    /// @brief lea dst, [base + index * scale + disp32]
+    void leaRegMemIndex(X64Reg dst,
+                        X64Reg base,
+                        X64Reg index,
+                        uint8_t scaleLog2,
+                        int32_t disp);
 
     // ─── Arithmetic ───────────────────────────────────────────────────
 

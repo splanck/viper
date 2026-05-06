@@ -60,6 +60,7 @@ struct WindowsFileAssociationEntry {
     std::string description;
     std::string mimeType;
     std::string progId;
+    std::string openCommandArguments;
 };
 
 struct WindowsPackageLayout {
@@ -72,6 +73,10 @@ struct WindowsPackageLayout {
     uint32_t overlayFileOffset{0};
     bool createDesktopShortcut{false};
     bool createStartMenuShortcut{false};
+    bool addToPath{false};
+    bool cleanInstallRootBeforeInstall{false};
+    std::string pathRelativePath;
+    std::string fileAssociationExecutableRelativePath;
     std::vector<WindowsPackageDirEntry> installDirectories;
     std::vector<WindowsPackageDirEntry> uninstallDirectories;
     std::vector<WindowsPackageFileEntry> installFiles;

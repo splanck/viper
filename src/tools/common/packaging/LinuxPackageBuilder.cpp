@@ -37,6 +37,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -59,6 +60,7 @@ namespace {
 struct DataFile {
     std::string installPath; ///< e.g. "usr/bin/hello"
     std::vector<uint8_t> data;
+    uint32_t mode{0644};
     bool symlink{false};
     bool directory{false};
     std::string symlinkTarget;
@@ -66,16 +68,21 @@ struct DataFile {
     DataFile(std::string path, std::vector<uint8_t> bytes)
         : installPath(std::move(path)), data(std::move(bytes)) {}
 
+    DataFile(std::string path, std::vector<uint8_t> bytes, uint32_t modeBits)
+        : installPath(std::move(path)), data(std::move(bytes)), mode(modeBits) {}
+
     static DataFile link(std::string path, std::string target) {
         DataFile file(std::move(path), {});
         file.symlink = true;
         file.symlinkTarget = std::move(target);
+        file.mode = 0777;
         return file;
     }
 
     static DataFile dir(std::string path) {
         DataFile file(std::move(path), {});
         file.directory = true;
+        file.mode = 0755;
         return file;
     }
 };
@@ -85,9 +92,76 @@ std::string debArchFor(const std::string &arch) {
     return arch == "arm64" ? "arm64" : "amd64";
 }
 
-std::vector<DataFile> collectToolchainLinuxFiles(const ToolchainInstallManifest &manifest) {
+std::string lowerAscii(std::string text) {
+    for (char &c : text)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return text;
+}
+
+uint32_t permissionBitsFor(const ToolchainFileEntry &file) {
+    const uint32_t bits = file.unixMode & 07777u;
+    if (bits != 0)
+        return bits;
+    return file.executable ? 0755u : 0644u;
+}
+
+void addToolchainDesktopMetadata(std::vector<DataFile> &dataFiles,
+                                 const std::string &desktopName,
+                                 const std::string &execPath,
+                                 const std::vector<FileAssoc> &associations) {
+    if (associations.empty())
+        return;
+
+    DesktopEntryParams desktop;
+    desktop.name = "Viper Toolchain";
+    desktop.comment = "Viper source and IL tools";
+    desktop.execPath = execPath;
+    desktop.iconName = "viper";
+    desktop.categories = "Development;";
+    desktop.terminal = true;
+    desktop.fileAssociations = associations;
+    desktop.acceptsFileArgument = true;
+    desktop.noDisplay = true;
+
+    const std::string desktopText = generateDesktopEntry(desktop);
+    dataFiles.emplace_back("usr/share/applications/" + desktopName,
+                           std::vector<uint8_t>(desktopText.begin(), desktopText.end()),
+                           0644);
+}
+
+void addToolchainFileAssociationMetadata(std::vector<DataFile> &dataFiles,
+                                         const ToolchainInstallManifest &manifest,
+                                         const std::string &packageName,
+                                         const std::string &viperExecPath) {
+    if (manifest.fileAssociations.empty())
+        return;
+
+    std::vector<FileAssoc> sourceAssociations;
+    std::vector<FileAssoc> ilAssociations;
+    for (const auto &assoc : manifest.fileAssociations) {
+        if (lowerAscii(assoc.extension) == ".il")
+            ilAssociations.push_back(assoc);
+        else
+            sourceAssociations.push_back(assoc);
+    }
+
+    addToolchainDesktopMetadata(dataFiles,
+                                packageName + "-source.desktop",
+                                viperExecPath + " run",
+                                sourceAssociations);
+    addToolchainDesktopMetadata(
+        dataFiles, packageName + "-il.desktop", viperExecPath + " -run", ilAssociations);
+
+    const std::string mimeXml = generateMimeTypeXml(packageName, manifest.fileAssociations);
+    dataFiles.emplace_back("usr/share/mime/packages/" + packageName + ".xml",
+                           std::vector<uint8_t>(mimeXml.begin(), mimeXml.end()),
+                           0644);
+}
+
+std::vector<DataFile> collectToolchainLinuxFiles(const ToolchainInstallManifest &manifest,
+                                                 const std::string &packageName) {
     std::vector<DataFile> dataFiles;
-    dataFiles.reserve(manifest.files.size());
+    dataFiles.reserve(manifest.files.size() + 2);
     for (const auto &file : manifest.files) {
         const std::string installPath = mapInstallPath(file, InstallPathPolicy::LinuxUsrRoot);
         const std::string relInstall =
@@ -96,8 +170,11 @@ std::vector<DataFile> collectToolchainLinuxFiles(const ToolchainInstallManifest 
         if (file.symlink)
             dataFiles.push_back(DataFile::link(relInstall, file.symlinkTarget));
         else
-            dataFiles.emplace_back(relInstall, readFile(file.stagedAbsolutePath.string()));
+            dataFiles.emplace_back(relInstall,
+                                   readFile(file.stagedAbsolutePath.string()),
+                                   permissionBitsFor(file));
     }
+    addToolchainFileAssociationMetadata(dataFiles, manifest, packageName, "/usr/bin/viper");
     return dataFiles;
 }
 
@@ -130,6 +207,59 @@ void addDirectoriesForDataFiles(TarWriter &tar, const std::vector<DataFile> &dat
 std::string rpmArchFor(const std::string &arch) {
     validateToolchainArchitecture(arch);
     return arch == "arm64" ? "aarch64" : "x86_64";
+}
+
+void requireLinuxToolchainManifest(const ToolchainInstallManifest &manifest,
+                                   const char *packageKind) {
+    validateToolchainInstallManifest(manifest);
+    if (manifest.platform != "linux") {
+        throw std::runtime_error(std::string(packageKind) +
+                                 " requires a Linux staged toolchain manifest, got '" +
+                                 manifest.platform + "'");
+    }
+}
+
+std::string toolchainDebDepends() {
+    return "libc6, libstdc++6 | libc++1";
+}
+
+bool rpmbuildAvailable() {
+    const RunResult rr = run_process({"rpmbuild", "--version"});
+    return rr.exit_code == 0;
+}
+
+fs::path findGeneratedRpm(const fs::path &tmpRoot,
+                          const std::string &packageName,
+                          const std::string &version,
+                          const std::string &arch) {
+    const fs::path rpmDir = tmpRoot / "RPMS" / arch;
+    const std::string prefix = packageName + "-" + version + "-";
+    const std::string suffix = "." + arch + ".rpm";
+    std::vector<fs::path> matches;
+    std::error_code ec;
+    if (fs::exists(rpmDir, ec)) {
+        for (const auto &entry : fs::directory_iterator(rpmDir, ec)) {
+            if (ec)
+                break;
+            if (!entry.is_regular_file(ec) || ec)
+                continue;
+            const std::string name = entry.path().filename().string();
+            if (name.rfind(prefix, 0) == 0 && name.size() >= suffix.size() &&
+                name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0) {
+                matches.push_back(entry.path());
+            }
+        }
+    }
+    if (matches.empty()) {
+        throw std::runtime_error("rpmbuild did not produce an rpm matching " + prefix + "*" +
+                                 suffix + " under " + rpmDir.string());
+    }
+    if (matches.size() > 1) {
+        std::sort(matches.begin(), matches.end());
+        throw std::runtime_error("rpmbuild produced multiple matching rpm artifacts; first was " +
+                                 matches.front().string());
+    }
+    return matches.front();
 }
 
 std::string debSectionFor(const std::string &category) {
@@ -223,7 +353,7 @@ std::string rpmSpecFilePath(const std::string &path) {
     if (clean != path)
         throw std::runtime_error("rpm payload path was not normalized: " + path);
 
-    std::string escaped = "/usr/" + path;
+    std::string escaped = "/" + path;
     bool needsQuotes = false;
     std::string out;
     out.reserve(escaped.size() + 8);
@@ -658,26 +788,30 @@ void buildTarball(const LinuxBuildParams &params) {
 
 void buildToolchainDebPackage(const LinuxToolchainBuildParams &params) {
     const auto &manifest = params.manifest;
+    requireLinuxToolchainManifest(manifest, "Debian toolchain package");
     const std::string packageName =
         params.packageName.empty() ? std::string("viper") : normalizeDebName(params.packageName);
-    const std::string version = manifest.version.empty() ? std::string("0.0.0") : manifest.version;
+    if (manifest.version.empty())
+        throw std::runtime_error("toolchain package version is required");
+    const std::string version = manifest.version;
     validateDebVersion(version, "toolchain package version");
     validateToolchainArchitecture(manifest.arch, "toolchain package architecture");
     const std::string archStr = debArchFor(manifest.arch);
-    const auto dataFiles = collectToolchainLinuxFiles(manifest);
+    const auto dataFiles = collectToolchainLinuxFiles(manifest, packageName);
     validateDataFilePaths(dataFiles);
 
     TarWriter dataTar;
     addDirectoriesForDataFiles(dataTar, dataFiles);
     for (const auto &df : dataFiles) {
-        const bool executable = df.installPath.rfind("usr/bin/", 0) == 0;
         if (df.symlink)
             dataTar.addSymlink("./" + df.installPath, df.symlinkTarget);
+        else if (df.directory)
+            continue;
         else
             dataTar.addFile("./" + df.installPath,
                             df.data.data(),
                             df.data.size(),
-                            executable ? 0755 : 0644);
+                            df.mode);
     }
     const auto dataTarBytes = dataTar.finish();
     const auto dataTarGz = gzip(dataTarBytes.data(), dataTarBytes.size());
@@ -691,29 +825,53 @@ void buildToolchainDebPackage(const LinuxToolchainBuildParams &params) {
         ctl << "Section: devel\n";
         ctl << "Priority: optional\n";
         ctl << "Architecture: " << archStr << "\n";
-        ctl << "Maintainer: Viper Project\n";
-        ctl << "Installed-Size: " << ((manifest.totalSizeBytes() + 1023) / 1024) << "\n";
+        ctl << "Maintainer: Viper Project <noreply@example.invalid>\n";
+        ctl << "Depends: " << toolchainDebDepends() << "\n";
+        size_t totalBytes = 0;
+        for (const auto &df : dataFiles)
+            totalBytes += df.data.size();
+        ctl << "Installed-Size: " << ((totalBytes + 1023) / 1024) << "\n";
         ctl << "Description: Viper compiler toolchain\n";
         controlTar.addFileString("./control", ctl.str(), 0644);
     }
     {
         std::ostringstream md5s;
         for (const auto &df : dataFiles)
-            if (!df.symlink)
+            if (!df.symlink && !df.directory)
                 md5s << md5hex(df.data.data(), df.data.size()) << "  " << df.installPath << "\n";
         controlTar.addFileString("./md5sums", md5s.str(), 0644);
     }
-    if (std::any_of(manifest.files.begin(), manifest.files.end(), [](const ToolchainFileEntry &entry) {
+    const bool hasManPages =
+        std::any_of(manifest.files.begin(), manifest.files.end(), [](const ToolchainFileEntry &entry) {
             return entry.kind == ToolchainFileKind::ManPage;
-        })) {
+        });
+    const bool hasFileAssociations = !manifest.fileAssociations.empty();
+    if (hasManPages || hasFileAssociations) {
+        std::ostringstream postinst;
+        postinst << "#!/bin/sh\nset -e\n";
+        if (hasManPages)
+            postinst << "if command -v mandb >/dev/null 2>&1; then mandb >/dev/null 2>&1 || true; fi\n";
+        if (hasFileAssociations) {
+            postinst << "if command -v update-mime-database >/dev/null 2>&1; then "
+                        "update-mime-database /usr/share/mime || true; fi\n";
+            postinst << "if command -v update-desktop-database >/dev/null 2>&1; then "
+                        "update-desktop-database /usr/share/applications || true; fi\n";
+        }
         controlTar.addFileString(
             "./postinst",
-            "#!/bin/sh\nset -e\nif command -v mandb >/dev/null 2>&1; then mandb >/dev/null 2>&1 || true; fi\n",
+            postinst.str(),
             0755);
-        controlTar.addFileString(
-            "./prerm",
-            "#!/bin/sh\nset -e\nif command -v mandb >/dev/null 2>&1; then mandb >/dev/null 2>&1 || true; fi\n",
-            0755);
+        std::ostringstream postrm;
+        postrm << "#!/bin/sh\nset -e\n";
+        if (hasManPages)
+            postrm << "if command -v mandb >/dev/null 2>&1; then mandb >/dev/null 2>&1 || true; fi\n";
+        if (hasFileAssociations) {
+            postrm << "if command -v update-mime-database >/dev/null 2>&1; then "
+                      "update-mime-database /usr/share/mime || true; fi\n";
+            postrm << "if command -v update-desktop-database >/dev/null 2>&1; then "
+                      "update-desktop-database /usr/share/applications || true; fi\n";
+        }
+        controlTar.addFileString("./postrm", postrm.str(), 0755);
     }
     const auto controlTarBytes = controlTar.finish();
     const auto controlTarGz = gzip(controlTarBytes.data(), controlTarBytes.size());
@@ -727,14 +885,27 @@ void buildToolchainDebPackage(const LinuxToolchainBuildParams &params) {
 
 void buildToolchainTarball(const LinuxToolchainBuildParams &params) {
     const auto &manifest = params.manifest;
+    validateToolchainInstallManifest(manifest);
     const std::string packageName =
         params.packageName.empty() ? std::string("viper") : normalizeDebName(params.packageName);
-    const std::string version = manifest.version.empty() ? std::string("0.0.0") : manifest.version;
+    if (manifest.version.empty())
+        throw std::runtime_error("toolchain package version is required");
+    const std::string version = manifest.version;
     validateDebVersion(version, "toolchain package version");
-    validateToolchainArchitecture(manifest.arch, "toolchain package architecture");
+    const std::string platform =
+        manifest.platform.empty() ? portableArchivePlatformName() : manifest.platform;
+    validateToolchainPlatform(platform);
+    if (manifest.arch == "universal") {
+        if (platform != "macos") {
+            throw std::runtime_error("universal toolchain tarball architecture is only valid "
+                                     "for macOS payloads");
+        }
+    } else {
+        validateToolchainArchitecture(manifest.arch, "toolchain package architecture");
+    }
     const std::string topDir =
-        sanitizePackageRelativePath(packageName + "-" + version + "-" +
-                                        portableArchivePlatformName() + "-" + manifest.arch,
+        sanitizePackageRelativePath(packageName + "-" + version + "-" + platform + "-" +
+                                        manifest.arch,
                                     "toolchain tarball top-level directory") +
         "/";
 
@@ -750,7 +921,19 @@ void buildToolchainTarball(const LinuxToolchainBuildParams &params) {
             tar.addFile(topDir + relPath,
                         data.data(),
                         data.size(),
-                        file.executable ? 0755 : 0644);
+                        permissionBitsFor(file));
+        }
+    }
+    if (platform == "linux" && !manifest.fileAssociations.empty()) {
+        std::vector<DataFile> generated;
+        addToolchainFileAssociationMetadata(generated, manifest, packageName, "viper");
+        for (const auto &df : generated) {
+            const std::string portablePath =
+                sanitizePackageRelativePath(df.installPath.rfind("usr/", 0) == 0
+                                                ? df.installPath.substr(4)
+                                                : df.installPath,
+                                            "toolchain tarball generated metadata path");
+            tar.addFile(topDir + portablePath, df.data.data(), df.data.size(), df.mode);
         }
     }
 
@@ -765,12 +948,22 @@ void buildToolchainTarball(const LinuxToolchainBuildParams &params) {
 
 void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params) {
     const auto &manifest = params.manifest;
+    requireLinuxToolchainManifest(manifest, "RPM toolchain package");
     const std::string packageName =
         params.packageName.empty() ? std::string("viper") : normalizeDebName(params.packageName);
-    const std::string version = manifest.version.empty() ? std::string("0.0.0") : manifest.version;
+    if (manifest.version.empty())
+        throw std::runtime_error("toolchain package version is required");
+    const std::string version = manifest.version;
     validateRpmVersion(version, "toolchain RPM version");
     validateToolchainArchitecture(manifest.arch, "toolchain package architecture");
     const std::string arch = rpmArchFor(manifest.arch);
+    const auto dataFiles = collectToolchainLinuxFiles(manifest, packageName);
+    validateDataFilePaths(dataFiles);
+    if (!rpmbuildAvailable()) {
+        throw std::runtime_error(
+            "rpmbuild is required to generate RPM toolchain packages; install rpm-build "
+            "or request linux-deb/tarball output");
+    }
 
     const fs::path tmpRoot = uniqueTempPackagingDir("viper-rpm-" + version + "-" + arch);
     TempDirGuard cleanup(tmpRoot);
@@ -785,16 +978,18 @@ void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params) {
     const std::string sourceTopDir = packageName + "-" + version + "/";
     TarWriter tar;
     tar.addDirectory(sourceTopDir, 0755);
-    for (const auto &file : manifest.files) {
-        validateRpmSpecPath(file.stagedRelativePath);
+    for (const auto &file : dataFiles) {
+        std::string sourcePath = file.installPath;
+        if (sourcePath.rfind("usr/", 0) == 0)
+            sourcePath = sourcePath.substr(4);
+        validateRpmSpecPath(file.installPath);
         if (file.symlink) {
-            tar.addSymlink(sourceTopDir + file.stagedRelativePath, file.symlinkTarget);
-        } else {
-            const auto data = readFile(file.stagedAbsolutePath.string());
-            tar.addFile(sourceTopDir + file.stagedRelativePath,
-                        data.data(),
-                        data.size(),
-                        file.executable ? 0755 : 0644);
+            tar.addSymlink(sourceTopDir + sourcePath, file.symlinkTarget);
+        } else if (!file.directory) {
+            tar.addFile(sourceTopDir + sourcePath,
+                        file.data.data(),
+                        file.data.size(),
+                        file.mode);
         }
     }
     const auto tarBytes = tar.finish();
@@ -819,17 +1014,36 @@ void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params) {
     spec << "%description\nViper compiler toolchain\n\n";
     spec << "%prep\n%setup -q\n\n";
     spec << "%build\n:\n\n";
-    spec << "%install\nrm -rf %{buildroot}\nmkdir -p %{buildroot}/usr\ncp -a * %{buildroot}/usr/\n\n";
-    if (std::any_of(manifest.files.begin(), manifest.files.end(), [](const ToolchainFileEntry &entry) {
+    spec << "%install\nrm -rf %{buildroot}\nmkdir -p %{buildroot}/usr\ncp -a . %{buildroot}/usr/\n\n";
+    const bool hasManPages =
+        std::any_of(manifest.files.begin(), manifest.files.end(), [](const ToolchainFileEntry &entry) {
             return entry.kind == ToolchainFileKind::ManPage;
-        })) {
-        spec << "%post\nif command -v mandb >/dev/null 2>&1; then mandb >/dev/null 2>&1 || true; fi\n\n";
-        spec << "%preun\nif command -v mandb >/dev/null 2>&1; then mandb >/dev/null 2>&1 || true; fi\n\n";
+        });
+    const bool hasFileAssociations = !manifest.fileAssociations.empty();
+    if (hasManPages || hasFileAssociations) {
+        spec << "%post\n";
+        if (hasManPages)
+            spec << "if command -v mandb >/dev/null 2>&1; then mandb >/dev/null 2>&1 || true; fi\n";
+        if (hasFileAssociations) {
+            spec << "if command -v update-mime-database >/dev/null 2>&1; then update-mime-database /usr/share/mime || true; fi\n";
+            spec << "if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database /usr/share/applications || true; fi\n\n";
+        } else {
+            spec << "\n";
+        }
+        if (hasFileAssociations) {
+            spec << "%postun\n";
+            if (hasManPages)
+                spec << "if command -v mandb >/dev/null 2>&1; then mandb >/dev/null 2>&1 || true; fi\n";
+            spec << "if command -v update-mime-database >/dev/null 2>&1; then update-mime-database /usr/share/mime || true; fi\n";
+            spec << "if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database /usr/share/applications || true; fi\n\n";
+        } else if (hasManPages) {
+            spec << "%postun\nif command -v mandb >/dev/null 2>&1; then mandb >/dev/null 2>&1 || true; fi\n\n";
+        }
     }
     spec << "%files\n";
-    for (const auto &file : manifest.files) {
-        validateRpmSpecPath(file.stagedRelativePath);
-        spec << rpmSpecFilePath(file.stagedRelativePath) << "\n";
+    for (const auto &file : dataFiles) {
+        validateRpmSpecPath(file.installPath);
+        spec << rpmSpecFilePath(file.installPath) << "\n";
     }
 
     const fs::path specPath = tmpRoot / "SPECS" / (packageName + ".spec");
@@ -854,10 +1068,7 @@ void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params) {
                                  rr.out + rr.err);
     }
 
-    const fs::path rpmPath =
-        tmpRoot / "RPMS" / arch / (packageName + "-" + version + "-1." + arch + ".rpm");
-    if (!fs::exists(rpmPath))
-        throw std::runtime_error("rpmbuild did not produce expected rpm: " + rpmPath.string());
+    const fs::path rpmPath = findGeneratedRpm(tmpRoot, packageName, version, arch);
     fs::copy_file(rpmPath, params.outputPath, fs::copy_options::overwrite_existing);
 }
 

@@ -32,10 +32,8 @@
 
 #include <filesystem>
 #include <fstream>
-#include <iostream>
-#include <sstream>
-#include <chrono>
 #include <string_view>
+#include <chrono>
 
 #if defined(_WIN32)
 #include <process.h>
@@ -47,19 +45,6 @@ namespace fs = std::filesystem;
 
 namespace viper::pkg {
 namespace {
-
-void writeScriptFile(const fs::path &path, std::string_view text) {
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out)
-        throw std::runtime_error("cannot write macOS packaging script: " + path.string());
-    out << text;
-    out.close();
-    fs::permissions(path,
-                    fs::perms::owner_read | fs::perms::owner_write | fs::perms::owner_exec |
-                        fs::perms::group_read | fs::perms::group_exec |
-                        fs::perms::others_read | fs::perms::others_exec,
-                    fs::perm_options::replace);
-}
 
 fs::path uniqueTempPackagingDir(std::string_view stem) {
     const auto tick =
@@ -156,6 +141,17 @@ void runChecked(const std::vector<std::string> &args, const std::string &what) {
     RunResult rr = run_process(args);
     if (rr.exit_code != 0)
         throw std::runtime_error(what + " failed:\n" + rr.out + rr.err);
+}
+
+std::string resolveMacOSToolchainPackageVersion(const std::string &manifestVersion,
+                                                const std::string &packageVersionOverride) {
+    if (!packageVersionOverride.empty()) {
+        validateDottedNumericVersion(packageVersionOverride,
+                                     "macOS toolchain package version override");
+        return packageVersionOverride;
+    }
+    validateDottedNumericVersion(manifestVersion, "macOS toolchain package version");
+    return manifestVersion;
 }
 
 void addStagedAppToZip(const fs::path &stageRoot,
@@ -337,15 +333,25 @@ void buildMacOSPackage(const MacOSBuildParams &params) {
 
 void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
     namespace fs = std::filesystem;
-    const std::string version = params.manifest.version.empty() ? "0.0.0" : params.manifest.version;
+    validateToolchainInstallManifest(params.manifest);
+    if (params.manifest.platform != "macos") {
+        throw std::runtime_error("macOS toolchain package requires a macOS staged toolchain "
+                                 "manifest, got '" +
+                                 params.manifest.platform + "'");
+    }
+    if (params.manifest.version.empty())
+        throw std::runtime_error("toolchain package version is required");
+    const std::string version = params.manifest.version;
+    const std::string pkgVersion =
+        resolveMacOSToolchainPackageVersion(version, params.packageVersion);
     validateMacOSBundleIdentifier(params.identifier, "macOS package identifier");
-    validateSingleLineField(version, "macOS toolchain package version");
+    validateDebVersion(version, "macOS toolchain manifest version");
 
     const fs::path tmpRoot = uniqueTempPackagingDir("viper-macos-toolchain-" + version);
     TempDirGuard cleanup(tmpRoot);
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot / "root" / "usr" / "local" / "viper");
-    fs::create_directories(tmpRoot / "scripts");
+    fs::create_directories(tmpRoot / "root" / "usr" / "local" / "bin");
 
     const fs::path installRoot = tmpRoot / "root" / "usr" / "local" / "viper";
     for (const auto &file : params.manifest.files) {
@@ -372,26 +378,29 @@ void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
         }
     }
 
-    std::ostringstream postinstall;
-    postinstall << "#!/bin/sh\nset -e\nmkdir -p /usr/local/bin\n";
     for (const auto &file : params.manifest.files) {
         if (file.kind != ToolchainFileKind::Binary)
             continue;
         const std::string name = fs::path(file.stagedRelativePath).filename().string();
-        postinstall << "ln -sf /usr/local/viper/bin/" << name << " /usr/local/bin/" << name << "\n";
+        const fs::path linkPath = tmpRoot / "root" / "usr" / "local" / "bin" / name;
+        std::error_code ec;
+        fs::remove(linkPath, ec);
+        ec.clear();
+        fs::create_symlink(fs::path("../viper/bin") / name, linkPath, ec);
+        if (ec) {
+            throw std::runtime_error("cannot create package symlink '" + linkPath.string() +
+                                     "': " + ec.message());
+        }
     }
-    writeScriptFile(tmpRoot / "scripts" / "postinstall", postinstall.str());
 
     const RunResult rr = run_process(
         {"pkgbuild",
          "--root",
          (tmpRoot / "root").string(),
-         "--scripts",
-         (tmpRoot / "scripts").string(),
          "--identifier",
          params.identifier,
          "--version",
-         version,
+         pkgVersion,
          params.outputPath});
     if (rr.exit_code != 0) {
         throw std::runtime_error("pkgbuild failed while generating macOS toolchain package:\n" +

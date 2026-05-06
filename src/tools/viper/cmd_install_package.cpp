@@ -23,6 +23,7 @@
 #include <fstream>
 #include <iostream>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -48,10 +49,16 @@ struct InstallPackageArgs {
     std::string buildConfig;
     fs::path outputPath;
     fs::path verifyOnlyPath;
+    std::string macosPackageVersion;
     bool noVerify{false};
     bool verbose{false};
     bool keepStageDir{false};
     bool stageOnly{false};
+};
+
+struct NativeExecutableInfo {
+    std::string platform;
+    std::string arch;
 };
 
 void installPackageUsage() {
@@ -67,6 +74,7 @@ void installPackageUsage() {
         << "  --build-dir <dir>     Build tree; runs cmake --install into a staging dir\n"
         << "  --config <cfg>        Build configuration for cmake --install from a build tree\n"
         << "  --verify-only <path>  Verify an existing artifact and exit\n"
+        << "  --macos-pkg-version <v> Dotted numeric pkgbuild version override\n"
         << "  --stage-only          Validate/gather the staged install tree and stop\n"
         << "  --keep-stage-dir      Preserve auto-generated stage directories\n"
         << "  -o <path>             Output file or directory\n"
@@ -93,6 +101,11 @@ std::string debArchFor(const std::string &arch) {
 std::string rpmArchFor(const std::string &arch) {
     viper::pkg::validateToolchainArchitecture(arch);
     return arch == "arm64" ? "aarch64" : "x86_64";
+}
+
+bool rpmbuildAvailable() {
+    const RunResult rr = run_process({"rpmbuild", "--version"});
+    return rr.exit_code == 0;
 }
 
 uint16_t readBE16(const std::vector<uint8_t> &data, size_t off) {
@@ -167,7 +180,7 @@ std::string binaryBaseName(std::string filename) {
     return filename;
 }
 
-std::optional<std::string> detectNativeExecutableArch(const fs::path &path) {
+std::optional<NativeExecutableInfo> detectNativeExecutableInfo(const fs::path &path) {
     const auto data = viper::pkg::readFile(path.string());
     if (data.size() < 20)
         return std::nullopt;
@@ -177,9 +190,9 @@ std::optional<std::string> detectNativeExecutableArch(const fs::path &path) {
             return std::nullopt;
         const uint16_t machine = readLE16(data, 18);
         if (machine == 62)
-            return "x64";
+            return NativeExecutableInfo{"linux", "x64"};
         if (machine == 183)
-            return "arm64";
+            return NativeExecutableInfo{"linux", "arm64"};
         return std::nullopt;
     }
 
@@ -192,9 +205,9 @@ std::optional<std::string> detectNativeExecutableArch(const fs::path &path) {
             return std::nullopt;
         const uint16_t machine = readLE16(data, peOff + 4);
         if (machine == 0x8664)
-            return "x64";
+            return NativeExecutableInfo{"windows", "x64"};
         if (machine == 0xAA64)
-            return "arm64";
+            return NativeExecutableInfo{"windows", "arm64"};
         return std::nullopt;
     }
 
@@ -204,9 +217,9 @@ std::optional<std::string> detectNativeExecutableArch(const fs::path &path) {
         const bool little = magicLE == 0xFEEDFACF;
         const uint32_t cputype = little ? readLE32(data, 4) : readBE32(data, 4);
         if (cputype == 0x01000007u)
-            return "x64";
+            return NativeExecutableInfo{"macos", "x64"};
         if (cputype == 0x0100000Cu)
-            return "arm64";
+            return NativeExecutableInfo{"macos", "arm64"};
         return std::nullopt;
     }
     if (magicBE == 0xCAFEBABEu && data.size() >= 8) {
@@ -222,23 +235,23 @@ std::optional<std::string> detectNativeExecutableArch(const fs::path &path) {
             hasArm64 = hasArm64 || cputype == 0x0100000Cu;
         }
         if (hasX64 && hasArm64)
-            return "universal";
+            return NativeExecutableInfo{"macos", "universal"};
         if (hasX64)
-            return "x64";
+            return NativeExecutableInfo{"macos", "x64"};
         if (hasArm64)
-            return "arm64";
+            return NativeExecutableInfo{"macos", "arm64"};
     }
     return std::nullopt;
 }
 
-std::optional<std::string> detectManifestToolchainArch(
+std::optional<NativeExecutableInfo> detectManifestToolchainExecutableInfo(
     const viper::pkg::ToolchainInstallManifest &manifest) {
     for (const auto &file : manifest.files) {
         if (file.kind != viper::pkg::ToolchainFileKind::Binary)
             continue;
         if (binaryBaseName(file.stagedAbsolutePath.filename().string()) != "viper")
             continue;
-        return detectNativeExecutableArch(file.stagedAbsolutePath);
+        return detectNativeExecutableInfo(file.stagedAbsolutePath);
     }
     return std::nullopt;
 }
@@ -287,6 +300,15 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
             args.buildConfig = argv[++i];
         } else if (arg == "--verify-only" && i + 1 < argc) {
             args.verifyOnlyPath = argv[++i];
+        } else if (arg == "--macos-pkg-version" && i + 1 < argc) {
+            args.macosPackageVersion = argv[++i];
+            try {
+                viper::pkg::validateDottedNumericVersion(
+                    args.macosPackageVersion, "macOS package version override");
+            } catch (const std::exception &ex) {
+                std::cerr << "error: " << ex.what() << "\n";
+                return false;
+            }
         } else if (arg == "-o" && i + 1 < argc) {
             args.outputPath = argv[++i];
         } else if (arg == "--no-verify") {
@@ -321,6 +343,7 @@ std::string targetFileName(InstallPackageTarget target,
                            const viper::pkg::ToolchainInstallManifest &manifest) {
     const std::string version = manifest.version.empty() ? "0.0.0" : manifest.version;
     const std::string arch = manifest.arch.empty() ? "x64" : manifest.arch;
+    const std::string platform = manifest.platform.empty() ? hostPlatformName() : manifest.platform;
     switch (target) {
         case InstallPackageTarget::Windows:
             return "viper-" + version + "-win-" + arch + ".exe";
@@ -331,7 +354,7 @@ std::string targetFileName(InstallPackageTarget target,
         case InstallPackageTarget::LinuxRpm:
             return "viper-" + version + "-1." + rpmArchFor(arch) + ".rpm";
         case InstallPackageTarget::Tarball:
-            return "viper-" + version + "-" + hostPlatformName() + "-" + arch + ".tar.gz";
+            return "viper-" + version + "-" + platform + "-" + arch + ".tar.gz";
         case InstallPackageTarget::All:
         default:
             return {};
@@ -343,6 +366,28 @@ std::vector<std::string> requiredPayloadPaths(
     const viper::pkg::ToolchainInstallManifest &manifest) {
     std::vector<std::string> paths;
     paths.reserve(manifest.files.size() + 1);
+    auto appendLinuxAssociationMetadata = [&](const std::string &prefix, bool portable) {
+        if (manifest.fileAssociations.empty())
+            return;
+        bool hasSource = false;
+        bool hasIl = false;
+        for (const auto &assoc : manifest.fileAssociations) {
+            std::string ext = assoc.extension;
+            for (char &c : ext)
+                c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            if (ext == ".il")
+                hasIl = true;
+            else
+                hasSource = true;
+        }
+        const std::string appDir = portable ? "share/applications/" : "usr/share/applications/";
+        const std::string mimeDir = portable ? "share/mime/packages/" : "usr/share/mime/packages/";
+        if (hasSource)
+            paths.push_back(prefix + appDir + "viper-source.desktop");
+        if (hasIl)
+            paths.push_back(prefix + appDir + "viper-il.desktop");
+        paths.push_back(prefix + mimeDir + "viper.xml");
+    };
     switch (target) {
         case InstallPackageTarget::Windows:
             for (const auto &file : manifest.files) {
@@ -352,6 +397,7 @@ std::vector<std::string> requiredPayloadPaths(
             paths.push_back("app/uninstall.exe");
             break;
         case InstallPackageTarget::LinuxDeb:
+        case InstallPackageTarget::LinuxRpm:
             for (const auto &file : manifest.files) {
                 const std::string installPath =
                     viper::pkg::mapInstallPath(file, viper::pkg::InstallPathPolicy::LinuxUsrRoot);
@@ -359,25 +405,70 @@ std::vector<std::string> requiredPayloadPaths(
                     installPath.size() > 1 ? installPath.substr(1) : installPath,
                     "linux install path"));
             }
+            appendLinuxAssociationMetadata("", false);
             break;
         case InstallPackageTarget::Tarball: {
             const std::string version = manifest.version.empty() ? "0.0.0" : manifest.version;
             const std::string packageName = "viper";
             const std::string topDir =
                 viper::pkg::sanitizePackageRelativePath(packageName + "-" + version + "-" +
-                                                            hostPlatformName() + "-" + manifest.arch,
+                                                            manifest.platform + "-" + manifest.arch,
                                                         "toolchain tarball top-level directory");
             for (const auto &file : manifest.files) {
                 paths.push_back(topDir + "/" +
                                 viper::pkg::mapInstallPath(
                                     file, viper::pkg::InstallPathPolicy::PortableArchive));
             }
+            if (manifest.platform == "linux")
+                appendLinuxAssociationMetadata(topDir + "/", true);
             break;
         }
         case InstallPackageTarget::MacOS:
-        case InstallPackageTarget::LinuxRpm:
+            for (const auto &file : manifest.files) {
+                paths.push_back("usr/local/viper/" +
+                                viper::pkg::sanitizePackageRelativePath(
+                                    file.stagedRelativePath, "macOS toolchain path"));
+                if (file.kind == viper::pkg::ToolchainFileKind::Binary) {
+                    paths.push_back("usr/local/bin/" +
+                                    fs::path(file.stagedRelativePath).filename().generic_string());
+                }
+            }
+            break;
         case InstallPackageTarget::All:
             break;
+    }
+    return paths;
+}
+
+bool requireListedPayloadPaths(const std::set<std::string> &actual,
+                               const std::vector<std::string> &required,
+                               const char *kind,
+                               std::ostream &err) {
+    for (const auto &path : required) {
+        std::string normalized = path;
+        while (!normalized.empty() && normalized.front() == '/')
+            normalized.erase(normalized.begin());
+        if (actual.find(normalized) == actual.end()) {
+            err << kind << ": missing required payload path " << normalized << "\n";
+            return false;
+        }
+    }
+    return true;
+}
+
+std::set<std::string> parsePayloadListing(const std::string &text) {
+    std::set<std::string> paths;
+    std::istringstream in(text);
+    std::string line;
+    while (std::getline(in, line)) {
+        while (!line.empty() && (line.back() == '\r' || line.back() == '\n'))
+            line.pop_back();
+        while (!line.empty() && line.front() == '/')
+            line.erase(line.begin());
+        if (line.rfind("./", 0) == 0)
+            line.erase(0, 2);
+        if (!line.empty())
+            paths.insert(line);
     }
     return paths;
 }
@@ -441,7 +532,9 @@ bool verifyArtifact(const fs::path &artifact,
                     const std::string tocText(toc.begin(), toc.end());
                     if (tocText.find("<xar") == std::string::npos ||
                         tocText.find("</xar>") == std::string::npos ||
-                        tocText.find("<name>Payload</name>") == std::string::npos) {
+                        tocText.find("<name>Payload</name>") == std::string::npos ||
+                        tocText.find("<name>PackageInfo</name>") == std::string::npos ||
+                        tocText.find("<name>Bom</name>") == std::string::npos) {
                         err << "macos: xar TOC does not describe a package payload\n";
                         return false;
                     }
@@ -449,6 +542,18 @@ bool verifyArtifact(const fs::path &artifact,
                     err << "macos: cannot inflate xar TOC: " << ex.what() << "\n";
                     return false;
                 }
+            }
+            if (manifest) {
+                const RunResult rr = run_process({"pkgutil", "--payload-files", artifact.string()});
+                if (rr.exit_code != 0) {
+                    err << "macos: pkgutil could not list package payload:\n" << rr.out
+                        << rr.err;
+                    return false;
+                }
+                return requireListedPayloadPaths(parsePayloadListing(rr.out),
+                                                 requiredPayloadPaths(target, *manifest),
+                                                 "macos",
+                                                 err);
             }
             return true;
         case InstallPackageTarget::LinuxRpm:
@@ -513,6 +618,17 @@ bool verifyArtifact(const fs::path &artifact,
                     err << "rpm: package payload is empty\n";
                     return false;
                 }
+            }
+            if (manifest) {
+                const RunResult rr = run_process({"rpm", "-qpl", artifact.string()});
+                if (rr.exit_code != 0) {
+                    err << "rpm: rpm could not list package payload:\n" << rr.out << rr.err;
+                    return false;
+                }
+                return requireListedPayloadPaths(parsePayloadListing(rr.out),
+                                                 requiredPayloadPaths(target, *manifest),
+                                                 "rpm",
+                                                 err);
             }
             return true;
         case InstallPackageTarget::All:
@@ -580,6 +696,7 @@ fs::path ensureStageDir(const InstallPackageArgs &args) {
             throw std::runtime_error("cannot create a unique staging directory under " +
                                      args.buildDir.string());
     }
+    AutoStageCleanup cleanup(stageDir, !args.keepStageDir);
 
     std::vector<std::string> installCmd = {
         "cmake", "--install", args.buildDir.string(), "--prefix", stageDir.string()};
@@ -593,24 +710,43 @@ fs::path ensureStageDir(const InstallPackageArgs &args) {
         throw std::runtime_error("cmake --install failed while staging toolchain:\n" + rr.out +
                                  rr.err);
     }
+    cleanup.dismiss();
     return stageDir;
 }
 
-std::vector<InstallPackageTarget> selectedTargets(InstallPackageTarget target) {
+bool targetMatchesStagedPlatform(InstallPackageTarget target, const std::string &platform) {
+    switch (target) {
+        case InstallPackageTarget::Windows:
+            return platform == "windows";
+        case InstallPackageTarget::MacOS:
+            return platform == "macos";
+        case InstallPackageTarget::LinuxDeb:
+        case InstallPackageTarget::LinuxRpm:
+            return platform == "linux";
+        case InstallPackageTarget::Tarball:
+            return true;
+        case InstallPackageTarget::All:
+        default:
+            return false;
+    }
+}
+
+std::vector<InstallPackageTarget> selectedTargets(InstallPackageTarget target,
+                                                  const std::string &platform) {
     if (target != InstallPackageTarget::All)
         return {target};
 
-    std::vector<InstallPackageTarget> result = {
-        InstallPackageTarget::Windows,
-        InstallPackageTarget::LinuxDeb,
-        InstallPackageTarget::Tarball,
-    };
-#if defined(__APPLE__)
-    result.push_back(InstallPackageTarget::MacOS);
-#endif
-#if defined(__linux__)
-    result.push_back(InstallPackageTarget::LinuxRpm);
-#endif
+    std::vector<InstallPackageTarget> result;
+    if (platform == "windows") {
+        result.push_back(InstallPackageTarget::Windows);
+    } else if (platform == "macos") {
+        result.push_back(InstallPackageTarget::MacOS);
+    } else if (platform == "linux") {
+        result.push_back(InstallPackageTarget::LinuxDeb);
+        if (rpmbuildAvailable())
+            result.push_back(InstallPackageTarget::LinuxRpm);
+    }
+    result.push_back(InstallPackageTarget::Tarball);
     return result;
 }
 
@@ -651,23 +787,30 @@ int cmdInstallPackage(int argc, char **argv) {
     AutoStageCleanup stageCleanup(stageDir, args.stageDir.empty() && !args.keepStageDir);
     viper::pkg::ToolchainInstallManifest manifest =
         viper::pkg::gatherToolchainInstallManifest(stageDir);
-    const auto detectedArch = detectManifestToolchainArch(manifest);
+    const auto detectedInfo = detectManifestToolchainExecutableInfo(manifest);
+    if (detectedInfo) {
+        manifest.platform = detectedInfo->platform;
+    }
     if (!args.archOverride.empty()) {
-        if (detectedArch && *detectedArch != "universal" && *detectedArch != args.archOverride) {
+        if (detectedInfo && detectedInfo->arch != "universal" &&
+            detectedInfo->arch != args.archOverride) {
             std::cerr << "error: --arch " << args.archOverride
-                      << " does not match staged viper binary architecture " << *detectedArch
+                      << " does not match staged viper binary architecture " << detectedInfo->arch
                       << "\n";
             return 1;
         }
         manifest.arch = args.archOverride;
-    } else if (detectedArch && *detectedArch != "universal") {
-        manifest.arch = *detectedArch;
+    } else if (detectedInfo && detectedInfo->arch == "universal") {
+        manifest.arch = "universal";
+    } else if (detectedInfo) {
+        manifest.arch = detectedInfo->arch;
     }
     viper::pkg::validateToolchainInstallManifest(manifest);
 
     if (args.verbose) {
         std::cout << "Stage: " << stageDir.string() << "\n";
         std::cout << "Version: " << manifest.version << "\n";
+        std::cout << "Platform: " << manifest.platform << "\n";
         std::cout << "Arch: " << manifest.arch << "\n";
         std::cout << "Files: " << manifest.files.size() << "\n";
     }
@@ -678,14 +821,30 @@ int cmdInstallPackage(int argc, char **argv) {
     fs::path outBase = args.outputPath;
     if (outBase.empty())
         outBase = stageDir.parent_path() / "installers";
+    const auto targets = selectedTargets(args.target, manifest.platform);
+    std::error_code outEc;
+    const bool outPathExistsAsDirectory = !outBase.empty() && fs::is_directory(outBase, outEc);
     const bool outIsDirectoryLike =
-        args.outputPath.empty() || (!outBase.has_extension() && selectedTargets(args.target).size() > 1);
+        args.outputPath.empty() || outPathExistsAsDirectory ||
+        (!outBase.has_extension() && targets.size() > 1);
     if (outIsDirectoryLike)
         fs::create_directories(outBase);
 
-    for (InstallPackageTarget target : selectedTargets(args.target)) {
+    for (InstallPackageTarget target : targets) {
+        if (!targetMatchesStagedPlatform(target, manifest.platform)) {
+            std::cerr << "error: target does not match staged viper binary platform "
+                      << manifest.platform << "\n";
+            return 1;
+        }
+        if (target == InstallPackageTarget::LinuxRpm && !rpmbuildAvailable()) {
+            std::cerr << "error: --target linux-rpm requires rpmbuild; install rpm-build "
+                         "or use --target linux-deb/tarball\n";
+            return 1;
+        }
         fs::path artifactPath =
             outIsDirectoryLike ? (outBase / targetFileName(target, manifest)) : outBase;
+        if (!outIsDirectoryLike && !artifactPath.parent_path().empty())
+            fs::create_directories(artifactPath.parent_path());
 
         switch (target) {
             case InstallPackageTarget::Windows: {
@@ -700,6 +859,7 @@ int cmdInstallPackage(int argc, char **argv) {
                 viper::pkg::MacOSToolchainBuildParams params;
                 params.manifest = manifest;
                 params.outputPath = artifactPath.string();
+                params.packageVersion = args.macosPackageVersion;
                 viper::pkg::buildMacOSToolchainPackage(params);
                 break;
             }

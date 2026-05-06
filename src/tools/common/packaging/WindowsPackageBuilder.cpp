@@ -43,6 +43,13 @@ namespace viper::pkg {
 namespace {
 
 constexpr size_t kInstallerStubPathCharLimit = 32768;
+constexpr uint64_t kInstallerStackReserve = 0x200000;
+constexpr uint64_t kInstallerStackCommit = 0x100000;
+
+void configureInstallerStack(PEBuildParams &pe) {
+    pe.stackReserve = kInstallerStackReserve;
+    pe.stackCommit = kInstallerStackCommit;
+}
 
 void addUniqueDir(std::vector<WindowsPackageDirEntry> &out,
                   std::set<std::string> &seen,
@@ -91,8 +98,27 @@ void validateWindowsLayoutFitsStub(const WindowsPackageLayout &layout) {
         validateWindowsRelativePath(file.relativePath, "Windows install file path");
         validateStubPathFits(rootProbe + "\\" + file.relativePath, "Windows install file path");
     }
+    if (layout.addToPath && !layout.pathRelativePath.empty()) {
+        validateWindowsRelativePath(layout.pathRelativePath, "Windows PATH entry path");
+        validateStubPathFits(rootProbe + "\\" + layout.pathRelativePath, "Windows PATH entry path");
+    }
+    if (!layout.fileAssociationExecutableRelativePath.empty()) {
+        validateWindowsRelativePath(layout.fileAssociationExecutableRelativePath,
+                                    "Windows file association executable path");
+        validateStubPathFits(rootProbe + "\\" + layout.fileAssociationExecutableRelativePath,
+                             "Windows file association executable path");
+    }
     for (const auto &file : layout.uninstallFiles)
         validateWindowsRelativePath(file.relativePath, "Windows uninstall file path");
+    for (const auto &assoc : layout.fileAssociations) {
+        validateSingleLineField(assoc.openCommandArguments,
+                                "Windows file association command arguments");
+        if (assoc.openCommandArguments.find('"') != std::string::npos) {
+            throw std::runtime_error("Windows file association command arguments must not "
+                                     "contain quotes: " +
+                                     assoc.openCommandArguments);
+        }
+    }
 }
 
 std::string lowerAscii(std::string text) {
@@ -118,6 +144,23 @@ std::string programFilesEnvPath(const std::string &installDir, const std::string
     if (!leaf.empty())
         path += "\\" + leaf;
     return path;
+}
+
+std::string toolchainProgIdFor(const std::string &identifier, const FileAssoc &assoc) {
+    validateWindowsProgIdBase(identifier, "Windows file association ProgID base");
+    validateFileAssociation(assoc.extension, assoc.description, assoc.mimeType);
+    std::string ext = assoc.extension;
+    if (!ext.empty() && ext.front() == '.')
+        ext.erase(ext.begin());
+    return identifier + "." + ext;
+}
+
+std::string toolchainOpenCommandArgsFor(const FileAssoc &assoc) {
+    std::string ext = assoc.extension;
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return ext == ".il" ? "-run" : "run";
 }
 
 void addParentDirs(std::vector<WindowsPackageDirEntry> &out,
@@ -206,7 +249,11 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     layout.createStartMenuShortcut = pkg.shortcutMenu;
     for (const auto &assoc : pkg.fileAssociations) {
         layout.fileAssociations.push_back(
-            {assoc.extension, assoc.description, assoc.mimeType, windowsProgIdFor(pkg, exec, assoc)});
+            {assoc.extension,
+             assoc.description,
+             assoc.mimeType,
+             windowsProgIdFor(pkg, exec, assoc),
+             {}});
     }
 
     std::set<std::string> installDirSet;
@@ -369,6 +416,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     uninstPe.imports = uninstStub.imports;
     uninstPe.manifest = generateUacManifest(pkg.minOsWindows);
     uninstPe.iconData = icoData;
+    configureInstallerStack(uninstPe);
     auto uninstBytes = buildPE(uninstPe);
     addOverlayFile(zip,
                    "app/uninstall.exe",
@@ -392,6 +440,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     provisionalPe.manifest = generateUacManifest(pkg.minOsWindows);
     provisionalPe.iconData = icoData;
     provisionalPe.overlay = zipPayload;
+    configureInstallerStack(provisionalPe);
     const auto provisionalBytes = buildPE(provisionalPe);
     layout.overlayFileOffset = static_cast<uint32_t>(provisionalBytes.size() - zipPayload.size());
 
@@ -404,15 +453,24 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     pe.manifest = generateUacManifest(pkg.minOsWindows);
     pe.iconData = icoData;
     pe.overlay = zipPayload;
+    configureInstallerStack(pe);
 
     const auto peBytes = buildPE(pe);
     writePEToFile(peBytes, params.outputPath);
 }
 
 void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
+    validateToolchainInstallManifest(params.manifest);
+    if (params.manifest.platform != "windows") {
+        throw std::runtime_error("Windows toolchain installer requires a Windows staged "
+                                 "toolchain manifest, got '" +
+                                 params.manifest.platform + "'");
+    }
     validateWindowsFileName(params.displayName, "Windows display name");
     validateWindowsProgIdBase(params.identifier, "Windows package identifier");
     validateSingleLineField(params.publisher, "Windows package publisher");
+    if (params.manifest.version.empty())
+        throw std::runtime_error("toolchain package version is required");
     validateSingleLineField(params.manifest.version, "Windows package version");
     WindowsPackageLayout layout;
     layout.displayName = params.displayName;
@@ -423,6 +481,18 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     layout.executableName = "viper.exe";
     layout.createDesktopShortcut = false;
     layout.createStartMenuShortcut = false;
+    layout.addToPath = true;
+    layout.cleanInstallRootBeforeInstall = true;
+    layout.pathRelativePath = "bin";
+    layout.fileAssociationExecutableRelativePath = "bin\\viper.exe";
+    for (const auto &assoc : params.manifest.fileAssociations) {
+        layout.fileAssociations.push_back(
+            {assoc.extension,
+             assoc.description,
+             assoc.mimeType,
+             toolchainProgIdFor(params.identifier, assoc),
+             toolchainOpenCommandArgsFor(assoc)});
+    }
 
     std::set<std::string> installDirSet;
 
@@ -473,6 +543,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     uninstPe.rdataSection = uninstStub.stubData;
     uninstPe.imports = uninstStub.imports;
     uninstPe.manifest = generateUacManifest();
+    configureInstallerStack(uninstPe);
     const auto uninstBytes = buildPE(uninstPe);
     addOverlayFile(zip,
                    "app/uninstall.exe",
@@ -495,6 +566,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     provisionalPe.imports = provisionalStub.imports;
     provisionalPe.manifest = generateUacManifest();
     provisionalPe.overlay = zipPayload;
+    configureInstallerStack(provisionalPe);
     const auto provisionalBytes = buildPE(provisionalPe);
     layout.overlayFileOffset = static_cast<uint32_t>(provisionalBytes.size() - zipPayload.size());
 
@@ -506,6 +578,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     pe.imports = instStub.imports;
     pe.manifest = generateUacManifest();
     pe.overlay = zipPayload;
+    configureInstallerStack(pe);
     const auto peBytes = buildPE(pe);
     writePEToFile(peBytes, params.outputPath);
 }
