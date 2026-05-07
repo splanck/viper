@@ -188,7 +188,7 @@ static void playlist_replace_music(playlist_impl *pl, void *new_music, int8_t pl
                 rt_music_stop_related(old_music);
             rt_music_play(new_music, loop);
         }
-        pl->playing = 1;
+        pl->playing = rt_music_is_playing(new_music) ? 1 : 0;
         pl->paused = 0;
     } else {
         if (old_music)
@@ -207,11 +207,18 @@ static void playlist_select_position(playlist_impl *pl,
         return;
 
     pl->current = new_position;
+    if (!resume_playing && !preserve_paused) {
+        playlist_release_music(pl);
+        pl->playing = 0;
+        pl->paused = 0;
+        return;
+    }
+
     void *new_music = playlist_load_current_music(pl);
     playlist_replace_music(pl, new_music, resume_playing);
 
     if (resume_playing && pl->music) {
-        pl->playing = 1;
+        pl->playing = rt_music_is_playing(pl->music) ? 1 : 0;
         pl->paused = 0;
     } else if (!pl->music) {
         pl->playing = 0;
@@ -481,7 +488,7 @@ void rt_playlist_play(void *obj) {
     if (pl->music) {
         int loop = (pl->repeat == RT_REPEAT_ONE) ? 1 : 0;
         rt_music_play(pl->music, loop);
-        pl->playing = 1;
+        pl->playing = rt_music_is_playing(pl->music) ? 1 : 0;
         pl->paused = 0;
     }
 }
@@ -774,6 +781,7 @@ void rt_playlist_update(void *obj) {
             // Repeat one: restart same track
             rt_music_seek(pl->music, 0);
             rt_music_play(pl->music, 1);
+            pl->playing = rt_music_is_playing(pl->music) ? 1 : 0;
         } else {
             // Move to next
             rt_playlist_next(obj);

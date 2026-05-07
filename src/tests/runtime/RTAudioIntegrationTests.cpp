@@ -59,6 +59,15 @@ static void test_audio_init() {
     ASSERT(result == 0 || result == 1, "audio init returns 0 or 1");
 }
 
+static void test_audio_default_volume_before_init() {
+    if (!rt_audio_is_available()) {
+        ASSERT(1, "audio default volume skipped when audio is unavailable");
+        return;
+    }
+    rt_audio_shutdown();
+    ASSERT(rt_audio_get_master_volume() == 100, "master volume defaults to 100 before init");
+}
+
 static void test_audio_volume() {
     // Volume functions are no-ops without hardware but shouldn't crash
     rt_audio_set_master_volume(75);
@@ -702,6 +711,61 @@ static void test_music_seek_to_duration_reaches_eof() {
     remove(path);
 }
 
+static void test_music_seek_huge_position_clamps_to_duration() {
+    const char *path = "/tmp/viper_test_music_seek_huge.wav";
+    if (!write_test_wav_frames(path, 44100, 44100)) {
+        ASSERT(1, "could not write temp WAV file (skip huge seek test)");
+        return;
+    }
+
+    void *music = rt_music_load(make_str(path));
+    if (!music) {
+        ASSERT(1, "music load unavailable in environment (skip huge seek test)");
+        remove(path);
+        return;
+    }
+
+    int64_t duration_ms = rt_music_get_duration(music);
+    rt_music_seek(music, INT64_MAX);
+    int64_t pos_ms = rt_music_get_position(music);
+    ASSERT(pos_ms >= duration_ms - 5 && pos_ms <= duration_ms + 5,
+           "huge Music.Seek position clamps to duration");
+
+    rt_music_destroy(music);
+    remove(path);
+}
+
+static void test_playlist_stopped_jump_releases_old_music_before_play() {
+    const char *valid_path = "/tmp/viper_test_playlist_stopped_jump_valid.wav";
+    const char *missing_path = "/tmp/viper_test_playlist_stopped_jump_missing.wav";
+    if (!write_test_wav_frames(valid_path, 44100, 44100)) {
+        ASSERT(1, "could not write temp WAV file (skip stopped-jump test)");
+        return;
+    }
+    remove(missing_path);
+
+    void *pl = rt_playlist_new();
+    rt_playlist_add(pl, make_str(valid_path));
+    rt_playlist_add(pl, make_str(missing_path));
+
+    rt_playlist_play(pl);
+    if (!rt_playlist_is_playing(pl)) {
+        ASSERT(1, "playlist playback unavailable in environment (skip stopped-jump test)");
+        remove(valid_path);
+        return;
+    }
+
+    rt_playlist_stop(pl);
+    rt_playlist_jump(pl, 1);
+    ASSERT(rt_playlist_get_current(pl) == 1, "stopped jump selects missing second track");
+
+    rt_playlist_play(pl);
+    ASSERT(rt_playlist_is_playing(pl) == 0,
+           "stopped jump does not keep playing the old loaded track");
+
+    remove(valid_path);
+}
+
 static void test_playlist_play_after_paused_jump_starts_new_track() {
     const char *path1 = "/tmp/viper_test_playlist_paused_jump_1.wav";
     const char *path2 = "/tmp/viper_test_playlist_paused_jump_2.wav";
@@ -1182,6 +1246,7 @@ static void test_crossfade_set_loop_on_fade_out_still_completes() {
 /// @brief Main.
 int main() {
     // Audio system (headless-safe)
+    test_audio_default_volume_before_init();
     test_audio_init();
     test_audio_volume();
     test_audio_pause_resume();
@@ -1219,6 +1284,7 @@ int main() {
     test_default_sound_play_survives_sfx_group_changes();
     test_music_seek_resampled_wav();
     test_music_seek_to_duration_reaches_eof();
+    test_music_seek_huge_position_clamps_to_duration();
     test_music_seek_does_not_stop_other_music();
     test_music_resume_reclaims_foreground();
     test_crossfade_pause_resume_holds_progress();
@@ -1229,6 +1295,7 @@ int main() {
     test_crossfade_stop_fade_in_restores_source_loop();
     test_crossfade_set_loop_on_fade_out_still_completes();
     test_playlist_play_after_paused_jump_starts_new_track();
+    test_playlist_stopped_jump_releases_old_music_before_play();
     test_playlist_remove_current_failed_replacement_clears_state();
 
     printf("Audio integration tests: %d/%d passed\n", tests_passed, tests_run);

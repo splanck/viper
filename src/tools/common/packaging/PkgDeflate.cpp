@@ -67,7 +67,7 @@ struct BitReader {
     uint32_t buffer;
     int bitsInBuf;
 
-    // Point the reader at the given byte array without copying.
+    /// @brief Point the reader at `d[0..l)` without copying.
     void init(const uint8_t *d, size_t l) {
         data = d;
         len = l;
@@ -76,7 +76,7 @@ struct BitReader {
         bitsInBuf = 0;
     }
 
-    // Refill buffer until at least n bits are available. Returns false at EOF.
+    /// @brief Refill the bit buffer until at least `n` bits are available. Returns false at EOF.
     bool fill(int n) {
         while (bitsInBuf < n) {
             if (pos >= len)
@@ -87,7 +87,7 @@ struct BitReader {
         return true;
     }
 
-    // Consume and return the next n bits (LSB first), throw at EOF.
+    /// @brief Consume and return the next `n` bits (LSB first). Throws `DeflateError` at EOF.
     uint32_t read(int n) {
         if (!fill(n))
             throw DeflateError("inflate: unexpected end of data");
@@ -97,14 +97,14 @@ struct BitReader {
         return val;
     }
 
-    // Return the next n bits without consuming them.
+    /// @brief Return the next `n` bits without consuming them from the buffer.
     uint32_t peek(int n) {
         if (!fill(n))
             throw DeflateError("inflate: unexpected end of data");
         return buffer & ((1U << n) - 1);
     }
 
-    // Discard n bits already peeked.
+    /// @brief Discard `n` bits already peeked from the buffer.
     void consume(int n) {
         if (bitsInBuf < n)
             throw DeflateError("inflate: unexpected end of data");
@@ -112,14 +112,14 @@ struct BitReader {
         bitsInBuf -= n;
     }
 
-    // Discard any partial byte in the buffer, aligning to the next byte boundary.
-    // Required before reading stored-block length fields (RFC 1951 §3.2.4).
+    /// @brief Discard any partial byte, aligning the stream to the next byte boundary.
+    /// Required before reading stored-block length fields (RFC 1951 §3.2.4).
     void align() {
         buffer = 0;
         bitsInBuf = 0;
     }
 
-    // Return true if there are more bits to read (either in-buffer or in the byte array).
+    /// @brief Return true if there are more bits to read (either buffered or in the byte array).
     bool hasData() const {
         return pos < len || bitsInBuf > 0;
     }
@@ -140,7 +140,7 @@ struct BitWriter {
         std::free(data);
     }
 
-    // Allocate the initial backing buffer (minimum 256 bytes).
+    /// @brief Allocate the initial backing buffer (minimum 256 bytes). Throws on OOM.
     void init(size_t initialCap) {
         capacity = initialCap > 256 ? initialCap : 256;
         data = static_cast<uint8_t *>(std::malloc(capacity));
@@ -151,7 +151,7 @@ struct BitWriter {
         bitsInBuf = 0;
     }
 
-    // Grow the backing buffer to accommodate at least need more bytes.
+    /// @brief Grow the backing buffer to accommodate at least `need` more bytes.
     void ensure(size_t need) {
         if (len + need > capacity) {
             size_t newCap = capacity * 2;
@@ -165,7 +165,7 @@ struct BitWriter {
         }
     }
 
-    // Write n bits (LSB first) of val to the output stream, flushing whole bytes.
+    /// @brief Write `n` bits of `val` (LSB first) to the output stream, flushing complete bytes.
     void write(uint32_t val, int n) {
         buffer |= val << bitsInBuf;
         bitsInBuf += n;
@@ -177,7 +177,7 @@ struct BitWriter {
         }
     }
 
-    // Flush any partial byte in the bit buffer as a zero-padded byte.
+    /// @brief Flush any partial byte in the bit buffer as a zero-padded byte.
     void flush() {
         if (bitsInBuf > 0) {
             ensure(1);
@@ -187,16 +187,16 @@ struct BitWriter {
         }
     }
 
-    // Copy a raw byte sequence directly to output, bypassing the bit buffer.
-    // Used for stored-block payload bytes that do not need bit-packing.
+    /// @brief Copy `srcLen` raw bytes directly to the output buffer, bypassing bit-packing.
+    /// Used for stored-block payload bytes that do not need bit-packing.
     void writeBytes(const uint8_t *src, size_t srcLen) {
         ensure(srcLen);
         std::memcpy(data + len, src, srcLen);
         len += srcLen;
     }
 
-    // Release the backing buffer without moving it to a vector.
-    // Called on error paths where the partial result must be discarded.
+    /// @brief Release the backing buffer without moving it to a vector.
+    /// Called on error paths where the partial result must be discarded.
     void free() {
         std::free(data);
         data = nullptr;
@@ -231,12 +231,10 @@ struct HuffmanTree {
     HuffmanTree(const HuffmanTree &) = delete;
     HuffmanTree &operator=(const HuffmanTree &) = delete;
 
-    // Build a flat lookup table from an array of canonical Huffman code lengths.
-    // Entries in the symbols[] table are encoded as (len << 12) | symbol.
-    // Only codes up to tableBits in length have direct table entries; longer
-    // codes require a secondary lookup (not implemented — input data is assumed
-    // conformant with RFC 1951 which caps all codes at 15 bits).
-    // Returns false if the length array is invalid or empty.
+    /// @brief Build a flat lookup table from canonical Huffman code lengths.
+    /// Each `symbols[]` entry is encoded as `(len << 12) | symbol`. Only codes up to
+    /// `tableBits` in length have direct table entries (RFC 1951 caps all codes at 15 bits).
+    /// Returns false if the length array is invalid or empty.
     bool build(const uint8_t *lengths, int numCodes) {
         int blCount[kMaxBits + 1] = {};
         int nonZero = 0;
@@ -302,9 +300,8 @@ struct HuffmanTree {
         return true;
     }
 
-    // Decode one symbol from the bit stream by peeking tableBits bits and doing
-    // a direct table lookup. Returns -1 if the bit stream is exhausted or the
-    // code does not appear in the table.
+    /// @brief Decode one symbol from `br` by peeking `tableBits` bits and doing a direct lookup.
+    /// Returns -1 if the bit stream is exhausted or the code does not appear in the table.
     int decode(BitReader &br) const {
         const bool haveFullTable = br.fill(tableBits);
         if (!haveFullTable && br.bitsInBuf == 0)
@@ -350,9 +347,8 @@ static HuffmanTree *sFixedLitTree = nullptr;
 static HuffmanTree *sFixedDistTree = nullptr;
 static std::once_flag sFixedTreesFlag;
 
-// Initialize the RFC 1951 §3.2.6 fixed Huffman trees exactly once (thread-safe via
-// std::call_once). These trees are allocated on the heap and intentionally never freed —
-// they live for the lifetime of the process and are read-only after initialization.
+/// @brief Initialize the RFC 1951 §3.2.6 fixed Huffman trees exactly once (thread-safe via `std::call_once`).
+/// The trees are heap-allocated and intentionally never freed — read-only after initialization.
 static void initFixedTrees() {
     std::call_once(sFixedTreesFlag, []() {
         // Literal/length code lengths (RFC 1951 section 3.2.6)
@@ -392,7 +388,7 @@ struct OutputBuffer {
     size_t capacity;
     size_t maxOutput;
 
-    // Allocate the initial decompression buffer, capped at maxOutputBytes.
+    /// @brief Allocate the initial decompression buffer, capped at `maxOutputBytes`.
     void init(size_t initialCap, size_t maxOutputBytes) {
         maxOutput = maxOutputBytes;
         if (initialCap > maxOutput)
@@ -404,7 +400,7 @@ struct OutputBuffer {
         len = 0;
     }
 
-    // Grow the decompression buffer, throwing if the output size limit is reached.
+    /// @brief Grow the decompression buffer; throws `DeflateError` if the output size limit is reached.
     void ensure(size_t need) {
         if (need > maxOutput || len > maxOutput - need) {
             const size_t maxMB = maxOutput / (1024u * 1024u);
@@ -425,15 +421,14 @@ struct OutputBuffer {
         }
     }
 
-    // Append a single literal byte to decompressed output.
+    /// @brief Append a single literal byte to the decompressed output buffer.
     void putByte(uint8_t b) {
         ensure(1);
         data[len++] = b;
     }
 
-    // Expand an LZ77 back-reference: copy length bytes from distance bytes before
-    // the current write position. Note: src and dst may overlap (e.g. RLE runs),
-    // so this must copy byte-by-byte rather than using memcpy.
+    /// @brief Expand an LZ77 back-reference by copying `length` bytes from `distance` bytes back.
+    /// Copies byte-by-byte because src and dst may overlap (e.g. RLE runs).
     void copyBack(int distance, int length) {
         ensure(length);
         size_t src = len - distance;
@@ -441,6 +436,7 @@ struct OutputBuffer {
             data[len++] = data[src++];
     }
 
+    /// @brief Move decompressed output to a vector and free the internal buffer.
     std::vector<uint8_t> toVector() {
         std::vector<uint8_t> result(data, data + len);
         std::free(data);
@@ -448,6 +444,7 @@ struct OutputBuffer {
         return result;
     }
 
+    /// @brief Free the internal buffer — called on error paths where output is discarded.
     void free() {
         std::free(data);
         data = nullptr;
@@ -458,9 +455,9 @@ struct OutputBuffer {
 // DEFLATE Decompression
 //=============================================================================
 
-// Decompress a DEFLATE stored (BTYPE=00) block.
-// Aligns to the next byte boundary, reads LEN + NLEN (one-complement check), then
-// copies LEN raw bytes from the bit stream to the output buffer.
+/// @brief Decompress a DEFLATE stored (BTYPE=00) block.
+/// Aligns to the next byte boundary, validates LEN+NLEN one's-complement, then
+/// copies LEN raw bytes from the bit stream to `out`.
 static bool inflateStored(BitReader &br, OutputBuffer &out) {
     br.align();
     if (br.pos + 4 > br.len)
@@ -482,9 +479,8 @@ static bool inflateStored(BitReader &br, OutputBuffer &out) {
     return true;
 }
 
-// Decompress a DEFLATE Huffman-coded block (BTYPE=01 or BTYPE=02) using
-// the supplied literal/length and distance trees. Symbol 256 is end-of-block;
-// symbols 257-285 are length codes followed by a distance code + extra bits.
+/// @brief Decompress a DEFLATE Huffman-coded block (BTYPE=01 or BTYPE=02).
+/// Symbol 256 is end-of-block; symbols 257-285 are length codes followed by a distance code.
 static bool inflateHuffman(BitReader &br,
                            OutputBuffer &out,
                            const HuffmanTree &litTree,
@@ -524,11 +520,9 @@ static bool inflateHuffman(BitReader &br,
     }
 }
 
-// Decompress a DEFLATE dynamic Huffman block (BTYPE=10).
-// Reads HLIT, HDIST, HCLEN from the bit stream, builds a code-length tree,
-// then decodes the combined literal/length + distance code-length tables
-// (handling repeat codes 16, 17, 18 per RFC 1951 §3.2.7), and finally
-// delegates to inflateHuffman with the resulting trees.
+/// @brief Decompress a DEFLATE dynamic Huffman block (BTYPE=10).
+/// Reads HLIT/HDIST/HCLEN, builds the code-length tree, decodes literal/length and distance
+/// tables (with repeat codes 16/17/18 per RFC 1951 §3.2.7), then calls `inflateHuffman`.
 static bool inflateDynamic(BitReader &br, OutputBuffer &out) {
     int hlit = br.read(5) + 257;
     int hdist = br.read(5) + 1;
@@ -613,9 +607,9 @@ static bool inflateDynamic(BitReader &br, OutputBuffer &out) {
     return inflateHuffman(br, out, litTree, distTree);
 }
 
-// Top-level DEFLATE decompression: iterates over BFINAL/BTYPE block headers,
-// dispatching to inflateStored, inflateHuffman (fixed), or inflateDynamic.
-// Throws DeflateError on any malformed input or output size violation.
+/// @brief Top-level DEFLATE decompression loop: reads BFINAL/BTYPE block headers and
+/// dispatches to `inflateStored`, `inflateHuffman` (fixed), or `inflateDynamic`.
+/// Throws `DeflateError` on malformed input or output size violation.
 static std::vector<uint8_t> inflateData(const uint8_t *data, size_t len, size_t maxOutputBytes) {
     initFixedTrees();
 
@@ -686,9 +680,8 @@ struct LZ77State {
     static constexpr int kHashMask = kHashSize - 1;
     static constexpr int kNil = -1;
 
-    // Allocate head[] (hash → most-recent position) and prev[] (chained positions)
-    // and set all entries to kNil. head is indexed by the 3-byte rolling hash;
-    // prev is indexed by (pos & kWindowMask) to implement the sliding window.
+    /// @brief Allocate `head[]` and `prev[]` arrays and initialize all entries to `kNil`.
+    /// `head` maps a 3-byte rolling hash to the most-recent position; `prev` is the sliding-window chain.
     void init() {
         head = static_cast<int *>(std::malloc(kHashSize * sizeof(int)));
         prev = static_cast<int *>(std::malloc(kWindowSize * sizeof(int)));
@@ -705,25 +698,21 @@ struct LZ77State {
             prev[i] = kNil;
     }
 
-    // Release head and prev arrays. Called explicitly on error paths;
-    // the destructor also calls this via std::free directly.
+    /// @brief Release `head` and `prev` arrays. Called on error paths; the destructor also frees them.
     void free() {
         std::free(head);
         std::free(prev);
     }
 
-    // Compute a 3-byte rolling hash for the bytes at d[0..2].
-    // The exact polynomial is unimportant as long as it distributes well —
-    // collisions are harmless (just longer chains), but poor distribution
-    // reduces compression ratio.
+    /// @brief Compute a 3-byte rolling hash for `d[0..2]` — collisions are harmless
+    /// (just longer chains), but poor distribution reduces compression ratio.
     static int computeHash(const uint8_t *d) {
         return ((d[0] << 10) ^ (d[1] << 5) ^ d[2]) & kHashMask;
     }
 
-    // Walk the hash chain starting at head[hash(data+pos)] and return the length
-    // of the longest match found within the sliding window. *matchDist is set to
-    // the distance (bytes back) of the best match. Returns 0 if no match meets
-    // kMinMatchLen. maxChain limits chain traversal depth to bound CPU cost.
+    /// @brief Walk the hash chain for `data+pos` and return the longest match in the sliding window.
+    /// Sets `*matchDist` to the distance of the best match. Returns 0 if no match meets `kMinMatchLen`.
+    /// `maxChain` limits chain traversal depth to bound CPU cost.
     int findMatch(const uint8_t *data, size_t pos, size_t len, int maxChain, int *matchDist) const {
         if (pos + kMinMatchLen > len)
             return 0;
@@ -764,9 +753,8 @@ struct LZ77State {
         return bestLen >= kMinMatchLen ? bestLen : 0;
     }
 
-    // Insert position pos into the hash chain for the 3-byte sequence starting there.
-    // Must be called for every byte position the compressor advances past, so that
-    // future findMatch calls can find back-references to those bytes.
+    /// @brief Insert `pos` into the hash chain for `data[pos..pos+3)`.
+    /// Must be called for every byte position the compressor advances past.
     void updateHash(const uint8_t *data, size_t pos) {
         int hash = computeHash(data + pos);
         prev[pos & kWindowMask] = head[hash];
@@ -774,9 +762,8 @@ struct LZ77State {
     }
 };
 
-// Map a match length (3-258) to its DEFLATE length code (257-285).
-// The returned code is used as the literal/length Huffman symbol;
-// extra bits (kLengthExtraBits) then encode the residual.
+/// @brief Map a match length (3–258) to its DEFLATE length code (257–285).
+/// Extra bits from `kLengthExtraBits` encode the residual beyond the base value.
 static int getLengthCode(int length) {
     for (int i = 0; i < 29; i++) {
         if (i == 28)
@@ -787,8 +774,8 @@ static int getLengthCode(int length) {
     return 285;
 }
 
-// Map a match distance (1-32768) to its DEFLATE distance code (0-29).
-// Extra bits (kDistExtraBits) encode the residual distance beyond kDistBase[code].
+/// @brief Map a match distance (1–32768) to its DEFLATE distance code (0–29).
+/// Extra bits from `kDistExtraBits` encode the residual beyond `kDistBase[code]`.
 static int getDistCode(int dist) {
     for (int i = 0; i < 30; i++) {
         if (i == 29 || dist < kDistBase[i + 1])
@@ -906,10 +893,8 @@ static void deflateFixed(BitWriter &bw, const uint8_t *data, size_t len, int lev
     // (that causes a double-free since the destructor also frees head/prev).
 }
 
-// Top-level compression dispatcher. Clamps level to [1, 9], then chooses:
-//   - stored blocks for empty/tiny inputs or level == 1
-//   - stored blocks for inputs > INT_MAX (LZ77 window uses int positions)
-//   - fixed Huffman + LZ77 for all other cases
+/// @brief Top-level compression dispatcher. Clamps level to [1, 9], then selects:
+/// stored blocks for tiny/empty inputs or level 1; fixed Huffman+LZ77 for all other cases.
 static std::vector<uint8_t> deflateData(const uint8_t *data, size_t len, int level) {
     if (level < kMinLevel)
         level = kMinLevel;
@@ -937,14 +922,17 @@ static std::vector<uint8_t> deflateData(const uint8_t *data, size_t len, int lev
 // Public API
 //=============================================================================
 
+/// @brief Compress `data` using raw DEFLATE at the given level.
 std::vector<uint8_t> deflate(const uint8_t *data, size_t len, int level) {
     return deflateData(data, len, level);
 }
 
+/// @brief Decompress a raw DEFLATE stream with the default 256 MB output limit.
 std::vector<uint8_t> inflate(const uint8_t *data, size_t len) {
     return inflateData(data, len, kInflateMaxOutput);
 }
 
+/// @brief Decompress a raw DEFLATE stream with an explicit output byte limit.
 std::vector<uint8_t> inflate(const uint8_t *data, size_t len, size_t maxOutputBytes) {
     return inflateData(data, len, maxOutputBytes);
 }

@@ -46,17 +46,17 @@ constexpr size_t kInstallerStubPathCharLimit = 32768;
 constexpr uint64_t kInstallerStackReserve = 0x200000;
 constexpr uint64_t kInstallerStackCommit = 0x100000;
 
-// Apply a larger-than-default stack to all installer/uninstaller PEs.
-// The installer recursively creates directory trees and copies large files;
-// the default 1 MB reserve is too small for deeply nested install paths.
+/// @brief Apply a larger-than-default stack to all installer/uninstaller PEs.
+/// The installer recursively creates directory trees and copies large files;
+/// the default 1 MB reserve is too small for deeply nested install paths.
 void configureInstallerStack(PEBuildParams &pe) {
     pe.stackReserve = kInstallerStackReserve;
     pe.stackCommit = kInstallerStackCommit;
 }
 
-// Append a directory entry to out only if it has not already been seen.
-// The seen set keys on root+path so the same relative path under different
-// roots (e.g. InstallDir vs StartMenuDir) is treated as two distinct entries.
+/// @brief Append a directory entry to out only if it has not already been seen.
+/// The seen set keys on root+path so the same relative path under different
+/// roots (e.g. InstallDir vs StartMenuDir) is treated as two distinct entries.
 void addUniqueDir(std::vector<WindowsPackageDirEntry> &out,
                   std::set<std::string> &seen,
                   WindowsInstallRoot root,
@@ -70,9 +70,9 @@ void addUniqueDir(std::vector<WindowsPackageDirEntry> &out,
     out.push_back(WindowsPackageDirEntry{root, clean});
 }
 
-// Validate every path segment in a slash-separated relative Windows path.
-// Each segment must pass validateWindowsFileName to reject reserved device names
-// (CON, NUL, COM1…), illegal characters (<, >, :, |, ?, *), and empty components.
+/// @brief Validate every path segment in a slash-separated relative Windows path.
+/// Each segment must pass validateWindowsFileName to reject reserved device names
+/// (CON, NUL, COM1…), illegal characters (<, >, :, |, ?, *), and empty components.
 void validateWindowsRelativePath(const std::string &relativePath, const char *fieldName) {
     const std::string clean = sanitizePackageRelativePath(relativePath, fieldName);
     size_t pos = 0;
@@ -87,19 +87,19 @@ void validateWindowsRelativePath(const std::string &relativePath, const char *fi
     }
 }
 
-// Ensure that an absolute-expanded Windows path (e.g. %ProgramFiles%\App\bin\viper.exe)
-// fits within the installer stub's fixed-size WCHAR path buffer (32768 code units).
-// The check uses UTF-16 unit count so multi-byte UTF-8 characters are counted correctly.
+/// @brief Ensure that an absolute-expanded Windows path (e.g. %ProgramFiles%\App\bin\viper.exe)
+/// fits within the installer stub's fixed-size WCHAR path buffer (32768 code units).
+/// The check uses UTF-16 unit count so multi-byte UTF-8 characters are counted correctly.
 void validateStubPathFits(const std::string &path, const char *fieldName) {
     if (utf16CodeUnitCountFromUtf8(path) + 1 > kInstallerStubPathCharLimit)
         throw std::runtime_error(std::string(fieldName) +
                                  " exceeds the Windows installer long-path stub limit: " + path);
 }
 
-// Pre-flight every path that the installer stub will write at runtime to
-// ensure none exceed the stub's WCHAR buffer limit. Checks: install root,
-// all directories, all files, the optional PATH entry, the file association
-// executable path, and all file association ProgID command arguments.
+/// @brief Pre-flight every path that the installer stub will write at runtime to
+/// ensure none exceed the stub's WCHAR buffer limit. Checks: install root,
+/// all directories, all files, the optional PATH entry, the file association
+/// executable path, and all file association ProgID command arguments.
 void validateWindowsLayoutFitsStub(const WindowsPackageLayout &layout) {
     const std::string installDir = layout.installDirName.empty() ? layout.displayName
                                                                  : layout.installDirName;
@@ -137,17 +137,17 @@ void validateWindowsLayoutFitsStub(const WindowsPackageLayout &layout) {
     }
 }
 
-// Return text lowercased for case-insensitive filename comparisons (LICENSE, README.MD).
-// Only transforms ASCII letters so it is safe for arbitrary UTF-8 filenames.
+/// @brief Return text lowercased for case-insensitive filename comparisons (LICENSE, README.MD).
+/// Only transforms ASCII letters so it is safe for arbitrary UTF-8 filenames.
 std::string lowerAscii(std::string text) {
     for (char &c : text)
         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     return text;
 }
 
-// Build the Windows ProgID string for a file association in app packages.
-// Format: "<pkg.identifier>.<ext>" — e.g. "com.example.myapp.zia".
-// ProgIDs are registered in HKEY_CLASSES_ROOT and link the extension to the app.
+/// @brief Build the Windows ProgID string for a file association in app packages.
+/// Format: "<pkg.identifier>.<ext>" — e.g. "com.example.myapp.zia".
+/// ProgIDs are registered in HKEY_CLASSES_ROOT and link the extension to the app.
 std::string windowsProgIdFor(const PackageConfig &pkg,
                              const std::string &exec,
                              const FileAssoc &assoc) {
@@ -160,9 +160,9 @@ std::string windowsProgIdFor(const PackageConfig &pkg,
     return base + "." + ext;
 }
 
-// Build a %ProgramFiles%\<installDir>[\<leaf>] path string for use in .lnk
-// shortcut files and installer metadata. The %ProgramFiles% token is expanded
-// by Windows at shortcut resolution time, so the path is machine-independent.
+/// @brief Build a %ProgramFiles%\<installDir>[\<leaf>] path string for use in .lnk
+/// shortcut files and installer metadata. The %ProgramFiles% token is expanded
+/// by Windows at shortcut resolution time, so the path is machine-independent.
 std::string programFilesEnvPath(const std::string &installDir, const std::string &leaf = {}) {
     std::string path = "%ProgramFiles%\\" + installDir;
     if (!leaf.empty())
@@ -170,9 +170,9 @@ std::string programFilesEnvPath(const std::string &installDir, const std::string
     return path;
 }
 
-// Build the Windows ProgID for a toolchain file association.
-// Equivalent to windowsProgIdFor but takes an explicit identifier string instead
-// of a full PackageConfig; used for toolchain installer builds.
+/// @brief Build the Windows ProgID for a toolchain file association.
+/// Equivalent to windowsProgIdFor but takes an explicit identifier string instead
+/// of a full PackageConfig; used for toolchain installer builds.
 std::string toolchainProgIdFor(const std::string &identifier, const FileAssoc &assoc) {
     validateWindowsProgIdBase(identifier, "Windows file association ProgID base");
     validateFileAssociation(assoc.extension, assoc.description, assoc.mimeType);
@@ -182,8 +182,8 @@ std::string toolchainProgIdFor(const std::string &identifier, const FileAssoc &a
     return identifier + "." + ext;
 }
 
-// Return the command-line arguments the viper binary uses to open files of
-// this extension: "-run" for pre-compiled .il modules, "run" for source files.
+/// @brief Return the command-line arguments the viper binary uses to open files of
+/// this extension: "-run" for pre-compiled .il modules, "run" for source files.
 std::string toolchainOpenCommandArgsFor(const FileAssoc &assoc) {
     std::string ext = assoc.extension;
     std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char ch) {
@@ -192,10 +192,10 @@ std::string toolchainOpenCommandArgsFor(const FileAssoc &assoc) {
     return ext == ".il" ? "-run" : "run";
 }
 
-// Walk every parent directory segment of relativeFilePath and ensure each one
-// is present in out. Directories are added shallowest-first so the installer
-// creates parent directories before their children. Duplicate entries are
-// suppressed via the seen set.
+/// @brief Walk every parent directory segment of relativeFilePath and ensure each one
+/// is present in out. Directories are added shallowest-first so the installer
+/// creates parent directories before their children. Duplicate entries are
+/// suppressed via the seen set.
 void addParentDirs(std::vector<WindowsPackageDirEntry> &out,
                    std::set<std::string> &seen,
                    WindowsInstallRoot root,
@@ -215,10 +215,10 @@ void addParentDirs(std::vector<WindowsPackageDirEntry> &out,
         addUniqueDir(out, seen, root, dir);
 }
 
-// Add a file to the ZIP overlay and register corresponding install/uninstall
-// entries in layout. The layout entry captures the local-data offset and CRC-32
-// from the freshly-written ZIP entry so the installer stub can locate and verify
-// each file without parsing the central directory at runtime.
+/// @brief Add a file to the ZIP overlay and register corresponding install/uninstall
+/// entries in layout. The layout entry captures the local-data offset and CRC-32
+/// from the freshly-written ZIP entry so the installer stub can locate and verify
+/// each file without parsing the central directory at runtime.
 void addOverlayFile(ZipWriter &zip,
                     const std::string &overlayName,
                     const uint8_t *data,
@@ -238,9 +238,9 @@ void addOverlayFile(ZipWriter &zip,
     }
 }
 
-// Populate uninstallDirectories from installDirectories, then sort deepest-first
-// so the uninstaller removes leaf directories before their parents. Sorting by
-// depth first, then path length, ensures correct order when depths are equal.
+/// @brief Populate uninstallDirectories from installDirectories, then sort deepest-first
+/// so the uninstaller removes leaf directories before their parents. Sorting by
+/// depth first, then path length, ensures correct order when depths are equal.
 void finalizeUninstallDirs(WindowsPackageLayout &layout) {
     layout.uninstallDirectories = layout.installDirectories;
     std::stable_sort(layout.uninstallDirectories.begin(),
@@ -259,14 +259,10 @@ void finalizeUninstallDirs(WindowsPackageLayout &layout) {
 
 } // namespace
 
-// Build a Windows self-extracting installer for a single application binary.
-// Assembly is a two-pass process:
-//   Pass 1 — layout.overlayFileOffset = 0; build a provisional PE to measure
-//            the exact byte offset where the ZIP overlay will start.
-//   Pass 2 — bake the measured offset into the stub's read-seek logic and
-//            produce the final PE with the correct overlay start address.
-// The uninstaller PE is produced first (before the main loop) so it can be
-// added to the ZIP before finalizing the overlay.
+/// @brief Build a Windows self-extracting installer for a single application binary.
+/// Assembly is a two-pass process: Pass 1 measures the exact overlay offset with
+/// overlayFileOffset=0; Pass 2 bakes the measured offset into the stub and produces
+/// the final PE. The uninstaller is built first so it can be included in the ZIP.
 void buildWindowsPackage(const WindowsBuildParams &params) {
     const auto &pkg = params.pkgConfig;
     const std::string displayName = pkg.displayName.empty() ? params.projectName : pkg.displayName;
@@ -507,13 +503,10 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     writePEToFile(peBytes, params.outputPath);
 }
 
-// Build a Windows toolchain installer from a pre-validated staged manifest.
-// Unlike buildWindowsPackage, all files come from the manifest rather than a
-// project directory; there are no asset globs, no PNG icon conversion, and no
-// desktop/Start Menu shortcuts. PATH registration and file associations for
-// .zia/.bas/.il are always enabled. Symlinks in the manifest are dereferenced
-// to their regular-file targets because the Windows ZIP format has no symlink
-// support, and the installer runs on Windows where POSIX symlinks don't exist.
+/// @brief Build a Windows toolchain installer from a pre-validated staged manifest.
+/// Unlike buildWindowsPackage, all files come from the manifest (no asset globs, no
+/// PNG icon conversion, no desktop/Start Menu shortcuts). PATH registration and file
+/// associations for .zia/.bas/.il are always enabled. Symlinks are dereferenced.
 void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     validateToolchainInstallManifest(params.manifest);
     if (params.manifest.platform != "windows") {

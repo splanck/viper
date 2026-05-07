@@ -66,10 +66,9 @@ uint32_t alignUp(uint32_t value, uint32_t alignment) {
     return (value + mask) & ~mask;
 }
 
-// Cast size_t to uint32_t, throwing if the value exceeds 2^32-1.
-// PE32+ fields (VirtualSize, SizeOfRawData, offsets) are all 32-bit; any
-// section or blob that exceeds this limit would silently truncate without
-// this guard.
+/// @brief Cast `size_t` to `uint32_t`, throwing if the value exceeds 2^32-1.
+/// PE32+ fields (VirtualSize, SizeOfRawData, offsets) are all 32-bit; any section or
+/// blob that exceeds this limit would silently truncate without this guard.
 uint32_t checkedU32Size(size_t value, const char *what) {
     if (value > std::numeric_limits<uint32_t>::max())
         throw std::runtime_error(std::string("PEBuilder: ") + what +
@@ -77,9 +76,9 @@ uint32_t checkedU32Size(size_t value, const char *what) {
     return static_cast<uint32_t>(value);
 }
 
-// Add two uint32_t values, throwing on overflow.
-// Used when accumulating section VAs and file offsets to detect a pathological
-// image that would exceed the 4 GB PE32+ address space.
+/// @brief Add two `uint32_t` values, throwing on overflow.
+/// Used when accumulating section VAs and file offsets to detect a pathological
+/// image that would exceed the 4 GB PE32+ address space.
 uint32_t checkedAddU32(uint32_t lhs, uint32_t rhs, const char *what) {
     if (lhs > std::numeric_limits<uint32_t>::max() - rhs)
         throw std::runtime_error(std::string("PEBuilder: ") + what +
@@ -156,6 +155,8 @@ struct ImportResult {
     uint32_t iatSize;
 };
 
+/// @brief Build the import directory tables (IDT, ILT, Hint/Name, DLL name strings, IAT)
+/// for the .rdata section. Returns the complete rdata bytes plus RVA/size metadata.
 ImportResult buildImportTables(const std::vector<PEImport> &imports, uint32_t rdataRVA) {
     ImportResult result{};
     if (imports.empty())
@@ -337,15 +338,10 @@ void parseIcoToResources(const std::vector<uint8_t> &ico, std::vector<ResItem> &
     items.push_back(std::move(grp));
 }
 
-// Build the Win32 three-level resource directory tree (.rsrc section).
-//
-// Tree structure: Level 1 (type) → Level 2 (name ID) → Level 3 (language, always 0x0409).
-// Directory entries for numeric IDs use the ID-entry format (high bit clear);
-// entries pointing to sub-directories set the high bit of the DataEntryOffset field.
-// Data entries hold the RVA and size of each raw resource blob.
-//
-// Items are sorted by type ID because the Windows loader binary-searches
-// the type directory — unsorted entries would cause lookup failures at runtime.
+/// @brief Build the Win32 three-level resource directory tree (.rsrc section).
+/// Tree: Type → Name/ID → Language (always 0x0409 en-US).
+/// Items are sorted by type ID because the Windows loader binary-searches the type directory;
+/// unsorted entries cause lookup failures at runtime.
 ResourceResult buildResourceSection(const std::string &manifest,
                                     const std::vector<uint8_t> &iconData,
                                     uint32_t rsrcRVA) {
@@ -530,16 +526,10 @@ ResourceResult buildResourceSection(const std::string &manifest,
 
 } // namespace
 
-// Assemble a complete PE32+ binary from the supplied params.
-//
-// The output image contains up to three sections:
-//   .text  — code (always present, contains params.textSection + optional overlay)
-//   .rdata — import tables + caller-supplied read-only data (present if imports or rdataSection)
-//   .rsrc  — manifest and/or icon resource directory (present if manifest or iconData)
-//
-// All RVAs and file offsets are calculated in two passes: first pass plans section
-// sizes/alignments, second pass fills in the PE headers using those values.
-// An optional raw overlay (e.g. a ZIP payload) is appended after all sections.
+/// @brief Assemble a complete PE32+ binary from `params`.
+/// Sections: `.text` (always), `.rdata` (if imports or rdataSection), `.rsrc` (if manifest or icon).
+/// RVAs and file offsets are computed in a single layout pass, then headers are filled in.
+/// An optional raw overlay (e.g. a ZIP payload) is appended after all sections.
 std::vector<uint8_t> buildPE(const PEBuildParams &params) {
     // ─── Section planning ──────────────────────────────────────────────
 
@@ -770,8 +760,8 @@ std::vector<uint8_t> buildPE(const PEBuildParams &params) {
     return pe;
 }
 
-// Write a PE image to a file. Throws std::runtime_error if the file cannot
-// be created or if the write fails partway through.
+/// @brief Write a PE image to `path`. Throws `std::runtime_error` if the file cannot
+/// be created or if the write fails partway through.
 void writePEToFile(const std::vector<uint8_t> &pe, const std::string &path) {
     std::ofstream f(path, std::ios::binary);
     if (!f)
@@ -783,9 +773,8 @@ void writePEToFile(const std::vector<uint8_t> &pe, const std::string &path) {
 
 namespace {
 
-// Parse a "major.minor[.build[.revision]]" string into a numeric vector.
-// Throws if the component count is not in [2, 4], as required by the Windows
-// compatibility manifest supportedOS schema.
+/// @brief Parse a `major.minor[.build[.revision]]` version string into a numeric vector.
+/// Throws if the component count is not in [2, 4], as required by the Windows compatibility manifest.
 std::vector<unsigned> parseDottedVersion(const std::string &version) {
     const auto parsed =
         parseDottedNumericVersionParts(version, "Windows compatibility manifest version");
@@ -797,9 +786,8 @@ std::vector<unsigned> parseDottedVersion(const std::string &version) {
     return parts;
 }
 
-// Compare a dotted-version string against a fixed version tuple.
-// Returns -1/0/+1 (lhs < / == / > rhs). Missing trailing components are
-// treated as 0 (e.g. "6.1" == {6, 1, 0, 0}).
+/// @brief Compare a dotted-version string against a fixed version tuple.
+/// Returns -1, 0, or +1 (lhs < / == / > rhs). Missing trailing components are treated as 0.
 int compareDottedVersion(const std::string &lhs, std::initializer_list<unsigned> rhs) {
     const auto left = parseDottedVersion(lhs);
     const size_t n = std::max(left.size(), rhs.size());
@@ -815,12 +803,9 @@ int compareDottedVersion(const std::string &lhs, std::initializer_list<unsigned>
     return 0;
 }
 
-// Build the <compatibility> XML block for a Windows application manifest.
-// Emits a <supportedOS> entry for every Windows version from minOsWindows
-// up to Windows 10/11. The inclusive lower-bound logic means that if a
-// caller requests "6.1" (Windows 7), Vista's GUID is also included —
-// matching the Windows loader's expectation that older OSes are listed first.
-// Returns an empty string if minOsWindows is empty (compatibility block omitted).
+/// @brief Build the `<compatibility>` XML block for a Windows application manifest.
+/// Emits a `<supportedOS>` GUID entry for every Windows version from `minOsWindows` through 10/11.
+/// Returns an empty string when `minOsWindows` is empty (block omitted).
 std::string windowsCompatibilityXml(const std::string &minOsWindows) {
     if (minOsWindows.empty())
         return {};
@@ -846,10 +831,8 @@ std::string windowsCompatibilityXml(const std::string &minOsWindows) {
            "  </compatibility>\n";
 }
 
-// Generate a complete Windows application manifest XML string with the
-// given requestedExecutionLevel and an optional Windows compatibility block.
-// The level parameter maps directly to the UAC manifest attribute value
-// ("requireAdministrator" or "asInvoker").
+/// @brief Generate a complete Windows application manifest XML with the given `requestedExecutionLevel`.
+/// `level` maps directly to the UAC attribute value (`"requireAdministrator"` or `"asInvoker"`).
 std::string generateManifestWithExecutionLevel(const std::string &level,
                                                const std::string &minOsWindows) {
     return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
@@ -868,21 +851,21 @@ std::string generateManifestWithExecutionLevel(const std::string &level,
 
 } // namespace
 
-// Generate a UAC-elevating manifest (requireAdministrator, no OS compat block).
-// Embed this in the installer PE so Windows prompts for elevation on launch.
+/// @brief Generate a UAC-elevating manifest (`requireAdministrator`, no OS compat block).
+/// Embed this in the installer PE so Windows prompts for elevation on launch.
 std::string generateUacManifest() {
     return generateManifestWithExecutionLevel("requireAdministrator", {});
 }
 
-// Generate a UAC-elevating manifest with a Windows OS compatibility block.
-// Use this overload when the installer needs to opt in to Windows 8+ DPI or
-// message loop behaviors that are gated on supportedOS declarations.
+/// @brief Generate a UAC-elevating manifest with a Windows OS compatibility block.
+/// Use this overload when the installer needs to opt in to Windows 8+ DPI behaviors
+/// gated on `supportedOS` declarations.
 std::string generateUacManifest(const std::string &minOsWindows) {
     return generateManifestWithExecutionLevel("requireAdministrator", minOsWindows);
 }
 
-// Generate a non-elevating manifest (asInvoker, no OS compat block).
-// Used for app executables that run at the user's current privilege level.
+/// @brief Generate a non-elevating manifest (`asInvoker`, no OS compat block).
+/// Used for app executables that run at the user's current privilege level.
 std::string generateAsInvokerManifest() {
     return generateManifestWithExecutionLevel("asInvoker", {});
 }

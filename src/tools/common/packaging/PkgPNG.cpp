@@ -50,14 +50,14 @@ static const uint8_t kPNGSignature[8] = {137, 80, 78, 71, 13, 10, 26, 10};
 // Helpers
 //=============================================================================
 
-// Read a big-endian uint32_t from an arbitrary (possibly unaligned) byte pointer.
-// PNG uses network byte order (big-endian) for all multi-byte fields.
+/// @brief Read a big-endian uint32_t from an arbitrary (possibly unaligned) byte pointer.
+/// PNG uses network byte order (big-endian) for all multi-byte fields.
 static uint32_t readBE32(const uint8_t *p) {
     return (static_cast<uint32_t>(p[0]) << 24) | (static_cast<uint32_t>(p[1]) << 16) |
            (static_cast<uint32_t>(p[2]) << 8) | static_cast<uint32_t>(p[3]);
 }
 
-// Write a big-endian uint32_t to an arbitrary (possibly unaligned) byte pointer.
+/// @brief Write a big-endian uint32_t to an arbitrary (possibly unaligned) byte pointer.
 static void writeBE32(uint8_t *p, uint32_t v) {
     p[0] = static_cast<uint8_t>((v >> 24) & 0xFF);
     p[1] = static_cast<uint8_t>((v >> 16) & 0xFF);
@@ -99,11 +99,11 @@ static constexpr size_t kMaxDecodedPngBytes = 256u * 1024u * 1024u;
 // PNG Reader
 //=============================================================================
 
-// Decode a PNG from a byte array. Validates the signature, iterates all chunks
-// (verifying CRC-32 per chunk), decompresses the IDAT zlib stream, unfilters
-// scanlines with all five PNG filter types, handles both non-interlaced and
-// Adam7-interlaced images, and converts any supported color type (grayscale,
-// palette, RGB, grayscale-alpha, RGBA) to a packed RGBA output buffer.
+/// @brief Decode a PNG from a byte array. Validates the signature, iterates all chunks
+/// (verifying CRC-32 per chunk), decompresses the IDAT zlib stream, unfilters
+/// scanlines with all five PNG filter types, handles both non-interlaced and
+/// Adam7-interlaced images, and converts any supported color type (grayscale,
+/// palette, RGB, grayscale-alpha, RGBA) to a packed RGBA output buffer.
 PkgImage pngReadMemory(const uint8_t *data, size_t len) {
     if (!data)
         throw PNGError("PNG: null input buffer");
@@ -385,8 +385,8 @@ PkgImage pngReadMemory(const uint8_t *data, size_t len) {
     return result;
 }
 
-// Load a PNG file from disk and decode it via pngReadMemory.
-// Rethrows PNGError as-is; wraps other I/O exceptions in a PNGError.
+/// @brief Load a PNG file from disk and decode it via pngReadMemory.
+/// Rethrows PNGError as-is; wraps other I/O exceptions in a PNGError.
 PkgImage pngRead(const std::string &path) {
     try {
         auto data = readFile(path);
@@ -430,9 +430,9 @@ static void writeChunk(std::vector<uint8_t> &buf,
     buf.insert(buf.end(), crcBuf, crcBuf + 4);
 }
 
-// Encode a PkgImage as a PNG byte stream. Always writes RGBA (color_type=6) with
-// filter=None on every scanline, then wraps the DEFLATE output in a zlib envelope
-// (CMF=0x78, FLG=0x01, Adler-32) and emits IHDR/IDAT/IEND chunks.
+/// @brief Encode a PkgImage as a PNG byte stream. Always writes RGBA (color_type=6) with
+/// filter=None on every scanline, then wraps the DEFLATE output in a zlib envelope
+/// (CMF=0x78, FLG=0x01, Adler-32) and emits IHDR/IDAT/IEND chunks.
 std::vector<uint8_t> pngEncode(const PkgImage &img) {
     if (img.width == 0 || img.height == 0)
         throw PNGError("PNG: empty image");
@@ -492,8 +492,8 @@ std::vector<uint8_t> pngEncode(const PkgImage &img) {
     return result;
 }
 
-// Encode img as PNG via pngEncode and write the result to a file.
-// Throws PNGError if the file cannot be created or the write fails.
+/// @brief Encode img as PNG via pngEncode and write the result to a file.
+/// Throws PNGError if the file cannot be created or the write fails.
 void pngWrite(const std::string &path, const PkgImage &img) {
     auto data = pngEncode(img);
 
@@ -511,11 +511,11 @@ void pngWrite(const std::string &path, const PkgImage &img) {
 // Bilinear Image Resize
 //=============================================================================
 
-// Resize an RGBA image to newWidth×newHeight using bilinear interpolation.
-// Each output channel is computed as a weighted blend of the four nearest
-// source pixels (top-left, top-right, bottom-left, bottom-right), with
-// 8-bit fractional coordinates scaled by 256 to avoid floating-point math.
-// Edge pixels clamp rather than wrap.
+/// @brief Resize an RGBA image to newWidth×newHeight using bilinear interpolation.
+/// Each output channel is computed as a weighted blend of the four nearest
+/// source pixels (top-left, top-right, bottom-left, bottom-right), with
+/// 8-bit fractional coordinates scaled by 256 to avoid floating-point math.
+/// Edge pixels clamp rather than wrap.
 PkgImage imageResize(const PkgImage &src, uint32_t newWidth, uint32_t newHeight) {
     if (newWidth == 0)
         newWidth = 1;

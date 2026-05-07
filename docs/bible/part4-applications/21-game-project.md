@@ -1243,22 +1243,22 @@ A completed Frogger is a foundation, not an endpoint. Here are ways to make it y
 Sound brings games to life. Add a hop sound when the frog moves, a splash when it drowns, a splat when hit by a car, a cheerful jingle when reaching home:
 
 ```rust
-bind Viper.Audio;
+bind Viper.Sound;
 
-var hopSound = Audio.load("hop.wav");
-var splatSound = Audio.load("splat.wav");
-var splashSound = Audio.load("splash.wav");
+var hopSound = Sound.Load("hop.wav");
+var splatSound = Sound.Load("splat.wav");
+var splashSound = Sound.Load("splash.wav");
 
 // In movement code:
 if moved {
-    hopSound.play();
+    hopSound.Play();
 }
 
 // In death handling:
 if deathByVehicle {
-    splatSound.play();
+    splatSound.Play();
 } else {
-    splashSound.play();
+    splashSound.Play();
 }
 ```
 
@@ -1422,7 +1422,7 @@ if powerUp.containsPoint(frog.x, frog.y) {
 
 These exercises progressively build on the Frogger project, from small modifications to significant new features.
 
-**Exercise 21.1 - Sound Effects**: Add sound effects for hopping, dying, and scoring. Use the Viper.Audio module to load and play WAV files. Make the death sound different for cars versus drowning.
+**Exercise 21.1 - Sound Effects**: Add sound effects for hopping, dying, and scoring. Use the Viper.Sound module to load and play WAV files. `Viper.Audio` remains available as a compatibility alias for older projects. Make the death sound different for cars versus drowning.
 
 **Exercise 21.2 - High Score**: Implement a high score system that persists between game sessions. Display the high score on the title screen and the game over screen. Show a special message when the player beats their previous best.
 

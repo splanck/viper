@@ -126,6 +126,9 @@ int64_t rt_soundbank_register(void *bank_ptr, rt_string name, rt_string path) {
     rt_soundbank_impl *bank = (rt_soundbank_impl *)bank_ptr;
     int replacing;
 
+    if (!rt_audio_is_available())
+        return 0;
+
     /* Load the sound from file */
     void *sound = rt_sound_load(path);
     if (!sound)

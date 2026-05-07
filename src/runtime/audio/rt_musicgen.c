@@ -69,6 +69,7 @@ typedef struct {
     int64_t midi_note;
     int64_t duration;
     int64_t velocity;
+    int64_t order;
 } mg_note_t;
 
 typedef struct {
@@ -502,7 +503,7 @@ static double mg_noise_sample(mg_noise_t *n, double cutoff_freq) {
 // Note Sorting (for portamento)
 //===----------------------------------------------------------------------===//
 
-/// @brief Compare notes by beat position for qsort.
+/// @brief Compare notes by beat position, then insertion order for qsort.
 static int mg_note_compare(const void *a, const void *b) {
     const mg_note_t *na = (const mg_note_t *)a;
     const mg_note_t *nb = (const mg_note_t *)b;
@@ -510,12 +511,28 @@ static int mg_note_compare(const void *a, const void *b) {
         return -1;
     if (na->beat_pos > nb->beat_pos)
         return 1;
+    if (na->order < nb->order)
+        return -1;
+    if (na->order > nb->order)
+        return 1;
     return 0;
 }
 
 //===----------------------------------------------------------------------===//
 // WAV Header (stereo variant)
 //===----------------------------------------------------------------------===//
+
+static void mg_write_le16(uint8_t *p, uint16_t v) {
+    p[0] = (uint8_t)(v & 0xFFu);
+    p[1] = (uint8_t)((v >> 8) & 0xFFu);
+}
+
+static void mg_write_le32(uint8_t *p, uint32_t v) {
+    p[0] = (uint8_t)(v & 0xFFu);
+    p[1] = (uint8_t)((v >> 8) & 0xFFu);
+    p[2] = (uint8_t)((v >> 16) & 0xFFu);
+    p[3] = (uint8_t)((v >> 24) & 0xFFu);
+}
 
 /// @brief Write a WAV header for stereo 16-bit PCM data.
 static void mg_write_wav_header(uint8_t *buf, int32_t num_frames) {
@@ -525,25 +542,20 @@ static void mg_write_wav_header(uint8_t *buf, int32_t num_frames) {
     int16_t block_align = MG_CHANNELS * (MG_BITS / 8);
 
     memcpy(buf + 0, "RIFF", 4);
-    memcpy(buf + 4, &file_size, 4);
+    mg_write_le32(buf + 4, (uint32_t)file_size);
     memcpy(buf + 8, "WAVE", 4);
 
     memcpy(buf + 12, "fmt ", 4);
-    int32_t fmt_size = 16;
-    memcpy(buf + 16, &fmt_size, 4);
-    int16_t audio_format = 1; /* PCM */
-    memcpy(buf + 20, &audio_format, 2);
-    int16_t channels = MG_CHANNELS;
-    memcpy(buf + 22, &channels, 2);
-    int32_t sample_rate = MG_SAMPLE_RATE;
-    memcpy(buf + 24, &sample_rate, 4);
-    memcpy(buf + 28, &byte_rate, 4);
-    memcpy(buf + 32, &block_align, 2);
-    int16_t bits = MG_BITS;
-    memcpy(buf + 34, &bits, 2);
+    mg_write_le32(buf + 16, 16u);
+    mg_write_le16(buf + 20, 1u); /* PCM */
+    mg_write_le16(buf + 22, (uint16_t)MG_CHANNELS);
+    mg_write_le32(buf + 24, (uint32_t)MG_SAMPLE_RATE);
+    mg_write_le32(buf + 28, (uint32_t)byte_rate);
+    mg_write_le16(buf + 32, (uint16_t)block_align);
+    mg_write_le16(buf + 34, (uint16_t)MG_BITS);
 
     memcpy(buf + 36, "data", 4);
-    memcpy(buf + 40, &data_size, 4);
+    mg_write_le32(buf + 40, (uint32_t)data_size);
 }
 
 //===----------------------------------------------------------------------===//
@@ -553,6 +565,7 @@ static void mg_write_wav_header(uint8_t *buf, int32_t num_frames) {
 /// Per-channel rendering state tracked across notes.
 typedef struct {
     double prev_freq; /* last note's target frequency (for portamento) */
+    int64_t prev_beat_pos;
 } mg_render_state_t;
 
 static void mg_accum_add_saturated(int32_t *dst, int32_t value) {
@@ -630,13 +643,15 @@ static void mg_render_note(int32_t *accum,
     /* Portamento: glide from previous note's frequency */
     double porta_start_freq = detuned_freq;
     int32_t porta_samples = 0;
-    if (chan->portamento_ms > 0 && state->prev_freq > 0.0) {
+    if (chan->portamento_ms > 0 && state->prev_freq > 0.0 &&
+        note->beat_pos > state->prev_beat_pos) {
         porta_start_freq = state->prev_freq;
         porta_samples = (int32_t)(chan->portamento_ms * MG_SAMPLE_RATE / 1000);
     }
 
     /* Update state for next note's portamento */
     state->prev_freq = detuned_freq;
+    state->prev_beat_pos = note->beat_pos;
 
     /* Velocity and volume scaling */
     double vel_scale = (double)mg_clamp(note->velocity, 0, 100) / 100.0;
@@ -978,6 +993,7 @@ int64_t rt_musicgen_add_note_vel(void *song_ptr,
     note->midi_note = mg_clamp(midi_note, 0, 127);
     note->duration = duration;
     note->velocity = mg_clamp(velocity, 0, 100);
+    note->order = c->note_count;
 
     c->note_count++;
     return 1;
@@ -1102,6 +1118,7 @@ void *rt_musicgen_build(void *song_ptr) {
 
         mg_render_state_t state;
         state.prev_freq = 0.0;
+        state.prev_beat_pos = -1;
 
         for (int32_t n = 0; n < chan->note_count; n++) {
             mg_render_note(accum,

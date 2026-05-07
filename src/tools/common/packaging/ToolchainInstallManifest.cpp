@@ -41,8 +41,8 @@ namespace fs = std::filesystem;
 namespace viper::pkg {
 namespace {
 
-// Replace every backslash in text with a forward slash.
-// Normalizes Windows-style paths from cmake_install.cmake to POSIX form.
+/// @brief Replace every backslash in text with a forward slash.
+/// Normalizes Windows-style paths from cmake_install.cmake to POSIX form.
 std::string toForwardSlashes(std::string text) {
     for (char &ch : text) {
         if (ch == '\\')
@@ -51,7 +51,7 @@ std::string toForwardSlashes(std::string text) {
     return text;
 }
 
-// Return a copy of text with all ASCII letters lowercased.
+/// @brief Return a copy of text with all ASCII letters lowercased.
 std::string lowerCopy(std::string text) {
     std::transform(text.begin(), text.end(), text.begin(), [](unsigned char ch) {
         return static_cast<char>(std::tolower(ch));
@@ -59,9 +59,9 @@ std::string lowerCopy(std::string text) {
     return text;
 }
 
-// Strip the platform-specific extension and "lib" prefix from a filename to
-// get the canonical base name used for manifest lookups.
-// e.g. "libvipergfx.a" → "vipergfx", "viper.exe" → "viper".
+/// @brief Strip the platform-specific extension and "lib" prefix from a filename to
+/// get the canonical base name used for manifest lookups.
+/// e.g. "libvipergfx.a" → "vipergfx", "viper.exe" → "viper".
 std::string toolchainBaseNameFromFilename(std::string filename) {
     filename = lowerCopy(filename);
     if (filename.size() > 4 && filename.substr(filename.size() - 4) == ".lib")
@@ -75,27 +75,27 @@ std::string toolchainBaseNameFromFilename(std::string filename) {
     return filename;
 }
 
-// Return true if base (after toolchainBaseNameFromFilename) matches a known
-// Viper runtime component archive as listed in RuntimeComponentManifest.hpp.
+/// @brief Return true if base (after toolchainBaseNameFromFilename) matches a known
+/// Viper runtime component archive as listed in RuntimeComponentManifest.hpp.
 bool isRuntimeArchiveBaseName(const std::string &base) {
     return std::find(runtime_manifest::kRuntimeComponentArchives.begin(),
                      runtime_manifest::kRuntimeComponentArchives.end(),
                      base) != runtime_manifest::kRuntimeComponentArchives.end();
 }
 
-// Return true if base is a Viper optional support library (graphics, GUI, audio).
+/// @brief Return true if base is a Viper optional support library (graphics, GUI, audio).
 bool isSupportLibraryBaseName(const std::string &base) {
     return base == "vipergfx" || base == "vipergui" || base == "viperaud";
 }
 
-// Thin wrapper around isPathWithin for stage-prefix boundary checks.
+/// @brief Thin wrapper around isPathWithin for stage-prefix boundary checks.
 bool pathWithinStage(const fs::path &stage, const fs::path &path) {
     return isPathWithin(stage, path);
 }
 
-// Verify that path (after resolving any symlink) lies within stagePrefix.
-// Throws std::runtime_error if the path escapes the stage boundary or if
-// canonical resolution fails (e.g. dangling symlink).
+/// @brief Verify that path (after resolving any symlink) lies within stagePrefix.
+/// Throws std::runtime_error if the path escapes the stage boundary or if
+/// canonical resolution fails (e.g. dangling symlink).
 void validateStagedPathDoesNotEscape(const fs::path &stagePrefix, const fs::path &path) {
     std::error_code ec;
     if (fs::is_symlink(path, ec)) {
@@ -114,9 +114,9 @@ void validateStagedPathDoesNotEscape(const fs::path &stagePrefix, const fs::path
         throw std::runtime_error("staged file escapes install prefix: " + path.string());
 }
 
-// Compute path's lexical relative path from stagePrefix without touching the
-// filesystem. Throws if the result would start with ".." (escapes the prefix)
-// or if the paths have no common root.
+/// @brief Compute path's lexical relative path from stagePrefix without touching the
+/// filesystem. Throws if the result would start with ".." (escapes the prefix)
+/// or if the paths have no common root.
 fs::path stagedLexicalRelativePath(const fs::path &stagePrefix, const fs::path &path) {
     const fs::path normalizedStage = stagePrefix.lexically_normal();
     const fs::path normalizedPath = path.lexically_normal();
@@ -129,9 +129,9 @@ fs::path stagedLexicalRelativePath(const fs::path &stagePrefix, const fs::path &
     return rel;
 }
 
-// Read the real POSIX permission bits from the filesystem and return them as
-// a USTAR-compatible uint32_t (regular file type bits ORed in). Falls back to
-// 0100755 or 0100644 if stat fails so the archive is still well-formed.
+/// @brief Read the real POSIX permission bits from the filesystem and return them as
+/// a USTAR-compatible uint32_t (regular file type bits ORed in). Falls back to
+/// 0100755 or 0100644 if stat fails so the archive is still well-formed.
 uint32_t unixModeFor(const fs::path &path, bool executable) {
     std::error_code ec;
     const fs::file_status status = fs::status(path, ec);
@@ -162,10 +162,9 @@ uint32_t unixModeFor(const fs::path &path, bool executable) {
     return mode;
 }
 
-// Scan text for a version string using two heuristic patterns:
-//   CMake: set(PACKAGE_VERSION "<version>")
-//   C++ header: #define VIPER_VERSION_STR "<version>"
-// Returns the extracted version or empty string if neither pattern is found.
+/// @brief Scan text for a version string using two heuristic patterns:
+/// CMake: set(PACKAGE_VERSION "<version>"), C++ header: #define VIPER_VERSION_STR "<version>".
+/// Returns the extracted version or empty string if neither pattern is found.
 std::string parseVersionFromText(const std::string &text) {
     const char *patterns[] = {"set(PACKAGE_VERSION \"", "#define VIPER_VERSION_STR \""};
     for (const char *pattern : patterns) {
@@ -180,9 +179,9 @@ std::string parseVersionFromText(const std::string &text) {
     return {};
 }
 
-// Probe well-known files in the staged install tree to infer the toolchain
-// version without requiring a separate manifest argument. Tries CMake config
-// first, then the C++ version header. Returns empty if neither file exists.
+/// @brief Probe well-known files in the staged install tree to infer the toolchain
+/// version without requiring a separate manifest argument. Tries CMake config
+/// first, then the C++ version header. Returns empty if neither file exists.
 std::string detectManifestVersion(const fs::path &stagePrefix) {
     const fs::path versionCandidates[] = {
         stagePrefix / "lib" / "cmake" / "Viper" / "ViperConfigVersion.cmake",
@@ -204,9 +203,9 @@ std::string detectManifestVersion(const fs::path &stagePrefix) {
     return {};
 }
 
-// Return the canonical architecture string for the host CPU. Used when no
-// explicit arch is recorded in the staged manifest. Throws for unsupported CPUs
-// so callers get an early diagnostic rather than silently packaging the wrong arch.
+/// @brief Return the canonical architecture string for the host CPU. Used when no
+/// explicit arch is recorded in the staged manifest. Throws for unsupported CPUs
+/// so callers get an early diagnostic rather than silently packaging the wrong arch.
 std::string detectHostArch() {
 #if defined(__aarch64__) || defined(_M_ARM64)
     return "arm64";
@@ -218,8 +217,8 @@ std::string detectHostArch() {
 #endif
 }
 
-// Return the canonical platform string for the host OS ("windows", "macos",
-// or "linux"). Like detectHostArch, throws immediately for unrecognized hosts.
+/// @brief Return the canonical platform string for the host OS ("windows", "macos",
+/// or "linux"). Like detectHostArch, throws immediately for unrecognized hosts.
 std::string detectHostPlatform() {
 #if defined(_WIN32)
     return "windows";
@@ -233,10 +232,10 @@ std::string detectHostPlatform() {
 #endif
 }
 
-// Map a staged relative path to a ToolchainFileKind by inspecting its directory
-// prefix, then its lowercased filename base when the prefix alone is ambiguous
-// (lib/ can contain runtime archives, support libs, or generic libraries).
-// The order of checks matters: more specific prefixes must come before general ones.
+/// @brief Map a staged relative path to a ToolchainFileKind by inspecting its directory
+/// prefix, then its lowercased filename base when the prefix alone is ambiguous
+/// (lib/ can contain runtime archives, support libs, or generic libraries).
+/// The order of checks matters: more specific prefixes must come before general ones.
 ToolchainFileKind classifyFileKind(const std::string &relativePath) {
     const std::string rel = lowerCopy(relativePath);
     const fs::path relPath(relativePath);
@@ -267,9 +266,9 @@ ToolchainFileKind classifyFileKind(const std::string &relativePath) {
     return ToolchainFileKind::Extra;
 }
 
-// Return path's lexical relative path from prefix, or std::nullopt if path is
-// not under prefix. Used to remap cmake_install.cmake paths that were written
-// with a build-time alias prefix instead of the final staging root.
+/// @brief Return path's lexical relative path from prefix, or std::nullopt if path is
+/// not under prefix. Used to remap cmake_install.cmake paths that were written
+/// with a build-time alias prefix instead of the final staging root.
 std::optional<fs::path> lexicalRelativeIfUnder(const fs::path &prefix, const fs::path &path) {
     const fs::path rel = path.lexically_normal().lexically_relative(prefix.lexically_normal());
     if (rel.empty() || rel == fs::path("."))
@@ -280,10 +279,10 @@ std::optional<fs::path> lexicalRelativeIfUnder(const fs::path &prefix, const fs:
     return rel;
 }
 
-// Parse cmake_install.cmake's install_manifest.txt and return the absolute
-// paths to all regular files and symlinks it lists. Handles both absolute paths
-// (emitted by cmake) and paths written with a build-alias prefix by remapping
-// them through stageAlias → stagePrefix. Duplicate entries are silently dropped.
+/// @brief Parse cmake_install.cmake's install_manifest.txt and return the absolute
+/// paths to all regular files and symlinks it lists. Handles both absolute paths
+/// (emitted by cmake) and paths written with a build-alias prefix by remapping
+/// them through stageAlias → stagePrefix. Duplicate entries are silently dropped.
 std::vector<fs::path> gatherFromInstallManifest(const fs::path &stagePrefix,
                                                 const fs::path &stageAliasPrefix,
                                                 const fs::path &installManifestPath) {
@@ -324,9 +323,9 @@ std::vector<fs::path> gatherFromInstallManifest(const fs::path &stagePrefix,
     return files;
 }
 
-// Fallback when no install manifest is provided: recursively enumerate all
-// regular files and symlinks under stagePrefix. Permission-denied subtrees are
-// skipped rather than fatal so partial staging directories still produce a manifest.
+/// @brief Fallback when no install manifest is provided: recursively enumerate all
+/// regular files and symlinks under stagePrefix. Permission-denied subtrees are
+/// skipped rather than fatal so partial staging directories still produce a manifest.
 std::vector<fs::path> gatherFromStageWalk(const fs::path &stagePrefix) {
     std::vector<fs::path> files;
     std::set<std::string> seen;
@@ -355,9 +354,9 @@ std::vector<fs::path> gatherFromStageWalk(const fs::path &stagePrefix) {
     return files;
 }
 
-// Construct a ToolchainFileEntry for filePath by computing its relative path,
-// classifying its kind, reading its POSIX mode, and — for symlinks — rebasing
-// absolute link targets to relative ones so they stay valid after installation.
+/// @brief Construct a ToolchainFileEntry for filePath by computing its relative path,
+/// classifying its kind, reading its POSIX mode, and — for symlinks — rebasing
+/// absolute link targets to relative ones so they stay valid after installation.
 ToolchainFileEntry makeEntry(const fs::path &stagePrefix, const fs::path &filePath) {
     std::error_code ec;
     const fs::path rel = stagedLexicalRelativePath(stagePrefix, filePath);
@@ -409,19 +408,19 @@ ToolchainFileEntry makeEntry(const fs::path &stagePrefix, const fs::path &filePa
     return entry;
 }
 
-// Return true if the manifest contains an entry whose stagedRelativePath equals
-// relPath. Used by validateToolchainInstallManifest to check for specific
-// required files like ViperConfig.cmake and ViperTargets.cmake.
+/// @brief Return true if the manifest contains an entry whose stagedRelativePath equals
+/// relPath. Used by validateToolchainInstallManifest to check for specific
+/// required files like ViperConfig.cmake and ViperTargets.cmake.
 bool manifestHasRelativePath(const ToolchainInstallManifest &manifest, std::string_view relPath) {
     return std::any_of(manifest.files.begin(), manifest.files.end(), [&](const ToolchainFileEntry &entry) {
         return entry.stagedRelativePath == relPath;
     });
 }
 
-// Return true if any manifest entry has both the given kind and the given base
-// name (after stripping extension and "lib" prefix). Used to detect that all
-// required runtime archives and support libraries are present regardless of
-// platform-specific naming ("librt_core.a" vs "rt_core.lib").
+/// @brief Return true if any manifest entry has both the given kind and the given base
+/// name (after stripping extension and "lib" prefix). Used to detect that all
+/// required runtime archives and support libraries are present regardless of
+/// platform-specific naming ("librt_core.a" vs "rt_core.lib").
 bool manifestHasBaseNameKind(const ToolchainInstallManifest &manifest,
                              ToolchainFileKind kind,
                              std::string_view baseName) {
@@ -433,9 +432,9 @@ bool manifestHasBaseNameKind(const ToolchainInstallManifest &manifest,
     });
 }
 
-// Scan every CMakeConfig entry in the manifest for needle (case-insensitive).
-// Used to detect optional support-library components declared in ViperTargets.cmake
-// so validation can require their corresponding library archives to be present.
+/// @brief Scan every CMakeConfig entry in the manifest for needle (case-insensitive).
+/// Used to detect optional support-library components declared in ViperTargets.cmake
+/// so validation can require their corresponding library archives to be present.
 bool stagedCMakeMetadataMentions(const ToolchainInstallManifest &manifest, std::string_view needle) {
     const std::string lowerNeedle = lowerCopy(std::string(needle));
     for (const auto &entry : manifest.files) {
@@ -454,9 +453,9 @@ bool stagedCMakeMetadataMentions(const ToolchainInstallManifest &manifest, std::
 
 } // namespace
 
-// Return the sum of sizeBytes across all non-symlink entries. Used by package
-// builders to populate the "Installed-Size" field in control files and to
-// estimate required disk space in installer UI dialogs.
+/// @brief Return the sum of sizeBytes across all non-symlink entries. Used by package
+/// builders to populate the "Installed-Size" field in control files and to
+/// estimate required disk space in installer UI dialogs.
 uint64_t ToolchainInstallManifest::totalSizeBytes() const {
     uint64_t total = 0;
     for (const auto &file : files)
@@ -464,9 +463,9 @@ uint64_t ToolchainInstallManifest::totalSizeBytes() const {
     return total;
 }
 
-// Return the canonical set of file type associations for the Viper toolchain:
-// .zia (Zia source), .bas (BASIC source), .il (Viper IL module). These are
-// registered with the OS by all platform package builders (deb, pkg, msi).
+/// @brief Return the canonical set of file type associations for the Viper toolchain:
+/// .zia (Zia source), .bas (BASIC source), .il (Viper IL module). These are
+/// registered with the OS by all platform package builders (deb, pkg, msi).
 std::vector<FileAssoc> defaultToolchainFileAssociations() {
     return {
         {".zia", "Zia Source File", "text/x-zia"},
@@ -475,12 +474,12 @@ std::vector<FileAssoc> defaultToolchainFileAssociations() {
     };
 }
 
-// Walk stagePrefix and build a ToolchainInstallManifest.
-// If installManifestPath names a cmake install_manifest.txt, its listed files
-// are used directly (faster, avoids scanning the entire tree). If that path is
-// absent or yields no files, falls back to a full recursive walk. After gathering,
-// each entry is classified, validated against stage-escape rules, and the
-// manifest is sorted by stagedRelativePath before being returned.
+/// @brief Walk stagePrefix and build a ToolchainInstallManifest.
+/// If installManifestPath names a cmake install_manifest.txt, its listed files
+/// are used directly (faster, avoids scanning the entire tree). If that path is
+/// absent or yields no files, falls back to a full recursive walk. After gathering,
+/// each entry is classified, validated against stage-escape rules, and the
+/// manifest is sorted by stagedRelativePath before being returned.
 ToolchainInstallManifest gatherToolchainInstallManifest(
     const fs::path &stagePrefix,
     std::optional<fs::path> installManifestPath) {
@@ -517,15 +516,10 @@ ToolchainInstallManifest gatherToolchainInstallManifest(
     return manifest;
 }
 
-// Validate that the manifest contains a complete, shippable toolchain:
-//   1. Arch, platform, and version strings are well-formed.
-//   2. The viper binary is present in the Binary set.
-//   3. ViperConfig.cmake and ViperTargets.cmake exist at their exact paths.
-//   4. Every archive listed in RuntimeComponentManifest is present.
-//   5. If CMake metadata mentions a support library (gfx/gui/aud), its archive
-//      must also be present — prevents shipping a cmake config that imports a
-//      missing target at user build time.
-// Throws std::runtime_error for the first violation found.
+/// @brief Validate that the manifest contains a complete, shippable toolchain.
+/// Checks arch/platform/version strings, required binaries and cmake configs, all
+/// runtime archives from RuntimeComponentManifest, and any support libraries
+/// (gfx/gui/aud) referenced by CMake metadata. Throws on the first violation.
 void validateToolchainInstallManifest(const ToolchainInstallManifest &manifest) {
     validateToolchainPlatform(manifest.platform);
     if (manifest.arch == "universal") {
@@ -577,11 +571,10 @@ void validateToolchainInstallManifest(const ToolchainInstallManifest &manifest) 
     }
 }
 
-// Map a file's staged relative path to its final install destination under policy.
-// WindowsProgramFilesRoot: "bin/viper.exe" → "C:\Program Files\Viper\bin\viper.exe"
-// MacOSUsrLocalViperRoot: "bin/viper" → "/usr/local/viper/bin/viper"
-// LinuxUsrRoot: "bin/viper" → "/usr/bin/viper"  (FHS merge into /usr)
-// PortableArchive: returns the relative path unchanged.
+/// @brief Map a file's staged relative path to its final install destination under policy.
+/// Windows: "bin/viper.exe" → "C:\Program Files\Viper\bin\viper.exe";
+/// macOS: "bin/viper" → "/usr/local/viper/bin/viper";
+/// Linux: "bin/viper" → "/usr/bin/viper" (FHS merge); PortableArchive: unchanged.
 std::string mapInstallPath(const ToolchainFileEntry &file, InstallPathPolicy policy) {
     const std::string rel = sanitizePackageRelativePath(file.stagedRelativePath, "staged install path");
     switch (policy) {

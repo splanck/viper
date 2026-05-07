@@ -44,6 +44,7 @@
 #include "rt_vorbis.h"
 
 #include <stddef.h>
+#include <float.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -55,6 +56,16 @@
 
 /// @brief Per-group volume (0-100). Defaults to 100.
 static int64_t g_group_volume[RT_MIXGROUP_COUNT] = {100, 100};
+/// @brief Logical master volume (0-100). Kept even before lazy backend init.
+static int64_t g_master_volume = 100;
+
+static int64_t clamp_volume_100(int64_t volume) {
+    if (volume < 0)
+        return 0;
+    if (volume > 100)
+        return 100;
+    return volume;
+}
 
 #ifdef VIPER_ENABLE_AUDIO
 #include "vaud.h"
@@ -334,8 +345,10 @@ static int ensure_audio_init(void) {
 
     // We are the initializing thread
     g_audio_ctx = vaud_create();
-    if (g_audio_ctx)
+    if (g_audio_ctx) {
         g_audio_paused = 0;
+        vaud_set_master_volume(g_audio_ctx, (float)g_master_volume / 100.0f);
+    }
 
     // Set initialization state (use release to ensure context is visible)
 #if RT_COMPILER_MSVC
@@ -350,14 +363,6 @@ static int ensure_audio_init(void) {
     __atomic_clear(&g_audio_init_lock, __ATOMIC_RELEASE);
 #endif
     return g_audio_ctx != NULL;
-}
-
-static int64_t clamp_volume_100(int64_t volume) {
-    if (volume < 0)
-        return 0;
-    if (volume > 100)
-        return 100;
-    return volume;
 }
 
 /// @brief Compose a per-voice volume with its mix-group volume into a single
@@ -734,14 +739,15 @@ void rt_audio_shutdown(void) {
 
 /// @brief Set the global master volume (0 = mute, 100 = full volume).
 void rt_audio_set_master_volume(int64_t volume) {
-    if (!ensure_audio_init())
-        return;
-
     /* Clamp to 0-100 range and convert to 0.0-1.0 */
     if (volume < 0)
         volume = 0;
     if (volume > 100)
         volume = 100;
+
+    g_master_volume = volume;
+    if (!ensure_audio_init())
+        return;
 
     audio_state_lock();
     if (g_audio_ctx)
@@ -753,13 +759,16 @@ void rt_audio_set_master_volume(int64_t volume) {
 int64_t rt_audio_get_master_volume(void) {
     audio_state_lock();
     if (!g_audio_ctx) {
+        int64_t volume = g_master_volume;
         audio_state_unlock();
-        return 0;
+        return volume;
     }
 
     float vol = vaud_get_master_volume(g_audio_ctx);
     audio_state_unlock();
-    return (int64_t)(vol * 100.0f + 0.5f);
+    int64_t result = (int64_t)(vol * 100.0f + 0.5f);
+    g_master_volume = clamp_volume_100(result);
+    return g_master_volume;
 }
 
 /// @brief Pause all currently playing sounds and music.
@@ -937,6 +946,7 @@ static int ogg_decode_reader_to_wav(ogg_reader_t *reader, uint8_t **out_data, si
         return -1;
 
     uint32_t vorbis_serial = 0;
+    int have_vorbis_serial = 0;
     int header_num = 0;
     int have_audio_packet = 0;
     const uint8_t *pkt_data = NULL;
@@ -944,11 +954,12 @@ static int ogg_decode_reader_to_wav(ogg_reader_t *reader, uint8_t **out_data, si
     ogg_packet_info_t info;
 
     while (ogg_reader_next_packet_ex(reader, &pkt_data, &pkt_len, &info)) {
-        if (vorbis_serial == 0) {
+        if (!have_vorbis_serial) {
             if (!info.bos || pkt_len < 7 || pkt_data[0] != 1 ||
                 memcmp(pkt_data + 1, "vorbis", 6) != 0)
                 continue;
             vorbis_serial = info.serial_number;
+            have_vorbis_serial = 1;
         }
         if (info.serial_number != vorbis_serial)
             continue;
@@ -1596,14 +1607,19 @@ void rt_music_seek(void *music, int64_t position_ms) {
     rt_music *mus = (rt_music *)music;
     if (position_ms < 0)
         position_ms = 0;
-    float seconds = (float)position_ms / 1000.0f;
-
     audio_state_lock();
     mus = rt_music_from_handle_locked(music);
     if (!mus || !mus->music) {
         audio_state_unlock();
         return;
     }
+    double seconds_d = (double)position_ms / 1000.0;
+    float duration = vaud_music_get_duration(mus->music);
+    if (duration > 0.0f && seconds_d > (double)duration)
+        seconds_d = (double)duration;
+    if (seconds_d > (double)FLT_MAX)
+        seconds_d = (double)FLT_MAX;
+    float seconds = (float)seconds_d;
     vaud_music_seek(mus->music, seconds);
     int32_t xf_idx = rt_audio_find_crossfade_by_music_locked(mus);
     if (xf_idx >= 0)
@@ -2072,16 +2088,26 @@ int64_t rt_audio_init(void) {
 ///        since there's nothing to shut down.
 void rt_audio_shutdown(void) {}
 
-/// @brief Audio-disabled stub for `Audio.SetMasterVolume`. Silent no-op.
-/// @param volume Ignored.
+/// @brief Audio-disabled stub for `Audio.SetMasterVolume`.
+/// @details Stores logical state so settings UIs round-trip even without a backend.
+/// @param volume Requested volume, clamped to `0..100`.
 void rt_audio_set_master_volume(int64_t volume) {
-    (void)volume;
+    volume = clamp_volume_100(volume);
+#if RT_COMPILER_MSVC
+    rt_atomic_store_i64(&g_master_volume, volume, __ATOMIC_RELEASE);
+#else
+    __atomic_store_n(&g_master_volume, volume, __ATOMIC_RELEASE);
+#endif
 }
 
 /// @brief Audio-disabled stub for `Audio.MasterVolume`.
-/// @return `0` (silence).
+/// @return Stored logical master volume, defaulting to `100`.
 int64_t rt_audio_get_master_volume(void) {
-    return 0;
+#if RT_COMPILER_MSVC
+    return rt_atomic_load_i64(&g_master_volume, __ATOMIC_ACQUIRE);
+#else
+    return __atomic_load_n(&g_master_volume, __ATOMIC_ACQUIRE);
+#endif
 }
 
 /// @brief Audio-disabled stub for `Audio.PauseAll`. Silent no-op.
@@ -2357,7 +2383,11 @@ void rt_audio_set_group_volume(int64_t group, int64_t volume) {
         volume = 0;
     if (volume > 100)
         volume = 100;
+#if RT_COMPILER_MSVC
     rt_atomic_store_i64(&g_group_volume[group], volume, __ATOMIC_RELEASE);
+#else
+    __atomic_store_n(&g_group_volume[group], volume, __ATOMIC_RELEASE);
+#endif
 }
 
 /// @brief Read the per-mix-group volume in audio-disabled builds.
@@ -2371,7 +2401,11 @@ void rt_audio_set_group_volume(int64_t group, int64_t volume) {
 int64_t rt_audio_get_group_volume(int64_t group) {
     if (group < 0 || group >= RT_MIXGROUP_COUNT)
         return 100;
+#if RT_COMPILER_MSVC
     return rt_atomic_load_i64(&g_group_volume[group], __ATOMIC_ACQUIRE);
+#else
+    return __atomic_load_n(&g_group_volume[group], __ATOMIC_ACQUIRE);
+#endif
 }
 
 /// @brief Audio-disabled stub for `Music.CrossfadeTo`. Traps because

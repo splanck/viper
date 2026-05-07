@@ -52,7 +52,7 @@ static const IcnsTypeEntry kIcnsTypes[] = {
     {"ic10", 1024}, // 1024x1024 (Retina 512)
 };
 
-// Append a 32-bit big-endian value to out. Used for ICNS headers.
+/// @brief Append a 32-bit big-endian integer to `out`. Used for all ICNS numeric fields.
 void writeBE32(std::vector<uint8_t> &out, uint32_t val) {
     out.push_back(static_cast<uint8_t>((val >> 24) & 0xFF));
     out.push_back(static_cast<uint8_t>((val >> 16) & 0xFF));
@@ -60,13 +60,13 @@ void writeBE32(std::vector<uint8_t> &out, uint32_t val) {
     out.push_back(static_cast<uint8_t>(val & 0xFF));
 }
 
-// Append a 16-bit little-endian value to out. Used for ICO headers.
+/// @brief Append a 16-bit little-endian integer to `out`. Used for ICO ICONDIR and ICONDIRENTRY fields.
 void writeLE16(std::vector<uint8_t> &out, uint16_t val) {
     out.push_back(static_cast<uint8_t>(val & 0xFF));
     out.push_back(static_cast<uint8_t>((val >> 8) & 0xFF));
 }
 
-// Append a 32-bit little-endian value to out. Used for ICO headers.
+/// @brief Append a 32-bit little-endian integer to `out`. Used for ICO SizeInBytes and FileOffset fields.
 void writeLE32(std::vector<uint8_t> &out, uint32_t val) {
     out.push_back(static_cast<uint8_t>(val & 0xFF));
     out.push_back(static_cast<uint8_t>((val >> 8) & 0xFF));
@@ -80,9 +80,9 @@ static const uint32_t kLinuxIconSizes[] = {16, 32, 48, 128, 256};
 /// @brief Standard icon sizes for Windows ICO.
 static const uint32_t kIcoSizes[] = {16, 24, 32, 48, 64, 128, 256};
 
-// Validate that srcImage is non-empty and that its pixel buffer is the expected
-// size for an RGBA (4 bytes per pixel) image at srcImage.width x srcImage.height.
-// Throws PNGError on any mismatch.
+/// @brief Validate that `srcImage` is a well-formed RGBA image.
+/// Throws PNGError if the image is empty (zero dimensions) or if the pixel
+/// buffer size does not match width * height * 4 bytes.
 void validateSourceImage(const PkgImage &srcImage) {
     if (srcImage.width == 0 || srcImage.height == 0)
         throw PNGError("icon: source image is empty");
@@ -91,9 +91,9 @@ void validateSourceImage(const PkgImage &srcImage) {
         throw PNGError("icon: RGBA pixel buffer size does not match dimensions");
 }
 
-// Safely narrow a size_t byte count to uint32_t for use in icon format headers.
-// Throws PNGError if the value exceeds UINT32_MAX, which would indicate a
-// single icon entry that cannot be represented in the format.
+/// @brief Safely narrow a `size_t` byte count to `uint32_t` for icon format header fields.
+/// Throws PNGError if `value` exceeds UINT32_MAX — both ICNS and ICO store sizes as
+/// 32-bit fields so an oversize entry cannot be represented in the format.
 uint32_t checkedIconSize(size_t value, const char *format) {
     if (value > std::numeric_limits<uint32_t>::max())
         throw PNGError(std::string("icon: ") + format + " entry is too large");
@@ -102,6 +102,10 @@ uint32_t checkedIconSize(size_t value, const char *format) {
 
 } // namespace
 
+/// @brief Build a macOS ICNS container embedding PNG data at each standard icon size.
+/// Resizes the source image to each kIcnsTypes entry, encodes as PNG, and assembles
+/// the ICNS format: 8-byte global header followed by type+size+PNG-data entries.
+/// The total-size field at offset 4 is patched in after all entries are written.
 std::vector<uint8_t> generateIcns(const PkgImage &srcImage) {
     validateSourceImage(srcImage);
     std::vector<uint8_t> result;
@@ -149,6 +153,10 @@ std::vector<uint8_t> generateIcns(const PkgImage &srcImage) {
 // ICO Generation
 //=============================================================================
 
+/// @brief Build a Windows ICO container embedding PNG data at each standard icon size.
+/// Generates entries for all kIcoSizes, then writes the 6-byte ICONDIR, the
+/// ICONDIRENTRY array (16 bytes each), and finally the PNG data blobs in order.
+/// Width/Height values of 256+ are encoded as 0 per the ICO specification.
 std::vector<uint8_t> generateIco(const PkgImage &srcImage) {
     validateSourceImage(srcImage);
     // First, generate all the PNG blobs for sizes that fit
@@ -219,6 +227,9 @@ std::vector<uint8_t> generateIco(const PkgImage &srcImage) {
 // Multi-Size PNG Generation
 //=============================================================================
 
+/// @brief Produce individual PNG files at each Linux hicolor icon size.
+/// Returns a map keyed by pixel dimension (from kLinuxIconSizes) whose values are
+/// encoded PNG byte vectors, ready to be written into a package's icon hierarchy.
 std::map<uint32_t, std::vector<uint8_t>> generateMultiSizePngs(const PkgImage &srcImage) {
     validateSourceImage(srcImage);
     std::map<uint32_t, std::vector<uint8_t>> result;

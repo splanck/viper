@@ -3349,22 +3349,22 @@ if !paused || stepOneFrame {
 <h3 id="add-sound">Add Sound</h3>
 <p>Sound brings games to life. Add a hop sound when the frog moves, a splash when it drowns, a splat when hit by a car, a cheerful jingle when reaching home:</p>
 <pre><code data-lang="rust">
-bind Viper.Audio;
+bind Viper.Sound;
 
-var hopSound = Audio.load(&quot;hop.wav&quot;);
-var splatSound = Audio.load(&quot;splat.wav&quot;);
-var splashSound = Audio.load(&quot;splash.wav&quot;);
+var hopSound = Sound.Load(&quot;hop.wav&quot;);
+var splatSound = Sound.Load(&quot;splat.wav&quot;);
+var splashSound = Sound.Load(&quot;splash.wav&quot;);
 
 // In movement code:
 if moved {
-    hopSound.play();
+    hopSound.Play();
 }
 
 // In death handling:
 if deathByVehicle {
-    splatSound.play();
+    splatSound.Play();
 } else {
-    splashSound.play();
+    splashSound.Play();
 }
 </code></pre>
 <h3 id="animated-sprites">Animated Sprites</h3>
@@ -3505,7 +3505,7 @@ if powerUp.containsPoint(frog.x, frog.y) {
 <p>---</p>
 <h2 id="exercises">Exercises</h2>
 <p>These exercises progressively build on the Frogger project, from small modifications to significant new features.</p>
-<p><strong>Exercise 21.1 - Sound Effects</strong>: Add sound effects for hopping, dying, and scoring. Use the Viper.Audio module to load and play WAV files. Make the death sound different for cars versus drowning.</p>
+<p><strong>Exercise 21.1 - Sound Effects</strong>: Add sound effects for hopping, dying, and scoring. Use the Viper.Sound module to load and play WAV files. <code>Viper.Audio</code> remains available as a compatibility alias for older projects. Make the death sound different for cars versus drowning.</p>
 <p><strong>Exercise 21.2 - High Score</strong>: Implement a high score system that persists between game sessions. Display the high score on the title screen and the game over screen. Show a special message when the player beats their previous best.</p>
 <p><strong>Exercise 21.3 - Animated Sprites</strong>: Replace the solid rectangles with sprite images. Create or find simple pixel art for the frog (ideally with different facing directions), cars, trucks, logs, and turtles. The frog should face the direction it last moved.</p>
 <p><strong>Exercise 21.4 - Time Limit</strong>: Add a time limit for each frog. Display the remaining time prominently. Award bonus points for reaching home quickly. The timer resets when the frog respawns.</p>

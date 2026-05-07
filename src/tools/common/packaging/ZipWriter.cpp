@@ -62,13 +62,13 @@ static constexpr int kEndRecordSize = 22;
 // Helpers
 //=============================================================================
 
-// Write a 16-bit little-endian integer into an unaligned byte buffer at p.
+/// @brief Write a 16-bit little-endian integer into an unaligned byte buffer at p.
 static inline void putU16(uint8_t *p, uint16_t v) {
     p[0] = static_cast<uint8_t>(v & 0xFF);
     p[1] = static_cast<uint8_t>((v >> 8) & 0xFF);
 }
 
-// Write a 32-bit little-endian integer into an unaligned byte buffer at p.
+/// @brief Write a 32-bit little-endian integer into an unaligned byte buffer at p.
 static inline void putU32(uint8_t *p, uint32_t v) {
     p[0] = static_cast<uint8_t>(v & 0xFF);
     p[1] = static_cast<uint8_t>((v >> 8) & 0xFF);
@@ -80,25 +80,25 @@ static inline void putU32(uint8_t *p, uint32_t v) {
 // ZipWriter Implementation
 //=============================================================================
 
-// Pre-allocate 64 KiB in buffer_ to avoid frequent reallocations for typical
-// small package payloads. The buffer grows automatically beyond this.
+/// @brief Pre-allocate 64 KiB in buffer_ to avoid frequent reallocations for typical
+/// small package payloads. The buffer grows automatically beyond this.
 ZipWriter::ZipWriter() {
     buffer_.reserve(65536);
 }
 
 ZipWriter::~ZipWriter() = default;
 
-// Enforce ZIP32 limits: entry count ≤ 65535, archive size ≤ 4 GiB, name length ≤ 65535.
-// All three limits arise from the 16- or 32-bit integer fields in the PKWARE spec.
+/// @brief Enforce ZIP32 limits: entry count ≤ 65535, archive size ≤ 4 GiB, name length ≤ 65535.
+/// All three limits arise from the 16- or 32-bit integer fields in the PKWARE spec.
 void ZipWriter::validateArchiveLimit(size_t value, size_t maxValue, const char *what) const {
     if (value > maxValue) {
         throw std::runtime_error(std::string("ZipWriter: ZIP64 is not supported for ") + what);
     }
 }
 
-// Normalize and validate a ZIP entry name: convert backslashes to forward
-// slashes, strip trailing slashes (then re-append for directories), and run
-// sanitizePackageRelativePath to reject absolute paths and ".." components.
+/// @brief Normalize and validate a ZIP entry name: convert backslashes to forward
+/// slashes, strip trailing slashes (then re-append for directories), and run
+/// sanitizePackageRelativePath to reject absolute paths and ".." components.
 std::string ZipWriter::normalizeEntryName(const std::string &name) const {
     validateArchiveLimit(name.size(), 0xFFFFu, "entry names longer than 65535 bytes");
     std::string normalized = name;
@@ -118,28 +118,28 @@ std::string ZipWriter::normalizeEntryName(const std::string &name) const {
     return normalized;
 }
 
-// Append len raw bytes to the internal archive buffer.
+/// @brief Append len raw bytes to the internal archive buffer.
 void ZipWriter::writeBytes(const uint8_t *data, size_t len) {
     buffer_.insert(buffer_.end(), data, data + len);
 }
 
-// Append a 16-bit little-endian integer to the archive buffer.
+/// @brief Append a 16-bit little-endian integer to the archive buffer.
 void ZipWriter::writeU16(uint16_t v) {
     uint8_t buf[2];
     putU16(buf, v);
     writeBytes(buf, 2);
 }
 
-// Append a 32-bit little-endian integer to the archive buffer.
+/// @brief Append a 32-bit little-endian integer to the archive buffer.
 void ZipWriter::writeU32(uint32_t v) {
     uint8_t buf[4];
     putU32(buf, v);
     writeBytes(buf, 4);
 }
 
-// Populate time and date with the current wall-clock time encoded in DOS
-// format: time = (sec/2) | (min<<5) | (hour<<11), date = day | (mon<<5) | ((year-1980)<<9).
-// Falls back to 1980-01-01 00:00:00 if localtime() returns null.
+/// @brief Populate time and date with the current wall-clock time encoded in DOS
+/// format: time = (sec/2) | (min<<5) | (hour<<11), date = day | (mon<<5) | ((year-1980)<<9).
+/// Falls back to 1980-01-01 00:00:00 if localtime() returns null.
 void ZipWriter::getDosTime(uint16_t &time, uint16_t &date) {
     std::time_t now = std::time(nullptr);
     struct tm *t = std::localtime(&now);
@@ -152,9 +152,9 @@ void ZipWriter::getDosTime(uint16_t &time, uint16_t &date) {
     date = static_cast<uint16_t>(t->tm_mday | ((t->tm_mon + 1) << 5) | ((t->tm_year - 80) << 9));
 }
 
-// Add a regular file entry. Computes CRC-32, optionally DEFLATE-compresses the
-// data (skipped if compressed output ≥ original), writes the local file header,
-// and records an Entry + LayoutEntry for central-directory and stub-offset use.
+/// @brief Add a regular file entry. Computes CRC-32, optionally DEFLATE-compresses the
+/// data (skipped if compressed output ≥ original), writes the local file header,
+/// and records an Entry + LayoutEntry for central-directory and stub-offset use.
 void ZipWriter::addFile(const std::string &name,
                         const uint8_t *data,
                         size_t len,
@@ -226,16 +226,16 @@ void ZipWriter::addFile(const std::string &name,
         false});
 }
 
-// Convenience overload: add a file entry whose content is a std::string.
+/// @brief Convenience overload: add a file entry whose content is a std::string.
 void ZipWriter::addFileString(const std::string &name,
                               const std::string &content,
                               uint32_t unixMode) {
     addFile(name, reinterpret_cast<const uint8_t *>(content.data()), content.size(), unixMode);
 }
 
-// Add a directory entry (zero-length data, trailing "/" in name). The MS-DOS
-// directory attribute bit (0x10) is set in the lower half of externalAttrs so
-// Windows extractors create the directory even without reading Unix mode bits.
+/// @brief Add a directory entry (zero-length data, trailing "/" in name). The MS-DOS
+/// directory attribute bit (0x10) is set in the lower half of externalAttrs so
+/// Windows extractors create the directory even without reading Unix mode bits.
 void ZipWriter::addDirectory(const std::string &name, uint32_t unixMode) {
     std::string dirName = name;
     if (dirName.empty() || dirName.back() != '/')
@@ -288,9 +288,9 @@ void ZipWriter::addDirectory(const std::string &name, uint32_t unixMode) {
         true});
 }
 
-// Add a Unix symlink entry. The symlink target is stored as the entry's file
-// data. Unix mode 0120777 in the upper 16 bits of externalAttrs tells Info-ZIP
-// compatible extractors (including macOS Archive Utility) that this is a symlink.
+/// @brief Add a Unix symlink entry. The symlink target is stored as the entry's file
+/// data. Unix mode 0120777 in the upper 16 bits of externalAttrs tells Info-ZIP
+/// compatible extractors (including macOS Archive Utility) that this is a symlink.
 void ZipWriter::addSymlink(const std::string &name, const std::string &target) {
     const std::string entryName = normalizeEntryName(name);
     if (!seenNames_.insert(entryName).second)
@@ -345,10 +345,10 @@ void ZipWriter::addSymlink(const std::string &name, const std::string &target) {
         false});
 }
 
-// Append all central directory file headers followed by the End-of-Central-
-// Directory (EOCD) record. Must be called exactly once, after all entries have
-// been added. The central directory echoes each local header's metadata plus
-// version_made_by (Unix) and externalAttrs (Unix mode) fields.
+/// @brief Append all central directory file headers followed by the End-of-Central-
+/// Directory (EOCD) record. Must be called exactly once, after all entries have
+/// been added. The central directory echoes each local header's metadata plus
+/// version_made_by (Unix) and externalAttrs (Unix mode) fields.
 void ZipWriter::writeCentralDirectory() {
     validateArchiveLimit(entries_.size(), 0xFFFFu, "more than 65535 entries");
     validateArchiveLimit(buffer_.size(), 0xFFFFFFFFu, "archives larger than 4 GiB");
@@ -397,8 +397,8 @@ void ZipWriter::writeCentralDirectory() {
     writeBytes(eocd, kEndRecordSize);
 }
 
-// Finalize the archive and write it to disk at path. Appends the central
-// directory and EOCD, then writes the entire buffer to the output file.
+/// @brief Finalize the archive and write it to disk at path. Appends the central
+/// directory and EOCD, then writes the entire buffer to the output file.
 void ZipWriter::finish(const std::string &path) {
     writeCentralDirectory();
 
@@ -412,9 +412,9 @@ void ZipWriter::finish(const std::string &path) {
         throw std::runtime_error("ZipWriter: failed to write " + path);
 }
 
-// Finalize the archive and return the complete ZIP bytes. Used when the caller
-// needs the payload in memory (e.g. to append it as a PE overlay) rather than
-// writing to disk. Moves the internal buffer to avoid a copy.
+/// @brief Finalize the archive and return the complete ZIP bytes. Used when the caller
+/// needs the payload in memory (e.g. to append it as a PE overlay) rather than
+/// writing to disk. Moves the internal buffer to avoid a copy.
 std::vector<uint8_t> ZipWriter::finishToVector() {
     writeCentralDirectory();
     return std::move(buffer_);

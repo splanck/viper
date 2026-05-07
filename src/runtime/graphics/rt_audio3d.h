@@ -48,6 +48,8 @@ void rt_audio3d_compute_voice_params(const rt_audio3d_listener_state *listener,
                                      int64_t base_volume,
                                      int64_t *out_volume,
                                      int64_t *out_pan);
+/// @brief Register an existing voice for later Audio3D.UpdateVoice fallback lookups.
+void rt_audio3d_register_voice(int64_t voice, double max_distance, int64_t base_volume);
 
 /// @brief Set the fallback listener position and orientation (Vec3 handles).
 void rt_audio3d_set_listener(void *position, void *forward);

@@ -34,9 +34,9 @@ namespace viper::pkg {
 
 namespace {
 
-// Normalize a tar entry path: strips the leading "./" prefix (emitted by some
-// tools), removes trailing slashes, sanitizes via sanitizePackageRelativePath,
-// then re-appends "/" for directory entries. Returns "" for the root ".".
+/// @brief Normalize a tar entry path: strips the leading "./" prefix (emitted by some
+/// tools), removes trailing slashes, sanitizes via sanitizePackageRelativePath,
+/// then re-appends "/" for directory entries. Returns "" for the root ".".
 std::string normalizeTarEntryPath(const std::string &path,
                                   bool directory,
                                   const char *fieldName) {
@@ -53,9 +53,9 @@ std::string normalizeTarEntryPath(const std::string &path,
     return clean;
 }
 
-// Validate that a tar symlink target is safe to include in the archive.
-// Rejects empty targets, absolute paths, Windows drive paths, and targets that
-// resolve outside the archive root when combined with the symlink's directory.
+/// @brief Validate that a tar symlink target is safe to include in the archive.
+/// Rejects empty targets, absolute paths, Windows drive paths, and targets that
+/// resolve outside the archive root when combined with the symlink's directory.
 void validateTarSymlinkTarget(const std::string &linkPath, const std::string &target) {
     if (target.empty())
         throw std::runtime_error("tar symlink target must not be empty");
@@ -84,8 +84,8 @@ void validateTarSymlinkTarget(const std::string &linkPath, const std::string &ta
 
 } // namespace
 
-// Add a regular file entry (typeflag '0') to the archive.
-// Normalizes path, checks for duplicates, and stores a copy of the data.
+/// @brief Add a regular file entry (typeflag '0') to the archive.
+/// Normalizes path, checks for duplicates, and stores a copy of the data.
 void TarWriter::addFile(
     const std::string &path, const uint8_t *data, size_t size, uint32_t mode, uint32_t mtime) {
     const std::string cleanPath = normalizeTarEntryPath(path, false, "tar file path");
@@ -102,7 +102,7 @@ void TarWriter::addFile(
     entries_.push_back(std::move(e));
 }
 
-// Convenience overload: add a file whose content is given as a std::string.
+/// @brief Convenience overload: add a file whose content is given as a std::string.
 void TarWriter::addFileString(const std::string &path,
                               const std::string &content,
                               uint32_t mode,
@@ -110,7 +110,7 @@ void TarWriter::addFileString(const std::string &path,
     addFile(path, reinterpret_cast<const uint8_t *>(content.data()), content.size(), mode, mtime);
 }
 
-// Convenience overload: add a file whose content is given as a byte vector.
+/// @brief Convenience overload: add a file whose content is given as a byte vector.
 void TarWriter::addFileVec(const std::string &path,
                            const std::vector<uint8_t> &data,
                            uint32_t mode,
@@ -118,9 +118,9 @@ void TarWriter::addFileVec(const std::string &path,
     addFile(path, data.data(), data.size(), mode, mtime);
 }
 
-// Add a directory entry (typeflag '5') to the archive.
-// The path is normalized and a trailing "/" is always appended. The root
-// directory "." maps to "./" and is allowed without duplicate-path rejection.
+/// @brief Add a directory entry (typeflag '5') to the archive.
+/// The path is normalized and a trailing "/" is always appended. The root
+/// directory "." maps to "./" and is allowed without duplicate-path rejection.
 void TarWriter::addDirectory(const std::string &path, uint32_t mode, uint32_t mtime) {
     const std::string cleanPath = normalizeTarEntryPath(path, true, "tar directory path");
     if (!cleanPath.empty()) {
@@ -137,9 +137,9 @@ void TarWriter::addDirectory(const std::string &path, uint32_t mode, uint32_t mt
     entries_.push_back(std::move(e));
 }
 
-// Add a symbolic link entry (typeflag '2') to the archive.
-// Normalizes path, validates the target is relative and does not escape the
-// archive root, and stores mode 0777 (conventional for symlinks).
+/// @brief Add a symbolic link entry (typeflag '2') to the archive.
+/// Normalizes path, validates the target is relative and does not escape the
+/// archive root, and stores mode 0777 (conventional for symlinks).
 void TarWriter::addSymlink(const std::string &path, const std::string &target, uint32_t mtime) {
     const std::string cleanPath = normalizeTarEntryPath(path, false, "tar symlink path");
     if (cleanPath.empty())
@@ -158,8 +158,8 @@ void TarWriter::addSymlink(const std::string &path, const std::string &target, u
 
 namespace {
 
-// Write an octal value as NUL-terminated ASCII into a fixed-width field.
-// Format: (width-1) octal digits + NUL byte.
+/// @brief Write an octal value as NUL-terminated ASCII into a fixed-width field.
+/// Format: (width-1) octal digits + NUL byte.
 void writeOctal(uint8_t *field, size_t width, uint64_t value) {
     uint64_t maxValue = 0;
     for (size_t i = 0; i + 1 < width; ++i)
@@ -186,7 +186,7 @@ void writeOctal(uint8_t *field, size_t width, uint64_t value) {
     }
 }
 
-// Write a NUL-terminated string into a fixed-width field.
+/// @brief Write a NUL-terminated string into a fixed-width field.
 void writeString(uint8_t *field, size_t width, const std::string &s) {
     if (s.size() > width)
         throw std::runtime_error("tar string field too long: " + s);
@@ -196,8 +196,8 @@ void writeString(uint8_t *field, size_t width, const std::string &s) {
         field[len] = '\0';
 }
 
-// Compute the USTAR checksum for a 512-byte header.
-// The checksum field (offset 148, 8 bytes) is treated as spaces.
+/// @brief Compute the USTAR checksum for a 512-byte header.
+/// The checksum field (offset 148, 8 bytes) is treated as spaces.
 uint32_t computeChecksum(const uint8_t header[512]) {
     uint32_t sum = 0;
     for (int i = 0; i < 512; i++) {
@@ -212,10 +212,10 @@ uint32_t computeChecksum(const uint8_t header[512]) {
 
 } // namespace
 
-// Serialize all accumulated entries into a USTAR tar byte stream.
-// For each entry: builds a 512-byte header (splitting long paths into
-// prefix+name fields), computes the POSIX checksum, and pads file data to
-// 512-byte blocks. Appends two zero-filled 1024-byte end-of-archive blocks.
+/// @brief Serialize all accumulated entries into a USTAR tar byte stream.
+/// For each entry: builds a 512-byte header (splitting long paths into
+/// prefix+name fields), computes the POSIX checksum, and pads file data to
+/// 512-byte blocks. Appends two zero-filled 1024-byte end-of-archive blocks.
 std::vector<uint8_t> TarWriter::finish() const {
     std::vector<uint8_t> out;
 

@@ -218,7 +218,7 @@ volume.SetValue(50)
 volume.SetSize(200, 20)
 
 ' Use value
-Viper.Audio.MasterVolume = INT(volume.GetValue())
+Viper.Sound.Audio.SetMasterVolume(INT(volume.GetValue()))
 ```
 
 ```rust

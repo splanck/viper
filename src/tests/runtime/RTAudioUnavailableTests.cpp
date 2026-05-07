@@ -14,6 +14,7 @@
 #include "rt.hpp"
 #include "rt_audio.h"
 #include "rt_musicgen.h"
+#include "rt_soundbank.h"
 #include "rt_synth.h"
 #include "tests/common/PlatformSkip.h"
 
@@ -75,6 +76,13 @@ static void test_builder_apis_return_null_without_trapping() {
     assert(rt_musicgen_build(song) == nullptr);
 }
 
+static void test_soundbank_register_returns_failure_without_trapping() {
+    void *bank = rt_soundbank_new();
+    assert(bank != nullptr);
+    assert(rt_soundbank_register(bank, rt_const_cstr("jump"), rt_const_cstr("jump.wav")) == 0);
+    assert(rt_soundbank_count(bank) == 0);
+}
+
 } // namespace
 #endif
 
@@ -89,6 +97,7 @@ int main() {
     expect_invalid_operation(trap_music_load, "not compiled in");
     expect_invalid_operation(trap_music_play, "not compiled in");
     test_builder_apis_return_null_without_trapping();
+    test_soundbank_register_returns_failure_without_trapping();
     std::printf("All audio-unavailable tests passed.\n");
     return 0;
 #endif

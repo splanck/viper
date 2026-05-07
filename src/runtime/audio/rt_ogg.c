@@ -8,7 +8,7 @@
 // File: src/runtime/audio/rt_ogg.c
 // Purpose: OGG container format parser implementation.
 // Key invariants:
-//   - Pages are validated by the "OggS" capture pattern
+//   - Pages are validated by the "OggS" capture pattern and CRC-32
 //   - Packets spanning multiple pages are reassembled
 // Ownership/Lifetime:
 //   - ogg_reader_t owns all internal buffers
@@ -75,6 +75,10 @@ static size_t ogg_read(ogg_reader_t *r, void *buf, size_t count) {
     return count;
 }
 
+static int ogg_read_byte(ogg_reader_t *r, uint8_t *out) {
+    return ogg_read(r, out, 1) == 1;
+}
+
 static uint32_t read_u32_le(const uint8_t *p) {
     return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
@@ -97,15 +101,17 @@ static int64_t read_i64_le(const uint8_t *p) {
 static int ogg_read_page(ogg_reader_t *r, uint8_t **body_out, size_t *body_len_out) {
     ogg_crc_init();
 
-    // Search for "OggS" capture pattern
+    // Search for "OggS" capture pattern. Resync one byte at a time so a valid
+    // page immediately after junk/corruption is not skipped.
     uint8_t header[27];
-    while (1) {
-        if (ogg_read(r, header, 4) != 4)
+    if (ogg_read(r, header, 4) != 4)
+        return 0;
+    while (!(header[0] == 'O' && header[1] == 'g' && header[2] == 'g' && header[3] == 'S')) {
+        header[0] = header[1];
+        header[1] = header[2];
+        header[2] = header[3];
+        if (!ogg_read_byte(r, &header[3]))
             return 0;
-        if (header[0] == 'O' && header[1] == 'g' && header[2] == 'g' && header[3] == 'S')
-            break;
-        // Resync: shift by 1 byte and retry
-        // (In practice, we only need this for corrupted streams)
     }
 
     // Read remaining header bytes (23 more)
@@ -130,12 +136,15 @@ static int ogg_read_page(ogg_reader_t *r, uint8_t **body_out, size_t *body_len_o
         body_len += r->page.segment_table[i];
 
     // Read body
-    uint8_t *body = (uint8_t *)malloc(body_len);
-    if (!body)
-        return 0;
-    if (ogg_read(r, body, body_len) != body_len) {
-        free(body);
-        return 0;
+    uint8_t *body = NULL;
+    if (body_len > 0) {
+        body = (uint8_t *)malloc(body_len);
+        if (!body)
+            return 0;
+        if (ogg_read(r, body, body_len) != body_len) {
+            free(body);
+            return 0;
+        }
     }
 
     // CRC verification: compute CRC over the entire page with checksum field zeroed
@@ -153,9 +162,10 @@ static int ogg_read_page(ogg_reader_t *r, uint8_t **body_out, size_t *body_len_o
                        ogg_crc_table[((full_crc >> 24) ^ r->page.segment_table[i]) & 0xFF];
         for (size_t i = 0; i < body_len; i++)
             full_crc = (full_crc << 8) ^ ogg_crc_table[((full_crc >> 24) ^ body[i]) & 0xFF];
-        // Skip CRC check for now — many OGG files in the wild have non-standard CRC
-        // due to encoder bugs. We prioritize compatibility over strictness.
-        (void)full_crc;
+        if (full_crc != r->page.checksum) {
+            free(body);
+            return 0;
+        }
     }
 
     *body_out = body;
@@ -167,20 +177,35 @@ static int ogg_read_page(ogg_reader_t *r, uint8_t **body_out, size_t *body_len_o
 // Packet assembly
 //===----------------------------------------------------------------------===//
 
-static void packet_append(ogg_packet_t *pkt, const uint8_t *data, size_t len) {
+static int packet_append(ogg_packet_t *pkt, const uint8_t *data, size_t len) {
+    if (!pkt || (!data && len > 0))
+        return 0;
+    if (len > ((size_t)-1) - pkt->len)
+        return 0;
     size_t needed = pkt->len + len;
     if (needed > pkt->cap) {
         size_t new_cap = pkt->cap ? pkt->cap * 2 : 4096;
+        if (new_cap < pkt->cap)
+            return 0;
         if (new_cap < needed)
             new_cap = needed;
+        while (new_cap < needed) {
+            if (new_cap > ((size_t)-1) / 2) {
+                new_cap = needed;
+                break;
+            }
+            new_cap *= 2;
+        }
         uint8_t *new_data = (uint8_t *)realloc(pkt->data, new_cap);
         if (!new_data)
-            return;
+            return 0;
         pkt->data = new_data;
         pkt->cap = new_cap;
     }
-    memcpy(pkt->data + pkt->len, data, len);
+    if (len > 0)
+        memcpy(pkt->data + pkt->len, data, len);
     pkt->len += len;
+    return 1;
 }
 
 static void packet_reset(ogg_packet_t *pkt) {
@@ -290,8 +315,11 @@ static int process_page_packets(ogg_reader_t *r, const uint8_t *body, size_t bod
         if (offset + seg_size > body_len)
             return 0;
 
-        if (!discarding_continuation)
-            packet_append(&state->partial, body + offset, seg_size);
+        if (!discarding_continuation &&
+            !packet_append(&state->partial, body + offset, seg_size)) {
+            packet_reset(&state->partial);
+            return 0;
+        }
         offset += seg_size;
 
         if (seg_size < 255) {

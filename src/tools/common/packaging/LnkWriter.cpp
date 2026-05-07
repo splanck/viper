@@ -37,13 +37,13 @@ namespace viper::pkg {
 
 namespace {
 
-// Append a 16-bit little-endian value to buf.
+/// @brief Append a 16-bit little-endian value to `buf`.
 void appendLE16(std::vector<uint8_t> &buf, uint16_t val) {
     buf.push_back(static_cast<uint8_t>(val & 0xFF));
     buf.push_back(static_cast<uint8_t>((val >> 8) & 0xFF));
 }
 
-// Append a 32-bit little-endian value to buf.
+/// @brief Append a 32-bit little-endian value to `buf`.
 void appendLE32(std::vector<uint8_t> &buf, uint32_t val) {
     buf.push_back(static_cast<uint8_t>(val & 0xFF));
     buf.push_back(static_cast<uint8_t>((val >> 8) & 0xFF));
@@ -64,8 +64,8 @@ void appendStringData(std::vector<uint8_t> &buf, const std::string &str) {
     }
 }
 
-// Convert str to a NUL-terminated ANSI byte sequence for use in LinkInfo's
-// LocalBasePath field. Non-printable or high-byte characters are replaced with '?'.
+/// @brief Convert `str` to a NUL-terminated ANSI byte sequence for LinkInfo's `LocalBasePath` field.
+/// Non-printable or high-byte characters are replaced with `'?'`.
 std::vector<uint8_t> ansiPathFallback(const std::string &str) {
     std::vector<uint8_t> out;
     out.reserve(str.size() + 1);
@@ -75,8 +75,8 @@ std::vector<uint8_t> ansiPathFallback(const std::string &str) {
     return out;
 }
 
-// Return true if str contains a Windows environment variable reference (%VAR%).
-// Used to decide whether to emit an EnvironmentVariableDataBlock in the .lnk.
+/// @brief Return true if `str` contains a Windows environment variable reference (`%VAR%`).
+/// Used to decide whether to emit an `EnvironmentVariableDataBlock` in the .lnk file.
 bool containsEnvironmentVariableReference(const std::string &str) {
     const std::size_t first = str.find('%');
     if (first == std::string::npos)
@@ -84,8 +84,8 @@ bool containsEnvironmentVariableReference(const std::string &str) {
     return str.find('%', first + 1) != std::string::npos;
 }
 
-// Append a MAX_PATH (260-byte) zero-padded ANSI path field for the
-// EnvironmentVariableDataBlock TargetAnsi field.
+/// @brief Append a MAX_PATH (260-byte) zero-padded ANSI path for the `EnvironmentVariableDataBlock`
+/// `TargetAnsi` field. Throws if `str` is 260 characters or longer.
 void appendFixedAnsiPath(std::vector<uint8_t> &buf, const std::string &str) {
     if (str.size() >= 260)
         throw std::runtime_error("lnk: environment target path is too long");
@@ -95,8 +95,8 @@ void appendFixedAnsiPath(std::vector<uint8_t> &buf, const std::string &str) {
     std::memcpy(buf.data() + start, ansi.data(), ansi.size());
 }
 
-// Append a MAX_PATH (520-byte = 260 UTF-16 chars) zero-padded UTF-16LE path field
-// for the EnvironmentVariableDataBlock TargetUnicode field.
+/// @brief Append a MAX_PATH (520-byte = 260 UTF-16 chars) zero-padded UTF-16LE path for the
+/// `EnvironmentVariableDataBlock` `TargetUnicode` field. Throws if `str` encodes to 260+ code units.
 void appendFixedUtf16Path(std::vector<uint8_t> &buf, const std::string &str) {
     const auto units = utf8ToUtf16CodeUnits(str);
     if (units.size() >= 260)
@@ -111,6 +111,10 @@ void appendFixedUtf16Path(std::vector<uint8_t> &buf, const std::string &str) {
 
 } // namespace
 
+/// @brief Generate a Windows .lnk shortcut file conforming to [MS-SHLLINK].
+/// Emits ShellLinkHeader, LinkInfo (VolumeID + LocalBasePath for reliable resolution),
+/// StringData entries (NAME_STRING, RELATIVE_PATH, optional WORKING_DIR and ICON_LOCATION),
+/// and an optional EnvironmentVariableDataBlock when the target contains `%VAR%` references.
 std::vector<uint8_t> generateLnk(const LnkParams &params) {
     std::vector<uint8_t> buf;
     buf.reserve(512);

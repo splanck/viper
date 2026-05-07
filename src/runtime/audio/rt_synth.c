@@ -81,6 +81,18 @@ static double synth_sin(double phase) {
 // WAV Header Construction
 //===----------------------------------------------------------------------===//
 
+static void write_le16(uint8_t *p, uint16_t v) {
+    p[0] = (uint8_t)(v & 0xFFu);
+    p[1] = (uint8_t)((v >> 8) & 0xFFu);
+}
+
+static void write_le32(uint8_t *p, uint32_t v) {
+    p[0] = (uint8_t)(v & 0xFFu);
+    p[1] = (uint8_t)((v >> 8) & 0xFFu);
+    p[2] = (uint8_t)((v >> 16) & 0xFFu);
+    p[3] = (uint8_t)((v >> 24) & 0xFFu);
+}
+
 /// @brief Write a minimal WAV header for mono 16-bit PCM data.
 static void write_wav_header(uint8_t *buf, int32_t num_samples) {
     int32_t data_size = num_samples * SYNTH_CHANNELS * (SYNTH_BITS / 8);
@@ -90,27 +102,22 @@ static void write_wav_header(uint8_t *buf, int32_t num_samples) {
 
     /* RIFF chunk */
     memcpy(buf + 0, "RIFF", 4);
-    memcpy(buf + 4, &file_size, 4);
+    write_le32(buf + 4, (uint32_t)file_size);
     memcpy(buf + 8, "WAVE", 4);
 
     /* fmt sub-chunk */
     memcpy(buf + 12, "fmt ", 4);
-    int32_t fmt_size = 16;
-    memcpy(buf + 16, &fmt_size, 4);
-    int16_t audio_format = 1; /* PCM */
-    memcpy(buf + 20, &audio_format, 2);
-    int16_t channels = SYNTH_CHANNELS;
-    memcpy(buf + 22, &channels, 2);
-    int32_t sample_rate = SYNTH_SAMPLE_RATE;
-    memcpy(buf + 24, &sample_rate, 4);
-    memcpy(buf + 28, &byte_rate, 4);
-    memcpy(buf + 32, &block_align, 2);
-    int16_t bits = SYNTH_BITS;
-    memcpy(buf + 34, &bits, 2);
+    write_le32(buf + 16, 16u);
+    write_le16(buf + 20, 1u); /* PCM */
+    write_le16(buf + 22, (uint16_t)SYNTH_CHANNELS);
+    write_le32(buf + 24, (uint32_t)SYNTH_SAMPLE_RATE);
+    write_le32(buf + 28, (uint32_t)byte_rate);
+    write_le16(buf + 32, (uint16_t)block_align);
+    write_le16(buf + 34, (uint16_t)SYNTH_BITS);
 
     /* data sub-chunk */
     memcpy(buf + 36, "data", 4);
-    memcpy(buf + 40, &data_size, 4);
+    write_le32(buf + 40, (uint32_t)data_size);
 }
 
 //===----------------------------------------------------------------------===//

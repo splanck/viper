@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-29
+last-verified: 2026-05-07
 ---
 
 # Audio
@@ -9,6 +9,10 @@ last-verified: 2026-04-29
 > Sound effects and music playback for games and applications.
 
 **Part of the [Viper Runtime Library](README.md)**
+
+The canonical namespace is `Viper.Sound`. The runtime also exposes
+`Viper.Audio.*` as a compatibility alias for older examples and projects; the
+classes and behavior are the same.
 
 ## Contents
 

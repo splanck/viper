@@ -35,12 +35,12 @@ namespace viper::pkg {
 
 namespace {
 
-// Read a 16-bit little-endian unsigned integer from an unaligned byte pointer.
+/// @brief Read a 16-bit little-endian unsigned integer from an unaligned byte pointer.
 uint16_t rdLE16(const uint8_t *p) {
     return static_cast<uint16_t>(p[0] | (p[1] << 8));
 }
 
-// Read a 32-bit little-endian unsigned integer from an unaligned byte pointer.
+/// @brief Read a 32-bit little-endian unsigned integer from an unaligned byte pointer.
 uint32_t rdLE32(const uint8_t *p) {
     return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
@@ -48,19 +48,18 @@ uint32_t rdLE32(const uint8_t *p) {
 
 } // namespace
 
-// Construct a ZipReader over the given memory buffer and immediately parse
-// the central directory. data must remain valid for the lifetime of this object.
+/// @brief Construct a ZipReader over the given memory buffer and immediately parse
+/// the central directory. data must remain valid for the lifetime of this object.
 ZipReader::ZipReader(const uint8_t *data, size_t len) : data_(data), len_(len) {
     if (!data || len < 22)
         throw ZipReadError("ZIP: buffer too small");
     parseCentralDirectory();
 }
 
-// Locate the End-of-Central-Directory (EOCD) record by scanning backwards from
-// the end of the buffer (to handle optional ZIP comments), read the central
-// directory, and populate entries_. Rejects ZIP64, split archives, encrypted
-// entries, data-descriptor entries, and unsupported compression methods so that
-// callers can assume a simple stored/deflate-only archive after construction.
+/// @brief Locate the End-of-Central-Directory (EOCD) record by scanning backwards from
+/// the end of the buffer (to handle optional ZIP comments), read the central
+/// directory, and populate entries_. Rejects ZIP64, split archives, encrypted
+/// entries, data-descriptor entries, and unsupported compression methods.
 void ZipReader::parseCentralDirectory() {
     // Scan backwards for EOCD signature 0x06054B50
     // EOCD can have up to 65535 bytes of comment, so search range is limited
@@ -150,8 +149,8 @@ void ZipReader::parseCentralDirectory() {
         throw ZipReadError("ZIP: central directory size does not match EOCD");
 }
 
-// Return a pointer to the entry whose name matches exactly, or nullptr if not found.
-// Linear search is acceptable because manifests typically contain < 1000 entries.
+/// @brief Return a pointer to the entry whose name matches exactly, or nullptr if not found.
+/// Linear search is acceptable because manifests typically contain < 1000 entries.
 const ZipEntry *ZipReader::find(const std::string &name) const {
     for (const auto &e : entries_) {
         if (e.name == name)
@@ -160,10 +159,9 @@ const ZipEntry *ZipReader::find(const std::string &name) const {
     return nullptr;
 }
 
-// Extract entry from the archive and return its uncompressed content.
-// Cross-validates every field against the central directory before touching data:
-// flags, method, CRC, and sizes must match exactly to catch corrupt archives.
-// After decompression the CRC-32 is re-computed and checked against the stored value.
+/// @brief Extract entry from the archive and return its uncompressed content.
+/// Cross-validates flags, method, CRC, and sizes against the central directory.
+/// After decompression, the CRC-32 is re-computed and checked against the stored value.
 std::vector<uint8_t> ZipReader::extract(const ZipEntry &entry) const {
     // Navigate to local file header
     size_t lhOff = entry.localHeaderOffset;

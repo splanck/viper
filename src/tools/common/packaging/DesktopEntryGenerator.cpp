@@ -28,10 +28,10 @@ namespace viper::pkg {
 
 namespace {
 
-// Escape a string for use as a .desktop file value.
-// The only character requiring escaping in Desktop Entry values is backslash;
-// the spec does not require escaping of other characters in string values.
-// Also validates that the string is single-line (no embedded newlines).
+/// @brief Escape a value string for inclusion in a .desktop file field.
+/// Backslash is the only character requiring escaping per the Desktop Entry Spec;
+/// also validates that the value is single-line (no embedded newlines), since the
+/// spec treats each line as a key=value pair.
 std::string desktopEscape(const std::string &s) {
     validateSingleLineField(s, "desktop entry field");
     std::string out;
@@ -45,8 +45,9 @@ std::string desktopEscape(const std::string &s) {
     return out;
 }
 
-// Escape a string for safe embedding in XML attribute values and text content.
-// Replaces the five predefined XML entities: & < > " '
+/// @brief Escape a string for safe embedding in XML attribute values and text content.
+/// Replaces the five predefined XML entities: & → &amp;, < → &lt;, > → &gt;,
+/// " → &quot;, ' → &apos;.
 std::string xmlEscape(const std::string &s) {
     std::string out;
     out.reserve(s.size());
@@ -75,14 +76,20 @@ std::string xmlEscape(const std::string &s) {
     return out;
 }
 
-// Validate all file associations in the list, checking for duplicate extensions,
-// well-formed MIME types, and legal extension characters.
+/// @brief Validate all file associations before generating any output.
+/// Delegates to validatePackageFileAssociations() which checks for duplicate
+/// extensions, well-formed MIME type strings, and legal extension characters;
+/// throws on any violation.
 void validateAssociations(const std::vector<FileAssoc> &assocs) {
     validatePackageFileAssociations(assocs);
 }
 
 } // namespace
 
+/// @brief Build a complete freedesktop.org .desktop file from the given parameters.
+/// Validates file associations and normalizes the categories string before writing.
+/// Appends "%f" to the Exec= line when file associations or acceptsFileArgument is set,
+/// enabling the desktop environment to pass the opened file path to the application.
 std::string generateDesktopEntry(const DesktopEntryParams &params) {
     validateAssociations(params.fileAssociations);
     const std::string categories = normalizeDesktopCategories(params.categories);
@@ -119,6 +126,10 @@ std::string generateDesktopEntry(const DesktopEntryParams &params) {
     return os.str();
 }
 
+/// @brief Build a shared-mime-info XML document registering each file association.
+/// Returns an empty string when `assocs` is empty to avoid writing a stub file.
+/// Each association produces a <mime-type> element with a <comment> and a glob
+/// pattern derived from the extension (leading dot is normalized if missing).
 std::string generateMimeTypeXml(const std::string &packageName,
                                 const std::vector<FileAssoc> &assocs) {
     if (assocs.empty())

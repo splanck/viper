@@ -120,8 +120,9 @@ typedef struct {
     float minimum_value;
     float delta_value;
     int sequence_p;
-    // Decode tree: sorted entries for binary search
+    // Decode table: codewords, lengths, and original entry indices
     uint32_t *sorted_codes;
+    uint8_t *sorted_code_lengths;
     int *sorted_indices;
     int sorted_count;
 } vorbis_codebook_t;
@@ -160,27 +161,33 @@ static float float32_unpack(uint32_t val) {
 ///          of `sorted_codes` and match an incoming bit pattern directly without
 ///          having to reverse on every lookup.
 ///
-///          The length is packed into the upper 8 bits of `sorted_codes[i]`
-///          (`rev | (len << 24)`) so the decoder can recover it without a second
-///          parallel array. Entries with length 0 or > 32 are skipped (unused
-///          slots in the codebook). On allocation failure `sorted_count` stays
-///          set but the pointers are NULL — the decoder detects this and fails
-///          gracefully.
-static void codebook_build_tree(vorbis_codebook_t *cb) {
+///          Codewords and lengths are stored separately so valid 25-32 bit
+///          codewords are not truncated by metadata packing.
+/// @return 0 on success, -1 on allocation failure.
+static int codebook_build_tree(vorbis_codebook_t *cb) {
     // Count valid entries
     int count = 0;
     for (int i = 0; i < cb->entries; i++) {
         if (cb->lengths[i] > 0 && cb->lengths[i] <= 32)
             count++;
     }
-    cb->sorted_count = count;
+
+    cb->sorted_count = 0;
     if (count == 0)
-        return;
+        return 0;
 
     cb->sorted_codes = (uint32_t *)calloc((size_t)count, sizeof(uint32_t));
+    cb->sorted_code_lengths = (uint8_t *)calloc((size_t)count, sizeof(uint8_t));
     cb->sorted_indices = (int *)calloc((size_t)count, sizeof(int));
-    if (!cb->sorted_codes || !cb->sorted_indices)
-        return;
+    if (!cb->sorted_codes || !cb->sorted_code_lengths || !cb->sorted_indices) {
+        free(cb->sorted_codes);
+        free(cb->sorted_code_lengths);
+        free(cb->sorted_indices);
+        cb->sorted_codes = NULL;
+        cb->sorted_code_lengths = NULL;
+        cb->sorted_indices = NULL;
+        return -1;
+    }
 
     // Assign codewords using the algorithm from the Vorbis spec
     uint32_t marker[33] = {0};
@@ -196,7 +203,8 @@ static void codebook_build_tree(vorbis_codebook_t *cb) {
             if (entry & (1u << j))
                 rev |= (1u << (len - 1 - j));
         }
-        cb->sorted_codes[idx] = rev | ((uint32_t)len << 24); // pack length in upper bits
+        cb->sorted_codes[idx] = rev;
+        cb->sorted_code_lengths[idx] = (uint8_t)len;
         cb->sorted_indices[idx] = i;
         idx++;
 
@@ -209,6 +217,8 @@ static void codebook_build_tree(vorbis_codebook_t *cb) {
             }
         }
     }
+    cb->sorted_count = idx;
+    return 0;
 }
 
 /// @brief Decode one Huffman symbol from `b` against codebook `cb`.
@@ -217,13 +227,16 @@ static void codebook_build_tree(vorbis_codebook_t *cb) {
 /// codebooks are typically small. Reads bits until a length+value
 /// pair matches; returns the entry index, or -1 on EOF / no-match.
 static int codebook_decode_scalar(vorbis_codebook_t *cb, vorbis_bits_t *b) {
-    if (cb->sorted_count == 0)
+    if (cb->sorted_count == 0 || !cb->sorted_codes || !cb->sorted_code_lengths ||
+        !cb->sorted_indices)
         return -1;
 
     // Linear scan through sorted codes (simple but correct)
     // For each possible length, try to match
     uint32_t code = 0;
     for (int len = 1; len <= 32; len++) {
+        if (bits_eof(b))
+            return -1;
         int bit = bits_read1(b);
         if (bits_eof(b) && len > 1)
             return -1;
@@ -231,8 +244,8 @@ static int codebook_decode_scalar(vorbis_codebook_t *cb, vorbis_bits_t *b) {
 
         // Search for match
         for (int i = 0; i < cb->sorted_count; i++) {
-            int cb_len = (int)(cb->sorted_codes[i] >> 24);
-            uint32_t cb_code = cb->sorted_codes[i] & 0x00FFFFFF;
+            int cb_len = (int)cb->sorted_code_lengths[i];
+            uint32_t cb_code = cb->sorted_codes[i];
             if (cb_len == len && cb_code == code)
                 return cb->sorted_indices[i];
         }
@@ -526,6 +539,7 @@ void vorbis_decoder_free(vorbis_decoder_t *dec) {
         free(dec->codebooks[i].lengths);
         free(dec->codebooks[i].vq_table);
         free(dec->codebooks[i].sorted_codes);
+        free(dec->codebooks[i].sorted_code_lengths);
         free(dec->codebooks[i].sorted_indices);
     }
     // Free windows
@@ -661,7 +675,8 @@ static int decode_setup(vorbis_decoder_t *dec, const uint8_t *data, size_t len) 
             }
         }
 
-        codebook_build_tree(cb);
+        if (codebook_build_tree(cb) != 0)
+            return -1;
 
         // VQ lookup
         cb->lookup_type = (int)bits_read(&bits, 4);

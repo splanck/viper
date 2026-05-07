@@ -91,6 +91,10 @@ static void audio3d_release_local(void *obj) {
         rt_obj_free(obj);
 }
 
+static double audio3d_finite_or(double value, double fallback) {
+    return isfinite(value) ? value : fallback;
+}
+
 /// @brief Translation-unit-local copy of `rt_audio3d.c::audio3d_copy3`.
 /// @details Null-source-fills-zero convention applies: missing position
 ///   vectors collapse to the origin rather than leaving `dst` untouched.
@@ -103,9 +107,9 @@ static void audio3d_copy3(double *dst, const double *src) {
         dst[2] = 0.0;
         return;
     }
-    dst[0] = src[0];
-    dst[1] = src[1];
-    dst[2] = src[2];
+    dst[0] = audio3d_finite_or(src[0], 0.0);
+    dst[1] = audio3d_finite_or(src[1], 0.0);
+    dst[2] = audio3d_finite_or(src[2], 0.0);
 }
 
 /// @brief Translation-unit-local copy of `rt_audio3d.c::audio3d_vec_from_obj`.
@@ -120,9 +124,9 @@ static void audio3d_vec_from_obj(void *vec, double *out_xyz) {
         out_xyz[2] = 0.0;
         return;
     }
-    out_xyz[0] = rt_vec3_x(vec);
-    out_xyz[1] = rt_vec3_y(vec);
-    out_xyz[2] = rt_vec3_z(vec);
+    out_xyz[0] = audio3d_finite_or(rt_vec3_x(vec), 0.0);
+    out_xyz[1] = audio3d_finite_or(rt_vec3_y(vec), 0.0);
+    out_xyz[2] = audio3d_finite_or(rt_vec3_z(vec), 0.0);
 }
 
 /// @brief Compute velocity from position delta and update the last-position cache.
@@ -346,8 +350,12 @@ static void audio3d_listener_sync_binding(rt_audiolistener3d *listener, double d
         return;
 
     if (listener->bound_camera) {
-        audio3d_vec_from_obj(rt_camera3d_get_position(listener->bound_camera), position);
-        audio3d_vec_from_obj(rt_camera3d_get_forward(listener->bound_camera), forward);
+        void *camera_position = rt_camera3d_get_position(listener->bound_camera);
+        void *camera_forward = rt_camera3d_get_forward(listener->bound_camera);
+        audio3d_vec_from_obj(camera_position, position);
+        audio3d_vec_from_obj(camera_forward, forward);
+        audio3d_release_local(camera_position);
+        audio3d_release_local(camera_forward);
         audio3d_update_velocity(listener->state.velocity,
                                 listener->last_sync_position,
                                 &listener->has_last_sync_position,
@@ -815,6 +823,9 @@ int64_t rt_audiosource3d_play(void *obj) {
                                        : rt_sound_play_ex(source->sound, spatial_volume, spatial_pan);
     if (source->voice_id <= 0)
         source->voice_id = 0;
+    else
+        rt_audio3d_register_voice(
+            source->voice_id, source->max_distance, audio3d_clamp_volume(source->volume));
     return source->voice_id;
 }
 

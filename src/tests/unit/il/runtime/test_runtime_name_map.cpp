@@ -61,6 +61,16 @@ TEST(RuntimeNameMap, AliasesResolveToRegisteredDescriptors) {
               << "\n";
 }
 
+TEST(RuntimeNameMap, ViperAudioAliasesResolveToSoundRuntime) {
+    auto init = mapCanonicalRuntimeName("Viper.Audio.Audio.Init");
+    ASSERT_TRUE(init.has_value());
+    EXPECT_EQ(*init, std::string_view("rt_audio_init"));
+
+    auto tone = mapCanonicalRuntimeName("Viper.Audio.Synth.Tone");
+    ASSERT_TRUE(tone.has_value());
+    EXPECT_EQ(*tone, std::string_view("rt_synth_tone"));
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();

@@ -29,6 +29,8 @@
 
 namespace viper::pkg {
 
+/// @brief Store one archive member. Copies `data` into an internal buffer along
+/// with the name, mtime, and mode; the member is appended to the output on finish().
 void ArWriter::addMember(
     const std::string &name, const uint8_t *data, size_t size, uint32_t mtime, uint32_t mode) {
     Member m;
@@ -39,6 +41,7 @@ void ArWriter::addMember(
     members_.push_back(std::move(m));
 }
 
+/// @brief Convenience wrapper: converts the string to a byte span and delegates to addMember().
 void ArWriter::addMemberString(const std::string &name,
                                const std::string &content,
                                uint32_t mtime,
@@ -46,6 +49,7 @@ void ArWriter::addMemberString(const std::string &name,
     addMember(name, reinterpret_cast<const uint8_t *>(content.data()), content.size(), mtime, mode);
 }
 
+/// @brief Convenience wrapper: delegates to addMember() with the vector's data pointer and size.
 void ArWriter::addMemberVec(const std::string &name,
                             const std::vector<uint8_t> &data,
                             uint32_t mtime,
@@ -55,9 +59,9 @@ void ArWriter::addMemberVec(const std::string &name,
 
 namespace {
 
-// Write a right-padded field to buf. Field is exactly `width` bytes, padded
-// with spaces. ar has no overflow indicator for these fixed fields, so reject
-// instead of silently truncating headers.
+/// @brief Write a right-space-padded ASCII field into a fixed-width ar header slot.
+/// Throws if `value` is longer than `width`; the ar format has no overflow indicator so
+/// silent truncation would produce a silently malformed archive.
 void writeField(uint8_t *buf, const std::string &value, size_t width, const char *fieldName) {
     if (value.size() > width)
         throw std::runtime_error(std::string("ar ") + fieldName + " field too long: " + value);
@@ -67,6 +71,9 @@ void writeField(uint8_t *buf, const std::string &value, size_t width, const char
 
 } // namespace
 
+/// @brief Serialize all accumulated members into a complete ar archive byte stream.
+/// Emits the global "!<arch>\n" magic, then for each member writes the 60-byte
+/// fixed-field header followed by the data and an optional '\n' pad byte for odd sizes.
 std::vector<uint8_t> ArWriter::finish() const {
     std::vector<uint8_t> out;
 
@@ -120,6 +127,9 @@ std::vector<uint8_t> ArWriter::finish() const {
     return out;
 }
 
+/// @brief Finalize the archive and write it atomically to `path`.
+/// Calls finish() to build the byte stream, then opens the file in binary mode
+/// and writes the entire buffer; throws on open or write failure.
 void ArWriter::finishToFile(const std::string &path) const {
     auto data = finish();
     std::ofstream f(path, std::ios::binary);

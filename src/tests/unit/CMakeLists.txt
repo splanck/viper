@@ -898,6 +898,16 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_codec PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_codec test_rt_codec)
 
+    viper_add_test(test_rt_ogg ${VIPER_TESTS_DIR}/runtime/RTOggTests.cpp)
+    target_link_libraries(test_rt_ogg PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_ogg test_rt_ogg)
+
+    viper_add_test(test_rt_vorbis_internal ${VIPER_TESTS_DIR}/runtime/RTVorbisInternalTests.c)
+    if (UNIX AND NOT APPLE)
+        target_link_libraries(test_rt_vorbis_internal PRIVATE m)
+    endif ()
+    viper_add_ctest(test_rt_vorbis_internal test_rt_vorbis_internal)
+
     viper_add_test(test_rt_csv ${VIPER_TESTS_DIR}/runtime/RTCsvTests.cpp)
     target_link_libraries(test_rt_csv PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_csv test_rt_csv)

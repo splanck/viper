@@ -35,25 +35,25 @@ namespace viper::pkg {
 
 namespace {
 
-// Read a little-endian uint16_t from an unaligned byte pointer.
+/// @brief Read a little-endian uint16_t from an unaligned byte pointer.
 uint16_t rdLE16(const uint8_t *p) {
     return static_cast<uint16_t>(p[0] | (p[1] << 8));
 }
 
-// Read a little-endian uint32_t from an unaligned byte pointer.
+/// @brief Read a little-endian uint32_t from an unaligned byte pointer.
 uint32_t rdLE32(const uint8_t *p) {
     return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
 
-// Return true if the byte range [offset, offset+length) is entirely within [0, size).
-// Used to guard all bounds-checked reads from archive and PE structures.
+/// @brief Return true if the byte range [offset, offset+length) is entirely within [0, size).
+/// Used to guard all bounds-checked reads from archive and PE structures.
 bool hasRange(size_t offset, size_t length, size_t size) {
     return offset <= size && length <= size - offset;
 }
 
-// Return true if all 512 bytes of a USTAR tar block are zero.
-// Two consecutive zero blocks mark the end-of-archive in the POSIX tar format.
+/// @brief Return true if all 512 bytes of a USTAR tar block are zero.
+/// Two consecutive zero blocks mark the end-of-archive in the POSIX tar format.
 bool isAllZeroBlock(const uint8_t *p) {
     for (size_t i = 0; i < 512; ++i) {
         if (p[i] != 0)
@@ -62,9 +62,9 @@ bool isAllZeroBlock(const uint8_t *p) {
     return true;
 }
 
-// Parse a fixed-width space/NUL-terminated decimal field (used in ar member headers).
-// Returns false if the field contains non-digit characters before the terminator,
-// or if the value overflows size_t.
+/// @brief Parse a fixed-width space/NUL-terminated decimal field (used in ar member headers).
+/// Returns false if the field contains non-digit characters before the terminator,
+/// or if the value overflows size_t.
 bool parseDecimalField(const uint8_t *field, size_t width, size_t &out) {
     out = 0;
     bool sawDigit = false;
@@ -87,9 +87,9 @@ bool parseDecimalField(const uint8_t *field, size_t width, size_t &out) {
     return sawDigit;
 }
 
-// Parse a fixed-width space/NUL-terminated octal field (used in USTAR tar headers
-// for file size, checksum, mode, etc.). Returns false if the field contains
-// non-octal characters before the terminator, or if the value overflows uint64_t.
+/// @brief Parse a fixed-width space/NUL-terminated octal field (used in USTAR tar headers
+/// for file size, checksum, mode, etc.). Returns false if the field contains
+/// non-octal characters before the terminator, or if the value overflows uint64_t.
 bool parseOctalField(const uint8_t *field, size_t width, uint64_t &out) {
     out = 0;
     bool sawDigit = false;
@@ -112,8 +112,8 @@ bool parseOctalField(const uint8_t *field, size_t width, uint64_t &out) {
     return sawDigit;
 }
 
-// Extract a NUL-terminated string from a fixed-width tar header field.
-// Returns everything up to the first NUL byte, or all width bytes if none.
+/// @brief Extract a NUL-terminated string from a fixed-width tar header field.
+/// Returns everything up to the first NUL byte, or all width bytes if none.
 std::string tarFieldString(const uint8_t *field, size_t width) {
     size_t len = 0;
     while (len < width && field[len] != '\0')
@@ -121,9 +121,9 @@ std::string tarFieldString(const uint8_t *field, size_t width) {
     return std::string(reinterpret_cast<const char *>(field), len);
 }
 
-// Compute the POSIX USTAR header checksum: sum all 512 bytes treating the
-// checksum field at bytes 148-155 as if they were spaces (0x20).
-// The stored octal value must equal this sum for the header to be valid.
+/// @brief Compute the POSIX USTAR header checksum: sum all 512 bytes treating the
+/// checksum field at bytes 148-155 as if they were spaces (0x20).
+/// The stored octal value must equal this sum for the header to be valid.
 uint32_t tarChecksum(const uint8_t *hdr) {
     uint32_t sum = 0;
     for (size_t i = 0; i < 512; ++i)
@@ -131,10 +131,10 @@ uint32_t tarChecksum(const uint8_t *hdr) {
     return sum;
 }
 
-// Verify a raw (already decompressed) USTAR tar stream.
-// Checks: 512-byte-aligned size, ustar magic, checksums, safe relative paths,
-// non-duplicate entries, valid symlink targets (no escapes), and two end-of-archive
-// zero blocks. Optionally collects normalized entry names into *outNames.
+/// @brief Verify a raw (already decompressed) USTAR tar stream.
+/// Checks: 512-byte-aligned size, ustar magic, checksums, safe relative paths,
+/// non-duplicate entries, valid symlink targets (no escapes), and two end-of-archive
+/// zero blocks. Optionally collects normalized entry names into *outNames.
 bool verifyTarBytes(const std::vector<uint8_t> &data,
                     std::ostream &err,
                     std::set<std::string> *outNames = nullptr) {
@@ -274,10 +274,10 @@ bool verifyTarBytes(const std::vector<uint8_t> &data,
     return true;
 }
 
-// Compute the byte offset where overlay data begins in a PE file.
-// Parses the DOS/COFF/section headers to find the end of the last section's
-// raw data, then sets overlayOff to that position. Returns false (with a
-// message to err) if the PE structure is malformed.
+/// @brief Compute the byte offset where overlay data begins in a PE file.
+/// Parses the DOS/COFF/section headers to find the end of the last section's
+/// raw data, then sets overlayOff to that position. Returns false (with a
+/// message to err) if the PE structure is malformed.
 bool parsePeOverlayOffset(const std::vector<uint8_t> &data, size_t &overlayOff, std::ostream &err) {
     if (data.size() < 64) {
         err << "PE: file too small (" << data.size() << " bytes)\n";
@@ -332,9 +332,9 @@ bool parsePeOverlayOffset(const std::vector<uint8_t> &data, size_t &overlayOff, 
     return true;
 }
 
-// Check that every path in requiredPaths (after sanitization) is present in names.
-// Used by the verifyXxxPayload family to assert the presence of critical files
-// without re-parsing the archive structure.
+/// @brief Check that every path in requiredPaths (after sanitization) is present in names.
+/// Used by the verifyXxxPayload family to assert the presence of critical files
+/// without re-parsing the archive structure.
 bool requireArchivePaths(const std::set<std::string> &names,
                          const std::vector<std::string> &requiredPaths,
                          const char *kind,
@@ -359,8 +359,8 @@ bool requireArchivePaths(const std::set<std::string> &names,
     return true;
 }
 
-// Verify a ZIP archive and assert the presence of all requiredEntries.
-// Combines verifyZip (structural check) with requireArchivePaths (payload check).
+/// @brief Verify a ZIP archive and assert the presence of all requiredEntries.
+/// Combines verifyZip (structural check) with requireArchivePaths (payload check).
 bool verifyZipPayload(const std::vector<uint8_t> &data,
                       const std::vector<std::string> &requiredEntries,
                       const char *kind,
@@ -430,11 +430,11 @@ bool verifyMacOSAppZip(const std::vector<uint8_t> &data,
 // .deb (ar) Verification
 // ============================================================================
 
-// Full .deb (ar) structural verification: checks ar magic, expects exactly
-// debian-binary / control.tar.gz / data.tar.gz members in that order,
-// validates control.tar.gz contains a "control" entry, and verifies the USTAR
-// structure of both tarballs. If outDataNames is non-null, fills it with
-// normalized paths from data.tar.gz for payload checking.
+/// @brief Full .deb (ar) structural verification: checks ar magic, expects exactly
+/// debian-binary / control.tar.gz / data.tar.gz members in that order,
+/// validates control.tar.gz contains a "control" entry, and verifies the USTAR
+/// structure of both tarballs. If outDataNames is non-null, fills it with
+/// normalized paths from data.tar.gz for payload checking.
 bool verifyDebInternal(const std::vector<uint8_t> &data,
                        std::ostream &err,
                        std::set<std::string> *outDataNames) {

@@ -67,10 +67,10 @@ class InstallerStubGen {
 
     // ─── Basic Instructions ───────────────────────────────────────────
 
-    void push(X64Reg r);
-    void pop(X64Reg r);
-    void ret();
-    void nop();
+    void push(X64Reg r);   ///< push r  (64-bit register push)
+    void pop(X64Reg r);    ///< pop r   (64-bit register pop)
+    void ret();            ///< near ret (return from procedure)
+    void nop();            ///< 1-byte NOP (0x90)
 
     // ─── MOV ──────────────────────────────────────────────────────────
 
@@ -118,24 +118,24 @@ class InstallerStubGen {
 
     // ─── Arithmetic ───────────────────────────────────────────────────
 
-    void subRegImm32(X64Reg dst, uint32_t imm);
-    void subRegReg(X64Reg dst, X64Reg src);
-    void addRegImm32(X64Reg dst, uint32_t imm);
-    void addRegReg(X64Reg dst, X64Reg src);
-    void xorRegReg(X64Reg dst, X64Reg src);
+    void subRegImm32(X64Reg dst, uint32_t imm); ///< sub dst, imm32 (sign-extends immediate)
+    void subRegReg(X64Reg dst, X64Reg src);     ///< sub dst, src (64-bit)
+    void addRegImm32(X64Reg dst, uint32_t imm); ///< add dst, imm32 (sign-extends immediate)
+    void addRegReg(X64Reg dst, X64Reg src);     ///< add dst, src (64-bit)
+    void xorRegReg(X64Reg dst, X64Reg src);     ///< xor dst, src (64-bit; use dst==src to zero)
 
     // ─── Compare / Test ───────────────────────────────────────────────
 
-    void testRegReg(X64Reg a, X64Reg b);
-    void cmpRegImm32(X64Reg r, uint32_t imm);
-    void cmpRegReg(X64Reg a, X64Reg b);
+    void testRegReg(X64Reg a, X64Reg b);      ///< test a, b (sets flags without storing result)
+    void cmpRegImm32(X64Reg r, uint32_t imm); ///< cmp r, imm32 (sign-extends immediate)
+    void cmpRegReg(X64Reg a, X64Reg b);       ///< cmp a, b (64-bit)
 
     // ─── Conditional Jumps ────────────────────────────────────────────
 
-    void jz(uint32_t labelId);
-    void jnz(uint32_t labelId);
-    void ja(uint32_t labelId);
-    void jmp(uint32_t labelId);
+    void jz(uint32_t labelId);  ///< jz / je — jump if zero flag set
+    void jnz(uint32_t labelId); ///< jnz / jne — jump if zero flag clear
+    void ja(uint32_t labelId);  ///< ja — jump if above (unsigned >)
+    void jmp(uint32_t labelId); ///< unconditional near jump
 
     // ─── Call ─────────────────────────────────────────────────────────
 
@@ -213,16 +213,26 @@ class InstallerStubGen {
     std::vector<Fixup> fixups_;
 
     // Encoding helpers
-    void emit(uint8_t b);
-    void emit32(uint32_t v);
+    void emit(uint8_t b);    ///< Append one byte to the code buffer.
+    void emit32(uint32_t v); ///< Append four bytes (little-endian) to the code buffer.
+
+    /// @brief Emit a REX prefix byte. `w` sets the 64-bit operand-size bit;
+    /// `reg` and `rm` supply the extension bits for the ModRM reg and r/m fields.
     void emitREX(bool w, X64Reg reg, X64Reg rm);
+
+    /// @brief Emit a ModRM byte with the given mod (2 bits), reg (3 bits), rm (3 bits) fields.
     void emitModRM(uint8_t mod, uint8_t reg, uint8_t rm);
+
+    /// @brief Emit a ModRM byte plus a 32-bit displacement for [base + disp32] addressing.
+    /// Handles the RSP/R12 SIB escape and RBP/R13 mandatory-displacement cases.
     void emitModRMDisp32(uint8_t reg, X64Reg base, int32_t disp);
 
+    /// @brief Return true when `r` requires a REX.B or REX.R extension bit (R8–R15).
     bool needsREX_B(X64Reg r) const {
         return static_cast<uint8_t>(r) >= 8;
     }
 
+    /// @brief Return the low 3 bits of the register encoding (strips the REX extension bit).
     uint8_t regBits(X64Reg r) const {
         return static_cast<uint8_t>(r) & 7;
     }

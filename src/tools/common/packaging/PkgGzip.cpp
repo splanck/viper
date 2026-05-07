@@ -39,12 +39,12 @@ namespace {
 
 static constexpr size_t kGzipMaxOutput = 2u * 1024u * 1024u * 1024u;
 
-// Read a little-endian uint16_t from an arbitrary (possibly unaligned) byte pointer.
+/// @brief Read a little-endian uint16_t from a possibly-unaligned byte pointer.
 uint16_t rdLE16(const uint8_t *p) {
     return static_cast<uint16_t>(p[0] | (p[1] << 8));
 }
 
-// Read a little-endian uint32_t from an arbitrary (possibly unaligned) byte pointer.
+/// @brief Read a little-endian uint32_t from a possibly-unaligned byte pointer.
 uint32_t rdLE32(const uint8_t *p) {
     return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
@@ -52,10 +52,8 @@ uint32_t rdLE32(const uint8_t *p) {
 
 } // namespace
 
-// Wrap raw DEFLATE output in a GZIP container (RFC 1952).
-// Writes a fixed 10-byte header (method=8, flags=0, mtime=0, OS=0xFF),
-// followed by the DEFLATE stream, then an 8-byte trailer holding the
-// CRC-32 and original size (both little-endian).
+/// @brief Wrap raw DEFLATE output in a GZIP container (RFC 1952).
+/// Header: method=8, flags=0, mtime=0, OS=0xFF. Trailer: CRC-32 + original size (little-endian).
 std::vector<uint8_t> gzip(const uint8_t *data, size_t len, int level) {
     // Compress with raw DEFLATE
     auto deflated = deflate(data, len, level);
@@ -97,11 +95,10 @@ std::vector<uint8_t> gzip(const uint8_t *data, size_t len, int level) {
     return result;
 }
 
-// Validate and decompress a GZIP stream (RFC 1952).
-// Parses the 10-byte fixed header, skips optional FEXTRA/FNAME/FCOMMENT/FHCRC
-// fields if their flags are set, inflates the embedded DEFLATE payload, then
-// verifies the CRC-32 and original-size values in the 8-byte trailer.
-// Throws std::runtime_error for any header, trailer, or integrity violation.
+/// @brief Validate and decompress a GZIP stream (RFC 1952).
+/// Parses the 10-byte header, skips optional FEXTRA/FNAME/FCOMMENT/FHCRC fields, inflates
+/// the embedded DEFLATE payload, then verifies CRC-32 and size in the 8-byte trailer.
+/// Throws `std::runtime_error` on any header, trailer, or integrity violation.
 std::vector<uint8_t> gunzip(const uint8_t *data, size_t len) {
     if (!data || len < 18)
         throw std::runtime_error("gzip: stream too small");

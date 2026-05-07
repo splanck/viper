@@ -60,6 +60,7 @@ static struct {
 } s_voice_dist[MAX_3D_VOICES];
 
 static int32_t s_voice_dist_count = 0;
+static int32_t s_voice_dist_next = 0;
 
 /// @brief Clamp `value` into the closed interval `[lo, hi]`.
 static int64_t clamp_i64(int64_t value, int64_t lo, int64_t hi) {
@@ -68,6 +69,10 @@ static int64_t clamp_i64(int64_t value, int64_t lo, int64_t hi) {
     if (value > hi)
         return hi;
     return value;
+}
+
+static double finite_or(double value, double fallback) {
+    return isfinite(value) ? value : fallback;
 }
 
 /// @brief Copy a 3-component vector with null-safe zero fill.
@@ -84,9 +89,9 @@ static void audio3d_copy3(double *dst, const double *src) {
         dst[2] = 0.0;
         return;
     }
-    dst[0] = src[0];
-    dst[1] = src[1];
-    dst[2] = src[2];
+    dst[0] = finite_or(src[0], 0.0);
+    dst[1] = finite_or(src[1], 0.0);
+    dst[2] = finite_or(src[2], 0.0);
 }
 
 /// @brief Decode an `rt_vec3` object handle into three raw doubles.
@@ -103,9 +108,9 @@ static void audio3d_vec_from_obj(void *vec, double *out_xyz) {
         out_xyz[2] = 0.0;
         return;
     }
-    out_xyz[0] = rt_vec3_x(vec);
-    out_xyz[1] = rt_vec3_y(vec);
-    out_xyz[2] = rt_vec3_z(vec);
+    out_xyz[0] = finite_or(rt_vec3_x(vec), 0.0);
+    out_xyz[1] = finite_or(rt_vec3_y(vec), 0.0);
+    out_xyz[2] = finite_or(rt_vec3_z(vec), 0.0);
 }
 
 /// @brief Normalise the listener forward vector and derive the matching right vector.
@@ -128,11 +133,11 @@ static void audio3d_set_forward_and_right(rt_audio3d_listener_state *state, cons
     if (!state)
         return;
 
-    fx = forward ? forward[0] : 0.0;
-    fy = forward ? forward[1] : 0.0;
-    fz = forward ? forward[2] : -1.0;
+    fx = forward ? finite_or(forward[0], 0.0) : 0.0;
+    fy = forward ? finite_or(forward[1], 0.0) : 0.0;
+    fz = forward ? finite_or(forward[2], -1.0) : -1.0;
     flen = sqrt(fx * fx + fy * fy + fz * fz);
-    if (flen <= 1e-8) {
+    if (!isfinite(flen) || flen <= 1e-8) {
         fx = 0.0;
         fy = 0.0;
         fz = -1.0;
@@ -146,7 +151,7 @@ static void audio3d_set_forward_and_right(rt_audio3d_listener_state *state, cons
     rx = -state->forward[2];
     rz = state->forward[0];
     rlen = sqrt(rx * rx + rz * rz);
-    if (rlen <= 1e-8) {
+    if (!isfinite(rlen) || rlen <= 1e-8) {
         rx = 1.0;
         rz = 0.0;
         rlen = 1.0;
@@ -225,7 +230,13 @@ void rt_audio3d_clear_active_listener_state(void) {
 ///          then the oldest entry (slot 0) is overwritten — sufficient for
 ///          typical workloads (≤ 64 simultaneously moving 3D sounds) and
 ///          much cheaper than a heap-managed map.
-static void track_voice_params(int64_t voice, double max_dist, int64_t base_volume) {
+void rt_audio3d_register_voice(int64_t voice, double max_dist, int64_t base_volume) {
+    if (voice <= 0)
+        return;
+    if (!isfinite(max_dist) || max_dist < 0.0)
+        max_dist = 0.0;
+    base_volume = clamp_i64(base_volume, 0, 100);
+
     /* Update existing entry */
     for (int32_t i = 0; i < s_voice_dist_count; i++) {
         if (s_voice_dist[i].voice_id == voice) {
@@ -241,10 +252,13 @@ static void track_voice_params(int64_t voice, double max_dist, int64_t base_volu
         s_voice_dist[s_voice_dist_count].base_volume = base_volume;
         s_voice_dist_count++;
     } else {
-        /* Overwrite slot 0 (oldest) */
-        s_voice_dist[0].voice_id = voice;
-        s_voice_dist[0].max_distance = max_dist;
-        s_voice_dist[0].base_volume = base_volume;
+        int32_t slot = s_voice_dist_next;
+        if (slot < 0 || slot >= MAX_3D_VOICES)
+            slot = 0;
+        s_voice_dist[slot].voice_id = voice;
+        s_voice_dist[slot].max_distance = max_dist;
+        s_voice_dist[slot].base_volume = base_volume;
+        s_voice_dist_next = (slot + 1) % MAX_3D_VOICES;
     }
 }
 
@@ -294,24 +308,39 @@ void rt_audio3d_compute_voice_params(const rt_audio3d_listener_state *listener,
     if (!source_position || !out_vol || !out_pan)
         return;
 
-    sx = source_position[0];
-    sy = source_position[1];
-    sz = source_position[2];
+    sx = finite_or(source_position[0], 0.0);
+    sy = finite_or(source_position[1], 0.0);
+    sz = finite_or(source_position[2], 0.0);
     dx = sx - effective->position[0];
     dy = sy - effective->position[1];
     dz = sz - effective->position[2];
-    dist = sqrt(dx * dx + dy * dy + dz * dz);
+    if (!isfinite(dx) || !isfinite(dy) || !isfinite(dz)) {
+        *out_vol = 0;
+        *out_pan = 0;
+        return;
+    }
+    dist = hypot(hypot(dx, dy), dz);
+    if (!isfinite(dist)) {
+        *out_vol = 0;
+        *out_pan = 0;
+        return;
+    }
 
+    if (!isfinite(max_dist) || max_dist < 0.0)
+        max_dist = 0.0;
+    base_vol = clamp_i64(base_vol, 0, 100);
     double atten = (max_dist > 0.0) ? 1.0 - (dist / max_dist) : 1.0;
-    if (atten < 0.0)
+    if (!isfinite(atten) || atten < 0.0)
         atten = 0.0;
+    if (atten > 1.0)
+        atten = 1.0;
     *out_vol = clamp_i64((int64_t)(base_vol * atten), 0, 100);
 
     if (dist > 1e-8) {
         double ndx = dx / dist;
         double ndz = dz / dist;
         double dot_right = ndx * effective->right[0] + ndz * effective->right[2];
-        *out_pan = clamp_i64((int64_t)(dot_right * 100.0), -100, 100);
+        *out_pan = isfinite(dot_right) ? clamp_i64((int64_t)(dot_right * 100.0), -100, 100) : 0;
     } else {
         *out_pan = 0;
     }
@@ -325,8 +354,6 @@ void rt_audio3d_compute_voice_params(const rt_audio3d_listener_state *listener,
 void rt_audio3d_set_listener(void *position, void *forward) {
     double pos[3];
     double fwd[3];
-    if (!position || !forward)
-        return;
     audio3d_vec_from_obj(position, pos);
     audio3d_vec_from_obj(forward, fwd);
     rt_audio3d_listener_state_set(&s_fallback_listener, pos, fwd, NULL);
@@ -356,8 +383,8 @@ int64_t rt_audio3d_play_at(void *sound, void *position, double max_distance, int
     rt_audio3d_compute_voice_params(&listener, source_pos, max_distance, volume, &vol, &pan);
     int64_t voice = rt_sound_play_ex(sound, vol, pan);
     if (voice > 0)
-        track_voice_params(voice, max_distance, volume);
-    return voice;
+        rt_audio3d_register_voice(voice, max_distance, volume);
+    return voice > 0 ? voice : 0;
 }
 
 /// @brief Update a playing voice's volume and pan based on its current 3D position.
