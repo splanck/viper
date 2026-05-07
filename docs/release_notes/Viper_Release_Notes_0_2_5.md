@@ -2,7 +2,7 @@
 
 > **Development Status:** Pre-Alpha. Viper is under active development and not ready for production use.
 
-## Version 0.2.5 — Pre-Alpha (2026-05-06)
+## Version 0.2.5 — Pre-Alpha (2026-05-07)
 
 ### What this release is about
 

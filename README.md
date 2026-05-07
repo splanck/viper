@@ -19,7 +19,7 @@
 
 ## Download
 
-**Latest Release:** [v0.2.5-dev](https://github.com/splanck/viper/releases/tag/v0.2.5-dev) (5/6/2026)
+**Latest Release:** [v0.2.5-dev](https://github.com/splanck/viper/releases/tag/v0.2.5-dev) (5/7/2026)
 
 - [Source (tar.gz)](https://github.com/splanck/viper/archive/refs/tags/v0.2.5-dev.tar.gz)
 - [Source (zip)](https://github.com/splanck/viper/archive/refs/tags/v0.2.5-dev.zip)
