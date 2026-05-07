@@ -8,63 +8,74 @@
 
 ### What this release is about
 
-A focused security and correctness pass across the IO runtime and audio compatibility layer.
+A deep security and correctness hardening cycle focused entirely on the IO runtime and audio compatibility layer. No major new features; the theme is closing attack surfaces and fixing latent correctness bugs that become important as the platform approaches real-world use.
 
-- **IO subsystem security hardening.** Temp-file names now draw entropy from `/dev/urandom` / `rand_s` instead of PID+pointer, eliminating an address-disclosure side-channel. Recursive directory removal uses `openat`/`fstatat`/`unlinkat` to anchor every operation to a real fd, closing TOCTOU symlink-substitution races. `O_CLOEXEC`, `O_NOFOLLOW`, and `O_NOINHERIT` applied across all file opens. Glob rejects embedded NUL bytes and caps recursion depth. Asset loads use `O_NOFOLLOW` to prevent symlink traversal out of the asset root.
-- **BinaryBuffer unsigned integer API.** Eight new methods — `WriteU16LE`, `WriteU16BE`, `WriteU32LE`, `WriteU32BE` and their `Read` counterparts — fill the gap left by the existing signed-only surface. All write methods now range-check their input and trap on out-of-range values, including the previously unchecked `WriteI16` and `WriteI32` variants.
-- **Multi-member GZIP support.** `Compress.Inflate` now decodes concatenated GZIP streams (RFC 1952 §2.2). A configurable output-size cap is exposed as `Compress.InflateLimit` for callers that need a tighter bound than the default 256 MB. Previously only the first member of a concatenated stream was decoded, silently dropping the rest.
-- **`Viper.Audio.*` compatibility surface corrected.** The compat layer was rebuilt from `RT_ALIAS` entries into full typed class registrations. `RT_ALIAS` cannot carry typed object return values — methods that return `obj<Viper.Audio.Sound>` need their own runtime class entry for handle-type resolution to work correctly. All eight classes promoted: `Audio`, `Sound`, `Voice`, `Music`, `Playlist`, `SoundBank`, `Synth`, `MusicGen`.
+- **IO subsystem security hardening — two rounds.** Temp-file names draw entropy from `/dev/urandom` / `rand_s` instead of PID+pointer, eliminating an ASLR side-channel. Recursive directory removal uses `openat`/`fstatat`/`unlinkat` to anchor every operation to a real fd, closing TOCTOU symlink-substitution races. `O_CLOEXEC`, `O_NOFOLLOW`, and `O_NOINHERIT` applied across all file opens in the IO subsystem. Asset loads prevent path traversal with a name-safety validator and symlink-resistant open. Temp files for asset decoding are now created in private `mkdtemp` directories so their paths cannot be predicted or pre-created. Glob rejects embedded NUL bytes and caps recursion depth.
+- **SaveData path safety and corruption resilience.** Save paths are resolved to absolute before use (Windows `GetFullPathNameW`, POSIX `getcwd`), eliminating chdir-relative confusion. Windows file opens use `_O_NOINHERIT | _O_BINARY`. Loading a corrupt save file now silently skips invalid keys and values instead of trapping, making games resilient to partial writes and filesystem corruption.
+- **Archive hardening.** ZIP extra-field parser rejects ZIP64 extension headers and malformed field lists. Local-file headers are cross-checked against central directory metadata (flags, method, CRC, sizes) before extraction. File-size validation guards against `SIZE_MAX` overflow.
+- **VPA large-file support.** VPA archive opens use `fseeko`/`ftello` (POSIX) and `_fseeki64`/`_ftelli64` (Windows) for correct behaviour on archives larger than 2 GB. File opens use `O_NOFOLLOW` with `lstat` pre-check.
+- **GZIP inflate precision.** The inflate engine now tracks exact compressed byte consumption, enabling precise member-boundary detection in concatenated GZIP streams. Padding-bits validation corrected to compute from actual consumed-bit count rather than `bits_in_buf`.
+- **BinaryBuffer unsigned integer API.** Eight new methods — `WriteU16LE/BE`, `WriteU32LE/BE` and matching `Read` variants — plus range-check guards on all existing signed write methods.
+- **`Viper.Audio.*` compatibility surface corrected.** The compat layer was rebuilt from `RT_ALIAS` forwarding entries into full typed class registrations. `RT_ALIAS` cannot carry typed object return values; methods returning `obj<Viper.Audio.Sound>` require their own runtime class entry for handle-type resolution to succeed at the call site.
 
 ### Runtime
 
 #### IO
 
-Temp-file creation in `rt_archive.c`, `rt_file_ext.c`, and `rt_tempfile.c` now uses a 64-bit random nonce read from `/dev/urandom` (POSIX) or generated with `rand_s` + `QueryPerformanceCounter` (Windows). The previous scheme encoded the calling pointer's address directly in the filename, leaking ASLR information and producing the same name on retry if the pointer was stable.
+All temp-file creation paths (`rt_archive.c`, `rt_file_ext.c`, `rt_tempfile.c`, `rt_asset_decode.c`) now generate names using a 64-bit random nonce: `/dev/urandom` on POSIX, `rand_s` + `QueryPerformanceCounter` on Windows. The previous scheme encoded the calling pointer's address in the filename, leaking ASLR state and producing the same name on retry when the pointer was stable.
 
-`rt_dir.c` gained `rt_dir_posix_open_dir_at` and `rt_dir_remove_all_at`, implementing recursive removal via the `*at` family of syscalls (`openat`, `fstatat`, `unlinkat`, `fdopendir`). Every step of the traversal is relative to an open directory fd rather than a freshly resolved path, so a symlink placed between a `stat` and a subsequent `open` cannot redirect the deletion into an unintended tree. `rt_dir_make_all` was also corrected to use `rt_dir_is_sep_char()` instead of raw `'/'`/`'\\'` literals.
+Asset decoding via `load_via_tempfile` creates a private directory with `mkdtemp` (POSIX) or a random-named subdirectory (Windows) so the temp file path is unguessable. The directory is cleaned up when the load completes whether or not it succeeded.
 
-All POSIX file opens in `rt_file.c`, `rt_file_io.c`, `rt_file_ext.c`, `rt_archive.c`, and `rt_asset.c` now set `O_CLOEXEC` at open time (with `FD_CLOEXEC` fallback via `fcntl` where `O_CLOEXEC` is unavailable), ensuring file descriptors are not inherited across `exec`. Windows paths add `_O_NOINHERIT` / `O_NOINHERIT` to the same effect.
+Recursive directory removal in `rt_dir.c` uses the `*at` syscall family (`openat`, `fstatat`, `unlinkat`, `fdopendir`). Every traversal step is relative to an open directory fd, so a symlink substituted between `stat` and `open` cannot redirect deletion into an unintended tree. `rt_dir_make_all` uses `rt_dir_is_sep_char()` instead of raw `'/'`/`'\\'` literals.
 
-`rt_asset.c` introduced `asset_name_is_safe()` — a validator that rejects absolute paths, Windows drive letters, colons, empty path segments, and dot/dotdot components before an asset file is opened. Asset file opens use `open(O_NOFOLLOW) + fdopen` instead of plain `fopen`, preventing symlink traversal out of the asset root.
+All POSIX file opens across the IO subsystem set `O_CLOEXEC` at open time with `FD_CLOEXEC` fallback via `fcntl`. Windows paths add `_O_NOINHERIT` / `O_NOINHERIT`. `rt_asset.c`'s `asset_name_is_safe()` rejects absolute paths, Windows drive letters, colons, empty segments, and dot/dotdot components. Asset opens use `open(O_NOFOLLOW) + fdopen` to prevent symlink traversal. VPA opens (`rt_vpa_reader.c`) perform `lstat` pre-check followed by `open(O_NOFOLLOW | O_CLOEXEC)`.
 
-Channel validity in `rt_file.c` and `rt_file_io.c` tightened from `channel < 0` to `channel <= 0`; channel 0 is never a valid Viper IO handle. `rt_file_close` saves the fd to a local variable before clearing `file->fd`, closing a race where another thread could read a stale fd after the clear.
+File channel validity tightened from `channel < 0` to `channel <= 0`; channel 0 is not a valid Viper IO handle. `rt_file_close` saves the fd to a local before clearing `file->fd`, closing a use-after-free race. Glob pattern and path strings are validated for embedded NUL bytes before matching; `glob_recursive_helper` traps at 4096 recursion levels. `MemStream.WriteI8` validates `[-128, 127]` before writing.
 
-`rt_glob.c` — pattern and path strings are now validated for embedded NUL bytes before being passed to the match engine, blocking NUL-injection attacks. `glob_recursive_helper` accepts a depth counter and traps at 4096 levels, preventing stack exhaustion on cyclic symlink graphs.
+The watcher subsystem (`rt_watcher.c`) gained `watcher_start_windows_read()`, extracting the `ReadDirectoryChangesW` call from three previously identical sites. Buffer-overflow conditions (zero `bytes_returned`, `ERROR_NOTIFY_ENUM_DIR`) now emit `RT_WATCH_EVENT_OVERFLOW` and restart the read rather than silently dropping events. `inotify_init1` is called with `IN_CLOEXEC` where available; FD_CLOEXEC fallback for older kernels. kqueue fds also receive FD_CLOEXEC.
 
-`rt_memstream.c` — `MemStream.WriteI8` validates that the value is in `[-128, 127]` before writing; previously silently truncated out-of-range values.
+`rt_file_stdio.h` — new shared header consolidating the UTF-8-aware `fopen` wrapper previously duplicated across `rt_binfile.c`, `rt_linereader.c`, `rt_linewriter.c`, and `rt_stream.c`.
+
+#### SaveData
+
+`SaveData` paths are now resolved to absolute before first use. On Windows this calls `GetFullPathNameW`; on POSIX it prepends the result of `getcwd`, with a doubling-retry loop for long working directories. This prevents save-path confusion when the process changes its working directory after the save data object is constructed. File opens on Windows use `_O_NOINHERIT | _O_BINARY`. Loading a save file that contains a malformed key (NUL bytes, invalid UTF-8, empty) or a malformed string value now silently skips that entry rather than trapping, making games resilient to partial writes, filesystem corruption, and cross-platform encoding accidents.
+
+#### Archive
+
+`rt_archive.c` gained `archive_extra_is_malformed_or_zip64()`, which walks the ZIP extra-field TLV list and rejects any entry containing a ZIP64 extension header (ID `0x0001`) or a truncated/malformed list. The central-directory parser now reads `version_needed` and `flags`; entries with `version_needed >= 45`, encryption flag bits, data-descriptor flags, or ZIP64 sentinel values (`UINT32_MAX`) are rejected before extraction. Local-file headers are cross-checked against central-directory values for flags, method, CRC, and both size fields; mismatches trap with specific messages. File-size validation extended to reject archives where `st_size` exceeds `SIZE_MAX`.
 
 #### Compress
 
-`rt_compress.c` decomposes the inflate output buffer's hard-coded 256 MB ceiling into a per-call `max_output` parameter via `inflate_data_limited()`. The original `inflate_data()` path is preserved with the default cap. `rt_compress_inflate_limit()` is exposed as a new public API in `rt_compress.h`.
-
-`gunzip_data()` now handles concatenated multi-member GZIP streams. `gunzip_next_member_offset()` scans for the next `0x1F 0x8B` signature after the current member boundary and chains decode calls, accumulating all members into a single output buffer. RFC 1952 explicitly allows concatenated members; several HTTP servers emit them, so truncation was a latent correctness bug.
+`inflate_data_limited_ex()` extends the inflate engine with two parameters: `consumed_bytes` (output — exact number of compressed input bytes consumed) and `allow_trailing` (controls whether data after the final DEFLATE block is an error). The prior multi-member GZIP implementation used a heuristic signature scan to find member boundaries; it now uses `consumed_bytes` from `inflate_data_limited_ex` for exact positioning. The padding-bits check was also corrected: it now computes from `consumed_bits` (derived from `br.pos` and `br.bits_in_buf`) rather than from `bits_in_buf` alone, fixing a false-positive trailing-data trap on streams whose last byte contained partial padding.
 
 #### BinaryBuffer
 
-`WriteU16LE`, `WriteU16BE`, `WriteU32LE`, `WriteU32BE` write unsigned 16- and 32-bit integers in the specified byte order. Each validates its input against `[0, UINT16_MAX]` or `[0, UINT32_MAX]` and traps on out-of-range values. The matching `ReadU16LE`, `ReadU16BE`, `ReadU32LE`, `ReadU32BE` return the decoded value as `i64` in `[0, 65535]` / `[0, 4294967295]`. Range-check guards were also added to the previously unchecked `WriteI16LE`, `WriteI16BE`, `WriteI32LE`, and `WriteI32BE`. All eight new functions are registered in `runtime.def` and declared in `rt_binbuf.h`.
+`WriteU16LE`, `WriteU16BE`, `WriteU32LE`, `WriteU32BE` write unsigned 16/32-bit integers with range validation against `[0, UINT16_MAX]` / `[0, UINT32_MAX]`. Matching `ReadU16LE`, `ReadU16BE`, `ReadU32LE`, `ReadU32BE` return the decoded value as `i64`. Range-check guards were also added retroactively to `WriteI16LE/BE` and `WriteI32LE/BE`, which previously silently truncated out-of-range values. All eight new functions registered in `runtime.def`.
+
+#### VPA
+
+`rt_vpa_reader.c` gains `vpa_fseek`/`vpa_ftell` macros selecting `_fseeki64`/`_ftelli64` (Windows) or `fseeko`/`ftello` (POSIX) for correct large-file (>2 GB) support.
 
 #### Audio
 
-The `Viper.Audio.*` compatibility namespace introduced in v0.2.5 was rebuilt from `RT_ALIAS` forwarding entries into full `RT_CLASS_BEGIN` / `RT_FUNC` / `RT_METHOD` / `RT_PROP` registrations with dedicated `AudioCompat*` handler names. The fundamental problem with aliases: a method whose signature says `obj<Viper.Audio.Sound>` requires a class named `Viper.Audio.Sound` to be registered in the runtime type registry so that handle-type resolution succeeds at the call site. An alias pointing at `Viper.Sound.*` handlers does not register that class name, causing type mismatches whenever a `Viper.Audio.*` method return value was used as a typed handle. All eight classes are promoted: `Audio`, `Sound`, `Voice`, `Music`, `Playlist`, `SoundBank`, `Synth`, `MusicGen`.
-
-`rt_audio3d_register_voice` added to `RuntimeSurfacePolicy.inc`; its absence caused policy validation failures when the 3D audio voice registration path was exercised.
+The `Viper.Audio.*` compatibility namespace was rebuilt from `RT_ALIAS` forwarding entries into full `RT_CLASS_BEGIN` / `RT_FUNC` / `RT_METHOD` / `RT_PROP` registrations. `RT_ALIAS` cannot carry typed object return values: a method with signature `obj<Viper.Audio.Sound>` requires a class named `Viper.Audio.Sound` in the runtime type registry; an alias pointing at `Viper.Sound.*` handlers does not register that name, causing handle-type resolution failures. All eight classes promoted: `Audio`, `Sound`, `Voice`, `Music`, `Playlist`, `SoundBank`, `Synth`, `MusicGen`. `rt_audio3d_register_voice` added to `RuntimeSurfacePolicy.inc`.
 
 #### Codegen
 
-`DynamicSymbolPolicy.hpp` updated with the `*at`-family syscalls used by the new fd-relative directory traversal: `openat`, `fstatat`, `mkdirat`, `unlinkat`, `renameat`, `fdopendir`, `dirfd`. Without these entries, native-linked binaries using the IO hardening code failed the linker's dynamic-symbol validation step.
+`DynamicSymbolPolicy.hpp` updated with syscalls required by the IO hardening code: `openat`, `fstatat`, `mkdirat`, `unlinkat`, `renameat`, `fdopendir`, `dirfd`, `chmod`, `fchmod`, `mkdtemp`. Without these entries native-linked Linux binaries failed dynamic-symbol validation.
 
 ### Tests and docs
 
-New and expanded tests cover unsigned BinaryBuffer read/write (including range-trap assertions), multi-member GZIP decode, configurable inflate limit, NUL-injection and recursion-depth protection in glob, WriteI8/I16/I32 range guards, asset path safety, channel-0 guard, and the OGG page CRC-32 fix (test helper now computes the correct `0x04C11DB7` polynomial checksum for synthesized pages). `viperlib/io/` docs updated for new APIs.
+Comprehensive new tests cover all hardening paths: archive ZIP64/extra-field rejection, local-header cross-check, asset temp-dir isolation, savedata absolute paths and corrupt-key skip, VPA large-file seek, watcher overflow events, inflate consumed-bytes and padding-bits correctness, unsigned BinaryBuffer round-trip and range traps, and OGG page CRC-32 correctness. `viperlib/io/` and `viperlib/game/persistence.md` updated.
 
 ### By the Numbers
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 2 | +2 |
-| Source files | 2,996 | 2,999 | +3 |
-| Production SLOC | 552K | 554,747 | +~3K |
-| Test SLOC | 228K | 229,289 | +~1K |
+| Commits | — | 3 | +3 |
+| Source files | 2,996 | 3,000 | +4 |
+| Production SLOC | 552K | 555,417 | +~3K |
+| Test SLOC | 228K | 229,533 | +~2K |
 
 Counts via `scripts/count_sloc.sh`.
 
