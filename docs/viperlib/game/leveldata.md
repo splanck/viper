@@ -39,7 +39,7 @@ JSON-based level loader that parses tilemap data and entity spawn objects from a
 - `ObjectX(index)`, `ObjectY(index)` — Get object position
 
 ## Example
-```zia
+```rust
 var level = LevelData.Load("levels/level1.json")
 var tilemap = level.get_Tilemap()
 player.set_X(level.get_PlayerStartX() * 100)

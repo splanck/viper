@@ -129,6 +129,19 @@ static void value_type_release_slot(void *obj, const value_type_field *field) {
     }
 }
 
+static void value_type_release_retained_slot(void *obj, const value_type_field *field) {
+    if (!obj || !field)
+        return;
+    void **slot = (void **)((unsigned char *)obj + field->offset);
+    if (field->kind == RT_VALUE_FIELD_STR) {
+        rt_str_release_maybe((rt_string)*slot);
+    } else if (field->kind == RT_VALUE_FIELD_OBJ) {
+        void *child = *slot;
+        if (rt_obj_release_check0(child))
+            rt_obj_free(child);
+    }
+}
+
 static void value_type_retain_slot(void *obj, const value_type_field *field) {
     if (!obj || !field)
         return;
@@ -138,6 +151,20 @@ static void value_type_retain_slot(void *obj, const value_type_field *field) {
     } else if (field->kind == RT_VALUE_FIELD_OBJ) {
         rt_obj_retain_maybe(*slot);
     }
+}
+
+static int value_type_slot_is_valid(void *obj, const value_type_field *field) {
+    if (!obj || !field)
+        return 0;
+    void **slot = (void **)((unsigned char *)obj + field->offset);
+    void *value = *slot;
+    if (!value)
+        return 1;
+    if (field->kind == RT_VALUE_FIELD_STR)
+        return rt_string_is_handle(value) != 0;
+    if (field->kind == RT_VALUE_FIELD_OBJ)
+        return rt_string_is_handle(value) || rt_heap_is_payload(value);
+    return 0;
 }
 
 static void value_type_free_layout(value_type_layout *layout) {
@@ -412,10 +439,13 @@ int64_t rt_box_eq_str(void *box, rt_string val) {
 
 /// @brief Allocate a raw heap region of `size` bytes for a Zia value-type instance (struct).
 /// Distinct from the tagged Box family — this isn't a Box at all (RT_ELEM_NONE), the compiler
-/// emits direct field copies into the returned memory. Returns NULL if `size <= 0`.
+/// emits direct field copies into the returned memory. Zero-sized value types are
+/// valid and allocate a managed header with an empty payload.
 void *rt_box_value_type(int64_t size) {
-    if (size <= 0)
+    if (size < 0) {
+        rt_trap("rt_box_value_type: negative size");
         return NULL;
+    }
     if ((uint64_t)size > (uint64_t)SIZE_MAX) {
         rt_trap("rt_box_value_type: size too large");
         return NULL;
@@ -455,6 +485,17 @@ void rt_box_value_type_add_field(void *obj, int64_t offset, int64_t kind, int8_t
     field->offset = (size_t)offset;
     field->kind = kind;
     value_type_field retain_field = {field->offset, field->kind, NULL};
+    int retained_slot = 0;
+    if (retain_now) {
+        if (!value_type_slot_is_valid(obj, &retain_field)) {
+            free(field);
+            free(new_layout);
+            rt_trap("rt_box_value_type_add_field: invalid managed field value");
+            return;
+        }
+        value_type_retain_slot(obj, &retain_field);
+        retained_slot = 1;
+    }
 
     int installed_layout = 0;
     int inserted_field = 0;
@@ -469,13 +510,17 @@ void rt_box_value_type_add_field(void *obj, int64_t offset, int64_t kind, int8_t
         installed_layout = 1;
     }
     int duplicate = 0;
+    int conflicting = 0;
     for (value_type_field *existing = layout->fields; existing; existing = existing->next) {
-        if (existing->offset == field->offset && existing->kind == field->kind) {
-            duplicate = 1;
+        if (existing->offset == field->offset) {
+            if (existing->kind == field->kind)
+                duplicate = 1;
+            else
+                conflicting = 1;
             break;
         }
     }
-    if (!duplicate) {
+    if (!duplicate && !conflicting) {
         field->next = layout->fields;
         layout->fields = field;
         field = NULL;
@@ -485,13 +530,19 @@ void rt_box_value_type_add_field(void *obj, int64_t offset, int64_t kind, int8_t
 
     free(field);
     free(new_layout);
+    if (!inserted_field && retained_slot)
+        value_type_release_retained_slot(obj, &retain_field);
+
+    if (conflicting) {
+        rt_trap("rt_box_value_type_add_field: field offset already registered");
+        return;
+    }
 
     if (installed_layout) {
         rt_obj_set_finalizer(obj, value_type_finalizer);
         rt_gc_track(obj, value_type_traverse);
     }
-    if (inserted_field && retain_now)
-        value_type_retain_slot(obj, &retain_field);
+    (void)inserted_field;
 }
 
 //===----------------------------------------------------------------------===//

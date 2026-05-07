@@ -32,7 +32,7 @@ Create entity at position (x, y) in centipixels (x100) with size in pixels. Widt
 Positions use floor division when converting centipixels to tile pixels, so negative coordinates collide consistently instead of truncating toward zero.
 
 ## Example
-```zia
+```rust
 var enemy = Entity.New(10000, 5000, 24, 16)
 enemy.set_HP(3)
 enemy.set_VX(100)

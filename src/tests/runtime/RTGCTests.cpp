@@ -9,6 +9,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <csetjmp>
+#include <string>
 
 extern "C" {
 #include "rt_gc.h"
@@ -22,6 +24,11 @@ void vm_trap(const char *msg) {
     fprintf(stderr, "TRAP: %s\n", msg);
     rt_abort(msg);
 }
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
+void rt_weakref_reset(rt_weakref *ref, void *target);
 }
 
 static int tests_run = 0;
@@ -109,6 +116,11 @@ static void count_external_finalizer(void *obj) {
 static void resurrecting_finalizer(void *obj) {
     g_resurrected_object = obj;
     rt_obj_resurrect(obj);
+}
+
+static void trapping_finalizer(void *obj) {
+    (void)obj;
+    rt_trap("gc finalizer boom");
 }
 
 //=============================================================================
@@ -243,6 +255,31 @@ static void test_weakref_free_unregisters() {
 
     if (rt_obj_release_check0(obj))
         rt_obj_free(obj);
+}
+
+static void test_weakref_reset_after_clear() {
+    void *old_target = make_node();
+    void *new_target = make_node();
+    rt_weakref *ref1 = rt_weakref_new(old_target);
+    rt_weakref *ref2 = rt_weakref_new(old_target);
+
+    rt_gc_clear_weak_refs(old_target);
+    ASSERT(rt_weakref_get(ref1) == NULL, "ref1 cleared before reset");
+    ASSERT(rt_weakref_get(ref2) == NULL, "ref2 cleared before reset");
+
+    rt_weakref_reset(ref1, new_target);
+    rt_weakref_reset(ref2, new_target);
+    ASSERT(rt_weakref_get(ref1) == new_target, "ref1 reset to new target");
+    ASSERT(rt_weakref_get(ref2) == new_target, "ref2 reset to new target");
+
+    rt_gc_clear_weak_refs(new_target);
+    ASSERT(rt_weakref_get(ref1) == NULL, "ref1 cleared after reset target freed");
+    ASSERT(rt_weakref_get(ref2) == NULL, "ref2 cleared after reset target freed");
+
+    rt_weakref_free(ref1);
+    rt_weakref_free(ref2);
+    release_obj(old_target);
+    release_obj(new_target);
 }
 
 static void test_weakref_survives_finalizer_resurrection() {
@@ -570,6 +607,33 @@ static void test_traverse_can_touch_gc_without_deadlock() {
     release_obj(a);
 }
 
+static void test_collecting_flag_cleared_after_finalizer_trap() {
+    void *a = make_node();
+    rt_obj_set_finalizer(a, trapping_finalizer);
+    struct test_node *na = (struct test_node *)a;
+    na->child = a;
+    rt_gc_track(a, test_node_traverse);
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_gc_collect();
+        rt_trap_clear_recovery();
+        ASSERT(0, "GC finalizer trap should be recovered");
+    } else {
+        std::string message = rt_trap_get_error();
+        rt_trap_clear_recovery();
+        ASSERT(message.find("gc finalizer boom") != std::string::npos,
+               "GC finalizer trap is propagated");
+    }
+
+    int64_t passes = rt_gc_pass_count();
+    (void)rt_gc_collect();
+    ASSERT(rt_gc_pass_count() > passes, "collecting flag cleared after trap");
+    if (rt_heap_is_payload(a))
+        rt_heap_free_zero_ref(a);
+}
+
 //=============================================================================
 // Statistics Tests
 //=============================================================================
@@ -611,6 +675,7 @@ int main() {
     test_weakref_null_ref();
     test_weakref_clear_on_free();
     test_weakref_free_unregisters();
+    test_weakref_reset_after_clear();
     test_weakref_survives_finalizer_resurrection();
 
     // Cycle collection
@@ -626,6 +691,7 @@ int main() {
     test_collect_reclaims_cycle_storage_and_finalizers();
     test_collect_releases_untracked_external_children();
     test_traverse_can_touch_gc_without_deadlock();
+    test_collecting_flag_cleared_after_finalizer_trap();
 
     // Statistics
     test_statistics();

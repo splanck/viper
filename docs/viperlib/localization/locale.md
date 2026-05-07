@@ -47,7 +47,7 @@ Immutable handle representing a BCP-47 language tag. Parsed from strings like `"
 
 ### Zia Example
 
-```zia
+```rust
 bind Locale : Viper.Localization.Locale
 
 var us = Locale.Parse("en-US")

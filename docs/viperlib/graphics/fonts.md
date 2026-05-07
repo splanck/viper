@@ -91,7 +91,7 @@ A simple binary format used by the Linux console. Supports v1 (2-byte header) an
 
 ## Usage Example
 
-```zia
+```rust
 bind Viper.Graphics;
 
 // Load a 16px font for the title

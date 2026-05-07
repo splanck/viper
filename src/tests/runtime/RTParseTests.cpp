@@ -111,11 +111,26 @@ static void test_try_num_invalid() {
 static void test_low_level_double_rejects_hex_float() {
     double result = 123.0;
     assert(rt_parse_double("0x1p4", &result) == (int32_t)Err_InvalidCast);
-    assert(result == 123.0);
+    assert(result == 0.0);
     assert(rt_parse_double("16.0", &result) == (int32_t)Err_None);
     assert(result == 16.0);
 
     printf("test_low_level_double_rejects_hex_float: PASSED\n");
+}
+
+static void test_low_level_parse_failures_zero_output() {
+    int64_t ivalue = 123;
+    double dvalue = 123.0;
+    assert(rt_parse_int64("12x", &ivalue) == (int32_t)Err_InvalidCast);
+    assert(ivalue == 0);
+    assert(rt_parse_int64("999999999999999999999999", &ivalue) == (int32_t)Err_Overflow);
+    assert(ivalue == 0);
+    assert(rt_parse_double("1e9999", &dvalue) == (int32_t)Err_Overflow);
+    assert(dvalue == 0.0);
+    assert(rt_parse_double("", &dvalue) == (int32_t)Err_InvalidCast);
+    assert(dvalue == 0.0);
+
+    printf("test_low_level_parse_failures_zero_output: PASSED\n");
 }
 
 static void test_parse_option_wrappers() {
@@ -426,6 +441,7 @@ int main() {
     test_try_num_valid();
     test_try_num_invalid();
     test_low_level_double_rejects_hex_float();
+    test_low_level_parse_failures_zero_output();
     test_parse_option_wrappers();
 
     // TryBool

@@ -1205,7 +1205,7 @@ Action state is updated automatically when you call `Canvas.Poll()`.
 | `"topdown"` | `up`, `down`, `left`, `right`, `fire`, `pause` | WASD + Arrows, Space, Escape |
 
 #### Example
-```zia
+```rust
 // Instead of 30+ lines of Action.Define + Action.BindKey...
 Action.LoadPreset("platformer");
 Action.LoadPreset("menu_navigation");

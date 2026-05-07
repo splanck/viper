@@ -108,11 +108,11 @@ int64_t rt_to_int(rt_string s) {
 }
 
 /// @brief Parse a runtime string into a double.
-/// @details Defers to the shared @ref rt_val_to_double helper so floating-point
-///          quirks (NaN tokens, INF spelling, banker rounding) remain
-///          centralised.  Overflow raises a dedicated BASIC diagnostic while any
-///          other parse failure becomes the generic "expected numeric value"
-///          trap, mirroring INPUT semantics.
+/// @details Uses the strict low-level parser so the entire string must be a
+///          decimal floating literal after ASCII trimming. Overflow raises a
+///          dedicated BASIC diagnostic while any other parse failure becomes
+///          the generic "expected numeric value" trap, mirroring INPUT
+///          semantics.
 /// @param s Runtime string handle.
 /// @return Parsed floating-point value.
 double rt_to_double(rt_string s) {
@@ -120,13 +120,12 @@ double rt_to_double(rt_string s) {
         rt_trap("rt_to_double: null");
     if (rt_string_contains_embedded_nul(s))
         rt_trap("INPUT: expected numeric value");
-    bool ok = true;
-    double value = rt_val_to_double(s->data, &ok);
-    if (!ok) {
-        if (!isfinite(value))
-            rt_trap("INPUT: numeric overflow");
+    double value = 0.0;
+    int32_t err = rt_parse_double(s->data, &value);
+    if (err == (int32_t)Err_Overflow)
+        rt_trap("INPUT: numeric overflow");
+    if (err != (int32_t)Err_None)
         rt_trap("INPUT: expected numeric value");
-    }
     return value;
 }
 

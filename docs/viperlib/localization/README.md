@@ -32,7 +32,7 @@ last-verified: 2026-04-23
 
 ## Quick start
 
-```zia
+```rust
 bind LocaleManager : Viper.Localization.LocaleManager
 bind Locale        : Viper.Localization.Locale
 bind NumberFormat  : Viper.Localization.NumberFormat
@@ -49,7 +49,7 @@ Say(fmt.Currency(1234.56))  # "$1,234.56"
 
 Every `Locale` has a walkable fallback chain. `en-Latn-US` falls back through `en-US → en → root`; `MessageBundle` can use the same chain for locale-qualified keys such as `en-US:greet`, `en:greet`, and `root:greet` before walking explicit fallback bundles.
 
-```zia
+```rust
 var loc = Locale.Parse("en-Latn-US")
 for step in loc.Fallbacks():
     Say(step.Tag)

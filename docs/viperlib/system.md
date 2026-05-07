@@ -333,7 +333,7 @@ Low-level retain/release hooks for deterministic ownership handoff. Most program
 - `Release()` runs managed object finalization when it drops the last reference.
 - If a finalizer resurrects an object, `Release()` returns the live post-finalizer refcount instead of the transient zero count.
 - `ReleaseStr()` returns the actual post-release string refcount for both heap-backed and small-string handles; immortal strings return the maximum `Integer` value.
-- Arrays released through `Release()` run element cleanup for object and string arrays before freeing the array storage.
+- Arrays released through `Release()` run element cleanup for object, string, and boxed-value arrays before freeing the array storage.
 - Passing `Nothing` is a no-op. Passing a non-runtime or already-freed pointer traps.
 - Reference counts are checked for overflow and underflow in release builds.
 
@@ -361,7 +361,9 @@ Low-level garbage collector diagnostics. Provides visibility into the reference-
 - The Viper runtime uses reference counting with a cycle-collector sweep. `Collect()` forces a sweep to run now rather than waiting for the next automatic trigger.
 - Promoted long-lived roots are still used as restore roots during non-full passes, so newly attached young children remain reachable.
 - Finalizers for collected objects run before weak references are cleared; if a finalizer resurrects the object, weak references remain live.
+- If a finalizer traps during `Collect()`, the collector clears its in-progress state before re-raising the trap so later collection attempts are not permanently suppressed.
 - `TrackedCount` is useful for detecting object leaks in long-running programs.
+- `TotalCollected()` saturates at the maximum `Integer` value rather than wrapping.
 - `SetThreshold()` treats negative values as `0`.
 - These are diagnostic APIs; calling `Collect()` frequently in hot paths can reduce throughput.
 

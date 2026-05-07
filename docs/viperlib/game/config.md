@@ -17,7 +17,7 @@ Parse an inline JSON string.
 ### Has(path) -> Boolean
 
 ## Example
-```zia
+```rust
 var cfg = Config.Load("game.json")
 var gravity = cfg.GetInt("physics.gravity", 78)
 var title = cfg.GetStr("title", "My Game")

@@ -47,6 +47,8 @@
 #include "rt_object.h"
 #include "rt_threads.h"
 
+#include <setjmp.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -58,6 +60,10 @@
 #endif
 
 #include "rt_trap.h"
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
 
 //=============================================================================
 // Internal Data Structures
@@ -198,6 +204,12 @@ static uint64_t ptr_hash(void *p) {
 /// @brief Check if a hash table slot contains a live (tracked) entry.
 static int gc_slot_is_live(const gc_entry *e) {
     return e->obj != GC_EMPTY && e->obj != GC_TOMBSTONE;
+}
+
+static void gc_clear_collecting_flag(void) {
+    gc_lock();
+    g_gc.collecting = 0;
+    gc_unlock();
 }
 
 //=============================================================================
@@ -557,8 +569,10 @@ void rt_gc_clear_weak_refs(void *target) {
             /* Clear all weak refs in this chain. */
             rt_weakref *r = wc->head;
             while (r) {
+                rt_weakref *next = r->next_for_target;
                 r->target = NULL;
-                r = r->next_for_target;
+                r->next_for_target = NULL;
+                r = next;
             }
 
             /* Remove chain from bucket. */
@@ -704,7 +718,7 @@ static int gc_reclaim_unreachable(void *obj, rt_gc_traverse_fn traverse, void *r
     }
 
     rt_heap_free_zero_ref(obj);
-    return rt_heap_is_payload(obj) ? 0 : 1;
+    return 1;
 }
 
 /// @brief Run one synchronous cycle-collection pass.
@@ -915,10 +929,29 @@ int64_t rt_gc_collect(void) {
 
     gc_unlock();
 
+    jmp_buf phase4_recovery;
+    rt_trap_set_recovery(&phase4_recovery);
+    if (setjmp(phase4_recovery) != 0) {
+        char saved_error[512];
+        const char *err = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 err && err[0] ? err : "gc: trap during collection");
+        rt_trap_clear_recovery();
+        free(garbage);
+        free(snapshot);
+        gc_clear_collecting_flag();
+        rt_trap(saved_error);
+        return 0;
+    }
+
     /* Free garbage objects (outside the lock). */
     if (garbage) {
         gc_release_edges_ctx release_ctx = {garbage, garbage_count};
         for (int64_t i = 0; i < garbage_count; i++) {
+            if (rt_heap_is_payload(garbage[i].obj))
+                (void)rt_heap_release_deferred(garbage[i].obj);
             int reclaimed =
                 gc_reclaim_unreachable(garbage[i].obj, garbage[i].traverse, &release_ctx);
             if (reclaimed) {
@@ -936,12 +969,18 @@ int64_t rt_gc_collect(void) {
             rt_obj_free(snapshot[i].obj);
     }
 
+    rt_trap_clear_recovery();
+
     free(garbage);
     free(snapshot);
 
     gc_lock();
-    if (freed > 0)
-        g_gc.total_collected += freed;
+    if (freed > 0) {
+        if (g_gc.total_collected > INT64_MAX - freed)
+            g_gc.total_collected = INT64_MAX;
+        else
+            g_gc.total_collected += freed;
+    }
     g_gc.collecting = 0;
     gc_unlock();
 
@@ -1042,7 +1081,9 @@ void rt_gc_run_all_finalizers(void) {
        release external resources regardless of outstanding references
        (cycle members typically have refcnt > 0). */
     for (int64_t i = 0; i < snap_count; i++) {
-        rt_heap_hdr_t *hdr = rt_heap_hdr(snapshot[i]);
+        rt_heap_hdr_t *hdr = NULL;
+        if (!rt_heap_try_get_header(snapshot[i], &hdr) || !hdr)
+            continue;
         if (hdr && (rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT && hdr->finalizer) {
             rt_heap_finalizer_t fin = hdr->finalizer;
             hdr->finalizer = NULL; /* prevent double-finalization */

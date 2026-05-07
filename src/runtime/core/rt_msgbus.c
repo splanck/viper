@@ -180,8 +180,9 @@ static int mb_callback_is_native(void *callback) {
         return 0;
     rt_heap_hdr_t *hdr = NULL;
     if (rt_heap_try_get_header(callback, &hdr))
-        return hdr && hdr->class_id == RT_MSGBUS_CALLBACK_CLASS_ID;
-    return 1;
+        return hdr && (rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT &&
+               hdr->class_id == RT_MSGBUS_CALLBACK_CLASS_ID;
+    return 0;
 }
 
 static int mb_invoke_callback(void *callback, void *data) {
@@ -189,7 +190,8 @@ static int mb_invoke_callback(void *callback, void *data) {
         return 0;
     rt_heap_hdr_t *hdr = NULL;
     if (rt_heap_try_get_header(callback, &hdr)) {
-        if (!hdr || hdr->class_id != RT_MSGBUS_CALLBACK_CLASS_ID) {
+        if (!hdr || (rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT ||
+            hdr->class_id != RT_MSGBUS_CALLBACK_CLASS_ID) {
             rt_trap("rt_msgbus_publish: subscriber callback is not callable");
             return 0;
         }
@@ -199,12 +201,8 @@ static int mb_invoke_callback(void *callback, void *data) {
         cb->fn(data);
         return 1;
     }
-    if (rt_string_is_handle(callback)) {
-        rt_trap("rt_msgbus_publish: string subscriber callback is not callable");
-        return 0;
-    }
-    ((rt_msgbus_callback_fn)callback)(data);
-    return 1;
+    rt_trap("rt_msgbus_publish: subscriber callback is not callable");
+    return 0;
 }
 
 /// @brief Free a single subscriber node (drops topic ref + callback ref).
@@ -316,6 +314,8 @@ static void mb_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
 ///          workloads have <100 topics, well under the load that
 ///          would warrant resizing.
 static mb_topic *mb_find_topic(rt_msgbus_impl *mb, rt_string topic) {
+    if (!mb || !mb->buckets || mb->bucket_count <= 0)
+        return NULL;
     const char *topic_bytes = NULL;
     size_t topic_len = 0;
     if (!mb_topic_view(topic, &topic_bytes, &topic_len))
@@ -339,7 +339,18 @@ static mb_topic *mb_find_topic(rt_msgbus_impl *mb, rt_string topic) {
 ///          otherwise allocates a fresh one, retains the topic-name
 ///          string, and inserts at the head of its bucket's chain.
 ///          Subscribers list starts empty — the caller appends.
-static mb_topic *mb_ensure_topic(rt_msgbus_impl *mb, rt_string topic) {
+static mb_topic *mb_prepare_topic(void) {
+    mb_topic *t = (mb_topic *)calloc(1, sizeof(mb_topic));
+    if (!t) {
+        rt_trap("rt_msgbus: memory allocation failed");
+        return NULL;
+    }
+    return t;
+}
+
+static mb_topic *mb_ensure_topic_locked(rt_msgbus_impl *mb, rt_string topic, mb_topic **spare) {
+    if (!mb || !mb->buckets || mb->bucket_count <= 0)
+        return NULL;
     const char *topic_bytes = NULL;
     size_t topic_len = 0;
     if (!mb_topic_view(topic, &topic_bytes, &topic_len))
@@ -348,9 +359,12 @@ static mb_topic *mb_ensure_topic(rt_msgbus_impl *mb, rt_string topic) {
     if (t)
         return t;
 
-    t = (mb_topic *)calloc(1, sizeof(mb_topic));
-    if (!t)
+    if (!spare || !*spare) {
         rt_trap("rt_msgbus: memory allocation failed");
+        return NULL;
+    }
+    t = *spare;
+    *spare = NULL;
     t->name = topic;
     rt_obj_retain_maybe(topic);
     t->subs = NULL;
@@ -420,30 +434,39 @@ int64_t rt_msgbus_subscribe(void *obj, rt_string topic, void *callback) {
     if (!mb_topic_view(topic, NULL, NULL))
         return -1;
     if (!mb_callback_is_native(callback)) {
-        rt_trap("rt_msgbus_subscribe: callback must be a native function pointer or "
-                "MessageBus callback object");
+        rt_trap("rt_msgbus_subscribe: callback must be a MessageBus callback object");
         return -1;
     }
 
     mb_sub *s = (mb_sub *)calloc(1, sizeof(mb_sub));
-    if (!s)
+    if (!s) {
         rt_trap("rt_msgbus: memory allocation failed");
+        return -1;
+    }
+    mb_topic *spare_topic = mb_prepare_topic();
+    if (!spare_topic) {
+        free(s);
+        return -1;
+    }
 
     mb_lock(mb);
-    if (mb->next_id <= 0 || mb->next_id == INT64_MAX) {
+    if (mb->next_id <= 0) {
         mb_unlock(mb);
         free(s);
+        free(spare_topic);
         rt_trap("rt_msgbus_subscribe: subscription id overflow");
         return -1;
     }
-    mb_topic *t = mb_ensure_topic(mb, topic);
+    mb_topic *t = mb_ensure_topic_locked(mb, topic, &spare_topic);
     if (!t) {
         mb_unlock(mb);
         free(s);
+        free(spare_topic);
         return -1;
     }
 
-    s->id = mb->next_id++;
+    s->id = mb->next_id;
+    mb->next_id = mb->next_id == INT64_MAX ? 0 : mb->next_id + 1;
     s->topic = topic;
     rt_obj_retain_maybe(topic);
     s->callback = callback;
@@ -461,6 +484,7 @@ int64_t rt_msgbus_subscribe(void *obj, rt_string topic, void *callback) {
     mb->total_subs++;
     int64_t id = s->id;
     mb_unlock(mb);
+    free(spare_topic);
     return id;
 }
 
@@ -537,6 +561,7 @@ int64_t rt_msgbus_publish(void *obj, rt_string topic, void *data) {
     if (!callbacks) {
         mb_unlock(mb);
         rt_trap("rt_msgbus: memory allocation failed");
+        return 0;
     }
 
     int64_t count = 0;
@@ -567,9 +592,9 @@ int64_t rt_msgbus_publish(void *obj, rt_string topic, void *data) {
     }
     for (int64_t i = 0; i < count; ++i) {
         mb_invoke_callback(callbacks[i], data);
+        release_from = i + 1;
         if (rt_obj_release_check0(callbacks[i]))
             rt_obj_free(callbacks[i]);
-        release_from = i + 1;
     }
     rt_trap_clear_recovery();
 

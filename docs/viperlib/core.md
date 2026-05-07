@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-21
+last-verified: 2026-05-07
 ---
 
 # Core Types
@@ -107,7 +107,8 @@ Boxing helpers for storing primitive values in generic collections. Boxed values
 - Unboxing with the wrong type traps with a runtime diagnostic.
 - Boxed values report `Viper.Core.Box` through `Viper.Core.Object.TypeName` and use value equality/hash semantics for `Object.Equals` and collection lookup.
 - Floating-point box hashes canonicalize `+0.0` and `-0.0` so values that compare equal hash equally.
-- `ValueType(size)` is used by the compiler when boxing structs. The compiler copies the inline payload into heap storage, then registers managed object/string fields with `ValueTypeAddField` so boxed structs retain referenced values, participate in GC traversal, and release fields when finalized. User code normally does not call `ValueTypeAddField` directly.
+- `ValueType(size)` is used by the compiler when boxing structs. Size `0` is valid and creates a managed empty value-type object; negative sizes trap.
+- The compiler copies the inline payload into heap storage, then registers managed object/string fields with `ValueTypeAddField` so boxed structs retain referenced values, participate in GC traversal, and release fields when finalized. Registering the same offset with the same field kind is idempotent; registering the same offset with a different kind traps. When `retainNow` is true, the current slot value is validated before it is retained. User code normally does not call `ValueTypeAddField` directly.
 
 ### Zia Example
 
@@ -174,6 +175,7 @@ Assertion and trap utilities for program correctness checks. All methods trap (a
 
 - All assertion failures terminate the program via the runtime trap mechanism (equivalent to a bounds-check failure).
 - `Trap` is an unconditional halt; prefer `AssertFail` when the intent is a named assertion failure.
+- `AssertEqStr` compares full runtime string contents, including embedded NUL bytes, and escapes non-printable bytes in failure messages. Invalid string handles produce a trap diagnostic instead of a native crash.
 - These are intended for invariant checking during development and internal consistency validation.
 
 ### Zia Example
@@ -253,8 +255,8 @@ Safe string parsing utilities. Methods return a success flag or a default value 
 - `TryInt`/`TryNum`/`TryBool` write through a raw pointer and are most useful from IL or advanced Zia/BASIC code. For typical use, prefer `IntOr`/`NumOr`/`BoolOr`.
 - Null input is treated as parse failure: `Try*` returns false, `Is*` returns false, and `*Or`/`IntRadix` returns the supplied default.
 - `IntRadix` supports bases 2 through 36 (e.g., 16 for hex, 2 for binary).
-- Leading/trailing whitespace is rejected; the input must be a clean numeric string.
-- `Double` and `Int64` are low-level pointer-based ABI helpers retained for IL/native interop.
+- Leading/trailing ASCII whitespace is accepted; non-whitespace trailing characters and embedded NUL bytes are rejected.
+- `Double` and `Int64` are low-level pointer-based ABI helpers retained for IL/native interop. On failure, they clear the output slot to `0`/`0.0` before returning an error code.
 - `DoubleOption` and `Int64Option` are the user-facing optional-return variants. Use them when invalid input is expected and should be handled gracefully rather than terminating the program.
 
 ### Parse.DoubleOption and Parse.Int64Option Example
@@ -587,7 +589,7 @@ In-process publish/subscribe message bus for decoupled communication between com
 - `Publish` invokes all handlers for the given topic synchronously; returns the number of handlers called
 - Handler functions receive the published data as their argument
 - Publish uses a stable subscriber snapshot; unsubscribes during a handler affect later publishes, not the in-flight one
-- Subscribe accepts a managed callback returned by `Callback(fn)` or a raw native function pointer for legacy/native callers. Passing an ordinary heap object traps at subscribe time.
+- Subscribe accepts a managed callback returned by `Callback(fn)`. Raw native function pointers must be wrapped first; passing a raw pointer or ordinary heap object traps at subscribe time.
 - Topic matching is byte-length aware; topic names containing embedded NUL bytes remain distinct.
 - `Topics()` returns an owning `Seq` of retained topic strings; the result remains valid after the bus is cleared or destroyed.
 - If a handler traps during `Publish`, the in-flight snapshot is released before the trap is re-raised.
@@ -619,7 +621,7 @@ DIM bus AS OBJECT = Viper.Core.MessageBus.New()
 PRINT "Total subscriptions: "; bus.TotalSubscriptions  ' Output: 0
 PRINT "Subscribers for 'test': "; bus.SubscriberCount("test")  ' Output: 0
 
-' Subscribe and publish require function pointer callbacks
+' Subscribe and publish require callbacks created with MessageBus.Callback(fn)
 ' which are typically used in larger application architectures.
 ' See the Threads and Game documentation for callback patterns.
 ```

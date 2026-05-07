@@ -21,7 +21,7 @@ Multi-scene management with named scenes, switching, and timed transitions.
 `Add(name)` ignores duplicate scene names. `SwitchTransition(name, durationMs)` is a no-op when `name` is already the current scene or is already the pending transition target. It does not retrigger `JustEntered` or `JustExited` in those cases.
 
 ## Example
-```zia
+```rust
 var scenes = SceneManager.New()
 scenes.Add("menu")
 scenes.Add("playing")

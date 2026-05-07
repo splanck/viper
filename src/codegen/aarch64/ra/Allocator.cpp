@@ -200,10 +200,10 @@ void LinearAllocator::computeNextUses(const MBasicBlock &bb) {
     }
 }
 
-bool LinearAllocator::isProtectedUse(uint16_t vreg, RegClass cls) const {
+bool LinearAllocator::isProtectedOperand(uint16_t vreg, RegClass cls) const {
     if (cls == RegClass::GPR)
-        return protectedUseGPR_.find(vreg) != protectedUseGPR_.end();
-    return protectedUseFPR_.find(vreg) != protectedUseFPR_.end();
+        return protectedOperandGPR_.find(vreg) != protectedOperandGPR_.end();
+    return protectedOperandFPR_.find(vreg) != protectedOperandFPR_.end();
 }
 
 bool LinearAllocator::isLiveOut(uint16_t vreg, RegClass cls) const {
@@ -313,7 +313,7 @@ uint16_t LinearAllocator::selectLRUVictim(RegClass cls) {
     unsigned oldestUse = UINT_MAX;
 
     for (auto &kv : states) {
-        if (isProtectedUse(kv.first, cls))
+        if (isProtectedOperand(kv.first, cls))
             continue;
         if (kv.second.hasPhys && kv.second.lastUse < oldestUse) {
             oldestUse = kv.second.lastUse;
@@ -331,7 +331,7 @@ uint16_t LinearAllocator::selectFurthestVictim(RegClass cls) {
     for (auto &kv : states) {
         if (!kv.second.hasPhys)
             continue;
-        if (isProtectedUse(kv.first, cls))
+        if (isProtectedOperand(kv.first, cls))
             continue;
 
         unsigned dist = getNextUseDistance(kv.first, cls);
@@ -644,18 +644,17 @@ void LinearAllocator::allocateInstruction(MInstr &ins, std::vector<MInstr> &rewr
     std::vector<MInstr> suffix;
     std::vector<PhysReg> scratch;
 
-    protectedUseGPR_.clear();
-    protectedUseFPR_.clear();
+    protectedOperandGPR_.clear();
+    protectedOperandFPR_.clear();
     for (std::size_t i = 0; i < ins.ops.size(); ++i) {
         const auto &op = ins.ops[i];
         const auto [isUse, isDef] = operandRoles(ins, i);
-        (void)isDef;
-        if (!isUse || op.kind != MOperand::Kind::Reg || op.reg.isPhys)
+        if ((!isUse && !isDef) || op.kind != MOperand::Kind::Reg || op.reg.isPhys)
             continue;
         if (op.reg.cls == RegClass::GPR)
-            protectedUseGPR_.insert(op.reg.idOrPhys);
+            protectedOperandGPR_.insert(op.reg.idOrPhys);
         else
-            protectedUseFPR_.insert(op.reg.idOrPhys);
+            protectedOperandFPR_.insert(op.reg.idOrPhys);
     }
 
     for (std::size_t i = 0; i < ins.ops.size(); ++i) {
@@ -694,8 +693,8 @@ void LinearAllocator::allocateInstruction(MInstr &ins, std::vector<MInstr> &rewr
         rewritten.push_back(std::move(suf));
 
     releaseScratch(scratch);
-    protectedUseGPR_.clear();
-    protectedUseFPR_.clear();
+    protectedOperandGPR_.clear();
+    protectedOperandFPR_.clear();
 }
 
 // =========================================================================

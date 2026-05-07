@@ -67,7 +67,7 @@ The FPS number is color-coded:
 
 ## Example
 
-```zia
+```rust
 module DebugDemo;
 
 bind Viper.Game.DebugOverlay as DebugOverlay;

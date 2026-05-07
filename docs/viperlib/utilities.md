@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-22
+last-verified: 2026-05-07
 ---
 
 # Utilities
@@ -40,7 +40,7 @@ Type conversion utilities.
 ### Conversion Rules
 
 - `ToInt` and `ToInt64` parse decimal integer text with optional leading/trailing ASCII whitespace.
-- `ToDouble` parses locale-independent decimal floating-point text with `.` as the decimal separator. C-style hexadecimal floats such as `0x1p4` are rejected.
+- `ToDouble` parses locale-independent decimal floating-point text with `.` as the decimal separator. C-style hexadecimal floats such as `0x1p4`, non-finite results, overflow, embedded NUL bytes, and non-whitespace trailing characters are rejected.
 - `ToString_Double` uses locale-independent round-trip precision for finite values, so text it emits can be parsed back to the same `Double`.
 - Embedded NUL bytes and non-whitespace trailing characters are rejected.
 - `NumToInt` truncates finite values toward zero. `NaN` converts to `0`; values outside the signed 64-bit range clamp to the nearest endpoint.
@@ -316,6 +316,7 @@ graceful error handling.
 - Leading/trailing whitespace is trimmed before parsing
 - Numeric parsing is locale-independent, uses `.` as the decimal separator, and accepts only decimal float syntax. C-style hexadecimal floats such as `0x1p4` are rejected.
 - Embedded NUL bytes are rejected, even when the bytes before the NUL form a valid value.
+- Low-level `Int64(cstr, outPtr)` and `Double(cstr, outPtr)` clear the output slot to `0` or `0.0` before returning any failure code.
 
 ### Zia Example
 

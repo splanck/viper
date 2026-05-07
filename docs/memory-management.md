@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-09
+last-verified: 2026-05-07
 ---
 
 # Viper Memory Management
@@ -94,7 +94,7 @@ typedef struct rt_heap_hdr {
 ```
 
 **Invariants:**
-- `magic == 0x52504956` — validated in debug builds via `RT_HEAP_VALIDATE`
+- `magic == 0x52504956` — validated through live heap-registry checks before public heap helpers touch the header
 - `refcnt == 1` on fresh allocation; caller owns the initial reference
 - `refcnt == SIZE_MAX` = immortal (never freed; used for string literals)
 - `len <= cap` maintained by all mutating operations
@@ -115,6 +115,10 @@ typedef struct rt_heap_hdr {
 | `rt_heap_free_zero_ref(payload)` | Free only if refcount is already zero. No-op otherwise. |
 | `rt_memory_retain(payload)` | Public `Viper.Memory.Retain` wrapper; validates live runtime handles before retaining. |
 | `rt_memory_release(payload)` | Public `Viper.Memory.Release` wrapper; releases through managed object/string/array paths and runs finalizers or element cleanup at zero. |
+
+Public heap helpers reject non-runtime and already-freed payloads before header
+access. That keeps stale pointers on the trap path instead of relying on
+debug-only assertions or undefined behaviour.
 
 ### Memory Ordering
 
@@ -152,11 +156,14 @@ Objects use a two-step release pattern that allows finalizer interleaving:
 1. rt_obj_release_check0(obj)  → decrements refcount (deferred)
                                   returns 1 if count reached zero
 2. [caller runs custom cleanup]
-3. rt_obj_free(obj)            → invokes finalizer, then rt_heap_free_zero_ref
+3. rt_obj_free(obj)            → verifies refcount is zero, invokes finalizer,
+                                  then rt_heap_free_zero_ref
 ```
 
 This split exists because finalizers may need the object's allocation to remain
 valid (e.g., to read fields during cleanup).
+Calling `rt_obj_free()` on a still-retained object traps; callers must not use it
+as a combined release/free helper.
 
 ### Consume Semantics
 
@@ -280,6 +287,8 @@ global mutex (`pthread_mutex_t` on Unix, `CRITICAL_SECTION` on Windows).
 Finalizers run outside the lock to avoid deadlocks, and an active collection
 flag makes reentrant `rt_gc_collect()` calls return 0 while a pass is still
 reclaiming objects.
+If a finalizer traps during the reclaim phase, the active-collection flag is
+cleared before the trap is re-raised so later collection passes can run.
 
 ### Statistics
 
@@ -288,6 +297,8 @@ reclaiming objects.
 | `rt_gc_tracked_count()` | Number of currently tracked objects |
 | `rt_gc_total_collected()` | Cumulative objects freed by cycle collection |
 | `rt_gc_pass_count()` | Number of `rt_gc_collect()` invocations |
+
+`rt_gc_total_collected()` saturates at `INT64_MAX` rather than wrapping.
 
 ### Limitations
 
@@ -309,6 +320,7 @@ reclaiming objects.
 rt_weakref *rt_weakref_new(target);     // Create (does NOT retain target)
 void       *rt_weakref_get(ref);        // Dereference (NULL if target freed)
 int8_t      rt_weakref_alive(ref);      // Check if target alive
+void        rt_weakref_reset(ref, target); // Retarget an existing weak ref
 void        rt_weakref_free(ref);       // Destroy handle (does not affect target)
 ```
 
@@ -316,6 +328,8 @@ When a target object is freed, `rt_gc_clear_weak_refs(target)` automatically
 nullifies all weak references pointing to it. This is called from `rt_obj_free()`
 and from the GC collector after the object's finalizer has run and did not
 resurrect the object. Weak references remain valid when resurrection succeeds.
+Clearing a target also detaches the weak-reference chain links, so a cleared weak
+reference can be safely reset to another target.
 
 Object fields can also use the lightweight helpers:
 

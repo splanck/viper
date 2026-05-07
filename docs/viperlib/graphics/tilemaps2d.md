@@ -27,7 +27,7 @@ Use this page for tile-oriented map data and editor/import helpers. The core `Ti
 
 ## Tilesets, Layers, And Atlas Helpers
 
-```viper
+```rust
 var tiles = TileSet2D.New(Pixels.Load("assets/tiles.png"), 16, 16)
 var ground = TileLayer2D.New(128, 64)
 ground.Fill(0)

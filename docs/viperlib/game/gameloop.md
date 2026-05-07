@@ -23,7 +23,7 @@ Every Viper game needs the same ~100 lines of boilerplate: canvas creation, fram
 
 Defines the lifecycle contract for a game scene.
 
-```zia
+```rust
 interface IScene {
     func update(dt: Integer);   // Called every frame with delta time (ms)
     func draw(canvas: Canvas);  // Called every frame to render the scene
@@ -57,7 +57,7 @@ setScene(newScene) called
 
 ### Import
 
-```zia
+```rust
 bind "../lib/gamebase";   // Adjust relative path for your game
 bind "../lib/iscene";
 ```
@@ -90,7 +90,7 @@ bind "../lib/iscene";
 
 ### Minimal Game (No Scenes)
 
-```zia
+```rust
 bind "../lib/gamebase";
 bind Viper.Graphics.Color;
 
@@ -118,7 +118,7 @@ func start() {
 
 ### Full Scene-Based Game
 
-```zia
+```rust
 bind "../lib/gamebase";
 bind "../lib/iscene";
 bind Viper.Graphics.Canvas;
@@ -230,7 +230,7 @@ func start() {
 
 Zia's inherited `init()` with arguments has a known code generation limitation. The two-step pattern (`new` + `initGame`) works reliably across modules:
 
-```zia
+```rust
 var game = new MyGame();              // Zero-arg implicit constructor
 game.initGame("Title", 800, 600);    // Setup method (inherited from GameBase)
 game.run();                           // Start game loop
@@ -240,7 +240,7 @@ game.run();                           // Start game loop
 
 Scenes store `GameBase` (the parent type), not the concrete game type. This follows the Dependency Inversion Principle and avoids circular analysis ordering issues:
 
-```zia
+```rust
 class MenuScene implements IScene {
     hide GameBase game;        // Abstract reference — not `hide MyGame game;`
     // ...
@@ -263,7 +263,7 @@ GameBase includes ScreenFX for visual effects — shake, flash, and fade.
 
 ### Direct Effect Methods
 
-```zia
+```rust
 game.shake(4000, 200, 500);        // intensity, duration, decay (ms)
 game.flash(0xFF000088, 160);        // RGBA color, duration (ms)
 ```
@@ -272,7 +272,7 @@ game.flash(0xFF000088, 160);        // RGBA color, duration (ms)
 
 `transitionTo()` provides smooth fade-out → scene switch → fade-in:
 
-```zia
+```rust
 // In a scene's update():
 if playerWon {
     game.transitionTo(game.victoryScene, 0x000000FF, 500);  // Black fade, 500ms
@@ -288,7 +288,7 @@ The transition is fully automated:
 
 For advanced effects, access ScreenFX directly:
 
-```zia
+```rust
 var fx = game.getFX();
 fx.FadeOut(0xFF000080, 300);   // Manual fade control
 ```

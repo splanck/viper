@@ -18,7 +18,7 @@
 //
 // Ownership/Lifetime:
 //   - MessageBus objects are heap-allocated and GC-managed.
-//   - The bus retains subscriber callbacks while subscribed.
+//   - The bus retains subscriber callback objects while subscribed.
 //   - Published data pointers are not retained; callers manage their own lifetime.
 //
 // Links: src/runtime/core/rt_msgbus.c (implementation), src/runtime/core/rt_string.h
@@ -51,7 +51,7 @@ void *rt_msgbus_callback_new(void *callback);
 /// @brief Subscribe to a topic. Returns subscription ID for later unsubscribe.
 /// @param obj MessageBus pointer.
 /// @param topic Topic string.
-/// @param callback Native function pointer or callback object.
+/// @param callback Callback object returned by rt_msgbus_callback_new().
 /// @return Unique subscription ID.
 int64_t rt_msgbus_subscribe(void *obj, rt_string topic, void *callback);
 

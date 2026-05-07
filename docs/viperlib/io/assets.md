@@ -101,7 +101,7 @@ Typed asset decoders that need a file path spill bytes through an exclusive priv
 
 ## Example
 
-```zia
+```rust
 bind Viper.IO;
 bind Viper.Graphics;
 

@@ -358,7 +358,7 @@ long-running states.
 
 ### Example
 
-```zia
+```rust
 bind Viper.Game;
 
 // Register states and set initial

@@ -67,7 +67,7 @@ Locale-aware number formatting **and parsing** with configurable fraction digits
 
 ### Zia Example
 
-```zia
+```rust
 bind Locale       : Viper.Localization.Locale
 bind NumberFormat : Viper.Localization.NumberFormat
 
@@ -139,7 +139,7 @@ CLDR-pattern-letter date and time formatting.
 
 ### Zia Example
 
-```zia
+```rust
 bind DateTime    : Viper.Time.DateTime
 bind DateFormat  : Viper.Localization.DateFormat
 bind Locale      : Viper.Localization.Locale
@@ -206,7 +206,7 @@ Locale-correct list joining ("A, B, and C").
 
 ### Zia Example
 
-```zia
+```rust
 bind ListFormat : Viper.Localization.ListFormat
 bind Locale     : Viper.Localization.Locale
 

@@ -8,15 +8,15 @@
 // File: src/runtime/core/rt_heap.c
 // Purpose: Reference-counted heap allocator used by runtime string, array,
 //   and object payloads. Defines the canonical metadata header layout
-//   (magic tag, ref count, heap kind, len, cap), pointer arithmetic helpers
-//   (payload_to_hdr / rt_heap_data), and lifetime management operations
+//   (magic tag, ref count, heap kind, len, cap), checked header lookup helpers,
+//   rt_heap_data, and lifetime management operations
 //   (rt_heap_alloc, rt_heap_retain, rt_heap_release, rt_heap_realloc).
 //   VM, native, and host embedding paths share this single implementation.
 //
 // Key invariants:
 //   - Every heap allocation is preceded by an rt_heap_hdr_t carrying
-//     magic==RT_MAGIC. Passing a non-heap pointer to any helper asserts in
-//     debug builds (sentinel checked in payload_to_hdr).
+//     magic==RT_MAGIC. Public helpers validate live payloads against the
+//     registry before touching the header.
 //   - refcnt==0 is the freed state; refcnt==SIZE_MAX is the immortal/static
 //     sentinel (never freed). All atomic inc/dec use __ATOMIC_RELAXED.
 //   - rt_heap_release() calls free() only when refcnt drops to 0.
@@ -337,30 +337,13 @@ static void rt_heap_registry_shutdown_(void) {
     g_heap_registry_.capacity = 0;
 }
 
-/// @brief Recover a heap header from a payload pointer.
-/// @details Performs the inverse of @ref rt_heap_data by subtracting the header
-///          size from the payload address.  The helper asserts that the header
-///          carries the runtime magic tag so corrupted pointers are detected
-///          early during development builds.
-/// @param payload Pointer returned by @ref rt_heap_alloc or `NULL`.
-/// @return Header describing the allocation, or `NULL` for null payloads.
-static rt_heap_hdr_t *payload_to_hdr(void *payload) {
-    if (!payload)
-        return NULL;
-    uint8_t *raw = (uint8_t *)payload;
-    rt_heap_hdr_t *hdr = (rt_heap_hdr_t *)(raw - sizeof(rt_heap_hdr_t));
-    assert(hdr->magic == RT_MAGIC);
-    assert(__atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) != (size_t)-1);
-    return hdr;
-}
-
 /// @brief Sanity-check the invariants stored in a heap header.
 /// @details Confirms the presence of the runtime magic tag, ensures the
 ///          reference count is not the sentinel value reserved for immortal
 ///          allocations, and validates that the heap kind enumerator is one of
 ///          the recognised values.  Assertions fire in debug builds to surface
 ///          memory corruptions or misuse of the allocator.
-/// @param hdr Header pointer returned by @ref payload_to_hdr.
+/// @param hdr Header pointer returned by a checked header lookup.
 #ifndef NDEBUG
 static void rt_heap_validate_header(const rt_heap_hdr_t *hdr) {
     assert(hdr);
@@ -403,16 +386,40 @@ int8_t rt_heap_try_get_header(void *payload, rt_heap_hdr_t **out_hdr) {
         return 0;
     rt_heap_registry_lock_();
     int found = rt_heap_registry_contains_locked_(payload);
+    rt_heap_hdr_t *hdr = NULL;
+    if (found) {
+        hdr = (rt_heap_hdr_t *)((uint8_t *)payload - sizeof(rt_heap_hdr_t));
+        if (hdr->magic != RT_MAGIC)
+            found = 0;
+    }
     rt_heap_registry_unlock_();
     if (!found)
-        return 0;
-
-    rt_heap_hdr_t *hdr = (rt_heap_hdr_t *)((uint8_t *)payload - sizeof(rt_heap_hdr_t));
-    if (hdr->magic != RT_MAGIC)
         return 0;
     if (out_hdr)
         *out_hdr = hdr;
     return 1;
+}
+
+/// @brief Return a validated live heap header or raise a runtime trap.
+/// @details This is intentionally stricter than the historical direct
+///          payload-to-header cast. Public heap operations can receive stale
+///          or raw pointers through runtime surfaces, so they must fail with a
+///          trap instead of relying on debug-only assertions or dereferencing
+///          freed memory.
+static rt_heap_hdr_t *rt_heap_checked_header_(void *payload, const char *fn_name) {
+    if (!payload)
+        return NULL;
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header(payload, &hdr) || !hdr) {
+        char buf[160];
+        snprintf(buf,
+                 sizeof(buf),
+                 "%s: invalid or freed heap payload",
+                 fn_name ? fn_name : "rt_heap");
+        rt_trap(buf);
+        return NULL;
+    }
+    return hdr;
 }
 
 /// @brief Allocate a reference-counted heap block.
@@ -514,14 +521,12 @@ void *rt_heap_alloc(rt_heap_kind_t kind,
 ///          when @c VIPER_RC_DEBUG is enabled, aiding leak investigations.
 /// @param payload Shared payload pointer; `NULL` pointers are ignored.
 void rt_heap_retain(void *payload) {
-    // Fast path: inline NULL check and header lookup
     if (!payload)
         return;
 
-    uint8_t *raw = (uint8_t *)payload;
-    rt_heap_hdr_t *hdr = (rt_heap_hdr_t *)(raw - sizeof(rt_heap_hdr_t));
-
-    // Debug validation (no-op in release builds)
+    rt_heap_hdr_t *hdr = rt_heap_checked_header_(payload, "rt_heap_retain");
+    if (!hdr)
+        return;
     RT_HEAP_VALIDATE(hdr);
     size_t old = __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED);
     size_t next = 0;
@@ -624,7 +629,7 @@ static size_t rt_heap_release_impl(rt_heap_hdr_t *hdr, void *payload, int free_w
 /// @return Reference count after the decrement, or zero when the block was
 ///         deallocated.
 size_t rt_heap_release(void *payload) {
-    rt_heap_hdr_t *hdr = payload_to_hdr(payload);
+    rt_heap_hdr_t *hdr = rt_heap_checked_header_(payload, "rt_heap_release");
     return rt_heap_release_impl(hdr, payload, /*free_when_zero=*/1);
 }
 
@@ -637,7 +642,7 @@ size_t rt_heap_release(void *payload) {
 /// @param payload Shared payload pointer; `NULL` pointers are ignored.
 /// @return Reference count after the decrement.
 size_t rt_heap_release_deferred(void *payload) {
-    rt_heap_hdr_t *hdr = payload_to_hdr(payload);
+    rt_heap_hdr_t *hdr = rt_heap_checked_header_(payload, "rt_heap_release_deferred");
     return rt_heap_release_impl(hdr, payload, /*free_when_zero=*/0);
 }
 
@@ -649,7 +654,7 @@ size_t rt_heap_release_deferred(void *payload) {
 ///          originally allocated from the pool.
 /// @param payload Shared payload pointer; `NULL` pointers are ignored.
 void rt_heap_free_zero_ref(void *payload) {
-    rt_heap_hdr_t *hdr = payload_to_hdr(payload);
+    rt_heap_hdr_t *hdr = rt_heap_checked_header_(payload, "rt_heap_free_zero_ref");
     if (!hdr)
         return;
     RT_HEAP_VALIDATE(hdr);
@@ -679,7 +684,7 @@ void rt_heap_free_zero_ref(void *payload) {
 /// @param payload Payload pointer produced by @ref rt_heap_alloc.
 /// @return Mutable header pointer, or `NULL` when @p payload is `NULL`.
 rt_heap_hdr_t *rt_heap_hdr(void *payload) {
-    return payload_to_hdr(payload);
+    return rt_heap_checked_header_(payload, "rt_heap_hdr");
 }
 
 /// @brief Resize an existing heap allocation, updating len, cap, and the registry.
@@ -695,7 +700,7 @@ void *rt_heap_realloc(void *payload, size_t elem_size, size_t new_len, size_t ne
     if (!payload)
         return NULL;
 
-    rt_heap_hdr_t *hdr = payload_to_hdr(payload);
+    rt_heap_hdr_t *hdr = rt_heap_checked_header_(payload, "rt_heap_realloc");
     if (!hdr)
         return NULL;
     RT_HEAP_VALIDATE(hdr);
@@ -774,7 +779,7 @@ void *rt_heap_data(rt_heap_hdr_t *h) {
 /// @param payload Payload pointer or `NULL`.
 /// @return Logical element count tracked in the header.
 size_t rt_heap_len(void *payload) {
-    rt_heap_hdr_t *hdr = payload_to_hdr(payload);
+    rt_heap_hdr_t *hdr = rt_heap_checked_header_(payload, "rt_heap_len");
     if (!hdr)
         return 0;
     return hdr->len;
@@ -786,7 +791,7 @@ size_t rt_heap_len(void *payload) {
 /// @param payload Payload pointer or `NULL`.
 /// @return Capacity value stored in the header.
 size_t rt_heap_cap(void *payload) {
-    rt_heap_hdr_t *hdr = payload_to_hdr(payload);
+    rt_heap_hdr_t *hdr = rt_heap_checked_header_(payload, "rt_heap_cap");
     if (!hdr)
         return 0;
     return hdr->cap;
@@ -800,7 +805,7 @@ size_t rt_heap_cap(void *payload) {
 /// @param payload Payload pointer whose header should be updated.
 /// @param new_len New logical length to store.
 void rt_heap_set_len(void *payload, size_t new_len) {
-    rt_heap_hdr_t *hdr = payload_to_hdr(payload);
+    rt_heap_hdr_t *hdr = rt_heap_checked_header_(payload, "rt_heap_set_len");
     if (!hdr)
         return;
     if (new_len > hdr->cap) {
@@ -826,7 +831,7 @@ static inline uint32_t atomic_fetch_or_u32(volatile uint32_t *ptr, uint32_t valu
 /// call performed the mark, 0 if it was already disposed (idempotent). Useful for one-shot
 /// finalizer guards in collections that own heterogeneous resources.
 int32_t rt_heap_mark_disposed(void *payload) {
-    rt_heap_hdr_t *hdr = payload_to_hdr(payload);
+    rt_heap_hdr_t *hdr = rt_heap_checked_header_(payload, "rt_heap_mark_disposed");
     if (!hdr)
         return 0;
     RT_HEAP_VALIDATE(hdr);

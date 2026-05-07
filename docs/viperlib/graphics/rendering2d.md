@@ -42,7 +42,7 @@ These classes sit directly on top of `Pixels` and `Canvas`. They cover rendering
 
 ## Render Targets, Textures, And Renderer
 
-```viper
+```rust
 var target = RenderTarget2D.New(320, 180)
 var spritePixels = Pixels.Load("assets/player.png")
 var texture = Texture2D.New(spritePixels)
@@ -63,7 +63,7 @@ canvas.BlitAlpha(0, 0, target.Pixels)
 
 ## Passes And Color Helpers
 
-```viper
+```rust
 var palette = Palette2D.New()
 palette.SetColor(3, 0xFF0000FF)
 palette.SetColor(4, Color.RGBA(0, 0, 255, 128))
@@ -77,7 +77,65 @@ gradient.FillHorizontal(pixels)
 
 `Gradient2D` uses `Steps <= 2` as smooth interpolation. Larger `Steps` values quantize into that many discrete levels, including both endpoints. For example, a three-step gradient samples start, midpoint, and end colors; horizontal and vertical fills use the same sampling as `Sample`.
 
+## Video Playback
+
+### Viper.Graphics.VideoPlayer
+
+Software video decoder that exposes each decoded frame as a `Pixels` object for display on a `Canvas` or as a `Texture2D`. Suitable for cutscenes, loading screens, and in-game video surfaces.
+
+**Type:** Instance (obj)
+**Constructor:** `VideoPlayer.Open(path)`
+
+#### Properties
+
+| Property    | Type    | Access | Description |
+|-------------|---------|--------|-------------|
+| `Width`     | Integer | Read   | Frame width in pixels |
+| `Height`    | Integer | Read   | Frame height in pixels |
+| `Duration`  | Double  | Read   | Total video duration in seconds |
+| `Position`  | Double  | Read   | Current playback position in seconds |
+| `IsPlaying` | Integer | Read   | Non-zero while the video is playing |
+| `Frame`     | Object  | Read   | The most recently decoded frame as `Pixels` |
+
+#### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Play()` | `Void()` | Start or resume playback |
+| `Pause()` | `Void()` | Pause at the current frame |
+| `Stop()` | `Void()` | Stop and reset to the start |
+| `Seek(time)` | `Void(Double)` | Seek to a position in seconds |
+| `Update(deltaSeconds)` | `Void(Double)` | Advance the decoder by the elapsed time |
+| `SetVolume(volume)` | `Void(Double)` | Set playback volume `[0.0–1.0]` |
+
+```rust
+bind Viper.Graphics.VideoPlayer as VideoPlayer;
+
+var video = VideoPlayer.Open("assets/intro.ogv")
+video.SetVolume(0.8)
+video.Play()
+
+// per frame
+video.Update(deltaSeconds)
+canvas.Blit(0, 0, video.Frame)
+```
+
+```basic
+DIM video AS Viper.Graphics.VideoPlayer
+video = Viper.Graphics.VideoPlayer.Open("assets/intro.ogv")
+video.Play()
+
+' per frame
+video.Update(deltaSeconds)
+canvas.Blit(0, 0, video.Frame)
+```
+
+`VideoPlayer.Frame` returns the same `Pixels` object each frame until the video ends; copy if you need to retain a specific frame. Calling `Update` more than once per logical frame skips decoding for the excess calls.
+
+---
+
 ## Notes
 
 - `GpuTexture2D` is a compatibility alias today. It intentionally exposes the same behavior as `Texture2D` until a GPU-backed renderer is available.
 - `RenderPass2D` requires `RenderTarget2D` source and target objects. Invalid source or target handles make the pass a no-op instead of interpreting the handle as a render target.
+- `VideoPlayer` decodes in software on the calling thread. For best results call `Update` once per frame with the actual elapsed seconds rather than a fixed timestep.

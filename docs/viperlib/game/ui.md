@@ -270,7 +270,7 @@ and optional BitmapFont rendering.
 
 ## Usage Example
 
-```zia
+```rust
 bind Viper.Graphics;
 bind Viper.Game.UI;
 

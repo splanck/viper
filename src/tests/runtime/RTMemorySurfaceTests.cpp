@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "common/ProcessIsolation.hpp"
+#include "rt_box.h"
 #include "rt_heap.h"
 #include "rt_object.h"
 #include "rt_string.h"
@@ -71,6 +72,11 @@ void call_heap_set_len_past_capacity() {
 void call_resurrect_live_object() {
     void *obj = rt_obj_new_i64(10, 8);
     rt_obj_resurrect(obj);
+}
+
+void call_obj_free_live_object() {
+    void *obj = rt_obj_new_i64(11, 8);
+    rt_obj_free(obj);
 }
 
 void expect_trap(void (*fn)(), const char *message) {
@@ -140,6 +146,23 @@ void test_memory_release_array_drops_elements() {
     assert(rt_heap_is_payload(arr) == 0);
 }
 
+void test_memory_release_array_drops_box_elements() {
+    rt_string text = rt_string_from_bytes("boxed", 5);
+    void *box = rt_box_str(text);
+    assert(box != nullptr);
+
+    void **arr = (void **)rt_heap_alloc(RT_HEAP_ARRAY, RT_ELEM_BOX, sizeof(void *), 1, 1);
+    assert(arr != nullptr);
+    arr[0] = box;
+    rt_obj_retain_maybe(box);
+
+    assert(rt_obj_release_check0(box) == 0);
+    assert(rt_memory_release(arr) == 0);
+    assert(rt_heap_is_payload(arr) == 0);
+    assert(rt_heap_is_payload(box) == 0);
+    assert(rt_memory_release(text) == 0);
+}
+
 void test_heap_mark_disposed_return_contract() {
     void *obj = rt_obj_new_i64(0xD15, 8);
     assert(rt_heap_mark_disposed(obj) == 1);
@@ -158,6 +181,7 @@ int main(int argc, char *argv[]) {
     viper::tests::registerChildFunction(call_heap_retain_overflow);
     viper::tests::registerChildFunction(call_heap_set_len_past_capacity);
     viper::tests::registerChildFunction(call_resurrect_live_object);
+    viper::tests::registerChildFunction(call_obj_free_live_object);
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 
@@ -165,6 +189,7 @@ int main(int argc, char *argv[]) {
     test_memory_release_reports_string_refcount();
     test_memory_release_reports_resurrection_refcount();
     test_memory_release_array_drops_elements();
+    test_memory_release_array_drops_box_elements();
     test_heap_mark_disposed_return_contract();
     expect_trap(call_memory_retain_invalid, "Viper.Memory.Retain");
     expect_trap(call_memory_release_invalid, "Viper.Memory.Release");
@@ -173,5 +198,6 @@ int main(int argc, char *argv[]) {
     expect_trap(call_heap_retain_overflow, "refcount overflow");
     expect_trap(call_heap_set_len_past_capacity, "length exceeds capacity");
     expect_trap(call_resurrect_live_object, "refcount is not zero");
+    expect_trap(call_obj_free_live_object, "refcount is not zero");
     return 0;
 }

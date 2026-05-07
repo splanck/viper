@@ -100,7 +100,7 @@ below 100 still produce correct shortest paths.
 Reads the tilemap's collision types. Tiles with `SetCollision(tile, type)` where `type != 0` are marked as non-walkable.
 The original tile ID is stored for `FindNearest`, so marker tiles can be used as reachable goals when their collision type is `0`.
 
-```zia
+```rust
 var tilemap = Tilemap.New(20, 15, 16, 16);
 tilemap.SetCollision(1, 1); // tile 1 = solid
 // ... set tiles ...
@@ -113,7 +113,7 @@ var path = pf.FindPath(0, 0, 19, 14);
 Reads cell values. Non-zero cells are treated as walls.
 The original cell value is stored for `FindNearest`. Because non-zero cells are blocked in this factory, non-zero targets are normally used with `FromTilemap` unless the cells are later made walkable through `SetWalkable`.
 
-```zia
+```rust
 var grid = Grid2D.New(20, 15, 0); // 0 = walkable
 grid.Set(5, 5, 1);                // 1 = wall
 
@@ -131,7 +131,7 @@ budget is exhausted, or no reachable matching value exists.
 
 ## Usage Example
 
-```zia
+```rust
 bind Viper.Game;
 
 // Create pathfinder from tilemap

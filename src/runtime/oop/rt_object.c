@@ -323,9 +323,57 @@ static void rt_memory_release_array_payload(void *p, rt_heap_hdr_t *hdr) {
             }
             break;
         }
+        case RT_ELEM_BOX: {
+            void **items = (void **)p;
+            for (size_t i = 0; i < n; ++i) {
+                void *item = items[i];
+                if (item && rt_obj_release_check0(item))
+                    rt_obj_free(item);
+                items[i] = NULL;
+            }
+            break;
+        }
         default:
             break;
     }
+}
+
+static int32_t rt_obj_free_zero_ref_object(void *p, int64_t *post_refcount) {
+    if (post_refcount)
+        *post_refcount = 0;
+    if (!p)
+        return 0;
+
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header(p, &hdr) || !hdr)
+        return 0;
+    if ((rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT) {
+        rt_trap("rt_obj_free: expected object payload");
+        return 0;
+    }
+    if (__atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE) != 0) {
+        rt_trap("rt_obj_free: object refcount is not zero");
+        return 0;
+    }
+
+    if (hdr->finalizer) {
+        rt_heap_finalizer_t fin = hdr->finalizer;
+        hdr->finalizer = NULL;
+        fin(p);
+    }
+
+    size_t after_finalizer = __atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE);
+    if (after_finalizer != 0) {
+        if (post_refcount)
+            *post_refcount = rt_memory_refcount_to_i64(after_finalizer);
+        return 0;
+    }
+
+    rt_gc_clear_weak_refs(p);
+    rt_gc_untrack(p);
+    rt_monitor_forget(p);
+    rt_heap_free_zero_ref(p);
+    return 1;
 }
 
 /// @brief Public Viper.Memory release entry point with managed object finalization.
@@ -344,9 +392,9 @@ int64_t rt_memory_release(void *p) {
     if ((rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT) {
         size_t next = rt_heap_release_deferred(p);
         if (next == 0) {
-            rt_obj_free(p);
-            if (rt_heap_try_get_header(p, &hdr) && hdr)
-                next = __atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE);
+            int64_t post_refcount = 0;
+            (void)rt_obj_free_zero_ref_object(p, &post_refcount);
+            return post_refcount;
         }
         return rt_memory_refcount_to_i64(next);
     }
@@ -382,26 +430,22 @@ void rt_obj_free(void *p) {
         return;
     }
     rt_heap_hdr_t *hdr = NULL;
-    if (!rt_heap_try_get_header(p, &hdr))
+    if (!rt_heap_try_get_header(p, &hdr) || !hdr)
         return;
-    if (hdr && (rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT &&
-        __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) == 0) {
-        if (hdr->finalizer) {
-            rt_heap_finalizer_t fin = hdr->finalizer;
-            hdr->finalizer = NULL;
-            fin(p);
-        }
-        if (__atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE) != 0)
-            return;
-        rt_gc_clear_weak_refs(p);
-        rt_gc_untrack(p);
-        rt_monitor_forget(p);
+    if (__atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE) != 0) {
+        rt_trap("rt_obj_free: payload refcount is not zero");
+        return;
+    }
+    if ((rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT) {
+        (void)rt_obj_free_zero_ref_object(p, NULL);
+        return;
+    }
+    if ((rt_heap_kind_t)hdr->kind == RT_HEAP_ARRAY) {
+        rt_memory_release_array_payload(p, hdr);
         rt_heap_free_zero_ref(p);
         return;
     }
-    rt_gc_untrack(p);
-    rt_monitor_forget(p);
-    rt_heap_free_zero_ref(p);
+    rt_trap("rt_obj_free: unsupported heap payload kind");
 }
 
 // ============================================================================

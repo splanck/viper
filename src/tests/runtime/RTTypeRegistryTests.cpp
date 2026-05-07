@@ -17,19 +17,61 @@
 
 #include "rt_oop.h"
 #include <assert.h>
+#include <csetjmp>
 #include <stddef.h>
 #include <stdint.h>
+#include <string>
+
+extern "C" void rt_trap_set_recovery(jmp_buf *buf);
+extern "C" void rt_trap_clear_recovery(void);
+extern "C" const char *rt_trap_get_error(void);
 
 // Mock vtables for test classes
 static void *vtable_base[1] = {nullptr};
 static void *vtable_derived[1] = {nullptr};
 static void *vtable_leaf[1] = {nullptr};
 static void *vtable_unrelated[1] = {nullptr};
+static void *vtable_conflict[1] = {nullptr};
 
 // Mock interface table
 static void mock_iface_method(void) {}
 
 static void *itable_base[1] = {(void *)mock_iface_method};
+static void *itable_conflict[1] = {(void *)mock_iface_method};
+
+static void expect_trap(void (*fn)(), const char *text) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        fn();
+        rt_trap_clear_recovery();
+        assert(false && "expected trap");
+    } else {
+        std::string message = rt_trap_get_error();
+        rt_trap_clear_recovery();
+        assert(message.find(text) != std::string::npos);
+    }
+}
+
+static void register_duplicate_class_conflict() {
+    rt_register_class_with_base(100, vtable_conflict, "Test.BaseConflict", 0, -1);
+}
+
+static void register_missing_base() {
+    rt_register_class_with_base(300, vtable_conflict, "Test.MissingBase", 0, 299);
+}
+
+static void bind_unknown_class() {
+    rt_bind_interface(9999, 1, itable_base);
+}
+
+static void bind_unknown_interface() {
+    rt_bind_interface(100, 9999, itable_base);
+}
+
+static void bind_duplicate_conflict() {
+    rt_bind_interface(100, 1, itable_conflict);
+}
 
 int main() {
     // Type IDs for our test classes
@@ -56,6 +98,22 @@ int main() {
 
     // Bind interface only to Base class
     rt_bind_interface(TYPE_BASE, IFACE_TESTABLE, itable_base);
+    rt_register_class_with_base(TYPE_BASE, vtable_base, "Test.Base", 0, -1);
+    rt_register_interface_direct(IFACE_TESTABLE, "Test.ITestable", 1);
+    rt_bind_interface(TYPE_BASE, IFACE_TESTABLE, itable_base);
+
+    assert(rt_typeid_of(NULL) == 0);
+    assert(rt_type_is_a(9999, 9999) == 0);
+    assert(rt_type_implements(-1, IFACE_TESTABLE) == 0);
+    assert(rt_type_implements(TYPE_BASE, -1) == 0);
+    assert(rt_cast_as(nullptr, -1) == nullptr);
+    assert(rt_cast_as_iface(nullptr, -1) == nullptr);
+    assert(rt_get_class_vtable(-1) == nullptr);
+    expect_trap(register_duplicate_class_conflict, "duplicate class type id");
+    expect_trap(register_missing_base, "base class is not registered");
+    expect_trap(bind_unknown_class, "unknown class");
+    expect_trap(bind_unknown_interface, "unknown interface");
+    expect_trap(bind_duplicate_conflict, "duplicate interface binding");
 
     // =====================================================================
     // Test 1: rt_type_is_a for same type

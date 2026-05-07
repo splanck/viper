@@ -258,6 +258,65 @@ TEST(Arm64Bugfix, CurrentInstructionUseNotEvictedUnderPressure) {
     ASSERT_EQ(rc, 42);
 }
 
+/// Regression: Current-instruction destination operands must not be evicted before
+/// the instruction has written them under GPR pressure.
+///
+/// The chess-zia board renderer computes square coordinates as
+/// `boardOrigin + squareIndex * squareSize` and then carries those coordinates
+/// through block-argument edge copies before issuing draw calls.  Before this
+/// fix, the linear allocator protected only current-instruction uses.  While
+/// materializing an `AddsRRR` source under pressure, it could select the
+/// just-assigned destination as a spill victim, store the register's old
+/// contents, and later reload that stale spill slot for the edge copy.  Chess
+/// then repainted every board square at stale coordinates.
+TEST(Arm64Bugfix, CurrentInstructionDefNotEvictedUnderPressure) {
+    std::string il = "il 0.1\n"
+                     "func @calc(%file:i64, %base:i64) -> i64 {\n"
+                     "entry(%file:i64, %base:i64):\n";
+
+    for (int i = 0; i < 22; ++i)
+        il += "  %v" + std::to_string(i) + " = iadd.ovf %file, " + std::to_string(i + 1) + "\n";
+
+    il += "  %square = iadd.ovf 0, 80\n";
+    il += "  %offset = imul.ovf %file, %square\n";
+    il += "  %coord = iadd.ovf %base, %offset\n";
+    il += "  %always = icmp_eq %file, 3\n";
+    il += "  cbr %always, join(%coord";
+    for (int i = 0; i < 22; ++i)
+        il += ", %v" + std::to_string(i);
+    il += "), fail(1)\n";
+
+    il += "join(%j:i64";
+    for (int i = 0; i < 22; ++i)
+        il += ", %p" + std::to_string(i) + ":i64";
+    il += "):\n";
+
+    il += "  %sum0 = iadd.ovf %j, %p0\n";
+    for (int i = 1; i < 22; ++i)
+        il += "  %sum" + std::to_string(i) + " = iadd.ovf %sum" + std::to_string(i - 1) + ", %p" +
+              std::to_string(i) + "\n";
+
+    // Expected: coord 42 + 3*80 = 282, plus sum(4..25) = 319, total 601.
+    il += "  %ok = icmp_eq %sum21, 601\n";
+    il += "  cbr %ok, pass(0), fail(2)\n";
+    il += "pass(%r:i64):\n";
+    il += "  ret %r\n";
+    il += "fail(%r:i64):\n";
+    il += "  ret %r\n";
+    il += "}\n";
+    il += "func @main() -> i64 {\n";
+    il += "entry:\n";
+    il += "  %r = call @calc(3, 42)\n";
+    il += "  ret %r\n";
+    il += "}\n";
+
+    const std::string in = outPath("arm64_bugfix_current_def_pressure.il");
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-run-native", "-O1"};
+    const int rc = cmd_codegen_arm64(3, const_cast<char **>(argv));
+    ASSERT_EQ(rc, 0);
+}
+
 /// Bug #8: post-RA scheduling must preserve aliasing between copied base+imm
 /// addresses that resolve to the same object field. Without that, a reload of
 /// `top` could stay ahead of the preceding store to `top`, reintroducing the

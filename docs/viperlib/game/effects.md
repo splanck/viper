@@ -258,7 +258,7 @@ END IF
 
 ### Example: Scene Transitions
 
-```zia
+```rust
 module TransitionDemo;
 
 bind Viper.Game.ScreenFX as FX;

@@ -120,6 +120,8 @@ int64_t rt_box_eq_str(void *box, rt_string val);
 /// @brief Allocate heap memory for boxing a value type (struct).
 /// @param size Size in bytes to allocate.
 /// @return Heap-allocated zero-initialized memory.
+/// @note Size 0 is valid and produces a managed empty value-type object.
+/// @note Negative sizes trap.
 /// @note The compiler copies struct fields into this memory and registers
 /// managed fields with rt_box_value_type_add_field().
 void *rt_box_value_type(int64_t size);
@@ -129,6 +131,7 @@ void *rt_box_value_type(int64_t size);
 /// @param offset Byte offset of the pointer-sized field.
 /// @param kind RT_VALUE_FIELD_OBJ or RT_VALUE_FIELD_STR.
 /// @param retain_now Retain the current field value immediately when non-zero.
+/// @note Re-registering the same offset with a different kind traps.
 void rt_box_value_type_add_field(void *obj, int64_t offset, int64_t kind, int8_t retain_now);
 
 /// @brief Content-aware hash for an element.

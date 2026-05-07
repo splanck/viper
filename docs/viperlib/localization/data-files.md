@@ -195,7 +195,7 @@ pack-compressed locales/de-DE.json
 ```
 
 Load at runtime:
-```zia
+```rust
 LocaleManager.LoadFromAsset("locales/fr-FR.json")
 ```
 

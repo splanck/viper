@@ -51,7 +51,7 @@ Translation catalog keyed by message ID. Supports placeholder interpolation, fal
 
 ### Zia Example
 
-```zia
+```rust
 bind MessageBundle : Viper.Localization.MessageBundle
 bind Locale        : Viper.Localization.Locale
 
@@ -71,7 +71,7 @@ Say(msgs.Plural("items", 5, {}))               # "5 items"
 
 Locale-qualified fallback example:
 
-```zia
+```rust
 var msgs = MessageBundle.FromMap(Locale.Parse("fr-CA"), {
     "fr:greet": "Bonjour",
     "root:greet": "Hello"
@@ -117,7 +117,7 @@ CLDR plural category selection for cardinal and ordinal numeric forms.
 
 ### Zia Example
 
-```zia
+```rust
 bind PluralRules : Viper.Localization.PluralRules
 bind Locale      : Viper.Localization.Locale
 

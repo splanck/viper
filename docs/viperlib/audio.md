@@ -778,7 +778,7 @@ and `Playlist.Update()` do not advance a paused transition.
 
 ### Example
 
-```zia
+```rust
 bind Viper.Sound;
 
 // Set up volume sliders

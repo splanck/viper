@@ -692,6 +692,69 @@ Theme.SetLight();  // Light theme
 
 ---
 
+### VideoWidget
+
+Embedded video player widget that renders decoded frames inside a GUI layout. Wraps `Viper.Graphics.VideoPlayer` with GUI lifecycle integration.
+
+**Type:** Instance (obj)
+**Constructor:** `VideoWidget.New(parent, path)`
+
+#### Properties
+
+| Property       | Type    | Access | Description |
+|----------------|---------|--------|-------------|
+| `IsPlaying`    | Integer | Read   | Non-zero while the video is playing |
+| `Position`     | Double  | Read   | Current playback position in seconds |
+| `Duration`     | Double  | Read   | Total duration in seconds |
+| `ShowControls` | Boolean | Write  | Show or hide built-in play/pause controls |
+| `Loop`         | Boolean | Write  | Loop the video when it ends |
+
+#### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Play()` | `Void()` | Start or resume playback |
+| `Pause()` | `Void()` | Pause at the current frame |
+| `Stop()` | `Void()` | Stop and reset to the start |
+| `Update(deltaSeconds)` | `Void(Double)` | Advance the video decoder; call once per frame |
+| `SetVolume(volume)` | `Void(Double)` | Set playback volume `[0.0–1.0]` |
+| `Destroy()` | `Void()` | Release decoder resources |
+
+```rust
+bind Viper.GUI.VideoWidget as VideoWidget;
+bind Viper.GUI.App as App;
+
+var app  = App.New("Video Player", 800, 600)
+var root = app.Root()
+var vid  = VideoWidget.New(root, "assets/intro.ogv")
+vid.ShowControls = true
+vid.Loop = false
+vid.Play()
+
+while app.Poll() do
+    vid.Update(app.DeltaSeconds())
+    app.Render()
+end while
+vid.Destroy()
+```
+
+```basic
+DIM app AS Viper.GUI.App = NEW Viper.GUI.App("Video Player", 800, 600)
+DIM root AS Viper.GUI.Widget = app.Root()
+DIM vid AS Viper.GUI.VideoWidget = NEW Viper.GUI.VideoWidget(root, "assets/intro.ogv")
+vid.ShowControls = TRUE
+vid.Play()
+WHILE app.Poll()
+    vid.Update(app.DeltaSeconds())
+    app.Render()
+WEND
+vid.Destroy()
+```
+
+`VideoWidget.Destroy` must be called when done; the widget does not release the decoder automatically when removed from the layout. Call `Update` once per frame inside the application loop — do not drive it from a background thread.
+
+---
+
 
 ## See Also
 

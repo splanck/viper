@@ -343,6 +343,8 @@ static const unsigned char *rt_scan_decimal_float(const unsigned char *cursor) {
 /// @param out_value Output pointer receiving the parsed integer.
 /// @return BASIC error code (`Err_None` on success).
 int32_t rt_parse_int64(const char *text, int64_t *out_value) {
+    if (out_value)
+        *out_value = 0;
     if (!text || !out_value)
         return (int32_t)Err_InvalidOperation;
 
@@ -434,6 +436,8 @@ static int32_t rt_parse_double_impl(const char *text, double *out_value) {
 /// @param out_value Output pointer receiving the parsed double.
 /// @return BASIC error code (`Err_None` on success).
 int32_t rt_parse_double(const char *text, double *out_value) {
+    if (out_value)
+        *out_value = 0.0;
     if (!text || !out_value)
         return (int32_t)Err_InvalidOperation;
     return rt_parse_double_impl(text, out_value);

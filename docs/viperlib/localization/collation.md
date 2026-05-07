@@ -60,7 +60,7 @@ Locale-aware string comparison + sort-key generation with configurable strength 
 
 ### Zia Example
 
-```zia
+```rust
 bind Collator : Viper.Localization.Collator
 bind Locale   : Viper.Localization.Locale
 
@@ -107,7 +107,7 @@ Hebrew, Arabic, Syriac, Thaana, N'Ko, Samaritan, Mandaic, Arabic Extended-A/B/C,
 
 ### Zia Example
 
-```zia
+```rust
 bind TextDirection : Viper.Localization.TextDirection
 
 Say(TextDirection.Detect("Hello"))          # "ltr"

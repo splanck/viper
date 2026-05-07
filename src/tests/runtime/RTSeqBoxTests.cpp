@@ -15,8 +15,15 @@
 #include "rt_string.h"
 
 #include <cassert>
+#include <csetjmp>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
+#include <string>
+
+extern "C" void rt_trap_set_recovery(jmp_buf *buf);
+extern "C" void rt_trap_clear_recovery(void);
+extern "C" const char *rt_trap_get_error(void);
 
 static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
@@ -38,6 +45,20 @@ static void managed_value_child_finalizer(void *obj) {
 static void release_object(void *obj) {
     if (rt_obj_release_check0(obj))
         rt_obj_free(obj);
+}
+
+static void expect_trap(void (*fn)(), const char *message) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        fn();
+        rt_trap_clear_recovery();
+        assert(false && "expected trap");
+    } else {
+        std::string text = rt_trap_get_error();
+        rt_trap_clear_recovery();
+        assert(text.find(message) != std::string::npos);
+    }
 }
 
 //=============================================================================
@@ -200,6 +221,48 @@ static void test_value_type_managed_fields() {
     printf("\n");
 }
 
+static managed_value_payload *g_conflict_value = nullptr;
+static managed_value_payload *g_invalid_field_value = nullptr;
+
+static void call_value_type_conflicting_field() {
+    rt_box_value_type_add_field(
+        g_conflict_value, (int64_t)offsetof(managed_value_payload, obj), RT_VALUE_FIELD_STR, 0);
+}
+
+static void call_value_type_invalid_retain_field() {
+    rt_box_value_type_add_field(
+        g_invalid_field_value, (int64_t)offsetof(managed_value_payload, str), RT_VALUE_FIELD_STR, 1);
+}
+
+static void test_value_type_zero_size_and_duplicate_fields() {
+    printf("Testing Box.ValueType zero-size and duplicate field validation:\n");
+
+    void *empty = rt_box_value_type(0);
+    test_result("Zero-size ValueType allocated", empty != nullptr);
+    test_result("Zero-size ValueType class id", rt_obj_class_id(empty) == RT_VALUE_TYPE_CLASS_ID);
+    release_object(empty);
+
+    managed_value_payload *boxed =
+        (managed_value_payload *)rt_box_value_type((int64_t)sizeof(managed_value_payload));
+    g_conflict_value = boxed;
+    rt_box_value_type_add_field(
+        boxed, (int64_t)offsetof(managed_value_payload, obj), RT_VALUE_FIELD_OBJ, 0);
+    rt_box_value_type_add_field(
+        boxed, (int64_t)offsetof(managed_value_payload, obj), RT_VALUE_FIELD_OBJ, 0);
+    expect_trap(call_value_type_conflicting_field, "field offset already registered");
+    g_conflict_value = nullptr;
+    release_object(boxed);
+
+    managed_value_payload *invalid =
+        (managed_value_payload *)rt_box_value_type((int64_t)sizeof(managed_value_payload));
+    invalid->str = (rt_string)(uintptr_t)0x1234;
+    g_invalid_field_value = invalid;
+    expect_trap(call_value_type_invalid_retain_field, "invalid managed field value");
+    g_invalid_field_value = nullptr;
+    release_object(invalid);
+    printf("\n");
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -213,6 +276,7 @@ int main() {
     test_seq_find_boxed_booleans();
     test_seq_pointer_identity();
     test_value_type_managed_fields();
+    test_value_type_zero_size_and_duplicate_fields();
 
     printf("All Seq box equality tests passed!\n");
     return 0;

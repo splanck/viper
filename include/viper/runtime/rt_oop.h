@@ -58,7 +58,8 @@ extern "C"
     /// @details Reads the vptr/type metadata embedded at object offset 0 to enable
     ///          RTTI queries and interface dispatch at runtime.
     /// @param obj Pointer to the object instance; may be NULL.
-    /// @return The process-local type id of the object, or 0 for NULL instances.
+    /// @return The process-local type id of the object, 0 for NULL instances,
+    ///         or -1 when the object's vtable is not registered.
     int rt_typeid_of(void *obj);
 
     /// @brief Test whether @p type_id is the same as or derived from @p test_type_id.

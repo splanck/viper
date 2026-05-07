@@ -19,7 +19,7 @@ Composable AI presets for 2D game entities. Combines common patterns (patrol, ch
 - `AnimFrame` — Current animation frame index
 
 ## Example
-```zia
+```rust
 var bhv = Behavior.New()
 bhv.AddPatrol(100)
 bhv.AddGravity(78, 1350)

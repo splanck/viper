@@ -46,6 +46,11 @@ static void append_escaped_string(char *dst, size_t dst_cap, rt_string s) {
     if (pos >= dst_cap)
         return;
 
+    if (s && !rt_string_is_handle((const void *)s)) {
+        snprintf(dst + pos, dst_cap - pos, "<invalid string>");
+        return;
+    }
+
     const char *bytes = s ? rt_string_cstr(s) : "";
     size_t len = s ? (size_t)rt_str_len(s) : 0;
     size_t shown = len < 64 ? len : 64;
@@ -72,6 +77,8 @@ static void append_escaped_string(char *dst, size_t dst_cap, rt_string s) {
 }
 
 static int message_has_bytes(rt_string message) {
+    if (message && !rt_string_is_handle((const void *)message))
+        return 0;
     if (!message || !message->data)
         return 0;
     return rt_str_len(message) > 0 ? 1 : 0;
@@ -169,13 +176,18 @@ void rt_diag_assert_eq_num(double expected, double actual, rt_string message) {
 
 /// @brief Assert two strings are equal.
 void rt_diag_assert_eq_str(rt_string expected, rt_string actual, rt_string message) {
-    if (rt_str_eq(expected, actual) != 0)
+    int expected_valid = !expected || rt_string_is_handle((const void *)expected);
+    int actual_valid = !actual || rt_string_is_handle((const void *)actual);
+    if (expected_valid && actual_valid && rt_str_eq(expected, actual) != 0)
         return;
 
     char msg_buf[160];
     const char *msg = format_message(message, "AssertEqStr failed", msg_buf, sizeof(msg_buf));
     char buf[512];
-    snprintf(buf, sizeof(buf), "%s: expected \"", msg);
+    if (!expected_valid || !actual_valid)
+        snprintf(buf, sizeof(buf), "%s: invalid string handle; expected \"", msg);
+    else
+        snprintf(buf, sizeof(buf), "%s: expected \"", msg);
     append_escaped_string(buf, sizeof(buf), expected);
     strncat(buf, "\", got \"", sizeof(buf) - strlen(buf) - 1);
     append_escaped_string(buf, sizeof(buf), actual);

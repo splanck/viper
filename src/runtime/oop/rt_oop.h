@@ -101,7 +101,8 @@ void rt_bind_interface(int type_id, int iface_id, void **itable_slots);
 /// @details Reads the type id associated with the object's vptr for RTTI
 ///          and fast type comparisons.
 /// @param obj Object instance pointer (must have vptr at offset 0).
-/// @return The compile-time-assigned type id of the object's dynamic type.
+/// @return The compile-time-assigned type id of the object's dynamic type,
+///         0 for NULL, or -1 when the vtable is not registered.
 int rt_typeid_of(void *obj);
 
 /// @brief Check whether type_id is-a test_type_id (same type or subclass).

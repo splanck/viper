@@ -76,9 +76,9 @@ class LinearAllocator {
         usePositionsFPR_;                 ///< All use positions for FPR vregs.
     std::vector<unsigned> callPositions_; ///< Positions of call instructions in current block.
     std::unordered_set<uint16_t>
-        protectedUseGPR_; ///< Current-instruction GPR uses that must not be evicted early.
+        protectedOperandGPR_; ///< Current-instruction GPR operands that must not be evicted.
     std::unordered_set<uint16_t>
-        protectedUseFPR_; ///< Current-instruction FPR uses that must not be evicted early.
+        protectedOperandFPR_; ///< Current-instruction FPR operands that must not be evicted.
 
     // CFG + liveness (extracted to shared-solver-backed LivenessAnalysis).
     LivenessAnalysis liveness_;
@@ -113,7 +113,7 @@ class LinearAllocator {
     /// @brief Allocate or retrieve the current spill slot for @p vreg and return its FP offset.
     int ensureCurrentSpillSlot(uint16_t vreg, RegClass cls, bool forceLiveOut = false);
     /// @brief Return true if @p vreg appears as an operand in the current instruction.
-    [[nodiscard]] bool isProtectedUse(uint16_t vreg, RegClass cls) const;
+    [[nodiscard]] bool isProtectedOperand(uint16_t vreg, RegClass cls) const;
     /// @brief Return true if @p vreg is live at the exit of the current block.
     [[nodiscard]] bool isLiveOut(uint16_t vreg, RegClass cls) const;
 

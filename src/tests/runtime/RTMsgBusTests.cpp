@@ -35,6 +35,14 @@ static void destroy_obj(void *obj) {
         rt_obj_free(obj);
 }
 
+static int64_t subscribe_native(void *bus, rt_string topic, rt_msgbus_callback_fn fn) {
+    void *callback = rt_msgbus_callback_new((void *)fn);
+    assert(callback != NULL);
+    int64_t id = rt_msgbus_subscribe(bus, topic, callback);
+    destroy_obj(callback);
+    return id;
+}
+
 static int g_trace_len = 0;
 static int g_trace[8];
 static int g_last_payload = 0;
@@ -116,7 +124,7 @@ static void test_subscribe() {
     void *bus = rt_msgbus_new();
     rt_string topic = make_str("click");
 
-    int64_t id = rt_msgbus_subscribe(bus, topic, (void *)cb_first);
+    int64_t id = subscribe_native(bus, topic, cb_first);
     assert(id > 0);
     assert(rt_msgbus_total_subscriptions(bus) == 1);
     assert(rt_msgbus_subscriber_count(bus, topic) == 1);
@@ -129,9 +137,9 @@ static void test_multiple_subscribers() {
     void *bus = rt_msgbus_new();
     rt_string topic = make_str("event");
 
-    rt_msgbus_subscribe(bus, topic, (void *)cb_first);
-    rt_msgbus_subscribe(bus, topic, (void *)cb_second);
-    rt_msgbus_subscribe(bus, topic, (void *)cb_third);
+    subscribe_native(bus, topic, cb_first);
+    subscribe_native(bus, topic, cb_second);
+    subscribe_native(bus, topic, cb_third);
 
     assert(rt_msgbus_subscriber_count(bus, topic) == 3);
     assert(rt_msgbus_total_subscriptions(bus) == 3);
@@ -145,8 +153,8 @@ static void test_multiple_topics() {
     rt_string t1 = make_str("topic1");
     rt_string t2 = make_str("topic2");
 
-    rt_msgbus_subscribe(bus, t1, (void *)cb_first);
-    rt_msgbus_subscribe(bus, t2, (void *)cb_second);
+    subscribe_native(bus, t1, cb_first);
+    subscribe_native(bus, t2, cb_second);
 
     assert(rt_msgbus_subscriber_count(bus, t1) == 1);
     assert(rt_msgbus_subscriber_count(bus, t2) == 1);
@@ -165,8 +173,8 @@ static void test_embedded_nul_topics_are_distinct() {
     rt_string ax = rt_string_from_bytes(raw_ax, sizeof(raw_ax));
     int payload = 9;
 
-    rt_msgbus_subscribe(bus, a, (void *)cb_first);
-    rt_msgbus_subscribe(bus, ax, (void *)cb_second);
+    subscribe_native(bus, a, cb_first);
+    subscribe_native(bus, ax, cb_second);
 
     reset_trace();
     assert(rt_msgbus_publish(bus, a, &payload) == 1);
@@ -187,7 +195,7 @@ static void test_unsubscribe() {
     void *bus = rt_msgbus_new();
     rt_string topic = make_str("test");
 
-    int64_t id = rt_msgbus_subscribe(bus, topic, (void *)cb_first);
+    int64_t id = subscribe_native(bus, topic, cb_first);
     assert(rt_msgbus_unsubscribe(bus, id) == 1);
     assert(rt_msgbus_subscriber_count(bus, topic) == 0);
     assert(rt_msgbus_total_subscriptions(bus) == 0);
@@ -203,9 +211,9 @@ static void test_publish_invokes_callbacks_in_order() {
     rt_string topic = make_str("signal");
     int payload = 42;
 
-    rt_msgbus_subscribe(bus, topic, (void *)cb_first);
-    rt_msgbus_subscribe(bus, topic, (void *)cb_second);
-    rt_msgbus_subscribe(bus, topic, (void *)cb_third);
+    subscribe_native(bus, topic, cb_first);
+    subscribe_native(bus, topic, cb_second);
+    subscribe_native(bus, topic, cb_third);
 
     reset_trace();
     int64_t notified = rt_msgbus_publish(bus, topic, &payload);
@@ -230,8 +238,8 @@ static void test_unsubscribe_during_publish_uses_snapshot() {
     int payload = 7;
 
     g_current_bus = bus;
-    int64_t unsub_id = rt_msgbus_subscribe(bus, topic, (void *)cb_unsubscribe_other);
-    g_victim_sub_id = rt_msgbus_subscribe(bus, topic, (void *)cb_second);
+    int64_t unsub_id = subscribe_native(bus, topic, cb_unsubscribe_other);
+    g_victim_sub_id = subscribe_native(bus, topic, cb_second);
 
     reset_trace();
     int64_t notified = rt_msgbus_publish(bus, topic, &payload);
@@ -258,8 +266,8 @@ static void test_topics() {
     void *bus = rt_msgbus_new();
     rt_string alpha = make_str("alpha");
     rt_string beta = make_str("beta");
-    rt_msgbus_subscribe(bus, alpha, (void *)cb_first);
-    rt_msgbus_subscribe(bus, beta, (void *)cb_second);
+    subscribe_native(bus, alpha, cb_first);
+    subscribe_native(bus, beta, cb_second);
 
     void *topics = rt_msgbus_topics(bus);
     assert(rt_seq_len(topics) == 2);
@@ -302,6 +310,26 @@ static void test_rejects_plain_heap_callback() {
     destroy_obj(bus);
 }
 
+static void test_rejects_raw_pointer_callback() {
+    void *bus = rt_msgbus_new();
+    rt_string topic = make_str("raw_callback");
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_msgbus_subscribe(bus, topic, (void *)cb_first);
+        rt_trap_clear_recovery();
+        assert(false && "raw callback pointers must be wrapped");
+    } else {
+        std::string message = rt_trap_get_error();
+        rt_trap_clear_recovery();
+        assert(message.find("callback must be") != std::string::npos);
+    }
+
+    rt_string_unref(topic);
+    destroy_obj(bus);
+}
+
 static void test_publish_trap_releases_snapshot_callbacks() {
     void *bus = rt_msgbus_new();
     rt_string topic = make_str("trap_cleanup");
@@ -336,8 +364,8 @@ static void test_publish_trap_releases_snapshot_callbacks() {
 static void test_clear_topic() {
     void *bus = rt_msgbus_new();
     rt_string t = make_str("temp");
-    rt_msgbus_subscribe(bus, t, (void *)cb_first);
-    rt_msgbus_subscribe(bus, t, (void *)cb_second);
+    subscribe_native(bus, t, cb_first);
+    subscribe_native(bus, t, cb_second);
 
     rt_msgbus_clear_topic(bus, t);
     assert(rt_msgbus_subscriber_count(bus, t) == 0);
@@ -352,9 +380,9 @@ static void test_clear() {
     rt_string a = make_str("a");
     rt_string b = make_str("b");
     rt_string c = make_str("c");
-    rt_msgbus_subscribe(bus, a, (void *)cb_first);
-    rt_msgbus_subscribe(bus, b, (void *)cb_second);
-    rt_msgbus_subscribe(bus, c, (void *)cb_third);
+    subscribe_native(bus, a, cb_first);
+    subscribe_native(bus, b, cb_second);
+    subscribe_native(bus, c, cb_third);
 
     rt_msgbus_clear(bus);
     assert(rt_msgbus_total_subscriptions(bus) == 0);
@@ -390,7 +418,9 @@ static void test_null_safety() {
     assert(rt_msgbus_subscriber_count(NULL, NULL) == 0);
     assert(rt_msgbus_publish(NULL, NULL, NULL) == 0);
     assert(rt_msgbus_subscribe(NULL, NULL, NULL) == -1);
-    assert(rt_msgbus_subscribe(bus, NULL, (void *)cb_first) == -1);
+    void *callback = rt_msgbus_callback_new((void *)cb_first);
+    assert(rt_msgbus_subscribe(bus, NULL, callback) == -1);
+    destroy_obj(callback);
     assert(rt_msgbus_subscribe(bus, x, NULL) == -1);
     assert(rt_msgbus_unsubscribe(NULL, 1) == 0);
     rt_string_unref(x);
@@ -409,6 +439,7 @@ int main() {
     test_unsubscribe_during_publish_uses_snapshot();
     test_topics();
     test_rejects_plain_heap_callback();
+    test_rejects_raw_pointer_callback();
     test_publish_trap_releases_snapshot_callbacks();
     test_clear_topic();
     test_clear();

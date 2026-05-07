@@ -18,9 +18,15 @@
 #include "rt_trap.h"
 
 #include <cassert>
+#include <csetjmp>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <string>
+
+extern "C" void rt_trap_set_recovery(jmp_buf *buf);
+extern "C" void rt_trap_clear_recovery(void);
+extern "C" const char *rt_trap_get_error(void);
 
 extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
@@ -32,6 +38,33 @@ extern "C" void vm_trap(const char *msg) {
 
 static rt_string make_str(const char *s) {
     return rt_const_cstr(s);
+}
+
+static void call_assert_eq_str_embedded_nul_failure() {
+    const char lhs_bytes[] = {'a', '\0', 'b'};
+    const char rhs_bytes[] = {'a', '\0', 'c'};
+    rt_string lhs = rt_string_from_bytes(lhs_bytes, sizeof(lhs_bytes));
+    rt_string rhs = rt_string_from_bytes(rhs_bytes, sizeof(rhs_bytes));
+    rt_diag_assert_eq_str(lhs, rhs, make_str("nul mismatch"));
+}
+
+static void call_assert_fail_invalid_message() {
+    int local = 42;
+    rt_diag_assert_fail((rt_string)&local);
+}
+
+static void expect_trap(void (*fn)(), const char *message) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        fn();
+        rt_trap_clear_recovery();
+        assert(false && "expected diagnostic trap");
+    } else {
+        std::string text = rt_trap_get_error();
+        rt_trap_clear_recovery();
+        assert(text.find(message) != std::string::npos);
+    }
 }
 
 // ============================================================================
@@ -217,7 +250,9 @@ int main() {
     test_assert_gte_passing();
     test_assert_lte_passing();
 
+    expect_trap(call_assert_eq_str_embedded_nul_failure, "\\x00");
+    expect_trap(call_assert_fail_invalid_message, "AssertFail called");
+
     printf("\nAll RTDiagTests passed!\n");
-    printf("(Note: Failure cases not tested here as they terminate the process)\n");
     return 0;
 }

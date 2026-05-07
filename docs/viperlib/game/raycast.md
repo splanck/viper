@@ -17,7 +17,7 @@ Zero-length segments are treated as point-in-circle tests. Negative, non-finite,
 invalid radii return false.
 
 ## Example
-```zia
+```rust
 if Raycast.HasLineOfSight(tilemap, enemyX, enemyY, playerX, playerY) {
     // Enemy can see player — chase!
 }

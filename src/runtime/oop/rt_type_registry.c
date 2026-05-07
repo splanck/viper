@@ -41,6 +41,7 @@
 
 #include "rt_atomic_compat.h"
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -86,22 +87,23 @@ static void tr_rwlock_destroy(RtTypeRegistryState *st) {
     st->rw_lock = NULL;
 }
 
-/// @brief Acquire shared (read) lock. No-op if registry is sealed or no lock.
-static void tr_rdlock(RtTypeRegistryState *st) {
+/// @brief Acquire shared (read) lock. Returns non-zero only when a lock was acquired.
+static int tr_rdlock(RtTypeRegistryState *st) {
     if (__atomic_load_n(&st->sealed, __ATOMIC_ACQUIRE))
-        return;
+        return 0;
     if (!st->rw_lock)
-        return;
+        return 0;
 #ifdef _WIN32
     AcquireSRWLockShared((SRWLOCK *)st->rw_lock);
 #elif !defined(__viperdos__)
     pthread_rwlock_rdlock((pthread_rwlock_t *)st->rw_lock);
 #endif
+    return 1;
 }
 
-/// @brief Release shared (read) lock. No-op if registry is sealed or no lock.
-static void tr_rdunlock(RtTypeRegistryState *st) {
-    if (__atomic_load_n(&st->sealed, __ATOMIC_ACQUIRE))
+/// @brief Release a shared read lock that was actually acquired by tr_rdlock().
+static void tr_rdunlock(RtTypeRegistryState *st, int locked) {
+    if (!locked)
         return;
     if (!st->rw_lock)
         return;
@@ -272,36 +274,32 @@ static inline void set_bindings(binding_entry *p) {
 
 /// @brief Grow a dynamic registry array by 2× when capacity is exhausted.
 /// @details Initial capacity is 16; subsequent growth doubles with overflow guards.
-static void ensure_cap(void **buf, size_t *cap, size_t elem_size) {
+/// @return NULL on success, or a static diagnostic string on failure.
+static const char *ensure_cap(void **buf, size_t *cap, size_t elem_size) {
     if (*cap == 0) {
-        *cap = 16;
-        void *tmp = malloc((*cap) * elem_size);
-        if (!tmp) {
-            rt_trap("rt_type_registry: alloc failed");
-            return;
-        }
+        size_t new_cap = 16;
+        if (elem_size != 0 && new_cap > (SIZE_MAX / elem_size))
+            return "rt_type_registry: size overflow";
+        void *tmp = malloc(new_cap * elem_size);
+        if (!tmp)
+            return "rt_type_registry: alloc failed";
         *buf = tmp;
-        return;
+        *cap = new_cap;
+        return NULL;
     }
 
     // Exponential growth with overflow guards
-    if (*cap > (SIZE_MAX / 2)) {
-        rt_trap("rt_type_registry: capacity overflow");
-        return;
-    }
+    if (*cap > (SIZE_MAX / 2))
+        return "rt_type_registry: capacity overflow";
     size_t new_cap = (*cap) * 2;
-    if (elem_size != 0 && new_cap > (SIZE_MAX / elem_size)) {
-        rt_trap("rt_type_registry: size overflow");
-        return;
-    }
+    if (elem_size != 0 && new_cap > (SIZE_MAX / elem_size))
+        return "rt_type_registry: size overflow";
     void *new_buf = realloc(*buf, new_cap * elem_size);
-    if (!new_buf) {
-        // Preserve existing buffer to avoid pointer loss on realloc failure
-        rt_trap("rt_type_registry: realloc failed");
-        return;
-    }
+    if (!new_buf)
+        return "rt_type_registry: realloc failed";
     *buf = new_buf;
     *cap = new_cap;
+    return NULL;
 }
 
 /// @brief Linear search the class array for a class with the given type id.
@@ -349,24 +347,70 @@ static void **find_binding(int type_id, int iface_id) {
     return NULL;
 }
 
+static int tr_cstr_eq(const char *a, const char *b) {
+    if (a == b)
+        return 1;
+    if (!a || !b)
+        return 0;
+    return strcmp(a, b) == 0;
+}
+
+static void tr_free_owned_class_info(const rt_class_info *ci, int owned_ci, int owned_qname) {
+    if (owned_qname && ci && ci->qname)
+        tr_free_owned_cstr(ci->qname);
+    if (owned_ci && ci)
+        free((void *)(uintptr_t)ci);
+}
+
+static int tr_class_entry_matches(const class_entry *entry, const rt_class_info *ci) {
+    if (!entry || !entry->ci || !ci)
+        return 0;
+    int base_type_id = ci->base ? ci->base->type_id : -1;
+    return entry->type_id == ci->type_id && entry->ci->vtable == ci->vtable &&
+           entry->ci->vtable_len == ci->vtable_len && entry->base_type_id == base_type_id &&
+           tr_cstr_eq(entry->ci->qname, ci->qname);
+}
+
 /// @brief Append a class descriptor to the registry's class array (caller holds write lock).
 /// @param owned_ci    Non-zero if the registry should free @p ci on cleanup.
 /// @param owned_qname Non-zero if the registry should free ci->qname on cleanup.
-static void rt_register_class_entry(const rt_class_info *ci, int owned_ci, int owned_qname) {
+static const char *rt_register_class_entry(const rt_class_info *ci, int owned_ci, int owned_qname) {
     if (!ci)
-        return;
+        return NULL;
+    if (ci->type_id < 0) {
+        tr_free_owned_class_info(ci, owned_ci, owned_qname);
+        return "rt_type_registry: class type id must be non-negative";
+    }
+    const class_entry *existing_type = find_class_by_type(ci->type_id);
+    if (existing_type) {
+        int same = tr_class_entry_matches(existing_type, ci);
+        tr_free_owned_class_info(ci, owned_ci, owned_qname);
+        return same ? NULL : "rt_type_registry: duplicate class type id";
+    }
+    if (ci->vtable) {
+        const class_entry *existing_vptr = find_class_by_vptr(ci->vtable);
+        if (existing_vptr) {
+            tr_free_owned_class_info(ci, owned_ci, owned_qname);
+            return "rt_type_registry: duplicate class vtable";
+        }
+    }
     size_t *plen = NULL, *pcap = NULL;
     class_entry *arr = get_classes(&plen, &pcap);
     if (!plen || !pcap)
-        return;
+        return NULL;
     if (*plen == *pcap) {
-        ensure_cap((void **)&arr, pcap, sizeof(class_entry));
+        const char *err = ensure_cap((void **)&arr, pcap, sizeof(class_entry));
         set_classes(arr);
+        if (err) {
+            tr_free_owned_class_info(ci, owned_ci, owned_qname);
+            return err;
+        }
     }
     int base_type_id = -1;
     if (ci->base)
         base_type_id = ci->base->type_id;
     arr[(*plen)++] = (class_entry){ci->type_id, ci, base_type_id, owned_ci, owned_qname};
+    return NULL;
 }
 
 /// @brief Register a class metadata descriptor with the active VM registry.
@@ -385,9 +429,11 @@ void rt_register_class(const rt_class_info *ci) {
         tr_wrlock(st);
     if (tr_reject_if_sealed_locked(st))
         return;
-    rt_register_class_entry(ci, 0, 0);
+    const char *err = rt_register_class_entry(ci, 0, 0);
     if (st)
         tr_wrunlock(st);
+    if (err)
+        rt_trap(err);
 }
 
 /// @brief Register an interface descriptor with the active VM registry.
@@ -395,6 +441,12 @@ void rt_register_class(const rt_class_info *ci) {
 static void rt_register_interface_entry(const rt_iface_reg *iface, int owned_qname) {
     if (!iface)
         return;
+    if (iface->iface_id < 0 || iface->slot_count < 0) {
+        if (owned_qname && iface->qname)
+            tr_free_owned_cstr(iface->qname);
+        rt_trap("rt_type_registry: invalid interface metadata");
+        return;
+    }
     RtTypeRegistryState *st = rt_tr_state();
     if (st && __atomic_load_n(&st->sealed, __ATOMIC_ACQUIRE)) {
         if (owned_qname && iface->qname)
@@ -418,9 +470,29 @@ static void rt_register_interface_entry(const rt_iface_reg *iface, int owned_qna
             tr_free_owned_cstr(iface->qname);
         return;
     }
+    const iface_entry *existing = find_iface(iface->iface_id);
+    if (existing) {
+        int same = existing->reg.slot_count == iface->slot_count &&
+                   tr_cstr_eq(existing->reg.qname, iface->qname);
+        if (st)
+            tr_wrunlock(st);
+        if (owned_qname && iface->qname)
+            tr_free_owned_cstr(iface->qname);
+        if (!same)
+            rt_trap("rt_type_registry: duplicate interface id");
+        return;
+    }
     if (*plen == *pcap) {
-        ensure_cap((void **)&arr, pcap, sizeof(iface_entry));
+        const char *err = ensure_cap((void **)&arr, pcap, sizeof(iface_entry));
         set_ifaces(arr);
+        if (err) {
+            if (st)
+                tr_wrunlock(st);
+            if (owned_qname && iface->qname)
+                tr_free_owned_cstr(iface->qname);
+            rt_trap(err);
+            return;
+        }
     }
     arr[(*plen)++] = (iface_entry){iface->iface_id, *iface, owned_qname};
     if (st)
@@ -453,7 +525,26 @@ void rt_bind_interface(int type_id, int iface_id, void **itable_slots) {
         tr_wrlock(st);
     if (tr_reject_if_sealed_locked(st))
         return;
-    (void)find_iface; // suppress unused if not queried
+    if (!find_class_by_type(type_id)) {
+        if (st)
+            tr_wrunlock(st);
+        rt_trap("rt_type_registry: cannot bind unknown class");
+        return;
+    }
+    if (!find_iface(iface_id)) {
+        if (st)
+            tr_wrunlock(st);
+        rt_trap("rt_type_registry: cannot bind unknown interface");
+        return;
+    }
+    void **existing = find_binding(type_id, iface_id);
+    if (existing) {
+        if (st)
+            tr_wrunlock(st);
+        if (existing != itable_slots)
+            rt_trap("rt_type_registry: duplicate interface binding");
+        return;
+    }
     size_t *plen = NULL, *pcap = NULL;
     binding_entry *arr = get_bindings(&plen, &pcap);
     if (!arr && (!plen || !pcap)) {
@@ -462,8 +553,14 @@ void rt_bind_interface(int type_id, int iface_id, void **itable_slots) {
         return;
     }
     if (*plen == *pcap) {
-        ensure_cap((void **)&arr, pcap, sizeof(binding_entry));
+        const char *err = ensure_cap((void **)&arr, pcap, sizeof(binding_entry));
         set_bindings(arr);
+        if (err) {
+            if (st)
+                tr_wrunlock(st);
+            rt_trap(err);
+            return;
+        }
     }
     arr[(*plen)++] = (binding_entry){type_id, iface_id, itable_slots};
     if (st)
@@ -472,33 +569,35 @@ void rt_bind_interface(int type_id, int iface_id, void **itable_slots) {
 
 /// @brief Return the runtime type id for an object instance.
 /// @param obj Object pointer (may be NULL).
-/// @return Type id when known, -1 otherwise.
+/// @return Type id when known, 0 for NULL, -1 for unknown objects.
 int rt_typeid_of(void *obj) {
     if (!obj)
-        return -1;
+        return 0;
     rt_object *o = (rt_object *)obj;
     if (!o->vptr)
         return -1;
     RtTypeRegistryState *st = rt_tr_state();
+    int locked = 0;
     if (st)
-        tr_rdlock(st);
+        locked = tr_rdlock(st);
     const class_entry *ce = find_class_by_vptr(o->vptr);
     int result = ce ? ce->type_id : -1;
     if (st)
-        tr_rdunlock(st);
+        tr_rdunlock(st, locked);
     return result;
 }
 
 /// @brief Check class inheritance (is-a) by type id.
 /// @return 1 when @p type_id equals or derives from @p test_type_id; 0 otherwise.
 int8_t rt_type_is_a(int type_id, int test_type_id) {
-    if (type_id == test_type_id)
-        return 1;
+    if (type_id < 0 || test_type_id < 0)
+        return 0;
     RtTypeRegistryState *st = rt_tr_state();
+    int locked = 0;
     if (st)
-        tr_rdlock(st);
+        locked = tr_rdlock(st);
     const class_entry *ce = find_class_by_type(type_id);
-    int8_t result = 0;
+    int8_t result = ce && type_id == test_type_id ? 1 : 0;
     while (ce && ce->base_type_id >= 0) {
         if (ce->base_type_id == test_type_id) {
             result = 1;
@@ -507,16 +606,19 @@ int8_t rt_type_is_a(int type_id, int test_type_id) {
         ce = find_class_by_type(ce->base_type_id);
     }
     if (st)
-        tr_rdunlock(st);
+        tr_rdunlock(st, locked);
     return result;
 }
 
 /// @brief Check whether a class implements an interface by id.
 /// @return 1 if implemented by the class or any ancestor; 0 otherwise.
 int8_t rt_type_implements(int type_id, int iface_id) {
+    if (type_id < 0 || iface_id < 0)
+        return 0;
     RtTypeRegistryState *st = rt_tr_state();
+    int locked = 0;
     if (st)
-        tr_rdlock(st);
+        locked = tr_rdlock(st);
 
     int8_t result = 0;
 
@@ -536,22 +638,23 @@ int8_t rt_type_implements(int type_id, int iface_id) {
     }
 
     if (st)
-        tr_rdunlock(st);
+        tr_rdunlock(st, locked);
     return result;
 }
 
 /// @brief Safe-cast an object to an interface by id.
 /// @return @p obj when compatible; NULL otherwise.
 void *rt_cast_as_iface(void *obj, int iface_id) {
-    if (!obj)
+    if (!obj || iface_id < 0)
         return NULL;
     rt_object *o = (rt_object *)obj;
     if (!o->vptr)
         return NULL;
 
     RtTypeRegistryState *st = rt_tr_state();
+    int locked = 0;
     if (st)
-        tr_rdlock(st);
+        locked = tr_rdlock(st);
 
     void *result = NULL;
     const class_entry *ce = find_class_by_vptr(o->vptr);
@@ -572,22 +675,23 @@ void *rt_cast_as_iface(void *obj, int iface_id) {
     }
 
     if (st)
-        tr_rdunlock(st);
+        tr_rdunlock(st, locked);
     return result;
 }
 
 /// @brief Safe-cast an object to a target class by id.
 /// @return @p obj when compatible; NULL otherwise.
 void *rt_cast_as(void *obj, int target_type_id) {
-    if (!obj)
+    if (!obj || target_type_id < 0)
         return NULL;
     rt_object *o = (rt_object *)obj;
     if (!o->vptr)
         return NULL;
 
     RtTypeRegistryState *st = rt_tr_state();
+    int locked = 0;
     if (st)
-        tr_rdlock(st);
+        locked = tr_rdlock(st);
 
     void *result = NULL;
     const class_entry *ce = find_class_by_vptr(o->vptr);
@@ -608,7 +712,7 @@ void *rt_cast_as(void *obj, int target_type_id) {
     }
 
     if (st)
-        tr_rdunlock(st);
+        tr_rdunlock(st, locked);
     return result;
 }
 
@@ -617,15 +721,16 @@ void *rt_cast_as(void *obj, int target_type_id) {
 /// @param iface_id Interface id to search.
 /// @return Pointer to the itable when found; NULL otherwise.
 void **rt_itable_lookup(void *obj, int iface_id) {
-    if (!obj)
+    if (!obj || iface_id < 0)
         return NULL;
     rt_object *o = (rt_object *)obj;
     if (!o->vptr)
         return NULL;
 
     RtTypeRegistryState *st = rt_tr_state();
+    int locked = 0;
     if (st)
-        tr_rdlock(st);
+        locked = tr_rdlock(st);
 
     void **result = NULL;
     const class_entry *ce = find_class_by_vptr(o->vptr);
@@ -644,7 +749,7 @@ void **rt_itable_lookup(void *obj, int iface_id) {
     }
 
     if (st)
-        tr_rdunlock(st);
+        tr_rdunlock(st, locked);
     return result;
 }
 
@@ -658,7 +763,19 @@ void rt_register_interface_direct(int iface_id, const char *qname, int slot_coun
 
 /// @brief Runtime-string bridge for @ref rt_register_interface_direct.
 void rt_register_interface_direct_rs(int64_t iface_id, rt_string qname, int64_t slot_count) {
+    if (iface_id < 0 || iface_id > INT_MAX || slot_count < 0 || slot_count > INT_MAX) {
+        rt_trap("rt_type_registry: interface metadata out of range");
+        return;
+    }
+    if (qname && !rt_string_is_handle((const void *)qname)) {
+        rt_trap("rt_type_registry: invalid interface name string");
+        return;
+    }
     const char *name = qname ? strdup(rt_string_cstr(qname)) : NULL;
+    if (qname && !name) {
+        rt_trap("rt_type_registry: interface name alloc failed");
+        return;
+    }
     rt_iface_reg r = {(int)iface_id, name, (int)slot_count};
     rt_register_interface_entry(&r, 1);
 }
@@ -669,12 +786,13 @@ const rt_class_info *rt_get_class_info_from_vptr(void **vptr) {
     if (!vptr)
         return NULL;
     RtTypeRegistryState *st = rt_tr_state();
+    int locked = 0;
     if (st)
-        tr_rdlock(st);
+        locked = tr_rdlock(st);
     const class_entry *ce = find_class_by_vptr(vptr);
     const rt_class_info *result = ce ? ce->ci : NULL;
     if (st)
-        tr_rdunlock(st);
+        tr_rdunlock(st, locked);
     return result;
 }
 
@@ -691,6 +809,12 @@ static void rt_register_class_with_base_impl(
             tr_free_owned_cstr(qname);
         return;
     }
+    if (type_id < 0 || vslot_count < 0 || base_type_id < -1) {
+        if (owned_qname && qname)
+            tr_free_owned_cstr(qname);
+        rt_trap("rt_type_registry: invalid class metadata");
+        return;
+    }
     RtTypeRegistryState *st = rt_tr_state();
     if (st && __atomic_load_n(&st->sealed, __ATOMIC_ACQUIRE)) {
         if (owned_qname && qname)
@@ -705,6 +829,19 @@ static void rt_register_class_with_base_impl(
         if (owned_qname && qname)
             tr_free_owned_cstr(qname);
         return;
+    }
+
+    const class_entry *base_entry = NULL;
+    if (base_type_id >= 0) {
+        base_entry = find_class_by_type(base_type_id);
+        if (!base_entry || !base_entry->ci) {
+            if (st)
+                tr_wrunlock(st);
+            if (owned_qname && qname)
+                tr_free_owned_cstr(qname);
+            rt_trap("rt_type_registry: base class is not registered");
+            return;
+        }
     }
 
     rt_class_info *ci = (rt_class_info *)malloc(sizeof(rt_class_info));
@@ -724,16 +861,15 @@ static void rt_register_class_with_base_impl(
     // Wire base class pointer by looking up base_type_id in the registry.
     // The base class must be registered before derived classes for this to work.
     ci->base = NULL;
-    if (base_type_id >= 0) {
-        const class_entry *base_entry = find_class_by_type(base_type_id);
-        if (base_entry && base_entry->ci)
-            ci->base = base_entry->ci;
-    }
+    if (base_entry)
+        ci->base = base_entry->ci;
 
-    rt_register_class_entry(ci, 1, owned_qname);
+    const char *err = rt_register_class_entry(ci, 1, owned_qname);
 
     if (st)
         tr_wrunlock(st);
+    if (err)
+        rt_trap(err);
 }
 
 /// @brief Register a class with explicit base-class wiring. `base_type_id == -1` for root
@@ -753,13 +889,16 @@ void rt_register_class_direct(int type_id, void **vtable, const char *qname, int
 /// @brief Fetch the vtable pointer array for a registered class id.
 /// @return Vtable pointer array or NULL when unknown.
 void **rt_get_class_vtable(int type_id) {
+    if (type_id < 0)
+        return NULL;
     RtTypeRegistryState *st = rt_tr_state();
+    int locked = 0;
     if (st)
-        tr_rdlock(st);
+        locked = tr_rdlock(st);
     const class_entry *ce = find_class_by_type(type_id);
     void **result = (ce && ce->ci) ? ce->ci->vtable : NULL;
     if (st)
-        tr_rdunlock(st);
+        tr_rdunlock(st, locked);
     return result;
 }
 
@@ -767,7 +906,19 @@ void **rt_get_class_vtable(int type_id) {
 /// @brief Runtime-string bridge for @ref rt_register_class_direct.
 void rt_register_class_direct_rs(int type_id, void **vtable, rt_string qname, int64_t vslot_count) {
     // strdup the name to avoid dangling pointer if the rt_string is freed
+    if (vslot_count < 0 || vslot_count > INT_MAX) {
+        rt_trap("rt_type_registry: class metadata out of range");
+        return;
+    }
+    if (qname && !rt_string_is_handle((const void *)qname)) {
+        rt_trap("rt_type_registry: invalid class name string");
+        return;
+    }
     const char *name = qname ? strdup(rt_string_cstr(qname)) : NULL;
+    if (qname && !name) {
+        rt_trap("rt_type_registry: class name alloc failed");
+        return;
+    }
     rt_register_class_with_base_impl(type_id, vtable, name, (int)vslot_count, -1, 1);
 }
 
@@ -776,7 +927,20 @@ void rt_register_class_direct_rs(int type_id, void **vtable, rt_string qname, in
 void rt_register_class_with_base_rs(
     int type_id, void **vtable, rt_string qname, int64_t vslot_count, int64_t base_type_id) {
     // strdup the name to avoid dangling pointer if the rt_string is freed
+    if (vslot_count < 0 || vslot_count > INT_MAX || base_type_id < -1 ||
+        base_type_id > INT_MAX) {
+        rt_trap("rt_type_registry: class metadata out of range");
+        return;
+    }
+    if (qname && !rt_string_is_handle((const void *)qname)) {
+        rt_trap("rt_type_registry: invalid class name string");
+        return;
+    }
     const char *name = qname ? strdup(rt_string_cstr(qname)) : NULL;
+    if (qname && !name) {
+        rt_trap("rt_type_registry: class name alloc failed");
+        return;
+    }
     rt_register_class_with_base_impl(type_id, vtable, name, (int)vslot_count, (int)base_type_id, 1);
 }
 
@@ -797,8 +961,9 @@ void **rt_get_interface_impl(int64_t type_id, int64_t iface_id) {
     int iid = (int)iface_id;
 
     RtTypeRegistryState *st = rt_tr_state();
+    int locked = 0;
     if (st)
-        tr_rdlock(st);
+        locked = tr_rdlock(st);
 
     void **result = find_binding(tid, iid);
     if (!result) {
@@ -812,7 +977,7 @@ void **rt_get_interface_impl(int64_t type_id, int64_t iface_id) {
     }
 
     if (st)
-        tr_rdunlock(st);
+        tr_rdunlock(st, locked);
     return result;
 }
 
@@ -871,8 +1036,6 @@ void rt_type_registry_cleanup(RtContext *ctx) {
     if (!ctx)
         return;
 
-    tr_rwlock_destroy(&ctx->type_registry);
-
     class_entry *classes = (class_entry *)ctx->type_registry.classes;
     size_t len = ctx->type_registry.classes_len;
     if (classes) {
@@ -912,6 +1075,7 @@ void rt_type_registry_cleanup(RtContext *ctx) {
     ctx->type_registry.bindings = NULL;
     ctx->type_registry.bindings_len = 0;
     ctx->type_registry.bindings_cap = 0;
+    tr_rwlock_destroy(&ctx->type_registry);
     ctx->type_registry.rw_lock = NULL;
     ctx->type_registry.sealed = 0;
 }
