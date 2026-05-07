@@ -75,9 +75,11 @@ static wchar_t *asset_win_join_wide(const wchar_t *dir, const wchar_t *leaf) {
 }
 #else
 #include <dirent.h>
+#include <fcntl.h>
 #include <pthread.h>
 #include <strings.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #endif
 
 // ─── External declarations ──────────────────────────────────────────────────
@@ -128,15 +130,6 @@ static int asset_path_equal(const char *a, const char *b) {
 #else
     return strcmp(a, b) == 0;
 #endif
-}
-
-/// @brief Return a pointer into `path` to the final filename component (after the last separator).
-static const char *asset_basename(const char *path) {
-    const char *name = strrchr(path, '/');
-    const char *back = strrchr(path, '\\');
-    if (!name || (back && back > name))
-        name = back;
-    return name ? name + 1 : path;
 }
 
 // ─── Weak default for embedded asset blob ───────────────────────────────────
@@ -223,6 +216,57 @@ static const char *asset_name_cstr(rt_string name) {
     return (const char *)data;
 }
 
+static int asset_is_separator(char ch) {
+    return ch == '/' || ch == '\\';
+}
+
+static int asset_path_has_separator(const char *path) {
+    if (!path)
+        return 0;
+    for (const char *p = path; *p; ++p) {
+        if (asset_is_separator(*p))
+            return 1;
+    }
+    return 0;
+}
+
+static const char *asset_path_basename(const char *path) {
+    if (!path)
+        return "";
+    const char *base = path;
+    for (const char *p = path; *p; ++p) {
+        if (asset_is_separator(*p))
+            base = p + 1;
+    }
+    return base;
+}
+
+static int asset_name_is_safe(const char *name) {
+    if (!name || name[0] == '\0')
+        return 0;
+    if (asset_is_separator(name[0]))
+        return 0;
+    if (name[0] && name[1] == ':')
+        return 0;
+
+    const char *segment = name;
+    for (const char *p = name;; ++p) {
+        if (*p == ':')
+            return 0;
+        if (*p == '\0' || asset_is_separator(*p)) {
+            size_t len = (size_t)(p - segment);
+            if (len == 0 || (len == 1 && segment[0] == '.') ||
+                (len == 2 && segment[0] == '.' && segment[1] == '.')) {
+                return 0;
+            }
+            if (*p == '\0')
+                break;
+            segment = p + 1;
+        }
+    }
+    return 1;
+}
+
 #ifdef _WIN32
 /// @brief Open a file at a UTF-8 path in binary-read mode (Windows wide-string path).
 static FILE *asset_fopen_utf8(const char *path) {
@@ -265,7 +309,25 @@ static int asset_regular_file_size(const char *path, uint64_t *out_size) {
 #else
 /// @brief Open a file at a UTF-8 path in binary-read mode (POSIX).
 static FILE *asset_fopen_utf8(const char *path) {
-    return fopen(path, "rb");
+    int flags = O_RDONLY;
+#ifdef O_CLOEXEC
+    flags |= O_CLOEXEC;
+#endif
+#ifdef O_NOFOLLOW
+    flags |= O_NOFOLLOW;
+#endif
+    int fd = open(path, flags);
+    if (fd < 0)
+        return NULL;
+#if defined(FD_CLOEXEC) && !defined(O_CLOEXEC)
+    int fd_flags = fcntl(fd, F_GETFD);
+    if (fd_flags >= 0)
+        (void)fcntl(fd, F_SETFD, fd_flags | FD_CLOEXEC);
+#endif
+    FILE *fp = fdopen(fd, "rb");
+    if (!fp)
+        close(fd);
+    return fp;
 }
 
 /// @brief Stat a regular file at a UTF-8 path and return its size (POSIX).
@@ -280,7 +342,7 @@ static int asset_regular_file_size(const char *path, uint64_t *out_size) {
     if (out_size)
         *out_size = 0;
     struct stat st;
-    if (stat(path, &st) != 0 || !S_ISREG(st.st_mode))
+    if (lstat(path, &st) != 0 || !S_ISREG(st.st_mode))
         return 0;
     if (st.st_size < 0)
         return 0;
@@ -510,7 +572,7 @@ void *rt_asset_load(rt_string name) {
     ensure_init();
 
     const char *cname = asset_name_cstr(name);
-    if (!cname || *cname == '\0')
+    if (!asset_name_is_safe(cname))
         return NULL;
     size_t data_size = 0;
     asset_lock();
@@ -541,7 +603,7 @@ void *rt_asset_load_bytes(rt_string name) {
     ensure_init();
 
     const char *cname = asset_name_cstr(name);
-    if (!cname || *cname == '\0')
+    if (!asset_name_is_safe(cname))
         return NULL;
     size_t data_size = 0;
     asset_lock();
@@ -564,7 +626,7 @@ int64_t rt_asset_exists(rt_string name) {
     ensure_init();
 
     const char *cname = asset_name_cstr(name);
-    if (!cname || *cname == '\0')
+    if (!asset_name_is_safe(cname))
         return 0;
 
     asset_lock();
@@ -601,7 +663,7 @@ int64_t rt_asset_size(rt_string name) {
     ensure_init();
 
     const char *cname = asset_name_cstr(name);
-    if (!cname || *cname == '\0')
+    if (!asset_name_is_safe(cname))
         return -1;
 
     asset_lock();
@@ -700,6 +762,14 @@ int64_t rt_asset_mount(rt_string path) {
         vpa_close(archive);
         return 0;
     }
+    for (int i = 0; i < g_asset_mgr.pack_count; ++i) {
+        if (g_asset_mgr.pack_paths[i] && asset_path_equal(g_asset_mgr.pack_paths[i], path_copy)) {
+            asset_unlock();
+            free(path_copy);
+            vpa_close(archive);
+            return 1;
+        }
+    }
     g_asset_mgr.packs[g_asset_mgr.pack_count] = archive;
     g_asset_mgr.pack_paths[g_asset_mgr.pack_count] = path_copy;
     g_asset_mgr.pack_count++;
@@ -730,12 +800,11 @@ int64_t rt_asset_unmount(rt_string path) {
             break;
         }
     }
-    if (match < 0) {
-        const char *search_name = asset_basename(search_path);
+    if (match < 0 && !asset_path_has_separator(cpath)) {
         int basename_matches = 0;
         for (int i = g_asset_mgr.pack_count - 1; i >= 0; --i) {
             if (g_asset_mgr.pack_paths[i] &&
-                asset_path_equal(asset_basename(g_asset_mgr.pack_paths[i]), search_name)) {
+                asset_path_equal(asset_path_basename(g_asset_mgr.pack_paths[i]), cpath)) {
                 match = i;
                 basename_matches++;
             }

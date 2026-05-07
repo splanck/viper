@@ -132,6 +132,26 @@ static void binbuf_check_read(rt_binbuf_impl *buf, int64_t count) {
         rt_trap("BinaryBuffer: read past end");
 }
 
+static void binbuf_require_i16(int64_t value) {
+    if (value < INT16_MIN || value > INT16_MAX)
+        rt_trap("BinaryBuffer: i16 value out of range");
+}
+
+static void binbuf_require_u16(int64_t value) {
+    if (value < 0 || value > UINT16_MAX)
+        rt_trap("BinaryBuffer: u16 value out of range");
+}
+
+static void binbuf_require_i32(int64_t value) {
+    if (value < INT32_MIN || value > INT32_MAX)
+        rt_trap("BinaryBuffer: i32 value out of range");
+}
+
+static void binbuf_require_u32(int64_t value) {
+    if (value < 0 || value > UINT32_MAX)
+        rt_trap("BinaryBuffer: u32 value out of range");
+}
+
 //=============================================================================
 // Constructors
 //=============================================================================
@@ -221,6 +241,7 @@ void rt_binbuf_write_byte(void *obj, int64_t value) {
 /// @brief Append a 16-bit signed integer in little-endian byte order.
 void rt_binbuf_write_i16le(void *obj, int64_t value) {
     rt_binbuf_impl *buf = binbuf_require(obj);
+    binbuf_require_i16(value);
     uint16_t raw = (uint16_t)value;
     binbuf_ensure(buf, 2);
     buf->data[buf->position] = (uint8_t)(raw & 0xFF);
@@ -231,6 +252,29 @@ void rt_binbuf_write_i16le(void *obj, int64_t value) {
 /// @brief Append a 16-bit signed integer in big-endian byte order.
 void rt_binbuf_write_i16be(void *obj, int64_t value) {
     rt_binbuf_impl *buf = binbuf_require(obj);
+    binbuf_require_i16(value);
+    uint16_t raw = (uint16_t)value;
+    binbuf_ensure(buf, 2);
+    buf->data[buf->position] = (uint8_t)((raw >> 8) & 0xFF);
+    buf->data[buf->position + 1] = (uint8_t)(raw & 0xFF);
+    binbuf_advance_write(buf, 2);
+}
+
+/// @brief Append a 16-bit unsigned integer in little-endian byte order.
+void rt_binbuf_write_u16le(void *obj, int64_t value) {
+    rt_binbuf_impl *buf = binbuf_require(obj);
+    binbuf_require_u16(value);
+    uint16_t raw = (uint16_t)value;
+    binbuf_ensure(buf, 2);
+    buf->data[buf->position] = (uint8_t)(raw & 0xFF);
+    buf->data[buf->position + 1] = (uint8_t)((raw >> 8) & 0xFF);
+    binbuf_advance_write(buf, 2);
+}
+
+/// @brief Append a 16-bit unsigned integer in big-endian byte order.
+void rt_binbuf_write_u16be(void *obj, int64_t value) {
+    rt_binbuf_impl *buf = binbuf_require(obj);
+    binbuf_require_u16(value);
     uint16_t raw = (uint16_t)value;
     binbuf_ensure(buf, 2);
     buf->data[buf->position] = (uint8_t)((raw >> 8) & 0xFF);
@@ -241,6 +285,7 @@ void rt_binbuf_write_i16be(void *obj, int64_t value) {
 /// @brief Append a 32-bit signed integer in little-endian byte order.
 void rt_binbuf_write_i32le(void *obj, int64_t value) {
     rt_binbuf_impl *buf = binbuf_require(obj);
+    binbuf_require_i32(value);
     uint32_t raw = (uint32_t)value;
     binbuf_ensure(buf, 4);
     buf->data[buf->position] = (uint8_t)(raw & 0xFF);
@@ -253,6 +298,33 @@ void rt_binbuf_write_i32le(void *obj, int64_t value) {
 /// @brief Append a 32-bit signed integer in big-endian byte order.
 void rt_binbuf_write_i32be(void *obj, int64_t value) {
     rt_binbuf_impl *buf = binbuf_require(obj);
+    binbuf_require_i32(value);
+    uint32_t raw = (uint32_t)value;
+    binbuf_ensure(buf, 4);
+    buf->data[buf->position] = (uint8_t)((raw >> 24) & 0xFF);
+    buf->data[buf->position + 1] = (uint8_t)((raw >> 16) & 0xFF);
+    buf->data[buf->position + 2] = (uint8_t)((raw >> 8) & 0xFF);
+    buf->data[buf->position + 3] = (uint8_t)(raw & 0xFF);
+    binbuf_advance_write(buf, 4);
+}
+
+/// @brief Append a 32-bit unsigned integer in little-endian byte order.
+void rt_binbuf_write_u32le(void *obj, int64_t value) {
+    rt_binbuf_impl *buf = binbuf_require(obj);
+    binbuf_require_u32(value);
+    uint32_t raw = (uint32_t)value;
+    binbuf_ensure(buf, 4);
+    buf->data[buf->position] = (uint8_t)(raw & 0xFF);
+    buf->data[buf->position + 1] = (uint8_t)((raw >> 8) & 0xFF);
+    buf->data[buf->position + 2] = (uint8_t)((raw >> 16) & 0xFF);
+    buf->data[buf->position + 3] = (uint8_t)((raw >> 24) & 0xFF);
+    binbuf_advance_write(buf, 4);
+}
+
+/// @brief Append a 32-bit unsigned integer in big-endian byte order.
+void rt_binbuf_write_u32be(void *obj, int64_t value) {
+    rt_binbuf_impl *buf = binbuf_require(obj);
+    binbuf_require_u32(value);
     uint32_t raw = (uint32_t)value;
     binbuf_ensure(buf, 4);
     buf->data[buf->position] = (uint8_t)((raw >> 24) & 0xFF);
@@ -384,6 +456,26 @@ int64_t rt_binbuf_read_i16be(void *obj) {
     return val;
 }
 
+/// @brief Read a 16-bit unsigned integer in little-endian byte order.
+int64_t rt_binbuf_read_u16le(void *obj) {
+    rt_binbuf_impl *buf = binbuf_require(obj);
+    binbuf_check_read(buf, 2);
+    int64_t pos = buf->position;
+    uint16_t raw = (uint16_t)buf->data[pos] | ((uint16_t)buf->data[pos + 1] << 8);
+    buf->position += 2;
+    return (int64_t)raw;
+}
+
+/// @brief Read a 16-bit unsigned integer in big-endian byte order.
+int64_t rt_binbuf_read_u16be(void *obj) {
+    rt_binbuf_impl *buf = binbuf_require(obj);
+    binbuf_check_read(buf, 2);
+    int64_t pos = buf->position;
+    uint16_t raw = ((uint16_t)buf->data[pos] << 8) | (uint16_t)buf->data[pos + 1];
+    buf->position += 2;
+    return (int64_t)raw;
+}
+
 /// @brief Read a 32-bit signed integer in little-endian byte order.
 int64_t rt_binbuf_read_i32le(void *obj) {
     rt_binbuf_impl *buf = binbuf_require(obj);
@@ -406,6 +498,28 @@ int64_t rt_binbuf_read_i32be(void *obj) {
     int64_t val = (int64_t)(int32_t)raw;
     buf->position += 4;
     return val;
+}
+
+/// @brief Read a 32-bit unsigned integer in little-endian byte order.
+int64_t rt_binbuf_read_u32le(void *obj) {
+    rt_binbuf_impl *buf = binbuf_require(obj);
+    binbuf_check_read(buf, 4);
+    int64_t pos = buf->position;
+    uint32_t raw = (uint32_t)buf->data[pos] | ((uint32_t)buf->data[pos + 1] << 8) |
+                   ((uint32_t)buf->data[pos + 2] << 16) | ((uint32_t)buf->data[pos + 3] << 24);
+    buf->position += 4;
+    return (int64_t)raw;
+}
+
+/// @brief Read a 32-bit unsigned integer in big-endian byte order.
+int64_t rt_binbuf_read_u32be(void *obj) {
+    rt_binbuf_impl *buf = binbuf_require(obj);
+    binbuf_check_read(buf, 4);
+    int64_t pos = buf->position;
+    uint32_t raw = ((uint32_t)buf->data[pos] << 24) | ((uint32_t)buf->data[pos + 1] << 16) |
+                   ((uint32_t)buf->data[pos + 2] << 8) | (uint32_t)buf->data[pos + 3];
+    buf->position += 4;
+    return (int64_t)raw;
 }
 
 /// @brief Read a 64-bit signed integer in little-endian byte order.

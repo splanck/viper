@@ -45,12 +45,19 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#ifdef _WIN32
+#ifndef _CRT_RAND_S
+#define _CRT_RAND_S
+#endif
+#endif
+
 #include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #ifdef _WIN32
 #include <io.h>
@@ -202,6 +209,21 @@ static void archive_write_exact_win(HANDLE h, const uint8_t *src, size_t total, 
     }
 }
 #else
+static int archive_open_posix(const char *path, int flags, mode_t mode) {
+#ifdef O_CLOEXEC
+    flags |= O_CLOEXEC;
+#endif
+    int fd = open(path, flags, mode);
+#if defined(FD_CLOEXEC) && !defined(O_CLOEXEC)
+    if (fd >= 0) {
+        int fd_flags = fcntl(fd, F_GETFD);
+        if (fd_flags >= 0)
+            (void)fcntl(fd, F_SETFD, fd_flags | FD_CLOEXEC);
+    }
+#endif
+    return fd;
+}
+
 /// @brief Read exactly `total` bytes from a POSIX fd or trap.
 ///
 /// Loops over `read(2)` retrying EINTR. A zero return is treated as
@@ -243,13 +265,40 @@ static void archive_write_exact_posix(int fd, const uint8_t *src, size_t total, 
 }
 #endif
 
+static uint64_t archive_random_u64(unsigned attempt) {
+    uint64_t value = 0;
+#ifdef _WIN32
+    value = (uint64_t)GetCurrentProcessId() ^ ((uint64_t)GetTickCount64() << 16) ^
+            ((uint64_t)attempt << 48);
+    unsigned int rand_value = 0;
+    if (rand_s(&rand_value) == 0)
+        value ^= ((uint64_t)rand_value << 32) | rand_value;
+#else
+    int fd = archive_open_posix("/dev/urandom", O_RDONLY, 0);
+    if (fd >= 0) {
+        size_t got = 0;
+        while (got < sizeof(value)) {
+            ssize_t n = read(fd, ((uint8_t *)&value) + got, sizeof(value) - got);
+            if (n < 0 && errno == EINTR)
+                continue;
+            if (n <= 0)
+                break;
+            got += (size_t)n;
+        }
+        close(fd);
+    }
+    if (value == 0)
+        value = (uint64_t)getpid() ^ ((uint64_t)time(NULL) << 32) ^ ((uint64_t)attempt << 48);
+#endif
+    return value;
+}
+
 /// @brief Build a unique temporary file path adjacent to `path`.
 ///
 /// Constructs a sidecar name in the same directory as `path` using the
-/// current process ID, the `path` pointer address, and `attempt` as
-/// entropy. The caller must `free()` the returned string. Returns NULL
-/// on allocation failure or if `snprintf` overflows the 96-byte suffix
-/// buffer (which cannot happen in practice given pid + pointer width).
+/// current process ID, random entropy, and `attempt` as collision guard.
+/// The caller must `free()` the returned string. Returns NULL on allocation
+/// failure or path length overflow.
 ///
 /// @param path    Base path whose parent directory receives the temp file.
 /// @param attempt Iteration counter to differentiate multiple tries.
@@ -266,7 +315,13 @@ static char *archive_make_temp_path(const char *path, unsigned attempt) {
             parent_len = i + 1;
     }
 
-    char *tmp = (char *)malloc(parent_len + 96);
+    char nonce[17];
+    snprintf(nonce, sizeof(nonce), "%016llx", (unsigned long long)archive_random_u64(attempt));
+    size_t nonce_len = strlen(nonce);
+    if (parent_len > SIZE_MAX - nonce_len - 64)
+        return NULL;
+    size_t cap = parent_len + nonce_len + 64;
+    char *tmp = (char *)malloc(cap);
     if (!tmp)
         return NULL;
     if (parent_len > 0)
@@ -277,12 +332,12 @@ static char *archive_make_temp_path(const char *path, unsigned attempt) {
     unsigned long pid = (unsigned long)getpid();
 #endif
     int written = snprintf(tmp + parent_len,
-                           96,
-                           ".viper-archive-tmp.%lu.%p.%u",
+                           cap - parent_len,
+                           ".viper-archive-tmp.%lu.%s.%u",
                            pid,
-                           (const void *)path,
+                           nonce,
                            attempt);
-    if (written < 0 || written >= 96) {
+    if (written < 0 || (size_t)written >= cap - parent_len) {
         free(tmp);
         return NULL;
     }
@@ -369,7 +424,7 @@ static int archive_sync_parent_dir(const char *path) {
 #ifdef O_DIRECTORY
     flags |= O_DIRECTORY;
 #endif
-    int fd = open(parent, flags);
+    int fd = archive_open_posix(parent, flags, 0);
     free(owned);
     if (fd < 0)
         return 0;
@@ -442,7 +497,7 @@ static void archive_write_file_all_utf8(const char *cpath, const uint8_t *src, s
 #ifdef O_NOFOLLOW
         flags |= O_NOFOLLOW;
 #endif
-        fd = open(tmp, flags, 0644);
+        fd = archive_open_posix(tmp, flags, 0644);
         if (fd >= 0)
             break;
         int err = errno;
@@ -489,6 +544,199 @@ static void archive_write_bytes_to_path(const char *cpath, void *data) {
     size_t total = (size_t)bytes_len(data);
     archive_write_file_all_utf8(cpath, src, total, "Archive: failed to write destination file");
 }
+
+#if !defined(_WIN32) && !defined(__viperdos__)
+static int archive_openat_posix(int parent_fd, const char *name, int flags, mode_t mode) {
+#ifdef O_CLOEXEC
+    flags |= O_CLOEXEC;
+#endif
+    int fd = openat(parent_fd, name, flags, mode);
+#if defined(FD_CLOEXEC) && !defined(O_CLOEXEC)
+    if (fd >= 0) {
+        int fd_flags = fcntl(fd, F_GETFD);
+        if (fd_flags >= 0)
+            (void)fcntl(fd, F_SETFD, fd_flags | FD_CLOEXEC);
+    }
+#endif
+    return fd;
+}
+
+static int archive_dup_fd_posix(int fd) {
+    int dup_fd = -1;
+#ifdef F_DUPFD_CLOEXEC
+    dup_fd = fcntl(fd, F_DUPFD_CLOEXEC, 3);
+    if (dup_fd >= 0)
+        return dup_fd;
+#endif
+    dup_fd = dup(fd);
+#ifdef FD_CLOEXEC
+    if (dup_fd >= 0) {
+        int flags = fcntl(dup_fd, F_GETFD);
+        if (flags >= 0)
+            (void)fcntl(dup_fd, F_SETFD, flags | FD_CLOEXEC);
+    }
+#endif
+    return dup_fd;
+}
+
+static int archive_open_child_dir_posix(int parent_fd, const char *name, int create) {
+    if (!name || *name == '\0')
+        rt_trap("Archive: invalid directory entry");
+    if (create && mkdirat(parent_fd, name, 0755) != 0 && errno != EEXIST)
+        rt_trap("Archive: failed to create directory");
+
+    struct stat st;
+    if (fstatat(parent_fd, name, &st, AT_SYMLINK_NOFOLLOW) != 0 || !S_ISDIR(st.st_mode))
+        rt_trap("Archive: refusing to extract through symlink");
+
+    int flags = O_RDONLY;
+#ifdef O_DIRECTORY
+    flags |= O_DIRECTORY;
+#endif
+#ifdef O_NOFOLLOW
+    flags |= O_NOFOLLOW;
+#endif
+    int fd = archive_openat_posix(parent_fd, name, flags, 0);
+    if (fd < 0)
+        rt_trap("Archive: failed to open destination directory");
+    if (fstat(fd, &st) != 0 || !S_ISDIR(st.st_mode)) {
+        close(fd);
+        rt_trap("Archive: destination component is not a directory");
+    }
+    return fd;
+}
+
+static int archive_open_dir_path_posix(int root_fd, const char *path, int create) {
+    int current = archive_dup_fd_posix(root_fd);
+    if (current < 0)
+        rt_trap("Archive: failed to open destination directory");
+    if (!path || *path == '\0')
+        return current;
+
+    char *copy = strdup(path);
+    if (!copy) {
+        close(current);
+        rt_trap("Archive: memory allocation failed");
+    }
+    size_t len = strlen(copy);
+    while (len > 0 && copy[len - 1] == '/')
+        copy[--len] = '\0';
+
+    char *segment = copy;
+    while (*segment) {
+        char *slash = strchr(segment, '/');
+        if (slash)
+            *slash = '\0';
+        int next = archive_open_child_dir_posix(current, segment, create);
+        close(current);
+        current = next;
+        if (!slash)
+            break;
+        segment = slash + 1;
+    }
+
+    free(copy);
+    return current;
+}
+
+static void archive_make_dirs_posix_at(int root_fd, const char *path) {
+    int fd = archive_open_dir_path_posix(root_fd, path, 1);
+    close(fd);
+}
+
+static int archive_open_parent_for_file_posix(int root_fd, const char *name, char **out_leaf) {
+    if (out_leaf)
+        *out_leaf = NULL;
+    char *copy = strdup(name);
+    if (!copy)
+        rt_trap("Archive: memory allocation failed");
+    char *last = strrchr(copy, '/');
+    char *leaf_src = copy;
+    int parent_fd = -1;
+    if (last) {
+        *last = '\0';
+        leaf_src = last + 1;
+        parent_fd = archive_open_dir_path_posix(root_fd, copy, 1);
+    } else {
+        parent_fd = archive_dup_fd_posix(root_fd);
+    }
+    if (parent_fd < 0) {
+        free(copy);
+        rt_trap("Archive: failed to open destination directory");
+    }
+    if (!leaf_src || *leaf_src == '\0') {
+        close(parent_fd);
+        free(copy);
+        rt_trap("Archive: invalid file entry");
+    }
+    char *leaf = strdup(leaf_src);
+    free(copy);
+    if (!leaf) {
+        close(parent_fd);
+        rt_trap("Archive: memory allocation failed");
+    }
+    *out_leaf = leaf;
+    return parent_fd;
+}
+
+static void archive_write_bytes_to_dirfd_posix(int parent_fd, const char *leaf, void *data) {
+    const uint8_t *src = bytes_data(data);
+    size_t total = (size_t)bytes_len(data);
+    char tmp_name[128];
+    int fd = -1;
+    for (unsigned attempt = 0; attempt < 128; ++attempt) {
+        snprintf(tmp_name,
+                 sizeof(tmp_name),
+                 ".viper-archive-extract-tmp.%lu.%016llx.%u",
+                 (unsigned long)getpid(),
+                 (unsigned long long)archive_random_u64(attempt),
+                 attempt);
+        int flags = O_WRONLY | O_CREAT | O_EXCL;
+#ifdef O_NOFOLLOW
+        flags |= O_NOFOLLOW;
+#endif
+        fd = archive_openat_posix(parent_fd, tmp_name, flags, 0644);
+        if (fd >= 0)
+            break;
+        if (errno != EEXIST)
+            rt_trap("Archive: failed to write destination file");
+    }
+    if (fd < 0)
+        rt_trap("Archive: failed to write destination file");
+
+    archive_write_exact_posix(fd, src, total, "Archive: failed to write destination file");
+    int ok = fsync(fd) == 0 ? 1 : 0;
+    if (close(fd) != 0)
+        ok = 0;
+    if (ok && renameat(parent_fd, tmp_name, parent_fd, leaf) != 0)
+        ok = 0;
+    if (ok && fsync(parent_fd) != 0)
+        ok = 0;
+    if (!ok) {
+        (void)unlinkat(parent_fd, tmp_name, 0);
+        rt_trap("Archive: failed to write destination file");
+    }
+}
+
+static int archive_open_root_dir_posix(const char *cdir) {
+    int flags = O_RDONLY;
+#ifdef O_DIRECTORY
+    flags |= O_DIRECTORY;
+#endif
+#ifdef O_NOFOLLOW
+    flags |= O_NOFOLLOW;
+#endif
+    int fd = archive_open_posix(cdir, flags, 0);
+    if (fd < 0)
+        rt_trap("Archive: failed to open destination directory");
+    struct stat st;
+    if (fstat(fd, &st) != 0 || !S_ISDIR(st.st_mode)) {
+        close(fd);
+        rt_trap("Archive: destination is not a directory");
+    }
+    return fd;
+}
+#endif
 
 /// @brief Return 1 if `c` is a path separator (`/` or `\`), 0 otherwise.
 static int archive_is_sep(char c) {
@@ -1018,7 +1266,7 @@ static void *read_entry_data(rt_archive_t *ar, zip_entry_t *e) {
         memcpy(bytes_data(comp_bytes), compressed, e->compressed_size);
 
         // Inflate
-        void *result = rt_compress_inflate(comp_bytes);
+        void *result = rt_compress_inflate_limit(comp_bytes, (int64_t)e->uncompressed_size);
         archive_release_temp_object(comp_bytes);
         if (!result)
             rt_trap("Archive: failed to inflate entry");
@@ -1347,7 +1595,7 @@ void *rt_archive_open(rt_string path) {
     archive_read_exact_win(h, data, data_len, "Archive: failed to read file");
     CloseHandle(h);
 #else
-    int fd = open(cpath, O_RDONLY);
+    int fd = archive_open_posix(cpath, O_RDONLY, 0);
     if (fd < 0) {
         rt_trap("Archive: file not found");
         return NULL;
@@ -1441,7 +1689,7 @@ void *rt_archive_create(rt_string path) {
             rt_trap("Archive: memory allocation failed");
             return NULL;
         }
-        fd = open(probe_tmp, O_WRONLY | O_CREAT | O_EXCL, 0644);
+        fd = archive_open_posix(probe_tmp, O_WRONLY | O_CREAT | O_EXCL, 0644);
         if (fd >= 0)
             break;
         int err = errno;
@@ -1724,6 +1972,36 @@ void rt_archive_extract_all(void *obj, rt_string dest_dir) {
     rt_dir_make_all(dest_dir);
     archive_reject_symlink_components(cdir, root_len, 1);
 
+#if !defined(_WIN32) && !defined(__viperdos__)
+    int root_fd = archive_open_root_dir_posix(cdir);
+    archive_reject_symlink_components(cdir, root_len, 1);
+
+    for (int i = 0; i < ar->entry_count; i++) {
+        zip_entry_t *e = &ar->entries[i];
+        char *norm_name = NULL;
+        name_result_t norm_res = normalize_name(e->name, &norm_name);
+        if (norm_res == NAME_INVALID)
+            rt_trap("Archive: invalid entry name");
+        if (norm_res == NAME_OOM)
+            rt_trap("Archive: memory allocation failed");
+
+        if (e->is_directory) {
+            archive_make_dirs_posix_at(root_fd, norm_name);
+        } else {
+            char *leaf = NULL;
+            int parent_fd = archive_open_parent_for_file_posix(root_fd, norm_name, &leaf);
+            void *data = read_entry_data(ar, e);
+            archive_write_bytes_to_dirfd_posix(parent_fd, leaf, data);
+            archive_release_temp_object(data);
+            close(parent_fd);
+            free(leaf);
+        }
+        free(norm_name);
+    }
+
+    close(root_fd);
+    return;
+#else
     for (int i = 0; i < ar->entry_count; i++) {
         zip_entry_t *e = &ar->entries[i];
 
@@ -1789,6 +2067,7 @@ void rt_archive_extract_all(void *obj, rt_string dest_dir) {
         free(full_path);
         free(norm_name);
     }
+#endif
 }
 
 /// @brief `Archive.Info(name)` — return a metadata map for one entry.
@@ -2051,7 +2330,7 @@ void rt_archive_add_file(void *obj, rt_string name, rt_string src_path) {
         h, bytes_data(data), (size_t)size.QuadPart, "Archive: failed to read source file");
     CloseHandle(h);
 #else
-    int fd = open(cpath, O_RDONLY);
+    int fd = archive_open_posix(cpath, O_RDONLY, 0);
     if (fd < 0)
         rt_trap("Archive: source file not found");
 
@@ -2295,7 +2574,7 @@ int8_t rt_archive_is_zip(rt_string path) {
     if (!ok || read_count < 4)
         return 0;
 #else
-    int fd = open(cpath, O_RDONLY);
+    int fd = archive_open_posix(cpath, O_RDONLY, 0);
     if (fd < 0)
         return 0;
 

@@ -192,10 +192,9 @@ rt_string rt_path_join(rt_string a, rt_string b) {
         return rt_string_from_bytes(b_data, b_len);
 
 #ifdef _WIN32
-    // Check for Windows drive-rooted (C:\foo) or UNC path. A path like C:foo is
-    // drive-relative, not absolute.
-    if (is_drive_rooted_path(b_data, b_len) ||
-        (b_len >= 2 && is_path_sep(b_data[0]) && is_path_sep(b_data[1]))) {
+    // Check for Windows drive-rooted, UNC, or root-relative paths. A path like
+    // C:foo is drive-relative, not absolute.
+    if (is_path_sep(b_data[0]) || is_drive_rooted_path(b_data, b_len)) {
         return rt_string_from_bytes(b_data, b_len);
     }
 #endif
@@ -615,8 +614,18 @@ rt_string rt_path_with_ext(rt_string path, rt_string new_ext) {
     const char *ext_data = rt_string_safe_data(new_ext);
     size_t ext_len = rt_string_safe_len(new_ext);
 
-    if (path_len == 0)
-        return rt_string_from_bytes(ext_data, ext_len);
+    if (path_len == 0) {
+        rt_string_builder empty_sb;
+        rt_sb_init(&empty_sb);
+        if (ext_len > 0) {
+            if (ext_data[0] != '.')
+                rt_sb_append_bytes(&empty_sb, ".", 1);
+            rt_sb_append_bytes(&empty_sb, ext_data, ext_len);
+        }
+        rt_string result = rt_string_from_bytes(empty_sb.data ? empty_sb.data : "", empty_sb.len);
+        rt_sb_free(&empty_sb);
+        return result;
+    }
 
     // Find the filename portion
     size_t name_start = path_len;
@@ -716,6 +725,9 @@ int64_t rt_path_is_abs(rt_string path) {
         return 1;
 
 #ifdef _WIN32
+    if (data[0] == '\\')
+        return 1;
+
     // Windows drive letter (C:\)
     if (len >= 3 && isalpha((unsigned char)data[0]) && data[1] == ':' && is_path_sep(data[2]))
         return 1;

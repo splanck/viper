@@ -35,11 +35,18 @@
 #include "rt_string.h"
 #include "rt_string_builder.h"
 
+#ifdef _WIN32
+#ifndef _CRT_RAND_S
+#define _CRT_RAND_S
+#endif
+#endif
+
 #include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #ifdef _WIN32
 #include <direct.h>
@@ -449,10 +456,34 @@ static int savedata_file_size(FILE *fp, uint64_t *out_size) {
     *out_size = (uint64_t)size;
     return 1;
 }
+
+static uint64_t savedata_random_u64(unsigned attempt) {
+    uint64_t value = (uint64_t)GetCurrentProcessId() ^ ((uint64_t)GetTickCount64() << 16) ^
+                     ((uint64_t)attempt << 48);
+    unsigned int rand_value = 0;
+    if (rand_s(&rand_value) == 0)
+        value ^= ((uint64_t)rand_value << 32) | rand_value;
+    return value;
+}
 #else
 /// @brief Open a file at a UTF-8 path using `fopen` (POSIX).
 static FILE *savedata_fopen_utf8(const char *path, const char *mode) {
-    return fopen(path, mode);
+    int flags = O_RDONLY;
+#ifdef O_CLOEXEC
+    flags |= O_CLOEXEC;
+#endif
+    int fd = open(path, flags);
+    if (fd < 0)
+        return NULL;
+#if defined(FD_CLOEXEC) && !defined(O_CLOEXEC)
+    int fd_flags = fcntl(fd, F_GETFD);
+    if (fd_flags >= 0)
+        (void)fcntl(fd, F_SETFD, fd_flags | FD_CLOEXEC);
+#endif
+    FILE *fp = fdopen(fd, mode);
+    if (!fp)
+        close(fd);
+    return fp;
 }
 
 /// @brief Delete a file at a UTF-8 path using `remove` (POSIX).
@@ -475,13 +506,54 @@ static int savedata_sync_parent_dir(const char *path) {
     char *parent = savedata_parent_dir_dup(path);
     if (!parent)
         return 0;
-    int fd = open(parent, O_RDONLY);
+    int flags = O_RDONLY;
+#ifdef O_CLOEXEC
+    flags |= O_CLOEXEC;
+#endif
+    int fd = open(parent, flags);
     free(parent);
     if (fd < 0)
         return 0;
     int ok = fsync(fd) == 0 ? 1 : 0;
     close(fd);
     return ok;
+}
+
+static uint64_t savedata_random_u64(unsigned attempt) {
+    uint64_t value = 0;
+#ifdef _WIN32
+    value = (uint64_t)GetCurrentProcessId() ^ ((uint64_t)GetTickCount64() << 16) ^
+            ((uint64_t)attempt << 48);
+    unsigned int rand_value = 0;
+    if (rand_s(&rand_value) == 0)
+        value ^= ((uint64_t)rand_value << 32) | rand_value;
+#else
+    int flags = O_RDONLY;
+#ifdef O_CLOEXEC
+    flags |= O_CLOEXEC;
+#endif
+    int fd = open("/dev/urandom", flags);
+    if (fd >= 0) {
+#if defined(FD_CLOEXEC) && !defined(O_CLOEXEC)
+        int fd_flags = fcntl(fd, F_GETFD);
+        if (fd_flags >= 0)
+            (void)fcntl(fd, F_SETFD, fd_flags | FD_CLOEXEC);
+#endif
+        size_t got = 0;
+        while (got < sizeof(value)) {
+            ssize_t n = read(fd, ((uint8_t *)&value) + got, sizeof(value) - got);
+            if (n < 0 && errno == EINTR)
+                continue;
+            if (n <= 0)
+                break;
+            got += (size_t)n;
+        }
+        close(fd);
+    }
+    if (value == 0)
+        value = (uint64_t)getpid() ^ ((uint64_t)time(NULL) << 32) ^ ((uint64_t)attempt << 48);
+#endif
+    return value;
 }
 
 /// @brief Get the size of an open file in bytes using `fseeko`/`ftello` (POSIX).
@@ -717,7 +789,7 @@ static void json_escape_append(rt_string_builder *sb, const char *str, size_t le
 /// @brief Atomically write `len` bytes to `path` via temp-file-and-rename.
 ///
 /// Protects save files from torn writes and crashes mid-save:
-///   1. Open `<path>.tmp.<pid>.<addr>.<attempt>` with O_EXCL to avoid
+///   1. Open `<path>.tmp.<pid>.<random>.<attempt>` with O_EXCL to avoid
 ///      colliding with a concurrent writer (retried up to 128 times).
 ///   2. Write all bytes, flush, and fsync the file so its data hits
 ///      stable storage.
@@ -738,24 +810,35 @@ static int savedata_write_atomic(const char *path, const char *data, size_t len)
     char *tmp_path = NULL;
     FILE *fp = NULL;
     for (unsigned attempt = 0; attempt < 128; ++attempt) {
-        tmp_path = (char *)malloc(path_len + 96);
+        char nonce[17];
+        snprintf(nonce, sizeof(nonce), "%016llx", (unsigned long long)savedata_random_u64(attempt));
+        if (path_len > SIZE_MAX - strlen(nonce) - 48)
+            return 0;
+        size_t tmp_cap = path_len + strlen(nonce) + 48;
+        tmp_path = (char *)malloc(tmp_cap);
         if (!tmp_path)
             return 0;
-        snprintf(tmp_path, path_len + 96, "%s.tmp.%lu.%p.%u", path, pid, (const void *)data, attempt);
+        snprintf(tmp_path, tmp_cap, "%s.tmp.%lu.%s.%u", path, pid, nonce, attempt);
 #ifdef _WIN32
         wchar_t *wide_path = rt_file_path_utf8_to_wide(tmp_path);
         if (!wide_path) {
             free(tmp_path);
             return 0;
         }
-        int fd = _wopen(wide_path, _O_WRONLY | _O_CREAT | _O_EXCL | _O_BINARY, _S_IREAD | _S_IWRITE);
+        int fd = _wopen(wide_path,
+                        _O_WRONLY | _O_CREAT | _O_EXCL | _O_BINARY | _O_NOINHERIT,
+                        _S_IREAD | _S_IWRITE);
         free(wide_path);
         if (fd >= 0)
             fp = _fdopen(fd, "wb");
         if (fd >= 0 && !fp)
             _close(fd);
 #else
-        int fd = open(tmp_path, O_WRONLY | O_CREAT | O_EXCL, 0600);
+        int flags = O_WRONLY | O_CREAT | O_EXCL;
+#ifdef O_CLOEXEC
+        flags |= O_CLOEXEC;
+#endif
+        int fd = open(tmp_path, flags, 0600);
         if (fd >= 0)
             fp = fdopen(fd, "wb");
         if (fd >= 0 && !fp)

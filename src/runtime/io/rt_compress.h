@@ -55,6 +55,13 @@ void *rt_compress_deflate_lvl(void *data, int64_t level);
 /// @note Traps if data is NULL, corrupted, or truncated.
 void *rt_compress_inflate(void *data);
 
+/// @brief Decompress DEFLATE-compressed data with an explicit maximum output size.
+/// @param data Bytes object containing compressed data.
+/// @param max_output Maximum allowed decompressed byte count.
+/// @return New Bytes object with decompressed data.
+/// @note Traps if data is NULL, max_output is negative, corrupted, truncated, or exceeds max_output.
+void *rt_compress_inflate_limit(void *data, int64_t max_output);
+
 //=========================================================================
 // GZIP Compression/Decompression (RFC 1952)
 //=========================================================================

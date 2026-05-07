@@ -289,16 +289,20 @@ int64_t rt_memstream_read_i8(void *obj) {
     return (int64_t)val;
 }
 
-/// @brief Write 1 byte (low 8 bits of `value`). Advances pos by 1.
+/// @brief Write one signed byte. Advances pos by 1.
 void rt_memstream_write_i8(void *obj, int64_t value) {
     if (!obj) {
         rt_trap("MemStream.WriteI8: null stream");
         return;
     }
     rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
+    if (value < INT8_MIN || value > INT8_MAX) {
+        rt_trap("MemStream.WriteI8: byte value out of range");
+        return;
+    }
     if (!prepare_write(ms, 1))
         return;
-    ms->data[ms->pos] = (uint8_t)(value & 0xFF);
+    ms->data[ms->pos] = (uint8_t)(int8_t)value;
     ms->pos++;
 }
 
@@ -348,13 +352,17 @@ int64_t rt_memstream_read_i16(void *obj) {
     return (int64_t)val;
 }
 
-/// @brief Write 2 bytes (low 16 bits of `value`, little-endian). Advances pos by 2.
+/// @brief Write a signed 16-bit value in little-endian order. Advances pos by 2.
 void rt_memstream_write_i16(void *obj, int64_t value) {
     if (!obj) {
         rt_trap("MemStream.WriteI16: null stream");
         return;
     }
     rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
+    if (value < INT16_MIN || value > INT16_MAX) {
+        rt_trap("MemStream.WriteI16: value out of range");
+        return;
+    }
     if (!prepare_write(ms, 2))
         return;
     uint8_t *p = ms->data + ms->pos;
@@ -378,13 +386,17 @@ int64_t rt_memstream_read_u16(void *obj) {
     return (int64_t)val;
 }
 
-/// @brief Write 2 bytes (low 16 bits of `value`, little-endian). Advances pos by 2.
+/// @brief Write an unsigned 16-bit value in little-endian order. Advances pos by 2.
 void rt_memstream_write_u16(void *obj, int64_t value) {
     if (!obj) {
         rt_trap("MemStream.WriteU16: null stream");
         return;
     }
     rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
+    if (value < 0 || value > UINT16_MAX) {
+        rt_trap("MemStream.WriteU16: value out of range");
+        return;
+    }
     if (!prepare_write(ms, 2))
         return;
     uint8_t *p = ms->data + ms->pos;
@@ -409,13 +421,17 @@ int64_t rt_memstream_read_i32(void *obj) {
     return (int64_t)val;
 }
 
-/// @brief Write 4 bytes (low 32 bits of `value`, little-endian). Advances pos by 4.
+/// @brief Write a signed 32-bit value in little-endian order. Advances pos by 4.
 void rt_memstream_write_i32(void *obj, int64_t value) {
     if (!obj) {
         rt_trap("MemStream.WriteI32: null stream");
         return;
     }
     rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
+    if (value < INT32_MIN || value > INT32_MAX) {
+        rt_trap("MemStream.WriteI32: value out of range");
+        return;
+    }
     if (!prepare_write(ms, 4))
         return;
     uint8_t *p = ms->data + ms->pos;
@@ -442,13 +458,17 @@ int64_t rt_memstream_read_u32(void *obj) {
     return (int64_t)val;
 }
 
-/// @brief Write 4 bytes (low 32 bits of `value`, little-endian). Advances pos by 4.
+/// @brief Write an unsigned 32-bit value in little-endian order. Advances pos by 4.
 void rt_memstream_write_u32(void *obj, int64_t value) {
     if (!obj) {
         rt_trap("MemStream.WriteU32: null stream");
         return;
     }
     rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
+    if (value < 0 || (uint64_t)value > UINT32_MAX) {
+        rt_trap("MemStream.WriteU32: value out of range");
+        return;
+    }
     if (!prepare_write(ms, 4))
         return;
     uint8_t *p = ms->data + ms->pos;

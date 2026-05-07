@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-06
+last-verified: 2026-05-07
 ---
 
 # Advanced IO
@@ -61,7 +61,7 @@ ZIP archive reader and writer for creating, reading, and extracting ZIP files.
 
 ### Compression
 
-The archive uses DEFLATE compression (method 8) by default for added entries. Small entries or entries that don't compress well use stored mode (method 0). The implementation reads archives with any combination of stored and deflate-compressed entries.
+The archive uses DEFLATE compression (method 8) by default for added entries. Small entries or entries that don't compress well use stored mode (method 0). The implementation reads archives with any combination of stored and deflate-compressed entries. Deflate reads are bounded by each entry's declared uncompressed size, so oversized output traps without relying on the global compression safety cap.
 
 ### Disk Write Semantics
 
@@ -82,6 +82,7 @@ Invalid names trap with `Archive: invalid entry name`.
 ### Extraction Safety
 
 `ExtractAll(dir)` creates missing directories under `dir`, but it refuses to extract through existing symlinked or reparse-point directory components inside the destination tree. This prevents an archive entry such as `assets/config.json` from writing outside `dir` when `dir/assets` is already a symlink. The destination root itself must not be a symlink.
+On POSIX, extraction resolves and writes entries through directory file descriptors and uses descriptor-relative temp-file replacement for regular files. This prevents a destination component from being swapped to a symlink between validation and the final write.
 
 ### Info Map Keys
 
@@ -257,11 +258,11 @@ DEFLATE and GZIP compression/decompression utilities with zero external dependen
 | `Inflate(data)`         | `Bytes(Bytes)`         | Decompress DEFLATE-compressed bytes                       |
 | `Gzip(data)`            | `Bytes(Bytes)`         | Compress bytes using GZIP format (default level 6)        |
 | `GzipLvl(data, lvl)`    | `Bytes(Bytes, Integer)`| Compress bytes using GZIP with specified level (1-9)      |
-| `Gunzip(data)`          | `Bytes(Bytes)`         | Decompress GZIP-compressed bytes                          |
+| `Gunzip(data)`          | `Bytes(Bytes)`         | Decompress GZIP-compressed bytes, including concatenated members |
 | `DeflateStr(text)`      | `Bytes(String)`        | Compress string using DEFLATE                             |
 | `InflateStr(data)`      | `String(Bytes)`        | Decompress DEFLATE-compressed bytes to string             |
 | `GzipStr(text)`         | `Bytes(String)`        | Compress string using GZIP format                         |
-| `GunzipStr(data)`       | `String(Bytes)`        | Decompress GZIP-compressed bytes to string                |
+| `GunzipStr(data)`       | `String(Bytes)`        | Decompress GZIP-compressed bytes to string, including concatenated members |
 
 ### Compression Levels
 
@@ -371,6 +372,7 @@ Compression traps on:
 - Invalid compression level (must be 1-9)
 - Invalid or truncated compressed data
 - Reserved GZIP flags, malformed optional headers, header CRC mismatches, trailer CRC32 mismatches, or trailer size mismatches
+- Malformed later members in a concatenated GZIP stream
 - Corrupted DEFLATE streams, including truncated Huffman symbols, oversubscribed or missing Huffman codes, malformed dynamic-code repeat runs, and dynamic literal trees without an end-of-block code
 - Trailing non-padding data after the final DEFLATE block
 - Inflated output exceeding the runtime safety cap (256 MiB)
@@ -409,6 +411,7 @@ Cross-platform file system watcher for monitoring files and directories for chan
 | `EVENT_MODIFIED`| 2     | File was modified                   |
 | `EVENT_DELETED` | 3     | File or directory was deleted       |
 | `EVENT_RENAMED` | 4     | File or directory was renamed       |
+| `EVENT_OVERFLOW`| 5     | Watcher event queue overflowed      |
 
 ### Properties
 
@@ -421,6 +424,7 @@ Cross-platform file system watcher for monitoring files and directories for chan
 | `EVENT_MODIFIED`| Integer | Event constant: Modified (static, read-only) |
 | `EVENT_DELETED` | Integer | Event constant: Deleted (static, read-only)  |
 | `EVENT_RENAMED` | Integer | Event constant: Renamed (static, read-only)  |
+| `EVENT_OVERFLOW`| Integer | Event constant: Queue overflow (static, read-only) |
 
 ### Methods
 
@@ -474,6 +478,8 @@ DO
                 PRINT "Deleted: "; path
             CASE watcher.EVENT_RENAMED
                 PRINT "Renamed: "; path
+            CASE watcher.EVENT_OVERFLOW
+                PRINT "Watcher queue overflow"
         END SELECT
     END IF
 LOOP UNTIL shouldStop
@@ -521,6 +527,7 @@ watcher.Stop()
 - `PollFor(ms)` waits up to the specified milliseconds for an event; very large positive timeouts are clamped to the largest supported platform wait value
 - After receiving an event, use `EventPath()` and `EventType()` to get details
 - Multiple events may be queued; call `Poll()` repeatedly to drain them
+- If the internal event queue overflows, a later `Poll()` returns `EVENT_OVERFLOW`. Treat this as a signal to rescan the watched directory or file state.
 - `Stop()` clears queued events and the last-event state. After `Stop()`, `EventType()` returns `EVENT_NONE` and `EventPath()` traps until a later successful `Poll()` after `Start()`.
 - Directory watches are non-recursive
 - On Linux and Windows, single-file watches monitor the parent directory and filter by filename, so deleting and recreating the file at the same path can still produce a later `EVENT_CREATED`

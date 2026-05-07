@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-06
+last-verified: 2026-05-07
 ---
 
 # Streams & Buffers
@@ -249,7 +249,7 @@ All multi-byte integers and floats use **little-endian** byte order. This matche
 - **Gap filling:** Writing past the current length fills the gap with zeros
 - **Read traps:** Reading past the end of data traps with an error
 - **Overflow traps:** `Seek`, `Skip`, and writes that would overflow the signed 64-bit position or addressable capacity trap instead of wrapping.
-- **Input validation:** `NewCapacity()` traps on negative capacities, `FromBytes()` and `WriteBytes()` require a `Bytes` object, `WriteU8()` traps outside `0..255`, and `WriteStr()` requires a valid runtime string.
+- **Input validation:** `NewCapacity()` traps on negative capacities, `FromBytes()` and `WriteBytes()` require a `Bytes` object, fixed-width integer writes trap outside their representable range, and `WriteStr()` requires a valid runtime string.
 
 ### Zia Example
 
@@ -665,10 +665,14 @@ Positioned binary read/write buffer for constructing and parsing binary data in 
 | Method              | Returns | Description                                      |
 |---------------------|---------|--------------------------------------------------|
 | `WriteByte(v)`      | void    | Write a single byte (0-255) at current position  |
-| `WriteI16LE(v)`     | void    | Write 16-bit integer (little-endian)             |
-| `WriteI16BE(v)`     | void    | Write 16-bit integer (big-endian)                |
-| `WriteI32LE(v)`     | void    | Write 32-bit integer (little-endian)             |
-| `WriteI32BE(v)`     | void    | Write 32-bit integer (big-endian)                |
+| `WriteI16LE(v)`     | void    | Write signed 16-bit integer (little-endian)      |
+| `WriteI16BE(v)`     | void    | Write signed 16-bit integer (big-endian)         |
+| `WriteU16LE(v)`     | void    | Write unsigned 16-bit integer (little-endian)    |
+| `WriteU16BE(v)`     | void    | Write unsigned 16-bit integer (big-endian)       |
+| `WriteI32LE(v)`     | void    | Write signed 32-bit integer (little-endian)      |
+| `WriteI32BE(v)`     | void    | Write signed 32-bit integer (big-endian)         |
+| `WriteU32LE(v)`     | void    | Write unsigned 32-bit integer (little-endian)    |
+| `WriteU32BE(v)`     | void    | Write unsigned 32-bit integer (big-endian)       |
 | `WriteI64LE(v)`     | void    | Write 64-bit integer (little-endian)             |
 | `WriteI64BE(v)`     | void    | Write 64-bit integer (big-endian)                |
 | `WriteStr(s)`       | void    | Write 32-bit length prefix plus full string bytes |
@@ -679,10 +683,14 @@ Positioned binary read/write buffer for constructing and parsing binary data in 
 | Method              | Returns | Description                                      |
 |---------------------|---------|--------------------------------------------------|
 | `ReadByte()`        | Integer | Read a single byte (0-255) at current position   |
-| `ReadI16LE()`       | Integer | Read 16-bit integer (little-endian)              |
-| `ReadI16BE()`       | Integer | Read 16-bit integer (big-endian)                 |
-| `ReadI32LE()`       | Integer | Read 32-bit integer (little-endian)              |
-| `ReadI32BE()`       | Integer | Read 32-bit integer (big-endian)                 |
+| `ReadI16LE()`       | Integer | Read signed 16-bit integer (little-endian)       |
+| `ReadI16BE()`       | Integer | Read signed 16-bit integer (big-endian)          |
+| `ReadU16LE()`       | Integer | Read unsigned 16-bit integer (little-endian)     |
+| `ReadU16BE()`       | Integer | Read unsigned 16-bit integer (big-endian)        |
+| `ReadI32LE()`       | Integer | Read signed 32-bit integer (little-endian)       |
+| `ReadI32BE()`       | Integer | Read signed 32-bit integer (big-endian)          |
+| `ReadU32LE()`       | Integer | Read unsigned 32-bit integer (little-endian)     |
+| `ReadU32BE()`       | Integer | Read unsigned 32-bit integer (big-endian)        |
 | `ReadI64LE()`       | Integer | Read 64-bit integer (little-endian)              |
 | `ReadI64BE()`       | Integer | Read 64-bit integer (big-endian)                 |
 | `ReadStr()`         | String  | Read a length-prefixed string                    |
@@ -698,10 +706,11 @@ Positioned binary read/write buffer for constructing and parsing binary data in 
 ### Notes
 
 - `WriteStr()` uses the runtime string byte length, so embedded NUL bytes are preserved.
-- `FromBytes()` and `WriteBytes()` require a `Bytes` object. `WriteStr()` requires a valid runtime string. `WriteByte()` traps outside `0..255`.
+- `FromBytes()` and `WriteBytes()` require a `Bytes` object. `WriteStr()` requires a valid runtime string. `WriteByte()` traps outside `0..255`, and fixed-width integer writes trap outside their declared signed or unsigned range.
 - `WriteStr()` and `WriteBytes()` trap if the payload length cannot fit in their signed 32-bit length prefix.
 - Setting `Pos` traps for negative positions or positions beyond `Length`; it does not clamp.
 - Signed integer readers sign-extend their declared width: `ReadI16*()` returns -32768..32767, `ReadI32*()` returns signed 32-bit values, and `ReadI64*()` preserves the full signed 64-bit bit pattern.
+- Unsigned readers zero-extend their declared width: `ReadU16*()` returns 0..65535 and `ReadU32*()` returns 0..4294967295.
 - Constructors and growth trap if the requested capacity exceeds the host platform's addressable allocation size.
 
 ### Zia Example
@@ -778,7 +787,7 @@ PRINT "After reset:"; buf.Length       ' Output: 0
 DIM buf AS OBJECT = Viper.IO.BinaryBuffer.NewCap(256)
 
 ' Build a binary protocol packet
-buf.WriteI16BE(51966)         ' Magic number
+buf.WriteU16BE(51966)         ' Magic number
 buf.WriteI32BE(1)              ' Version
 buf.WriteStr("payload data")
 
@@ -793,7 +802,7 @@ DIM rawData AS OBJECT = Viper.IO.File.ReadAllBytes("packet.bin")
 DIM buf AS OBJECT = Viper.IO.BinaryBuffer.FromBytes(rawData)
 
 ' Parse the binary format
-DIM magic AS INTEGER = buf.ReadI16BE()
+DIM magic AS INTEGER = buf.ReadU16BE()
 DIM version AS INTEGER = buf.ReadI32BE()
 DIM payload AS STRING = buf.ReadStr()
 ```
@@ -816,7 +825,7 @@ Use BinaryBuffer when:
 Use MemStream when:
 - Working with floating-point data (F32, F64)
 - All data is little-endian
-- You need unsigned integer operations (U8, U16, U32)
+- You need unsigned 64-bit bit patterns beyond the signed `Integer` range
 
 ### Use Cases
 

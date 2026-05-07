@@ -238,6 +238,17 @@ static void test_with_ext() {
     test_result("remove ext", rt_str_eq(r, rt_const_cstr("/foo/bar")));
     rt_string_unref(r);
 
+    p = rt_const_cstr("");
+    e = rt_const_cstr("txt");
+    r = rt_path_with_ext(p, e);
+    test_result("empty path adds leading dot", rt_str_eq(r, rt_const_cstr(".txt")));
+    rt_string_unref(r);
+
+    e = rt_const_cstr(".dat");
+    r = rt_path_with_ext(p, e);
+    test_result("empty path preserves leading dot", rt_str_eq(r, rt_const_cstr(".dat")));
+    rt_string_unref(r);
+
     printf("\n");
 }
 

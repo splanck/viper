@@ -36,6 +36,7 @@
 #include "rt_dir.h"
 #include "rt_file_path.h"
 #include "rt_path.h"
+#include "rt_platform.h"
 #include "rt_string.h"
 
 #include "rt_trap.h"
@@ -83,7 +84,7 @@ static const char *tempfile_require_fragment(rt_string fragment, const char *wha
 /// @brief Generate a unique identifier using OS-provided entropy (S-21).
 static void generate_unique_id(char *buffer, size_t size) {
     uint64_t rnd = 0;
-    static uint64_t fallback_counter = 0;
+    static int64_t fallback_counter = 0;
 
 #ifdef _WIN32
     /* Use CryptGenRandom for unpredictable IDs */
@@ -100,8 +101,17 @@ static void generate_unique_id(char *buffer, size_t size) {
     }
 #else
     /* Read from /dev/urandom for unpredictable IDs */
-    int fd = open("/dev/urandom", O_RDONLY);
+    int flags = O_RDONLY;
+#ifdef O_CLOEXEC
+    flags |= O_CLOEXEC;
+#endif
+    int fd = open("/dev/urandom", flags);
     if (fd >= 0) {
+#if defined(FD_CLOEXEC) && !defined(O_CLOEXEC)
+        int fd_flags = fcntl(fd, F_GETFD);
+        if (fd_flags >= 0)
+            (void)fcntl(fd, F_SETFD, fd_flags | FD_CLOEXEC);
+#endif
         size_t got = 0;
         while (got < sizeof(rnd)) {
             ssize_t n = read(fd, ((unsigned char *)&rnd) + got, sizeof(rnd) - got);
@@ -115,17 +125,29 @@ static void generate_unique_id(char *buffer, size_t size) {
             got += (size_t)n;
         }
         close(fd);
-        if (got != sizeof(rnd))
+        if (got != sizeof(rnd)) {
+            int64_t seq = __atomic_fetch_add(&fallback_counter, 1, __ATOMIC_RELAXED) + 1;
             rnd ^= (uint64_t)(uintptr_t)buffer ^ (uint64_t)getpid() ^
-                   (uint64_t)time(NULL) ^ ++fallback_counter;
+                   (uint64_t)time(NULL) ^ (uint64_t)seq;
+        }
     } else {
+        int64_t seq = __atomic_fetch_add(&fallback_counter, 1, __ATOMIC_RELAXED) + 1;
         rnd = (uint64_t)(uintptr_t)buffer ^ (uint64_t)getpid() ^ (uint64_t)time(NULL) ^
-              ++fallback_counter;
+              (uint64_t)seq;
     }
 #endif
 
     snprintf(buffer, size, "%016llx", (unsigned long long)rnd);
 }
+
+#if !defined(_WIN32)
+static int tempfile_dir_is_usable(const char *path) {
+    if (!path || path[0] != '/')
+        return 0;
+    struct stat st;
+    return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+}
+#endif
 
 /// @brief Atomically attempt to create a file at `cpath` with O_EXCL/CREATE_NEW semantics
 /// (fails if exists). Returns 1=created, 0=collision (caller retries), -1/trap on hard error.
@@ -150,8 +172,17 @@ static int tempfile_try_create_path(const char *cpath) {
     rt_trap("TempFile.Create: failed to create temporary file");
     return -1;
 #else
-    int tmp_fd = open(cpath, O_CREAT | O_EXCL | O_WRONLY, 0600);
+    int flags = O_CREAT | O_EXCL | O_WRONLY;
+#ifdef O_CLOEXEC
+    flags |= O_CLOEXEC;
+#endif
+    int tmp_fd = open(cpath, flags, 0600);
     if (tmp_fd >= 0) {
+#if defined(FD_CLOEXEC) && !defined(O_CLOEXEC)
+        int fd_flags = fcntl(tmp_fd, F_GETFD);
+        if (fd_flags >= 0)
+            (void)fcntl(tmp_fd, F_SETFD, fd_flags | FD_CLOEXEC);
+#endif
         close(tmp_fd);
         return 1;
     }
@@ -218,6 +249,8 @@ rt_string rt_tempfile_dir(void) {
     const char *tmp = getenv("TMPDIR");
     if (tmp && *tmp) {
         size_t len = strlen(tmp);
+        if (!tempfile_dir_is_usable(tmp))
+            return rt_const_cstr("/tmp");
         // Remove trailing slash if present
         if (len > 1 && tmp[len - 1] == '/') {
             char *copy = (char *)malloc(len);
@@ -258,7 +291,12 @@ rt_string rt_tempfile_path_with_ext(rt_string prefix, rt_string extension) {
         tempfile_require_fragment(extension, "TempFile: invalid extension");
 
     // Build filename: prefix + unique_id + extension
-    size_t filename_len = strlen(prefix_cstr) + strlen(unique_id) + strlen(ext_cstr) + 1;
+    size_t prefix_len = strlen(prefix_cstr);
+    size_t unique_len = strlen(unique_id);
+    size_t ext_len = strlen(ext_cstr);
+    if (prefix_len > SIZE_MAX - unique_len - ext_len - 1)
+        rt_trap("TempFile: path length overflow");
+    size_t filename_len = prefix_len + unique_len + ext_len + 1;
     char *filename = (char *)malloc(filename_len);
     if (!filename)
         rt_trap("TempFile: memory allocation failed");
@@ -293,7 +331,13 @@ rt_string rt_tempfile_create_with_prefix(rt_string prefix) {
     rt_string temp_dir = rt_tempfile_dir();
     const char *dir_cstr = rt_string_cstr(temp_dir);
 
-    size_t tmpl_len = strlen(dir_cstr) + 1 + strlen(prefix_cstr) + 6 + 1;
+    size_t dir_len = strlen(dir_cstr);
+    size_t prefix_len = strlen(prefix_cstr);
+    if (dir_len > SIZE_MAX - prefix_len - 8) {
+        rt_string_unref(temp_dir);
+        rt_trap("TempFile.Create: path length overflow");
+    }
+    size_t tmpl_len = dir_len + 1 + prefix_len + 6 + 1;
     char *tmpl = (char *)malloc(tmpl_len);
     if (!tmpl) {
         rt_string_unref(temp_dir);
@@ -304,6 +348,11 @@ rt_string rt_tempfile_create_with_prefix(rt_string prefix) {
 
     int fd = mkstemp(tmpl);
     if (fd >= 0) {
+#ifdef FD_CLOEXEC
+        int fd_flags = fcntl(fd, F_GETFD);
+        if (fd_flags >= 0)
+            (void)fcntl(fd, F_SETFD, fd_flags | FD_CLOEXEC);
+#endif
         close(fd);
         rt_string result = rt_string_from_bytes(tmpl, strlen(tmpl));
         free(tmpl);

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-06
+last-verified: 2026-05-07
 ---
 
 # Files & Directories
@@ -47,11 +47,12 @@ File system operations.
 - `Exists` returns false for directories; use `Dir.Exists` for directory checks.
 - Path strings with embedded NUL bytes are rejected before reaching platform file APIs.
 - `ReadAllText`, `ReadAllBytes`, and `ReadAllLines` require a regular file and trap on directories, special files, I/O errors, or unexpected short reads if the file changes while being read.
-- `WriteAllText`, `WriteAllBytes`, `WriteBytes`, and `WriteLines` write to an exclusive temporary file in the destination directory and then replace the live file. Failed writes trap instead of silently leaving a partial overwrite behind.
+- `WriteAllText`, `WriteAllBytes`, `WriteBytes`, and `WriteLines` write to an exclusive temporary file in the destination directory and then replace the live file. Failed writes trap instead of silently leaving a partial overwrite behind. Temporary sidecar names are unpredictable and do not include process memory addresses.
 - `Copy` and `Move` never overwrite an existing destination. `MoveOver` is the explicit replacement operation; it first attempts an in-place replace/rename and only falls back to copy-plus-delete when the source and destination are on different filesystems or volumes.
 - `Size` and `Modified` return `-1` for missing paths, directories, and special files. A real zero-byte file still reports size `0`.
 - `ReadAllLines` splits on `\n`, `\r`, and `\r\n` and does not include line endings in returned strings. Trailing empty lines are preserved.
 - `WriteAllText`, `ReadAllText`, `ReadBytes`, `ReadAllBytes`, `WriteAllBytes`, `ReadAllLines`, `WriteBytes`, `WriteLines`, `Append`, and `Touch` trap on I/O errors.
+- POSIX file descriptors and Windows CRT handles opened by the runtime are created as close-on-exec/non-inheritable where the platform API supports it.
 - `ReadBytes` and `ReadLines` return raw `ptr` values representing internal runtime buffer objects. They are intended for use with other low-level runtime functions and are not strongly-typed Zia objects. Similarly, `WriteBytes` accepts a raw `ptr` for the data parameter. For strongly-typed binary and line I/O, prefer `ReadAllBytes`, `WriteAllBytes`, and `ReadAllLines`.
 
 ### Zia Example
@@ -354,7 +355,7 @@ Temporary file and directory creation utilities. Generates unique paths in the s
 
 ### Notes
 
-- `Dir()` returns the platform temporary directory (e.g., `/tmp` on Unix, `%TEMP%` on Windows)
+- `Dir()` returns the platform temporary directory (e.g., `/tmp` on Unix, `%TEMP%` on Windows). On POSIX, an invalid relative, missing, or non-directory `TMPDIR` value is ignored and `/tmp` is used instead.
 - `Path` and `PathWithPrefix` only generate paths -- they do not create files on disk
 - `Create` and `CreateDir` actually create the file or directory on disk
 - `PathWithExt("v", ".txt")` produces a path like `/tmp/v_<unique>.txt`
@@ -453,8 +454,8 @@ Cross-platform directory operations for creating, removing, listing, and navigat
 **Note:** `Entries()`, `List()`, `Files()`, and `Dirs()` return entry names (not full paths). Use
 `Viper.IO.Path.Join(dir, name)` to build full paths when needed.
 
-`Make()` and `MakeAll()` are idempotent for existing directories, but they trap if the target path or any intermediate path component already exists as a non-directory. `MakeAll()` accepts both `/` and `\` as path separators.
-`Files()` excludes symbolic links to files on POSIX. `RemoveAll()` removes a top-level symlink itself and does not recurse into the linked directory.
+`Make()` and `MakeAll()` are idempotent for existing directories, but they trap if the target path or any intermediate path component already exists as a non-directory. `MakeAll()` follows host path semantics: `/` is the separator on POSIX, while both `/` and `\` are accepted on Windows.
+`Files()` excludes symbolic links to files on POSIX. `RemoveAll()` removes a top-level symlink itself and does not recurse into the linked directory. On POSIX, recursive removal uses file-descriptor-relative traversal so a concurrently swapped symlink component cannot redirect deletion outside the requested tree.
 
 ### Zia Example
 
@@ -689,11 +690,12 @@ The `Norm()` function performs the following transformations:
 | Behavior                | Unix            | Windows                   |
 |-------------------------|-----------------|---------------------------|
 | Path separator          | `/`             | `\`                       |
-| Absolute path detection | Starts with `/` | Starts with `C:\` or `\\` |
+| Absolute path detection | Starts with `/` | Starts with `C:\`, `\\`, or root-relative `\` |
 | Example absolute path   | `/home/user`    | `C:\Users\user`           |
 
-Windows drive-relative paths such as `C:logs\app.txt` are not absolute. `Path.Norm()` preserves the `C:` relative prefix instead of converting it to `C:\`, and `Path.Join()` only treats drive-rooted paths such as `C:\logs` as absolute.
+Windows drive-relative paths such as `C:logs\app.txt` are not absolute. `Path.Norm()` preserves the `C:` relative prefix instead of converting it to `C:\`, and `Path.Join()` treats drive-rooted, UNC, and root-relative right-hand paths as absolute.
 On POSIX, `Path.Name("a\\b.txt")` returns `"a\\b.txt"` and `Path.Dir("a\\b.txt")` returns `"."`, because the backslash is part of the filename rather than a directory separator.
+`Path.WithExt("", "txt")` returns `.txt`, matching the behavior of applying an extension to an empty stem.
 
 ### Use Cases
 
@@ -732,8 +734,9 @@ File globbing utilities for matching file paths against wildcard patterns and fi
 
 - **Parameter order is (path, pattern)** for `Match`, not (pattern, path)
 - Null path or pattern inputs return false for `Match` and an empty sequence for listing helpers
+- Listing helpers return an empty sequence for paths or patterns containing embedded NUL bytes.
 - `Files` returns only regular files, not directories
-- `FilesRecursive` descends into all subdirectories
+- `FilesRecursive` descends into all subdirectories and traps if recursion exceeds the runtime depth guard.
 - `Entries` returns both files and directories that match the pattern
 - All listing methods return a `Seq` of full path strings
 - Patterns are matched against the filename component, not the full path (for `Files`/`Entries`)

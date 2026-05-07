@@ -46,14 +46,7 @@ static void write_file(const char *path, const char *data) {
 
 static void test_filesystem_zero_byte_asset() {
     char empty_path[512];
-#ifdef _WIN32
-    const char *tmp = getenv("TEMP");
-    if (!tmp)
-        tmp = ".";
-    snprintf(empty_path, sizeof(empty_path), "%s\\viper_empty_asset_%d.bin", tmp, (int)GETPID());
-#else
-    snprintf(empty_path, sizeof(empty_path), "/tmp/viper_empty_asset_%d.bin", (int)GETPID());
-#endif
+    snprintf(empty_path, sizeof(empty_path), "viper_empty_asset_%d.bin", (int)GETPID());
 
     unlink_p(empty_path);
     write_file(empty_path, "");
@@ -71,14 +64,7 @@ static void test_filesystem_zero_byte_asset() {
 
 static void test_filesystem_directories_are_not_assets() {
     char dir_path[512];
-#ifdef _WIN32
-    const char *tmp = getenv("TEMP");
-    if (!tmp)
-        tmp = ".";
-    snprintf(dir_path, sizeof(dir_path), "%s\\viper_asset_dir_%d", tmp, (int)GETPID());
-#else
-    snprintf(dir_path, sizeof(dir_path), "/tmp/viper_asset_dir_%d", (int)GETPID());
-#endif
+    snprintf(dir_path, sizeof(dir_path), "viper_asset_dir_%d", (int)GETPID());
 
     rmdir_p(dir_path);
     mkdir_p(dir_path);
@@ -93,14 +79,7 @@ static void test_filesystem_directories_are_not_assets() {
 
 static void test_missing_asset_size_sentinel() {
     char missing_path[512];
-#ifdef _WIN32
-    const char *tmp = getenv("TEMP");
-    if (!tmp)
-        tmp = ".";
-    snprintf(missing_path, sizeof(missing_path), "%s\\viper_missing_asset_%d.bin", tmp, (int)GETPID());
-#else
-    snprintf(missing_path, sizeof(missing_path), "/tmp/viper_missing_asset_%d.bin", (int)GETPID());
-#endif
+    snprintf(missing_path, sizeof(missing_path), "viper_missing_asset_%d.bin", (int)GETPID());
 
     unlink_p(missing_path);
     rt_string name = rt_const_cstr(missing_path);
@@ -109,9 +88,41 @@ static void test_missing_asset_size_sentinel() {
     assert(rt_asset_load_bytes(name) == nullptr);
 }
 
+static void test_unsafe_asset_names_are_rejected() {
+    char absolute_path[512];
+#ifdef _WIN32
+    const char *tmp = getenv("TEMP");
+    if (!tmp)
+        tmp = ".";
+    snprintf(absolute_path, sizeof(absolute_path), "%s\\viper_abs_asset_%d.bin", tmp, (int)GETPID());
+#else
+    snprintf(absolute_path, sizeof(absolute_path), "/tmp/viper_abs_asset_%d.bin", (int)GETPID());
+#endif
+    unlink_p(absolute_path);
+    write_file(absolute_path, "secret");
+
+    rt_string absolute = rt_const_cstr(absolute_path);
+    assert(rt_asset_exists(absolute) == 0);
+    assert(rt_asset_size(absolute) == -1);
+    assert(rt_asset_load_bytes(absolute) == nullptr);
+
+    rt_string parent = rt_const_cstr("../not_an_asset.bin");
+    assert(rt_asset_exists(parent) == 0);
+    assert(rt_asset_size(parent) == -1);
+    assert(rt_asset_load_bytes(parent) == nullptr);
+
+    rt_string drive = rt_const_cstr("C:bad.bin");
+    assert(rt_asset_exists(drive) == 0);
+    assert(rt_asset_size(drive) == -1);
+    assert(rt_asset_load_bytes(drive) == nullptr);
+
+    unlink_p(absolute_path);
+}
+
 int main() {
     test_filesystem_zero_byte_asset();
     test_filesystem_directories_are_not_assets();
     test_missing_asset_size_sentinel();
+    test_unsafe_asset_names_are_rejected();
     return 0;
 }

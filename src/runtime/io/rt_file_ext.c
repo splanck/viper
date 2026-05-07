@@ -40,6 +40,12 @@
 
 #include "rt_platform.h"
 
+#if RT_PLATFORM_WINDOWS
+#ifndef _CRT_RAND_S
+#define _CRT_RAND_S
+#endif
+#endif
+
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -49,6 +55,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <time.h>
 #if !RT_PLATFORM_WINDOWS
 #include <unistd.h>
 #endif
@@ -75,8 +82,48 @@
 #define PATH_MAX 4096
 #endif
 
+static uint64_t rt_fileext_random_u64(unsigned attempt) {
+    uint64_t value = 0;
+#if RT_PLATFORM_WINDOWS
+    LARGE_INTEGER counter;
+    QueryPerformanceCounter(&counter);
+    value = (uint64_t)GetCurrentProcessId() ^ ((uint64_t)GetTickCount64() << 16) ^
+            (uint64_t)counter.QuadPart ^ ((uint64_t)attempt << 48);
+    unsigned int rand_value = 0;
+    if (rand_s(&rand_value) == 0)
+        value ^= ((uint64_t)rand_value << 32) | rand_value;
+#else
+    int flags = O_RDONLY;
+#ifdef O_CLOEXEC
+    flags |= O_CLOEXEC;
+#endif
+    int fd = open("/dev/urandom", flags);
+    if (fd >= 0) {
+#if defined(FD_CLOEXEC) && !defined(O_CLOEXEC)
+        int fd_flags = fcntl(fd, F_GETFD);
+        if (fd_flags >= 0)
+            (void)fcntl(fd, F_SETFD, fd_flags | FD_CLOEXEC);
+#endif
+        size_t got = 0;
+        while (got < sizeof(value)) {
+            ssize_t n = read(fd, ((uint8_t *)&value) + got, sizeof(value) - got);
+            if (n < 0 && errno == EINTR)
+                continue;
+            if (n <= 0)
+                break;
+            got += (size_t)n;
+        }
+        close(fd);
+    }
+    if (value == 0) {
+        value = (uint64_t)getpid() ^ ((uint64_t)time(NULL) << 32) ^ ((uint64_t)attempt << 48);
+    }
+#endif
+    return value;
+}
+
 /// @brief Build a temp-file path sidecar to `path` in the same parent directory.
-/// @details Combines the parent directory prefix, `prefix`, PID, pointer identity,
+/// @details Combines the parent directory prefix, `prefix`, PID, random entropy,
 ///          and `attempt` counter to produce a collision-resistant name. Returns a
 ///          heap-allocated string; caller must free. Returns NULL on alloc failure.
 static char *rt_fileext_make_parent_temp_path(const char *path, const char *prefix, unsigned attempt) {
@@ -91,7 +138,13 @@ static char *rt_fileext_make_parent_temp_path(const char *path, const char *pref
             parent_len = i + 1;
     }
 
-    size_t cap = parent_len + 96;
+    char nonce[17];
+    snprintf(nonce, sizeof(nonce), "%016llx", (unsigned long long)rt_fileext_random_u64(attempt));
+    size_t prefix_len = strlen(prefix);
+    size_t nonce_len = strlen(nonce);
+    if (parent_len > SIZE_MAX - prefix_len - nonce_len - 48)
+        return NULL;
+    size_t cap = parent_len + prefix_len + nonce_len + 48;
     char *tmp = (char *)malloc(cap);
     if (!tmp)
         return NULL;
@@ -102,8 +155,13 @@ static char *rt_fileext_make_parent_temp_path(const char *path, const char *pref
 #else
     unsigned long pid = (unsigned long)getpid();
 #endif
-    int written =
-        snprintf(tmp + parent_len, cap - parent_len, "%s%lu.%p.%u", prefix, pid, (const void *)path, attempt);
+    int written = snprintf(tmp + parent_len,
+                           cap - parent_len,
+                           "%s%lu.%s.%u",
+                           prefix,
+                           pid,
+                           nonce,
+                           attempt);
     if (written < 0 || (size_t)written >= cap - parent_len) {
         free(tmp);
         return NULL;
@@ -147,7 +205,7 @@ static int rt_fileext_open(const char *path, int flags, int pmode) {
     wchar_t *wide = rt_file_path_utf8_to_wide(path);
     if (!wide)
         return -1;
-    int fd = _wopen(wide, flags, pmode);
+    int fd = _wopen(wide, flags | _O_NOINHERIT, pmode);
     free(wide);
     return fd;
 }
@@ -226,7 +284,20 @@ static int rt_fileext_replace_utf8(const char *src, const char *dst) {
     return ok ? 1 : 0;
 }
 #else
-#define rt_fileext_open open
+static int rt_fileext_open(const char *path, int flags, int pmode) {
+#ifdef O_CLOEXEC
+    flags |= O_CLOEXEC;
+#endif
+    int fd = open(path, flags, pmode);
+#if defined(FD_CLOEXEC) && !defined(O_CLOEXEC)
+    if (fd >= 0) {
+        int fd_flags = fcntl(fd, F_GETFD);
+        if (fd_flags >= 0)
+            (void)fcntl(fd, F_SETFD, fd_flags | FD_CLOEXEC);
+    }
+#endif
+    return fd;
+}
 #define rt_fileext_stat_path stat
 #define rt_fileext_unlink unlink
 #define rt_fileext_utime utime
@@ -381,7 +452,7 @@ static int rt_fileext_sync_parent_dir(const char *path) {
 #ifdef O_DIRECTORY
     flags |= O_DIRECTORY;
 #endif
-    int fd = open(parent, flags);
+    int fd = rt_fileext_open(parent, flags, 0);
     free(heap_buf);
     if (fd < 0)
         return 0;

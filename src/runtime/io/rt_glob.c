@@ -77,6 +77,18 @@ static int glob_is_path_sep(char ch) {
 #endif
 }
 
+static const char *glob_string_cstr_no_nul(rt_string value) {
+    if (!value)
+        return NULL;
+    const char *cstr = rt_string_cstr(value);
+    int64_t len = rt_str_len(value);
+    if (!cstr || len < 0)
+        return NULL;
+    if (memchr(cstr, '\0', (size_t)len) != NULL)
+        return NULL;
+    return cstr;
+}
+
 /// @brief Test whether `ch` falls in `[start..end]` for `[a-z]`-style classes.
 ///
 /// Normalizes the three chars with the same platform case rule as
@@ -305,15 +317,9 @@ static int glob_match_impl(const char *pattern, const char *text, int allow_slas
 int8_t rt_glob_match(rt_string path, rt_string pattern) {
     if (!path || !pattern)
         return 0;
-    const char *pat = rt_string_cstr(pattern);
-    const char *txt = rt_string_cstr(path);
+    const char *pat = glob_string_cstr_no_nul(pattern);
+    const char *txt = glob_string_cstr_no_nul(path);
     if (!pat || !txt)
-        return 0;
-    int64_t pat_len = rt_str_len(pattern);
-    int64_t txt_len = rt_str_len(path);
-    if (pat_len < 0 || txt_len < 0)
-        return 0;
-    if (memchr(pat, '\0', (size_t)pat_len) || memchr(txt, '\0', (size_t)txt_len))
         return 0;
     return glob_match_impl(pat, txt, 0) ? 1 : 0;
 }
@@ -372,7 +378,7 @@ void *rt_glob_files(rt_string dir, rt_string pattern) {
     rt_seq_set_owns_elements(result, 1);
     if (!dir || !pattern)
         return result;
-    const char *pat_cstr = rt_string_cstr(pattern);
+    const char *pat_cstr = glob_string_cstr_no_nul(pattern);
     if (!pat_cstr)
         return result;
 
@@ -412,7 +418,10 @@ void *rt_glob_files(rt_string dir, rt_string pattern) {
 static void glob_recursive_helper(rt_string base_dir,
                                   rt_string rel_path,
                                   const char *pattern,
-                                  void *result) {
+                                  void *result,
+                                  size_t depth) {
+    if (depth > 4096)
+        rt_trap("Glob.FilesRecursive: recursion depth exceeded");
     // List all entries in current directory
     rt_string current_dir;
     int owns_current_dir = 0;
@@ -451,7 +460,7 @@ static void glob_recursive_helper(rt_string base_dir,
 
         // If directory, recurse into it
         if (glob_is_real_directory(full_path)) {
-            glob_recursive_helper(base_dir, entry_rel, pattern, result);
+            glob_recursive_helper(base_dir, entry_rel, pattern, result, depth + 1);
         }
 
         rt_string_unref(entry_rel);
@@ -480,13 +489,17 @@ void *rt_glob_files_recursive(rt_string base, rt_string pattern) {
         rt_string_unref(empty);
         return result;
     }
-    const char *pat = rt_string_cstr(pattern);
+    const char *pat = glob_string_cstr_no_nul(pattern);
     if (!pat) {
         rt_string_unref(empty);
         return result;
     }
+    if (!glob_string_cstr_no_nul(base)) {
+        rt_string_unref(empty);
+        return result;
+    }
 
-    glob_recursive_helper(base, empty, pat, result);
+    glob_recursive_helper(base, empty, pat, result, 0);
     rt_string_unref(empty);
 
     return result;
@@ -502,7 +515,7 @@ void *rt_glob_entries(rt_string dir, rt_string pattern) {
     rt_seq_set_owns_elements(result, 1);
     if (!dir || !pattern)
         return result;
-    const char *pat_cstr = rt_string_cstr(pattern);
+    const char *pat_cstr = glob_string_cstr_no_nul(pattern);
     if (!pat_cstr)
         return result;
 

@@ -66,6 +66,7 @@
 #define PATH_SEP '/'
 #else
 #include <dirent.h>
+#include <fcntl.h>
 #include <unistd.h>
 #ifndef PATH_MAX
 #define PATH_MAX 4096
@@ -700,7 +701,7 @@ void rt_dir_make_all(rt_string path) {
 
     // Create each level
     for (char *p = tmp + root_len; *p; p++) {
-        if (*p == '/' || *p == '\\') {
+        if (rt_dir_is_sep_char(*p)) {
             char sep = *p;
             *p = '\0';
 
@@ -873,16 +874,171 @@ void rt_dir_remove(rt_string path) {
 #endif
 }
 
+#if defined(__viperdos__)
 /// @brief Internal helper to delete a single file.
 static int delete_file(const char *path) {
-#ifdef _WIN32
-    return _unlink(path) == 0 ? 1 : 0;
-#elif defined(__viperdos__)
     return unlink(path) == 0 ? 1 : 0;
-#else
-    return unlink(path) == 0 ? 1 : 0;
-#endif
 }
+#endif
+
+#if !defined(_WIN32) && !defined(__viperdos__)
+static int rt_dir_posix_open_dir_at(int parent_fd, const char *name) {
+    struct stat lst;
+    if (fstatat(parent_fd, name, &lst, AT_SYMLINK_NOFOLLOW) != 0)
+        return -1;
+    if (S_ISLNK(lst.st_mode)) {
+        errno = ELOOP;
+        return -1;
+    }
+    if (!S_ISDIR(lst.st_mode)) {
+        errno = ENOTDIR;
+        return -1;
+    }
+
+    int flags = O_RDONLY;
+#ifdef O_DIRECTORY
+    flags |= O_DIRECTORY;
+#endif
+#ifdef O_CLOEXEC
+    flags |= O_CLOEXEC;
+#endif
+#ifdef O_NOFOLLOW
+    flags |= O_NOFOLLOW;
+#endif
+    int fd = openat(parent_fd, name, flags);
+    if (fd >= 0) {
+        struct stat st;
+        if (fstat(fd, &st) != 0 || !S_ISDIR(st.st_mode)) {
+            close(fd);
+            errno = ENOTDIR;
+            return -1;
+        }
+    }
+#if defined(FD_CLOEXEC) && !defined(O_CLOEXEC)
+    if (fd >= 0) {
+        int fd_flags = fcntl(fd, F_GETFD);
+        if (fd_flags >= 0)
+            (void)fcntl(fd, F_SETFD, fd_flags | FD_CLOEXEC);
+    }
+#endif
+    return fd;
+}
+
+static int rt_dir_remove_all_at(int parent_fd, const char *name) {
+    int fd = rt_dir_posix_open_dir_at(parent_fd, name);
+    if (fd < 0) {
+        int err = errno;
+        if (err == ENOENT)
+            return 1;
+        if (err == ENOTDIR || err == ELOOP) {
+            return unlinkat(parent_fd, name, 0) == 0 || errno == ENOENT;
+        }
+        struct stat st;
+        if (fstatat(parent_fd, name, &st, AT_SYMLINK_NOFOLLOW) == 0 && !S_ISDIR(st.st_mode))
+            return unlinkat(parent_fd, name, 0) == 0 || errno == ENOENT;
+        return 0;
+    }
+
+    DIR *dir = fdopendir(fd);
+    if (!dir) {
+        close(fd);
+        return 0;
+    }
+
+    int ok = 1;
+    int dir_fd = dirfd(dir);
+    struct dirent *ent;
+    while ((ent = readdir(dir)) != NULL) {
+        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
+            continue;
+        if (!rt_dir_remove_all_at(dir_fd, ent->d_name))
+            ok = 0;
+    }
+
+    if (closedir(dir) != 0)
+        ok = 0;
+    if (unlinkat(parent_fd, name, AT_REMOVEDIR) != 0 && errno != ENOENT)
+        ok = 0;
+    return ok;
+}
+
+static char *rt_dir_strip_trailing_seps_dup(const char *path) {
+    size_t len = strlen(path);
+    while (len > 1 && rt_dir_is_sep_char(path[len - 1]))
+        len--;
+    if (len == 0)
+        return NULL;
+    char *copy = (char *)malloc(len + 1);
+    if (!copy)
+        return NULL;
+    memcpy(copy, path, len);
+    copy[len] = '\0';
+    return copy;
+}
+
+static int rt_dir_remove_all_posix_safe(const char *cpath) {
+    char *path = rt_dir_strip_trailing_seps_dup(cpath);
+    if (!path)
+        return 0;
+
+    struct stat root_st;
+    if (lstat(path, &root_st) != 0) {
+        int ok = errno == ENOENT ? 1 : 0;
+        free(path);
+        return ok;
+    }
+    if (S_ISLNK(root_st.st_mode)) {
+        int ok = unlink(path) == 0 || errno == ENOENT;
+        free(path);
+        return ok;
+    }
+    if (!S_ISDIR(root_st.st_mode)) {
+        free(path);
+        return 0;
+    }
+
+    char *last = strrchr(path, '/');
+    const char *parent_path = ".";
+    const char *leaf = path;
+    if (last) {
+        leaf = last + 1;
+        if (last == path) {
+            parent_path = "/";
+        } else {
+            *last = '\0';
+            parent_path = path;
+        }
+    }
+    if (!leaf || leaf[0] == '\0') {
+        free(path);
+        return 0;
+    }
+
+    int flags = O_RDONLY;
+#ifdef O_DIRECTORY
+    flags |= O_DIRECTORY;
+#endif
+#ifdef O_CLOEXEC
+    flags |= O_CLOEXEC;
+#endif
+    int parent_fd = open(parent_path, flags);
+    if (parent_fd < 0) {
+        free(path);
+        return errno == ENOENT ? 1 : 0;
+    }
+#if defined(FD_CLOEXEC) && !defined(O_CLOEXEC)
+    int fd_flags = fcntl(parent_fd, F_GETFD);
+    if (fd_flags >= 0)
+        (void)fcntl(parent_fd, F_SETFD, fd_flags | FD_CLOEXEC);
+#endif
+
+    int ok = rt_dir_remove_all_at(parent_fd, leaf);
+    if (close(parent_fd) != 0)
+        ok = 0;
+    free(path);
+    return ok;
+}
+#endif
 
 /// @brief Recursively delete a directory tree rooted at the C-string `cpath`.
 ///
@@ -958,7 +1114,7 @@ static int rt_dir_remove_all_cpath(const char *cpath) {
     free(pattern);
     free(dir_path);
     return ok;
-#else
+#elif defined(__viperdos__)
     struct stat root_st;
     if (lstat(cpath, &root_st) != 0) {
         if (errno == ENOENT)
@@ -1002,6 +1158,8 @@ static int rt_dir_remove_all_cpath(const char *cpath) {
     if (rmdir(cpath) != 0 && errno != ENOENT)
         ok = 0;
     return ok;
+#else
+    return rt_dir_remove_all_posix_safe(cpath);
 #endif
 }
 

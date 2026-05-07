@@ -226,7 +226,7 @@ static rt_string watcher_event_path_from_relative(rt_watcher_impl *w, const char
 }
 #endif
 
-/// @brief Push an event into the ring buffer, dropping the oldest on overflow.
+/// @brief Push an event into the ring buffer, reporting overflow before dropping events.
 ///
 /// The queue is a fixed-size ring of 64 events; if the producer
 /// outpaces the consumer, older events are discarded rather than
@@ -236,11 +236,15 @@ static rt_string watcher_event_path_from_relative(rt_watcher_impl *w, const char
 /// discarded old event's path is released.
 static void watcher_queue_event_owned(rt_watcher_impl *w, int64_t type, rt_string path) {
     if (w->event_count >= WATCHER_EVENT_QUEUE_SIZE) {
-        // Queue full, drop oldest
-        if (w->events[w->event_head].path)
-            rt_string_unref(w->events[w->event_head].path);
-        w->event_head = (w->event_head + 1) % WATCHER_EVENT_QUEUE_SIZE;
-        w->event_count--;
+        int64_t overflow_slot =
+            (w->event_tail + WATCHER_EVENT_QUEUE_SIZE - 1) % WATCHER_EVENT_QUEUE_SIZE;
+        if (w->events[overflow_slot].path)
+            rt_string_unref(w->events[overflow_slot].path);
+        w->events[overflow_slot].type = RT_WATCH_EVENT_OVERFLOW;
+        w->events[overflow_slot].path = rt_string_ref((rt_string)w->watch_path);
+        if (path)
+            rt_string_unref(path);
+        return;
     }
 
     w->events[w->event_tail].type = type;
@@ -797,4 +801,10 @@ int64_t rt_watcher_event_deleted(void *self) {
 int64_t rt_watcher_event_renamed(void *self) {
     (void)self;
     return RT_WATCH_EVENT_RENAMED;
+}
+
+/// @brief Constant: `RT_WATCH_EVENT_OVERFLOW` (some file-system events were dropped).
+int64_t rt_watcher_event_overflow(void *self) {
+    (void)self;
+    return RT_WATCH_EVENT_OVERFLOW;
 }

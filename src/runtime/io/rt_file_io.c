@@ -59,6 +59,9 @@ typedef SSIZE_T ssize_t;
 #define read _read
 #define write _write
 #define lseek _lseeki64
+#ifndef O_NOINHERIT
+#define O_NOINHERIT _O_NOINHERIT
+#endif
 // Windows file permission flags
 #define S_IRUSR _S_IREAD
 #define S_IWUSR _S_IWRITE
@@ -334,6 +337,7 @@ int8_t rt_file_open(
     mode_t perms = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
     errno = 0;
 #if defined(_WIN32)
+    flags |= O_NOINHERIT;
     wchar_t *wide_path = rt_file_path_utf8_to_wide(path);
     if (!wide_path) {
         rt_file_set_error(out_err, Err_InvalidOperation, 0);
@@ -344,6 +348,13 @@ int8_t rt_file_open(
     free(wide_path);
 #else
     int fd = (flags & O_CREAT) ? open(path, flags, perms) : open(path, flags);
+#if defined(FD_CLOEXEC) && !defined(O_CLOEXEC)
+    if (fd >= 0) {
+        int fd_flags = fcntl(fd, F_GETFD);
+        if (fd_flags >= 0)
+            (void)fcntl(fd, F_SETFD, fd_flags | FD_CLOEXEC);
+    }
+#endif
 #endif
     if (fd < 0) {
         int err = errno ? errno : EIO;
@@ -373,15 +384,16 @@ int8_t rt_file_close(RtFile *file, RtError *out_err) {
         return 1;
     }
 
+    int fd = file->fd;
+    file->fd = -1;
     errno = 0;
-    int rc = close(file->fd);
+    int rc = close(fd);
     if (rc < 0) {
         int err = errno ? errno : EIO;
         rt_file_set_error(out_err, rt_file_err_from_errno(err, Err_IOError), err);
         return 0;
     }
 
-    file->fd = -1;
     rt_file_set_ok(out_err);
     return 1;
 }

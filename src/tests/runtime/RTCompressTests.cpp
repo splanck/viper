@@ -337,6 +337,35 @@ static void test_gzip_crc() {
     test_result("CRC verification passed", bytes_equal(original, decompressed));
 }
 
+static void test_gzip_concatenated_members() {
+    printf("Testing GZIP concatenated members:\n");
+
+    void *first = make_bytes_str("first:");
+    void *second = make_bytes_str("second");
+    void *gz_first = rt_compress_gzip(first);
+    void *gz_second = rt_compress_gzip(second);
+    int64_t first_len = get_bytes_len(gz_first);
+    int64_t second_len = get_bytes_len(gz_second);
+    void *joined = rt_bytes_new(first_len + second_len);
+    memcpy(get_bytes_data(joined), get_bytes_data(gz_first), (size_t)first_len);
+    memcpy(get_bytes_data(joined) + first_len, get_bytes_data(gz_second), (size_t)second_len);
+
+    void *decompressed = rt_compress_gunzip(joined);
+    const char expected[] = "first:second";
+    test_result("Concatenated members inflate in order",
+                get_bytes_len(decompressed) == (int64_t)strlen(expected) &&
+                    memcmp(get_bytes_data(decompressed), expected, strlen(expected)) == 0);
+}
+
+static void test_inflate_limit_traps() {
+    printf("Testing Inflate explicit limit:\n");
+
+    void *original = make_bytes_str("limited payload");
+    void *compressed = rt_compress_deflate(original);
+    EXPECT_TRAP(rt_compress_inflate_limit(compressed, 4));
+    test_result("InflateLimit traps when output exceeds limit", true);
+}
+
 static void test_gzip_rejects_reserved_flags() {
     printf("Testing GZIP reserved flags rejection:\n");
 
@@ -527,6 +556,8 @@ int main() {
     printf("\n");
     test_gzip_crc();
     printf("\n");
+    test_gzip_concatenated_members();
+    printf("\n");
     test_gzip_rejects_reserved_flags();
     printf("\n");
     test_gzip_rejects_truncated_optional_filename();
@@ -544,6 +575,8 @@ int main() {
     test_inflate_truncated_data_traps();
     printf("\n");
     test_inflate_rejects_trailing_data();
+    printf("\n");
+    test_inflate_limit_traps();
     printf("\n");
 
     // Large data

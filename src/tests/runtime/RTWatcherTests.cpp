@@ -183,6 +183,7 @@ static void test_event_constants() {
     assert(rt_watcher_event_modified(NULL) == 2);
     assert(rt_watcher_event_deleted(NULL) == 3);
     assert(rt_watcher_event_renamed(NULL) == 4);
+    assert(rt_watcher_event_overflow(NULL) == 5);
 
     test_result("Event constants", true);
 }

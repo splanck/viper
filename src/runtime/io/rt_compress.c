@@ -527,6 +527,7 @@ typedef struct {
     uint8_t *data;   ///< Heap-allocated output buffer (grown by out_ensure).
     size_t len;      ///< Number of valid bytes written to `data`.
     size_t capacity; ///< Allocated capacity of `data` in bytes.
+    size_t max_output; ///< Maximum allowed decompressed bytes.
 } output_buffer_t;
 
 /// @brief Initialize a growable output buffer.
@@ -535,16 +536,17 @@ typedef struct {
 /// to accumulate inflated output, which can be larger than the input
 /// by an arbitrary factor — `out_ensure` enforces a 256MB safety cap
 /// to prevent decompression-bomb attacks. Traps on OOM.
-static void out_init(output_buffer_t *out, size_t initial_cap) {
+static void out_init(output_buffer_t *out, size_t initial_cap, size_t max_output) {
     out->capacity = initial_cap > 256 ? initial_cap : 256;
     out->data = (uint8_t *)malloc(out->capacity);
     if (!out->data)
         rt_trap("rt_compress: memory allocation failed");
     out->len = 0;
+    out->max_output = max_output;
 }
 
 /* S-20: Maximum decompressed output size (256 MB) to prevent decompression bombs */
-#define INFLATE_MAX_OUTPUT (256u * 1024u * 1024u)
+#define INFLATE_DEFAULT_MAX_OUTPUT (256u * 1024u * 1024u)
 
 /// @brief Grow the inflate output buffer enforcing the 256MB cap.
 ///
@@ -556,21 +558,21 @@ static void out_ensure(output_buffer_t *out, size_t need) {
     if (need > SIZE_MAX - out->len)
         rt_trap("Inflate: output size overflow");
     size_t required = out->len + need;
-    if (required > INFLATE_MAX_OUTPUT)
-        rt_trap("Inflate: decompressed output exceeds 256 MB limit");
+    if (required > out->max_output)
+        rt_trap("Inflate: decompressed output exceeds limit");
 
     if (required <= out->capacity)
         return;
     size_t new_cap = out->capacity ? out->capacity : 256;
     while (new_cap < required) {
-        if (new_cap > INFLATE_MAX_OUTPUT / 2) {
+        if (new_cap > out->max_output / 2) {
             new_cap = required;
             break;
         }
         new_cap *= 2;
     }
-    if (new_cap > INFLATE_MAX_OUTPUT)
-        new_cap = INFLATE_MAX_OUTPUT;
+    if (new_cap > out->max_output)
+        new_cap = out->max_output;
     uint8_t *new_data = (uint8_t *)realloc(out->data, new_cap);
     if (!new_data)
         rt_trap("Inflate: out of memory");
@@ -597,6 +599,13 @@ static void out_copy(output_buffer_t *out, int distance, int length) {
     for (int i = 0; i < length; i++) {
         out->data[out->len++] = out->data[src++];
     }
+}
+
+static void out_append(output_buffer_t *out, const uint8_t *data, size_t len) {
+    out_ensure(out, len);
+    if (len > 0)
+        memcpy(out->data + out->len, data, len);
+    out->len += len;
 }
 
 /// @brief Release the output buffer's heap allocation.
@@ -845,15 +854,15 @@ static bool inflate_dynamic(bit_reader_t *br, output_buffer_t *out) {
 /// 256MB decompression-bomb limit. After the final block, any residual
 /// non-zero bits in the byte-aligned tail are a stream corruption —
 /// not just padding — and also trap.
-static void *inflate_data(const uint8_t *data, size_t len) {
+static void *inflate_data_limited(const uint8_t *data, size_t len, size_t max_output) {
     init_fixed_trees();
 
     bit_reader_t br;
     br_init(&br, data, len);
 
     output_buffer_t out;
-    size_t estimate = len > INFLATE_MAX_OUTPUT / 4 ? INFLATE_MAX_OUTPUT : len * 4;
-    out_init(&out, estimate); // Estimate 4x expansion without overflowing.
+    size_t estimate = len > max_output / 4 ? max_output : len * 4;
+    out_init(&out, estimate, max_output); // Estimate 4x expansion without overflowing.
 
     bool last_block = false;
 
@@ -912,6 +921,10 @@ static void *inflate_data(const uint8_t *data, size_t len) {
     out_free(&out);
 
     return result;
+}
+
+static void *inflate_data(const uint8_t *data, size_t len) {
+    return inflate_data_limited(data, len, INFLATE_DEFAULT_MAX_OUTPUT);
 }
 
 //=============================================================================
@@ -1323,7 +1336,7 @@ static void *gzip_data(const uint8_t *data, size_t len, int level) {
     return result;
 }
 
-/// @brief Decode a GZIP-wrapped DEFLATE stream per RFC 1952.
+/// @brief Decode one GZIP-wrapped DEFLATE member per RFC 1952.
 ///
 /// Validates magic bytes (0x1F 0x8B), checks method=deflate, then walks
 /// the optional header fields selected by the flags byte: FEXTRA (2-byte
@@ -1331,9 +1344,7 @@ static void *gzip_data(const uint8_t *data, size_t len, int level) {
 /// FHCRC (2-byte CRC16 of the header so far). After the DEFLATE stream
 /// ends, validates the 8-byte trailer (CRC32 of inflated data + ISIZE)
 /// against the actual inflated result. Traps on any mismatch.
-/// Multi-member GZIP streams are not supported — only the first
-/// member is read.
-static void *gunzip_data(const uint8_t *data, size_t len) {
+static void *gunzip_member_data(const uint8_t *data, size_t len) {
     if (len < 18) {
         rt_trap("Gunzip: data too short");
         return NULL;
@@ -1445,6 +1456,44 @@ static void *gunzip_data(const uint8_t *data, size_t len) {
     return result;
 }
 
+static size_t gunzip_next_member_offset(const uint8_t *data, size_t member_start, size_t len) {
+    size_t min_next = member_start + 18;
+    for (size_t i = min_next; i + 10 <= len; ++i) {
+        if (data[i] == 0x1F && data[i + 1] == 0x8B && data[i + 2] == 0x08 &&
+            (data[i + 3] & 0xE0) == 0) {
+            return i;
+        }
+    }
+    return len;
+}
+
+/// @brief Decode a possibly concatenated GZIP stream.
+static void *gunzip_data(const uint8_t *data, size_t len) {
+    if (len < 18) {
+        rt_trap("Gunzip: data too short");
+        return NULL;
+    }
+
+    output_buffer_t out;
+    size_t estimate = len > INFLATE_DEFAULT_MAX_OUTPUT / 2 ? INFLATE_DEFAULT_MAX_OUTPUT : len * 2;
+    out_init(&out, estimate, INFLATE_DEFAULT_MAX_OUTPUT);
+
+    size_t pos = 0;
+    while (pos < len) {
+        size_t end = gunzip_next_member_offset(data, pos, len);
+        void *member = gunzip_member_data(data + pos, end - pos);
+        out_append(&out, bytes_data(member), (size_t)bytes_len(member));
+        compress_release_temp_object(member);
+        pos = end;
+    }
+
+    void *result = rt_bytes_new(out.len);
+    if (out.len > 0)
+        memcpy(bytes_data(result), out.data, out.len);
+    out_free(&out);
+    return result;
+}
+
 //=============================================================================
 // Public API
 //=============================================================================
@@ -1494,6 +1543,14 @@ void *rt_compress_inflate(void *data) {
     return inflate_data(bytes_data(data), bytes_len(data));
 }
 
+void *rt_compress_inflate_limit(void *data, int64_t max_output) {
+    if (!data)
+        rt_trap("Compress.InflateLimit: data is null");
+    if (max_output < 0)
+        rt_trap("Compress.InflateLimit: max output is negative");
+    return inflate_data_limited(bytes_data(data), bytes_len(data), (size_t)max_output);
+}
+
 /// @brief `Compress.Gzip(data)` — RFC 1952 GZIP wrap at default level.
 ///
 /// Emits a 10-byte GZIP header + DEFLATE payload + 8-byte trailer
@@ -1526,10 +1583,9 @@ void *rt_compress_gzip_lvl(void *data, int64_t level) {
 
 /// @brief `Compress.Gunzip(data)` — decode a GZIP-wrapped DEFLATE stream.
 ///
-/// Validates the magic bytes, optional FEXTRA/FNAME/FCOMMENT/FHCRC
-/// header fields, and the trailing CRC32 + size — both must match the
-/// inflated data or the call traps. Multi-member GZIP streams are not
-/// yet supported.
+/// Validates each member's magic bytes, optional FEXTRA/FNAME/FCOMMENT/FHCRC
+/// header fields, and trailing CRC32 + size. Concatenated GZIP members are
+/// inflated in order and returned as one Bytes payload.
 ///
 /// @param data GZIP-wrapped `rt_bytes`.
 /// @return Owned `rt_bytes` containing the inflated payload.

@@ -137,6 +137,8 @@ static void test_i8_u8() {
 
     EXPECT_TRAP(rt_memstream_write_u8(ms, -1));
     EXPECT_TRAP(rt_memstream_write_u8(ms, 256));
+    EXPECT_TRAP(rt_memstream_write_i8(ms, -129));
+    EXPECT_TRAP(rt_memstream_write_i8(ms, 128));
 
     test_result("I8/U8", true);
 }
@@ -160,6 +162,11 @@ static void test_i16_u16() {
     assert(rt_memstream_read_u16(ms) == 0);
     assert(rt_memstream_read_u16(ms) == 65535);
 
+    EXPECT_TRAP(rt_memstream_write_i16(ms, -32769));
+    EXPECT_TRAP(rt_memstream_write_i16(ms, 32768));
+    EXPECT_TRAP(rt_memstream_write_u16(ms, -1));
+    EXPECT_TRAP(rt_memstream_write_u16(ms, 65536));
+
     test_result("I16/U16", true);
 }
 
@@ -181,6 +188,11 @@ static void test_i32_u32() {
     assert(rt_memstream_read_i32(ms) == 2147483647);
     assert(rt_memstream_read_u32(ms) == 0);
     assert(rt_memstream_read_u32(ms) == 4294967295LL);
+
+    EXPECT_TRAP(rt_memstream_write_i32(ms, -2147483649LL));
+    EXPECT_TRAP(rt_memstream_write_i32(ms, 2147483648LL));
+    EXPECT_TRAP(rt_memstream_write_u32(ms, -1));
+    EXPECT_TRAP(rt_memstream_write_u32(ms, 4294967296LL));
 
     test_result("I32/U32", true);
 }

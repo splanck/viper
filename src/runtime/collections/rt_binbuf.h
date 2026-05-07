@@ -53,25 +53,45 @@ void *rt_binbuf_from_bytes(void *bytes_obj);
 /// @param value Byte value to write.
 void rt_binbuf_write_byte(void *obj, int64_t value);
 
-/// @brief Write a 16-bit integer in little-endian byte order.
+/// @brief Write a 16-bit signed integer in little-endian byte order.
 /// @param obj BinaryBuffer pointer.
-/// @param value Value to write (low 16 bits used).
+/// @param value Value to write.
 void rt_binbuf_write_i16le(void *obj, int64_t value);
 
-/// @brief Write a 16-bit integer in big-endian byte order.
+/// @brief Write a 16-bit signed integer in big-endian byte order.
 /// @param obj BinaryBuffer pointer.
-/// @param value Value to write (low 16 bits used).
+/// @param value Value to write.
 void rt_binbuf_write_i16be(void *obj, int64_t value);
 
-/// @brief Write a 32-bit integer in little-endian byte order.
+/// @brief Write a 16-bit unsigned integer in little-endian byte order.
 /// @param obj BinaryBuffer pointer.
-/// @param value Value to write (low 32 bits used).
+/// @param value Value to write.
+void rt_binbuf_write_u16le(void *obj, int64_t value);
+
+/// @brief Write a 16-bit unsigned integer in big-endian byte order.
+/// @param obj BinaryBuffer pointer.
+/// @param value Value to write.
+void rt_binbuf_write_u16be(void *obj, int64_t value);
+
+/// @brief Write a 32-bit signed integer in little-endian byte order.
+/// @param obj BinaryBuffer pointer.
+/// @param value Value to write.
 void rt_binbuf_write_i32le(void *obj, int64_t value);
 
-/// @brief Write a 32-bit integer in big-endian byte order.
+/// @brief Write a 32-bit signed integer in big-endian byte order.
 /// @param obj BinaryBuffer pointer.
-/// @param value Value to write (low 32 bits used).
+/// @param value Value to write.
 void rt_binbuf_write_i32be(void *obj, int64_t value);
+
+/// @brief Write a 32-bit unsigned integer in little-endian byte order.
+/// @param obj BinaryBuffer pointer.
+/// @param value Value to write.
+void rt_binbuf_write_u32le(void *obj, int64_t value);
+
+/// @brief Write a 32-bit unsigned integer in big-endian byte order.
+/// @param obj BinaryBuffer pointer.
+/// @param value Value to write.
+void rt_binbuf_write_u32be(void *obj, int64_t value);
 
 /// @brief Write a 64-bit integer in little-endian byte order.
 /// @param obj BinaryBuffer pointer.
@@ -110,6 +130,16 @@ int64_t rt_binbuf_read_i16le(void *obj);
 /// @return Decoded value; traps if reading past len.
 int64_t rt_binbuf_read_i16be(void *obj);
 
+/// @brief Read a 16-bit little-endian unsigned integer and advance position.
+/// @param obj BinaryBuffer pointer.
+/// @return Decoded value; traps if reading past len.
+int64_t rt_binbuf_read_u16le(void *obj);
+
+/// @brief Read a 16-bit big-endian unsigned integer and advance position.
+/// @param obj BinaryBuffer pointer.
+/// @return Decoded value; traps if reading past len.
+int64_t rt_binbuf_read_u16be(void *obj);
+
 /// @brief Read a 32-bit little-endian integer and advance position.
 /// @param obj BinaryBuffer pointer.
 /// @return Decoded value; traps if reading past len.
@@ -119,6 +149,16 @@ int64_t rt_binbuf_read_i32le(void *obj);
 /// @param obj BinaryBuffer pointer.
 /// @return Decoded value; traps if reading past len.
 int64_t rt_binbuf_read_i32be(void *obj);
+
+/// @brief Read a 32-bit little-endian unsigned integer and advance position.
+/// @param obj BinaryBuffer pointer.
+/// @return Decoded value; traps if reading past len.
+int64_t rt_binbuf_read_u32le(void *obj);
+
+/// @brief Read a 32-bit big-endian unsigned integer and advance position.
+/// @param obj BinaryBuffer pointer.
+/// @return Decoded value; traps if reading past len.
+int64_t rt_binbuf_read_u32be(void *obj);
 
 /// @brief Read a 64-bit little-endian integer and advance position.
 /// @param obj BinaryBuffer pointer.

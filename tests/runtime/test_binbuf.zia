@@ -93,7 +93,7 @@ func testWriteReadI32() {
     var pos1 = Viper.IO.BinaryBuffer.get_Pos(buf);
     assertEqInt(pos1, 4, "pos after WriteI32LE");
 
-    Viper.IO.BinaryBuffer.WriteI32BE(buf, 0xDEADBEEF);
+    Viper.IO.BinaryBuffer.WriteU32BE(buf, 0xDEADBEEF);
     var pos2 = Viper.IO.BinaryBuffer.get_Pos(buf);
     assertEqInt(pos2, 8, "pos after WriteI32BE");
 
@@ -102,8 +102,8 @@ func testWriteReadI32() {
     var v1 = Viper.IO.BinaryBuffer.ReadI32LE(buf);
     assertEqInt(v1, 0x12345678, "read i32le");
 
-    var v2 = Viper.IO.BinaryBuffer.ReadI32BE(buf);
-    assertEqInt(v2, -559038737, "read i32be");
+    var v2 = Viper.IO.BinaryBuffer.ReadU32BE(buf);
+    assertEqInt(v2, 0xDEADBEEF, "read u32be");
 }
 
 func testWriteReadI64() {

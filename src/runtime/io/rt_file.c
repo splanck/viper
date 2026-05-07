@@ -114,7 +114,7 @@ static inline void rtf_set_entries(RtFileChannelEntry *ptr) {
 ///          to inspect channel state or decide whether a new slot must be
 ///          materialised.
 static RtFileChannelEntry *rt_file_find_channel(int32_t channel) {
-    if (channel < 0)
+    if (channel <= 0)
         return NULL;
     RtFileChannelEntry *entries = rtf_entries();
     size_t count = entries ? *rtf_count() : 0;
@@ -136,7 +136,7 @@ static const size_t kMaxOpenChannels = 1024;
 ///          to the caller.  Allocation failures bubble up as @c NULL so callers
 ///          can surface @ref Err_RuntimeError.
 static RtFileChannelEntry *rt_file_prepare_channel(int32_t channel) {
-    if (channel < 0)
+    if (channel <= 0)
         return NULL;
     RtFileChannelEntry *entry = rt_file_find_channel(channel);
     if (entry)
@@ -182,7 +182,7 @@ static RtFileChannelEntry *rt_file_prepare_channel(int32_t channel) {
 static int32_t rt_file_resolve_channel(int32_t channel, RtFileChannelEntry **out_entry) {
     if (out_entry)
         *out_entry = NULL;
-    if (channel < 0)
+    if (channel <= 0)
         return (int32_t)Err_InvalidOperation;
     RtFileChannelEntry *entry = rt_file_find_channel(channel);
     if (!entry || !entry->in_use)
@@ -219,7 +219,7 @@ static int32_t rt_file_write_entry(RtFileChannelEntry *entry, const uint8_t *dat
 int32_t rt_open_err_vstr(ViperString *path, int32_t mode, int32_t channel) {
     const char *mode_str = rt_file_mode_string(mode);
     const char *path_str = NULL;
-    if (!mode_str || !rt_file_path_from_vstr(path, &path_str) || channel < 0)
+    if (!mode_str || !rt_file_path_from_vstr(path, &path_str) || channel <= 0)
         return (int32_t)Err_InvalidOperation;
 
     RtFileChannelEntry *entry = rt_file_prepare_channel(channel);
@@ -245,15 +245,19 @@ int32_t rt_open_err_vstr(ViperString *path, int32_t mode, int32_t channel) {
 ///          descriptor, and resets bookkeeping state.  Returns zero on success or
 ///          propagates the runtime error code raised by @ref rt_file_close.
 int32_t rt_close_err(int32_t channel) {
-    if (channel < 0)
+    if (channel <= 0)
         return (int32_t)Err_InvalidOperation;
     RtFileChannelEntry *entry = rt_file_find_channel(channel);
     if (!entry || !entry->in_use)
         return (int32_t)Err_InvalidOperation;
 
     RtError err = RT_ERROR_NONE;
-    if (!rt_file_close(&entry->file, &err))
+    if (!rt_file_close(&entry->file, &err)) {
+        entry->in_use = false;
+        entry->at_eof = false;
+        rt_file_init(&entry->file);
         return (int32_t)err.kind;
+    }
 
     entry->in_use = false;
     entry->at_eof = false;

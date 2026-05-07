@@ -20,6 +20,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 namespace {
 static jmp_buf g_trap_jmp;
@@ -124,9 +127,33 @@ static void test_tempfile() {
         else
             unsetenv("TMPDIR");
     }
-#endif
+ #endif
 
-    // Test 8: Prefix and extension are filename fragments, not paths.
+ #ifndef _WIN32
+    // Test 8: Invalid TMPDIR values fall back instead of being trusted.
+    {
+        char bad_tmpdir[256];
+        snprintf(bad_tmpdir, sizeof(bad_tmpdir), "/tmp/viper_tmpdir_file_%d", (int)getpid());
+        FILE *fp = fopen(bad_tmpdir, "wb");
+        assert(fp != nullptr);
+        fclose(fp);
+
+        const char *old_tmpdir = getenv("TMPDIR");
+        char old_copy[512] = {0};
+        if (old_tmpdir)
+            snprintf(old_copy, sizeof(old_copy), "%s", old_tmpdir);
+        setenv("TMPDIR", bad_tmpdir, 1);
+        rt_string dir = rt_tempfile_dir();
+        test_result("file TMPDIR rejected", strcmp(rt_string_cstr(dir), "/tmp") == 0);
+        if (old_tmpdir)
+            setenv("TMPDIR", old_copy, 1);
+        else
+            unsetenv("TMPDIR");
+        remove(bad_tmpdir);
+    }
+ #endif
+
+    // Test 9: Prefix and extension are filename fragments, not paths.
     {
         EXPECT_TRAP(rt_tempfile_path_with_prefix(rt_const_cstr("../bad")));
         EXPECT_TRAP(rt_tempfile_path_with_ext(rt_const_cstr("ok_"), rt_const_cstr("../bad")));

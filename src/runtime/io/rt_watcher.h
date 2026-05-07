@@ -40,6 +40,7 @@ typedef enum {
     RT_WATCH_EVENT_MODIFIED = 2,
     RT_WATCH_EVENT_DELETED = 3,
     RT_WATCH_EVENT_RENAMED = 4,
+    RT_WATCH_EVENT_OVERFLOW = 5,
 } rt_watch_event_t;
 
 /// @brief Create a new watcher for the given path.
@@ -96,6 +97,8 @@ int64_t rt_watcher_event_modified(void *self);
 int64_t rt_watcher_event_deleted(void *self);
 /// @brief Return RT_WATCH_EVENT_RENAMED; receiver parameter is unused (property dispatch shim).
 int64_t rt_watcher_event_renamed(void *self);
+/// @brief Return RT_WATCH_EVENT_OVERFLOW; receiver parameter is unused (property dispatch shim).
+int64_t rt_watcher_event_overflow(void *self);
 
 #ifdef __cplusplus
 }

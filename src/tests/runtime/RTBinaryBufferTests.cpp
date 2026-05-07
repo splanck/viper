@@ -141,9 +141,23 @@ static void test_write_read_i32le() {
 
 static void test_write_read_i32be() {
     void *bb = rt_binbuf_new();
-    rt_binbuf_write_i32be(bb, 0xDEADBEEF);
+    rt_binbuf_write_i32be(bb, 0x1EADBEEF);
     rt_binbuf_set_position(bb, 0);
-    assert(rt_binbuf_read_i32be(bb) == (int64_t)(int32_t)0xDEADBEEF);
+    assert(rt_binbuf_read_i32be(bb) == 0x1EADBEEF);
+}
+
+static void test_write_read_unsigned_widths() {
+    void *bb = rt_binbuf_new();
+    rt_binbuf_write_u16le(bb, 0xFFFF);
+    rt_binbuf_write_u16be(bb, 0xBEEF);
+    rt_binbuf_write_u32le(bb, 0xFFFFFFFFLL);
+    rt_binbuf_write_u32be(bb, 0xDEADBEEFULL);
+
+    rt_binbuf_set_position(bb, 0);
+    assert(rt_binbuf_read_u16le(bb) == 0xFFFF);
+    assert(rt_binbuf_read_u16be(bb) == 0xBEEF);
+    assert(rt_binbuf_read_u32le(bb) == (int64_t)UINT32_MAX);
+    assert(rt_binbuf_read_u32be(bb) == 0xDEADBEEFULL);
 }
 
 static void test_write_read_i64le() {
@@ -192,6 +206,26 @@ static void test_signed_integer_round_trips() {
     assert(rt_binbuf_read_i32be(bb) == -2);
     assert(rt_binbuf_read_i64le(bb) == INT64_MIN);
     assert(rt_binbuf_read_i64be(bb) == -1);
+}
+
+static void test_narrow_integer_range_traps() {
+    void *bb = rt_binbuf_new();
+    EXPECT_TRAP(rt_binbuf_write_i16le(bb, -32769));
+    EXPECT_TRAP(rt_binbuf_write_i16le(bb, 32768));
+    EXPECT_TRAP(rt_binbuf_write_i16be(bb, -32769));
+    EXPECT_TRAP(rt_binbuf_write_i16be(bb, 32768));
+    EXPECT_TRAP(rt_binbuf_write_i32le(bb, (int64_t)INT32_MIN - 1));
+    EXPECT_TRAP(rt_binbuf_write_i32le(bb, (int64_t)INT32_MAX + 1));
+    EXPECT_TRAP(rt_binbuf_write_i32be(bb, (int64_t)INT32_MIN - 1));
+    EXPECT_TRAP(rt_binbuf_write_i32be(bb, (int64_t)INT32_MAX + 1));
+    EXPECT_TRAP(rt_binbuf_write_u16le(bb, -1));
+    EXPECT_TRAP(rt_binbuf_write_u16le(bb, (int64_t)UINT16_MAX + 1));
+    EXPECT_TRAP(rt_binbuf_write_u16be(bb, -1));
+    EXPECT_TRAP(rt_binbuf_write_u16be(bb, (int64_t)UINT16_MAX + 1));
+    EXPECT_TRAP(rt_binbuf_write_u32le(bb, -1));
+    EXPECT_TRAP(rt_binbuf_write_u32le(bb, (int64_t)UINT32_MAX + 1));
+    EXPECT_TRAP(rt_binbuf_write_u32be(bb, -1));
+    EXPECT_TRAP(rt_binbuf_write_u32be(bb, (int64_t)UINT32_MAX + 1));
 }
 
 static void test_write_read_str() {
@@ -426,10 +460,12 @@ int main() {
     test_write_read_i16be();
     test_write_read_i32le();
     test_write_read_i32be();
+    test_write_read_unsigned_widths();
     test_write_read_i64le();
     test_write_read_i64be();
     test_endian_byte_order_i16();
     test_signed_integer_round_trips();
+    test_narrow_integer_range_traps();
     test_write_read_str();
     test_write_read_str_preserves_embedded_nul();
     test_write_read_bytes();

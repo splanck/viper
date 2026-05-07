@@ -36,6 +36,13 @@ int main(void) {
     ViperString *path = rt_const_cstr(template_path);
     assert(path != NULL);
 
+    assert(rt_open_err_vstr(path, RT_F_OUTPUT, 0) == Err_InvalidOperation);
+    int fd_zero = -1;
+    assert(rt_file_channel_fd(0, &fd_zero) == Err_InvalidOperation);
+    int8_t eof_zero = 0;
+    assert(rt_file_channel_get_eof(0, &eof_zero) == Err_InvalidOperation);
+    assert(rt_close_err(0) == Err_InvalidOperation);
+
     int32_t open_out = rt_open_err_vstr(path, RT_F_OUTPUT, 5);
     assert(open_out == Err_None);
 
@@ -140,20 +147,11 @@ int main(void) {
 
     int still_fd = -1;
     int32_t still_in_use_rc = rt_file_channel_fd(7, &still_fd);
-    assert(still_in_use_rc == Err_None);
-    assert(still_fd == failure_fd);
-
-    int replacement_fd = open(template_path, O_WRONLY);
-    assert(replacement_fd >= 0);
-    if (replacement_fd != failure_fd) {
-        int dup_rc = dup2(replacement_fd, failure_fd);
-        assert(dup_rc == failure_fd);
-        int replacement_close_rc = close(replacement_fd);
-        assert(replacement_close_rc == 0);
-    }
+    assert(still_in_use_rc == Err_InvalidOperation);
+    assert(still_fd == -1);
 
     int32_t close_recovery_rc = rt_close_err(7);
-    assert(close_recovery_rc == Err_None);
+    assert(close_recovery_rc == Err_InvalidOperation);
 
     remove(template_path);
     rt_string_unref(world);

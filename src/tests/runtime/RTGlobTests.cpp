@@ -200,6 +200,16 @@ static void test_glob_null_safety() {
     entries = rt_glob_entries(nullptr, rt_const_cstr("*"));
     test_result("Entries null dir returns empty", rt_seq_len(entries) == 0);
 
+    const char pattern_bytes[] = {'*', '\0', '*'};
+    rt_string nul_pattern = rt_string_from_bytes(pattern_bytes, sizeof(pattern_bytes));
+    files = rt_glob_files(rt_const_cstr("."), nul_pattern);
+    test_result("Files embedded NUL pattern returns empty", rt_seq_len(files) == 0);
+    recursive = rt_glob_files_recursive(rt_const_cstr("."), nul_pattern);
+    test_result("FilesRecursive embedded NUL pattern returns empty", rt_seq_len(recursive) == 0);
+    entries = rt_glob_entries(rt_const_cstr("."), nul_pattern);
+    test_result("Entries embedded NUL pattern returns empty", rt_seq_len(entries) == 0);
+    rt_string_unref(nul_pattern);
+
     printf("\n");
 }
 

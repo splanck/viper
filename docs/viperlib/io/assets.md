@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-06
+last-verified: 2026-05-07
 ---
 
 # Viper.IO.Assets
@@ -66,6 +66,7 @@ Returns names of all available assets (embedded + all mounted packs).
 Mount a `.vpa` pack file for asset resolution. Returns 1 on success, 0 on failure.
 Pack files next to the executable are auto-mounted at startup.
 If the pack opens but its path cannot be recorded, the mount fails and the pack handle is closed.
+Mounting the same canonical pack path more than once is idempotent and returns 1 without adding a duplicate mount.
 
 ### Assets.Unmount(path: String) -> Integer
 
@@ -88,7 +89,8 @@ When `Assets.Load("sprites/hero.png")` is called:
 3. **Filesystem** (CWD-relative) — development fallback
 
 This means existing code keeps working during development (step 3), and packaged apps find their assets automatically (steps 1-2).
-Loose filesystem fallback only loads regular files. Asset names and mount paths containing embedded NUL bytes are rejected.
+Loose filesystem fallback is constrained to relative, CWD-based asset names. Absolute names, drive-qualified names, colon-containing names, empty or `.`/`..` path segments, traversal syntax, and embedded NUL bytes are rejected. Loose fallback only opens regular files and refuses symlink targets.
+Mount paths containing embedded NUL bytes are rejected.
 Asset lookup, mounting, unmounting, listing, and lazy initialization are synchronized internally so concurrent readers cannot race with pack mount changes.
 
 ## VPA Format
