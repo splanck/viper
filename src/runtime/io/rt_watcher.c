@@ -31,6 +31,7 @@
 #include "rt_watcher.h"
 #include "rt_file_path.h"
 #include "rt_internal.h"
+#include "rt_io_class_ids.h"
 #include "rt_object.h"
 #include "rt_path.h"
 #include "rt_platform.h"
@@ -119,6 +120,12 @@ typedef struct rt_watcher_impl {
 #endif
 } rt_watcher_impl;
 
+static rt_watcher_impl *watcher_require(void *obj, const char *context) {
+    if (!obj || rt_obj_class_id(obj) != RT_WATCHER_CLASS_ID)
+        rt_trap(context ? context : "Watcher: invalid watcher");
+    return (rt_watcher_impl *)obj;
+}
+
 /// @brief Release all queued event strings and reset the ring buffer to empty.
 /// @details Also clears the `last_event_path` so the watcher's finalizer can call
 ///          this safely without double-releasing any string references.
@@ -147,7 +154,7 @@ static void watcher_clear_events(rt_watcher_impl *w) {
 static void rt_watcher_finalize(void *obj) {
     if (!obj)
         return;
-    rt_watcher_impl *w = (rt_watcher_impl *)obj;
+    rt_watcher_impl *w = watcher_require(obj, "Watcher: invalid watcher");
 
     // Stop watching if active
     if (w->is_watching) {
@@ -453,7 +460,8 @@ void *rt_watcher_new(rt_string path) {
     int is_directory = S_ISDIR(st.st_mode) ? 1 : 0;
 #endif
 
-    rt_watcher_impl *w = (rt_watcher_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_watcher_impl));
+    rt_watcher_impl *w =
+        (rt_watcher_impl *)rt_obj_new_i64(RT_WATCHER_CLASS_ID, (int64_t)sizeof(rt_watcher_impl));
     if (!w)
         rt_trap("Watcher.New: alloc failed");
 
@@ -489,7 +497,7 @@ void *rt_watcher_new(rt_string path) {
 rt_string rt_watcher_get_path(void *obj) {
     if (!obj)
         return str_from_cstr("");
-    rt_watcher_impl *w = (rt_watcher_impl *)obj;
+    rt_watcher_impl *w = watcher_require(obj, "Watcher: invalid watcher");
     if (w->watch_path)
         rt_string_ref(w->watch_path);
     return w->watch_path ? w->watch_path : str_from_cstr("");
@@ -499,7 +507,7 @@ rt_string rt_watcher_get_path(void *obj) {
 int8_t rt_watcher_get_is_watching(void *obj) {
     if (!obj)
         return 0;
-    return ((rt_watcher_impl *)obj)->is_watching;
+    return watcher_require(obj, "Watcher: invalid watcher")->is_watching;
 }
 
 /// @brief Begin watching. Per platform:
@@ -514,7 +522,7 @@ void rt_watcher_start(void *obj) {
     if (!obj)
         rt_trap("Watcher.Start: null watcher");
 
-    rt_watcher_impl *w = (rt_watcher_impl *)obj;
+    rt_watcher_impl *w = watcher_require(obj, "Watcher: invalid watcher");
     if (w->is_watching)
         rt_trap("Watcher.Start: already watching");
 
@@ -625,7 +633,7 @@ void rt_watcher_stop(void *obj) {
     if (!obj)
         return;
 
-    rt_watcher_impl *w = (rt_watcher_impl *)obj;
+    rt_watcher_impl *w = watcher_require(obj, "Watcher: invalid watcher");
     if (!w->is_watching)
         return;
 
@@ -678,7 +686,7 @@ int64_t rt_watcher_poll_for(void *obj, int64_t ms) {
     if (!obj)
         return RT_WATCH_EVENT_NONE;
 
-    rt_watcher_impl *w = (rt_watcher_impl *)obj;
+    rt_watcher_impl *w = watcher_require(obj, "Watcher: invalid watcher");
     if (!w->is_watching)
         return RT_WATCH_EVENT_NONE;
 
@@ -735,7 +743,7 @@ rt_string rt_watcher_event_path(void *obj) {
     if (!obj)
         rt_trap("Watcher.EventPath: null watcher");
 
-    rt_watcher_impl *w = (rt_watcher_impl *)obj;
+    rt_watcher_impl *w = watcher_require(obj, "Watcher: invalid watcher");
     if (!w->has_last_event)
         rt_trap("Watcher.EventPath: no event polled yet");
 
@@ -749,7 +757,7 @@ int64_t rt_watcher_event_type(void *obj) {
     if (!obj)
         return RT_WATCH_EVENT_NONE;
 
-    rt_watcher_impl *w = (rt_watcher_impl *)obj;
+    rt_watcher_impl *w = watcher_require(obj, "Watcher: invalid watcher");
     return w->has_last_event ? w->last_event_type : RT_WATCH_EVENT_NONE;
 }
 

@@ -102,9 +102,9 @@ TEST(AssetManager, ExistsReturnsFalse) {
     EXPECT_EQ(rt_asset_exists(name), 0);
 }
 
-TEST(AssetManager, SizeReturnsZero) {
+TEST(AssetManager, SizeMissingReturnsNegativeOne) {
     rt_string name = rt_const_cstr("definitely_nonexistent_12345.xyz");
-    EXPECT_EQ(rt_asset_size(name), 0);
+    EXPECT_EQ(rt_asset_size(name), -1);
 }
 
 TEST(AssetManager, LoadReturnsNull) {
@@ -184,7 +184,7 @@ TEST(AssetManager, NullInputs) {
     EXPECT_EQ(rt_asset_load(nullptr), nullptr);
     EXPECT_EQ(rt_asset_load_bytes(nullptr), nullptr);
     EXPECT_EQ(rt_asset_exists(nullptr), 0);
-    EXPECT_EQ(rt_asset_size(nullptr), 0);
+    EXPECT_EQ(rt_asset_size(nullptr), -1);
     EXPECT_EQ(rt_asset_mount(nullptr), 0);
     EXPECT_EQ(rt_asset_unmount(nullptr), 0);
 }

@@ -326,7 +326,11 @@ static void test_closed_and_null_streams_trap() {
     EXPECT_TRAP(rt_stream_from_memstream(nullptr));
 
     void *open = rt_stream_open_memory();
+    EXPECT_TRAP(rt_stream_from_binfile(open));
+    EXPECT_TRAP(rt_stream_from_memstream(open));
     EXPECT_TRAP(rt_stream_write(open, nullptr));
+    EXPECT_TRAP(rt_stream_write_byte(open, -1));
+    EXPECT_TRAP(rt_stream_write_byte(open, 256));
     EXPECT_TRAP(rt_stream_read(open, -1));
 
     test_result("closed/null operations trap", true);

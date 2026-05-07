@@ -40,6 +40,9 @@ extern "C" {
 /// @return MemStream object.
 void *rt_memstream_new(void);
 
+/// @brief Return 1 if obj is a MemStream runtime handle.
+int8_t rt_memstream_is_handle(void *obj);
+
 /// @brief Create a new memory stream with initial capacity hint.
 /// @param capacity Initial buffer capacity (may be 0).
 /// @return MemStream object.

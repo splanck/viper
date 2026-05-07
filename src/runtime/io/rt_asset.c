@@ -32,11 +32,47 @@
 #include "rt_vpa_reader.h"
 
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 #ifdef _WIN32
+#include <wchar.h>
 #include <windows.h>
+static char *asset_wide_to_utf8_dup(const wchar_t *wide) {
+    if (!wide)
+        return NULL;
+    int needed = WideCharToMultiByte(CP_UTF8, 0, wide, -1, NULL, 0, NULL, NULL);
+    if (needed <= 0)
+        return NULL;
+    char *utf8 = (char *)malloc((size_t)needed);
+    if (!utf8)
+        return NULL;
+    if (WideCharToMultiByte(CP_UTF8, 0, wide, -1, utf8, needed, NULL, NULL) <= 0) {
+        free(utf8);
+        return NULL;
+    }
+    return utf8;
+}
+
+static wchar_t *asset_win_join_wide(const wchar_t *dir, const wchar_t *leaf) {
+    size_t dir_len = wcslen(dir);
+    size_t leaf_len = wcslen(leaf);
+    int needs_sep = dir_len > 0 && dir[dir_len - 1] != L'\\' && dir[dir_len - 1] != L'/';
+    if (dir_len > (SIZE_MAX / sizeof(wchar_t)) - leaf_len - (needs_sep ? 1U : 0U) - 1U)
+        return NULL;
+    wchar_t *path =
+        (wchar_t *)malloc((dir_len + (needs_sep ? 1U : 0U) + leaf_len + 1U) * sizeof(wchar_t));
+    if (!path)
+        return NULL;
+    memcpy(path, dir, dir_len * sizeof(wchar_t));
+    size_t pos = dir_len;
+    if (needs_sep)
+        path[pos++] = L'\\';
+    memcpy(path + pos, leaf, leaf_len * sizeof(wchar_t));
+    path[pos + leaf_len] = L'\0';
+    return path;
+}
 #else
 #include <dirent.h>
 #include <pthread.h>
@@ -316,17 +352,30 @@ static void discover_packs(const char *dir) {
         return;
 
 #ifdef _WIN32
-    char pattern[MAX_PATH];
-    snprintf(pattern, sizeof(pattern), "%s\\*.vpa", dir);
-    WIN32_FIND_DATAA fd;
-    HANDLE hFind = FindFirstFileA(pattern, &fd);
-    if (hFind == INVALID_HANDLE_VALUE)
+    wchar_t *wdir = rt_file_path_utf8_to_wide(dir);
+    if (!wdir)
         return;
+    wchar_t *pattern = asset_win_join_wide(wdir, L"*.vpa");
+    if (!pattern) {
+        free(wdir);
+        return;
+    }
+    WIN32_FIND_DATAW fd;
+    HANDLE hFind = FindFirstFileW(pattern, &fd);
+    free(pattern);
+    if (hFind == INVALID_HANDLE_VALUE)
+    {
+        free(wdir);
+        return;
+    }
     do {
         if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
             continue;
-        char path[MAX_PATH];
-        snprintf(path, sizeof(path), "%s\\%s", dir, fd.cFileName);
+        wchar_t *wpath = asset_win_join_wide(wdir, fd.cFileName);
+        char *path = asset_wide_to_utf8_dup(wpath);
+        free(wpath);
+        if (!path)
+            continue;
         if (g_asset_mgr.pack_count < RT_ASSET_MAX_PACKS) {
             vpa_archive_t *archive = vpa_open_file(path);
             if (archive) {
@@ -340,8 +389,10 @@ static void discover_packs(const char *dir) {
                 g_asset_mgr.pack_count++;
             }
         }
-    } while (FindNextFileA(hFind, &fd));
+        free(path);
+    } while (FindNextFileW(hFind, &fd));
     FindClose(hFind);
+    free(wdir);
 #else
     DIR *d = opendir(dir);
     if (!d)
@@ -354,13 +405,26 @@ static void discover_packs(const char *dir) {
         if (strcmp(entry->d_name + nlen - 4, ".vpa") != 0)
             continue;
 
-        char path[4096];
-        snprintf(path, sizeof(path), "%s/%s", dir, entry->d_name);
+        size_t dir_len = strlen(dir);
+        int needs_sep = dir_len > 0 && dir[dir_len - 1] != '/';
+        if (dir_len > SIZE_MAX - nlen - (size_t)needs_sep - 1)
+            continue;
+        char *path = (char *)malloc(dir_len + (size_t)needs_sep + nlen + 1);
+        if (!path)
+            continue;
+        memcpy(path, dir, dir_len);
+        size_t pos = dir_len;
+        if (needs_sep)
+            path[pos++] = '/';
+        memcpy(path + pos, entry->d_name, nlen);
+        path[pos + nlen] = '\0';
 
         // Verify it's a regular file
         struct stat st;
-        if (stat(path, &st) != 0 || !S_ISREG(st.st_mode))
+        if (stat(path, &st) != 0 || !S_ISREG(st.st_mode)) {
+            free(path);
             continue;
+        }
 
         if (g_asset_mgr.pack_count < RT_ASSET_MAX_PACKS) {
             vpa_archive_t *archive = vpa_open_file(path);
@@ -375,6 +439,7 @@ static void discover_packs(const char *dir) {
                 g_asset_mgr.pack_count++;
             }
         }
+        free(path);
     }
     closedir(d);
 #endif
@@ -532,12 +597,12 @@ int64_t rt_asset_exists(rt_string name) {
 /// @brief Get the byte size of an asset without loading it.
 int64_t rt_asset_size(rt_string name) {
     if (!name)
-        return 0;
+        return -1;
     ensure_init();
 
     const char *cname = asset_name_cstr(name);
     if (!cname || *cname == '\0')
-        return 0;
+        return -1;
 
     asset_lock();
     // Check embedded
@@ -568,7 +633,7 @@ int64_t rt_asset_size(rt_string name) {
     }
 
     asset_unlock();
-    return 0;
+    return -1;
 }
 
 // ─── rt_asset_list ──────────────────────────────────────────────────────────

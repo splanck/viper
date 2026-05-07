@@ -39,6 +39,7 @@
 #include "rt_dir.h"
 #include "rt_file_path.h"
 #include "rt_internal.h"
+#include "rt_io_class_ids.h"
 #include "rt_map.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -631,6 +632,12 @@ typedef struct rt_archive {
     int write_entry_cap;        ///< Allocated capacity of `write_entries`.
 } rt_archive_t;
 
+static rt_archive_t *archive_require(void *obj, const char *context) {
+    if (!obj || rt_obj_class_id(obj) != RT_ARCHIVE_CLASS_ID)
+        rt_trap(context ? context : "Archive: invalid archive");
+    return (rt_archive_t *)obj;
+}
+
 //=============================================================================
 // Little-Endian Helpers
 //=============================================================================
@@ -681,7 +688,7 @@ static void archive_require_zip16_count(int count, const char *context);
 /// @return Pointer to a fresh `rt_archive_t`, never NULL.
 static rt_archive_t *archive_alloc(void) {
     size_t total = sizeof(rt_archive_t);
-    rt_archive_t *ar = (rt_archive_t *)rt_obj_new_i64(0, (int64_t)total);
+    rt_archive_t *ar = (rt_archive_t *)rt_obj_new_i64(RT_ARCHIVE_CLASS_ID, (int64_t)total);
     if (!ar)
         rt_trap("Archive: memory allocation failed");
     memset(ar, 0, total);
@@ -740,7 +747,7 @@ static void archive_free_entry_array(zip_entry_t *entries, int count) {
 ///
 /// @param obj Archive pointer (may be NULL).
 static void archive_finalize(void *obj) {
-    rt_archive_t *ar = (rt_archive_t *)obj;
+    rt_archive_t *ar = archive_require(obj, "Archive: invalid archive");
     if (!ar)
         return;
 
@@ -1524,7 +1531,7 @@ void *rt_archive_from_bytes(void *data) {
 /// @param obj Archive handle.
 /// @return Owned `rt_string` containing the path, or `""`.
 rt_string rt_archive_path(void *obj) {
-    rt_archive_t *ar = (rt_archive_t *)obj;
+    rt_archive_t *ar = archive_require(obj, "Archive: invalid archive");
     if (!ar)
         return rt_str_empty();
     return ar->path ? rt_string_ref(ar->path) : rt_str_empty();
@@ -1539,7 +1546,7 @@ rt_string rt_archive_path(void *obj) {
 /// @param obj Archive handle.
 /// @return Entry count, or 0 for NULL.
 int64_t rt_archive_count(void *obj) {
-    rt_archive_t *ar = (rt_archive_t *)obj;
+    rt_archive_t *ar = archive_require(obj, "Archive: invalid archive");
     if (!ar)
         return 0;
     if (ar->is_writing)
@@ -1557,7 +1564,7 @@ int64_t rt_archive_count(void *obj) {
 /// @param obj Archive handle (may be NULL).
 /// @return Owned seq of entry names in archive order.
 void *rt_archive_names(void *obj) {
-    rt_archive_t *ar = (rt_archive_t *)obj;
+    rt_archive_t *ar = archive_require(obj, "Archive: invalid archive");
     void *seq = rt_seq_new();
     rt_seq_set_owns_elements(seq, 1);
 
@@ -1597,7 +1604,7 @@ void *rt_archive_names(void *obj) {
 /// @param name Entry name to look up.
 /// @return 1 if found, 0 otherwise.
 int8_t rt_archive_has(void *obj, rt_string name) {
-    rt_archive_t *ar = (rt_archive_t *)obj;
+    rt_archive_t *ar = archive_require(obj, "Archive: invalid archive");
     if (!ar || ar->is_writing)
         return 0;
 
@@ -1630,7 +1637,7 @@ int8_t rt_archive_has(void *obj, rt_string name) {
 /// @param name Entry name.
 /// @return Owned `rt_bytes` with the uncompressed payload.
 void *rt_archive_read(void *obj, rt_string name) {
-    rt_archive_t *ar = (rt_archive_t *)obj;
+    rt_archive_t *ar = archive_require(obj, "Archive: invalid archive");
     if (!ar)
         rt_trap("Archive: NULL archive");
     if (ar->is_writing)
@@ -1703,7 +1710,7 @@ void rt_archive_extract(void *obj, rt_string name, rt_string dest_path) {
 /// @param obj      Archive handle.
 /// @param dest_dir UTF-8 destination directory.
 void rt_archive_extract_all(void *obj, rt_string dest_dir) {
-    rt_archive_t *ar = (rt_archive_t *)obj;
+    rt_archive_t *ar = archive_require(obj, "Archive: invalid archive");
     if (!ar)
         rt_trap("Archive: NULL archive");
     if (ar->is_writing)
@@ -1798,7 +1805,7 @@ void rt_archive_extract_all(void *obj, rt_string dest_dir) {
 /// @param name Entry name.
 /// @return Owned `rt_map` of metadata.
 void *rt_archive_info(void *obj, rt_string name) {
-    rt_archive_t *ar = (rt_archive_t *)obj;
+    rt_archive_t *ar = archive_require(obj, "Archive: invalid archive");
     if (!ar)
         rt_trap("Archive: NULL archive");
     if (ar->is_writing)
@@ -1883,7 +1890,7 @@ void *rt_archive_info(void *obj, rt_string name) {
 /// @param name Entry name (will be normalized).
 /// @param data Source `rt_bytes`.
 void rt_archive_add(void *obj, rt_string name, void *data) {
-    rt_archive_t *ar = (rt_archive_t *)obj;
+    rt_archive_t *ar = archive_require(obj, "Archive: invalid archive");
     if (!ar) {
         rt_trap("Archive: NULL archive");
         return;
@@ -2084,7 +2091,7 @@ void rt_archive_add_file(void *obj, rt_string name, rt_string src_path) {
 /// @param obj  Archive handle.
 /// @param name Directory name (trailing slash added if absent).
 void rt_archive_add_dir(void *obj, rt_string name) {
-    rt_archive_t *ar = (rt_archive_t *)obj;
+    rt_archive_t *ar = archive_require(obj, "Archive: invalid archive");
     if (!ar) {
         rt_trap("Archive: NULL archive");
         return;
@@ -2181,7 +2188,7 @@ void rt_archive_add_dir(void *obj, rt_string name) {
 ///
 /// @param obj Archive handle (write mode).
 void rt_archive_finish(void *obj) {
-    rt_archive_t *ar = (rt_archive_t *)obj;
+    rt_archive_t *ar = archive_require(obj, "Archive: invalid archive");
     if (!ar)
         rt_trap("Archive: NULL archive");
     if (!ar->is_writing)

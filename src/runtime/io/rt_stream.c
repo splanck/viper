@@ -33,6 +33,7 @@
 #include "rt_stream.h"
 #include "rt_binfile.h"
 #include "rt_bytes.h"
+#include "rt_io_class_ids.h"
 #include "rt_memstream.h"
 #include "rt_object.h"
 #include "rt_string.h"
@@ -55,6 +56,10 @@ typedef struct {
     int8_t owns;   ///< Whether this Stream holds a reference on the wrapped object
     int8_t closed; ///< Set to 1 once Close has been called
 } stream_impl;
+
+static int stream_is_handle(void *obj) {
+    return obj && rt_obj_class_id(obj) == RT_STREAM_CLASS_ID;
+}
 
 /// @brief Decrement the refcount on a GC object and free it when it reaches zero.
 static void stream_release_object(void *obj) {
@@ -111,7 +116,7 @@ static void *stream_shrink_bytes(void *bytes, int64_t len) {
 
 /// @brief Allocate and zero-initialize a new stream_impl GC object; traps on OOM.
 static stream_impl *stream_alloc(void) {
-    stream_impl *s = (stream_impl *)rt_obj_new_i64(0, sizeof(stream_impl));
+    stream_impl *s = (stream_impl *)rt_obj_new_i64(RT_STREAM_CLASS_ID, sizeof(stream_impl));
     if (!s) {
         rt_trap("Stream: memory allocation failed");
         return NULL;
@@ -127,7 +132,7 @@ static stream_impl *stream_alloc(void) {
 /// stream (use-after-close) traps with a generic message. Saves every
 /// public entry point from having to open-code these two checks.
 static stream_impl *stream_require_open(void *stream, const char *context) {
-    if (!stream) {
+    if (!stream_is_handle(stream)) {
         rt_trap(context);
         return NULL;
     }
@@ -217,8 +222,8 @@ void *rt_stream_open_bytes(void *bytes) {
 
 /// @brief Wrap an existing BinFile as a Stream, retaining it for the wrapper's lifetime.
 void *rt_stream_from_binfile(void *binfile) {
-    if (!binfile) {
-        rt_trap("Stream.FromBinFile: binfile is null");
+    if (!rt_binfile_is_handle(binfile)) {
+        rt_trap("Stream.FromBinFile: invalid binfile");
         return NULL;
     }
 
@@ -237,8 +242,8 @@ void *rt_stream_from_binfile(void *binfile) {
 
 /// @brief Wrap an existing MemStream as a Stream, retaining it for the wrapper's lifetime.
 void *rt_stream_from_memstream(void *memstream) {
-    if (!memstream) {
-        rt_trap("Stream.FromMemStream: memstream is null");
+    if (!rt_memstream_is_handle(memstream)) {
+        rt_trap("Stream.FromMemStream: invalid memstream");
         return NULL;
     }
 
@@ -397,8 +402,8 @@ void rt_stream_write(void *stream, void *bytes) {
     stream_impl *s = stream_require_open(stream, "Stream.Write: null stream");
     if (!s)
         return;
-    if (!bytes) {
-        rt_trap("Stream.Write: null bytes");
+    if (!bytes || !rt_bytes_is_bytes(bytes)) {
+        rt_trap("Stream.Write: invalid bytes");
         return;
     }
 
@@ -434,6 +439,10 @@ void rt_stream_write_byte(void *stream, int64_t byte) {
     stream_impl *s = stream_require_open(stream, "Stream.WriteByte: null stream");
     if (!s)
         return;
+    if (byte < 0 || byte > 255) {
+        rt_trap("Stream.WriteByte: byte value out of range");
+        return;
+    }
 
     if (s->type == RT_STREAM_TYPE_BINFILE) {
         rt_binfile_write_byte(s->wrapped, byte);
@@ -458,7 +467,10 @@ void rt_stream_flush(void *stream) {
 void rt_stream_close(void *stream) {
     if (!stream)
         return;
-
+    if (!stream_is_handle(stream)) {
+        rt_trap("Stream.Close: invalid stream");
+        return;
+    }
     stream_impl *s = (stream_impl *)stream;
     stream_release_wrapped(s);
 }

@@ -435,6 +435,24 @@ static void test_write_char_out_of_range_traps() {
     cleanup_test_file();
 }
 
+static void test_invalid_string_inputs_trap() {
+    cleanup_test_file();
+
+    rt_string path = make_string(get_test_file());
+    void *lw = rt_linewriter_open(path);
+    assert(lw != nullptr);
+
+    EXPECT_TRAP(rt_linewriter_write(lw, nullptr));
+    EXPECT_TRAP(rt_linewriter_write_ln(lw, nullptr));
+    rt_linewriter_set_newline(lw, nullptr);
+    rt_string nl = rt_linewriter_newline(lw);
+    assert(nl != nullptr);
+    assert(rt_str_len(nl) > 0);
+
+    rt_linewriter_close(lw);
+    cleanup_test_file();
+}
+
 static void test_null_handling() {
     // Null operations should not crash
     rt_linewriter_close(nullptr);
@@ -459,6 +477,7 @@ int main() {
     test_overwrite_existing();
     test_mixed_write_methods();
     test_write_char_out_of_range_traps();
+    test_invalid_string_inputs_trap();
     test_null_handling();
 
     cleanup_test_file();

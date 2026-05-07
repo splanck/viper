@@ -37,6 +37,7 @@
 
 #include "rt_bytes.h"
 #include "rt_internal.h"
+#include "rt_io_class_ids.h"
 #include "rt_object.h"
 #include "rt_string.h"
 
@@ -56,6 +57,12 @@ typedef struct rt_binbuf_impl {
     int64_t capacity; ///< Allocated capacity in bytes.
     int64_t position; ///< Read/write cursor position.
 } rt_binbuf_impl;
+
+static rt_binbuf_impl *binbuf_require(void *obj) {
+    if (!obj || rt_obj_class_id(obj) != RT_BINBUF_CLASS_ID)
+        rt_trap("BinaryBuffer: invalid buffer");
+    return (rt_binbuf_impl *)obj;
+}
 
 /// @brief Ensure the buffer has room for `needed` bytes starting at position.
 /// @param buf Buffer implementation pointer.
@@ -139,7 +146,8 @@ void *rt_binbuf_new_cap(int64_t capacity) {
     if ((uint64_t)capacity > (uint64_t)SIZE_MAX)
         rt_trap("BinaryBuffer: capacity exceeds platform limit");
 
-    rt_binbuf_impl *buf = (rt_binbuf_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_binbuf_impl));
+    rt_binbuf_impl *buf =
+        (rt_binbuf_impl *)rt_obj_new_i64(RT_BINBUF_CLASS_ID, (int64_t)sizeof(rt_binbuf_impl));
     if (!buf)
         rt_trap("BinaryBuffer: memory allocation failed");
 
@@ -157,14 +165,17 @@ void *rt_binbuf_new_cap(int64_t capacity) {
 }
 
 void *rt_binbuf_from_bytes(void *bytes_obj) {
-    int64_t blen = bytes_obj ? rt_bytes_len(bytes_obj) : 0;
+    if (!bytes_obj || !rt_bytes_is_bytes(bytes_obj))
+        rt_trap("BinaryBuffer: invalid bytes");
+    int64_t blen = rt_bytes_len(bytes_obj);
     if (blen < 0)
         rt_trap("BinaryBuffer: invalid bytes length");
     int64_t cap = blen > BINBUF_DEFAULT_CAPACITY ? blen : BINBUF_DEFAULT_CAPACITY;
     if ((uint64_t)cap > (uint64_t)SIZE_MAX)
         rt_trap("BinaryBuffer: capacity exceeds platform limit");
 
-    rt_binbuf_impl *buf = (rt_binbuf_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_binbuf_impl));
+    rt_binbuf_impl *buf =
+        (rt_binbuf_impl *)rt_obj_new_i64(RT_BINBUF_CLASS_ID, (int64_t)sizeof(rt_binbuf_impl));
     if (!buf)
         rt_trap("BinaryBuffer: memory allocation failed");
 
@@ -199,104 +210,101 @@ void *rt_binbuf_from_bytes(void *bytes_obj) {
 
 /// @brief Append the low 8 bits of `value` as a single byte.
 void rt_binbuf_write_byte(void *obj, int64_t value) {
-    if (!obj)
-        rt_trap("BinaryBuffer: null buffer");
-    rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
+    rt_binbuf_impl *buf = binbuf_require(obj);
+    if (value < 0 || value > 255)
+        rt_trap("BinaryBuffer: byte value out of range");
     binbuf_ensure(buf, 1);
-    buf->data[buf->position] = (uint8_t)(value & 0xFF);
+    buf->data[buf->position] = (uint8_t)value;
     binbuf_advance_write(buf, 1);
 }
 
 /// @brief Append a 16-bit signed integer in little-endian byte order.
 void rt_binbuf_write_i16le(void *obj, int64_t value) {
-    if (!obj)
-        rt_trap("BinaryBuffer: null buffer");
-    rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
+    rt_binbuf_impl *buf = binbuf_require(obj);
+    uint16_t raw = (uint16_t)value;
     binbuf_ensure(buf, 2);
-    buf->data[buf->position] = (uint8_t)(value & 0xFF);
-    buf->data[buf->position + 1] = (uint8_t)((value >> 8) & 0xFF);
+    buf->data[buf->position] = (uint8_t)(raw & 0xFF);
+    buf->data[buf->position + 1] = (uint8_t)((raw >> 8) & 0xFF);
     binbuf_advance_write(buf, 2);
 }
 
 /// @brief Append a 16-bit signed integer in big-endian byte order.
 void rt_binbuf_write_i16be(void *obj, int64_t value) {
-    if (!obj)
-        rt_trap("BinaryBuffer: null buffer");
-    rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
+    rt_binbuf_impl *buf = binbuf_require(obj);
+    uint16_t raw = (uint16_t)value;
     binbuf_ensure(buf, 2);
-    buf->data[buf->position] = (uint8_t)((value >> 8) & 0xFF);
-    buf->data[buf->position + 1] = (uint8_t)(value & 0xFF);
+    buf->data[buf->position] = (uint8_t)((raw >> 8) & 0xFF);
+    buf->data[buf->position + 1] = (uint8_t)(raw & 0xFF);
     binbuf_advance_write(buf, 2);
 }
 
 /// @brief Append a 32-bit signed integer in little-endian byte order.
 void rt_binbuf_write_i32le(void *obj, int64_t value) {
-    if (!obj)
-        rt_trap("BinaryBuffer: null buffer");
-    rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
+    rt_binbuf_impl *buf = binbuf_require(obj);
+    uint32_t raw = (uint32_t)value;
     binbuf_ensure(buf, 4);
-    buf->data[buf->position] = (uint8_t)(value & 0xFF);
-    buf->data[buf->position + 1] = (uint8_t)((value >> 8) & 0xFF);
-    buf->data[buf->position + 2] = (uint8_t)((value >> 16) & 0xFF);
-    buf->data[buf->position + 3] = (uint8_t)((value >> 24) & 0xFF);
+    buf->data[buf->position] = (uint8_t)(raw & 0xFF);
+    buf->data[buf->position + 1] = (uint8_t)((raw >> 8) & 0xFF);
+    buf->data[buf->position + 2] = (uint8_t)((raw >> 16) & 0xFF);
+    buf->data[buf->position + 3] = (uint8_t)((raw >> 24) & 0xFF);
     binbuf_advance_write(buf, 4);
 }
 
 /// @brief Append a 32-bit signed integer in big-endian byte order.
 void rt_binbuf_write_i32be(void *obj, int64_t value) {
-    if (!obj)
-        rt_trap("BinaryBuffer: null buffer");
-    rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
+    rt_binbuf_impl *buf = binbuf_require(obj);
+    uint32_t raw = (uint32_t)value;
     binbuf_ensure(buf, 4);
-    buf->data[buf->position] = (uint8_t)((value >> 24) & 0xFF);
-    buf->data[buf->position + 1] = (uint8_t)((value >> 16) & 0xFF);
-    buf->data[buf->position + 2] = (uint8_t)((value >> 8) & 0xFF);
-    buf->data[buf->position + 3] = (uint8_t)(value & 0xFF);
+    buf->data[buf->position] = (uint8_t)((raw >> 24) & 0xFF);
+    buf->data[buf->position + 1] = (uint8_t)((raw >> 16) & 0xFF);
+    buf->data[buf->position + 2] = (uint8_t)((raw >> 8) & 0xFF);
+    buf->data[buf->position + 3] = (uint8_t)(raw & 0xFF);
     binbuf_advance_write(buf, 4);
 }
 
 /// @brief Append a 64-bit signed integer in little-endian byte order.
 void rt_binbuf_write_i64le(void *obj, int64_t value) {
-    if (!obj)
-        rt_trap("BinaryBuffer: null buffer");
-    rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
+    rt_binbuf_impl *buf = binbuf_require(obj);
+    uint64_t raw = (uint64_t)value;
     binbuf_ensure(buf, 8);
-    buf->data[buf->position] = (uint8_t)(value & 0xFF);
-    buf->data[buf->position + 1] = (uint8_t)((value >> 8) & 0xFF);
-    buf->data[buf->position + 2] = (uint8_t)((value >> 16) & 0xFF);
-    buf->data[buf->position + 3] = (uint8_t)((value >> 24) & 0xFF);
-    buf->data[buf->position + 4] = (uint8_t)((value >> 32) & 0xFF);
-    buf->data[buf->position + 5] = (uint8_t)((value >> 40) & 0xFF);
-    buf->data[buf->position + 6] = (uint8_t)((value >> 48) & 0xFF);
-    buf->data[buf->position + 7] = (uint8_t)((value >> 56) & 0xFF);
+    buf->data[buf->position] = (uint8_t)(raw & 0xFF);
+    buf->data[buf->position + 1] = (uint8_t)((raw >> 8) & 0xFF);
+    buf->data[buf->position + 2] = (uint8_t)((raw >> 16) & 0xFF);
+    buf->data[buf->position + 3] = (uint8_t)((raw >> 24) & 0xFF);
+    buf->data[buf->position + 4] = (uint8_t)((raw >> 32) & 0xFF);
+    buf->data[buf->position + 5] = (uint8_t)((raw >> 40) & 0xFF);
+    buf->data[buf->position + 6] = (uint8_t)((raw >> 48) & 0xFF);
+    buf->data[buf->position + 7] = (uint8_t)((raw >> 56) & 0xFF);
     binbuf_advance_write(buf, 8);
 }
 
 /// @brief Append a 64-bit signed integer in big-endian byte order.
 void rt_binbuf_write_i64be(void *obj, int64_t value) {
-    if (!obj)
-        rt_trap("BinaryBuffer: null buffer");
-    rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
+    rt_binbuf_impl *buf = binbuf_require(obj);
+    uint64_t raw = (uint64_t)value;
     binbuf_ensure(buf, 8);
-    buf->data[buf->position] = (uint8_t)((value >> 56) & 0xFF);
-    buf->data[buf->position + 1] = (uint8_t)((value >> 48) & 0xFF);
-    buf->data[buf->position + 2] = (uint8_t)((value >> 40) & 0xFF);
-    buf->data[buf->position + 3] = (uint8_t)((value >> 32) & 0xFF);
-    buf->data[buf->position + 4] = (uint8_t)((value >> 24) & 0xFF);
-    buf->data[buf->position + 5] = (uint8_t)((value >> 16) & 0xFF);
-    buf->data[buf->position + 6] = (uint8_t)((value >> 8) & 0xFF);
-    buf->data[buf->position + 7] = (uint8_t)(value & 0xFF);
+    buf->data[buf->position] = (uint8_t)((raw >> 56) & 0xFF);
+    buf->data[buf->position + 1] = (uint8_t)((raw >> 48) & 0xFF);
+    buf->data[buf->position + 2] = (uint8_t)((raw >> 40) & 0xFF);
+    buf->data[buf->position + 3] = (uint8_t)((raw >> 32) & 0xFF);
+    buf->data[buf->position + 4] = (uint8_t)((raw >> 24) & 0xFF);
+    buf->data[buf->position + 5] = (uint8_t)((raw >> 16) & 0xFF);
+    buf->data[buf->position + 6] = (uint8_t)((raw >> 8) & 0xFF);
+    buf->data[buf->position + 7] = (uint8_t)(raw & 0xFF);
     binbuf_advance_write(buf, 8);
 }
 
 /// @brief Append a UTF-8 string with a 4-byte little-endian length prefix. NULL-equivalent
 /// strings serialize as length 0 with no payload.
 void rt_binbuf_write_str(void *obj, rt_string value) {
-    if (!obj)
-        rt_trap("BinaryBuffer: null buffer");
+    rt_binbuf_impl *buf = binbuf_require(obj);
 
     const char *cstr = rt_string_cstr(value);
-    int64_t slen = cstr ? rt_str_len(value) : 0;
+    if (!cstr)
+        rt_trap("BinaryBuffer: invalid string");
+    int64_t slen = rt_str_len(value);
+    if (slen < 0)
+        rt_trap("BinaryBuffer: invalid string length");
     if (slen > INT32_MAX)
         rt_trap("BinaryBuffer: string length exceeds i32 length prefix");
 
@@ -305,7 +313,6 @@ void rt_binbuf_write_str(void *obj, rt_string value) {
 
     // Write UTF-8 bytes
     if (slen > 0) {
-        rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
         binbuf_ensure(buf, slen);
         memcpy(buf->data + buf->position, cstr, (size_t)slen);
         binbuf_advance_write(buf, slen);
@@ -315,10 +322,11 @@ void rt_binbuf_write_str(void *obj, rt_string value) {
 /// @brief Append a Bytes blob with a 4-byte little-endian length prefix. NULL data writes
 /// length 0. Faster than per-byte writes — uses a single memcpy after the prefix.
 void rt_binbuf_write_bytes(void *obj, void *data) {
-    if (!obj)
-        rt_trap("BinaryBuffer: null buffer");
+    rt_binbuf_impl *buf = binbuf_require(obj);
+    if (!data || !rt_bytes_is_bytes(data))
+        rt_trap("BinaryBuffer: invalid bytes");
 
-    int64_t blen = data ? rt_bytes_len(data) : 0;
+    int64_t blen = rt_bytes_len(data);
     if (blen > INT32_MAX)
         rt_trap("BinaryBuffer: byte length exceeds i32 length prefix");
 
@@ -327,7 +335,6 @@ void rt_binbuf_write_bytes(void *obj, void *data) {
 
     // Write raw bytes — use memcpy via raw pointer (avoids O(n) rt_bytes_get calls)
     if (blen > 0) {
-        rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
         binbuf_ensure(buf, blen);
         const uint8_t *src = rt_bytes_data_const(data);
         if (src)
@@ -348,9 +355,7 @@ void rt_binbuf_write_bytes(void *obj, void *data) {
 
 /// @brief Read a single byte (returned as an int64 in [0, 255]).
 int64_t rt_binbuf_read_byte(void *obj) {
-    if (!obj)
-        rt_trap("BinaryBuffer: null buffer");
-    rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
+    rt_binbuf_impl *buf = binbuf_require(obj);
     binbuf_check_read(buf, 1);
     int64_t val = buf->data[buf->position];
     buf->position += 1;
@@ -359,9 +364,7 @@ int64_t rt_binbuf_read_byte(void *obj) {
 
 /// @brief Read a 16-bit signed integer in little-endian byte order.
 int64_t rt_binbuf_read_i16le(void *obj) {
-    if (!obj)
-        rt_trap("BinaryBuffer: null buffer");
-    rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
+    rt_binbuf_impl *buf = binbuf_require(obj);
     binbuf_check_read(buf, 2);
     int64_t pos = buf->position;
     uint16_t raw = (uint16_t)buf->data[pos] | ((uint16_t)buf->data[pos + 1] << 8);
@@ -372,9 +375,7 @@ int64_t rt_binbuf_read_i16le(void *obj) {
 
 /// @brief Read a 16-bit signed integer in big-endian byte order.
 int64_t rt_binbuf_read_i16be(void *obj) {
-    if (!obj)
-        rt_trap("BinaryBuffer: null buffer");
-    rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
+    rt_binbuf_impl *buf = binbuf_require(obj);
     binbuf_check_read(buf, 2);
     int64_t pos = buf->position;
     uint16_t raw = ((uint16_t)buf->data[pos] << 8) | (uint16_t)buf->data[pos + 1];
@@ -385,9 +386,7 @@ int64_t rt_binbuf_read_i16be(void *obj) {
 
 /// @brief Read a 32-bit signed integer in little-endian byte order.
 int64_t rt_binbuf_read_i32le(void *obj) {
-    if (!obj)
-        rt_trap("BinaryBuffer: null buffer");
-    rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
+    rt_binbuf_impl *buf = binbuf_require(obj);
     binbuf_check_read(buf, 4);
     int64_t pos = buf->position;
     uint32_t raw = (uint32_t)buf->data[pos] | ((uint32_t)buf->data[pos + 1] << 8) |
@@ -399,9 +398,7 @@ int64_t rt_binbuf_read_i32le(void *obj) {
 
 /// @brief Read a 32-bit signed integer in big-endian byte order.
 int64_t rt_binbuf_read_i32be(void *obj) {
-    if (!obj)
-        rt_trap("BinaryBuffer: null buffer");
-    rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
+    rt_binbuf_impl *buf = binbuf_require(obj);
     binbuf_check_read(buf, 4);
     int64_t pos = buf->position;
     uint32_t raw = ((uint32_t)buf->data[pos] << 24) | ((uint32_t)buf->data[pos + 1] << 16) |
@@ -413,9 +410,7 @@ int64_t rt_binbuf_read_i32be(void *obj) {
 
 /// @brief Read a 64-bit signed integer in little-endian byte order.
 int64_t rt_binbuf_read_i64le(void *obj) {
-    if (!obj)
-        rt_trap("BinaryBuffer: null buffer");
-    rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
+    rt_binbuf_impl *buf = binbuf_require(obj);
     binbuf_check_read(buf, 8);
     int64_t pos = buf->position;
     uint64_t raw = (uint64_t)buf->data[pos] | ((uint64_t)buf->data[pos + 1] << 8) |
@@ -429,9 +424,7 @@ int64_t rt_binbuf_read_i64le(void *obj) {
 
 /// @brief Read a 64-bit signed integer in big-endian byte order.
 int64_t rt_binbuf_read_i64be(void *obj) {
-    if (!obj)
-        rt_trap("BinaryBuffer: null buffer");
-    rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
+    rt_binbuf_impl *buf = binbuf_require(obj);
     binbuf_check_read(buf, 8);
     int64_t pos = buf->position;
     uint64_t raw = ((uint64_t)buf->data[pos] << 56) | ((uint64_t)buf->data[pos + 1] << 48) |
@@ -446,15 +439,13 @@ int64_t rt_binbuf_read_i64be(void *obj) {
 /// @brief Read a length-prefixed UTF-8 string written by `_write_str`. Traps on negative or
 /// out-of-bounds length. Returns a fresh rt_string copy of the bytes.
 rt_string rt_binbuf_read_str(void *obj) {
-    if (!obj)
-        rt_trap("BinaryBuffer: null buffer");
+    rt_binbuf_impl *buf = binbuf_require(obj);
 
     // Read 4-byte LE length prefix
     int64_t slen = rt_binbuf_read_i32le(obj);
     if (slen < 0)
         rt_trap("BinaryBuffer: invalid string length");
 
-    rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
     binbuf_check_read(buf, slen);
 
     rt_string result =
@@ -466,12 +457,10 @@ rt_string rt_binbuf_read_str(void *obj) {
 /// @brief Read `count` raw bytes into a fresh Bytes blob (no length prefix — caller owns the
 /// framing). Traps on negative count or under-run.
 void *rt_binbuf_read_bytes(void *obj, int64_t count) {
-    if (!obj)
-        rt_trap("BinaryBuffer: null buffer");
+    rt_binbuf_impl *buf = binbuf_require(obj);
     if (count < 0)
         rt_trap("BinaryBuffer: negative read count");
 
-    rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
     binbuf_check_read(buf, count);
 
     void *result = rt_bytes_new(count);
@@ -489,38 +478,27 @@ void *rt_binbuf_read_bytes(void *obj, int64_t count) {
 
 /// @brief Return the read/write cursor position in bytes from the buffer start. 0 for NULL.
 int64_t rt_binbuf_get_position(void *obj) {
-    if (!obj)
-        return 0;
-    return ((rt_binbuf_impl *)obj)->position;
+    return binbuf_require(obj)->position;
 }
 
 /// @brief Seek the cursor to a byte offset (clamped to [0, len]). Subsequent reads/writes
 /// happen from this position.
 void rt_binbuf_set_position(void *obj, int64_t pos) {
-    if (!obj)
-        return;
-    rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
-    if (pos < 0)
-        pos = 0;
-    if (pos > buf->len)
-        pos = buf->len;
+    rt_binbuf_impl *buf = binbuf_require(obj);
+    if (pos < 0 || pos > buf->len)
+        rt_trap("BinaryBuffer: position out of range");
     buf->position = pos;
 }
 
 /// @brief Return the total written size in bytes (the high-water mark, not capacity).
 int64_t rt_binbuf_get_len(void *obj) {
-    if (!obj)
-        return 0;
-    return ((rt_binbuf_impl *)obj)->len;
+    return binbuf_require(obj)->len;
 }
 
 /// @brief Snapshot the buffer's full contents as a fresh Bytes blob (memcpy, not a view).
 /// Returns an empty Bytes for a NULL handle.
 void *rt_binbuf_to_bytes(void *obj) {
-    if (!obj)
-        return rt_bytes_new(0);
-
-    rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
+    rt_binbuf_impl *buf = binbuf_require(obj);
     void *result = rt_bytes_new(buf->len);
     // IO-M-2: use memcpy via raw pointer instead of O(n) rt_bytes_set() calls
     uint8_t *dst = rt_bytes_data(result);
@@ -533,9 +511,7 @@ void *rt_binbuf_to_bytes(void *obj) {
 /// @brief Reset position and length to 0 (logical truncation). Capacity is not freed; the
 /// backing buffer can be re-used for the next batch without reallocation.
 void rt_binbuf_reset(void *obj) {
-    if (!obj)
-        return;
-    rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
+    rt_binbuf_impl *buf = binbuf_require(obj);
     buf->position = 0;
     buf->len = 0;
 }

@@ -80,6 +80,15 @@ static void test_create_with_capacity() {
     test_result("Create with capacity", true);
 }
 
+static void test_create_input_validation() {
+    printf("Testing MemStream constructor validation...\n");
+
+    EXPECT_TRAP(rt_memstream_new_capacity(-1));
+    EXPECT_TRAP(rt_memstream_from_bytes(nullptr));
+
+    test_result("Constructor validation traps", true);
+}
+
 /// @brief Test stream creation from bytes.
 static void test_from_bytes() {
     printf("Testing MemStream.FromBytes()...\n");
@@ -125,6 +134,9 @@ static void test_i8_u8() {
     assert(rt_memstream_read_i8(ms) == 127);
     assert(rt_memstream_read_u8(ms) == 0);
     assert(rt_memstream_read_u8(ms) == 255);
+
+    EXPECT_TRAP(rt_memstream_write_u8(ms, -1));
+    EXPECT_TRAP(rt_memstream_write_u8(ms, 256));
 
     test_result("I8/U8", true);
 }
@@ -267,6 +279,17 @@ static void test_strings() {
     assert(strcmp(cstr, "Hello, World!") == 0);
 
     test_result("ReadStr/WriteStr", true);
+}
+
+static void test_invalid_payloads_trap() {
+    printf("Testing invalid MemStream payloads...\n");
+
+    void *ms = rt_memstream_new();
+    EXPECT_TRAP(rt_memstream_write_bytes(ms, nullptr));
+    EXPECT_TRAP(rt_memstream_write_str(ms, nullptr));
+    EXPECT_TRAP(rt_memstream_clear(nullptr));
+
+    test_result("Invalid payloads trap", true);
 }
 
 /// @brief Test ToBytes.
@@ -461,6 +484,7 @@ int main() {
 
     test_create_empty();
     test_create_with_capacity();
+    test_create_input_validation();
     test_from_bytes();
     test_i8_u8();
     test_i16_u16();
@@ -469,6 +493,7 @@ int main() {
     test_floats();
     test_bytes();
     test_strings();
+    test_invalid_payloads_trap();
     test_to_bytes();
     test_clear();
     test_seek_skip();

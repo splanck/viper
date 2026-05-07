@@ -47,6 +47,7 @@
 #include <share.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <wchar.h>
 // Windows doesn't define ssize_t, so we provide it
 #if !defined(ssize_t)
 #include <BaseTsd.h>
@@ -332,7 +333,18 @@ int8_t rt_file_open(
 
     mode_t perms = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
     errno = 0;
+#if defined(_WIN32)
+    wchar_t *wide_path = rt_file_path_utf8_to_wide(path);
+    if (!wide_path) {
+        rt_file_set_error(out_err, Err_InvalidOperation, 0);
+        file->fd = -1;
+        return 0;
+    }
+    int fd = (flags & O_CREAT) ? _wopen(wide_path, flags, perms) : _wopen(wide_path, flags);
+    free(wide_path);
+#else
     int fd = (flags & O_CREAT) ? open(path, flags, perms) : open(path, flags);
+#endif
     if (fd < 0) {
         int err = errno ? errno : EIO;
         rt_file_set_error(out_err, rt_file_err_from_errno(err, Err_IOError), err);
@@ -584,7 +596,11 @@ int8_t rt_file_write(RtFile *file, const uint8_t *data, size_t len, RtError *out
         if (chunk > UINT_MAX)
             chunk = UINT_MAX;
 #endif
+#if defined(_WIN32)
         ssize_t n = write(file->fd, data + written, (unsigned int)chunk);
+#else
+        ssize_t n = write(file->fd, data + written, chunk);
+#endif
         if (n < 0) {
             if (errno == EINTR)
                 continue;

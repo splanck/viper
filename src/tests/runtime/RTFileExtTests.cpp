@@ -269,14 +269,14 @@ static void test_move() {
     printf("\n");
 }
 
-/// @brief Test rt_file_move overwrites an existing destination.
-static void test_move_overwrite() {
-    printf("Testing rt_file_move overwrite:\n");
+/// @brief Test rt_file_move refuses to overwrite an existing destination.
+static void test_move_existing_destination_traps() {
+    printf("Testing rt_file_move no-overwrite contract:\n");
 
     const char *base = get_test_base();
     char src_path[512], dst_path[512];
-    snprintf(src_path, sizeof(src_path), "%s_move_overwrite_src.txt", base);
-    snprintf(dst_path, sizeof(dst_path), "%s_move_overwrite_dst.txt", base);
+    snprintf(src_path, sizeof(src_path), "%s_move_existing_src.txt", base);
+    snprintf(dst_path, sizeof(dst_path), "%s_move_existing_dst.txt", base);
 
     create_test_file(src_path, "new content");
     create_test_file(dst_path, "old content");
@@ -284,11 +284,39 @@ static void test_move_overwrite() {
     rt_string src = rt_const_cstr(src_path);
     rt_string dst = rt_const_cstr(dst_path);
 
-    rt_file_move(src, dst);
+    EXPECT_TRAP(rt_file_move(src, dst));
+
+    test_result("source preserved", rt_io_file_exists(src) == 1);
+    test_result("dest preserved",
+                rt_str_eq(rt_io_file_read_all_text(dst), rt_const_cstr("old content")));
+
+    remove_file(src_path);
+    remove_file(dst_path);
+
+    printf("\n");
+}
+
+/// @brief Test rt_file_move_over replaces an existing destination.
+static void test_move_over_replaces() {
+    printf("Testing rt_file_move_over replacement:\n");
+
+    const char *base = get_test_base();
+    char src_path[512], dst_path[512];
+    snprintf(src_path, sizeof(src_path), "%s_move_over_src.txt", base);
+    snprintf(dst_path, sizeof(dst_path), "%s_move_over_dst.txt", base);
+
+    create_test_file(src_path, "new content");
+    create_test_file(dst_path, "old content");
+
+    rt_string src = rt_const_cstr(src_path);
+    rt_string dst = rt_const_cstr(dst_path);
+
+    rt_file_move_over(src, dst);
 
     test_result("source removed", rt_io_file_exists(src) == 0);
     test_result("dest exists", rt_io_file_exists(dst) == 1);
-    test_result("dest replaced", rt_str_eq(rt_io_file_read_all_text(dst), rt_const_cstr("new content")));
+    test_result("dest replaced",
+                rt_str_eq(rt_io_file_read_all_text(dst), rt_const_cstr("new content")));
 
     remove_file(dst_path);
 
@@ -609,12 +637,12 @@ static void test_modified() {
 
     // Non-existent file
     rt_string nonexist = rt_const_cstr(get_missing_path());
-    test_result("non-existent returns 0", rt_file_modified(nonexist) == 0);
+    test_result("non-existent returns -1", rt_file_modified(nonexist) == -1);
 
     char dir_path[512];
     snprintf(dir_path, sizeof(dir_path), "%s_modified_dir", base);
     mkdir_p(dir_path);
-    test_result("directory modified returns 0", rt_file_modified(rt_const_cstr(dir_path)) == 0);
+    test_result("directory modified returns -1", rt_file_modified(rt_const_cstr(dir_path)) == -1);
 
     // Clean up
     remove_file(file_path);
@@ -678,6 +706,30 @@ static void test_delete_error_contract() {
     printf("\n");
 }
 
+/// @brief Test write/append string parameters are validated instead of treated as empty.
+static void test_invalid_string_writes_trap() {
+    printf("Testing invalid file write strings:\n");
+
+    const char *base = get_test_base();
+    char file_path[512];
+    snprintf(file_path, sizeof(file_path), "%s_invalid_string_writes.txt", base);
+    rt_string path = rt_const_cstr(file_path);
+
+    EXPECT_TRAP(rt_io_file_write_all_text(path, nullptr));
+    EXPECT_TRAP(rt_file_append(path, nullptr));
+    EXPECT_TRAP(rt_io_file_append_line(path, nullptr));
+
+    void *lines = rt_seq_new();
+    rt_seq_push(lines, rt_const_cstr("ok"));
+    rt_seq_push(lines, nullptr);
+    EXPECT_TRAP(rt_file_write_lines(path, lines));
+
+    EXPECT_TRAP(rt_io_file_write_all_text(rt_const_cstr(""), rt_const_cstr("x")));
+
+    remove_file(file_path);
+    printf("\n");
+}
+
 /// @brief Test empty file handling.
 static void test_empty_file() {
     printf("Testing empty file handling:\n");
@@ -723,7 +775,7 @@ static void test_nonexistent() {
     EXPECT_TRAP(rt_file_read_bytes(path));
 
     test_result("size returns -1", rt_file_size(path) == -1);
-    test_result("modified returns 0", rt_file_modified(path) == 0);
+    test_result("modified returns -1", rt_file_modified(path) == -1);
 
     printf("\n");
 }
@@ -737,7 +789,8 @@ int main() {
     test_copy_same_file_traps();
     test_copy_existing_destination_traps();
     test_move();
-    test_move_overwrite();
+    test_move_existing_destination_traps();
+    test_move_over_replaces();
     test_size();
     test_read_regular_file_required();
     test_embedded_nul_path_rejected();
@@ -751,6 +804,7 @@ int main() {
     test_modified();
     test_touch();
     test_delete_error_contract();
+    test_invalid_string_writes_trap();
     test_empty_file();
     test_nonexistent();
 

@@ -94,10 +94,7 @@ static void test_from_bytes() {
 }
 
 static void test_from_bytes_null() {
-    // NULL input → empty buffer
-    void *bb = rt_binbuf_from_bytes(nullptr);
-    assert(bb != nullptr);
-    assert(rt_binbuf_get_len(bb) == 0);
+    EXPECT_TRAP(rt_binbuf_from_bytes(nullptr));
 }
 
 //=============================================================================
@@ -111,6 +108,14 @@ static void test_write_read_byte() {
 
     rt_binbuf_set_position(bb, 0);
     assert(rt_binbuf_read_byte(bb) == 0xAB);
+}
+
+static void test_write_byte_range_traps() {
+    void *bb = rt_binbuf_new();
+    EXPECT_TRAP(rt_binbuf_write_byte(bb, -1));
+    EXPECT_TRAP(rt_binbuf_write_byte(bb, 256));
+    rt_binbuf_write_byte(bb, 255);
+    assert(rt_binbuf_get_len(bb) == 1);
 }
 
 static void test_write_read_i16le() {
@@ -243,6 +248,12 @@ static void test_write_read_bytes() {
     assert(rt_bytes_get(out, 3) == 0xEF);
 }
 
+static void test_write_invalid_payloads_trap() {
+    void *bb = rt_binbuf_new();
+    EXPECT_TRAP(rt_binbuf_write_str(bb, nullptr));
+    EXPECT_TRAP(rt_binbuf_write_bytes(bb, nullptr));
+}
+
 //=============================================================================
 // Cursor / Position Semantics
 //=============================================================================
@@ -266,16 +277,17 @@ static void test_position_advances_on_read() {
     assert(rt_binbuf_get_position(bb) == 1);
 }
 
-static void test_set_position_clamps_to_len() {
+static void test_set_position_bounds_trap() {
     void *bb = rt_binbuf_new();
     rt_binbuf_write_byte(bb, 1);
     rt_binbuf_write_byte(bb, 2);
 
-    rt_binbuf_set_position(bb, 100);         // beyond len
-    assert(rt_binbuf_get_position(bb) == 2); // clamped to len
+    rt_binbuf_set_position(bb, 2);
+    assert(rt_binbuf_get_position(bb) == 2);
 
-    rt_binbuf_set_position(bb, -5);          // negative
-    assert(rt_binbuf_get_position(bb) == 0); // clamped to 0
+    EXPECT_TRAP(rt_binbuf_set_position(bb, 100));
+    EXPECT_TRAP(rt_binbuf_set_position(bb, -5));
+    assert(rt_binbuf_get_position(bb) == 2);
 }
 
 static void test_read_past_end_traps() {
@@ -409,6 +421,7 @@ int main() {
 
     // Write / read round-trips
     test_write_read_byte();
+    test_write_byte_range_traps();
     test_write_read_i16le();
     test_write_read_i16be();
     test_write_read_i32le();
@@ -420,11 +433,12 @@ int main() {
     test_write_read_str();
     test_write_read_str_preserves_embedded_nul();
     test_write_read_bytes();
+    test_write_invalid_payloads_trap();
 
     // Cursor semantics
     test_position_advances_on_write();
     test_position_advances_on_read();
-    test_set_position_clamps_to_len();
+    test_set_position_bounds_trap();
     test_read_past_end_traps();
 
     // to_bytes / from_bytes

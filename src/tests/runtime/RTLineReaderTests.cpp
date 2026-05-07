@@ -78,6 +78,7 @@ static void test_read_lf_lines() {
     rt_string line3 = rt_linereader_read(lr);
     assert(rt_str_len(line3) == 5);
     assert(strncmp(rt_string_cstr(line3), "line3", 5) == 0);
+    assert(rt_linereader_eof(lr) == 1);
 
     // Reading at EOF should return empty string and set eof
     rt_string empty = rt_linereader_read(lr);
@@ -110,6 +111,7 @@ static void test_read_crlf_lines() {
     rt_string line3 = rt_linereader_read(lr);
     assert(rt_str_len(line3) == 5);
     assert(strncmp(rt_string_cstr(line3), "line3", 5) == 0);
+    assert(rt_linereader_eof(lr) == 1);
 
     rt_linereader_close(lr);
     cleanup_test_file();
@@ -137,6 +139,7 @@ static void test_read_cr_lines() {
     rt_string line3 = rt_linereader_read(lr);
     assert(rt_str_len(line3) == 5);
     assert(strncmp(rt_string_cstr(line3), "line3", 5) == 0);
+    assert(rt_linereader_eof(lr) == 1);
 
     rt_linereader_close(lr);
     cleanup_test_file();
@@ -355,7 +358,7 @@ static void test_empty_lines() {
 
     rt_string l3 = rt_linereader_read(lr);
     assert(rt_str_len(l3) == 0);
-    assert(rt_linereader_eof(lr) == 0);
+    assert(rt_linereader_eof(lr) == 1);
 
     // Now we're at EOF
     rt_string l4 = rt_linereader_read(lr);

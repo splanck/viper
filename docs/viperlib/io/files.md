@@ -26,7 +26,8 @@ File system operations.
 | `WriteAllText(path, content)` | `Void(String, String)` | Atomically replaces a text file with new contents                                          |
 | `Delete(path)`                | `Void(String)`         | Deletes a file; missing files are ignored, other failures trap                            |
 | `Copy(src, dst)`              | `Void(String, String)` | Copies a file from src to dst; traps if `dst` already exists or both paths name the same file |
-| `Move(src, dst)`              | `Void(String, String)` | Moves or renames a file, replacing `dst` when supported by the platform                   |
+| `Move(src, dst)`              | `Void(String, String)` | Moves or renames a file; traps if `dst` already exists                                    |
+| `MoveOver(src, dst)`          | `Void(String, String)` | Moves or renames a file, replacing `dst` when supported by the platform                   |
 | `Size(path)`                  | `Integer(String)`      | Returns regular-file size in bytes, or -1 if not found or not a regular file              |
 | `ReadBytes(path)`             | `ptr(String)`          | Reads the entire file as a raw runtime buffer; traps on I/O errors                        |
 | `WriteBytes(path, data)`      | `Void(String, ptr)`    | Atomically replaces a file with a raw runtime buffer                                      |
@@ -37,7 +38,7 @@ File system operations.
 | `Append(path, text)`          | `Void(String, String)` | Appends text to a file; traps on I/O errors                                               |
 | `AppendLine(path, text)`      | `Void(String, String)` | Appends text followed by `\n` to a file (creates if missing)                              |
 | `ReadAllLines(path)`          | `Seq(String)`          | Reads file as a sequence of lines; strips `\n` / `\r\n` terminators (traps on I/O errors) |
-| `Modified(path)`              | `Integer(String)`      | Returns regular-file modification time as Unix timestamp, or 0 if missing or not a file   |
+| `Modified(path)`              | `Integer(String)`      | Returns regular-file modification time as Unix timestamp, or -1 if missing or not a file  |
 | `Touch(path)`                 | `Void(String)`         | Creates file or updates its modification time; traps on I/O errors                        |
 
 ### Notes
@@ -47,7 +48,8 @@ File system operations.
 - Path strings with embedded NUL bytes are rejected before reaching platform file APIs.
 - `ReadAllText`, `ReadAllBytes`, and `ReadAllLines` require a regular file and trap on directories, special files, I/O errors, or unexpected short reads if the file changes while being read.
 - `WriteAllText`, `WriteAllBytes`, `WriteBytes`, and `WriteLines` write to an exclusive temporary file in the destination directory and then replace the live file. Failed writes trap instead of silently leaving a partial overwrite behind.
-- `Copy` never overwrites an existing destination. `Move` first attempts an in-place replace/rename and only falls back to copy-plus-delete when the source and destination are on different filesystems or volumes.
+- `Copy` and `Move` never overwrite an existing destination. `MoveOver` is the explicit replacement operation; it first attempts an in-place replace/rename and only falls back to copy-plus-delete when the source and destination are on different filesystems or volumes.
+- `Size` and `Modified` return `-1` for missing paths, directories, and special files. A real zero-byte file still reports size `0`.
 - `ReadAllLines` splits on `\n`, `\r`, and `\r\n` and does not include line endings in returned strings. Trailing empty lines are preserved.
 - `WriteAllText`, `ReadAllText`, `ReadBytes`, `ReadAllBytes`, `WriteAllBytes`, `ReadAllLines`, `WriteBytes`, `WriteLines`, `Append`, and `Touch` trap on I/O errors.
 - `ReadBytes` and `ReadLines` return raw `ptr` values representing internal runtime buffer objects. They are intended for use with other low-level runtime functions and are not strongly-typed Zia objects. Similarly, `WriteBytes` accepts a raw `ptr` for the data parameter. For strongly-typed binary and line I/O, prefer `ReadAllBytes`, `WriteAllBytes`, and `ReadAllLines`.
@@ -156,6 +158,9 @@ Viper.IO.File.Copy("source.txt", "backup.txt")
 
 ' Move/rename file
 Viper.IO.File.Move("old_name.txt", "new_name.txt")
+
+' Replace an existing destination explicitly
+Viper.IO.File.MoveOver("new_data.txt", "data.txt")
 
 ' Get file info
 DIM size AS INTEGER

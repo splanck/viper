@@ -185,6 +185,16 @@ size_t rt_file_string_view(const ViperString *s, const uint8_t **data_out) {
     return s->literal_len;
 }
 
+size_t rt_file_string_require_view(const ViperString *s,
+                                   const uint8_t **data_out,
+                                   const char *context) {
+    if (data_out)
+        *data_out = NULL;
+    if (!s || !rt_string_is_handle(s) || !s->data)
+        rt_trap(context ? context : "invalid string");
+    return rt_file_string_view(s, data_out);
+}
+
 #ifdef _WIN32
 /// @brief Convert a UTF-8 C string to a freshly allocated wide-char string.
 ///

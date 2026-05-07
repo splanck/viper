@@ -41,6 +41,7 @@
 
 #include <errno.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -86,7 +87,11 @@ static int rt_dir_posix_path_is_dir(const char *path) {
 /// but tolerates `/`; POSIX treats `\` as a literal but the runtime
 /// canonicalizes here for consistency).
 static int rt_dir_is_sep_char(char ch) {
+#ifdef _WIN32
     return ch == '/' || ch == '\\';
+#else
+    return ch == '/';
+#endif
 }
 
 /// @brief Concatenate `base` + `PATH_SEP` + `child` into a new heap string.
@@ -98,6 +103,8 @@ static char *rt_dir_join_child_alloc(const char *base, const char *child) {
     size_t base_len = strlen(base);
     size_t child_len = strlen(child);
     int needs_sep = base_len > 0 && !rt_dir_is_sep_char(base[base_len - 1]);
+    if (base_len > SIZE_MAX - child_len - (size_t)needs_sep - 1)
+        return NULL;
     char *joined = (char *)malloc(base_len + (size_t)needs_sep + child_len + 1);
     if (!joined)
         return NULL;
@@ -310,6 +317,8 @@ static wchar_t *rt_dir_win_join(const wchar_t *base, const wchar_t *child) {
     size_t base_len = wcslen(base);
     size_t child_len = wcslen(child);
     int needs_sep = base_len > 0 && !rt_dir_win_is_sep(base[base_len - 1]);
+    if (base_len > (SIZE_MAX / sizeof(wchar_t)) - child_len - (needs_sep ? 1U : 0U) - 1U)
+        return NULL;
     wchar_t *joined =
         (wchar_t *)malloc((base_len + (needs_sep ? 1 : 0) + child_len + 1) * sizeof(wchar_t));
     if (!joined)
@@ -387,7 +396,7 @@ static int rt_dir_win_move_dir(const char *src, const char *dst) {
 /// @brief Return 1 if the UTF-8 `utf8` path resolves to the current working directory (Windows).
 ///
 /// Used by the RemoveAll protection guard to block deletion of the cwd.
-static int rt_dir_win_path_matches_cwd(const char *utf8) {
+static int rt_dir_win_path_matches_cwd_or_ancestor(const char *utf8) {
     wchar_t *wide = rt_dir_win_utf8_to_wide(utf8);
     wchar_t *full = wide ? rt_dir_win_absolute_path(wide) : NULL;
     free(wide);
@@ -405,7 +414,19 @@ static int rt_dir_win_path_matches_cwd(const char *utf8) {
         return 0;
     }
     DWORD got = GetCurrentDirectoryW(need + 1, cwd);
-    int matches = got > 0 && _wcsicmp(full, cwd) == 0;
+    int matches = 0;
+    if (got > 0) {
+        size_t full_len = wcslen(full);
+        size_t cwd_len = wcslen(cwd);
+        while (full_len > 0 && rt_dir_win_is_sep(full[full_len - 1]))
+            --full_len;
+        while (cwd_len > 0 && rt_dir_win_is_sep(cwd[cwd_len - 1]))
+            --cwd_len;
+        matches = full_len == cwd_len && _wcsnicmp(full, cwd, full_len) == 0;
+        if (!matches && full_len < cwd_len && _wcsnicmp(full, cwd, full_len) == 0 &&
+            rt_dir_win_is_sep(cwd[full_len]))
+            matches = 1;
+    }
     free(cwd);
     free(full);
     return matches;
@@ -444,7 +465,7 @@ static int rt_dir_remove_all_target_is_protected(const char *cpath) {
         return 1;
 
 #ifdef _WIN32
-    if (rt_dir_win_path_matches_cwd(cpath))
+    if (rt_dir_win_path_matches_cwd_or_ancestor(cpath))
         return 1;
 #else
     struct stat st;
@@ -454,8 +475,19 @@ static int rt_dir_remove_all_target_is_protected(const char *cpath) {
             if (strcmp(resolved, "/") == 0)
                 return 1;
             char cwd[PATH_MAX];
-            if (getcwd(cwd, sizeof(cwd)) && strcmp(resolved, cwd) == 0)
-                return 1;
+            if (getcwd(cwd, sizeof(cwd))) {
+                size_t resolved_len = strlen(resolved);
+                size_t cwd_len = strlen(cwd);
+                while (resolved_len > 1 && resolved[resolved_len - 1] == '/')
+                    --resolved_len;
+                while (cwd_len > 1 && cwd[cwd_len - 1] == '/')
+                    --cwd_len;
+                if (resolved_len == cwd_len && strncmp(resolved, cwd, resolved_len) == 0)
+                    return 1;
+                if (resolved_len < cwd_len && strncmp(resolved, cwd, resolved_len) == 0 &&
+                    cwd[resolved_len] == '/')
+                    return 1;
+            }
         }
     }
 #endif
@@ -655,17 +687,10 @@ void rt_dir_make_all(rt_string path) {
         return;
     }
     memcpy(tmp, cpath, len + 1);
-#if !defined(_WIN32)
-    for (size_t i = 0; i < len; ++i) {
-        if (tmp[i] == '\\')
-            tmp[i] = '/';
-    }
-#endif
-
     size_t root_len = rt_dir_root_prefix_len(tmp, len);
 
     // Remove trailing separators
-    while (len > root_len && (tmp[len - 1] == '/' || tmp[len - 1] == '\\')) {
+    while (len > root_len && rt_dir_is_sep_char(tmp[len - 1])) {
         tmp[--len] = '\0';
     }
     if (len == 0 || (root_len > 0 && len == root_len)) {

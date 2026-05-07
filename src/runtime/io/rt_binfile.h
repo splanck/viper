@@ -43,6 +43,9 @@ typedef enum {
 /// @return BinFile object or NULL on failure.
 void *rt_binfile_open(void *path, void *mode);
 
+/// @brief Return 1 if obj is a BinFile runtime handle.
+int8_t rt_binfile_is_handle(void *obj);
+
 /// @brief Close the binary file and release resources.
 /// @param obj BinFile object.
 void rt_binfile_close(void *obj);

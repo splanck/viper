@@ -82,6 +82,8 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_bytes_data")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_bytes_data_const")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_bytes_is_bytes")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_json_stream_number_text")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_binfile_is_handle")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_memstream_is_handle")
 
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_sound_load_mem")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_sound_is_handle")

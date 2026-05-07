@@ -27,19 +27,24 @@
 //===----------------------------------------------------------------------===//
 
 #include <stdio.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #ifdef _WIN32
 #include <stdint.h>
 #include <io.h>
 #include <process.h>
+#include <wchar.h>
 #include <windows.h>
 #else
 #include <strings.h>
 #include <unistd.h>
 #endif
 
+#include "rt_file_path.h"
 #include "rt_string.h"
 
 // ─── External declarations ──────────────────────────────────────────────────
@@ -58,6 +63,47 @@ extern void *rt_sound_load_mem(const void *data, int64_t size);
 
 // Runtime string helpers
 extern rt_string rt_string_from_bytes(const char *data, size_t len);
+
+static const char *asset_temp_suffix(const char *ext) {
+    if (!ext || ext[0] != '.')
+        return ".tmp";
+    size_t len = strlen(ext);
+    if (len == 0 || len > 32)
+        return ".tmp";
+    for (size_t i = 0; i < len; ++i) {
+        if (ext[i] == '/' || ext[i] == '\\' || ext[i] == ':')
+            return ".tmp";
+    }
+    return ext;
+}
+
+#ifdef _WIN32
+static char *asset_decode_wide_to_utf8_dup(const wchar_t *wide) {
+    int needed = WideCharToMultiByte(CP_UTF8, 0, wide, -1, NULL, 0, NULL, NULL);
+    if (needed <= 0)
+        return NULL;
+    char *utf8 = (char *)malloc((size_t)needed);
+    if (!utf8)
+        return NULL;
+    if (WideCharToMultiByte(CP_UTF8, 0, wide, -1, utf8, needed, NULL, NULL) <= 0) {
+        free(utf8);
+        return NULL;
+    }
+    return utf8;
+}
+#endif
+
+static void asset_remove_temp_path(const char *path) {
+#ifdef _WIN32
+    wchar_t *wide = rt_file_path_utf8_to_wide(path);
+    if (wide) {
+        DeleteFileW(wide);
+        free(wide);
+    }
+#else
+    remove(path);
+#endif
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -85,84 +131,158 @@ static void *load_via_tempfile(const uint8_t *data,
                                size_t size,
                                const char *ext,
                                void *(*loader)(void *path_str)) {
-    (void)ext;
-    char tmppath[512];
+    const char *suffix = asset_temp_suffix(ext);
+    char *tmppath = NULL;
     FILE *f = NULL;
 #ifdef _WIN32
-    char tmpdir[MAX_PATH];
-    DWORD tmpdir_len = GetTempPathA(MAX_PATH, tmpdir);
-    if (tmpdir_len == 0 || tmpdir_len >= MAX_PATH)
+    DWORD need = GetTempPathW(0, NULL);
+    if (need == 0)
+        return NULL;
+    wchar_t *wtmpdir = (wchar_t *)malloc(((size_t)need + 1) * sizeof(wchar_t));
+    if (!wtmpdir)
+        return NULL;
+    DWORD tmpdir_len = GetTempPathW(need + 1, wtmpdir);
+    if (tmpdir_len == 0 || tmpdir_len > need) {
+        free(wtmpdir);
+        return NULL;
+    }
+    char *tmpdir = asset_decode_wide_to_utf8_dup(wtmpdir);
+    free(wtmpdir);
+    if (!tmpdir)
         return NULL;
     HANDLE h = INVALID_HANDLE_VALUE;
     for (int attempt = 0; attempt < 128 && h == INVALID_HANDLE_VALUE; ++attempt) {
+        int needed = snprintf(NULL,
+                              0,
+                              "%sviper_asset_%lu_%llu_%d%s",
+                              tmpdir,
+                              (unsigned long)_getpid(),
+                              (unsigned long long)GetTickCount64(),
+                              attempt,
+                              suffix);
+        if (needed < 0)
+            continue;
+        free(tmppath);
+        tmppath = (char *)malloc((size_t)needed + 1);
+        if (!tmppath)
+            break;
         snprintf(tmppath,
-                 sizeof(tmppath),
-                 "%sviper_asset_%lu_%llu_%d.tmp",
+                 (size_t)needed + 1,
+                 "%sviper_asset_%lu_%llu_%d%s",
                  tmpdir,
                  (unsigned long)_getpid(),
                  (unsigned long long)GetTickCount64(),
-                 attempt);
-        h = CreateFileA(tmppath,
+                 attempt,
+                 suffix);
+        wchar_t *wide = rt_file_path_utf8_to_wide(tmppath);
+        if (!wide)
+            continue;
+        h = CreateFileW(wide,
                         GENERIC_WRITE,
                         0,
                         NULL,
                         CREATE_NEW,
                         FILE_ATTRIBUTE_TEMPORARY | FILE_ATTRIBUTE_NOT_CONTENT_INDEXED,
                         NULL);
+        free(wide);
         if (h == INVALID_HANDLE_VALUE && GetLastError() != ERROR_FILE_EXISTS &&
-            GetLastError() != ERROR_ALREADY_EXISTS)
+            GetLastError() != ERROR_ALREADY_EXISTS) {
+            free(tmpdir);
+            free(tmppath);
             return NULL;
+        }
     }
-    if (h == INVALID_HANDLE_VALUE)
+    free(tmpdir);
+    if (h == INVALID_HANDLE_VALUE) {
+        free(tmppath);
         return NULL;
+    }
     int fd = _open_osfhandle((intptr_t)h, 0);
     if (fd < 0) {
         CloseHandle(h);
-        DeleteFileA(tmppath);
+        asset_remove_temp_path(tmppath);
+        free(tmppath);
         return NULL;
     }
     f = _fdopen(fd, "wb");
     if (!f) {
         _close(fd);
-        DeleteFileA(tmppath);
+        asset_remove_temp_path(tmppath);
+        free(tmppath);
         return NULL;
     }
 #else
     const char *tmpdir = getenv("TMPDIR");
     if (!tmpdir || !*tmpdir)
         tmpdir = "/tmp";
-    if (snprintf(tmppath, sizeof(tmppath), "%s/viper_asset_XXXXXX", tmpdir) >=
-        (int)sizeof(tmppath))
+    int fd = -1;
+    for (int attempt = 0; attempt < 128 && fd < 0; ++attempt) {
+        int needed = snprintf(NULL,
+                              0,
+                              "%s/viper_asset_%ld_%ld_%d%s",
+                              tmpdir,
+                              (long)getpid(),
+                              (long)time(NULL),
+                              attempt,
+                              suffix);
+        if (needed < 0)
+            continue;
+        free(tmppath);
+        tmppath = (char *)malloc((size_t)needed + 1);
+        if (!tmppath)
+            return NULL;
+        snprintf(tmppath,
+                 (size_t)needed + 1,
+                 "%s/viper_asset_%ld_%ld_%d%s",
+                 tmpdir,
+                 (long)getpid(),
+                 (long)time(NULL),
+                 attempt,
+                 suffix);
+        fd = open(tmppath, O_WRONLY | O_CREAT | O_EXCL, 0600);
+        if (fd < 0 && errno != EEXIST) {
+            free(tmppath);
+            return NULL;
+        }
+    }
+    if (fd < 0) {
+        free(tmppath);
         return NULL;
-    int fd = mkstemp(tmppath);
-    if (fd < 0)
-        return NULL;
+    }
     f = fdopen(fd, "wb");
     if (!f) {
         close(fd);
-        remove(tmppath);
+        asset_remove_temp_path(tmppath);
+        free(tmppath);
         return NULL;
     }
 #endif
 
     if (size > 0 && fwrite(data, 1, size, f) != size) {
         fclose(f);
-        remove(tmppath);
+        asset_remove_temp_path(tmppath);
+        free(tmppath);
         return NULL;
     }
-    fclose(f);
+    if (fclose(f) != 0) {
+        asset_remove_temp_path(tmppath);
+        free(tmppath);
+        return NULL;
+    }
 
     // Call file-based loader
     rt_string path_str = rt_string_from_bytes(tmppath, strlen(tmppath));
     if (!path_str) {
-        remove(tmppath);
+        asset_remove_temp_path(tmppath);
+        free(tmppath);
         return NULL;
     }
     void *result = loader((void *)path_str);
     rt_string_unref(path_str);
 
     // Cleanup
-    remove(tmppath);
+    asset_remove_temp_path(tmppath);
+    free(tmppath);
     return result;
 }
 

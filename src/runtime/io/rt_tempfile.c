@@ -83,6 +83,7 @@ static const char *tempfile_require_fragment(rt_string fragment, const char *wha
 /// @brief Generate a unique identifier using OS-provided entropy (S-21).
 static void generate_unique_id(char *buffer, size_t size) {
     uint64_t rnd = 0;
+    static uint64_t fallback_counter = 0;
 
 #ifdef _WIN32
     /* Use CryptGenRandom for unpredictable IDs */
@@ -101,12 +102,25 @@ static void generate_unique_id(char *buffer, size_t size) {
     /* Read from /dev/urandom for unpredictable IDs */
     int fd = open("/dev/urandom", O_RDONLY);
     if (fd >= 0) {
-        ssize_t n = read(fd, &rnd, sizeof(rnd));
+        size_t got = 0;
+        while (got < sizeof(rnd)) {
+            ssize_t n = read(fd, ((unsigned char *)&rnd) + got, sizeof(rnd) - got);
+            if (n < 0) {
+                if (errno == EINTR)
+                    continue;
+                break;
+            }
+            if (n == 0)
+                break;
+            got += (size_t)n;
+        }
         close(fd);
-        if (n != (ssize_t)sizeof(rnd))
-            rnd ^= (uint64_t)(uintptr_t)buffer ^ (uint64_t)getpid();
+        if (got != sizeof(rnd))
+            rnd ^= (uint64_t)(uintptr_t)buffer ^ (uint64_t)getpid() ^
+                   (uint64_t)time(NULL) ^ ++fallback_counter;
     } else {
-        rnd = (uint64_t)(uintptr_t)buffer ^ (uint64_t)getpid();
+        rnd = (uint64_t)(uintptr_t)buffer ^ (uint64_t)getpid() ^ (uint64_t)time(NULL) ^
+              ++fallback_counter;
     }
 #endif
 
@@ -274,9 +288,9 @@ rt_string rt_tempfile_create(void) {
 rt_string rt_tempfile_create_with_prefix(rt_string prefix) {
 #ifndef _WIN32
     /* S-21: Use mkstemp for atomic, exclusive, unpredictable file creation on POSIX */
-    rt_string temp_dir = rt_tempfile_dir();
     const char *prefix_cstr =
         tempfile_require_fragment(prefix, "TempFile.Create: invalid prefix");
+    rt_string temp_dir = rt_tempfile_dir();
     const char *dir_cstr = rt_string_cstr(temp_dir);
 
     size_t tmpl_len = strlen(dir_cstr) + 1 + strlen(prefix_cstr) + 6 + 1;

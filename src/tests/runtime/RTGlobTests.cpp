@@ -161,6 +161,18 @@ static void test_glob_match() {
         rt_string_unref(path);
     }
 
+    // Test 18: embedded NUL bytes are rejected instead of truncating the match input.
+    {
+        const char path_bytes[] = {'s', 'a', 'f', 'e', '\0', '.', 't', 'x', 't'};
+        const char pattern_bytes[] = {'s', 'a', 'f', 'e', '*', '\0', '*'};
+        rt_string path = rt_string_from_bytes(path_bytes, sizeof(path_bytes));
+        rt_string pattern = rt_string_from_bytes(pattern_bytes, sizeof(pattern_bytes));
+        test_result("embedded NUL path rejected", rt_glob_match(path, rt_const_cstr("safe*")) == 0);
+        test_result("embedded NUL pattern rejected", rt_glob_match(rt_const_cstr("safe.txt"), pattern) == 0);
+        rt_string_unref(path);
+        rt_string_unref(pattern);
+    }
+
     printf("\n");
 }
 

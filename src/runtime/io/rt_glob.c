@@ -153,113 +153,28 @@ static int glob_match_class(const char **pattern_ptr, char ch, int allow_slash) 
     return negate ? !matched : matched;
 }
 
-/// @brief Context bundle passed through the recursive memoised glob matcher.
 typedef struct {
-    const char *pattern; ///< Null-terminated glob pattern string.
-    const char *text;    ///< Null-terminated text to match against.
-    size_t pattern_len;  ///< Length of `pattern` in bytes (excluding NUL).
-    size_t text_len;     ///< Length of `text` in bytes (excluding NUL).
-    int8_t *memo;        ///< Flat memoisation table: -1 unvisited, 0 no-match, 1 match.
-} glob_match_ctx;
+    size_t pi;
+    size_t ti;
+    int allow_slash;
+} glob_state;
 
-/// @brief Recursive, memoised glob match kernel. Advances `pi` (pattern index) and
-/// `ti` (text index); `allow_slash` controls whether '*' may cross directory separators.
-static int glob_match_rec(glob_match_ctx *ctx, size_t pi, size_t ti, int allow_slash) {
-    size_t stride = ctx->text_len + 1;
-    size_t plane = (ctx->pattern_len + 1) * stride;
-    int8_t *slot = &ctx->memo[(allow_slash ? plane : 0) + pi * stride + ti];
-    if (*slot != -1)
-        return *slot;
-
-    int result = 0;
-    const char *pattern = ctx->pattern;
-    const char *text = ctx->text;
-
-    if (pi >= ctx->pattern_len) {
-        result = ti == ctx->text_len;
-        goto done;
-    }
-
-    if (pattern[pi] == '*') {
-        if (pi + 1 < ctx->pattern_len && pattern[pi + 1] == '*') {
-            pi += 2;
-            while (pi < ctx->pattern_len && glob_is_path_sep(pattern[pi]))
-                pi++;
-            if (pi >= ctx->pattern_len) {
-                result = 1;
-                goto done;
-            }
-            for (size_t p = ti; p <= ctx->text_len; ++p) {
-                if (glob_match_rec(ctx, pi, p, 1)) {
-                    result = 1;
-                    goto done;
-                }
-            }
-            goto done;
-        }
-
-        pi++;
-        if (pi >= ctx->pattern_len) {
-            result = 1;
-            for (size_t p = ti; p < ctx->text_len; ++p) {
-                if (glob_is_path_sep(text[p]) && !allow_slash) {
-                    result = 0;
-                    break;
-                }
-            }
-            goto done;
-        }
-
-        for (size_t p = ti; p <= ctx->text_len; ++p) {
-            if (p < ctx->text_len && glob_is_path_sep(text[p]) && !allow_slash) {
-                result = glob_match_rec(ctx, pi, p, allow_slash);
-                goto done;
-            }
-            if (glob_match_rec(ctx, pi, p, allow_slash)) {
-                result = 1;
-                goto done;
-            }
-            if (p == ctx->text_len)
-                break;
-        }
-        goto done;
-    }
-
-    if (ti >= ctx->text_len) {
-        if (pattern[pi] == '[') {
-            const char *after = pattern + pi;
-            int match = glob_match_class(&after, '\0', allow_slash);
-            if (match >= 0) {
-                result = 0;
-                goto done;
-            }
-        }
-        result = 0;
-        goto done;
-    }
-
-    if (pattern[pi] == '?') {
-        result = !(glob_is_path_sep(text[ti]) && !allow_slash) &&
-                 glob_match_rec(ctx, pi + 1, ti + 1, allow_slash);
-    } else if (pattern[pi] == '[') {
-        const char *after = pattern + pi;
-        int match = glob_match_class(&after, text[ti], allow_slash);
-        if (match >= 0)
-            result = match && glob_match_rec(ctx, (size_t)(after - pattern), ti + 1, allow_slash);
-        else
-            result = glob_char_eq(pattern[pi], text[ti]) &&
-                     glob_match_rec(ctx, pi + 1, ti + 1, allow_slash);
-    } else {
-        result = glob_char_eq(pattern[pi], text[ti]) &&
-                 glob_match_rec(ctx, pi + 1, ti + 1, allow_slash);
-    }
-
-done:
-    *slot = result ? 1 : 0;
-    return result;
+static void glob_push_state(glob_state *stack,
+                            size_t *sp,
+                            uint8_t *visited,
+                            size_t plane,
+                            size_t stride,
+                            size_t pi,
+                            size_t ti,
+                            int allow_slash) {
+    size_t idx = (allow_slash ? plane : 0) + pi * stride + ti;
+    if (visited[idx])
+        return;
+    visited[idx] = 1;
+    stack[(*sp)++] = (glob_state){pi, ti, allow_slash ? 1 : 0};
 }
 
-/// @brief Memoized glob engine that matches `pattern` against `text`.
+/// @brief Iterative glob engine that matches `pattern` against `text`.
 static int glob_match_impl(const char *pattern, const char *text, int allow_slash) {
     size_t pattern_len = strlen(pattern);
     size_t text_len = strlen(text);
@@ -274,16 +189,111 @@ static int glob_match_impl(const char *pattern, const char *text, int allow_slas
         return 0;
     }
     size_t cells = rows * cols * 2;
-    int8_t *memo = (int8_t *)malloc(cells);
-    if (!memo) {
+    if (cells > SIZE_MAX / sizeof(glob_state)) {
+        rt_trap("Glob.Match: pattern or text too long");
+        return 0;
+    }
+    uint8_t *visited = (uint8_t *)calloc(cells, 1);
+    glob_state *stack = (glob_state *)malloc(cells * sizeof(glob_state));
+    if (!visited || !stack) {
+        free(visited);
+        free(stack);
         rt_trap("Glob.Match: memory allocation failed");
         return 0;
     }
-    memset(memo, -1, cells);
-    glob_match_ctx ctx = {pattern, text, pattern_len, text_len, memo};
-    int result = glob_match_rec(&ctx, 0, 0, allow_slash ? 1 : 0);
-    free(memo);
-    return result;
+
+    size_t sp = 0;
+    size_t plane = rows * cols;
+    glob_push_state(stack, &sp, visited, plane, cols, 0, 0, allow_slash ? 1 : 0);
+
+    while (sp > 0) {
+        glob_state st = stack[--sp];
+        size_t pi = st.pi;
+        size_t ti = st.ti;
+        int slash_ok = st.allow_slash;
+
+        if (pi >= pattern_len) {
+            if (ti == text_len) {
+                free(stack);
+                free(visited);
+                return 1;
+            }
+            continue;
+        }
+
+        if (pattern[pi] == '*') {
+            if (pi + 1 < pattern_len && pattern[pi + 1] == '*') {
+                pi += 2;
+                while (pi < pattern_len && glob_is_path_sep(pattern[pi]))
+                    pi++;
+                if (pi >= pattern_len) {
+                    free(stack);
+                    free(visited);
+                    return 1;
+                }
+                for (size_t p = ti; p <= text_len; ++p)
+                    glob_push_state(stack, &sp, visited, plane, cols, pi, p, 1);
+                continue;
+            }
+
+            pi++;
+            if (pi >= pattern_len) {
+                int ok = 1;
+                for (size_t p = ti; p < text_len; ++p) {
+                    if (glob_is_path_sep(text[p]) && !slash_ok) {
+                        ok = 0;
+                        break;
+                    }
+                }
+                if (ok) {
+                    free(stack);
+                    free(visited);
+                    return 1;
+                }
+                continue;
+            }
+
+            for (size_t p = ti; p <= text_len; ++p) {
+                if (p < text_len && glob_is_path_sep(text[p]) && !slash_ok) {
+                    glob_push_state(stack, &sp, visited, plane, cols, pi, p, slash_ok);
+                    break;
+                }
+                glob_push_state(stack, &sp, visited, plane, cols, pi, p, slash_ok);
+                if (p == text_len)
+                    break;
+            }
+            continue;
+        }
+
+        if (ti >= text_len)
+            continue;
+
+        if (pattern[pi] == '?') {
+            if (!(glob_is_path_sep(text[ti]) && !slash_ok))
+                glob_push_state(stack, &sp, visited, plane, cols, pi + 1, ti + 1, slash_ok);
+        } else if (pattern[pi] == '[') {
+            const char *after = pattern + pi;
+            int match = glob_match_class(&after, text[ti], slash_ok);
+            if (match > 0) {
+                glob_push_state(stack,
+                                &sp,
+                                visited,
+                                plane,
+                                cols,
+                                (size_t)(after - pattern),
+                                ti + 1,
+                                slash_ok);
+            } else if (match < 0 && glob_char_eq(pattern[pi], text[ti])) {
+                glob_push_state(stack, &sp, visited, plane, cols, pi + 1, ti + 1, slash_ok);
+            }
+        } else if (glob_char_eq(pattern[pi], text[ti])) {
+            glob_push_state(stack, &sp, visited, plane, cols, pi + 1, ti + 1, slash_ok);
+        }
+    }
+
+    free(stack);
+    free(visited);
+    return 0;
 }
 
 /// @brief `Glob.Match(path, pattern)` — bool test of a single path against a pattern.
@@ -298,6 +308,12 @@ int8_t rt_glob_match(rt_string path, rt_string pattern) {
     const char *pat = rt_string_cstr(pattern);
     const char *txt = rt_string_cstr(path);
     if (!pat || !txt)
+        return 0;
+    int64_t pat_len = rt_str_len(pattern);
+    int64_t txt_len = rt_str_len(path);
+    if (pat_len < 0 || txt_len < 0)
+        return 0;
+    if (memchr(pat, '\0', (size_t)pat_len) || memchr(txt, '\0', (size_t)txt_len))
         return 0;
     return glob_match_impl(pat, txt, 0) ? 1 : 0;
 }

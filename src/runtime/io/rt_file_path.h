@@ -62,6 +62,15 @@ int8_t rt_file_path_from_vstr(const ViperString *path, const char **out_path);
 /// @return Number of bytes referenced by the view.
 size_t rt_file_string_view(const ViperString *s, const uint8_t **data_out);
 
+/// @brief Produce a byte view for a required runtime string, trapping on invalid handles.
+/// @param s Runtime string; must be a valid string handle.
+/// @param data_out Receives pointer to the string bytes when non-null.
+/// @param context Trap message used when the string handle is invalid.
+/// @return Number of bytes referenced by the view.
+size_t rt_file_string_require_view(const ViperString *s,
+                                   const uint8_t **data_out,
+                                   const char *context);
+
 #ifdef _WIN32
 /// @brief Convert a UTF-8 path to a wide Windows path.
 /// @param utf8 Null-terminated UTF-8 path.

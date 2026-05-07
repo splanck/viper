@@ -33,6 +33,7 @@
 
 #include "rt_bytes.h"
 #include "rt_internal.h"
+#include "rt_io_class_ids.h"
 #include "rt_object.h"
 #include "rt_string.h"
 
@@ -51,11 +52,21 @@ typedef struct rt_memstream_impl {
     int64_t pos;      ///< Current position.
 } rt_memstream_impl;
 
+int8_t rt_memstream_is_handle(void *obj) {
+    return obj && rt_obj_class_id(obj) == RT_MEMSTREAM_CLASS_ID ? 1 : 0;
+}
+
+static rt_memstream_impl *memstream_require(void *obj, const char *context) {
+    if (!rt_memstream_is_handle(obj))
+        rt_trap(context ? context : "MemStream: invalid stream");
+    return (rt_memstream_impl *)obj;
+}
+
 /// @brief Finalizer callback to free the buffer when collected.
 static void rt_memstream_finalize(void *obj) {
     if (!obj)
         return;
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
+    rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
     if (ms->data) {
         free(ms->data);
         ms->data = NULL;
@@ -134,7 +145,8 @@ static int check_read(rt_memstream_impl *ms, int64_t count, const char *op) {
 /// @brief Construct an empty in-memory stream. Buffer grows on demand. GC-managed.
 void *rt_memstream_new(void) {
     rt_memstream_impl *ms =
-        (rt_memstream_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_memstream_impl));
+        (rt_memstream_impl *)rt_obj_new_i64(RT_MEMSTREAM_CLASS_ID,
+                                            (int64_t)sizeof(rt_memstream_impl));
     if (!ms) {
         rt_trap("MemStream.New: memory allocation failed");
         return NULL;
@@ -153,10 +165,11 @@ void *rt_memstream_new(void) {
 /// known up front to avoid mid-write reallocations.
 void *rt_memstream_new_capacity(int64_t capacity) {
     if (capacity < 0)
-        capacity = 0;
+        rt_trap("MemStream.NewCapacity: negative capacity");
 
     rt_memstream_impl *ms =
-        (rt_memstream_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_memstream_impl));
+        (rt_memstream_impl *)rt_obj_new_i64(RT_MEMSTREAM_CLASS_ID,
+                                            (int64_t)sizeof(rt_memstream_impl));
     if (!ms) {
         rt_trap("MemStream.New: memory allocation failed");
         return NULL;
@@ -180,8 +193,8 @@ void *rt_memstream_new_capacity(int64_t capacity) {
 /// @brief Construct a stream initialized with a copy of `bytes`. Position starts at 0; subsequent
 /// reads consume the data, writes append/overwrite. The original Bytes is NOT retained.
 void *rt_memstream_from_bytes(void *bytes) {
-    if (!bytes) {
-        rt_trap("MemStream.FromBytes: null bytes");
+    if (!bytes || !rt_bytes_is_bytes(bytes)) {
+        rt_trap("MemStream.FromBytes: invalid bytes");
         return NULL;
     }
 
@@ -189,7 +202,8 @@ void *rt_memstream_from_bytes(void *bytes) {
     const uint8_t *bytes_data = rt_bytes_data_const(bytes);
 
     rt_memstream_impl *ms =
-        (rt_memstream_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_memstream_impl));
+        (rt_memstream_impl *)rt_obj_new_i64(RT_MEMSTREAM_CLASS_ID,
+                                            (int64_t)sizeof(rt_memstream_impl));
     if (!ms) {
         rt_trap("MemStream.FromBytes: memory allocation failed");
         return NULL;
@@ -220,10 +234,7 @@ void *rt_memstream_from_bytes(void *bytes) {
 
 /// @brief Read the current cursor position (0 = start of buffer).
 int64_t rt_memstream_get_pos(void *obj) {
-    if (!obj)
-        return 0;
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
-    return ms->pos;
+    return memstream_require(obj, "MemStream.Pos: invalid stream")->pos;
 }
 
 /// @brief Move the cursor to `pos`. Negative input traps; positions past the buffer end are
@@ -237,24 +248,18 @@ void rt_memstream_set_pos(void *obj, int64_t pos) {
         rt_trap("MemStream.set_Pos: negative position");
         return;
     }
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
+    rt_memstream_impl *ms = memstream_require(obj, "MemStream.SetPos: invalid stream");
     ms->pos = pos;
 }
 
 /// @brief Read the logical length (high-water-mark of writes); distinct from capacity.
 int64_t rt_memstream_get_len(void *obj) {
-    if (!obj)
-        return 0;
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
-    return ms->len;
+    return memstream_require(obj, "MemStream.Len: invalid stream")->len;
 }
 
 /// @brief Read the underlying buffer's allocated size (>= length). Doubles on each grow.
 int64_t rt_memstream_get_capacity(void *obj) {
-    if (!obj)
-        return 0;
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
-    return ms->capacity;
+    return memstream_require(obj, "MemStream.Capacity: invalid stream")->capacity;
 }
 
 //=============================================================================
@@ -276,7 +281,7 @@ int64_t rt_memstream_read_i8(void *obj) {
         rt_trap("MemStream.ReadI8: null stream");
         return 0;
     }
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
+    rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
     if (!check_read(ms, 1, "MemStream.ReadI8: insufficient bytes"))
         return 0;
     int8_t val = (int8_t)ms->data[ms->pos];
@@ -290,7 +295,7 @@ void rt_memstream_write_i8(void *obj, int64_t value) {
         rt_trap("MemStream.WriteI8: null stream");
         return;
     }
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
+    rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
     if (!prepare_write(ms, 1))
         return;
     ms->data[ms->pos] = (uint8_t)(value & 0xFF);
@@ -303,7 +308,7 @@ int64_t rt_memstream_read_u8(void *obj) {
         rt_trap("MemStream.ReadU8: null stream");
         return 0;
     }
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
+    rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
     if (!check_read(ms, 1, "MemStream.ReadU8: insufficient bytes"))
         return 0;
     uint8_t val = ms->data[ms->pos];
@@ -317,10 +322,14 @@ void rt_memstream_write_u8(void *obj, int64_t value) {
         rt_trap("MemStream.WriteU8: null stream");
         return;
     }
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
+    rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
+    if (value < 0 || value > 255) {
+        rt_trap("MemStream.WriteU8: byte value out of range");
+        return;
+    }
     if (!prepare_write(ms, 1))
         return;
-    ms->data[ms->pos] = (uint8_t)(value & 0xFF);
+    ms->data[ms->pos] = (uint8_t)value;
     ms->pos++;
 }
 
@@ -330,7 +339,7 @@ int64_t rt_memstream_read_i16(void *obj) {
         rt_trap("MemStream.ReadI16: null stream");
         return 0;
     }
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
+    rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
     if (!check_read(ms, 2, "MemStream.ReadI16: insufficient bytes"))
         return 0;
     uint8_t *p = ms->data + ms->pos;
@@ -345,7 +354,7 @@ void rt_memstream_write_i16(void *obj, int64_t value) {
         rt_trap("MemStream.WriteI16: null stream");
         return;
     }
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
+    rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
     if (!prepare_write(ms, 2))
         return;
     uint8_t *p = ms->data + ms->pos;
@@ -360,7 +369,7 @@ int64_t rt_memstream_read_u16(void *obj) {
         rt_trap("MemStream.ReadU16: null stream");
         return 0;
     }
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
+    rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
     if (!check_read(ms, 2, "MemStream.ReadU16: insufficient bytes"))
         return 0;
     uint8_t *p = ms->data + ms->pos;
@@ -375,7 +384,7 @@ void rt_memstream_write_u16(void *obj, int64_t value) {
         rt_trap("MemStream.WriteU16: null stream");
         return;
     }
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
+    rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
     if (!prepare_write(ms, 2))
         return;
     uint8_t *p = ms->data + ms->pos;
@@ -390,7 +399,7 @@ int64_t rt_memstream_read_i32(void *obj) {
         rt_trap("MemStream.ReadI32: null stream");
         return 0;
     }
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
+    rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
     if (!check_read(ms, 4, "MemStream.ReadI32: insufficient bytes"))
         return 0;
     uint8_t *p = ms->data + ms->pos;
@@ -406,7 +415,7 @@ void rt_memstream_write_i32(void *obj, int64_t value) {
         rt_trap("MemStream.WriteI32: null stream");
         return;
     }
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
+    rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
     if (!prepare_write(ms, 4))
         return;
     uint8_t *p = ms->data + ms->pos;
@@ -423,7 +432,7 @@ int64_t rt_memstream_read_u32(void *obj) {
         rt_trap("MemStream.ReadU32: null stream");
         return 0;
     }
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
+    rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
     if (!check_read(ms, 4, "MemStream.ReadU32: insufficient bytes"))
         return 0;
     uint8_t *p = ms->data + ms->pos;
@@ -439,7 +448,7 @@ void rt_memstream_write_u32(void *obj, int64_t value) {
         rt_trap("MemStream.WriteU32: null stream");
         return;
     }
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
+    rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
     if (!prepare_write(ms, 4))
         return;
     uint8_t *p = ms->data + ms->pos;
@@ -456,7 +465,7 @@ int64_t rt_memstream_read_i64(void *obj) {
         rt_trap("MemStream.ReadI64: null stream");
         return 0;
     }
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
+    rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
     if (!check_read(ms, 8, "MemStream.ReadI64: insufficient bytes"))
         return 0;
     uint8_t *p = ms->data + ms->pos;
@@ -473,7 +482,7 @@ void rt_memstream_write_i64(void *obj, int64_t value) {
         rt_trap("MemStream.WriteI64: null stream");
         return;
     }
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
+    rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
     if (!prepare_write(ms, 8))
         return;
     uint8_t *p = ms->data + ms->pos;
@@ -499,7 +508,7 @@ double rt_memstream_read_f32(void *obj) {
         rt_trap("MemStream.ReadF32: null stream");
         return 0.0;
     }
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
+    rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
     if (!check_read(ms, 4, "MemStream.ReadF32: insufficient bytes"))
         return 0.0;
     uint8_t *p = ms->data + ms->pos;
@@ -517,7 +526,7 @@ void rt_memstream_write_f32(void *obj, double value) {
         rt_trap("MemStream.WriteF32: null stream");
         return;
     }
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
+    rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
     if (!prepare_write(ms, 4))
         return;
     float f = (float)value;
@@ -537,7 +546,7 @@ double rt_memstream_read_f64(void *obj) {
         rt_trap("MemStream.ReadF64: null stream");
         return 0.0;
     }
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
+    rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
     if (!check_read(ms, 8, "MemStream.ReadF64: insufficient bytes"))
         return 0.0;
     uint8_t *p = ms->data + ms->pos;
@@ -556,7 +565,7 @@ void rt_memstream_write_f64(void *obj, double value) {
         rt_trap("MemStream.WriteF64: null stream");
         return;
     }
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
+    rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
     if (!prepare_write(ms, 8))
         return;
     uint64_t bits;
@@ -587,7 +596,7 @@ void *rt_memstream_read_bytes(void *obj, int64_t count) {
         rt_trap("MemStream.ReadBytes: negative count");
         return NULL;
     }
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
+    rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
     if (!check_read(ms, count, "MemStream.ReadBytes: insufficient bytes"))
         return NULL;
 
@@ -609,11 +618,11 @@ void rt_memstream_write_bytes(void *obj, void *bytes) {
         rt_trap("MemStream.WriteBytes: null stream");
         return;
     }
-    if (!bytes) {
-        rt_trap("MemStream.WriteBytes: null bytes");
+    if (!bytes || !rt_bytes_is_bytes(bytes)) {
+        rt_trap("MemStream.WriteBytes: invalid bytes");
         return;
     }
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
+    rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
     int64_t bytes_len = rt_bytes_len(bytes);
     const uint8_t *bytes_data = rt_bytes_data_const(bytes);
 
@@ -636,7 +645,7 @@ rt_string rt_memstream_read_str(void *obj, int64_t count) {
         rt_trap("MemStream.ReadStr: negative count");
         return NULL;
     }
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
+    rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
     if (!check_read(ms, count, "MemStream.ReadStr: insufficient bytes"))
         return NULL;
 
@@ -660,12 +669,16 @@ void rt_memstream_write_str(void *obj, rt_string text) {
         rt_trap("MemStream.WriteStr: null string");
         return;
     }
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
+    rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
 
     // IO-C-1: use rt_str_len() not strlen() — Viper strings can contain embedded null bytes
     int64_t len = rt_str_len(text);
     const char *cstr = rt_string_cstr(text);
-    if (cstr && len > 0) {
+    if (!cstr || len < 0) {
+        rt_trap("MemStream.WriteStr: invalid string");
+        return;
+    }
+    if (len > 0) {
         if (!prepare_write(ms, len))
             return;
         memcpy(ms->data + ms->pos, cstr, (size_t)len);
@@ -684,7 +697,7 @@ void *rt_memstream_to_bytes(void *obj) {
         rt_trap("MemStream.ToBytes: null stream");
         return NULL;
     }
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
+    rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
 
     void *bytes = rt_bytes_new(ms->len);
     if (!bytes)
@@ -700,9 +713,11 @@ void *rt_memstream_to_bytes(void *obj) {
 /// @brief Reset length and position to 0. Does NOT shrink the buffer (so reuse keeps the
 /// already-allocated capacity for the next batch of writes).
 void rt_memstream_clear(void *obj) {
-    if (!obj)
+    if (!obj) {
+        rt_trap("MemStream.Clear: null stream");
         return;
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
+    }
+    rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
     ms->len = 0;
     ms->pos = 0;
     // Keep capacity/buffer for reuse
@@ -719,7 +734,7 @@ void rt_memstream_skip(void *obj, int64_t count) {
         rt_trap("MemStream.Skip: null stream");
         return;
     }
-    rt_memstream_impl *ms = (rt_memstream_impl *)obj;
+    rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
     if (count > 0 && ms->pos > INT64_MAX - count) {
         rt_trap("MemStream.Skip: position overflow");
         return;

@@ -188,9 +188,9 @@ static void test_make_all() {
     printf("\n");
 }
 
-/// @brief Test rt_dir_make_all accepts backslash separators on POSIX hosts.
+/// @brief Test rt_dir_make_all treats backslashes as literal filename bytes on POSIX hosts.
 static void test_make_all_backslash_path() {
-    printf("Testing rt_dir_make_all backslash separators:\n");
+    printf("Testing rt_dir_make_all POSIX backslash literals:\n");
 
     const char *base = get_test_base();
     char nested[512];
@@ -200,9 +200,10 @@ static void test_make_all_backslash_path() {
 
     char normalized[512];
     snprintf(normalized, sizeof(normalized), "%s/slash/nested", base);
-    test_result("make_all normalizes backslashes", rt_dir_exists(rt_const_cstr(normalized)) == 1);
+    test_result("literal backslash path exists", rt_dir_exists(rt_const_cstr(nested)) == 1);
+    test_result("backslashes are not normalized", rt_dir_exists(rt_const_cstr(normalized)) == 0);
 
-    rt_dir_remove_all(rt_const_cstr(base));
+    rt_dir_remove_all(rt_const_cstr(nested));
     printf("\n");
 }
 
@@ -269,6 +270,27 @@ static void test_remove_all_protected_paths_trap() {
 
     EXPECT_TRAP(rt_dir_remove_all(rt_const_cstr(".")));
     test_result("remove_all current directory traps", true);
+
+    printf("\n");
+}
+
+static void test_remove_all_current_ancestor_traps() {
+    printf("Testing rt_dir_remove_all current-directory ancestor guard:\n");
+
+    const char *base = get_test_base();
+    char child[512];
+    snprintf(child, sizeof(child), "%s/child", base);
+
+    rt_string original = rt_dir_current();
+    rt_dir_make_all(rt_const_cstr(child));
+    rt_dir_set_current(rt_const_cstr(child));
+
+    EXPECT_TRAP(rt_dir_remove_all(rt_const_cstr(base)));
+    test_result("ancestor directory preserved", rt_dir_exists(rt_const_cstr(base)) == 1);
+
+    rt_dir_set_current(original);
+    rt_string_unref(original);
+    rt_dir_remove_all(rt_const_cstr(base));
 
     printf("\n");
 }
@@ -743,6 +765,7 @@ int main() {
     test_remove_all();
     test_remove_all_missing_is_success();
     test_remove_all_protected_paths_trap();
+    test_remove_all_current_ancestor_traps();
     test_list();
     test_entries();
     test_files();

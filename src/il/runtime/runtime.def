@@ -2927,6 +2927,7 @@ RT_FUNC(FileDelete,       rt_io_file_delete,         "Viper.IO.File.Delete",    
 RT_FUNC(FileExists,       rt_io_file_exists,         "Viper.IO.File.Exists",       "i1(str)")
 RT_FUNC(FileModified,     rt_file_modified,          "Viper.IO.File.Modified",     "i64(str)")
 RT_FUNC(FileMove,         rt_file_move,              "Viper.IO.File.Move",         "void(str,str)")
+RT_FUNC(FileMoveOver,     rt_file_move_over,         "Viper.IO.File.MoveOver",     "void(str,str)")
 RT_FUNC(FileReadAllBytes, rt_io_file_read_all_bytes, "Viper.IO.File.ReadAllBytes", "obj(str)")
 RT_FUNC(FileReadAllLines, rt_io_file_read_all_lines, "Viper.IO.File.ReadAllLines", "seq<str>(str)")
 RT_FUNC(FileReadAllText,  rt_io_file_read_all_text,  "Viper.IO.File.ReadAllText",  "str(str)")

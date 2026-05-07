@@ -508,7 +508,7 @@ static int rt_fileext_write_atomic_utf8(const char *path, const uint8_t *data, s
 /// @return Null-terminated host path on success; never returns on failure (traps).
 static const char *rt_io_file_require_path(rt_string path, const char *context) {
     const char *cpath = NULL;
-    if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
+    if (!rt_file_path_from_vstr(path, &cpath) || !cpath || *cpath == '\0')
         rt_trap(context);
     return cpath;
 }
@@ -607,7 +607,8 @@ void rt_io_file_write_all_text(rt_string path, rt_string contents) {
         rt_io_file_require_path(path, "Viper.IO.File.WriteAllText: invalid file path");
 
     const uint8_t *data = NULL;
-    size_t len = rt_file_string_view(contents, &data);
+    size_t len = rt_file_string_require_view(
+        contents, &data, "Viper.IO.File.WriteAllText: invalid contents");
     if (!rt_fileext_write_atomic_utf8(cpath, data, len, 1))
         rt_trap("Viper.IO.File.WriteAllText: failed to write file");
 }
@@ -627,7 +628,8 @@ void rt_io_file_append_line(rt_string path, rt_string text) {
         rt_trap("Viper.IO.File.AppendLine: failed to open file");
 
     const uint8_t *data = NULL;
-    size_t len = rt_file_string_view(text, &data);
+    size_t len =
+        rt_file_string_require_view(text, &data, "Viper.IO.File.AppendLine: invalid text");
     size_t written = 0;
     while (written < len) {
         ssize_t n = rt_posix_write(fd, data + written, len - written);
@@ -898,7 +900,11 @@ static void rt_file_copy_impl(rt_string src, rt_string dst, int replace) {
 
     if (!replace) {
         struct stat dst_st;
+#if RT_PLATFORM_WINDOWS
         if (rt_fileext_stat_path(dst_path, &dst_st) == 0) {
+#else
+        if (lstat(dst_path, &dst_st) == 0) {
+#endif
             close(src_fd);
             rt_trap("File.Copy: destination already exists");
             return;
@@ -1000,15 +1006,16 @@ void rt_file_copy(rt_string src, rt_string dst) {
 /// What: Move/rename a file from @p src to @p dst.
 /// Why:  Allow file relocation without platform-specific APIs.
 /// How:  Uses rename(); falls back to copy+delete if needed.
-/// @brief Move file `src` to `dst`. Tries `rename` first (atomic, same filesystem); falls back to
-/// copy + delete on EXDEV (cross-filesystem rename failure).
-void rt_file_move(rt_string src, rt_string dst) {
+static void rt_file_move_impl(rt_string src, rt_string dst, int replace) {
     const char *src_path =
         rt_io_file_require_path(src, "Viper.IO.File.Move: invalid source path");
     const char *dst_path =
         rt_io_file_require_path(dst, "Viper.IO.File.Move: invalid destination path");
 
-    if (rt_fileext_replace_utf8(src_path, dst_path))
+    if (rt_fileext_same_existing_file(src_path, dst_path))
+        rt_trap("File.Move: source and destination are the same file");
+
+    if (rt_fileext_commit_utf8(src_path, dst_path, replace))
         return;
 
 #if RT_PLATFORM_WINDOWS
@@ -1024,15 +1031,25 @@ void rt_file_move(rt_string src, rt_string dst) {
     }
 #endif
 
-    rt_file_copy_impl(src, dst, 1);
+    rt_file_copy_impl(src, dst, replace);
     if (rt_fileext_unlink(src_path) != 0)
         rt_trap("File.Move: failed to remove source after cross-device copy");
+}
+
+/// @brief Move file `src` to `dst` without replacing an existing destination.
+void rt_file_move(rt_string src, rt_string dst) {
+    rt_file_move_impl(src, dst, 0);
+}
+
+/// @brief Move file `src` to `dst`, replacing any existing destination.
+void rt_file_move_over(rt_string src, rt_string dst) {
+    rt_file_move_impl(src, dst, 1);
 }
 
 /// What: Get the size of a file in bytes.
 /// Why:  Allow querying file size without opening the file.
 /// How:  Uses stat() to get file size.
-/// @brief Return the size of `path` in bytes (via `stat`). 0 on missing path.
+/// @brief Return the size of `path` in bytes (via `stat`). -1 on missing/non-regular path.
 int64_t rt_file_size(rt_string path) {
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
@@ -1085,6 +1102,14 @@ void rt_file_write_lines(rt_string path, void *lines) {
         return;
     }
 
+    int64_t count = rt_seq_len(lines);
+    for (int64_t i = 0; i < count; i++) {
+        const uint8_t *unused = NULL;
+        (void)rt_file_string_require_view((rt_string)rt_seq_get(lines, i),
+                                          &unused,
+                                          "Viper.IO.File.WriteLines: invalid line");
+    }
+
     char *tmp_path = NULL;
     int fd = rt_fileext_open_temp_utf8(cpath, 1, &tmp_path);
     if (fd < 0) {
@@ -1093,16 +1118,14 @@ void rt_file_write_lines(rt_string path, void *lines) {
     }
 
     int ok = 1;
-    int64_t count = rt_seq_len(lines);
     for (int64_t i = 0; i < count; i++) {
         rt_string line = (rt_string)rt_seq_get(lines, i);
-        if (line) {
-            const uint8_t *data = NULL;
-            size_t len = rt_file_string_view(line, &data);
-            if (!rt_fileext_write_all_fd(fd, data, len)) {
-                ok = 0;
-                break;
-            }
+        const uint8_t *data = NULL;
+        size_t len =
+            rt_file_string_require_view(line, &data, "Viper.IO.File.WriteLines: invalid line");
+        if (!rt_fileext_write_all_fd(fd, data, len)) {
+            ok = 0;
+            break;
         }
         // Write newline
         char nl = '\n';
@@ -1148,7 +1171,7 @@ void rt_file_append(rt_string path, rt_string text) {
         rt_trap("Viper.IO.File.Append: failed to open file");
 
     const uint8_t *data = NULL;
-    size_t len = rt_file_string_view(text, &data);
+    size_t len = rt_file_string_require_view(text, &data, "Viper.IO.File.Append: invalid text");
     if (!rt_fileext_write_all_fd(fd, data, len)) {
         close(fd);
         rt_trap("Viper.IO.File.Append: failed to write file");
@@ -1160,17 +1183,17 @@ void rt_file_append(rt_string path, rt_string text) {
 /// What: Get file modification time as Unix timestamp.
 /// Why:  Support querying when a file was last modified.
 /// How:  Uses stat() to get mtime.
-/// @brief Return the file's mtime as Unix epoch seconds (`stat.st_mtime`). 0 if missing.
+/// @brief Return the file's mtime as Unix epoch seconds (`stat.st_mtime`). -1 if missing.
 int64_t rt_file_modified(rt_string path) {
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
-        return 0;
+        return -1;
 
     struct stat st;
     if (rt_fileext_stat_path(cpath, &st) != 0)
-        return 0;
+        return -1;
     if (!rt_fileext_is_regular_mode(st.st_mode))
-        return 0;
+        return -1;
 
     return (int64_t)st.st_mtime;
 }

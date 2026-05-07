@@ -55,7 +55,7 @@ Returns 1 if asset exists (embedded, in pack, or as a regular file on disk), 0 o
 
 ### Assets.Size(name: String) -> Integer
 
-Returns asset size in bytes, or 0 if not found. A found zero-byte asset also reports 0; use `Exists()` to distinguish it from a missing asset.
+Returns asset size in bytes, or -1 if the asset is missing or resolves to a non-regular filesystem path such as a directory. A found zero-byte asset reports 0, so zero-byte files are distinguishable from missing assets without a separate `Exists()` call.
 
 ### Assets.List() -> seq\<String\>
 

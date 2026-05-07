@@ -85,14 +85,33 @@ static void test_filesystem_directories_are_not_assets() {
 
     rt_string name = rt_const_cstr(dir_path);
     assert(rt_asset_exists(name) == 0);
-    assert(rt_asset_size(name) == 0);
+    assert(rt_asset_size(name) == -1);
     assert(rt_asset_load_bytes(name) == nullptr);
 
     rmdir_p(dir_path);
 }
 
+static void test_missing_asset_size_sentinel() {
+    char missing_path[512];
+#ifdef _WIN32
+    const char *tmp = getenv("TEMP");
+    if (!tmp)
+        tmp = ".";
+    snprintf(missing_path, sizeof(missing_path), "%s\\viper_missing_asset_%d.bin", tmp, (int)GETPID());
+#else
+    snprintf(missing_path, sizeof(missing_path), "/tmp/viper_missing_asset_%d.bin", (int)GETPID());
+#endif
+
+    unlink_p(missing_path);
+    rt_string name = rt_const_cstr(missing_path);
+    assert(rt_asset_exists(name) == 0);
+    assert(rt_asset_size(name) == -1);
+    assert(rt_asset_load_bytes(name) == nullptr);
+}
+
 int main() {
     test_filesystem_zero_byte_asset();
     test_filesystem_directories_are_not_assets();
+    test_missing_asset_size_sentinel();
     return 0;
 }

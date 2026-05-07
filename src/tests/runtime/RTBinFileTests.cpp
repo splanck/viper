@@ -17,13 +17,35 @@
 #include "tests/common/PlatformSkip.h"
 
 #include <cassert>
+#include <csetjmp>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 
+namespace {
+static jmp_buf g_trap_jmp;
+static const char *g_last_trap = nullptr;
+static bool g_trap_expected = false;
+} // namespace
+
 extern "C" void vm_trap(const char *msg) {
+    g_last_trap = msg;
+    if (g_trap_expected)
+        longjmp(g_trap_jmp, 1);
     rt_abort(msg);
 }
+
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_trap_expected = true;                                                                    \
+        g_last_trap = nullptr;                                                                     \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
+            expr;                                                                                  \
+            assert(false && "Expected trap did not occur");                                        \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
+        assert(g_last_trap != nullptr);                                                            \
+    } while (0)
 
 static const char *test_file = "/tmp/viper_binfile_test.bin";
 
@@ -134,6 +156,22 @@ static void test_read_byte_write_byte() {
 
         rt_binfile_close(bf);
     }
+
+    cleanup_test_file();
+}
+
+static void test_write_byte_range_traps() {
+    cleanup_test_file();
+
+    rt_string path = make_string(test_file);
+    rt_string mode = make_string("w");
+    void *bf = rt_binfile_open(path, mode);
+    assert(bf != nullptr);
+
+    EXPECT_TRAP(rt_binfile_write_byte(bf, -1));
+    EXPECT_TRAP(rt_binfile_write_byte(bf, 256));
+    rt_binfile_write_byte(bf, 255);
+    rt_binfile_close(bf);
 
     cleanup_test_file();
 }
@@ -267,6 +305,30 @@ static void test_large_count_clamps_without_overflow() {
         assert(rt_binfile_read_byte(bf) == 'X');
         assert(rt_binfile_read_byte(bf) == 'Y');
         assert(rt_binfile_read_byte(bf) == 'Z');
+        rt_binfile_close(bf);
+    }
+
+    cleanup_test_file();
+}
+
+static void test_invalid_bytes_handle_traps() {
+    cleanup_test_file();
+
+    {
+        rt_string path = make_string(test_file);
+        rt_string mode = make_string("w");
+        void *bf = rt_binfile_open(path, mode);
+        assert(bf != nullptr);
+        EXPECT_TRAP(rt_binfile_write(bf, nullptr, 0, 1));
+        rt_binfile_close(bf);
+    }
+
+    {
+        rt_string path = make_string(test_file);
+        rt_string mode = make_string("r");
+        void *bf = rt_binfile_open(path, mode);
+        assert(bf != nullptr);
+        EXPECT_TRAP(rt_binfile_read(bf, nullptr, 0, 1));
         rt_binfile_close(bf);
     }
 
@@ -572,9 +634,11 @@ int main() {
     test_open_write_close();
     test_write_and_read_bytes();
     test_read_byte_write_byte();
+    test_write_byte_range_traps();
     test_seek_and_pos();
     test_size();
     test_large_count_clamps_without_overflow();
+    test_invalid_bytes_handle_traps();
     test_eof();
     test_append_mode();
     test_read_write_mode();

@@ -66,7 +66,7 @@ Unified stream abstraction providing a common interface over file and memory str
 
 `OpenFile`, `OpenMemory`, and `OpenBytes` create streams that own their backing `BinFile` or `MemStream`; `Close()` releases that backing object. `FromBinFile` and `FromMemStream` retain the existing object for the wrapper's lifetime, so the wrapper remains valid even if another owner releases its reference. Closing the wrapper releases the wrapper's retained reference.
 
-All operations except `Close()` trap on a null or already-closed stream. `Write(bytes)` traps when `bytes` is null, and `Read(count)` traps when `count` is negative. Setting `Pos` traps if the underlying file seek fails. This avoids silent reads from or writes to invalid backing objects.
+All operations except `Close()` trap on a null or already-closed stream. `FromBinFile` and `FromMemStream` require an object of the matching runtime class. `Write(bytes)` traps when `bytes` is null, `WriteByte(value)` traps outside `0..255`, and `Read(count)` traps when `count` is negative. Setting `Pos` traps if the underlying file seek fails. This avoids silent reads from or writes to invalid backing objects.
 
 `Read(count)` is a short-read API for both file-backed and memory-backed streams: if fewer than `count` bytes remain, it returns a `Bytes` object containing only the available bytes instead of trapping.
 
@@ -249,6 +249,7 @@ All multi-byte integers and floats use **little-endian** byte order. This matche
 - **Gap filling:** Writing past the current length fills the gap with zeros
 - **Read traps:** Reading past the end of data traps with an error
 - **Overflow traps:** `Seek`, `Skip`, and writes that would overflow the signed 64-bit position or addressable capacity trap instead of wrapping.
+- **Input validation:** `NewCapacity()` traps on negative capacities, `FromBytes()` and `WriteBytes()` require a `Bytes` object, `WriteU8()` traps outside `0..255`, and `WriteStr()` requires a valid runtime string.
 
 ### Zia Example
 
@@ -437,7 +438,7 @@ LineReader automatically handles all common line ending formats:
 | `PeekChar()` | Integer | View next character without consuming (0-255 or -1)          |
 | `ReadAll()`  | String  | Read all remaining content as a string                       |
 
-`ReadAll()` traps if the remaining byte count cannot be represented by the host allocation size.
+`Read()` marks `Eof` immediately after returning the final line when the file ends with a line terminator, so loops do not need one extra read to discover EOF. `ReadAll()` traps if the remaining byte count cannot be represented by the host allocation size.
 
 ### Zia Example
 
@@ -547,8 +548,8 @@ Buffered text file writer with configurable line endings.
 | Method          | Returns | Description                          |
 |-----------------|---------|--------------------------------------|
 | `Close()`       | void    | Close the file and release resources |
-| `Write(text)`   | void    | Write string without newline         |
-| `WriteLn(text)` | void    | Write string followed by newline     |
+| `Write(text)`   | void    | Write string without newline; traps if text is invalid |
+| `WriteLn(text)` | void    | Write string followed by newline; traps if text or `NewLine` is invalid |
 | `WriteChar(ch)` | void    | Write single character (0-255); traps outside that range |
 | `Flush()`       | void    | Flush buffered output to disk        |
 
@@ -697,7 +698,9 @@ Positioned binary read/write buffer for constructing and parsing binary data in 
 ### Notes
 
 - `WriteStr()` uses the runtime string byte length, so embedded NUL bytes are preserved.
+- `FromBytes()` and `WriteBytes()` require a `Bytes` object. `WriteStr()` requires a valid runtime string. `WriteByte()` traps outside `0..255`.
 - `WriteStr()` and `WriteBytes()` trap if the payload length cannot fit in their signed 32-bit length prefix.
+- Setting `Pos` traps for negative positions or positions beyond `Length`; it does not clamp.
 - Signed integer readers sign-extend their declared width: `ReadI16*()` returns -32768..32767, `ReadI32*()` returns signed 32-bit values, and `ReadI64*()` preserves the full signed 64-bit bit pattern.
 - Constructors and growth trap if the requested capacity exceeds the host platform's addressable allocation size.
 

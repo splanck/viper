@@ -84,9 +84,15 @@ void rt_io_file_delete(rt_string path);
 void rt_file_copy(rt_string src, rt_string dst);
 
 /// @brief Move/rename a file from src to dst.
+/// @details Traps if @p dst already exists. Use rt_file_move_over to replace.
 /// @param src Source file path.
 /// @param dst Destination file path.
 void rt_file_move(rt_string src, rt_string dst);
+
+/// @brief Move/rename a file from src to dst, replacing dst if it exists.
+/// @param src Source file path.
+/// @param dst Destination file path.
+void rt_file_move_over(rt_string src, rt_string dst);
 
 /// @brief Get file size in bytes.
 /// @param path File path.
@@ -120,7 +126,7 @@ void rt_file_append(rt_string path, rt_string text);
 
 /// @brief Get file modification time as Unix timestamp.
 /// @param path File path.
-/// @return Modification time as Unix timestamp, or 0 on error.
+/// @return Modification time as Unix timestamp, or -1 when missing/not a regular file.
 int64_t rt_file_modified(rt_string path);
 
 /// @brief Create file or update its modification time.

@@ -105,9 +105,8 @@ static void configure_test_save_root() {
 static void test_null_safety() {
     printf("--- Null Safety ---\n");
 
-    // All operations on NULL should not crash
-    rt_savedata_set_int(nullptr, S("key"), 42);
-    rt_savedata_set_string(nullptr, S("key"), S("val"));
+    EXPECT_TRAP(rt_savedata_set_int(nullptr, S("key"), 42));
+    EXPECT_TRAP(rt_savedata_set_string(nullptr, S("key"), S("val")));
     assert(rt_savedata_get_int(nullptr, S("key"), -1) == -1);
     assert(rt_savedata_has_key(nullptr, S("key")) == 0);
     assert(rt_savedata_remove(nullptr, S("key")) == 0);
@@ -408,18 +407,39 @@ static void test_save_overwrite() {
 // Edge Cases
 // ============================================================================
 
-static void test_empty_key_ignored() {
-    void *sd = rt_savedata_new(S("test-emptykey"));
+static void test_invalid_keys_trap() {
+    void *sd = rt_savedata_new(S("test-invalidkey"));
     assert(sd != nullptr);
 
-    // Empty key should be silently ignored
-    rt_savedata_set_int(sd, S(""), 42);
+    EXPECT_TRAP(rt_savedata_set_int(sd, S(""), 42));
+    EXPECT_TRAP(rt_savedata_set_string(sd, S(""), S("val")));
+
+    char nul_key_bytes[] = {'b', 'a', 'd', '\0', 'k', 'e', 'y'};
+    rt_string nul_key = rt_string_from_bytes(nul_key_bytes, sizeof(nul_key_bytes));
+    EXPECT_TRAP(rt_savedata_set_int(sd, nul_key, 1));
+    rt_string_unref(nul_key);
+
+    char bad_utf8_bytes[] = {'b', 'a', 'd', (char)0xC3, '('};
+    rt_string bad_utf8_key = rt_string_from_bytes(bad_utf8_bytes, sizeof(bad_utf8_bytes));
+    EXPECT_TRAP(rt_savedata_set_string(sd, bad_utf8_key, S("val")));
+    rt_string_unref(bad_utf8_key);
+
     assert(rt_savedata_count(sd) == 0);
 
-    rt_savedata_set_string(sd, S(""), S("val"));
-    assert(rt_savedata_count(sd) == 0);
+    printf("  test_invalid_keys_trap: PASSED\n");
+}
 
-    printf("  test_empty_key_ignored: PASSED\n");
+static void test_invalid_string_values_trap() {
+    void *sd = rt_savedata_new(S("test-invalidvalue"));
+    assert(sd != nullptr);
+
+    char bad_value_bytes[] = {'b', 'a', 'd', (char)0xC3, '('};
+    rt_string bad_value = rt_string_from_bytes(bad_value_bytes, sizeof(bad_value_bytes));
+    EXPECT_TRAP(rt_savedata_set_string(sd, S("bad"), bad_value));
+    rt_string_unref(bad_value);
+
+    assert(rt_savedata_count(sd) == 0);
+    printf("  test_invalid_string_values_trap: PASSED\n");
 }
 
 static void test_special_chars_in_values() {
@@ -495,30 +515,29 @@ static void test_large_int_round_trip() {
     printf("  test_large_int_round_trip: PASSED\n");
 }
 
-static void test_binary_safe_string_round_trip() {
+static void test_string_values_preserve_embedded_nul_round_trip() {
     char game[64];
-    snprintf(game, sizeof(game), "viper-binary-%d", (int)GETPID());
+    snprintf(game, sizeof(game), "viper-nul-value-%d", (int)GETPID());
 
-    char key_bytes[] = {'b', 'i', 'n', '\0', 'k', 'e', 'y'};
     char value_bytes[] = {'A', '\0', 'B', 0x01, 'C'};
-    rt_string key = rt_string_from_bytes(key_bytes, sizeof(key_bytes));
     rt_string value = rt_string_from_bytes(value_bytes, sizeof(value_bytes));
 
     void *sd = rt_savedata_new(S(game));
     assert(sd != nullptr);
-    rt_savedata_set_string(sd, key, value);
+    rt_savedata_set_string(sd, S("binary_value"), value);
     assert(rt_savedata_save(sd) == 1);
 
     void *sd2 = rt_savedata_new(S(game));
     assert(rt_savedata_load(sd2) == 1);
 
-    rt_string loaded = rt_savedata_get_string(sd2, key, S(""));
+    rt_string loaded = rt_savedata_get_string(sd2, S("binary_value"), S(""));
     assert(string_bytes_equal(loaded, value_bytes, sizeof(value_bytes)));
 
     rt_string path = rt_savedata_get_path(sd);
     remove(rt_string_cstr(path));
 
-    printf("  test_binary_safe_string_round_trip: PASSED\n");
+    rt_string_unref(value);
+    printf("  test_string_values_preserve_embedded_nul_round_trip: PASSED\n");
 }
 
 static void test_load_rejects_malformed_json() {
@@ -600,11 +619,12 @@ int main() {
     test_save_overwrite();
 
     printf("\n--- Edge Cases ---\n");
-    test_empty_key_ignored();
+    test_invalid_keys_trap();
+    test_invalid_string_values_trap();
     test_special_chars_in_values();
     test_large_int_values();
     test_large_int_round_trip();
-    test_binary_safe_string_round_trip();
+    test_string_values_preserve_embedded_nul_round_trip();
     test_load_rejects_malformed_json();
     test_load_rejects_non_int64_numbers();
 

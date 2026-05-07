@@ -30,6 +30,7 @@
 #include "rt_savedata.h"
 #include "rt_dir.h"
 #include "rt_file_path.h"
+#include "rt_io_class_ids.h"
 #include "rt_object.h"
 #include "rt_string.h"
 #include "rt_string_builder.h"
@@ -92,6 +93,108 @@ typedef struct {
     char *file_path; ///< Absolute path to the save JSON file.
     SaveEntry *entries; ///< Head of the singly-linked entry list.
 } rt_savedata_impl;
+
+static rt_savedata_impl *savedata_require(void *obj, const char *context) {
+    if (!obj || rt_obj_class_id(obj) != RT_SAVEDATA_CLASS_ID)
+        rt_trap(context ? context : "SaveData: invalid handle");
+    return (rt_savedata_impl *)obj;
+}
+
+static int savedata_is_valid_utf8(const char *data, size_t len) {
+    size_t i = 0;
+    while (i < len) {
+        unsigned char c = (unsigned char)data[i];
+        if (c < 0x80) {
+            i++;
+        } else if (c >= 0xC2 && c <= 0xDF) {
+            if (i + 1 >= len)
+                return 0;
+            unsigned char c1 = (unsigned char)data[i + 1];
+            if (c1 < 0x80 || c1 > 0xBF)
+                return 0;
+            i += 2;
+        } else if (c == 0xE0) {
+            if (i + 2 >= len)
+                return 0;
+            unsigned char c1 = (unsigned char)data[i + 1];
+            unsigned char c2 = (unsigned char)data[i + 2];
+            if (c1 < 0xA0 || c1 > 0xBF || c2 < 0x80 || c2 > 0xBF)
+                return 0;
+            i += 3;
+        } else if ((c >= 0xE1 && c <= 0xEC) || (c >= 0xEE && c <= 0xEF)) {
+            if (i + 2 >= len)
+                return 0;
+            unsigned char c1 = (unsigned char)data[i + 1];
+            unsigned char c2 = (unsigned char)data[i + 2];
+            if (c1 < 0x80 || c1 > 0xBF || c2 < 0x80 || c2 > 0xBF)
+                return 0;
+            i += 3;
+        } else if (c == 0xED) {
+            if (i + 2 >= len)
+                return 0;
+            unsigned char c1 = (unsigned char)data[i + 1];
+            unsigned char c2 = (unsigned char)data[i + 2];
+            if (c1 < 0x80 || c1 > 0x9F || c2 < 0x80 || c2 > 0xBF)
+                return 0;
+            i += 3;
+        } else if (c == 0xF0) {
+            if (i + 3 >= len)
+                return 0;
+            unsigned char c1 = (unsigned char)data[i + 1];
+            unsigned char c2 = (unsigned char)data[i + 2];
+            unsigned char c3 = (unsigned char)data[i + 3];
+            if (c1 < 0x90 || c1 > 0xBF || c2 < 0x80 || c2 > 0xBF || c3 < 0x80 ||
+                c3 > 0xBF)
+                return 0;
+            i += 4;
+        } else if (c >= 0xF1 && c <= 0xF3) {
+            if (i + 3 >= len)
+                return 0;
+            unsigned char c1 = (unsigned char)data[i + 1];
+            unsigned char c2 = (unsigned char)data[i + 2];
+            unsigned char c3 = (unsigned char)data[i + 3];
+            if (c1 < 0x80 || c1 > 0xBF || c2 < 0x80 || c2 > 0xBF || c3 < 0x80 ||
+                c3 > 0xBF)
+                return 0;
+            i += 4;
+        } else if (c == 0xF4) {
+            if (i + 3 >= len)
+                return 0;
+            unsigned char c1 = (unsigned char)data[i + 1];
+            unsigned char c2 = (unsigned char)data[i + 2];
+            unsigned char c3 = (unsigned char)data[i + 3];
+            if (c1 < 0x80 || c1 > 0x8F || c2 < 0x80 || c2 > 0xBF || c3 < 0x80 ||
+                c3 > 0xBF)
+                return 0;
+            i += 4;
+        } else {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static const char *savedata_require_key(rt_string key, size_t *len_out, const char *context) {
+    const char *kcstr = rt_string_cstr(key);
+    int64_t klen_i64 = key ? rt_str_len(key) : -1;
+    if (!kcstr || klen_i64 <= 0)
+        rt_trap(context);
+    size_t klen = (size_t)klen_i64;
+    if (memchr(kcstr, '\0', klen) || !savedata_is_valid_utf8(kcstr, klen))
+        rt_trap(context);
+    if (len_out)
+        *len_out = klen;
+    return kcstr;
+}
+
+static void savedata_require_string_value(rt_string value, const char *context) {
+    const char *data = rt_string_cstr(value);
+    int64_t len_i64 = value ? rt_str_len(value) : -1;
+    if (!data || len_i64 < 0)
+        rt_trap(context);
+    if (!savedata_is_valid_utf8(data, (size_t)len_i64))
+        rt_trap(context);
+}
 
 //=========================================================================
 // Internal Helpers
@@ -740,7 +843,8 @@ void *rt_savedata_new(rt_string game_name) {
         return NULL;
     }
 
-    rt_savedata_impl *sd = (rt_savedata_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_savedata_impl));
+    rt_savedata_impl *sd =
+        (rt_savedata_impl *)rt_obj_new_i64(RT_SAVEDATA_CLASS_ID, (int64_t)sizeof(rt_savedata_impl));
     if (!sd)
         return NULL;
     rt_obj_set_finalizer(sd, savedata_finalizer);
@@ -768,29 +872,20 @@ void *rt_savedata_new(rt_string game_name) {
 /// @brief Store an int64 under `key`. In-memory only — call `_save` to flush to disk.
 /// Re-setting an existing key overwrites; type-changing (string→int) is allowed.
 void rt_savedata_set_int(void *obj, rt_string key, int64_t value) {
-    if (!obj || !key)
-        return;
-    rt_savedata_impl *sd = (rt_savedata_impl *)obj;
-    const char *kcstr = rt_string_cstr(key);
-    size_t klen = (size_t)rt_str_len(key);
-    if (!kcstr || klen == 0)
-        return;
+    rt_savedata_impl *sd = savedata_require(obj, "SaveData.SetInt: invalid handle");
+    size_t klen = 0;
+    (void)savedata_require_key(key, &klen, "SaveData.SetInt: invalid key");
     (void)klen;
-
     savedata_set_int_entry(&sd->entries, key, value);
 }
 
 /// @brief Store a string under `key`. In-memory only — call `_save` to persist.
 void rt_savedata_set_string(void *obj, rt_string key, rt_string value) {
-    if (!obj || !key)
-        return;
-    rt_savedata_impl *sd = (rt_savedata_impl *)obj;
-    const char *kcstr = rt_string_cstr(key);
-    size_t klen = (size_t)rt_str_len(key);
-    if (!kcstr || klen == 0)
-        return;
+    rt_savedata_impl *sd = savedata_require(obj, "SaveData.SetString: invalid handle");
+    size_t klen = 0;
+    (void)savedata_require_key(key, &klen, "SaveData.SetString: invalid key");
+    savedata_require_string_value(value, "SaveData.SetString: invalid value");
     (void)klen;
-
     savedata_set_string_entry(&sd->entries, key, value);
 }
 
@@ -798,7 +893,7 @@ void rt_savedata_set_string(void *obj, rt_string key, rt_string value) {
 int64_t rt_savedata_get_int(void *obj, rt_string key, int64_t default_val) {
     if (!obj || !key)
         return default_val;
-    rt_savedata_impl *sd = (rt_savedata_impl *)obj;
+    rt_savedata_impl *sd = savedata_require(obj, "SaveData.GetInt: invalid handle");
     const char *kcstr = rt_string_cstr(key);
     if (!kcstr)
         return default_val;
@@ -813,7 +908,7 @@ int64_t rt_savedata_get_int(void *obj, rt_string key, int64_t default_val) {
 rt_string rt_savedata_get_string(void *obj, rt_string key, rt_string default_val) {
     if (!obj || !key)
         return default_val ? rt_string_ref(default_val) : rt_str_empty();
-    rt_savedata_impl *sd = (rt_savedata_impl *)obj;
+    rt_savedata_impl *sd = savedata_require(obj, "SaveData.GetString: invalid handle");
     const char *kcstr = rt_string_cstr(key);
     if (!kcstr)
         return default_val ? rt_string_ref(default_val) : rt_str_empty();
@@ -829,7 +924,7 @@ rt_string rt_savedata_get_string(void *obj, rt_string key, rt_string default_val
 int8_t rt_savedata_save(void *obj) {
     if (!obj)
         return 0;
-    rt_savedata_impl *sd = (rt_savedata_impl *)obj;
+    rt_savedata_impl *sd = savedata_require(obj, "SaveData.Save: invalid handle");
     if (!sd->file_path)
         return 0;
 
@@ -879,7 +974,7 @@ int8_t rt_savedata_save(void *obj) {
 int8_t rt_savedata_load(void *obj) {
     if (!obj)
         return 0;
-    rt_savedata_impl *sd = (rt_savedata_impl *)obj;
+    rt_savedata_impl *sd = savedata_require(obj, "SaveData.Load: invalid handle");
     if (!sd->file_path)
         return 0;
 
@@ -1005,7 +1100,7 @@ done:
 int8_t rt_savedata_has_key(void *obj, rt_string key) {
     if (!obj || !key)
         return 0;
-    rt_savedata_impl *sd = (rt_savedata_impl *)obj;
+    rt_savedata_impl *sd = savedata_require(obj, "SaveData.HasKey: invalid handle");
     const char *kcstr = rt_string_cstr(key);
     if (!kcstr)
         return 0;
@@ -1016,7 +1111,7 @@ int8_t rt_savedata_has_key(void *obj, rt_string key) {
 int8_t rt_savedata_remove(void *obj, rt_string key) {
     if (!obj || !key)
         return 0;
-    rt_savedata_impl *sd = (rt_savedata_impl *)obj;
+    rt_savedata_impl *sd = savedata_require(obj, "SaveData.Remove: invalid handle");
     const char *kcstr = rt_string_cstr(key);
     if (!kcstr)
         return 0;
@@ -1040,14 +1135,14 @@ int8_t rt_savedata_remove(void *obj, rt_string key) {
 void rt_savedata_clear(void *obj) {
     if (!obj)
         return;
-    free_all_entries((rt_savedata_impl *)obj);
+    free_all_entries(savedata_require(obj, "SaveData.Clear: invalid handle"));
 }
 
 /// @brief Number of entries currently in the store.
 int64_t rt_savedata_count(void *obj) {
     if (!obj)
         return 0;
-    rt_savedata_impl *sd = (rt_savedata_impl *)obj;
+    rt_savedata_impl *sd = savedata_require(obj, "SaveData.Count: invalid handle");
     int64_t count = 0;
     SaveEntry *e = sd->entries;
     while (e) {
@@ -1062,7 +1157,7 @@ int64_t rt_savedata_count(void *obj) {
 rt_string rt_savedata_get_path(void *obj) {
     if (!obj)
         return rt_str_empty();
-    rt_savedata_impl *sd = (rt_savedata_impl *)obj;
+    rt_savedata_impl *sd = savedata_require(obj, "SaveData.Path: invalid handle");
     if (!sd->file_path)
         return rt_str_empty();
     return rt_string_from_bytes(sd->file_path, strlen(sd->file_path));

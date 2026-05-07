@@ -31,9 +31,10 @@
 
 #include "rt_linewriter.h"
 
-#include "rt_internal.h"
-#include "rt_object.h"
 #include "rt_file_path.h"
+#include "rt_internal.h"
+#include "rt_io_class_ids.h"
+#include "rt_object.h"
 #include "rt_string.h"
 
 #include <errno.h>
@@ -59,6 +60,12 @@ typedef struct rt_linewriter_impl {
     rt_string newline; ///< Newline string.
 } rt_linewriter_impl;
 
+static rt_linewriter_impl *linewriter_require(void *obj, const char *context) {
+    if (!obj || rt_obj_class_id(obj) != RT_LINEWRITER_CLASS_ID)
+        rt_trap(context ? context : "LineWriter: invalid writer");
+    return (rt_linewriter_impl *)obj;
+}
+
 /// @brief Finalizer callback invoked when a LineWriter is garbage collected.
 ///
 /// This function is automatically called by Viper's garbage collector when a
@@ -83,7 +90,7 @@ typedef struct rt_linewriter_impl {
 static void rt_linewriter_finalize(void *obj) {
     if (!obj)
         return;
-    rt_linewriter_impl *lw = (rt_linewriter_impl *)obj;
+    rt_linewriter_impl *lw = linewriter_require(obj, "LineWriter: invalid writer");
     if (lw->fp && !lw->closed) {
         fclose(lw->fp);
         lw->fp = NULL;
@@ -153,8 +160,8 @@ static void *rt_linewriter_open_mode(rt_string path, const char *mode) {
         return NULL;
     }
 
-    rt_linewriter_impl *lw =
-        (rt_linewriter_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_linewriter_impl));
+    rt_linewriter_impl *lw = (rt_linewriter_impl *)rt_obj_new_i64(
+        RT_LINEWRITER_CLASS_ID, (int64_t)sizeof(rt_linewriter_impl));
     if (!lw) {
         fclose(fp);
         rt_trap("LineWriter: memory allocation failed");
@@ -280,7 +287,7 @@ void rt_linewriter_close(void *obj) {
     if (!obj)
         return;
 
-    rt_linewriter_impl *lw = (rt_linewriter_impl *)obj;
+    rt_linewriter_impl *lw = linewriter_require(obj, "LineWriter: invalid writer");
     if (lw->fp && !lw->closed) {
         int rc = fclose(lw->fp);
         lw->fp = NULL;
@@ -322,17 +329,23 @@ void rt_linewriter_write(void *obj, rt_string text) {
         return;
     }
 
-    rt_linewriter_impl *lw = (rt_linewriter_impl *)obj;
+    rt_linewriter_impl *lw = linewriter_require(obj, "LineWriter: invalid writer");
     if (!lw->fp || lw->closed) {
         rt_trap("LineWriter.Write: writer is closed");
         return;
     }
 
-    if (!text)
+    if (!text) {
+        rt_trap("LineWriter.Write: null string");
         return;
+    }
 
     const char *data = rt_string_cstr(text);
     int64_t len = rt_str_len(text);
+    if (!data || len < 0) {
+        rt_trap("LineWriter.Write: invalid string");
+        return;
+    }
     if (data && len > 0) {
         // IO-C-4: check fwrite return to detect disk-full / I/O errors
         size_t written = fwrite(data, 1, (size_t)len, lw->fp);
@@ -356,8 +369,8 @@ void rt_linewriter_write(void *obj, rt_string text) {
 /// ' Write an empty line
 /// writer.WriteLn("")
 ///
-/// ' text can be NULL (just writes newline)
-/// writer.WriteLn(Nothing)
+/// ' Empty strings write only the newline
+/// writer.WriteLn("")
 /// ```
 ///
 /// **Newline customization:**
@@ -367,8 +380,7 @@ void rt_linewriter_write(void *obj, rt_string text) {
 /// - Use custom separators: `writer.set_NewLine("--RECORD--\n")`
 ///
 /// @param obj Pointer to a LineWriter object. Must not be NULL and writer must be open.
-/// @param text The Viper string to write before the newline. If NULL, only the
-///             newline is written.
+/// @param text The Viper string to write before the newline. Must not be NULL.
 ///
 /// @note Data may be buffered by the OS. Use rt_linewriter_flush for immediate writes.
 /// @note Traps if obj is NULL or writer is closed.
@@ -382,28 +394,38 @@ void rt_linewriter_write_ln(void *obj, rt_string text) {
         return;
     }
 
-    rt_linewriter_impl *lw = (rt_linewriter_impl *)obj;
+    rt_linewriter_impl *lw = linewriter_require(obj, "LineWriter: invalid writer");
     if (!lw->fp || lw->closed) {
         rt_trap("LineWriter.WriteLn: writer is closed");
         return;
     }
 
-    // Write text if provided
-    if (text) {
-        const char *data = rt_string_cstr(text);
-        int64_t len = rt_str_len(text);
-        if (data && len > 0) {
-            // IO-C-4: check fwrite return to detect disk-full / I/O errors
-            size_t written = fwrite(data, 1, (size_t)len, lw->fp);
-            if (written != (size_t)len)
-                rt_trap("LineWriter.WriteLn: short write (disk full or I/O error)");
-        }
+    if (!text) {
+        rt_trap("LineWriter.WriteLn: null string");
+        return;
+    }
+
+    const char *data = rt_string_cstr(text);
+    int64_t len = rt_str_len(text);
+    if (!data || len < 0) {
+        rt_trap("LineWriter.WriteLn: invalid string");
+        return;
+    }
+    if (data && len > 0) {
+        // IO-C-4: check fwrite return to detect disk-full / I/O errors
+        size_t written = fwrite(data, 1, (size_t)len, lw->fp);
+        if (written != (size_t)len)
+            rt_trap("LineWriter.WriteLn: short write (disk full or I/O error)");
     }
 
     // Write newline
     if (lw->newline) {
         const char *nl = rt_string_cstr(lw->newline);
         int64_t nl_len = rt_str_len(lw->newline);
+        if (!nl || nl_len < 0) {
+            rt_trap("LineWriter.WriteLn: invalid newline");
+            return;
+        }
         if (nl && nl_len > 0) {
             // IO-C-4: check fwrite return for newline write too
             size_t written = fwrite(nl, 1, (size_t)nl_len, lw->fp);
@@ -448,7 +470,7 @@ void rt_linewriter_write_char(void *obj, int64_t ch) {
         return;
     }
 
-    rt_linewriter_impl *lw = (rt_linewriter_impl *)obj;
+    rt_linewriter_impl *lw = linewriter_require(obj, "LineWriter: invalid writer");
     if (!lw->fp || lw->closed) {
         rt_trap("LineWriter.WriteChar: writer is closed");
         return;
@@ -498,7 +520,7 @@ void rt_linewriter_flush(void *obj) {
     if (!obj)
         return;
 
-    rt_linewriter_impl *lw = (rt_linewriter_impl *)obj;
+    rt_linewriter_impl *lw = linewriter_require(obj, "LineWriter: invalid writer");
     if (lw->fp && !lw->closed) {
         if (fflush(lw->fp) != 0) {
             rt_trap("LineWriter.Flush: flush failed (disk full or I/O error)");
@@ -529,7 +551,7 @@ rt_string rt_linewriter_newline(void *obj) {
         return rt_string_from_bytes(RT_DEFAULT_NEWLINE, strlen(RT_DEFAULT_NEWLINE));
     }
 
-    rt_linewriter_impl *lw = (rt_linewriter_impl *)obj;
+    rt_linewriter_impl *lw = linewriter_require(obj, "LineWriter: invalid writer");
     if (lw->closed) {
         rt_trap("LineWriter.get_NewLine: writer is closed");
         return rt_string_from_bytes(RT_DEFAULT_NEWLINE, strlen(RT_DEFAULT_NEWLINE));
@@ -580,7 +602,7 @@ void rt_linewriter_set_newline(void *obj, rt_string nl) {
         return;
     }
 
-    rt_linewriter_impl *lw = (rt_linewriter_impl *)obj;
+    rt_linewriter_impl *lw = linewriter_require(obj, "LineWriter: invalid writer");
     if (lw->closed) {
         rt_trap("LineWriter.set_NewLine: writer is closed");
         return;
