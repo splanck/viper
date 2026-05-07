@@ -33,6 +33,8 @@ extern "C" {
 /// @brief Finalizer callback invoked from @ref rt_obj_free before releasing heap storage.
 typedef void (*rt_obj_finalizer_t)(void *obj);
 
+struct rt_string_impl; // fwd decl is provided in rt_string.h; include where needed
+
 /// @brief Allocate a new runtime-managed object with the given class identifier and size.
 /// @param class_id Runtime class identifier tag for the object to create.
 /// @param byte_size Total size in bytes to allocate for the object payload.
@@ -61,6 +63,9 @@ void rt_obj_retain_known(void *p);
 ///          debug-only heap assertions.
 void rt_memory_retain(void *p);
 
+/// @brief String-typed Viper.Memory retain wrapper.
+void rt_memory_retain_str(struct rt_string_impl *s);
+
 /// @brief Decrement the reference count and report whether the object should be destroyed.
 /// @param p Pointer to a runtime-managed object.
 /// @return 1 when the reference count reaches zero, otherwise 0.
@@ -79,6 +84,9 @@ int32_t rt_obj_release_known_check0(void *p);
 ///          reference.
 /// @return Remaining reference count, or 0 when the value was destroyed.
 int64_t rt_memory_release(void *p);
+
+/// @brief String-typed Viper.Memory release wrapper.
+int64_t rt_memory_release_str(struct rt_string_impl *s);
 
 /// @brief Release storage for a runtime-managed object without modifying its reference count.
 /// @param p Pointer to a runtime-managed object to free; must not be NULL.
@@ -111,8 +119,6 @@ int64_t rt_obj_equals(void *self, void *other);
 /// @brief Compute a hash code for @p self.
 /// @details Uses identity or type-specific hashing where available.
 int64_t rt_obj_get_hash_code(void *self);
-
-struct rt_string_impl; // fwd decl is provided in rt_string.h; include where needed
 
 /// @brief Convert @p self to a runtime string.
 /// @details Uses type-specific ToString or a default qualified-name fallback.

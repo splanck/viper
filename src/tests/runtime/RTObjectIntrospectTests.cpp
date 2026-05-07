@@ -10,6 +10,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
+#include "rt_box.h"
 #include "rt_heap.h"
 #include "rt_internal.h"
 
@@ -68,8 +69,28 @@ int main() {
     assert(strcmp(rt_string_cstr(s), heap_text) == 0);
     rt_string_unref(s);
 
+    void *box_a = rt_box_i64(42);
+    void *box_b = rt_box_i64(42);
+    assert(rt_obj_type_id(box_a) == RT_BOX_CLASS_ID);
+    rt_string box_name = rt_obj_type_name(box_a);
+    assert(strcmp(rt_string_cstr(box_name), "Viper.Core.Box") == 0);
+    rt_string_unref(box_name);
+    assert(rt_obj_equals(box_a, box_b) == 1);
+    assert(rt_obj_get_hash_code(box_a) == rt_obj_get_hash_code(box_b));
+    void *zero_pos = rt_box_f64(0.0);
+    void *zero_neg = rt_box_f64(-0.0);
+    assert(rt_box_hash(zero_pos) == rt_box_hash(zero_neg));
+
     rt_obj_release_check0(obj);
     rt_obj_free(obj);
+    rt_obj_release_check0(box_a);
+    rt_obj_free(box_a);
+    rt_obj_release_check0(box_b);
+    rt_obj_free(box_b);
+    rt_obj_release_check0(zero_pos);
+    rt_obj_free(zero_pos);
+    rt_obj_release_check0(zero_neg);
+    rt_obj_free(zero_neg);
 
     return 0;
 }

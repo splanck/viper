@@ -705,12 +705,6 @@ void *rt_heap_realloc(void *payload, size_t elem_size, size_t new_len, size_t ne
     if (elem_size == 0 && new_cap > 0)
         return NULL;
 
-    rt_heap_registry_lock_();
-    int registered = rt_heap_registry_contains_locked_(payload);
-    rt_heap_registry_unlock_();
-    if (!registered)
-        return NULL;
-
     size_t cap = new_cap;
     if (cap < new_len)
         cap = new_len;
@@ -724,9 +718,22 @@ void *rt_heap_realloc(void *payload, size_t elem_size, size_t new_len, size_t ne
     size_t total_bytes = sizeof(rt_heap_hdr_t) + payload_bytes;
     size_t old_len = hdr->len;
 
-    rt_heap_hdr_t *resized = (rt_heap_hdr_t *)realloc(hdr, total_bytes);
-    if (!resized)
+    rt_heap_registry_lock_();
+    int registered = rt_heap_registry_contains_locked_(payload);
+    if (!registered) {
+        rt_heap_registry_unlock_();
         return NULL;
+    }
+    if (!rt_heap_registry_ensure_capacity_locked_()) {
+        rt_heap_registry_unlock_();
+        return NULL;
+    }
+
+    rt_heap_hdr_t *resized = (rt_heap_hdr_t *)realloc(hdr, total_bytes);
+    if (!resized) {
+        rt_heap_registry_unlock_();
+        return NULL;
+    }
 
     void *new_payload = rt_heap_data(resized);
     if (new_len > old_len && elem_size > 0) {
@@ -737,7 +744,6 @@ void *rt_heap_realloc(void *payload, size_t elem_size, size_t new_len, size_t ne
     resized->cap = cap;
     resized->alloc_size = total_bytes;
 
-    rt_heap_registry_lock_();
     int moved = rt_heap_registry_move_locked_(payload, new_payload);
     rt_heap_registry_unlock_();
     if (!moved) {
@@ -830,5 +836,5 @@ int32_t rt_heap_mark_disposed(void *payload) {
     // This ensures exactly one caller sees the transition from !DISPOSED to DISPOSED
     uint32_t old_flags = atomic_fetch_or_u32(&hdr->flags, DISPOSED);
 
-    return (old_flags & DISPOSED) ? 1 : 0;
+    return (old_flags & DISPOSED) ? 0 : 1;
 }

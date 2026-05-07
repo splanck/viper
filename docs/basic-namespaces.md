@@ -748,8 +748,10 @@ Type parsing with explicit error codes:
 - `Viper.Core.Parse.IsInt(str)->i1` — Validate integer text
 - `Viper.Core.Parse.IsNum(str)->i1` — Validate numeric text
 - `Viper.Core.Parse.IntRadix(str,i64,i64)->i64` — Parse radix 2-36 integer or default
-- `Viper.Core.Parse.Double(ptr,ptr)->i32` — Parse double
-- `Viper.Core.Parse.Int64(ptr,ptr)->i32` — Parse int64
+- `Viper.Core.Parse.Double(ptr,ptr)->i32` — Low-level C-string double parser
+- `Viper.Core.Parse.Int64(ptr,ptr)->i32` — Low-level C-string int64 parser
+- `Viper.Core.Parse.DoubleOption(str)->obj` — Parse double to `Viper.Option`
+- `Viper.Core.Parse.Int64Option(str)->obj` — Parse int64 to `Viper.Option`
 
 `Viper.Parse` is a public alias for the same methods.
 

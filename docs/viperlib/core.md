@@ -101,6 +101,8 @@ Boxing helpers for storing primitive values in generic collections. Boxed values
 
 - Type tags: 0 = integer, 1 = double, 2 = boolean, 3 = string.
 - Unboxing with the wrong type traps with a runtime diagnostic.
+- Boxed values report `Viper.Core.Box` through `Viper.Core.Object.TypeName` and use value equality/hash semantics for `Object.Equals` and collection lookup.
+- Floating-point box hashes canonicalize `+0.0` and `-0.0` so values that compare equal hash equally.
 
 ### Zia Example
 
@@ -236,8 +238,10 @@ Safe string parsing utilities. Methods return a success flag or a default value 
 | `IsInt(s)`                  | `Boolean(String)`                   | Return true if `s` is a valid integer (no side effects)            |
 | `IsNum(s)`                  | `Boolean(String)`                   | Return true if `s` is a valid number (no side effects)             |
 | `IntRadix(s, radix, default)` | `Integer(String, Integer, Integer)` | Parse `s` in the given radix (2–36); return `default` on failure |
-| `Double(text)`              | `Number?(String)`                   | Parse string to floating-point; returns null if invalid            |
-| `Int64(text)`               | `Integer?(String)`                  | Parse string to integer; returns null if invalid                   |
+| `Double(text, outPtr)`      | `ErrorCode(Ptr, Ptr)`               | Low-level C-string parser; writes to raw output pointer            |
+| `Int64(text, outPtr)`       | `ErrorCode(Ptr, Ptr)`               | Low-level C-string parser; writes to raw output pointer            |
+| `DoubleOption(text)`        | `Option<Double>(String)`            | Parse string to floating-point; returns `None` if invalid          |
+| `Int64Option(text)`         | `Option<Integer>(String)`           | Parse string to integer; returns `None` if invalid                 |
 
 ### Notes
 
@@ -245,19 +249,20 @@ Safe string parsing utilities. Methods return a success flag or a default value 
 - Null input is treated as parse failure: `Try*` returns false, `Is*` returns false, and `*Or`/`IntRadix` returns the supplied default.
 - `IntRadix` supports bases 2 through 36 (e.g., 16 for hex, 2 for binary).
 - Leading/trailing whitespace is rejected; the input must be a clean numeric string.
-- `Parse.Double` and `Parse.Int64` return optional (nullable) values, unlike `Convert.ToDouble`/`Convert.ToInt64` which trap on failure. Use them when invalid input is expected and should be handled gracefully rather than terminating the program.
+- `Double` and `Int64` are low-level pointer-based ABI helpers retained for IL/native interop.
+- `DoubleOption` and `Int64Option` are the user-facing optional-return variants. Use them when invalid input is expected and should be handled gracefully rather than terminating the program.
 
-### Parse.Double and Parse.Int64 Example
+### Parse.DoubleOption and Parse.Int64Option Example
 
 ```rust
-var n = Parse.Double("3.14")    // returns 3.14
-var bad = Parse.Double("abc")   // returns null
-if bad == null then
+var n = Parse.DoubleOption("3.14")    // Some(3.14)
+var bad = Parse.DoubleOption("abc")   // None
+if bad.get_IsNone() then
     Say("Not a number")
 end if
 
-var i = Parse.Int64("42")       // returns 42
-var badInt = Parse.Int64("xyz") // returns null
+var i = Parse.Int64Option("42")       // Some(42)
+var badInt = Parse.Int64Option("xyz") // None
 ```
 
 ### Zia Example
@@ -562,6 +567,7 @@ In-process publish/subscribe message bus for decoupled communication between com
 
 | Method                     | Signature                     | Description                                                     |
 |----------------------------|-------------------------------|-----------------------------------------------------------------|
+| `Callback(fn)`             | `Object(Ptr)`                 | Wrap a native `void (*)(void*)` callback pointer as a managed handler |
 | `Subscribe(topic, handler)` | `Integer(String, Object)`    | Subscribe a handler to a topic; returns subscription ID         |
 | `Unsubscribe(id)`          | `Boolean(Integer)`           | Remove a subscription by ID; returns true if found              |
 | `Publish(topic, data)`     | `Integer(String, Object)`    | Publish data to all subscribers of a topic; returns count notified |
@@ -576,7 +582,9 @@ In-process publish/subscribe message bus for decoupled communication between com
 - `Publish` invokes all handlers for the given topic synchronously; returns the number of handlers called
 - Handler functions receive the published data as their argument
 - Publish uses a stable subscriber snapshot; unsubscribes during a handler affect later publishes, not the in-flight one
-- Subscribe/Publish require function pointer callbacks, which limits direct demonstration in simple examples
+- Subscribe accepts a managed callback returned by `Callback(fn)` or a raw native function pointer for legacy/native callers. Passing an ordinary object is retained safely, but publishing to it traps instead of attempting to execute object memory.
+- Topic matching is byte-length aware; topic names containing embedded NUL bytes remain distinct.
+- MessageBus instances are typed runtime objects and participate in GC traversal for retained handlers.
 - The bus is not thread-safe; use external synchronization if accessed from multiple threads
 
 ### Zia Example

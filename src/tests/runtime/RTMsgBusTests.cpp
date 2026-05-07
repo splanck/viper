@@ -6,6 +6,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_internal.h"
+#include "rt_gc.h"
+#include "rt_heap.h"
 #include "rt_msgbus.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -72,7 +74,30 @@ static void callback_finalizer(void *obj) {
 static void test_new() {
     void *bus = rt_msgbus_new();
     assert(bus != NULL);
+    assert(rt_obj_class_id(bus) == RT_MSGBUS_CLASS_ID);
+    assert(rt_gc_is_tracked(bus) == 1);
     assert(rt_msgbus_total_subscriptions(bus) == 0);
+    destroy_obj(bus);
+}
+
+static void test_callback_wrapper() {
+    void *bus = rt_msgbus_new();
+    void *callback = rt_msgbus_callback_new((void *)cb_first);
+    assert(callback != NULL);
+    assert(rt_obj_class_id(callback) == RT_MSGBUS_CALLBACK_CLASS_ID);
+    rt_string topic = make_str("wrapped");
+    int payload = 55;
+
+    assert(rt_msgbus_subscribe(bus, topic, callback) > 0);
+    destroy_obj(callback);
+
+    reset_trace();
+    assert(rt_msgbus_publish(bus, topic, &payload) == 1);
+    assert(g_trace_len == 1);
+    assert(g_trace[0] == 1);
+    assert(g_last_payload == 55);
+
+    rt_string_unref(topic);
     destroy_obj(bus);
 }
 
@@ -118,6 +143,32 @@ static void test_multiple_topics() {
 
     rt_string_unref(t1);
     rt_string_unref(t2);
+    destroy_obj(bus);
+}
+
+static void test_embedded_nul_topics_are_distinct() {
+    void *bus = rt_msgbus_new();
+    const char raw_a[] = {'a'};
+    const char raw_ax[] = {'a', '\0', 'x'};
+    rt_string a = rt_string_from_bytes(raw_a, sizeof(raw_a));
+    rt_string ax = rt_string_from_bytes(raw_ax, sizeof(raw_ax));
+    int payload = 9;
+
+    rt_msgbus_subscribe(bus, a, (void *)cb_first);
+    rt_msgbus_subscribe(bus, ax, (void *)cb_second);
+
+    reset_trace();
+    assert(rt_msgbus_publish(bus, a, &payload) == 1);
+    assert(g_trace_len == 1);
+    assert(g_trace[0] == 1);
+
+    reset_trace();
+    assert(rt_msgbus_publish(bus, ax, &payload) == 1);
+    assert(g_trace_len == 1);
+    assert(g_trace[0] == 2);
+
+    rt_string_unref(a);
+    rt_string_unref(ax);
     destroy_obj(bus);
 }
 
@@ -274,9 +325,11 @@ static void test_null_safety() {
 
 int main() {
     test_new();
+    test_callback_wrapper();
     test_subscribe();
     test_multiple_subscribers();
     test_multiple_topics();
+    test_embedded_nul_topics_are_distinct();
     test_unsubscribe();
     test_publish_invokes_callbacks_in_order();
     test_unsubscribe_during_publish_uses_snapshot();

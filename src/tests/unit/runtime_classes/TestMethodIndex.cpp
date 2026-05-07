@@ -130,6 +130,29 @@ TEST(RuntimeMethodIndexBasic, ObjectMethodsTargets) {
     EXPECT_FALSE(re.has_value());
 }
 
+TEST(RuntimeMethodIndexBasic, MemoryAndParseSurfaceMethods) {
+    runtimeMethodIndex().seed();
+
+    auto retain = runtimeMethodIndex().find("Viper.Memory", "Retain", 1);
+    ASSERT_TRUE(retain.has_value());
+    EXPECT_EQ(retain->target, std::string("Viper.Memory.Retain"));
+
+    auto releaseStr = runtimeMethodIndex().find("Viper.Memory", "ReleaseStr", 1);
+    ASSERT_TRUE(releaseStr.has_value());
+    EXPECT_EQ(releaseStr->target, std::string("Viper.Memory.ReleaseStr"));
+    EXPECT_EQ(releaseStr->ret, BasicType::Int);
+
+    auto doubleOpt = runtimeMethodIndex().find("Viper.Core.Parse", "DoubleOption", 1);
+    ASSERT_TRUE(doubleOpt.has_value());
+    EXPECT_EQ(doubleOpt->target, std::string("Viper.Core.Parse.DoubleOption"));
+    EXPECT_EQ(doubleOpt->ret, BasicType::Object);
+
+    auto intOpt = runtimeMethodIndex().find("Viper.Core.Parse", "Int64Option", 1);
+    ASSERT_TRUE(intOpt.has_value());
+    EXPECT_EQ(intOpt->target, std::string("Viper.Core.Parse.Int64Option"));
+    EXPECT_EQ(intOpt->ret, BasicType::Object);
+}
+
 TEST(RuntimeMethodIndexBasic, CollectionReturningMethodsPreserveConcreteClass) {
     runtimeMethodIndex().seed();
 

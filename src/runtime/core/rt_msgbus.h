@@ -30,18 +30,28 @@
 
 #include "rt_string.h"
 
+#define RT_MSGBUS_CLASS_ID INT64_C(-0x430301)
+#define RT_MSGBUS_CALLBACK_CLASS_ID INT64_C(-0x430302)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef void (*rt_msgbus_callback_fn)(void *data);
 
 /// @brief Create a new message bus.
 /// @return Pointer to message bus object.
 void *rt_msgbus_new(void);
 
+/// @brief Wrap a native callback pointer in a runtime-managed callback object.
+/// @param callback Function pointer of shape `void (*)(void *data)`.
+/// @return Callback object, or NULL when callback is NULL.
+void *rt_msgbus_callback_new(void *callback);
+
 /// @brief Subscribe to a topic. Returns subscription ID for later unsubscribe.
 /// @param obj MessageBus pointer.
 /// @param topic Topic string.
-/// @param callback Function pointer of shape `void (*)(void *data)`.
+/// @param callback Native function pointer or callback object.
 /// @return Unique subscription ID.
 int64_t rt_msgbus_subscribe(void *obj, rt_string topic, void *callback);
 

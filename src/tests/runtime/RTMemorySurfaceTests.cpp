@@ -14,6 +14,7 @@
 #include "common/ProcessIsolation.hpp"
 #include "rt_heap.h"
 #include "rt_object.h"
+#include "rt_string.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -61,6 +62,11 @@ void call_heap_set_len_past_capacity() {
     rt_heap_set_len(payload, 5);
 }
 
+void call_resurrect_live_object() {
+    void *obj = rt_obj_new_i64(10, 8);
+    rt_obj_resurrect(obj);
+}
+
 void expect_trap(void (*fn)(), const char *message) {
     auto result = viper::tests::runIsolated(fn);
     assert(result.trapped());
@@ -83,6 +89,40 @@ void test_memory_release_runs_finalizer() {
     assert(rt_heap_is_payload(obj) == 0);
 }
 
+void test_memory_release_reports_string_refcount() {
+    rt_string s = rt_string_from_bytes("refcounted string", 17);
+    assert(s != nullptr);
+    rt_memory_retain(s);
+    assert(rt_memory_release(s) == 1);
+    assert(rt_memory_release(s) == 0);
+}
+
+void test_memory_release_array_drops_elements() {
+    g_finalizer_count = 0;
+    void *obj = rt_obj_new_i64(0xBEEF, 8);
+    rt_obj_set_finalizer(obj, count_finalizer);
+
+    void **arr = (void **)rt_heap_alloc(RT_HEAP_ARRAY, RT_ELEM_NONE, sizeof(void *), 1, 1);
+    assert(arr != nullptr);
+    arr[0] = obj;
+    rt_obj_retain_maybe(obj);
+
+    assert(rt_obj_release_check0(obj) == 0);
+    assert(g_finalizer_count == 0);
+
+    assert(rt_memory_release(arr) == 0);
+    assert(g_finalizer_count == 1);
+    assert(rt_heap_is_payload(arr) == 0);
+}
+
+void test_heap_mark_disposed_return_contract() {
+    void *obj = rt_obj_new_i64(0xD15, 8);
+    assert(rt_heap_mark_disposed(obj) == 1);
+    assert(rt_heap_mark_disposed(obj) == 0);
+    assert(rt_obj_release_check0(obj) == 1);
+    rt_obj_free(obj);
+}
+
 } // namespace
 
 int main(int argc, char *argv[]) {
@@ -92,15 +132,20 @@ int main(int argc, char *argv[]) {
     viper::tests::registerChildFunction(call_heap_double_release_deferred);
     viper::tests::registerChildFunction(call_heap_retain_overflow);
     viper::tests::registerChildFunction(call_heap_set_len_past_capacity);
+    viper::tests::registerChildFunction(call_resurrect_live_object);
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 
     test_memory_release_runs_finalizer();
+    test_memory_release_reports_string_refcount();
+    test_memory_release_array_drops_elements();
+    test_heap_mark_disposed_return_contract();
     expect_trap(call_memory_retain_invalid, "Viper.Memory.Retain");
     expect_trap(call_memory_release_invalid, "Viper.Memory.Release");
     expect_trap(call_object_negative_size, "negative object size");
     expect_trap(call_heap_double_release_deferred, "double release");
     expect_trap(call_heap_retain_overflow, "refcount overflow");
     expect_trap(call_heap_set_len_past_capacity, "length exceeds capacity");
+    expect_trap(call_resurrect_live_object, "refcount is not zero");
     return 0;
 }

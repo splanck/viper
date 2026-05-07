@@ -87,6 +87,16 @@ int8_t rt_parse_is_num(rt_string s);
 /// @return Parsed integer or default_value.
 int64_t rt_parse_int_radix(rt_string s, int64_t radix, int64_t default_value);
 
+/// @brief Parse a number into Option<f64>; returns None on failure.
+/// @param s Input string to parse.
+/// @return Viper.Option.SomeF64(parsed) or Viper.Option.None().
+void *rt_parse_double_option(rt_string s);
+
+/// @brief Parse an integer into Option<i64>; returns None on failure.
+/// @param s Input string to parse.
+/// @return Viper.Option.SomeI64(parsed) or Viper.Option.None().
+void *rt_parse_int64_option(rt_string s);
+
 #ifdef __cplusplus
 }
 #endif

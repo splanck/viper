@@ -199,7 +199,7 @@ void rt_heap_set_len(void *payload, size_t new_len);
 ///          higher-level object lifecycles. Intended for assertions and
 ///          diagnostics; does not change the refcount. No-op for NULL payloads.
 /// @param payload Object payload pointer (may be NULL).
-/// @return 0 when marking for the first time; 1 when already marked disposed.
+/// @return 1 when marking for the first time; 0 when already marked disposed.
 int32_t rt_heap_mark_disposed(void *payload);
 
 #ifdef __cplusplus

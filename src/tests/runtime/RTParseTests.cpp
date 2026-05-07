@@ -13,6 +13,8 @@
 #include "rt_internal.h"
 #include "rt_fmt.h"
 #include "rt_numeric.h"
+#include "rt_object.h"
+#include "rt_option.h"
 #include "rt_parse.h"
 #include "rt_string.h"
 
@@ -114,6 +116,33 @@ static void test_low_level_double_rejects_hex_float() {
     assert(result == 16.0);
 
     printf("test_low_level_double_rejects_hex_float: PASSED\n");
+}
+
+static void test_parse_option_wrappers() {
+    void *num = rt_parse_double_option(make_str("6.25"));
+    assert(rt_option_is_some(num) == 1);
+    assert(fabs(rt_option_unwrap_f64(num) - 6.25) < 0.001);
+
+    void *bad_num = rt_parse_double_option(make_str("nan"));
+    assert(rt_option_is_some(bad_num) == 0);
+
+    void *ival = rt_parse_int64_option(make_str("64"));
+    assert(rt_option_is_some(ival) == 1);
+    assert(rt_option_unwrap_i64(ival) == 64);
+
+    void *bad_int = rt_parse_int64_option(make_str("64x"));
+    assert(rt_option_is_some(bad_int) == 0);
+
+    if (rt_obj_release_check0(num))
+        rt_obj_free(num);
+    if (rt_obj_release_check0(bad_num))
+        rt_obj_free(bad_num);
+    if (rt_obj_release_check0(ival))
+        rt_obj_free(ival);
+    if (rt_obj_release_check0(bad_int))
+        rt_obj_free(bad_int);
+
+    printf("test_parse_option_wrappers: PASSED\n");
 }
 
 // ============================================================================
@@ -393,6 +422,7 @@ int main() {
     test_try_num_valid();
     test_try_num_invalid();
     test_low_level_double_rejects_hex_float();
+    test_parse_option_wrappers();
 
     // TryBool
     test_try_bool_true_values();

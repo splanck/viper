@@ -432,11 +432,8 @@ Lowerer::Value Lowerer::emitBox(Value val, Type type) {
             return emitCallRet(Type(Type::Kind::Ptr), kBoxI64, {val});
         case Type::Kind::F64:
             return emitCallRet(Type(Type::Kind::Ptr), kBoxF64, {val});
-        case Type::Kind::I1: {
-            // rt_box_i1 expects i64, not i1 — zero-extend first
-            Value i64Val = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), val);
-            return emitCallRet(Type(Type::Kind::Ptr), kBoxI1, {i64Val});
-        }
+        case Type::Kind::I1:
+            return emitCallRet(Type(Type::Kind::Ptr), kBoxI1, {val});
         case Type::Kind::Str:
             return emitCallRet(Type(Type::Kind::Ptr), kBoxStr, {val});
         case Type::Kind::Ptr:

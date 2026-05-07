@@ -38,10 +38,15 @@
 
 #include "rt_msgbus.h"
 
+#include "rt_gc.h"
+#include "rt_heap.h"
 #include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#include <limits.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -73,7 +78,10 @@ typedef struct {
     int64_t total_subs;
 } rt_msgbus_impl;
 
-typedef void (*mb_callback_fn)(void *data);
+typedef struct {
+    void *vptr;
+    rt_msgbus_callback_fn fn;
+} rt_msgbus_callback_impl;
 
 // --- FNV-1a hash ---
 
@@ -84,16 +92,88 @@ typedef void (*mb_callback_fn)(void *data);
 ///          "tick", etc.) without the cost of a CSPRNG-seeded
 ///          hash like SipHash. Used only to bucket topic names —
 ///          collisions are handled by per-bucket linear probe.
-static uint64_t mb_hash(const char *s) {
+static uint64_t mb_hash_bytes(const char *s, size_t len) {
     uint64_t h = 14695981039346656037ULL;
-    while (*s) {
-        h ^= (uint8_t)*s++;
+    for (size_t i = 0; i < len; ++i) {
+        h ^= (uint8_t)s[i];
         h *= 1099511628211ULL;
     }
     return h;
 }
 
 // --- Internal helpers ---
+
+static int mb_topic_view(rt_string topic, const char **bytes, size_t *len) {
+    if (bytes)
+        *bytes = NULL;
+    if (len)
+        *len = 0;
+    if (!topic)
+        return 0;
+    if (!rt_string_is_handle(topic)) {
+        rt_trap("rt_msgbus: invalid topic string");
+        return 0;
+    }
+    int64_t n = rt_str_len(topic);
+    if (n < 0) {
+        rt_trap("rt_msgbus: invalid topic length");
+        return 0;
+    }
+    const char *data = rt_string_cstr(topic);
+    if (!data)
+        return 0;
+    if (bytes)
+        *bytes = data;
+    if (len)
+        *len = (size_t)n;
+    return 1;
+}
+
+static rt_msgbus_impl *mb_require(void *obj, const char *fn_name) {
+    if (!obj)
+        return NULL;
+    if (rt_obj_class_id(obj) != RT_MSGBUS_CLASS_ID) {
+        char buf[128];
+        snprintf(buf, sizeof(buf), "%s: invalid MessageBus object", fn_name);
+        rt_trap(buf);
+        return NULL;
+    }
+    return (rt_msgbus_impl *)obj;
+}
+
+static int mb_callback_is_native(void *callback) {
+    if (!callback)
+        return 0;
+    if (rt_string_is_handle(callback))
+        return 0;
+    rt_heap_hdr_t *hdr = NULL;
+    if (rt_heap_try_get_header(callback, &hdr))
+        return hdr != NULL;
+    return 1;
+}
+
+static int mb_invoke_callback(void *callback, void *data) {
+    if (!callback)
+        return 0;
+    rt_heap_hdr_t *hdr = NULL;
+    if (rt_heap_try_get_header(callback, &hdr)) {
+        if (!hdr || hdr->class_id != RT_MSGBUS_CALLBACK_CLASS_ID) {
+            rt_trap("rt_msgbus_publish: subscriber callback is not callable");
+            return 0;
+        }
+        rt_msgbus_callback_impl *cb = (rt_msgbus_callback_impl *)callback;
+        if (!cb->fn)
+            return 0;
+        cb->fn(data);
+        return 1;
+    }
+    if (rt_string_is_handle(callback)) {
+        rt_trap("rt_msgbus_publish: string subscriber callback is not callable");
+        return 0;
+    }
+    ((rt_msgbus_callback_fn)callback)(data);
+    return 1;
+}
 
 /// @brief Free a single subscriber node (drops topic ref + callback ref).
 /// @details Called by `mb_finalizer` (full-bus teardown) and by the
@@ -136,18 +216,41 @@ static void mb_finalizer(void *obj) {
     }
 }
 
+static void mb_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    rt_msgbus_impl *mb = (rt_msgbus_impl *)obj;
+    if (!mb || !visitor || !mb->buckets)
+        return;
+    for (int64_t i = 0; i < mb->bucket_count; i++) {
+        mb_topic *t = mb->buckets[i];
+        while (t) {
+            for (mb_sub *s = t->subs; s; s = s->next) {
+                if (s->callback && rt_heap_is_payload(s->callback))
+                    visitor(s->callback, ctx);
+            }
+            t = t->next;
+        }
+    }
+}
+
 /// @brief Look up the topic node for `topic_cstr` (returns NULL if not present).
 /// @details Hash → bucket → linear probe down the per-bucket chain.
 ///          Bucket count is fixed at construction (32 by default) —
 ///          rehashing isn't implemented because typical message-bus
 ///          workloads have <100 topics, well under the load that
 ///          would warrant resizing.
-static mb_topic *mb_find_topic(rt_msgbus_impl *mb, const char *topic_cstr) {
-    uint64_t h = mb_hash(topic_cstr);
+static mb_topic *mb_find_topic(rt_msgbus_impl *mb, rt_string topic) {
+    const char *topic_bytes = NULL;
+    size_t topic_len = 0;
+    if (!mb_topic_view(topic, &topic_bytes, &topic_len))
+        return NULL;
+
+    uint64_t h = mb_hash_bytes(topic_bytes, topic_len);
     int64_t idx = (int64_t)(h % (uint64_t)mb->bucket_count);
     mb_topic *t = mb->buckets[idx];
     while (t) {
-        if (strcmp(rt_string_cstr(t->name), topic_cstr) == 0)
+        size_t name_len = (size_t)rt_str_len(t->name);
+        const char *name_bytes = rt_string_cstr(t->name);
+        if (name_len == topic_len && memcmp(name_bytes, topic_bytes, topic_len) == 0)
             return t;
         t = t->next;
     }
@@ -160,8 +263,11 @@ static mb_topic *mb_find_topic(rt_msgbus_impl *mb, const char *topic_cstr) {
 ///          string, and inserts at the head of its bucket's chain.
 ///          Subscribers list starts empty — the caller appends.
 static mb_topic *mb_ensure_topic(rt_msgbus_impl *mb, rt_string topic) {
-    const char *cstr = rt_string_cstr(topic);
-    mb_topic *t = mb_find_topic(mb, cstr);
+    const char *topic_bytes = NULL;
+    size_t topic_len = 0;
+    if (!mb_topic_view(topic, &topic_bytes, &topic_len))
+        return NULL;
+    mb_topic *t = mb_find_topic(mb, topic);
     if (t)
         return t;
 
@@ -173,7 +279,7 @@ static mb_topic *mb_ensure_topic(rt_msgbus_impl *mb, rt_string topic) {
     t->subs = NULL;
     t->count = 0;
 
-    uint64_t h = mb_hash(cstr);
+    uint64_t h = mb_hash_bytes(topic_bytes, topic_len);
     int64_t idx = (int64_t)(h % (uint64_t)mb->bucket_count);
     t->next = mb->buckets[idx];
     mb->buckets[idx] = t;
@@ -188,15 +294,36 @@ static mb_topic *mb_ensure_topic(rt_msgbus_impl *mb, rt_string topic) {
 ///          typical message-bus workloads have few enough topics that
 ///          collision chains stay short.
 void *rt_msgbus_new(void) {
-    rt_msgbus_impl *mb = (rt_msgbus_impl *)rt_obj_new_i64(0, sizeof(rt_msgbus_impl));
-    mb->bucket_count = 32;
-    mb->buckets = (mb_topic **)calloc(32, sizeof(mb_topic *));
-    if (!mb->buckets)
+    mb_topic **buckets = (mb_topic **)calloc(32, sizeof(mb_topic *));
+    if (!buckets) {
         rt_trap("rt_msgbus: memory allocation failed");
+        return NULL;
+    }
+
+    rt_msgbus_impl *mb =
+        (rt_msgbus_impl *)rt_obj_new_i64(RT_MSGBUS_CLASS_ID, (int64_t)sizeof(rt_msgbus_impl));
+    if (!mb) {
+        free(buckets);
+        return NULL;
+    }
+    mb->bucket_count = 32;
+    mb->buckets = buckets;
     mb->next_id = 1;
     mb->total_subs = 0;
     rt_obj_set_finalizer(mb, mb_finalizer);
+    rt_gc_track(mb, mb_traverse);
     return (void *)mb;
+}
+
+void *rt_msgbus_callback_new(void *callback) {
+    if (!callback)
+        return NULL;
+    rt_msgbus_callback_impl *cb = (rt_msgbus_callback_impl *)rt_obj_new_i64(
+        RT_MSGBUS_CALLBACK_CLASS_ID, (int64_t)sizeof(rt_msgbus_callback_impl));
+    if (!cb)
+        return NULL;
+    cb->fn = (rt_msgbus_callback_fn)callback;
+    return cb;
 }
 
 /// @brief Subscribe a callback to a topic on the message bus.
@@ -210,8 +337,20 @@ void *rt_msgbus_new(void) {
 int64_t rt_msgbus_subscribe(void *obj, rt_string topic, void *callback) {
     if (!obj || !topic || !callback)
         return -1;
-    rt_msgbus_impl *mb = (rt_msgbus_impl *)obj;
+    rt_msgbus_impl *mb = mb_require(obj, "rt_msgbus_subscribe");
+    if (!mb)
+        return -1;
+    if (!mb_callback_is_native(callback)) {
+        rt_trap("rt_msgbus_subscribe: callback must be a native function pointer or MessageBus callback object");
+        return -1;
+    }
+    if (mb->next_id <= 0 || mb->next_id == INT64_MAX) {
+        rt_trap("rt_msgbus_subscribe: subscription id overflow");
+        return -1;
+    }
     mb_topic *t = mb_ensure_topic(mb, topic);
+    if (!t)
+        return -1;
 
     mb_sub *s = (mb_sub *)calloc(1, sizeof(mb_sub));
     if (!s)
@@ -249,7 +388,9 @@ int64_t rt_msgbus_subscribe(void *obj, rt_string topic, void *callback) {
 int8_t rt_msgbus_unsubscribe(void *obj, int64_t sub_id) {
     if (!obj)
         return 0;
-    rt_msgbus_impl *mb = (rt_msgbus_impl *)obj;
+    rt_msgbus_impl *mb = mb_require(obj, "rt_msgbus_unsubscribe");
+    if (!mb)
+        return 0;
 
     for (int64_t i = 0; i < mb->bucket_count; i++) {
         mb_topic *t = mb->buckets[i];
@@ -284,8 +425,10 @@ int8_t rt_msgbus_unsubscribe(void *obj, int64_t sub_id) {
 int64_t rt_msgbus_publish(void *obj, rt_string topic, void *data) {
     if (!obj || !topic)
         return 0;
-    rt_msgbus_impl *mb = (rt_msgbus_impl *)obj;
-    mb_topic *t = mb_find_topic(mb, rt_string_cstr(topic));
+    rt_msgbus_impl *mb = mb_require(obj, "rt_msgbus_publish");
+    if (!mb)
+        return 0;
+    mb_topic *t = mb_find_topic(mb, topic);
     if (!t || t->count <= 0)
         return 0;
 
@@ -300,8 +443,7 @@ int64_t rt_msgbus_publish(void *obj, rt_string topic, void *data) {
     }
 
     for (int64_t i = 0; i < count; ++i) {
-        mb_callback_fn fn = (mb_callback_fn)callbacks[i];
-        fn(data);
+        mb_invoke_callback(callbacks[i], data);
         if (rt_obj_release_check0(callbacks[i]))
             rt_obj_free(callbacks[i]);
     }
@@ -321,8 +463,10 @@ int64_t rt_msgbus_publish(void *obj, rt_string topic, void *data) {
 int64_t rt_msgbus_subscriber_count(void *obj, rt_string topic) {
     if (!obj || !topic)
         return 0;
-    rt_msgbus_impl *mb = (rt_msgbus_impl *)obj;
-    mb_topic *t = mb_find_topic(mb, rt_string_cstr(topic));
+    rt_msgbus_impl *mb = mb_require(obj, "rt_msgbus_subscriber_count");
+    if (!mb)
+        return 0;
+    mb_topic *t = mb_find_topic(mb, topic);
     return t ? t->count : 0;
 }
 
@@ -336,7 +480,8 @@ int64_t rt_msgbus_subscriber_count(void *obj, rt_string topic) {
 int64_t rt_msgbus_total_subscriptions(void *obj) {
     if (!obj)
         return 0;
-    return ((rt_msgbus_impl *)obj)->total_subs;
+    rt_msgbus_impl *mb = mb_require(obj, "rt_msgbus_total_subscriptions");
+    return mb ? mb->total_subs : 0;
 }
 
 /// @brief Return a Seq containing the names of all topics that have at least one subscriber.
@@ -346,7 +491,9 @@ void *rt_msgbus_topics(void *obj) {
     void *seq = rt_seq_new();
     if (!obj)
         return seq;
-    rt_msgbus_impl *mb = (rt_msgbus_impl *)obj;
+    rt_msgbus_impl *mb = mb_require(obj, "rt_msgbus_topics");
+    if (!mb)
+        return seq;
 
     for (int64_t i = 0; i < mb->bucket_count; i++) {
         mb_topic *t = mb->buckets[i];
@@ -371,8 +518,10 @@ void *rt_msgbus_topics(void *obj) {
 void rt_msgbus_clear_topic(void *obj, rt_string topic) {
     if (!obj || !topic)
         return;
-    rt_msgbus_impl *mb = (rt_msgbus_impl *)obj;
-    mb_topic *t = mb_find_topic(mb, rt_string_cstr(topic));
+    rt_msgbus_impl *mb = mb_require(obj, "rt_msgbus_clear_topic");
+    if (!mb)
+        return;
+    mb_topic *t = mb_find_topic(mb, topic);
     if (!t)
         return;
 
@@ -398,7 +547,9 @@ void rt_msgbus_clear_topic(void *obj, rt_string topic) {
 void rt_msgbus_clear(void *obj) {
     if (!obj)
         return;
-    rt_msgbus_impl *mb = (rt_msgbus_impl *)obj;
+    rt_msgbus_impl *mb = mb_require(obj, "rt_msgbus_clear");
+    if (!mb)
+        return;
 
     for (int64_t i = 0; i < mb->bucket_count; i++) {
         mb_topic *t = mb->buckets[i];

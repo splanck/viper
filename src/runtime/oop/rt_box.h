@@ -27,6 +27,8 @@
 #include "rt_string.h"
 #include <stdint.h>
 
+#define RT_BOX_CLASS_ID INT64_C(-0x430101)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -53,6 +55,11 @@ void *rt_box_f64(double val);
 /// @param val The boolean value (0 = false, non-zero = true).
 /// @return Heap-allocated boxed object (refcount = 1).
 void *rt_box_i1(int64_t val);
+
+/// @brief Box a boolean from the runtime `i1` ABI type.
+/// @param val The boolean value (0 = false, non-zero = true).
+/// @return Heap-allocated boxed object (refcount = 1).
+void *rt_box_i1_bool(int8_t val);
 
 /// @brief Box a string.
 /// @param val The string to box.

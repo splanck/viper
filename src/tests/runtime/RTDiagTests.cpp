@@ -93,6 +93,13 @@ static void test_assert_eq_str_passing() {
     rt_diag_assert_eq_str(make_str(""), make_str(""), make_str("empty strings"));
     rt_diag_assert_eq_str(make_str("abc123"), make_str("abc123"), make_str("alphanumeric"));
 
+    const char bytes[] = {'a', '\0', 'b'};
+    rt_string lhs = rt_string_from_bytes(bytes, sizeof(bytes));
+    rt_string rhs = rt_string_from_bytes(bytes, sizeof(bytes));
+    rt_diag_assert_eq_str(lhs, rhs, make_str("embedded nul strings"));
+    rt_string_unref(lhs);
+    rt_string_unref(rhs);
+
     printf("test_assert_eq_str_passing: PASSED\n");
 }
 

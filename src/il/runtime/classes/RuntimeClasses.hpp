@@ -372,6 +372,7 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_MathBigInt,
     RTCLS_MathMat3,
     RTCLS_MathMat4,
+    RTCLS_Memory,
     RTCLS_MemoryGC,
     RTCLS_ThreadsChannel,
     RTCLS_ThreadsPool,

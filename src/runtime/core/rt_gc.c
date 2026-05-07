@@ -584,26 +584,96 @@ static void trial_decrement(void *child, void *ctx) {
         g_gc.entries[idx].trial_rc--;
 }
 
-/// @brief Visitor that marks reachable children black and recursively restores their subtrees (called under gc_lock).
-static void trial_restore(void *child, void *ctx) {
-    (void)ctx;
-    if (!child)
-        return;
-
-    int64_t idx = find_entry(child);
-    if (idx >= 0 && g_gc.entries[idx].color != 2) {
-        g_gc.entries[idx].color = 2; /* black = reachable */
-        /* Recursively restore children — lock is already held. */
-        gc_entry e = g_gc.entries[idx];
-        e.traverse(e.obj, trial_restore, NULL);
-    }
-}
-
 /// Lightweight snapshot entry for traversal outside the lock.
 typedef struct {
     void *obj;
     rt_gc_traverse_fn traverse;
 } gc_snap_entry;
+
+typedef struct {
+    void **items;
+    int64_t count;
+    int64_t cap;
+    int oom;
+} gc_edge_list;
+
+typedef struct {
+    gc_snap_entry *items;
+    int64_t count;
+    int64_t cap;
+    int oom;
+} gc_worklist;
+
+static int gc_edge_list_push(gc_edge_list *list, void *child) {
+    if (!list || list->oom || !child)
+        return 0;
+    if (list->count == list->cap) {
+        int64_t new_cap = list->cap ? list->cap * 2 : 16;
+        void **items = (void **)realloc(list->items, (size_t)new_cap * sizeof(void *));
+        if (!items) {
+            list->oom = 1;
+            return 0;
+        }
+        list->items = items;
+        list->cap = new_cap;
+    }
+    list->items[list->count++] = child;
+    return 1;
+}
+
+static void gc_edge_collector(void *child, void *ctx) {
+    (void)gc_edge_list_push((gc_edge_list *)ctx, child);
+}
+
+static int gc_worklist_push(gc_worklist *work, void *obj, rt_gc_traverse_fn traverse) {
+    if (!work || work->oom || !obj || !traverse)
+        return 0;
+    if (work->count == work->cap) {
+        int64_t new_cap = work->cap ? work->cap * 2 : 16;
+        gc_snap_entry *items =
+            (gc_snap_entry *)realloc(work->items, (size_t)new_cap * sizeof(gc_snap_entry));
+        if (!items) {
+            work->oom = 1;
+            return 0;
+        }
+        work->items = items;
+        work->cap = new_cap;
+    }
+    work->items[work->count].obj = obj;
+    work->items[work->count].traverse = traverse;
+    work->count++;
+    return 1;
+}
+
+static int gc_snap_contains(const gc_snap_entry *items, int64_t count, void *obj) {
+    for (int64_t i = 0; i < count; ++i) {
+        if (items[i].obj == obj)
+            return 1;
+    }
+    return 0;
+}
+
+typedef struct {
+    const gc_snap_entry *garbage;
+    int64_t garbage_count;
+} gc_release_edges_ctx;
+
+static void gc_release_outgoing_ref(void *child, void *ctx) {
+    if (!child)
+        return;
+    gc_release_edges_ctx *release_ctx = (gc_release_edges_ctx *)ctx;
+    if (release_ctx && gc_snap_contains(release_ctx->garbage, release_ctx->garbage_count, child))
+        return;
+    if (rt_obj_release_check0(child))
+        rt_obj_free(child);
+}
+
+static int gc_object_has_finalizer(void *obj) {
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header(obj, &hdr) || !hdr)
+        return 0;
+    return hdr->finalizer != NULL ? 1 : 0;
+}
 
 /// @brief Zero the refcount of a confirmed-unreachable cycle member and free it.
 /// @details Clears weak refs, fires the finalizer, and calls rt_heap_free_zero_ref.
@@ -698,35 +768,97 @@ int64_t rt_gc_collect(void) {
 
         snapshot[snap_count].obj = g_gc.entries[i].obj;
         snapshot[snap_count].traverse = g_gc.entries[i].traverse;
+        rt_obj_retain_maybe(g_gc.entries[i].obj);
         snap_count++;
     }
 
-    /* Lock remains held from Phase 1 into Phase 2 to prevent another
-       thread from untracking + freeing an object whose pointer is in
-       the snapshot (TOCTOU race). */
+    gc_unlock();
 
     /* Phase 2: Trial decrement — for each tracked object, visit its
        children.  If a child is also tracked, decrement its trial_rc.
        After this phase, objects whose trial_rc <= 0 are only referenced
        by other tracked objects (potential cycle members). */
+    gc_edge_list trial_edges = {0};
     for (int64_t i = 0; i < snap_count; i++) {
-        snapshot[i].traverse(snapshot[i].obj, trial_decrement, NULL);
+        snapshot[i].traverse(snapshot[i].obj, gc_edge_collector, &trial_edges);
     }
+    if (trial_edges.oom) {
+        for (int64_t i = 0; i < snap_count; i++) {
+            if (rt_obj_release_check0(snapshot[i].obj))
+                rt_obj_free(snapshot[i].obj);
+        }
+        free(trial_edges.items);
+        free(snapshot);
+        gc_lock();
+        g_gc.collecting = 0;
+        gc_unlock();
+        rt_trap("gc: memory allocation failed");
+        return 0;
+    }
+
+    gc_lock();
+    for (int64_t i = 0; i < trial_edges.count; ++i) {
+        trial_decrement(trial_edges.items[i], NULL);
+    }
+    gc_unlock();
+    free(trial_edges.items);
 
     /* Phase 3: Scan — objects with trial_rc > 0 have external references
        and are definitely reachable.  Mark them black and recursively
-       mark everything reachable from them.  Lock remains held from Phase 2
-       to avoid per-child acquire/release overhead. */
+       mark everything reachable from them. Traversal callbacks run outside
+       gc_lock so callbacks can safely use weak/GC APIs. */
+    gc_worklist work = {0};
+    gc_lock();
     for (int64_t i = 0; i < snap_count; i++) {
         int64_t idx = find_entry(snapshot[i].obj);
         if (idx >= 0 && g_gc.entries[idx].trial_rc > 0 && g_gc.entries[idx].color != 2) {
             g_gc.entries[idx].color = 2; /* black = definitely reachable */
-            snapshot[i].traverse(snapshot[i].obj, trial_restore, NULL);
+            gc_worklist_push(&work, snapshot[i].obj, snapshot[i].traverse);
         }
     }
+    gc_unlock();
+
+    for (int64_t wi = 0; wi < work.count; ++wi) {
+        gc_edge_list restore_edges = {0};
+        work.items[wi].traverse(work.items[wi].obj, gc_edge_collector, &restore_edges);
+        if (restore_edges.oom) {
+            work.oom = 1;
+            free(restore_edges.items);
+            break;
+        }
+
+        gc_lock();
+        for (int64_t ei = 0; ei < restore_edges.count; ++ei) {
+            int64_t idx = find_entry(restore_edges.items[ei]);
+            if (idx >= 0 && g_gc.entries[idx].color != 2) {
+                g_gc.entries[idx].color = 2;
+                gc_worklist_push(&work, g_gc.entries[idx].obj, g_gc.entries[idx].traverse);
+            }
+        }
+        gc_unlock();
+        free(restore_edges.items);
+        if (work.oom)
+            break;
+    }
+
+    if (work.oom) {
+        for (int64_t i = 0; i < snap_count; i++) {
+            if (rt_obj_release_check0(snapshot[i].obj))
+                rt_obj_free(snapshot[i].obj);
+        }
+        free(work.items);
+        free(snapshot);
+        gc_lock();
+        g_gc.collecting = 0;
+        gc_unlock();
+        rt_trap("gc: memory allocation failed");
+        return 0;
+    }
+    free(work.items);
 
     /* Phase 3b: Epoch tagging — increment survived counter for objects
        that survived this pass (color == 2, reachable). */
+    gc_lock();
     for (int64_t i = 0; i < g_gc.capacity; i++) {
         if (gc_slot_is_live(&g_gc.entries[i]) && g_gc.entries[i].color == 2) {
             if (g_gc.entries[i].survived < UINT16_MAX)
@@ -746,9 +878,13 @@ int64_t rt_gc_collect(void) {
     if (garbage_count > 0) {
         garbage = (gc_snap_entry *)malloc((size_t)garbage_count * sizeof(gc_snap_entry));
         if (!garbage) {
-            free(snapshot);
             g_gc.collecting = 0;
             gc_unlock();
+            for (int64_t i = 0; i < snap_count; i++) {
+                if (rt_obj_release_check0(snapshot[i].obj))
+                    rt_obj_free(snapshot[i].obj);
+            }
+            free(snapshot);
             rt_trap("gc: memory allocation failed");
             return 0;
         }
@@ -771,11 +907,12 @@ int64_t rt_gc_collect(void) {
 
     gc_unlock();
 
-    free(snapshot);
-
     /* Free garbage objects (outside the lock). */
     if (garbage) {
+        gc_release_edges_ctx release_ctx = {garbage, garbage_count};
         for (int64_t i = 0; i < garbage_count; i++) {
+            if (garbage[i].traverse && !gc_object_has_finalizer(garbage[i].obj))
+                garbage[i].traverse(garbage[i].obj, gc_release_outgoing_ref, &release_ctx);
             int reclaimed = gc_reclaim_unreachable(garbage[i].obj);
             if (reclaimed) {
                 freed++;
@@ -783,8 +920,17 @@ int64_t rt_gc_collect(void) {
                 rt_gc_track(garbage[i].obj, garbage[i].traverse);
             }
         }
-        free(garbage);
     }
+
+    for (int64_t i = 0; i < snap_count; i++) {
+        if (garbage && gc_snap_contains(garbage, garbage_count, snapshot[i].obj))
+            continue;
+        if (rt_obj_release_check0(snapshot[i].obj))
+            rt_obj_free(snapshot[i].obj);
+    }
+
+    free(garbage);
+    free(snapshot);
 
     gc_lock();
     if (freed > 0)

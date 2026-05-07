@@ -35,6 +35,7 @@
 
 #include "rt_parse.h"
 #include "rt_internal.h"
+#include "rt_option.h"
 
 #include <errno.h>
 #include <limits.h>
@@ -389,6 +390,20 @@ int64_t rt_parse_int_radix(rt_string s, int64_t radix, int64_t default_value) {
     int64_t result = 0;
     memcpy(&result, &value, sizeof(result));
     return result;
+}
+
+void *rt_parse_double_option(rt_string s) {
+    double value = 0.0;
+    if (!rt_parse_try_num(s, &value))
+        return rt_option_none();
+    return rt_option_some_f64(value);
+}
+
+void *rt_parse_int64_option(rt_string s) {
+    int64_t value = 0;
+    if (!rt_parse_try_int(s, &value))
+        return rt_option_none();
+    return rt_option_some_i64(value);
 }
 
 #ifdef __cplusplus

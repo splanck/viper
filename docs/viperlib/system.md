@@ -325,10 +325,13 @@ Low-level retain/release hooks for deterministic ownership handoff. Most program
 |-------------------|------------------|------------------------------------------------------------------------|
 | `Retain(handle)`  | `Void(Object)`   | Increment a live runtime object or string handle's reference count      |
 | `Release(handle)` | `Integer(Object)`| Decrement a live runtime handle; returns remaining references           |
+| `RetainStr(text)` | `Void(String)`   | String-typed retain wrapper for callers that cannot pass `String` as `Object` |
+| `ReleaseStr(text)`| `Integer(String)`| String-typed release wrapper; returns the remaining string references   |
 
 ### Notes
 
 - `Release()` runs managed object finalization when it drops the last reference.
+- Arrays released through `Release()` run element cleanup for object and string arrays before freeing the array storage.
 - Passing `Nothing` is a no-op. Passing a non-runtime or already-freed pointer traps.
 - Reference counts are checked for overflow and underflow in release builds.
 

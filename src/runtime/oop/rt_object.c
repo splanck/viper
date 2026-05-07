@@ -35,6 +35,9 @@
 #include "rt_box.h"
 #include "rt_gc.h"
 #include "rt_heap.h"
+#include "rt_internal.h"
+#include "rt_array_obj.h"
+#include "rt_array_str.h"
 #include "rt_oop.h"
 #include "rt_platform.h"
 #include "rt_string.h"
@@ -148,9 +151,15 @@ void rt_obj_resurrect(void *p) {
         return;
     if (!hdr)
         return;
-    // Direct atomic store bypasses rt_heap_retain's assert(old > 0):
-    // this is the only safe call site (inside a finalizer, refcount == 0).
-    __atomic_store_n(&hdr->refcnt, 1, __ATOMIC_RELEASE);
+    size_t expected = 0;
+    if (!__atomic_compare_exchange_n(&hdr->refcnt,
+                                     &expected,
+                                     1,
+                                     /*weak=*/0,
+                                     __ATOMIC_RELEASE,
+                                     __ATOMIC_RELAXED)) {
+        rt_trap("rt_obj_resurrect: object refcount is not zero");
+    }
 }
 
 /// @brief Set a custom finalizer for an object.
@@ -236,6 +245,10 @@ void rt_memory_retain(void *p) {
     rt_heap_retain(p);
 }
 
+void rt_memory_retain_str(rt_string s) {
+    rt_memory_retain((void *)s);
+}
+
 /// @brief Decrement the reference count and report last-user semantics.
 /// @details Mirrors BASIC string behaviour by returning non-zero when the
 ///          underlying retain count reaches zero.  Null payloads are ignored to
@@ -272,13 +285,63 @@ static int64_t rt_memory_refcount_to_i64(size_t refcount) {
     return (int64_t)refcount;
 }
 
+static int64_t rt_memory_release_string(rt_string s) {
+    if (!s)
+        return 0;
+    if (!rt_string_is_handle(s)) {
+        rt_trap("Viper.Memory.Release: invalid string handle");
+        return 0;
+    }
+
+    size_t old = 0;
+    if (s->heap && s->heap != RT_SSO_SENTINEL) {
+        old = __atomic_load_n(&s->heap->refcnt, __ATOMIC_ACQUIRE);
+    } else {
+        old = __atomic_load_n(&s->literal_refs, __ATOMIC_ACQUIRE);
+    }
+    if (old == SIZE_MAX) {
+        rt_string_unref(s);
+        return INT64_MAX;
+    }
+    size_t next = old > 0 ? old - 1 : 0;
+    rt_string_unref(s);
+    return rt_memory_refcount_to_i64(next);
+}
+
+static void rt_memory_release_array_payload(void *p, rt_heap_hdr_t *hdr) {
+    if (!p || !hdr)
+        return;
+    size_t n = hdr->len;
+    switch ((rt_elem_kind_t)hdr->elem_kind) {
+        case RT_ELEM_STR: {
+            rt_string *items = (rt_string *)p;
+            for (size_t i = 0; i < n; ++i) {
+                rt_str_release_maybe(items[i]);
+                items[i] = NULL;
+            }
+            break;
+        }
+        case RT_ELEM_NONE: {
+            void **items = (void **)p;
+            for (size_t i = 0; i < n; ++i) {
+                void *item = items[i];
+                if (item && rt_obj_release_check0(item))
+                    rt_obj_free(item);
+                items[i] = NULL;
+            }
+            break;
+        }
+        default:
+            break;
+    }
+}
+
 /// @brief Public Viper.Memory release entry point with managed object finalization.
 int64_t rt_memory_release(void *p) {
     if (!p)
         return 0;
     if (rt_string_is_handle(p)) {
-        rt_str_release_maybe((rt_string)p);
-        return 0;
+        return rt_memory_release_string((rt_string)p);
     }
     rt_heap_hdr_t *hdr = NULL;
     if (!rt_heap_try_get_header(p, &hdr) || !hdr) {
@@ -293,7 +356,20 @@ int64_t rt_memory_release(void *p) {
         return rt_memory_refcount_to_i64(next);
     }
 
+    if ((rt_heap_kind_t)hdr->kind == RT_HEAP_ARRAY) {
+        size_t next = rt_heap_release_deferred(p);
+        if (next == 0) {
+            rt_memory_release_array_payload(p, hdr);
+            rt_heap_free_zero_ref(p);
+        }
+        return rt_memory_refcount_to_i64(next);
+    }
+
     return rt_memory_refcount_to_i64(rt_heap_release(p));
+}
+
+int64_t rt_memory_release_str(rt_string s) {
+    return rt_memory_release((void *)s);
 }
 
 /// @brief Compatibility shim matching the string free entry point.
@@ -313,7 +389,6 @@ void rt_obj_free(void *p) {
     rt_heap_hdr_t *hdr = NULL;
     if (!rt_heap_try_get_header(p, &hdr))
         return;
-    rt_gc_untrack(p);
     if (hdr && (rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT &&
         __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) == 0) {
         rt_gc_clear_weak_refs(p);
@@ -322,7 +397,14 @@ void rt_obj_free(void *p) {
             hdr->finalizer = NULL;
             fin(p);
         }
+        if (__atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE) != 0)
+            return;
+        rt_gc_untrack(p);
+        rt_monitor_forget(p);
+        rt_heap_free_zero_ref(p);
+        return;
     }
+    rt_gc_untrack(p);
     rt_monitor_forget(p);
     rt_heap_free_zero_ref(p);
 }
@@ -373,6 +455,8 @@ int64_t rt_obj_reference_equals(void *a, void *b) {
 /// @note Default implementation is reference equality.
 /// @note Derived classes may override to provide value-based equality.
 int64_t rt_obj_equals(void *self, void *other) {
+    if (rt_box_type(self) >= 0 || rt_box_type(other) >= 0)
+        return rt_box_equal(self, other) ? 1 : 0;
     return self == other ? 1 : 0;
 }
 
@@ -394,6 +478,10 @@ int64_t rt_obj_equals(void *self, void *other) {
 /// @note Derived classes should override if overriding Equals.
 /// @note Two equal objects (by Equals) must return the same hash code.
 int64_t rt_obj_get_hash_code(void *self) {
+    if (!self)
+        return 0;
+    if (rt_box_type(self) >= 0)
+        return (int64_t)rt_box_hash(self);
     uintptr_t v = (uintptr_t)self;
     return (int64_t)v;
 }
@@ -435,11 +523,15 @@ rt_string rt_obj_to_string(void *self) {
         if (tag == RT_BOX_I64) {
             char buf[32];
             int n = snprintf(buf, sizeof(buf), "%lld", (long long)rt_unbox_i64(self));
+            if (n < 0)
+                return rt_obj_make_cstr("Object");
             return rt_string_from_bytes(buf, (size_t)n);
         }
         if (tag == RT_BOX_F64) {
             char buf[32];
             int n = snprintf(buf, sizeof(buf), "%.15g", rt_unbox_f64(self));
+            if (n < 0)
+                return rt_obj_make_cstr("Object");
             return rt_string_from_bytes(buf, (size_t)n);
         }
         if (tag == RT_BOX_I1) {
@@ -451,6 +543,10 @@ rt_string rt_obj_to_string(void *self) {
     if (!has_header || !validated)
         return rt_obj_make_cstr("Object");
     if ((rt_heap_kind_t)validated->kind != RT_HEAP_OBJECT)
+        return rt_obj_make_cstr("Object");
+    if (validated->elem_kind == RT_ELEM_BOX || validated->class_id == RT_BOX_CLASS_ID)
+        return rt_obj_make_cstr("Viper.Core.Box");
+    if (validated->cap < sizeof(rt_object))
         return rt_obj_make_cstr("Object");
 
     rt_object *obj = (rt_object *)self;
@@ -474,6 +570,10 @@ rt_string rt_obj_type_name(void *self) {
     if (!rt_heap_try_get_header(self, &hdr) || !hdr)
         return rt_obj_make_cstr("Object");
     if ((rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT)
+        return rt_obj_make_cstr("Object");
+    if (hdr->elem_kind == RT_ELEM_BOX || hdr->class_id == RT_BOX_CLASS_ID)
+        return rt_obj_make_cstr("Viper.Core.Box");
+    if (hdr->cap < sizeof(rt_object))
         return rt_obj_make_cstr("Object");
 
     rt_object *obj = (rt_object *)self;

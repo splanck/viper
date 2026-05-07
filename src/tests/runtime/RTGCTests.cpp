@@ -46,7 +46,13 @@ struct test_node {
     void *child; // Strong reference to another node (or NULL).
 };
 
+struct test_pair_node {
+    void *child;
+    void *extra;
+};
+
 static int g_cycle_finalizer_count = 0;
+static int g_external_finalizer_count = 0;
 
 /// Traverse function for test_node: visits the child pointer.
 extern "C" {
@@ -54,6 +60,19 @@ static void test_node_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     struct test_node *node = (struct test_node *)obj;
     if (node->child)
         visitor(node->child, ctx);
+}
+
+static void test_pair_node_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    struct test_pair_node *node = (struct test_pair_node *)obj;
+    if (node->child)
+        visitor(node->child, ctx);
+    if (node->extra)
+        visitor(node->extra, ctx);
+}
+
+static void gc_touching_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    ASSERT(rt_gc_is_tracked(obj) == 1, "traverse can query GC tracking");
+    test_node_traverse(obj, visitor, ctx);
 }
 }
 
@@ -79,6 +98,11 @@ static void release_obj(void *obj) {
 static void count_cycle_finalizer(void *obj) {
     (void)obj;
     g_cycle_finalizer_count++;
+}
+
+static void count_external_finalizer(void *obj) {
+    (void)obj;
+    g_external_finalizer_count++;
 }
 
 //=============================================================================
@@ -452,6 +476,45 @@ static void test_collect_reclaims_cycle_storage_and_finalizers() {
     rt_weakref_free(ref_b);
 }
 
+static void test_collect_releases_untracked_external_children() {
+    g_external_finalizer_count = 0;
+
+    void *a = rt_obj_new_i64(0, (int64_t)sizeof(struct test_pair_node));
+    void *b = rt_obj_new_i64(0, (int64_t)sizeof(struct test_pair_node));
+    void *external = make_node();
+    rt_obj_set_finalizer(external, count_external_finalizer);
+
+    struct test_pair_node *na = (struct test_pair_node *)a;
+    struct test_pair_node *nb = (struct test_pair_node *)b;
+    na->child = b;
+    rt_obj_retain_maybe(b);
+    nb->child = a;
+    rt_obj_retain_maybe(a);
+    na->extra = external;
+    rt_obj_retain_maybe(external);
+
+    rt_gc_track(a, test_pair_node_traverse);
+    rt_gc_track(b, test_pair_node_traverse);
+
+    ASSERT(rt_obj_release_check0(a) == 0, "drop external a leaves cycle ref");
+    ASSERT(rt_obj_release_check0(b) == 0, "drop external b leaves cycle ref");
+    ASSERT(rt_obj_release_check0(external) == 0, "external retained only by cycle");
+
+    int64_t freed = rt_gc_collect();
+    ASSERT(freed == 2, "cycle members freed");
+    ASSERT(g_external_finalizer_count == 1, "external child released by cycle collection");
+    ASSERT(rt_heap_is_payload(external) == 0, "external child freed");
+}
+
+static void test_traverse_can_touch_gc_without_deadlock() {
+    void *a = make_node();
+    rt_gc_track(a, gc_touching_traverse);
+    int64_t freed = rt_gc_collect();
+    ASSERT(freed == 0, "live node not collected");
+    rt_gc_untrack(a);
+    release_obj(a);
+}
+
 //=============================================================================
 // Statistics Tests
 //=============================================================================
@@ -504,6 +567,8 @@ int main() {
     test_weakref_cleared_by_collect();
     test_weak_field_zeroed_by_collect();
     test_collect_reclaims_cycle_storage_and_finalizers();
+    test_collect_releases_untracked_external_children();
+    test_traverse_can_touch_gc_without_deadlock();
 
     // Statistics
     test_statistics();

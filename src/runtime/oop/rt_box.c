@@ -35,6 +35,7 @@
 #include "rt_hash_util.h"
 #include "rt_heap.h"
 #include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_string.h"
 
 #include <stdio.h>
@@ -54,7 +55,11 @@ typedef struct rt_box {
 /// @brief Allocate a fresh boxed-value object via the heap (refcount=1, tagged RT_ELEM_BOX so
 /// `box_maybe` can later identify it). Caller fills the tag and union fields.
 static void *alloc_box(void) {
-    return rt_heap_alloc(RT_HEAP_OBJECT, RT_ELEM_BOX, 1, sizeof(rt_box_t), sizeof(rt_box_t));
+    void *box = rt_obj_new_i64(RT_BOX_CLASS_ID, (int64_t)sizeof(rt_box_t));
+    rt_heap_hdr_t *hdr = rt_heap_hdr(box);
+    if (hdr)
+        hdr->elem_kind = RT_ELEM_BOX;
+    return box;
 }
 
 /// @brief Safe down-cast: returns the `rt_box_t *` only if `box` is a heap-allocated object whose
@@ -143,6 +148,10 @@ void *rt_box_i1(int64_t val) {
     box->tag = RT_BOX_I1;
     box->data.i64_val = val ? 1 : 0;
     return box;
+}
+
+void *rt_box_i1_bool(int8_t val) {
+    return rt_box_i1(val ? 1 : 0);
 }
 
 /// @brief GC finalizer for boxed strings — releases the contained rt_string reference. Other
@@ -259,6 +268,10 @@ int64_t rt_box_eq_str(void *box, rt_string val) {
 void *rt_box_value_type(int64_t size) {
     if (size <= 0)
         return NULL;
+    if ((uint64_t)size > (uint64_t)SIZE_MAX) {
+        rt_trap("rt_box_value_type: size too large");
+        return NULL;
+    }
     // Allocate raw memory for value type - the compiler will copy fields
     return rt_heap_alloc(RT_HEAP_OBJECT, RT_ELEM_NONE, 1, (size_t)size, (size_t)size);
 }
@@ -287,7 +300,12 @@ size_t rt_box_hash(void *elem) {
             case RT_BOX_I1:
                 return (size_t)rt_fnv1a(&box->data.i64_val, sizeof(int64_t));
             case RT_BOX_F64:
-                return (size_t)rt_fnv1a(&box->data.f64_val, sizeof(double));
+            {
+                double value = box->data.f64_val;
+                if (value == 0.0)
+                    value = 0.0;
+                return (size_t)rt_fnv1a(&value, sizeof(double));
+            }
             case RT_BOX_STR: {
                 rt_string s = box->data.str_val;
                 if (!s)

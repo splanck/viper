@@ -114,7 +114,7 @@ typedef struct rt_heap_hdr {
 | `rt_heap_release_deferred(payload)` | Decrement without freeing at zero. Caller must later call `rt_heap_free_zero_ref`. |
 | `rt_heap_free_zero_ref(payload)` | Free only if refcount is already zero. No-op otherwise. |
 | `rt_memory_retain(payload)` | Public `Viper.Memory.Retain` wrapper; validates live runtime handles before retaining. |
-| `rt_memory_release(payload)` | Public `Viper.Memory.Release` wrapper; releases through managed object/string paths and runs finalizers at zero. |
+| `rt_memory_release(payload)` | Public `Viper.Memory.Release` wrapper; releases through managed object/string/array paths and runs finalizers or element cleanup at zero. |
 
 ### Memory Ordering
 
@@ -363,7 +363,7 @@ without `malloc`/`free` overhead.
 | **Sequences** | malloc | Refcounted | **NOT managed** | Caller must manage element lifetimes |
 | **Maps** | malloc | Refcounted | Keys copied, values retained | String-keyed |
 | **LazySeq** | malloc | **Manual destroy** | On-demand generation | Not refcounted; requires `rt_lazyseq_destroy()` |
-| **Boxed values** | malloc | Refcounted | Type-tagged (I64/F64/I1/STR) | Unbox does not consume the box |
+| **Boxed values** | malloc | Refcounted | Type-tagged (I64/F64/I1/STR) | Runtime class id `Viper.Core.Box`; unbox does not consume the box |
 | **Objects** | malloc | Refcounted | Optional finalizer | Optional GC tracking for cycles |
 | **Vec2/Vec3** | Thread-local pool (cap 32) | Refcounted + resurrection | Immutable values | Pool recycling via finalizer |
 | **Files** | Stack (`RtFile`) | Caller-owned | POSIX fd | Manual close or finalizer-based cleanup |

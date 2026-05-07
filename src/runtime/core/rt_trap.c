@@ -136,22 +136,50 @@ void rt_diag_assert_eq_num(double expected, double actual, rt_string message) {
     rt_trap(buf);
 }
 
+static void append_escaped_string(char *dst, size_t dst_cap, rt_string s) {
+    if (!dst || dst_cap == 0)
+        return;
+    size_t pos = strlen(dst);
+    if (pos >= dst_cap)
+        return;
+
+    const char *bytes = s ? rt_string_cstr(s) : "";
+    size_t len = s ? (size_t)rt_str_len(s) : 0;
+    size_t shown = len < 32 ? len : 32;
+    for (size_t i = 0; i < shown && pos + 5 < dst_cap; ++i) {
+        unsigned char ch = (unsigned char)bytes[i];
+        if (ch == '\\' || ch == '"') {
+            dst[pos++] = '\\';
+            dst[pos++] = (char)ch;
+        } else if (ch >= 32 && ch < 127) {
+            dst[pos++] = (char)ch;
+        } else {
+            int n = snprintf(dst + pos, dst_cap - pos, "\\x%02X", ch);
+            if (n < 0)
+                break;
+            pos += (size_t)n;
+        }
+    }
+    if (len > shown && pos + 4 < dst_cap) {
+        dst[pos++] = '.';
+        dst[pos++] = '.';
+        dst[pos++] = '.';
+    }
+    dst[pos] = '\0';
+}
+
 /// @brief Assert two strings are equal.
 void rt_diag_assert_eq_str(rt_string expected, rt_string actual, rt_string message) {
-    const char *exp_str = expected ? rt_string_cstr(expected) : "";
-    const char *act_str = actual ? rt_string_cstr(actual) : "";
-
-    if (exp_str == NULL)
-        exp_str = "";
-    if (act_str == NULL)
-        act_str = "";
-
-    if (strcmp(exp_str, act_str) == 0)
+    if (rt_str_eq(expected, actual) != 0)
         return;
 
     const char *msg = get_message(message, "AssertEqStr failed");
     char buf[512];
-    snprintf(buf, sizeof(buf), "%s: expected \"%s\", got \"%s\"", msg, exp_str, act_str);
+    snprintf(buf, sizeof(buf), "%s: expected \"", msg);
+    append_escaped_string(buf, sizeof(buf), expected);
+    strncat(buf, "\", got \"", sizeof(buf) - strlen(buf) - 1);
+    append_escaped_string(buf, sizeof(buf), actual);
+    strncat(buf, "\"", sizeof(buf) - strlen(buf) - 1);
     rt_trap(buf);
 }
 
