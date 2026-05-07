@@ -25,6 +25,8 @@
 //
 // Links: src/runtime/core/rt_trap.h (public API),
 //        src/runtime/core/rt_internal.h (rt_trap macro shim)
+//
+//===----------------------------------------------------------------------===//
 
 #include <inttypes.h>
 #include <math.h>

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-05-07
 ---
 
 # System
@@ -15,6 +15,7 @@ last-verified: 2026-04-09
 - [Viper.Environment](#viperenvironment)
 - [Viper.Exec](#viperexec)
 - [Viper.Machine](#vipermachine)
+- [Viper.Memory](#vipermemory)
 - [Viper.Memory.GC](#vipermemory-gc)
 - [Viper.Terminal](#viperterminal)
 
@@ -312,6 +313,27 @@ END IF
 
 ---
 
+## Viper.Memory
+
+Low-level retain/release hooks for deterministic ownership handoff. Most programs should rely on normal lexical lifetimes and class `deinit`; use these only when integrating with runtime handles that require explicit ownership control.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method            | Signature        | Description                                                            |
+|-------------------|------------------|------------------------------------------------------------------------|
+| `Retain(handle)`  | `Void(Object)`   | Increment a live runtime object or string handle's reference count      |
+| `Release(handle)` | `Integer(Object)`| Decrement a live runtime handle; returns remaining references           |
+
+### Notes
+
+- `Release()` runs managed object finalization when it drops the last reference.
+- Passing `Nothing` is a no-op. Passing a non-runtime or already-freed pointer traps.
+- Reference counts are checked for overflow and underflow in release builds.
+
+---
+
 ## Viper.Memory.GC
 
 Low-level garbage collector diagnostics. Provides visibility into the reference-counting GC's collection activity. Most programs do not need to call these methods directly.
@@ -326,11 +348,14 @@ Low-level garbage collector diagnostics. Provides visibility into the reference-
 | `TrackedCount()`    | `Integer()`  | Return the number of objects currently tracked by the GC             |
 | `TotalCollected()`  | `Integer()`  | Return cumulative count of all objects collected since program start  |
 | `PassCount()`       | `Integer()`  | Return the number of GC passes (sweeps) performed so far             |
+| `SetThreshold(n)`   | `Void(Integer)` | Run automatic cycle collection after every `n` heap allocations; `0` disables |
+| `GetThreshold()`    | `Integer()`  | Return the current automatic collection threshold, or `0` if disabled |
 
 ### Notes
 
 - The Viper runtime uses reference counting with a cycle-collector sweep. `Collect()` forces a sweep to run now rather than waiting for the next automatic trigger.
 - `TrackedCount` is useful for detecting object leaks in long-running programs.
+- `SetThreshold()` treats negative values as `0`.
 - These are diagnostic APIs; calling `Collect()` frequently in hot paths can reduce throughput.
 
 ### Zia Example

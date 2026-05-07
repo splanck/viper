@@ -523,15 +523,27 @@ void rt_heap_retain(void *payload) {
 
     // Debug validation (no-op in release builds)
     RT_HEAP_VALIDATE(hdr);
-    const size_t old = __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED);
-    assert(old > 0);
-    // Overflow guard: enabled in all builds for safety.
-    // Best-effort check (cannot be made perfect without a CAS loop).
-    if (old >= SIZE_MAX - 1) {
-        rt_trap("refcount overflow");
-        return;
+    size_t old = __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED);
+    size_t next = 0;
+    for (;;) {
+        if (old == 0) {
+            rt_trap("rt_heap: retain after release");
+            return;
+        }
+        if (old >= SIZE_MAX - 1) {
+            rt_trap("refcount overflow");
+            return;
+        }
+        next = old + 1;
+        if (__atomic_compare_exchange_n(&hdr->refcnt,
+                                        &old,
+                                        next,
+                                        /*weak=*/0,
+                                        __ATOMIC_RELAXED,
+                                        __ATOMIC_RELAXED)) {
+            break;
+        }
     }
-    const size_t next = __atomic_fetch_add(&hdr->refcnt, 1, __ATOMIC_RELAXED) + 1;
     (void)next;
 #ifdef VIPER_RC_DEBUG
     fprintf(stderr, "rt_heap_retain(%p) => %zu\n", payload, next);
@@ -554,11 +566,28 @@ static size_t rt_heap_release_impl(rt_heap_hdr_t *hdr, void *payload, int free_w
     if (!hdr)
         return 0;
     RT_HEAP_VALIDATE(hdr);
-    const size_t old = __atomic_fetch_sub(&hdr->refcnt, 1, __ATOMIC_RELEASE);
-    if (old == 0)
-        rt_trap("rt_heap: double release (refcount already zero)");
+    size_t old = __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED);
+    size_t next = 0;
+    for (;;) {
+        if (old == 0) {
+            rt_trap("rt_heap: double release (refcount already zero)");
+            return 0;
+        }
+        if (old == SIZE_MAX) {
+            rt_trap("rt_heap: cannot release immortal refcount");
+            return SIZE_MAX;
+        }
+        next = old - 1;
+        if (__atomic_compare_exchange_n(&hdr->refcnt,
+                                        &old,
+                                        next,
+                                        /*weak=*/0,
+                                        __ATOMIC_RELEASE,
+                                        __ATOMIC_RELAXED)) {
+            break;
+        }
+    }
     assert(old > 0);
-    const size_t next = old - 1;
 #ifdef VIPER_RC_DEBUG
     fprintf(stderr, "rt_heap_release(%p) => %zu\n", payload, next);
 #endif
@@ -653,6 +682,15 @@ rt_heap_hdr_t *rt_heap_hdr(void *payload) {
     return payload_to_hdr(payload);
 }
 
+/// @brief Resize an existing heap allocation, updating len, cap, and the registry.
+/// @details Extends or shrinks the allocation by calling @c realloc on the header
+///          block. New elements are zero-filled when @p new_len > old_len. Not
+///          applicable to pool-allocated blocks (returns NULL for those).
+/// @param payload  Existing payload pointer from rt_heap_alloc.
+/// @param elem_size Size in bytes of each logical element.
+/// @param new_len  New logical length.
+/// @param new_cap  New capacity (clamped up to new_len if smaller).
+/// @return Updated payload pointer on success, or NULL on failure.
 void *rt_heap_realloc(void *payload, size_t elem_size, size_t new_len, size_t new_cap) {
     if (!payload)
         return NULL;
@@ -665,6 +703,12 @@ void *rt_heap_realloc(void *payload, size_t elem_size, size_t new_len, size_t ne
     if ((hdr->flags & RT_HEAP_FLAG_POOLED) != 0)
         return NULL;
     if (elem_size == 0 && new_cap > 0)
+        return NULL;
+
+    rt_heap_registry_lock_();
+    int registered = rt_heap_registry_contains_locked_(payload);
+    rt_heap_registry_unlock_();
+    if (!registered)
         return NULL;
 
     size_t cap = new_cap;
@@ -696,8 +740,10 @@ void *rt_heap_realloc(void *payload, size_t elem_size, size_t new_len, size_t ne
     rt_heap_registry_lock_();
     int moved = rt_heap_registry_move_locked_(payload, new_payload);
     rt_heap_registry_unlock_();
-    if (!moved)
-        return NULL;
+    if (!moved) {
+        rt_trap("rt_heap_realloc: registry update failed");
+        return new_payload;
+    }
 
     return new_payload;
 }
@@ -751,6 +797,10 @@ void rt_heap_set_len(void *payload, size_t new_len) {
     rt_heap_hdr_t *hdr = payload_to_hdr(payload);
     if (!hdr)
         return;
+    if (new_len > hdr->cap) {
+        rt_trap("rt_heap_set_len: length exceeds capacity");
+        return;
+    }
     hdr->len = new_len;
 }
 

@@ -1568,6 +1568,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_object_alloc PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_object_alloc test_rt_object_alloc)
 
+    viper_add_test(test_rt_memory_surface ${VIPER_TESTS_DIR}/runtime/RTMemorySurfaceTests.cpp)
+    target_link_libraries(test_rt_memory_surface PRIVATE ${VIPER_RUNTIME_TEST_LIBS} viper_test_common)
+    viper_add_ctest(test_rt_memory_surface test_rt_memory_surface)
+
     viper_add_test(test_rt_oop_dispatch ${VIPER_TESTS_DIR}/runtime/RTOOPDispatchTests.cpp)
     target_link_libraries(test_rt_oop_dispatch PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_oop_dispatch test_rt_oop_dispatch)

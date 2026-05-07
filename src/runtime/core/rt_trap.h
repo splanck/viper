@@ -3,6 +3,8 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
+//===----------------------------------------------------------------------===//
+//
 // File: src/runtime/core/rt_trap.h
 // Purpose: Runtime trap entry points for unrecoverable IL/runtime faults,
 // routing diagnostics through the active VM/runtime trap handler with

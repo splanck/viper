@@ -3,6 +3,8 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
+//===----------------------------------------------------------------------===//
+//
 // File: src/runtime/oop/rt_object.h
 // Purpose: Reference-counted object allocation, retain/release, and System.Object surface providing
 // the foundational object model for all Viper heap objects.
@@ -53,6 +55,12 @@ void rt_obj_retain_maybe(void *p);
 ///          values proven to originate from object allocation helpers.
 void rt_obj_retain_known(void *p);
 
+/// @brief Public Viper.Memory retain wrapper.
+/// @details Validates that @p p is a live runtime heap/string handle before
+///          retaining. Invalid non-null pointers trap instead of relying on
+///          debug-only heap assertions.
+void rt_memory_retain(void *p);
+
 /// @brief Decrement the reference count and report whether the object should be destroyed.
 /// @param p Pointer to a runtime-managed object.
 /// @return 1 when the reference count reaches zero, otherwise 0.
@@ -64,6 +72,13 @@ int32_t rt_obj_release_check0(void *p);
 /// @warning This skips string/raw-pointer discrimination and is only valid for
 ///          values proven to originate from object allocation helpers.
 int32_t rt_obj_release_known_check0(void *p);
+
+/// @brief Public Viper.Memory release wrapper.
+/// @details Releases strings, arrays, and objects through their managed
+///          lifetime paths. Object finalizers run when this drops the last
+///          reference.
+/// @return Remaining reference count, or 0 when the value was destroyed.
+int64_t rt_memory_release(void *p);
 
 /// @brief Release storage for a runtime-managed object without modifying its reference count.
 /// @param p Pointer to a runtime-managed object to free; must not be NULL.
@@ -88,38 +103,35 @@ void rt_obj_set_finalizer(void *p, rt_obj_finalizer_t fn);
 void rt_obj_resurrect(void *p);
 
 // --- System.Object runtime surface ---
-// Instance methods
-/// What: Value equality check between @p self and @p other.
-/// Why:  Implement System.Object.Equals semantics for runtime objects.
-/// How:  Compares identity by default; types may override for value semantics.
+
+/// @brief Value equality check between @p self and @p other.
+/// @details Compares identity by default; types may override for value semantics.
 int64_t rt_obj_equals(void *self, void *other);
 
-/// What: Compute a hash code for @p self.
-/// Why:  Support hashed collections and equality-based lookups.
-/// How:  Uses identity or type-specific hashing where available.
+/// @brief Compute a hash code for @p self.
+/// @details Uses identity or type-specific hashing where available.
 int64_t rt_obj_get_hash_code(void *self);
 
 struct rt_string_impl; // fwd decl is provided in rt_string.h; include where needed
 
-/// What: Convert @p self to a runtime string.
-/// Why:  Provide a textual representation for diagnostics and printing.
-/// How:  Uses type-specific ToString or a default fallback.
+/// @brief Convert @p self to a runtime string.
+/// @details Uses type-specific ToString or a default qualified-name fallback.
 struct rt_string_impl *rt_obj_to_string(void *self);
 
-// Static method: ReferenceEquals(a,b)
-/// What: Identity equality check for two object references.
-/// Why:  Expose reference equality independent of Equals overrides.
-/// How:  Returns 1 when pointers are identical, 0 otherwise.
+/// @brief Identity equality check for two object references.
+/// @details Returns 1 when pointers are identical, 0 otherwise.
 int64_t rt_obj_reference_equals(void *a, void *b);
 
 // --- Object Introspection ---
-/// What: Get the qualified type name of an object.
+
+/// @brief Get the fully-qualified type name of an object.
 struct rt_string_impl *rt_obj_type_name(void *self);
 
-/// What: Get the numeric type ID of an object.
+/// @brief Get the numeric type ID of an object.
 int64_t rt_obj_type_id(void *self);
 
-/// What: Check if an object reference is null.
+/// @brief Check if an object reference is null.
+/// @return 1 when @p self is NULL, 0 otherwise.
 int64_t rt_obj_is_null(void *self);
 
 // --- Weak Reference Support ---

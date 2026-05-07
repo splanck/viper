@@ -45,6 +45,7 @@
 #include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_threads.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -110,6 +111,7 @@ static struct {
 
     int64_t total_collected;
     int64_t pass_count;
+    int collecting;
 } g_gc;
 
 /// GC lock — initialized once and kept alive for the process lifetime.
@@ -150,6 +152,7 @@ static int gc_atomic_cas_i64(int64_t *ptr, int64_t *expected, int64_t desired) {
 //=============================================================================
 
 #ifdef _WIN32
+/// @brief InitOnce callback that initialises the CRITICAL_SECTION on first use.
 static BOOL CALLBACK gc_lock_init_callback(PINIT_ONCE InitOnce, PVOID Parameter, PVOID *Context) {
     (void)InitOnce;
     (void)Parameter;
@@ -158,19 +161,23 @@ static BOOL CALLBACK gc_lock_init_callback(PINIT_ONCE InitOnce, PVOID Parameter,
     return TRUE;
 }
 
+/// @brief Acquire the GC lock, initialising the CRITICAL_SECTION on first call.
 static void gc_lock(void) {
     InitOnceExecuteOnce(&g_gc_lock_once, gc_lock_init_callback, NULL, NULL);
     EnterCriticalSection(&g_gc_lock_cs);
 }
 
+/// @brief Release the GC lock.
 static void gc_unlock(void) {
     LeaveCriticalSection(&g_gc_lock_cs);
 }
 #else
+/// @brief Acquire the GC mutex (POSIX static initializer — always safe to call).
 static void gc_lock(void) {
     pthread_mutex_lock(&g_gc_lock_mtx);
 }
 
+/// @brief Release the GC mutex.
 static void gc_unlock(void) {
     pthread_mutex_unlock(&g_gc_lock_mtx);
 }
@@ -337,6 +344,7 @@ int64_t rt_gc_tracked_count(void) {
 
 #define WEAK_BUCKET_COUNT 64
 
+/// @brief Lazily allocate the weak-reference bucket table on first use.
 static void ensure_weak_buckets(void) {
     if (g_gc.weak_buckets)
         return;
@@ -346,7 +354,9 @@ static void ensure_weak_buckets(void) {
         rt_trap("gc: memory allocation failed");
 }
 
-static void register_weak_ref(void *target, rt_weakref *ref) {
+/// @brief Add @p ref to the per-target weak-reference chain for @p target.
+/// @return 1 on success, 0 on allocation failure.
+static int register_weak_ref(void *target, rt_weakref *ref) {
     ensure_weak_buckets();
     uint64_t bucket = ptr_hash(target) % (uint64_t)g_gc.weak_bucket_count;
 
@@ -356,7 +366,7 @@ static void register_weak_ref(void *target, rt_weakref *ref) {
         if (wc->target == target) {
             ref->next_for_target = wc->head;
             wc->head = ref;
-            return;
+            return 1;
         }
         wc = wc->next;
     }
@@ -364,36 +374,44 @@ static void register_weak_ref(void *target, rt_weakref *ref) {
     /* Create new chain. */
     weak_chain *new_wc = (weak_chain *)malloc(sizeof(weak_chain));
     if (!new_wc)
-        return;
+        return 0;
     new_wc->target = target;
     new_wc->head = ref;
     new_wc->next = g_gc.weak_buckets[bucket].next;
     g_gc.weak_buckets[bucket].next = new_wc;
+    return 1;
 }
 
+/// @brief Remove @p ref from the per-target weak-reference chain for @p target.
 static void unregister_weak_ref(void *target, rt_weakref *ref) {
     if (!g_gc.weak_buckets || g_gc.weak_bucket_count <= 0)
         return;
     uint64_t bucket = ptr_hash(target) % (uint64_t)g_gc.weak_bucket_count;
-    weak_chain *wc = g_gc.weak_buckets[bucket].next;
+    weak_chain **wc_pp = &g_gc.weak_buckets[bucket].next;
 
-    while (wc) {
+    while (*wc_pp) {
+        weak_chain *wc = *wc_pp;
         if (wc->target == target) {
             rt_weakref **pp = &wc->head;
             while (*pp) {
                 if (*pp == ref) {
                     *pp = ref->next_for_target;
                     ref->next_for_target = NULL;
+                    if (!wc->head) {
+                        *wc_pp = wc->next;
+                        free(wc);
+                    }
                     return;
                 }
                 pp = &(*pp)->next_for_target;
             }
             return;
         }
-        wc = wc->next;
+        wc_pp = &(*wc_pp)->next;
     }
 }
 
+/// @brief Return 1 if @p candidate is a live weak-reference heap object (lock must be held).
 static int gc_is_weakref_handle_unlocked(void *candidate) {
     rt_heap_hdr_t *hdr = NULL;
     if (!candidate || !rt_heap_try_get_header(candidate, &hdr) || !hdr)
@@ -417,8 +435,14 @@ rt_weakref *rt_weakref_new(void *target) {
     gc_lock();
     ref->target = target;
     ref->next_for_target = NULL;
-    if (target)
-        register_weak_ref(target, ref);
+    if (target && !register_weak_ref(target, ref)) {
+        ref->target = NULL;
+        gc_unlock();
+        if (rt_obj_release_check0(ref))
+            rt_obj_free(ref);
+        rt_trap("gc: weak reference allocation failed");
+        return NULL;
+    }
     gc_unlock();
 
     return ref;
@@ -499,8 +523,12 @@ void rt_weakref_reset(rt_weakref *ref, void *target) {
         unregister_weak_ref(ref->target, ref);
     ref->target = target;
     ref->next_for_target = NULL;
-    if (target)
-        register_weak_ref(target, ref);
+    if (target && !register_weak_ref(target, ref)) {
+        ref->target = NULL;
+        gc_unlock();
+        rt_trap("gc: weak reference allocation failed");
+        return;
+    }
     gc_unlock();
 }
 
@@ -545,8 +573,7 @@ void rt_gc_clear_weak_refs(void *target) {
 // Cycle Detection — Trial Deletion Algorithm
 //=============================================================================
 
-/// Visitor that trial-decrements child refcounts.
-/// Called while gc_lock is held for the entire phase.
+/// @brief Visitor that trial-decrements child refcounts (called under gc_lock).
 static void trial_decrement(void *child, void *ctx) {
     (void)ctx;
     if (!child)
@@ -557,8 +584,7 @@ static void trial_decrement(void *child, void *ctx) {
         g_gc.entries[idx].trial_rc--;
 }
 
-/// Visitor that restores trial refcounts (marks reachable children).
-/// Called while gc_lock is held for the entire phase.
+/// @brief Visitor that marks reachable children black and recursively restores their subtrees (called under gc_lock).
 static void trial_restore(void *child, void *ctx) {
     (void)ctx;
     if (!child)
@@ -579,6 +605,35 @@ typedef struct {
     rt_gc_traverse_fn traverse;
 } gc_snap_entry;
 
+/// @brief Zero the refcount of a confirmed-unreachable cycle member and free it.
+/// @details Clears weak refs, fires the finalizer, and calls rt_heap_free_zero_ref.
+/// @return 1 if the object was reclaimed, 0 if it was skipped (immortal or invalid).
+static int gc_reclaim_unreachable(void *obj) {
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header(obj, &hdr) || !hdr)
+        return 0;
+
+    if (__atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) == SIZE_MAX) {
+        rt_trap("gc: cannot collect immortal heap object");
+        return 0;
+    }
+
+    __atomic_store_n(&hdr->refcnt, 0, __ATOMIC_RELEASE);
+
+    if ((rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT) {
+        rt_gc_clear_weak_refs(obj);
+        if (hdr->finalizer) {
+            rt_heap_finalizer_t fin = hdr->finalizer;
+            hdr->finalizer = NULL;
+            fin(obj);
+        }
+        rt_monitor_forget(obj);
+    }
+
+    rt_heap_free_zero_ref(obj);
+    return rt_heap_is_payload(obj) ? 0 : 1;
+}
+
 /// @brief Run one synchronous cycle-collection pass.
 /// @details Implements a four-phase trial-deletion algorithm:
 ///   Phase 1: Initialize trial refcounts from the real heap-header refcount.
@@ -594,11 +649,18 @@ int64_t rt_gc_collect(void) {
 
     gc_lock();
 
+    if (g_gc.collecting) {
+        gc_unlock();
+        return 0;
+    }
+
     if (g_gc.count == 0) {
         g_gc.pass_count++;
         gc_unlock();
         return 0;
     }
+
+    g_gc.collecting = 1;
 
     /* Epoch tagging: every GC_FULL_SCAN_INTERVAL passes, scan ALL objects
        regardless of promotion status to catch new cycles involving
@@ -611,8 +673,12 @@ int64_t rt_gc_collect(void) {
        a full scan pass. */
     int64_t snap_count = 0;
     gc_snap_entry *snapshot = (gc_snap_entry *)malloc((size_t)g_gc.count * sizeof(gc_snap_entry));
-    if (!snapshot)
+    if (!snapshot) {
+        g_gc.collecting = 0;
+        gc_unlock();
         rt_trap("gc: memory allocation failed");
+        return 0;
+    }
 
     for (int64_t i = 0; i < g_gc.capacity; i++) {
         if (!gc_slot_is_live(&g_gc.entries[i]))
@@ -676,16 +742,23 @@ int64_t rt_gc_collect(void) {
             garbage_count++;
     }
 
-    void **garbage = NULL;
+    gc_snap_entry *garbage = NULL;
     if (garbage_count > 0) {
-        garbage = (void **)malloc((size_t)garbage_count * sizeof(void *));
-        if (!garbage)
+        garbage = (gc_snap_entry *)malloc((size_t)garbage_count * sizeof(gc_snap_entry));
+        if (!garbage) {
+            free(snapshot);
+            g_gc.collecting = 0;
+            gc_unlock();
             rt_trap("gc: memory allocation failed");
+            return 0;
+        }
         int64_t gi = 0;
 
         for (int64_t i = 0; i < g_gc.capacity && gi < garbage_count; i++) {
             if (gc_slot_is_live(&g_gc.entries[i]) && g_gc.entries[i].color == 0) {
-                garbage[gi++] = g_gc.entries[i].obj;
+                garbage[gi].obj = g_gc.entries[i].obj;
+                garbage[gi].traverse = g_gc.entries[i].traverse;
+                gi++;
                 /* Tombstone the slot. */
                 g_gc.entries[i].obj = GC_TOMBSTONE;
                 g_gc.entries[i].traverse = NULL;
@@ -694,9 +767,7 @@ int64_t rt_gc_collect(void) {
         }
     }
 
-    g_gc.total_collected += garbage_count;
     g_gc.pass_count++;
-    freed = garbage_count;
 
     gc_unlock();
 
@@ -705,11 +776,21 @@ int64_t rt_gc_collect(void) {
     /* Free garbage objects (outside the lock). */
     if (garbage) {
         for (int64_t i = 0; i < garbage_count; i++) {
-            rt_gc_clear_weak_refs(garbage[i]);
-            rt_obj_free(garbage[i]);
+            int reclaimed = gc_reclaim_unreachable(garbage[i].obj);
+            if (reclaimed) {
+                freed++;
+            } else if (garbage[i].traverse && rt_heap_is_payload(garbage[i].obj)) {
+                rt_gc_track(garbage[i].obj, garbage[i].traverse);
+            }
         }
         free(garbage);
     }
+
+    gc_lock();
+    if (freed > 0)
+        g_gc.total_collected += freed;
+    g_gc.collecting = 0;
+    gc_unlock();
 
     return freed;
 }
@@ -819,6 +900,7 @@ void rt_gc_run_all_finalizers(void) {
     free(snapshot);
 }
 
+/// @brief Free all weak_chain nodes in the bucket array and the array itself.
 static void free_weak_buckets(weak_chain *weak_buckets, int64_t weak_bucket_count) {
     if (!weak_buckets)
         return;
@@ -850,6 +932,7 @@ void rt_gc_shutdown(void) {
     g_gc.capacity = 0;
     g_gc.weak_buckets = NULL;
     g_gc.weak_bucket_count = 0;
+    g_gc.collecting = 0;
 
     /* Reset auto-trigger state. */
     __atomic_store_n(&g_gc_threshold, 0, __ATOMIC_RELAXED);

@@ -339,6 +339,9 @@ int64_t rt_msgbus_total_subscriptions(void *obj) {
     return ((rt_msgbus_impl *)obj)->total_subs;
 }
 
+/// @brief Return a Seq containing the names of all topics that have at least one subscriber.
+/// @param obj MessageBus object pointer; returns an empty Seq if NULL.
+/// @return Seq of rt_string topic names (caller-owned via GC).
 void *rt_msgbus_topics(void *obj) {
     void *seq = rt_seq_new();
     if (!obj)

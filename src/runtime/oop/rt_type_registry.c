@@ -134,6 +134,8 @@ static void tr_wrunlock(RtTypeRegistryState *st) {
 #endif
 }
 
+/// @brief Check whether the registry is sealed and unlock + trap if so (called under write lock).
+/// @return 1 if sealed (lock released, trap fired), 0 otherwise.
 static int tr_reject_if_sealed_locked(RtTypeRegistryState *st) {
     if (st && __atomic_load_n(&st->sealed, __ATOMIC_ACQUIRE)) {
         tr_wrunlock(st);
@@ -143,6 +145,7 @@ static int tr_reject_if_sealed_locked(RtTypeRegistryState *st) {
     return 0;
 }
 
+/// @brief Free a registry-owned C string that was strdup'd during rs-variant registration.
 static void tr_free_owned_cstr(const char *text) {
     free((void *)(uintptr_t)text);
 }
@@ -210,6 +213,7 @@ static inline RtTypeRegistryState *rt_tr_state(void) {
     return &ctx->type_registry;
 }
 
+/// @brief Access the class-entry array and its len/cap counters from the current context.
 static inline class_entry *get_classes(size_t **plen, size_t **pcap) {
     RtTypeRegistryState *st = rt_tr_state();
     if (!st)
@@ -221,12 +225,14 @@ static inline class_entry *get_classes(size_t **plen, size_t **pcap) {
     return (class_entry *)st->classes;
 }
 
+/// @brief Store a (potentially reallocated) class-entry array back into the current context.
 static inline void set_classes(class_entry *p) {
     RtTypeRegistryState *st = rt_tr_state();
     if (st)
         st->classes = p;
 }
 
+/// @brief Access the interface-entry array and its len/cap counters from the current context.
 static inline iface_entry *get_ifaces(size_t **plen, size_t **pcap) {
     RtTypeRegistryState *st = rt_tr_state();
     if (!st)
@@ -238,12 +244,14 @@ static inline iface_entry *get_ifaces(size_t **plen, size_t **pcap) {
     return (iface_entry *)st->ifaces;
 }
 
+/// @brief Store a (potentially reallocated) interface-entry array back into the current context.
 static inline void set_ifaces(iface_entry *p) {
     RtTypeRegistryState *st = rt_tr_state();
     if (st)
         st->ifaces = p;
 }
 
+/// @brief Access the binding-entry array and its len/cap counters from the current context.
 static inline binding_entry *get_bindings(size_t **plen, size_t **pcap) {
     RtTypeRegistryState *st = rt_tr_state();
     if (!st)
@@ -255,12 +263,15 @@ static inline binding_entry *get_bindings(size_t **plen, size_t **pcap) {
     return (binding_entry *)st->bindings;
 }
 
+/// @brief Store a (potentially reallocated) binding-entry array back into the current context.
 static inline void set_bindings(binding_entry *p) {
     RtTypeRegistryState *st = rt_tr_state();
     if (st)
         st->bindings = p;
 }
 
+/// @brief Grow a dynamic registry array by 2× when capacity is exhausted.
+/// @details Initial capacity is 16; subsequent growth doubles with overflow guards.
 static void ensure_cap(void **buf, size_t *cap, size_t elem_size) {
     if (*cap == 0) {
         *cap = 16;
@@ -293,6 +304,7 @@ static void ensure_cap(void **buf, size_t *cap, size_t elem_size) {
     *cap = new_cap;
 }
 
+/// @brief Linear search the class array for a class with the given type id.
 static const class_entry *find_class_by_type(int type_id) {
     size_t *plen = NULL;
     class_entry *arr = get_classes(&plen, NULL);
@@ -303,6 +315,7 @@ static const class_entry *find_class_by_type(int type_id) {
     return NULL;
 }
 
+/// @brief Find the class_entry whose vtable pointer matches @p vptr.
 static const class_entry *find_class_by_vptr(void **vptr) {
     // Heuristic: vtable pointer equals ci->vtable
     size_t *plen = NULL;
@@ -314,6 +327,7 @@ static const class_entry *find_class_by_vptr(void **vptr) {
     return NULL;
 }
 
+/// @brief Linear search the interface array for an interface with the given id.
 static const iface_entry *find_iface(int iface_id) {
     size_t *plen = NULL;
     iface_entry *arr = get_ifaces(&plen, NULL);
@@ -324,6 +338,7 @@ static const iface_entry *find_iface(int iface_id) {
     return NULL;
 }
 
+/// @brief Find the itable array for a (type_id, iface_id) binding pair, or NULL if unbound.
 static void **find_binding(int type_id, int iface_id) {
     size_t *plen = NULL;
     binding_entry *arr = get_bindings(&plen, NULL);
@@ -334,6 +349,9 @@ static void **find_binding(int type_id, int iface_id) {
     return NULL;
 }
 
+/// @brief Append a class descriptor to the registry's class array (caller holds write lock).
+/// @param owned_ci    Non-zero if the registry should free @p ci on cleanup.
+/// @param owned_qname Non-zero if the registry should free ci->qname on cleanup.
 static void rt_register_class_entry(const rt_class_info *ci, int owned_ci, int owned_qname) {
     if (!ci)
         return;

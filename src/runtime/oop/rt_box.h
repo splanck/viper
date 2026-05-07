@@ -3,6 +3,8 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
+//===----------------------------------------------------------------------===//
+//
 // File: src/runtime/oop/rt_box.h
 // Purpose: Boxing and unboxing primitives for storing primitive types (i64, f64, i1, str) in
 // heap-allocated objects for use in generic collections.
@@ -29,7 +31,7 @@
 extern "C" {
 #endif
 
-/// Type tags for boxed values
+/// @brief Type tags discriminating boxed primitive values.
 typedef enum rt_box_type {
     RT_BOX_I64 = 0,
     RT_BOX_F64 = 1,

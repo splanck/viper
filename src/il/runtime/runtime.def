@@ -414,8 +414,8 @@ RT_FUNC(WeakMapCompact, rt_weakmap_compact, "Viper.Collections.WeakMap.Compact",
 // MEMORY - Reference Counting
 //=============================================================================
 
-RT_FUNC(HeapRetain,       rt_heap_retain,         "Viper.Memory.Retain",           "void(obj)")
-RT_FUNC(HeapRelease,      rt_heap_release,        "Viper.Memory.Release",          "i64(obj)")
+RT_FUNC(HeapRetain,       rt_memory_retain,       "Viper.Memory.Retain",           "void(obj)")
+RT_FUNC(HeapRelease,      rt_memory_release,      "Viper.Memory.Release",          "i64(obj)")
 // NOTE: rt_str_release_maybe is already registered in RuntimeSignatures.cpp
 // under its C name. Use "rt_str_release_maybe" directly as the callee.
 

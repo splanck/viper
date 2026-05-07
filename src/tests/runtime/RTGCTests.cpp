@@ -12,6 +12,7 @@
 
 extern "C" {
 #include "rt_gc.h"
+#include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -45,6 +46,8 @@ struct test_node {
     void *child; // Strong reference to another node (or NULL).
 };
 
+static int g_cycle_finalizer_count = 0;
+
 /// Traverse function for test_node: visits the child pointer.
 extern "C" {
 static void test_node_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
@@ -61,9 +64,21 @@ static void *make_node() {
     return obj;
 }
 
+static void set_child_retained(void *obj, void *child) {
+    struct test_node *node = (struct test_node *)obj;
+    if (child)
+        rt_obj_retain_maybe(child);
+    node->child = child;
+}
+
 static void release_obj(void *obj) {
     if (rt_obj_release_check0(obj))
         rt_obj_free(obj);
+}
+
+static void count_cycle_finalizer(void *obj) {
+    (void)obj;
+    g_cycle_finalizer_count++;
 }
 
 //=============================================================================
@@ -403,6 +418,40 @@ static void test_weak_field_zeroed_by_collect() {
     rt_weak_store(&slot, NULL);
 }
 
+static void test_collect_reclaims_cycle_storage_and_finalizers() {
+    g_cycle_finalizer_count = 0;
+
+    void *a = make_node();
+    void *b = make_node();
+    rt_obj_set_finalizer(a, count_cycle_finalizer);
+    rt_obj_set_finalizer(b, count_cycle_finalizer);
+
+    set_child_retained(a, b);
+    set_child_retained(b, a);
+
+    rt_weakref *ref_a = rt_weakref_new(a);
+    rt_weakref *ref_b = rt_weakref_new(b);
+    rt_gc_track(a, test_node_traverse);
+    rt_gc_track(b, test_node_traverse);
+
+    ASSERT(rt_obj_release_check0(a) == 0, "drop external a leaves cycle ref");
+    ASSERT(rt_obj_release_check0(b) == 0, "drop external b leaves cycle ref");
+
+    int64_t initial_collected = rt_gc_total_collected();
+    int64_t freed = rt_gc_collect();
+
+    ASSERT(freed == 2, "retained cycle storage reclaimed");
+    ASSERT(rt_gc_total_collected() == initial_collected + 2, "total_collected counts actual frees");
+    ASSERT(g_cycle_finalizer_count == 2, "cycle finalizers run");
+    ASSERT(rt_heap_is_payload(a) == 0, "a removed from heap registry");
+    ASSERT(rt_heap_is_payload(b) == 0, "b removed from heap registry");
+    ASSERT(rt_weakref_get(ref_a) == NULL, "weak ref a zeroed by reclaim");
+    ASSERT(rt_weakref_get(ref_b) == NULL, "weak ref b zeroed by reclaim");
+
+    rt_weakref_free(ref_a);
+    rt_weakref_free(ref_b);
+}
+
 //=============================================================================
 // Statistics Tests
 //=============================================================================
@@ -416,6 +465,15 @@ static void test_statistics() {
 
     ASSERT(rt_gc_pass_count() > initial_passes, "pass count increases");
     ASSERT(rt_gc_total_collected() >= initial_collected, "total_collected >= initial");
+}
+
+static void test_threshold_get_set_contract() {
+    rt_gc_set_threshold(-100);
+    ASSERT(rt_gc_get_threshold() == 0, "negative threshold disables auto GC");
+    rt_gc_set_threshold(13);
+    ASSERT(rt_gc_get_threshold() == 13, "positive threshold is reported");
+    rt_gc_set_threshold(0);
+    ASSERT(rt_gc_get_threshold() == 0, "zero threshold disables auto GC");
 }
 
 //=============================================================================
@@ -445,9 +503,11 @@ int main() {
     test_collect_preserves_cycle_with_extra_external_ref();
     test_weakref_cleared_by_collect();
     test_weak_field_zeroed_by_collect();
+    test_collect_reclaims_cycle_storage_and_finalizers();
 
     // Statistics
     test_statistics();
+    test_threshold_get_set_contract();
 
     printf("GC tests: %d/%d passed\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

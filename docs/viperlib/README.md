@@ -352,7 +352,8 @@ implemented in C and exposed through the IL runtime system.
 
 | Class                                           | Type   | Description                                     |
 |-------------------------------------------------|--------|-------------------------------------------------|
-| [`GC`](core.md#vipermemory)                     | Static | Garbage collector controls (hint, collect, stat)|
+| [`Memory`](system.md#vipermemory)              | Static | Explicit retain/release for runtime handles      |
+| [`GC`](system.md#vipermemory-gc)               | Static | Garbage collector controls and statistics        |
 
 ### Viper.Time
 

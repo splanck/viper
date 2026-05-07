@@ -91,6 +91,14 @@ static rt_string rt_obj_type_name_from_class_info(const rt_class_info *ci) {
 /// @param byte_size Requested payload size in bytes.
 /// @return Pointer to zeroed storage when successful; otherwise @c NULL.
 void *rt_obj_new_i64(int64_t class_id, int64_t byte_size) {
+    if (byte_size < 0) {
+        rt_trap("rt_obj_new_i64: negative object size");
+        return NULL;
+    }
+    if ((uint64_t)byte_size > SIZE_MAX) {
+        rt_trap("rt_obj_new_i64: object size too large");
+        return NULL;
+    }
     void *payload = alloc_payload((size_t)byte_size);
     if (!payload) {
         char buf[128];
@@ -212,6 +220,22 @@ void rt_obj_retain_known(void *p) {
     rt_heap_retain(p);
 }
 
+/// @brief Public Viper.Memory retain entry point with runtime handle validation.
+void rt_memory_retain(void *p) {
+    if (!p)
+        return;
+    if (rt_string_is_handle(p)) {
+        rt_str_retain_maybe((rt_string)p);
+        return;
+    }
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header(p, &hdr) || !hdr) {
+        rt_trap("Viper.Memory.Retain: invalid or freed heap object");
+        return;
+    }
+    rt_heap_retain(p);
+}
+
 /// @brief Decrement the reference count and report last-user semantics.
 /// @details Mirrors BASIC string behaviour by returning non-zero when the
 ///          underlying retain count reaches zero.  Null payloads are ignored to
@@ -239,6 +263,39 @@ int32_t rt_obj_release_known_check0(void *p) {
     return (int32_t)(rt_heap_release_deferred(p) == 0);
 }
 
+/// @brief Convert a size_t reference count to int64_t, trapping on overflow.
+static int64_t rt_memory_refcount_to_i64(size_t refcount) {
+    if (refcount > (size_t)INT64_MAX) {
+        rt_trap("Viper.Memory.Release: refcount exceeds Integer range");
+        return INT64_MAX;
+    }
+    return (int64_t)refcount;
+}
+
+/// @brief Public Viper.Memory release entry point with managed object finalization.
+int64_t rt_memory_release(void *p) {
+    if (!p)
+        return 0;
+    if (rt_string_is_handle(p)) {
+        rt_str_release_maybe((rt_string)p);
+        return 0;
+    }
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header(p, &hdr) || !hdr) {
+        rt_trap("Viper.Memory.Release: invalid or freed heap object");
+        return 0;
+    }
+
+    if ((rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT) {
+        size_t next = rt_heap_release_deferred(p);
+        if (next == 0)
+            rt_obj_free(p);
+        return rt_memory_refcount_to_i64(next);
+    }
+
+    return rt_memory_refcount_to_i64(rt_heap_release(p));
+}
+
 /// @brief Compatibility shim matching the string free entry point.
 /// @details Releases storage for objects whose reference count already dropped
 ///          to zero.  The runtime heap performs the actual deallocation once
@@ -256,6 +313,7 @@ void rt_obj_free(void *p) {
     rt_heap_hdr_t *hdr = NULL;
     if (!rt_heap_try_get_header(p, &hdr))
         return;
+    rt_gc_untrack(p);
     if (hdr && (rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT &&
         __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) == 0) {
         rt_gc_clear_weak_refs(p);

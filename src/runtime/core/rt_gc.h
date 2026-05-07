@@ -3,6 +3,8 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
+//===----------------------------------------------------------------------===//
+//
 // File: src/runtime/core/rt_gc.h
 // Purpose: Cycle-detecting garbage collector supplementing atomic reference counting, using a
 // trial-deletion mark-sweep algorithm to find and break unreachable reference cycles among tracked
@@ -11,13 +13,14 @@
 // Key invariants:
 //   - Only objects with RT_MAGIC headers may be registered via rt_gc_track.
 //   - The collector does not move objects; heap addresses remain stable.
-//   - rt_gc_collect is synchronous and must not be called from within a finalizer.
+//   - rt_gc_collect is synchronous; reentrant calls during an active pass return 0.
 //   - Weak references registered via rt_weakref_new are zeroed when their target is freed.
 //
 // Ownership/Lifetime:
 //   - Tracked objects are owned by their reference counts; the GC only breaks cycles.
 //   - rt_gc_track retains a weak internal reference; it does not increment the object's refcount.
-//   - Caller must call rt_gc_untrack before manually freeing a tracked object.
+//   - rt_obj_free untracks automatically; callers may still untrack explicitly
+//     when removing an object from cycle detection before it becomes unreachable.
 //
 // Links: src/runtime/core/rt_gc.c (implementation), src/runtime/oop/rt_object.h
 //
@@ -30,9 +33,12 @@
 extern "C" {
 #endif
 
-/// Callback that enumerates every strong reference held by @p obj.
-/// For each reference, the callback must call @p visitor(child, ctx).
+/// @brief Callback that enumerates every strong reference held by @p obj.
+/// @details For each reference, the callback must call @p visitor(child, ctx).
 typedef void (*rt_gc_visitor_t)(void *child, void *ctx);
+/// @brief Traversal function registered per tracked object type.
+/// @details Called during a collection pass to enumerate all strong child
+///          references so the collector can adjust trial reference counts.
 typedef void (*rt_gc_traverse_fn)(void *obj, rt_gc_visitor_t visitor, void *ctx);
 
 //=============================================================================
@@ -71,7 +77,7 @@ int64_t rt_gc_tracked_count(void);
 // Zeroing Weak References
 //=============================================================================
 
-/// Opaque weak reference handle.
+/// @brief Opaque weak reference handle returned by rt_weakref_new().
 typedef struct rt_weakref rt_weakref;
 
 /// @brief Create a zeroing weak reference to a target object.

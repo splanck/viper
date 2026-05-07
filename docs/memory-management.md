@@ -109,10 +109,12 @@ typedef struct rt_heap_hdr {
 
 | Function | Behaviour |
 |----------|-----------|
-| `rt_heap_retain(payload)` | Atomic increment. No-op for NULL. Traps on overflow (`SIZE_MAX - 1`). |
-| `rt_heap_release(payload)` | Atomic decrement. Frees (pool or system) when count reaches zero. |
+| `rt_heap_retain(payload)` | CAS-based atomic increment. No-op for NULL. Traps on zero/overflow (`SIZE_MAX - 1`). |
+| `rt_heap_release(payload)` | CAS-based atomic decrement. Frees (pool or system) when count reaches zero; double release traps without underflow. |
 | `rt_heap_release_deferred(payload)` | Decrement without freeing at zero. Caller must later call `rt_heap_free_zero_ref`. |
 | `rt_heap_free_zero_ref(payload)` | Free only if refcount is already zero. No-op otherwise. |
+| `rt_memory_retain(payload)` | Public `Viper.Memory.Retain` wrapper; validates live runtime handles before retaining. |
+| `rt_memory_release(payload)` | Public `Viper.Memory.Release` wrapper; releases through managed object/string paths and runs finalizers at zero. |
 
 ### Memory Ordering
 
@@ -260,20 +262,22 @@ object by calling `visitor(child, ctx)` for each one.
 
 ### Triggering
 
-By default the collector does not run automatically. It can be triggered explicitly, or by setting an allocation threshold via `rt_gc_set_threshold(n)` (default 0 = disabled). At program shutdown, `rt_gc_run_all_finalizers()` runs a final collection pass.
+By default the collector does not run automatically. It can be triggered explicitly, or by setting an allocation threshold via `rt_gc_set_threshold(n)` (default 0 = disabled; negative values are clamped to 0). At program shutdown, `rt_gc_run_all_finalizers()` runs a final collection pass.
 
 ```c
 int64_t freed = rt_gc_collect();  // Run one collection pass
 rt_gc_set_threshold(1000);        // Auto-collect every 1000 allocations
 ```
 
-Exposed to Viper programs as `Viper.Memory.GC.Collect()`.
+Exposed to Viper programs as `Viper.Memory.GC.Collect()`, `SetThreshold(n)`, and `GetThreshold()`.
 
 ### Thread Safety
 
 The GC state (tracked-object table, weak reference registry) is protected by a
 global mutex (`pthread_mutex_t` on Unix, `CRITICAL_SECTION` on Windows).
-Finalizers run outside the lock to avoid deadlocks.
+Finalizers run outside the lock to avoid deadlocks, and an active collection
+flag makes reentrant `rt_gc_collect()` calls return 0 while a pass is still
+reclaiming objects.
 
 ### Statistics
 
@@ -287,10 +291,10 @@ Finalizers run outside the lock to avoid deadlocks.
 
 - **Linear scan**: `find_entry()` is O(N) over the tracked-object array. Will
   degrade with thousands of tracked objects.
-- **No automatic triggering**: cycles accumulate silently unless the program
-  explicitly calls `GC.Collect()`.
-- **Must not be called from finalizers**: the GC holds the mutex during
-  collection; a finalizer calling `rt_gc_collect()` would deadlock.
+- **No automatic triggering by default**: cycles accumulate silently unless the
+  program calls `GC.Collect()` or enables a positive threshold.
+- **Reentrant collect is ignored**: `rt_gc_collect()` returns 0 if called while
+  a collection pass is already active on the same process.
 - **Synchronous**: stop-the-world; no concurrent or incremental mode.
 
 ---
@@ -326,10 +330,12 @@ protected by the GC mutex.
 rt_obj_set_finalizer(obj, fn);  // Install callback (one per object, replaces previous)
 ```
 
-- Invoked from `rt_obj_free()` when refcount has already reached zero.
+- Invoked from `rt_obj_free()` when refcount has already reached zero, and from
+  cycle collection when a tracked cycle is reclaimed.
 - Only works for `RT_HEAP_OBJECT` kind (not strings or arrays).
 - Runs **before** the heap storage is freed.
-- Must not call `rt_gc_collect()`.
+- Calling `rt_gc_collect()` from a finalizer is safe but returns 0 while another
+  collection pass is already active.
 
 ### Object Resurrection
 
@@ -613,8 +619,8 @@ GC-tracked so the finalizer sweep joins worker threads. See §6 above.
 |-----------|---------|-------|
 | Allocate string | `rt_string_from_bytes(bytes, len)` | refcount=1; pool if ≤512B |
 | Allocate object | `rt_obj_new_i64(class_id, size)` | refcount=1 |
-| Retain | `rt_heap_retain(p)` or `rt_string_ref(s)` | Atomic increment |
-| Release | `rt_heap_release(p)` or `rt_string_unref(s)` | Frees at zero |
+| Retain | `rt_heap_retain(p)`, `rt_memory_retain(p)`, or `rt_string_ref(s)` | Atomic increment |
+| Release | `rt_heap_release(p)`, `rt_memory_release(p)`, or `rt_string_unref(s)` | Frees at zero |
 | Deferred release | `rt_heap_release_deferred(p)` then `rt_heap_free_zero_ref(p)` | Two-step pattern |
 | Set finalizer | `rt_obj_set_finalizer(obj, fn)` | Objects only; one per object |
 | Resurrect | `rt_obj_resurrect(obj)` | Inside finalizer only; 0→1 |

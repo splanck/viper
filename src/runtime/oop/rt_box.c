@@ -40,7 +40,7 @@
 #include <stdio.h>
 #include <string.h>
 
-/// Internal structure for boxed values
+/// @brief Internal payload layout for heap-allocated boxed primitive values.
 typedef struct rt_box {
     int64_t tag;
 
