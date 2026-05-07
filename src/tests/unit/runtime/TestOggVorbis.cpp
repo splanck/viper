@@ -93,6 +93,13 @@ static void append_i64_le(std::vector<uint8_t> &out, int64_t v) {
         out.push_back((uint8_t)((u >> (i * 8)) & 0xFF));
 }
 
+static uint32_t ogg_crc_update(uint32_t crc, uint8_t byte) {
+    crc ^= (uint32_t)byte << 24;
+    for (int i = 0; i < 8; i++)
+        crc = (crc & 0x80000000u) ? (crc << 1) ^ 0x04C11DB7u : (crc << 1);
+    return crc;
+}
+
 static void append_ogg_page(std::vector<uint8_t> &out,
                             uint8_t header_type,
                             int64_t granule_position,
@@ -100,6 +107,7 @@ static void append_ogg_page(std::vector<uint8_t> &out,
                             uint32_t sequence,
                             const std::vector<uint8_t> &lacing,
                             const std::vector<uint8_t> &body) {
+    const size_t page_start = out.size();
     out.push_back('O');
     out.push_back('g');
     out.push_back('g');
@@ -109,10 +117,18 @@ static void append_ogg_page(std::vector<uint8_t> &out,
     append_i64_le(out, granule_position);
     append_u32_le(out, serial);
     append_u32_le(out, sequence);
-    append_u32_le(out, 0); // checksum intentionally left zero; reader is permissive
+    append_u32_le(out, 0);
     out.push_back((uint8_t)lacing.size());
     out.insert(out.end(), lacing.begin(), lacing.end());
     out.insert(out.end(), body.begin(), body.end());
+
+    uint32_t crc = 0;
+    for (size_t i = page_start; i < out.size(); i++)
+        crc = ogg_crc_update(crc, out[i]);
+    out[page_start + 22] = (uint8_t)(crc & 0xFF);
+    out[page_start + 23] = (uint8_t)((crc >> 8) & 0xFF);
+    out[page_start + 24] = (uint8_t)((crc >> 16) & 0xFF);
+    out[page_start + 25] = (uint8_t)((crc >> 24) & 0xFF);
 }
 
 static void append_single_packet_page(std::vector<uint8_t> &out,

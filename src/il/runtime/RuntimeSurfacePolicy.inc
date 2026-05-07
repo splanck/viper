@@ -94,6 +94,7 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_music_pause_related")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_music_resume_related")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_music_stop_related")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_music_set_crossfade_pair_volume")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_audio3d_register_voice")
 
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_lazy_flat_map")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_lazy_map")
