@@ -2,9 +2,7 @@
 
 > **Development Status:** Pre-Alpha. Viper is under active development and not ready for production use.
 
-## Version 0.2.5 — Pre-Alpha (DRAFT — unreleased)
-
-<!-- DRAFT: release date TBD. v0.2.4 was cut on 2026-04-13. -->
+## Version 0.2.5 — Pre-Alpha (2026-05-06)
 
 ### What this release is about
 
@@ -237,5 +235,3 @@ Six-pass hardening of the `viper install-package` and `viper package` subsystems
 ### Commits
 
 See `git log a91d388db..HEAD -- .` for the full 140-commit history.
-
-<!-- END DRAFT -->

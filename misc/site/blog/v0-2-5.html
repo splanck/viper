@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>v0.2.5: Runtime Hardening, HTTP/2, Localization, Compiler Throughput — Viper</title>
+  <meta name="description" content="Viper v0.2.5 release notes: runtime hardening across all subsystems, ~40 new 2D graphics classes, full 3D asset pipeline, TLS HTTP/2 networking, Viper.Localization, structured diagnostics, parallel optimizer, zero-copy codegen.">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="icon" href="../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../docs/" class="active">Docs</a>
+    <a href="../learn/">Learn</a>
+    <a href="../showcase/">Showcase</a>
+    <a href="../performance/">Performance</a>
+    <a href="../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../">Home</a> / <a href="./">Blog</a> / <span>v0.2.5</span>
+</div>
+
+<div class="section">
+  <div class="prose" style="max-width: 800px; margin: 0 auto;">
+    <h1>v0.2.5: Runtime Hardening, HTTP/2, Localization, Compiler Throughput</h1>
+    <p><span class="version-badge">v0.2.5</span> <span class="release-date">May 2026</span></p>
+
+    <p>A hardening-and-polish cycle with several notable new capabilities. Integer-overflow, handle-validation, and lifetime-correctness passes were applied across every runtime subsystem. The network stack became a full platform with TLS-backed servers and from-scratch HTTP/2. A new eleven-class <code>Viper.Localization.*</code> namespace was added with zero external dependencies. Compiler throughput improved significantly through parallelism and a zero-copy pipeline. The full release notes are at <code>docs/release_notes/Viper_Release_Notes_0_2_5.md</code>; this is the highlight reel.</p>
+
+    <h2>Runtime hardening</h2>
+    <ul>
+      <li><strong>Integer-overflow guards</strong> &mdash; Overflow-checked arithmetic, size-limit validation, and handle-type guards applied across graphics, text, threads, audio, I/O, and network subsystems.</li>
+      <li><strong>Lifetime correctness</strong> &mdash; Timeout clamping, use-after-free fixes in audio playlist and crossfade paths, OGG page CRC-32 re-enabled, Ogg resync uses sliding-window scan.</li>
+      <li><strong>Audio fixes</strong> &mdash; Master volume persisted before lazy backend init so settings round-trip without an audio device; <code>rt_music_seek</code> clamps to track duration; WAV header writer uses explicit LE helpers eliminating strict-aliasing UB; note sort is now stable.</li>
+      <li><strong>IO hardening</strong> &mdash; IO handle type-safety system, <code>File.MoveOver</code>, directory/path hardening, <code>LineReader</code> EOF fix, <code>SaveData</code> UTF-8 validation.</li>
+    </ul>
+
+    <h2>2D graphics class expansion</h2>
+    <ul>
+      <li><strong>~40 new classes</strong> on top of <code>Pixels</code> / <code>Canvas</code>: offscreen surfaces, materials, shaders, post-effects, viewport scaling, tile layers, path drawing, text layout, nine-slice UI, animation, and a render-pass graph.</li>
+      <li><strong>Wrong-class handle contracts</strong> &mdash; Every 2D class validates its handle type and returns a safe default rather than crashing on a misuse.</li>
+    </ul>
+
+    <h2>Full 3D asset pipeline</h2>
+    <ul>
+      <li><strong>glTF and FBX</strong> import real skeletons, per-vertex skinning, and animations including sparse-accessor morph deltas and the full KHR extension suite.</li>
+      <li><strong>STL loader hardening</strong> &mdash; NaN/inf vertices and out-of-range floats rejected in both binary and ASCII formats.</li>
+      <li><strong>Handle-safety contracts</strong> &mdash; Every major 3D class (Mesh3D, Scene3D, Canvas3D, Camera3D, Collider3D, Light3D, Material3D, Particles3D, Physics3D, Water3D) tested for NULL and wrong-type handle safety.</li>
+    </ul>
+
+    <h2>Network stack &mdash; now a platform</h2>
+    <ul>
+      <li><strong>TLS servers</strong> &mdash; <code>HttpsServer</code> and <code>WssServer</code> backed by the in-tree TLS layer.</li>
+      <li><strong>From-scratch HTTP/2</strong> &mdash; HPACK header compression, stream multiplexing, flow control, server push.</li>
+      <li><strong>Native RSA and X.509</strong> &mdash; In-tree RSA implementation and X.509 certificate validator with no external dependencies.</li>
+      <li><strong>Cookie jar, streaming downloads, connection pooling</strong> &mdash; Full HTTP client feature set.</li>
+    </ul>
+
+    <h2>Viper.Localization.* &mdash; new</h2>
+    <ul>
+      <li><strong>Eleven-class namespace</strong>: locale-aware number, date, time, and list formatting; translation catalogs; CLDR plural selection; text-direction utilities.</li>
+      <li><strong>Zero external dependencies</strong> &mdash; all locale data compiled in-tree.</li>
+    </ul>
+
+    <h2>Structured diagnostics &amp; tooling</h2>
+    <ul>
+      <li><strong>Source-location snippets</strong> with caret underlines in compiler output.</li>
+      <li><strong>JSON diagnostic output</strong> via <code>--diagnostic-format</code>.</li>
+      <li><strong>New CLI flags</strong>: <code>--strict-diagnostics</code>, <code>--pass-stats</code>, <code>--fast-link</code>, <code>--time-compile</code>, <code>--paranoid-verify</code>, <code>--debug-lines</code>/<code>--no-debug-lines</code>.</li>
+      <li><strong>VM step-over/step-out debugger</strong> and typo suggestions on undefined identifiers.</li>
+    </ul>
+
+    <h2>Compiler throughput</h2>
+    <ul>
+      <li><strong>Parallel IL optimizer and codegen</strong> &mdash; Hardware-concurrency thread pool drives both optimization and code generation passes.</li>
+      <li><strong>Zero-copy codegen pipeline</strong> &mdash; Verified IL module passed directly to the backend, eliminating the serialize &rarr; temp-file &rarr; re-parse round-trip.</li>
+      <li><strong>Analytical AArch64 instruction sizing</strong> and bitset-backed liveness for reduced allocator overhead.</li>
+      <li><strong>Fast-link mode</strong> auto-enabled at <code>-O0</code>; <code>viper run</code> defaults to debug profile for quick script invocations.</li>
+    </ul>
+
+    <h2>Packaging &amp; distribution</h2>
+    <ul>
+      <li><strong>Six-pass hardening</strong> of <code>viper install-package</code> and <code>viper package</code>: Windows long-path support, ProgID tagging, PATH deduplication, PE security flags (ASLR/NX/CFG/HEVA), manifest embedding validation, PNG full color-type support, ZIP central-directory cross-check.</li>
+      <li><strong>macOS signed app packaging</strong> with ad-hoc, Developer ID, hardened runtime, notarization, and stapling support.</li>
+      <li><strong>Full /// @brief Doxygen pass</strong> across all 20+ packaging source files.</li>
+    </ul>
+
+    <h2>Platform fixes</h2>
+    <ul>
+      <li><strong>macOS</strong> &mdash; Premultiplied RGBA unpremultiply, stuck-key fix on Cmd+Tab, surrogate-pair text input, long-uptime <code>mach_absolute_time</code> overflow fix.</li>
+      <li><strong>Linux</strong> &mdash; Full ICCCM CLIPBOARD protocol, XDND percent-decoding, XLookupString overflow retry, ConfigureNotify resize bounds validation, extended cursor shape mapping.</li>
+      <li><strong>All platforms</strong> &mdash; <code>vgfx_cls()</code> strict-aliasing UB fix, Cohen-Sutherland pre-clip, Bresenham int64 accumulator, atomic event queue.</li>
+    </ul>
+
+    <h2>By the numbers</h2>
+    <ul>
+      <li><strong>Production SLOC</strong>: ~450K &rarr; ~552K (+102K)</li>
+      <li><strong>Source files</strong>: 2,869 &rarr; 2,996 (+127)</li>
+      <li><strong>Test SLOC</strong>: ~183K &rarr; ~228K (+45K)</li>
+      <li><strong>Commits</strong>: 140 since v0.2.4</li>
+    </ul>
+
+    <h2>Demos shipped</h2>
+    <p>Text-mode baseball franchise simulator; Crackman rewrite; two new 3D demos; Paint gains layers and undo; ViperIDE file-watcher and context-menu fixes; XENOSCAPE boss/player fixes and macOS package; Chess drag-vs-click detection fix; three localization examples; Windows ARM64 builds for all 3D demos.</p>
+
+    <p><a href="./">&larr; Back to Blog</a> &middot; <a href="https://github.com/splanck/viper/blob/master/docs/release_notes/Viper_Release_Notes_0_2_5.md">Full release notes on GitHub &rarr;</a></p>
+  </div>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="../features/zero-deps.html">Zero Dependencies</a>
+      <a href="../features/native-targets.html">Native Targets</a>
+      <a href="../features/two-languages.html">Languages</a>
+      <a href="../features/runtime.html">Runtime Library</a>
+      <a href="../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../docs/getting-started.html">Getting Started</a>
+      <a href="../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../docs/runtime/">Runtime API</a>
+      <a href="../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../contributing/">Contributing</a>
+      <a href="../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../main.js"></script>
+</body>
+</html>

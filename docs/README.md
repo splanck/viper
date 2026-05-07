@@ -167,7 +167,9 @@ A comprehensive learning resource organized as a 5-part book covering the entire
 
 ## 📋 Release Notes
 
-- [v0.2.4](release_notes/Viper_Release_Notes_0_2_4.md) *(DRAFT)*
+- [v0.2.6](release_notes/Viper_Release_Notes_0_2_6.md) *(DRAFT)*
+- [v0.2.5](release_notes/Viper_Release_Notes_0_2_5.md)
+- [v0.2.4](release_notes/Viper_Release_Notes_0_2_4.md)
 - [v0.2.3](release_notes/Viper_Release_Notes_0_2_3.md)
 - [v0.2.2](release_notes/Viper_Release_Notes_0_2_2.md)
 - [v0.2.1](release_notes/Viper_Release_Notes_0_2_1.md)

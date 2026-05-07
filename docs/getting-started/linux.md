@@ -108,7 +108,7 @@ After building, confirm Viper is working:
 viper --version
 ```
 
-You should see the version string (e.g., `viper 0.2.4-snapshot`). If the command is not found, ensure `/usr/local/bin` is in your `PATH`:
+You should see the version string (e.g., `viper 0.2.5-dev`). If the command is not found, ensure `/usr/local/bin` is in your `PATH`:
 
 ```bash
 echo $PATH | tr ':' '\n' | grep /usr/local/bin

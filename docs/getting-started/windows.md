@@ -115,7 +115,7 @@ After building, run the Viper binary directly from the build directory:
 .\build\src\tools\viper\Debug\viper.exe --version
 ```
 
-You should see the version string (e.g., `viper 0.2.4-snapshot`).
+You should see the version string (e.g., `viper 0.2.5-dev`).
 
 To make `viper` available from any directory in your current session, add it to your `PATH`:
 

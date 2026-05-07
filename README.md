@@ -19,16 +19,16 @@
 
 ## Download
 
-**Latest Release:** [v0.2.4-dev](https://github.com/splanck/viper/releases/tag/v0.2.4-dev) (4/13/2026)
+**Latest Release:** [v0.2.5-dev](https://github.com/splanck/viper/releases/tag/v0.2.5-dev) (5/6/2026)
 
-- [Source (tar.gz)](https://github.com/splanck/viper/archive/refs/tags/v0.2.4-dev.tar.gz)
-- [Source (zip)](https://github.com/splanck/viper/archive/refs/tags/v0.2.4-dev.zip)
-- [Release Notes](docs/release_notes/Viper_Release_Notes_0_2_4.md)
+- [Source (tar.gz)](https://github.com/splanck/viper/archive/refs/tags/v0.2.5-dev.tar.gz)
+- [Source (zip)](https://github.com/splanck/viper/archive/refs/tags/v0.2.5-dev.zip)
+- [Release Notes](https://github.com/splanck/viper/releases/tag/v0.2.5-dev)
 
-**In development:** v0.2.5 (unreleased) — see the [draft release notes](docs/release_notes/Viper_Release_Notes_0_2_5.md) for what's landed on master since v0.2.4.
+**In development:** v0.2.6 (unreleased) — see the [draft release notes](docs/release_notes/Viper_Release_Notes_0_2_6.md) for what's landed on master since v0.2.5.
 
 > **Working with the latest code:** The `master` branch is a live snapshot of current
-> development and is ahead of v0.2.4. To work with the most recent code:
+> development and is ahead of v0.2.5. To work with the most recent code:
 >
 > ```bash
 > git clone https://github.com/splanck/viper.git
