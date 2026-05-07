@@ -26,11 +26,21 @@
 
 #include "rt_vpa_reader.h"
 
+#include "rt_file_stdio.h"
 #include "rt_object.h"
 
 #include <limits.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if defined(_WIN32)
+#define vpa_fseek(fp, off, whence) _fseeki64((fp), (__int64)(off), (whence))
+#define vpa_ftell(fp) _ftelli64((fp))
+#else
+#define vpa_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
+#define vpa_ftell(fp) ftello((fp))
+#endif
 
 // ─── Runtime decompression ──────────────────────────────────────────────────
 // We use the runtime's Bytes-based inflate and raw extraction helpers.
@@ -168,6 +178,20 @@ static int entry_cmp(const void *a, const void *b) {
     return strcmp(ea->name, eb->name);
 }
 
+static int vpa_file_size(FILE *file, uint64_t *out_size) {
+    if (!file || !out_size)
+        return 0;
+    if (vpa_fseek(file, 0, SEEK_END) != 0)
+        return 0;
+    int64_t pos = (int64_t)vpa_ftell(file);
+    if (pos < 0)
+        return 0;
+    if (vpa_fseek(file, 0, SEEK_SET) != 0)
+        return 0;
+    *out_size = (uint64_t)pos;
+    return 1;
+}
+
 // ─── vpa_open_memory ────────────────────────────────────────────────────────
 
 /// @brief Open a VPA archive from an in-memory buffer (e.g., embedded .rodata blob).
@@ -230,13 +254,62 @@ vpa_archive_t *vpa_open_memory(const uint8_t *data, size_t size) {
 /// @brief Open a VPA archive from a .vpa file on disk.
 /// @details Reads the header and TOC into memory. Entry data is read on demand
 ///          via vpa_read_entry. The file handle is kept open until vpa_close.
-vpa_archive_t *vpa_open_file(const char *path) {
+static vpa_archive_t *vpa_open_file_impl(const char *path, int no_follow) {
     if (!path)
         return NULL;
 
-    FILE *f = fopen(path, "rb");
+#if !defined(_WIN32)
+    FILE *f = NULL;
+    if (no_follow) {
+        struct stat lst;
+        if (lstat(path, &lst) != 0 || !S_ISREG(lst.st_mode))
+            return NULL;
+        int flags = O_RDONLY;
+#ifdef O_CLOEXEC
+        flags |= O_CLOEXEC;
+#endif
+#ifdef O_NOFOLLOW
+        flags |= O_NOFOLLOW;
+#endif
+        int fd = open(path, flags);
+        if (fd < 0)
+            return NULL;
+#if defined(FD_CLOEXEC) && !defined(O_CLOEXEC)
+        int fd_flags = fcntl(fd, F_GETFD);
+        if (fd_flags >= 0)
+            (void)fcntl(fd, F_SETFD, fd_flags | FD_CLOEXEC);
+#endif
+        f = fdopen(fd, "rb");
+        if (!f) {
+            close(fd);
+            return NULL;
+        }
+    } else {
+        f = rt_file_stdio_open_utf8(path, "rb");
+    }
+#else
+    FILE *f = rt_file_stdio_open_utf8(path, "rb");
+#endif
     if (!f)
         return NULL;
+
+#if !defined(_WIN32)
+    if (no_follow) {
+        struct stat st;
+        if (fstat(fileno(f), &st) != 0 || !S_ISREG(st.st_mode)) {
+            fclose(f);
+            return NULL;
+        }
+    }
+#else
+    (void)no_follow;
+#endif
+
+    uint64_t file_size = 0;
+    if (!vpa_file_size(f, &file_size) || file_size < kHeaderSize) {
+        fclose(f);
+        return NULL;
+    }
 
     // Read header
     uint8_t header[32];
@@ -258,7 +331,7 @@ vpa_archive_t *vpa_open_file(const char *path) {
     // Read TOC into memory
     if ((entry_count > 0 && toc_size == 0) || (entry_count == 0 && toc_size != 0) ||
         toc_size > 64 * 1024 * 1024 || toc_size > (uint64_t)SIZE_MAX ||
-        toc_offset > (uint64_t)LONG_MAX) { // 64MB TOC limit
+        toc_offset > file_size || toc_size > file_size - toc_offset) { // 64MB TOC limit
         fclose(f);
         return NULL;
     }
@@ -272,7 +345,7 @@ vpa_archive_t *vpa_open_file(const char *path) {
             return NULL;
         }
 
-        if (fseek(f, (long)toc_offset, SEEK_SET) != 0) {
+        if (vpa_fseek(f, toc_offset, SEEK_SET) != 0) {
             free(toc_buf);
             fclose(f);
             return NULL;
@@ -307,12 +380,21 @@ vpa_archive_t *vpa_open_file(const char *path) {
     archive->blob = NULL;
     archive->blob_size = 0;
     archive->file = f;
+    archive->file_size = file_size;
 
     // Sort entries by name for binary search
     if (archive->count > 1)
         qsort(archive->entries, archive->count, sizeof(vpa_entry_t), entry_cmp);
 
     return archive;
+}
+
+vpa_archive_t *vpa_open_file(const char *path) {
+    return vpa_open_file_impl(path, 0);
+}
+
+vpa_archive_t *vpa_open_file_no_follow(const char *path) {
+    return vpa_open_file_impl(path, 1);
 }
 
 // ─── vpa_find ───────────────────────────────────────────────────────────────
@@ -375,12 +457,12 @@ uint8_t *vpa_read_entry(const vpa_archive_t *archive, const vpa_entry_t *entry, 
             memcpy(stored, archive->blob + entry->data_offset, stored_len);
     } else if (archive->file) {
         // File-backed: seek and read
-        if (entry->data_offset > (uint64_t)LONG_MAX)
+        if (entry->data_offset > archive->file_size || stored_len > archive->file_size - entry->data_offset)
             return NULL;
         stored = (uint8_t *)malloc(stored_len > 0 ? stored_len : 1);
         if (!stored)
             return NULL;
-        if (fseek(archive->file, (long)entry->data_offset, SEEK_SET) != 0) {
+        if (vpa_fseek(archive->file, entry->data_offset, SEEK_SET) != 0) {
             free(stored);
             return NULL;
         }

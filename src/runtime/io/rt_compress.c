@@ -854,7 +854,11 @@ static bool inflate_dynamic(bit_reader_t *br, output_buffer_t *out) {
 /// 256MB decompression-bomb limit. After the final block, any residual
 /// non-zero bits in the byte-aligned tail are a stream corruption —
 /// not just padding — and also trap.
-static void *inflate_data_limited(const uint8_t *data, size_t len, size_t max_output) {
+static void *inflate_data_limited_ex(const uint8_t *data,
+                                     size_t len,
+                                     size_t max_output,
+                                     size_t *consumed_bytes,
+                                     bool allow_trailing) {
     init_fixed_trees();
 
     bit_reader_t br;
@@ -902,17 +906,36 @@ static void *inflate_data_limited(const uint8_t *data, size_t len, size_t max_ou
         }
     }
 
-    if (br.bits_in_buf > 0) {
+    size_t consumed_bits = br.pos * 8u - (size_t)br.bits_in_buf;
+    int byte_padding_bits = (int)((8u - (consumed_bits & 7u)) & 7u);
+    if (byte_padding_bits > 0) {
+        uint32_t padding_mask = (1U << byte_padding_bits) - 1U;
+        if ((br.buffer & padding_mask) != 0) {
+            out_free(&out);
+            rt_trap("Inflate: trailing data after final block");
+        }
+    }
+
+    size_t compressed_bytes = (consumed_bits + 7u) / 8u;
+    if (compressed_bytes > len) {
+        out_free(&out);
+        rt_trap("Inflate: invalid compressed data");
+    }
+    if (consumed_bytes)
+        *consumed_bytes = compressed_bytes;
+
+    if (!allow_trailing && compressed_bytes < len) {
+        out_free(&out);
+        rt_trap("Inflate: trailing data after final block");
+    }
+
+    if (!allow_trailing && br.bits_in_buf > 0) {
         int padding_bits = br.bits_in_buf > 7 ? 7 : br.bits_in_buf;
         uint32_t padding_mask = (1U << padding_bits) - 1U;
         if ((br.buffer & padding_mask) != 0 || br.bits_in_buf > 7) {
             out_free(&out);
             rt_trap("Inflate: trailing data after final block");
         }
-    }
-    if (br.pos < br.len) {
-        out_free(&out);
-        rt_trap("Inflate: trailing data after final block");
     }
 
     // Create output Bytes object
@@ -921,6 +944,10 @@ static void *inflate_data_limited(const uint8_t *data, size_t len, size_t max_ou
     out_free(&out);
 
     return result;
+}
+
+static void *inflate_data_limited(const uint8_t *data, size_t len, size_t max_output) {
+    return inflate_data_limited_ex(data, len, max_output, NULL, false);
 }
 
 static void *inflate_data(const uint8_t *data, size_t len) {
@@ -1344,7 +1371,7 @@ static void *gzip_data(const uint8_t *data, size_t len, int level) {
 /// FHCRC (2-byte CRC16 of the header so far). After the DEFLATE stream
 /// ends, validates the 8-byte trailer (CRC32 of inflated data + ISIZE)
 /// against the actual inflated result. Traps on any mismatch.
-static void *gunzip_member_data(const uint8_t *data, size_t len) {
+static void *gunzip_member_data(const uint8_t *data, size_t len, size_t *member_len) {
     if (len < 18) {
         rt_trap("Gunzip: data too short");
         return NULL;
@@ -1427,16 +1454,25 @@ static void *gunzip_member_data(const uint8_t *data, size_t len) {
         return NULL;
     }
 
-    // Extract trailer
-    size_t trailer_pos = len - 8;
+    size_t deflate_consumed = 0;
+    void *result = inflate_data_limited_ex(data + pos,
+                                           len - pos,
+                                           INFLATE_DEFAULT_MAX_OUTPUT,
+                                           &deflate_consumed,
+                                           true);
+
+    if (deflate_consumed > len - pos || len - pos - deflate_consumed < 8) {
+        compress_release_temp_object(result);
+        rt_trap("Gunzip: truncated trailer");
+        return NULL;
+    }
+
+    // Extract trailer at the byte immediately after the DEFLATE member.
+    size_t trailer_pos = pos + deflate_consumed;
     uint32_t expected_crc = data[trailer_pos] | (data[trailer_pos + 1] << 8) |
                             (data[trailer_pos + 2] << 16) | (data[trailer_pos + 3] << 24);
     uint32_t expected_size = data[trailer_pos + 4] | (data[trailer_pos + 5] << 8) |
                              (data[trailer_pos + 6] << 16) | (data[trailer_pos + 7] << 24);
-
-    // Decompress
-    size_t compressed_len = trailer_pos - pos;
-    void *result = inflate_data(data + pos, compressed_len);
 
     // Verify CRC
     uint32_t actual_crc = rt_crc32_compute(bytes_data(result), bytes_len(result));
@@ -1453,18 +1489,9 @@ static void *gunzip_member_data(const uint8_t *data, size_t len) {
         return NULL;
     }
 
+    if (member_len)
+        *member_len = trailer_pos + 8;
     return result;
-}
-
-static size_t gunzip_next_member_offset(const uint8_t *data, size_t member_start, size_t len) {
-    size_t min_next = member_start + 18;
-    for (size_t i = min_next; i + 10 <= len; ++i) {
-        if (data[i] == 0x1F && data[i + 1] == 0x8B && data[i + 2] == 0x08 &&
-            (data[i + 3] & 0xE0) == 0) {
-            return i;
-        }
-    }
-    return len;
 }
 
 /// @brief Decode a possibly concatenated GZIP stream.
@@ -1480,11 +1507,17 @@ static void *gunzip_data(const uint8_t *data, size_t len) {
 
     size_t pos = 0;
     while (pos < len) {
-        size_t end = gunzip_next_member_offset(data, pos, len);
-        void *member = gunzip_member_data(data + pos, end - pos);
+        size_t member_len = 0;
+        void *member = gunzip_member_data(data + pos, len - pos, &member_len);
+        if (member_len == 0 || member_len > len - pos) {
+            compress_release_temp_object(member);
+            out_free(&out);
+            rt_trap("Gunzip: invalid member length");
+            return NULL;
+        }
         out_append(&out, bytes_data(member), (size_t)bytes_len(member));
         compress_release_temp_object(member);
-        pos = end;
+        pos += member_len;
     }
 
     void *result = rt_bytes_new(out.len);

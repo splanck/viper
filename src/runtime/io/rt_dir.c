@@ -948,7 +948,14 @@ static int rt_dir_remove_all_at(int parent_fd, const char *name) {
     int ok = 1;
     int dir_fd = dirfd(dir);
     struct dirent *ent;
-    while ((ent = readdir(dir)) != NULL) {
+    for (;;) {
+        errno = 0;
+        ent = readdir(dir);
+        if (!ent) {
+            if (errno != 0)
+                ok = 0;
+            break;
+        }
         if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
             continue;
         if (!rt_dir_remove_all_at(dir_fd, ent->d_name))
@@ -1132,7 +1139,14 @@ static int rt_dir_remove_all_cpath(const char *cpath) {
 
     int ok = 1;
     struct dirent *ent;
-    while ((ent = readdir(dir)) != NULL) {
+    for (;;) {
+        errno = 0;
+        ent = readdir(dir);
+        if (!ent) {
+            if (errno != 0)
+                ok = 0;
+            break;
+        }
         if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
             continue;
 
@@ -1313,6 +1327,8 @@ void *rt_dir_list(rt_string path) {
         }
     } while (FindNextFileW(h, &fd));
 
+    if (GetLastError() != ERROR_NO_MORE_FILES)
+        rt_seq_clear(result);
     FindClose(h);
     free(pattern);
 #else
@@ -1322,9 +1338,15 @@ void *rt_dir_list(rt_string path) {
         return result;
 
     int ok = 1;
-    errno = 0;
     struct dirent *ent;
-    while ((ent = readdir(dir)) != NULL) {
+    for (;;) {
+        errno = 0;
+        ent = readdir(dir);
+        if (!ent) {
+            if (errno != 0)
+                ok = 0;
+            break;
+        }
         if (strcmp(ent->d_name, ".") != 0 && strcmp(ent->d_name, "..") != 0) {
             rt_string name = rt_string_from_bytes(ent->d_name, strlen(ent->d_name));
             rt_seq_push(result, (void *)name);
@@ -1332,8 +1354,6 @@ void *rt_dir_list(rt_string path) {
         }
     }
 
-    if (errno != 0)
-        ok = 0;
     if (closedir(dir) != 0)
         ok = 0;
     if (!ok)
@@ -1455,6 +1475,11 @@ void *rt_dir_entries_seq(rt_string path) {
         }
     } while (FindNextFileW(h, &fd));
 
+    if (GetLastError() != ERROR_NO_MORE_FILES) {
+        FindClose(h);
+        free(pattern);
+        rt_dir_trap_io("Viper.IO.Dir.Entries: failed to read directory");
+    }
     FindClose(h);
     free(pattern);
 #else
@@ -1463,9 +1488,17 @@ void *rt_dir_entries_seq(rt_string path) {
     if (!dir)
         rt_dir_trap_io("Viper.IO.Dir.Entries: failed to open directory");
 
-    errno = 0;
     struct dirent *ent;
-    while ((ent = readdir(dir)) != NULL) {
+    for (;;) {
+        errno = 0;
+        ent = readdir(dir);
+        if (!ent) {
+            if (errno != 0) {
+                (void)closedir(dir);
+                rt_dir_trap_io("Viper.IO.Dir.Entries: failed to read directory");
+            }
+            break;
+        }
         if (strcmp(ent->d_name, ".") != 0 && strcmp(ent->d_name, "..") != 0) {
             rt_string name = rt_string_from_bytes(ent->d_name, strlen(ent->d_name));
             rt_seq_push(result, (void *)name);
@@ -1473,10 +1506,6 @@ void *rt_dir_entries_seq(rt_string path) {
         }
     }
 
-    if (errno != 0) {
-        (void)closedir(dir);
-        rt_dir_trap_io("Viper.IO.Dir.Entries: failed to read directory");
-    }
     if (closedir(dir) != 0)
         rt_dir_trap_io("Viper.IO.Dir.Entries: failed to close directory");
 #endif
@@ -1561,6 +1590,8 @@ void *rt_dir_files(rt_string path) {
         }
     } while (FindNextFileW(h, &fd));
 
+    if (GetLastError() != ERROR_NO_MORE_FILES)
+        rt_seq_clear(result);
     FindClose(h);
     free(pattern);
 #else
@@ -1570,9 +1601,15 @@ void *rt_dir_files(rt_string path) {
         return result;
 
     int ok = 1;
-    errno = 0;
     struct dirent *ent;
-    while ((ent = readdir(dir)) != NULL) {
+    for (;;) {
+        errno = 0;
+        ent = readdir(dir);
+        if (!ent) {
+            if (errno != 0)
+                ok = 0;
+            break;
+        }
         if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
             continue;
 
@@ -1595,8 +1632,6 @@ void *rt_dir_files(rt_string path) {
         free(full);
     }
 
-    if (errno != 0)
-        ok = 0;
     if (closedir(dir) != 0)
         ok = 0;
     if (!ok)
@@ -1707,6 +1742,8 @@ void *rt_dir_dirs(rt_string path) {
         }
     } while (FindNextFileW(h, &fd));
 
+    if (GetLastError() != ERROR_NO_MORE_FILES)
+        rt_seq_clear(result);
     FindClose(h);
     free(pattern);
 #else
@@ -1716,9 +1753,15 @@ void *rt_dir_dirs(rt_string path) {
         return result;
 
     int ok = 1;
-    errno = 0;
     struct dirent *ent;
-    while ((ent = readdir(dir)) != NULL) {
+    for (;;) {
+        errno = 0;
+        ent = readdir(dir);
+        if (!ent) {
+            if (errno != 0)
+                ok = 0;
+            break;
+        }
         if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
             continue;
 
@@ -1741,8 +1784,6 @@ void *rt_dir_dirs(rt_string path) {
         free(full);
     }
 
-    if (errno != 0)
-        ok = 0;
     if (closedir(dir) != 0)
         ok = 0;
     if (!ok)

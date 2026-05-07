@@ -35,6 +35,7 @@
 
 #include "rt_bytes.h"
 #include "rt_file_path.h"
+#include "rt_file_stdio.h"
 #include "rt_internal.h"
 #include "rt_io_class_ids.h"
 #include "rt_object.h"
@@ -44,10 +45,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#if defined(_WIN32)
-#include <wchar.h>
-#endif
 
 // IO-C-2/C-3: Use 64-bit seek/tell to support files larger than 2GB.
 #if defined(_WIN32)
@@ -135,36 +132,6 @@ static int binfile_prepare_seek(rt_binfile_impl *bf) {
     return 1;
 }
 
-/// @brief Open a binary file at a UTF-8 path using the given stdio mode string.
-///
-/// On Windows, converts `path` to UTF-16 with `rt_file_path_utf8_to_wide`
-/// and calls `_wfopen`; on POSIX, calls `fopen` directly. Returns NULL
-/// on conversion failure or when the underlying open fails.
-///
-/// @param path UTF-8 file path.
-/// @param mode stdio mode string (e.g., "rb", "wb", "r+b").
-/// @return Opened `FILE *`, or NULL on failure.
-static FILE *rt_binfile_fopen_utf8(const char *path, const char *mode) {
-#if defined(_WIN32)
-    wchar_t *wide_path = rt_file_path_utf8_to_wide(path);
-    if (!wide_path)
-        return NULL;
-    wchar_t wide_mode[8] = {0};
-    size_t mode_len = strlen(mode);
-    if (mode_len >= sizeof(wide_mode) / sizeof(wide_mode[0])) {
-        free(wide_path);
-        return NULL;
-    }
-    for (size_t i = 0; i < mode_len; ++i)
-        wide_mode[i] = (wchar_t)(unsigned char)mode[i];
-    FILE *fp = _wfopen(wide_path, wide_mode);
-    free(wide_path);
-    return fp;
-#else
-    return fopen(path, mode);
-#endif
-}
-
 /// @brief Finalizer callback invoked when a BinFile is garbage collected.
 ///
 /// This function is automatically called by Viper's garbage collector when a
@@ -246,8 +213,10 @@ void *rt_binfile_open(void *path, void *mode) {
 
     const char *path_str = NULL;
     const char *mode_str = rt_string_cstr((rt_string)mode);
+    int64_t mode_len = rt_str_len((rt_string)mode);
 
-    if (!rt_file_path_from_vstr((const ViperString *)path, &path_str) || !path_str || !mode_str) {
+    if (!rt_file_path_from_vstr((const ViperString *)path, &path_str) || !path_str || !mode_str ||
+        mode_len < 0 || (size_t)mode_len != strlen(mode_str)) {
         rt_trap("BinFile.Open: invalid path or mode");
         return NULL;
     }
@@ -268,7 +237,7 @@ void *rt_binfile_open(void *path, void *mode) {
         return NULL;
     }
 
-    FILE *fp = rt_binfile_fopen_utf8(path_str, fmode);
+    FILE *fp = rt_file_stdio_open_utf8(path_str, fmode);
     if (!fp) {
         char buf[512];
         snprintf(
@@ -402,7 +371,7 @@ int64_t rt_binfile_read(void *obj, void *bytes, int64_t offset, int64_t count) {
 
     if (read < (size_t)count && ferror(bf->fp)) {
         rt_trap("BinFile.Read: read failed");
-        return (int64_t)read;
+        return -1;
     }
 
     if (feof(bf->fp))

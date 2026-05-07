@@ -88,6 +88,10 @@
 
 #define ZIP_VERSION_NEEDED 20 // 2.0 for deflate
 #define ZIP_VERSION_MADE 20
+#define ZIP_GP_FLAG_ENCRYPTED 0x0001u
+#define ZIP_GP_FLAG_DATA_DESCRIPTOR 0x0008u
+#define ZIP_GP_FLAG_STRONG_ENCRYPTION 0x0040u
+#define ZIP_EXTRA_ZIP64 0x0001u
 
 //=============================================================================
 // Internal Bytes Access
@@ -847,6 +851,8 @@ typedef struct zip_entry {
     uint32_t compressed_size;   ///< Stored size in the archive (bytes).
     uint32_t uncompressed_size; ///< Original uncompressed size (bytes).
     uint16_t method;            ///< Compression method: 0=stored, 8=DEFLATE.
+    uint16_t flags;             ///< ZIP general-purpose bit flags.
+    uint16_t version_needed;    ///< Minimum extractor version required.
     uint16_t mod_time;          ///< DOS-encoded modification time.
     uint16_t mod_date;          ///< DOS-encoded modification date.
     uint32_t local_offset;      ///< Byte offset of the local file header.
@@ -916,6 +922,21 @@ static inline void write_u32(uint8_t *p, uint32_t v) {
     p[1] = (uint8_t)((v >> 8) & 0xFF);
     p[2] = (uint8_t)((v >> 16) & 0xFF);
     p[3] = (uint8_t)((v >> 24) & 0xFF);
+}
+
+static bool archive_extra_is_malformed_or_zip64(const uint8_t *extra, size_t extra_len) {
+    size_t pos = 0;
+    while (pos + 4 <= extra_len) {
+        uint16_t header_id = read_u16(extra + pos);
+        uint16_t data_size = read_u16(extra + pos + 2);
+        pos += 4;
+        if ((size_t)data_size > extra_len - pos)
+            return true;
+        if (header_id == ZIP_EXTRA_ZIP64)
+            return true;
+        pos += data_size;
+    }
+    return pos != extra_len;
 }
 
 //=============================================================================
@@ -1102,6 +1123,9 @@ static bool parse_central_directory(rt_archive_t *ar) {
     // We don't support multi-disk archives
     if (disk_num != 0 || cd_disk != 0 || disk_entries != total_entries)
         return false;
+    if (disk_entries == UINT16_MAX || total_entries == UINT16_MAX || cd_size == UINT32_MAX ||
+        cd_offset == UINT32_MAX)
+        return false;
 
     // Validate central directory bounds
     if ((size_t)cd_offset > eocd_offset || (size_t)cd_size > eocd_offset - (size_t)cd_offset)
@@ -1145,6 +1169,8 @@ static bool parse_central_directory(rt_archive_t *ar) {
         }
 
         zip_entry_t *e = &entries[parsed];
+        e->version_needed = read_u16(p + 6);
+        e->flags = read_u16(p + 8);
         e->method = read_u16(p + 10);
         e->mod_time = read_u16(p + 12);
         e->mod_date = read_u16(p + 14);
@@ -1152,6 +1178,14 @@ static bool parse_central_directory(rt_archive_t *ar) {
         e->compressed_size = read_u32(p + 20);
         e->uncompressed_size = read_u32(p + 24);
         e->local_offset = read_u32(p + 42);
+        if ((e->flags & (ZIP_GP_FLAG_ENCRYPTED | ZIP_GP_FLAG_DATA_DESCRIPTOR |
+                         ZIP_GP_FLAG_STRONG_ENCRYPTION)) != 0 ||
+            e->version_needed >= 45 || e->compressed_size == UINT32_MAX ||
+            e->uncompressed_size == UINT32_MAX || e->local_offset == UINT32_MAX ||
+            archive_extra_is_malformed_or_zip64(p + ZIP_CENTRAL_HEADER_SIZE + name_len, extra_len)) {
+            archive_free_entry_array(entries, parsed);
+            return false;
+        }
 
         // Copy name
         e->name = (char *)malloc(name_len + 1);
@@ -1227,12 +1261,27 @@ static void *read_entry_data(rt_archive_t *ar, zip_entry_t *e) {
     if (read_u32(local) != ZIP_LOCAL_HEADER_SIG)
         rt_trap("Archive: invalid local header signature");
 
+    uint16_t local_flags = read_u16(local + 6);
+    uint16_t local_method = read_u16(local + 8);
+    uint32_t local_crc = read_u32(local + 14);
+    uint32_t local_compressed_size = read_u32(local + 18);
+    uint32_t local_uncompressed_size = read_u32(local + 22);
     uint16_t name_len = read_u16(local + 26);
     uint16_t extra_len = read_u16(local + 28);
-
     size_t header_total = ZIP_LOCAL_HEADER_SIZE + (size_t)name_len + (size_t)extra_len;
     if (local_offset > ar->data_len || ar->data_len - local_offset < header_total) {
         rt_trap("Archive: corrupt entry data");
+        return NULL;
+    }
+    if (local_flags != e->flags || local_method != e->method ||
+        (local_flags & ZIP_GP_FLAG_DATA_DESCRIPTOR) != 0 ||
+        archive_extra_is_malformed_or_zip64(local + ZIP_LOCAL_HEADER_SIZE + name_len, extra_len)) {
+        rt_trap("Archive: unsupported local header");
+        return NULL;
+    }
+    if (local_crc != e->crc32 || local_compressed_size != e->compressed_size ||
+        local_uncompressed_size != e->uncompressed_size) {
+        rt_trap("Archive: local header metadata mismatch");
         return NULL;
     }
     size_t data_offset = local_offset + header_total;
@@ -1611,9 +1660,9 @@ void *rt_archive_open(rt_string path) {
         rt_trap("Archive: path is not a regular file");
     }
 
-    if (st.st_size < 0) {
+    if (st.st_size < 0 || (uint64_t)st.st_size > (uint64_t)SIZE_MAX) {
         close(fd);
-        rt_trap("Archive: invalid file size");
+        rt_trap("Archive: file too large");
     }
 
     size_t data_len = (size_t)st.st_size;
@@ -1894,6 +1943,7 @@ void *rt_archive_read(void *obj, rt_string name) {
     const char *cname = archive_entry_name_cstr(name);
     if (!cname)
         rt_trap("Archive: NULL entry name");
+    const bool wants_dir = name_ends_with_sep(cname);
 
     char *norm_name = NULL;
     name_result_t norm_res = normalize_name(cname, &norm_name);
@@ -1901,6 +1951,8 @@ void *rt_archive_read(void *obj, rt_string name) {
         rt_trap("Archive: invalid entry name");
     if (norm_res == NAME_OOM)
         rt_trap("Archive: memory allocation failed");
+    if (wants_dir)
+        norm_name = ensure_trailing_slash(norm_name);
 
     zip_entry_t *e = find_entry(ar, norm_name);
     free(norm_name);
@@ -2344,9 +2396,10 @@ void rt_archive_add_file(void *obj, rt_string name, rt_string src_path) {
         rt_trap("Archive: source path is not a regular file");
     }
 
-    if (st.st_size < 0) {
+    if (st.st_size < 0 || (uint64_t)st.st_size > (uint64_t)INT64_MAX ||
+        (uint64_t)st.st_size > (uint64_t)SIZE_MAX) {
         close(fd);
-        rt_trap("Archive: invalid source file size");
+        rt_trap("Archive: source file too large");
     }
 
     void *data = rt_bytes_new((int64_t)st.st_size);

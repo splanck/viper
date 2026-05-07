@@ -64,7 +64,7 @@ Unified stream abstraction providing a common interface over file and memory str
 
 ### Ownership and Closed Streams
 
-`OpenFile`, `OpenMemory`, and `OpenBytes` create streams that own their backing `BinFile` or `MemStream`; `Close()` releases that backing object. `FromBinFile` and `FromMemStream` retain the existing object for the wrapper's lifetime, so the wrapper remains valid even if another owner releases its reference. Closing the wrapper releases the wrapper's retained reference.
+`OpenFile`, `OpenMemory`, and `OpenBytes` create streams that own their backing `BinFile` or `MemStream`; `Close()` releases that backing object. File streams created by `OpenFile` also close the underlying `BinFile`, surfacing delayed flush/close errors instead of leaving the file handle open. `FromBinFile` and `FromMemStream` retain the existing object for the wrapper's lifetime, so the wrapper remains valid even if another owner releases its reference. Closing a `From*` wrapper releases only the wrapper's retained reference; the original owner remains responsible for closing its object.
 
 All operations except `Close()` trap on a null or already-closed stream. `FromBinFile` and `FromMemStream` require an object of the matching runtime class. `Write(bytes)` traps when `bytes` is null, `WriteByte(value)` traps outside `0..255`, and `Read(count)` traps when `count` is negative. Setting `Pos` traps if the underlying file seek fails. This avoids silent reads from or writes to invalid backing objects.
 

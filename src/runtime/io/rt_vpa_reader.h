@@ -51,6 +51,7 @@ typedef struct {
     const uint8_t *blob; ///< Non-NULL for memory-backed (embedded) archives.
     size_t blob_size;    ///< Size of memory blob.
     FILE *file;          ///< Non-NULL for file-backed (mounted) archives.
+    uint64_t file_size;  ///< Size of file-backed archive, 0 for memory-backed.
 } vpa_archive_t;
 
 /// @brief Open a VPA archive from a memory buffer.
@@ -71,6 +72,7 @@ vpa_archive_t *vpa_open_memory(const uint8_t *data, size_t size);
 /// @param path  Path to .vpa file.
 /// @return Parsed archive, or NULL on error.
 vpa_archive_t *vpa_open_file(const char *path);
+vpa_archive_t *vpa_open_file_no_follow(const char *path);
 
 /// @brief Find an entry by name.
 ///

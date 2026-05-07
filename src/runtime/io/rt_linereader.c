@@ -32,6 +32,7 @@
 #include "rt_linereader.h"
 
 #include "rt_file_path.h"
+#include "rt_file_stdio.h"
 #include "rt_internal.h"
 #include "rt_io_class_ids.h"
 #include "rt_object.h"
@@ -41,10 +42,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-
-#if defined(_WIN32)
-#include <wchar.h>
-#endif
 
 // Use 64-bit seek/tell to support files larger than 2 GB on Windows
 // where `long` (and thus ftell/fseek) is only 32 bits even on 64-bit builds.
@@ -69,20 +66,6 @@ static rt_linereader_impl *linereader_require(void *obj, const char *context) {
     if (!obj || rt_obj_class_id(obj) != RT_LINEREADER_CLASS_ID)
         rt_trap(context ? context : "LineReader: invalid reader");
     return (rt_linereader_impl *)obj;
-}
-
-/// @brief Open a text file at UTF-8 path in binary-read mode (platform-aware).
-static FILE *rt_linereader_fopen_utf8(const char *path) {
-#if defined(_WIN32)
-    wchar_t *wide_path = rt_file_path_utf8_to_wide(path);
-    if (!wide_path)
-        return NULL;
-    FILE *fp = _wfopen(wide_path, L"rb");
-    free(wide_path);
-    return fp;
-#else
-    return fopen(path, "rb");
-#endif
 }
 
 /// @brief Finalizer callback invoked when a LineReader is garbage collected.
@@ -171,7 +154,7 @@ void *rt_linereader_open(rt_string path) {
         return NULL;
     }
 
-    FILE *fp = rt_linereader_fopen_utf8(path_str);
+    FILE *fp = rt_file_stdio_open_utf8(path_str, "rb");
     if (!fp) {
         rt_trap("LineReader.Open: failed to open file");
         return NULL;

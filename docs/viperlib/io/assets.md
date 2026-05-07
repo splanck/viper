@@ -89,7 +89,7 @@ When `Assets.Load("sprites/hero.png")` is called:
 3. **Filesystem** (CWD-relative) — development fallback
 
 This means existing code keeps working during development (step 3), and packaged apps find their assets automatically (steps 1-2).
-Loose filesystem fallback is constrained to relative, CWD-based asset names. Absolute names, drive-qualified names, colon-containing names, empty or `.`/`..` path segments, traversal syntax, and embedded NUL bytes are rejected. Loose fallback only opens regular files and refuses symlink targets.
+Loose filesystem fallback is constrained to relative, CWD-based asset names. Absolute names, drive-qualified names, colon-containing names, empty or `.`/`..` path segments, traversal syntax, and embedded NUL bytes are rejected. Loose fallback only opens regular files and refuses symlink targets. Pack auto-discovery also skips symlinks and Windows reparse points rather than following them.
 Mount paths containing embedded NUL bytes are rejected.
 Asset lookup, mounting, unmounting, listing, and lazy initialization are synchronized internally so concurrent readers cannot race with pack mount changes.
 
@@ -97,6 +97,7 @@ Asset lookup, mounting, unmounting, listing, and lazy initialization are synchro
 
 VPA (Viper Pack Archive) is a simple binary container: 32-byte header + data blob + table of contents. The same format is used for both embedded blobs and standalone `.vpa` files.
 The runtime validates TOC bounds, complete TOC parsing, duplicate names, entry data ranges, and compressed/uncompressed size agreement before returning asset bytes.
+Typed asset decoders that need a file path spill bytes through an exclusive private temporary file or directory and clean it up after decoding; temporary handles are non-inheritable/close-on-exec where supported.
 
 ## Example
 

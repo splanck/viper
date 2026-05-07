@@ -626,6 +626,18 @@ static void test_null_handling() {
     rt_binfile_flush(nullptr);
 }
 
+static void test_open_rejects_embedded_nul_mode() {
+    cleanup_test_file();
+
+    rt_string path = make_string(test_file);
+    const char mode_bytes[] = {'r', '\0', 'w'};
+    rt_string mode = rt_string_from_bytes(mode_bytes, sizeof(mode_bytes));
+
+    EXPECT_TRAP(rt_binfile_open(path, mode));
+    rt_string_unref(mode);
+    cleanup_test_file();
+}
+
 int main() {
 #ifdef _WIN32
     // Skip on Windows: test uses /tmp paths not available on Windows
@@ -647,6 +659,7 @@ int main() {
     test_partial_write();
     test_flush();
     test_null_handling();
+    test_open_rejects_embedded_nul_mode();
 
     cleanup_test_file();
     return 0;

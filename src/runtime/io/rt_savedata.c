@@ -194,6 +194,19 @@ static const char *savedata_require_key(rt_string key, size_t *len_out, const ch
     return kcstr;
 }
 
+static int savedata_is_valid_key(rt_string key, size_t *len_out) {
+    const char *kcstr = rt_string_cstr(key);
+    int64_t klen_i64 = key ? rt_str_len(key) : -1;
+    if (!kcstr || klen_i64 <= 0)
+        return 0;
+    size_t klen = (size_t)klen_i64;
+    if (memchr(kcstr, '\0', klen) || !savedata_is_valid_utf8(kcstr, klen))
+        return 0;
+    if (len_out)
+        *len_out = klen;
+    return 1;
+}
+
 static void savedata_require_string_value(rt_string value, const char *context) {
     const char *data = rt_string_cstr(value);
     int64_t len_i64 = value ? rt_str_len(value) : -1;
@@ -201,6 +214,12 @@ static void savedata_require_string_value(rt_string value, const char *context) 
         rt_trap(context);
     if (!savedata_is_valid_utf8(data, (size_t)len_i64))
         rt_trap(context);
+}
+
+static int savedata_is_valid_string_value(rt_string value) {
+    const char *data = rt_string_cstr(value);
+    int64_t len_i64 = value ? rt_str_len(value) : -1;
+    return data && len_i64 >= 0 && savedata_is_valid_utf8(data, (size_t)len_i64);
 }
 
 //=========================================================================
@@ -307,6 +326,105 @@ static void free_all_entries(rt_savedata_impl *sd) {
     sd->entries = NULL;
 }
 
+static int savedata_path_is_abs(const char *path) {
+    if (!path || path[0] == '\0')
+        return 0;
+#ifdef _WIN32
+    if ((path[0] == '\\' && path[1] == '\\') || (path[0] == '/' && path[1] == '/'))
+        return 1;
+    return ((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) &&
+           path[1] == ':' && (path[2] == '\\' || path[2] == '/');
+#else
+    return path[0] == '/';
+#endif
+}
+
+static char *savedata_absolute_dup(const char *path) {
+    if (!path || path[0] == '\0')
+        return NULL;
+#ifdef _WIN32
+    wchar_t *wide = rt_file_path_utf8_to_wide(path);
+    if (!wide)
+        return NULL;
+    DWORD needed = GetFullPathNameW(wide, 0, NULL, NULL);
+    if (needed == 0) {
+        free(wide);
+        return NULL;
+    }
+    wchar_t *full = (wchar_t *)malloc(((size_t)needed + 1) * sizeof(wchar_t));
+    if (!full) {
+        free(wide);
+        return NULL;
+    }
+    DWORD written = GetFullPathNameW(wide, needed + 1, full, NULL);
+    free(wide);
+    if (written == 0 || written > needed) {
+        free(full);
+        return NULL;
+    }
+    rt_string s = rt_file_path_wide_to_string(full);
+    free(full);
+    if (!s)
+        return NULL;
+    const char *cs = rt_string_cstr(s);
+    int64_t len = rt_str_len(s);
+    char *copy = NULL;
+    if (cs && len >= 0) {
+        copy = (char *)malloc((size_t)len + 1);
+        if (copy) {
+            memcpy(copy, cs, (size_t)len);
+            copy[(size_t)len] = '\0';
+        }
+    }
+    rt_string_unref(s);
+    return copy;
+#else
+    if (savedata_path_is_abs(path))
+        return strdup(path);
+    size_t cap = 256;
+    char *cwd = NULL;
+    for (;;) {
+        char *next = (char *)realloc(cwd, cap);
+        if (!next) {
+            free(cwd);
+            return NULL;
+        }
+        cwd = next;
+        if (getcwd(cwd, cap))
+            break;
+        if (errno != ERANGE) {
+            free(cwd);
+            return NULL;
+        }
+        if (cap > SIZE_MAX / 2) {
+            free(cwd);
+            return NULL;
+        }
+        cap *= 2;
+    }
+    size_t cwd_len = strlen(cwd);
+    size_t path_len = strlen(path);
+    int needs_sep = cwd_len > 0 && cwd[cwd_len - 1] != '/';
+    if (cwd_len > SIZE_MAX - path_len - (size_t)needs_sep - 1) {
+        free(cwd);
+        return NULL;
+    }
+    char *out = (char *)malloc(cwd_len + (size_t)needs_sep + path_len + 1);
+    if (!out) {
+        free(cwd);
+        return NULL;
+    }
+    memcpy(out, cwd, cwd_len);
+    size_t pos = cwd_len;
+    if (needs_sep)
+        out[pos++] = '/';
+    memcpy(out + pos, path, path_len);
+    out[pos + path_len] = '\0';
+    free(cwd);
+    return out;
+#endif
+}
+
 /// @brief Resolve the user's home directory as a fresh heap-allocated C string.
 ///
 /// Windows tries `USERPROFILE` first, falls back to concatenating
@@ -316,8 +434,8 @@ static void free_all_entries(rt_savedata_impl *sd) {
 static char *get_home_dir(void) {
 #ifdef _WIN32
     const char *home = getenv("USERPROFILE");
-    if (home)
-        return strdup(home);
+    if (home && *home)
+        return savedata_absolute_dup(home);
     const char *drive = getenv("HOMEDRIVE");
     const char *path = getenv("HOMEPATH");
     if (drive && path) {
@@ -325,17 +443,19 @@ static char *get_home_dir(void) {
         char *buf = (char *)malloc(len);
         if (buf)
             snprintf(buf, len, "%s%s", drive, path);
-        return buf;
+        char *abs = savedata_absolute_dup(buf);
+        free(buf);
+        return abs;
     }
-    return strdup(".");
+    return savedata_absolute_dup(".");
 #else
     const char *home = getenv("HOME");
-    if (home)
-        return strdup(home);
+    if (home && *home)
+        return savedata_absolute_dup(home);
     struct passwd *pw = getpwuid(getuid());
-    if (pw && pw->pw_dir)
-        return strdup(pw->pw_dir);
-    return strdup(".");
+    if (pw && pw->pw_dir && pw->pw_dir[0] != '\0')
+        return savedata_absolute_dup(pw->pw_dir);
+    return savedata_absolute_dup(".");
 #endif
 }
 
@@ -363,13 +483,26 @@ static char *savedata_parent_dir_dup(const char *file_path) {
 }
 
 #ifdef _WIN32
-/// @brief Open a file at a UTF-8 path using `_wfopen` (Windows).
-static FILE *savedata_fopen_utf8(const char *path, const wchar_t *mode) {
+/// @brief Open a file at a UTF-8 path using a non-inheritable CRT fd.
+static FILE *savedata_fopen_utf8(const char *path, const char *mode) {
     wchar_t *wide_path = rt_file_path_utf8_to_wide(path);
     if (!wide_path)
         return NULL;
-    FILE *fp = _wfopen(wide_path, mode);
+    int flags = _O_NOINHERIT | _O_BINARY;
+    if (strcmp(mode, "rb") == 0)
+        flags |= _O_RDONLY;
+    else {
+        free(wide_path);
+        errno = EINVAL;
+        return NULL;
+    }
+    int fd = _wopen(wide_path, flags);
     free(wide_path);
+    if (fd < 0)
+        return NULL;
+    FILE *fp = _fdopen(fd, mode);
+    if (!fp)
+        _close(fd);
     return fp;
 }
 
@@ -612,13 +745,15 @@ static char *compute_save_path(const char *game_name) {
     char *path = NULL;
 
 #ifdef _WIN32
-    const char *appdata = getenv("APPDATA");
+    const char *appdata_env = getenv("APPDATA");
+    char *appdata = (appdata_env && *appdata_env) ? savedata_absolute_dup(appdata_env) : NULL;
     const char *base = appdata ? appdata : home;
     const char *middle = appdata ? "\\Viper\\" : "\\AppData\\Roaming\\Viper\\";
     size_t needed = strlen(base) + strlen(middle) + strlen(game_name) + strlen("\\save.json") + 1;
     path = (char *)malloc(needed);
     if (path)
         snprintf(path, needed, "%s%s%s\\save.json", base, middle, game_name);
+    free(appdata);
 #elif defined(__APPLE__)
     size_t needed = strlen(home) + strlen("/Library/Application Support/Viper/") + strlen(game_name) +
                     strlen("/save.json") + 1;
@@ -633,6 +768,11 @@ static char *compute_save_path(const char *game_name) {
         snprintf(path, needed, "%s/.local/share/viper/%s/save.json", home, game_name);
 #endif
 
+    if (path && !savedata_path_is_abs(path)) {
+        char *abs = savedata_absolute_dup(path);
+        free(path);
+        path = abs;
+    }
     free(home);
     return path;
 }
@@ -1061,12 +1201,7 @@ int8_t rt_savedata_load(void *obj) {
     if (!sd->file_path)
         return 0;
 
-    FILE *fp =
-#ifdef _WIN32
-        savedata_fopen_utf8(sd->file_path, L"rb");
-#else
-        savedata_fopen_utf8(sd->file_path, "rb");
-#endif
+    FILE *fp = savedata_fopen_utf8(sd->file_path, "rb");
     if (!fp) {
         if (errno == ENOENT) {
             free_all_entries(sd);
@@ -1125,6 +1260,11 @@ int8_t rt_savedata_load(void *obj) {
 
     while (tok == TOK_KEY) {
         rt_string key_str = rt_json_stream_string_value(parser);
+        size_t key_len = 0;
+        if (!savedata_is_valid_key(key_str, &key_len)) {
+            rt_string_unref(key_str);
+            goto done;
+        }
         tok = rt_json_stream_next(parser);
         if (tok == TOK_NUMBER) {
             rt_string number_text = rt_json_stream_number_text(parser);
@@ -1141,6 +1281,11 @@ int8_t rt_savedata_load(void *obj) {
             }
         } else if (tok == TOK_STRING) {
             rt_string val_str = rt_json_stream_string_value(parser);
+            if (!savedata_is_valid_string_value(val_str)) {
+                rt_string_unref(val_str);
+                rt_string_unref(key_str);
+                goto done;
+            }
             if (!savedata_set_string_entry(&loaded_entries, key_str, val_str)) {
                 rt_string_unref(val_str);
                 rt_string_unref(key_str);

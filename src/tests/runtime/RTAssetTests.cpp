@@ -119,10 +119,35 @@ static void test_unsafe_asset_names_are_rejected() {
     unlink_p(absolute_path);
 }
 
+#ifndef _WIN32
+static void test_loose_symlink_asset_rejected() {
+    char real_path[512];
+    char link_path[512];
+    snprintf(real_path, sizeof(real_path), "viper_real_asset_%d.bin", (int)GETPID());
+    snprintf(link_path, sizeof(link_path), "viper_link_asset_%d.bin", (int)GETPID());
+
+    unlink_p(real_path);
+    unlink_p(link_path);
+    write_file(real_path, "secret");
+    assert(symlink(real_path, link_path) == 0);
+
+    rt_string name = rt_const_cstr(link_path);
+    assert(rt_asset_exists(name) == 0);
+    assert(rt_asset_size(name) == -1);
+    assert(rt_asset_load_bytes(name) == nullptr);
+
+    unlink_p(link_path);
+    unlink_p(real_path);
+}
+#endif
+
 int main() {
     test_filesystem_zero_byte_asset();
     test_filesystem_directories_are_not_assets();
     test_missing_asset_size_sentinel();
     test_unsafe_asset_names_are_rejected();
+#ifndef _WIN32
+    test_loose_symlink_asset_rejected();
+#endif
     return 0;
 }

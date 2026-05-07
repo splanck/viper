@@ -62,6 +62,7 @@ ZIP archive reader and writer for creating, reading, and extracting ZIP files.
 ### Compression
 
 The archive uses DEFLATE compression (method 8) by default for added entries. Small entries or entries that don't compress well use stored mode (method 0). The implementation reads archives with any combination of stored and deflate-compressed entries. Deflate reads are bounded by each entry's declared uncompressed size, so oversized output traps without relying on the global compression safety cap.
+Directory entries can be queried and read with a trailing slash, returning an empty `Bytes` object for `Read("dir/")`.
 
 ### Disk Write Semantics
 
@@ -229,9 +230,9 @@ Archive operations trap on errors:
 - **Supported formats:** ZIP32 (standard ZIP format)
 - **Compression methods:** Stored (0), Deflate (8)
 - **Features:** Directory entries, file attributes, CRC32 validation
-- **Limitations:** ZIP64 not supported, encryption not supported
+- **Limitations:** ZIP64, encryption, strong encryption, and data-descriptor entries are not supported
 - Oversize entry counts or file sizes that require ZIP64 trap instead of producing a truncated archive
-- Corrupt central directories, local-header offsets, compressed data, CRC mismatches, size mismatches, and internal buffer overflows trap instead of returning partial data
+- Corrupt central directories, unsupported feature flags, ZIP64 marker fields or extra records, local-header offsets, compressed data, CRC mismatches, size mismatches, and internal buffer overflows trap instead of returning partial data
 
 ### Use Cases
 
@@ -374,7 +375,7 @@ Compression traps on:
 - Reserved GZIP flags, malformed optional headers, header CRC mismatches, trailer CRC32 mismatches, or trailer size mismatches
 - Malformed later members in a concatenated GZIP stream
 - Corrupted DEFLATE streams, including truncated Huffman symbols, oversubscribed or missing Huffman codes, malformed dynamic-code repeat runs, and dynamic literal trees without an end-of-block code
-- Trailing non-padding data after the final DEFLATE block
+- Trailing data after the final raw DEFLATE block
 - Inflated output exceeding the runtime safety cap (256 MiB)
 
 ### Implementation Notes

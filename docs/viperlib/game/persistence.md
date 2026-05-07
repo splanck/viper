@@ -29,8 +29,9 @@ last-verified: 2026-05-06
 | Windows  | `%APPDATA%\Viper\<game>\save.json` |
 
 The directory is created automatically on first `Save()`.
+`Path` is always reported as an absolute path, including when platform environment variables contain relative paths.
 `gameName` must be 1-64 bytes and contain only ASCII letters, digits, `_`, or `-`. Embedded NUL bytes, path separators, traversal syntax, and other characters trap before a save path is built.
-Save keys must be non-empty valid UTF-8 strings without embedded NUL bytes. `SetInt` and `SetString` trap on invalid keys or invalid handles instead of silently ignoring writes. `SetString` also requires the stored value to be valid UTF-8, while JSON escaping preserves valid control characters such as embedded `NUL`.
+Save keys must be non-empty valid UTF-8 strings without embedded NUL bytes. `SetInt` and `SetString` trap on invalid keys or invalid handles instead of silently ignoring writes. `SetString` also requires the stored value to be valid UTF-8, while JSON escaping preserves valid control characters such as embedded `NUL`. `Load()` applies the same decoded key and string-value validation to data read from disk.
 
 ---
 

@@ -45,6 +45,7 @@
 
 // Platform-specific includes
 #if defined(__linux__)
+#include <fcntl.h>
 #include <limits.h>
 #include <poll.h>
 #include <sys/inotify.h>
@@ -352,6 +353,26 @@ static void watcher_read_kqueue_events(rt_watcher_impl *w, int timeout_ms) {
 #endif
 
 #if defined(_WIN32)
+static BOOL watcher_start_windows_read(rt_watcher_impl *w) {
+    if (!w || w->dir_handle == INVALID_HANDLE_VALUE)
+        return FALSE;
+    if (w->overlapped.hEvent)
+        ResetEvent(w->overlapped.hEvent);
+    memset(w->buffer, 0, sizeof(w->buffer));
+    BOOL ok = ReadDirectoryChangesW(w->dir_handle,
+                                    w->buffer,
+                                    sizeof(w->buffer),
+                                    FALSE,
+                                    FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME |
+                                        FILE_NOTIFY_CHANGE_ATTRIBUTES | FILE_NOTIFY_CHANGE_SIZE |
+                                        FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_CREATION,
+                                    NULL,
+                                    &w->overlapped,
+                                    NULL);
+    w->pending_read = ok ? TRUE : FALSE;
+    return ok;
+}
+
 /// @brief Process a completed ReadDirectoryChangesW batch and rearm for the next.
 ///
 /// ReadDirectoryChangesW is overlapped/async — `GetOverlappedResult`
@@ -370,13 +391,21 @@ static void watcher_read_windows_events(rt_watcher_impl *w) {
     if (!GetOverlappedResult(w->dir_handle, &w->overlapped, &bytes_returned, FALSE)) {
         if (GetLastError() == ERROR_IO_INCOMPLETE)
             return; // Still pending
+        w->pending_read = FALSE;
+        watcher_queue_event_owned(w, RT_WATCH_EVENT_OVERFLOW, rt_string_ref((rt_string)w->watch_path));
+        if (w->is_watching)
+            (void)watcher_start_windows_read(w);
         return;
     }
 
     w->pending_read = FALSE;
 
-    if (bytes_returned == 0)
+    if (bytes_returned == 0) {
+        watcher_queue_event_owned(w, RT_WATCH_EVENT_OVERFLOW, rt_string_ref((rt_string)w->watch_path));
+        if (w->is_watching)
+            (void)watcher_start_windows_read(w);
         return;
+    }
 
     FILE_NOTIFY_INFORMATION *info = (FILE_NOTIFY_INFORMATION *)w->buffer;
     while (1) {
@@ -419,20 +448,8 @@ static void watcher_read_windows_events(rt_watcher_impl *w) {
         info = (FILE_NOTIFY_INFORMATION *)((char *)info + info->NextEntryOffset);
     }
 
-    // Start another read
-    if (w->overlapped.hEvent)
-        ResetEvent(w->overlapped.hEvent);
-    BOOL ok = ReadDirectoryChangesW(w->dir_handle,
-                                    w->buffer,
-                                    sizeof(w->buffer),
-                                    FALSE,
-                                    FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME |
-                                        FILE_NOTIFY_CHANGE_ATTRIBUTES | FILE_NOTIFY_CHANGE_SIZE |
-                                        FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_CREATION,
-                                    NULL,
-                                    &w->overlapped,
-                                    NULL);
-    w->pending_read = ok ? TRUE : FALSE;
+    if (w->is_watching)
+        (void)watcher_start_windows_read(w);
 }
 #endif
 
@@ -531,9 +548,18 @@ void rt_watcher_start(void *obj) {
         rt_trap("Watcher.Start: already watching");
 
 #if defined(__linux__)
-    w->inotify_fd = inotify_init1(IN_NONBLOCK);
+    w->inotify_fd = inotify_init1(IN_NONBLOCK
+#ifdef IN_CLOEXEC
+                                  | IN_CLOEXEC
+#endif
+    );
     if (w->inotify_fd < 0)
         rt_trap("Watcher.Start: failed to initialize inotify");
+#if defined(FD_CLOEXEC) && !defined(IN_CLOEXEC)
+    int inotify_flags = fcntl(w->inotify_fd, F_GETFD);
+    if (inotify_flags >= 0)
+        (void)fcntl(w->inotify_fd, F_SETFD, inotify_flags | FD_CLOEXEC);
+#endif
 
     uint32_t mask = IN_CREATE | IN_DELETE | IN_MODIFY | IN_MOVED_FROM | IN_MOVED_TO;
     const char *watch_target =
@@ -553,13 +579,27 @@ void rt_watcher_start(void *obj) {
     w->kqueue_fd = kqueue();
     if (w->kqueue_fd < 0)
         rt_trap("Watcher.Start: failed to create kqueue");
+#if defined(FD_CLOEXEC)
+    int kq_flags = fcntl(w->kqueue_fd, F_GETFD);
+    if (kq_flags >= 0)
+        (void)fcntl(w->kqueue_fd, F_SETFD, kq_flags | FD_CLOEXEC);
+#endif
 
-    w->watched_fd = open(cpath, O_EVTONLY);
+    int watch_open_flags = O_EVTONLY;
+#ifdef O_CLOEXEC
+    watch_open_flags |= O_CLOEXEC;
+#endif
+    w->watched_fd = open(cpath, watch_open_flags);
     if (w->watched_fd < 0) {
         close(w->kqueue_fd);
         w->kqueue_fd = -1;
         rt_trap("Watcher.Start: failed to open path for watching");
     }
+#if defined(FD_CLOEXEC) && !defined(O_CLOEXEC)
+    int watched_flags = fcntl(w->watched_fd, F_GETFD);
+    if (watched_flags >= 0)
+        (void)fcntl(w->watched_fd, F_SETFD, watched_flags | FD_CLOEXEC);
+#endif
 
     struct kevent change;
     EV_SET(&change,
@@ -605,23 +645,12 @@ void rt_watcher_start(void *obj) {
         rt_trap("Watcher.Start: failed to create event");
     }
 
-    BOOL ok = ReadDirectoryChangesW(w->dir_handle,
-                                    w->buffer,
-                                    sizeof(w->buffer),
-                                    FALSE,
-                                    FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME |
-                                        FILE_NOTIFY_CHANGE_ATTRIBUTES | FILE_NOTIFY_CHANGE_SIZE |
-                                        FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_CREATION,
-                                    NULL,
-                                    &w->overlapped,
-                                    NULL);
-    if (!ok) {
+    if (!watcher_start_windows_read(w)) {
         CloseHandle(w->overlapped.hEvent);
         CloseHandle(w->dir_handle);
         w->dir_handle = INVALID_HANDLE_VALUE;
         rt_trap("Watcher.Start: failed to start watching");
     }
-    w->pending_read = TRUE;
 
 #else
     rt_trap("Watcher.Start: unsupported platform");

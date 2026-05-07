@@ -32,6 +32,7 @@
 #include "rt_linewriter.h"
 
 #include "rt_file_path.h"
+#include "rt_file_stdio.h"
 #include "rt_internal.h"
 #include "rt_io_class_ids.h"
 #include "rt_object.h"
@@ -41,10 +42,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#ifdef _WIN32
-#include <wchar.h>
-#endif
 
 /// @brief Platform-specific default newline.
 #ifdef _WIN32
@@ -130,27 +127,7 @@ static void *rt_linewriter_open_mode(rt_string path, const char *mode) {
         return NULL;
     }
 
-    FILE *fp = NULL;
-#ifdef _WIN32
-    wchar_t *wide_path = rt_file_path_utf8_to_wide(path_str);
-    wchar_t wide_mode[4] = {0};
-    if (!wide_path) {
-        rt_trap("LineWriter: invalid path");
-        return NULL;
-    }
-    size_t mode_len = strlen(mode);
-    if (mode_len >= sizeof(wide_mode) / sizeof(wide_mode[0])) {
-        free(wide_path);
-        rt_trap("LineWriter: invalid mode");
-        return NULL;
-    }
-    for (size_t i = 0; i < mode_len; i++)
-        wide_mode[i] = (wchar_t)(unsigned char)mode[i];
-    fp = _wfopen(wide_path, wide_mode);
-    free(wide_path);
-#else
-    fp = fopen(path_str, mode);
-#endif
+    FILE *fp = rt_file_stdio_open_utf8(path_str, mode);
     if (!fp) {
         // IO-H-7: include filename and OS error for actionable diagnostics
         char msg[512];

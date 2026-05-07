@@ -26,15 +26,21 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifdef _WIN32
+#ifndef _CRT_RAND_S
+#define _CRT_RAND_S
+#endif
+#endif
+
 #include <stdio.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
 #ifdef _WIN32
-#include <stdint.h>
 #include <io.h>
 #include <process.h>
 #include <wchar.h>
@@ -42,6 +48,7 @@
 #else
 #include <strings.h>
 #include <unistd.h>
+extern char *mkdtemp(char *);
 #endif
 
 #include "rt_file_path.h"
@@ -105,6 +112,55 @@ static void asset_remove_temp_path(const char *path) {
 #endif
 }
 
+static void asset_remove_temp_dir(const char *path) {
+#ifdef _WIN32
+    wchar_t *wide = rt_file_path_utf8_to_wide(path);
+    if (wide) {
+        RemoveDirectoryW(wide);
+        free(wide);
+    }
+#else
+    rmdir(path);
+#endif
+}
+
+static char *asset_join_temp_path(const char *dir, const char *leaf) {
+    if (!dir || !leaf)
+        return NULL;
+    size_t dir_len = strlen(dir);
+    size_t leaf_len = strlen(leaf);
+    int needs_sep = dir_len > 0 && dir[dir_len - 1] != '/' && dir[dir_len - 1] != '\\';
+    if (dir_len > SIZE_MAX - leaf_len - (needs_sep ? 1U : 0U) - 1U)
+        return NULL;
+    char *path = (char *)malloc(dir_len + (needs_sep ? 1U : 0U) + leaf_len + 1U);
+    if (!path)
+        return NULL;
+    memcpy(path, dir, dir_len);
+    size_t pos = dir_len;
+    if (needs_sep)
+#ifdef _WIN32
+        path[pos++] = '\\';
+#else
+        path[pos++] = '/';
+#endif
+    memcpy(path + pos, leaf, leaf_len);
+    path[pos + leaf_len] = '\0';
+    return path;
+}
+
+#ifdef _WIN32
+static uint64_t asset_random_u64(unsigned attempt) {
+    unsigned int lo = 0;
+    unsigned int hi = 0;
+    if (rand_s(&lo) == 0 && rand_s(&hi) == 0)
+        return ((uint64_t)hi << 32) | (uint64_t)lo;
+    LARGE_INTEGER counter;
+    QueryPerformanceCounter(&counter);
+    return (uint64_t)GetCurrentProcessId() ^ (uint64_t)GetTickCount64() ^
+           (uint64_t)counter.QuadPart ^ ((uint64_t)attempt << 48);
+}
+#endif
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 /// @brief Return 1 if `name`'s extension matches `ext` (case-insensitive), 0 otherwise.
@@ -133,6 +189,7 @@ static void *load_via_tempfile(const uint8_t *data,
                                void *(*loader)(void *path_str)) {
     const char *suffix = asset_temp_suffix(ext);
     char *tmppath = NULL;
+    char *tmpdir_path = NULL;
     FILE *f = NULL;
 #ifdef _WIN32
     DWORD need = GetTempPathW(0, NULL);
@@ -152,31 +209,40 @@ static void *load_via_tempfile(const uint8_t *data,
         return NULL;
     HANDLE h = INVALID_HANDLE_VALUE;
     for (int attempt = 0; attempt < 128 && h == INVALID_HANDLE_VALUE; ++attempt) {
-        int needed = snprintf(NULL,
-                              0,
-                              "%sviper_asset_%lu_%llu_%d%s",
-                              tmpdir,
-                              (unsigned long)_getpid(),
-                              (unsigned long long)GetTickCount64(),
-                              attempt,
-                              suffix);
-        if (needed < 0)
-            continue;
-        free(tmppath);
-        tmppath = (char *)malloc((size_t)needed + 1);
-        if (!tmppath)
+        char dir_leaf[64];
+        snprintf(dir_leaf,
+                 sizeof(dir_leaf),
+                 "viper_asset_%016llx_%d",
+                 (unsigned long long)asset_random_u64((unsigned)attempt),
+                 attempt);
+        free(tmpdir_path);
+        tmpdir_path = asset_join_temp_path(tmpdir, dir_leaf);
+        if (!tmpdir_path)
             break;
-        snprintf(tmppath,
-                 (size_t)needed + 1,
-                 "%sviper_asset_%lu_%llu_%d%s",
-                 tmpdir,
-                 (unsigned long)_getpid(),
-                 (unsigned long long)GetTickCount64(),
-                 attempt,
-                 suffix);
-        wchar_t *wide = rt_file_path_utf8_to_wide(tmppath);
-        if (!wide)
+        wchar_t *wide_dir = rt_file_path_utf8_to_wide(tmpdir_path);
+        if (!wide_dir)
             continue;
+        BOOL made_dir = CreateDirectoryW(wide_dir, NULL);
+        DWORD dir_err = made_dir ? ERROR_SUCCESS : GetLastError();
+        free(wide_dir);
+        if (!made_dir) {
+            if (dir_err == ERROR_ALREADY_EXISTS)
+                continue;
+            break;
+        }
+        char file_leaf[64];
+        snprintf(file_leaf, sizeof(file_leaf), "asset%s", suffix);
+        free(tmppath);
+        tmppath = asset_join_temp_path(tmpdir_path, file_leaf);
+        if (!tmppath) {
+            asset_remove_temp_dir(tmpdir_path);
+            break;
+        }
+        wchar_t *wide = rt_file_path_utf8_to_wide(tmppath);
+        if (!wide) {
+            asset_remove_temp_dir(tmpdir_path);
+            continue;
+        }
         h = CreateFileW(wide,
                         GENERIC_WRITE,
                         0,
@@ -187,72 +253,81 @@ static void *load_via_tempfile(const uint8_t *data,
         free(wide);
         if (h == INVALID_HANDLE_VALUE && GetLastError() != ERROR_FILE_EXISTS &&
             GetLastError() != ERROR_ALREADY_EXISTS) {
+            asset_remove_temp_dir(tmpdir_path);
             free(tmpdir);
             free(tmppath);
+            free(tmpdir_path);
             return NULL;
         }
+        if (h == INVALID_HANDLE_VALUE)
+            asset_remove_temp_dir(tmpdir_path);
     }
     free(tmpdir);
     if (h == INVALID_HANDLE_VALUE) {
         free(tmppath);
+        free(tmpdir_path);
         return NULL;
     }
-    int fd = _open_osfhandle((intptr_t)h, 0);
+    int fd = _open_osfhandle((intptr_t)h, _O_BINARY | _O_NOINHERIT);
     if (fd < 0) {
         CloseHandle(h);
         asset_remove_temp_path(tmppath);
+        asset_remove_temp_dir(tmpdir_path);
         free(tmppath);
+        free(tmpdir_path);
         return NULL;
     }
     f = _fdopen(fd, "wb");
     if (!f) {
         _close(fd);
         asset_remove_temp_path(tmppath);
+        asset_remove_temp_dir(tmpdir_path);
         free(tmppath);
+        free(tmpdir_path);
         return NULL;
     }
 #else
     const char *tmpdir = getenv("TMPDIR");
     if (!tmpdir || !*tmpdir)
         tmpdir = "/tmp";
-    int fd = -1;
-    for (int attempt = 0; attempt < 128 && fd < 0; ++attempt) {
-        int needed = snprintf(NULL,
-                              0,
-                              "%s/viper_asset_%ld_%ld_%d%s",
-                              tmpdir,
-                              (long)getpid(),
-                              (long)time(NULL),
-                              attempt,
-                              suffix);
-        if (needed < 0)
-            continue;
-        free(tmppath);
-        tmppath = (char *)malloc((size_t)needed + 1);
-        if (!tmppath)
-            return NULL;
-        snprintf(tmppath,
-                 (size_t)needed + 1,
-                 "%s/viper_asset_%ld_%ld_%d%s",
-                 tmpdir,
-                 (long)getpid(),
-                 (long)time(NULL),
-                 attempt,
-                 suffix);
-        fd = open(tmppath, O_WRONLY | O_CREAT | O_EXCL, 0600);
-        if (fd < 0 && errno != EEXIST) {
-            free(tmppath);
-            return NULL;
-        }
+    tmpdir_path = asset_join_temp_path(tmpdir, "viper_asset_XXXXXX");
+    if (!tmpdir_path)
+        return NULL;
+    if (!mkdtemp(tmpdir_path)) {
+        free(tmpdir_path);
+        return NULL;
     }
+    char file_leaf[64];
+    snprintf(file_leaf, sizeof(file_leaf), "asset%s", suffix);
+    tmppath = asset_join_temp_path(tmpdir_path, file_leaf);
+    if (!tmppath) {
+        asset_remove_temp_dir(tmpdir_path);
+        free(tmpdir_path);
+        return NULL;
+    }
+    int fd = -1;
+#ifdef O_CLOEXEC
+    fd = open(tmppath, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+#else
+    fd = open(tmppath, O_WRONLY | O_CREAT | O_EXCL, 0600);
+#endif
     if (fd < 0) {
+        asset_remove_temp_dir(tmpdir_path);
+        free(tmpdir_path);
         free(tmppath);
         return NULL;
     }
+#if defined(FD_CLOEXEC) && !defined(O_CLOEXEC)
+    int fd_flags = fcntl(fd, F_GETFD);
+    if (fd_flags >= 0)
+        (void)fcntl(fd, F_SETFD, fd_flags | FD_CLOEXEC);
+#endif
     f = fdopen(fd, "wb");
     if (!f) {
         close(fd);
         asset_remove_temp_path(tmppath);
+        asset_remove_temp_dir(tmpdir_path);
+        free(tmpdir_path);
         free(tmppath);
         return NULL;
     }
@@ -261,12 +336,16 @@ static void *load_via_tempfile(const uint8_t *data,
     if (size > 0 && fwrite(data, 1, size, f) != size) {
         fclose(f);
         asset_remove_temp_path(tmppath);
+        asset_remove_temp_dir(tmpdir_path);
         free(tmppath);
+        free(tmpdir_path);
         return NULL;
     }
     if (fclose(f) != 0) {
         asset_remove_temp_path(tmppath);
+        asset_remove_temp_dir(tmpdir_path);
         free(tmppath);
+        free(tmpdir_path);
         return NULL;
     }
 
@@ -274,7 +353,9 @@ static void *load_via_tempfile(const uint8_t *data,
     rt_string path_str = rt_string_from_bytes(tmppath, strlen(tmppath));
     if (!path_str) {
         asset_remove_temp_path(tmppath);
+        asset_remove_temp_dir(tmpdir_path);
         free(tmppath);
+        free(tmpdir_path);
         return NULL;
     }
     void *result = loader((void *)path_str);
@@ -282,7 +363,9 @@ static void *load_via_tempfile(const uint8_t *data,
 
     // Cleanup
     asset_remove_temp_path(tmppath);
+    asset_remove_temp_dir(tmpdir_path);
     free(tmppath);
+    free(tmpdir_path);
     return result;
 }
 

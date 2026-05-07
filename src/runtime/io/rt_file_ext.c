@@ -263,7 +263,7 @@ static int rt_fileext_write_all_fd(int fd, const uint8_t *data, size_t len) {
     return 1;
 }
 
-/// @brief Build the `.viper-tmp.<pid>.<ptr>.<attempt>` sidecar path used by atomic writes (Windows).
+/// @brief Build the `.viper-tmp.<pid>.<nonce>.<attempt>` sidecar path used by atomic writes.
 static char *rt_fileext_make_temp_path(const char *path, unsigned attempt) {
     return rt_fileext_make_parent_temp_path(path, ".viper-tmp.", attempt);
 }
@@ -325,7 +325,7 @@ static int rt_fileext_write_all_fd(int fd, const uint8_t *data, size_t len) {
     return 1;
 }
 
-/// @brief Build the `.viper-tmp.<pid>.<ptr>.<attempt>` sidecar path used by atomic writes (POSIX).
+/// @brief Build the `.viper-tmp.<pid>.<nonce>.<attempt>` sidecar path used by atomic writes.
 static char *rt_fileext_make_temp_path(const char *path, unsigned attempt) {
     return rt_fileext_make_parent_temp_path(path, ".viper-tmp.", attempt);
 }
@@ -467,6 +467,45 @@ static int rt_fileext_sync_parent_dir(const char *path) {
 static void rt_fileext_close_or_trap(int fd, const char *context) {
     if (close(fd) != 0)
         rt_trap(context);
+}
+
+static int rt_fileext_apply_timestamps(const char *path, const struct stat *src_st) {
+    if (!path || !src_st)
+        return 0;
+#if RT_PLATFORM_WINDOWS
+    struct _utimbuf times;
+#else
+    struct utimbuf times;
+#endif
+    times.actime = src_st->st_atime;
+    times.modtime = src_st->st_mtime;
+    return rt_fileext_utime(path, &times) == 0 ? 1 : 0;
+}
+
+static int rt_fileext_apply_mode_to_open_file(int fd, const struct stat *src_st) {
+    if (!src_st)
+        return 0;
+#if RT_PLATFORM_WINDOWS
+    (void)fd;
+    return 1;
+#else
+    return fchmod(fd, src_st->st_mode & 07777) == 0 ? 1 : 0;
+#endif
+}
+
+static int rt_fileext_apply_mode_to_path(const char *path, const struct stat *src_st) {
+    if (!path || !src_st)
+        return 0;
+#if RT_PLATFORM_WINDOWS
+    wchar_t *wide = rt_file_path_utf8_to_wide(path);
+    if (!wide)
+        return 0;
+    int rc = _wchmod(wide, src_st->st_mode & (_S_IREAD | _S_IWRITE));
+    free(wide);
+    return rc == 0 ? 1 : 0;
+#else
+    return chmod(path, src_st->st_mode & 07777) == 0 ? 1 : 0;
+#endif
 }
 
 /// @brief Test whether two paths refer to the same on-disk inode/file.
@@ -632,7 +671,7 @@ rt_string rt_io_file_read_all_text(rt_string path) {
     size_t size = (st.st_size > 0) ? (size_t)st.st_size : 0;
     // Handle empty files
     if (size == 0) {
-        close(fd);
+        rt_fileext_close_or_trap(fd, "Viper.IO.File.ReadAllText: failed to close file");
         return rt_str_empty();
     }
 
@@ -659,7 +698,10 @@ rt_string rt_io_file_read_all_text(rt_string path) {
         }
         off += (size_t)n;
     }
-    close(fd);
+    if (close(fd) != 0) {
+        free(buf);
+        rt_trap("Viper.IO.File.ReadAllText: failed to close file");
+    }
     rt_string s = rt_string_from_bytes(buf, size);
     free(buf);
     if (!s)
@@ -759,7 +801,7 @@ void *rt_io_file_read_all_bytes(rt_string path) {
 
     size_t size = (st.st_size > 0) ? (size_t)st.st_size : 0;
     if (size == 0) {
-        (void)close(fd);
+        rt_fileext_close_or_trap(fd, "Viper.IO.File.ReadAllBytes: failed to close file");
         return rt_bytes_new(0);
     }
 
@@ -786,7 +828,10 @@ void *rt_io_file_read_all_bytes(rt_string path) {
         }
         off += (size_t)n;
     }
-    (void)close(fd);
+    if (close(fd) != 0) {
+        free(buf);
+        rt_trap("Viper.IO.File.ReadAllBytes: failed to close file");
+    }
 
     /* O-02: Use memcpy into the raw bytes buffer instead of per-byte rt_bytes_set */
     void *bytes = rt_bytes_new((int64_t)size);
@@ -857,7 +902,7 @@ void *rt_io_file_read_all_lines(rt_string path) {
 
     size_t size = (st.st_size > 0) ? (size_t)st.st_size : 0;
     if (size == 0) {
-        (void)close(fd);
+        rt_fileext_close_or_trap(fd, "Viper.IO.File.ReadAllLines: failed to close file");
         void *empty = rt_seq_new();
         rt_seq_set_owns_elements(empty, 1);
         return empty;
@@ -886,7 +931,10 @@ void *rt_io_file_read_all_lines(rt_string path) {
         }
         off += (size_t)n;
     }
-    (void)close(fd);
+    if (close(fd) != 0) {
+        free(buf);
+        rt_trap("Viper.IO.File.ReadAllLines: failed to close file");
+    }
 
     void *seq = rt_seq_new();
     rt_seq_set_owns_elements(seq, 1);
@@ -1040,6 +1088,8 @@ static void rt_file_copy_impl(rt_string src, rt_string dst, int replace) {
     }
 
     int ok = 1;
+    if (!rt_fileext_apply_mode_to_open_file(dst_fd, &src_st))
+        ok = 0;
 #if RT_PLATFORM_WINDOWS
     if (_commit(dst_fd) != 0)
         ok = 0;
@@ -1053,6 +1103,10 @@ static void rt_file_copy_impl(rt_string src, rt_string dst, int replace) {
         ok = 0;
     if (ok)
         ok = rt_fileext_commit_utf8(tmp_path, dst_path, replace);
+    if (ok)
+        ok = rt_fileext_apply_mode_to_path(dst_path, &src_st);
+    if (ok)
+        ok = rt_fileext_apply_timestamps(dst_path, &src_st);
     if (ok)
         ok = rt_fileext_sync_parent_dir(dst_path);
     if (!ok) {

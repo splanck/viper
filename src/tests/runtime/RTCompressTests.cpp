@@ -357,6 +357,27 @@ static void test_gzip_concatenated_members() {
                     memcmp(get_bytes_data(decompressed), expected, strlen(expected)) == 0);
 }
 
+static void test_gzip_member_boundary_ignores_payload_magic() {
+    printf("Testing GZIP member boundary detection ignores payload bytes:\n");
+
+    const uint8_t first_payload[] = {'A', 0x1F, 0x8B, 0x08, 'B'};
+    void *first = make_bytes(first_payload, sizeof(first_payload));
+    void *second = make_bytes_str(":tail");
+    void *gz_first = rt_compress_gzip(first);
+    void *gz_second = rt_compress_gzip(second);
+    int64_t first_len = get_bytes_len(gz_first);
+    int64_t second_len = get_bytes_len(gz_second);
+    void *joined = rt_bytes_new(first_len + second_len);
+    memcpy(get_bytes_data(joined), get_bytes_data(gz_first), (size_t)first_len);
+    memcpy(get_bytes_data(joined) + first_len, get_bytes_data(gz_second), (size_t)second_len);
+
+    void *decompressed = rt_compress_gunzip(joined);
+    const uint8_t expected[] = {'A', 0x1F, 0x8B, 0x08, 'B', ':', 't', 'a', 'i', 'l'};
+    test_result("Payload GZIP magic does not split member",
+                get_bytes_len(decompressed) == (int64_t)sizeof(expected) &&
+                    memcmp(get_bytes_data(decompressed), expected, sizeof(expected)) == 0);
+}
+
 static void test_inflate_limit_traps() {
     printf("Testing Inflate explicit limit:\n");
 
@@ -557,6 +578,8 @@ int main() {
     test_gzip_crc();
     printf("\n");
     test_gzip_concatenated_members();
+    printf("\n");
+    test_gzip_member_boundary_ignores_payload_magic();
     printf("\n");
     test_gzip_rejects_reserved_flags();
     printf("\n");

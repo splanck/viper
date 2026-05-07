@@ -187,6 +187,18 @@ static void *bytes_from_vector(const std::vector<uint8_t> &bytes) {
     return result;
 }
 
+static size_t find_zip_signature(const std::vector<uint8_t> &bytes, uint32_t sig) {
+    for (size_t i = 0; i + 4 <= bytes.size(); ++i) {
+        uint32_t found = (uint32_t)bytes[i] | ((uint32_t)bytes[i + 1] << 8) |
+                         ((uint32_t)bytes[i + 2] << 16) |
+                         ((uint32_t)bytes[i + 3] << 24);
+        if (found == sig) {
+            return i;
+        }
+    }
+    return bytes.size();
+}
+
 //=============================================================================
 // Basic Archive Tests
 //=============================================================================
@@ -313,6 +325,9 @@ static void test_add_directory() {
     void *info = rt_archive_info(ar2, rt_const_cstr("mydir/"));
     void *is_dir = rt_map_get(info, rt_const_cstr("isDirectory"));
     test_result("isDirectory is true", rt_unbox_i1(is_dir) == 1);
+
+    void *dir_bytes = rt_archive_read(ar2, rt_const_cstr("mydir/"));
+    test_result("Read directory entry returns empty Bytes", rt_bytes_len(dir_bytes) == 0);
 
     delete_file(path);
 }
@@ -798,6 +813,36 @@ static void test_corrupt_local_header_offset_traps_on_read() {
     delete_file(path);
 }
 
+static void test_unsupported_zip_features_trap_on_open() {
+    printf("Testing Unsupported ZIP Feature Rejection:\n");
+
+    const char *path = get_temp_path("test_zip_unsupported_features.zip");
+    delete_file(path);
+
+    void *ar = rt_archive_create(rt_const_cstr(path));
+    rt_archive_add_str(ar, rt_const_cstr("entry.txt"), rt_const_cstr("payload"));
+    rt_archive_finish(ar);
+
+    std::vector<uint8_t> original = read_file_bytes(path);
+    size_t cd = find_zip_signature(original, 0x02014b50U);
+    assert(cd != original.size());
+
+    std::vector<uint8_t> data_descriptor = original;
+    write_u16_le(data_descriptor, cd + 8, 0x0008);
+    EXPECT_TRAP(rt_archive_from_bytes(bytes_from_vector(data_descriptor)));
+
+    std::vector<uint8_t> zip64_version = original;
+    write_u16_le(zip64_version, cd + 6, 45);
+    EXPECT_TRAP(rt_archive_from_bytes(bytes_from_vector(zip64_version)));
+
+    std::vector<uint8_t> zip64_size = original;
+    write_u32_le(zip64_size, cd + 20, UINT32_MAX);
+    EXPECT_TRAP(rt_archive_from_bytes(bytes_from_vector(zip64_size)));
+
+    test_result("unsupported ZIP features trap", true);
+    delete_file(path);
+}
+
 #ifndef _WIN32
 static void test_extract_all_rejects_symlink_parent() {
     printf("Testing ExtractAll symlink parent rejection:\n");
@@ -1015,6 +1060,8 @@ int main() {
     test_central_directory_duplicate_name_traps();
     printf("\n");
     test_corrupt_local_header_offset_traps_on_read();
+    printf("\n");
+    test_unsupported_zip_features_trap_on_open();
     printf("\n");
 #ifndef _WIN32
     test_extract_all_rejects_symlink_parent();

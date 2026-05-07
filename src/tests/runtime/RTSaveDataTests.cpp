@@ -304,6 +304,13 @@ static void test_path_contains_game_name() {
     assert(pcstr != nullptr);
     assert(strstr(pcstr, "mygame") != nullptr);
     assert(strstr(pcstr, "save.json") != nullptr);
+#ifdef _WIN32
+    assert((pcstr[0] == '\\' && pcstr[1] == '\\') ||
+           ((pcstr[0] >= 'A' && pcstr[0] <= 'Z') || (pcstr[0] >= 'a' && pcstr[0] <= 'z')) &&
+               pcstr[1] == ':' && (pcstr[2] == '\\' || pcstr[2] == '/'));
+#else
+    assert(pcstr[0] == '/');
+#endif
 
     printf("  test_path_contains_game_name: PASSED\n");
 }
@@ -586,6 +593,25 @@ static void test_load_rejects_non_int64_numbers() {
     printf("  test_load_rejects_non_int64_numbers: PASSED\n");
 }
 
+static void test_load_rejects_invalid_decoded_key() {
+    char game[64];
+    snprintf(game, sizeof(game), "viper-invalid-load-key-%d", (int)GETPID());
+
+    void *sd = rt_savedata_new(S(game));
+    assert(sd != nullptr);
+    rt_savedata_set_int(sd, S("score"), 7);
+    assert(rt_savedata_save(sd) == 1);
+
+    rt_string path = rt_savedata_get_path(sd);
+    const char bad_key_json[] = "{\"bad\\u0000key\": 1}";
+    write_file_exact(rt_string_cstr(path), bad_key_json, strlen(bad_key_json));
+    assert(rt_savedata_load(sd) == 0);
+    assert(rt_savedata_get_int(sd, S("score"), -1) == 7);
+
+    remove(rt_string_cstr(path));
+    printf("  test_load_rejects_invalid_decoded_key: PASSED\n");
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -627,6 +653,7 @@ int main() {
     test_string_values_preserve_embedded_nul_round_trip();
     test_load_rejects_malformed_json();
     test_load_rejects_non_int64_numbers();
+    test_load_rejects_invalid_decoded_key();
 
     printf("\n=== All RTSaveDataTests passed! ===\n");
     return 0;

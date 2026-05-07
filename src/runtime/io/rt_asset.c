@@ -31,6 +31,7 @@
 #include "rt_seq.h"
 #include "rt_vpa_reader.h"
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -268,14 +269,55 @@ static int asset_name_is_safe(const char *name) {
 }
 
 #ifdef _WIN32
-/// @brief Open a file at a UTF-8 path in binary-read mode (Windows wide-string path).
-static FILE *asset_fopen_utf8(const char *path) {
+static uint8_t *asset_read_regular_file(const char *path, size_t *out_size) {
+    if (out_size)
+        *out_size = 0;
     wchar_t *wide = rt_file_path_utf8_to_wide(path);
     if (!wide)
         return NULL;
-    FILE *fp = _wfopen(wide, L"rb");
+    HANDLE h = CreateFileW(wide,
+                           GENERIC_READ,
+                           FILE_SHARE_READ,
+                           NULL,
+                           OPEN_EXISTING,
+                           FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN |
+                               FILE_FLAG_OPEN_REPARSE_POINT,
+                           NULL);
     free(wide);
-    return fp;
+    if (h == INVALID_HANDLE_VALUE)
+        return NULL;
+    BY_HANDLE_FILE_INFORMATION info;
+    LARGE_INTEGER size;
+    if (!GetFileInformationByHandle(h, &info) ||
+        (info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0 ||
+        !GetFileSizeEx(h, &size) || size.QuadPart < 0 || (uint64_t)size.QuadPart > SIZE_MAX) {
+        CloseHandle(h);
+        return NULL;
+    }
+    size_t len = (size_t)size.QuadPart;
+    uint8_t *buf = (uint8_t *)malloc(len > 0 ? len : 1);
+    if (!buf) {
+        CloseHandle(h);
+        return NULL;
+    }
+    size_t off = 0;
+    while (off < len) {
+        DWORD chunk = (len - off) > (size_t)UINT32_MAX ? UINT32_MAX : (DWORD)(len - off);
+        DWORD got = 0;
+        if (!ReadFile(h, buf + off, chunk, &got, NULL) || got == 0) {
+            free(buf);
+            CloseHandle(h);
+            return NULL;
+        }
+        off += (size_t)got;
+    }
+    if (!CloseHandle(h)) {
+        free(buf);
+        return NULL;
+    }
+    if (out_size)
+        *out_size = len;
+    return buf;
 }
 
 /// @brief Stat a regular file at a UTF-8 path and return its size (Windows).
@@ -307,8 +349,12 @@ static int asset_regular_file_size(const char *path, uint64_t *out_size) {
     return 1;
 }
 #else
-/// @brief Open a file at a UTF-8 path in binary-read mode (POSIX).
-static FILE *asset_fopen_utf8(const char *path) {
+static uint8_t *asset_read_regular_file(const char *path, size_t *out_size) {
+    if (out_size)
+        *out_size = 0;
+    struct stat lst;
+    if (lstat(path, &lst) != 0 || !S_ISREG(lst.st_mode))
+        return NULL;
     int flags = O_RDONLY;
 #ifdef O_CLOEXEC
     flags |= O_CLOEXEC;
@@ -324,10 +370,42 @@ static FILE *asset_fopen_utf8(const char *path) {
     if (fd_flags >= 0)
         (void)fcntl(fd, F_SETFD, fd_flags | FD_CLOEXEC);
 #endif
-    FILE *fp = fdopen(fd, "rb");
-    if (!fp)
+    struct stat st;
+    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) || st.st_size < 0 ||
+        (uint64_t)st.st_size > (uint64_t)SIZE_MAX) {
         close(fd);
-    return fp;
+        return NULL;
+    }
+    size_t len = (size_t)st.st_size;
+    uint8_t *buf = (uint8_t *)malloc(len > 0 ? len : 1);
+    if (!buf) {
+        close(fd);
+        return NULL;
+    }
+    size_t off = 0;
+    while (off < len) {
+        ssize_t n = read(fd, buf + off, len - off);
+        if (n < 0) {
+            if (errno == EINTR)
+                continue;
+            free(buf);
+            close(fd);
+            return NULL;
+        }
+        if (n == 0) {
+            free(buf);
+            close(fd);
+            return NULL;
+        }
+        off += (size_t)n;
+    }
+    if (close(fd) != 0) {
+        free(buf);
+        return NULL;
+    }
+    if (out_size)
+        *out_size = len;
+    return buf;
 }
 
 /// @brief Stat a regular file at a UTF-8 path and return its size (POSIX).
@@ -383,27 +461,9 @@ static uint8_t *asset_find_data(const char *name, size_t *out_size) {
     }
 
     // 3. Filesystem fallback (CWD-relative)
-    uint64_t fsize = 0;
-    if (asset_regular_file_size(name, &fsize)) {
-        if (fsize > SIZE_MAX)
-            return NULL;
-        FILE *f = asset_fopen_utf8(name);
-        if (!f)
-            return NULL;
-        *out_size = (size_t)fsize;
-        uint8_t *buf = (uint8_t *)malloc(*out_size > 0 ? *out_size : 1);
-        if (!buf) {
-            fclose(f);
-            return NULL;
-        }
-        if (*out_size > 0 && fread(buf, 1, *out_size, f) != *out_size) {
-            free(buf);
-            fclose(f);
-            return NULL;
-        }
-        fclose(f);
-        return buf;
-    }
+    uint8_t *loose = asset_read_regular_file(name, out_size);
+    if (loose)
+        return loose;
 
     return NULL;
 }
@@ -431,7 +491,7 @@ static void discover_packs(const char *dir) {
         return;
     }
     do {
-        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+        if (fd.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT))
             continue;
         wchar_t *wpath = asset_win_join_wide(wdir, fd.cFileName);
         char *path = asset_wide_to_utf8_dup(wpath);
@@ -439,7 +499,7 @@ static void discover_packs(const char *dir) {
         if (!path)
             continue;
         if (g_asset_mgr.pack_count < RT_ASSET_MAX_PACKS) {
-            vpa_archive_t *archive = vpa_open_file(path);
+            vpa_archive_t *archive = vpa_open_file_no_follow(path);
             if (archive) {
                 char *path_copy = strdup(path);
                 if (!path_copy) {
@@ -482,14 +542,14 @@ static void discover_packs(const char *dir) {
         path[pos + nlen] = '\0';
 
         // Verify it's a regular file
-        struct stat st;
-        if (stat(path, &st) != 0 || !S_ISREG(st.st_mode)) {
+        uint64_t pack_size = 0;
+        if (!asset_regular_file_size(path, &pack_size)) {
             free(path);
             continue;
         }
 
         if (g_asset_mgr.pack_count < RT_ASSET_MAX_PACKS) {
-            vpa_archive_t *archive = vpa_open_file(path);
+            vpa_archive_t *archive = vpa_open_file_no_follow(path);
             if (archive) {
                 char *path_copy = strdup(path);
                 if (!path_copy) {

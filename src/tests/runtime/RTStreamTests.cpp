@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_bytes.h"
+#include "rt_binfile.h"
 #include "rt_internal.h"
 #include "rt_stream.h"
 #include "rt_string.h"
@@ -270,6 +271,25 @@ static void test_file_stream_modes() {
     printf("\n");
 }
 
+static void test_open_file_close_closes_binfile() {
+    printf("Testing Stream.OpenFile close owns BinFile:\n");
+
+    const char *path_cstr = stream_test_file();
+    remove(path_cstr);
+    rt_string path = rt_const_cstr(path_cstr);
+
+    void *writer = rt_stream_open_file(path, rt_const_cstr("wb"));
+    rt_stream_write(writer, make_bytes_str("x"));
+    void *underlying = rt_stream_as_binfile(writer);
+    rt_stream_close(writer);
+
+    EXPECT_TRAP(rt_binfile_read_byte(underlying));
+    test_result("Close closes OpenFile-owned BinFile", true);
+
+    remove(path_cstr);
+    printf("\n");
+}
+
 //=============================================================================
 // Edge Cases
 //=============================================================================
@@ -347,6 +367,7 @@ int main() {
     test_memory_stream_basic();
     test_stream_conversion();
     test_file_stream_modes();
+    test_open_file_close_closes_binfile();
     test_edge_cases();
     test_closed_and_null_streams_trap();
 

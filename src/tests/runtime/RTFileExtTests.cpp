@@ -34,6 +34,7 @@
 #define rmdir_p(path) _rmdir(path)
 #else
 #include <sys/stat.h>
+#include <utime.h>
 #define mkdir_p(path) mkdir(path, 0755)
 #define rmdir_p(path) rmdir(path)
 #endif
@@ -780,6 +781,37 @@ static void test_nonexistent() {
     printf("\n");
 }
 
+#ifndef _WIN32
+static void test_copy_preserves_posix_metadata() {
+    printf("Testing copy metadata preservation:\n");
+
+    const char *base = get_test_base();
+    char src_path[512], dst_path[512];
+    snprintf(src_path, sizeof(src_path), "%s_copy_meta_src.txt", base);
+    snprintf(dst_path, sizeof(dst_path), "%s_copy_meta_dst.txt", base);
+    remove_file(src_path);
+    remove_file(dst_path);
+
+    create_test_file(src_path, "metadata");
+    assert(chmod(src_path, 0640) == 0);
+    struct utimbuf times;
+    times.actime = 946684800;
+    times.modtime = 946684800;
+    assert(utime(src_path, &times) == 0);
+
+    rt_file_copy(rt_const_cstr(src_path), rt_const_cstr(dst_path));
+
+    struct stat st;
+    assert(stat(dst_path, &st) == 0);
+    test_result("mode preserved", (st.st_mode & 0777) == 0640);
+    test_result("mtime preserved", st.st_mtime == 946684800);
+
+    remove_file(src_path);
+    remove_file(dst_path);
+    printf("\n");
+}
+#endif
+
 /// @brief Entry point for file extension tests.
 int main() {
     printf("=== RT File Extension Tests ===\n\n");
@@ -807,6 +839,9 @@ int main() {
     test_invalid_string_writes_trap();
     test_empty_file();
     test_nonexistent();
+#ifndef _WIN32
+    test_copy_preserves_posix_metadata();
+#endif
 
     printf("All file extension tests passed!\n");
     return 0;

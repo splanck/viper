@@ -20,6 +20,10 @@
 #include <string>
 #include <vector>
 
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 // Build-time VPA writer (C++ API)
 #include "VpaWriter.hpp"
 
@@ -346,6 +350,55 @@ TEST(VpaFormat, ReadRejectsOverflowingEntryRange) {
     EXPECT_EQ(outSize, 0u);
     vpa_close(archive);
 }
+
+TEST(VpaFormat, FileBackedReadRejectsOutOfFileEntryRange) {
+    std::vector<uint8_t> data = {'x'};
+    std::vector<ManualVpaEntry> entries = {
+        {"past-eof.bin", 999999, 1, 1, 0},
+    };
+    auto blob = make_manual_vpa(data, entries);
+
+    const char *tmpPath = "/tmp/viper_test_vpa_past_eof.vpa";
+    FILE *fp = fopen(tmpPath, "wb");
+    ASSERT_TRUE(fp != nullptr);
+    ASSERT_EQ(fwrite(blob.data(), 1, blob.size(), fp), blob.size());
+    fclose(fp);
+
+    vpa_archive_t *archive = vpa_open_file(tmpPath);
+    ASSERT_TRUE(archive != nullptr);
+    const vpa_entry_t *entry = vpa_find(archive, "past-eof.bin");
+    ASSERT_TRUE(entry != nullptr);
+
+    size_t outSize = 123;
+    uint8_t *out = vpa_read_entry(archive, entry, &outSize);
+    EXPECT_EQ(out, nullptr);
+    EXPECT_EQ(outSize, 0u);
+
+    vpa_close(archive);
+    remove(tmpPath);
+}
+
+#ifndef _WIN32
+TEST(VpaFormat, NoFollowOpenRejectsSymlinkPack) {
+    viper::asset::VpaWriter writer;
+    const uint8_t data[] = "pack data";
+    writer.addEntry("data.txt", data, sizeof(data) - 1, false);
+
+    const char *realPath = "/tmp/viper_test_vpa_real.vpa";
+    const char *linkPath = "/tmp/viper_test_vpa_link.vpa";
+    remove(realPath);
+    unlink(linkPath);
+
+    std::string err;
+    ASSERT_TRUE(writer.writeToFile(realPath, err));
+    ASSERT_EQ(symlink(realPath, linkPath), 0);
+
+    EXPECT_EQ(vpa_open_file_no_follow(linkPath), nullptr);
+
+    unlink(linkPath);
+    remove(realPath);
+}
+#endif
 
 int main() {
     return viper_test::run_all_tests();

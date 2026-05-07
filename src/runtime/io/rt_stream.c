@@ -54,6 +54,7 @@ typedef struct {
     int64_t type;  ///< RT_STREAM_TYPE_BINFILE or RT_STREAM_TYPE_MEMSTREAM
     void *wrapped; ///< The wrapped BinFile or MemStream
     int8_t owns;   ///< Whether this Stream holds a reference on the wrapped object
+    int8_t closes_wrapped; ///< Whether Close should close the wrapped object first.
     int8_t closed; ///< Set to 1 once Close has been called
 } stream_impl;
 
@@ -79,8 +80,13 @@ static void stream_release_wrapped(stream_impl *s) {
         return;
 
     void *wrapped = s->wrapped;
+    int64_t type = s->type;
+    int8_t closes_wrapped = s->closes_wrapped;
     s->wrapped = NULL;
     s->closed = 1;
+    s->closes_wrapped = 0;
+    if (s->owns && closes_wrapped && type == RT_STREAM_TYPE_BINFILE && wrapped)
+        rt_binfile_close(wrapped);
     if (s->owns)
         stream_release_object(wrapped);
 }
@@ -173,6 +179,7 @@ void *rt_stream_open_file(rt_string path, rt_string mode) {
     s->type = RT_STREAM_TYPE_BINFILE;
     s->wrapped = binfile;
     s->owns = 1;
+    s->closes_wrapped = 1;
     s->closed = 0;
 
     rt_obj_set_finalizer(s, stream_finalizer);
@@ -193,6 +200,7 @@ void *rt_stream_open_memory(void) {
     s->type = RT_STREAM_TYPE_MEMSTREAM;
     s->wrapped = memstream;
     s->owns = 1;
+    s->closes_wrapped = 0;
     s->closed = 0;
 
     rt_obj_set_finalizer(s, stream_finalizer);
@@ -214,6 +222,7 @@ void *rt_stream_open_bytes(void *bytes) {
     s->type = RT_STREAM_TYPE_MEMSTREAM;
     s->wrapped = memstream;
     s->owns = 1;
+    s->closes_wrapped = 0;
     s->closed = 0;
 
     rt_obj_set_finalizer(s, stream_finalizer);
@@ -234,6 +243,7 @@ void *rt_stream_from_binfile(void *binfile) {
     rt_obj_retain_maybe(binfile);
     s->wrapped = binfile;
     s->owns = 1;
+    s->closes_wrapped = 0;
     s->closed = 0;
 
     rt_obj_set_finalizer(s, stream_finalizer);
@@ -254,6 +264,7 @@ void *rt_stream_from_memstream(void *memstream) {
     rt_obj_retain_maybe(memstream);
     s->wrapped = memstream;
     s->owns = 1;
+    s->closes_wrapped = 0;
     s->closed = 0;
 
     rt_obj_set_finalizer(s, stream_finalizer);
@@ -348,6 +359,11 @@ void *rt_stream_read(void *stream, int64_t count) {
     if (s->type == RT_STREAM_TYPE_BINFILE) {
         void *bytes = rt_bytes_new(count);
         int64_t read = rt_binfile_read(s->wrapped, bytes, 0, count);
+        if (read < 0) {
+            stream_dispose_bytes(bytes);
+            rt_trap("Stream.Read: read failed");
+            return rt_bytes_new(0);
+        }
         return stream_shrink_bytes(bytes, read);
     } else {
         int64_t pos = rt_memstream_get_pos(s->wrapped);
@@ -383,6 +399,11 @@ void *rt_stream_read_all(void *stream) {
 
         void *bytes = rt_bytes_new(remaining);
         int64_t read = rt_binfile_read(s->wrapped, bytes, 0, remaining);
+        if (read < 0) {
+            stream_dispose_bytes(bytes);
+            rt_trap("Stream.ReadAll: read failed");
+            return rt_bytes_new(0);
+        }
         return stream_shrink_bytes(bytes, read);
     } else {
         // Read remaining bytes from MemStream
