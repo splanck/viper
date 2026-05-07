@@ -33,17 +33,6 @@
 #include "rt_bytes.h"
 #include "rt_file.h"
 
-/* O-02: Internal bytes layout for direct data access (avoids per-byte rt_bytes_get) */
-typedef struct {
-    int64_t len;
-    uint8_t *data;
-} file_bytes_impl;
-
-/// @brief Return a direct pointer to the raw data buffer of a Bytes GC object.
-static inline uint8_t *file_bytes_data(void *obj) {
-    return obj ? ((file_bytes_impl *)obj)->data : NULL;
-}
-
 #include "rt_file_path.h"
 #include "rt_internal.h"
 #include "rt_seq.h"
@@ -512,12 +501,11 @@ static int rt_fileext_write_atomic_utf8(const char *path, const uint8_t *data, s
     return ok;
 }
 
-/// @brief Convert a runtime string path to a host path; traps on failure.
+/// @brief Validate a path argument: trap with `context` on NULL/empty input.
+/// @details Used as the first line of every public file operation to give specific error messages.
 /// @param path Runtime string containing the path.
-/// @param context Trap message to use when conversion fails.
-/// @return Null-terminated host path.
-/// @brief Validate a path argument: trap with `context` on NULL/empty input. Used as the first
-/// line of every public file operation to give specific error messages.
+/// @param context Trap message to emit when conversion fails.
+/// @return Null-terminated host path on success; never returns on failure (traps).
 static const char *rt_io_file_require_path(rt_string path, const char *context) {
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
@@ -729,7 +717,12 @@ void *rt_io_file_read_all_bytes(rt_string path) {
 
     /* O-02: Use memcpy into the raw bytes buffer instead of per-byte rt_bytes_set */
     void *bytes = rt_bytes_new((int64_t)size);
-    uint8_t *dst = file_bytes_data(bytes);
+    if (!bytes) {
+        free(buf);
+        rt_trap("Viper.IO.File.ReadAllBytes: memory allocation failed");
+        return NULL;
+    }
+    uint8_t *dst = rt_bytes_data(bytes);
     if (dst)
         memcpy(dst, buf, size);
 
@@ -746,15 +739,17 @@ void rt_io_file_write_all_bytes(rt_string path, void *bytes) {
     const char *cpath =
         rt_io_file_require_path(path, "Viper.IO.File.WriteAllBytes: invalid file path");
 
-    if (!bytes)
+    if (!bytes) {
         rt_trap("Viper.IO.File.WriteAllBytes: null Bytes");
+        return;
+    }
 
     /* IO-H-1: use raw data pointer instead of per-byte rt_bytes_get() —
        eliminates O(n) function calls in favour of a single write() */
     int64_t len = rt_bytes_len(bytes);
     if (len < 0 || (uint64_t)len > (uint64_t)SIZE_MAX)
         rt_trap("Viper.IO.File.WriteAllBytes: invalid Bytes length");
-    const uint8_t *src = file_bytes_data(bytes);
+    const uint8_t *src = rt_bytes_data_const(bytes);
     if (!rt_fileext_write_atomic_utf8(cpath, src, (size_t)len, 1))
         rt_trap("Viper.IO.File.WriteAllBytes: failed to write file");
 }

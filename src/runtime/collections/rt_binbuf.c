@@ -21,7 +21,7 @@
 //     seek-back writes but does grow forward on writes past the current `len`.
 //   - `position` is a free-seek cursor: Seek() can move it anywhere in [0, len].
 //     Writing past `len` extends `len` to position + bytes_written.
-//   - Read operations at or beyond `len` return 0/0.0 and do not advance cursor.
+//   - Read operations trap if the requested byte width is not fully available.
 //   - Not thread-safe; external synchronization required for concurrent access.
 //
 // Ownership/Lifetime:
@@ -44,16 +44,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-
-/// @brief Internal bytes layout — must match rt_bytes.c (same as rt_binfile.c pattern).
-typedef struct {
-    int64_t len;
-    uint8_t *data;
-} binbuf_bytes_impl;
-
-static inline uint8_t *binbuf_bytes_data(void *obj) {
-    return obj ? ((binbuf_bytes_impl *)obj)->data : NULL;
-}
 
 /// Default initial capacity for new binary buffers.
 #define BINBUF_DEFAULT_CAPACITY 256
@@ -190,7 +180,7 @@ void *rt_binbuf_from_bytes(void *bytes_obj) {
     rt_obj_set_finalizer(buf, binbuf_finalize);
 
     // IO-H-2: use memcpy via raw pointer instead of O(n) rt_bytes_get() calls
-    const uint8_t *src = binbuf_bytes_data(bytes_obj);
+    const uint8_t *src = rt_bytes_data_const(bytes_obj);
     if (src && blen > 0)
         memcpy(buf->data, src, (size_t)blen);
 
@@ -339,7 +329,7 @@ void rt_binbuf_write_bytes(void *obj, void *data) {
     if (blen > 0) {
         rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
         binbuf_ensure(buf, blen);
-        const uint8_t *src = binbuf_bytes_data(data);
+        const uint8_t *src = rt_bytes_data_const(data);
         if (src)
             memcpy(buf->data + buf->position, src, (size_t)blen);
         binbuf_advance_write(buf, blen);
@@ -485,7 +475,7 @@ void *rt_binbuf_read_bytes(void *obj, int64_t count) {
     binbuf_check_read(buf, count);
 
     void *result = rt_bytes_new(count);
-    uint8_t *dst = binbuf_bytes_data(result);
+    uint8_t *dst = rt_bytes_data(result);
     if (dst && count > 0)
         memcpy(dst, buf->data + buf->position, (size_t)count);
 
@@ -533,7 +523,7 @@ void *rt_binbuf_to_bytes(void *obj) {
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
     void *result = rt_bytes_new(buf->len);
     // IO-M-2: use memcpy via raw pointer instead of O(n) rt_bytes_set() calls
-    uint8_t *dst = binbuf_bytes_data(result);
+    uint8_t *dst = rt_bytes_data(result);
     if (dst && buf->len > 0)
         memcpy(dst, buf->data, (size_t)buf->len);
 

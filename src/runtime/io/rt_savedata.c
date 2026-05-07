@@ -35,7 +35,7 @@
 #include "rt_string_builder.h"
 
 #include <errno.h>
-#include <float.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -59,8 +59,7 @@
 extern void *rt_json_stream_new(rt_string json);
 extern int64_t rt_json_stream_next(void *parser);
 extern rt_string rt_json_stream_string_value(void *parser);
-extern double rt_json_stream_number_value(void *parser);
-extern rt_string rt_json_stream_error(void *parser);
+extern rt_string rt_json_stream_number_text(void *parser);
 
 /* Token types */
 #define TOK_OBJECT_START 1
@@ -79,12 +78,12 @@ typedef enum { SAVE_INT = 0, SAVE_STR = 1 } SaveEntryType;
 
 /// @brief Singly-linked node holding one key-value pair in the save store.
 typedef struct SaveEntry {
-    rt_string key;
-    int64_t key_len;
-    SaveEntryType type;
-    int64_t int_val;
-    rt_string str_val;
-    struct SaveEntry *next;
+    rt_string key;          ///< Interned key string (heap-allocated, owned by this entry).
+    int64_t key_len;        ///< Byte length of `key`, cached to avoid repeated strlen calls.
+    SaveEntryType type;     ///< Discriminant selecting between `int_val` and `str_val`.
+    int64_t int_val;        ///< Integer payload; valid when `type == SAVE_INT`.
+    rt_string str_val;      ///< String payload; valid when `type == SAVE_STR` (heap-allocated).
+    struct SaveEntry *next; ///< Next entry in the singly-linked bucket chain, or NULL.
 } SaveEntry;
 
 /// @brief Internal save-data store: game identity, on-disk path, and entry list.
@@ -130,26 +129,60 @@ static void free_entry(SaveEntry *e) {
     }
 }
 
-/// @brief Convert a parsed JSON number to `int64_t` only when integral and in range.
+/// @brief Convert a JSON number token to `int64_t` exactly.
 ///
-/// JSON numbers are doubles, but save-data integers are int64. Rejects
-/// NaN, ±infinity, and any value that would overflow int64. The
-/// `(double)candidate != value` round-trip check catches fractional
-/// values like 1.5 that cast to 1 but aren't actually integers.
-static int savedata_number_to_i64(double value, int64_t *out) {
-    if (!out || value != value || value > DBL_MAX || value < -DBL_MAX)
+/// SaveData persists Integer values as decimal JSON numbers. Parsing through
+/// double loses precision past 2^53, so load validates and converts directly
+/// from the original token text. Fractions, exponents, and out-of-range values
+/// are rejected rather than rounded.
+static int savedata_number_text_to_i64(rt_string text, int64_t *out) {
+    if (!text || !out)
         return 0;
 
-    const double min_i64 = -9223372036854775807.0 - 1.0;
-    const double max_i64_exclusive = 9223372036854775808.0;
-    if (value < min_i64 || value >= max_i64_exclusive)
+    const char *data = rt_string_cstr(text);
+    int64_t raw_len = rt_str_len(text);
+    if (!data || raw_len <= 0)
         return 0;
 
-    int64_t candidate = (int64_t)value;
-    if ((double)candidate != value)
+    size_t len = (size_t)raw_len;
+    size_t i = 0;
+    int negative = 0;
+    if (data[i] == '-') {
+        negative = 1;
+        i++;
+        if (i == len)
+            return 0;
+    }
+
+    uint64_t limit = negative ? UINT64_C(9223372036854775808) : UINT64_C(9223372036854775807);
+    uint64_t acc = 0;
+
+    if (data[i] == '0') {
+        i++;
+    } else if (data[i] >= '1' && data[i] <= '9') {
+        while (i < len && data[i] >= '0' && data[i] <= '9') {
+            uint64_t digit = (uint64_t)(data[i] - '0');
+            if (acc > (limit - digit) / UINT64_C(10))
+                return 0;
+            acc = acc * UINT64_C(10) + digit;
+            i++;
+        }
+    } else {
+        return 0;
+    }
+
+    if (i != len)
         return 0;
 
-    *out = candidate;
+    if (negative) {
+        if (acc == UINT64_C(9223372036854775808)) {
+            *out = INT64_MIN;
+        } else {
+            *out = -(int64_t)acc;
+        }
+    } else {
+        *out = (int64_t)acc;
+    }
     return 1;
 }
 
@@ -196,6 +229,10 @@ static char *get_home_dir(void) {
 #endif
 }
 
+/// @brief Duplicate the parent-directory portion of `file_path` as a C string.
+/// @details Scans backwards for the last path separator and returns a heap-allocated
+///          copy of everything before it.  Returns NULL if the path has no separator
+///          (i.e. a bare filename with no directory component).
 static char *savedata_parent_dir_dup(const char *file_path) {
     if (!file_path)
         return NULL;
@@ -358,18 +395,24 @@ static int savedata_file_size(FILE *fp, uint64_t *out_size) {
 }
 #endif
 
-/// @brief Validate game_name contains only safe characters for use in file paths.
-/// Rejects path traversal (.. / \) and non-alphanumeric characters except - and _.
-static int is_safe_game_name(const char *name) {
-    if (!name || !name[0] || strlen(name) > 64)
+/// @brief Validate game_name bytes for use in file paths.
+/// Rejects embedded NULs, path traversal separators, and non-alphanumeric
+/// characters except - and _.
+static int is_safe_game_name_bytes(const char *name, size_t len) {
+    if (!name || len == 0 || len > 64)
         return 0;
-    for (const char *p = name; *p; p++) {
-        char c = *p;
+    for (size_t i = 0; i < len; i++) {
+        char c = name[i];
         if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
               c == '_' || c == '-'))
             return 0;
     }
     return 1;
+}
+
+/// @brief Validate a NUL-terminated game name.
+static int is_safe_game_name(const char *name) {
+    return name ? is_safe_game_name_bytes(name, strlen(name)) : 0;
 }
 
 /// @brief Build the platform-appropriate save file path for `game_name`.
@@ -683,27 +726,42 @@ static void savedata_finalizer(void *obj) {
 /// on Linux, `~/Library/Application Support/<game>` on macOS). Empty game-name traps. Returns a
 /// GC-managed handle; load existing data via `_load`.
 void *rt_savedata_new(rt_string game_name) {
-    if (!game_name || rt_str_len(game_name) == 0) {
+    int64_t raw_name_len = game_name ? rt_str_len(game_name) : 0;
+    if (!game_name || raw_name_len == 0) {
         rt_trap("SaveData.New: game name must not be empty");
+        return NULL;
+    }
+
+    const char *name_data = rt_string_cstr(game_name);
+    size_t name_len = (size_t)raw_name_len;
+    if (!name_data || !is_safe_game_name_bytes(name_data, name_len)) {
+        rt_trap("SaveData: invalid game name (must be alphanumeric, dash, or underscore, max 64 "
+                "chars)");
         return NULL;
     }
 
     rt_savedata_impl *sd = (rt_savedata_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_savedata_impl));
     if (!sd)
         return NULL;
+    rt_obj_set_finalizer(sd, savedata_finalizer);
 
-    const char *name_cstr = rt_string_cstr(game_name);
-    if (!name_cstr) {
-        rt_obj_free(sd);
+    sd->game_name = (char *)malloc(name_len + 1);
+    if (!sd->game_name) {
+        if (rt_obj_release_check0(sd))
+            rt_obj_free(sd);
         return NULL;
     }
-
-    sd->game_name = strdup(name_cstr);
+    memcpy(sd->game_name, name_data, name_len);
+    sd->game_name[name_len] = '\0';
 
     sd->file_path = compute_save_path(sd->game_name);
     sd->entries = NULL;
+    if (!sd->file_path) {
+        if (rt_obj_release_check0(sd))
+            rt_obj_free(sd);
+        return NULL;
+    }
 
-    rt_obj_set_finalizer(sd, savedata_finalizer);
     return sd;
 }
 
@@ -754,14 +812,14 @@ int64_t rt_savedata_get_int(void *obj, rt_string key, int64_t default_val) {
 /// The returned string is freshly retained.
 rt_string rt_savedata_get_string(void *obj, rt_string key, rt_string default_val) {
     if (!obj || !key)
-        return default_val ? default_val : rt_str_empty();
+        return default_val ? rt_string_ref(default_val) : rt_str_empty();
     rt_savedata_impl *sd = (rt_savedata_impl *)obj;
     const char *kcstr = rt_string_cstr(key);
     if (!kcstr)
-        return default_val ? default_val : rt_str_empty();
+        return default_val ? rt_string_ref(default_val) : rt_str_empty();
     SaveEntry *e = find_entry(sd, kcstr, (size_t)rt_str_len(key));
     if (!e || e->type != SAVE_STR)
-        return default_val ? default_val : rt_str_empty();
+        return default_val ? rt_string_ref(default_val) : rt_str_empty();
     return e->str_val ? rt_string_ref(e->str_val) : rt_str_empty();
 }
 
@@ -851,11 +909,15 @@ int8_t rt_savedata_load(void *obj) {
         fclose(fp);
         return 0;
     }
-    size_t read_count = fread(buf, 1, (size_t)file_size, fp);
-    if (read_count != (size_t)file_size && ferror(fp)) {
-        free(buf);
-        fclose(fp);
-        return 0;
+    size_t read_count = 0;
+    while (read_count < (size_t)file_size) {
+        size_t n = fread(buf + read_count, 1, (size_t)file_size - read_count, fp);
+        if (n == 0) {
+            free(buf);
+            fclose(fp);
+            return 0;
+        }
+        read_count += n;
     }
     fclose(fp);
     buf[read_count] = '\0';
@@ -887,12 +949,14 @@ int8_t rt_savedata_load(void *obj) {
         rt_string key_str = rt_json_stream_string_value(parser);
         tok = rt_json_stream_next(parser);
         if (tok == TOK_NUMBER) {
-            double val = rt_json_stream_number_value(parser);
+            rt_string number_text = rt_json_stream_number_text(parser);
             int64_t int_val = 0;
-            if (!savedata_number_to_i64(val, &int_val)) {
+            if (!savedata_number_text_to_i64(number_text, &int_val)) {
+                rt_string_unref(number_text);
                 rt_string_unref(key_str);
                 goto done;
             }
+            rt_string_unref(number_text);
             if (!savedata_set_int_entry(&loaded_entries, key_str, int_val)) {
                 rt_string_unref(key_str);
                 goto done;

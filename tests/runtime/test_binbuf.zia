@@ -103,7 +103,7 @@ func testWriteReadI32() {
     assertEqInt(v1, 0x12345678, "read i32le");
 
     var v2 = Viper.IO.BinaryBuffer.ReadI32BE(buf);
-    assertEqInt(v2, 0xDEADBEEF, "read i32be");
+    assertEqInt(v2, -559038737, "read i32be");
 }
 
 func testWriteReadI64() {
@@ -126,6 +126,28 @@ func testWriteReadI64() {
 
     var v2 = Viper.IO.BinaryBuffer.ReadI64BE(buf);
     assertEqInt(v2, 9876543210987, "read i64be");
+}
+
+func testSignedIntegerRoundTrips() {
+    setTest("SignedIntegerRoundTrips");
+
+    var buf = Viper.IO.BinaryBuffer.New();
+
+    Viper.IO.BinaryBuffer.WriteI16LE(buf, -1);
+    Viper.IO.BinaryBuffer.WriteI16BE(buf, -2);
+    Viper.IO.BinaryBuffer.WriteI32LE(buf, -1);
+    Viper.IO.BinaryBuffer.WriteI32BE(buf, -2);
+    Viper.IO.BinaryBuffer.WriteI64LE(buf, -1);
+    Viper.IO.BinaryBuffer.WriteI64BE(buf, -2);
+
+    Viper.IO.BinaryBuffer.set_Pos(buf, 0);
+
+    assertEqInt(Viper.IO.BinaryBuffer.ReadI16LE(buf), -1, "read signed i16le");
+    assertEqInt(Viper.IO.BinaryBuffer.ReadI16BE(buf), -2, "read signed i16be");
+    assertEqInt(Viper.IO.BinaryBuffer.ReadI32LE(buf), -1, "read signed i32le");
+    assertEqInt(Viper.IO.BinaryBuffer.ReadI32BE(buf), -2, "read signed i32be");
+    assertEqInt(Viper.IO.BinaryBuffer.ReadI64LE(buf), -1, "read signed i64le");
+    assertEqInt(Viper.IO.BinaryBuffer.ReadI64BE(buf), -2, "read signed i64be");
 }
 
 func testWriteReadStr() {
@@ -226,6 +248,7 @@ func start() {
     testWriteReadI16();
     testWriteReadI32();
     testWriteReadI64();
+    testSignedIntegerRoundTrips();
     testWriteReadStr();
     testFromBytes();
     testToBytes();

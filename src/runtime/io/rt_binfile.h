@@ -30,7 +30,7 @@
 extern "C" {
 #endif
 
-/// Seek origin constants for rt_binfile_seek.
+/// @brief Seek origin constants for rt_binfile_seek.
 typedef enum {
     RT_SEEK_SET = 0, ///< Seek from beginning of file.
     RT_SEEK_CUR = 1, ///< Seek from current position.

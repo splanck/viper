@@ -26,6 +26,9 @@
 
 #include "rt_vpa_reader.h"
 
+#include "rt_object.h"
+
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -36,6 +39,12 @@
 extern void *rt_bytes_from_raw(const uint8_t *data, size_t len);
 extern void *rt_compress_inflate(void *data);
 extern uint8_t *rt_bytes_extract_raw(void *bytes, size_t *out_len);
+
+/// @brief Decrement the refcount on a GC object and free it when it reaches zero.
+static void vpa_release_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
 
 // ─── VPA format constants ───────────────────────────────────────────────────
 
@@ -73,6 +82,9 @@ static vpa_entry_t *parse_toc(const uint8_t *toc_data,
                               size_t toc_size,
                               uint32_t expected_count,
                               uint32_t *out_count) {
+    *out_count = 0;
+    if (expected_count == 0)
+        return NULL;
     if (!toc_data || toc_size == 0) {
         *out_count = 0;
         return NULL;
@@ -88,22 +100,26 @@ static vpa_entry_t *parse_toc(const uint8_t *toc_data,
     const uint8_t *end = toc_data + toc_size;
     uint32_t i = 0;
 
-    while (i < expected_count && p + 2 <= end) {
+    while (i < expected_count) {
+        if ((size_t)(end - p) < 2)
+            goto fail;
         // name_len (2 bytes)
         uint16_t name_len = read16LE(p);
         p += 2;
 
-        if (p + name_len + 28 > end) {
-            // Truncated entry — stop parsing.
-            break;
-        }
+        if (name_len == 0 || (size_t)(end - p) < (size_t)name_len + 28)
+            goto fail;
 
         // name (UTF-8 bytes)
         entries[i].name = (char *)malloc(name_len + 1);
         if (!entries[i].name)
-            break;
+            goto fail;
         memcpy(entries[i].name, p, name_len);
         entries[i].name[name_len] = '\0';
+        for (uint32_t prior = 0; prior < i; ++prior) {
+            if (entries[prior].name && strcmp(entries[prior].name, entries[i].name) == 0)
+                goto fail;
+        }
         p += name_len;
 
         // data_offset (8 bytes)
@@ -129,8 +145,18 @@ static vpa_entry_t *parse_toc(const uint8_t *toc_data,
         i++;
     }
 
+    if (i != expected_count || p != end)
+        goto fail;
+
     *out_count = i;
     return entries;
+
+fail:
+    for (uint32_t j = 0; j <= i && j < expected_count; ++j)
+        free(entries[j].name);
+    free(entries);
+    *out_count = 0;
+    return NULL;
 }
 
 // ─── Sort comparator for binary search ──────────────────────────────────────
@@ -164,13 +190,18 @@ vpa_archive_t *vpa_open_memory(const uint8_t *data, size_t size) {
     uint64_t toc_size = read64LE(data + 20);
 
     // Validate TOC bounds
-    if (toc_offset + toc_size > size)
+    if (toc_size > (uint64_t)SIZE_MAX || toc_offset > (uint64_t)size ||
+        toc_size > (uint64_t)size - toc_offset)
+        return NULL;
+    if (entry_count == 0 && toc_size != 0)
         return NULL;
 
     // Parse TOC
     uint32_t parsed_count = 0;
     vpa_entry_t *entries =
         parse_toc(data + toc_offset, (size_t)toc_size, entry_count, &parsed_count);
+    if (parsed_count != entry_count || (entry_count > 0 && !entries))
+        return NULL;
 
     // Create archive
     vpa_archive_t *archive = (vpa_archive_t *)calloc(1, sizeof(vpa_archive_t));
@@ -225,33 +256,41 @@ vpa_archive_t *vpa_open_file(const char *path) {
     uint64_t toc_size = read64LE(header + 20);
 
     // Read TOC into memory
-    if (toc_size == 0 || toc_size > 64 * 1024 * 1024) { // 64MB TOC limit
+    if ((entry_count > 0 && toc_size == 0) || (entry_count == 0 && toc_size != 0) ||
+        toc_size > 64 * 1024 * 1024 || toc_size > (uint64_t)SIZE_MAX ||
+        toc_offset > (uint64_t)LONG_MAX) { // 64MB TOC limit
         fclose(f);
         return NULL;
     }
 
-    uint8_t *toc_buf = (uint8_t *)malloc((size_t)toc_size);
-    if (!toc_buf) {
-        fclose(f);
-        return NULL;
-    }
-
-    if (fseek(f, (long)toc_offset, SEEK_SET) != 0) {
-        free(toc_buf);
-        fclose(f);
-        return NULL;
-    }
-
-    if (fread(toc_buf, 1, (size_t)toc_size, f) != (size_t)toc_size) {
-        free(toc_buf);
-        fclose(f);
-        return NULL;
-    }
-
-    // Parse TOC
     uint32_t parsed_count = 0;
-    vpa_entry_t *entries = parse_toc(toc_buf, (size_t)toc_size, entry_count, &parsed_count);
-    free(toc_buf);
+    vpa_entry_t *entries = NULL;
+    if (entry_count > 0) {
+        uint8_t *toc_buf = (uint8_t *)malloc((size_t)toc_size);
+        if (!toc_buf) {
+            fclose(f);
+            return NULL;
+        }
+
+        if (fseek(f, (long)toc_offset, SEEK_SET) != 0) {
+            free(toc_buf);
+            fclose(f);
+            return NULL;
+        }
+
+        if (fread(toc_buf, 1, (size_t)toc_size, f) != (size_t)toc_size) {
+            free(toc_buf);
+            fclose(f);
+            return NULL;
+        }
+
+        entries = parse_toc(toc_buf, (size_t)toc_size, entry_count, &parsed_count);
+        free(toc_buf);
+        if (parsed_count != entry_count || !entries) {
+            fclose(f);
+            return NULL;
+        }
+    }
 
     // Create archive
     vpa_archive_t *archive = (vpa_archive_t *)calloc(1, sizeof(vpa_archive_t));
@@ -316,28 +355,36 @@ const vpa_entry_t *vpa_find(const vpa_archive_t *archive, const char *name) {
 uint8_t *vpa_read_entry(const vpa_archive_t *archive, const vpa_entry_t *entry, size_t *out_size) {
     if (!archive || !entry || !out_size)
         return NULL;
+    *out_size = 0;
+    if (entry->stored_size > (uint64_t)SIZE_MAX || entry->data_size > (uint64_t)SIZE_MAX)
+        return NULL;
 
     uint8_t *stored = NULL;
     size_t stored_len = (size_t)entry->stored_size;
+    size_t data_len = (size_t)entry->data_size;
 
     if (archive->blob) {
         // Memory-backed: data is directly in the blob
-        if (entry->data_offset + stored_len > archive->blob_size)
+        if (entry->data_offset > (uint64_t)archive->blob_size ||
+            stored_len > archive->blob_size - (size_t)entry->data_offset)
             return NULL;
-        stored = (uint8_t *)malloc(stored_len);
+        stored = (uint8_t *)malloc(stored_len > 0 ? stored_len : 1);
         if (!stored)
             return NULL;
-        memcpy(stored, archive->blob + entry->data_offset, stored_len);
+        if (stored_len > 0)
+            memcpy(stored, archive->blob + entry->data_offset, stored_len);
     } else if (archive->file) {
         // File-backed: seek and read
-        stored = (uint8_t *)malloc(stored_len);
+        if (entry->data_offset > (uint64_t)LONG_MAX)
+            return NULL;
+        stored = (uint8_t *)malloc(stored_len > 0 ? stored_len : 1);
         if (!stored)
             return NULL;
         if (fseek(archive->file, (long)entry->data_offset, SEEK_SET) != 0) {
             free(stored);
             return NULL;
         }
-        if (fread(stored, 1, stored_len, archive->file) != stored_len) {
+        if (stored_len > 0 && fread(stored, 1, stored_len, archive->file) != stored_len) {
             free(stored);
             return NULL;
         }
@@ -353,20 +400,33 @@ uint8_t *vpa_read_entry(const vpa_archive_t *archive, const vpa_entry_t *entry, 
             return NULL;
 
         void *inflated = rt_compress_inflate(bytes_obj);
+        vpa_release_object(bytes_obj);
         if (!inflated)
             return NULL;
 
         // Extract to malloc'd buffer (caller-owned)
         size_t result_len = 0;
         uint8_t *result = rt_bytes_extract_raw(inflated, &result_len);
-        if (!result)
+        vpa_release_object(inflated);
+        if (result_len != data_len) {
+            free(result);
             return NULL;
+        }
+        if (!result) {
+            result = (uint8_t *)malloc(1);
+            if (!result)
+                return NULL;
+        }
         *out_size = result_len;
         return result;
     }
 
     // Uncompressed — return stored data directly
-    *out_size = (size_t)entry->data_size;
+    if (stored_len != data_len) {
+        free(stored);
+        return NULL;
+    }
+    *out_size = stored_len;
     return stored;
 }
 

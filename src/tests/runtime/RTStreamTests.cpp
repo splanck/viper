@@ -213,8 +213,7 @@ static void test_stream_conversion() {
         void *ms = rt_stream_as_memstream(stream);
         test_result("AsMemStream returns memstream", ms != NULL);
 
-        void *bf = rt_stream_as_binfile(stream);
-        test_result("AsBinFile returns NULL for memory", bf == NULL);
+        EXPECT_TRAP(rt_stream_as_binfile(stream));
     }
 
     // Test 2: FromMemStream (wrap existing)
@@ -255,6 +254,10 @@ static void test_file_stream_modes() {
 
     void *reader = rt_stream_open_file(path, rt_const_cstr("rb"));
     test_result("OpenFile accepts rb", reader != NULL);
+    test_result("AsBinFile returns file backend", rt_stream_as_binfile(reader) != NULL);
+    EXPECT_TRAP(rt_stream_as_memstream(reader));
+    EXPECT_TRAP(rt_stream_set_pos(reader, -1));
+    rt_stream_set_pos(reader, 0);
     void *read = rt_stream_read(reader, 4);
     test_result("rb read contents", bytes_equal(read, make_bytes_str("mode")));
     rt_stream_close(reader);
@@ -324,6 +327,7 @@ static void test_closed_and_null_streams_trap() {
 
     void *open = rt_stream_open_memory();
     EXPECT_TRAP(rt_stream_write(open, nullptr));
+    EXPECT_TRAP(rt_stream_read(open, -1));
 
     test_result("closed/null operations trap", true);
     printf("\n");

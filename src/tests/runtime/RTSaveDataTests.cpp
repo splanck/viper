@@ -126,6 +126,14 @@ static void test_empty_name_traps() {
     printf("  test_empty_name_traps: PASSED\n");
 }
 
+static void test_embedded_nul_name_traps() {
+    char name_bytes[] = {'g', 'a', 'm', 'e', '\0', 'x'};
+    rt_string name = rt_string_from_bytes(name_bytes, sizeof(name_bytes));
+    EXPECT_TRAP(rt_savedata_new(name));
+    rt_string_unref(name);
+    printf("  test_embedded_nul_name_traps: PASSED\n");
+}
+
 // ============================================================================
 // In-Memory Key-Value Operations
 // ============================================================================
@@ -461,6 +469,32 @@ static void test_large_int_values() {
     printf("  test_large_int_values: PASSED\n");
 }
 
+static void test_large_int_round_trip() {
+    char game[64];
+    snprintf(game, sizeof(game), "viper-int64-%d", (int)GETPID());
+
+    const int64_t above_double_exact = INT64_C(9007199254740993);
+
+    void *sd = rt_savedata_new(S(game));
+    assert(sd != nullptr);
+    rt_savedata_set_int(sd, S("above_double_exact"), above_double_exact);
+    rt_savedata_set_int(sd, S("max"), INT64_MAX);
+    rt_savedata_set_int(sd, S("min"), INT64_MIN);
+    assert(rt_savedata_save(sd) == 1);
+
+    void *loaded = rt_savedata_new(S(game));
+    assert(loaded != nullptr);
+    assert(rt_savedata_load(loaded) == 1);
+    assert(rt_savedata_get_int(loaded, S("above_double_exact"), 0) == above_double_exact);
+    assert(rt_savedata_get_int(loaded, S("max"), 0) == INT64_MAX);
+    assert(rt_savedata_get_int(loaded, S("min"), 0) == INT64_MIN);
+
+    rt_string path = rt_savedata_get_path(sd);
+    remove(rt_string_cstr(path));
+
+    printf("  test_large_int_round_trip: PASSED\n");
+}
+
 static void test_binary_safe_string_round_trip() {
     char game[64];
     snprintf(game, sizeof(game), "viper-binary-%d", (int)GETPID());
@@ -543,6 +577,7 @@ int main() {
 
     test_null_safety();
     test_empty_name_traps();
+    test_embedded_nul_name_traps();
 
     printf("\n--- Key-Value Operations ---\n");
     test_set_get_int();
@@ -568,6 +603,7 @@ int main() {
     test_empty_key_ignored();
     test_special_chars_in_values();
     test_large_int_values();
+    test_large_int_round_trip();
     test_binary_safe_string_round_trip();
     test_load_rejects_malformed_json();
     test_load_rejects_non_int64_numbers();

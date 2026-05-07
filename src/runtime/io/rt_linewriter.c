@@ -164,6 +164,13 @@ static void *rt_linewriter_open_mode(rt_string path, const char *mode) {
     lw->fp = fp;
     lw->closed = 0;
     lw->newline = rt_string_from_bytes(RT_DEFAULT_NEWLINE, strlen(RT_DEFAULT_NEWLINE));
+    if (!lw->newline) {
+        fclose(fp);
+        if (rt_obj_release_check0(lw))
+            rt_obj_free(lw);
+        rt_trap("LineWriter: memory allocation failed");
+        return NULL;
+    }
     rt_obj_set_finalizer(lw, rt_linewriter_finalize);
 
     return lw;
@@ -523,6 +530,10 @@ rt_string rt_linewriter_newline(void *obj) {
     }
 
     rt_linewriter_impl *lw = (rt_linewriter_impl *)obj;
+    if (lw->closed) {
+        rt_trap("LineWriter.get_NewLine: writer is closed");
+        return rt_string_from_bytes(RT_DEFAULT_NEWLINE, strlen(RT_DEFAULT_NEWLINE));
+    }
     if (lw->newline) {
         return rt_string_ref(lw->newline);
     }
@@ -570,16 +581,26 @@ void rt_linewriter_set_newline(void *obj, rt_string nl) {
     }
 
     rt_linewriter_impl *lw = (rt_linewriter_impl *)obj;
+    if (lw->closed) {
+        rt_trap("LineWriter.set_NewLine: writer is closed");
+        return;
+    }
+
+    rt_string next = NULL;
+    if (nl) {
+        next = rt_string_ref(nl);
+    } else {
+        next = rt_string_from_bytes(RT_DEFAULT_NEWLINE, strlen(RT_DEFAULT_NEWLINE));
+        if (!next) {
+            rt_trap("LineWriter.set_NewLine: memory allocation failed");
+            return;
+        }
+    }
 
     // Release old newline
     if (lw->newline) {
         rt_string_unref(lw->newline);
     }
 
-    // Set new newline (take reference)
-    if (nl) {
-        lw->newline = rt_string_ref(nl);
-    } else {
-        lw->newline = rt_string_from_bytes(RT_DEFAULT_NEWLINE, strlen(RT_DEFAULT_NEWLINE));
-    }
+    lw->newline = next;
 }

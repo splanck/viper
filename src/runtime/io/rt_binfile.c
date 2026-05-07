@@ -33,6 +33,7 @@
 
 #include "rt_binfile.h"
 
+#include "rt_bytes.h"
 #include "rt_file_path.h"
 #include "rt_internal.h"
 #include "rt_object.h"
@@ -55,12 +56,6 @@
 #define binfile_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
 #define binfile_ftell(fp) ftello((fp))
 #endif
-
-/// @brief Bytes implementation structure (must match rt_bytes.c).
-typedef struct rt_bytes_impl {
-    int64_t len;   ///< Number of bytes.
-    uint8_t *data; ///< Byte storage.
-} rt_bytes_impl;
 
 /// @brief BinFile implementation structure.
 typedef struct rt_binfile_impl {
@@ -382,20 +377,21 @@ int64_t rt_binfile_read(void *obj, void *bytes, int64_t offset, int64_t count) {
         return 0;
     }
 
-    rt_bytes_impl *b = (rt_bytes_impl *)bytes;
+    int64_t bytes_len = rt_bytes_len(bytes);
+    uint8_t *bytes_data = rt_bytes_data(bytes);
     if (offset < 0)
         offset = 0;
     if (count <= 0)
         return 0;
-    if (offset >= b->len)
+    if (offset >= bytes_len)
         return 0;
 
     // Clamp count to available space without overflowing offset + count.
-    if (count > b->len - offset)
-        count = b->len - offset;
+    if (count > bytes_len - offset)
+        count = bytes_len - offset;
 
     binfile_prepare_read(bf);
-    size_t read = fread(b->data + offset, 1, (size_t)count, bf->fp);
+    size_t read = fread(bytes_data + offset, 1, (size_t)count, bf->fp);
 
     if (read < (size_t)count && ferror(bf->fp)) {
         rt_trap("BinFile.Read: read failed");
@@ -466,20 +462,21 @@ void rt_binfile_write(void *obj, void *bytes, int64_t offset, int64_t count) {
         return;
     }
 
-    rt_bytes_impl *b = (rt_bytes_impl *)bytes;
+    int64_t bytes_len = rt_bytes_len(bytes);
+    const uint8_t *bytes_data = rt_bytes_data_const(bytes);
     if (offset < 0)
         offset = 0;
     if (count <= 0)
         return;
-    if (offset >= b->len)
+    if (offset >= bytes_len)
         return;
 
     // Clamp count to available data without overflowing offset + count.
-    if (count > b->len - offset)
-        count = b->len - offset;
+    if (count > bytes_len - offset)
+        count = bytes_len - offset;
 
     binfile_prepare_write(bf);
-    size_t written = fwrite(b->data + offset, 1, (size_t)count, bf->fp);
+    size_t written = fwrite(bytes_data + offset, 1, (size_t)count, bf->fp);
     if (written < (size_t)count) {
         rt_trap("BinFile.Write: write failed");
     }

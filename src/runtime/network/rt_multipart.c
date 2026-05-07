@@ -70,21 +70,12 @@ static void generate_boundary(char *buf, size_t buf_len) {
     buf[len] = '\0';
 }
 
-typedef struct {
-    int64_t len;
-    uint8_t *data;
-} bytes_impl;
-
 static inline uint8_t *bytes_data(void *obj) {
-    if (!obj)
-        return NULL;
-    return ((bytes_impl *)obj)->data;
+    return rt_bytes_data(obj);
 }
 
 static inline int64_t bytes_len_impl(void *obj) {
-    if (!obj)
-        return 0;
-    return ((bytes_impl *)obj)->len;
+    return rt_bytes_len(obj);
 }
 
 static const uint8_t *find_bytes(const uint8_t *haystack,

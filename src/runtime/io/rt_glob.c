@@ -37,8 +37,10 @@
 #include "rt_path.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
 #include <ctype.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -66,6 +68,7 @@ static int glob_char_eq(char a, char b) {
 #endif
 }
 
+/// @brief Return non-zero if `ch` is a path separator ('/' on POSIX, '/' or '\\' on Windows).
 static int glob_is_path_sep(char ch) {
 #ifdef _WIN32
     return ch == '/' || ch == '\\';
@@ -150,98 +153,137 @@ static int glob_match_class(const char **pattern_ptr, char ch, int allow_slash) 
     return negate ? !matched : matched;
 }
 
-/// @brief Recursive glob engine that matches `pattern` against `text`.
-///
-/// Walks the pattern left-to-right. Most tokens consume one character
-/// from both sides, but `*` and `**` branch: `*` tries each possible
-/// split of the remaining text (stopping at `/` when
-/// `allow_slash=0`), while `**` acts like `*` with `allow_slash=1`
-/// so it can span path components. To keep adversarial patterns like
-/// `**/**/**/*.c` from blowing up exponentially, the `**` branch
-/// caps the recursive retry loop at 10,000 attempts — on real paths
-/// this is never reached. `[...]` classes delegate to
-/// `glob_match_class` and fall back to literal `[` on malformed
-/// inputs. Returns 1 on full-pattern match consuming all of `text`.
-static int glob_match_impl(const char *pattern, const char *text, int allow_slash) {
-    while (*pattern) {
-        if (*pattern == '*') {
-            // Check for **
-            if (pattern[1] == '*') {
-                pattern += 2;
-                // Skip any following path separator.
-                while (glob_is_path_sep(*pattern))
-                    pattern++;
+/// @brief Context bundle passed through the recursive memoised glob matcher.
+typedef struct {
+    const char *pattern; ///< Null-terminated glob pattern string.
+    const char *text;    ///< Null-terminated text to match against.
+    size_t pattern_len;  ///< Length of `pattern` in bytes (excluding NUL).
+    size_t text_len;     ///< Length of `text` in bytes (excluding NUL).
+    int8_t *memo;        ///< Flat memoisation table: -1 unvisited, 0 no-match, 1 match.
+} glob_match_ctx;
 
-                // ** matches everything including /
-                if (!*pattern)
-                    return 1; // ** at end matches everything
+/// @brief Recursive, memoised glob match kernel. Advances `pi` (pattern index) and
+/// `ti` (text index); `allow_slash` controls whether '*' may cross directory separators.
+static int glob_match_rec(glob_match_ctx *ctx, size_t pi, size_t ti, int allow_slash) {
+    size_t stride = ctx->text_len + 1;
+    size_t plane = (ctx->pattern_len + 1) * stride;
+    int8_t *slot = &ctx->memo[(allow_slash ? plane : 0) + pi * stride + ti];
+    if (*slot != -1)
+        return *slot;
 
-                // Try matching rest of pattern at each position
-                // Limit iterations to prevent exponential backtracking on adversarial input
-                int attempts = 0;
-                for (const char *p = text; *p; p++) {
-                    if (++attempts > 10000)
-                        return 0; // Bail out on pathological patterns
-                    if (glob_match_impl(pattern, p, 1))
-                        return 1;
-                }
-                return glob_match_impl(pattern, text + strlen(text), 1);
-            }
+    int result = 0;
+    const char *pattern = ctx->pattern;
+    const char *text = ctx->text;
 
-            // Single * - doesn't match /
-            pattern++;
-
-            // * at end matches everything (except / if not allow_slash)
-            if (!*pattern) {
-                while (*text) {
-                    if (glob_is_path_sep(*text) && !allow_slash)
-                        return 0;
-                    text++;
-                }
-                return 1;
-            }
-
-            // Try matching rest of pattern at each position
-            while (*text) {
-                if (glob_is_path_sep(*text) && !allow_slash) {
-                    // Can't skip past /
-                    return glob_match_impl(pattern, text, allow_slash);
-                }
-                if (glob_match_impl(pattern, text, allow_slash))
-                    return 1;
-                text++;
-            }
-            return glob_match_impl(pattern, text, allow_slash);
-        } else if (*pattern == '?') {
-            // ? matches any single char except /
-            if (!*text || (glob_is_path_sep(*text) && !allow_slash))
-                return 0;
-            pattern++;
-            text++;
-        } else if (*pattern == '[') {
-            const char *after = pattern;
-            int match = glob_match_class(&after, *text, allow_slash);
-            if (match >= 0) {
-                if (!match)
-                    return 0;
-                pattern = after;
-                text++;
-            } else {
-                if (!glob_char_eq(*pattern, *text))
-                    return 0;
-                pattern++;
-                text++;
-            }
-        } else {
-            // Literal character match
-            if (!glob_char_eq(*pattern, *text))
-                return 0;
-            pattern++;
-            text++;
-        }
+    if (pi >= ctx->pattern_len) {
+        result = ti == ctx->text_len;
+        goto done;
     }
 
-    return *text == '\0';
+    if (pattern[pi] == '*') {
+        if (pi + 1 < ctx->pattern_len && pattern[pi + 1] == '*') {
+            pi += 2;
+            while (pi < ctx->pattern_len && glob_is_path_sep(pattern[pi]))
+                pi++;
+            if (pi >= ctx->pattern_len) {
+                result = 1;
+                goto done;
+            }
+            for (size_t p = ti; p <= ctx->text_len; ++p) {
+                if (glob_match_rec(ctx, pi, p, 1)) {
+                    result = 1;
+                    goto done;
+                }
+            }
+            goto done;
+        }
+
+        pi++;
+        if (pi >= ctx->pattern_len) {
+            result = 1;
+            for (size_t p = ti; p < ctx->text_len; ++p) {
+                if (glob_is_path_sep(text[p]) && !allow_slash) {
+                    result = 0;
+                    break;
+                }
+            }
+            goto done;
+        }
+
+        for (size_t p = ti; p <= ctx->text_len; ++p) {
+            if (p < ctx->text_len && glob_is_path_sep(text[p]) && !allow_slash) {
+                result = glob_match_rec(ctx, pi, p, allow_slash);
+                goto done;
+            }
+            if (glob_match_rec(ctx, pi, p, allow_slash)) {
+                result = 1;
+                goto done;
+            }
+            if (p == ctx->text_len)
+                break;
+        }
+        goto done;
+    }
+
+    if (ti >= ctx->text_len) {
+        if (pattern[pi] == '[') {
+            const char *after = pattern + pi;
+            int match = glob_match_class(&after, '\0', allow_slash);
+            if (match >= 0) {
+                result = 0;
+                goto done;
+            }
+        }
+        result = 0;
+        goto done;
+    }
+
+    if (pattern[pi] == '?') {
+        result = !(glob_is_path_sep(text[ti]) && !allow_slash) &&
+                 glob_match_rec(ctx, pi + 1, ti + 1, allow_slash);
+    } else if (pattern[pi] == '[') {
+        const char *after = pattern + pi;
+        int match = glob_match_class(&after, text[ti], allow_slash);
+        if (match >= 0)
+            result = match && glob_match_rec(ctx, (size_t)(after - pattern), ti + 1, allow_slash);
+        else
+            result = glob_char_eq(pattern[pi], text[ti]) &&
+                     glob_match_rec(ctx, pi + 1, ti + 1, allow_slash);
+    } else {
+        result = glob_char_eq(pattern[pi], text[ti]) &&
+                 glob_match_rec(ctx, pi + 1, ti + 1, allow_slash);
+    }
+
+done:
+    *slot = result ? 1 : 0;
+    return result;
+}
+
+/// @brief Memoized glob engine that matches `pattern` against `text`.
+static int glob_match_impl(const char *pattern, const char *text, int allow_slash) {
+    size_t pattern_len = strlen(pattern);
+    size_t text_len = strlen(text);
+    if (pattern_len > SIZE_MAX - 1 || text_len > SIZE_MAX - 1) {
+        rt_trap("Glob.Match: pattern or text too long");
+        return 0;
+    }
+    size_t rows = pattern_len + 1;
+    size_t cols = text_len + 1;
+    if (rows > SIZE_MAX / cols || rows * cols > SIZE_MAX / 2) {
+        rt_trap("Glob.Match: pattern or text too long");
+        return 0;
+    }
+    size_t cells = rows * cols * 2;
+    int8_t *memo = (int8_t *)malloc(cells);
+    if (!memo) {
+        rt_trap("Glob.Match: memory allocation failed");
+        return 0;
+    }
+    memset(memo, -1, cells);
+    glob_match_ctx ctx = {pattern, text, pattern_len, text_len, memo};
+    int result = glob_match_rec(&ctx, 0, 0, allow_slash ? 1 : 0);
+    free(memo);
+    return result;
 }
 
 /// @brief `Glob.Match(path, pattern)` — bool test of a single path against a pattern.

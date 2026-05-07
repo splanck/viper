@@ -66,9 +66,11 @@ Unified stream abstraction providing a common interface over file and memory str
 
 `OpenFile`, `OpenMemory`, and `OpenBytes` create streams that own their backing `BinFile` or `MemStream`; `Close()` releases that backing object. `FromBinFile` and `FromMemStream` retain the existing object for the wrapper's lifetime, so the wrapper remains valid even if another owner releases its reference. Closing the wrapper releases the wrapper's retained reference.
 
-All operations except `Close()` trap on a null or already-closed stream. `Write(bytes)` also traps when `bytes` is null. This avoids silent reads from or writes to invalid backing objects.
+All operations except `Close()` trap on a null or already-closed stream. `Write(bytes)` traps when `bytes` is null, and `Read(count)` traps when `count` is negative. Setting `Pos` traps if the underlying file seek fails. This avoids silent reads from or writes to invalid backing objects.
 
 `Read(count)` is a short-read API for both file-backed and memory-backed streams: if fewer than `count` bytes remain, it returns a `Bytes` object containing only the available bytes instead of trapping.
+
+`AsBinFile()` is valid only on file-backed streams. `AsMemStream()` and `ToBytes()` are valid only on memory-backed streams. Calling one of these conversion methods on the wrong backing type traps instead of returning null.
 
 ### Zia Example
 

@@ -579,7 +579,7 @@ is returned. `Entries()` is the strict variant: it traps on open, read, or close
 
 ## Viper.IO.Path
 
-Cross-platform path manipulation utilities. Most functions accept both Unix (`/`) and Windows (`\`) separators. On POSIX, `Path.Join(a, b)` only treats a leading `/` in `b` as absolute; a leading backslash remains a relative filename character.
+Cross-platform path manipulation utilities. On Windows, both `/` and `\` are treated as separators. On POSIX, `/` is the only path separator; backslash is treated as an ordinary filename byte. `Path.Join(a, b)` still accepts either slash as a join-boundary convenience, but `Dir`, `Name`, `Norm`, and absolute-path checks follow host filesystem semantics.
 
 **Type:** Static utility class
 
@@ -688,6 +688,7 @@ The `Norm()` function performs the following transformations:
 | Example absolute path   | `/home/user`    | `C:\Users\user`           |
 
 Windows drive-relative paths such as `C:logs\app.txt` are not absolute. `Path.Norm()` preserves the `C:` relative prefix instead of converting it to `C:\`, and `Path.Join()` only treats drive-rooted paths such as `C:\logs` as absolute.
+On POSIX, `Path.Name("a\\b.txt")` returns `"a\\b.txt"` and `Path.Dir("a\\b.txt")` returns `"."`, because the backslash is part of the filename rather than a directory separator.
 
 ### Use Cases
 
@@ -732,6 +733,8 @@ File globbing utilities for matching file paths against wildcard patterns and fi
 - All listing methods return a `Seq` of full path strings
 - Patterns are matched against the filename component, not the full path (for `Files`/`Entries`)
 - On Windows, both `/` and `\` are treated as path separators for `*`, `?`, `**`, and literal separator matching.
+- On POSIX, only `/` is a path separator for glob matching; backslash is matched as a normal character.
+- `**` matching is memoized, so very deep path strings are handled without a fixed recursion attempt limit.
 
 ### Zia Example
 

@@ -34,6 +34,9 @@
 extern "C" {
 #endif
 
+/// @brief Bytes class identifier for heap header tagging.
+#define RT_BYTES_CLASS_ID INT64_C(-0x430201)
+
 /// @brief Create a new zero-filled byte array of given length.
 /// @param len Number of bytes to allocate (clamped to 0 if negative).
 /// @return Pointer to new Bytes object.
@@ -60,6 +63,21 @@ void *rt_bytes_from_base64(rt_string b64);
 /// @param obj Bytes object pointer.
 /// @return Number of bytes.
 int64_t rt_bytes_len(void *obj);
+
+/// @brief Check whether an object is a Bytes instance.
+/// @param obj Candidate object pointer.
+/// @return 1 when obj is a Bytes object, 0 otherwise.
+int8_t rt_bytes_is_bytes(void *obj);
+
+/// @brief Get the mutable raw byte buffer for a Bytes object.
+/// @param obj Bytes object pointer.
+/// @return Raw byte pointer, or NULL for a NULL/empty Bytes object.
+uint8_t *rt_bytes_data(void *obj);
+
+/// @brief Get the const raw byte buffer for a Bytes object.
+/// @param obj Bytes object pointer.
+/// @return Raw byte pointer, or NULL for a NULL/empty Bytes object.
+const uint8_t *rt_bytes_data_const(void *obj);
 
 /// @brief Check if the byte array is empty (length 0).
 /// @param obj Bytes object pointer.

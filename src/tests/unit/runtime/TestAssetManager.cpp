@@ -17,6 +17,8 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <string>
 
 // Build-time VPA writer
 #include "VpaWriter.hpp"
@@ -44,6 +46,13 @@ static const char *write_vpa_temp(const char *name,
     if (!writer.writeToFile(path, err))
         return nullptr;
     return path;
+}
+
+static bool write_vpa_at(const char *path, const char *entry_name, const uint8_t *data, size_t len) {
+    viper::asset::VpaWriter writer;
+    writer.addEntry(entry_name, data, len, false);
+    std::string err;
+    return writer.writeToFile(path, err);
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -114,6 +123,39 @@ TEST(AssetManager, UnmountNonExistent) {
     rt_string path = rt_const_cstr("never_mounted.vpa");
     int64_t ok = rt_asset_unmount(path);
     EXPECT_EQ(ok, 0);
+}
+
+TEST(AssetManager, AmbiguousBasenameUnmountDoesNotRemoveWrongPack) {
+    namespace fs = std::filesystem;
+    fs::path root = fs::temp_directory_path() / "viper_asset_basename_unmount";
+    fs::remove_all(root);
+    fs::create_directories(root / "a");
+    fs::create_directories(root / "b");
+
+    fs::path packA = root / "a" / "shared.vpa";
+    fs::path packB = root / "b" / "shared.vpa";
+    std::string packAStr = packA.string();
+    std::string packBStr = packB.string();
+    const uint8_t dataA[] = "a";
+    const uint8_t dataB[] = "b";
+    ASSERT_TRUE(write_vpa_at(packAStr.c_str(), "only-a.txt", dataA, sizeof(dataA) - 1));
+    ASSERT_TRUE(write_vpa_at(packBStr.c_str(), "only-b.txt", dataB, sizeof(dataB) - 1));
+
+    EXPECT_EQ(rt_asset_mount(rt_const_cstr(packAStr.c_str())), 1);
+    EXPECT_EQ(rt_asset_mount(rt_const_cstr(packBStr.c_str())), 1);
+
+    EXPECT_EQ(rt_asset_unmount(rt_const_cstr("shared.vpa")), 0);
+    EXPECT_EQ(rt_asset_exists(rt_const_cstr("only-a.txt")), 1);
+    EXPECT_EQ(rt_asset_exists(rt_const_cstr("only-b.txt")), 1);
+
+    EXPECT_EQ(rt_asset_unmount(rt_const_cstr(packAStr.c_str())), 1);
+    EXPECT_EQ(rt_asset_exists(rt_const_cstr("only-a.txt")), 0);
+    EXPECT_EQ(rt_asset_exists(rt_const_cstr("only-b.txt")), 1);
+
+    EXPECT_EQ(rt_asset_unmount(rt_const_cstr("shared.vpa")), 1);
+    EXPECT_EQ(rt_asset_exists(rt_const_cstr("only-b.txt")), 0);
+
+    fs::remove_all(root);
 }
 
 TEST(AssetManager, ListFromPack) {

@@ -187,21 +187,16 @@ static inline int net_classify_errno(void) {
 // Internal Bytes Access
 //=============================================================================
 
-typedef struct {
-    int64_t len;
-    uint8_t *data;
-} bytes_impl;
-
 static inline uint8_t *bytes_data(void *obj) {
-    if (!obj)
-        return NULL;
-    return ((bytes_impl *)obj)->data;
+    uint8_t *(*bytes_data_fn)(void *) = rt_bytes_data;
+    uint8_t *data = bytes_data_fn(obj);
+    return data;
 }
 
 static inline int64_t bytes_len(void *obj) {
-    if (!obj)
-        return 0;
-    return ((bytes_impl *)obj)->len;
+    int64_t (*bytes_len_fn)(void *) = rt_bytes_len;
+    int64_t len = bytes_len_fn(obj);
+    return len;
 }
 
 //=============================================================================

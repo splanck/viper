@@ -31,6 +31,7 @@
 #include <string.h>
 
 #ifdef _WIN32
+#include <stdint.h>
 #include <io.h>
 #include <process.h>
 #include <windows.h>
@@ -78,33 +79,72 @@ static int iext(const char *name, const char *ext) {
 /// memory buffers (`_decode_buffer`, `_load_mem`), but PNG, BMP, and
 /// GIF decoders only have file-path entry points (they rely on
 /// file-handle seek semantics internally). To feed those loaders
-/// from embedded/mounted assets, we spill the bytes to a per-PID
-/// temp file, call the path-based loader, and unlink. OS temp-dir
-/// (`TMPDIR`/`GetTempPathA`) is used so the spill lives on the
-/// volume most likely to have scratch space. Filename includes PID
-/// to avoid cross-process collisions; within a process the spill
-/// is overwritten serially per call.
+/// from embedded/mounted assets, we spill the bytes to an exclusively
+/// created temp file, call the path-based loader, and unlink.
 static void *load_via_tempfile(const uint8_t *data,
                                size_t size,
                                const char *ext,
                                void *(*loader)(void *path_str)) {
-    // Build temp path
+    (void)ext;
     char tmppath[512];
+    FILE *f = NULL;
 #ifdef _WIN32
     char tmpdir[MAX_PATH];
-    GetTempPathA(MAX_PATH, tmpdir);
-    snprintf(tmppath, sizeof(tmppath), "%sviper_asset_%d%s", tmpdir, _getpid(), ext);
+    DWORD tmpdir_len = GetTempPathA(MAX_PATH, tmpdir);
+    if (tmpdir_len == 0 || tmpdir_len >= MAX_PATH)
+        return NULL;
+    HANDLE h = INVALID_HANDLE_VALUE;
+    for (int attempt = 0; attempt < 128 && h == INVALID_HANDLE_VALUE; ++attempt) {
+        snprintf(tmppath,
+                 sizeof(tmppath),
+                 "%sviper_asset_%lu_%llu_%d.tmp",
+                 tmpdir,
+                 (unsigned long)_getpid(),
+                 (unsigned long long)GetTickCount64(),
+                 attempt);
+        h = CreateFileA(tmppath,
+                        GENERIC_WRITE,
+                        0,
+                        NULL,
+                        CREATE_NEW,
+                        FILE_ATTRIBUTE_TEMPORARY | FILE_ATTRIBUTE_NOT_CONTENT_INDEXED,
+                        NULL);
+        if (h == INVALID_HANDLE_VALUE && GetLastError() != ERROR_FILE_EXISTS &&
+            GetLastError() != ERROR_ALREADY_EXISTS)
+            return NULL;
+    }
+    if (h == INVALID_HANDLE_VALUE)
+        return NULL;
+    int fd = _open_osfhandle((intptr_t)h, 0);
+    if (fd < 0) {
+        CloseHandle(h);
+        DeleteFileA(tmppath);
+        return NULL;
+    }
+    f = _fdopen(fd, "wb");
+    if (!f) {
+        _close(fd);
+        DeleteFileA(tmppath);
+        return NULL;
+    }
 #else
     const char *tmpdir = getenv("TMPDIR");
     if (!tmpdir || !*tmpdir)
         tmpdir = "/tmp";
-    snprintf(tmppath, sizeof(tmppath), "%s/viper_asset_%d%s", tmpdir, (int)getpid(), ext);
+    if (snprintf(tmppath, sizeof(tmppath), "%s/viper_asset_XXXXXX", tmpdir) >=
+        (int)sizeof(tmppath))
+        return NULL;
+    int fd = mkstemp(tmppath);
+    if (fd < 0)
+        return NULL;
+    f = fdopen(fd, "wb");
+    if (!f) {
+        close(fd);
+        remove(tmppath);
+        return NULL;
+    }
 #endif
 
-    // Write temp file
-    FILE *f = fopen(tmppath, "wb");
-    if (!f)
-        return NULL;
     if (size > 0 && fwrite(data, 1, size, f) != size) {
         fclose(f);
         remove(tmppath);
@@ -114,7 +154,12 @@ static void *load_via_tempfile(const uint8_t *data,
 
     // Call file-based loader
     rt_string path_str = rt_string_from_bytes(tmppath, strlen(tmppath));
+    if (!path_str) {
+        remove(tmppath);
+        return NULL;
+    }
     void *result = loader((void *)path_str);
+    rt_string_unref(path_str);
 
     // Cleanup
     remove(tmppath);

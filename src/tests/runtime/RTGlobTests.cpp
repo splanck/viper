@@ -17,6 +17,7 @@
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 /// @brief Helper to print test result.
 static void test_result(const char *name, bool passed) {
@@ -149,6 +150,16 @@ static void test_glob_match() {
         test_result("Windows * does not cross backslash", rt_glob_match(path, pattern) == 0);
     }
 #endif
+
+    // Test 17: long ** matches are handled without a fixed recursion attempt cap.
+    {
+        std::string deep_path(12000, 'a');
+        deep_path += "/target.txt";
+        rt_string pattern = rt_const_cstr("**/target.txt");
+        rt_string path = rt_string_from_bytes(deep_path.data(), deep_path.size());
+        test_result("long ** match", rt_glob_match(path, pattern) == 1);
+        rt_string_unref(path);
+    }
 
     printf("\n");
 }

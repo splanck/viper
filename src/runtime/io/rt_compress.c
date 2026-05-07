@@ -53,7 +53,7 @@
 // Constants
 //=============================================================================
 
-/// DEFLATE block types (RFC 1951 §3.2.3).
+/// @brief DEFLATE block types (RFC 1951 §3.2.3).
 typedef enum {
     RT_HUFFMAN_STORED = 0,  ///< No compression (stored block).
     RT_HUFFMAN_FIXED = 1,   ///< Fixed Huffman codes.
@@ -83,24 +83,14 @@ typedef enum {
 // Internal Bytes Access
 //=============================================================================
 
-/// @brief Internal structure matching rt_bytes_impl
-typedef struct {
-    int64_t len;
-    uint8_t *data;
-} bytes_impl;
-
 /// @brief Get raw pointer to bytes data
 static inline uint8_t *bytes_data(void *obj) {
-    if (!obj)
-        return NULL;
-    return ((bytes_impl *)obj)->data;
+    return rt_bytes_data(obj);
 }
 
 /// @brief Get bytes length
 static inline int64_t bytes_len(void *obj) {
-    if (!obj)
-        return 0;
-    return ((bytes_impl *)obj)->len;
+    return rt_bytes_len(obj);
 }
 
 /// @brief Release a temporary GC object that is no longer needed.
@@ -113,14 +103,15 @@ static void compress_release_temp_object(void *obj) {
 // Bit Stream Reader (for decompression)
 //=============================================================================
 
+/// @brief LSB-first bit-stream reader used by the DEFLATE decompressor.
 typedef struct {
-    const uint8_t *data;
-    size_t len;
-    size_t pos;      // Current byte position
-    int bit_pos;     // Current bit position (0-7)
-    uint32_t buffer; // Bit buffer
-    int bits_in_buf; // Bits available in buffer
-    bool error;      // True after a short/truncated bit read
+    const uint8_t *data; ///< Source byte buffer (borrowed, caller keeps alive).
+    size_t len;          ///< Total length of `data` in bytes.
+    size_t pos;          ///< Current byte offset into `data`.
+    int bit_pos;         ///< Unused — superseded by `bits_in_buf` (kept for alignment).
+    uint32_t buffer;     ///< Rolling bit accumulator (LSB = next bit).
+    int bits_in_buf;     ///< Number of valid bits currently in `buffer`.
+    bool error;          ///< Set to true after a truncated or invalid bit read.
 } bit_reader_t;
 
 /// @brief Initialize a bit reader over a byte buffer.
@@ -199,12 +190,13 @@ static bool br_has_data(bit_reader_t *br) {
 // Bit Stream Writer (for compression)
 //=============================================================================
 
+/// @brief LSB-first bit-stream writer used by the DEFLATE compressor.
 typedef struct {
-    uint8_t *data;
-    size_t capacity;
-    size_t len;
-    uint32_t buffer;
-    int bits_in_buf;
+    uint8_t *data;    ///< Output byte buffer (heap-allocated, grown by bw_ensure).
+    size_t capacity;  ///< Allocated capacity of `data` in bytes.
+    size_t len;       ///< Number of complete bytes written to `data`.
+    uint32_t buffer;  ///< Pending bit accumulator (LSB = next bit to emit).
+    int bits_in_buf;  ///< Number of valid bits currently in `buffer`.
 } bit_writer_t;
 
 /// @brief Initialize a bit writer with a starting buffer capacity.
@@ -290,17 +282,19 @@ static void bw_free(bit_writer_t *bw) {
 // Huffman Tree
 //=============================================================================
 
+/// @brief A single Huffman code assignment (symbol → code + length).
 typedef struct {
-    uint16_t symbol; // Symbol value
-    uint16_t code;   // Huffman code
-    uint8_t len;     // Code length in bits
+    uint16_t symbol; ///< Symbol value (literal, length code, or distance code).
+    uint16_t code;   ///< Assigned bit pattern (MSB-aligned canonical code).
+    uint8_t len;     ///< Code length in bits.
 } huffman_code_t;
 
+/// @brief Direct-mapped Huffman decode table for O(1) symbol lookup.
 typedef struct {
-    int max_code;      // Maximum code index
-    uint16_t *symbols; // Symbol lookup by code
-    int table_bits;    // Bits for direct lookup
-    size_t table_size; // Size of lookup table
+    int max_code;      ///< Highest valid code index in the flat lookup table.
+    uint16_t *symbols; ///< Flat table indexed by (bit-reversed) code prefix.
+    int table_bits;    ///< Number of bits consumed per table lookup.
+    size_t table_size; ///< Number of entries in `symbols`.
 } huffman_tree_t;
 
 /// @brief Build a canonical-Huffman lookup table from per-symbol code lengths.
@@ -323,6 +317,14 @@ static bool build_huffman_tree(huffman_tree_t *tree, const uint8_t *lengths, int
         bl_count[lengths[i]]++;
     }
     bl_count[0] = 0;
+
+    int left = 1;
+    for (int bits = 1; bits <= MAX_BITS; bits++) {
+        left <<= 1;
+        left -= bl_count[bits];
+        if (left < 0)
+            return false;
+    }
 
     // Calculate next code for each length
     uint16_t next_code[MAX_BITS + 1];
@@ -371,6 +373,11 @@ static bool build_huffman_tree(huffman_tree_t *tree, const uint8_t *lengths, int
             int fill = 1 << (tree->table_bits - len);
             for (int j = 0; j < fill; j++) {
                 int idx = rev_code | (j << len);
+                if ((size_t)idx >= tree->table_size) {
+                    free(tree->symbols);
+                    tree->symbols = NULL;
+                    return false;
+                }
                 // Pack length and symbol: high bits = length, low bits = symbol
                 tree->symbols[idx] = (uint16_t)((len << 12) | i);
             }
@@ -450,14 +457,20 @@ static void init_fixed_trees_impl(void) {
     for (int i = 280; i <= 287; i++)
         lit_lengths[i] = 8;
 
-    build_huffman_tree(&fixed_lit_tree, lit_lengths, FIXED_LIT_CODES);
+    if (!build_huffman_tree(&fixed_lit_tree, lit_lengths, FIXED_LIT_CODES)) {
+        rt_trap("Inflate: failed to initialize fixed literal tree");
+        return;
+    }
 
     // Fixed distance code lengths (all 5 bits)
     uint8_t dist_lengths[FIXED_DIST_CODES];
     for (int i = 0; i < FIXED_DIST_CODES; i++)
         dist_lengths[i] = 5;
 
-    build_huffman_tree(&fixed_dist_tree, dist_lengths, FIXED_DIST_CODES);
+    if (!build_huffman_tree(&fixed_dist_tree, dist_lengths, FIXED_DIST_CODES)) {
+        rt_trap("Inflate: failed to initialize fixed distance tree");
+        return;
+    }
 }
 
 #ifdef _WIN32
@@ -509,10 +522,11 @@ static const int code_length_order[MAX_CODE_LEN_CODES] = {
 // Decompression Output Buffer
 //=============================================================================
 
+/// @brief Growable byte buffer used to accumulate DEFLATE decompressor output.
 typedef struct {
-    uint8_t *data;
-    size_t len;
-    size_t capacity;
+    uint8_t *data;   ///< Heap-allocated output buffer (grown by out_ensure).
+    size_t len;      ///< Number of valid bytes written to `data`.
+    size_t capacity; ///< Allocated capacity of `data` in bytes.
 } output_buffer_t;
 
 /// @brief Initialize a growable output buffer.
@@ -802,6 +816,9 @@ static bool inflate_dynamic(bit_reader_t *br, output_buffer_t *out) {
     // Build literal/length and distance trees
     huffman_tree_t lit_tree = {0}, dist_tree = {0};
 
+    if (hlit <= 256 || lengths[256] == 0)
+        return false;
+
     if (!build_huffman_tree(&lit_tree, lengths, hlit))
         return false;
 
@@ -901,11 +918,11 @@ static void *inflate_data(const uint8_t *data, size_t len) {
 // DEFLATE Compression
 //=============================================================================
 
-// Hash table for LZ77 matching
+/// @brief Hash-chain tables for the LZ77 sliding-window match finder.
 typedef struct {
-    int *head;      // Hash -> position
-    int *prev;      // Chain for same hash
-    int window_pos; // Current position in window
+    int *head;      ///< Maps each 3-byte-hash to the most recent matching position.
+    int *prev;      ///< Back-chain linking older positions with the same hash.
+    int window_pos; ///< Current write position within the 32KB sliding window.
 } lz77_state_t;
 
 #define HASH_BITS 15

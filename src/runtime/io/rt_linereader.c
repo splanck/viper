@@ -591,14 +591,22 @@ rt_string rt_linereader_read_all(void *obj) {
         lr->has_peeked = 0;
     }
 
-    // Read the rest
-    size_t read = fread(buf + offset, 1, remaining, lr->fp);
-    if (read < remaining && ferror(lr->fp)) {
-        free(buf);
-        rt_trap("LineReader.ReadAll: read failed");
-        return rt_string_from_bytes("", 0);
+    // Read the rest. The size was measured above, so a short clean read means
+    // the file changed while we were reading it.
+    size_t read_total = 0;
+    while (read_total < remaining) {
+        size_t read = fread(buf + offset + read_total, 1, remaining - read_total, lr->fp);
+        if (read == 0) {
+            free(buf);
+            if (ferror(lr->fp))
+                rt_trap("LineReader.ReadAll: read failed");
+            else
+                rt_trap("LineReader.ReadAll: file changed while reading");
+            return rt_string_from_bytes("", 0);
+        }
+        read_total += read;
     }
-    total = offset + read;
+    total = offset + read_total;
 
     lr->eof = 1;
 

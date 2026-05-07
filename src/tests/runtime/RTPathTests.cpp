@@ -112,6 +112,13 @@ static void test_dir() {
     test_result("empty path", rt_str_eq(r, rt_const_cstr("")));
     rt_string_unref(r);
 
+#ifndef _WIN32
+    p = rt_const_cstr("folder\\file.txt");
+    r = rt_path_dir(p);
+    test_result("posix backslash is not a directory separator", rt_str_eq(r, rt_const_cstr(".")));
+    rt_string_unref(r);
+#endif
+
     printf("\n");
 }
 
@@ -138,6 +145,14 @@ static void test_name() {
     r = rt_path_name(p);
     test_result("empty path", rt_str_eq(r, rt_const_cstr("")));
     rt_string_unref(r);
+
+#ifndef _WIN32
+    p = rt_const_cstr("folder\\file.txt");
+    r = rt_path_name(p);
+    test_result("posix backslash remains in filename",
+                rt_str_eq(r, rt_const_cstr("folder\\file.txt")));
+    rt_string_unref(r);
+#endif
 
     printf("\n");
 }

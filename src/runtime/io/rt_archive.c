@@ -85,27 +85,14 @@
 // Internal Bytes Access
 //=============================================================================
 
-typedef struct {
-    int64_t len;
-    uint8_t *data;
-} bytes_impl;
-
-/// @brief Pointer to the raw byte buffer backing an `rt_bytes` handle.
-///
-/// The underlying layout is duplicated locally as `bytes_impl` to avoid
-/// pulling internal headers; this matches the public ABI of
-/// `rt_bytes_new`. Returns NULL for a NULL handle.
+/// @brief Return a direct pointer to the raw byte buffer of a Bytes GC object.
 static inline uint8_t *bytes_data(void *obj) {
-    if (!obj)
-        return NULL;
-    return ((bytes_impl *)obj)->data;
+    return rt_bytes_data(obj);
 }
 
-/// @brief Length in bytes of an `rt_bytes` handle, or 0 if NULL.
+/// @brief Return the byte count of a Bytes GC object.
 static inline int64_t bytes_len(void *obj) {
-    if (!obj)
-        return 0;
-    return ((bytes_impl *)obj)->len;
+    return rt_bytes_len(obj);
 }
 
 /// @brief Drop a temporary GC object whose refcount has dropped to zero.
@@ -604,42 +591,44 @@ static void archive_reject_symlink_components(const char *path, size_t root_len,
 // ZIP Entry Structure
 //=============================================================================
 
+/// @brief Metadata for a single entry parsed from the ZIP central directory.
 typedef struct zip_entry {
-    char *name;                 // Entry name (allocated)
-    uint32_t crc32;             // CRC-32 of uncompressed data
-    uint32_t compressed_size;   // Size after compression
-    uint32_t uncompressed_size; // Original size
-    uint16_t method;            // Compression method (0 or 8)
-    uint16_t mod_time;          // DOS time
-    uint16_t mod_date;          // DOS date
-    uint32_t local_offset;      // Offset of local header in file
-    bool is_directory;          // True if directory entry
+    char *name;                 ///< Entry name (heap-allocated, owned).
+    uint32_t crc32;             ///< CRC-32 of the uncompressed data.
+    uint32_t compressed_size;   ///< Stored size in the archive (bytes).
+    uint32_t uncompressed_size; ///< Original uncompressed size (bytes).
+    uint16_t method;            ///< Compression method: 0=stored, 8=DEFLATE.
+    uint16_t mod_time;          ///< DOS-encoded modification time.
+    uint16_t mod_date;          ///< DOS-encoded modification date.
+    uint32_t local_offset;      ///< Byte offset of the local file header.
+    bool is_directory;          ///< True when the entry name ends with '/'.
 } zip_entry_t;
 
 //=============================================================================
 // Archive Structure
 //=============================================================================
 
+/// @brief Internal state for an open ZIP archive (read or write mode).
 typedef struct rt_archive {
-    rt_string path;   // File path or NULL if from bytes
-    uint8_t *data;    // Archive data (mmap or copy)
-    size_t data_len;  // Length of data
-    bool owns_data;   // True if we allocated data
-    bool is_writing;  // True if opened for writing
-    bool is_finished; // True if Finish() was called
+    rt_string path;   ///< File path string, or NULL for byte-backed archives.
+    uint8_t *data;    ///< Full archive bytes (malloc'd copy or provided blob).
+    size_t data_len;  ///< Length of `data` in bytes.
+    bool owns_data;   ///< True when this object allocated `data` and must free it.
+    bool is_writing;  ///< True when opened via `Archive.Create` (write mode).
+    bool is_finished; ///< True after `Archive.Finish` has been called.
 
-    // For reading
-    zip_entry_t *entries; // Array of entries
-    int entry_count;      // Number of entries
+    // Read-side fields
+    zip_entry_t *entries; ///< Array of parsed central-directory entries.
+    int entry_count;      ///< Number of entries in `entries`.
 
-    // For writing
-    int fd;                     // File descriptor for writing
-    uint8_t *write_buf;         // Write buffer
-    size_t write_len;           // Current length
-    size_t write_cap;           // Buffer capacity
-    zip_entry_t *write_entries; // Entries being written
-    int write_entry_count;      // Number of entries written
-    int write_entry_cap;        // Capacity
+    // Write-side fields
+    int fd;                     ///< POSIX fd used for streaming writes (-1 if unused).
+    uint8_t *write_buf;         ///< In-memory write accumulation buffer.
+    size_t write_len;           ///< Current number of valid bytes in `write_buf`.
+    size_t write_cap;           ///< Allocated capacity of `write_buf`.
+    zip_entry_t *write_entries; ///< Metadata for each entry added so far.
+    int write_entry_count;      ///< Number of entries in `write_entries`.
+    int write_entry_cap;        ///< Allocated capacity of `write_entries`.
 } rt_archive_t;
 
 //=============================================================================
@@ -816,7 +805,11 @@ static bool find_eocd(const uint8_t *data, size_t len, size_t *eocd_offset) {
 
     for (size_t i = ZIP_END_RECORD_SIZE; i <= search_len; i++) {
         size_t offset = len - i;
-        if (read_u32(data + offset) == ZIP_END_RECORD_SIG) {
+        if (read_u32(data + offset) == ZIP_END_RECORD_SIG &&
+            offset <= len - ZIP_END_RECORD_SIZE) {
+            uint16_t comment_len = read_u16(data + offset + 20);
+            if (offset + ZIP_END_RECORD_SIZE + (size_t)comment_len != len)
+                continue;
             *eocd_offset = offset;
             return true;
         }
@@ -913,6 +906,12 @@ static bool parse_central_directory(rt_archive_t *ar) {
         }
         memcpy(e->name, p + ZIP_CENTRAL_HEADER_SIZE, name_len);
         e->name[name_len] = '\0';
+        for (int prior = 0; prior < parsed; ++prior) {
+            if (entries[prior].name && strcmp(entries[prior].name, e->name) == 0) {
+                archive_free_entry_array(entries, parsed + 1);
+                return false;
+            }
+        }
 
         // Check if directory
         e->is_directory = (name_len > 0 && e->name[name_len - 1] == '/');
@@ -1105,6 +1104,17 @@ static void add_write_entry(rt_archive_t *ar, zip_entry_t *e) {
     ar->write_entries[ar->write_entry_count++] = *e;
 }
 
+/// @brief Return 1 if the write-side entry table already contains an entry with the given name.
+static int archive_write_has_entry(rt_archive_t *ar, const char *name) {
+    if (!ar || !name)
+        return 0;
+    for (int i = 0; i < ar->write_entry_count; ++i) {
+        if (ar->write_entries[i].name && strcmp(ar->write_entries[i].name, name) == 0)
+            return 1;
+    }
+    return 0;
+}
+
 /// @brief Result enum for `normalize_name` — distinguishes invalid input
 ///        from out-of-memory so callers can pick the right trap message.
 typedef enum { NAME_OK = 0, NAME_INVALID, NAME_OOM } name_result_t;
@@ -1242,6 +1252,39 @@ static void get_dos_time(uint16_t *time, uint16_t *date) {
     // Use a fixed time for reproducibility (could use actual time)
     *time = 0;                        // 00:00:00
     *date = (21 << 9) | (1 << 5) | 1; // 2001-01-01
+}
+
+/// @brief Compute a proleptic Gregorian day number from a civil (year, month, day) triple.
+static int64_t archive_days_from_civil(int year, unsigned month, unsigned day) {
+    year -= month <= 2;
+    const int era = (year >= 0 ? year : year - 399) / 400;
+    const unsigned yoe = (unsigned)(year - era * 400);
+    const unsigned mp = month > 2 ? month - 3 : month + 9;
+    const unsigned doy = (153 * mp + 2) / 5 + day - 1;
+    const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    return (int64_t)era * 146097 + (int64_t)doe - 719468;
+}
+
+/// @brief Convert a DOS (FAT) time+date pair to a Unix timestamp (seconds since epoch).
+static int64_t archive_dos_datetime_to_unix(uint16_t dos_time, uint16_t dos_date) {
+    int year = ((dos_date >> 9) & 0x7F) + 1980;
+    unsigned month = (unsigned)((dos_date >> 5) & 0xF);
+    unsigned day = (unsigned)(dos_date & 0x1F);
+    unsigned hour = (unsigned)((dos_time >> 11) & 0x1F);
+    unsigned minute = (unsigned)((dos_time >> 5) & 0x3F);
+    unsigned second = (unsigned)((dos_time & 0x1F) * 2);
+
+    static const unsigned month_days[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    int leap = (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0));
+    unsigned max_day = month >= 1 && month <= 12 ? month_days[month - 1] : 0;
+    if (month == 2 && leap)
+        max_day = 29;
+    if (month < 1 || month > 12 || day < 1 || day > max_day || hour > 23 || minute > 59 ||
+        second > 59)
+        return 0;
+
+    int64_t days = archive_days_from_civil(year, month, day);
+    return days * 86400 + (int64_t)hour * 3600 + (int64_t)minute * 60 + (int64_t)second;
 }
 
 //=============================================================================
@@ -1805,25 +1848,7 @@ void *rt_archive_info(void *obj, rt_string name) {
     if (boxed && rt_obj_release_check0(boxed))
         rt_obj_free(boxed);
 
-    // Add modified time (convert DOS time to Unix timestamp)
-    // DOS date: bits 0-4 = day, 5-8 = month, 9-15 = year from 1980
-    // DOS time: bits 0-4 = seconds/2, 5-10 = minutes, 11-15 = hours
-    int year = ((e->mod_date >> 9) & 0x7F) + 1980;
-    int month = (e->mod_date >> 5) & 0xF;
-    int day = e->mod_date & 0x1F;
-    int hour = (e->mod_time >> 11) & 0x1F;
-    int minute = (e->mod_time >> 5) & 0x3F;
-    int second = (e->mod_time & 0x1F) * 2;
-
-    // Simple approximation of Unix timestamp (not accounting for leap years properly).
-    // DOS time has 2-second granularity (seconds/2 in bits 0-4); odd seconds are lost.
-    int64_t timestamp = (int64_t)(year - 1970) * 365 * 24 * 3600;
-    timestamp += (int64_t)(month - 1) * 30 * 24 * 3600;
-    timestamp += (int64_t)(day - 1) * 24 * 3600;
-    timestamp += (int64_t)hour * 3600;
-    timestamp += (int64_t)minute * 60;
-    timestamp += second;
-
+    int64_t timestamp = archive_dos_datetime_to_unix(e->mod_time, e->mod_date);
     boxed = rt_box_i64(timestamp);
     archive_map_set_boxed(map, "modifiedTime", boxed);
     if (boxed && rt_obj_release_check0(boxed))
@@ -1859,23 +1884,44 @@ void *rt_archive_info(void *obj, rt_string name) {
 /// @param data Source `rt_bytes`.
 void rt_archive_add(void *obj, rt_string name, void *data) {
     rt_archive_t *ar = (rt_archive_t *)obj;
-    if (!ar)
+    if (!ar) {
         rt_trap("Archive: NULL archive");
-    if (!ar->is_writing)
+        return;
+    }
+    if (!ar->is_writing) {
         rt_trap("Archive: cannot add to read-only archive");
-    if (ar->is_finished)
+        return;
+    }
+    if (ar->is_finished) {
         rt_trap("Archive: archive already finished");
+        return;
+    }
+    if (!data) {
+        rt_trap("Archive: NULL data");
+        return;
+    }
 
     const char *cname = archive_entry_name_cstr(name);
-    if (!cname || *cname == '\0')
+    if (!cname || *cname == '\0') {
         rt_trap("Archive: invalid entry name");
+        return;
+    }
 
     char *norm_name = NULL;
     name_result_t norm_res = normalize_name(cname, &norm_name);
-    if (norm_res == NAME_INVALID)
+    if (norm_res == NAME_INVALID) {
         rt_trap("Archive: invalid entry name");
-    if (norm_res == NAME_OOM)
+        return;
+    }
+    if (norm_res == NAME_OOM) {
         rt_trap("Archive: memory allocation failed");
+        return;
+    }
+    if (archive_write_has_entry(ar, norm_name)) {
+        free(norm_name);
+        rt_trap("Archive: duplicate entry name");
+        return;
+    }
 
     uint8_t *raw_data = bytes_data(data);
     size_t raw_len = (size_t)bytes_len(data);
@@ -1892,6 +1938,11 @@ void rt_archive_add(void *obj, rt_string name, void *data) {
 
     if (raw_len > 64) {
         compressed = rt_compress_deflate(data);
+        if (!compressed) {
+            free(norm_name);
+            rt_trap("Archive: failed to compress entry");
+            return;
+        }
         size_t comp_len = (size_t)bytes_len(compressed);
         if (comp_len < raw_len) {
             method = ZIP_METHOD_DEFLATE;
@@ -2034,23 +2085,35 @@ void rt_archive_add_file(void *obj, rt_string name, rt_string src_path) {
 /// @param name Directory name (trailing slash added if absent).
 void rt_archive_add_dir(void *obj, rt_string name) {
     rt_archive_t *ar = (rt_archive_t *)obj;
-    if (!ar)
+    if (!ar) {
         rt_trap("Archive: NULL archive");
-    if (!ar->is_writing)
+        return;
+    }
+    if (!ar->is_writing) {
         rt_trap("Archive: cannot add to read-only archive");
-    if (ar->is_finished)
+        return;
+    }
+    if (ar->is_finished) {
         rt_trap("Archive: archive already finished");
+        return;
+    }
 
     const char *cname = archive_entry_name_cstr(name);
-    if (!cname || *cname == '\0')
+    if (!cname || *cname == '\0') {
         rt_trap("Archive: invalid entry name");
+        return;
+    }
 
     char *norm_name = NULL;
     name_result_t norm_res = normalize_name(cname, &norm_name);
-    if (norm_res == NAME_INVALID)
+    if (norm_res == NAME_INVALID) {
         rt_trap("Archive: invalid entry name");
-    if (norm_res == NAME_OOM)
+        return;
+    }
+    if (norm_res == NAME_OOM) {
         rt_trap("Archive: memory allocation failed");
+        return;
+    }
 
     // Ensure name ends with /
     size_t len = strlen(norm_name);
@@ -2059,11 +2122,17 @@ void rt_archive_add_dir(void *obj, rt_string name) {
         if (!new_name) {
             free(norm_name);
             rt_trap("Archive: memory allocation failed");
+            return;
         }
         norm_name = new_name;
         norm_name[len] = '/';
         norm_name[len + 1] = '\0';
         len++;
+    }
+    if (archive_write_has_entry(ar, norm_name)) {
+        free(norm_name);
+        rt_trap("Archive: duplicate entry name");
+        return;
     }
 
     // Record entry info
@@ -2153,7 +2222,11 @@ void rt_archive_finish(void *obj) {
         write_bytes(ar, (const uint8_t *)e->name, name_len);
     }
 
-    uint32_t cd_size = (uint32_t)ar->write_len - cd_offset;
+    if (ar->write_len < (size_t)cd_offset || ar->write_len - (size_t)cd_offset > UINT32_MAX) {
+        rt_trap("Archive: ZIP64 archives are not supported");
+        return;
+    }
+    uint32_t cd_size = (uint32_t)(ar->write_len - (size_t)cd_offset);
 
     // Write end of central directory
     uint8_t eocd[ZIP_END_RECORD_SIZE];
@@ -2167,6 +2240,7 @@ void rt_archive_finish(void *obj) {
     write_u16(eocd + 20, 0); // Comment length
 
     write_bytes(ar, eocd, ZIP_END_RECORD_SIZE);
+    archive_require_zip32_size(ar->write_len, "Archive: ZIP64 archives are not supported");
 
     // Write to file
     const char *cpath = archive_require_path(ar->path, "Archive: invalid path");

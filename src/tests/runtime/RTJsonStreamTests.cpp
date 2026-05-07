@@ -111,18 +111,30 @@ static void test_number_value() {
     tok = rt_json_stream_next(p);
     assert(tok == RT_JSON_TOK_NUMBER);
     assert(rt_json_stream_number_value(p) == 42.0);
+    rt_string text = rt_json_stream_number_text(p);
+    assert(strcmp(rt_string_cstr(text), "42") == 0);
+    rt_string_unref(text);
 
     tok = rt_json_stream_next(p);
     assert(tok == RT_JSON_TOK_NUMBER);
     assert(fabs(rt_json_stream_number_value(p) - 3.14) < 1e-9);
+    text = rt_json_stream_number_text(p);
+    assert(strcmp(rt_string_cstr(text), "3.14") == 0);
+    rt_string_unref(text);
 
     tok = rt_json_stream_next(p);
     assert(tok == RT_JSON_TOK_NUMBER);
     assert(rt_json_stream_number_value(p) == -7.0);
+    text = rt_json_stream_number_text(p);
+    assert(strcmp(rt_string_cstr(text), "-7") == 0);
+    rt_string_unref(text);
 
     tok = rt_json_stream_next(p);
     assert(tok == RT_JSON_TOK_NUMBER);
     assert(rt_json_stream_number_value(p) == 1000.0);
+    text = rt_json_stream_number_text(p);
+    assert(strcmp(rt_string_cstr(text), "1e3") == 0);
+    rt_string_unref(text);
 
     tok = rt_json_stream_next(p);
     assert(tok == RT_JSON_TOK_ARRAY_END);

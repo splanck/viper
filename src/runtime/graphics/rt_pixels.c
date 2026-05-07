@@ -390,12 +390,6 @@ void *rt_pixels_clone(void *pixels) {
 // Byte Conversion
 //=============================================================================
 
-// Forward declarations for Bytes internal structure access
-typedef struct rt_bytes_impl {
-    int64_t len;
-    uint8_t *data;
-} rt_bytes_impl;
-
 /// @brief Serialize the buffer to a fresh Bytes blob (raw 4 bytes/pixel, row-major). Useful for
 /// hashing, persistence, or transmission. Inverse: `_from_bytes`.
 void *rt_pixels_to_bytes(void *pixels) {
@@ -413,8 +407,8 @@ void *rt_pixels_to_bytes(void *pixels) {
         return NULL;
 
     if (byte_count > 0 && p->data) {
-        rt_bytes_impl *b = (rt_bytes_impl *)bytes;
-        memcpy(b->data, p->data, (size_t)byte_count);
+        uint8_t *dst = rt_bytes_data(bytes);
+        memcpy(dst, p->data, (size_t)byte_count);
     }
 
     return bytes;
@@ -448,8 +442,8 @@ void *rt_pixels_from_bytes(int64_t width, int64_t height, void *bytes) {
         return NULL;
 
     if (required_bytes > 0 && p->data) {
-        rt_bytes_impl *b = (rt_bytes_impl *)bytes;
-        memcpy(p->data, b->data, (size_t)required_bytes);
+        const uint8_t *src = rt_bytes_data_const(bytes);
+        memcpy(p->data, src, (size_t)required_bytes);
         pixels_touch(p);
     }
 

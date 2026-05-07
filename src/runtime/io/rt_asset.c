@@ -59,6 +59,50 @@ extern void *rt_asset_decode_typed(const char *name, const uint8_t *data, size_t
 // Exe directory detection
 extern char *rt_path_exe_dir_cstr(void);
 
+/// @brief Resolve `path` to its canonical form and return a heap-allocated copy.
+static char *asset_canonical_path_dup(const char *path) {
+    if (!path || !*path)
+        return NULL;
+#ifdef _WIN32
+    DWORD needed = GetFullPathNameA(path, 0, NULL, NULL);
+    if (needed > 0) {
+        char *full = (char *)malloc((size_t)needed);
+        if (full) {
+            DWORD got = GetFullPathNameA(path, needed, full, NULL);
+            if (got > 0 && got < needed)
+                return full;
+            free(full);
+        }
+    }
+    return strdup(path);
+#else
+    char *resolved = realpath(path, NULL);
+    if (resolved)
+        return resolved;
+    return strdup(path);
+#endif
+}
+
+/// @brief Case-sensitive (POSIX) or case-insensitive (Windows) path comparison.
+static int asset_path_equal(const char *a, const char *b) {
+    if (!a || !b)
+        return 0;
+#ifdef _WIN32
+    return _stricmp(a, b) == 0;
+#else
+    return strcmp(a, b) == 0;
+#endif
+}
+
+/// @brief Return a pointer into `path` to the final filename component (after the last separator).
+static const char *asset_basename(const char *path) {
+    const char *name = strrchr(path, '/');
+    const char *back = strrchr(path, '\\');
+    if (!name || (back && back > name))
+        name = back;
+    return name ? name + 1 : path;
+}
+
 // ─── Weak default for embedded asset blob ───────────────────────────────────
 // These are overridden by the stronger definitions in the generated asset .o
 // file when assets are embedded via `embed` directives in viper.project.
@@ -78,12 +122,13 @@ __attribute__((weak)) const unsigned long long viper_asset_blob_size = 0;
 
 // ─── Global state ───────────────────────────────────────────────────────────
 
+/// @brief Singleton asset manager state — all fields guarded by g_asset_lock.
 static struct {
-    vpa_archive_t *embedded;                  // From .rodata blob (NULL if none)
-    vpa_archive_t *packs[RT_ASSET_MAX_PACKS]; // Mounted pack files
-    char *pack_paths[RT_ASSET_MAX_PACKS];     // Paths for unmount matching
-    int pack_count;
-    int initialized;
+    vpa_archive_t *embedded;                  ///< Embedded .rodata VPA blob, or NULL.
+    vpa_archive_t *packs[RT_ASSET_MAX_PACKS]; ///< Mounted pack file archives (LIFO).
+    char *pack_paths[RT_ASSET_MAX_PACKS];     ///< Canonical paths for each mounted pack.
+    int pack_count;   ///< Number of currently mounted packs.
+    int initialized;  ///< Non-zero after the first call to rt_asset_init.
 } g_asset_mgr;
 
 #ifdef _WIN32
@@ -577,7 +622,7 @@ int64_t rt_asset_mount(rt_string path) {
     if (!archive)
         return 0;
 
-    char *path_copy = strdup(cpath);
+    char *path_copy = asset_canonical_path_dup(cpath);
     if (!path_copy) {
         vpa_close(archive);
         return 0;
@@ -599,7 +644,7 @@ int64_t rt_asset_mount(rt_string path) {
 
 // ─── rt_asset_unmount ───────────────────────────────────────────────────────
 
-/// @brief Unmount a previously-mounted VPA pack file (matches by filename, not full path).
+/// @brief Unmount a previously-mounted VPA pack file.
 int64_t rt_asset_unmount(rt_string path) {
     if (!path)
         return 0;
@@ -608,47 +653,49 @@ int64_t rt_asset_unmount(rt_string path) {
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr((const ViperString *)path, &cpath) || !cpath || *cpath == '\0')
         return 0;
+    char *search_path = asset_canonical_path_dup(cpath);
+    if (!search_path)
+        return 0;
 
     asset_lock();
-    // Find the pack by path (search from end for LIFO behavior)
+    int match = -1;
     for (int i = g_asset_mgr.pack_count - 1; i >= 0; --i) {
-        if (!g_asset_mgr.pack_paths[i])
-            continue;
-
-        // Match by filename (not full path) for convenience
-        const char *pack_name = strrchr(g_asset_mgr.pack_paths[i], '/');
-        if (!pack_name)
-            pack_name = strrchr(g_asset_mgr.pack_paths[i], '\\');
-        if (pack_name)
-            pack_name++;
-        else
-            pack_name = g_asset_mgr.pack_paths[i];
-
-        const char *search_name = strrchr(cpath, '/');
-        if (!search_name)
-            search_name = strrchr(cpath, '\\');
-        if (search_name)
-            search_name++;
-        else
-            search_name = cpath;
-
-        if (strcmp(pack_name, search_name) == 0) {
-            vpa_close(g_asset_mgr.packs[i]);
-            free(g_asset_mgr.pack_paths[i]);
-
-            // Shift remaining packs down
-            for (int j = i; j < g_asset_mgr.pack_count - 1; j++) {
-                g_asset_mgr.packs[j] = g_asset_mgr.packs[j + 1];
-                g_asset_mgr.pack_paths[j] = g_asset_mgr.pack_paths[j + 1];
-            }
-            g_asset_mgr.pack_count--;
-            g_asset_mgr.packs[g_asset_mgr.pack_count] = NULL;
-            g_asset_mgr.pack_paths[g_asset_mgr.pack_count] = NULL;
-            asset_unlock();
-            return 1;
+        if (g_asset_mgr.pack_paths[i] && asset_path_equal(g_asset_mgr.pack_paths[i], search_path)) {
+            match = i;
+            break;
         }
+    }
+    if (match < 0) {
+        const char *search_name = asset_basename(search_path);
+        int basename_matches = 0;
+        for (int i = g_asset_mgr.pack_count - 1; i >= 0; --i) {
+            if (g_asset_mgr.pack_paths[i] &&
+                asset_path_equal(asset_basename(g_asset_mgr.pack_paths[i]), search_name)) {
+                match = i;
+                basename_matches++;
+            }
+        }
+        if (basename_matches != 1)
+            match = -1;
+    }
+    if (match >= 0) {
+        vpa_close(g_asset_mgr.packs[match]);
+        free(g_asset_mgr.pack_paths[match]);
+
+        // Shift remaining packs down
+        for (int j = match; j < g_asset_mgr.pack_count - 1; j++) {
+            g_asset_mgr.packs[j] = g_asset_mgr.packs[j + 1];
+            g_asset_mgr.pack_paths[j] = g_asset_mgr.pack_paths[j + 1];
+        }
+        g_asset_mgr.pack_count--;
+        g_asset_mgr.packs[g_asset_mgr.pack_count] = NULL;
+        g_asset_mgr.pack_paths[g_asset_mgr.pack_count] = NULL;
+        asset_unlock();
+        free(search_path);
+        return 1;
     }
 
     asset_unlock();
+    free(search_path);
     return 0;
 }

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-22
+last-verified: 2026-05-06
 ---
 
 # SaveData — Game Persistence
@@ -29,6 +29,7 @@ last-verified: 2026-04-22
 | Windows  | `%APPDATA%\Viper\<game>\save.json` |
 
 The directory is created automatically on first `Save()`.
+`gameName` must be 1-64 bytes and contain only ASCII letters, digits, `_`, or `-`. Embedded NUL bytes, path separators, traversal syntax, and other characters trap before a save path is built.
 
 ---
 
@@ -118,7 +119,7 @@ Data is stored as a flat JSON object. Integer values are stored as numbers; stri
 ```
 
 String values are emitted with standard JSON escaping for control characters. `Load()` rejects malformed or trailing garbage and leaves the in-memory state unchanged on failure.
-Numeric values loaded from JSON must be finite integral values within the signed 64-bit range. Fractional, infinite, or out-of-range numbers make `Load()` return false and leave the existing in-memory state unchanged.
+Numeric values loaded from JSON must be plain decimal integers within the signed 64-bit range. They are parsed from the original JSON token text rather than through floating point, so the full `Integer` range round-trips exactly. Fractional, exponent-form, or out-of-range numbers make `Load()` return false and leave the existing in-memory state unchanged.
 
 ---
 

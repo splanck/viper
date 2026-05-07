@@ -70,6 +70,7 @@ If the pack opens but its path cannot be recorded, the mount fails and the pack 
 ### Assets.Unmount(path: String) -> Integer
 
 Unmount a previously mounted pack. Returns 1 on success, 0 on failure.
+Unmount first matches the canonical full path used at mount time. Passing only a basename such as `"level2.vpa"` is allowed only when exactly one mounted pack has that basename; if two mounted packs share the same basename, basename-only unmount returns 0 rather than removing an arbitrary pack.
 
 ### Path.ExeDir() -> String
 
@@ -93,6 +94,7 @@ Asset lookup, mounting, unmounting, listing, and lazy initialization are synchro
 ## VPA Format
 
 VPA (Viper Pack Archive) is a simple binary container: 32-byte header + data blob + table of contents. The same format is used for both embedded blobs and standalone `.vpa` files.
+The runtime validates TOC bounds, complete TOC parsing, duplicate names, entry data ranges, and compressed/uncompressed size agreement before returning asset bytes.
 
 ## Example
 

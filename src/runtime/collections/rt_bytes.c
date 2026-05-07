@@ -130,13 +130,23 @@ static rt_bytes_impl *rt_bytes_alloc(int64_t len) {
     if (total > (size_t)INT64_MAX)
         rt_bytes_trap_runtime("Bytes: memory allocation failed");
 
-    rt_bytes_impl *bytes = (rt_bytes_impl *)rt_obj_new_i64(0, (int64_t)total);
+    rt_bytes_impl *bytes = (rt_bytes_impl *)rt_obj_new_i64(RT_BYTES_CLASS_ID, (int64_t)total);
     if (!bytes)
         rt_bytes_trap_runtime("Bytes: memory allocation failed");
 
     bytes->len = len;
     bytes->data = len > 0 ? ((uint8_t *)bytes + sizeof(rt_bytes_impl)) : NULL;
     return bytes;
+}
+
+static rt_bytes_impl *rt_bytes_require(void *obj, const char *what) {
+    if (!obj)
+        return NULL;
+    if (rt_obj_class_id(obj) != RT_BYTES_CLASS_ID) {
+        rt_bytes_trap_invalid_operation(what);
+        return NULL;
+    }
+    return (rt_bytes_impl *)obj;
 }
 
 /// @brief Base64 character lookup table for encoding (RFC 4648).
@@ -321,7 +331,20 @@ void *rt_bytes_from_hex(rt_string hex) {
 int64_t rt_bytes_len(void *obj) {
     if (!obj)
         return 0;
-    return ((rt_bytes_impl *)obj)->len;
+    return rt_bytes_require(obj, "Bytes: invalid Bytes object")->len;
+}
+
+int8_t rt_bytes_is_bytes(void *obj) {
+    return obj && rt_obj_class_id(obj) == RT_BYTES_CLASS_ID ? 1 : 0;
+}
+
+uint8_t *rt_bytes_data(void *obj) {
+    rt_bytes_impl *bytes = rt_bytes_require(obj, "Bytes.Data: invalid Bytes object");
+    return bytes ? bytes->data : NULL;
+}
+
+const uint8_t *rt_bytes_data_const(void *obj) {
+    return rt_bytes_data(obj);
 }
 
 /// @brief Check if the byte array is empty (length 0).
@@ -330,7 +353,7 @@ int64_t rt_bytes_len(void *obj) {
 int8_t rt_bytes_is_empty(void *obj) {
     if (!obj)
         return 1;
-    return ((rt_bytes_impl *)obj)->len == 0 ? 1 : 0;
+    return rt_bytes_require(obj, "Bytes.IsEmpty: invalid Bytes object")->len == 0 ? 1 : 0;
 }
 
 /// @brief Gets the byte value at the specified index.
@@ -361,7 +384,7 @@ int64_t rt_bytes_get(void *obj, int64_t idx) {
     if (!obj)
         rt_bytes_trap_invalid_operation("Bytes.Get: null bytes");
 
-    rt_bytes_impl *bytes = (rt_bytes_impl *)obj;
+    rt_bytes_impl *bytes = rt_bytes_require(obj, "Bytes.Get: invalid Bytes object");
 
     if (idx < 0 || idx >= bytes->len)
         rt_bytes_trap_bounds("Bytes.Get: index out of bounds");
@@ -400,7 +423,7 @@ void rt_bytes_set(void *obj, int64_t idx, int64_t val) {
     if (!obj)
         rt_bytes_trap_invalid_operation("Bytes.Set: null bytes");
 
-    rt_bytes_impl *bytes = (rt_bytes_impl *)obj;
+    rt_bytes_impl *bytes = rt_bytes_require(obj, "Bytes.Set: invalid Bytes object");
 
     if (idx < 0 || idx >= bytes->len)
         rt_bytes_trap_bounds("Bytes.Set: index out of bounds");
@@ -441,7 +464,7 @@ void *rt_bytes_slice(void *obj, int64_t start, int64_t end) {
     if (!obj)
         return rt_bytes_new(0);
 
-    rt_bytes_impl *bytes = (rt_bytes_impl *)obj;
+    rt_bytes_impl *bytes = rt_bytes_require(obj, "Bytes.Slice: invalid Bytes object");
 
     // Clamp bounds
     if (start < 0)
@@ -539,7 +562,7 @@ rt_string rt_bytes_to_str(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
 
-    rt_bytes_impl *bytes = (rt_bytes_impl *)obj;
+    rt_bytes_impl *bytes = rt_bytes_require(obj, "Bytes.ToStr: invalid Bytes object");
     return rt_string_from_bytes((const char *)bytes->data, (size_t)bytes->len);
 }
 
@@ -576,7 +599,7 @@ rt_string rt_bytes_to_hex(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
 
-    rt_bytes_impl *bytes = (rt_bytes_impl *)obj;
+    rt_bytes_impl *bytes = rt_bytes_require(obj, "Bytes.ToHex: invalid Bytes object");
 
     if (bytes->len == 0)
         return rt_string_from_bytes("", 0);
@@ -617,7 +640,7 @@ rt_string rt_bytes_to_base64(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
 
-    rt_bytes_impl *bytes = (rt_bytes_impl *)obj;
+    rt_bytes_impl *bytes = rt_bytes_require(obj, "Bytes.ToBase64: invalid Bytes object");
     if (bytes->len <= 0 || !bytes->data)
         return rt_string_from_bytes("", 0);
 
@@ -822,7 +845,7 @@ void rt_bytes_fill(void *obj, int64_t val) {
     if (!obj)
         return;
 
-    rt_bytes_impl *bytes = (rt_bytes_impl *)obj;
+    rt_bytes_impl *bytes = rt_bytes_require(obj, "Bytes.Fill: invalid Bytes object");
     if (bytes->len > 0 && bytes->data) {
         memset(bytes->data, (uint8_t)(val & 0xFF), (size_t)bytes->len);
     }
@@ -853,7 +876,7 @@ int64_t rt_bytes_find(void *obj, int64_t val) {
     if (!obj)
         return -1;
 
-    rt_bytes_impl *bytes = (rt_bytes_impl *)obj;
+    rt_bytes_impl *bytes = rt_bytes_require(obj, "Bytes.Find: invalid Bytes object");
     uint8_t byte = (uint8_t)(val & 0xFF);
 
     for (int64_t i = 0; i < bytes->len; i++) {
@@ -890,7 +913,7 @@ void *rt_bytes_clone(void *obj) {
     if (!obj)
         return rt_bytes_new(0);
 
-    rt_bytes_impl *bytes = (rt_bytes_impl *)obj;
+    rt_bytes_impl *bytes = rt_bytes_require(obj, "Bytes.Clone: invalid Bytes object");
     return rt_bytes_slice(obj, 0, bytes->len);
 }
 
@@ -918,7 +941,7 @@ uint8_t *rt_bytes_extract_raw(void *bytes, size_t *out_len) {
         return NULL;
     }
 
-    rt_bytes_impl *impl = (rt_bytes_impl *)bytes;
+    rt_bytes_impl *impl = rt_bytes_require(bytes, "Bytes.ExtractRaw: invalid Bytes object");
     *out_len = (size_t)impl->len;
 
     if (impl->len == 0)
@@ -953,7 +976,7 @@ static inline void bytes_check_bounds(rt_bytes_impl *b, int64_t offset, int64_t 
 
 /// @brief Read a little-endian int16 at `offset` (sign-extended to int64).
 int64_t rt_bytes_read_i16le(void *obj, int64_t offset) {
-    rt_bytes_impl *b = (rt_bytes_impl *)obj;
+    rt_bytes_impl *b = rt_bytes_require(obj, "Bytes.ReadI16LE: invalid Bytes object");
     bytes_check_bounds(b, offset, 2);
     uint8_t *d = b->data + offset;
     return (int64_t)((uint16_t)d[0] | ((uint16_t)d[1] << 8));
@@ -961,7 +984,7 @@ int64_t rt_bytes_read_i16le(void *obj, int64_t offset) {
 
 /// @brief Read a big-endian int16 at `offset` (sign-extended).
 int64_t rt_bytes_read_i16be(void *obj, int64_t offset) {
-    rt_bytes_impl *b = (rt_bytes_impl *)obj;
+    rt_bytes_impl *b = rt_bytes_require(obj, "Bytes.ReadI16BE: invalid Bytes object");
     bytes_check_bounds(b, offset, 2);
     uint8_t *d = b->data + offset;
     return (int64_t)(((uint16_t)d[0] << 8) | (uint16_t)d[1]);
@@ -969,7 +992,7 @@ int64_t rt_bytes_read_i16be(void *obj, int64_t offset) {
 
 /// @brief Read a little-endian int32 at `offset` (sign-extended).
 int64_t rt_bytes_read_i32le(void *obj, int64_t offset) {
-    rt_bytes_impl *b = (rt_bytes_impl *)obj;
+    rt_bytes_impl *b = rt_bytes_require(obj, "Bytes.ReadI32LE: invalid Bytes object");
     bytes_check_bounds(b, offset, 4);
     uint8_t *d = b->data + offset;
     return (int64_t)((uint32_t)d[0] | ((uint32_t)d[1] << 8) | ((uint32_t)d[2] << 16) |
@@ -978,7 +1001,7 @@ int64_t rt_bytes_read_i32le(void *obj, int64_t offset) {
 
 /// @brief Read a big-endian int32 at `offset` (sign-extended).
 int64_t rt_bytes_read_i32be(void *obj, int64_t offset) {
-    rt_bytes_impl *b = (rt_bytes_impl *)obj;
+    rt_bytes_impl *b = rt_bytes_require(obj, "Bytes.ReadI32BE: invalid Bytes object");
     bytes_check_bounds(b, offset, 4);
     uint8_t *d = b->data + offset;
     return (int64_t)(((uint32_t)d[0] << 24) | ((uint32_t)d[1] << 16) | ((uint32_t)d[2] << 8) |
@@ -987,7 +1010,7 @@ int64_t rt_bytes_read_i32be(void *obj, int64_t offset) {
 
 /// @brief Read a little-endian int64 at `offset`.
 int64_t rt_bytes_read_i64le(void *obj, int64_t offset) {
-    rt_bytes_impl *b = (rt_bytes_impl *)obj;
+    rt_bytes_impl *b = rt_bytes_require(obj, "Bytes.ReadI64LE: invalid Bytes object");
     bytes_check_bounds(b, offset, 8);
     uint8_t *d = b->data + offset;
     return (int64_t)((uint64_t)d[0] | ((uint64_t)d[1] << 8) | ((uint64_t)d[2] << 16) |
@@ -997,7 +1020,7 @@ int64_t rt_bytes_read_i64le(void *obj, int64_t offset) {
 
 /// @brief Read a big-endian int64 at `offset`.
 int64_t rt_bytes_read_i64be(void *obj, int64_t offset) {
-    rt_bytes_impl *b = (rt_bytes_impl *)obj;
+    rt_bytes_impl *b = rt_bytes_require(obj, "Bytes.ReadI64BE: invalid Bytes object");
     bytes_check_bounds(b, offset, 8);
     uint8_t *d = b->data + offset;
     return (int64_t)(((uint64_t)d[0] << 56) | ((uint64_t)d[1] << 48) | ((uint64_t)d[2] << 40) |
@@ -1007,7 +1030,7 @@ int64_t rt_bytes_read_i64be(void *obj, int64_t offset) {
 
 /// @brief Write `value` (truncated to int16) at `offset` in little-endian byte order.
 void rt_bytes_write_i16le(void *obj, int64_t offset, int64_t value) {
-    rt_bytes_impl *b = (rt_bytes_impl *)obj;
+    rt_bytes_impl *b = rt_bytes_require(obj, "Bytes.WriteI16LE: invalid Bytes object");
     bytes_check_bounds(b, offset, 2);
     uint8_t *d = b->data + offset;
     d[0] = (uint8_t)(value & 0xFF);
@@ -1016,7 +1039,7 @@ void rt_bytes_write_i16le(void *obj, int64_t offset, int64_t value) {
 
 /// @brief Write `value` (truncated to int16) at `offset` in big-endian byte order.
 void rt_bytes_write_i16be(void *obj, int64_t offset, int64_t value) {
-    rt_bytes_impl *b = (rt_bytes_impl *)obj;
+    rt_bytes_impl *b = rt_bytes_require(obj, "Bytes.WriteI16BE: invalid Bytes object");
     bytes_check_bounds(b, offset, 2);
     uint8_t *d = b->data + offset;
     d[0] = (uint8_t)((value >> 8) & 0xFF);
@@ -1025,7 +1048,7 @@ void rt_bytes_write_i16be(void *obj, int64_t offset, int64_t value) {
 
 /// @brief Write `value` (truncated to int32) at `offset` in little-endian byte order.
 void rt_bytes_write_i32le(void *obj, int64_t offset, int64_t value) {
-    rt_bytes_impl *b = (rt_bytes_impl *)obj;
+    rt_bytes_impl *b = rt_bytes_require(obj, "Bytes.WriteI32LE: invalid Bytes object");
     bytes_check_bounds(b, offset, 4);
     uint8_t *d = b->data + offset;
     d[0] = (uint8_t)(value & 0xFF);
@@ -1036,7 +1059,7 @@ void rt_bytes_write_i32le(void *obj, int64_t offset, int64_t value) {
 
 /// @brief Write `value` (truncated to int32) at `offset` in big-endian byte order.
 void rt_bytes_write_i32be(void *obj, int64_t offset, int64_t value) {
-    rt_bytes_impl *b = (rt_bytes_impl *)obj;
+    rt_bytes_impl *b = rt_bytes_require(obj, "Bytes.WriteI32BE: invalid Bytes object");
     bytes_check_bounds(b, offset, 4);
     uint8_t *d = b->data + offset;
     d[0] = (uint8_t)((value >> 24) & 0xFF);
@@ -1047,7 +1070,7 @@ void rt_bytes_write_i32be(void *obj, int64_t offset, int64_t value) {
 
 /// @brief Write a full 64-bit `value` at `offset` in little-endian byte order.
 void rt_bytes_write_i64le(void *obj, int64_t offset, int64_t value) {
-    rt_bytes_impl *b = (rt_bytes_impl *)obj;
+    rt_bytes_impl *b = rt_bytes_require(obj, "Bytes.WriteI64LE: invalid Bytes object");
     bytes_check_bounds(b, offset, 8);
     uint8_t *d = b->data + offset;
     d[0] = (uint8_t)(value & 0xFF);
@@ -1062,7 +1085,7 @@ void rt_bytes_write_i64le(void *obj, int64_t offset, int64_t value) {
 
 /// @brief Write a full 64-bit `value` at `offset` in big-endian byte order.
 void rt_bytes_write_i64be(void *obj, int64_t offset, int64_t value) {
-    rt_bytes_impl *b = (rt_bytes_impl *)obj;
+    rt_bytes_impl *b = rt_bytes_require(obj, "Bytes.WriteI64BE: invalid Bytes object");
     bytes_check_bounds(b, offset, 8);
     uint8_t *d = b->data + offset;
     d[0] = (uint8_t)((value >> 56) & 0xFF);

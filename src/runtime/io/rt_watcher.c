@@ -119,6 +119,30 @@ typedef struct rt_watcher_impl {
 #endif
 } rt_watcher_impl;
 
+/// @brief Release all queued event strings and reset the ring buffer to empty.
+/// @details Also clears the `last_event_path` so the watcher's finalizer can call
+///          this safely without double-releasing any string references.
+static void watcher_clear_events(rt_watcher_impl *w) {
+    if (!w)
+        return;
+    for (int64_t i = 0; i < WATCHER_EVENT_QUEUE_SIZE; i++) {
+        if (w->events[i].path) {
+            rt_string_unref(w->events[i].path);
+            w->events[i].path = NULL;
+        }
+        w->events[i].type = RT_WATCH_EVENT_NONE;
+    }
+    w->event_head = 0;
+    w->event_tail = 0;
+    w->event_count = 0;
+    if (w->last_event_path) {
+        rt_string_unref(w->last_event_path);
+        w->last_event_path = NULL;
+    }
+    w->last_event_type = RT_WATCH_EVENT_NONE;
+    w->has_last_event = 0;
+}
+
 /// @brief Finalizer callback for Watcher.
 static void rt_watcher_finalize(void *obj) {
     if (!obj)
@@ -147,17 +171,7 @@ static void rt_watcher_finalize(void *obj) {
 #endif
     }
 
-    // Clear event queue paths
-    for (int64_t i = 0; i < WATCHER_EVENT_QUEUE_SIZE; i++) {
-        if (w->events[i].path) {
-            rt_string_unref(w->events[i].path);
-            w->events[i].path = NULL;
-        }
-    }
-    if (w->last_event_path) {
-        rt_string_unref(w->last_event_path);
-        w->last_event_path = NULL;
-    }
+    watcher_clear_events(w);
     if (w->watch_path) {
         rt_string_unref(w->watch_path);
         w->watch_path = NULL;
@@ -454,10 +468,7 @@ void *rt_watcher_new(rt_string path) {
         w->watch_leaf_name = rt_path_name((rt_string)w->watch_path);
     }
     w->is_watching = 0;
-    w->event_head = 0;
-    w->event_tail = 0;
-    w->event_count = 0;
-    w->has_last_event = 0;
+    watcher_clear_events(w);
 
 #if defined(__linux__)
     w->inotify_fd = -1;
@@ -649,6 +660,7 @@ void rt_watcher_stop(void *obj) {
     w->pending_read = FALSE;
 #endif
 
+    watcher_clear_events(w);
     w->is_watching = 0;
 }
 

@@ -37,6 +37,7 @@
 #include "rt_string_builder.h"
 
 #include <ctype.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -58,25 +59,26 @@
 #define PATH_SEP_STR "/"
 #endif
 
-/// @brief Check if a character is a path separator (/ or \).
+/// @brief Check if a character is a path separator on the host filesystem.
 ///
-/// Both forward slash and backslash are considered separators on all platforms
-/// for maximum compatibility when handling paths from different sources.
+/// On POSIX, only '/' is a path separator; backslash is a legal filename byte.
+/// On Windows, both '/' and '\' are accepted by most filesystem APIs.
 ///
 /// @param c Character to check.
 ///
 /// @return Non-zero if c is '/' or '\', zero otherwise.
 static inline int is_path_sep(char c) {
+#ifdef _WIN32
     return c == '/' || c == '\\';
+#else
+    return c == '/';
+#endif
 }
 
 /// @brief Platform-specific path-separator test used by `rt_path_join`.
 ///
-/// Differs from `is_path_sep` on POSIX: join logic treats `\` as a
-/// literal character on Unix (valid in filenames), so only `/` is
-/// considered a separator for trimming trailing-sep on the left
-/// operand. Windows uses the permissive rule since `\` is always
-/// a separator there.
+/// Kept separate for call-site clarity: POSIX treats `\` as a literal
+/// filename byte, while Windows accepts it as a separator.
 static inline int is_join_sep(char c) {
 #ifdef _WIN32
     return is_path_sep(c);
@@ -889,6 +891,10 @@ rt_string rt_path_norm(rt_string path) {
 
     // Parse path components
     // We'll store component start/end pairs
+    if (len > SIZE_MAX / sizeof(size_t)) {
+        rt_trap("rt_path: path too long");
+        return rt_const_cstr("");
+    }
     size_t *comp_starts = (size_t *)malloc(len * sizeof(size_t));
     size_t *comp_ends = (size_t *)malloc(len * sizeof(size_t));
     if (!comp_starts || !comp_ends) {

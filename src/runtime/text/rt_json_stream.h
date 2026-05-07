@@ -71,6 +71,11 @@ rt_string rt_json_stream_string_value(void *parser);
 /// @return Double value, or 0.0 if not a number token.
 double rt_json_stream_number_value(void *parser);
 
+/// @brief Get the current token's raw number lexeme (for number tokens).
+/// @param parser Parser handle.
+/// @return Number text, or empty string if not a number token.
+rt_string rt_json_stream_number_text(void *parser);
+
 /// @brief Get the current token's boolean value (for bool tokens).
 /// @param parser Parser handle.
 /// @return 1 for true, 0 for false.

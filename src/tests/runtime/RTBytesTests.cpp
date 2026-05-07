@@ -12,6 +12,7 @@
 
 #include "rt_bytes.h"
 #include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_string.h"
 
 #include <cassert>
@@ -419,6 +420,15 @@ static void test_from_raw_rejects_size_t_overflow() {
     }
 }
 
+static void test_rejects_non_bytes_objects() {
+    void *obj = rt_obj_new_i64(12345, 8);
+    assert(rt_bytes_is_bytes(obj) == 0);
+    EXPECT_TRAP(rt_bytes_len(obj));
+    EXPECT_TRAP(rt_bytes_data(obj));
+    if (rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 int main() {
     test_new_creates_zero_filled_bytes();
     test_new_with_zero_length();
@@ -455,6 +465,7 @@ int main() {
     test_null_handling();
     test_null_traps();
     test_from_raw_rejects_size_t_overflow();
+    test_rejects_non_bytes_objects();
 
     return 0;
 }

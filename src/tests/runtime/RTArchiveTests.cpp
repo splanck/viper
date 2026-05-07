@@ -73,12 +73,7 @@ static void test_result(const char *name, bool passed) {
 
 /// @brief Get bytes data pointer
 static uint8_t *get_bytes_data(void *bytes) {
-    struct bytes_impl {
-        int64_t len;
-        uint8_t *data;
-    };
-
-    return ((bytes_impl *)bytes)->data;
+    return rt_bytes_data(bytes);
 }
 
 /// @brief Get bytes length
@@ -387,6 +382,29 @@ static void test_invalid_entry_names() {
     test_result("Normalized name found",
                 rt_archive_has(ar2, rt_const_cstr("subdir/file.txt")) == 1);
     EXPECT_TRAP(rt_archive_read(ar2, rt_const_cstr("../missing.txt")));
+
+    delete_file(path);
+}
+
+static void test_duplicate_and_null_entries_trap() {
+    printf("Testing Duplicate/Null Entry Validation:\n");
+
+    const char *path = get_temp_path("test_duplicate_entries.zip");
+    delete_file(path);
+
+    void *ar = rt_archive_create(rt_const_cstr(path));
+    void *content = make_bytes_str("payload");
+
+    EXPECT_TRAP(rt_archive_add(ar, rt_const_cstr("null.bin"), nullptr));
+
+    rt_archive_add(ar, rt_const_cstr("dup.txt"), content);
+    EXPECT_TRAP(rt_archive_add(ar, rt_const_cstr("dup.txt"), content));
+
+    rt_archive_add_dir(ar, rt_const_cstr("dir"));
+    EXPECT_TRAP(rt_archive_add_dir(ar, rt_const_cstr("dir/")));
+
+    rt_archive_finish(ar);
+    test_result("duplicate/null entry validation traps", true);
 
     delete_file(path);
 }
@@ -716,6 +734,40 @@ static void test_central_directory_nul_name_traps() {
     delete_file(path);
 }
 
+static void test_central_directory_duplicate_name_traps() {
+    printf("Testing Central Directory Duplicate Name Validation:\n");
+
+    const char *path = get_temp_path("test_cd_duplicate.zip");
+    delete_file(path);
+
+    void *ar = rt_archive_create(rt_const_cstr(path));
+    rt_archive_add_str(ar, rt_const_cstr("one.txt"), rt_const_cstr("one"));
+    rt_archive_add_str(ar, rt_const_cstr("two.txt"), rt_const_cstr("two"));
+    rt_archive_finish(ar);
+
+    std::vector<uint8_t> bytes = read_file_bytes(path);
+    int patched = 0;
+    for (size_t i = 0; i + 46 <= bytes.size(); ++i) {
+        if (bytes[i] == 0x50 && bytes[i + 1] == 0x4b && bytes[i + 2] == 0x01 &&
+            bytes[i + 3] == 0x02) {
+            uint16_t name_len = (uint16_t)(bytes[i + 28] | (bytes[i + 29] << 8));
+            if (name_len == strlen("two.txt") &&
+                memcmp(bytes.data() + i + 46, "two.txt", strlen("two.txt")) == 0) {
+                memcpy(bytes.data() + i + 46, "one.txt", strlen("one.txt"));
+                patched = 1;
+                break;
+            }
+        }
+    }
+    assert(patched);
+
+    void *zip_bytes = bytes_from_vector(bytes);
+    EXPECT_TRAP(rt_archive_from_bytes(zip_bytes));
+    test_result("central directory duplicate name traps", true);
+
+    delete_file(path);
+}
+
 static void test_corrupt_local_header_offset_traps_on_read() {
     printf("Testing Local Header Offset Validation:\n");
 
@@ -842,6 +894,22 @@ static void test_is_zip_bytes() {
     delete_file(path);
 }
 
+static void test_eocd_signature_inside_comment_is_ignored() {
+    printf("Testing EOCD Comment Signature Scan:\n");
+
+    std::vector<uint8_t> bytes(26, 0);
+    write_u32_le(bytes, 0, 0x06054b50U);
+    write_u16_le(bytes, 20, 4);
+    write_u32_le(bytes, 22, 0x06054b50U);
+
+    void *zip_bytes = bytes_from_vector(bytes);
+    test_result("IsZipBytes ignores comment signature", rt_archive_is_zip_bytes(zip_bytes) == 1);
+
+    void *ar = rt_archive_from_bytes(zip_bytes);
+    test_result("FromBytes opens commented empty zip", ar != NULL);
+    test_result("Commented empty zip count", rt_archive_count(ar) == 0);
+}
+
 //=============================================================================
 // Binary Data Tests
 //=============================================================================
@@ -916,6 +984,8 @@ int main() {
     printf("\n");
     test_invalid_entry_names();
     printf("\n");
+    test_duplicate_and_null_entries_trap();
+    printf("\n");
 
     // Compression tests
     test_compression_stored();
@@ -942,6 +1012,8 @@ int main() {
     printf("\n");
     test_central_directory_nul_name_traps();
     printf("\n");
+    test_central_directory_duplicate_name_traps();
+    printf("\n");
     test_corrupt_local_header_offset_traps_on_read();
     printf("\n");
 #ifndef _WIN32
@@ -953,6 +1025,8 @@ int main() {
     test_is_zip();
     printf("\n");
     test_is_zip_bytes();
+    printf("\n");
+    test_eocd_signature_inside_comment_is_ignored();
     printf("\n");
 
     // Binary data tests

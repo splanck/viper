@@ -125,16 +125,16 @@ static RtFileChannelEntry *rt_file_find_channel(int32_t channel) {
     return NULL;
 }
 
+/// @brief Maximum number of open file channels.
+/// @details Prevents unbounded resource allocation from untrusted input.
+static const size_t kMaxOpenChannels = 1024;
+
 /// @brief Ensure a table entry exists for @p channel, allocating if necessary.
 /// @details Reuses an existing entry when one already tracks the identifier.
 ///          Otherwise the table grows geometrically, new slots are initialised
 ///          via @ref rt_file_init, and the freshly provisioned entry is returned
 ///          to the caller.  Allocation failures bubble up as @c NULL so callers
 ///          can surface @ref Err_RuntimeError.
-/// @brief Maximum number of open file channels.
-/// @details Prevents unbounded resource allocation from untrusted input.
-static const size_t kMaxOpenChannels = 1024;
-
 static RtFileChannelEntry *rt_file_prepare_channel(int32_t channel) {
     if (channel < 0)
         return NULL;

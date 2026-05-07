@@ -78,6 +78,11 @@ RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/localization/rt_locale_platform.h")
 // Mixed headers below contain frontend-visible wrapper functions that stay in
 // runtime.def plus lower-level helper declarations that are intentionally
 // internal to the runtime implementation.
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_bytes_data")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_bytes_data_const")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_bytes_is_bytes")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_json_stream_number_text")
+
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_sound_load_mem")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_sound_is_handle")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_music_is_handle")

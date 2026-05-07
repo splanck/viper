@@ -273,6 +273,39 @@ static void test_file_event_path() {
     rmdir_p(base);
 }
 
+static void test_stop_clears_last_event() {
+    printf("Testing Stop clears queued event state...\n");
+
+    const char *base = get_test_base();
+    mkdir_p(base);
+
+    char file_path[512];
+#ifdef _WIN32
+    snprintf(file_path, sizeof(file_path), "%s\\stale.txt", base);
+#else
+    snprintf(file_path, sizeof(file_path), "%s/stale.txt", base);
+#endif
+
+    void *w = rt_watcher_new(rt_string_from_bytes(base, strlen(base)));
+    rt_watcher_start(w);
+    wait_for_event();
+    create_file(file_path);
+
+    int64_t event = poll_until_event(w);
+    assert(event != RT_WATCH_EVENT_NONE);
+    rt_string before = rt_watcher_event_path(w);
+    assert(rt_str_len(before) > 0);
+
+    rt_watcher_stop(w);
+    assert(rt_watcher_poll(w) == RT_WATCH_EVENT_NONE);
+    assert(rt_watcher_event_type(w) == RT_WATCH_EVENT_NONE);
+    EXPECT_TRAP(rt_watcher_event_path(w));
+    test_result("Stop clears last event state", true);
+
+    remove_file(file_path);
+    rmdir_p(base);
+}
+
 #if defined(__linux__)
 static void test_file_recreate_is_detected() {
     printf("Testing file recreate events...\n");
@@ -341,6 +374,7 @@ int main() {
     test_poll_no_events();
     test_directory_event_path();
     test_file_event_path();
+    test_stop_clears_last_event();
 #if defined(__linux__)
     test_file_recreate_is_detected();
 #endif

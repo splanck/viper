@@ -88,11 +88,14 @@ static void generate_unique_id(char *buffer, size_t size) {
     /* Use CryptGenRandom for unpredictable IDs */
     HCRYPTPROV hProv;
     if (CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
-        CryptGenRandom(hProv, sizeof(rnd), (BYTE *)&rnd);
+        if (!CryptGenRandom(hProv, sizeof(rnd), (BYTE *)&rnd))
+            rnd = (uint64_t)GetTickCount64() ^ (uint64_t)(uintptr_t)buffer ^
+                  (uint64_t)GetCurrentProcessId();
         CryptReleaseContext(hProv, 0);
     } else {
         /* Fallback: mix tick count with address entropy */
-        rnd = (uint64_t)GetTickCount64() ^ (uint64_t)(uintptr_t)buffer;
+        rnd = (uint64_t)GetTickCount64() ^ (uint64_t)(uintptr_t)buffer ^
+              (uint64_t)GetCurrentProcessId();
     }
 #else
     /* Read from /dev/urandom for unpredictable IDs */

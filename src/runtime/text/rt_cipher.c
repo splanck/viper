@@ -61,23 +61,14 @@ static const char *HKDF_INFO = "viper-cipher-v1";
 // Internal Bytes Access
 //=============================================================================
 
-typedef struct {
-    int64_t len;
-    uint8_t *data;
-} bytes_impl;
-
 /// @brief Read the raw byte buffer pointer from a Bytes object handle (NULL-safe).
 static inline uint8_t *bytes_data(void *obj) {
-    if (!obj)
-        return NULL;
-    return ((bytes_impl *)obj)->data;
+    return rt_bytes_data(obj);
 }
 
-/// @brief Read the byte length from a Bytes object handle (NULL → 0).
+/// @brief Read the byte length from a Bytes object handle (NULL -> 0).
 static inline int64_t bytes_len(void *obj) {
-    if (!obj)
-        return 0;
-    return ((bytes_impl *)obj)->len;
+    return rt_bytes_len(obj);
 }
 
 //=============================================================================

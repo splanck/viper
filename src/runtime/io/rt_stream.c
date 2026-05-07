@@ -56,23 +56,6 @@ typedef struct {
     int8_t closed; ///< Set to 1 once Close has been called
 } stream_impl;
 
-//=============================================================================
-// Bytes Access (for MemStream interaction)
-//=============================================================================
-
-/// @brief Mirror of the Bytes GC object header used to read the length field without a full include.
-typedef struct {
-    int64_t len;   ///< Number of bytes stored in the buffer.
-    uint8_t *data; ///< Pointer to the raw byte data.
-} bytes_impl;
-
-/// @brief Return the byte count of a Bytes GC object, or 0 for NULL.
-static inline int64_t bytes_len(void *obj) {
-    if (!obj)
-        return 0;
-    return ((bytes_impl *)obj)->len;
-}
-
 /// @brief Decrement the refcount on a GC object and free it when it reaches zero.
 static void stream_release_object(void *obj) {
     if (obj && rt_obj_release_check0(obj))
@@ -303,7 +286,10 @@ void rt_stream_set_pos(void *stream, int64_t pos) {
         return;
 
     if (s->type == RT_STREAM_TYPE_BINFILE) {
-        rt_binfile_seek(s->wrapped, pos, 0); // SEEK_SET
+        if (rt_binfile_seek(s->wrapped, pos, 0) < 0) {
+            rt_trap("Stream.set_Pos: seek failed");
+            return;
+        }
     } else {
         rt_memstream_set_pos(s->wrapped, pos);
     }
@@ -347,7 +333,11 @@ void *rt_stream_read(void *stream, int64_t count) {
     stream_impl *s = stream_require_open(stream, "Stream.Read: null stream");
     if (!s)
         return rt_bytes_new(0);
-    if (count <= 0)
+    if (count < 0) {
+        rt_trap("Stream.Read: negative count");
+        return rt_bytes_new(0);
+    }
+    if (count == 0)
         return rt_bytes_new(0);
 
     if (s->type == RT_STREAM_TYPE_BINFILE) {
@@ -413,7 +403,7 @@ void rt_stream_write(void *stream, void *bytes) {
     }
 
     if (s->type == RT_STREAM_TYPE_BINFILE) {
-        int64_t len = bytes_len(bytes);
+        int64_t len = rt_bytes_len(bytes);
         rt_binfile_write(s->wrapped, bytes, 0, len);
     } else {
         rt_memstream_write_bytes(s->wrapped, bytes);
@@ -487,6 +477,7 @@ void *rt_stream_as_binfile(void *stream) {
     if (s->type == RT_STREAM_TYPE_BINFILE) {
         return s->wrapped;
     }
+    rt_trap("Stream.AsBinFile: stream is not file-backed");
     return NULL;
 }
 
@@ -499,6 +490,7 @@ void *rt_stream_as_memstream(void *stream) {
     if (s->type == RT_STREAM_TYPE_MEMSTREAM) {
         return s->wrapped;
     }
+    rt_trap("Stream.AsMemStream: stream is not memory-backed");
     return NULL;
 }
 
@@ -512,5 +504,6 @@ void *rt_stream_to_bytes(void *stream) {
     if (s->type == RT_STREAM_TYPE_MEMSTREAM) {
         return rt_memstream_to_bytes(s->wrapped);
     }
+    rt_trap("Stream.ToBytes: stream is not memory-backed");
     return NULL;
 }

@@ -65,6 +65,8 @@ typedef struct {
     size_t str_buf_len;
     size_t str_buf_cap;
     double num_value;
+    size_t num_start;
+    size_t num_len;
     int8_t bool_value;
     int64_t depth;
     char *error_msg;
@@ -382,6 +384,8 @@ static int parse_number(rt_json_stream_impl *s) {
         set_error(s, "invalid number");
         return 0;
     }
+    s->num_start = start;
+    s->num_len = nlen;
     free(buf);
     return 1;
 }
@@ -701,6 +705,16 @@ double rt_json_stream_number_value(void *parser) {
     if (!parser)
         return 0.0;
     return ((rt_json_stream_impl *)parser)->num_value;
+}
+
+rt_string rt_json_stream_number_text(void *parser) {
+    if (!parser)
+        return rt_const_cstr("");
+    rt_json_stream_impl *s = (rt_json_stream_impl *)parser;
+    if (s->current_type != RT_JSON_TOK_NUMBER || s->num_start > s->len ||
+        s->num_len > s->len - s->num_start)
+        return rt_const_cstr("");
+    return rt_string_from_bytes(s->input + s->num_start, s->num_len);
 }
 
 /// @brief Read the boolean value at the current BOOL token (1 = true, 0 = false / not bool).

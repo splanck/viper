@@ -31,6 +31,7 @@
 
 #include "rt_memstream.h"
 
+#include "rt_bytes.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_string.h"
@@ -41,12 +42,6 @@
 
 /// @brief Initial buffer capacity for new streams.
 #define MEMSTREAM_INITIAL_CAPACITY 64
-
-/// @brief Bytes implementation structure layout (must match rt_bytes.c).
-typedef struct rt_bytes_impl {
-    int64_t len;   ///< Number of bytes.
-    uint8_t *data; ///< Byte storage.
-} rt_bytes_impl;
 
 /// @brief MemStream implementation structure.
 typedef struct rt_memstream_impl {
@@ -190,7 +185,8 @@ void *rt_memstream_from_bytes(void *bytes) {
         return NULL;
     }
 
-    rt_bytes_impl *b = (rt_bytes_impl *)bytes;
+    int64_t bytes_len = rt_bytes_len(bytes);
+    const uint8_t *bytes_data = rt_bytes_data_const(bytes);
 
     rt_memstream_impl *ms =
         (rt_memstream_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_memstream_impl));
@@ -205,14 +201,14 @@ void *rt_memstream_from_bytes(void *bytes) {
     ms->pos = 0;
     rt_obj_set_finalizer(ms, rt_memstream_finalize);
 
-    if (b->len > 0) {
-        if (!ensure_capacity(ms, b->len)) {
+    if (bytes_len > 0) {
+        if (!ensure_capacity(ms, bytes_len)) {
             if (rt_obj_release_check0(ms))
                 rt_obj_free(ms);
             return NULL;
         }
-        memcpy(ms->data, b->data, (size_t)b->len);
-        ms->len = b->len;
+        memcpy(ms->data, bytes_data, (size_t)bytes_len);
+        ms->len = bytes_len;
     }
 
     return ms;
@@ -581,9 +577,6 @@ void rt_memstream_write_f64(void *obj, double value) {
 // Bytes/String Read/Write
 //=============================================================================
 
-// Forward declaration for rt_bytes_new
-extern void *rt_bytes_new(int64_t len);
-
 /// @brief Read `count` raw bytes into a fresh Bytes object. Advances pos by `count`.
 void *rt_memstream_read_bytes(void *obj, int64_t count) {
     if (!obj) {
@@ -602,9 +595,9 @@ void *rt_memstream_read_bytes(void *obj, int64_t count) {
     if (!bytes)
         return NULL;
 
-    rt_bytes_impl *b = (rt_bytes_impl *)bytes;
+    uint8_t *dst = rt_bytes_data(bytes);
     if (count > 0) {
-        memcpy(b->data, ms->data + ms->pos, (size_t)count);
+        memcpy(dst, ms->data + ms->pos, (size_t)count);
         ms->pos += count;
     }
     return bytes;
@@ -621,13 +614,14 @@ void rt_memstream_write_bytes(void *obj, void *bytes) {
         return;
     }
     rt_memstream_impl *ms = (rt_memstream_impl *)obj;
-    rt_bytes_impl *b = (rt_bytes_impl *)bytes;
+    int64_t bytes_len = rt_bytes_len(bytes);
+    const uint8_t *bytes_data = rt_bytes_data_const(bytes);
 
-    if (b->len > 0) {
-        if (!prepare_write(ms, b->len))
+    if (bytes_len > 0) {
+        if (!prepare_write(ms, bytes_len))
             return;
-        memcpy(ms->data + ms->pos, b->data, (size_t)b->len);
-        ms->pos += b->len;
+        memcpy(ms->data + ms->pos, bytes_data, (size_t)bytes_len);
+        ms->pos += bytes_len;
     }
 }
 
@@ -647,6 +641,10 @@ rt_string rt_memstream_read_str(void *obj, int64_t count) {
         return NULL;
 
     rt_string str = rt_string_from_bytes((const char *)(ms->data + ms->pos), (size_t)count);
+    if (!str) {
+        rt_trap("MemStream.ReadStr: memory allocation failed");
+        return NULL;
+    }
     ms->pos += count;
     return str;
 }
@@ -692,9 +690,9 @@ void *rt_memstream_to_bytes(void *obj) {
     if (!bytes)
         return NULL;
 
-    rt_bytes_impl *b = (rt_bytes_impl *)bytes;
+    uint8_t *dst = rt_bytes_data(bytes);
     if (ms->len > 0)
-        memcpy(b->data, ms->data, (size_t)ms->len);
+        memcpy(dst, ms->data, (size_t)ms->len);
 
     return bytes;
 }

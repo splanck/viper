@@ -75,6 +75,7 @@ Archive path arguments reject embedded NUL bytes before calling platform file AP
 - `.` segments are ignored
 - Backslashes are normalized to `/`
 - Embedded NUL bytes in archive entry names are rejected. Malformed ZIP central directories with NUL-containing names also fail to open.
+- Duplicate entry names are rejected when writing, and malformed ZIP central directories with duplicate names fail to open.
 
 Invalid names trap with `Archive: invalid entry name`.
 
@@ -90,6 +91,7 @@ Invalid names trap with `Archive: invalid entry name`.
 | `compressedSize` | Integer | Compressed size in bytes              |
 | `crc`            | Integer | CRC32 checksum                        |
 | `method`         | Integer | Compression method (0=stored, 8=deflate) |
+| `modifiedTime`   | Integer | Entry modification time as a Unix timestamp |
 | `isDir`          | Boolean | True if entry is a directory          |
 | `isDirectory`    | Boolean | Back-compat alias for `isDir`         |
 
@@ -217,6 +219,7 @@ Archive operations trap on errors:
 - `Read()`/`ReadStr()` trap if entry doesn't exist
 - `Extract()` traps if entry doesn't exist or destination is unwritable
 - `ExtractAll()` traps if an existing destination component under the extraction root is a symlink or reparse point
+- `Add()` traps on null data, invalid names, or duplicate names
 - `Finish()` must be called before a created archive is valid; until then an existing output path remains unchanged
 - Invalid or corrupted entries may trap during reading
 
@@ -368,7 +371,7 @@ Compression traps on:
 - Invalid compression level (must be 1-9)
 - Invalid or truncated compressed data
 - Reserved GZIP flags, malformed optional headers, header CRC mismatches, trailer CRC32 mismatches, or trailer size mismatches
-- Corrupted DEFLATE streams, including truncated Huffman symbols and malformed dynamic-code repeat runs
+- Corrupted DEFLATE streams, including truncated Huffman symbols, oversubscribed or missing Huffman codes, malformed dynamic-code repeat runs, and dynamic literal trees without an end-of-block code
 - Trailing non-padding data after the final DEFLATE block
 - Inflated output exceeding the runtime safety cap (256 MiB)
 
@@ -518,6 +521,7 @@ watcher.Stop()
 - `PollFor(ms)` waits up to the specified milliseconds for an event; very large positive timeouts are clamped to the largest supported platform wait value
 - After receiving an event, use `EventPath()` and `EventType()` to get details
 - Multiple events may be queued; call `Poll()` repeatedly to drain them
+- `Stop()` clears queued events and the last-event state. After `Stop()`, `EventType()` returns `EVENT_NONE` and `EventPath()` traps until a later successful `Poll()` after `Start()`.
 - Directory watches are non-recursive
 - On Linux and Windows, single-file watches monitor the parent directory and filter by filename, so deleting and recreating the file at the same path can still produce a later `EVENT_CREATED`
 - macOS directory watches report the watched directory path for queued events because `kqueue` does not provide child entry names

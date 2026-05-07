@@ -55,12 +55,7 @@ static void test_result(const char *name, bool passed) {
 
 /// @brief Get bytes data pointer
 static uint8_t *get_bytes_data(void *bytes) {
-    struct bytes_impl {
-        int64_t len;
-        uint8_t *data;
-    };
-
-    return ((bytes_impl *)bytes)->data;
+    return rt_bytes_data(bytes);
 }
 
 /// @brief Get bytes length
