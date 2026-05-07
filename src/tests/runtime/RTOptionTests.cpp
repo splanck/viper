@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_option.h"
+#include "rt_object.h"
 #include "rt_result.h"
 #include "rt_string.h"
 
@@ -36,6 +37,7 @@ static void test_option_some_creation() {
         int dummy = 42;
         void *o = rt_option_some(&dummy);
         test_result("Some with pointer", rt_option_is_some(o) == 1);
+        test_result("Some class id", rt_obj_class_id(o) == RT_OPTION_CLASS_ID);
         test_result("Some not None", rt_option_is_none(o) == 0);
         test_result("Unwrap returns value", rt_option_unwrap(o) == &dummy);
     }
@@ -74,6 +76,7 @@ static void test_option_none_creation() {
     {
         void *o = rt_option_none();
         test_result("None is None", rt_option_is_none(o) == 1);
+        test_result("None class id", rt_obj_class_id(o) == RT_OPTION_CLASS_ID);
         test_result("None not Some", rt_option_is_some(o) == 0);
     }
 

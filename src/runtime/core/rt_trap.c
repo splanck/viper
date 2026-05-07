@@ -39,6 +39,54 @@
 #include "rt_internal.h"
 #include "rt_trap.h"
 
+static void append_escaped_string(char *dst, size_t dst_cap, rt_string s) {
+    if (!dst || dst_cap == 0)
+        return;
+    size_t pos = strlen(dst);
+    if (pos >= dst_cap)
+        return;
+
+    const char *bytes = s ? rt_string_cstr(s) : "";
+    size_t len = s ? (size_t)rt_str_len(s) : 0;
+    size_t shown = len < 64 ? len : 64;
+    for (size_t i = 0; i < shown && pos + 5 < dst_cap; ++i) {
+        unsigned char ch = (unsigned char)bytes[i];
+        if (ch == '\\' || ch == '"') {
+            dst[pos++] = '\\';
+            dst[pos++] = (char)ch;
+        } else if (ch >= 32 && ch < 127) {
+            dst[pos++] = (char)ch;
+        } else {
+            int n = snprintf(dst + pos, dst_cap - pos, "\\x%02X", ch);
+            if (n < 0)
+                break;
+            pos += (size_t)n;
+        }
+    }
+    if (len > shown && pos + 4 < dst_cap) {
+        dst[pos++] = '.';
+        dst[pos++] = '.';
+        dst[pos++] = '.';
+    }
+    dst[pos] = '\0';
+}
+
+static int message_has_bytes(rt_string message) {
+    if (!message || !message->data)
+        return 0;
+    return rt_str_len(message) > 0 ? 1 : 0;
+}
+
+static const char *format_message(rt_string message, const char *fallback, char *buf, size_t cap) {
+    if (!message_has_bytes(message))
+        return fallback;
+    if (!buf || cap == 0)
+        return fallback;
+    buf[0] = '\0';
+    append_escaped_string(buf, cap, message);
+    return buf;
+}
+
 /// @brief Report a division-by-zero trap and terminate the process.
 /// @details Prints a fixed diagnostic to stderr, flushes the stream to ensure
 ///          embedders observe the message, and exits with status code 1.  The
@@ -66,28 +114,8 @@ void rt_diag_assert(int8_t condition, rt_string message) {
     if (condition)
         return;
 
-    const char *msg = "Assertion failed";
-    if (message && message->data) {
-        size_t len = (message->heap && message->heap != RT_SSO_SENTINEL)
-                         ? rt_heap_len(message->data)
-                         : message->literal_len;
-        if (len > 0)
-            msg = rt_string_cstr(message);
-    }
-
-    rt_trap(msg);
-}
-
-/// @brief Helper to extract message string with fallback.
-static const char *get_message(rt_string message, const char *fallback) {
-    if (message && message->data) {
-        size_t len = (message->heap && message->heap != RT_SSO_SENTINEL)
-                         ? rt_heap_len(message->data)
-                         : message->literal_len;
-        if (len > 0)
-            return rt_string_cstr(message);
-    }
-    return fallback;
+    char msg_buf[160];
+    rt_trap(format_message(message, "Assertion failed", msg_buf, sizeof(msg_buf)));
 }
 
 /// @brief Assert two integers are equal.
@@ -95,7 +123,8 @@ void rt_diag_assert_eq(int64_t expected, int64_t actual, rt_string message) {
     if (expected == actual)
         return;
 
-    const char *msg = get_message(message, "AssertEq failed");
+    char msg_buf[160];
+    const char *msg = format_message(message, "AssertEq failed", msg_buf, sizeof(msg_buf));
     char buf[256];
     snprintf(buf, sizeof(buf), "%s: expected %" PRId64 ", got %" PRId64, msg, expected, actual);
     rt_trap(buf);
@@ -106,7 +135,8 @@ void rt_diag_assert_neq(int64_t a, int64_t b, rt_string message) {
     if (a != b)
         return;
 
-    const char *msg = get_message(message, "AssertNeq failed");
+    char msg_buf[160];
+    const char *msg = format_message(message, "AssertNeq failed", msg_buf, sizeof(msg_buf));
     char buf[256];
     snprintf(buf, sizeof(buf), "%s: values should not be equal (both are %" PRId64 ")", msg, a);
     rt_trap(buf);
@@ -130,42 +160,11 @@ void rt_diag_assert_eq_num(double expected, double actual, rt_string message) {
     if (equal)
         return;
 
-    const char *msg = get_message(message, "AssertEqNum failed");
+    char msg_buf[160];
+    const char *msg = format_message(message, "AssertEqNum failed", msg_buf, sizeof(msg_buf));
     char buf[256];
     snprintf(buf, sizeof(buf), "%s: expected %g, got %g (diff=%g)", msg, expected, actual, diff);
     rt_trap(buf);
-}
-
-static void append_escaped_string(char *dst, size_t dst_cap, rt_string s) {
-    if (!dst || dst_cap == 0)
-        return;
-    size_t pos = strlen(dst);
-    if (pos >= dst_cap)
-        return;
-
-    const char *bytes = s ? rt_string_cstr(s) : "";
-    size_t len = s ? (size_t)rt_str_len(s) : 0;
-    size_t shown = len < 32 ? len : 32;
-    for (size_t i = 0; i < shown && pos + 5 < dst_cap; ++i) {
-        unsigned char ch = (unsigned char)bytes[i];
-        if (ch == '\\' || ch == '"') {
-            dst[pos++] = '\\';
-            dst[pos++] = (char)ch;
-        } else if (ch >= 32 && ch < 127) {
-            dst[pos++] = (char)ch;
-        } else {
-            int n = snprintf(dst + pos, dst_cap - pos, "\\x%02X", ch);
-            if (n < 0)
-                break;
-            pos += (size_t)n;
-        }
-    }
-    if (len > shown && pos + 4 < dst_cap) {
-        dst[pos++] = '.';
-        dst[pos++] = '.';
-        dst[pos++] = '.';
-    }
-    dst[pos] = '\0';
 }
 
 /// @brief Assert two strings are equal.
@@ -173,7 +172,8 @@ void rt_diag_assert_eq_str(rt_string expected, rt_string actual, rt_string messa
     if (rt_str_eq(expected, actual) != 0)
         return;
 
-    const char *msg = get_message(message, "AssertEqStr failed");
+    char msg_buf[160];
+    const char *msg = format_message(message, "AssertEqStr failed", msg_buf, sizeof(msg_buf));
     char buf[512];
     snprintf(buf, sizeof(buf), "%s: expected \"", msg);
     append_escaped_string(buf, sizeof(buf), expected);
@@ -188,7 +188,8 @@ void rt_diag_assert_null(void *obj, rt_string message) {
     if (obj == NULL)
         return;
 
-    const char *msg = get_message(message, "AssertNull failed");
+    char msg_buf[160];
+    const char *msg = format_message(message, "AssertNull failed", msg_buf, sizeof(msg_buf));
     char buf[256];
     snprintf(buf, sizeof(buf), "%s: expected null, got non-null object", msg);
     rt_trap(buf);
@@ -199,7 +200,8 @@ void rt_diag_assert_not_null(void *obj, rt_string message) {
     if (obj != NULL)
         return;
 
-    const char *msg = get_message(message, "AssertNotNull failed");
+    char msg_buf[160];
+    const char *msg = format_message(message, "AssertNotNull failed", msg_buf, sizeof(msg_buf));
     char buf[256];
     snprintf(buf, sizeof(buf), "%s: expected non-null, got null", msg);
     rt_trap(buf);
@@ -207,7 +209,8 @@ void rt_diag_assert_not_null(void *obj, rt_string message) {
 
 /// @brief Unconditionally fail with a message.
 void rt_diag_assert_fail(rt_string message) {
-    const char *msg = get_message(message, "AssertFail called");
+    char msg_buf[160];
+    const char *msg = format_message(message, "AssertFail called", msg_buf, sizeof(msg_buf));
     rt_trap(msg);
 }
 
@@ -216,7 +219,8 @@ void rt_diag_assert_gt(int64_t a, int64_t b, rt_string message) {
     if (a > b)
         return;
 
-    const char *msg = get_message(message, "AssertGt failed");
+    char msg_buf[160];
+    const char *msg = format_message(message, "AssertGt failed", msg_buf, sizeof(msg_buf));
     char buf[256];
     snprintf(buf, sizeof(buf), "%s: expected %" PRId64 " > %" PRId64, msg, a, b);
     rt_trap(buf);
@@ -227,7 +231,8 @@ void rt_diag_assert_lt(int64_t a, int64_t b, rt_string message) {
     if (a < b)
         return;
 
-    const char *msg = get_message(message, "AssertLt failed");
+    char msg_buf[160];
+    const char *msg = format_message(message, "AssertLt failed", msg_buf, sizeof(msg_buf));
     char buf[256];
     snprintf(buf, sizeof(buf), "%s: expected %" PRId64 " < %" PRId64, msg, a, b);
     rt_trap(buf);
@@ -238,7 +243,8 @@ void rt_diag_assert_gte(int64_t a, int64_t b, rt_string message) {
     if (a >= b)
         return;
 
-    const char *msg = get_message(message, "AssertGte failed");
+    char msg_buf[160];
+    const char *msg = format_message(message, "AssertGte failed", msg_buf, sizeof(msg_buf));
     char buf[256];
     snprintf(buf, sizeof(buf), "%s: expected %" PRId64 " >= %" PRId64, msg, a, b);
     rt_trap(buf);
@@ -249,7 +255,8 @@ void rt_diag_assert_lte(int64_t a, int64_t b, rt_string message) {
     if (a <= b)
         return;
 
-    const char *msg = get_message(message, "AssertLte failed");
+    char msg_buf[160];
+    const char *msg = format_message(message, "AssertLte failed", msg_buf, sizeof(msg_buf));
     char buf[256];
     snprintf(buf, sizeof(buf), "%s: expected %" PRId64 " <= %" PRId64, msg, a, b);
     rt_trap(buf);

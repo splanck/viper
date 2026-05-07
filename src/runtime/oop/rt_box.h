@@ -28,6 +28,10 @@
 #include <stdint.h>
 
 #define RT_BOX_CLASS_ID INT64_C(-0x430101)
+#define RT_VALUE_TYPE_CLASS_ID INT64_C(-0x430102)
+
+#define RT_VALUE_FIELD_OBJ INT64_C(1)
+#define RT_VALUE_FIELD_STR INT64_C(2)
 
 #ifdef __cplusplus
 extern "C" {
@@ -116,8 +120,16 @@ int64_t rt_box_eq_str(void *box, rt_string val);
 /// @brief Allocate heap memory for boxing a value type (struct).
 /// @param size Size in bytes to allocate.
 /// @return Heap-allocated zero-initialized memory.
-/// @note The compiler copies struct fields into this memory.
+/// @note The compiler copies struct fields into this memory and registers
+/// managed fields with rt_box_value_type_add_field().
 void *rt_box_value_type(int64_t size);
+
+/// @brief Register a managed field inside a boxed value type.
+/// @param obj ValueType object returned from rt_box_value_type().
+/// @param offset Byte offset of the pointer-sized field.
+/// @param kind RT_VALUE_FIELD_OBJ or RT_VALUE_FIELD_STR.
+/// @param retain_now Retain the current field value immediately when non-zero.
+void rt_box_value_type_add_field(void *obj, int64_t offset, int64_t kind, int8_t retain_now);
 
 /// @brief Content-aware hash for an element.
 /// Boxed values (RT_ELEM_BOX) are hashed by content using FNV-1a;

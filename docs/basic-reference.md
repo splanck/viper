@@ -862,8 +862,8 @@ Type parsing (with explicit error handling):
 - `Viper.Parse.IntRadix(str, i64, i64)->i64` — Parse radix 2-36 integer or return default
 - `Viper.Parse.Int64(cstr, ptr i64)->i32` — Low-level int64 parser, returns error code
 - `Viper.Parse.Double(cstr, ptr f64)->i32` — Low-level double parser, returns error code
-- `Viper.Parse.Int64Option(str)->obj` — Parse int64 to `Viper.Option`
-- `Viper.Parse.DoubleOption(str)->obj` — Parse double to `Viper.Option`
+- `Viper.Parse.Int64Option(str)->obj<Viper.Option>` — Parse int64 to `Viper.Option`
+- `Viper.Parse.DoubleOption(str)->obj<Viper.Option>` — Parse double to `Viper.Option`
 
 #### Viper.Diagnostics
 

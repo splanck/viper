@@ -36,6 +36,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define RT_STRING_CLASS_ID INT64_C(-0x530701)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -55,6 +57,12 @@ rt_string rt_string_ref(rt_string s);
 /// @brief Decrement the reference count of @p s and free when zero.
 /// @param s String to release; may be NULL.
 void rt_string_unref(rt_string s);
+
+/// @brief Decrement the reference count of @p s and return the post-release count.
+/// @details Immortal strings return SIZE_MAX. A zero return means the handle was freed.
+/// @param s String to release; may be NULL.
+/// @return Reference count immediately after the release.
+size_t rt_string_unref_count(rt_string s);
 
 /// @brief Release @p s when non-null.
 /// @param s String handle that may be NULL.

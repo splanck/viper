@@ -92,6 +92,8 @@ inline constexpr const char *kBoxI1 = kCoreBoxI1;
 inline constexpr const char *kBoxStr = kCoreBoxStr;
 /// @brief Query the struct type tag stored in a Box object.
 inline constexpr const char *kBoxValueType = kCoreBoxValueType;
+/// @brief Register an owned field inside a boxed value-type object.
+inline constexpr const char *kBoxValueTypeAddField = "Viper.Core.Box.ValueTypeAddField";
 /// @brief Unbox a Box object to extract the i64 value.
 inline constexpr const char *kUnboxI64 = kCoreBoxToI64;
 /// @brief Unbox a Box object to extract the f64 value.

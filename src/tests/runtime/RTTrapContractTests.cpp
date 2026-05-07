@@ -49,6 +49,17 @@ static void expect_trap(TrapFn fn,
     }
 
     const char *message = rt_trap_get_error();
+    if (rt_trap_get_kind() != expected_kind || rt_trap_get_code() != expected_code) {
+        std::fprintf(stderr,
+                     "trap mismatch for snippet '%s': kind=%lld expected=%lld "
+                     "code=%lld expected=%lld message=%s\n",
+                     snippet ? snippet : "<none>",
+                     (long long)rt_trap_get_kind(),
+                     (long long)expected_kind,
+                     (long long)rt_trap_get_code(),
+                     (long long)expected_code,
+                     message ? message : "<null>");
+    }
     assert(rt_trap_get_kind() == expected_kind);
     assert(rt_trap_get_code() == expected_code);
     assert(message != nullptr);
@@ -114,6 +125,12 @@ static void trap_url_invalid_port() {
     (void)rt_url_parse(rt_const_cstr("http://example.com:70000"));
 }
 
+static void trap_diag_embedded_nul_message() {
+    const char raw[] = {'A', '\0', 'B'};
+    rt_string message = rt_string_from_bytes(raw, sizeof(raw));
+    rt_diag_assert_eq(1, 2, message);
+}
+
 } // namespace
 
 int main() {
@@ -148,5 +165,9 @@ int main() {
                 Err_InvalidOperation,
                 "null receiver");
     expect_trap(trap_url_invalid_port, RT_TRAP_KIND_NETWORK_ERROR, Err_InvalidUrl, "parse URL");
+    expect_trap(trap_diag_embedded_nul_message,
+                RT_TRAP_KIND_DOMAIN_ERROR,
+                0,
+                "A\\x00B");
     return 0;
 }

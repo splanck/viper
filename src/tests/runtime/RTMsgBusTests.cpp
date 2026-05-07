@@ -14,7 +14,13 @@
 #include "rt_string.h"
 
 #include <cassert>
+#include <csetjmp>
 #include <cstring>
+#include <string>
+
+extern "C" void rt_trap_set_recovery(jmp_buf *buf);
+extern "C" void rt_trap_clear_recovery(void);
+extern "C" const char *rt_trap_get_error(void);
 
 extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
@@ -55,6 +61,11 @@ static void cb_second(void *data) {
 static void cb_third(void *data) {
     g_trace[g_trace_len++] = 3;
     g_last_payload = *(int *)data;
+}
+
+static void cb_trap(void *data) {
+    (void)data;
+    rt_trap("subscriber boom");
 }
 
 static void cb_unsubscribe_other(void *data) {
@@ -252,10 +263,73 @@ static void test_topics() {
 
     void *topics = rt_msgbus_topics(bus);
     assert(rt_seq_len(topics) == 2);
+    rt_string first = (rt_string)rt_seq_get(topics, 0);
+    rt_string second = (rt_string)rt_seq_get(topics, 1);
+    assert((std::strcmp(rt_string_cstr(first), "alpha") == 0 ||
+            std::strcmp(rt_string_cstr(second), "alpha") == 0));
+    assert((std::strcmp(rt_string_cstr(first), "beta") == 0 ||
+            std::strcmp(rt_string_cstr(second), "beta") == 0));
 
     rt_string_unref(alpha);
     rt_string_unref(beta);
+    destroy_obj(bus);
+    assert((std::strcmp(rt_string_cstr(first), "alpha") == 0 ||
+            std::strcmp(rt_string_cstr(second), "alpha") == 0));
+    assert((std::strcmp(rt_string_cstr(first), "beta") == 0 ||
+            std::strcmp(rt_string_cstr(second), "beta") == 0));
     destroy_obj(topics);
+}
+
+static void test_rejects_plain_heap_callback() {
+    void *bus = rt_msgbus_new();
+    rt_string topic = make_str("bad_callback");
+    void *plain = rt_obj_new_i64(0, 8);
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_msgbus_subscribe(bus, topic, plain);
+        rt_trap_clear_recovery();
+        assert(false && "plain heap callback should trap");
+    } else {
+        std::string message = rt_trap_get_error();
+        rt_trap_clear_recovery();
+        assert(message.find("callback must be") != std::string::npos);
+    }
+
+    destroy_obj(plain);
+    rt_string_unref(topic);
+    destroy_obj(bus);
+}
+
+static void test_publish_trap_releases_snapshot_callbacks() {
+    void *bus = rt_msgbus_new();
+    rt_string topic = make_str("trap_cleanup");
+    void *callback = rt_msgbus_callback_new((void *)cb_trap);
+    rt_obj_set_finalizer(callback, callback_finalizer);
+    g_callback_finalized = 0;
+
+    assert(rt_msgbus_subscribe(bus, topic, callback) > 0);
+    destroy_obj(callback);
+
+    int payload = 1;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_msgbus_publish(bus, topic, &payload);
+        rt_trap_clear_recovery();
+        assert(false && "publishing trapping callback should re-trap");
+    } else {
+        std::string message = rt_trap_get_error();
+        rt_trap_clear_recovery();
+        assert(message.find("subscriber boom") != std::string::npos);
+    }
+
+    assert(g_callback_finalized == 0);
+    rt_msgbus_clear(bus);
+    assert(g_callback_finalized == 1);
+
+    rt_string_unref(topic);
     destroy_obj(bus);
 }
 
@@ -294,7 +368,7 @@ static void test_clear() {
 static void test_callback_object_cleanup_on_unsubscribe() {
     void *bus = rt_msgbus_new();
     rt_string topic = make_str("cleanup");
-    void *callback_obj = rt_obj_new_i64(0, 8);
+    void *callback_obj = rt_msgbus_callback_new((void *)cb_first);
     rt_obj_set_finalizer(callback_obj, callback_finalizer);
     g_callback_finalized = 0;
 
@@ -334,6 +408,8 @@ int main() {
     test_publish_invokes_callbacks_in_order();
     test_unsubscribe_during_publish_uses_snapshot();
     test_topics();
+    test_rejects_plain_heap_callback();
+    test_publish_trap_releases_snapshot_callbacks();
     test_clear_topic();
     test_clear();
     test_callback_object_cleanup_on_unsubscribe();

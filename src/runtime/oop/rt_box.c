@@ -32,14 +32,23 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_box.h"
+#include "rt_gc.h"
 #include "rt_hash_util.h"
 #include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_platform.h"
 #include "rt_string.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+
+#if RT_PLATFORM_WINDOWS
+#include <windows.h>
+#elif !RT_PLATFORM_VIPERDOS
+#include <sched.h>
+#endif
 
 /// @brief Internal payload layout for heap-allocated boxed primitive values.
 typedef struct rt_box {
@@ -51,6 +60,145 @@ typedef struct rt_box {
         rt_string str_val;
     } data;
 } rt_box_t;
+
+typedef struct value_type_field {
+    size_t offset;
+    int64_t kind;
+    struct value_type_field *next;
+} value_type_field;
+
+typedef struct value_type_layout {
+    void *obj;
+    value_type_field *fields;
+    struct value_type_layout *next;
+} value_type_layout;
+
+static value_type_layout *g_value_type_layouts = NULL;
+static int g_value_type_layout_lock = 0;
+
+static void value_type_lock(void) {
+    if (__atomic_test_and_set(&g_value_type_layout_lock, __ATOMIC_ACQUIRE)) {
+        do {
+#if RT_PLATFORM_WINDOWS
+            SwitchToThread();
+#elif !RT_PLATFORM_VIPERDOS
+            sched_yield();
+#endif
+        } while (__atomic_test_and_set(&g_value_type_layout_lock, __ATOMIC_ACQUIRE));
+    }
+}
+
+static void value_type_unlock(void) {
+    __atomic_clear(&g_value_type_layout_lock, __ATOMIC_RELEASE);
+}
+
+static value_type_layout *value_type_find_locked(void *obj) {
+    for (value_type_layout *layout = g_value_type_layouts; layout; layout = layout->next) {
+        if (layout->obj == obj)
+            return layout;
+    }
+    return NULL;
+}
+
+static value_type_layout *value_type_detach_locked(void *obj) {
+    value_type_layout **pp = &g_value_type_layouts;
+    while (*pp) {
+        if ((*pp)->obj == obj) {
+            value_type_layout *layout = *pp;
+            *pp = layout->next;
+            layout->next = NULL;
+            return layout;
+        }
+        pp = &(*pp)->next;
+    }
+    return NULL;
+}
+
+static void value_type_release_slot(void *obj, const value_type_field *field) {
+    if (!obj || !field)
+        return;
+    void **slot = (void **)((unsigned char *)obj + field->offset);
+    if (field->kind == RT_VALUE_FIELD_STR) {
+        rt_str_release_maybe((rt_string)*slot);
+        *slot = NULL;
+    } else if (field->kind == RT_VALUE_FIELD_OBJ) {
+        void *child = *slot;
+        if (rt_obj_release_check0(child))
+            rt_obj_free(child);
+        *slot = NULL;
+    }
+}
+
+static void value_type_retain_slot(void *obj, const value_type_field *field) {
+    if (!obj || !field)
+        return;
+    void **slot = (void **)((unsigned char *)obj + field->offset);
+    if (field->kind == RT_VALUE_FIELD_STR) {
+        rt_string_ref((rt_string)*slot);
+    } else if (field->kind == RT_VALUE_FIELD_OBJ) {
+        rt_obj_retain_maybe(*slot);
+    }
+}
+
+static void value_type_free_layout(value_type_layout *layout) {
+    if (!layout)
+        return;
+    value_type_field *field = layout->fields;
+    while (field) {
+        value_type_field *next = field->next;
+        free(field);
+        field = next;
+    }
+    free(layout);
+}
+
+static void value_type_finalizer(void *obj) {
+    value_type_lock();
+    value_type_layout *layout = value_type_detach_locked(obj);
+    value_type_unlock();
+    if (!layout)
+        return;
+    for (value_type_field *field = layout->fields; field; field = field->next)
+        value_type_release_slot(obj, field);
+    value_type_free_layout(layout);
+}
+
+static void value_type_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    if (!obj || !visitor)
+        return;
+
+    int64_t count = 0;
+    value_type_lock();
+    value_type_layout *layout = value_type_find_locked(obj);
+    for (value_type_field *field = layout ? layout->fields : NULL; field; field = field->next) {
+        if (field->kind == RT_VALUE_FIELD_OBJ)
+            count++;
+    }
+    value_type_unlock();
+    if (count <= 0)
+        return;
+
+    size_t *offsets = (size_t *)malloc((size_t)count * sizeof(size_t));
+    if (!offsets)
+        return;
+
+    int64_t copied = 0;
+    value_type_lock();
+    layout = value_type_find_locked(obj);
+    for (value_type_field *field = layout ? layout->fields : NULL; field && copied < count;
+         field = field->next) {
+        if (field->kind == RT_VALUE_FIELD_OBJ)
+            offsets[copied++] = field->offset;
+    }
+    value_type_unlock();
+
+    for (int64_t i = 0; i < copied; ++i) {
+        void *child = *(void **)((unsigned char *)obj + offsets[i]);
+        if (child)
+            visitor(child, ctx);
+    }
+    free(offsets);
+}
 
 /// @brief Allocate a fresh boxed-value object via the heap (refcount=1, tagged RT_ELEM_BOX so
 /// `box_maybe` can later identify it). Caller fills the tag and union fields.
@@ -272,8 +420,78 @@ void *rt_box_value_type(int64_t size) {
         rt_trap("rt_box_value_type: size too large");
         return NULL;
     }
-    // Allocate raw memory for value type - the compiler will copy fields
-    return rt_heap_alloc(RT_HEAP_OBJECT, RT_ELEM_NONE, 1, (size_t)size, (size_t)size);
+    return rt_obj_new_i64(RT_VALUE_TYPE_CLASS_ID, size);
+}
+
+void rt_box_value_type_add_field(void *obj, int64_t offset, int64_t kind, int8_t retain_now) {
+    if (!obj) {
+        rt_trap("rt_box_value_type_add_field: null value type");
+        return;
+    }
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header(obj, &hdr) || !hdr ||
+        (rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT || hdr->class_id != RT_VALUE_TYPE_CLASS_ID) {
+        rt_trap("rt_box_value_type_add_field: invalid value type object");
+        return;
+    }
+    if (offset < 0 || (uint64_t)offset > (uint64_t)SIZE_MAX ||
+        (size_t)offset > hdr->cap || hdr->cap - (size_t)offset < sizeof(void *)) {
+        rt_trap("rt_box_value_type_add_field: field offset out of range");
+        return;
+    }
+    if (kind != RT_VALUE_FIELD_OBJ && kind != RT_VALUE_FIELD_STR) {
+        rt_trap("rt_box_value_type_add_field: invalid field kind");
+        return;
+    }
+
+    value_type_field *field = (value_type_field *)calloc(1, sizeof(value_type_field));
+    value_type_layout *new_layout = (value_type_layout *)calloc(1, sizeof(value_type_layout));
+    if (!field || !new_layout) {
+        free(field);
+        free(new_layout);
+        rt_trap("rt_box_value_type_add_field: memory allocation failed");
+        return;
+    }
+    field->offset = (size_t)offset;
+    field->kind = kind;
+    value_type_field retain_field = {field->offset, field->kind, NULL};
+
+    int installed_layout = 0;
+    int inserted_field = 0;
+    value_type_lock();
+    value_type_layout *layout = value_type_find_locked(obj);
+    if (!layout) {
+        new_layout->obj = obj;
+        new_layout->next = g_value_type_layouts;
+        g_value_type_layouts = new_layout;
+        layout = new_layout;
+        new_layout = NULL;
+        installed_layout = 1;
+    }
+    int duplicate = 0;
+    for (value_type_field *existing = layout->fields; existing; existing = existing->next) {
+        if (existing->offset == field->offset && existing->kind == field->kind) {
+            duplicate = 1;
+            break;
+        }
+    }
+    if (!duplicate) {
+        field->next = layout->fields;
+        layout->fields = field;
+        field = NULL;
+        inserted_field = 1;
+    }
+    value_type_unlock();
+
+    free(field);
+    free(new_layout);
+
+    if (installed_layout) {
+        rt_obj_set_finalizer(obj, value_type_finalizer);
+        rt_gc_track(obj, value_type_traverse);
+    }
+    if (inserted_field && retain_now)
+        value_type_retain_slot(obj, &retain_field);
 }
 
 //===----------------------------------------------------------------------===//

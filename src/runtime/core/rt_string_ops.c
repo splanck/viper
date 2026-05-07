@@ -560,24 +560,27 @@ rt_string rt_string_ref(rt_string s) {
     return s;
 }
 
-/// @brief Release a reference to a runtime string handle.
+/// @brief Release a reference to a runtime string handle and return the post-release count.
 /// @details Mirrors @ref rt_string_ref by decrementing literal/embedded reference
 ///          counts or calling @ref rt_heap_release for heap-backed strings. When
 ///          the final reference disappears the wrapper structure is freed. For
 ///          embedded (SSO) strings, this frees the combined handle+data allocation.
 ///          Uses atomic operations for thread-safe reference counting (RACE-003 fix).
 /// @param s Runtime string handle to release.
-void rt_string_unref(rt_string s) {
+/// @return Reference count immediately after the decrement; SIZE_MAX for immortal strings.
+size_t rt_string_unref_count(rt_string s) {
     if (!s)
-        return;
+        return 0;
     rt_heap_hdr_t *hdr = rt_string_header(s);
     if (!hdr) {
         // Atomic decrement for thread-safe reference counting
         // Skip immortal literals (SIZE_MAX indicates immortal) and already-zero refs
 #if RT_COMPILER_MSVC
         size_t old = rt_atomic_load_size(&s->literal_refs, __ATOMIC_RELAXED);
-        if (old == 0 || old >= SIZE_MAX)
-            return;
+        if (old == 0)
+            return 0;
+        if (old >= kImmortalRefcnt)
+            return SIZE_MAX;
         // Use fetch_sub which returns old value; if old was 1, we decremented to 0
         size_t prev = rt_atomic_fetch_sub_size(&s->literal_refs, 1, __ATOMIC_RELEASE);
         if (prev == 1) {
@@ -585,11 +588,15 @@ void rt_string_unref(rt_string s) {
             __atomic_thread_fence(__ATOMIC_ACQUIRE);
             rt_string_unregister_handle(s);
             free(s);
+            return 0;
         }
+        return prev - 1;
 #else
         size_t old = __atomic_load_n(&s->literal_refs, __ATOMIC_RELAXED);
-        if (old == 0 || old >= SIZE_MAX)
-            return;
+        if (old == 0)
+            return 0;
+        if (old >= kImmortalRefcnt)
+            return SIZE_MAX;
         // Use fetch_sub which returns old value; if old was 1, we decremented to 0
         size_t prev = __atomic_fetch_sub(&s->literal_refs, 1, __ATOMIC_RELEASE);
         if (prev == 1) {
@@ -597,17 +604,24 @@ void rt_string_unref(rt_string s) {
             __atomic_thread_fence(__ATOMIC_ACQUIRE);
             rt_string_unregister_handle(s);
             free(s);
+            return 0;
         }
+        return prev - 1;
 #endif
-        return;
     }
     if (rt_string_is_immortal_hdr(hdr))
-        return;
+        return SIZE_MAX;
     size_t next = rt_heap_release(s->data);
     if (next == 0) {
         rt_string_unregister_handle(s);
         free(s);
     }
+    return next;
+}
+
+/// @brief Release a reference to a runtime string handle.
+void rt_string_unref(rt_string s) {
+    (void)rt_string_unref_count(s);
 }
 
 /// @brief Convenience wrapper that releases a possibly-null string handle.

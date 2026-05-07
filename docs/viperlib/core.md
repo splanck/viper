@@ -37,6 +37,7 @@ Base class for all Viper reference types. Provides fundamental object operations
 | `ToString()`    | `String()`        | Returns a string representation of the object  |
 | `TypeId()`      | `Integer()`       | Returns a numeric type identifier for the object's runtime type |
 | `TypeName()`    | `String()`        | Returns the runtime type name of the object    |
+| `RefEquals(a, b)` | `Boolean(Object, Object)` | Class method equivalent of `Viper.Core.Object.RefEquals(a, b)` |
 
 ### Static Functions
 
@@ -48,6 +49,8 @@ Base class for all Viper reference types. Provides fundamental object operations
 
 > Object is the base type for all reference types. In Zia, it is implicit—most programs interact
 > with concrete types rather than calling Object methods directly.
+
+`TypeId()` returns stable built-in identifiers for strings, boxes, boxed value types, and `Viper.Option` objects in addition to user/runtime class IDs.
 
 ### BASIC Example
 
@@ -95,7 +98,8 @@ Boxing helpers for storing primitive values in generic collections. Boxed values
 | `EqI64(box,val)`    | `Boolean(Object,Integer)` | Compare boxed value to integer                         |
 | `EqF64(box,val)`    | `Boolean(Object,Double)`  | Compare boxed value to double                          |
 | `EqStr(box,val)`    | `Boolean(Object,String)`  | Compare boxed value to string                          |
-| `ValueType(tag)`    | `Object(Integer)`         | Return a boxed type descriptor for the given type tag  |
+| `ValueType(size)`   | `Object(Integer)`         | Allocate a heap-owned boxed value-type payload          |
+| `ValueTypeAddField(obj, offset, kind, retainNow)` | `Void(Object, Integer, Integer, Boolean)` | Register a managed field inside a boxed value type |
 
 ### Notes
 
@@ -103,6 +107,7 @@ Boxing helpers for storing primitive values in generic collections. Boxed values
 - Unboxing with the wrong type traps with a runtime diagnostic.
 - Boxed values report `Viper.Core.Box` through `Viper.Core.Object.TypeName` and use value equality/hash semantics for `Object.Equals` and collection lookup.
 - Floating-point box hashes canonicalize `+0.0` and `-0.0` so values that compare equal hash equally.
+- `ValueType(size)` is used by the compiler when boxing structs. The compiler copies the inline payload into heap storage, then registers managed object/string fields with `ValueTypeAddField` so boxed structs retain referenced values, participate in GC traversal, and release fields when finalized. User code normally does not call `ValueTypeAddField` directly.
 
 ### Zia Example
 
@@ -582,10 +587,11 @@ In-process publish/subscribe message bus for decoupled communication between com
 - `Publish` invokes all handlers for the given topic synchronously; returns the number of handlers called
 - Handler functions receive the published data as their argument
 - Publish uses a stable subscriber snapshot; unsubscribes during a handler affect later publishes, not the in-flight one
-- Subscribe accepts a managed callback returned by `Callback(fn)` or a raw native function pointer for legacy/native callers. Passing an ordinary object is retained safely, but publishing to it traps instead of attempting to execute object memory.
+- Subscribe accepts a managed callback returned by `Callback(fn)` or a raw native function pointer for legacy/native callers. Passing an ordinary heap object traps at subscribe time.
 - Topic matching is byte-length aware; topic names containing embedded NUL bytes remain distinct.
-- MessageBus instances are typed runtime objects and participate in GC traversal for retained handlers.
-- The bus is not thread-safe; use external synchronization if accessed from multiple threads
+- `Topics()` returns an owning `Seq` of retained topic strings; the result remains valid after the bus is cleared or destroyed.
+- If a handler traps during `Publish`, the in-flight snapshot is released before the trap is re-raised.
+- MessageBus instances are typed runtime objects, participate in GC traversal for retained handlers, and serialize public operations with an internal lock.
 
 ### Zia Example
 

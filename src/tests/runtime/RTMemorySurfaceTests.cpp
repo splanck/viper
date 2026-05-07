@@ -23,10 +23,16 @@
 namespace {
 
 int g_finalizer_count = 0;
+void *g_resurrected = nullptr;
 
 void count_finalizer(void *obj) {
     (void)obj;
     g_finalizer_count++;
+}
+
+void resurrect_finalizer(void *obj) {
+    g_resurrected = obj;
+    rt_obj_resurrect(obj);
 }
 
 void call_memory_retain_invalid() {
@@ -95,6 +101,25 @@ void test_memory_release_reports_string_refcount() {
     rt_memory_retain(s);
     assert(rt_memory_release(s) == 1);
     assert(rt_memory_release(s) == 0);
+
+    rt_string small = rt_string_from_bytes("sso", 3);
+    assert(small != nullptr);
+    rt_memory_retain(small);
+    assert(rt_memory_release(small) == 1);
+    assert(rt_memory_release(small) == 0);
+}
+
+void test_memory_release_reports_resurrection_refcount() {
+    g_resurrected = nullptr;
+    void *obj = rt_obj_new_i64(0x515, 16);
+    assert(obj != nullptr);
+    rt_obj_set_finalizer(obj, resurrect_finalizer);
+
+    assert(rt_memory_release(obj) == 1);
+    assert(g_resurrected == obj);
+    assert(rt_heap_is_payload(obj) == 1);
+    assert(rt_memory_release(obj) == 0);
+    assert(rt_heap_is_payload(obj) == 0);
 }
 
 void test_memory_release_array_drops_elements() {
@@ -138,6 +163,7 @@ int main(int argc, char *argv[]) {
 
     test_memory_release_runs_finalizer();
     test_memory_release_reports_string_refcount();
+    test_memory_release_reports_resurrection_refcount();
     test_memory_release_array_drops_elements();
     test_heap_mark_disposed_return_contract();
     expect_trap(call_memory_retain_invalid, "Viper.Memory.Retain");

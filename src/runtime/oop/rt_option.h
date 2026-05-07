@@ -25,6 +25,8 @@
 #include "rt_string.h"
 #include <stdint.h>
 
+#define RT_OPTION_CLASS_ID INT64_C(-0x430401)
+
 #ifdef __cplusplus
 extern "C" {
 #endif

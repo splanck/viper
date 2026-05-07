@@ -234,11 +234,13 @@ Phase 2 — Trial Decrement
 
 Phase 3 — Scan (Mark Reachable)
   Objects with trial_rc > 0 have external references → mark black.
+  Promoted black roots and trial_rc > 0 roots are both scanned.
   Recursively mark all children reachable from black objects.
 
 Phase 4 — Collect
   White (unmarked) objects are unreachable cycle members.
-  Untrack them, clear their weak references, invoke finalizers, free.
+  Untrack them, invoke finalizers, release outgoing references, clear
+  weak references for objects that were not resurrected, then free.
 ```
 
 The `trial_rc = 1` assumption means the algorithm assumes exactly one external
@@ -312,7 +314,8 @@ void        rt_weakref_free(ref);       // Destroy handle (does not affect targe
 
 When a target object is freed, `rt_gc_clear_weak_refs(target)` automatically
 nullifies all weak references pointing to it. This is called from `rt_obj_free()`
-and from the GC collector before freeing cycle garbage.
+and from the GC collector after the object's finalizer has run and did not
+resurrect the object. Weak references remain valid when resurrection succeeds.
 
 Object fields can also use the lightweight helpers:
 
@@ -334,6 +337,11 @@ rt_obj_set_finalizer(obj, fn);  // Install callback (one per object, replaces pr
   cycle collection when a tracked cycle is reclaimed.
 - Only works for `RT_HEAP_OBJECT` kind (not strings or arrays).
 - Runs **before** the heap storage is freed.
+- Weak references are cleared after the finalizer only when the object is still
+  dead. A resurrecting finalizer preserves existing weak references.
+- During cycle collection, outgoing references owned by unreachable objects are
+  released after finalization while edges to other objects in the same garbage set
+  are skipped.
 - Calling `rt_gc_collect()` from a finalizer is safe but returns 0 while another
   collection pass is already active.
 
@@ -347,6 +355,10 @@ Allows finalizers to prevent deallocation by resetting the refcount. After
 `rt_obj_resurrect()`, `rt_heap_free_zero_ref()` observes a non-zero refcount and
 skips deallocation. The caller must re-install the finalizer before returning the
 object to users.
+
+`Viper.Memory.Release()` reports this resurrected refcount to callers. A finalizer
+that calls `rt_obj_resurrect()` changes the return value from the transient zero
+to the restored live count.
 
 **Use case**: Vec2/Vec3 thread-local pool recycling. When the pool has space, the
 finalizer resurrects the object and pushes it back to the LIFO pool for reuse

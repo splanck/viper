@@ -42,15 +42,27 @@
 #include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_platform.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#include <setjmp.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#if RT_PLATFORM_WINDOWS
+#include <windows.h>
+#elif !RT_PLATFORM_VIPERDOS
+#include <sched.h>
+#endif
+
 #include "rt_trap.h"
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
 
 // --- Subscription ---
 
@@ -76,6 +88,7 @@ typedef struct {
     int64_t bucket_count;
     int64_t next_id;
     int64_t total_subs;
+    int lock;
 } rt_msgbus_impl;
 
 typedef struct {
@@ -102,6 +115,25 @@ static uint64_t mb_hash_bytes(const char *s, size_t len) {
 }
 
 // --- Internal helpers ---
+
+static void mb_lock(rt_msgbus_impl *mb) {
+    if (!mb)
+        return;
+    if (__atomic_test_and_set(&mb->lock, __ATOMIC_ACQUIRE)) {
+        do {
+#if RT_PLATFORM_WINDOWS
+            SwitchToThread();
+#elif !RT_PLATFORM_VIPERDOS
+            sched_yield();
+#endif
+        } while (__atomic_test_and_set(&mb->lock, __ATOMIC_ACQUIRE));
+    }
+}
+
+static void mb_unlock(rt_msgbus_impl *mb) {
+    if (mb)
+        __atomic_clear(&mb->lock, __ATOMIC_RELEASE);
+}
 
 static int mb_topic_view(rt_string topic, const char **bytes, size_t *len) {
     if (bytes)
@@ -148,7 +180,7 @@ static int mb_callback_is_native(void *callback) {
         return 0;
     rt_heap_hdr_t *hdr = NULL;
     if (rt_heap_try_get_header(callback, &hdr))
-        return hdr != NULL;
+        return hdr && hdr->class_id == RT_MSGBUS_CALLBACK_CLASS_ID;
     return 1;
 }
 
@@ -194,9 +226,17 @@ static void mb_free_sub(mb_sub *s) {
 ///          everything before nulling the bucket array.
 static void mb_finalizer(void *obj) {
     rt_msgbus_impl *mb = (rt_msgbus_impl *)obj;
-    if (mb->buckets) {
-        for (int64_t i = 0; i < mb->bucket_count; i++) {
-            mb_topic *t = mb->buckets[i];
+    mb_lock(mb);
+    mb_topic **buckets = mb->buckets;
+    int64_t bucket_count = mb->bucket_count;
+    mb->buckets = NULL;
+    mb->bucket_count = 0;
+    mb->total_subs = 0;
+    mb_unlock(mb);
+
+    if (buckets) {
+        for (int64_t i = 0; i < bucket_count; i++) {
+            mb_topic *t = buckets[i];
             while (t) {
                 mb_topic *nt = t->next;
                 mb_sub *s = t->subs;
@@ -211,25 +251,62 @@ static void mb_finalizer(void *obj) {
                 t = nt;
             }
         }
-        free(mb->buckets);
-        mb->buckets = NULL;
+        free(buckets);
     }
 }
 
 static void mb_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     rt_msgbus_impl *mb = (rt_msgbus_impl *)obj;
-    if (!mb || !visitor || !mb->buckets)
+    if (!mb || !visitor)
         return;
+
+    int64_t count = 0;
+    mb_lock(mb);
+    if (!mb->buckets) {
+        mb_unlock(mb);
+        return;
+    }
     for (int64_t i = 0; i < mb->bucket_count; i++) {
         mb_topic *t = mb->buckets[i];
         while (t) {
             for (mb_sub *s = t->subs; s; s = s->next) {
                 if (s->callback && rt_heap_is_payload(s->callback))
-                    visitor(s->callback, ctx);
+                    count++;
             }
             t = t->next;
         }
     }
+    mb_unlock(mb);
+    if (count <= 0)
+        return;
+
+    void **callbacks = (void **)calloc((size_t)count, sizeof(void *));
+    if (!callbacks)
+        return;
+
+    int64_t copied = 0;
+    mb_lock(mb);
+    for (int64_t i = 0; i < mb->bucket_count && copied < count; i++) {
+        mb_topic *t = mb->buckets[i];
+        while (t && copied < count) {
+            for (mb_sub *s = t->subs; s && copied < count; s = s->next) {
+                if (s->callback && rt_heap_is_payload(s->callback)) {
+                    callbacks[copied++] = s->callback;
+                    rt_obj_retain_maybe(s->callback);
+                }
+            }
+            t = t->next;
+        }
+    }
+    mb_unlock(mb);
+
+    for (int64_t i = 0; i < copied; ++i)
+        visitor(callbacks[i], ctx);
+    for (int64_t i = 0; i < copied; ++i) {
+        if (rt_obj_release_check0(callbacks[i]))
+            rt_obj_free(callbacks[i]);
+    }
+    free(callbacks);
 }
 
 /// @brief Look up the topic node for `topic_cstr` (returns NULL if not present).
@@ -340,21 +417,32 @@ int64_t rt_msgbus_subscribe(void *obj, rt_string topic, void *callback) {
     rt_msgbus_impl *mb = mb_require(obj, "rt_msgbus_subscribe");
     if (!mb)
         return -1;
+    if (!mb_topic_view(topic, NULL, NULL))
+        return -1;
     if (!mb_callback_is_native(callback)) {
-        rt_trap("rt_msgbus_subscribe: callback must be a native function pointer or MessageBus callback object");
+        rt_trap("rt_msgbus_subscribe: callback must be a native function pointer or "
+                "MessageBus callback object");
         return -1;
     }
-    if (mb->next_id <= 0 || mb->next_id == INT64_MAX) {
-        rt_trap("rt_msgbus_subscribe: subscription id overflow");
-        return -1;
-    }
-    mb_topic *t = mb_ensure_topic(mb, topic);
-    if (!t)
-        return -1;
 
     mb_sub *s = (mb_sub *)calloc(1, sizeof(mb_sub));
     if (!s)
         rt_trap("rt_msgbus: memory allocation failed");
+
+    mb_lock(mb);
+    if (mb->next_id <= 0 || mb->next_id == INT64_MAX) {
+        mb_unlock(mb);
+        free(s);
+        rt_trap("rt_msgbus_subscribe: subscription id overflow");
+        return -1;
+    }
+    mb_topic *t = mb_ensure_topic(mb, topic);
+    if (!t) {
+        mb_unlock(mb);
+        free(s);
+        return -1;
+    }
+
     s->id = mb->next_id++;
     s->topic = topic;
     rt_obj_retain_maybe(topic);
@@ -371,7 +459,9 @@ int64_t rt_msgbus_subscribe(void *obj, rt_string topic, void *callback) {
     }
     t->count++;
     mb->total_subs++;
-    return s->id;
+    int64_t id = s->id;
+    mb_unlock(mb);
+    return id;
 }
 
 /// @brief Remove a subscription from the message bus by its unique ID.
@@ -392,17 +482,20 @@ int8_t rt_msgbus_unsubscribe(void *obj, int64_t sub_id) {
     if (!mb)
         return 0;
 
+    mb_sub *victim = NULL;
+    mb_lock(mb);
     for (int64_t i = 0; i < mb->bucket_count; i++) {
         mb_topic *t = mb->buckets[i];
         while (t) {
             mb_sub **pp = &t->subs;
             while (*pp) {
                 if ((*pp)->id == sub_id) {
-                    mb_sub *victim = *pp;
+                    victim = *pp;
                     *pp = victim->next;
-                    mb_free_sub(victim);
                     t->count--;
                     mb->total_subs--;
+                    mb_unlock(mb);
+                    mb_free_sub(victim);
                     return 1;
                 }
                 pp = &(*pp)->next;
@@ -410,6 +503,7 @@ int8_t rt_msgbus_unsubscribe(void *obj, int64_t sub_id) {
             t = t->next;
         }
     }
+    mb_unlock(mb);
     return 0;
 }
 
@@ -428,25 +522,56 @@ int64_t rt_msgbus_publish(void *obj, rt_string topic, void *data) {
     rt_msgbus_impl *mb = mb_require(obj, "rt_msgbus_publish");
     if (!mb)
         return 0;
-    mb_topic *t = mb_find_topic(mb, topic);
-    if (!t || t->count <= 0)
+
+    if (!mb_topic_view(topic, NULL, NULL))
         return 0;
 
+    mb_lock(mb);
+    mb_topic *t = mb_find_topic(mb, topic);
+    if (!t || t->count <= 0) {
+        mb_unlock(mb);
+        return 0;
+    }
+
     void **callbacks = (void **)calloc((size_t)t->count, sizeof(void *));
-    if (!callbacks)
+    if (!callbacks) {
+        mb_unlock(mb);
         rt_trap("rt_msgbus: memory allocation failed");
+    }
 
     int64_t count = 0;
     for (mb_sub *s = t->subs; s; s = s->next) {
         callbacks[count++] = s->callback;
         rt_obj_retain_maybe(s->callback);
     }
+    mb_unlock(mb);
 
+    volatile int64_t release_from = 0;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        const char *err = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 err && err[0] ? err : "rt_msgbus_publish: subscriber trap");
+        rt_trap_clear_recovery();
+        for (int64_t i = (int64_t)release_from; i < count; ++i) {
+            if (rt_obj_release_check0(callbacks[i]))
+                rt_obj_free(callbacks[i]);
+        }
+        free(callbacks);
+        rt_trap(saved_error);
+        return 0;
+    }
     for (int64_t i = 0; i < count; ++i) {
         mb_invoke_callback(callbacks[i], data);
         if (rt_obj_release_check0(callbacks[i]))
             rt_obj_free(callbacks[i]);
+        release_from = i + 1;
     }
+    rt_trap_clear_recovery();
 
     free(callbacks);
     return count;
@@ -466,8 +591,13 @@ int64_t rt_msgbus_subscriber_count(void *obj, rt_string topic) {
     rt_msgbus_impl *mb = mb_require(obj, "rt_msgbus_subscriber_count");
     if (!mb)
         return 0;
+    if (!mb_topic_view(topic, NULL, NULL))
+        return 0;
+    mb_lock(mb);
     mb_topic *t = mb_find_topic(mb, topic);
-    return t ? t->count : 0;
+    int64_t count = t ? t->count : 0;
+    mb_unlock(mb);
+    return count;
 }
 
 /// @brief Return the total number of active subscriptions across all topics.
@@ -481,7 +611,12 @@ int64_t rt_msgbus_total_subscriptions(void *obj) {
     if (!obj)
         return 0;
     rt_msgbus_impl *mb = mb_require(obj, "rt_msgbus_total_subscriptions");
-    return mb ? mb->total_subs : 0;
+    if (!mb)
+        return 0;
+    mb_lock(mb);
+    int64_t total = mb->total_subs;
+    mb_unlock(mb);
+    return total;
 }
 
 /// @brief Return a Seq containing the names of all topics that have at least one subscriber.
@@ -489,12 +624,14 @@ int64_t rt_msgbus_total_subscriptions(void *obj) {
 /// @return Seq of rt_string topic names (caller-owned via GC).
 void *rt_msgbus_topics(void *obj) {
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
     rt_msgbus_impl *mb = mb_require(obj, "rt_msgbus_topics");
     if (!mb)
         return seq;
 
+    mb_lock(mb);
     for (int64_t i = 0; i < mb->bucket_count; i++) {
         mb_topic *t = mb->buckets[i];
         while (t) {
@@ -503,6 +640,7 @@ void *rt_msgbus_topics(void *obj) {
             t = t->next;
         }
     }
+    mb_unlock(mb);
     return seq;
 }
 
@@ -521,19 +659,26 @@ void rt_msgbus_clear_topic(void *obj, rt_string topic) {
     rt_msgbus_impl *mb = mb_require(obj, "rt_msgbus_clear_topic");
     if (!mb)
         return;
-    mb_topic *t = mb_find_topic(mb, topic);
-    if (!t)
+    if (!mb_topic_view(topic, NULL, NULL))
         return;
+    mb_lock(mb);
+    mb_topic *t = mb_find_topic(mb, topic);
+    if (!t) {
+        mb_unlock(mb);
+        return;
+    }
 
     mb_sub *s = t->subs;
+    t->subs = NULL;
+    mb->total_subs -= t->count;
+    t->count = 0;
+    mb_unlock(mb);
+
     while (s) {
         mb_sub *next = s->next;
-        mb->total_subs--;
         mb_free_sub(s);
         s = next;
     }
-    t->subs = NULL;
-    t->count = 0;
 }
 
 /// @brief Remove all subscriptions from every topic on the message bus.
@@ -551,14 +696,18 @@ void rt_msgbus_clear(void *obj) {
     if (!mb)
         return;
 
+    mb_sub *to_free = NULL;
+    mb_lock(mb);
     for (int64_t i = 0; i < mb->bucket_count; i++) {
         mb_topic *t = mb->buckets[i];
         while (t) {
             mb_sub *s = t->subs;
-            while (s) {
-                mb_sub *next = s->next;
-                mb_free_sub(s);
-                s = next;
+            if (s) {
+                mb_sub *tail = s;
+                while (tail->next)
+                    tail = tail->next;
+                tail->next = to_free;
+                to_free = s;
             }
             t->subs = NULL;
             t->count = 0;
@@ -566,4 +715,11 @@ void rt_msgbus_clear(void *obj) {
         }
     }
     mb->total_subs = 0;
+    mb_unlock(mb);
+
+    while (to_free) {
+        mb_sub *next = to_free->next;
+        mb_free_sub(to_free);
+        to_free = next;
+    }
 }

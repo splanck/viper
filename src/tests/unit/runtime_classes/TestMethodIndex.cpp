@@ -31,7 +31,7 @@
 /// | Equals(obj)    | 1     | Viper.Core.Object.Equals        | Bool   |
 /// | HashCode()     | 0     | Viper.Core.Object.HashCode      | Int    |
 /// | ToString()     | 0     | Viper.Core.Object.ToString      | String |
-/// | ReferenceEquals| 2     | NOT FOUND (static function)     | N/A    |
+/// | RefEquals      | 2     | Viper.Core.Object.RefEquals     | Bool   |
 ///
 /// ## RuntimeMethodIndex Architecture
 ///
@@ -99,8 +99,7 @@ TEST(RuntimeMethodIndexBasic, StringSubstringTarget) {
 /// @brief Test Object class method lookups.
 ///
 /// @details Verifies that standard Object methods are correctly resolved.
-/// Also tests that static functions (like ReferenceEquals) are NOT found
-/// through the instance method index.
+/// Also tests that RefEquals is exposed through the class method surface.
 ///
 TEST(RuntimeMethodIndexBasic, ObjectMethodsTargets) {
     // Seed the index (delegates to RuntimeRegistry internally)
@@ -124,10 +123,10 @@ TEST(RuntimeMethodIndexBasic, ObjectMethodsTargets) {
     EXPECT_EQ(ts->target, std::string("Viper.Core.Object.ToString"));
     EXPECT_TRUE(ts->hasReceiver);
 
-    // ReferenceEquals is a static function, not an instance method.
-    // It should NOT be found via the method index (which is for instance methods).
-    auto re = runtimeMethodIndex().find("Viper.Core.Object", "ReferenceEquals", 2);
-    EXPECT_FALSE(re.has_value());
+    auto re = runtimeMethodIndex().find("Viper.Core.Object", "RefEquals", 2);
+    ASSERT_TRUE(re.has_value());
+    EXPECT_EQ(re->target, std::string("Viper.Core.Object.RefEquals"));
+    EXPECT_EQ(re->ret, BasicType::Bool);
 }
 
 TEST(RuntimeMethodIndexBasic, MemoryAndParseSurfaceMethods) {
@@ -146,11 +145,13 @@ TEST(RuntimeMethodIndexBasic, MemoryAndParseSurfaceMethods) {
     ASSERT_TRUE(doubleOpt.has_value());
     EXPECT_EQ(doubleOpt->target, std::string("Viper.Core.Parse.DoubleOption"));
     EXPECT_EQ(doubleOpt->ret, BasicType::Object);
+    EXPECT_EQ(doubleOpt->returnClassQName, std::string("Viper.Option"));
 
     auto intOpt = runtimeMethodIndex().find("Viper.Core.Parse", "Int64Option", 1);
     ASSERT_TRUE(intOpt.has_value());
     EXPECT_EQ(intOpt->target, std::string("Viper.Core.Parse.Int64Option"));
     EXPECT_EQ(intOpt->ret, BasicType::Object);
+    EXPECT_EQ(intOpt->returnClassQName, std::string("Viper.Option"));
 }
 
 TEST(RuntimeMethodIndexBasic, CollectionReturningMethodsPreserveConcreteClass) {

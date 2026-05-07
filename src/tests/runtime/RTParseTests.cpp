@@ -120,17 +120,21 @@ static void test_low_level_double_rejects_hex_float() {
 
 static void test_parse_option_wrappers() {
     void *num = rt_parse_double_option(make_str("6.25"));
+    assert(rt_obj_class_id(num) == RT_OPTION_CLASS_ID);
     assert(rt_option_is_some(num) == 1);
     assert(fabs(rt_option_unwrap_f64(num) - 6.25) < 0.001);
 
     void *bad_num = rt_parse_double_option(make_str("nan"));
+    assert(rt_obj_class_id(bad_num) == RT_OPTION_CLASS_ID);
     assert(rt_option_is_some(bad_num) == 0);
 
     void *ival = rt_parse_int64_option(make_str("64"));
+    assert(rt_obj_class_id(ival) == RT_OPTION_CLASS_ID);
     assert(rt_option_is_some(ival) == 1);
     assert(rt_option_unwrap_i64(ival) == 64);
 
     void *bad_int = rt_parse_int64_option(make_str("64x"));
+    assert(rt_obj_class_id(bad_int) == RT_OPTION_CLASS_ID);
     assert(rt_option_is_some(bad_int) == 0);
 
     if (rt_obj_release_check0(num))

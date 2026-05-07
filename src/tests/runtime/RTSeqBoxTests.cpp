@@ -10,15 +10,34 @@
 // Key invariants: Boxed values are compared by content, not pointer identity.
 
 #include "rt_box.h"
+#include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
 #include <cassert>
+#include <cstddef>
 #include <cstdio>
 
 static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
+}
+
+struct managed_value_payload {
+    void *obj;
+    rt_string str;
+};
+
+static int g_managed_value_child_finalized = 0;
+
+static void managed_value_child_finalizer(void *obj) {
+    (void)obj;
+    g_managed_value_child_finalized++;
+}
+
+static void release_object(void *obj) {
+    if (rt_obj_release_check0(obj))
+        rt_obj_free(obj);
 }
 
 //=============================================================================
@@ -154,6 +173,33 @@ static void test_seq_pointer_identity() {
     printf("\n");
 }
 
+static void test_value_type_managed_fields() {
+    printf("Testing Box.ValueType managed field registration:\n");
+
+    g_managed_value_child_finalized = 0;
+    void *child = rt_obj_new_i64(0xB0A, 8);
+    rt_obj_set_finalizer(child, managed_value_child_finalizer);
+    rt_string text = rt_string_from_bytes("managed", 7);
+
+    managed_value_payload *boxed =
+        (managed_value_payload *)rt_box_value_type((int64_t)sizeof(managed_value_payload));
+    test_result("ValueType class id", rt_obj_class_id(boxed) == RT_VALUE_TYPE_CLASS_ID);
+    boxed->obj = child;
+    boxed->str = text;
+    rt_box_value_type_add_field(
+        boxed, (int64_t)offsetof(managed_value_payload, obj), RT_VALUE_FIELD_OBJ, 1);
+    rt_box_value_type_add_field(
+        boxed, (int64_t)offsetof(managed_value_payload, str), RT_VALUE_FIELD_STR, 1);
+
+    release_object(child);
+    test_result("Child retained by ValueType", g_managed_value_child_finalized == 0);
+    rt_string_unref(text);
+
+    release_object(boxed);
+    test_result("ValueType finalizer releases object field", g_managed_value_child_finalized == 1);
+    printf("\n");
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -166,6 +212,7 @@ int main() {
     test_seq_find_boxed_floats();
     test_seq_find_boxed_booleans();
     test_seq_pointer_identity();
+    test_value_type_managed_fields();
 
     printf("All Seq box equality tests passed!\n");
     return 0;

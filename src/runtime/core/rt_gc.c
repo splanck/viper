@@ -21,8 +21,8 @@
 //     untracked objects rely solely on reference counting for collection.
 //   - Trial refcounts are temporary; they are computed per-pass and do not
 //     modify the actual reference counts stored in heap headers.
-//   - Weak references to collected objects are zeroed before the finalizer runs,
-//     ensuring no dangling weak-ref reads after collection.
+//   - Weak references to collected objects are zeroed after finalizers decline
+//     resurrection, preserving weak handles when a finalizer keeps the target alive.
 //   - The GC table lock (pthread_mutex / CRITICAL_SECTION) protects the tracked-
 //     object table and weak reference registry; finalizers run outside the lock.
 //   - Pass statistics (total_collected, pass_count) are updated atomically.
@@ -430,6 +430,10 @@ static int gc_is_weakref_handle_unlocked(void *candidate) {
 /// @details When the target is freed, the reference automatically becomes NULL.
 rt_weakref *rt_weakref_new(void *target) {
     rt_weakref *ref = (rt_weakref *)rt_obj_new_i64(RT_WEAKREF_CLASS_ID, (int64_t)sizeof(rt_weakref));
+    if (!ref) {
+        rt_trap("gc: weak reference allocation failed");
+        return NULL;
+    }
     memset(ref, 0, sizeof(rt_weakref));
 
     gc_lock();
@@ -668,17 +672,12 @@ static void gc_release_outgoing_ref(void *child, void *ctx) {
         rt_obj_free(child);
 }
 
-static int gc_object_has_finalizer(void *obj) {
-    rt_heap_hdr_t *hdr = NULL;
-    if (!rt_heap_try_get_header(obj, &hdr) || !hdr)
-        return 0;
-    return hdr->finalizer != NULL ? 1 : 0;
-}
-
 /// @brief Zero the refcount of a confirmed-unreachable cycle member and free it.
-/// @details Clears weak refs, fires the finalizer, and calls rt_heap_free_zero_ref.
+/// @details Fires the finalizer, releases outgoing edges owned by this object,
+///          clears weak refs only after no resurrection happened, and calls
+///          rt_heap_free_zero_ref.
 /// @return 1 if the object was reclaimed, 0 if it was skipped (immortal or invalid).
-static int gc_reclaim_unreachable(void *obj) {
+static int gc_reclaim_unreachable(void *obj, rt_gc_traverse_fn traverse, void *release_ctx) {
     rt_heap_hdr_t *hdr = NULL;
     if (!rt_heap_try_get_header(obj, &hdr) || !hdr)
         return 0;
@@ -691,12 +690,16 @@ static int gc_reclaim_unreachable(void *obj) {
     __atomic_store_n(&hdr->refcnt, 0, __ATOMIC_RELEASE);
 
     if ((rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT) {
-        rt_gc_clear_weak_refs(obj);
         if (hdr->finalizer) {
             rt_heap_finalizer_t fin = hdr->finalizer;
             hdr->finalizer = NULL;
             fin(obj);
         }
+        if (__atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE) != 0)
+            return 0;
+        if (traverse)
+            traverse(obj, gc_release_outgoing_ref, release_ctx);
+        rt_gc_clear_weak_refs(obj);
         rt_monitor_forget(obj);
     }
 
@@ -711,8 +714,8 @@ static int gc_reclaim_unreachable(void *obj) {
 ///            referenced only by other tracked objects (potential cycle members).
 ///   Phase 3: Restore reachable objects (trial_rc > 0) by marking them black and
 ///            recursively marking all their children.
-///   Phase 4: Collect white objects (unreachable cycle members). Clear their weak
-///            refs and invoke finalizers outside the lock to avoid deadlock.
+///   Phase 4: Collect white objects (unreachable cycle members). Invoke finalizers
+///            outside the lock and clear weak refs only for objects not resurrected.
 /// @return Number of objects freed.
 int64_t rt_gc_collect(void) {
     int64_t freed = 0;
@@ -811,6 +814,11 @@ int64_t rt_gc_collect(void) {
     gc_lock();
     for (int64_t i = 0; i < snap_count; i++) {
         int64_t idx = find_entry(snapshot[i].obj);
+        if (idx >= 0 && g_gc.entries[idx].color == 2)
+            gc_worklist_push(&work, snapshot[i].obj, snapshot[i].traverse);
+    }
+    for (int64_t i = 0; i < snap_count; i++) {
+        int64_t idx = find_entry(snapshot[i].obj);
         if (idx >= 0 && g_gc.entries[idx].trial_rc > 0 && g_gc.entries[idx].color != 2) {
             g_gc.entries[idx].color = 2; /* black = definitely reachable */
             gc_worklist_push(&work, snapshot[i].obj, snapshot[i].traverse);
@@ -867,7 +875,7 @@ int64_t rt_gc_collect(void) {
     }
 
     /* Phase 4: Collect — white objects are unreachable cycle members.
-       Gather them, remove from the hash table, clear weak refs, then free. */
+       Gather them, remove from the hash table, then finalize and free. */
     int64_t garbage_count = 0;
     for (int64_t i = 0; i < g_gc.capacity; i++) {
         if (gc_slot_is_live(&g_gc.entries[i]) && g_gc.entries[i].color == 0)
@@ -911,9 +919,8 @@ int64_t rt_gc_collect(void) {
     if (garbage) {
         gc_release_edges_ctx release_ctx = {garbage, garbage_count};
         for (int64_t i = 0; i < garbage_count; i++) {
-            if (garbage[i].traverse && !gc_object_has_finalizer(garbage[i].obj))
-                garbage[i].traverse(garbage[i].obj, gc_release_outgoing_ref, &release_ctx);
-            int reclaimed = gc_reclaim_unreachable(garbage[i].obj);
+            int reclaimed =
+                gc_reclaim_unreachable(garbage[i].obj, garbage[i].traverse, &release_ctx);
             if (reclaimed) {
                 freed++;
             } else if (garbage[i].traverse && rt_heap_is_payload(garbage[i].obj)) {

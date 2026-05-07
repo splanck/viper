@@ -15,6 +15,7 @@
 #include "support/alignment.hpp"
 #include <algorithm>
 #include <cctype>
+#include <functional>
 
 namespace il::frontends::zia {
 
@@ -451,6 +452,55 @@ Lowerer::Value Lowerer::emitBoxValue(Value val, Type ilType, TypeRef semanticTyp
         // Look up the struct type info
         const StructTypeInfo *info = getOrCreateStructTypeInfo(semanticType->name);
         if (info && info->totalSize > 0) {
+            struct ManagedValueField {
+                size_t offset;
+                int64_t kind;
+                int8_t retainNow;
+            };
+            std::vector<ManagedValueField> managedFields;
+            std::function<void(TypeRef, size_t)> collectManagedFields =
+                [&](TypeRef type, size_t baseOffset) {
+                    if (!type)
+                        return;
+                    if (type->kind == TypeKindSem::Struct) {
+                        if (const StructTypeInfo *nested = getOrCreateStructTypeInfo(type->name)) {
+                            for (const auto &field : nested->fields)
+                                collectManagedFields(field.type, baseOffset + field.offset);
+                        }
+                        return;
+                    }
+                    if (type->kind == TypeKindSem::FixedArray) {
+                        TypeRef elemType = type->elementType();
+                        const size_t elemSize = getSemanticTypeSize(elemType);
+                        for (size_t i = 0; i < type->elementCount; ++i)
+                            collectManagedFields(elemType, baseOffset + i * elemSize);
+                        return;
+                    }
+                    if (type->kind == TypeKindSem::Tuple) {
+                        const auto elements = type->tupleElementTypes();
+                        for (size_t i = 0; i < elements.size(); ++i)
+                            collectManagedFields(elements[i],
+                                                 baseOffset + getTupleElementOffset(type, i));
+                        return;
+                    }
+
+                    if (isStringType(type)) {
+                        managedFields.push_back(
+                            {baseOffset, /*RT_VALUE_FIELD_STR=*/2, /*retainNow=*/0});
+                        return;
+                    }
+
+                    bool objectLike = needsRelease(type);
+                    if (type->kind == TypeKindSem::Interface ||
+                        type->kind == TypeKindSem::Function || type->kind == TypeKindSem::Any)
+                        objectLike = true;
+                    if (objectLike && mapType(type).kind == Type::Kind::Ptr) {
+                        managedFields.push_back(
+                            {baseOffset, /*RT_VALUE_FIELD_OBJ=*/1, /*retainNow=*/1});
+                    }
+                };
+            collectManagedFields(semanticType, 0);
+
             // Read all field values BEFORE allocating heap memory. The source
             // pointer (val) may point into a callee's C stack frame that was
             // just returned from; in native code that frame is freed on return
@@ -469,8 +519,19 @@ Lowerer::Value Lowerer::emitBoxValue(Value val, Type ilType, TypeRef semanticTyp
                                         {Value::constInt(static_cast<int64_t>(info->totalSize))});
 
             // Write the pre-read field values into the heap object
-            for (size_t i = 0; i < info->fields.size(); ++i)
+            for (size_t i = 0; i < info->fields.size(); ++i) {
                 emitFieldStore(&info->fields[i], heapPtr, fieldValues[i]);
+                if (isStringType(info->fields[i].type))
+                    emitCall(kStrReleaseMaybe, {fieldValues[i]});
+            }
+
+            for (const auto &field : managedFields) {
+                emitCall(kBoxValueTypeAddField,
+                         {heapPtr,
+                          Value::constInt(static_cast<int64_t>(field.offset)),
+                          Value::constInt(field.kind),
+                          Value::constInt(field.retainNow)});
+            }
 
             return heapPtr;
         }

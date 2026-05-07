@@ -39,6 +39,7 @@
 #include "rt_array_obj.h"
 #include "rt_array_str.h"
 #include "rt_oop.h"
+#include "rt_option.h"
 #include "rt_platform.h"
 #include "rt_string.h"
 #include "rt_threads.h"
@@ -293,18 +294,9 @@ static int64_t rt_memory_release_string(rt_string s) {
         return 0;
     }
 
-    size_t old = 0;
-    if (s->heap && s->heap != RT_SSO_SENTINEL) {
-        old = __atomic_load_n(&s->heap->refcnt, __ATOMIC_ACQUIRE);
-    } else {
-        old = __atomic_load_n(&s->literal_refs, __ATOMIC_ACQUIRE);
-    }
-    if (old == SIZE_MAX) {
-        rt_string_unref(s);
+    size_t next = rt_string_unref_count(s);
+    if (next == SIZE_MAX)
         return INT64_MAX;
-    }
-    size_t next = old > 0 ? old - 1 : 0;
-    rt_string_unref(s);
     return rt_memory_refcount_to_i64(next);
 }
 
@@ -351,8 +343,11 @@ int64_t rt_memory_release(void *p) {
 
     if ((rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT) {
         size_t next = rt_heap_release_deferred(p);
-        if (next == 0)
+        if (next == 0) {
             rt_obj_free(p);
+            if (rt_heap_try_get_header(p, &hdr) && hdr)
+                next = __atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE);
+        }
         return rt_memory_refcount_to_i64(next);
     }
 
@@ -391,7 +386,6 @@ void rt_obj_free(void *p) {
         return;
     if (hdr && (rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT &&
         __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) == 0) {
-        rt_gc_clear_weak_refs(p);
         if (hdr->finalizer) {
             rt_heap_finalizer_t fin = hdr->finalizer;
             hdr->finalizer = NULL;
@@ -399,6 +393,7 @@ void rt_obj_free(void *p) {
         }
         if (__atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE) != 0)
             return;
+        rt_gc_clear_weak_refs(p);
         rt_gc_untrack(p);
         rt_monitor_forget(p);
         rt_heap_free_zero_ref(p);
@@ -573,6 +568,10 @@ rt_string rt_obj_type_name(void *self) {
         return rt_obj_make_cstr("Object");
     if (hdr->elem_kind == RT_ELEM_BOX || hdr->class_id == RT_BOX_CLASS_ID)
         return rt_obj_make_cstr("Viper.Core.Box");
+    if (hdr->class_id == RT_VALUE_TYPE_CLASS_ID)
+        return rt_obj_make_cstr("Viper.Core.ValueType");
+    if (hdr->class_id == RT_OPTION_CLASS_ID)
+        return rt_obj_make_cstr("Viper.Option");
     if (hdr->cap < sizeof(rt_object))
         return rt_obj_make_cstr("Object");
 
@@ -588,6 +587,8 @@ rt_string rt_obj_type_name(void *self) {
 int64_t rt_obj_type_id(void *self) {
     if (!self)
         return 0;
+    if (rt_string_is_handle(self))
+        return RT_STRING_CLASS_ID;
     return rt_obj_class_id(self);
 }
 

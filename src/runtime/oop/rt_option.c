@@ -86,7 +86,7 @@ static void option_finalizer(void *obj) {
 /// @brief Construct `Some(value)` over a generic pointer payload. Retains `value` via the heap
 /// refcount path (so it survives until the Option is finalized).
 void *rt_option_some(void *value) {
-    Option *o = (Option *)rt_obj_new_i64(0, (int64_t)sizeof(Option));
+    Option *o = (Option *)rt_obj_new_i64(RT_OPTION_CLASS_ID, (int64_t)sizeof(Option));
 
     o->variant = OPTION_SOME;
     o->value_type = VALUE_PTR;
@@ -99,7 +99,7 @@ void *rt_option_some(void *value) {
 /// @brief Construct `Some(string)`. Retains the string via `rt_string_ref` (handles both heap
 /// and literal-pool strings); accepts NULL (stored as NULL).
 void *rt_option_some_str(rt_string value) {
-    Option *o = (Option *)rt_obj_new_i64(0, (int64_t)sizeof(Option));
+    Option *o = (Option *)rt_obj_new_i64(RT_OPTION_CLASS_ID, (int64_t)sizeof(Option));
 
     o->variant = OPTION_SOME;
     o->value_type = VALUE_STR;
@@ -110,7 +110,7 @@ void *rt_option_some_str(rt_string value) {
 
 /// @brief Construct `Some(i64)` with the value stored inline in the union (no heap retention).
 void *rt_option_some_i64(int64_t value) {
-    Option *o = (Option *)rt_obj_new_i64(0, (int64_t)sizeof(Option));
+    Option *o = (Option *)rt_obj_new_i64(RT_OPTION_CLASS_ID, (int64_t)sizeof(Option));
 
     o->variant = OPTION_SOME;
     o->value_type = VALUE_I64;
@@ -121,7 +121,7 @@ void *rt_option_some_i64(int64_t value) {
 
 /// @brief Construct `Some(f64)` with the value stored inline (no heap retention).
 void *rt_option_some_f64(double value) {
-    Option *o = (Option *)rt_obj_new_i64(0, (int64_t)sizeof(Option));
+    Option *o = (Option *)rt_obj_new_i64(RT_OPTION_CLASS_ID, (int64_t)sizeof(Option));
 
     o->variant = OPTION_SOME;
     o->value_type = VALUE_F64;
@@ -132,7 +132,7 @@ void *rt_option_some_f64(double value) {
 
 /// @brief Construct the empty Option (`None`). The variant is OPTION_NONE; payload is unused.
 void *rt_option_none(void) {
-    Option *o = (Option *)rt_obj_new_i64(0, (int64_t)sizeof(Option));
+    Option *o = (Option *)rt_obj_new_i64(RT_OPTION_CLASS_ID, (int64_t)sizeof(Option));
 
     o->variant = OPTION_NONE;
     o->value_type = VALUE_PTR;

@@ -53,6 +53,7 @@ struct test_pair_node {
 
 static int g_cycle_finalizer_count = 0;
 static int g_external_finalizer_count = 0;
+static void *g_resurrected_object = NULL;
 
 /// Traverse function for test_node: visits the child pointer.
 extern "C" {
@@ -103,6 +104,11 @@ static void count_cycle_finalizer(void *obj) {
 static void count_external_finalizer(void *obj) {
     (void)obj;
     g_external_finalizer_count++;
+}
+
+static void resurrecting_finalizer(void *obj) {
+    g_resurrected_object = obj;
+    rt_obj_resurrect(obj);
 }
 
 //=============================================================================
@@ -237,6 +243,23 @@ static void test_weakref_free_unregisters() {
 
     if (rt_obj_release_check0(obj))
         rt_obj_free(obj);
+}
+
+static void test_weakref_survives_finalizer_resurrection() {
+    g_resurrected_object = NULL;
+    void *obj = make_node();
+    rt_weakref *ref = rt_weakref_new(obj);
+    rt_obj_set_finalizer(obj, resurrecting_finalizer);
+
+    release_obj(obj);
+    ASSERT(g_resurrected_object == obj, "finalizer resurrected object");
+    ASSERT(rt_heap_is_payload(obj) == 1, "resurrected object remains live");
+    ASSERT(rt_weakref_get(ref) == obj, "weak ref still points at resurrected object");
+
+    release_obj(obj);
+    ASSERT(rt_heap_is_payload(obj) == 0, "second release frees resurrected object");
+    ASSERT(rt_weakref_get(ref) == NULL, "weak ref cleared after real free");
+    rt_weakref_free(ref);
 }
 
 //=============================================================================
@@ -388,6 +411,35 @@ static void test_collect_preserves_cycle_with_extra_external_ref() {
     release_obj(b);
 }
 
+static void test_promoted_root_restores_young_child() {
+    void *parent = make_node();
+    rt_gc_track(parent, test_node_traverse);
+
+    for (int i = 0; i < 10; ++i)
+        ASSERT(rt_gc_collect() == 0, "promotion warmup keeps parent");
+    while ((rt_gc_pass_count() % 16) == 0)
+        ASSERT(rt_gc_collect() == 0, "advance to non-full promoted pass");
+
+    g_external_finalizer_count = 0;
+    void *child = make_node();
+    rt_obj_set_finalizer(child, count_external_finalizer);
+    set_child_retained(parent, child);
+    rt_gc_track(child, test_node_traverse);
+    release_obj(child);
+
+    int64_t freed = rt_gc_collect();
+    ASSERT(freed == 0, "promoted root restores reachable young child");
+    ASSERT(rt_heap_is_payload(child) == 1, "young child remains live");
+    ASSERT(g_external_finalizer_count == 0, "young child finalizer did not run");
+
+    rt_gc_untrack(child);
+    rt_gc_untrack(parent);
+    struct test_node *np = (struct test_node *)parent;
+    np->child = NULL;
+    release_obj(child);
+    release_obj(parent);
+}
+
 static void test_weakref_cleared_by_collect() {
     // Create a cycle and weak ref to one of the nodes
     void *a = make_node();
@@ -478,10 +530,12 @@ static void test_collect_reclaims_cycle_storage_and_finalizers() {
 
 static void test_collect_releases_untracked_external_children() {
     g_external_finalizer_count = 0;
+    g_cycle_finalizer_count = 0;
 
     void *a = rt_obj_new_i64(0, (int64_t)sizeof(struct test_pair_node));
     void *b = rt_obj_new_i64(0, (int64_t)sizeof(struct test_pair_node));
     void *external = make_node();
+    rt_obj_set_finalizer(a, count_cycle_finalizer);
     rt_obj_set_finalizer(external, count_external_finalizer);
 
     struct test_pair_node *na = (struct test_pair_node *)a;
@@ -502,6 +556,7 @@ static void test_collect_releases_untracked_external_children() {
 
     int64_t freed = rt_gc_collect();
     ASSERT(freed == 2, "cycle members freed");
+    ASSERT(g_cycle_finalizer_count == 1, "cycle member finalizer runs");
     ASSERT(g_external_finalizer_count == 1, "external child released by cycle collection");
     ASSERT(rt_heap_is_payload(external) == 0, "external child freed");
 }
@@ -556,6 +611,7 @@ int main() {
     test_weakref_null_ref();
     test_weakref_clear_on_free();
     test_weakref_free_unregisters();
+    test_weakref_survives_finalizer_resurrection();
 
     // Cycle collection
     test_collect_empty();
@@ -564,6 +620,7 @@ int main() {
     test_collect_self_cycle();
     test_collect_preserves_reachable();
     test_collect_preserves_cycle_with_extra_external_ref();
+    test_promoted_root_restores_young_child();
     test_weakref_cleared_by_collect();
     test_weak_field_zeroed_by_collect();
     test_collect_reclaims_cycle_storage_and_finalizers();

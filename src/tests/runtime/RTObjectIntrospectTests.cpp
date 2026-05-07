@@ -13,6 +13,7 @@
 #include "rt_box.h"
 #include "rt_heap.h"
 #include "rt_internal.h"
+#include "rt_option.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -56,6 +57,7 @@ int main() {
     rt_string type_name = rt_obj_type_name(s);
     assert(strcmp(rt_string_cstr(type_name), "Viper.String") == 0);
     rt_string_unref(type_name);
+    assert(rt_obj_type_id(s) == RT_STRING_CLASS_ID);
 
     rt_string str_again = rt_obj_to_string(s);
     assert(str_again == s);
@@ -81,6 +83,18 @@ int main() {
     void *zero_neg = rt_box_f64(-0.0);
     assert(rt_box_hash(zero_pos) == rt_box_hash(zero_neg));
 
+    void *opt = rt_option_some_i64(7);
+    assert(rt_obj_type_id(opt) == RT_OPTION_CLASS_ID);
+    rt_string opt_name = rt_obj_type_name(opt);
+    assert(strcmp(rt_string_cstr(opt_name), "Viper.Option") == 0);
+    rt_string_unref(opt_name);
+
+    void *value_type = rt_box_value_type(8);
+    assert(rt_obj_type_id(value_type) == RT_VALUE_TYPE_CLASS_ID);
+    rt_string value_name = rt_obj_type_name(value_type);
+    assert(strcmp(rt_string_cstr(value_name), "Viper.Core.ValueType") == 0);
+    rt_string_unref(value_name);
+
     rt_obj_release_check0(obj);
     rt_obj_free(obj);
     rt_obj_release_check0(box_a);
@@ -91,6 +105,10 @@ int main() {
     rt_obj_free(zero_pos);
     rt_obj_release_check0(zero_neg);
     rt_obj_free(zero_neg);
+    rt_obj_release_check0(opt);
+    rt_obj_free(opt);
+    rt_obj_release_check0(value_type);
+    rt_obj_free(value_type);
 
     return 0;
 }
