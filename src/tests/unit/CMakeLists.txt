@@ -1145,6 +1145,7 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_restclient PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_restclient test_rt_restclient)
     viper_add_test_labels(test_rt_restclient requires_local_bind)
+    set_tests_properties(test_rt_restclient PROPERTIES RUN_SERIAL TRUE TIMEOUT 90)
 
     viper_add_test(test_rt_network_highlevel ${VIPER_TESTS_DIR}/runtime/RTHighLevelNetworkTests.cpp)
     target_link_libraries(test_rt_network_highlevel PRIVATE ${VIPER_RUNTIME_TEST_LIBS})

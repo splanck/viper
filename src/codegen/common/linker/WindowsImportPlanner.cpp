@@ -43,7 +43,8 @@ bool isLinuxMathSymbol(const std::string &name) {
         "cbrt",  "cbrtf",  "ceil",      "ceilf",      "copysign","copysignf","cos", "cosf",
         "cosh",  "exp",
         "expf",  "fabs",   "fabsf",     "floor",      "floorf", "fmax",  "fmaxf",  "fmin",
-        "fminf", "fmod",   "fmodf",     "hypot",      "ldexp",  "log",   "log10",  "log2",
+        "fmaxl", "fminf", "fminl",      "fmod",       "fmodf",  "hypot", "ldexp",  "log",
+        "log10", "log2",
         "logf",  "nan",    "pow",       "powf",       "round",  "roundf","sin",    "sinf",
         "sinh",  "sqrt",   "sqrtf",     "tan",        "tanf",   "tanh",  "trunc",  "truncf",
     };
@@ -68,7 +69,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
     static const std::unordered_set<std::string> kernel32 = {
         "ExitProcess","FreeLibrary","GetCurrentProcessId","GetCurrentThreadId","GetEnvironmentVariableA",
         "GetEnvironmentVariableW",
-        "GetLastError","GetCommandLineW","GetComputerNameA","GetComputerNameW","GetCurrentDirectoryW","GetModuleHandleW",
+        "GetLastError","GetCommandLineW","GetComputerNameA","GetComputerNameW","GetCurrentDirectoryW","GetFullPathNameA","GetModuleHandleW",
         "GetModuleFileNameA","GetProcAddress","GetProcessHeap","GetStartupInfoW","GetStdHandle",
         "GetSystemInfo","GetSystemTimeAsFileTime","GetTempPathA","HeapAlloc","HeapFree",
         "IsDebuggerPresent","InitOnceExecuteOnce","InitializeCriticalSection","InitializeSListHead",
@@ -107,8 +108,8 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "GetStockObject","SelectObject","StretchBlt",
     };
     static const std::unordered_set<std::string> shell32 = {
-        "CommandLineToArgvW","DragAcceptFiles","DragFinish","DragQueryFileA"};
-    static const std::unordered_set<std::string> ole32 = {"CoCreateInstance","CoInitializeEx","CoUninitialize"};
+        "CommandLineToArgvW","DragAcceptFiles","DragFinish","DragQueryFileA","DragQueryFileW"};
+    static const std::unordered_set<std::string> ole32 = {"CoCreateInstance","CoInitializeEx","CoTaskMemFree","CoUninitialize"};
     static const std::unordered_set<std::string> xinput = {"XInputGetState","XInputSetState"};
     static const std::unordered_set<std::string> advapi32 = {
         "CryptAcquireContextA","CryptAcquireContextW","CryptAcquireContext","CryptGenRandom","CryptCreateHash",
@@ -144,7 +145,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "clearerr","clock","close","commit","_commit","cos","cosf","create_locale","dclass","difftime64",
         "_difftime64","dsign","fdsign","ldsign","dup","dup2","errno","exit",
         "fabs","fabsf","fdclass","fclose","fcntl","ferror","feof","fflush","fgetc","fgets","fileno","fmax",
-        "fdopen","_fdopen","fmaxf","fmin","fminf","floor","floorf","fmod","fmodf","fopen","fprintf","fputc","fputs","fread",
+        "fdopen","_fdopen","fmaxf","fmaxl","fmin","fminf","fminl","floor","floorf","fmod","fmodf","fopen","fprintf","fputc","fputs","fread",
         "free","free_locale","freopen","fseek","fstat64i32","ftell","fwrite","getc","getcwd","getenv","getch",
         "getpid","hypot","isalnum","isalpha","isdigit","islower","isspace","isupper","isxdigit","isatty","kbhit",
         "llround","localeconv","log","log10","log2","logf","longjmp","lseek","malloc","memchr","memcmp","memcpy",
@@ -155,10 +156,11 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "strnicmp","strncmp","strncpy","strstr","strtod","strtod_l","strtol","strtoll","strtok_s","strtoul",
         "strrchr","strftime","system","tan","tanf","time","time64","tmpfile","tmpnam","tolower","toupper","trunc",
         "truncf","ungetc","unlink","utime64","_wutime64","vfprintf","wcscmp","wcscpy","wcslen","wcsncmp","wcscpy_s","write",
-        "_wfopen","wfopen","_wmakepath_s","_wmkdir","wmkdir","_wopen","wopen","_wremove","wremove",
+        "_wfopen","wfopen","_wmakepath_s","_wmkdir","wmkdir","_open_osfhandle","open_osfhandle","_wopen","wopen","_wremove","wremove",
         "_wsplitpath_s","_wunlink","wunlink","fseeki64","ftelli64","gmtime64_s","localtime64_s","lseeki64","mktime64",
-        "set_abort_behavior","stat64i32","_stat64i32","wstat64i32","_wstat64i32",
-        "wassert","_byteswap_uint64","byteswap_uint64",
+        "rand_s","set_abort_behavior","stat64i32","_stat64i32","wstat64i32","_wstat64i32",
+        "wassert","_byteswap_uint64","byteswap_uint64","_wcsnicmp","wcsnicmp",
+        "_wchmod","wchmod",
     };
     static const std::unordered_set<std::string> debugOnlyUcrt = {"_CrtDbgReport","_CrtDbgReportW","CrtDbgReport"};
     static const std::unordered_set<std::string> msvcrt = {"_setjmpex","setjmpex"};

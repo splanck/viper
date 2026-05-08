@@ -29,10 +29,16 @@
 
 #ifndef _WIN32
 #include "tests/common/WaitCompat.hpp"
+#else
+#include <process.h>
 #endif
 
 namespace viper::codegen::x64 {
 namespace {
+#ifndef VIPER_ILC_PATH
+#define VIPER_ILC_PATH "ilc"
+#endif
+
 [[nodiscard]] ILValue makeParam(int id) noexcept {
     ILValue value{};
     value.kind = ILValue::Kind::I64;
@@ -186,7 +192,25 @@ struct DivTrapSequence {
 }
 
 [[nodiscard]] std::string makeRunNativeCommand(const std::filesystem::path &ilPath) {
-    return std::string("ilc codegen x64 ") + viper::tests::quoteForShell(ilPath) + " -run-native";
+    return viper::tests::quoteForShell(std::filesystem::path(VIPER_ILC_PATH)) +
+           " codegen x64 " + viper::tests::quoteForShell(ilPath) + " -run-native";
+}
+
+[[nodiscard]] int runNativeCommand(const std::filesystem::path &ilPath,
+                                   const std::string &command) {
+#ifdef _WIN32
+    const std::string exePath = std::filesystem::path(VIPER_ILC_PATH).string();
+    const std::string ilPathString = ilPath.string();
+    const char *const argv[] = {
+        exePath.c_str(), "codegen", "x64", ilPathString.c_str(), "-run-native", nullptr};
+    const intptr_t status = _spawnv(_P_WAIT, exePath.c_str(), argv);
+    if (status == -1) {
+        return -1;
+    }
+    return static_cast<int>(status);
+#else
+    return decodeExitCode(std::system(command.c_str()));
+#endif
 }
 
 [[nodiscard]] bool writeTextFile(const std::filesystem::path &path, std::string_view contents) {
@@ -274,8 +298,7 @@ struct NativeRunResult {
     const std::string command = makeRunNativeCommand(ilPath);
     result.command = command;
 
-    const int rawStatus = std::system(command.c_str());
-    const int exitCode = decodeExitCode(rawStatus);
+    const int exitCode = runNativeCommand(ilPath, command);
     if (exitCode == -1) {
         result.launchFailed = true;
         result.message = std::string("Failed to execute '") + command + "'";

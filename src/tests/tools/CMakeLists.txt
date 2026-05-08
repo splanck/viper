@@ -228,7 +228,7 @@ function(viper_add_tools_tests)
             -DVIPER_BUILD_DIR=${CMAKE_BINARY_DIR}
             -DVIPER_CONFIG=$<CONFIG>
             -P ${_VIPER_TOOLS_DIR}/InstallPackageTarballSmoke.cmake)
-    set_tests_properties(installer_tarball_smoke PROPERTIES TIMEOUT 180)
+    set_tests_properties(installer_tarball_smoke PROPERTIES RUN_SERIAL TRUE TIMEOUT 180)
     viper_add_test_labels(installer_tarball_smoke installer tools slow)
 
     set(_VIPER_INSTALLED_NATIVE_SMOKE 0)

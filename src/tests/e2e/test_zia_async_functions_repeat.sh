@@ -1,10 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-zia_bin="${1:?path to zia executable required}"
-repo_root="${2:?repo root required}"
+to_shell_path() {
+    local path="$1"
+    if [[ "$path" =~ ^[A-Za-z]:[\\/] ]] && command -v wslpath >/dev/null 2>&1; then
+        wslpath "$path"
+        return
+    fi
+    if [[ "$path" =~ ^[A-Za-z]:[\\/] ]] && command -v cygpath >/dev/null 2>&1; then
+        cygpath -u "$path"
+        return
+    fi
+    printf '%s\n' "$path"
+}
+
+zia_bin_arg="${1:?path to zia executable required}"
+repo_root_arg="${2:?repo root required}"
+zia_bin="$(to_shell_path "${zia_bin_arg}")"
+repo_root_for_child="${repo_root_arg//\\//}"
 iterations="${3:-25}"
-test_file="${repo_root}/tests/zia_runtime/34_async_functions.zia"
+test_file="${repo_root_for_child}/tests/zia_runtime/34_async_functions.zia"
 
 for ((i = 1; i <= iterations; ++i)); do
     output="$("${zia_bin}" "${test_file}" 2>&1)" || {

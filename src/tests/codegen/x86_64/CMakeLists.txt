@@ -77,4 +77,8 @@ foreach (_viper_codegen_case IN LISTS _viper_codegen_x86_64_tests)
         target_compile_definitions(${_viper_codegen_target}
                 PRIVATE VIPER_ILC_PATH="$<TARGET_FILE:viper>")
     endif ()
+    if (_viper_codegen_case STREQUAL "div_trap")
+        target_compile_definitions(${_viper_codegen_target}
+                PRIVATE VIPER_ILC_PATH="$<TARGET_FILE:viper>")
+    endif ()
 endforeach ()

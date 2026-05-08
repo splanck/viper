@@ -27,7 +27,7 @@ using namespace il::core;
 namespace {
 void buildBinaryFunction(Module &module, Opcode op, Type::Kind type, int64_t lhs, int64_t rhs) {
     il::build::IRBuilder builder(module);
-    auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
+    auto &fn = builder.startFunction("main", Type(type), {});
     auto &bb = builder.addBlock(fn, "entry");
     builder.setInsertPoint(bb);
 
@@ -50,7 +50,7 @@ void buildBinaryFunction(Module &module, Opcode op, Type::Kind type, int64_t lhs
 
 void buildUnaryFunction(Module &module, Opcode op, Type::Kind type, int64_t operand) {
     il::build::IRBuilder builder(module);
-    auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
+    auto &fn = builder.startFunction("main", Type(type), {});
     auto &bb = builder.addBlock(fn, "entry");
     builder.setInsertPoint(bb);
 

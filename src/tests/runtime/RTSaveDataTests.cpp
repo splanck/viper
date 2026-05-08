@@ -426,8 +426,9 @@ static void test_invalid_keys_trap() {
     EXPECT_TRAP(rt_savedata_set_int(sd, nul_key, 1));
     rt_string_unref(nul_key);
 
-    char bad_utf8_bytes[] = {'b', 'a', 'd', (char)0xC3, '('};
-    rt_string bad_utf8_key = rt_string_from_bytes(bad_utf8_bytes, sizeof(bad_utf8_bytes));
+    unsigned char bad_utf8_bytes[] = {'b', 'a', 'd', 0xC3u, '('};
+    rt_string bad_utf8_key =
+        rt_string_from_bytes(reinterpret_cast<const char *>(bad_utf8_bytes), sizeof(bad_utf8_bytes));
     EXPECT_TRAP(rt_savedata_set_string(sd, bad_utf8_key, S("val")));
     rt_string_unref(bad_utf8_key);
 
@@ -440,8 +441,9 @@ static void test_invalid_string_values_trap() {
     void *sd = rt_savedata_new(S("test-invalidvalue"));
     assert(sd != nullptr);
 
-    char bad_value_bytes[] = {'b', 'a', 'd', (char)0xC3, '('};
-    rt_string bad_value = rt_string_from_bytes(bad_value_bytes, sizeof(bad_value_bytes));
+    unsigned char bad_value_bytes[] = {'b', 'a', 'd', 0xC3u, '('};
+    rt_string bad_value =
+        rt_string_from_bytes(reinterpret_cast<const char *>(bad_value_bytes), sizeof(bad_value_bytes));
     EXPECT_TRAP(rt_savedata_set_string(sd, S("bad"), bad_value));
     rt_string_unref(bad_value);
 

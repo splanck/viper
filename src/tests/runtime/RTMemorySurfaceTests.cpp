@@ -59,7 +59,7 @@ void call_heap_double_release_deferred() {
 void call_heap_retain_overflow() {
     void *obj = rt_obj_new_i64(9, 8);
     rt_heap_hdr_t *hdr = rt_heap_hdr(obj);
-    __atomic_store_n(&hdr->refcnt, SIZE_MAX - 1, __ATOMIC_RELAXED);
+    hdr->refcnt = SIZE_MAX - 1;
     rt_heap_retain(obj);
 }
 

@@ -1,4 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
+if(POLICY CMP0141)
+  cmake_policy(SET CMP0141 NEW)
+endif()
+
+set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>")
+
 # ---- Begin: Viper version wiring (SSOT + snapshots) ----
 # Read SSOT files from repo root
 file(READ "${CMAKE_SOURCE_DIR}/src/buildmeta/VERSION"     VIPER_VERSION_STR)

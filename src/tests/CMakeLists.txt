@@ -783,11 +783,12 @@ endforeach ()
 if (VIPER_BASH_EXECUTABLE)
     add_test(NAME zia_lang_34_async_functions_repeat
             COMMAND "${VIPER_BASH_EXECUTABLE}"
-            "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_zia_async_functions_repeat.sh"
+            "src/tests/e2e/test_zia_async_functions_repeat.sh"
             $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}" 25)
     set_tests_properties(zia_lang_34_async_functions_repeat PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "zia;regression;requires_posix_shell"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
             TIMEOUT 90)
 endif ()
 
@@ -879,7 +880,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set_tests_properties(zia_smoke_3dbowling PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software")
 endif ()
-if (WIN32 AND CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
+if (WIN32)
     set_tests_properties(zia_smoke_3dbowling PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software")
 endif ()
@@ -895,6 +896,10 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set_tests_properties(zia_smoke_3dscene PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software")
 endif ()
+if (WIN32)
+    set_tests_properties(zia_smoke_3dscene PROPERTIES
+            ENVIRONMENT "VIPER_3D_BACKEND=software")
+endif ()
 
 add_test(NAME zia_smoke_3dbaseball
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/3dbaseball/smoke_probe.zia"
@@ -904,6 +909,10 @@ set_tests_properties(zia_smoke_3dbaseball PROPERTIES
         LABELS "zia;smoke;graphics3d;requires_display"
         TIMEOUT 30)
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set_tests_properties(zia_smoke_3dbaseball PROPERTIES
+            ENVIRONMENT "VIPER_3D_BACKEND=software")
+endif ()
+if (WIN32)
     set_tests_properties(zia_smoke_3dbaseball PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software")
 endif ()
@@ -919,7 +928,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set_tests_properties(zia_smoke_3dbowling_overlay PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software")
 endif ()
-if (WIN32 AND CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
+if (WIN32)
     set_tests_properties(zia_smoke_3dbowling_overlay PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software")
 endif ()
@@ -935,7 +944,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set_tests_properties(zia_smoke_3dbowling_title_postfx PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software")
 endif ()
-if (WIN32 AND CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
+if (WIN32)
     set_tests_properties(zia_smoke_3dbowling_title_postfx PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software")
 endif ()
@@ -977,6 +986,7 @@ set(VIPER_DISPLAY_SMOKE_TESTS
         zia_smoke_viperide
         zia_smoke_3dbowling
         zia_smoke_3dscene
+        zia_smoke_3dbaseball
         zia_smoke_3dbowling_overlay
         zia_smoke_3dbowling_title_postfx
         zia_smoke_xenoscape)
@@ -1047,13 +1057,26 @@ set_tests_properties(zia_reporting_baseball PROPERTIES
         LABELS "zia;smoke"
         TIMEOUT 30)
 
+set(VIPER_BASEBALL_DATA_TESTS
+        zia_smoke_baseball
+        zia_lineup_legality_baseball
+        zia_calibration_baseball
+        zia_staff_usage_baseball
+        zia_calendar_baseball
+        zia_season_baseball
+        zia_persistence_baseball
+        zia_reporting_baseball)
+set_tests_properties(${VIPER_BASEBALL_DATA_TESTS} PROPERTIES
+        RESOURCE_LOCK viper_baseball_data)
+
 if (VIPER_BASH_EXECUTABLE)
     add_test(NAME platform_policy_lint_empty_candidates
-            COMMAND "${VIPER_BASH_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_platform_policy_lint_empty_candidates.sh"
+            COMMAND "${VIPER_BASH_EXECUTABLE}" "src/tests/e2e/test_platform_policy_lint_empty_candidates.sh"
             "${CMAKE_SOURCE_DIR}")
     set_tests_properties(platform_policy_lint_empty_candidates PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "tools;smoke;requires_posix_shell"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
             TIMEOUT 30)
 endif ()
 

@@ -670,7 +670,7 @@ int8_t rt_tilemap_save_to_file(void *tm, rt_string path) {
     if (!json_cstr)
         goto cleanup;
 
-    FILE *f = fopen(cpath, "w");
+    FILE *f = fopen(cpath, "wb");
     if (!f)
         goto cleanup;
     size_t len = strlen(json_cstr);
@@ -702,7 +702,7 @@ void *rt_tilemap_load_from_file(rt_string path) {
     void *result = NULL;
 
     // Read file contents
-    FILE *f = fopen(cpath, "r");
+    FILE *f = fopen(cpath, "rb");
     if (!f)
         return NULL;
     if (tmio_fseek(f, 0, SEEK_END) != 0) {

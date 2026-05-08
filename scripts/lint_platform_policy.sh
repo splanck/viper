@@ -124,6 +124,15 @@ is_source_like() {
 declare -a VIOLATIONS=()
 declare -a TOUCHPOINT_VIOLATIONS=()
 RAW_PATTERN='_WIN32|_WIN64|__APPLE__|__linux__|_MSC_VER'
+search_raw_platform_macros() {
+    local path="$1"
+    if command -v rg >/dev/null 2>&1; then
+        (cd "$ROOT_DIR" && rg -n -w "$RAW_PATTERN" --color never "$path" || true)
+        return
+    fi
+    (cd "$ROOT_DIR" && grep -nEH "(^|[^[:alnum:]_])(${RAW_PATTERN})([^[:alnum:]_]|$)" "$path" || true)
+}
+
 declare -a CANDIDATES=()
 while IFS= read -r line; do
     CANDIDATES+=("$line")
@@ -138,7 +147,7 @@ if [[ ${#CANDIDATES[@]} -gt 0 ]]; then
         if ! is_allowlisted "$path"; then
             while IFS= read -r hit; do
                 VIOLATIONS+=("$hit")
-            done < <(cd "$ROOT_DIR" && rg -n -w "$RAW_PATTERN" --color never "$path" || true)
+            done < <(search_raw_platform_macros "$path")
         fi
 
         case "$path" in

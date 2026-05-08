@@ -521,6 +521,9 @@ void printInstr(const Instr &in, std::ostream &os, const SerializeContext &ctx) 
                 os << ':' << in.type.toString();
         } else if (info.resultType == TypeCategory::Dynamic && in.type.kind != Type::Kind::Void) {
             os << ':' << in.type.toString();
+        } else if (info.resultType == TypeCategory::InstrType && in.op != Opcode::Load &&
+                   in.type.kind != Type::Kind::Void && in.type.kind != Type::Kind::I64) {
+            os << ':' << in.type.toString();
         }
         os << " = ";
     }
