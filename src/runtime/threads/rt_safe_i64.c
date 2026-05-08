@@ -57,13 +57,17 @@ static RtSafeI64Win *require_safe_win(void *obj, const char *what) {
         rt_trap(what ? what : "SafeI64: null object");
         return NULL;
     }
+    if (rt_obj_class_id(obj) != RT_SAFE_I64_CLASS_ID) {
+        rt_trap("SafeI64: invalid object");
+        return NULL;
+    }
     return (RtSafeI64Win *)obj;
 }
 
 /// @brief Win32 SafeI64 constructor — see POSIX `rt_safe_i64_new` for full contract.
 void *rt_safe_i64_new(int64_t initial) {
     RtSafeI64Win *cell =
-        (RtSafeI64Win *)rt_obj_new_i64(/*class_id=*/0, (int64_t)sizeof(RtSafeI64Win));
+        (RtSafeI64Win *)rt_obj_new_i64(RT_SAFE_I64_CLASS_ID, (int64_t)sizeof(RtSafeI64Win));
     if (!cell)
         rt_trap("SafeI64.New: alloc failed");
     if (!cell)
@@ -142,6 +146,10 @@ static RtSafeI64 *require_safe(void *obj, const char *what) {
         rt_trap(what ? what : "SafeI64: null object");
         return NULL;
     }
+    if (rt_obj_class_id(obj) != RT_SAFE_I64_CLASS_ID) {
+        rt_trap("SafeI64: invalid object");
+        return NULL;
+    }
     return (RtSafeI64 *)obj;
 }
 
@@ -166,7 +174,8 @@ static RtSafeI64 *require_safe(void *obj, const char *what) {
 /// @see rt_safe_i64_get For reading the value
 /// @see rt_safe_i64_set For writing the value
 void *rt_safe_i64_new(int64_t initial) {
-    RtSafeI64 *cell = (RtSafeI64 *)rt_obj_new_i64(/*class_id=*/0, (int64_t)sizeof(RtSafeI64));
+    RtSafeI64 *cell =
+        (RtSafeI64 *)rt_obj_new_i64(RT_SAFE_I64_CLASS_ID, (int64_t)sizeof(RtSafeI64));
     if (!cell)
         rt_trap("SafeI64.New: alloc failed");
     if (!cell)

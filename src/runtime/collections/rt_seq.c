@@ -427,6 +427,21 @@ void rt_seq_set(void *obj, int64_t idx, void *val) {
     seq->items[idx] = val;
 }
 
+void rt_seq_set_raw(void *obj, int64_t idx, void *val) {
+    if (!obj)
+        rt_trap("Seq.Set: null sequence");
+
+    rt_seq_impl *seq = (rt_seq_impl *)obj;
+
+    if (idx < 0 || idx >= seq->len) {
+        rt_trap("Seq.Set: index out of bounds");
+    }
+
+    if (seq->owns_elements)
+        seq_release_element(seq->items[idx]);
+    seq->items[idx] = val;
+}
+
 /// @brief Adds an element to the end of the Seq.
 ///
 /// Appends a new element after the current last element. This is the primary

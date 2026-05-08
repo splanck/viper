@@ -98,6 +98,7 @@ typedef struct RtMonitor {
 /// @brief Hash table entry mapping object address to monitor.
 typedef struct RtMonitorEntry {
     void *key;                   ///< Object address (hash key).
+    int retired;                 ///< Object was finalized while monitor was busy.
     struct RtMonitorEntry *next; ///< Next entry in hash chain.
     RtMonitor monitor;           ///< The monitor state.
 } RtMonitorEntry;
@@ -155,7 +156,7 @@ static RtMonitor *get_monitor_for(void *obj) {
     EnterCriticalSection(&g_monitor_table_cs);
     RtMonitorEntry *it = g_monitor_table[idx];
     while (it) {
-        if (it->key == obj) {
+        if (it->key == obj && !it->retired) {
             LeaveCriticalSection(&g_monitor_table_cs);
             return &it->monitor;
         }
@@ -188,7 +189,7 @@ void rt_monitor_forget(void *obj) {
     EnterCriticalSection(&g_monitor_table_cs);
     RtMonitorEntry **link = &g_monitor_table[idx];
     RtMonitorEntry *node = *link;
-    while (node && node->key != obj) {
+    while (node && (node->key != obj || node->retired)) {
         link = &node->next;
         node = node->next;
     }
@@ -198,7 +199,41 @@ void rt_monitor_forget(void *obj) {
     }
     EnterCriticalSection(&node->monitor.cs);
     if (node->monitor.owner_valid || node->monitor.acq_head || node->monitor.wait_head) {
-        node->key = NULL;
+        node->retired = 1;
+        LeaveCriticalSection(&node->monitor.cs);
+        LeaveCriticalSection(&g_monitor_table_cs);
+        return;
+    }
+
+    *link = node->next;
+    LeaveCriticalSection(&node->monitor.cs);
+    LeaveCriticalSection(&g_monitor_table_cs);
+
+    DeleteCriticalSection(&node->monitor.cs);
+    free(node);
+}
+
+static void monitor_cleanup_retired_if_idle(void *obj, RtMonitor *monitor) {
+    if (!obj || !monitor)
+        return;
+    ensure_table_cs_init();
+    size_t idx = hash_ptr(obj);
+
+    EnterCriticalSection(&g_monitor_table_cs);
+    RtMonitorEntry **link = &g_monitor_table[idx];
+    RtMonitorEntry *node = *link;
+    while (node && (node->key != obj || &node->monitor != monitor)) {
+        link = &node->next;
+        node = node->next;
+    }
+    if (!node) {
+        LeaveCriticalSection(&g_monitor_table_cs);
+        return;
+    }
+
+    EnterCriticalSection(&node->monitor.cs);
+    if (!node->retired || node->monitor.owner_valid || node->monitor.acq_head ||
+        node->monitor.wait_head) {
         LeaveCriticalSection(&node->monitor.cs);
         LeaveCriticalSection(&g_monitor_table_cs);
         return;
@@ -498,6 +533,7 @@ void rt_monitor_exit(void *obj) {
     m->recursion = 0;
     monitor_grant_next_waiter(m);
     LeaveCriticalSection(&m->cs);
+    monitor_cleanup_retired_if_idle(obj, m);
 }
 
 /// @brief Release the lock and wait until another thread calls Pause/PauseAll on this monitor.
@@ -762,6 +798,7 @@ typedef struct RtMonitor {
 /// chaining for collision resolution.
 typedef struct RtMonitorEntry {
     void *key;                   ///< Object address (hash key).
+    int retired;                 ///< Object was finalized while monitor was busy.
     struct RtMonitorEntry *next; ///< Next entry in hash chain.
     RtMonitor monitor;           ///< The monitor state.
 } RtMonitorEntry;
@@ -793,7 +830,7 @@ static RtMonitor *get_monitor_for(void *obj) {
     pthread_mutex_lock(&g_monitor_table_mu);
     RtMonitorEntry *it = g_monitor_table[idx];
     while (it) {
-        if (it->key == obj) {
+        if (it->key == obj && !it->retired) {
             pthread_mutex_unlock(&g_monitor_table_mu);
             return &it->monitor;
         }
@@ -828,7 +865,7 @@ void rt_monitor_forget(void *obj) {
     pthread_mutex_lock(&g_monitor_table_mu);
     RtMonitorEntry **link = &g_monitor_table[idx];
     RtMonitorEntry *node = *link;
-    while (node && node->key != obj) {
+    while (node && (node->key != obj || node->retired)) {
         link = &node->next;
         node = node->next;
     }
@@ -838,7 +875,40 @@ void rt_monitor_forget(void *obj) {
     }
     pthread_mutex_lock(&node->monitor.mu);
     if (node->monitor.owner_valid || node->monitor.acq_head || node->monitor.wait_head) {
-        node->key = NULL;
+        node->retired = 1;
+        pthread_mutex_unlock(&node->monitor.mu);
+        pthread_mutex_unlock(&g_monitor_table_mu);
+        return;
+    }
+
+    *link = node->next;
+    pthread_mutex_unlock(&node->monitor.mu);
+    pthread_mutex_unlock(&g_monitor_table_mu);
+
+    (void)pthread_mutex_destroy(&node->monitor.mu);
+    free(node);
+}
+
+static void monitor_cleanup_retired_if_idle(void *obj, RtMonitor *monitor) {
+    if (!obj || !monitor)
+        return;
+    size_t idx = hash_ptr(obj);
+
+    pthread_mutex_lock(&g_monitor_table_mu);
+    RtMonitorEntry **link = &g_monitor_table[idx];
+    RtMonitorEntry *node = *link;
+    while (node && (node->key != obj || &node->monitor != monitor)) {
+        link = &node->next;
+        node = node->next;
+    }
+    if (!node) {
+        pthread_mutex_unlock(&g_monitor_table_mu);
+        return;
+    }
+
+    pthread_mutex_lock(&node->monitor.mu);
+    if (!node->retired || node->monitor.owner_valid || node->monitor.acq_head ||
+        node->monitor.wait_head) {
         pthread_mutex_unlock(&node->monitor.mu);
         pthread_mutex_unlock(&g_monitor_table_mu);
         return;
@@ -1315,6 +1385,7 @@ void rt_monitor_exit(void *obj) {
     m->recursion = 0;
     monitor_grant_next_waiter(m);
     pthread_mutex_unlock(&m->mu);
+    monitor_cleanup_retired_if_idle(obj, m);
 }
 
 /// @brief Releases the monitor and waits for a Pause signal.

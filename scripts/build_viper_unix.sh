@@ -30,6 +30,8 @@ SKIP_AUDIT="${VIPER_SKIP_AUDIT:-0}"
 SKIP_LINT="${VIPER_SKIP_LINT:-0}"
 LINT_CHANGED_ONLY="${VIPER_LINT_CHANGED_ONLY:-1}"
 SKIP_SMOKE="${VIPER_SKIP_SMOKE:-0}"
+RUN_SLOW_TESTS="${VIPER_RUN_SLOW_TESTS:-0}"
+CTEST_TIMEOUT="${VIPER_CTEST_TIMEOUT:-}"
 INSTALL_PREFIX="${VIPER_INSTALL_PREFIX:-/usr/local}"
 CONFIGURE_ARGS=(
     -S "$ROOT_DIR"
@@ -65,7 +67,17 @@ else
 fi
 
 rm -rf "$BUILD_DIR/Testing"
-ctest --test-dir "$BUILD_DIR" --output-on-failure -j"$JOBS"
+echo "[build_viper] Running full test suite..."
+CTEST_ARGS=(--test-dir "$BUILD_DIR" --output-on-failure -j"$JOBS")
+if [[ -n "$CTEST_TIMEOUT" ]]; then
+    CTEST_ARGS+=(--timeout "$CTEST_TIMEOUT")
+fi
+if [[ "$RUN_SLOW_TESTS" != "1" ]]; then
+    echo "[build_viper] Skipping tests labeled slow (set VIPER_RUN_SLOW_TESTS=1 to include them)"
+    CTEST_ARGS+=(-LE slow)
+fi
+ctest "${CTEST_ARGS[@]}"
+echo "[build_viper] Full test suite complete"
 
 if [[ "$SKIP_LINT" != "1" && -x "$SCRIPT_DIR/lint_platform_policy.sh" ]]; then
     echo "[build_viper] Running platform policy lint..."
@@ -91,8 +103,17 @@ if [[ "$SKIP_INSTALL" == "1" ]]; then
     exit 0
 fi
 
+echo "[build_viper] Installing to $INSTALL_PREFIX..."
 if [[ "$(id -u)" -eq 0 ]]; then
     cmake --install "$BUILD_DIR" --prefix "$INSTALL_PREFIX"
 else
+    if [[ ! -t 0 ]]; then
+        echo "error: install to $INSTALL_PREFIX requires sudo, but stdin is not a terminal" >&2
+        echo "Set VIPER_SKIP_INSTALL=1 to build and test only, or set VIPER_INSTALL_PREFIX to a writable prefix." >&2
+        exit 1
+    fi
+    echo "[build_viper] sudo credentials are required for install"
+    sudo -v
     sudo cmake --install "$BUILD_DIR" --prefix "$INSTALL_PREFIX"
 fi
+echo "[build_viper] Install complete"

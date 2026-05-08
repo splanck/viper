@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "zia": {
+      "command": "/Users/stephen/git/viper/build/src/tools/zia-server/zia-server",
+      "args": ["--mcp"]
+    }
+  }
+}

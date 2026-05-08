@@ -130,6 +130,11 @@ static void *map_double(void *item) {
     return (void *)(val * 2);
 }
 
+static void *map_new_seq(void *item) {
+    (void)item;
+    return rt_seq_new();
+}
+
 static void test_map_basic() {
     // Create sequence [1, 2, 3]
     void *seq = rt_seq_new();
@@ -180,6 +185,20 @@ static void test_map_order_preserved() {
     test_result(true, "map_order: order preserved correctly");
 }
 
+static void test_map_transfers_callback_results_to_seq() {
+    void *seq = rt_seq_new();
+    for (int i = 0; i < 8; i++)
+        rt_seq_push(seq, (void *)(intptr_t)i);
+
+    void *result = rt_parallel_map(seq, (void *)map_new_seq);
+    test_result(rt_seq_len(result) == 8, "map_transfer: should have same length");
+    for (int i = 0; i < 8; i++)
+        test_result(rt_seq_len(rt_seq_get(result, i)) == 0, "map_transfer: result usable");
+
+    if (rt_obj_release_check0(result))
+        rt_obj_free(result);
+}
+
 //=============================================================================
 // Parallel For Tests
 //=============================================================================
@@ -212,6 +231,10 @@ static void test_for_single() {
     rt_parallel_for(7, 8, (void *)for_accumulate); // Single iteration
 
     test_result(g_for_sum == 7, "for_single: should execute once");
+}
+
+static void call_for_range_too_large() {
+    rt_parallel_for(INT64_MIN, INT64_MAX, (void *)for_accumulate);
 }
 
 //=============================================================================
@@ -266,6 +289,7 @@ static void test_invoke_empty() {
 int main(int argc, char *argv[]) {
     viper::tests::registerChildFunction(call_foreach_shutdown_pool);
     viper::tests::registerChildFunction(call_foreach_trapping_task);
+    viper::tests::registerChildFunction(call_for_range_too_large);
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 
@@ -289,11 +313,15 @@ int main(int argc, char *argv[]) {
     test_map_basic();
     test_map_empty();
     test_map_order_preserved();
+    test_map_transfers_callback_results_to_seq();
 
     // For tests
     test_for_basic();
     test_for_empty_range();
     test_for_single();
+    result = viper::tests::runIsolated(call_for_range_too_large);
+    test_result(result.stderrText.find("Parallel.For: range too large") != std::string::npos,
+                "for_range_too_large: should trap instead of overflowing");
 
     // Invoke tests
     test_invoke_basic();

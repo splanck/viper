@@ -652,6 +652,12 @@ void *rt_async_any(void *futures) {
             registration_failed = 1;
             break;
         }
+        int8_t already_completed = 0;
+        rt_monitor_enter(state->monitor);
+        already_completed = state->completed;
+        rt_monitor_exit(state->monitor);
+        if (already_completed)
+            break;
     }
 
     if (registration_failed) {
@@ -857,6 +863,12 @@ void *rt_async_all(void *futures) {
             registration_failed = 1;
             break;
         }
+        int8_t already_completed = 0;
+        rt_monitor_enter(state->monitor);
+        already_completed = state->completed;
+        rt_monitor_exit(state->monitor);
+        if (already_completed)
+            break;
     }
 
     if (registration_failed) {

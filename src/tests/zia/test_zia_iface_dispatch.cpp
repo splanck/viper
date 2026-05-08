@@ -110,6 +110,9 @@ func start() {    var c = new Circle();
     // __zia_iface_init should call the runtime-string registration bridge
     EXPECT_TRUE(hasCall(result.module, "__zia_iface_init", "rt_register_interface_direct_rs"));
 
+    // __zia_iface_init should register class metadata before binding interfaces.
+    EXPECT_TRUE(hasCall(result.module, "__zia_iface_init", "rt_register_class_with_base_rs"));
+
     // __zia_iface_init should call rt_bind_interface
     EXPECT_TRUE(hasCall(result.module, "__zia_iface_init", "rt_bind_interface"));
 }

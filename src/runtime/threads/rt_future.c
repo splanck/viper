@@ -36,6 +36,7 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_string_internal.h"
+#include "rt_threads.h"
 
 #include <errno.h>
 #include <limits.h>
@@ -92,6 +93,11 @@ typedef struct future_listener {
     void *future_obj;
     struct future_listener *next;
 } future_listener;
+
+static void future_release_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
 
 #ifdef _WIN32
 /// @brief Win32 helper: clamp a millisecond duration to the DWORD range used by
@@ -281,11 +287,40 @@ static void promise_finalizer(void *obj) {
     promise_impl *p = (promise_impl *)obj;
     if (!p)
         return;
-    if (p->owns_value && p->value && rt_obj_release_check0(p->value))
-        rt_obj_free(p->value);
-    if (p->error)
-        rt_str_release_maybe(p->error);
-    future_notify_listeners(p->listeners);
+
+    void *value = NULL;
+    rt_string error = NULL;
+    int8_t owns_value = 0;
+    future_listener *listeners = NULL;
+
+#ifdef _WIN32
+    EnterCriticalSection(&p->mutex);
+#else
+    pthread_mutex_lock(&p->mutex);
+#endif
+    value = p->value;
+    error = p->error;
+    owns_value = p->owns_value;
+    listeners = p->listeners;
+    p->value = NULL;
+    p->error = NULL;
+    p->owns_value = 0;
+    p->listeners = NULL;
+    p->done = 1;
+    p->is_error = 1;
+#ifdef _WIN32
+    WakeAllConditionVariable(&p->cond);
+    LeaveCriticalSection(&p->mutex);
+#else
+    pthread_cond_broadcast(&p->cond);
+    pthread_mutex_unlock(&p->mutex);
+#endif
+
+    if (owns_value && value && rt_obj_release_check0(value))
+        rt_obj_free(value);
+    if (error)
+        rt_str_release_maybe(error);
+    future_notify_listeners(listeners);
 #ifdef _WIN32
     DeleteCriticalSection(&p->mutex);
 #else
@@ -296,7 +331,8 @@ static void promise_finalizer(void *obj) {
 
 /// @brief Create a new Promise that can be resolved with a value or error from any thread.
 void *rt_promise_new(void) {
-    promise_impl *p = (promise_impl *)rt_obj_new_i64(0, (int64_t)sizeof(promise_impl));
+    promise_impl *p =
+        (promise_impl *)rt_obj_new_i64(RT_PROMISE_CLASS_ID, (int64_t)sizeof(promise_impl));
     if (!p)
         rt_trap("Promise: memory allocation failed");
 
@@ -323,6 +359,8 @@ void *rt_promise_new(void) {
 void *rt_promise_get_future(void *obj) {
     if (!obj)
         rt_trap("Promise: null object");
+    if (rt_obj_class_id(obj) != RT_PROMISE_CLASS_ID)
+        rt_trap("Promise: invalid object");
 
     promise_impl *p = (promise_impl *)obj;
 
@@ -334,7 +372,8 @@ void *rt_promise_get_future(void *obj) {
 
     int8_t created = 0;
     if (!p->future) {
-        future_impl *f = (future_impl *)rt_obj_new_i64(0, (int64_t)sizeof(future_impl));
+        future_impl *f =
+            (future_impl *)rt_obj_new_i64(RT_FUTURE_CLASS_ID, (int64_t)sizeof(future_impl));
         if (!f) {
 #ifdef _WIN32
             LeaveCriticalSection(&p->mutex);
@@ -393,6 +432,8 @@ static void future_finalizer(void *obj) {
 void rt_promise_set(void *obj, void *value) {
     if (!obj)
         rt_trap("Promise: null object");
+    if (rt_obj_class_id(obj) != RT_PROMISE_CLASS_ID)
+        rt_trap("Promise: invalid object");
 
     promise_impl *p = (promise_impl *)obj;
 
@@ -436,6 +477,8 @@ void rt_promise_set(void *obj, void *value) {
 void rt_promise_set_owned(void *obj, void *value) {
     if (!obj)
         rt_trap("Promise: null object");
+    if (rt_obj_class_id(obj) != RT_PROMISE_CLASS_ID)
+        rt_trap("Promise: invalid object");
 
     promise_impl *p = (promise_impl *)obj;
 
@@ -481,6 +524,8 @@ void rt_promise_set_owned(void *obj, void *value) {
 void rt_promise_set_transferred(void *obj, void *value) {
     if (!obj)
         rt_trap("Promise: null object");
+    if (rt_obj_class_id(obj) != RT_PROMISE_CLASS_ID)
+        rt_trap("Promise: invalid object");
 
     promise_impl *p = (promise_impl *)obj;
 
@@ -521,8 +566,18 @@ void rt_promise_set_transferred(void *obj, void *value) {
 void rt_promise_set_error(void *obj, rt_string error) {
     if (!obj)
         rt_trap("Promise: null object");
+    if (rt_obj_class_id(obj) != RT_PROMISE_CLASS_ID)
+        rt_trap("Promise: invalid object");
 
     promise_impl *p = (promise_impl *)obj;
+    rt_string stored_error = NULL;
+    if (error) {
+        const char *err_str = rt_string_cstr(error);
+        stored_error = err_str ? rt_string_from_bytes(err_str, rt_string_len_bytes(error))
+                               : rt_const_cstr("Unknown error");
+    } else {
+        stored_error = rt_const_cstr("Unknown error");
+    }
 
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
@@ -536,12 +591,12 @@ void rt_promise_set_error(void *obj, rt_string error) {
 #else
         pthread_mutex_unlock(&p->mutex);
 #endif
+        if (stored_error)
+            rt_str_release_maybe(stored_error);
         rt_trap("Promise: already completed");
     }
 
-    const char *err_str = error ? rt_string_cstr(error) : NULL;
-    p->error = err_str ? rt_string_from_bytes(err_str, rt_string_len_bytes(error))
-                       : rt_const_cstr("Unknown error");
+    p->error = stored_error;
     p->done = 1;
     p->is_error = 1;
     p->owns_value = 0;
@@ -563,6 +618,8 @@ void rt_promise_set_error(void *obj, rt_string error) {
 int8_t rt_promise_is_done(void *obj) {
     if (!obj)
         return 0;
+    if (rt_obj_class_id(obj) != RT_PROMISE_CLASS_ID)
+        rt_trap("Promise: invalid object");
 
     promise_impl *p = (promise_impl *)obj;
 
@@ -587,6 +644,9 @@ int8_t rt_promise_is_done(void *obj) {
 void *rt_future_get(void *obj) {
     if (!obj)
         rt_trap("Future: null object");
+    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
+        rt_trap("Future: invalid object");
+    rt_obj_retain_maybe(obj);
 
     future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
@@ -637,10 +697,12 @@ void *rt_future_get(void *obj) {
             }
             rt_str_release_maybe(error);
         }
+        future_release_object(obj);
         rt_trap(error_msg[0] ? error_msg : "Future: resolved with error");
         return NULL;
     }
 
+    future_release_object(obj);
     return result;
 }
 
@@ -652,6 +714,9 @@ int8_t rt_future_get_for(void *obj, int64_t ms, void **out) {
         return 0;
     if (ms <= 0)
         return rt_future_try_get(obj, out);
+    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
+        rt_trap("Future: invalid object");
+    rt_obj_retain_maybe(obj);
 
     future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
@@ -690,6 +755,7 @@ int8_t rt_future_get_for(void *obj, int64_t ms, void **out) {
     pthread_mutex_unlock(&p->mutex);
 #endif
 
+    future_release_object(obj);
     return success;
 }
 
@@ -697,6 +763,9 @@ int8_t rt_future_get_for(void *obj, int64_t ms, void **out) {
 int8_t rt_future_is_done(void *obj) {
     if (!obj)
         return 0;
+    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
+        rt_trap("Future: invalid object");
+    rt_obj_retain_maybe(obj);
 
     future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
@@ -711,6 +780,7 @@ int8_t rt_future_is_done(void *obj) {
     pthread_mutex_unlock(&p->mutex);
 #endif
 
+    future_release_object(obj);
     return result;
 }
 
@@ -718,6 +788,9 @@ int8_t rt_future_is_done(void *obj) {
 int8_t rt_future_is_error(void *obj) {
     if (!obj)
         return 0;
+    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
+        rt_trap("Future: invalid object");
+    rt_obj_retain_maybe(obj);
 
     future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
@@ -732,6 +805,7 @@ int8_t rt_future_is_error(void *obj) {
     pthread_mutex_unlock(&p->mutex);
 #endif
 
+    future_release_object(obj);
     return result;
 }
 
@@ -739,6 +813,9 @@ int8_t rt_future_is_error(void *obj) {
 rt_string rt_future_get_error(void *obj) {
     if (!obj)
         return rt_const_cstr("");
+    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
+        rt_trap("Future: invalid object");
+    rt_obj_retain_maybe(obj);
 
     future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
@@ -757,6 +834,7 @@ rt_string rt_future_get_error(void *obj) {
     pthread_mutex_unlock(&p->mutex);
 #endif
 
+    future_release_object(obj);
     return result;
 }
 
@@ -764,6 +842,9 @@ rt_string rt_future_get_error(void *obj) {
 int8_t rt_future_try_get(void *obj, void **out) {
     if (!obj)
         return 0;
+    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
+        rt_trap("Future: invalid object");
+    rt_obj_retain_maybe(obj);
 
     future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
@@ -784,6 +865,7 @@ int8_t rt_future_try_get(void *obj, void **out) {
     pthread_mutex_unlock(&p->mutex);
 #endif
 
+    future_release_object(obj);
     return success;
 }
 
@@ -793,6 +875,9 @@ int8_t rt_future_try_get(void *obj, void **out) {
 void *rt_future_try_get_val(void *obj) {
     if (!obj)
         return NULL;
+    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
+        rt_trap("Future: invalid object");
+    rt_obj_retain_maybe(obj);
 
     future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
@@ -810,6 +895,7 @@ void *rt_future_try_get_val(void *obj) {
     pthread_mutex_unlock(&p->mutex);
 #endif
 
+    future_release_object(obj);
     return result;
 }
 
@@ -821,6 +907,9 @@ void *rt_future_get_for_val(void *obj, int64_t ms) {
         return NULL;
     if (ms <= 0)
         return rt_future_try_get_val(obj);
+    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
+        rt_trap("Future: invalid object");
+    rt_obj_retain_maybe(obj);
 
     future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
@@ -856,6 +945,7 @@ void *rt_future_get_for_val(void *obj, int64_t ms) {
     pthread_mutex_unlock(&p->mutex);
 #endif
 
+    future_release_object(obj);
     return result;
 }
 
@@ -863,6 +953,9 @@ void *rt_future_get_for_val(void *obj, int64_t ms) {
 void rt_future_wait(void *obj) {
     if (!obj)
         return;
+    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
+        rt_trap("Future: invalid object");
+    rt_obj_retain_maybe(obj);
 
     future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
@@ -880,6 +973,8 @@ void rt_future_wait(void *obj) {
     }
     pthread_mutex_unlock(&p->mutex);
 #endif
+
+    future_release_object(obj);
 }
 
 /// @brief Block until the future completes or the timeout expires.
@@ -889,6 +984,9 @@ int8_t rt_future_wait_for(void *obj, int64_t ms) {
         return 0;
     if (ms <= 0)
         return rt_future_is_done(obj);
+    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
+        rt_trap("Future: invalid object");
+    rt_obj_retain_maybe(obj);
 
     future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
@@ -921,6 +1019,7 @@ int8_t rt_future_wait_for(void *obj, int64_t ms) {
     pthread_mutex_unlock(&p->mutex);
 #endif
 
+    future_release_object(obj);
     return result;
 }
 
@@ -936,6 +1035,8 @@ int8_t rt_future_on_complete_ex(void *obj,
                                 void (*cancel)(void *ctx)) {
     if (!obj || !callback)
         return 0;
+    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
+        rt_trap("Future: invalid object");
 
     future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
@@ -1011,6 +1112,9 @@ int8_t rt_future_on_complete(void *obj, void (*callback)(void *future, void *ctx
 int8_t rt_future_cancel_listener(void *obj, void (*callback)(void *future, void *ctx), void *ctx) {
     if (!obj || !callback)
         return 0;
+    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
+        rt_trap("Future: invalid object");
+    rt_obj_retain_maybe(obj);
 
     future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
@@ -1039,14 +1143,33 @@ int8_t rt_future_cancel_listener(void *obj, void (*callback)(void *future, void 
     pthread_mutex_unlock(&p->mutex);
 #endif
 
-    if (!removed)
+    if (!removed) {
+        future_release_object(obj);
         return 0;
+    }
 
-    if (removed->cancel)
-        removed->cancel(removed->ctx);
+    char cancel_error[512];
+    cancel_error[0] = '\0';
+    if (removed->cancel) {
+        jmp_buf recovery;
+        rt_trap_set_recovery(&recovery);
+        if (setjmp(recovery) == 0) {
+            removed->cancel(removed->ctx);
+        } else {
+            const char *msg = rt_trap_get_error();
+            if (!msg || !msg[0])
+                msg = "Future.CancelListener: cancel hook trapped";
+            strncpy(cancel_error, msg, sizeof(cancel_error) - 1);
+            cancel_error[sizeof(cancel_error) - 1] = '\0';
+        }
+        rt_trap_clear_recovery();
+    }
     if (rt_obj_release_check0(removed->future_obj))
         rt_obj_free(removed->future_obj);
     free(removed);
+    future_release_object(obj);
+    if (cancel_error[0] != '\0')
+        rt_trap(cancel_error);
     return 1;
 }
 
@@ -1056,6 +1179,8 @@ int8_t rt_future_cancel_listener(void *obj, void (*callback)(void *future, void 
 void *rt_future_peek_value(void *obj) {
     if (!obj)
         return NULL;
+    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
+        rt_trap("Future: invalid object");
 
     future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
@@ -1082,6 +1207,8 @@ void *rt_future_peek_value(void *obj) {
 int8_t rt_future_value_is_owned(void *obj) {
     if (!obj)
         return 0;
+    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
+        rt_trap("Future: invalid object");
 
     future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;

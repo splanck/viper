@@ -62,18 +62,20 @@ typedef struct SafeThreadCtx {
     char error[512];
 } SafeThreadCtx;
 
-static uint32_t thread_handle_magic(const void *obj) {
+static uint32_t thread_handle_magic(void *obj) {
     if (!obj)
         return 0;
     return *(const uint32_t *)obj;
 }
 
-static int is_safe_thread_handle(const void *obj) {
-    return thread_handle_magic(obj) == RT_SAFE_THREAD_MAGIC;
+static int is_safe_thread_handle(void *obj) {
+    return rt_obj_class_id(obj) == RT_SAFE_THREAD_CLASS_ID &&
+           thread_handle_magic(obj) == RT_SAFE_THREAD_MAGIC;
 }
 
-static int is_regular_thread_handle(const void *obj) {
-    return thread_handle_magic(obj) == RT_THREAD_MAGIC;
+static int is_regular_thread_handle(void *obj) {
+    return rt_obj_class_id(obj) == RT_THREAD_CLASS_ID &&
+           thread_handle_magic(obj) == RT_THREAD_MAGIC;
 }
 
 #if defined(_WIN32)
@@ -110,6 +112,7 @@ typedef struct RtThread {
     HANDLE hThread;           ///< OS thread handle.
     DWORD threadId;           ///< OS thread ID for self-join detection.
     int finished;             ///< 1 when thread has completed.
+    int joined;               ///< 1 after a successful join consumes this handle.
     int64_t id;               ///< Unique Viper thread identifier.
     RtContext *inherited_ctx; ///< Parent's runtime context.
     rt_thread_entry_fn entry; ///< User's entry function.
@@ -202,7 +205,8 @@ static void *rt_thread_start_impl_win(void *entry, void *arg, int8_t retain_arg)
     if (!ctx)
         ctx = rt_legacy_context();
 
-    RtThread *t = (RtThread *)rt_obj_new_i64(/*class_id=*/0, (int64_t)sizeof(RtThread));
+    RtThread *t =
+        (RtThread *)rt_obj_new_i64(RT_THREAD_CLASS_ID, (int64_t)sizeof(RtThread));
     if (!t)
         rt_trap("Thread.Start: failed to create thread");
     if (!t)
@@ -214,6 +218,7 @@ static void *rt_thread_start_impl_win(void *entry, void *arg, int8_t retain_arg)
     t->hThread = NULL;
     t->threadId = 0;
     t->finished = 0;
+    t->joined = 0;
     t->magic = RT_THREAD_MAGIC;
     t->id = next_thread_id_win();
     t->inherited_ctx = ctx;
@@ -273,13 +278,21 @@ void rt_thread_join(void *thread) {
     while (!t->finished) {
         SleepConditionVariableCS(&t->cv, &t->cs, INFINITE);
     }
+    if (t->joined) {
+        LeaveCriticalSection(&t->cs);
+        rt_trap("Thread.Join: already joined");
+        return;
+    }
+    t->joined = 1;
     LeaveCriticalSection(&t->cs);
 }
 
 /// @brief Non-blocking join: returns 1 if the thread already finished, 0 if still running.
 int8_t rt_thread_try_join(void *thread) {
-    if (is_safe_thread_handle(thread))
-        return rt_thread_safe_is_alive(thread) ? 0 : 1;
+    if (is_safe_thread_handle(thread)) {
+        SafeThreadCtx *ctx = (SafeThreadCtx *)thread;
+        return ctx->thread ? rt_thread_try_join(ctx->thread) : 1;
+    }
     RtThread *t = require_thread_win(thread, "Thread.TryJoin: null thread");
     if (!t)
         return 0;
@@ -294,6 +307,12 @@ int8_t rt_thread_try_join(void *thread) {
         LeaveCriticalSection(&t->cs);
         return 0;
     }
+    if (t->joined) {
+        LeaveCriticalSection(&t->cs);
+        rt_trap("Thread.Join: already joined");
+        return 0;
+    }
+    t->joined = 1;
     LeaveCriticalSection(&t->cs);
     return 1;
 }
@@ -306,8 +325,6 @@ int8_t rt_thread_join_for(void *thread, int64_t ms) {
             rt_thread_safe_join(thread);
             return 1;
         }
-        if (ms == 0)
-            return rt_thread_safe_is_alive(thread) ? 0 : 1;
         SafeThreadCtx *ctx = (SafeThreadCtx *)thread;
         return ctx->thread ? rt_thread_join_for(ctx->thread, ms) : 1;
     }
@@ -331,6 +348,12 @@ int8_t rt_thread_join_for(void *thread, int64_t ms) {
             LeaveCriticalSection(&t->cs);
             return 0;
         }
+        if (t->joined) {
+            LeaveCriticalSection(&t->cs);
+            rt_trap("Thread.Join: already joined");
+            return 0;
+        }
+        t->joined = 1;
         LeaveCriticalSection(&t->cs);
         return 1;
     }
@@ -357,6 +380,12 @@ int8_t rt_thread_join_for(void *thread, int64_t ms) {
         elapsed = GetTickCount64() - start;
     }
 
+    if (t->joined) {
+        LeaveCriticalSection(&t->cs);
+        rt_trap("Thread.Join: already joined");
+        return 0;
+    }
+    t->joined = 1;
     LeaveCriticalSection(&t->cs);
     return 1;
 }
@@ -451,6 +480,7 @@ typedef struct RtThread {
     pthread_cond_t cv;          ///< Condition var for Join() signaling.
     pthread_t pthread;          ///< OS thread handle.
     int finished;               ///< 1 when thread has completed.
+    int joined;                 ///< 1 after a successful join consumes this handle.
     int64_t id;                 ///< Unique thread identifier.
     RtContext *inherited_ctx;   ///< Parent's runtime context.
     rt_thread_entry_fn entry;   ///< User's entry function.
@@ -719,7 +749,8 @@ static void *rt_thread_start_impl(void *entry, void *arg, int8_t retain_arg) {
     if (!ctx)
         ctx = rt_legacy_context();
 
-    RtThread *t = (RtThread *)rt_obj_new_i64(/*class_id=*/0, (int64_t)sizeof(RtThread));
+    RtThread *t =
+        (RtThread *)rt_obj_new_i64(RT_THREAD_CLASS_ID, (int64_t)sizeof(RtThread));
     if (!t)
         rt_trap("Thread.Start: failed to create thread");
     if (!t)
@@ -729,6 +760,7 @@ static void *rt_thread_start_impl(void *entry, void *arg, int8_t retain_arg) {
     (void)thread_cond_init(&t->cv, &t->cond_uses_monotonic);
 
     t->finished = 0;
+    t->joined = 0;
     t->magic = RT_THREAD_MAGIC;
     t->id = next_thread_id();
     t->inherited_ctx = ctx;
@@ -811,6 +843,12 @@ void rt_thread_join(void *thread) {
     while (!t->finished) {
         (void)pthread_cond_wait(&t->cv, &t->mu);
     }
+    if (t->joined) {
+        pthread_mutex_unlock(&t->mu);
+        rt_trap("Thread.Join: already joined");
+        return;
+    }
+    t->joined = 1;
     pthread_mutex_unlock(&t->mu);
 }
 
@@ -842,8 +880,10 @@ void rt_thread_join(void *thread) {
 /// @see rt_thread_join For blocking wait
 /// @see rt_thread_join_for For waiting with timeout
 int8_t rt_thread_try_join(void *thread) {
-    if (is_safe_thread_handle(thread))
-        return rt_thread_safe_is_alive(thread) ? 0 : 1;
+    if (is_safe_thread_handle(thread)) {
+        SafeThreadCtx *ctx = (SafeThreadCtx *)thread;
+        return ctx->thread ? rt_thread_try_join(ctx->thread) : 1;
+    }
     RtThread *t = require_thread(thread, "Thread.TryJoin: null thread");
     if (!t)
         return 0;
@@ -858,6 +898,12 @@ int8_t rt_thread_try_join(void *thread) {
         pthread_mutex_unlock(&t->mu);
         return 0;
     }
+    if (t->joined) {
+        pthread_mutex_unlock(&t->mu);
+        rt_trap("Thread.Join: already joined");
+        return 0;
+    }
+    t->joined = 1;
     pthread_mutex_unlock(&t->mu);
     return 1;
 }
@@ -906,8 +952,6 @@ int8_t rt_thread_join_for(void *thread, int64_t ms) {
             rt_thread_safe_join(thread);
             return 1;
         }
-        if (ms == 0)
-            return rt_thread_safe_is_alive(thread) ? 0 : 1;
         SafeThreadCtx *ctx = (SafeThreadCtx *)thread;
         return ctx->thread ? rt_thread_join_for(ctx->thread, ms) : 1;
     }
@@ -931,6 +975,12 @@ int8_t rt_thread_join_for(void *thread, int64_t ms) {
             pthread_mutex_unlock(&t->mu);
             return 0;
         }
+        if (t->joined) {
+            pthread_mutex_unlock(&t->mu);
+            rt_trap("Thread.Join: already joined");
+            return 0;
+        }
+        t->joined = 1;
         pthread_mutex_unlock(&t->mu);
         return 1;
     }
@@ -945,6 +995,12 @@ int8_t rt_thread_join_for(void *thread, int64_t ms) {
         }
     }
 
+    if (t->joined) {
+        pthread_mutex_unlock(&t->mu);
+        rt_trap("Thread.Join: already joined");
+        return 0;
+    }
+    t->joined = 1;
     pthread_mutex_unlock(&t->mu);
     return 1;
 }
@@ -1144,7 +1200,7 @@ static void *rt_thread_start_safe_impl(void *entry, void *arg, int8_t retain_arg
         return NULL;
 
     SafeThreadCtx *ctx =
-        (SafeThreadCtx *)rt_obj_new_i64(/*class_id=*/0, (int64_t)sizeof(SafeThreadCtx));
+        (SafeThreadCtx *)rt_obj_new_i64(RT_SAFE_THREAD_CLASS_ID, (int64_t)sizeof(SafeThreadCtx));
     if (!ctx)
         rt_trap("Thread.StartSafe: failed to allocate context");
     if (!ctx)

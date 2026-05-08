@@ -55,6 +55,18 @@ static void test_linked_cancel_is_sticky_after_parent_reset() {
     assert(rt_cancellation_is_cancelled(child) == 0);
 }
 
+static void test_linked_after_parent_cancel_is_sticky() {
+    void *parent = rt_cancellation_new();
+    rt_cancellation_cancel(parent);
+
+    void *child = rt_cancellation_linked(parent);
+    assert(rt_cancellation_is_cancelled(child) == 1);
+
+    rt_cancellation_reset(parent);
+    assert(rt_cancellation_is_cancelled(parent) == 0);
+    assert(rt_cancellation_is_cancelled(child) == 1);
+}
+
 static void test_linked_cancellation_reaches_grandchild() {
     void *parent = rt_cancellation_new();
     void *child = rt_cancellation_linked(parent);
@@ -87,6 +99,7 @@ int main() {
     test_reset();
     test_linked();
     test_linked_cancel_is_sticky_after_parent_reset();
+    test_linked_after_parent_cancel_is_sticky();
     test_linked_cancellation_reaches_grandchild();
     test_linked_self_cancel();
     test_null_safety();

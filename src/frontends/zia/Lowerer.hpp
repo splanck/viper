@@ -539,8 +539,9 @@ class Lowerer {
 
     /// @brief Emit interface registration and itable binding for all interfaces.
     /// @details Emits a __zia_iface_init function that:
-    ///   1. Registers each interface via rt_register_interface_direct
-    ///   2. For each implementing class, allocates an itable, populates it
+    ///   1. Registers each class via rt_register_class_with_base_rs
+    ///   2. Registers each interface via rt_register_interface_direct_rs
+    ///   3. For each implementing class, allocates an itable, populates it
     ///      with function pointers, and binds it via rt_bind_interface
     void emitItableInit();
 

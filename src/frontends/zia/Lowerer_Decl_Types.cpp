@@ -22,6 +22,9 @@
 #include "frontends/zia/Lowerer.hpp"
 #include "frontends/zia/RuntimeNames.hpp"
 
+#include <functional>
+#include <unordered_set>
+
 namespace il::frontends::zia {
 
 using namespace runtime;
@@ -258,7 +261,64 @@ void Lowerer::emitItableInit() {
     builder_->createBlock(fn, "entry_0", {});
     setBlock(fn.blocks.size() - 1);
 
-    // Phase 1: Register each interface
+    // Phase 1: Register each class before interface bindings reference it.
+    std::vector<std::string> classOrder;
+    std::unordered_set<std::string> visitedClasses;
+    std::function<void(const std::string &)> visitClass = [&](const std::string &className) {
+        if (visitedClasses.count(className))
+            return;
+        auto classIt = classTypes_.find(className);
+        if (classIt == classTypes_.end())
+            return;
+        if (!classIt->second.baseClass.empty())
+            visitClass(classIt->second.baseClass);
+        visitedClasses.insert(className);
+        classOrder.push_back(className);
+    };
+    for (const auto &entry : classTypes_)
+        visitClass(entry.first);
+
+    for (const auto &className : classOrder) {
+        auto classIt = classTypes_.find(className);
+        if (classIt == classTypes_.end())
+            continue;
+        const ClassTypeInfo &classInfo = classIt->second;
+
+        const size_t slotCount = classInfo.vtable.size();
+        const int64_t bytes =
+            slotCount > 0 ? static_cast<int64_t>(slotCount * 8ULL) : 8LL;
+        Value vtablePtr =
+            emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(bytes)});
+
+        for (size_t s = 0; s < slotCount; ++s) {
+            int64_t offset = static_cast<int64_t>(s * 8ULL);
+            Value slotPtr =
+                emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), vtablePtr, Value::constInt(offset));
+            const std::string &methodName = classInfo.vtable[s];
+            if (methodName.empty()) {
+                emitStore(slotPtr, Value::null(), Type(Type::Kind::Ptr));
+            } else {
+                emitStore(slotPtr, Value::global(methodName), Type(Type::Kind::Ptr));
+            }
+        }
+
+        int64_t baseClassId = -1;
+        if (!classInfo.baseClass.empty()) {
+            auto baseIt = classTypes_.find(classInfo.baseClass);
+            if (baseIt != classTypes_.end())
+                baseClassId = static_cast<int64_t>(baseIt->second.classId);
+        }
+
+        Value qnameStr = emitConstStr(stringTable_.intern(classInfo.name));
+        emitCall("rt_register_class_with_base_rs",
+                 {Value::constInt(static_cast<int64_t>(classInfo.classId)),
+                  vtablePtr,
+                  qnameStr,
+                  Value::constInt(static_cast<int64_t>(slotCount)),
+                  Value::constInt(baseClassId)});
+    }
+
+    // Phase 2: Register each interface
     for (const auto &[ifaceName, ifaceInfo] : interfaceTypes_) {
         // rt_register_interface_direct_rs(ifaceId, qname, slotCount)
         Value qnameStr = emitConstStr(stringTable_.intern(ifaceName));
@@ -268,7 +328,7 @@ void Lowerer::emitItableInit() {
                   Value::constInt(static_cast<int64_t>(ifaceInfo.methods.size()))});
     }
 
-    // Phase 2: For each class implementing an interface, build and bind itable
+    // Phase 3: For each class implementing an interface, build and bind itable
     for (const auto &[entityName, entityInfo] : classTypes_) {
         for (const auto &ifaceName : entityInfo.implementedInterfaces) {
             auto ifaceIt = interfaceTypes_.find(ifaceName);

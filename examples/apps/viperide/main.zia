@@ -181,7 +181,12 @@ func main() {
     // ========================================================================
     // Create welcome document
     // ========================================================================
-    var welcomeText = "// Welcome to ViperIDE!\n";
+    // The `module` declaration is required for the Zia completion engine to
+    // parse the buffer; without it, CompleteForFile returns "" and the popup
+    // shows nothing. Try typing `Viper.` after a save to see live completions.
+    var welcomeText = "module Welcome;\n";
+    welcomeText = welcomeText + "\n";
+    welcomeText = welcomeText + "// Welcome to ViperIDE!\n";
     welcomeText = welcomeText + "// A full-featured IDE for Zia and Viper Basic\n";
     welcomeText = welcomeText + "\n";
     welcomeText = welcomeText + "func main() {\n";
@@ -403,7 +408,7 @@ func main() {
         if shell.miCopy.WasClicked() != 0                              { edit_commands.handleCopy(engine); }
         if shell.miPaste.WasClicked() != 0                             { edit_commands.handlePaste(engine); }
         if shell.miSelectAll.WasClicked() != 0                         { edit_commands.handleSelectAll(engine); }
-        if triggered("find", shell.miFind, null, cpSelected)            { edit_commands.handleFind(shell); }
+        if triggered("find", shell.miFind, shell.tbFind, cpSelected)    { edit_commands.handleFind(shell); }
         if triggeredNoMenu("goto", cpSelected)                          { edit_commands.handleGoToLine(shell, engine); }
         if triggeredNoMenu("gotodef", cpSelected)                       { edit_commands.handleGoToDefinition(shell, engine); }
 
@@ -442,10 +447,10 @@ func main() {
         if triggeredNoMenu("searchproject", cpSelected) { search_commands.handleProjectSearch(shell, projMgr, docMgr, engine, tabs); }
         if triggeredNoMenu("symboloutline", cpSelected) { symbolOutline.toggle(); }
 
-        // Build commands
-        if triggered("build", shell.miBuild, null, cpSelected)    { build_commands.handleBuild(shell, docMgr, engine, buildSys); }
-        if triggered("buildrun", shell.miBuildAndRun, null, cpSelected) { build_commands.handleBuildAndRun(shell, docMgr, engine, buildSys); }
-        if triggered("run", shell.miRun, null, cpSelected)        { build_commands.handleRun(shell, docMgr, engine, buildSys); }
+        // Build commands — toolbar items wired alongside menu items
+        if triggered("build", shell.miBuild, shell.tbBuild, cpSelected)         { build_commands.handleBuild(shell, docMgr, engine, buildSys); }
+        if triggered("buildrun", shell.miBuildAndRun, shell.tbRun, cpSelected)  { build_commands.handleBuildAndRun(shell, docMgr, engine, buildSys); }
+        if triggered("run", shell.miRun, null, cpSelected)                      { build_commands.handleRun(shell, docMgr, engine, buildSys); }
 
         // Diagnostics panel: click to navigate to error line
         if shell.diagListBox.WasSelectionChanged() != 0 {

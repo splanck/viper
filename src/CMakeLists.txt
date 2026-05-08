@@ -535,6 +535,18 @@ target_link_libraries(zia
         viper_cmd_arm64
         viper_common
         viper_bytecode)
+# Force-load fe_zia so its strong-symbol implementations of rt_zia_complete /
+# rt_zia_check / rt_zia_hover / rt_zia_symbols win over the weak fallbacks in
+# viper_runtime/core/rt_zia_completion_stub.c. Without force-loading, the static
+# linker resolves every rt_zia_* symbol from the stubs (which appear first) and
+# never pulls in the strong-symbol object from fe_zia, so editor IntelliSense
+# silently returns "Zia completion unavailable" payloads.
+if (APPLE)
+    target_link_options(zia PRIVATE LINKER:-force_load,$<TARGET_FILE:fe_zia>)
+elseif (UNIX)
+    target_link_libraries(zia PRIVATE
+            -Wl,--whole-archive $<TARGET_FILE:fe_zia> -Wl,--no-whole-archive)
+endif ()
 if (MSVC)
     target_link_options(zia PRIVATE /STACK:8388608)
 endif ()

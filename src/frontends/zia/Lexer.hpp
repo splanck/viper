@@ -159,6 +159,16 @@ class Lexer {
     /// @note The returned reference is valid until the next call to next().
     const Token &peek();
 
+    /// @brief Look up a keyword by name (public so external highlighters can share the table).
+    /// @param name The identifier to check.
+    /// @return TokenKind if the name is a keyword, nullopt for identifiers.
+    ///
+    /// @details Performs binary search on the sorted keyword table
+    /// (52 keywords). Case-sensitive matching. Used by the GUI syntax highlighter
+    /// (via rt_zia_highlight.cpp) so the highlighter never drifts from the
+    /// language's keyword set.
+    static std::optional<TokenKind> lookupKeyword(const std::string &name);
+
   private:
     //=========================================================================
     /// @name Character Access
@@ -336,20 +346,6 @@ class Lexer {
     /// - StringMid: If another interpolation `${` is found
     /// - Error: If the string is unterminated
     Token lexInterpolatedStringContinuation();
-
-    /// @}
-    //=========================================================================
-    /// @name Keyword Lookup
-    /// @{
-    //=========================================================================
-
-    /// @brief Look up a keyword by name.
-    /// @param name The identifier to check.
-    /// @return TokenKind if the name is a keyword, nullopt for identifiers.
-    ///
-    /// @details Performs binary search on the sorted keyword table
-    /// (33 keywords). Case-sensitive matching.
-    static std::optional<TokenKind> lookupKeyword(const std::string &name);
 
     /// @}
     //=========================================================================

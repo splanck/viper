@@ -109,6 +109,9 @@ class AppShell {
     expose GUI.ToolbarItem tbOpen;
     expose GUI.ToolbarItem tbSave;
     expose GUI.ToolbarItem tbSaveAll;
+    expose GUI.ToolbarItem tbBuild;
+    expose GUI.ToolbarItem tbRun;
+    expose GUI.ToolbarItem tbFind;
 
     // Tab bar
     expose GUI.TabBar tabBar;
@@ -255,14 +258,22 @@ class AppShell {
         miAbout = helpMenu.AddItem("About ViperIDE");
 
         // ====================================================================
-        // Toolbar
+        // Toolbar — Unicode glyphs rendered as button text via the system font.
+        // NOTE: Toolbar.AddButton(icon, tooltip) treats the first arg as a FILE
+        // PATH (rt_gui_icon_from_path_cstr), so emoji-as-icon-arg never renders.
+        // We pass "" for the icon path and put the glyph in the text slot via
+        // AddButtonWithText, which forces show_label=true so the glyph appears.
         // ====================================================================
         toolbar = GUI.Toolbar.New(mainVBox);
-        tbNew = toolbar.AddButtonWithText("", "New", "New File (Ctrl+N)");
-        tbOpen = toolbar.AddButtonWithText("", "Open", "Open File (Ctrl+O)");
-        tbSave = toolbar.AddButtonWithText("", "Save", "Save File (Ctrl+S)");
+        tbNew     = toolbar.AddButtonWithText("", "📄", "New File (Ctrl+N)");
+        tbOpen    = toolbar.AddButtonWithText("", "📂", "Open File (Ctrl+O)");
+        tbSave    = toolbar.AddButtonWithText("", "💾", "Save File (Ctrl+S)");
+        tbSaveAll = toolbar.AddButtonWithText("", "🗂", "Save All Files (Ctrl+Shift+S)");
         toolbar.AddSeparator();
-        tbSaveAll = toolbar.AddButtonWithText("", "Save All", "Save All Files");
+        tbBuild   = toolbar.AddButtonWithText("", "🔨", "Build (Ctrl+Shift+B)");
+        tbRun     = toolbar.AddButtonWithText("", "▶",  "Build & Run (F5)");
+        toolbar.AddSeparator();
+        tbFind    = toolbar.AddButtonWithText("", "🔍", "Find (Ctrl+F)");
 
         // ====================================================================
         // SplitPane — sidebar (left) + editor area (right)

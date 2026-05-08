@@ -142,11 +142,17 @@ static int syn_is_keyword_ci(const char *word, size_t wlen, const char *const *t
 
 // ─── Zia language tokenizer ────────────────────────────────────────────────
 
-static const char *const zia_keywords[] = {
-    "func",  "expose", "hide",   "class", "struct",   "var",   "new",  "if", "else", "while",
-    "for",   "in",     "return", "break", "continue", "do",    "and",  "or", "not",  "true",
-    "false", "null",   "module", "bind",  "self",     "match", "enum", NULL};
+// Bridge into fe_zia's authoritative kKeywordTable (52 entries).
+// Strong impl in src/frontends/zia/rt_zia_highlight.cpp; weak fallback in
+// src/runtime/core/rt_zia_highlight_stub.c returns 0 (no keyword) when fe_zia
+// is not linked. The zia binary force-loads fe_zia (see src/CMakeLists.txt)
+// so the strong implementation always wins for the IDE.
+extern int rt_zia_is_keyword(const char *name, int64_t len);
 
+// Type names highlighted as types (teal). The real lexer doesn't separate
+// these from identifiers, but VS Code-style coloring distinguishes the
+// common runtime-class names visually. Keep this list curated; kept short
+// because the user's biggest pain was missing keywords, not missing types.
 static const char *const zia_types[] = {"Integer",
                                         "Boolean",
                                         "String",
@@ -164,12 +170,16 @@ static const char *const zia_types[] = {"Integer",
 ///
 /// Walks the line once, classifying each span:
 ///   - `// ...` line comment → green
+///   - `/* ... */` block comment → green (single-line; multi-line tracked
+///     across calls via ce->zia_block_comment_depth — works correctly during
+///     sequential top-down render; may briefly mis-color if the user scrolls
+///     directly into the middle of a block comment without first rendering
+///     the opening `/*` line)
 ///   - `"..."` string (with `\\` escape handling) → orange
 ///   - `[0-9]+` number → light green
-///   - identifier → keyword/type/custom-keyword/default lookup
+///   - identifier → keyword (via real Zia keyword table) / type / custom
+///     keyword / default lookup
 ///   - everything else → default color
-/// Per-line tokenization (no multi-line state) — block comments would
-/// need a stateful tokenizer.
 static void rt_zia_syntax_cb(
     vg_widget_t *editor, int line_num, const char *text, uint32_t *colors, void *user_data) {
     (void)line_num;
@@ -186,11 +196,53 @@ static void rt_zia_syntax_cb(
     size_t len = strlen(text);
     size_t i = 0;
 
+    // If we entered this line inside a block comment, paint until we find */
+    // (with proper nesting). Sets ce->zia_block_comment_depth for the next line.
+    if (ce->zia_block_comment_depth > 0) {
+        size_t comment_start = 0;
+        while (i < len && ce->zia_block_comment_depth > 0) {
+            if (i + 1 < len && text[i] == '/' && text[i + 1] == '*') {
+                ce->zia_block_comment_depth++;
+                i += 2;
+            } else if (i + 1 < len && text[i] == '*' && text[i + 1] == '/') {
+                ce->zia_block_comment_depth--;
+                i += 2;
+            } else {
+                i++;
+            }
+        }
+        syn_fill(colors, comment_start, i - comment_start, c_comment);
+        if (ce->zia_block_comment_depth > 0) {
+            // Block comment continues past this line — done with line.
+            return;
+        }
+    }
+
     while (i < len) {
         // Line comment
         if (text[i] == '/' && i + 1 < len && text[i + 1] == '/') {
             syn_fill(colors, i, len - i, c_comment);
             return;
+        }
+
+        // Block comment (may continue past end of line)
+        if (text[i] == '/' && i + 1 < len && text[i + 1] == '*') {
+            size_t start = i;
+            ce->zia_block_comment_depth = 1;
+            i += 2;
+            while (i < len && ce->zia_block_comment_depth > 0) {
+                if (i + 1 < len && text[i] == '/' && text[i + 1] == '*') {
+                    ce->zia_block_comment_depth++;
+                    i += 2;
+                } else if (i + 1 < len && text[i] == '*' && text[i + 1] == '/') {
+                    ce->zia_block_comment_depth--;
+                    i += 2;
+                } else {
+                    i++;
+                }
+            }
+            syn_fill(colors, start, i - start, c_comment);
+            continue;
         }
 
         // String literal
@@ -223,7 +275,7 @@ static void rt_zia_syntax_cb(
                 i++;
             size_t wlen = i - start;
             uint32_t color = c_default;
-            if (syn_is_keyword(text + start, wlen, zia_keywords))
+            if (rt_zia_is_keyword(text + start, (int64_t)wlen))
                 color = c_keyword;
             else if (syn_is_keyword(text + start, wlen, zia_types))
                 color = c_type;

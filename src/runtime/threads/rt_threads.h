@@ -25,6 +25,20 @@
 #include "rt_string.h"
 #include <stdint.h>
 
+/// @brief Internal heap class identifiers for runtime-owned threading objects.
+/// @details These are intentionally negative to avoid colliding with compiler-assigned
+///          user type IDs and small positive collection IDs.
+#define RT_THREAD_CLASS_ID INT64_C(-0x540101)
+#define RT_SAFE_THREAD_CLASS_ID INT64_C(-0x540102)
+#define RT_SAFE_I64_CLASS_ID INT64_C(-0x540103)
+#define RT_GATE_CLASS_ID INT64_C(-0x540104)
+#define RT_BARRIER_CLASS_ID INT64_C(-0x540105)
+#define RT_RWLOCK_CLASS_ID INT64_C(-0x540106)
+#define RT_CHANNEL_CLASS_ID INT64_C(-0x540107)
+#define RT_CANCELLATION_CLASS_ID INT64_C(-0x540108)
+#define RT_PROMISE_CLASS_ID INT64_C(-0x540109)
+#define RT_FUTURE_CLASS_ID INT64_C(-0x54010A)
+
 #ifdef __cplusplus
 extern "C" {
 #endif

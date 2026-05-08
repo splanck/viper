@@ -20,6 +20,7 @@
 #include "common/ProcessIsolation.hpp"
 #include <atomic>
 #include <cassert>
+#include <cstdint>
 #include <cstring>
 #include <string>
 #include <thread>
@@ -31,6 +32,30 @@ static void call_thread_start_null() {
 
 static void call_thread_join_null() {
     rt_thread_join(nullptr);
+}
+
+extern "C" void quick_entry(void *arg) {
+    (void)arg;
+}
+
+static void call_thread_join_twice() {
+    void *t = rt_thread_start((void *)&quick_entry, nullptr);
+    assert(t != nullptr);
+    rt_thread_join(t);
+    rt_thread_join(t);
+}
+
+static void call_thread_try_join_after_join() {
+    void *t = rt_thread_start((void *)&quick_entry, nullptr);
+    assert(t != nullptr);
+    rt_thread_join(t);
+    (void)rt_thread_try_join(t);
+}
+
+static void call_thread_join_fake_magic_wrong_class() {
+    uint32_t *fake = static_cast<uint32_t *>(rt_obj_new_i64(0, sizeof(uint32_t)));
+    *fake = 0x56545244u;
+    rt_thread_join(fake);
 }
 
 extern "C" void add_loop_entry(void *arg) {
@@ -95,27 +120,6 @@ static void test_thread_join_for_timeout() {
     assert(flag.load(std::memory_order_acquire) == 1);
 }
 
-static void test_multiple_join_waiters() {
-    std::atomic<int> waiter_count{0};
-    std::atomic<int> flag{0};
-    void *t = rt_thread_start((void *)&sleep_then_store, &flag);
-    assert(t != nullptr);
-
-    std::thread waiter1([&]() {
-        rt_thread_join(t);
-        waiter_count.fetch_add(1, std::memory_order_acq_rel);
-    });
-    std::thread waiter2([&]() {
-        rt_thread_join(t);
-        waiter_count.fetch_add(1, std::memory_order_acq_rel);
-    });
-
-    waiter1.join();
-    waiter2.join();
-    assert(flag.load(std::memory_order_acquire) == 1);
-    assert(waiter_count.load(std::memory_order_acquire) == 2);
-}
-
 static void test_thread_start_owned_keeps_object_arg_alive() {
     g_owned_thread_arg_len.store(-1, std::memory_order_release);
     void *arg = rt_seq_new();
@@ -150,7 +154,6 @@ static void test_safe_thread_supports_standard_thread_methods() {
 
     assert(rt_thread_get_id(t) > 0);
     assert(rt_thread_join_for(t, 1000) == 1);
-    assert(rt_thread_try_join(t) == 1);
     assert(rt_thread_get_is_alive(t) == 0);
     assert(rt_thread_has_error(t) == 0);
     assert(g_safe_thread_flag.load(std::memory_order_acquire) == 1);
@@ -172,6 +175,9 @@ static void test_safe_thread_methods_accept_regular_thread_handle() {
 int main(int argc, char *argv[]) {
     viper::tests::registerChildFunction(call_thread_start_null);
     viper::tests::registerChildFunction(call_thread_join_null);
+    viper::tests::registerChildFunction(call_thread_join_twice);
+    viper::tests::registerChildFunction(call_thread_try_join_after_join);
+    viper::tests::registerChildFunction(call_thread_join_fake_magic_wrong_class);
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 
@@ -182,8 +188,16 @@ int main(int argc, char *argv[]) {
     result = viper::tests::runIsolated(call_thread_join_null);
     assert(result.stderrText.find("Thread.Join: null thread") != std::string::npos);
 
+    result = viper::tests::runIsolated(call_thread_join_twice);
+    assert(result.stderrText.find("Thread.Join: already joined") != std::string::npos);
+
+    result = viper::tests::runIsolated(call_thread_try_join_after_join);
+    assert(result.stderrText.find("Thread.Join: already joined") != std::string::npos);
+
+    result = viper::tests::runIsolated(call_thread_join_fake_magic_wrong_class);
+    assert(result.stderrText.find("Thread: invalid thread handle") != std::string::npos);
+
     test_thread_join_for_timeout();
-    test_multiple_join_waiters();
     test_thread_start_owned_keeps_object_arg_alive();
     test_thread_start_safe_owned_keeps_object_arg_alive();
     test_safe_thread_supports_standard_thread_methods();

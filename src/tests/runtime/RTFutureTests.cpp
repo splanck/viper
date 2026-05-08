@@ -398,6 +398,8 @@ static void test_set_value_survives_producer_release() {
 
 static int g_listener_trap_count = 0;
 static int g_listener_ok_count = 0;
+static int g_cancel_hook_count = 0;
+static int g_cancel_listener_count = 0;
 
 static void trapping_listener(void *future, void *ctx) {
     (void)future;
@@ -410,6 +412,18 @@ static void ok_listener(void *future, void *ctx) {
     (void)future;
     (void)ctx;
     ++g_listener_ok_count;
+}
+
+static void passive_cancel_listener(void *future, void *ctx) {
+    (void)future;
+    (void)ctx;
+    ++g_cancel_listener_count;
+}
+
+static void trapping_cancel_hook(void *ctx) {
+    (void)ctx;
+    ++g_cancel_hook_count;
+    rt_trap("cancel hook trap");
 }
 
 static void test_listener_trap_rethrows_after_cleanup() {
@@ -462,6 +476,36 @@ static void test_completed_future_listener_trap_cleans_up() {
     test_result(g_listener_trap_count == 1, "completed_listener_trap: listener called once");
 }
 
+static void test_cancel_listener_trap_rethrows_after_cleanup() {
+    g_cancel_hook_count = 0;
+    g_cancel_listener_count = 0;
+
+    void *promise = rt_promise_new();
+    void *future = rt_promise_get_future(promise);
+    int value = 3;
+
+    test_result(rt_future_on_complete_ex(
+                    future, passive_cancel_listener, nullptr, trapping_cancel_hook) == 1,
+                "cancel_listener_trap: register listener");
+
+    jmp_buf recovery;
+    int trapped = 0;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_future_cancel_listener(future, passive_cancel_listener, nullptr);
+    } else {
+        trapped = 1;
+    }
+    rt_trap_clear_recovery();
+
+    test_result(trapped == 1, "cancel_listener_trap: should rethrow cancel trap");
+    test_result(g_cancel_hook_count == 1, "cancel_listener_trap: cancel hook called once");
+
+    rt_promise_set(promise, &value);
+    test_result(g_cancel_listener_count == 0,
+                "cancel_listener_trap: removed listener should not complete");
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -500,6 +544,7 @@ int main() {
     test_set_value_survives_producer_release();
     test_listener_trap_rethrows_after_cleanup();
     test_completed_future_listener_trap_cleans_up();
+    test_cancel_listener_trap_rethrows_after_cleanup();
 
     printf("All Future/Promise tests passed!\n");
     return 0;

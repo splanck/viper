@@ -701,8 +701,10 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool) {
 
     // Collect results in order
     void *result = rt_seq_new();
+    rt_seq_set_owns_elements(result, 1);
     for (int64_t i = 0; i < count; i++) {
-        rt_seq_push(result, results[i]);
+        rt_seq_push_raw(result, results[i]);
+        results[i] = NULL;
     }
 
     free(tasks);
@@ -924,13 +926,25 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
 
     /* Apply the identity exactly once on the caller thread. */
     void *result = identity;
-    for (int64_t i = 0; i < nworkers; i++) {
-        result = combine(result, tasks[i].result);
+    int combine_failed = 0;
+    if (!task_failed && !submit_failed) {
+        jmp_buf recovery;
+        rt_trap_set_recovery(&recovery);
+        if (setjmp(recovery) == 0) {
+            for (int64_t i = 0; i < nworkers; i++) {
+                result = combine(result, tasks[i].result);
+            }
+        } else {
+            combine_failed = 1;
+        }
+        rt_trap_clear_recovery();
     }
 
     free(tasks);
     free(items);
     parallel_release_default_pool(pool, actual_pool);
+    if (combine_failed)
+        rt_trap("Parallel.Reduce: reducer trapped");
     if (task_failed)
         rt_trap("Parallel.Reduce: task trapped");
     if (submit_failed)
@@ -952,7 +966,10 @@ void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool) {
     if (!func || start >= end)
         return;
 
-    int64_t count = end - start;
+    uint64_t count_u = (uint64_t)end - (uint64_t)start;
+    if (count_u > (uint64_t)INT64_MAX)
+        rt_trap("Parallel.For: range too large");
+    int64_t count = (int64_t)count_u;
     void *actual_pool = pool ? pool : rt_parallel_default_pool();
     int64_t task_count = parallel_choose_task_count(actual_pool, count);
 

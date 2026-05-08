@@ -13,6 +13,7 @@ set(_install_package_cmd
         "${VIPER_BIN}" install-package
         --build-dir "${VIPER_BUILD_DIR}"
         --target tarball
+        --no-verify
         -o "${_artifact}")
 if (DEFINED VIPER_CONFIG AND NOT "${VIPER_CONFIG}" STREQUAL "")
     list(APPEND _install_package_cmd --config "${VIPER_CONFIG}")

@@ -243,6 +243,25 @@ void rt_concmap_set(void *obj, rt_string key, void *value) {
     const char *key_data = get_key_data(key, &key_len);
     uint64_t h = rt_fnv1a(key_data, key_len);
 
+    cm_entry *new_entry = (cm_entry *)malloc(sizeof(cm_entry));
+    if (!new_entry) {
+        rt_trap("ConcurrentMap.Set: memory allocation failed");
+        return;
+    }
+    new_entry->key = (char *)malloc(key_len + 1);
+    if (!new_entry->key) {
+        free(new_entry);
+        rt_trap("ConcurrentMap.Set: memory allocation failed");
+        return;
+    }
+    memcpy(new_entry->key, key_data, key_len);
+    new_entry->key[key_len] = '\0';
+    new_entry->key_len = key_len;
+    new_entry->value = value;
+    new_entry->next = NULL;
+    rt_obj_retain_maybe(value);
+
+    void *old_value = NULL;
     CM_LOCK(cm);
 
     size_t idx = (size_t)(h % cm->capacity);
@@ -250,35 +269,19 @@ void rt_concmap_set(void *obj, rt_string key, void *value) {
 
     if (existing) {
         /* Update existing entry. */
-        rt_obj_retain_maybe(value);
-        if (rt_obj_release_check0(existing->value))
-            rt_obj_free(existing->value);
+        old_value = existing->value;
         existing->value = value;
         CM_UNLOCK(cm);
+        free(new_entry->key);
+        free(new_entry);
+        if (rt_obj_release_check0(old_value))
+            rt_obj_free(old_value);
         return;
     }
 
     /* Insert new entry. */
-    cm_entry *e = (cm_entry *)malloc(sizeof(cm_entry));
-    if (!e) {
-        CM_UNLOCK(cm);
-        rt_trap("ConcurrentMap.Set: memory allocation failed");
-        return;
-    }
-    e->key = (char *)malloc(key_len + 1);
-    if (!e->key) {
-        free(e);
-        CM_UNLOCK(cm);
-        rt_trap("ConcurrentMap.Set: memory allocation failed");
-        return;
-    }
-    memcpy(e->key, key_data, key_len);
-    e->key[key_len] = '\0';
-    e->key_len = key_len;
-    e->value = value;
-    rt_obj_retain_maybe(value);
-    e->next = cm->buckets[idx];
-    cm->buckets[idx] = e;
+    new_entry->next = cm->buckets[idx];
+    cm->buckets[idx] = new_entry;
     cm->count++;
 
     maybe_resize(cm);
@@ -352,25 +355,14 @@ int8_t rt_concmap_set_if_missing(void *obj, rt_string key, void *value) {
     const char *key_data = get_key_data(key, &key_len);
     uint64_t h = rt_fnv1a(key_data, key_len);
 
-    CM_LOCK(cm);
-
-    size_t idx = (size_t)(h % cm->capacity);
-    cm_entry *existing = find_entry(cm->buckets[idx], key_data, key_len);
-    if (existing) {
-        CM_UNLOCK(cm);
-        return 0;
-    }
-
     cm_entry *e = (cm_entry *)malloc(sizeof(cm_entry));
     if (!e) {
-        CM_UNLOCK(cm);
         rt_trap("ConcurrentMap.SetIfMissing: memory allocation failed");
         return 0;
     }
     e->key = (char *)malloc(key_len + 1);
     if (!e->key) {
         free(e);
-        CM_UNLOCK(cm);
         rt_trap("ConcurrentMap.SetIfMissing: memory allocation failed");
         return 0;
     }
@@ -378,7 +370,22 @@ int8_t rt_concmap_set_if_missing(void *obj, rt_string key, void *value) {
     e->key[key_len] = '\0';
     e->key_len = key_len;
     e->value = value;
+    e->next = NULL;
     rt_obj_retain_maybe(value);
+
+    CM_LOCK(cm);
+
+    size_t idx = (size_t)(h % cm->capacity);
+    cm_entry *existing = find_entry(cm->buckets[idx], key_data, key_len);
+    if (existing) {
+        CM_UNLOCK(cm);
+        free(e->key);
+        free(e);
+        if (rt_obj_release_check0(value))
+            rt_obj_free(value);
+        return 0;
+    }
+
     e->next = cm->buckets[idx];
     cm->buckets[idx] = e;
     cm->count++;
@@ -438,16 +445,59 @@ void *rt_concmap_keys(void *obj) {
         return seq;
     rt_concmap_impl *cm = (rt_concmap_impl *)obj;
 
+    size_t snapshot_count = 0;
+    size_t total_bytes = 0;
     CM_LOCK(cm);
+    snapshot_count = cm->count;
     for (size_t i = 0; i < cm->capacity; i++) {
         cm_entry *e = cm->buckets[i];
         while (e) {
-            rt_string s = rt_string_from_bytes(e->key, e->key_len);
-            rt_seq_push_raw(seq, (void *)s);
+            total_bytes += e->key_len;
             e = e->next;
         }
     }
     CM_UNLOCK(cm);
+
+    if (snapshot_count == 0)
+        return seq;
+
+    char **keys = (char **)calloc(snapshot_count, sizeof(char *));
+    size_t *lens = (size_t *)calloc(snapshot_count, sizeof(size_t));
+    char *bytes = (char *)malloc(total_bytes ? total_bytes : 1);
+    if (!keys || !lens || !bytes) {
+        free(keys);
+        free(lens);
+        free(bytes);
+        rt_trap("ConcurrentMap.Keys: memory allocation failed");
+        return seq;
+    }
+
+    size_t copied = 0;
+    size_t offset = 0;
+    CM_LOCK(cm);
+    for (size_t i = 0; i < cm->capacity && copied < snapshot_count; i++) {
+        cm_entry *e = cm->buckets[i];
+        while (e && copied < snapshot_count) {
+            if (offset + e->key_len > total_bytes)
+                break;
+            keys[copied] = bytes + offset;
+            lens[copied] = e->key_len;
+            memcpy(keys[copied], e->key, e->key_len);
+            offset += e->key_len;
+            copied++;
+            e = e->next;
+        }
+    }
+    CM_UNLOCK(cm);
+
+    for (size_t i = 0; i < copied; i++) {
+        rt_string s = rt_string_from_bytes(keys[i], lens[i]);
+        rt_seq_push_raw(seq, (void *)s);
+    }
+
+    free(keys);
+    free(lens);
+    free(bytes);
     return seq;
 }
 
@@ -461,14 +511,37 @@ void *rt_concmap_values(void *obj) {
         return seq;
     rt_concmap_impl *cm = (rt_concmap_impl *)obj;
 
+    size_t snapshot_count = 0;
     CM_LOCK(cm);
-    for (size_t i = 0; i < cm->capacity; i++) {
+    snapshot_count = cm->count;
+    CM_UNLOCK(cm);
+
+    if (snapshot_count == 0)
+        return seq;
+
+    void **values = (void **)calloc(snapshot_count, sizeof(void *));
+    if (!values) {
+        rt_trap("ConcurrentMap.Values: memory allocation failed");
+        return seq;
+    }
+
+    size_t copied = 0;
+    CM_LOCK(cm);
+    for (size_t i = 0; i < cm->capacity && copied < snapshot_count; i++) {
         cm_entry *e = cm->buckets[i];
-        while (e) {
-            rt_seq_push(seq, e->value);
+        while (e && copied < snapshot_count) {
+            values[copied] = e->value;
+            if (values[copied])
+                rt_obj_retain_maybe(values[copied]);
+            copied++;
             e = e->next;
         }
     }
     CM_UNLOCK(cm);
+
+    for (size_t i = 0; i < copied; i++)
+        rt_seq_push_raw(seq, values[i]);
+
+    free(values);
     return seq;
 }

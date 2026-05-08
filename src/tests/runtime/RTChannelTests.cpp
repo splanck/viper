@@ -420,7 +420,7 @@ static void test_synchronous_is_full_honors_waiting_receiver() {
     rt_channel_close(ch);
 }
 
-static void test_synchronous_try_recv_rendezvous() {
+static void test_synchronous_try_recv_is_strictly_nonblocking() {
     void *ch = rt_channel_new(0);
     void *item = make_obj();
 
@@ -429,11 +429,10 @@ static void test_synchronous_try_recv_rendezvous() {
     rt_thread_sleep(20);
     void *out = NULL;
     int8_t ok = rt_channel_try_recv(ch, &out);
-    if (!ok) {
-        rt_channel_close(ch);
-        sender.join();
-    }
-    assert(ok == 1);
+    assert(ok == 0);
+    assert(out == NULL);
+
+    assert(rt_channel_recv_for(ch, &out, 1000) == 1);
     assert(out == item);
 
     sender.join();
@@ -466,7 +465,7 @@ int main() {
     test_synchronous_send_for_timeout_budget();
     test_synchronous_probe_ignores_waiting_sender();
     test_synchronous_is_full_honors_waiting_receiver();
-    test_synchronous_try_recv_rendezvous();
+    test_synchronous_try_recv_is_strictly_nonblocking();
 
     printf("Channel tests: all passed\n");
     return 0;

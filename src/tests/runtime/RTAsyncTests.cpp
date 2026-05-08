@@ -378,6 +378,50 @@ static void test_async_all_result_owns_values() {
         rt_obj_free(results);
 }
 
+static void test_async_all_handles_already_complete_inputs() {
+    void *p1 = rt_promise_new();
+    void *f1 = rt_promise_get_future(p1);
+    void *p2 = rt_promise_new();
+    void *f2 = rt_promise_get_future(p2);
+    void *v1 = make_obj();
+    void *v2 = make_obj();
+    void *futures = rt_seq_new();
+
+    rt_promise_set_owned(p1, v1);
+    rt_promise_set_owned(p2, v2);
+    rt_seq_push(futures, f1);
+    rt_seq_push(futures, f2);
+
+    void *all_future = rt_async_all(futures);
+    assert(all_future != NULL);
+    assert(rt_future_wait_for(all_future, 1) == 1);
+
+    void *results = rt_future_get(all_future);
+    assert(rt_seq_len(results) == 2);
+    assert(rt_seq_get(results, 0) == v1);
+    assert(rt_seq_get(results, 1) == v2);
+}
+
+static void test_async_all_already_complete_error_short_circuits() {
+    void *error_promise = rt_promise_new();
+    void *error_future = rt_promise_get_future(error_promise);
+    void *pending_promise = rt_promise_new();
+    void *pending_future = rt_promise_get_future(pending_promise);
+    void *futures = rt_seq_new();
+
+    rt_promise_set_error(error_promise, rt_const_cstr("early boom"));
+    rt_seq_push(futures, error_future);
+    rt_seq_push(futures, pending_future);
+
+    void *all_future = rt_async_all(futures);
+    assert(all_future != NULL);
+    assert(rt_future_wait_for(all_future, 1) == 1);
+    assert(rt_future_is_error(all_future) == 1);
+    assert(strcmp(rt_string_cstr(rt_future_get_error(all_future)), "early boom") == 0);
+
+    rt_promise_set_owned(pending_promise, make_obj());
+}
+
 //=============================================================================
 // rt_async_any tests
 //=============================================================================
@@ -407,6 +451,27 @@ static void test_async_any_empty() {
     // Should resolve with error
     rt_future_wait(any_future);
     assert(rt_future_is_error(any_future) == 1);
+}
+
+static void test_async_any_handles_already_complete_winner() {
+    void *winner_promise = rt_promise_new();
+    void *winner_future = rt_promise_get_future(winner_promise);
+    void *pending_promise = rt_promise_new();
+    void *pending_future = rt_promise_get_future(pending_promise);
+    void *winner = make_obj();
+    void *futures = rt_seq_new();
+
+    rt_promise_set_owned(winner_promise, winner);
+    rt_seq_push(futures, winner_future);
+    rt_seq_push(futures, pending_future);
+
+    void *any_future = rt_async_any(futures);
+    assert(any_future != NULL);
+    assert(rt_future_wait_for(any_future, 1) == 1);
+    assert(rt_future_get(any_future) == winner);
+
+    rt_promise_set_owned(pending_promise, make_obj());
+    assert(rt_future_get(any_future) == winner);
 }
 
 //=============================================================================
@@ -566,8 +631,11 @@ int main() {
     test_async_all_null();
     test_async_all_short_circuits_on_error();
     test_async_all_result_owns_values();
+    test_async_all_handles_already_complete_inputs();
+    test_async_all_already_complete_error_short_circuits();
     test_async_any_basic();
     test_async_any_empty();
+    test_async_any_handles_already_complete_winner();
     test_async_map_basic();
     test_async_map_chained();
     test_async_map_transfers_result_ownership();

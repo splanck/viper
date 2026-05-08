@@ -88,7 +88,13 @@ struct RtGate {
 /// @param typeName Name of the type for error messages (e.g., "Gate").
 /// @param what Custom error message, or nullptr to use default.
 /// @return Valid typed pointer, or nullptr if validation fails.
-template <typename T> static T *requireObject(void *obj, const char *typeName, const char *what) {
+static void releaseRuntimeObject(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+template <typename T>
+static T *requireObject(void *obj, int64_t classId, const char *typeName, const char *what) {
     if (!obj) {
         if (what) {
             rt_trap(what);
@@ -97,6 +103,12 @@ template <typename T> static T *requireObject(void *obj, const char *typeName, c
             std::snprintf(msg, sizeof(msg), "%s: null object", typeName ? typeName : "Object");
             rt_trap(msg);
         }
+        return nullptr;
+    }
+    if (classId != 0 && rt_obj_class_id(obj) != classId) {
+        static thread_local char msg[128];
+        std::snprintf(msg, sizeof(msg), "%s: invalid object", typeName ? typeName : "Object");
+        rt_trap(msg);
         return nullptr;
     }
     auto *typed = static_cast<T *>(obj);
@@ -126,7 +138,7 @@ static std::chrono::steady_clock::time_point steadyDeadlineFromNow(int64_t ms) {
 /// @param what Error string to use when trapping on NULL.
 /// @return Valid RtGate pointer, or nullptr if validation fails.
 static RtGate *require_gate(void *gate, const char *what) {
-    return requireObject<RtGate>(gate, "Gate", what);
+    return requireObject<RtGate>(gate, RT_GATE_CLASS_ID, "Gate", what);
 }
 
 /// @brief Finalizer invoked when a gate object is collected.
@@ -183,7 +195,7 @@ struct RtBarrier {
 /// @param what Error string to use when trapping on NULL.
 /// @return Valid RtBarrier pointer, or nullptr if validation fails.
 static RtBarrier *require_barrier(void *barrier, const char *what) {
-    return requireObject<RtBarrier>(barrier, "Barrier", what);
+    return requireObject<RtBarrier>(barrier, RT_BARRIER_CLASS_ID, "Barrier", what);
 }
 
 /// @brief Finalizer invoked when a barrier object is collected.
@@ -250,7 +262,7 @@ struct RtRwLock {
 /// @param what Error string to use when trapping on NULL.
 /// @return Valid RtRwLock pointer, or nullptr if validation fails.
 static RtRwLock *require_rwlock(void *lock, const char *what) {
-    return requireObject<RtRwLock>(lock, "RwLock", what);
+    return requireObject<RtRwLock>(lock, RT_RWLOCK_CLASS_ID, "RwLock", what);
 }
 
 /// @brief Finalizer invoked when a reader-writer lock object is collected.
@@ -297,7 +309,8 @@ void *rt_gate_new(int64_t permits) {
         return nullptr;
     }
 
-    auto *gate = static_cast<RtGate *>(rt_obj_new_i64(/*class_id=*/0, (int64_t)sizeof(RtGate)));
+    auto *gate =
+        static_cast<RtGate *>(rt_obj_new_i64(RT_GATE_CLASS_ID, (int64_t)sizeof(RtGate)));
     if (!gate) {
         rt_trap("Gate.New: alloc failed");
         return nullptr; // Unreachable, but silences compiler warnings
@@ -325,6 +338,7 @@ void rt_gate_enter(void *gate) {
     RtGate *g = require_gate(gate, "Gate.Enter: null object");
     if (!g)
         return;
+    rt_obj_retain_maybe(gate);
 
     const char *trap_msg = nullptr;
     {
@@ -335,7 +349,6 @@ void rt_gate_enter(void *gate) {
             trap_msg = "Gate.Enter: object finalized";
         } else if (state.waiters.empty() && state.permits > 0) {
             --state.permits;
-            return;
         } else {
             GateWaiter waiter;
             state.waiters.push_back(&waiter);
@@ -351,6 +364,7 @@ void rt_gate_enter(void *gate) {
         }
     }
 
+    releaseRuntimeObject(gate);
     if (trap_msg)
         rt_trap(trap_msg);
 }
@@ -363,6 +377,7 @@ int8_t rt_gate_try_enter(void *gate) {
     RtGate *g = require_gate(gate, "Gate.TryEnter: null object");
     if (!g)
         return 0;
+    rt_obj_retain_maybe(gate);
 
     const char *trap_msg = nullptr;
     int8_t result = 0;
@@ -377,6 +392,7 @@ int8_t rt_gate_try_enter(void *gate) {
         }
     }
 
+    releaseRuntimeObject(gate);
     if (trap_msg)
         rt_trap(trap_msg);
     return result;
@@ -392,6 +408,7 @@ int8_t rt_gate_try_enter_for(void *gate, int64_t ms) {
     RtGate *g = require_gate(gate, "Gate.TryEnterFor: null object");
     if (!g)
         return 0;
+    rt_obj_retain_maybe(gate);
 
     if (ms < 0)
         ms = 0;
@@ -419,6 +436,7 @@ int8_t rt_gate_try_enter_for(void *gate, int64_t ms) {
                     auto it = std::find(state.waiters.begin(), state.waiters.end(), &waiter);
                     if (it != state.waiters.end())
                         state.waiters.erase(it);
+                    releaseRuntimeObject(gate);
                     return 0;
                 }
             }
@@ -433,6 +451,7 @@ int8_t rt_gate_try_enter_for(void *gate, int64_t ms) {
         }
     }
 
+    releaseRuntimeObject(gate);
     if (trap_msg)
         rt_trap(trap_msg);
     return result;
@@ -454,8 +473,10 @@ void rt_gate_leave_many(void *gate, int64_t count) {
     RtGate *g = require_gate(gate, "Gate.Leave: null object");
     if (!g)
         return;
+    rt_obj_retain_maybe(gate);
 
     if (count < 0) {
+        releaseRuntimeObject(gate);
         rt_trap("Gate.Leave: count cannot be negative");
         return;
     }
@@ -481,6 +502,7 @@ void rt_gate_leave_many(void *gate, int64_t count) {
         }
     }
 
+    releaseRuntimeObject(gate);
     if (trap_msg)
         rt_trap(trap_msg);
 }
@@ -493,6 +515,7 @@ int64_t rt_gate_get_permits(void *gate) {
     RtGate *g = require_gate(gate, "Gate.get_Permits: null object");
     if (!g)
         return 0;
+    rt_obj_retain_maybe(gate);
 
     const char *trap_msg = nullptr;
     int64_t permits = 0;
@@ -505,6 +528,7 @@ int64_t rt_gate_get_permits(void *gate) {
             permits = state.permits;
     }
 
+    releaseRuntimeObject(gate);
     if (trap_msg)
         rt_trap(trap_msg);
     return permits;
@@ -526,7 +550,8 @@ void *rt_barrier_new(int64_t parties) {
     }
 
     auto *barrier =
-        static_cast<RtBarrier *>(rt_obj_new_i64(/*class_id=*/0, (int64_t)sizeof(RtBarrier)));
+        static_cast<RtBarrier *>(
+            rt_obj_new_i64(RT_BARRIER_CLASS_ID, (int64_t)sizeof(RtBarrier)));
     if (!barrier) {
         rt_trap("Barrier.New: alloc failed");
         return nullptr; // Unreachable, but silences compiler warnings
@@ -555,6 +580,7 @@ int64_t rt_barrier_arrive(void *barrier) {
     RtBarrier *b = require_barrier(barrier, "Barrier.Arrive: null object");
     if (!b)
         return 0;
+    rt_obj_retain_maybe(barrier);
 
     const char *trap_msg = nullptr;
     int64_t index = 0;
@@ -573,20 +599,20 @@ int64_t rt_barrier_arrive(void *barrier) {
                 state.waiting = 0;
                 ++state.generation;
                 state.cv.notify_all();
-                return index;
-            }
-
-            while (state.generation == gen && !state.closing) {
-                state.cv.wait(lock);
-            }
-            if (state.closing) {
-                if (state.waiting > 0)
-                    --state.waiting;
-                trap_msg = "Barrier.Arrive: object finalized while waiting";
+            } else {
+                while (state.generation == gen && !state.closing) {
+                    state.cv.wait(lock);
+                }
+                if (state.closing) {
+                    if (state.waiting > 0)
+                        --state.waiting;
+                    trap_msg = "Barrier.Arrive: object finalized while waiting";
+                }
             }
         }
     }
 
+    releaseRuntimeObject(barrier);
     if (trap_msg)
         rt_trap(trap_msg);
     return index;
@@ -600,6 +626,7 @@ void rt_barrier_reset(void *barrier) {
     RtBarrier *b = require_barrier(barrier, "Barrier.Reset: null object");
     if (!b)
         return;
+    rt_obj_retain_maybe(barrier);
 
     const char *trap_msg = nullptr;
     {
@@ -613,6 +640,7 @@ void rt_barrier_reset(void *barrier) {
             ++state.generation;
     }
 
+    releaseRuntimeObject(barrier);
     if (trap_msg)
         rt_trap(trap_msg);
 }
@@ -624,6 +652,7 @@ int64_t rt_barrier_get_parties(void *barrier) {
     RtBarrier *b = require_barrier(barrier, "Barrier.get_Parties: null object");
     if (!b)
         return 0;
+    rt_obj_retain_maybe(barrier);
 
     const char *trap_msg = nullptr;
     int64_t parties = 0;
@@ -636,6 +665,7 @@ int64_t rt_barrier_get_parties(void *barrier) {
             parties = state.parties;
     }
 
+    releaseRuntimeObject(barrier);
     if (trap_msg)
         rt_trap(trap_msg);
     return parties;
@@ -648,6 +678,7 @@ int64_t rt_barrier_get_waiting(void *barrier) {
     RtBarrier *b = require_barrier(barrier, "Barrier.get_Waiting: null object");
     if (!b)
         return 0;
+    rt_obj_retain_maybe(barrier);
 
     const char *trap_msg = nullptr;
     int64_t waiting = 0;
@@ -660,6 +691,7 @@ int64_t rt_barrier_get_waiting(void *barrier) {
             waiting = state.waiting;
     }
 
+    releaseRuntimeObject(barrier);
     if (trap_msg)
         rt_trap(trap_msg);
     return waiting;
@@ -673,7 +705,8 @@ int64_t rt_barrier_get_waiting(void *barrier) {
 /// @details The lock is writer-preferred to prevent writer starvation.
 /// @return Opaque reader-writer lock object, or NULL on failure.
 void *rt_rwlock_new(void) {
-    auto *lock = static_cast<RtRwLock *>(rt_obj_new_i64(/*class_id=*/0, (int64_t)sizeof(RtRwLock)));
+    auto *lock =
+        static_cast<RtRwLock *>(rt_obj_new_i64(RT_RWLOCK_CLASS_ID, (int64_t)sizeof(RtRwLock)));
     if (!lock) {
         rt_trap("RwLock.New: alloc failed");
         return nullptr; // Unreachable, but silences compiler warnings
@@ -700,8 +733,10 @@ void rt_rwlock_read_enter(void *lock) {
     RtRwLock *rw = require_rwlock(lock, "RwLock.ReadEnter: null object");
     if (!rw)
         return;
+    rt_obj_retain_maybe(lock);
 
     const char *trap_msg = nullptr;
+    int8_t acquired = 0;
     {
         RwLockState &state = *rw->state;
         const std::thread::id tid = std::this_thread::get_id();
@@ -711,7 +746,7 @@ void rt_rwlock_read_enter(void *lock) {
         } else if (state.writer_active && state.writer_owner == tid) {
             ++state.active_readers;
             ++state.reader_counts[tid];
-            return;
+            acquired = 1;
         } else {
             while ((state.writer_active || !state.waiting_writers.empty()) && !state.closing) {
                 state.readers_cv.wait(lk);
@@ -721,10 +756,13 @@ void rt_rwlock_read_enter(void *lock) {
             } else {
                 ++state.active_readers;
                 ++state.reader_counts[tid];
+                acquired = 1;
             }
         }
     }
 
+    if (!acquired)
+        releaseRuntimeObject(lock);
     if (trap_msg)
         rt_trap(trap_msg);
 }
@@ -738,6 +776,7 @@ void rt_rwlock_read_exit(void *lock) {
         return;
 
     const char *trap_msg = nullptr;
+    int8_t released = 0;
     {
         RwLockState &state = *rw->state;
         const std::thread::id tid = std::this_thread::get_id();
@@ -754,11 +793,14 @@ void rt_rwlock_read_exit(void *lock) {
                 !state.waiting_writers.empty()) {
                 state.waiting_writers.front()->cv.notify_one();
             }
+            released = 1;
         }
     }
 
     if (trap_msg)
         rt_trap(trap_msg);
+    if (released)
+        releaseRuntimeObject(lock);
 }
 
 /// @brief Acquire the lock in exclusive (writer) mode.
@@ -770,8 +812,10 @@ void rt_rwlock_write_enter(void *lock) {
     RtRwLock *rw = require_rwlock(lock, "RwLock.WriteEnter: null object");
     if (!rw)
         return;
+    rt_obj_retain_maybe(lock);
 
     const char *trap_msg = nullptr;
+    int8_t acquired = 0;
     {
         RwLockState &state = *rw->state;
         const std::thread::id tid = std::this_thread::get_id();
@@ -781,7 +825,7 @@ void rt_rwlock_write_enter(void *lock) {
             trap_msg = "RwLock.WriteEnter: object finalized";
         } else if (state.writer_active && state.writer_owner == tid) {
             ++state.write_recursion;
-            return;
+            acquired = 1;
         } else {
             auto reader_it = state.reader_counts.find(tid);
             if (reader_it != state.reader_counts.end() && reader_it->second > 0) {
@@ -805,7 +849,8 @@ void rt_rwlock_write_enter(void *lock) {
                         state.writer_active = true;
                         state.writer_owner = tid;
                         state.write_recursion = 1;
-                        return;
+                        acquired = 1;
+                        break;
                     }
                     waiter.cv.wait(lk);
                 }
@@ -813,6 +858,8 @@ void rt_rwlock_write_enter(void *lock) {
         }
     }
 
+    if (!acquired)
+        releaseRuntimeObject(lock);
     if (trap_msg)
         rt_trap(trap_msg);
 }
@@ -828,6 +875,7 @@ void rt_rwlock_write_exit(void *lock) {
         return;
 
     const char *trap_msg = nullptr;
+    int8_t released = 0;
     {
         RwLockState &state = *rw->state;
         const std::thread::id tid = std::this_thread::get_id();
@@ -839,22 +887,26 @@ void rt_rwlock_write_exit(void *lock) {
             trap_msg = "RwLock.WriteExit: not owner";
         } else {
             --state.write_recursion;
-            if (state.write_recursion > 0)
-                return;
-
-            state.writer_active = false;
-            state.writer_owner = std::thread::id();
-
-            if (!state.waiting_writers.empty()) {
-                state.waiting_writers.front()->cv.notify_one();
+            released = 1;
+            if (state.write_recursion > 0) {
+                // A recursive write-enter retains once per successful enter.
             } else {
-                state.readers_cv.notify_all();
+                state.writer_active = false;
+                state.writer_owner = std::thread::id();
+
+                if (!state.waiting_writers.empty()) {
+                    state.waiting_writers.front()->cv.notify_one();
+                } else {
+                    state.readers_cv.notify_all();
+                }
             }
         }
     }
 
     if (trap_msg)
         rt_trap(trap_msg);
+    if (released)
+        releaseRuntimeObject(lock);
 }
 
 /// @brief Attempt to acquire a read lock without blocking.
@@ -865,6 +917,7 @@ int8_t rt_rwlock_try_read_enter(void *lock) {
     RtRwLock *rw = require_rwlock(lock, "RwLock.TryReadEnter: null object");
     if (!rw)
         return 0;
+    rt_obj_retain_maybe(lock);
 
     const char *trap_msg = nullptr;
     int8_t result = 0;
@@ -885,6 +938,8 @@ int8_t rt_rwlock_try_read_enter(void *lock) {
         }
     }
 
+    if (!result)
+        releaseRuntimeObject(lock);
     if (trap_msg)
         rt_trap(trap_msg);
     return result;
@@ -900,6 +955,7 @@ int8_t rt_rwlock_try_write_enter(void *lock) {
     RtRwLock *rw = require_rwlock(lock, "RwLock.TryWriteEnter: null object");
     if (!rw)
         return 0;
+    rt_obj_retain_maybe(lock);
 
     const char *trap_msg = nullptr;
     int8_t result = 0;
@@ -927,6 +983,8 @@ int8_t rt_rwlock_try_write_enter(void *lock) {
         }
     }
 
+    if (!result)
+        releaseRuntimeObject(lock);
     if (trap_msg)
         rt_trap(trap_msg);
     return result;
@@ -940,6 +998,7 @@ int64_t rt_rwlock_get_readers(void *lock) {
     RtRwLock *rw = require_rwlock(lock, "RwLock.get_Readers: null object");
     if (!rw)
         return 0;
+    rt_obj_retain_maybe(lock);
 
     const char *trap_msg = nullptr;
     int64_t readers = 0;
@@ -952,6 +1011,7 @@ int64_t rt_rwlock_get_readers(void *lock) {
             readers = state.active_readers;
     }
 
+    releaseRuntimeObject(lock);
     if (trap_msg)
         rt_trap(trap_msg);
     return readers;
@@ -965,6 +1025,7 @@ int8_t rt_rwlock_get_is_write_locked(void *lock) {
     RtRwLock *rw = require_rwlock(lock, "RwLock.get_IsWriteLocked: null object");
     if (!rw)
         return 0;
+    rt_obj_retain_maybe(lock);
 
     const char *trap_msg = nullptr;
     int8_t locked = 0;
@@ -977,6 +1038,7 @@ int8_t rt_rwlock_get_is_write_locked(void *lock) {
             locked = state.writer_active ? 1 : 0;
     }
 
+    releaseRuntimeObject(lock);
     if (trap_msg)
         rt_trap(trap_msg);
     return locked;

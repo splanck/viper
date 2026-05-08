@@ -16,10 +16,13 @@
 #include "rt_seq.h"
 #include "rt_threadpool.h"
 
+#include "common/ProcessIsolation.hpp"
+
 #include <atomic>
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
+#include <string>
 
 extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
@@ -58,6 +61,13 @@ static void *count_identity_seed_hits(void *a, void *b) {
     }
     int64_t vb = (int64_t)(intptr_t)b;
     return (void *)(intptr_t)(va + vb);
+}
+
+static void *trap_on_final_identity_combine(void *a, void *b) {
+    (void)b;
+    if (a == g_reduce_identity_sentinel)
+        rt_trap("final combine trap");
+    return a;
 }
 
 static void *make_int_seq(const int64_t *vals, int n) {
@@ -164,7 +174,20 @@ static void test_reduce_identity_applied_once() {
     printf("test_reduce_identity_applied_once: PASSED\n");
 }
 
-int main() {
+static void call_reduce_final_combine_trap() {
+    void *seq = rt_seq_new();
+    for (int64_t i = 1; i <= 64; i++)
+        rt_seq_push(seq, (void *)(intptr_t)i);
+    void *pool = rt_threadpool_new(4);
+    (void)rt_parallel_reduce_pool(
+        seq, (void *)trap_on_final_identity_combine, g_reduce_identity_sentinel, pool);
+}
+
+int main(int argc, char *argv[]) {
+    viper::tests::registerChildFunction(call_reduce_final_combine_trap);
+    if (viper::tests::dispatchChild(argc, argv))
+        return 0;
+
     printf("=== Parallel.Reduce Tests ===\n\n");
 
     test_reduce_sum();
@@ -175,6 +198,8 @@ int main() {
     test_reduce_large();
     test_reduce_null_seq();
     test_reduce_identity_applied_once();
+    auto result = viper::tests::runIsolated(call_reduce_final_combine_trap);
+    assert(result.stderrText.find("Parallel.Reduce: reducer trapped") != std::string::npos);
 
     printf("\nAll Parallel.Reduce tests passed!\n");
     return 0;

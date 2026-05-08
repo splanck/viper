@@ -49,6 +49,7 @@ set(ZIA_SOURCES
         ZiaAstPrinter.cpp
         ZiaCompletion.cpp
         rt_zia_completion.cpp
+        rt_zia_highlight.cpp
 )
 
 add_library(fe_zia ${ZIA_SOURCES})

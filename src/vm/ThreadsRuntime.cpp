@@ -66,6 +66,7 @@ struct VmAsyncRunPayload {
     ExternRegistry *externRegistry = nullptr;
     const il::core::Function *entry = nullptr;
     void *arg = nullptr;
+    bool ownsArg = false;
     void *promise = nullptr;
 };
 
@@ -85,6 +86,15 @@ static void releaseThreadStartPayload(VmThreadStartPayload *payload) {
 }
 
 static void vmThreadTrapPassthrough(const RuntimeTrapSignal &, void *) {}
+
+static void releaseAsyncRunArg(VmAsyncRunPayload *payload) {
+    if (!payload || !payload->ownsArg || !payload->arg)
+        return;
+    if (rt_obj_release_check0(payload->arg))
+        rt_obj_free(payload->arg);
+    payload->arg = nullptr;
+    payload->ownsArg = false;
+}
 
 static bool runVmThreadPayload(VmThreadStartPayload *payload, char *errorBuf, size_t errorBufSize) {
     if (errorBuf && errorBufSize > 0)
@@ -417,8 +427,10 @@ static void threads_thread_start_safe_owned_handler(void **args, void *result) {
 extern "C" void vm_async_run_entry_trampoline(void *raw) {
     VmAsyncRunPayload *payload = static_cast<VmAsyncRunPayload *>(raw);
     if (!payload || !payload->module || !payload->entry || !payload->promise) {
-        if (payload)
+        if (payload) {
+            releaseAsyncRunArg(payload);
             releaseExternRegistry(payload->externRegistry);
+        }
         delete payload;
         rt_abort("Async.Run: invalid entry");
     }
@@ -433,16 +445,26 @@ extern "C" void vm_async_run_entry_trampoline(void *raw) {
         args.push_back(argSlot);
 
         Slot result = detail::VMAccess::callFunction(vm, *payload->entry, args);
-        // Worker VMs unwind immediately after resolving; the Future must retain the result.
-        rt_promise_set_owned(payload->promise, result.ptr);
+        if (payload->ownsArg && result.ptr == payload->arg) {
+            payload->arg = nullptr;
+            payload->ownsArg = false;
+            rt_promise_set_transferred(payload->promise, result.ptr);
+        } else {
+            releaseAsyncRunArg(payload);
+            // Worker VMs unwind immediately after resolving; the Future must retain the result.
+            rt_promise_set_owned(payload->promise, result.ptr);
+        }
     } catch (const RuntimeTrapSignal &signal) {
         const char *message =
             signal.message.empty() ? "Async.Run: trapped VM worker" : signal.message.c_str();
+        releaseAsyncRunArg(payload);
         rt_promise_set_error(payload->promise, rt_const_cstr(message));
     } catch (const std::exception &ex) {
         const std::string message = std::string("Async.Run: unhandled exception: ") + ex.what();
+        releaseAsyncRunArg(payload);
         rt_promise_set_error(payload->promise, rt_const_cstr(message.c_str()));
     } catch (...) {
+        releaseAsyncRunArg(payload);
         rt_promise_set_error(payload->promise,
                              rt_const_cstr("Async.Run: unhandled non-standard exception"));
     }
@@ -490,11 +512,14 @@ static void threads_async_run_handler(void **args, void *result) {
     void *future = rt_promise_get_future(promise);
 
     auto *payload = new VmAsyncRunPayload{
-        &module, std::move(program), parentVm->externRegistry(), entryFn, arg, promise};
+        &module, std::move(program), parentVm->externRegistry(), entryFn, arg, arg != nullptr, promise};
+    if (payload->ownsArg)
+        rt_obj_retain_maybe(arg);
     retainExternRegistry(payload->externRegistry);
     void *thread =
         rt_thread_start(reinterpret_cast<void *>(&vm_async_run_entry_trampoline), payload);
     if (!thread) {
+        releaseAsyncRunArg(payload);
         releaseExternRegistry(payload->externRegistry);
         delete payload;
         rt_promise_set_error(promise, rt_const_cstr("Async.Run: failed to create thread"));

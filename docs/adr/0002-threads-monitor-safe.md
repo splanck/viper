@@ -136,6 +136,10 @@ backend-defined:
 - VM: `entry` is a VM function pointer (currently represented as an `il::core::Function *`) and is invoked by a per-thread
   interpreter runner.
 
+Joining is a one-shot ownership operation over the OS thread resource. `Join`, a successful `TryJoin`, and a successful
+`JoinFor` consume the join; later join attempts trap with `Thread.Join: already joined`. Thread identity and status
+queries remain valid after a successful join.
+
 Determinism and Repeatability
 
 - FIFO fairness is guaranteed for monitor queues, providing repeatability for many data-race-free programs.
@@ -220,4 +224,3 @@ Migration Plan
 4. Add VM program-instance shared state and a VM thread runner; implement `Thread.*` via extern overrides.
 5. Expand `Safe*` coverage and add frontend syntax/lowering for “safe variables”.
 6. Add VM-vs-native end-to-end tests restricted to defined threaded programs.
-

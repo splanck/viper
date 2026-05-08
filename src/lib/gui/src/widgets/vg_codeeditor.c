@@ -580,11 +580,22 @@ static int codeeditor_total_visual_rows_for_width(const vg_codeeditor_t *editor,
     return total_rows;
 }
 
-/// @brief Returns the maximum valid scroll_y value (content height minus widget height, clamped to ≥ 0).
+/// @brief Returns the maximum valid scroll_y value, with substantial empty
+///        space below the last line so the user can scroll the document end up
+///        to roughly the middle of the viewport (the scrollBeyondLastLine UX
+///        used by VS Code, Sublime, Atom). Without this, the last few lines
+///        are uncomfortable to read because they're pinned at the viewport's
+///        bottom edge.
+///
+///        Padding is half the viewport, with a minimum of one line so single-
+///        line viewports don't lose any scroll allowance.
 static float codeeditor_max_scroll_y(const vg_codeeditor_t *editor, const vg_widget_t *widget) {
     if (!editor || !widget)
         return 0.0f;
-    float max_scroll = codeeditor_total_content_height(editor, widget) - widget->height;
+    float padding = widget->height * 0.5f;
+    if (padding < editor->line_height)
+        padding = editor->line_height;
+    float max_scroll = codeeditor_total_content_height(editor, widget) - widget->height + padding;
     return max_scroll > 0.0f ? max_scroll : 0.0f;
 }
 
@@ -3021,6 +3032,7 @@ void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text) {
     editor->scroll_x = 0;
     editor->scroll_y = 0;
     editor->modified = false;
+    editor->zia_block_comment_depth = 0;
 
     vg_codeeditor_refresh_layout_state(editor);
     editor->base.needs_paint = true;
@@ -3315,6 +3327,9 @@ void vg_codeeditor_set_syntax(vg_codeeditor_t *editor,
         return;
     editor->syntax_highlighter = callback;
     editor->syntax_data = user_data;
+    // Reset language-specific scanner state — block-comment depth from a prior
+    // Zia document must not leak into a freshly-installed highlighter.
+    editor->zia_block_comment_depth = 0;
     // Invalidate cached colors so the new highlighter runs on the next paint
     for (int i = 0; i < editor->line_count; i++) {
         if (editor->lines[i].colors) {

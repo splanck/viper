@@ -93,6 +93,12 @@ struct rt_string_impl *rt_seq_get_str(void *obj, int64_t idx);
 /// @param val Value to store.
 void rt_seq_set(void *obj, int64_t idx, void *val);
 
+/// @brief Set an element without retaining the new value.
+/// @details If the sequence owns elements, the previous element is still
+///          released. This is for runtime code that already owns a reference
+///          and wants to transfer it into the sequence.
+void rt_seq_set_raw(void *obj, int64_t idx, void *val);
+
 /// @brief Add an element to the end of the sequence.
 /// @param obj Opaque Seq object pointer.
 /// @param val Element to add.

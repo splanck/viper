@@ -93,6 +93,16 @@ static void cancellation_release_object(void *obj) {
         rt_obj_free(obj);
 }
 
+static rt_cancellation_data *cancellation_require(void *token) {
+    if (!token)
+        return NULL;
+    if (rt_obj_class_id(token) != RT_CANCELLATION_CLASS_ID) {
+        rt_trap("CancelToken: invalid object");
+        return NULL;
+    }
+    return (rt_cancellation_data *)token;
+}
+
 static void cancellation_mark_cancelled(rt_cancellation_data *data) {
     if (!data)
         return;
@@ -100,10 +110,29 @@ static void cancellation_mark_cancelled(rt_cancellation_data *data) {
     if (!data->monitor)
         return;
 
+    rt_cancellation_data **children = NULL;
+    size_t child_count = 0;
+    size_t child_cap = 0;
+
     rt_monitor_enter(data->monitor);
-    for (rt_cancellation_data *child = data->first_child; child; child = child->next_sibling)
-        cancellation_mark_cancelled(child);
+    for (rt_cancellation_data *child = data->first_child; child; child = child->next_sibling) {
+        cancel_store(child, 1);
+        if (child_count == child_cap) {
+            size_t next_cap = child_cap ? child_cap * 2 : 8;
+            rt_cancellation_data **next_children =
+                (rt_cancellation_data **)realloc(children, next_cap * sizeof(rt_cancellation_data *));
+            if (!next_children)
+                continue;
+            children = next_children;
+            child_cap = next_cap;
+        }
+        children[child_count++] = child;
+    }
     rt_monitor_exit(data->monitor);
+
+    for (size_t i = 0; i < child_count; i++)
+        cancellation_mark_cancelled(children[i]);
+    free(children);
 }
 
 static void cancellation_finalizer(void *obj) {
@@ -142,7 +171,7 @@ static void cancellation_finalizer(void *obj) {
 
 /// @brief Create a new cancellation token (initially not cancelled).
 void *rt_cancellation_new(void) {
-    void *obj = rt_obj_new_i64(0, sizeof(rt_cancellation_data));
+    void *obj = rt_obj_new_i64(RT_CANCELLATION_CLASS_ID, sizeof(rt_cancellation_data));
     if (!obj) {
         rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR,
                            Err_RuntimeError,
@@ -172,7 +201,9 @@ void *rt_cancellation_new(void) {
 int8_t rt_cancellation_is_cancelled(void *token) {
     if (!token)
         return 0;
-    rt_cancellation_data *data = (rt_cancellation_data *)token;
+    rt_cancellation_data *data = cancellation_require(token);
+    if (!data)
+        return 0;
     if (cancel_load(data))
         return 1;
     if (data->parent)
@@ -184,7 +215,7 @@ int8_t rt_cancellation_is_cancelled(void *token) {
 void rt_cancellation_cancel(void *token) {
     if (!token)
         return;
-    rt_cancellation_data *data = (rt_cancellation_data *)token;
+    rt_cancellation_data *data = cancellation_require(token);
     cancellation_mark_cancelled(data);
 }
 
@@ -192,13 +223,15 @@ void rt_cancellation_cancel(void *token) {
 void rt_cancellation_reset(void *token) {
     if (!token)
         return;
-    rt_cancellation_data *data = (rt_cancellation_data *)token;
+    rt_cancellation_data *data = cancellation_require(token);
+    if (!data)
+        return;
     cancel_store(data, 0);
 }
 
 /// @brief Create a child token that is automatically cancelled when the parent is cancelled.
 void *rt_cancellation_linked(void *parent) {
-    void *obj = rt_obj_new_i64(0, sizeof(rt_cancellation_data));
+    void *obj = rt_obj_new_i64(RT_CANCELLATION_CLASS_ID, sizeof(rt_cancellation_data));
     if (!obj) {
         rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR,
                            Err_RuntimeError,
@@ -222,16 +255,22 @@ void *rt_cancellation_linked(void *parent) {
     data->next_sibling = NULL;
 
     if (parent) {
+        rt_cancellation_data *parent_data = cancellation_require(parent);
+        if (!parent_data) {
+            cancellation_release_object(obj);
+            return NULL;
+        }
         rt_obj_retain_maybe(parent);
         data->parent = parent;
-        rt_cancellation_data *parent_data = (rt_cancellation_data *)parent;
-        if (rt_cancellation_is_cancelled(parent))
-            cancel_store(data, 1);
         if (parent_data->monitor) {
             rt_monitor_enter(parent_data->monitor);
             data->next_sibling = parent_data->first_child;
             parent_data->first_child = data;
+            if (cancel_load(parent_data) || rt_cancellation_is_cancelled(parent))
+                cancel_store(data, 1);
             rt_monitor_exit(parent_data->monitor);
+        } else if (rt_cancellation_is_cancelled(parent)) {
+            cancel_store(data, 1);
         }
     }
     rt_obj_set_finalizer(obj, cancellation_finalizer);
