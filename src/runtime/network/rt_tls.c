@@ -31,6 +31,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_crypto.h"
+#include "rt_crypto_module.h"
 #include "rt_ecdsa_p256.h"
 #include "rt_internal.h"
 #include "rt_object.h"
@@ -3106,6 +3107,13 @@ int rt_tls_handshake(rt_tls_session_t *session) {
     if (!session)
         return RT_TLS_ERROR_INVALID_ARG;
 
+    if (rt_crypto_module_is_approved_mode()) {
+        session->error =
+            "TLS approved mode requires the validation-ready P-256/P-384 ECDHE profile";
+        session->state = TLS_STATE_ERROR;
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+
     if (session->state != TLS_STATE_INITIAL) {
         session->error = "invalid state for handshake";
         return RT_TLS_ERROR;
@@ -3146,6 +3154,42 @@ int rt_tls_handshake(rt_tls_session_t *session) {
             if (pos + 4 + hs_len > data_len) {
                 session->error = "incomplete handshake message";
                 return RT_TLS_ERROR_HANDSHAKE;
+            }
+
+            switch (session->state) {
+                case TLS_STATE_CLIENT_HELLO_SENT:
+                    if (hs_type != TLS_HS_SERVER_HELLO) {
+                        session->error = "unexpected TLS handshake message";
+                        return RT_TLS_ERROR_HANDSHAKE;
+                    }
+                    break;
+                case TLS_STATE_WAIT_ENCRYPTED_EXTENSIONS:
+                    if (hs_type != TLS_HS_ENCRYPTED_EXTENSIONS) {
+                        session->error = "unexpected TLS handshake message";
+                        return RT_TLS_ERROR_HANDSHAKE;
+                    }
+                    break;
+                case TLS_STATE_WAIT_CERTIFICATE:
+                    if (hs_type != TLS_HS_CERTIFICATE) {
+                        session->error = "unexpected TLS handshake message";
+                        return RT_TLS_ERROR_HANDSHAKE;
+                    }
+                    break;
+                case TLS_STATE_WAIT_CERTIFICATE_VERIFY:
+                    if (hs_type != TLS_HS_CERTIFICATE_VERIFY) {
+                        session->error = "unexpected TLS handshake message";
+                        return RT_TLS_ERROR_HANDSHAKE;
+                    }
+                    break;
+                case TLS_STATE_WAIT_FINISHED:
+                    if (hs_type != TLS_HS_FINISHED) {
+                        session->error = "unexpected TLS handshake message";
+                        return RT_TLS_ERROR_HANDSHAKE;
+                    }
+                    break;
+                default:
+                    session->error = "unexpected TLS handshake state";
+                    return RT_TLS_ERROR_HANDSHAKE;
             }
 
             if (hs_type != TLS_HS_FINISHED &&
@@ -3223,8 +3267,8 @@ int rt_tls_handshake(rt_tls_session_t *session) {
                     break;
 
                 default:
-                    // Skip unknown messages
-                    break;
+                    session->error = "unexpected TLS handshake message";
+                    return RT_TLS_ERROR_HANDSHAKE;
             }
 
             pos += 4 + hs_len;
@@ -3604,32 +3648,33 @@ static rt_viper_tls_t *rt_viper_tls_require(void *obj) {
     return (rt_viper_tls_t *)obj;
 }
 
-/// @brief Connect to a TLS server.
-/// @param host Hostname to connect to.
-/// @param port Port number.
-/// @return TLS object or NULL on error.
-void *rt_viper_tls_connect(rt_string host, int64_t port) {
-    if (!host || port < 1 || port > 65535)
-        return NULL;
+static int rt_viper_tls_string_arg(rt_string value,
+                                   const char **out,
+                                   size_t *out_len,
+                                   int allow_empty,
+                                   size_t max_len) {
+    if (!out || !out_len)
+        return 0;
+    *out = "";
+    *out_len = 0;
+    if (!value)
+        return allow_empty;
+    int64_t len64 = rt_str_len(value);
+    if (len64 < 0 || (!allow_empty && len64 == 0) || (size_t)len64 >= max_len)
+        return 0;
+    const char *cstr = rt_string_cstr(value);
+    if (!cstr)
+        return 0;
+    if (strlen(cstr) != (size_t)len64)
+        return 0;
+    *out = cstr;
+    *out_len = (size_t)len64;
+    return 1;
+}
 
-    int64_t host_len = rt_str_len(host);
-    if (host_len <= 0 || host_len >= 256)
-        return NULL;
-    const char *host_cstr = rt_string_cstr(host);
-    if (!host_cstr)
-        return NULL;
-    if (strlen(host_cstr) != (size_t)host_len)
-        return NULL;
-
-    rt_tls_config_t config;
-    rt_tls_config_init(&config);
-    config.hostname = host_cstr;
-
-    rt_tls_session_t *session = rt_tls_connect(host_cstr, (uint16_t)port, &config);
-    if (!session)
-        return NULL;
-
-    // Create Viper TLS object
+static void *rt_viper_tls_object_from_session(rt_tls_session_t *session,
+                                              const char *host_cstr,
+                                              int64_t port) {
     rt_viper_tls_t *tls =
         (rt_viper_tls_t *)rt_obj_new_i64(RT_TLS_CLASS_ID, (int64_t)sizeof(rt_viper_tls_t));
     if (!tls) {
@@ -3642,7 +3687,7 @@ void *rt_viper_tls_connect(rt_string host, int64_t port) {
     tls->port = port;
     rt_obj_set_finalizer(tls, rt_viper_tls_finalize);
 
-    tls->host = strdup(host_cstr);
+    tls->host = strdup(host_cstr ? host_cstr : "");
     if (!tls->host) {
         if (rt_obj_release_check0(tls))
             rt_obj_free(tls);
@@ -3652,58 +3697,72 @@ void *rt_viper_tls_connect(rt_string host, int64_t port) {
     return tls;
 }
 
-/// @brief Connect to a TLS server with timeout.
-/// @param host Hostname to connect to.
-/// @param port Port number.
-/// @param timeout_ms Timeout in milliseconds.
-/// @return TLS object or NULL on error.
-void *rt_viper_tls_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
-    if (!host || port < 1 || port > 65535)
+static void *rt_viper_tls_connect_impl(rt_string host,
+                                       int64_t port,
+                                       int64_t timeout_ms,
+                                       rt_string ca_file,
+                                       rt_string alpn,
+                                       int verify_cert) {
+    if (port < 1 || port > 65535)
         return NULL;
     if (timeout_ms > INT_MAX)
         return NULL;
     if (timeout_ms < 0)
         timeout_ms = 0;
 
-    int64_t host_len = rt_str_len(host);
-    if (host_len <= 0 || host_len >= 256)
+    const char *host_cstr = NULL;
+    const char *ca_cstr = NULL;
+    const char *alpn_cstr = NULL;
+    size_t host_len = 0;
+    size_t ca_len = 0;
+    size_t alpn_len = 0;
+    if (!rt_viper_tls_string_arg(host, &host_cstr, &host_len, 0, sizeof(((rt_tls_session_t *)0)->hostname)))
         return NULL;
-    const char *host_cstr = rt_string_cstr(host);
-    if (!host_cstr)
+    if (!rt_viper_tls_string_arg(ca_file, &ca_cstr, &ca_len, 1, sizeof(((rt_tls_session_t *)0)->ca_file)))
         return NULL;
-    if (strlen(host_cstr) != (size_t)host_len)
+    if (!rt_viper_tls_string_arg(alpn, &alpn_cstr, &alpn_len, 1, sizeof(((rt_tls_session_t *)0)->alpn_protocols)))
         return NULL;
 
     rt_tls_config_t config;
     rt_tls_config_init(&config);
     config.hostname = host_cstr;
     config.timeout_ms = (int)timeout_ms;
+    config.verify_cert = verify_cert ? 1 : 0;
+    if (ca_len > 0)
+        config.ca_file = ca_cstr;
+    if (alpn_len > 0)
+        config.alpn_protocol = alpn_cstr;
 
     rt_tls_session_t *session = rt_tls_connect(host_cstr, (uint16_t)port, &config);
     if (!session)
         return NULL;
+    return rt_viper_tls_object_from_session(session, host_cstr, port);
+}
 
-    // Create Viper TLS object
-    rt_viper_tls_t *tls =
-        (rt_viper_tls_t *)rt_obj_new_i64(RT_TLS_CLASS_ID, (int64_t)sizeof(rt_viper_tls_t));
-    if (!tls) {
-        rt_tls_close(session);
-        return NULL;
-    }
+/// @brief Connect to a TLS server.
+/// @param host Hostname to connect to.
+/// @param port Port number.
+/// @return TLS object or NULL on error.
+void *rt_viper_tls_connect(rt_string host, int64_t port) {
+    return rt_viper_tls_connect_impl(host, port, 30000, NULL, NULL, 1);
+}
 
-    tls->session = session;
-    tls->host = NULL;
-    tls->port = port;
-    rt_obj_set_finalizer(tls, rt_viper_tls_finalize);
+/// @brief Connect to a TLS server with timeout.
+/// @param host Hostname to connect to.
+/// @param port Port number.
+/// @param timeout_ms Timeout in milliseconds.
+/// @return TLS object or NULL on error.
+void *rt_viper_tls_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
+    return rt_viper_tls_connect_impl(host, port, timeout_ms, NULL, NULL, 1);
+}
 
-    tls->host = strdup(host_cstr);
-    if (!tls->host) {
-        if (rt_obj_release_check0(tls))
-            rt_obj_free(tls);
-        return NULL;
-    }
-
-    return tls;
+void *rt_viper_tls_connect_options(rt_string host,
+                                   int64_t port,
+                                   rt_string ca_file,
+                                   rt_string alpn,
+                                   int8_t verify_cert,
+                                   int64_t timeout_ms) {
+    return rt_viper_tls_connect_impl(host, port, timeout_ms, ca_file, alpn, verify_cert ? 1 : 0);
 }
 
 /// @brief Get the hostname of the TLS connection.
@@ -3725,6 +3784,16 @@ int64_t rt_viper_tls_port(void *obj) {
     if (!tls)
         return 0;
     return tls->port;
+}
+
+rt_string rt_viper_tls_negotiated_alpn(void *obj) {
+    if (!obj)
+        return rt_string_from_bytes("", 0);
+    rt_viper_tls_t *tls = rt_viper_tls_require(obj);
+    if (!tls || !tls->session)
+        return rt_string_from_bytes("", 0);
+    const char *alpn = rt_tls_get_negotiated_alpn(tls->session);
+    return rt_string_from_bytes(alpn ? alpn : "", alpn ? strlen(alpn) : 0);
 }
 
 /// @brief Check if the TLS connection is open.

@@ -6,8 +6,9 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_cipher.h
-// Purpose: High-level encryption/decryption API using ChaCha20-Poly1305 AEAD with automatic nonce
-// generation and PBKDF2-HMAC-SHA256 key derivation from passwords.
+// Purpose: High-level encryption/decryption API using ChaCha20-Poly1305 AEAD in compatibility
+// mode or AES-256-GCM in approved mode, with automatic nonce generation and
+// PBKDF2-HMAC-SHA256 key derivation from passwords.
 //
 // Key invariants:
 //   - Password-based format: [magic][iterations][16 bytes salt][12 bytes nonce][ciphertext][tag].
@@ -41,7 +42,7 @@ extern "C" {
 /// @details Derives a 256-bit key from the password using PBKDF2-HMAC-SHA256
 ///          with a random 16-byte salt and a fixed strong work factor.
 ///          Generates a random 12-byte nonce.
-///          Uses ChaCha20-Poly1305 AEAD for authenticated encryption.
+///          Uses ChaCha20-Poly1305 AEAD in compatibility mode and AES-256-GCM in approved mode.
 /// @param plaintext Bytes object containing data to encrypt.
 /// @param password Password string used for key derivation.
 /// @return Bytes object: [magic(4) | iterations(4) | salt(16) | nonce(12) | ciphertext | tag(16)]

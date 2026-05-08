@@ -6,27 +6,37 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_aes.c
-// Purpose: Implements AES-128 and AES-256 block cipher in CBC mode with PKCS7
-//          padding (FIPS-197). Pure C implementation with no external
-//          dependencies. Used by rt_cipher.c as an alternative cipher algorithm.
+// Purpose: Implements the Viper.Crypto.Aes runtime — AES-128 and AES-256 block
+//          cipher in CBC mode with PKCS7 padding (FIPS-197), plus AES-GCM
+//          authenticated encryption (Aes.EncryptAuth / DecryptAuth) wrapping
+//          the GCM ciphertext in a 16-byte magic header so plain-CBC and
+//          authenticated-GCM payloads cannot be confused at the API level.
+//          Pure C implementation with no external dependencies.
 //
 // Key invariants:
 //   - Key sizes: 16 bytes (AES-128) or 32 bytes (AES-256); others trap.
-//   - IV is always 16 bytes (one AES block); callers must supply unique random IV.
-//   - PKCS7 padding is applied during encryption and stripped during decryption.
-//   - CBC mode XORs each plaintext block with the previous ciphertext block.
+//   - CBC mode: IV is 16 bytes (one AES block); callers must supply a unique
+//     random IV. PKCS7 padding is applied during encryption and stripped on
+//     decryption. Ciphertext length is always a multiple of 16 bytes.
+//   - GCM mode: prepended with the AES_AUTH_HEADER ('V', 'A', 'K', '1' magic +
+//     version/flag bytes, 16 bytes total) so an unmodified decrypt path
+//     refuses ciphertexts that lack the header. The header is folded into
+//     the GCM AAD, so altering it invalidates the tag.
+//   - aes_combine_aad composes the application-provided AAD with the magic
+//     header so the GCM tag authenticates both.
 //   - This implementation is NOT hardened against cache-timing attacks; do not
 //     use in contexts requiring constant-time cryptographic guarantees.
-//   - Ciphertext length is always a multiple of 16 bytes (due to PKCS7 padding).
 //
 // Ownership/Lifetime:
-//   - Returned ciphertext and plaintext rt_bytes are fresh allocations owned by
-//     the caller.
-//   - Input key, IV, and data buffers are borrowed for the duration of the call.
+//   - Returned ciphertext and plaintext rt_bytes are fresh allocations owned
+//     by the caller.
+//   - Input key, IV, AAD, and data buffers are borrowed for the duration of
+//     the call.
 //
 // Links: src/runtime/text/rt_aes.h (public API),
 //        src/runtime/text/rt_cipher.h (ChaCha20-Poly1305 cipher, preferred),
-//        src/runtime/text/rt_rand.h (IV generation)
+//        src/runtime/text/rt_rand.h (IV / nonce generation),
+//        src/runtime/text/rt_keyderive_internal.h (HMAC helpers used by GCM)
 //
 //===----------------------------------------------------------------------===//
 
@@ -34,6 +44,7 @@
 
 #include "rt_bytes.h"
 #include "rt_crypto.h"
+#include "rt_crypto_module.h"
 #include "rt_internal.h"
 #include "rt_keyderive_internal.h"
 #include "rt_string.h"
@@ -86,6 +97,20 @@ static const uint8_t *aes_string_bytes(rt_string str, size_t *len) {
     return (const uint8_t *)cstr;
 }
 
+/// @brief Concatenate the AES-auth magic header with caller-supplied AAD into a single buffer.
+/// @details The GCM tag must authenticate the magic header (so an attacker
+///          can't strip it and feed the ciphertext to plain-AES decryption)
+///          AND the application's AAD. We splice them: returned buffer is
+///          [header || user_aad]; @p aad_out points at it; @p aad_len_out is
+///          header_len + user_len. When user_len == 0, returns the header
+///          directly without allocating. Caller frees the returned buffer
+///          (NULL when no allocation was needed).
+/// @param header        Magic header bytes (typically AES_AUTH_HEADER).
+/// @param header_len    Header length (typically AES_AUTH_HEADER_LEN = 16).
+/// @param aad_obj       Optional rt_bytes carrying user AAD; may be NULL.
+/// @param aad_out       Out: pointer to the combined buffer.
+/// @param aad_len_out   Out: total length of the combined buffer.
+/// @return Heap-allocated buffer to free, or NULL when no allocation occurred.
 static uint8_t *aes_combine_aad(const uint8_t *header,
                                 size_t header_len,
                                 void *aad_obj,
@@ -775,6 +800,8 @@ static uint8_t *aes_cbc_decrypt(const uint8_t *ciphertext,
 /// @param iv Bytes object containing initialization vector (must be 16 bytes)
 /// @return Bytes object containing ciphertext
 void *rt_aes_encrypt(void *data, void *key, void *iv) {
+    if (rt_crypto_module_is_approved_mode())
+        rt_trap("AES.CBC is not an approved-mode Viper service; use AES-GCM");
     size_t data_len, key_len, iv_len;
     uint8_t *data_raw = rt_bytes_extract_raw(data, &data_len);
     uint8_t *key_raw = rt_bytes_extract_raw(key, &key_len);
@@ -850,6 +877,8 @@ void *rt_aes_encrypt(void *data, void *key, void *iv) {
 /// @param iv Bytes object containing initialization vector (must be 16 bytes)
 /// @return Bytes object containing plaintext, or NULL on decryption error
 void *rt_aes_decrypt(void *data, void *key, void *iv) {
+    if (rt_crypto_module_is_approved_mode())
+        rt_trap("AES.CBC is not an approved-mode Viper service; use AES-GCM");
     size_t data_len, key_len, iv_len;
     uint8_t *data_raw = rt_bytes_extract_raw(data, &data_len);
     uint8_t *key_raw = rt_bytes_extract_raw(key, &key_len);
@@ -902,7 +931,6 @@ void *rt_aes_decrypt(void *data, void *key, void *iv) {
     free(iv_raw);
 
     if (!plain) {
-        rt_trap("AES: decryption failed (invalid padding or corrupted data)");
         return NULL;
     }
 
@@ -914,17 +942,31 @@ void *rt_aes_decrypt(void *data, void *key, void *iv) {
     return result;
 }
 
+/// @brief AES-GCM authenticated encryption with magic-header framing.
+/// @details Implements `Viper.Crypto.Aes.EncryptAuth(data, key, aad)`. Generates
+///          a fresh 12-byte nonce, prepends the AES_AUTH_HEADER and the nonce
+///          to the output, runs AES-128-GCM or AES-256-GCM over the plaintext with
+///          [magic_header || user_aad] as the AEAD AAD, and appends the
+///          16-byte GCM tag. The returned bytes object layout is:
+///          [16-byte header][12-byte nonce][ciphertext][16-byte tag].
+///          Decryption via rt_aes_decrypt_auth refuses to proceed if the
+///          header doesn't match, so plain-CBC ciphertexts can't be passed
+///          through here by accident.
+/// @param data Plaintext bytes. Required.
+/// @param key  16-byte key (AES-128) or 32-byte key (AES-256). Other lengths trap.
+/// @param aad  Optional additional authenticated data; may be NULL.
+/// @return New bytes object owning the framed ciphertext, or NULL on bad key.
 void *rt_aes_encrypt_auth(void *data, void *key, void *aad) {
     size_t data_len, key_len;
     uint8_t *data_raw = rt_bytes_extract_raw(data, &data_len);
     uint8_t *key_raw = rt_bytes_extract_raw(key, &key_len);
-    if (key_len != 16) {
+    if (key_len != 16 && key_len != 32) {
         free(data_raw);
         if (key_raw) {
             aes_secure_zero(key_raw, key_len);
             free(key_raw);
         }
-        rt_trap("AES.Auth: key must be exactly 16 bytes");
+        rt_trap("AES.Auth: key must be exactly 16 or 32 bytes");
         return NULL;
     }
     if (data_len > SIZE_MAX - AES_AUTH_HEADER_LEN - 16) {
@@ -952,13 +994,21 @@ void *rt_aes_encrypt_auth(void *data, void *key, void *aad) {
     const uint8_t *aad_data;
     size_t aad_len;
     uint8_t *aad_alloc = aes_combine_aad(out, AES_AUTH_HEADER_LEN, aad, &aad_data, &aad_len);
-    size_t encrypted_len = rt_aes128_gcm_encrypt(key_raw,
-                                                 out + 4,
-                                                 aad_data,
-                                                 aad_len,
-                                                 data_raw ? data_raw : (const uint8_t *)"",
-                                                 data_len,
-                                                 out + AES_AUTH_HEADER_LEN);
+    size_t encrypted_len =
+        key_len == 16 ? rt_aes128_gcm_encrypt(key_raw,
+                                              out + 4,
+                                              aad_data,
+                                              aad_len,
+                                              data_raw ? data_raw : (const uint8_t *)"",
+                                              data_len,
+                                              out + AES_AUTH_HEADER_LEN)
+                      : rt_aes256_gcm_encrypt(key_raw,
+                                              out + 4,
+                                              aad_data,
+                                              aad_len,
+                                              data_raw ? data_raw : (const uint8_t *)"",
+                                              data_len,
+                                              out + AES_AUTH_HEADER_LEN);
     if (aad_alloc)
         free(aad_alloc);
     if (encrypted_len != data_len + 16) {
@@ -979,17 +1029,30 @@ void *rt_aes_encrypt_auth(void *data, void *key, void *aad) {
     return result;
 }
 
+/// @brief AES-GCM authenticated decryption with magic-header verification.
+/// @details Inverse of rt_aes_encrypt_auth. Validates the leading
+///          AES_AUTH_HEADER, extracts the 12-byte nonce, runs AES-GCM
+///          decryption with [magic_header || user_aad] as the expected
+///          AEAD AAD, and verifies the trailing 16-byte tag. Any mismatch
+///          (wrong header, wrong key, modified ciphertext, modified AAD)
+///          returns NULL — the caller must treat NULL as authentication
+///          failure, not as plaintext.
+/// @param data Framed ciphertext from rt_aes_encrypt_auth. Required.
+/// @param key  16-byte key (AES-128) or 32-byte key (AES-256). Other lengths trap.
+/// @param aad  Same AAD that was used at encryption time; may be NULL.
+/// @return New bytes object with the decrypted plaintext, or NULL on any
+///         authentication failure.
 void *rt_aes_decrypt_auth(void *data, void *key, void *aad) {
     size_t data_len, key_len;
     uint8_t *encoded = rt_bytes_extract_raw(data, &data_len);
     uint8_t *key_raw = rt_bytes_extract_raw(key, &key_len);
-    if (key_len != 16) {
+    if (key_len != 16 && key_len != 32) {
         free(encoded);
         if (key_raw) {
             aes_secure_zero(key_raw, key_len);
             free(key_raw);
         }
-        rt_trap("AES.Auth: key must be exactly 16 bytes");
+        rt_trap("AES.Auth: key must be exactly 16 or 32 bytes");
         return NULL;
     }
     if (data_len < AES_AUTH_HEADER_LEN + 16 || !encoded || encoded[0] != AES_AUTH_MAGIC0 ||
@@ -1014,13 +1077,21 @@ void *rt_aes_decrypt_auth(void *data, void *key, void *aad) {
     const uint8_t *aad_data;
     size_t aad_len;
     uint8_t *aad_alloc = aes_combine_aad(encoded, AES_AUTH_HEADER_LEN, aad, &aad_data, &aad_len);
-    long plain_len = rt_aes128_gcm_decrypt(key_raw,
-                                           encoded + 4,
-                                           aad_data,
-                                           aad_len,
-                                           encoded + AES_AUTH_HEADER_LEN,
-                                           cipher_len,
-                                           plain);
+    long plain_len =
+        key_len == 16 ? rt_aes128_gcm_decrypt(key_raw,
+                                              encoded + 4,
+                                              aad_data,
+                                              aad_len,
+                                              encoded + AES_AUTH_HEADER_LEN,
+                                              cipher_len,
+                                              plain)
+                      : rt_aes256_gcm_decrypt(key_raw,
+                                              encoded + 4,
+                                              aad_data,
+                                              aad_len,
+                                              encoded + AES_AUTH_HEADER_LEN,
+                                              cipher_len,
+                                              plain);
     if (aad_alloc)
         free(aad_alloc);
     aes_secure_zero(key_raw, key_len);

@@ -68,6 +68,17 @@ int ecdsa_p256_sign(const uint8_t privkey[32],
                     uint8_t sig_r[32],
                     uint8_t sig_s[32]);
 
+/// @brief Compute a P-256 ECDH shared secret x-coordinate.
+/// @param privkey 32-byte big-endian private scalar d where 1 <= d < n.
+/// @param peer_x  Peer public key affine X coordinate.
+/// @param peer_y  Peer public key affine Y coordinate.
+/// @param shared_x Output shared point X coordinate.
+/// @return 1 on success, 0 on invalid key material or invalid peer point.
+int ecdsa_p256_ecdh(const uint8_t privkey[32],
+                    const uint8_t peer_x[32],
+                    const uint8_t peer_y[32],
+                    uint8_t shared_x[32]);
+
 #ifdef __cplusplus
 }
 #endif

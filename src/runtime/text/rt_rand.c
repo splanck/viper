@@ -7,9 +7,12 @@
 //
 // File: src/runtime/text/rt_rand.c
 // Purpose: Implements cryptographically secure random generation for the
-//          Viper.Text.Rand class. Uses OS-provided CSPRNGs: /dev/urandom on
-//          Linux/macOS, BCryptGenRandom on Windows. Provides RandomBytes,
+//          Viper.Crypto.Rand class. Uses OS-provided CSPRNGs: /dev/urandom
+//          on Linux/macOS, BCryptGenRandom on Windows. Provides RandomBytes,
 //          RandomInt (range), RandomString (alphanumeric), and Token (hex).
+//          Used by the password and cipher modules to source salts, nonces,
+//          and IVs; also exposed directly to applications that need
+//          high-quality random material.
 //
 // Key invariants:
 //   - All random output is sourced from the OS CSPRNG; never from rand() or srand().
@@ -31,6 +34,7 @@
 #include "rt_rand.h"
 
 #include "rt_bytes.h"
+#include "rt_crypto_module.h"
 #include "rt_internal.h"
 
 #include <stdint.h>
@@ -95,6 +99,10 @@ extern void arc4random_buf(void *buf, size_t nbytes);
 static int secure_random_fill(uint8_t *buf, size_t len) {
     if (len == 0)
         return 0;
+    if (rt_crypto_module_is_approved_mode()) {
+        rt_crypto_module_random_bytes(buf, len);
+        return 0;
+    }
 
 #ifdef _WIN32
     // Use BCryptGenRandom on Windows

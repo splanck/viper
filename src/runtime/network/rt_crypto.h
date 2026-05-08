@@ -85,7 +85,7 @@ void rt_sha384(const void *data, size_t len, uint8_t digest[48]);
 void rt_sha512(const void *data, size_t len, uint8_t digest[64]);
 
 //=========================================================================
-// HMAC-SHA256
+// HMAC-SHA2
 //=========================================================================
 
 /// @brief Compute HMAC-SHA256.
@@ -96,6 +96,14 @@ void rt_sha512(const void *data, size_t len, uint8_t digest[64]);
 /// @param mac Output buffer for the 32-byte message authentication code.
 void rt_hmac_sha256(
     const uint8_t *key, size_t key_len, const void *data, size_t data_len, uint8_t mac[32]);
+
+/// @brief Compute HMAC-SHA384.
+void rt_hmac_sha384(
+    const uint8_t *key, size_t key_len, const void *data, size_t data_len, uint8_t mac[48]);
+
+/// @brief Compute HMAC-SHA512.
+void rt_hmac_sha512(
+    const uint8_t *key, size_t key_len, const void *data, size_t data_len, uint8_t mac[64]);
 
 //=========================================================================
 // HKDF-SHA256 (RFC 5869)
@@ -133,6 +141,22 @@ int rt_hkdf_expand_label(const uint8_t secret[32],
                          size_t context_len,
                          uint8_t *out,
                          size_t out_len);
+
+/// @brief HKDF-Extract with HMAC-SHA384.
+void rt_hkdf_extract_sha384(
+    const uint8_t *salt, size_t salt_len, const uint8_t *ikm, size_t ikm_len, uint8_t prk[48]);
+
+/// @brief HKDF-Expand with HMAC-SHA384.
+int rt_hkdf_expand_sha384(
+    const uint8_t prk[48], const uint8_t *info, size_t info_len, uint8_t *okm, size_t okm_len);
+
+/// @brief TLS 1.3 HKDF-Expand-Label with HMAC-SHA384.
+int rt_hkdf_expand_label_sha384(const uint8_t secret[48],
+                                const char *label,
+                                const uint8_t *context,
+                                size_t context_len,
+                                uint8_t *out,
+                                size_t out_len);
 
 //=========================================================================
 // ChaCha20-Poly1305 AEAD
@@ -207,6 +231,28 @@ size_t rt_aes128_gcm_encrypt(const uint8_t key[16],
 ///                  ciphertext_len - 16 bytes).
 /// @return Plaintext length on success, -1 on authentication failure.
 long rt_aes128_gcm_decrypt(const uint8_t key[16],
+                           const uint8_t nonce[12],
+                           const void *aad,
+                           size_t aad_len,
+                           const void *ciphertext,
+                           size_t ciphertext_len,
+                           uint8_t *plaintext);
+
+/// @brief Encrypt with AES-256-GCM.
+/// @param key The 256-bit encryption key (32 bytes).
+/// @param nonce The 96-bit nonce (12 bytes, must be unique per key).
+/// @return Ciphertext length (plaintext_len + 16 for tag).
+size_t rt_aes256_gcm_encrypt(const uint8_t key[32],
+                             const uint8_t nonce[12],
+                             const void *aad,
+                             size_t aad_len,
+                             const void *plaintext,
+                             size_t plaintext_len,
+                             uint8_t *ciphertext);
+
+/// @brief Decrypt with AES-256-GCM.
+/// @return Plaintext length on success, -1 on authentication failure.
+long rt_aes256_gcm_decrypt(const uint8_t key[32],
                            const uint8_t nonce[12],
                            const void *aad,
                            size_t aad_len,

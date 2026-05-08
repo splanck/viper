@@ -16,6 +16,7 @@ last-verified: 2026-05-06
 - [Viper.Crypto.Cipher](#vipercryptocipher)
 - [Viper.Crypto.Hash](#vipercryptohash)
 - [Viper.Crypto.KeyDerive](#vipercryptokeyderive)
+- [Viper.Crypto.Module](#vipercryptomodule)
 - [Viper.Crypto.Password](#vipercryptopassword)
 - [Viper.Crypto.Rand](#vipercryptorand)
 - [Viper.Crypto.Tls](#vipercryptotls)
@@ -24,7 +25,7 @@ last-verified: 2026-05-06
 
 ## Viper.Crypto.Aes
 
-AES utilities: authenticated AES-128-GCM for `Bytes` and password-encrypted strings, plus legacy raw AES-CBC with PKCS7 padding.
+AES utilities: authenticated AES-128-GCM/AES-256-GCM for `Bytes` and password-encrypted strings, plus legacy raw AES-CBC with PKCS7 padding.
 
 **Type:** Static utility class
 
@@ -34,20 +35,21 @@ AES utilities: authenticated AES-128-GCM for `Bytes` and password-encrypted stri
 |-------------------------------------|--------------------------------|-------------------------------------------------------------------------------|
 | `Encrypt(data, key, iv)`            | `Bytes(Bytes, Bytes, Bytes)`   | Encrypt data with AES key and initialization vector                           |
 | `Decrypt(data, key, iv)`            | `Bytes(Bytes, Bytes, Bytes)`   | Decrypt data with AES key and initialization vector                           |
-| `EncryptAuth(data, key, aad)`       | `Bytes(Bytes, Bytes, Bytes)`   | Encrypt bytes with AES-128-GCM and authenticated data                         |
-| `DecryptAuth(data, key, aad)`       | `Bytes(Bytes, Bytes, Bytes)`   | Decrypt AES-128-GCM bytes and verify authenticated data                       |
+| `EncryptAuth(data, key, aad)`       | `Bytes(Bytes, Bytes, Bytes)`   | Encrypt bytes with AES-GCM and authenticated data                             |
+| `DecryptAuth(data, key, aad)`       | `Bytes(Bytes, Bytes, Bytes)`   | Decrypt AES-GCM bytes and verify authenticated data                           |
 | `EncryptStr(plaintext, password)`   | `Bytes(String, String)`        | Encrypt a string with a password using PBKDF2 + AES-128-GCM                    |
 | `DecryptStr(ciphertext, password)`  | `String(Bytes, String)`        | Decrypt ciphertext to a string using the authenticated string format           |
 
 ### Notes
 
-- `EncryptAuth`/`DecryptAuth` require a 16-byte AES-128 key and bind the `[magic][nonce]` header plus caller-provided AAD into the GCM tag
-- `Encrypt`/`Decrypt` are legacy AES-CBC helpers. CBC ciphertext is not authenticated; prefer `EncryptAuth`, `EncryptStr`, or `Viper.Crypto.Cipher`.
+- `EncryptAuth`/`DecryptAuth` accept a 16-byte AES-128 key or a 32-byte AES-256 key and bind the `[magic][nonce]` header plus caller-provided AAD into the GCM tag
+- `Encrypt`/`Decrypt` are legacy AES-CBC helpers. CBC ciphertext is not authenticated; prefer `EncryptAuth`, `EncryptStr`, or `Viper.Crypto.Cipher`. `Decrypt` returns `null` when CBC padding is invalid. CBC helpers trap in approved mode.
 - `EncryptStr` rejects empty passwords, derives an AES-128 key from the password using PBKDF2-HMAC-SHA256 with a random salt and a 300,000-iteration default, and authenticates its header as AAD
 - `EncryptStr` output format is `[magic(4)][iterations(4)][salt(16)][nonce(12)][ciphertext][tag(16)]`
 - `DecryptStr` remains backward-compatible with older `[IV(16)][AES-CBC ciphertext]` payloads
 - String plaintexts and passwords use the stored Viper string byte length, so embedded `NUL` bytes are significant
 - For higher-level authenticated encryption with automatic key management, use `Viper.Crypto.Cipher` instead
+- The in-tree AES block primitive is portable C and not a certified constant-time backend. Use `Cipher` or the authenticated AES-GCM helpers for production data formats.
 
 ### Zia Example
 
@@ -100,7 +102,7 @@ PRINT "Round-trip: "; Viper.Collections.Bytes.ToStr(dec)
 
 ## Viper.Crypto.Cipher
 
-High-level symmetric encryption using ChaCha20-Poly1305 AEAD with automatic key derivation.
+High-level symmetric encryption with automatic key derivation. Compatibility mode uses ChaCha20-Poly1305 AEAD; approved mode uses AES-256-GCM.
 
 **Type:** Static utility class
 
@@ -132,21 +134,34 @@ Password-based encryption produces ciphertext in this format:
 [magic "VCP2"(4)][iterations(4)][salt(16)][nonce(12)][ciphertext][tag(16)]
 ```
 
+Approved-mode password encryption produces:
+
+```text
+[magic "VCA1"(4)][iterations(4)][salt(16)][nonce(12)][ciphertext][tag(16)]
+```
+
 Key-based encryption produces:
 
 ```text
 [magic "VCK2"(4)][nonce(12)][ciphertext][tag(16)]
 ```
 
+Approved-mode key encryption produces:
+
+```text
+[magic "VKA1"(4)][nonce(12)][ciphertext][tag(16)]
+```
+
 ### Security Properties
 
-- **Algorithm:** ChaCha20-Poly1305 AEAD (RFC 8439)
+- **Algorithm:** ChaCha20-Poly1305 AEAD in compatibility mode; AES-256-GCM in approved mode
 - **Key Size:** 256 bits (32 bytes)
 - **Nonce Size:** 96 bits (12 bytes, randomly generated)
 - **Authentication Tag:** 128 bits (16 bytes)
 - **Key Derivation:** PBKDF2-HMAC-SHA256 with random 16-byte salt and a 300,000-iteration default
 - Header bytes and caller-provided AAD are authenticated by the AEAD tag
 - `Decrypt()` remains backward-compatible with older unversioned PBKDF2/HKDF payloads; new payloads use the versioned `VCP2` format
+- Approved mode rejects compatibility and legacy ciphertext formats instead of silently decrypting with non-approved algorithms
 - Password strings use their stored byte length, so embedded `NUL` bytes are part of the password
 
 ### Zia Example
@@ -273,7 +288,7 @@ Cipher operations use two failure modes:
 |-------------------------------|--------------------------------------|
 | Encrypt user data             | `Viper.Crypto.Cipher.Encrypt()`      |
 | Encrypt with managed keys     | `Viper.Crypto.Cipher.EncryptWithKey()` |
-| Password storage              | `Viper.Crypto.KeyDerive.Pbkdf2SHA256()` |
+| Password storage              | `Viper.Crypto.Password.Hash()`          |
 | Message authentication only   | `Viper.Crypto.Hash.HmacSHA256()`     |
 | Data integrity check          | `Viper.Crypto.Hash.SHA256()`         |
 | Secure communication          | `Viper.Crypto.Tls`                   |
@@ -298,9 +313,9 @@ Cryptographic hash functions, checksums, and HMAC authentication for strings and
 | `SHA1Bytes(bytes)`   | `String(Bytes)`   | Compute SHA1 hash of a Bytes object      |
 | `SHA256(str)`        | `String(String)`  | Compute SHA256 hash of a string          |
 | `SHA256Bytes(bytes)` | `String(Bytes)`   | Compute SHA256 hash of a Bytes object    |
-| `Fast(str)`          | `Integer(String)` | Compute FNV-1a hash of a string          |
-| `FastBytes(data)`    | `Integer(Bytes)`  | Compute FNV-1a hash of a Bytes object    |
-| `FastInt(value)`     | `Integer(Integer)`| Compute FNV-1a hash of an integer        |
+| `Fast(str)`          | `Integer(String)` | Compute keyed SipHash-2-4 of a string    |
+| `FastBytes(data)`    | `Integer(Bytes)`  | Compute keyed SipHash-2-4 of Bytes       |
+| `FastInt(value)`     | `Integer(Integer)`| Compute keyed SipHash-2-4 of an integer  |
 | `ConstantTimeEquals(a, b)` | `Boolean(String,String)` | Timing-safe equality for digests/MACs |
 | `ConstantTimeEqualsBytes(a, b)` | `Boolean(Bytes,Bytes)` | Timing-safe equality for binary tags |
 
@@ -324,13 +339,13 @@ Cryptographic hash functions, checksums, and HMAC authentication for strings and
 | SHA1      | 160 bits      | 40-character hex string   |
 | SHA256    | 256 bits      | 64-character hex string   |
 | HMAC-*    | Same as hash  | Same as underlying hash   |
-| FNV-1a    | 64 bits       | Integer (i64)             |
+| Fast      | 64 bits       | Integer (i64), process-keyed SipHash |
 
 String hash and HMAC methods use the stored Viper string byte length. Embedded `NUL` bytes are hashed as data, matching the corresponding `Bytes` methods for the same byte sequence.
 
 ### Fast Hash Methods
 
-The `Fast`, `FastBytes`, and `FastInt` methods use the FNV-1a (Fowler-Noll-Vo) hash algorithm. These are **non-cryptographic** hashes designed for speed in hash tables, checksums, and data partitioning. They are NOT suitable for security purposes.
+The `Fast`, `FastBytes`, and `FastInt` methods use SipHash-2-4 with a per-process CSPRNG seed. These are **non-cryptographic** hashes for hash-table and partitioning use. They are not stable across process launches and are not suitable for signatures, passwords, MACs, or persistent content IDs.
 
 ```rust
 module FastHashDemo;
@@ -366,6 +381,7 @@ PRINT "Int hash:"; h3
 - **MD5**: Cryptographically broken. Collisions can be generated in seconds. Do NOT use for security.
 - **SHA1**: Cryptographically broken. Chosen-prefix collisions demonstrated. Do NOT use for security.
 - **SHA256**: Currently collision/preimage resistant. Do not use plain SHA256 as a password hash or as a MAC; use `Password`, `KeyDerive`, or HMAC as appropriate.
+- **ConstantTimeEquals**: Intended for same-length public-format digests and MAC tags. Length mismatch returns false before byte comparison; do not use it to hide secret lengths.
 
 ### Zia Example
 
@@ -431,6 +447,8 @@ Where:
 - opad = 0x5c repeated block_size times
 - block_size = 64 bytes for MD5, SHA1, SHA256
 
+The runtime streams HMAC input through the underlying hash context instead of buffering the whole message.
+
 ---
 
 ## Viper.Crypto.KeyDerive
@@ -454,16 +472,17 @@ Key derivation functions for deriving cryptographic keys from passwords.
 |--------------|---------|------------------------------------------------|
 | `password`   | String  | The password to derive from                    |
 | `salt`       | Bytes   | Unique random salt (non-empty; 16 bytes recommended) |
-| `iterations` | Integer | PBKDF2 iteration count (1000 to 10,000,000; recommend 300000+ for encryption keys) |
+| `iterations` | Integer | PBKDF2 iteration count (100,000 to 10,000,000; recommend 300,000+ for encryption keys) |
 | `n`, `r`, `p` | Integer | scrypt cost parameters; `n` must be a supported power of two |
 | `keyLen`     | Integer | Desired key length in bytes (1-1024)           |
 
 ### Traps
 
-- `iterations < 1000` or `iterations > 10000000`: Traps instead of silently changing the requested work factor
+- `iterations < 100000` or `iterations > 10000000`: Traps instead of silently changing the requested work factor
 - empty `salt`: Traps with "salt must not be empty"
 - `keyLen < 1 or keyLen > 1024`: Traps with "key_len must be between 1 and 1024"
 - unsupported scrypt memory/cost parameters: Traps before allocating memory
+- scrypt APIs trap in approved mode; use PBKDF2 APIs there
 
 ### Zia Example
 
@@ -543,6 +562,44 @@ END FUNCTION
 
 ---
 
+## Viper.Crypto.Module
+
+Validation-readiness controls for the zero-dependency in-tree crypto module.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method                 | Signature  | Description                                             |
+|------------------------|------------|---------------------------------------------------------|
+| `EnableApprovedMode()` | `Boolean()`| Run module self-tests, instantiate the DRBG, and enable approved-mode policy gates |
+| `DisableApprovedMode()`| `Void()`   | Return to compatibility mode                            |
+| `IsApprovedMode()`     | `Boolean()`| Return whether approved-mode policy gates are active    |
+| `Status()`             | `String()` | Return module state text such as `ready` or a self-test failure |
+
+### Approved-Mode Behavior
+
+- Runs startup self-tests for SHA-2, HMAC/HKDF-SHA256, AES-128-GCM, AES-256-GCM, and the HMAC-DRBG path before enabling approved mode
+- Routes `Viper.Crypto.Rand` and internal nonce/key generation through the module HMAC-DRBG once approved mode is enabled
+- Keeps compatibility-mode algorithms available when approved mode is disabled
+- Disables non-approved public services in approved mode: MD5, SHA-1, HMAC-MD5, HMAC-SHA1, CRC32, fast hash, scrypt, ChaCha20-Poly1305 formats, legacy Cipher formats, AES-CBC helpers, and current X25519-only TLS
+- Uses AES-256-GCM for `Viper.Crypto.Cipher` in approved mode
+- Uses PBKDF2-HMAC-SHA256 for `Viper.Crypto.Password.Hash` in approved mode
+
+### Validation Claim
+
+Approved mode is a validation-readiness policy mode, not a CMVP certificate. Viper can only claim FIPS validation after an accredited lab completes algorithm validation, module testing, and CMVP approval for a frozen module boundary and operational environment.
+
+### BASIC Example
+
+```basic
+IF Viper.Crypto.Module.EnableApprovedMode() THEN
+    PRINT "Crypto module status: "; Viper.Crypto.Module.Status()
+END IF
+```
+
+---
+
 ## Viper.Crypto.Rand
 
 Cryptographically secure random number generation.
@@ -573,10 +630,12 @@ Cryptographically secure random number generation.
 
 ### Platform Implementation
 
+Compatibility mode reads directly from the platform CSPRNG. Approved mode seeds and serves output from the in-tree HMAC-DRBG after module self-tests pass.
+
 | Platform | Source                          |
 |----------|----------------------------------|
-| Linux    | /dev/urandom                     |
-| macOS    | /dev/urandom                     |
+| Linux    | getrandom(2), then /dev/urandom fallback |
+| macOS    | arc4random_buf                   |
 | Windows  | BCryptGenRandom                  |
 
 ### Zia Example
@@ -672,6 +731,7 @@ TLS (Transport Layer Security) client for encrypted TCP connections. Uses TLS 1.
 
 - `Viper.Crypto.Tls.Connect(host, port)` - Connect with TLS to host:port
 - `Viper.Crypto.Tls.ConnectFor(host, port, timeoutMs)` - Connect with timeout
+- `Viper.Crypto.Tls.ConnectOptions(host, port, caFile, alpn, verifyCert, timeoutMs)` - Connect with explicit trust bundle, ALPN preferences, verification policy, and timeout. Pass `""` for default CA bundle or no ALPN.
 
 ### Properties
 
@@ -679,6 +739,7 @@ TLS (Transport Layer Security) client for encrypted TCP connections. Uses TLS 1.
 |----------|---------|--------------------------------------------|
 | `Host`   | String  | Remote host name (read-only)               |
 | `Port`   | Integer | Remote port number (read-only)             |
+| `NegotiatedAlpn` | String | Negotiated ALPN protocol, or empty string |
 | `IsOpen` | Boolean | True if connection is open (read-only)     |
 
 ### Send Methods
@@ -711,12 +772,15 @@ The TLS implementation uses:
 - **Cipher:** ChaCha20-Poly1305 AEAD
 - **Hash:** SHA-256
 - **Certificate Verification:** Enabled by default against the runtime trust source. Windows uses CryptoAPI; macOS and Linux use the built-in PEM-bundle verifier with standard system trust bundles.
+- **Trust and ALPN controls:** `ConnectOptions` can pin validation to a PEM bundle, advertise comma-separated ALPN preferences such as `"h2,http/1.1"`, and read the negotiated protocol from `NegotiatedAlpn`.
 - **Certificate Signature Support:** In-tree verification of ECDSA P-256, RSA PKCS#1 v1.5, and RSA-PSS certificate signatures. The TLS client advertises only signature algorithms it can verify; ECDSA P-384 is not advertised until P-384 CertificateVerify support is implemented.
 - **Leaf-certificate policy:** Built-in verification enforces TLS server-auth EKU / compatible key-usage on the presented server certificate
-- **Hostname / SNI behavior:** DNS hostnames are sent in SNI; IP literals are verified against IP SANs but are not sent in SNI
+- **Hostname / SNI behavior:** DNS hostnames are sent in SNI; IP literals are verified against IP SANs but are not sent in SNI. SubjectAltName suppresses CommonName fallback even when the SAN contains no DNS names, and broad public-suffix wildcards are rejected.
+- **Handshake strictness:** Unexpected handshake messages and trailing certificate-message bytes fail the handshake instead of being skipped.
 - **Key-share validation:** X25519 all-zero shared secrets are rejected during the handshake
 - **String handling:** `SendStr` sends the full stored string byte length, including embedded `NUL` bytes
 - **Connection state:** `IsOpen` is true only while the TLS session is in the connected state
+- **Approved mode:** Current public TLS is compatibility-mode only because the wire handshake is still X25519/SHA-256 based. Approved mode fails closed for `Viper.Crypto.Tls` until the P-256/P-384 ECDHE TLS profile is wired into ClientHello, ServerHello, key schedule, and interop tests. The native P-256 ECDH primitive exists for that work.
 
 ### Zia Example
 
@@ -828,7 +892,7 @@ Use `Error()` to get descriptive error messages for debugging.
 
 ## Viper.Crypto.Password
 
-High-level password hashing and verification using memory-hard scrypt by default, with legacy PBKDF2 verification for existing hashes.
+High-level password hashing and verification using memory-hard scrypt by default. Approved mode uses PBKDF2-HMAC-SHA256 because scrypt is not an approved-mode service.
 
 **Type:** Static utility class
 
@@ -836,22 +900,22 @@ High-level password hashing and verification using memory-hard scrypt by default
 
 | Method                    | Signature                  | Description                                                      |
 |---------------------------|----------------------------|------------------------------------------------------------------|
-| `Hash(password)`          | `String(String)`           | Hash a password with default scrypt parameters and random salt   |
+| `Hash(password)`          | `String(String)`           | Hash a password with default scrypt parameters, or PBKDF2 in approved mode |
 | `HashScrypt(password)`    | `String(String)`           | Same as `Hash`                                                   |
-| `HashScryptParams(password, n, r, p)` | `String(String,Integer,Integer,Integer)` | Hash with explicit scrypt parameters |
+| `HashScryptParams(password, n, r, p)` | `String(String,Integer,Integer,Integer)` | Hash with explicit scrypt parameters at or above the password policy minimum |
 | `HashIters(password, n)`  | `String(String, Integer)`  | Legacy PBKDF2 hash with a custom iteration count and random salt |
 | `Verify(password, hash)`  | `Boolean(String, String)`  | Verify a password against a previously generated hash            |
 | `NeedsRehash(hash)`       | `Boolean(String)`          | Report whether a stored hash should be upgraded                  |
 
 ### Output Format
 
-`Hash` and `HashScrypt` return a self-describing string in the format:
+`Hash` and `HashScrypt` return a self-describing scrypt string in compatibility mode:
 
 ```text
 SCRYPT$<log2N>$<r>$<p>$<base64-salt>$<base64-hash>
 ```
 
-`HashIters` returns the legacy PBKDF2 format:
+`HashIters` returns the PBKDF2 format. `Hash` also returns this format in approved mode:
 
 ```text
 PBKDF2$<iterations>$<base64-salt>$<base64-hash>
@@ -862,12 +926,14 @@ This format stores everything needed for verification: the algorithm identifier,
 ### Notes
 
 - Uses scrypt-SHA256 as the default password hashing KDF
+- Approved mode changes `Hash` to PBKDF2-HMAC-SHA256 and disables `HashScrypt` / `HashScryptParams`
+- `HashScryptParams` rejects parameters weaker than the default password policy (`N=16384`, `r=8`, `p=1`) and rejects unsupported memory costs before derivation
 - `HashIters` is retained for PBKDF2 compatibility and rejects requests below 100,000
 - A random 16-byte salt is generated automatically for each hash
 - The salt and cost parameters are embedded in the output string, so no separate storage is needed
 - `Verify` parses the stored hash string to extract parameters before re-deriving
 - `Verify` accepts current `SCRYPT$...` hashes and legacy `PBKDF2$...` hashes
-- `NeedsRehash` returns true for malformed hashes, PBKDF2 hashes, and scrypt hashes below the current defaults
+- `NeedsRehash` is policy-aware: compatibility mode recommends upgrading PBKDF2 to scrypt, while approved mode accepts PBKDF2 hashes at or above the default iteration count and recommends rehashing scrypt hashes
 - `Verify` returns `false` for malformed, null, or non-canonical stored hashes instead of trapping
 - Stored password hashes require strict Base64 salt/hash fields with the expected decoded lengths
 - Embedded `NUL` bytes in passwords are significant

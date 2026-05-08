@@ -120,11 +120,22 @@ void *rt_viper_tls_connect(rt_string host, int64_t port);
 /// @brief Connect to host:port with TLS, custom timeout.
 void *rt_viper_tls_connect_for(rt_string host, int64_t port, int64_t timeout_ms);
 
+/// @brief Connect with explicit CA bundle, ALPN list, verification policy, and timeout.
+void *rt_viper_tls_connect_options(rt_string host,
+                                   int64_t port,
+                                   rt_string ca_file,
+                                   rt_string alpn,
+                                   int8_t verify_cert,
+                                   int64_t timeout_ms);
+
 /// @brief Get connected hostname.
 rt_string rt_viper_tls_host(void *obj);
 
 /// @brief Get connected port.
 int64_t rt_viper_tls_port(void *obj);
+
+/// @brief Get negotiated ALPN protocol, or empty string when none was selected.
+rt_string rt_viper_tls_negotiated_alpn(void *obj);
 
 /// @brief Check if connection is open.
 int8_t rt_viper_tls_is_open(void *obj);
@@ -161,6 +172,9 @@ int tls_match_hostname(const char *pattern, const char *hostname);
 /// @brief Extract SubjectAltName DNS names from a certificate DER.
 /// @return Number of names found.
 int tls_extract_san_names(const uint8_t *der, size_t der_len, char san_out[][256], int max_names);
+
+/// @brief Return whether a certificate contains a SubjectAltName extension.
+int tls_cert_has_san_extension(const uint8_t *der, size_t der_len);
 
 /// @brief Extract CommonName from a certificate DER Subject.
 /// @return 1 if found, 0 otherwise.

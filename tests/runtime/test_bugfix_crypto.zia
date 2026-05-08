@@ -49,7 +49,7 @@ func start() {
     // --- Bug #7: KeyDerive.Pbkdf2SHA256 returns proper Bytes type ---
     setTest("Bug7_KeyDeriveType");
     var salt = CRand.Bytes(16);
-    var derived = KD.Pbkdf2SHA256("password", salt, 1000, 32);
+    var derived = KD.Pbkdf2SHA256("password", salt, 100000, 32);
     assertEqInt(Bytes.get_Length(derived), 32, "Pbkdf2SHA256 returns 32 bytes");
 
     report();

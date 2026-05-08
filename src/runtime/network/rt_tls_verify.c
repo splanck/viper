@@ -57,6 +57,11 @@
 #define RT_TLS_MAYBE_UNUSED
 #endif
 
+/// @brief Forward declaration: check whether a certificate's Extended Key Usage allows TLS Web Server Authentication.
+/// @details Real implementation later in the file. Marked MAYBE_UNUSED so
+///          builds that strip platform-specific verification paths still
+///          link. Used by chain validation to reject leaf certs that don't
+///          carry the id-kp-serverAuth EKU (1.3.6.1.5.5.7.3.1).
 static RT_TLS_MAYBE_UNUSED int cert_allows_tls_server_auth(const uint8_t *cert_der,
                                                            size_t cert_len);
 
@@ -267,6 +272,10 @@ int tls_parse_certificate_msg(rt_tls_session_t *session, const uint8_t *data, si
         session->error = "TLS: Certificate list overflows message";
         return RT_TLS_ERROR_HANDSHAKE;
     }
+    if (pos + list_len != len) {
+        session->error = "TLS: Certificate message has trailing data";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
 
     if (list_len < 5) {
         session->error = "TLS: Certificate list too short for one entry";
@@ -381,6 +390,17 @@ static const uint8_t OID_X509_KEY_USAGE[] = {0x55, 0x1d, 0x0f};        // 2.5.29
 static const uint8_t OID_X509_BASIC_CONSTRAINTS[] = {0x55, 0x1d, 0x13}; // 2.5.29.19
 static const uint8_t OID_X509_EXT_KEY_USAGE[] = {0x55, 0x1d, 0x25};    // 2.5.29.37
 
+/// @brief Validate a DNS name byte sequence for TLS hostname matching.
+/// @details Enforces RFC 1035 / RFC 6125 hostname rules:
+///          - Length 1..255 bytes total.
+///          - Each label 1..63 bytes (no consecutive dots).
+///          - Only ASCII letters, digits, and hyphen; no NUL, control bytes,
+///            or non-ASCII (IDNA hostnames must be passed in punycode form).
+///          - Wildcard `*` only valid when @p allow_wildcard is true, only
+///            in the leftmost label, and only when followed by `.` plus a
+///            non-empty suffix (so `*.example.com` is OK but `*.com` is
+///            rejected by tls_wildcard_suffix_allowed downstream).
+/// @return 1 if the name is well-formed, 0 otherwise.
 static int tls_dns_name_bytes_valid(const uint8_t *name, size_t len, int allow_wildcard) {
     if (!name || len == 0 || len >= 256)
         return 0;
@@ -409,11 +429,52 @@ static int tls_dns_name_bytes_valid(const uint8_t *name, size_t len, int allow_w
     return 1;
 }
 
+/// @brief NUL-terminated convenience wrapper around tls_dns_name_bytes_valid.
+/// @details Returns 0 for NULL. Otherwise calls strlen and delegates to the
+///          byte-buffer validator. Used by call sites that already have a
+///          C-string-shaped hostname.
 static int tls_dns_name_valid(const char *name, int allow_wildcard) {
     return name &&
            tls_dns_name_bytes_valid((const uint8_t *)name, strlen(name), allow_wildcard);
 }
 
+/// @brief Check that a wildcard certificate's matching suffix is "long enough" to be safe.
+/// @details Wildcards like `*.com` are dangerous — they would match every
+///          .com domain. We reject any single-label suffix and a curated
+///          set of public-suffix-list-ish multi-label suffixes (.co.uk,
+///          .com.au, etc.). This is intentionally conservative: callers
+///          deploying with private CAs whose policy permits broader
+///          wildcards must validate at the application layer rather than
+///          relying on this check to be lenient.
+/// @return 1 if the suffix is acceptably specific, 0 if too broad.
+static int tls_wildcard_suffix_allowed(const char *suffix) {
+    static const char *const blocked_suffixes[] = {
+        "com",     "net",    "org",    "edu",    "gov",    "mil",    "int",
+        "uk",      "co.uk",  "org.uk", "ac.uk",  "gov.uk",
+        "au",      "com.au", "net.au", "org.au", "edu.au", "gov.au",
+        "jp",      "co.jp",  "ne.jp",  "or.jp",
+        "de",      "fr",     "it",     "es",     "nl",     "br",     "ca",
+        "io",      "dev",    "app"
+    };
+
+    if (!suffix || !tls_dns_name_valid(suffix, 0))
+        return 0;
+    if (!strchr(suffix, '.'))
+        return 0;
+    for (size_t i = 0; i < sizeof(blocked_suffixes) / sizeof(blocked_suffixes[0]); i++) {
+        if (strcasecmp(suffix, blocked_suffixes[i]) == 0)
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Test whether the verifier knows how to honor this critical extension OID.
+/// @details Per RFC 5280 §4.2, a certificate that contains a critical
+///          extension the verifier doesn't understand MUST be rejected.
+///          We currently support: subjectAltName, keyUsage, basicConstraints,
+///          and extendedKeyUsage. Anything else marked critical causes the
+///          chain to fail.
+/// @return 1 if the verifier handles this OID, 0 otherwise.
 static int cert_critical_extension_supported(const uint8_t *oid, size_t oid_len) {
     return oid_matches(oid, oid_len, OID_SUBJECT_ALT_NAME, sizeof(OID_SUBJECT_ALT_NAME)) ||
            oid_matches(oid, oid_len, OID_X509_KEY_USAGE, sizeof(OID_X509_KEY_USAGE)) ||
@@ -421,6 +482,14 @@ static int cert_critical_extension_supported(const uint8_t *oid, size_t oid_len)
            oid_matches(oid, oid_len, OID_X509_EXT_KEY_USAGE, sizeof(OID_X509_EXT_KEY_USAGE));
 }
 
+/// @brief Walk the TBSCertificate.extensions sequence and reject if any critical extension is unrecognized.
+/// @details Implements the "MUST reject" rule from RFC 5280 §4.2: parses
+///          the certificate's extensions list, and for each entry marked
+///          critical that isn't in cert_critical_extension_supported, the
+///          chain fails. Returns 1 if any unsupported critical extension
+///          is found (caller should reject the cert), 0 if all critical
+///          extensions are recognized.
+/// @return 1 if the cert should be rejected, 0 if safe to continue.
 static int cert_has_unsupported_critical_extension(const uint8_t *cert_der, size_t cert_len) {
     uint8_t tag;
     size_t vl, hl;
@@ -801,6 +870,63 @@ int tls_extract_san_names(const uint8_t *der, size_t der_len, char san_out[][256
     return count;
 }
 
+/// @brief Check whether a DER-encoded certificate carries a Subject Alternative Name extension.
+/// @details Walks the TBSCertificate extensions sequence looking for the
+///          subjectAltName OID (2.5.29.17). Used by hostname-matching code
+///          to enforce RFC 6125's "if SAN is present, ignore CN" rule —
+///          presence of SAN means CN-based matching MUST NOT be used.
+/// @return 1 if a SAN extension is present, 0 if not (or on parse failure).
+int tls_cert_has_san_extension(const uint8_t *der, size_t der_len) {
+    uint8_t t;
+    size_t vl, hl;
+    if (der_read_tlv(der, der_len, &t, &vl, &hl) != 0 || t != 0x30)
+        return 0;
+
+    const uint8_t *cert_val = der + hl;
+    if (der_read_tlv(cert_val, vl, &t, &vl, &hl) != 0 || t != 0x30)
+        return 0;
+
+    const uint8_t *tbs_val = cert_val + hl;
+    size_t tbs_len = vl;
+    size_t pos = 0;
+
+    while (pos < tbs_len) {
+        if (der_read_tlv(tbs_val + pos, tbs_len - pos, &t, &vl, &hl) != 0)
+            return 0;
+        if (t == 0xA3) {
+            const uint8_t *exts_wrap = tbs_val + pos + hl;
+            uint8_t t2;
+            size_t vl2, hl2;
+            if (der_read_tlv(exts_wrap, vl, &t2, &vl2, &hl2) != 0 || t2 != 0x30)
+                return 0;
+
+            const uint8_t *exts = exts_wrap + hl2;
+            size_t exts_len = vl2;
+            size_t ep = 0;
+            while (ep < exts_len) {
+                uint8_t t3;
+                size_t vl3, hl3;
+                if (der_read_tlv(exts + ep, exts_len - ep, &t3, &vl3, &hl3) != 0)
+                    return 0;
+                if (t3 == 0x30) {
+                    const uint8_t *ext = exts + ep + hl3;
+                    uint8_t t4;
+                    size_t vl4, hl4;
+                    if (der_read_tlv(ext, vl3, &t4, &vl4, &hl4) == 0 && t4 == 0x06 &&
+                        oid_matches(ext + hl4, vl4, OID_SUBJECT_ALT_NAME, sizeof(OID_SUBJECT_ALT_NAME))) {
+                        return 1;
+                    }
+                }
+                ep += hl3 + vl3;
+            }
+            return 0;
+        }
+        pos += hl + vl;
+    }
+
+    return 0;
+}
+
 /// @brief Extract the CommonName (CN) attribute from the certificate Subject.
 /// @details Walks the ASN.1 tree: Certificate → TBSCertificate → looking for
 ///          a SEQUENCE whose children include a SET containing an
@@ -926,6 +1052,8 @@ int tls_match_hostname(const char *pattern, const char *hostname) {
     if (pattern[0] == '*' && pattern[1] == '.') {
         // Wildcard: *.example.com
         const char *suffix = pattern + 2; // "example.com"
+        if (!tls_wildcard_suffix_allowed(suffix))
+            return 0;
         const char *dot = strchr(hostname, '.');
         if (!dot)
             return 0; // hostname has no dot — can't match *.X
@@ -1009,6 +1137,10 @@ int tls_verify_hostname(rt_tls_session_t *session) {
                 return RT_TLS_OK;
         }
         session->error = "TLS: certificate hostname mismatch (SAN did not match)";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+    if (tls_cert_has_san_extension(session->server_cert_der, session->server_cert_der_len)) {
+        session->error = "TLS: certificate SAN extension does not contain any DNS names";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
@@ -1456,31 +1588,98 @@ static RT_TLS_MAYBE_UNUSED const uint8_t *cert_get_issuer(const uint8_t *cert_de
     return tbs + pos;
 }
 
-/// @brief Parse a UTCTime (tag 0x17) or GeneralizedTime (tag 0x18) DER value into a UTC time_t.
+/// @brief Parse a 2-digit decimal ASCII number from a DER timestamp into @p *out.
+/// @details DER UTCTime / GeneralizedTime fields are sequences of ASCII
+///          decimal digits ("YYMMDD..." or "YYYYMMDD..."). This helper
+///          parses one 2-digit field with strict validation — any non-digit
+///          byte rejects the timestamp.
+/// @return 1 on success, 0 on any non-digit byte.
+static int der_decimal_2(const uint8_t *data, int *out) {
+    if (data[0] < '0' || data[0] > '9' || data[1] < '0' || data[1] > '9')
+        return 0;
+    *out = (data[0] - '0') * 10 + (data[1] - '0');
+    return 1;
+}
+
+/// @brief Parse a 4-digit decimal ASCII number from a DER GeneralizedTime year field.
+/// @details Composes two der_decimal_2 calls into the high/low pair of a
+///          four-digit year. UTCTime uses 2-digit years (parsed via
+///          der_decimal_2 with century inference); GeneralizedTime uses
+///          this 4-digit form directly.
+/// @return 1 on success, 0 on any non-digit byte.
+static int der_decimal_4(const uint8_t *data, int *out) {
+    int hi, lo;
+    if (!der_decimal_2(data, &hi) || !der_decimal_2(data + 2, &lo))
+        return 0;
+    *out = hi * 100 + lo;
+    return 1;
+}
+
+/// @brief Test whether @p year is a Gregorian leap year (RFC 5280 § 4.1.2.5).
+/// @details Standard rule: divisible by 4, except century years not
+///          divisible by 400. Used by der_time_days_in_month to validate
+///          February day counts.
+static int der_time_is_leap_year(int year) {
+    return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+}
+
+/// @brief Return the number of days in a given Gregorian month, accounting for leap years.
+/// @details Used to validate certificate notBefore / notAfter timestamps —
+///          a date like "2026-02-30" must be rejected. Returns 0 for
+///          out-of-range month values; 29 for February in leap years; the
+///          standard table value otherwise.
+static int der_time_days_in_month(int year, int month) {
+    static const int days[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    if (month < 1 || month > 12)
+        return 0;
+    if (month == 2 && der_time_is_leap_year(year))
+        return 29;
+    return days[month - 1];
+}
+
+/// @brief Parse a UTC DER UTCTime or GeneralizedTime value into a time_t.
 /// @return Parsed time, or (time_t)-1 on format error.
 static time_t parse_der_time(const uint8_t *data, size_t len, uint8_t tag) {
     struct tm tm_val;
-    const char *s = (const char *)data;
-    int pos = 0;
+    int pos;
+    int year, month, day, hour, minute, second;
 
     memset(&tm_val, 0, sizeof(tm_val));
-    if (tag == 0x17 && len >= 12) {
-        int yy = (s[0] - '0') * 10 + (s[1] - '0');
-        tm_val.tm_year = (yy >= 50) ? yy : (100 + yy);
+    if (!data)
+        return (time_t)-1;
+    if (tag == 0x17) {
+        int yy;
+        if (len != 13 || data[12] != 'Z' || !der_decimal_2(data, &yy))
+            return (time_t)-1;
+        year = (yy >= 50) ? 1900 + yy : 2000 + yy;
         pos = 2;
-    } else if (tag == 0x18 && len >= 14) {
-        int yyyy = (s[0] - '0') * 1000 + (s[1] - '0') * 100 + (s[2] - '0') * 10 + (s[3] - '0');
-        tm_val.tm_year = yyyy - 1900;
+    } else if (tag == 0x18) {
+        if (len != 15 || data[14] != 'Z' || !der_decimal_4(data, &year))
+            return (time_t)-1;
         pos = 4;
     } else {
         return (time_t)-1;
     }
 
-    tm_val.tm_mon = (s[pos] - '0') * 10 + (s[pos + 1] - '0') - 1;
-    tm_val.tm_mday = (s[pos + 2] - '0') * 10 + (s[pos + 3] - '0');
-    tm_val.tm_hour = (s[pos + 4] - '0') * 10 + (s[pos + 5] - '0');
-    tm_val.tm_min = (s[pos + 6] - '0') * 10 + (s[pos + 7] - '0');
-    tm_val.tm_sec = (s[pos + 8] - '0') * 10 + (s[pos + 9] - '0');
+    if (!der_decimal_2(data + pos, &month) ||
+        !der_decimal_2(data + pos + 2, &day) ||
+        !der_decimal_2(data + pos + 4, &hour) ||
+        !der_decimal_2(data + pos + 6, &minute) ||
+        !der_decimal_2(data + pos + 8, &second)) {
+        return (time_t)-1;
+    }
+    if (month < 1 || month > 12 || day < 1 || day > der_time_days_in_month(year, month) ||
+        hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) {
+        return (time_t)-1;
+    }
+
+    tm_val.tm_year = year - 1900;
+    tm_val.tm_mon = month - 1;
+    tm_val.tm_mday = day;
+    tm_val.tm_hour = hour;
+    tm_val.tm_min = minute;
+    tm_val.tm_sec = second;
+    tm_val.tm_isdst = 0;
     return rt_network_timegm_utc(&tm_val);
 }
 
@@ -2463,6 +2662,10 @@ int tls_verify_chain(rt_tls_session_t *session) {
     }
     if (!cert_allows_tls_server_auth(session->server_cert_der, session->server_cert_der_len)) {
         session->error = "TLS: certificate is not valid for TLS server authentication";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+    if (cert_has_unsupported_critical_extension(session->server_cert_der, session->server_cert_der_len)) {
+        session->error = "TLS: leaf certificate has an unsupported critical extension";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 

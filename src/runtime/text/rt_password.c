@@ -33,6 +33,7 @@
 #include "rt_password.h"
 
 #include "rt_crypto.h"
+#include "rt_crypto_module.h"
 #include "rt_hash.h"
 #include "rt_internal.h"
 #include "rt_keyderive_internal.h"
@@ -52,6 +53,9 @@
 #define PASSWORD_SCRYPT_N_LOG2 RT_SCRYPT_DEFAULT_N_LOG2
 #define PASSWORD_SCRYPT_R RT_SCRYPT_DEFAULT_R
 #define PASSWORD_SCRYPT_P RT_SCRYPT_DEFAULT_P
+#define PASSWORD_SCRYPT_MIN_N_LOG2 RT_SCRYPT_DEFAULT_N_LOG2
+#define PASSWORD_SCRYPT_MIN_R RT_SCRYPT_DEFAULT_R
+#define PASSWORD_SCRYPT_MIN_P RT_SCRYPT_DEFAULT_P
 #define SALT_LENGTH 16
 #define HASH_LENGTH 32
 #define SALT_B64_LENGTH 24
@@ -221,6 +225,11 @@ static uint8_t *base64_decode(const char *data, size_t len, size_t *out_len) {
 // Public API
 //=============================================================================
 
+/// @brief Constant-time byte-buffer equality test (no early exit).
+/// @details Used by Password.Verify so the timing of a verify call doesn't
+///          leak the position of the first differing hash byte. Caller
+///          must ensure both buffers are the same length.
+/// @return 1 if all @p len bytes are equal, 0 otherwise.
 static int password_fixed_time_eq(const uint8_t *a, const uint8_t *b, size_t len) {
     uint8_t diff = 0;
     for (size_t i = 0; i < len; i++)
@@ -228,6 +237,11 @@ static int password_fixed_time_eq(const uint8_t *a, const uint8_t *b, size_t len
     return diff == 0;
 }
 
+/// @brief Compute log2(N) for a scrypt N parameter, returning -1 if N is not a positive power of two.
+/// @details The encoded SCRYPT$ format stores log2(N) rather than N itself
+///          (one decimal digit fits up to N=2^9 = 512; two digits cover
+///          today's policy maximum). This helper extracts that exponent
+///          and rejects N < 2 or non-power-of-two N values.
 static int scrypt_log2_from_n(uint64_t n) {
     if (n < 2 || (n & (n - 1)) != 0)
         return -1;
@@ -239,6 +253,23 @@ static int scrypt_log2_from_n(uint64_t n) {
     return log2n;
 }
 
+/// @brief Test whether scrypt cost parameters meet the password-policy minimum.
+/// @details Independent of the runtime's scrypt parameter caps (which only
+///          enforce safety against DoS), the password module enforces a
+///          *minimum* cost so weakly-configured callers can't store easily-
+///          cracked hashes. log2N ≥ PASSWORD_SCRYPT_MIN_N_LOG2 etc.
+static int password_scrypt_params_strong_enough(int log2n, uint32_t r, uint32_t p) {
+    return log2n >= (int)PASSWORD_SCRYPT_MIN_N_LOG2 &&
+           r >= PASSWORD_SCRYPT_MIN_R &&
+           p >= PASSWORD_SCRYPT_MIN_P;
+}
+
+/// @brief Format the encoded password-hash string from its components.
+/// @details Builds either `<prefix>$<params>$<salt_b64>$<hash_b64>` (when
+///          @p params is non-empty) or `<prefix>$<salt_b64>$<hash_b64>`.
+///          Used for both PBKDF2 (`prefix="PBKDF2"`, `params="<iters>"`)
+///          and scrypt (`prefix="SCRYPT"`, `params="<log2N>$<r>$<p>"`)
+///          encoded forms. Traps with @p op_name on base64 encoding failure.
 static rt_string password_format_hash(const char *prefix,
                                       const char *params,
                                       const uint8_t salt[SALT_LENGTH],
@@ -265,10 +296,23 @@ static rt_string password_format_hash(const char *prefix,
     return rt_string_from_bytes(buffer, strlen(buffer));
 }
 
+/// @brief Public Viper.Crypto.Password.Hash — hash with default scrypt parameters.
+/// @details Delegates to rt_password_hash_scrypt with the policy-default
+///          (N, r, p). Returns the encoded SCRYPT$<log2N>$<r>$<p>$<salt>$<hash>
+///          form ready to store in a database.
 rt_string rt_password_hash(rt_string password) {
+    if (rt_crypto_module_is_approved_mode())
+        return rt_password_hash_with_iterations(password, DEFAULT_ITERATIONS);
     return rt_password_hash_scrypt(password);
 }
 
+/// @brief Public Viper.Crypto.Password.HashIters — legacy PBKDF2 hash with explicit iterations.
+/// @details Generates a fresh 16-byte salt, runs PBKDF2-HMAC-SHA256, and
+///          emits `PBKDF2$<iterations>$<salt_b64>$<hash_b64>`. Iteration
+///          counts below MIN_ITERATIONS or above MAX_ITERATIONS trap so
+///          callers learn about misconfiguration immediately. Verify
+///          continues to accept this format alongside SCRYPT$ for
+///          backward compatibility with old hashes.
 rt_string rt_password_hash_with_iterations(rt_string password, int64_t iterations) {
     if (iterations < MIN_ITERATIONS)
         rt_trap("Password.HashIters: iterations must be at least 100000");
@@ -293,14 +337,31 @@ rt_string rt_password_hash_with_iterations(rt_string password, int64_t iteration
     return result;
 }
 
+/// @brief Public Viper.Crypto.Password.HashScrypt — scrypt hash with policy-default params.
+/// @details Convenience wrapper that calls rt_password_hash_scrypt_params
+///          with PASSWORD_SCRYPT_N_LOG2 / R / P (the v0.2.6 default
+///          policy minimum, intended to be slow enough to deter
+///          brute-force on commodity hardware while staying fast enough
+///          for an interactive login flow).
 rt_string rt_password_hash_scrypt(rt_string password) {
+    if (!rt_crypto_module_service_allowed(RT_CRYPTO_SERVICE_SCRYPT))
+        rt_trap("Password.HashScrypt is disabled in approved mode");
     return rt_password_hash_scrypt_params(password,
                                           (int64_t)(UINT64_C(1) << PASSWORD_SCRYPT_N_LOG2),
                                           PASSWORD_SCRYPT_R,
                                           PASSWORD_SCRYPT_P);
 }
 
+/// @brief Public Viper.Crypto.Password.HashScryptParams — scrypt hash with caller-supplied N/r/p.
+/// @details Generates a fresh salt, runs scrypt-SHA256, and emits
+///          `SCRYPT$<log2N>$<r>$<p>$<salt_b64>$<hash_b64>`. Validates that
+///          parameters are positive, fit the runtime caps, and meet the
+///          password-policy minimum strength — any violation traps. Used
+///          by callers that want to pin specific cost parameters (e.g.
+///          slower for high-value credentials, faster for migration).
 rt_string rt_password_hash_scrypt_params(rt_string password, int64_t n64, int64_t r64, int64_t p64) {
+    if (!rt_crypto_module_service_allowed(RT_CRYPTO_SERVICE_SCRYPT))
+        rt_trap("Password.HashScryptParams is disabled in approved mode");
     if (n64 < 2 || r64 < 1 || p64 < 1 || r64 > RT_SCRYPT_MAX_R || p64 > RT_SCRYPT_MAX_P)
         rt_trap("Password.HashScrypt: invalid scrypt parameters");
     uint64_t n = (uint64_t)n64;
@@ -309,6 +370,10 @@ rt_string rt_password_hash_scrypt_params(rt_string password, int64_t n64, int64_
     int log2n = scrypt_log2_from_n(n);
     if (log2n < 1 || (uint32_t)log2n > RT_SCRYPT_MAX_N_LOG2)
         rt_trap("Password.HashScrypt: N must be a supported power of two");
+    if (!rt_keyderive_scrypt_params_supported(n, r, p, HASH_LENGTH))
+        rt_trap("Password.HashScrypt: invalid or unsupported scrypt parameters");
+    if (!password_scrypt_params_strong_enough(log2n, r, p))
+        rt_trap("Password.HashScrypt: scrypt parameters are below the password policy minimum");
 
     uint8_t salt[SALT_LENGTH];
     rt_crypto_random_bytes(salt, SALT_LENGTH);
@@ -328,6 +393,14 @@ rt_string rt_password_hash_scrypt_params(rt_string password, int64_t n64, int64_
     return result;
 }
 
+/// @brief Parse one '$'-delimited base64 field from @p *p, updating the cursor past the terminator.
+/// @details Expects @p *p to point at the start of a base64 field of
+///          exactly @p expected_b64_len characters terminated by '$' or
+///          end-of-string. On success, allocates a NUL-terminated copy of
+///          the field bytes (caller frees), writes it to @p *out, sets
+///          @p *out_len to the field length, and advances @p *p past the
+///          '$' separator (or to end-of-string for the final field).
+/// @return 1 on success, 0 if length doesn't match or allocation failed.
 static int password_parse_b64_field(const char **p,
                                     size_t expected_b64_len,
                                     char **out,
@@ -350,6 +423,14 @@ static int password_parse_b64_field(const char **p,
     return 1;
 }
 
+/// @brief Base64-decode the salt and expected-hash fields, validating their post-decode lengths.
+/// @details Decodes both base64 fields into freshly malloc'd buffers,
+///          rejects the result if either decode fails or produces a length
+///          that doesn't match SALT_LENGTH / HASH_LENGTH (16 / 32). On any
+///          failure, securely zeros and frees both partial allocations
+///          before returning 0. On success, the caller owns @p *salt and
+///          @p *expected.
+/// @return 1 on success, 0 on any decode or length mismatch.
 static int password_decode_salt_hash(const char *salt_start,
                                      size_t salt_b64_len,
                                      const char *hash_start,
@@ -379,6 +460,13 @@ static int password_decode_salt_hash(const char *salt_start,
     return 1;
 }
 
+/// @brief Verify a password against a `PBKDF2$<iters>$<salt>$<hash>` legacy-format hash.
+/// @details Parses iterations, decodes salt and expected hash, runs
+///          PBKDF2-HMAC-SHA256 with the same parameters, and compares
+///          using constant-time equality. Returns 1 only on match;
+///          returns 0 for any parse failure, format mismatch, or
+///          incorrect password (never traps so login flows can produce
+///          a uniform "invalid credentials" response).
 static int password_verify_pbkdf2(rt_string password, const char *hash_str) {
     const char *p = hash_str + 7;
     char *end;
@@ -426,6 +514,12 @@ static int password_verify_pbkdf2(rt_string password, const char *hash_str) {
     return ok;
 }
 
+/// @brief Verify a password against a `SCRYPT$<log2N>$<r>$<p>$<salt>$<hash>` format hash.
+/// @details Parses log2N / r / p, validates them against the runtime caps,
+///          decodes salt and expected hash, runs scrypt-SHA256 with the
+///          stored parameters, and compares using constant-time equality.
+///          Returns 1 only on match; returns 0 for any parse / format /
+///          parameter / password mismatch (never traps).
 static int password_verify_scrypt(rt_string password, const char *hash_str) {
     const char *p = hash_str + 7;
     char *end;
@@ -448,6 +542,10 @@ static int password_verify_scrypt(rt_string password, const char *hash_str) {
     if (errno != 0 || end == p || *end != '$' || p_ll < 1 || p_ll > RT_SCRYPT_MAX_P)
         return 0;
     p = end + 1;
+
+    uint64_t n = UINT64_C(1) << (uint32_t)log2n_ll;
+    if (!rt_keyderive_scrypt_params_supported(n, (uint32_t)r_ll, (uint32_t)p_ll, HASH_LENGTH))
+        return 0;
 
     char *salt_b64 = NULL;
     size_t salt_b64_len = 0;
@@ -474,7 +572,6 @@ static int password_verify_scrypt(rt_string password, const char *hash_str) {
     size_t pwd_len;
     const uint8_t *pwd = password_string_bytes(password, &pwd_len);
     uint8_t computed[HASH_LENGTH];
-    uint64_t n = UINT64_C(1) << (uint32_t)log2n_ll;
     rt_keyderive_scrypt_sha256_raw(
         pwd, pwd_len, salt, salt_len, n, (uint32_t)r_ll, (uint32_t)p_ll, computed, HASH_LENGTH);
 
@@ -488,6 +585,86 @@ static int password_verify_scrypt(rt_string password, const char *hash_str) {
     return ok;
 }
 
+/// @brief Parse log2N / r / p out of a SCRYPT$ hash string without doing the actual verify.
+/// @details Used by rt_password_needs_rehash to compare the stored
+///          parameters against the current policy minimum without
+///          re-running the (potentially slow) scrypt computation. Returns
+///          1 on successful parse, 0 if the format is wrong or any
+///          numeric field is out of range.
+static int password_stored_scrypt_params(const char *hash_str,
+                                         long long *log2n_out,
+                                         long long *r_out,
+                                         long long *p_out) {
+    const char *p = hash_str + 7;
+    char *end;
+
+    errno = 0;
+    long long log2n_ll = strtoll(p, &end, 10);
+    if (errno != 0 || end == p || *end != '$' || log2n_ll < 1 ||
+        log2n_ll > RT_SCRYPT_MAX_N_LOG2)
+        return 0;
+    p = end + 1;
+
+    errno = 0;
+    long long r_ll = strtoll(p, &end, 10);
+    if (errno != 0 || end == p || *end != '$' || r_ll < 1 || r_ll > RT_SCRYPT_MAX_R)
+        return 0;
+    p = end + 1;
+
+    errno = 0;
+    long long p_ll = strtoll(p, &end, 10);
+    if (errno != 0 || end == p || *end != '$' || p_ll < 1 || p_ll > RT_SCRYPT_MAX_P)
+        return 0;
+    p = end + 1;
+
+    uint64_t n = UINT64_C(1) << (uint32_t)log2n_ll;
+    if (!rt_keyderive_scrypt_params_supported(n, (uint32_t)r_ll, (uint32_t)p_ll, HASH_LENGTH))
+        return 0;
+
+    char *salt_b64 = NULL;
+    size_t salt_b64_len = 0;
+    if (!password_parse_b64_field(&p, SALT_B64_LENGTH, &salt_b64, &salt_b64_len))
+        return 0;
+
+    const char *hash_b64_start = p;
+    size_t hash_b64_len = strlen(hash_b64_start);
+    if (hash_b64_len != HASH_B64_LENGTH) {
+        free(salt_b64);
+        return 0;
+    }
+
+    size_t salt_len = 0;
+    size_t expected_len = 0;
+    uint8_t *salt = NULL;
+    uint8_t *expected = NULL;
+    int ok = password_decode_salt_hash(
+        salt_b64, salt_b64_len, hash_b64_start, hash_b64_len, &salt, &salt_len, &expected, &expected_len);
+    free(salt_b64);
+    if (!ok)
+        return 0;
+
+    password_secure_zero(salt, salt_len);
+    free(salt);
+    password_secure_zero(expected, expected_len);
+    free(expected);
+
+    if (log2n_out)
+        *log2n_out = log2n_ll;
+    if (r_out)
+        *r_out = r_ll;
+    if (p_out)
+        *p_out = p_ll;
+    return 1;
+}
+
+/// @brief Public Viper.Crypto.Password.Verify — verify a password against either format.
+/// @details Inspects the `SCRYPT$` or `PBKDF2$` prefix and dispatches to
+///          password_verify_scrypt or password_verify_pbkdf2. Returns 0
+///          for any parse / format / mismatch failure — never traps, so
+///          login flows can produce a uniform "invalid credentials"
+///          response without leaking whether the failure was a wrong
+///          password versus a corrupt stored hash.
+/// @return 1 on verified match, 0 otherwise.
 int8_t rt_password_verify(rt_string password, rt_string hash) {
     if (!hash)
         return 0;
@@ -500,13 +677,24 @@ int8_t rt_password_verify(rt_string password, rt_string hash) {
     if (strlen(hash_str) != (size_t)hash_len64)
         return 0;
 
-    if (strncmp(hash_str, "SCRYPT$", 7) == 0)
+    if (strncmp(hash_str, "SCRYPT$", 7) == 0) {
+        if (!rt_crypto_module_service_allowed(RT_CRYPTO_SERVICE_SCRYPT))
+            return 0;
         return password_verify_scrypt(password, hash_str) ? 1 : 0;
+    }
     if (strncmp(hash_str, "PBKDF2$", 7) == 0)
         return password_verify_pbkdf2(password, hash_str) ? 1 : 0;
     return 0;
 }
 
+/// @brief Public Viper.Crypto.Password.NeedsRehash — does this stored hash need upgrading?
+/// @details Returns 1 if the stored hash uses an obsolete format (PBKDF2)
+///          or scrypt parameters below the current policy minimum.
+///          Applications should call this on successful login and, if it
+///          returns 1, re-hash the just-verified plaintext password and
+///          replace the stored hash. This is the standard rolling-upgrade
+///          pattern for migrating users from PBKDF2 to scrypt over time.
+/// @return 1 if a rehash is recommended, 0 if the stored hash is current.
 int8_t rt_password_needs_rehash(rt_string hash) {
     if (!hash)
         return 1;
@@ -517,24 +705,25 @@ int8_t rt_password_needs_rehash(rt_string hash) {
     if (!hash_str || strlen(hash_str) != (size_t)hash_len64)
         return 1;
 
+    if (rt_crypto_module_is_approved_mode()) {
+        if (strncmp(hash_str, "PBKDF2$", 7) != 0)
+            return 1;
+        const char *p = hash_str + 7;
+        char *end = NULL;
+        errno = 0;
+        long long iterations = strtoll(p, &end, 10);
+        if (errno != 0 || !end || *end != '$')
+            return 1;
+        return iterations < DEFAULT_ITERATIONS ? 1 : 0;
+    }
+
     if (strncmp(hash_str, "SCRYPT$", 7) != 0)
         return 1;
 
-    const char *p = hash_str + 7;
-    char *end;
-    errno = 0;
-    long long log2n_ll = strtoll(p, &end, 10);
-    if (errno != 0 || end == p || *end != '$')
-        return 1;
-    p = end + 1;
-    errno = 0;
-    long long r_ll = strtoll(p, &end, 10);
-    if (errno != 0 || end == p || *end != '$')
-        return 1;
-    p = end + 1;
-    errno = 0;
-    long long p_ll = strtoll(p, &end, 10);
-    if (errno != 0 || end == p || *end != '$')
+    long long log2n_ll = 0;
+    long long r_ll = 0;
+    long long p_ll = 0;
+    if (!password_stored_scrypt_params(hash_str, &log2n_ll, &r_ll, &p_ll))
         return 1;
 
     if (log2n_ll != PASSWORD_SCRYPT_N_LOG2 || r_ll != PASSWORD_SCRYPT_R ||

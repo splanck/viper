@@ -189,6 +189,7 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_Json,
     RTCLS_KeyDerive,
     RTCLS_CryptoRand,
+    RTCLS_CryptoModule,
     RTCLS_Cipher,
     RTCLS_Password,
     RTCLS_Pattern,

@@ -98,8 +98,9 @@ static void test_password_encrypt_decrypt_roundtrip() {
 
         void *encrypted = rt_cipher_encrypt(plain, password);
         test_result("Empty plaintext encrypts", encrypted != NULL);
-        // Expected: 16 (salt) + 12 (nonce) + 0 (ciphertext) + 16 (tag) = 44 bytes
-        test_result("Empty encrypted has correct size", rt_bytes_len(encrypted) == 44);
+        // Expected: 4 (magic) + 4 (iterations) + 16 (salt) + 12 (nonce)
+        //           + 0 (ciphertext) + 16 (tag) = 52 bytes
+        test_result("Empty encrypted has correct VCP2 size", rt_bytes_len(encrypted) == 52);
 
         void *decrypted = rt_cipher_decrypt(encrypted, password);
         test_result("Empty decrypts correctly", rt_bytes_len(decrypted) == 0);
@@ -192,11 +193,11 @@ static void test_key_based_encrypt_decrypt() {
         void *enc_pw = rt_cipher_encrypt(plain, password);
         void *enc_key = rt_cipher_encrypt_with_key(plain, key);
 
-        // Password-based: salt(16) + nonce(12) + cipher + tag(16)
-        // Key-based: nonce(12) + cipher + tag(16)
-        // Difference should be exactly 16 bytes (salt size)
-        test_result("Key-based is 16 bytes smaller",
-                    rt_bytes_len(enc_pw) - rt_bytes_len(enc_key) == 16);
+        // Password-based VCP2: magic(4) + iter(4) + salt(16) + nonce(12) + cipher + tag(16)
+        // Key-based VCK2: magic(4) + nonce(12) + cipher + tag(16)
+        // Difference should be exactly 20 bytes (iteration field + salt).
+        test_result("Key-based is 20 bytes smaller",
+                    rt_bytes_len(enc_pw) - rt_bytes_len(enc_key) == 20);
     }
 
     printf("\n");

@@ -6,26 +6,35 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_hash.c
-// Purpose: Implements cryptographic hash functions (MD5, SHA-1, SHA-256) and
-//          CRC32 checksum for the Viper.Text.Hash class. All hash functions
-//          return lowercase hex-encoded strings. SHA-256 is the recommended
-//          function for security applications.
+// Purpose: Implements the Viper.Crypto.Hash runtime — cryptographic digest
+//          functions (MD5, SHA-1, SHA-224, SHA-256, SHA-384, SHA-512), HMAC
+//          variants over each of those, CRC32 checksum, and the new constant-
+//          time equality helpers `ConstantTimeEquals` / `ConstantTimeEqualsBytes`
+//          used by Password.Verify and any application code comparing MAC
+//          tags or session IDs.
 //
 // Key invariants:
 //   - MD5 and SHA-1 are included for legacy compatibility only; they are
 //     cryptographically broken and must not be used for security.
-//   - All hash functions produce lowercase hex output.
+//   - All public hash functions produce lowercase hex-encoded output.
 //   - CRC32 lookup table is initialized once on first use (safe in practice;
 //     callers must externally synchronize if called concurrently before init).
 //   - Input may be a string or rt_bytes; both paths produce identical digests.
 //   - All hash state is stack-allocated; no per-call heap allocation.
+//   - The HMAC helpers (hmac_hash_*) dispatch on `hmac_hash_alg_t` so the
+//     PBKDF2 and scrypt KDF code can switch hash algorithms without each
+//     KDF having to know the per-hash context layout.
+//   - Constant-time equality routes all early-exit paths through the same
+//     length-mismatch branch so the timing channel reveals only "lengths
+//     differ" — not "first differing byte position".
 //
 // Ownership/Lifetime:
 //   - Returned hex strings are fresh rt_string allocations owned by the caller.
 //   - Input strings and bytes buffers are borrowed for the duration of the call.
 //
 // Links: src/runtime/text/rt_hash.h (public API),
-//        src/runtime/text/rt_codec.h (hex encoding used to format output)
+//        src/runtime/text/rt_codec.h (hex encoding used to format output),
+//        src/runtime/text/rt_keyderive.c (consumer of HMAC dispatch)
 //
 //===----------------------------------------------------------------------===//
 
@@ -33,6 +42,7 @@
 
 #include "rt_bytes.h"
 #include "rt_codec.h"
+#include "rt_crypto_module.h"
 #include "rt_crc32.h"
 #include "rt_internal.h"
 #include "rt_string.h"
@@ -47,6 +57,11 @@ static void hash_secure_zero(void *ptr, size_t len) {
     volatile uint8_t *p = (volatile uint8_t *)ptr;
     while (len-- > 0)
         *p++ = 0;
+}
+
+static void hash_require_service(rt_crypto_module_service_t service, const char *message) {
+    if (!rt_crypto_module_service_allowed(service))
+        rt_trap(message);
 }
 
 /// @brief Extract a raw byte pointer and byte count from an rt_string.
@@ -511,6 +526,8 @@ static void sha256_init(SHA256_CTX *ctx) {
 /// @brief Stream `len` bytes through the SHA-256 context.
 static void sha256_update(SHA256_CTX *ctx, const uint8_t *data, size_t len) {
     size_t idx = (size_t)(ctx->bitcount / 8 % 64);
+    if (len > (UINT64_MAX - ctx->bitcount) / 8)
+        rt_trap("SHA256: input too large");
     ctx->bitcount += (uint64_t)len * 8;
 
     // Fill remaining buffer space
@@ -613,6 +630,7 @@ static void compute_sha256(const uint8_t *data, size_t len, uint8_t hash[32]) {
 /// @see rt_hash_sha256 For a secure alternative
 /// @see rt_hash_md5_bytes For hashing Bytes objects
 rt_string rt_hash_md5(rt_string str) {
+    hash_require_service(RT_CRYPTO_SERVICE_MD5, "Hash.MD5 is disabled in approved mode");
     size_t len;
     const uint8_t *data = hash_string_bytes(str, &len);
 
@@ -649,6 +667,7 @@ rt_string rt_hash_md5(rt_string str) {
 /// @see rt_hash_md5 For hashing strings
 /// @see rt_hash_sha256_bytes For a secure alternative
 rt_string rt_hash_md5_bytes(void *bytes) {
+    hash_require_service(RT_CRYPTO_SERVICE_MD5, "Hash.MD5Bytes is disabled in approved mode");
     size_t len;
     uint8_t *data = rt_bytes_extract_raw(bytes, &len);
     uint8_t digest[16];
@@ -698,6 +717,7 @@ rt_string rt_hash_md5_bytes(void *bytes) {
 /// @see rt_hash_sha256 For a secure alternative
 /// @see rt_hash_sha1_bytes For hashing Bytes objects
 rt_string rt_hash_sha1(rt_string str) {
+    hash_require_service(RT_CRYPTO_SERVICE_SHA1, "Hash.SHA1 is disabled in approved mode");
     size_t len;
     const uint8_t *data = hash_string_bytes(str, &len);
 
@@ -733,6 +753,7 @@ rt_string rt_hash_sha1(rt_string str) {
 /// @see rt_hash_sha1 For hashing strings
 /// @see rt_hash_sha256_bytes For a secure alternative
 rt_string rt_hash_sha1_bytes(void *bytes) {
+    hash_require_service(RT_CRYPTO_SERVICE_SHA1, "Hash.SHA1Bytes is disabled in approved mode");
     size_t len;
     uint8_t *data = rt_bytes_extract_raw(bytes, &len);
     uint8_t digest[20];
@@ -904,6 +925,7 @@ rt_string rt_hash_sha256_bytes(void *bytes) {
 /// @see rt_hash_crc32_bytes For computing CRC32 of Bytes objects
 /// @see rt_hash_sha256 For security-sensitive applications
 int64_t rt_hash_crc32(rt_string str) {
+    hash_require_service(RT_CRYPTO_SERVICE_CRC32, "Hash.CRC32 is disabled in approved mode");
     size_t len;
     const uint8_t *data = hash_string_bytes(str, &len);
 
@@ -948,6 +970,7 @@ int64_t rt_hash_crc32(rt_string str) {
 /// @see rt_hash_crc32 For computing CRC32 of strings
 /// @see rt_hash_sha256_bytes For security-sensitive applications
 int64_t rt_hash_crc32_bytes(void *bytes) {
+    hash_require_service(RT_CRYPTO_SERVICE_CRC32, "Hash.CRC32Bytes is disabled in approved mode");
     size_t len;
     uint8_t *data = rt_bytes_extract_raw(bytes, &len);
     uint32_t result = rt_crc32_compute(data ? data : (const uint8_t *)"", len);
@@ -961,25 +984,104 @@ int64_t rt_hash_crc32_bytes(void *bytes) {
 
 #define HMAC_BLOCK_SIZE 64 // Block size for MD5, SHA1, SHA256
 
-/// @brief Hash function pointer type for HMAC computation.
-typedef void (*hash_fn_t)(const uint8_t *data, size_t len, uint8_t *digest);
+typedef enum {
+    HMAC_HASH_MD5,
+    HMAC_HASH_SHA1,
+    HMAC_HASH_SHA256
+} hmac_hash_alg_t;
+
+typedef union {
+    MD5_CTX md5;
+    SHA1_CTX sha1;
+    SHA256_CTX sha256;
+} hmac_hash_ctx_t;
+
+/// @brief Return the digest length in bytes for the given hash algorithm tag.
+/// @details MD5 = 16, SHA-1 = 20, SHA-256 = 32. Used by callers that need to
+///          allocate output buffers without baking per-algorithm constants
+///          into their own code.
+static size_t hmac_digest_size(hmac_hash_alg_t alg) {
+    switch (alg) {
+        case HMAC_HASH_MD5: return 16;
+        case HMAC_HASH_SHA1: return 20;
+        case HMAC_HASH_SHA256: return 32;
+    }
+    return 0;
+}
+
+/// @brief Initialize a hash-algorithm-agnostic context (`hmac_hash_ctx_t`).
+/// @details Dispatches to md5_init / sha1_init / sha256_init based on @p alg.
+///          The shared union lets KDFs (PBKDF2, scrypt) hold one stack-
+///          allocated context type and feed any of three algorithms into it
+///          without per-algorithm specialization.
+static void hmac_hash_init(hmac_hash_alg_t alg, hmac_hash_ctx_t *ctx) {
+    switch (alg) {
+        case HMAC_HASH_MD5: md5_init(&ctx->md5); break;
+        case HMAC_HASH_SHA1: sha1_init(&ctx->sha1); break;
+        case HMAC_HASH_SHA256: sha256_init(&ctx->sha256); break;
+    }
+}
+
+/// @brief Feed @p len bytes from @p data into the appropriate hash context.
+/// @details Dispatches by @p alg to md5_update / sha1_update / sha256_update.
+///          NULL @p data with non-zero @p len traps; NULL @p data with zero
+///          @p len is normalized to a one-byte empty buffer for safety.
+static void hmac_hash_update(hmac_hash_alg_t alg,
+                             hmac_hash_ctx_t *ctx,
+                             const uint8_t *data,
+                             size_t len) {
+    if (!data && len > 0)
+        rt_trap("HMAC: invalid input buffer");
+    if (!data)
+        data = (const uint8_t *)"";
+    switch (alg) {
+        case HMAC_HASH_MD5: md5_update(&ctx->md5, data, len); break;
+        case HMAC_HASH_SHA1: sha1_update(&ctx->sha1, data, len); break;
+        case HMAC_HASH_SHA256: sha256_update(&ctx->sha256, data, len); break;
+    }
+}
+
+/// @brief Finalize the hash and write the digest to @p digest.
+/// @details Dispatches by @p alg to md5_final / sha1_final / sha256_final.
+///          @p digest must have at least hmac_digest_size(alg) bytes capacity.
+static void hmac_hash_final(hmac_hash_alg_t alg, hmac_hash_ctx_t *ctx, uint8_t *digest) {
+    switch (alg) {
+        case HMAC_HASH_MD5: md5_final(digest, &ctx->md5); break;
+        case HMAC_HASH_SHA1: sha1_final(digest, &ctx->sha1); break;
+        case HMAC_HASH_SHA256: sha256_final(digest, &ctx->sha256); break;
+    }
+}
+
+/// @brief One-shot hash: init + update + final + zeroize, single call.
+/// @details Convenience wrapper for the common pattern of hashing a single
+///          input buffer in one go. Securely zeros the context after final
+///          so any sensitive intermediate state doesn't linger on the stack.
+static void hmac_hash_once(hmac_hash_alg_t alg,
+                           const uint8_t *data,
+                           size_t len,
+                           uint8_t *digest) {
+    hmac_hash_ctx_t ctx;
+    hmac_hash_init(alg, &ctx);
+    hmac_hash_update(alg, &ctx, data, len);
+    hmac_hash_final(alg, &ctx, digest);
+    hash_secure_zero(&ctx, sizeof(ctx));
+}
 
 /// @brief Generic HMAC computation with parameterized hash function.
-/// @param hash_fn The hash function to use (MD5, SHA1, or SHA256).
-/// @param digest_size Size of the hash digest in bytes (16, 20, or 32).
+/// @param alg The hash function to use (MD5, SHA1, or SHA256).
 /// @param key HMAC key bytes.
 /// @param key_len Length of key in bytes.
 /// @param data Data to authenticate.
 /// @param data_len Length of data in bytes.
 /// @param out Output buffer (must be at least digest_size bytes).
-static void hmac_compute(hash_fn_t hash_fn,
-                         size_t digest_size,
+static void hmac_compute(hmac_hash_alg_t alg,
                          const uint8_t *key,
                          size_t key_len,
                          const uint8_t *data,
                          size_t data_len,
                          uint8_t *out) {
-    if (!hash_fn || !out)
+    size_t digest_size = hmac_digest_size(alg);
+    if (digest_size == 0 || !out)
         rt_trap("HMAC: invalid output buffer");
     if ((!key && key_len > 0) || (!data && data_len > 0))
         rt_trap("HMAC: invalid input buffer");
@@ -994,7 +1096,7 @@ static void hmac_compute(hash_fn_t hash_fn,
 
     // If key is longer than block size, hash it first
     if (key_len > HMAC_BLOCK_SIZE) {
-        hash_fn(key, key_len, k_padded);
+        hmac_hash_once(alg, key, key_len, k_padded);
         memset(k_padded + digest_size, 0, HMAC_BLOCK_SIZE - digest_size);
     } else {
         memcpy(k_padded, key, key_len);
@@ -1007,51 +1109,43 @@ static void hmac_compute(hash_fn_t hash_fn,
         k_opad[i] = k_padded[i] ^ 0x5c;
     }
 
-    if (data_len > SIZE_MAX - HMAC_BLOCK_SIZE)
-        rt_trap("HMAC: data too large");
-
     // Inner hash: H(K xor ipad || data)
     uint8_t inner_hash[32]; // Max digest size
-    size_t inner_len = HMAC_BLOCK_SIZE + data_len;
-    uint8_t *inner_data = (uint8_t *)malloc(inner_len);
-    if (!inner_data)
-        rt_trap("HMAC: memory allocation failed");
-
-    memcpy(inner_data, k_ipad, HMAC_BLOCK_SIZE);
-    if (data_len > 0)
-        memcpy(inner_data + HMAC_BLOCK_SIZE, data, data_len);
-    hash_fn(inner_data, inner_len, inner_hash);
-    hash_secure_zero(inner_data, inner_len);
-    free(inner_data);
+    hmac_hash_ctx_t ctx;
+    hmac_hash_init(alg, &ctx);
+    hmac_hash_update(alg, &ctx, k_ipad, HMAC_BLOCK_SIZE);
+    hmac_hash_update(alg, &ctx, data, data_len);
+    hmac_hash_final(alg, &ctx, inner_hash);
+    hash_secure_zero(&ctx, sizeof(ctx));
 
     // Outer hash: H(K xor opad || inner_hash)
-    uint8_t outer_data[HMAC_BLOCK_SIZE + 32]; // Max digest size
-    memcpy(outer_data, k_opad, HMAC_BLOCK_SIZE);
-    memcpy(outer_data + HMAC_BLOCK_SIZE, inner_hash, digest_size);
-    hash_fn(outer_data, HMAC_BLOCK_SIZE + digest_size, out);
+    hmac_hash_init(alg, &ctx);
+    hmac_hash_update(alg, &ctx, k_opad, HMAC_BLOCK_SIZE);
+    hmac_hash_update(alg, &ctx, inner_hash, digest_size);
+    hmac_hash_final(alg, &ctx, out);
+    hash_secure_zero(&ctx, sizeof(ctx));
     hash_secure_zero(k_padded, sizeof(k_padded));
     hash_secure_zero(k_ipad, sizeof(k_ipad));
     hash_secure_zero(k_opad, sizeof(k_opad));
     hash_secure_zero(inner_hash, sizeof(inner_hash));
-    hash_secure_zero(outer_data, sizeof(outer_data));
 }
 
 /// @brief Compute HMAC-MD5 with raw bytes.
 static void hmac_md5_raw(
     const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len, uint8_t out[16]) {
-    hmac_compute((hash_fn_t)compute_md5, 16, key, key_len, data, data_len, out);
+    hmac_compute(HMAC_HASH_MD5, key, key_len, data, data_len, out);
 }
 
 /// @brief Compute HMAC-SHA1 with raw bytes.
 static void hmac_sha1_raw(
     const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len, uint8_t out[20]) {
-    hmac_compute((hash_fn_t)compute_sha1, 20, key, key_len, data, data_len, out);
+    hmac_compute(HMAC_HASH_SHA1, key, key_len, data, data_len, out);
 }
 
 /// @brief Compute HMAC-SHA256 with raw bytes (exported for PBKDF2).
 void rt_hash_hmac_sha256_raw(
     const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len, uint8_t out[32]) {
-    hmac_compute((hash_fn_t)compute_sha256, 32, key, key_len, data, data_len, out);
+    hmac_compute(HMAC_HASH_SHA256, key, key_len, data, data_len, out);
 }
 
 //=============================================================================
@@ -1060,6 +1154,7 @@ void rt_hash_hmac_sha256_raw(
 
 /// @brief Compute HMAC-MD5 of string data with string key.
 rt_string rt_hash_hmac_md5(rt_string key, rt_string data) {
+    hash_require_service(RT_CRYPTO_SERVICE_MD5, "Hash.HmacMD5 is disabled in approved mode");
     size_t key_len, data_len;
     const uint8_t *key_data = hash_string_bytes(key, &key_len);
     const uint8_t *msg_data = hash_string_bytes(data, &data_len);
@@ -1071,6 +1166,7 @@ rt_string rt_hash_hmac_md5(rt_string key, rt_string data) {
 
 /// @brief Compute HMAC-MD5 of Bytes data with Bytes key.
 rt_string rt_hash_hmac_md5_bytes(void *key, void *data) {
+    hash_require_service(RT_CRYPTO_SERVICE_MD5, "Hash.HmacMD5Bytes is disabled in approved mode");
     size_t key_len, data_len;
     uint8_t *key_data = rt_bytes_extract_raw(key, &key_len);
     uint8_t *msg_data = rt_bytes_extract_raw(data, &data_len);
@@ -1094,6 +1190,7 @@ rt_string rt_hash_hmac_md5_bytes(void *key, void *data) {
 
 /// @brief Compute HMAC-SHA1 of string data with string key.
 rt_string rt_hash_hmac_sha1(rt_string key, rt_string data) {
+    hash_require_service(RT_CRYPTO_SERVICE_SHA1, "Hash.HmacSHA1 is disabled in approved mode");
     size_t key_len, data_len;
     const uint8_t *key_data = hash_string_bytes(key, &key_len);
     const uint8_t *msg_data = hash_string_bytes(data, &data_len);
@@ -1105,6 +1202,7 @@ rt_string rt_hash_hmac_sha1(rt_string key, rt_string data) {
 
 /// @brief Compute HMAC-SHA1 of Bytes data with Bytes key.
 rt_string rt_hash_hmac_sha1_bytes(void *key, void *data) {
+    hash_require_service(RT_CRYPTO_SERVICE_SHA1, "Hash.HmacSHA1Bytes is disabled in approved mode");
     size_t key_len, data_len;
     uint8_t *key_data = rt_bytes_extract_raw(key, &key_len);
     uint8_t *msg_data = rt_bytes_extract_raw(data, &data_len);
@@ -1160,19 +1258,34 @@ rt_string rt_hash_hmac_sha256_bytes(void *key, void *data) {
     return rt_codec_hex_enc_bytes(digest, 32);
 }
 
+/// @brief Fixed-time byte-buffer equality test.
+/// @details Returns 1 if @p a and @p b have identical bytes, 0 otherwise.
+///          Length-mismatched inputs short-circuit (the timing side-channel
+///          reveals only "lengths differ", not "first differing byte
+///          position"). For equal-length inputs the loop OR-folds every
+///          byte XOR into a single accumulator, so the running time depends
+///          only on the input length — never on where (or how many) bytes
+///          differ.
+/// @return 1 if equal, 0 if not (or if lengths differ).
 static int8_t fixed_time_eq(const uint8_t *a, size_t a_len, const uint8_t *b, size_t b_len) {
-    size_t max_len = a_len > b_len ? a_len : b_len;
-    size_t diff = a_len ^ b_len;
+    uint8_t diff = 0;
 
-    for (size_t i = 0; i < max_len; i++) {
-        uint8_t av = i < a_len ? a[i] : 0;
-        uint8_t bv = i < b_len ? b[i] : 0;
-        diff |= (size_t)(av ^ bv);
-    }
+    if (a_len != b_len)
+        return 0;
+    for (size_t i = 0; i < a_len; i++)
+        diff |= a[i] ^ b[i];
 
     return diff == 0 ? 1 : 0;
 }
 
+/// @brief Public Viper.Crypto.Hash.ConstantTimeEquals — branch-free string equality.
+/// @details Compares two `rt_string` payloads in time independent of the
+///          first differing byte position, so an attacker timing the
+///          comparison can't learn how many leading bytes of a guess were
+///          correct. Used internally by Password.Verify and exposed for
+///          application code comparing MAC tags or session IDs where a
+///          standard `==` would leak prefix-equality timing.
+/// @return 1 if the strings are byte-for-byte equal, 0 otherwise.
 int8_t rt_hash_constant_time_equals(rt_string a, rt_string b) {
     size_t a_len, b_len;
     const uint8_t *a_data = hash_string_bytes(a, &a_len);
@@ -1180,6 +1293,12 @@ int8_t rt_hash_constant_time_equals(rt_string a, rt_string b) {
     return fixed_time_eq(a_data, a_len, b_data, b_len);
 }
 
+/// @brief Public Viper.Crypto.Hash.ConstantTimeEqualsBytes — branch-free byte-array equality.
+/// @details Same semantics as rt_hash_constant_time_equals but for raw byte
+///          arrays. NULL data with non-NULL length is normalized to an empty
+///          buffer so the comparison still produces a sensible result. A
+///          negative length on either side returns 0.
+/// @return 1 if the buffers are byte-for-byte equal, 0 otherwise.
 int8_t rt_hash_constant_time_equals_bytes(void *a, void *b) {
     int64_t a_len64 = rt_bytes_len(a);
     int64_t b_len64 = rt_bytes_len(b);
@@ -1194,24 +1313,26 @@ int8_t rt_hash_constant_time_equals_bytes(void *a, void *b) {
 }
 
 //=============================================================================
-// Fast Non-Cryptographic Hash (FNV-1a)
+// Fast Keyed Non-Cryptographic Hash (SipHash-2-4)
 //=============================================================================
 
 #include "rt_hash_util.h"
 
-/// @brief Compute fast hash of a string (FNV-1a).
+/// @brief Compute fast per-process keyed hash of a string.
 /// @param str Input string.
 /// @return 64-bit hash value.
 int64_t rt_hash_fast(rt_string str) {
+    hash_require_service(RT_CRYPTO_SERVICE_SIPHASH, "Hash.Fast is disabled in approved mode");
     size_t len;
     const uint8_t *data = hash_string_bytes(str, &len);
     return (int64_t)rt_fnv1a(data, len);
 }
 
-/// @brief Compute fast hash of a Bytes object (FNV-1a).
+/// @brief Compute fast per-process keyed hash of a Bytes object.
 /// @param bytes Input Bytes object.
 /// @return 64-bit hash value.
 int64_t rt_hash_fast_bytes(void *bytes) {
+    hash_require_service(RT_CRYPTO_SERVICE_SIPHASH, "Hash.FastBytes is disabled in approved mode");
     if (!bytes)
         return (int64_t)rt_fnv1a("", 0);
     size_t len;
@@ -1225,9 +1346,10 @@ int64_t rt_hash_fast_bytes(void *bytes) {
     return result;
 }
 
-/// @brief Compute fast FNV-1a hash of an integer value.
+/// @brief Compute fast per-process keyed hash of an integer value.
 /// @param value Input integer.
 /// @return 64-bit hash value.
 int64_t rt_hash_fast_int(int64_t value) {
+    hash_require_service(RT_CRYPTO_SERVICE_SIPHASH, "Hash.FastInt is disabled in approved mode");
     return (int64_t)rt_fnv1a(&value, sizeof(value));
 }

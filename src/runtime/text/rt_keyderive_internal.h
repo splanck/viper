@@ -18,7 +18,7 @@
 extern "C" {
 #endif
 
-#define RT_PBKDF2_MIN_ITERATIONS 1000U
+#define RT_PBKDF2_MIN_ITERATIONS 100000U
 #define RT_PBKDF2_MAX_ITERATIONS 10000000U
 #define RT_PBKDF2_MAX_KEY_LEN 1024U
 
@@ -40,7 +40,7 @@ extern "C" {
 /// @param password_len Password length in bytes.
 /// @param salt         Salt bytes.
 /// @param salt_len     Salt length in bytes.
-/// @param iterations   Number of PBKDF2 iterations (min RT_PBKDF2_MIN_ITERATIONS).
+/// @param iterations   Number of PBKDF2 iterations (must be positive; public wrappers enforce policy).
 /// @param out          Output buffer for the derived key.
 /// @param out_len      Desired key length in bytes (max RT_PBKDF2_MAX_KEY_LEN).
 void rt_keyderive_pbkdf2_sha256_raw(const uint8_t *password,
@@ -61,6 +61,9 @@ void rt_keyderive_scrypt_sha256_raw(const uint8_t *password,
                                     uint32_t p,
                                     uint8_t *out,
                                     size_t out_len);
+
+/// @brief Return whether scrypt parameters satisfy runtime CPU/memory policy.
+int rt_keyderive_scrypt_params_supported(uint64_t n, uint32_t r, uint32_t p, size_t out_len);
 
 #ifdef __cplusplus
 }

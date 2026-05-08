@@ -73,7 +73,7 @@ void rt_hash_ensure_seeded_(void);
 /// @param data Pointer to the byte sequence to hash (must not be NULL when len > 0).
 /// @param len  Length of the byte sequence in bytes.
 /// @return 64-bit SipHash-2-4 hash value.
-static inline uint64_t rt_fnv1a(const void *data, size_t len) {
+static inline uint64_t rt_siphash24(const void *data, size_t len) {
 #if defined(_MSC_VER) && !defined(__clang__)
     if (!rt_siphash_seeded_)
 #else
@@ -134,6 +134,11 @@ static inline uint64_t rt_fnv1a(const void *data, size_t len) {
     RT_SIPROUND_;
 
     return v0 ^ v1 ^ v2 ^ v3;
+}
+
+/// @brief Backward-compatible internal name for the runtime's fast keyed hash.
+static inline uint64_t rt_fnv1a(const void *data, size_t len) {
+    return rt_siphash24(data, len);
 }
 
 #undef RT_SIPROUND_

@@ -8,7 +8,7 @@
 // cryptographic keys from passwords with configurable cost parameters.
 //
 // Key invariants:
-//   - Minimum 1000 PBKDF2 iterations; lower requests are rejected.
+//   - Minimum 100,000 PBKDF2 iterations; lower requests are rejected.
 //   - PBKDF2 iterations are capped to prevent attacker-controlled CPU exhaustion.
 //   - scrypt N must be a power of two and is capped by memory policy.
 //   - Key length must be in [1, 1024] bytes.
@@ -35,7 +35,7 @@ extern "C" {
 /// @brief Derive a key using PBKDF2-SHA256.
 /// @param password The password string.
 /// @param salt The salt as a Bytes object.
-/// @param iterations Number of iterations (minimum 1000).
+/// @param iterations Number of iterations (minimum 100,000).
 /// @param key_len Desired key length in bytes (1-1024).
 /// @return Derived key as a Bytes object.
 /// @note Traps if iterations are outside policy or key_len is not in [1, 1024].
@@ -47,7 +47,7 @@ void *rt_keyderive_pbkdf2_sha256(rt_string password,
 /// @brief Derive a key using PBKDF2-SHA256 and return as hex string.
 /// @param password The password string.
 /// @param salt The salt as a Bytes object.
-/// @param iterations Number of iterations (minimum 1000).
+/// @param iterations Number of iterations (minimum 100,000).
 /// @param key_len Desired key length in bytes (1-1024).
 /// @return Derived key as lowercase hex string.
 /// @note Traps if iterations are outside policy or key_len is not in [1, 1024].
