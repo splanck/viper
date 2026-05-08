@@ -420,6 +420,28 @@ static void test_synchronous_is_full_honors_waiting_receiver() {
     rt_channel_close(ch);
 }
 
+static void test_synchronous_try_send_handoffs_to_waiting_receiver() {
+    void *ch = rt_channel_new(0);
+    void *item = make_obj();
+    void *received = NULL;
+    std::atomic<int> receiver_started{0};
+
+    std::thread receiver([&]() {
+        receiver_started.store(1, std::memory_order_release);
+        received = rt_channel_recv(ch);
+    });
+
+    while (receiver_started.load(std::memory_order_acquire) == 0)
+        rt_thread_sleep(1);
+    rt_thread_sleep(20);
+
+    assert(rt_channel_try_send(ch, item) == 1);
+    receiver.join();
+    assert(received == item);
+    assert(rt_channel_get_len(ch) == 0);
+    rt_channel_close(ch);
+}
+
 static void test_synchronous_try_recv_is_strictly_nonblocking() {
     void *ch = rt_channel_new(0);
     void *item = make_obj();
@@ -465,6 +487,7 @@ int main() {
     test_synchronous_send_for_timeout_budget();
     test_synchronous_probe_ignores_waiting_sender();
     test_synchronous_is_full_honors_waiting_receiver();
+    test_synchronous_try_send_handoffs_to_waiting_receiver();
     test_synchronous_try_recv_is_strictly_nonblocking();
 
     printf("Channel tests: all passed\n");

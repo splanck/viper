@@ -97,6 +97,12 @@ static void async_promise_error_from_trap(void *promise, const char *fallback) {
     async_promise_error_copy(promise, rt_trap_get_error(), fallback);
 }
 
+/// @brief Forward the rejection reason from a source `future` onto `promise`.
+/// @details Standard error-propagation primitive used by combinators (Map/Then/All/Any)
+///          when the upstream future has rejected. Reads the rejected future's error
+///          string (which bumps the rt_string refcount), assigns it to the destination
+///          promise via `rt_promise_set_error`, and then drops the local reference so
+///          ownership of the live string sits solely with the promise's stored copy.
 static void async_promise_error_from_future(void *promise, void *future) {
     rt_string error = rt_future_get_error(future);
     rt_promise_set_error(promise, error);
@@ -450,16 +456,19 @@ static void async_map_complete(void *future, void *ctx) {
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) == 0) {
+        int8_t source_owned = rt_future_value_is_owned(future);
         void *source_value = rt_future_peek_value(future);
         void *mapped = state->mapper(source_value, state->arg);
         if (mapped == source_value) {
-            if (rt_future_value_is_owned(future))
+            if (source_owned)
                 rt_promise_set_owned(state->promise, mapped);
             else
                 rt_promise_set(state->promise, mapped);
         } else {
             async_promise_set_callback_result(state->promise, mapped, &state->arg, &state->owns_arg);
         }
+        if (source_owned)
+            async_release_ref(&source_value);
     } else {
         async_promise_error_from_trap(state->promise, "Async.Map: mapper trapped");
     }
@@ -593,12 +602,18 @@ static void async_any_complete(void *future, void *ctx) {
     if (!should_resolve)
         goto done;
 
-    if (rt_future_is_error(future))
+    if (rt_future_is_error(future)) {
         async_promise_error_from_future(state->promise, future);
-    else if (rt_future_value_is_owned(future))
-        rt_promise_set_owned(state->promise, rt_future_peek_value(future));
-    else
-        rt_promise_set(state->promise, rt_future_peek_value(future));
+    } else {
+        int8_t value_owned = rt_future_value_is_owned(future);
+        void *value = rt_future_peek_value(future);
+        if (value_owned)
+            rt_promise_set_owned(state->promise, value);
+        else
+            rt_promise_set(state->promise, value);
+        if (value_owned)
+            async_release_ref(&value);
+    }
     async_any_cancel_remaining(state);
 
 done:
@@ -775,8 +790,11 @@ static void async_all_complete(void *future, void *ctx) {
     rt_monitor_enter(state->monitor);
     state->listeners[listener->index] = NULL;
     if (!state->completed) {
+        int8_t value_owned = rt_future_value_is_owned(future);
         void *value = rt_future_peek_value(future);
         rt_seq_set(state->results, listener->index, value);
+        if (value_owned)
+            async_release_ref(&value);
         state->remaining--;
         if (state->remaining == 0) {
             state->completed = 1;

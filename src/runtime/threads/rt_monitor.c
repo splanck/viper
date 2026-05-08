@@ -213,6 +213,16 @@ void rt_monitor_forget(void *obj) {
     free(node);
 }
 
+/// @brief Free a retired monitor table entry once no thread is still waiting on it.
+/// @details Monitor entries enter the "retired" state when the owning
+///          object is finalized but a thread is still inside Wait/Enter
+///          (potentially blocked on the underlying primitive). The
+///          retired entry is kept alive until ref/wait counts drain to
+///          zero, at which point this helper unlinks it from the bucket
+///          chain, destroys the OS-level mutex/condvar, and frees the
+///          node memory. Two near-identical implementations exist
+///          (Windows CS-based and POSIX pthread-based) to match the
+///          per-platform synchronization primitive.
 static void monitor_cleanup_retired_if_idle(void *obj, RtMonitor *monitor) {
     if (!obj || !monitor)
         return;
@@ -889,6 +899,16 @@ void rt_monitor_forget(void *obj) {
     free(node);
 }
 
+/// @brief Free a retired monitor table entry once no thread is still waiting on it.
+/// @details Monitor entries enter the "retired" state when the owning
+///          object is finalized but a thread is still inside Wait/Enter
+///          (potentially blocked on the underlying primitive). The
+///          retired entry is kept alive until ref/wait counts drain to
+///          zero, at which point this helper unlinks it from the bucket
+///          chain, destroys the OS-level mutex/condvar, and frees the
+///          node memory. Two near-identical implementations exist
+///          (Windows CS-based and POSIX pthread-based) to match the
+///          per-platform synchronization primitive.
 static void monitor_cleanup_retired_if_idle(void *obj, RtMonitor *monitor) {
     if (!obj || !monitor)
         return;
@@ -1012,6 +1032,14 @@ typedef struct {
     struct timespec deadline;
 } monitor_deadline_t;
 
+/// @brief Initialize a pthread condvar for monitor Wait, preferring CLOCK_MONOTONIC.
+/// @details Same rationale as the ConcurrentQueue cq_cond_init: timed Wait
+///          deadlines should be immune to wall-clock adjustments. macOS
+///          uses pthread_cond_timedwait_relative_np (intrinsically
+///          monotonic, so we report uses_monotonic=1 even though
+///          condattr_setclock isn't available). Other POSIX platforms
+///          fall back to CLOCK_REALTIME if condattr_setclock fails.
+/// @return 0 on success, errno-style error code otherwise.
 static int monitor_cond_init(pthread_cond_t *cond, int8_t *uses_monotonic) {
     if (uses_monotonic)
         *uses_monotonic = 0;
@@ -1098,6 +1126,12 @@ static monitor_deadline_t monitor_deadline_ms_from_now(int64_t ms, int8_t use_mo
 }
 
 #if defined(__APPLE__)
+/// @brief Return milliseconds remaining until @p deadline (macOS-only relative-wait helper).
+/// @details Counterpart to cq_remaining_ms in rt_concqueue.c — used to
+///          convert an absolute monitor-Wait deadline into a relative
+///          timeout for pthread_cond_timedwait_relative_np. Returns 0 if
+///          the deadline has lapsed; saturates at INT64_MAX for very
+///          large remaining intervals.
 static int64_t monitor_remaining_ms(monitor_deadline_t deadline, int8_t use_monotonic) {
     struct timespec now = monitor_now_clock(use_monotonic);
     int64_t sec = (int64_t)deadline.deadline.tv_sec - (int64_t)now.tv_sec;
@@ -1114,6 +1148,13 @@ static int64_t monitor_remaining_ms(monitor_deadline_t deadline, int8_t use_mono
 }
 #endif
 
+/// @brief Cross-platform pthread_cond_timedwait against an absolute monitor-Wait deadline.
+/// @details Per-platform: on macOS, computes a relative timeout via
+///          monitor_remaining_ms and calls
+///          pthread_cond_timedwait_relative_np; returns ETIMEDOUT if the
+///          deadline has lapsed. On Linux/POSIX, calls the standard
+///          pthread_cond_timedwait with the absolute timespec stored in
+///          the deadline. Caller must hold the monitor mutex.
 static int monitor_cond_timedwait_deadline(pthread_cond_t *cond,
                                            pthread_mutex_t *mutex,
                                            monitor_deadline_t deadline,

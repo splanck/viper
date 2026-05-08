@@ -24,6 +24,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
+#include <exception>
 #include <limits>
 #include <mutex>
 #include <span>
@@ -3074,24 +3075,44 @@ extern "C" void vm_thread_entry_trampoline_bc(void *raw) {
         return;
     }
 
-    try {
-        il::vm::VM vm(*payload->module, payload->program);
-        vm.setExternRegistry(payload->externRegistry);
+	    try {
+	        il::vm::VM vm(*payload->module, payload->program);
+	        vm.setExternRegistry(payload->externRegistry);
         il::support::SmallVector<il::vm::Slot, 2> args;
         if (payload->entry->params.size() == 1) {
             il::vm::Slot s{};
             s.ptr = payload->arg;
             args.push_back(s);
         }
-        il::vm::detail::VMAccess::callFunction(vm, *payload->entry, args);
-    } catch (...) {
-        releaseWorkerArg(payload->arg, payload->ownsArg);
-        il::vm::releaseExternRegistry(payload->externRegistry);
-        payload->externRegistry = nullptr;
-        delete payload;
-        rt_abort("Thread.Start: unhandled exception");
-        return;
-    }
+	        il::vm::detail::VMAccess::callFunction(vm, *payload->entry, args);
+	    } catch (const il::vm::RuntimeTrapSignal &signal) {
+	        char error[512];
+	        const char *message = signal.message.empty() ? "Thread.Start: trapped VM worker"
+	                                                     : signal.message.c_str();
+	        std::snprintf(error, sizeof(error), "%s", message);
+	        releaseWorkerArg(payload->arg, payload->ownsArg);
+	        il::vm::releaseExternRegistry(payload->externRegistry);
+	        payload->externRegistry = nullptr;
+	        delete payload;
+	        rt_abort(error);
+	        return;
+	    } catch (const std::exception &ex) {
+	        char error[512];
+	        std::snprintf(error, sizeof(error), "Thread.Start: unhandled exception: %s", ex.what());
+	        releaseWorkerArg(payload->arg, payload->ownsArg);
+	        il::vm::releaseExternRegistry(payload->externRegistry);
+	        payload->externRegistry = nullptr;
+	        delete payload;
+	        rt_abort(error);
+	        return;
+	    } catch (...) {
+	        releaseWorkerArg(payload->arg, payload->ownsArg);
+	        il::vm::releaseExternRegistry(payload->externRegistry);
+	        payload->externRegistry = nullptr;
+	        delete payload;
+	        rt_abort("Thread.Start: unhandled non-standard exception");
+	        return;
+	    }
     releaseWorkerArg(payload->arg, payload->ownsArg);
     il::vm::releaseExternRegistry(payload->externRegistry);
     delete payload;
@@ -3100,15 +3121,15 @@ extern "C" void vm_thread_entry_trampoline_bc(void *raw) {
 /// Standard VM safe thread entry trampoline.
 extern "C" void vm_thread_safe_entry_trampoline_bc(void *raw) {
     VmThreadStartPayload *payload = static_cast<VmThreadStartPayload *>(raw);
-    if (!payload || !payload->module || !payload->entry) {
-        if (payload) {
-            releaseWorkerArg(payload->arg, payload->ownsArg);
-            il::vm::releaseExternRegistry(payload->externRegistry);
-        }
-        delete payload;
-        rt_abort("Thread.StartSafe: invalid entry");
-        return;
-    }
+	    if (!payload || !payload->module || !payload->entry) {
+	        if (payload) {
+	            releaseWorkerArg(payload->arg, payload->ownsArg);
+	            il::vm::releaseExternRegistry(payload->externRegistry);
+	        }
+	        delete payload;
+	        rt_trap("Thread.StartSafe: invalid entry");
+	        return;
+	    }
 
     try {
         il::vm::VM vm(*payload->module, payload->program);
@@ -3119,15 +3140,35 @@ extern "C" void vm_thread_safe_entry_trampoline_bc(void *raw) {
             s.ptr = payload->arg;
             args.push_back(s);
         }
-        il::vm::detail::VMAccess::callFunction(vm, *payload->entry, args);
-    } catch (...) {
-        releaseWorkerArg(payload->arg, payload->ownsArg);
-        il::vm::releaseExternRegistry(payload->externRegistry);
-        payload->externRegistry = nullptr;
-        delete payload;
-        rt_abort("Thread.StartSafe: unhandled exception in thread entry");
-        return;
-    }
+	        il::vm::detail::VMAccess::callFunction(vm, *payload->entry, args);
+	    } catch (const il::vm::RuntimeTrapSignal &signal) {
+	        char error[512];
+	        const char *message = signal.message.empty() ? "Thread.StartSafe: trapped VM worker"
+	                                                     : signal.message.c_str();
+	        std::snprintf(error, sizeof(error), "%s", message);
+	        releaseWorkerArg(payload->arg, payload->ownsArg);
+	        il::vm::releaseExternRegistry(payload->externRegistry);
+	        payload->externRegistry = nullptr;
+	        delete payload;
+	        rt_trap(error);
+	        return;
+	    } catch (const std::exception &ex) {
+	        char error[512];
+	        std::snprintf(error, sizeof(error), "Thread.StartSafe: unhandled exception: %s", ex.what());
+	        releaseWorkerArg(payload->arg, payload->ownsArg);
+	        il::vm::releaseExternRegistry(payload->externRegistry);
+	        payload->externRegistry = nullptr;
+	        delete payload;
+	        rt_trap(error);
+	        return;
+	    } catch (...) {
+	        releaseWorkerArg(payload->arg, payload->ownsArg);
+	        il::vm::releaseExternRegistry(payload->externRegistry);
+	        payload->externRegistry = nullptr;
+	        delete payload;
+	        rt_trap("Thread.StartSafe: unhandled non-standard exception");
+	        return;
+	    }
     releaseWorkerArg(payload->arg, payload->ownsArg);
     il::vm::releaseExternRegistry(payload->externRegistry);
     delete payload;
@@ -3218,9 +3259,7 @@ static void unified_thread_start_handler(void **args, void *result) {
         validateEntrySignature(*entryFn);
 
         auto *payload = new VmThreadStartPayload{
-            &module, std::move(program), stdVm->externRegistry(), entryFn, arg, arg != nullptr};
-        if (payload->ownsArg)
-            rt_obj_retain_maybe(arg);
+            &module, std::move(program), stdVm->externRegistry(), entryFn, arg, false};
         il::vm::retainExternRegistry(payload->externRegistry);
         void *thread =
             rt_thread_start(reinterpret_cast<void *>(&vm_thread_entry_trampoline_bc), payload);
@@ -3245,10 +3284,7 @@ static void unified_thread_start_handler(void **args, void *result) {
         validateBytecodeThreadEntrySignature(*entryFn);
 
         auto *payload =
-            new BytecodeThreadPayload{
-                bcModule, entryFn, arg, arg != nullptr, bcVm->captureExecutionEnvironment()};
-        if (payload->ownsArg)
-            rt_obj_retain_maybe(arg);
+            new BytecodeThreadPayload{bcModule, entryFn, arg, false, bcVm->captureExecutionEnvironment()};
         void *thread =
             rt_thread_start(reinterpret_cast<void *>(&bytecode_thread_entry_trampoline), payload);
         if (!thread) {
@@ -3298,9 +3334,7 @@ static void unified_thread_start_safe_handler(void **args, void *result) {
         validateEntrySignature(*entryFn);
 
         auto *payload = new VmThreadStartPayload{
-            &module, std::move(program), stdVm->externRegistry(), entryFn, arg, arg != nullptr};
-        if (payload->ownsArg)
-            rt_obj_retain_maybe(arg);
+            &module, std::move(program), stdVm->externRegistry(), entryFn, arg, false};
         il::vm::retainExternRegistry(payload->externRegistry);
         void *thread = rt_thread_start_safe(
             reinterpret_cast<void *>(&vm_thread_safe_entry_trampoline_bc), payload);
@@ -3325,10 +3359,7 @@ static void unified_thread_start_safe_handler(void **args, void *result) {
         validateBytecodeThreadEntrySignature(*entryFn);
 
         auto *payload =
-            new BytecodeThreadPayload{
-                bcModule, entryFn, arg, arg != nullptr, bcVm->captureExecutionEnvironment()};
-        if (payload->ownsArg)
-            rt_obj_retain_maybe(arg);
+            new BytecodeThreadPayload{bcModule, entryFn, arg, false, bcVm->captureExecutionEnvironment()};
         void *thread = rt_thread_start_safe(
             reinterpret_cast<void *>(&bytecode_thread_safe_entry_trampoline), payload);
         if (!thread) {
@@ -3376,11 +3407,18 @@ extern "C" void vm_async_run_entry_trampoline_bc(void *raw) {
             s.ptr = payload->arg;
             args.push_back(s);
             result = il::vm::detail::VMAccess::callFunction(vm, *payload->entry, args);
-        }
-        completed = true;
-    } catch (...) {
-        error = rt_const_cstr("Async.Run: unhandled exception");
-    }
+	        }
+	        completed = true;
+	    } catch (const il::vm::RuntimeTrapSignal &signal) {
+	        const char *message =
+	            signal.message.empty() ? "Async.Run: trapped VM worker" : signal.message.c_str();
+	        error = rt_string_from_bytes(message, std::strlen(message));
+	    } catch (const std::exception &ex) {
+	        std::string message = std::string("Async.Run: unhandled exception: ") + ex.what();
+	        error = rt_string_from_bytes(message.data(), message.size());
+	    } catch (...) {
+	        error = rt_const_cstr("Async.Run: unhandled non-standard exception");
+	    }
 
     if (completed) {
         completeAsyncPromiseWithResult(

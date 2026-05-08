@@ -177,9 +177,11 @@ int8_t rt_future_cancel_listener(void *future,
                                  void *ctx);
 
 /// @brief Internal raw-value accessor for completed non-error futures.
-/// @details Returns the stored value without changing ownership. Intended for
-///          runtime combinators that only need to forward or inspect a value
-///          while another future/promise still owns its lifetime.
+/// @details Returns the stored value. If the promise owns that value, the
+///          returned pointer is retained for the caller and must be released
+///          after use. Borrowed values are returned without a retain. Intended
+///          for runtime combinators that forward or inspect a value while
+///          another future/promise may still own its lifetime.
 /// @param future Future object pointer.
 /// @return Stored value when the future is done and not errored; otherwise NULL.
 void *rt_future_peek_value(void *future);

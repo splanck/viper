@@ -426,7 +426,7 @@ static void trapping_cancel_hook(void *ctx) {
     rt_trap("cancel hook trap");
 }
 
-static void test_listener_trap_rethrows_after_cleanup() {
+static void test_listener_trap_isolated_after_cleanup() {
     g_listener_trap_count = 0;
     g_listener_ok_count = 0;
 
@@ -449,12 +449,12 @@ static void test_listener_trap_rethrows_after_cleanup() {
     }
     rt_trap_clear_recovery();
 
-    test_result(trapped == 1, "listener_trap: promise set should rethrow listener trap");
+    test_result(trapped == 0, "listener_trap: promise set should isolate listener trap");
     test_result(g_listener_trap_count == 1, "listener_trap: trapping listener called");
     test_result(g_listener_ok_count == 1, "listener_trap: later listener still called");
 }
 
-static void test_completed_future_listener_trap_cleans_up() {
+static void test_completed_future_listener_trap_isolated() {
     g_listener_trap_count = 0;
 
     void *promise = rt_promise_new();
@@ -472,11 +472,11 @@ static void test_completed_future_listener_trap_cleans_up() {
     }
     rt_trap_clear_recovery();
 
-    test_result(trapped == 1, "completed_listener_trap: should rethrow listener trap");
+    test_result(trapped == 0, "completed_listener_trap: should isolate listener trap");
     test_result(g_listener_trap_count == 1, "completed_listener_trap: listener called once");
 }
 
-static void test_cancel_listener_trap_rethrows_after_cleanup() {
+static void test_cancel_listener_trap_isolated_after_cleanup() {
     g_cancel_hook_count = 0;
     g_cancel_listener_count = 0;
 
@@ -488,17 +488,8 @@ static void test_cancel_listener_trap_rethrows_after_cleanup() {
                     future, passive_cancel_listener, nullptr, trapping_cancel_hook) == 1,
                 "cancel_listener_trap: register listener");
 
-    jmp_buf recovery;
-    int trapped = 0;
-    rt_trap_set_recovery(&recovery);
-    if (setjmp(recovery) == 0) {
-        (void)rt_future_cancel_listener(future, passive_cancel_listener, nullptr);
-    } else {
-        trapped = 1;
-    }
-    rt_trap_clear_recovery();
-
-    test_result(trapped == 1, "cancel_listener_trap: should rethrow cancel trap");
+    test_result(rt_future_cancel_listener(future, passive_cancel_listener, nullptr) == 1,
+                "cancel_listener_trap: should remove listener");
     test_result(g_cancel_hook_count == 1, "cancel_listener_trap: cancel hook called once");
 
     rt_promise_set(promise, &value);
@@ -542,9 +533,9 @@ int main() {
     test_owned_get_for_val_survives_future_release();
     test_transferred_value_survives_future_release();
     test_set_value_survives_producer_release();
-    test_listener_trap_rethrows_after_cleanup();
-    test_completed_future_listener_trap_cleans_up();
-    test_cancel_listener_trap_rethrows_after_cleanup();
+    test_listener_trap_isolated_after_cleanup();
+    test_completed_future_listener_trap_isolated();
+    test_cancel_listener_trap_isolated_after_cleanup();
 
     printf("All Future/Promise tests passed!\n");
     return 0;

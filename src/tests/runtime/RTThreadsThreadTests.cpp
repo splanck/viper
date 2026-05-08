@@ -43,13 +43,15 @@ static void call_thread_join_twice() {
     assert(t != nullptr);
     rt_thread_join(t);
     rt_thread_join(t);
+    assert(rt_thread_try_join(t) == 1);
+    assert(rt_thread_join_for(t, 0) == 1);
 }
 
 static void call_thread_try_join_after_join() {
     void *t = rt_thread_start((void *)&quick_entry, nullptr);
     assert(t != nullptr);
     rt_thread_join(t);
-    (void)rt_thread_try_join(t);
+    assert(rt_thread_try_join(t) == 1);
 }
 
 static void call_thread_join_fake_magic_wrong_class() {
@@ -188,11 +190,8 @@ int main(int argc, char *argv[]) {
     result = viper::tests::runIsolated(call_thread_join_null);
     assert(result.stderrText.find("Thread.Join: null thread") != std::string::npos);
 
-    result = viper::tests::runIsolated(call_thread_join_twice);
-    assert(result.stderrText.find("Thread.Join: already joined") != std::string::npos);
-
-    result = viper::tests::runIsolated(call_thread_try_join_after_join);
-    assert(result.stderrText.find("Thread.Join: already joined") != std::string::npos);
+    call_thread_join_twice();
+    call_thread_try_join_after_join();
 
     result = viper::tests::runIsolated(call_thread_join_fake_magic_wrong_class);
     assert(result.stderrText.find("Thread: invalid thread handle") != std::string::npos);

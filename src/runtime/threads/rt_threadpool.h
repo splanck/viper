@@ -96,6 +96,10 @@ int64_t rt_threadpool_get_active(void *pool);
 /// @return 1 if shut down, 0 otherwise.
 int8_t rt_threadpool_get_is_shutdown(void *pool);
 
+/// @brief Return the pool currently executing on this thread, or NULL.
+/// @details Internal helper used to avoid nested parallel deadlocks.
+void *rt_threadpool_current_worker_pool(void);
+
 #ifdef __cplusplus
 }
 #endif

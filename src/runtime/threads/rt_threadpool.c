@@ -102,6 +102,11 @@ static __declspec(thread) pool_impl *g_current_worker_pool = NULL;
 static __thread pool_impl *g_current_worker_pool = NULL;
 #endif
 
+/// @brief Release a worker-thread handle held in @p *slot and NULL the slot.
+/// @details Standard ownership-discipline helper used during pool shutdown
+///          and finalize. Releases the runtime ref; if the refcount drops
+///          to zero the object is freed. NULLing the slot prevents any
+///          subsequent re-release from double-freeing.
 static void pool_release_thread_handle(void **slot) {
     if (!slot || !*slot)
         return;
@@ -110,11 +115,38 @@ static void pool_release_thread_handle(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Release a retained pool reference; free the impl when the count reaches zero.
+/// @details Used by deferred-cleanup paths that hold a pool ref across
+///          background work. Safe to call with NULL — no-op in that case.
 static void pool_release_object(pool_impl *pool) {
     if (pool && rt_obj_release_check0(pool))
         rt_obj_free(pool);
 }
 
+/// @brief Validate-and-cast an opaque pool pointer to its impl.
+/// @details Every public Pool entry point dispatches through this guard.
+///          NULL @p pool_obj triggers a trap iff @p trap_on_null is set
+///          (otherwise returns NULL); wrong-class id always traps. Returns
+///          the downcast pointer on success.
+static pool_impl *pool_require(void *pool_obj, const char *what, int8_t trap_on_null) {
+    if (!pool_obj) {
+        if (trap_on_null)
+            rt_trap(what ? what : "Pool: null object");
+        return NULL;
+    }
+    if (rt_obj_class_id(pool_obj) != RT_THREADPOOL_CLASS_ID) {
+        rt_trap("Pool: invalid object");
+        return NULL;
+    }
+    return (pool_impl *)pool_obj;
+}
+
+/// @brief If the pool has captured a worker-task trap message, copy it to @p out and report 1.
+/// @details Caller must hold pool->monitor. Used by Wait / Shutdown to
+///          surface the first task-trap message seen by any worker. The
+///          buffer is null-terminated (truncating long messages) so the
+///          caller can pass it directly to rt_trap. Returns 0 if no
+///          worker has trapped since the last error-take.
 static int8_t pool_take_error_locked(pool_impl *pool, char *out, size_t out_size) {
     if (!pool || pool->error_count <= 0)
         return 0;
@@ -123,11 +155,15 @@ static int8_t pool_take_error_locked(pool_impl *pool, char *out, size_t out_size
         strncpy(out, msg, out_size - 1);
         out[out_size - 1] = '\0';
     }
-    pool->error_count = 0;
-    pool->last_error[0] = '\0';
     return 1;
 }
 
+/// @brief Re-raise the first worker-task trap message under the pool's monitor.
+/// @details Drains the captured error via pool_take_error_locked and, if
+///          one is present, traps the calling thread with that message.
+///          Used by Pool.Wait so a Submit-then-Wait sequence surfaces task
+///          traps to the caller rather than swallowing them in worker
+///          threads.
 static void pool_trap_if_error(pool_impl *pool) {
     char error[512];
     error[0] = '\0';
@@ -138,6 +174,51 @@ static void pool_trap_if_error(pool_impl *pool) {
 
     if (has_error)
         rt_trap(error[0] ? error : "Pool.Wait: task trapped");
+}
+
+/// @brief Move every worker thread handle out of the pool's `workers` array into @p handles.
+/// @details Caller must hold pool->monitor. Steals the thread handles
+///          (NULLing the pool's slots) so the caller can join them
+///          without holding the lock. Used by Shutdown's two-phase
+///          sequence: take handles under the lock, drop the lock, then
+///          join the handles to avoid blocking submit/wait callers.
+static void pool_take_worker_handles_locked(pool_impl *pool, void **handles) {
+    if (!pool || !handles || !pool->workers)
+        return;
+    for (int64_t i = 0; i < pool->worker_count; i++) {
+        handles[i] = pool->workers[i].thread;
+        pool->workers[i].thread = NULL;
+    }
+}
+
+/// @brief Join every non-NULL handle in @p handles and release each retained ref.
+/// @details Companion to pool_take_worker_handles_locked. Walks the handle
+///          array, calls rt_thread_join on each, and releases the runtime
+///          ref. NULL slots are skipped (the take helper may have left
+///          some empty if the pool was constructed but never started).
+static void pool_join_worker_handles(void **handles, int64_t count) {
+    if (!handles)
+        return;
+    for (int64_t i = 0; i < count; i++) {
+        if (handles[i]) {
+            rt_thread_join(handles[i]);
+            pool_release_thread_handle(&handles[i]);
+        }
+    }
+}
+
+static void **pool_detach_worker_handles(pool_impl *pool) {
+    if (!pool || pool->worker_count <= 0)
+        return NULL;
+    void **handles = (void **)calloc((size_t)pool->worker_count, sizeof(void *));
+    if (!handles)
+        return NULL;
+    if (pool->monitor)
+        rt_monitor_enter(pool->monitor);
+    pool_take_worker_handles_locked(pool, handles);
+    if (pool->monitor)
+        rt_monitor_exit(pool->monitor);
+    return handles;
 }
 
 //=============================================================================
@@ -200,7 +281,7 @@ static void pool_finalizer(void *obj) {
             rt_monitor_exit(pool->monitor);
         }
         if (start_cleanup) {
-            void *cleanup_thread = rt_thread_start((void *)pool_deferred_cleanup_entry, pool);
+            void *cleanup_thread = rt_thread_start_owned((void *)pool_deferred_cleanup_entry, pool);
             pool_release_thread_handle(&cleanup_thread);
         }
         return;
@@ -222,10 +303,16 @@ static void pool_finalizer(void *obj) {
         rt_monitor_exit(pool->monitor);
     }
 
-    for (int64_t i = 0; i < pool->worker_count; i++) {
-        if (pool->workers && pool->workers[i].thread) {
-            rt_thread_join(pool->workers[i].thread);
-            pool_release_thread_handle(&pool->workers[i].thread);
+    void **handles = pool_detach_worker_handles(pool);
+    if (handles) {
+        pool_join_worker_handles(handles, pool->worker_count);
+        free(handles);
+    } else {
+        for (int64_t i = 0; i < pool->worker_count; i++) {
+            if (pool->workers && pool->workers[i].thread) {
+                rt_thread_join(pool->workers[i].thread);
+                pool_release_thread_handle(&pool->workers[i].thread);
+            }
         }
     }
 
@@ -259,7 +346,8 @@ void *rt_threadpool_new(int64_t size) {
     if (size > 1024)
         size = 1024;
 
-    pool_impl *pool = (pool_impl *)rt_obj_new_i64(0, sizeof(pool_impl));
+    pool_impl *pool =
+        (pool_impl *)rt_obj_new_i64(RT_THREADPOOL_CLASS_ID, sizeof(pool_impl));
     if (!pool)
         return NULL;
 
@@ -436,7 +524,9 @@ int8_t rt_threadpool_submit(void *pool_obj, void *callback, void *arg) {
     if (!pool_obj || !callback)
         return 0;
 
-    pool_impl *pool = (pool_impl *)pool_obj;
+    pool_impl *pool = pool_require(pool_obj, "Pool.Submit: null object", 0);
+    if (!pool)
+        return 0;
 
     rt_monitor_enter(pool->monitor);
 
@@ -482,7 +572,9 @@ void rt_threadpool_wait(void *pool_obj) {
     if (!pool_obj)
         return;
 
-    pool_impl *pool = (pool_impl *)pool_obj;
+    pool_impl *pool = pool_require(pool_obj, "Pool.Wait: null object", 0);
+    if (!pool)
+        return;
     if (g_current_worker_pool == pool) {
         rt_trap("Pool.Wait: cannot wait from pool worker");
         return;
@@ -503,7 +595,9 @@ int8_t rt_threadpool_wait_for(void *pool_obj, int64_t ms) {
     if (!pool_obj)
         return 1;
 
-    pool_impl *pool = (pool_impl *)pool_obj;
+    pool_impl *pool = pool_require(pool_obj, "Pool.WaitFor: null object", 0);
+    if (!pool)
+        return 0;
     if (g_current_worker_pool == pool) {
         rt_trap("Pool.WaitFor: cannot wait from pool worker");
         return 0;
@@ -569,24 +663,28 @@ void rt_threadpool_shutdown(void *pool_obj) {
     if (!pool_obj)
         return;
 
-    pool_impl *pool = (pool_impl *)pool_obj;
+    pool_impl *pool = pool_require(pool_obj, "Pool.Shutdown: null object", 0);
+    if (!pool)
+        return;
     if (g_current_worker_pool == pool) {
         rt_trap("Pool.Shutdown: cannot shutdown from pool worker");
         return;
     }
 
+    void **handles = (void **)calloc((size_t)pool->worker_count, sizeof(void *));
+    if (!handles) {
+        rt_trap("Pool.Shutdown: memory allocation failed");
+        return;
+    }
+
     rt_monitor_enter(pool->monitor);
     pool->shutdown = 1;
+    pool_take_worker_handles_locked(pool, handles);
     rt_monitor_pause_all(pool->monitor);
     rt_monitor_exit(pool->monitor);
 
-    // Join all workers
-    for (int64_t i = 0; i < pool->worker_count; i++) {
-        if (pool->workers[i].thread) {
-            rt_thread_join(pool->workers[i].thread);
-            pool_release_thread_handle(&pool->workers[i].thread);
-        }
-    }
+    pool_join_worker_handles(handles, pool->worker_count);
+    free(handles);
 }
 
 /// @brief Immediately shut down the pool — discard pending tasks and stop workers.
@@ -594,15 +692,24 @@ void rt_threadpool_shutdown_now(void *pool_obj) {
     if (!pool_obj)
         return;
 
-    pool_impl *pool = (pool_impl *)pool_obj;
+    pool_impl *pool = pool_require(pool_obj, "Pool.ShutdownNow: null object", 0);
+    if (!pool)
+        return;
     if (g_current_worker_pool == pool) {
         rt_trap("Pool.ShutdownNow: cannot shutdown from pool worker");
+        return;
+    }
+
+    void **handles = (void **)calloc((size_t)pool->worker_count, sizeof(void *));
+    if (!handles) {
+        rt_trap("Pool.ShutdownNow: memory allocation failed");
         return;
     }
 
     rt_monitor_enter(pool->monitor);
     pool->shutdown = 1;
     pool->shutdown_now = 1;
+    pool_take_worker_handles_locked(pool, handles);
 
     // Clear the queue
     pool_task *task = pool->queue_head;
@@ -618,13 +725,8 @@ void rt_threadpool_shutdown_now(void *pool_obj) {
     rt_monitor_pause_all(pool->monitor);
     rt_monitor_exit(pool->monitor);
 
-    // Join all workers
-    for (int64_t i = 0; i < pool->worker_count; i++) {
-        if (pool->workers[i].thread) {
-            rt_thread_join(pool->workers[i].thread);
-            pool_release_thread_handle(&pool->workers[i].thread);
-        }
-    }
+    pool_join_worker_handles(handles, pool->worker_count);
+    free(handles);
 }
 
 //=============================================================================
@@ -636,7 +738,9 @@ int64_t rt_threadpool_get_size(void *pool_obj) {
     if (!pool_obj)
         return 0;
 
-    pool_impl *pool = (pool_impl *)pool_obj;
+    pool_impl *pool = pool_require(pool_obj, "Pool.get_Size: null object", 0);
+    if (!pool)
+        return 0;
     return pool->worker_count;
 }
 
@@ -645,7 +749,9 @@ int64_t rt_threadpool_get_pending(void *pool_obj) {
     if (!pool_obj)
         return 0;
 
-    pool_impl *pool = (pool_impl *)pool_obj;
+    pool_impl *pool = pool_require(pool_obj, "Pool.get_Pending: null object", 0);
+    if (!pool)
+        return 0;
 
     rt_monitor_enter(pool->monitor);
     int64_t count = pool->pending_count;
@@ -659,7 +765,9 @@ int64_t rt_threadpool_get_active(void *pool_obj) {
     if (!pool_obj)
         return 0;
 
-    pool_impl *pool = (pool_impl *)pool_obj;
+    pool_impl *pool = pool_require(pool_obj, "Pool.get_Active: null object", 0);
+    if (!pool)
+        return 0;
 
     rt_monitor_enter(pool->monitor);
     int64_t count = pool->active_count;
@@ -673,9 +781,15 @@ int8_t rt_threadpool_get_is_shutdown(void *pool_obj) {
     if (!pool_obj)
         return 1;
 
-    pool_impl *pool = (pool_impl *)pool_obj;
+    pool_impl *pool = pool_require(pool_obj, "Pool.get_IsShutdown: null object", 0);
+    if (!pool)
+        return 1;
     rt_monitor_enter(pool->monitor);
     int8_t shutdown = pool->shutdown;
     rt_monitor_exit(pool->monitor);
     return shutdown;
+}
+
+void *rt_threadpool_current_worker_pool(void) {
+    return g_current_worker_pool;
 }

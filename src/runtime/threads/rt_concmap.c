@@ -37,6 +37,7 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_string_internal.h"
+#include "rt_threads.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -93,6 +94,11 @@ typedef struct {
 // Internal helpers
 //=============================================================================
 
+/// @brief Extract a borrowed (data, byte_length) view of a string key, normalizing NULL to empty.
+/// @details Used by every Get/Set/ContainsKey/Delete entry point so the
+///          hash and compare paths can operate on (data, len) pairs
+///          uniformly. Hashing uses the full byte length (not strlen) so
+///          embedded NULs in keys remain distinct.
 static const char *get_key_data(rt_string key, size_t *out_len) {
     if (!key) {
         *out_len = 0;
@@ -107,6 +113,12 @@ static const char *get_key_data(rt_string key, size_t *out_len) {
     return cstr;
 }
 
+/// @brief Linear-search a separate-chaining bucket for an entry whose key matches (key, key_len).
+/// @details Bucket chains are short on average (load factor ≤ 3/4 enforced
+///          via maybe_resize), so linear traversal is the right choice.
+///          memcmp on the full byte length means embedded NULs don't
+///          collapse keys together.
+/// @return Pointer to the matching entry, or NULL if not found.
 static cm_entry *find_entry(cm_entry *head, const char *key, size_t key_len) {
     cm_entry *e = head;
     while (e) {
@@ -117,6 +129,26 @@ static cm_entry *find_entry(cm_entry *head, const char *key, size_t key_len) {
     return NULL;
 }
 
+/// @brief Validate-and-cast an opaque ConcurrentMap handle to its impl.
+/// @details Standard pattern: NULL @p obj traps when @p trap_on_null is
+///          set, otherwise returns NULL; wrong-class id always traps.
+static rt_concmap_impl *concmap_require(void *obj, int8_t trap_on_null) {
+    if (!obj) {
+        if (trap_on_null)
+            rt_trap("ConcurrentMap: null object");
+        return NULL;
+    }
+    if (rt_obj_class_id(obj) != RT_CONCMAP_CLASS_ID) {
+        rt_trap("ConcurrentMap: invalid object");
+        return NULL;
+    }
+    return (rt_concmap_impl *)obj;
+}
+
+/// @brief Free a single entry — its key copy, its retained value (refcount-aware), and the entry itself.
+/// @details Used by Delete and bucket clear paths. The key is a freshly
+///          malloc'd copy so we own it; the value carries a runtime ref
+///          that we release. NULL @p e is a no-op.
 static void free_entry(cm_entry *e) {
     if (e) {
         free(e->key);
@@ -126,7 +158,17 @@ static void free_entry(cm_entry *e) {
     }
 }
 
+/// @brief Double the bucket array and redistribute every entry to the new modulus.
+/// @details Triggered by maybe_resize when load factor exceeds the
+///          threshold. Walks each old bucket chain, recomputes the FNV-1a
+///          hash modulo the new capacity, and links the entry into its
+///          new bucket. Refuses to grow past `SIZE_MAX / 2` to avoid the
+///          `capacity * 2` overflow. On allocation failure leaves the map
+///          untouched at the old capacity (callers continue to function;
+///          only the load factor degrades).
 static void cm_resize(rt_concmap_impl *cm) {
+    if (!cm || cm->capacity == 0 || cm->capacity > SIZE_MAX / 2)
+        return;
     size_t new_cap = cm->capacity * 2;
     cm_entry **new_buckets = (cm_entry **)calloc(new_cap, sizeof(cm_entry *));
     if (!new_buckets)
@@ -148,12 +190,25 @@ static void cm_resize(rt_concmap_impl *cm) {
     cm->capacity = new_cap;
 }
 
+/// @brief Trigger a resize when the entry count crosses the load-factor threshold.
+/// @details Threshold is `capacity * CM_LOAD_FACTOR_NUM / CM_LOAD_FACTOR_DEN`
+///          (currently 3/4). The threshold is computed in two pieces so the
+///          intermediate `capacity * NUM` doesn't overflow size_t for
+///          large maps. Caller must hold the map mutex.
 static void maybe_resize(rt_concmap_impl *cm) {
-    if (cm->count * CM_LOAD_FACTOR_DEN > cm->capacity * CM_LOAD_FACTOR_NUM) {
+    size_t threshold = (cm->capacity / CM_LOAD_FACTOR_DEN) * CM_LOAD_FACTOR_NUM +
+                       ((cm->capacity % CM_LOAD_FACTOR_DEN) * CM_LOAD_FACTOR_NUM) /
+                           CM_LOAD_FACTOR_DEN;
+    if (cm->count > threshold) {
         cm_resize(cm);
     }
 }
 
+/// @brief Free every entry in every bucket and reset the count to zero.
+/// @details Caller must hold the map mutex. Used by Clear and the GC
+///          finalizer. Does NOT shrink or free the bucket array — the
+///          caller decides whether to reuse the map (Clear) or proceed
+///          to free everything (finalizer).
 static void cm_clear_unlocked(rt_concmap_impl *cm) {
     for (size_t i = 0; i < cm->capacity; i++) {
         cm_entry *e = cm->buckets[i];
@@ -192,7 +247,8 @@ static void cm_finalizer(void *obj) {
 
 /// @brief Create a new thread-safe concurrent hash map (string keys, mutex-per-bucket striping).
 void *rt_concmap_new(void) {
-    rt_concmap_impl *cm = (rt_concmap_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_concmap_impl));
+    rt_concmap_impl *cm =
+        (rt_concmap_impl *)rt_obj_new_i64(RT_CONCMAP_CLASS_ID, (int64_t)sizeof(rt_concmap_impl));
     if (!cm) {
         rt_trap("ConcurrentMap: memory allocation failed");
         return NULL;
@@ -222,7 +278,9 @@ void *rt_concmap_new(void) {
 int64_t rt_concmap_len(void *obj) {
     if (!obj)
         return 0;
-    rt_concmap_impl *cm = (rt_concmap_impl *)obj;
+    rt_concmap_impl *cm = concmap_require(obj, 0);
+    if (!cm)
+        return 0;
     CM_LOCK(cm);
     int64_t len = (int64_t)cm->count;
     CM_UNLOCK(cm);
@@ -238,7 +296,9 @@ int8_t rt_concmap_is_empty(void *obj) {
 void rt_concmap_set(void *obj, rt_string key, void *value) {
     if (!obj)
         return;
-    rt_concmap_impl *cm = (rt_concmap_impl *)obj;
+    rt_concmap_impl *cm = concmap_require(obj, 0);
+    if (!cm)
+        return;
     size_t key_len = 0;
     const char *key_data = get_key_data(key, &key_len);
     uint64_t h = rt_fnv1a(key_data, key_len);
@@ -294,7 +354,9 @@ void rt_concmap_set(void *obj, rt_string key, void *value) {
 void *rt_concmap_get(void *obj, rt_string key) {
     if (!obj)
         return NULL;
-    rt_concmap_impl *cm = (rt_concmap_impl *)obj;
+    rt_concmap_impl *cm = concmap_require(obj, 0);
+    if (!cm)
+        return NULL;
     size_t key_len = 0;
     const char *key_data = get_key_data(key, &key_len);
     uint64_t h = rt_fnv1a(key_data, key_len);
@@ -314,7 +376,9 @@ void *rt_concmap_get(void *obj, rt_string key) {
 void *rt_concmap_get_or(void *obj, rt_string key, void *default_value) {
     if (!obj)
         return default_value;
-    rt_concmap_impl *cm = (rt_concmap_impl *)obj;
+    rt_concmap_impl *cm = concmap_require(obj, 0);
+    if (!cm)
+        return default_value;
     size_t key_len = 0;
     const char *key_data = get_key_data(key, &key_len);
     uint64_t h = rt_fnv1a(key_data, key_len);
@@ -333,7 +397,9 @@ void *rt_concmap_get_or(void *obj, rt_string key, void *default_value) {
 int8_t rt_concmap_has(void *obj, rt_string key) {
     if (!obj)
         return 0;
-    rt_concmap_impl *cm = (rt_concmap_impl *)obj;
+    rt_concmap_impl *cm = concmap_require(obj, 0);
+    if (!cm)
+        return 0;
     size_t key_len = 0;
     const char *key_data = get_key_data(key, &key_len);
     uint64_t h = rt_fnv1a(key_data, key_len);
@@ -350,7 +416,9 @@ int8_t rt_concmap_has(void *obj, rt_string key) {
 int8_t rt_concmap_set_if_missing(void *obj, rt_string key, void *value) {
     if (!obj)
         return 0;
-    rt_concmap_impl *cm = (rt_concmap_impl *)obj;
+    rt_concmap_impl *cm = concmap_require(obj, 0);
+    if (!cm)
+        return 0;
     size_t key_len = 0;
     const char *key_data = get_key_data(key, &key_len);
     uint64_t h = rt_fnv1a(key_data, key_len);
@@ -399,7 +467,9 @@ int8_t rt_concmap_set_if_missing(void *obj, rt_string key, void *value) {
 int8_t rt_concmap_remove(void *obj, rt_string key) {
     if (!obj)
         return 0;
-    rt_concmap_impl *cm = (rt_concmap_impl *)obj;
+    rt_concmap_impl *cm = concmap_require(obj, 0);
+    if (!cm)
+        return 0;
     size_t key_len = 0;
     const char *key_data = get_key_data(key, &key_len);
     uint64_t h = rt_fnv1a(key_data, key_len);
@@ -429,7 +499,9 @@ int8_t rt_concmap_remove(void *obj, rt_string key) {
 void rt_concmap_clear(void *obj) {
     if (!obj)
         return;
-    rt_concmap_impl *cm = (rt_concmap_impl *)obj;
+    rt_concmap_impl *cm = concmap_require(obj, 0);
+    if (!cm)
+        return;
     CM_LOCK(cm);
     cm_clear_unlocked(cm);
     CM_UNLOCK(cm);
@@ -443,28 +515,41 @@ void *rt_concmap_keys(void *obj) {
     rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
-    rt_concmap_impl *cm = (rt_concmap_impl *)obj;
+    rt_concmap_impl *cm = concmap_require(obj, 0);
+    if (!cm)
+        return seq;
 
     size_t snapshot_count = 0;
     size_t total_bytes = 0;
+    char **keys = NULL;
+    size_t *lens = NULL;
+    char *bytes = NULL;
+
     CM_LOCK(cm);
     snapshot_count = cm->count;
     for (size_t i = 0; i < cm->capacity; i++) {
         cm_entry *e = cm->buckets[i];
         while (e) {
+            if (e->key_len > SIZE_MAX - total_bytes) {
+                CM_UNLOCK(cm);
+                rt_trap("ConcurrentMap.Keys: allocation size overflow");
+                return seq;
+            }
             total_bytes += e->key_len;
             e = e->next;
         }
     }
-    CM_UNLOCK(cm);
 
-    if (snapshot_count == 0)
+    if (snapshot_count == 0) {
+        CM_UNLOCK(cm);
         return seq;
+    }
 
-    char **keys = (char **)calloc(snapshot_count, sizeof(char *));
-    size_t *lens = (size_t *)calloc(snapshot_count, sizeof(size_t));
-    char *bytes = (char *)malloc(total_bytes ? total_bytes : 1);
+    keys = (char **)calloc(snapshot_count, sizeof(char *));
+    lens = (size_t *)calloc(snapshot_count, sizeof(size_t));
+    bytes = (char *)malloc(total_bytes ? total_bytes : 1);
     if (!keys || !lens || !bytes) {
+        CM_UNLOCK(cm);
         free(keys);
         free(lens);
         free(bytes);
@@ -474,12 +559,9 @@ void *rt_concmap_keys(void *obj) {
 
     size_t copied = 0;
     size_t offset = 0;
-    CM_LOCK(cm);
     for (size_t i = 0; i < cm->capacity && copied < snapshot_count; i++) {
         cm_entry *e = cm->buckets[i];
         while (e && copied < snapshot_count) {
-            if (offset + e->key_len > total_bytes)
-                break;
             keys[copied] = bytes + offset;
             lens[copied] = e->key_len;
             memcpy(keys[copied], e->key, e->key_len);
@@ -509,24 +591,28 @@ void *rt_concmap_values(void *obj) {
     rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
-    rt_concmap_impl *cm = (rt_concmap_impl *)obj;
-
-    size_t snapshot_count = 0;
-    CM_LOCK(cm);
-    snapshot_count = cm->count;
-    CM_UNLOCK(cm);
-
-    if (snapshot_count == 0)
+    rt_concmap_impl *cm = concmap_require(obj, 0);
+    if (!cm)
         return seq;
 
-    void **values = (void **)calloc(snapshot_count, sizeof(void *));
+    size_t snapshot_count = 0;
+    void **values = NULL;
+    CM_LOCK(cm);
+    snapshot_count = cm->count;
+
+    if (snapshot_count == 0) {
+        CM_UNLOCK(cm);
+        return seq;
+    }
+
+    values = (void **)calloc(snapshot_count, sizeof(void *));
     if (!values) {
+        CM_UNLOCK(cm);
         rt_trap("ConcurrentMap.Values: memory allocation failed");
         return seq;
     }
 
     size_t copied = 0;
-    CM_LOCK(cm);
     for (size_t i = 0; i < cm->capacity && copied < snapshot_count; i++) {
         cm_entry *e = cm->buckets[i];
         while (e && copied < snapshot_count) {

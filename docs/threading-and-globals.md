@@ -117,6 +117,11 @@ implementation:
 2. spawns a host OS thread using the runtime thread helper, and
 3. runs the target IL function in a fresh VM instance that shares the parent’s `ProgramState`.
 
+`Thread.Start` and `Thread.StartSafe` borrow their `arg` pointer in both native
+and VM-backed execution. Use `Thread.StartOwned` or `Thread.StartSafeOwned` when
+the worker needs the runtime to retain a managed object argument until the entry
+function returns.
+
 ## Process-Global State
 
 ### Extern Registry
