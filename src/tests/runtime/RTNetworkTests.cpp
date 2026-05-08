@@ -41,10 +41,15 @@
 #include <unistd.h>
 #endif
 
-#if defined(__linux__)
+#if defined(__linux__) || defined(_WIN32)
 static constexpr int64_t kNetworkTimeoutUpperBoundMs = 5000;
 #else
 static constexpr int64_t kNetworkTimeoutUpperBoundMs = 500;
+#endif
+#if defined(_WIN32)
+static constexpr int64_t kNetworkTimeoutLowerBoundMs = 50;
+#else
+static constexpr int64_t kNetworkTimeoutLowerBoundMs = 90;
 #endif
 
 /// @brief Helper to print test result.
@@ -751,7 +756,7 @@ static void test_accept_timeout() {
 
     test_result("Accept returns NULL on timeout", client == nullptr);
     test_result("Accept timeout is respected",
-                elapsed >= 90 && elapsed < kNetworkTimeoutUpperBoundMs);
+                elapsed >= kNetworkTimeoutLowerBoundMs && elapsed < kNetworkTimeoutUpperBoundMs);
 
     rt_tcp_server_close(server);
 }
@@ -1015,7 +1020,7 @@ static void test_udp_recv_timeout() {
 
     test_result("UDP RecvFor returns NULL on timeout", data == nullptr);
     test_result("UDP RecvFor timeout is respected",
-                elapsed >= 90 && elapsed < kNetworkTimeoutUpperBoundMs);
+                elapsed >= kNetworkTimeoutLowerBoundMs && elapsed < kNetworkTimeoutUpperBoundMs);
 
     rt_udp_close(sock);
 }

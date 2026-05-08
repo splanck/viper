@@ -2777,6 +2777,53 @@ static void build_cert_verify_message(const uint8_t transcript_hash[32], uint8_t
 
 static size_t sig_scheme_hash_len(uint16_t sig_scheme);
 #if defined(_WIN32)
+/// @brief Parse a DER-encoded ECDSA signature for CNG, writing raw r || s bytes.
+/// @return 0 on success, -1 on malformed input.
+static int parse_ecdsa_sig_der(const uint8_t *sig,
+                               size_t sig_len,
+                               uint8_t r_out[32],
+                               uint8_t s_out[32]) {
+    uint8_t tag;
+    size_t vl, hl;
+    const uint8_t *inner = NULL;
+    size_t inner_rem = 0;
+    const uint8_t *r_bytes = NULL;
+    const uint8_t *s_bytes = NULL;
+    size_t r_len = 0;
+    size_t s_len = 0;
+
+    if (der_read_tlv(sig, sig_len, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return -1;
+    inner = sig + hl;
+    inner_rem = vl;
+    if (der_read_tlv(inner, inner_rem, &tag, &vl, &hl) != 0 || tag != 0x02)
+        return -1;
+    r_bytes = inner + hl;
+    r_len = vl;
+    inner += hl + vl;
+    inner_rem -= hl + vl;
+    if (der_read_tlv(inner, inner_rem, &tag, &vl, &hl) != 0 || tag != 0x02)
+        return -1;
+    s_bytes = inner + hl;
+    s_len = vl;
+
+    while (r_len > 1 && r_bytes[0] == 0x00) {
+        r_bytes++;
+        r_len--;
+    }
+    while (s_len > 1 && s_bytes[0] == 0x00) {
+        s_bytes++;
+        s_len--;
+    }
+    if (r_len > 32 || s_len > 32)
+        return -1;
+    memset(r_out, 0, 32);
+    memset(s_out, 0, 32);
+    memcpy(r_out + (32 - r_len), r_bytes, r_len);
+    memcpy(s_out + (32 - s_len), s_bytes, s_len);
+    return 0;
+}
+
 /// @brief Build and hash the CertificateVerify content for Windows CryptoAPI verification.
 ///        Constructs the 130-byte signed content, then hashes it with SHA-256/384/512 as
 ///        required by sig_scheme.
@@ -2826,12 +2873,10 @@ static size_t sig_scheme_hash_len(uint16_t sig_scheme) {
 
 #if defined(_WIN32)
 
-/// @brief Windows path: verify CertificateVerify via Windows CryptoAPI / NCrypt.
+/// @brief Windows path: verify CertificateVerify via Windows CNG / CryptoAPI.
 ///
-/// Builds the message, hashes via Windows CryptCreateHash, imports
-/// the cert's public key via `CryptImportPublicKeyInfo`, then calls
-/// `CryptVerifySignature`. Note: signature bytes need byte-reversal
-/// for Windows' little-endian RSA convention vs TLS big-endian.
+/// Builds the message, hashes it locally, then verifies ECDSA and RSA-PSS with
+/// CNG. The older CryptoAPI fallback is kept for RSA-style public key imports.
 int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_t len) {
     if (len < 4) {
         session->error = "TLS: CertificateVerify message too short";
@@ -2862,6 +2907,46 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
     if (!cert_ctx) {
         session->error = "TLS: CertVerify: could not parse certificate (Windows)";
         return RT_TLS_ERROR_HANDSHAKE;
+    }
+
+    if (sig_scheme == 0x0403) {
+        BCRYPT_KEY_HANDLE key = NULL;
+        uint8_t sig_r[32];
+        uint8_t sig_s[32];
+        uint8_t raw_sig[64];
+        NTSTATUS status;
+
+        if (parse_ecdsa_sig_der(sig_bytes, sig_len, sig_r, sig_s) != 0) {
+            CertFreeCertificateContext(cert_ctx);
+            session->error = "TLS: CertificateVerify: malformed ECDSA signature (Windows)";
+            return RT_TLS_ERROR_HANDSHAKE;
+        }
+        memcpy(raw_sig, sig_r, sizeof(sig_r));
+        memcpy(raw_sig + sizeof(sig_r), sig_s, sizeof(sig_s));
+
+        if (!CryptImportPublicKeyInfoEx2(
+                X509_ASN_ENCODING, &cert_ctx->pCertInfo->SubjectPublicKeyInfo, 0, NULL, &key)) {
+            CertFreeCertificateContext(cert_ctx);
+            session->error = "TLS: CertVerify: CryptImportPublicKeyInfoEx2 failed";
+            return RT_TLS_ERROR_HANDSHAKE;
+        }
+
+        status = BCryptVerifySignature(key,
+                                       NULL,
+                                       content_hash,
+                                       (ULONG)hash_len,
+                                       raw_sig,
+                                       (ULONG)sizeof(raw_sig),
+                                       0);
+        BCryptDestroyKey(key);
+        CertFreeCertificateContext(cert_ctx);
+
+        if (!BCRYPT_SUCCESS(status)) {
+            session->error = "TLS: CertificateVerify signature failed (Windows)";
+            return RT_TLS_ERROR_HANDSHAKE;
+        }
+
+        return RT_TLS_OK;
     }
 
     if (sig_scheme == 0x0804 || sig_scheme == 0x0805 || sig_scheme == 0x0806) {

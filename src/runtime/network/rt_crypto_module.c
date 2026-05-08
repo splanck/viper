@@ -23,8 +23,8 @@ extern void arc4random_buf(void *buf, size_t nbytes);
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <bcrypt.h>
 #include <windows.h>
+#include <bcrypt.h>
 #ifndef NT_SUCCESS
 #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
 #endif
@@ -62,8 +62,8 @@ static int module_os_entropy(uint8_t *buf, size_t len) {
     size_t off = 0;
     while (off < len) {
         size_t chunk = len - off;
-        if (chunk > ULONG_MAX)
-            chunk = ULONG_MAX;
+        if (chunk > UINT32_MAX)
+            chunk = UINT32_MAX;
         NTSTATUS status =
             BCryptGenRandom(NULL, buf + off, (ULONG)chunk, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
         if (!NT_SUCCESS(status))
