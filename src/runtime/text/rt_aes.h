@@ -41,10 +41,11 @@ void *rt_aes_encrypt(void *data, void *key, void *iv);
 /// @param data Bytes object containing ciphertext
 /// @param key Bytes object containing key (16 bytes for AES-128, 32 for AES-256)
 /// @param iv Bytes object containing initialization vector (16 bytes)
-/// @return Bytes object containing plaintext (PKCS7 padding removed)
+/// @return Bytes object containing plaintext, or NULL when padding is invalid
 void *rt_aes_decrypt(void *data, void *key, void *iv);
 
-/// @brief Encrypt data using AES-128-GCM with optional authenticated data.
+/// @brief Encrypt data using AES-128-GCM or AES-256-GCM with optional authenticated data.
+/// @param key Bytes object containing key (16 bytes for AES-128, 32 for AES-256).
 /// @return Bytes object: [magic(4)][nonce(12)][ciphertext][tag(16)].
 void *rt_aes_encrypt_auth(void *data, void *key, void *aad);
 

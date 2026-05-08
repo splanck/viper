@@ -35,41 +35,44 @@ static rt_string make_string_raw(const char *data, size_t len) {
 static void test_password_hash_format() {
     printf("Testing Password.Hash format:\n");
 
-    // Test 1: Hash produces valid format "PBKDF2$iterations$salt_b64$hash_b64"
+    // Test 1: Hash produces valid format "SCRYPT$log2N$r$p$salt_b64$hash_b64"
     {
         rt_string password = rt_const_cstr("mypassword123");
         rt_string hash = rt_password_hash(password);
         const char *hash_str = rt_string_cstr(hash);
 
-        // Should start with "PBKDF2$"
-        test_result("Hash starts with PBKDF2$", strncmp(hash_str, "PBKDF2$", 7) == 0);
+        test_result("Hash starts with SCRYPT$", strncmp(hash_str, "SCRYPT$", 7) == 0);
 
-        // Count $ delimiters (should be exactly 3)
+        // Count $ delimiters (should be exactly 5)
         int count = 0;
         for (const char *p = hash_str; *p; p++) {
             if (*p == '$')
                 count++;
         }
-        test_result("Hash has 3 delimiters", count == 3);
+        test_result("Hash has 5 delimiters", count == 5);
+        test_result("Default scrypt hash does not need rehash", rt_password_needs_rehash(hash) == 0);
     }
 
-    // Test 2: Hash with custom iterations
+    // Test 2: Legacy PBKDF2 hash with custom iterations
     {
         rt_string password = rt_const_cstr("testpass");
         rt_string hash = rt_password_hash_with_iterations(password, 350000);
         const char *hash_str = rt_string_cstr(hash);
 
         // Should contain the requested iteration count
+        test_result("PBKDF2 HashIters starts with PBKDF2$", strncmp(hash_str, "PBKDF2$", 7) == 0);
         test_result("Hash contains custom iterations", strstr(hash_str, "$350000$") != nullptr);
+        test_result("Legacy PBKDF2 hash needs rehash", rt_password_needs_rehash(hash) == 1);
     }
 
-    // Test 3: Low custom iteration counts clamp to the minimum
+    // Test 3: Strong custom scrypt parameters are encoded and marked non-current
     {
         rt_string password = rt_const_cstr("testpass");
-        rt_string hash = rt_password_hash_with_iterations(password, 50000);
+        rt_string hash = rt_password_hash_scrypt_params(password, 16384, 8, 2);
         const char *hash_str = rt_string_cstr(hash);
 
-        test_result("Hash clamps low iteration counts", strstr(hash_str, "$100000$") != nullptr);
+        test_result("HashScryptParams encodes parameters", strstr(hash_str, "$14$8$2$") != nullptr);
+        test_result("Non-current scrypt hash needs rehash", rt_password_needs_rehash(hash) == 1);
     }
 
     // Test 4: Different passwords produce different hashes
@@ -133,7 +136,7 @@ static void test_password_verify() {
         rt_string password =
             rt_const_cstr("This is a very long password that exceeds the normal length "
                           "that most people would use for their passwords, but it should "
-                          "still work correctly with the PBKDF2 algorithm.");
+                          "still work correctly with the password hashing algorithm.");
         rt_string hash = rt_password_hash(password);
         int8_t result = rt_password_verify(password, hash);
         test_result("Long password verifies", result == 1);
@@ -247,6 +250,25 @@ static void test_password_invalid_input() {
         rt_string invalid_hash = make_string_raw(with_nul, sizeof(with_nul));
         int8_t result = rt_password_verify(password, invalid_hash);
         test_result("Stored hash with embedded NUL returns 0", result == 0);
+    }
+
+    // Test 9: NeedsRehash fully validates current-looking scrypt hashes
+    {
+        rt_string invalid_hash = rt_const_cstr("SCRYPT$14$8$1$AAA=AAAAAAAAAAAAAAAAAAAA$"
+                                               "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
+        test_result("Malformed current scrypt hash needs rehash",
+                    rt_password_needs_rehash(invalid_hash) == 1);
+    }
+
+    // Test 10: Unsupported scrypt parameters return 0 instead of trapping
+    {
+        rt_string password = rt_const_cstr("password");
+        rt_string hostile_hash = rt_const_cstr("SCRYPT$20$32$1$AAAAAAAAAAAAAAAAAAAAAA==$"
+                                               "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
+        test_result("Unsupported scrypt verify returns 0",
+                    rt_password_verify(password, hostile_hash) == 0);
+        test_result("Unsupported scrypt hash needs rehash",
+                    rt_password_needs_rehash(hostile_hash) == 1);
     }
 
     printf("\n");

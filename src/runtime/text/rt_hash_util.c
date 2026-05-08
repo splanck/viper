@@ -24,6 +24,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "rt_trap.h"
+
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -53,8 +55,7 @@ int rt_siphash_seeded_ = 0;
 ///            reads are legal even from `/dev/urandom` (rare in
 ///            practice, but kernel guarantees only "at least one byte").
 ///          Returns 0 on success, -1 on any failure (open, read, or
-///          BCryptGenRandom error). The caller falls back to
-///          address-space entropy in that case.
+///          BCryptGenRandom error).
 static int hash_random_fill(uint8_t *buf, size_t len) {
     if (len == 0)
         return 0;
@@ -81,22 +82,15 @@ static int hash_random_fill(uint8_t *buf, size_t len) {
 
 /// @brief Sample 16 bytes of CSPRNG entropy into the SipHash 128-bit key.
 /// @details Run-once via `pthread_once` / `InitOnceExecuteOnce` (see
-///          `rt_hash_ensure_seeded_`). On CSPRNG failure, falls back
-///          to address-space entropy XORed with the canonical SipHash
-///          ASCII constants `"somepseu"`/`"dorandom"` — strictly
-///          weaker than CSPRNG but still uncorrelated across processes
-///          thanks to ASLR. The release-store at the end pairs with
-///          relaxed loads in `rt_hash_ensure_seeded_`'s caller so
-///          other threads see a fully-published seed.
+///          `rt_hash_ensure_seeded_`). On CSPRNG failure, traps rather
+///          than downgrading to predictable process-local entropy.
 static void hash_seed_init(void) {
     uint8_t buf[16];
     if (hash_random_fill(buf, 16) == 0) {
         memcpy(&rt_siphash_k0_, buf, 8);
         memcpy(&rt_siphash_k1_, buf + 8, 8);
     } else {
-        /* Fallback: use address-space entropy if CSPRNG unavailable. */
-        rt_siphash_k0_ = (uint64_t)(uintptr_t)&rt_siphash_k0_ ^ 0x736f6d6570736575ULL;
-        rt_siphash_k1_ = (uint64_t)(uintptr_t)&rt_siphash_k1_ ^ 0x646f72616e646f6dULL;
+        rt_trap("Hash.Fast: OS CSPRNG unavailable");
     }
 #if defined(_MSC_VER) && !defined(__clang__)
     rt_siphash_seeded_ = 1;

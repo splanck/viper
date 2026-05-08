@@ -110,29 +110,31 @@ rt_string rt_hash_hmac_sha256(rt_string key, rt_string data);
 /// @return 64-character lowercase hex string.
 rt_string rt_hash_hmac_sha256_bytes(void *key, void *data);
 
-/// @brief Constant-time equality for string digests/MACs.
+/// @brief Fixed-length equality for string digests/MACs.
+/// @details Length mismatch returns immediately; use for public-format fixed-size tags.
 /// @return 1 when byte lengths and contents match, 0 otherwise.
 int8_t rt_hash_constant_time_equals(rt_string a, rt_string b);
 
-/// @brief Constant-time equality for Bytes digests/MACs.
+/// @brief Fixed-length equality for Bytes digests/MACs.
+/// @details Length mismatch returns immediately; use for public-format fixed-size tags.
 /// @return 1 when byte lengths and contents match, 0 otherwise.
 int8_t rt_hash_constant_time_equals_bytes(void *a, void *b);
 
 //=========================================================================
-// Fast Non-Cryptographic Hash (FNV-1a)
+// Fast Keyed Non-Cryptographic Hash (SipHash-2-4)
 //=========================================================================
 
-/// @brief Compute fast FNV-1a hash of a string.
+/// @brief Compute fast per-process keyed hash of a string.
 /// @param str Input string.
 /// @return 64-bit hash value (as signed i64).
 int64_t rt_hash_fast(rt_string str);
 
-/// @brief Compute fast FNV-1a hash of a Bytes object.
+/// @brief Compute fast per-process keyed hash of a Bytes object.
 /// @param bytes Input bytes.
 /// @return 64-bit hash value (as signed i64).
 int64_t rt_hash_fast_bytes(void *bytes);
 
-/// @brief Compute fast FNV-1a hash of an integer.
+/// @brief Compute fast per-process keyed hash of an integer.
 /// @param value Input integer.
 /// @return 64-bit hash value (as signed i64).
 int64_t rt_hash_fast_int(int64_t value);

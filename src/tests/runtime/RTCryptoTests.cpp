@@ -16,6 +16,8 @@
 #include "rt_aes.h"
 #include "rt_cipher.h"
 #include "rt_crypto.h"
+#include "rt_crypto_module.h"
+#include "rt_ecdsa_p256.h"
 #include "rt_hash.h"
 #include "rt_keyderive.h"
 #include "rt_password.h"
@@ -238,6 +240,34 @@ static void test_hmac_sha256() {
     printf("\n");
 }
 
+static void test_hmac_sha384_sha512() {
+    printf("Testing HMAC-SHA384/SHA512:\n");
+
+    uint8_t key[20];
+    memset(key, 0x0b, sizeof(key));
+    const char data[] = "Hi There";
+    uint8_t mac384[48];
+    uint8_t mac512[64];
+    static const uint8_t exp384[48] = {
+        0xaf, 0xd0, 0x39, 0x44, 0xd8, 0x48, 0x95, 0x62, 0x6b, 0x08, 0x25, 0xf4,
+        0xab, 0x46, 0x90, 0x7f, 0x15, 0xf9, 0xda, 0xdb, 0xe4, 0x10, 0x1e, 0xc6,
+        0x82, 0xaa, 0x03, 0x4c, 0x7c, 0xeb, 0xc5, 0x9c, 0xfa, 0xea, 0x9e, 0xa9,
+        0x07, 0x6e, 0xde, 0x7f, 0x4a, 0xf1, 0x52, 0xe8, 0xb2, 0xfa, 0x9c, 0xb6};
+    static const uint8_t exp512[64] = {
+        0x87, 0xaa, 0x7c, 0xde, 0xa5, 0xef, 0x61, 0x9d, 0x4f, 0xf0, 0xb4,
+        0x24, 0x1a, 0x1d, 0x6c, 0xb0, 0x23, 0x79, 0xf4, 0xe2, 0xce, 0x4e,
+        0xc2, 0x78, 0x7a, 0xd0, 0xb3, 0x05, 0x45, 0xe1, 0x7c, 0xde, 0xda,
+        0xa8, 0x33, 0xb7, 0xd6, 0xb8, 0xa7, 0x02, 0x03, 0x8b, 0x27, 0x4e,
+        0xae, 0xa3, 0xf4, 0xe4, 0xbe, 0x9d, 0x91, 0x4e, 0xeb, 0x61, 0xf1,
+        0x70, 0x2e, 0x69, 0x6c, 0x20, 0x3a, 0x12, 0x68, 0x54};
+
+    rt_hmac_sha384(key, sizeof(key), data, strlen(data), mac384);
+    rt_hmac_sha512(key, sizeof(key), data, strlen(data), mac512);
+    test_result("HMAC-SHA384 RFC 4231 vector", memcmp(mac384, exp384, sizeof(exp384)) == 0);
+    test_result("HMAC-SHA512 RFC 4231 vector", memcmp(mac512, exp512, sizeof(exp512)) == 0);
+    printf("\n");
+}
+
 static void test_sha256_incremental_matches_one_shot() {
     printf("Testing SHA-256 incremental API:\n");
 
@@ -298,32 +328,31 @@ static void test_string_inputs_preserve_embedded_nul() {
 static void test_pbkdf2_sha256() {
     printf("Testing KeyDerive.Pbkdf2SHA256:\n");
 
-    // Test 1: password="password", salt="salt", iterations=1000, dkLen=32
+    // Test 1: password="password", salt="salt", iterations=100000, dkLen=32
     // Note: RFC 6070 uses SHA1, but we're using SHA256
-    // Expected: 632c2812e46d4604102ba7618e9d6d7d2f8128f6266b4a03264d2a0460b7dcb3
+    // Expected from hashlib.pbkdf2_hmac("sha256", ...).
     {
         rt_string password = rt_const_cstr("password");
         void *salt = make_bytes_str("salt");
 
-        rt_string result = rt_keyderive_pbkdf2_sha256_str(password, salt, 1000, 32);
-        test_result("PBKDF2-SHA256 password/salt/1000/32",
+        rt_string result = rt_keyderive_pbkdf2_sha256_str(password, salt, 100000, 32);
+        test_result("PBKDF2-SHA256 password/salt/100000/32",
                     strcmp(rt_string_cstr(result),
-                           "632c2812e46d4604102ba7618e9d6d7d2f8128f6266b4a03264d2a0460b7dcb3") ==
+                           "0394a2ede332c9a13eb82e9b24631604c31df978b4e2f0fbd2c549944f9d79a5") ==
                         0);
     }
 
     // Test 2: password="passwordPASSWORDpassword",
-    // salt="saltSALTsaltSALTsaltSALTsaltSALTsalt", iterations=4096, dkLen=40
-    // Expected: 348c89dbcbd32b2f32d814b8116e84cf2b17347ebc1800181c4e2a1fb8dd53e1c635518c7dac47e9
+    // salt="saltSALTsaltSALTsaltSALTsaltSALTsalt", iterations=100000, dkLen=40
     {
         rt_string password = rt_const_cstr("passwordPASSWORDpassword");
         void *salt = make_bytes_str("saltSALTsaltSALTsaltSALTsaltSALTsalt");
 
-        rt_string result = rt_keyderive_pbkdf2_sha256_str(password, salt, 4096, 40);
-        test_result("PBKDF2-SHA256 long password/salt/4096/40",
+        rt_string result = rt_keyderive_pbkdf2_sha256_str(password, salt, 100000, 40);
+        test_result("PBKDF2-SHA256 long password/salt/100000/40",
                     strcmp(rt_string_cstr(result),
-                           "348c89dbcbd32b2f32d814b8116e84cf2b17347ebc1800181c4e2a1fb8dd53e1c635518"
-                           "c7dac47e9") == 0);
+                           "af70dc8ce4ccc6d39e35080f4af755133b266f3a8da78983844e1caf1fb9f76d9d70"
+                           "fe5b9bd9ec71") == 0);
     }
 
     // Test 3: Returns Bytes object
@@ -331,7 +360,7 @@ static void test_pbkdf2_sha256() {
         rt_string password = rt_const_cstr("test");
         void *salt = make_bytes_str("salt");
 
-        void *result = rt_keyderive_pbkdf2_sha256(password, salt, 1000, 16);
+        void *result = rt_keyderive_pbkdf2_sha256(password, salt, 100000, 16);
         test_result("PBKDF2-SHA256 returns Bytes", result != nullptr);
         test_result("PBKDF2-SHA256 Bytes has correct length", rt_bytes_len(result) == 16);
     }
@@ -344,9 +373,9 @@ static void test_pbkdf2_sha256() {
         void *salt = make_bytes_str("salt");
 
         rt_string full =
-            rt_keyderive_pbkdf2_sha256_str(password_full, salt, 1000, 16);
+            rt_keyderive_pbkdf2_sha256_str(password_full, salt, 100000, 16);
         rt_string prefix =
-            rt_keyderive_pbkdf2_sha256_str(password_prefix, salt, 1000, 16);
+            rt_keyderive_pbkdf2_sha256_str(password_prefix, salt, 100000, 16);
         test_result("PBKDF2 treats embedded NUL as password data",
                     strcmp(rt_string_cstr(full), rt_string_cstr(prefix)) != 0);
     }
@@ -386,13 +415,18 @@ static void test_constant_time_equals_and_passwords() {
     test_result("Hash.ConstantTimeEqualsBytes rejects length mismatch",
                 rt_hash_constant_time_equals_bytes(b1, b3) == 0);
 
-    rt_string hash = rt_password_hash_scrypt_params(rt_const_cstr("secret"), 16, 1, 1);
+    rt_string hash = rt_password_hash_scrypt_params(rt_const_cstr("secret"), 16384, 8, 1);
     test_result("Password.HashScryptParams verifies",
                 rt_password_verify(rt_const_cstr("secret"), hash) == 1);
     test_result("Password.Verify rejects wrong password",
                 rt_password_verify(rt_const_cstr("wrong"), hash) == 0);
-    test_result("Password.NeedsRehash flags weak scrypt params",
-                rt_password_needs_rehash(hash) == 1);
+    test_result("Password.NeedsRehash accepts current scrypt params",
+                rt_password_needs_rehash(hash) == 0);
+
+    rt_string weak_scrypt = rt_const_cstr("SCRYPT$4$1$1$AAAAAAAAAAAAAAAAAAAAAA==$"
+                                          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
+    test_result("Password.NeedsRehash flags weak stored scrypt params",
+                rt_password_needs_rehash(weak_scrypt) == 1);
 
     rt_string pbkdf2 = rt_password_hash_with_iterations(rt_const_cstr("secret"), 100000);
     test_result("Password.Verify accepts legacy PBKDF2",
@@ -447,6 +481,14 @@ static void test_high_level_aead_wrappers() {
                 bytes_equal(aes_opened, plain_data, sizeof(plain_data)));
     test_result("Aes.DecryptAuth rejects wrong AAD",
                 rt_aes_decrypt_auth(aes_cipher, aes_key, wrong_aad) == nullptr);
+
+    uint8_t aes256_key_data[32];
+    memset(aes256_key_data, 0x24, sizeof(aes256_key_data));
+    void *aes256_key = make_bytes(aes256_key_data, sizeof(aes256_key_data));
+    void *aes256_cipher = rt_aes_encrypt_auth(plain, aes256_key, aad);
+    void *aes256_opened = rt_aes_decrypt_auth(aes256_cipher, aes256_key, aad);
+    test_result("Aes.EncryptAuth accepts AES-256 key",
+                bytes_equal(aes256_opened, plain_data, sizeof(plain_data)));
 
     printf("\n");
 }
@@ -610,6 +652,27 @@ static void test_aead_tamper_detection() {
                         0);
     }
 
+    {
+        uint8_t key[32] = {0};
+        uint8_t nonce[12] = {0};
+        uint8_t plaintext[16] = {0};
+        uint8_t ciphertext[32];
+        uint8_t opened[16];
+        static const uint8_t expected[32] = {
+            0xce, 0xa7, 0x40, 0x3d, 0x4d, 0x60, 0x6b, 0x6e, 0x07, 0x4e, 0xc5,
+            0xd3, 0xba, 0xf3, 0x9d, 0x18, 0xd0, 0xd1, 0xc8, 0xa7, 0x99, 0x99,
+            0x6b, 0xf0, 0x26, 0x5b, 0x98, 0xb5, 0xd4, 0x8a, 0xb9, 0x19};
+        test_result("AES-256-GCM vector encrypt",
+                    rt_aes256_gcm_encrypt(
+                        key, nonce, nullptr, 0, plaintext, sizeof(plaintext), ciphertext) ==
+                            sizeof(ciphertext) &&
+                        memcmp(ciphertext, expected, sizeof(expected)) == 0);
+        test_result("AES-256-GCM vector decrypt",
+                    rt_aes256_gcm_decrypt(
+                        key, nonce, nullptr, 0, ciphertext, sizeof(ciphertext), opened) == 16 &&
+                        memcmp(opened, plaintext, sizeof(plaintext)) == 0);
+    }
+
     printf("\n");
 }
 
@@ -634,6 +697,82 @@ static void test_x25519_shared_secret_agreement() {
     printf("\n");
 }
 
+static void test_p256_ecdh_shared_secret_agreement() {
+    printf("Testing P-256 ECDH shared secret agreement:\n");
+
+    uint8_t alice_priv[32] = {0};
+    uint8_t bob_priv[32] = {0};
+    alice_priv[31] = 1;
+    bob_priv[31] = 2;
+
+    uint8_t alice_x[32], alice_y[32], bob_x[32], bob_y[32];
+    uint8_t shared1[32], shared2[32];
+    test_result("Alice P-256 public key",
+                ecdsa_p256_public_from_private(alice_priv, alice_x, alice_y) == 1);
+    test_result("Bob P-256 public key",
+                ecdsa_p256_public_from_private(bob_priv, bob_x, bob_y) == 1);
+    test_result("Alice P-256 ECDH succeeds",
+                ecdsa_p256_ecdh(alice_priv, bob_x, bob_y, shared1) == 1);
+    test_result("Bob P-256 ECDH succeeds",
+                ecdsa_p256_ecdh(bob_priv, alice_x, alice_y, shared2) == 1);
+    test_result("P-256 shared secrets match", memcmp(shared1, shared2, sizeof(shared1)) == 0);
+
+    uint8_t bad_y[32];
+    memcpy(bad_y, bob_y, sizeof(bad_y));
+    bad_y[31] ^= 1;
+    test_result("P-256 ECDH rejects invalid peer point",
+                ecdsa_p256_ecdh(alice_priv, bob_x, bad_y, shared1) == 0);
+    printf("\n");
+}
+
+static void test_crypto_module_approved_mode() {
+    printf("Testing Crypto.Module approved mode:\n");
+
+    test_result("Module self-test passes", rt_crypto_module_self_test() == 1);
+    test_result("Enable approved mode succeeds", rt_crypto_module_enable_approved_mode() == 1);
+    test_result("Approved mode flag is set", rt_crypto_module_is_approved_mode() == 1);
+    test_result("AES-GCM is allowed",
+                rt_crypto_module_service_allowed(RT_CRYPTO_SERVICE_AES_GCM) == 1);
+    test_result("ChaCha20-Poly1305 is rejected",
+                rt_crypto_module_service_allowed(RT_CRYPTO_SERVICE_CHACHA20_POLY1305) == 0);
+    test_result("scrypt is rejected",
+                rt_crypto_module_service_allowed(RT_CRYPTO_SERVICE_SCRYPT) == 0);
+
+    const uint8_t plain_data[] = {'a', 'p', 'p', 'r', 'o', 'v', 'e', 'd'};
+    void *plain = make_bytes(plain_data, sizeof(plain_data));
+    void *aad = make_bytes_str("approved-context");
+    void *cipher = rt_cipher_encrypt_aad(plain, rt_const_cstr("password"), aad);
+    test_result("Cipher approved password format uses AES magic",
+                cipher && rt_bytes_len(cipher) > 4 && rt_bytes_get(cipher, 0) == 'V' &&
+                    rt_bytes_get(cipher, 1) == 'C' && rt_bytes_get(cipher, 2) == 'A' &&
+                    rt_bytes_get(cipher, 3) == '1');
+    void *opened = rt_cipher_decrypt_aad(cipher, rt_const_cstr("password"), aad);
+    test_result("Cipher approved password round-trips",
+                bytes_equal(opened, plain_data, sizeof(plain_data)));
+
+    void *key = rt_cipher_generate_key();
+    void *key_cipher = rt_cipher_encrypt_with_key_aad(plain, key, aad);
+    test_result("Cipher approved key format uses AES magic",
+                key_cipher && rt_bytes_len(key_cipher) > 4 && rt_bytes_get(key_cipher, 0) == 'V' &&
+                    rt_bytes_get(key_cipher, 1) == 'K' && rt_bytes_get(key_cipher, 2) == 'A' &&
+                    rt_bytes_get(key_cipher, 3) == '1');
+    void *key_opened = rt_cipher_decrypt_with_key_aad(key_cipher, key, aad);
+    test_result("Cipher approved key round-trips",
+                bytes_equal(key_opened, plain_data, sizeof(plain_data)));
+
+    rt_string approved_hash = rt_password_hash(rt_const_cstr("secret"));
+    test_result("Password.Hash uses PBKDF2 in approved mode",
+                strncmp(rt_string_cstr(approved_hash), "PBKDF2$", 7) == 0);
+    test_result("Approved PBKDF2 password verifies",
+                rt_password_verify(rt_const_cstr("secret"), approved_hash) == 1);
+    test_result("Approved PBKDF2 password is current",
+                rt_password_needs_rehash(approved_hash) == 0);
+
+    rt_crypto_module_disable_approved_mode();
+    test_result("Approved mode flag is cleared", rt_crypto_module_is_approved_mode() == 0);
+    printf("\n");
+}
+
 //=============================================================================
 // Entry Point
 //=============================================================================
@@ -644,6 +783,7 @@ int main() {
     test_hmac_md5();
     test_hmac_sha1();
     test_hmac_sha256();
+    test_hmac_sha384_sha512();
     test_sha256_incremental_matches_one_shot();
     test_string_inputs_preserve_embedded_nul();
     test_pbkdf2_sha256();
@@ -652,6 +792,8 @@ int main() {
     test_crypto_rand();
     test_aead_tamper_detection();
     test_x25519_shared_secret_agreement();
+    test_p256_ecdh_shared_secret_agreement();
+    test_crypto_module_approved_mode();
 
     printf("All Crypto tests passed!\n");
     return 0;

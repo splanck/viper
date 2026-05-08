@@ -88,6 +88,7 @@
 #include "rt_concqueue.h"
 #include "rt_config.h"
 #include "rt_context.h"
+#include "rt_crypto_module.h"
 #include "rt_convert_coll.h"
 #include "rt_countdown.h"
 #include "rt_countmap.h"

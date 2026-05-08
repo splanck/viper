@@ -50,7 +50,7 @@ rt_string rt_password_hash_with_iterations(rt_string password, int64_t iteration
 /// @brief Hash a password using scrypt with default memory-hard parameters.
 rt_string rt_password_hash_scrypt(rt_string password);
 
-/// @brief Hash a password using scrypt with caller-provided parameters.
+/// @brief Hash a password using scrypt with caller-provided parameters at or above policy minimums.
 rt_string rt_password_hash_scrypt_params(rt_string password, int64_t n, int64_t r, int64_t p);
 
 /// @brief Verify a password against a stored hash.
@@ -62,7 +62,7 @@ rt_string rt_password_hash_scrypt_params(rt_string password, int64_t n, int64_t 
 int8_t rt_password_verify(rt_string password, rt_string hash);
 
 /// @brief Report whether a stored password hash should be upgraded to current defaults.
-/// @return 1 for invalid, legacy, or weaker-than-current hashes; 0 for current hashes.
+/// @return 1 for invalid, unsupported, legacy, or non-current hashes; 0 for current hashes.
 int8_t rt_password_needs_rehash(rt_string hash);
 
 #ifdef __cplusplus

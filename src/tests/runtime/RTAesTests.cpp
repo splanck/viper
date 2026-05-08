@@ -183,15 +183,50 @@ static void test_raw_aes128_roundtrip(void) {
     (void)orig_bytes;
 }
 
+static void test_raw_aes128_invalid_padding_returns_null(void) {
+    printf("rt_aes_decrypt returns NULL for invalid CBC padding:\n");
+
+    rt_string key_hex = S("2b7e151628aed2a6abf7158809cf4f3c");
+    void *key = rt_bytes_from_hex(key_hex);
+    rt_string_unref(key_hex);
+
+    rt_string iv_hex = S("000102030405060708090a0b0c0d0e0f");
+    void *iv = rt_bytes_from_hex(iv_hex);
+    rt_string_unref(iv_hex);
+
+    rt_string data_hex = S("4145532d31323820746573742121212121212121");
+    void *data = rt_bytes_from_hex(data_hex);
+    rt_string_unref(data_hex);
+
+    void *encrypted = rt_aes_encrypt(data, key, iv);
+    check("encrypt returns non-null", encrypted != NULL);
+    int64_t enc_len = rt_bytes_len(encrypted);
+    check("ciphertext not empty", enc_len > 0);
+    uint8_t last = (uint8_t)rt_bytes_get(encrypted, enc_len - 1);
+    rt_bytes_set(encrypted, enc_len - 1, (uint8_t)(last ^ 0x01));
+
+    rt_string iv2_hex = S("000102030405060708090a0b0c0d0e0f");
+    void *iv2 = rt_bytes_from_hex(iv2_hex);
+    rt_string_unref(iv2_hex);
+
+    void *decrypted = rt_aes_decrypt(encrypted, key, iv2);
+    check("invalid padding returns NULL", decrypted == NULL);
+
+    obj_release(iv2);
+    obj_release(encrypted);
+    obj_release(data);
+    obj_release(iv);
+    obj_release(key);
+}
+
 int main(void) {
     printf("=== RTAesTests ===\n");
     test_str_roundtrip();
     test_empty_str_roundtrip();
     test_embedded_nul_str_roundtrip();
     test_str_format_magic();
-    // wrong-password decrypt traps (bad PKCS7 padding aborts via rt_trap),
-    // so that path cannot be tested with assert-style checks.
     test_raw_aes128_roundtrip();
+    test_raw_aes128_invalid_padding_returns_null();
     printf("All AES tests passed.\n");
     return 0;
 }

@@ -875,7 +875,7 @@ RT_FUNC(HashHmacSHA256Bytes,rt_hash_hmac_sha256_bytes,"Viper.Crypto.Hash.HmacSHA
 RT_FUNC(HashConstantTimeEquals,      rt_hash_constant_time_equals,       "Viper.Crypto.Hash.ConstantTimeEquals",      "i1(str,str)")
 RT_FUNC(HashConstantTimeEqualsBytes, rt_hash_constant_time_equals_bytes, "Viper.Crypto.Hash.ConstantTimeEqualsBytes", "i1(obj,obj)")
 
-// Fast hash (FNV-1a) functions
+// Fast keyed non-cryptographic hash functions
 RT_FUNC(HashFast,      rt_hash_fast,       "Viper.Crypto.Hash.Fast",      "i64(str)")
 RT_FUNC(HashFastBytes, rt_hash_fast_bytes, "Viper.Crypto.Hash.FastBytes", "i64(obj)")
 RT_FUNC(HashFastInt,   rt_hash_fast_int,   "Viper.Crypto.Hash.FastInt",   "i64(i64)")
@@ -895,6 +895,15 @@ RT_FUNC(KeyDeriveScryptSHA256Str, rt_keyderive_scrypt_sha256_str, "Viper.Crypto.
 
 RT_FUNC(CryptoRandBytes, rt_crypto_rand_bytes, "Viper.Crypto.Rand.Bytes", "obj(i64)")
 RT_FUNC(CryptoRandInt,   rt_crypto_rand_int,   "Viper.Crypto.Rand.Int",   "i64(i64,i64)")
+
+//=============================================================================
+// CRYPTO - MODULE / APPROVED MODE
+//=============================================================================
+
+RT_FUNC(CryptoModuleEnableApprovedMode, rt_crypto_module_enable_approved_mode, "Viper.Crypto.Module.EnableApprovedMode", "i1()")
+RT_FUNC(CryptoModuleDisableApprovedMode, rt_crypto_module_disable_approved_mode, "Viper.Crypto.Module.DisableApprovedMode", "void()")
+RT_FUNC(CryptoModuleIsApprovedMode, rt_crypto_module_is_approved_mode_viper, "Viper.Crypto.Module.IsApprovedMode", "i1()")
+RT_FUNC(CryptoModuleStatus, rt_crypto_module_status_text, "Viper.Crypto.Module.Status", "str()")
 
 //=============================================================================
 // CRYPTO - CIPHER (HIGH-LEVEL ENCRYPTION)
@@ -948,8 +957,10 @@ RT_FUNC(PasswordNeedsRehash, rt_password_needs_rehash,        "Viper.Crypto.Pass
 
 RT_FUNC(TlsConnect,    rt_viper_tls_connect,     "Viper.Crypto.Tls.Connect",    "obj(str,i64)")
 RT_FUNC(TlsConnectFor, rt_viper_tls_connect_for, "Viper.Crypto.Tls.ConnectFor", "obj(str,i64,i64)")
+RT_FUNC(TlsConnectOptions, rt_viper_tls_connect_options, "Viper.Crypto.Tls.ConnectOptions", "obj(str,i64,str,str,i1,i64)")
 RT_FUNC(TlsHost,       rt_viper_tls_host,        "Viper.Crypto.Tls.get_Host",   "str(obj)")
 RT_FUNC(TlsPort,       rt_viper_tls_port,        "Viper.Crypto.Tls.get_Port",   "i64(obj)")
+RT_FUNC(TlsNegotiatedAlpn, rt_viper_tls_negotiated_alpn, "Viper.Crypto.Tls.get_NegotiatedAlpn", "str(obj)")
 RT_FUNC(TlsIsOpen,     rt_viper_tls_is_open,     "Viper.Crypto.Tls.get_IsOpen", "i1(obj)")
 RT_FUNC(TlsSend,       rt_viper_tls_send,        "Viper.Crypto.Tls.Send",       "i64(obj,obj)")
 RT_FUNC(TlsSendStr,    rt_viper_tls_send_str,    "Viper.Crypto.Tls.SendStr",    "i64(obj,str)")
@@ -6520,6 +6531,14 @@ RT_CLASS_BEGIN("Viper.Crypto.Rand", CryptoRand, "obj", none)
     RT_METHOD("Int", "i64(i64,i64)", CryptoRandInt)
 RT_CLASS_END()
 
+// Viper.Crypto.Module - validation-readiness mode and self-test status
+RT_CLASS_BEGIN("Viper.Crypto.Module", CryptoModule, "obj", none)
+    RT_METHOD("EnableApprovedMode", "i1()", CryptoModuleEnableApprovedMode)
+    RT_METHOD("DisableApprovedMode", "void()", CryptoModuleDisableApprovedMode)
+    RT_METHOD("IsApprovedMode", "i1()", CryptoModuleIsApprovedMode)
+    RT_METHOD("Status", "str()", CryptoModuleStatus)
+RT_CLASS_END()
+
 // Viper.Crypto.Cipher - high-level authenticated encryption
 RT_CLASS_BEGIN("Viper.Crypto.Cipher", Cipher, "obj", none)
     // Password-based encryption (key derived from password)
@@ -6542,9 +6561,11 @@ RT_CLASS_BEGIN("Viper.Crypto.Tls", Tls, "obj", none)
     // Static constructors
     RT_METHOD("Connect", "obj(str,i64)", TlsConnect)
     RT_METHOD("ConnectFor", "obj(str,i64,i64)", TlsConnectFor)
+    RT_METHOD("ConnectOptions", "obj(str,i64,str,str,i1,i64)", TlsConnectOptions)
     // Properties
     RT_PROP("Host", "str", TlsHost, none)
     RT_PROP("Port", "i64", TlsPort, none)
+    RT_PROP("NegotiatedAlpn", "str", TlsNegotiatedAlpn, none)
     RT_PROP("IsOpen", "i1", TlsIsOpen, none)
     // Send methods
     RT_METHOD("Send", "i64(obj)", TlsSend)

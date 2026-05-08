@@ -862,7 +862,7 @@ static std::unordered_map<std::string, RuntimePrototype> loadRuntimeHeaderDeclar
         return result;
 
     // Accept both `void *rt_name(...)` and `void * rt_name(...)` styles.
-    std::regex proto(R"(([\w\s\*]+?)\s*(rt_[A-Za-z0-9_]+)\s*\(([^;{}]*)\)\s*;)");
+    std::regex proto(R"(([\w\s\*]+?)\s*\b(rt_[A-Za-z0-9_]+)\s*\(([^;{}]*)\)\s*;)");
 
     for (const auto &entry : fs::recursive_directory_iterator(runtimeDir)) {
         if (!entry.is_regular_file())

@@ -945,6 +945,48 @@ int ecdsa_p256_public_from_private(const uint8_t privkey[32],
     return 1;
 }
 
+/// @brief Compute P-256 ECDH shared point x-coordinate.
+/// @details Validates both the private scalar and the peer public key, then
+///          computes `S = d * Q_peer` and returns S.x. This is the primitive
+///          needed by a TLS 1.3 secp256r1 key-share implementation. The
+///          current scalar multiply is portable but not yet constant-time for
+///          secret scalars, so the validation plan still tracks side-channel
+///          hardening before any production approved-mode TLS claim.
+int ecdsa_p256_ecdh(const uint8_t privkey[32],
+                    const uint8_t peer_x[32],
+                    const uint8_t peer_y[32],
+                    uint8_t shared_x[32]) {
+    u256 d, qx, qy;
+    u256_from_bytes(d, privkey);
+    u256_from_bytes(qx, peer_x);
+    u256_from_bytes(qy, peer_y);
+    if (u256_is_zero(d) || u256_cmp(d, P256_N) >= 0)
+        return 0;
+    if (u256_is_zero(qx) && u256_is_zero(qy))
+        return 0;
+
+    u256 lhs, rhs, x2, x3, ax;
+    fp_sqr(lhs, qy);
+    fp_sqr(x2, qx);
+    fp_mul(x3, x2, qx);
+    fp_mul(ax, P256_A, qx);
+    fp_add(rhs, x3, ax);
+    fp_add(rhs, rhs, P256_B);
+    if (u256_cmp(lhs, rhs) != 0)
+        return 0;
+
+    jpoint Q;
+    jpoint R;
+    u256 sx, sy;
+    jpoint_from_affine(&Q, qx, qy);
+    jpoint_scalar_mul(&R, d, &Q);
+    if (jpoint_is_infinity(&R))
+        return 0;
+    jpoint_to_affine(sx, sy, &R);
+    u256_to_bytes(shared_x, sx);
+    return 1;
+}
+
 /// @brief Produce an ECDSA-P256 signature over `digest` using the private key.
 /// @details Implements FIPS 186-4 / SEC1 §4.1.3 ECDSA signing:
 ///          1. Validate `1 ≤ d < n`.

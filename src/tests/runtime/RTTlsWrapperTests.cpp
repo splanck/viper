@@ -37,7 +37,29 @@ static void test_tls_wrapper_rejects_invalid_args_without_network() {
     test_result("ConnectFor rejects embedded NUL hostname",
                 rt_viper_tls_connect_for(nul_host, 443, 1000) == nullptr);
 
+    const char raw_ca[] = {'/', 't', 'm', 'p', '/', 'c', 'a', 0, 'x'};
+    rt_string nul_ca = rt_string_from_bytes(raw_ca, sizeof(raw_ca));
+    test_result("ConnectOptions rejects embedded NUL CA path",
+                rt_viper_tls_connect_options(host, 443, nul_ca, rt_const_cstr(""), 1, 1000) ==
+                    nullptr);
+
+    const char raw_alpn[] = {'h', '2', 0, 'x'};
+    rt_string nul_alpn = rt_string_from_bytes(raw_alpn, sizeof(raw_alpn));
+    test_result("ConnectOptions rejects embedded NUL ALPN",
+                rt_viper_tls_connect_options(host, 443, rt_const_cstr(""), nul_alpn, 1, 1000) ==
+                    nullptr);
+
+    test_result("ConnectOptions rejects overflowing timeout",
+                rt_viper_tls_connect_options(host,
+                                             443,
+                                             rt_const_cstr(""),
+                                             rt_const_cstr("h2,http/1.1"),
+                                             1,
+                                             std::numeric_limits<int64_t>::max()) == nullptr);
+
     test_result("IsOpen(NULL) is false", rt_viper_tls_is_open(nullptr) == 0);
+    test_result("NegotiatedAlpn(NULL) returns empty string",
+                rt_str_len(rt_viper_tls_negotiated_alpn(nullptr)) == 0);
     test_result("Recv(NULL) returns NULL",
                 rt_viper_tls_recv(nullptr, std::numeric_limits<int64_t>::max()) == nullptr);
     test_result("RecvStr(NULL) returns empty string",

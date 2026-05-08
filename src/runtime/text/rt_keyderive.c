@@ -10,7 +10,7 @@
 //          for the Viper.Crypto.KeyDerive class.
 //
 // Key invariants:
-//   - Minimum PBKDF2 iteration count is RT_PBKDF2_MIN_ITERATIONS (1000);
+//   - Minimum PBKDF2 iteration count is RT_PBKDF2_MIN_ITERATIONS (100000);
 //     requests below this threshold are rejected by public wrappers.
 //   - PBKDF2 and scrypt work factors are capped to avoid CPU/memory DoS.
 //   - Salt must be non-empty; a NULL or empty salt causes a trap.
@@ -33,6 +33,7 @@
 
 #include "rt_bytes.h"
 #include "rt_codec.h"
+#include "rt_crypto_module.h"
 #include "rt_hash.h"
 #include "rt_internal.h"
 #include "rt_string.h"
@@ -42,6 +43,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+/// @brief Extract a borrowed byte pointer + length from an `rt_string` password.
+/// @details Used by every public PBKDF2/scrypt entry point that accepts a
+///          string password. NULL or zero-length strings are normalized to
+///          an empty (one-byte) buffer so the downstream HMAC code never
+///          sees NULL — it is then free to hash the empty input. The
+///          returned pointer is borrowed; caller must not free it.
 static const uint8_t *pbkdf2_string_bytes(rt_string password, size_t *len) {
     int64_t len64 = rt_str_len(password);
     if (len64 <= 0) {
@@ -178,11 +185,18 @@ void rt_keyderive_pbkdf2_sha256_raw(const uint8_t *password,
     free(salt_int);
 }
 
+/// @brief Load a 32-bit little-endian unsigned int from @p p.
+/// @details scrypt's Salsa20/8 core operates on 32-bit words in
+///          little-endian order regardless of host byte order; this helper
+///          enforces that.
 static uint32_t load32_le(const uint8_t *p) {
     return ((uint32_t)p[0]) | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) |
            ((uint32_t)p[3] << 24);
 }
 
+/// @brief Store a 32-bit unsigned int into @p p in little-endian byte order.
+/// @details Inverse of load32_le. Used to write the Salsa20/8 output back
+///          into the caller's byte-oriented block.
 static void store32_le(uint8_t *p, uint32_t v) {
     p[0] = (uint8_t)v;
     p[1] = (uint8_t)(v >> 8);
@@ -192,6 +206,12 @@ static void store32_le(uint8_t *p, uint32_t v) {
 
 #define SALSA_ROTL32(x, n) (((x) << (n)) | ((x) >> (32 - (n))))
 
+/// @brief In-place Salsa20/8 core (8 rounds = 4 iterations of the column-and-row pair).
+/// @details Standard Salsa20/8 used as the inner mixing primitive of
+///          scrypt's BlockMix step. Each call mixes a 64-byte block
+///          through 4 column-row pairs and finalizes by adding the
+///          original input back (the standard Salsa20 ARX construction).
+///          All temporary state is zeroed before return.
 static void salsa20_8(uint8_t block[64]) {
     uint32_t x[16];
     uint32_t orig[16];
@@ -246,6 +266,12 @@ static void salsa20_8(uint8_t block[64]) {
 
 #undef SALSA_ROTL32
 
+/// @brief scrypt BlockMix_{Salsa20/8, r} — RFC 7914 § 6.
+/// @details Mixes the (128 * r)-byte @p block in place. Treats the block
+///          as a sequence of 2*r 64-byte sub-blocks, runs each through
+///          Salsa20/8 chained with the previous output, then de-interleaves
+///          even and odd indexes to produce the output ordering. @p tmp
+///          must be at least block_len bytes — used as scratch.
 static void scrypt_blockmix(uint8_t *block, uint8_t *tmp, uint32_t r) {
     uint8_t x[64];
     size_t blocks = (size_t)2 * r;
@@ -266,11 +292,24 @@ static void scrypt_blockmix(uint8_t *block, uint8_t *tmp, uint32_t r) {
     keyderive_secure_zero(x, sizeof(x));
 }
 
+/// @brief scrypt Integerify(B) — RFC 7914 § 5.
+/// @details Reads the last 64-byte sub-block of @p block and returns its
+///          low 64 bits in little-endian order. Used by ROMix to derive
+///          the random index `j = Integerify(X) mod N`.
 static uint64_t scrypt_integerify(const uint8_t *block, uint32_t r) {
     const uint8_t *last = block + ((size_t)2 * r - 1) * 64;
     return ((uint64_t)load32_le(last + 4) << 32) | (uint64_t)load32_le(last);
 }
 
+/// @brief scrypt ROMix — RFC 7914 § 5; the memory-hard core of scrypt.
+/// @details Two phases over a (128 * r * N)-byte working set V:
+///          Phase 1 fills V[0..N-1] with successive BlockMix outputs.
+///          Phase 2 runs N iterations of `j = Integerify(B) mod N; B ^= V[j]; B = BlockMix(B)`,
+///          which forces an attacker to either store all of V (memory-hard)
+///          or recompute an expected-value O(N²/2) BlockMix calls (time-hard).
+///          Memory cap is enforced via RT_SCRYPT_MAX_MEMORY; the malloc
+///          may itself OOM, in which case we trap with a clean error.
+///          All sensitive scratch is zeroed before return.
 static void scrypt_romix(uint8_t *block, uint64_t n, uint32_t r) {
     size_t block_len = (size_t)128 * r;
     if (n > SIZE_MAX / block_len)
@@ -306,6 +345,15 @@ static void scrypt_romix(uint8_t *block, uint64_t n, uint32_t r) {
     free(tmp);
 }
 
+/// @brief Validate scrypt cost parameters against runtime caps.
+/// @details Enforces all the scrypt-spec constraints: N must be a power of
+///          two ≥ 2; r and p must be positive and ≤ RT_SCRYPT_MAX_R/P;
+///          out_len must fit RT_SCRYPT_MAX_KEY_LEN; N ≤ 2^RT_SCRYPT_MAX_N_LOG2;
+///          the (N * 128 * r) memory product must fit RT_SCRYPT_MAX_MEMORY
+///          and not overflow size_t. Returns 1 if every check passes, 0
+///          otherwise. Public wrappers expose this via
+///          rt_keyderive_scrypt_params_supported so callers can check
+///          before committing memory.
 static int scrypt_params_valid(uint64_t n, uint32_t r, uint32_t p, size_t out_len) {
     if (n < 2 || (n & (n - 1)) != 0)
         return 0;
@@ -327,6 +375,28 @@ static int scrypt_params_valid(uint64_t n, uint32_t r, uint32_t p, size_t out_le
     return 1;
 }
 
+/// @brief Public predicate: are these scrypt parameters acceptable to this runtime?
+/// @details Exposes scrypt_params_valid for callers that want to probe a
+///          parameter set (typically loaded from configuration or an
+///          encoded password string) without committing the memory the
+///          full derivation would consume.
+/// @return Nonzero if the parameters are valid, 0 if any check fails.
+int rt_keyderive_scrypt_params_supported(uint64_t n, uint32_t r, uint32_t p, size_t out_len) {
+    return scrypt_params_valid(n, r, p, out_len);
+}
+
+/// @brief Raw scrypt-SHA256 KDF (RFC 7914) — internal helper, no Viper-string wrapping.
+/// @details Implements the full scrypt construction:
+///          1. PBKDF2-HMAC-SHA256(password, salt, 1, p * 128 * r) → B
+///          2. For each of p blocks of B: ROMix_r(N) in place
+///          3. PBKDF2-HMAC-SHA256(password, B, 1, out_len) → out
+///          Traps on invalid buffers, invalid parameter sets (per
+///          scrypt_params_valid), or allocation failure. Sensitive scratch
+///          is zeroed before return.
+/// @param password,password_len Caller-borrowed password bytes.
+/// @param salt,salt_len         Caller-borrowed salt bytes.
+/// @param n,r,p                 scrypt cost parameters.
+/// @param out,out_len           Output buffer; out_len bytes written on success.
 void rt_keyderive_scrypt_sha256_raw(const uint8_t *password,
                                     size_t password_len,
                                     const uint8_t *salt,
@@ -358,12 +428,12 @@ void rt_keyderive_scrypt_sha256_raw(const uint8_t *password,
 
 /// @brief Derive a key from a password using PBKDF2-SHA256, returning a Bytes object.
 /// @details High-level wrapper around rt_keyderive_pbkdf2_sha256_raw that
-///          handles Viper string/bytes conversion. Validates iterations (min 1000)
+///          handles Viper string/bytes conversion. Validates iterations (min 100000)
 ///          and key length (1–1024 bytes). The derived key is zeroed from the
 ///          temporary buffer after copying to the Bytes object.
 /// @param password   Password string.
 /// @param salt       Bytes object containing the salt.
-/// @param iterations Number of PBKDF2 iterations (min 1000).
+/// @param iterations Number of PBKDF2 iterations (min 100000).
 /// @param key_len    Desired output key length in bytes (1–1024).
 /// @return Bytes object containing the derived key.
 void *rt_keyderive_pbkdf2_sha256(rt_string password,
@@ -422,7 +492,7 @@ void *rt_keyderive_pbkdf2_sha256(rt_string password,
 ///          for interop with systems that expect text-encoded keys.
 /// @param password   Password string.
 /// @param salt       Bytes object containing the salt.
-/// @param iterations Number of PBKDF2 iterations (min 1000).
+/// @param iterations Number of PBKDF2 iterations (min 100000).
 /// @param key_len    Desired output key length in bytes (hex output is 2x this).
 /// @return Hex-encoded string of the derived key.
 rt_string rt_keyderive_pbkdf2_sha256_str(rt_string password,
@@ -475,6 +545,14 @@ rt_string rt_keyderive_pbkdf2_sha256_str(rt_string password,
     return result;
 }
 
+/// @brief Validate the i64 scrypt parameters from a Zia caller and convert to native types.
+/// @details The public Zia API takes int64 cost parameters; this helper
+///          checks each is non-negative and fits in the underlying type
+///          (uint64 for N, uint32 for r/p), then runs scrypt_params_valid
+///          to enforce the runtime caps. Traps on any violation so the
+///          caller learns about misconfiguration immediately rather than
+///          getting silent clamping. On success, fills @p n / @p r / @p p
+///          with the validated native-typed values.
 static void validate_public_scrypt_params(int64_t n64,
                                           int64_t r64,
                                           int64_t p64,
@@ -496,12 +574,25 @@ static void validate_public_scrypt_params(int64_t n64,
         rt_trap("scrypt: invalid or unsupported parameters");
 }
 
+/// @brief Public Viper.Crypto.KeyDerive.ScryptSHA256 — derive a key, return as bytes.
+/// @details Validates parameters, extracts password and salt, runs the raw
+///          scrypt-SHA256 derivation, and wraps the result as an rt_bytes
+///          object. Sensitive intermediate buffers are zeroed before return.
+/// @param password Password string. Required.
+/// @param salt     Bytes object with the salt. Required, must be non-empty.
+/// @param n64      scrypt N parameter (must be a power of two ≥ 2).
+/// @param r64      scrypt r parameter.
+/// @param p64      scrypt p parameter.
+/// @param key_len  Output key length in bytes (1..1024).
+/// @return Bytes object owning the derived key.
 void *rt_keyderive_scrypt_sha256(rt_string password,
                                  void *salt,
                                  int64_t n64,
                                  int64_t r64,
                                  int64_t p64,
                                  int64_t key_len) {
+    if (!rt_crypto_module_service_allowed(RT_CRYPTO_SERVICE_SCRYPT))
+        rt_trap("KeyDerive.ScryptSHA256 is disabled in approved mode");
     uint64_t n;
     uint32_t r;
     uint32_t p;
@@ -533,12 +624,21 @@ void *rt_keyderive_scrypt_sha256(rt_string password,
     return result;
 }
 
+/// @brief Public Viper.Crypto.KeyDerive.ScryptSHA256Str — derive a key, return as hex string.
+/// @details Same as rt_keyderive_scrypt_sha256 but returns the derived
+///          bytes hex-encoded as an rt_string for portability (e.g.
+///          embedding in JSON config or comparing as a string). All
+///          parameter rules (positive cost values, salt non-empty,
+///          key_len in 1..1024) are identical.
+/// @return Lowercase-hex rt_string of the derived key bytes.
 rt_string rt_keyderive_scrypt_sha256_str(rt_string password,
                                          void *salt,
                                          int64_t n64,
                                          int64_t r64,
                                          int64_t p64,
                                          int64_t key_len) {
+    if (!rt_crypto_module_service_allowed(RT_CRYPTO_SERVICE_SCRYPT))
+        rt_trap("KeyDerive.ScryptSHA256Str is disabled in approved mode");
     uint64_t n;
     uint32_t r;
     uint32_t p;

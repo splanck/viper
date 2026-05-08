@@ -26,6 +26,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_crypto.h"
+#include "rt_crypto_module.h"
 #include "rt_trap.h"
 
 #include <errno.h>
@@ -156,6 +157,8 @@ void rt_sha256_update(rt_sha256_ctx *ctx, const void *data, size_t len) {
     const uint8_t *ptr = (const uint8_t *)data;
     size_t idx = (ctx->count / 8) % 64;
 
+    if (len > (UINT64_MAX - ctx->count) / 8)
+        rt_trap("SHA256: input too large");
     ctx->count += len * 8;
 
     while (len > 0) {
@@ -471,6 +474,64 @@ void rt_hmac_sha256(
     rt_secure_zero(opad, sizeof(opad));
 }
 
+static void hmac_sha512_family(const uint8_t *key,
+                               size_t key_len,
+                               const void *data,
+                               size_t data_len,
+                               uint8_t *mac,
+                               size_t mac_len,
+                               int is_sha384) {
+    uint8_t k[128];
+    uint8_t ipad[128];
+    uint8_t opad[128];
+    uint8_t inner[64];
+
+    if (key_len > sizeof(k)) {
+        if (is_sha384) {
+            rt_sha384(key, key_len, k);
+            key_len = 48;
+        } else {
+            rt_sha512(key, key_len, k);
+            key_len = 64;
+        }
+    } else if (key_len > 0) {
+        memcpy(k, key, key_len);
+    }
+    memset(k + key_len, 0, sizeof(k) - key_len);
+
+    for (size_t i = 0; i < sizeof(k); i++) {
+        ipad[i] = k[i] ^ 0x36;
+        opad[i] = k[i] ^ 0x5c;
+    }
+
+    rt_sha512_ctx_internal ctx;
+    sha512_family_init(&ctx, is_sha384);
+    sha512_family_update(&ctx, ipad, sizeof(ipad));
+    sha512_family_update(&ctx, data, data_len);
+    sha512_family_final(&ctx, inner, mac_len);
+
+    sha512_family_init(&ctx, is_sha384);
+    sha512_family_update(&ctx, opad, sizeof(opad));
+    sha512_family_update(&ctx, inner, mac_len);
+    sha512_family_final(&ctx, mac, mac_len);
+
+    rt_secure_zero(k, sizeof(k));
+    rt_secure_zero(ipad, sizeof(ipad));
+    rt_secure_zero(opad, sizeof(opad));
+    rt_secure_zero(inner, sizeof(inner));
+    rt_secure_zero(&ctx, sizeof(ctx));
+}
+
+void rt_hmac_sha384(
+    const uint8_t *key, size_t key_len, const void *data, size_t data_len, uint8_t mac[48]) {
+    hmac_sha512_family(key, key_len, data, data_len, mac, 48, 1);
+}
+
+void rt_hmac_sha512(
+    const uint8_t *key, size_t key_len, const void *data, size_t data_len, uint8_t mac[64]) {
+    hmac_sha512_family(key, key_len, data, data_len, mac, 64, 0);
+}
+
 //=============================================================================
 // HKDF-SHA256 (RFC 5869)
 //=============================================================================
@@ -610,6 +671,107 @@ int rt_hkdf_expand_label(const uint8_t secret[32],
     }
 
     return rt_hkdf_expand(secret, hkdf_label, pos, out, out_len);
+}
+
+#define RT_HKDF_SHA384_MAX_OKM_LEN (255u * 48u)
+
+void rt_hkdf_extract_sha384(
+    const uint8_t *salt, size_t salt_len, const uint8_t *ikm, size_t ikm_len, uint8_t prk[48]) {
+    if (salt == NULL || salt_len == 0) {
+        uint8_t zero_salt[48] = {0};
+        rt_hmac_sha384(zero_salt, sizeof(zero_salt), ikm, ikm_len, prk);
+        rt_secure_zero(zero_salt, sizeof(zero_salt));
+    } else {
+        rt_hmac_sha384(salt, salt_len, ikm, ikm_len, prk);
+    }
+}
+
+int rt_hkdf_expand_sha384(
+    const uint8_t prk[48], const uint8_t *info, size_t info_len, uint8_t *okm, size_t okm_len) {
+    uint8_t t[48] = {0};
+    size_t t_len = 0;
+    uint8_t counter = 1;
+    size_t pos = 0;
+
+    if (!prk || !okm)
+        return -1;
+    if (!info && info_len > 0)
+        return -1;
+    if (okm_len > RT_HKDF_SHA384_MAX_OKM_LEN)
+        return -1;
+
+    while (pos < okm_len) {
+        if (t_len > SIZE_MAX - info_len - 1)
+            return -1;
+        size_t msg_len = t_len + info_len + 1;
+        uint8_t *msg = (uint8_t *)malloc(msg_len > 0 ? msg_len : 1);
+        if (!msg)
+            return -1;
+        size_t msg_pos = 0;
+        if (t_len > 0) {
+            memcpy(msg + msg_pos, t, t_len);
+            msg_pos += t_len;
+        }
+        if (info_len > 0) {
+            memcpy(msg + msg_pos, info, info_len);
+            msg_pos += info_len;
+        }
+        msg[msg_pos++] = counter;
+        rt_hmac_sha384(prk, 48, msg, msg_pos, t);
+        rt_secure_zero(msg, msg_len);
+        free(msg);
+        t_len = 48;
+
+        size_t copy = okm_len - pos;
+        if (copy > 48)
+            copy = 48;
+        memcpy(okm + pos, t, copy);
+        pos += copy;
+        counter++;
+    }
+    rt_secure_zero(t, sizeof(t));
+    return 0;
+}
+
+int rt_hkdf_expand_label_sha384(const uint8_t secret[48],
+                                const char *label,
+                                const uint8_t *context,
+                                size_t context_len,
+                                uint8_t *out,
+                                size_t out_len) {
+    uint8_t hkdf_label[512];
+    size_t pos = 0;
+
+    if (!secret || !label || !out)
+        return -1;
+    if (!context && context_len > 0)
+        return -1;
+    if (out_len > RT_HKDF_SHA384_MAX_OKM_LEN || out_len > UINT16_MAX)
+        return -1;
+
+    hkdf_label[pos++] = (uint8_t)(out_len >> 8);
+    hkdf_label[pos++] = (uint8_t)out_len;
+
+    const char *prefix = "tls13 ";
+    size_t prefix_len = 6;
+    size_t label_len = strlen(label);
+    if (prefix_len + label_len > 255 || context_len > 255)
+        return -1;
+    if (2 + 1 + prefix_len + label_len + 1 + context_len > sizeof(hkdf_label))
+        return -1;
+
+    hkdf_label[pos++] = (uint8_t)(prefix_len + label_len);
+    memcpy(hkdf_label + pos, prefix, prefix_len);
+    pos += prefix_len;
+    memcpy(hkdf_label + pos, label, label_len);
+    pos += label_len;
+    hkdf_label[pos++] = (uint8_t)context_len;
+    if (context_len > 0) {
+        memcpy(hkdf_label + pos, context, context_len);
+        pos += context_len;
+    }
+
+    return rt_hkdf_expand_sha384(secret, hkdf_label, pos, out, out_len);
 }
 
 //=============================================================================
@@ -1163,13 +1325,36 @@ static void aes128_key_expand(const uint8_t key[16], uint8_t rk[176]) {
     }
 }
 
+/// @brief Expand AES-256 key (32 bytes) into 15 round keys (240 bytes).
+static void aes256_key_expand(const uint8_t key[32], uint8_t rk[240]) {
+    memcpy(rk, key, 32);
+    for (int i = 8; i < 60; i++) {
+        uint8_t tmp[4];
+        memcpy(tmp, rk + (i - 1) * 4, 4);
+        if (i % 8 == 0) {
+            uint8_t t = tmp[0];
+            tmp[0] = aes_sbox[tmp[1]] ^ aes_rcon[i / 8 - 1];
+            tmp[1] = aes_sbox[tmp[2]];
+            tmp[2] = aes_sbox[tmp[3]];
+            tmp[3] = aes_sbox[t];
+        } else if (i % 8 == 4) {
+            tmp[0] = aes_sbox[tmp[0]];
+            tmp[1] = aes_sbox[tmp[1]];
+            tmp[2] = aes_sbox[tmp[2]];
+            tmp[3] = aes_sbox[tmp[3]];
+        }
+        for (int j = 0; j < 4; j++)
+            rk[i * 4 + j] = rk[(i - 8) * 4 + j] ^ tmp[j];
+    }
+}
+
 /// @brief xtime: multiply by 2 in GF(2^8) with AES reducing polynomial.
 static uint8_t aes_xtime(uint8_t x) {
     return (uint8_t)((x << 1) ^ ((x >> 7) * 0x1b));
 }
 
-/// @brief AES-128 encrypt one 16-byte block.
-static void aes128_encrypt_block(const uint8_t rk[176], const uint8_t in[16], uint8_t out[16]) {
+/// @brief AES encrypt one 16-byte block with an expanded key.
+static void aes_encrypt_block_generic(const uint8_t *rk, int rounds, const uint8_t in[16], uint8_t out[16]) {
     uint8_t s[16];
     memcpy(s, in, 16);
 
@@ -1177,8 +1362,8 @@ static void aes128_encrypt_block(const uint8_t rk[176], const uint8_t in[16], ui
     for (int i = 0; i < 16; i++)
         s[i] ^= rk[i];
 
-    // Rounds 1-9: SubBytes, ShiftRows, MixColumns, AddRoundKey
-    for (int round = 1; round <= 9; round++) {
+    // Middle rounds: SubBytes, ShiftRows, MixColumns, AddRoundKey
+    for (int round = 1; round < rounds; round++) {
         uint8_t t[16];
         // SubBytes
         for (int i = 0; i < 16; i++)
@@ -1216,7 +1401,7 @@ static void aes128_encrypt_block(const uint8_t rk[176], const uint8_t in[16], ui
             s[i] ^= rk[round * 16 + i];
     }
 
-    // Round 10: SubBytes, ShiftRows, AddRoundKey (no MixColumns)
+    // Final round: SubBytes, ShiftRows, AddRoundKey (no MixColumns)
     {
         uint8_t t[16];
         for (int i = 0; i < 16; i++)
@@ -1238,10 +1423,20 @@ static void aes128_encrypt_block(const uint8_t rk[176], const uint8_t in[16], ui
         s[14] = t[6];
         s[15] = t[11];
         for (int i = 0; i < 16; i++)
-            s[i] ^= rk[160 + i];
+            s[i] ^= rk[rounds * 16 + i];
     }
 
     memcpy(out, s, 16);
+}
+
+/// @brief AES-128 encrypt one 16-byte block.
+static void aes128_encrypt_block(const uint8_t rk[176], const uint8_t in[16], uint8_t out[16]) {
+    aes_encrypt_block_generic(rk, 10, in, out);
+}
+
+/// @brief AES-256 encrypt one 16-byte block.
+static void aes256_encrypt_block(const uint8_t rk[240], const uint8_t in[16], uint8_t out[16]) {
+    aes_encrypt_block_generic(rk, 14, in, out);
 }
 
 //=============================================================================
@@ -1484,6 +1679,140 @@ long rt_aes128_gcm_decrypt(const uint8_t key[16],
     for (size_t i = 0; i < data_len; i += 16) {
         uint8_t keystream[16];
         aes128_encrypt_block(rk, counter, keystream);
+        size_t block_len = data_len - i;
+        if (block_len > 16)
+            block_len = 16;
+        for (size_t j = 0; j < block_len; j++)
+            plaintext[i + j] = ct[i + j] ^ keystream[j];
+        gcm_inc32(counter);
+    }
+
+    rt_secure_zero(rk, sizeof(rk));
+    rt_secure_zero(H, sizeof(H));
+
+    return (long)data_len;
+}
+
+size_t rt_aes256_gcm_encrypt(const uint8_t key[32],
+                             const uint8_t nonce[12],
+                             const void *aad,
+                             size_t aad_len,
+                             const void *plaintext,
+                             size_t plaintext_len,
+                             uint8_t *ciphertext) {
+    if (!key || !nonce || !ciphertext)
+        return 0;
+    if ((!aad && aad_len > 0) || (!plaintext && plaintext_len > 0))
+        return 0;
+    if ((uint64_t)plaintext_len > RT_AES_GCM_MAX_BYTES)
+        return 0;
+    if (!gcm_lengths_valid(aad_len, plaintext_len))
+        return 0;
+
+    uint8_t rk[240];
+    aes256_key_expand(key, rk);
+
+    uint8_t H[16] = {0};
+    aes256_encrypt_block(rk, H, H);
+
+    uint8_t J0[16];
+    memcpy(J0, nonce, 12);
+    J0[12] = 0;
+    J0[13] = 0;
+    J0[14] = 0;
+    J0[15] = 1;
+
+    uint8_t counter[16];
+    memcpy(counter, J0, 16);
+    gcm_inc32(counter);
+
+    const uint8_t *pt = (const uint8_t *)plaintext;
+    for (size_t i = 0; i < plaintext_len; i += 16) {
+        uint8_t keystream[16];
+        aes256_encrypt_block(rk, counter, keystream);
+        size_t block_len = plaintext_len - i;
+        if (block_len > 16)
+            block_len = 16;
+        for (size_t j = 0; j < block_len; j++)
+            ciphertext[i + j] = pt[i + j] ^ keystream[j];
+        gcm_inc32(counter);
+    }
+
+    uint8_t ghash_tag[16];
+    ghash_compute(H, (const uint8_t *)aad, aad_len, ciphertext, plaintext_len, ghash_tag);
+
+    uint8_t enc_j0[16];
+    aes256_encrypt_block(rk, J0, enc_j0);
+    for (int i = 0; i < 16; i++)
+        ciphertext[plaintext_len + i] = ghash_tag[i] ^ enc_j0[i];
+
+    rt_secure_zero(rk, sizeof(rk));
+    rt_secure_zero(H, sizeof(H));
+
+    return plaintext_len + 16;
+}
+
+long rt_aes256_gcm_decrypt(const uint8_t key[32],
+                           const uint8_t nonce[12],
+                           const void *aad,
+                           size_t aad_len,
+                           const void *ciphertext,
+                           size_t ciphertext_len,
+                           uint8_t *plaintext) {
+    if (!key || !nonce || !ciphertext)
+        return -1;
+    if ((!aad && aad_len > 0) || (!plaintext && ciphertext_len > 16))
+        return -1;
+    if (ciphertext_len < 16)
+        return -1;
+
+    size_t data_len = ciphertext_len - 16;
+    if ((uint64_t)data_len > RT_AES_GCM_MAX_BYTES)
+        return -1;
+    if (!gcm_lengths_valid(aad_len, data_len))
+        return -1;
+    const uint8_t *ct = (const uint8_t *)ciphertext;
+    const uint8_t *recv_tag = ct + data_len;
+
+    uint8_t rk[240];
+    aes256_key_expand(key, rk);
+
+    uint8_t H[16] = {0};
+    aes256_encrypt_block(rk, H, H);
+
+    uint8_t J0[16];
+    memcpy(J0, nonce, 12);
+    J0[12] = 0;
+    J0[13] = 0;
+    J0[14] = 0;
+    J0[15] = 1;
+
+    uint8_t ghash_tag[16];
+    ghash_compute(H, (const uint8_t *)aad, aad_len, ct, data_len, ghash_tag);
+
+    uint8_t enc_j0[16];
+    aes256_encrypt_block(rk, J0, enc_j0);
+    uint8_t expected_tag[16];
+    for (int i = 0; i < 16; i++)
+        expected_tag[i] = ghash_tag[i] ^ enc_j0[i];
+
+    uint8_t diff = 0;
+    for (int i = 0; i < 16; i++)
+        diff |= expected_tag[i] ^ recv_tag[i];
+
+    if (diff != 0) {
+        rt_secure_zero(rk, sizeof(rk));
+        rt_secure_zero(H, sizeof(H));
+        return -1;
+    }
+
+    uint8_t counter[16];
+    memcpy(counter, J0, 16);
+    gcm_inc32(counter);
+
+    for (size_t i = 0; i < data_len; i += 16) {
+        uint8_t keystream[16];
+        aes256_encrypt_block(rk, counter, keystream);
         size_t block_len = data_len - i;
         if (block_len > 16)
             block_len = 16;
@@ -1933,6 +2262,10 @@ int rt_x25519(const uint8_t secret[32], const uint8_t peer_public[32], uint8_t s
 /// generator (S-03): a predictable RNG would silently compromise
 /// every key derived from it.
 void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
+    if (rt_crypto_module_is_approved_mode()) {
+        rt_crypto_module_random_bytes(buf, len);
+        return;
+    }
     HCRYPTPROV hProv;
     if (CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
         size_t off = 0;
@@ -1974,6 +2307,10 @@ void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
 /// Traps on every-source-failed (S-03) so we never silently fall
 /// back to a non-cryptographic source.
 void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
+    if (rt_crypto_module_is_approved_mode()) {
+        rt_crypto_module_random_bytes(buf, len);
+        return;
+    }
 #if defined(__APPLE__)
     arc4random_buf(buf, len);
     return;

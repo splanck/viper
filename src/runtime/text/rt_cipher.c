@@ -7,16 +7,26 @@
 //
 // File: src/runtime/text/rt_cipher.c
 // Purpose: Implements high-level symmetric encryption/decryption for the
-//          Viper.Text.Cipher class using ChaCha20-Poly1305 AEAD. Provides
-//          Encrypt and Decrypt operations that handle nonce generation,
-//          authentication tag verification, and key derivation.
+//          Viper.Crypto.Cipher class using ChaCha20-Poly1305 AEAD. Exposes
+//          four public entry points pairs: Encrypt / Decrypt (password →
+//          PBKDF2-derived key) and EncryptWithKey / DecryptWithKey (raw
+//          32-byte key), each with both legacy non-AAD and new AAD-aware
+//          overloads. The AAD overloads expose Additional Authenticated
+//          Data so the Poly1305 tag covers application context (request
+//          metadata, version tags, etc.) in addition to the ciphertext.
 //
 // Key invariants:
 //   - Nonces are 12 bytes (96-bit), randomly generated per call.
-//   - Authenticated encryption: any tampering with ciphertext or nonce is
-//     detected and Decrypt returns NULL (not a trap).
+//   - Output format: [4-byte magic][12-byte nonce][16-byte tag][ciphertext].
+//     The leading magic distinguishes password-derived (CIPHER_PW_MAGIC) from
+//     raw-key (CIPHER_KEY_MAGIC) ciphertexts so a key-form value can't be fed
+//     to the password-form decryptor and vice versa.
+//   - AAD overloads compose a stable header (magic + version + flags) with
+//     the application-supplied AAD via combine_aad so the Poly1305 tag
+//     authenticates the wrapper format AND the application context.
+//   - Authenticated encryption: any tampering with ciphertext, nonce, magic,
+//     or AAD is detected and Decrypt returns NULL (not a trap).
 //   - Keys must be exactly 32 bytes (256-bit); wrong size traps.
-//   - Output format: [12-byte nonce][16-byte tag][ciphertext bytes].
 //   - Decryption verifies the Poly1305 MAC before returning plaintext.
 //   - All functions are thread-safe; no global mutable cipher state.
 //
@@ -26,7 +36,8 @@
 //   - Input key, plaintext, and ciphertext buffers are borrowed read-only.
 //
 // Links: src/runtime/text/rt_cipher.h (public API),
-//        src/runtime/text/rt_aes.h (AES-CBC cipher, alternative algorithm),
+//        src/runtime/text/rt_aes.h (AES-GCM cipher, alternative algorithm),
+//        src/runtime/text/rt_keyderive.h (PBKDF2 / scrypt key derivation),
 //        src/runtime/text/rt_rand.h (nonce generation)
 //
 //===----------------------------------------------------------------------===//
@@ -34,6 +45,7 @@
 #include "rt_cipher.h"
 #include "rt_bytes.h"
 #include "rt_crypto.h"
+#include "rt_crypto_module.h"
 #include "rt_keyderive_internal.h"
 #include "rt_object.h"
 
@@ -59,6 +71,8 @@
 
 static const uint8_t CIPHER_PW_MAGIC[4] = {'V', 'C', 'P', '2'};
 static const uint8_t CIPHER_KEY_MAGIC[4] = {'V', 'C', 'K', '2'};
+static const uint8_t CIPHER_PW_APPROVED_MAGIC[4] = {'V', 'C', 'A', '1'};
+static const uint8_t CIPHER_KEY_APPROVED_MAGIC[4] = {'V', 'K', 'A', '1'};
 
 // HKDF info string for key derivation
 static const char *HKDF_INFO = "viper-cipher-v1";
@@ -120,7 +134,7 @@ static const char *cipher_password_bytes(rt_string password, size_t *len, const 
 
 /// @brief Compute and validate the output length for an encryption operation.
 ///        Traps if input_len is negative, would overflow when added to @p overhead,
-///        or exceeds the ChaCha20-Poly1305 single-key stream limit (~256 GiB).
+///        or exceeds the AEAD single-key stream limit.
 static int64_t cipher_checked_output_len(int64_t input_len, int64_t overhead, const char *op) {
     if (input_len < 0) {
         rt_trap(op);
@@ -131,7 +145,7 @@ static int64_t cipher_checked_output_len(int64_t input_len, int64_t overhead, co
         return 0;
     }
     if ((uint64_t)input_len > CIPHER_CHACHA20_MAX_BYTES) {
-        rt_trap("Cipher: input exceeds ChaCha20-Poly1305 size limit");
+        rt_trap("Cipher: input exceeds AEAD size limit");
         return 0;
     }
     return input_len + overhead;
@@ -190,6 +204,10 @@ static void derive_key_pbkdf2(const char *password,
                                    CIPHER_KEY_SIZE);
 }
 
+/// @brief Write a 32-bit unsigned integer to @p out in big-endian byte order.
+/// @details Used by the wire-format header builder to encode parameter
+///          fields (PBKDF2 iteration count, version flags) into the
+///          ciphertext envelope.
 static void write_be32(uint8_t *out, uint32_t v) {
     out[0] = (uint8_t)(v >> 24);
     out[1] = (uint8_t)(v >> 16);
@@ -197,15 +215,32 @@ static void write_be32(uint8_t *out, uint32_t v) {
     out[3] = (uint8_t)v;
 }
 
+/// @brief Read a big-endian 32-bit unsigned integer from @p in.
+/// @details Inverse of write_be32. Used during decrypt to recover the
+///          encoded iteration count and version flags from the envelope.
 static uint32_t read_be32(const uint8_t *in) {
     return ((uint32_t)in[0] << 24) | ((uint32_t)in[1] << 16) | ((uint32_t)in[2] << 8) |
            (uint32_t)in[3];
 }
 
+/// @brief Test whether the first four bytes of @p data match the 4-byte @p magic.
+/// @details Used to dispatch decrypt requests to the correct format
+///          handler — CIPHER_PW_MAGIC ("VCP2") for password-derived
+///          ciphertexts versus CIPHER_KEY_MAGIC ("VCK2") for raw-key
+///          ciphertexts. NULL pointer or len < 4 returns 0.
 static int has_magic(const uint8_t *data, int64_t len, const uint8_t magic[4]) {
     return data && len >= 4 && memcmp(data, magic, 4) == 0;
 }
 
+/// @brief Concatenate the format header with caller-supplied AAD into a single buffer.
+/// @details The Poly1305 tag must authenticate the wrapper format header
+///          (so an attacker can't strip / replace it) AND the application's
+///          AAD. We splice them: returned buffer is [header || user_aad];
+///          @p aad_out points at it; @p aad_len_out is the total length.
+///          When user AAD is empty, returns the header directly without
+///          allocating. Caller frees the returned buffer (NULL when no
+///          allocation occurred). Traps on bytes_len < 0 or arithmetic
+///          overflow.
 static uint8_t *combine_aad(const uint8_t *header,
                             size_t header_len,
                             void *aad_obj,
@@ -259,6 +294,19 @@ void *rt_cipher_encrypt(void *plaintext, rt_string password) {
     return rt_cipher_encrypt_aad(plaintext, password, NULL);
 }
 
+/// @brief Password-derived ChaCha20-Poly1305 encryption with caller-supplied AAD.
+/// @details Implements `Viper.Crypto.Cipher.EncryptAAD(plaintext, password, aad)`.
+///          Generates a fresh 16-byte salt, runs PBKDF2-HMAC-SHA256
+///          (CIPHER_PBKDF2_ITERATIONS rounds) to derive a 32-byte key,
+///          generates a fresh 12-byte nonce, and produces the wire format
+///          [CIPHER_PW_MAGIC | salt | nonce | tag | ciphertext]. The Poly1305
+///          tag authenticates [magic||salt||nonce] (via combine_aad) plus the
+///          application-supplied @p aad, so any tampering with format header
+///          OR application context fails verification.
+/// @param plaintext Bytes to encrypt. Required.
+/// @param password  Password string for PBKDF2 derivation. Empty string traps.
+/// @param aad       Optional bytes object carrying application AAD; may be NULL.
+/// @return New bytes object owning the framed ciphertext.
 void *rt_cipher_encrypt_aad(void *plaintext, rt_string password, void *aad) {
     if (!plaintext) {
         rt_trap("Cipher.Encrypt: plaintext is null");
@@ -290,7 +338,10 @@ void *rt_cipher_encrypt_aad(void *plaintext, rt_string password, void *aad) {
     void *result = rt_bytes_new(out_len);
     uint8_t *out_data = bytes_data(result);
 
-    memcpy(out_data, CIPHER_PW_MAGIC, sizeof(CIPHER_PW_MAGIC));
+    int approved = rt_crypto_module_is_approved_mode();
+    memcpy(out_data,
+           approved ? CIPHER_PW_APPROVED_MAGIC : CIPHER_PW_MAGIC,
+           sizeof(CIPHER_PW_MAGIC));
     write_be32(out_data + 4, CIPHER_PBKDF2_ITERATIONS);
     memcpy(out_data + 8, salt, CIPHER_SALT_SIZE);
     memcpy(out_data + 24, nonce, CIPHER_NONCE_SIZE);
@@ -300,13 +351,20 @@ void *rt_cipher_encrypt_aad(void *plaintext, rt_string password, void *aad) {
     uint8_t *aad_alloc = combine_aad(out_data, CIPHER_PW_HEADER_SIZE, aad, &aad_data, &aad_len);
 
     size_t encrypted_len =
-        rt_chacha20_poly1305_encrypt(key,
-                                     nonce,
-                                     aad_data,
-                                     aad_len,
-                                     plain_data,
-                                     (size_t)plain_len,
-                                     out_data + CIPHER_PW_HEADER_SIZE);
+        approved ? rt_aes256_gcm_encrypt(key,
+                                         nonce,
+                                         aad_data,
+                                         aad_len,
+                                         plain_data,
+                                         (size_t)plain_len,
+                                         out_data + CIPHER_PW_HEADER_SIZE)
+                 : rt_chacha20_poly1305_encrypt(key,
+                                                nonce,
+                                                aad_data,
+                                                aad_len,
+                                                plain_data,
+                                                (size_t)plain_len,
+                                                out_data + CIPHER_PW_HEADER_SIZE);
     if (aad_alloc)
         free(aad_alloc);
     if (encrypted_len == 0 && plain_len != 0) {
@@ -338,6 +396,18 @@ void *rt_cipher_decrypt(void *ciphertext, rt_string password) {
     return rt_cipher_decrypt_aad(ciphertext, password, NULL);
 }
 
+/// @brief Password-derived ChaCha20-Poly1305 decryption with AAD verification.
+/// @details Inverse of rt_cipher_encrypt_aad. Validates the leading
+///          CIPHER_PW_MAGIC, re-derives the 32-byte key from the embedded
+///          salt via PBKDF2, then runs ChaCha20-Poly1305 verify-and-decrypt
+///          with [magic||salt||nonce||@p aad] as the expected AAD. Any
+///          mismatch (wrong password, wrong AAD, tampered ciphertext)
+///          returns NULL — the caller must treat NULL as authentication
+///          failure, not as plaintext.
+/// @param ciphertext Framed ciphertext from rt_cipher_encrypt_aad. Required.
+/// @param password   Same password used at encrypt time. Empty string traps.
+/// @param aad        Same AAD used at encrypt time; may be NULL.
+/// @return New bytes object with the decrypted plaintext, or NULL on auth failure.
 void *rt_cipher_decrypt_aad(void *ciphertext, rt_string password, void *aad) {
     if (!ciphertext) {
         rt_trap("Cipher.Decrypt: ciphertext is null");
@@ -354,7 +424,13 @@ void *rt_cipher_decrypt_aad(void *ciphertext, rt_string password, void *aad) {
     uint8_t *ct_data = bytes_data(ciphertext);
     int64_t ct_len = bytes_len(ciphertext);
 
-    if (has_magic(ct_data, ct_len, CIPHER_PW_MAGIC)) {
+    int approved_payload = has_magic(ct_data, ct_len, CIPHER_PW_APPROVED_MAGIC);
+    if (rt_crypto_module_is_approved_mode() && !approved_payload) {
+        rt_trap("Cipher.Decrypt: non-approved cipher format is disabled in approved mode");
+        return NULL;
+    }
+
+    if (has_magic(ct_data, ct_len, CIPHER_PW_MAGIC) || approved_payload) {
         if (ct_len < CIPHER_PW_HEADER_SIZE + CIPHER_TAG_SIZE) {
             rt_trap("Cipher.Decrypt: ciphertext too short");
             return NULL;
@@ -388,8 +464,21 @@ void *rt_cipher_decrypt_aad(void *ciphertext, rt_string password, void *aad) {
         uint8_t *aad_alloc =
             combine_aad(ct_data, CIPHER_PW_HEADER_SIZE, aad, &aad_data, &aad_len);
 
-        long decrypt_result = rt_chacha20_poly1305_decrypt(
-            key, nonce, aad_data, aad_len, encrypted, (size_t)encrypted_len, plain_data);
+        long decrypt_result =
+            approved_payload ? rt_aes256_gcm_decrypt(key,
+                                                     nonce,
+                                                     aad_data,
+                                                     aad_len,
+                                                     encrypted,
+                                                     (size_t)encrypted_len,
+                                                     plain_data)
+                             : rt_chacha20_poly1305_decrypt(key,
+                                                            nonce,
+                                                            aad_data,
+                                                            aad_len,
+                                                            encrypted,
+                                                            (size_t)encrypted_len,
+                                                            plain_data);
         if (aad_alloc)
             free(aad_alloc);
         cipher_secure_zero(key, sizeof(key));
@@ -401,6 +490,11 @@ void *rt_cipher_decrypt_aad(void *ciphertext, rt_string password, void *aad) {
             return NULL;
         }
         return result;
+    }
+
+    if (rt_crypto_module_is_approved_mode()) {
+        rt_trap("Cipher.Decrypt: legacy cipher format is disabled in approved mode");
+        return NULL;
     }
 
     if (aad && bytes_len(aad) > 0)
@@ -463,6 +557,18 @@ void *rt_cipher_encrypt_with_key(void *plaintext, void *key_bytes) {
     return rt_cipher_encrypt_with_key_aad(plaintext, key_bytes, NULL);
 }
 
+/// @brief Raw-key ChaCha20-Poly1305 encryption with caller-supplied AAD.
+/// @details Implements `Viper.Crypto.Cipher.EncryptWithKeyAAD(plaintext, key, aad)`.
+///          Like rt_cipher_encrypt_aad but uses a 32-byte raw key directly
+///          (no PBKDF2 derivation, no salt). Output uses CIPHER_KEY_MAGIC
+///          so the format-detection guard distinguishes it from password-
+///          derived ciphertexts. Wire layout:
+///          [CIPHER_KEY_MAGIC | nonce(12) | tag(16) | ciphertext]. The Poly1305
+///          tag authenticates [magic||nonce||@p aad].
+/// @param plaintext  Bytes to encrypt. Required.
+/// @param key_bytes  Exactly 32 bytes. Other lengths trap.
+/// @param aad        Optional bytes object with application AAD; may be NULL.
+/// @return New bytes object owning the framed ciphertext.
 void *rt_cipher_encrypt_with_key_aad(void *plaintext, void *key_bytes, void *aad) {
     if (!plaintext) {
         rt_trap("Cipher.EncryptWithKey: plaintext is null");
@@ -487,7 +593,10 @@ void *rt_cipher_encrypt_with_key_aad(void *plaintext, void *key_bytes, void *aad
     void *result = rt_bytes_new(out_len);
     uint8_t *out_data = bytes_data(result);
 
-    memcpy(out_data, CIPHER_KEY_MAGIC, sizeof(CIPHER_KEY_MAGIC));
+    int approved = rt_crypto_module_is_approved_mode();
+    memcpy(out_data,
+           approved ? CIPHER_KEY_APPROVED_MAGIC : CIPHER_KEY_MAGIC,
+           sizeof(CIPHER_KEY_MAGIC));
     memcpy(out_data + 4, nonce, CIPHER_NONCE_SIZE);
 
     const uint8_t *aad_data;
@@ -495,13 +604,21 @@ void *rt_cipher_encrypt_with_key_aad(void *plaintext, void *key_bytes, void *aad
     uint8_t *aad_alloc =
         combine_aad(out_data, CIPHER_KEY_HEADER_SIZE, aad, &aad_data, &aad_len);
 
-    size_t encrypted_len = rt_chacha20_poly1305_encrypt(key,
-                                                        nonce,
-                                                        aad_data,
-                                                        aad_len,
-                                                        plain_data,
-                                                        (size_t)plain_len,
-                                                        out_data + CIPHER_KEY_HEADER_SIZE);
+    size_t encrypted_len =
+        approved ? rt_aes256_gcm_encrypt(key,
+                                         nonce,
+                                         aad_data,
+                                         aad_len,
+                                         plain_data,
+                                         (size_t)plain_len,
+                                         out_data + CIPHER_KEY_HEADER_SIZE)
+                 : rt_chacha20_poly1305_encrypt(key,
+                                                nonce,
+                                                aad_data,
+                                                aad_len,
+                                                plain_data,
+                                                (size_t)plain_len,
+                                                out_data + CIPHER_KEY_HEADER_SIZE);
     if (aad_alloc)
         free(aad_alloc);
     if (encrypted_len == 0 && plain_len != 0) {
@@ -527,6 +644,16 @@ void *rt_cipher_decrypt_with_key(void *ciphertext, void *key_bytes) {
     return rt_cipher_decrypt_with_key_aad(ciphertext, key_bytes, NULL);
 }
 
+/// @brief Raw-key ChaCha20-Poly1305 decryption with AAD verification.
+/// @details Inverse of rt_cipher_encrypt_with_key_aad. Validates the leading
+///          CIPHER_KEY_MAGIC, runs ChaCha20-Poly1305 verify-and-decrypt with
+///          [magic||nonce||@p aad] as the expected AAD. Any mismatch
+///          returns NULL — caller must treat NULL as authentication failure,
+///          not as plaintext.
+/// @param ciphertext Framed ciphertext from rt_cipher_encrypt_with_key_aad. Required.
+/// @param key_bytes  Same 32-byte key used at encrypt time.
+/// @param aad        Same AAD used at encrypt time; may be NULL.
+/// @return New bytes object with the decrypted plaintext, or NULL on auth failure.
 void *rt_cipher_decrypt_with_key_aad(void *ciphertext, void *key_bytes, void *aad) {
     if (!ciphertext) {
         rt_trap("Cipher.DecryptWithKey: ciphertext is null");
@@ -542,7 +669,13 @@ void *rt_cipher_decrypt_with_key_aad(void *ciphertext, void *key_bytes, void *aa
     int64_t ct_len = bytes_len(ciphertext);
     const uint8_t *key = bytes_data(key_bytes);
 
-    int versioned = has_magic(ct_data, ct_len, CIPHER_KEY_MAGIC);
+    int approved_payload = has_magic(ct_data, ct_len, CIPHER_KEY_APPROVED_MAGIC);
+    if (rt_crypto_module_is_approved_mode() && !approved_payload) {
+        rt_trap("Cipher.DecryptWithKey: non-approved cipher format is disabled in approved mode");
+        return NULL;
+    }
+
+    int versioned = has_magic(ct_data, ct_len, CIPHER_KEY_MAGIC) || approved_payload;
     int64_t header_len = versioned ? CIPHER_KEY_HEADER_SIZE : CIPHER_NONCE_SIZE;
     int64_t min_len = header_len + CIPHER_TAG_SIZE;
     if (ct_len < min_len) {
@@ -566,13 +699,21 @@ void *rt_cipher_decrypt_with_key_aad(void *ciphertext, void *key_bytes, void *aa
     if (versioned)
         aad_alloc = combine_aad(ct_data, CIPHER_KEY_HEADER_SIZE, aad, &aad_data, &aad_len);
 
-    long decrypt_result = rt_chacha20_poly1305_decrypt(key,
-                                                       nonce,
-                                                       aad_data,
-                                                       aad_len,
-                                                       encrypted,
-                                                       (size_t)encrypted_len,
-                                                       plain_data);
+    long decrypt_result =
+        approved_payload ? rt_aes256_gcm_decrypt(key,
+                                                 nonce,
+                                                 aad_data,
+                                                 aad_len,
+                                                 encrypted,
+                                                 (size_t)encrypted_len,
+                                                 plain_data)
+                         : rt_chacha20_poly1305_decrypt(key,
+                                                        nonce,
+                                                        aad_data,
+                                                        aad_len,
+                                                        encrypted,
+                                                        (size_t)encrypted_len,
+                                                        plain_data);
     if (aad_alloc)
         free(aad_alloc);
 

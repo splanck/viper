@@ -424,6 +424,7 @@ set(RT_NETWORK_SOURCES
         network/rt_ratelimit.c
         network/rt_websocket.c
         network/rt_crypto.c
+        network/rt_crypto_module.c
         network/rt_tls.c
         network/rt_tls_verify.c
         network/rt_ecdsa_p256.c

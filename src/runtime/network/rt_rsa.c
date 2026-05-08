@@ -34,6 +34,18 @@
 #define RT_RSA_MAX_MOD_BYTES 512
 #define RT_RSA_MAX_WORDS (RT_RSA_MAX_MOD_BYTES / sizeof(uint64_t))
 
+/// @brief Compute (a * b + addend + carry_in) into a 128-bit pair (low, high).
+/// @details The fundamental Montgomery-multiply micro-op: takes two 64-bit
+///          limbs plus an additive carry chain and writes the 128-bit
+///          product. Uses `unsigned __int128` on compilers that support
+///          it (GCC/Clang) for a single hardware multiply; falls back to
+///          four 32x32→64 partials on MSVC and other compilers without
+///          128-bit integer support.
+/// @param a,b           64-bit operands.
+/// @param addend        Additive term folded into the product (typically the previous limb).
+/// @param carry_in      Carry from the previous column.
+/// @param low_out       Out: low 64 bits of (a*b + addend + carry_in).
+/// @param high_out      Out: high 64 bits (carry to the next column).
 static void rsa_mul_add_u64(uint64_t a,
                             uint64_t b,
                             uint64_t addend,

@@ -8,23 +8,26 @@
 
 ### What this release is about
 
-A focused hardening-and-correctness cycle with no major new features. Every change closes an attack surface, eliminates a latent correctness bug, or tightens a lifetime, locking, or type invariant.
+A focused hardening-and-correctness cycle. Every change closes an attack surface, eliminates a latent correctness bug, or tightens a lifetime, locking, or type invariant.
 
-- **Memory and GC overhaul.** `Viper.Memory.Retain` / `Release` re-wired to validated wrappers that authenticate live runtime handles, run finalizers correctly at zero, and release `RT_HEAP_ARRAY` element references that were previously leaked. Cycle collection no longer holds the GC lock during traversal callbacks; phases 2 and 3 collect edges into heap-allocated lists and apply them under brief lock windows, eliminating a class of deadlocks where traversal callbacks called back into GC APIs. Phase 4 is now wrapped in `setjmp`/`rt_trap_set_recovery` so a trap during reclamation cleans up rather than leaving the collector permanently active.
-- **MessageBus hardened from end to end.** Class-ID tagging, type-validated casts, managed callback objects, NUL-safe topic hashing, subscription-ID overflow guard, and GC traversal registration. The bus now serializes public operations with an internal lock; `Subscribe` rejects ordinary heap objects, `Topics()` returns an owning `Seq`, and `Publish` releases its retained callback snapshot before re-raising a trapping handler.
-- **IO subsystem security hardening — two rounds.** Temp-file names draw a 64-bit random nonce from `/dev/urandom` / `rand_s` instead of encoding the calling pointer (eliminates an ASLR side-channel and the same-name-on-retry bug). Recursive directory removal is rebuilt around `openat` / `fstatat` / `unlinkat` with `AT_SYMLINK_NOFOLLOW`, so a symlink substituted mid-traversal cannot redirect deletion. `O_CLOEXEC` / `O_NOFOLLOW` / `O_NOINHERIT` applied to every file open. SaveData paths resolved to absolute before first use; corrupt entries silently skipped instead of trapping.
-- **Archive, Compress, and VPA correctness.** ZIP extra-field parser rejects ZIP64 extension headers; local-file headers cross-checked against central-directory metadata. The DEFLATE engine gains an exact consumed-bytes counter, enabling precise member-boundary detection in concatenated GZIP streams. VPA archive seeks now use 64-bit file offsets on all platforms, enabling correct operation on archives larger than 2 GB.
-- **`Viper.Audio.*` compatibility surface rebuilt.** The compat namespace was converted from `RT_ALIAS` forwarding entries to full typed class registrations; `RT_ALIAS` cannot carry typed object return values, causing silent handle-type resolution failures at every `obj<Viper.Audio.Sound>` call site.
-- **ViperIDE polish round.** IntelliSense reliability fix (force-load of `fe_zia` so its strong `rt_zia_*` symbols actually win the link race against the weak `viper_runtime` stubs), real Zia keyword highlighting (the GUI tokenizer now consults `Lexer::lookupKeyword` instead of its own drifted 28-entry table), inline `/* ... */` block-comment tracking, scroll-to-bottom UX fix (half-viewport scrollBeyondLastLine padding), Unicode-glyph toolbar icons, and a `module` declaration in the welcome buffer so the completion engine can parse it.
-- **AArch64 register-allocator correctness.** The protection set populated for both *use* and *def* operands prevents eviction of live def vregs mid-instruction, fixing a class of register-reuse clobber bugs.
+- **Memory / GC overhaul** — validated `Viper.Memory.Retain` / `Release`, lock-free GC traversal, trap-safe finalizer phase, resurrection-aware refcounting.
+- **MessageBus end-to-end** — class-ID validation, managed callback objects, NUL-safe topic hashing, internal locking, GC traversal registration.
+- **IO security hardening (two rounds)** — random-nonce temp files, `openat`-based recursive removal, `O_CLOEXEC` / `O_NOFOLLOW` everywhere, SaveData absolute-path resolution.
+- **Crypto subsystem upgrade** — `Viper.Text.*` → `Viper.Crypto.*` migration, scrypt-SHA256 KDF (RFC 7914), AES-GCM with AAD, constant-time hash compare.
+- **TLS X.509 verifier hardening** — Key Usage / Basic Constraints / Extended Key Usage extensions enforced, DNS-name validation tightened.
+- **Archive / Compress / VPA correctness** — ZIP64 rejection, local-vs-central header cross-check, exact GZIP boundary detection, 64-bit VPA seeks.
+- **2D graphics correctness pass** — saturating int64 clip math, validated polyline/polygon arrays, sprite tint alpha preservation, tilemap I/O ownership discipline.
+- **`Viper.Audio.*` compat surface rebuilt** from `RT_ALIAS` aliases to full typed registrations.
+- **ViperIDE polish** — IntelliSense linkage fix, real keyword highlighting, scrollBeyondLastLine, BMP toolbar glyphs.
+- **AArch64 register-allocator correctness** — protection set covers def operands, fixing register-reuse clobbers.
 
 ### By the Numbers
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 11 | +11 |
+| Commits | — | 13 | +13 |
 | Source files | 2,996 | 3,003 | +7 |
-| Production SLOC | 552K | 558K | +6K |
+| Production SLOC | 552K | 559K | +7K |
 | Test SLOC | 228K | 231K | +3K |
 | Demo SLOC | 188K | 188K | 0 |
 
@@ -34,64 +37,220 @@ Counts via `scripts/count_sloc.sh`.
 
 ### Core runtime
 
-**Viper.Memory** — `Viper.Memory.Retain` and `Viper.Memory.Release` re-wired in `runtime.def` to validated wrapper functions (`rt_memory_retain` / `rt_memory_release`) that authenticate live runtime heap and string handles before touching refcounts and run object finalizers correctly at zero. `rt_memory_retain_str` and `rt_memory_release_str` added as string-typed variants registered as `Viper.Memory.RetainStr` / `Viper.Memory.ReleaseStr`, so Zia-emitted code can call them without a `void *` cast. `Viper.Memory.Release` now handles `RT_HEAP_ARRAY` payloads by releasing all element references (`RT_ELEM_STR`, `RT_ELEM_NONE`, and `RT_ELEM_BOX`) before freeing storage; previously array elements were leaked when released through this path. `rt_obj_new_i64` traps on negative `byte_size` and `byte_size > SIZE_MAX`. A `Viper.Memory` static class entry was added to `runtime.def`. Public heap helpers now validate payloads against the live heap registry before touching headers, so stale heap pointers trap in release builds; `rt_obj_free` rejects non-zero refcounts instead of freeing live payloads. Resurrection-aware release: `rt_obj_resurrect` switched from `atomic_store` to a CAS that traps if the refcount is not zero at the moment of resurrection, and `Viper.Memory.Release` reports the post-finalizer refcount when an object is resurrected.
+**Viper.Memory**
 
-**GC** — The cycle collector's Phase 2 (trial decrement) and Phase 3 (trial restore / reachability marking) now run with the GC lock dropped during traversal callbacks. Each phase collects child edges into a heap-allocated `gc_edge_list` via a visitor; the lock is acquired only to apply the colour update. Phase 3 restore uses an iterative worklist BFS (`gc_worklist`) instead of recursive visitor calls inside the lock, eliminating deadlocks where traversal callbacks called GC APIs while the lock was held. Phase 4 reclamation is wrapped in `setjmp` / `rt_trap_set_recovery` so a trapping finalizer cleans up the garbage and snapshot arrays, clears the collecting flag, and re-raises the trap. Snapshot objects are retained via `rt_obj_retain_maybe` before the lock is released, preventing use-after-free if another thread drops the last external reference during collection. `gc_release_outgoing_ref` ensures finalized garbage releases its outgoing edges before `gc_reclaim_unreachable`, correctly decrementing external references the garbage set holds. Cycle collection now restores through promoted roots during non-full passes, preserving young objects reachable from long-lived roots. Weak references are cleared only after finalizers decline resurrection; `rt_gc_clear_weak_refs` saves the next-pointer before NULLing both fields to avoid use-after-free during list traversal. `TotalCollected` saturates at `INT64_MAX`. All OOM paths on `gc_edge_list`, `gc_worklist`, and the garbage array clean up all heap allocations and release snapshot refs before trapping.
+- `Retain` / `Release` re-wired to validated wrappers (`rt_memory_retain` / `rt_memory_release`) that authenticate live runtime handles.
+- New string-typed variants `RetainStr` / `ReleaseStr` callable from Zia without a `void *` cast.
+- `Release` now releases `RT_HEAP_ARRAY` element refs (`RT_ELEM_STR`, `RT_ELEM_NONE`, `RT_ELEM_BOX`) before freeing storage — previously leaked.
+- `rt_obj_new_i64` traps on negative `byte_size` and `byte_size > SIZE_MAX`.
+- Public heap helpers validate payloads against the live registry; `rt_obj_free` rejects non-zero refcounts.
+- Resurrection-aware: `rt_obj_resurrect` uses CAS, traps if refcount ≠ 0; `Release` reports the post-finalizer refcount.
 
-**MessageBus** — `RT_MSGBUS_CLASS_ID` and `RT_MSGBUS_CALLBACK_CLASS_ID` constants added; `mb_require()` is a type-validated cast used by all eight public API functions, trapping on wrong-class or NULL pointers. `rt_msgbus_callback_new()` wraps a native function pointer in a heap-managed callback object; `mb_invoke_callback()` validates the class ID before dispatching, so passing an unrelated heap object as a callback now traps rather than jumping into object memory. Topic hashing and lookup switched to `mb_hash_bytes()` / `memcmp` over the full byte length from `rt_str_len`, so topics with embedded NUL bytes remain distinct across subscribe, publish, and clear. MessageBus objects register with the GC tracker via `mb_traverse()` so retained callback objects in subscriber lists are visible to the cycle collector. The bus now serializes public operations with an internal lock; `Subscribe` rejects ordinary heap objects (raw function pointers must be wrapped via `Callback(fn)`), `Topics()` returns an owning `Seq` of retained topic strings, `Publish` releases its retained callback snapshot before re-raising a trapping handler, and a subscription-ID overflow guard traps before the counter wraps.
+**GC cycle collector**
 
-**Box / Heap / Type registry** — Boxed values now carry `RT_BOX_CLASS_ID`, so `rt_obj_type_name` and `rt_obj_to_string` return `"Viper.Core.Box"` for any box, and `rt_obj_equals` / `rt_obj_get_hash_code` dispatch to `rt_box_equal` / `rt_box_hash` when either argument is a boxed value — enabling correct `Set[Box]` and `Map[Box, ...]` behaviour through the Object surface. `rt_box_hash` normalizes `-0.0` to `+0.0` so values that compare equal hash equally. `rt_box_i1_bool(int8_t)` added as an ABI-matching variant; the Zia lowerer calls it with the `i1` type rather than zero-extending to `i64`. `Box.ValueType` allocates a class-tagged managed value-type object (not a raw heap blob), so the compiler can register managed fields through `Viper.Core.Box.ValueTypeAddField`, allowing boxed structs to retain object/string fields, participate in GC traversal, and release those fields on finalization. `Box.ValueType(0)` is now legal (zero-width struct); only negative sizes trap. `rt_heap_realloc` holds the registry lock across the registry-contains check, `ensure_capacity`, `realloc`, and registry-move as a single critical section; the previous version released the lock around `realloc`, exposing a stale-entry window. `rt_heap_mark_disposed` return value corrected (was inverted, breaking any caller testing "did I win the first-mark race"). `rt_heap_try_get_header` now holds the registry lock across the magic-number check, closing a TOCTOU window. `rt_type_registry` refactored from void-trap-internally to a `const char*`-error-return pattern; capacity-growth failures no longer trap while holding the registry write lock; missing bases and unknown interface bindings trap with full context.
+- Phases 2 and 3 drop the GC lock during traversal callbacks; edges collected into a heap-allocated `gc_edge_list`, lock acquired only to apply colour updates.
+- Phase 3 restore uses iterative worklist BFS instead of recursive in-lock callbacks.
+- Phase 4 wrapped in `setjmp` / `rt_trap_set_recovery` so a trapping finalizer cleans up garbage and snapshot arrays before re-raising.
+- Snapshot objects retained via `rt_obj_retain_maybe` before lock release — prevents UAF if another thread drops the last external ref.
+- Promoted-root restoration during non-full passes preserves young objects reachable from long-lived roots.
+- Weak refs cleared only after finalizers decline resurrection; OOM paths clean up all heap allocations and snapshot refs.
+- `TotalCollected` saturates at `INT64_MAX`.
 
-**Parse / Diagnostics / Object** — `rt_parse_double_option` and `rt_parse_int64_option` added as Option-returning parse helpers, registered as `Viper.Core.Parse.DoubleOption` / `Int64Option` with `Viper.Parse.*` aliases; the existing `Parse.Double` / `Parse.Int64` entries are documented as low-level C-pointer ABI helpers and the new Option variants are the user-facing surface for graceful parse failure. `rt_diag_assert_eq_str` rewritten to use `rt_str_eq` instead of `strcmp` for NUL-safe comparison, with byte-aware message escaping that formats up to 64 bytes of string content with C-escape sequences for non-printable and non-ASCII bytes. `Viper.Core.Object.RefEquals` is exposed through the class method index in addition to the standalone runtime function. `rt_string_format`'s `rt_to_double` switched from `rt_val_to_double` (which accepted partial parses) to `rt_parse_double` with explicit overflow checks, enforcing strict full-string decimal semantics.
+**MessageBus**
+
+- `RT_MSGBUS_CLASS_ID` and `RT_MSGBUS_CALLBACK_CLASS_ID` constants; `mb_require()` validates every public API entry.
+- Callbacks must be heap-managed objects from `rt_msgbus_callback_new()`; raw function pointers and unrelated heap objects now trap.
+- Topic hashing uses full byte length via `mb_hash_bytes` / `memcmp` — embedded NULs preserved across subscribe / publish / clear.
+- `mb_traverse()` registers retained callback objects with the GC tracker.
+- Internal lock serializes public operations; `Topics()` returns an owning `Seq`; `Publish` releases its retained snapshot before re-raising a trapping handler.
+- Subscription-ID overflow guard traps before the counter wraps.
+
+**Box / Heap / Type registry**
+
+- Boxed values carry `RT_BOX_CLASS_ID`; `Object.Equals` / `GetHashCode` dispatch correctly through `Set[Box]` and `Map[Box, ...]`.
+- `rt_box_hash` normalizes `-0.0` to `+0.0` so equal values hash equally.
+- New `rt_box_i1_bool(int8_t)` ABI-matching variant; Zia lowerer no longer zero-extends `i1` to `i64`.
+- `Box.ValueType` is now a class-tagged managed type — boxed structs retain object/string fields, participate in GC traversal, and release fields on finalization. `Box.ValueType(0)` is legal.
+- `rt_heap_realloc` holds the registry lock as one critical section across check / `realloc` / move.
+- `rt_heap_mark_disposed` return value corrected (was inverted).
+- `rt_heap_try_get_header` closes a TOCTOU window on the magic check.
+- `rt_type_registry` refactored to a `const char*`-error-return pattern; capacity growth no longer traps under the registry write lock.
+
+**Parse / Diagnostics / Object**
+
+- `Parse.DoubleOption` / `Int64Option` (with `Viper.Parse.*` aliases) — Option-returning helpers for graceful parse failure.
+- `rt_diag_assert_eq_str` uses `rt_str_eq` (NUL-safe) with byte-aware C-escape message formatting.
+- `Object.RefEquals` exposed through the class method index.
+- `rt_to_double` switched from `rt_val_to_double` (partial-parse tolerant) to strict `rt_parse_double` with overflow checks.
+
+### Crypto runtime
+
+**Namespace migration**
+
+- The crypto classes formerly under `Viper.Text.*` (Password, KeyDerive, Aes, Cipher, Hash, Rand) are now canonical members of `Viper.Crypto.*`.
+- The old `Viper.Text.*` names continue to resolve through the runtime alias mechanism — no source changes required.
+- `runtime.def` registrations, viperlib docs, demos, and file headers all updated to the new names.
+
+**Memory-hard password hashing (scrypt)**
+
+- New `KeyDerive.ScryptSHA256(password, salt, N, r, p, dklen)` and `ScryptSHA256Str` — RFC 7914 with bounded `N * r * 128` memory cap; out-of-range parameters rejected, not silently clamped.
+- `Password.Hash()` defaults to scrypt and emits `SCRYPT$<log2N>$<r>$<p>$<salt_b64>$<hash_b64>`.
+- `Password.Verify()` still accepts the legacy `PBKDF2$<iters>$<salt_b64>$<hash_b64>` format — old hashes verify without migration.
+- PBKDF2 wrappers reject below-minimum iteration counts (was silently raised).
+
+**Authenticated encryption (AES-GCM)**
+
+- New `Aes.EncryptAuth(key, plaintext, aad)` and `DecryptAuth(key, ciphertext, aad)`.
+- `Aes.EncryptAuth` / `DecryptAuth` now accept AES-256-GCM keys in addition to AES-128-GCM keys.
+- 16-byte magic header (`'V', 'A', 'K', '1'` + version) prevents plain-AES and authenticated-AES ciphertexts from being confused.
+- The header is composed with the application-supplied AAD so the GCM tag covers both.
+- `Cipher` exposes parallel AAD overloads: `EncryptAAD`, `DecryptAAD`, `EncryptWithKeyAAD`, `DecryptWithKeyAAD`.
+
+**Validation-ready backend groundwork**
+
+- Added `Viper.Crypto.Module` with approved-mode controls, module self-tests, and fail-closed policy gates for non-approved public services.
+- Added AES-256-GCM, HMAC-SHA384, HMAC-SHA512, HKDF-SHA384, and native P-256 ECDH primitives.
+- Approved mode routes `Cipher` through AES-256-GCM formats (`VCA1` / `VKA1`), routes `Password.Hash` through PBKDF2, and uses an in-tree HMAC-DRBG for runtime crypto randomness.
+- Current TLS fails closed in approved mode until the P-256/P-384 TLS key-share profile is wired and validated.
+
+**Constant-time comparison**
+
+- `Hash.ConstantTimeEquals(str, str)` and `ConstantTimeEqualsBytes(bytes, bytes)` — branch-free equality for MAC tags, session IDs, and other secret-bearing strings.
+- `Password.Verify()` uses these internally.
+
+### TLS
+
+- Key Usage (OID 2.5.29.15), Basic Constraints (2.5.29.19), and Extended Key Usage (2.5.29.37) extensions parsed and enforced during chain validation.
+- Intermediate certificates without the cA flag in Basic Constraints are rejected.
+- Leaf certificates without TLS Web Server Authentication EKU are rejected.
+- Key Usage bits checked against the role each certificate plays in the chain.
+- `tls_dns_name_bytes_valid` rejects empty names, embedded-NUL or non-ASCII bytes, names > 255 bytes, labels > 63 bytes, and improper wildcard placement.
+- `rt_crypto.c` and `rt_tls.c` thread the new constant-time helpers and per-namespace class IDs through the handshake state.
 
 ### IO runtime
 
-**Temp files and asset loading** — All temp-file creation paths (`rt_archive.c`, `rt_file_ext.c`, `rt_tempfile.c`, `rt_asset_decode.c`) now generate names from a 64-bit random nonce: `/dev/urandom` on POSIX, `rand_s` + `QueryPerformanceCounter` on Windows. The previous scheme encoded the calling pointer's address, leaking ASLR information and producing the same filename on retry when the pointer was stable. Asset decoding via `load_via_tempfile` creates a private directory with `mkdtemp` (POSIX) or a random-named subdirectory (Windows) before writing the temp file, cleaned up on both success and failure. `asset_name_is_safe()` rejects absolute paths, Windows drive letters, colons, empty segments, and dot/dotdot components. Asset opens use `open(O_NOFOLLOW | O_CLOEXEC) + fdopen`.
+**Temp files and asset loading**
 
-**Recursive directory removal** in `rt_dir.c` was rewritten around `rt_dir_posix_open_dir_at`, which opens a subdirectory relative to a parent fd using `openat` with `AT_SYMLINK_NOFOLLOW` and confirms via `fstat`. Removal uses `openat`, `fstatat`, `unlinkat`, and `fdopendir` throughout; no traversal step goes through a path string that could be replaced between lookup and use.
+- All temp-file creation paths now use a 64-bit random nonce (`/dev/urandom` on POSIX, `rand_s` + `QueryPerformanceCounter` on Windows) — eliminates the ASLR side-channel from the previous pointer-encoded scheme.
+- Asset decoding creates a private directory (`mkdtemp` on POSIX, random subdirectory on Windows), cleaned up on success and failure.
+- `asset_name_is_safe()` rejects absolute paths, drive letters, colons, empty segments, and dot/dotdot components.
+- Asset opens use `open(O_NOFOLLOW | O_CLOEXEC) + fdopen`.
 
-**File descriptor hygiene** — All POSIX file opens set `O_CLOEXEC` at open time with `FD_CLOEXEC` fallback via `fcntl`; Windows paths add `_O_NOINHERIT`. File channel validity tightened from `channel < 0` to `channel <= 0` — channel 0 is not a valid Viper IO handle. `rt_file_close` saves the fd to a local before clearing `file->fd`, closing a use-after-free race. Glob rejects strings with embedded NUL bytes and traps at 4096 recursion levels. `MemStream.WriteI8` validates `[-128, 127]` before writing. The watcher subsystem extracts a shared `watcher_start_windows_read()` helper, emits `RT_WATCH_EVENT_OVERFLOW` on buffer-overflow conditions and restarts the read instead of silently dropping events, and applies `IN_CLOEXEC` / `FD_CLOEXEC` to inotify and kqueue fds.
+**Recursive directory removal**
 
-**rt_file_stdio.h** — A new shared header consolidates the UTF-8-aware `fopen` wrapper previously duplicated across `rt_binfile.c`, `rt_linereader.c`, `rt_linewriter.c`, and `rt_stream.c`.
+- Rebuilt around `openat` / `fstatat` / `unlinkat` / `fdopendir` with `AT_SYMLINK_NOFOLLOW` — a symlink substituted mid-traversal cannot redirect deletion.
 
-**SaveData** — Paths resolved to absolute before first use via `GetFullPathNameW` (Windows) or `getcwd` with a doubling-retry loop (POSIX), eliminating chdir-relative confusion. Windows opens use `_O_NOINHERIT | _O_BINARY`. Loading a save file with a malformed key or string value now silently skips that entry rather than trapping, making games resilient to partial writes and filesystem corruption.
+**File descriptor hygiene**
 
-**Archive** — `archive_extra_is_malformed_or_zip64()` rejects ZIP64 extension headers (ID `0x0001`) and truncated field lists. The central-directory parser rejects entries with `version_needed >= 45`, encryption or data-descriptor flags, or ZIP64 sentinel values. Local-file headers are cross-checked against central-directory values for method, flags, CRC, and both size fields before extraction.
+- `O_CLOEXEC` at every open, `FD_CLOEXEC` fallback via `fcntl`; Windows paths add `_O_NOINHERIT`.
+- Channel validity tightened: `channel <= 0` rejected (channel 0 was never valid).
+- `rt_file_close` saves the fd locally before clearing — closes a UAF race.
+- `Glob` rejects embedded NULs; recursion capped at 4096.
+- `MemStream.WriteI8` validates `[-128, 127]`.
+- Watcher emits `RT_WATCH_EVENT_OVERFLOW` on buffer overflow rather than silently dropping; `IN_CLOEXEC` / `FD_CLOEXEC` on inotify and kqueue fds.
+- New `rt_file_stdio.h` consolidates the UTF-8-aware `fopen` wrapper duplicated across four files.
 
-**Compress** — `inflate_data_limited_ex()` adds a `consumed_bytes` output parameter for exact compressed-input accounting. The multi-member GZIP path uses this for precise member-boundary detection instead of a heuristic signature scan. The padding-bits check corrected to use `consumed_bits` from `br.pos` and `br.bits_in_buf`, fixing a false-positive trailing-data trap.
+**SaveData**
 
-**VPA** — `vpa_fseek` / `vpa_ftell` macros select `_fseeki64` / `_ftelli64` (Windows) or `fseeko` / `ftello` (POSIX). VPA opens perform an `lstat` pre-check then `open(O_NOFOLLOW | O_CLOEXEC)`.
+- Paths resolved to absolute before first use (`GetFullPathNameW` / `getcwd`-with-doubling) — eliminates chdir-relative confusion.
+- Windows opens use `_O_NOINHERIT | _O_BINARY`.
+- Malformed entries are silently skipped — games are now resilient to partial writes and filesystem corruption.
+
+**Archive / Compress / VPA**
+
+- ZIP extra-field parser rejects ZIP64 extension headers; central-directory rejects `version_needed >= 45`, encryption flags, ZIP64 sentinels.
+- Local-file headers cross-checked against central-directory values for method, flags, CRC, and both size fields.
+- `inflate_data_limited_ex()` exposes `consumed_bytes` for exact compressed-input accounting; multi-member GZIP uses this for precise boundary detection.
+- VPA seeks use 64-bit `_fseeki64` / `fseeko`; opens perform `lstat` pre-check then `O_NOFOLLOW`.
 
 ### Collections runtime
 
-`BinaryBuffer` gains eight new unsigned integer methods: `WriteU16LE/BE`, `WriteU32LE/BE` with `[0, UINT16_MAX]` / `[0, UINT32_MAX]` range validation, and matching `ReadU16LE/BE`, `ReadU32LE/BE` returning `i64`. Retroactive range-check guards added to `WriteI16LE/BE` and `WriteI32LE/BE`, which previously silently truncated out-of-range values. All eight functions registered in `runtime.def`.
+- Eight new unsigned `BinaryBuffer` methods: `WriteU16LE/BE`, `WriteU32LE/BE`, `ReadU16LE/BE`, `ReadU32LE/BE` (with `[0, UINT16_MAX]` / `[0, UINT32_MAX]` range validation).
+- Retroactive range-check guards on `WriteI16LE/BE` and `WriteI32LE/BE` — previously truncated silently.
 
 ### Audio
 
-The `Viper.Audio.*` compatibility namespace was rebuilt from `RT_ALIAS` forwarding entries into full `RT_CLASS_BEGIN` / `RT_FUNC` / `RT_METHOD` / `RT_PROP` registrations. `RT_ALIAS` cannot carry typed object return values: methods returning `obj<Viper.Audio.Sound>` require `Viper.Audio.Sound` to exist as a named class in the runtime type registry. An alias pointing at `Viper.Sound.*` handlers does not register that name, causing handle-type resolution failures at every such call site. All eight classes promoted: `Audio`, `Sound`, `Voice`, `Music`, `Playlist`, `SoundBank`, `Synth`, and `MusicGen`. `rt_audio3d_register_voice` added to `RuntimeSurfacePolicy.inc`.
+- The `Viper.Audio.*` compatibility namespace was rebuilt from `RT_ALIAS` forwarding entries into full `RT_CLASS_BEGIN` / `RT_FUNC` / `RT_METHOD` / `RT_PROP` registrations.
+- `RT_ALIAS` cannot carry typed object return values — `obj<Viper.Audio.Sound>` returns silently failed type resolution at every call site.
+- All eight classes promoted: `Audio`, `Sound`, `Voice`, `Music`, `Playlist`, `SoundBank`, `Synth`, `MusicGen`.
+- `rt_audio3d_register_voice` added to `RuntimeSurfacePolicy.inc`.
+
+### 2D graphics
+
+**Drawing primitives**
+
+- New saturating int64 clip-rect arithmetic via `rtg_add_sat64` / `rtg_i64_fits_i32` helpers — extreme coordinates clip safely instead of overflowing.
+- Polyline / Polygon / Path point arrays validated through `rt_heap_try_get_header` — NULL pointers, non-Integer arrays, and arrays shorter than `count * 2` elements are now silently ignored rather than read past their bounds.
+- `INT64_MAX / 2` cap on `count` prevents the `count * 2` multiply from overflowing.
+
+**Sprite, tilemap, color**
+
+- Sprite tint normalization preserves the explicit-alpha tag from `Color.RGBA` — was masked to 24 bits, forcing every tinted sprite back to fully-opaque.
+- Tilemap I/O introduces `tilemap_io_release_ref` plus `map_set_owned` / `seq_push_owned` so reload cycles can't double-free shared tile references.
+- `Color.FromHex` rejects strings with embedded NUL bytes — was returning a partial color.
+- Redundant per-subsystem class-ID constants in `rt_graphics2d.c` removed; canonical IDs come from the runtime registry.
 
 ### ViperIDE
 
-A polish round addressing four user-reported issues. The IDE's IntelliSense surface (completion, hover, diagnostics, symbols) had been silently falling back to the `"Zia completion unavailable"` weak stubs because the static linker was satisfying every `rt_zia_*` reference from `viper_runtime/core/rt_zia_completion_stub.c` and never pulling in the strong-symbol object from `fe_zia`. The `zia` binary's CMake target now force-loads `fe_zia` (`LINKER:-force_load` on macOS, `--whole-archive` on Linux), so the strong implementations win the override race. A new C-callable bridge in `fe_zia` (`rt_zia_highlight.cpp`) exposes `rt_zia_is_keyword(name, len)` so the GUI's syntax-highlighter callback in `rt_gui_codeeditor.c` can consult the authoritative `Lexer::lookupKeyword` (52 entries) instead of the local 28-entry `zia_keywords[]` table that had been silently drifting. A weak stub in `viper_runtime/core/rt_zia_highlight_stub.c` keeps non-`fe_zia` builds linking. `Lexer::lookupKeyword` was promoted from private to public so external highlighters can share the table. The Zia tokenizer also gains inline `/* ... */` block-comment tracking via a new per-editor `zia_block_comment_depth` field on `vg_codeeditor_t`, reset on `SetText` and `SetLanguage`. The `CodeEditor` widget's `codeeditor_max_scroll_y` now uses half-viewport scrollBeyondLastLine padding (matching VS Code / Sublime), letting the document end float toward mid-viewport rather than being pinned to the bottom edge where the last few lines were uncomfortable to read. The toolbar uses Unicode glyphs as button text labels via `AddButtonWithText("", emoji, tooltip)`; the previous attempt at `AddButton(emoji, tooltip)` failed because that argument is interpreted as an icon file path. New `tbBuild` / `tbRun` / `tbFind` items added and wired into the command dispatch. The welcome buffer now begins with `module Welcome;` so the Zia completion engine — newly reachable via the linkage fix — can parse it; without the declaration, `CompleteForFile` returned an empty string and the popup appeared blank.
+**IntelliSense linkage fix**
+
+- The `zia` binary's CMake target now force-loads `fe_zia` (`LINKER:-force_load` on macOS, `--whole-archive` on Linux).
+- Without force-loading, the static linker satisfied every `rt_zia_*` reference from the weak stubs in `viper_runtime/core/rt_zia_completion_stub.c`, so completion / hover / diagnostics / symbols silently returned `"Zia completion unavailable"`.
+
+**Syntax highlighting**
+
+- New C-callable bridge `rt_zia_highlight.cpp` in `fe_zia` exposes `rt_zia_is_keyword(name, len)`.
+- The GUI tokenizer in `rt_gui_codeeditor.c` now consults `Lexer::lookupKeyword` (52 keywords) instead of the local 28-entry `zia_keywords[]` table that had been silently drifting.
+- Inline `/* ... */` block-comment tracking via a per-editor `zia_block_comment_depth` field.
+- Uppercase-first heuristic colors `Foo` / `MyClass` / `Math` / `Viper` as types (teal).
+- Identifiers immediately followed by `(` are colored as function calls (yellow `#DCDCAA`).
+
+**Editor UX**
+
+- `codeeditor_max_scroll_y` uses half-viewport scrollBeyondLastLine padding (matches VS Code / Sublime) — last line floats to mid-viewport rather than being pinned to the bottom edge.
+- Mouse-wheel scroll dropped from 1.0 to 0.3 lines per delta — more comfortable on macOS trackpads.
+
+**Toolbar and welcome buffer**
+
+- Toolbar uses BMP-only Geometric Shapes / Arrows glyphs as button text labels — the previous emoji attempt fell back to the missing-glyph "hamburger" on UI fonts that lack color emoji support.
+- New `tbBuild` / `tbRun` / `tbFind` items wired into the command dispatch.
+- Untitled (Ctrl+N) buffers and the welcome buffer now begin with `module UntitledN;` / `module Welcome;` so the completion engine can parse them on the first keystroke; without a module declaration `CompleteForFile` returned an empty string and the popup appeared blank.
 
 ### Compiler, IL & codegen
 
-**AArch64 register allocator** — The protection set in `Allocator.cpp` is now populated for both *use* and *def* operands, preventing eviction of live def vregs mid-instruction. Names refactored from `protectedUseGPR_` / `protectedUseFPR_` to `protectedOperandGPR_` / `protectedOperandFPR_` (and `isProtectedUse()` to `isProtectedOperand()`) to reflect the broader scope. Fixes a class of register-reuse clobber bugs where a def vreg could be displaced by another operand in the same instruction.
+**AArch64 register allocator**
 
-**DynamicSymbolPolicy** — Extended with all syscalls introduced by the IO hardening work: `openat`, `fstatat`, `mkdirat`, `unlinkat`, `renameat`, `fdopendir`, `dirfd`, `chmod`, `fchmod`, and `mkdtemp`. Without these entries, native-linked Linux binaries failed dynamic-symbol validation.
+- Protection set in `Allocator.cpp` now covers both *use* and *def* operands — prevents eviction of live def vregs mid-instruction.
+- Fields renamed `protectedUse{GPR,FPR}_` → `protectedOperand{GPR,FPR}_` to reflect the broader scope.
+- Fixes a class of register-reuse clobber bugs.
 
-### Tests
+**DynamicSymbolPolicy**
 
-Comprehensive coverage added for every hardening path. GC tests verify that traversal callbacks can invoke GC APIs without deadlocking under the new lock-free traversal scheme, that promoted roots restore young children, that weak refs survive finalizer resurrection and can be reset after clearing, that finalized garbage releases external outgoing references, and that finalizer traps do not leave collection permanently active. MessageBus tests cover NUL-embedded topic identity, callback class-ID validation, raw callback rejection, owning topic snapshots, publish trap cleanup, and subscription-ID overflow. Object tests confirm `rt_obj_equals` / `GetHashCode` box dispatch, `-0.0`/`+0.0` hash equality, `Box`/`Option`/string/value-type type identity, and `RefEquals` method-index registration. New `RTMemorySurfaceTests` covers `Viper.Memory` invalid-handle traps, resurrected release counts, boxed/object/string array-element release, live-object free traps, and `RetainStr`/`ReleaseStr` round-trip. `RTParseTests` covers `DoubleOption`/`Int64Option` success, `None`, class IDs, typed return metadata, and zeroed outputs on low-level parse failures. `RTTrapContractTests` verifies NUL-embedded diagnostic message escaping. IO tests cover archive ZIP64/extra-field rejection, local-header cross-check, asset temp-dir isolation, savedata absolute-path resolution and corrupt-key skip, VPA large-file seek, watcher overflow event handling, inflate consumed-bytes and padding-bits correctness, unsigned `BinaryBuffer` round-trip and range-trap, and OGG page CRC-32 correctness.
+- Extended with all syscalls introduced by IO hardening: `openat`, `fstatat`, `mkdirat`, `unlinkat`, `renameat`, `fdopendir`, `dirfd`, `chmod`, `fchmod`, `mkdtemp`.
+- Native-linked Linux binaries previously failed dynamic-symbol validation without these entries.
+
+### Testing & build
+
+- New / expanded test suites for every hardening path:
+  - **Memory / GC** — traversal callbacks, promoted roots, weak-ref resurrection, finalizer trap recovery.
+  - **MessageBus** — NUL-embedded topics, callback class-ID validation, raw callback rejection, owning topic snapshots, publish trap cleanup, subscription-ID overflow.
+  - **Object** — `rt_obj_equals` / `GetHashCode` box dispatch, `±0.0` hash equality, type identity, `RefEquals`.
+  - **`RTMemorySurfaceTests`** (new) — invalid-handle traps, resurrected release counts, array-element release, `RetainStr` / `ReleaseStr` round-trip.
+  - **`RTParseTests`** — `DoubleOption` / `Int64Option` success and `None`, class IDs, typed return metadata.
+  - **`RTTrapContractTests`** — NUL-embedded diagnostic message escaping.
+  - **IO** — ZIP64 / extra-field rejection, asset temp-dir isolation, savedata absolute paths, VPA large-file seek, watcher overflow, inflate consumed-bytes, unsigned `BinaryBuffer`, OGG CRC.
+  - **Crypto** — scrypt round-trips, AEAD encrypt / decrypt with AAD, `ConstantTimeEquals`, TLS extension parsers.
+  - **2D graphics** — `RTBitmapFontContractTests`, expanded `RTCanvasContractTests`, `RTColorUtilsTests` (alpha-tag preservation through `Brighten` / `Darken` / `Invert` / `Grayscale` / `Saturate` / `Desaturate` / `Complement` / `Lerp`), `RTSpriteContractTests` (tint alpha survives normalization), `RTGraphics2DTests`, `RTPixelsTests`, `RTCameraTests`, `TestTilemapAnim`, etc.
+- The seven `Viper.GUI` widget tests in `src/lib/gui/tests/` were relabeled `tui` → `gui` (a new dedicated ctest label); the wheel-scroll regression contract was rewritten with floating-point tolerance to match the new mouse-wheel constant.
 
 ### Demos & docs
 
-`viperlib/core.md`, `viperlib/io/`, `viperlib/game/persistence.md`, `viperlib/system.md`, and `docs/memory-management.md` updated for the new validated `Viper.Memory` wrappers, MessageBus locking and callback semantics, GC promoted-root restoration, weak-ref/finalizer ordering, Box value-equality and value-type managed fields, and `DoubleOption`/`Int64Option` typed Option variants. New `docs/viperlib/graphics/rendering3d.md` documents 28 previously undocumented `Viper.Graphics3D.*` classes across camera/rendering, skeletal animation, instancing, terrain, and post-effects. `docs/viperlib/gui/application.md` extended with round-7 widget APIs. Full Viper file-header and `@brief` pass across all 19 `Viper.Memory.*` and `Viper.Core.*` source files.
+Per-file file-header and `@brief` pass across all 17 `Viper.Graphics.*` runtime sources (Theora decoder header upgraded to the full Viper template); new viperlib documentation for the `Viper.Crypto.*` namespace migration (scrypt parameters, AEAD usage, constant-time comparison); `viperlib/core.md` / `io/` / `game/persistence.md` / `system.md` / `docs/memory-management.md` updated for the new `Viper.Memory` wrappers, MessageBus locking, GC promoted-root restoration, weak-ref / finalizer ordering, and `Box` value-equality / value-type managed fields; new `docs/viperlib/graphics/rendering3d.md` documents 28 previously-undocumented `Viper.Graphics3D.*` classes; `docs/viperlib/gui/application.md` extends with round-7 widget APIs; root `README.md` had its long-running counts audited (optimizer 20→24 passes, runtime 360→378 classes / 23→21 modules, demos 16→17 games, docs 185+→200+).
 
 ---
 
 ### Commits
 
-See `git log 7f1c4861e..HEAD -- .` for the full 11-commit history since v0.2.5.
+See `git log 7f1c4861e..HEAD -- .` for the full 13-commit history since v0.2.5.
 
 <!-- END DRAFT -->
