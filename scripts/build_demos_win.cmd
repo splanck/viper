@@ -193,6 +193,14 @@ if /i "%NAME%"=="vipersql" (
     set "DEMO_BUILD_FLAGS=-O0"
     echo   Using -O0 to avoid pathological optimizer/codegen time for this large demo.
 )
+if /i "%NAME%"=="chess-zia" (
+    set "DEMO_BUILD_FLAGS=-O0"
+    echo   Using -O0 to avoid the optimized Windows x64 chess AI move-value crash.
+)
+if /i "%NAME%"=="xenoscape" (
+    set "DEMO_BUILD_FLAGS=-O0"
+    echo   Using -O0 to avoid the optimized Windows x64 new-game startup crash.
+)
 "%VIPER%" build "%PROJECT_DIR%" --arch %DEMO_ARCH% !DEMO_BUILD_FLAGS! -o "%EXE_FILE%" 2>nul
 if errorlevel 1 goto :build_demo_failed
 echo   OK
