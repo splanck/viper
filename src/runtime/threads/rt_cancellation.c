@@ -64,6 +64,11 @@ typedef struct rt_cancellation_data {
 
 // --- Platform-specific atomic helpers ---
 
+/// @brief Set the initial value of the `cancelled` flag at construction time.
+/// @details Called only from `rt_cancellation_new` / `_linked` before the object is published.
+///          Uses `atomic_init` (POSIX) or `InterlockedExchange` (Win32 — there is no
+///          dedicated init primitive, but `InterlockedExchange` provides the same
+///          happens-before guarantee for any subsequent reader).
 static inline void cancel_init(rt_cancellation_data *data, int value) {
 #if defined(_WIN32)
     InterlockedExchange(&data->cancelled, (LONG)value);
@@ -72,6 +77,11 @@ static inline void cancel_init(rt_cancellation_data *data, int value) {
 #endif
 }
 
+/// @brief Atomic load of the local `cancelled` flag.
+/// @details The Win32 path uses `InterlockedCompareExchange(..., 0, 0)` as a portable
+///          atomic-load — no value can satisfy the compare so the flag is left untouched, but
+///          the operation carries a sequentially-consistent ordering that older MSVC versions
+///          didn't expose via a dedicated load intrinsic.
 static inline int cancel_load(rt_cancellation_data *data) {
 #if defined(_WIN32)
     return (int)InterlockedCompareExchange(&data->cancelled, 0, 0);
@@ -80,6 +90,10 @@ static inline int cancel_load(rt_cancellation_data *data) {
 #endif
 }
 
+/// @brief Atomic store of the `cancelled` flag.
+/// @details Used both to flip a token to cancelled (`value = 1`) and to clear it via
+///          `rt_cancellation_reset` (`value = 0`). Sequentially consistent so concurrent
+///          `IsCancelled` callers see the new value without further synchronization.
 static inline void cancel_store(rt_cancellation_data *data, int value) {
 #if defined(_WIN32)
     InterlockedExchange(&data->cancelled, (LONG)value);
@@ -88,11 +102,19 @@ static inline void cancel_store(rt_cancellation_data *data, int value) {
 #endif
 }
 
+/// @brief Drop a runtime-managed object reference, freeing it if it was the last one.
+/// @details One-line wrapper used pervasively in this file's parent/child unlink paths so
+///          each call site doesn't have to repeat the release-then-free dance. Safe on NULL.
 static void cancellation_release_object(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
+/// @brief Validate that `token` is a cancellation token, trapping on type mismatch.
+/// @details Guards every public entry point that dereferences `rt_cancellation_data`. Returns
+///          NULL on a NULL input (caller treats that as a no-op) but raises a runtime trap
+///          when given a non-cancellation object — that's a programming bug we want to
+///          surface loudly rather than silently misinterpret as a token.
 static rt_cancellation_data *cancellation_require(void *token) {
     if (!token)
         return NULL;
@@ -103,6 +125,15 @@ static rt_cancellation_data *cancellation_require(void *token) {
     return (rt_cancellation_data *)token;
 }
 
+/// @brief Cancel `data` and recursively propagate to every linked descendant.
+/// @details Performs the downward propagation by snapshotting the live child list under the
+///          monitor (retaining each child to keep it alive past the lock release), then
+///          recursing outside the lock. Snapshotting avoids holding the parent's monitor
+///          while we recurse — important because a child's monitor must be reachable
+///          independently of the parent's lock to keep the cancellation graph deadlock-free.
+///          Allocation-failure on the snapshot buffer is tolerated: any child we couldn't
+///          retain is skipped, but its local flag was already flipped before the realloc
+///          attempt, so the leaf is still cancelled — only its descendants miss the sweep.
 static void cancellation_mark_cancelled(rt_cancellation_data *data) {
     if (!data)
         return;
@@ -126,15 +157,25 @@ static void cancellation_mark_cancelled(rt_cancellation_data *data) {
             children = next_children;
             child_cap = next_cap;
         }
+        rt_obj_retain_maybe(child);
         children[child_count++] = child;
     }
     rt_monitor_exit(data->monitor);
 
-    for (size_t i = 0; i < child_count; i++)
+    for (size_t i = 0; i < child_count; i++) {
         cancellation_mark_cancelled(children[i]);
+        cancellation_release_object(children[i]);
+    }
     free(children);
 }
 
+/// @brief GC finalizer for cancellation tokens.
+/// @details Tears down the parent linkage in two steps: (1) unlink this node from the parent's
+///          intrusive child list under the parent's monitor so a concurrent `Cancel(parent)`
+///          can't dereference a freed sibling pointer, then (2) drop the retain on the parent
+///          and release the local monitor. Any retained children are *not* released here —
+///          children hold a retain on the parent (us), not the other way around, so by the
+///          time we're finalizing, no live child can still reference us.
 static void cancellation_finalizer(void *obj) {
     rt_cancellation_data *data = (rt_cancellation_data *)obj;
     if (!data)
@@ -219,7 +260,12 @@ void rt_cancellation_cancel(void *token) {
     cancellation_mark_cancelled(data);
 }
 
-/// @brief Set a value in the cancellation.
+/// @brief Clear the local cancelled flag on `token` so it can be reused for a new operation.
+/// @details Only the token's *own* flag is cleared. If `token` was a linked child whose parent
+///          is still cancelled, `IsCancelled` will continue to report true via the upward
+///          parent check on subsequent calls. Reset is intended for tokens whose
+///          cancellation request has been honoured and the same object is being recycled
+///          for a fresh request — not as a way to undo a parent's cancellation.
 void rt_cancellation_reset(void *token) {
     if (!token)
         return;
@@ -253,6 +299,7 @@ void *rt_cancellation_linked(void *parent) {
     }
     data->first_child = NULL;
     data->next_sibling = NULL;
+    rt_obj_set_finalizer(obj, cancellation_finalizer);
 
     if (parent) {
         rt_cancellation_data *parent_data = cancellation_require(parent);
@@ -273,16 +320,23 @@ void *rt_cancellation_linked(void *parent) {
             cancel_store(data, 1);
         }
     }
-    rt_obj_set_finalizer(obj, cancellation_finalizer);
     return obj;
 }
 
-/// @brief Check the cancellation.
+/// @brief Public alias for `rt_cancellation_is_cancelled` exposed under a friendlier name.
+/// @details Matches the naming convention used by other Viper.Threads polling primitives
+///          (e.g. `rt_future_check`). Identical semantics: returns 1 if this token or any
+///          of its ancestors has been cancelled, else 0.
 int8_t rt_cancellation_check(void *token) {
     return rt_cancellation_is_cancelled(token);
 }
 
-/// @brief Throw the if cancelled of the cancellation.
+/// @brief Trap with `OperationCancelledException` if cancellation has been requested.
+/// @details Used at well-defined cancellation points inside long-running runtime work so a
+///          cooperative caller can bail out promptly. The trap kind is `RT_TRAP_KIND_INTERRUPT`
+///          (not `RUNTIME_ERROR`) so `try { ... } catch InterruptedException` blocks in Zia
+///          can distinguish cancellation from other faults. No-op if `token` is NULL or not
+///          cancelled — callers can sprinkle these freely without performance worry.
 void rt_cancellation_throw_if_cancelled(void *token) {
     if (rt_cancellation_check(token))
         rt_trap_raise_kind(RT_TRAP_KIND_INTERRUPT,

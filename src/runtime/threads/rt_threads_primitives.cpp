@@ -93,6 +93,17 @@ static void releaseRuntimeObject(void *obj) {
         rt_obj_free(obj);
 }
 
+/// @brief Validate-and-cast an opaque object pointer to its concrete impl type, trapping on mismatch.
+/// @details Generic helper used by every public Gate / Barrier / RwLock
+///          entry point. Traps on NULL with @p what (or a generic
+///          "<typeName>: null object" if @p what is NULL); traps on
+///          wrong-class with "<typeName>: invalid object". Returns
+///          static_cast<T*>(obj) on success.
+/// @tparam T  Target pointer type for the downcast.
+/// @param obj      Opaque object pointer.
+/// @param classId  Required runtime class id; 0 disables the class check.
+/// @param typeName Class name used in default trap messages.
+/// @param what     Optional caller-supplied trap message override.
 template <typename T>
 static T *requireObject(void *obj, int64_t classId, const char *typeName, const char *what) {
     if (!obj) {
@@ -427,6 +438,7 @@ int8_t rt_gate_try_enter_for(void *gate, int64_t ms) {
         } else if (ms != 0) {
             GateWaiter waiter;
             state.waiters.push_back(&waiter);
+            bool timed_out = false;
 
             const auto deadline = steadyDeadlineFromNow(ms);
 
@@ -436,11 +448,13 @@ int8_t rt_gate_try_enter_for(void *gate, int64_t ms) {
                     auto it = std::find(state.waiters.begin(), state.waiters.end(), &waiter);
                     if (it != state.waiters.end())
                         state.waiters.erase(it);
-                    releaseRuntimeObject(gate);
-                    return 0;
+                    timed_out = true;
+                    break;
                 }
             }
-            if (waiter.cancelled || state.closing) {
+            if (timed_out) {
+                result = 0;
+            } else if (waiter.cancelled || state.closing) {
                 auto it = std::find(state.waiters.begin(), state.waiters.end(), &waiter);
                 if (it != state.waiters.end())
                     state.waiters.erase(it);

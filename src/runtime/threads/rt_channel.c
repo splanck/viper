@@ -77,6 +77,12 @@ typedef struct {
     ULONGLONG deadline;
 } channel_deadline;
 
+/// @brief Compute an absolute monotonic deadline @p ms in the future.
+/// @details Per-platform: GetTickCount64 on Windows, clock_gettime(CLOCK_MONOTONIC)
+///          on POSIX. Used by Channel.SendFor / RecvFor to convert a
+///          relative timeout into a fixed point that survives spurious
+///          wakeups during the wait loop. Saturates at the per-platform
+///          maximum so an absurdly large @p ms can't roll over the clock.
 static channel_deadline channel_deadline_from_now(int64_t ms) {
     channel_deadline d;
     ULONGLONG now = GetTickCount64();
@@ -85,6 +91,12 @@ static channel_deadline channel_deadline_from_now(int64_t ms) {
     return d;
 }
 
+/// @brief Return the number of milliseconds remaining until @p d (0 if already expired).
+/// @details Companion to channel_deadline_from_now. Returns 0 the instant
+///          the deadline lapses so wait loops can detect timeout via a
+///          single == 0 check rather than a delta comparison. Saturates
+///          at INT64_MAX for very large remaining intervals so the result
+///          fits a signed return without overflow.
 static int64_t channel_remaining_ms(channel_deadline d) {
     ULONGLONG now = GetTickCount64();
     return now >= d.deadline ? 0 : (int64_t)(d.deadline - now);
@@ -94,6 +106,12 @@ typedef struct {
     struct timespec deadline;
 } channel_deadline;
 
+/// @brief Compute an absolute monotonic deadline @p ms in the future.
+/// @details Per-platform: GetTickCount64 on Windows, clock_gettime(CLOCK_MONOTONIC)
+///          on POSIX. Used by Channel.SendFor / RecvFor to convert a
+///          relative timeout into a fixed point that survives spurious
+///          wakeups during the wait loop. Saturates at the per-platform
+///          maximum so an absurdly large @p ms can't roll over the clock.
 static channel_deadline channel_deadline_from_now(int64_t ms) {
     channel_deadline d;
     clock_gettime(CLOCK_MONOTONIC, &d.deadline);
@@ -115,6 +133,12 @@ static channel_deadline channel_deadline_from_now(int64_t ms) {
     return d;
 }
 
+/// @brief Return the number of milliseconds remaining until @p d (0 if already expired).
+/// @details Companion to channel_deadline_from_now. Returns 0 the instant
+///          the deadline lapses so wait loops can detect timeout via a
+///          single == 0 check rather than a delta comparison. Saturates
+///          at INT64_MAX for very large remaining intervals so the result
+///          fits a signed return without overflow.
 static int64_t channel_remaining_ms(channel_deadline d) {
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
@@ -136,6 +160,13 @@ static int64_t channel_remaining_ms(channel_deadline d) {
 // Channel Management
 //=============================================================================
 
+/// @brief GC finalizer for a Channel — close it and release every retained item plus the monitor.
+/// @details Closes the channel under the monitor (waking any blocked
+///          senders/receivers so they can observe `closed`), releases each
+///          retained item still in the ring buffer, frees the buffer
+///          allocation, then releases the monitor object. Safe to call
+///          on a partially-initialized channel — every step NULL-checks
+///          its target.
 static void channel_finalizer(void *obj) {
     channel_impl *ch = (channel_impl *)obj;
     if (!ch)
@@ -172,16 +203,27 @@ static void channel_finalizer(void *obj) {
     }
 }
 
+/// @brief Release a retained channel reference; free the impl when refcount hits zero.
+/// @details Used by entry points that took a temporary ref for the duration of
+///          a blocking wait. NULL @p obj is a no-op.
 static void channel_release_object(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
+/// @brief Release a retained item from the channel's ring buffer when it's no longer reachable.
+/// @details Same shape as channel_release_object but named for clarity at
+///          item-popping sites. NULL @p item is a no-op.
 static void channel_release_item(void *item) {
     if (item && rt_obj_release_check0(item))
         rt_obj_free(item);
 }
 
+/// @brief Validate-and-cast an opaque channel pointer to its impl, with optional NULL-trap.
+/// @details Every public Channel entry point dispatches through this guard.
+///          NULL @p channel triggers a trap with @p null_msg iff
+///          @p trap_on_null is set; otherwise returns NULL. Wrong-class
+///          handles always trap with "Channel: invalid object".
 static channel_impl *channel_require(void *channel, const char *null_msg, int8_t trap_on_null) {
     if (!channel) {
         if (trap_on_null)
@@ -366,14 +408,34 @@ int8_t rt_channel_try_send(void *channel, void *item) {
         return 0;
     }
 
-    // Same logic as blocking send
+    // Same logic as blocking send. On synchronous channels, success means the
+    // waiting receiver has acknowledged the handoff before this call returns.
     if (ch->capacity == 0) {
+        ch->waiting_senders++;
         if (item)
             rt_obj_retain_maybe(item);
-        ch->sync_epoch++;
+        int64_t my_epoch = ++ch->sync_epoch;
         ch->buffer[0] = item;
         ch->count = 1;
         rt_monitor_pause_all(ch->monitor);
+
+        while (ch->sync_acked_epoch < my_epoch && !ch->closed) {
+            rt_monitor_wait(ch->monitor);
+        }
+        if (ch->sync_acked_epoch < my_epoch) {
+            if (ch->sync_epoch == my_epoch && ch->count != 0) {
+                void *unsent = ch->buffer[0];
+                ch->buffer[0] = NULL;
+                ch->count = 0;
+                channel_release_item(unsent);
+                rt_monitor_pause_all(ch->monitor);
+            }
+            ch->waiting_senders--;
+            rt_monitor_exit(ch->monitor);
+            channel_release_object(channel);
+            return 0;
+        }
+        ch->waiting_senders--;
     } else {
         if (item)
             rt_obj_retain_maybe(item);

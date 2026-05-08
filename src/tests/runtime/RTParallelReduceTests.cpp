@@ -199,7 +199,7 @@ int main(int argc, char *argv[]) {
     test_reduce_null_seq();
     test_reduce_identity_applied_once();
     auto result = viper::tests::runIsolated(call_reduce_final_combine_trap);
-    assert(result.stderrText.find("Parallel.Reduce: reducer trapped") != std::string::npos);
+    assert(result.stderrText.find("final combine trap") != std::string::npos);
 
     printf("\nAll Parallel.Reduce tests passed!\n");
     return 0;

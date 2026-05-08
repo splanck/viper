@@ -94,6 +94,10 @@ typedef struct future_listener {
     struct future_listener *next;
 } future_listener;
 
+/// @brief Release a retained Future / Promise / value reference; free when refcount hits zero.
+/// @details Common ownership-discipline helper used by paths that take a
+///          temporary ref for the duration of an async wait. NULL @p obj
+///          is a no-op.
 static void future_release_object(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
@@ -232,9 +236,6 @@ static int future_cond_timedwait_deadline(pthread_cond_t *cond,
 /// detached the list from `promise_impl.listeners` and released the promise mutex (notification
 /// happens outside the critical section to avoid blocking other threads on long callbacks).
 static void future_notify_listeners(future_listener *listeners) {
-    char first_error[512];
-    first_error[0] = '\0';
-
     while (listeners) {
         future_listener *next = listeners->next;
 
@@ -242,12 +243,6 @@ static void future_notify_listeners(future_listener *listeners) {
         rt_trap_set_recovery(&recovery);
         if (setjmp(recovery) == 0) {
             listeners->callback(listeners->future_obj, listeners->ctx);
-        } else if (first_error[0] == '\0') {
-            const char *msg = rt_trap_get_error();
-            if (!msg || !msg[0])
-                msg = "Future.OnComplete: listener trapped";
-            strncpy(first_error, msg, sizeof(first_error) - 1);
-            first_error[sizeof(first_error) - 1] = '\0';
         }
         rt_trap_clear_recovery();
 
@@ -256,9 +251,6 @@ static void future_notify_listeners(future_listener *listeners) {
         free(listeners);
         listeners = next;
     }
-
-    if (first_error[0] != '\0')
-        rt_trap(first_error);
 }
 
 /// @brief Retrieve the resolved value, retaining it for the consumer if `owns_value` is set.
@@ -1062,27 +1054,16 @@ int8_t rt_future_on_complete_ex(void *obj,
 #else
         pthread_mutex_unlock(&p->mutex);
 #endif
-        char callback_error[512];
-        callback_error[0] = '\0';
-
         jmp_buf recovery;
         rt_trap_set_recovery(&recovery);
         if (setjmp(recovery) == 0) {
             callback(obj, ctx);
-        } else {
-            const char *msg = rt_trap_get_error();
-            if (!msg || !msg[0])
-                msg = "Future.OnComplete: listener trapped";
-            strncpy(callback_error, msg, sizeof(callback_error) - 1);
-            callback_error[sizeof(callback_error) - 1] = '\0';
         }
         rt_trap_clear_recovery();
 
         if (rt_obj_release_check0(listener->future_obj))
             rt_obj_free(listener->future_obj);
         free(listener);
-        if (callback_error[0] != '\0')
-            rt_trap(callback_error);
         return 1;
     }
 
@@ -1148,19 +1129,11 @@ int8_t rt_future_cancel_listener(void *obj, void (*callback)(void *future, void 
         return 0;
     }
 
-    char cancel_error[512];
-    cancel_error[0] = '\0';
     if (removed->cancel) {
         jmp_buf recovery;
         rt_trap_set_recovery(&recovery);
         if (setjmp(recovery) == 0) {
             removed->cancel(removed->ctx);
-        } else {
-            const char *msg = rt_trap_get_error();
-            if (!msg || !msg[0])
-                msg = "Future.CancelListener: cancel hook trapped";
-            strncpy(cancel_error, msg, sizeof(cancel_error) - 1);
-            cancel_error[sizeof(cancel_error) - 1] = '\0';
         }
         rt_trap_clear_recovery();
     }
@@ -1168,14 +1141,12 @@ int8_t rt_future_cancel_listener(void *obj, void (*callback)(void *future, void 
         rt_obj_free(removed->future_obj);
     free(removed);
     future_release_object(obj);
-    if (cancel_error[0] != '\0')
-        rt_trap(cancel_error);
     return 1;
 }
 
-/// @brief **Borrow** the resolved value without retaining it. Returns NULL if pending or errored.
-/// Unlike `try_get_val`, the caller must NOT release the returned pointer — it remains owned by
-/// the promise. Use only inside critical sections where you know the promise can't be finalized.
+/// @brief Return the resolved value with a fresh retain when the promise owns it.
+/// Returns NULL if pending or errored. Callers that receive a runtime object must
+/// release it when done or transfer it to another owner.
 void *rt_future_peek_value(void *obj) {
     if (!obj)
         return NULL;
@@ -1190,11 +1161,15 @@ void *rt_future_peek_value(void *obj) {
     EnterCriticalSection(&p->mutex);
     if (p->done && !p->is_error)
         result = p->value;
+    if (result && p->owns_value)
+        rt_obj_retain_maybe(result);
     LeaveCriticalSection(&p->mutex);
 #else
     pthread_mutex_lock(&p->mutex);
     if (p->done && !p->is_error)
         result = p->value;
+    if (result && p->owns_value)
+        rt_obj_retain_maybe(result);
     pthread_mutex_unlock(&p->mutex);
 #endif
 

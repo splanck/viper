@@ -33,6 +33,8 @@
 #include "rt_concqueue.h"
 
 #include "rt_internal.h"
+#include "rt_object.h"
+#include "rt_threads.h"
 
 #include <limits.h>
 #include <stdlib.h>
@@ -104,6 +106,15 @@ typedef struct {
     struct timespec deadline;
 } cq_deadline_t;
 
+/// @brief Initialize a pthread condvar, preferring CLOCK_MONOTONIC when supported.
+/// @details Linux supports `pthread_condattr_setclock(CLOCK_MONOTONIC)` so
+///          timed waits are immune to wall-clock adjustments. macOS doesn't
+///          expose that API but provides `pthread_cond_timedwait_relative_np`
+///          (which is intrinsically monotonic), so we still report
+///          @p uses_monotonic = 1 there. On any other platform we fall back
+///          to the realtime default. The output flag tells the wait helper
+///          which clock the deadline was computed against.
+/// @return 0 on success, errno-style error code on failure.
 static int cq_cond_init(pthread_cond_t *cond, int8_t *uses_monotonic) {
     if (uses_monotonic)
         *uses_monotonic = 0;
@@ -152,6 +163,11 @@ static struct timespec cq_now_clock(int8_t use_monotonic) {
     return ts;
 }
 
+/// @brief Compute an absolute deadline @p timeout_ms in the future on the requested clock.
+/// @details Used by Pop / Offer with timeout. Saturates at LONG_MAX seconds
+///          if @p timeout_ms is large enough to overflow `time_t`. A non-
+///          positive @p timeout_ms returns the current time so a caller
+///          passing 0 immediately observes "deadline elapsed".
 static cq_deadline_t cq_deadline_ms_from_now(int64_t timeout_ms, int8_t use_monotonic) {
     cq_deadline_t d;
     d.deadline = cq_now_clock(use_monotonic);
@@ -174,6 +190,11 @@ static cq_deadline_t cq_deadline_ms_from_now(int64_t timeout_ms, int8_t use_mono
 }
 
 #if defined(__APPLE__)
+/// @brief Return milliseconds remaining until @p deadline (macOS only — uses relative wait).
+/// @details macOS lacks pthread_condattr_setclock, so we manage timeouts as
+///          deltas computed against the monotonic clock and pass them to
+///          `pthread_cond_timedwait_relative_np`. Returns 0 when expired
+///          and saturates at INT64_MAX for very large remaining intervals.
 static int64_t cq_remaining_ms(cq_deadline_t deadline, int8_t use_monotonic) {
     struct timespec now = cq_now_clock(use_monotonic);
     int64_t sec = (int64_t)deadline.deadline.tv_sec - (int64_t)now.tv_sec;
@@ -190,6 +211,12 @@ static int64_t cq_remaining_ms(cq_deadline_t deadline, int8_t use_monotonic) {
 }
 #endif
 
+/// @brief Cross-platform pthread_cond_timedwait against an absolute @p deadline.
+/// @details On macOS, computes a relative timeout via cq_remaining_ms and
+///          calls `pthread_cond_timedwait_relative_np`; returns ETIMEDOUT
+///          immediately if the deadline has lapsed. On Linux/POSIX, calls
+///          the standard `pthread_cond_timedwait` with the absolute
+///          timespec. The mutex must already be held by the caller.
 static int cq_cond_timedwait_deadline(pthread_cond_t *cond,
                                       pthread_mutex_t *mutex,
                                       cq_deadline_t deadline,
@@ -210,14 +237,31 @@ static int cq_cond_timedwait_deadline(pthread_cond_t *cond,
 
 // --- Internal helpers ---
 
-/// @brief GC finalizer: drain the queue (releasing each retained value), then destroy the
-/// platform mutex + condvar. Holds the lock during drain to interlock with any in-flight
-/// enqueue (which would otherwise see freed memory).
-static void cq_finalizer(void *obj) {
-    rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
+/// @brief Validate-and-cast an opaque ConcurrentQueue handle to its impl.
+/// @details Every public Pop / Offer / Count entry point dispatches through
+///          this guard. NULL @p obj traps when @p trap_on_null is set
+///          (otherwise returns NULL); wrong-class id always traps. The
+///          NULL-trap toggle exists for non-trap convenience helpers
+///          (Count returning 0 for a NULL handle).
+static rt_concqueue_impl *concqueue_require(void *obj, int8_t trap_on_null) {
+    if (!obj) {
+        if (trap_on_null)
+            rt_trap("ConcurrentQueue: null object");
+        return NULL;
+    }
+    if (rt_obj_class_id(obj) != RT_CONCQUEUE_CLASS_ID) {
+        rt_trap("ConcurrentQueue: invalid object");
+        return NULL;
+    }
+    return (rt_concqueue_impl *)obj;
+}
 
-    CQ_LOCK(cq);
-    cq_node *n = cq->head;
+/// @brief Walk a linked list of queue nodes, releasing each retained value and freeing each node.
+/// @details Used by Clear and the GC finalizer to drain any remaining
+///          items. Decrements each value's refcount and frees the value
+///          if it hits zero, then frees the linked-list node itself.
+///          Robust against NULL @p n (no-op).
+static void cq_release_nodes(cq_node *n) {
     while (n) {
         cq_node *next = n->next;
         if (rt_obj_release_check0(n->value))
@@ -225,10 +269,24 @@ static void cq_finalizer(void *obj) {
         free(n);
         n = next;
     }
+}
+
+/// @brief GC finalizer: drain the queue (releasing each retained value), then destroy the
+/// platform mutex + condvar. Holds the lock during drain to interlock with any in-flight
+/// enqueue (which would otherwise see freed memory).
+static void cq_finalizer(void *obj) {
+    rt_concqueue_impl *cq = concqueue_require(obj, 0);
+    if (!cq)
+        return;
+
+    CQ_LOCK(cq);
+    cq_node *n = cq->head;
     cq->head = NULL;
     cq->tail = NULL;
     cq->count = 0;
     CQ_UNLOCK(cq);
+
+    cq_release_nodes(n);
 
 #if defined(_WIN32)
     DeleteCriticalSection(&cq->mutex);
@@ -243,7 +301,8 @@ static void cq_finalizer(void *obj) {
 
 /// @brief Create a new thread-safe concurrent queue (unbounded, mutex + condvar protected).
 void *rt_concqueue_new(void) {
-    rt_concqueue_impl *cq = (rt_concqueue_impl *)rt_obj_new_i64(0, sizeof(rt_concqueue_impl));
+    rt_concqueue_impl *cq =
+        (rt_concqueue_impl *)rt_obj_new_i64(RT_CONCQUEUE_CLASS_ID, sizeof(rt_concqueue_impl));
     if (!cq) {
         rt_trap("ConcurrentQueue: memory allocation failed");
         return NULL;
@@ -267,7 +326,9 @@ void *rt_concqueue_new(void) {
 int64_t rt_concqueue_len(void *obj) {
     if (!obj)
         return 0;
-    rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
+    rt_concqueue_impl *cq = concqueue_require(obj, 0);
+    if (!cq)
+        return 0;
     CQ_LOCK(cq);
     int64_t len = cq->count;
     CQ_UNLOCK(cq);
@@ -284,7 +345,9 @@ int8_t rt_concqueue_is_empty(void *obj) {
 int8_t rt_concqueue_get_is_closed(void *obj) {
     if (!obj)
         return 1;
-    rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
+    rt_concqueue_impl *cq = concqueue_require(obj, 0);
+    if (!cq)
+        return 1;
     CQ_LOCK(cq);
     int8_t closed = cq->closed;
     CQ_UNLOCK(cq);
@@ -295,7 +358,9 @@ int8_t rt_concqueue_get_is_closed(void *obj) {
 void rt_concqueue_enqueue(void *obj, void *item) {
     if (!obj)
         return;
-    rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
+    rt_concqueue_impl *cq = concqueue_require(obj, 0);
+    if (!cq)
+        return;
 
     cq_node *node = (cq_node *)malloc(sizeof(cq_node));
     if (!node) {
@@ -331,7 +396,9 @@ void rt_concqueue_enqueue(void *obj, void *item) {
 void *rt_concqueue_try_dequeue(void *obj) {
     if (!obj)
         return NULL;
-    rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
+    rt_concqueue_impl *cq = concqueue_require(obj, 0);
+    if (!cq)
+        return NULL;
 
     CQ_LOCK(cq);
     if (!cq->head) {
@@ -357,7 +424,9 @@ void *rt_concqueue_try_dequeue(void *obj) {
 void *rt_concqueue_dequeue(void *obj) {
     if (!obj)
         return NULL;
-    rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
+    rt_concqueue_impl *cq = concqueue_require(obj, 0);
+    if (!cq)
+        return NULL;
 
     CQ_LOCK(cq);
     while (!cq->head && !cq->closed)
@@ -386,7 +455,9 @@ void *rt_concqueue_dequeue(void *obj) {
 void *rt_concqueue_dequeue_timeout(void *obj, int64_t timeout_ms) {
     if (!obj)
         return NULL;
-    rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
+    rt_concqueue_impl *cq = concqueue_require(obj, 0);
+    if (!cq)
+        return NULL;
     if (timeout_ms <= 0)
         return rt_concqueue_try_dequeue(obj);
 
@@ -447,7 +518,9 @@ void *rt_concqueue_dequeue_timeout(void *obj, int64_t timeout_ms) {
 void *rt_concqueue_peek(void *obj) {
     if (!obj)
         return NULL;
-    rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
+    rt_concqueue_impl *cq = concqueue_require(obj, 0);
+    if (!cq)
+        return NULL;
 
     CQ_LOCK(cq);
     void *value = cq->head ? cq->head->value : NULL;
@@ -461,21 +534,17 @@ void *rt_concqueue_peek(void *obj) {
 void rt_concqueue_clear(void *obj) {
     if (!obj)
         return;
-    rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
+    rt_concqueue_impl *cq = concqueue_require(obj, 0);
+    if (!cq)
+        return;
 
     CQ_LOCK(cq);
     cq_node *n = cq->head;
-    while (n) {
-        cq_node *next = n->next;
-        if (rt_obj_release_check0(n->value))
-            rt_obj_free(n->value);
-        free(n);
-        n = next;
-    }
     cq->head = NULL;
     cq->tail = NULL;
     cq->count = 0;
     CQ_UNLOCK(cq);
+    cq_release_nodes(n);
 }
 
 /// @brief Mark the queue as closed and wake every blocked dequeue waiter. Subsequent enqueues
@@ -484,7 +553,9 @@ void rt_concqueue_clear(void *obj) {
 void rt_concqueue_close(void *obj) {
     if (!obj)
         return;
-    rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
+    rt_concqueue_impl *cq = concqueue_require(obj, 0);
+    if (!cq)
+        return;
     CQ_LOCK(cq);
     if (cq->closed) {
         CQ_UNLOCK(cq);

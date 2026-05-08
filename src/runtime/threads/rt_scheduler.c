@@ -36,6 +36,7 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_string_internal.h"
+#include "rt_threads.h"
 
 #include <limits.h>
 #include <stdlib.h>
@@ -57,15 +58,40 @@
 // Time Helper
 //=============================================================================
 
-/// @brief Get current time in milliseconds from a monotonic clock.
+#if defined(_WIN32)
+static INIT_ONCE g_sched_freq_once = INIT_ONCE_STATIC_INIT;
+static LARGE_INTEGER g_sched_freq;
+
+/// @brief One-shot initializer for the Win32 performance-counter frequency.
+/// @details Same pattern used elsewhere in the threads subsystem: cache
+///          `QueryPerformanceFrequency` once into `g_sched_freq` since it's invariant for the
+///          lifetime of the system, and serialize the cache fill via `InitOnceExecuteOnce`.
+static BOOL CALLBACK sched_freq_init(PINIT_ONCE once, PVOID param, PVOID *ctx) {
+    (void)once;
+    (void)param;
+    (void)ctx;
+    QueryPerformanceFrequency(&g_sched_freq);
+    return TRUE;
+}
+#endif
+
+/// @brief Read the current monotonic time in milliseconds.
+/// @details Platform-portable wrapper. Win32 path uses `QueryPerformanceCounter` divided by
+///          the cached frequency, with a split-modulo conversion to keep `int64_t` math
+///          exact across long uptimes. POSIX path prefers `CLOCK_MONOTONIC` and falls back
+///          to `CLOCK_REALTIME` if the monotonic clock is unavailable. Returns 0 if every
+///          source fails (callers tolerate that — `due_time_from_now(0)` then yields 0,
+///          treated by the rest of the scheduler as "due immediately").
 static int64_t current_time_ms(void) {
 #if defined(_WIN32)
-    static LARGE_INTEGER freq = {0};
     LARGE_INTEGER counter;
-    if (freq.QuadPart == 0)
-        QueryPerformanceFrequency(&freq);
+    InitOnceExecuteOnce(&g_sched_freq_once, sched_freq_init, NULL, NULL);
     QueryPerformanceCounter(&counter);
-    return (int64_t)((counter.QuadPart * 1000LL) / freq.QuadPart);
+    if (g_sched_freq.QuadPart <= 0)
+        return 0;
+    return (int64_t)((counter.QuadPart / g_sched_freq.QuadPart) * 1000LL +
+                     ((counter.QuadPart % g_sched_freq.QuadPart) * 1000LL) /
+                         g_sched_freq.QuadPart);
 #else
     struct timespec ts;
 #ifdef CLOCK_MONOTONIC
@@ -78,6 +104,12 @@ static int64_t current_time_ms(void) {
 #endif
 }
 
+/// @brief Compute the absolute monotonic-clock millisecond timestamp at which `delay_ms` will
+///        elapse from now.
+/// @details Negative delays are clamped to zero so a misuse can't schedule a task in the past.
+///          The overflow guard returns `INT64_MAX` instead of wrapping when `now + delay_ms`
+///          would overflow — the resulting "essentially never due" timestamp is the safest
+///          behaviour for absurdly large delays.
 static int64_t due_time_from_now(int64_t delay_ms) {
     if (delay_ms < 0)
         delay_ms = 0;
@@ -87,6 +119,11 @@ static int64_t due_time_from_now(int64_t delay_ms) {
     return now + delay_ms;
 }
 
+/// @brief Byte-equality comparator for two scheduler task names.
+/// @details Used to find existing entries during `Schedule`/`Cancel`/`IsDue` lookups. Compares
+///          length first to short-circuit on size mismatch, then `memcmp` on the underlying
+///          buffers. Returns 1 on equality, 0 otherwise. Two NULLs compare as 0 (defensive —
+///          callers should not pass NULL names but we don't want to claim equality if they do).
 static int8_t scheduler_name_equals(rt_string a, rt_string b) {
     if (!a || !b)
         return 0;
@@ -131,6 +168,24 @@ typedef struct {
 #define SCHED_UNLOCK(data) pthread_mutex_unlock(&(data)->mutex)
 #endif
 
+/// @brief Validate that `sched` is a scheduler object, trapping on misuse.
+/// @details Same shape as the `_require` helpers in sibling files. `trap_on_null` toggles
+///          NULL-handling: 1 raises a trap, 0 silently returns NULL so callers like
+///          `rt_scheduler_pending(NULL)` can return a no-op zero. A non-null pointer with
+///          a wrong class id always traps — that's a programmer error worth surfacing.
+static rt_scheduler_data *scheduler_require(void *sched, int8_t trap_on_null) {
+    if (!sched) {
+        if (trap_on_null)
+            rt_trap("Scheduler: null object");
+        return NULL;
+    }
+    if (rt_obj_class_id(sched) != RT_SCHEDULER_CLASS_ID) {
+        rt_trap("Scheduler: invalid object");
+        return NULL;
+    }
+    return (rt_scheduler_data *)sched;
+}
+
 /// @brief Finalizer for scheduler objects. Frees all entries.
 static void scheduler_finalizer(void *obj) {
     if (!obj)
@@ -169,7 +224,7 @@ static void scheduler_finalizer(void *obj) {
 /// @return A new Scheduler object. Traps on allocation failure.
 void *rt_scheduler_new(void) {
     rt_scheduler_data *data =
-        (rt_scheduler_data *)rt_obj_new_i64(0, (int64_t)sizeof(rt_scheduler_data));
+        (rt_scheduler_data *)rt_obj_new_i64(RT_SCHEDULER_CLASS_ID, (int64_t)sizeof(rt_scheduler_data));
     if (!data) {
         rt_trap("Scheduler: memory allocation failed");
         return NULL;
@@ -196,7 +251,9 @@ void *rt_scheduler_new(void) {
 void rt_scheduler_schedule(void *sched, rt_string name, int64_t delay_ms) {
     if (!sched || !name)
         return;
-    rt_scheduler_data *data = (rt_scheduler_data *)sched;
+    rt_scheduler_data *data = scheduler_require(sched, 0);
+    if (!data)
+        return;
 
     int64_t due = due_time_from_now(delay_ms);
 
@@ -238,7 +295,9 @@ void rt_scheduler_schedule(void *sched, rt_string name, int64_t delay_ms) {
 int8_t rt_scheduler_cancel(void *sched, rt_string name) {
     if (!sched || !name)
         return 0;
-    rt_scheduler_data *data = (rt_scheduler_data *)sched;
+    rt_scheduler_data *data = scheduler_require(sched, 0);
+    if (!data)
+        return 0;
 
     SCHED_LOCK(data);
     sched_entry **pp = &data->head;
@@ -268,7 +327,9 @@ int8_t rt_scheduler_cancel(void *sched, rt_string name) {
 int8_t rt_scheduler_is_due(void *sched, rt_string name) {
     if (!sched || !name)
         return 0;
-    rt_scheduler_data *data = (rt_scheduler_data *)sched;
+    rt_scheduler_data *data = scheduler_require(sched, 0);
+    if (!data)
+        return 0;
     int64_t now = current_time_ms();
 
     SCHED_LOCK(data);
@@ -297,7 +358,9 @@ void *rt_scheduler_poll(void *sched) {
     rt_seq_set_owns_elements(result, 1);
     if (!sched)
         return result;
-    rt_scheduler_data *data = (rt_scheduler_data *)sched;
+    rt_scheduler_data *data = scheduler_require(sched, 0);
+    if (!data)
+        return result;
     int64_t now = current_time_ms();
     sched_entry *due_head = NULL;
     sched_entry *due_tail = NULL;
@@ -337,7 +400,9 @@ void *rt_scheduler_poll(void *sched) {
 int64_t rt_scheduler_pending(void *sched) {
     if (!sched)
         return 0;
-    rt_scheduler_data *data = (rt_scheduler_data *)sched;
+    rt_scheduler_data *data = scheduler_require(sched, 0);
+    if (!data)
+        return 0;
     SCHED_LOCK(data);
     int64_t count = data->count;
     SCHED_UNLOCK(data);
@@ -352,7 +417,9 @@ int64_t rt_scheduler_pending(void *sched) {
 void rt_scheduler_clear(void *sched) {
     if (!sched)
         return;
-    rt_scheduler_data *data = (rt_scheduler_data *)sched;
+    rt_scheduler_data *data = scheduler_require(sched, 0);
+    if (!data)
+        return;
 
     SCHED_LOCK(data);
     sched_entry *e = data->head;

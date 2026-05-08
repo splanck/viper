@@ -62,17 +62,32 @@ typedef struct SafeThreadCtx {
     char error[512];
 } SafeThreadCtx;
 
+/// @brief Read the 4-byte magic number stored at the head of a thread handle.
+/// @details Thread objects start with a magic word that distinguishes them
+///          from arbitrary heap memory. Combined with the runtime class id
+///          this is a belt-and-suspenders check — class id alone could
+///          collide if a stale handle is reinterpreted, while magic alone
+///          could collide with random heap content. NULL handles return 0
+///          so the magic comparison fails cleanly without a deref.
 static uint32_t thread_handle_magic(void *obj) {
     if (!obj)
         return 0;
     return *(const uint32_t *)obj;
 }
 
+/// @brief Test whether @p obj is a live SafeThread handle (correct class id AND magic).
+/// @details Used by the SafeThread API entry points to reject NULL,
+///          stale, wrong-class, or freed-and-reused handles before
+///          dereferencing. Returns 0 for any of those conditions.
 static int is_safe_thread_handle(void *obj) {
     return rt_obj_class_id(obj) == RT_SAFE_THREAD_CLASS_ID &&
            thread_handle_magic(obj) == RT_SAFE_THREAD_MAGIC;
 }
 
+/// @brief Test whether @p obj is a live regular Thread handle (correct class id AND magic).
+/// @details Companion to is_safe_thread_handle for the standard
+///          (non-trap-isolating) Thread class. Same NULL / stale /
+///          wrong-class rejection semantics.
 static int is_regular_thread_handle(void *obj) {
     return rt_obj_class_id(obj) == RT_THREAD_CLASS_ID &&
            thread_handle_magic(obj) == RT_THREAD_MAGIC;
@@ -112,7 +127,7 @@ typedef struct RtThread {
     HANDLE hThread;           ///< OS thread handle.
     DWORD threadId;           ///< OS thread ID for self-join detection.
     int finished;             ///< 1 when thread has completed.
-    int joined;               ///< 1 after a successful join consumes this handle.
+    int joined;               ///< Reserved for ABI/debug compatibility; joins are repeatable.
     int64_t id;               ///< Unique Viper thread identifier.
     RtContext *inherited_ctx; ///< Parent's runtime context.
     rt_thread_entry_fn entry; ///< User's entry function.
@@ -278,12 +293,6 @@ void rt_thread_join(void *thread) {
     while (!t->finished) {
         SleepConditionVariableCS(&t->cv, &t->cs, INFINITE);
     }
-    if (t->joined) {
-        LeaveCriticalSection(&t->cs);
-        rt_trap("Thread.Join: already joined");
-        return;
-    }
-    t->joined = 1;
     LeaveCriticalSection(&t->cs);
 }
 
@@ -307,12 +316,6 @@ int8_t rt_thread_try_join(void *thread) {
         LeaveCriticalSection(&t->cs);
         return 0;
     }
-    if (t->joined) {
-        LeaveCriticalSection(&t->cs);
-        rt_trap("Thread.Join: already joined");
-        return 0;
-    }
-    t->joined = 1;
     LeaveCriticalSection(&t->cs);
     return 1;
 }
@@ -348,12 +351,6 @@ int8_t rt_thread_join_for(void *thread, int64_t ms) {
             LeaveCriticalSection(&t->cs);
             return 0;
         }
-        if (t->joined) {
-            LeaveCriticalSection(&t->cs);
-            rt_trap("Thread.Join: already joined");
-            return 0;
-        }
-        t->joined = 1;
         LeaveCriticalSection(&t->cs);
         return 1;
     }
@@ -380,12 +377,6 @@ int8_t rt_thread_join_for(void *thread, int64_t ms) {
         elapsed = GetTickCount64() - start;
     }
 
-    if (t->joined) {
-        LeaveCriticalSection(&t->cs);
-        rt_trap("Thread.Join: already joined");
-        return 0;
-    }
-    t->joined = 1;
     LeaveCriticalSection(&t->cs);
     return 1;
 }
@@ -480,7 +471,7 @@ typedef struct RtThread {
     pthread_cond_t cv;          ///< Condition var for Join() signaling.
     pthread_t pthread;          ///< OS thread handle.
     int finished;               ///< 1 when thread has completed.
-    int joined;                 ///< 1 after a successful join consumes this handle.
+    int joined;                 ///< Reserved for ABI/debug compatibility; joins are repeatable.
     int64_t id;                 ///< Unique thread identifier.
     RtContext *inherited_ctx;   ///< Parent's runtime context.
     rt_thread_entry_fn entry;   ///< User's entry function.
@@ -843,12 +834,6 @@ void rt_thread_join(void *thread) {
     while (!t->finished) {
         (void)pthread_cond_wait(&t->cv, &t->mu);
     }
-    if (t->joined) {
-        pthread_mutex_unlock(&t->mu);
-        rt_trap("Thread.Join: already joined");
-        return;
-    }
-    t->joined = 1;
     pthread_mutex_unlock(&t->mu);
 }
 
@@ -898,12 +883,6 @@ int8_t rt_thread_try_join(void *thread) {
         pthread_mutex_unlock(&t->mu);
         return 0;
     }
-    if (t->joined) {
-        pthread_mutex_unlock(&t->mu);
-        rt_trap("Thread.Join: already joined");
-        return 0;
-    }
-    t->joined = 1;
     pthread_mutex_unlock(&t->mu);
     return 1;
 }
@@ -975,12 +954,6 @@ int8_t rt_thread_join_for(void *thread, int64_t ms) {
             pthread_mutex_unlock(&t->mu);
             return 0;
         }
-        if (t->joined) {
-            pthread_mutex_unlock(&t->mu);
-            rt_trap("Thread.Join: already joined");
-            return 0;
-        }
-        t->joined = 1;
         pthread_mutex_unlock(&t->mu);
         return 1;
     }
@@ -995,12 +968,6 @@ int8_t rt_thread_join_for(void *thread, int64_t ms) {
         }
     }
 
-    if (t->joined) {
-        pthread_mutex_unlock(&t->mu);
-        rt_trap("Thread.Join: already joined");
-        return 0;
-    }
-    t->joined = 1;
     pthread_mutex_unlock(&t->mu);
     return 1;
 }

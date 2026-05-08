@@ -135,6 +135,10 @@ static void *map_new_seq(void *item) {
     return rt_seq_new();
 }
 
+static void *map_identity(void *item) {
+    return item;
+}
+
 static void test_map_basic() {
     // Create sequence [1, 2, 3]
     void *seq = rt_seq_new();
@@ -197,6 +201,49 @@ static void test_map_transfers_callback_results_to_seq() {
 
     if (rt_obj_release_check0(result))
         rt_obj_free(result);
+}
+
+static void test_map_retains_borrowed_input_results() {
+    void *seq = rt_seq_new();
+    void *item = rt_seq_new();
+    rt_seq_push(seq, item);
+
+    void *result = rt_parallel_map(seq, (void *)map_identity);
+    test_result(rt_seq_len(result) == 1, "map_borrowed_input: should have one result");
+    test_result(rt_seq_get(result, 0) == item, "map_borrowed_input: result should be input");
+
+    if (rt_obj_release_check0(item))
+        rt_obj_free(item);
+    test_result(rt_seq_len(rt_seq_get(result, 0)) == 0,
+                "map_borrowed_input: result should retain input object");
+
+    if (rt_obj_release_check0(result))
+        rt_obj_free(result);
+    if (rt_obj_release_check0(seq))
+        rt_obj_free(seq);
+}
+
+static std::atomic<int64_t> g_nested_parallel_sum{0};
+
+static void nested_for_accumulate(int64_t index) {
+    g_nested_parallel_sum += index;
+}
+
+static void nested_parallel_task(void *arg) {
+    void *pool = arg;
+    rt_parallel_for_pool(0, 10, (void *)nested_for_accumulate, pool);
+}
+
+static void test_nested_parallel_same_pool_runs_inline() {
+    g_nested_parallel_sum = 0;
+    void *pool = rt_threadpool_new(1);
+    test_result(pool != NULL, "nested_parallel: should create pool");
+    test_result(rt_threadpool_submit(pool, (void *)nested_parallel_task, pool) == 1,
+                "nested_parallel: should submit outer task");
+    test_result(rt_threadpool_wait_for(pool, 1000) == 1,
+                "nested_parallel: should not self-deadlock");
+    test_result(g_nested_parallel_sum == 45, "nested_parallel: should run nested work");
+    rt_threadpool_shutdown(pool);
 }
 
 //=============================================================================
@@ -306,14 +353,16 @@ int main(int argc, char *argv[]) {
                     std::string::npos,
                 "foreach_shutdown_pool: should trap without hanging");
     result = viper::tests::runIsolated(call_foreach_trapping_task);
-    test_result(result.stderrText.find("Parallel.ForEach: task trapped") != std::string::npos,
-                "foreach_task_trap: should trap without hanging");
+    test_result(result.stderrText.find("parallel foreach trap") != std::string::npos,
+                "foreach_task_trap: should preserve worker trap message");
 
     // Map tests
     test_map_basic();
     test_map_empty();
     test_map_order_preserved();
     test_map_transfers_callback_results_to_seq();
+    test_map_retains_borrowed_input_results();
+    test_nested_parallel_same_pool_runs_inline();
 
     // For tests
     test_for_basic();

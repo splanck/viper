@@ -136,9 +136,9 @@ backend-defined:
 - VM: `entry` is a VM function pointer (currently represented as an `il::core::Function *`) and is invoked by a per-thread
   interpreter runner.
 
-Joining is a one-shot ownership operation over the OS thread resource. `Join`, a successful `TryJoin`, and a successful
-`JoinFor` consume the join; later join attempts trap with `Thread.Join: already joined`. Thread identity and status
-queries remain valid after a successful join.
+Joining is repeatable after a thread has finished. The first successful `Join`, `TryJoin`, or `JoinFor` reclaims the
+underlying OS thread resource; later successful join attempts on the same handle return without trapping. Thread identity
+and status queries remain valid after a successful join.
 
 Determinism and Repeatability
 
@@ -162,7 +162,6 @@ Thread:
 - `Thread.Start: null entry`
 - `Thread.Start: failed to create thread`
 - `Thread.Join: null thread`
-- `Thread.Join: already joined`
 - `Thread.Join: cannot join self`
 
 Implementation Strategy

@@ -17,18 +17,21 @@ A focused hardening-and-correctness cycle. Every change closes an attack surface
 - **TLS X.509 verifier hardening** — Key Usage / Basic Constraints / Extended Key Usage extensions enforced, DNS-name validation tightened.
 - **Archive / Compress / VPA correctness** — ZIP64 rejection, local-vs-central header cross-check, exact GZIP boundary detection, 64-bit VPA seeks.
 - **2D graphics correctness pass** — saturating int64 clip math, validated polyline/polygon arrays, sprite tint alpha preservation, tilemap I/O ownership discipline.
+- **`Viper.Threads.*` correctness pass** — repeatable joins, class-ID validation, safer pool shutdown/finalization, preserved task trap messages, listener trap isolation, and unbuffered channel rendezvous fixes.
 - **`Viper.Audio.*` compat surface rebuilt** from `RT_ALIAS` aliases to full typed registrations.
 - **ViperIDE polish** — IntelliSense linkage fix, real keyword highlighting, scrollBeyondLastLine, BMP toolbar glyphs.
 - **AArch64 register-allocator correctness** — protection set covers def operands, fixing register-reuse clobbers.
+- **Windows x64 stabilization** — out-of-order block-param lowering, RSP/RBP scheduling boundaries, lone-JCC trace fix, parallel-copy spill scratch; D3D11 bone-palette sized to the shared 256-entry shader budget.
+- **MSVC build hardening** — embedded debug info via CMP0141, expanded import policy for UCRT/Win32 symbols, WSL-aware audit and smoke scripts.
 
 ### By the Numbers
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 13 | +13 |
-| Source files | 2,996 | 3,003 | +7 |
-| Production SLOC | 552K | 559K | +7K |
-| Test SLOC | 228K | 231K | +3K |
+| Commits | — | 17 | +17 |
+| Source files | 2,996 | 3,005 | +9 |
+| Production SLOC | 552K | 560K | +8K |
+| Test SLOC | 228K | 232K | +4K |
 | Demo SLOC | 188K | 188K | 0 |
 
 Counts via `scripts/count_sloc.sh`.
@@ -168,6 +171,17 @@ Counts via `scripts/count_sloc.sh`.
 - Eight new unsigned `BinaryBuffer` methods: `WriteU16LE/BE`, `WriteU32LE/BE`, `ReadU16LE/BE`, `ReadU32LE/BE` (with `[0, UINT16_MAX]` / `[0, UINT32_MAX]` range validation).
 - Retroactive range-check guards on `WriteI16LE/BE` and `WriteI32LE/BE` — previously truncated silently.
 
+### Threading runtime
+
+- Thread joins are now repeatable after completion: the first successful join reclaims the OS handle, and later `Join`, `TryJoin`, or `JoinFor` calls on the same runtime handle return success instead of trapping as already joined.
+- Thread pool shutdown steals worker handles under the pool monitor and joins outside the lock, making repeated shutdown calls idempotent and preventing double-join/double-release races. Pool task trap messages are sticky so later waits still surface the failure.
+- `Thread.Start` / `StartSafe` VM and BytecodeVM dispatchers now borrow their argument consistently with native threads; owned lifetime remains the job of `StartOwned` / `StartSafeOwned`. Safe VM/BytecodeVM workers propagate trap text into the safe-thread boundary rather than aborting.
+- Concurrent queue, map, scheduler, debouncer, throttler, and pool objects now carry distinct runtime class IDs and validate public API handles before downcasting.
+- `ConcurrentMap.Keys()` / `Values()` snapshot under the map lock and retain copied values; `ConcurrentQueue.Clear()` and finalization detach nodes before releasing retained values.
+- `Channel.TrySend()` on synchronous channels now completes the rendezvous acknowledgement before reporting success; `TryRecv()` remains strictly non-blocking.
+- `Parallel.*Pool` detects calls from a worker already running in the target pool and runs nested work inline to avoid self-deadlock. Worker callback traps preserve the original trap text.
+- Future completion listeners and listener-cancel hooks isolate trapping callbacks so one bad listener cannot rethrow through promise completion or cancel cleanup.
+
 ### Audio
 
 - The `Viper.Audio.*` compatibility namespace was rebuilt from `RT_ALIAS` forwarding entries into full `RT_CLASS_BEGIN` / `RT_FUNC` / `RT_METHOD` / `RT_PROP` registrations.
@@ -224,10 +238,44 @@ Counts via `scripts/count_sloc.sh`.
 - Fields renamed `protectedUse{GPR,FPR}_` → `protectedOperand{GPR,FPR}_` to reflect the broader scope.
 - Fixes a class of register-reuse clobber bugs.
 
+**x86-64 codegen — out-of-order block lowering**
+
+- The lowerer now pre-registers block parameters and instruction results before lowering textually out-of-order blocks, so optimized IL can reference dominated values without tripping unknown-SSA diagnostics.
+- Legalize creates typed virtual registers for edge-copy arguments whose defining block has not been lowered yet — fixes out-of-order block-parameter copies in optimized BASIC demos.
+
+**x86-64 codegen — Win64 prologue and branch layout**
+
+- The post-RA scheduler treats physical RSP / RBP definitions as scheduling boundaries, preserving Win64 frame setup and unwind-sensitive prologue ordering before callee-save spills.
+- Branch layout no longer follows a lone JCC as a trace edge after fallthrough-jump removal — a JCC-only terminator still has an implicit physical fallthrough block, and moving its taken target into that slot was changing optimized native control flow and causing immediate startup traps.
+
+**Register coalescer — spill scratch**
+
+- Spilled parallel-copy sources are now lowered from memory one at a time instead of requiring one scratch register per source. Avoids scratch exhaustion in large demos (3dbowling, xenoscape).
+
 **DynamicSymbolPolicy**
 
 - Extended with all syscalls introduced by IO hardening: `openat`, `fstatat`, `mkdirat`, `unlinkat`, `renameat`, `fdopendir`, `dirfd`, `chmod`, `fchmod`, `mkdtemp`.
 - Native-linked Linux binaries previously failed dynamic-symbol validation without these entries.
+
+### Windows / MSVC toolchain
+
+**Build system**
+
+- Top-level CMake opts into CMP0141 (when available) and requests embedded MSVC debug information for `Debug` / `RelWithDebInfo` builds — keeps generated projects aligned with modern CMake/MSVC behavior and removes PDB-discovery friction for local Windows debug builds.
+- New size_t compare-exchange wrapper in the MSVC atomic compatibility layer wires through `rt_atomic_compare_exchange`. Code that uses size_t refcounts now shares the same portable atomic API as the existing int / pointer paths on Windows.
+
+**Import policy**
+
+- Windows import policy expanded for newly observed UCRT and Win32 symbols: `GetFullPathNameA`, `DragQueryFileW`, `CoTaskMemFree`, `__CxxFrameHandler4`, `_open_osfhandle`, `rand_s`, `fmaxl` / `fminl`, `_wcsnicmp`, and `_wchmod`. The planner routes these to the correct DLL buckets so dynamic-link audits no longer reject valid Windows surface area.
+
+**WSL-aware audit and smoke scripts**
+
+- `audit_runtime_surface.sh` and `run_cross_platform_smoke.sh` now honor `VIPER_BUILD_TYPE`, pass `--config` for multi-config generators, and use `cmake.exe` / `ctest.exe` plus `wslpath` when run from WSL against a Windows build tree. Capability-macro reads strip CRLF so values parsed from Windows-built headers compare correctly in POSIX shell arithmetic. `rtgen` lookup also handles the `build/src/<Config>/rtgen.exe` layout produced by Visual Studio generators.
+
+**Runtime / graphics fixes**
+
+- `rt_crypto` clamps BCrypt random-fill chunks with `UINT32_MAX` instead of the unavailable `DWORD_MAX` macro — MSVC builds the network runtime without ad-hoc workarounds.
+- The D3D11 backend derives the bone-palette buffer allocation from the shared 256-bone palette constants used by the shader and upload-packing path. The old 128-bone hard-coded cbuffer size let the first 16 KB palette upload overrun an 8 KB mapped buffer, crashing 3dbowling under the Windows debug UCRT.
 
 ### Testing & build
 
@@ -239,8 +287,11 @@ Counts via `scripts/count_sloc.sh`.
   - **`RTParseTests`** — `DoubleOption` / `Int64Option` success and `None`, class IDs, typed return metadata.
   - **`RTTrapContractTests`** — NUL-embedded diagnostic message escaping.
   - **IO** — ZIP64 / extra-field rejection, asset temp-dir isolation, savedata absolute paths, VPA large-file seek, watcher overflow, inflate consumed-bytes, unsigned `BinaryBuffer`, OGG CRC.
+  - **Threads** — repeatable joins, future listener trap isolation, sticky pool errors, idempotent pool shutdown, nested parallel same-pool execution, borrowed-map result retention, synchronous-channel `TrySend`, VM/BytecodeVM thread and async dispatch.
   - **Crypto** — scrypt round-trips, AEAD encrypt / decrypt with AAD, `ConstantTimeEquals`, TLS extension parsers.
   - **2D graphics** — `RTBitmapFontContractTests`, expanded `RTCanvasContractTests`, `RTColorUtilsTests` (alpha-tag preservation through `Brighten` / `Darken` / `Invert` / `Grayscale` / `Saturate` / `Desaturate` / `Complement` / `Lerp`), `RTSpriteContractTests` (tint alpha survives normalization), `RTGraphics2DTests`, `RTPixelsTests`, `RTCameraTests`, `TestTilemapAnim`, etc.
+  - **x86-64 codegen** — out-of-order block-param lowering, instruction-result pre-registration, scheduler prologue-boundary preservation, large-spill `PX_COPY` regression, and a peephole regression for lone-JCC fallthrough across fixed-point branch optimization.
+  - **D3D11 backend** — shared-backend coverage tying the bone-palette byte count to the supported 256 shader entries.
 - The seven `Viper.GUI` widget tests in `src/lib/gui/tests/` were relabeled `tui` → `gui` (a new dedicated ctest label); the wheel-scroll regression contract was rewritten with floating-point tolerance to match the new mouse-wheel constant.
 
 ### Demos & docs
@@ -251,6 +302,6 @@ Per-file file-header and `@brief` pass across all 17 `Viper.Graphics.*` runtime 
 
 ### Commits
 
-See `git log 7f1c4861e..HEAD -- .` for the full 13-commit history since v0.2.5.
+See `git log 7f1c4861e..HEAD -- .` for the full 17-commit history since v0.2.5.
 
 <!-- END DRAFT -->

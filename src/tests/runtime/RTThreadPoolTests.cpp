@@ -193,6 +193,36 @@ static void test_task_trap_does_not_hang_wait() {
     rt_threadpool_shutdown(pool);
 }
 
+static void test_task_trap_error_is_sticky() {
+    init_counter();
+    void *pool = rt_threadpool_new(1);
+
+    assert(rt_threadpool_submit(pool, (void *)trap_task, NULL) == 1);
+
+    jmp_buf recovery;
+    int trapped = 0;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_threadpool_wait_for(pool, 1000);
+    } else {
+        trapped = 1;
+    }
+    rt_trap_clear_recovery();
+    assert(trapped == 1);
+
+    trapped = 0;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        rt_threadpool_wait(pool);
+    } else {
+        trapped = 1;
+    }
+    rt_trap_clear_recovery();
+    assert(trapped == 1);
+
+    rt_threadpool_shutdown(pool);
+}
+
 //=============================================================================
 // Shutdown modes
 //=============================================================================
@@ -225,6 +255,17 @@ static void test_shutdown_now() {
     assert(rt_threadpool_get_is_shutdown(pool) == 1);
     // Not all 20 should have completed
     assert(g_counter.load() < 20);
+}
+
+static void test_shutdown_is_idempotent() {
+    init_counter();
+    void *pool = rt_threadpool_new(2);
+    assert(rt_threadpool_submit(pool, (void *)increment_task, NULL) == 1);
+    rt_threadpool_shutdown(pool);
+    assert(g_counter.load() == 1);
+    assert(rt_threadpool_get_is_shutdown(pool) == 1);
+    rt_threadpool_shutdown(pool);
+    rt_threadpool_shutdown_now(pool);
 }
 
 //=============================================================================
@@ -287,8 +328,10 @@ int main() {
     test_wait_for_immediate_check();
     test_wait_for_timeout_budget();
     test_task_trap_does_not_hang_wait();
+    test_task_trap_error_is_sticky();
     test_graceful_shutdown();
     test_shutdown_now();
+    test_shutdown_is_idempotent();
     test_null_safety();
     test_concurrent_submitters();
 
