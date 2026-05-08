@@ -17,6 +17,7 @@
 #include "rt_string.h"
 
 #include <cassert>
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -35,6 +36,16 @@ static void *new_obj() {
     void *p = rt_obj_new_i64(0, 8);
     assert(p != nullptr);
     return p;
+}
+
+static std::atomic<int> g_reentrant_value_finalized{0};
+static void *g_reentrant_map = nullptr;
+
+static void reentrant_map_value_finalizer(void *obj) {
+    (void)obj;
+    g_reentrant_value_finalized.fetch_add(1, std::memory_order_acq_rel);
+    if (g_reentrant_map)
+        (void)rt_concmap_len(g_reentrant_map);
 }
 
 // ============================================================================
@@ -126,6 +137,24 @@ static void test_remove() {
     printf("test_remove: PASSED\n");
 }
 
+static void test_remove_releases_value_after_unlock() {
+    void *m = rt_concmap_new();
+    void *val = new_obj();
+    rt_obj_set_finalizer(val, reentrant_map_value_finalizer);
+    g_reentrant_value_finalized.store(0, std::memory_order_release);
+    g_reentrant_map = m;
+
+    rt_concmap_set(m, make_str("key"), val);
+    if (rt_obj_release_check0(val))
+        rt_obj_free(val);
+
+    assert(rt_concmap_remove(m, make_str("key")) == 1);
+    assert(g_reentrant_value_finalized.load(std::memory_order_acquire) == 1);
+    g_reentrant_map = nullptr;
+
+    printf("test_remove_releases_value_after_unlock: PASSED\n");
+}
+
 static void test_clear() {
     void *m = rt_concmap_new();
     rt_concmap_set(m, make_str("a"), new_obj());
@@ -138,6 +167,24 @@ static void test_clear() {
     assert(rt_concmap_is_empty(m) == 1);
 
     printf("test_clear: PASSED\n");
+}
+
+static void test_clear_releases_values_after_unlock() {
+    void *m = rt_concmap_new();
+    void *val = new_obj();
+    rt_obj_set_finalizer(val, reentrant_map_value_finalizer);
+    g_reentrant_value_finalized.store(0, std::memory_order_release);
+    g_reentrant_map = m;
+
+    rt_concmap_set(m, make_str("key"), val);
+    if (rt_obj_release_check0(val))
+        rt_obj_free(val);
+
+    rt_concmap_clear(m);
+    assert(g_reentrant_value_finalized.load(std::memory_order_acquire) == 1);
+    g_reentrant_map = nullptr;
+
+    printf("test_clear_releases_values_after_unlock: PASSED\n");
 }
 
 static void test_set_if_missing() {
@@ -357,7 +404,9 @@ int main() {
     test_has();
     test_update();
     test_remove();
+    test_remove_releases_value_after_unlock();
     test_clear();
+    test_clear_releases_values_after_unlock();
     test_set_if_missing();
     test_embedded_nul_keys_are_distinct();
     test_keys_values();

@@ -10,7 +10,7 @@
 // Key invariants:
 //   - Tasks are executed FIFO; worker threads are recycled after each task.
 //   - The default pool size equals the number of CPU cores.
-//   - rt_threadpool_wait_all blocks until all queued tasks are complete.
+//   - rt_threadpool_wait blocks until all queued tasks are complete.
 //   - Pool objects are reference-counted; the last release destroys the pool.
 //
 // Ownership/Lifetime:

@@ -104,14 +104,11 @@ static void future_release_object(void *obj) {
 }
 
 #ifdef _WIN32
-/// @brief Win32 helper: clamp a millisecond duration to the DWORD range used by
-/// `SleepConditionVariableCS`. Negative or zero → 0 (immediate expiry); too-large → MAXDWORD.
-static DWORD future_deadline_ms_from_now(int64_t ms) {
-    if (ms <= 0)
-        return 0;
-    if (ms > (int64_t)MAXDWORD)
-        return MAXDWORD;
-    return (DWORD)ms;
+/// @brief Win32 helper: compute a saturated absolute monotonic deadline.
+static ULONGLONG future_deadline_tick_from_now(int64_t ms) {
+    ULONGLONG now = GetTickCount64();
+    ULONGLONG add = ms > 0 ? (ULONGLONG)ms : 0;
+    return (ULLONG_MAX - now < add) ? ULLONG_MAX : now + add;
 }
 #else
 typedef struct {
@@ -715,7 +712,7 @@ int8_t rt_future_get_for(void *obj, int64_t ms, void **out) {
 
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
-    ULONGLONG deadline = GetTickCount64() + future_deadline_ms_from_now(ms);
+    ULONGLONG deadline = future_deadline_tick_from_now(ms);
     while (!p->done) {
         ULONGLONG now = GetTickCount64();
         ULONGLONG delta = (deadline > now) ? (deadline - now) : 0;
@@ -909,7 +906,7 @@ void *rt_future_get_for_val(void *obj, int64_t ms) {
 
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
-    ULONGLONG deadline = GetTickCount64() + future_deadline_ms_from_now(ms);
+    ULONGLONG deadline = future_deadline_tick_from_now(ms);
     while (!p->done) {
         ULONGLONG now = GetTickCount64();
         ULONGLONG delta = (deadline > now) ? (deadline - now) : 0;
@@ -985,7 +982,7 @@ int8_t rt_future_wait_for(void *obj, int64_t ms) {
 
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
-    ULONGLONG deadline = GetTickCount64() + future_deadline_ms_from_now(ms);
+    ULONGLONG deadline = future_deadline_tick_from_now(ms);
     while (!p->done) {
         ULONGLONG now = GetTickCount64();
         ULONGLONG delta = (deadline > now) ? (deadline - now) : 0;
@@ -1152,6 +1149,7 @@ void *rt_future_peek_value(void *obj) {
         return NULL;
     if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
         rt_trap("Future: invalid object");
+    rt_obj_retain_maybe(obj);
 
     future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
@@ -1173,6 +1171,7 @@ void *rt_future_peek_value(void *obj) {
     pthread_mutex_unlock(&p->mutex);
 #endif
 
+    future_release_object(obj);
     return result;
 }
 
@@ -1184,6 +1183,7 @@ int8_t rt_future_value_is_owned(void *obj) {
         return 0;
     if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
         rt_trap("Future: invalid object");
+    rt_obj_retain_maybe(obj);
 
     future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
@@ -1201,5 +1201,6 @@ int8_t rt_future_value_is_owned(void *obj) {
     pthread_mutex_unlock(&p->mutex);
 #endif
 
+    future_release_object(obj);
     return owned;
 }

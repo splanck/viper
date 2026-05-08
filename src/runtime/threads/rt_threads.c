@@ -93,6 +93,12 @@ static int is_regular_thread_handle(void *obj) {
            thread_handle_magic(obj) == RT_THREAD_MAGIC;
 }
 
+/// @brief Release a retained Thread/SafeThread object and free it on last release.
+static void thread_release_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 #if defined(_WIN32)
 
 //===----------------------------------------------------------------------===//
@@ -299,8 +305,11 @@ void rt_thread_join(void *thread) {
 /// @brief Non-blocking join: returns 1 if the thread already finished, 0 if still running.
 int8_t rt_thread_try_join(void *thread) {
     if (is_safe_thread_handle(thread)) {
+        rt_obj_retain_maybe(thread);
         SafeThreadCtx *ctx = (SafeThreadCtx *)thread;
-        return ctx->thread ? rt_thread_try_join(ctx->thread) : 1;
+        int8_t joined = ctx->thread ? rt_thread_try_join(ctx->thread) : 1;
+        thread_release_object(thread);
+        return joined;
     }
     RtThread *t = require_thread_win(thread, "Thread.TryJoin: null thread");
     if (!t)
@@ -328,8 +337,11 @@ int8_t rt_thread_join_for(void *thread, int64_t ms) {
             rt_thread_safe_join(thread);
             return 1;
         }
+        rt_obj_retain_maybe(thread);
         SafeThreadCtx *ctx = (SafeThreadCtx *)thread;
-        return ctx->thread ? rt_thread_join_for(ctx->thread, ms) : 1;
+        int8_t joined = ctx->thread ? rt_thread_join_for(ctx->thread, ms) : 1;
+        thread_release_object(thread);
+        return joined;
     }
     RtThread *t = require_thread_win(thread, "Thread.JoinFor: null thread");
     if (!t)
@@ -644,12 +656,10 @@ static void rt_thread_finalize(void *obj) {
 /// shim so they automatically:
 ///   1. Install the parent's `RtContext` (so the GC, traps, and
 ///      thread-local state behave consistently).
-///   2. Catch traps via `rt_trap_set_recovery` so an uncaught
-///      trap in the entry function exits the thread cleanly
-///      rather than crashing the whole process.
-///   3. Mark the `RtThread` as `finished` and broadcast on the
+///   2. Mark the `RtThread` as `finished` and broadcast on the
 ///      join condvar so blocking `Thread.Join` returns.
-///   4. Drop the self-reference taken in `rt_thread_start_impl`.
+///   3. Drop the self-reference taken in `rt_thread_start_impl`.
+/// Safe threads install trap recovery in `safe_thread_entry`.
 static void *rt_thread_trampoline(void *p) {
     RtThread *t = (RtThread *)p;
     if (t && t->inherited_ctx)
@@ -866,8 +876,11 @@ void rt_thread_join(void *thread) {
 /// @see rt_thread_join_for For waiting with timeout
 int8_t rt_thread_try_join(void *thread) {
     if (is_safe_thread_handle(thread)) {
+        rt_obj_retain_maybe(thread);
         SafeThreadCtx *ctx = (SafeThreadCtx *)thread;
-        return ctx->thread ? rt_thread_try_join(ctx->thread) : 1;
+        int8_t joined = ctx->thread ? rt_thread_try_join(ctx->thread) : 1;
+        thread_release_object(thread);
+        return joined;
     }
     RtThread *t = require_thread(thread, "Thread.TryJoin: null thread");
     if (!t)
@@ -931,8 +944,11 @@ int8_t rt_thread_join_for(void *thread, int64_t ms) {
             rt_thread_safe_join(thread);
             return 1;
         }
+        rt_obj_retain_maybe(thread);
         SafeThreadCtx *ctx = (SafeThreadCtx *)thread;
-        return ctx->thread ? rt_thread_join_for(ctx->thread, ms) : 1;
+        int8_t joined = ctx->thread ? rt_thread_join_for(ctx->thread, ms) : 1;
+        thread_release_object(thread);
+        return joined;
     }
     RtThread *t = require_thread(thread, "Thread.JoinFor: null thread");
     if (!t)
@@ -1230,10 +1246,12 @@ int8_t rt_thread_has_error(void *obj) {
         rt_trap("Thread.HasError: invalid thread handle");
         return 0;
     }
+    rt_obj_retain_maybe(obj);
     SafeThreadCtx *ctx = (SafeThreadCtx *)obj;
     rt_monitor_enter(ctx->monitor);
     int8_t trapped = ctx->trapped;
     rt_monitor_exit(ctx->monitor);
+    thread_release_object(obj);
     return trapped;
 }
 
@@ -1247,6 +1265,7 @@ rt_string rt_thread_get_error(void *obj) {
         rt_trap("Thread.Error: invalid thread handle");
         return rt_const_cstr("");
     }
+    rt_obj_retain_maybe(obj);
     SafeThreadCtx *ctx = (SafeThreadCtx *)obj;
     char error[512];
     error[0] = '\0';
@@ -1257,6 +1276,7 @@ rt_string rt_thread_get_error(void *obj) {
         snprintf(error, sizeof(error), "%s", ctx->error);
     }
     rt_monitor_exit(ctx->monitor);
+    thread_release_object(obj);
     if (!trapped || !has_error)
         return rt_const_cstr("");
     return rt_string_from_bytes(error, strlen(error));
@@ -1276,9 +1296,11 @@ void rt_thread_safe_join(void *obj) {
         rt_trap("Thread.SafeJoin: invalid thread handle");
         return;
     }
+    rt_obj_retain_maybe(obj);
     SafeThreadCtx *ctx = (SafeThreadCtx *)obj;
     if (ctx->thread)
         rt_thread_join(ctx->thread);
+    thread_release_object(obj);
 }
 
 /// @brief Get the thread ID of a safe-started thread.
@@ -1291,10 +1313,11 @@ int64_t rt_thread_safe_get_id(void *obj) {
         rt_trap("Thread.SafeGetId: invalid thread handle");
         return 0;
     }
+    rt_obj_retain_maybe(obj);
     SafeThreadCtx *ctx = (SafeThreadCtx *)obj;
-    if (ctx->thread)
-        return rt_thread_get_id(ctx->thread);
-    return 0;
+    int64_t id = ctx->thread ? rt_thread_get_id(ctx->thread) : 0;
+    thread_release_object(obj);
+    return id;
 }
 
 /// @brief Check if a safe-started thread is alive.
@@ -1307,8 +1330,9 @@ int8_t rt_thread_safe_is_alive(void *obj) {
         rt_trap("Thread.SafeIsAlive: invalid thread handle");
         return 0;
     }
+    rt_obj_retain_maybe(obj);
     SafeThreadCtx *ctx = (SafeThreadCtx *)obj;
-    if (ctx->thread)
-        return rt_thread_get_is_alive(ctx->thread);
-    return 0;
+    int8_t alive = ctx->thread ? rt_thread_get_is_alive(ctx->thread) : 0;
+    thread_release_object(obj);
+    return alive;
 }

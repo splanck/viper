@@ -41,6 +41,7 @@ static std::atomic<int> g_concurrent_started{0};
 static std::atomic<int> g_concurrent_active{0};
 static std::atomic<int> g_concurrent_peak{0};
 static std::atomic<int> g_concurrent_release{0};
+static std::atomic<int> g_map_source_finalized{0};
 
 //=============================================================================
 // Callbacks for testing
@@ -65,6 +66,13 @@ static void *add_one_mapper(void *val, void *arg) {
     (void)arg;
     // Return a new object (simulating a transformation)
     return make_obj();
+}
+
+static void *trapping_mapper(void *val, void *arg) {
+    (void)val;
+    (void)arg;
+    rt_trap("async map trap");
+    return NULL;
 }
 
 static void *cancellable_cb(void *arg, void *token) {
@@ -124,6 +132,11 @@ static void *barrier_concurrent_cb(void *arg) {
 }
 
 } // extern "C"
+
+static void map_source_finalizer(void *obj) {
+    (void)obj;
+    g_map_source_finalized.fetch_add(1, std::memory_order_acq_rel);
+}
 
 static bool wait_for_started_count(int expected, int timeout_ms) {
     for (int waited = 0; waited < timeout_ms; waited++) {
@@ -518,6 +531,34 @@ static void test_async_map_transfers_result_ownership() {
         rt_obj_free(result);
 }
 
+static void test_async_map_releases_peeked_source_when_mapper_traps() {
+    g_map_source_finalized.store(0, std::memory_order_release);
+
+    void *promise = rt_promise_new();
+    void *source = rt_promise_get_future(promise);
+    void *source_value = make_obj();
+    rt_obj_set_finalizer(source_value, map_source_finalizer);
+
+    rt_promise_set_owned(promise, source_value);
+    if (rt_obj_release_check0(source_value))
+        rt_obj_free(source_value);
+
+    void *mapped = rt_async_map(source, (void *)trapping_mapper, NULL);
+    assert(mapped != NULL);
+    rt_future_wait(mapped);
+    assert(rt_future_is_error(mapped) == 1);
+    assert(strcmp(rt_string_cstr(rt_future_get_error(mapped)), "async map trap") == 0);
+
+    if (rt_obj_release_check0(mapped))
+        rt_obj_free(mapped);
+    if (rt_obj_release_check0(source))
+        rt_obj_free(source);
+    if (rt_obj_release_check0(promise))
+        rt_obj_free(promise);
+
+    assert(g_map_source_finalized.load(std::memory_order_acquire) == 1);
+}
+
 //=============================================================================
 // rt_async_run_cancellable tests
 //=============================================================================
@@ -639,6 +680,7 @@ int main() {
     test_async_map_basic();
     test_async_map_chained();
     test_async_map_transfers_result_ownership();
+    test_async_map_releases_peeked_source_when_mapper_traps();
     test_cancellable_normal();
     test_cancellable_cancelled();
     test_cancellable_null_token();

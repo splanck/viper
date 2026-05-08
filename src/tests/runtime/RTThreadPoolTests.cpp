@@ -57,6 +57,27 @@ static void trap_task(void *arg) {
     g_counter.fetch_add(1);
     rt_trap("pool task trap");
 }
+
+static void shutdown_pool(void *arg) {
+    rt_threadpool_shutdown(arg);
+}
+
+static void shutdown_pool_now(void *arg) {
+    rt_threadpool_shutdown_now(arg);
+}
+}
+
+static int call_traps(void (*fn)(void *), void *arg) {
+    jmp_buf recovery;
+    int trapped = 0;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        fn(arg);
+    } else {
+        trapped = 1;
+    }
+    rt_trap_clear_recovery();
+    return trapped;
 }
 
 //=============================================================================
@@ -190,7 +211,7 @@ static void test_task_trap_does_not_hang_wait() {
     assert(rt_threadpool_get_pending(pool) == 0);
     assert(rt_threadpool_get_active(pool) == 0);
 
-    rt_threadpool_shutdown(pool);
+    assert(call_traps(shutdown_pool, pool) == 1);
 }
 
 static void test_task_trap_error_is_sticky() {
@@ -220,7 +241,7 @@ static void test_task_trap_error_is_sticky() {
     rt_trap_clear_recovery();
     assert(trapped == 1);
 
-    rt_threadpool_shutdown(pool);
+    assert(call_traps(shutdown_pool, pool) == 1);
 }
 
 //=============================================================================
@@ -255,6 +276,29 @@ static void test_shutdown_now() {
     assert(rt_threadpool_get_is_shutdown(pool) == 1);
     // Not all 20 should have completed
     assert(g_counter.load() < 20);
+}
+
+static void test_shutdown_surfaces_task_trap() {
+    init_counter();
+    void *pool = rt_threadpool_new(1);
+
+    assert(rt_threadpool_submit(pool, (void *)trap_task, NULL) == 1);
+    assert(call_traps(shutdown_pool, pool) == 1);
+    assert(g_counter.load() == 1);
+    assert(rt_threadpool_get_is_shutdown(pool) == 1);
+}
+
+static void test_shutdown_now_surfaces_task_trap() {
+    init_counter();
+    void *pool = rt_threadpool_new(1);
+
+    assert(rt_threadpool_submit(pool, (void *)trap_task, NULL) == 1);
+    for (int waited = 0; waited < 1000 && g_counter.load() == 0; waited++)
+        rt_thread_sleep(1);
+    assert(g_counter.load() == 1);
+
+    assert(call_traps(shutdown_pool_now, pool) == 1);
+    assert(rt_threadpool_get_is_shutdown(pool) == 1);
 }
 
 static void test_shutdown_is_idempotent() {
@@ -331,6 +375,8 @@ int main() {
     test_task_trap_error_is_sticky();
     test_graceful_shutdown();
     test_shutdown_now();
+    test_shutdown_surfaces_task_trap();
+    test_shutdown_now_surfaces_task_trap();
     test_shutdown_is_idempotent();
     test_null_safety();
     test_concurrent_submitters();

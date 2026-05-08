@@ -685,6 +685,7 @@ void rt_threadpool_shutdown(void *pool_obj) {
 
     pool_join_worker_handles(handles, pool->worker_count);
     free(handles);
+    pool_trap_if_error(pool);
 }
 
 /// @brief Immediately shut down the pool — discard pending tasks and stop workers.
@@ -727,6 +728,7 @@ void rt_threadpool_shutdown_now(void *pool_obj) {
 
     pool_join_worker_handles(handles, pool->worker_count);
     free(handles);
+    pool_trap_if_error(pool);
 }
 
 //=============================================================================

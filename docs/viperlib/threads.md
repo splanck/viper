@@ -89,7 +89,7 @@ entry:
 **Backend notes:**
 
 - **Native:** `entry` is a raw code pointer with C ABI `void (*)(void *)`.
-- **VM:** `entry` is a VM function pointer (internally `il::core::Function*`) and is invoked by a per-thread VM runner.
+- **VM / BytecodeVM:** `entry` is a managed function pointer and is invoked by a per-thread VM runner.
 - `Start` and `StartSafe` do not retain `arg`; use `StartOwned` / `StartSafeOwned` when `arg` is a runtime-managed object or string handle that should stay alive until the callback returns.
 
 ### Safe Threads (Error Boundaries)
@@ -607,13 +607,13 @@ Thread pool for submitting tasks to a fixed set of worker threads.
 - `Submit` returns false after `Shutdown` or `ShutdownNow` has been called.
 - `ShutdownNow` discards queued tasks; `Shutdown` allows them to finish.
 - Calling `Wait`, `WaitFor`, `Shutdown`, or `ShutdownNow` from a worker in the same pool traps to prevent self-deadlock.
-- Traps raised by a task do not leave the pool stuck in an active state. Once the pool drains, `Wait()` and successful `WaitFor(ms)` rethrow the last task trap instead of silently reporting success.
+- Traps raised by a task do not leave the pool stuck in an active state. Once the pool drains, `Wait()`, successful `WaitFor(ms)`, `Shutdown()`, and `ShutdownNow()` rethrow the last task trap instead of silently reporting success.
 - Pool handles own their worker thread handles and release them after joins. Releasing a pool from one of its own workers requests shutdown and defers reclamation rather than freeing state out from under the running worker.
 
 ### Zia Example
 
 > Pool requires function pointers (`addr_of`) for task callbacks. See the BASIC example or use `addr_of` in advanced Zia code.
-> VM execution supports `Thread.Start` and `Async.Run` with VM-aware function pointers. VM-backed `Thread.Start` follows the same argument ownership rules as native threads: `Start`/`StartSafe` borrow the argument, and `StartOwned`/`StartSafeOwned` retain it until the worker returns. VM-backed `Async.Run` retains a managed argument until the worker has consumed it. `Pool.Submit` still requires native callback pointers and traps when called from the VM with an IL function pointer.
+> VM and BytecodeVM execution support `Thread.Start`, `Thread.StartOwned`, `Thread.StartSafe`, `Thread.StartSafeOwned`, and `Async.Run` with managed function pointers. VM-backed thread starts follow the same argument ownership rules as native threads: `Start`/`StartSafe` borrow the argument, and `StartOwned`/`StartSafeOwned` retain it until the worker returns. VM-backed `Async.Run` retains a managed argument until the worker has consumed it. `Pool.Submit` still requires native callback pointers and traps when called from the VM with an IL function pointer.
 
 ### BASIC Example
 
@@ -915,6 +915,11 @@ FOR i = 0 TO outputs.Length - 1
     PRINT "Result "; i; ": "; outputs.Get(i)
 NEXT i
 ```
+
+### Parallel Ownership Notes
+
+- `Parallel.Map` transfers each mapper return value into the returned sequence. If the mapper returns the exact input element, the runtime retains that input for the result sequence. If the mapper returns some other borrowed runtime object, the mapper must retain it before returning or return a newly-created object.
+- `Parallel.Reduce` returns the accumulator exactly as the reducer produces it. The runtime does not retain or release intermediate accumulator objects; reducers that allocate replacement accumulators are responsible for their own intermediate ownership discipline.
 
 ### Parallel For Example
 
@@ -1568,7 +1573,7 @@ Thread-safe bounded channel for inter-thread communication. Supports blocking, n
 
 - Closing a channel prevents further sends but receivers can still drain remaining items.
 - A synchronous channel (capacity 0) blocks the sender until a receiver is ready.
-- On a synchronous channel, `TrySend()` succeeds only when a receiver is already waiting, and it completes the rendezvous handoff before returning true.
+- On a synchronous channel, `TrySend()` succeeds only when a receiver is already waiting, publishes one retained handoff value, and returns without waiting for the receiver to acknowledge consumption.
 - On a synchronous channel, `TryRecv()` is strictly non-blocking. It only consumes an already-published handoff value; it does not wait to rendezvous with a merely waiting sender. Use `Recv()` or `RecvFor()` for rendezvous receives.
 - At the C ABI layer, `rt_channel_try_recv(channel, NULL)` checks only an already-queued value without consuming or releasing it; it does not advertise a merely waiting synchronous sender as available.
 - `IsFull` means a send would block. For synchronous channels it is false when a receiver is already waiting and no handoff value is queued.

@@ -340,6 +340,19 @@ int main(int argc, char *argv[]) {
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 
+    // Isolated child tests must run before the shared default pool starts worker
+    // threads; forked children cannot safely inherit locked pthread mutexes.
+    auto result = viper::tests::runIsolated(call_foreach_shutdown_pool);
+    test_result(result.stderrText.find("Parallel.ForEach: failed to submit work") !=
+                    std::string::npos,
+                "foreach_shutdown_pool: should trap without hanging");
+    result = viper::tests::runIsolated(call_foreach_trapping_task);
+    test_result(result.stderrText.find("parallel foreach trap") != std::string::npos,
+                "foreach_task_trap: should preserve worker trap message");
+    result = viper::tests::runIsolated(call_for_range_too_large);
+    test_result(result.stderrText.find("Parallel.For: range too large") != std::string::npos,
+                "for_range_too_large: should trap instead of overflowing");
+
     // Default workers/pool tests
     test_default_workers();
     test_default_pool();
@@ -348,13 +361,6 @@ int main(int argc, char *argv[]) {
     test_foreach_basic();
     test_foreach_empty();
     test_foreach_null();
-    auto result = viper::tests::runIsolated(call_foreach_shutdown_pool);
-    test_result(result.stderrText.find("Parallel.ForEach: failed to submit work") !=
-                    std::string::npos,
-                "foreach_shutdown_pool: should trap without hanging");
-    result = viper::tests::runIsolated(call_foreach_trapping_task);
-    test_result(result.stderrText.find("parallel foreach trap") != std::string::npos,
-                "foreach_task_trap: should preserve worker trap message");
 
     // Map tests
     test_map_basic();
@@ -368,9 +374,6 @@ int main(int argc, char *argv[]) {
     test_for_basic();
     test_for_empty_range();
     test_for_single();
-    result = viper::tests::runIsolated(call_for_range_too_large);
-    test_result(result.stderrText.find("Parallel.For: range too large") != std::string::npos,
-                "for_range_too_large: should trap instead of overflowing");
 
     // Invoke tests
     test_invoke_basic();

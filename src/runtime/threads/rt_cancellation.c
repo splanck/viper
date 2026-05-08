@@ -36,6 +36,7 @@
 #include "rt_object.h"
 #include "rt_threads.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -131,9 +132,7 @@ static rt_cancellation_data *cancellation_require(void *token) {
 ///          recursing outside the lock. Snapshotting avoids holding the parent's monitor
 ///          while we recurse — important because a child's monitor must be reachable
 ///          independently of the parent's lock to keep the cancellation graph deadlock-free.
-///          Allocation-failure on the snapshot buffer is tolerated: any child we couldn't
-///          retain is skipped, but its local flag was already flipped before the realloc
-///          attempt, so the leaf is still cancelled — only its descendants miss the sweep.
+///          Allocation failure traps instead of silently skipping descendants.
 static void cancellation_mark_cancelled(rt_cancellation_data *data) {
     if (!data)
         return;
@@ -141,32 +140,51 @@ static void cancellation_mark_cancelled(rt_cancellation_data *data) {
     if (!data->monitor)
         return;
 
-    rt_cancellation_data **children = NULL;
+    enum { CANCEL_CHILD_STACK_CAP = 32 };
+    rt_cancellation_data *stack_children[CANCEL_CHILD_STACK_CAP];
+    rt_cancellation_data **children = stack_children;
     size_t child_count = 0;
-    size_t child_cap = 0;
+    int allocation_failed = 0;
 
     rt_monitor_enter(data->monitor);
     for (rt_cancellation_data *child = data->first_child; child; child = child->next_sibling) {
         cancel_store(child, 1);
-        if (child_count == child_cap) {
-            size_t next_cap = child_cap ? child_cap * 2 : 8;
-            rt_cancellation_data **next_children =
-                (rt_cancellation_data **)realloc(children, next_cap * sizeof(rt_cancellation_data *));
-            if (!next_children)
-                continue;
-            children = next_children;
-            child_cap = next_cap;
+        child_count++;
+    }
+
+    if (child_count > CANCEL_CHILD_STACK_CAP) {
+        if (child_count > SIZE_MAX / sizeof(rt_cancellation_data *)) {
+            allocation_failed = 1;
+        } else {
+            children =
+                (rt_cancellation_data **)malloc(child_count * sizeof(rt_cancellation_data *));
+            if (!children)
+                allocation_failed = 1;
         }
-        rt_obj_retain_maybe(child);
-        children[child_count++] = child;
+    }
+
+    size_t copied = 0;
+    if (!allocation_failed) {
+        for (rt_cancellation_data *child = data->first_child; child; child = child->next_sibling) {
+            if (copied >= child_count)
+                break;
+            rt_obj_retain_maybe(child);
+            children[copied++] = child;
+        }
     }
     rt_monitor_exit(data->monitor);
 
-    for (size_t i = 0; i < child_count; i++) {
+    if (allocation_failed) {
+        rt_trap("CancelToken.Cancel: memory allocation failed");
+        return;
+    }
+
+    for (size_t i = 0; i < copied; i++) {
         cancellation_mark_cancelled(children[i]);
         cancellation_release_object(children[i]);
     }
-    free(children);
+    if (children != stack_children)
+        free(children);
 }
 
 /// @brief GC finalizer for cancellation tokens.

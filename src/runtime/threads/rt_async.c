@@ -453,12 +453,15 @@ static void async_map_complete(void *future, void *ctx) {
         goto done;
     }
 
+    volatile int8_t source_owned = 0;
+    void *volatile source_value = NULL;
+
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) == 0) {
-        int8_t source_owned = rt_future_value_is_owned(future);
-        void *source_value = rt_future_peek_value(future);
-        void *mapped = state->mapper(source_value, state->arg);
+        source_owned = rt_future_value_is_owned(future);
+        source_value = rt_future_peek_value(future);
+        void *mapped = state->mapper((void *)source_value, state->arg);
         if (mapped == source_value) {
             if (source_owned)
                 rt_promise_set_owned(state->promise, mapped);
@@ -467,10 +470,13 @@ static void async_map_complete(void *future, void *ctx) {
         } else {
             async_promise_set_callback_result(state->promise, mapped, &state->arg, &state->owns_arg);
         }
-        if (source_owned)
-            async_release_ref(&source_value);
     } else {
         async_promise_error_from_trap(state->promise, "Async.Map: mapper trapped");
+    }
+    if (source_owned) {
+        void *owned_source = (void *)source_value;
+        async_release_ref(&owned_source);
+        source_value = NULL;
     }
     rt_trap_clear_recovery();
 

@@ -536,9 +536,10 @@ static void foreach_callback(void *arg) {
 
 /// @brief Per-task entry point for `Parallel.Map`.
 /// @details Same skeleton as `foreach_callback`, but each iteration writes
-///          `task->func(items[i])` into `results[i]`. The result slot retains whatever the
-///          callback returned; cleanup of partially populated results on a trap path is the
-///          caller's responsibility (see `parallel_release_map_results`). Trap capture and
+///          `task->func(items[i])` into `results[i]`. Mapper-created objects are transferred
+///          to the returned sequence; exact input passthrough is retained when collected.
+///          Cleanup of partially populated transferred results on a trap path is the caller's
+///          responsibility (see `parallel_release_map_results`). Trap capture and
 ///          batch-completion signaling are identical to ForEach.
 static void map_callback(void *arg) {
     map_task *task = (map_task *)arg;
@@ -643,7 +644,9 @@ static void invoke_callback(void *arg) {
 ///          stores the user-supplied identity into `task->result` so the caller's final
 ///          combine step has a neutral value to absorb. Trap capture and batch signaling
 ///          mirror ForEach. The cross-slice combine that turns these partials into the
-///          single overall result happens on the submitting thread, not here.
+///          single overall result happens on the submitting thread, not here. Accumulator
+///          ownership is the reducer's contract: the runtime forwards partial/final pointers
+///          exactly as produced and does not retain or release intermediate accumulators.
 static void reduce_callback(void *arg) {
     reduce_task *task = (reduce_task *)arg;
     int task_failed = 0;

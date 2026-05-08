@@ -204,35 +204,48 @@ static void maybe_resize(rt_concmap_impl *cm) {
     }
 }
 
-/// @brief Free every entry in every bucket and reset the count to zero.
-/// @details Caller must hold the map mutex. Used by Clear and the GC
-///          finalizer. Does NOT shrink or free the bucket array — the
-///          caller decides whether to reuse the map (Clear) or proceed
-///          to free everything (finalizer).
-static void cm_clear_unlocked(rt_concmap_impl *cm) {
+/// @brief Free a detached list of entries after it is no longer map-reachable.
+static void free_entry_list(cm_entry *entries) {
+    while (entries) {
+        cm_entry *next = entries->next;
+        free_entry(entries);
+        entries = next;
+    }
+}
+
+/// @brief Detach every bucket chain and reset the count to zero.
+/// @details Caller must hold the map mutex. The returned list is no longer
+///          reachable from the map and may be freed after unlocking.
+static cm_entry *cm_detach_entries_unlocked(rt_concmap_impl *cm) {
+    cm_entry *entries = NULL;
     for (size_t i = 0; i < cm->capacity; i++) {
         cm_entry *e = cm->buckets[i];
-        while (e) {
-            cm_entry *next = e->next;
-            free_entry(e);
-            e = next;
+        if (e) {
+            cm_entry *tail = e;
+            while (tail->next)
+                tail = tail->next;
+            tail->next = entries;
+            entries = e;
         }
         cm->buckets[i] = NULL;
     }
     cm->count = 0;
+    return entries;
 }
 
-/// @brief GC finalizer for a `ConcMap` — clears every entry under the lock,
-///        then frees the bucket array and destroys the mutex. Acquires the
-///        mutex before clearing so any late observer sees a consistent
-///        empty-then-destroyed state rather than racing on a half-freed bucket.
+/// @brief GC finalizer for a `ConcMap` — detaches entries under the lock,
+///        then releases retained values outside the mutex.
 static void cm_finalizer(void *obj) {
     rt_concmap_impl *cm = (rt_concmap_impl *)obj;
     CM_LOCK(cm);
-    cm_clear_unlocked(cm);
-    free(cm->buckets);
+    cm_entry *entries = cm_detach_entries_unlocked(cm);
+    cm_entry **buckets = cm->buckets;
     cm->buckets = NULL;
+    cm->capacity = 0;
     CM_UNLOCK(cm);
+
+    free_entry_list(entries);
+    free(buckets);
 
 #if defined(_WIN32)
     DeleteCriticalSection(&cm->mutex);
@@ -482,9 +495,10 @@ int8_t rt_concmap_remove(void *obj, rt_string key) {
     while (e) {
         if (e->key_len == key_len && memcmp(e->key, key_data, key_len) == 0) {
             *prev = e->next;
-            free_entry(e);
             cm->count--;
+            e->next = NULL;
             CM_UNLOCK(cm);
+            free_entry(e);
             return 1;
         }
         prev = &e->next;
@@ -503,8 +517,9 @@ void rt_concmap_clear(void *obj) {
     if (!cm)
         return;
     CM_LOCK(cm);
-    cm_clear_unlocked(cm);
+    cm_entry *entries = cm_detach_entries_unlocked(cm);
     CM_UNLOCK(cm);
+    free_entry_list(entries);
 }
 
 /// @brief Return a snapshot Seq containing every key currently in the map. The Seq owns its
@@ -542,6 +557,13 @@ void *rt_concmap_keys(void *obj) {
 
     if (snapshot_count == 0) {
         CM_UNLOCK(cm);
+        return seq;
+    }
+
+    if (snapshot_count > SIZE_MAX / sizeof(char *) ||
+        snapshot_count > SIZE_MAX / sizeof(size_t)) {
+        CM_UNLOCK(cm);
+        rt_trap("ConcurrentMap.Keys: allocation size overflow");
         return seq;
     }
 
@@ -602,6 +624,12 @@ void *rt_concmap_values(void *obj) {
 
     if (snapshot_count == 0) {
         CM_UNLOCK(cm);
+        return seq;
+    }
+
+    if (snapshot_count > SIZE_MAX / sizeof(void *)) {
+        CM_UNLOCK(cm);
+        rt_trap("ConcurrentMap.Values: allocation size overflow");
         return seq;
     }
 

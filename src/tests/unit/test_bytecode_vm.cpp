@@ -2116,6 +2116,126 @@ static void test_async_run_retains_bytecode_argument() {
     std::cout << "PASSED\n";
 }
 
+/// Test that bytecode Thread.StartOwned / StartSafeOwned retain managed args.
+static void test_thread_start_owned_retains_bytecode_argument() {
+    std::cout << "  test_thread_start_owned_retains_bytecode_argument: ";
+
+    auto runCase = [](const char *startName, const char *joinName) {
+        BytecodeModule bcModule;
+        bcModule.magic = kBytecodeModuleMagic;
+        bcModule.version = kBytecodeVersion;
+        bcModule.flags = 0;
+
+        const uint16_t startIdx = static_cast<uint16_t>(bcModule.addNativeFunc(startName, 2, true));
+        const uint16_t joinIdx = static_cast<uint16_t>(bcModule.addNativeFunc(joinName, 1, false));
+        const uint16_t makeMarkerIdx =
+            static_cast<uint16_t>(bcModule.addNativeFunc("test.marker.make", 0, true));
+        const uint16_t releaseMarkerIdx =
+            static_cast<uint16_t>(bcModule.addNativeFunc("test.marker.release", 1, false));
+        const uint16_t countMarkerIdx =
+            static_cast<uint16_t>(bcModule.addNativeFunc("test.marker.count", 0, true));
+        const uint16_t waitGateIdx =
+            static_cast<uint16_t>(bcModule.addNativeFunc("test.gate.wait", 0, false));
+        const uint16_t openGateIdx =
+            static_cast<uint16_t>(bcModule.addNativeFunc("test.gate.open", 0, false));
+
+        BytecodeFunction worker;
+        worker.name = "worker_owned_hold";
+        worker.numParams = 1;
+        worker.numLocals = 1;
+        worker.maxStack = 1;
+        worker.code.push_back(encodeOp8_16(BCOpcode::CALL_NATIVE, 0, waitGateIdx));
+        worker.code.push_back(encodeOp(BCOpcode::RETURN_VOID));
+
+        BytecodeFunction mainFunc;
+        mainFunc.name = "main";
+        mainFunc.hasReturn = true;
+        mainFunc.numParams = 0;
+        mainFunc.numLocals = 4;
+        mainFunc.maxStack = 2;
+
+        constexpr uint64_t kFuncPtrTag = 0x8000000000000000ULL;
+        bcModule.i64Pool.push_back(static_cast<int64_t>(kFuncPtrTag | 0ULL));
+        const uint16_t workerPtrIdx = static_cast<uint16_t>(bcModule.i64Pool.size() - 1);
+
+        mainFunc.code.push_back(encodeOp8_16(BCOpcode::CALL_NATIVE, 0, makeMarkerIdx));
+        mainFunc.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 0));
+        mainFunc.code.push_back(encodeOp16(BCOpcode::LOAD_I64, workerPtrIdx));
+        mainFunc.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 0));
+        mainFunc.code.push_back(encodeOp8_16(BCOpcode::CALL_NATIVE, 2, startIdx));
+        mainFunc.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 1));
+        mainFunc.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 0));
+        mainFunc.code.push_back(encodeOp8_16(BCOpcode::CALL_NATIVE, 1, releaseMarkerIdx));
+        mainFunc.code.push_back(encodeOp8_16(BCOpcode::CALL_NATIVE, 0, countMarkerIdx));
+        mainFunc.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 2));
+        mainFunc.code.push_back(encodeOp8_16(BCOpcode::CALL_NATIVE, 0, openGateIdx));
+        mainFunc.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 1));
+        mainFunc.code.push_back(encodeOp8_16(BCOpcode::CALL_NATIVE, 1, joinIdx));
+        mainFunc.code.push_back(encodeOp8_16(BCOpcode::CALL_NATIVE, 0, countMarkerIdx));
+        mainFunc.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 3));
+        mainFunc.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 2));
+        mainFunc.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 10));
+        mainFunc.code.push_back(encodeOp(BCOpcode::MUL_I64));
+        mainFunc.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 3));
+        mainFunc.code.push_back(encodeOp(BCOpcode::ADD_I64));
+        mainFunc.code.push_back(encodeOp(BCOpcode::RETURN));
+
+        bcModule.functions.push_back(std::move(worker));
+        bcModule.functionIndex["worker_owned_hold"] = 0;
+        bcModule.functions.push_back(std::move(mainFunc));
+        bcModule.functionIndex["main"] = 1;
+
+        auto registerExtern = [](const char *name,
+                                 std::initializer_list<SigKind> params,
+                                 std::initializer_list<SigKind> rets,
+                                 void *fn) {
+            il::vm::ExternDesc ext;
+            ext.name = name;
+            ext.signature = make_signature(name, params, rets);
+            ext.fn = fn;
+            (void)il::vm::registerExternIn(il::vm::processGlobalExternRegistry(), ext);
+        };
+        registerExtern("test.marker.make",
+                       {},
+                       {SigKind::Ptr},
+                       reinterpret_cast<void *>(&make_async_arg_marker));
+        registerExtern("test.marker.release",
+                       {SigKind::Ptr},
+                       {},
+                       reinterpret_cast<void *>(&release_async_arg_marker));
+        registerExtern("test.marker.count",
+                       {},
+                       {SigKind::I64},
+                       reinterpret_cast<void *>(&count_async_arg_marker));
+        registerExtern(
+            "test.gate.wait", {}, {}, reinterpret_cast<void *>(&wait_async_arg_native));
+        registerExtern(
+            "test.gate.open", {}, {}, reinterpret_cast<void *>(&open_async_arg_native));
+
+        for (bool threaded : {false, true}) {
+            reset_async_arg_state();
+
+            BytecodeVM vm;
+            vm.setRuntimeBridgeEnabled(true);
+            vm.setThreadedDispatch(threaded);
+            vm.load(&bcModule);
+
+            BCSlot result = vm.exec("main", {});
+            if (vm.state() != VMState::Halted) {
+                std::cerr << "owned thread retention test trapped for " << startName
+                          << " (threaded=" << threaded << "): " << vm.trapMessage() << "\n";
+            }
+            assert(vm.state() == VMState::Halted);
+            assert(result.i64 == 1);
+        }
+    };
+
+    runCase("Viper.Threads.Thread.StartOwned", "Viper.Threads.Thread.Join");
+    runCase("Viper.Threads.Thread.StartSafeOwned", "Viper.Threads.Thread.SafeJoin");
+
+    std::cout << "PASSED\n";
+}
+
 static void test_branch_arguments_are_atomic() {
     std::cout << "  test_branch_arguments_are_atomic: ";
 
@@ -2172,6 +2292,7 @@ int main() {
     test_branch_arguments_are_atomic();
     test_thread_start_safe_reports_bytecode_trap();
     test_async_run_retains_bytecode_argument();
+    test_thread_start_owned_retains_bytecode_argument();
 
     std::cout << "All bytecode VM tests PASSED!\n";
     return 0;

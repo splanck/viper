@@ -553,7 +553,7 @@ func start() {
 | `Active` | `Integer` | Tasks currently executing |
 | `IsShutdown` | `Boolean` | Whether shutdown was requested |
 
-Pool waits remain correct when a task traps: the worker still marks the task complete, so `Wait` and `WaitFor` do not hang. Calls that would wait for or shut down the same pool from inside one of its workers trap to prevent self-deadlock.
+Pool waits remain correct when a task traps: the worker still marks the task complete, so `Wait` and `WaitFor` do not hang. After the pool drains, `Wait`, successful `WaitFor`, `Shutdown`, and `ShutdownNow` surface the captured task trap instead of silently reporting success. Calls that would wait for or shut down the same pool from inside one of its workers trap to prevent self-deadlock.
 
 ---
 
@@ -806,7 +806,7 @@ func start() {
 | `Parallel.DefaultWorkers()` | Number of default worker threads |
 | `Parallel.DefaultPool()` | Access the shared default pool |
 
-Parallel operations wake the caller and trap with a `Parallel.*: task trapped` message if a worker callback traps. The callback-based `Parallel` and `Pool.Submit` APIs require native callback pointers; VM code should use VM-aware `Thread.Start` or `Async.Run` until VM-backed parallel callbacks are available.
+Parallel operations wake the caller and trap with a `Parallel.*: task trapped` message if a worker callback traps. `Parallel.Map` transfers mapper return values into the returned sequence; exact input passthrough is retained by the runtime, while other borrowed runtime objects must be retained by the mapper before return. `Parallel.Reduce` leaves accumulator ownership to the reducer and returns the final accumulator pointer as produced. The callback-based `Parallel` and `Pool.Submit` APIs require native callback pointers; VM code should use VM-aware `Thread.Start` or `Async.Run` until VM-backed parallel callbacks are available.
 
 ---
 

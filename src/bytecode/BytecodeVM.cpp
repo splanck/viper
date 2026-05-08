@@ -102,7 +102,9 @@ const char *bytecodeTrapKindName(TrapKind trapKind) {
 using UnifiedRuntimeHandler = void (*)(void **, void *);
 std::once_flag gUnifiedRuntimeHandlersOnce;
 UnifiedRuntimeHandler gPriorThreadStartHandler = nullptr;
+UnifiedRuntimeHandler gPriorThreadStartOwnedHandler = nullptr;
 UnifiedRuntimeHandler gPriorThreadStartSafeHandler = nullptr;
+UnifiedRuntimeHandler gPriorThreadStartSafeOwnedHandler = nullptr;
 UnifiedRuntimeHandler gPriorAsyncRunHandler = nullptr;
 UnifiedRuntimeHandler gPriorHttpBindHandler = nullptr;
 UnifiedRuntimeHandler gPriorHttpsBindHandler = nullptr;
@@ -3307,6 +3309,84 @@ static void unified_thread_start_handler(void **args, void *result) {
         *reinterpret_cast<void **>(result) = thread;
 }
 
+/// Handler for Viper.Threads.Thread.StartOwned - handles both standard VM and BytecodeVM.
+static void unified_thread_start_owned_handler(void **args, void *result) {
+    void *entry = nullptr;
+    void *arg = nullptr;
+    if (args && args[0])
+        entry = *reinterpret_cast<void **>(args[0]);
+    if (args && args[1])
+        arg = *reinterpret_cast<void **>(args[1]);
+
+    if (!entry)
+        rt_trap("Thread.StartOwned: null entry");
+
+    // Check for standard VM first
+    il::vm::VM *stdVm = il::vm::activeVMInstance();
+    if (stdVm) {
+        std::shared_ptr<il::vm::VM::ProgramState> program = stdVm->programState();
+        if (!program)
+            rt_trap("Thread.StartOwned: invalid runtime state");
+
+        const il::core::Module &module = stdVm->module();
+        const il::core::Function *entryFn = resolveILEntry(module, entry);
+        if (!entryFn)
+            rt_trap("Thread.StartOwned: invalid entry");
+        validateEntrySignature(*entryFn);
+
+        auto *payload = new VmThreadStartPayload{
+            &module, std::move(program), stdVm->externRegistry(), entryFn, arg, arg != nullptr};
+        if (payload->ownsArg)
+            rt_obj_retain_maybe(arg);
+        il::vm::retainExternRegistry(payload->externRegistry);
+        void *thread =
+            rt_thread_start(reinterpret_cast<void *>(&vm_thread_entry_trampoline_bc), payload);
+        if (!thread) {
+            releaseWorkerArg(payload->arg, payload->ownsArg);
+            il::vm::releaseExternRegistry(payload->externRegistry);
+            delete payload;
+            rt_trap("Thread.StartOwned: failed to create thread");
+        }
+        if (result)
+            *reinterpret_cast<void **>(result) = thread;
+        return;
+    }
+
+    // Check for BytecodeVM
+    BytecodeVM *bcVm = activeBytecodeVMInstance();
+    const BytecodeModule *bcModule = activeBytecodeModule();
+    if (bcVm && bcModule) {
+        const BytecodeFunction *entryFn = resolveBytecodeEntry(bcModule, entry);
+        if (!entryFn)
+            rt_trap("Thread.StartOwned: invalid bytecode entry");
+        validateBytecodeThreadEntrySignature(*entryFn);
+
+        auto *payload = new BytecodeThreadPayload{
+            bcModule, entryFn, arg, arg != nullptr, bcVm->captureExecutionEnvironment()};
+        if (payload->ownsArg)
+            rt_obj_retain_maybe(arg);
+        void *thread =
+            rt_thread_start(reinterpret_cast<void *>(&bytecode_thread_entry_trampoline), payload);
+        if (!thread) {
+            releaseWorkerArg(payload->arg, payload->ownsArg);
+            delete payload;
+            rt_trap("Thread.StartOwned: failed to create thread");
+        }
+        if (result)
+            *reinterpret_cast<void **>(result) = thread;
+        return;
+    }
+
+    // No VM active - direct call (native code path)
+    if (gPriorThreadStartOwnedHandler) {
+        gPriorThreadStartOwnedHandler(args, result);
+        return;
+    }
+    void *thread = rt_thread_start_owned(entry, arg);
+    if (result)
+        *reinterpret_cast<void **>(result) = thread;
+}
+
 /// Handler for Viper.Threads.Thread.StartSafe - handles both standard VM and BytecodeVM.
 /// Uses rt_thread_start_safe to wrap execution in trap recovery via setjmp/longjmp.
 static void unified_thread_start_safe_handler(void **args, void *result) {
@@ -3378,6 +3458,84 @@ static void unified_thread_start_safe_handler(void **args, void *result) {
         return;
     }
     void *thread = rt_thread_start_safe(entry, arg);
+    if (result)
+        *reinterpret_cast<void **>(result) = thread;
+}
+
+/// Handler for Viper.Threads.Thread.StartSafeOwned - handles both standard VM and BytecodeVM.
+static void unified_thread_start_safe_owned_handler(void **args, void *result) {
+    void *entry = nullptr;
+    void *arg = nullptr;
+    if (args && args[0])
+        entry = *reinterpret_cast<void **>(args[0]);
+    if (args && args[1])
+        arg = *reinterpret_cast<void **>(args[1]);
+
+    if (!entry)
+        rt_trap("Thread.StartSafeOwned: null entry");
+
+    // Check for standard VM first
+    il::vm::VM *stdVm = il::vm::activeVMInstance();
+    if (stdVm) {
+        std::shared_ptr<il::vm::VM::ProgramState> program = stdVm->programState();
+        if (!program)
+            rt_trap("Thread.StartSafeOwned: invalid runtime state");
+
+        const il::core::Module &module = stdVm->module();
+        const il::core::Function *entryFn = resolveILEntry(module, entry);
+        if (!entryFn)
+            rt_trap("Thread.StartSafeOwned: invalid entry");
+        validateEntrySignature(*entryFn);
+
+        auto *payload = new VmThreadStartPayload{
+            &module, std::move(program), stdVm->externRegistry(), entryFn, arg, arg != nullptr};
+        if (payload->ownsArg)
+            rt_obj_retain_maybe(arg);
+        il::vm::retainExternRegistry(payload->externRegistry);
+        void *thread = rt_thread_start_safe(
+            reinterpret_cast<void *>(&vm_thread_safe_entry_trampoline_bc), payload);
+        if (!thread) {
+            releaseWorkerArg(payload->arg, payload->ownsArg);
+            il::vm::releaseExternRegistry(payload->externRegistry);
+            delete payload;
+            rt_trap("Thread.StartSafeOwned: failed to create thread");
+        }
+        if (result)
+            *reinterpret_cast<void **>(result) = thread;
+        return;
+    }
+
+    // Check for BytecodeVM
+    BytecodeVM *bcVm = activeBytecodeVMInstance();
+    const BytecodeModule *bcModule = activeBytecodeModule();
+    if (bcVm && bcModule) {
+        const BytecodeFunction *entryFn = resolveBytecodeEntry(bcModule, entry);
+        if (!entryFn)
+            rt_trap("Thread.StartSafeOwned: invalid bytecode entry");
+        validateBytecodeThreadEntrySignature(*entryFn);
+
+        auto *payload = new BytecodeThreadPayload{
+            bcModule, entryFn, arg, arg != nullptr, bcVm->captureExecutionEnvironment()};
+        if (payload->ownsArg)
+            rt_obj_retain_maybe(arg);
+        void *thread = rt_thread_start_safe(
+            reinterpret_cast<void *>(&bytecode_thread_safe_entry_trampoline), payload);
+        if (!thread) {
+            releaseWorkerArg(payload->arg, payload->ownsArg);
+            delete payload;
+            rt_trap("Thread.StartSafeOwned: failed to create thread");
+        }
+        if (result)
+            *reinterpret_cast<void **>(result) = thread;
+        return;
+    }
+
+    // No VM active - direct call (native code path)
+    if (gPriorThreadStartSafeOwnedHandler) {
+        gPriorThreadStartSafeOwnedHandler(args, result);
+        return;
+    }
+    void *thread = rt_thread_start_safe_owned(entry, arg);
     if (result)
         *reinterpret_cast<void **>(result) = thread;
 }
@@ -3797,9 +3955,15 @@ void registerUnifiedVmRuntimeHandlers() {
         capturePriorHandler("Viper.Threads.Thread.Start",
                             reinterpret_cast<void *>(&unified_thread_start_handler),
                             gPriorThreadStartHandler);
+        capturePriorHandler("Viper.Threads.Thread.StartOwned",
+                            reinterpret_cast<void *>(&unified_thread_start_owned_handler),
+                            gPriorThreadStartOwnedHandler);
         capturePriorHandler("Viper.Threads.Thread.StartSafe",
                             reinterpret_cast<void *>(&unified_thread_start_safe_handler),
                             gPriorThreadStartSafeHandler);
+        capturePriorHandler("Viper.Threads.Thread.StartSafeOwned",
+                            reinterpret_cast<void *>(&unified_thread_start_safe_owned_handler),
+                            gPriorThreadStartSafeOwnedHandler);
         capturePriorHandler("Viper.Threads.Async.Run",
                             reinterpret_cast<void *>(&unified_async_run_handler),
                             gPriorAsyncRunHandler);
@@ -3823,9 +3987,23 @@ void registerUnifiedVmRuntimeHandlers() {
     }
     {
         il::vm::ExternDesc ext;
+        ext.name = "Viper.Threads.Thread.StartOwned";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_thread_start_owned_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
         ext.name = "Viper.Threads.Thread.StartSafe";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_thread_start_safe_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Threads.Thread.StartSafeOwned";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_thread_start_safe_owned_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
     {

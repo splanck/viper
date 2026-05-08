@@ -408,34 +408,15 @@ int8_t rt_channel_try_send(void *channel, void *item) {
         return 0;
     }
 
-    // Same logic as blocking send. On synchronous channels, success means the
-    // waiting receiver has acknowledged the handoff before this call returns.
+    // Synchronous TrySend is non-blocking: if a receiver is already waiting,
+    // publish one handoff and return immediately. The receiver owns completion.
     if (ch->capacity == 0) {
-        ch->waiting_senders++;
         if (item)
             rt_obj_retain_maybe(item);
-        int64_t my_epoch = ++ch->sync_epoch;
+        ++ch->sync_epoch;
         ch->buffer[0] = item;
         ch->count = 1;
         rt_monitor_pause_all(ch->monitor);
-
-        while (ch->sync_acked_epoch < my_epoch && !ch->closed) {
-            rt_monitor_wait(ch->monitor);
-        }
-        if (ch->sync_acked_epoch < my_epoch) {
-            if (ch->sync_epoch == my_epoch && ch->count != 0) {
-                void *unsent = ch->buffer[0];
-                ch->buffer[0] = NULL;
-                ch->count = 0;
-                channel_release_item(unsent);
-                rt_monitor_pause_all(ch->monitor);
-            }
-            ch->waiting_senders--;
-            rt_monitor_exit(ch->monitor);
-            channel_release_object(channel);
-            return 0;
-        }
-        ch->waiting_senders--;
     } else {
         if (item)
             rt_obj_retain_maybe(item);
