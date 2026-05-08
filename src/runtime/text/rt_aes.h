@@ -44,6 +44,13 @@ void *rt_aes_encrypt(void *data, void *key, void *iv);
 /// @return Bytes object containing plaintext (PKCS7 padding removed)
 void *rt_aes_decrypt(void *data, void *key, void *iv);
 
+/// @brief Encrypt data using AES-128-GCM with optional authenticated data.
+/// @return Bytes object: [magic(4)][nonce(12)][ciphertext][tag(16)].
+void *rt_aes_encrypt_auth(void *data, void *key, void *aad);
+
+/// @brief Decrypt data produced by rt_aes_encrypt_auth.
+void *rt_aes_decrypt_auth(void *data, void *key, void *aad);
+
 /// @brief Encrypt string using PBKDF2-derived AES-128-GCM.
 /// @param data String to encrypt
 /// @param password Password string used to derive a 128-bit key via PBKDF2-HMAC-SHA256

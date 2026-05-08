@@ -52,12 +52,22 @@
 #define tmio_ftell(fp) ftello((fp))
 #endif
 
+/// @brief Validate-and-return a Tilemap pointer; NULL for NULL or wrong class.
+/// @details Soft check used by every public Tilemap I/O entry point.
 static rt_tilemap_impl *tilemap_io_checked(void *tm) {
     if (!tm || rt_obj_class_id(tm) != RT_TILEMAP_CLASS_ID)
         return NULL;
     return (rt_tilemap_impl *)tm;
 }
 
+/// @brief Release a retained reference held in @p *slot, free the payload at refcount 0,
+///        and clear the slot to NULL.
+/// @details The standard ownership-discipline helper used when loading
+///          replaces or removes a tile / layer / object reference. Decrements
+///          the refcount, frees the payload only when this was the last
+///          reference, and writes NULL into @p *slot so a subsequent reload
+///          cannot accidentally double-free. NULL @p slot or NULL @c *slot
+///          are no-ops.
 static void tilemap_io_release_ref(void **slot) {
     if (!slot || !*slot)
         return;
@@ -374,6 +384,12 @@ static void *seq_new_owned(void) {
     return seq;
 }
 
+/// @brief Store @p value into @p map under @p key and drop the caller's local reference.
+/// @details The classic "transfer ownership" idiom: rt_map_set retains its own
+///          ref to @p value, so the caller's local ref must be released to
+///          avoid a leak. tilemap_io_release_ref handles refcount 0 by freeing.
+///          NULL @p value is treated as "skip" so the map never contains NULL
+///          entries.
 static void map_set_owned(void *map, const char *key, void *value) {
     if (!map || !value)
         return;
@@ -381,6 +397,11 @@ static void map_set_owned(void *map, const char *key, void *value) {
     tilemap_io_release_ref(&value);
 }
 
+/// @brief Append @p value to @p seq and drop the caller's local reference.
+/// @details Mirrors map_set_owned but for sequence appends. Used during JSON
+///          tilemap load when each parsed tile/layer/object is appended into
+///          its parent sequence and the loader's temporary reference must be
+///          released afterward.
 static void seq_push_owned(void *seq, void *value) {
     if (!seq || !value)
         return;
@@ -499,6 +520,11 @@ static void assign_layer_tileset(rt_tilemap_impl *tm, int64_t layer, void *pixel
     lyr->tile_count = lyr->tileset_cols * lyr->tileset_rows;
 }
 
+/// @brief Linear-search @p tm's tile-animation table for the entry whose base tile is @p base_tile.
+/// @details Tile animations are keyed by their first-frame tile id. The
+///          table is small (typically < 32 entries) so a linear scan is
+///          cheaper than maintaining a hash. Returns NULL if no matching
+///          animation exists or if @p tm is NULL.
 static tm_tile_anim *find_tile_anim(rt_tilemap_impl *tm, int64_t base_tile) {
     if (!tm)
         return NULL;

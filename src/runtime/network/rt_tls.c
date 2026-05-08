@@ -32,6 +32,7 @@
 
 #include "rt_crypto.h"
 #include "rt_ecdsa_p256.h"
+#include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_rsa.h"
 #include "rt_tls_internal.h"
@@ -3094,7 +3095,7 @@ rt_tls_session_t *rt_tls_new(int socket_fd, const rt_tls_config_t *config) {
 ///   - ServerHello / HelloRetryRequest → key derivation
 ///   - EncryptedExtensions             → noted, advance state
 ///   - Certificate                     → parse + (optional) chain & hostname checks
-///   - CertificateVerify               → (optional) signature check
+///   - CertificateVerify               → signature check
 ///   - Finished                        → MAC verify, derive app keys, send our Finished
 /// Updates the transcript hash before processing each message
 /// (RFC 8446 §4.4.1) and aborts on transcript overflow. A
@@ -3191,12 +3192,11 @@ int rt_tls_handshake(rt_tls_session_t *session) {
                     break;
 
                 case TLS_HS_CERTIFICATE_VERIFY:
-                    if (session->verify_cert) {
-                        // CS-3: Verify server's proof of private key ownership
-                        rc = tls_verify_cert_verify(session, hs_data, hs_len);
-                        if (rc != RT_TLS_OK)
-                            return rc;
-                    }
+                    // CS-3: Always verify the server's proof of private key ownership.
+                    // verify_cert only controls trust-chain/hostname policy.
+                    rc = tls_verify_cert_verify(session, hs_data, hs_len);
+                    if (rc != RT_TLS_OK)
+                        return rc;
                     session->state = TLS_STATE_WAIT_FINISHED;
                     break;
 
@@ -3594,6 +3594,16 @@ static void rt_viper_tls_finalize(void *obj) {
     }
 }
 
+static rt_viper_tls_t *rt_viper_tls_require(void *obj) {
+    if (!obj)
+        return NULL;
+    if (rt_obj_class_id(obj) != RT_TLS_CLASS_ID) {
+        rt_trap("Tls: invalid object");
+        return NULL;
+    }
+    return (rt_viper_tls_t *)obj;
+}
+
 /// @brief Connect to a TLS server.
 /// @param host Hostname to connect to.
 /// @param port Port number.
@@ -3620,7 +3630,8 @@ void *rt_viper_tls_connect(rt_string host, int64_t port) {
         return NULL;
 
     // Create Viper TLS object
-    rt_viper_tls_t *tls = (rt_viper_tls_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_viper_tls_t));
+    rt_viper_tls_t *tls =
+        (rt_viper_tls_t *)rt_obj_new_i64(RT_TLS_CLASS_ID, (int64_t)sizeof(rt_viper_tls_t));
     if (!tls) {
         rt_tls_close(session);
         return NULL;
@@ -3673,7 +3684,8 @@ void *rt_viper_tls_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
         return NULL;
 
     // Create Viper TLS object
-    rt_viper_tls_t *tls = (rt_viper_tls_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_viper_tls_t));
+    rt_viper_tls_t *tls =
+        (rt_viper_tls_t *)rt_obj_new_i64(RT_TLS_CLASS_ID, (int64_t)sizeof(rt_viper_tls_t));
     if (!tls) {
         rt_tls_close(session);
         return NULL;
@@ -3698,7 +3710,9 @@ void *rt_viper_tls_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
 rt_string rt_viper_tls_host(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
-    rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
+    rt_viper_tls_t *tls = rt_viper_tls_require(obj);
+    if (!tls)
+        return rt_string_from_bytes("", 0);
     const char *h = tls->host ? tls->host : "";
     return rt_string_from_bytes(h, strlen(h));
 }
@@ -3707,7 +3721,9 @@ rt_string rt_viper_tls_host(void *obj) {
 int64_t rt_viper_tls_port(void *obj) {
     if (!obj)
         return 0;
-    rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
+    rt_viper_tls_t *tls = rt_viper_tls_require(obj);
+    if (!tls)
+        return 0;
     return tls->port;
 }
 
@@ -3715,7 +3731,9 @@ int64_t rt_viper_tls_port(void *obj) {
 int8_t rt_viper_tls_is_open(void *obj) {
     if (!obj)
         return 0;
-    rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
+    rt_viper_tls_t *tls = rt_viper_tls_require(obj);
+    if (!tls)
+        return 0;
     return tls->session && tls->session->state == TLS_STATE_CONNECTED;
 }
 
@@ -3727,7 +3745,9 @@ int64_t rt_viper_tls_send(void *obj, void *data) {
     if (!obj || !data)
         return -1;
 
-    rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
+    rt_viper_tls_t *tls = rt_viper_tls_require(obj);
+    if (!tls)
+        return -1;
     if (!tls->session)
         return -1;
 
@@ -3755,7 +3775,9 @@ int64_t rt_viper_tls_send_str(void *obj, rt_string text) {
     if (!obj || !text)
         return -1;
 
-    rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
+    rt_viper_tls_t *tls = rt_viper_tls_require(obj);
+    if (!tls)
+        return -1;
     if (!tls->session)
         return -1;
 
@@ -3783,7 +3805,9 @@ void *rt_viper_tls_recv(void *obj, int64_t max_bytes) {
     if (max_bytes > TLS_MAX_RECORD_SIZE)
         max_bytes = TLS_MAX_RECORD_SIZE;
 
-    rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
+    rt_viper_tls_t *tls = rt_viper_tls_require(obj);
+    if (!tls)
+        return NULL;
     if (!tls->session)
         return NULL;
 
@@ -3818,7 +3842,9 @@ rt_string rt_viper_tls_recv_str(void *obj, int64_t max_bytes) {
     if (max_bytes > TLS_MAX_RECORD_SIZE)
         max_bytes = TLS_MAX_RECORD_SIZE;
 
-    rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
+    rt_viper_tls_t *tls = rt_viper_tls_require(obj);
+    if (!tls)
+        return rt_string_from_bytes("", 0);
     if (!tls->session)
         return rt_string_from_bytes("", 0);
 
@@ -3845,7 +3871,9 @@ rt_string rt_viper_tls_recv_line(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
 
-    rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
+    rt_viper_tls_t *tls = rt_viper_tls_require(obj);
+    if (!tls)
+        return rt_string_from_bytes("", 0);
     if (!tls->session)
         return rt_string_from_bytes("", 0);
 
@@ -3901,7 +3929,9 @@ void rt_viper_tls_close(void *obj) {
     if (!obj)
         return;
 
-    rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
+    rt_viper_tls_t *tls = rt_viper_tls_require(obj);
+    if (!tls)
+        return;
     if (tls->session) {
         rt_tls_close(tls->session);
         tls->session = NULL;
@@ -3916,7 +3946,11 @@ rt_string rt_viper_tls_error(void *obj) {
         return rt_string_from_bytes(msg, strlen(msg));
     }
 
-    rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
+    rt_viper_tls_t *tls = rt_viper_tls_require(obj);
+    if (!tls) {
+        msg = "invalid object";
+        return rt_string_from_bytes(msg, strlen(msg));
+    }
     if (!tls->session) {
         msg = "connection closed";
         return rt_string_from_bytes(msg, strlen(msg));

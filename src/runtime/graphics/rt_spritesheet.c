@@ -65,12 +65,18 @@ typedef struct {
 
 #define SS_INITIAL_CAP 16
 
+/// @brief Validate-and-return a SpriteSheet pointer; NULL for NULL or wrong class.
+/// @details Soft check (no trap) — used by every public SpriteSheet entry
+///          and the GC finalizer so wrong-class handles silently no-op.
 static rt_spritesheet_impl *spritesheet_checked_or_null(void *obj) {
     if (!obj || rt_obj_class_id(obj) != RT_SPRITESHEET_CLASS_ID)
         return NULL;
     return (rt_spritesheet_impl *)obj;
 }
 
+/// @brief Test whether @p pixels is a non-NULL Pixels handle (correct class id).
+/// @details Used during atlas swap-in / region extraction to reject foreign
+///          handles before they reach rt_pixels_get / rt_pixels_blit.
 static int8_t spritesheet_is_valid_pixels(void *pixels) {
     return pixels && rt_obj_class_id(pixels) == RT_PIXELS_CLASS_ID;
 }

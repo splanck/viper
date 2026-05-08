@@ -75,6 +75,13 @@ typedef struct rt_sprite_impl {
     void *frames[MAX_SPRITE_FRAMES]; ///< Frame pixel buffers
 } rt_sprite_impl;
 
+/// @brief Validate-and-cast an opaque sprite pointer to its impl, trapping on failure.
+/// @details Used by every public Sprite entry point that requires a non-NULL,
+///          properly-typed sprite. NULL or wrong-class IDs raise a trap with
+///          @p op as the diagnostic message (or a generic fallback).
+/// @param sprite_ptr Opaque sprite handle. Must be non-NULL with class id RT_SPRITE_CLASS_ID.
+/// @param op         Operation name used in the trap message; may be NULL.
+/// @return The downcast impl pointer (never NULL — function traps before returning NULL).
 static rt_sprite_impl *sprite_checked(void *sprite_ptr, const char *op) {
     if (!sprite_ptr) {
         rt_trap(op ? op : "Sprite: null sprite");
@@ -87,6 +94,10 @@ static rt_sprite_impl *sprite_checked(void *sprite_ptr, const char *op) {
     return (rt_sprite_impl *)sprite_ptr;
 }
 
+/// @brief Soft variant of sprite_checked — returns NULL instead of trapping.
+/// @details Used by lifetime-sensitive paths like the GC finalizer and
+///          Draw() loops where a stale handle is not a programming error
+///          and should be silently skipped.
 static rt_sprite_impl *sprite_checked_or_null(void *sprite_ptr) {
     if (!sprite_ptr || rt_obj_class_id(sprite_ptr) != RT_SPRITE_CLASS_ID)
         return NULL;
@@ -1095,6 +1106,9 @@ void rt_sprite_move(void *sprite_ptr, int64_t dx, int64_t dy) {
 // `MAX_ANIM_CLIPS` clips and plays at most one at a time.
 // ---------------------------------------------------------------------------
 
+/// @brief Validate-and-return a SpriteAnimator pointer; returns NULL for NULL or wrong class.
+/// @details Soft check (no trap) — used by every public SpriteAnimator entry
+///          point so that wrong-class handles are no-ops rather than crashes.
 static rt_sprite_animator_t *sprite_animator_checked(rt_sprite_animator_t *animator) {
     if (!animator || rt_obj_class_id(animator) != RT_SPRITE_ANIMATOR_CLASS_ID)
         return NULL;

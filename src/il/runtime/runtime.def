@@ -872,6 +872,8 @@ RT_FUNC(HashHmacSHA1,       rt_hash_hmac_sha1,        "Viper.Crypto.Hash.HmacSHA
 RT_FUNC(HashHmacSHA1Bytes,  rt_hash_hmac_sha1_bytes,  "Viper.Crypto.Hash.HmacSHA1Bytes",  "str(obj,obj)")
 RT_FUNC(HashHmacSHA256,     rt_hash_hmac_sha256,      "Viper.Crypto.Hash.HmacSHA256",     "str(str,str)")
 RT_FUNC(HashHmacSHA256Bytes,rt_hash_hmac_sha256_bytes,"Viper.Crypto.Hash.HmacSHA256Bytes","str(obj,obj)")
+RT_FUNC(HashConstantTimeEquals,      rt_hash_constant_time_equals,       "Viper.Crypto.Hash.ConstantTimeEquals",      "i1(str,str)")
+RT_FUNC(HashConstantTimeEqualsBytes, rt_hash_constant_time_equals_bytes, "Viper.Crypto.Hash.ConstantTimeEqualsBytes", "i1(obj,obj)")
 
 // Fast hash (FNV-1a) functions
 RT_FUNC(HashFast,      rt_hash_fast,       "Viper.Crypto.Hash.Fast",      "i64(str)")
@@ -884,6 +886,8 @@ RT_FUNC(HashFastInt,   rt_hash_fast_int,   "Viper.Crypto.Hash.FastInt",   "i64(i
 
 RT_FUNC(KeyDerivePbkdf2SHA256,    rt_keyderive_pbkdf2_sha256,     "Viper.Crypto.KeyDerive.Pbkdf2SHA256",    "obj(str,obj,i64,i64)")
 RT_FUNC(KeyDerivePbkdf2SHA256Str, rt_keyderive_pbkdf2_sha256_str, "Viper.Crypto.KeyDerive.Pbkdf2SHA256Str", "str(str,obj,i64,i64)")
+RT_FUNC(KeyDeriveScryptSHA256,    rt_keyderive_scrypt_sha256,     "Viper.Crypto.KeyDerive.ScryptSHA256",    "obj(str,obj,i64,i64,i64,i64)")
+RT_FUNC(KeyDeriveScryptSHA256Str, rt_keyderive_scrypt_sha256_str, "Viper.Crypto.KeyDerive.ScryptSHA256Str", "str(str,obj,i64,i64,i64,i64)")
 
 //=============================================================================
 // CRYPTO - SECURE RANDOM
@@ -898,8 +902,12 @@ RT_FUNC(CryptoRandInt,   rt_crypto_rand_int,   "Viper.Crypto.Rand.Int",   "i64(i
 
 RT_FUNC(CipherEncrypt,        rt_cipher_encrypt,          "Viper.Crypto.Cipher.Encrypt",        "obj(obj,str)")
 RT_FUNC(CipherDecrypt,        rt_cipher_decrypt,          "Viper.Crypto.Cipher.Decrypt",        "obj(obj,str)")
+RT_FUNC(CipherEncryptAAD,     rt_cipher_encrypt_aad,      "Viper.Crypto.Cipher.EncryptAAD",     "obj(obj,str,obj)")
+RT_FUNC(CipherDecryptAAD,     rt_cipher_decrypt_aad,      "Viper.Crypto.Cipher.DecryptAAD",     "obj(obj,str,obj)")
 RT_FUNC(CipherEncryptWithKey, rt_cipher_encrypt_with_key, "Viper.Crypto.Cipher.EncryptWithKey", "obj(obj,obj)")
 RT_FUNC(CipherDecryptWithKey, rt_cipher_decrypt_with_key, "Viper.Crypto.Cipher.DecryptWithKey", "obj(obj,obj)")
+RT_FUNC(CipherEncryptWithKeyAAD, rt_cipher_encrypt_with_key_aad, "Viper.Crypto.Cipher.EncryptWithKeyAAD", "obj(obj,obj,obj)")
+RT_FUNC(CipherDecryptWithKeyAAD, rt_cipher_decrypt_with_key_aad, "Viper.Crypto.Cipher.DecryptWithKeyAAD", "obj(obj,obj,obj)")
 RT_FUNC(CipherGenerateKey,    rt_cipher_generate_key,     "Viper.Crypto.Cipher.GenerateKey",    "obj()")
 RT_FUNC(CipherDeriveKey,      rt_cipher_derive_key,       "Viper.Crypto.Cipher.DeriveKey",      "obj(str,obj)")
 
@@ -909,12 +917,16 @@ RT_FUNC(CipherDeriveKey,      rt_cipher_derive_key,       "Viper.Crypto.Cipher.D
 
 RT_FUNC(AesEncrypt,    rt_aes_encrypt,     "Viper.Crypto.Aes.Encrypt",    "obj(obj,obj,obj)")
 RT_FUNC(AesDecrypt,    rt_aes_decrypt,     "Viper.Crypto.Aes.Decrypt",    "obj(obj,obj,obj)")
+RT_FUNC(AesEncryptAuth, rt_aes_encrypt_auth, "Viper.Crypto.Aes.EncryptAuth", "obj(obj,obj,obj)")
+RT_FUNC(AesDecryptAuth, rt_aes_decrypt_auth, "Viper.Crypto.Aes.DecryptAuth", "obj(obj,obj,obj)")
 RT_FUNC(AesEncryptStr, rt_aes_encrypt_str, "Viper.Crypto.Aes.EncryptStr", "obj(str,str)")
 RT_FUNC(AesDecryptStr, rt_aes_decrypt_str, "Viper.Crypto.Aes.DecryptStr", "str(obj,str)")
 
 RT_CLASS_BEGIN("Viper.Crypto.Aes", CryptoAes, "none", none)
     RT_METHOD("Encrypt",    "obj(obj,obj,obj)", AesEncrypt)
     RT_METHOD("Decrypt",    "obj(obj,obj,obj)", AesDecrypt)
+    RT_METHOD("EncryptAuth", "obj(obj,obj,obj)", AesEncryptAuth)
+    RT_METHOD("DecryptAuth", "obj(obj,obj,obj)", AesDecryptAuth)
     RT_METHOD("EncryptStr", "obj(str,str)",     AesEncryptStr)
     RT_METHOD("DecryptStr", "str(obj,str)",     AesDecryptStr)
 RT_CLASS_END()
@@ -925,7 +937,10 @@ RT_CLASS_END()
 
 RT_FUNC(PasswordHash,       rt_password_hash,                 "Viper.Crypto.Password.Hash",       "str(str)")
 RT_FUNC(PasswordHashIters,  rt_password_hash_with_iterations, "Viper.Crypto.Password.HashIters",  "str(str,i64)")
+RT_FUNC(PasswordHashScrypt, rt_password_hash_scrypt,          "Viper.Crypto.Password.HashScrypt", "str(str)")
+RT_FUNC(PasswordHashScryptParams, rt_password_hash_scrypt_params, "Viper.Crypto.Password.HashScryptParams", "str(str,i64,i64,i64)")
 RT_FUNC(PasswordVerify,     rt_password_verify,               "Viper.Crypto.Password.Verify",     "i1(str,str)")
+RT_FUNC(PasswordNeedsRehash, rt_password_needs_rehash,        "Viper.Crypto.Password.NeedsRehash","i1(str)")
 
 //=============================================================================
 // CRYPTO - TLS (Secure Connections)
@@ -6474,6 +6489,8 @@ RT_CLASS_BEGIN("Viper.Crypto.Hash", Hash, "obj", none)
     RT_METHOD("HmacSHA1Bytes", "str(obj,obj)", HashHmacSHA1Bytes)
     RT_METHOD("HmacSHA256", "str(str,str)", HashHmacSHA256)
     RT_METHOD("HmacSHA256Bytes", "str(obj,obj)", HashHmacSHA256Bytes)
+    RT_METHOD("ConstantTimeEquals", "i1(str,str)", HashConstantTimeEquals)
+    RT_METHOD("ConstantTimeEqualsBytes", "i1(obj,obj)", HashConstantTimeEqualsBytes)
     RT_METHOD("Fast", "i64(str)", HashFast)
     RT_METHOD("FastBytes", "i64(obj)", HashFastBytes)
     RT_METHOD("FastInt", "i64(i64)", HashFastInt)
@@ -6483,13 +6500,18 @@ RT_CLASS_END()
 RT_CLASS_BEGIN("Viper.Crypto.KeyDerive", KeyDerive, "obj", none)
     RT_METHOD("Pbkdf2SHA256", "obj(str,obj,i64,i64)", KeyDerivePbkdf2SHA256)
     RT_METHOD("Pbkdf2SHA256Str", "str(str,obj,i64,i64)", KeyDerivePbkdf2SHA256Str)
+    RT_METHOD("ScryptSHA256", "obj(str,obj,i64,i64,i64,i64)", KeyDeriveScryptSHA256)
+    RT_METHOD("ScryptSHA256Str", "str(str,obj,i64,i64,i64,i64)", KeyDeriveScryptSHA256Str)
 RT_CLASS_END()
 
 // Viper.Crypto.Password - secure password hashing
 RT_CLASS_BEGIN("Viper.Crypto.Password", Password, "obj", none)
     RT_METHOD("Hash", "str(str)", PasswordHash)
     RT_METHOD("HashIters", "str(str,i64)", PasswordHashIters)
+    RT_METHOD("HashScrypt", "str(str)", PasswordHashScrypt)
+    RT_METHOD("HashScryptParams", "str(str,i64,i64,i64)", PasswordHashScryptParams)
     RT_METHOD("Verify", "i1(str,str)", PasswordVerify)
+    RT_METHOD("NeedsRehash", "i1(str)", PasswordNeedsRehash)
 RT_CLASS_END()
 
 // Viper.Crypto.Rand - secure random number generation
@@ -6503,9 +6525,13 @@ RT_CLASS_BEGIN("Viper.Crypto.Cipher", Cipher, "obj", none)
     // Password-based encryption (key derived from password)
     RT_METHOD("Encrypt", "obj(obj,str)", CipherEncrypt)
     RT_METHOD("Decrypt", "obj(obj,str)", CipherDecrypt)
+    RT_METHOD("EncryptAAD", "obj(obj,str,obj)", CipherEncryptAAD)
+    RT_METHOD("DecryptAAD", "obj(obj,str,obj)", CipherDecryptAAD)
     // Key-based encryption (uses raw 32-byte key)
     RT_METHOD("EncryptWithKey", "obj(obj,obj)", CipherEncryptWithKey)
     RT_METHOD("DecryptWithKey", "obj(obj,obj)", CipherDecryptWithKey)
+    RT_METHOD("EncryptWithKeyAAD", "obj(obj,obj,obj)", CipherEncryptWithKeyAAD)
+    RT_METHOD("DecryptWithKeyAAD", "obj(obj,obj,obj)", CipherDecryptWithKeyAAD)
     // Key utilities
     RT_METHOD("GenerateKey", "obj()", CipherGenerateKey)
     RT_METHOD("DeriveKey", "obj(str,obj)", CipherDeriveKey)

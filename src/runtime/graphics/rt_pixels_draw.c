@@ -216,6 +216,12 @@ static int8_t pixels_fill_span(rt_pixels_impl *p, int64_t y, int64_t x0, int64_t
     return 1;
 }
 
+/// @brief Bresenham line rasterizer onto a Pixels buffer.
+/// @details Clips first via pixels_clip_line_to_bounds, then walks the
+///          standard Bresenham error-accumulator loop. Each step writes one
+///          pixel directly into p->data[y * width + x]. Used by Line, Polyline,
+///          and the disc/ring outline primitives.
+/// @return 1 if any pixel was written, 0 if the line lies outside the buffer.
 static int8_t pixels_draw_line_raw(
     rt_pixels_impl *p, int64_t x1, int64_t y1, int64_t x2, int64_t y2, uint32_t rgba) {
     if (!pixels_clip_line_to_bounds(p, &x1, &y1, &x2, &y2))

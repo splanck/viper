@@ -85,6 +85,10 @@ typedef struct rt_camera_impl {
     int64_t parallax_count;                             ///< Number of active layers
 } rt_camera_impl;
 
+/// @brief Validate-and-return a Camera pointer; NULL for NULL or wrong class.
+/// @details Soft check (no trap) used by every public Camera entry point so
+///          stale handles fall through to no-ops rather than crashing in the
+///          middle of the per-frame draw loop.
 static rt_camera_impl *camera_checked_or_null(void *camera_ptr) {
     if (!camera_ptr || rt_obj_class_id(camera_ptr) != RT_CAMERA_CLASS_ID)
         return NULL;

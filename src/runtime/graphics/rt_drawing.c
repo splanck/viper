@@ -156,6 +156,17 @@ static int64_t rt_canvas_ceil_ld_to_i64_sat(long double value) {
     return (int64_t)ceill(value);
 }
 
+/// @brief Liang-Barsky parametric line-clip test against one half-plane.
+/// @details Tightens the parametric range [u1, u2] for one of the four clip
+///          edges and returns 0 when the segment is fully rejected. Called four
+///          times by rt_canvas_clip_line_to_logical (left, right, top, bottom).
+/// @param p   Half-plane direction: negative for "entering" edges (left/top),
+///            positive for "exiting" edges (right/bottom). Zero means the line
+///            is parallel to this edge — kept iff @p q is non-negative.
+/// @param q   Distance from the segment start to the half-plane.
+/// @param u1  In/out: lower parametric bound, advanced when entering.
+/// @param u2  In/out: upper parametric bound, retreated when exiting.
+/// @return 1 if the segment may still be visible after this edge, 0 if rejected.
 static int8_t rt_canvas_clip_line_test(long double p,
                                        long double q,
                                        long double *u1,
@@ -177,6 +188,18 @@ static int8_t rt_canvas_clip_line_test(long double p,
     return 1;
 }
 
+/// @brief Clip a line segment to the canvas's logical clip rect (Liang-Barsky in long-double).
+/// @details Applies the four-edge clip via rt_canvas_clip_line_test and rewrites
+///          the endpoints to the visible portion. Uses long double for the
+///          parametric arithmetic so int64 endpoints far apart don't lose
+///          precision during the (q / p) division. Final endpoints are rounded
+///          back to int64 with saturation, then verified to fit in int32 (the
+///          ViperGFX backend takes int32 coordinates).
+/// @param canvas Canvas whose clip rect provides the bounds.
+/// @param x1,y1  In/out: line start. Replaced with the clipped start on success.
+/// @param x2,y2  In/out: line end. Replaced with the clipped end on success.
+/// @return 1 if any portion of the line is visible (endpoints updated), 0 if
+///         fully outside the clip rect or if endpoints don't fit int32.
 static int8_t rt_canvas_clip_line_to_logical(
     rt_canvas *canvas, int64_t *x1, int64_t *y1, int64_t *x2, int64_t *y2) {
     int64_t clip_x = 0;
@@ -402,6 +425,11 @@ int64_t rt_color_rgba(int64_t r, int64_t g, int64_t b, int64_t a) {
     return packed | RT_COLOR_EXPLICIT_ALPHA_FLAG;
 }
 
+/// @brief Test whether (x, y) is inside the clip rect [clip_x, clip_x+clip_w) × [clip_y, clip_y+clip_h)
+///        using saturating int64 math, with a bonus int32-fits check for the eventual vgfx call.
+/// @details Used by the per-pixel plot/fill helpers below. Saturating addition
+///          ensures clip_x + clip_w doesn't wrap on extreme inputs.
+/// @return 1 if the point is inside the clip rect AND fits in int32, 0 otherwise.
 static int8_t rt_canvas_point_in_clip_i64(int64_t x,
                                           int64_t y,
                                           int64_t clip_x,
@@ -417,6 +445,10 @@ static int8_t rt_canvas_point_in_clip_i64(int64_t x,
     return rtg_i64_fits_i32(x) && rtg_i64_fits_i32(y);
 }
 
+/// @brief Plot one pixel at (x, y) iff it falls inside the clip rect.
+/// @details Used by line/disc/ring/text rasterizers that step pixel-by-pixel
+///          and want clip-correct behavior without paying for a separate
+///          ViperGFX clip-set per pixel. NULL canvas / NULL gfx_win are no-ops.
 static void rt_canvas_pset_clipped(rt_canvas *canvas,
                                    int64_t x,
                                    int64_t y,
@@ -431,6 +463,11 @@ static void rt_canvas_pset_clipped(rt_canvas *canvas,
     vgfx_pset(canvas->gfx_win, (int32_t)x, (int32_t)y, color);
 }
 
+/// @brief Fill the intersection of the (x, y, w, h) rect with the clip rect.
+/// @details Computes [x0, x1) × [y0, y1) as the intersection in saturating
+///          int64 math, then verifies each side fits in int32 before issuing
+///          the vgfx_fill_rect call. Empty intersections (x1 <= x0) are no-ops.
+///          Used by box/frame primitives that may straddle the clip boundary.
 static void rt_canvas_fill_rect_clipped(rt_canvas *canvas,
                                         int64_t x,
                                         int64_t y,

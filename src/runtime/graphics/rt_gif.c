@@ -289,6 +289,19 @@ static uint8_t *lzw_decompress(int min_code_size,
 static const int gif_interlace_start[4] = {0, 4, 2, 1};
 static const int gif_interlace_step[4] = {8, 8, 4, 2};
 
+/// @brief Decode a GIF file from disk into an array of RGBA frames.
+/// @details Reads the entire file into memory, then dispatches to the
+///          in-memory decoder path (the same one used by VPA-embedded GIFs).
+///          On success, @p out_frames is malloc'd and the caller must free it
+///          (each contained Pixels object is GC-managed and released via
+///          rt_obj_release_check0). Failure modes (NULL paths, fopen failure,
+///          truncated files) all return 0 and leave outputs untouched.
+/// @param filepath        Filesystem path to the .gif file. Must be non-NULL.
+/// @param out_frames      Out: malloc'd array of decoded frames. Required.
+/// @param out_frame_count Out: number of frames written. Required.
+/// @param out_width       Out: canvas width in pixels. Optional (NULL-safe).
+/// @param out_height      Out: canvas height in pixels. Optional (NULL-safe).
+/// @return 1 on success, 0 on any error.
 int gif_decode_file(const char *filepath,
                     gif_frame_t **out_frames,
                     int *out_frame_count,

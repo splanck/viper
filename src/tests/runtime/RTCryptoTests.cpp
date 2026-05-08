@@ -13,9 +13,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_bytes.h"
+#include "rt_aes.h"
+#include "rt_cipher.h"
 #include "rt_crypto.h"
 #include "rt_hash.h"
 #include "rt_keyderive.h"
+#include "rt_password.h"
 #include "rt_rand.h"
 #include "rt_string.h"
 
@@ -47,6 +50,16 @@ static void *make_bytes_str(const char *str) {
 
 static rt_string make_string_raw(const uint8_t *data, size_t len) {
     return rt_string_from_bytes((const char *)data, len);
+}
+
+static bool bytes_equal(void *bytes, const uint8_t *expected, size_t len) {
+    if (!bytes || rt_bytes_len(bytes) != (int64_t)len)
+        return false;
+    for (size_t i = 0; i < len; i++) {
+        if ((uint8_t)rt_bytes_get(bytes, (int64_t)i) != expected[i])
+            return false;
+    }
+    return true;
 }
 
 //=============================================================================
@@ -338,16 +351,102 @@ static void test_pbkdf2_sha256() {
                     strcmp(rt_string_cstr(full), rt_string_cstr(prefix)) != 0);
     }
 
-    // Test 5: Iterations below the public minimum are clamped
+    // Test 5: scrypt-SHA256 matches RFC 7914 test vector
     {
         rt_string password = rt_const_cstr("password");
-        void *salt = make_bytes_str("salt");
+        void *salt = make_bytes_str("NaCl");
 
-        rt_string clamped = rt_keyderive_pbkdf2_sha256_str(password, salt, 1, 16);
-        rt_string min_iters = rt_keyderive_pbkdf2_sha256_str(password, salt, 1000, 16);
-        test_result("PBKDF2 low iterations clamp to 1000",
-                    strcmp(rt_string_cstr(clamped), rt_string_cstr(min_iters)) == 0);
+        rt_string result = rt_keyderive_scrypt_sha256_str(password, salt, 1024, 8, 16, 64);
+        test_result("scrypt-SHA256 RFC 7914 vector",
+                    strcmp(rt_string_cstr(result),
+                           "fdbabe1c9d3472007856e7190d01e9fe7c6ad7cbc8237830e77376634b373162"
+                           "2eaf30d92e22a3886ff109279d9830dac727afb94a83ee6d8360cbdfa2cc0"
+                           "640") == 0);
     }
+
+    printf("\n");
+}
+
+static void test_constant_time_equals_and_passwords() {
+    printf("Testing constant-time compare and Password:\n");
+
+    rt_string mac1 = rt_const_cstr("abcdef012345");
+    rt_string mac2 = rt_const_cstr("abcdef012345");
+    rt_string mac3 = rt_const_cstr("abcdef012346");
+    test_result("Hash.ConstantTimeEquals accepts equal strings",
+                rt_hash_constant_time_equals(mac1, mac2) == 1);
+    test_result("Hash.ConstantTimeEquals rejects different strings",
+                rt_hash_constant_time_equals(mac1, mac3) == 0);
+
+    void *b1 = make_bytes_str("tag");
+    void *b2 = make_bytes_str("tag");
+    void *b3 = make_bytes_str("tags");
+    test_result("Hash.ConstantTimeEqualsBytes accepts equal bytes",
+                rt_hash_constant_time_equals_bytes(b1, b2) == 1);
+    test_result("Hash.ConstantTimeEqualsBytes rejects length mismatch",
+                rt_hash_constant_time_equals_bytes(b1, b3) == 0);
+
+    rt_string hash = rt_password_hash_scrypt_params(rt_const_cstr("secret"), 16, 1, 1);
+    test_result("Password.HashScryptParams verifies",
+                rt_password_verify(rt_const_cstr("secret"), hash) == 1);
+    test_result("Password.Verify rejects wrong password",
+                rt_password_verify(rt_const_cstr("wrong"), hash) == 0);
+    test_result("Password.NeedsRehash flags weak scrypt params",
+                rt_password_needs_rehash(hash) == 1);
+
+    rt_string pbkdf2 = rt_password_hash_with_iterations(rt_const_cstr("secret"), 100000);
+    test_result("Password.Verify accepts legacy PBKDF2",
+                rt_password_verify(rt_const_cstr("secret"), pbkdf2) == 1);
+    test_result("Password.NeedsRehash flags PBKDF2",
+                rt_password_needs_rehash(pbkdf2) == 1);
+
+    printf("\n");
+}
+
+static void test_high_level_aead_wrappers() {
+    printf("Testing high-level AEAD wrappers:\n");
+
+    const uint8_t plain_data[] = {'s', 'e', 'c', 'r', 'e', 't'};
+    void *plain = make_bytes(plain_data, sizeof(plain_data));
+    void *aad = make_bytes_str("context");
+    void *wrong_aad = make_bytes_str("other");
+
+    void *cipher = rt_cipher_encrypt_aad(plain, rt_const_cstr("password"), aad);
+    test_result("Cipher.EncryptAAD uses versioned format",
+                cipher && rt_bytes_len(cipher) > 4 && rt_bytes_get(cipher, 0) == 'V' &&
+                    rt_bytes_get(cipher, 1) == 'C' && rt_bytes_get(cipher, 2) == 'P' &&
+                    rt_bytes_get(cipher, 3) == '2');
+    void *opened = rt_cipher_decrypt_aad(cipher, rt_const_cstr("password"), aad);
+    test_result("Cipher.DecryptAAD round-trips",
+                bytes_equal(opened, plain_data, sizeof(plain_data)));
+    test_result("Cipher.DecryptAAD rejects wrong AAD",
+                rt_cipher_decrypt_aad(cipher, rt_const_cstr("password"), wrong_aad) == nullptr);
+
+    void *key = rt_cipher_generate_key();
+    void *key_cipher = rt_cipher_encrypt_with_key_aad(plain, key, aad);
+    test_result("Cipher.EncryptWithKeyAAD uses versioned format",
+                key_cipher && rt_bytes_len(key_cipher) > 4 && rt_bytes_get(key_cipher, 0) == 'V' &&
+                    rt_bytes_get(key_cipher, 1) == 'C' && rt_bytes_get(key_cipher, 2) == 'K' &&
+                    rt_bytes_get(key_cipher, 3) == '2');
+    void *key_opened = rt_cipher_decrypt_with_key_aad(key_cipher, key, aad);
+    test_result("Cipher.DecryptWithKeyAAD round-trips",
+                bytes_equal(key_opened, plain_data, sizeof(plain_data)));
+    test_result("Cipher.DecryptWithKeyAAD rejects wrong AAD",
+                rt_cipher_decrypt_with_key_aad(key_cipher, key, wrong_aad) == nullptr);
+
+    uint8_t aes_key_data[16];
+    memset(aes_key_data, 0x42, sizeof(aes_key_data));
+    void *aes_key = make_bytes(aes_key_data, sizeof(aes_key_data));
+    void *aes_cipher = rt_aes_encrypt_auth(plain, aes_key, aad);
+    test_result("Aes.EncryptAuth uses versioned format",
+                aes_cipher && rt_bytes_len(aes_cipher) > 4 && rt_bytes_get(aes_cipher, 0) == 'V' &&
+                    rt_bytes_get(aes_cipher, 1) == 'A' && rt_bytes_get(aes_cipher, 2) == 'K' &&
+                    rt_bytes_get(aes_cipher, 3) == '1');
+    void *aes_opened = rt_aes_decrypt_auth(aes_cipher, aes_key, aad);
+    test_result("Aes.DecryptAuth round-trips",
+                bytes_equal(aes_opened, plain_data, sizeof(plain_data)));
+    test_result("Aes.DecryptAuth rejects wrong AAD",
+                rt_aes_decrypt_auth(aes_cipher, aes_key, wrong_aad) == nullptr);
 
     printf("\n");
 }
@@ -548,6 +647,8 @@ int main() {
     test_sha256_incremental_matches_one_shot();
     test_string_inputs_preserve_embedded_nul();
     test_pbkdf2_sha256();
+    test_constant_time_equals_and_passwords();
+    test_high_level_aead_wrappers();
     test_crypto_rand();
     test_aead_tamper_detection();
     test_x25519_shared_secret_agreement();

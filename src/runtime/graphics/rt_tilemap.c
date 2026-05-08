@@ -125,6 +125,13 @@ static int32_t tilemap_checked_grid_size(int64_t width,
     return 1;
 }
 
+/// @brief Validate-and-return a Tilemap pointer; trap-or-NULL on failure.
+/// @details If @p tilemap_ptr is NULL and @p trap_message is non-NULL, raises
+///          a runtime trap with the provided diagnostic. NULL @p trap_message
+///          turns the NULL check into a soft no-op (returns NULL silently).
+///          Wrong-class handles always return NULL silently — the GC may
+///          reach this with stale references during finalization, and a trap
+///          there would crash the collector.
 static rt_tilemap_impl *tilemap_checked(void *tilemap_ptr, const char *trap_message) {
     if (!tilemap_ptr) {
         if (trap_message)

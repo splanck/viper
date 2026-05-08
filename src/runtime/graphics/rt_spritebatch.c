@@ -95,6 +95,10 @@ typedef struct {
     uint32_t *data;
 } spritebatch_pixels_view;
 
+/// @brief Validate-and-return a SpriteBatch pointer; returns NULL for NULL or wrong class.
+/// @details Soft check (no trap) — used by every public SpriteBatch entry
+///          so that wrong-class handles silently no-op rather than crashing
+///          mid-frame during a draw burst.
 static spritebatch_impl *spritebatch_checked_or_null(void *batch_ptr) {
     if (!batch_ptr || rt_obj_class_id(batch_ptr) != RT_SPRITEBATCH_CLASS_ID)
         return NULL;

@@ -24,7 +24,7 @@ last-verified: 2026-05-06
 
 ## Viper.Crypto.Aes
 
-AES utilities: raw AES-CBC with PKCS7 padding for `Bytes`, plus authenticated PBKDF2 + AES-128-GCM for password-encrypted strings.
+AES utilities: authenticated AES-128-GCM for `Bytes` and password-encrypted strings, plus legacy raw AES-CBC with PKCS7 padding.
 
 **Type:** Static utility class
 
@@ -34,13 +34,16 @@ AES utilities: raw AES-CBC with PKCS7 padding for `Bytes`, plus authenticated PB
 |-------------------------------------|--------------------------------|-------------------------------------------------------------------------------|
 | `Encrypt(data, key, iv)`            | `Bytes(Bytes, Bytes, Bytes)`   | Encrypt data with AES key and initialization vector                           |
 | `Decrypt(data, key, iv)`            | `Bytes(Bytes, Bytes, Bytes)`   | Decrypt data with AES key and initialization vector                           |
+| `EncryptAuth(data, key, aad)`       | `Bytes(Bytes, Bytes, Bytes)`   | Encrypt bytes with AES-128-GCM and authenticated data                         |
+| `DecryptAuth(data, key, aad)`       | `Bytes(Bytes, Bytes, Bytes)`   | Decrypt AES-128-GCM bytes and verify authenticated data                       |
 | `EncryptStr(plaintext, password)`   | `Bytes(String, String)`        | Encrypt a string with a password using PBKDF2 + AES-128-GCM                    |
 | `DecryptStr(ciphertext, password)`  | `String(Bytes, String)`        | Decrypt ciphertext to a string using the authenticated string format           |
 
 ### Notes
 
-- `Encrypt`/`Decrypt` require a raw key (16 or 32 bytes) and IV (16 bytes)
-- `EncryptStr` derives an AES-128 key from the password using PBKDF2-HMAC-SHA256 with a random salt and a 300,000-iteration default
+- `EncryptAuth`/`DecryptAuth` require a 16-byte AES-128 key and bind the `[magic][nonce]` header plus caller-provided AAD into the GCM tag
+- `Encrypt`/`Decrypt` are legacy AES-CBC helpers. CBC ciphertext is not authenticated; prefer `EncryptAuth`, `EncryptStr`, or `Viper.Crypto.Cipher`.
+- `EncryptStr` rejects empty passwords, derives an AES-128 key from the password using PBKDF2-HMAC-SHA256 with a random salt and a 300,000-iteration default, and authenticates its header as AAD
 - `EncryptStr` output format is `[magic(4)][iterations(4)][salt(16)][nonce(12)][ciphertext][tag(16)]`
 - `DecryptStr` remains backward-compatible with older `[IV(16)][AES-CBC ciphertext]` payloads
 - String plaintexts and passwords use the stored Viper string byte length, so embedded `NUL` bytes are significant
@@ -66,12 +69,12 @@ func start() {
     var plaintext = Aes.DecryptStr(ciphertext, "my-password");
     Say("Decrypted: " + plaintext);
 
-    // Raw AES with explicit key and IV
-    var key = CRand.Bytes(32);   // 256-bit key
-    var iv = CRand.Bytes(16);    // 128-bit IV
+    // Authenticated AES with explicit key and AAD
+    var key = CRand.Bytes(16);   // 128-bit AES-GCM key
+    var aad = Bytes.FromStr("file:v1");
     var data = Bytes.FromStr("Secret data");
-    var enc = Aes.Encrypt(data, key, iv);
-    var dec = Aes.Decrypt(enc, key, iv);
+    var enc = Aes.EncryptAuth(data, key, aad);
+    var dec = Aes.DecryptAuth(enc, key, aad);
     Say("Round-trip: " + Bytes.ToStr(dec));
 }
 ```
@@ -84,12 +87,12 @@ DIM ciphertext AS OBJECT = Viper.Crypto.Aes.EncryptStr("Hello, AES!", "my-passwo
 DIM plaintext AS STRING = Viper.Crypto.Aes.DecryptStr(ciphertext, "my-password")
 PRINT "Decrypted: "; plaintext
 
-' Raw AES with explicit key and IV
-DIM key AS OBJECT = Viper.Crypto.Rand.Bytes(32)   ' 256-bit key
-DIM iv AS OBJECT = Viper.Crypto.Rand.Bytes(16)    ' 128-bit IV
+' Authenticated AES with explicit key and AAD
+DIM key AS OBJECT = Viper.Crypto.Rand.Bytes(16)   ' 128-bit AES-GCM key
+DIM aad AS OBJECT = Viper.Collections.Bytes.FromStr("file:v1")
 DIM data AS OBJECT = Viper.Collections.Bytes.FromStr("Secret data")
-DIM enc AS OBJECT = Viper.Crypto.Aes.Encrypt(data, key, iv)
-DIM dec AS OBJECT = Viper.Crypto.Aes.Decrypt(enc, key, iv)
+DIM enc AS OBJECT = Viper.Crypto.Aes.EncryptAuth(data, key, aad)
+DIM dec AS OBJECT = Viper.Crypto.Aes.DecryptAuth(enc, key, aad)
 PRINT "Round-trip: "; Viper.Collections.Bytes.ToStr(dec)
 ```
 
@@ -107,8 +110,12 @@ High-level symmetric encryption using ChaCha20-Poly1305 AEAD with automatic key 
 |----------------------------------|-----------------------------|-------------------------------------------------------|
 | `Encrypt(data, password)`        | `Bytes(Bytes, String)`      | Encrypt data with password (automatic salt/nonce)     |
 | `Decrypt(data, password)`        | `Bytes(Bytes, String)`      | Decrypt password-encrypted data                       |
+| `EncryptAAD(data, password, aad)`| `Bytes(Bytes,String,Bytes)` | Encrypt and bind caller-provided authenticated data   |
+| `DecryptAAD(data, password, aad)`| `Bytes(Bytes,String,Bytes)` | Decrypt and verify caller-provided authenticated data |
 | `EncryptWithKey(data, key)`      | `Bytes(Bytes, Bytes)`       | Encrypt data with a 32-byte key                       |
 | `DecryptWithKey(data, key)`      | `Bytes(Bytes, Bytes)`       | Decrypt key-encrypted data                            |
+| `EncryptWithKeyAAD(data,key,aad)`| `Bytes(Bytes,Bytes,Bytes)`  | Encrypt with a key and authenticated data             |
+| `DecryptWithKeyAAD(data,key,aad)`| `Bytes(Bytes,Bytes,Bytes)`  | Decrypt with a key and authenticated data             |
 
 ### Key Management Methods
 
@@ -122,13 +129,13 @@ High-level symmetric encryption using ChaCha20-Poly1305 AEAD with automatic key 
 Password-based encryption produces ciphertext in this format:
 
 ```text
-[salt(16 bytes)][nonce(12 bytes)][ciphertext][tag(16 bytes)]
+[magic "VCP2"(4)][iterations(4)][salt(16)][nonce(12)][ciphertext][tag(16)]
 ```
 
 Key-based encryption produces:
 
 ```text
-[nonce(12 bytes)][ciphertext][tag(16 bytes)]
+[magic "VCK2"(4)][nonce(12)][ciphertext][tag(16)]
 ```
 
 ### Security Properties
@@ -138,7 +145,8 @@ Key-based encryption produces:
 - **Nonce Size:** 96 bits (12 bytes, randomly generated)
 - **Authentication Tag:** 128 bits (16 bytes)
 - **Key Derivation:** PBKDF2-HMAC-SHA256 with random 16-byte salt and a 300,000-iteration default
-- Password-based `Decrypt()` remains backward-compatible with older HKDF-derived payloads during migration
+- Header bytes and caller-provided AAD are authenticated by the AEAD tag
+- `Decrypt()` remains backward-compatible with older unversioned PBKDF2/HKDF payloads; new payloads use the versioned `VCP2` format
 - Password strings use their stored byte length, so embedded `NUL` bytes are part of the password
 
 ### Zia Example
@@ -293,6 +301,8 @@ Cryptographic hash functions, checksums, and HMAC authentication for strings and
 | `Fast(str)`          | `Integer(String)` | Compute FNV-1a hash of a string          |
 | `FastBytes(data)`    | `Integer(Bytes)`  | Compute FNV-1a hash of a Bytes object    |
 | `FastInt(value)`     | `Integer(Integer)`| Compute FNV-1a hash of an integer        |
+| `ConstantTimeEquals(a, b)` | `Boolean(String,String)` | Timing-safe equality for digests/MACs |
+| `ConstantTimeEqualsBytes(a, b)` | `Boolean(Bytes,Bytes)` | Timing-safe equality for binary tags |
 
 ### HMAC Methods
 
@@ -355,7 +365,7 @@ PRINT "Int hash:"; h3
 - **CRC32**: NOT cryptographic. Only for error detection, not security.
 - **MD5**: Cryptographically broken. Collisions can be generated in seconds. Do NOT use for security.
 - **SHA1**: Cryptographically broken. Chosen-prefix collisions demonstrated. Do NOT use for security.
-- **SHA256**: Currently secure. Recommended for all security applications.
+- **SHA256**: Currently collision/preimage resistant. Do not use plain SHA256 as a password hash or as a MAC; use `Password`, `KeyDerive`, or HMAC as appropriate.
 
 ### Zia Example
 
@@ -395,7 +405,7 @@ PRINT "HMAC: "; mac
 ' Verify message authenticity
 DIM receivedMac AS STRING = "..." ' Received with message
 DIM computedMac AS STRING = Viper.Crypto.Hash.HmacSHA256(secretKey, message)
-IF receivedMac = computedMac THEN
+IF Viper.Crypto.Hash.ConstantTimeEquals(receivedMac, computedMac) THEN
     PRINT "Message is authentic"
 ELSE
     PRINT "WARNING: Message was tampered with!"
@@ -435,6 +445,8 @@ Key derivation functions for deriving cryptographic keys from passwords.
 |---------------------------------------------|--------------------------------------|------------------------------------|
 | `Pbkdf2SHA256(password, salt, iterations, keyLen)` | `Bytes(String,Bytes,Integer,Integer)` | Derive key using PBKDF2-HMAC-SHA256 |
 | `Pbkdf2SHA256Str(password, salt, iterations, keyLen)` | `String(String,Bytes,Integer,Integer)` | Same but returns hex string |
+| `ScryptSHA256(password, salt, n, r, p, keyLen)` | `Bytes(String,Bytes,Integer,Integer,Integer,Integer)` | Derive key using memory-hard scrypt |
+| `ScryptSHA256Str(password, salt, n, r, p, keyLen)` | `String(String,Bytes,Integer,Integer,Integer,Integer)` | Same but returns hex string |
 
 ### Parameters
 
@@ -442,14 +454,16 @@ Key derivation functions for deriving cryptographic keys from passwords.
 |--------------|---------|------------------------------------------------|
 | `password`   | String  | The password to derive from                    |
 | `salt`       | Bytes   | Unique random salt (non-empty; 16 bytes recommended) |
-| `iterations` | Integer | Number of iterations (values below 1000 are raised to 1000; recommend 300000+ for password storage) |
+| `iterations` | Integer | PBKDF2 iteration count (1000 to 10,000,000; recommend 300000+ for encryption keys) |
+| `n`, `r`, `p` | Integer | scrypt cost parameters; `n` must be a supported power of two |
 | `keyLen`     | Integer | Desired key length in bytes (1-1024)           |
 
 ### Traps
 
-- `iterations > 4294967295`: Traps because PBKDF2 stores the iteration count as a 32-bit value
+- `iterations < 1000` or `iterations > 10000000`: Traps instead of silently changing the requested work factor
 - empty `salt`: Traps with "salt must not be empty"
 - `keyLen < 1 or keyLen > 1024`: Traps with "key_len must be between 1 and 1024"
+- unsupported scrypt memory/cost parameters: Traps before allocating memory
 
 ### Zia Example
 
@@ -466,7 +480,9 @@ func start() {
 
     // Derive a key using PBKDF2-SHA256
     var keyHex = KD.Pbkdf2SHA256Str("password123", salt, 300000, 32);
+    var scryptHex = KD.ScryptSHA256Str("password123", salt, 16384, 8, 1, 32);
     Say("Derived key: " + keyHex);
+    Say("scrypt key: " + scryptHex);
 }
 ```
 
@@ -514,13 +530,13 @@ FUNCTION VerifyPassword(password AS STRING, stored AS STRING) AS BOOLEAN
     ' Recompute hash with same parameters
     DIM computedHash AS STRING = Viper.Crypto.KeyDerive.Pbkdf2SHA256Str(password, salt, iterations, 32)
 
-    RETURN computedHash = storedHash
+    RETURN Viper.Crypto.Hash.ConstantTimeEquals(computedHash, storedHash)
 END FUNCTION
 ```
 
 ### Security Recommendations
 
-1. **Use high iteration counts**: Prefer 300,000 or higher for password storage on current hardware
+1. **Use `Password` for password storage**: it includes a self-describing format and migration checks
 2. **Use unique salts**: Generate a new random salt for each password
 3. **Store salt with hash**: You need the salt to verify passwords
 4. **Use sufficient key length**: 32 bytes (256 bits) is standard
@@ -812,7 +828,7 @@ Use `Error()` to get descriptive error messages for debugging.
 
 ## Viper.Crypto.Password
 
-High-level password hashing and verification using PBKDF2. Provides a simple API for securely storing and checking passwords without manual salt management.
+High-level password hashing and verification using memory-hard scrypt by default, with legacy PBKDF2 verification for existing hashes.
 
 **Type:** Static utility class
 
@@ -820,13 +836,22 @@ High-level password hashing and verification using PBKDF2. Provides a simple API
 
 | Method                    | Signature                  | Description                                                      |
 |---------------------------|----------------------------|------------------------------------------------------------------|
-| `Hash(password)`          | `String(String)`           | Hash a password with 300,000 iterations and random salt          |
-| `HashIters(password, n)`  | `String(String, Integer)`  | Hash a password with a custom iteration count and random salt    |
+| `Hash(password)`          | `String(String)`           | Hash a password with default scrypt parameters and random salt   |
+| `HashScrypt(password)`    | `String(String)`           | Same as `Hash`                                                   |
+| `HashScryptParams(password, n, r, p)` | `String(String,Integer,Integer,Integer)` | Hash with explicit scrypt parameters |
+| `HashIters(password, n)`  | `String(String, Integer)`  | Legacy PBKDF2 hash with a custom iteration count and random salt |
 | `Verify(password, hash)`  | `Boolean(String, String)`  | Verify a password against a previously generated hash            |
+| `NeedsRehash(hash)`       | `Boolean(String)`          | Report whether a stored hash should be upgraded                  |
 
 ### Output Format
 
-`Hash` and `HashIters` return a self-describing string in the format:
+`Hash` and `HashScrypt` return a self-describing string in the format:
+
+```text
+SCRYPT$<log2N>$<r>$<p>$<base64-salt>$<base64-hash>
+```
+
+`HashIters` returns the legacy PBKDF2 format:
 
 ```text
 PBKDF2$<iterations>$<base64-salt>$<base64-hash>
@@ -836,12 +861,13 @@ This format stores everything needed for verification: the algorithm identifier,
 
 ### Notes
 
-- Uses PBKDF2-HMAC-SHA256 as the underlying key derivation function
-- Default iteration count is 300,000
-- `HashIters` clamps low requests up to 100,000 instead of silently using very weak counts
+- Uses scrypt-SHA256 as the default password hashing KDF
+- `HashIters` is retained for PBKDF2 compatibility and rejects requests below 100,000
 - A random 16-byte salt is generated automatically for each hash
-- The salt and iteration count are embedded in the output string, so no separate storage is needed
+- The salt and cost parameters are embedded in the output string, so no separate storage is needed
 - `Verify` parses the stored hash string to extract parameters before re-deriving
+- `Verify` accepts current `SCRYPT$...` hashes and legacy `PBKDF2$...` hashes
+- `NeedsRehash` returns true for malformed hashes, PBKDF2 hashes, and scrypt hashes below the current defaults
 - `Verify` returns `false` for malformed, null, or non-canonical stored hashes instead of trapping
 - Stored password hashes require strict Base64 salt/hash fields with the expected decoded lengths
 - Embedded `NUL` bytes in passwords are significant
@@ -859,7 +885,7 @@ bind Viper.Fmt as Fmt;
 func start() {
     // Hash a password
     var hash = Password.Hash("secret123");
-    Say("Hash: " + hash);  // PBKDF2$300000$...
+    Say("Hash: " + hash);  // SCRYPT$14$8$1$...
 
     // Verify correct password
     Say("Verify correct: " + Fmt.Bool(Password.Verify("secret123", hash)));  // true
@@ -874,7 +900,7 @@ func start() {
 ```basic
 ' Hash a password
 DIM hash AS STRING = Viper.Crypto.Password.Hash("secret123")
-PRINT "Hash: "; hash  ' Output: PBKDF2$300000$...
+PRINT "Hash: "; hash  ' Output: SCRYPT$14$8$1$...
 
 ' Verify correct password
 PRINT "Correct: "; Viper.Crypto.Password.Verify("secret123", hash)  ' Output: 1
@@ -886,12 +912,13 @@ PRINT "Wrong: "; Viper.Crypto.Password.Verify("wrong", hash)        ' Output: 0
 DIM strongHash AS STRING = Viper.Crypto.Password.HashIters("secret123", 500000)
 PRINT "Strong hash: "; strongHash
 PRINT "Verify: "; Viper.Crypto.Password.Verify("secret123", strongHash)  ' Output: 1
+PRINT "Needs rehash: "; Viper.Crypto.Password.NeedsRehash(strongHash)    ' Output: 1 for PBKDF2
 ```
 
 ### Security Recommendations
 
-1. **Use default iterations for production:** 300,000 iterations is the current runtime baseline
-2. **Increase iterations over time:** As hardware gets faster, increase the iteration count
+1. **Use `Hash` for production:** scrypt is the current runtime baseline for password storage
+2. **Rehash over time:** call `NeedsRehash` after login and replace old hashes with `Hash`
 3. **Never store plaintext:** Always store the hash string, never the original password
 4. **Timing-safe comparison:** `Verify` uses constant-time comparison to prevent timing attacks
 

@@ -242,6 +242,16 @@ static int64_t pixels_map_fixed_256(int64_t dst, int64_t src_size, int64_t dst_s
     return (int64_t)mapped;
 }
 
+/// @brief Convert a positive long-double extent (output dimension) to an int64
+///        pixel count, ceiling-rounded and bounded to at least 1.
+/// @details Used by the rotation/scale paths where the bounding box of the
+///          transformed image is computed in long double for precision and
+///          must be widened to a whole-pixel allocation. Rejects NaN/inf and
+///          negative extents (returns 0 — caller treats as "transform invalid"
+///          and produces no output). A zero-or-fraction extent rounds up to 1
+///          so degenerate inputs still return a 1-pixel buffer rather than
+///          allocating a 0-byte array.
+/// @return 1 on success (out written), 0 if @p extent is invalid or overflows i64.
 static int8_t pixels_long_double_extent_to_i64(long double extent, int64_t *out) {
     if (!out || !isfinite((double)extent) || extent < 0.0L)
         return 0;

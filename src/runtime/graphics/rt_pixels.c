@@ -50,8 +50,20 @@
 #include <stdlib.h>
 #include <string.h>
 
+/// @brief Process-wide monotonic counter handed out as cache_identity for new Pixels objects.
+/// @details Each Pixels allocation receives a unique 63-bit identity value
+///          here so downstream caches (e.g. canvas-side texture caches) can
+///          tell two same-dimensions Pixels apart without comparing pointers
+///          (which can repeat after GC). Volatile because it's read across
+///          allocations on potentially different threads; updates use
+///          atomic increment in rt_pixels_new (not shown).
 static volatile int64_t g_next_pixels_cache_identity = 1;
 
+/// @brief Raise a runtime trap with a Pixels-specific error message.
+/// @details Centralized so every guard in this file (NULL handles, wrong
+///          class id) reports the same wording. @p op is preferred when
+///          provided; @p fallback covers paths where the operation context
+///          isn't known at the trap site.
 void viper_pixels_trap_invalid_handle(const char *op, const char *fallback) {
     rt_trap(op ? op : fallback);
 }

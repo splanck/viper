@@ -6,14 +6,13 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_keyderive.c
-// Purpose: Implements PBKDF2-SHA256 key derivation (RFC 2898 / RFC 8018) for
-//          the Viper.Text.KeyDerive class. Derives cryptographic keys from
-//          passwords using HMAC-SHA256 as the pseudorandom function with a
-//          configurable iteration count and salt.
+// Purpose: Implements PBKDF2-SHA256 (RFC 8018) and scrypt-SHA256 (RFC 7914)
+//          for the Viper.Crypto.KeyDerive class.
 //
 // Key invariants:
-//   - Minimum iteration count is PBKDF2_MIN_ITERATIONS (1000); requests below
-//     this threshold are silently raised to the minimum by public wrappers.
+//   - Minimum PBKDF2 iteration count is RT_PBKDF2_MIN_ITERATIONS (1000);
+//     requests below this threshold are rejected by public wrappers.
+//   - PBKDF2 and scrypt work factors are capped to avoid CPU/memory DoS.
 //   - Salt must be non-empty; a NULL or empty salt causes a trap.
 //   - Output key length is specified in bytes; any positive length is supported.
 //   - HMAC-SHA256 block size is 64 bytes; key padding follows RFC 2104.
@@ -38,6 +37,7 @@
 #include "rt_internal.h"
 #include "rt_string.h"
 
+#include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -89,11 +89,9 @@ static void keyderive_secure_zero(void *ptr, size_t len) {
 ///          The XOR-accumulation across iterations is the cost amplification:
 ///          an attacker brute-forcing the password must evaluate HMAC-SHA256
 ///          `c` times per guess, making the per-guess cost linear in
-///          `iterations`. Modern guidance (OWASP 2023) recommends at least
-///          ~600,000 iterations for SHA256; this raw function trusts the
-///          caller, but the higher-level `Password` class enforces a
-///          minimum of 1,000 (the historical RFC-2898 floor) to prevent
-///          accidentally toothless deployments.
+///          `iterations`. This raw function accepts low counts for algorithms
+///          such as scrypt that internally require PBKDF2 with c=1. Public
+///          wrappers enforce deployment policy.
 ///
 ///          The block-index `INT32_BE(i)` is appended to the salt buffer in
 ///          place across the outer loop (allocated once, reused with the
@@ -117,12 +115,14 @@ void rt_keyderive_pbkdf2_sha256_raw(const uint8_t *password,
                                     uint32_t iterations,
                                     uint8_t *out,
                                     size_t out_len) {
-    if (!salt || salt_len == 0)
-        rt_trap("PBKDF2: salt must not be empty");
+    if (!salt && salt_len > 0)
+        rt_trap("PBKDF2: invalid salt buffer");
     if (iterations == 0)
         rt_trap("PBKDF2: iterations must be greater than 0");
-    if (!out || out_len == 0 || out_len > RT_PBKDF2_MAX_KEY_LEN)
-        rt_trap("PBKDF2: key_len must be between 1 and 1024");
+    if (iterations > RT_PBKDF2_MAX_ITERATIONS)
+        rt_trap("PBKDF2: iterations exceed policy maximum");
+    if (!out || out_len == 0 || out_len > RT_SCRYPT_MAX_MEMORY)
+        rt_trap("PBKDF2: invalid output length");
 
     // Number of blocks needed
     uint32_t block_count = (uint32_t)((out_len + SHA256_DIGEST_LEN - 1) / SHA256_DIGEST_LEN);
@@ -178,6 +178,184 @@ void rt_keyderive_pbkdf2_sha256_raw(const uint8_t *password,
     free(salt_int);
 }
 
+static uint32_t load32_le(const uint8_t *p) {
+    return ((uint32_t)p[0]) | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) |
+           ((uint32_t)p[3] << 24);
+}
+
+static void store32_le(uint8_t *p, uint32_t v) {
+    p[0] = (uint8_t)v;
+    p[1] = (uint8_t)(v >> 8);
+    p[2] = (uint8_t)(v >> 16);
+    p[3] = (uint8_t)(v >> 24);
+}
+
+#define SALSA_ROTL32(x, n) (((x) << (n)) | ((x) >> (32 - (n))))
+
+static void salsa20_8(uint8_t block[64]) {
+    uint32_t x[16];
+    uint32_t orig[16];
+
+    for (int i = 0; i < 16; i++) {
+        x[i] = load32_le(block + (size_t)i * 4);
+        orig[i] = x[i];
+    }
+
+    for (int i = 0; i < 8; i += 2) {
+        x[4] ^= SALSA_ROTL32(x[0] + x[12], 7);
+        x[8] ^= SALSA_ROTL32(x[4] + x[0], 9);
+        x[12] ^= SALSA_ROTL32(x[8] + x[4], 13);
+        x[0] ^= SALSA_ROTL32(x[12] + x[8], 18);
+        x[9] ^= SALSA_ROTL32(x[5] + x[1], 7);
+        x[13] ^= SALSA_ROTL32(x[9] + x[5], 9);
+        x[1] ^= SALSA_ROTL32(x[13] + x[9], 13);
+        x[5] ^= SALSA_ROTL32(x[1] + x[13], 18);
+        x[14] ^= SALSA_ROTL32(x[10] + x[6], 7);
+        x[2] ^= SALSA_ROTL32(x[14] + x[10], 9);
+        x[6] ^= SALSA_ROTL32(x[2] + x[14], 13);
+        x[10] ^= SALSA_ROTL32(x[6] + x[2], 18);
+        x[3] ^= SALSA_ROTL32(x[15] + x[11], 7);
+        x[7] ^= SALSA_ROTL32(x[3] + x[15], 9);
+        x[11] ^= SALSA_ROTL32(x[7] + x[3], 13);
+        x[15] ^= SALSA_ROTL32(x[11] + x[7], 18);
+
+        x[1] ^= SALSA_ROTL32(x[0] + x[3], 7);
+        x[2] ^= SALSA_ROTL32(x[1] + x[0], 9);
+        x[3] ^= SALSA_ROTL32(x[2] + x[1], 13);
+        x[0] ^= SALSA_ROTL32(x[3] + x[2], 18);
+        x[6] ^= SALSA_ROTL32(x[5] + x[4], 7);
+        x[7] ^= SALSA_ROTL32(x[6] + x[5], 9);
+        x[4] ^= SALSA_ROTL32(x[7] + x[6], 13);
+        x[5] ^= SALSA_ROTL32(x[4] + x[7], 18);
+        x[11] ^= SALSA_ROTL32(x[10] + x[9], 7);
+        x[8] ^= SALSA_ROTL32(x[11] + x[10], 9);
+        x[9] ^= SALSA_ROTL32(x[8] + x[11], 13);
+        x[10] ^= SALSA_ROTL32(x[9] + x[8], 18);
+        x[12] ^= SALSA_ROTL32(x[15] + x[14], 7);
+        x[13] ^= SALSA_ROTL32(x[12] + x[15], 9);
+        x[14] ^= SALSA_ROTL32(x[13] + x[12], 13);
+        x[15] ^= SALSA_ROTL32(x[14] + x[13], 18);
+    }
+
+    for (int i = 0; i < 16; i++)
+        store32_le(block + (size_t)i * 4, x[i] + orig[i]);
+
+    keyderive_secure_zero(x, sizeof(x));
+    keyderive_secure_zero(orig, sizeof(orig));
+}
+
+#undef SALSA_ROTL32
+
+static void scrypt_blockmix(uint8_t *block, uint8_t *tmp, uint32_t r) {
+    uint8_t x[64];
+    size_t blocks = (size_t)2 * r;
+
+    memcpy(x, block + (blocks - 1) * 64, 64);
+    for (size_t i = 0; i < blocks; i++) {
+        for (size_t j = 0; j < 64; j++)
+            x[j] ^= block[i * 64 + j];
+        salsa20_8(x);
+        memcpy(tmp + i * 64, x, 64);
+    }
+
+    for (uint32_t i = 0; i < r; i++)
+        memcpy(block + (size_t)i * 64, tmp + (size_t)(2 * i) * 64, 64);
+    for (uint32_t i = 0; i < r; i++)
+        memcpy(block + ((size_t)i + r) * 64, tmp + (size_t)(2 * i + 1) * 64, 64);
+
+    keyderive_secure_zero(x, sizeof(x));
+}
+
+static uint64_t scrypt_integerify(const uint8_t *block, uint32_t r) {
+    const uint8_t *last = block + ((size_t)2 * r - 1) * 64;
+    return ((uint64_t)load32_le(last + 4) << 32) | (uint64_t)load32_le(last);
+}
+
+static void scrypt_romix(uint8_t *block, uint64_t n, uint32_t r) {
+    size_t block_len = (size_t)128 * r;
+    if (n > SIZE_MAX / block_len)
+        rt_trap("scrypt: memory cost is too large");
+    size_t v_len = (size_t)n * block_len;
+    if (v_len > RT_SCRYPT_MAX_MEMORY)
+        rt_trap("scrypt: memory cost exceeds policy maximum");
+
+    uint8_t *v = (uint8_t *)malloc(v_len);
+    uint8_t *tmp = (uint8_t *)malloc(block_len);
+    if (!v || !tmp) {
+        free(v);
+        free(tmp);
+        rt_trap("scrypt: memory allocation failed");
+    }
+
+    for (uint64_t i = 0; i < n; i++) {
+        memcpy(v + (size_t)i * block_len, block, block_len);
+        scrypt_blockmix(block, tmp, r);
+    }
+
+    for (uint64_t i = 0; i < n; i++) {
+        uint64_t j = scrypt_integerify(block, r) & (n - 1);
+        const uint8_t *vj = v + (size_t)j * block_len;
+        for (size_t k = 0; k < block_len; k++)
+            block[k] ^= vj[k];
+        scrypt_blockmix(block, tmp, r);
+    }
+
+    keyderive_secure_zero(v, v_len);
+    keyderive_secure_zero(tmp, block_len);
+    free(v);
+    free(tmp);
+}
+
+static int scrypt_params_valid(uint64_t n, uint32_t r, uint32_t p, size_t out_len) {
+    if (n < 2 || (n & (n - 1)) != 0)
+        return 0;
+    if (r == 0 || r > RT_SCRYPT_MAX_R || p == 0 || p > RT_SCRYPT_MAX_P)
+        return 0;
+    if (out_len == 0 || out_len > RT_SCRYPT_MAX_KEY_LEN)
+        return 0;
+    if (n > (UINT64_C(1) << RT_SCRYPT_MAX_N_LOG2))
+        return 0;
+    if ((uint64_t)r > SIZE_MAX / 128)
+        return 0;
+    size_t block_len = (size_t)128 * r;
+    if (n > SIZE_MAX / block_len)
+        return 0;
+    if ((size_t)n * block_len > RT_SCRYPT_MAX_MEMORY)
+        return 0;
+    if ((uint64_t)p > SIZE_MAX / block_len)
+        return 0;
+    return 1;
+}
+
+void rt_keyderive_scrypt_sha256_raw(const uint8_t *password,
+                                    size_t password_len,
+                                    const uint8_t *salt,
+                                    size_t salt_len,
+                                    uint64_t n,
+                                    uint32_t r,
+                                    uint32_t p,
+                                    uint8_t *out,
+                                    size_t out_len) {
+    if ((!password && password_len > 0) || (!salt && salt_len > 0) || !out)
+        rt_trap("scrypt: invalid buffer");
+    if (!scrypt_params_valid(n, r, p, out_len))
+        rt_trap("scrypt: invalid or unsupported parameters");
+
+    size_t block_len = (size_t)128 * r;
+    size_t b_len = block_len * p;
+    uint8_t *b = (uint8_t *)malloc(b_len);
+    if (!b)
+        rt_trap("scrypt: memory allocation failed");
+
+    rt_keyderive_pbkdf2_sha256_raw(password, password_len, salt, salt_len, 1, b, b_len);
+    for (uint32_t i = 0; i < p; i++)
+        scrypt_romix(b + (size_t)i * block_len, n, r);
+    rt_keyderive_pbkdf2_sha256_raw(password, password_len, b, b_len, 1, out, out_len);
+
+    keyderive_secure_zero(b, b_len);
+    free(b);
+}
+
 /// @brief Derive a key from a password using PBKDF2-SHA256, returning a Bytes object.
 /// @details High-level wrapper around rt_keyderive_pbkdf2_sha256_raw that
 ///          handles Viper string/bytes conversion. Validates iterations (min 1000)
@@ -197,9 +375,11 @@ void *rt_keyderive_pbkdf2_sha256(rt_string password,
     uint8_t *salt_data;
 
     if (iterations < RT_PBKDF2_MIN_ITERATIONS)
-        iterations = RT_PBKDF2_MIN_ITERATIONS;
+        rt_trap("PBKDF2: iterations are below the policy minimum");
     if (iterations > UINT32_MAX)
         rt_trap("PBKDF2: iterations must not exceed 4294967295");
+    if (iterations > RT_PBKDF2_MAX_ITERATIONS)
+        rt_trap("PBKDF2: iterations exceed policy maximum");
     if (key_len < 1 || key_len > RT_PBKDF2_MAX_KEY_LEN)
         rt_trap("PBKDF2: key_len must be between 1 and 1024");
 
@@ -254,9 +434,11 @@ rt_string rt_keyderive_pbkdf2_sha256_str(rt_string password,
     uint8_t *salt_data;
 
     if (iterations < RT_PBKDF2_MIN_ITERATIONS)
-        iterations = RT_PBKDF2_MIN_ITERATIONS;
+        rt_trap("PBKDF2: iterations are below the policy minimum");
     if (iterations > UINT32_MAX)
         rt_trap("PBKDF2: iterations must not exceed 4294967295");
+    if (iterations > RT_PBKDF2_MAX_ITERATIONS)
+        rt_trap("PBKDF2: iterations exceed policy maximum");
     if (key_len < 1 || key_len > RT_PBKDF2_MAX_KEY_LEN)
         rt_trap("PBKDF2: key_len must be between 1 and 1024");
 
@@ -287,6 +469,101 @@ rt_string rt_keyderive_pbkdf2_sha256_str(rt_string password,
         free(salt_data);
 
     // Convert to hex string using shared codec utility
+    rt_string result = rt_codec_hex_enc_bytes(derived_key, (size_t)key_len);
+    keyderive_secure_zero(derived_key, (size_t)key_len);
+    free(derived_key);
+    return result;
+}
+
+static void validate_public_scrypt_params(int64_t n64,
+                                          int64_t r64,
+                                          int64_t p64,
+                                          int64_t key_len,
+                                          uint64_t *n,
+                                          uint32_t *r,
+                                          uint32_t *p) {
+    if (n64 < 2 || r64 < 1 || p64 < 1)
+        rt_trap("scrypt: cost parameters must be positive");
+    if (key_len < 1 || key_len > RT_SCRYPT_MAX_KEY_LEN)
+        rt_trap("scrypt: key_len must be between 1 and 1024");
+    if (r64 > UINT32_MAX || p64 > UINT32_MAX)
+        rt_trap("scrypt: cost parameters are too large");
+
+    *n = (uint64_t)n64;
+    *r = (uint32_t)r64;
+    *p = (uint32_t)p64;
+    if (!scrypt_params_valid(*n, *r, *p, (size_t)key_len))
+        rt_trap("scrypt: invalid or unsupported parameters");
+}
+
+void *rt_keyderive_scrypt_sha256(rt_string password,
+                                 void *salt,
+                                 int64_t n64,
+                                 int64_t r64,
+                                 int64_t p64,
+                                 int64_t key_len) {
+    uint64_t n;
+    uint32_t r;
+    uint32_t p;
+    validate_public_scrypt_params(n64, r64, p64, key_len, &n, &r, &p);
+
+    size_t pwd_len;
+    const uint8_t *pwd = pbkdf2_string_bytes(password, &pwd_len);
+
+    size_t salt_len;
+    uint8_t *salt_data = rt_bytes_extract_raw(salt, &salt_len);
+    if (!salt_data || salt_len == 0) {
+        free(salt_data);
+        rt_trap("scrypt: salt must not be empty");
+    }
+
+    uint8_t *derived_key = (uint8_t *)malloc((size_t)key_len);
+    if (!derived_key) {
+        free(salt_data);
+        rt_trap("scrypt: memory allocation failed");
+    }
+
+    rt_keyderive_scrypt_sha256_raw(
+        pwd, pwd_len, salt_data, salt_len, n, r, p, derived_key, (size_t)key_len);
+
+    free(salt_data);
+    void *result = rt_bytes_from_raw(derived_key, (size_t)key_len);
+    keyderive_secure_zero(derived_key, (size_t)key_len);
+    free(derived_key);
+    return result;
+}
+
+rt_string rt_keyderive_scrypt_sha256_str(rt_string password,
+                                         void *salt,
+                                         int64_t n64,
+                                         int64_t r64,
+                                         int64_t p64,
+                                         int64_t key_len) {
+    uint64_t n;
+    uint32_t r;
+    uint32_t p;
+    validate_public_scrypt_params(n64, r64, p64, key_len, &n, &r, &p);
+
+    size_t pwd_len;
+    const uint8_t *pwd = pbkdf2_string_bytes(password, &pwd_len);
+
+    size_t salt_len;
+    uint8_t *salt_data = rt_bytes_extract_raw(salt, &salt_len);
+    if (!salt_data || salt_len == 0) {
+        free(salt_data);
+        rt_trap("scrypt: salt must not be empty");
+    }
+
+    uint8_t *derived_key = (uint8_t *)malloc((size_t)key_len);
+    if (!derived_key) {
+        free(salt_data);
+        rt_trap("scrypt: memory allocation failed");
+    }
+
+    rt_keyderive_scrypt_sha256_raw(
+        pwd, pwd_len, salt_data, salt_len, n, r, p, derived_key, (size_t)key_len);
+
+    free(salt_data);
     rt_string result = rt_codec_hex_enc_bytes(derived_key, (size_t)key_len);
     keyderive_secure_zero(derived_key, (size_t)key_len);
     free(derived_key);

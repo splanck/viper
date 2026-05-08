@@ -43,6 +43,7 @@
 
 // Forward declarations
 #include "rt_trap.h"
+static void generate_random_bytes(uint8_t *buf, size_t len);
 
 #define AES_STR_MAGIC0 'V'
 #define AES_STR_MAGIC1 'A'
@@ -50,6 +51,11 @@
 #define AES_STR_MAGIC3 '1'
 #define AES_STR_HEADER_LEN 36
 #define AES_STR_PBKDF2_ITERATIONS 300000U
+#define AES_AUTH_MAGIC0 'V'
+#define AES_AUTH_MAGIC1 'A'
+#define AES_AUTH_MAGIC2 'K'
+#define AES_AUTH_MAGIC3 '1'
+#define AES_AUTH_HEADER_LEN 16
 
 /// @brief Zero out `len` bytes at `ptr` in a way that the optimizer can't elide.
 ///
@@ -78,6 +84,34 @@ static const uint8_t *aes_string_bytes(rt_string str, size_t *len) {
 
     *len = (size_t)len64;
     return (const uint8_t *)cstr;
+}
+
+static uint8_t *aes_combine_aad(const uint8_t *header,
+                                size_t header_len,
+                                void *aad_obj,
+                                const uint8_t **aad_out,
+                                size_t *aad_len_out) {
+    int64_t user_len64 = aad_obj ? rt_bytes_len(aad_obj) : 0;
+    if (user_len64 < 0)
+        rt_trap("AES: invalid AAD length");
+    size_t user_len = (size_t)user_len64;
+    const uint8_t *user = user_len > 0 ? rt_bytes_data_const(aad_obj) : NULL;
+    if (user_len == 0) {
+        *aad_out = header_len > 0 ? header : NULL;
+        *aad_len_out = header_len;
+        return NULL;
+    }
+    if (header_len > SIZE_MAX - user_len)
+        rt_trap("AES: AAD too large");
+    uint8_t *combined = (uint8_t *)malloc(header_len + user_len);
+    if (!combined)
+        rt_trap("AES: memory allocation failed");
+    if (header_len > 0)
+        memcpy(combined, header, header_len);
+    memcpy(combined + header_len, user, user_len);
+    *aad_out = combined;
+    *aad_len_out = header_len + user_len;
+    return combined;
 }
 
 //=============================================================================
@@ -199,7 +233,7 @@ static const uint32_t sha256_h0[8] = {
 /// @param data Input data
 /// @param len Length of input data
 /// @param hash Output hash (32 bytes)
-static void local_sha256(const uint8_t *data, size_t len, uint8_t hash[32]) {
+static int local_sha256(const uint8_t *data, size_t len, uint8_t hash[32]) {
     uint32_t h[8];
     for (int i = 0; i < 8; i++)
         h[i] = sha256_h0[i];
@@ -207,11 +241,11 @@ static void local_sha256(const uint8_t *data, size_t len, uint8_t hash[32]) {
     // Pre-processing: adding padding bits.
     // Guard against integer overflow: len must be small enough that len+8 doesn't wrap.
     if (len > SIZE_MAX - 72)
-        return; // input too large to hash
+        return -1; // input too large to hash
     size_t padded_len = ((len + 8) / 64 + 1) * 64;
     uint8_t *padded = (uint8_t *)calloc(padded_len, 1);
     if (!padded)
-        return;
+        return -1;
 
     memcpy(padded, data, len);
     padded[len] = 0x80;
@@ -281,6 +315,7 @@ static void local_sha256(const uint8_t *data, size_t len, uint8_t hash[32]) {
         hash[i * 4 + 2] = (uint8_t)(h[i] >> 8);
         hash[i * 4 + 3] = (uint8_t)(h[i]);
     }
+    return 0;
 }
 
 //=============================================================================
@@ -879,6 +914,131 @@ void *rt_aes_decrypt(void *data, void *key, void *iv) {
     return result;
 }
 
+void *rt_aes_encrypt_auth(void *data, void *key, void *aad) {
+    size_t data_len, key_len;
+    uint8_t *data_raw = rt_bytes_extract_raw(data, &data_len);
+    uint8_t *key_raw = rt_bytes_extract_raw(key, &key_len);
+    if (key_len != 16) {
+        free(data_raw);
+        if (key_raw) {
+            aes_secure_zero(key_raw, key_len);
+            free(key_raw);
+        }
+        rt_trap("AES.Auth: key must be exactly 16 bytes");
+        return NULL;
+    }
+    if (data_len > SIZE_MAX - AES_AUTH_HEADER_LEN - 16) {
+        free(data_raw);
+        aes_secure_zero(key_raw, key_len);
+        free(key_raw);
+        rt_trap("AES.Auth: plaintext too large");
+    }
+
+    size_t total_len = AES_AUTH_HEADER_LEN + data_len + 16;
+    uint8_t *out = (uint8_t *)malloc(total_len);
+    if (!out) {
+        free(data_raw);
+        aes_secure_zero(key_raw, key_len);
+        free(key_raw);
+        rt_trap("AES.Auth: memory allocation failed");
+    }
+
+    out[0] = AES_AUTH_MAGIC0;
+    out[1] = AES_AUTH_MAGIC1;
+    out[2] = AES_AUTH_MAGIC2;
+    out[3] = AES_AUTH_MAGIC3;
+    generate_random_bytes(out + 4, 12);
+
+    const uint8_t *aad_data;
+    size_t aad_len;
+    uint8_t *aad_alloc = aes_combine_aad(out, AES_AUTH_HEADER_LEN, aad, &aad_data, &aad_len);
+    size_t encrypted_len = rt_aes128_gcm_encrypt(key_raw,
+                                                 out + 4,
+                                                 aad_data,
+                                                 aad_len,
+                                                 data_raw ? data_raw : (const uint8_t *)"",
+                                                 data_len,
+                                                 out + AES_AUTH_HEADER_LEN);
+    if (aad_alloc)
+        free(aad_alloc);
+    if (encrypted_len != data_len + 16) {
+        free(data_raw);
+        aes_secure_zero(key_raw, key_len);
+        free(key_raw);
+        aes_secure_zero(out, total_len);
+        free(out);
+        rt_trap("AES.Auth: encryption failed");
+    }
+
+    void *result = rt_bytes_from_raw(out, total_len);
+    free(data_raw);
+    aes_secure_zero(key_raw, key_len);
+    free(key_raw);
+    aes_secure_zero(out, total_len);
+    free(out);
+    return result;
+}
+
+void *rt_aes_decrypt_auth(void *data, void *key, void *aad) {
+    size_t data_len, key_len;
+    uint8_t *encoded = rt_bytes_extract_raw(data, &data_len);
+    uint8_t *key_raw = rt_bytes_extract_raw(key, &key_len);
+    if (key_len != 16) {
+        free(encoded);
+        if (key_raw) {
+            aes_secure_zero(key_raw, key_len);
+            free(key_raw);
+        }
+        rt_trap("AES.Auth: key must be exactly 16 bytes");
+        return NULL;
+    }
+    if (data_len < AES_AUTH_HEADER_LEN + 16 || !encoded || encoded[0] != AES_AUTH_MAGIC0 ||
+        encoded[1] != AES_AUTH_MAGIC1 || encoded[2] != AES_AUTH_MAGIC2 ||
+        encoded[3] != AES_AUTH_MAGIC3) {
+        free(encoded);
+        aes_secure_zero(key_raw, key_len);
+        free(key_raw);
+        rt_trap("AES.Auth: encrypted data is malformed");
+        return NULL;
+    }
+
+    size_t cipher_len = data_len - AES_AUTH_HEADER_LEN;
+    uint8_t *plain = (uint8_t *)malloc(cipher_len - 16 + 1);
+    if (!plain) {
+        free(encoded);
+        aes_secure_zero(key_raw, key_len);
+        free(key_raw);
+        rt_trap("AES.Auth: memory allocation failed");
+    }
+
+    const uint8_t *aad_data;
+    size_t aad_len;
+    uint8_t *aad_alloc = aes_combine_aad(encoded, AES_AUTH_HEADER_LEN, aad, &aad_data, &aad_len);
+    long plain_len = rt_aes128_gcm_decrypt(key_raw,
+                                           encoded + 4,
+                                           aad_data,
+                                           aad_len,
+                                           encoded + AES_AUTH_HEADER_LEN,
+                                           cipher_len,
+                                           plain);
+    if (aad_alloc)
+        free(aad_alloc);
+    aes_secure_zero(key_raw, key_len);
+    free(key_raw);
+    aes_secure_zero(encoded, data_len);
+    free(encoded);
+    if (plain_len < 0) {
+        aes_secure_zero(plain, cipher_len - 16);
+        free(plain);
+        return NULL;
+    }
+
+    void *result = rt_bytes_from_raw(plain, (size_t)plain_len);
+    aes_secure_zero(plain, (size_t)plain_len);
+    free(plain);
+    return result;
+}
+
 /// @brief Derive a 32-byte key from password using iterated SHA-256 (S-06).
 ///
 /// Uses 10 000 rounds of SHA-256 with a fixed application salt and a length
@@ -920,11 +1080,19 @@ static void derive_key_legacy(const uint8_t *password, size_t pass_len, uint8_t 
     if (capped > 0)
         memcpy(block + 17, password, capped);
 
-    local_sha256(block, 17 + capped, key);
+    if (local_sha256(block, 17 + capped, key) != 0) {
+        aes_secure_zero(block, sizeof(block));
+        rt_trap("AES: legacy key derivation failed");
+    }
 
     /* Iterate to slow down brute-force attacks */
-    for (int r = 1; r < DERIVE_KEY_ROUNDS; r++)
-        local_sha256(key, 32, key);
+    for (int r = 1; r < DERIVE_KEY_ROUNDS; r++) {
+        if (local_sha256(key, 32, key) != 0) {
+            aes_secure_zero(block, sizeof(block));
+            aes_secure_zero(key, 32);
+            rt_trap("AES: legacy key derivation failed");
+        }
+    }
     aes_secure_zero(block, sizeof(block));
 }
 
@@ -980,6 +1148,9 @@ void *rt_aes_encrypt_str(rt_string data, rt_string password) {
     uint8_t *out;
     void *result;
 
+    if (pass_len == 0)
+        rt_trap("AES: password is empty");
+
     generate_random_bytes(salt, sizeof(salt));
     generate_random_bytes(nonce, sizeof(nonce));
     derive_key_pbkdf2(pass_bytes, pass_len, salt, sizeof(salt), AES_STR_PBKDF2_ITERATIONS, key);
@@ -1018,8 +1189,8 @@ void *rt_aes_encrypt_str(rt_string data, rt_string password) {
     memcpy(out + 8, salt, sizeof(salt));
     memcpy(out + 24, nonce, sizeof(nonce));
 
-    cipher_len =
-        rt_aes128_gcm_encrypt(key, nonce, NULL, 0, data_bytes, plain_len, out + AES_STR_HEADER_LEN);
+    cipher_len = rt_aes128_gcm_encrypt(
+        key, nonce, out, AES_STR_HEADER_LEN, data_bytes, plain_len, out + AES_STR_HEADER_LEN);
     if (cipher_len == 0 && plain_len != 0) {
         aes_secure_zero(key, sizeof(key));
         aes_secure_zero(salt, sizeof(salt));
@@ -1045,6 +1216,10 @@ void *rt_aes_encrypt_str(rt_string data, rt_string password) {
 rt_string rt_aes_decrypt_str(void *data, rt_string password) {
     size_t pass_len;
     const uint8_t *pass_bytes = aes_string_bytes(password, &pass_len);
+    if (pass_len == 0) {
+        rt_trap("AES: password is empty");
+        return rt_const_cstr("");
+    }
 
     int64_t total_len = rt_bytes_len(data);
     if (total_len <= 0) {
@@ -1070,7 +1245,8 @@ rt_string rt_aes_decrypt_str(void *data, rt_string password) {
         long plain_len;
         rt_string result;
 
-        if (iterations < RT_PBKDF2_MIN_ITERATIONS) {
+        if (iterations < RT_PBKDF2_MIN_ITERATIONS ||
+            iterations > RT_PBKDF2_MAX_ITERATIONS) {
             aes_secure_zero(encoded, (size_t)total_len);
             free(encoded);
             rt_trap("AES: encrypted data uses an unsupported PBKDF2 iteration count");
@@ -1092,11 +1268,13 @@ rt_string rt_aes_decrypt_str(void *data, rt_string password) {
             rt_trap("AES: memory allocation failed");
         }
 
-        plain_len = rt_aes128_gcm_decrypt(key, nonce, NULL, 0, cipher, cipher_len, plain);
+        plain_len =
+            rt_aes128_gcm_decrypt(key, nonce, encoded, AES_STR_HEADER_LEN, cipher, cipher_len, plain);
         aes_secure_zero(key, sizeof(key));
         aes_secure_zero(encoded, (size_t)total_len);
         free(encoded);
         if (plain_len < 0) {
+            aes_secure_zero(plain, cipher_len - 16);
             free(plain);
             rt_trap("AES: decryption failed (wrong password or corrupted data)");
             return rt_const_cstr("");

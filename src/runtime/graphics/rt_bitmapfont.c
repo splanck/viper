@@ -229,6 +229,14 @@ static int bf_next_codepoint(const char *str, size_t byte_len, size_t *index, in
     return 1;
 }
 
+/// @brief Copy a glyph bitmap from one slot to another codepoint slot in the same font.
+/// @details Used by the PSF Unicode-table appliers (apply_psf1/2_unicode_table)
+///          to alias multiple Unicode codepoints onto the same physical glyph
+///          (e.g. mapping U+00A0 NO-BREAK SPACE to the existing U+0020 glyph).
+///          Refuses to overwrite an already-populated destination, refuses
+///          out-of-range source/dest indices, and caps per-glyph allocation
+///          at 1 MiB to bound the memory cost of malformed PSF Unicode tables.
+/// @return 1 if the copy succeeded, 0 if any precondition failed.
 static int bf_copy_glyph_to_codepoint(rt_bitmapfont_impl *font, int source_index, int codepoint) {
     if (!font || source_index < 0 || source_index >= BF_MAX_GLYPHS || codepoint < 0 ||
         codepoint >= BF_MAX_GLYPHS)
@@ -251,6 +259,12 @@ static int bf_copy_glyph_to_codepoint(rt_bitmapfont_impl *font, int source_index
     return 1;
 }
 
+/// @brief Apply the optional PSF v2 Unicode table to alias codepoints onto loaded glyphs.
+/// @details The PSF v2 Unicode section is a sequence of UTF-8 encoded
+///          codepoints separated by 0xFF (end of glyph) and 0xFE (start of
+///          combining-character sequence, which we skip — Viper's bitmap font
+///          renderer does not compose). Each codepoint between separators is
+///          aliased to the current glyph index via bf_copy_glyph_to_codepoint.
 static void bf_apply_psf2_unicode_table(
     rt_bitmapfont_impl *font, int glyph_count, const uint8_t *table, size_t table_len) {
     if (!font || !table || table_len == 0)
@@ -288,6 +302,11 @@ static void bf_apply_psf2_unicode_table(
     }
 }
 
+/// @brief Apply the optional PSF v1 Unicode table to alias codepoints onto loaded glyphs.
+/// @details PSF v1 stores codepoints as little-endian uint16 (UCS-2) with
+///          0xFFFF as the end-of-glyph separator and 0xFFFE marking the
+///          start of a skipped combining sequence. Otherwise mirrors the
+///          PSF v2 table semantics implemented by bf_apply_psf2_unicode_table.
 static void bf_apply_psf1_unicode_table(
     rt_bitmapfont_impl *font, int glyph_count, const uint8_t *table, size_t table_len) {
     if (!font || !table || table_len < 2)
@@ -1104,6 +1123,7 @@ static void rt_bitmapfont_canvas_unavailable_(const char *msg) {
     rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, 0, msg);
 }
 
+/// @brief Stub for Canvas.TextFont when VIPER_ENABLE_GRAPHICS is undefined; raises an InvalidOperation trap.
 void rt_canvas_text_font(
     void *canvas, int64_t x, int64_t y, rt_string text, void *font, int64_t color) {
     (void)canvas;
@@ -1115,6 +1135,7 @@ void rt_canvas_text_font(
     rt_bitmapfont_canvas_unavailable_("Canvas.TextFont: graphics support not compiled in");
 }
 
+/// @brief Stub for Canvas.TextFontBg when VIPER_ENABLE_GRAPHICS is undefined; raises an InvalidOperation trap.
 void rt_canvas_text_font_bg(
     void *canvas, int64_t x, int64_t y, rt_string text, void *font, int64_t fg, int64_t bg) {
     (void)canvas;
@@ -1127,6 +1148,7 @@ void rt_canvas_text_font_bg(
     rt_bitmapfont_canvas_unavailable_("Canvas.TextFontBg: graphics support not compiled in");
 }
 
+/// @brief Stub for Canvas.TextFontScaled when VIPER_ENABLE_GRAPHICS is undefined; raises an InvalidOperation trap.
 void rt_canvas_text_font_scaled(
     void *canvas, int64_t x, int64_t y, rt_string text, void *font, int64_t scale, int64_t color) {
     (void)canvas;
@@ -1139,6 +1161,7 @@ void rt_canvas_text_font_scaled(
     rt_bitmapfont_canvas_unavailable_("Canvas.TextFontScaled: graphics support not compiled in");
 }
 
+/// @brief Stub for Canvas.TextFontCentered when VIPER_ENABLE_GRAPHICS is undefined; raises an InvalidOperation trap.
 void rt_canvas_text_font_centered(
     void *canvas, int64_t y, rt_string text, void *font, int64_t color) {
     (void)canvas;
@@ -1149,6 +1172,7 @@ void rt_canvas_text_font_centered(
     rt_bitmapfont_canvas_unavailable_("Canvas.TextFontCentered: graphics support not compiled in");
 }
 
+/// @brief Stub for Canvas.TextFontRight when VIPER_ENABLE_GRAPHICS is undefined; raises an InvalidOperation trap.
 void rt_canvas_text_font_right(
     void *canvas, int64_t margin, int64_t y, rt_string text, void *font, int64_t color) {
     (void)canvas;

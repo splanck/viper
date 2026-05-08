@@ -6,7 +6,32 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_theora.c
-// Purpose: In-tree Theora decoder for OGG video playback.
+// Purpose: In-tree Theora video-codec decoder for OGG container playback.
+//   Parses Theora setup/info/comment headers, builds the Huffman tables,
+//   decodes intra and inter frames, and produces YCbCr pixel planes that
+//   rt_videoplayer.c hands to rt_ycbcr.c for RGB conversion. Implements the
+//   full bitstream syntax of theora-spec-1.1 with no external dependencies.
+//
+// Key invariants:
+//   - All bit-stream reads route through bitreader_t; once `failed` is set,
+//     subsequent reads are no-ops returning 0 and the surrounding decoder
+//     short-circuits to a graceful error rather than producing garbage.
+//   - Frame dimensions, motion-vector ranges, and quantizer indices are
+//     bounds-checked before allocation so a malformed setup header cannot
+//     OOM or read past the input buffer.
+//   - Static const tables (theora_zigzag, sb/mb_hilbert_*, mb_mode_scheme,
+//     dc_weights, etc.) are spec-fixed — never modified at runtime. They
+//     hold scan orders, super-block traversal patterns, MB-mode coding
+//     scheme tables, and DC predictor weights from theora-spec-1.1.
+//
+// Ownership/Lifetime:
+//   - The decoder context owns its Huffman tables and YCbCr plane buffers;
+//     all allocations are paired with rt_theora_destroy.
+//   - Input packets (`data`, `len`) are caller-owned and only borrowed
+//     during decode. No reference is held after the call returns.
+//
+// Links: rt_theora.h (public API), rt_videoplayer.c (consumer),
+//        rt_ycbcr.c (planar→RGB conversion)
 //
 //===----------------------------------------------------------------------===//
 

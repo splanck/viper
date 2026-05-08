@@ -23,7 +23,7 @@ PRINT "Verify wrong: "; Viper.Crypto.Password.Verify("wrongpassword", h)
 ' --- HashIters ---
 PRINT "--- HashIters ---"
 DIM h2 AS STRING
-h2 = Viper.Crypto.Password.HashIters("test", 1000)
+h2 = Viper.Crypto.Password.HashIters("test", 100000)
 PRINT "HashIters: "; h2
 
 ' Verify the iterated hash

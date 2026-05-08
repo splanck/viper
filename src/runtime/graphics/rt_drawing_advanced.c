@@ -40,6 +40,17 @@ enum {
     RTG_CORNER_BOTTOM_RIGHT = 3,
 };
 
+/// @brief Validate a points array passed to Polyline/Polygon and expose its raw element pointer.
+/// @details Polyline/Polygon take an Integer-typed Viper array of length
+///          `count * 2` (interleaved x/y pairs). This helper rejects: NULL
+///          array, non-positive count, count > INT64_MAX/2 (so the multiply
+///          can't overflow), arrays whose heap header is missing or wrong
+///          kind (must be RT_HEAP_ARRAY of RT_ELEM_I64), and arrays shorter
+///          than `count * 2` elements.
+/// @param points_ptr Opaque pointer to the heap-allocated array.
+/// @param count      Number of (x, y) pairs the caller intends to read.
+/// @param points_out Out: raw int64_t* into the array on success, NULL on failure.
+/// @return 1 if the array is safe to walk for `count` pairs, 0 otherwise (no draw).
 static int8_t rt_canvas_points_checked(void *points_ptr, int64_t count, const int64_t **points_out) {
     if (points_out)
         *points_out = NULL;
@@ -78,6 +89,15 @@ static int64_t rt_canvas_adv_ceil_ld_to_i64_sat(long double value) {
     return (int64_t)ceill(value);
 }
 
+/// @brief Linearly interpolate the x value of a line segment at scanline @p y.
+/// @details Used by triangle/polygon scan-conversion to find the left/right
+///          edge x at a given y. Long-double arithmetic keeps precision when
+///          int64 endpoints are widely separated; the result floors to int64
+///          with saturation. Degenerate horizontal segments (y1 == y0) return x0.
+/// @param x0,y0 First endpoint.
+/// @param x1,y1 Second endpoint.
+/// @param y     Scanline to sample.
+/// @return Interpolated x at scanline @p y, saturated to int64.
 static int64_t rt_canvas_adv_interp_x(
     int64_t x0, int64_t y0, int64_t x1, int64_t y1, int64_t y) {
     if (y1 == y0)
@@ -87,6 +107,17 @@ static int64_t rt_canvas_adv_interp_x(
     return rt_canvas_adv_floor_ld_to_i64_sat(x);
 }
 
+/// @brief Plot the two clip-respecting points of one octant of a circle, mirrored into one of four corners.
+/// @details For a Bresenham circle stepper at offset (x, y) inside the
+///          first octant (x >= y >= 0), this writes the two pixels that
+///          fall in the requested @p corner — the (x, y) and (y, x)
+///          reflections within that quadrant. Used by round_box / round_frame
+///          to draw only the pixels that belong to a specific corner.
+/// @param canvas Canvas to draw into. NULL → no-op.
+/// @param cx,cy  Circle center in logical coordinates.
+/// @param x,y    Bresenham octant offset (caller advances these).
+/// @param corner One of RTG_CORNER_TOP_LEFT / TOP_RIGHT / BOTTOM_LEFT / BOTTOM_RIGHT.
+/// @param color  Pixel color (0xAARRGGBB packed).
 static void rt_canvas_plot_quarter_circle(rt_canvas *canvas,
                                           int64_t cx,
                                           int64_t cy,
@@ -135,6 +166,16 @@ static void rt_canvas_plot_quarter_circle(rt_canvas *canvas,
 #undef RT_CANVAS_PLOT_CLIPPED
 }
 
+/// @brief Bresenham-step a circle of @p radius and emit only the pixels in the chosen @p corner.
+/// @details Standard mid-point circle rasterizer (8-way symmetry collapsed to
+///          one corner via rt_canvas_plot_quarter_circle). Used by round_box
+///          and round_frame for the four corner arcs. radius == 0 plots a
+///          single pixel at the center; negative radii are no-ops.
+/// @param canvas Canvas. NULL → no-op.
+/// @param cx,cy  Arc center in logical coordinates.
+/// @param radius Arc radius in pixels.
+/// @param corner Quadrant selector (see RTG_CORNER_* enum).
+/// @param color  Stroke color (0xAARRGGBB packed).
 static void rt_canvas_draw_quarter_circle(
     rt_canvas *canvas, int64_t cx, int64_t cy, int64_t radius, int corner, vgfx_color_t color) {
     if (!canvas || !canvas->gfx_win || radius < 0)
@@ -160,6 +201,14 @@ static void rt_canvas_draw_quarter_circle(
     }
 }
 
+/// @brief Return the canvas clip rect converted from logical to physical pixels.
+/// @details The canvas tracks a logical clip rect (in logical pixels), but
+///          some primitives (notably gradient_h/gradient_v's per-pixel inner
+///          loops) want to walk physical pixels directly. This helper
+///          multiplies through by the window's HiDPI scale factor and returns
+///          both the scale and the [px0, px1) × [py0, py1) physical-pixel
+///          bounds. NULL out-pointers are individually skipped.
+/// @return 1 on success (clip rect available), 0 if the canvas has no clip set.
 static int8_t rt_canvas_get_scaled_clip_bounds(
     rt_canvas *canvas, float *scale_out, int64_t *px0, int64_t *py0, int64_t *px1, int64_t *py1) {
     int64_t clip_x = 0;
@@ -1434,10 +1483,21 @@ int64_t rt_color_get_l(int64_t color) {
     return l;
 }
 
+/// @brief Test the runtime "explicit alpha" tag bit on a 64-bit color value.
+/// @details Color literals built via Color.RGBA(...) carry RT_COLOR_EXPLICIT_ALPHA_FLAG
+///          (bit 56) so downstream transforms (Brighten, Darken, Lerp, …) can
+///          tell user-supplied alpha apart from "no alpha specified, treat as
+///          opaque". Plain Color.RGB(...) values do NOT have this flag.
+/// @return 1 if the color carries a user-specified alpha, 0 if alpha was implicit.
 static int8_t rt_color_has_explicit_alpha(int64_t color) {
     return (color & RT_COLOR_EXPLICIT_ALPHA_FLAG) != 0;
 }
 
+/// @brief Decompose a tagged color value into r/g/b/a components plus the alpha-tag flag.
+/// @details Reads bytes 0-2 as B/G/R, byte 3 as A (or 255 when the explicit-alpha
+///          flag is unset), and exposes the flag itself so callers can re-pack
+///          the result through rt_color_pack_rgba_like and preserve user intent.
+///          Each out-pointer is individually NULL-safe (skipped if NULL).
 static void rt_color_split_rgba(
     int64_t color, int64_t *r, int64_t *g, int64_t *b, int64_t *a, int8_t *has_alpha) {
     int8_t explicit_alpha = rt_color_has_explicit_alpha(color);
@@ -1453,6 +1513,12 @@ static void rt_color_split_rgba(
         *has_alpha = explicit_alpha;
 }
 
+/// @brief Re-pack r/g/b/a back into a tagged color value, preserving the explicit-alpha tag.
+/// @details The inverse of rt_color_split_rgba. When @p has_alpha is non-zero the
+///          result carries RT_COLOR_EXPLICIT_ALPHA_FLAG so downstream transforms
+///          continue to honor the user-provided alpha; when zero, the alpha
+///          byte is dropped and a plain RGB value is returned. Components are
+///          masked to 8 bits — out-of-range inputs are silently truncated.
 static int64_t rt_color_pack_rgba_like(int64_t r,
                                        int64_t g,
                                        int64_t b,

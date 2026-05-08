@@ -377,6 +377,133 @@ static int oid_matches(const uint8_t *buf,
 // Known OID encoded values (value bytes only, after the OID tag+length)
 static const uint8_t OID_COMMON_NAME[] = {0x55, 0x04, 0x03};      // 2.5.4.3
 static const uint8_t OID_SUBJECT_ALT_NAME[] = {0x55, 0x1d, 0x11}; // 2.5.29.17
+static const uint8_t OID_X509_KEY_USAGE[] = {0x55, 0x1d, 0x0f};        // 2.5.29.15
+static const uint8_t OID_X509_BASIC_CONSTRAINTS[] = {0x55, 0x1d, 0x13}; // 2.5.29.19
+static const uint8_t OID_X509_EXT_KEY_USAGE[] = {0x55, 0x1d, 0x25};    // 2.5.29.37
+
+static int tls_dns_name_bytes_valid(const uint8_t *name, size_t len, int allow_wildcard) {
+    if (!name || len == 0 || len >= 256)
+        return 0;
+    size_t label_len = 0;
+    for (size_t i = 0; i < len; i++) {
+        uint8_t c = name[i];
+        if (c == 0 || c < 0x20 || c >= 0x7f)
+            return 0;
+        if (c == '.') {
+            if (label_len == 0 && i != len - 1)
+                return 0;
+            label_len = 0;
+            continue;
+        }
+        if (c == '*') {
+            if (!allow_wildcard || i != 0 || len < 3 || name[1] != '.')
+                return 0;
+        } else if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                     (c >= '0' && c <= '9') || c == '-')) {
+            return 0;
+        }
+        label_len++;
+        if (label_len > 63)
+            return 0;
+    }
+    return 1;
+}
+
+static int tls_dns_name_valid(const char *name, int allow_wildcard) {
+    return name &&
+           tls_dns_name_bytes_valid((const uint8_t *)name, strlen(name), allow_wildcard);
+}
+
+static int cert_critical_extension_supported(const uint8_t *oid, size_t oid_len) {
+    return oid_matches(oid, oid_len, OID_SUBJECT_ALT_NAME, sizeof(OID_SUBJECT_ALT_NAME)) ||
+           oid_matches(oid, oid_len, OID_X509_KEY_USAGE, sizeof(OID_X509_KEY_USAGE)) ||
+           oid_matches(oid, oid_len, OID_X509_BASIC_CONSTRAINTS, sizeof(OID_X509_BASIC_CONSTRAINTS)) ||
+           oid_matches(oid, oid_len, OID_X509_EXT_KEY_USAGE, sizeof(OID_X509_EXT_KEY_USAGE));
+}
+
+static int cert_has_unsupported_critical_extension(const uint8_t *cert_der, size_t cert_len) {
+    uint8_t tag;
+    size_t vl, hl;
+    if (der_read_tlv(cert_der, cert_len, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return 1;
+    const uint8_t *p = cert_der + hl;
+    size_t rem = vl;
+    if (der_read_tlv(p, rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return 1;
+    const uint8_t *tbs = p + hl;
+    size_t tbs_rem = vl;
+
+    if (der_read_tlv(tbs, tbs_rem, &tag, &vl, &hl) != 0)
+        return 1;
+    if (tag == 0xA0) {
+        tbs += hl + vl;
+        tbs_rem -= hl + vl;
+    }
+
+    for (int i = 0; i < 6; i++) {
+        if (der_read_tlv(tbs, tbs_rem, &tag, &vl, &hl) != 0)
+            return 1;
+        tbs += hl + vl;
+        tbs_rem -= hl + vl;
+    }
+
+    while (tbs_rem > 0) {
+        if (der_read_tlv(tbs, tbs_rem, &tag, &vl, &hl) != 0)
+            return 1;
+        if (tag == 0xA3) {
+            uint8_t seq_tag;
+            size_t seq_len, seq_hl;
+            if (der_read_tlv(tbs + hl, vl, &seq_tag, &seq_len, &seq_hl) != 0 ||
+                seq_tag != 0x30)
+                return 1;
+            const uint8_t *exts = tbs + hl + seq_hl;
+            size_t exts_rem = seq_len;
+            while (exts_rem > 0) {
+                uint8_t ext_tag;
+                size_t ext_len, ext_hl;
+                if (der_read_tlv(exts, exts_rem, &ext_tag, &ext_len, &ext_hl) != 0 ||
+                    ext_tag != 0x30)
+                    return 1;
+                const uint8_t *ext = exts + ext_hl;
+                size_t ext_rem = ext_len;
+                uint8_t oid_tag;
+                size_t oid_len, oid_hl;
+                if (der_read_tlv(ext, ext_rem, &oid_tag, &oid_len, &oid_hl) != 0 ||
+                    oid_tag != 0x06)
+                    return 1;
+                const uint8_t *oid = ext + oid_hl;
+                ext += oid_hl + oid_len;
+                ext_rem -= oid_hl + oid_len;
+
+                int critical = 0;
+                uint8_t next_tag;
+                size_t next_len, next_hl;
+                if (der_read_tlv(ext, ext_rem, &next_tag, &next_len, &next_hl) != 0)
+                    return 1;
+                if (next_tag == 0x01) {
+                    if (next_len != 1)
+                        return 1;
+                    critical = ext[next_hl] != 0;
+                    ext += next_hl + next_len;
+                    ext_rem -= next_hl + next_len;
+                    if (der_read_tlv(ext, ext_rem, &next_tag, &next_len, &next_hl) != 0)
+                        return 1;
+                }
+                if (next_tag != 0x04)
+                    return 1;
+                if (critical && !cert_critical_extension_supported(oid, oid_len))
+                    return 1;
+
+                exts += ext_hl + ext_len;
+                exts_rem -= ext_hl + ext_len;
+            }
+            return 0;
+        }
+        tbs += hl + vl;
+        tbs_rem -= hl + vl;
+    }
+    return 0;
+}
 
 /// @brief Extract DNS names from SubjectAltName extension value.
 /// @param ext_val Points to the value bytes of the SAN extension (after the OCTET STRING wrapper).
@@ -410,7 +537,7 @@ static void extract_san_from_ext_value(
             break;
 
         // dNSName is context tag [2] = 0x82
-        if (t == 0x82 && vl > 0 && vl < 256) {
+        if (t == 0x82 && tls_dns_name_bytes_valid(names + pos + hl, vl, 1)) {
             memcpy(san_out[*count], names + pos + hl, vl);
             san_out[*count][vl] = '\0';
             (*count)++;
@@ -751,7 +878,7 @@ int tls_extract_cn(const uint8_t *der, size_t der_len, char cn_out[256]) {
                                 uint8_t tv;
                                 size_t vlv, hlv;
                                 if (der_read_tlv(val_start, val_remaining, &tv, &vlv, &hlv) == 0) {
-                                    if (vlv > 0 && vlv < 256) {
+                                    if (tls_dns_name_bytes_valid(val_start + hlv, vlv, 1)) {
                                         memcpy(cn_out, val_start + hlv, vlv);
                                         cn_out[vlv] = '\0';
                                         return 1;
@@ -792,6 +919,8 @@ int tls_extract_cn(const uint8_t *der, size_t der_len, char cn_out[256]) {
 /// @return 1 on match, 0 otherwise.
 int tls_match_hostname(const char *pattern, const char *hostname) {
     if (!pattern || !hostname)
+        return 0;
+    if (!tls_dns_name_valid(pattern, 1) || !tls_dns_name_valid(hostname, 0))
         return 0;
 
     if (pattern[0] == '*' && pattern[1] == '.') {
@@ -845,6 +974,11 @@ int tls_verify_hostname(rt_tls_session_t *session) {
     uint8_t ip_literal[16];
     size_t ip_literal_len = 0;
 
+    if (!host || !host[0]) {
+        session->error = "TLS: hostname verification requires a hostname";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+
     if (tls_hostname_is_ip_literal(host, ip_literal, &ip_literal_len)) {
         int saw_ip_san = 0;
         if (tls_cert_has_matching_ip_san(session->server_cert_der,
@@ -856,6 +990,11 @@ int tls_verify_hostname(rt_tls_session_t *session) {
         }
         session->error = saw_ip_san ? "TLS: certificate IP SAN mismatch"
                                     : "TLS: certificate does not contain an IP SubjectAltName";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+
+    if (!tls_dns_name_valid(host, 0)) {
+        session->error = "TLS: invalid hostname for certificate verification";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
@@ -1029,6 +1168,11 @@ static RT_TLS_MAYBE_UNUSED int cert_allows_tls_server_auth(const uint8_t *cert_d
 int tls_verify_chain(rt_tls_session_t *session) {
     if (!session->server_cert_der_len) {
         session->error = "TLS: no certificate to validate";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+    if (cert_has_unsupported_critical_extension(session->server_cert_der,
+                                                session->server_cert_der_len)) {
+        session->error = "TLS: certificate contains unsupported critical extension";
         return RT_TLS_ERROR_HANDSHAKE;
     }
     if (!cert_allows_tls_server_auth(session->server_cert_der, session->server_cert_der_len)) {
@@ -2382,7 +2526,8 @@ int tls_verify_chain(rt_tls_session_t *session) {
                 subject = cert_get_subject(intermediates[i].der, intermediates[i].len, &subject_len);
                 if (!subject || !der_names_equal(subject, subject_len, issuer, issuer_len))
                     continue;
-                if (cert_check_expiry(intermediates[i].der, intermediates[i].len) != 0 ||
+                if (cert_has_unsupported_critical_extension(intermediates[i].der, intermediates[i].len) ||
+                    cert_check_expiry(intermediates[i].der, intermediates[i].len) != 0 ||
                     !cert_is_ca(intermediates[i].der, intermediates[i].len) ||
                     !verify_cert_signature(current_der, current_len, intermediates[i].der, intermediates[i].len)) {
                     continue;

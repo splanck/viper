@@ -376,6 +376,12 @@ static uint32_t png_read_u32(const uint8_t *p) {
     return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | (uint32_t)p[3];
 }
 
+/// @brief Compute the Adler-32 checksum of @p data per RFC 1950 §9.
+/// @details Adler-32 is the checksum carried in the trailing 4 bytes of a
+///          zlib-compressed PNG IDAT stream. The two running sums @c a (mod 65521)
+///          and @c b (mod 65521) are updated per byte; the result packs them as
+///          (b << 16) | a. Used by the PNG decoder to verify deflate output before
+///          touching the pixel buffer.
 static uint32_t png_adler32(const uint8_t *data, size_t len) {
     uint32_t a = 1;
     uint32_t b = 0;
@@ -389,6 +395,14 @@ static uint32_t png_adler32(const uint8_t *data, size_t len) {
     return (b << 16) | a;
 }
 
+/// @brief Validate the 2-byte ZLIB header (CMF + FLG) prefix of a PNG IDAT stream.
+/// @details Performs the four checks RFC 1950 §2.2 mandates:
+///          1. CM (low 4 bits of CMF) must equal 8 (deflate).
+///          2. CINFO (high 4 bits of CMF) must be ≤ 7 (window size ≤ 32K).
+///          3. (CMF * 256 + FLG) must be a multiple of 31 (FCHECK validity).
+///          4. FDICT bit (0x20 of FLG) must be 0 — preset dictionaries are
+///             illegal in PNG IDAT streams.
+/// @return 1 if the header is well-formed for PNG, 0 otherwise.
 static int png_validate_zlib_header(const uint8_t *data, size_t len) {
     if (!data || len < 6)
         return 0;

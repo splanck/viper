@@ -7,15 +7,16 @@
 //
 // File: src/runtime/text/rt_password.c
 // Purpose: Implements secure password hashing and verification for the
-//          Viper.Text.Password class using PBKDF2-SHA256 with an automatically
-//          generated random salt. Provides Hash (returns encoded string) and
-//          Verify (constant-time comparison against stored hash).
+//          Viper.Crypto.Password class using scrypt-SHA256 or legacy
+//          PBKDF2-SHA256 with automatically generated random salts.
 //
 // Key invariants:
 //   - Salts are 16 bytes of CSPRNG output, unique per hash call.
-//   - Hash output format: "pbkdf2-sha256$<iterations>$<hex-salt>$<hex-key>".
+//   - Hash output format: "SCRYPT$<log2N>$<r>$<p>$<salt_b64>$<hash_b64>".
+//   - Legacy PBKDF2 format remains accepted: "PBKDF2$<iterations>$<salt_b64>$<hash_b64>".
 //   - Verification uses constant-time comparison to prevent timing attacks.
-//   - Default iteration count is 300,000; custom requests clamp to at least 100,000.
+//   - Default Hash uses bounded memory-hard scrypt parameters.
+//   - Custom PBKDF2 requests below 100,000 trap instead of silently clamping.
 //   - Verify returns false (not trap) for mismatched passwords or invalid format.
 //   - The stored hash string is self-describing (includes algorithm and params).
 //
@@ -42,10 +43,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Default iterations for password hashing.
+// Legacy PBKDF2 policy.
 #define DEFAULT_ITERATIONS 300000
 #define MIN_ITERATIONS 100000
 #define MAX_ITERATIONS 10000000
+
+// Current password-hash policy.
+#define PASSWORD_SCRYPT_N_LOG2 RT_SCRYPT_DEFAULT_N_LOG2
+#define PASSWORD_SCRYPT_R RT_SCRYPT_DEFAULT_R
+#define PASSWORD_SCRYPT_P RT_SCRYPT_DEFAULT_P
 #define SALT_LENGTH 16
 #define HASH_LENGTH 32
 #define SALT_B64_LENGTH 24
@@ -215,48 +221,29 @@ static uint8_t *base64_decode(const char *data, size_t len, size_t *out_len) {
 // Public API
 //=============================================================================
 
-/// @brief Hash a password using PBKDF2-SHA256 with the runtime default iteration count.
-/// @details Convenience wrapper that calls rt_password_hash_with_iterations
-///          with the default iteration count. The 300,000 default intentionally
-///          biases toward stronger offline-attack resistance for stored-password
-///          hashes while remaining practical for interactive use.
-/// @param password The password to hash.
-/// @return Self-describing hash string: "PBKDF2$300000$<salt_b64>$<hash_b64>".
-rt_string rt_password_hash(rt_string password) {
-    return rt_password_hash_with_iterations(password, DEFAULT_ITERATIONS);
+static int password_fixed_time_eq(const uint8_t *a, const uint8_t *b, size_t len) {
+    uint8_t diff = 0;
+    for (size_t i = 0; i < len; i++)
+        diff |= a[i] ^ b[i];
+    return diff == 0;
 }
 
-/// @brief Hash a password with a custom PBKDF2 iteration count.
-/// @details Generates a 16-byte CSPRNG salt, derives a 32-byte key using
-///          PBKDF2-HMAC-SHA256, and returns a self-describing string that
-///          encodes the algorithm, iteration count, salt, and hash. The format
-///          is "PBKDF2$<iterations>$<salt_b64>$<hash_b64>", which allows
-///          rt_password_verify to extract all parameters without separate
-///          salt storage. Iterations are clamped to [100,000, 10,000,000].
-/// @param password   The password to hash.
-/// @param iterations Number of PBKDF2 iterations (higher = slower + more secure).
-/// @return Encoded hash string safe for database storage.
-rt_string rt_password_hash_with_iterations(rt_string password, int64_t iterations) {
-    // Clamp iterations to minimum
-    if (iterations < MIN_ITERATIONS) {
-        iterations = MIN_ITERATIONS;
+static int scrypt_log2_from_n(uint64_t n) {
+    if (n < 2 || (n & (n - 1)) != 0)
+        return -1;
+    int log2n = 0;
+    while (n > 1) {
+        n >>= 1;
+        log2n++;
     }
-    if (iterations > MAX_ITERATIONS) {
-        rt_trap("Password.HashIters: iterations must not exceed 10000000");
-    }
+    return log2n;
+}
 
-    // Generate random salt
-    uint8_t salt[SALT_LENGTH];
-    rt_crypto_random_bytes(salt, SALT_LENGTH);
-
-    // Derive key
-    size_t pwd_len;
-    const uint8_t *pwd = password_string_bytes(password, &pwd_len);
-
-    uint8_t hash[HASH_LENGTH];
-    rt_keyderive_pbkdf2_sha256_raw(pwd, pwd_len, salt, SALT_LENGTH, (uint32_t)iterations, hash, HASH_LENGTH);
-
-    // Encode salt and hash to base64
+static rt_string password_format_hash(const char *prefix,
+                                      const char *params,
+                                      const uint8_t salt[SALT_LENGTH],
+                                      const uint8_t hash[HASH_LENGTH],
+                                      const char *op_name) {
     size_t salt_b64_len, hash_b64_len;
     char *salt_b64 = base64_encode(salt, SALT_LENGTH, &salt_b64_len);
     char *hash_b64 = base64_encode(hash, HASH_LENGTH, &hash_b64_len);
@@ -264,36 +251,243 @@ rt_string rt_password_hash_with_iterations(rt_string password, int64_t iteration
         hash_b64_len != HASH_B64_LENGTH) {
         free(salt_b64);
         free(hash_b64);
-        password_secure_zero(hash, sizeof(hash));
-        password_secure_zero(salt, sizeof(salt));
-        rt_trap("Password.HashIters: memory allocation failed");
+        rt_trap(op_name);
     }
 
-    // Build output: "PBKDF2$iterations$salt_b64$hash_b64"
-    // Max: 6 + 1 + 10 + 1 + 24 + 1 + 44 + 1 = 88 chars
-    char buffer[128];
-    snprintf(
-        buffer, sizeof(buffer), "PBKDF2$%lld$%s$%s", (long long)iterations, salt_b64, hash_b64);
+    char buffer[192];
+    if (params && params[0])
+        snprintf(buffer, sizeof(buffer), "%s$%s$%s$%s", prefix, params, salt_b64, hash_b64);
+    else
+        snprintf(buffer, sizeof(buffer), "%s$%s$%s", prefix, salt_b64, hash_b64);
 
     free(salt_b64);
     free(hash_b64);
-    password_secure_zero(hash, sizeof(hash));
-    password_secure_zero(salt, sizeof(salt));
-
     return rt_string_from_bytes(buffer, strlen(buffer));
 }
 
-/// @brief Verify a password against a stored hash string.
-/// @details Parses the stored hash to extract the algorithm, iteration count,
-///          salt (base64-decoded), and expected hash. Re-derives the key from
-///          the candidate password using the same parameters, then compares
-///          using constant-time byte comparison (XOR accumulator) to prevent
-///          timing side-channel attacks. Returns 0 (not trap) for any mismatch,
-///          malformed input, or unrecognized format — callers should never
-///          distinguish "wrong password" from "corrupt hash".
-/// @param password The candidate password to verify.
-/// @param hash     The stored hash string from rt_password_hash.
-/// @return 1 if the password matches, 0 otherwise.
+rt_string rt_password_hash(rt_string password) {
+    return rt_password_hash_scrypt(password);
+}
+
+rt_string rt_password_hash_with_iterations(rt_string password, int64_t iterations) {
+    if (iterations < MIN_ITERATIONS)
+        rt_trap("Password.HashIters: iterations must be at least 100000");
+    if (iterations > MAX_ITERATIONS)
+        rt_trap("Password.HashIters: iterations must not exceed 10000000");
+
+    uint8_t salt[SALT_LENGTH];
+    rt_crypto_random_bytes(salt, SALT_LENGTH);
+
+    size_t pwd_len;
+    const uint8_t *pwd = password_string_bytes(password, &pwd_len);
+
+    uint8_t hash[HASH_LENGTH];
+    rt_keyderive_pbkdf2_sha256_raw(pwd, pwd_len, salt, SALT_LENGTH, (uint32_t)iterations, hash, HASH_LENGTH);
+
+    char params[32];
+    snprintf(params, sizeof(params), "%lld", (long long)iterations);
+    rt_string result = password_format_hash(
+        "PBKDF2", params, salt, hash, "Password.HashIters: memory allocation failed");
+    password_secure_zero(hash, sizeof(hash));
+    password_secure_zero(salt, sizeof(salt));
+    return result;
+}
+
+rt_string rt_password_hash_scrypt(rt_string password) {
+    return rt_password_hash_scrypt_params(password,
+                                          (int64_t)(UINT64_C(1) << PASSWORD_SCRYPT_N_LOG2),
+                                          PASSWORD_SCRYPT_R,
+                                          PASSWORD_SCRYPT_P);
+}
+
+rt_string rt_password_hash_scrypt_params(rt_string password, int64_t n64, int64_t r64, int64_t p64) {
+    if (n64 < 2 || r64 < 1 || p64 < 1 || r64 > RT_SCRYPT_MAX_R || p64 > RT_SCRYPT_MAX_P)
+        rt_trap("Password.HashScrypt: invalid scrypt parameters");
+    uint64_t n = (uint64_t)n64;
+    uint32_t r = (uint32_t)r64;
+    uint32_t p = (uint32_t)p64;
+    int log2n = scrypt_log2_from_n(n);
+    if (log2n < 1 || (uint32_t)log2n > RT_SCRYPT_MAX_N_LOG2)
+        rt_trap("Password.HashScrypt: N must be a supported power of two");
+
+    uint8_t salt[SALT_LENGTH];
+    rt_crypto_random_bytes(salt, SALT_LENGTH);
+
+    size_t pwd_len;
+    const uint8_t *pwd = password_string_bytes(password, &pwd_len);
+
+    uint8_t hash[HASH_LENGTH];
+    rt_keyderive_scrypt_sha256_raw(pwd, pwd_len, salt, SALT_LENGTH, n, r, p, hash, HASH_LENGTH);
+
+    char params[48];
+    snprintf(params, sizeof(params), "%d$%u$%u", log2n, r, p);
+    rt_string result = password_format_hash(
+        "SCRYPT", params, salt, hash, "Password.HashScrypt: memory allocation failed");
+    password_secure_zero(hash, sizeof(hash));
+    password_secure_zero(salt, sizeof(salt));
+    return result;
+}
+
+static int password_parse_b64_field(const char **p,
+                                    size_t expected_b64_len,
+                                    char **out,
+                                    size_t *out_len) {
+    const char *start = *p;
+    while (**p && **p != '$')
+        (*p)++;
+    size_t len = (size_t)(*p - start);
+    if (len != expected_b64_len)
+        return 0;
+    char *copy = (char *)malloc(len + 1);
+    if (!copy)
+        return 0;
+    memcpy(copy, start, len);
+    copy[len] = '\0';
+    *out = copy;
+    *out_len = len;
+    if (**p == '$')
+        (*p)++;
+    return 1;
+}
+
+static int password_decode_salt_hash(const char *salt_start,
+                                     size_t salt_b64_len,
+                                     const char *hash_start,
+                                     size_t hash_b64_len,
+                                     uint8_t **salt,
+                                     size_t *salt_len,
+                                     uint8_t **expected,
+                                     size_t *expected_len) {
+    *salt = base64_decode(salt_start, salt_b64_len, salt_len);
+    if (!*salt || *salt_len != SALT_LENGTH) {
+        if (*salt) {
+            password_secure_zero(*salt, *salt_len);
+            free(*salt);
+        }
+        return 0;
+    }
+    *expected = base64_decode(hash_start, hash_b64_len, expected_len);
+    if (!*expected || *expected_len != HASH_LENGTH) {
+        password_secure_zero(*salt, *salt_len);
+        free(*salt);
+        if (*expected) {
+            password_secure_zero(*expected, *expected_len);
+            free(*expected);
+        }
+        return 0;
+    }
+    return 1;
+}
+
+static int password_verify_pbkdf2(rt_string password, const char *hash_str) {
+    const char *p = hash_str + 7;
+    char *end;
+
+    errno = 0;
+    long long iterations = strtoll(p, &end, 10);
+    if (errno != 0 || end == p || *end != '$' || iterations < MIN_ITERATIONS ||
+        iterations > MAX_ITERATIONS)
+        return 0;
+    p = end + 1;
+
+    char *salt_b64 = NULL;
+    size_t salt_b64_len = 0;
+    if (!password_parse_b64_field(&p, SALT_B64_LENGTH, &salt_b64, &salt_b64_len))
+        return 0;
+
+    const char *hash_b64_start = p;
+    size_t hash_b64_len = strlen(hash_b64_start);
+    if (hash_b64_len != HASH_B64_LENGTH) {
+        free(salt_b64);
+        return 0;
+    }
+
+    size_t salt_len;
+    size_t expected_len;
+    uint8_t *salt = NULL;
+    uint8_t *expected = NULL;
+    int ok = password_decode_salt_hash(
+        salt_b64, salt_b64_len, hash_b64_start, hash_b64_len, &salt, &salt_len, &expected, &expected_len);
+    free(salt_b64);
+    if (!ok)
+        return 0;
+
+    size_t pwd_len;
+    const uint8_t *pwd = password_string_bytes(password, &pwd_len);
+    uint8_t computed[HASH_LENGTH];
+    rt_keyderive_pbkdf2_sha256_raw(pwd, pwd_len, salt, salt_len, (uint32_t)iterations, computed, HASH_LENGTH);
+
+    ok = password_fixed_time_eq(computed, expected, HASH_LENGTH);
+    password_secure_zero(salt, salt_len);
+    free(salt);
+    password_secure_zero(expected, expected_len);
+    free(expected);
+    password_secure_zero(computed, sizeof(computed));
+    return ok;
+}
+
+static int password_verify_scrypt(rt_string password, const char *hash_str) {
+    const char *p = hash_str + 7;
+    char *end;
+
+    errno = 0;
+    long long log2n_ll = strtoll(p, &end, 10);
+    if (errno != 0 || end == p || *end != '$' || log2n_ll < 1 ||
+        log2n_ll > RT_SCRYPT_MAX_N_LOG2)
+        return 0;
+    p = end + 1;
+
+    errno = 0;
+    long long r_ll = strtoll(p, &end, 10);
+    if (errno != 0 || end == p || *end != '$' || r_ll < 1 || r_ll > RT_SCRYPT_MAX_R)
+        return 0;
+    p = end + 1;
+
+    errno = 0;
+    long long p_ll = strtoll(p, &end, 10);
+    if (errno != 0 || end == p || *end != '$' || p_ll < 1 || p_ll > RT_SCRYPT_MAX_P)
+        return 0;
+    p = end + 1;
+
+    char *salt_b64 = NULL;
+    size_t salt_b64_len = 0;
+    if (!password_parse_b64_field(&p, SALT_B64_LENGTH, &salt_b64, &salt_b64_len))
+        return 0;
+
+    const char *hash_b64_start = p;
+    size_t hash_b64_len = strlen(hash_b64_start);
+    if (hash_b64_len != HASH_B64_LENGTH) {
+        free(salt_b64);
+        return 0;
+    }
+
+    size_t salt_len;
+    size_t expected_len;
+    uint8_t *salt = NULL;
+    uint8_t *expected = NULL;
+    int ok = password_decode_salt_hash(
+        salt_b64, salt_b64_len, hash_b64_start, hash_b64_len, &salt, &salt_len, &expected, &expected_len);
+    free(salt_b64);
+    if (!ok)
+        return 0;
+
+    size_t pwd_len;
+    const uint8_t *pwd = password_string_bytes(password, &pwd_len);
+    uint8_t computed[HASH_LENGTH];
+    uint64_t n = UINT64_C(1) << (uint32_t)log2n_ll;
+    rt_keyderive_scrypt_sha256_raw(
+        pwd, pwd_len, salt, salt_len, n, (uint32_t)r_ll, (uint32_t)p_ll, computed, HASH_LENGTH);
+
+    ok = password_fixed_time_eq(computed, expected, HASH_LENGTH);
+
+    password_secure_zero(salt, salt_len);
+    free(salt);
+    password_secure_zero(expected, expected_len);
+    free(expected);
+    password_secure_zero(computed, sizeof(computed));
+    return ok;
+}
+
 int8_t rt_password_verify(rt_string password, rt_string hash) {
     if (!hash)
         return 0;
@@ -306,98 +500,45 @@ int8_t rt_password_verify(rt_string password, rt_string hash) {
     if (strlen(hash_str) != (size_t)hash_len64)
         return 0;
 
-    // Parse format: "PBKDF2$iterations$salt_b64$hash_b64"
-    if (strncmp(hash_str, "PBKDF2$", 7) != 0) {
-        return 0; // Invalid format
-    }
+    if (strncmp(hash_str, "SCRYPT$", 7) == 0)
+        return password_verify_scrypt(password, hash_str) ? 1 : 0;
+    if (strncmp(hash_str, "PBKDF2$", 7) == 0)
+        return password_verify_pbkdf2(password, hash_str) ? 1 : 0;
+    return 0;
+}
 
-    // Find delimiters
+int8_t rt_password_needs_rehash(rt_string hash) {
+    if (!hash)
+        return 1;
+    int64_t hash_len64 = rt_str_len(hash);
+    if (hash_len64 <= 0)
+        return 1;
+    const char *hash_str = rt_string_cstr(hash);
+    if (!hash_str || strlen(hash_str) != (size_t)hash_len64)
+        return 1;
+
+    if (strncmp(hash_str, "SCRYPT$", 7) != 0)
+        return 1;
+
     const char *p = hash_str + 7;
     char *end;
-
-    // Parse iterations
     errno = 0;
-    long long iterations = strtoll(p, &end, 10);
-    if (errno != 0 || end == p || *end != '$' || iterations < MIN_ITERATIONS ||
-        iterations > MAX_ITERATIONS) {
-        return 0;
-    }
+    long long log2n_ll = strtoll(p, &end, 10);
+    if (errno != 0 || end == p || *end != '$')
+        return 1;
     p = end + 1;
+    errno = 0;
+    long long r_ll = strtoll(p, &end, 10);
+    if (errno != 0 || end == p || *end != '$')
+        return 1;
+    p = end + 1;
+    errno = 0;
+    long long p_ll = strtoll(p, &end, 10);
+    if (errno != 0 || end == p || *end != '$')
+        return 1;
 
-    // Find salt end
-    const char *salt_start = p;
-    while (*p && *p != '$')
-        p++;
-    if (*p != '$') {
-        return 0;
-    }
-    size_t salt_b64_len = p - salt_start;
-    if (salt_b64_len != SALT_B64_LENGTH) {
-        return 0;
-    }
-    p++;
-
-    // Rest is hash
-    const char *hash_b64_start = p;
-    size_t hash_b64_len = strlen(hash_b64_start);
-    if (hash_b64_len != HASH_B64_LENGTH) {
-        return 0;
-    }
-
-    // Decode salt
-    char *salt_b64 = (char *)malloc(salt_b64_len + 1);
-    if (!salt_b64)
-        return 0;
-    memcpy(salt_b64, salt_start, salt_b64_len);
-    salt_b64[salt_b64_len] = '\0';
-
-    size_t salt_len;
-    uint8_t *salt = base64_decode(salt_b64, salt_b64_len, &salt_len);
-    free(salt_b64);
-
-    if (!salt) {
-        return 0;
-    }
-    if (salt_len != SALT_LENGTH) {
-        password_secure_zero(salt, salt_len);
-        free(salt);
-        return 0;
-    }
-
-    // Decode expected hash
-    size_t expected_len;
-    uint8_t *expected = base64_decode(hash_b64_start, hash_b64_len, &expected_len);
-    if (!expected) {
-        free(salt);
-        return 0;
-    }
-    if (expected_len != HASH_LENGTH) {
-        password_secure_zero(salt, salt_len);
-        free(salt);
-        password_secure_zero(expected, expected_len);
-        free(expected);
-        return 0;
-    }
-
-    // Compute hash with same parameters
-    size_t pwd_len;
-    const uint8_t *pwd = password_string_bytes(password, &pwd_len);
-
-    uint8_t computed[HASH_LENGTH];
-    rt_keyderive_pbkdf2_sha256_raw(pwd, pwd_len, salt, salt_len, (uint32_t)iterations, computed, HASH_LENGTH);
-
-    password_secure_zero(salt, salt_len);
-    free(salt);
-
-    // Constant-time comparison
-    uint8_t diff = 0;
-    for (size_t i = 0; i < HASH_LENGTH; i++) {
-        diff |= computed[i] ^ expected[i];
-    }
-
-    password_secure_zero(expected, expected_len);
-    free(expected);
-    password_secure_zero(computed, sizeof(computed));
-
-    return diff == 0 ? 1 : 0;
+    if (log2n_ll != PASSWORD_SCRYPT_N_LOG2 || r_ll != PASSWORD_SCRYPT_R ||
+        p_ll != PASSWORD_SCRYPT_P)
+        return 1;
+    return 0;
 }

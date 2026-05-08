@@ -86,18 +86,25 @@ typedef struct scene_impl {
     scene_node_impl *root;
 } scene_impl;
 
+/// @brief Validate-and-return a SceneNode pointer; NULL for NULL or wrong class.
+/// @details Soft check used by every public SceneNode entry point.
 static scene_node_impl *scene_node_checked_or_null(void *node_ptr) {
     if (!node_ptr || rt_obj_class_id(node_ptr) != RT_SCENE_NODE_CLASS_ID)
         return NULL;
     return (scene_node_impl *)node_ptr;
 }
 
+/// @brief Validate-and-return a Scene pointer; NULL for NULL or wrong class.
+/// @details Soft check used by every public Scene entry point.
 static scene_impl *scene_checked_or_null(void *scene_ptr) {
     if (!scene_ptr || rt_obj_class_id(scene_ptr) != RT_SCENE_CLASS_ID)
         return NULL;
     return (scene_impl *)scene_ptr;
 }
 
+/// @brief Add two int64 values, saturating at INT64_MIN/MAX instead of wrapping.
+/// @details Used to compose accumulated transforms (parent + child position)
+///          without UB on overflow. Negative @p b correctly saturates at MIN.
 static int64_t scene_add_saturating(int64_t a, int64_t b) {
     if (b > 0 && a > INT64_MAX - b)
         return INT64_MAX;
@@ -106,6 +113,10 @@ static int64_t scene_add_saturating(int64_t a, int64_t b) {
     return a + b;
 }
 
+/// @brief Round a long double to int64 with banker-style half-away rounding, saturating on overflow.
+/// @details Used as the final step of every long-double world-transform
+///          calculation so the result lands cleanly in int64 storage. Out-
+///          of-range inputs clamp to INT64_MIN/MAX rather than producing UB.
 static int64_t scene_ld_to_i64_sat(long double value) {
     if (value >= (long double)INT64_MAX)
         return INT64_MAX;
@@ -114,12 +125,19 @@ static int64_t scene_ld_to_i64_sat(long double value) {
     return (int64_t)(value >= 0.0L ? value + 0.5L : value - 0.5L);
 }
 
+/// @brief Compute (value * mul) / div in long double, saturating to int64.
+/// @details Used by scale composition (child_world = parent_world * child_local / 100)
+///          where the intermediate product can blow past int64. div == 0 returns 0
+///          rather than dividing by zero.
 static int64_t scene_mul_div_saturating(int64_t value, int64_t mul, int64_t div) {
     if (div == 0)
         return 0;
     return scene_ld_to_i64_sat(((long double)value * (long double)mul) / (long double)div);
 }
 
+/// @brief Subtract @p b from @p a in long double, saturating to int64 on overflow.
+/// @details Used by world-to-local transform inversion where the difference
+///          can exceed int64 range mid-calculation.
 static int64_t scene_sub_saturating(int64_t a, int64_t b) {
     return scene_ld_to_i64_sat((long double)a - (long double)b);
 }

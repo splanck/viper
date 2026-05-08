@@ -98,8 +98,18 @@ static int secure_random_fill(uint8_t *buf, size_t len) {
 
 #ifdef _WIN32
     // Use BCryptGenRandom on Windows
-    NTSTATUS status = BCryptGenRandom(NULL, buf, (ULONG)len, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
-    return NT_SUCCESS(status) ? 0 : -1;
+    size_t off = 0;
+    while (off < len) {
+        size_t chunk = len - off;
+        if (chunk > ULONG_MAX)
+            chunk = ULONG_MAX;
+        NTSTATUS status =
+            BCryptGenRandom(NULL, buf + off, (ULONG)chunk, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+        if (!NT_SUCCESS(status))
+            return -1;
+        off += chunk;
+    }
+    return 0;
 #else
 #if defined(__APPLE__)
     arc4random_buf(buf, len);
@@ -115,13 +125,19 @@ static int secure_random_fill(uint8_t *buf, size_t len) {
                 break;
             return -1;
         }
+        if (result == 0)
+            return -1;
         bytes_read += (size_t)result;
     }
     if (bytes_read == len)
         return 0;
 #endif
     // Unix and ViperDOS: use /dev/urandom
+#ifdef O_CLOEXEC
+    int fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
+#else
     int fd = open("/dev/urandom", O_RDONLY);
+#endif
     if (fd < 0) {
         return -1;
     }

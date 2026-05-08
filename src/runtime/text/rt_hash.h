@@ -110,6 +110,14 @@ rt_string rt_hash_hmac_sha256(rt_string key, rt_string data);
 /// @return 64-character lowercase hex string.
 rt_string rt_hash_hmac_sha256_bytes(void *key, void *data);
 
+/// @brief Constant-time equality for string digests/MACs.
+/// @return 1 when byte lengths and contents match, 0 otherwise.
+int8_t rt_hash_constant_time_equals(rt_string a, rt_string b);
+
+/// @brief Constant-time equality for Bytes digests/MACs.
+/// @return 1 when byte lengths and contents match, 0 otherwise.
+int8_t rt_hash_constant_time_equals_bytes(void *a, void *b);
+
 //=========================================================================
 // Fast Non-Cryptographic Hash (FNV-1a)
 //=========================================================================

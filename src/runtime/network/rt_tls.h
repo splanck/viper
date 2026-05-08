@@ -36,6 +36,8 @@
 extern "C" {
 #endif
 
+#define RT_TLS_CLASS_ID INT64_C(-0x720101)
+
 /// TLS status/error codes.
 typedef enum {
     RT_TLS_OK = 0,

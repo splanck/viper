@@ -1935,11 +1935,21 @@ int rt_x25519(const uint8_t secret[32], const uint8_t peer_public[32], uint8_t s
 void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
     HCRYPTPROV hProv;
     if (CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
-        if (CryptGenRandom(hProv, (DWORD)len, buf)) {
-            CryptReleaseContext(hProv, 0);
-            return;
+        size_t off = 0;
+        int ok = 1;
+        while (off < len) {
+            size_t chunk = len - off;
+            if (chunk > DWORD_MAX)
+                chunk = DWORD_MAX;
+            if (!CryptGenRandom(hProv, (DWORD)chunk, buf + off)) {
+                ok = 0;
+                break;
+            }
+            off += chunk;
         }
         CryptReleaseContext(hProv, 0);
+        if (ok)
+            return;
     }
 
     /* S-03: No cryptographically secure entropy available — abort rather than
@@ -1978,17 +1988,25 @@ void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
                 break;
             rt_trap("Crypto: failed to obtain OS entropy (getrandom)");
         }
+        if (n == 0)
+            rt_trap("Crypto: failed to obtain OS entropy (getrandom returned 0)");
         off += (size_t)n;
     }
     if (off == len)
         return;
 #endif
 
+#ifdef O_CLOEXEC
+    int fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
+#else
     int fd = open("/dev/urandom", O_RDONLY);
+#endif
     if (fd >= 0) {
         size_t urandom_off = 0;
         while (urandom_off < len) {
             ssize_t n = read(fd, buf + urandom_off, len - urandom_off);
+            if (n < 0 && errno == EINTR)
+                continue;
             if (n <= 0)
                 break;
             urandom_off += (size_t)n;

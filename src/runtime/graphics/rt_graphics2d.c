@@ -313,6 +313,10 @@ static rt_renderer2d_impl *renderer2d_checked(void *renderer) {
     return impl->magic == RT2D_RENDERER_MAGIC ? impl : NULL;
 }
 
+/// @brief Test whether @p obj is non-NULL and has the runtime class id @p class_id.
+/// @details Used by every public Renderer2D / Material2D / TileLayer2D entry
+///          point as a one-line type guard before downcasting an opaque
+///          handle to its concrete impl pointer.
 static int32_t rt2d_has_class(void *obj, int64_t class_id) {
     return obj && rt_obj_class_id(obj) == class_id;
 }
@@ -624,6 +628,11 @@ static void blit_pixels(void *dst,
     }
 }
 
+/// @brief Wrap or clamp a 1D source-pixel coordinate per the requested wrap mode.
+/// @details RT_GRAPHICS2D_WRAP_REPEAT performs a positive-modulo wrap (so
+///          negative coords land in [0, limit)); other wrap modes clamp into
+///          [0, limit-1]. Used by both nearest- and linear-filter samplers.
+/// @return A coordinate in [0, limit). Returns 0 for limit <= 0.
 static int64_t sampler_coord_i64(int64_t coord, int64_t limit, int64_t wrap) {
     if (limit <= 0)
         return 0;
@@ -638,6 +647,11 @@ static int64_t sampler_coord_i64(int64_t coord, int64_t limit, int64_t wrap) {
     return coord;
 }
 
+/// @brief Bilinearly interpolate four 8-bit channel samples at fractional offsets (tx, ty).
+/// @details Used by the linear-filter sampler. c00..c11 are the four corner
+///          samples (top-left, top-right, bottom-left, bottom-right) of a
+///          single texel; tx, ty are the [0, 1] fractional position within
+///          that texel. Output is rounded and clamped to [0, 255].
 static uint8_t lerp_channel(long double c00,
                             long double c10,
                             long double c01,
@@ -654,6 +668,13 @@ static uint8_t lerp_channel(long double c00,
     return (uint8_t)(value + 0.5L);
 }
 
+/// @brief Sample one pixel from @p src using nearest-neighbor filtering.
+/// @details Maps the destination position (dst_x, dst_y) within a
+///          (dst_span_w × dst_span_h) blit region back to a source position
+///          inside the (src_span_w × src_span_h) source region anchored at
+///          (sx, sy). Picks the nearest source texel, applying the wrap mode
+///          for out-of-range coordinates. Returns 0 (transparent black) on
+///          degenerate input.
 static uint32_t sample_pixels_nearest(void *src,
                                       int64_t sx,
                                       int64_t sy,
@@ -688,6 +709,13 @@ static uint32_t sample_pixels_nearest(void *src,
     return (uint32_t)rt_pixels_get(src, sample_x, sample_y);
 }
 
+/// @brief Sample one pixel from @p src using bilinear filtering (4-tap blend).
+/// @details Same coordinate space as sample_pixels_nearest, but performs a
+///          bilinear blend of the four texels surrounding the back-mapped
+///          fractional source position. Channels (R, G, B, A) are interpolated
+///          independently via lerp_channel. The 0.5 offsets center samples on
+///          texel centers (so a 1:1 unscaled blit reproduces the source
+///          exactly without bleeding between texels).
 static uint32_t sample_pixels_linear(void *src,
                                      int64_t sx,
                                      int64_t sy,
@@ -748,6 +776,10 @@ static uint32_t sample_pixels_linear(void *src,
     return (r << 24) | (g << 16) | (b << 8) | a;
 }
 
+/// @brief Dispatch a pixel sample to either the nearest or linear filter.
+/// @details Single entry point so the inner blit loops don't have to check
+///          the filter mode per pixel — only the dispatch sees the filter
+///          argument. Defaults to nearest for unknown filter values.
 static uint32_t sample_pixels(void *src,
                               int64_t sx,
                               int64_t sy,
@@ -766,6 +798,25 @@ static uint32_t sample_pixels(void *src,
         src, sx, sy, src_span_w, src_span_h, dst_span_w, dst_span_h, dst_x, dst_y, wrap);
 }
 
+/// @brief Blit a sampled, scaled, optionally tinted region from @p src into @p dst.
+/// @details Walks the destination rect (dx, dy, dst_width, dst_height), invokes
+///          sample_pixels for each pixel to fetch the (possibly filtered)
+///          source color, applies the tint and per-call alpha, and composites
+///          via blend_pixel. This is the workhorse for Renderer2D.DrawTexture*
+///          and post-process passes.
+/// @param dst        Destination Pixels (RGBA8). Required.
+/// @param dx,dy      Top-left of the destination rect.
+/// @param src        Source Pixels (RGBA8). Required.
+/// @param sx,sy      Top-left of the source region.
+/// @param src_width  Width of the source region (the (sx,sy)..(sx+w,sy+h) span).
+/// @param src_height Height of the source region.
+/// @param dst_width  Width of the destination rect (scaling).
+/// @param dst_height Height of the destination rect (scaling).
+/// @param tint       0xAARRGGBB tint multiplier (-1 = no tint).
+/// @param alpha      Extra opacity multiplier in [0, 255].
+/// @param blend_mode RT_GRAPHICS2D_BLEND_* (alpha / additive / replace …).
+/// @param filter     RT_GRAPHICS2D_FILTER_NEAREST or LINEAR.
+/// @param wrap       RT_GRAPHICS2D_WRAP_* for source-coord out-of-range.
 static void blit_pixels_sampled_scaled(void *dst,
                                        int64_t dx,
                                        int64_t dy,

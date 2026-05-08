@@ -31,6 +31,7 @@
 
 #include "rt_hash.h"
 
+#include "rt_bytes.h"
 #include "rt_codec.h"
 #include "rt_crc32.h"
 #include "rt_internal.h"
@@ -73,7 +74,7 @@ static const uint8_t *hash_string_bytes(rt_string str, size_t *len) {
 
 typedef struct {
     uint32_t state[4];
-    uint32_t count[2];
+    uint64_t bit_count;
     uint8_t buffer[64];
 } MD5_CTX;
 
@@ -213,7 +214,7 @@ static void md5_transform(uint32_t state[4], const uint8_t block[64]) {
 
 /// @brief Initialise an MD5 context with the standard A/B/C/D IV constants.
 static void md5_init(MD5_CTX *ctx) {
-    ctx->count[0] = ctx->count[1] = 0;
+    ctx->bit_count = 0;
     ctx->state[0] = 0x67452301;
     ctx->state[1] = 0xefcdab89;
     ctx->state[2] = 0x98badcfe;
@@ -224,11 +225,11 @@ static void md5_init(MD5_CTX *ctx) {
 static void md5_update(MD5_CTX *ctx, const uint8_t *data, size_t len) {
     size_t i, index, partLen;
 
-    index = (size_t)((ctx->count[0] >> 3) & 0x3F);
+    index = (size_t)((ctx->bit_count >> 3) & 0x3F);
 
-    if ((ctx->count[0] += ((uint32_t)len << 3)) < ((uint32_t)len << 3))
-        ctx->count[1]++;
-    ctx->count[1] += ((uint32_t)len >> 29);
+    if (len > (UINT64_MAX - ctx->bit_count) / 8)
+        rt_trap("MD5: input too large");
+    ctx->bit_count += (uint64_t)len * 8;
 
     partLen = 64 - index;
 
@@ -257,11 +258,11 @@ static void md5_final(uint8_t digest[16], MD5_CTX *ctx) {
     size_t index, padLen;
 
     for (int i = 0; i < 4; i++) {
-        bits[i] = (uint8_t)(ctx->count[0] >> (i * 8));
-        bits[i + 4] = (uint8_t)(ctx->count[1] >> (i * 8));
+        bits[i] = (uint8_t)(ctx->bit_count >> (i * 8));
+        bits[i + 4] = (uint8_t)(ctx->bit_count >> (32 + i * 8));
     }
 
-    index = (size_t)((ctx->count[0] >> 3) & 0x3f);
+    index = (size_t)((ctx->bit_count >> 3) & 0x3f);
     padLen = (index < 56) ? (56 - index) : (120 - index);
     md5_update(ctx, padding, padLen);
     md5_update(ctx, bits, 8);
@@ -288,7 +289,7 @@ static void compute_md5(const uint8_t *data, size_t len, uint8_t digest[16]) {
 
 typedef struct {
     uint32_t state[5];
-    uint32_t count[2];
+    uint64_t bit_count;
     uint8_t buffer[64];
 } SHA1_CTX;
 
@@ -363,17 +364,17 @@ static void sha1_init(SHA1_CTX *ctx) {
     ctx->state[2] = 0x98BADCFE;
     ctx->state[3] = 0x10325476;
     ctx->state[4] = 0xC3D2E1F0;
-    ctx->count[0] = ctx->count[1] = 0;
+    ctx->bit_count = 0;
 }
 
 /// @brief Stream `len` bytes through the SHA-1 context (transforms whenever 64 bytes accumulate).
 static void sha1_update(SHA1_CTX *ctx, const uint8_t *data, size_t len) {
     size_t i, j;
 
-    j = (ctx->count[0] >> 3) & 63;
-    if ((ctx->count[0] += (uint32_t)(len << 3)) < (uint32_t)(len << 3))
-        ctx->count[1]++;
-    ctx->count[1] += (uint32_t)(len >> 29);
+    j = (ctx->bit_count >> 3) & 63;
+    if (len > (UINT64_MAX - ctx->bit_count) / 8)
+        rt_trap("SHA1: input too large");
+    ctx->bit_count += (uint64_t)len * 8;
 
     if ((j + len) > 63) {
         memcpy(&ctx->buffer[j], data, (i = 64 - j));
@@ -394,12 +395,12 @@ static void sha1_final(uint8_t digest[20], SHA1_CTX *ctx) {
     uint8_t c;
 
     for (int i = 0; i < 8; i++) {
-        finalcount[i] = (uint8_t)((ctx->count[(i >= 4 ? 0 : 1)] >> ((3 - (i & 3)) * 8)) & 255);
+        finalcount[i] = (uint8_t)(ctx->bit_count >> ((7 - i) * 8));
     }
 
     c = 0x80;
     sha1_update(ctx, &c, 1);
-    while ((ctx->count[0] & 504) != 448) {
+    while ((ctx->bit_count & 504) != 448) {
         c = 0x00;
         sha1_update(ctx, &c, 1);
     }
@@ -1157,6 +1158,39 @@ rt_string rt_hash_hmac_sha256_bytes(void *key, void *data) {
         free(msg_data);
 
     return rt_codec_hex_enc_bytes(digest, 32);
+}
+
+static int8_t fixed_time_eq(const uint8_t *a, size_t a_len, const uint8_t *b, size_t b_len) {
+    size_t max_len = a_len > b_len ? a_len : b_len;
+    size_t diff = a_len ^ b_len;
+
+    for (size_t i = 0; i < max_len; i++) {
+        uint8_t av = i < a_len ? a[i] : 0;
+        uint8_t bv = i < b_len ? b[i] : 0;
+        diff |= (size_t)(av ^ bv);
+    }
+
+    return diff == 0 ? 1 : 0;
+}
+
+int8_t rt_hash_constant_time_equals(rt_string a, rt_string b) {
+    size_t a_len, b_len;
+    const uint8_t *a_data = hash_string_bytes(a, &a_len);
+    const uint8_t *b_data = hash_string_bytes(b, &b_len);
+    return fixed_time_eq(a_data, a_len, b_data, b_len);
+}
+
+int8_t rt_hash_constant_time_equals_bytes(void *a, void *b) {
+    int64_t a_len64 = rt_bytes_len(a);
+    int64_t b_len64 = rt_bytes_len(b);
+    if (a_len64 < 0 || b_len64 < 0)
+        return 0;
+    const uint8_t *a_data = rt_bytes_data_const(a);
+    const uint8_t *b_data = rt_bytes_data_const(b);
+    return fixed_time_eq(a_data ? a_data : (const uint8_t *)"",
+                         (size_t)a_len64,
+                         b_data ? b_data : (const uint8_t *)"",
+                         (size_t)b_len64);
 }
 
 //=============================================================================

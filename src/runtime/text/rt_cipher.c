@@ -38,6 +38,7 @@
 #include "rt_object.h"
 
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 // External trap function (defined in rt_io.c)
@@ -52,7 +53,12 @@
 #define CIPHER_KEY_SIZE 32
 #define CIPHER_TAG_SIZE 16
 #define CIPHER_PBKDF2_ITERATIONS 300000
+#define CIPHER_PW_HEADER_SIZE 36
+#define CIPHER_KEY_HEADER_SIZE 16
 #define CIPHER_CHACHA20_MAX_BYTES (((UINT64_C(1) << 32) - 1u) * 64u)
+
+static const uint8_t CIPHER_PW_MAGIC[4] = {'V', 'C', 'P', '2'};
+static const uint8_t CIPHER_KEY_MAGIC[4] = {'V', 'C', 'K', '2'};
 
 // HKDF info string for key derivation
 static const char *HKDF_INFO = "viper-cipher-v1";
@@ -184,6 +190,52 @@ static void derive_key_pbkdf2(const char *password,
                                    CIPHER_KEY_SIZE);
 }
 
+static void write_be32(uint8_t *out, uint32_t v) {
+    out[0] = (uint8_t)(v >> 24);
+    out[1] = (uint8_t)(v >> 16);
+    out[2] = (uint8_t)(v >> 8);
+    out[3] = (uint8_t)v;
+}
+
+static uint32_t read_be32(const uint8_t *in) {
+    return ((uint32_t)in[0] << 24) | ((uint32_t)in[1] << 16) | ((uint32_t)in[2] << 8) |
+           (uint32_t)in[3];
+}
+
+static int has_magic(const uint8_t *data, int64_t len, const uint8_t magic[4]) {
+    return data && len >= 4 && memcmp(data, magic, 4) == 0;
+}
+
+static uint8_t *combine_aad(const uint8_t *header,
+                            size_t header_len,
+                            void *aad_obj,
+                            const uint8_t **aad_out,
+                            size_t *aad_len_out) {
+    int64_t user_len64 = aad_obj ? bytes_len(aad_obj) : 0;
+    if (user_len64 < 0)
+        rt_trap("Cipher: invalid AAD length");
+    size_t user_len = (size_t)user_len64;
+    const uint8_t *user = user_len > 0 ? bytes_data(aad_obj) : NULL;
+
+    if (user_len == 0) {
+        *aad_out = header_len > 0 ? header : NULL;
+        *aad_len_out = header_len;
+        return NULL;
+    }
+    if (header_len > SIZE_MAX - user_len)
+        rt_trap("Cipher: AAD too large");
+
+    uint8_t *combined = (uint8_t *)malloc(header_len + user_len);
+    if (!combined)
+        rt_trap("Cipher: memory allocation failed");
+    if (header_len > 0)
+        memcpy(combined, header, header_len);
+    memcpy(combined + header_len, user, user_len);
+    *aad_out = combined;
+    *aad_len_out = header_len + user_len;
+    return combined;
+}
+
 //=============================================================================
 // Password-Based Encryption
 //=============================================================================
@@ -204,6 +256,10 @@ static void derive_key_pbkdf2(const char *password,
 /// @param password  Password string for key derivation (traps if empty).
 /// @return Bytes object containing the encrypted payload.
 void *rt_cipher_encrypt(void *plaintext, rt_string password) {
+    return rt_cipher_encrypt_aad(plaintext, password, NULL);
+}
+
+void *rt_cipher_encrypt_aad(void *plaintext, rt_string password, void *aad) {
     if (!plaintext) {
         rt_trap("Cipher.Encrypt: plaintext is null");
         return NULL;
@@ -219,7 +275,7 @@ void *rt_cipher_encrypt(void *plaintext, rt_string password) {
     uint8_t *plain_data = bytes_data(plaintext);
     int64_t plain_len = bytes_len(plaintext);
     int64_t out_len = cipher_checked_output_len(
-        plain_len, CIPHER_SALT_SIZE + CIPHER_NONCE_SIZE + CIPHER_TAG_SIZE, "Cipher.Encrypt: plaintext length is invalid");
+        plain_len, CIPHER_PW_HEADER_SIZE + CIPHER_TAG_SIZE, "Cipher.Encrypt: plaintext length is invalid");
 
     // Generate random salt and nonce
     uint8_t salt[CIPHER_SALT_SIZE];
@@ -234,19 +290,25 @@ void *rt_cipher_encrypt(void *plaintext, rt_string password) {
     void *result = rt_bytes_new(out_len);
     uint8_t *out_data = bytes_data(result);
 
-    // Copy salt and nonce to output
-    memcpy(out_data, salt, CIPHER_SALT_SIZE);
-    memcpy(out_data + CIPHER_SALT_SIZE, nonce, CIPHER_NONCE_SIZE);
+    memcpy(out_data, CIPHER_PW_MAGIC, sizeof(CIPHER_PW_MAGIC));
+    write_be32(out_data + 4, CIPHER_PBKDF2_ITERATIONS);
+    memcpy(out_data + 8, salt, CIPHER_SALT_SIZE);
+    memcpy(out_data + 24, nonce, CIPHER_NONCE_SIZE);
 
-    // Encrypt: ciphertext goes after salt + nonce
+    const uint8_t *aad_data;
+    size_t aad_len;
+    uint8_t *aad_alloc = combine_aad(out_data, CIPHER_PW_HEADER_SIZE, aad, &aad_data, &aad_len);
+
     size_t encrypted_len =
         rt_chacha20_poly1305_encrypt(key,
                                      nonce,
-                                     NULL,
-                                     0, // No AAD
+                                     aad_data,
+                                     aad_len,
                                      plain_data,
                                      (size_t)plain_len,
-                                     out_data + CIPHER_SALT_SIZE + CIPHER_NONCE_SIZE);
+                                     out_data + CIPHER_PW_HEADER_SIZE);
+    if (aad_alloc)
+        free(aad_alloc);
     if (encrypted_len == 0 && plain_len != 0) {
         cipher_secure_zero(key, sizeof(key));
         if (result && rt_obj_release_check0(result))
@@ -273,6 +335,10 @@ void *rt_cipher_encrypt(void *plaintext, rt_string password) {
 /// @param password   Password string for key derivation.
 /// @return Bytes object containing the decrypted plaintext, or NULL on auth failure.
 void *rt_cipher_decrypt(void *ciphertext, rt_string password) {
+    return rt_cipher_decrypt_aad(ciphertext, password, NULL);
+}
+
+void *rt_cipher_decrypt_aad(void *ciphertext, rt_string password, void *aad) {
     if (!ciphertext) {
         rt_trap("Cipher.Decrypt: ciphertext is null");
         return NULL;
@@ -288,43 +354,83 @@ void *rt_cipher_decrypt(void *ciphertext, rt_string password) {
     uint8_t *ct_data = bytes_data(ciphertext);
     int64_t ct_len = bytes_len(ciphertext);
 
-    // Minimum: salt + nonce + tag (no plaintext)
+    if (has_magic(ct_data, ct_len, CIPHER_PW_MAGIC)) {
+        if (ct_len < CIPHER_PW_HEADER_SIZE + CIPHER_TAG_SIZE) {
+            rt_trap("Cipher.Decrypt: ciphertext too short");
+            return NULL;
+        }
+        uint32_t iterations = read_be32(ct_data + 4);
+        if (iterations < RT_PBKDF2_MIN_ITERATIONS ||
+            iterations > RT_PBKDF2_MAX_ITERATIONS) {
+            rt_trap("Cipher.Decrypt: unsupported PBKDF2 iteration count");
+            return NULL;
+        }
+
+        const uint8_t *salt = ct_data + 8;
+        const uint8_t *nonce = ct_data + 24;
+        const uint8_t *encrypted = ct_data + CIPHER_PW_HEADER_SIZE;
+        int64_t encrypted_len = ct_len - CIPHER_PW_HEADER_SIZE;
+        int64_t plain_len = encrypted_len - CIPHER_TAG_SIZE;
+
+        uint8_t key[CIPHER_KEY_SIZE];
+        rt_keyderive_pbkdf2_sha256_raw((const uint8_t *)pwd,
+                                       pwd_len,
+                                       salt,
+                                       CIPHER_SALT_SIZE,
+                                       iterations,
+                                       key,
+                                       CIPHER_KEY_SIZE);
+
+        void *result = rt_bytes_new(plain_len);
+        uint8_t *plain_data = bytes_data(result);
+        const uint8_t *aad_data;
+        size_t aad_len;
+        uint8_t *aad_alloc =
+            combine_aad(ct_data, CIPHER_PW_HEADER_SIZE, aad, &aad_data, &aad_len);
+
+        long decrypt_result = rt_chacha20_poly1305_decrypt(
+            key, nonce, aad_data, aad_len, encrypted, (size_t)encrypted_len, plain_data);
+        if (aad_alloc)
+            free(aad_alloc);
+        cipher_secure_zero(key, sizeof(key));
+        if (decrypt_result < 0) {
+            if (plain_len > 0)
+                cipher_secure_zero(plain_data, (size_t)plain_len);
+            if (result && rt_obj_release_check0(result))
+                rt_obj_free(result);
+            return NULL;
+        }
+        return result;
+    }
+
+    if (aad && bytes_len(aad) > 0)
+        return NULL;
+
     int64_t min_len = CIPHER_SALT_SIZE + CIPHER_NONCE_SIZE + CIPHER_TAG_SIZE;
     if (ct_len < min_len) {
         rt_trap("Cipher.Decrypt: ciphertext too short");
         return NULL;
     }
 
-    // Extract salt and nonce
     const uint8_t *salt = ct_data;
     const uint8_t *nonce = ct_data + CIPHER_SALT_SIZE;
     const uint8_t *encrypted = ct_data + CIPHER_SALT_SIZE + CIPHER_NONCE_SIZE;
     int64_t encrypted_len = ct_len - CIPHER_SALT_SIZE - CIPHER_NONCE_SIZE;
-
-    // Derive key from password
-    uint8_t key[CIPHER_KEY_SIZE];
-    derive_key_pbkdf2(pwd, pwd_len, salt, CIPHER_SALT_SIZE, key);
-
-    // Plaintext length = encrypted_len - tag
     int64_t plain_len = encrypted_len - CIPHER_TAG_SIZE;
     void *result = rt_bytes_new(plain_len);
     uint8_t *plain_data = bytes_data(result);
 
-    // Decrypt and verify tag
-    long decrypt_result = rt_chacha20_poly1305_decrypt(key,
-                                                       nonce,
-                                                       NULL,
-                                                       0, // No AAD
-                                                       encrypted,
-                                                       (size_t)encrypted_len,
-                                                       plain_data);
+    uint8_t key[CIPHER_KEY_SIZE];
+    derive_key_pbkdf2(pwd, pwd_len, salt, CIPHER_SALT_SIZE, key);
+    long decrypt_result =
+        rt_chacha20_poly1305_decrypt(key, nonce, NULL, 0, encrypted, (size_t)encrypted_len, plain_data);
 
     if (decrypt_result < 0) {
         if (plain_len > 0)
             cipher_secure_zero(plain_data, (size_t)plain_len);
         derive_key_legacy(pwd, pwd_len, salt, CIPHER_SALT_SIZE, key);
-        decrypt_result = rt_chacha20_poly1305_decrypt(
-            key, nonce, NULL, 0, encrypted, (size_t)encrypted_len, plain_data);
+        decrypt_result =
+            rt_chacha20_poly1305_decrypt(key, nonce, NULL, 0, encrypted, (size_t)encrypted_len, plain_data);
         if (decrypt_result < 0) {
             cipher_secure_zero(key, sizeof(key));
             if (plain_len > 0)
@@ -335,7 +441,6 @@ void *rt_cipher_decrypt(void *ciphertext, rt_string password) {
         }
     }
     cipher_secure_zero(key, sizeof(key));
-
     return result;
 }
 
@@ -355,6 +460,10 @@ void *rt_cipher_decrypt(void *ciphertext, rt_string password) {
 /// @param key_bytes  Bytes object containing exactly 32 bytes (traps if wrong size).
 /// @return Bytes object containing the encrypted payload.
 void *rt_cipher_encrypt_with_key(void *plaintext, void *key_bytes) {
+    return rt_cipher_encrypt_with_key_aad(plaintext, key_bytes, NULL);
+}
+
+void *rt_cipher_encrypt_with_key_aad(void *plaintext, void *key_bytes, void *aad) {
     if (!plaintext) {
         rt_trap("Cipher.EncryptWithKey: plaintext is null");
         return NULL;
@@ -369,7 +478,7 @@ void *rt_cipher_encrypt_with_key(void *plaintext, void *key_bytes) {
     int64_t plain_len = bytes_len(plaintext);
     const uint8_t *key = bytes_data(key_bytes);
     int64_t out_len = cipher_checked_output_len(
-        plain_len, CIPHER_NONCE_SIZE + CIPHER_TAG_SIZE, "Cipher.EncryptWithKey: plaintext length is invalid");
+        plain_len, CIPHER_KEY_HEADER_SIZE + CIPHER_TAG_SIZE, "Cipher.EncryptWithKey: plaintext length is invalid");
 
     // Generate random nonce
     uint8_t nonce[CIPHER_NONCE_SIZE];
@@ -378,17 +487,23 @@ void *rt_cipher_encrypt_with_key(void *plaintext, void *key_bytes) {
     void *result = rt_bytes_new(out_len);
     uint8_t *out_data = bytes_data(result);
 
-    // Copy nonce to output
-    memcpy(out_data, nonce, CIPHER_NONCE_SIZE);
+    memcpy(out_data, CIPHER_KEY_MAGIC, sizeof(CIPHER_KEY_MAGIC));
+    memcpy(out_data + 4, nonce, CIPHER_NONCE_SIZE);
 
-    // Encrypt: ciphertext goes after nonce
+    const uint8_t *aad_data;
+    size_t aad_len;
+    uint8_t *aad_alloc =
+        combine_aad(out_data, CIPHER_KEY_HEADER_SIZE, aad, &aad_data, &aad_len);
+
     size_t encrypted_len = rt_chacha20_poly1305_encrypt(key,
                                                         nonce,
-                                                        NULL,
-                                                        0, // No AAD
+                                                        aad_data,
+                                                        aad_len,
                                                         plain_data,
                                                         (size_t)plain_len,
-                                                        out_data + CIPHER_NONCE_SIZE);
+                                                        out_data + CIPHER_KEY_HEADER_SIZE);
+    if (aad_alloc)
+        free(aad_alloc);
     if (encrypted_len == 0 && plain_len != 0) {
         if (result && rt_obj_release_check0(result))
             rt_obj_free(result);
@@ -409,6 +524,10 @@ void *rt_cipher_encrypt_with_key(void *plaintext, void *key_bytes) {
 /// @param key_bytes  Bytes object containing exactly 32 bytes.
 /// @return Bytes object containing the decrypted plaintext.
 void *rt_cipher_decrypt_with_key(void *ciphertext, void *key_bytes) {
+    return rt_cipher_decrypt_with_key_aad(ciphertext, key_bytes, NULL);
+}
+
+void *rt_cipher_decrypt_with_key_aad(void *ciphertext, void *key_bytes, void *aad) {
     if (!ciphertext) {
         rt_trap("Cipher.DecryptWithKey: ciphertext is null");
         return NULL;
@@ -423,31 +542,39 @@ void *rt_cipher_decrypt_with_key(void *ciphertext, void *key_bytes) {
     int64_t ct_len = bytes_len(ciphertext);
     const uint8_t *key = bytes_data(key_bytes);
 
-    // Minimum: nonce + tag (no plaintext)
-    int64_t min_len = CIPHER_NONCE_SIZE + CIPHER_TAG_SIZE;
+    int versioned = has_magic(ct_data, ct_len, CIPHER_KEY_MAGIC);
+    int64_t header_len = versioned ? CIPHER_KEY_HEADER_SIZE : CIPHER_NONCE_SIZE;
+    int64_t min_len = header_len + CIPHER_TAG_SIZE;
     if (ct_len < min_len) {
         rt_trap("Cipher.DecryptWithKey: ciphertext too short");
         return NULL;
     }
+    if (!versioned && aad && bytes_len(aad) > 0)
+        return NULL;
 
-    // Extract nonce
-    const uint8_t *nonce = ct_data;
-    const uint8_t *encrypted = ct_data + CIPHER_NONCE_SIZE;
-    int64_t encrypted_len = ct_len - CIPHER_NONCE_SIZE;
+    const uint8_t *nonce = versioned ? ct_data + 4 : ct_data;
+    const uint8_t *encrypted = ct_data + header_len;
+    int64_t encrypted_len = ct_len - header_len;
 
-    // Plaintext length = encrypted_len - tag
     int64_t plain_len = encrypted_len - CIPHER_TAG_SIZE;
     void *result = rt_bytes_new(plain_len);
     uint8_t *plain_data = bytes_data(result);
 
-    // Decrypt and verify tag
+    const uint8_t *aad_data = NULL;
+    size_t aad_len = 0;
+    uint8_t *aad_alloc = NULL;
+    if (versioned)
+        aad_alloc = combine_aad(ct_data, CIPHER_KEY_HEADER_SIZE, aad, &aad_data, &aad_len);
+
     long decrypt_result = rt_chacha20_poly1305_decrypt(key,
                                                        nonce,
-                                                       NULL,
-                                                       0, // No AAD
+                                                       aad_data,
+                                                       aad_len,
                                                        encrypted,
                                                        (size_t)encrypted_len,
                                                        plain_data);
+    if (aad_alloc)
+        free(aad_alloc);
 
     if (decrypt_result < 0) {
         if (plain_len > 0)
