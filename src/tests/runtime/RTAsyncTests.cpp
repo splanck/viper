@@ -42,6 +42,8 @@ static std::atomic<int> g_concurrent_active{0};
 static std::atomic<int> g_concurrent_peak{0};
 static std::atomic<int> g_concurrent_release{0};
 static std::atomic<int> g_map_source_finalized{0};
+static void *g_borrowed_async_result = nullptr;
+static void *g_borrowed_map_result = nullptr;
 
 //=============================================================================
 // Callbacks for testing
@@ -57,6 +59,11 @@ static void *new_obj_cb(void *arg) {
     return make_obj();
 }
 
+static void *borrowed_result_cb(void *arg) {
+    (void)arg;
+    return g_borrowed_async_result;
+}
+
 static void *slow_cb(void *arg) {
     rt_thread_sleep(50);
     return arg;
@@ -66,6 +73,12 @@ static void *add_one_mapper(void *val, void *arg) {
     (void)arg;
     // Return a new object (simulating a transformation)
     return make_obj();
+}
+
+static void *borrowed_result_mapper(void *val, void *arg) {
+    (void)val;
+    (void)arg;
+    return g_borrowed_map_result;
 }
 
 static void *trapping_mapper(void *val, void *arg) {
@@ -227,7 +240,7 @@ static void test_async_run_owned_passthrough_preserves_result() {
         rt_obj_free(result);
 }
 
-static void test_async_run_transfers_result_ownership() {
+static void test_async_run_retains_callback_result() {
     void *future = rt_async_run((void *)new_obj_cb, NULL);
     assert(future != NULL);
 
@@ -238,6 +251,26 @@ static void test_async_run_transfers_result_ownership() {
     assert(result != NULL);
     if (rt_obj_release_check0(future))
         rt_obj_free(future);
+    if (rt_obj_release_check0(result))
+        rt_obj_free(result);
+}
+
+static void test_async_run_retains_borrowed_callback_result() {
+    void *borrowed = rt_seq_new();
+    g_borrowed_async_result = borrowed;
+
+    void *future = rt_async_run((void *)borrowed_result_cb, NULL);
+    assert(future != NULL);
+    void *result = rt_future_get(future);
+    assert(result == borrowed);
+
+    if (rt_obj_release_check0(borrowed))
+        rt_obj_free(borrowed);
+    g_borrowed_async_result = nullptr;
+    if (rt_obj_release_check0(future))
+        rt_obj_free(future);
+
+    assert(rt_seq_len(result) == 0);
     if (rt_obj_release_check0(result))
         rt_obj_free(result);
 }
@@ -513,7 +546,7 @@ static void test_async_map_chained() {
     assert(result != NULL);
 }
 
-static void test_async_map_transfers_result_ownership() {
+static void test_async_map_retains_callback_result() {
     void *source = rt_async_run((void *)new_obj_cb, NULL);
     void *mapped = rt_async_map(source, (void *)add_one_mapper, NULL);
     assert(mapped != NULL);
@@ -529,6 +562,32 @@ static void test_async_map_transfers_result_ownership() {
         rt_obj_free(source);
     if (rt_obj_release_check0(result))
         rt_obj_free(result);
+}
+
+static void test_async_map_retains_borrowed_mapper_result() {
+    void *source_value = make_obj();
+    void *source = rt_async_run((void *)identity_cb, source_value);
+    void *borrowed = rt_seq_new();
+    g_borrowed_map_result = borrowed;
+
+    void *mapped = rt_async_map(source, (void *)borrowed_result_mapper, NULL);
+    assert(mapped != NULL);
+    void *result = rt_future_get(mapped);
+    assert(result == borrowed);
+
+    if (rt_obj_release_check0(borrowed))
+        rt_obj_free(borrowed);
+    g_borrowed_map_result = nullptr;
+    if (rt_obj_release_check0(mapped))
+        rt_obj_free(mapped);
+
+    assert(rt_seq_len(result) == 0);
+    if (rt_obj_release_check0(result))
+        rt_obj_free(result);
+    if (rt_obj_release_check0(source))
+        rt_obj_free(source);
+    if (rt_obj_release_check0(source_value))
+        rt_obj_free(source_value);
 }
 
 static void test_async_map_releases_peeked_source_when_mapper_traps() {
@@ -663,7 +722,8 @@ int main() {
     test_async_run_multiple();
     test_async_run_owned_keeps_object_arg_alive();
     test_async_run_owned_passthrough_preserves_result();
-    test_async_run_transfers_result_ownership();
+    test_async_run_retains_callback_result();
+    test_async_run_retains_borrowed_callback_result();
     test_async_delay();
     test_async_delay_zero();
     test_async_delay_negative();
@@ -679,7 +739,8 @@ int main() {
     test_async_any_handles_already_complete_winner();
     test_async_map_basic();
     test_async_map_chained();
-    test_async_map_transfers_result_ownership();
+    test_async_map_retains_callback_result();
+    test_async_map_retains_borrowed_mapper_result();
     test_async_map_releases_peeked_source_when_mapper_traps();
     test_cancellable_normal();
     test_cancellable_cancelled();

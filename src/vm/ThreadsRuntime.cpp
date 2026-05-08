@@ -37,6 +37,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <exception>
+#include <new>
 #include <string>
 
 namespace il::vm {
@@ -262,8 +263,10 @@ static void threads_thread_start_handler(void **args, void *result) {
         rt_trap("Thread.Start: invalid entry");
     validateEntrySignature(*entryFn);
 
-    auto *payload = new VmThreadStartPayload{
+    auto *payload = new (std::nothrow) VmThreadStartPayload{
         &module, std::move(program), parentVm->externRegistry(), entryFn, arg, false};
+    if (!payload)
+        rt_trap("Thread.Start: payload allocation failed");
     retainExternRegistry(payload->externRegistry);
     void *thread = rt_thread_start(reinterpret_cast<void *>(&vm_thread_entry_trampoline), payload);
     if (!thread) {
@@ -305,8 +308,10 @@ static void threads_thread_start_owned_handler(void **args, void *result) {
         rt_trap("Thread.StartOwned: invalid entry");
     validateEntrySignature(*entryFn);
 
-    auto *payload = new VmThreadStartPayload{
+    auto *payload = new (std::nothrow) VmThreadStartPayload{
         &module, std::move(program), parentVm->externRegistry(), entryFn, arg, arg != nullptr};
+    if (!payload)
+        rt_trap("Thread.StartOwned: payload allocation failed");
     if (payload->ownsArg)
         rt_obj_retain_maybe(arg);
     retainExternRegistry(payload->externRegistry);
@@ -362,8 +367,10 @@ static void threads_thread_start_safe_handler(void **args, void *result) {
         rt_trap("Thread.StartSafe: invalid entry");
     validateEntrySignature(*entryFn);
 
-    auto *payload = new VmThreadStartPayload{
+    auto *payload = new (std::nothrow) VmThreadStartPayload{
         &module, std::move(program), parentVm->externRegistry(), entryFn, arg, false};
+    if (!payload)
+        rt_trap("Thread.StartSafe: payload allocation failed");
     retainExternRegistry(payload->externRegistry);
     void *thread =
         rt_thread_start_safe(reinterpret_cast<void *>(&vm_thread_safe_entry_trampoline), payload);
@@ -406,8 +413,10 @@ static void threads_thread_start_safe_owned_handler(void **args, void *result) {
         rt_trap("Thread.StartSafeOwned: invalid entry");
     validateEntrySignature(*entryFn);
 
-    auto *payload = new VmThreadStartPayload{
+    auto *payload = new (std::nothrow) VmThreadStartPayload{
         &module, std::move(program), parentVm->externRegistry(), entryFn, arg, arg != nullptr};
+    if (!payload)
+        rt_trap("Thread.StartSafeOwned: payload allocation failed");
     if (payload->ownsArg)
         rt_obj_retain_maybe(arg);
     retainExternRegistry(payload->externRegistry);
@@ -511,8 +520,16 @@ static void threads_async_run_handler(void **args, void *result) {
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
 
-    auto *payload = new VmAsyncRunPayload{
+    auto *payload = new (std::nothrow) VmAsyncRunPayload{
         &module, std::move(program), parentVm->externRegistry(), entryFn, arg, arg != nullptr, promise};
+    if (!payload) {
+        rt_promise_set_error(promise, rt_const_cstr("Async.Run: payload allocation failed"));
+        if (rt_obj_release_check0(promise))
+            rt_obj_free(promise);
+        if (result)
+            *reinterpret_cast<void **>(result) = future;
+        return;
+    }
     if (payload->ownsArg)
         rt_obj_retain_maybe(arg);
     retainExternRegistry(payload->externRegistry);

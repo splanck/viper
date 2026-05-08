@@ -5,19 +5,34 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/rt_threads_primitives.cpp
-// Purpose: Cross-platform threading primitives backing Viper.Threads.* classes.
-// Key invariants:
-//   - Gate acquisition is FIFO-fair across waiters.
-//   - Barrier releases all parties simultaneously and resets per generation.
-//   - RwLock provides writer-preference to prevent writer starvation.
-// Ownership/Lifetime:
-//   - Gate/Barrier/RwLock objects are runtime-managed (refcounted).
-//   - Internal state is heap-allocated and freed via rt_obj finalizers.
+// File: src/runtime/threads/rt_threads_primitives.cpp
+// Purpose: Cross-platform synchronization primitives backing the
+//          `Viper.Threads.Gate`, `Viper.Threads.Barrier`, and
+//          `Viper.Threads.RwLock` classes. Implemented in C++ to share one
+//          portable `std::mutex` / `std::condition_variable` substrate across
+//          Windows, macOS, and Linux without pulling in external dependencies.
 //
-// Notes:
-//   - Implemented in C++ to remain cross-platform (Windows/macOS/Linux) without
-//     additional dependencies beyond the C++ standard library.
+// Key invariants:
+//   - Gate acquisition is FIFO-fair across waiters; cancelled waiters are
+//     removed from the queue without disturbing later arrivals.
+//   - Barrier releases all parties simultaneously and resets per generation;
+//     a barrier marked "broken" rejects every subsequent participant with a
+//     trap rather than letting them block forever.
+//   - RwLock provides writer-preference: queued writers block new readers so
+//     a steady stream of readers cannot starve a waiting writer.
+//   - All public entry points downcast their handle through a templated
+//     `requireObject<T>` helper that validates the runtime class id before
+//     touching internal state.
+//
+// Ownership/Lifetime:
+//   - Gate / Barrier / RwLock objects are runtime-managed (refcounted) and
+//     finalized through their `rt_obj` finalizer hook.
+//   - Internal mutex / condvar / waiter-queue state is heap-allocated and
+//     freed by the same finalizer.
+//
+// Links: src/runtime/threads/rt_threads.h (public API surface, class IDs),
+//        src/runtime/threads/rt_monitor.h (alternative locking primitive),
+//        src/runtime/threads/rt_safe_i64.c (related thread-safe atomic cell)
 //
 //===----------------------------------------------------------------------===//
 

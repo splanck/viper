@@ -137,9 +137,13 @@ static rt_debounce_data *debounce_require(void *debouncer, int8_t trap_on_null) 
     return (rt_debounce_data *)debouncer;
 }
 
+static void debounce_release_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 /// @brief GC finalizer for a `Debounce` timer — releases the monitor the timer
-///        waits on and drops the held callable / argument references, no-op if
-///        already torn down.
+///        synchronizes on, no-op if already torn down.
 static void debounce_finalizer(void *obj) {
     rt_debounce_data *data = (rt_debounce_data *)obj;
     if (!data || !data->monitor)
@@ -184,29 +188,40 @@ void rt_debounce_signal(void *debouncer) {
     rt_debounce_data *data = debounce_require(debouncer, 0);
     if (!data)
         return;
+    rt_obj_retain_maybe(debouncer);
     rt_monitor_enter(data->monitor);
     data->last_signal_time = current_time_ms();
     data->has_signal = 1;
     if (data->signal_count < INT64_MAX)
         data->signal_count++;
     rt_monitor_exit(data->monitor);
+    debounce_release_object(debouncer);
 }
 
-/// @brief Check whether enough time has elapsed since the last signal (delay satisfied).
+/// @brief Return 1 if `delay_ms` has elapsed since the last `Signal`, else 0.
+/// @details Always returns 0 before the first `Signal` call — the explicit `has_signal` flag
+///          (set by `Signal`, cleared by `Reset`) distinguishes "never signalled" from a
+///          coincidental `last_signal_time == 0` reading on systems whose monotonic clock
+///          starts at zero. Elapsed time is computed via `elapsed_since_ms`, which clamps
+///          backward-clock readings to zero so a system-time adjustment cannot make a
+///          previously-ready debouncer regress to "not ready".
 int8_t rt_debounce_is_ready(void *debouncer) {
     if (!debouncer)
         return 0;
     rt_debounce_data *data = debounce_require(debouncer, 0);
     if (!data)
         return 0;
+    rt_obj_retain_maybe(debouncer);
     rt_monitor_enter(data->monitor);
     if (!data->has_signal) {
         rt_monitor_exit(data->monitor);
+        debounce_release_object(debouncer);
         return 0; // Never signaled
     }
     int64_t elapsed = elapsed_since_ms(data->last_signal_time);
     int8_t ready = elapsed >= data->delay_ms ? 1 : 0;
     rt_monitor_exit(data->monitor);
+    debounce_release_object(debouncer);
     return ready;
 }
 
@@ -217,11 +232,13 @@ void rt_debounce_reset(void *debouncer) {
     rt_debounce_data *data = debounce_require(debouncer, 0);
     if (!data)
         return;
+    rt_obj_retain_maybe(debouncer);
     rt_monitor_enter(data->monitor);
     data->last_signal_time = 0;
     data->signal_count = 0;
     data->has_signal = 0;
     rt_monitor_exit(data->monitor);
+    debounce_release_object(debouncer);
 }
 
 /// @brief Return the debounce delay in milliseconds.
@@ -231,9 +248,11 @@ int64_t rt_debounce_get_delay(void *debouncer) {
     rt_debounce_data *data = debounce_require(debouncer, 0);
     if (!data)
         return 0;
+    rt_obj_retain_maybe(debouncer);
     rt_monitor_enter(data->monitor);
     int64_t delay = data->delay_ms;
     rt_monitor_exit(data->monitor);
+    debounce_release_object(debouncer);
     return delay;
 }
 
@@ -247,9 +266,11 @@ int64_t rt_debounce_get_signal_count(void *debouncer) {
     rt_debounce_data *data = debounce_require(debouncer, 0);
     if (!data)
         return 0;
+    rt_obj_retain_maybe(debouncer);
     rt_monitor_enter(data->monitor);
     int64_t count = data->signal_count;
     rt_monitor_exit(data->monitor);
+    debounce_release_object(debouncer);
     return count;
 }
 
@@ -281,7 +302,7 @@ static rt_throttle_data *throttle_require(void *throttler, int8_t trap_on_null) 
 }
 
 /// @brief GC finalizer for a `Throttle` limiter — mirror of `debounce_finalizer`
-///        but on the throttle-data struct (same monitor + callback release pattern).
+///        but on the throttle-data struct.
 static void throttle_finalizer(void *obj) {
     rt_throttle_data *data = (rt_throttle_data *)obj;
     if (!data || !data->monitor)
@@ -321,18 +342,23 @@ int8_t rt_throttle_try(void *throttler) {
     rt_throttle_data *data = throttle_require(throttler, 0);
     if (!data)
         return 0;
-    int64_t now = current_time_ms();
+    rt_obj_retain_maybe(throttler);
     rt_monitor_enter(data->monitor);
-    int64_t elapsed = data->has_last_allowed ? elapsed_since_ms(data->last_allowed_time) : 0;
+    int64_t now = current_time_ms();
+    int64_t elapsed = data->has_last_allowed ? (now - data->last_allowed_time) : 0;
+    if (elapsed < 0)
+        elapsed = 0;
     if (!data->has_last_allowed || elapsed >= data->interval_ms) {
         data->last_allowed_time = now;
         data->has_last_allowed = 1;
         if (data->count < INT64_MAX)
             data->count++;
         rt_monitor_exit(data->monitor);
+        debounce_release_object(throttler);
         return 1;
     }
     rt_monitor_exit(data->monitor);
+    debounce_release_object(throttler);
     return 0;
 }
 
@@ -343,14 +369,17 @@ int8_t rt_throttle_can_proceed(void *throttler) {
     rt_throttle_data *data = throttle_require(throttler, 0);
     if (!data)
         return 0;
+    rt_obj_retain_maybe(throttler);
     rt_monitor_enter(data->monitor);
     if (!data->has_last_allowed) {
         rt_monitor_exit(data->monitor);
+        debounce_release_object(throttler);
         return 1;
     }
     int64_t elapsed = elapsed_since_ms(data->last_allowed_time);
     int8_t ready = elapsed >= data->interval_ms ? 1 : 0;
     rt_monitor_exit(data->monitor);
+    debounce_release_object(throttler);
     return ready;
 }
 
@@ -361,11 +390,13 @@ void rt_throttle_reset(void *throttler) {
     rt_throttle_data *data = throttle_require(throttler, 0);
     if (!data)
         return;
+    rt_obj_retain_maybe(throttler);
     rt_monitor_enter(data->monitor);
     data->last_allowed_time = 0;
     data->count = 0;
     data->has_last_allowed = 0;
     rt_monitor_exit(data->monitor);
+    debounce_release_object(throttler);
 }
 
 /// @brief Return the throttle interval in milliseconds.
@@ -375,9 +406,11 @@ int64_t rt_throttle_get_interval(void *throttler) {
     rt_throttle_data *data = throttle_require(throttler, 0);
     if (!data)
         return 0;
+    rt_obj_retain_maybe(throttler);
     rt_monitor_enter(data->monitor);
     int64_t interval = data->interval_ms;
     rt_monitor_exit(data->monitor);
+    debounce_release_object(throttler);
     return interval;
 }
 
@@ -391,9 +424,11 @@ int64_t rt_throttle_get_count(void *throttler) {
     rt_throttle_data *data = throttle_require(throttler, 0);
     if (!data)
         return 0;
+    rt_obj_retain_maybe(throttler);
     rt_monitor_enter(data->monitor);
     int64_t count = data->count;
     rt_monitor_exit(data->monitor);
+    debounce_release_object(throttler);
     return count;
 }
 
@@ -404,14 +439,17 @@ int64_t rt_throttle_remaining_ms(void *throttler) {
     rt_throttle_data *data = throttle_require(throttler, 0);
     if (!data)
         return 0;
+    rt_obj_retain_maybe(throttler);
     rt_monitor_enter(data->monitor);
     if (!data->has_last_allowed) {
         rt_monitor_exit(data->monitor);
+        debounce_release_object(throttler);
         return 0;
     }
     int64_t elapsed = elapsed_since_ms(data->last_allowed_time);
     int64_t remaining = data->interval_ms - elapsed;
     int64_t out = remaining > 0 ? remaining : 0;
     rt_monitor_exit(data->monitor);
+    debounce_release_object(throttler);
     return out;
 }

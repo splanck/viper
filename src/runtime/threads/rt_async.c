@@ -62,6 +62,13 @@ static void async_release_ref(void **slot) {
     *slot = NULL;
 }
 
+static void async_release_source_array(void **sources, int64_t count) {
+    if (!sources)
+        return;
+    for (int64_t i = 0; i < count; i++)
+        async_release_ref(&sources[i]);
+}
+
 /// @brief Release a slot ONLY if its `owned` flag is set; clears both. Used so non-owned args
 /// (caller keeps lifetime) aren't accidentally released when the worker context finalizes.
 static void async_release_owned_arg(void **slot, int8_t *owned) {
@@ -109,10 +116,11 @@ static void async_promise_error_from_future(void *promise, void *future) {
     rt_string_unref(error);
 }
 
-/// @brief Transfer an async callback result into a promise.
-/// @details Callback-returned runtime objects are treated as handed off to the
-///          Future. If the result is the owned argument, transfer the context's
-///          retained argument reference instead of releasing it in the finalizer.
+/// @brief Resolve an async promise from a callback result.
+/// @details Callback results are borrowed by default: the Future retains runtime
+///          objects before publishing them. The only transfer case is owned-arg
+///          passthrough, where the context already holds exactly the reference
+///          that should become the Future's value.
 static void async_promise_set_callback_result(void *promise,
                                               void *result,
                                               void **owned_arg_slot,
@@ -127,7 +135,7 @@ static void async_promise_set_callback_result(void *promise,
         rt_promise_set(promise, result);
         return;
     }
-    rt_promise_set_transferred(promise, result);
+    rt_promise_set(promise, result);
 }
 
 /// @brief Spawn a detached worker thread on `entry(arg)`, releasing the thread handle immediately.
@@ -561,6 +569,7 @@ static void async_any_state_finalize(void *obj) {
     async_any_state *state = (async_any_state *)obj;
     if (!state)
         return;
+    async_release_source_array(state->sources, state->count);
     free(state->sources);
     state->sources = NULL;
     async_release_ref(&state->monitor);
@@ -584,7 +593,7 @@ static void async_any_cancel_remaining(async_any_state *state) {
         if (!source)
             continue;
         if (rt_future_cancel_listener(source, async_any_complete, state))
-            state->sources[i] = NULL;
+            async_release_ref(&state->sources[i]);
     }
 }
 
@@ -664,12 +673,14 @@ void *rt_async_any(void *futures) {
     int8_t registration_failed = 0;
     for (int64_t i = 0; i < count; i++) {
         void *source = rt_seq_get(futures, i);
+        rt_obj_retain_maybe(source);
         state->sources[i] = source;
         rt_obj_retain_maybe(state);
         if (!rt_future_on_complete_ex(
                 source, async_any_complete, state, async_any_listener_cancel)) {
             if (rt_obj_release_check0(state))
                 rt_obj_free(state);
+            async_release_ref(&state->sources[i]);
             registration_failed = 1;
             break;
         }
@@ -733,6 +744,7 @@ static void async_all_state_finalize(void *obj) {
     async_all_state *state = (async_all_state *)obj;
     if (!state)
         return;
+    async_release_source_array(state->sources, state->slot_count);
     free(state->listeners);
     state->listeners = NULL;
     free(state->sources);
@@ -760,8 +772,10 @@ static void async_all_cancel_remaining(async_all_state *state, int64_t skip_inde
     for (int64_t i = 0; i < state->slot_count; i++) {
         if (i == skip_index || !state->listeners[i] || !state->sources[i])
             continue;
-        if (rt_future_cancel_listener(state->sources[i], async_all_complete, state->listeners[i]))
+        if (rt_future_cancel_listener(state->sources[i], async_all_complete, state->listeners[i])) {
             state->listeners[i] = NULL;
+            async_release_ref(&state->sources[i]);
+        }
     }
 }
 
@@ -875,6 +889,7 @@ void *rt_async_all(void *futures) {
         listener->state = state;
         listener->index = i;
         state->sources[i] = rt_seq_get(futures, i);
+        rt_obj_retain_maybe(state->sources[i]);
         state->listeners[i] = listener;
 
         rt_obj_retain_maybe(state);
@@ -883,6 +898,7 @@ void *rt_async_all(void *futures) {
             if (rt_obj_release_check0(state))
                 rt_obj_free(state);
             state->listeners[i] = NULL;
+            async_release_ref(&state->sources[i]);
             free(listener);
             registration_failed = 1;
             break;

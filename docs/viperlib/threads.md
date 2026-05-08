@@ -607,7 +607,7 @@ Thread pool for submitting tasks to a fixed set of worker threads.
 - `Submit` returns false after `Shutdown` or `ShutdownNow` has been called.
 - `ShutdownNow` discards queued tasks; `Shutdown` allows them to finish.
 - Calling `Wait`, `WaitFor`, `Shutdown`, or `ShutdownNow` from a worker in the same pool traps to prevent self-deadlock.
-- Traps raised by a task do not leave the pool stuck in an active state. Once the pool drains, `Wait()`, successful `WaitFor(ms)`, `Shutdown()`, and `ShutdownNow()` rethrow the last task trap instead of silently reporting success.
+- Traps raised by a task do not leave the pool stuck in an active state. Once the pool drains, the next `Wait()`, successful `WaitFor(ms)`, `Shutdown()`, or `ShutdownNow()` rethrows the last task trap and clears it; later calls report the current pool state normally unless another task traps.
 - Pool handles own their worker thread handles and release them after joins. Releasing a pool from one of its own workers requests shutdown and defers reclamation rather than freeing state out from under the running worker.
 
 ### Zia Example
@@ -702,7 +702,7 @@ promise.Set(result)
 ' Or complete with an error
 promise.SetError("Operation failed")
 
-' Or transfer ownership of a runtime-managed object result
+' Or document that a runtime-managed object result should be retained
 promise.SetOwned(someObject)
 ```
 
@@ -918,7 +918,7 @@ NEXT i
 
 ### Parallel Ownership Notes
 
-- `Parallel.Map` transfers each mapper return value into the returned sequence. If the mapper returns the exact input element, the runtime retains that input for the result sequence. If the mapper returns some other borrowed runtime object, the mapper must retain it before returning or return a newly-created object.
+- `Parallel.Map` retains runtime-managed mapper results before placing them in the returned sequence, so exact input elements and other shared/borrowed runtime objects remain valid after the original owner is released.
 - `Parallel.Reduce` returns the accumulator exactly as the reducer produces it. The runtime does not retain or release intermediate accumulator objects; reducers that allocate replacement accumulators are responsible for their own intermediate ownership discipline.
 
 ### Parallel For Example
@@ -976,7 +976,7 @@ pool.Shutdown()
 - **Default pool:** Operations without explicit pool use a shared pool with `DefaultWorkers()` threads
 - **Default pool handle:** `DefaultPool()` returns a retained handle; release it like other runtime objects when using the C ABI directly.
 - **Order preservation:** `Map` guarantees output order matches input order
-- **Map result ownership:** Runtime-managed objects returned by a `Map` callback are transferred to the result Seq, which releases them when the Seq is freed. A mapper that returns an existing object should retain or otherwise own the returned reference.
+- **Map result ownership:** Runtime-managed objects returned by a `Map` callback are retained for the result Seq, which releases those retained references when the Seq is freed.
 - **Blocking:** All parallel operations block until work is complete
 - **Thread safety:** Functions passed to parallel operations must be thread-safe
 - **Work distribution:** Work is distributed in small chunks for load balancing
@@ -1020,7 +1020,7 @@ Cooperative cancellation token for signaling cancellation to long-running or asy
 
 ### Notes
 
-- **Thread-safe:** All operations use atomic memory operations, safe to call from any thread.
+- **Thread-safe:** Local cancellation state uses atomic memory operations; linked parent/child bookkeeping is synchronized internally.
 - **Reusable:** `Reset()` clears this token's local cancelled bit so it can be reused.
 - **Linked tokens:** Child tokens created with `Linked()` are cancelled when the parent is cancelled. Parent cancellation is propagated into children and is sticky: resetting the parent later does not clear already-cancelled children.
 - **Child reset:** After a parent has been reset, a linked child may be reset independently to clear its propagated cancellation state. If the parent is still cancelled, the child continues to report cancelled.
@@ -1312,8 +1312,8 @@ Async task combinators for composing asynchronous results. Built on Future/Promi
 - Callback `arg` values are forwarded as raw pointers; if you pass non-global native memory, keep it alive until the callback has run.
 - Use `RunOwned`, `MapOwned`, and `RunCancellableOwned` when the callback argument is a runtime-managed object or string handle that should be retained for the duration of the callback.
 - VM-backed `Async.Run` retains its managed argument for the worker lifetime; native callback use should still choose the `Owned` variants when passing runtime-managed callback arguments.
-- Callback-created return values from `Run`, `RunCancellable`, and `Map` are owned by the returned Future. If a callback returns the exact borrowed argument or input Future value, ownership stays borrowed; owned arguments and owned input Future values are retained or transferred safely.
-- If a callback wants to transfer ownership of a runtime-managed result explicitly in custom promise/future flows, use `Promise.SetOwned` or the internal transferred-result API.
+- Runtime-managed values returned from `Run`, `RunCancellable`, and `Map` are retained before being published through the returned Future, so borrowed argument/input values and shared runtime objects remain valid after the original owner is released.
+- If a callback wants to document ownership explicitly in custom promise/future flows, use `Promise.SetOwned`; it has the same retaining behavior as `Promise.Set`.
 
 ---
 

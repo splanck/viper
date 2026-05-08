@@ -122,6 +122,10 @@ and BytecodeVM-backed execution. Use `Thread.StartOwned` or
 `Thread.StartSafeOwned` when the worker needs the runtime to retain a managed
 object argument until the entry function returns.
 
+VM-backed `Async.Run` uses the same child-VM state sharing model and retains
+runtime-managed callback results before resolving the Future, so returned
+objects remain valid after the worker VM unwinds.
+
 ## Process-Global State
 
 ### Extern Registry

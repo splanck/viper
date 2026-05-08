@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 //
 // Part of the Viper project, under the GNU GPL v3.
-// See LICENSE in the project root for license information.
+// See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -186,6 +186,11 @@ static rt_scheduler_data *scheduler_require(void *sched, int8_t trap_on_null) {
     return (rt_scheduler_data *)sched;
 }
 
+static void scheduler_release_object(void *sched) {
+    if (sched && rt_obj_release_check0(sched))
+        rt_obj_free(sched);
+}
+
 /// @brief Finalizer for scheduler objects. Frees all entries.
 static void scheduler_finalizer(void *obj) {
     if (!obj)
@@ -234,7 +239,12 @@ void *rt_scheduler_new(void) {
 #if defined(_WIN32)
     InitializeCriticalSection(&data->mutex);
 #else
-    pthread_mutex_init(&data->mutex, NULL);
+    if (pthread_mutex_init(&data->mutex, NULL) != 0) {
+        if (rt_obj_release_check0(data))
+            rt_obj_free(data);
+        rt_trap("Scheduler: mutex initialization failed");
+        return NULL;
+    }
 #endif
     rt_obj_set_finalizer(data, scheduler_finalizer);
     return data;
@@ -254,6 +264,7 @@ void rt_scheduler_schedule(void *sched, rt_string name, int64_t delay_ms) {
     rt_scheduler_data *data = scheduler_require(sched, 0);
     if (!data)
         return;
+    rt_obj_retain_maybe(sched);
 
     int64_t due = due_time_from_now(delay_ms);
 
@@ -265,6 +276,7 @@ void rt_scheduler_schedule(void *sched, rt_string name, int64_t delay_ms) {
         if (scheduler_name_equals(e->name, name)) {
             e->due_time_ms = due;
             SCHED_UNLOCK(data);
+            scheduler_release_object(sched);
             return;
         }
         e = e->next;
@@ -274,6 +286,7 @@ void rt_scheduler_schedule(void *sched, rt_string name, int64_t delay_ms) {
     sched_entry *entry = (sched_entry *)malloc(sizeof(sched_entry));
     if (!entry) {
         SCHED_UNLOCK(data);
+        scheduler_release_object(sched);
         rt_trap("Scheduler.Schedule: memory allocation failed");
         return;
     }
@@ -283,6 +296,7 @@ void rt_scheduler_schedule(void *sched, rt_string name, int64_t delay_ms) {
     data->head = entry;
     data->count++;
     SCHED_UNLOCK(data);
+    scheduler_release_object(sched);
 }
 
 /// @brief Cancels a scheduled task by name.
@@ -298,6 +312,7 @@ int8_t rt_scheduler_cancel(void *sched, rt_string name) {
     rt_scheduler_data *data = scheduler_require(sched, 0);
     if (!data)
         return 0;
+    rt_obj_retain_maybe(sched);
 
     SCHED_LOCK(data);
     sched_entry **pp = &data->head;
@@ -309,11 +324,13 @@ int8_t rt_scheduler_cancel(void *sched, rt_string name) {
             free(e);
             data->count--;
             SCHED_UNLOCK(data);
+            scheduler_release_object(sched);
             return 1;
         }
         pp = &(*pp)->next;
     }
     SCHED_UNLOCK(data);
+    scheduler_release_object(sched);
     return 0;
 }
 
@@ -330,6 +347,7 @@ int8_t rt_scheduler_is_due(void *sched, rt_string name) {
     rt_scheduler_data *data = scheduler_require(sched, 0);
     if (!data)
         return 0;
+    rt_obj_retain_maybe(sched);
     int64_t now = current_time_ms();
 
     SCHED_LOCK(data);
@@ -338,11 +356,13 @@ int8_t rt_scheduler_is_due(void *sched, rt_string name) {
         if (scheduler_name_equals(e->name, name)) {
             int8_t due = now >= e->due_time_ms ? 1 : 0;
             SCHED_UNLOCK(data);
+            scheduler_release_object(sched);
             return due;
         }
         e = e->next;
     }
     SCHED_UNLOCK(data);
+    scheduler_release_object(sched);
     return 0;
 }
 
@@ -361,6 +381,7 @@ void *rt_scheduler_poll(void *sched) {
     rt_scheduler_data *data = scheduler_require(sched, 0);
     if (!data)
         return result;
+    rt_obj_retain_maybe(sched);
     int64_t now = current_time_ms();
     sched_entry *due_head = NULL;
     sched_entry *due_tail = NULL;
@@ -383,6 +404,7 @@ void *rt_scheduler_poll(void *sched) {
         }
     }
     SCHED_UNLOCK(data);
+    scheduler_release_object(sched);
 
     while (due_head) {
         sched_entry *next = due_head->next;
@@ -403,9 +425,11 @@ int64_t rt_scheduler_pending(void *sched) {
     rt_scheduler_data *data = scheduler_require(sched, 0);
     if (!data)
         return 0;
+    rt_obj_retain_maybe(sched);
     SCHED_LOCK(data);
     int64_t count = data->count;
     SCHED_UNLOCK(data);
+    scheduler_release_object(sched);
     return count;
 }
 
@@ -420,12 +444,14 @@ void rt_scheduler_clear(void *sched) {
     rt_scheduler_data *data = scheduler_require(sched, 0);
     if (!data)
         return;
+    rt_obj_retain_maybe(sched);
 
     SCHED_LOCK(data);
     sched_entry *e = data->head;
     data->head = NULL;
     data->count = 0;
     SCHED_UNLOCK(data);
+    scheduler_release_object(sched);
 
     while (e) {
         sched_entry *next = e->next;

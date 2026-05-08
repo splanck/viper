@@ -27,6 +27,7 @@
 #include <exception>
 #include <limits>
 #include <mutex>
+#include <new>
 #include <span>
 #include <sstream>
 #include <string_view>
@@ -3260,8 +3261,10 @@ static void unified_thread_start_handler(void **args, void *result) {
             rt_trap("Thread.Start: invalid entry");
         validateEntrySignature(*entryFn);
 
-        auto *payload = new VmThreadStartPayload{
+        auto *payload = new (std::nothrow) VmThreadStartPayload{
             &module, std::move(program), stdVm->externRegistry(), entryFn, arg, false};
+        if (!payload)
+            rt_trap("Thread.Start: payload allocation failed");
         il::vm::retainExternRegistry(payload->externRegistry);
         void *thread =
             rt_thread_start(reinterpret_cast<void *>(&vm_thread_entry_trampoline_bc), payload);
@@ -3285,8 +3288,10 @@ static void unified_thread_start_handler(void **args, void *result) {
             rt_trap("Thread.Start: invalid bytecode entry");
         validateBytecodeThreadEntrySignature(*entryFn);
 
-        auto *payload =
-            new BytecodeThreadPayload{bcModule, entryFn, arg, false, bcVm->captureExecutionEnvironment()};
+        auto *payload = new (std::nothrow) BytecodeThreadPayload{
+            bcModule, entryFn, arg, false, bcVm->captureExecutionEnvironment()};
+        if (!payload)
+            rt_trap("Thread.Start: payload allocation failed");
         void *thread =
             rt_thread_start(reinterpret_cast<void *>(&bytecode_thread_entry_trampoline), payload);
         if (!thread) {
@@ -3334,8 +3339,10 @@ static void unified_thread_start_owned_handler(void **args, void *result) {
             rt_trap("Thread.StartOwned: invalid entry");
         validateEntrySignature(*entryFn);
 
-        auto *payload = new VmThreadStartPayload{
+        auto *payload = new (std::nothrow) VmThreadStartPayload{
             &module, std::move(program), stdVm->externRegistry(), entryFn, arg, arg != nullptr};
+        if (!payload)
+            rt_trap("Thread.StartOwned: payload allocation failed");
         if (payload->ownsArg)
             rt_obj_retain_maybe(arg);
         il::vm::retainExternRegistry(payload->externRegistry);
@@ -3361,8 +3368,10 @@ static void unified_thread_start_owned_handler(void **args, void *result) {
             rt_trap("Thread.StartOwned: invalid bytecode entry");
         validateBytecodeThreadEntrySignature(*entryFn);
 
-        auto *payload = new BytecodeThreadPayload{
+        auto *payload = new (std::nothrow) BytecodeThreadPayload{
             bcModule, entryFn, arg, arg != nullptr, bcVm->captureExecutionEnvironment()};
+        if (!payload)
+            rt_trap("Thread.StartOwned: payload allocation failed");
         if (payload->ownsArg)
             rt_obj_retain_maybe(arg);
         void *thread =
@@ -3413,8 +3422,10 @@ static void unified_thread_start_safe_handler(void **args, void *result) {
             rt_trap("Thread.StartSafe: invalid entry");
         validateEntrySignature(*entryFn);
 
-        auto *payload = new VmThreadStartPayload{
+        auto *payload = new (std::nothrow) VmThreadStartPayload{
             &module, std::move(program), stdVm->externRegistry(), entryFn, arg, false};
+        if (!payload)
+            rt_trap("Thread.StartSafe: payload allocation failed");
         il::vm::retainExternRegistry(payload->externRegistry);
         void *thread = rt_thread_start_safe(
             reinterpret_cast<void *>(&vm_thread_safe_entry_trampoline_bc), payload);
@@ -3438,8 +3449,10 @@ static void unified_thread_start_safe_handler(void **args, void *result) {
             rt_trap("Thread.StartSafe: invalid bytecode entry");
         validateBytecodeThreadEntrySignature(*entryFn);
 
-        auto *payload =
-            new BytecodeThreadPayload{bcModule, entryFn, arg, false, bcVm->captureExecutionEnvironment()};
+        auto *payload = new (std::nothrow) BytecodeThreadPayload{
+            bcModule, entryFn, arg, false, bcVm->captureExecutionEnvironment()};
+        if (!payload)
+            rt_trap("Thread.StartSafe: payload allocation failed");
         void *thread = rt_thread_start_safe(
             reinterpret_cast<void *>(&bytecode_thread_safe_entry_trampoline), payload);
         if (!thread) {
@@ -3487,8 +3500,10 @@ static void unified_thread_start_safe_owned_handler(void **args, void *result) {
             rt_trap("Thread.StartSafeOwned: invalid entry");
         validateEntrySignature(*entryFn);
 
-        auto *payload = new VmThreadStartPayload{
+        auto *payload = new (std::nothrow) VmThreadStartPayload{
             &module, std::move(program), stdVm->externRegistry(), entryFn, arg, arg != nullptr};
+        if (!payload)
+            rt_trap("Thread.StartSafeOwned: payload allocation failed");
         if (payload->ownsArg)
             rt_obj_retain_maybe(arg);
         il::vm::retainExternRegistry(payload->externRegistry);
@@ -3514,8 +3529,10 @@ static void unified_thread_start_safe_owned_handler(void **args, void *result) {
             rt_trap("Thread.StartSafeOwned: invalid bytecode entry");
         validateBytecodeThreadEntrySignature(*entryFn);
 
-        auto *payload = new BytecodeThreadPayload{
+        auto *payload = new (std::nothrow) BytecodeThreadPayload{
             bcModule, entryFn, arg, arg != nullptr, bcVm->captureExecutionEnvironment()};
+        if (!payload)
+            rt_trap("Thread.StartSafeOwned: payload allocation failed");
         if (payload->ownsArg)
             rt_obj_retain_maybe(arg);
         void *thread = rt_thread_start_safe(
@@ -3857,7 +3874,7 @@ static void unified_async_run_handler(void **args, void *result) {
 
         void *promise = rt_promise_new();
         void *future = rt_promise_get_future(promise);
-        auto *payload = new VmAsyncRunPayload{
+        auto *payload = new (std::nothrow) VmAsyncRunPayload{
             &module,
             std::move(program),
             stdVm->externRegistry(),
@@ -3865,6 +3882,14 @@ static void unified_async_run_handler(void **args, void *result) {
             arg,
             arg != nullptr,
             promise};
+        if (!payload) {
+            rt_promise_set_error(promise, rt_const_cstr("Async.Run: payload allocation failed"));
+            if (rt_obj_release_check0(promise))
+                rt_obj_free(promise);
+            if (result)
+                *reinterpret_cast<void **>(result) = future;
+            return;
+        }
         if (payload->ownsArg)
             rt_obj_retain_maybe(arg);
         il::vm::retainExternRegistry(payload->externRegistry);
@@ -3900,13 +3925,21 @@ static void unified_async_run_handler(void **args, void *result) {
 
         void *promise = rt_promise_new();
         void *future = rt_promise_get_future(promise);
-        auto *payload = new BytecodeAsyncPayload{
+        auto *payload = new (std::nothrow) BytecodeAsyncPayload{
             bcModule,
             entryFn,
             arg,
             arg != nullptr,
             bcVm->captureExecutionEnvironment(),
             promise};
+        if (!payload) {
+            rt_promise_set_error(promise, rt_const_cstr("Async.Run: payload allocation failed"));
+            if (rt_obj_release_check0(promise))
+                rt_obj_free(promise);
+            if (result)
+                *reinterpret_cast<void **>(result) = future;
+            return;
+        }
         if (payload->ownsArg)
             rt_obj_retain_maybe(arg);
         void *thread =

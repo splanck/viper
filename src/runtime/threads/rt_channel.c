@@ -114,7 +114,9 @@ typedef struct {
 ///          maximum so an absurdly large @p ms can't roll over the clock.
 static channel_deadline channel_deadline_from_now(int64_t ms) {
     channel_deadline d;
-    clock_gettime(CLOCK_MONOTONIC, &d.deadline);
+    memset(&d, 0, sizeof(d));
+    if (clock_gettime(CLOCK_MONOTONIC, &d.deadline) != 0)
+        (void)clock_gettime(CLOCK_REALTIME, &d.deadline);
     if (ms > 0) {
         int64_t add_sec = ms / 1000;
         long add_nsec = (long)((ms % 1000) * 1000000L);
@@ -141,7 +143,9 @@ static channel_deadline channel_deadline_from_now(int64_t ms) {
 ///          fits a signed return without overflow.
 static int64_t channel_remaining_ms(channel_deadline d) {
     struct timespec now;
-    clock_gettime(CLOCK_MONOTONIC, &now);
+    memset(&now, 0, sizeof(now));
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0)
+        (void)clock_gettime(CLOCK_REALTIME, &now);
     int64_t sec = (int64_t)d.deadline.tv_sec - (int64_t)now.tv_sec;
     int64_t ns = (int64_t)d.deadline.tv_nsec - (int64_t)now.tv_nsec;
     if (ns < 0) {
@@ -386,6 +390,18 @@ void rt_channel_send(void *channel, void *item) {
 }
 
 /// @brief Try to send an item without blocking. Returns 1 if sent, 0 if full or closed.
+/// @details Strictly non-blocking on every channel kind:
+///   - **Buffered channel** — succeeds when `count < capacity`, enqueueing the item and waking
+///     one waiting receiver. Returns 0 if the buffer is full.
+///   - **Synchronous channel (capacity 0)** — succeeds only when a receiver is already
+///     parked in `Recv` / `RecvFor` and no prior handoff is queued. On success it publishes
+///     one retained handoff slot and returns 1 immediately *without* waiting for the receiver
+///     to acknowledge consumption — the receiver owns rendezvous completion. Returns 0 if no
+///     receiver is waiting.
+///   - **Closed channel** — always returns 0; the caller can detect this via a separate
+///     `IsClosed()` check if it needs to distinguish "closed" from "full".
+/// The retained handoff and the channel object reference are both released cleanly on every
+/// failure path so a tight `TrySend` loop cannot leak.
 int8_t rt_channel_try_send(void *channel, void *item) {
     channel_impl *ch = channel_require(channel, NULL, 0);
     if (!ch)

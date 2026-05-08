@@ -104,7 +104,16 @@ static void future_release_object(void *obj) {
 }
 
 #ifdef _WIN32
-/// @brief Win32 helper: compute a saturated absolute monotonic deadline.
+/// @brief Win32: compute an absolute monotonic deadline in `GetTickCount64` units.
+/// @details Replaces the older relative `future_deadline_ms_from_now` (which clamped to a
+///          DWORD and forced re-computation each loop iteration). Computing the deadline
+///          once up front means `rt_future_get_for` / `wait_for` can check it on every wake
+///          without rounding drift.
+/// @param ms Caller-supplied timeout in milliseconds. Negative or zero values produce an
+///           "expired now" deadline (caller will short-circuit on the first check).
+/// @return Absolute tick count at which the wait should give up. Saturates at `ULLONG_MAX`
+///         when `now + ms` would overflow — practically that's "wait forever" since
+///         `GetTickCount64` will never reach the saturation value during this process.
 static ULONGLONG future_deadline_tick_from_now(int64_t ms) {
     ULONGLONG now = GetTickCount64();
     ULONGLONG add = ms > 0 ? (ULONGLONG)ms : 0;
@@ -232,16 +241,33 @@ static int future_cond_timedwait_deadline(pthread_cond_t *cond,
 /// the listener node. Walks the linked list iteratively. **Lock-free:** caller must have already
 /// detached the list from `promise_impl.listeners` and released the promise mutex (notification
 /// happens outside the critical section to avoid blocking other threads on long callbacks).
+static void future_invoke_listener(future_listener *listener) {
+    if (!listener || !listener->callback)
+        return;
+
+    int trapped = 0;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        listener->callback(listener->future_obj, listener->ctx);
+    } else {
+        trapped = 1;
+    }
+    rt_trap_clear_recovery();
+
+    if (trapped && listener->cancel) {
+        rt_trap_set_recovery(&recovery);
+        if (setjmp(recovery) == 0) {
+            listener->cancel(listener->ctx);
+        }
+        rt_trap_clear_recovery();
+    }
+}
+
 static void future_notify_listeners(future_listener *listeners) {
     while (listeners) {
         future_listener *next = listeners->next;
-
-        jmp_buf recovery;
-        rt_trap_set_recovery(&recovery);
-        if (setjmp(recovery) == 0) {
-            listeners->callback(listeners->future_obj, listeners->ctx);
-        }
-        rt_trap_clear_recovery();
+        future_invoke_listener(listeners);
 
         if (rt_obj_release_check0(listeners->future_obj))
             rt_obj_free(listeners->future_obj);
@@ -329,8 +355,19 @@ void *rt_promise_new(void) {
     InitializeCriticalSection(&p->mutex);
     InitializeConditionVariable(&p->cond);
 #else
-    pthread_mutex_init(&p->mutex, NULL);
-    future_cond_init(&p->cond, &p->cond_uses_monotonic);
+    if (pthread_mutex_init(&p->mutex, NULL) != 0) {
+        if (rt_obj_release_check0(p))
+            rt_obj_free(p);
+        rt_trap("Promise: mutex initialization failed");
+        return NULL;
+    }
+    if (future_cond_init(&p->cond, &p->cond_uses_monotonic) != 0) {
+        (void)pthread_mutex_destroy(&p->mutex);
+        if (rt_obj_release_check0(p))
+            rt_obj_free(p);
+        rt_trap("Promise: condition initialization failed");
+        return NULL;
+    }
 #endif
 
     p->value = NULL;
@@ -350,6 +387,7 @@ void *rt_promise_get_future(void *obj) {
         rt_trap("Promise: null object");
     if (rt_obj_class_id(obj) != RT_PROMISE_CLASS_ID)
         rt_trap("Promise: invalid object");
+    rt_obj_retain_maybe(obj);
 
     promise_impl *p = (promise_impl *)obj;
 
@@ -369,6 +407,7 @@ void *rt_promise_get_future(void *obj) {
 #else
             pthread_mutex_unlock(&p->mutex);
 #endif
+            future_release_object(obj);
             rt_trap("Future: memory allocation failed");
         }
         f->promise = p;
@@ -388,6 +427,7 @@ void *rt_promise_get_future(void *obj) {
     pthread_mutex_unlock(&p->mutex);
 #endif
 
+    future_release_object(obj);
     return result;
 }
 
@@ -423,6 +463,7 @@ void rt_promise_set(void *obj, void *value) {
         rt_trap("Promise: null object");
     if (rt_obj_class_id(obj) != RT_PROMISE_CLASS_ID)
         rt_trap("Promise: invalid object");
+    rt_obj_retain_maybe(obj);
 
     promise_impl *p = (promise_impl *)obj;
 
@@ -438,6 +479,7 @@ void rt_promise_set(void *obj, void *value) {
 #else
         pthread_mutex_unlock(&p->mutex);
 #endif
+        future_release_object(obj);
         rt_trap("Promise: already completed");
     }
 
@@ -459,6 +501,7 @@ void rt_promise_set(void *obj, void *value) {
 #endif
 
     future_notify_listeners(listeners);
+    future_release_object(obj);
 }
 
 /// @brief Resolve the promise with a value the runtime should retain. Kept as an explicit alias for
@@ -468,6 +511,7 @@ void rt_promise_set_owned(void *obj, void *value) {
         rt_trap("Promise: null object");
     if (rt_obj_class_id(obj) != RT_PROMISE_CLASS_ID)
         rt_trap("Promise: invalid object");
+    rt_obj_retain_maybe(obj);
 
     promise_impl *p = (promise_impl *)obj;
 
@@ -483,6 +527,7 @@ void rt_promise_set_owned(void *obj, void *value) {
 #else
         pthread_mutex_unlock(&p->mutex);
 #endif
+        future_release_object(obj);
         rt_trap("Promise: already completed");
     }
 
@@ -504,6 +549,7 @@ void rt_promise_set_owned(void *obj, void *value) {
 #endif
 
     future_notify_listeners(listeners);
+    future_release_object(obj);
 }
 
 /// @brief Resolve the promise by transferring an existing producer reference.
@@ -515,6 +561,7 @@ void rt_promise_set_transferred(void *obj, void *value) {
         rt_trap("Promise: null object");
     if (rt_obj_class_id(obj) != RT_PROMISE_CLASS_ID)
         rt_trap("Promise: invalid object");
+    rt_obj_retain_maybe(obj);
 
     promise_impl *p = (promise_impl *)obj;
 
@@ -530,6 +577,7 @@ void rt_promise_set_transferred(void *obj, void *value) {
 #else
         pthread_mutex_unlock(&p->mutex);
 #endif
+        future_release_object(obj);
         rt_trap("Promise: already completed");
     }
 
@@ -549,6 +597,7 @@ void rt_promise_set_transferred(void *obj, void *value) {
 #endif
 
     future_notify_listeners(listeners);
+    future_release_object(obj);
 }
 
 /// @brief Complete the promise with an error; wakes all waiting futures.
@@ -567,6 +616,7 @@ void rt_promise_set_error(void *obj, rt_string error) {
     } else {
         stored_error = rt_const_cstr("Unknown error");
     }
+    rt_obj_retain_maybe(obj);
 
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
@@ -582,6 +632,7 @@ void rt_promise_set_error(void *obj, rt_string error) {
 #endif
         if (stored_error)
             rt_str_release_maybe(stored_error);
+        future_release_object(obj);
         rt_trap("Promise: already completed");
     }
 
@@ -601,6 +652,7 @@ void rt_promise_set_error(void *obj, rt_string error) {
 #endif
 
     future_notify_listeners(listeners);
+    future_release_object(obj);
 }
 
 /// @brief Check whether the promise has been completed (either Ok or Error).
@@ -609,6 +661,7 @@ int8_t rt_promise_is_done(void *obj) {
         return 0;
     if (rt_obj_class_id(obj) != RT_PROMISE_CLASS_ID)
         rt_trap("Promise: invalid object");
+    rt_obj_retain_maybe(obj);
 
     promise_impl *p = (promise_impl *)obj;
 
@@ -622,6 +675,7 @@ int8_t rt_promise_is_done(void *obj) {
     pthread_mutex_unlock(&p->mutex);
 #endif
 
+    future_release_object(obj);
     return result;
 }
 
@@ -1026,18 +1080,20 @@ int8_t rt_future_on_complete_ex(void *obj,
         return 0;
     if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
         rt_trap("Future: invalid object");
+    rt_obj_retain_maybe(obj);
 
     future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
 
     future_listener *listener = (future_listener *)calloc(1, sizeof(future_listener));
-    if (!listener)
+    if (!listener) {
+        future_release_object(obj);
         return 0;
+    }
     listener->callback = callback;
     listener->cancel = cancel;
     listener->ctx = ctx;
     listener->future_obj = obj;
-    rt_obj_retain_maybe(obj);
 
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
@@ -1051,12 +1107,7 @@ int8_t rt_future_on_complete_ex(void *obj,
 #else
         pthread_mutex_unlock(&p->mutex);
 #endif
-        jmp_buf recovery;
-        rt_trap_set_recovery(&recovery);
-        if (setjmp(recovery) == 0) {
-            callback(obj, ctx);
-        }
-        rt_trap_clear_recovery();
+        future_invoke_listener(listener);
 
         if (rt_obj_release_check0(listener->future_obj))
             rt_obj_free(listener->future_obj);

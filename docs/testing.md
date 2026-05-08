@@ -386,6 +386,8 @@ The VM concurrency tests verify thread-safety of the VM execution model:
 - FIFO-fair, re-entrant monitor behavior (`Viper.Threads.Monitor`)
 - Thread lifecycle and join timeouts (`Viper.Threads.Thread`)
 - FIFO-serialized safe variables (`Viper.Threads.SafeI64`)
+- Future/Async/Parallel result retention, listener trap isolation, and one-shot pool task error reporting
+- Scheduler, debouncer/throttler, cancellation-token, channel, and concurrent collection synchronization behavior
 - VM thread start override (`Viper.Threads.Thread.Start`) and shared globals behavior
 
 ### Stress Test

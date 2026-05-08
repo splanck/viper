@@ -126,13 +126,12 @@ static rt_cancellation_data *cancellation_require(void *token) {
     return (rt_cancellation_data *)token;
 }
 
-/// @brief Cancel `data` and recursively propagate to every linked descendant.
-/// @details Performs the downward propagation by snapshotting the live child list under the
-///          monitor (retaining each child to keep it alive past the lock release), then
-///          recursing outside the lock. Snapshotting avoids holding the parent's monitor
-///          while we recurse — important because a child's monitor must be reachable
-///          independently of the parent's lock to keep the cancellation graph deadlock-free.
-///          Allocation failure traps instead of silently skipping descendants.
+/// @brief Cancel `data` and mark its immediate linked children.
+/// @details Children retain their parent and `IsCancelled` walks upward through
+///          that retained parent chain. Marking immediate children is therefore
+///          enough to make cancellation sticky for the full descendant tree
+///          without retaining weak child-list entries that may already be
+///          finalizing and waiting to unlink from this monitor.
 static void cancellation_mark_cancelled(rt_cancellation_data *data) {
     if (!data)
         return;
@@ -140,51 +139,11 @@ static void cancellation_mark_cancelled(rt_cancellation_data *data) {
     if (!data->monitor)
         return;
 
-    enum { CANCEL_CHILD_STACK_CAP = 32 };
-    rt_cancellation_data *stack_children[CANCEL_CHILD_STACK_CAP];
-    rt_cancellation_data **children = stack_children;
-    size_t child_count = 0;
-    int allocation_failed = 0;
-
     rt_monitor_enter(data->monitor);
     for (rt_cancellation_data *child = data->first_child; child; child = child->next_sibling) {
         cancel_store(child, 1);
-        child_count++;
-    }
-
-    if (child_count > CANCEL_CHILD_STACK_CAP) {
-        if (child_count > SIZE_MAX / sizeof(rt_cancellation_data *)) {
-            allocation_failed = 1;
-        } else {
-            children =
-                (rt_cancellation_data **)malloc(child_count * sizeof(rt_cancellation_data *));
-            if (!children)
-                allocation_failed = 1;
-        }
-    }
-
-    size_t copied = 0;
-    if (!allocation_failed) {
-        for (rt_cancellation_data *child = data->first_child; child; child = child->next_sibling) {
-            if (copied >= child_count)
-                break;
-            rt_obj_retain_maybe(child);
-            children[copied++] = child;
-        }
     }
     rt_monitor_exit(data->monitor);
-
-    if (allocation_failed) {
-        rt_trap("CancelToken.Cancel: memory allocation failed");
-        return;
-    }
-
-    for (size_t i = 0; i < copied; i++) {
-        cancellation_mark_cancelled(children[i]);
-        cancellation_release_object(children[i]);
-    }
-    if (children != stack_children)
-        free(children);
 }
 
 /// @brief GC finalizer for cancellation tokens.
@@ -263,10 +222,19 @@ int8_t rt_cancellation_is_cancelled(void *token) {
     rt_cancellation_data *data = cancellation_require(token);
     if (!data)
         return 0;
-    if (cancel_load(data))
+    rt_obj_retain_maybe(token);
+    if (cancel_load(data)) {
+        cancellation_release_object(token);
         return 1;
-    if (data->parent)
-        return rt_cancellation_is_cancelled(data->parent);
+    }
+    void *parent = data->parent;
+    rt_obj_retain_maybe(parent);
+    cancellation_release_object(token);
+    if (parent) {
+        int8_t cancelled = rt_cancellation_is_cancelled(parent);
+        cancellation_release_object(parent);
+        return cancelled;
+    }
     return 0;
 }
 
@@ -275,7 +243,11 @@ void rt_cancellation_cancel(void *token) {
     if (!token)
         return;
     rt_cancellation_data *data = cancellation_require(token);
+    if (!data)
+        return;
+    rt_obj_retain_maybe(token);
     cancellation_mark_cancelled(data);
+    cancellation_release_object(token);
 }
 
 /// @brief Clear the local cancelled flag on `token` so it can be reused for a new operation.
@@ -290,7 +262,9 @@ void rt_cancellation_reset(void *token) {
     rt_cancellation_data *data = cancellation_require(token);
     if (!data)
         return;
+    rt_obj_retain_maybe(token);
     cancel_store(data, 0);
+    cancellation_release_object(token);
 }
 
 /// @brief Create a child token that is automatically cancelled when the parent is cancelled.
@@ -327,14 +301,15 @@ void *rt_cancellation_linked(void *parent) {
         }
         rt_obj_retain_maybe(parent);
         data->parent = parent;
+        int8_t parent_cancelled = rt_cancellation_is_cancelled(parent);
         if (parent_data->monitor) {
             rt_monitor_enter(parent_data->monitor);
             data->next_sibling = parent_data->first_child;
             parent_data->first_child = data;
-            if (cancel_load(parent_data) || rt_cancellation_is_cancelled(parent))
+            if (parent_cancelled || cancel_load(parent_data))
                 cancel_store(data, 1);
             rt_monitor_exit(parent_data->monitor);
-        } else if (rt_cancellation_is_cancelled(parent)) {
+        } else if (parent_cancelled) {
             cancel_store(data, 1);
         }
     }

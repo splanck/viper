@@ -139,6 +139,13 @@ static void *map_identity(void *item) {
     return item;
 }
 
+static void *g_borrowed_map_result = nullptr;
+
+static void *map_borrowed_shared(void *item) {
+    (void)item;
+    return g_borrowed_map_result;
+}
+
 static void test_map_basic() {
     // Create sequence [1, 2, 3]
     void *seq = rt_seq_new();
@@ -189,15 +196,15 @@ static void test_map_order_preserved() {
     test_result(true, "map_order: order preserved correctly");
 }
 
-static void test_map_transfers_callback_results_to_seq() {
+static void test_map_retains_callback_results_in_seq() {
     void *seq = rt_seq_new();
     for (int i = 0; i < 8; i++)
         rt_seq_push(seq, (void *)(intptr_t)i);
 
     void *result = rt_parallel_map(seq, (void *)map_new_seq);
-    test_result(rt_seq_len(result) == 8, "map_transfer: should have same length");
+    test_result(rt_seq_len(result) == 8, "map_retain_result: should have same length");
     for (int i = 0; i < 8; i++)
-        test_result(rt_seq_len(rt_seq_get(result, i)) == 0, "map_transfer: result usable");
+        test_result(rt_seq_len(rt_seq_get(result, i)) == 0, "map_retain_result: result usable");
 
     if (rt_obj_release_check0(result))
         rt_obj_free(result);
@@ -216,6 +223,32 @@ static void test_map_retains_borrowed_input_results() {
         rt_obj_free(item);
     test_result(rt_seq_len(rt_seq_get(result, 0)) == 0,
                 "map_borrowed_input: result should retain input object");
+
+    if (rt_obj_release_check0(result))
+        rt_obj_free(result);
+    if (rt_obj_release_check0(seq))
+        rt_obj_free(seq);
+}
+
+static void test_map_retains_borrowed_non_input_results() {
+    void *seq = rt_seq_new();
+    for (int i = 0; i < 3; i++)
+        rt_seq_push(seq, (void *)(intptr_t)(i + 1));
+
+    void *borrowed = rt_seq_new();
+    g_borrowed_map_result = borrowed;
+    void *result = rt_parallel_map(seq, (void *)map_borrowed_shared);
+    test_result(rt_seq_len(result) == 3, "map_borrowed_shared: should have same length");
+    for (int i = 0; i < 3; i++)
+        test_result(rt_seq_get(result, i) == borrowed, "map_borrowed_shared: result identity");
+
+    if (rt_obj_release_check0(borrowed))
+        rt_obj_free(borrowed);
+    g_borrowed_map_result = nullptr;
+
+    for (int i = 0; i < 3; i++)
+        test_result(rt_seq_len(rt_seq_get(result, i)) == 0,
+                    "map_borrowed_shared: retained borrowed result should remain usable");
 
     if (rt_obj_release_check0(result))
         rt_obj_free(result);
@@ -366,8 +399,9 @@ int main(int argc, char *argv[]) {
     test_map_basic();
     test_map_empty();
     test_map_order_preserved();
-    test_map_transfers_callback_results_to_seq();
+    test_map_retains_callback_results_in_seq();
     test_map_retains_borrowed_input_results();
+    test_map_retains_borrowed_non_input_results();
     test_nested_parallel_same_pool_runs_inline();
 
     // For tests

@@ -35,6 +35,13 @@
 #include "rt_object.h"
 
 #include <stdint.h>
+#include <string.h>
+
+static int64_t safe_i64_from_u64(uint64_t value) {
+    int64_t out;
+    memcpy(&out, &value, sizeof(out));
+    return out;
+}
 
 #if defined(_WIN32)
 
@@ -106,7 +113,7 @@ int64_t rt_safe_i64_add(void *obj, int64_t delta) {
         return 0;
     rt_monitor_enter(cell);
     uint64_t old = (uint64_t)InterlockedExchangeAdd64(&cell->value, (LONG64)delta);
-    int64_t value = (int64_t)(old + (uint64_t)delta);
+    int64_t value = safe_i64_from_u64(old + (uint64_t)delta);
     rt_monitor_exit(cell);
     return value;
 }
@@ -266,7 +273,7 @@ int64_t rt_safe_i64_add(void *obj, int64_t delta) {
         return 0;
     rt_monitor_enter(cell);
     uint64_t next = (uint64_t)cell->value + (uint64_t)delta;
-    cell->value = (int64_t)next;
+    cell->value = safe_i64_from_u64(next);
     const int64_t out = cell->value;
     rt_monitor_exit(cell);
     return out;

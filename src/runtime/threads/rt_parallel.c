@@ -6,23 +6,36 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/threads/rt_parallel.c
-// Purpose: Implements data-parallel execution utilities for the
-//          Viper.Threads.Parallel class. Provides ForEach (parallel iteration
-//          over a collection with a worker callback) and Invoke (run a fixed
-//          list of callbacks concurrently and wait for all to finish).
+// Purpose: Implements the data-parallel combinators on `Viper.Threads.Parallel`:
+//            - ForEach / ForEachPool        — apply a callback to each element.
+//            - Map / MapPool                — transform each element into a result Seq.
+//            - Reduce / ReducePool          — fold elements into a single accumulator.
+//            - For / ForPool                — call a callback for each integer in a range.
+//            - Invoke / InvokePool          — fan out a fixed list of nullary callbacks.
+//          The non-`Pool` variants run on the shared default pool; the `Pool` variants
+//          accept an explicit `Threadpool` handle so callers can isolate workloads.
 //
 // Key invariants:
-//   - ForEach distributes elements across worker threads; element order of
-//     processing is non-deterministic.
-//   - Invoke launches all callbacks simultaneously and blocks until every one
-//     has returned.
-//   - Large ranges are chunked to avoid one tiny task per element.
-//   - Worker count defaults to the hardware thread count (or a user-supplied cap).
-//   - Submit failures are surfaced after already-submitted work drains.
+//   - All combinators distribute work across N tasks chosen by `parallel_choose_task_count`
+//     and wait for every task to finish before returning to the caller.
+//   - Element order of processing is non-deterministic; Map / Reduce however preserve
+//     positional order in their result Seq / final accumulator.
+//   - The first worker callback to trap wins: its message is captured into a per-batch
+//     error slot and rethrown on the submitting thread after the batch drains, instead
+//     of letting the caller hang or crash mid-batch.
+//   - Calls into a `*Pool` variant from a worker already running in the target pool
+//     execute serially on the calling worker (`parallel_is_current_pool`) to avoid
+//     self-deadlock under exhausted worker pools.
+//   - Worker count defaults to the hardware thread count or the supplied pool's size.
 //
 // Ownership/Lifetime:
-//   - Callback function pointers and arguments are not retained; callers must
-//     ensure lifetimes exceed the Parallel call.
+//   - Callback function pointers and primitive arguments are borrowed; callers must
+//     keep them alive across the call.
+//   - `Map` callback results are retained before entering the returned Seq so
+//     borrowed input or shared runtime objects remain valid after the caller
+//     releases its original references.
+//   - `Reduce` callbacks own intermediate accumulator allocation and freeing; the
+//     runtime forwards their pointer through the final combine step unchanged.
 //   - Submitted callbacks run on a thread pool; no detached per-element threads
 //     are created here.
 //
@@ -59,6 +72,8 @@ int sysctlbyname(const char *, void *, size_t *, void *, size_t);
 /// POSIX guarantees function/data pointer round-trip, but ISO C forbids the cast.
 static inline void *fnptr_to_voidptr(void (*fn)(void *)) {
     void *p;
+    _Static_assert(sizeof(p) == sizeof(fn),
+                   "Parallel task callback bridge requires equal function/data pointer sizes");
     memcpy(&p, &fn, sizeof(p));
     return p;
 }
@@ -426,30 +441,6 @@ static void parallel_trap_error(const char *fallback, const char *captured) {
 ///          values — they're owned by the caller's input array, not the result array.
 ///          Returns 1 if `value` matches any `items[i]`, else 0. Linear search is fine here:
 ///          this is only called on cleanup paths and Map result arrays are typically small.
-static int parallel_result_is_input(void *value, void **items, int64_t count) {
-    if (!value || !items)
-        return 0;
-    for (int64_t i = 0; i < count; i++) {
-        if (items[i] == value)
-            return 1;
-    }
-    return 0;
-}
-
-/// @brief Like `parallel_result_is_input`, but for the Sequence-typed (Seq) input variant.
-/// @details Map can be invoked with a `Seq` instead of a raw pointer array; element access
-///          goes through `rt_seq_get` which honours Seq's storage strategy. Same identity-
-///          pass-through cleanup contract as the array variant.
-static int parallel_result_is_sequence_input(void *value, void *seq, int64_t count) {
-    if (!value || !seq)
-        return 0;
-    for (int64_t i = 0; i < count; i++) {
-        if (rt_seq_get(seq, i) == value)
-            return 1;
-    }
-    return 0;
-}
-
 /// @brief Detect whether the calling thread is already a worker of `pool`.
 /// @details Used to short-circuit nested parallel calls — recursing into the same pool from
 ///          inside one of its worker tasks would deadlock if the pool is saturated, so the
@@ -458,19 +449,18 @@ static int parallel_is_current_pool(void *pool) {
     return pool && rt_threadpool_current_worker_pool() == pool;
 }
 
-/// @brief Drop runtime-managed values stored in a Map result array on the failure path.
-/// @details Iterates the result slots, NULL-ing each one as it goes and releasing any value
-///          that isn't an identity pass-through of one of the original inputs. Identity
-///          pass-throughs are owned by the caller, not by the result array, so releasing
-///          them would underflow the input's refcount. Used when a Map call traps mid-batch
-///          and the partially populated result array must be torn down before re-raising.
+/// @brief Drop retained values stored in a Map result array on the failure path.
+/// @details Map treats callback returns as borrowed and retains every runtime
+///          object before storing it in the result array, so cleanup can release
+///          every populated slot uniformly.
 static void parallel_release_map_results(void **results, void **items, int64_t count) {
+    (void)items;
     if (!results)
         return;
     for (int64_t i = 0; i < count; i++) {
         void *value = results[i];
         results[i] = NULL;
-        if (value && !parallel_result_is_input(value, items, count)) {
+        if (value) {
             if (rt_obj_release_check0(value))
                 rt_obj_free(value);
         }
@@ -536,9 +526,10 @@ static void foreach_callback(void *arg) {
 
 /// @brief Per-task entry point for `Parallel.Map`.
 /// @details Same skeleton as `foreach_callback`, but each iteration writes
-///          `task->func(items[i])` into `results[i]`. Mapper-created objects are transferred
-///          to the returned sequence; exact input passthrough is retained when collected.
-///          Cleanup of partially populated transferred results on a trap path is the caller's
+///          `task->func(items[i])` into `results[i]`. Callback returns are
+///          retained before storage so borrowed results remain valid until the
+///          returned sequence owns them.
+///          Cleanup of partially populated retained results on a trap path is the caller's
 ///          responsibility (see `parallel_release_map_results`). Trap capture and
 ///          batch-completion signaling are identical to ForEach.
 static void map_callback(void *arg) {
@@ -550,8 +541,11 @@ static void map_callback(void *arg) {
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) == 0) {
-        for (int64_t i = task->start; i < task->end; i++)
-            task->results[i] = task->func(task->items[i]);
+        for (int64_t i = task->start; i < task->end; i++) {
+            void *mapped = task->func(task->items[i]);
+            rt_obj_retain_maybe(mapped);
+            task->results[i] = mapped;
+        }
     } else {
         parallel_copy_error(local_error, sizeof(local_error), "Parallel.Map: task trapped");
         task_failed = 1;
@@ -908,9 +902,7 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool) {
             void *(*mapper)(void *) = (void *(*)(void *))func;
             for (int64_t i = 0; i < count; i++) {
                 void *mapped = mapper(rt_seq_get(seq, i));
-                if (parallel_result_is_sequence_input(mapped, seq, count))
-                    rt_obj_retain_maybe(mapped);
-                rt_seq_push_raw(result, mapped);
+                rt_seq_push(result, mapped);
             }
         } else {
             parallel_copy_error(task_error, sizeof(task_error), "Parallel.Map: task trapped");
@@ -1026,8 +1018,6 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool) {
     void *result = rt_seq_new();
     rt_seq_set_owns_elements(result, 1);
     for (int64_t i = 0; i < count; i++) {
-        if (parallel_result_is_input(results[i], items, count))
-            rt_obj_retain_maybe(results[i]);
         rt_seq_push_raw(result, results[i]);
         results[i] = NULL;
     }

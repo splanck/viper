@@ -256,6 +256,11 @@ static rt_concqueue_impl *concqueue_require(void *obj, int8_t trap_on_null) {
     return (rt_concqueue_impl *)obj;
 }
 
+static void concqueue_release_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 /// @brief Walk a linked list of queue nodes, releasing each retained value and freeing each node.
 /// @details Used by Clear and the GC finalizer to drain any remaining
 ///          items. Decrements each value's refcount and frees the value
@@ -280,6 +285,12 @@ static void cq_finalizer(void *obj) {
         return;
 
     CQ_LOCK(cq);
+    cq->closed = 1;
+#if defined(_WIN32)
+    WakeAllConditionVariable(&cq->cond);
+#else
+    pthread_cond_broadcast(&cq->cond);
+#endif
     cq_node *n = cq->head;
     cq->head = NULL;
     cq->tail = NULL;
@@ -315,8 +326,19 @@ void *rt_concqueue_new(void) {
     InitializeCriticalSection(&cq->mutex);
     InitializeConditionVariable(&cq->cond);
 #else
-    pthread_mutex_init(&cq->mutex, NULL);
-    cq_cond_init(&cq->cond, &cq->cond_uses_monotonic);
+    if (pthread_mutex_init(&cq->mutex, NULL) != 0) {
+        if (rt_obj_release_check0(cq))
+            rt_obj_free(cq);
+        rt_trap("ConcurrentQueue: mutex initialization failed");
+        return NULL;
+    }
+    if (cq_cond_init(&cq->cond, &cq->cond_uses_monotonic) != 0) {
+        pthread_mutex_destroy(&cq->mutex);
+        if (rt_obj_release_check0(cq))
+            rt_obj_free(cq);
+        rt_trap("ConcurrentQueue: condition initialization failed");
+        return NULL;
+    }
 #endif
     rt_obj_set_finalizer(cq, cq_finalizer);
     return (void *)cq;
@@ -329,9 +351,11 @@ int64_t rt_concqueue_len(void *obj) {
     rt_concqueue_impl *cq = concqueue_require(obj, 0);
     if (!cq)
         return 0;
+    rt_obj_retain_maybe(obj);
     CQ_LOCK(cq);
     int64_t len = cq->count;
     CQ_UNLOCK(cq);
+    concqueue_release_object(obj);
     return len;
 }
 
@@ -348,9 +372,11 @@ int8_t rt_concqueue_get_is_closed(void *obj) {
     rt_concqueue_impl *cq = concqueue_require(obj, 0);
     if (!cq)
         return 1;
+    rt_obj_retain_maybe(obj);
     CQ_LOCK(cq);
     int8_t closed = cq->closed;
     CQ_UNLOCK(cq);
+    concqueue_release_object(obj);
     return closed;
 }
 
@@ -361,9 +387,11 @@ void rt_concqueue_enqueue(void *obj, void *item) {
     rt_concqueue_impl *cq = concqueue_require(obj, 0);
     if (!cq)
         return;
+    rt_obj_retain_maybe(obj);
 
     cq_node *node = (cq_node *)malloc(sizeof(cq_node));
     if (!node) {
+        concqueue_release_object(obj);
         rt_trap("ConcurrentQueue: memory allocation failed");
         return;
     }
@@ -377,6 +405,7 @@ void rt_concqueue_enqueue(void *obj, void *item) {
         if (item && rt_obj_release_check0(item))
             rt_obj_free(item);
         free(node);
+        concqueue_release_object(obj);
         rt_trap("ConcurrentQueue.Enqueue: queue is closed");
         return;
     }
@@ -388,6 +417,7 @@ void rt_concqueue_enqueue(void *obj, void *item) {
     cq->count++;
     CQ_SIGNAL(cq);
     CQ_UNLOCK(cq);
+    concqueue_release_object(obj);
 }
 
 /// @brief Non-blocking dequeue: pop the head if available, otherwise return NULL immediately.
@@ -399,10 +429,12 @@ void *rt_concqueue_try_dequeue(void *obj) {
     rt_concqueue_impl *cq = concqueue_require(obj, 0);
     if (!cq)
         return NULL;
+    rt_obj_retain_maybe(obj);
 
     CQ_LOCK(cq);
     if (!cq->head) {
         CQ_UNLOCK(cq);
+        concqueue_release_object(obj);
         return NULL;
     }
 
@@ -415,6 +447,7 @@ void *rt_concqueue_try_dequeue(void *obj) {
 
     void *value = node->value;
     free(node);
+    concqueue_release_object(obj);
     return value;
 }
 
@@ -427,12 +460,14 @@ void *rt_concqueue_dequeue(void *obj) {
     rt_concqueue_impl *cq = concqueue_require(obj, 0);
     if (!cq)
         return NULL;
+    rt_obj_retain_maybe(obj);
 
     CQ_LOCK(cq);
     while (!cq->head && !cq->closed)
         CQ_WAIT(cq);
     if (!cq->head) {
         CQ_UNLOCK(cq);
+        concqueue_release_object(obj);
         return NULL;
     }
 
@@ -445,6 +480,7 @@ void *rt_concqueue_dequeue(void *obj) {
 
     void *value = node->value;
     free(node);
+    concqueue_release_object(obj);
     return value;
 }
 
@@ -460,6 +496,7 @@ void *rt_concqueue_dequeue_timeout(void *obj, int64_t timeout_ms) {
         return NULL;
     if (timeout_ms <= 0)
         return rt_concqueue_try_dequeue(obj);
+    rt_obj_retain_maybe(obj);
 
 #if defined(_WIN32)
     CQ_LOCK(cq);
@@ -472,11 +509,15 @@ void *rt_concqueue_dequeue_timeout(void *obj, int64_t timeout_ms) {
         DWORD remaining = delta > (ULONGLONG)MAXDWORD ? MAXDWORD : (DWORD)delta;
         if (remaining == 0) {
             CQ_UNLOCK(cq);
+            concqueue_release_object(obj);
             return NULL;
         }
         if (!SleepConditionVariableCS(&cq->cond, &cq->mutex, remaining)) {
-            // Timeout or error
+            DWORD err = GetLastError();
             CQ_UNLOCK(cq);
+            concqueue_release_object(obj);
+            if (err && err != ERROR_TIMEOUT)
+                rt_trap("ConcurrentQueue.DequeueTimeout: condition wait failed");
             return NULL;
         }
     }
@@ -488,8 +529,13 @@ void *rt_concqueue_dequeue_timeout(void *obj, int64_t timeout_ms) {
         int rc =
             cq_cond_timedwait_deadline(&cq->cond, &cq->mutex, deadline, cq->cond_uses_monotonic);
         if (rc == ETIMEDOUT) {
-            // Timeout or error
             CQ_UNLOCK(cq);
+            concqueue_release_object(obj);
+            return NULL;
+        } else if (rc != 0) {
+            CQ_UNLOCK(cq);
+            concqueue_release_object(obj);
+            rt_trap("ConcurrentQueue.DequeueTimeout: condition wait failed");
             return NULL;
         }
     }
@@ -497,6 +543,7 @@ void *rt_concqueue_dequeue_timeout(void *obj, int64_t timeout_ms) {
 
     if (!cq->head) {
         CQ_UNLOCK(cq);
+        concqueue_release_object(obj);
         return NULL;
     }
 
@@ -509,6 +556,7 @@ void *rt_concqueue_dequeue_timeout(void *obj, int64_t timeout_ms) {
 
     void *value = node->value;
     free(node);
+    concqueue_release_object(obj);
     return value;
 }
 
@@ -521,12 +569,14 @@ void *rt_concqueue_peek(void *obj) {
     rt_concqueue_impl *cq = concqueue_require(obj, 0);
     if (!cq)
         return NULL;
+    rt_obj_retain_maybe(obj);
 
     CQ_LOCK(cq);
     void *value = cq->head ? cq->head->value : NULL;
     if (value)
         rt_obj_retain_maybe(value);
     CQ_UNLOCK(cq);
+    concqueue_release_object(obj);
     return value;
 }
 
@@ -537,6 +587,7 @@ void rt_concqueue_clear(void *obj) {
     rt_concqueue_impl *cq = concqueue_require(obj, 0);
     if (!cq)
         return;
+    rt_obj_retain_maybe(obj);
 
     CQ_LOCK(cq);
     cq_node *n = cq->head;
@@ -545,6 +596,7 @@ void rt_concqueue_clear(void *obj) {
     cq->count = 0;
     CQ_UNLOCK(cq);
     cq_release_nodes(n);
+    concqueue_release_object(obj);
 }
 
 /// @brief Mark the queue as closed and wake every blocked dequeue waiter. Subsequent enqueues
@@ -556,9 +608,11 @@ void rt_concqueue_close(void *obj) {
     rt_concqueue_impl *cq = concqueue_require(obj, 0);
     if (!cq)
         return;
+    rt_obj_retain_maybe(obj);
     CQ_LOCK(cq);
     if (cq->closed) {
         CQ_UNLOCK(cq);
+        concqueue_release_object(obj);
         return;
     }
     cq->closed = 1;
@@ -568,4 +622,5 @@ void rt_concqueue_close(void *obj) {
     pthread_cond_broadcast(&cq->cond);
 #endif
     CQ_UNLOCK(cq);
+    concqueue_release_object(obj);
 }

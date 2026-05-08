@@ -145,6 +145,11 @@ static rt_concmap_impl *concmap_require(void *obj, int8_t trap_on_null) {
     return (rt_concmap_impl *)obj;
 }
 
+static void concmap_release_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 /// @brief Free a single entry — its key copy, its retained value (refcount-aware), and the entry itself.
 /// @details Used by Delete and bucket clear paths. The key is a freshly
 ///          malloc'd copy so we own it; the value carries a runtime ref
@@ -280,7 +285,14 @@ void *rt_concmap_new(void) {
 #if defined(_WIN32)
     InitializeCriticalSection(&cm->mutex);
 #else
-    pthread_mutex_init(&cm->mutex, NULL);
+    if (pthread_mutex_init(&cm->mutex, NULL) != 0) {
+        free(cm->buckets);
+        cm->buckets = NULL;
+        if (rt_obj_release_check0(cm))
+            rt_obj_free(cm);
+        rt_trap("ConcurrentMap: mutex initialization failed");
+        return NULL;
+    }
 #endif
 
     rt_obj_set_finalizer(cm, cm_finalizer);
@@ -294,9 +306,11 @@ int64_t rt_concmap_len(void *obj) {
     rt_concmap_impl *cm = concmap_require(obj, 0);
     if (!cm)
         return 0;
+    rt_obj_retain_maybe(obj);
     CM_LOCK(cm);
     int64_t len = (int64_t)cm->count;
     CM_UNLOCK(cm);
+    concmap_release_object(obj);
     return len;
 }
 
@@ -312,18 +326,21 @@ void rt_concmap_set(void *obj, rt_string key, void *value) {
     rt_concmap_impl *cm = concmap_require(obj, 0);
     if (!cm)
         return;
+    rt_obj_retain_maybe(obj);
     size_t key_len = 0;
     const char *key_data = get_key_data(key, &key_len);
     uint64_t h = rt_fnv1a(key_data, key_len);
 
     cm_entry *new_entry = (cm_entry *)malloc(sizeof(cm_entry));
     if (!new_entry) {
+        concmap_release_object(obj);
         rt_trap("ConcurrentMap.Set: memory allocation failed");
         return;
     }
     new_entry->key = (char *)malloc(key_len + 1);
     if (!new_entry->key) {
         free(new_entry);
+        concmap_release_object(obj);
         rt_trap("ConcurrentMap.Set: memory allocation failed");
         return;
     }
@@ -349,6 +366,7 @@ void rt_concmap_set(void *obj, rt_string key, void *value) {
         free(new_entry);
         if (rt_obj_release_check0(old_value))
             rt_obj_free(old_value);
+        concmap_release_object(obj);
         return;
     }
 
@@ -359,6 +377,7 @@ void rt_concmap_set(void *obj, rt_string key, void *value) {
 
     maybe_resize(cm);
     CM_UNLOCK(cm);
+    concmap_release_object(obj);
 }
 
 /// @brief Look up a value by string key. Returns a freshly-retained reference (caller releases)
@@ -370,6 +389,7 @@ void *rt_concmap_get(void *obj, rt_string key) {
     rt_concmap_impl *cm = concmap_require(obj, 0);
     if (!cm)
         return NULL;
+    rt_obj_retain_maybe(obj);
     size_t key_len = 0;
     const char *key_data = get_key_data(key, &key_len);
     uint64_t h = rt_fnv1a(key_data, key_len);
@@ -381,6 +401,7 @@ void *rt_concmap_get(void *obj, rt_string key) {
     if (result)
         rt_obj_retain_maybe(result);
     CM_UNLOCK(cm);
+    concmap_release_object(obj);
     return result;
 }
 
@@ -392,6 +413,7 @@ void *rt_concmap_get_or(void *obj, rt_string key, void *default_value) {
     rt_concmap_impl *cm = concmap_require(obj, 0);
     if (!cm)
         return default_value;
+    rt_obj_retain_maybe(obj);
     size_t key_len = 0;
     const char *key_data = get_key_data(key, &key_len);
     uint64_t h = rt_fnv1a(key_data, key_len);
@@ -403,6 +425,7 @@ void *rt_concmap_get_or(void *obj, rt_string key, void *default_value) {
     if (e && result)
         rt_obj_retain_maybe(result);
     CM_UNLOCK(cm);
+    concmap_release_object(obj);
     return result;
 }
 
@@ -413,6 +436,7 @@ int8_t rt_concmap_has(void *obj, rt_string key) {
     rt_concmap_impl *cm = concmap_require(obj, 0);
     if (!cm)
         return 0;
+    rt_obj_retain_maybe(obj);
     size_t key_len = 0;
     const char *key_data = get_key_data(key, &key_len);
     uint64_t h = rt_fnv1a(key_data, key_len);
@@ -422,6 +446,7 @@ int8_t rt_concmap_has(void *obj, rt_string key) {
     cm_entry *e = find_entry(cm->buckets[idx], key_data, key_len);
     int8_t found = e ? 1 : 0;
     CM_UNLOCK(cm);
+    concmap_release_object(obj);
     return found;
 }
 
@@ -432,18 +457,21 @@ int8_t rt_concmap_set_if_missing(void *obj, rt_string key, void *value) {
     rt_concmap_impl *cm = concmap_require(obj, 0);
     if (!cm)
         return 0;
+    rt_obj_retain_maybe(obj);
     size_t key_len = 0;
     const char *key_data = get_key_data(key, &key_len);
     uint64_t h = rt_fnv1a(key_data, key_len);
 
     cm_entry *e = (cm_entry *)malloc(sizeof(cm_entry));
     if (!e) {
+        concmap_release_object(obj);
         rt_trap("ConcurrentMap.SetIfMissing: memory allocation failed");
         return 0;
     }
     e->key = (char *)malloc(key_len + 1);
     if (!e->key) {
         free(e);
+        concmap_release_object(obj);
         rt_trap("ConcurrentMap.SetIfMissing: memory allocation failed");
         return 0;
     }
@@ -464,6 +492,7 @@ int8_t rt_concmap_set_if_missing(void *obj, rt_string key, void *value) {
         free(e);
         if (rt_obj_release_check0(value))
             rt_obj_free(value);
+        concmap_release_object(obj);
         return 0;
     }
 
@@ -473,6 +502,7 @@ int8_t rt_concmap_set_if_missing(void *obj, rt_string key, void *value) {
 
     maybe_resize(cm);
     CM_UNLOCK(cm);
+    concmap_release_object(obj);
     return 1;
 }
 
@@ -483,6 +513,7 @@ int8_t rt_concmap_remove(void *obj, rt_string key) {
     rt_concmap_impl *cm = concmap_require(obj, 0);
     if (!cm)
         return 0;
+    rt_obj_retain_maybe(obj);
     size_t key_len = 0;
     const char *key_data = get_key_data(key, &key_len);
     uint64_t h = rt_fnv1a(key_data, key_len);
@@ -499,6 +530,7 @@ int8_t rt_concmap_remove(void *obj, rt_string key) {
             e->next = NULL;
             CM_UNLOCK(cm);
             free_entry(e);
+            concmap_release_object(obj);
             return 1;
         }
         prev = &e->next;
@@ -506,6 +538,7 @@ int8_t rt_concmap_remove(void *obj, rt_string key) {
     }
 
     CM_UNLOCK(cm);
+    concmap_release_object(obj);
     return 0;
 }
 
@@ -516,10 +549,12 @@ void rt_concmap_clear(void *obj) {
     rt_concmap_impl *cm = concmap_require(obj, 0);
     if (!cm)
         return;
+    rt_obj_retain_maybe(obj);
     CM_LOCK(cm);
     cm_entry *entries = cm_detach_entries_unlocked(cm);
     CM_UNLOCK(cm);
     free_entry_list(entries);
+    concmap_release_object(obj);
 }
 
 /// @brief Return a snapshot Seq containing every key currently in the map. The Seq owns its
@@ -533,6 +568,7 @@ void *rt_concmap_keys(void *obj) {
     rt_concmap_impl *cm = concmap_require(obj, 0);
     if (!cm)
         return seq;
+    rt_obj_retain_maybe(obj);
 
     size_t snapshot_count = 0;
     size_t total_bytes = 0;
@@ -547,6 +583,7 @@ void *rt_concmap_keys(void *obj) {
         while (e) {
             if (e->key_len > SIZE_MAX - total_bytes) {
                 CM_UNLOCK(cm);
+                concmap_release_object(obj);
                 rt_trap("ConcurrentMap.Keys: allocation size overflow");
                 return seq;
             }
@@ -557,12 +594,14 @@ void *rt_concmap_keys(void *obj) {
 
     if (snapshot_count == 0) {
         CM_UNLOCK(cm);
+        concmap_release_object(obj);
         return seq;
     }
 
     if (snapshot_count > SIZE_MAX / sizeof(char *) ||
         snapshot_count > SIZE_MAX / sizeof(size_t)) {
         CM_UNLOCK(cm);
+        concmap_release_object(obj);
         rt_trap("ConcurrentMap.Keys: allocation size overflow");
         return seq;
     }
@@ -575,6 +614,7 @@ void *rt_concmap_keys(void *obj) {
         free(keys);
         free(lens);
         free(bytes);
+        concmap_release_object(obj);
         rt_trap("ConcurrentMap.Keys: memory allocation failed");
         return seq;
     }
@@ -593,6 +633,7 @@ void *rt_concmap_keys(void *obj) {
         }
     }
     CM_UNLOCK(cm);
+    concmap_release_object(obj);
 
     for (size_t i = 0; i < copied; i++) {
         rt_string s = rt_string_from_bytes(keys[i], lens[i]);
@@ -616,6 +657,7 @@ void *rt_concmap_values(void *obj) {
     rt_concmap_impl *cm = concmap_require(obj, 0);
     if (!cm)
         return seq;
+    rt_obj_retain_maybe(obj);
 
     size_t snapshot_count = 0;
     void **values = NULL;
@@ -624,11 +666,13 @@ void *rt_concmap_values(void *obj) {
 
     if (snapshot_count == 0) {
         CM_UNLOCK(cm);
+        concmap_release_object(obj);
         return seq;
     }
 
     if (snapshot_count > SIZE_MAX / sizeof(void *)) {
         CM_UNLOCK(cm);
+        concmap_release_object(obj);
         rt_trap("ConcurrentMap.Values: allocation size overflow");
         return seq;
     }
@@ -636,6 +680,7 @@ void *rt_concmap_values(void *obj) {
     values = (void **)calloc(snapshot_count, sizeof(void *));
     if (!values) {
         CM_UNLOCK(cm);
+        concmap_release_object(obj);
         rt_trap("ConcurrentMap.Values: memory allocation failed");
         return seq;
     }
@@ -652,6 +697,7 @@ void *rt_concmap_values(void *obj) {
         }
     }
     CM_UNLOCK(cm);
+    concmap_release_object(obj);
 
     for (size_t i = 0; i < copied; i++)
         rt_seq_push_raw(seq, values[i]);

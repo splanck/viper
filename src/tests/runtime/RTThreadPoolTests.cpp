@@ -211,10 +211,10 @@ static void test_task_trap_does_not_hang_wait() {
     assert(rt_threadpool_get_pending(pool) == 0);
     assert(rt_threadpool_get_active(pool) == 0);
 
-    assert(call_traps(shutdown_pool, pool) == 1);
+    assert(call_traps(shutdown_pool, pool) == 0);
 }
 
-static void test_task_trap_error_is_sticky() {
+static void test_task_trap_error_is_reported_once() {
     init_counter();
     void *pool = rt_threadpool_new(1);
 
@@ -239,9 +239,9 @@ static void test_task_trap_error_is_sticky() {
         trapped = 1;
     }
     rt_trap_clear_recovery();
-    assert(trapped == 1);
+    assert(trapped == 0);
 
-    assert(call_traps(shutdown_pool, pool) == 1);
+    assert(call_traps(shutdown_pool, pool) == 0);
 }
 
 //=============================================================================
@@ -372,7 +372,7 @@ int main() {
     test_wait_for_immediate_check();
     test_wait_for_timeout_budget();
     test_task_trap_does_not_hang_wait();
-    test_task_trap_error_is_sticky();
+    test_task_trap_error_is_reported_once();
     test_graceful_shutdown();
     test_shutdown_now();
     test_shutdown_surfaces_task_trap();
