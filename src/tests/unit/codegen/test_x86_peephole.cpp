@@ -425,6 +425,47 @@ TEST(X86Peephole, FallthroughJumpRemoval) {
     EXPECT_FALSE(hasJmp);
 }
 
+TEST(X86Peephole, TraceLayoutPreservesJccOnlyFallthrough) {
+    MFunction fn{};
+    fn.name = "test_jcc_fallthrough";
+
+    MBasicBlock entry{};
+    entry.label = ".Lentry";
+    entry.instructions = {
+        MInstr{MOpcode::TESTrr, {gpr(PhysReg::RAX), gpr(PhysReg::RAX)}},
+        MInstr{MOpcode::JCC, {imm(1), lbl(".Ltrue")}},
+        MInstr{MOpcode::JMP, {lbl(".Lfalse")}},
+    };
+
+    MBasicBlock trueBlock{};
+    trueBlock.label = ".Ltrue";
+    trueBlock.instructions = {
+        MInstr{MOpcode::RET, {}},
+    };
+
+    MBasicBlock falseBlock{};
+    falseBlock.label = ".Lfalse";
+    falseBlock.instructions = {
+        MInstr{MOpcode::RET, {}},
+    };
+
+    fn.blocks = {std::move(entry), std::move(falseBlock), std::move(trueBlock)};
+
+    auto count = runPeepholes(fn);
+    EXPECT_TRUE(count > 0U);
+    ASSERT_GE(fn.blocks.size(), 3U);
+    EXPECT_EQ(fn.blocks[0].label, ".Lentry");
+    EXPECT_EQ(fn.blocks[1].label, ".Lfalse");
+    EXPECT_EQ(fn.blocks[2].label, ".Ltrue");
+
+    const auto &entryInstrs = fn.blocks[0].instructions;
+    ASSERT_FALSE(entryInstrs.empty());
+    EXPECT_EQ(entryInstrs.back().opcode, MOpcode::JCC);
+    const auto *target = std::get_if<OpLabel>(&entryInstrs.back().operands[1]);
+    ASSERT_NE(target, nullptr);
+    EXPECT_EQ(target->name, ".Ltrue");
+}
+
 // ---------------------------------------------------------------------------
 // Pass 8: Branch Chain Elimination
 // ---------------------------------------------------------------------------

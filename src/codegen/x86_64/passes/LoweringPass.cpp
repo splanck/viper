@@ -69,6 +69,9 @@ class ModuleAdapter {
     /// @brief Current function being adapted (for return type access).
     const il::core::Function *currentFunc_{nullptr};
 
+    /// @brief Current basic block being adapted (for diagnostics).
+    const il::core::BasicBlock *currentBlock_{nullptr};
+
     /// @brief Current module being adapted (for global lookup).
     const il::core::Module *currentModule_{nullptr};
 
@@ -215,7 +218,13 @@ class ModuleAdapter {
             case il::core::Value::Kind::Temp: {
                 const auto it = valueKinds_.find(value.id);
                 if (it == valueKinds_.end()) {
-                    reportUnsupported("ssa temp without registered kind in Phase A lowering");
+                    std::string detail = "ssa temp %" + std::to_string(value.id) +
+                                         " without registered kind in Phase A lowering";
+                    if (currentFunc_)
+                        detail += " in function @" + currentFunc_->name;
+                    if (currentBlock_)
+                        detail += " block %" + currentBlock_->label;
+                    reportUnsupported(std::move(detail));
                 }
                 converted.kind = it->second;
                 converted.id = static_cast<int>(value.id);
@@ -331,6 +340,28 @@ class ModuleAdapter {
             valueBits_.emplace(param.id, typeBitWidth(param.type));
         }
 
+        // Optimized IL can place a block before the block that declares an SSA
+        // parameter it uses. Register every block parameter up front so lowering
+        // depends on dominance, not textual block order.
+        for (const auto &block : func.blocks) {
+            for (const auto &param : block.params) {
+                valueKinds_[param.id] = typeToKind(param.type);
+                valueBits_[param.id] = typeBitWidth(param.type);
+            }
+        }
+
+        // Instruction results can also be used in dominated blocks that appear
+        // earlier in textual order. Pre-register result types so operand
+        // conversion is independent of block layout.
+        for (const auto &block : func.blocks) {
+            for (const auto &instr : block.instructions) {
+                if (!instr.result || instr.type.kind == il::core::Type::Kind::Void)
+                    continue;
+                valueKinds_[*instr.result] = typeToKind(instr.type);
+                valueBits_[*instr.result] = typeBitWidth(instr.type);
+            }
+        }
+
         // Adapt each block
         adapted.blocks.reserve(func.blocks.size());
         for (const auto &block : func.blocks) {
@@ -342,6 +373,7 @@ class ModuleAdapter {
 
     /// @brief Adapt an IL block.
     ILBlock adaptBlock(const il::core::BasicBlock &block) {
+        currentBlock_ = &block;
         ILBlock adapted{};
         adapted.name = block.label;
 
@@ -361,6 +393,7 @@ class ModuleAdapter {
             adaptInstruction(instr, adapted);
         }
 
+        currentBlock_ = nullptr;
         return adapted;
     }
 

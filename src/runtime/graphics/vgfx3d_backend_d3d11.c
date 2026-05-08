@@ -3061,8 +3061,8 @@ static void d3d11_prepare_light_data(const vgfx3d_light_params_t *lights,
 static int d3d11_prepare_anim_resources(d3d11_context_t *ctx,
                                         const vgfx3d_draw_cmd_t *cmd,
                                         d3d_per_object_t *object_data) {
-    float bone_palette[VGFX3D_D3D11_MAX_BONES * 16];
-    float prev_bone_palette[VGFX3D_D3D11_MAX_BONES * 16];
+    float bone_palette[VGFX3D_D3D11_BONE_PALETTE_FLOATS];
+    float prev_bone_palette[VGFX3D_D3D11_BONE_PALETTE_FLOATS];
     HRESULT hr;
     size_t morph_count;
     int current_bone_upload_ok = 1;
@@ -4125,7 +4125,7 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
         d3d11_log_hresult("CreateBuffer(cbPerLights)", hr);
         goto fail;
     }
-    cb_desc.ByteWidth = d3d11_constant_buffer_byte_width(sizeof(float) * 128u * 16u);
+    cb_desc.ByteWidth = d3d11_constant_buffer_byte_width(VGFX3D_D3D11_BONE_PALETTE_BYTES);
     hr = ID3D11Device_CreateBuffer(ctx->device, &cb_desc, NULL, &ctx->cb_bones);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateBuffer(cbBones)", hr);

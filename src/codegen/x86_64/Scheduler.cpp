@@ -102,6 +102,19 @@ void addMemRegs(const OpMem &mem, InstrDeps &deps) {
             break;
     }
 
+    for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
+        const auto [isUse, isDef] = operandRoles(instr, idx);
+        (void)isUse;
+        if (!isDef)
+            continue;
+        const auto *reg = std::get_if<OpReg>(&instr.operands[idx]);
+        if (!reg || !reg->isPhys)
+            continue;
+        const auto phys = static_cast<PhysReg>(reg->idOrPhys);
+        if (phys == PhysReg::RSP || phys == PhysReg::RBP)
+            return true;
+    }
+
     return std::any_of(instr.operands.begin(), instr.operands.end(), isVirtualOperand);
 }
 

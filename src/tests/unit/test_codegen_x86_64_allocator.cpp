@@ -160,6 +160,65 @@ TEST(Allocator, CarriesLiveValueIntoImmediateSinglePredecessorSuccessor) {
     }
 }
 
+TEST(Allocator, LowersLargeSpilledParallelCopyWithoutScratchExhaustion) {
+    constexpr uint16_t kCount = 24;
+
+    MFunction func{};
+
+    MBasicBlock entry{};
+    entry.label = "entry";
+    for (uint16_t id = 1; id <= kCount; ++id) {
+        entry.instructions.push_back(makeMovImm(id, static_cast<int64_t>(id)));
+    }
+    entry.instructions.push_back(MInstr::make(MOpcode::JMP, {makeLabelOperand("edge")}));
+
+    MBasicBlock padding{};
+    padding.label = "padding";
+    padding.instructions.push_back(MInstr::make(MOpcode::RET, {}));
+
+    MBasicBlock edge{};
+    edge.label = "edge";
+    MInstr px = MInstr::make(MOpcode::PX_COPY, {});
+    for (uint16_t i = 0; i < kCount; ++i) {
+        px.operands.push_back(makeVRegOperand(RegClass::GPR, static_cast<uint16_t>(100 + i)));
+        px.operands.push_back(makeVRegOperand(RegClass::GPR, static_cast<uint16_t>(1 + i)));
+    }
+    edge.instructions.push_back(std::move(px));
+    edge.instructions.push_back(MInstr::make(MOpcode::JMP, {makeLabelOperand("join")}));
+
+    MBasicBlock gap{};
+    gap.label = "gap";
+    gap.instructions.push_back(MInstr::make(MOpcode::RET, {}));
+
+    MBasicBlock join{};
+    join.label = "join";
+    join.instructions.push_back(MInstr::make(
+        MOpcode::MOVrr,
+        {makeVRegOperand(RegClass::GPR, 300), makeVRegOperand(RegClass::GPR, 100)}));
+    for (uint16_t i = 1; i < kCount; ++i) {
+        join.instructions.push_back(MInstr::make(
+            MOpcode::ADDrr,
+            {makeVRegOperand(RegClass::GPR, 300),
+             makeVRegOperand(RegClass::GPR, static_cast<uint16_t>(100 + i))}));
+    }
+    join.instructions.push_back(MInstr::make(MOpcode::RET, {}));
+
+    func.blocks.push_back(std::move(entry));
+    func.blocks.push_back(std::move(padding));
+    func.blocks.push_back(std::move(edge));
+    func.blocks.push_back(std::move(gap));
+    func.blocks.push_back(std::move(join));
+
+    auto result = allocate(func, win64Target());
+    EXPECT_GT(result.spillSlotsGPR, 0);
+
+    for (const auto &block : func.blocks) {
+        for (const auto &instr : block.instructions) {
+            EXPECT_NE(instr.opcode, MOpcode::PX_COPY);
+        }
+    }
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();

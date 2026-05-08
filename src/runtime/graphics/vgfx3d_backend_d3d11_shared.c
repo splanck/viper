@@ -63,7 +63,7 @@ void vgfx3d_d3d11_pack_bone_palette(float *dst, const float *src, int32_t bone_c
     if (!dst)
         return;
 
-    memset(dst, 0, sizeof(float) * VGFX3D_D3D11_MAX_BONES * 16u);
+    memset(dst, 0, VGFX3D_D3D11_BONE_PALETTE_BYTES);
     if (!src || bone_count <= 0)
         return;
 

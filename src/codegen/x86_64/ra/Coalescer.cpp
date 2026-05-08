@@ -129,11 +129,10 @@ void Coalescer::lower(const MInstr &instr, std::vector<MInstr> &out) {
             auto &srcState = allocator_.stateFor(srcReg->cls, srcReg->idOrPhys);
             if (srcState.spill.needsSpill) {
                 spiller_.ensureSpillSlot(srcState.cls, srcState.spill);
-                const PhysReg scratchReg = allocator_.takeRegister(srcState.cls, prefix);
-                prefix.push_back(spiller_.makeLoad(srcState.cls, scratchReg, srcState.spill));
-                scratch.push_back(ScratchRelease{scratchReg, srcState.cls});
-                task.src.kind = CopySource::Kind::Reg;
-                task.src.reg = scratchReg;
+                // Keep spilled sources in memory until their copy is emitted so
+                // large edge copies do not reserve one scratch register per source.
+                task.src.kind = CopySource::Kind::Mem;
+                task.src.slot = srcState.spill.slot;
             } else {
                 if (!srcState.hasPhys) {
                     const PhysReg phys = allocator_.takeRegister(srcState.cls, prefix);

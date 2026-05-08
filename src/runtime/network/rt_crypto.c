@@ -1939,8 +1939,8 @@ void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
         int ok = 1;
         while (off < len) {
             size_t chunk = len - off;
-            if (chunk > DWORD_MAX)
-                chunk = DWORD_MAX;
+            if (chunk > (size_t)UINT32_MAX)
+                chunk = (size_t)UINT32_MAX;
             if (!CryptGenRandom(hProv, (DWORD)chunk, buf + off)) {
                 ok = 0;
                 break;

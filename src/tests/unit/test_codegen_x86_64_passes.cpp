@@ -13,6 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 #include "codegen/x86_64/MachineIR.hpp"
+#include "codegen/x86_64/Scheduler.hpp"
 #include "codegen/x86_64/passes/BinaryEmitPass.hpp"
 #include "codegen/x86_64/passes/EmitPass.hpp"
 #include "codegen/x86_64/passes/LegalizePass.hpp"
@@ -182,6 +183,230 @@ il::core::Module makeNarrowI16Module() {
     return module;
 }
 
+il::core::Module makeOutOfOrderBlockParamUseModule() {
+    using il::core::BasicBlock;
+    using il::core::Function;
+    using il::core::Instr;
+    using il::core::Module;
+    using il::core::Opcode;
+    using il::core::Param;
+    using il::core::Type;
+    using il::core::Value;
+
+    Module module{};
+
+    Function fn;
+    fn.name = "main";
+    fn.retType = Type(Type::Kind::I64);
+    fn.valueNames.resize(6);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    entry.terminated = true;
+    Instr entryBr;
+    entryBr.op = Opcode::Br;
+    entryBr.type = Type(Type::Kind::Void);
+    entryBr.labels.push_back("loop");
+    entryBr.brArgs.push_back({Value::constInt(0)});
+    entry.instructions.push_back(entryBr);
+
+    BasicBlock loop;
+    loop.label = "loop";
+    loop.params.push_back(Param{"i", Type(Type::Kind::I64), 1});
+    loop.terminated = true;
+    Instr cmp;
+    cmp.op = Opcode::SCmpLT;
+    cmp.type = Type(Type::Kind::I1);
+    cmp.result = 3;
+    cmp.operands.push_back(Value::temp(1));
+    cmp.operands.push_back(Value::constInt(10));
+    loop.instructions.push_back(cmp);
+    Instr cbr;
+    cbr.op = Opcode::CBr;
+    cbr.type = Type(Type::Kind::Void);
+    cbr.operands.push_back(Value::temp(3));
+    cbr.labels = {"body", "exit"};
+    cbr.brArgs.push_back({Value::temp(1)});
+    cbr.brArgs.push_back({});
+    loop.instructions.push_back(cbr);
+
+    // Textually before "body", but it uses body's block parameter. This mirrors
+    // optimized BASIC for-loop shapes such as Scoreboard.GetRank.
+    BasicBlock inc;
+    inc.label = "inc";
+    inc.terminated = true;
+    Instr add;
+    add.op = Opcode::IAddOvf;
+    add.type = Type(Type::Kind::I64);
+    add.result = 5;
+    add.operands.push_back(Value::temp(2));
+    add.operands.push_back(Value::constInt(1));
+    inc.instructions.push_back(add);
+    Instr back;
+    back.op = Opcode::Br;
+    back.type = Type(Type::Kind::Void);
+    back.labels.push_back("loop");
+    back.brArgs.push_back({Value::temp(5)});
+    inc.instructions.push_back(back);
+
+    BasicBlock body;
+    body.label = "body";
+    body.params.push_back(Param{"body_i", Type(Type::Kind::I64), 2});
+    body.terminated = true;
+    Instr toInc;
+    toInc.op = Opcode::Br;
+    toInc.type = Type(Type::Kind::Void);
+    toInc.labels.push_back("inc");
+    toInc.brArgs.push_back({});
+    body.instructions.push_back(toInc);
+
+    BasicBlock exit;
+    exit.label = "exit";
+    exit.terminated = true;
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands.push_back(Value::constInt(0));
+    exit.instructions.push_back(ret);
+
+    fn.blocks = {entry, loop, inc, body, exit};
+    module.functions.push_back(fn);
+    return module;
+}
+
+il::core::Module makeOutOfOrderInstructionResultUseModule() {
+    using il::core::BasicBlock;
+    using il::core::Function;
+    using il::core::Instr;
+    using il::core::Module;
+    using il::core::Opcode;
+    using il::core::Type;
+    using il::core::Value;
+
+    Module module{};
+
+    Function fn;
+    fn.name = "main";
+    fn.retType = Type(Type::Kind::I64);
+    fn.valueNames.resize(4);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    entry.terminated = true;
+    Instr entryBr;
+    entryBr.op = Opcode::Br;
+    entryBr.type = Type(Type::Kind::Void);
+    entryBr.labels.push_back("def");
+    entry.instructions.push_back(entryBr);
+
+    // Textually before "def", but "def" dominates this block and produces
+    // %t2. Optimized for-in lowering can create this shape on Windows x64.
+    BasicBlock use;
+    use.label = "use";
+    use.terminated = true;
+    Instr useAdd;
+    useAdd.op = Opcode::IAddOvf;
+    useAdd.type = Type(Type::Kind::I64);
+    useAdd.result = 3;
+    useAdd.operands.push_back(Value::temp(2));
+    useAdd.operands.push_back(Value::constInt(1));
+    use.instructions.push_back(useAdd);
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands.push_back(Value::temp(3));
+    use.instructions.push_back(ret);
+
+    BasicBlock def;
+    def.label = "def";
+    def.terminated = true;
+    Instr defAdd;
+    defAdd.op = Opcode::IAddOvf;
+    defAdd.type = Type(Type::Kind::I64);
+    defAdd.result = 2;
+    defAdd.operands.push_back(Value::constInt(41));
+    defAdd.operands.push_back(Value::constInt(0));
+    def.instructions.push_back(defAdd);
+    Instr toUse;
+    toUse.op = Opcode::Br;
+    toUse.type = Type(Type::Kind::Void);
+    toUse.labels.push_back("use");
+    def.instructions.push_back(toUse);
+
+    fn.blocks = {entry, use, def};
+    module.functions.push_back(fn);
+    return module;
+}
+
+il::core::Module makeOutOfOrderEdgeArgumentUseModule() {
+    using il::core::BasicBlock;
+    using il::core::Function;
+    using il::core::Instr;
+    using il::core::Module;
+    using il::core::Opcode;
+    using il::core::Param;
+    using il::core::Type;
+    using il::core::Value;
+
+    Module module{};
+
+    Function fn;
+    fn.name = "main";
+    fn.retType = Type(Type::Kind::I64);
+    fn.valueNames.resize(5);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    entry.terminated = true;
+    Instr entryBr;
+    entryBr.op = Opcode::Br;
+    entryBr.type = Type(Type::Kind::Void);
+    entryBr.labels.push_back("def");
+    entry.instructions.push_back(entryBr);
+
+    // Textually before "def", but the only path reaches this block after
+    // "def" creates %t2. Its branch passes %t2 to a block parameter.
+    BasicBlock update;
+    update.label = "update";
+    update.terminated = true;
+    Instr toJoin;
+    toJoin.op = Opcode::Br;
+    toJoin.type = Type(Type::Kind::Void);
+    toJoin.labels.push_back("join");
+    toJoin.brArgs.push_back({Value::temp(2)});
+    update.instructions.push_back(toJoin);
+
+    BasicBlock join;
+    join.label = "join";
+    join.params.push_back(Param{"x", Type(Type::Kind::I64), 4});
+    join.terminated = true;
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands.push_back(Value::temp(4));
+    join.instructions.push_back(ret);
+
+    BasicBlock def;
+    def.label = "def";
+    def.terminated = true;
+    Instr defAdd;
+    defAdd.op = Opcode::IAddOvf;
+    defAdd.type = Type(Type::Kind::I64);
+    defAdd.result = 2;
+    defAdd.operands.push_back(Value::constInt(41));
+    defAdd.operands.push_back(Value::constInt(1));
+    def.instructions.push_back(defAdd);
+    Instr toUpdate;
+    toUpdate.op = Opcode::Br;
+    toUpdate.type = Type(Type::Kind::Void);
+    toUpdate.labels.push_back("update");
+    def.instructions.push_back(toUpdate);
+
+    fn.blocks = {entry, update, join, def};
+    module.functions.push_back(fn);
+    return module;
+}
+
 std::size_t binarySizeForOptLevel(int optimizeLevel) {
     Module module{};
     module.il = makeRetConstModule(0);
@@ -210,6 +435,21 @@ bool runThroughRegAlloc(Module &module, Diagnostics &diags) {
     pm.addPass(std::make_unique<LegalizePass>());
     pm.addPass(std::make_unique<RegAllocPass>());
     return pm.run(module, diags);
+}
+
+viper::codegen::x64::Operand physGpr(viper::codegen::x64::PhysReg reg) {
+    return viper::codegen::x64::OpReg{
+        true, viper::codegen::x64::RegClass::GPR, static_cast<uint16_t>(reg)};
+}
+
+viper::codegen::x64::Operand rbpMem(int disp) {
+    viper::codegen::x64::OpMem mem{};
+    mem.base = viper::codegen::x64::OpReg{
+        true,
+        viper::codegen::x64::RegClass::GPR,
+        static_cast<uint16_t>(viper::codegen::x64::PhysReg::RBP)};
+    mem.disp = disp;
+    return mem;
 }
 
 } // namespace
@@ -294,6 +534,44 @@ TEST(LoweringPass, PreservesCheckedNarrowResultWidth) {
     EXPECT_EQ(it->resultBits, 16);
 }
 
+TEST(LoweringPass, PreRegistersBlockParamsBeforeTextualUse) {
+    Module module{};
+    module.il = makeOutOfOrderBlockParamUseModule();
+
+    Diagnostics diags{};
+    LoweringPass pass{};
+    ASSERT_TRUE(pass.run(module, diags));
+    ASSERT_FALSE(diags.hasErrors());
+    ASSERT_TRUE(module.lowered.has_value());
+    ASSERT_EQ(module.lowered->funcs[0].blocks.size(), 5U);
+
+    const auto &incInstrs = module.lowered->funcs[0].blocks[2].instrs;
+    ASSERT_FALSE(incInstrs.empty());
+    EXPECT_EQ(incInstrs[0].opcode, "iadd.ovf");
+    ASSERT_FALSE(incInstrs[0].ops.empty());
+    EXPECT_EQ(incInstrs[0].ops[0].id, 2);
+    EXPECT_EQ(incInstrs[0].ops[0].kind, viper::codegen::x64::ILValue::Kind::I64);
+}
+
+TEST(LoweringPass, PreRegistersInstructionResultsBeforeTextualUse) {
+    Module module{};
+    module.il = makeOutOfOrderInstructionResultUseModule();
+
+    Diagnostics diags{};
+    LoweringPass pass{};
+    ASSERT_TRUE(pass.run(module, diags));
+    ASSERT_FALSE(diags.hasErrors());
+    ASSERT_TRUE(module.lowered.has_value());
+    ASSERT_EQ(module.lowered->funcs[0].blocks.size(), 3U);
+
+    const auto &useInstrs = module.lowered->funcs[0].blocks[1].instrs;
+    ASSERT_FALSE(useInstrs.empty());
+    EXPECT_EQ(useInstrs[0].opcode, "iadd.ovf");
+    ASSERT_FALSE(useInstrs[0].ops.empty());
+    EXPECT_EQ(useInstrs[0].ops[0].id, 2);
+    EXPECT_EQ(useInstrs[0].ops[0].kind, viper::codegen::x64::ILValue::Kind::I64);
+}
+
 TEST(LegalizePass, FailsWhenLoweringMissing) {
     Module module{};
     Diagnostics diags{};
@@ -318,6 +596,23 @@ TEST(LegalizePass, MarksModuleWhenLoweringReady) {
     EXPECT_FALSE(diags.hasErrors());
 }
 
+TEST(LegalizePass, ResolvesOutOfOrderInstructionResultEdgeArgument) {
+    Module module{};
+    module.il = makeOutOfOrderEdgeArgumentUseModule();
+
+    LoweringPass lower{};
+    Diagnostics lowerDiags{};
+    ASSERT_TRUE(lower.run(module, lowerDiags));
+    ASSERT_FALSE(lowerDiags.hasErrors());
+
+    Diagnostics diags{};
+    LegalizePass pass{};
+    EXPECT_TRUE(pass.run(module, diags));
+    EXPECT_FALSE(diags.hasErrors());
+    EXPECT_TRUE(module.legalised);
+    EXPECT_EQ(module.mir.size(), 1U);
+}
+
 TEST(RegAllocPass, RequiresLegalize) {
     Module module{};
     Diagnostics diags{};
@@ -336,6 +631,34 @@ TEST(SchedulerPass, RequiresRegAlloc) {
     SchedulerPass pass{};
     EXPECT_FALSE(pass.run(module, diags));
     EXPECT_TRUE(diags.hasErrors());
+}
+
+TEST(SchedulerPass, PreservesWin64FrameSetupBeforeCalleeSaves) {
+    using namespace viper::codegen::x64;
+
+    MBasicBlock entry{};
+    entry.label = "entry";
+    entry.instructions.push_back(
+        MInstr::make(MOpcode::MOVrr, {physGpr(PhysReg::RBP), physGpr(PhysReg::RSP)}));
+    entry.instructions.push_back(
+        MInstr::make(MOpcode::ADDri, {physGpr(PhysReg::RSP), OpImm{-64}}));
+    entry.instructions.push_back(
+        MInstr::make(MOpcode::MOVrm, {rbpMem(-8), physGpr(PhysReg::RBX)}));
+    entry.instructions.push_back(
+        MInstr::make(MOpcode::MOVrm, {rbpMem(-16), physGpr(PhysReg::RDI)}));
+
+    MFunction fn{};
+    fn.name = "prologue_order";
+    fn.blocks.push_back(std::move(entry));
+
+    scheduleFunction(fn);
+
+    const auto &instrs = fn.blocks[0].instructions;
+    ASSERT_EQ(instrs.size(), 4U);
+    EXPECT_EQ(instrs[0].opcode, MOpcode::MOVrr);
+    EXPECT_EQ(instrs[1].opcode, MOpcode::ADDri);
+    EXPECT_EQ(instrs[2].opcode, MOpcode::MOVrm);
+    EXPECT_EQ(instrs[3].opcode, MOpcode::MOVrm);
 }
 
 TEST(EmitPass, ProducesAssembly) {

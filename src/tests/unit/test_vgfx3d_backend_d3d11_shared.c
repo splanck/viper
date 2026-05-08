@@ -57,8 +57,8 @@ static void test_pack_bone_palette_zero_pads_unused_bones(void) {
 }
 
 static void test_pack_bone_palette_keeps_highest_supported_bone(void) {
-    float src[VGFX3D_D3D11_MAX_BONES * 16];
-    float dst[VGFX3D_D3D11_MAX_BONES * 16];
+    float src[VGFX3D_D3D11_BONE_PALETTE_FLOATS];
+    float dst[VGFX3D_D3D11_BONE_PALETTE_FLOATS];
     size_t tail = (size_t)(VGFX3D_D3D11_MAX_BONES - 1) * 16u;
 
     for (size_t i = 0; i < sizeof(src) / sizeof(src[0]); i++)
@@ -69,6 +69,16 @@ static void test_pack_bone_palette_keeps_highest_supported_bone(void) {
     EXPECT_NEAR(dst[tail + 0], src[tail + 0], 1e-6f, "Bone packing preserves the final supported bone");
     EXPECT_NEAR(dst[tail + 15], src[tail + 15], 1e-6f,
                 "Bone packing preserves the tail matrix element of the final supported bone");
+}
+
+static void test_bone_palette_upload_size_covers_supported_bone_count(void) {
+    EXPECT_TRUE(VGFX3D_D3D11_BONE_PALETTE_FLOATS == VGFX3D_D3D11_MAX_BONES * 16u,
+                "Bone palette upload has one 4x4 matrix per supported bone");
+    EXPECT_TRUE(VGFX3D_D3D11_BONE_PALETTE_BYTES ==
+                    sizeof(float) * VGFX3D_D3D11_MAX_BONES * 16u,
+                "Bone palette upload byte size matches the packed float payload");
+    EXPECT_TRUE(VGFX3D_D3D11_BONE_PALETTE_BYTES == 16384u,
+                "D3D11 bone cbuffer covers all 256 shader palette entries");
 }
 
 static void test_pack_scalar_array4_matches_hlsl_layout(void) {
@@ -260,6 +270,7 @@ static void test_capacity_and_mip_helpers(void) {
 int main(void) {
     test_pack_bone_palette_zero_pads_unused_bones();
     test_pack_bone_palette_keeps_highest_supported_bone();
+    test_bone_palette_upload_size_covers_supported_bone_count();
     test_pack_scalar_array4_matches_hlsl_layout();
     test_constant_buffer_struct_sizes_match_expected_layout();
     test_fill_instance_data_uses_previous_or_current_matrices();

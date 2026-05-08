@@ -436,11 +436,16 @@ std::string LowerILToMIR::buildEdgeCopyBlock(MFunction &func,
     for (std::size_t idx = 0; idx < params.size() && idx < edge.argIds.size(); ++idx) {
         Operand srcOp;
         if (edge.argIds[idx] >= 0) {
-            const auto valIt = valueToVReg_.find(edge.argIds[idx]);
+            auto valIt = valueToVReg_.find(edge.argIds[idx]);
             if (valIt == valueToVReg_.end()) {
-                phaseAUnsupported("missing SSA value for block parameter copy");
+                if (idx >= edge.argValues.size() || edge.argValues[idx].id != edge.argIds[idx]) {
+                    phaseAUnsupported("missing SSA value for block parameter copy");
+                }
+                const VReg vreg = ensureVReg(edge.argIds[idx], edge.argValues[idx].kind);
+                srcOp = makeVRegOperand(vreg.cls, vreg.id);
+            } else {
+                srcOp = makeVRegOperand(valIt->second.cls, valIt->second.id);
             }
-            srcOp = makeVRegOperand(valIt->second.cls, valIt->second.id);
         } else {
             if (idx >= edge.argValues.size())
                 phaseAUnsupported("edge argument index out of bounds in block parameter copy");

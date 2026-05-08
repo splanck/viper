@@ -90,7 +90,12 @@ void traceBlockLayout(MFunction &fn, PeepholeStats &stats) {
                     }
                 }
 
-                if (last.opcode == MOpcode::JMP || last.opcode == MOpcode::JCC) {
+                // A lone JCC has an implicit fallthrough successor in the next
+                // physical block. Following the taken edge here can move that
+                // target into the fallthrough slot on a later layout iteration
+                // after removeFallthroughJumps has deleted the explicit false
+                // JMP, changing branch semantics.
+                if (last.opcode == MOpcode::JMP) {
                     if (auto target = lookupUnplacedTarget(last, nameToIdx, placed)) {
                         cur = *target;
                         continue;
