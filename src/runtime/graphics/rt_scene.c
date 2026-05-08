@@ -319,8 +319,11 @@ static void update_world_transform(scene_node_impl *node) {
         if (depth >= capacity) {
             int new_cap = capacity * 2;
             scene_node_impl **grown = malloc((size_t)new_cap * sizeof(*grown));
-            if (!grown)
-                break; // OOM — process what we have (partial update, better than overflow)
+            if (!grown) {
+                if (heap_allocated)
+                    free(chain);
+                return;
+            }
             memcpy(grown, chain, (size_t)depth * sizeof(*grown));
             if (heap_allocated)
                 free(chain);
@@ -570,6 +573,10 @@ void rt_scene_node_set_sprite(void *node_ptr, void *sprite) {
     scene_node_impl *node = scene_node_checked_or_null(node_ptr);
     if (!node)
         return;
+    if (sprite && rt_obj_class_id(sprite) != RT_SPRITE_CLASS_ID) {
+        rt_trap("SceneNode.SetSprite: invalid sprite");
+        return;
+    }
     if (node->sprite == sprite)
         return;
     rt_obj_retain_maybe(sprite);

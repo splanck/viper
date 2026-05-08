@@ -144,8 +144,9 @@ static void test_text_scaled_width_null() {
 // ============================================================================
 
 static rt_canvas *make_fake_canvas() {
-    rt_canvas *c = (rt_canvas *)calloc(1, sizeof(rt_canvas));
+    rt_canvas *c = (rt_canvas *)rt_obj_new_i64(RT_CANVAS_CLASS_ID, sizeof(rt_canvas));
     assert(c != nullptr);
+    memset(c, 0, sizeof(rt_canvas));
     c->vptr = nullptr;
     c->gfx_win = nullptr; // Drawing ops are no-ops but math runs
     c->should_close = 0;
@@ -156,13 +157,18 @@ static rt_canvas *make_fake_canvas() {
     return c;
 }
 
+static void destroy_fake_canvas(rt_canvas *c) {
+    if (c && rt_obj_release_check0(c))
+        rt_obj_free(c);
+}
+
 static void test_text_centered_runs_without_crash() {
     rt_canvas *c = make_fake_canvas();
     // gfx_win is NULL → rt_canvas_width returns 0, drawing is no-op
     // This exercises the full computation path without requiring a display
     rt_canvas_text_centered(c, 100, S("GAME OVER"), 0x00FFFFFF);
     rt_canvas_text_centered(c, 200, S(""), 0x00FFFFFF);
-    free(c);
+    destroy_fake_canvas(c);
     printf("  test_text_centered_runs_without_crash: PASSED\n");
 }
 
@@ -170,7 +176,7 @@ static void test_text_right_runs_without_crash() {
     rt_canvas *c = make_fake_canvas();
     rt_canvas_text_right(c, 10, 100, S("Score: 42000"), 0x00FFFFFF);
     rt_canvas_text_right(c, 0, 200, S(""), 0x00FFFFFF);
-    free(c);
+    destroy_fake_canvas(c);
     printf("  test_text_right_runs_without_crash: PASSED\n");
 }
 
@@ -180,7 +186,7 @@ static void test_text_centered_scaled_runs_without_crash() {
     rt_canvas_text_centered_scaled(c, 100, S("TITLE"), 0x00FFFFFF, 3);
     // Edge: scale 0 → early return
     rt_canvas_text_centered_scaled(c, 100, S("TITLE"), 0x00FFFFFF, 0);
-    free(c);
+    destroy_fake_canvas(c);
     printf("  test_text_centered_scaled_runs_without_crash: PASSED\n");
 }
 

@@ -49,13 +49,18 @@ struct FakeWindow {
     int32_t last_fill_h;
 };
 
+static void *g_object_payloads[16];
+static int64_t g_object_class_ids[16];
+static size_t g_object_count = 0;
+
 static rt_string S(const char *s) {
     return reinterpret_cast<rt_string>(const_cast<char *>(s));
 }
 
 static rt_canvas *make_canvas(int32_t width, int32_t height) {
-    auto *canvas = static_cast<rt_canvas *>(std::calloc(1, sizeof(rt_canvas)));
+    auto *canvas = static_cast<rt_canvas *>(rt_obj_new_i64(RT_CANVAS_CLASS_ID, sizeof(rt_canvas)));
     assert(canvas != nullptr);
+    std::memset(canvas, 0, sizeof(rt_canvas));
     auto *window = static_cast<FakeWindow *>(std::calloc(1, sizeof(FakeWindow)));
     assert(window != nullptr);
     window->width = width;
@@ -144,8 +149,23 @@ static void test_text_font_bg_covers_glyph_overhang() {
 
 } // namespace
 
-extern "C" void *rt_obj_new_i64(int64_t, int64_t byte_size) {
-    return std::calloc(1, static_cast<size_t>(byte_size));
+extern "C" void *rt_obj_new_i64(int64_t class_id, int64_t byte_size) {
+    assert(byte_size >= 0);
+    assert(g_object_count < sizeof(g_object_payloads) / sizeof(g_object_payloads[0]));
+    void *obj = std::calloc(1, static_cast<size_t>(byte_size));
+    assert(obj != nullptr);
+    g_object_payloads[g_object_count] = obj;
+    g_object_class_ids[g_object_count] = class_id;
+    g_object_count++;
+    return obj;
+}
+
+extern "C" int64_t rt_obj_class_id(void *obj) {
+    for (size_t i = 0; i < g_object_count; i++) {
+        if (g_object_payloads[i] == obj)
+            return g_object_class_ids[i];
+    }
+    return 0;
 }
 
 extern "C" void rt_obj_set_finalizer(void *, void (*)(void *)) {}
@@ -155,6 +175,14 @@ extern "C" int32_t rt_obj_release_check0(void *) {
 }
 
 extern "C" void rt_obj_free(void *obj) {
+    for (size_t i = 0; i < g_object_count; i++) {
+        if (g_object_payloads[i] == obj) {
+            g_object_payloads[i] = g_object_payloads[g_object_count - 1];
+            g_object_class_ids[i] = g_object_class_ids[g_object_count - 1];
+            g_object_count--;
+            break;
+        }
+    }
     std::free(obj);
 }
 

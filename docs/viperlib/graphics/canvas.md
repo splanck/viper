@@ -250,8 +250,8 @@ canvas.ArcFrame(300, 200, 50, 45, 135, 65280) ' Arc outline
 ' Draw a quadratic Bezier curve (start, control point, end)
 canvas.Bezier(10, 100, 100, 10, 190, 100, 255)
 
-' Polyline and polygon require an array of points [x1, y1, x2, y2, ...]
-' Note: In BASIC, use an array and pass count of points
+' Polyline and polygon require an Integer array of points [x1, y1, x2, y2, ...]
+' The array must contain at least count * 2 elements.
 DIM points(5) AS INTEGER
 points(0) = 50 : points(1) = 10   ' Point 1
 points(2) = 10 : points(3) = 90   ' Point 2
@@ -260,6 +260,9 @@ points(4) = 90 : points(5) = 90   ' Point 3
 canvas.Polygon(points, 3, 16711935)      ' Filled polygon (3 points = triangle)
 canvas.PolygonFrame(points, 3, 65535) ' Polygon outline
 ```
+
+Polyline and polygon calls ignore invalid handles, non-Integer arrays, and arrays shorter than
+`count * 2` elements.
 
 ### Canvas Utilities
 
@@ -461,6 +464,9 @@ Color utility functions for graphics operations.
 | `ToHex(color)`           | `String(Integer)`                             | Converts a color to hex string and preserves explicit alpha, including `#RRGGBB00` |
 
 `Color.ToHex(Color.RGBA(r, g, b, a))` round-trips through `Color.FromHex()` as `#RRGGBBAA`, including `#RRGGBB00`.
+Color transforms such as `Brighten`, `Darken`, `Invert`, `Grayscale`, `Saturate`, `Desaturate`,
+`Complement`, and `Lerp` preserve explicit `Color.RGBA` alpha tags. RGB-only inputs are treated as
+fully opaque when interpolated with an alpha-tagged color.
 
 ### Zia Example
 

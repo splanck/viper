@@ -70,6 +70,11 @@ class DocumentManager {
         doc.fileName = "Untitled " + untitledCount;
         doc.language = "zia";
         doc.isNew = true;
+        // Pre-populate with a `module` skeleton so the Zia completion engine
+        // can parse the buffer as the user types. Without this, every cursor
+        // position in a bare-expression buffer makes CompleteForFile return
+        // the empty string, which presents to users as a blank popup.
+        doc.content = "module Untitled" + untitledCount + ";\n\n";
 
         documents.add(doc);
         activeIndex = documents.count() - 1;

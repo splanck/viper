@@ -14,6 +14,7 @@
 #include "rt_graphics.h"
 #include "rt_graphics2d.h"
 #include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_pixels.h"
 #include "rt_sprite.h"
 #include "rt_string.h"
@@ -38,6 +39,39 @@ static int64_t green_of(int64_t rgba) {
 
 static int64_t blue_of(int64_t rgba) {
     return ((uint32_t)rgba >> 8) & 255;
+}
+
+static void test_graphics2d_handles_have_unique_classes_and_reject_wrong_types() {
+    void *target = rt_rendertarget2d_new(1, 1);
+    void *pixels = rt_pixels_new(1, 1);
+    void *texture = rt_texture2d_new(pixels);
+    void *renderer = rt_renderer2d_new(1);
+    void *sprite = rt_sprite_new(pixels);
+
+    assert(target != nullptr);
+    assert(texture != nullptr);
+    assert(renderer != nullptr);
+    assert(sprite != nullptr);
+
+    int64_t target_class = rt_obj_class_id(target);
+    int64_t texture_class = rt_obj_class_id(texture);
+    int64_t renderer_class = rt_obj_class_id(renderer);
+    int64_t pixels_class = rt_obj_class_id(pixels);
+    int64_t sprite_class = rt_obj_class_id(sprite);
+
+    assert(target_class != 0);
+    assert(texture_class != 0);
+    assert(renderer_class != 0);
+    assert(target_class != texture_class);
+    assert(target_class != renderer_class);
+    assert(texture_class != renderer_class);
+    assert(texture_class != pixels_class);
+    assert(texture_class != sprite_class);
+
+    assert(rt_texture2d_new(sprite) == nullptr);
+    assert(rt_rendertarget2d_get_pixels(sprite) == nullptr);
+    assert(rt_texture2d_get_pixels(sprite) == nullptr);
+    printf("test_graphics2d_handles_have_unique_classes_and_reject_wrong_types: PASSED\n");
 }
 
 static void test_render_target_alpha_blend() {
@@ -499,6 +533,7 @@ static void test_layout_rendergraph_tile_helpers_and_importers() {
 }
 
 int main() {
+    test_graphics2d_handles_have_unique_classes_and_reject_wrong_types();
     test_render_target_alpha_blend();
     test_texture_renderer_material_and_effects();
     test_viewport_tiles_and_objects();

@@ -216,6 +216,16 @@ static void test_zero_tint_applies_black_and_negative_tint_disables_tint() {
     rt_spritebatch_end(batch, reinterpret_cast<void *>(1));
     assert(g_alpha_call_count == 1);
     assert(g_tint_call_count == 0);
+
+    int64_t tagged = (INT64_C(1) << 56) | INT64_C(0x80010203);
+    rt_spritebatch_set_tint(batch, tagged);
+    rt_spritebatch_begin(batch);
+    rt_spritebatch_draw_pixels(batch, &pixels, 0, 0);
+    reset_draw_calls();
+    rt_spritebatch_end(batch, reinterpret_cast<void *>(1));
+    assert(g_alpha_call_count == 1);
+    assert(g_tint_call_count == 1);
+    assert(g_last_tint == tagged);
 }
 
 static void test_rotated_region_keeps_requested_top_left() {

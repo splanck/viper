@@ -468,7 +468,7 @@ Batched sprite rendering for improved performance when drawing many sprites.
 **Type:** Instance (obj)
 **Constructor:** `NEW Viper.Graphics.SpriteBatch(capacity)`
 
-Creates a sprite batch with the given initial capacity (use 0 for default). SpriteBatch records draw calls, optionally sorts them by depth, applies shared tint/alpha state, and flushes them during `End(canvas)`. `End(canvas)` also clears the recorded batch so the same instance can be reused next frame. Use `Draw`/`DrawEx` for `Sprite` objects and `DrawPixels`/`DrawRegion` for raw `Pixels` buffers. `DrawPixels` preserves per-pixel alpha, so transparent sprites and overlays blend like `Canvas.BlitAlpha`. `DrawRegion` draws its extracted region at the requested destination top-left; any temporary transform or color copy does not recenter the final blit. When depth sorting is enabled, items with the same depth still preserve their original submission order. Scale values below `1` clamp to `1` for both sprite and raw-pixels batch entries.
+Creates a sprite batch with the given initial capacity (use 0 for default). SpriteBatch records draw calls, optionally sorts them by depth, applies shared tint/alpha state, and flushes them during `End(canvas)`. `End(canvas)` also clears the recorded batch so the same instance can be reused next frame. Use `Draw`/`DrawEx` for `Sprite` objects and `DrawPixels`/`DrawRegion` for raw `Pixels` buffers. `DrawPixels` preserves per-pixel alpha, so transparent sprites and overlays blend like `Canvas.BlitAlpha`. `DrawRegion` draws its extracted region at the requested destination top-left; any temporary transform or color copy does not recenter the final blit. When depth sorting is enabled, items with the same depth still preserve their original submission order. Scale values below `1` clamp to `1` for both sprite and raw-pixels batch entries. `Color.RGBA` tint values preserve their explicit alpha channel.
 SpriteBatch methods validate the batch receiver before recording or flushing; invalid handles are treated as empty/inactive batches or no-ops.
 
 ### Properties
@@ -493,7 +493,7 @@ SpriteBatch methods validate the batch receiver before recording or flushing; in
 | `ResetSettings()`                               | `Void()`                                               | Clear all settings to defaults                 |
 | `SetAlpha(alpha)`                               | `Void(Integer)`                                        | Set global alpha (0-255) for all sprites       |
 | `SetSortByDepth(enabled)`                       | `Void(Integer)`                                        | Enable/disable depth sorting (1=on, 0=off); equal depths stay stable in submission order |
-| `SetTint(color)`                                | `Void(Integer)`                                        | Set tint color (ARGB or RGB); pass `-1` for no tint |
+| `SetTint(color)`                                | `Void(Integer)`                                        | Set tint color (`Color.RGB`, `Color.RGBA`, or RGB literal); pass `-1` for no tint |
 | `DrawAtlas(atlas, name, x, y)`                  | `Void(TextureAtlas, String, Integer, Integer)`         | Draw named atlas region at position            |
 | `DrawAtlasScaled(atlas, name, x, y, scale)`     | `Void(TextureAtlas, String, Integer, Integer, Integer)`| Draw named atlas region with uniform scale     |
 | `DrawAtlasEx(atlas, name, x, y, scale, rot, depth)` | `Void(TextureAtlas, String, Integer...)`           | Draw named atlas region with full transform    |
@@ -629,7 +629,7 @@ batch.Draw(sprite, 400, 100)
 batch.End(canvas)
 ```
 
-`SetTint(0)` applies a black multiplicative tint. Use `SetTint(-1)` or `ResetSettings()` when you want no tint.
+`SetTint(0)` applies a black multiplicative tint. Use `SetTint(-1)` or `ResetSettings()` when you want no tint. `SetTint(Color.RGBA(...))` keeps the tint alpha rather than collapsing it to opaque RGB.
 
 ### Performance Tips
 

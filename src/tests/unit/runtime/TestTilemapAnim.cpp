@@ -8,6 +8,7 @@ extern "C" {
 void *rt_tilemap_new(int64_t w, int64_t h, int64_t tw, int64_t th);
 void rt_tilemap_set_tile(void *tm, int64_t x, int64_t y, int64_t tile);
 void rt_tilemap_set_collision(void *tm, int64_t tile, int64_t coll_type);
+int64_t rt_tilemap_get_collision(void *tm, int64_t tile);
 void rt_tilemap_set_tile_anim(void *tm, int64_t base, int64_t count, int64_t ms);
 void rt_tilemap_set_tile_anim_frame(void *tm, int64_t base, int64_t idx, int64_t tid);
 void rt_tilemap_update_anims(void *tm, int64_t dt);
@@ -77,6 +78,15 @@ TEST(TilemapAnim, AnimatedTilesUseBaseCollision) {
     rt_tilemap_update_anims(tm, 100);
     EXPECT_EQ(rt_tilemap_resolve_anim_tile(tm, 5), 7);
     EXPECT_EQ(rt_tilemap_is_solid_at(tm, 8, 8), 1);
+}
+
+TEST(TilemapAnim, TileZeroCollisionIsAlwaysEmpty) {
+    void *tm = rt_tilemap_new(1, 1, 16, 16);
+    rt_tilemap_set_tile(tm, 0, 0, 0);
+    rt_tilemap_set_collision(tm, 0, 1);
+
+    EXPECT_EQ(rt_tilemap_get_collision(tm, 0), 0);
+    EXPECT_EQ(rt_tilemap_is_solid_at(tm, 8, 8), 0);
 }
 
 int main() {

@@ -231,16 +231,13 @@ static int64_t sprite_saturating_sub(int64_t a, int64_t b) {
     return a - b;
 }
 
-/// @brief Normalize a tint color value to a valid 24-bit RGB or the sentinel -1.
-/// @details -1 is the "no tint" sentinel: when the tint field equals -1 the renderer
-///   skips the per-pixel tint multiply entirely. Any other value is masked to the
-///   low 24 bits (0x00RRGGBB) to strip the alpha channel — tint alpha is not used
-///   because the sprite's own alpha channel is already managed separately.
-/// @return Masked 24-bit RGB, or -1 if @p tint_color < 0.
+/// @brief Normalize a tint color value to either the "no tint" sentinel or a color value.
+/// @details -1 is the "no tint" sentinel. Non-negative values are passed through so
+///   Color.RGBA tagged alpha and raw RGBA tint alpha survive into rt_pixels_tint().
 static int64_t sprite_normalize_tint(int64_t tint_color) {
     if (tint_color < 0)
         return -1;
-    return (int64_t)((uint64_t)tint_color & 0x00FFFFFFu);
+    return tint_color;
 }
 
 /// @brief Release a transformed-pixels buffer if it isn't the original frame.
@@ -496,6 +493,10 @@ void *rt_sprite_new(void *pixels) {
         rt_trap("Sprite.New: null pixels");
         return NULL;
     }
+    if (rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID) {
+        rt_trap("Sprite.New: invalid pixels");
+        return NULL;
+    }
 
     rt_sprite_impl *sprite = sprite_alloc();
     if (!sprite)
@@ -504,7 +505,7 @@ void *rt_sprite_new(void *pixels) {
     // Clone the pixels and store as first frame
     void *cloned = rt_pixels_clone(pixels);
     if (!cloned) {
-        rt_obj_free(sprite);
+        sprite_release_object(sprite);
         return NULL;
     }
     sprite->frames[0] = cloned;
@@ -777,16 +778,19 @@ int64_t rt_sprite_get_frame(void *sprite_ptr) {
     return sprite->current_frame;
 }
 
-/// @brief Jump to the given frame index. Out-of-range indices are silently ignored;
+/// @brief Jump to the given frame index, wrapping out-of-range indices modulo frame_count.
 /// the auto-advance timer is reset so animation continues cleanly from this frame.
 void rt_sprite_set_frame(void *sprite_ptr, int64_t frame) {
     rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.Frame: invalid sprite");
     if (!sprite)
         return;
-    if (frame >= 0 && frame < sprite->frame_count) {
-        sprite->current_frame = frame;
-        sprite->last_frame_time = 0; // Reset timer so animation resumes cleanly
-    }
+    if (sprite->frame_count <= 0)
+        return;
+    frame %= sprite->frame_count;
+    if (frame < 0)
+        frame += sprite->frame_count;
+    sprite->current_frame = frame;
+    sprite->last_frame_time = 0; // Reset timer so animation resumes cleanly
 }
 
 /// @brief Total number of frames added via `_add_frame` (0 if uninitialized).
@@ -939,6 +943,10 @@ void rt_sprite_set_origin(void *sprite_ptr, int64_t x, int64_t y) {
 void rt_sprite_add_frame(void *sprite_ptr, void *pixels) {
     if (!sprite_ptr || !pixels) {
         rt_trap("Sprite.AddFrame: null argument");
+        return;
+    }
+    if (rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID) {
+        rt_trap("Sprite.AddFrame: invalid pixels");
         return;
     }
 
@@ -1129,6 +1137,8 @@ int rt_sprite_animator_add_clip(rt_sprite_animator_t *animator,
                                 int loop) {
     animator = sprite_animator_checked(animator);
     if (!animator || !name)
+        return 0;
+    if (strlen(name) >= sizeof(animator->clips[0].name))
         return 0;
 
     int existing = -1;

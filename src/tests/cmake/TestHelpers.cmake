@@ -28,6 +28,7 @@ set(_VIPER_TEST_LABEL_WHITELIST
         requires_ipv6
         requires_local_bind
         requires_posix_shell
+        gui
         runtime
         slow
         smoke

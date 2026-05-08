@@ -422,6 +422,12 @@ static void test_to_bytes() {
     void *bytes = rt_pixels_to_bytes(p);
     assert(bytes != nullptr);
     assert(rt_bytes_len(bytes) == 16); // 2x2 * 4 bytes per pixel
+    const uint8_t expected[16] = {0x11, 0x22, 0x33, 0x44,
+                                  0x55, 0x66, 0x77, 0x88,
+                                  0x99, 0xAA, 0xBB, 0xCC,
+                                  0xDD, 0xEE, 0xFF, 0x00};
+    for (int64_t i = 0; i < 16; ++i)
+        assert(rt_bytes_get(bytes, i) == expected[i]);
 
     printf("test_to_bytes: PASSED\n");
 }
@@ -430,27 +436,27 @@ static void test_from_bytes() {
     // Create bytes for a 2x2 image
     void *bytes = rt_bytes_new(16);
 
-    // Manually set pixel data (little-endian uint32_t)
+    // Manually set pixel data (canonical RGBA byte order)
     // Pixel (0,0) = 0x11223344
-    rt_bytes_set(bytes, 0, 0x44);
-    rt_bytes_set(bytes, 1, 0x33);
-    rt_bytes_set(bytes, 2, 0x22);
-    rt_bytes_set(bytes, 3, 0x11);
+    rt_bytes_set(bytes, 0, 0x11);
+    rt_bytes_set(bytes, 1, 0x22);
+    rt_bytes_set(bytes, 2, 0x33);
+    rt_bytes_set(bytes, 3, 0x44);
     // Pixel (1,0) = 0x55667788
-    rt_bytes_set(bytes, 4, 0x88);
-    rt_bytes_set(bytes, 5, 0x77);
-    rt_bytes_set(bytes, 6, 0x66);
-    rt_bytes_set(bytes, 7, 0x55);
+    rt_bytes_set(bytes, 4, 0x55);
+    rt_bytes_set(bytes, 5, 0x66);
+    rt_bytes_set(bytes, 6, 0x77);
+    rt_bytes_set(bytes, 7, 0x88);
     // Pixel (0,1) = 0x99AABBCC
-    rt_bytes_set(bytes, 8, 0xCC);
-    rt_bytes_set(bytes, 9, 0xBB);
-    rt_bytes_set(bytes, 10, 0xAA);
-    rt_bytes_set(bytes, 11, 0x99);
+    rt_bytes_set(bytes, 8, 0x99);
+    rt_bytes_set(bytes, 9, 0xAA);
+    rt_bytes_set(bytes, 10, 0xBB);
+    rt_bytes_set(bytes, 11, 0xCC);
     // Pixel (1,1) = 0xDDEEFF00
-    rt_bytes_set(bytes, 12, 0x00);
-    rt_bytes_set(bytes, 13, 0xFF);
-    rt_bytes_set(bytes, 14, 0xEE);
-    rt_bytes_set(bytes, 15, 0xDD);
+    rt_bytes_set(bytes, 12, 0xDD);
+    rt_bytes_set(bytes, 13, 0xEE);
+    rt_bytes_set(bytes, 14, 0xFF);
+    rt_bytes_set(bytes, 15, 0x00);
 
     void *p = rt_pixels_from_bytes(2, 2, bytes);
     assert(p != nullptr);

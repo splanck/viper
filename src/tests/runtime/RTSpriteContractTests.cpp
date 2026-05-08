@@ -18,6 +18,10 @@ extern "C" {
 #include <cstdlib>
 #include <cstring>
 
+#ifndef RT_PIXELS_CLASS_ID
+#define RT_PIXELS_CLASS_ID INT64_C(-0x600201)
+#endif
+
 namespace {
 
 struct ObjHeader {
@@ -39,6 +43,9 @@ static int g_tint_call_count = 0;
 static int64_t g_last_tint = -2;
 static bool g_clone_returns_null = false;
 static bool g_gif_decode_zero_success = false;
+static void *g_objects[128];
+static int64_t g_object_class_ids[128];
+static int g_object_count = 0;
 
 static StubPixels *make_pixels(int64_t width, int64_t height, int64_t id) {
     auto *pixels = static_cast<StubPixels *>(std::calloc(1, sizeof(StubPixels)));
@@ -178,6 +185,41 @@ static void test_transformed_tint_zero_is_black_and_negative_is_no_tint() {
     assert(g_last_blit_pixels_id != 50);
 }
 
+static void test_transformed_tint_preserves_tagged_alpha() {
+    StubPixels source{6, 6, 51};
+    void *sprite = rt_sprite_new(&source);
+    assert(sprite != nullptr);
+
+    int64_t tagged = (INT64_C(1) << 56) | INT64_C(0x80010203);
+    reset_draw_state();
+    rt_sprite_draw_transformed(sprite, reinterpret_cast<void *>(1), 0, 0, 100, 100, 0, tagged, 255);
+    assert(g_tint_call_count == 1);
+    assert(g_last_tint == tagged);
+}
+
+static void test_set_frame_wraps_out_of_range_indices() {
+    StubPixels source{4, 4, 70};
+    StubPixels frame{4, 4, 71};
+    void *sprite = rt_sprite_new(&source);
+    assert(sprite != nullptr);
+    rt_sprite_add_frame(sprite, &frame);
+    assert(rt_sprite_get_frame_count(sprite) == 2);
+
+    rt_sprite_set_frame(sprite, 5);
+    assert(rt_sprite_get_frame(sprite) == 1);
+    rt_sprite_set_frame(sprite, -1);
+    assert(rt_sprite_get_frame(sprite) == 1);
+}
+
+static void test_animator_rejects_overlong_clip_name() {
+    rt_sprite_animator_t *anim = rt_sprite_animator_new();
+    assert(anim != nullptr);
+    char name[65];
+    std::memset(name, 'a', sizeof(name) - 1);
+    name[sizeof(name) - 1] = '\0';
+    assert(rt_sprite_animator_add_clip(anim, name, 0, 1, 100, 1) == 0);
+}
+
 } // namespace
 
 extern "C" void *rt_obj_new_i64(int64_t class_id, int64_t byte_size) {
@@ -185,11 +227,22 @@ extern "C" void *rt_obj_new_i64(int64_t class_id, int64_t byte_size) {
         static_cast<ObjHeader *>(std::calloc(1, sizeof(ObjHeader) + static_cast<size_t>(byte_size)));
     assert(header != nullptr);
     header->class_id = class_id;
-    return header + 1;
+    void *payload = header + 1;
+    assert(g_object_count < (int)(sizeof(g_objects) / sizeof(g_objects[0])));
+    g_objects[g_object_count] = payload;
+    g_object_class_ids[g_object_count] = class_id;
+    g_object_count++;
+    return payload;
 }
 
 extern "C" int64_t rt_obj_class_id(void *obj) {
-    return obj ? header_from_payload(obj)->class_id : 0;
+    if (!obj)
+        return 0;
+    for (int i = 0; i < g_object_count; i++) {
+        if (g_objects[i] == obj)
+            return g_object_class_ids[i];
+    }
+    return RT_PIXELS_CLASS_ID;
 }
 
 extern "C" void rt_obj_set_finalizer(void *obj, void (*finalizer)(void *)) {
@@ -204,6 +257,18 @@ extern "C" int32_t rt_obj_release_check0(void *) {
 
 extern "C" void rt_obj_free(void *obj) {
     if (!obj)
+        return;
+    bool found = false;
+    for (int i = 0; i < g_object_count; i++) {
+        if (g_objects[i] == obj) {
+            g_objects[i] = g_objects[g_object_count - 1];
+            g_object_class_ids[i] = g_object_class_ids[g_object_count - 1];
+            g_object_count--;
+            found = true;
+            break;
+        }
+    }
+    if (!found)
         return;
     std::free(header_from_payload(obj));
 }
@@ -331,6 +396,9 @@ int main() {
     test_sprite_new_fails_when_initial_clone_fails();
     test_sprite_from_file_rejects_zero_frame_gif_success();
     test_transformed_tint_zero_is_black_and_negative_is_no_tint();
+    test_transformed_tint_preserves_tagged_alpha();
+    test_set_frame_wraps_out_of_range_indices();
+    test_animator_rejects_overlong_clip_name();
     test_animator_get_current_rejects_corrupt_clip_index();
     return 0;
 }

@@ -71,6 +71,7 @@ Creates a new pixel buffer initialized to transparent black (0x00000000). Negati
 | `Load(path)`                      | `Pixels(String)`                  | Auto-detect format (PNG/JPEG/BMP/GIF) and load. Returns null on failure |
 
 `LoadPng` rejects malformed chunk order, invalid IHDR compression/filter/interlace methods, indexed images without a palette, palette transparency entries that exceed the palette size, and PNG files without IEND. Sub-byte grayscale transparency compares the raw sample value from `tRNS`. `LoadBmp` uses checked file offsets when seeking to pixel data.
+`ToBytes()` and `FromBytes()` always use canonical `RR GG BB AA` bytes for each pixel, independent of CPU endianness.
 
 ### Drawing Primitives
 
@@ -332,6 +333,8 @@ pixels.SavePng("output.png")
 Scaled sprite bounds used for `Contains()` and `Overlaps()` never collapse below `1x1`, even when
 very small scale values are provided. Movement, hit tests, and overlap checks saturate at the int64 coordinate limits instead of wrapping, so sprites at the extreme edge of the coordinate range keep consistent 1-pixel-inclusive bounds.
 Sprite drawing fails closed if an intermediate transform allocation fails, rather than drawing a partially transformed frame.
+Setting `Frame` wraps into the available frame range, including negative frame indexes. `AddFrame`
+requires a real `Pixels` object.
 
 ### Zia Example
 
@@ -619,10 +622,10 @@ Efficient tile-based 2D map rendering for platformers, RPGs, and strategy games.
 | `DrawRegion(canvas, ox, oy, vx, vy, vw, vh)`   | `Void(Canvas, Integer...)`                   | Draw a tile-coordinate sub-region across every visible layer |
 | `Fill(index)`                                  | `Void(Integer)`                              | Fill entire map with a tile                           |
 | `FillRect(x, y, w, h, index)`                  | `Void(Integer...)`                           | Fill rectangular region                               |
-| `GetCollision(tileId)`                         | `Integer(Integer)`                           | Get collision type for a tile ID                      |
+| `GetCollision(tileId)`                         | `Integer(Integer)`                           | Get collision type for a tile ID; tile `0` always reports `0` |
 | `GetTile(x, y)`                                | `Integer(Integer, Integer)`                  | Get tile index at position                            |
 | `IsSolidAt(pixelX, pixelY)`                    | `Integer(Integer, Integer)`                  | Check if a pixel position is on a solid tile          |
-| `SetCollision(tileId, collType)`               | `Void(Integer, Integer)`                     | Set collision type for a tile ID (0=none, 1=solid, 2=one_way_up) |
+| `SetCollision(tileId, collType)`               | `Void(Integer, Integer)`                     | Set collision type for a tile ID (0=none, 1=solid, 2=one_way_up); tile `0` remains empty |
 | `SetTile(x, y, index)`                         | `Void(Integer, Integer, Integer)`            | Set tile at position (0 = empty)                      |
 | `SetTileset(pixels)`                           | `Void(Pixels)`                               | Set the tileset image (tiles arranged in grid)        |
 | `ToPixelX(tileX)`                              | `Integer(Integer)`                           | Convert tile X to pixel X                             |
@@ -632,7 +635,7 @@ Efficient tile-based 2D map rendering for platformers, RPGs, and strategy games.
 
 Advanced runtime support also includes multi-layer tilemaps, per-layer tilesets, JSON save/load, auto-tiling rules, per-tile properties, and tile animation state. Layer names are limited to the fixed runtime name slot (31 bytes); overlong names are rejected without adding a layer. `SaveToFile` / `LoadFromFile` preserve layer visibility, collision-layer selection, collision types, tile properties, auto-tile rules, and animation progress. JSON loading ignores layers beyond the runtime layer cap, normalizes negative saved animation frames, clamps CSV tile values that exceed the int64 range, and applies duplicate animation records to the matching base tile instead of the last parsed animation.
 
-Animated tiles keep collision from the base tile ID stored in the map. Changing the visual animation frame does not change solidity or one-way behavior unless you also change the base tile's collision type. Registering an animation for an existing base tile replaces the old animation. Autotile variants omitted from a partial rule resolve to the rule's base tile. Invalid collision types are ignored. Negative animation deltas are ignored; very large deltas advance in one modulo step instead of looping once per elapsed frame. Default sequential animation frame IDs saturate at the int64 limit instead of wrapping. `FillRect`, tile drawing, file offsets, and tile-to-pixel conversion clip or saturate extreme coordinates rather than wrapping.
+Animated tiles keep collision from the base tile ID stored in the map. Changing the visual animation frame does not change solidity or one-way behavior unless you also change the base tile's collision type. Tile ID `0` is reserved for empty space and stays non-solid even if `SetCollision(0, ...)` is called. Registering an animation for an existing base tile replaces the old animation. Autotile variants omitted from a partial rule resolve to the rule's base tile. Invalid collision types are ignored. Negative animation deltas are ignored; very large deltas advance in one modulo step instead of looping once per elapsed frame. Default sequential animation frame IDs saturate at the int64 limit instead of wrapping. `FillRect`, tile drawing, file offsets, and tile-to-pixel conversion clip or saturate extreme coordinates rather than wrapping.
 
 ### Zia Example
 

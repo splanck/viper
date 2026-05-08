@@ -806,6 +806,8 @@ void rt_camera_clear_bounds(void *camera_ptr) {
 int64_t rt_camera_is_visible(void *camera_ptr, int64_t x, int64_t y, int64_t w, int64_t h) {
     if (!camera_ptr)
         return 1; // Null camera — conservatively treat as visible
+    if (w <= 0 || h <= 0)
+        return 0;
     rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
     if (!camera)
         return 0;
@@ -878,6 +880,8 @@ int64_t rt_camera_add_parallax(void *camera_ptr,
         return -1;
     rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
     if (!camera)
+        return -1;
+    if (rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID)
         return -1;
     if (camera->parallax_count >= RT_CAMERA_MAX_PARALLAX)
         return -1;

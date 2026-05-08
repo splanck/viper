@@ -129,7 +129,7 @@ if (VIPER_BUILD_TESTING)
             ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
     add_test(NAME test_vg_font COMMAND test_vg_font)
-    set_tests_properties(test_vg_font PROPERTIES LABELS "tui")
+    set_tests_properties(test_vg_font PROPERTIES LABELS "gui")
 
     add_executable(test_vg_widgets_new tests/test_vg_widgets_new.c)
     target_link_libraries(test_vg_widgets_new vipergui)
@@ -137,7 +137,7 @@ if (VIPER_BUILD_TESTING)
             ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
     add_test(NAME test_vg_widgets_new COMMAND test_vg_widgets_new)
-    set_tests_properties(test_vg_widgets_new PROPERTIES LABELS "tui" TIMEOUT 15)
+    set_tests_properties(test_vg_widgets_new PROPERTIES LABELS "gui" TIMEOUT 15)
 
     add_executable(test_vg_tier1_fixes tests/test_vg_tier1_fixes.c)
     target_link_libraries(test_vg_tier1_fixes vipergui)
@@ -145,7 +145,7 @@ if (VIPER_BUILD_TESTING)
             ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
     add_test(NAME test_vg_tier1_fixes COMMAND test_vg_tier1_fixes)
-    set_tests_properties(test_vg_tier1_fixes PROPERTIES LABELS "tui" TIMEOUT 15)
+    set_tests_properties(test_vg_tier1_fixes PROPERTIES LABELS "gui" TIMEOUT 15)
 
     add_executable(test_vg_tier2_fixes tests/test_vg_tier2_fixes.c)
     target_link_libraries(test_vg_tier2_fixes vipergui)
@@ -153,7 +153,7 @@ if (VIPER_BUILD_TESTING)
             ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
     add_test(NAME test_vg_tier2_fixes COMMAND test_vg_tier2_fixes)
-    set_tests_properties(test_vg_tier2_fixes PROPERTIES LABELS "tui" TIMEOUT 15)
+    set_tests_properties(test_vg_tier2_fixes PROPERTIES LABELS "gui" TIMEOUT 15)
 
     add_executable(test_vg_tier3_fixes tests/test_vg_tier3_fixes.c)
     target_link_libraries(test_vg_tier3_fixes vipergui)
@@ -162,7 +162,7 @@ if (VIPER_BUILD_TESTING)
             ${CMAKE_CURRENT_SOURCE_DIR}/src/font
     )
     add_test(NAME test_vg_tier3_fixes COMMAND test_vg_tier3_fixes)
-    set_tests_properties(test_vg_tier3_fixes PROPERTIES LABELS "tui" TIMEOUT 15)
+    set_tests_properties(test_vg_tier3_fixes PROPERTIES LABELS "gui" TIMEOUT 15)
 
     # Regression suite for GUI audit fixes.
     add_executable(test_vg_audit_fixes tests/test_vg_audit_fixes.c)
@@ -171,7 +171,7 @@ if (VIPER_BUILD_TESTING)
             ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
     add_test(NAME test_vg_audit_fixes COMMAND test_vg_audit_fixes)
-    set_tests_properties(test_vg_audit_fixes PROPERTIES LABELS "tui" TIMEOUT 15)
+    set_tests_properties(test_vg_audit_fixes PROPERTIES LABELS "gui" TIMEOUT 15)
 
     add_executable(test_vg_font_bounds tests/test_vg_font_bounds.c)
     target_link_libraries(test_vg_font_bounds vipergui)
@@ -180,7 +180,7 @@ if (VIPER_BUILD_TESTING)
             ${CMAKE_CURRENT_SOURCE_DIR}/src/font
     )
     add_test(NAME test_vg_font_bounds COMMAND test_vg_font_bounds)
-    set_tests_properties(test_vg_font_bounds PROPERTIES LABELS "tui" TIMEOUT 15)
+    set_tests_properties(test_vg_font_bounds PROPERTIES LABELS "gui" TIMEOUT 15)
 endif ()
 
 # Demo applications

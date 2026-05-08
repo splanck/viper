@@ -690,7 +690,7 @@ TEST(codeeditor_tick_toggles_cursor_visibility) {
     vg_widget_destroy(&ed->base);
 }
 
-TEST(codeeditor_mouse_wheel_scrolls_one_line_per_notch) {
+TEST(codeeditor_mouse_wheel_scrolls_per_notch) {
     vg_codeeditor_t *ed = vg_codeeditor_create(NULL);
     ASSERT_NOT_NULL(ed);
     vg_codeeditor_set_text(ed, "one\ntwo\nthree\nfour\nfive\nsix\n");
@@ -703,7 +703,15 @@ TEST(codeeditor_mouse_wheel_scrolls_one_line_per_notch) {
     wheel.type = VG_EVENT_MOUSE_WHEEL;
     wheel.wheel.delta_y = -1.0f;
     ASSERT(ed->base.vtable->handle_event(&ed->base, &wheel));
-    ASSERT(ed->scroll_y == ed->line_height);
+    // CODEEDITOR_MOUSE_WHEEL_LINES = 0.3f (slowed default; see vg_codeeditor.c).
+    // One wheel notch produces 0.3 line_heights of scroll, not a full line.
+    // Using a small tolerance to absorb any floating-point rounding from
+    // the multiplication chain delta_y * line_height * MOUSE_WHEEL_LINES.
+    float expected = ed->line_height * 0.3f;
+    float diff = ed->scroll_y - expected;
+    if (diff < 0.0f)
+        diff = -diff;
+    ASSERT(diff < 0.001f);
 
     vg_widget_destroy(&ed->base);
 }
@@ -778,7 +786,7 @@ int main(void) {
     RUN(codeeditor_fold_regions_init_zero);
     RUN(codeeditor_extra_cursors_init_zero);
     RUN(codeeditor_tick_toggles_cursor_visibility);
-    RUN(codeeditor_mouse_wheel_scrolls_one_line_per_notch);
+    RUN(codeeditor_mouse_wheel_scrolls_per_notch);
 
     printf("\n=== %d passed, %d failed ===\n", g_passed, g_failed);
     return g_failed > 0 ? 1 : 0;

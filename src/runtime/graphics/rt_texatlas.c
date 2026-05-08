@@ -155,6 +155,10 @@ void *rt_texatlas_new(void *pixels) {
         rt_trap("TextureAtlas.New: null pixels");
         return NULL;
     }
+    if (rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID) {
+        rt_trap("TextureAtlas.New: invalid pixels");
+        return NULL;
+    }
 
     texatlas_impl *impl =
         (texatlas_impl *)rt_obj_new_i64(RT_TEXATLAS_CLASS_ID, (int64_t)sizeof(texatlas_impl));
@@ -173,7 +177,7 @@ void *rt_texatlas_new(void *pixels) {
 /// frame_h` cells (left-to-right, top-to-bottom, named "0", "1", ... up to 512 regions). Traps
 /// if `pixels` is NULL or either dimension is non-positive. Useful for sprite sheets.
 void *rt_texatlas_load_grid(void *pixels, int64_t frame_w, int64_t frame_h) {
-    if (!pixels || frame_w <= 0 || frame_h <= 0) {
+    if (!pixels || rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID || frame_w <= 0 || frame_h <= 0) {
         rt_trap("TextureAtlas.LoadGrid: invalid arguments");
         return NULL;
     }

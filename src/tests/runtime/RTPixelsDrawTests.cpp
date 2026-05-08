@@ -240,6 +240,16 @@ static void test_drawellipse_interior_set() {
     printf("test_drawellipse_interior_set: PASSED\n");
 }
 
+static void test_drawellipse_nonpositive_radii_noop() {
+    void *p = rt_pixels_new(5, 5);
+    uint64_t gen = rt_pixels_generation(p);
+    rt_pixels_draw_ellipse(p, 2, 2, 0, 3, 0xFFFFFF);
+    rt_pixels_draw_ellipse_frame(p, 2, 2, 3, -1, 0xFFFFFF);
+    assert(rt_pixels_get(p, 2, 2) == 0);
+    assert(rt_pixels_generation(p) == gen);
+    printf("test_drawellipse_nonpositive_radii_noop: PASSED\n");
+}
+
 // ============================================================================
 // DrawEllipseFrame
 // ============================================================================
@@ -389,6 +399,7 @@ int main() {
 
     // DrawEllipse
     test_drawellipse_interior_set();
+    test_drawellipse_nonpositive_radii_noop();
 
     // DrawEllipseFrame
     test_drawellipseframe_outline_set();

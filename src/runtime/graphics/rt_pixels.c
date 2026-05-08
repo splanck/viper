@@ -408,7 +408,14 @@ void *rt_pixels_to_bytes(void *pixels) {
 
     if (byte_count > 0 && p->data) {
         uint8_t *dst = rt_bytes_data(bytes);
-        memcpy(dst, p->data, (size_t)byte_count);
+        int64_t count = p->width * p->height;
+        for (int64_t i = 0; i < count; ++i) {
+            uint32_t rgba = p->data[i];
+            dst[i * 4 + 0] = (uint8_t)((rgba >> 24) & 0xFFu);
+            dst[i * 4 + 1] = (uint8_t)((rgba >> 16) & 0xFFu);
+            dst[i * 4 + 2] = (uint8_t)((rgba >> 8) & 0xFFu);
+            dst[i * 4 + 3] = (uint8_t)(rgba & 0xFFu);
+        }
     }
 
     return bytes;
@@ -443,7 +450,13 @@ void *rt_pixels_from_bytes(int64_t width, int64_t height, void *bytes) {
 
     if (required_bytes > 0 && p->data) {
         const uint8_t *src = rt_bytes_data_const(bytes);
-        memcpy(p->data, src, (size_t)required_bytes);
+        int64_t count = width * height;
+        for (int64_t i = 0; i < count; ++i) {
+            p->data[i] = ((uint32_t)src[i * 4 + 0] << 24) |
+                         ((uint32_t)src[i * 4 + 1] << 16) |
+                         ((uint32_t)src[i * 4 + 2] << 8) |
+                         (uint32_t)src[i * 4 + 3];
+        }
         pixels_touch(p);
     }
 

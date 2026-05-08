@@ -258,22 +258,25 @@ class AppShell {
         miAbout = helpMenu.AddItem("About ViperIDE");
 
         // ====================================================================
-        // Toolbar — Unicode glyphs rendered as button text via the system font.
-        // NOTE: Toolbar.AddButton(icon, tooltip) treats the first arg as a FILE
-        // PATH (rt_gui_icon_from_path_cstr), so emoji-as-icon-arg never renders.
-        // We pass "" for the icon path and put the glyph in the text slot via
-        // AddButtonWithText, which forces show_label=true so the glyph appears.
+        // Toolbar — BMP-only Unicode glyphs (Geometric Shapes + Arrows blocks)
+        // rendered as button text via the system font.
+        // NOTE: AddButton(icon, tooltip) treats arg 1 as a FILE PATH
+        // (rt_gui_icon_from_path_cstr), so we pass "" for icon and put the
+        // glyph in the text slot via AddButtonWithText. Standard system fonts
+        // render every codepoint below — supplementary-plane emoji (U+1F000+)
+        // would fall back to the missing-glyph "hamburger" .notdef on UI fonts
+        // that lack color emoji support.
         // ====================================================================
         toolbar = GUI.Toolbar.New(mainVBox);
-        tbNew     = toolbar.AddButtonWithText("", "📄", "New File (Ctrl+N)");
-        tbOpen    = toolbar.AddButtonWithText("", "📂", "Open File (Ctrl+O)");
-        tbSave    = toolbar.AddButtonWithText("", "💾", "Save File (Ctrl+S)");
-        tbSaveAll = toolbar.AddButtonWithText("", "🗂", "Save All Files (Ctrl+Shift+S)");
+        tbNew     = toolbar.AddButtonWithText("", "+",  "New File (Ctrl+N)");
+        tbOpen    = toolbar.AddButtonWithText("", "▤",  "Open File (Ctrl+O)");
+        tbSave    = toolbar.AddButtonWithText("", "▼",  "Save File (Ctrl+S)");
+        tbSaveAll = toolbar.AddButtonWithText("", "⇓",  "Save All Files (Ctrl+Shift+S)");
         toolbar.AddSeparator();
-        tbBuild   = toolbar.AddButtonWithText("", "🔨", "Build (Ctrl+Shift+B)");
+        tbBuild   = toolbar.AddButtonWithText("", "▣",  "Build (Ctrl+Shift+B)");
         tbRun     = toolbar.AddButtonWithText("", "▶",  "Build & Run (F5)");
         toolbar.AddSeparator();
-        tbFind    = toolbar.AddButtonWithText("", "🔍", "Find (Ctrl+F)");
+        tbFind    = toolbar.AddButtonWithText("", "?",  "Find (Ctrl+F)");
 
         // ====================================================================
         // SplitPane — sidebar (left) + editor area (right)

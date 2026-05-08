@@ -73,6 +73,13 @@ TEST(is_visible_partial_overlap) {
     ASSERT(rt_camera_is_visible(cam, 799, 0, 10, 10) == 1);
 }
 
+TEST(is_visible_rejects_empty_rectangles) {
+    void *cam = rt_camera_new(800, 600);
+    ASSERT(rt_camera_is_visible(cam, 100, 100, 0, 10) == 0);
+    ASSERT(rt_camera_is_visible(cam, 100, 100, 10, 0) == 0);
+    ASSERT(rt_camera_is_visible(cam, 100, 100, -10, 10) == 0);
+}
+
 TEST(is_visible_null_camera) {
     // NULL camera must conservatively return 1 (visible).
     ASSERT(rt_camera_is_visible(NULL, 0, 0, 9999, 9999) == 1);
@@ -237,6 +244,7 @@ TEST(parallax_null_safety) {
     // NULL pixels should be rejected
     void *cam = rt_camera_new(800, 600);
     ASSERT(rt_camera_add_parallax(cam, NULL, 50, 50) == -1);
+    ASSERT(rt_camera_add_parallax(cam, cam, 50, 50) == -1);
     ASSERT(rt_camera_parallax_count(cam) == 0);
 
     // draw_parallax with NULL canvas returns 0
@@ -298,6 +306,7 @@ int main() {
     RUN_TEST(is_visible_inside);
     RUN_TEST(is_visible_outside);
     RUN_TEST(is_visible_partial_overlap);
+    RUN_TEST(is_visible_rejects_empty_rectangles);
     RUN_TEST(is_visible_null_camera);
     RUN_TEST(is_visible_zoom_in);
     RUN_TEST(is_visible_zoom_out);

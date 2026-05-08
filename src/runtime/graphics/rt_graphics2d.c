@@ -58,37 +58,40 @@
 #define RT2D_RENDERTARGET_MAGIC 0x525432445247544cLL /* "RT2DRGTL" */
 #define RT2D_TEXTURE_MAGIC 0x525432445445584cLL      /* "RT2DTEXL" */
 #define RT2D_RENDERER_MAGIC 0x52543244524e444cLL     /* "RT2DRNDL" */
-#define RT2D_MATERIAL_CLASS_ID INT64_C(-0x520101)
-#define RT2D_SHADER_CLASS_ID INT64_C(-0x520102)
-#define RT2D_VIEWPORT_CLASS_ID INT64_C(-0x520103)
-#define RT2D_TILESET_CLASS_ID INT64_C(-0x520104)
-#define RT2D_TILELAYER_CLASS_ID INT64_C(-0x520105)
-#define RT2D_OBJECTLAYER_CLASS_ID INT64_C(-0x520106)
-#define RT2D_AUTOTILE_CLASS_ID INT64_C(-0x520107)
-#define RT2D_PATH_CLASS_ID INT64_C(-0x520108)
-#define RT2D_SHAPERENDERER_CLASS_ID INT64_C(-0x520109)
-#define RT2D_TEXTRENDERER_CLASS_ID INT64_C(-0x52010A)
-#define RT2D_SDFFONT_CLASS_ID INT64_C(-0x52010B)
-#define RT2D_NINESLICE_CLASS_ID INT64_C(-0x52010C)
-#define RT2D_DEBUGDRAW_CLASS_ID INT64_C(-0x52010D)
-#define RT2D_TRANSFORM_CLASS_ID INT64_C(-0x52010E)
-#define RT2D_SAMPLER_CLASS_ID INT64_C(-0x52010F)
-#define RT2D_BLENDSTATE_CLASS_ID INT64_C(-0x520110)
-#define RT2D_SPRITERENDERER_CLASS_ID INT64_C(-0x520111)
-#define RT2D_TILECHUNKCACHE_CLASS_ID INT64_C(-0x520112)
-#define RT2D_TILEMAPRENDERER_CLASS_ID INT64_C(-0x520113)
-#define RT2D_ANIMATIONCLIP_CLASS_ID INT64_C(-0x520114)
-#define RT2D_ANIMATEDSPRITE_CLASS_ID INT64_C(-0x520115)
-#define RT2D_TEXTLAYOUT_CLASS_ID INT64_C(-0x520116)
-#define RT2D_RENDERPASS_CLASS_ID INT64_C(-0x520117)
-#define RT2D_RENDERGRAPH_CLASS_ID INT64_C(-0x520118)
-#define RT2D_COLLISIONMASK_CLASS_ID INT64_C(-0x520119)
-#define RT2D_HITBOX_CLASS_ID INT64_C(-0x52011A)
-#define RT2D_PALETTE_CLASS_ID INT64_C(-0x52011B)
-#define RT2D_GRADIENT_CLASS_ID INT64_C(-0x52011C)
-#define RT2D_CAMERARIG_CLASS_ID INT64_C(-0x52011D)
-#define RT2D_ASEPRITEIMPORTER_CLASS_ID INT64_C(-0x52011E)
-#define RT2D_TILEDMAPLOADER_CLASS_ID INT64_C(-0x52011F)
+#define RT2D_RENDERTARGET_CLASS_ID INT64_C(-0x620100)
+#define RT2D_TEXTURE_CLASS_ID INT64_C(-0x620101)
+#define RT2D_RENDERER_CLASS_ID INT64_C(-0x620102)
+#define RT2D_MATERIAL_CLASS_ID INT64_C(-0x620103)
+#define RT2D_SHADER_CLASS_ID INT64_C(-0x620104)
+#define RT2D_VIEWPORT_CLASS_ID INT64_C(-0x620105)
+#define RT2D_TILESET_CLASS_ID INT64_C(-0x620106)
+#define RT2D_TILELAYER_CLASS_ID INT64_C(-0x620107)
+#define RT2D_OBJECTLAYER_CLASS_ID INT64_C(-0x620108)
+#define RT2D_AUTOTILE_CLASS_ID INT64_C(-0x620109)
+#define RT2D_PATH_CLASS_ID INT64_C(-0x62010A)
+#define RT2D_SHAPERENDERER_CLASS_ID INT64_C(-0x62010B)
+#define RT2D_TEXTRENDERER_CLASS_ID INT64_C(-0x62010C)
+#define RT2D_SDFFONT_CLASS_ID INT64_C(-0x62010D)
+#define RT2D_NINESLICE_CLASS_ID INT64_C(-0x62010E)
+#define RT2D_DEBUGDRAW_CLASS_ID INT64_C(-0x62010F)
+#define RT2D_TRANSFORM_CLASS_ID INT64_C(-0x620110)
+#define RT2D_SAMPLER_CLASS_ID INT64_C(-0x620111)
+#define RT2D_BLENDSTATE_CLASS_ID INT64_C(-0x620112)
+#define RT2D_SPRITERENDERER_CLASS_ID INT64_C(-0x620113)
+#define RT2D_TILECHUNKCACHE_CLASS_ID INT64_C(-0x620114)
+#define RT2D_TILEMAPRENDERER_CLASS_ID INT64_C(-0x620115)
+#define RT2D_ANIMATIONCLIP_CLASS_ID INT64_C(-0x620116)
+#define RT2D_ANIMATEDSPRITE_CLASS_ID INT64_C(-0x620117)
+#define RT2D_TEXTLAYOUT_CLASS_ID INT64_C(-0x620118)
+#define RT2D_RENDERPASS_CLASS_ID INT64_C(-0x620119)
+#define RT2D_RENDERGRAPH_CLASS_ID INT64_C(-0x62011A)
+#define RT2D_COLLISIONMASK_CLASS_ID INT64_C(-0x62011B)
+#define RT2D_HITBOX_CLASS_ID INT64_C(-0x62011C)
+#define RT2D_PALETTE_CLASS_ID INT64_C(-0x62011D)
+#define RT2D_GRADIENT_CLASS_ID INT64_C(-0x62011E)
+#define RT2D_CAMERARIG_CLASS_ID INT64_C(-0x62011F)
+#define RT2D_ASEPRITEIMPORTER_CLASS_ID INT64_C(-0x620120)
+#define RT2D_TILEDMAPLOADER_CLASS_ID INT64_C(-0x620121)
 
 typedef struct {
     int64_t magic;
@@ -284,6 +287,8 @@ static int64_t saturating_mul_i64(int64_t a, int64_t b) {
 static rt_rendertarget2d_impl *rendertarget2d_checked(void *target) {
     if (!target)
         return NULL;
+    if (rt_obj_class_id(target) != RT2D_RENDERTARGET_CLASS_ID)
+        return NULL;
     rt_rendertarget2d_impl *impl = (rt_rendertarget2d_impl *)target;
     return impl->magic == RT2D_RENDERTARGET_MAGIC ? impl : NULL;
 }
@@ -292,6 +297,8 @@ static rt_rendertarget2d_impl *rendertarget2d_checked(void *target) {
 static rt_texture2d_impl *texture2d_checked(void *texture) {
     if (!texture)
         return NULL;
+    if (rt_obj_class_id(texture) != RT2D_TEXTURE_CLASS_ID)
+        return NULL;
     rt_texture2d_impl *impl = (rt_texture2d_impl *)texture;
     return impl->magic == RT2D_TEXTURE_MAGIC ? impl : NULL;
 }
@@ -299,6 +306,8 @@ static rt_texture2d_impl *texture2d_checked(void *texture) {
 /// @brief Validate and cast a `void *` to `rt_renderer2d_impl *` by checking the magic cookie.
 static rt_renderer2d_impl *renderer2d_checked(void *renderer) {
     if (!renderer)
+        return NULL;
+    if (rt_obj_class_id(renderer) != RT2D_RENDERER_CLASS_ID)
         return NULL;
     rt_renderer2d_impl *impl = (rt_renderer2d_impl *)renderer;
     return impl->magic == RT2D_RENDERER_MAGIC ? impl : NULL;
@@ -960,7 +969,8 @@ void *rt_rendertarget2d_new(int64_t width, int64_t height) {
         return NULL;
     }
     rt_rendertarget2d_impl *target =
-        (rt_rendertarget2d_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_rendertarget2d_impl));
+        (rt_rendertarget2d_impl *)rt_obj_new_i64(RT2D_RENDERTARGET_CLASS_ID,
+                                                 (int64_t)sizeof(rt_rendertarget2d_impl));
     if (!target)
         return NULL;
     target->magic = RT2D_RENDERTARGET_MAGIC;
@@ -1091,8 +1101,11 @@ static void texture2d_finalize(void *obj) {
 void *rt_texture2d_new(void *pixels) {
     if (!pixels)
         return NULL;
+    if (rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID)
+        return NULL;
     rt_texture2d_impl *texture =
-        (rt_texture2d_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_texture2d_impl));
+        (rt_texture2d_impl *)rt_obj_new_i64(RT2D_TEXTURE_CLASS_ID,
+                                            (int64_t)sizeof(rt_texture2d_impl));
     if (!texture)
         return NULL;
     texture->magic = RT2D_TEXTURE_MAGIC;
@@ -1233,7 +1246,8 @@ static int32_t renderer2d_reserve(rt_renderer2d_impl *renderer, int64_t needed) 
 ///          `initial_capacity` (floor 16, ceiling 1Mi).
 void *rt_renderer2d_new(int64_t capacity) {
     rt_renderer2d_impl *renderer =
-        (rt_renderer2d_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_renderer2d_impl));
+        (rt_renderer2d_impl *)rt_obj_new_i64(RT2D_RENDERER_CLASS_ID,
+                                             (int64_t)sizeof(rt_renderer2d_impl));
     if (!renderer)
         return NULL;
     renderer->magic = RT2D_RENDERER_MAGIC;

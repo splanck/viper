@@ -116,14 +116,13 @@ static int64_t spritebatch_initial_capacity(int64_t capacity) {
     return capacity > MAX_BATCH_CAPACITY ? MAX_BATCH_CAPACITY : capacity;
 }
 
-/// @brief Normalize a batch tint color to 24-bit RGB or the "no tint" sentinel -1.
-/// @details Negative values are the sentinel for "disabled"; any other value is masked
-///   to the low 24 bits because the tint is applied as an RGB multiply — the alpha
-///   channel is managed per-item independently.
+/// @brief Normalize a batch tint color to a color value or the "no tint" sentinel -1.
+/// @details Negative values disable tint. Non-negative values pass through so tagged
+///   Color.RGBA and raw RGBA alpha reach rt_pixels_tint().
 static int64_t spritebatch_normalize_tint(int64_t color) {
     if (color < 0)
         return -1;
-    return (int64_t)((uint64_t)color & 0x00FFFFFFu);
+    return color;
 }
 
 /// @brief Compute a scaled pixel dimension with saturation and a minimum of 1.

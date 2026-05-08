@@ -415,8 +415,6 @@ void rt_pixels_draw_ellipse(
     uint32_t rgba = rgb_to_rgba(color);
 
     if (rx <= 0 || ry <= 0) {
-        if (set_pixel_raw(p, cx, cy, rgba))
-            pixels_touch(p);
         return;
     }
 
@@ -459,8 +457,6 @@ void rt_pixels_draw_ellipse_frame(
     uint32_t rgba = rgb_to_rgba(color);
 
     if (rx <= 0 || ry <= 0) {
-        if (set_pixel_raw(p, cx, cy, rgba))
-            pixels_touch(p);
         return;
     }
 

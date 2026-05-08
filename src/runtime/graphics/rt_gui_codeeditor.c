@@ -41,12 +41,13 @@
 //=============================================================================
 
 // VS Code dark-theme inspired palette (ARGB 0xAARRGGBB)
-#define SYN_COLOR_DEFAULT 0xFFD4D4D4u // light grey
-#define SYN_COLOR_KEYWORD 0xFF569CD6u // blue
-#define SYN_COLOR_TYPE 0xFF4EC9B0u    // teal
-#define SYN_COLOR_STRING 0xFFCE9178u  // orange
-#define SYN_COLOR_COMMENT 0xFF6A9955u // green
-#define SYN_COLOR_NUMBER 0xFFB5CEA8u  // light green
+#define SYN_COLOR_DEFAULT 0xFFD4D4D4u  // light grey
+#define SYN_COLOR_KEYWORD 0xFF569CD6u  // blue
+#define SYN_COLOR_TYPE 0xFF4EC9B0u     // teal
+#define SYN_COLOR_STRING 0xFFCE9178u   // orange
+#define SYN_COLOR_COMMENT 0xFF6A9955u  // green
+#define SYN_COLOR_NUMBER 0xFFB5CEA8u   // light green
+#define SYN_COLOR_FUNCTION 0xFFDCDCAAu // yellow — function/method calls
 
 /// @brief Set `n` adjacent slots in the per-character `colors` array to `color`.
 ///
@@ -275,12 +276,30 @@ static void rt_zia_syntax_cb(
                 i++;
             size_t wlen = i - start;
             uint32_t color = c_default;
-            if (rt_zia_is_keyword(text + start, (int64_t)wlen))
+            if (rt_zia_is_keyword(text + start, (int64_t)wlen)) {
                 color = c_keyword;
-            else if (syn_is_keyword(text + start, wlen, zia_types))
+            } else if (syn_is_keyword(text + start, wlen, zia_types)) {
                 color = c_type;
-            else if (syn_is_custom_keyword(text + start, wlen, ce))
+            } else if (syn_is_custom_keyword(text + start, wlen, ce)) {
                 color = c_keyword;
+            } else {
+                // Peek past whitespace for an opening paren — identifies
+                // function and method calls regardless of capitalization
+                // (`packPixel(`, `Canvas3D.New(`, `Math.Sin(` all match).
+                size_t peek = i;
+                while (peek < len && (text[peek] == ' ' || text[peek] == '\t'))
+                    peek++;
+                if (peek < len && text[peek] == '(') {
+                    color = SYN_COLOR_FUNCTION;
+                } else if (wlen > 0 && text[start] >= 'A' && text[start] <= 'Z') {
+                    // Identifiers starting with an uppercase letter are
+                    // type / class / module names (Foo, MyClass, Math, Viper).
+                    // Matches VS Code / IntelliJ convention; gives the
+                    // highlighter a much richer feel than a hand-curated
+                    // 11-name type list.
+                    color = c_type;
+                }
+            }
             syn_fill(colors, start, wlen, color);
             continue;
         }

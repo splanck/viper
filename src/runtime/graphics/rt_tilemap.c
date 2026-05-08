@@ -663,7 +663,7 @@ void rt_tilemap_set_collision(void *tilemap_ptr, int64_t tile_id, int64_t coll_t
     rt_tilemap_impl *tilemap = tilemap_checked(tilemap_ptr, "Tilemap.SetCollision: null tilemap");
     if (!tilemap)
         return;
-    if (tile_id < 0 || tile_id >= MAX_TILE_COLLISION_IDS)
+    if (tile_id <= 0 || tile_id >= MAX_TILE_COLLISION_IDS)
         return;
     if (coll_type != RT_TILE_COLLISION_NONE && coll_type != RT_TILE_COLLISION_SOLID &&
         coll_type != RT_TILE_COLLISION_ONE_WAY_UP)
@@ -677,7 +677,7 @@ int64_t rt_tilemap_get_collision(void *tilemap_ptr, int64_t tile_id) {
     rt_tilemap_impl *tilemap = tilemap_checked(tilemap_ptr, "Tilemap.GetCollision: null tilemap");
     if (!tilemap)
         return 0;
-    if (tile_id < 0 || tile_id >= MAX_TILE_COLLISION_IDS)
+    if (tile_id <= 0 || tile_id >= MAX_TILE_COLLISION_IDS)
         return 0;
     return tilemap->collision[tile_id];
 }
@@ -697,7 +697,7 @@ int8_t rt_tilemap_is_solid_at(void *tilemap_ptr, int64_t pixel_x, int64_t pixel_
     if (cl < 0 || cl >= tilemap->layer_count || !tilemap->layers[cl].tiles)
         return 0;
     int64_t tile_id = tilemap->layers[cl].tiles[ty * tilemap->width + tx];
-    if (tile_id < 0 || tile_id >= MAX_TILE_COLLISION_IDS)
+    if (tile_id <= 0 || tile_id >= MAX_TILE_COLLISION_IDS)
         return 0;
     return tilemap->collision[tile_id] == TILE_COLLISION_SOLID ? 1 : 0;
 }

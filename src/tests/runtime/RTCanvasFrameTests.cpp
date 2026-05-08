@@ -70,8 +70,9 @@ static void test_get_delta_time_null_canvas() {
 /// This is NOT a real canvas — no GC, no window — just enough to test
 /// the DeltaTime clamping and SetDTMax logic through the C API.
 static rt_canvas *make_fake_canvas() {
-    rt_canvas *c = (rt_canvas *)calloc(1, sizeof(rt_canvas));
+    rt_canvas *c = (rt_canvas *)rt_obj_new_i64(RT_CANVAS_CLASS_ID, sizeof(rt_canvas));
     assert(c != nullptr);
+    memset(c, 0, sizeof(rt_canvas));
     c->vptr = nullptr;
     c->magic = RT_CANVAS_MAGIC;
     c->gfx_win = nullptr;
@@ -83,6 +84,11 @@ static rt_canvas *make_fake_canvas() {
     return c;
 }
 
+static void destroy_fake_canvas(rt_canvas *c) {
+    if (c && rt_obj_release_check0(c))
+        rt_obj_free(c);
+}
+
 static void test_dt_clamping_disabled_by_default() {
     rt_canvas *c = make_fake_canvas();
     c->delta_time_ms = 200;
@@ -91,7 +97,7 @@ static void test_dt_clamping_disabled_by_default() {
     int64_t dt = rt_canvas_get_delta_time(c);
     assert(dt == 200);
 
-    free(c);
+    destroy_fake_canvas(c);
     printf("  test_dt_clamping_disabled_by_default: PASSED\n");
 }
 
@@ -103,7 +109,7 @@ static void test_dt_clamping_upper_bound() {
     int64_t dt = rt_canvas_get_delta_time(c);
     assert(dt == 50); // clamped to max
 
-    free(c);
+    destroy_fake_canvas(c);
     printf("  test_dt_clamping_upper_bound: PASSED\n");
 }
 
@@ -115,7 +121,7 @@ static void test_dt_clamping_lower_bound() {
     int64_t dt = rt_canvas_get_delta_time(c);
     assert(dt == 0); // first frame stays 0 even when clamping is enabled
 
-    free(c);
+    destroy_fake_canvas(c);
     printf("  test_dt_clamping_lower_bound: PASSED\n");
 }
 
@@ -127,7 +133,7 @@ static void test_dt_clamping_negative_dt() {
     int64_t dt = rt_canvas_get_delta_time(c);
     assert(dt == 1); // negative clamped to 1
 
-    free(c);
+    destroy_fake_canvas(c);
     printf("  test_dt_clamping_negative_dt: PASSED\n");
 }
 
@@ -139,7 +145,7 @@ static void test_dt_clamping_within_range() {
     int64_t dt = rt_canvas_get_delta_time(c);
     assert(dt == 16); // within [1, 50] — returned as-is
 
-    free(c);
+    destroy_fake_canvas(c);
     printf("  test_dt_clamping_within_range: PASSED\n");
 }
 
@@ -151,7 +157,7 @@ static void test_dt_clamping_exact_max() {
     int64_t dt = rt_canvas_get_delta_time(c);
     assert(dt == 50); // exactly at max — not clamped
 
-    free(c);
+    destroy_fake_canvas(c);
     printf("  test_dt_clamping_exact_max: PASSED\n");
 }
 
@@ -163,7 +169,7 @@ static void test_dt_clamping_exact_one() {
     int64_t dt = rt_canvas_get_delta_time(c);
     assert(dt == 1); // exactly at min — not clamped
 
-    free(c);
+    destroy_fake_canvas(c);
     printf("  test_dt_clamping_exact_one: PASSED\n");
 }
 
@@ -179,7 +185,7 @@ static void test_set_dt_max_disables_clamping() {
     rt_canvas_set_dt_max(c, 0);
     assert(rt_canvas_get_delta_time(c) == 200);
 
-    free(c);
+    destroy_fake_canvas(c);
     printf("  test_set_dt_max_disables_clamping: PASSED\n");
 }
 
@@ -192,7 +198,7 @@ static void test_set_dt_max_negative_treated_as_zero() {
     assert(c->dt_max_ms == 0);
     assert(rt_canvas_get_delta_time(c) == 200);
 
-    free(c);
+    destroy_fake_canvas(c);
     printf("  test_set_dt_max_negative_treated_as_zero: PASSED\n");
 }
 
@@ -205,7 +211,7 @@ static void test_begin_frame_returns_1_when_open() {
     int64_t result = rt_canvas_begin_frame(c);
     assert(result == 1);
 
-    free(c);
+    destroy_fake_canvas(c);
     printf("  test_begin_frame_returns_1_when_open: PASSED\n");
 }
 
@@ -216,7 +222,7 @@ static void test_begin_frame_returns_0_when_closing() {
     int64_t result = rt_canvas_begin_frame(c);
     assert(result == 0);
 
-    free(c);
+    destroy_fake_canvas(c);
     printf("  test_begin_frame_returns_0_when_closing: PASSED\n");
 }
 

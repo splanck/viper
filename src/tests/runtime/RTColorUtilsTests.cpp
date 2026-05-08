@@ -101,6 +101,13 @@ static void test_from_hex_invalid_returns_zero() {
     rt_string_unref(bad_len);
 }
 
+static void test_from_hex_embedded_nul_rejected() {
+    const char raw[] = {'#', '1', '2', '3', '\0', '5', '6'};
+    rt_string hex = rt_string_from_bytes(raw, sizeof(raw));
+    assert(rt_color_from_hex(hex) == 0);
+    rt_string_unref(hex);
+}
+
 static void test_from_hsl_primary_red() {
     assert(rt_color_from_hsl(0, 100, 50) == rgb(255, 0, 0));
 }
@@ -115,6 +122,25 @@ static void test_get_hsl_components() {
 static void test_lerp_midpoint() {
     int64_t c = rt_color_lerp(rgb(0, 0, 0), rgb(200, 100, 50), 50);
     assert(c == rgb(100, 50, 25));
+}
+
+static void test_color_transforms_preserve_explicit_alpha() {
+    const int64_t explicit_alpha_flag = INT64_C(1) << 56;
+    int64_t c = rt_color_rgba(100, 150, 200, 64);
+    int64_t brighter = rt_color_brighten(c, 25);
+    int64_t darker = rt_color_darken(c, 25);
+    int64_t inverted = rt_color_invert(c);
+    assert((brighter & explicit_alpha_flag) != 0);
+    assert((darker & explicit_alpha_flag) != 0);
+    assert((inverted & explicit_alpha_flag) != 0);
+    assert(rt_color_get_a(brighter) == 64);
+    assert(rt_color_get_a(darker) == 64);
+    assert(rt_color_get_a(inverted) == 64);
+
+    int64_t transparent = rt_color_rgba(0, 0, 0, 0);
+    int64_t midpoint = rt_color_lerp(transparent, rgb(100, 100, 100), 50);
+    assert((midpoint & explicit_alpha_flag) != 0);
+    assert(rt_color_get_a(midpoint) == 127);
 }
 
 static void test_brighten_and_darken() {
@@ -216,9 +242,11 @@ int main() {
     test_roundtrip_hex();
     test_roundtrip_hex_transparent_alpha_zero();
     test_from_hex_invalid_returns_zero();
+    test_from_hex_embedded_nul_rejected();
     test_from_hsl_primary_red();
     test_get_hsl_components();
     test_lerp_midpoint();
+    test_color_transforms_preserve_explicit_alpha();
     test_brighten_and_darken();
     test_complement_red();
     test_grayscale();

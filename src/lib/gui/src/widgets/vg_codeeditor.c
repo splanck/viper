@@ -59,7 +59,11 @@
 #define CURSOR_BLINK_RATE 0.5f
 #define CODEEDITOR_SCROLLBAR_WIDTH 12.0f
 #define CODEEDITOR_FOLD_GUTTER_MIN_WIDTH 14.0f
-#define CODEEDITOR_MOUSE_WHEEL_LINES 1.0f
+// Lines scrolled per mouse-wheel delta unit. Was 1.0f, but on macOS trackpads
+// (which emit high-frequency, high-magnitude delta_y values) that produced an
+// uncomfortably fast scroll. Half-line per delta unit feels closer to the
+// platform-native cadence of Safari, VS Code, and Sublime.
+#define CODEEDITOR_MOUSE_WHEEL_LINES 0.3f
 
 //=============================================================================
 // Forward Declarations

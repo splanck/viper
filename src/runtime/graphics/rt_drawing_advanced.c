@@ -27,6 +27,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_graphics_internal.h"
+#include "rt_heap.h"
 
 #include <limits.h>
 
@@ -38,6 +39,26 @@ enum {
     RTG_CORNER_BOTTOM_LEFT = 2,
     RTG_CORNER_BOTTOM_RIGHT = 3,
 };
+
+static int8_t rt_canvas_points_checked(void *points_ptr, int64_t count, const int64_t **points_out) {
+    if (points_out)
+        *points_out = NULL;
+    if (!points_ptr || count <= 0 || count > INT64_MAX / 2)
+        return 0;
+
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header(points_ptr, &hdr) || !hdr)
+        return 0;
+    if ((rt_heap_kind_t)hdr->kind != RT_HEAP_ARRAY || (rt_elem_kind_t)hdr->elem_kind != RT_ELEM_I64)
+        return 0;
+
+    uint64_t required = (uint64_t)count * 2u;
+    if (required > hdr->len)
+        return 0;
+    if (points_out)
+        *points_out = (const int64_t *)points_ptr;
+    return 1;
+}
 
 /// @brief Floor a long double to int64, saturating at INT64_MIN/MAX instead of overflowing.
 static int64_t rt_canvas_adv_floor_ld_to_i64_sat(long double value) {
@@ -186,6 +207,7 @@ void rt_canvas_thick_line(void *canvas_ptr,
     rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
     if (!canvas || !canvas->gfx_win)
         return;
+    rt_canvas_resync_window_state(canvas);
 
     vgfx_color_t col = (vgfx_color_t)color;
 
@@ -313,6 +335,7 @@ void rt_canvas_round_box(
     rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
     if (!canvas || !canvas->gfx_win)
         return;
+    rt_canvas_resync_window_state(canvas);
 
     vgfx_color_t col = (vgfx_color_t)color;
 
@@ -384,6 +407,7 @@ void rt_canvas_round_frame(
     rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
     if (!canvas || !canvas->gfx_win)
         return;
+    rt_canvas_resync_window_state(canvas);
 
     vgfx_color_t col = (vgfx_color_t)color;
 
@@ -1051,7 +1075,9 @@ void rt_canvas_polyline(void *canvas_ptr, void *points_ptr, int64_t count, int64
     if (!canvas_ptr || !points_ptr || count < 2)
         return;
 
-    int64_t *points = (int64_t *)points_ptr;
+    const int64_t *points = NULL;
+    if (!rt_canvas_points_checked(points_ptr, count, &points))
+        return;
 
     for (int64_t i = 0; i < count - 1; i++) {
         int64_t x1 = points[i * 2];
@@ -1071,7 +1097,9 @@ void rt_canvas_polygon(void *canvas_ptr, void *points_ptr, int64_t count, int64_
     if (!canvas || !canvas->gfx_win)
         return;
 
-    int64_t *points = (int64_t *)points_ptr;
+    const int64_t *points = NULL;
+    if (!rt_canvas_points_checked(points_ptr, count, &points))
+        return;
 
     // Find bounding box
     int64_t min_y = points[1], max_y = points[1];
@@ -1147,7 +1175,9 @@ void rt_canvas_polygon_frame(void *canvas_ptr, void *points_ptr, int64_t count, 
     if (!canvas_ptr || !points_ptr || count < 3)
         return;
 
-    int64_t *points = (int64_t *)points_ptr;
+    const int64_t *points = NULL;
+    if (!rt_canvas_points_checked(points_ptr, count, &points))
+        return;
 
     // Draw lines connecting all vertices, including back to start
     for (int64_t i = 0; i < count; i++) {
@@ -1404,6 +1434,36 @@ int64_t rt_color_get_l(int64_t color) {
     return l;
 }
 
+static int8_t rt_color_has_explicit_alpha(int64_t color) {
+    return (color & RT_COLOR_EXPLICIT_ALPHA_FLAG) != 0;
+}
+
+static void rt_color_split_rgba(
+    int64_t color, int64_t *r, int64_t *g, int64_t *b, int64_t *a, int8_t *has_alpha) {
+    int8_t explicit_alpha = rt_color_has_explicit_alpha(color);
+    if (r)
+        *r = (color >> 16) & 0xFF;
+    if (g)
+        *g = (color >> 8) & 0xFF;
+    if (b)
+        *b = color & 0xFF;
+    if (a)
+        *a = explicit_alpha ? ((color >> 24) & 0xFF) : 255;
+    if (has_alpha)
+        *has_alpha = explicit_alpha;
+}
+
+static int64_t rt_color_pack_rgba_like(int64_t r,
+                                       int64_t g,
+                                       int64_t b,
+                                       int64_t a,
+                                       int8_t has_alpha) {
+    int64_t rgb = ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+    if (!has_alpha)
+        return rgb;
+    return (((a & 0xFF) << 24) | rgb) | RT_COLOR_EXPLICIT_ALPHA_FLAG;
+}
+
 /// @brief Lerp operation.
 int64_t rt_color_lerp(int64_t c1, int64_t c2, int64_t t) {
     if (t < 0)
@@ -1411,19 +1471,18 @@ int64_t rt_color_lerp(int64_t c1, int64_t c2, int64_t t) {
     if (t > 100)
         t = 100;
 
-    int64_t r1 = (c1 >> 16) & 0xFF;
-    int64_t g1 = (c1 >> 8) & 0xFF;
-    int64_t b1 = c1 & 0xFF;
-
-    int64_t r2 = (c2 >> 16) & 0xFF;
-    int64_t g2 = (c2 >> 8) & 0xFF;
-    int64_t b2 = c2 & 0xFF;
+    int64_t r1 = 0, g1 = 0, b1 = 0, a1 = 255;
+    int64_t r2 = 0, g2 = 0, b2 = 0, a2 = 255;
+    int8_t alpha1 = 0, alpha2 = 0;
+    rt_color_split_rgba(c1, &r1, &g1, &b1, &a1, &alpha1);
+    rt_color_split_rgba(c2, &r2, &g2, &b2, &a2, &alpha2);
 
     int64_t r = r1 + (r2 - r1) * t / 100;
     int64_t g = g1 + (g2 - g1) * t / 100;
     int64_t b = b1 + (b2 - b1) * t / 100;
+    int64_t a = a1 + (a2 - a1) * t / 100;
 
-    return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+    return rt_color_pack_rgba_like(r, g, b, a, alpha1 || alpha2);
 }
 
 /// @brief Get the r value.
@@ -1461,16 +1520,16 @@ int64_t rt_color_brighten(int64_t color, int64_t amount) {
     if (amount > 100)
         amount = 100;
 
-    int64_t r = (color >> 16) & 0xFF;
-    int64_t g = (color >> 8) & 0xFF;
-    int64_t b = color & 0xFF;
+    int64_t r = 0, g = 0, b = 0, a = 255;
+    int8_t has_alpha = 0;
+    rt_color_split_rgba(color, &r, &g, &b, &a, &has_alpha);
 
     // Increase each channel toward 255
     r = r + (255 - r) * amount / 100;
     g = g + (255 - g) * amount / 100;
     b = b + (255 - b) * amount / 100;
 
-    return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+    return rt_color_pack_rgba_like(r, g, b, a, has_alpha);
 }
 
 /// @brief Darken operation.
@@ -1480,16 +1539,16 @@ int64_t rt_color_darken(int64_t color, int64_t amount) {
     if (amount > 100)
         amount = 100;
 
-    int64_t r = (color >> 16) & 0xFF;
-    int64_t g = (color >> 8) & 0xFF;
-    int64_t b = color & 0xFF;
+    int64_t r = 0, g = 0, b = 0, a = 255;
+    int8_t has_alpha = 0;
+    rt_color_split_rgba(color, &r, &g, &b, &a, &has_alpha);
 
     // Decrease each channel toward 0
     r = r - r * amount / 100;
     g = g - g * amount / 100;
     b = b - b * amount / 100;
 
-    return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+    return rt_color_pack_rgba_like(r, g, b, a, has_alpha);
 }
 
 /// @brief Convert a single hex character ('0'-'9', 'a'-'f', 'A'-'F') to its 0-15 value; returns -1 on invalid input.
@@ -1525,9 +1584,14 @@ int64_t rt_color_from_hex(rt_string hex) {
     const char *s = rt_string_cstr(hex);
     if (!s)
         return 0;
-    if (*s == '#')
-        s++;
-    size_t len = strlen(s);
+    int64_t raw_len = rt_str_len(hex);
+    if (raw_len <= 0)
+        return 0;
+    size_t offset = (s[0] == '#') ? 1u : 0u;
+    if ((uint64_t)raw_len < offset)
+        return 0;
+    s += offset;
+    size_t len = (size_t)((uint64_t)raw_len - offset);
     uint64_t val = 0;
     if (len == 6) {
         if (!rt_color_parse_hex_n(s, len, &val))
@@ -1570,6 +1634,8 @@ rt_string rt_color_to_hex(int64_t color) {
         len = snprintf(buf, sizeof(buf), "#%02X%02X%02X%02X", (int)r, (int)g, (int)b, (int)a);
     else
         len = snprintf(buf, sizeof(buf), "#%02X%02X%02X", (int)r, (int)g, (int)b);
+    if (len < 0 || (size_t)len >= sizeof(buf))
+        return rt_string_from_bytes("", 0);
     return rt_string_from_bytes(buf, (size_t)len);
 }
 
@@ -1579,16 +1645,16 @@ int64_t rt_color_saturate(int64_t color, int64_t amount) {
         amount = 0;
     if (amount > 100)
         amount = 100;
-    int64_t r = (color >> 16) & 0xFF;
-    int64_t g = (color >> 8) & 0xFF;
-    int64_t b = color & 0xFF;
+    int64_t r = 0, g = 0, b = 0, a = 255;
+    int8_t has_alpha = 0;
+    rt_color_split_rgba(color, &r, &g, &b, &a, &has_alpha);
     int64_t h, s, l;
     rtg_rgb_to_hsl(r, g, b, &h, &s, &l);
     s = s + amount;
     if (s > 100)
         s = 100;
     rtg_hsl_to_rgb(h, s, l, &r, &g, &b);
-    return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+    return rt_color_pack_rgba_like(r, g, b, a, has_alpha);
 }
 
 /// @brief Desaturate operation.
@@ -1597,46 +1663,49 @@ int64_t rt_color_desaturate(int64_t color, int64_t amount) {
         amount = 0;
     if (amount > 100)
         amount = 100;
-    int64_t r = (color >> 16) & 0xFF;
-    int64_t g = (color >> 8) & 0xFF;
-    int64_t b = color & 0xFF;
+    int64_t r = 0, g = 0, b = 0, a = 255;
+    int8_t has_alpha = 0;
+    rt_color_split_rgba(color, &r, &g, &b, &a, &has_alpha);
     int64_t h, s, l;
     rtg_rgb_to_hsl(r, g, b, &h, &s, &l);
     s = s - amount;
     if (s < 0)
         s = 0;
     rtg_hsl_to_rgb(h, s, l, &r, &g, &b);
-    return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+    return rt_color_pack_rgba_like(r, g, b, a, has_alpha);
 }
 
 /// @brief Complement operation.
 int64_t rt_color_complement(int64_t color) {
-    int64_t r = (color >> 16) & 0xFF;
-    int64_t g = (color >> 8) & 0xFF;
-    int64_t b = color & 0xFF;
+    int64_t r = 0, g = 0, b = 0, a = 255;
+    int8_t has_alpha = 0;
+    rt_color_split_rgba(color, &r, &g, &b, &a, &has_alpha);
     int64_t h, s, l;
     rtg_rgb_to_hsl(r, g, b, &h, &s, &l);
     h = (h + 180) % 360;
     rtg_hsl_to_rgb(h, s, l, &r, &g, &b);
-    return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+    return rt_color_pack_rgba_like(r, g, b, a, has_alpha);
 }
 
 /// @brief Grayscale operation.
 int64_t rt_color_grayscale(int64_t color) {
-    int64_t r = (color >> 16) & 0xFF;
-    int64_t g = (color >> 8) & 0xFF;
-    int64_t b = color & 0xFF;
+    int64_t r = 0, g = 0, b = 0, a = 255;
+    int8_t has_alpha = 0;
+    rt_color_split_rgba(color, &r, &g, &b, &a, &has_alpha);
     // Luminance formula: 0.299R + 0.587G + 0.114B
     int64_t gray = (r * 299 + g * 587 + b * 114) / 1000;
-    return ((gray & 0xFF) << 16) | ((gray & 0xFF) << 8) | (gray & 0xFF);
+    return rt_color_pack_rgba_like(gray, gray, gray, a, has_alpha);
 }
 
 /// @brief Invert operation.
 int64_t rt_color_invert(int64_t color) {
-    int64_t r = 255 - ((color >> 16) & 0xFF);
-    int64_t g = 255 - ((color >> 8) & 0xFF);
-    int64_t b = 255 - (color & 0xFF);
-    return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+    int64_t r = 0, g = 0, b = 0, a = 255;
+    int8_t has_alpha = 0;
+    rt_color_split_rgba(color, &r, &g, &b, &a, &has_alpha);
+    r = 255 - r;
+    g = 255 - g;
+    b = 255 - b;
+    return rt_color_pack_rgba_like(r, g, b, a, has_alpha);
 }
 
 #else
