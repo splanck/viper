@@ -13,12 +13,17 @@
 #include "rt_box.h"
 #include "rt_heap.h"
 #include "rt_internal.h"
+#include "rt_msgbus.h"
 #include "rt_option.h"
 
 #include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+
+static void msgbus_test_callback(void *data) {
+    (void)data;
+}
 
 int main() {
     // Test IsNull with null pointer
@@ -112,12 +117,33 @@ int main() {
     rt_string opt_name = rt_obj_type_name(opt);
     assert(strcmp(rt_string_cstr(opt_name), "Viper.Option") == 0);
     rt_string_unref(opt_name);
+    rt_string opt_string = rt_obj_to_string(opt);
+    assert(strcmp(rt_string_cstr(opt_string), "Viper.Option") == 0);
+    rt_string_unref(opt_string);
 
     void *value_type = rt_box_value_type(8);
     assert(rt_obj_type_id(value_type) == RT_VALUE_TYPE_CLASS_ID);
     rt_string value_name = rt_obj_type_name(value_type);
     assert(strcmp(rt_string_cstr(value_name), "Viper.Core.ValueType") == 0);
     rt_string_unref(value_name);
+    rt_string value_string = rt_obj_to_string(value_type);
+    assert(strcmp(rt_string_cstr(value_string), "Viper.Core.ValueType") == 0);
+    rt_string_unref(value_string);
+
+    void *bus = rt_msgbus_new();
+    assert(rt_obj_type_id(bus) == RT_MSGBUS_CLASS_ID);
+    rt_string bus_name = rt_obj_type_name(bus);
+    assert(strcmp(rt_string_cstr(bus_name), "Viper.Core.MessageBus") == 0);
+    rt_string_unref(bus_name);
+    rt_string bus_string = rt_obj_to_string(bus);
+    assert(strcmp(rt_string_cstr(bus_string), "Viper.Core.MessageBus") == 0);
+    rt_string_unref(bus_string);
+
+    void *callback = rt_msgbus_callback_new((void *)msgbus_test_callback);
+    assert(rt_obj_type_id(callback) == RT_MSGBUS_CALLBACK_CLASS_ID);
+    rt_string callback_name = rt_obj_type_name(callback);
+    assert(strcmp(rt_string_cstr(callback_name), "Viper.Core.MessageBus.Callback") == 0);
+    rt_string_unref(callback_name);
 
     rt_obj_release_check0(obj);
     rt_obj_free(obj);
@@ -139,6 +165,10 @@ int main() {
     rt_obj_free(opt);
     rt_obj_release_check0(value_type);
     rt_obj_free(value_type);
+    rt_obj_release_check0(callback);
+    rt_obj_free(callback);
+    rt_obj_release_check0(bus);
+    rt_obj_free(bus);
 
     return 0;
 }

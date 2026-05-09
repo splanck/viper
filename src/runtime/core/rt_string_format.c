@@ -50,6 +50,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+/// @brief Validate @p s as a runtime string and return its byte view, trapping on misuse.
+/// @details Central input-validation helper used by `rt_to_int`, `rt_to_double`, and
+///          related parsers. Traps with @p fn_name as the diagnostic when @p s is NULL,
+///          with a generic "INPUT: invalid string handle" message when the pointer fails
+///          `rt_string_is_handle`, and with "INPUT: invalid string data" when the underlying
+///          data pointer is somehow NULL despite a valid handle. On success writes the
+///          byte length to @p len and returns the bytes pointer (aliasing the string's
+///          storage; valid only for the lifetime of @p s).
 static const char *rt_string_format_bytes(rt_string s, size_t *len, const char *fn_name) {
     if (len)
         *len = 0;
@@ -66,6 +74,11 @@ static const char *rt_string_format_bytes(rt_string s, size_t *len, const char *
     return data;
 }
 
+/// @brief Return true if @p s contains an embedded NUL byte before its declared end.
+/// @details Used by `rt_to_double` to reject strings that would silently truncate when
+///          handed to `strtod`. Routes through `rt_string_format_bytes` so handle
+///          validation happens up front; a NULL string is treated as "no NUL" without
+///          trapping (the strict path is the validation in `rt_string_format_bytes`).
 static bool rt_string_contains_embedded_nul(rt_string s) {
     if (!s)
         return false;
@@ -74,6 +87,10 @@ static bool rt_string_contains_embedded_nul(rt_string s) {
     return data && memchr(data, '\0', len) != NULL;
 }
 
+/// @brief Locale-independent test for ASCII whitespace characters.
+/// @details Mirrors the ASCII-only behaviour of the BASIC runtime so input parsing
+///          doesn't depend on the host's `LC_CTYPE` setting. Recognises space, tab,
+///          newline, carriage return, form-feed, and vertical-tab.
 static bool rt_string_format_is_ascii_space(unsigned char ch) {
     return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\f' ||
            ch == '\v';

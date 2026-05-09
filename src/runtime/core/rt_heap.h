@@ -12,6 +12,7 @@
 // Key invariants:
 //   - Magic field (0x52504956 = 'VIPR') validates heap objects; invalid magic indicates corruption.
 //   - refcnt == 1 on fresh allocation; the allocating caller owns the initial reference.
+//   - refcnt >= RT_HEAP_IMMORTAL_REFCNT means the payload is immortal and is never released.
 //   - len <= cap invariant is maintained by all mutating operations.
 //   - Payload pointer is exactly sizeof(rt_heap_hdr_t) bytes after the header base address.
 //
@@ -79,6 +80,12 @@ typedef struct rt_heap_hdr {
 
 /// @brief Magic number for heap object validation ('VIPR' in little-endian).
 #define RT_MAGIC 0x52504956u
+
+/// @brief Refcount sentinel used by immutable/immortal heap-backed values.
+#define RT_HEAP_IMMORTAL_REFCNT (SIZE_MAX - 1u)
+
+/// @brief Largest mortal refcount; retaining beyond this would collide with the sentinel.
+#define RT_HEAP_MAX_MORTAL_REFCNT (RT_HEAP_IMMORTAL_REFCNT - 1u)
 
 #ifdef __cplusplus
 extern "C" {

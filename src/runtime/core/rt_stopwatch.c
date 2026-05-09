@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 //
 // Part of the Viper project, under the GNU GPL v3.
-// See LICENSE in the project root for license information.
+// See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -57,6 +57,11 @@ typedef struct {
     bool running;           ///< True if stopwatch is currently timing.
 } ViperStopwatch;
 
+// Overflow-checked signed 64-bit arithmetic for the nanosecond accumulator. Same
+// triplet seen in rt_countdown / rt_duration / rt_dateonly — pre-checks operands
+// before performing the arithmetic to avoid signed-overflow UB.
+
+/// @brief Overflow-checked signed 64-bit addition. Returns 1 on overflow.
 static int stopwatch_checked_add_i64(int64_t a, int64_t b, int64_t *out) {
     if ((b > 0 && a > INT64_MAX - b) || (b < 0 && a < INT64_MIN - b))
         return 1;
@@ -64,6 +69,7 @@ static int stopwatch_checked_add_i64(int64_t a, int64_t b, int64_t *out) {
     return 0;
 }
 
+/// @brief Overflow-checked signed 64-bit subtraction. Returns 1 on overflow.
 static int stopwatch_checked_sub_i64(int64_t a, int64_t b, int64_t *out) {
     if ((b < 0 && a > INT64_MAX + b) || (b > 0 && a < INT64_MIN + b))
         return 1;
@@ -71,6 +77,7 @@ static int stopwatch_checked_sub_i64(int64_t a, int64_t b, int64_t *out) {
     return 0;
 }
 
+/// @brief Overflow-checked signed 64-bit multiplication. Returns 1 on overflow.
 static int stopwatch_checked_mul_i64(int64_t a, int64_t b, int64_t *out) {
 #if defined(__GNUC__) || defined(__clang__)
     return __builtin_mul_overflow(a, b, out);
@@ -99,6 +106,11 @@ static int stopwatch_checked_mul_i64(int64_t a, int64_t b, int64_t *out) {
 #endif
 }
 
+/// @brief Win32: nanosecond timestamp from `GetTickCount64`, trapping on overflow.
+/// @details Win32's millisecond resolution is multiplied by `1_000_000` to land in the
+///          nanosecond units the rest of the stopwatch machinery uses; the bound check
+///          (`> INT64_MAX / 1_000_000`) catches the moment when the multiply would
+///          overflow signed 64-bit on long-uptime systems.
 #if defined(_WIN32)
 static int64_t stopwatch_tick_count_ns(void) {
     ULONGLONG ticks = GetTickCount64();
@@ -110,6 +122,11 @@ static int64_t stopwatch_tick_count_ns(void) {
 }
 #endif
 
+/// @brief POSIX: convert a `struct timespec` into nanoseconds, trapping on overflow.
+/// @details Folds `tv_sec * 1_000_000_000 + tv_nsec` through the checked arithmetic
+///          helpers so an absurdly large timespec can't silently wrap. Matches the
+///          contract of the Win32 `stopwatch_tick_count_ns` helper for the rest of
+///          the file.
 #if !defined(_WIN32)
 static int64_t stopwatch_timespec_to_ns(struct timespec ts) {
     int64_t seconds_ns;
@@ -123,6 +140,9 @@ static int64_t stopwatch_timespec_to_ns(struct timespec ts) {
 }
 #endif
 
+/// @brief Validate that @p obj is a non-NULL Stopwatch receiver, trapping otherwise.
+/// @details Centralises the null-receiver guard so every public method reads
+///          `ViperStopwatch *sw = require_stopwatch(obj); if (!sw) return ...;`.
 static ViperStopwatch *require_stopwatch(void *obj) {
     if (!obj) {
         rt_trap("Stopwatch: null receiver");

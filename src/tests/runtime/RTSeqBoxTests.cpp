@@ -223,6 +223,7 @@ static void test_value_type_managed_fields() {
 
 static managed_value_payload *g_conflict_value = nullptr;
 static managed_value_payload *g_invalid_field_value = nullptr;
+static void *g_misaligned_field_value = nullptr;
 
 static void call_value_type_conflicting_field() {
     rt_box_value_type_add_field(
@@ -232,6 +233,10 @@ static void call_value_type_conflicting_field() {
 static void call_value_type_invalid_retain_field() {
     rt_box_value_type_add_field(
         g_invalid_field_value, (int64_t)offsetof(managed_value_payload, str), RT_VALUE_FIELD_STR, 1);
+}
+
+static void call_value_type_misaligned_field() {
+    rt_box_value_type_add_field(g_misaligned_field_value, 1, RT_VALUE_FIELD_OBJ, 0);
 }
 
 static void test_value_type_zero_size_and_duplicate_fields() {
@@ -260,6 +265,12 @@ static void test_value_type_zero_size_and_duplicate_fields() {
     expect_trap(call_value_type_invalid_retain_field, "invalid managed field value");
     g_invalid_field_value = nullptr;
     release_object(invalid);
+
+    void *misaligned = rt_box_value_type((int64_t)(sizeof(void *) + 1));
+    g_misaligned_field_value = misaligned;
+    expect_trap(call_value_type_misaligned_field, "field offset is not pointer-aligned");
+    g_misaligned_field_value = nullptr;
+    release_object(misaligned);
     printf("\n");
 }
 

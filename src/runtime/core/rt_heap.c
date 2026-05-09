@@ -17,7 +17,7 @@
 //   - Every heap allocation is preceded by an rt_heap_hdr_t carrying
 //     magic==RT_MAGIC. Public helpers validate live payloads against the
 //     registry before touching the header.
-//   - refcnt==0 is the freed state; refcnt==SIZE_MAX is the immortal/static
+//   - refcnt==0 is the freed state; refcnt>=RT_HEAP_IMMORTAL_REFCNT is immortal/static
 //     sentinel (never freed). All atomic inc/dec use __ATOMIC_RELAXED.
 //   - rt_heap_release() calls free() only when refcnt drops to 0.
 //   - The kind field (RT_HEAP_KIND_*) disambiguates string vs array vs raw.
@@ -339,8 +339,8 @@ static void rt_heap_registry_shutdown_(void) {
 
 /// @brief Sanity-check the invariants stored in a heap header.
 /// @details Confirms the presence of the runtime magic tag, ensures the
-///          reference count is not the sentinel value reserved for immortal
-///          allocations, and validates that the heap kind enumerator is one of
+///          reference count does not use the legacy reserved sentinel value for
+///          corruptions, and validates that the heap kind enumerator is one of
 ///          the recognised values.  Assertions fire in debug builds to surface
 ///          memory corruptions or misuse of the allocator.
 /// @param hdr Header pointer returned by a checked header lookup.
@@ -535,7 +535,9 @@ void rt_heap_retain(void *payload) {
             rt_trap("rt_heap: retain after release");
             return;
         }
-        if (old >= SIZE_MAX - 1) {
+        if (old >= RT_HEAP_IMMORTAL_REFCNT)
+            return;
+        if (old >= RT_HEAP_MAX_MORTAL_REFCNT) {
             rt_trap("refcount overflow");
             return;
         }
@@ -578,9 +580,9 @@ static size_t rt_heap_release_impl(rt_heap_hdr_t *hdr, void *payload, int free_w
             rt_trap("rt_heap: double release (refcount already zero)");
             return 0;
         }
-        if (old == SIZE_MAX) {
+        if (old >= RT_HEAP_IMMORTAL_REFCNT) {
             rt_trap("rt_heap: cannot release immortal refcount");
-            return SIZE_MAX;
+            return old;
         }
         next = old - 1;
         if (__atomic_compare_exchange_n(&hdr->refcnt,
@@ -752,8 +754,8 @@ void *rt_heap_realloc(void *payload, size_t elem_size, size_t new_len, size_t ne
     int moved = rt_heap_registry_move_locked_(payload, new_payload);
     rt_heap_registry_unlock_();
     if (!moved) {
-        rt_trap("rt_heap_realloc: registry update failed");
-        return new_payload;
+        rt_abort("rt_heap_realloc: registry update failed");
+        return NULL;
     }
 
     return new_payload;

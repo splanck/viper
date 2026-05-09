@@ -266,6 +266,28 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
         return {rawResult, ilSurfaceType};
     };
 
+    auto isUserClassReleaseType = [&](TypeRef type) {
+        type = unwrapSurfaceType(type);
+        return type && type->kind == TypeKindSem::Class &&
+               classTypes_.find(type->name) != classTypes_.end();
+    };
+
+    auto emitExplicitMemoryRelease = [&](Value argValue, TypeRef argType) -> LowerResult {
+        if (isStringType(argType)) {
+            Value releaseCount =
+                emitCallRet(Type(Type::Kind::I64), kHeapReleaseStr, {argValue});
+            return {releaseCount, Type(Type::Kind::I64)};
+        }
+
+        if (isUserClassReleaseType(argType)) {
+            Value releaseCount = emitManagedReleaseRet(argValue, false);
+            return {releaseCount, Type(Type::Kind::I64)};
+        }
+
+        Value releaseCount = emitCallRet(Type(Type::Kind::I64), kHeapRelease, {argValue});
+        return {releaseCount, Type(Type::Kind::I64)};
+    };
+
     RangeModifierInfo rangeInfo;
     if (collectRangeModifierChain(expr, rangeInfo) && rangeInfo.range)
         return lowerRangeWithModifiers(rangeInfo.range, rangeInfo.reversed, rangeInfo.stepArg);
@@ -361,8 +383,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
 
         if (resolvedFunction == kHeapRelease && args.size() == 1) {
             TypeRef argType = sema_.typeOf(expr->args[0].value.get());
-            Value releaseCount = emitManagedReleaseRet(args[0], isStringType(argType));
-            return {releaseCount, Type(Type::Kind::I64)};
+            return emitExplicitMemoryRelease(args[0], argType);
         }
 
         Symbol *externSym = sema_.findExternFunction(resolvedFunction);
@@ -569,8 +590,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
 
                 if (funcName == kHeapRelease && args.size() == 1) {
                     TypeRef argType = sema_.typeOf(expr->args[0].value.get());
-                    Value releaseCount = emitManagedReleaseRet(args[0], isStringType(argType));
-                    return {releaseCount, Type(Type::Kind::I64)};
+                    return emitExplicitMemoryRelease(args[0], argType);
                 }
 
                 // Use the extern's declared return type for the call instruction
@@ -772,8 +792,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
 
         if (runtimeCallee == kHeapRelease && args.size() == 1) {
             TypeRef argType = sema_.typeOf(expr->args[0].value.get());
-            Value releaseCount = emitManagedReleaseRet(args[0], isStringType(argType));
-            return {releaseCount, Type(Type::Kind::I64)};
+            return emitExplicitMemoryRelease(args[0], argType);
         }
 
         // Use the extern's declared return type for the call instruction so it

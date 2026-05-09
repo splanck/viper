@@ -76,17 +76,17 @@ inline HelperEffects classifyHelperEffects(std::string_view name) {
         Entry{"rt_sgn_i64", HelperEffects{true, false, true}},
         Entry{"rt_sgn_f64", HelperEffects{true, false, true}},
 
-        // String inspection: readonly (reads string memory), not pure
-        // These read string contents but don't modify anything.
-        Entry{"rt_str_len", HelperEffects{true, true, false}},
-        Entry{"rt_str_index_of", HelperEffects{true, true, false}},
-        Entry{"rt_str_instr3", HelperEffects{true, true, false}},
-        Entry{"rt_str_eq", HelperEffects{true, true, false}},
-        Entry{"rt_str_lt", HelperEffects{true, true, false}},
-        Entry{"rt_str_le", HelperEffects{true, true, false}},
-        Entry{"rt_str_gt", HelperEffects{true, true, false}},
-        Entry{"rt_str_ge", HelperEffects{true, true, false}},
-        Entry{"rt_str_asc", HelperEffects{true, true, false}},
+        // String inspection: readonly (reads string memory), not pure.
+        // These may trap on invalid handles, so they are not marked nothrow.
+        Entry{"rt_str_len", HelperEffects{false, true, false}},
+        Entry{"rt_str_index_of", HelperEffects{false, true, false}},
+        Entry{"rt_str_instr3", HelperEffects{false, true, false}},
+        Entry{"rt_str_eq", HelperEffects{false, true, false}},
+        Entry{"rt_str_lt", HelperEffects{false, true, false}},
+        Entry{"rt_str_le", HelperEffects{false, true, false}},
+        Entry{"rt_str_gt", HelperEffects{false, true, false}},
+        Entry{"rt_str_ge", HelperEffects{false, true, false}},
+        Entry{"rt_str_asc", HelperEffects{false, true, false}},
 
         // Array length queries: readonly (reads array header)
         Entry{"rt_arr_i32_len", HelperEffects{true, true, false}},

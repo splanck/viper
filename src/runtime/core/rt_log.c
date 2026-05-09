@@ -64,6 +64,10 @@ extern "C" {
 static volatile int64_t g_log_level = RT_LOG_INFO;
 static volatile unsigned char g_log_write_lock = 0;
 
+/// @brief Cooperatively yield to the OS scheduler while spinning on the log lock.
+/// @details Avoids burning CPU cycles when contention is rare. Uses `Sleep(0)` on Win32
+///          (yields to any thread of equal or higher priority) and `sched_yield` on
+///          POSIX. Called by `rt_log_lock` after 64 spin iterations.
 static void rt_log_yield(void) {
 #if defined(_WIN32)
     Sleep(0);
@@ -72,6 +76,10 @@ static void rt_log_yield(void) {
 #endif
 }
 
+/// @brief Acquire the global log-output spinlock.
+/// @details Test-and-set spin with a yield after 64 unsuccessful attempts so heavily-
+///          contended logging doesn't peg a core. Used to serialize concurrent log
+///          emissions so timestamp + level + message stays atomic in the output stream.
 static void rt_log_lock(void) {
     unsigned spins = 0;
     while (__atomic_test_and_set(&g_log_write_lock, __ATOMIC_ACQUIRE)) {
@@ -82,6 +90,7 @@ static void rt_log_lock(void) {
     }
 }
 
+/// @brief Release the global log-output spinlock with release ordering.
 static void rt_log_unlock(void) {
     __atomic_clear(&g_log_write_lock, __ATOMIC_RELEASE);
 }
@@ -107,6 +116,12 @@ static void get_time_str(char *buf, size_t size) {
     }
 }
 
+/// @brief Compute the escaped-output byte length of @p message without writing anything.
+/// @details Sizing pass for the two-pass escape used by the buffered log path: validates
+///          the handle, walks every byte once, and accumulates the escape expansion
+///          (`\0`/`\n`/`\r`/`\t` → 2 bytes; other control chars → `\xNN` 4 bytes; all
+///          other bytes → 1 byte). Returns `SIZE_MAX` if accumulation would overflow so
+///          the caller can refuse to allocate. Returns 0 on a NULL or invalid handle.
 static size_t log_escaped_message_len(rt_string message) {
     if (!message || !rt_string_is_handle((const void *)message) || !message->data)
         return 0;
@@ -128,6 +143,12 @@ static size_t log_escaped_message_len(rt_string message) {
     return escaped_len;
 }
 
+/// @brief Write the escaped form of @p message into @p dst, advancing @p pos.
+/// @details Companion to `log_escaped_message_len` — caller pre-sizes the buffer using
+///          the length helper, then drives the bytes through this function. Escapes the
+///          same set: NUL → `\0`, newline → `\n`, return → `\r`, tab → `\t`, other
+///          control chars → `\xNN`, printable bytes copied verbatim. The cursor `*pos`
+///          is updated in place; caller is responsible for the final NUL terminator.
 static void log_append_escaped_message(char *dst, size_t *pos, rt_string message) {
     static const char hex[] = "0123456789ABCDEF";
     if (!dst || !pos || !message || !rt_string_is_handle((const void *)message) || !message->data)
@@ -168,6 +189,11 @@ static void log_append_escaped_message(char *dst, size_t *pos, rt_string message
     }
 }
 
+/// @brief Stream the escaped form of @p message directly to @p stream byte-by-byte.
+/// @details Single-pass alternative to the `len`/`append` two-pass route used when the
+///          caller wants no intermediate buffer (typical for direct stderr/stdout
+///          flushes in the unbuffered path). Uses the same escape rules as
+///          `log_append_escaped_message`. NULL stream / message is a silent no-op.
 static void log_write_escaped_message(FILE *stream, rt_string message) {
     static const char hex[] = "0123456789ABCDEF";
     if (!stream || !message || !rt_string_is_handle((const void *)message) || !message->data)

@@ -626,7 +626,9 @@ void IoStatementLowerer::lowerInputCh(const InputChStmt &stmt) {
         Value parsedSlot = lowerer_.emitAlloca(8);
         if (slotInfo.type.kind == IlType::Kind::F64) {
             Value err = lowerer_.emitCallRet(
-                IlType(IlType::Kind::I32), il::frontends::basic::runtime::kParseDouble, {fieldCstr, parsedSlot});
+                IlType(IlType::Kind::I32),
+                il::frontends::basic::runtime::kParseDoubleCStr,
+                {fieldCstr, parsedSlot});
             lowerer_.emitRuntimeErrCheck(err, stmt.loc, "inputch_parse", [&](Value code) {
                 lowerer_.emitTrapFromErr(code);
             });
@@ -634,7 +636,9 @@ void IoStatementLowerer::lowerInputCh(const InputChStmt &stmt) {
             lowerer_.emitStore(IlType(IlType::Kind::F64), slot, parsed);
         } else {
             Value err = lowerer_.emitCallRet(
-                IlType(IlType::Kind::I32), il::frontends::basic::runtime::kParseInt64, {fieldCstr, parsedSlot});
+                IlType(IlType::Kind::I32),
+                il::frontends::basic::runtime::kParseInt64CStr,
+                {fieldCstr, parsedSlot});
             lowerer_.emitRuntimeErrCheck(err, stmt.loc, "inputch_parse", [&](Value code) {
                 lowerer_.emitTrapFromErr(code);
             });

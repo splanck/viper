@@ -60,8 +60,15 @@ void call_heap_double_release_deferred() {
 void call_heap_retain_overflow() {
     void *obj = rt_obj_new_i64(9, 8);
     rt_heap_hdr_t *hdr = rt_heap_hdr(obj);
-    hdr->refcnt = SIZE_MAX - 1;
+    hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
     rt_heap_retain(obj);
+}
+
+void call_heap_release_immortal() {
+    void *obj = rt_obj_new_i64(12, 8);
+    rt_heap_hdr_t *hdr = rt_heap_hdr(obj);
+    hdr->refcnt = RT_HEAP_IMMORTAL_REFCNT;
+    rt_heap_release(obj);
 }
 
 void call_heap_set_len_past_capacity() {
@@ -196,6 +203,7 @@ int main(int argc, char *argv[]) {
     viper::tests::registerChildFunction(call_object_negative_size);
     viper::tests::registerChildFunction(call_heap_double_release_deferred);
     viper::tests::registerChildFunction(call_heap_retain_overflow);
+    viper::tests::registerChildFunction(call_heap_release_immortal);
     viper::tests::registerChildFunction(call_heap_set_len_past_capacity);
     viper::tests::registerChildFunction(call_resurrect_live_object);
     viper::tests::registerChildFunction(call_obj_free_live_object);
@@ -214,6 +222,7 @@ int main(int argc, char *argv[]) {
     expect_trap(call_object_negative_size, "negative object size");
     expect_trap(call_heap_double_release_deferred, "double release");
     expect_trap(call_heap_retain_overflow, "refcount overflow");
+    expect_trap(call_heap_release_immortal, "cannot release immortal refcount");
     expect_trap(call_heap_set_len_past_capacity, "length exceeds capacity");
     expect_trap(call_resurrect_live_object, "refcount is not zero");
     expect_trap(call_obj_free_live_object, "refcount is not zero");

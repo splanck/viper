@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 //
 // Part of the Viper project, under the GNU GPL v3.
-// See LICENSE in the project root for license information.
+// See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -53,6 +53,12 @@
 #include <xlocale.h>
 #endif
 
+/// @brief Locale-isolated `vsnprintf` that always uses the C locale's numeric formatting.
+/// @details Wraps the platform-specific locale APIs (`_create_locale` + `_vsnprintf_l` on
+///          Win32; `newlocale` + `uselocale` + `vsnprintf` on POSIX) so the runtime emits
+///          deterministic decimal points regardless of the process's `LC_NUMERIC` setting.
+///          Returns the number of bytes that would have been written (per `vsnprintf`
+///          semantics), or -1 on locale-acquisition failure.
 static int rt_format_vsnprintf_c_locale(char *buffer, size_t capacity, const char *fmt, va_list args) {
 #if defined(_WIN32)
     _locale_t c_locale = _create_locale(LC_NUMERIC, "C");
@@ -87,6 +93,7 @@ static int rt_format_vsnprintf_c_locale(char *buffer, size_t capacity, const cha
 #endif
 }
 
+/// @brief Variadic wrapper around `rt_format_vsnprintf_c_locale`.
 static int rt_format_snprintf_c_locale(char *buffer, size_t capacity, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);

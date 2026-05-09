@@ -50,8 +50,9 @@ Base class for all Viper reference types. Provides fundamental object operations
 > Object is the base type for all reference types. In Zia, it is implicit—most programs interact
 > with concrete types rather than calling Object methods directly.
 
-`TypeId()` returns stable built-in identifiers for strings, boxes, boxed value types, and `Viper.Option` objects in addition to user/runtime class IDs.
+`TypeId()` returns stable built-in identifiers for strings, boxes, boxed value types, `Viper.Option`, `Viper.Core.MessageBus`, and `MessageBus.Callback` objects in addition to user/runtime class IDs.
 Runtime string handles compare and hash by byte content through `Equals` and `HashCode`, so distinct handles with identical bytes behave as equal object keys.
+`TypeName()` and `ToString()` report useful built-in names for opaque runtime objects such as boxed value types, options, message buses, and callback wrappers instead of falling back to a generic `Object` label.
 
 ### BASIC Example
 
@@ -94,7 +95,7 @@ Boxing helpers for storing primitive values in generic collections. Boxed values
 | `ToI64(box)`        | `Integer(Object)`         | Unbox integer (traps on wrong type)                    |
 | `ToF64(box)`        | `Double(Object)`          | Unbox double (traps on wrong type)                     |
 | `ToI1(box)`         | `Boolean(Object)`         | Unbox boolean (traps on wrong type)                    |
-| `ToStr(box)`        | `String(Object)`          | Unbox string (traps on wrong type)                     |
+| `ToStr(box)`        | `String(Object)`          | Unbox string as a retained result (traps on wrong type) |
 | `TryToI64(box,out)` | `Boolean(Object, Ptr)`    | Write integer to `out`; return false on wrong type     |
 | `TryToF64(box,out)` | `Boolean(Object, Ptr)`    | Write double to `out`; return false on wrong type      |
 | `TryToI1(box,out)`  | `Boolean(Object, Ptr)`    | Write boolean to `out`; return false on wrong type     |
@@ -110,6 +111,7 @@ Boxing helpers for storing primitive values in generic collections. Boxed values
 
 - Type tags: 0 = integer, 1 = double, 2 = boolean, 3 = string.
 - Unboxing with the wrong type traps with a runtime diagnostic.
+- `ToStr` returns an owned/retained string; generated code releases it like other string-returning runtime calls.
 - The `TryTo*` forms do not trap for type mismatch. They return false and clear the output slot to `0`, `0.0`, or null; `TryToStr` returns a retained string on success.
 - Boxed values report `Viper.Core.Box` through `Viper.Core.Object.TypeName` and use value equality/hash semantics for `Object.Equals` and collection lookup.
 - Floating-point box hashes canonicalize `+0.0` and `-0.0` so values that compare equal hash equally.
@@ -252,8 +254,8 @@ Safe string parsing utilities. Methods return a success flag or a default value 
 | `IsInt(s)`                  | `Boolean(String)`                   | Return true if `s` is a valid integer (no side effects)            |
 | `IsNum(s)`                  | `Boolean(String)`                   | Return true if `s` is a valid number (no side effects)             |
 | `IntRadix(s, radix, default)` | `Integer(String, Integer, Integer)` | Parse `s` in the given radix (2–36); return `default` on failure |
-| `Double(text, outPtr)`      | `ErrorCode(Ptr, Ptr)`               | Low-level C-string parser; writes to raw output pointer            |
-| `Int64(text, outPtr)`       | `ErrorCode(Ptr, Ptr)`               | Low-level C-string parser; writes to raw output pointer            |
+| `Double(text, outPtr)`      | `ErrorCode(String, Ptr)`            | Parse runtime string as double; writes to raw output pointer       |
+| `Int64(text, outPtr)`       | `ErrorCode(String, Ptr)`            | Parse runtime string as integer; writes to raw output pointer      |
 | `DoubleOption(text)`        | `Option<Double>(String)`            | Parse string to floating-point; returns `None` if invalid          |
 | `Int64Option(text)`         | `Option<Integer>(String)`           | Parse string to integer; returns `None` if invalid                 |
 
@@ -261,9 +263,9 @@ Safe string parsing utilities. Methods return a success flag or a default value 
 
 - `TryInt`/`TryNum`/`TryBool` write through a raw pointer and are most useful from IL or advanced Zia/BASIC code. For typical use, prefer `IntOr`/`NumOr`/`BoolOr`.
 - Null input is treated as parse failure: `Try*` returns false, `Is*` returns false, and `*Or`/`IntRadix` returns the supplied default.
-- `IntRadix` supports bases 2 through 36 (e.g., 16 for hex, 2 for binary).
+- `IntRadix` supports bases 2 through 36 (e.g., 16 for hex, 2 for binary). A leading `+` is accepted; a leading `-` is accepted for radix 10 only.
 - Leading/trailing ASCII whitespace is accepted; non-whitespace trailing characters and embedded NUL bytes are rejected.
-- `Double` and `Int64` are low-level pointer-based ABI helpers retained for IL/native interop. On failure, they clear the output slot to `0`/`0.0` before returning an error code.
+- `Double` and `Int64` are low-level status-code APIs for advanced callers that need an explicit output pointer. They accept runtime strings, reject embedded NUL bytes, and clear the output slot to `0`/`0.0` on failure. Raw C-string helpers remain internal for native interop.
 - `DoubleOption` and `Int64Option` are the user-facing optional-return variants. Use them when invalid input is expected and should be handled gracefully rather than terminating the program.
 
 ### Parse.DoubleOption and Parse.Int64Option Example
@@ -596,6 +598,7 @@ In-process publish/subscribe message bus for decoupled communication between com
 - `Publish` invokes all handlers for the given topic synchronously; returns the number of handlers called
 - Handler functions receive the published data as their argument
 - Publish uses a stable subscriber snapshot; unsubscribes during a handler affect later publishes, not the in-flight one
+- Publish retains managed string/object payloads for the duration of dispatch so one handler cannot free the payload before later handlers run. Raw foreign pointers are still passed through as borrowed values.
 - Subscribe accepts a managed callback returned by `Callback(fn)`. Raw native function pointers must be wrapped first; passing a raw pointer or ordinary heap object traps at subscribe time.
 - Topic matching is byte-length aware; topic names containing embedded NUL bytes remain distinct.
 - `Topics()` returns an owning `Seq` of retained topic strings; the result remains valid after the bus is cleared or destroyed.

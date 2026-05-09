@@ -206,6 +206,11 @@ static int gc_slot_is_live(const gc_entry *e) {
     return e->obj != GC_EMPTY && e->obj != GC_TOMBSTONE;
 }
 
+/// @brief Clear the in-progress-collection sentinel under the GC lock.
+/// @details Called from the reclaim-phase trap-recovery branch in `rt_gc_collect` so a
+///          finalizer that traps doesn't leave the active-collection flag stuck on,
+///          which would cause every later `rt_gc_collect` call to short-circuit and
+///          return zero forever.
 static void gc_clear_collecting_flag(void) {
     gc_lock();
     g_gc.collecting = 0;
@@ -633,6 +638,12 @@ typedef struct {
     int oom;
 } gc_worklist;
 
+/// @brief Append @p child to a heap-resident edge list, growing the buffer on demand.
+/// @details Used by the trial-deletion phase to record outgoing references collected by
+///          a traversal callback. The buffer doubles each time it fills and the OOM flag
+///          sticks once set so subsequent pushes are no-ops — callers detect overflow by
+///          inspecting `list->oom` after the traversal completes.
+/// @return 1 on successful append, 0 on OOM, NULL inputs, or NULL @p child.
 static int gc_edge_list_push(gc_edge_list *list, void *child) {
     if (!list || list->oom || !child)
         return 0;
@@ -650,10 +661,19 @@ static int gc_edge_list_push(gc_edge_list *list, void *child) {
     return 1;
 }
 
+/// @brief `rt_gc_visitor_t` adapter that funnels traversed children into a `gc_edge_list`.
+/// @details Bridges the per-object traverse callback (which expects a `(child, ctx)`
+///          visitor) to the edge-list collector. Discards push failures since the caller
+///          checks `list->oom` after the walk completes.
 static void gc_edge_collector(void *child, void *ctx) {
     (void)gc_edge_list_push((gc_edge_list *)ctx, child);
 }
 
+/// @brief Push a `(obj, traverse)` pair onto the restore-phase BFS worklist.
+/// @details Used by phase 3 (the "restore" pass) to enqueue objects that need to be
+///          re-marked as live after the trial-deletion phase. Doubling growth and
+///          sticky OOM flag mirror `gc_edge_list_push`.
+/// @return 1 on success, 0 on OOM, NULL inputs, or missing traverse function.
 static int gc_worklist_push(gc_worklist *work, void *obj, rt_gc_traverse_fn traverse) {
     if (!work || work->oom || !obj || !traverse)
         return 0;
@@ -674,6 +694,10 @@ static int gc_worklist_push(gc_worklist *work, void *obj, rt_gc_traverse_fn trav
     return 1;
 }
 
+/// @brief Linear-search a snapshot array for @p obj. Returns 1 if found, else 0.
+/// @details Used by the reclaim phase to test whether an outgoing edge points to another
+///          object that's also in the garbage set — those edges are skipped during ref
+///          release because both endpoints are about to be freed together.
 static int gc_snap_contains(const gc_snap_entry *items, int64_t count, void *obj) {
     for (int64_t i = 0; i < count; ++i) {
         if (items[i].obj == obj)
@@ -687,6 +711,11 @@ typedef struct {
     int64_t garbage_count;
 } gc_release_edges_ctx;
 
+/// @brief Reclaim-phase visitor: drop one outgoing reference from a garbage object.
+/// @details Called for each child reachable from an object being freed. Skips children
+///          that are also in the garbage set — those will be freed by their own
+///          reclaim-phase walk and re-releasing them here would underflow the refcount.
+///          External (non-garbage) children get a normal release-and-free-on-zero.
 static void gc_release_outgoing_ref(void *child, void *ctx) {
     if (!child)
         return;

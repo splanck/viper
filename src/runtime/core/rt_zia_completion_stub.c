@@ -49,6 +49,12 @@
 #define RT_WEAK
 #endif
 
+/// @brief Construct a runtime string from a static C-string payload.
+/// @details Helper used by every weak stub in this file to wrap the shared
+///          `kUnavailableMessage` (or any caller-provided literal) in a fresh `rt_string`
+///          so the IDE's completion / hover / diagnostics tooling receives a well-formed
+///          handle even when fe_zia isn't linked into this binary. The caller owns the
+///          returned reference.
 static rt_string zia_completion_unavailable_string(const char *payload) {
     return rt_string_from_bytes(payload, strlen(payload));
 }

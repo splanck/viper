@@ -44,6 +44,10 @@ extern int64_t rt_seq_len(void *);
 extern void *rt_seq_get(void *, int64_t);
 extern void rt_seq_set(void *, int64_t, void *);
 
+/// @brief Resolve the runtime context whose RNG state we read/write.
+/// @details Prefers the per-thread `rt_get_current_context()` for proper isolation when
+///          multiple VMs are active; falls back to the legacy global context for native
+///          callers that haven't pushed a context yet.
 static RtContext *rt_random_context(void) {
     RtContext *ctx = rt_get_current_context();
     if (!ctx)
@@ -51,12 +55,23 @@ static RtContext *rt_random_context(void) {
     return ctx;
 }
 
+/// @brief Step the LCG forward and return the new 64-bit state.
+/// @details Implements MCG (multiplicative congruential generator) with constants from
+///          Donald Knuth's `MMIX` table — fast, full-period over 64 bits, suitable for
+///          non-cryptographic use. The state lives on the active runtime context so VMs
+///          isolate their RNG streams.
 static uint64_t rt_random_next_u64(void) {
     RtContext *ctx = rt_random_context();
     ctx->rng_state = ctx->rng_state * 6364136223846793005ULL + 1ULL;
     return ctx->rng_state;
 }
 
+/// @brief Sample a uniform random integer in `[0, bound)` with rejection sampling.
+/// @details Naïve `next_u64() % bound` introduces modulo bias when `bound` does not
+///          evenly divide `2^64`. The threshold trick rejects the small biased band so
+///          the surviving samples are exactly uniform. Worst-case rejection rate is
+///          tiny for any realistic `bound`. A `bound` of 0 is treated as "no upper
+///          bound" and returns the raw next-state.
 static uint64_t rt_random_bounded_u64(uint64_t bound) {
     if (bound == 0)
         return rt_random_next_u64();

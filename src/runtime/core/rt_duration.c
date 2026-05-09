@@ -48,6 +48,12 @@
 #define MS_PER_HOUR (60LL * MS_PER_MINUTE)
 #define MS_PER_DAY (24LL * MS_PER_HOUR)
 
+// Overflow-checked signed 64-bit arithmetic used by Duration math so a malformed
+// duration calculation surfaces as a trap rather than silently wrapping. The same
+// triplet appears across the time-related runtime files (Countdown, Stopwatch,
+// DateTime, Duration); each carries its own copy to keep the helpers static.
+
+/// @brief Overflow-checked signed 64-bit addition. Returns 1 on overflow.
 static int dur_checked_add_i64(int64_t a, int64_t b, int64_t *out) {
     if ((b > 0 && a > INT64_MAX - b) || (b < 0 && a < INT64_MIN - b))
         return 1;
@@ -55,6 +61,7 @@ static int dur_checked_add_i64(int64_t a, int64_t b, int64_t *out) {
     return 0;
 }
 
+/// @brief Overflow-checked signed 64-bit subtraction. Returns 1 on overflow.
 static int dur_checked_sub_i64(int64_t a, int64_t b, int64_t *out) {
     if ((b < 0 && a > INT64_MAX + b) || (b > 0 && a < INT64_MIN + b))
         return 1;
@@ -62,6 +69,9 @@ static int dur_checked_sub_i64(int64_t a, int64_t b, int64_t *out) {
     return 0;
 }
 
+/// @brief Overflow-checked signed 64-bit multiplication. Returns 1 on overflow.
+/// @details Uses `__builtin_mul_overflow` on GCC/Clang and a manual divide-bound
+///          check on MSVC.
 static int dur_checked_mul_i64(int64_t a, int64_t b, int64_t *out) {
 #if defined(__GNUC__) || defined(__clang__)
     return __builtin_mul_overflow(a, b, out);
@@ -90,12 +100,21 @@ static int dur_checked_mul_i64(int64_t a, int64_t b, int64_t *out) {
 #endif
 }
 
+/// @brief Absolute value of @p duration as `uint64_t`, safe for `INT64_MIN`.
+/// @details The trick `(uint64_t)(-(d+1)) + 1u` avoids the `-INT64_MIN` UB that a naïve
+///          `(uint64_t)-d` would hit. Used by the duration formatter to render the
+///          sign separately from the magnitude.
 static uint64_t dur_abs_u64(int64_t duration) {
     if (duration >= 0)
         return (uint64_t)duration;
     return (uint64_t)(-(duration + 1)) + 1u;
 }
 
+/// @brief Advance a snprintf cursor by @p len bytes, clamping at @p end.
+/// @details Used by the multi-fragment duration formatter to chain `snprintf` calls
+///          into a fixed-size buffer. Negative @p len (snprintf format error) is a no-op;
+///          a successful len that would overrun @p end clamps the cursor at @p end so
+///          subsequent appends become silent no-ops.
 static void dur_append_snprintf(char **p, char *end, int len) {
     if (len < 0)
         return;

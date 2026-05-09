@@ -44,14 +44,25 @@ typedef struct rt_perlin_impl {
     uint8_t perm[512]; // Doubled permutation table
 } rt_perlin_impl;
 
+/// @brief Ken Perlin's 6t⁵−15t⁴+10t³ fade curve for smooth interpolation.
+/// @details Smoothstep replacement chosen so the first AND second derivatives are zero
+///          at t=0 and t=1 — produces visually continuous gradients across cell
+///          boundaries in the noise field.
 static double fade(double t) {
     return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
 }
 
+/// @brief Linear interpolation between @p a and @p b parameterised by @p t.
 static double lerp(double t, double a, double b) {
     return a + t * (b - a);
 }
 
+/// @brief 3D gradient hash: dot product of (x, y, z) with one of 12 fixed gradient vectors.
+/// @details Selects from the 12 edge-midpoint vectors of a cube (the original Perlin '02
+///          gradient set) by indexing into the low 4 bits of @p hash. The bit-twiddled
+///          form avoids a lookup table — `(h & 1) ? -u : u` flips signs based on the
+///          hash bits, and the `u`/`v` selection picks two of the three input
+///          coordinates per gradient.
 static double grad3(int hash, double x, double y, double z) {
     int h = hash & 15;
     double u = h < 8 ? x : y;
@@ -59,6 +70,9 @@ static double grad3(int hash, double x, double y, double z) {
     return ((h & 1) ? -u : u) + ((h & 2) ? -v : v);
 }
 
+/// @brief 2D gradient hash: dot product of (x, y) with one of four diagonal gradients.
+/// @details The four cases cover the diagonals (+x+y, -x+y, +x-y, -x-y), which is the
+///          standard 2D Perlin gradient set.
 static double grad2(int hash, double x, double y) {
     int h = hash & 3;
     switch (h) {
@@ -74,6 +88,8 @@ static double grad2(int hash, double x, double y) {
     return 0;
 }
 
+/// @brief GC finalizer for Perlin generators — no-op since the permutation table is
+///        allocated inline with the runtime object.
 static void rt_perlin_finalize(void *obj) {
     // No dynamic allocations beyond the object itself
     (void)obj;

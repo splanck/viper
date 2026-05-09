@@ -347,6 +347,9 @@ static void **find_binding(int type_id, int iface_id) {
     return NULL;
 }
 
+/// @brief NULL-safe `strcmp`-equality test for two C strings.
+/// @details Treats `(NULL, NULL)` and pointer-equal cases as equal up front so registry
+///          lookups that hand in optional names don't crash on a NULL probe.
 static int tr_cstr_eq(const char *a, const char *b) {
     if (a == b)
         return 1;
@@ -355,6 +358,11 @@ static int tr_cstr_eq(const char *a, const char *b) {
     return strcmp(a, b) == 0;
 }
 
+/// @brief Selectively free the parts of a class-info record that the registry owns.
+/// @details The registry sometimes accepts caller-owned `rt_class_info` records and
+///          sometimes allocates its own. The two ownership flags let cleanup skip the
+///          parts that belong to someone else: only @p owned_qname-flagged qnames are
+///          freed, and only @p owned_ci-flagged outer records are freed.
 static void tr_free_owned_class_info(const rt_class_info *ci, int owned_ci, int owned_qname) {
     if (owned_qname && ci && ci->qname)
         tr_free_owned_cstr(ci->qname);
@@ -362,6 +370,10 @@ static void tr_free_owned_class_info(const rt_class_info *ci, int owned_ci, int 
         free((void *)(uintptr_t)ci);
 }
 
+/// @brief Test whether an existing registry entry already represents the same class.
+/// @details Compares `(type_id, vtable, vtable_len, base_type_id, qname)`. Used by
+///          re-registration paths to recognise idempotent calls (same class registered
+///          twice from different translation units) versus genuine collisions.
 static int tr_class_entry_matches(const class_entry *entry, const rt_class_info *ci) {
     if (!entry || !entry->ci || !ci)
         return 0;

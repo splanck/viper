@@ -4202,8 +4202,8 @@ RT_FUNC(CountdownWait,        rt_countdown_wait,         "Viper.Time.Countdown.W
 // TYPE CONVERSION
 //=============================================================================
 
-RT_FUNC(ParseDouble, rt_parse_double, "Viper.Core.Parse.Double",     "i32(ptr,ptr)")
-RT_FUNC(ParseInt64,  rt_parse_int64,  "Viper.Core.Parse.Int64",      "i32(ptr,ptr)")
+RT_FUNC(ParseDouble, rt_parse_double_str, "Viper.Core.Parse.Double",     "i32(str,ptr)")
+RT_FUNC(ParseInt64,  rt_parse_int64_str,  "Viper.Core.Parse.Int64",      "i32(str,ptr)")
 RT_FUNC(ParseDoubleOption, rt_parse_double_option, "Viper.Core.Parse.DoubleOption", "obj<Viper.Option>(str)")
 RT_FUNC(ParseInt64Option,  rt_parse_int64_option,  "Viper.Core.Parse.Int64Option",  "obj<Viper.Option>(str)")
 RT_FUNC(ToDouble,    rt_to_double,    "Viper.Core.Convert.ToDouble", "f64(str)")
@@ -4244,8 +4244,8 @@ RT_ALIAS("Viper.Parse.IsNum", ParseIsNum)
 RT_ALIAS("Viper.Parse.IntRadix", ParseIntRadix)
 
 RT_CLASS_BEGIN("Viper.Core.Parse", CoreParse, "obj", none)
-    RT_METHOD("Double",    "i32(ptr,ptr)",     ParseDouble)
-    RT_METHOD("Int64",     "i32(ptr,ptr)",     ParseInt64)
+    RT_METHOD("Double",    "i32(str,ptr)",     ParseDouble)
+    RT_METHOD("Int64",     "i32(str,ptr)",     ParseInt64)
     RT_METHOD("DoubleOption", "obj<Viper.Option>(str)", ParseDoubleOption)
     RT_METHOD("Int64Option",  "obj<Viper.Option>(str)", ParseInt64Option)
     RT_METHOD("TryInt",    "i1(str,ptr)",      ParseTryInt)
@@ -4260,8 +4260,8 @@ RT_CLASS_BEGIN("Viper.Core.Parse", CoreParse, "obj", none)
 RT_CLASS_END()
 
 RT_CLASS_BEGIN("Viper.Parse", CoreParse, "obj", none)
-    RT_METHOD("Double",    "i32(ptr,ptr)",     ParseDouble)
-    RT_METHOD("Int64",     "i32(ptr,ptr)",     ParseInt64)
+    RT_METHOD("Double",    "i32(str,ptr)",     ParseDouble)
+    RT_METHOD("Int64",     "i32(str,ptr)",     ParseInt64)
     RT_METHOD("DoubleOption", "obj<Viper.Option>(str)", ParseDoubleOption)
     RT_METHOD("Int64Option",  "obj<Viper.Option>(str)", ParseInt64Option)
     RT_METHOD("TryInt",    "i1(str,ptr)",      ParseTryInt)

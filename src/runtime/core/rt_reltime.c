@@ -48,12 +48,21 @@ static int64_t current_unix_seconds(void) {
     return (int64_t)time(NULL);
 }
 
+/// @brief Absolute value of @p x, saturating at `INT64_MAX` for `INT64_MIN`.
+/// @details Avoids the well-known `-INT64_MIN` undefined-behaviour trap. Used by the
+///          relative-time formatter when comparing two timestamps that may straddle
+///          zero (e.g. epoch differences across the y2038 boundary on 32-bit hosts).
 static int64_t i64_abs(int64_t x) {
     if (x == INT64_MIN)
         return INT64_MAX; // -INT64_MIN is UB; saturate instead
     return x < 0 ? -x : x;
 }
 
+/// @brief Compute the unsigned magnitude and direction of `(timestamp - reference)`.
+/// @details Splits the diff into a sign flag (`*in_future` is 1 iff @p timestamp is
+///          strictly after @p reference) and a `uint64_t` magnitude. Doing the
+///          subtraction in `uint64_t` avoids signed-overflow UB when the two values
+///          are far apart in opposite directions of the int64 range.
 static void reltime_diff(int64_t timestamp, int64_t reference, int *in_future, uint64_t *abs_diff) {
     if (timestamp >= reference) {
         *in_future = timestamp > reference;

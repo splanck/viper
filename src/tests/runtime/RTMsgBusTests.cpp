@@ -49,6 +49,7 @@ static int g_last_payload = 0;
 static void *g_current_bus = NULL;
 static int64_t g_victim_sub_id = 0;
 static int g_callback_finalized = 0;
+static int g_payload_finalized = 0;
 
 static void reset_trace() {
     g_trace_len = 0;
@@ -76,6 +77,12 @@ static void cb_trap(void *data) {
     rt_trap("subscriber boom");
 }
 
+static void cb_release_payload(void *data) {
+    g_trace[g_trace_len++] = 4;
+    g_last_payload = *(int *)data;
+    assert(rt_memory_release(data) == 1);
+}
+
 static void cb_unsubscribe_other(void *data) {
     g_trace[g_trace_len++] = 10;
     g_last_payload = *(int *)data;
@@ -88,6 +95,11 @@ static void cb_unsubscribe_other(void *data) {
 static void callback_finalizer(void *obj) {
     (void)obj;
     g_callback_finalized++;
+}
+
+static void payload_finalizer(void *obj) {
+    (void)obj;
+    g_payload_finalized++;
 }
 
 static void test_new() {
@@ -237,6 +249,30 @@ static void test_publish_invokes_callbacks_in_order() {
 
     rt_string_unref(topic);
     rt_string_unref(missing);
+    destroy_obj(bus);
+}
+
+static void test_publish_retains_managed_payload_for_dispatch() {
+    void *bus = rt_msgbus_new();
+    rt_string topic = make_str("payload_lifetime");
+    int *payload = (int *)rt_obj_new_i64(0xDA7A, (int64_t)sizeof(int));
+    assert(payload != NULL);
+    *payload = 66;
+    rt_obj_set_finalizer(payload, payload_finalizer);
+    g_payload_finalized = 0;
+
+    subscribe_native(bus, topic, cb_release_payload);
+    subscribe_native(bus, topic, cb_second);
+
+    reset_trace();
+    assert(rt_msgbus_publish(bus, topic, payload) == 2);
+    assert(g_trace_len == 2);
+    assert(g_trace[0] == 4);
+    assert(g_trace[1] == 2);
+    assert(g_last_payload == 66);
+    assert(g_payload_finalized == 1);
+
+    rt_string_unref(topic);
     destroy_obj(bus);
 }
 
@@ -457,6 +493,7 @@ int main() {
     test_embedded_nul_topics_are_distinct();
     test_unsubscribe();
     test_publish_invokes_callbacks_in_order();
+    test_publish_retains_managed_payload_for_dispatch();
     test_unsubscribe_during_publish_uses_snapshot();
     test_topics();
     test_rejects_plain_heap_callback();

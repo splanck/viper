@@ -33,5 +33,7 @@ inline constexpr const char *kConvertToInt = kCoreConvertToInt;
 // Core.Parse short aliases
 inline constexpr const char *kParseDouble = kCoreParseDouble;
 inline constexpr const char *kParseInt64 = kCoreParseInt64;
+inline constexpr const char *kParseDoubleCStr = "rt_parse_double";
+inline constexpr const char *kParseInt64CStr = "rt_parse_int64";
 
 } // namespace il::frontends::basic::runtime

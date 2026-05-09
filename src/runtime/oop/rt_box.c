@@ -402,6 +402,10 @@ rt_string rt_unbox_str(void *box) {
     return s;
 }
 
+/// @brief Try to extract an `i64` value from @p box, never trapping. Returns 1 on success.
+/// @details Option-style accessor backing `Viper.Core.Box.TryToI64`. On success writes the
+///          unboxed `int64_t` to @p out and returns 1. Returns 0 (with @p out zeroed) when
+///          @p box is NULL, isn't a Box, has the wrong tag, or @p out itself is NULL.
 int8_t rt_box_try_to_i64(void *box, int64_t *out) {
     if (out)
         *out = 0;
@@ -414,6 +418,8 @@ int8_t rt_box_try_to_i64(void *box, int64_t *out) {
     return 1;
 }
 
+/// @brief Try to extract an `f64` value from @p box, never trapping. Returns 1 on success.
+/// @details Mirror of `rt_box_try_to_i64` for `RT_BOX_F64`. Failure paths zero @p out.
 int8_t rt_box_try_to_f64(void *box, double *out) {
     if (out)
         *out = 0.0;
@@ -426,6 +432,10 @@ int8_t rt_box_try_to_f64(void *box, double *out) {
     return 1;
 }
 
+/// @brief Try to extract a bool value from @p box, never trapping. Returns 1 on success.
+/// @details Mirror of `rt_box_try_to_i64` for `RT_BOX_I1`. The contained `int64_t` is
+///          normalised to `0`/`1` via the ternary so callers always observe a canonical
+///          boolean even if the box was constructed with a non-canonical truthy integer.
 int8_t rt_box_try_to_i1(void *box, int8_t *out) {
     if (out)
         *out = 0;
@@ -438,6 +448,10 @@ int8_t rt_box_try_to_i1(void *box, int8_t *out) {
     return 1;
 }
 
+/// @brief Try to extract a runtime string from @p box, never trapping. Returns 1 on success.
+/// @details On success writes a *retained* string handle to @p out — caller owns the new
+///          reference and must release it (this is what the IL ownership metadata's
+///          `ownedOutArgMask` for `Box.TryToStr` describes). Failure paths NULL out @p out.
 int8_t rt_box_try_to_str(void *box, rt_string *out) {
     if (out)
         *out = NULL;
@@ -510,6 +524,19 @@ void *rt_box_value_type(int64_t size) {
     return rt_obj_new_i64(RT_VALUE_TYPE_CLASS_ID, size);
 }
 
+/// @brief Register a managed-field offset on a value-type instance for GC traversal and finalize.
+/// @details Backs `Viper.Core.Box.ValueType.AddField`. Validates that:
+///            - @p obj is a live value-type heap object (class id `RT_VALUE_TYPE_CLASS_ID`),
+///            - @p offset is non-negative, pointer-aligned, and within `hdr->cap` with room
+///              for a `void *` slot,
+///            - @p kind is `RT_VALUE_FIELD_OBJ` or `RT_VALUE_FIELD_STR`.
+///          Each precondition violation traps with a descriptive message.
+///
+///          On success allocates a `value_type_field` node and links it into the layout
+///          for @p obj (creating the layout entry on first call). When @p retain_now is
+///          non-zero the runtime takes its own retain on whatever value already lives in
+///          the slot — used at construction time when the caller transfers an owned
+///          reference into a freshly-allocated value type.
 void rt_box_value_type_add_field(void *obj, int64_t offset, int64_t kind, int8_t retain_now) {
     if (!obj) {
         rt_trap("rt_box_value_type_add_field: null value type");
@@ -524,6 +551,10 @@ void rt_box_value_type_add_field(void *obj, int64_t offset, int64_t kind, int8_t
     if (offset < 0 || (uint64_t)offset > (uint64_t)SIZE_MAX ||
         (size_t)offset > hdr->cap || hdr->cap - (size_t)offset < sizeof(void *)) {
         rt_trap("rt_box_value_type_add_field: field offset out of range");
+        return;
+    }
+    if (((size_t)offset % sizeof(void *)) != 0) {
+        rt_trap("rt_box_value_type_add_field: field offset is not pointer-aligned");
         return;
     }
     if (kind != RT_VALUE_FIELD_OBJ && kind != RT_VALUE_FIELD_STR) {

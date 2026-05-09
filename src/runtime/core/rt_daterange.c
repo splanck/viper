@@ -54,6 +54,7 @@ typedef struct {
     int64_t end;   // Unix timestamp in seconds
 } rt_daterange_impl;
 
+/// @brief Overflow-checked signed 64-bit subtraction. Returns 1 on overflow.
 static int daterange_checked_sub_i64(int64_t a, int64_t b, int64_t *out) {
     if ((b < 0 && a > INT64_MAX + b) || (b > 0 && a < INT64_MIN + b))
         return 1;
@@ -61,6 +62,11 @@ static int daterange_checked_sub_i64(int64_t a, int64_t b, int64_t *out) {
     return 0;
 }
 
+/// @brief Test whether two adjacent ranges leave at least one day gap between them.
+/// @details Returns 1 if `right_start > left_end + 1` (i.e. the two ranges are not
+///          contiguous and not overlapping). Special-cases `INT64_MAX` so the `+1`
+///          can't overflow. Used by the union/intersect operators to decide whether
+///          two ranges merge cleanly.
 static int daterange_has_gap(int64_t left_end, int64_t right_start) {
     if (right_start <= left_end)
         return 0;
@@ -69,6 +75,10 @@ static int daterange_has_gap(int64_t left_end, int64_t right_start) {
     return right_start > left_end + 1;
 }
 
+/// @brief Narrow @p value into a `time_t`, preserving exact representability.
+/// @details `time_t` may be 32-bit or 64-bit depending on platform/ABI; the round-trip
+///          cast catches truncation. Returns 0 (and leaves @p out untouched) when
+///          @p value can't fit, 1 with the converted value on success.
 static int daterange_i64_to_time_t(int64_t value, time_t *out) {
     time_t t = (time_t)value;
     if ((int64_t)t != value)

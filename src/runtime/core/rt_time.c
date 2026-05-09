@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 //
 // Part of the Viper project, under the GNU GPL v3.
-// See LICENSE in the project root for license information.
+// See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -36,6 +36,7 @@
 #include <limits.h>
 #include <stdint.h>
 
+/// @brief Overflow-checked signed 64-bit addition. Returns 1 on overflow.
 static int rt_time_checked_add_i64(int64_t a, int64_t b, int64_t *out) {
     if ((b > 0 && a > INT64_MAX - b) || (b < 0 && a < INT64_MIN - b))
         return 1;
@@ -43,6 +44,9 @@ static int rt_time_checked_add_i64(int64_t a, int64_t b, int64_t *out) {
     return 0;
 }
 
+/// @brief Overflow-checked signed 64-bit multiplication. Returns 1 on overflow.
+/// @details Uses `__builtin_mul_overflow` on GCC/Clang and a manual divide-bound
+///          check on MSVC.
 static int rt_time_checked_mul_i64(int64_t a, int64_t b, int64_t *out) {
 #if defined(__GNUC__) || defined(__clang__)
     return __builtin_mul_overflow(a, b, out);
@@ -71,6 +75,11 @@ static int rt_time_checked_mul_i64(int64_t a, int64_t b, int64_t *out) {
 #endif
 }
 
+/// @brief Compute `seconds * scale + fraction` with overflow trapping via `rt_trap_ovf`.
+/// @details Used to convert a `(seconds, sub_second)` pair into a single integer time
+///          value at a given resolution (e.g. `(s, ns/1e6) → ms` uses `scale = 1000`).
+///          Either the multiply or the add overflowing surfaces the trap rather than
+///          silently wrapping.
 static int64_t rt_time_scale_seconds(int64_t seconds, int64_t scale, int64_t fraction) {
     int64_t whole;
     int64_t result;
@@ -86,6 +95,10 @@ static int64_t rt_time_scale_seconds(int64_t seconds, int64_t scale, int64_t fra
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+/// @brief Narrow a `uint64_t` into `int64_t`, trapping when the value exceeds `INT64_MAX`.
+/// @details Used to clip Win32 `GetTickCount64`/`QueryPerformanceCounter` returns into
+///          the signed 64-bit range that the rest of the time machinery uses. Long-uptime
+///          systems can produce values beyond `INT64_MAX` after many years of uptime.
 static int64_t rt_time_u64_to_i64(uint64_t value) {
     if (value > (uint64_t)INT64_MAX) {
         rt_trap_ovf();

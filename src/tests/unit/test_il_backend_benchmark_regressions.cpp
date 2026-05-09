@@ -119,7 +119,7 @@ void testStringOwnershipMetadata() {
 
     effects = il::transform::classifyCalleeEffects("rt_str_len");
     assert(effects.readonly);
-    assert(effects.nothrow);
+    assert(!effects.nothrow);
     assert(!effects.hasOwnershipEffects());
 }
 

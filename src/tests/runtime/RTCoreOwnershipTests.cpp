@@ -17,6 +17,7 @@
 #include "rt_string.h"
 #include "il/runtime/HelperEffects.hpp"
 #include "il/runtime/RuntimeOwnership.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 
 #include <assert.h>
 #include <stdint.h>
@@ -134,6 +135,19 @@ static void test_runtime_metadata_matches_core_contracts(void) {
     assert(toDouble.known);
     assert(!toDouble.nothrow);
     assert(!toDouble.pure);
+    const auto strLen = il::runtime::classifyHelperEffects("rt_str_len");
+    assert(strLen.known);
+    assert(strLen.readonly);
+    assert(!strLen.nothrow);
+
+    const auto *parseDouble = il::runtime::findRuntimeSignature("Viper.Core.Parse.Double");
+    assert(parseDouble != nullptr);
+    assert(parseDouble->paramTypes.size() == 2);
+    assert(parseDouble->paramTypes[0].kind == il::core::Type::Kind::Str);
+    const auto *parseInt64 = il::runtime::findRuntimeSignature("Viper.Core.Parse.Int64");
+    assert(parseInt64 != nullptr);
+    assert(parseInt64->paramTypes.size() == 2);
+    assert(parseInt64->paramTypes[0].kind == il::core::Type::Kind::Str);
 }
 
 } // namespace

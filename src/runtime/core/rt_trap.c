@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 //
 // Part of the Viper project, under the GNU GPL v3.
-// See LICENSE in the project root for license information.
+// See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -39,6 +39,14 @@
 #include "rt_internal.h"
 #include "rt_trap.h"
 
+/// @brief Append @p s to @p dst with C-style escaping for non-ASCII bytes and quotes.
+/// @details Used to format runtime-string trap messages for the C-string trap dispatcher
+///          without truncating at embedded NULs. Validates the handle first — invalid
+///          handles render as the literal `<invalid string>` rather than dereferencing
+///          arbitrary memory. Caps shown bytes at 64 with a `...` ellipsis to keep trap
+///          messages bounded for log output. Backslash and double-quote are escaped;
+///          non-printable bytes render as `\xNN`. The function is append-only: existing
+///          contents of @p dst are preserved.
 static void append_escaped_string(char *dst, size_t dst_cap, rt_string s) {
     if (!dst || dst_cap == 0)
         return;
@@ -76,6 +84,11 @@ static void append_escaped_string(char *dst, size_t dst_cap, rt_string s) {
     dst[pos] = '\0';
 }
 
+/// @brief Return 1 if @p message is a live, non-empty runtime string handle.
+/// @details Defensive check used by `format_message`: NULL, invalid handle, or empty
+///          string all return 0 so the caller falls back to a fixed diagnostic. Reads
+///          the underlying `->data` pointer only after `rt_string_is_handle` confirmed
+///          the handle is live.
 static int message_has_bytes(rt_string message) {
     if (message && !rt_string_is_handle((const void *)message))
         return 0;
@@ -84,6 +97,11 @@ static int message_has_bytes(rt_string message) {
     return rt_str_len(message) > 0 ? 1 : 0;
 }
 
+/// @brief Render @p message into @p buf for trap formatting, falling back to @p fallback.
+/// @details If @p message is empty/invalid or the supplied buffer is unusable, returns the
+///          @p fallback C-string verbatim. Otherwise zeroes @p buf, escapes the message via
+///          `append_escaped_string`, and returns @p buf. The escaped form is guaranteed to
+///          fit inside @p cap and to be NUL-terminated.
 static const char *format_message(rt_string message, const char *fallback, char *buf, size_t cap) {
     if (!message_has_bytes(message))
         return fallback;

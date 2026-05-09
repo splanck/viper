@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 //
 // Part of the Viper project, under the GNU GPL v3.
-// See LICENSE in the project root for license information.
+// See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -320,6 +320,12 @@ double rt_val_to_double(const char *s, bool *ok) {
     return value;
 }
 
+/// @brief Locale-isolated `vsnprintf` that always uses the C locale's numeric formatting.
+/// @details Mirror of `rt_format_vsnprintf_c_locale` for the numeric-conversion path —
+///          guarantees deterministic decimal points and digit grouping regardless of the
+///          process's `LC_NUMERIC` setting. Win32 uses `_create_locale` + `_vsnprintf_l`;
+///          POSIX uses `newlocale` + `uselocale` + `vsnprintf`. Returns -1 on locale
+///          acquisition failure so callers can fall back to a deterministic default.
 static int rt_vsnprintf_c_locale(char *out, size_t cap, const char *fmt, va_list args) {
 #if defined(_WIN32)
     _locale_t c_locale = _create_locale(LC_NUMERIC, "C");

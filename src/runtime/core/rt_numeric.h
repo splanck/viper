@@ -118,11 +118,23 @@ void rt_str_from_i16(int16_t x, char *out, size_t cap, RtError *out_err);
 /// @return Err_None on success, otherwise an appropriate runtime error code.
 int32_t rt_parse_int64(const char *text, int64_t *out_value);
 
+/// @brief Parse signed 64-bit integer from a runtime string @p text.
+/// @param text Runtime string; embedded NULs are rejected.
+/// @param out_value Destination for parsed result; must not be NULL.
+/// @return Err_None on success, otherwise an appropriate runtime error code.
+int32_t rt_parse_int64_str(rt_string text, int64_t *out_value);
+
 /// @brief Parse double-precision floating point from trimmed C string @p text.
 /// @param text Null-terminated ASCII string; may contain leading/trailing whitespace.
 /// @param out_value Destination for parsed result; must not be NULL.
 /// @return Err_None on success, otherwise an appropriate runtime error code.
 int32_t rt_parse_double(const char *text, double *out_value);
+
+/// @brief Parse double-precision floating point from a runtime string @p text.
+/// @param text Runtime string; embedded NULs are rejected.
+/// @param out_value Destination for parsed result; must not be NULL.
+/// @return Err_None on success, otherwise an appropriate runtime error code.
+int32_t rt_parse_double_str(rt_string text, double *out_value);
 
 #ifdef __cplusplus
 }

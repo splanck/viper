@@ -19,7 +19,8 @@
 // Ownership/Lifetime:
 //   - MessageBus objects are heap-allocated and GC-managed.
 //   - The bus retains subscriber callback objects while subscribed.
-//   - Published data pointers are not retained; callers manage their own lifetime.
+//   - Managed published data is retained for the synchronous dispatch window.
+//     Raw foreign pointers remain borrowed and must outlive the publish call.
 //
 // Links: src/runtime/core/rt_msgbus.c (implementation), src/runtime/core/rt_string.h
 //
@@ -64,7 +65,8 @@ int8_t rt_msgbus_unsubscribe(void *obj, int64_t sub_id);
 /// @brief Publish a message to a topic.
 /// @param obj MessageBus pointer.
 /// @param topic Topic string.
-/// @param data Message data (any object).
+/// @param data Message data. Runtime strings/objects are retained during dispatch;
+///        raw foreign pointers are borrowed for the duration of the call.
 /// @return Number of subscribers notified.
 int64_t rt_msgbus_publish(void *obj, rt_string topic, void *data);
 

@@ -193,11 +193,11 @@ TEST(RuntimeClassParseBinding, CatalogContainsParseAliases) {
             hasIntRadix = hasIntRadix || std::string(m.name) == "IntRadix";
             if (std::string(m.name) == "Int64") {
                 hasInt64 = true;
-                EXPECT_EQ(std::string(m.signature), std::string("i32(ptr,ptr)"));
+                EXPECT_EQ(std::string(m.signature), std::string("i32(str,ptr)"));
             }
             if (std::string(m.name) == "Double") {
                 hasDouble = true;
-                EXPECT_EQ(std::string(m.signature), std::string("i32(ptr,ptr)"));
+                EXPECT_EQ(std::string(m.signature), std::string("i32(str,ptr)"));
             }
         }
         EXPECT_TRUE(hasTryInt);

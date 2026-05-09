@@ -231,8 +231,7 @@ LowerResult Lowerer::coerceValueToType(Value value,
 ///          rather than newly allocated strings. Releasing them would cause
 ///          dangling pointers in the owning collection.
 static bool isBorrowedStringCall(const std::string &callee) {
-    return callee == kSeqGetStr || // raw pointer into Seq
-           callee == kUnboxStr;    // pointer into Box
+    return callee == kSeqGetStr; // raw pointer into Seq
 }
 
 Lowerer::Value Lowerer::emitCallRet(Type retTy,
@@ -486,7 +485,7 @@ Lowerer::Value Lowerer::emitBoxValue(Value val, Type ilType, TypeRef semanticTyp
 
                     if (isStringType(type)) {
                         managedFields.push_back(
-                            {baseOffset, /*RT_VALUE_FIELD_STR=*/2, /*retainNow=*/0});
+                            {baseOffset, /*RT_VALUE_FIELD_STR=*/2, /*retainNow=*/1});
                         return;
                     }
 
@@ -519,11 +518,8 @@ Lowerer::Value Lowerer::emitBoxValue(Value val, Type ilType, TypeRef semanticTyp
                                         {Value::constInt(static_cast<int64_t>(info->totalSize))});
 
             // Write the pre-read field values into the heap object
-            for (size_t i = 0; i < info->fields.size(); ++i) {
+            for (size_t i = 0; i < info->fields.size(); ++i)
                 emitFieldStore(&info->fields[i], heapPtr, fieldValues[i]);
-                if (isStringType(info->fields[i].type))
-                    emitCall(kStrReleaseMaybe, {fieldValues[i]});
-            }
 
             for (const auto &field : managedFields) {
                 emitCall(kBoxValueTypeAddField,
@@ -531,6 +527,11 @@ Lowerer::Value Lowerer::emitBoxValue(Value val, Type ilType, TypeRef semanticTyp
                           Value::constInt(static_cast<int64_t>(field.offset)),
                           Value::constInt(field.kind),
                           Value::constInt(field.retainNow)});
+            }
+
+            for (size_t i = 0; i < info->fields.size(); ++i) {
+                if (isStringType(info->fields[i].type))
+                    emitCall(kStrReleaseMaybe, {fieldValues[i]});
             }
 
             return heapPtr;

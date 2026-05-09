@@ -65,6 +65,12 @@ static int g_output_init_state = 0;
 /// @details Allows nested begin/end batch calls to work correctly across threads.
 static int g_batch_mode_depth = 0;
 
+/// @brief Write @p len raw bytes to the platform's standard-output stream.
+/// @details Two implementations live behind the `RT_PLATFORM_WINDOWS` macro: Win32 uses
+///          `WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), ...)` to avoid CRT translation,
+///          POSIX uses `fwrite(stdout)`. The Win32 path chunks at `0xFFFFFFFF` because
+///          `WriteFile`'s `nNumberOfBytesToWrite` is `DWORD` so a single `size_t` may
+///          exceed it on a 64-bit build. Silent no-op on NULL or zero-length input.
 #if RT_PLATFORM_WINDOWS
 static void rt_output_write_bytes(const char *s, size_t len) {
     if (!s || len == 0)

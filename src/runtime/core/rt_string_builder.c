@@ -419,6 +419,13 @@ static rt_string_builder *get_builder(void *sb) {
     return &obj->builder;
 }
 
+/// @brief Translate an `rt_sb_status_t` into the matching runtime trap kind.
+/// @details Centralises the status→trap mapping so every public StringBuilder method that
+///          accepts a fallible operation can route through one helper. `RT_SB_OK` is a
+///          no-op; allocation failure traps with `RUNTIME_ERROR`/`Err_RuntimeError`;
+///          arithmetic/bounds overflow traps with `OVERFLOW`/`Err_Overflow`; invalid
+///          arguments and the catch-all path land on `INVALID_ARG` so call sites read
+///          like a single `rt_text_sb_trap_status(op, fn(...));` line.
 static void rt_text_sb_trap_status(const char *op, rt_sb_status_t status) {
     switch (status) {
         case RT_SB_OK:

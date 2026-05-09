@@ -52,6 +52,12 @@ typedef enum {
     MV_BLOCK = RT_MODVAR_KIND_BLOCK
 } mv_kind_t;
 
+/// @brief FNV-1a 64-bit hash of a module-variable @p key, salted by its kind tag.
+/// @details Salting with `kind` (XORed into the FNV offset basis) lets `(name, kind)`
+///          tuples coexist in the index without collision — different module-variable
+///          kinds occupying the same name hash to different bucket slots. Returns 1 if
+///          the natural hash happened to land on 0 so the caller can use 0 as a
+///          "free slot" sentinel in the index.
 static uint64_t mv_hash_key(const char *key, mv_kind_t kind) {
     uint64_t hash = 1469598103934665603ULL ^ (uint64_t)kind;
     for (const unsigned char *p = (const unsigned char *)key; *p; ++p) {
@@ -61,6 +67,12 @@ static uint64_t mv_hash_key(const char *key, mv_kind_t kind) {
     return hash ? hash : 1;
 }
 
+/// @brief Grow the module-variable index when it would otherwise exceed 70% load.
+/// @details Open-addressing hash tables degrade rapidly past ~0.7 load. This helper
+///          checks the projected load and doubles the capacity (rehashing every existing
+///          entry) when needed. Capacity stays a power of two so the modulo can use
+///          `& mask` instead of division. Traps on `SIZE_MAX/2` overflow or a `calloc`
+///          failure during rehash.
 static void mv_ensure_index_capacity(RtContext *ctx, size_t entry_count) {
     if (ctx->modvar_index_capacity != 0 && (entry_count + 1) * 10 < ctx->modvar_index_capacity * 7)
         return;
@@ -90,6 +102,13 @@ static void mv_ensure_index_capacity(RtContext *ctx, size_t entry_count) {
     ctx->modvar_index_capacity = new_cap;
 }
 
+/// @brief Linear-probing lookup for an existing module-variable entry.
+/// @details Walks the open-addressing index from `hash & mask`, comparing `(hash, kind,
+///          name)` against each occupied slot. Slot value 0 marks an empty terminator
+///          (probe stops); non-zero is `entry_index + 1` (the +1 keeps 0 reserved as
+///          "empty"). On a match, validates the stored size against @p size — a size
+///          mismatch traps because it indicates a programming bug where two callers
+///          declared the same name with incompatible storage shapes.
 static RtModvarEntry *mv_lookup(
     RtContext *ctx, const char *key, uint64_t hash, mv_kind_t kind, size_t size) {
     if (!ctx->modvar_index_slots || ctx->modvar_index_capacity == 0)
@@ -109,6 +128,11 @@ static RtModvarEntry *mv_lookup(
     return NULL;
 }
 
+/// @brief Insert a fresh entry into the open-addressing index.
+/// @details Caller has already appended the entry to `ctx->modvar_entries`; this helper
+///          finds its bucket slot by linear probing from `entry->hash & mask` and stores
+///          `entry_index + 1` (the +1 keeps 0 reserved as the empty marker). Caller
+///          must hold capacity room — `mv_ensure_index_capacity` should have run first.
 static void mv_insert_index(RtContext *ctx, size_t entry_index) {
     RtModvarEntry *entry = &ctx->modvar_entries[entry_index];
     size_t mask = ctx->modvar_index_capacity - 1;

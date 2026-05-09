@@ -66,6 +66,13 @@ size_t countCallsTo(const il::core::Function &fn, const std::string &callee) {
     return count;
 }
 
+size_t countCallsTo(const il::core::Module &module, const std::string &callee) {
+    size_t count = 0;
+    for (const auto &fn : module.functions)
+        count += countCallsTo(fn, callee);
+    return count;
+}
+
 bool hasAllocaSize(const il::core::Function &fn, int64_t size) {
     for (const auto &block : fn.blocks) {
         for (const auto &instr : block.instructions) {
@@ -96,6 +103,63 @@ bool hasErrorContaining(const CompilerResult &result, const std::string &needle)
             return true;
     }
     return false;
+}
+
+TEST(ZiaRuntimeMemory, ExplicitReleaseUsesPublicRuntimeSurface) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var remaining = Viper.Memory.Release(Viper.Core.Box.I64(42));
+}
+)";
+    CompilerInput input{.source = source, .path = "memory_release_surface.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    EXPECT_GE(countCallsTo(result.module, kHeapRelease), static_cast<size_t>(1));
+    EXPECT_EQ(countCallsTo(result.module, "rt_heap_release_deferred"), static_cast<size_t>(0));
+}
+
+TEST(ZiaRuntimeMemory, ExplicitStringReleaseReturnsRuntimeCount) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var remaining = Viper.Memory.ReleaseStr("owned");
+}
+)";
+    CompilerInput input{.source = source, .path = "memory_release_str_surface.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    EXPECT_GE(countCallsTo(result.module, kHeapReleaseStr), static_cast<size_t>(1));
+    EXPECT_EQ(countCallsTo(result.module, "rt_str_release_maybe"), static_cast<size_t>(0));
+}
+
+TEST(ZiaRuntimeMemory, BoxToStrResultIsOwnedAndReleased) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    Viper.Core.Box.ToStr(Viper.Core.Box.Str("owned"));
+}
+)";
+    CompilerInput input{.source = source, .path = "box_to_str_owned.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    EXPECT_GE(countCallsTo(result.module, kUnboxStr), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(result.module, kStrReleaseMaybe), static_cast<size_t>(1));
 }
 
 //===----------------------------------------------------------------------===//

@@ -133,6 +133,31 @@ static void test_low_level_parse_failures_zero_output() {
     printf("test_low_level_parse_failures_zero_output: PASSED\n");
 }
 
+static void test_public_parse_string_wrappers() {
+    int64_t ivalue = 0;
+    double dvalue = 0.0;
+    rt_string int_text = make_str(" +42 ");
+    rt_string dbl_text = make_str(" 6.5 ");
+    assert(rt_parse_int64_str(int_text, &ivalue) == (int32_t)Err_None);
+    assert(ivalue == 42);
+    assert(rt_parse_double_str(dbl_text, &dvalue) == (int32_t)Err_None);
+    assert(fabs(dvalue - 6.5) < 0.001);
+    rt_string_unref(int_text);
+    rt_string_unref(dbl_text);
+
+    const char raw[] = {'1', '\0', '2'};
+    rt_string embedded = rt_string_from_bytes(raw, sizeof(raw));
+    ivalue = 123;
+    dvalue = 123.0;
+    assert(rt_parse_int64_str(embedded, &ivalue) == (int32_t)Err_InvalidCast);
+    assert(ivalue == 0);
+    assert(rt_parse_double_str(embedded, &dvalue) == (int32_t)Err_InvalidCast);
+    assert(dvalue == 0.0);
+    rt_string_unref(embedded);
+
+    printf("test_public_parse_string_wrappers: PASSED\n");
+}
+
 static void test_parse_option_wrappers() {
     void *num = rt_parse_double_option(make_str("6.25"));
     assert(rt_obj_class_id(num) == RT_OPTION_CLASS_ID);
@@ -316,6 +341,7 @@ static void test_int_radix() {
 
     // Decimal
     assert(rt_parse_int_radix(make_str("42"), 10, -1) == 42);
+    assert(rt_parse_int_radix(make_str("+10"), 10, -1) == 10);
     assert(rt_parse_int_radix(make_str("-42"), 10, -1) == -42);
     assert(rt_parse_int_radix(make_str("-9223372036854775808"), 10, -1) == INT64_MIN);
 
@@ -337,7 +363,6 @@ static void test_int_radix() {
     assert(rt_parse_int_radix(make_str("GG"), 16, -1) == -1);
     assert(rt_parse_int_radix(make_str(""), 10, -1) == -1);
     assert(rt_parse_int_radix(make_str("0x10"), 16, -1) == -1);
-    assert(rt_parse_int_radix(make_str("+10"), 10, -1) == -1);
     assert(rt_parse_int_radix(make_str("-2a"), 16, -1) == -1);
     assert(rt_parse_int_radix(make_str("9223372036854775808"), 10, -1) == -1);
 
@@ -442,6 +467,7 @@ int main() {
     test_try_num_invalid();
     test_low_level_double_rejects_hex_float();
     test_low_level_parse_failures_zero_output();
+    test_public_parse_string_wrappers();
     test_parse_option_wrappers();
 
     // TryBool

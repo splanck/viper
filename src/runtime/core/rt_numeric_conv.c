@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 //
 // Part of the Viper project, under the GNU GPL v3.
-// See LICENSE in the project root for license information.
+// See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -38,13 +38,16 @@
 #endif
 
 #include "rt.hpp"
+#include "rt_internal.h"
 #include "rt_numeric.h"
+#include "rt_string.h"
 
 #include <errno.h>
 #include <limits.h>
 #include <locale.h>
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 
 #if defined(__APPLE__)
 #include <xlocale.h>
@@ -273,6 +276,9 @@ static inline int rt_is_ascii_space(unsigned char ch) {
            ch == '\v';
 }
 
+/// @brief Locale-independent test for ASCII digits 0-9.
+/// @details Used by the parsers in this file instead of `isdigit` so the result is
+///          deterministic regardless of the process's `LC_CTYPE` setting.
 static inline int rt_is_ascii_digit(unsigned char ch) {
     return ch >= '0' && ch <= '9';
 }
@@ -370,6 +376,32 @@ int32_t rt_parse_int64(const char *text, int64_t *out_value) {
     return (int32_t)Err_None;
 }
 
+/// @brief Resolve the underlying byte buffer of @p text, returning NULL when unavailable.
+/// @details Defensive helper used by the public parsers — guards against a NULL handle
+///          and against a string struct with a NULL data pointer (which would otherwise
+///          crash in `strtol`/`strtod`). The returned pointer aliases the string's
+///          storage; callers must not retain it past the lifetime of @p text.
+static const char *rt_parse_string_text(rt_string text) {
+    if (!text || !rt_string_is_handle((const void *)text) || !text->data)
+        return NULL;
+    size_t len = (size_t)rt_str_len(text);
+    if (memchr(text->data, '\0', len))
+        return NULL;
+    return text->data;
+}
+
+/// @brief Parse a signed 64-bit integer from a runtime string.
+int32_t rt_parse_int64_str(rt_string text, int64_t *out_value) {
+    if (out_value)
+        *out_value = 0;
+    if (!out_value)
+        return (int32_t)Err_InvalidOperation;
+    const char *cstr = rt_parse_string_text(text);
+    if (!cstr)
+        return (int32_t)Err_InvalidCast;
+    return rt_parse_int64(cstr, out_value);
+}
+
 /// @brief Implementation helper that parses a double using the C locale.
 /// @details Establishes a temporary C locale so decimal points use '.',
 ///          delegates to the appropriate `strtod` flavour depending on the
@@ -441,6 +473,18 @@ int32_t rt_parse_double(const char *text, double *out_value) {
     if (!text || !out_value)
         return (int32_t)Err_InvalidOperation;
     return rt_parse_double_impl(text, out_value);
+}
+
+/// @brief Parse a double from a runtime string.
+int32_t rt_parse_double_str(rt_string text, double *out_value) {
+    if (out_value)
+        *out_value = 0.0;
+    if (!out_value)
+        return (int32_t)Err_InvalidOperation;
+    const char *cstr = rt_parse_string_text(text);
+    if (!cstr)
+        return (int32_t)Err_InvalidCast;
+    return rt_parse_double(cstr, out_value);
 }
 
 #ifdef __cplusplus

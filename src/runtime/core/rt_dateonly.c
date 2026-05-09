@@ -65,6 +65,9 @@ static int8_t is_leap_year(int64_t year) {
     return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
 }
 
+/// @brief Return the number of days in @p month (1–12) of @p year.
+/// @details February yields 29 in leap years, 28 otherwise; out-of-range months
+///          produce 0 so callers detect bad input via the zero return.
 static int64_t days_in_month_impl(int64_t year, int64_t month) {
     static const int64_t days[] = {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
     if (month < 1 || month > 12)
@@ -74,6 +77,11 @@ static int64_t days_in_month_impl(int64_t year, int64_t month) {
     return days[month];
 }
 
+// Overflow-checked signed 64-bit arithmetic used by the civil-calendar day-count
+// math. Same triplet as in rt_countdown / rt_duration / rt_datetime — pre-check
+// operands before the operation to avoid signed-overflow UB.
+
+/// @brief Overflow-checked signed 64-bit addition. Returns 1 on overflow.
 static int date_checked_add_i64(int64_t a, int64_t b, int64_t *out) {
     if ((b > 0 && a > INT64_MAX - b) || (b < 0 && a < INT64_MIN - b))
         return 1;
@@ -81,6 +89,7 @@ static int date_checked_add_i64(int64_t a, int64_t b, int64_t *out) {
     return 0;
 }
 
+/// @brief Overflow-checked signed 64-bit subtraction. Returns 1 on overflow.
 static int date_checked_sub_i64(int64_t a, int64_t b, int64_t *out) {
     if ((b < 0 && a > INT64_MAX + b) || (b > 0 && a < INT64_MIN + b))
         return 1;
@@ -88,6 +97,7 @@ static int date_checked_sub_i64(int64_t a, int64_t b, int64_t *out) {
     return 0;
 }
 
+/// @brief Overflow-checked signed 64-bit multiplication. Returns 1 on overflow.
 static int date_checked_mul_i64(int64_t a, int64_t b, int64_t *out) {
 #if defined(__GNUC__) || defined(__clang__)
     return __builtin_mul_overflow(a, b, out);
@@ -116,6 +126,11 @@ static int date_checked_mul_i64(int64_t a, int64_t b, int64_t *out) {
 #endif
 }
 
+/// @brief Floor-division of @p value by @p divisor (rounds toward negative infinity).
+/// @details C's `/` rounds toward zero; this helper rounds toward `-∞` so the day-of-era
+///          math correctly handles BC dates (negative years). The fix-up subtracts 1
+///          from the truncated quotient when the remainder has a different sign than
+///          the divisor.
 static int64_t date_floor_div(int64_t value, int64_t divisor) {
     int64_t quotient = value / divisor;
     int64_t remainder = value % divisor;
@@ -124,10 +139,15 @@ static int64_t date_floor_div(int64_t value, int64_t divisor) {
     return quotient;
 }
 
+/// @brief Locale-independent test for ASCII digits 0-9.
 static int date_is_digit(char c) {
     return c >= '0' && c <= '9';
 }
 
+/// @brief Parse @p count consecutive ASCII digits from @p s into a non-negative integer.
+/// @details Used by the ISO-8601 date parser. Returns -1 on any non-digit byte so the
+///          caller can flag malformed input. No bounds check on @p s — the caller must
+///          have already verified the buffer has at least @p count bytes.
 static int date_parse_digits(const char *s, int count) {
     int value = 0;
     for (int i = 0; i < count; i++) {
@@ -174,6 +194,10 @@ static int to_days_since_epoch_checked(int64_t year, int64_t month, int64_t day,
     return 1;
 }
 
+/// @brief Trapping wrapper around `to_days_since_epoch_checked`.
+/// @details Returns the day count or traps with `rt_trap_ovf()` on overflow. Used by
+///          the public Date API entries that prefer a fail-loud contract over a
+///          two-return-value pattern.
 static int64_t to_days_since_epoch(int64_t year, int64_t month, int64_t day) {
     int64_t result;
     if (!to_days_since_epoch_checked(year, month, day, &result)) {

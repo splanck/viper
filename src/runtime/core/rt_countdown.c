@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 //
 // Part of the Viper project, under the GNU GPL v3.
-// See LICENSE in the project root for license information.
+// See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -58,6 +58,10 @@ typedef struct {
     bool running;           ///< True if countdown is currently timing.
 } ViperCountdown;
 
+/// @brief Overflow-checked signed 64-bit addition. Returns 1 on overflow, 0 on success.
+/// @details Used by the countdown deadline math so a malformed timer setup can be reported
+///          via `rt_trap_ovf()` instead of silently wrapping. The check is performed
+///          *before* the add to avoid signed-overflow UB.
 static int countdown_checked_add_i64(int64_t a, int64_t b, int64_t *out) {
     if ((b > 0 && a > INT64_MAX - b) || (b < 0 && a < INT64_MIN - b))
         return 1;
@@ -65,6 +69,7 @@ static int countdown_checked_add_i64(int64_t a, int64_t b, int64_t *out) {
     return 0;
 }
 
+/// @brief Overflow-checked signed 64-bit subtraction. Returns 1 on overflow, 0 on success.
 static int countdown_checked_sub_i64(int64_t a, int64_t b, int64_t *out) {
     if ((b < 0 && a > INT64_MAX + b) || (b > 0 && a < INT64_MIN + b))
         return 1;
@@ -72,6 +77,10 @@ static int countdown_checked_sub_i64(int64_t a, int64_t b, int64_t *out) {
     return 0;
 }
 
+/// @brief Overflow-checked signed 64-bit multiplication.
+/// @details Uses `__builtin_mul_overflow` on GCC/Clang and a manual divide-bound check on
+///          MSVC. Returns 1 on overflow without writing @p out, 0 on success after writing
+///          the product to @p out.
 static int countdown_checked_mul_i64(int64_t a, int64_t b, int64_t *out) {
 #if defined(__GNUC__) || defined(__clang__)
     return __builtin_mul_overflow(a, b, out);
@@ -100,6 +109,10 @@ static int countdown_checked_mul_i64(int64_t a, int64_t b, int64_t *out) {
 #endif
 }
 
+/// @brief Win32: read the monotonic millisecond tick count, trapping on >INT64_MAX.
+/// @details `GetTickCount64` returns a `ULONGLONG`; clamp at `INT64_MAX` since the rest
+///          of the countdown machinery uses signed 64-bit math and would interpret
+///          high values as negative.
 #if defined(_WIN32)
 static int64_t countdown_tick_count_ms(void) {
     ULONGLONG ticks = GetTickCount64();
@@ -111,6 +124,9 @@ static int64_t countdown_tick_count_ms(void) {
 }
 #endif
 
+/// @brief Validate that @p obj is a non-NULL Countdown receiver, trapping otherwise.
+/// @details Centralises the null-receiver guard so every public Countdown method reads
+///          like `ViperCountdown *cd = require_countdown(obj); if (!cd) return ...;`.
 static ViperCountdown *require_countdown(void *obj) {
     if (!obj) {
         rt_trap("Countdown: null receiver");
@@ -119,6 +135,11 @@ static ViperCountdown *require_countdown(void *obj) {
     return (ViperCountdown *)obj;
 }
 
+/// @brief POSIX: convert a `struct timespec` into a millisecond `int64_t`, trapping on overflow.
+/// @details Multiplies `tv_sec * 1000` through `countdown_checked_mul_i64` and adds
+///          `tv_nsec / 1000000` through `countdown_checked_add_i64` so an absurdly large
+///          timespec can't silently wrap. Excludes ViperDOS where `clock_gettime` is
+///          unavailable.
 #if !defined(_WIN32) && !defined(__viperdos__)
 static int64_t countdown_timespec_to_ms(struct timespec ts) {
     int64_t seconds_ms;

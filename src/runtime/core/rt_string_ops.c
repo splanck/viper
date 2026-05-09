@@ -62,7 +62,7 @@
 #include <unistd.h>
 #endif
 
-static const size_t kImmortalRefcnt = SIZE_MAX - 1;
+static const size_t kImmortalRefcnt = RT_HEAP_IMMORTAL_REFCNT;
 
 #define RT_STRING_REG_EMPTY NULL
 #define RT_STRING_REG_TOMBSTONE ((rt_string)(uintptr_t)1)

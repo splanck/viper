@@ -7,7 +7,8 @@
 //
 // File: tests/unit/il/runtime/test_SignaturesPurity.cpp
 // Purpose: Verify runtime signature registry seeds purity/read-only flags for optimisations.
-// Key invariants: Known math helpers report pure+nothrow; strlen-style helpers report
+// Key invariants: Known math helpers report pure+nothrow; string helpers stay readonly but
+//                 may trap on invalid handles.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md
 //
@@ -52,13 +53,13 @@ TEST(SignaturesPurity, ReadonlyStringHelpers) {
     const auto *lenSig = findSignature("rt_str_len");
     ASSERT_NE(lenSig, nullptr);
     EXPECT_TRUE(lenSig->readonly);
-    EXPECT_TRUE(lenSig->nothrow);
+    EXPECT_FALSE(lenSig->nothrow);
     EXPECT_FALSE(lenSig->pure);
 
     const auto *instrSig = findSignature("rt_str_index_of");
     ASSERT_NE(instrSig, nullptr);
     EXPECT_TRUE(instrSig->readonly);
-    EXPECT_TRUE(instrSig->nothrow);
+    EXPECT_FALSE(instrSig->nothrow);
 }
 
 TEST(SignaturesPurity, DuplicateRegistrationIsIdempotent) {

@@ -88,6 +88,10 @@ static inline int str_eq_ci(const char *a, const char *b) {
     return *a == *b;
 }
 
+/// @brief Decode an ASCII digit character to its integer value, supporting bases up to 36.
+/// @details Accepts decimal digits (`0-9` → 0-9), lowercase letters (`a-z` → 10-35), and
+///          uppercase letters (`A-Z` → 10-35). Returns -1 for any other byte so callers
+///          can detect "non-digit" without ambiguity. Used by `rt_parse_int_radix`.
 static inline int radix_digit_value(unsigned char ch) {
     if (ch >= '0' && ch <= '9')
         return (int)(ch - '0');
@@ -98,6 +102,12 @@ static inline int radix_digit_value(unsigned char ch) {
     return -1;
 }
 
+/// @brief Return @p s's byte buffer if it's a live handle with no embedded NUL, else NULL.
+/// @details Combines handle validation with the embedded-NUL rejection rule: TryParse
+///          callers want false (not a trap) on bad input, but they must not silently
+///          accept a string whose declared length exceeds the first NUL — that would
+///          let a hidden suffix bypass the parser. NULL handles, invalid handles, and
+///          NUL-containing strings all map to NULL so the caller short-circuits.
 static const char *string_cstr_without_embedded_nul(rt_string s) {
     if (!s || !rt_string_is_handle((const void *)s) || !s->data)
         return NULL;
@@ -110,6 +120,13 @@ static const char *string_cstr_without_embedded_nul(rt_string s) {
     return text;
 }
 
+/// @brief Walk past a well-formed decimal float at @p cursor, returning the byte after it.
+/// @details Recognises the grammar `[+|-]? digits ('.' digits)? ([eE][+|-]? digits)?`.
+///          Returns NULL when no recognisable number is found at the cursor (zero
+///          mantissa digits, or a missing exponent body after `e`/`E`). Otherwise
+///          returns a pointer one byte past the last consumed character — callers use
+///          this for trailing-suffix validation (`Try*` parsers reject any non-empty
+///          tail to keep the contract strict).
 static const char *scan_decimal_float(const char *cursor) {
     if (!cursor)
         return NULL;
@@ -352,7 +369,7 @@ int64_t rt_parse_int_radix(rt_string s, int64_t radix, int64_t default_value) {
         negative = 1;
         ++cursor;
     } else if (*cursor == '+') {
-        return default_value;
+        ++cursor;
     }
 
     if (*cursor == '\0')

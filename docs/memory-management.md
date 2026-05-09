@@ -84,7 +84,7 @@ typedef struct rt_heap_hdr {
     uint16_t kind;                 // RT_HEAP_STRING(1) | RT_HEAP_ARRAY(2) | RT_HEAP_OBJECT(3)
     uint16_t elem_kind;            // RT_ELEM_NONE(0) | I32(1) | I64(2) | F64(3) | U8(4) | STR(5) | BOX(6) | OBJ(7)
     uint32_t flags;                // bit0 = disposed, bit1 = pool-allocated
-    size_t   refcnt;               // Atomic reference count; 1 at creation; SIZE_MAX = immortal
+    size_t   refcnt;               // Atomic reference count; 1 at creation; SIZE_MAX-1 = immortal
     size_t   len;                  // Current logical length (elements)
     size_t   cap;                  // Allocated capacity (elements)
     size_t   alloc_size;           // Total allocation bytes (header + payload)
@@ -96,7 +96,7 @@ typedef struct rt_heap_hdr {
 **Invariants:**
 - `magic == 0x52504956` — validated through live heap-registry checks before public heap helpers touch the header
 - `refcnt == 1` on fresh allocation; caller owns the initial reference
-- `refcnt == SIZE_MAX` = immortal (never freed; used for string literals)
+- `refcnt >= SIZE_MAX - 1` = immortal (never freed; used for string literals and immutable runtime-owned handles)
 - `len <= cap` maintained by all mutating operations
 - Payload address = `(uint8_t*)header + sizeof(rt_heap_hdr_t)`
 - Header address = `(uint8_t*)payload - sizeof(rt_heap_hdr_t)`
@@ -109,8 +109,8 @@ typedef struct rt_heap_hdr {
 
 | Function | Behaviour |
 |----------|-----------|
-| `rt_heap_retain(payload)` | CAS-based atomic increment. No-op for NULL. Traps on zero/overflow (`SIZE_MAX - 1`). |
-| `rt_heap_release(payload)` | CAS-based atomic decrement. Frees (pool or system) when count reaches zero; double release traps without underflow. |
+| `rt_heap_retain(payload)` | CAS-based atomic increment. No-op for NULL or immortal payloads. Traps on zero/overflow before the count can collide with the immortal sentinel. |
+| `rt_heap_release(payload)` | CAS-based atomic decrement. Frees (pool or system) when count reaches zero; double release and attempts to release immortal payloads trap without underflow. |
 | `rt_heap_release_deferred(payload)` | Decrement without freeing at zero. Caller must later call `rt_heap_free_zero_ref`. |
 | `rt_heap_free_zero_ref(payload)` | Free only if refcount is already zero. No-op otherwise. |
 | `rt_memory_retain(payload)` | Public `Viper.Memory.Retain` wrapper; validates live runtime handles before retaining. |
@@ -657,8 +657,8 @@ GC-tracked so the finalizer sweep joins worker threads. See §6 above.
 |-----------|---------|-------|
 | Allocate string | `rt_string_from_bytes(bytes, len)` | refcount=1; pool if ≤512B |
 | Allocate object | `rt_obj_new_i64(class_id, size)` | refcount=1 |
-| Retain | `rt_heap_retain(p)`, `rt_memory_retain(p)`, or `rt_string_ref(s)` | Atomic increment |
-| Release | `rt_heap_release(p)`, `rt_memory_release(p)`, or `rt_string_unref(s)` | Frees at zero |
+| Retain | `rt_heap_retain(p)`, `rt_memory_retain(p)`, or `rt_string_ref(s)` | Atomic increment; immortal values are unchanged |
+| Release | `rt_heap_release(p)`, `rt_memory_release(p)`, or `rt_string_unref(s)` | Frees at zero; public memory release reports any finalizer resurrection count |
 | Deferred release | `rt_heap_release_deferred(p)` then `rt_heap_free_zero_ref(p)` | Two-step pattern |
 | Set finalizer | `rt_obj_set_finalizer(obj, fn)` | Objects only; one per object |
 | Resurrect | `rt_obj_resurrect(obj)` | Inside finalizer only; 0→1 |

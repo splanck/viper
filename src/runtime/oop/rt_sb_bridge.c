@@ -40,6 +40,11 @@ typedef struct {
     rt_string_builder builder; // embedded builder state
 } StringBuilder;
 
+/// @brief GC finalizer for the namespaced StringBuilder class.
+/// @details Releases the embedded `rt_string_builder` state — its growable byte buffer
+///          and accumulated string fragments — when the GC reclaims the wrapper object.
+///          The vptr slot itself is part of the heap object's payload and is freed by
+///          the heap allocator after this hook returns.
 static void rt_sb_finalize(void *obj) {
     if (!obj)
         return;

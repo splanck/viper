@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 //
 // Part of the Viper project, under the GNU GPL v3.
-// See LICENSE in the project root for license information.
+// See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -40,6 +40,7 @@
 #include "rt_array_str.h"
 #include "rt_format.h"
 #include "rt_hash_util.h"
+#include "rt_msgbus.h"
 #include "rt_oop.h"
 #include "rt_option.h"
 #include "rt_platform.h"
@@ -80,6 +81,28 @@ static rt_string rt_obj_make_cstr(const char *text) {
     while (text[len] != '\0')
         ++len;
     return rt_string_from_bytes(text, len);
+}
+
+/// @brief Map a built-in runtime class id to its qualified Viper class name.
+/// @details Used by `rt_obj_type_name` for objects whose class id is one of the runtime's
+///          fixed-known constants (Box / ValueType / Option / MessageBus / Callback) rather
+///          than a user-defined class registered in the type registry. Returns NULL for any
+///          id that isn't built-in so the caller can fall back to the registry lookup.
+static const char *rt_obj_builtin_class_name(int64_t class_id) {
+    switch (class_id) {
+        case RT_BOX_CLASS_ID:
+            return "Viper.Core.Box";
+        case RT_VALUE_TYPE_CLASS_ID:
+            return "Viper.Core.ValueType";
+        case RT_OPTION_CLASS_ID:
+            return "Viper.Option";
+        case RT_MSGBUS_CLASS_ID:
+            return "Viper.Core.MessageBus";
+        case RT_MSGBUS_CALLBACK_CLASS_ID:
+            return "Viper.Core.MessageBus.Callback";
+        default:
+            return NULL;
+    }
 }
 
 /// @brief Look up an object's qualified type name from its class-info record. Falls back to
@@ -249,6 +272,10 @@ void rt_memory_retain(void *p) {
     rt_heap_retain(p);
 }
 
+/// @brief Public string-typed wrapper for `Viper.Memory.RetainStr`.
+/// @details Forwards to `rt_memory_retain`, which validates the handle before retaining.
+///          The typed wrapper exists so Zia and BASIC code can call it without a `void *`
+///          cast at the IL boundary.
 void rt_memory_retain_str(rt_string s) {
     rt_memory_retain((void *)s);
 }
@@ -289,6 +316,12 @@ static int64_t rt_memory_refcount_to_i64(size_t refcount) {
     return (int64_t)refcount;
 }
 
+/// @brief Validate and release a runtime string, returning the post-release refcount.
+/// @details Backs the string-handle path of `rt_memory_release` / `rt_memory_release_str`.
+///          Validates @p s through `rt_string_is_handle` (a non-null but invalid handle
+///          traps); decrements the refcount via `rt_string_unref_count`. Saturates the
+///          immortal sentinel (`SIZE_MAX`) at `INT64_MAX` so callers can publish the
+///          observed refcount via the typed Zia API without surprising overflow traps.
 static int64_t rt_memory_release_string(rt_string s) {
     if (!s)
         return 0;
@@ -303,6 +336,16 @@ static int64_t rt_memory_release_string(rt_string s) {
     return rt_memory_refcount_to_i64(next);
 }
 
+/// @brief Drop element references owned by a heap array before its backing buffer is freed.
+/// @details Dispatches on `hdr->elem_kind`:
+///            - `RT_ELEM_STR` releases each retained `rt_string` slot.
+///            - `RT_ELEM_BOX` releases each retained boxed-value slot, freeing on last
+///              reference.
+///            - `RT_ELEM_OBJ` releases each retained object pointer the same way.
+///            - `RT_ELEM_NONE` and primitive kinds (`I32` / `I64` / `F64` / `U8`) are
+///              no-ops — those payloads carry no managed references.
+///          Every visited slot is NULLed after release so a re-entry from a finalizer that
+///          observes the array can't re-release a stale pointer.
 static void rt_memory_release_array_payload(void *p, rt_heap_hdr_t *hdr) {
     if (!p || !hdr)
         return;
@@ -343,6 +386,12 @@ static void rt_memory_release_array_payload(void *p, rt_heap_hdr_t *hdr) {
     }
 }
 
+/// @brief Common finalize-and-free helper for managed object payloads at refcount zero.
+/// @details Validates that @p p is a live heap object (traps if it's pointing at a string,
+///          array, or arbitrary memory), runs the registered finalizer outside the heap
+///          lock, frees the object, and writes the observed post-release refcount to
+///          @p post_refcount when non-NULL. Used by both `rt_memory_release` and the
+///          internal release-then-free shortcut paths.
 static int32_t rt_obj_free_zero_ref_object(void *p, int64_t *post_refcount) {
     if (post_refcount)
         *post_refcount = 0;
@@ -416,6 +465,11 @@ int64_t rt_memory_release(void *p) {
     return rt_memory_refcount_to_i64(rt_heap_release(p));
 }
 
+/// @brief Public string-typed wrapper for `Viper.Memory.ReleaseStr`.
+/// @details Forwards to `rt_memory_release_string` so Zia and BASIC code can release a
+///          runtime string without an `rt_string` ↔ `void *` cast at the IL boundary.
+///          Returns the post-release refcount (saturated at `INT64_MAX` for immortal
+///          strings) so callers can publish the observed value through the typed API.
 int64_t rt_memory_release_str(rt_string s) {
     return rt_memory_release((void *)s);
 }
@@ -600,8 +654,11 @@ rt_string rt_obj_to_string(void *self) {
         return rt_obj_make_cstr("Object");
     if ((rt_heap_kind_t)validated->kind != RT_HEAP_OBJECT)
         return rt_obj_make_cstr("Object");
-    if (validated->elem_kind == RT_ELEM_BOX || validated->class_id == RT_BOX_CLASS_ID)
-        return rt_obj_make_cstr("Viper.Core.Box");
+    const char *builtin_name = rt_obj_builtin_class_name(validated->class_id);
+    if (validated->elem_kind == RT_ELEM_BOX && !builtin_name)
+        builtin_name = "Viper.Core.Box";
+    if (builtin_name)
+        return rt_obj_make_cstr(builtin_name);
     if (validated->cap < sizeof(rt_object))
         return rt_obj_make_cstr("Object");
 
@@ -627,12 +684,11 @@ rt_string rt_obj_type_name(void *self) {
         return rt_obj_make_cstr("Object");
     if ((rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT)
         return rt_obj_make_cstr("Object");
-    if (hdr->elem_kind == RT_ELEM_BOX || hdr->class_id == RT_BOX_CLASS_ID)
-        return rt_obj_make_cstr("Viper.Core.Box");
-    if (hdr->class_id == RT_VALUE_TYPE_CLASS_ID)
-        return rt_obj_make_cstr("Viper.Core.ValueType");
-    if (hdr->class_id == RT_OPTION_CLASS_ID)
-        return rt_obj_make_cstr("Viper.Option");
+    const char *builtin_name = rt_obj_builtin_class_name(hdr->class_id);
+    if (hdr->elem_kind == RT_ELEM_BOX && !builtin_name)
+        builtin_name = "Viper.Core.Box";
+    if (builtin_name)
+        return rt_obj_make_cstr(builtin_name);
     if (hdr->cap < sizeof(rt_object))
         return rt_obj_make_cstr("Object");
 

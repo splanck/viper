@@ -47,6 +47,11 @@
 #include <sys/time.h>
 #endif
 
+// Overflow-checked signed 64-bit arithmetic for DateTime epoch math. Same triplet
+// found in rt_countdown / rt_duration / rt_dateonly — pre-checks operands before
+// performing the operation to avoid signed-overflow UB.
+
+/// @brief Overflow-checked signed 64-bit addition. Returns 1 on overflow.
 static int dt_checked_add_i64(int64_t a, int64_t b, int64_t *out) {
     if ((b > 0 && a > INT64_MAX - b) || (b < 0 && a < INT64_MIN - b))
         return 1;
@@ -54,6 +59,7 @@ static int dt_checked_add_i64(int64_t a, int64_t b, int64_t *out) {
     return 0;
 }
 
+/// @brief Overflow-checked signed 64-bit subtraction. Returns 1 on overflow.
 static int dt_checked_sub_i64(int64_t a, int64_t b, int64_t *out) {
     if ((b < 0 && a > INT64_MAX + b) || (b > 0 && a < INT64_MIN + b))
         return 1;
@@ -61,6 +67,7 @@ static int dt_checked_sub_i64(int64_t a, int64_t b, int64_t *out) {
     return 0;
 }
 
+/// @brief Overflow-checked signed 64-bit multiplication. Returns 1 on overflow.
 static int dt_checked_mul_i64(int64_t a, int64_t b, int64_t *out) {
 #if defined(__GNUC__) || defined(__clang__)
     return __builtin_mul_overflow(a, b, out);
@@ -89,6 +96,7 @@ static int dt_checked_mul_i64(int64_t a, int64_t b, int64_t *out) {
 #endif
 }
 
+/// @brief Narrow @p value into a `int`, returning 0 on out-of-range inputs.
 static int dt_i64_to_int(int64_t value, int *out) {
     if (value < INT_MIN || value > INT_MAX)
         return 0;
@@ -96,6 +104,10 @@ static int dt_i64_to_int(int64_t value, int *out) {
     return 1;
 }
 
+/// @brief Narrow @p value into a `time_t`, preserving exact representability.
+/// @details `time_t` may be 32- or 64-bit depending on ABI; the round-trip cast detects
+///          truncation and returns 0 in that case. On success, @p out holds the
+///          converted value.
 static int dt_i64_to_time_t(int64_t value, time_t *out) {
     time_t t = (time_t)value;
     if ((int64_t)t != value)
@@ -104,6 +116,10 @@ static int dt_i64_to_time_t(int64_t value, time_t *out) {
     return 1;
 }
 
+/// @brief Widen a `time_t` to `int64_t`, preserving exact representability.
+/// @details Inverse of `dt_i64_to_time_t`. On a 64-bit `time_t` the conversion is
+///          always exact; on a 32-bit `time_t` the round-trip cast confirms the
+///          conversion preserved the bit pattern.
 static int dt_time_t_to_i64(time_t value, int64_t *out) {
     int64_t result = (int64_t)value;
     if ((time_t)result != value)
@@ -112,6 +128,11 @@ static int dt_time_t_to_i64(time_t value, int64_t *out) {
     return 1;
 }
 
+/// @brief Combine `(seconds, millis_part)` into a single epoch-millis `int64_t`.
+/// @details Multiplies seconds by 1000 (checked) and adds the millis remainder
+///          (checked). Either overflow path traps with `rt_trap_ovf()` rather than
+///          silently wrapping. Used wherever DateTime input arrives as a split
+///          seconds/millis pair (e.g. interop with system epoch APIs).
 static int64_t dt_epoch_millis_from_parts(int64_t seconds, int64_t millis_part) {
     int64_t millis;
     int64_t result;
@@ -898,10 +919,14 @@ static int dt_parse_digits(const char *s, int n, const char **end) {
     return val;
 }
 
+/// @brief Gregorian leap-year predicate.
 static int dt_is_leap_year(int64_t year) {
     return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
 }
 
+/// @brief Number of days in @p month (1–12) of @p year, with leap-year adjustment.
+/// @details Out-of-range months return 0 so callers can detect bad input via the
+///          zero return.
 static int dt_days_in_month(int64_t year, int month) {
     static const int days[] = {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
     if (month < 1 || month > 12)
@@ -911,12 +936,19 @@ static int dt_days_in_month(int64_t year, int month) {
     return days[month];
 }
 
+/// @brief Validate a fully-decomposed civil datetime against calendar bounds.
+/// @details Checks month-aware day-of-month upper bounds and the standard 0-23 / 0-59
+///          / 0-59 ranges for hour/minute/second. Returns 1 only when every component
+///          is in range. Note: leap seconds (`second == 60`) are not accepted.
 static int dt_is_valid_datetime(int year, int month, int day, int hour, int minute, int second) {
     int max_day = dt_days_in_month(year, month);
     return max_day > 0 && day >= 1 && day <= max_day && hour >= 0 && hour <= 23 &&
            minute >= 0 && minute <= 59 && second >= 0 && second <= 59;
 }
 
+/// @brief Convert civil (year, month, day) UTC to days-since-Unix-epoch with overflow check.
+/// @details Implements Howard Hinnant's `days_from_civil` algorithm with checked arithmetic.
+///          Returns 1 with the result in @p out on success, 0 on overflow without writing.
 static int dt_days_from_civil_utc(int64_t year, int64_t month, int64_t day, int64_t *out) {
     year -= month <= 2;
     int64_t era = (year >= 0 ? year : year - 399) / 400;
@@ -933,6 +965,10 @@ static int dt_days_from_civil_utc(int64_t year, int64_t month, int64_t day, int6
     return 1;
 }
 
+/// @brief Compose a civil datetime into a UTC Unix-epoch second count, with overflow check.
+/// @details Resolves the date through `dt_days_from_civil_utc`, multiplies up to seconds
+///          (`* 86400`), then adds hour/minute/second offsets. Each step uses checked
+///          arithmetic so overflow is reported via the 0 return rather than wrapping.
 static int dt_make_utc_timestamp(
     int year, int month, int day, int hour, int minute, int second, int64_t *out) {
     int64_t days;
@@ -953,6 +989,11 @@ static int dt_make_utc_timestamp(
     return 1;
 }
 
+/// @brief Compose a civil datetime into a local-zone Unix-epoch second count.
+/// @details Routes through `mktime` so DST/timezone rules apply automatically. The
+///          round-trip through `localtime_r` validates that every output field matches
+///          the input — this catches DST "skipped hour" / "repeated hour" ambiguity
+///          cases that `mktime` would silently normalise.
 static int dt_make_local_timestamp(
     int year, int month, int day, int hour, int minute, int second, int64_t *out) {
     struct tm tm = {0};
@@ -977,6 +1018,10 @@ static int dt_make_local_timestamp(
     return dt_time_t_to_i64(t, out);
 }
 
+/// @brief Parse an ISO-8601-like datetime string into an epoch-seconds `int64_t`.
+/// @details Accepts `YYYY-MM-DD[T| ]HH:MM:SS[.fff][±HH:MM]` and `Z` UTC marker. Returns
+///          1 with @p out populated on success, 0 on any malformed input. Used by the
+///          DateTime parser entry points.
 static int dt_parse_iso_impl(rt_string s, int64_t *out) {
     const char *str = rt_string_cstr(s);
     if (!str || !out)
@@ -1035,6 +1080,8 @@ static int dt_parse_iso_impl(rt_string s, int64_t *out) {
     return dt_make_local_timestamp(year, month, day, hour, minute, second, out);
 }
 
+/// @brief Parse `YYYY-MM-DD` into an epoch-seconds value (midnight UTC).
+/// @details Returns 1 with @p out populated on success, 0 on malformed input.
 static int dt_parse_date_impl(rt_string s, int64_t *out) {
     const char *str = rt_string_cstr(s);
     if (!str || !out)
@@ -1065,6 +1112,8 @@ static int dt_parse_date_impl(rt_string s, int64_t *out) {
     return dt_make_local_timestamp(year, month, day, 0, 0, 0, out);
 }
 
+/// @brief Parse `HH:MM:SS[.fff]` into a millisecond duration value.
+/// @details Returns 1 with @p out populated on success, 0 on malformed input.
 static int dt_parse_time_impl(rt_string s, int64_t *out) {
     const char *str = rt_string_cstr(s);
     if (!str || !out)

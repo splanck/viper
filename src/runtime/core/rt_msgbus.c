@@ -29,6 +29,8 @@
 //     or on explicit unsubscribe.
 //   - Callback pointers are retained on subscribe and released on unsubscribe,
 //     clear, or finalization.
+//   - Managed publish payloads are retained while the subscriber snapshot is
+//     invoked; raw foreign pointers are borrowed for the duration of the call.
 //
 // Links: src/runtime/core/rt_msgbus.h (public API),
 //        src/runtime/core/rt_seq.c (sequence helpers used for dispatch),
@@ -130,11 +132,21 @@ static void mb_lock(rt_msgbus_impl *mb) {
     }
 }
 
+/// @brief Release the bus's internal spinlock with release ordering.
+/// @details No-op on a NULL bus so call-sites that handle a NULL bus uniformly don't have
+///          to special-case the unlock.
 static void mb_unlock(rt_msgbus_impl *mb) {
     if (mb)
         __atomic_clear(&mb->lock, __ATOMIC_RELEASE);
 }
 
+/// @brief Resolve a runtime string into a `(bytes, length)` byte view, validating the handle.
+/// @details Used by every public bus operation that takes a topic string. NULL traps are
+///          deliberately silent (the caller treats it as "no topic"), but a non-NULL value
+///          that fails `rt_string_is_handle` raises a runtime trap — callers should never
+///          be passing arbitrary memory as a topic. Returns 1 when @p bytes / @p len carry
+///          a usable view, 0 otherwise. The bytes pointer points into the string's storage
+///          and is valid only while the caller holds whatever retain it had at call time.
 static int mb_topic_view(rt_string topic, const char **bytes, size_t *len) {
     if (bytes)
         *bytes = NULL;
@@ -161,6 +173,11 @@ static int mb_topic_view(rt_string topic, const char **bytes, size_t *len) {
     return 1;
 }
 
+/// @brief Validate that @p obj is a live MessageBus instance, trapping on misuse.
+/// @details Guards every public entry point that dereferences `rt_msgbus_impl`. NULL is
+///          treated as silently absent (returns NULL) so callers can no-op gracefully.
+///          Any non-NULL pointer with the wrong runtime class id traps with a message
+///          including @p fn_name so the diagnostic identifies the offending API.
 static rt_msgbus_impl *mb_require(void *obj, const char *fn_name) {
     if (!obj)
         return NULL;
@@ -173,6 +190,12 @@ static rt_msgbus_impl *mb_require(void *obj, const char *fn_name) {
     return (rt_msgbus_impl *)obj;
 }
 
+/// @brief Test whether @p callback is a live `MessageBus.Callback` heap object.
+/// @details Callbacks must be wrapped through `rt_msgbus_callback_new` so the bus has a
+///          stable C-function pointer it can invoke without risking a freed pointer.
+///          Strings, raw function pointers, and other heap classes all return 0 — the
+///          caller treats those as misuse and traps. Returns 1 only for objects whose
+///          heap-kind is `RT_HEAP_OBJECT` and whose class id matches.
 static int mb_callback_is_native(void *callback) {
     if (!callback)
         return 0;
@@ -185,6 +208,11 @@ static int mb_callback_is_native(void *callback) {
     return 0;
 }
 
+/// @brief Invoke a registered callback with @p data, trapping if the handle is no longer valid.
+/// @details Re-validates the callback's class id at delivery time — a callback could in
+///          principle be freed between subscribe and publish, so the bus checks again
+///          rather than trust the original validation. Returns 1 when the callback ran,
+///          0 when it had a NULL function pointer (defensive — should not normally happen).
 static int mb_invoke_callback(void *callback, void *data) {
     if (!callback)
         return 0;
@@ -205,6 +233,22 @@ static int mb_invoke_callback(void *callback, void *data) {
     return 0;
 }
 
+/// @brief Retain a publish payload if it's a runtime-managed handle. Returns 1 iff retained.
+/// @details Publish payloads can be either managed runtime objects or arbitrary foreign
+///          pointers; this helper distinguishes them by checking `rt_string_is_handle` and
+///          `rt_heap_is_payload`. Managed payloads are retained for the duration of the
+///          subscriber-snapshot delivery so a concurrent free can't pull them away mid-call;
+///          foreign pointers are returned as 0 and the caller leaves them as borrowed.
+static int mb_retain_managed_payload(void *data) {
+    if (!data)
+        return 0;
+    if (rt_string_is_handle(data) || rt_heap_is_payload(data)) {
+        rt_memory_retain(data);
+        return 1;
+    }
+    return 0;
+}
+
 /// @brief Free a single subscriber node (drops topic ref + callback ref).
 /// @details Called by `mb_finalizer` (full-bus teardown) and by the
 ///          unsubscribe path. The callback is treated as a GC-managed
@@ -219,6 +263,10 @@ static void mb_free_sub(mb_sub *s) {
     free(s);
 }
 
+/// @brief Free a single topic node — releases the topic name and the allocation itself.
+/// @details Used as the per-node primitive by `mb_free_topic_chain` and the unsubscribe
+///          path. Does *not* walk the topic's subscriber list — callers that need full
+///          teardown should use the chain helper, which handles both layers.
 static void mb_free_topic_node(mb_topic *t) {
     if (!t)
         return;
@@ -227,6 +275,11 @@ static void mb_free_topic_node(mb_topic *t) {
     free(t);
 }
 
+/// @brief Free an entire bucket chain of topics, including each topic's subscriber list.
+/// @details Two-level walk used by `mb_finalizer`: for each topic node, drain the
+///          subscriber list via `mb_free_sub`, then `mb_free_topic_node` to release the
+///          name and free the node. Iterative (no recursion) so deep buckets don't
+///          consume stack.
 static void mb_free_topic_chain(mb_topic *t) {
     while (t) {
         mb_topic *next = t->next;
@@ -264,6 +317,11 @@ static void mb_finalizer(void *obj) {
     }
 }
 
+/// @brief GC traversal callback for MessageBus instances.
+/// @details Walks every bucket and visits each subscriber's retained callback so the GC
+///          marker can colour reachable callbacks live. Topic strings are reference-
+///          counted independently and don't participate in cycle detection, so they
+///          aren't visited here.
 static void mb_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     rt_msgbus_impl *mb = (rt_msgbus_impl *)obj;
     if (!mb || !visitor)
@@ -362,6 +420,14 @@ static mb_topic *mb_prepare_topic(void) {
     return t;
 }
 
+/// @brief Look up @p topic; if absent, install the pre-allocated `*spare` and return it.
+/// @details Caller-supplied spare pattern: the caller pre-allocates a fresh `mb_topic`
+///          (via `mb_prepare_topic`) before entering the lock, so the locked region never
+///          itself calls `malloc`. If the topic already exists, returns it and the spare
+///          is left untouched (caller frees it). On install, the function consumes the
+///          spare (sets `*spare = NULL`), retains the topic name string, and links the
+///          new node at the head of its bucket. Returns NULL when the bus is invalid or
+///          when the spare pointer is missing.
 static mb_topic *mb_ensure_topic_locked(rt_msgbus_impl *mb,
                                         rt_string topic,
                                         const char *topic_bytes,
@@ -621,6 +687,7 @@ int64_t rt_msgbus_publish(void *obj, rt_string topic, void *data) {
     }
     mb_unlock(mb);
 
+    int data_retained = mb_retain_managed_payload(data);
     volatile int64_t release_from = 0;
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
@@ -636,6 +703,8 @@ int64_t rt_msgbus_publish(void *obj, rt_string topic, void *data) {
             if (rt_obj_release_check0(callbacks[i]))
                 rt_obj_free(callbacks[i]);
         }
+        if (data_retained)
+            (void)rt_memory_release(data);
         free(callbacks);
         rt_trap(saved_error);
         return 0;
@@ -648,6 +717,8 @@ int64_t rt_msgbus_publish(void *obj, rt_string topic, void *data) {
     }
     rt_trap_clear_recovery();
 
+    if (data_retained)
+        (void)rt_memory_release(data);
     free(callbacks);
     return count;
 }
@@ -701,6 +772,8 @@ int64_t rt_msgbus_total_subscriptions(void *obj) {
 /// @return Seq of rt_string topic names (caller-owned via GC).
 void *rt_msgbus_topics(void *obj) {
     void *seq = rt_seq_new();
+    if (!seq)
+        return NULL;
     rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
