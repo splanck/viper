@@ -447,6 +447,7 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_Animation3D,
     RTCLS_AnimPlayer3D,
     RTCLS_FBX,
+    RTCLS_GLTF,
     RTCLS_MorphTarget3D,
     RTCLS_Particles3D,
     RTCLS_PostFX3D,

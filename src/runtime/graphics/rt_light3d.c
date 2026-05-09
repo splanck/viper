@@ -155,6 +155,7 @@ void *rt_light3d_new_directional(void *direction, double r, double g, double b) 
         rt_trap("Light3D.NewDirectional: memory allocation failed");
         return NULL;
     }
+    memset(light, 0, sizeof(*light));
     light->vptr = NULL;
     light->type = 0; /* directional */
     light->direction[0] = rt_vec3_x(direction);
@@ -190,6 +191,7 @@ void *rt_light3d_new_point(void *position, double r, double g, double b, double 
         rt_trap("Light3D.NewPoint: memory allocation failed");
         return NULL;
     }
+    memset(light, 0, sizeof(*light));
     light->vptr = NULL;
     light->type = 1; /* point */
     light->direction[0] = light->direction[1] = light->direction[2] = 0.0;
@@ -218,6 +220,7 @@ void *rt_light3d_new_ambient(double r, double g, double b) {
         rt_trap("Light3D.NewAmbient: memory allocation failed");
         return NULL;
     }
+    memset(light, 0, sizeof(*light));
     light->vptr = NULL;
     light->type = 2; /* ambient */
     memset(light->direction, 0, sizeof(light->direction));

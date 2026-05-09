@@ -170,7 +170,7 @@ The topical guides above explain concepts and patterns. For exhaustive method si
 
 - [Game Utilities API](../viperlib/game/README.md) — 28 game classes (Entity, Timer, Tween, Physics2D, etc.)
 - [Graphics API](../viperlib/graphics/README.md) — Canvas, Pixels, Scene, Fonts
-- [3D Graphics API](../graphics3d-guide.md) — 28 classes (Canvas3D, Mesh3D, Scene3D, etc.)
+- [3D Graphics API](../graphics3d-guide.md) — 45 classes (Canvas3D, Mesh3D, Scene3D, etc.)
 - [Audio API](../viperlib/audio.md) — Sound, Music, Synth, SoundBank, Playlist
 - [Input API](../viperlib/input.md) — Keyboard, Mouse, Pad, Action, InputManager
 - [Math API](../viperlib/math.md) — Vec2/3, Mat3/4, Quaternion, Easing, Noise

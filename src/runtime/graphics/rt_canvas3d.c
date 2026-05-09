@@ -49,6 +49,7 @@
 #include <string.h>
 
 #define CANVAS3D_MAX_FALLBACK_INSTANCES 65536
+#define CANVAS3D_FLOAT_ABS_MAX 3.40282346638528859812e38
 
 /// @brief True when the active backend can apply GPU post-FX during present.
 ///
@@ -80,6 +81,51 @@ static float canvas3d_clamp01_f64(double value) {
     if (value > 1.0)
         return 1.0f;
     return (float)value;
+}
+
+static uint8_t canvas3d_clamp01_to_u8(float value) {
+    if (!isfinite(value))
+        value = 0.0f;
+    if (value < 0.0f)
+        value = 0.0f;
+    if (value > 1.0f)
+        value = 1.0f;
+    return (uint8_t)(value * 255.0f + 0.5f);
+}
+
+static int canvas3d_double_fits_float(double value) {
+    return isfinite(value) && value >= -CANVAS3D_FLOAT_ABS_MAX &&
+           value <= CANVAS3D_FLOAT_ABS_MAX;
+}
+
+static int canvas3d_mat4_d2f_checked(const double *src, float *dst) {
+    if (!src || !dst)
+        return 0;
+    for (int i = 0; i < 16; i++) {
+        if (!canvas3d_double_fits_float(src[i]))
+            return 0;
+        dst[i] = (float)src[i];
+    }
+    return 1;
+}
+
+static int canvas3d_matrices_f32_are_finite(const float *matrices, int32_t count) {
+    if (!matrices || count <= 0)
+        return 0;
+    for (int32_t i = 0; i < count; i++) {
+        const float *m = &matrices[(size_t)i * 16u];
+        for (int j = 0; j < 16; j++) {
+            if (!isfinite(m[j]))
+                return 0;
+        }
+    }
+    return 1;
+}
+
+static mat4_impl *canvas3d_mat4_checked(void *obj) {
+    if (!obj || !rt_heap_is_payload(obj) || rt_obj_class_id(obj) != RT_MAT4_CLASS_ID)
+        return NULL;
+    return (mat4_impl *)obj;
 }
 
 /// @brief Narrow a non-negative double to float; NaN/inf → `fallback`, negatives → 0.
@@ -1855,9 +1901,9 @@ static int canvas3d_render_skybox_cpu(rt_canvas3d *c,
         for (int32_t y = 0; y < dst_h; y++) {
             for (int32_t x = 0; x < dst_w; x++) {
                 uint8_t *dst = &dst_pixels[y * dst_stride + x * 4];
-                dst[0] = (uint8_t)(r * 255.0f);
-                dst[1] = (uint8_t)(g * 255.0f);
-                dst[2] = (uint8_t)(b * 255.0f);
+                dst[0] = canvas3d_clamp01_to_u8(r);
+                dst[1] = canvas3d_clamp01_to_u8(g);
+                dst[2] = canvas3d_clamp01_to_u8(b);
                 dst[3] = 0xFF;
             }
         }
@@ -1907,9 +1953,9 @@ static int canvas3d_render_skybox_cpu(rt_canvas3d *c,
             }
             rt_cubemap_sample(c->skybox, dx, dy, dz, &r, &g, &b);
             dst = &dst_pixels[y * dst_stride + x * 4];
-            dst[0] = (uint8_t)(r * 255.0f);
-            dst[1] = (uint8_t)(g * 255.0f);
-            dst[2] = (uint8_t)(b * 255.0f);
+            dst[0] = canvas3d_clamp01_to_u8(r);
+            dst[1] = canvas3d_clamp01_to_u8(g);
+            dst[2] = canvas3d_clamp01_to_u8(b);
             dst[3] = 0xFF;
         }
     }
@@ -2213,15 +2259,18 @@ void rt_canvas3d_clear(void *obj, double r, double g, double b) {
         vgfx_framebuffer_t fb;
         if (vgfx_get_framebuffer(c->gfx_win, &fb) && fb.pixels && fb.width > 0 &&
             fb.height > 0 && fb.stride >= fb.width * (int32_t)sizeof(uint32_t)) {
-            uint32_t rgba = ((uint32_t)(uint8_t)(cr * 255.0f + 0.5f)) |
-                            ((uint32_t)(uint8_t)(cg * 255.0f + 0.5f) << 8) |
-                            ((uint32_t)(uint8_t)(cb * 255.0f + 0.5f) << 16) | 0xFF000000u;
-            uint32_t *row = (uint32_t *)fb.pixels;
-            int32_t row_stride = fb.stride / 4;
+            uint8_t r8 = canvas3d_clamp01_to_u8(cr);
+            uint8_t g8 = canvas3d_clamp01_to_u8(cg);
+            uint8_t b8 = canvas3d_clamp01_to_u8(cb);
             for (int32_t y = 0; y < fb.height; y++) {
-                for (int32_t x = 0; x < fb.width; x++)
-                    row[x] = rgba;
-                row += row_stride;
+                uint8_t *row = &fb.pixels[(size_t)y * (size_t)fb.stride];
+                for (int32_t x = 0; x < fb.width; x++) {
+                    uint8_t *px = &row[(size_t)x * 4u];
+                    px[0] = r8;
+                    px[1] = g8;
+                    px[2] = b8;
+                    px[3] = 0xFF;
+                }
             }
         }
     }
@@ -2722,21 +2771,17 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
     const void *pending_splat_map = NULL;
     const void *pending_splat_layers[4] = {NULL, NULL, NULL, NULL};
     float pending_splat_layer_scales[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-    if (c) {
-        pending_has_splat = c->pending_has_splat;
-        pending_splat_map = c->pending_splat_map;
-        for (int i = 0; i < 4; i++) {
-            pending_splat_layers[i] = c->pending_splat_layers[i];
-            pending_splat_layer_scales[i] = c->pending_splat_layer_scales[i];
-        }
-        canvas3d_clear_pending_splat(c);
-    }
+    float validated_model_matrix[16];
     if (!mesh && mesh_obj && !rt_heap_is_payload(mesh_obj))
         mesh = (rt_mesh3d *)mesh_obj;
     if (!c || !mesh || !model_matrix || !mat)
         return;
     if (!c->in_frame || !c->gfx_win || !c->backend)
         return;
+    if (!canvas3d_mat4_d2f_checked(model_matrix, validated_model_matrix)) {
+        rt_trap("Canvas3D.DrawMesh: model matrix must contain finite float-range values");
+        return;
+    }
 
     if (mesh->morph_targets_ref && mesh->morph_deltas == NULL && mesh->morph_weights == NULL &&
         mesh->morph_shape_count == 0) {
@@ -2767,6 +2812,14 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
         !canvas3d_snapshot_mesh_geometry(c, mesh, &queued_vertices, &queued_indices))
         return;
 
+    pending_has_splat = c->pending_has_splat;
+    pending_splat_map = c->pending_splat_map;
+    for (int i = 0; i < 4; i++) {
+        pending_splat_layers[i] = c->pending_splat_layers[i];
+        pending_splat_layer_scales[i] = c->pending_splat_layer_scales[i];
+    }
+    canvas3d_clear_pending_splat(c);
+
     /* Build draw command */
     dd->cmd.vertices = queued_vertices;
     dd->cmd.vertex_count = mesh->vertex_count;
@@ -2774,7 +2827,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
     dd->cmd.index_count = mesh->index_count;
     dd->cmd.geometry_key = rt_heap_is_payload(mesh_obj) ? mesh_obj : NULL;
     dd->cmd.geometry_revision = dd->cmd.geometry_key ? mesh->geometry_revision : 0;
-    mat4_d2f(model_matrix, dd->cmd.model_matrix);
+    memcpy(dd->cmd.model_matrix, validated_model_matrix, sizeof(dd->cmd.model_matrix));
     canvas3d_resolve_previous_model(c,
                                     motion_key,
                                     dd->cmd.model_matrix,
@@ -2846,10 +2899,11 @@ void rt_canvas3d_draw_mesh_matrix(void *obj,
 ///          back-to-front for correct alpha blending. The mesh, transform, and
 ///          material pointers are borrowed (not retained).
 void rt_canvas3d_draw_mesh(void *obj, void *mesh_obj, void *transform_obj, void *material_obj) {
-    if (!transform_obj || rt_obj_class_id(transform_obj) != RT_MAT4_CLASS_ID)
+    mat4_impl *transform = canvas3d_mat4_checked(transform_obj);
+    if (!transform)
         return;
     rt_canvas3d_draw_mesh_matrix_keyed(
-        obj, mesh_obj, ((mat4_impl *)transform_obj)->m, material_obj, transform_obj, NULL, NULL);
+        obj, mesh_obj, transform->m, material_obj, transform_obj, NULL, NULL);
 }
 
 /// @brief Queue an instanced draw — render `instance_count` copies of `mesh` with per-instance transforms.
@@ -2880,6 +2934,12 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
         return;
     if (!c->in_frame || !c->backend || mesh->vertex_count == 0 || mesh->index_count == 0)
         return;
+    if (!canvas3d_matrices_f32_are_finite(instance_matrices, instance_count) ||
+        (has_prev_instance_matrices && prev_instance_matrices &&
+         !canvas3d_matrices_f32_are_finite(prev_instance_matrices, instance_count))) {
+        rt_trap("Canvas3D.DrawMeshInstanced: instance matrices must contain finite values");
+        return;
+    }
     if (!canvas3d_track_temp_object(c, mesh_obj))
         return;
     if (!canvas3d_track_temp_object(c, material_obj))

@@ -524,7 +524,7 @@ void rt_material3d_set_unlit(void *obj, int8_t unlit) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return;
-    mat->unlit = unlit;
+    mat->unlit = unlit ? 1 : 0;
 }
 
 /// @brief Select the shading model (0=Phong, 1=Blinn-Phong, 2=flat, etc.).

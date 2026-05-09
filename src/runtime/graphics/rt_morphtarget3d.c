@@ -26,6 +26,7 @@
 #include "rt_morphtarget3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_heap.h"
 #include "rt_mat4.h"
 #include "rt_object.h"
 #include "rt_string.h"
@@ -62,6 +63,12 @@ typedef struct {
     int8_t has_prev_weights;
     int8_t packed_dirty;
 } rt_morphtarget3d;
+
+static mat4_impl *morphtarget_mat4_checked(void *obj) {
+    if (!obj || !rt_heap_is_payload(obj) || rt_obj_class_id(obj) != RT_MAT4_CLASS_ID)
+        return NULL;
+    return (mat4_impl *)obj;
+}
 
 /// @brief Flag the packed GPU payload dirty and bump the generation counter.
 /// @details Called after any per-shape delta array mutation so downstream
@@ -838,12 +845,11 @@ void rt_canvas3d_draw_mesh_matrix_morphed(void *canvas,
 /// The transform doubles as the motion-vector key for temporal effects (TAA, motion blur).
 void rt_canvas3d_draw_mesh_morphed(
     void *canvas, void *mesh, void *transform, void *material, void *morph_targets) {
-    if (!transform)
-        return;
-    if (rt_obj_class_id(transform) != RT_MAT4_CLASS_ID)
+    mat4_impl *transform_mat = morphtarget_mat4_checked(transform);
+    if (!transform_mat)
         return;
     morphtarget_draw_mesh_matrix(
-        canvas, mesh, ((mat4_impl *)transform)->m, material, transform, morph_targets);
+        canvas, mesh, transform_mat->m, material, transform, morph_targets);
 }
 
 #else

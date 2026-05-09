@@ -28,14 +28,17 @@ extern "C" {
 #include "rt_object.h"
 #include "rt_path3d.h"
 #include "rt_particles3d.h"
+#include "rt_perlin.h"
 #include "rt_pixels.h"
 #include "rt_physics3d.h"
 #include "rt_scene3d.h"
+#include "rt_skeleton3d.h"
 #include "rt_sprite3d.h"
 #include "rt_string.h"
 #include "rt_terrain3d.h"
 #include "rt_texatlas3d.h"
 #include "rt_vec3.h"
+#include "rt_vegetation3d.h"
 #include "rt_water3d.h"
 }
 
@@ -58,6 +61,10 @@ int64_t rt_mesh3d_get_triangle_count(void *m);
 void rt_mesh3d_transform(void *m, void *mat4);
 void rt_mesh3d_calc_tangents(void *m);
 void *rt_material3d_new(void);
+void rt_material3d_set_unlit(void *obj, int8_t unlit);
+void *rt_light3d_new_directional(void *direction, double r, double g, double b);
+void *rt_light3d_new_point(void *position, double r, double g, double b, double attenuation);
+void *rt_light3d_new_ambient(double r, double g, double b);
 void rt_material3d_set_import_texture_slot(void *obj,
                                            int64_t slot,
                                            int64_t uv_set,
@@ -186,6 +193,33 @@ struct WaterView {
     void *normal_map;
     void *env_map;
     double reflectivity;
+    double waves[8][5];
+    int32_t wave_count;
+    int32_t resolution;
+    int8_t mesh_dirty;
+};
+
+struct VegetationView {
+    void *vptr;
+    void *blade_mesh;
+    void *blade_material;
+    double blade_width;
+    double blade_height;
+    double size_variation;
+    float *base_transforms;
+    float *positions;
+    int32_t total_count;
+    int32_t capacity;
+    void *density_map;
+    double wind_speed;
+    double wind_strength;
+    double wind_turbulence;
+    double time;
+    float lod_near;
+    float lod_far;
+    float *visible_transforms;
+    int32_t visible_count;
+    int32_t visible_capacity;
 };
 
 static double triangle_area_sq(const rt_mesh3d *mesh, uint32_t i0, uint32_t i1, uint32_t i2) {
@@ -563,6 +597,183 @@ static void test_morphtarget_sanitizes_nonfinite_weights_and_deltas() {
     assert(packed[2] == -3.0f);
 }
 
+static void test_scene_reparent_preserves_child_and_counts() {
+    void *p1 = rt_scene_node3d_new();
+    void *p2 = rt_scene_node3d_new();
+    void *child = rt_scene_node3d_new();
+
+    rt_scene_node3d_add_child(p1, child);
+    assert(rt_scene_node3d_child_count(p1) == 1);
+    assert(rt_scene_node3d_get_parent(child) == p1);
+
+    rt_scene_node3d_add_child(p2, child);
+    assert(rt_scene_node3d_child_count(p1) == 0);
+    assert(rt_scene_node3d_child_count(p2) == 1);
+    assert(rt_scene_node3d_get_child(p2, 0) == child);
+    assert(rt_scene_node3d_get_parent(child) == p2);
+
+    void *scene = rt_scene3d_new();
+    assert(scene != nullptr);
+    assert(rt_scene3d_get_node_count(scene) == 1);
+}
+
+static void test_mesh_bone_weights_are_validated_and_dirty_geometry() {
+    auto *mesh = static_cast<rt_mesh3d *>(rt_mesh3d_new());
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0);
+    uint32_t before = mesh->geometry_revision;
+
+    rt_mesh3d_set_bone_weights(mesh,
+                               0,
+                               1,
+                               2.0,
+                               999,
+                               3.0,
+                               3,
+                               -1.0,
+                               4,
+                               std::numeric_limits<double>::quiet_NaN());
+
+    assert(mesh->vertices[0].bone_indices[0] == 1);
+    assert(std::fabs(mesh->vertices[0].bone_weights[0] - 1.0f) < 1e-6f);
+    assert(mesh->vertices[0].bone_weights[1] == 0.0f);
+    assert(mesh->vertices[0].bone_weights[2] == 0.0f);
+    assert(mesh->vertices[0].bone_weights[3] == 0.0f);
+    assert(mesh->bone_count == 2);
+    assert(mesh->geometry_revision != before);
+
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, nullptr, -1, nullptr);
+    rt_skeleton3d_add_bone(skel, nullptr, 0, nullptr);
+    rt_mesh3d_set_skeleton(mesh, skel);
+    assert(mesh->skeleton_ref == skel);
+    assert(mesh->bone_count == 2);
+}
+
+static void test_obj_loader_recalculates_mixed_missing_normals() {
+    const std::string path = "/tmp/viper_rt_graphics3d_mixed_normals.obj";
+    {
+        std::ofstream out(path);
+        out << "v 0 0 0\n";
+        out << "v 1 0 0\n";
+        out << "v 0 1 0\n";
+        out << "vn 1 0 0\n";
+        out << "f 1 2 3\n";
+    }
+
+    rt_string path_string = rt_string_from_bytes(path.c_str(), static_cast<int64_t>(path.size()));
+    auto *mesh = static_cast<rt_mesh3d *>(rt_mesh3d_from_obj(path_string));
+    assert(mesh != nullptr);
+    assert(mesh->vertex_count == 3);
+    for (uint32_t i = 0; i < mesh->vertex_count; i++) {
+        assert(std::fabs(mesh->vertices[i].normal[2] - 1.0f) < 1e-6f);
+    }
+    std::remove(path.c_str());
+}
+
+static void test_skeleton_bind_pose_and_animation_duration_sanitize() {
+    void *bad_bind = rt_mat4_new(std::numeric_limits<double>::quiet_NaN(),
+                                 0.0,
+                                 0.0,
+                                 0.0,
+                                 0.0,
+                                 1.0,
+                                 0.0,
+                                 0.0,
+                                 0.0,
+                                 0.0,
+                                 1.0,
+                                 0.0,
+                                 0.0,
+                                 0.0,
+                                 0.0,
+                                 1.0);
+    void *skel = rt_skeleton3d_new();
+    assert(rt_skeleton3d_add_bone(skel, nullptr, -1, bad_bind) == 0);
+    void *pose = rt_skeleton3d_get_bone_bind_pose(skel, 0);
+    assert(rt_mat4_get(pose, 0, 0) == 1.0);
+    assert(rt_mat4_get(pose, 1, 1) == 1.0);
+    assert(rt_mat4_get(pose, 2, 2) == 1.0);
+    assert(rt_mat4_get(pose, 3, 3) == 1.0);
+
+    void *anim = rt_animation3d_new(nullptr, std::numeric_limits<double>::quiet_NaN());
+    assert(std::fabs(rt_animation3d_get_duration(anim) - 1.0) < 1e-12);
+}
+
+static void test_light_and_material_boolean_state_is_initialized() {
+    void *dir = rt_vec3_new(0.0, -1.0, 0.0);
+    auto *directional = static_cast<rt_light3d *>(rt_light3d_new_directional(dir, 1.0, 1.0, 1.0));
+    auto *point = static_cast<rt_light3d *>(rt_light3d_new_point(dir, 1.0, 0.0, 0.0, 1.0));
+    auto *ambient = static_cast<rt_light3d *>(rt_light3d_new_ambient(0.1, 0.2, 0.3));
+    assert(directional->inner_cos == 0.0 && directional->outer_cos == 0.0);
+    assert(point->inner_cos == 0.0 && point->outer_cos == 0.0);
+    assert(ambient->inner_cos == 0.0 && ambient->outer_cos == 0.0);
+
+    auto *mat = static_cast<rt_material3d *>(rt_material3d_new());
+    rt_material3d_set_unlit(mat, 42);
+    assert(mat->unlit == 1);
+    rt_material3d_set_unlit(mat, 0);
+    assert(mat->unlit == 0);
+}
+
+static void test_physics_joints_deduplicate_and_raycast_is_true_ray() {
+    void *world = rt_world3d_new(0.0, 0.0, 0.0);
+    void *a = rt_body3d_new_sphere(0.5, 1.0);
+    void *b = rt_body3d_new_sphere(0.5, 1.0);
+    rt_body3d_set_position(a, 0.0, 0.0, 0.0);
+    rt_body3d_set_position(b, 0.0, 0.0, 2.0);
+    void *joint = rt_distance_joint3d_new(a, b, 2.0);
+    rt_world3d_add_joint(world, joint, RT_JOINT_DISTANCE);
+    rt_world3d_add_joint(world, joint, RT_JOINT_DISTANCE);
+    assert(rt_world3d_joint_count(world) == 1);
+
+    void *ray_world = rt_world3d_new(0.0, 0.0, 0.0);
+    void *near_miss = rt_body3d_new_sphere(0.5, 1.0);
+    rt_body3d_set_position(near_miss, 0.5005, 0.0, 5.0);
+    rt_world3d_add(ray_world, near_miss);
+    void *origin = rt_vec3_new(0.0, 0.0, 0.0);
+    void *dir = rt_vec3_new(0.0, 0.0, 1.0);
+    assert(rt_world3d_raycast(ray_world, origin, dir, 10.0, 0) == nullptr);
+
+    void *hit_body = rt_body3d_new_sphere(0.5, 1.0);
+    rt_body3d_set_position(hit_body, 0.0, 0.0, 5.0);
+    rt_world3d_add(ray_world, hit_body);
+    void *hit = rt_world3d_raycast(ray_world, origin, dir, 10.0, 0);
+    assert(hit != nullptr);
+    assert(rt_physics_hit3d_get_body(hit) == hit_body);
+    assert(std::fabs(rt_physics_hit3d_get_distance(hit) - 4.5) < 1e-6);
+}
+
+static void test_terrain_water_and_vegetation_zero_dt_paths() {
+    void *terrain = rt_terrain3d_new(4, 4);
+    void *perlin = rt_perlin_new(123);
+    rt_terrain3d_generate_perlin(terrain,
+                                 perlin,
+                                 std::numeric_limits<double>::quiet_NaN(),
+                                 1000,
+                                 std::numeric_limits<double>::quiet_NaN());
+    double h = rt_terrain3d_get_height_at(terrain, 1.0, 1.0);
+    assert(std::isfinite(h));
+    assert(h >= 0.0 && h <= 1.0);
+
+    auto *water = static_cast<WaterView *>(rt_water3d_new(2.0, 2.0));
+    rt_water3d_update(water, 0.0);
+    assert(water->mesh != nullptr);
+    int64_t initial_vertices = rt_mesh3d_get_vertex_count(water->mesh);
+    rt_water3d_set_resolution(water, 8);
+    assert(water->mesh_dirty == 1);
+    rt_water3d_update(water, 0.0);
+    assert(water->mesh_dirty == 0);
+    assert(rt_mesh3d_get_vertex_count(water->mesh) == 81);
+    assert(rt_mesh3d_get_vertex_count(water->mesh) != initial_vertices);
+
+    auto *veg = static_cast<VegetationView *>(rt_vegetation3d_new(nullptr));
+    rt_vegetation3d_set_lod_distances(veg, 50.0, 100.0);
+    rt_vegetation3d_populate(veg, terrain, 8);
+    rt_vegetation3d_update(veg, 0.0, 0.0, 0.0, 0.0);
+    assert(veg->total_count > 0);
+    assert(veg->visible_count > 0);
+}
+
 } // namespace
 
 int main() {
@@ -584,6 +795,13 @@ int main() {
     test_navmesh_sample_position_handles_empty_mesh();
     test_navmesh_slope_refilter_and_sloped_height_projection();
     test_morphtarget_sanitizes_nonfinite_weights_and_deltas();
+    test_scene_reparent_preserves_child_and_counts();
+    test_mesh_bone_weights_are_validated_and_dirty_geometry();
+    test_obj_loader_recalculates_mixed_missing_normals();
+    test_skeleton_bind_pose_and_animation_duration_sanitize();
+    test_light_and_material_boolean_state_is_initialized();
+    test_physics_joints_deduplicate_and_raycast_is_true_ray();
+    test_terrain_water_and_vegetation_zero_dt_paths();
     std::printf("RTGraphics3DRobustnessTests passed.\n");
     return 0;
 }

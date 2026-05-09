@@ -238,19 +238,37 @@ extern double rt_perlin_octave2d(
 /// noise frequency (higher = more detail). Invalidates all cached chunk meshes.
 void rt_terrain3d_generate_perlin(
     void *obj, void *perlin, double scale, int64_t octaves, double persistence) {
-    if (!obj || !perlin)
+    rt_terrain3d *t =
+        (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    if (!t || !perlin)
         return;
-    rt_terrain3d *t = (rt_terrain3d *)obj;
-    if (scale < 1e-8)
+    if (!isfinite(scale) || scale < 1e-8)
         scale = 1.0;
+    if (octaves < 1)
+        octaves = 1;
+    if (octaves > 16)
+        octaves = 16;
+    if (!isfinite(persistence))
+        persistence = 0.5;
+    if (persistence < 0.0)
+        persistence = 0.0;
+    if (persistence > 1.0)
+        persistence = 1.0;
 
     for (int32_t z = 0; z < t->depth; z++) {
         for (int32_t x = 0; x < t->width; x++) {
             double nx = (double)x * scale / (double)t->width;
             double nz = (double)z * scale / (double)t->depth;
             double h = rt_perlin_octave2d(perlin, nx, nz, octaves, persistence);
-            /* Map [-1, 1] -> [0, 1] */
-            t->heights[z * t->width + x] = (float)((h + 1.0) * 0.5);
+            if (!isfinite(h))
+                h = 0.0;
+            /* Map [-1, 1] -> [0, 1] and clamp malformed generators. */
+            h = (h + 1.0) * 0.5;
+            if (h < 0.0)
+                h = 0.0;
+            if (h > 1.0)
+                h = 1.0;
+            t->heights[z * t->width + x] = (float)h;
         }
     }
 
@@ -608,7 +626,8 @@ static void bake_splat_texture(rt_terrain3d *t) {
                 cg = 255;
             if (cb > 255)
                 cb = 255;
-            int64_t color = ((int64_t)cr << 16) | ((int64_t)cg << 8) | (int64_t)cb;
+            int64_t color =
+                ((int64_t)cr << 24) | ((int64_t)cg << 16) | ((int64_t)cb << 8) | 0xFF;
             rt_pixels_set(baked, x, y, color);
         }
     }
@@ -733,6 +752,7 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz, int32_t step, 
     /* Skirt geometry: extend edges downward to hide cracks between LOD levels */
     if (t->skirt_depth > 0.0f && step > 1) {
         double sd = (double)t->skirt_depth;
+        aabb_min[1] -= (float)sd;
         /* For each of the 4 edges, add skirt triangles */
         /* Top edge (dz=0), bottom edge (dz=rows), left (dx=0), right (dx=cols) */
         int64_t skirt_base = (int64_t)(vert_rows * vert_cols);

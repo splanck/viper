@@ -460,7 +460,7 @@ void rt_vegetation3d_update(void *obj, double dt, double camX, double camY, doub
     (void)camY;
     rt_vegetation3d *v =
         (rt_vegetation3d *)rt_g3d_checked_or_null(obj, RT_G3D_VEGETATION3D_CLASS_ID);
-    if (!v || !isfinite(dt) || dt <= 0.0)
+    if (!v || !isfinite(dt) || dt < 0.0)
         return;
     camX = vegetation_finite_or(camX, 0.0);
     camZ = vegetation_finite_or(camZ, 0.0);
@@ -549,6 +549,10 @@ void rt_canvas3d_draw_vegetation(void *canvas_obj, void *veg_obj) {
         return;
     if (!c->in_frame || !c->backend || v->visible_count == 0)
         return;
+    if (c->frame_is_2d) {
+        rt_trap("Canvas3D.DrawVegetation: cannot draw vegetation during Begin2D/End");
+        return;
+    }
 
     rt_mesh3d *mesh = (rt_mesh3d *)v->blade_mesh;
     rt_material3d *mat = (rt_material3d *)v->blade_material;

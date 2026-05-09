@@ -1093,6 +1093,8 @@ static void recompute_world_matrix(rt_scene_node3d *node) {
 
 /// @brief Count nodes in a subtree (including the root).
 static int32_t count_subtree(const rt_scene_node3d *node) {
+    if (!node)
+        return 0;
     int32_t n = 1;
     for (int32_t i = 0; i < node->child_count; i++)
         n += count_subtree(node->children[i]);
@@ -1819,14 +1821,12 @@ void rt_scene_node3d_add_child(void *obj, void *child_obj) {
     rt_scene_node3d *child = scene_node3d_checked(child_obj);
     if (!parent || !child || parent == child)
         return;
+    if (child->parent == parent)
+        return;
 
     /* Reject cycle formation: parent may not already be inside child's subtree. */
     if (node_contains(child, parent))
         return;
-
-    /* Detach from previous parent if any */
-    if (child->parent)
-        rt_scene_node3d_remove_child(child->parent, child);
 
     /* Grow children array if needed */
     if (parent->child_count >= parent->child_capacity) {
@@ -1840,9 +1840,14 @@ void rt_scene_node3d_add_child(void *obj, void *child_obj) {
         parent->child_capacity = new_cap;
     }
 
+    rt_obj_retain_maybe(child);
+    /* Detach from previous parent if any. The temporary retain above becomes
+       the new parent's ownership after the old parent releases its reference. */
+    if (child->parent)
+        rt_scene_node3d_remove_child(child->parent, child);
+
     parent->children[parent->child_count++] = child;
     child->parent = parent;
-    rt_obj_retain_maybe(child);
     mark_dirty(child);
 }
 
@@ -2185,6 +2190,12 @@ void *rt_scene3d_new(void) {
     }
     s->vptr = NULL;
     s->root = (rt_scene_node3d *)rt_scene_node3d_new();
+    if (!s->root) {
+        if (rt_obj_release_check0(s))
+            rt_obj_free(s);
+        rt_trap("Scene3D.New: root node allocation failed");
+        return NULL;
+    }
     s->node_count = 1; /* root */
     s->last_culled_count = 0;
     rt_obj_set_finalizer(s, rt_scene3d_finalize);

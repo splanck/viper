@@ -299,7 +299,7 @@ func start() {
 
 **Frame lifecycle:** `Poll → Clear → Begin → DrawMesh (repeated) → End → [HUD overlay] → Flip`
 
-**Important:** `Begin`/`End` must not nest. All `DrawMesh` calls go between `Begin` and `End`. HUD overlay calls (`DrawRect2D`, `DrawText2D`, `DrawCrosshair`) go between `End` and `Flip`.
+**Important:** `Begin`/`End` must not nest. All 3D draw calls go between `Begin` and `End`; `DrawTerrain` and `DrawVegetation` are rejected during `Begin2D`. HUD overlay calls (`DrawRect2D`, `DrawText2D`, `DrawCrosshair`) go between `End` and `Flip`. `DrawMesh` and instanced draws require finite transform matrices; invalid matrices are rejected before they reach culling or backend submission.
 
 ## Mesh3D
 
@@ -336,13 +336,17 @@ func start() {
 | `Clone()` | `obj()` | Deep copy of mesh data |
 | `Transform(mat4)` | `void(obj)` | Transform all vertices in-place by Mat4 |
 
-### Skeletal Extensions (standalone functions)
+### Skeletal and Morph Extensions
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
+These are available both as class methods and through their fully qualified static names.
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
 | `Mesh3D.SetSkeleton(mesh, skeleton)` | `void(obj, obj)` | Bind a Skeleton3D to the mesh |
 | `Mesh3D.SetBoneWeights(mesh, vtx, b0, w0, b1, w1, b2, w2, b3, w3)` | `void(obj, i64, i64, f64, i64, f64, i64, f64, i64, f64)` | Set bone indices + weights for a vertex (4 bones max) |
 | `Mesh3D.SetMorphTargets(mesh, morphTarget)` | `void(obj, obj)` | Bind a MorphTarget3D to the mesh |
+
+`SetBoneWeights` drops invalid bone indices and non-positive or non-finite weights, normalizes the remaining positive weights, updates the mesh's skinned bone count, and invalidates cached geometry so renderer-side buffers refresh.
 
 ### Zia Example
 
@@ -1276,7 +1280,7 @@ Supports zlib-compressed array properties, negative polygon indices, and Z-up to
 
 Low-level extractor API for meshes and materials from glTF 2.0 files. `Model3D.Load` uses the same loader internally and preserves the active-scene node hierarchy for instantiation.
 
-### Functions (standalone — no RT_CLASS)
+### Functions
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
@@ -1315,7 +1319,7 @@ func start() {
 }
 ```
 
-**Note:** GLTF functions are standalone extractor helpers. They preserve the active-scene hierarchy, matrix-authored node transforms, extended mesh attributes, materials, skeletons, animations, and morph targets listed above. For preserved node hierarchies and scene instantiation, load `.gltf` or `.glb` through `Model3D.Load`.
+**Note:** GLTF is class-backed in the runtime catalog and also works as a low-level extractor helper. It preserves the active-scene hierarchy, matrix-authored node transforms, extended mesh attributes, materials, skeletons, animations, and morph targets listed above. For preserved node hierarchies and scene instantiation, load `.gltf` or `.glb` through `Model3D.Load`.
 
 Supported glTF material fidelity:
 - Core metallic-roughness PBR, base-color / normal / metallic-roughness / occlusion / emissive texture slots, alpha modes, `doubleSided`, and `KHR_materials_emissive_strength`. PBR base-color and emissive textures are decoded from sRGB to linear before lighting on software, Metal, D3D11, and OpenGL.
@@ -1799,6 +1803,7 @@ World storage for bodies, contacts, contact events, and joints grows on demand f
 Notes:
 - Query `mask` uses the same layer bit semantics as body collision layers. `0` means "match any layer".
 - Queries include trigger bodies and mark them through `PhysicsHit3D.IsTrigger`.
+- `Raycast` and `RaycastAll` are true ray queries for sphere, capsule, and box colliders; complex collider types fall back to their world AABB. Use `SweepSphere` or `SweepCapsule` for volume casts.
 - `GetContactSeparation()` returns negative values while penetrating and positive values when separated.
 
 ### PhysicsHit3D
@@ -2324,6 +2329,8 @@ func start() {
 
 **Gerstner waves:** When waves are added via `AddWave`, the water uses a sum of directional Gerstner waves instead of the legacy single sine wave. Each wave has a direction, speed, amplitude, and wavelength. Up to 8 waves can be combined for realistic ocean effects. Normals are computed from wave derivatives for correct lighting.
 
+`Update(0.0)` is valid: it rebuilds the mesh when resolution or wave settings are dirty without advancing animation time. `DrawWater` also performs that zero-delta rebuild if a surface has not been built yet or was invalidated by `SetResolution`.
+
 Draw via `Canvas3D.DrawWater(water, camera)`.
 
 See `examples/apiaudit/graphics3d/water_demo.zia` for a complete example.
@@ -2403,16 +2410,16 @@ func start() {
 
 **Procedural generation:** Two approaches are supported:
 1. **Zia-only:** Use `PerlinNoise.Octave2D()` to fill a `Pixels` buffer, then call `SetHeightmap()`. The heightmap uses 16-bit precision via R (high byte) + G (low byte) channels in `0xRRGGBBAA` pixel format.
-2. **Native fast path:** Call `GeneratePerlin(noise, scale, octaves, persistence)` with a `PerlinNoise` object. This writes directly to the internal float heightmap, bypassing the Pixels intermediate for better performance on large terrains. The `noise` parameter is a `PerlinNoise` object, `scale` controls coordinate frequency, `octaves` sets detail layers (typically 4-8), and `persistence` controls amplitude decay (typically 0.4-0.6).
+2. **Native fast path:** Call `GeneratePerlin(noise, scale, octaves, persistence)` with a `PerlinNoise` object. This writes directly to the internal float heightmap, bypassing the Pixels intermediate for better performance on large terrains. The `noise` parameter is a `PerlinNoise` object, `scale` controls coordinate frequency, `octaves` sets detail layers (typically 4-8), and `persistence` controls amplitude decay (typically 0.4-0.6). Non-finite scale/persistence values are sanitized, octaves are clamped to `1..16`, and generated heights are clamped to `0..1`.
 
-**Texture splatting:** When a splat map is set, the terrain blends 4 layer textures per-pixel during rasterization, weighted by the splat map RGBA channels. Each layer can have its own UV tiling scale for detail repetition. The software, Metal, OpenGL, and D3D11 backends all perform per-pixel splat sampling. A `1x1` splat map is valid and acts as uniform coverage for the whole terrain.
+**Texture splatting:** When a splat map is set, the terrain blends 4 layer textures per-pixel during rasterization, weighted by the splat map RGBA channels. Each layer can have its own UV tiling scale for detail repetition. The software, Metal, OpenGL, and D3D11 backends all perform per-pixel splat sampling. A `1x1` splat map is valid and acts as uniform coverage for the whole terrain. Any baked fallback texture is stored in the standard `Pixels` format, `0xRRGGBBAA`.
 
 **LOD (Level of Detail):** Terrain chunks use 3 resolution levels based on distance from the camera:
 - LOD 0 (full): 16x16 quads per chunk (nearest chunks)
 - LOD 1 (half): 8x8 quads per chunk (mid-range)
 - LOD 2 (quarter): 4x4 quads per chunk (distant)
 
-Configure with `SetLODDistances(nearDist, farDist)` — chunks closer than `nearDist` use LOD 0, between `nearDist` and `farDist` use LOD 1, beyond `farDist` use LOD 2. Default: 100/250. Invalid distances are sanitized so `farDist` stays greater than `nearDist`. Chunks outside the camera frustum are culled entirely (not drawn). Skirt geometry (`SetSkirtDepth(depth)`) hides cracks at LOD transitions by extending chunk edges downward; invalid or negative skirt depths disable skirts. Edge chunks always include their far row/column endpoints at coarser LODs, so partial edge chunks still produce triangles.
+Configure with `SetLODDistances(nearDist, farDist)` — chunks closer than `nearDist` use LOD 0, between `nearDist` and `farDist` use LOD 1, beyond `farDist` use LOD 2. Default: 100/250. Invalid distances are sanitized so `farDist` stays greater than `nearDist`. Chunks outside the camera frustum are culled entirely (not drawn). Skirt geometry (`SetSkirtDepth(depth)`) hides cracks at LOD transitions by extending chunk edges downward and is included in chunk bounds, so visible skirts are not clipped by frustum culling. Invalid or negative skirt depths disable skirts. Edge chunks always include their far row/column endpoints at coarser LODs, so partial edge chunks still produce triangles.
 
 Draw via `Canvas3D.DrawTerrain(terrain)` during a normal 3D `Begin`/`End` pass. Terrain is not valid inside `Begin2D()`.
 
@@ -2901,7 +2908,7 @@ Procedural grass/foliage rendering with wind animation and LOD.
 | `Populate(camera, maxBlades)` | `void(obj, i64)` | Generate blade instances around camera |
 | `Update(dt, camX, camY, camZ)` | `void(f64, f64, f64, f64)` | Update wind animation and camera-relative LOD |
 
-Draw via `Canvas3D.DrawVegetation(vegetation)`.
+Draw via `Canvas3D.DrawVegetation(vegetation)`. `Update(0.0, camX, camY, camZ)` refreshes camera-relative visibility and LOD without advancing wind time, which is useful for paused scenes. `DrawVegetation` must run inside the 3D `Canvas3D.Begin`/`End` section.
 
 ### Zia Example
 

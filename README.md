@@ -88,7 +88,7 @@ zia> Say(Fmt.Int(2 + 3))
 | **[VM](docs/vm.md)** | Bytecode interpreter with switch, table, and threaded dispatch |
 | **[AArch64](docs/codegen/aarch64.md) · [x86-64](docs/codegen/x86_64.md)** | Native code generators |
 | **[Assembler](docs/codegen/native-assembler.md) · [Linker](docs/codegen/native-linker.md)** | Built-in ELF/Mach-O/PE toolchain — zero external dependencies |
-| **[Runtime](docs/viperlib/README.md)** | 378 classes across 21 modules (graphics, 3D, GUI, game engine, networking, localization, and more) |
+| **[Runtime](docs/viperlib/README.md)** | 380 classes across 21 modules (graphics, 3D, GUI, game engine, networking, localization, and more) |
 | **[Language Servers](docs/zia-server.md)** | Dual-protocol (LSP + MCP) servers for Zia and BASIC |
 | **[Tools](docs/tools.md)** | Compiler drivers, verifier, disassembler, [REPL](docs/repl.md), packager |
 
@@ -97,7 +97,7 @@ zia> Say(Fmt.Int(2 + 3))
 - **Platform-native** — [Zia](docs/zia-reference.md) compiles to native machine code via [Viper IL](docs/il-guide.md) — no VM required for production
 - **IL-centric** — A readable, typed IR makes semantics explicit and frontends interchangeable
 - **Self-contained** — Built-in [assembler](docs/codegen/native-assembler.md) and [linker](docs/codegen/native-linker.md) with ELF/Mach-O/PE support and dynamic linking — zero external tool dependencies for native compilation
-- **Full runtime** — 378 classes covering [graphics](docs/viperlib/graphics/README.md), [3D](docs/graphics3d-guide.md), [networking](docs/viperlib/network.md), [GUI](docs/viperlib/gui/README.md), [threading](docs/viperlib/threads.md), [localization](docs/viperlib/localization/README.md), and more
+- **Full runtime** — 380 classes covering [graphics](docs/viperlib/graphics/README.md), [3D](docs/graphics3d-guide.md), [networking](docs/viperlib/network.md), [GUI](docs/viperlib/gui/README.md), [threading](docs/viperlib/threads.md), [localization](docs/viperlib/localization/README.md), and more
 
 ---
 
@@ -115,7 +115,7 @@ Viper is in **early development**. All components are functional but evolving:
 | [AArch64 Backend](docs/codegen/aarch64.md) | Apple Silicon and Windows ARM64 with register coalescing and post-RA scheduling |
 | [x86-64 Backend](docs/codegen/x86_64.md) | Windows and Linux, IEEE-754 NaN-safe, 300+ stress tests |
 | [Native Toolchain](docs/codegen/native-assembler.md) | In-tree assembler and linker for ELF / Mach-O / PE with DWARF v5 and dynamic linking |
-| [Runtime](docs/viperlib/README.md) | 378 classes across 21 modules |
+| [Runtime](docs/viperlib/README.md) | 380 classes across 21 modules |
 | [3D Graphics](docs/graphics3d-guide.md) | 45 classes covering meshes, materials, lighting, skeletal animation, terrain, water, physics, asset import (glTF / FBX), and post-processing across Metal / D3D11 / OpenGL / software backends |
 | [Game Engine](docs/viperlib/game/README.md) | Collision, pathfinding, physics, tweening, particles, state machines, AI behaviors, level loading, asset embedding |
 | [GUI](docs/viperlib/gui/README.md) | 47 widgets for cross-platform desktop apps |
@@ -232,7 +232,7 @@ entry_0:
 
 ## Runtime Library
 
-All frontends share the **[Viper Runtime](docs/viperlib/README.md)** — 378 classes across 21 modules:
+All frontends share the **[Viper Runtime](docs/viperlib/README.md)** — 380 classes across 21 modules:
 
 | Module | Classes | Description |
 |--------|:-------:|-------------|

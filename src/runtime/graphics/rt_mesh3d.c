@@ -172,6 +172,7 @@ static void rt_mesh3d_finalize(void *obj) {
     m->vertices = NULL;
     free(m->indices);
     m->indices = NULL;
+    mesh_release_ref(&m->skeleton_ref);
     mesh_release_ref(&m->morph_targets_ref);
 }
 
@@ -196,10 +197,14 @@ void *rt_mesh3d_new(void) {
     m->index_count = 0;
     m->index_capacity = MESH_INIT_IDXS;
     m->bone_palette = NULL;
+    m->prev_bone_palette = NULL;
     m->bone_count = 0;
     m->morph_deltas = NULL;
+    m->morph_normal_deltas = NULL;
     m->morph_weights = NULL;
+    m->prev_morph_weights = NULL;
     m->morph_shape_count = 0;
+    m->skeleton_ref = NULL;
     m->morph_targets_ref = NULL;
     m->build_failed = 0;
     m->geometry_revision = 1;
@@ -234,6 +239,7 @@ void rt_mesh3d_clear(void *obj) {
     m->prev_morph_weights = NULL;
     m->morph_shape_count = 0;
     m->build_failed = 0;
+    mesh_release_ref(&m->skeleton_ref);
     mesh_release_ref(&m->morph_targets_ref);
     rt_mesh3d_touch_geometry(m);
     rt_mesh3d_reset_bounds(m);
@@ -423,6 +429,10 @@ void *rt_mesh3d_clone(void *obj) {
     rt_mesh3d *src = mesh3d_checked(obj);
     if (!src)
         return NULL;
+    if (src->build_failed) {
+        rt_trap("Mesh3D.Clone: cannot clone a failed mesh build");
+        return NULL;
+    }
     rt_mesh3d *dst = (rt_mesh3d *)rt_mesh3d_new();
     if (!dst)
         return NULL;
@@ -460,15 +470,16 @@ void *rt_mesh3d_clone(void *obj) {
         memcpy(dst->indices, src->indices, src->index_count * sizeof(uint32_t));
     dst->bone_palette = NULL;
     dst->prev_bone_palette = NULL;
-    dst->bone_count = 0;
+    dst->bone_count = src->bone_count;
     dst->morph_deltas = NULL;
     dst->morph_weights = NULL;
     dst->morph_shape_count = 0;
     dst->morph_normal_deltas = NULL;
     dst->prev_morph_weights = NULL;
+    mesh_assign_ref(&dst->skeleton_ref, src->skeleton_ref);
     mesh_assign_ref(&dst->morph_targets_ref, src->morph_targets_ref);
     dst->geometry_revision = src->geometry_revision;
-    dst->build_failed = src->build_failed;
+    dst->build_failed = 0;
     dst->aabb_min[0] = src->aabb_min[0];
     dst->aabb_min[1] = src->aabb_min[1];
     dst->aabb_min[2] = src->aabb_min[2];
@@ -1361,6 +1372,7 @@ void *rt_mesh3d_from_obj(rt_string path) {
     int cap_p = 256, cap_n = 256, cap_t = 256;
     int cnt_p = 0, cnt_n = 0, cnt_t = 0;
     int parse_failed = 0;
+    int missing_normals = 0;
     float *positions = (float *)malloc((size_t)cap_p * 3 * sizeof(float));
     float *normals = (float *)malloc((size_t)cap_n * 3 * sizeof(float));
     float *texcoords = (float *)malloc((size_t)cap_t * 2 * sizeof(float));
@@ -1574,6 +1586,8 @@ void *rt_mesh3d_from_obj(rt_string path) {
                     parse_failed = 1;
                     break;
                 }
+                if (ni == 0)
+                    missing_normals = 1;
             }
 
             /* Fan triangulation: (0,1,2), (0,2,3), (0,3,4), ... */
@@ -1616,8 +1630,8 @@ void *rt_mesh3d_from_obj(rt_string path) {
         return NULL;
     }
 
-    /* If no normals were in the file, auto-compute them */
-    if (cnt_n == 0 && ((rt_mesh3d *)mesh)->vertex_count > 0)
+    /* If normals are missing globally or on any face, compute a complete normal set. */
+    if ((cnt_n == 0 || missing_normals) && ((rt_mesh3d *)mesh)->vertex_count > 0)
         rt_mesh3d_recalc_normals(mesh);
 
     return mesh;

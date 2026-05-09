@@ -21,6 +21,10 @@ A focused hardening-and-correctness cycle on the v0.2.5 surface. No new public n
 - `Viper.Audio.*` compat surface rebuilt from `RT_ALIAS` aliases to full typed registrations.
 - AArch64 register-allocator correctness — protection set covers def operands, fixing register-reuse clobbers.
 - Windows x64 stabilization — out-of-order block-param lowering, RSP/RBP scheduling boundaries, lone-JCC trace fix, parallel-copy spill scratch reuse, 256-bone D3D11 cbuffer.
+- x86-64 backend liveness contracts — compare/branch fold safety across edge copies, IMUL→LEA refusal when flags are read, block-DCE preservation of physical registers at exits, fixed-physical-register spill-before-clobber, void-return zero exit code.
+- 2D graphics correctness round 2 — class-id validation on every typed handle, premultiplied-alpha bilinear sampler, tagged `Color.RGBA(...,0)` distinguishable from legacy `0x00RRGGBB`, alpha-preserving Canvas `BlitAlpha` and particle source-over, Lighting2D tile-light per-frame lifetime.
+- Typed `Parse.*` string ABI — `Viper.Core.Parse.Double` / `Int64` signatures flipped to `i32(str,ptr)`; legacy raw-pointer ABI preserved for INPUT# parsing via internal aliases.
+- Heap immortal-refcount sentinel split — `RT_HEAP_IMMORTAL_REFCNT` (`SIZE_MAX-1`) reserved as a sticky immortal value distinct from the `SIZE_MAX` corruption marker.
 - MSVC build hardening — embedded debug info via CMP0141, expanded import policy for UCRT/Win32 symbols, WSL-aware audit and smoke scripts.
 - ViperIDE polish — IntelliSense linkage fix via `fe_zia` force-load, real keyword highlighting from the live `Lexer`, scrollBeyondLastLine, BMP toolbar glyphs.
 
@@ -28,13 +32,13 @@ A focused hardening-and-correctness cycle on the v0.2.5 surface. No new public n
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 23 | +23 |
+| Commits | — | 27 | +27 |
 | Source files | 2,996 | 3,005 | +9 |
-| Production SLOC | 552K | 562K | +10K |
-| Test SLOC | 228K | 232K | +4K |
+| Production SLOC | 552K | 563K | +11K |
+| Test SLOC | 228K | 233K | +5K |
 | Demo SLOC | 188K | 188K | 0 |
 
-Counts via `scripts/count_sloc.sh` (production 561,866 / test 232,404 / demo 187,826 / source files 3,005).
+Counts via `scripts/count_sloc.sh` (production 562,812 / test 233,360 / demo 187,826 / source files 3,005).
 
 ---
 
@@ -63,8 +67,18 @@ Counts via `scripts/count_sloc.sh` (production 561,866 / test 232,404 / demo 187
 - MessageBus: `RT_MSGBUS_CLASS_ID` and `RT_MSGBUS_CALLBACK_CLASS_ID` validated through `mb_require()` on every public entry; raw function pointers and unrelated heap objects now trap.
 - Topic hashing uses full byte length via `mb_hash_bytes` / `memcmp` — embedded NULs preserved across subscribe / publish / clear.
 - `mb_traverse()` registers retained callback objects with the GC tracker; an internal lock serializes public operations; `Topics()` returns an owning `Seq`; `Publish` releases its retained snapshot before re-raising a trapping handler; subscription-ID overflow caught before counter wrap.
+- `Publish` now retains managed runtime objects and strings for the dispatch window (`mb_retain_managed_payload`) so a concurrent free can't pull the payload away mid-call; raw foreign pointers stay borrowed and must outlive the publish.
 - `Parse.DoubleOption` / `Int64Option` (with `Viper.Parse.*` aliases) — Option-returning helpers for graceful parse failure.
+- `Viper.Core.Parse.Double` / `Int64` ABI flipped from `i32(ptr,ptr)` to `i32(str,ptr)` — first arg is now a typed runtime string. New `rt_parse_int64_str` / `rt_parse_double_str` natives validate the handle, reject embedded-NUL strings, then delegate to the C-string bodies. BASIC `INPUT#` parsing keeps the legacy raw-pointer ABI through internal `kParseDoubleCStr` / `kParseInt64CStr` aliases.
+- `rt_parse_int_radix` accepts `+` as a leading sign (was returning `default_value` on the unary plus).
+- Heap immortal-refcount sentinel split: new `RT_HEAP_IMMORTAL_REFCNT` (`SIZE_MAX-1`) and `RT_HEAP_MAX_MORTAL_REFCNT` macros reserve `SIZE_MAX` purely as a corruption marker. `rt_heap_retain` skips on already-immortal payloads; `rt_heap_release` traps with `cannot release immortal refcount`.
+- `rt_heap_realloc` registry-update failure switched from `rt_trap` to `rt_abort` — at that point the registry has lost track of the live payload and trap recovery would leave the runtime in a half-corrupted state.
+- 9 string-inspection helpers (`rt_str_len`, `rt_str_index_of`, `rt_str_instr3`, `rt_str_eq`, `rt_str_lt`, `rt_str_le`, `rt_str_gt`, `rt_str_ge`, `rt_str_asc`) flipped from `nothrow=true` to `nothrow=false` — they trap on invalid handles, so the optimizer must not hoist them across exception boundaries.
 - `Object.RefEquals` exposed through the class method index; `rt_to_double` switched to strict `rt_parse_double` so partial parses no longer succeed silently.
+- New `Box.TryToI64` / `TryToF64` / `TryToI1` / `TryToStr` option-style accessors return `i1` and never trap; `TryToStr` writes a retained string handle (modelled by the new `ownedOutArgMask` ownership-effect bit). `Box.ToI1` ABI corrected from `i64(obj)` to `i1(obj)` end-to-end.
+- `Box.ValueType.AddField` now traps on offsets that aren't pointer-aligned.
+- New `RT_ELEM_OBJ` heap element kind disambiguates "no managed elements" from "object pointer elements"; object arrays release-per-pointer, primitive arrays remain a true no-op.
+- `Diagnostics.Trap` routes through new validating `rt_trap_string` dispatcher that escapes embedded NULs and rejects invalid string handles before reaching the C-string trap formatter; AArch64 + x86-64 backends and BASIC + Zia frontends all retargeted at the new symbol.
 
 ### Crypto
 
@@ -145,6 +159,17 @@ Counts via `scripts/count_sloc.sh` (production 561,866 / test 232,404 / demo 187
 - Tilemap I/O introduces `tilemap_io_release_ref` plus `map_set_owned` / `seq_push_owned` so reload cycles cannot double-free shared tile references.
 - `Color.FromHex` rejects strings with embedded NUL bytes — was returning a partial color.
 - Redundant per-subsystem class-ID constants in `rt_graphics2d.c` removed; canonical IDs come from the runtime registry.
+- Class-ID validation extended to AutoTile2D, Path2D, ShapeRenderer2D, TextRenderer2D, TextLayout2D, and RenderPass2D — every public entry routes through `rt2d_has_class()` instead of a bare null check. TextRenderer2D rejects non-`BitmapFont` fonts; `RenderPass2D.New` drops a non-RenderTarget2D source/target to NULL rather than retaining a typed mismatch.
+- New `bilerp_premul_rgba` replaces independent-channel `lerp_channel` in the linear-filter sampler — RGB is now interpolated in premultiplied-alpha space and divided back out, so transparent edge texels no longer darken partial-alpha results.
+- New `RT_PIXELS_COLOR_EXPLICIT_ALPHA_FLAG` (bit 56) distinguishes tagged `Color.RGBA(...)` values from raw `0x00RRGGBB` legacy colors. `rt_color_get_a` returns 255 for legacy values and the actual alpha byte for tagged values; `draw_rgb` handles all three encodings (Canvas-style, raw `0xRRGGBBAA`, tagged) uniformly.
+- `Particle.DrawToPixels` switched to alpha-preserving source-over via the new `particle_alpha_over_rgba` helper; legacy 0-alpha particles still draw as opaque while tagged `Color.RGBA(...,0)` stays fully transparent. A parallel `RT_PARTICLE_COLOR_EXPLICIT_ALPHA_FLAG` carries the same distinction through the particle pipeline.
+- `Canvas.BlitAlpha` rewritten to preserve destination alpha — composites `out_a = sa + (da * (255-sa) + 127)/255` and divides the premultiplied RGB by `out_a`. Previously stamped `dst[3] = 255` regardless of source/destination alpha.
+- `Renderer2D.BlitPixelsToCanvas` now properly clips negative destination coordinates and partial off-canvas blits, computing a `(sx, sy)` source offset for the trimmed prefix instead of reading past the source's right/bottom edge.
+- New `Viper.Graphics.Palette2D.ApplyLegacy` exposes the pre-flag recolour behaviour for callers that want the older alpha-byte rules.
+- `rt_canvas_set_title` strdups the new title before freeing the cached one — an OOM mid-update no longer leaves the canvas with `title=NULL`.
+- `rt_pixels_load_png` releases the partially-allocated pixels object on every cleanup path so callers see a clean NULL on failure instead of a leaked half-initialised handle.
+- `Lighting2D.AddTileLight` now stores screen-space lights in a separate per-frame pool that's drained after `Draw`, replacing the broken 1-frame-life dynamic-light approach that expired before the render under Update-then-Draw call orderings.
+- `AnimatedSprite2D.Play()` restarts a finished non-looping clip from its first effective frame so one-shot clips can be replayed without reconstructing the clip object.
 
 ### ViperIDE
 
@@ -168,6 +193,13 @@ Counts via `scripts/count_sloc.sh` (production 561,866 / test 232,404 / demo 187
 - Register coalescer lowers spilled parallel-copy sources from memory one at a time instead of demanding one scratch register per source — eliminates scratch exhaustion in 3dbowling and xenoscape.
 - `DynamicSymbolPolicy` extended with the syscalls introduced by IO hardening: `openat`, `fstatat`, `mkdirat`, `unlinkat`, `renameat`, `fdopendir`, `dirfd`, `chmod`, `fchmod`, `mkdtemp`. Native-linked Linux binaries previously failed dynamic-symbol validation without these entries.
 - `RuntimeSurfacePolicy.inc` registers the new `rt_threadpool_current_worker_pool` accessor used by the nested-parallel guard.
+- x86-64 compare/branch fold safety: compare/setcc/test/jcc folding now refuses to delete a materialised boolean that is still live in a successor block via branch-argument edge copies. Fold-safety checks route through shared operand-role metadata so register uses inside both explicit and memory operands are considered.
+- IMUL → LEA strength reduction is rejected when flags are read before a later clobber, preserving condition-code consumers that depend on the multiply.
+- Block-DCE now preserves physical registers at exits for blocks that may transfer control, so fallthrough-carried values aren't deleted as dead locals. JCC-only fallthrough pairs stay fixed during cold-block movement so conditional branches keep reaching their intended hot successor.
+- Known-constant tracking now invalidates physical defs from `POP`, read-modify-write forms, `CQO`, `DIV`/`IDIV`, and CALL caller-saved clobbers, while recognising `XOR reg,reg` as a known zero.
+- Register allocator collects explicit and implicit physical clobbers through operand roles (including `RAX`/`RDX` division setup and `CQO`/`DIV`/`IDIV` results) and spills active live values before instructions that overwrite fixed physical registers — fixes a class of Windows-only corruption in demos that kept values live across those clobbers.
+- Empty native returns now emit a zero integer return value before `RET` so void main-style native executables don't leak stale register contents as their process exit status; regression coverage added for the void-return exit-code path.
+- Optimizer ownership-effect model gains a new `ownedOutArgMask` bitmask describing pointer arguments that receive an owned reference (e.g. `Box.TryToStr`); plumbed through `RuntimeOwnership.hpp`, `CallEffects.hpp`, signature plumbing, and the runtime metadata for `Memory.Retain` / `Release` / `RetainStr` / `ReleaseStr`, the Box family, `Object.ToString` / `TypeName`, `Parse.DoubleOption` / `Int64Option`, `Convert.ToString_*`, and the MessageBus surface.
 
 ### Windows / MSVC toolchain
 
@@ -182,25 +214,27 @@ Counts via `scripts/count_sloc.sh` (production 561,866 / test 232,404 / demo 187
 ### Tests
 
 - Memory / GC: traversal callbacks, promoted roots, weak-ref resurrection, finalizer trap recovery.
-- MessageBus: NUL-embedded topics, callback class-ID validation, raw-callback rejection, owning topic snapshots, publish trap cleanup, subscription-ID overflow.
-- Object: `rt_obj_equals` / `GetHashCode` Box dispatch, `±0.0` hash equality, type identity, `RefEquals`.
-- New `RTMemorySurfaceTests`: invalid-handle traps, resurrected release counts, array-element release, `RetainStr` / `ReleaseStr` round-trip.
-- New `RTParseTests`: `DoubleOption` / `Int64Option` success and `None`, class IDs, typed return metadata.
-- New `RTTrapContractTests`: NUL-embedded diagnostic message escaping.
+- MessageBus: NUL-embedded topics, callback class-ID validation, raw-callback rejection, owning topic snapshots, publish trap cleanup, subscription-ID overflow, payload retention through dispatch.
+- Object: `rt_obj_equals` / `GetHashCode` Box dispatch, `±0.0` hash equality, type identity, `RefEquals`, `Object.TypeName` for built-in MessageBus / Box / ValueType / Option / Callback class IDs.
+- New `RTMemorySurfaceTests`: invalid-handle traps, resurrected release counts, array-element release, `RetainStr` / `ReleaseStr` round-trip, immortal-release trap, `RT_ELEM_OBJ` array regression.
+- New `RTParseTests`: `DoubleOption` / `Int64Option` success and `None`, class IDs, typed return metadata, leading-`+` sign, typed-string vs C-string ABI parity.
+- New `RTTrapContractTests`: NUL-embedded diagnostic message escaping; `Diagnostics.Trap` routes through `rt_trap_string`.
+- New `RTSeqBoxTests::call_value_type_misaligned_field`: pointer-aligned offset validation for `Box.ValueType.AddField`.
+- New `RTCoreOwnershipTests::test_runtime_metadata_matches_core_contracts`: end-to-end ownership classifications for `Memory.*`, Box family, `Object.ToString` / `TypeName`, `Parse.*Option`, `Convert.ToString_*`, and MessageBus.
 - IO: ZIP64 / extra-field rejection, asset temp-dir isolation, savedata absolute paths, VPA large-file seek, watcher overflow, inflate consumed-bytes, unsigned `BinaryBuffer`, OGG CRC.
 - Threads: repeatable joins, future listener trap isolation, sticky-then-cleared pool errors through Wait / Shutdown / ShutdownNow, idempotent pool shutdown, nested-parallel same-pool execution, retained borrowed-callback results across `Async.Run` / `Async.Map` / `Parallel.Map`, synchronous-channel `TrySend`, ConcurrentMap remove/clear release-after-unlock, VM/BytecodeVM owned thread and async dispatch.
 - Crypto: scrypt round-trips, AEAD encrypt / decrypt with AAD, `ConstantTimeEquals`, TLS extension parsers.
-- 2D graphics: new `RTBitmapFontContractTests`; expanded `RTCanvasContractTests`; `RTColorUtilsTests` for alpha-tag preservation through `Brighten` / `Darken` / `Invert` / `Grayscale` / `Saturate` / `Desaturate` / `Complement` / `Lerp`; `RTSpriteContractTests` for tint-alpha survival; `RTGraphics2DTests`, `RTPixelsTests`, `RTCameraTests`, `TestTilemapAnim`.
-- x86-64 codegen: out-of-order block-param lowering, instruction-result pre-registration, scheduler prologue-boundary preservation, large-spill `PX_COPY` regression, lone-JCC fallthrough peephole.
+- 2D graphics: new `RTBitmapFontContractTests`; expanded `RTCanvasContractTests`; `RTColorUtilsTests` for alpha-tag preservation through `Brighten` / `Darken` / `Invert` / `Grayscale` / `Saturate` / `Desaturate` / `Complement` / `Lerp`; `RTSpriteContractTests` for tint-alpha survival; `RTGraphics2DTests`, `RTPixelsTests`, `RTCameraTests`, `TestTilemapAnim`. Round-2 additions cover `rt_color_get_a` legacy-vs-tagged behaviour, premultiplied-alpha bilerp on a transparent-edge texture, hex-vs-`Color.RGBA` stroke parity, TextRenderer2D rejecting non-BitmapFont fonts, `AnimatedSprite2D.Play()` replay after one-shot completion, and SpriteRenderer2D material/tint state isolation against subsequent direct `Renderer2D` draws.
+- x86-64 codegen: out-of-order block-param lowering, instruction-result pre-registration, scheduler prologue-boundary preservation, large-spill `PX_COPY` regression, lone-JCC fallthrough peephole. Backend-liveness round adds compare/branch fold-safety across edge copies, IMUL→LEA refusal under live flags, block-DCE physical-register preservation at exits, JCC-only fallthrough preservation under cold-block movement, fixed-physical-register spill-before-clobber for `RAX`/`RDX`/`CQO`/`DIV`/`IDIV`, and a void-return zero-exit-code regression.
 - D3D11: shared-backend coverage tying the bone-palette byte count to the 256 supported shader entries.
 - The seven `Viper.GUI` widget tests in `src/lib/gui/tests/` were relabeled `tui` → `gui` (a new dedicated ctest label); the wheel-scroll regression contract was rewritten with floating-point tolerance to match the new mouse-wheel constant.
 
-Demos and docs changed only as required to track the runtime work above: chess and xenoscape pinned to O0 on Windows until the optimised-build regression they triggered is resolved; per-file file-header and `@brief` audit across the `Viper.Graphics.*`, `Viper.Crypto.*`, and `Viper.Threads.*` sources; refreshed `viperlib/` reference pages for the migrated crypto namespace, the threading repeatable-join contract, the retained `Async.Run` / `Async.Map` / `Parallel.Map` result rules, and the new `rt_future_peek_value` ownership note; ADR 0002 updated; root `README.md` long-running counts re-audited (optimizer 20→24 passes, runtime 360→378 classes / 23→21 modules, demos 16→17 games, docs 185+→200+).
+Demos and docs changed only as required to track the runtime work above: chess, xenoscape, and Baseball pinned to debug/O0 on Windows until their optimised-build regressions are resolved; per-file file-header and `@brief` audit across the `Viper.Graphics.*`, `Viper.Crypto.*`, `Viper.Threads.*`, `Viper.Core.*`, and `Viper.Memory.*` sources; refreshed `viperlib/` reference pages for the migrated crypto namespace, the threading repeatable-join contract, the retained `Async.Run` / `Async.Map` / `Parallel.Map` result rules, the typed `Parse.*` string ABI, the immortal-refcount macros, the per-frame Lighting2D tile-light contract, the premultiplied-alpha bilinear filter, the alpha-preserving `Canvas.BlitAlpha`, the legacy-vs-tagged particle alpha rules, the new `Palette2D.ApplyLegacy` entry, and the `rt_future_peek_value` ownership note; ADR 0002 updated; root `README.md` long-running counts re-audited (optimizer 20→24 passes, runtime 360→378 classes / 23→21 modules, demos 16→17 games, docs 185+→200+).
 
 ---
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 23-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 27-commit history since v0.2.5.
 
 <!-- END DRAFT -->

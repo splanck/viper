@@ -23,6 +23,7 @@
 #include "rt_water3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_heap.h"
 #include "rt_pixels.h"
 
 #include <math.h>
@@ -83,10 +84,15 @@ typedef struct {
     water_wave_t waves[WATER_MAX_WAVES];
     int32_t wave_count;
     int32_t resolution; /* grid resolution (default WATER_GRID) */
+    int8_t mesh_dirty;
 } rt_water3d;
 
 static rt_water3d *water3d_checked(void *obj) {
     return (rt_water3d *)rt_g3d_checked_or_null(obj, RT_G3D_WATER3D_CLASS_ID);
+}
+
+static int water3d_is_pixels_handle(void *pixels) {
+    return pixels && rt_heap_is_payload(pixels) && rt_obj_class_id(pixels) == RT_PIXELS_CLASS_ID;
 }
 
 /// @brief Drop one reference and zero the slot. Idempotent on null/empty slots.
@@ -170,6 +176,7 @@ void *rt_water3d_new(double width, double depth) {
     w->reflectivity = 0.0;
     w->wave_count = 0;
     w->resolution = WATER_GRID;
+    w->mesh_dirty = 1;
     rt_obj_set_finalizer(w, water3d_finalizer);
     return w;
 }
@@ -177,8 +184,10 @@ void *rt_water3d_new(double width, double depth) {
 /// @brief Set the base Y-coordinate (world height) of the water plane.
 void rt_water3d_set_height(void *obj, double y) {
     rt_water3d *w = water3d_checked(obj);
-    if (w && isfinite(y))
+    if (w && isfinite(y)) {
         w->height = y;
+        w->mesh_dirty = 1;
+    }
 }
 
 /// @brief Configure the sinusoidal wave animation parameters.
@@ -189,6 +198,7 @@ void rt_water3d_set_wave_params(void *obj, double speed, double amplitude, doubl
     w->wave_speed = isfinite(speed) ? speed : 0.0;
     w->wave_amplitude = (isfinite(amplitude) && amplitude >= 0.0) ? amplitude : 0.0;
     w->wave_frequency = isfinite(frequency) ? frequency : 0.0;
+    w->mesh_dirty = 1;
 }
 
 /// @brief Set the base tint color and transparency of the water surface.
@@ -207,7 +217,7 @@ void rt_water3d_set_texture(void *obj, void *pixels) {
     rt_water3d *w = water3d_checked(obj);
     if (!w)
         return;
-    if (pixels && rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID)
+    if (pixels && !water3d_is_pixels_handle(pixels))
         return;
     water3d_assign_ref(&w->texture, pixels);
     if (w->material)
@@ -219,7 +229,7 @@ void rt_water3d_set_normal_map(void *obj, void *pixels) {
     rt_water3d *w = water3d_checked(obj);
     if (!w)
         return;
-    if (pixels && rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID)
+    if (pixels && !water3d_is_pixels_handle(pixels))
         return;
     water3d_assign_ref(&w->normal_map, pixels);
     if (w->material)
@@ -257,7 +267,10 @@ void rt_water3d_set_resolution(void *obj, int64_t res) {
         res = 8;
     if (res > 256)
         res = 256;
-    w->resolution = (int32_t)res;
+    if (w->resolution != (int32_t)res) {
+        w->resolution = (int32_t)res;
+        w->mesh_dirty = 1;
+    }
 }
 
 /// @brief Add a Gerstner wave to the water.
@@ -282,13 +295,16 @@ void rt_water3d_add_wave(
     wv->amplitude = amplitude;
     wv->frequency = (wavelength > 0.001) ? (6.283185307 / wavelength) : 1.0;
     w->wave_count++;
+    w->mesh_dirty = 1;
 }
 
 /// @brief Remove all Gerstner waves.
 void rt_water3d_clear_waves(void *obj) {
     rt_water3d *w = water3d_checked(obj);
-    if (w)
+    if (w) {
         w->wave_count = 0;
+        w->mesh_dirty = 1;
+    }
 }
 
 /// @brief Advance the water simulation by `dt` seconds and regenerate the surface mesh.
@@ -312,7 +328,9 @@ void rt_water3d_clear_waves(void *obj) {
 /// @param dt Elapsed seconds since the previous update (must be > 0 to apply).
 void rt_water3d_update(void *obj, double dt) {
     rt_water3d *w = water3d_checked(obj);
-    if (!w || !isfinite(dt) || dt <= 0.0)
+    if (!w || !isfinite(dt) || dt < 0.0)
+        return;
+    if (dt == 0.0 && !w->mesh_dirty && w->mesh && w->material)
         return;
     w->time += dt;
     if (!isfinite(w->time))
@@ -405,6 +423,7 @@ void rt_water3d_update(void *obj, double dt) {
     rt_material3d_set_normal_map(w->material, w->normal_map);
     rt_material3d_set_env_map(w->material, w->env_map);
     rt_material3d_set_reflectivity(w->material, w->env_map ? w->reflectivity : 0.0);
+    w->mesh_dirty = 0;
 }
 
 /// @brief Draw the animated water surface through the 3D canvas.
@@ -423,6 +442,8 @@ void rt_canvas3d_draw_water(void *canvas, void *obj, void *camera) {
     if (!c || !w)
         return;
     (void)camera;
+    if (!w->mesh || !w->material || w->mesh_dirty)
+        rt_water3d_update(w, 0.0);
     if (!w->mesh || !w->material)
         return;
 

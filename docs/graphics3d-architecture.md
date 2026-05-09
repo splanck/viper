@@ -74,6 +74,8 @@ fallbacks, so they remain stable if backend names or platform selection change.
 
 Graphics3D clamps public numeric state before it enters renderer-facing structs. `Canvas3D` clamps
 clear, ambient, fog, and frame-delta inputs before they reach backend color state or camera shake.
+Mesh, skinned, morphed, blended, and instanced draw entry points validate finite model matrices before
+they reach culling, terrain splat capture, or backend command queues.
 `Camera3D` rejects non-finite projection, `LookAt`, orbit, FPS, shake, and follow inputs so
 view/projection matrices and picking rays stay finite. `SceneNode3D` and `Transform3D` sanitize TRS
 components, normalize quaternions, and keep LOD distances non-negative; node animation clips reject
@@ -81,9 +83,11 @@ non-finite samples and non-increasing key times before they reach the sampler. `
 primitive dimensions and heightfield scales, rejects compound-child cycles, and guards heightfield
 allocation sizes. `Physics3D` keeps world gravity, time steps, body motion state, damping, impulses,
 and character-controller settings finite before they feed integration and broadphase code; capsule
-primitive narrow-phase uses the body's quaternion orientation when deriving its world-space axis.
+primitive narrow-phase uses the body's quaternion orientation when deriving its world-space axis, and
+ray queries use analytic sphere/capsule/box tests with AABB fallback for complex colliders.
 `Mesh3D` rejects invalid procedural dimensions, non-finite OBJ attributes, and overflowing OBJ face
-indices; generated UV spheres avoid zero-area pole triangles. `Particles3D` bounds emitter ranges,
+indices; generated UV spheres avoid zero-area pole triangles, bone weights are filtered and
+renormalized, and failed mesh builds are not cloned as drawable meshes. `Particles3D` bounds emitter ranges,
 rates, alpha, spread, shape, and update time. `InstanceBatch3D` stores only finite matrix elements
 for culling and backend submission. `Light3D` clamps colors, intensities, attenuations, spot angles,
 and fallback directions before the light list is copied into backend parameters. `PostFX3D` bounds
@@ -109,8 +113,10 @@ The advanced helpers follow the same numeric guard policy. `TextureAtlas3D` vali
 Pixels handles before copying image data, duplicates tile edge padding for bilinear correctness, and
 keeps dirty cached Pixels intact on rebuild failure.
 `Terrain3D`, `Sprite3D`, `Decal3D`, `Water3D`, `Vegetation3D`, `Path3D`, `NavMesh3D`, and
-`NavAgent3D` clamp or reject non-finite sizes, frame rectangles, normals, wave parameters, density
-maps, spline points, empty navigation meshes, and steering distances at the runtime boundary.
+`NavAgent3D` clamp or reject non-finite sizes, frame rectangles, normals, Perlin parameters, wave
+parameters, density maps, spline points, empty navigation meshes, and steering distances at the
+runtime boundary. Water and vegetation allow zero-delta updates for dirty geometry rebuilds and
+camera-relative culling refreshes without advancing simulation time.
 
 ### Metal Window Presentation Model
 

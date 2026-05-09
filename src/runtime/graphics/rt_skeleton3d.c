@@ -24,6 +24,7 @@
 #include "rt_skeleton3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_heap.h"
 #include "rt_mat4.h"
 #include "rt_object.h"
 #include "rt_quat.h"
@@ -42,6 +43,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+#define SKELETON3D_FLOAT_ABS_MAX 3.40282346638528859812e38
 
 /// @brief Heuristic — should we hand bone matrices to the GPU instead of skinning on the CPU?
 ///
@@ -77,6 +80,33 @@ static void mat4f_mul_local(const float *a, const float *b, float *out) {
 static void mat4f_identity(float *m) {
     memset(m, 0, 16 * sizeof(float));
     m[0] = m[5] = m[10] = m[15] = 1.0f;
+}
+
+static mat4_impl *skeleton3d_mat4_checked(void *obj) {
+    if (!obj || !rt_heap_is_payload(obj) || rt_obj_class_id(obj) != RT_MAT4_CLASS_ID)
+        return NULL;
+    return (mat4_impl *)obj;
+}
+
+static int skeleton3d_value_fits_float(double value) {
+    return isfinite(value) && value >= -SKELETON3D_FLOAT_ABS_MAX &&
+           value <= SKELETON3D_FLOAT_ABS_MAX;
+}
+
+static void mesh3d_release_ref(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (rt_obj_release_check0(*slot))
+        rt_obj_free(*slot);
+    *slot = NULL;
+}
+
+static void mesh3d_assign_ref(void **slot, void *value) {
+    if (!slot || *slot == value)
+        return;
+    rt_obj_retain_maybe(value);
+    mesh3d_release_ref(slot);
+    *slot = value;
 }
 
 /// @brief Invert a 4x4 float matrix. Returns 0 on success, -1 if singular.
@@ -257,11 +287,23 @@ int64_t rt_skeleton3d_add_bone(void *obj, rt_string name, int64_t parent_index, 
 
     bone->parent_index = (int32_t)parent_index;
 
-    /* Copy bind pose from Mat4 (double → float) */
-    if (bind_mat4 && rt_obj_class_id(bind_mat4) == RT_MAT4_CLASS_ID) {
-        for (int r = 0; r < 4; r++)
-            for (int c = 0; c < 4; c++)
-                bone->bind_pose_local[r * 4 + c] = (float)rt_mat4_get(bind_mat4, r, c);
+    /* Copy bind pose from Mat4 (double → float). Malformed matrices fall back to identity. */
+    mat4_impl *bind = skeleton3d_mat4_checked(bind_mat4);
+    if (bind) {
+        int valid = 1;
+        float local[16];
+        for (int i = 0; i < 16; i++) {
+            double value = bind->m[i];
+            if (!skeleton3d_value_fits_float(value)) {
+                valid = 0;
+                break;
+            }
+            local[i] = (float)value;
+        }
+        if (valid)
+            memcpy(bone->bind_pose_local, local, sizeof(local));
+        else
+            mat4f_identity(bone->bind_pose_local);
     } else {
         mat4f_identity(bone->bind_pose_local);
     }
@@ -450,7 +492,7 @@ void *rt_animation3d_new(rt_string name, double duration) {
     a->channel_count = 0;
     a->channel_capacity = 0;
     a->duration =
-        (float)((isfinite(duration) && duration > 0.0 && duration <= FLT_MAX) ? duration : 0.0);
+        (float)((isfinite(duration) && duration > 0.0 && duration <= FLT_MAX) ? duration : 1.0);
     a->looping = 0;
     rt_obj_set_finalizer(a, rt_animation3d_finalize);
     return a;
@@ -1105,10 +1147,20 @@ void *rt_anim_player3d_get_bone_matrix(void *obj, int64_t bone_index) {
 
 /// @brief Bind a skeleton to a mesh so its per-vertex `bone_indices/weights` can drive skinning.
 void rt_mesh3d_set_skeleton(void *mesh, void *skeleton) {
-    (void)mesh;
-    (void)skeleton;
-    /* Skeleton reference is stored conceptually but not needed for CPU skinning —
-     * the AnimPlayer3D holds the skeleton. This is for future GPU skinning. */
+    rt_mesh3d *m = (rt_mesh3d *)rt_g3d_checked_or_null(mesh, RT_G3D_MESH3D_CLASS_ID);
+    rt_skeleton3d *s =
+        (rt_skeleton3d *)rt_g3d_checked_or_null(skeleton, RT_G3D_SKELETON3D_CLASS_ID);
+    if (!m)
+        return;
+    if (skeleton && !s)
+        return;
+    mesh3d_assign_ref(&m->skeleton_ref, s);
+    if (s) {
+        m->bone_count = s->bone_count > VGFX3D_MAX_BONES ? VGFX3D_MAX_BONES : s->bone_count;
+    } else {
+        m->bone_count = 0;
+    }
+    rt_mesh3d_touch_geometry(m);
 }
 
 /// @brief Attach the per-vertex bone influence data (4 indices + 4 weights per vertex) to a mesh.
@@ -1126,9 +1178,9 @@ void rt_mesh3d_set_bone_weights(void *obj,
                                 double w2,
                                 int64_t b3,
                                 double w3) {
-    if (!obj)
+    rt_mesh3d *m = (rt_mesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_MESH3D_CLASS_ID);
+    if (!m)
         return;
-    rt_mesh3d *m = (rt_mesh3d *)obj;
     if (vertex_index < 0 || vertex_index >= m->vertex_count)
         return;
 
@@ -1140,15 +1192,30 @@ void rt_mesh3d_set_bone_weights(void *obj,
     int64_t idx[4] = {b0, b1, b2, b3};
     double wt[4] = {w0, w1, w2, w3};
     vgfx3d_vertex_t *v = &m->vertices[vertex_index];
+    double sum = 0.0;
+    int64_t max_bone_index = -1;
     for (int i = 0; i < 4; i++) {
-        if (idx[i] < 0 || idx[i] >= VGFX3D_MAX_BONES) {
+        if (idx[i] < 0 || idx[i] >= VGFX3D_MAX_BONES || !isfinite(wt[i]) || wt[i] <= 0.0) {
             v->bone_indices[i] = 0;
             v->bone_weights[i] = 0.0f;
         } else {
             v->bone_indices[i] = (uint8_t)idx[i];
             v->bone_weights[i] = (float)wt[i];
+            sum += wt[i];
+            if (idx[i] > max_bone_index)
+                max_bone_index = idx[i];
         }
     }
+    if (sum > 1e-12) {
+        for (int i = 0; i < 4; i++)
+            v->bone_weights[i] = (float)((double)v->bone_weights[i] / sum);
+    } else {
+        for (int i = 0; i < 4; i++)
+            v->bone_weights[i] = 0.0f;
+    }
+    if (max_bone_index >= 0 && max_bone_index + 1 > m->bone_count)
+        m->bone_count = (int32_t)(max_bone_index + 1);
+    rt_mesh3d_touch_geometry(m);
 }
 
 /*==========================================================================
@@ -1227,7 +1294,8 @@ void rt_canvas3d_draw_mesh_skinned(
         return;
     if (!rt_canvas3d_checked_or_stack(canvas))
         return;
-    if (rt_obj_class_id(transform) != RT_MAT4_CLASS_ID)
+    mat4_impl *transform_mat = skeleton3d_mat4_checked(transform);
+    if (!transform_mat)
         return;
     m = (rt_mesh3d *)rt_g3d_checked_or_null(mesh, RT_G3D_MESH3D_CLASS_ID);
     p = (rt_anim_player3d *)rt_g3d_checked_or_null(anim_player, RT_G3D_ANIMPLAYER3D_CLASS_ID);
@@ -1238,7 +1306,7 @@ void rt_canvas3d_draw_mesh_skinned(
     prev_palette = anim_player_prepare_prev_palette(p, rt_canvas3d_get_frame_serial(canvas));
     rt_canvas3d_draw_mesh_matrix_skinned_keyed(canvas,
                                                mesh,
-                                               ((mat4_impl *)transform)->m,
+                                               transform_mat->m,
                                                material,
                                                transform,
                                                p->bone_palette,
@@ -1520,7 +1588,8 @@ void rt_canvas3d_draw_mesh_blended(
         return;
     if (!rt_canvas3d_checked_or_stack(canvas))
         return;
-    if (rt_obj_class_id(transform) != RT_MAT4_CLASS_ID)
+    mat4_impl *transform_mat = skeleton3d_mat4_checked(transform);
+    if (!transform_mat)
         return;
     rt_anim_blend3d *b =
         (rt_anim_blend3d *)rt_g3d_checked_or_null(blend_obj, RT_G3D_ANIMBLEND3D_CLASS_ID);
@@ -1539,7 +1608,7 @@ void rt_canvas3d_draw_mesh_blended(
     const float *prev_palette = anim_blend_prepare_prev_palette(b, rt_canvas3d_get_frame_serial(canvas));
     rt_canvas3d_draw_mesh_matrix_skinned_keyed(canvas,
                                                mesh,
-                                               ((mat4_impl *)transform)->m,
+                                               transform_mat->m,
                                                material,
                                                transform,
                                                b->bone_palette,
