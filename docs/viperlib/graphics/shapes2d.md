@@ -26,12 +26,12 @@ These classes draw into `Pixels` or onto `Canvas` and are grouped by what they r
 
 ## Drawing Conventions
 
-- Shape, path, and debug draw colors accept Canvas-style `0x00RRGGBB` and `Color.RGBA(...)` values; alpha is ignored by these RGB-only CPU drawing primitives.
+- Shape, path, and debug draw colors accept Canvas-style `0x00RRGGBB`, raw pixel `0xRRGGBBAA`, and `Color.RGBA(...)` values; alpha is ignored by these RGB-only CPU drawing primitives.
 - `NineSlice2D` alpha-composites over the destination `Pixels`, making it suitable for UI panels generated from sprite assets.
 
 ## Text And UI
 
-`TextRenderer2D` wraps the built-in Canvas text path or a loaded `BitmapFont`. `TextLayout2D` adds measurement state such as scale, wrap width, and alignment metadata.
+`TextRenderer2D` wraps the built-in Canvas text path or a loaded `BitmapFont`. `TextLayout2D` adds measurement state such as scale, wrap width, and alignment metadata. Measurements respect explicit newlines; when `WrapWidth` is positive, words wrap onto additional measured lines.
 
 `NineSlice2D` preserves corner pixels and stretches edges and center regions into a target.
 

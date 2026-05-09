@@ -37,7 +37,7 @@ These classes sit directly on top of `Pixels` and `Canvas`. They cover rendering
 - `Palette2D` and `Gradient2D` store raw `0xRRGGBBAA` colors, and also accept tagged `Color.RGBA(...)` values by converting them into raw pixel storage.
 - Renderer/material/blend-state tint uses `-1` for no tint. A tint value of `0` is black.
 - Blend modes use `0 = alpha`, `1 = opaque`, `2 = additive`. Alpha mode uses straight-alpha source-over, matching `Pixels.BlendPixel` and `Canvas.BlitAlpha`; additive mode scales source RGB by source alpha, adds it to the destination, and clamps each channel.
-- `Texture2D.Filter` uses `0 = nearest`, `1 = linear`.
+- `Texture2D.Filter` uses `0 = nearest`, `1 = linear`. Linear sampling interpolates RGB in premultiplied-alpha space so transparent edge texels do not bleed black into partially transparent results.
 - `Texture2D.Wrap` uses `0 = clamp`, `1 = repeat`.
 
 ## Render Targets, Textures, And Renderer
@@ -57,9 +57,9 @@ renderer.FlushToTarget(target)
 canvas.BlitAlpha(0, 0, target.Pixels)
 ```
 
-`Renderer2D` keeps retained references to queued sources, so textures and pixels can be queued safely during a frame. Calling `Begin` clears the previous command list. `FlushToTarget(target)` draws to an offscreen target without ending the batch; `End(canvas)` draws to a Canvas with the queued blend modes, clears queued commands, and makes repeated `End` calls a no-op until the next `Begin`. `DrawTextureScaled(texture, x, y, width, height)` uses the texture's nearest or linear filter. `DrawTextureRegion(texture, x, y, sx, sy, width, height)` samples out-of-bounds source texels through the texture's clamp or repeat wrap mode.
+`Renderer2D` keeps retained references to queued sources, so textures and pixels can be queued safely during a frame. Calling `Begin` clears the previous command list. `FlushToTarget(target)` draws to an offscreen target without ending the batch; `End(canvas)` draws to a Canvas with the queued blend modes, clears queued commands, and makes repeated `End` calls a no-op until the next `Begin`. `DrawTextureScaled(texture, x, y, width, height)` uses the texture's nearest or linear filter. `DrawTextureRegion(texture, x, y, sx, sy, width, height)` samples out-of-bounds source texels through the texture's clamp or repeat wrap mode. Additive `End(canvas)` clips correctly when a queued source is partially off-screen.
 
-`SpriteRenderer2D` snapshots `Sampler2D` state when queuing a texture draw. It does not mutate the `Texture2D`; call `Sampler2D.ApplyToTexture(texture)` only when you explicitly want to change the texture's stored filter and wrap properties.
+`SpriteRenderer2D` snapshots `Sampler2D` state when queuing a texture draw. It does not mutate the `Texture2D`; call `Sampler2D.ApplyToTexture(texture)` only when you explicitly want to change the texture's stored filter and wrap properties. Material and blend overrides are scoped to that draw call, so later direct `Renderer2D` draws keep the renderer state you set.
 
 ## Passes And Color Helpers
 
@@ -68,12 +68,13 @@ var palette = Palette2D.New()
 palette.SetColor(3, 0xFF0000FF)
 palette.SetColor(4, Color.RGBA(0, 0, 255, 128))
 var recolored = palette.Apply(indexedPixels)
+var legacyRecolored = palette.ApplyLegacy(oldAlphaByteIndexedPixels)
 
 var gradient = Gradient2D.New(0x000000FF, Color.RGBA(255, 255, 255, 192), 16)
 gradient.FillHorizontal(pixels)
 ```
 
-`Palette2D.Apply` treats the source pixel red byte as the palette index and writes `0xRRGGBBAA` colors to a new buffer. Fully transparent legacy index pixels in `0x000000II` form are still accepted. Pixels whose index is beyond the palette count are copied unchanged.
+`Palette2D.Apply` treats the source pixel red byte as the palette index and writes `0xRRGGBBAA` colors to a new buffer. Only palette entries set with `SetColor` are remapped; unset entries and out-of-range indices are copied unchanged. `ApplyLegacy` keeps the older `0x000000II` alpha-byte index convention for assets that used fully transparent pixels as palette indices.
 
 `Gradient2D` uses `Steps <= 2` as smooth interpolation. Larger `Steps` values quantize into that many discrete levels, including both endpoints. For example, a three-step gradient samples start, midpoint, and end colors; horizontal and vertical fills use the same sampling as `Sample`.
 

@@ -25,8 +25,8 @@
 //   - Per-particle RNG uses a 64-bit LCG (Knuth multiplier) seeded from the
 //     emitter's pointer XOR'd with a constant to spread across the hash space.
 //     This produces independent sequences per emitter with no global state.
-//   - Color format is 0xAARRGGBB (alpha in high byte). Fade-out linearly scales
-//     the alpha channel toward zero as the particle approaches end-of-life.
+//   - Color format is 0xAARRGGBB (alpha in high byte). Tagged Color.RGBA values
+//     preserve explicit alpha=0, while legacy 0x00RRGGBB colors remain opaque.
 //   - rt_particle_emitter_draw_to_pixels() renders directly to a Pixels canvas
 //     via rt_pixels_draw_disc(), avoiding the per-particle dispatch overhead of
 //     calling rt_particle_emitter_get() from Zia for every particle.
@@ -57,6 +57,8 @@
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
+
+#define RT_PARTICLE_COLOR_EXPLICIT_ALPHA_FLAG (INT64_C(1) << 56)
 
 /// Internal particle structure.
 struct particle {
@@ -174,46 +176,70 @@ static int64_t rand_range_i64(struct rt_particle_emitter_impl *e, int64_t min, i
 static int64_t particle_effective_color(const struct rt_particle_emitter_impl *emitter,
                                         const struct particle *p) {
     int64_t color = p->color;
-    int64_t alpha = (color >> 24) & 0xFF;
-    if (alpha == 0)
+    int64_t argb = color & 0xFFFFFFFF;
+    int64_t alpha = (argb >> 24) & 0xFF;
+    if (((uint64_t)color & (uint64_t)RT_PARTICLE_COLOR_EXPLICIT_ALPHA_FLAG) == 0 && alpha == 0)
         alpha = 255; // Legacy 0x00RRGGBB colors are treated as opaque.
     if (emitter->fade_out && p->max_life > 0) {
         const double life_ratio = (double)p->life / (double)p->max_life;
         alpha = (int64_t)(alpha * life_ratio);
     }
-    return (color & 0x00FFFFFF) | (alpha << 24);
+    return (argb & 0x00FFFFFF) | (alpha << 24);
 }
 
-static int64_t blend_rgb(int64_t dst_rgb, int64_t src_rgb, int64_t alpha) {
-    int64_t dst_r = (dst_rgb >> 16) & 0xFF;
-    int64_t dst_g = (dst_rgb >> 8) & 0xFF;
-    int64_t dst_b = dst_rgb & 0xFF;
-    int64_t src_r = (src_rgb >> 16) & 0xFF;
-    int64_t src_g = (src_rgb >> 8) & 0xFF;
-    int64_t src_b = src_rgb & 0xFF;
-    int64_t inv_alpha = 255 - alpha;
+static uint32_t particle_argb_to_rgba(int64_t color) {
+    uint32_t argb = (uint32_t)(color & 0xFFFFFFFFu);
+    uint32_t a = (argb >> 24) & 0xFFu;
+    uint32_t r = (argb >> 16) & 0xFFu;
+    uint32_t g = (argb >> 8) & 0xFFu;
+    uint32_t b = argb & 0xFFu;
+    return (r << 24) | (g << 16) | (b << 8) | a;
+}
 
-    int64_t out_r = (src_r * alpha + dst_r * inv_alpha + 127) / 255;
-    int64_t out_g = (src_g * alpha + dst_g * inv_alpha + 127) / 255;
-    int64_t out_b = (src_b * alpha + dst_b * inv_alpha + 127) / 255;
+static uint32_t particle_alpha_over_rgba(uint32_t dst, uint32_t src) {
+    uint32_t sr = (src >> 24) & 0xFFu;
+    uint32_t sg = (src >> 16) & 0xFFu;
+    uint32_t sb = (src >> 8) & 0xFFu;
+    uint32_t sa = src & 0xFFu;
+    uint32_t dr = (dst >> 24) & 0xFFu;
+    uint32_t dg = (dst >> 16) & 0xFFu;
+    uint32_t db = (dst >> 8) & 0xFFu;
+    uint32_t da = dst & 0xFFu;
 
-    return (out_r << 16) | (out_g << 8) | out_b;
+    if (sa == 0)
+        return dst;
+    if (sa == 255)
+        return src;
+
+    uint32_t inv = 255u - sa;
+    uint32_t oa = sa + (da * inv + 127u) / 255u;
+    if (oa == 0)
+        return 0;
+
+    uint32_t r_pm = sr * sa + (dr * da * inv + 127u) / 255u;
+    uint32_t g_pm = sg * sa + (dg * da * inv + 127u) / 255u;
+    uint32_t b_pm = sb * sa + (db * da * inv + 127u) / 255u;
+    uint32_t r = (r_pm + oa / 2u) / oa;
+    uint32_t g = (g_pm + oa / 2u) / oa;
+    uint32_t b = (b_pm + oa / 2u) / oa;
+    if (r > 255u)
+        r = 255u;
+    if (g > 255u)
+        g = 255u;
+    if (b > 255u)
+        b = 255u;
+    return (r << 24) | (g << 16) | (b << 8) | oa;
 }
 
 static void rt_particle_draw_disc_blended(
     void *pixels, int64_t cx, int64_t cy, int64_t radius, int64_t color) {
     int64_t alpha = (color >> 24) & 0xFF;
-    int64_t rgb = color & 0x00FFFFFF;
+    uint32_t src = particle_argb_to_rgba(color);
 
     if (radius > 1000000)
         radius = 1000000;
     if (alpha <= 0)
         return;
-    if (alpha >= 255) {
-        rt_pixels_draw_disc(pixels, cx, cy, radius, rgb);
-        return;
-    }
-
     int64_t width = rt_pixels_width(pixels);
     int64_t height = rt_pixels_height(pixels);
     int64_t min_x = particle_saturating_add(cx, -radius);
@@ -237,8 +263,8 @@ static void rt_particle_draw_disc_blended(
             int64_t dx = x - cx;
             if (dx * dx + dy2 > rr)
                 continue;
-            int64_t dst = rt_pixels_get_rgb(pixels, x, y);
-            rt_pixels_set_rgb(pixels, x, y, blend_rgb(dst, rgb, alpha));
+            uint32_t dst = (uint32_t)rt_pixels_get(pixels, x, y);
+            rt_pixels_set(pixels, x, y, (int64_t)particle_alpha_over_rgba(dst, src));
         }
     }
 }

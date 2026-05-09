@@ -1280,6 +1280,9 @@ int64_t rt_color_get_b(int64_t color) {
 ///
 /// @return Alpha component in 0..255 (0 = fully transparent, 255 = opaque).
 int64_t rt_color_get_a(int64_t color) {
+    if (((uint64_t)color & (uint64_t)RT_COLOR_EXPLICIT_ALPHA_FLAG) == 0 &&
+        (((uint64_t)color & 0xFFFFFFFFu) <= 0x00FFFFFFu))
+        return 255;
     return (color >> 24) & 0xFF;
 }
 

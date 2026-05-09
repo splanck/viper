@@ -1576,7 +1576,9 @@ int64_t rt_color_get_b(int64_t color) {
 /// @param color
 /// @return Result value.
 int64_t rt_color_get_a(int64_t color) {
-    return (color >> 24) & 0xFF;
+    int64_t a = 255;
+    rt_color_split_rgba(color, NULL, NULL, NULL, &a, NULL);
+    return a;
 }
 
 /// @brief Brighten operation.

@@ -333,6 +333,7 @@ void rt_palette2d_set_color(void *palette, int64_t index, int64_t rgba);
 int64_t rt_palette2d_get_color(void *palette, int64_t index);
 int64_t rt_palette2d_get_count(void *palette);
 void *rt_palette2d_apply(void *palette, void *pixels);
+void *rt_palette2d_apply_legacy(void *palette, void *pixels);
 
 void *rt_gradient2d_new(int64_t start_rgba, int64_t end_rgba, int64_t steps);
 void rt_gradient2d_set_colors(void *gradient, int64_t start_rgba, int64_t end_rgba);

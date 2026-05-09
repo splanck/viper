@@ -71,6 +71,8 @@ static void test_graphics2d_handles_have_unique_classes_and_reject_wrong_types()
     assert(rt_texture2d_new(sprite) == nullptr);
     assert(rt_rendertarget2d_get_pixels(sprite) == nullptr);
     assert(rt_texture2d_get_pixels(sprite) == nullptr);
+    assert(rt_color_get_a(rt_color_rgb(1, 2, 3)) == 255);
+    assert(rt_color_get_a(rt_color_rgba(1, 2, 3, 0)) == 0);
     printf("test_graphics2d_handles_have_unique_classes_and_reject_wrong_types: PASSED\n");
 }
 
@@ -179,6 +181,22 @@ static void test_texture_renderer_material_and_effects() {
     assert(green_of(middle) >= 126 && green_of(middle) <= 129);
     rt_renderer2d_end(renderer, nullptr);
 
+    void *alpha_sample_src = rt_pixels_new(2, 1);
+    rt_pixels_set(alpha_sample_src, 0, 0, 0xFF0000FF);
+    rt_pixels_set(alpha_sample_src, 1, 0, 0x00000000);
+    void *alpha_sample_texture = rt_texture2d_new(alpha_sample_src);
+    rt_texture2d_set_filter(alpha_sample_texture, RT_GRAPHICS2D_FILTER_LINEAR);
+    rt_texture2d_set_wrap(alpha_sample_texture, RT_GRAPHICS2D_WRAP_CLAMP);
+    rt_rendertarget2d_clear(target, 0x00000000);
+    rt_renderer2d_begin(renderer);
+    rt_renderer2d_draw_texture_scaled(renderer, alpha_sample_texture, 0, 0, 3, 1);
+    rt_renderer2d_flush_to_target(renderer, target);
+    target_pixels = rt_rendertarget2d_get_pixels(target);
+    int64_t alpha_middle = rt_pixels_get(target_pixels, 1, 0);
+    assert(red_of(alpha_middle) >= 250);
+    assert((alpha_middle & 255) >= 126 && (alpha_middle & 255) <= 129);
+    rt_renderer2d_end(renderer, nullptr);
+
     rt_rendertarget2d_clear(target, 0x101010FF);
     void *add_src = rt_pixels_new(1, 1);
     rt_pixels_set(add_src, 0, 0, 0x202000FF);
@@ -268,6 +286,9 @@ static void test_paths_shapes_text_nineslice_and_debugdraw() {
     rt_shaperenderer2d_set_stroke(shape, rt_color_rgba(255, 0, 0, 255));
     rt_shaperenderer2d_line(shape, pixels, 0, 3, 3, 3);
     assert(rt_pixels_get(pixels, 3, 3) == 0xFF0000FF);
+    rt_shaperenderer2d_set_stroke(shape, 0xFF0000FF);
+    rt_shaperenderer2d_line(shape, pixels, 0, 5, 3, 5);
+    assert(rt_pixels_get(pixels, 3, 5) == 0xFF0000FF);
     rt_shaperenderer2d_set_stroke(shape, -1);
     rt_shaperenderer2d_line(shape, pixels, 0, 7, 7, 7);
     assert(rt_pixels_get(pixels, 7, 7) == 0);
@@ -282,9 +303,12 @@ static void test_paths_shapes_text_nineslice_and_debugdraw() {
     rt_textrenderer2d_set_scale(text_renderer, 2);
     assert(rt_textrenderer2d_measure_width(text_renderer, text) == 32);
     assert(rt_textrenderer2d_measure_height(text_renderer, text) == 16);
+    rt_textrenderer2d_set_font(text_renderer, pixels);
+    assert(rt_textrenderer2d_measure_width(text_renderer, text) == 32);
     void *sdf = rt_sdffont_new(nullptr, 6);
     assert(rt_sdffont_get_bitmap_font(sdf) == nullptr);
     assert(rt_sdffont_get_spread(sdf) == 6);
+    assert(rt_sdffont_new(pixels, 6) == nullptr);
 
     void *source = rt_pixels_new(3, 3);
     rt_pixels_set(source, 0, 0, 0xFF0000FF);
@@ -357,6 +381,24 @@ static void test_transform_sampler_blend_and_sprite_renderer() {
     rt_spriterenderer2d_draw_texture(sprite_renderer, renderer, texture_default, 0, 0);
     assert(rt_texture2d_get_filter(texture_default) == RT_GRAPHICS2D_FILTER_NEAREST);
     assert(rt_texture2d_get_wrap(texture_default) == RT_GRAPHICS2D_WRAP_CLAMP);
+
+    void *white = rt_pixels_new(1, 1);
+    rt_pixels_set(white, 0, 0, 0xFFFFFFFF);
+    void *state_renderer = rt_renderer2d_new(2);
+    void *state_target = rt_rendertarget2d_new(2, 1);
+    void *state_material = rt_material2d_new();
+    rt_material2d_set_tint(state_material, 0x000000FF);
+    void *state_sprite_renderer = rt_spriterenderer2d_new();
+    rt_spriterenderer2d_set_material(state_sprite_renderer, state_material);
+    rt_renderer2d_begin(state_renderer);
+    rt_renderer2d_set_tint(state_renderer, 0x00FF0000);
+    rt_spriterenderer2d_draw_pixels(state_sprite_renderer, state_renderer, white, 0, 0);
+    rt_renderer2d_draw_pixels(state_renderer, white, 1, 0);
+    rt_renderer2d_flush_to_target(state_renderer, state_target);
+    void *state_pixels = rt_rendertarget2d_get_pixels(state_target);
+    assert(rt_pixels_get(state_pixels, 0, 0) == 0x0000FFFF);
+    assert(rt_pixels_get(state_pixels, 1, 0) == 0xFF0000FF);
+    rt_renderer2d_end(state_renderer, nullptr);
     printf("test_transform_sampler_blend_and_sprite_renderer: PASSED\n");
 }
 
@@ -377,6 +419,16 @@ static void test_animation_collision_palette_gradient_and_rig() {
     rt_animatedsprite2d_update(animated, INT64_MAX);
     assert(rt_sprite_get_frame(sprite) >= 0);
     assert(rt_sprite_get_frame(sprite) < rt_sprite_get_frame_count(sprite));
+
+    void *oneshot = rt_animationclip2d_new(0, 2, 50, 0);
+    rt_animatedsprite2d_set_clip(animated, oneshot);
+    rt_animatedsprite2d_update(animated, 100);
+    assert(rt_animatedsprite2d_is_playing(animated) == 0);
+    assert(rt_animatedsprite2d_get_frame(animated) == 1);
+    rt_animatedsprite2d_play(animated);
+    assert(rt_animatedsprite2d_is_playing(animated) == 1);
+    assert(rt_animatedsprite2d_get_frame(animated) == 0);
+    assert(rt_sprite_get_frame(sprite) == 0);
 
     void *bad_clip = rt_animationclip2d_new(99, 5, 10, 0);
     rt_animatedsprite2d_set_clip(animated, bad_clip);
@@ -410,16 +462,24 @@ static void test_animation_collision_palette_gradient_and_rig() {
     void *palette = rt_palette2d_new();
     rt_palette2d_set_color(palette, 3, 0xFF0000FF);
     rt_palette2d_set_color(palette, 4, rt_color_rgba(0, 0, 255, 128));
+    rt_palette2d_set_color(palette, 128, 0x123456FF);
     void *indexed = rt_pixels_new(1, 1);
     rt_pixels_set(indexed, 0, 0, 0x00000003);
     void *mapped = rt_palette2d_apply(palette, indexed);
-    assert(rt_pixels_get(mapped, 0, 0) == 0xFF0000FF);
+    assert(rt_pixels_get(mapped, 0, 0) == 0x00000003);
+    void *mapped_legacy = rt_palette2d_apply_legacy(palette, indexed);
+    assert(rt_pixels_get(mapped_legacy, 0, 0) == 0xFF0000FF);
     rt_pixels_set(indexed, 0, 0, 0x00000004);
-    void *mapped_tagged = rt_palette2d_apply(palette, indexed);
+    void *mapped_tagged = rt_palette2d_apply_legacy(palette, indexed);
     assert(rt_pixels_get(mapped_tagged, 0, 0) == 0x0000FF80);
     rt_pixels_set(indexed, 0, 0, 0x030000FF);
     void *mapped_red_channel = rt_palette2d_apply(palette, indexed);
     assert(rt_pixels_get(mapped_red_channel, 0, 0) == 0xFF0000FF);
+    rt_pixels_set(indexed, 0, 0, 0x00000080);
+    void *mapped_strict_alpha = rt_palette2d_apply(palette, indexed);
+    assert(rt_pixels_get(mapped_strict_alpha, 0, 0) == 0x00000080);
+    void *mapped_legacy_alpha = rt_palette2d_apply_legacy(palette, indexed);
+    assert(rt_pixels_get(mapped_legacy_alpha, 0, 0) == 0x123456FF);
 
     void *gradient = rt_gradient2d_new(0x000000FF, 0xFFFFFFFF, 2);
     assert(rt_gradient2d_sample(gradient, 100) == 0xFFFFFFFF);
@@ -476,6 +536,17 @@ static void test_layout_rendergraph_tile_helpers_and_importers() {
     rt_textlayout2d_set_wrap_width(layout, 16);
     assert(rt_textlayout2d_measure_width(layout, text) == 16);
     assert(rt_textlayout2d_measure_height(layout, text) >= 16);
+    rt_textlayout2d_set_font(layout, rt_pixels_new(1, 1));
+    assert(rt_textlayout2d_measure_width(layout, text) == 16);
+    rt_textlayout2d_set_wrap_width(layout, 0);
+    rt_string two_lines = rt_str_from_lit("A\nA", 3);
+    assert(rt_textlayout2d_measure_width(layout, two_lines) == 16);
+    assert(rt_textlayout2d_measure_height(layout, two_lines) == 32);
+    rt_textlayout2d_set_scale(layout, 1);
+    rt_textlayout2d_set_wrap_width(layout, 24);
+    rt_string words = rt_str_from_lit("AA AA", 5);
+    assert(rt_textlayout2d_measure_width(layout, words) == 16);
+    assert(rt_textlayout2d_measure_height(layout, words) == 16);
 
     void *src = rt_rendertarget2d_new(1, 1);
     void *dst = rt_rendertarget2d_new(1, 1);
@@ -484,6 +555,8 @@ static void test_layout_rendergraph_tile_helpers_and_importers() {
     void *pass = rt_renderpass2d_new(src, dst);
     rt_renderpass2d_set_shader(pass, shader);
     void *graph = rt_rendergraph2d_new(1);
+    rt_rendergraph2d_add_pass(graph, rt_rendertarget2d_get_pixels(src));
+    assert(rt_rendergraph2d_get_count(graph) == 0);
     rt_rendergraph2d_add_pass(graph, pass);
     assert(rt_rendergraph2d_get_count(graph) == 1);
     rt_rendergraph2d_execute(graph);
@@ -494,6 +567,7 @@ static void test_layout_rendergraph_tile_helpers_and_importers() {
     rt_renderpass2d_execute(wrong_source_pass);
     assert(rt_pixels_get(rt_rendertarget2d_get_pixels(dst), 0, 0) == 0x010203FF);
     assert(rt_rendertarget2d_get_pixels(rt_rendertarget2d_get_pixels(src)) == nullptr);
+    rt_renderpass2d_execute(rt_rendertarget2d_get_pixels(src));
 
     void *cache = rt_tilechunkcache2d_new(8, 8);
     rt_tilechunkcache2d_mark_dirty(cache);
@@ -509,6 +583,7 @@ static void test_layout_rendergraph_tile_helpers_and_importers() {
 
     void *atlas_pixels = rt_pixels_new(4, 4);
     void *packer = rt_texturepackeratlas_new(atlas_pixels);
+    assert(rt_texturepackeratlas_region_count(atlas_pixels) == 0);
     if (rt_texturepackeratlas_get_atlas(packer)) {
         rt_string hero = rt_str_from_lit("hero", 4);
         rt_texturepackeratlas_add(packer, hero, 0, 0, 2, 2);
@@ -517,6 +592,9 @@ static void test_layout_rendergraph_tile_helpers_and_importers() {
     }
 
     void *ase = rt_asepriteimporter_new();
+    rt_asepriteimporter_set_grid(ase, 0, 0);
+    assert(rt_asepriteimporter_get_frame_width(ase) == 0);
+    assert(rt_asepriteimporter_to_atlas(ase, atlas_pixels) == nullptr);
     rt_asepriteimporter_set_grid(ase, 2, 2);
     assert(rt_asepriteimporter_get_frame_width(ase) == 2);
     assert(rt_asepriteimporter_get_frame_height(ase) == 2);

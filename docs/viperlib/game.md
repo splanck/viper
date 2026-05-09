@@ -276,7 +276,9 @@ and color.
 ### Batch Rendering
 
 Use `DrawToPixels` for performance when rendering many particles. It renders all active
-particles in a single pass instead of requiring per-particle `Get()` + draw calls:
+particles in a single pass instead of requiring per-particle `Get()` + draw calls. Legacy
+`0x00RRGGBB` particle colors draw as opaque; tagged `Color.RGBA(..., 0)` draws as transparent,
+and alpha blending preserves the destination `Pixels` alpha channel:
 
 ```rust
 emitter.Update(dt);
@@ -723,7 +725,9 @@ for cave, dungeon, and horror game atmospheres.
 | `Draw(canvas, camX, camY, playerScreenX, playerScreenY)` | `none(Canvas, Integer, Integer, Integer, Integer)` | Render darkness overlay + all lights |
 
 `maxDynamicLights` is clamped to 0-128. Non-positive light radii are ignored, darkness alpha
-is clamped to 0-255, and light colors are masked to `0xRRGGBB`.
+is clamped to 0-255, and light colors are masked to `0xRRGGBB`. `AddTileLight` stores a
+screen-space light for the next `Draw` call and clears it after drawing; add tile lights after
+`Update()` and before `Draw()` each frame.
 
 ---
 

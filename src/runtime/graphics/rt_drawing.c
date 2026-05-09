@@ -1086,7 +1086,7 @@ void rt_canvas_blit_region(void *canvas_ptr,
 ///          the destination using straight alpha:
 ///          - α = 0   → skip (preserves dest exactly).
 ///          - α = 255 → overwrite (fast path, no division).
-///          - else    → `dst = (src*α + dst*(255-α)) / 255`.
+///          - else    → straight-alpha source-over, preserving destination alpha.
 ///          Honors the canvas's HiDPI scale by expanding each logical
 ///          source pixel into the corresponding physical pixel block
 ///          (so a 1× sprite stays sharp on a 2× display).
@@ -1159,11 +1159,26 @@ void rt_canvas_blit_alpha(void *canvas_ptr, int64_t x, int64_t y, void *pixels_p
                         dst[2] = sb;
                         dst[3] = 255;
                     } else {
-                        uint16_t inv_alpha = 255 - sa;
-                        dst[0] = (uint8_t)((sr * sa + dst[0] * inv_alpha) / 255);
-                        dst[1] = (uint8_t)((sg * sa + dst[1] * inv_alpha) / 255);
-                        dst[2] = (uint8_t)((sb * sa + dst[2] * inv_alpha) / 255);
-                        dst[3] = 255;
+                        uint32_t inv_alpha = 255u - sa;
+                        uint32_t da = dst[3];
+                        uint32_t out_a = sa + (da * inv_alpha + 127u) / 255u;
+                        if (out_a == 0) {
+                            dst[0] = 0;
+                            dst[1] = 0;
+                            dst[2] = 0;
+                            dst[3] = 0;
+                        } else {
+                            uint32_t r_pm = sr * sa + (dst[0] * da * inv_alpha + 127u) / 255u;
+                            uint32_t g_pm = sg * sa + (dst[1] * da * inv_alpha + 127u) / 255u;
+                            uint32_t b_pm = sb * sa + (dst[2] * da * inv_alpha + 127u) / 255u;
+                            uint32_t r = (r_pm + out_a / 2u) / out_a;
+                            uint32_t g = (g_pm + out_a / 2u) / out_a;
+                            uint32_t b = (b_pm + out_a / 2u) / out_a;
+                            dst[0] = (uint8_t)(r > 255u ? 255u : r);
+                            dst[1] = (uint8_t)(g > 255u ? 255u : g);
+                            dst[2] = (uint8_t)(b > 255u ? 255u : b);
+                            dst[3] = (uint8_t)out_a;
+                        }
                     }
                     dst += 4;
                 }

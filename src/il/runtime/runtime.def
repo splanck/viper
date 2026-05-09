@@ -1966,6 +1966,7 @@ RT_FUNC(Palette2DSetColor, rt_palette2d_set_color, "Viper.Graphics.Palette2D.Set
 RT_FUNC(Palette2DGetColor, rt_palette2d_get_color, "Viper.Graphics.Palette2D.GetColor",  "i64(obj,i64)")
 RT_FUNC(Palette2DCount,    rt_palette2d_get_count, "Viper.Graphics.Palette2D.get_Count", "i64(obj)")
 RT_FUNC(Palette2DApply,    rt_palette2d_apply,     "Viper.Graphics.Palette2D.Apply",     "obj(obj,obj)")
+RT_FUNC(Palette2DApplyLegacy, rt_palette2d_apply_legacy, "Viper.Graphics.Palette2D.ApplyLegacy", "obj(obj,obj)")
 
 RT_FUNC(Gradient2DNew,            rt_gradient2d_new,             "Viper.Graphics.Gradient2D.New",            "obj(i64,i64,i64)")
 RT_FUNC(Gradient2DSetColors,      rt_gradient2d_set_colors,      "Viper.Graphics.Gradient2D.SetColors",      "void(obj,i64,i64)")
@@ -7710,6 +7711,7 @@ RT_CLASS_BEGIN("Viper.Graphics.Palette2D", Palette2D, "obj", Palette2DNew)
     RT_METHOD("SetColor", "void(i64,i64)", Palette2DSetColor)
     RT_METHOD("GetColor", "i64(i64)", Palette2DGetColor)
     RT_METHOD("Apply", "obj(obj)", Palette2DApply)
+    RT_METHOD("ApplyLegacy", "obj(obj)", Palette2DApplyLegacy)
 RT_CLASS_END()
 
 RT_CLASS_BEGIN("Viper.Graphics.Gradient2D", Gradient2D, "obj", Gradient2DNew)

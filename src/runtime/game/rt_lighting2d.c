@@ -49,6 +49,8 @@ struct rt_lighting2d_impl {
     int64_t max_lights;    // Pool capacity
     int64_t light_count;   // Active light count
     struct rt_dyn_light lights[MAX_DYN_LIGHTS_CAP];
+    int64_t tile_count;    // Per-frame screen-space light count
+    struct rt_dyn_light tile_lights[MAX_DYN_LIGHTS_CAP];
 };
 
 static struct rt_lighting2d_impl *checked_lighting2d(rt_lighting2d lit, const char *api) {
@@ -86,7 +88,9 @@ rt_lighting2d rt_lighting2d_new(int64_t max_lights) {
     lit->player_pulse = 0;
     lit->max_lights = clamp_i64(max_lights, 0, MAX_DYN_LIGHTS_CAP);
     lit->light_count = 0;
+    lit->tile_count = 0;
     memset(lit->lights, 0, sizeof(lit->lights));
+    memset(lit->tile_lights, 0, sizeof(lit->tile_lights));
 
     return lit;
 }
@@ -164,15 +168,22 @@ void rt_lighting2d_add_light(
     // Pool full — silently drop
 }
 
-/// @brief Add a per-frame "tile light" (lamp, torch) at screen-space coords. Implemented as a
-/// dynamic light with `lifetime=1`, so the caller must re-add every frame; this keeps tile
-/// lights camera-relative without requiring a separate pool.
+/// @brief Add a per-frame "tile light" (lamp, torch) at screen-space coords.
+/// @details Tile lights are drawn once and cleared after Draw, so update-before-render
+/// loops do not expire them before they are visible.
 void rt_lighting2d_add_tile_light(
     rt_lighting2d lit, int64_t screen_x, int64_t screen_y, int64_t radius, int64_t color) {
-    // Tile lights are immediate-draw, not pooled. Stored temporarily for the
-    // current frame's draw call. For simplicity, we add them as short-lived
-    // dynamic lights (1 frame lifetime).
-    rt_lighting2d_add_light(lit, screen_x, screen_y, radius, color, 1);
+    lit = checked_lighting2d(lit, "Lighting2D.AddTileLight: expected Viper.Game.Lighting2D");
+    if (!lit || radius <= 0 || lit->tile_count >= MAX_DYN_LIGHTS_CAP)
+        return;
+    struct rt_dyn_light *light = &lit->tile_lights[lit->tile_count++];
+    light->x = screen_x;
+    light->y = screen_y;
+    light->radius = radius;
+    light->color = color & 0xFFFFFF;
+    light->life = 1;
+    light->max_life = 1;
+    light->active = 1;
 }
 
 /// @brief Deactivate every dynamic light slot at once; useful between scenes/levels.
@@ -183,6 +194,8 @@ void rt_lighting2d_clear_lights(rt_lighting2d lit) {
     for (int64_t i = 0; i < lit->max_lights; i++)
         lit->lights[i].active = 0;
     lit->light_count = 0;
+    lit->tile_count = 0;
+    memset(lit->tile_lights, 0, sizeof(lit->tile_lights));
 }
 
 /// @brief Per-frame tick: advance the player-light pulse (mod 120) and decrement every active
@@ -224,8 +237,12 @@ void rt_lighting2d_draw(rt_lighting2d lit,
                         int64_t player_sx,
                         int64_t player_sy) {
     lit = checked_lighting2d(lit, "Lighting2D.Draw: expected Viper.Game.Lighting2D");
-    if (!lit || !canvas || lit->darkness <= 0)
+    if (!lit)
         return;
+    if (!canvas || lit->darkness <= 0) {
+        lit->tile_count = 0;
+        return;
+    }
 
     int64_t w = rt_canvas_width(canvas);
     int64_t h = rt_canvas_height(canvas);
@@ -279,6 +296,28 @@ void rt_lighting2d_draw(rt_lighting2d lit,
             rt_canvas_disc_alpha(canvas, lx, ly, lr / 2, lc, fade_alpha);
         }
     }
+
+    // Step 4: Per-frame tile lights are already screen-space and are consumed by this draw.
+    for (int64_t i = 0; i < lit->tile_count; i++) {
+        if (!lit->tile_lights[i].active)
+            continue;
+        int64_t lr = lit->tile_lights[i].radius;
+        if (lr <= 0)
+            continue;
+        rt_canvas_disc_alpha(canvas,
+                             lit->tile_lights[i].x,
+                             lit->tile_lights[i].y,
+                             lr,
+                             lit->tile_lights[i].color,
+                             dark / 2);
+        rt_canvas_disc_alpha(canvas,
+                             lit->tile_lights[i].x,
+                             lit->tile_lights[i].y,
+                             lr / 2,
+                             lit->tile_lights[i].color,
+                             dark);
+    }
+    lit->tile_count = 0;
 }
 
 /// @brief Number of currently active dynamic lights (excludes the always-on player light).

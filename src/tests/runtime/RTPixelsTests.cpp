@@ -837,6 +837,33 @@ static void test_png_indexed_requires_palette() {
     printf("test_png_indexed_requires_palette: PASSED\n");
 }
 
+static void test_png_indexed_rejects_palette_index_out_of_range() {
+    const char *pngpath = "/tmp/viper_test_indexed_bad_index.png";
+    std::vector<uint8_t> png;
+    static const uint8_t signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+    png.insert(png.end(), signature, signature + 8);
+
+    uint8_t ihdr[13] = {0};
+    ihdr[3] = 1;
+    ihdr[7] = 1;
+    ihdr[8] = 8;
+    ihdr[9] = 3;
+    test_png_append_chunk(png, "IHDR", ihdr, sizeof(ihdr));
+
+    uint8_t plte[3] = {255, 0, 0};
+    test_png_append_chunk(png, "PLTE", plte, sizeof(plte));
+    uint8_t scanline[2] = {0, 1};
+    std::vector<uint8_t> idat = test_png_stored_idat(scanline, sizeof(scanline));
+    test_png_append_chunk(png, "IDAT", idat.data(), idat.size());
+    test_png_append_chunk(png, "IEND", nullptr, 0);
+    assert(test_write_file(pngpath, png));
+
+    rt_string path = rt_string_from_bytes(pngpath, strlen(pngpath));
+    assert(rt_pixels_load_png(path) == nullptr);
+    unlink(pngpath);
+    printf("test_png_indexed_rejects_palette_index_out_of_range: PASSED\n");
+}
+
 static void test_png_subbyte_grayscale_trns_uses_raw_sample() {
     const char *pngpath = "/tmp/viper_test_gray1_trns.png";
     std::vector<uint8_t> png;
@@ -1484,6 +1511,7 @@ int main() {
     test_png_truecolor_trns_transparency();
     test_png_rejects_invalid_ihdr_methods();
     test_png_indexed_requires_palette();
+    test_png_indexed_rejects_palette_index_out_of_range();
     test_png_subbyte_grayscale_trns_uses_raw_sample();
 
     // Transforms

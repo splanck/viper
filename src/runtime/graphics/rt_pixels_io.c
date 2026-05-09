@@ -692,6 +692,7 @@ void *rt_pixels_load_png(void *path) {
     void *raw_bytes = NULL;
     uint8_t *img = NULL;
     rt_pixels_impl *pixels = NULL;
+    int success = 0;
 
     raw_bytes = rt_compress_inflate(comp_bytes);
     if (!raw_bytes)
@@ -986,9 +987,15 @@ void *rt_pixels_load_png(void *path) {
                 ((uint32_t)r << 24) | ((uint32_t)g << 16) | ((uint32_t)b_ch << 8) | alpha;
         }
     }
+    success = 1;
 
 cleanup:
     free(img);
+    if (!success && pixels) {
+        if (rt_obj_release_check0(pixels))
+            rt_obj_free(pixels);
+        pixels = NULL;
+    }
     if (raw_bytes) {
         rt_obj_release_check0(raw_bytes);
         rt_obj_free(raw_bytes);

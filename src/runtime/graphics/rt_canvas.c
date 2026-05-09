@@ -489,10 +489,12 @@ void rt_canvas_set_title(void *canvas_ptr, rt_string title) {
     rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
     if (canvas && canvas->gfx_win && title) {
         const char *cstr = rt_string_cstr(title);
+        char *new_title = cstr ? strdup(cstr) : NULL;
+        if (cstr && !new_title)
+            return;
         vgfx_set_title(canvas->gfx_win, cstr);
-        // Update cached title
         free(canvas->title);
-        canvas->title = cstr ? strdup(cstr) : NULL;
+        canvas->title = new_title;
     }
 }
 

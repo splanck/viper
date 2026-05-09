@@ -50,8 +50,10 @@ rig.Update()
 ```
 
 `CollisionMask2D.FromPixels` marks pixels solid when alpha is greater than or equal to the threshold. A threshold of `0` means "any non-zero alpha", so fully transparent pixels remain empty.
+`AnimatedSprite2D.Play()` restarts a finished non-looping clip from its first effective frame, which lets one-shot clips be replayed without resetting the clip object.
 `CameraRig2D` shake offsets and render coordinates use saturating integer arithmetic at the int64 limits.
 
 ## Notes
 
 - `ParticleSystem2D` and `Emitter2D` share the same implementation as `Viper.Game.ParticleEmitter`, including `DrawToPixels`.
+- `Lighting2D.AddTileLight` adds a screen-space light for the next `Draw` call and then consumes it, so add tile lights after `Update()` and before `Draw()` each frame.

@@ -121,7 +121,7 @@ explosion.DrawAt(canvas, -cameraX, -cameraY)
 explosion.DrawToPixels(pixelsBuffer, 0, 0)
 ```
 
-`Get()` returns the particle color in `0xAARRGGBB` form after fade-out has been applied. Legacy `0x00RRGGBB` particle colors are treated as fully opaque when read back or drawn. Continuous emitters also discard emission backlog while saturated, so they resume at the configured rate instead of bursting after a full pool drains.
+`Get()` returns the particle color in `0xAARRGGBB` form after fade-out has been applied. Legacy `0x00RRGGBB` particle colors are treated as fully opaque when read back or drawn, while tagged `Color.RGBA(..., 0)` remains fully transparent. `DrawToPixels` uses straight-alpha source-over compositing and preserves the resulting destination alpha channel. Continuous emitters also discard emission backlog while saturated, so they resume at the configured rate instead of bursting after a full pool drains.
 
 Call `Destroy()` when the emitter is no longer needed. The runtime releases the emitter handle and reclaims its particle pool when the last reference goes away.
 

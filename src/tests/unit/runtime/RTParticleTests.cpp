@@ -4,6 +4,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_particle.h"
+#include "rt_graphics.h"
 #include "rt_pixels.h"
 #include <cassert>
 #include <cmath>
@@ -191,6 +192,52 @@ TEST(draw_to_pixels_alpha_blends_over_existing_background) {
 
     ASSERT(rt_particle_emitter_draw_to_pixels(pe, pixels, 0, 0) == 1);
     ASSERT(rt_pixels_get_rgb(pixels, 2, 2) == 0x80007F);
+    ASSERT((rt_pixels_get(pixels, 2, 2) & 0xFF) == 0xFF);
+
+    rt_particle_emitter_destroy(pe);
+}
+
+TEST(color_rgba_zero_alpha_is_transparent) {
+    rt_particle_emitter pe = rt_particle_emitter_new(1);
+    void *pixels = rt_pixels_new(5, 5);
+    ASSERT(pixels != NULL);
+
+    rt_pixels_fill(pixels, 0x00000000);
+    rt_particle_emitter_set_position(pe, 2.0, 2.0);
+    rt_particle_emitter_set_lifetime(pe, 10, 10);
+    rt_particle_emitter_set_velocity(pe, 0.0, 0.0, 0.0, 0.0);
+    rt_particle_emitter_set_size(pe, 2.0, 2.0);
+    rt_particle_emitter_set_fade_out(pe, 0);
+    rt_particle_emitter_set_color(pe, rt_color_rgba(255, 0, 0, 0));
+    rt_particle_emitter_burst(pe, 1);
+
+    int64_t color = 0;
+    ASSERT(rt_particle_emitter_get(pe, 0, NULL, NULL, NULL, &color) == 1);
+    ASSERT(color == 0x00FF0000);
+    ASSERT(rt_particle_emitter_draw_to_pixels(pe, pixels, 0, 0) == 1);
+    ASSERT(rt_pixels_get(pixels, 2, 2) == 0x00000000);
+
+    rt_particle_emitter_destroy(pe);
+}
+
+TEST(draw_to_pixels_preserves_transparent_destination_alpha) {
+    rt_particle_emitter pe = rt_particle_emitter_new(1);
+    void *pixels = rt_pixels_new(5, 5);
+    ASSERT(pixels != NULL);
+
+    rt_pixels_fill(pixels, 0x00000000);
+    rt_particle_emitter_set_position(pe, 2.0, 2.0);
+    rt_particle_emitter_set_lifetime(pe, 10, 10);
+    rt_particle_emitter_set_velocity(pe, 0.0, 0.0, 0.0, 0.0);
+    rt_particle_emitter_set_size(pe, 2.0, 2.0);
+    rt_particle_emitter_set_fade_out(pe, 0);
+    rt_particle_emitter_set_color(pe, 0x80FF0000);
+    rt_particle_emitter_burst(pe, 1);
+
+    ASSERT(rt_particle_emitter_draw_to_pixels(pe, pixels, 0, 0) == 1);
+    int64_t raw = rt_pixels_get(pixels, 2, 2);
+    ASSERT(rt_pixels_get_rgb(pixels, 2, 2) == 0xFF0000);
+    ASSERT((raw & 0xFF) >= 127 && (raw & 0xFF) <= 128);
 
     rt_particle_emitter_destroy(pe);
 }
@@ -231,6 +278,8 @@ int main() {
     RUN_TEST(full_emitters_do_not_build_emission_debt);
     RUN_TEST(get_normalizes_legacy_rgb_alpha);
     RUN_TEST(draw_to_pixels_alpha_blends_over_existing_background);
+    RUN_TEST(color_rgba_zero_alpha_is_transparent);
+    RUN_TEST(draw_to_pixels_preserves_transparent_destination_alpha);
     RUN_TEST(nonfinite_configuration_is_sanitized);
 
     printf("\n%d tests passed, %d tests failed\n", tests_passed, tests_failed);

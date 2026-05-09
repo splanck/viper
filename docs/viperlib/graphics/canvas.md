@@ -197,7 +197,8 @@ The canvas includes a built-in 8x8 pixel bitmap font for rendering text:
 ### Blitting Pixels Buffers
 
 Use `Blit`, `BlitRegion`, and `BlitAlpha` to copy Pixels buffers to the canvas. These APIs use
-logical canvas coordinates, respect `SetClipRect`, and scale correctly on fractional HiDPI displays:
+logical canvas coordinates, respect `SetClipRect`, and scale correctly on fractional HiDPI displays.
+`BlitAlpha` uses straight-alpha source-over compositing and preserves the resulting alpha channel:
 
 ```basic
 ' Load an image

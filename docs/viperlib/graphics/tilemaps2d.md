@@ -50,3 +50,4 @@ auto.Apply(ground, 10, 12, 5)
 - `TexturePackerAtlas`, `AsepriteImporter`, and `TiledMapLoader` are runtime-side helpers for common 2D asset layouts.
 - Import helpers currently provide atlas/tilemap construction primitives rather than full external JSON or `.aseprite` file parsing.
 - Atlas regions are validated against their backing `Pixels` buffer before registration.
+- `AsepriteImporter.SetGrid(width, height)` treats non-positive dimensions as an unset grid. `ToAtlas(pixels)` returns `null` until both frame dimensions are positive.
