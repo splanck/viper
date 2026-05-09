@@ -22,6 +22,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <stdexcept>
 
 using namespace viper::codegen::objfile;
 
@@ -94,6 +95,21 @@ int main() {
         CHECK(cs.bytes()[3] == 0xEF);
     }
 
+    // --- emitBytes accepts null only for empty input ---
+    {
+        CodeSection cs;
+        cs.emitBytes(nullptr, 0);
+        CHECK(cs.bytes().empty());
+
+        bool threw = false;
+        try {
+            cs.emitBytes(nullptr, 1);
+        } catch (const std::invalid_argument &) {
+            threw = true;
+        }
+        CHECK(threw);
+    }
+
     // --- emitZeros ---
     {
         CodeSection cs;
@@ -136,6 +152,18 @@ int main() {
         CHECK(cs.bytes()[0] == 0xAA);
     }
 
+    // --- alignTo rejects non-power-of-two alignment ---
+    {
+        CodeSection cs;
+        bool threw = false;
+        try {
+            cs.alignTo(3);
+        } catch (const std::invalid_argument &) {
+            threw = true;
+        }
+        CHECK(threw);
+    }
+
     // --- patch32LE ---
     {
         CodeSection cs;
@@ -148,6 +176,7 @@ int main() {
         CHECK(cs.bytes()[3] == 0xCA);
         // Verify other data untouched
         CHECK(cs.bytes()[4] == 0xAD);
+        CHECK(cs.read32LE(0) == 0xCAFEBABE);
     }
 
     // --- patch8 ---
@@ -267,6 +296,40 @@ int main() {
         CHECK(a.symbols().count() == 3); // null + both local labels
         CHECK(a.symbols().at(1).offset == 0);
         CHECK(a.symbols().at(2).offset == 1);
+    }
+
+    // --- appendSection rebases sections with logical offset bias physically ---
+    {
+        CodeSection a;
+        a.emit8(0x90);
+
+        CodeSection b;
+        b.setLogicalOffsetBias(100);
+        uint32_t sym = b.defineSymbol("biased", SymbolBinding::Local, SymbolSection::Text);
+        b.emit32LE(0);
+        b.addRelocationAt(100, RelocKind::PCRel32, sym, -4);
+
+        a.appendSection(b);
+        CHECK(a.bytes().size() == 5);
+        CHECK(a.symbols().at(1).offset == 1);
+        CHECK(a.relocations().size() == 1);
+        CHECK(a.relocations()[0].offset == 1);
+    }
+
+    // --- appendSection validates unwind symbol indices ---
+    {
+        CodeSection a;
+        CodeSection b;
+        b.emit8(0xC3);
+        b.addUnwindEntry(CompactUnwindEntry{99, 1, 0});
+
+        bool threw = false;
+        try {
+            a.appendSection(b);
+        } catch (const std::out_of_range &) {
+            threw = true;
+        }
+        CHECK(threw);
     }
 
     // --- Result ---

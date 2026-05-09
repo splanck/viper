@@ -24,6 +24,7 @@
 
 #include "codegen/common/objfile/MachOWriter.hpp"
 #include "codegen/common/objfile/ObjFileWriterUtil.hpp"
+#include "codegen/common/objfile/RelocationValidation.hpp"
 #include "codegen/common/objfile/StringTable.hpp"
 
 #include <algorithm>
@@ -356,21 +357,34 @@ bool MachOWriter::write(const std::string &path,
 
     std::vector<PendingSym> pendingLocals, pendingExtDef, pendingUndef;
 
-    // Track coalescible non-local names. Local symbols must remain distinct
-    // because Mach-O relocations can target same-spelled local labels in
-    // different sections or appended functions.
+    // Track coalescible non-local names. Local symbols must remain distinct;
+    // undefined external symbols are never satisfied by a local same-spelled
+    // symbol unless an explicit cross-section relocation target is present.
     std::unordered_map<std::string, uint32_t> definedGlobalNameToMachoIdx;
     std::unordered_map<std::string, uint32_t> undefinedNameToMachoIdx;
-    std::unordered_map<std::string, uint32_t> uniqueLocalNameToMachoIdx;
-    std::unordered_map<std::string, uint32_t> localNameCounts;
 
     // Map from (CodeSection symbol index) → Mach-O symbol table index.
     std::unordered_map<uint32_t, uint32_t> textSymMap;
     std::unordered_map<uint32_t, uint32_t> rodataSymMap;
 
+    auto externalNeedsUndefinedSymbol = [](const CodeSection &sec, uint32_t symbolIndex) {
+        bool sawRelocation = false;
+        for (const auto &rel : sec.relocations()) {
+            if (rel.symbolIndex != symbolIndex)
+                continue;
+            sawRelocation = true;
+            if (rel.targetSection == SymbolSection::Undefined)
+                return true;
+        }
+        return !sawRelocation;
+    };
+
     auto processSymbols = [&](const CodeSection &sec, bool isText) {
         for (uint32_t i = 1; i < sec.symbols().count(); ++i) {
             const Symbol &s = sec.symbols().at(i);
+            if (s.binding == SymbolBinding::External && !externalNeedsUndefinedSymbol(sec, i))
+                continue;
+
             std::string mangled = mangleName(s);
             uint32_t strOff = strtab.add(mangled);
 
@@ -416,15 +430,8 @@ bool MachOWriter::write(const std::string &path,
     };
 
     auto assignLocals = [&](std::vector<PendingSym> &syms) {
-        for (auto &ps : syms) {
-            auto &count = localNameCounts[ps.mangledName];
-            ++count;
-            if (count == 1)
-                uniqueLocalNameToMachoIdx[ps.mangledName] = machoIdx;
-            else
-                uniqueLocalNameToMachoIdx.erase(ps.mangledName);
+        for (auto &ps : syms)
             assignFreshIndex(ps);
-        }
     };
 
     auto assignDefinedGlobals = [&](std::vector<PendingSym> &syms) {
@@ -447,14 +454,6 @@ bool MachOWriter::write(const std::string &path,
                     textSymMap[ps.encoderIdx] = defIt->second;
                 else
                     rodataSymMap[ps.encoderIdx] = defIt->second;
-                continue;
-            }
-            auto localIt = uniqueLocalNameToMachoIdx.find(ps.mangledName);
-            if (localIt != uniqueLocalNameToMachoIdx.end()) {
-                if (ps.fromText)
-                    textSymMap[ps.encoderIdx] = localIt->second;
-                else
-                    rodataSymMap[ps.encoderIdx] = localIt->second;
                 continue;
             }
             auto undefIt = undefinedNameToMachoIdx.find(ps.mangledName);
@@ -582,6 +581,8 @@ bool MachOWriter::write(const std::string &path,
                             const char *sectionName,
                             std::vector<MachoReloc> &outRelocs) -> bool {
         for (const auto &rel : source.relocations()) {
+            if (!validateRelocationShape("MachOWriter", arch_, source, rel, sectionName, err))
+                return false;
             auto attrs = machoRelocAttrs(rel.kind);
             if (attrs.skip) {
                 err << "MachOWriter: relocation kind " << static_cast<int>(rel.kind)
@@ -595,8 +596,9 @@ bool MachOWriter::write(const std::string &path,
                 return false;
             if (!checkedRelocSymbolNum(symIdx, "relocation symbol index", err))
                 return false;
+            const size_t physicalRelOffset = rel.offset - source.logicalOffsetBias();
             uint32_t relocAddress = 0;
-            if (!checkedU32(rel.offset, "relocation address", err, relocAddress))
+            if (!checkedU32(physicalRelOffset, "relocation address", err, relocAddress))
                 return false;
 
             if (arch_ == ObjArch::AArch64 && rel.addend != 0) {
@@ -849,8 +851,9 @@ bool MachOWriter::write(const std::string &path,
     if (arch_ == ObjArch::X86_64) {
         auto patchX64Addends = [&](const CodeSection &section, size_t sectionFileOff) -> bool {
             for (const auto &rel : section.relocations()) {
+                const size_t physicalRelOffset = rel.offset - section.logicalOffsetBias();
                 if (rel.kind == RelocKind::PCRel32 || rel.kind == RelocKind::Branch32) {
-                    size_t patchOff = sectionFileOff + rel.offset;
+                    size_t patchOff = sectionFileOff + physicalRelOffset;
                     if (patchOff + 4 > file.size()) {
                         err << "error: addend patch at offset " << patchOff
                             << " out of bounds (file size=" << file.size() << ")\n";
@@ -862,7 +865,7 @@ bool MachOWriter::write(const std::string &path,
                     file[patchOff + 2] = static_cast<uint8_t>(addend >> 16);
                     file[patchOff + 3] = static_cast<uint8_t>(addend >> 24);
                 } else if (rel.kind == RelocKind::Abs64 && rel.addend != 0) {
-                    size_t patchOff = sectionFileOff + rel.offset;
+                    size_t patchOff = sectionFileOff + physicalRelOffset;
                     if (patchOff + 8 > file.size()) {
                         err << "error: addend patch at offset " << patchOff
                             << " out of bounds (file size=" << file.size() << ")\n";

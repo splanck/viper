@@ -211,7 +211,10 @@ bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags) {
     if (module.emitDebugLines && !debugLines.empty())
         module.debugLineData = debugLines.encodeDwarf5(8);
 
-    module.binaryText.emplace();
+    objfile::CodeSection mergedText;
+    for (const auto &section : module.binaryTextSections)
+        mergedText.appendSection(section);
+    module.binaryText = std::move(mergedText);
     module.binaryRodata = std::move(rodata);
     return true;
 }

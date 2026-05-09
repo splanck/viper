@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-05-01
+last-verified: 2026-05-09
 ---
 
 # Native Assembler — Binary Encoding & Object File Generation
@@ -233,8 +233,36 @@ The AArch64 encoder synthesizes function prologues and epilogues at emit time:
 
 - Internal branches (within the same function) are resolved by patching the instruction word after all blocks
   are emitted
+- Conditional branches that exceed AArch64's ±1 MiB `B.cond`/`CBZ`/`CBNZ` range are expanded to an inverted
+  local skip plus a 26-bit unconditional `B`. The sizing pass marks both backward and forward far targets before
+  final emission so the patcher never tries to force a long-range target into the short imm19 field.
+- `al` and `nv` are accepted by the low-level condition parser for completeness, but MIR conditional instructions
+  reject them because they do not represent normal comparison predicates for `B.cond`, `CSET`, or `CSEL`.
 - External branches (function calls) generate `A64Call26` relocations
 - Cross-section references (rodata access) generate `A64AdrpPage21` + `A64AddPageOff12` relocation pairs
+
+---
+
+## Correctness Guards
+
+The native assembler validates object metadata before serialization:
+
+- `CodeSection` offsets are logical offsets. Dry-run encoders may install a logical bias, and append/patch/read
+  helpers translate those offsets back to physical byte indexes before copying or patching bytes.
+- Byte emission rejects null non-empty inputs, alignment requests must be powers of two, and reservation growth is
+  checked for overflow.
+- String and symbol table indexes are checked before narrowing to 32-bit object-file fields.
+- DWARF `.debug_line` entries must be added in nondecreasing address order; DWARF32 unit and header lengths are
+  checked before patching the line-table header.
+- ELF, Mach-O, and COFF writers validate that every relocation kind matches the target architecture and that the
+  fixup width fits inside the section contents.
+- Undefined external symbols are only coalesced with defined global symbols of the same name. Local same-name
+  symbols remain local, and local cross-section references must use an explicit relocation target-section hint.
+- Standard COFF output is rejected before section indexes exceed the signed 16-bit section-number range used in
+  symbol table entries. BigObj emission is not currently implemented.
+
+When DWARF line tables are emitted for ELF/COFF, the pipeline writes the merged text section so encoded line-table
+addresses match the emitted section layout. Mach-O already merges per-function text atoms before writing.
 
 ---
 

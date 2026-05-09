@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
 #include <stdexcept>
 
 namespace viper::codegen {
@@ -37,11 +38,15 @@ uint32_t DebugLineTable::addFile(const std::string &path) {
         if (files_[i] == path)
             return static_cast<uint32_t>(i + 1); // 1-based
     }
+    if (files_.size() >= std::numeric_limits<uint32_t>::max())
+        throw std::length_error("debug_line: file table exceeds 32-bit index range");
     files_.push_back(path);
     return static_cast<uint32_t>(files_.size()); // 1-based
 }
 
 uint32_t DebugLineTable::addFileSlot(const std::string &path) {
+    if (files_.size() >= std::numeric_limits<uint32_t>::max())
+        throw std::length_error("debug_line: file table exceeds 32-bit index range");
     files_.push_back(path);
     return static_cast<uint32_t>(files_.size()); // 1-based
 }
@@ -53,6 +58,9 @@ void DebugLineTable::addEntry(uint64_t address,
     if (fileIndex == 0 || fileIndex > files_.size()) {
         throw std::runtime_error("debug_line: invalid file index " + std::to_string(fileIndex) +
                                  " (table has " + std::to_string(files_.size()) + " file slot(s))");
+    }
+    if (!entries_.empty() && address < entries_.back().address) {
+        throw std::runtime_error("debug_line: address entries must be added in ascending order");
     }
     entries_.push_back({address, fileIndex, line, column});
 }
@@ -68,6 +76,8 @@ void DebugLineTable::append(const DebugLineTable &other, uint64_t addressBias) {
                                      std::to_string(entry.fileIndex) + " (source table has " +
                                      std::to_string(other.files_.size()) + " file slot(s))");
         }
+        if (entry.address > std::numeric_limits<uint64_t>::max() - addressBias)
+            throw std::length_error("debug_line: rebased address overflows 64-bit range");
         addEntry(entry.address + addressBias, fileRemap[entry.fileIndex], entry.line, entry.column);
     }
 }
@@ -120,6 +130,9 @@ static void writeNullTermString(std::vector<uint8_t> &buf, const std::string &s)
 }
 
 std::vector<uint8_t> DebugLineTable::encodeDwarf5(uint8_t addressSize) const {
+    if (addressSize != 4 && addressSize != 8)
+        throw std::invalid_argument("debug_line: address size must be 4 or 8 bytes");
+
     std::vector<uint8_t> out;
 
     // We build the header and program body separately, then fix up the unit_length field.
@@ -177,6 +190,8 @@ std::vector<uint8_t> DebugLineTable::encodeDwarf5(uint8_t addressSize) const {
 
     // --- Patch header_length ---
     const size_t headerEnd = out.size();
+    if (headerEnd - headerStart > std::numeric_limits<uint32_t>::max())
+        throw std::length_error("debug_line: header length exceeds DWARF32 range");
     const uint32_t headerLen = static_cast<uint32_t>(headerEnd - headerStart);
     out[headerLenOff + 0] = static_cast<uint8_t>(headerLen);
     out[headerLenOff + 1] = static_cast<uint8_t>(headerLen >> 8);
@@ -192,6 +207,9 @@ std::vector<uint8_t> DebugLineTable::encodeDwarf5(uint8_t addressSize) const {
     bool firstEntry = true;
 
     for (const auto &entry : entries_) {
+        if (addressSize == 4 && entry.address > std::numeric_limits<uint32_t>::max())
+            throw std::length_error("debug_line: address exceeds 32-bit address size");
+
         // Set address for the first entry (or when address decreases, which shouldn't happen).
         if (firstEntry) {
             std::vector<uint8_t> addrData;
@@ -266,6 +284,8 @@ std::vector<uint8_t> DebugLineTable::encodeDwarf5(uint8_t addressSize) const {
     writeExtendedOpcode(out, DW_LNE_end_sequence, {});
 
     // --- Patch unit_length (total size minus the 4-byte length field itself) ---
+    if (out.size() - 4 > std::numeric_limits<uint32_t>::max())
+        throw std::length_error("debug_line: unit length exceeds DWARF32 range");
     const uint32_t unitLen = static_cast<uint32_t>(out.size() - 4);
     out[unitLenOff + 0] = static_cast<uint8_t>(unitLen);
     out[unitLenOff + 1] = static_cast<uint8_t>(unitLen >> 8);

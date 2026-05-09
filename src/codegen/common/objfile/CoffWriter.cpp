@@ -25,12 +25,14 @@
 
 #include "codegen/common/objfile/CoffWriter.hpp"
 #include "codegen/common/objfile/ObjFileWriterUtil.hpp"
+#include "codegen/common/objfile/RelocationValidation.hpp"
 
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <limits>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -115,7 +117,7 @@ static bool validateCoffRelocationAddend(const CodeSection &section,
         case RelocKind::Abs64: {
             if (rel.addend == 0)
                 return true;
-            if (rel.offset + 8 > section.bytes().size()) {
+            if (!section.containsOffsetRange(rel.offset, 8)) {
                 err << "CoffWriter: 64-bit addend relocation at offset " << rel.offset
                     << " is out of bounds\n";
                 return false;
@@ -123,8 +125,9 @@ static bool validateCoffRelocationAddend(const CodeSection &section,
 
             uint64_t encoded = 0;
             const auto &bytes = section.bytes();
+            const size_t physicalOffset = rel.offset - section.logicalOffsetBias();
             for (size_t i = 0; i < 8; ++i)
-                encoded |= (static_cast<uint64_t>(bytes[rel.offset + i]) << (i * 8));
+                encoded |= (static_cast<uint64_t>(bytes[physicalOffset + i]) << (i * 8));
             if (encoded != static_cast<uint64_t>(rel.addend)) {
                 err << "CoffWriter: Abs64 addend " << rel.addend
                     << " must already be embedded in section bytes at offset " << rel.offset
@@ -496,23 +499,36 @@ bool CoffWriter::write(const std::string &path,
     const bool hasPdata = !pdataBytes.empty();
     const bool hasDebugLine = !debugLineData_.empty();
 
-    uint16_t nextSecIndex = 1;
-    const uint16_t secIdxText = nextSecIndex++;
-    const uint16_t secIdxRdata = hasRodata ? nextSecIndex++ : 0;
-    const uint16_t secIdxXdata = hasXdata ? nextSecIndex++ : 0;
+    uint32_t nextSecIndex = 1;
+    const uint16_t secIdxText = static_cast<uint16_t>(nextSecIndex++);
+    const uint16_t secIdxRdata = hasRodata ? static_cast<uint16_t>(nextSecIndex++) : 0;
+    const uint16_t secIdxXdata = hasXdata ? static_cast<uint16_t>(nextSecIndex++) : 0;
     if (hasPdata)
         ++nextSecIndex;
-    const uint16_t numSections = static_cast<uint16_t>((nextSecIndex - 1) + (hasDebugLine ? 1 : 0));
+    const uint32_t sectionCount = (nextSecIndex - 1) + (hasDebugLine ? 1u : 0u);
+    if (sectionCount > static_cast<uint32_t>(std::numeric_limits<int16_t>::max())) {
+        err << "CoffWriter: section count exceeds standard COFF symbol section-number range; "
+               "BigObj output is not available\n";
+        return false;
+    }
+    const uint16_t numSections = static_cast<uint16_t>(sectionCount);
 
     std::vector<uint8_t> symtabBytes;
     std::vector<uint8_t> strtabBytes(4, 0);
     std::unordered_map<uint32_t, uint32_t> textSymMap;
     std::unordered_map<uint32_t, uint32_t> rodataSymMap;
     std::unordered_map<std::string, uint32_t> definedNameMap;
+    std::unordered_map<std::string, uint32_t> definedGlobalNameMap;
     std::unordered_set<std::string> definedGlobalNames;
     uint32_t coffSymCount = 0;
 
     auto addToStrTab = [&](const std::string &s) -> uint32_t {
+        if (strtabBytes.size() > std::numeric_limits<uint32_t>::max())
+            throw std::length_error("CoffWriter: string table offset exceeds 32-bit COFF limit");
+        if (s.size() > std::numeric_limits<size_t>::max() - strtabBytes.size() - 1 ||
+            strtabBytes.size() + s.size() + 1 > std::numeric_limits<uint32_t>::max()) {
+            throw std::length_error("CoffWriter: string table size exceeds 32-bit COFF limit");
+        }
         uint32_t offset = static_cast<uint32_t>(strtabBytes.size());
         strtabBytes.insert(strtabBytes.end(), s.begin(), s.end());
         strtabBytes.push_back(0);
@@ -546,8 +562,11 @@ bool CoffWriter::write(const std::string &path,
             writeSymbol(symtabBytes, s.name, strOff, value, secNum, 0, storageClass);
             const uint32_t coffIdx = coffSymCount++;
             rodataSymMap[i] = coffIdx;
-            if (s.binding != SymbolBinding::External)
+            if (s.binding != SymbolBinding::External) {
                 definedNameMap[s.name] = coffIdx;
+                if (s.binding == SymbolBinding::Global)
+                    definedGlobalNameMap[s.name] = coffIdx;
+            }
         }
     }
 
@@ -585,8 +604,8 @@ bool CoffWriter::write(const std::string &path,
     for (uint32_t i = 1; i < text.symbols().count(); ++i) {
         const Symbol &s = text.symbols().at(i);
         if (s.binding == SymbolBinding::External) {
-            auto existing = definedNameMap.find(s.name);
-            if (existing != definedNameMap.end()) {
+            auto existing = definedGlobalNameMap.find(s.name);
+            if (existing != definedGlobalNameMap.end()) {
                 textSymMap[i] = existing->second;
                 continue;
             }
@@ -616,8 +635,11 @@ bool CoffWriter::write(const std::string &path,
         writeSymbol(symtabBytes, s.name, strOff, value, secNum, 0x20, storageClass);
         const uint32_t coffIdx = coffSymCount++;
         textSymMap[i] = coffIdx;
-        if (s.binding != SymbolBinding::External)
+        if (s.binding != SymbolBinding::External) {
             definedNameMap[s.name] = coffIdx;
+            if (s.binding == SymbolBinding::Global)
+                definedGlobalNameMap[s.name] = coffIdx;
+        }
     }
 
     std::unordered_map<std::string, uint32_t> definedTextByName;
@@ -692,13 +714,16 @@ bool CoffWriter::write(const std::string &path,
                                 const char *sectionName,
                                 std::vector<uint8_t> &relocBytes) -> bool {
         for (const auto &rel : source.relocations()) {
+            if (!validateRelocationShape("CoffWriter", arch_, source, rel, sectionName, err))
+                return false;
             if (!validateCoffRelocationAddend(source, rel, err))
                 return false;
             uint32_t coffSymIdx = 0;
             if (!resolveRelocSym(rel, source, sourceMap, sectionName, coffSymIdx))
                 return false;
+            const size_t physicalRelOffset = rel.offset - source.logicalOffsetBias();
             uint32_t relocOff = 0;
-            if (!checkedU32(rel.offset, "relocation offset", err, relocOff))
+            if (!checkedU32(physicalRelOffset, "relocation offset", err, relocOff))
                 return false;
             writeReloc(relocBytes, relocOff, coffSymIdx, coffRelocType(rel.kind));
         }
@@ -980,25 +1005,43 @@ bool CoffWriter::write(const std::string &path,
 
     const size_t textCount = textSections.size();
     std::vector<uint16_t> secIdxText(textCount, 0);
-    uint16_t nextSecIndex = 1;
+    uint32_t nextSecIndex = 1;
+    if (textCount > static_cast<size_t>(std::numeric_limits<int16_t>::max())) {
+        err << "CoffWriter: text section count exceeds standard COFF symbol section-number range; "
+               "BigObj output is not available\n";
+        return false;
+    }
     for (size_t i = 0; i < textCount; ++i)
-        secIdxText[i] = nextSecIndex++;
-    const uint16_t secIdxRdata = hasRodata ? nextSecIndex++ : 0;
-    const uint16_t secIdxXdata = hasXdata ? nextSecIndex++ : 0;
+        secIdxText[i] = static_cast<uint16_t>(nextSecIndex++);
+    const uint16_t secIdxRdata = hasRodata ? static_cast<uint16_t>(nextSecIndex++) : 0;
+    const uint16_t secIdxXdata = hasXdata ? static_cast<uint16_t>(nextSecIndex++) : 0;
     if (hasPdata)
         ++nextSecIndex;
-    const uint16_t numSections = static_cast<uint16_t>((nextSecIndex - 1) + (hasDebugLine ? 1 : 0));
+    const uint32_t sectionCount = (nextSecIndex - 1) + (hasDebugLine ? 1u : 0u);
+    if (sectionCount > static_cast<uint32_t>(std::numeric_limits<int16_t>::max())) {
+        err << "CoffWriter: section count exceeds standard COFF symbol section-number range; "
+               "BigObj output is not available\n";
+        return false;
+    }
+    const uint16_t numSections = static_cast<uint16_t>(sectionCount);
 
     std::vector<uint8_t> symtabBytes;
     std::vector<uint8_t> strtabBytes(4, 0);
     std::vector<std::unordered_map<uint32_t, uint32_t>> textSymMaps(textCount);
     std::unordered_map<uint32_t, uint32_t> rodataSymMap;
     std::unordered_map<std::string, uint32_t> definedNameMap;
+    std::unordered_map<std::string, uint32_t> definedGlobalNameMap;
     std::unordered_map<std::string, uint32_t> externalNameMap;
     std::unordered_set<std::string> definedGlobalNames;
     uint32_t coffSymCount = 0;
 
     auto addToStrTab = [&](const std::string &s) -> uint32_t {
+        if (strtabBytes.size() > std::numeric_limits<uint32_t>::max())
+            throw std::length_error("CoffWriter: string table offset exceeds 32-bit COFF limit");
+        if (s.size() > std::numeric_limits<size_t>::max() - strtabBytes.size() - 1 ||
+            strtabBytes.size() + s.size() + 1 > std::numeric_limits<uint32_t>::max()) {
+            throw std::length_error("CoffWriter: string table size exceeds 32-bit COFF limit");
+        }
         const uint32_t offset = static_cast<uint32_t>(strtabBytes.size());
         strtabBytes.insert(strtabBytes.end(), s.begin(), s.end());
         strtabBytes.push_back(0);
@@ -1057,6 +1100,8 @@ bool CoffWriter::write(const std::string &path,
             const uint32_t coffIdx = coffSymCount++;
             rodataSymMap[i] = coffIdx;
             definedNameMap[s.name] = coffIdx;
+            if (s.binding == SymbolBinding::Global)
+                definedGlobalNameMap[s.name] = coffIdx;
         }
     }
 
@@ -1110,6 +1155,8 @@ bool CoffWriter::write(const std::string &path,
             const uint32_t coffIdx = coffSymCount++;
             textSymMaps[ti][i] = coffIdx;
             definedNameMap[s.name] = coffIdx;
+            if (s.binding == SymbolBinding::Global)
+                definedGlobalNameMap[s.name] = coffIdx;
         }
     }
 
@@ -1130,8 +1177,8 @@ bool CoffWriter::write(const std::string &path,
     }
 
     for (const auto &ext : pendingExternals) {
-        const auto definedIt = definedNameMap.find(ext.name);
-        if (definedIt != definedNameMap.end()) {
+        const auto definedIt = definedGlobalNameMap.find(ext.name);
+        if (definedIt != definedGlobalNameMap.end()) {
             if (ext.fromText)
                 textSymMaps[ext.textIdx][ext.origIdx] = definedIt->second;
             else
@@ -1214,13 +1261,16 @@ bool CoffWriter::write(const std::string &path,
                                 const char *sectionName,
                                 std::vector<uint8_t> &relocBytes) -> bool {
         for (const auto &rel : source.relocations()) {
+            if (!validateRelocationShape("CoffWriter", arch_, source, rel, sectionName, err))
+                return false;
             if (!validateCoffRelocationAddend(source, rel, err))
                 return false;
             uint32_t coffSymIdx = 0;
             if (!resolveRelocSym(rel, source, sourceMap, sectionName, coffSymIdx))
                 return false;
+            const size_t physicalRelOffset = rel.offset - source.logicalOffsetBias();
             uint32_t relocOff = 0;
-            if (!checkedU32(rel.offset, "relocation offset", err, relocOff))
+            if (!checkedU32(physicalRelOffset, "relocation offset", err, relocOff))
                 return false;
             writeReloc(relocBytes, relocOff, coffSymIdx, coffRelocType(rel.kind));
         }

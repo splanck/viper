@@ -577,12 +577,20 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
             result.stderr_text = err.str();
             return result;
         }
-        if (!pipelineModule.debugLineData.empty())
+        const bool hasDebugLine = !pipelineModule.debugLineData.empty();
+        if (hasDebugLine)
             writer->setDebugLineData(std::move(pipelineModule.debugLineData));
-        if (!writer->write(objPath.string(),
-                           pipelineModule.binaryTextSections,
-                           *pipelineModule.binaryRodata,
-                           err)) {
+        const bool wroteObject =
+            hasDebugLine
+                ? writer->write(objPath.string(),
+                                *pipelineModule.binaryText,
+                                *pipelineModule.binaryRodata,
+                                err)
+                : writer->write(objPath.string(),
+                                pipelineModule.binaryTextSections,
+                                *pipelineModule.binaryRodata,
+                                err);
+        if (!wroteObject) {
             err << "error: failed to write object file '" << objPath.string() << "'\n";
             result.exit_code = 1;
             result.stdout_text = out.str();

@@ -101,6 +101,14 @@ static const ObjSymbol *findSymbol(const ObjFile &obj, const std::string &name) 
     return nullptr;
 }
 
+static const ObjSection *findSection(const ObjFile &obj, const std::string &name) {
+    for (size_t i = 1; i < obj.sections.size(); ++i) {
+        if (obj.sections[i].name == name)
+            return &obj.sections[i];
+    }
+    return nullptr;
+}
+
 // Known offsets for the fixed load command layout:
 // Header: 32 bytes
 // LC_SEGMENT_64: offset 32, size 232 (72 + 2*80)
@@ -793,6 +801,34 @@ static void testUnsupportedRelocationFails() {
     std::remove("/tmp/viper_test_macho_bad_reloc.o");
 }
 
+static void testWrongArchRelocationFails() {
+    CodeSection text, rodata;
+    uint32_t symIdx = text.findOrDeclareSymbol("target");
+    text.addRelocation(RelocKind::A64Call26, symIdx, 0);
+    text.emit32LE(0x94000000);
+
+    std::ostringstream errStream;
+    MachOWriter writer(ObjArch::X86_64);
+    CHECK(!writer.write("/tmp/viper_test_macho_wrong_arch.o", text, rodata, errStream));
+    CHECK(errStream.str().find("not valid for this object architecture") != std::string::npos);
+
+    std::remove("/tmp/viper_test_macho_wrong_arch.o");
+}
+
+static void testRelocationOffsetBoundsFails() {
+    CodeSection text, rodata;
+    uint32_t symIdx = text.findOrDeclareSymbol("target");
+    text.emit8(0xE8);
+    text.addRelocationAt(1, RelocKind::Branch32, symIdx, -4);
+
+    std::ostringstream errStream;
+    MachOWriter writer(ObjArch::X86_64);
+    CHECK(!writer.write("/tmp/viper_test_macho_bad_reloc_offset.o", text, rodata, errStream));
+    CHECK(errStream.str().find("extends beyond __text contents") != std::string::npos);
+
+    std::remove("/tmp/viper_test_macho_bad_reloc_offset.o");
+}
+
 static void testDuplicateLocalSymbolsStayDistinct() {
     CodeSection text, rodata;
     text.defineSymbol(".Ltmp", SymbolBinding::Local, SymbolSection::Text);
@@ -814,6 +850,37 @@ static void testDuplicateLocalSymbolsStayDistinct() {
             ++count;
     }
     CHECK(count == 2);
+
+    std::remove(path.c_str());
+}
+
+static void testUndefinedExternalDoesNotBindLocalSameName() {
+    CodeSection text, rodata;
+    rodata.defineSymbol("collision", SymbolBinding::Local, SymbolSection::Rodata);
+    rodata.emit64LE(0);
+
+    text.defineSymbol("caller", SymbolBinding::Global, SymbolSection::Text);
+    const uint32_t ext = text.findOrDeclareSymbol("collision");
+    text.emit8(0xE8);
+    const size_t dispOff = text.currentOffset();
+    text.emit32LE(0);
+    text.addRelocationAt(dispOff, RelocKind::Branch32, ext, -4);
+    text.emit8(0xC3);
+
+    std::ostringstream errStream;
+    MachOWriter writer(ObjArch::X86_64);
+    const std::string path = "/tmp/viper_test_macho_external_local_collision.o";
+    CHECK(writer.write(path, text, rodata, errStream));
+
+    ObjFile obj;
+    CHECK(readObjFile(path, obj, errStream));
+    const ObjSection *textSec = findSection(obj, "__TEXT,__text");
+    CHECK(textSec != nullptr);
+    if (textSec != nullptr && !textSec->relocs.empty()) {
+        const auto &targetSym = obj.symbols[textSec->relocs[0].symIndex];
+        CHECK(targetSym.name == "collision");
+        CHECK(targetSym.binding == ObjSymbol::Undefined);
+    }
 
     std::remove(path.c_str());
 }
@@ -913,7 +980,10 @@ int main() {
     testMultiSectionMergeRebasesSymbolOffsets();
     testMultiSectionMergeUniquifiesDuplicateLocals();
     testUnsupportedRelocationFails();
+    testWrongArchRelocationFails();
+    testRelocationOffsetBoundsFails();
     testDuplicateLocalSymbolsStayDistinct();
+    testUndefinedExternalDoesNotBindLocalSameName();
     testUndefinedRodataLocalReferenceUsesLocalDefinition();
     testAmbiguousCrossSectionRelocationFails();
     testMalformedSymtabFails();

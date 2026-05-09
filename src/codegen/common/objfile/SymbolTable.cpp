@@ -18,6 +18,7 @@
 
 #include "codegen/common/objfile/SymbolTable.hpp"
 
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -29,6 +30,9 @@ SymbolTable::SymbolTable() {
 }
 
 uint32_t SymbolTable::add(Symbol sym) {
+    if (symbols_.size() >= std::numeric_limits<uint32_t>::max())
+        throw std::length_error("SymbolTable index exceeds 32-bit object-file field range");
+
     if (!sym.name.empty()) {
         auto it = nameIndex_.find(sym.name);
         if (it != nameIndex_.end()) {

@@ -23,6 +23,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -85,6 +87,8 @@ class SymbolTable {
 
     /// Total number of symbols (including null entry at index 0).
     uint32_t count() const {
+        if (symbols_.size() > std::numeric_limits<uint32_t>::max())
+            throw std::length_error("SymbolTable count exceeds 32-bit object-file field range");
         return static_cast<uint32_t>(symbols_.size());
     }
 

@@ -515,13 +515,21 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
         }
 
         // Pass pre-encoded DWARF .debug_line data to the writer.
-        if (!pipelineModule.debugLineData.empty())
+        const bool hasDebugLine = !pipelineModule.debugLineData.empty();
+        if (hasDebugLine)
             writer->setDebugLineData(std::move(pipelineModule.debugLineData));
 
-        if (!writer->write(objPath.string(),
-                           pipelineModule.binaryTextSections,
-                           *pipelineModule.binaryRodata,
-                           err)) {
+        const bool wroteObject =
+            hasDebugLine
+                ? writer->write(objPath.string(),
+                                *pipelineModule.binaryText,
+                                *pipelineModule.binaryRodata,
+                                err)
+                : writer->write(objPath.string(),
+                                pipelineModule.binaryTextSections,
+                                *pipelineModule.binaryRodata,
+                                err);
+        if (!wroteObject) {
             result.exit_code = 1;
             result.stdout_text = out.str();
             result.stderr_text = err.str();

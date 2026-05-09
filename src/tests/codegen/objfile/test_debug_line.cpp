@@ -23,6 +23,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <stdexcept>
 
 using namespace viper::codegen;
 
@@ -309,6 +310,49 @@ int main() {
             }
         }
         CHECK(foundSetFile);
+    }
+
+    // --- Test 13: Addresses must be monotonic ---
+    {
+        DebugLineTable table;
+        table.addFile("bad_order.vpr");
+        table.addEntry(0x20, 1, 1, 0);
+
+        bool threw = false;
+        try {
+            table.addEntry(0x10, 1, 2, 0);
+        } catch (const std::runtime_error &ex) {
+            threw = std::string(ex.what()).find("ascending order") != std::string::npos;
+        }
+        CHECK(threw);
+    }
+
+    // --- Test 14: Invalid address size is rejected ---
+    {
+        DebugLineTable table;
+        table.addFile("addr_size.vpr");
+        bool threw = false;
+        try {
+            (void)table.encodeDwarf5(2);
+        } catch (const std::invalid_argument &) {
+            threw = true;
+        }
+        CHECK(threw);
+    }
+
+    // --- Test 15: 32-bit address tables reject out-of-range addresses ---
+    {
+        DebugLineTable table;
+        table.addFile("addr32.vpr");
+        table.addEntry(0x1'0000'0000ULL, 1, 1, 0);
+
+        bool threw = false;
+        try {
+            (void)table.encodeDwarf5(4);
+        } catch (const std::length_error &) {
+            threw = true;
+        }
+        CHECK(threw);
     }
 
     if (gFail == 0)

@@ -218,6 +218,70 @@ int main() {
     }
 
     {
+        CodeSection wrongArchText;
+        CodeSection wrongArchRodata;
+        wrongArchText.defineSymbol("caller", SymbolBinding::Global, SymbolSection::Text);
+        const uint32_t calleeIdx = wrongArchText.findOrDeclareSymbol("callee");
+        wrongArchText.addRelocation(RelocKind::A64Call26, calleeIdx, 0);
+        wrongArchText.emit32LE(0x94000000);
+
+        std::ostringstream wrongArchErr;
+        CoffWriter wrongArchWriter(ObjArch::X86_64);
+        CHECK(!wrongArchWriter.write("build/test-out/coff_wrong_arch_reloc.obj",
+                                     wrongArchText,
+                                     wrongArchRodata,
+                                     wrongArchErr));
+        CHECK(wrongArchErr.str().find("not valid for this object architecture") !=
+              std::string::npos);
+    }
+
+    {
+        CodeSection badOffsetText;
+        CodeSection badOffsetRodata;
+        badOffsetText.defineSymbol("caller", SymbolBinding::Global, SymbolSection::Text);
+        const uint32_t target = badOffsetText.findOrDeclareSymbol("target");
+        badOffsetText.emit8(0xE8);
+        badOffsetText.addRelocationAt(1, RelocKind::Branch32, target, -4);
+
+        std::ostringstream badOffsetErr;
+        CoffWriter badOffsetWriter(ObjArch::X86_64);
+        CHECK(!badOffsetWriter.write("build/test-out/coff_bad_reloc_offset.obj",
+                                     badOffsetText,
+                                     badOffsetRodata,
+                                     badOffsetErr));
+        CHECK(badOffsetErr.str().find("extends beyond .text contents") != std::string::npos);
+    }
+
+    {
+        CodeSection collisionText;
+        CodeSection collisionRodata;
+        collisionRodata.defineSymbol("collision", SymbolBinding::Local, SymbolSection::Rodata);
+        collisionRodata.emit64LE(0);
+
+        collisionText.defineSymbol("caller", SymbolBinding::Global, SymbolSection::Text);
+        const uint32_t ext = collisionText.findOrDeclareSymbol("collision");
+        collisionText.emit8(0xE8);
+        const size_t dispOff = collisionText.currentOffset();
+        collisionText.emit32LE(0);
+        collisionText.addRelocationAt(dispOff, RelocKind::Branch32, ext, -4);
+
+        std::ostringstream collisionErr;
+        CoffWriter collisionWriter(ObjArch::X86_64);
+        const std::string collisionPath = "build/test-out/coff_external_local_collision.obj";
+        ASSERT(collisionWriter.write(
+            collisionPath, collisionText, collisionRodata, collisionErr));
+
+        ObjFile collisionObj;
+        ASSERT(readObjFile(collisionPath, collisionObj, collisionErr));
+        const ObjSection *collisionTextSec = findSection(collisionObj, ".text");
+        ASSERT(collisionTextSec != nullptr);
+        ASSERT(!collisionTextSec->relocs.empty());
+        const auto &targetSym = collisionObj.symbols[collisionTextSec->relocs[0].symIndex];
+        CHECK(targetSym.name == "collision");
+        CHECK(targetSym.binding == ObjSymbol::Undefined);
+    }
+
+    {
         CodeSection badRel32Text;
         CodeSection badRel32Rodata;
         badRel32Text.defineSymbol("caller", SymbolBinding::Global, SymbolSection::Text);

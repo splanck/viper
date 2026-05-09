@@ -599,6 +599,34 @@ static void testMissingCrossSectionRelocationFails() {
     std::remove("/tmp/viper_test_elf_missing_cross.o");
 }
 
+static void testWrongArchRelocationFails() {
+    CodeSection text, rodata;
+    text.defineSymbol("caller", SymbolBinding::Global, SymbolSection::Text);
+    const uint32_t callee = text.findOrDeclareSymbol("callee");
+    text.addRelocation(RelocKind::A64Call26, callee, 0);
+    text.emit32LE(0x94000000);
+
+    std::ostringstream errStream;
+    ElfWriter writer(ObjArch::X86_64);
+    CHECK(!writer.write("/tmp/viper_test_elf_wrong_arch.o", text, rodata, errStream));
+    CHECK(errStream.str().find("not valid for this object architecture") != std::string::npos);
+    std::remove("/tmp/viper_test_elf_wrong_arch.o");
+}
+
+static void testRelocationOffsetBoundsFails() {
+    CodeSection text, rodata;
+    text.defineSymbol("caller", SymbolBinding::Global, SymbolSection::Text);
+    const uint32_t target = text.findOrDeclareSymbol("target");
+    text.emit8(0xE8);
+    text.addRelocationAt(1, RelocKind::Branch32, target, -4);
+
+    std::ostringstream errStream;
+    ElfWriter writer(ObjArch::X86_64);
+    CHECK(!writer.write("/tmp/viper_test_elf_bad_reloc_offset.o", text, rodata, errStream));
+    CHECK(errStream.str().find("extends beyond .text contents") != std::string::npos);
+    std::remove("/tmp/viper_test_elf_bad_reloc_offset.o");
+}
+
 int main() {
     testMinimalX64Elf();
     testMinimalA64Elf();
@@ -613,6 +641,8 @@ int main() {
     testRodataRelocations();
     testAmbiguousCrossSectionRelocationFails();
     testMissingCrossSectionRelocationFails();
+    testWrongArchRelocationFails();
+    testRelocationOffsetBoundsFails();
 
     if (gFail == 0)
         std::cout << "All ELF writer tests passed.\n";

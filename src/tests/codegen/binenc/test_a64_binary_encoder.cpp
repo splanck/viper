@@ -504,6 +504,38 @@ static void testFarConditionalBranchFallbacks() {
     CHECK(readWord(cbnzBytes, 8) == 0x14040000);
 }
 
+static void testFarForwardConditionalBranchesPatchLongForm() {
+    MFunction fn;
+    fn.name = "far_forward_conditional";
+    fn.isLeaf = true;
+
+    MBasicBlock entry;
+    entry.name = "entry";
+    entry.instrs.push_back(MInstr{MOpcode::BCond, {cond("eq"), label("target")}});
+    entry.instrs.push_back(MInstr{MOpcode::Cbz, {gpr(PhysReg::X0), label("target")}});
+    entry.instrs.push_back(MInstr{MOpcode::Cbnz, {gpr(PhysReg::X0), label("target")}});
+    constexpr size_t kNopCount = 262143;
+    for (size_t i = 0; i < kNopCount; ++i)
+        entry.instrs.push_back(MInstr{MOpcode::MovRR, {gpr(PhysReg::X1), gpr(PhysReg::X1)}});
+    fn.blocks.push_back(std::move(entry));
+
+    MBasicBlock target;
+    target.name = "target";
+    target.instrs.push_back(MInstr{MOpcode::Ret, {}});
+    fn.blocks.push_back(std::move(target));
+
+    CodeSection text, rodata;
+    A64BinaryEncoder enc;
+    enc.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
+
+    CHECK(readWord(text.bytes(), 4) == 0x54000041);     // b.ne +8
+    CHECK(readWord(text.bytes(), 8) == 0x14040004);     // b target
+    CHECK(readWord(text.bytes(), 12) == 0xB5000040);    // cbnz x0, +8
+    CHECK(readWord(text.bytes(), 16) == 0x14040002);    // b target
+    CHECK(readWord(text.bytes(), 20) == 0xB4000040);    // cbz x0, +8
+    CHECK(readWord(text.bytes(), 24) == 0x14040000);    // b target
+}
+
 static void testExternalCall() {
     // bl to an external function should produce a relocation.
     MFunction fn;
@@ -746,6 +778,18 @@ static void testEncoderValidationRejectsBadOperands() {
             (void)encodeInstrBytes({mi});
         } catch (const std::invalid_argument &ex) {
             threw = std::string(ex.what()).find("invalid condition") != std::string::npos;
+        }
+        CHECK(threw);
+    }
+
+    {
+        bool threw = false;
+        try {
+            MInstr mi{MOpcode::Cset, {gpr(PhysReg::X0), cond("al")}};
+            (void)encodeInstrBytes({mi});
+        } catch (const std::invalid_argument &ex) {
+            threw = std::string(ex.what()).find("not valid for conditional instruction") !=
+                    std::string::npos;
         }
         CHECK(threw);
     }
@@ -1137,6 +1181,7 @@ int main() {
     testBCondForward();
     testCbzForward();
     testFarConditionalBranchFallbacks();
+    testFarForwardConditionalBranchesPatchLongForm();
     testExternalCall();
     testPrologueEpilogue();
     testMainInit();

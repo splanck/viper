@@ -28,6 +28,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -85,6 +86,8 @@ class CodeSection {
 
     /// Reserve additional byte capacity relative to the current size.
     void reserveAdditionalBytes(size_t additionalBytes) {
+        if (additionalBytes > std::numeric_limits<size_t>::max() - bytes_.size())
+            throw std::length_error("CodeSection byte reservation exceeds addressable size");
         reserveBytes(bytes_.size() + additionalBytes);
     }
 
@@ -148,6 +151,10 @@ class CodeSection {
 
     /// Append arbitrary bytes.
     void emitBytes(const void *data, size_t len) {
+        if (len == 0)
+            return;
+        if (data == nullptr)
+            throw std::invalid_argument("CodeSection emitBytes requires non-null data");
         auto ptr = static_cast<const uint8_t *>(data);
         bytes_.insert(bytes_.end(), ptr, ptr + len);
     }
@@ -163,6 +170,8 @@ class CodeSection {
     void alignTo(size_t alignment) {
         if (alignment <= 1)
             return;
+        if ((alignment & (alignment - 1)) != 0)
+            throw std::invalid_argument("CodeSection alignment must be a power of two");
         size_t rem = currentOffset() % alignment;
         if (rem != 0)
             emitZeros(alignment - rem);
@@ -214,7 +223,7 @@ class CodeSection {
 
     /// Overwrite 4 bytes at the given offset (little-endian).
     void patch32LE(size_t offset, uint32_t val) {
-        if (offset < offsetBias_ || offset - offsetBias_ + 4 > bytes_.size())
+        if (!containsOffsetRange(offset, 4))
             throw std::out_of_range("CodeSection patch32LE offset is out of range");
         const size_t physicalOffset = offset - offsetBias_;
         bytes_[physicalOffset] = static_cast<uint8_t>(val);
@@ -225,9 +234,20 @@ class CodeSection {
 
     /// Overwrite 1 byte at the given offset.
     void patch8(size_t offset, uint8_t val) {
-        if (offset < offsetBias_ || offset - offsetBias_ >= bytes_.size())
+        if (!containsOffsetRange(offset, 1))
             throw std::out_of_range("CodeSection patch8 offset is out of range");
         bytes_[offset - offsetBias_] = val;
+    }
+
+    /// Read 4 bytes at a logical offset, little-endian.
+    uint32_t read32LE(size_t offset) const {
+        if (!containsOffsetRange(offset, 4))
+            throw std::out_of_range("CodeSection read32LE offset is out of range");
+        const size_t physicalOffset = offset - offsetBias_;
+        return static_cast<uint32_t>(bytes_[physicalOffset]) |
+               (static_cast<uint32_t>(bytes_[physicalOffset + 1]) << 8) |
+               (static_cast<uint32_t>(bytes_[physicalOffset + 2]) << 16) |
+               (static_cast<uint32_t>(bytes_[physicalOffset + 3]) << 24);
     }
 
     // === Accessors ===
@@ -240,6 +260,19 @@ class CodeSection {
     /// Mutable byte buffer (for Mach-O addend embedding).
     std::vector<uint8_t> &mutableBytes() {
         return bytes_;
+    }
+
+    /// Logical offset bias added to physical byte indexes.
+    size_t logicalOffsetBias() const {
+        return offsetBias_;
+    }
+
+    /// Return true when [offset, offset + width) is within emitted bytes.
+    bool containsOffsetRange(size_t offset, size_t width) const {
+        if (offset < offsetBias_)
+            return false;
+        const size_t physicalOffset = offset - offsetBias_;
+        return physicalOffset <= bytes_.size() && width <= bytes_.size() - physicalOffset;
     }
 
     /// All recorded relocations.
@@ -264,6 +297,17 @@ class CodeSection {
         reserveRelocations(relocations_.size() + other.relocations().size());
         std::vector<uint32_t> symbolRemap(other.symbols().count(), 0);
 
+        auto rebaseLogicalOffset = [&](size_t logicalOffset) -> size_t {
+            if (logicalOffset < other.offsetBias_)
+                throw std::out_of_range("CodeSection append source offset is before logical bias");
+            const size_t physicalOffset = logicalOffset - other.offsetBias_;
+            if (physicalOffset > other.bytes().size())
+                throw std::out_of_range("CodeSection append source offset is out of range");
+            if (physicalOffset > std::numeric_limits<size_t>::max() - offsetBias)
+                throw std::length_error("CodeSection append offset exceeds addressable size");
+            return offsetBias + physicalOffset;
+        };
+
         for (uint32_t i = 1; i < other.symbols().count(); ++i) {
             const Symbol &sym = other.symbols().at(i);
             uint32_t mappedIndex = 0;
@@ -271,12 +315,13 @@ class CodeSection {
             if (sym.binding == SymbolBinding::External || sym.section == SymbolSection::Undefined) {
                 mappedIndex = findOrDeclareSymbol(sym.name);
             } else {
+                const size_t rebasedOffset = rebaseLogicalOffset(sym.offset);
                 mappedIndex = symbols_.add(
-                    Symbol{sym.name, sym.binding, sym.section, offsetBias + sym.offset, sym.size});
+                    Symbol{sym.name, sym.binding, sym.section, rebasedOffset, sym.size});
                 Symbol &dst = symbols_.at(mappedIndex);
                 dst.binding = sym.binding;
                 dst.section = sym.section;
-                dst.offset = offsetBias + sym.offset;
+                dst.offset = rebasedOffset;
                 dst.size = sym.size;
             }
 
@@ -289,7 +334,7 @@ class CodeSection {
         for (const auto &reloc : other.relocations()) {
             if (reloc.symbolIndex >= symbolRemap.size())
                 throw std::out_of_range("CodeSection append relocation symbol index is out of range");
-            addRelocationAt(offsetBias + reloc.offset,
+            addRelocationAt(rebaseLogicalOffset(reloc.offset),
                             reloc.kind,
                             symbolRemap[reloc.symbolIndex],
                             reloc.addend,
@@ -297,12 +342,16 @@ class CodeSection {
         }
 
         for (const auto &entry : other.unwindEntries()) {
+            if (entry.symbolIndex >= symbolRemap.size())
+                throw std::out_of_range("CodeSection append compact unwind symbol index is out of range");
             CompactUnwindEntry rebased = entry;
             rebased.symbolIndex = symbolRemap[entry.symbolIndex];
             unwindEntries_.push_back(rebased);
         }
 
         for (const auto &entry : other.win64UnwindEntries()) {
+            if (entry.symbolIndex >= symbolRemap.size())
+                throw std::out_of_range("CodeSection append Win64 unwind symbol index is out of range");
             Win64UnwindEntry rebased = entry;
             rebased.symbolIndex = symbolRemap[entry.symbolIndex];
             win64UnwindEntries_.push_back(std::move(rebased));

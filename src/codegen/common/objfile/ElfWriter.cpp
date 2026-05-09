@@ -22,6 +22,7 @@
 
 #include "codegen/common/objfile/ElfWriter.hpp"
 #include "codegen/common/objfile/ObjFileWriterUtil.hpp"
+#include "codegen/common/objfile/RelocationValidation.hpp"
 #include "codegen/common/objfile/StringTable.hpp"
 
 #include <algorithm>
@@ -476,28 +477,34 @@ bool ElfWriter::write(const std::string &path,
     // --- 3. Build .rela.text ---
     std::vector<uint8_t> relaBytes;
     for (const auto &rel : text.relocations()) {
+        if (!validateRelocationShape("ElfWriter", arch_, text, rel, ".text", err))
+            return false;
         uint32_t elfSymIdx = 0;
         const auto &targetMap =
             (rel.targetSection == SymbolSection::Rodata) ? definedRodataByName : definedTextByName;
         if (!resolveRelocSym(rel, text, textSymMap, targetMap, ".text", elfSymIdx))
             return false;
 
+        const size_t physicalRelOffset = rel.offset - text.logicalOffsetBias();
         uint32_t relocType = elfRelocType(rel.kind, arch_);
         uint64_t rInfo = (static_cast<uint64_t>(elfSymIdx) << 32) | relocType;
-        writeRela(relaBytes, static_cast<uint64_t>(rel.offset), rInfo, rel.addend);
+        writeRela(relaBytes, static_cast<uint64_t>(physicalRelOffset), rInfo, rel.addend);
     }
 
     std::vector<uint8_t> relaRodataBytes;
     for (const auto &rel : rodata.relocations()) {
+        if (!validateRelocationShape("ElfWriter", arch_, rodata, rel, ".rodata", err))
+            return false;
         uint32_t elfSymIdx = 0;
         const auto &targetMap =
             (rel.targetSection == SymbolSection::Text) ? definedTextByName : definedRodataByName;
         if (!resolveRelocSym(rel, rodata, rodataSymMap, targetMap, ".rodata", elfSymIdx))
             return false;
 
+        const size_t physicalRelOffset = rel.offset - rodata.logicalOffsetBias();
         uint32_t relocType = elfRelocType(rel.kind, arch_);
         uint64_t rInfo = (static_cast<uint64_t>(elfSymIdx) << 32) | relocType;
-        writeRela(relaRodataBytes, static_cast<uint64_t>(rel.offset), rInfo, rel.addend);
+        writeRela(relaRodataBytes, static_cast<uint64_t>(physicalRelOffset), rInfo, rel.addend);
     }
 
     // --- 4. Compute file layout ---
@@ -952,6 +959,8 @@ bool ElfWriter::write(const std::string &path,
     std::vector<std::vector<uint8_t>> allRelaBytes(N);
     for (size_t ti = 0; ti < N; ++ti) {
         for (const auto &rel : textSections[ti].relocations()) {
+            if (!validateRelocationShape("ElfWriter", arch_, textSections[ti], rel, ".text", err))
+                return false;
             uint32_t elfSymIdx = 0;
             const auto &targetMap = (rel.targetSection == SymbolSection::Rodata)
                                         ? definedRodataByName
@@ -959,22 +968,26 @@ bool ElfWriter::write(const std::string &path,
             if (!resolveRelocSym(
                     rel, textSections[ti], textSymMaps[ti], targetMap, ".text", elfSymIdx))
                 return false;
+            const size_t physicalRelOffset = rel.offset - textSections[ti].logicalOffsetBias();
             uint32_t relocType = elfRelocType(rel.kind, arch_);
             uint64_t rInfo = (static_cast<uint64_t>(elfSymIdx) << 32) | relocType;
-            writeRela(allRelaBytes[ti], static_cast<uint64_t>(rel.offset), rInfo, rel.addend);
+            writeRela(allRelaBytes[ti], static_cast<uint64_t>(physicalRelOffset), rInfo, rel.addend);
         }
     }
 
     std::vector<uint8_t> relaRodataBytes;
     for (const auto &rel : rodata.relocations()) {
+        if (!validateRelocationShape("ElfWriter", arch_, rodata, rel, ".rodata", err))
+            return false;
         uint32_t elfSymIdx = 0;
         const auto &targetMap =
             (rel.targetSection == SymbolSection::Text) ? definedTextByName : definedRodataByName;
         if (!resolveRelocSym(rel, rodata, rodataSymMap, targetMap, ".rodata", elfSymIdx))
             return false;
+        const size_t physicalRelOffset = rel.offset - rodata.logicalOffsetBias();
         uint32_t relocType = elfRelocType(rel.kind, arch_);
         uint64_t rInfo = (static_cast<uint64_t>(elfSymIdx) << 32) | relocType;
-        writeRela(relaRodataBytes, static_cast<uint64_t>(rel.offset), rInfo, rel.addend);
+        writeRela(relaRodataBytes, static_cast<uint64_t>(physicalRelOffset), rInfo, rel.addend);
     }
 
     // --- 6. Compute file layout ---

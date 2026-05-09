@@ -96,7 +96,11 @@ static uint32_t getCondCode(const MOperand &op) {
     if (op.kind != MOperand::Kind::Cond)
         throw std::runtime_error("AArch64 binary encoder expected condition operand, got kind=" +
                                  std::to_string(static_cast<int>(op.kind)));
-    return condCode(op.cond);
+    const uint32_t cc = condCode(op.cond);
+    if (cc >= 0xE)
+        throw std::invalid_argument(
+            "AArch64 binary encoder: condition code is not valid for conditional instruction");
+    return cc;
 }
 
 static void requireOperandCount(const MInstr &mi, size_t expected) {
@@ -692,15 +696,12 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
             const size_t targetOff = it->second;
             const int64_t delta = static_cast<int64_t>(targetOff) - static_cast<int64_t>(pb.offset);
 
-            // Read existing instruction word.
-            const uint8_t *p = text.bytes().data() + pb.offset;
-            uint32_t word = static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
-                            (static_cast<uint32_t>(p[2]) << 16) |
-                            (static_cast<uint32_t>(p[3]) << 24);
+            uint32_t word = text.read32LE(pb.offset);
 
             if (pb.kind == MOpcode::Br || pb.kind == MOpcode::Bl) {
                 const int32_t imm26 = checkedBranchDispWords(
                     delta, 26, "branch", "the +/-128MB B/BL range", pb.target, fn.name);
+                word &= ~0x03FFFFFFu;
                 word |= (static_cast<uint32_t>(imm26) & 0x3FFFFFF);
             } else {
                 const int32_t imm19 = checkedBranchDispWords(delta,
@@ -709,6 +710,7 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
                                                              "the +/-1MB conditional-branch range",
                                                              pb.target,
                                                              fn.name);
+                word &= ~(0x7FFFFu << 5);
                 word |= ((static_cast<uint32_t>(imm19) & 0x7FFFF) << 5);
             }
 
@@ -1623,8 +1625,14 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
                     emit32(kBr | (static_cast<uint32_t>(imm26) & 0x3FFFFFF), cs);
                 }
             } else {
-                pendingBranches_.push_back({cs.currentOffset(), target, MOpcode::BCond});
-                emit32(kBCond | cc, cs); // placeholder with cond code set
+                if (forceLong) {
+                    emit32(kBCond | (2u << 5) | invertCond(cc), cs);
+                    pendingBranches_.push_back({cs.currentOffset(), target, MOpcode::Br});
+                    emit32(kBr, cs); // placeholder for the long-form branch target
+                } else {
+                    pendingBranches_.push_back({cs.currentOffset(), target, MOpcode::BCond});
+                    emit32(kBCond | cc, cs); // placeholder with cond code set
+                }
             }
             return;
         }
@@ -1660,8 +1668,14 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
                     emit32(kBr | (static_cast<uint32_t>(imm26) & 0x3FFFFFF), cs);
                 }
             } else {
-                pendingBranches_.push_back({cs.currentOffset(), target, MOpcode::Cbz});
-                emit32(kCbz | rt, cs); // placeholder with Rt set
+                if (forceLong) {
+                    emit32(kCbnz | (2u << 5) | rt, cs);
+                    pendingBranches_.push_back({cs.currentOffset(), target, MOpcode::Br});
+                    emit32(kBr, cs); // placeholder for the long-form branch target
+                } else {
+                    pendingBranches_.push_back({cs.currentOffset(), target, MOpcode::Cbz});
+                    emit32(kCbz | rt, cs); // placeholder with Rt set
+                }
             }
             return;
         }
@@ -1697,8 +1711,14 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
                     emit32(kBr | (static_cast<uint32_t>(imm26) & 0x3FFFFFF), cs);
                 }
             } else {
-                pendingBranches_.push_back({cs.currentOffset(), target, MOpcode::Cbnz});
-                emit32(kCbnz | rt, cs);
+                if (forceLong) {
+                    emit32(kCbz | (2u << 5) | rt, cs);
+                    pendingBranches_.push_back({cs.currentOffset(), target, MOpcode::Br});
+                    emit32(kBr, cs); // placeholder for the long-form branch target
+                } else {
+                    pendingBranches_.push_back({cs.currentOffset(), target, MOpcode::Cbnz});
+                    emit32(kCbnz | rt, cs);
+                }
             }
             return;
         }

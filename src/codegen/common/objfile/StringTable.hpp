@@ -21,6 +21,8 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -50,6 +52,8 @@ class StringTable {
 
     /// Total byte size of the table.
     uint32_t size() const {
+        if (data_.size() > std::numeric_limits<uint32_t>::max())
+            throw std::length_error("StringTable size exceeds 32-bit object-file field range");
         return static_cast<uint32_t>(data_.size());
     }
 

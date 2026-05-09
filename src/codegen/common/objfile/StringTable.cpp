@@ -18,6 +18,9 @@
 
 #include "codegen/common/objfile/StringTable.hpp"
 
+#include <limits>
+#include <stdexcept>
+
 namespace viper::codegen::objfile {
 
 StringTable::StringTable() {
@@ -31,6 +34,13 @@ uint32_t StringTable::add(std::string_view str) {
     auto it = offsets_.find(key);
     if (it != offsets_.end())
         return it->second;
+
+    if (data_.size() > std::numeric_limits<uint32_t>::max())
+        throw std::length_error("StringTable offset exceeds 32-bit object-file field range");
+    if (str.size() > std::numeric_limits<size_t>::max() - data_.size() - 1)
+        throw std::length_error("StringTable size overflows addressable size");
+    if (data_.size() + str.size() + 1 > std::numeric_limits<uint32_t>::max())
+        throw std::length_error("StringTable size exceeds 32-bit object-file field range");
 
     auto offset = static_cast<uint32_t>(data_.size());
     data_.insert(data_.end(), str.begin(), str.end());
