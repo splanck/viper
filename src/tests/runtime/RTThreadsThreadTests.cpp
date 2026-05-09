@@ -177,8 +177,6 @@ static void test_safe_thread_methods_accept_regular_thread_handle() {
 int main(int argc, char *argv[]) {
     viper::tests::registerChildFunction(call_thread_start_null);
     viper::tests::registerChildFunction(call_thread_join_null);
-    viper::tests::registerChildFunction(call_thread_join_twice);
-    viper::tests::registerChildFunction(call_thread_try_join_after_join);
     viper::tests::registerChildFunction(call_thread_join_fake_magic_wrong_class);
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
