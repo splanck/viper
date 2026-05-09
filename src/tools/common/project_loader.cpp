@@ -535,6 +535,9 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
     while (std::getline(file, line)) {
         ++lineNum;
 
+        if (lineNum == 1 && line.rfind("\xEF\xBB\xBF", 0) == 0)
+            line.erase(0, 3);
+
         // Strip leading/trailing whitespace
         auto start = line.find_first_not_of(" \t");
         if (start == std::string::npos)

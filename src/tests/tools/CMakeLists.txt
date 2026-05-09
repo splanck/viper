@@ -71,6 +71,19 @@ function(viper_add_tools_tests)
         viper_add_test_labels(package_crackman_macos_signed tools installer zia slow)
     endif ()
 
+    if (WIN32)
+        viper_add_ctest(windows_installer_elevated_smoke
+                ${CMAKE_COMMAND}
+                -DVIPER_BIN=$<TARGET_FILE:viper>
+                -DTEST_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/windows_installer_elevated_smoke
+                -P ${_VIPER_TOOLS_DIR}/WindowsInstallerSmoke.cmake)
+        set_tests_properties(windows_installer_elevated_smoke PROPERTIES
+                RUN_SERIAL TRUE
+                TIMEOUT 240
+                SKIP_REGULAR_EXPRESSION "Skipping .*Windows installer smoke")
+        viper_add_test_labels(windows_installer_elevated_smoke installer tools requires_windows requires_privileged_install slow)
+    endif ()
+
     viper_add_test(test_cli_run_missing_main
             ${VIPER_TESTS_DIR}/unit/test_cli_run_missing_main.cpp
             ${CMAKE_SOURCE_DIR}/src/tools/viper/cli.cpp

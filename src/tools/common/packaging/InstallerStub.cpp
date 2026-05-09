@@ -86,7 +86,9 @@ constexpr int32_t kCurrentFileOffsetOff = -0x80040;
 constexpr int32_t kCurrentChunkBytesOff = -0x80048;
 constexpr int32_t kCrcOff = -0x80050;
 constexpr int32_t kPathUpdatedOff = -0x80058;
+constexpr int32_t kQuietModeOff = -0x80060;
 constexpr int32_t kFileOpStructOff = -0x800A0;
+constexpr int32_t kCommandLineOff = -0x800B0;
 constexpr uint32_t kFrameSize = 0x80100;
 
 enum InstallerIAT : uint32_t {
@@ -108,18 +110,20 @@ enum InstallerIAT : uint32_t {
     kI_lstrcmpW = 15,
     kI_lstrcmpiW = 16,
     kI_GetLastError = 17,
-    kI_SHGetFolderPathW = 18,
-    kI_SHFileOperationW = 19,
-    kI_RegCreateKeyW = 20,
-    kI_RegSetValueExW = 21,
-    kI_RegCloseKey = 22,
-    kI_RegOpenKeyW = 23,
-    kI_RegQueryValueExW = 24,
-    kI_RegDeleteValueW = 25,
-    kI_RegDeleteKeyW = 26,
-    kI_MessageBoxW = 27,
-    kI_SendMessageTimeoutW = 28,
-    kI_RtlComputeCrc32 = 29,
+    kI_GetCommandLineW = 18,
+    kI_SHGetFolderPathW = 19,
+    kI_SHFileOperationW = 20,
+    kI_RegCreateKeyW = 21,
+    kI_RegSetValueExW = 22,
+    kI_RegCloseKey = 23,
+    kI_RegOpenKeyW = 24,
+    kI_RegQueryValueExW = 25,
+    kI_RegDeleteValueW = 26,
+    kI_RegDeleteKeyW = 27,
+    kI_MessageBoxW = 28,
+    kI_SendMessageTimeoutW = 29,
+    kI_RtlComputeCrc32 = 30,
+    kI_StrStrIW = 31,
 };
 
 enum UninstallerIAT : uint32_t {
@@ -134,16 +138,18 @@ enum UninstallerIAT : uint32_t {
     kU_lstrcmpW = 8,
     kU_lstrcmpiW = 9,
     kU_GetLastError = 10,
-    kU_SHGetFolderPathW = 11,
-    kU_RegOpenKeyW = 12,
-    kU_RegCreateKeyW = 13,
-    kU_RegCloseKey = 14,
-    kU_RegQueryValueExW = 15,
-    kU_RegDeleteValueW = 16,
-    kU_RegDeleteKeyW = 17,
-    kU_RegSetValueExW = 18,
-    kU_MessageBoxW = 19,
-    kU_SendMessageTimeoutW = 20,
+    kU_GetCommandLineW = 11,
+    kU_SHGetFolderPathW = 12,
+    kU_RegOpenKeyW = 13,
+    kU_RegCreateKeyW = 14,
+    kU_RegCloseKey = 15,
+    kU_RegQueryValueExW = 16,
+    kU_RegDeleteValueW = 17,
+    kU_RegDeleteKeyW = 18,
+    kU_RegSetValueExW = 19,
+    kU_MessageBoxW = 20,
+    kU_SendMessageTimeoutW = 21,
+    kU_StrStrIW = 22,
 };
 
 /// @brief Return the ordered PEImport list for the installer PE.
@@ -169,7 +175,8 @@ std::vector<PEImport> installerImports() {
           "lstrlenW",
           "lstrcmpW",
           "lstrcmpiW",
-          "GetLastError"}},
+          "GetLastError",
+          "GetCommandLineW"}},
         {"shell32.dll", {"SHGetFolderPathW", "SHFileOperationW"}},
         {"advapi32.dll",
          {"RegCreateKeyW",
@@ -181,6 +188,7 @@ std::vector<PEImport> installerImports() {
           "RegDeleteKeyW"}},
         {"user32.dll", {"MessageBoxW", "SendMessageTimeoutW"}},
         {"ntdll.dll", {"RtlComputeCrc32"}},
+        {"shlwapi.dll", {"StrStrIW"}},
     };
 }
 
@@ -199,7 +207,8 @@ std::vector<PEImport> uninstallerImports() {
           "lstrlenW",
           "lstrcmpW",
           "lstrcmpiW",
-          "GetLastError"}},
+          "GetLastError",
+          "GetCommandLineW"}},
         {"shell32.dll", {"SHGetFolderPathW"}},
         {"advapi32.dll",
          {"RegOpenKeyW",
@@ -210,6 +219,7 @@ std::vector<PEImport> uninstallerImports() {
           "RegDeleteKeyW",
           "RegSetValueExW"}},
         {"user32.dll", {"MessageBoxW", "SendMessageTimeoutW"}},
+        {"shlwapi.dll", {"StrStrIW"}},
     };
 }
 
@@ -562,6 +572,67 @@ void emitMessageBox(
     gen.leaRipData(X64Reg::R8, titleOff);
     gen.movRegImm32(X64Reg::R9, flags);
     gen.callIATSlot(slot);
+}
+
+/// @brief Emit a MessageBoxW call unless `/quiet` or `/silent` was detected.
+void emitMessageBoxUnlessQuiet(InstallerStubGen &gen,
+                               uint32_t slot,
+                               uint32_t titleOff,
+                               uint32_t messageOff,
+                               uint32_t flags) {
+    const auto lblSkip = gen.newLabel();
+    gen.movRegMem(X64Reg::RAX, X64Reg::RBP, kQuietModeOff);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jnz(lblSkip);
+    emitMessageBox(gen, slot, titleOff, messageOff, flags);
+    gen.bindLabel(lblSkip);
+}
+
+/// @brief Detect quiet automation flags using case-insensitive substring checks.
+void emitDetectQuietMode(InstallerStubGen &gen,
+                         uint32_t getCommandLineSlot,
+                         uint32_t strstrSlot,
+                         const std::vector<uint32_t> &flagOffsets) {
+    const auto lblDone = gen.newLabel();
+    const auto lblFound = gen.newLabel();
+
+    zeroLocalQword(gen, kQuietModeOff);
+    zeroLocalQword(gen, kCommandLineOff);
+
+    gen.callIATSlot(getCommandLineSlot);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jz(lblDone);
+    gen.movMemReg(X64Reg::RBP, kCommandLineOff, X64Reg::RAX);
+
+    for (uint32_t flagOff : flagOffsets) {
+        gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kCommandLineOff);
+        gen.leaRipData(X64Reg::RDX, flagOff);
+        gen.callIATSlot(strstrSlot);
+        gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+        gen.jnz(lblFound);
+    }
+    gen.jmp(lblDone);
+
+    gen.bindLabel(lblFound);
+    gen.movRegImm32(X64Reg::RAX, 1);
+    gen.movMemReg(X64Reg::RBP, kQuietModeOff, X64Reg::RAX);
+    gen.bindLabel(lblDone);
+}
+
+/// @brief Show a cancellable setup welcome prompt in interactive mode.
+void emitInstallerWelcomePrompt(InstallerStubGen &gen,
+                                uint32_t messageBoxSlot,
+                                uint32_t titleOff,
+                                uint32_t messageOff,
+                                uint32_t cancelLabel) {
+    const auto lblSkip = gen.newLabel();
+    gen.movRegMem(X64Reg::RAX, X64Reg::RBP, kQuietModeOff);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jnz(lblSkip);
+    emitMessageBox(gen, messageBoxSlot, titleOff, messageOff, 0x41);
+    gen.cmpRegImm32(X64Reg::RAX, 1);
+    gen.jnz(cancelLabel);
+    gen.bindLabel(lblSkip);
 }
 
 /// @brief Emit code to create a directory at root\relPath.
@@ -1835,6 +1906,10 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
     const uint32_t environmentKeyOff =
         gen.embedStringW("SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment");
     const uint32_t environmentOff = gen.embedStringW("Environment");
+    const uint32_t quietSlashOff = gen.embedStringW("/quiet");
+    const uint32_t silentSlashOff = gen.embedStringW("/silent");
+    const uint32_t quietDashOff = gen.embedStringW("-quiet");
+    const uint32_t silentDashOff = gen.embedStringW("-silent");
 
     const uint32_t regDisplayNameOff = gen.embedStringW("DisplayName");
     const uint32_t regDisplayVersionOff = gen.embedStringW("DisplayVersion");
@@ -1848,6 +1923,19 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
     const uint32_t successTitleOff = gen.embedStringW(layout.displayName + " Setup");
     const uint32_t successMsgOff =
         gen.embedStringW("Installation complete! " + layout.displayName + " has been installed.");
+    std::string welcomeMsg = "Welcome to " + layout.displayName +
+                             " Setup.\n\nThe installer will install to %ProgramFiles%\\" +
+                             installDir + ".";
+    if (layout.createStartMenuShortcut)
+        welcomeMsg += "\n\nA Start Menu shortcut will be created.";
+    if (layout.createDesktopShortcut)
+        welcomeMsg += "\nA Desktop shortcut will be created.";
+    if (layout.addToPath)
+        welcomeMsg += "\nThe Viper toolchain path will be added to the machine PATH.";
+    if (!layout.fileAssociations.empty())
+        welcomeMsg += "\nPackage-declared file associations will be registered.";
+    welcomeMsg += "\n\nChoose OK to continue or Cancel to exit.";
+    const uint32_t welcomeMsgOff = gen.embedStringW(welcomeMsg);
     const uint32_t errorTitleOff = gen.embedStringW("Setup Error");
     const uint32_t errorMsgOff =
         gen.embedStringW("Installation failed. The package could not be extracted.");
@@ -1869,6 +1957,7 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
     zeroLocalQword(gen, kPFileBufOff);
     zeroLocalQword(gen, kRegKeyOff);
     zeroLocalQword(gen, kPathUpdatedOff);
+    zeroLocalQword(gen, kQuietModeOff);
 
     gen.xorRegReg(X64Reg::RCX, X64Reg::RCX);
     gen.leaRegMem(X64Reg::RDX, X64Reg::RBP, kSelfPathOff);
@@ -1888,6 +1977,14 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
     gen.cmpRegImm32(X64Reg::RAX, 0xFFFFFFFFu);
     gen.jz(lblError);
     gen.movMemReg(X64Reg::RBP, kHFileOff, X64Reg::RAX);
+
+    emitDetectQuietMode(gen,
+                        kI_GetCommandLineW,
+                        kI_StrStrIW,
+                        {quietSlashOff, silentSlashOff, quietDashOff, silentDashOff});
+
+    emitInstallerWelcomePrompt(
+        gen, kI_MessageBoxW, successTitleOff, welcomeMsgOff, lblCleanupSuccess);
 
     emitBuildRootPaths(gen,
                        layout,
@@ -2064,15 +2161,15 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
                                  kI_lstrlenW,
                                  lblRollbackError);
 
-    emitMessageBox(gen, kI_MessageBoxW, successTitleOff, successMsgOff, 0x40);
+    emitMessageBoxUnlessQuiet(gen, kI_MessageBoxW, successTitleOff, successMsgOff, 0x40);
     gen.jmp(lblCleanupSuccess);
 
     gen.bindLabel(lblError);
-    emitMessageBox(gen, kI_MessageBoxW, errorTitleOff, errorMsgOff, 0x10);
+    emitMessageBoxUnlessQuiet(gen, kI_MessageBoxW, errorTitleOff, errorMsgOff, 0x10);
     gen.jmp(lblCleanupError);
 
     gen.bindLabel(lblRollbackError);
-    emitMessageBox(gen, kI_MessageBoxW, errorTitleOff, errorMsgOff, 0x10);
+    emitMessageBoxUnlessQuiet(gen, kI_MessageBoxW, errorTitleOff, errorMsgOff, 0x10);
     gen.jmp(lblCleanupRollback);
 
     gen.bindLabel(lblCleanupSuccess);
@@ -2187,6 +2284,10 @@ StubResult buildUninstallerStub(const WindowsPackageLayout &layout, const std::s
     const uint32_t environmentOff = gen.embedStringW("Environment");
     const uint32_t regPathValueOff = gen.embedStringW("Path");
     const uint32_t regPathEntryOff = gen.embedStringW("VAPSPathEntry");
+    const uint32_t quietSlashOff = gen.embedStringW("/quiet");
+    const uint32_t silentSlashOff = gen.embedStringW("/silent");
+    const uint32_t quietDashOff = gen.embedStringW("-quiet");
+    const uint32_t silentDashOff = gen.embedStringW("-silent");
     const uint32_t successTitleOff = gen.embedStringW(layout.displayName + " Uninstall");
     const uint32_t successMsgOff = gen.embedStringW(layout.displayName + " has been uninstalled.");
     const uint32_t errorTitleOff = gen.embedStringW("Uninstall Error");
@@ -2200,6 +2301,7 @@ StubResult buildUninstallerStub(const WindowsPackageLayout &layout, const std::s
     gen.movRegReg(X64Reg::RBP, X64Reg::RSP);
     gen.subRegImm32(X64Reg::RSP, kFrameSize);
     zeroLocalQword(gen, kRegKeyOff);
+    zeroLocalQword(gen, kQuietModeOff);
 
     gen.xorRegReg(X64Reg::RCX, X64Reg::RCX);
     gen.leaRegMem(X64Reg::RDX, X64Reg::RBP, kSelfPathOff);
@@ -2207,6 +2309,11 @@ StubResult buildUninstallerStub(const WindowsPackageLayout &layout, const std::s
     gen.callIATSlot(kU_GetModuleFileNameW);
     gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
     gen.jz(lblError);
+
+    emitDetectQuietMode(gen,
+                        kU_GetCommandLineW,
+                        kU_StrStrIW,
+                        {quietSlashOff, silentSlashOff, quietDashOff, silentDashOff});
 
     emitBuildRootPaths(gen,
                        layout,
@@ -2281,14 +2388,8 @@ StubResult buildUninstallerStub(const WindowsPackageLayout &layout, const std::s
     gen.cmpRegImm32(X64Reg::RAX, kErrorPathNotFound);
     gen.jz(lblInstallPathDone);
     gen.cmpRegImm32(X64Reg::RAX, kErrorDirNotEmpty);
-    const auto lblScheduleInstallDir = gen.newLabel();
-    gen.jz(lblScheduleInstallDir);
+    gen.jz(lblInstallPathDone);
     gen.jmp(lblError);
-    gen.bindLabel(lblScheduleInstallDir);
-    gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kInstallPathOff);
-    gen.xorRegReg(X64Reg::RDX, X64Reg::RDX);
-    gen.movRegImm32(X64Reg::R8, kMoveFileDelayUntilReboot);
-    gen.callIATSlot(kU_MoveFileExW);
     gen.bindLabel(lblInstallPathDone);
 
     emitUnregisterFileAssociations(gen,
@@ -2325,11 +2426,11 @@ StubResult buildUninstallerStub(const WindowsPackageLayout &layout, const std::s
     gen.leaRipData(X64Reg::RDX, uninstallKeyOff);
     gen.callIATSlot(kU_RegDeleteKeyW);
 
-    emitMessageBox(gen, kU_MessageBoxW, successTitleOff, successMsgOff, 0x40);
+    emitMessageBoxUnlessQuiet(gen, kU_MessageBoxW, successTitleOff, successMsgOff, 0x40);
     gen.jmp(lblExitSuccess);
 
     gen.bindLabel(lblError);
-    emitMessageBox(gen, kU_MessageBoxW, errorTitleOff, errorMsgOff, 0x10);
+    emitMessageBoxUnlessQuiet(gen, kU_MessageBoxW, errorTitleOff, errorMsgOff, 0x10);
     gen.jmp(lblExitError);
 
     gen.bindLabel(lblExitSuccess);

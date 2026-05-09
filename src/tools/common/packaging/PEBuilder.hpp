@@ -73,10 +73,13 @@ struct PEBuildParams {
     uint16_t subsystem{2};
 
     /// DLL characteristics flags.
-    uint16_t dllCharacteristics{0x8100}; // NX_COMPAT | TERMINAL_SERVER_AWARE.
-                                         // Relocation-dependent ASLR flags are
-                                         // left clear because VAPS-generated PE
-                                         // files do not emit a .reloc directory.
+    uint16_t dllCharacteristics{0x8160}; // HIGH_ENTROPY_VA | DYNAMIC_BASE |
+                                         // NX_COMPAT | TERMINAL_SERVER_AWARE.
+
+    /// Emit a minimal base-relocation directory so generated PE images can opt
+    /// into relocation-based ASLR even when the machine code itself has no
+    /// absolute image-base fixups.
+    bool emitRelocations{true};
 
     /// Stack/heap sizes.
     uint64_t stackReserve{0x100000};

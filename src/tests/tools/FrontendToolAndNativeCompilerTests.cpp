@@ -172,6 +172,27 @@ void testProjectProfilesMapToOptimizationLevels() {
     std::filesystem::remove_all(dir);
 }
 
+void testProjectManifestAcceptsUtf8Bom() {
+    using namespace il::tools::common;
+    using namespace viper::tools;
+
+    std::filesystem::path dir = std::filesystem::path(generateTempIlPath()).replace_extension("");
+    std::filesystem::create_directories(dir);
+    writeText(dir / "main.zia", "module main;\nfunc start() {}\n");
+    writeText(dir / "viper.project",
+              "\xEF\xBB\xBF"
+              "project bomproj\n"
+              "version 0.1.0\n"
+              "lang zia\n"
+              "entry main.zia\n");
+
+    auto resolved = resolveProject(dir.string());
+    assert(resolved);
+    assert(resolved.value().name == "bomproj");
+
+    std::filesystem::remove_all(dir);
+}
+
 void testConventionDiscoverySkipsGeneratedAndVendorTrees() {
     using namespace il::tools::common;
     using namespace viper::tools;
@@ -208,6 +229,7 @@ int main() {
     testX64CodegenAcceptsDebugLineFlags();
     testProjectDefaultsUseBalancedOptimization();
     testProjectProfilesMapToOptimizationLevels();
+    testProjectManifestAcceptsUtf8Bom();
     testConventionDiscoverySkipsGeneratedAndVendorTrees();
     return 0;
 }

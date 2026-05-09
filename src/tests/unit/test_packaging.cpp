@@ -148,6 +148,66 @@ static bool containsUtf16LEStringData(const std::vector<uint8_t> &data, const st
     return std::search(data.begin(), data.end(), needle.begin(), needle.end()) != data.end();
 }
 
+static uint32_t alignUpTest(uint32_t value, uint32_t alignment) {
+    return (value + alignment - 1u) & ~(alignment - 1u);
+}
+
+static uint32_t testIatBaseRvaForStub(const StubResult &stub) {
+    uint32_t idtSize = static_cast<uint32_t>((stub.imports.size() + 1) * 20);
+    uint32_t iltSize = 0;
+    for (const auto &imp : stub.imports)
+        iltSize += static_cast<uint32_t>((imp.functions.size() + 1) * 8);
+    uint32_t hintNameSize = 0;
+    for (const auto &imp : stub.imports) {
+        for (const auto &fn : imp.functions) {
+            const uint32_t entryLen = static_cast<uint32_t>(2 + fn.size() + 1);
+            hintNameSize += (entryLen + 1) & ~1u;
+        }
+    }
+    uint32_t dllNameSize = 0;
+    for (const auto &imp : stub.imports)
+        dllNameSize += static_cast<uint32_t>(imp.dllName.size() + 1);
+
+    const uint32_t iatOff = alignUpTest(idtSize + iltSize + hintNameSize + dllNameSize, 8);
+    const uint32_t rdataRVA =
+        0x2000u + (alignUpTest(static_cast<uint32_t>(stub.textSection.size()), 0x1000u) - 0x1000u);
+    return rdataRVA + iatOff;
+}
+
+static size_t countIatCallsTo(const StubResult &stub,
+                              const std::string &dllName,
+                              const std::string &functionName) {
+    const uint32_t iatBaseRva = testIatBaseRvaForStub(stub);
+    uint32_t slotOffset = 0;
+    bool found = false;
+    for (const auto &imp : stub.imports) {
+        for (const auto &fn : imp.functions) {
+            if (imp.dllName == dllName && fn == functionName) {
+                found = true;
+                break;
+            }
+            slotOffset += 8;
+        }
+        if (found)
+            break;
+        slotOffset += 8;
+    }
+    if (!found)
+        return 0;
+
+    const int64_t targetRva = static_cast<int64_t>(iatBaseRva + slotOffset);
+    size_t calls = 0;
+    for (size_t i = 0; i + 6 <= stub.textSection.size(); ++i) {
+        if (stub.textSection[i] != 0xFF || stub.textSection[i + 1] != 0x15)
+            continue;
+        const int32_t disp = static_cast<int32_t>(readLE32(stub.textSection.data() + i + 2));
+        const int64_t rip = 0x1000ll + static_cast<int64_t>(i) + 6;
+        if (rip + disp == targetRva)
+            ++calls;
+    }
+    return calls;
+}
+
 static std::vector<uint8_t> inflateGzipPayload(const std::vector<uint8_t> &gzipData) {
     return gunzip(gzipData.data(), gzipData.size());
 }
@@ -852,15 +912,21 @@ TEST(PE, OverlayAppended) {
     EXPECT_EQ(pe[pe.size() - 1], 'Y');
 }
 
-TEST(PE, DefaultDllCharacteristicsDoNotClaimRelocationAslr) {
+TEST(PE, DefaultDllCharacteristicsEnableRelocationAslr) {
     PEBuildParams params;
     params.textSection = {0xC3};
     auto pe = buildPE(params);
 
     const uint16_t dllChars = readLE16(pe.data() + 0x98 + 70);
-    EXPECT_EQ(dllChars, static_cast<uint16_t>(0x8100));
-    EXPECT_TRUE((dllChars & 0x0040) == 0); // DYNAMIC_BASE
-    EXPECT_TRUE((dllChars & 0x0020) == 0); // HIGH_ENTROPY_VA
+    EXPECT_EQ(dllChars, static_cast<uint16_t>(0x8160));
+    EXPECT_TRUE((dllChars & 0x0040) != 0); // DYNAMIC_BASE
+    EXPECT_TRUE((dllChars & 0x0020) != 0); // HIGH_ENTROPY_VA
+    EXPECT_TRUE((dllChars & 0x0100) != 0); // NX_COMPAT
+
+    const uint32_t relocRva = readLE32(pe.data() + 0x98 + 112 + 5 * 8);
+    const uint32_t relocSize = readLE32(pe.data() + 0x98 + 112 + 5 * 8 + 4);
+    EXPECT_NE(relocRva, static_cast<uint32_t>(0));
+    EXPECT_EQ(relocSize, static_cast<uint32_t>(12));
 }
 
 // ============================================================================
@@ -2079,6 +2145,33 @@ TEST(InstallerStub, ImportsPathAndDirectoryFailureChecks) {
     EXPECT_TRUE(foundLstrlen);
 }
 
+TEST(InstallerStub, SupportsQuietAutomationFlags) {
+    WindowsPackageLayout layout;
+    layout.displayName = "TestApp";
+    layout.installDirName = "TestApp";
+    layout.executableName = "testapp.exe";
+    layout.overlayFileOffset = 0x400;
+    auto installer = buildInstallerStub(layout, "x64");
+    auto uninstaller = buildUninstallerStub(layout, "x64");
+
+    auto hasImport = [](const StubResult &stub, const std::string &dll, const std::string &fn) {
+        return std::any_of(stub.imports.begin(), stub.imports.end(), [&](const PEImport &imp) {
+            return imp.dllName == dll &&
+                   std::find(imp.functions.begin(), imp.functions.end(), fn) !=
+                       imp.functions.end();
+        });
+    };
+
+    EXPECT_TRUE(hasImport(installer, "kernel32.dll", "GetCommandLineW"));
+    EXPECT_TRUE(hasImport(installer, "shlwapi.dll", "StrStrIW"));
+    EXPECT_TRUE(hasImport(uninstaller, "kernel32.dll", "GetCommandLineW"));
+    EXPECT_TRUE(hasImport(uninstaller, "shlwapi.dll", "StrStrIW"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, "/quiet"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, "/silent"));
+    EXPECT_TRUE(containsUtf16LE(uninstaller.stubData, "/quiet"));
+    EXPECT_TRUE(containsUtf16LE(uninstaller.stubData, "/silent"));
+}
+
 TEST(InstallerStubGen, RejectsOutOfRangeIATSlotFixup) {
     InstallerStubGen gen;
     gen.callIATSlot(1);
@@ -2118,6 +2211,21 @@ TEST(InstallerStub, UninstallerGeneratesValidPE) {
 
     std::ostringstream err;
     EXPECT_TRUE(verifyPE(peBytes, err));
+}
+
+TEST(InstallerStub, UninstallerDoesNotScheduleInstallRootForRebootDeletion) {
+    WindowsPackageLayout layout;
+    layout.displayName = "TestApp";
+    layout.installDirName = "TestApp";
+    layout.version = "1.0.0";
+    layout.executableName = "testapp.exe";
+    layout.publisher = "Viper";
+    layout.identifier = "org.viper.testapp";
+    layout.uninstallDirectories.push_back({WindowsInstallRoot::InstallDir, "themes"});
+    layout.uninstallFiles.push_back({WindowsInstallRoot::InstallDir, "testapp.exe", 0, 16});
+    auto stub = buildUninstallerStub(layout, "x64");
+
+    EXPECT_EQ(countIatCallsTo(stub, "kernel32.dll", "MoveFileExW"), static_cast<size_t>(1));
 }
 
 TEST(InstallerStub, ARM64UsesX64Bootstrap) {

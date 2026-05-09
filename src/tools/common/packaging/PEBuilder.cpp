@@ -524,10 +524,28 @@ ResourceResult buildResourceSection(const std::string &manifest,
     return result;
 }
 
+/// @brief Build a minimal base-relocation table.
+///
+/// The installer stub is position-independent: it calls imports and embedded
+/// data through RIP-relative addressing and PE metadata stores RVAs, not VAs.
+/// Windows still expects a relocation directory when DYNAMIC_BASE is set, so an
+/// ABSOLUTE-only block is sufficient and gives the loader a valid table with no
+/// fixups to apply.
+std::vector<uint8_t> buildRelocSection() {
+    std::vector<uint8_t> data;
+    data.reserve(12);
+    appendLE32(data, 0);  // Page RVA
+    appendLE32(data, 12); // Block size
+    appendLE16(data, 0);  // IMAGE_REL_BASED_ABSOLUTE
+    appendLE16(data, 0);  // Padding entry keeps the block 4-byte aligned
+    return data;
+}
+
 } // namespace
 
 /// @brief Assemble a complete PE32+ binary from `params`.
-/// Sections: `.text` (always), `.rdata` (if imports or rdataSection), `.rsrc` (if manifest or icon).
+/// Sections: `.text` (always), `.rdata` (if imports or rdataSection), `.rsrc` (if manifest or icon),
+/// `.reloc` (enabled by default).
 /// RVAs and file offsets are computed in a single layout pass, then headers are filled in.
 /// An optional raw overlay (e.g. a ZIP payload) is appended after all sections.
 std::vector<uint8_t> buildPE(const PEBuildParams &params) {
@@ -537,9 +555,12 @@ std::vector<uint8_t> buildPE(const PEBuildParams &params) {
     uint32_t numSections = 1; // .text
     bool hasRdata = !params.imports.empty() || !params.rdataSection.empty();
     bool hasRsrc = !params.manifest.empty() || !params.iconData.empty();
+    bool hasReloc = params.emitRelocations;
     if (hasRdata)
         numSections++;
     if (hasRsrc)
+        numSections++;
+    if (hasReloc)
         numSections++;
 
     // Headers size: DOS(0x80) + PE sig(4) + COFF(20) + OptHdr(240) + Sections(40*N)
@@ -607,6 +628,19 @@ std::vector<uint8_t> buildPE(const PEBuildParams &params) {
         s.virtualSize = checkedU32Size(s.data.size(), ".rsrc section size");
         s.rawDataSize = alignUp(s.virtualSize, kFileAlignment);
         s.characteristics = 0x40000040; // INITIALIZED_DATA | READ
+        sections.push_back(std::move(s));
+    }
+
+    // .reloc section (base relocation directory)
+    uint32_t relocIdx = 0;
+    if (hasReloc) {
+        relocIdx = static_cast<uint32_t>(sections.size());
+        SectionLayout s{};
+        std::memcpy(s.name, ".reloc\0\0", 8);
+        s.data = buildRelocSection();
+        s.virtualSize = checkedU32Size(s.data.size(), ".reloc section size");
+        s.rawDataSize = alignUp(s.virtualSize, kFileAlignment);
+        s.characteristics = 0x42000040; // INITIALIZED_DATA | READ | DISCARDABLE
         sections.push_back(std::move(s));
     }
 
@@ -717,6 +751,11 @@ std::vector<uint8_t> buildPE(const PEBuildParams &params) {
     if (hasRsrc) {
         putLE32(pe, ddOff + 2 * 8 + 0, sections[rsrcIdx].virtualAddress);
         putLE32(pe, ddOff + 2 * 8 + 4, rsrcResult.rsrcSize);
+    }
+    // [5] Base Relocation Table
+    if (hasReloc) {
+        putLE32(pe, ddOff + 5 * 8 + 0, sections[relocIdx].virtualAddress);
+        putLE32(pe, ddOff + 5 * 8 + 4, sections[relocIdx].virtualSize);
     }
     // [12] IAT
     if (hasRdata && !params.imports.empty()) {

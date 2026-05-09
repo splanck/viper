@@ -21,6 +21,7 @@ set(_VIPER_TEST_LABEL_WHITELIST
         native_link
         native_run
         oop
+        packaging
         perf
         requires_audio_disabled
         requires_display
@@ -28,6 +29,8 @@ set(_VIPER_TEST_LABEL_WHITELIST
         requires_ipv6
         requires_local_bind
         requires_posix_shell
+        requires_privileged_install
+        requires_windows
         gui
         runtime
         slow

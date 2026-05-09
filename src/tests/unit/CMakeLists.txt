@@ -68,8 +68,25 @@ endif ()
 if (NOT TARGET test_packaging)
     if (WIN32)
         # Managed Windows environments can block this standalone test binary via Device Guard.
-        # Windows packaging coverage stays exercised by the installer smoke tests.
+        # Keep the full executable outside the default suite, but register focused
+        # Windows packaging slices that avoid Linux verifier cases with
+        # path-convention-specific expectations.
         viper_add_test(test_packaging ${VIPER_TESTS_DIR}/unit/test_packaging.cpp NO_CTEST)
+        foreach (_vaps_filter
+                "PE.*"
+                "Verify.PE*"
+                "Lnk.*"
+                "InstallerStubGen.*"
+                "InstallerStub.*"
+                "WindowsPackageBuilder.*"
+                "ToolchainWindowsPackageBuilder.*")
+            string(REPLACE "*" "all" _vaps_filter_name "${_vaps_filter}")
+            string(REPLACE "." "_" _vaps_filter_name "${_vaps_filter_name}")
+            add_test(NAME "test_packaging_${_vaps_filter_name}"
+                    COMMAND test_packaging "--filter=${_vaps_filter}")
+            set_tests_properties("test_packaging_${_vaps_filter_name}" PROPERTIES SKIP_RETURN_CODE 77)
+            viper_add_test_labels("test_packaging_${_vaps_filter_name}" packaging installer requires_windows)
+        endforeach ()
     else ()
         viper_add_test(test_packaging ${VIPER_TESTS_DIR}/unit/test_packaging.cpp)
     endif ()
