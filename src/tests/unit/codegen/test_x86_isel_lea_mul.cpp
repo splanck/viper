@@ -211,6 +211,24 @@ TEST(X86ISelLeaMul, MultiUseConstantNotFolded) {
     EXPECT_FALSE(hasOpcode(fn, MOpcode::LEA));
 }
 
+TEST(X86ISelLeaMul, FlagsConsumedAfterImulNotFolded) {
+    auto fn = buildMulFunc(3);
+    fn.blocks[0].instructions.push_back(
+        MInstr::make(MOpcode::JCC, {makeImmOperand(12), makeLabelOperand(".Loverflow")}));
+
+    MBasicBlock overflow{};
+    overflow.label = ".Loverflow";
+    overflow.instructions.push_back(MInstr::make(MOpcode::RET));
+    fn.blocks.push_back(std::move(overflow));
+
+    ISel isel{sysvTarget()};
+    isel.lowerArithmetic(fn);
+
+    EXPECT_TRUE(hasOpcode(fn, MOpcode::MOVri));
+    EXPECT_TRUE(hasOpcode(fn, MOpcode::IMULrr));
+    EXPECT_FALSE(hasOpcode(fn, MOpcode::LEA));
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();

@@ -23,6 +23,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "ISel.hpp"
+#include "OperandRoles.hpp"
 #include "OperandUtils.hpp"
 #include "Unsupported.hpp"
 
@@ -316,6 +317,72 @@ bool lowerXmmSelect(MFunction &func, MBasicBlock &block, std::size_t index) {
     return true;
 }
 
+bool instructionUsesRegister(const MInstr &instr, const Operand &needle) {
+    for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
+        const auto [isUse, isDef] = operandRoles(instr, idx);
+        (void)isDef;
+        if (!isUse) {
+            continue;
+        }
+
+        if (sameRegister(instr.operands[idx], needle)) {
+            return true;
+        }
+
+        const auto *mem = std::get_if<OpMem>(&instr.operands[idx]);
+        if (!mem) {
+            continue;
+        }
+        if (sameRegister(Operand{mem->base}, needle)) {
+            return true;
+        }
+        if (mem->hasIndex && sameRegister(Operand{mem->index}, needle)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/// @brief Check whether a register has uses outside the local fold window.
+/// @details The compare/branch fold may only remove boolean materialisation
+///          when the materialized value feeds the local test and nothing else.
+///          Block-argument edge copies live in separate synthetic blocks, so the
+///          check must scan the full function rather than only the current block.
+bool registerUsedOutsideFoldPattern(const MFunction &func,
+                                    const MBasicBlock &patternBlock,
+                                    std::size_t firstAllowedUse,
+                                    std::size_t lastAllowedUse,
+                                    const Operand &needle) {
+    for (const auto &candidateBlock : func.blocks) {
+        for (std::size_t idx = 0; idx < candidateBlock.instructions.size(); ++idx) {
+            if (&candidateBlock == &patternBlock && idx >= firstAllowedUse &&
+                idx <= lastAllowedUse) {
+                continue;
+            }
+            if (instructionUsesRegister(candidateBlock.instructions[idx], needle)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool flagsReadBeforeClobber(const std::vector<MInstr> &instrs, std::size_t index) {
+    for (std::size_t scan = index + 1; scan < instrs.size(); ++scan) {
+        const MOpcode opcode = instrs[scan].opcode;
+        if (usesEFlags(opcode)) {
+            return true;
+        }
+        if (definesEFlags(opcode)) {
+            return false;
+        }
+        if (opcode == MOpcode::LABEL) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /// @brief Fold compare/setcc/test branch chains back into a direct flags branch.
 /// @details Matches the common sequence:
 ///            cmp/ucomis
@@ -326,7 +393,7 @@ bool lowerXmmSelect(MFunction &func, MBasicBlock &block, std::size_t index) {
 ///          and rewrites it so the branch uses the original compare flags
 ///          directly. This removes redundant boolean materialisation when the
 ///          compare result is consumed only by the terminating branch.
-bool foldCompareBranch(MBasicBlock &block, std::size_t index) {
+bool foldCompareBranch(const MFunction &func, MBasicBlock &block, std::size_t index) {
     if (index + 3 >= block.instructions.size()) {
         return false;
     }
@@ -372,6 +439,11 @@ bool foldCompareBranch(MBasicBlock &block, std::size_t index) {
     }
     if (!sameRegister(testInstr.operands[0], setccInstr.operands[1]) ||
         !sameRegister(testInstr.operands[1], setccInstr.operands[1])) {
+        return false;
+    }
+
+    if (registerUsedOutsideFoldPattern(
+            func, block, index + 2, testIndex, setccInstr.operands[1])) {
         return false;
     }
 
@@ -481,7 +553,7 @@ void ISel::lowerCompareAndBranch(MFunction &func) const {
     (void)target_;
     for (auto &block : func.blocks) {
         for (std::size_t idx = 0; idx < block.instructions.size(); ++idx) {
-            if (foldCompareBranch(block, idx)) {
+            if (foldCompareBranch(func, block, idx)) {
                 continue;
             }
             auto &instr = block.instructions[idx];
@@ -828,6 +900,9 @@ void ISel::lowerMulToLea(MFunction &func) const {
             const uint16_t srcId = src->idOrPhys;
             auto defIt = constDefs.find(srcId);
             if (defIt == constDefs.end())
+                continue;
+
+            if (flagsReadBeforeClobber(block.instructions, idx))
                 continue;
 
             // The constant register must have exactly one read-use (this IMUL).

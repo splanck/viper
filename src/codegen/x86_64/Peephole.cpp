@@ -46,6 +46,26 @@ namespace ph = peephole;
 /// pathological cases where rewrites keep enabling each other.
 static constexpr std::size_t kMaxIterations = 100;
 
+static bool blockMayTransferControl(const MFunction &fn, std::size_t blockIndex) {
+    if (blockIndex >= fn.blocks.size())
+        return false;
+
+    const auto &instrs = fn.blocks[blockIndex].instructions;
+    for (auto it = instrs.rbegin(); it != instrs.rend(); ++it) {
+        switch (it->opcode) {
+            case MOpcode::RET:
+            case MOpcode::UD2:
+                return false;
+            case MOpcode::JMP:
+            case MOpcode::JCC:
+                return true;
+            default:
+                break;
+        }
+    }
+    return blockIndex + 1 < fn.blocks.size();
+}
+
 /// Run per-block rewrite passes (strength reduction, identity elimination,
 /// move folding, DCE). Returns the number of transformations applied.
 static std::size_t runBlockRewrites(MFunction &fn,
@@ -53,7 +73,8 @@ static std::size_t runBlockRewrites(MFunction &fn,
                                     const TargetInfo &target) {
     std::size_t before = stats.total();
 
-    for (auto &block : fn.blocks) {
+    for (std::size_t blockIndex = 0; blockIndex < fn.blocks.size(); ++blockIndex) {
+        auto &block = fn.blocks[blockIndex];
         auto &instrs = block.instructions;
         if (instrs.empty())
             continue;
@@ -134,7 +155,7 @@ static std::size_t runBlockRewrites(MFunction &fn,
         // Pass 5: Dead code elimination
         ph::forwardFrameStoreLoads(instrs, stats);
         ph::eliminateDeadFrameStores(instrs, stats);
-        ph::runBlockDCE(instrs, stats, target);
+        ph::runBlockDCE(instrs, stats, target, blockMayTransferControl(fn, blockIndex));
     }
 
     return stats.total() - before;

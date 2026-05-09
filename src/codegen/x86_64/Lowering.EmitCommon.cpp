@@ -497,14 +497,19 @@ void EmitCommon::emitCondBranch(const ILInstr &instr) {
 }
 
 /// @brief Emit the return sequence for an IL return instruction.
-/// @details Handles empty returns by emitting a bare RET.  When a value is
-///          returned, the helper materialises the operand, performs sign or zero
-///          extension for boolean returns, moves the value into the appropriate
-///          ABI register, and finally emits RET.  This centralises ABI-specific
-///          logic so callers remain simple.
+/// @details Handles empty returns by materialising a zero process/function
+///          return in the integer ABI register.  When a value is returned, the
+///          helper materialises the operand, performs sign or zero extension for
+///          boolean returns, moves the value into the appropriate ABI register,
+///          and finally emits RET.  This centralises ABI-specific logic so
+///          callers remain simple.
 /// @param instr IL return instruction.
 void EmitCommon::emitReturn(const ILInstr &instr) {
     if (instr.ops.empty()) {
+        const Operand retReg = makePhysRegOperand(
+            RegClass::GPR, static_cast<uint16_t>(builder().target().intReturnReg));
+        builder().append(
+            MInstr::make(MOpcode::XORrr32, std::vector<Operand>{clone(retReg), clone(retReg)}));
         builder().append(MInstr::make(MOpcode::RET, {}));
         return;
     }

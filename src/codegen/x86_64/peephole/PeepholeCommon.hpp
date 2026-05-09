@@ -21,6 +21,7 @@
 #pragma once
 
 #include "../MachineIR.hpp"
+#include "codegen/x86_64/OperandRoles.hpp"
 #include "codegen/common/PeepholeUtil.hpp"
 
 #include <array>
@@ -178,6 +179,12 @@ inline const std::vector<uint16_t> &getAllAllocatableRegs() {
     return std::nullopt;
 }
 
+/// @brief Check whether a memory operand references a physical register.
+[[nodiscard]] inline bool memUsesPhysReg(const OpMem &mem, const Operand &reg) noexcept {
+    return samePhysReg(Operand{mem.base}, reg) ||
+           (mem.hasIndex && samePhysReg(Operand{mem.index}, reg));
+}
+
 /// @brief Check if a value is a power of 2 and return the log2, or -1 if not.
 [[nodiscard]] inline int log2IfPowerOf2(int64_t value) noexcept {
     if (value <= 0)
@@ -212,62 +219,34 @@ inline void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts) {
         }
     }
 
-    // Any instruction that defines a register invalidates the constant
-    switch (instr.opcode) {
-        case MOpcode::MOVrr:
-        case MOpcode::MOVmr:
-        case MOpcode::CMOVNErr:
-        case MOpcode::LEA:
-        case MOpcode::ADDrr:
-        case MOpcode::ADDri:
-        case MOpcode::ANDrr:
-        case MOpcode::ANDri:
-        case MOpcode::ORrr:
-        case MOpcode::ORri:
-        case MOpcode::XORrr:
-        case MOpcode::XORri:
-        case MOpcode::XORrr32:
-        case MOpcode::SUBrr:
-        case MOpcode::SHLri:
-        case MOpcode::SHLrc:
-        case MOpcode::SHRri:
-        case MOpcode::SHRrc:
-        case MOpcode::SARri:
-        case MOpcode::SARrc:
-        case MOpcode::IMULrr:
-        case MOpcode::DIVS64rr:
-        case MOpcode::REMS64rr:
-        case MOpcode::DIVS64Chk0rr:
-        case MOpcode::REMS64Chk0rr:
-        case MOpcode::DIVU64rr:
-        case MOpcode::REMU64rr:
-        case MOpcode::DIVU64Chk0rr:
-        case MOpcode::REMU64Chk0rr:
-        case MOpcode::SETcc:
-        case MOpcode::MOVZXrr8:
-        case MOpcode::MOVZXrr32:
-        case MOpcode::MOVQxr:
-            if (!instr.operands.empty()) {
-                const auto *dst = std::get_if<OpReg>(&instr.operands[0]);
-                if (dst && dst->isPhys && dst->idOrPhys < 32)
-                    knownConsts[dst->idOrPhys].reset();
-            }
-            break;
+    if (instr.opcode == MOpcode::XORrr32 && instr.operands.size() >= 2 &&
+        samePhysReg(instr.operands[0], instr.operands[1])) {
+        const auto *dst = std::get_if<OpReg>(&instr.operands[0]);
+        if (dst && dst->isPhys && dst->idOrPhys < knownConsts.size()) {
+            knownConsts[dst->idOrPhys] = 0;
+            return;
+        }
+    }
 
-        case MOpcode::CQO:
-            // CQO modifies RDX
-            knownConsts[static_cast<uint16_t>(PhysReg::RDX)].reset();
-            break;
+    // Any physical register definition invalidates the tracked constant. Use
+    // shared operand roles so POP, read-modify-write instructions, and new
+    // opcodes cannot leave stale constants behind.
+    for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
+        const auto [isUse, isDef] = operandRoles(instr, idx);
+        (void)isUse;
+        if (!isDef)
+            continue;
+        const auto *dst = std::get_if<OpReg>(&instr.operands[idx]);
+        if (dst && dst->isPhys && dst->idOrPhys < knownConsts.size()) {
+            knownConsts[dst->idOrPhys].reset();
+        }
+    }
 
-        case MOpcode::IDIVrm:
-        case MOpcode::DIVrm:
-            // IDIV/DIV modify RAX and RDX
-            knownConsts[static_cast<uint16_t>(PhysReg::RAX)].reset();
-            knownConsts[static_cast<uint16_t>(PhysReg::RDX)].reset();
-            break;
-
-        default:
-            break;
+    if (instr.opcode == MOpcode::CQO) {
+        knownConsts[static_cast<uint16_t>(PhysReg::RDX)].reset();
+    } else if (instr.opcode == MOpcode::IDIVrm || instr.opcode == MOpcode::DIVrm) {
+        knownConsts[static_cast<uint16_t>(PhysReg::RAX)].reset();
+        knownConsts[static_cast<uint16_t>(PhysReg::RDX)].reset();
     }
 
     // Calls invalidate all caller-saved registers
@@ -301,59 +280,21 @@ inline void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts) {
     if (!isPhysReg(reg))
         return false;
 
-    // Most x86-64 instructions have the destination as the first operand.
-    switch (instr.opcode) {
-        case MOpcode::MOVrr:
-        case MOpcode::MOVmr:
-        case MOpcode::CMOVNErr:
-        case MOpcode::MOVri:
-        case MOpcode::LEA:
-        case MOpcode::ADDrr:
-        case MOpcode::ADDri:
-        case MOpcode::ANDrr:
-        case MOpcode::ANDri:
-        case MOpcode::ORrr:
-        case MOpcode::ORri:
-        case MOpcode::XORrr:
-        case MOpcode::XORri:
-        case MOpcode::XORrr32:
-        case MOpcode::SUBrr:
-        case MOpcode::SHLri:
-        case MOpcode::SHLrc:
-        case MOpcode::SHRri:
-        case MOpcode::SHRrc:
-        case MOpcode::SARri:
-        case MOpcode::SARrc:
-        case MOpcode::IMULrr:
-        case MOpcode::DIVS64rr:
-        case MOpcode::REMS64rr:
-        case MOpcode::DIVS64Chk0rr:
-        case MOpcode::REMS64Chk0rr:
-        case MOpcode::DIVU64rr:
-        case MOpcode::REMU64rr:
-        case MOpcode::DIVU64Chk0rr:
-        case MOpcode::REMU64Chk0rr:
-        case MOpcode::SETcc:
-        case MOpcode::MOVZXrr8:
-        case MOpcode::MOVZXrr32:
-        case MOpcode::MOVSDrr:
-        case MOpcode::MOVSDmr:
-        case MOpcode::MOVUPSmr:
-        case MOpcode::FADD:
-        case MOpcode::FSUB:
-        case MOpcode::FMUL:
-        case MOpcode::FDIV:
-        case MOpcode::CVTSI2SD:
-        case MOpcode::CVTTSD2SI:
-        case MOpcode::MOVQrx:
-        case MOpcode::MOVQxr:
-            if (!instr.operands.empty() && samePhysReg(instr.operands[0], reg))
-                return true;
-            break;
-
-        default:
-            break;
+    for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
+        const auto [isUse, isDef] = operandRoles(instr, idx);
+        (void)isUse;
+        if (isDef && samePhysReg(instr.operands[idx], reg))
+            return true;
     }
+
+    const auto *wanted = std::get_if<OpReg>(&reg);
+    if (!wanted || !wanted->isPhys)
+        return false;
+    const auto wantedPhys = static_cast<PhysReg>(wanted->idOrPhys);
+    if (instr.opcode == MOpcode::CQO)
+        return wantedPhys == PhysReg::RDX;
+    if (instr.opcode == MOpcode::IDIVrm || instr.opcode == MOpcode::DIVrm)
+        return wantedPhys == PhysReg::RAX || wantedPhys == PhysReg::RDX;
     return false;
 }
 
@@ -362,67 +303,31 @@ inline void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts) {
     if (!isPhysReg(reg))
         return false;
 
-    switch (instr.opcode) {
-        case MOpcode::MOVrr:
-        case MOpcode::MOVSDrr:
-            // dst, src - check src
-            if (instr.operands.size() >= 2 && samePhysReg(instr.operands[1], reg))
+    for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
+        const auto [isUse, isDef] = operandRoles(instr, idx);
+        (void)isDef;
+        if (!isUse)
+            continue;
+        if (samePhysReg(instr.operands[idx], reg))
+            return true;
+        if (const auto *mem = std::get_if<OpMem>(&instr.operands[idx])) {
+            if (memUsesPhysReg(*mem, reg))
                 return true;
-            break;
-
-        case MOpcode::ADDrr:
-        case MOpcode::SUBrr:
-        case MOpcode::ANDrr:
-        case MOpcode::ORrr:
-        case MOpcode::XORrr:
-        case MOpcode::IMULrr:
-        case MOpcode::FADD:
-        case MOpcode::FSUB:
-        case MOpcode::FMUL:
-        case MOpcode::FDIV:
-            // dst, src - dst is both read and written, check both
-            if (instr.operands.size() >= 1 && samePhysReg(instr.operands[0], reg))
-                return true;
-            if (instr.operands.size() >= 2 && samePhysReg(instr.operands[1], reg))
-                return true;
-            break;
-
-        case MOpcode::CMPrr:
-        case MOpcode::TESTrr:
-        case MOpcode::UCOMIS:
-            // lhs, rhs - check both
-            if (instr.operands.size() >= 1 && samePhysReg(instr.operands[0], reg))
-                return true;
-            if (instr.operands.size() >= 2 && samePhysReg(instr.operands[1], reg))
-                return true;
-            break;
-
-        case MOpcode::CMPri:
-            // reg, imm - check reg
-            if (instr.operands.size() >= 1 && samePhysReg(instr.operands[0], reg))
-                return true;
-            break;
-
-        case MOpcode::MOVrm:
-        case MOpcode::MOVSDrm:
-        case MOpcode::MOVUPSrm:
-            // mem, src - check src (operands[1] is the source register)
-            if (instr.operands.size() >= 2 && samePhysReg(instr.operands[1], reg))
-                return true;
-            break;
-
-        case MOpcode::CVTSI2SD:
-        case MOpcode::CVTTSD2SI:
-        case MOpcode::MOVQrx:
-        case MOpcode::MOVQxr:
-            // dst, src - check src
-            if (instr.operands.size() >= 2 && samePhysReg(instr.operands[1], reg))
-                return true;
-            break;
-
-        default:
-            break;
+        }
     }
+
+    const auto *wanted = std::get_if<OpReg>(&reg);
+    if (!wanted || !wanted->isPhys)
+        return false;
+    const auto wantedPhys = static_cast<PhysReg>(wanted->idOrPhys);
+    if (instr.opcode == MOpcode::RET) {
+        return wantedPhys == PhysReg::RAX || wantedPhys == PhysReg::XMM0 ||
+               wantedPhys == PhysReg::RSP;
+    }
+    if (instr.opcode == MOpcode::CQO)
+        return wantedPhys == PhysReg::RAX;
+    if (instr.opcode == MOpcode::IDIVrm || instr.opcode == MOpcode::DIVrm)
+        return wantedPhys == PhysReg::RAX || wantedPhys == PhysReg::RDX;
     return false;
 }
 

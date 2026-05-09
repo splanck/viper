@@ -16,6 +16,7 @@
 #include "codegen/x86_64/Backend.hpp"
 #include "codegen/x86_64/ISel.hpp"
 #include "codegen/x86_64/LowerILToMIR.hpp"
+#include "codegen/x86_64/RegAllocLinear.hpp"
 #include "codegen/x86_64/TargetX64.hpp"
 #include "codegen/x86_64/ra/Liveness.hpp"
 
@@ -196,6 +197,23 @@ std::string captureStderr(Fn &&fn) {
 }
 
 } // namespace
+
+TEST(X86BackendRegressions, VoidReturnClearsIntegerReturnRegister) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {op("ret", {})};
+
+    ILFunction fn{};
+    fn.name = "main";
+    fn.blocks = {entry};
+
+    const CodegenResult result = compile(fn);
+    if (!result.errors.empty()) {
+        std::cerr << result.errors << '\n';
+    }
+    ASSERT_TRUE(result.errors.empty());
+    EXPECT_TRUE(containsRegex(result.asmText, R"(xorl\s+%eax,\s*%eax)"));
+}
 
 TEST(X86BackendRegressions, ConstNullLoadMaterializesBaseAndEmitsMemoryRead) {
     ILBlock entry{};
@@ -920,6 +938,98 @@ TEST(X86BackendRegressions, CompareBranchFoldPreservesLiveBooleanResult) {
     EXPECT_TRUE(std::any_of(instructions.begin(), instructions.end(), [](const MInstr &instr) {
         return instr.opcode == MOpcode::SETcc;
     }));
+}
+
+TEST(X86BackendRegressions, RegAllocSpillsLiveValueBeforePhysicalRdxClobber) {
+    MFunction fn{};
+    fn.name = "phys_rdx_clobber";
+
+    MBasicBlock entry{};
+    entry.label = ".L_phys_rdx_clobber_entry";
+    const Operand v1 = makeVRegOperand(RegClass::GPR, 1);
+    const Operand v2 = makeVRegOperand(RegClass::GPR, 2);
+    const Operand v3 = makeVRegOperand(RegClass::GPR, 3);
+    const Operand v4 = makeVRegOperand(RegClass::GPR, 4);
+    entry.instructions = {
+        MInstr::make(MOpcode::MOVri, {v1, makeImmOperand(1)}),
+        MInstr::make(MOpcode::MOVri, {v2, makeImmOperand(2)}),
+        MInstr::make(MOpcode::MOVri, {v3, makeImmOperand(3)}),
+        MInstr::make(MOpcode::MOVri, {v4, makeImmOperand(4)}),
+        MInstr::make(MOpcode::XORrr32,
+                     {makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RDX)),
+                      makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RDX))}),
+        MInstr::make(MOpcode::ADDrr, {v1, v2}),
+        MInstr::make(MOpcode::ADDrr, {v1, v3}),
+        MInstr::make(MOpcode::ADDrr, {v1, v4}),
+        MInstr::make(MOpcode::RET)};
+    fn.blocks.push_back(std::move(entry));
+
+    (void)allocate(fn, sysvTarget());
+
+    const auto &instructions = fn.blocks.front().instructions;
+    const auto xorIt = std::find_if(instructions.begin(), instructions.end(), [](const MInstr &instr) {
+        if (instr.opcode != MOpcode::XORrr32 || instr.operands.empty())
+            return false;
+        const auto *dst = std::get_if<OpReg>(&instr.operands[0]);
+        return dst && dst->isPhys && static_cast<PhysReg>(dst->idOrPhys) == PhysReg::RDX;
+    });
+    ASSERT_TRUE(xorIt != instructions.end());
+
+    bool spilledRdxBeforeClobber = false;
+    for (auto it = instructions.begin(); it != xorIt; ++it) {
+        if (it->opcode != MOpcode::MOVrm || it->operands.size() < 2)
+            continue;
+        const auto *src = std::get_if<OpReg>(&it->operands[1]);
+        if (src && src->isPhys && static_cast<PhysReg>(src->idOrPhys) == PhysReg::RDX) {
+            spilledRdxBeforeClobber = true;
+        }
+    }
+    EXPECT_TRUE(spilledRdxBeforeClobber);
+}
+
+TEST(X86BackendRegressions, RegAllocSpillsLiveValuesBeforeImplicitDivClobber) {
+    MFunction fn{};
+    fn.name = "implicit_div_clobber";
+
+    MBasicBlock entry{};
+    entry.label = ".L_implicit_div_clobber_entry";
+    const Operand v1 = makeVRegOperand(RegClass::GPR, 1);
+    const Operand v2 = makeVRegOperand(RegClass::GPR, 2);
+    const Operand v3 = makeVRegOperand(RegClass::GPR, 3);
+    const Operand v4 = makeVRegOperand(RegClass::GPR, 4);
+    entry.instructions = {
+        MInstr::make(MOpcode::MOVri, {v1, makeImmOperand(1)}),
+        MInstr::make(MOpcode::MOVri, {v2, makeImmOperand(2)}),
+        MInstr::make(MOpcode::MOVri, {v3, makeImmOperand(3)}),
+        MInstr::make(MOpcode::MOVri, {v4, makeImmOperand(4)}),
+        MInstr::make(MOpcode::IDIVrm,
+                     {makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::R10))}),
+        MInstr::make(MOpcode::ADDrr, {v2, v3}),
+        MInstr::make(MOpcode::ADDrr, {v1, v4}),
+        MInstr::make(MOpcode::RET)};
+    fn.blocks.push_back(std::move(entry));
+
+    (void)allocate(fn, sysvTarget());
+
+    const auto &instructions = fn.blocks.front().instructions;
+    const auto divIt = std::find_if(instructions.begin(), instructions.end(), [](const MInstr &instr) {
+        return instr.opcode == MOpcode::IDIVrm;
+    });
+    ASSERT_TRUE(divIt != instructions.end());
+
+    bool spilledRax = false;
+    bool spilledRdx = false;
+    for (auto it = instructions.begin(); it != divIt; ++it) {
+        if (it->opcode != MOpcode::MOVrm || it->operands.size() < 2)
+            continue;
+        const auto *src = std::get_if<OpReg>(&it->operands[1]);
+        if (!src || !src->isPhys)
+            continue;
+        spilledRax = spilledRax || static_cast<PhysReg>(src->idOrPhys) == PhysReg::RAX;
+        spilledRdx = spilledRdx || static_cast<PhysReg>(src->idOrPhys) == PhysReg::RDX;
+    }
+    EXPECT_TRUE(spilledRax);
+    EXPECT_TRUE(spilledRdx);
 }
 
 TEST(X86BackendRegressions, LivenessCfgIgnoresInternalSelectLabels) {

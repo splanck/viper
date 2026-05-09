@@ -47,6 +47,10 @@ std::optional<std::size_t> lookupUnplacedTarget(const MInstr &instr,
     return std::nullopt;
 }
 
+bool endsWithLoneJcc(const MBasicBlock &block) {
+    return !block.instructions.empty() && block.instructions.back().opcode == MOpcode::JCC;
+}
+
 } // namespace
 
 void traceBlockLayout(MFunction &fn, PeepholeStats &stats) {
@@ -142,6 +146,14 @@ void moveColdBlocks(MFunction &fn, PeepholeStats &stats) {
 
     std::vector<std::size_t> coldIndices;
     std::vector<std::size_t> hotIndices;
+    std::vector<bool> fallthroughProtected(fn.blocks.size(), false);
+
+    for (std::size_t bi = 0; bi + 1 < fn.blocks.size(); ++bi) {
+        if (!endsWithLoneJcc(fn.blocks[bi]))
+            continue;
+        fallthroughProtected[bi] = true;
+        fallthroughProtected[bi + 1] = true;
+    }
 
     // First block (entry) is always hot and stays first
     hotIndices.push_back(0);
@@ -153,14 +165,15 @@ void moveColdBlocks(MFunction &fn, PeepholeStats &stats) {
 
         // Check for trap/error indicators in label
         const auto &label = block.label;
-        if (label.find("trap") != std::string::npos || label.find("error") != std::string::npos ||
-            label.find("panic") != std::string::npos ||
-            label.find("unreachable") != std::string::npos) {
+        if (!fallthroughProtected[bi] &&
+            (label.find("trap") != std::string::npos || label.find("error") != std::string::npos ||
+             label.find("panic") != std::string::npos ||
+             label.find("unreachable") != std::string::npos)) {
             isCold = true;
         }
 
         // Check for UD2 instruction (trap)
-        if (!isCold) {
+        if (!isCold && !fallthroughProtected[bi]) {
             for (const auto &instr : block.instructions) {
                 if (instr.opcode == MOpcode::UD2) {
                     isCold = true;

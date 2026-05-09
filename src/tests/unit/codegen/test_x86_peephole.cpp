@@ -293,6 +293,27 @@ TEST(X86Peephole, StrengthReductionNoRewriteNonPow2) {
     EXPECT_TRUE(hasImul);
 }
 
+TEST(X86Peephole, StrengthReductionInvalidatesPopDefinedConstant) {
+    auto fn = makeFunc(".Lentry",
+                       {
+                           MInstr{MOpcode::MOVri, {gpr(PhysReg::RCX), imm(8)}},
+                           MInstr{MOpcode::POP, {gpr(PhysReg::RCX)}},
+                           MInstr{MOpcode::IMULrr, {gpr(PhysReg::RAX), gpr(PhysReg::RCX)}},
+                           MInstr{MOpcode::RET, {}},
+                       });
+
+    runPeepholes(fn);
+
+    bool hasImul = false;
+    bool hasShl = false;
+    for (const auto &instr : fn.blocks[0].instructions) {
+        hasImul = hasImul || instr.opcode == MOpcode::IMULrr;
+        hasShl = hasShl || instr.opcode == MOpcode::SHLri;
+    }
+    EXPECT_TRUE(hasImul);
+    EXPECT_FALSE(hasShl);
+}
+
 // ---------------------------------------------------------------------------
 // Pass 3: Identity Move Removal
 // ---------------------------------------------------------------------------
@@ -341,6 +362,72 @@ TEST(X86Peephole, RemoveIdentityMovSDRR) {
             ++movsdCount;
     }
     EXPECT_EQ(movsdCount, 1);
+}
+
+TEST(X86Peephole, ConsecutiveMoveFoldPreservesMemoryBaseUse) {
+    auto fn = makeFunc(".Lentry",
+                       {
+                           MInstr{MOpcode::MOVrr, {gpr(PhysReg::R10), gpr(PhysReg::RBX)}},
+                           MInstr{MOpcode::MOVrr, {gpr(PhysReg::RCX), gpr(PhysReg::R10)}},
+                           MInstr{MOpcode::MOVmr, {gpr(PhysReg::RAX), mem(PhysReg::R10, 0)}},
+                           MInstr{MOpcode::RET, {}},
+                       });
+
+    runPeepholes(fn);
+
+    bool hasBaseDef = false;
+    for (const auto &instr : fn.blocks[0].instructions) {
+        if (instr.opcode == MOpcode::MOVrr && instr.operands.size() == 2 &&
+            sameRegOperand(instr.operands[0], gpr(PhysReg::R10)) &&
+            sameRegOperand(instr.operands[1], gpr(PhysReg::RBX))) {
+            hasBaseDef = true;
+        }
+    }
+    EXPECT_TRUE(hasBaseDef);
+}
+
+TEST(X86Peephole, ConsecutiveMoveFoldPreservesReadModifyWriteUse) {
+    auto fn = makeFunc(".Lentry",
+                       {
+                           MInstr{MOpcode::MOVrr, {gpr(PhysReg::R10), gpr(PhysReg::RBX)}},
+                           MInstr{MOpcode::MOVrr, {gpr(PhysReg::RCX), gpr(PhysReg::R10)}},
+                           MInstr{MOpcode::ADDri, {gpr(PhysReg::R10), imm(5)}},
+                           MInstr{MOpcode::MOVrr, {gpr(PhysReg::RAX), gpr(PhysReg::R10)}},
+                           MInstr{MOpcode::RET, {}},
+                       });
+
+    runPeepholes(fn);
+
+    bool hasInitialMove = false;
+    for (const auto &instr : fn.blocks[0].instructions) {
+        if (instr.opcode == MOpcode::MOVrr && instr.operands.size() == 2 &&
+            sameRegOperand(instr.operands[0], gpr(PhysReg::R10)) &&
+            sameRegOperand(instr.operands[1], gpr(PhysReg::RBX))) {
+            hasInitialMove = true;
+        }
+    }
+    EXPECT_TRUE(hasInitialMove);
+}
+
+TEST(X86Peephole, ConsecutiveMoveFoldPreservesReturnRegisterUse) {
+    auto fn = makeFunc(".Lentry",
+                       {
+                           MInstr{MOpcode::MOVrr, {gpr(PhysReg::RAX), gpr(PhysReg::RBX)}},
+                           MInstr{MOpcode::MOVrr, {gpr(PhysReg::RCX), gpr(PhysReg::RAX)}},
+                           MInstr{MOpcode::RET, {}},
+                       });
+
+    runPeepholes(fn);
+
+    bool hasReturnMove = false;
+    for (const auto &instr : fn.blocks[0].instructions) {
+        if (instr.opcode == MOpcode::MOVrr && instr.operands.size() == 2 &&
+            sameRegOperand(instr.operands[0], gpr(PhysReg::RAX)) &&
+            sameRegOperand(instr.operands[1], gpr(PhysReg::RBX))) {
+            hasReturnMove = true;
+        }
+    }
+    EXPECT_TRUE(hasReturnMove);
 }
 
 // ---------------------------------------------------------------------------
@@ -464,6 +551,39 @@ TEST(X86Peephole, TraceLayoutPreservesJccOnlyFallthrough) {
     const auto *target = std::get_if<OpLabel>(&entryInstrs.back().operands[1]);
     ASSERT_NE(target, nullptr);
     EXPECT_EQ(target->name, ".Ltrue");
+}
+
+TEST(X86Peephole, ColdBlockMovePreservesJccOnlyFallthrough) {
+    MFunction fn{};
+    fn.name = "test_cold_jcc_fallthrough";
+
+    MBasicBlock entry{};
+    entry.label = ".Lentry";
+    entry.instructions = {
+        MInstr{MOpcode::TESTrr, {gpr(PhysReg::RAX), gpr(PhysReg::RAX)}},
+        MInstr{MOpcode::JCC, {imm(1), lbl(".Lhot")}},
+    };
+
+    MBasicBlock trap{};
+    trap.label = ".Ltrap_div0";
+    trap.instructions = {
+        MInstr{MOpcode::UD2, {}},
+    };
+
+    MBasicBlock hot{};
+    hot.label = ".Lhot";
+    hot.instructions = {
+        MInstr{MOpcode::RET, {}},
+    };
+
+    fn.blocks = {std::move(entry), std::move(trap), std::move(hot)};
+
+    runPeepholes(fn);
+
+    ASSERT_EQ(fn.blocks.size(), 3U);
+    EXPECT_EQ(fn.blocks[0].label, ".Lentry");
+    EXPECT_EQ(fn.blocks[1].label, ".Ltrap_div0");
+    EXPECT_EQ(fn.blocks[2].label, ".Lhot");
 }
 
 // ---------------------------------------------------------------------------
@@ -616,6 +736,36 @@ TEST(X86Peephole, DeadFlagProducerRemovedWhenFlagsUnused) {
         EXPECT_NE(instr.opcode, MOpcode::CMPri);
         EXPECT_NE(instr.opcode, MOpcode::TESTrr);
     }
+}
+
+TEST(X86Peephole, DcePreservesPhysicalRegisterCarriedToFallthroughBlock) {
+    MFunction fn{};
+    fn.name = "test_dce_fallthrough_carry";
+
+    MBasicBlock entry{};
+    entry.label = ".Lentry";
+    entry.instructions = {
+        MInstr{MOpcode::MOVri, {gpr(PhysReg::R10), imm(42)}},
+    };
+
+    MBasicBlock next{};
+    next.label = ".Lnext";
+    next.instructions = {
+        MInstr{MOpcode::MOVrr, {gpr(PhysReg::RAX), gpr(PhysReg::R10)}},
+        MInstr{MOpcode::RET, {}},
+    };
+
+    fn.blocks = {std::move(entry), std::move(next)};
+    runPeepholes(fn);
+
+    bool hasCarryDef = false;
+    for (const auto &instr : fn.blocks[0].instructions) {
+        if (instr.opcode == MOpcode::MOVri && instr.operands.size() == 2 &&
+            sameRegOperand(instr.operands[0], gpr(PhysReg::R10))) {
+            hasCarryDef = true;
+        }
+    }
+    EXPECT_TRUE(hasCarryDef);
 }
 
 TEST(X86Peephole, FlagProducingDeadRegisterKeptWhenBranchReadsFlags) {

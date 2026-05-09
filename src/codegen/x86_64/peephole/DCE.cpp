@@ -158,7 +158,8 @@ void collectImplicitUses(const MInstr &instr,
 
 std::size_t runBlockDCE(std::vector<MInstr> &instrs,
                         PeepholeStats &stats,
-                        const TargetInfo &target) {
+                        const TargetInfo &target,
+                        bool preservePhysRegsAtExit) {
     if (instrs.empty())
         return 0;
 
@@ -167,7 +168,13 @@ std::size_t runBlockDCE(std::vector<MInstr> &instrs,
 
     for (std::size_t iter = 0; iter < kMaxDCEIterations; ++iter) {
         std::unordered_set<uint16_t> liveRegs;
-        addExitLiveRegs(target, liveRegs);
+        if (preservePhysRegsAtExit) {
+            const auto &allRegs = getAllAllocatableRegs();
+            liveRegs.insert(allRegs.begin(), allRegs.end());
+            liveRegs.insert(static_cast<uint16_t>(PhysReg::RSP));
+        } else {
+            addExitLiveRegs(target, liveRegs);
+        }
         bool flagsLive = false;
 
         std::vector<bool> toRemove(instrs.size(), false);

@@ -69,6 +69,66 @@ template <typename... Ts> Overload(Ts...) -> Overload<Ts...>;
     return makePhysRegOperand(cls, static_cast<uint16_t>(reg));
 }
 
+struct PhysClobber {
+    PhysReg reg{PhysReg::RAX};
+    RegClass cls{RegClass::GPR};
+};
+
+void addPhysClobber(std::vector<PhysClobber> &clobbers, PhysReg reg) {
+    const RegClass cls = isXMM(reg) ? RegClass::XMM : RegClass::GPR;
+    const auto duplicate = std::any_of(clobbers.begin(), clobbers.end(), [&](const auto &item) {
+        return item.reg == reg && item.cls == cls;
+    });
+    if (!duplicate) {
+        clobbers.push_back(PhysClobber{reg, cls});
+    }
+}
+
+std::vector<PhysClobber> collectPhysicalClobbers(const MInstr &instr) {
+    std::vector<PhysClobber> clobbers;
+    for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
+        const auto [isUse, isDef] = operandRoles(instr, idx);
+        (void)isUse;
+        if (!isDef)
+            continue;
+        const auto *reg = std::get_if<OpReg>(&instr.operands[idx]);
+        if (reg && reg->isPhys) {
+            addPhysClobber(clobbers, static_cast<PhysReg>(reg->idOrPhys));
+        }
+    }
+
+    if (instr.opcode == MOpcode::CQO) {
+        addPhysClobber(clobbers, PhysReg::RDX);
+    } else if (instr.opcode == MOpcode::IDIVrm || instr.opcode == MOpcode::DIVrm) {
+        addPhysClobber(clobbers, PhysReg::RAX);
+        addPhysClobber(clobbers, PhysReg::RDX);
+    }
+    return clobbers;
+}
+
+uint16_t passthroughSourceVReg(const MInstr &instr) {
+    if (instr.opcode != MOpcode::MOVrr && instr.opcode != MOpcode::MOVSDrr)
+        return std::numeric_limits<uint16_t>::max();
+    if (instr.operands.size() < 2)
+        return std::numeric_limits<uint16_t>::max();
+    const auto *srcReg = std::get_if<OpReg>(&instr.operands[1]);
+    if (!srcReg || srcReg->isPhys)
+        return std::numeric_limits<uint16_t>::max();
+    return srcReg->idOrPhys;
+}
+
+bool isIdentityPhysicalMove(const MInstr &instr, PhysReg physDest) {
+    if (instr.opcode != MOpcode::MOVrr && instr.opcode != MOpcode::MOVSDrr)
+        return false;
+    if (instr.operands.size() < 2)
+        return false;
+    const auto *dst = std::get_if<OpReg>(&instr.operands[0]);
+    const auto *src = std::get_if<OpReg>(&instr.operands[1]);
+    return dst && src && dst->isPhys && src->isPhys &&
+           static_cast<PhysReg>(dst->idOrPhys) == physDest &&
+           dst->cls == src->cls && dst->idOrPhys == src->idOrPhys;
+}
+
 } // namespace
 
 /// @brief Create an allocator for a machine function.
@@ -441,71 +501,39 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
         }
 
         // Before processing operands, check if this instruction writes to a physical
-        // register. This handles two cases:
-        // 1. Call argument setup (MOVrr/MOVri/MOVSDrr to arg registers): reserve the
-        //    register so spill reloads don't clobber it before the CALL.
-        // 2. Any write to a physical register: if a vreg is currently assigned to that
-        //    register and is still live, spill it to avoid corruption.
+        // register. Fixed-register sequences such as division setup clobber RAX/RDX/R10
+        // before normal virtual operands are rewritten, so any active value occupying
+        // those registers must be spilled first.
         std::vector<MInstr> prefix{};
-        if ((instr.opcode == MOpcode::MOVrr || instr.opcode == MOpcode::MOVri ||
-             instr.opcode == MOpcode::LEA || instr.opcode == MOpcode::MOVSDrr ||
-             instr.opcode == MOpcode::MOVZXrr8 ||
-             instr.opcode == MOpcode::MOVZXrr32 || instr.opcode == MOpcode::MOVQrx ||
-             instr.opcode == MOpcode::MOVQxr) &&
-            !instr.operands.empty()) {
-            if (const auto *destReg = std::get_if<OpReg>(&instr.operands[0])) {
-                if (destReg->isPhys) {
-                    const PhysReg physDest = static_cast<PhysReg>(destReg->idOrPhys);
-                    const RegClass destCls = isXMM(physDest) ? RegClass::XMM : RegClass::GPR;
-
-                    // For MOVrr/MOVSDrr, check if source is the same vreg assigned to dest.
-                    // If so, no spill is needed (we're copying a value to its own register).
-                    uint16_t srcVreg = std::numeric_limits<uint16_t>::max();
-                    if ((instr.opcode == MOpcode::MOVrr || instr.opcode == MOpcode::MOVSDrr) &&
-                        instr.operands.size() > 1) {
-                        if (const auto *srcReg = std::get_if<OpReg>(&instr.operands[1])) {
-                            if (!srcReg->isPhys) {
-                                srcVreg = srcReg->idOrPhys;
-                            }
-                        }
-                    }
-
-                    // Check if any vreg is currently assigned to this physical register
-                    // and spill it before we clobber the register.  Scan both GPR and
-                    // XMM active sets depending on the destination class.
-                    auto &activeSet = activeFor(destCls);
-                    for (auto vreg : activeSet) {
-                        auto it = states_.find(vreg);
-                        if (it != states_.end() && it->second.hasPhys &&
-                            it->second.phys == physDest) {
-                            // Skip spill if source vreg == vreg in dest register (no-op move)
-                            if (vreg == srcVreg) {
-                                break;
-                            }
-
-                            auto &state = it->second;
-                            // Check if the value is still needed after this point.
-                            // If we don't have interval info, conservatively assume
-                            // the value might be needed and spill it to avoid data loss.
-                            const auto *interval = intervals_.lookup(vreg);
-                            const bool valueNeeded = !interval || interval->end > currentInstrIdx_;
-                            if (valueNeeded) {
-                                spillActiveValue(vreg, state, prefix);
-                            } else {
-                                releaseRegister(state.phys, destCls);
-                                state.hasPhys = false;
-                                state.cachedInBlock = false;
-                            }
-                            removeActive(destCls, vreg);
-                            break; // Only one vreg can be in a physical register
-                        }
-                    }
-
-                    // Reserve argument registers for call setup (both GPR and XMM)
-                    if (isArgumentRegister(physDest)) {
-                        reserveForCall(physDest);
-                    }
+        const uint16_t srcVreg = passthroughSourceVReg(instr);
+        for (const auto &clobber : collectPhysicalClobbers(instr)) {
+            auto &activeSet = activeFor(clobber.cls);
+            for (auto vreg : activeSet) {
+                auto it = states_.find(vreg);
+                if (it == states_.end() || !it->second.hasPhys ||
+                    it->second.phys != clobber.reg) {
+                    continue;
                 }
+                if (vreg == srcVreg || isIdentityPhysicalMove(instr, clobber.reg)) {
+                    break;
+                }
+
+                auto &state = it->second;
+                const auto *interval = intervals_.lookup(vreg);
+                const bool valueNeeded = !interval || interval->end > currentInstrIdx_;
+                if (valueNeeded) {
+                    spillActiveValue(vreg, state, prefix);
+                } else {
+                    releaseRegister(state.phys, clobber.cls);
+                    state.hasPhys = false;
+                    state.cachedInBlock = false;
+                }
+                removeActive(clobber.cls, vreg);
+                break;
+            }
+
+            if (isArgumentRegister(clobber.reg)) {
+                reserveForCall(clobber.reg);
             }
         }
         std::vector<MInstr> suffix{};

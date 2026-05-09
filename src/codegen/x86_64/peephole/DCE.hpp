@@ -34,6 +34,7 @@ namespace viper::codegen::x64::peephole {
 /// @return Number of instructions eliminated.
 std::size_t runBlockDCE(std::vector<MInstr> &instrs,
                         PeepholeStats &stats,
-                        const TargetInfo &target);
+                        const TargetInfo &target,
+                        bool preservePhysRegsAtExit = false);
 
 } // namespace viper::codegen::x64::peephole
