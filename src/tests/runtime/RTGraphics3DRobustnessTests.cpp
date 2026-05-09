@@ -634,11 +634,14 @@ static void test_mesh_bone_weights_are_validated_and_dirty_geometry() {
                                std::numeric_limits<double>::quiet_NaN());
 
     assert(mesh->vertices[0].bone_indices[0] == 1);
+    assert(mesh->vertices[0].bone_indices[1] == 0);
+    assert(mesh->vertices[0].bone_indices[2] == 3);
+    assert(mesh->vertices[0].bone_indices[3] == 4);
     assert(std::fabs(mesh->vertices[0].bone_weights[0] - 1.0f) < 1e-6f);
     assert(mesh->vertices[0].bone_weights[1] == 0.0f);
     assert(mesh->vertices[0].bone_weights[2] == 0.0f);
     assert(mesh->vertices[0].bone_weights[3] == 0.0f);
-    assert(mesh->bone_count == 2);
+    assert(mesh->bone_count == 5);
     assert(mesh->geometry_revision != before);
 
     void *skel = rt_skeleton3d_new();

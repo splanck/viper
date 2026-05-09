@@ -58,6 +58,19 @@ static rt_mesh3d *mesh3d_checked(void *obj) {
     return (rt_mesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_MESH3D_CLASS_ID);
 }
 
+static int mesh3d_has_bone_weights(const rt_mesh3d *mesh) {
+    if (!mesh || !mesh->vertices)
+        return 0;
+    for (uint32_t i = 0; i < mesh->vertex_count; i++) {
+        const vgfx3d_vertex_t *v = &mesh->vertices[i];
+        for (int j = 0; j < 4; j++) {
+            if (v->bone_weights[j] != 0.0f)
+                return 1;
+        }
+    }
+    return 0;
+}
+
 static mat4_impl *mesh3d_mat4_checked(void *obj) {
     if (!obj || rt_obj_class_id(obj) != RT_MAT4_CLASS_ID)
         return NULL;
@@ -470,7 +483,7 @@ void *rt_mesh3d_clone(void *obj) {
         memcpy(dst->indices, src->indices, src->index_count * sizeof(uint32_t));
     dst->bone_palette = NULL;
     dst->prev_bone_palette = NULL;
-    dst->bone_count = src->bone_count;
+    dst->bone_count = (src->skeleton_ref || mesh3d_has_bone_weights(src)) ? src->bone_count : 0;
     dst->morph_deltas = NULL;
     dst->morph_weights = NULL;
     dst->morph_shape_count = 0;

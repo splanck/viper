@@ -2774,11 +2774,18 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
     float validated_model_matrix[16];
     if (!mesh && mesh_obj && !rt_heap_is_payload(mesh_obj))
         mesh = (rt_mesh3d *)mesh_obj;
-    if (!c || !mesh || !model_matrix || !mat)
+    if (!c)
         return;
-    if (!c->in_frame || !c->gfx_win || !c->backend)
+    if (!mesh || !model_matrix || !mat) {
+        canvas3d_clear_pending_splat(c);
         return;
+    }
+    if (!c->in_frame || !c->gfx_win || !c->backend) {
+        canvas3d_clear_pending_splat(c);
+        return;
+    }
     if (!canvas3d_mat4_d2f_checked(model_matrix, validated_model_matrix)) {
+        canvas3d_clear_pending_splat(c);
         rt_trap("Canvas3D.DrawMesh: model matrix must contain finite float-range values");
         return;
     }
@@ -2789,6 +2796,14 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
             obj, mesh_obj, model_matrix, material_obj, motion_key, mesh->morph_targets_ref);
         return;
     }
+
+    pending_has_splat = c->pending_has_splat;
+    pending_splat_map = c->pending_splat_map;
+    for (int i = 0; i < 4; i++) {
+        pending_splat_layers[i] = c->pending_splat_layers[i];
+        pending_splat_layer_scales[i] = c->pending_splat_layer_scales[i];
+    }
+    canvas3d_clear_pending_splat(c);
 
     if (mesh->vertex_count == 0 || mesh->index_count == 0)
         return;
@@ -2811,14 +2826,6 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
     if (canvas3d_should_snapshot_heap_geometry(mesh, mesh_obj) &&
         !canvas3d_snapshot_mesh_geometry(c, mesh, &queued_vertices, &queued_indices))
         return;
-
-    pending_has_splat = c->pending_has_splat;
-    pending_splat_map = c->pending_splat_map;
-    for (int i = 0; i < 4; i++) {
-        pending_splat_layers[i] = c->pending_splat_layers[i];
-        pending_splat_layer_scales[i] = c->pending_splat_layer_scales[i];
-    }
-    canvas3d_clear_pending_splat(c);
 
     /* Build draw command */
     dd->cmd.vertices = queued_vertices;
@@ -2934,29 +2941,13 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
         return;
     if (!c->in_frame || !c->backend || mesh->vertex_count == 0 || mesh->index_count == 0)
         return;
-    if (!canvas3d_matrices_f32_are_finite(instance_matrices, instance_count) ||
-        (has_prev_instance_matrices && prev_instance_matrices &&
-         !canvas3d_matrices_f32_are_finite(prev_instance_matrices, instance_count))) {
-        rt_trap("Canvas3D.DrawMeshInstanced: instance matrices must contain finite values");
-        return;
-    }
-    if (!canvas3d_track_temp_object(c, mesh_obj))
-        return;
-    if (!canvas3d_track_temp_object(c, material_obj))
-        return;
 
     canvas3d_ensure_normal_map_tangents(mesh, mat);
     rt_mesh3d_refresh_bounds(mesh);
     memset(&base_cmd, 0, sizeof(base_cmd));
-    vgfx3d_vertex_t *queued_vertices = mesh->vertices;
-    uint32_t *queued_indices = mesh->indices;
-    if (canvas3d_should_snapshot_heap_geometry(mesh, mesh_obj) &&
-        !canvas3d_snapshot_mesh_geometry(c, mesh, &queued_vertices, &queued_indices))
-        return;
-
-    base_cmd.vertices = queued_vertices;
+    base_cmd.vertices = mesh->vertices;
     base_cmd.vertex_count = mesh->vertex_count;
-    base_cmd.indices = queued_indices;
+    base_cmd.indices = mesh->indices;
     base_cmd.index_count = mesh->index_count;
     base_cmd.geometry_key = rt_heap_is_payload(mesh_obj) ? mesh_obj : NULL;
     base_cmd.geometry_revision = base_cmd.geometry_key ? mesh->geometry_revision : 0;
@@ -2976,11 +2967,32 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
                                   ? rt_morphtarget3d_get_payload_generation(mesh->morph_targets_ref)
                                   : 0;
 
-    if (canvas3d_cmd_requires_blend(&base_cmd) || !c->backend->submit_draw_instanced) {
-        if (instance_count > CANVAS3D_MAX_FALLBACK_INSTANCES) {
-            rt_trap("Canvas3D.DrawMeshInstanced: fallback instance count exceeds limit");
-            return;
-        }
+    int use_fallback_instances = canvas3d_cmd_requires_blend(&base_cmd) ||
+                                 !c->backend->submit_draw_instanced;
+    if (use_fallback_instances && instance_count > CANVAS3D_MAX_FALLBACK_INSTANCES) {
+        rt_trap("Canvas3D.DrawMeshInstanced: fallback instance count exceeds limit");
+        return;
+    }
+    if (!canvas3d_matrices_f32_are_finite(instance_matrices, instance_count) ||
+        (has_prev_instance_matrices && prev_instance_matrices &&
+         !canvas3d_matrices_f32_are_finite(prev_instance_matrices, instance_count))) {
+        rt_trap("Canvas3D.DrawMeshInstanced: instance matrices must contain finite values");
+        return;
+    }
+    if (!canvas3d_track_temp_object(c, mesh_obj))
+        return;
+    if (!canvas3d_track_temp_object(c, material_obj))
+        return;
+
+    vgfx3d_vertex_t *queued_vertices = mesh->vertices;
+    uint32_t *queued_indices = mesh->indices;
+    if (canvas3d_should_snapshot_heap_geometry(mesh, mesh_obj) &&
+        !canvas3d_snapshot_mesh_geometry(c, mesh, &queued_vertices, &queued_indices))
+        return;
+    base_cmd.vertices = queued_vertices;
+    base_cmd.indices = queued_indices;
+
+    if (use_fallback_instances) {
         for (int32_t i = 0; i < instance_count; i++) {
             vgfx3d_draw_cmd_t per_instance = base_cmd;
             memcpy(per_instance.model_matrix,

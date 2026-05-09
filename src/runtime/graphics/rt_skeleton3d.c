@@ -1184,24 +1184,28 @@ void rt_mesh3d_set_bone_weights(void *obj,
     if (vertex_index < 0 || vertex_index >= m->vertex_count)
         return;
 
-    // Bone indices are stored as uint8_t. A raw int64 → uint8 cast silently
-    // wraps values outside [0, 255] to bogus
-    // valid-looking indices, then the skinning palette applies the wrong
-    // transform. Validate each influence: any out-of-range index drops that
-    // influence (weight forced to 0) instead of silently deforming the mesh.
+    // Bone indices are stored as uint8_t. A raw int64 -> uint8 cast silently
+    // wraps values outside [0, 255] to bogus valid-looking indices, then the
+    // skinning palette applies the wrong transform. Preserve valid authored
+    // indices even when their weight is zero so importers can round-trip JOINTS
+    // attributes, but only positive finite weights contribute to deformation.
     int64_t idx[4] = {b0, b1, b2, b3};
     double wt[4] = {w0, w1, w2, w3};
     vgfx3d_vertex_t *v = &m->vertices[vertex_index];
     double sum = 0.0;
     int64_t max_bone_index = -1;
     for (int i = 0; i < 4; i++) {
-        if (idx[i] < 0 || idx[i] >= VGFX3D_MAX_BONES || !isfinite(wt[i]) || wt[i] <= 0.0) {
+        if (idx[i] < 0 || idx[i] >= VGFX3D_MAX_BONES) {
             v->bone_indices[i] = 0;
             v->bone_weights[i] = 0.0f;
         } else {
             v->bone_indices[i] = (uint8_t)idx[i];
-            v->bone_weights[i] = (float)wt[i];
-            sum += wt[i];
+            if (isfinite(wt[i]) && wt[i] > 0.0) {
+                v->bone_weights[i] = (float)wt[i];
+                sum += wt[i];
+            } else {
+                v->bone_weights[i] = 0.0f;
+            }
             if (idx[i] > max_bone_index)
                 max_bone_index = idx[i];
         }

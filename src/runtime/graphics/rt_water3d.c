@@ -92,7 +92,7 @@ static rt_water3d *water3d_checked(void *obj) {
 }
 
 static int water3d_is_pixels_handle(void *pixels) {
-    return pixels && rt_heap_is_payload(pixels) && rt_obj_class_id(pixels) == RT_PIXELS_CLASS_ID;
+    return pixels && rt_obj_class_id(pixels) == RT_PIXELS_CLASS_ID;
 }
 
 /// @brief Drop one reference and zero the slot. Idempotent on null/empty slots.
