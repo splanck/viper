@@ -4254,6 +4254,7 @@ int64_t rt_gltf_node_animation_count(void *obj) {
     return obj ? ((rt_gltf_asset *)obj)->node_animation_count : 0;
 }
 
+/// @brief Get a node-animation track by index from the loaded glTF asset.
 void *rt_gltf_get_node_animation(void *obj, int64_t index) {
     if (!obj)
         return NULL;

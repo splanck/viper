@@ -14,6 +14,12 @@
 //   - Chunks are TERRAIN_CHUNK_SIZE quads per edge (16x16 = 256 quads each).
 //   - Mesh generation is lazy (built on first draw, invalidated on heightmap change).
 //   - Normals computed via central difference on height grid.
+//   - Three LOD levels keyed by camera distance (full / step=2 / step=4).
+//   - Splat-map composites up to 4 layer textures into a baked diffuse.
+//
+// Ownership/Lifetime:
+//   - Terrain3D is GC-managed; finalizer releases all per-chunk LOD meshes,
+//     the material, splat map, layer textures, and base + baked textures.
 //
 // Links: rt_terrain3d.h, rt_mesh3d, vgfx3d_frustum.h
 //
@@ -24,6 +30,7 @@
 #include "rt_terrain3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_graphics3d_ids.h"
 #include "rt_pixels_internal.h"
 
 #include "vgfx3d_frustum.h"
@@ -462,9 +469,9 @@ static float sample_height(const rt_terrain3d *t, int32_t x, int32_t z) {
 /// grid are clamped to the nearest edge cell. Returns 0 for an invalid handle or a degenerate
 /// scale. Result is in world Y units (heights times scale[1]).
 double rt_terrain3d_get_height_at(void *obj, double wx, double wz) {
-    if (!obj)
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    if (!t || !isfinite(wx) || !isfinite(wz))
         return 0.0;
-    rt_terrain3d *t = (rt_terrain3d *)obj;
     if (t->scale[0] < 1e-12 || t->scale[2] < 1e-12)
         return 0.0;
 
@@ -502,9 +509,9 @@ double rt_terrain3d_get_height_at(void *obj, double wx, double wz) {
 /// height grid. Returns a fresh Vec3 (always points "up-ish"; defaults to (0,1,0) on invalid
 /// input). Normal is normalized; useful for placing props or aligning rotations to slope.
 void *rt_terrain3d_get_normal_at(void *obj, double wx, double wz) {
-    if (!obj)
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    if (!t || !isfinite(wx) || !isfinite(wz))
         return rt_vec3_new(0, 1, 0);
-    rt_terrain3d *t = (rt_terrain3d *)obj;
     if (t->scale[0] < 1e-12 || t->scale[2] < 1e-12)
         return rt_vec3_new(0, 1, 0);
 

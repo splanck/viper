@@ -7,6 +7,23 @@
 //
 // File: src/runtime/graphics/vgfx3d_backend_opengl.c
 // Purpose: OpenGL 3.3 Core GPU backend for Viper.Graphics3D (Linux).
+//   Implements the vgfx3d_backend_t vtable on a GLX-bound OpenGL context,
+//   with GLSL shaders compiled at runtime, FBO-based scene targets for
+//   GPU postfx, and per-mesh VAO / VBO / IBO caching keyed by mesh
+//   identity + revision.
+//
+// Key invariants:
+//   - GL functions resolved at runtime via dlsym; no static GL linkage.
+//   - GLSL 330 core shaders; shader compile failures fall back to software.
+//   - Row-major matrices match Viper convention; HLSL/MSL transposes are
+//     handled by sister backends, not this one.
+//   - Per-mesh GPU cache aged out via vgfx3d_opengl_should_prune_cache_entry.
+//
+// Ownership/Lifetime:
+//   - GL textures, buffers, programs, FBOs, and per-mesh caches are owned
+//     by the backend context and released in destroy_ctx.
+//
+// Links: vgfx3d_backend.h, vgfx3d_backend_opengl_shared.h, plans/3d/04-opengl-backend.md
 //
 //===----------------------------------------------------------------------===//
 

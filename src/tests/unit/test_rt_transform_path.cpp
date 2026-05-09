@@ -46,7 +46,9 @@ extern void *rt_mat4_new(double m0,
                          double m13,
                          double m14,
                          double m15);
+extern void *rt_mat4_ortho(double left, double right, double bottom, double top, double near, double far);
 extern double rt_mat4_get(void *m, int64_t r, int64_t c);
+extern void *rt_mat4_transform_point(void *m, void *v);
 }
 
 static int tests_passed = 0;
@@ -126,13 +128,60 @@ static void test_transform_translate() {
 
 static void test_transform_euler() {
     void *xf = rt_transform3d_new();
-    /* 90° rotation around Y axis (yaw = π/2) */
-    rt_transform3d_set_euler(xf, 0.0, 3.14159265358979323846 / 2.0, 0.0);
+    rt_transform3d_set_euler(xf, 0.0, 90.0, 0.0);
 
     void *rot = rt_transform3d_get_rotation(xf);
-    /* Should produce a valid quaternion (w≈0.707, y≈0.707 for 90° Y rotation) */
-    double w = rt_quat_w(rot);
-    EXPECT_NEAR(fabs(w), 0.707, 0.02, "Euler 90° Y: quat w ≈ 0.707");
+    EXPECT_NEAR(fabs(rt_quat_y(rot)), 0.707, 0.02, "Euler yaw 90° maps to quaternion Y");
+    EXPECT_NEAR(fabs(rt_quat_w(rot)), 0.707, 0.02, "Euler yaw 90° maps to quaternion W");
+    EXPECT_NEAR(fabs(rt_quat_x(rot)), 0.0, 0.02, "Euler yaw 90° does not leak into X");
+    EXPECT_NEAR(fabs(rt_quat_z(rot)), 0.0, 0.02, "Euler yaw 90° does not leak into Z");
+
+    rt_transform3d_set_euler(xf, 90.0, 0.0, 0.0);
+    rot = rt_transform3d_get_rotation(xf);
+    EXPECT_NEAR(fabs(rt_quat_x(rot)), 0.707, 0.02, "Euler pitch 90° maps to quaternion X");
+    EXPECT_NEAR(fabs(rt_quat_y(rot)), 0.0, 0.02, "Euler pitch 90° does not leak into Y");
+    EXPECT_NEAR(fabs(rt_quat_z(rot)), 0.0, 0.02, "Euler pitch 90° does not leak into Z");
+
+    rt_transform3d_set_euler(xf, 0.0, 0.0, 90.0);
+    rot = rt_transform3d_get_rotation(xf);
+    EXPECT_NEAR(fabs(rt_quat_z(rot)), 0.707, 0.02, "Euler roll 90° maps to quaternion Z");
+    EXPECT_NEAR(fabs(rt_quat_x(rot)), 0.0, 0.02, "Euler roll 90° does not leak into X");
+    EXPECT_NEAR(fabs(rt_quat_y(rot)), 0.0, 0.02, "Euler roll 90° does not leak into Y");
+}
+
+static void test_transform_look_at_uses_negative_z_forward() {
+    void *xf = rt_transform3d_new();
+    rt_transform3d_look_at(xf, rt_vec3_new(0.0, 0.0, -1.0), rt_vec3_new(0.0, 1.0, 0.0));
+    void *rot = rt_transform3d_get_rotation(xf);
+    EXPECT_NEAR(rt_quat_x(rot), 0.0, 0.02, "LookAt -Z target keeps identity X");
+    EXPECT_NEAR(rt_quat_y(rot), 0.0, 0.02, "LookAt -Z target keeps identity Y");
+    EXPECT_NEAR(rt_quat_z(rot), 0.0, 0.02, "LookAt -Z target keeps identity Z");
+    EXPECT_NEAR(fabs(rt_quat_w(rot)), 1.0, 0.02, "LookAt -Z target keeps identity W");
+}
+
+static void test_transform_rejects_wrong_value_handles() {
+    void *xf = rt_transform3d_new();
+    rt_transform3d_set_position(xf, 1.0, 2.0, 3.0);
+    rt_transform3d_translate(xf, xf);
+    void *pos = rt_transform3d_get_position(xf);
+    EXPECT_NEAR(rt_vec3_x(pos), 1.0, 0.01, "Translate rejects non-Vec3 X");
+    EXPECT_NEAR(rt_vec3_y(pos), 2.0, 0.01, "Translate rejects non-Vec3 Y");
+    EXPECT_NEAR(rt_vec3_z(pos), 3.0, 0.01, "Translate rejects non-Vec3 Z");
+
+    rt_transform3d_set_rotation(xf, xf);
+    void *rot = rt_transform3d_get_rotation(xf);
+    EXPECT_NEAR(rt_quat_x(rot), 0.0, 0.01, "SetRotation rejects non-Quat X");
+    EXPECT_NEAR(rt_quat_y(rot), 0.0, 0.01, "SetRotation rejects non-Quat Y");
+    EXPECT_NEAR(rt_quat_z(rot), 0.0, 0.01, "SetRotation rejects non-Quat Z");
+    EXPECT_NEAR(rt_quat_w(rot), 1.0, 0.01, "SetRotation rejects non-Quat W");
+}
+
+static void test_mat4_ortho_translation_layout() {
+    void *ortho = rt_mat4_ortho(0.0, 10.0, 0.0, 20.0, 1.0, 101.0);
+    void *center = rt_mat4_transform_point(ortho, rt_vec3_new(5.0, 10.0, -51.0));
+    EXPECT_NEAR(rt_vec3_x(center), 0.0, 0.01, "Mat4.Ortho maps center X to NDC 0");
+    EXPECT_NEAR(rt_vec3_y(center), 0.0, 0.01, "Mat4.Ortho maps center Y to NDC 0");
+    EXPECT_NEAR(rt_vec3_z(center), 0.0, 0.01, "Mat4.Ortho maps center Z to NDC 0");
 }
 
 static void test_transform_dirty_flag() {
@@ -260,6 +309,12 @@ static void test_path_clear() {
     EXPECT_TRUE(rt_path3d_get_point_count(path) == 0, "After clear: 0 points");
 }
 
+static void test_path_rejects_non_vec3_points() {
+    void *path = rt_path3d_new();
+    rt_path3d_add_point(path, rt_transform3d_new());
+    EXPECT_TRUE(rt_path3d_get_point_count(path) == 0, "Path3D.AddPoint rejects non-Vec3 handles");
+}
+
 int main() {
     /* Transform3D */
     test_transform_default();
@@ -267,6 +322,9 @@ int main() {
     test_transform_scale();
     test_transform_translate();
     test_transform_euler();
+    test_transform_look_at_uses_negative_z_forward();
+    test_transform_rejects_wrong_value_handles();
+    test_mat4_ortho_translation_layout();
     test_transform_dirty_flag();
     test_transform_sanitizes_nonfinite_inputs();
 
@@ -277,6 +335,7 @@ int main() {
     test_path_length();
     test_path_looping();
     test_path_clear();
+    test_path_rejects_non_vec3_points();
 
     printf("Transform3D+Path3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

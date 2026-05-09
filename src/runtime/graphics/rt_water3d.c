@@ -9,10 +9,15 @@
 // Purpose: Animated water plane with sine-based waves.
 //
 // Key invariants:
-//   - Grid resolution: 32x32 quads for smooth wave appearance.
-//   - Wave: height = amplitude * sin(freq * (x + z) + time * speed).
-//   - Normals computed from wave derivative for proper lighting.
-//   - Drawn with alpha-blended material for transparency.
+//   - Grid resolution: configurable [8, 256], default 64x64 quads.
+//   - Wave: height = amplitude * sin(freq * (x + z) - time * speed) (legacy).
+//   - Gerstner multi-wave path sums up to WATER_MAX_WAVES superimposed waves.
+//   - Normals computed analytically from wave derivative for smooth shading.
+//   - Drawn with alpha-blended material; backface cull disabled around draw.
+//
+// Ownership/Lifetime:
+//   - Water3D is GC-managed; finalizer releases the texture / normal-map /
+//     env-map / mesh / material refs.
 //
 // Links: rt_water3d.h, rt_canvas3d.h
 //
@@ -87,10 +92,12 @@ typedef struct {
     int8_t mesh_dirty;
 } rt_water3d;
 
+/// @brief Validate @p obj as a Water3D handle and return its typed pointer (NULL on mismatch).
 static rt_water3d *water3d_checked(void *obj) {
     return (rt_water3d *)rt_g3d_checked_or_null(obj, RT_G3D_WATER3D_CLASS_ID);
 }
 
+/// @brief Return non-zero when @p pixels is a live `Viper.Graphics.Pixels` handle.
 static int water3d_is_pixels_handle(void *pixels) {
     return pixels && rt_obj_class_id(pixels) == RT_PIXELS_CLASS_ID;
 }

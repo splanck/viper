@@ -13,6 +13,14 @@
 //   - Transforms are float[16] row-major, stored contiguously.
 //   - Software backend: loops N individual submit_draw calls.
 //   - Mesh/material are retained by the batch because it stores them across frames.
+//   - Three parallel transform buffers are kept: live transforms,
+//     start-of-frame snapshot for motion vectors, and previous-frame transforms.
+//
+// Ownership/Lifetime:
+//   - InstanceBatch3D is GC-managed; finalizer releases mesh, material,
+//     and the three float-matrix buffers.
+//   - Transient per-frame matrix copies are parked on the canvas's temp-buffer
+//     queue and freed at end-of-frame.
 //
 // Links: rt_instbatch3d.h, rt_canvas3d.c, vgfx3d_backend.h
 //

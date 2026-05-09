@@ -6,8 +6,25 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_animcontroller3d.c
-// Purpose: High-level skeletal animation controller with named states,
-//   transitions, events, root motion, and simple masked overlay layers.
+// Purpose: High-level skeletal animation controller backing
+//          `Viper.Graphics3D.AnimController3D`. Provides named states,
+//          transitions, events, root-motion extraction, and simple
+//          masked overlay layers on top of the underlying AnimPlayer3D.
+//
+// Key invariants:
+//   - Up to RT_ANIM_CONTROLLER3D_MAX_LAYERS overlay layers; layer 0 is the base.
+//   - Every public entry validates handles via *_checked helpers.
+//   - State / transition tables grow on demand via realloc.
+//   - The event queue is a fixed-size ring buffer; oldest events drop on overflow.
+//
+// Ownership/Lifetime:
+//   - Controller objects are heap-allocated and GC-managed.
+//   - Skeleton and Animation references are retained on assignment, released
+//     on slot replacement and during finalize.
+//
+// Links: src/runtime/graphics/rt_animcontroller3d.h (public API),
+//        src/runtime/graphics/rt_skeleton3d.h (underlying AnimPlayer3D),
+//        docs/viperlib/graphics/animation.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -96,6 +113,21 @@ typedef struct {
     int32_t event_queue_count;
 } rt_anim_controller3d;
 
+/// @brief Validate that @p obj is a live AnimController3D handle, returning NULL otherwise.
+static rt_anim_controller3d *anim_controller3d_checked(void *obj) {
+    return (rt_anim_controller3d *)rt_g3d_checked_or_null(obj, RT_G3D_ANIMCONTROLLER3D_CLASS_ID);
+}
+
+/// @brief Validate that @p obj is a live Skeleton3D handle, returning NULL otherwise.
+static rt_skeleton3d *skeleton3d_checked(void *obj) {
+    return (rt_skeleton3d *)rt_g3d_checked_or_null(obj, RT_G3D_SKELETON3D_CLASS_ID);
+}
+
+/// @brief Validate that @p obj is a live Animation3D handle, returning NULL otherwise.
+static rt_animation3d *animation3d_checked(void *obj) {
+    return (rt_animation3d *)rt_g3d_checked_or_null(obj, RT_G3D_ANIMATION3D_CLASS_ID);
+}
+
 /// @brief Drop one reference from a slot, free if it was the last, then NULL out the slot.
 /// @details Used by the finalizer and slot-replacement paths so the same
 ///          retain-then-release discipline is shared across every animated-
@@ -136,11 +168,20 @@ static void controller_copy_name(char *dst, size_t cap, rt_string name) {
 static int controller_grow_array(void **buffer, int32_t *capacity, int32_t need, size_t elem_size) {
     int32_t new_capacity;
     void *grown;
+    if (!buffer || !capacity || need <= 0 || elem_size == 0)
+        return 0;
+    if (*capacity < 0)
+        return 0;
     if (*capacity >= need)
         return 1;
-    new_capacity = *capacity > 0 ? (*capacity * 2) : 4;
+    if (*capacity > INT32_MAX / 2)
+        new_capacity = need;
+    else
+        new_capacity = *capacity > 0 ? (*capacity * 2) : 4;
     if (new_capacity < need)
         new_capacity = need;
+    if ((size_t)new_capacity > SIZE_MAX / elem_size)
+        return 0;
     grown = realloc(*buffer, (size_t)new_capacity * elem_size);
     if (!grown)
         return 0;
@@ -346,6 +387,8 @@ static int8_t controller_set_layer_state(rt_anim_controller3d *controller,
     int use_crossfade;
     if (!controller || layer_index < 0 || layer_index >= RT_ANIM_CONTROLLER3D_MAX_LAYERS)
         return 0;
+    if (!isfinite(blend_seconds) || blend_seconds < 0.0)
+        blend_seconds = 0.0;
     if (state_index < 0 || state_index >= controller->state_count)
         return 0;
     layer = &controller->layers[layer_index];
@@ -665,9 +708,9 @@ static void controller_finalize(void *obj) {
 ///          `controller_finalize` before returning NULL).
 void *rt_anim_controller3d_new(void *skeleton) {
     rt_anim_controller3d *controller;
-    rt_skeleton3d *skel = (rt_skeleton3d *)skeleton;
-    if (!skeleton) {
-        rt_trap("AnimController3D.New: null skeleton");
+    rt_skeleton3d *skel = skeleton3d_checked(skeleton);
+    if (!skel) {
+        rt_trap("AnimController3D.New: skeleton must be a Skeleton3D");
         return NULL;
     }
     controller =
@@ -715,10 +758,11 @@ void *rt_anim_controller3d_new(void *skeleton) {
 /// `_crossfade`, etc); `animation` is an Animation3D handle. If a state with `name` already
 /// exists, returns its existing index without creating a duplicate. Returns -1 on failure.
 int64_t rt_anim_controller3d_add_state(void *obj, rt_string name, void *animation) {
-    rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
+    rt_animation3d *anim = animation3d_checked(animation);
     anim_controller3d_state_t *state;
     int32_t existing;
-    if (!controller || !animation)
+    if (!controller || !anim)
         return -1;
     existing = controller_find_state(controller, name);
     if (existing >= 0)
@@ -733,10 +777,10 @@ int64_t rt_anim_controller3d_add_state(void *obj, rt_string name, void *animatio
     state = &controller->states[controller->state_count];
     memset(state, 0, sizeof(*state));
     controller_copy_name(state->name, sizeof(state->name), name);
-    state->animation = (rt_animation3d *)animation;
+    state->animation = anim;
     rt_obj_retain_maybe(state->animation);
     state->speed = 1.0f;
-    state->looping = rt_animation3d_get_looping(animation) ? 1 : 0;
+    state->looping = rt_animation3d_get_looping(anim) ? 1 : 0;
     return controller->state_count++;
 }
 
@@ -745,7 +789,7 @@ int64_t rt_anim_controller3d_add_state(void *obj, rt_string name, void *animatio
 /// transition already exists, its blend time is updated. Returns 1 on success.
 int8_t rt_anim_controller3d_add_transition(
     void *obj, rt_string from_state, rt_string to_state, double blend_seconds) {
-    rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     int32_t from_index;
     int32_t to_index;
     int32_t existing;
@@ -758,7 +802,8 @@ int8_t rt_anim_controller3d_add_transition(
         return 0;
     existing = controller_find_transition(controller, from_index, to_index);
     if (existing >= 0) {
-        controller->transitions[existing].blend_seconds = (float)blend_seconds;
+        controller->transitions[existing].blend_seconds =
+            (float)((isfinite(blend_seconds) && blend_seconds > 0.0) ? blend_seconds : 0.0);
         return 1;
     }
     if (!controller_grow_array((void **)&controller->transitions,
@@ -771,7 +816,7 @@ int8_t rt_anim_controller3d_add_transition(
     transition = &controller->transitions[controller->transition_count++];
     transition->from_state = from_index;
     transition->to_state = to_index;
-    transition->blend_seconds = (float)blend_seconds;
+    transition->blend_seconds = (float)((isfinite(blend_seconds) && blend_seconds > 0.0) ? blend_seconds : 0.0);
     return 1;
 }
 
@@ -779,7 +824,7 @@ int8_t rt_anim_controller3d_add_transition(
 /// state and `state_name`, its blend time is used; otherwise the switch is instantaneous.
 /// Returns 1 if the state exists, 0 if not.
 int8_t rt_anim_controller3d_play(void *obj, rt_string state_name) {
-    rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     int32_t state_index;
     double blend_seconds = 0.0;
     if (!controller)
@@ -799,7 +844,7 @@ int8_t rt_anim_controller3d_play(void *obj, rt_string state_name) {
 /// @brief Cross-fade to `state_name` over `blend_seconds`, regardless of any registered default
 /// transition. Use this for one-off blends with custom timing.
 int8_t rt_anim_controller3d_crossfade(void *obj, rt_string state_name, double blend_seconds) {
-    rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     int32_t state_index;
     if (!controller)
         return 0;
@@ -812,7 +857,7 @@ int8_t rt_anim_controller3d_crossfade(void *obj, rt_string state_name, double bl
 /// @brief Stop playback on every layer (base + overlays). Does not clear the current_state
 /// indices — calling `_play` again resumes from the same animation. Resets transition timers.
 void rt_anim_controller3d_stop(void *obj) {
-    rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     if (!controller)
         return;
     for (int32_t layer_index = 0; layer_index < RT_ANIM_CONTROLLER3D_MAX_LAYERS; layer_index++) {
@@ -830,7 +875,7 @@ void rt_anim_controller3d_stop(void *obj) {
 /// blends, then composites the layered final bone palette. Also accumulates root-motion bone
 /// translation deltas for `_consume_root_motion`. No-op for negative dt or missing skeleton.
 void rt_anim_controller3d_update(void *obj, double delta_time) {
-    rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     double before_x;
     double before_y;
     double before_z;
@@ -842,7 +887,7 @@ void rt_anim_controller3d_update(void *obj, double delta_time) {
     double inv_before_rot[4];
     double delta_rot[4];
     double accumulated_rot[4];
-    if (!controller || !controller->skeleton || delta_time < 0.0)
+    if (!controller || !controller->skeleton || !isfinite(delta_time) || delta_time < 0.0)
         return;
 
     if (controller->final_palette && controller->prev_final_palette && controller->skeleton &&
@@ -897,7 +942,7 @@ void rt_anim_controller3d_update(void *obj, double delta_time) {
 
 /// @brief Name of the state currently playing on the base layer (empty string if none/missing).
 rt_string rt_anim_controller3d_get_current_state(void *obj) {
-    rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     int32_t state_index;
     if (!controller)
         return rt_const_cstr("");
@@ -910,7 +955,7 @@ rt_string rt_anim_controller3d_get_current_state(void *obj) {
 /// @brief Name of the state on the base layer immediately before the current one. Useful during
 /// transitions to know what the controller is fading *from*. Empty if no prior state.
 rt_string rt_anim_controller3d_get_previous_state(void *obj) {
-    rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     int32_t state_index;
     if (!controller)
         return rt_const_cstr("");
@@ -922,20 +967,20 @@ rt_string rt_anim_controller3d_get_previous_state(void *obj) {
 
 /// @brief Returns 1 if the base layer is mid-blend between two states.
 int8_t rt_anim_controller3d_get_is_transitioning(void *obj) {
-    rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     return controller ? controller->layers[0].transitioning : 0;
 }
 
 /// @brief Number of states currently registered with the controller.
 int64_t rt_anim_controller3d_get_state_count(void *obj) {
-    rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     return controller ? controller->state_count : 0;
 }
 
 /// @brief Override the playback speed multiplier for a state. Applied immediately to any
 /// layer currently playing that state. Negative speeds are accepted (reverse playback).
 void rt_anim_controller3d_set_state_speed(void *obj, rt_string state_name, double speed) {
-    rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     int32_t state_index;
     if (!controller)
         return;
@@ -952,7 +997,7 @@ void rt_anim_controller3d_set_state_speed(void *obj, rt_string state_name, doubl
 /// @brief Override whether a state loops (1) or plays once (0). Applied immediately to any
 /// layer currently playing that state via the player's loop_override hook.
 void rt_anim_controller3d_set_state_looping(void *obj, rt_string state_name, int8_t loop) {
-    rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     int32_t state_index;
     if (!controller)
         return;
@@ -974,7 +1019,7 @@ void rt_anim_controller3d_set_state_looping(void *obj, rt_string state_name, int
 /// hit-frame triggers, attack windows. Multiple events per state are allowed.
 void rt_anim_controller3d_add_event(
     void *obj, rt_string state_name, double time_seconds, rt_string event_name) {
-    rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     anim_controller3d_event_t *event;
     int32_t state_index;
     if (!controller)
@@ -999,7 +1044,7 @@ void rt_anim_controller3d_add_event(
 /// @brief Pop the next pending event name from the queue (FIFO). Returns empty string when
 /// the queue is exhausted. Caller typically polls in a loop after each `_update` to drain.
 rt_string rt_anim_controller3d_poll_event(void *obj) {
-    rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     const char *name;
     if (!controller || controller->event_queue_count == 0)
         return rt_const_cstr("");
@@ -1014,7 +1059,7 @@ rt_string rt_anim_controller3d_poll_event(void *obj) {
 /// from this bone each frame are accumulated for `_consume_root_motion` so the game can move
 /// the character via the animation rather than fighting with it. Resets the accumulated delta.
 void rt_anim_controller3d_set_root_motion_bone(void *obj, int64_t bone_index) {
-    rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     if (!controller || !controller->skeleton)
         return;
     if (bone_index < 0 || bone_index >= controller->skeleton->bone_count)
@@ -1029,7 +1074,7 @@ void rt_anim_controller3d_set_root_motion_bone(void *obj, int64_t bone_index) {
 /// @brief Read (without clearing) the accumulated root-motion translation delta as a Vec3.
 /// Use `_consume_root_motion` instead when you want to move the character and reset.
 void *rt_anim_controller3d_get_root_motion_delta(void *obj) {
-    rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     if (!controller)
         return rt_vec3_new(0.0, 0.0, 0.0);
     return rt_vec3_new(controller->root_motion_delta[0],
@@ -1040,7 +1085,7 @@ void *rt_anim_controller3d_get_root_motion_delta(void *obj) {
 /// @brief Atomically read and reset the accumulated root-motion delta. Returns the Vec3 the
 /// character should be moved by this frame to follow the animation's hip translation.
 void *rt_anim_controller3d_consume_root_motion(void *obj) {
-    rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     void *delta;
     if (!controller)
         return rt_vec3_new(0.0, 0.0, 0.0);
@@ -1061,7 +1106,7 @@ void *rt_anim_controller3d_consume_root_motion(void *obj) {
 ///          fresh. Animation systems that drive character heading from
 ///          root motion call this each frame after `_update`.
 void *rt_anim_controller3d_consume_root_motion_rotation(void *obj) {
-    rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     void *rotation;
     if (!controller)
         return rt_quat_new(0.0, 0.0, 0.0, 1.0);
@@ -1077,7 +1122,7 @@ void *rt_anim_controller3d_consume_root_motion_rotation(void *obj) {
 /// and is always full weight; setting it has no effect. Higher overlays compose additively
 /// over the base, masked to their bone subset.
 void rt_anim_controller3d_set_layer_weight(void *obj, int64_t layer_index, double weight) {
-    rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     if (!controller || layer_index < 0 || layer_index >= RT_ANIM_CONTROLLER3D_MAX_LAYERS)
         return;
     if (layer_index == 0) {
@@ -1095,7 +1140,7 @@ void rt_anim_controller3d_set_layer_weight(void *obj, int64_t layer_index, doubl
 /// and its descendants in the skeleton hierarchy (typical use: arms-only upper-body overlay).
 /// Layer 0 always covers the full skeleton.
 void rt_anim_controller3d_set_layer_mask(void *obj, int64_t layer_index, int64_t root_bone) {
-    rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     if (!controller || layer_index < 0 || layer_index >= RT_ANIM_CONTROLLER3D_MAX_LAYERS)
         return;
     if (layer_index == 0) {
@@ -1110,7 +1155,7 @@ void rt_anim_controller3d_set_layer_mask(void *obj, int64_t layer_index, int64_t
 /// @brief Play a state on a specific overlay layer (layer_index ≥ 1). No transition blend.
 /// Returns 1 on success, 0 if `layer_index` is invalid or `state_name` doesn't exist.
 int8_t rt_anim_controller3d_play_layer(void *obj, int64_t layer_index, rt_string state_name) {
-    rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     int32_t state_index;
     if (!controller || layer_index < 0 || layer_index >= RT_ANIM_CONTROLLER3D_MAX_LAYERS)
         return 0;
@@ -1124,7 +1169,7 @@ int8_t rt_anim_controller3d_play_layer(void *obj, int64_t layer_index, rt_string
 /// but targets a specific layer, leaving the base unaffected.
 int8_t rt_anim_controller3d_crossfade_layer(
     void *obj, int64_t layer_index, rt_string state_name, double blend_seconds) {
-    rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     int32_t state_index;
     if (!controller || layer_index < 0 || layer_index >= RT_ANIM_CONTROLLER3D_MAX_LAYERS)
         return 0;
@@ -1137,7 +1182,7 @@ int8_t rt_anim_controller3d_crossfade_layer(
 /// @brief Stop playback on a specific overlay layer. Layer 0 (base) keeps its current_state but
 /// pauses; overlay layers (≥ 1) are also cleared so they no longer composite onto the base.
 void rt_anim_controller3d_stop_layer(void *obj, int64_t layer_index) {
-    rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     anim_controller3d_layer_t *layer;
     if (!controller || layer_index < 0 || layer_index >= RT_ANIM_CONTROLLER3D_MAX_LAYERS)
         return;
@@ -1157,7 +1202,7 @@ void rt_anim_controller3d_stop_layer(void *obj, int64_t layer_index) {
 ///          range bone. The matrix reflects the composited result of all
 ///          layers as of the most recent `_update`.
 void *rt_anim_controller3d_get_bone_matrix(void *obj, int64_t bone_index) {
-    rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     const float *m;
     if (!controller || !controller->skeleton || !controller->final_palette)
         return NULL;
@@ -1190,7 +1235,7 @@ void *rt_anim_controller3d_get_bone_matrix(void *obj, int64_t bone_index) {
 ///          the palette length in bones (not floats).
 /// @return Pointer to `bone_count * 16` floats, or NULL on missing data.
 const float *rt_anim_controller3d_get_final_palette_data(void *obj, int32_t *bone_count) {
-    rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     if (bone_count)
         *bone_count = 0;
     if (!controller || !controller->skeleton || !controller->final_palette)
@@ -1207,7 +1252,7 @@ const float *rt_anim_controller3d_get_final_palette_data(void *obj, int32_t *bon
 ///          completed (the prev-palette is populated by snapshotting
 ///          before the per-layer player update).
 const float *rt_anim_controller3d_get_previous_palette_data(void *obj, int32_t *bone_count) {
-    rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     if (bone_count)
         *bone_count = 0;
     if (!controller || !controller->skeleton || !controller->prev_final_palette ||

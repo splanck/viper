@@ -6,15 +6,28 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_audio3d.c
-// Purpose: Spatial audio — computes distance attenuation and stereo pan from
-//   3D positions, then delegates to the existing 2D audio API.
+// Purpose: Spatial audio backing `Viper.Graphics3D.Audio3D` — computes distance
+//   attenuation and stereo pan from 3D positions, then delegates to the
+//   existing 2D audio API for actual sample playback.
 //
 // Key invariants:
 //   - Listener position/forward stored as static globals (single listener).
+//   - The active AudioListener3D wins; if none is bound the fallback listener
+//     (modifiable via rt_audio3d_set_listener) is used.
 //   - Attenuation: linear falloff from 0 to max_distance.
 //   - Pan: dot product of source direction with listener's right vector.
+//   - Right vector is derived as the XZ-plane rotation of forward by -90°,
+//     so listener pitch doesn't bleed into stereo balance.
 //
-// Links: rt_audio3d.h, rt_audio.h, rt_vec3.h
+// Ownership/Lifetime:
+//   - Listener-state structs are caller-owned; this file keeps process-global
+//     copies of the active and fallback listeners.
+//   - Per-voice max-distance entries live in a fixed-size 64-slot table that
+//     overwrites the oldest entry when full.
+//
+// Links: src/runtime/graphics/rt_audio3d.h (public API),
+//        src/runtime/audio/rt_audio.h (underlying 2D playback),
+//        src/runtime/math/rt_vec3.h (Vec3 handle accessors)
 //
 //===----------------------------------------------------------------------===//
 
@@ -62,7 +75,7 @@ static struct {
 static int32_t s_voice_dist_count = 0;
 static int32_t s_voice_dist_next = 0;
 
-/// @brief Clamp `value` into the closed interval `[lo, hi]`.
+/// @brief Clamp @p value into the inclusive `[lo, hi]` range.
 static int64_t clamp_i64(int64_t value, int64_t lo, int64_t hi) {
     if (value < lo)
         return lo;
@@ -71,6 +84,8 @@ static int64_t clamp_i64(int64_t value, int64_t lo, int64_t hi) {
     return value;
 }
 
+/// @brief Return @p value when finite, else @p fallback.
+/// @details Defensive guard for spatial audio math against NaN/inf inputs.
 static double finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }

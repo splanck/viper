@@ -13,8 +13,14 @@
 //   - Falls back to software if D3D11 unavailable
 //   - HLSL shaders compiled at runtime via D3DCompile
 //   - row_major float4x4 in HLSL (matches Viper row-major convention)
+//   - Constant buffers packed via vgfx3d_backend_d3d11_shared float4 alignment.
 //
-// Links: vgfx3d_backend.h, plans/3d/03-d3d11-backend.md
+// Ownership/Lifetime:
+//   - D3D11 device, swapchain, RTVs, DSVs, samplers, blend states, depth
+//     states, shaders, and per-mesh GPU caches are owned by the backend
+//     context and released in destroy_ctx.
+//
+// Links: vgfx3d_backend.h, vgfx3d_backend_d3d11_shared.h, plans/3d/03-d3d11-backend.md
 //
 //===----------------------------------------------------------------------===//
 

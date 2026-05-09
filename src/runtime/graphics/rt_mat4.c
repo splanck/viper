@@ -287,18 +287,18 @@ void *rt_mat4_ortho(double left, double right, double bottom, double top, double
     return rt_mat4_new(2.0 * rl,
                        0.0,
                        0.0,
-                       0.0,
+                       -(right + left) * rl,
                        0.0,
                        2.0 * tb,
                        0.0,
-                       0.0,
+                       -(top + bottom) * tb,
                        0.0,
                        0.0,
                        -2.0 * fn,
-                       0.0,
-                       -(right + left) * rl,
-                       -(top + bottom) * tb,
                        -(far + near) * fn,
+                       0.0,
+                       0.0,
+                       0.0,
                        1.0);
 }
 

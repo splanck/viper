@@ -22,6 +22,7 @@
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_graphics3d_ids.h"
 
 #include <math.h>
 #ifndef M_PI
@@ -418,11 +419,7 @@ void *rt_camera3d_new(double fov, double aspect, double near_val, double far_val
     return cam;
 }
 
-/// @brief Build an orthographic projection matrix into `m` (column-major). Maps the
-/// box `(left,right) × (bottom,top) × (near_val,far_val)` to OpenGL NDC `[-1,1]³`.
-/// Returns early (leaving `m` as the zero matrix) when any axis has zero extent so
-/// the caller can trap on the all-zero result rather than emitting NaN pixels.
-/// @brief Construct a row-major orthographic projection matrix.
+/// @brief Construct a row-major orthographic projection matrix into `m`.
 /// @details Maps the axis-aligned view volume `[left,right] × [bottom,top] ×
 ///   [near,far]` to the OpenGL-style clip cube `[-1, 1]^3`. Z is flipped
 ///   because view space uses -Z forward while NDC uses +Z forward, giving
@@ -506,7 +503,7 @@ int8_t rt_camera3d_is_ortho(void *obj) {
 ///          forward = normalize(eye - target), right = cross(up, forward),
 ///          true_up = cross(forward, right). Uses right-handed coordinates.
 void rt_camera3d_look_at(void *obj, void *eye_v, void *target_v, void *up_v) {
-    if (!obj || !eye_v || !target_v || !up_v)
+    if (!obj || !rt_g3d_is_vec3(eye_v) || !rt_g3d_is_vec3(target_v) || !rt_g3d_is_vec3(up_v))
         return;
     rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
     if (!cam)
@@ -538,7 +535,7 @@ void rt_camera3d_look_at(void *obj, void *eye_v, void *target_v, void *up_v) {
 ///          third-person cameras and object inspection views.
 void rt_camera3d_orbit(void *obj, void *target_v, double distance, double yaw, double pitch) {
     rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
-    if (!cam || !target_v)
+    if (!cam || !rt_g3d_is_vec3(target_v))
         return;
 
     double tx = finite_or(rt_vec3_x(target_v), 0.0);
@@ -573,8 +570,7 @@ void rt_camera3d_orbit(void *obj, void *target_v, double distance, double yaw, d
     cam->eye[2] = eye[2];
 
     build_look_at(cam->view, eye, target, up);
-    cam->fps_yaw = yaw;
-    cam->fps_pitch = pitch;
+    camera_sync_fps_angles_from_view(cam);
     camera_apply_shake_to_view(cam);
 }
 
@@ -616,7 +612,7 @@ void rt_camera3d_set_position(void *obj, void *pos) {
     double target[3];
 
     rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
-    if (!cam || !pos)
+    if (!cam || !rt_g3d_is_vec3(pos))
         return;
     forward[0] = finite_or(-cam->view[8], 0.0);
     forward[1] = finite_or(-cam->view[9], 0.0);
@@ -1012,7 +1008,7 @@ void rt_camera3d_shake(void *obj, double intensity, double duration, double deca
 void rt_camera3d_smooth_follow(
     void *obj, void *target_pos, double distance, double height, double speed, double dt) {
     rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
-    if (!cam || !target_pos)
+    if (!cam || !rt_g3d_is_vec3(target_pos))
         return;
 
     height = finite_or(height, 0.0);
@@ -1051,7 +1047,7 @@ void rt_camera3d_smooth_follow(
 /// @brief Smoothly rotate the camera toward a look-at target over time.
 void rt_camera3d_smooth_look_at(void *obj, void *target, double speed, double dt) {
     rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
-    if (!cam || !target)
+    if (!cam || !rt_g3d_is_vec3(target))
         return;
 
     /* Current forward from view matrix */

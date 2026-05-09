@@ -17,6 +17,13 @@
 //   - Additive mode submits one batched draw; alpha mode submits one keyed quad
 //     draw per particle so scene sorting remains correct.
 //   - xorshift32 PRNG for deterministic randomization (no stdlib rand).
+//   - Material is built once and reused across frames per GFX-052.
+//
+// Ownership/Lifetime:
+//   - Particles3D is GC-managed; finalizer frees the particle pool and drops
+//     refs on texture and cached material.
+//   - Per-frame vertex/index buffers are parked on the canvas's temp-buffer
+//     queue and freed at end-of-frame.
 //
 // Links: rt_particles3d.h, plans/3d/17-particle-system.md
 //
@@ -87,6 +94,7 @@ typedef struct {
     void *cached_material; /* reused across frames (GFX-052) */
 } rt_particles3d;
 
+/// @brief Validate @p obj as a Particles3D handle and return its typed pointer (NULL on mismatch).
 static rt_particles3d *particles3d_checked(void *obj) {
     return (rt_particles3d *)rt_g3d_checked_or_null(obj, RT_G3D_PARTICLES3D_CLASS_ID);
 }
@@ -150,7 +158,7 @@ static double particles_nonnegative_or_zero(double value) {
 }
 
 /// @brief Clamp `value` to [lo, hi], converting NaN/Inf to `lo`.
-/// @details Used for parameters like spread (0..PI) and alpha (0..1) where the
+/// @details Used for bounded parameters like spread and alpha where the
 ///   valid range is bounded on both ends and NaN must be handled gracefully.
 static double particles_clamp(double value, double lo, double hi) {
     if (!isfinite(value))
@@ -272,7 +280,7 @@ static void rt_particles3d_finalize(void *obj) {
 /// @brief Allocate a new particle emitter with an internally-sized pool of up to
 /// `max_particles` concurrent particles. Rejects 0 / negative / >100000 to keep a predictable
 /// memory ceiling — the pool is calloc'd up front so spawn/kill cost stays O(1) with no
-/// re-allocation. Defaults are tuned for a generic sparkle: upward cone emit, 0.3 rad spread,
+/// re-allocation. Defaults are tuned for a generic sparkle: upward cone emit, ~17° spread,
 /// 1-3 u/s speed, 0.5-1.5 s lifetime, 0.2 → 0.05 size taper, 9.8 u/s² gravity, white colour,
 /// 1.0 → 0.0 alpha fade, rate 20 /s, alpha-blend mode, point-source emitter. The PRNG state is
 /// mixed with the instance pointer so two emitters constructed in the same tick produce
@@ -352,8 +360,8 @@ void rt_particles3d_set_position(void *o, double x, double y, double z) {
     p->position[2] = particles_finite_or(z, 0.0);
 }
 
-/// @brief Set the average emit direction (normalized internally) and the cone half-angle
-/// `spread` in radians. spread=0 means perfectly aligned, spread=π means full sphere.
+/// @brief Set the average emit direction (normalized internally) and cone half-angle in degrees.
+/// spread=0 means perfectly aligned, spread=180 means full sphere.
 void rt_particles3d_set_direction(void *o, double dx, double dy, double dz, double spread) {
     rt_particles3d *p = particles3d_checked(o);
     if (!p)
@@ -371,7 +379,7 @@ void rt_particles3d_set_direction(void *o, double dx, double dy, double dz, doub
         p->emit_dir[1] = 1.0;
         p->emit_dir[2] = 0.0;
     }
-    p->emit_spread = particles_clamp(spread, 0.0, M_PI);
+    p->emit_spread = particles_clamp(spread, 0.0, 180.0) * (M_PI / 180.0);
 }
 
 /// @brief Set the per-particle initial speed range [mn, mx] in world-units/sec (uniform random).

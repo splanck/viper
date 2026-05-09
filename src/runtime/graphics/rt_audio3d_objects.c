@@ -7,7 +7,27 @@
 //
 // File: src/runtime/graphics/rt_audio3d_objects.c
 // Purpose: Object-backed 3D audio listener/source APIs layered on top of the
-//   low-level Audio3D helpers and the existing 2D voice runtime.
+//   low-level Audio3D helpers and the existing 2D voice runtime. Backs
+//   `Viper.Graphics3D.AudioListener3D` and `Viper.Graphics3D.AudioSource3D`.
+//
+// Key invariants:
+//   - At most one AudioListener3D may be active at a time; activation pushes
+//     the listener's state into rt_audio3d.c's active-listener slot.
+//   - Listeners and sources are tracked in process-global doubly-linked lists
+//     so SyncBindings can walk them every frame without external state.
+//   - A bound camera or scene node overrides explicit position / forward;
+//     unbinding restores caller-set values.
+//
+// Ownership/Lifetime:
+//   - Listener and source objects are heap-allocated and GC-managed.
+//   - bound_node / bound_camera / sound references are retained on assignment
+//     and released on unbind / finalize.
+//   - Active-listener handle is a weak pointer — clearing the active listener
+//     simply removes it from the active slot without touching its refcount.
+//
+// Links: src/runtime/graphics/rt_audiolistener3d.h (AudioListener3D API),
+//        src/runtime/graphics/rt_audiosource3d.h (AudioSource3D API),
+//        src/runtime/graphics/rt_audio3d.h (low-level spatial helpers)
 //
 //===----------------------------------------------------------------------===//
 
@@ -86,11 +106,13 @@ static void audio3d_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Drop one reference and free if zero. Safe on NULL.
 static void audio3d_release_local(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
+/// @brief Return @p value when finite, else @p fallback.
 static double audio3d_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }

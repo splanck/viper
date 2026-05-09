@@ -67,11 +67,20 @@ static void path3d_finalizer(void *obj) {
     p->point_count = p->point_capacity = 0;
 }
 
+/// @brief Drop one local refcount on @p obj and free if it hits zero.
+/// @details Used by callers that take a transient Vec3 from a path-evaluation
+///   helper and need to release it before returning their own result.
 static void path3d_release_local(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
+/// @brief Grow the parallel `xs` / `ys` / `zs` coordinate arrays to hold @p min_capacity entries.
+/// @details Geometric growth (doubling from PATH3D_INIT_CAP) keeps amortised
+///   `add_point` cost O(1). All three arrays are reallocated together and on
+///   any failure the new buffers are freed before returning so the path stays
+///   in its previous valid state. Returns 1 on success, 0 (after `rt_trap`) on
+///   overflow or OOM.
 static int path3d_reserve(rt_path3d *p, int32_t min_capacity) {
     if (!p || min_capacity <= p->point_capacity)
         return 1;
@@ -146,7 +155,7 @@ void *rt_path3d_new(void) {
 
 /// @brief Append a control point to the path (invalidates cached arc length).
 void rt_path3d_add_point(void *obj, void *pos) {
-    if (!obj || !pos)
+    if (!obj || !rt_g3d_is_vec3(pos))
         return;
     rt_path3d *p = (rt_path3d *)rt_g3d_checked_or_null(obj, RT_G3D_PATH3D_CLASS_ID);
     if (!p)

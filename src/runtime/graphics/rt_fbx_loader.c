@@ -17,6 +17,16 @@
 //   - Negative polygon indices mark end-of-polygon (bitwise NOT to decode).
 //   - Coordinate system correction applied if source is Z-up.
 //   - Fan triangulation for quads/n-gons (assumes convex polygons).
+//   - Skinning palette is reduced to the top 4 (bone, weight) influences per
+//     vertex and renormalized to sum to 1.
+//
+// Ownership/Lifetime:
+//   - rt_fbx_asset is GC-managed; finalizer releases every owned mesh,
+//     material, animation, morph target, skeleton, and scene root.
+//   - Parser scratch state (node tree, connection table, binding tables,
+//     mesh remaps) is freed before returning from rt_fbx_load.
+//   - Texture references loaded from disk are released after assignment to
+//     the materials that retain them.
 //
 // Links: rt_fbx_loader.h, plans/3d/15-fbx-loader.md
 //

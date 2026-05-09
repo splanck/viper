@@ -285,6 +285,14 @@ void *rt_quat_slerp(void *a, void *b, double t) {
         bz = -bz;
         bw = -bw;
     }
+    if (!isfinite(dot)) {
+        rt_trap("Quat.Slerp: non-finite quaternion dot");
+        return quat_alloc(0.0, 0.0, 0.0, 1.0);
+    }
+    if (dot > 1.0)
+        dot = 1.0;
+    if (dot < -1.0)
+        dot = -1.0;
 
     double s0, s1;
     if (dot > 0.9995) {

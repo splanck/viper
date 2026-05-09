@@ -16,6 +16,11 @@
 //   - LOD: progressive thinning + hard cull at far distance.
 //   - Rendering: queues instanced blade draws through Canvas3D so they share
 //     the same shadow, sorting, and overlay pipeline as other 3D content.
+//   - Backface culling temporarily disabled for grass (visible both sides).
+//
+// Ownership/Lifetime:
+//   - Vegetation3D is GC-managed; finalizer frees per-instance buffers and
+//     releases the blade mesh, blade material, and density map.
 //
 // Links: rt_vegetation3d.h, rt_terrain3d.h, rt_canvas3d.h
 //
@@ -80,10 +85,12 @@ typedef struct {
     int32_t visible_capacity;
 } rt_vegetation3d;
 
+/// @brief Return @p value when finite, else @p fallback. Sanitizes scalar inputs.
 static double vegetation_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+/// @brief Drop one GC reference held in `*slot` and clear the slot. NULL-safe.
 static void vegetation3d_release_ref(void **slot) {
     if (!slot || !*slot)
         return;
@@ -92,6 +99,7 @@ static void vegetation3d_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Retain-then-release swap into @p slot. Safe on self-assign.
 static void vegetation3d_assign_ref(void **slot, void *value) {
     if (!slot || *slot == value)
         return;

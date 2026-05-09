@@ -1109,7 +1109,20 @@ static void test_model3d_autoplays_gltf_node_and_morph_animation() {
     }
 }
 
+static void test_model3d_rejects_wrong_handle_types() {
+    void *node = rt_scene_node3d_new();
+    EXPECT_TRUE(rt_model3d_get_mesh_count(node) == 0,
+                "Model3D.GetMeshCount rejects non-Model3D handles");
+    EXPECT_TRUE(rt_model3d_get_mesh(node, 0) == nullptr,
+                "Model3D.GetMesh rejects non-Model3D handles");
+    EXPECT_TRUE(rt_model3d_instantiate(node) == nullptr,
+                "Model3D.Instantiate rejects non-Model3D handles");
+    EXPECT_TRUE(rt_model3d_instantiate_scene(node) == nullptr,
+                "Model3D.InstantiateScene rejects non-Model3D handles");
+}
+
 int main() {
+    test_model3d_rejects_wrong_handle_types();
     test_model3d_roundtrips_vscn_assets();
     test_model3d_adapts_gltf_scene_graphs();
     test_model3d_adapts_fbx_scene_graphs();

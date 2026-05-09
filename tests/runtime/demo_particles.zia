@@ -15,7 +15,7 @@ func start() {
     // Fountain particle system
     var fountain = Particles3D.New(500);
     Particles3D.SetPosition(fountain, 0.0, -0.5, 0.0);
-    Particles3D.SetDirection(fountain, 0.0, 1.0, 0.0, 0.4);
+    Particles3D.SetDirection(fountain, 0.0, 1.0, 0.0, 23.0);
     Particles3D.SetSpeed(fountain, 3.0, 6.0);
     Particles3D.SetLifetime(fountain, 1.0, 2.5);
     Particles3D.SetSize(fountain, 0.15, 0.03);
@@ -28,7 +28,7 @@ func start() {
     // Fire particle system (additive blending)
     var fire = Particles3D.New(300);
     Particles3D.SetPosition(fire, 2.0, -0.5, 0.0);
-    Particles3D.SetDirection(fire, 0.0, 1.0, 0.0, 0.3);
+    Particles3D.SetDirection(fire, 0.0, 1.0, 0.0, 17.0);
     Particles3D.SetSpeed(fire, 1.0, 2.5);
     Particles3D.SetLifetime(fire, 0.3, 0.8);
     Particles3D.SetSize(fire, 0.3, 0.05);

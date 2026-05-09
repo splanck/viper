@@ -16,6 +16,13 @@
 //   - Bloom uses a half-resolution scratch buffer for performance.
 //   - Effects chain in order: first added = first applied.
 //   - Temporary buffers are allocated per-apply and freed after.
+//   - SSAO / DOF / Motion Blur require GPU scene buffers and trap on CPU path.
+//   - Tonemap mode 0 is identity (passthrough); modes 1/2 are Reinhard/ACES.
+//
+// Ownership/Lifetime:
+//   - PostFX3D is GC-managed; finalizer frees the heap effect array.
+//   - Backend chain snapshots own their own effect-descriptor storage and
+//     are reset / freed via vgfx3d_postfx_chain_reset / _free.
 //
 // Links: rt_postfx3d.h, plans/3d/18-post-processing.md
 //
@@ -26,6 +33,7 @@
 #include "rt_postfx3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_graphics3d_ids.h"
 #include "vgfx.h"
 #include "vgfx3d_backend_utils.h"
 
@@ -114,6 +122,11 @@ typedef struct {
     int32_t effect_capacity;
     int8_t enabled;
 } rt_postfx3d;
+
+/// @brief Validate @p obj as a PostFX3D handle and return its typed pointer (NULL on mismatch).
+static rt_postfx3d *postfx3d_checked(void *obj) {
+    return (rt_postfx3d *)rt_g3d_checked_or_null(obj, RT_G3D_POSTFX3D_CLASS_ID);
+}
 
 /*==========================================================================
  * Helpers
@@ -306,7 +319,7 @@ static int vgfx3d_postfx_fill_effect_snapshot(const postfx_entry_t *e,
 ///          creating the depth/velocity attachments.
 /// @return 1 if the chain requires auxiliary GPU scene buffers, 0 if color-only.
 int vgfx3d_postfx_requires_gpu_scene_buffers(void *postfx) {
-    rt_postfx3d *fx = (rt_postfx3d *)postfx;
+    rt_postfx3d *fx = postfx3d_checked(postfx);
     if (!fx || !fx->enabled || fx->effect_count <= 0)
         return 0;
     for (int32_t i = 0; i < fx->effect_count; i++) {
@@ -785,9 +798,9 @@ void *rt_postfx3d_new(void) {
 /// intensity 0.3–1.5, passes 2–6.
 void rt_postfx3d_add_bloom(void *obj, double threshold, double intensity, int64_t blur_passes) {
     postfx_entry_t *e;
-    if (!obj)
+    rt_postfx3d *fx = postfx3d_checked(obj);
+    if (!fx)
         return;
-    rt_postfx3d *fx = (rt_postfx3d *)obj;
     e = postfx_append_entry(fx);
     if (!e)
         return;
@@ -802,9 +815,9 @@ void rt_postfx3d_add_bloom(void *obj, double threshold, double intensity, int64_
 /// 2 = ACES filmic. `exposure` scales the input before mapping (typical 0.5–2.0).
 void rt_postfx3d_add_tonemap(void *obj, int64_t mode, double exposure) {
     postfx_entry_t *e;
-    if (!obj)
+    rt_postfx3d *fx = postfx3d_checked(obj);
+    if (!fx)
         return;
-    rt_postfx3d *fx = (rt_postfx3d *)obj;
     e = postfx_append_entry(fx);
     if (!e)
         return;
@@ -818,9 +831,9 @@ void rt_postfx3d_add_tonemap(void *obj, int64_t mode, double exposure) {
 /// luminance discontinuities. Defaults to standard edge-threshold 0.166 / min-threshold 0.0833.
 void rt_postfx3d_add_fxaa(void *obj) {
     postfx_entry_t *e;
-    if (!obj)
+    rt_postfx3d *fx = postfx3d_checked(obj);
+    if (!fx)
         return;
-    rt_postfx3d *fx = (rt_postfx3d *)obj;
     e = postfx_append_entry(fx);
     if (!e)
         return;
@@ -834,9 +847,9 @@ void rt_postfx3d_add_fxaa(void *obj) {
 /// `brightness` adds, `contrast` scales around 0.5, `saturation` interpolates from grayscale.
 void rt_postfx3d_add_color_grade(void *obj, double brightness, double contrast, double saturation) {
     postfx_entry_t *e;
-    if (!obj)
+    rt_postfx3d *fx = postfx3d_checked(obj);
+    if (!fx)
         return;
-    rt_postfx3d *fx = (rt_postfx3d *)obj;
     e = postfx_append_entry(fx);
     if (!e)
         return;
@@ -851,9 +864,9 @@ void rt_postfx3d_add_color_grade(void *obj, double brightness, double contrast, 
 /// fraction of half-screen-min-axis (typical 0.5–0.8); `softness` controls the falloff width.
 void rt_postfx3d_add_vignette(void *obj, double radius, double softness) {
     postfx_entry_t *e;
-    if (!obj)
+    rt_postfx3d *fx = postfx3d_checked(obj);
+    if (!fx)
         return;
-    rt_postfx3d *fx = (rt_postfx3d *)obj;
     e = postfx_append_entry(fx);
     if (!e)
         return;
@@ -866,20 +879,22 @@ void rt_postfx3d_add_vignette(void *obj, double radius, double softness) {
 /// @brief Master enable/disable for the entire effect chain. Disabled = framebuffer passes
 /// through unchanged. Individual effects keep their own configuration.
 void rt_postfx3d_set_enabled(void *obj, int8_t enabled) {
-    if (obj)
-        ((rt_postfx3d *)obj)->enabled = enabled;
+    rt_postfx3d *fx = postfx3d_checked(obj);
+    if (fx)
+        fx->enabled = enabled;
 }
 
 /// @brief Returns 1 if the post-FX chain is currently enabled.
 int8_t rt_postfx3d_get_enabled(void *obj) {
-    return obj ? ((rt_postfx3d *)obj)->enabled : 0;
+    rt_postfx3d *fx = postfx3d_checked(obj);
+    return fx ? fx->enabled : 0;
 }
 
 /// @brief Drop every effect in the chain (fresh state). Master enable flag preserved.
 void rt_postfx3d_clear(void *obj) {
-    if (!obj)
+    rt_postfx3d *fx = postfx3d_checked(obj);
+    if (!fx)
         return;
-    rt_postfx3d *fx = (rt_postfx3d *)obj;
     fx->effect_count = 0;
     if (fx->effects && fx->effect_capacity > 0) {
         memset(fx->effects, 0, (size_t)fx->effect_capacity * sizeof(*fx->effects));
@@ -888,7 +903,8 @@ void rt_postfx3d_clear(void *obj) {
 
 /// @brief Number of effects currently in the chain.
 int64_t rt_postfx3d_get_effect_count(void *obj) {
-    return obj ? ((rt_postfx3d *)obj)->effect_count : 0;
+    rt_postfx3d *fx = postfx3d_checked(obj);
+    return fx ? fx->effect_count : 0;
 }
 
 /*==========================================================================
@@ -898,9 +914,11 @@ int64_t rt_postfx3d_get_effect_count(void *obj) {
 /// @brief Attach a PostFX3D chain to a Canvas3D. Pass NULL to detach. The canvas retains a
 /// reference; the previous chain is released. Apply runs automatically on `_flip`.
 void rt_canvas3d_set_post_fx(void *canvas, void *postfx) {
-    if (!canvas)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas);
+    if (!c)
         return;
-    rt_canvas3d *c = (rt_canvas3d *)canvas;
+    if (postfx && !postfx3d_checked(postfx))
+        return;
     if (c->postfx == postfx)
         return;
     if (postfx)
@@ -922,7 +940,7 @@ void rt_postfx3d_apply_to_canvas(void *canvas) {
     if (!canvas)
         return;
     rt_canvas3d *c = (rt_canvas3d *)canvas;
-    rt_postfx3d *fx = (rt_postfx3d *)c->postfx;
+    rt_postfx3d *fx = postfx3d_checked(c->postfx);
     if (!fx || !fx->enabled || fx->effect_count == 0)
         return;
     if (vgfx3d_postfx_requires_gpu_scene_buffers(fx)) {
@@ -967,9 +985,9 @@ void rt_postfx3d_apply_to_canvas(void *canvas) {
 /// Higher `samples` = better quality but slower.
 void rt_postfx3d_add_ssao(void *obj, double radius, double intensity, int64_t samples) {
     postfx_entry_t *e;
-    if (!obj)
+    rt_postfx3d *fx = postfx3d_checked(obj);
+    if (!fx)
         return;
-    rt_postfx3d *fx = (rt_postfx3d *)obj;
     e = postfx_append_entry(fx);
     if (!e)
         return;
@@ -985,9 +1003,9 @@ void rt_postfx3d_add_ssao(void *obj, double radius, double intensity, int64_t sa
 /// kernel radius in pixels. Larger aperture = shallower DOF.
 void rt_postfx3d_add_dof(void *obj, double focus_distance, double aperture, double max_blur) {
     postfx_entry_t *e;
-    if (!obj)
+    rt_postfx3d *fx = postfx3d_checked(obj);
+    if (!fx)
         return;
-    rt_postfx3d *fx = (rt_postfx3d *)obj;
     e = postfx_append_entry(fx);
     if (!e)
         return;
@@ -1002,9 +1020,9 @@ void rt_postfx3d_add_dof(void *obj, double focus_distance, double aperture, doub
 /// the per-pixel sample count along the motion vector (more = smoother but slower).
 void rt_postfx3d_add_motion_blur(void *obj, double intensity, int64_t samples) {
     postfx_entry_t *e;
-    if (!obj)
+    rt_postfx3d *fx = postfx3d_checked(obj);
+    if (!fx)
         return;
-    rt_postfx3d *fx = (rt_postfx3d *)obj;
     e = postfx_append_entry(fx);
     if (!e)
         return;
@@ -1085,11 +1103,11 @@ int vgfx3d_postfx_get_chain(void *postfx, vgfx3d_postfx_chain_t *out) {
 
     if (!out)
         return 0;
-    if (!postfx) {
+    fx = postfx3d_checked(postfx);
+    if (!fx) {
         vgfx3d_postfx_chain_reset(out);
         return 0;
     }
-    fx = (rt_postfx3d *)postfx;
     if (!fx->enabled || fx->effect_count == 0) {
         vgfx3d_postfx_chain_reset(out);
         return 0;
@@ -1135,9 +1153,9 @@ int vgfx3d_postfx_get_snapshot(void *postfx, vgfx3d_postfx_snapshot_t *out) {
     if (!out)
         return 0;
     memset(out, 0, sizeof(*out));
-    if (!postfx)
+    fx = postfx3d_checked(postfx);
+    if (!fx)
         return 0;
-    fx = (rt_postfx3d *)postfx;
     if (!fx->enabled || fx->effect_count == 0)
         return 0;
 

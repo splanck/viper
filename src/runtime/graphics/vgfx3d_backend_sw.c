@@ -16,6 +16,11 @@
 //   - Sutherland-Hodgman frustum clipping in 4D clip space
 //   - Blinn-Phong per-vertex lighting (Gouraud shading)
 //   - Perspective-correct texture mapping
+//   - Shadow pass clips each tri against the shadow frustum before rasterization.
+//
+// Ownership/Lifetime:
+//   - Software backend context is owned by Canvas3D; freed in its destroy_ctx hook.
+//   - Z-buffer and vertex scratch are heap allocations resized on demand.
 //
 // Links: vgfx3d_backend.h, rt_canvas3d_internal.h
 //
@@ -2166,6 +2171,11 @@ typedef struct {
     float clip[4];
 } shadow_clip_vertex_t;
 
+/// @brief Signed distance from a clip-space vertex to the @p plane-th frustum plane.
+/// @details Plane indexing (0..5) is left, right, bottom, top, near, far. Positive
+///   results mean the vertex is on the inside half-space of that plane. Used by the
+///   shadow-pass Sutherland-Hodgman polygon clipper to test which side each input
+///   vertex falls on.
 static float shadow_clip_distance(const shadow_clip_vertex_t *v, int plane) {
     switch (plane) {
     case 0:
@@ -2183,6 +2193,10 @@ static float shadow_clip_distance(const shadow_clip_vertex_t *v, int plane) {
     }
 }
 
+/// @brief Linearly interpolate two clip-space vertices at parameter @p t.
+/// @details Used by the shadow polygon clipper to construct the new vertex generated
+///   when an edge crosses a clip plane. The interpolation runs on the homogeneous
+///   clip-space coordinates so the resulting position lies on the original edge.
 static shadow_clip_vertex_t shadow_clip_lerp(const shadow_clip_vertex_t *a,
                                              const shadow_clip_vertex_t *b,
                                              float t) {
@@ -2192,6 +2206,12 @@ static shadow_clip_vertex_t shadow_clip_lerp(const shadow_clip_vertex_t *a,
     return out;
 }
 
+/// @brief Sutherland-Hodgman clip a polygon in 4D clip space against the 6 frustum planes.
+/// @details Walks each plane in turn; for every input edge, emits the entry intersection
+///   when one endpoint is outside, and emits the inside endpoint unchanged. The output
+///   polygon replaces the input via a `tmp[]` swap buffer (max 16 vertices). Returns the
+///   final clipped polygon vertex count, with the result written back to @p poly. Used
+///   by the shadow-pass shadow-map rasterizer to clip triangles against the shadow frustum.
 static int shadow_clip_polygon(shadow_clip_vertex_t *poly, int count) {
     shadow_clip_vertex_t tmp[16];
     for (int plane = 0; plane < 6; plane++) {

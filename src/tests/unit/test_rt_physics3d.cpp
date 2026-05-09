@@ -259,6 +259,11 @@ static void test_body_sanitizes_nonfinite_motion_state() {
                 1.0,
                 0.001,
                 "Body invalid quaternion resets to identity");
+    rt_body3d_set_orientation(b, b);
+    EXPECT_NEAR(rt_quat_w(rt_body3d_get_orientation(b)),
+                1.0,
+                0.001,
+                "Body.SetOrientation rejects non-Quat handles");
 
     rt_body3d_set_linear_damping(b, INFINITY);
     rt_body3d_set_angular_damping(b, NAN);
@@ -605,6 +610,10 @@ static void test_character_sanitizes_motion_config() {
     EXPECT_TRUE(std::isfinite(rt_vec3_x(pos)) && std::isfinite(rt_vec3_y(pos)) &&
                     std::isfinite(rt_vec3_z(pos)),
                 "Character move ignores non-finite dt");
+    double before_x = rt_vec3_x(pos);
+    rt_character3d_move(c, c, 1.0);
+    pos = rt_character3d_get_position(c);
+    EXPECT_NEAR(rt_vec3_x(pos), before_x, 0.001, "Character3D.Move rejects non-Vec3 handles");
 }
 
 static void test_character_world_binding() {
@@ -1062,6 +1071,7 @@ static void test_trigger_contains_outside() {
     void *t = rt_trigger3d_new(-1, -1, -1, 1, 1, 1);
     void *p = rt_vec3_new(5, 0, 0);
     EXPECT_TRUE(rt_trigger3d_contains(t, p) == 0, "Point at (5,0,0) outside [-1,1] trigger");
+    EXPECT_TRUE(rt_trigger3d_contains(t, t) == 0, "Trigger3D.Contains rejects non-Vec3 handles");
 }
 
 static void test_trigger_enter_detection() {

@@ -23,6 +23,7 @@ A focused hardening-and-correctness cycle on the v0.2.5 surface. No new public n
 - Windows x64 stabilization — out-of-order block-param lowering, RSP/RBP scheduling boundaries, lone-JCC trace fix, parallel-copy spill scratch reuse, 256-bone D3D11 cbuffer.
 - x86-64 backend liveness contracts — compare/branch fold safety across edge copies, IMUL→LEA refusal when flags are read, block-DCE preservation of physical registers at exits, fixed-physical-register spill-before-clobber, void-return zero exit code.
 - 2D graphics correctness round 2 — class-id validation on every typed handle, premultiplied-alpha bilinear sampler, tagged `Color.RGBA(...,0)` distinguishable from legacy `0x00RRGGBB`, alpha-preserving Canvas `BlitAlpha` and particle source-over, Lighting2D tile-light per-frame lifetime.
+- Graphics3D correctness round — Canvas3D HUD/skinned/morphed/blended draw entries, Mesh3D skeleton + morph-target retain integration, atomic Scene3D reparent, Physics3D raycast/joint hardening, terrain/skeleton input validation, glTF JOINTS round-trip in `SetBoneWeights`, new `Viper.Graphics3D.GLTF` runtime class plus `Scene3D.Load`.
 - Typed `Parse.*` string ABI — `Viper.Core.Parse.Double` / `Int64` signatures flipped to `i32(str,ptr)`; legacy raw-pointer ABI preserved for INPUT# parsing via internal aliases.
 - Heap immortal-refcount sentinel split — `RT_HEAP_IMMORTAL_REFCNT` (`SIZE_MAX-1`) reserved as a sticky immortal value distinct from the `SIZE_MAX` corruption marker.
 - MSVC build hardening — embedded debug info via CMP0141, expanded import policy for UCRT/Win32 symbols, WSL-aware audit and smoke scripts.
@@ -32,13 +33,13 @@ A focused hardening-and-correctness cycle on the v0.2.5 surface. No new public n
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 27 | +27 |
+| Commits | — | 29 | +29 |
 | Source files | 2,996 | 3,005 | +9 |
 | Production SLOC | 552K | 563K | +11K |
-| Test SLOC | 228K | 233K | +5K |
+| Test SLOC | 228K | 234K | +6K |
 | Demo SLOC | 188K | 188K | 0 |
 
-Counts via `scripts/count_sloc.sh` (production 562,812 / test 233,360 / demo 187,826 / source files 3,005).
+Counts via `scripts/count_sloc.sh` (production 563,300 / test 233,581 / demo 187,826 / source files 3,005).
 
 ---
 
@@ -171,6 +172,24 @@ Counts via `scripts/count_sloc.sh` (production 562,812 / test 233,360 / demo 187
 - `Lighting2D.AddTileLight` now stores screen-space lights in a separate per-frame pool that's drained after `Draw`, replacing the broken 1-frame-life dynamic-light approach that expired before the render under Update-then-Draw call orderings.
 - `AnimatedSprite2D.Play()` restarts a finished non-looping clip from its first effective frame so one-shot clips can be replayed without reconstructing the clip object.
 
+### Graphics3D
+
+- `Canvas3D` gains `DrawMeshSkinned`, `DrawMeshMorphed`, and `DrawMeshBlended` matrix-keyed mesh draws so callers can render skeletal-animated, morph-target-driven, or combined-pose meshes through a single dispatch path. New `DrawVegetation`, `SetPostFX`, `DrawRect2D`, `DrawCrosshair`, and `DrawText2D` cover HUD-style overlay use cases.
+- New `canvas3d_clamp01_to_u8`, `canvas3d_double_fits_float`, `canvas3d_mat4_d2f_checked`, `canvas3d_matrices_f32_are_finite`, and `canvas3d_mat4_checked` helpers centralise float-range and class-id validation across every matrix-keyed draw path. NaN, infinity, and out-of-FLT-range values surface as a no-op or trap instead of feeding garbage to the GPU backend; framebuffer clear and skybox CPU paths use the proper row stride and clamped u8 conversion.
+- `Canvas3D` per-draw pending-splat state is now cleared on every early-return path (NULL mesh / matrix, frame inactive, malformed Mat4, mesh empty) so a failed splat-configured draw can no longer leak its splat-map and four layer pointers into the next successful draw.
+- `Canvas3D.DrawMeshInstanced` validation reordered: the fallback `instance_count > CANVAS3D_MAX_FALLBACK_INSTANCES` check runs first, then matrix-finiteness validation, then tracked-object registration, then geometry snapshot. The previous order iterated every instance matrix and registered references on the canvas before trapping on the size limit.
+- `Mesh3D.SetSkeleton` is no longer a stub — validates the skeleton handle, retains a slot on the mesh, releases the previous binding, and updates `bone_count` (clamped to `VGFX3D_MAX_BONES`). `SetBoneWeights` validates the mesh handle through `rt_g3d_checked_or_null`, preserves valid in-range bone *indices* even when their weight slot is zero or NaN (so glTF JOINTS attributes round-trip), and rejects only out-of-range indices. `bone_count` reflects every authored joint index, not just contributing ones.
+- `Mesh3D.Clone` refuses to clone a build-failed source (traps with `Mesh3D.Clone: cannot clone a failed mesh build`), preserves `bone_count` only when the source actually has skinning data (bound skeleton or non-zero weights), retains the skeleton + morph-target references on the clone, and resets `build_failed` so retry paths work.
+- `Mesh3D.FromObj` recomputes the full normal set when *any* face references vertex `0` for its normal index — partial-normal OBJ exports no longer leak zero normals into the runtime alongside their authored normals.
+- `Skeleton3D` bind-pose copy validates each Mat4 entry through a finite-and-FLT-range check; malformed matrices fall back to identity instead of stamping NaN/inf into the bind pose. `rt_animation3d_new` falls back to a 1.0-second duration when given a non-finite or non-positive value (was 0.0, which made AnimPlayer3D treat the animation as instantly complete).
+- `MorphTarget3D` matrix-keyed draws validate the Mat4 class id and finiteness up front so a corrupt blend-shape matrix surfaces as a no-op rather than writing through stale memory.
+- `Physics3D.World3D` joint storage growth rewritten as `calloc` + `memcpy` + `free` of the old arrays; the previous double-realloc could leave the joint pointer array realloc'd live with a stale `joint_capacity` if the type-tag realloc failed. `AddJoint` deduplicates — registering the same joint twice is a no-op instead of a double-fired constraint.
+- `Physics3D` raycast helpers (`raycast_sphere_raw`, `raycast_aabb_raw`, `ray_fill_hit`) give every result a coherent contact point, outward normal, fraction, and `started_penetrating` flag. The AABB path uses slab-test intersection with explicit handling of axis-parallel rays and inside-shape starts.
+- `Scene3D` reparent is now atomic with respect to refcount: `AddChild` retains the child *before* detaching it from the previous parent so reparenting a node within the same scene never drops its refcount to zero. Self-reparent and re-add-to-same-parent are explicit no-ops; `count_subtree` is NULL-safe; `Scene3D.New` traps and frees on root-allocation failure.
+- `Terrain3D.GeneratePerlin` validates `scale`, `octaves`, and `persistence` — NaN/inf inputs fall back to safe defaults, octaves clamp to `[1, 16]`, persistence clamps to `[0.0, 1.0]`. Per-cell heights are clamped to `[0, 1]` after the noise lookup so a malformed Perlin generator can't leak NaN values into the height map.
+- `Water3D.IsPixelsHandle` drops a redundant `rt_heap_is_payload` precheck that was producing false negatives on Pixels handles whose heap-registry registration window had closed; the class-id check alone is sufficient.
+- New `Viper.Graphics3D.GLTF` runtime class registered with `MeshCount`, `MaterialCount` properties and `GetMesh` / `GetMaterial` methods, mirroring the existing `FBX` import surface; `Scene3D.Load(path)` registered as a new public method.
+
 ### ViperIDE
 
 - The `zia` binary's CMake target now force-loads `fe_zia` (`LINKER:-force_load` on macOS, `--whole-archive` on Linux) — without this the static linker satisfied every `rt_zia_*` reference from the weak stubs in `viper_runtime/core/rt_zia_completion_stub.c`, so completion / hover / diagnostics / symbols silently returned `"Zia completion unavailable"`.
@@ -225,16 +244,17 @@ Counts via `scripts/count_sloc.sh` (production 562,812 / test 233,360 / demo 187
 - Threads: repeatable joins, future listener trap isolation, sticky-then-cleared pool errors through Wait / Shutdown / ShutdownNow, idempotent pool shutdown, nested-parallel same-pool execution, retained borrowed-callback results across `Async.Run` / `Async.Map` / `Parallel.Map`, synchronous-channel `TrySend`, ConcurrentMap remove/clear release-after-unlock, VM/BytecodeVM owned thread and async dispatch.
 - Crypto: scrypt round-trips, AEAD encrypt / decrypt with AAD, `ConstantTimeEquals`, TLS extension parsers.
 - 2D graphics: new `RTBitmapFontContractTests`; expanded `RTCanvasContractTests`; `RTColorUtilsTests` for alpha-tag preservation through `Brighten` / `Darken` / `Invert` / `Grayscale` / `Saturate` / `Desaturate` / `Complement` / `Lerp`; `RTSpriteContractTests` for tint-alpha survival; `RTGraphics2DTests`, `RTPixelsTests`, `RTCameraTests`, `TestTilemapAnim`. Round-2 additions cover `rt_color_get_a` legacy-vs-tagged behaviour, premultiplied-alpha bilerp on a transparent-edge texture, hex-vs-`Color.RGBA` stroke parity, TextRenderer2D rejecting non-BitmapFont fonts, `AnimatedSprite2D.Play()` replay after one-shot completion, and SpriteRenderer2D material/tint state isolation against subsequent direct `Renderer2D` draws.
+- Graphics3D: `RTGraphics3DRobustnessTests` extended with introspection structs for the Water3D and Vegetation3D internal layouts and regression coverage for the new Canvas3D draw entries, terrain Perlin clamping, mesh skeleton binding, morph Mat4 validation, scene reparent atomicity, physics joint deduplication, glTF JOINTS preservation in `SetBoneWeights`, and the bone-count derivation rule on `Mesh3D.Clone`.
 - x86-64 codegen: out-of-order block-param lowering, instruction-result pre-registration, scheduler prologue-boundary preservation, large-spill `PX_COPY` regression, lone-JCC fallthrough peephole. Backend-liveness round adds compare/branch fold-safety across edge copies, IMUL→LEA refusal under live flags, block-DCE physical-register preservation at exits, JCC-only fallthrough preservation under cold-block movement, fixed-physical-register spill-before-clobber for `RAX`/`RDX`/`CQO`/`DIV`/`IDIV`, and a void-return zero-exit-code regression.
 - D3D11: shared-backend coverage tying the bone-palette byte count to the 256 supported shader entries.
 - The seven `Viper.GUI` widget tests in `src/lib/gui/tests/` were relabeled `tui` → `gui` (a new dedicated ctest label); the wheel-scroll regression contract was rewritten with floating-point tolerance to match the new mouse-wheel constant.
 
-Demos and docs changed only as required to track the runtime work above: chess, xenoscape, and Baseball pinned to debug/O0 on Windows until their optimised-build regressions are resolved; per-file file-header and `@brief` audit across the `Viper.Graphics.*`, `Viper.Crypto.*`, `Viper.Threads.*`, `Viper.Core.*`, and `Viper.Memory.*` sources; refreshed `viperlib/` reference pages for the migrated crypto namespace, the threading repeatable-join contract, the retained `Async.Run` / `Async.Map` / `Parallel.Map` result rules, the typed `Parse.*` string ABI, the immortal-refcount macros, the per-frame Lighting2D tile-light contract, the premultiplied-alpha bilinear filter, the alpha-preserving `Canvas.BlitAlpha`, the legacy-vs-tagged particle alpha rules, the new `Palette2D.ApplyLegacy` entry, and the `rt_future_peek_value` ownership note; ADR 0002 updated; root `README.md` long-running counts re-audited (optimizer 20→24 passes, runtime 360→378 classes / 23→21 modules, demos 16→17 games, docs 185+→200+).
+Demos and docs were updated to track the runtime work above; chess, xenoscape, and Baseball are pinned to debug/O0 on Windows until their optimised-build regressions are resolved.
 
 ---
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 27-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 29-commit history since v0.2.5.
 
 <!-- END DRAFT -->

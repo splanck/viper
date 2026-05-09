@@ -35,7 +35,7 @@ void *rt_transform3d_get_position(void *xf);
 void rt_transform3d_set_rotation(void *xf, void *quat);
 /// @brief Get the rotation as a Quaternion.
 void *rt_transform3d_get_rotation(void *xf);
-/// @brief Set rotation from Euler angles in radians (pitch=X, yaw=Y, roll=Z, intrinsic order).
+/// @brief Set rotation from Euler angles in degrees (pitch=X, yaw=Y, roll=Z, intrinsic order).
 void rt_transform3d_set_euler(void *xf, double pitch, double yaw, double roll);
 /// @brief Set the per-axis scale.
 void rt_transform3d_set_scale(void *xf, double x, double y, double z);

@@ -3,6 +3,8 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
+//===----------------------------------------------------------------------===//
+//
 // File: src/runtime/graphics/rt_joints3d.c
 // Purpose: 3D physics joint constraints. Distance joints maintain fixed
 //   separation via positional correction. Spring joints apply Hooke's law

@@ -10,8 +10,13 @@
 //
 // Key invariants:
 //   - Shelf Next-Fit: textures placed left-to-right, new row when full.
-//   - 1-pixel padding border around each sub-texture.
+//   - 1-pixel padding border around each sub-texture (replicated source edges).
 //   - UV rect returned in normalized [0,1] atlas coordinates.
+//   - Maximum 256 packed regions per atlas; capacity is fixed at construction.
+//
+// Ownership/Lifetime:
+//   - TextureAtlas3D is GC-managed; finalizer frees the backing pixel buffer
+//     and the cached Pixels mirror.
 //
 // Links: rt_texatlas3d.h
 //
@@ -51,6 +56,7 @@ typedef struct {
     int8_t dirty;
 } rt_texatlas3d;
 
+/// @brief Drop one GC reference held in `*slot` and clear the slot. NULL-safe.
 static void texatlas3d_release_ref(void **slot) {
     if (!slot || !*slot)
         return;

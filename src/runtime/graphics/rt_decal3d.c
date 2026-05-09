@@ -12,6 +12,11 @@
 //   - Quad is built from position + normal using arbitrary tangent frame.
 //   - Offset 0.01 along normal prevents z-fighting with surface.
 //   - Alpha fades linearly over last 20% of lifetime.
+//   - Mesh + material are lazily constructed on first draw and reused.
+//
+// Ownership/Lifetime:
+//   - Decal3D is GC-managed; finalizer releases texture, mesh, and material.
+//   - Texture is retained on construction; lazy mesh / material are owned.
 //
 // Links: rt_decal3d.h, rt_canvas3d.h
 //
@@ -22,6 +27,7 @@
 #include "rt_decal3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_graphics3d_ids.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -71,10 +77,12 @@ static void decal3d_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Return @p value when finite, else @p fallback.
 static double decal3d_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+/// @brief Normalise the (x,y,z) vector in place; fall back to +Y on zero/non-finite input.
 static void decal3d_normalize_or_default(double *x, double *y, double *z) {
     double len;
     if (!x || !y || !z)
@@ -120,7 +128,7 @@ static void decal3d_finalizer(void *obj) {
 ///        lazy material creation stays valid across frames.
 /// @return Opaque decal handle, or NULL on failure.
 void *rt_decal3d_new(void *pos_v, void *normal_v, double size, void *texture) {
-    if (!pos_v || !normal_v)
+    if (!rt_g3d_is_vec3(pos_v) || !rt_g3d_is_vec3(normal_v))
         return NULL;
     rt_decal3d *d =
         (rt_decal3d *)rt_obj_new_i64(RT_G3D_DECAL3D_CLASS_ID, (int64_t)sizeof(rt_decal3d));

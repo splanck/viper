@@ -83,6 +83,7 @@ static float canvas3d_clamp01_f64(double value) {
     return (float)value;
 }
 
+/// @brief Clamp a float to [0,1] (NaN/inf → 0) and convert to a 0-255 byte.
 static uint8_t canvas3d_clamp01_to_u8(float value) {
     if (!isfinite(value))
         value = 0.0f;
@@ -93,11 +94,16 @@ static uint8_t canvas3d_clamp01_to_u8(float value) {
     return (uint8_t)(value * 255.0f + 0.5f);
 }
 
+/// @brief Check whether @p value is finite and within ±FLT_MAX.
+/// @details Pre-flight test for safe `double → float` narrowing.
 static int canvas3d_double_fits_float(double value) {
     return isfinite(value) && value >= -CANVAS3D_FLOAT_ABS_MAX &&
            value <= CANVAS3D_FLOAT_ABS_MAX;
 }
 
+/// @brief Narrow a 16-entry double Mat4 to float, returning 0 if any entry is non-finite.
+/// @details Used by every matrix-keyed Canvas3D draw entry so a malformed Mat4
+///          surfaces as a no-op instead of feeding garbage to the GPU backend.
 static int canvas3d_mat4_d2f_checked(const double *src, float *dst) {
     if (!src || !dst)
         return 0;
@@ -109,6 +115,8 @@ static int canvas3d_mat4_d2f_checked(const double *src, float *dst) {
     return 1;
 }
 
+/// @brief Verify every entry across an array of @p count Mat4s is finite.
+/// @details Used to validate instanced draw matrix arrays before submission.
 static int canvas3d_matrices_f32_are_finite(const float *matrices, int32_t count) {
     if (!matrices || count <= 0)
         return 0;
@@ -122,6 +130,7 @@ static int canvas3d_matrices_f32_are_finite(const float *matrices, int32_t count
     return 1;
 }
 
+/// @brief Validate @p obj is a live `Viper.Math.Mat4` heap object, NULL otherwise.
 static mat4_impl *canvas3d_mat4_checked(void *obj) {
     if (!obj || !rt_heap_is_payload(obj) || rt_obj_class_id(obj) != RT_MAT4_CLASS_ID)
         return NULL;
@@ -140,6 +149,10 @@ static float canvas3d_sanitize_nonnegative_f64(double value, float fallback) {
     return (float)value;
 }
 
+/// @brief Clear the per-draw splat-map staging slot on the canvas.
+/// @details Called on every early-return path of `rt_canvas3d_draw_mesh_matrix_keyed`
+///          so a failed splat-configured draw cannot leak its splat-map and four
+///          layer pointers into the next successful draw.
 static void canvas3d_clear_pending_splat(rt_canvas3d *c) {
     if (!c)
         return;
@@ -920,6 +933,11 @@ static int canvas3d_track_temp_object(rt_canvas3d *c, void *obj) {
     return 1;
 }
 
+/// @brief Copy mesh vertex+index arrays into canvas-owned temp buffers.
+/// @details Used when the mesh's owning heap object may be freed before the GPU
+///          consumes the draw command — the snapshot lives on the canvas's temp
+///          buffer list, freed at end-of-frame. Returns 1 on success, 0 on
+///          allocation failure or invalid mesh state.
 static int canvas3d_snapshot_mesh_geometry(rt_canvas3d *c,
                                            const rt_mesh3d *mesh,
                                            vgfx3d_vertex_t **out_vertices,
@@ -957,6 +975,9 @@ static int canvas3d_snapshot_mesh_geometry(rt_canvas3d *c,
     return 1;
 }
 
+/// @brief Decide whether to snapshot a mesh's geometry into canvas-owned buffers.
+/// @details Returns 0 for skinned/morphed meshes (they recompute every frame)
+///          and for non-heap-payload mesh objects (already canvas-stable).
 static int canvas3d_should_snapshot_heap_geometry(const rt_mesh3d *mesh, void *mesh_obj) {
     if (!mesh || !mesh_obj || !rt_heap_is_payload(mesh_obj))
         return 0;

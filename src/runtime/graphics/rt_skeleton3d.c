@@ -14,6 +14,12 @@
 //   - Palette computation: local → global (multiply up hierarchy) → * inverse_bind.
 //   - Keyframe sampling: binary search for bracket, SLERP rotation, lerp pos/scale.
 //   - Crossfade: blend per-bone local transforms between two animations.
+//   - GPU vs CPU skinning gated per-backend by bone-count limits.
+//
+// Ownership/Lifetime:
+//   - Skeleton3D / Animation3D / AnimPlayer3D are GC-managed.
+//   - Animation keyframe arrays are owned heap allocations freed in the finalizer.
+//   - Bone-name strings are retained on assignment.
 //
 // Links: rt_skeleton3d.h, vgfx3d_skinning.h, plans/3d/14-skeletal-animation.md
 //
@@ -82,17 +88,20 @@ static void mat4f_identity(float *m) {
     m[0] = m[5] = m[10] = m[15] = 1.0f;
 }
 
+/// @brief Validate @p obj is a heap-allocated Mat4 and return its typed pointer (NULL on mismatch).
 static mat4_impl *skeleton3d_mat4_checked(void *obj) {
     if (!obj || !rt_heap_is_payload(obj) || rt_obj_class_id(obj) != RT_MAT4_CLASS_ID)
         return NULL;
     return (mat4_impl *)obj;
 }
 
+/// @brief Test whether @p value is finite and fits in float range (no NaN/Inf, no overflow on cast).
 static int skeleton3d_value_fits_float(double value) {
     return isfinite(value) && value >= -SKELETON3D_FLOAT_ABS_MAX &&
            value <= SKELETON3D_FLOAT_ABS_MAX;
 }
 
+/// @brief Drop one GC reference held in `*slot` and clear the slot. NULL-safe.
 static void mesh3d_release_ref(void **slot) {
     if (!slot || !*slot)
         return;
@@ -101,6 +110,9 @@ static void mesh3d_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Retain-then-release swap: store @p value into `*slot`, releasing the previous occupant.
+/// @details Retain-before-release prevents a self-reassign or shared-owner case from
+///   prematurely dropping the refcount to zero during the transition.
 static void mesh3d_assign_ref(void **slot, void *value) {
     if (!slot || *slot == value)
         return;
@@ -347,14 +359,15 @@ void rt_skeleton3d_compute_inverse_bind(void *obj) {
 
 /// @brief Number of bones in the skeleton (0 for NULL).
 int64_t rt_skeleton3d_get_bone_count(void *obj) {
-    return obj ? ((rt_skeleton3d *)obj)->bone_count : 0;
+    rt_skeleton3d *s = (rt_skeleton3d *)rt_g3d_checked_or_null(obj, RT_G3D_SKELETON3D_CLASS_ID);
+    return s ? s->bone_count : 0;
 }
 
 /// @brief Linear search for a bone by name; returns its index or -1 if not found.
 int64_t rt_skeleton3d_find_bone(void *obj, rt_string name) {
-    if (!obj || !name)
+    rt_skeleton3d *s = (rt_skeleton3d *)rt_g3d_checked_or_null(obj, RT_G3D_SKELETON3D_CLASS_ID);
+    if (!s || !name)
         return -1;
-    rt_skeleton3d *s = (rt_skeleton3d *)obj;
     const char *target = rt_string_cstr(name);
     if (!target)
         return -1;
@@ -366,9 +379,9 @@ int64_t rt_skeleton3d_find_bone(void *obj, rt_string name) {
 
 /// @brief Read the name of bone at `index`. Empty string for out-of-range or NULL.
 rt_string rt_skeleton3d_get_bone_name(void *obj, int64_t index) {
-    if (!obj)
+    rt_skeleton3d *s = (rt_skeleton3d *)rt_g3d_checked_or_null(obj, RT_G3D_SKELETON3D_CLASS_ID);
+    if (!s)
         return rt_const_cstr("");
-    rt_skeleton3d *s = (rt_skeleton3d *)obj;
     if (index < 0 || index >= s->bone_count)
         return rt_const_cstr("");
     return rt_const_cstr(s->bones[index].name);
@@ -376,9 +389,9 @@ rt_string rt_skeleton3d_get_bone_name(void *obj, int64_t index) {
 
 /// @brief Read the bind-pose Mat4 of bone at `index` (identity for out-of-range / NULL).
 void *rt_skeleton3d_get_bone_bind_pose(void *obj, int64_t index) {
-    if (!obj)
+    rt_skeleton3d *s = (rt_skeleton3d *)rt_g3d_checked_or_null(obj, RT_G3D_SKELETON3D_CLASS_ID);
+    if (!s)
         return NULL;
-    rt_skeleton3d *s = (rt_skeleton3d *)obj;
     if (index < 0 || index >= s->bone_count)
         return NULL;
     const float *m = s->bones[index].bind_pose_local;
@@ -504,34 +517,48 @@ void *rt_animation3d_new(rt_string name, double duration) {
 /// binary-search to find the correct interpolation interval.
 void rt_animation3d_add_keyframe(
     void *obj, int64_t bone_index, double time, void *position, void *rotation, void *scale) {
-    if (!obj || bone_index < 0 || bone_index > INT32_MAX || !isfinite(time) ||
+    rt_animation3d *a = (rt_animation3d *)rt_g3d_checked_or_null(obj, RT_G3D_ANIMATION3D_CLASS_ID);
+    if (!a || bone_index < 0 || bone_index > INT32_MAX || !isfinite(time) ||
         fabs(time) > FLT_MAX)
         return;
-    rt_animation3d *a = (rt_animation3d *)obj;
+    if ((position && !rt_g3d_is_vec3(position)) || (rotation && !rt_g3d_is_quat(rotation)) ||
+        (scale && !rt_g3d_is_vec3(scale)))
+        return;
     vgfx3d_keyframe_t new_kf;
     memset(&new_kf, 0, sizeof(new_kf));
     new_kf.time = (float)time;
-    new_kf.position[0] =
-        position && isfinite(rt_vec3_x(position)) ? (float)rt_vec3_x(position) : 0.0f;
-    new_kf.position[1] =
-        position && isfinite(rt_vec3_y(position)) ? (float)rt_vec3_y(position) : 0.0f;
-    new_kf.position[2] =
-        position && isfinite(rt_vec3_z(position)) ? (float)rt_vec3_z(position) : 0.0f;
-    new_kf.rotation[0] =
-        rotation && isfinite(rt_quat_x(rotation)) ? (float)rt_quat_x(rotation) : 0.0f;
-    new_kf.rotation[1] =
-        rotation && isfinite(rt_quat_y(rotation)) ? (float)rt_quat_y(rotation) : 0.0f;
-    new_kf.rotation[2] =
-        rotation && isfinite(rt_quat_z(rotation)) ? (float)rt_quat_z(rotation) : 0.0f;
-    new_kf.rotation[3] =
-        rotation && isfinite(rt_quat_w(rotation)) ? (float)rt_quat_w(rotation) : 1.0f;
+    if (position) {
+        double px = rt_vec3_x(position);
+        double py = rt_vec3_y(position);
+        double pz = rt_vec3_z(position);
+        new_kf.position[0] = isfinite(px) ? (float)px : 0.0f;
+        new_kf.position[1] = isfinite(py) ? (float)py : 0.0f;
+        new_kf.position[2] = isfinite(pz) ? (float)pz : 0.0f;
+    }
+    if (rotation) {
+        double qx = rt_quat_x(rotation);
+        double qy = rt_quat_y(rotation);
+        double qz = rt_quat_z(rotation);
+        double qw = rt_quat_w(rotation);
+        new_kf.rotation[0] = isfinite(qx) ? (float)qx : 0.0f;
+        new_kf.rotation[1] = isfinite(qy) ? (float)qy : 0.0f;
+        new_kf.rotation[2] = isfinite(qz) ? (float)qz : 0.0f;
+        new_kf.rotation[3] = isfinite(qw) ? (float)qw : 1.0f;
+    } else {
+        new_kf.rotation[3] = 1.0f;
+    }
     sanitize_keyframe_quat(new_kf.rotation);
-    new_kf.scale_xyz[0] =
-        scale && isfinite(rt_vec3_x(scale)) ? (float)rt_vec3_x(scale) : 1.0f;
-    new_kf.scale_xyz[1] =
-        scale && isfinite(rt_vec3_y(scale)) ? (float)rt_vec3_y(scale) : 1.0f;
-    new_kf.scale_xyz[2] =
-        scale && isfinite(rt_vec3_z(scale)) ? (float)rt_vec3_z(scale) : 1.0f;
+    new_kf.scale_xyz[0] = 1.0f;
+    new_kf.scale_xyz[1] = 1.0f;
+    new_kf.scale_xyz[2] = 1.0f;
+    if (scale) {
+        double sx = rt_vec3_x(scale);
+        double sy = rt_vec3_y(scale);
+        double sz = rt_vec3_z(scale);
+        new_kf.scale_xyz[0] = isfinite(sx) ? (float)sx : 1.0f;
+        new_kf.scale_xyz[1] = isfinite(sy) ? (float)sy : 1.0f;
+        new_kf.scale_xyz[2] = isfinite(sz) ? (float)sz : 1.0f;
+    }
 
     /* Find or create channel for this bone */
     vgfx3d_anim_channel_t *ch = NULL;
@@ -592,23 +619,27 @@ void rt_animation3d_add_keyframe(
 
 /// @brief Mark this clip as looping (wraps back to t=0 at end) or one-shot (stops at end).
 void rt_animation3d_set_looping(void *obj, int8_t loop) {
-    if (obj)
-        ((rt_animation3d *)obj)->looping = loop;
+    rt_animation3d *a = (rt_animation3d *)rt_g3d_checked_or_null(obj, RT_G3D_ANIMATION3D_CLASS_ID);
+    if (a)
+        a->looping = loop;
 }
 
 /// @brief Read the looping flag (0 = one-shot, 1 = loops).
 int8_t rt_animation3d_get_looping(void *obj) {
-    return obj ? ((rt_animation3d *)obj)->looping : 0;
+    rt_animation3d *a = (rt_animation3d *)rt_g3d_checked_or_null(obj, RT_G3D_ANIMATION3D_CLASS_ID);
+    return a ? a->looping : 0;
 }
 
 /// @brief Total length of the clip in seconds (0.0 for NULL).
 double rt_animation3d_get_duration(void *obj) {
-    return obj ? ((rt_animation3d *)obj)->duration : 0.0;
+    rt_animation3d *a = (rt_animation3d *)rt_g3d_checked_or_null(obj, RT_G3D_ANIMATION3D_CLASS_ID);
+    return a ? a->duration : 0.0;
 }
 
 /// @brief The clip's display / lookup name (empty string for NULL).
 rt_string rt_animation3d_get_name(void *obj) {
-    return obj ? rt_const_cstr(((rt_animation3d *)obj)->name) : rt_const_cstr("");
+    rt_animation3d *a = (rt_animation3d *)rt_g3d_checked_or_null(obj, RT_G3D_ANIMATION3D_CLASS_ID);
+    return a ? rt_const_cstr(a->name) : rt_const_cstr("");
 }
 
 /*==========================================================================

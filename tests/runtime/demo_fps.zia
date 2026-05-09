@@ -72,7 +72,7 @@ func start() {
 
     // Impact particles
     var sparks = Particles3D.New(200);
-    Particles3D.SetDirection(sparks, 0.0, 1.0, 0.0, 1.5);
+    Particles3D.SetDirection(sparks, 0.0, 1.0, 0.0, 86.0);
     Particles3D.SetSpeed(sparks, 2.0, 5.0);
     Particles3D.SetLifetime(sparks, 0.2, 0.5);
     Particles3D.SetSize(sparks, 0.08, 0.02);

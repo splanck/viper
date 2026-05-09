@@ -12,6 +12,11 @@
 //   - Billboard computed from camera view matrix right/up vectors.
 //   - Quad built per-frame (4 verts, 2 tris) with UV from frame rect.
 //   - Anchor offset applied before billboard expansion.
+//   - Material is cached and only rebuilt when the texture changes.
+//
+// Ownership/Lifetime:
+//   - Sprite3D is GC-managed; finalizer releases texture, mesh, and material.
+//   - Per-frame mesh is parked on the canvas's temp-object queue.
 //
 // Links: rt_sprite3d.h, rt_canvas3d.h
 //
@@ -73,10 +78,12 @@ static void sprite3d_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Return @p value when finite, else @p fallback. Sanitizes Vec3 inputs.
 static double sprite3d_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+/// @brief Clamp @p value to [0, 1], substituting 0.5 for non-finite input. Used for anchor coords.
 static double sprite3d_clamp01(double value) {
     if (!isfinite(value))
         return 0.5;

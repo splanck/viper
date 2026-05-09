@@ -10,10 +10,15 @@
 //
 // Key invariants:
 //   - Light types: 0=directional (uses direction), 1=point (uses position
-//     + attenuation), 2=ambient (uniform, uses color * intensity only).
+//     + attenuation), 2=ambient (uniform, uses color * intensity only),
+//     3=spot (uses both, plus inner/outer cone cosines).
 //   - Up to VGFX3D_MAX_LIGHTS (16) per Canvas3D, set via SetLight(canvas, slot, light).
 //   - Default intensity=1.0, attenuation=0.0 (no falloff for point lights).
 //   - Direction/position are borrowed Vec3 values, copied at creation time.
+//   - Spot cone angles are stored as cosines for cheap shader comparison.
+//
+// Ownership/Lifetime:
+//   - Light3D is GC-managed; no finalizer needed (no owned heap allocations).
 //
 // Links: rt_canvas3d.h, rt_canvas3d_internal.h
 //
@@ -23,6 +28,7 @@
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_graphics3d_ids.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -34,6 +40,7 @@ extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
 
+/// @brief Validate @p obj as a Light3D handle and return its typed pointer (NULL on mismatch).
 static rt_light3d *light3d_checked(void *obj) {
     return (rt_light3d *)rt_g3d_checked_or_null(obj, RT_G3D_LIGHT3D_CLASS_ID);
 }
@@ -146,8 +153,8 @@ static void normalize_light_direction(double *x, double *y, double *z) {
 /// @param b Blue color component [0.0–1.0].
 /// @return Opaque light handle, or NULL on failure.
 void *rt_light3d_new_directional(void *direction, double r, double g, double b) {
-    if (!direction) {
-        rt_trap("Light3D.NewDirectional: direction must not be null");
+    if (!rt_g3d_is_vec3(direction)) {
+        rt_trap("Light3D.NewDirectional: direction must be a Vec3");
         return NULL;
     }
     rt_light3d *light = (rt_light3d *)rt_obj_new_i64(RT_G3D_LIGHT3D_CLASS_ID, (int64_t)sizeof(rt_light3d));
@@ -182,8 +189,8 @@ void *rt_light3d_new_directional(void *direction, double r, double g, double b) 
 /// @param attenuation Distance falloff factor (0.0 = no falloff).
 /// @return Opaque light handle, or NULL on failure.
 void *rt_light3d_new_point(void *position, double r, double g, double b, double attenuation) {
-    if (!position) {
-        rt_trap("Light3D.NewPoint: position must not be null");
+    if (!rt_g3d_is_vec3(position)) {
+        rt_trap("Light3D.NewPoint: position must be a Vec3");
         return NULL;
     }
     rt_light3d *light = (rt_light3d *)rt_obj_new_i64(RT_G3D_LIGHT3D_CLASS_ID, (int64_t)sizeof(rt_light3d));
@@ -256,8 +263,8 @@ void *rt_light3d_new_spot(void *position,
                           double attenuation,
                           double inner_angle,
                           double outer_angle) {
-    if (!position || !direction) {
-        rt_trap("Light3D.NewSpot: position and direction must not be null");
+    if (!rt_g3d_is_vec3(position) || !rt_g3d_is_vec3(direction)) {
+        rt_trap("Light3D.NewSpot: position and direction must be Vec3");
         return NULL;
     }
     rt_light3d *light = (rt_light3d *)rt_obj_new_i64(RT_G3D_LIGHT3D_CLASS_ID, (int64_t)sizeof(rt_light3d));

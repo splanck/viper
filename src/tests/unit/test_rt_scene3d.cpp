@@ -237,6 +237,29 @@ static void test_deep_hierarchy() {
     EXPECT_NEAR(mv->m[3], 5.0, 0.001, "5-level hierarchy: world X = 5");
 }
 
+static void test_deep_hierarchy_iterative_traversal() {
+    void *scene = rt_scene3d_new();
+    void *parent = rt_scene3d_get_root(scene);
+    void *leaf = nullptr;
+    const int depth = 1024;
+    for (int i = 0; i < depth; i++) {
+        leaf = rt_scene_node3d_new();
+        rt_scene_node3d_set_position(leaf, 1.0, 0.0, 0.0);
+        rt_scene_node3d_add_child(parent, leaf);
+        parent = leaf;
+    }
+
+    rt_scene_node3d_set_position(rt_scene3d_get_root(scene), 0.0, 0.0, 0.0);
+
+    typedef struct {
+        double m[16];
+    } mat4_view;
+    mat4_view *mv = (mat4_view *)rt_scene_node3d_get_world_matrix(leaf);
+    EXPECT_NEAR(mv->m[3], (double)depth, 0.001, "Deep hierarchy world matrix traversal is iterative");
+    EXPECT_TRUE(rt_scene3d_get_node_count(scene) == depth + 1,
+                "Deep hierarchy node count traversal is iterative");
+}
+
 static void test_dirty_flag() {
     void *parent = rt_scene_node3d_new();
     void *child = rt_scene_node3d_new();
@@ -360,6 +383,10 @@ static void test_subtree_aabb_includes_child_meshes() {
     EXPECT_NEAR(rt_vec3_x(max_v), 6.5, 0.001, "Synthetic roots report subtree AABB max X");
     EXPECT_NEAR(rt_vec3_y(max_v), 2.0, 0.001, "Synthetic roots report subtree AABB max Y");
     EXPECT_NEAR(rt_vec3_z(max_v), 4.0, 0.001, "Synthetic roots report subtree AABB max Z");
+
+    rt_scene_node3d *root_impl = (rt_scene_node3d *)root;
+    EXPECT_NEAR(root_impl->aabb_min[0], 0.0, 0.001, "AABB query does not mutate node min X");
+    EXPECT_NEAR(root_impl->aabb_max[2], 0.0, 0.001, "AABB query does not mutate node max Z");
 }
 
 static void test_clear() {
@@ -427,6 +454,10 @@ static void test_node_sanitizes_nonfinite_transform_and_lod() {
     EXPECT_NEAR(rt_quat_y(rot), 0.0, 0.001, "SceneNode invalid quaternion resets Y");
     EXPECT_NEAR(rt_quat_z(rot), 0.0, 0.001, "SceneNode invalid quaternion resets Z");
     EXPECT_NEAR(rt_quat_w(rot), 1.0, 0.001, "SceneNode invalid quaternion resets W");
+
+    rt_scene_node3d_set_rotation(node, node);
+    rot = rt_scene_node3d_get_rotation(node);
+    EXPECT_NEAR(rt_quat_w(rot), 1.0, 0.001, "SceneNode rejects non-Quat rotation handles");
 
     rt_scene_node3d_set_visible(node, 42);
     EXPECT_TRUE(rt_scene_node3d_get_visible(node) == 1, "SceneNode visibility normalizes to bool");
@@ -1352,6 +1383,7 @@ int main() {
     test_rotation_propagation();
     test_scale_propagation();
     test_deep_hierarchy();
+    test_deep_hierarchy_iterative_traversal();
     test_dirty_flag();
     test_find_by_name();
     test_reparenting();

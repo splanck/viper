@@ -12,9 +12,16 @@
 // Key invariants:
 //   - Phase 1: copy vertices from source Mesh3D.
 //   - Phase 2: filter triangles by face normal (walkable = normal.y > cos(slope)).
-//   - Phase 3: build adjacency (O(n²) — triangles sharing 2 verts are neighbors).
+//   - Phase 3: build adjacency via edge-keyed hash table (shared edges
+//     cross-link the two triangles that own them).
 //   - A*: binary min-heap on f = g + h, centroid-to-centroid edge cost.
-//   - FindPath returns a Path3D with waypoints through centroids.
+//   - String-pulling smooths waypoints through portal midpoints; falls back
+//     to centroids when portal extraction fails.
+//   - FindPath returns a Path3D with waypoints through portals.
+//
+// Ownership/Lifetime:
+//   - NavMesh3D is GC-managed; finalizer frees the vertex and triangle arrays.
+//   - The source mesh is borrowed during Build only — not retained.
 //
 // Links: rt_navmesh3d.h, rt_path3d.h, rt_canvas3d.h
 //
@@ -25,6 +32,7 @@
 #include "rt_navmesh3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_graphics3d_ids.h"
 #include "rt_path3d.h"
 
 #include <float.h>
@@ -96,11 +104,14 @@ static void navmesh3d_free_partial(rt_navmesh3d *nm) {
         rt_obj_free(nm);
 }
 
+/// @brief Drop one reference and free if zero. Safe on NULL.
 static void navmesh3d_release_local(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
+/// @brief Validate a max-slope angle (in degrees), clamping to `[0, 89.9]` on bad input.
+/// @details Non-finite inputs collapse to 45° (the documented default).
 static double navmesh3d_sanitize_slope(double degrees) {
     if (!isfinite(degrees))
         degrees = 45.0;
@@ -111,6 +122,10 @@ static double navmesh3d_sanitize_slope(double degrees) {
     return degrees;
 }
 
+/// @brief Compute triangle-edge adjacency, populating each triangle's `neighbors[3]` slots.
+/// @details Hash table keyed on `(min_vertex << 32) | max_vertex` matches each shared edge to
+///          the two triangles that own it; first hit records the triangle, second hit cross-
+///          links them. Boundary edges remain with neighbor index -1.
 static int navmesh3d_build_adjacency(rt_navmesh3d *nm) {
     int32_t tc;
     int32_t map_cap;
@@ -171,6 +186,10 @@ static int navmesh3d_build_adjacency(rt_navmesh3d *nm) {
     return 1;
 }
 
+/// @brief Filter source triangles by max-slope angle, keeping only walkable surfaces.
+/// @details Compares each triangle's surface-normal Y component against `cos(max_slope)`;
+///          triangles with normals pitched too steeply are dropped. Rebuilds adjacency
+///          afterwards via `navmesh3d_build_adjacency`.
 static int navmesh3d_apply_slope_filter(rt_navmesh3d *nm) {
     if (!nm || !nm->source_triangles || !nm->triangles)
         return 0;
@@ -314,6 +333,9 @@ static int point_in_tri_xz(float px, float pz, const float *v0, const float *v1,
     return (u >= 0.0f && v >= 0.0f && (u + v) <= 1.0f) ? 1 : 0;
 }
 
+/// @brief Interpolate the world-space Y coordinate at `(px, pz)` on a triangle defined by
+///        @p v0 / @p v1 / @p v2. Used by navmesh height queries to project an XZ point onto
+///        the walkable surface. Caller must already have confirmed `(px,pz)` lies inside.
 static float triangle_y_at_xz(float px, float pz, const float *v0, const float *v1, const float *v2) {
     float d1x = v1[0] - v0[0], d1z = v1[2] - v0[2];
     float d2x = v2[0] - v0[0], d2z = v2[2] - v0[2];
@@ -419,7 +441,7 @@ static float centroid_dist(const rt_navmesh3d *nm, int32_t a, int32_t b) {
 int64_t rt_navmesh3d_copy_path_points(void *obj, void *from_v, void *to_v, double **out_points_xyz) {
     double *points = NULL;
     int64_t point_count = 0;
-    if (!obj || !from_v || !to_v)
+    if (!obj || !rt_g3d_is_vec3(from_v) || !rt_g3d_is_vec3(to_v))
         return 0;
     if (out_points_xyz)
         *out_points_xyz = NULL;
@@ -428,9 +450,10 @@ int64_t rt_navmesh3d_copy_path_points(void *obj, void *from_v, void *to_v, doubl
     if (!nm || nm->triangle_count == 0 || !nm->triangles || !nm->vertices)
         return 0;
 
-    float fx = (float)rt_vec3_x(from_v), fy = (float)rt_vec3_y(from_v),
-          fz = (float)rt_vec3_z(from_v);
-    float tx = (float)rt_vec3_x(to_v), ty = (float)rt_vec3_y(to_v), tz = (float)rt_vec3_z(to_v);
+    double fdx = rt_vec3_x(from_v), fdy = rt_vec3_y(from_v), fdz = rt_vec3_z(from_v);
+    double tdx = rt_vec3_x(to_v), tdy = rt_vec3_y(to_v), tdz = rt_vec3_z(to_v);
+    float fx = (float)fdx, fy = (float)fdy, fz = (float)fdz;
+    float tx = (float)tdx, ty = (float)tdy, tz = (float)tdz;
     if (!isfinite(fx) || !isfinite(fy) || !isfinite(fz) || !isfinite(tx) ||
         !isfinite(ty) || !isfinite(tz))
         return 0;
@@ -444,12 +467,12 @@ int64_t rt_navmesh3d_copy_path_points(void *obj, void *from_v, void *to_v, doubl
         points = (double *)malloc(2u * 3u * sizeof(double));
         if (!points)
             return 0;
-        points[0] = rt_vec3_x(from_v);
-        points[1] = rt_vec3_y(from_v);
-        points[2] = rt_vec3_z(from_v);
-        points[3] = rt_vec3_x(to_v);
-        points[4] = rt_vec3_y(to_v);
-        points[5] = rt_vec3_z(to_v);
+        points[0] = fdx;
+        points[1] = fdy;
+        points[2] = fdz;
+        points[3] = tdx;
+        points[4] = tdy;
+        points[5] = tdz;
         if (out_points_xyz) {
             *out_points_xyz = points;
         } else {
@@ -541,9 +564,9 @@ int64_t rt_navmesh3d_copy_path_points(void *obj, void *from_v, void *to_v, doubl
             free(heap);
             return 0;
         }
-        points[point_count * 3 + 0] = rt_vec3_x(from_v);
-        points[point_count * 3 + 1] = rt_vec3_y(from_v);
-        points[point_count * 3 + 2] = rt_vec3_z(from_v);
+        points[point_count * 3 + 0] = fdx;
+        points[point_count * 3 + 1] = fdy;
+        points[point_count * 3 + 2] = fdz;
         point_count++;
 
         /* Simple string-pulling: find portals between adjacent triangles and
@@ -551,9 +574,9 @@ int64_t rt_navmesh3d_copy_path_points(void *obj, void *from_v, void *to_v, doubl
          * fails for any edge, fall back to the centroid for that segment. */
         if (count >= 2) {
             float apex[3];
-            apex[0] = rt_vec3_x(from_v);
-            apex[1] = rt_vec3_y(from_v);
-            apex[2] = rt_vec3_z(from_v);
+            apex[0] = fx;
+            apex[1] = fy;
+            apex[2] = fz;
 
             for (int32_t i = 0; i < count - 1; i++) {
                 int32_t ti = seq[i];
@@ -611,9 +634,9 @@ int64_t rt_navmesh3d_copy_path_points(void *obj, void *from_v, void *to_v, doubl
             point_count++;
         }
 
-        points[point_count * 3 + 0] = rt_vec3_x(to_v);
-        points[point_count * 3 + 1] = rt_vec3_y(to_v);
-        points[point_count * 3 + 2] = rt_vec3_z(to_v);
+        points[point_count * 3 + 0] = tdx;
+        points[point_count * 3 + 1] = tdy;
+        points[point_count * 3 + 2] = tdz;
         point_count++;
         free(seq);
     }
@@ -657,7 +680,7 @@ void *rt_navmesh3d_find_path(void *obj, void *from_v, void *to_v) {
 /// world-space position. Useful for pinning agent positions to walkable surface after
 /// teleports. Returns the input unchanged if no triangle is found nearby.
 void *rt_navmesh3d_sample_position(void *obj, void *point) {
-    if (!obj || !point)
+    if (!obj || !rt_g3d_is_vec3(point))
         return rt_vec3_new(0, 0, 0);
     rt_navmesh3d *nm =
         (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
@@ -697,7 +720,7 @@ void *rt_navmesh3d_sample_position(void *obj, void *point) {
 
 /// @brief Returns 1 if `point` (Vec3) lies within (or near) any walkable triangle.
 int8_t rt_navmesh3d_is_walkable(void *obj, void *point) {
-    if (!obj || !point)
+    if (!obj || !rt_g3d_is_vec3(point))
         return 0;
     rt_navmesh3d *nm =
         (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);

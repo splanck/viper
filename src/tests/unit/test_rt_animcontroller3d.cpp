@@ -170,9 +170,27 @@ static void test_controller_masked_layer() {
                 "CrossfadeLayer succeeds");
 }
 
+static void test_controller_rejects_wrong_animation_handles() {
+    void *skel = rt_skeleton3d_new();
+    void *controller;
+
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+    controller = rt_anim_controller3d_new(skel);
+
+    EXPECT_TRUE(rt_anim_controller3d_add_state(controller, rt_const_cstr("bad"), skel) == -1,
+                "AnimController3D.AddState rejects non-Animation3D handles");
+    EXPECT_TRUE(rt_anim_controller3d_get_state_count(controller) == 0,
+                "Rejected AnimController3D state does not change StateCount");
+    rt_animation3d_set_looping(skel, 1);
+    EXPECT_TRUE(rt_animation3d_get_looping(skel) == 0,
+                "Animation3D getters/setters reject non-Animation3D handles");
+}
+
 int main() {
     test_controller_state_flow();
     test_controller_masked_layer();
+    test_controller_rejects_wrong_animation_handles();
 
     printf("AnimController3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

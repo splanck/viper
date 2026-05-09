@@ -173,11 +173,33 @@ static void test_navagent_character_binding_updates_bound_node() {
                 "NavAgent3D mirrors bound Character3D Z into the bound SceneNode3D");
 }
 
+static void test_navagent_rejects_wrong_handle_types() {
+    void *mesh = rt_mesh3d_new_plane(20.0, 20.0);
+    void *navmesh = rt_navmesh3d_build(mesh, 0.4, 1.8);
+    void *agent = rt_navagent3d_new(navmesh, 0.4, 1.8);
+    void *bad_node = rt_scene_node3d_new();
+    void *pos;
+
+    EXPECT_TRUE(rt_navagent3d_new(bad_node, 0.4, 1.8) == nullptr,
+                "NavAgent3D.New rejects non-NavMesh3D handles");
+
+    rt_navagent3d_bind_node(agent, navmesh);
+    rt_navagent3d_set_target(agent, agent);
+    EXPECT_TRUE(rt_navagent3d_get_has_path(agent) == 0,
+                "NavAgent3D.SetTarget rejects non-Vec3 handles");
+
+    rt_navagent3d_warp(agent, agent);
+    pos = rt_navagent3d_get_position(agent);
+    EXPECT_NEAR(rt_vec3_x(pos), 0.0, 0.001, "NavAgent3D.Warp rejects non-Vec3 X");
+    EXPECT_NEAR(rt_vec3_z(pos), 0.0, 0.001, "NavAgent3D.Warp rejects non-Vec3 Z");
+}
+
 int main() {
     test_navagent_bound_node_reaches_target_in_world_space();
     test_navagent_bound_character_moves_controller();
     test_navagent_warp_resets_motion_and_rebuilds_path();
     test_navagent_character_binding_updates_bound_node();
+    test_navagent_rejects_wrong_handle_types();
 
     std::printf("NavAgent3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

@@ -7,6 +7,29 @@
 //
 // File: src/runtime/graphics/rt_collider3d.c
 // Purpose: Collider3D runtime implementation for reusable 3D collision shapes.
+//   Implements Viper.Graphics3D.Collider3D — box / sphere / capsule / convex
+//   hull / triangle mesh / compound / heightfield primitives that physics
+//   bodies attach to. Caches a local-space AABB for broadphase queries and
+//   exposes raw accessors for the physics core's narrow-phase pipeline.
+//
+// Key invariants:
+//   - `bounds_min/max` are kept current after every mutation via
+//     `collider3d_recompute_bounds`.
+//   - Compound colliders are acyclic — `add_child` rejects self-reference and
+//     traverses the existing tree to detect cycles before appending.
+//   - Triangle-mesh and heightfield colliders are flagged static-only because
+//     dynamic-vs-mesh is numerically unstable.
+//   - All quaternions stored on child transforms are normalized at insert
+//     time; non-finite inputs collapse to identity.
+//
+// Ownership/Lifetime:
+//   - Colliders are GC-managed; the finalizer releases the mesh ref, every
+//     child collider, and all owned scratch arrays.
+//   - Compounds retain their children (ref-count incremented in add_child).
+//   - Heightfield height buffers and child-transform arrays are owned and
+//     freed in the finalizer.
+//
+// Links: rt_collider3d.h, rt_canvas3d_internal.h, rt_pixels.h
 //
 //===----------------------------------------------------------------------===//
 

@@ -9,6 +9,22 @@
 // Purpose: Gameplay-facing single-agent navigation built on NavMesh3D path
 //   queries, with optional Character3D and SceneNode3D bindings.
 //
+// Key invariants:
+//   - Agent positions are snapped onto the bound NavMesh3D (closest valid point).
+//   - Path corners are stored as a packed `[x0,y0,z0, x1,y1,z1, ...]` buffer.
+//   - `path_index` advances past corners within `corner_tolerance` of the agent.
+//   - When a CharacterController3D is bound it owns the authoritative position;
+//     otherwise the agent integrates `desired_velocity * dt` directly.
+//   - Auto-repath fires every `repath_interval` seconds while a target is active.
+//
+// Ownership/Lifetime:
+//   - NavAgent3D is GC-managed; finalizer frees the path buffer and releases the
+//     navmesh / bound character / bound node refs.
+//   - All bindings (navmesh, character, node) are retained on assignment and
+//     released on rebind / finalize.
+//
+// Links: rt_navagent3d.h, rt_navmesh3d.h, rt_physics3d.h, rt_scene3d.h
+//
 //===----------------------------------------------------------------------===//
 
 #ifdef VIPER_ENABLE_GRAPHICS
@@ -59,6 +75,11 @@ typedef struct {
     int8_t has_path;
     int8_t auto_repath;
 } rt_navagent3d;
+
+/// @brief Validate @p obj as a NavAgent3D handle and return its typed pointer (NULL on mismatch).
+static rt_navagent3d *navagent3d_checked(void *obj) {
+    return (rt_navagent3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVAGENT3D_CLASS_ID);
+}
 
 /// @brief Squared length of a 3-vector; avoids a sqrt when only ordering/thresholding matters.
 static double navagent_len_sq(const double v[3]) {
@@ -400,6 +421,8 @@ static void navagent_finalize(void *obj) {
 /// = radius, desired_speed = 4 u/s, auto-repath every 0.25 s, position at origin (snapped to
 /// the navmesh on construction).
 void *rt_navagent3d_new(void *navmesh, double radius, double height) {
+    if (navmesh && !rt_g3d_has_class(navmesh, RT_G3D_NAVMESH3D_CLASS_ID))
+        return NULL;
     rt_navagent3d *agent =
         (rt_navagent3d *)rt_obj_new_i64(RT_G3D_NAVAGENT3D_CLASS_ID, (int64_t)sizeof(rt_navagent3d));
     if (!agent)
@@ -427,8 +450,8 @@ void *rt_navagent3d_new(void *navmesh, double radius, double height) {
 /// rebuilt immediately. Subsequent `_update` calls steer the agent along the path until it
 /// reaches `_get_stopping_distance` of the target.
 void rt_navagent3d_set_target(void *obj, void *position) {
-    rt_navagent3d *agent = (rt_navagent3d *)obj;
-    if (!agent || !position)
+    rt_navagent3d *agent = navagent3d_checked(obj);
+    if (!agent || !rt_g3d_is_vec3(position))
         return;
     navagent_sync_position_from_bindings(agent);
     navagent_sample_point(agent,
@@ -441,7 +464,7 @@ void rt_navagent3d_set_target(void *obj, void *position) {
 /// @brief Cancel the active target and clear the path. Subsequent `_update` calls do nothing
 /// until a new target is set. Velocity is zeroed so AI motion stops cleanly.
 void rt_navagent3d_clear_target(void *obj) {
-    rt_navagent3d *agent = (rt_navagent3d *)obj;
+    rt_navagent3d *agent = navagent3d_checked(obj);
     if (!agent)
         return;
     agent->has_target = 0;
@@ -454,7 +477,7 @@ void rt_navagent3d_clear_target(void *obj) {
 /// CharacterController3D (if any) or integrates position directly. Falls back to snapping to the
 /// navmesh after each step. Stops cleanly when within `stopping_distance` of the target.
 void rt_navagent3d_update(void *obj, double dt) {
-    rt_navagent3d *agent = (rt_navagent3d *)obj;
+    rt_navagent3d *agent = navagent3d_checked(obj);
     double prev_pos[3];
     double target_dist;
     if (!agent || !isfinite(dt) || dt <= 0.0)
@@ -548,9 +571,9 @@ void rt_navagent3d_update(void *obj, double dt) {
 /// to any bound character/node, zeros velocity, clears the cached path, and rebuilds the path
 /// if a target is still active.
 void rt_navagent3d_warp(void *obj, void *position) {
-    rt_navagent3d *agent = (rt_navagent3d *)obj;
+    rt_navagent3d *agent = navagent3d_checked(obj);
     double world[3];
-    if (!agent || !position)
+    if (!agent || !rt_g3d_is_vec3(position))
         return;
     world[0] = rt_vec3_x(position);
     world[1] = rt_vec3_y(position);
@@ -565,7 +588,7 @@ void rt_navagent3d_warp(void *obj, void *position) {
 
 /// @brief Read the agent's current world position. Re-syncs from any bound character/node first.
 void *rt_navagent3d_get_position(void *obj) {
-    rt_navagent3d *agent = (rt_navagent3d *)obj;
+    rt_navagent3d *agent = navagent3d_checked(obj);
     if (!agent)
         return rt_vec3_new(0.0, 0.0, 0.0);
     navagent_sync_position_from_bindings(agent);
@@ -574,7 +597,7 @@ void *rt_navagent3d_get_position(void *obj) {
 
 /// @brief Read the agent's actual velocity (position-delta over the last `_update`'s dt).
 void *rt_navagent3d_get_velocity(void *obj) {
-    rt_navagent3d *agent = (rt_navagent3d *)obj;
+    rt_navagent3d *agent = navagent3d_checked(obj);
     if (!agent)
         return rt_vec3_new(0.0, 0.0, 0.0);
     return rt_vec3_new(agent->velocity[0], agent->velocity[1], agent->velocity[2]);
@@ -583,7 +606,7 @@ void *rt_navagent3d_get_velocity(void *obj) {
 /// @brief Read the agent's *desired* velocity — the steering direction it tried to move at this
 /// frame, before character-controller collisions. May differ from `_get_velocity` when blocked.
 void *rt_navagent3d_get_desired_velocity(void *obj) {
-    rt_navagent3d *agent = (rt_navagent3d *)obj;
+    rt_navagent3d *agent = navagent3d_checked(obj);
     if (!agent)
         return rt_vec3_new(0.0, 0.0, 0.0);
     return rt_vec3_new(
@@ -592,61 +615,70 @@ void *rt_navagent3d_get_desired_velocity(void *obj) {
 
 /// @brief Returns 1 if the agent currently has an active path being followed.
 int8_t rt_navagent3d_get_has_path(void *obj) {
-    return obj ? ((rt_navagent3d *)obj)->has_path : 0;
+    rt_navagent3d *agent = navagent3d_checked(obj);
+    return agent ? agent->has_path : 0;
 }
 
 /// @brief World-space distance from the agent's current position along the path to the goal.
 /// Updated each `_update` tick. 0 when no path exists or stopping distance has been reached.
 double rt_navagent3d_get_remaining_distance(void *obj) {
-    return obj ? ((rt_navagent3d *)obj)->remaining_distance : 0.0;
+    rt_navagent3d *agent = navagent3d_checked(obj);
+    return agent ? agent->remaining_distance : 0.0;
 }
 
 /// @brief Distance from the goal at which the agent stops moving (default = radius).
 double rt_navagent3d_get_stopping_distance(void *obj) {
-    return obj ? ((rt_navagent3d *)obj)->stopping_distance : 0.0;
+    rt_navagent3d *agent = navagent3d_checked(obj);
+    return agent ? agent->stopping_distance : 0.0;
 }
 
 /// @brief Set the stopping distance (clamped to ≥ 0). Larger values cause the agent to halt
 /// further from the goal — useful for combat/stand-back behaviors.
 void rt_navagent3d_set_stopping_distance(void *obj, double distance) {
-    if (!obj)
+    rt_navagent3d *agent = navagent3d_checked(obj);
+    if (!agent)
         return;
-    ((rt_navagent3d *)obj)->stopping_distance =
-        (isfinite(distance) && distance >= 0.0) ? distance : 0.0;
+    agent->stopping_distance = (isfinite(distance) && distance >= 0.0) ? distance : 0.0;
 }
 
 /// @brief Maximum movement speed in world units per second (default 4).
 double rt_navagent3d_get_desired_speed(void *obj) {
-    return obj ? ((rt_navagent3d *)obj)->desired_speed : 0.0;
+    rt_navagent3d *agent = navagent3d_checked(obj);
+    return agent ? agent->desired_speed : 0.0;
 }
 
 /// @brief Set max movement speed (clamped to ≥ 0). Updates take effect on the next `_update`.
 void rt_navagent3d_set_desired_speed(void *obj, double speed) {
-    if (!obj)
+    rt_navagent3d *agent = navagent3d_checked(obj);
+    if (!agent)
         return;
-    ((rt_navagent3d *)obj)->desired_speed = (isfinite(speed) && speed >= 0.0) ? speed : 0.0;
+    agent->desired_speed = (isfinite(speed) && speed >= 0.0) ? speed : 0.0;
 }
 
 /// @brief Returns 1 if the agent automatically rebuilds its path on the repath interval. When
 /// disabled, the path is built once per `_set_target` and never refreshed.
 int8_t rt_navagent3d_get_auto_repath(void *obj) {
-    return obj ? ((rt_navagent3d *)obj)->auto_repath : 0;
+    rt_navagent3d *agent = navagent3d_checked(obj);
+    return agent ? agent->auto_repath : 0;
 }
 
 /// @brief Toggle automatic re-pathing every 0.25 s. Disable to manually control path freshness
 /// (useful when target is static and rebuilds would waste CPU).
 void rt_navagent3d_set_auto_repath(void *obj, int8_t enabled) {
-    if (!obj)
+    rt_navagent3d *agent = navagent3d_checked(obj);
+    if (!agent)
         return;
-    ((rt_navagent3d *)obj)->auto_repath = enabled ? 1 : 0;
+    agent->auto_repath = enabled ? 1 : 0;
 }
 
 /// @brief Bind the agent to a CharacterController3D — `_update` will call `_move` on the
 /// controller (respecting collisions) instead of moving the agent's position directly. The
 /// agent's position is then read back from the controller post-move. Replaces any prior binding.
 void rt_navagent3d_bind_character(void *obj, void *controller) {
-    rt_navagent3d *agent = (rt_navagent3d *)obj;
+    rt_navagent3d *agent = navagent3d_checked(obj);
     if (!agent)
+        return;
+    if (controller && !rt_g3d_has_class(controller, RT_G3D_CHARACTER3D_CLASS_ID))
         return;
     if (agent->bound_character == controller)
         return;
@@ -662,8 +694,10 @@ void rt_navagent3d_bind_character(void *obj, void *controller) {
 /// @brief Bind the agent to a SceneNode3D — the node's world position will be updated to
 /// match the agent each `_update`. Useful for keeping a visual rig in sync with the AI mover.
 void rt_navagent3d_bind_node(void *obj, void *node) {
-    rt_navagent3d *agent = (rt_navagent3d *)obj;
+    rt_navagent3d *agent = navagent3d_checked(obj);
     if (!agent)
+        return;
+    if (node && !rt_g3d_has_class(node, RT_G3D_SCENENODE3D_CLASS_ID))
         return;
     if (agent->bound_node == node)
         return;

@@ -1331,7 +1331,7 @@ Supported glTF material fidelity:
 
 Emitter-based 3D particle effects with physics, lifetime, and billboard rendering.
 Particle setters sanitize non-finite values: ranges are kept non-negative and ordered, alpha and
-spread are clamped, invalid directions fall back to +Y, and invalid update deltas are ignored.
+direction spread are clamped, invalid directions fall back to +Y, and invalid update deltas are ignored.
 
 ### Constructor
 
@@ -1352,7 +1352,7 @@ spread are clamped, invalid directions fall back to +Y, and invalid update delta
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `SetPosition(x, y, z)` | `void(f64, f64, f64)` | Set emitter world position |
-| `SetDirection(dx, dy, dz, spread)` | `void(f64, f64, f64, f64)` | Set emission direction + cone spread |
+| `SetDirection(dx, dy, dz, spreadDegrees)` | `void(f64, f64, f64, f64)` | Set emission direction + cone spread in degrees |
 | `SetSpeed(min, max)` | `void(f64, f64)` | Set speed range |
 | `SetLifetime(min, max)` | `void(f64, f64)` | Set lifetime range in seconds |
 | `SetSize(start, end)` | `void(f64, f64)` | Set particle size (start/end interpolation) |
@@ -1385,7 +1385,7 @@ func start() {
 
     var sparks = Particles3D.New(500);
     Particles3D.SetPosition(sparks, 0.0, 0.0, 0.0);
-    Particles3D.SetDirection(sparks, 0.0, 1.0, 0.0, 0.4);
+    Particles3D.SetDirection(sparks, 0.0, 1.0, 0.0, 23.0);
     Particles3D.SetSpeed(sparks, 2.0, 5.0);
     Particles3D.SetLifetime(sparks, 0.5, 1.5);
     Particles3D.SetSize(sparks, 0.2, 0.05);

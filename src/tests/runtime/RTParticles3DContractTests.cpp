@@ -288,6 +288,11 @@ static void test_setters_sanitize_nonfinite_ranges() {
     assert(std::fabs(view->emit_dir[1] - 1.0) < 1e-9);
     assert(std::fabs(view->emit_dir[2]) < 1e-9);
     assert(view->emit_spread == 0.0);
+    rt_particles3d_set_direction(ps, 1.0, 0.0, 0.0, 90.0);
+    assert(std::fabs(view->emit_dir[0] - 1.0) < 1e-9);
+    assert(std::fabs(view->emit_spread - 1.5707963267948966) < 1e-9);
+    rt_particles3d_set_direction(ps, 0.0, 1.0, 0.0, 720.0);
+    assert(std::fabs(view->emit_spread - 3.1415926535897932) < 1e-9);
 
     rt_particles3d_set_speed(ps, 4.0, -2.0);
     assert(view->speed_min == 0.0);

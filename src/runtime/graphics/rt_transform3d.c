@@ -12,6 +12,10 @@
 //   - TRS matrix recomputed only when dirty flag is set.
 //   - Quaternion is (x,y,z,w), identity = (0,0,0,1).
 //   - build_trs mirrors rt_scene3d.c:125-155.
+//   - Setters mark dirty without computing; reader resolves the matrix lazily.
+//
+// Ownership/Lifetime:
+//   - Transform3D is GC-managed; no finalizer needed (no owned heap allocations).
 //
 // Links: rt_transform3d.h, rt_scene3d.c
 //
@@ -67,6 +71,11 @@ typedef struct {
     double matrix[16]; /* cached TRS, row-major */
     int8_t dirty;
 } rt_transform3d;
+
+/// @brief Validate @p obj as a Transform3D handle and return its typed pointer (NULL on mismatch).
+static rt_transform3d *transform3d_checked(void *obj) {
+    return (rt_transform3d *)rt_g3d_checked_or_null(obj, RT_G3D_TRANSFORM3D_CLASS_ID);
+}
 
 /// @brief Return @p value if finite, otherwise return @p fallback.
 /// @details Local copy of the pattern from rt_scene3d.c. Used to sanitize all
@@ -202,9 +211,9 @@ void *rt_transform3d_new(void) {
 
 /// @brief Set the position component of the transform (marks matrix dirty).
 void rt_transform3d_set_position(void *obj, double x, double y, double z) {
-    if (!obj)
+    rt_transform3d *xf = transform3d_checked(obj);
+    if (!xf)
         return;
-    rt_transform3d *xf = (rt_transform3d *)obj;
     xf->position[0] = transform3d_finite_or(x, 0.0);
     xf->position[1] = transform3d_finite_or(y, 0.0);
     xf->position[2] = transform3d_finite_or(z, 0.0);
@@ -213,17 +222,17 @@ void rt_transform3d_set_position(void *obj, double x, double y, double z) {
 
 /// @brief Get the current position as a new Vec3 (returns origin if NULL).
 void *rt_transform3d_get_position(void *obj) {
-    if (!obj)
+    rt_transform3d *xf = transform3d_checked(obj);
+    if (!xf)
         return rt_vec3_new(0, 0, 0);
-    rt_transform3d *xf = (rt_transform3d *)obj;
     return rt_vec3_new(xf->position[0], xf->position[1], xf->position[2]);
 }
 
 /// @brief Set the rotation from a quaternion (x,y,z,w), marks matrix dirty.
 void rt_transform3d_set_rotation(void *obj, void *quat) {
-    if (!obj || !quat)
+    rt_transform3d *xf = transform3d_checked(obj);
+    if (!xf || !rt_g3d_is_quat(quat))
         return;
-    rt_transform3d *xf = (rt_transform3d *)obj;
     xf->rotation[0] = rt_quat_x(quat);
     xf->rotation[1] = rt_quat_y(quat);
     xf->rotation[2] = rt_quat_z(quat);
@@ -234,41 +243,42 @@ void rt_transform3d_set_rotation(void *obj, void *quat) {
 
 /// @brief Get the current rotation as a new Quat (returns identity if NULL).
 void *rt_transform3d_get_rotation(void *obj) {
-    if (!obj)
+    rt_transform3d *xf = transform3d_checked(obj);
+    if (!xf)
         return rt_quat_new(0, 0, 0, 1);
-    rt_transform3d *xf = (rt_transform3d *)obj;
     return rt_quat_new(xf->rotation[0], xf->rotation[1], xf->rotation[2], xf->rotation[3]);
 }
 
-/// @brief Set rotation from Euler angles (radians) using ZYX intrinsic convention.
+/// @brief Set rotation from Euler angles (degrees) using ZYX intrinsic convention.
 /// @details Converts pitch/yaw/roll to a quaternion internally. ZYX order means
 ///          yaw is applied first, then pitch, then roll — matching common
 ///          game engine conventions for character/camera orientation.
 void rt_transform3d_set_euler(void *obj, double pitch, double yaw, double roll) {
-    if (!obj)
+    rt_transform3d *xf = transform3d_checked(obj);
+    if (!xf)
         return;
-    rt_transform3d *xf = (rt_transform3d *)obj;
     pitch = transform3d_finite_or(pitch, 0.0);
     yaw = transform3d_finite_or(yaw, 0.0);
     roll = transform3d_finite_or(roll, 0.0);
-    /* Convert Euler angles (radians) to quaternion using ZYX convention */
-    double hp = pitch * 0.5, hy = yaw * 0.5, hr = roll * 0.5;
-    double cp = cos(hp), sp = sin(hp);
-    double cy = cos(hy), sy = sin(hy);
-    double cr = cos(hr), sr = sin(hr);
-    xf->rotation[0] = sr * cp * cy - cr * sp * sy; /* x */
-    xf->rotation[1] = cr * sp * cy + sr * cp * sy; /* y */
-    xf->rotation[2] = cr * cp * sy - sr * sp * cy; /* z */
-    xf->rotation[3] = cr * cp * cy + sr * sp * sy; /* w */
+    double hp = pitch * (M_PI / 180.0) * 0.5;
+    double hy = yaw * (M_PI / 180.0) * 0.5;
+    double hr = roll * (M_PI / 180.0) * 0.5;
+    double cp = cos(hp), sp = sin(hp); /* pitch: X */
+    double cy = cos(hy), sy = sin(hy); /* yaw: Y */
+    double cr = cos(hr), sr = sin(hr); /* roll: Z */
+    xf->rotation[0] = sp * cy * cr - cp * sy * sr;
+    xf->rotation[1] = cp * sy * cr + sp * cy * sr;
+    xf->rotation[2] = cp * cy * sr - sp * sy * cr;
+    xf->rotation[3] = cp * cy * cr + sp * sy * sr;
     transform3d_quat_normalize(xf->rotation);
     xf->dirty = 1;
 }
 
 /// @brief Set non-uniform scale factors for each axis (marks matrix dirty).
 void rt_transform3d_set_scale(void *obj, double x, double y, double z) {
-    if (!obj)
+    rt_transform3d *xf = transform3d_checked(obj);
+    if (!xf)
         return;
-    rt_transform3d *xf = (rt_transform3d *)obj;
     xf->scale[0] = transform3d_scale_or_unit(x);
     xf->scale[1] = transform3d_scale_or_unit(y);
     xf->scale[2] = transform3d_scale_or_unit(z);
@@ -277,9 +287,9 @@ void rt_transform3d_set_scale(void *obj, double x, double y, double z) {
 
 /// @brief Get the current scale as a new Vec3 (returns (1,1,1) if NULL).
 void *rt_transform3d_get_scale(void *obj) {
-    if (!obj)
+    rt_transform3d *xf = transform3d_checked(obj);
+    if (!xf)
         return rt_vec3_new(1, 1, 1);
-    rt_transform3d *xf = (rt_transform3d *)obj;
     return rt_vec3_new(xf->scale[0], xf->scale[1], xf->scale[2]);
 }
 
@@ -287,9 +297,9 @@ void *rt_transform3d_get_scale(void *obj) {
 /// @details The matrix is built as Translate * Rotate * Scale in row-major order,
 ///          matching the scene graph convention. Returns identity if NULL.
 void *rt_transform3d_get_matrix(void *obj) {
-    if (!obj)
+    rt_transform3d *xf = transform3d_checked(obj);
+    if (!xf)
         return rt_mat4_new(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
-    rt_transform3d *xf = (rt_transform3d *)obj;
     ensure_matrix(xf);
     return rt_mat4_new(xf->matrix[0],
                        xf->matrix[1],
@@ -311,9 +321,9 @@ void *rt_transform3d_get_matrix(void *obj) {
 
 /// @brief Add a displacement vector to the current position (incremental move).
 void rt_transform3d_translate(void *obj, void *delta) {
-    if (!obj || !delta)
+    rt_transform3d *xf = transform3d_checked(obj);
+    if (!xf || !rt_g3d_is_vec3(delta))
         return;
-    rt_transform3d *xf = (rt_transform3d *)obj;
     double nx = xf->position[0] + transform3d_finite_or(rt_vec3_x(delta), 0.0);
     double ny = xf->position[1] + transform3d_finite_or(rt_vec3_y(delta), 0.0);
     double nz = xf->position[2] + transform3d_finite_or(rt_vec3_z(delta), 0.0);
@@ -328,9 +338,9 @@ void rt_transform3d_translate(void *obj, void *delta) {
 ///          onto the current rotation: current = new_rot * current. The axis
 ///          vector is normalized internally.
 void rt_transform3d_rotate(void *obj, void *axis, double angle) {
-    if (!obj || !axis)
+    rt_transform3d *xf = transform3d_checked(obj);
+    if (!xf || !rt_g3d_is_vec3(axis))
         return;
-    rt_transform3d *xf = (rt_transform3d *)obj;
 
     /* Build quaternion from axis-angle */
     double ax = rt_vec3_x(axis), ay = rt_vec3_y(axis), az = rt_vec3_z(axis);
@@ -367,9 +377,9 @@ void rt_transform3d_rotate(void *obj, void *axis, double angle) {
 /// @param target Vec3 point to face toward.
 /// @param up_vec Vec3 up hint (defaults to world Y if NULL).
 void rt_transform3d_look_at(void *obj, void *target, void *up_vec) {
-    if (!obj || !target)
+    rt_transform3d *xf = transform3d_checked(obj);
+    if (!xf || !rt_g3d_is_vec3(target))
         return;
-    rt_transform3d *xf = (rt_transform3d *)obj;
 
     double target_x = rt_vec3_x(target);
     double target_y = rt_vec3_y(target);
@@ -387,7 +397,7 @@ void rt_transform3d_look_at(void *obj, void *target, void *up_vec) {
     tz /= flen;
 
     double ux = 0.0, uy = 1.0, uz = 0.0;
-    if (up_vec) {
+    if (rt_g3d_is_vec3(up_vec)) {
         ux = rt_vec3_x(up_vec);
         uy = rt_vec3_y(up_vec);
         uz = rt_vec3_z(up_vec);
@@ -426,10 +436,10 @@ void rt_transform3d_look_at(void *obj, void *target, void *up_vec) {
     double tux = ry * tz - rz * ty, tuy = rz * tx - rx * tz, tuz = rx * ty - ry * tx;
 
     /* Extract quaternion from full 3x3 rotation matrix (Shepperd method).
-     * Matrix columns: right(r), true_up(tu), forward(f) */
-    double m00 = rx, m01 = tux, m02 = tx;
-    double m10 = ry, m11 = tuy, m12 = ty;
-    double m20 = rz, m21 = tuz, m22 = tz;
+     * Matrix columns: right(r), true_up(tu), local back(-forward) because -Z faces target. */
+    double m00 = rx, m01 = tux, m02 = -tx;
+    double m10 = ry, m11 = tuy, m12 = -ty;
+    double m20 = rz, m21 = tuz, m22 = -tz;
     double trace = m00 + m11 + m22;
     if (trace > 0.0) {
         double s = sqrt(trace + 1.0) * 2.0;

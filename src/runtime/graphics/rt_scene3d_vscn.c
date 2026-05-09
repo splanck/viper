@@ -7,6 +7,23 @@
 //
 // File: src/runtime/graphics/rt_scene3d_vscn.c
 // Purpose: Scene3D .vscn save/load support and asset serialization helpers.
+//   Implements the JSON-based scene format that embeds binary asset payloads
+//   (textures, mesh buffers) as base64 to stay textual. Pointer-deduplication
+//   tables ensure shared assets (same texture used by multiple materials)
+//   only emit one copy in the file.
+//
+// Key invariants:
+//   - .vscn is a JSON document with base64-encoded binary embeds.
+//   - Asset deduplication: each unique mesh / material / texture / cubemap
+//     pointer appears once in the output regardless of how many nodes use it.
+//   - Loader rolls back partial state on any error so a half-loaded scene
+//     never reaches the caller.
+//
+// Ownership/Lifetime:
+//   - Save / load operate on Scene3D / SceneNode3D objects defined in
+//     rt_scene3d.c; this TU owns no GC objects of its own.
+//
+// Links: rt_scene3d.h, rt_scene3d_internal.h, rt_json.h
 //
 //===----------------------------------------------------------------------===//
 

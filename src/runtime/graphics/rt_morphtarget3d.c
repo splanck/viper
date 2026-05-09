@@ -16,6 +16,12 @@
 //   - Normals/tangents re-normalized after morph if any shape has corresponding deltas.
 //   - Temporary morphed vertex buffer registered with canvas temp_buffers
 //     to avoid use-after-free with deferred draw queue.
+//   - GPU path is gated per-backend by `vgfx3d_backend_morph_shape_limit`.
+//   - `payload_generation` skips zero on wrap so caches can use 0 as a sentinel.
+//
+// Ownership/Lifetime:
+//   - MorphTarget3D is GC-managed; finalizer releases per-shape delta arrays
+//     and the packed GPU payload buffers.
 //
 // Links: rt_morphtarget3d.h, plans/3d/16-morph-targets.md
 //
@@ -64,6 +70,7 @@ typedef struct {
     int8_t packed_dirty;
 } rt_morphtarget3d;
 
+/// @brief Validate @p obj is a heap-allocated Mat4 and return its typed pointer (NULL on mismatch).
 static mat4_impl *morphtarget_mat4_checked(void *obj) {
     if (!obj || !rt_heap_is_payload(obj) || rt_obj_class_id(obj) != RT_MAT4_CLASS_ID)
         return NULL;
@@ -86,10 +93,14 @@ static void morphtarget_touch_payload(rt_morphtarget3d *mt) {
         mt->payload_generation++;
 }
 
+/// @brief Validate @p obj as a MorphTarget3D handle and return its typed pointer (NULL on mismatch).
 static rt_morphtarget3d *morphtarget_checked(void *obj) {
     return (rt_morphtarget3d *)rt_g3d_checked_or_null(obj, RT_G3D_MORPHTARGET3D_CLASS_ID);
 }
 
+/// @brief Compute the total float count for `shape_count × vertex_count × 3` delta storage.
+/// @details Returns 0 on any overflow in the multiply chain, 1 on success with @p out_count
+///          populated. Used to size the packed GPU delta buffer safely.
 static int morphtarget_delta_float_count(int32_t shape_count,
                                          int32_t vertex_count,
                                          size_t *out_count) {
@@ -106,6 +117,8 @@ static int morphtarget_delta_float_count(int32_t shape_count,
     return 1;
 }
 
+/// @brief Byte size of a single shape's vertex-delta array (`vertex_count × 3 × sizeof(float)`),
+///        with overflow check.
 static int morphtarget_vertex_delta_bytes(int32_t vertex_count, size_t *out_bytes) {
     size_t float_count;
     if (!morphtarget_delta_float_count(1, vertex_count, &float_count))
@@ -116,6 +129,7 @@ static int morphtarget_vertex_delta_bytes(int32_t vertex_count, size_t *out_byte
     return 1;
 }
 
+/// @brief Coerce a delta sample to float; non-finite inputs collapse to 0.
 static float morphtarget_sanitize_delta(double value) {
     return isfinite(value) ? (float)value : 0.0f;
 }

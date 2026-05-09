@@ -54,10 +54,14 @@ extern const char *rt_string_cstr(rt_string s);
 #define MESH_MAX_CYLINDER_SEGMENTS 8192
 #define MESH3D_FLOAT_ABS_MAX 3.40282346638528859812e38
 
+/// @brief Validate @p obj as a Mesh3D handle and return its typed pointer (NULL on mismatch).
 static rt_mesh3d *mesh3d_checked(void *obj) {
     return (rt_mesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_MESH3D_CLASS_ID);
 }
 
+/// @brief Return 1 if any vertex carries a non-zero bone weight, else 0.
+/// @details Used by Mesh3D.Clone to decide whether to propagate `bone_count` —
+///          meshes without skinning data clone with `bone_count = 0`.
 static int mesh3d_has_bone_weights(const rt_mesh3d *mesh) {
     if (!mesh || !mesh->vertices)
         return 0;
@@ -71,12 +75,14 @@ static int mesh3d_has_bone_weights(const rt_mesh3d *mesh) {
     return 0;
 }
 
+/// @brief Validate @p obj is a live Mat4 heap object.
 static mat4_impl *mesh3d_mat4_checked(void *obj) {
     if (!obj || rt_obj_class_id(obj) != RT_MAT4_CLASS_ID)
         return NULL;
     return (mat4_impl *)obj;
 }
 
+/// @brief Test whether @p value is finite and within ±FLT_MAX for safe `double → float` narrowing.
 static int mesh_value_fits_float(double value) {
     return isfinite(value) && value >= -MESH3D_FLOAT_ABS_MAX && value <= MESH3D_FLOAT_ABS_MAX;
 }
@@ -1324,6 +1330,11 @@ void rt_mesh3d_calc_tangents(void *obj) {
 // OBJ Loading (Wavefront)
 //=============================================================================
 
+/// @brief Read one line from an OBJ file into a dynamically resizing buffer.
+/// @details Grows `*line` geometrically (starting at 256 bytes) when the line
+///   exceeds the current capacity. NUL-terminates the line including the
+///   trailing newline if present. Returns 1 for a successful read, 0 on
+///   end-of-file with no trailing newline, -1 on allocation failure.
 static int obj_read_line(FILE *f, char **line, size_t *cap) {
     size_t len = 0;
     int ch;

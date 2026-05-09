@@ -99,24 +99,31 @@ static void material_assign_ref(void **slot, void *value) {
     *slot = value;
 }
 
+/// @brief Validate @p obj as a Material3D handle and return its typed pointer (NULL on mismatch).
 static rt_material3d *material_checked(void *obj) {
     return (rt_material3d *)rt_g3d_checked_or_null(obj, RT_G3D_MATERIAL3D_CLASS_ID);
 }
 
+/// @brief Validate that @p pixels is a live `Viper.Graphics.Pixels` handle.
 static int material_pixels_handle_valid(void *pixels) {
     return pixels && rt_obj_class_id(pixels) == RT_PIXELS_CLASS_ID;
 }
 
+/// @brief Validate that @p cubemap is a live `Viper.Graphics3D.Cubemap3D` handle.
 static int material_cubemap_handle_valid(void *cubemap) {
     return cubemap && rt_g3d_has_class(cubemap, RT_G3D_CUBEMAP3D_CLASS_ID);
 }
 
+/// @brief Assign @p pixels into a slot if the handle is valid; silently no-op otherwise.
 static void material_assign_pixels_ref(void **slot, void *pixels) {
     if (pixels && !material_pixels_handle_valid(pixels))
         return;
     material_assign_ref(slot, pixels);
 }
 
+/// @brief Internal hook used by rt_cubemap3d to assign an env-map cubemap on a material.
+/// @details Validates the inputs (live Material3D + Cubemap3D handle), then performs the
+///   retain-then-release swap on the env_map slot. NULL @p cubemap clears the slot.
 void rt_material3d_assign_env_map_checked(void *obj, void *cubemap) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
@@ -147,6 +154,8 @@ static double clamp_min(double value, double min_value) {
     return value < min_value ? min_value : value;
 }
 
+/// @brief Clamp a UV-transform component into ±MATERIAL3D_UV_TRANSFORM_ABS_MAX, falling
+///        back on non-finite input. Used to bound material UV scale/offset/rotation.
 static double material_clamp_uv_transform(double value, double fallback) {
     if (!isfinite(value))
         return fallback;

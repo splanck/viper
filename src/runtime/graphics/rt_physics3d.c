@@ -16,6 +16,16 @@
 //   - Collision response: impulse = -(1+e)*rv / (inv_mass_a + inv_mass_b).
 //   - Baumgarte stabilization: 40% excess penetration correction, 1% slop.
 //   - Character controller: up to 3 slide iterations per move.
+//   - Quaternion orientations are renormalized after every integration step.
+//   - Sweep-and-prune broad-phase sorts entries by min-X for early-out.
+//
+// Ownership/Lifetime:
+//   - World3D / Body3D / Character3D / Trigger3D are GC-managed.
+//   - World3D retains its bodies and joints; finalizer releases each.
+//   - Boxed query results (PhysicsHit3D / PhysicsHitList3D / CollisionEvent3D)
+//     retain referenced bodies and colliders until released by the GC.
+//   - Trigger3D holds tracked bodies as weak pointers — stale entries are
+//     pruned during the next Update.
 //
 // Links: rt_physics3d.h, rt_raycast3d.h, plans/3d/20-phase-a-core-game-systems.md
 //
@@ -26,6 +36,7 @@
 #include "rt_canvas3d_internal.h"
 #include "rt_collider3d.h"
 #include "rt_physics3d.h"
+#include "rt_graphics3d_ids.h"
 #include "rt_joints3d.h"
 #include "rt_raycast3d.h"
 
@@ -155,14 +166,19 @@ struct ph3d_broadphase_entry {
     double max[3];
 };
 
+/// @brief Validate @p obj as a World3D handle and return its typed pointer (NULL on mismatch).
 static rt_world3d *world3d_checked(void *obj) {
     return (rt_world3d *)rt_g3d_checked_or_null(obj, RT_G3D_WORLD3D_CLASS_ID);
 }
 
+/// @brief Validate @p obj as a Body3D handle and return its typed pointer (NULL on mismatch).
 static rt_body3d *body3d_checked(void *obj) {
     return (rt_body3d *)rt_g3d_checked_or_null(obj, RT_G3D_BODY3D_CLASS_ID);
 }
 
+/// @brief Verify that @p joint is a live joint of the kind named by @p joint_type.
+/// @details Used by World3D before dispatching joint solving to confirm the table
+///   entry hasn't been swapped out from under the cached type tag.
 static int joint3d_matches_type(void *joint, int64_t joint_type) {
     if (!joint)
         return 0;
@@ -173,6 +189,7 @@ static int joint3d_matches_type(void *joint, int64_t joint_type) {
     return 0;
 }
 
+/// @brief Return non-zero only when every component of @p v is finite.
 static int ph3d_vec3_all_finite(const double v[3]) {
     return v && isfinite(v[0]) && isfinite(v[1]) && isfinite(v[2]);
 }
@@ -422,22 +439,27 @@ typedef struct {
     double separation;
 } rt_contact_point3d_obj;
 
+/// @brief Validate @p obj as a PhysicsHit3D handle (NULL on mismatch).
 static rt_physics_hit3d_obj *physics_hit3d_checked(void *obj) {
     return (rt_physics_hit3d_obj *)rt_g3d_checked_or_null(obj, RT_G3D_PHYSICSHIT3D_CLASS_ID);
 }
 
+/// @brief Validate @p obj as a PhysicsHitList3D handle (NULL on mismatch).
 static rt_physics_hit_list3d_obj *physics_hit_list3d_checked(void *obj) {
     return (rt_physics_hit_list3d_obj *)rt_g3d_checked_or_null(obj, RT_G3D_PHYSICSHITLIST3D_CLASS_ID);
 }
 
+/// @brief Validate @p obj as a CollisionEvent3D handle (NULL on mismatch).
 static rt_collision_event3d_obj *collision_event3d_checked(void *obj) {
     return (rt_collision_event3d_obj *)rt_g3d_checked_or_null(obj, RT_G3D_COLLISIONEVENT3D_CLASS_ID);
 }
 
+/// @brief Validate @p obj as a ContactPoint3D handle (NULL on mismatch).
 static rt_contact_point3d_obj *contact_point3d_checked(void *obj) {
     return (rt_contact_point3d_obj *)rt_g3d_checked_or_null(obj, RT_G3D_CONTACTPOINT3D_CLASS_ID);
 }
 
+/// @brief Validate @p obj as a Character3D handle (NULL on mismatch).
 static rt_character3d *character3d_checked(void *obj) {
     return (rt_character3d *)rt_g3d_checked_or_null(obj, RT_G3D_CHARACTER3D_CLASS_ID);
 }
@@ -3818,7 +3840,7 @@ void *rt_world3d_overlap_sphere(void *obj, void *center_obj, double radius, int6
     double center[3];
     rt_body3d query_body;
     void *sphere_collider;
-    if (!w || !center_obj || !isfinite(radius) || radius < 0.0)
+    if (!w || !rt_g3d_is_vec3(center_obj) || !isfinite(radius) || radius < 0.0)
         return NULL;
     center[0] = rt_vec3_x(center_obj);
     center[1] = rt_vec3_y(center_obj);
@@ -3855,7 +3877,7 @@ void *rt_world3d_overlap_aabb(void *obj, void *min_obj, void *max_obj, int64_t m
     double mn[3], mx[3], center[3], half[3];
     rt_body3d query_body;
     void *box_collider;
-    if (!w || !min_obj || !max_obj)
+    if (!w || !rt_g3d_is_vec3(min_obj) || !rt_g3d_is_vec3(max_obj))
         return NULL;
     mn[0] = rt_vec3_x(min_obj);
     mn[1] = rt_vec3_y(min_obj);
@@ -3903,7 +3925,8 @@ void *rt_world3d_sweep_sphere(void *obj, void *center_obj, double radius, void *
     double center[3], delta[3];
     double max_distance;
     void *sphere_collider;
-    if (!w || !center_obj || !delta_obj || !isfinite(radius) || radius < 0.0)
+    if (!w || !rt_g3d_is_vec3(center_obj) || !rt_g3d_is_vec3(delta_obj) || !isfinite(radius) ||
+        radius < 0.0)
         return NULL;
     center[0] = rt_vec3_x(center_obj);
     center[1] = rt_vec3_y(center_obj);
@@ -3951,7 +3974,8 @@ void *rt_world3d_sweep_capsule(void *obj,
     int found = 0;
     double a[3], b[3], delta[3];
     double max_distance;
-    if (!w || !a_obj || !b_obj || !delta_obj || !isfinite(radius) || radius < 0.0)
+    if (!w || !rt_g3d_is_vec3(a_obj) || !rt_g3d_is_vec3(b_obj) || !rt_g3d_is_vec3(delta_obj) ||
+        !isfinite(radius) || radius < 0.0)
         return NULL;
     a[0] = rt_vec3_x(a_obj);
     a[1] = rt_vec3_y(a_obj);
@@ -4235,7 +4259,7 @@ void *rt_world3d_raycast(void *obj, void *origin_obj, void *direction_obj, doubl
     int found = 0;
     double origin[3];
     double dir[3];
-    if (!w || !origin_obj || !direction_obj || !isfinite(max_distance) ||
+    if (!w || !rt_g3d_is_vec3(origin_obj) || !rt_g3d_is_vec3(direction_obj) || !isfinite(max_distance) ||
         max_distance <= 0.0)
         return NULL;
     origin[0] = rt_vec3_x(origin_obj);
@@ -4279,7 +4303,8 @@ void *rt_world3d_raycast_all(void *obj,
     rt_query_hit3d hits[PH3D_MAX_QUERY_HITS];
     double origin[3], dir[3];
     int32_t hit_count = 0;
-    if (!w || !origin_obj || !direction_obj || !isfinite(max_distance) || max_distance <= 0.0)
+    if (!w || !rt_g3d_is_vec3(origin_obj) || !rt_g3d_is_vec3(direction_obj) || !isfinite(max_distance) ||
+        max_distance <= 0.0)
         return NULL;
     origin[0] = rt_vec3_x(origin_obj);
     origin[1] = rt_vec3_y(origin_obj);
@@ -4493,6 +4518,8 @@ void rt_body3d_set_orientation(void *o, void *quat) {
         return;
     if (!quat) {
         quat_identity(b->orientation);
+    } else if (!rt_g3d_is_quat(quat)) {
+        return;
     } else {
         b->orientation[0] = rt_quat_x(quat);
         b->orientation[1] = rt_quat_y(quat);
@@ -5252,7 +5279,7 @@ void *rt_character3d_new(double radius, double height, double mass) {
 /// that read velocity off the controller.
 void rt_character3d_move(void *obj, void *velocity_vec, double dt) {
     rt_character3d *ctrl = character3d_checked(obj);
-    if (!ctrl || !velocity_vec || !isfinite(dt) || dt <= 0)
+    if (!ctrl || !rt_g3d_is_vec3(velocity_vec) || !isfinite(dt) || dt <= 0)
         return;
     rt_body3d *body = ctrl->body;
     if (!body)
@@ -5388,6 +5415,7 @@ typedef struct {
     int32_t exit_count;
 } rt_trigger3d;
 
+/// @brief Validate @p obj as a Trigger3D handle and return its typed pointer (NULL on mismatch).
 static rt_trigger3d *trigger3d_checked(void *obj) {
     return (rt_trigger3d *)rt_g3d_checked_or_null(obj, RT_G3D_TRIGGER3D_CLASS_ID);
 }
@@ -5436,7 +5464,7 @@ void *rt_trigger3d_new(double x0, double y0, double z0, double x1, double y1, do
 /// `EnterCount`/`ExitCount` for transition-based logic.
 int8_t rt_trigger3d_contains(void *obj, void *point) {
     rt_trigger3d *t = trigger3d_checked(obj);
-    if (!t || !point)
+    if (!t || !rt_g3d_is_vec3(point))
         return 0;
     double px = rt_vec3_x(point), py = rt_vec3_y(point), pz = rt_vec3_z(point);
     if (!isfinite(px) || !isfinite(py) || !isfinite(pz))

@@ -664,6 +664,24 @@ static void test_camera_orbit() {
     PASS();
 }
 
+static void test_camera_orbit_syncs_fps_angles() {
+    TEST("Camera3D.Orbit syncs FPS yaw/pitch with the resulting view");
+    void *cam = rt_camera3d_new(60.0, 1.333, 0.1, 100.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    rt_camera3d_orbit(cam, target, 5.0, 90.0, 0.0);
+
+    void *before = rt_camera3d_get_forward(cam);
+    rt_camera3d_fps_update(cam, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    void *after = rt_camera3d_get_forward(cam);
+
+    EXPECT_NEAR(rt_vec3_x(before), -1.0, 0.1);
+    EXPECT_NEAR(rt_vec3_z(before), 0.0, 0.1);
+    EXPECT_NEAR(rt_vec3_x(after), rt_vec3_x(before), 0.01);
+    EXPECT_NEAR(rt_vec3_y(after), rt_vec3_y(before), 0.01);
+    EXPECT_NEAR(rt_vec3_z(after), rt_vec3_z(before), 0.01);
+    PASS();
+}
+
 static void test_camera_screen_to_ray() {
     TEST("Camera3D.ScreenToRay — center ray along view direction");
     void *cam = rt_camera3d_new(60.0, 1.333, 0.1, 100.0);
@@ -2907,12 +2925,15 @@ static void test_metal_postfx_grows_past_legacy_cap() {
 
 static void test_metal_postfx_null_safety() {
     TEST("MTL-11: PostFX3D — null safety on all ops");
+    void *wrong = rt_mesh3d_new_box(1.0, 1.0, 1.0);
     rt_postfx3d_add_bloom(NULL, 0.5, 1.0, 2);
     rt_postfx3d_add_tonemap(NULL, 1, 1.0);
     rt_postfx3d_add_fxaa(NULL);
     rt_postfx3d_add_vignette(NULL, 0.5, 0.2);
     rt_postfx3d_set_enabled(NULL, 0);
     rt_canvas3d_set_post_fx(NULL, NULL);
+    rt_postfx3d_add_fxaa(wrong);
+    EXPECT_EQ(rt_postfx3d_get_effect_count(wrong), 0);
     PASS();
 }
 
@@ -2978,6 +2999,7 @@ int main() {
     test_camera_look_at();
     test_camera_forward();
     test_camera_orbit();
+    test_camera_orbit_syncs_fps_angles();
     test_camera_screen_to_ray();
 
     /* Camera3D — extended */

@@ -15,6 +15,11 @@
 //   - Möller–Trumbore returns parametric t; t < 0 means behind ray origin.
 //   - Ray-mesh transforms the ray into object space via inverse model matrix.
 //   - AABB penetration returns the minimum push-out vector (shortest axis).
+//   - Capsule-vs-AABB is a fast two-step closest-point approximation.
+//
+// Ownership/Lifetime:
+//   - RayHit3D is GC-managed; no finalizer needed (no owned heap allocations).
+//   - Returned Vec3 hit-point / normal handles are caller-owned.
 //
 // Links: rt_raycast3d.h, rt_canvas3d_internal.h
 //
@@ -55,6 +60,10 @@ static int vec3_is_finite_raw(const double *v) {
     return v && isfinite(v[0]) && isfinite(v[1]) && isfinite(v[2]);
 }
 
+/// @brief Find the closest point on segment [a, b] to @p point (raw double[3] form).
+/// @details Projects @p point onto the line through a and b, clamps the projection
+///   parameter to [0, 1] to stay within the segment, and writes the result to @p closest.
+///   Degenerate (zero-length) segments collapse to point a. Used by capsule overlap tests.
 static void segment3d_closest_point_raw(const double *a,
                                         const double *b,
                                         const double *point,

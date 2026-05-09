@@ -19,6 +19,12 @@
 //   - AsPixels() returns a NEW Pixels object (fresh copy each call)
 //   - GC finalizer frees both buffers
 //
+// Ownership/Lifetime:
+//   - RenderTarget3D is GC-managed; finalizer frees the backend rendertarget
+//     and its lazily-allocated color/depth buffers.
+//   - Canvas3D retains a reference when the target is bound and releases it
+//     on unbind / canvas destruction.
+//
 // Links: rt_canvas3d.h, rt_canvas3d_internal.h, plans/3d/08-render-to-texture.md
 //
 //===----------------------------------------------------------------------===//
@@ -89,6 +95,7 @@ static void rt_rendertarget3d_finalize(void *obj) {
     }
 }
 
+/// @brief Validate @p obj as a RenderTarget3D handle and return its typed pointer (NULL on mismatch).
 static rt_rendertarget3d *rendertarget3d_checked(void *obj) {
     return (rt_rendertarget3d *)rt_g3d_checked_or_null(obj, RT_G3D_RENDERTARGET3D_CLASS_ID);
 }

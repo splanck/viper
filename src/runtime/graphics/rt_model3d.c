@@ -7,6 +7,26 @@
 //
 // File: src/runtime/graphics/rt_model3d.c
 // Purpose: Model3D high-level asset wrapper over imported scene/resources.
+//   Owns a template scene-graph root and per-asset reference arrays for
+//   meshes, materials, skeletons, animations, and node animations imported
+//   from FBX or glTF. Each `Instantiate()` clones the template root into a
+//   fresh scene subtree that can be parented anywhere.
+//
+// Key invariants:
+//   - The template root is a synthetic node — its children represent the
+//     authored asset's top-level scene roots.
+//   - Reference arrays are dedup'd by pointer at append time so a mesh
+//     reused across many nodes only has one retain.
+//   - `model_count_subtree` includes the template root; user-visible counts
+//     subtract 1.
+//
+// Ownership/Lifetime:
+//   - Model3D is GC-managed; finalizer releases the template root and every
+//     entry of the reference arrays.
+//   - Cloning a node retains the source's mesh/material; only morph-enabled
+//     meshes are deep-cloned for per-instance blend-shape state.
+//
+// Links: rt_model3d.h, rt_scene3d.h, rt_fbx_loader.h, rt_gltf.h
 //
 //===----------------------------------------------------------------------===//
 
@@ -18,6 +38,7 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_fbx_loader.h"
+#include "rt_graphics3d_ids.h"
 #include "rt_gltf.h"
 #include "rt_morphtarget3d.h"
 #include "rt_object.h"
@@ -59,6 +80,11 @@ typedef struct {
     int32_t node_animation_count;
     int32_t node_animation_capacity;
 } rt_model3d;
+
+/// @brief Validate @p obj as a Model3D handle and return its typed pointer (NULL on mismatch).
+static rt_model3d *model3d_checked(void *obj) {
+    return (rt_model3d *)rt_g3d_checked_or_null(obj, RT_G3D_MODEL3D_CLASS_ID);
+}
 
 /// @brief Release the GC reference at `*slot` and clear the slot. NULL-safe both ways
 /// (`slot == NULL` or `*slot == NULL`). Frees the object only when the release drops the
@@ -734,27 +760,31 @@ fail:
 
 /// @brief Number of meshes loaded into this model.
 int64_t rt_model3d_get_mesh_count(void *obj) {
-    return obj ? ((rt_model3d *)obj)->mesh_count : 0;
+    rt_model3d *model = model3d_checked(obj);
+    return model ? model->mesh_count : 0;
 }
 
 /// @brief Number of materials loaded into this model.
 int64_t rt_model3d_get_material_count(void *obj) {
-    return obj ? ((rt_model3d *)obj)->material_count : 0;
+    rt_model3d *model = model3d_checked(obj);
+    return model ? model->material_count : 0;
 }
 
 /// @brief Number of skeletons (bone hierarchies) loaded into this model.
 int64_t rt_model3d_get_skeleton_count(void *obj) {
-    return obj ? ((rt_model3d *)obj)->skeleton_count : 0;
+    rt_model3d *model = model3d_checked(obj);
+    return model ? model->skeleton_count : 0;
 }
 
 /// @brief Number of animation clips loaded into this model.
 int64_t rt_model3d_get_animation_count(void *obj) {
-    return obj ? ((rt_model3d *)obj)->animation_count : 0;
+    rt_model3d *model = model3d_checked(obj);
+    return model ? model->animation_count : 0;
 }
 
 /// @brief Number of scene nodes in the template subtree (excludes the synthetic root).
 int64_t rt_model3d_get_node_count(void *obj) {
-    rt_model3d *model = (rt_model3d *)obj;
+    rt_model3d *model = model3d_checked(obj);
     if (!model || !model->template_root)
         return 0;
     return model_count_subtree(model->template_root) - 1;
@@ -762,7 +792,7 @@ int64_t rt_model3d_get_node_count(void *obj) {
 
 /// @brief Borrow the i-th Mesh3D (NULL on out-of-range). Caller must NOT release; the model owns it.
 void *rt_model3d_get_mesh(void *obj, int64_t index) {
-    rt_model3d *model = (rt_model3d *)obj;
+    rt_model3d *model = model3d_checked(obj);
     if (!model || index < 0 || index >= model->mesh_count)
         return NULL;
     return model->meshes[index];
@@ -770,7 +800,7 @@ void *rt_model3d_get_mesh(void *obj, int64_t index) {
 
 /// @brief Borrow the i-th Material3D (NULL on out-of-range).
 void *rt_model3d_get_material(void *obj, int64_t index) {
-    rt_model3d *model = (rt_model3d *)obj;
+    rt_model3d *model = model3d_checked(obj);
     if (!model || index < 0 || index >= model->material_count)
         return NULL;
     return model->materials[index];
@@ -778,7 +808,7 @@ void *rt_model3d_get_material(void *obj, int64_t index) {
 
 /// @brief Borrow the i-th Skeleton3D (NULL on out-of-range).
 void *rt_model3d_get_skeleton(void *obj, int64_t index) {
-    rt_model3d *model = (rt_model3d *)obj;
+    rt_model3d *model = model3d_checked(obj);
     if (!model || index < 0 || index >= model->skeleton_count)
         return NULL;
     return model->skeletons[index];
@@ -786,7 +816,7 @@ void *rt_model3d_get_skeleton(void *obj, int64_t index) {
 
 /// @brief Borrow the i-th Animation3D clip (NULL on out-of-range).
 void *rt_model3d_get_animation(void *obj, int64_t index) {
-    rt_model3d *model = (rt_model3d *)obj;
+    rt_model3d *model = model3d_checked(obj);
     if (!model || index < 0 || index >= model->animation_count)
         return NULL;
     return model->animations[index];
@@ -794,7 +824,7 @@ void *rt_model3d_get_animation(void *obj, int64_t index) {
 
 /// @brief Locate a node in the template subtree by exact name match. NULL if not found.
 void *rt_model3d_find_node(void *obj, rt_string name) {
-    rt_model3d *model = (rt_model3d *)obj;
+    rt_model3d *model = model3d_checked(obj);
     if (!model || !model->template_root)
         return NULL;
     return rt_scene_node3d_find(model->template_root, name);
@@ -805,7 +835,7 @@ void *rt_model3d_find_node(void *obj, rt_string name) {
 /// a live scene without disturbing the template. Static meshes/materials are shared; meshes
 /// with attached morph targets are cloned so their blend-shape weights are instance-local.
 void *rt_model3d_instantiate(void *obj) {
-    rt_model3d *model = (rt_model3d *)obj;
+    rt_model3d *model = model3d_checked(obj);
     rt_scene_node3d *root;
     if (!model || !model->template_root)
         return NULL;
@@ -818,7 +848,7 @@ void *rt_model3d_instantiate(void *obj) {
 /// @brief Build a fresh Scene3D from the template's children, cloning each one. Use when the
 /// caller wants the model exposed as a top-level scene rather than a node subtree.
 void *rt_model3d_instantiate_scene(void *obj) {
-    rt_model3d *model = (rt_model3d *)obj;
+    rt_model3d *model = model3d_checked(obj);
     rt_scene3d *scene;
     if (!model || !model->template_root)
         return NULL;

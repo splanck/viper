@@ -14,6 +14,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "rt_heap.h"
+
 extern int64_t rt_obj_class_id(void *p);
 
 #define RT_G3D_CUBEMAP3D_CLASS_ID INT64_C(-0x603001)
@@ -75,4 +77,22 @@ static inline int32_t rt_g3d_has_class(void *obj, int64_t class_id) {
 
 static inline void *rt_g3d_checked_or_null(void *obj, int64_t class_id) {
     return rt_g3d_has_class(obj, class_id) ? obj : NULL;
+}
+
+static inline int32_t rt_g3d_is_plain_value_object(void *obj, size_t payload_bytes) {
+    if (!obj)
+        return 0;
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header(obj, &hdr) || !hdr)
+        return 0;
+    return hdr->kind == RT_HEAP_OBJECT && hdr->elem_kind == RT_ELEM_NONE && hdr->class_id == 0 &&
+           hdr->len == payload_bytes && hdr->cap == payload_bytes;
+}
+
+static inline int32_t rt_g3d_is_vec3(void *obj) {
+    return rt_g3d_is_plain_value_object(obj, sizeof(double) * 3u);
+}
+
+static inline int32_t rt_g3d_is_quat(void *obj) {
+    return rt_g3d_is_plain_value_object(obj, sizeof(double) * 4u);
 }

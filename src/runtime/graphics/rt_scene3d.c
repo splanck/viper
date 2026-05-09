@@ -15,6 +15,15 @@
 //   - Dirty flag propagates DOWN: changing a parent marks all descendants dirty.
 //   - Children array is heap-allocated (not GC-managed); freed in finalizer.
 //   - Mesh/material/name and LOD meshes are retained by the node.
+//   - Iterative traversal stacks (mark_dirty etc.) avoid recursion stack overflow.
+//   - LOD levels are kept sorted by distance ascending so the draw path picks
+//     the first matching threshold linearly.
+//
+// Ownership/Lifetime:
+//   - Scene3D / SceneNode3D / NodeAnimation3D / NodeAnimator3D are GC-managed.
+//   - Scene3D retains the root subtree; finalizer releases the root.
+//   - SceneNode3D retains mesh, material, light, name, animator, body binding,
+//     and per-LOD meshes; finalizer releases all of them.
 //
 // Links: rt_scene3d.h, rt_quat.h, rt_mat4.h, plans/3d/12-scene-graph.md
 //
@@ -55,10 +64,12 @@
 
 #define NODE_INIT_CHILDREN 4
 
+/// @brief Validate @p obj as a Scene3D handle and return its typed pointer (NULL on mismatch).
 static rt_scene3d *scene3d_checked(void *obj) {
     return (rt_scene3d *)rt_g3d_checked_or_null(obj, RT_G3D_SCENE3D_CLASS_ID);
 }
 
+/// @brief Validate @p obj as a SceneNode3D handle and return its typed pointer (NULL on mismatch).
 static rt_scene_node3d *scene_node3d_checked(void *obj) {
     return (rt_scene_node3d *)rt_g3d_checked_or_null(obj, RT_G3D_SCENENODE3D_CLASS_ID);
 }
@@ -158,13 +169,20 @@ void *rt_node_animation3d_new(rt_string name, double duration) {
 static int node_animation_reserve_channels(rt_node_animation3d *anim, int32_t needed) {
     int32_t new_capacity;
     rt_node_anim_channel3d *grown;
-    if (!anim)
+    if (!anim || needed < 0)
         return 0;
     if (anim->channel_capacity >= needed)
         return 1;
-    new_capacity = anim->channel_capacity > 0 ? anim->channel_capacity * 2 : 4;
+    if (anim->channel_capacity < 0)
+        return 0;
+    if (anim->channel_capacity > INT32_MAX / 2)
+        new_capacity = needed;
+    else
+        new_capacity = anim->channel_capacity > 0 ? anim->channel_capacity * 2 : 4;
     if (new_capacity < needed)
         new_capacity = needed;
+    if ((size_t)new_capacity > SIZE_MAX / sizeof(*anim->channels))
+        return 0;
     grown = (rt_node_anim_channel3d *)realloc(
         anim->channels, (size_t)new_capacity * sizeof(*anim->channels));
     if (!grown)
@@ -247,7 +265,8 @@ static int64_t node_animation_add_channel_impl(void *obj,
                                                const float *values,
                                                const float *in_tangents,
                                                const float *out_tangents) {
-    rt_node_animation3d *anim = (rt_node_animation3d *)obj;
+    rt_node_animation3d *anim =
+        (rt_node_animation3d *)rt_g3d_checked_or_null(obj, RT_G3D_NODEANIMATION3D_CLASS_ID);
     rt_node_anim_channel3d *channel;
     size_t time_bytes;
     size_t value_count;
@@ -270,6 +289,8 @@ static int64_t node_animation_add_channel_impl(void *obj,
         return -1;
     value_count = (size_t)key_count * (size_t)value_width;
     if (value_count > SIZE_MAX / sizeof(float))
+        return -1;
+    if (anim->channel_count == INT32_MAX)
         return -1;
     if (!node_animation_reserve_channels(anim, anim->channel_count + 1))
         return -1;
@@ -417,6 +438,10 @@ void *rt_node_animator3d_new_from_clips(void **clips, int64_t clip_count) {
     rt_node_animator3d *animator;
     if (!clips || clip_count <= 0 || clip_count > INT32_MAX)
         return NULL;
+    for (int32_t i = 0; i < (int32_t)clip_count; i++) {
+        if (!rt_g3d_has_class(clips[i], RT_G3D_NODEANIMATION3D_CLASS_ID))
+            return NULL;
+    }
     animator = (rt_node_animator3d *)rt_obj_new_i64(RT_G3D_NODEANIMATOR3D_CLASS_ID, (int64_t)sizeof(rt_node_animator3d));
     if (!animator) {
         rt_trap("NodeAnimator3D.New: allocation failed");
@@ -542,7 +567,7 @@ static int mat4d_invert(const double *m, double *out) {
               m[4] * m[2] * m[9] + m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
 
     det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
-    if (fabs(det) < 1e-12)
+    if (!isfinite(det) || fabs(det) < 1e-12)
         return -1;
 
     inv_det = 1.0 / det;
@@ -749,11 +774,84 @@ static void decompose_trs_matrix(const double *m, double *pos, double *quat, dou
         quat_from_matrix_rows(rx, ux, fx, ry, uy, fy, rz, uz, fz, quat);
 }
 
-/// @brief Recursively mark a node and all descendants as dirty.
+/// @brief Push @p node onto an iterative-traversal node stack, growing it geometrically.
+/// @details Used by `mark_dirty` and other walk functions that prefer iterative
+///   traversal over recursion (avoids stack overflow on deep scene graphs).
+///   Returns 1 on success or no-op (NULL node), 0 on overflow / OOM.
+static int scene_node_stack_push(rt_scene_node3d ***stack,
+                                 size_t *count,
+                                 size_t *capacity,
+                                 rt_scene_node3d *node) {
+    rt_scene_node3d **grown;
+    size_t new_capacity;
+    if (!stack || !count || !capacity || !node)
+        return 1;
+    if (*count >= *capacity) {
+        new_capacity = *capacity > 0 ? *capacity * 2u : 64u;
+        if (new_capacity <= *capacity)
+            return 0;
+        if (new_capacity > SIZE_MAX / sizeof(**stack))
+            return 0;
+        grown = (rt_scene_node3d **)realloc(*stack, new_capacity * sizeof(**stack));
+        if (!grown)
+            return 0;
+        *stack = grown;
+        *capacity = new_capacity;
+    }
+    (*stack)[(*count)++] = node;
+    return 1;
+}
+
+/// @brief `scene_node_stack_push` for read-only `const` traversals.
+/// @details Same growth contract; the const variant is needed because the C type
+///   system disallows aliasing a `const T**` as a `T**` even when only reads happen.
+static int scene_node_const_stack_push(const rt_scene_node3d ***stack,
+                                       size_t *count,
+                                       size_t *capacity,
+                                       const rt_scene_node3d *node) {
+    const rt_scene_node3d **grown;
+    size_t new_capacity;
+    if (!stack || !count || !capacity || !node)
+        return 1;
+    if (*count >= *capacity) {
+        new_capacity = *capacity > 0 ? *capacity * 2u : 64u;
+        if (new_capacity <= *capacity)
+            return 0;
+        if (new_capacity > SIZE_MAX / sizeof(**stack))
+            return 0;
+        grown = (const rt_scene_node3d **)realloc((void *)*stack, new_capacity * sizeof(**stack));
+        if (!grown)
+            return 0;
+        *stack = grown;
+        *capacity = new_capacity;
+    }
+    (*stack)[(*count)++] = node;
+    return 1;
+}
+
+/// @brief Mark a node and all descendants as dirty without recursive stack growth.
 static void mark_dirty(rt_scene_node3d *node) {
-    node->world_dirty = 1;
-    for (int32_t i = 0; i < node->child_count; i++)
-        mark_dirty(node->children[i]);
+    rt_scene_node3d **stack = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    if (!node)
+        return;
+    if (!scene_node_stack_push(&stack, &count, &capacity, node)) {
+        node->world_dirty = 1;
+        return;
+    }
+    while (count > 0) {
+        rt_scene_node3d *current = stack[--count];
+        current->world_dirty = 1;
+        for (int32_t i = 0; i < current->child_count; i++) {
+            if (!scene_node_stack_push(&stack, &count, &capacity, current->children[i])) {
+                rt_trap("SceneNode3D: traversal stack allocation failed");
+                free(stack);
+                return;
+            }
+        }
+    }
+    free(stack);
 }
 
 /// @brief Forward declaration for the recursive node-name search used by the animation
@@ -772,6 +870,13 @@ static void node_anim_normalize_quat(float *q) {
     float len;
     if (!q)
         return;
+    if (!isfinite(q[0]) || !isfinite(q[1]) || !isfinite(q[2]) || !isfinite(q[3])) {
+        q[0] = 0.0f;
+        q[1] = 0.0f;
+        q[2] = 0.0f;
+        q[3] = 1.0f;
+        return;
+    }
     len = sqrtf(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
     if (len > 1e-8f) {
         q[0] /= len;
@@ -816,6 +921,17 @@ static void node_anim_slerp_quat(const float *a, const float *b, double alpha, f
         for (int i = 0; i < 4; i++)
             q1[i] = -q1[i];
     }
+    if (!isfinite(dot)) {
+        out[0] = 0.0f;
+        out[1] = 0.0f;
+        out[2] = 0.0f;
+        out[3] = 1.0f;
+        return;
+    }
+    if (dot > 1.0)
+        dot = 1.0;
+    if (dot < -1.0)
+        dot = -1.0;
     if (dot > 0.9995) {
         for (int i = 0; i < 4; i++)
             out[i] = (float)((double)q0[i] + ((double)q1[i] - (double)q0[i]) * alpha);
@@ -1073,32 +1189,63 @@ static void node_animator_update(rt_node_animator3d *animator, double dt) {
         node_anim_apply_channel(animator->root, &clip->channels[i], animator->time);
 }
 
-/// @brief Recompute the world matrix if dirty (recursive up to parent).
+/// @brief Recompute the world matrix if dirty, walking ancestors iteratively.
 static void recompute_world_matrix(rt_scene_node3d *node) {
-    if (!node->world_dirty)
+    rt_scene_node3d **stack = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    rt_scene_node3d *current = node;
+    if (!node || !node->world_dirty)
         return;
 
-    double local[16];
-    build_trs_matrix(node->position, node->rotation, node->scale_xyz, local);
-
-    if (node->parent) {
-        recompute_world_matrix(node->parent);
-        mat4d_mul(node->parent->world_matrix, local, node->world_matrix);
-    } else {
-        memcpy(node->world_matrix, local, sizeof(double) * 16);
+    while (current && current->world_dirty) {
+        if (!scene_node_stack_push(&stack, &count, &capacity, current)) {
+            rt_trap("SceneNode3D: traversal stack allocation failed");
+            free(stack);
+            return;
+        }
+        current = current->parent;
     }
 
-    node->world_dirty = 0;
+    while (count > 0) {
+        double local[16];
+        current = stack[--count];
+        build_trs_matrix(current->position, current->rotation, current->scale_xyz, local);
+        if (current->parent)
+            mat4d_mul(current->parent->world_matrix, local, current->world_matrix);
+        else
+            memcpy(current->world_matrix, local, sizeof(double) * 16);
+        current->world_dirty = 0;
+    }
+    free(stack);
 }
 
 /// @brief Count nodes in a subtree (including the root).
 static int32_t count_subtree(const rt_scene_node3d *node) {
+    const rt_scene_node3d **stack = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    int32_t total = 0;
     if (!node)
         return 0;
-    int32_t n = 1;
-    for (int32_t i = 0; i < node->child_count; i++)
-        n += count_subtree(node->children[i]);
-    return n;
+    if (!scene_node_const_stack_push(&stack, &count, &capacity, node))
+        return INT32_MAX;
+    while (count > 0) {
+        const rt_scene_node3d *current = stack[--count];
+        if (total == INT32_MAX) {
+            free(stack);
+            return INT32_MAX;
+        }
+        total++;
+        for (int32_t i = 0; i < current->child_count; i++) {
+            if (!scene_node_const_stack_push(&stack, &count, &capacity, current->children[i])) {
+                free(stack);
+                return INT32_MAX;
+            }
+        }
+    }
+    free(stack);
+    return total;
 }
 
 /// @brief Compose `node->world_matrix` from its ancestors and read the translation column.
@@ -1749,7 +1896,7 @@ void *rt_scene_node3d_get_position(void *obj) {
 /// @brief Replace the local rotation with the given Quat (re-normalised on store).
 void rt_scene_node3d_set_rotation(void *obj, void *quat) {
     rt_scene_node3d *n = scene_node3d_checked(obj);
-    if (!n || !quat)
+    if (!n || !rt_g3d_is_quat(quat))
         return;
     n->rotation[0] = rt_quat_x(quat);
     n->rotation[1] = rt_quat_y(quat);
@@ -2022,35 +2169,39 @@ rt_string rt_scene_node3d_get_name(void *obj) {
 /// @brief Local-space minimum corner of this node subtree's AABB (origin if empty).
 void *rt_scene_node3d_get_aabb_min(void *obj) {
     double identity[16];
+    float bounds_min[3];
+    float bounds_max[3];
     int has_bounds;
     rt_scene_node3d *n = scene_node3d_checked(obj);
     if (!n)
         return rt_vec3_new(0, 0, 0);
-    scene_bounds_reset(n->aabb_min, n->aabb_max);
+    scene_bounds_reset(bounds_min, bounds_max);
     mat4d_identity(identity);
-    has_bounds = scene_node_collect_subtree_bounds(n, identity, n->aabb_min, n->aabb_max);
+    has_bounds = scene_node_collect_subtree_bounds(n, identity, bounds_min, bounds_max);
     if (!has_bounds) {
-        n->aabb_min[0] = n->aabb_min[1] = n->aabb_min[2] = 0.0f;
-        n->aabb_max[0] = n->aabb_max[1] = n->aabb_max[2] = 0.0f;
+        bounds_min[0] = bounds_min[1] = bounds_min[2] = 0.0f;
+        bounds_max[0] = bounds_max[1] = bounds_max[2] = 0.0f;
     }
-    return rt_vec3_new(n->aabb_min[0], n->aabb_min[1], n->aabb_min[2]);
+    return rt_vec3_new(bounds_min[0], bounds_min[1], bounds_min[2]);
 }
 
 /// @brief Local-space maximum corner of this node subtree's AABB.
 void *rt_scene_node3d_get_aabb_max(void *obj) {
     double identity[16];
+    float bounds_min[3];
+    float bounds_max[3];
     int has_bounds;
     rt_scene_node3d *n = scene_node3d_checked(obj);
     if (!n)
         return rt_vec3_new(0, 0, 0);
-    scene_bounds_reset(n->aabb_min, n->aabb_max);
+    scene_bounds_reset(bounds_min, bounds_max);
     mat4d_identity(identity);
-    has_bounds = scene_node_collect_subtree_bounds(n, identity, n->aabb_min, n->aabb_max);
+    has_bounds = scene_node_collect_subtree_bounds(n, identity, bounds_min, bounds_max);
     if (!has_bounds) {
-        n->aabb_min[0] = n->aabb_min[1] = n->aabb_min[2] = 0.0f;
-        n->aabb_max[0] = n->aabb_max[1] = n->aabb_max[2] = 0.0f;
+        bounds_min[0] = bounds_min[1] = bounds_min[2] = 0.0f;
+        bounds_max[0] = bounds_max[1] = bounds_max[2] = 0.0f;
     }
-    return rt_vec3_new(n->aabb_max[0], n->aabb_max[1], n->aabb_max[2]);
+    return rt_vec3_new(bounds_max[0], bounds_max[1], bounds_max[2]);
 }
 
 /// @brief Link a physics rigid body to this node so transforms stay in sync (see `set_sync_mode`).

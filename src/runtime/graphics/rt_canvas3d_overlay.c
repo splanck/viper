@@ -7,6 +7,26 @@
 //
 // File: src/runtime/graphics/rt_canvas3d_overlay.c
 // Purpose: Canvas3D screen-space overlay, screenshot, and debug-draw helpers.
+//   Implements Viper.Graphics3D.Canvas3D's debug visualizers (lines, points,
+//   AABB / sphere wireframes, axis gizmos), HUD primitives (rect, crosshair,
+//   text), backend-capability queries, and the screenshot capture path.
+//
+// Key invariants:
+//   - All overlay draws automatically open and close a temporary overlay
+//     frame when called outside of an explicit Begin/End bracket.
+//   - 3D-anchored overlays project through `canvas3d_active_scene_vp` so
+//     gizmos drawn after `End` stay anchored to the scene that was just
+//     rendered.
+//   - Screenshot RGBA packing follows `rt_pixels`'s 0xRRGGBBAA convention
+//     so captured images can be saved without a swizzle pass.
+//
+// Ownership/Lifetime:
+//   - Helpers borrow the canvas / Vec3 inputs; locally constructed Vec3s
+//     are released via `canvas3d_release_local` before returning.
+//   - `rt_canvas3d_screenshot` returns a freshly allocated Pixels object;
+//     the caller takes ownership.
+//
+// Links: rt_canvas3d.h, rt_canvas3d_internal.h, vgfx3d_backend.h
 //
 //===----------------------------------------------------------------------===//
 
@@ -91,6 +111,7 @@ static int overlay_output_size(const rt_canvas3d *c, int32_t *out_w, int32_t *ou
     return fb.width > 0 && fb.height > 0;
 }
 
+/// @brief Drop one reference and free if zero. Safe on NULL.
 static void canvas3d_release_local(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);

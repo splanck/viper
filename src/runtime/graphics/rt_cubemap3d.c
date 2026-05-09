@@ -13,6 +13,13 @@
 //   - All 6 faces must be square and the same dimensions
 //   - Faces are retained Pixels objects while the cubemap is alive.
 //   - Face order: +X, -X, +Y, -Y, +Z, -Z
+//   - Per-cubemap `cache_identity` is unique within a process and skips zero
+//     so callers can use 0 as "no identity yet".
+//
+// Ownership/Lifetime:
+//   - CubeMap3D is GC-managed; finalizer releases each face Pixels reference.
+//   - Faces are retained on construction and held for the cubemap's lifetime.
+//   - Canvas/Material env-map setters retain/release the cubemap on assign.
 //
 // Links: rt_canvas3d.h, rt_canvas3d_internal.h, plans/3d/11-cube-maps.md
 //
@@ -41,6 +48,7 @@ extern int64_t rt_pixels_width(void *pixels);
 extern int64_t rt_pixels_height(void *pixels);
 extern int64_t rt_pixels_get(void *pixels, int64_t x, int64_t y);
 
+/// @brief Validate that @p pixels is a live `Viper.Graphics.Pixels` handle.
 static int cubemap_pixels_valid(void *pixels) {
     return pixels && rt_obj_class_id(pixels) == RT_PIXELS_CLASS_ID;
 }
