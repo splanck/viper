@@ -674,6 +674,81 @@ static void testCondCodeMapping() {
     CHECK(condCode("le") == 0xD);
     CHECK(condCode("al") == 0xE);
     CHECK(condCode("nv") == 0xF);
+
+    bool threw = false;
+    try {
+        (void)condCode("bad");
+    } catch (const std::invalid_argument &) {
+        threw = true;
+    }
+    CHECK(threw);
+
+    threw = false;
+    try {
+        (void)condCode(nullptr);
+    } catch (const std::invalid_argument &) {
+        threw = true;
+    }
+    CHECK(threw);
+}
+
+static void testEncoderValidationRejectsBadOperands() {
+    {
+        bool threw = false;
+        try {
+            MInstr bad{MOpcode::AddRRR, {gpr(PhysReg::X0), gpr(PhysReg::X1)}};
+            (void)encodeInstrBytes({bad});
+        } catch (const std::runtime_error &ex) {
+            threw = std::string(ex.what()).find("requires exactly 3") != std::string::npos;
+        }
+        CHECK(threw);
+    }
+
+    {
+        MOperand bad = gpr(PhysReg::X0);
+        bad.reg.cls = RegClass::FPR;
+        bool threw = false;
+        try {
+            MInstr mi{MOpcode::AddRRR, {bad, gpr(PhysReg::X1), gpr(PhysReg::X2)}};
+            (void)encodeInstrBytes({mi});
+        } catch (const std::runtime_error &ex) {
+            threw = std::string(ex.what()).find("register class") != std::string::npos;
+        }
+        CHECK(threw);
+    }
+
+    {
+        bool threw = false;
+        try {
+            MInstr mi{MOpcode::FAddRRR, {gpr(PhysReg::X0), fpr(PhysReg::V1), fpr(PhysReg::V2)}};
+            (void)encodeInstrBytes({mi});
+        } catch (const std::invalid_argument &ex) {
+            threw = std::string(ex.what()).find("expected an FPR") != std::string::npos;
+        }
+        CHECK(threw);
+    }
+
+    {
+        bool threw = false;
+        try {
+            MInstr mi{MOpcode::LslRI, {gpr(PhysReg::X0), gpr(PhysReg::X1), imm(64)}};
+            (void)encodeInstrBytes({mi});
+        } catch (const std::out_of_range &ex) {
+            threw = std::string(ex.what()).find("shift amount") != std::string::npos;
+        }
+        CHECK(threw);
+    }
+
+    {
+        bool threw = false;
+        try {
+            MInstr mi{MOpcode::BCond, {cond("bad"), label("target")}};
+            (void)encodeInstrBytes({mi});
+        } catch (const std::invalid_argument &ex) {
+            threw = std::string(ex.what()).find("invalid condition") != std::string::npos;
+        }
+        CHECK(threw);
+    }
 }
 
 static void testBlr() {
@@ -859,6 +934,34 @@ static void testAndRI_nonEncodable() {
     CHECK(countWords({mi}) > 1);
 }
 
+static void testLogicalImmediateEncoderEdges() {
+    CHECK(encodeLogicalImmediate(0x7FFFFFFFFFFFFFFFULL) >= 0);
+    CHECK(encodeLogicalImmediate(0x8000000000000001ULL) >= 0);
+    CHECK(encodeLogicalImmediate(0xFFFFFFFF00000000ULL) >= 0);
+    CHECK(encodeLogicalImmediate(0ULL) < 0);
+    CHECK(encodeLogicalImmediate(~0ULL) < 0);
+}
+
+static void testLargeImmediateScratchAvoidsSources() {
+    {
+        const std::vector<uint8_t> bytes =
+            encodeInstrBytes({MInstr{MOpcode::CmpRI, {gpr(PhysReg::X16), imm(0x100000000LL)}}});
+        const uint32_t mov = readWord(bytes, 4);
+        CHECK((mov & 31u) == hwGPR(PhysReg::X9));
+    }
+
+    {
+        const std::vector<uint8_t> bytes =
+            encodeInstrBytes({MInstr{MOpcode::AndRI,
+                                     {gpr(PhysReg::X0), gpr(PhysReg::X9), imm(5)}}});
+        const uint32_t mov = readWord(bytes, 4);
+        CHECK((mov & 31u) == hwGPR(PhysReg::X16));
+        const uint32_t andWord = readWord(bytes, 8);
+        CHECK(((andWord >> 16) & 31u) == hwGPR(PhysReg::X16));
+        CHECK(((andWord >> 5) & 31u) == hwGPR(PhysReg::X9));
+    }
+}
+
 static void testMovRI_highOnly() {
     // MovRI with 0x0000000100000000 → goes through encodeMovImm64.
     // Smart MOVZ start: chunks = [0, 0, 1, 0], first=2.
@@ -1040,6 +1143,7 @@ int main() {
     testSubSpChunking();
     testCalleeSavedPair();
     testCondCodeMapping();
+    testEncoderValidationRejectsBadOperands();
     testBlr();
     testAddsSubsRRR();
     testLdpStpRegFpImm();
@@ -1055,6 +1159,8 @@ int main() {
     testAndRI_logicalImm();
     testOrrRI_logicalImm();
     testAndRI_nonEncodable();
+    testLogicalImmediateEncoderEdges();
+    testLargeImmediateScratchAvoidsSources();
     testMovRI_highOnly();
     testMovRI_movnPath();
     testMovRI_zero();

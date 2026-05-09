@@ -29,6 +29,7 @@
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 using namespace viper::codegen::x64;
@@ -112,6 +113,58 @@ int main() {
             (void)x86CC(99);
         } catch (const std::out_of_range &) {
             threw = true;
+        }
+        CHECK(threw);
+    }
+
+    {
+        bool threw = false;
+        try {
+            (void)encodeOne(MOpcode::MOVrr, {gpr(PhysReg::RAX)});
+        } catch (const std::runtime_error &ex) {
+            threw = std::string(ex.what()).find("requires exactly 2") != std::string::npos;
+        }
+        CHECK(threw);
+    }
+
+    {
+        bool threw = false;
+        try {
+            (void)encodeOne(MOpcode::MOVrr, {gpr(PhysReg::RAX), xmm(PhysReg::XMM0)});
+        } catch (const std::runtime_error &ex) {
+            threw = std::string(ex.what()).find("expected GPR") != std::string::npos;
+        }
+        CHECK(threw);
+    }
+
+    {
+        bool threw = false;
+        try {
+            (void)encodeOne(MOpcode::MOVrr,
+                            {makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::XMM0)),
+                             gpr(PhysReg::RAX)});
+        } catch (const std::runtime_error &ex) {
+            threw = std::string(ex.what()).find("register class") != std::string::npos;
+        }
+        CHECK(threw);
+    }
+
+    {
+        bool threw = false;
+        try {
+            (void)encodeOne(MOpcode::SHLri, {gpr(PhysReg::RAX), imm(64)});
+        } catch (const std::runtime_error &ex) {
+            threw = std::string(ex.what()).find("shift count") != std::string::npos;
+        }
+        CHECK(threw);
+    }
+
+    {
+        bool threw = false;
+        try {
+            (void)encodeOne(MOpcode::SHLrc, {gpr(PhysReg::RAX), gpr(PhysReg::RDX)});
+        } catch (const std::runtime_error &ex) {
+            threw = std::string(ex.what()).find("RCX") != std::string::npos;
         }
         CHECK(threw);
     }

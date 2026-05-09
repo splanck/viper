@@ -15,7 +15,7 @@
 //   - FPR hardware encoding = PhysReg enum value - 32
 //   - Condition codes are 4-bit values; inversion flips the LSB
 // Ownership/Lifetime:
-//   - All functions are constexpr/inline; no runtime state
+//   - Helpers are inline and stateless; invalid runtime inputs throw
 // Links: codegen/aarch64/TargetAArch64.hpp,
 //        codegen/aarch64/binenc/A64BinaryEncoder.hpp,
 //        codegen/aarch64/binenc/A64BinaryEncoder.cpp
@@ -29,6 +29,7 @@
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <stdexcept>
 
 namespace viper::codegen::aarch64::binenc {
 
@@ -37,15 +38,16 @@ namespace viper::codegen::aarch64::binenc {
 // =============================================================================
 
 /// Map a GPR PhysReg to its 5-bit hardware encoding (0-31).
-constexpr uint32_t hwGPR(PhysReg r) {
-    assert(static_cast<uint32_t>(r) <= static_cast<uint32_t>(PhysReg::SP));
+inline uint32_t hwGPR(PhysReg r) {
+    if (!isGPR(r))
+        throw std::invalid_argument("AArch64 binary encoder: expected a GPR register");
     return static_cast<uint32_t>(r);
 }
 
 /// Map an FPR PhysReg (V0-V31) to its 5-bit hardware encoding (0-31).
-constexpr uint32_t hwFPR(PhysReg r) {
-    assert(static_cast<uint32_t>(r) >= static_cast<uint32_t>(PhysReg::V0));
-    assert(static_cast<uint32_t>(r) <= static_cast<uint32_t>(PhysReg::V31));
+inline uint32_t hwFPR(PhysReg r) {
+    if (!isFPR(r))
+        throw std::invalid_argument("AArch64 binary encoder: expected an FPR register");
     return static_cast<uint32_t>(r) - static_cast<uint32_t>(PhysReg::V0);
 }
 
@@ -54,10 +56,9 @@ constexpr uint32_t hwFPR(PhysReg r) {
 // =============================================================================
 
 /// Map a condition code string ("eq", "ne", "lt", etc.) to its 4-bit ARM value.
-/// Returns 0xE (always) for unrecognized codes.
 inline uint32_t condCode(const char *cond) {
     if (!cond)
-        return 0xE;
+        throw std::invalid_argument("AArch64 binary encoder: missing condition code");
 
     // Fast 2-char comparison using memcmp
     struct Entry {
@@ -88,7 +89,7 @@ inline uint32_t condCode(const char *cond) {
     for (const auto &e : table)
         if (std::strcmp(cond, e.str) == 0)
             return e.code;
-    return 0xE;
+    throw std::invalid_argument("AArch64 binary encoder: invalid condition code");
 }
 
 /// Invert a 4-bit condition code (flip LSB).
@@ -299,90 +300,41 @@ inline int32_t encodeLogicalImmediate(uint64_t val) {
     if (val == 0 || val == ~0ULL)
         return -1; // All-zeros and all-ones are not encodable.
 
-    // For each element size, check if the value is a rotated run of ones.
-    for (unsigned size = 2; size <= 64; size <<= 1) {
-        uint64_t mask = (~0ULL) >> (64 - size);
-        uint64_t elem = val & mask;
+    auto ror = [](uint64_t bits, unsigned rot, unsigned width) -> uint64_t {
+        const uint64_t mask = (width == 64) ? ~0ULL : ((1ULL << width) - 1);
+        bits &= mask;
+        rot %= width;
+        if (rot == 0)
+            return bits;
+        return ((bits >> rot) | (bits << (width - rot))) & mask;
+    };
 
-        // Verify the value is a repeating pattern of this element.
-        bool repeating = true;
-        for (unsigned shift = size; shift < 64; shift += size) {
-            if (((val >> shift) & mask) != elem) {
-                repeating = false;
-                break;
+    auto replicate = [](uint64_t elem, unsigned width) -> uint64_t {
+        if (width == 64)
+            return elem;
+        uint64_t out = 0;
+        for (unsigned shift = 0; shift < 64; shift += width)
+            out |= elem << shift;
+        return out;
+    };
+
+    // Brute-force the architectural DecodeBitMasks parameter space. This is
+    // compact, avoids all 64-bit shift edge cases, and guarantees the returned
+    // N:immr:imms encoding decodes back to the requested value.
+    for (unsigned width = 2; width <= 64; width <<= 1) {
+        const unsigned levels = width - 1;
+        const uint32_t N = (width == 64) ? 1u : 0u;
+        const uint32_t immsPrefix = (width == 64) ? 0u : ((~levels) & 0x3Fu);
+
+        for (unsigned runLen = 1; runLen < width; ++runLen) {
+            const uint64_t ones = (runLen == 64) ? ~0ULL : ((1ULL << runLen) - 1);
+            const uint32_t imms = immsPrefix | static_cast<uint32_t>(runLen - 1);
+            for (unsigned immr = 0; immr < width; ++immr) {
+                const uint64_t elem = ror(ones, immr, width);
+                if (replicate(elem, width) == val)
+                    return static_cast<int32_t>((N << 12) | (immr << 6) | imms);
             }
         }
-        if (!repeating)
-            continue;
-
-        // Try to decompose `elem` as a rotated run of ones within `size` bits.
-        // Rotate elem to find the run length.
-        // Double the element to handle wrap-around rotations.
-        uint64_t doubled = elem | (elem << size);
-        // Find a contiguous run of ones in `doubled`.
-        // Count trailing zeros to find the start of a run.
-        unsigned tz = 0;
-        {
-            uint64_t tmp = doubled;
-            while (tz < 2 * size && (tmp & 1) == 0) {
-                ++tz;
-                tmp >>= 1;
-            }
-        }
-        // Count the length of the run.
-        unsigned runLen = 0;
-        {
-            uint64_t tmp = doubled >> tz;
-            while (runLen < 2 * size && (tmp & 1) == 1) {
-                ++runLen;
-                tmp >>= 1;
-            }
-        }
-        // After the run, the remaining bits must all be zero (within the doubled element).
-        // Verify: (doubled >> tz >> runLen) has no more 1-bits within 2*size.
-        {
-            uint64_t remaining = doubled >> (tz + runLen);
-            uint64_t checkMask =
-                (size < 32) ? ((1ULL << size) - 1) : (size == 32 ? 0xFFFFFFFF : ~0ULL);
-            // We need to check bits [tz+runLen .. 2*size-1]. But since we doubled,
-            // if the run doesn't wrap cleanly, this element isn't valid.
-            if (runLen == 0 || runLen >= size)
-                continue; // No valid run found.
-            // The run of `runLen` ones starting at bit `tz` within `size`-bit element.
-            // rotation = tz mod size (where the run starts, measuring from bit 0).
-            unsigned rotation = tz % size;
-            // Verify by reconstructing.
-            uint64_t reconstructed = 0;
-            for (unsigned b = 0; b < runLen; ++b)
-                reconstructed |= 1ULL << ((rotation + b) % size);
-            if (reconstructed != elem)
-                continue;
-        }
-
-        // Encode: immr = rotation within size, imms encodes (run_length - 1) and size.
-        unsigned rotation = tz % size;
-        unsigned immr = (size - rotation) % size; // Right-rotation amount.
-        unsigned imms;
-        unsigned N;
-        if (size == 64) {
-            N = 1;
-            imms = runLen - 1;
-        } else {
-            N = 0;
-            // imms has a size-encoding prefix: for size=32, top bit is 0; for 16, top 2 are 10;
-            // etc. The pattern is: imms = (NOT(size-1) & 0x3F) | (runLen - 1) More precisely: the
-            // high bits of imms encode the element size:
-            //   size=2:  imms[5:1] = 11110x  (0x3C | (runLen-1))
-            //   size=4:  imms[5:2] = 1110xx  (0x38 | (runLen-1))
-            //   size=8:  imms[5:3] = 110xxx  (0x30 | (runLen-1))
-            //   size=16: imms[5:4] = 10xxxx  (0x20 | (runLen-1))
-            //   size=32: imms[5]   = 0xxxxx  (0x00 | (runLen-1))
-            // Formula: ~(size*2 - 1) & 0x3F gives the prefix.
-            unsigned prefix = (~(size * 2 - 1)) & 0x3F;
-            imms = prefix | (runLen - 1);
-        }
-
-        return static_cast<int32_t>((N << 12) | (immr << 6) | imms);
     }
     return -1;
 }

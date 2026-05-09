@@ -158,6 +158,8 @@ The `PhysReg` enum order differs from hardware encoding. The encoder maps via lo
   of the 4-byte displacement field
 - **Condition codes**: Invalid MIR condition-code integers are rejected even in release builds before the encoder
   constructs JCC/SETcc/CMOVcc opcodes.
+- **Operand validation**: Opcode handlers require exact operand counts and validate GPR/XMM roles before touching
+  hardware encoding tables. This catches malformed post-RA MIR instead of encoding the wrong register class.
 - **Win64 unwind metadata**: COFF unwind emission requires every planned prologue operation to match emitted code,
   and rejects prologue/code offsets that exceed the 8-bit PE unwind fields.
 - **Symbol names**: Encoders record canonical, unmangled names in `CodeSection`; platform ABI spelling is applied
@@ -191,6 +193,8 @@ This is dramatically simpler than x86_64 — no variable-length prefixes, no Mod
 ### Register Encoding
 
 Trivial 5-bit inline encoding: `X0=0, X1=1, ..., X30=30, SP/XZR=31, V0=0, ..., V31=31`.
+The binary encoder still validates operand counts, physical-register ranges, and GPR/FPR roles at runtime so
+release builds fail on malformed MIR instead of relying on debug-only assertions.
 
 ### Encoding Classes
 
@@ -218,8 +222,12 @@ The AArch64 encoder synthesizes function prologues and epilogues at emit time:
   instruction immediates.
 - **Large stack/base offsets**: Materialized-address load/store fallbacks, including SP-relative stores, choose a
   scratch register that does not alias the base register or a GPR store source.
+- **Late immediate materialization**: Compare/logical-immediate fallbacks avoid clobbering source registers when
+  choosing reserved scratch registers.
 - **Pair load/store offsets**: `ldp/stp` immediate offsets are validated for 8-byte alignment and signed imm7 range
   before encoding.
+- **Immediate validation**: Shift immediates must be in range `0..63`; invalid condition strings are rejected; logical
+  immediates are encoded through a safe decode-equivalence search that avoids 64-bit shift undefined behavior.
 
 ### Branch Resolution
 
@@ -251,8 +259,8 @@ The AArch64 encoder synthesizes function prologues and epilogues at emit time:
 - Index 0 is reserved for the null entry (ELF requirement)
 - Symbols have name, binding (Local/Global/External), section (Text/Rodata/Undefined), offset, and size
 - Name-to-index lookup via hash map for O(1) `findOrAdd()`
-- Duplicate-name `add()` calls preserve the first lookup result. This allows duplicate local labels while keeping
-  `find()` deterministic.
+- Duplicate global definitions are rejected. Duplicate local labels are preserved as separate entries, but name-only
+  lookup for that spelling becomes ambiguous and returns no result.
 
 ### Relocation
 
@@ -309,11 +317,14 @@ LC_BUILD_VERSION → LC_SYMTAB → LC_DYSYMTAB → section data → relocations 
 - Both `__TEXT,__text` and `__TEXT,__const` publish their own relocation tables when needed.
 - AArch64 non-zero addends are range-checked as signed 24-bit values and serialized with paired
   `ARM64_RELOC_ADDEND` records before the target relocation.
+- Mach-O 32-bit file fields such as section offsets, relocation addresses, relocation counts, symbol counts, and
+  string-table sizes are checked before narrowing.
 - Compact format: `r_address(32) | r_symbolnum(24) | r_pcrel(1) | r_length(2) | r_extern(1) | r_type(4)`
 - LC_BUILD_VERSION mandatory (platform=macOS, minos=14.0)
 - `MH_SUBSECTIONS_VIA_SYMBOLS` flag set
 - Multi-text emission uses an explicit writer override that merges input atoms through `CodeSection::appendSection()`
-  before emitting one `__TEXT,__text` section with subsection-by-symbol semantics.
+  before emitting one `__TEXT,__text` section with subsection-by-symbol semantics. Duplicate local labels from
+  different input text atoms are uniquified during this merge.
 - Relocations and compact-unwind entries fail fast if they reference an unknown symbol index. Explicit
   cross-section relocation hints must resolve to exactly one target symbol; missing or duplicate target names are
   diagnosed instead of falling back to the source section symbol.
@@ -329,8 +340,15 @@ Produces valid COFF object files for Windows.
 - Machine: `IMAGE_FILE_MACHINE_AMD64` (0x8664) or `IMAGE_FILE_MACHINE_ARM64` (0xAA64)
 - Relocations are 10 bytes: offset(4) + symbolTableIndex(4) + type(2)
 - No explicit addend — addend is embedded in instruction bytes at relocation site
+- x86_64 `PCRel32`/`Branch32` addends are normalized to the COFF relocation convention; only the native zero addend
+  or the encoder's ELF-style `-4` marker is accepted.
 - Symbol names ≤8 chars stored inline; longer names reference string table (4-byte size prefix)
+- Long section-name string-table references are checked to ensure the `/decimal` reference fits in COFF's 8-byte
+  section-name field.
 - Relocation symbol indexes must resolve to emitted symbols.
+- Duplicate global definitions are diagnosed instead of being overwritten in the COFF symbol map.
+- Win64 unwind entries validate stack allocation size/alignment, save-slot alignment, register ranges, and the
+  one-byte unwind code count before `.xdata` is serialized.
 - Sections with more than 65,535 relocations use the standard COFF overflow relocation record instead of truncating
   the section-header relocation count.
 
@@ -357,7 +375,7 @@ Both x86_64 and AArch64 have their own `BinaryEmitPass` implementations that:
 2. Iterate over MIR functions, encoding each
 3. Write the resulting CodeSections through an ObjectFileWriter. AArch64 keeps per-function text sections and avoids
    constructing a duplicate aggregate text buffer on the hot path.
-4. Set up the `LinkContext` from the symbol table (no assembly text scanning needed)
+4. Set up the `LinkContext` from text and rodata external symbols (no assembly text scanning needed)
 
 ### CodegenPipeline
 

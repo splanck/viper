@@ -33,13 +33,13 @@ A focused hardening-and-correctness cycle on the v0.2.5 surface. No new public n
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 29 | +29 |
+| Commits | — | 33 | +33 |
 | Source files | 2,996 | 3,005 | +9 |
-| Production SLOC | 552K | 563K | +11K |
+| Production SLOC | 552K | 564K | +12K |
 | Test SLOC | 228K | 234K | +6K |
 | Demo SLOC | 188K | 188K | 0 |
 
-Counts via `scripts/count_sloc.sh` (production 563,300 / test 233,581 / demo 187,826 / source files 3,005).
+Counts via `scripts/count_sloc.sh` (production 563,689 / test 233,890 / demo 187,826 / source files 3,005).
 
 ---
 
@@ -255,6 +255,6 @@ Demos and docs were updated to track the runtime work above; chess, xenoscape, a
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 29-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 33-commit history since v0.2.5.
 
 <!-- END DRAFT -->

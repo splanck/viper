@@ -63,7 +63,16 @@ static PhysReg getReg(const MOperand &op) {
     if (!op.reg.isPhys)
         throw std::runtime_error("AArch64 binary encoder cannot encode virtual register v" +
                                  std::to_string(op.reg.idOrPhys));
-    return static_cast<PhysReg>(op.reg.idOrPhys);
+    if (op.reg.idOrPhys > static_cast<uint16_t>(PhysReg::V31))
+        throw std::runtime_error("AArch64 binary encoder: physical register id out of range");
+    const PhysReg phys = static_cast<PhysReg>(op.reg.idOrPhys);
+    const bool classMatches = (op.reg.cls == RegClass::GPR && isGPR(phys)) ||
+                              (op.reg.cls == RegClass::FPR && isFPR(phys));
+    if (!classMatches) {
+        throw std::runtime_error("AArch64 binary encoder: register class does not match "
+                                 "physical register");
+    }
+    return phys;
 }
 
 /// Extract immediate value from an operand.
@@ -72,6 +81,161 @@ static long long getImm(const MOperand &op) {
         throw std::runtime_error("AArch64 binary encoder expected immediate operand, got kind=" +
                                  std::to_string(static_cast<int>(op.kind)));
     return op.imm;
+}
+
+/// Extract label value from an operand.
+static const std::string &getLabel(const MOperand &op) {
+    if (op.kind != MOperand::Kind::Label)
+        throw std::runtime_error("AArch64 binary encoder expected label operand, got kind=" +
+                                 std::to_string(static_cast<int>(op.kind)));
+    return op.label;
+}
+
+/// Extract encoded condition value from an operand.
+static uint32_t getCondCode(const MOperand &op) {
+    if (op.kind != MOperand::Kind::Cond)
+        throw std::runtime_error("AArch64 binary encoder expected condition operand, got kind=" +
+                                 std::to_string(static_cast<int>(op.kind)));
+    return condCode(op.cond);
+}
+
+static void requireOperandCount(const MInstr &mi, size_t expected) {
+    if (mi.ops.size() != expected) {
+        throw std::runtime_error("AArch64 binary encoder: opcode '" +
+                                 std::string(opcodeName(mi.opc)) + "' requires exactly " +
+                                 std::to_string(expected) + " operand(s) but has " +
+                                 std::to_string(mi.ops.size()));
+    }
+}
+
+static void validateOperandCount(const MInstr &mi) {
+    switch (mi.opc) {
+        case MOpcode::Ret:
+            requireOperandCount(mi, 0);
+            return;
+        case MOpcode::SubSpImm:
+        case MOpcode::AddSpImm:
+        case MOpcode::Br:
+        case MOpcode::Bl:
+        case MOpcode::Blr:
+            requireOperandCount(mi, 1);
+            return;
+        case MOpcode::MovRR:
+        case MOpcode::MovRI:
+        case MOpcode::FMovRR:
+        case MOpcode::FMovRI:
+        case MOpcode::FMovGR:
+        case MOpcode::FCmpRR:
+        case MOpcode::SCvtF:
+        case MOpcode::FCvtZS:
+        case MOpcode::UCvtF:
+        case MOpcode::FCvtZU:
+        case MOpcode::FRintN:
+        case MOpcode::StrRegSpImm:
+        case MOpcode::StrFprSpImm:
+        case MOpcode::LdrRegFpImm:
+        case MOpcode::StrRegFpImm:
+        case MOpcode::LdrFprFpImm:
+        case MOpcode::StrFprFpImm:
+        case MOpcode::PhiStoreGPR:
+        case MOpcode::PhiStoreFPR:
+        case MOpcode::AddFpImm:
+        case MOpcode::Cbz:
+        case MOpcode::Cbnz:
+        case MOpcode::CmpRR:
+        case MOpcode::CmpRI:
+        case MOpcode::TstRR:
+        case MOpcode::Cset:
+        case MOpcode::BCond:
+        case MOpcode::AdrPage:
+            requireOperandCount(mi, 2);
+            return;
+        case MOpcode::FAddRRR:
+        case MOpcode::FSubRRR:
+        case MOpcode::FMulRRR:
+        case MOpcode::FDivRRR:
+        case MOpcode::LdrRegBaseImm:
+        case MOpcode::StrRegBaseImm:
+        case MOpcode::LdrFprBaseImm:
+        case MOpcode::StrFprBaseImm:
+        case MOpcode::AddRRR:
+        case MOpcode::SubRRR:
+        case MOpcode::MulRRR:
+        case MOpcode::SmulhRRR:
+        case MOpcode::UmulhRRR:
+        case MOpcode::SDivRRR:
+        case MOpcode::UDivRRR:
+        case MOpcode::AndRRR:
+        case MOpcode::OrrRRR:
+        case MOpcode::EorRRR:
+        case MOpcode::AndRI:
+        case MOpcode::OrrRI:
+        case MOpcode::EorRI:
+        case MOpcode::AddRI:
+        case MOpcode::SubRI:
+        case MOpcode::LslRI:
+        case MOpcode::LsrRI:
+        case MOpcode::AsrRI:
+        case MOpcode::LslvRRR:
+        case MOpcode::LsrvRRR:
+        case MOpcode::AsrvRRR:
+        case MOpcode::AddPageOff:
+        case MOpcode::LdpRegFpImm:
+        case MOpcode::StpRegFpImm:
+        case MOpcode::LdpFprFpImm:
+        case MOpcode::StpFprFpImm:
+        case MOpcode::AddsRRR:
+        case MOpcode::SubsRRR:
+        case MOpcode::AddsRI:
+        case MOpcode::SubsRI:
+        case MOpcode::AddOvfRRR:
+        case MOpcode::SubOvfRRR:
+        case MOpcode::AddOvfRI:
+        case MOpcode::SubOvfRI:
+        case MOpcode::MulOvfRRR:
+            requireOperandCount(mi, 3);
+            return;
+        case MOpcode::MSubRRRR:
+        case MOpcode::MAddRRRR:
+        case MOpcode::Csel:
+            requireOperandCount(mi, 4);
+            return;
+    }
+}
+
+static uint32_t checkedU32Magnitude(int64_t value, const char *context) {
+    const uint64_t magnitude = absImmUnsigned(value);
+    if (magnitude > std::numeric_limits<uint32_t>::max())
+        throw std::out_of_range(std::string("AArch64 binary encoder: ") + context +
+                                " magnitude exceeds 32-bit helper range");
+    return static_cast<uint32_t>(magnitude);
+}
+
+static uint32_t checkedU32NonNegative(int64_t value, const char *context) {
+    if (value < 0 || value > std::numeric_limits<uint32_t>::max())
+        throw std::out_of_range(std::string("AArch64 binary encoder: ") + context +
+                                " is outside 32-bit unsigned range");
+    return static_cast<uint32_t>(value);
+}
+
+static uint32_t checkedShiftAmount(long long value, const char *opcode) {
+    if (!isValidShiftAmount(value))
+        throw std::out_of_range(std::string("AArch64 ") + opcode +
+                                " shift amount must be in range 0..63");
+    return static_cast<uint32_t>(value);
+}
+
+static void validateFunctionMetadata(const MFunction &fn) {
+    if (fn.localFrameSize < 0)
+        throw std::out_of_range("AArch64 binary encoder: negative local frame size");
+    for (PhysReg reg : fn.savedGPRs) {
+        if (!isGPR(reg) || reg == PhysReg::SP)
+            throw std::out_of_range("AArch64 binary encoder: saved GPR list contains a non-GPR");
+    }
+    for (PhysReg reg : fn.savedFPRs) {
+        if (!isFPR(reg))
+            throw std::out_of_range("AArch64 binary encoder: saved FPR list contains a non-FPR");
+    }
 }
 
 /// Check if offset fits in signed 9-bit range for ldur/stur.
@@ -199,9 +363,9 @@ size_t A64BinaryEncoder::spOffsetStoreSize(int64_t offset) const {
 
     size_t bytes = 8; // mov scratch, sp + final store
     if (offset > 0)
-        bytes += addSubImmSmartSize(static_cast<uint32_t>(offset));
+        bytes += addSubImmSmartSize(checkedU32Magnitude(offset, "SP store offset"));
     else if (offset < 0)
-        bytes += addSubImmSmartSize(static_cast<uint32_t>(-offset));
+        bytes += addSubImmSmartSize(checkedU32Magnitude(offset, "SP store offset"));
     return bytes;
 }
 
@@ -211,7 +375,7 @@ size_t A64BinaryEncoder::prologueSize(const MFunction &fn) const {
         size += 4; // paciasp
     size += 8;     // stp fp/lr + mov fp, sp
     if (fn.localFrameSize > 0)
-        size += addSubImmSmartSize(static_cast<uint32_t>(fn.localFrameSize));
+        size += addSubImmSmartSize(checkedU32NonNegative(fn.localFrameSize, "local frame size"));
     size += ((fn.savedGPRs.size() + 1) / 2) * 4;
     size += ((fn.savedFPRs.size() + 1) / 2) * 4;
     return size;
@@ -222,7 +386,7 @@ size_t A64BinaryEncoder::epilogueSize(const MFunction &fn) const {
     size += ((fn.savedFPRs.size() + 1) / 2) * 4;
     size += ((fn.savedGPRs.size() + 1) / 2) * 4;
     if (fn.localFrameSize > 0)
-        size += addSubImmSmartSize(static_cast<uint32_t>(fn.localFrameSize));
+        size += addSubImmSmartSize(checkedU32NonNegative(fn.localFrameSize, "local frame size"));
     size += 4; // ldp fp/lr
     if (currentAbi_ == ABIFormat::Darwin)
         size += 4; // autiasp
@@ -246,6 +410,8 @@ size_t A64BinaryEncoder::measureInstructionSize(
     size_t instructionOrdinal,
     const std::unordered_set<size_t> &assumedLongConditionalBranches,
     std::unordered_set<size_t> *discoveredLongConditionalBranches) {
+    validateOperandCount(mi);
+
     auto conditionalBranchSize = [&](const std::string &target) {
         if (assumedLongConditionalBranches.count(instructionOrdinal) != 0) {
             if (discoveredLongConditionalBranches)
@@ -298,7 +464,7 @@ size_t A64BinaryEncoder::measureInstructionSize(
 
         case MOpcode::SubSpImm:
         case MOpcode::AddSpImm:
-            return addSubImmSmartSize(static_cast<uint32_t>(getImm(mi.ops[0])));
+            return addSubImmSmartSize(checkedU32NonNegative(getImm(mi.ops[0]), opcodeName(mi.opc)));
 
         case MOpcode::StrRegSpImm:
         case MOpcode::StrFprSpImm:
@@ -329,10 +495,10 @@ size_t A64BinaryEncoder::measureInstructionSize(
         }
 
         case MOpcode::BCond:
-            return conditionalBranchSize(mi.ops[1].label);
+            return conditionalBranchSize(getLabel(mi.ops[1]));
         case MOpcode::Cbz:
         case MOpcode::Cbnz:
-            return conditionalBranchSize(mi.ops[1].label);
+            return conditionalBranchSize(getLabel(mi.ops[1]));
 
         default:
             return 4;
@@ -456,6 +622,8 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
     currentRodata_ = &rodata;
 
     try {
+        validateFunctionMetadata(fn);
+
         // Leaf function optimization: skip frame when no calls, no callee-saved, no locals.
         skipFrame_ = fn.isLeaf && fn.savedGPRs.empty() && fn.savedFPRs.empty() &&
                      fn.localFrameSize == 0;
@@ -545,6 +713,13 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
             }
 
             text.patch32LE(pb.offset, word);
+        }
+
+        const size_t actualSize = text.currentOffset() - funcStartOffset;
+        if (actualSize != estimatedSize) {
+            throw std::runtime_error("AArch64 binary encoder: function size drift for '" + fn.name +
+                                     "' (predicted=" + std::to_string(estimatedSize) +
+                                     ", actual=" + std::to_string(actualSize) + ")");
         }
 
         if (abi == ABIFormat::Darwin) {
@@ -793,9 +968,11 @@ void A64BinaryEncoder::encodeSpOffsetStore(uint32_t rt,
     const uint32_t scratch = chooseGprScratch(sp, (!isFPR) ? std::optional<uint32_t>(rt) : std::nullopt);
     emit32(encodeAddSubImm(kAddRI, scratch, sp, 0), cs);
     if (offset > 0)
-        emitAddSubImmSmart(kAddRI, scratch, scratch, static_cast<uint32_t>(offset), cs);
+        emitAddSubImmSmart(
+            kAddRI, scratch, scratch, checkedU32Magnitude(offset, "SP store offset"), cs);
     else if (offset < 0)
-        emitAddSubImmSmart(kSubRI, scratch, scratch, static_cast<uint32_t>(-offset), cs);
+        emitAddSubImmSmart(
+            kSubRI, scratch, scratch, checkedU32Magnitude(offset, "SP store offset"), cs);
 
     emit32((isFPR ? kStrFpr : kStrGpr) | (0 << 10) | (scratch << 5) | rt, cs);
 }
@@ -805,6 +982,8 @@ void A64BinaryEncoder::encodeSpOffsetStore(uint32_t rt,
 // =============================================================================
 
 void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection &cs) {
+    validateOperandCount(mi);
+
     switch (mi.opc) {
         // ─── Ret (triggers epilogue synthesis) ───
         case MOpcode::Ret:
@@ -1001,7 +1180,7 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
         case MOpcode::LslRI: {
             uint32_t rd = hwGPR(getReg(mi.ops[0]));
             uint32_t rn = hwGPR(getReg(mi.ops[1]));
-            auto sh = static_cast<uint32_t>(getImm(mi.ops[2]));
+            uint32_t sh = checkedShiftAmount(getImm(mi.ops[2]), "lsl");
             // lsl is ubfm Xd, Xn, #(64-n)&63, #(63-n)
             uint32_t immr = (64 - sh) & 63;
             uint32_t imms = 63 - sh;
@@ -1011,7 +1190,7 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
         case MOpcode::LsrRI: {
             uint32_t rd = hwGPR(getReg(mi.ops[0]));
             uint32_t rn = hwGPR(getReg(mi.ops[1]));
-            auto sh = static_cast<uint32_t>(getImm(mi.ops[2]));
+            uint32_t sh = checkedShiftAmount(getImm(mi.ops[2]), "lsr");
             // lsr is ubfm Xd, Xn, #n, #63
             emit32(kUbfm | (sh << 16) | (63 << 10) | (rn << 5) | rd, cs);
             return;
@@ -1019,7 +1198,7 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
         case MOpcode::AsrRI: {
             uint32_t rd = hwGPR(getReg(mi.ops[0]));
             uint32_t rn = hwGPR(getReg(mi.ops[1]));
-            auto sh = static_cast<uint32_t>(getImm(mi.ops[2]));
+            uint32_t sh = checkedShiftAmount(getImm(mi.ops[2]), "asr");
             // asr is sbfm Xd, Xn, #n, #63
             emit32(kSbfm | (sh << 16) | (63 << 10) | (rn << 5) | rd, cs);
             return;
@@ -1042,7 +1221,7 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
                 emit32(encodeAddSubImm(kAddsRI, 31, rn, static_cast<uint32_t>(-imm)), cs);
             } else {
                 // Large: materialize the immediate into the reserved secondary scratch.
-                uint32_t scratch = hwGPR(kScratchGPR2);
+                uint32_t scratch = chooseGprScratch(rn);
                 encodeMovImm64(scratch, static_cast<uint64_t>(imm), cs);
                 emit32(encode3Reg(kSubsRRR, 31, rn, scratch), cs);
             }
@@ -1057,7 +1236,7 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
         // ─── Conditional ───
         case MOpcode::Cset: {
             uint32_t rd = hwGPR(getReg(mi.ops[0]));
-            uint32_t cc = condCode(mi.ops[1].cond);
+            uint32_t cc = getCondCode(mi.ops[1]);
             // csinc Xd, XZR, XZR, invert(cond)
             emit32(kCset | (invertCond(cc) << 12) | rd, cs);
             return;
@@ -1066,7 +1245,7 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
             uint32_t rd = hwGPR(getReg(mi.ops[0]));
             uint32_t rn = hwGPR(getReg(mi.ops[1]));
             uint32_t rm = hwGPR(getReg(mi.ops[2]));
-            uint32_t cc = condCode(mi.ops[3].cond);
+            uint32_t cc = getCondCode(mi.ops[3]);
             emit32(kCsel | (rm << 16) | (cc << 12) | (rn << 5) | rd, cs);
             return;
         }
@@ -1268,7 +1447,7 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
             if (enc >= 0) {
                 emit32(encodeLogImm(kAndImm, rd, rn, enc), cs);
             } else {
-                uint32_t scratch = hwGPR(PhysReg::X9);
+                uint32_t scratch = chooseGprScratch(rn);
                 encodeMovImm64(scratch, imm, cs);
                 emit32(encode3Reg(kAndRRR, rd, rn, scratch), cs);
             }
@@ -1282,7 +1461,7 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
             if (enc >= 0) {
                 emit32(encodeLogImm(kOrrImm, rd, rn, enc), cs);
             } else {
-                uint32_t scratch = hwGPR(PhysReg::X9);
+                uint32_t scratch = chooseGprScratch(rn);
                 encodeMovImm64(scratch, imm, cs);
                 emit32(encode3Reg(kOrrRRR, rd, rn, scratch), cs);
             }
@@ -1296,7 +1475,7 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
             if (enc >= 0) {
                 emit32(encodeLogImm(kEorImm, rd, rn, enc), cs);
             } else {
-                uint32_t scratch = hwGPR(PhysReg::X9);
+                uint32_t scratch = chooseGprScratch(rn);
                 encodeMovImm64(scratch, imm, cs);
                 emit32(encode3Reg(kEorRRR, rd, rn, scratch), cs);
             }
@@ -1392,7 +1571,7 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
 
         // ─── Branch Instructions ───
         case MOpcode::Br: {
-            std::string target = sanitizeLabel(mi.ops[0].label);
+            std::string target = sanitizeLabel(getLabel(mi.ops[0]));
             auto it = labelOffsets_.find(target);
             if (it != labelOffsets_.end()) {
                 // Backward branch — resolve immediately.
@@ -1413,8 +1592,8 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
             return;
         }
         case MOpcode::BCond: {
-            uint32_t cc = condCode(mi.ops[0].cond);
-            std::string target = sanitizeLabel(mi.ops[1].label);
+            uint32_t cc = getCondCode(mi.ops[0]);
+            std::string target = sanitizeLabel(getLabel(mi.ops[1]));
             const bool forceLong =
                 longConditionalBranchOrdinals_.count(currentInstructionOrdinal_) != 0;
             auto it = labelOffsets_.find(target);
@@ -1451,7 +1630,7 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
         }
         case MOpcode::Cbz: {
             uint32_t rt = hwGPR(getReg(mi.ops[0]));
-            std::string target = sanitizeLabel(mi.ops[1].label);
+            std::string target = sanitizeLabel(getLabel(mi.ops[1]));
             const bool forceLong =
                 longConditionalBranchOrdinals_.count(currentInstructionOrdinal_) != 0;
             auto it = labelOffsets_.find(target);
@@ -1488,7 +1667,7 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
         }
         case MOpcode::Cbnz: {
             uint32_t rt = hwGPR(getReg(mi.ops[0]));
-            std::string target = sanitizeLabel(mi.ops[1].label);
+            std::string target = sanitizeLabel(getLabel(mi.ops[1]));
             const bool forceLong =
                 longConditionalBranchOrdinals_.count(currentInstructionOrdinal_) != 0;
             auto it = labelOffsets_.find(target);
@@ -1525,8 +1704,9 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
         }
         case MOpcode::Bl: {
             // Direct call — always external (generates relocation).
-            std::string sym = mapRuntimeSymbol(mi.ops[0].label);
-            auto it = labelOffsets_.find(sanitizeLabel(mi.ops[0].label));
+            const std::string &rawLabel = getLabel(mi.ops[0]);
+            std::string sym = mapRuntimeSymbol(rawLabel);
+            auto it = labelOffsets_.find(sanitizeLabel(rawLabel));
             if (it != labelOffsets_.end()) {
                 // Internal call (rare but possible for local functions).
                 int64_t delta =
@@ -1536,7 +1716,7 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
                                            26,
                                            "call",
                                            "the +/-128MB B/BL range",
-                                           mi.ops[0].label,
+                                           rawLabel,
                                            currentFn_ ? currentFn_->name : "<unknown>");
                 emit32(kBl | (static_cast<uint32_t>(imm26) & 0x3FFFFFF), cs);
             } else {
@@ -1553,7 +1733,7 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
         // ─── Address Materialization ───
         case MOpcode::AdrPage: {
             uint32_t rd = hwGPR(getReg(mi.ops[0]));
-            std::string sym = mi.ops[1].label;
+            std::string sym = getLabel(mi.ops[1]);
             uint32_t symIdx = cs.findOrDeclareSymbol(sym);
             const auto targetSection = (currentRodata_ != nullptr &&
                                         currentRodata_->symbols().find(sym) != 0)
@@ -1566,7 +1746,7 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
         case MOpcode::AddPageOff: {
             uint32_t rd = hwGPR(getReg(mi.ops[0]));
             uint32_t rn = hwGPR(getReg(mi.ops[1]));
-            std::string sym = mi.ops[2].label;
+            std::string sym = getLabel(mi.ops[2]);
             uint32_t symIdx = cs.findOrDeclareSymbol(sym);
             const auto targetSection = (currentRodata_ != nullptr &&
                                         currentRodata_->symbols().find(sym) != 0)

@@ -55,11 +55,35 @@ static PhysReg toPhys(const OpReg &reg) {
     if (!reg.isPhys)
         throw std::runtime_error("x86-64 binary encoder cannot encode virtual register v" +
                                  std::to_string(reg.idOrPhys));
-    return static_cast<PhysReg>(reg.idOrPhys);
+    if (reg.idOrPhys > static_cast<uint16_t>(PhysReg::XMM15)) {
+        throw std::runtime_error("x86-64 binary encoder: physical register id out of range");
+    }
+    const PhysReg phys = static_cast<PhysReg>(reg.idOrPhys);
+    const bool classMatches = (reg.cls == RegClass::GPR && isGPR(phys)) ||
+                              (reg.cls == RegClass::XMM && isXMM(phys));
+    if (!classMatches) {
+        throw std::runtime_error("x86-64 binary encoder: register class does not match "
+                                 "physical register");
+    }
+    return phys;
 }
 
 static PhysReg regFromOperand(const Operand &op) {
     return toPhys(std::get<OpReg>(op));
+}
+
+static PhysReg gprFromOperand(const Operand &op, const char *context) {
+    const PhysReg reg = regFromOperand(op);
+    if (!isGPR(reg))
+        throw std::runtime_error(std::string(context) + ": expected GPR operand");
+    return reg;
+}
+
+static PhysReg xmmFromOperand(const Operand &op, const char *context) {
+    const PhysReg reg = regFromOperand(op);
+    if (!isXMM(reg))
+        throw std::runtime_error(std::string(context) + ": expected XMM operand");
+    return reg;
 }
 
 static const OpMem &memFromOperand(const Operand &op) {
@@ -90,23 +114,17 @@ static bool isInternalBranchOpcode(MOpcode op) {
 }
 
 static void validateEncodedMemOperand(const OpMem &mem, const char *context) {
+    (void)toPhys(mem.base);
     if (mem.base.cls != RegClass::GPR) {
         throw std::runtime_error(std::string(context) + ": memory base register must be a GPR");
-    }
-    if (!mem.base.isPhys) {
-        throw std::runtime_error(std::string(context) +
-                                 ": virtual base register reached binary encoder");
     }
 
     if (!mem.hasIndex)
         return;
 
+    (void)toPhys(mem.index);
     if (mem.index.cls != RegClass::GPR) {
         throw std::runtime_error(std::string(context) + ": memory index register must be a GPR");
-    }
-    if (!mem.index.isPhys) {
-        throw std::runtime_error(std::string(context) +
-                                 ": virtual index register reached binary encoder");
     }
     if (static_cast<PhysReg>(mem.index.idOrPhys) == PhysReg::RSP) {
         throw std::runtime_error(std::string(context) +
@@ -509,10 +527,11 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
 
     // Guard helper: abort early with a clear message on operand count mismatch.
     auto requireOps = [&](std::size_t n) {
-        if (nOps < n) {
+        if (nOps != n) {
             throw std::runtime_error(
                 "x86-64 binary encoder: opcode " + std::to_string(static_cast<int>(op)) +
-                " requires " + std::to_string(n) + " operand(s) but has " + std::to_string(nOps));
+                " requires exactly " + std::to_string(n) + " operand(s) but has " +
+                std::to_string(nOps));
         }
     };
 
@@ -525,12 +544,13 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
         case MOpcode::RET:
         case MOpcode::CQO:
         case MOpcode::UD2:
+            requireOps(0);
             encodeNullary(op, text);
             return;
 
         case MOpcode::PUSH: {
             requireOps(1);
-            const auto hw = hwEncode(regFromOperand(ops[0]));
+            const auto hw = hwEncode(gprFromOperand(ops[0], "PUSH"));
             if (hw.rexBit)
                 text.emit8(computeRex(false, false, false, true));
             text.emit8(static_cast<uint8_t>(0x50 + hw.bits3));
@@ -539,7 +559,7 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
 
         case MOpcode::POP: {
             requireOps(1);
-            const auto hw = hwEncode(regFromOperand(ops[0]));
+            const auto hw = hwEncode(gprFromOperand(ops[0], "POP"));
             if (hw.rexBit)
                 text.emit8(computeRex(false, false, false, true));
             text.emit8(static_cast<uint8_t>(0x58 + hw.bits3));
@@ -552,7 +572,7 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
 
         // --- Label definition ---
         case MOpcode::LABEL: {
-            assert(!ops.empty());
+            requireOps(1);
             const auto &label = labelFromOperand(ops[0]);
             verifyPredictedLabelOffset(label.name, text.currentOffset());
             labelOffsets_[label.name] = text.currentOffset();
@@ -576,7 +596,8 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
 
         // --- MOVri (64-bit immediate) ---
         case MOpcode::MOVri: {
-            PhysReg dst = regFromOperand(ops[0]);
+            requireOps(2);
+            PhysReg dst = gprFromOperand(ops[0], "MOVri");
             int64_t imm = immFromOperand(ops[1]);
             encodeMovRI(dst, imm, text);
             return;
@@ -596,8 +617,8 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
         case MOpcode::XORrr32:
         case MOpcode::MOVZXrr32: {
             requireOps(2);
-            PhysReg dst = regFromOperand(ops[0]);
-            PhysReg src = regFromOperand(ops[1]);
+            PhysReg dst = gprFromOperand(ops[0], "GPR reg-reg destination");
+            PhysReg src = gprFromOperand(ops[1], "GPR reg-reg source");
             encodeRegReg(op, dst, src, text);
             return;
         }
@@ -609,7 +630,7 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
         case MOpcode::XORri:
         case MOpcode::CMPri: {
             requireOps(2);
-            PhysReg dst = regFromOperand(ops[0]);
+            PhysReg dst = gprFromOperand(ops[0], "GPR reg-imm destination");
             int64_t imm = immFromOperand(ops[1]);
             encodeRegImm(op, dst, imm, text);
             return;
@@ -619,7 +640,8 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
         case MOpcode::SHLri:
         case MOpcode::SHRri:
         case MOpcode::SARri: {
-            PhysReg dst = regFromOperand(ops[0]);
+            requireOps(2);
+            PhysReg dst = gprFromOperand(ops[0], "shift destination");
             int64_t count = immFromOperand(ops[1]);
             encodeShiftImm(op, dst, count, text);
             return;
@@ -629,8 +651,11 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
         case MOpcode::SHLrc:
         case MOpcode::SHRrc:
         case MOpcode::SARrc: {
-            PhysReg dst = regFromOperand(ops[0]);
-            // ops[1] is CL register (implicit, not encoded)
+            requireOps(2);
+            PhysReg dst = gprFromOperand(ops[0], "shift destination");
+            PhysReg countReg = gprFromOperand(ops[1], "shift count");
+            if (countReg != PhysReg::RCX)
+                throw std::runtime_error("x86-64 binary encoder: register-count shift requires RCX/CL");
             encodeShiftCL(op, dst, text);
             return;
         }
@@ -638,9 +663,10 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
         // --- Division ---
         case MOpcode::IDIVrm:
         case MOpcode::DIVrm: {
+            requireOps(1);
             // Operand can be reg or mem. Pipeline always uses reg after expansion.
             if (std::holds_alternative<OpReg>(ops[0])) {
-                encodeDiv(op, regFromOperand(ops[0]), text);
+                encodeDiv(op, gprFromOperand(ops[0], "division source"), text);
             } else {
                 // Memory operand for div — encode as unary with memory.
                 const auto &mem = memFromOperand(ops[0]);
@@ -660,14 +686,16 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
         // --- Memory operations ---
         case MOpcode::MOVrm: // store: MOVrm [mem], reg
         {
-            PhysReg src = regFromOperand(ops[1]);
+            requireOps(2);
+            PhysReg src = gprFromOperand(ops[1], "MOVrm source");
             const auto &mem = memFromOperand(ops[0]);
             encodeMemOp(op, src, mem, text);
             return;
         }
         case MOpcode::MOVmr: // load: MOVmr reg, [mem]
         {
-            PhysReg dst = regFromOperand(ops[0]);
+            requireOps(2);
+            PhysReg dst = gprFromOperand(ops[0], "MOVmr destination");
             const auto &mem = memFromOperand(ops[1]);
             encodeMemOp(op, dst, mem, text);
             return;
@@ -675,7 +703,8 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
 
         // --- LEA ---
         case MOpcode::LEA: {
-            PhysReg dst = regFromOperand(ops[0]);
+            requireOps(2);
+            PhysReg dst = gprFromOperand(ops[0], "LEA destination");
             if (std::holds_alternative<OpRipLabel>(ops[1])) {
                 encodeLEARip(dst, ripFromOperand(ops[1]), text, rodata, isDarwin);
             } else if (std::holds_alternative<OpMem>(ops[1])) {
@@ -689,16 +718,18 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
 
         // --- SETcc ---
         case MOpcode::SETcc: {
+            requireOps(2);
             int cc = static_cast<int>(immFromOperand(ops[0]));
-            PhysReg dst = regFromOperand(ops[1]);
+            PhysReg dst = gprFromOperand(ops[1], "SETcc destination");
             encodeSETcc(cc, dst, text);
             return;
         }
 
         // --- MOVZXrr8 (movzbq) ---
         case MOpcode::MOVZXrr8: {
-            PhysReg dst = regFromOperand(ops[0]);
-            PhysReg src = regFromOperand(ops[1]);
+            requireOps(2);
+            PhysReg dst = gprFromOperand(ops[0], "MOVZX destination");
+            PhysReg src = gprFromOperand(ops[1], "MOVZX source");
             encodeMOVZX(dst, src, text);
             return;
         }
@@ -714,6 +745,7 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
         case MOpcode::MOVQrx:
         case MOpcode::MOVQxr:
         case MOpcode::MOVSDrr: {
+            requireOps(2);
             PhysReg dst = regFromOperand(ops[0]);
             PhysReg src = regFromOperand(ops[1]);
             encodeSseRegReg(op, dst, src, text);
@@ -723,14 +755,16 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
         // --- SSE memory ops ---
         case MOpcode::MOVSDrm: // store: [mem], xmm
         {
-            PhysReg src = regFromOperand(ops[1]);
+            requireOps(2);
+            PhysReg src = xmmFromOperand(ops[1], "MOVSDrm source");
             const auto &mem = memFromOperand(ops[0]);
             encodeSseMem(op, src, mem, text);
             return;
         }
         case MOpcode::MOVSDmr: // load: xmm, [mem] or xmm, [rip+label]
         {
-            PhysReg dst = regFromOperand(ops[0]);
+            requireOps(2);
+            PhysReg dst = xmmFromOperand(ops[0], "MOVSDmr destination");
             if (std::holds_alternative<OpRipLabel>(ops[1])) {
                 encodeSseRipLoad(dst, ripFromOperand(ops[1]), text, rodata, isDarwin);
             } else {
@@ -741,14 +775,16 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
         }
         case MOpcode::MOVUPSrm: // store: [mem], xmm
         {
-            PhysReg src = regFromOperand(ops[1]);
+            requireOps(2);
+            PhysReg src = xmmFromOperand(ops[1], "MOVUPSrm source");
             const auto &mem = memFromOperand(ops[0]);
             encodeSseMem(op, src, mem, text);
             return;
         }
         case MOpcode::MOVUPSmr: // load: xmm, [mem]
         {
-            PhysReg dst = regFromOperand(ops[0]);
+            requireOps(2);
+            PhysReg dst = xmmFromOperand(ops[0], "MOVUPSmr destination");
             const auto &mem = memFromOperand(ops[1]);
             encodeSseMem(op, dst, mem, text);
             return;
@@ -756,10 +792,11 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
 
         // --- Branches and calls ---
         case MOpcode::JMP: {
+            requireOps(1);
             if (std::holds_alternative<OpLabel>(ops[0])) {
                 encodeBranchLabel(op, labelFromOperand(ops[0]).name, 0, text);
             } else if (std::holds_alternative<OpReg>(ops[0])) {
-                encodeBranchReg(op, regFromOperand(ops[0]), text);
+                encodeBranchReg(op, gprFromOperand(ops[0], "JMP target"), text);
             } else if (std::holds_alternative<OpMem>(ops[0])) {
                 encodeBranchMem(op, memFromOperand(ops[0]), text);
             } else {
@@ -770,6 +807,7 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
         }
 
         case MOpcode::JCC: {
+            requireOps(2);
             int cc = static_cast<int>(immFromOperand(ops[0]));
             if (std::holds_alternative<OpLabel>(ops[1])) {
                 encodeBranchLabel(op, labelFromOperand(ops[1]).name, cc, text);
@@ -780,6 +818,7 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
         }
 
         case MOpcode::CALL: {
+            requireOps(1);
             if (std::holds_alternative<OpLabel>(ops[0])) {
                 const auto &label = labelFromOperand(ops[0]);
                 // Check if this is an internal function label.
@@ -797,7 +836,7 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
                 const auto &rip = ripFromOperand(ops[0]);
                 encodeCallExternal(rip.name, text, isDarwin);
             } else if (std::holds_alternative<OpReg>(ops[0])) {
-                encodeBranchReg(op, regFromOperand(ops[0]), text);
+                encodeBranchReg(op, gprFromOperand(ops[0], "CALL target"), text);
             } else if (std::holds_alternative<OpMem>(ops[0])) {
                 encodeBranchMem(op, memFromOperand(ops[0]), text);
             } else {
@@ -900,6 +939,10 @@ void X64BinaryEncoder::encodeShiftImm(MOpcode op,
                                       PhysReg dst,
                                       int64_t count,
                                       objfile::CodeSection &cs) {
+    if (!isGPR(dst))
+        throw std::runtime_error("x86-64 binary encoder: shift destination must be a GPR");
+    if (count < 0 || count > 63)
+        throw std::runtime_error("x86-64 binary encoder: shift count must be in range 0..63");
     const auto hw = hwEncode(dst);
     uint8_t ext = shiftExt(op);
 
@@ -909,10 +952,12 @@ void X64BinaryEncoder::encodeShiftImm(MOpcode op,
 
     cs.emit8(0xC1); // Shift by imm8.
     cs.emit8(makeModRM(0b11, ext, hw.bits3));
-    cs.emit8(static_cast<uint8_t>(count & 0x3F)); // Mask to 6 bits for 64-bit mode.
+    cs.emit8(static_cast<uint8_t>(count));
 }
 
 void X64BinaryEncoder::encodeShiftCL(MOpcode op, PhysReg dst, objfile::CodeSection &cs) {
+    if (!isGPR(dst))
+        throw std::runtime_error("x86-64 binary encoder: shift destination must be a GPR");
     const auto hw = hwEncode(dst);
     uint8_t ext = shiftExt(op);
 
@@ -927,6 +972,8 @@ void X64BinaryEncoder::encodeShiftCL(MOpcode op, PhysReg dst, objfile::CodeSecti
 // === Division ===
 
 void X64BinaryEncoder::encodeDiv(MOpcode op, PhysReg src, objfile::CodeSection &cs) {
+    if (!isGPR(src))
+        throw std::runtime_error("x86-64 binary encoder: division source must be a GPR");
     const auto hw = hwEncode(src);
     uint8_t ext = (op == MOpcode::IDIVrm) ? 7 : 6;
 
@@ -941,6 +988,8 @@ void X64BinaryEncoder::encodeDiv(MOpcode op, PhysReg src, objfile::CodeSection &
 // === MOVri (64-bit immediate move) ===
 
 void X64BinaryEncoder::encodeMovRI(PhysReg dst, int64_t imm, objfile::CodeSection &cs) {
+    if (!isGPR(dst))
+        throw std::runtime_error("x86-64 binary encoder: MOVri destination must be a GPR");
     const auto hw = hwEncode(dst);
 
     if (imm >= 0 && imm <= 0x7FFFFFFF) {
@@ -1039,6 +1088,8 @@ void X64BinaryEncoder::encodeMemOp(MOpcode op,
                                    PhysReg reg,
                                    const OpMem &mem,
                                    objfile::CodeSection &cs) {
+    if (!isGPR(reg))
+        throw std::runtime_error("x86-64 binary encoder: memory GPR operand must be a GPR");
     const auto hwReg = hwEncode(reg);
     uint8_t opByte;
 
@@ -1067,6 +1118,8 @@ void X64BinaryEncoder::encodeMemOp(MOpcode op,
 // === LEA ===
 
 void X64BinaryEncoder::encodeLEA(PhysReg dst, const OpMem &mem, objfile::CodeSection &cs) {
+    if (!isGPR(dst))
+        throw std::runtime_error("x86-64 binary encoder: LEA destination must be a GPR");
     const auto hwDst = hwEncode(dst);
     emitWithMemOperand(hwDst.bits3,
                        hwDst.rexBit,
@@ -1084,6 +1137,8 @@ void X64BinaryEncoder::encodeLEARip(PhysReg dst,
                                     objfile::CodeSection &rodata,
                                     bool isDarwin) {
     const auto hwDst = hwEncode(dst);
+    if (!isGPR(dst))
+        throw std::runtime_error("x86-64 binary encoder: LEA RIP destination must be a GPR");
 
     // REX.W + LEA opcode.
     // REX.W prefix.
@@ -1115,6 +1170,8 @@ void X64BinaryEncoder::encodeSseRipLoad(PhysReg dst,
                                         objfile::CodeSection &rodata,
                                         bool isDarwin) {
     const auto hwDst = hwEncode(dst);
+    if (!isXMM(dst))
+        throw std::runtime_error("x86-64 binary encoder: MOVSD RIP destination must be XMM");
 
     // F2 prefix (mandatory for MOVSD).
     text.emit8(0xF2);
@@ -1145,6 +1202,29 @@ void X64BinaryEncoder::encodeSseRegReg(MOpcode op,
                                        PhysReg dst,
                                        PhysReg src,
                                        objfile::CodeSection &cs) {
+    const bool dstXmm = isXMM(dst);
+    const bool srcXmm = isXMM(src);
+    const bool dstGpr = isGPR(dst);
+    const bool srcGpr = isGPR(src);
+    switch (op) {
+        case MOpcode::CVTSI2SD:
+        case MOpcode::MOVQrx:
+            if (!dstXmm || !srcGpr)
+                throw std::runtime_error(
+                    "x86-64 binary encoder: SSE conversion expects XMM destination and GPR source");
+            break;
+        case MOpcode::CVTTSD2SI:
+        case MOpcode::MOVQxr:
+            if (!dstGpr || !srcXmm)
+                throw std::runtime_error(
+                    "x86-64 binary encoder: SSE conversion expects GPR destination and XMM source");
+            break;
+        default:
+            if (!dstXmm || !srcXmm)
+                throw std::runtime_error(
+                    "x86-64 binary encoder: SSE register opcode expects XMM operands");
+            break;
+    }
     const auto info = sseOpcode(op);
     const auto hwDst = hwEncode(dst);
     const auto hwSrc = hwEncode(src);
@@ -1176,6 +1256,8 @@ void X64BinaryEncoder::encodeSseMem(MOpcode op,
                                     PhysReg reg,
                                     const OpMem &mem,
                                     objfile::CodeSection &cs) {
+    if (!isXMM(reg))
+        throw std::runtime_error("x86-64 binary encoder: SSE memory register operand must be XMM");
     const auto info = sseOpcode(op);
     const auto hwReg = hwEncode(reg);
 
@@ -1187,6 +1269,8 @@ void X64BinaryEncoder::encodeSseMem(MOpcode op,
 // === SETcc ===
 
 void X64BinaryEncoder::encodeSETcc(int condCode, PhysReg dst, objfile::CodeSection &cs) {
+    if (!isGPR(dst))
+        throw std::runtime_error("x86-64 binary encoder: SETcc destination must be a GPR");
     const auto hw = hwEncode(dst);
     uint8_t cc = x86CC(condCode);
 
@@ -1209,6 +1293,8 @@ void X64BinaryEncoder::encodeSETcc(int condCode, PhysReg dst, objfile::CodeSecti
 // === MOVZXrr8 (movzbq) ===
 
 void X64BinaryEncoder::encodeMOVZX(PhysReg dst, PhysReg src, objfile::CodeSection &cs) {
+    if (!isGPR(dst) || !isGPR(src))
+        throw std::runtime_error("x86-64 binary encoder: MOVZX operands must be GPRs");
     const auto hwDst = hwEncode(dst);
     const auto hwSrc = hwEncode(src);
 
@@ -1294,6 +1380,8 @@ void X64BinaryEncoder::encodeBranchLabel(MOpcode op,
 // === Branch/Call indirect via register ===
 
 void X64BinaryEncoder::encodeBranchReg(MOpcode op, PhysReg target, objfile::CodeSection &cs) {
+    if (!isGPR(target))
+        throw std::runtime_error("x86-64 binary encoder: indirect branch target must be a GPR");
     const auto hw = hwEncode(target);
     uint8_t ext = (op == MOpcode::CALL) ? 2 : 4; // /2 for CALL, /4 for JMP
 

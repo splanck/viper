@@ -602,6 +602,12 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
                 if (sym.binding == viper::codegen::objfile::SymbolBinding::External)
                     extSymbols.insert(sym.name);
             }
+        if (pipelineModule.binaryRodata) {
+            for (const auto &sym : pipelineModule.binaryRodata->symbols()) {
+                if (sym.binding == viper::codegen::objfile::SymbolBinding::External)
+                    extSymbols.insert(sym.name);
+            }
+        }
 
         LinkContext ctx;
         if (const int rc =

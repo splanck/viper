@@ -21,6 +21,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <stdexcept>
 
 using namespace viper::codegen::objfile;
 
@@ -75,15 +76,36 @@ int main() {
         CHECK(st.count() == 2); // no new entry
     }
 
-    // --- duplicate add keeps name lookup on the newest entry ---
+    // --- duplicate local add keeps entries but makes name-only lookup ambiguous ---
     {
         SymbolTable st;
         uint32_t first = st.add(Symbol{"dup", SymbolBinding::Local, SymbolSection::Text, 4, 0});
         uint32_t second = st.add(Symbol{"dup", SymbolBinding::Local, SymbolSection::Text, 12, 0});
         CHECK(first == 1);
         CHECK(second == 2);
-        CHECK(st.find("dup") == second);
+        CHECK(st.find("dup") == 0);
         CHECK(st.at(second).offset == 12);
+
+        bool threw = false;
+        try {
+            (void)st.findOrAdd("dup");
+        } catch (const std::invalid_argument &) {
+            threw = true;
+        }
+        CHECK(threw);
+    }
+
+    // --- duplicate global add is rejected ---
+    {
+        SymbolTable st;
+        st.add(Symbol{"global_dup", SymbolBinding::Global, SymbolSection::Text, 0, 0});
+        bool threw = false;
+        try {
+            st.add(Symbol{"global_dup", SymbolBinding::Global, SymbolSection::Text, 4, 0});
+        } catch (const std::invalid_argument &) {
+            threw = true;
+        }
+        CHECK(threw);
     }
 
     // --- findOrAdd: new (creates External) ---

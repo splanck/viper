@@ -743,6 +743,37 @@ static void testMultiSectionMergeRebasesSymbolOffsets() {
     std::remove(path.c_str());
 }
 
+static void testMultiSectionMergeUniquifiesDuplicateLocals() {
+    CodeSection textA, textB, rodata;
+    textA.defineSymbol("func_a", SymbolBinding::Global, SymbolSection::Text);
+    textA.defineSymbol(".Ltmp", SymbolBinding::Local, SymbolSection::Text);
+    textA.emit8(0x90);
+
+    textB.defineSymbol("func_b", SymbolBinding::Global, SymbolSection::Text);
+    textB.defineSymbol(".Ltmp", SymbolBinding::Local, SymbolSection::Text);
+    textB.emit8(0xC3);
+
+    std::ostringstream errStream;
+    MachOWriter writer(ObjArch::X86_64);
+    const std::string path = "/tmp/viper_test_macho_multitext_duplicate_locals.o";
+    CHECK(writer.write(path, std::vector<CodeSection>{textA, textB}, rodata, errStream));
+
+    ObjFile obj;
+    CHECK(readObjFile(path, obj, errStream));
+    bool sawOriginal = false;
+    bool sawRenamed = false;
+    for (const auto &sym : obj.symbols) {
+        if (sym.name == ".Ltmp")
+            sawOriginal = true;
+        if (sym.name.find(".Ltmp$macho$") == 0)
+            sawRenamed = true;
+    }
+    CHECK(sawOriginal);
+    CHECK(sawRenamed);
+
+    std::remove(path.c_str());
+}
+
 // =============================================================================
 // Test: Unsupported relocations fail instead of being dropped
 // =============================================================================
@@ -880,6 +911,7 @@ int main() {
     testRodataRelocation();
     testDysymtabRanges();
     testMultiSectionMergeRebasesSymbolOffsets();
+    testMultiSectionMergeUniquifiesDuplicateLocals();
     testUnsupportedRelocationFails();
     testDuplicateLocalSymbolsStayDistinct();
     testUndefinedRodataLocalReferenceUsesLocalDefinition();

@@ -10,7 +10,7 @@
 //          + REX extension bit) and provides condition-code-to-x86-CC-nibble
 //          translation for the binary encoder.
 // Key invariants:
-//   - hwEncode() is constexpr and covers all 32 PhysReg values
+//   - hwEncode() covers all 32 PhysReg values and rejects invalid enum values
 //   - x86CC nibble values match Intel SDM Table B-1 (JCC/SETcc second opcode byte)
 //   - SSE mandatory prefixes (F2/66) are emitted BEFORE REX, then 0F + opcode
 // Ownership/Lifetime:
@@ -41,7 +41,7 @@ struct HwReg {
 ///
 /// The PhysReg enum order (RAX=0, RBX=1, RCX=2, ...) does NOT match
 /// hardware (RAX=0, RCX=1, RDX=2, RBX=3, ...). This table bridges the gap.
-inline constexpr HwReg hwEncode(PhysReg reg) {
+inline HwReg hwEncode(PhysReg reg) {
     // Index: static_cast<int>(PhysReg)
     // Layout: {bits3, rexBit}
     constexpr HwReg kTable[] = {
@@ -78,7 +78,10 @@ inline constexpr HwReg hwEncode(PhysReg reg) {
         {6, 1}, // XMM14 = 30
         {7, 1}, // XMM15 = 31
     };
-    return kTable[static_cast<int>(reg)];
+    const auto idx = static_cast<int>(reg);
+    if (idx < 0 || idx >= static_cast<int>(sizeof(kTable) / sizeof(kTable[0])))
+        throw std::out_of_range("x86-64 binary encoder: invalid physical register");
+    return kTable[idx];
 }
 
 /// Map a Viper condition code (0-13) to the x86_64 CC nibble used in

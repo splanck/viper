@@ -30,7 +30,9 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <limits>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace viper::codegen::objfile {
@@ -116,6 +118,23 @@ static uint32_t packRelocInfo(
     return (symbolnum & 0x00FFFFFF) | (static_cast<uint32_t>(pcrel & 1) << 24) |
            (static_cast<uint32_t>(length & 3) << 25) | (static_cast<uint32_t>(ext & 1) << 27) |
            (static_cast<uint32_t>(type & 0xF) << 28);
+}
+
+static bool checkedU32(size_t value, const char *what, std::ostream &err, uint32_t &out) {
+    if (value > std::numeric_limits<uint32_t>::max()) {
+        err << "MachOWriter: " << what << " exceeds 32-bit Mach-O field range\n";
+        return false;
+    }
+    out = static_cast<uint32_t>(value);
+    return true;
+}
+
+static bool checkedRelocSymbolNum(uint32_t value, const char *what, std::ostream &err) {
+    if (value > 0x00FFFFFFu) {
+        err << "MachOWriter: " << what << " exceeds Mach-O relocation symbol-number range\n";
+        return false;
+    }
+    return true;
 }
 
 // =============================================================================
@@ -574,6 +593,11 @@ bool MachOWriter::write(const std::string &path,
             uint32_t symIdx = 0;
             if (!resolveRelocSym(rel, source, sourceMap, sectionName, symIdx))
                 return false;
+            if (!checkedRelocSymbolNum(symIdx, "relocation symbol index", err))
+                return false;
+            uint32_t relocAddress = 0;
+            if (!checkedU32(rel.offset, "relocation address", err, relocAddress))
+                return false;
 
             if (arch_ == ObjArch::AArch64 && rel.addend != 0) {
                 if (rel.addend < -0x800000LL || rel.addend > 0x7FFFFFLL) {
@@ -584,13 +608,12 @@ bool MachOWriter::write(const std::string &path,
                 }
                 const uint32_t addend = static_cast<uint32_t>(rel.addend) & 0x00FFFFFFu;
                 outRelocs.push_back(
-                    {static_cast<uint32_t>(rel.offset),
-                     packRelocInfo(addend, 0, attrs.length, 0, kArm64RelocAddend)});
+                    {relocAddress, packRelocInfo(addend, 0, attrs.length, 0, kArm64RelocAddend)});
             }
 
             uint32_t packed =
                 packRelocInfo(symIdx, attrs.pcrel, attrs.length, 1 /*extern*/, attrs.type);
-            outRelocs.push_back({static_cast<uint32_t>(rel.offset), packed});
+            outRelocs.push_back({relocAddress, packed});
         }
         std::stable_sort(outRelocs.begin(), outRelocs.end(), [](const MachoReloc &a, const MachoReloc &b) {
             return a.address > b.address;
@@ -642,8 +665,13 @@ bool MachOWriter::write(const std::string &path,
             }
 
             // packRelocInfo: symbolnum, pcrel=0, length=3 (8 bytes), extern=1, type=0 (UNSIGNED)
+            if (!checkedRelocSymbolNum(symIdx, "compact unwind symbol index", err))
+                return false;
+            uint32_t entryOffset32 = 0;
+            if (!checkedU32(entryOffset, "compact unwind relocation address", err, entryOffset32))
+                return false;
             uint32_t packed = packRelocInfo(symIdx, 0, 3, 1, 0);
-            unwindRelocs.push_back({static_cast<uint32_t>(entryOffset), packed});
+            unwindRelocs.push_back({entryOffset32, packed});
         }
 
         // Sort unwind relocations by address descending (Mach-O convention).
@@ -685,17 +713,47 @@ bool MachOWriter::write(const std::string &path,
 
     // Relocations go after all section data
     size_t textRelocOff = lastDataEnd;
-    uint32_t nTextRelocs = static_cast<uint32_t>(textRelocs.size());
+    const size_t textRelocCount = textRelocs.size();
+    uint32_t nTextRelocs = 0;
 
-    size_t constRelocOff = textRelocOff + nTextRelocs * kRelocSize;
-    uint32_t nConstRelocs = static_cast<uint32_t>(constRelocs.size());
+    size_t constRelocOff = textRelocOff + textRelocCount * kRelocSize;
+    const size_t constRelocCount = constRelocs.size();
+    uint32_t nConstRelocs = 0;
 
-    size_t unwindRelocOff = constRelocOff + nConstRelocs * kRelocSize;
-    uint32_t nUnwindRelocs = static_cast<uint32_t>(unwindRelocs.size());
+    size_t unwindRelocOff = constRelocOff + constRelocCount * kRelocSize;
+    const size_t unwindRelocCount = unwindRelocs.size();
+    uint32_t nUnwindRelocs = 0;
 
-    size_t symOff = unwindRelocOff + nUnwindRelocs * kRelocSize;
+    size_t symOff = unwindRelocOff + unwindRelocCount * kRelocSize;
     size_t strOff = symOff + nsyms * kNlistSize;
     size_t totalSize = strOff + strtab.size();
+
+    uint32_t textFileOff32 = 0;
+    uint32_t constFileOff32 = 0;
+    uint32_t unwindFileOff32 = 0;
+    uint32_t debugLineFileOff32 = 0;
+    uint32_t textRelocOff32 = 0;
+    uint32_t constRelocOff32 = 0;
+    uint32_t unwindRelocOff32 = 0;
+    uint32_t symOff32 = 0;
+    uint32_t strOff32 = 0;
+    uint32_t strSize32 = 0;
+    if (!checkedU32(textFileOff, "__text file offset", err, textFileOff32) ||
+        !checkedU32(constFileOff, "__const file offset", err, constFileOff32) ||
+        !checkedU32(unwindFileOff, "__compact_unwind file offset", err, unwindFileOff32) ||
+        !checkedU32(debugLineFileOff, "__debug_line file offset", err, debugLineFileOff32) ||
+        !checkedU32(textRelocOff, "__text relocation offset", err, textRelocOff32) ||
+        !checkedU32(constRelocOff, "__const relocation offset", err, constRelocOff32) ||
+        !checkedU32(unwindRelocOff, "__compact_unwind relocation offset", err, unwindRelocOff32) ||
+        !checkedU32(symOff, "symbol table offset", err, symOff32) ||
+        !checkedU32(strOff, "string table offset", err, strOff32) ||
+        !checkedU32(strtab.size(), "string table size", err, strSize32) ||
+        !checkedU32(textRelocs.size(), "__text relocation count", err, nTextRelocs) ||
+        !checkedU32(constRelocs.size(), "__const relocation count", err, nConstRelocs) ||
+        !checkedU32(unwindRelocs.size(), "__compact_unwind relocation count", err, nUnwindRelocs) ||
+        !checkedU32(nsyms, "symbol count", err, nsyms)) {
+        return false;
+    }
 
     // --- 6. Build the file ---
     std::vector<uint8_t> file;
@@ -713,9 +771,9 @@ bool MachOWriter::write(const std::string &path,
                     "__TEXT",
                     0,
                     textSize,
-                    static_cast<uint32_t>(textFileOff),
+                    textFileOff32,
                     textAlignLog2,
-                    (nTextRelocs > 0) ? static_cast<uint32_t>(textRelocOff) : 0,
+                    (nTextRelocs > 0) ? textRelocOff32 : 0,
                     nTextRelocs,
                     kSAttrPureInstructions | kSAttrSomeInstructions);
 
@@ -725,9 +783,9 @@ bool MachOWriter::write(const std::string &path,
                     "__TEXT",
                     constAddr,
                     rodataSize,
-                    static_cast<uint32_t>(constFileOff),
+                    constFileOff32,
                     constAlignLog2,
-                    (nConstRelocs > 0) ? static_cast<uint32_t>(constRelocOff) : 0,
+                    (nConstRelocs > 0) ? constRelocOff32 : 0,
                     nConstRelocs,
                     0);
 
@@ -738,9 +796,9 @@ bool MachOWriter::write(const std::string &path,
                         "__LD",
                         unwindAddr,
                         unwindSize,
-                        static_cast<uint32_t>(unwindFileOff),
+                        unwindFileOff32,
                         3, // align = 2^3 = 8
-                        (nUnwindRelocs > 0) ? static_cast<uint32_t>(unwindRelocOff) : 0,
+                        (nUnwindRelocs > 0) ? unwindRelocOff32 : 0,
                         nUnwindRelocs,
                         0); // no special flags
     }
@@ -752,7 +810,7 @@ bool MachOWriter::write(const std::string &path,
                         "__DWARF",
                         debugLineAddr,
                         debugLineSize,
-                        static_cast<uint32_t>(debugLineFileOff),
+                        debugLineFileOff32,
                         0, // align = 2^0 = 1
                         0,
                         0,
@@ -763,8 +821,7 @@ bool MachOWriter::write(const std::string &path,
     writeBuildVersionCmd(file);
 
     // LC_SYMTAB (24 bytes)
-    writeSymtabCmd(
-        file, static_cast<uint32_t>(symOff), nsyms, static_cast<uint32_t>(strOff), strtab.size());
+    writeSymtabCmd(file, symOff32, nsyms, strOff32, strSize32);
 
     // LC_DYSYMTAB (80 bytes)
     writeDysymtabCmd(file, ilocal, nlocal, iextdef, nextdef, iundef, nundef);
@@ -870,8 +927,21 @@ bool MachOWriter::write(const std::string &path,
                         const CodeSection &rodata,
                         std::ostream &err) {
     CodeSection merged;
-    for (const auto &ts : textSections)
-        merged.appendSection(ts);
+    std::unordered_set<std::string> seenLocalNames;
+    size_t sectionIndex = 0;
+    for (const auto &ts : textSections) {
+        CodeSection copy = ts;
+        for (uint32_t i = 1; i < copy.symbols().count(); ++i) {
+            Symbol &sym = copy.symbols().at(i);
+            if (sym.binding != SymbolBinding::Local || sym.name.empty())
+                continue;
+            if (seenLocalNames.insert(sym.name).second)
+                continue;
+            sym.name += "$macho$" + std::to_string(sectionIndex);
+        }
+        merged.appendSection(copy);
+        ++sectionIndex;
+    }
     return write(path, merged, rodata, err);
 }
 

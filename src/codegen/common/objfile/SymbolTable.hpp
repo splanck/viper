@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace viper::codegen::objfile {
@@ -106,6 +107,7 @@ class SymbolTable {
   private:
     std::vector<Symbol> symbols_;
     std::unordered_map<std::string, uint32_t> nameIndex_;
+    std::unordered_set<std::string> ambiguousNames_;
 };
 
 } // namespace viper::codegen::objfile

@@ -547,6 +547,12 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
             if (sym.binding == objfile::SymbolBinding::External)
                 extSymbols.insert(sym.name);
         }
+        if (pipelineModule.binaryRodata) {
+            for (const auto &sym : pipelineModule.binaryRodata->symbols()) {
+                if (sym.binding == objfile::SymbolBinding::External)
+                    extSymbols.insert(sym.name);
+            }
+        }
 
         common::LinkContext ctx;
         if (const int rc = common::prepareLinkContextFromSymbols(extSymbols, ctx, out, err);

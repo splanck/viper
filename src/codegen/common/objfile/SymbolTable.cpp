@@ -18,6 +18,9 @@
 
 #include "codegen/common/objfile/SymbolTable.hpp"
 
+#include <stdexcept>
+#include <utility>
+
 namespace viper::codegen::objfile {
 
 SymbolTable::SymbolTable() {
@@ -26,14 +29,51 @@ SymbolTable::SymbolTable() {
 }
 
 uint32_t SymbolTable::add(Symbol sym) {
+    if (!sym.name.empty()) {
+        auto it = nameIndex_.find(sym.name);
+        if (it != nameIndex_.end()) {
+            Symbol &existing = symbols_.at(it->second);
+
+            if (existing.binding == SymbolBinding::External &&
+                sym.binding == SymbolBinding::External) {
+                return it->second;
+            }
+
+            if (existing.binding == SymbolBinding::External &&
+                sym.binding != SymbolBinding::External) {
+                existing = std::move(sym);
+                ambiguousNames_.erase(existing.name);
+                return it->second;
+            }
+
+            if (sym.binding == SymbolBinding::Global ||
+                existing.binding == SymbolBinding::Global) {
+                throw std::invalid_argument("SymbolTable: duplicate global symbol '" +
+                                            sym.name + "'");
+            }
+
+            // Duplicate locals are legal because object formats can carry
+            // multiple same-spelled local labels. Name-only lookup is no longer
+            // safe for that spelling, so mark it ambiguous instead of silently
+            // rebinding lookups to the newest entry.
+            ambiguousNames_.insert(sym.name);
+            nameIndex_.erase(it);
+        } else if (ambiguousNames_.count(sym.name) != 0) {
+            // Additional duplicate local with an already ambiguous spelling.
+        }
+    }
+
     auto index = static_cast<uint32_t>(symbols_.size());
-    if (!sym.name.empty())
+    if (!sym.name.empty() && ambiguousNames_.count(sym.name) == 0)
         nameIndex_[sym.name] = index;
     symbols_.push_back(std::move(sym));
     return index;
 }
 
 uint32_t SymbolTable::findOrAdd(const std::string &name) {
+    if (ambiguousNames_.count(name) != 0) {
+        throw std::invalid_argument("SymbolTable: ambiguous symbol name '" + name + "'");
+    }
     auto it = nameIndex_.find(name);
     if (it != nameIndex_.end())
         return it->second;
@@ -43,6 +83,8 @@ uint32_t SymbolTable::findOrAdd(const std::string &name) {
 }
 
 uint32_t SymbolTable::find(const std::string &name) const {
+    if (ambiguousNames_.count(name) != 0)
+        return 0;
     auto it = nameIndex_.find(name);
     if (it == nameIndex_.end())
         return 0;

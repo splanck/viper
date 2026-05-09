@@ -218,6 +218,66 @@ int main() {
     }
 
     {
+        CodeSection badRel32Text;
+        CodeSection badRel32Rodata;
+        badRel32Text.defineSymbol("caller", SymbolBinding::Global, SymbolSection::Text);
+        const uint32_t target = badRel32Text.findOrDeclareSymbol("target");
+        badRel32Text.emit8(0xE8);
+        const size_t dispOff = badRel32Text.currentOffset();
+        badRel32Text.emit32LE(0);
+        badRel32Text.addRelocationAt(dispOff, RelocKind::Branch32, target, -8);
+
+        std::ostringstream badRel32Err;
+        CoffWriter badRel32Writer(ObjArch::X86_64);
+        CHECK(!badRel32Writer.write("build/test-out/coff_bad_rel32_addend.obj",
+                                    badRel32Text,
+                                    badRel32Rodata,
+                                    badRel32Err));
+        CHECK(badRel32Err.str().find("unsupported addend") != std::string::npos);
+    }
+
+    {
+        CodeSection dupTextA;
+        CodeSection dupTextB;
+        CodeSection emptyRodata;
+        dupTextA.defineSymbol("same_global", SymbolBinding::Global, SymbolSection::Text);
+        dupTextA.emit8(0xC3);
+        dupTextB.defineSymbol("same_global", SymbolBinding::Global, SymbolSection::Text);
+        dupTextB.emit8(0xC3);
+
+        std::ostringstream dupErr;
+        CoffWriter dupWriter(ObjArch::X86_64);
+        CHECK(!dupWriter.write("build/test-out/coff_dup_global.obj",
+                               std::vector<CodeSection>{dupTextA, dupTextB},
+                               emptyRodata,
+                               dupErr));
+        CHECK(dupErr.str().find("duplicate global symbol") != std::string::npos);
+    }
+
+    {
+        CodeSection badUnwindText;
+        CodeSection badUnwindRodata;
+        const uint32_t fn = badUnwindText.defineSymbol(
+            "bad_unwind", SymbolBinding::Global, SymbolSection::Text);
+        badUnwindText.emit8(0xC3);
+
+        Win64UnwindEntry badUnwind{};
+        badUnwind.symbolIndex = fn;
+        badUnwind.functionLength = 1;
+        badUnwind.prologueSize = 1;
+        badUnwind.codes.push_back({Win64UnwindCode::Kind::AllocStack, 1, 0, 4});
+        badUnwindText.addWin64UnwindEntry(std::move(badUnwind));
+
+        std::ostringstream unwindErr;
+        CoffWriter unwindWriter(ObjArch::X86_64);
+        CHECK(!unwindWriter.write("build/test-out/coff_bad_unwind.obj",
+                                  badUnwindText,
+                                  badUnwindRodata,
+                                  unwindErr));
+        CHECK(unwindErr.str().find("8-byte aligned") != std::string::npos);
+    }
+
+    {
         CodeSection textA;
         CodeSection textB;
         CodeSection rodataMulti;
