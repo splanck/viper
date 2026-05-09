@@ -17,6 +17,7 @@ extern "C" {
 #include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_array_obj.h"
 #include "rt_seq.h"
 
 /// @brief Vm_trap.
@@ -148,6 +149,26 @@ static void test_track_null_safety() {
     rt_gc_track(make_node(), NULL);
     rt_gc_untrack(NULL);
     ASSERT(rt_gc_is_tracked(NULL) == 0, "null is not tracked");
+}
+
+static void test_track_rejects_non_object_payload() {
+    void **arr = rt_arr_obj_new(0);
+    ASSERT(arr != NULL, "object array allocated");
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        rt_gc_track(arr, test_node_traverse);
+        rt_trap_clear_recovery();
+        ASSERT(0, "tracking arrays for object GC should trap");
+    } else {
+        std::string message = rt_trap_get_error();
+        rt_trap_clear_recovery();
+        ASSERT(message.find("not a heap object") != std::string::npos,
+               "non-object GC track trap mentions heap object");
+    }
+
+    rt_arr_obj_release(arr);
 }
 
 static void test_tracked_count() {
@@ -658,6 +679,15 @@ static void test_threshold_get_set_contract() {
     ASSERT(rt_gc_get_threshold() == 0, "zero threshold disables auto GC");
 }
 
+static void test_shutdown_resets_statistics() {
+    (void)rt_gc_collect();
+    ASSERT(rt_gc_pass_count() > 0, "pass count non-zero before shutdown");
+    rt_gc_shutdown();
+    ASSERT(rt_gc_tracked_count() == 0, "tracked count reset by shutdown");
+    ASSERT(rt_gc_pass_count() == 0, "pass count reset by shutdown");
+    ASSERT(rt_gc_total_collected() == 0, "total collected reset by shutdown");
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -666,6 +696,7 @@ int main() {
     // Tracking
     test_track_untrack();
     test_track_null_safety();
+    test_track_rejects_non_object_payload();
     test_tracked_count();
     test_double_track();
 
@@ -696,6 +727,7 @@ int main() {
     // Statistics
     test_statistics();
     test_threshold_get_set_contract();
+    test_shutdown_resets_statistics();
 
     printf("GC tests: %d/%d passed\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

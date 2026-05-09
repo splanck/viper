@@ -94,7 +94,7 @@ void ControlStatementLowerer::lowerGosub(const GosubStmt &stmt) {
     lowerer_.requireTrap();
     std::string overflowMsg = lowerer_.getStringLabel("gosub: stack overflow");
     Lowerer::Value overflowStr = lowerer_.emitConstStr(overflowMsg);
-    lowerer_.emitCall("rt_trap", {overflowStr});
+    lowerer_.emitCall("rt_trap_string", {overflowStr});
     lowerer_.emitTrap();
 
     ctx.setCurrent(pushBlk);
@@ -185,7 +185,7 @@ void ControlStatementLowerer::lowerGosubReturn(const ReturnStmt &stmt) {
     lowerer_.requireTrap();
     std::string emptyMsg = lowerer_.getStringLabel("gosub: empty return stack");
     Lowerer::Value emptyStr = lowerer_.emitConstStr(emptyMsg);
-    lowerer_.emitCall("rt_trap", {emptyStr});
+    lowerer_.emitCall("rt_trap_string", {emptyStr});
     lowerer_.emitTrap();
 
     ctx.setCurrent(contBlk);

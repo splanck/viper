@@ -361,8 +361,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
 
         if (resolvedFunction == kHeapRelease && args.size() == 1) {
             TypeRef argType = sema_.typeOf(expr->args[0].value.get());
-            bool isString = isStringType(argType);
-            Value releaseCount = emitManagedReleaseRet(args[0], isString);
+            Value releaseCount = emitManagedReleaseRet(args[0], isStringType(argType));
             return {releaseCount, Type(Type::Kind::I64)};
         }
 
@@ -570,8 +569,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
 
                 if (funcName == kHeapRelease && args.size() == 1) {
                     TypeRef argType = sema_.typeOf(expr->args[0].value.get());
-                    bool isString = isStringType(argType);
-                    Value releaseCount = emitManagedReleaseRet(args[0], isString);
+                    Value releaseCount = emitManagedReleaseRet(args[0], isStringType(argType));
                     return {releaseCount, Type(Type::Kind::I64)};
                 }
 
@@ -774,8 +772,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
 
         if (runtimeCallee == kHeapRelease && args.size() == 1) {
             TypeRef argType = sema_.typeOf(expr->args[0].value.get());
-            bool isString = isStringType(argType);
-            Value releaseCount = emitManagedReleaseRet(args[0], isString);
+            Value releaseCount = emitManagedReleaseRet(args[0], isStringType(argType));
             return {releaseCount, Type(Type::Kind::I64)};
         }
 

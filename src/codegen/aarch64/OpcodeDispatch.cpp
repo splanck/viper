@@ -573,7 +573,7 @@ bool lowerInstruction(const il::core::Instr &ins,
             } else {
                 moveValueToArg(ins.operands[0], bbIn, ctx, PhysReg::X0, bbOut(), "trap message");
             }
-            bbOut().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
+            bbOut().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_string")}});
             return true;
 
         case Opcode::TrapKind:

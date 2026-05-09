@@ -76,6 +76,7 @@ bool sameSignature(const Signature &lhs, const Signature &rhs) {
            lhs.readonly == rhs.readonly && lhs.pure == rhs.pure &&
            lhs.consumedArgMask == rhs.consumedArgMask &&
            lhs.retainedArgMask == rhs.retainedArgMask &&
+           lhs.ownedOutArgMask == rhs.ownedOutArgMask &&
            lhs.returnsOwned == rhs.returnsOwned && lhs.mayAllocate == rhs.mayAllocate;
 }
 } // namespace
@@ -94,6 +95,7 @@ Signature apply_effect_overrides(Signature signature) {
     const auto ownership = il::runtime::classifyRuntimeOwnership(signature.name);
     signature.consumedArgMask |= ownership.consumedArgMask;
     signature.retainedArgMask |= ownership.retainedArgMask;
+    signature.ownedOutArgMask |= ownership.ownedOutArgMask;
     signature.returnsOwned = signature.returnsOwned || ownership.returnsOwned;
     signature.mayAllocate = signature.mayAllocate || ownership.mayAllocate;
     return signature;

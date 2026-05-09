@@ -15,7 +15,8 @@
 //   - Boxed values are heap-allocated via rt_heap_alloc and reference-counted.
 //   - Type tags (BOX_TYPE_I64, BOX_TYPE_F64, BOX_TYPE_STR, etc.) uniquely
 //     identify the contained type.
-//   - Unboxing to the wrong type returns a safe default (0/NULL) not a trap.
+//   - Strict unboxing traps on null, invalid boxes, or tag mismatches.
+//   - Try-unboxing reports null/invalid/type mismatches without trapping.
 //   - The boxed string retains a reference to the rt_string and releases it
 //     when the box is freed.
 //   - Equality comparison for boxes compares type tags AND values.
@@ -205,8 +206,8 @@ static void value_type_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (count <= 0)
         return;
 
-    size_t *offsets = (size_t *)malloc((size_t)count * sizeof(size_t));
-    if (!offsets)
+    void **children = (void **)calloc((size_t)count, sizeof(void *));
+    if (!children)
         return;
 
     int64_t copied = 0;
@@ -214,17 +215,23 @@ static void value_type_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     layout = value_type_find_locked(obj);
     for (value_type_field *field = layout ? layout->fields : NULL; field && copied < count;
          field = field->next) {
-        if (field->kind == RT_VALUE_FIELD_OBJ)
-            offsets[copied++] = field->offset;
+        if (field->kind == RT_VALUE_FIELD_OBJ) {
+            void *child = *(void **)((unsigned char *)obj + field->offset);
+            if (child)
+                rt_obj_retain_maybe(child);
+            children[copied++] = child;
+        }
     }
     value_type_unlock();
 
     for (int64_t i = 0; i < copied; ++i) {
-        void *child = *(void **)((unsigned char *)obj + offsets[i]);
+        void *child = children[i];
         if (child)
             visitor(child, ctx);
+        if (rt_obj_release_check0(child))
+            rt_obj_free(child);
     }
-    free(offsets);
+    free(children);
 }
 
 /// @brief Allocate a fresh boxed-value object via the heap (refcount=1, tagged RT_ELEM_BOX so
@@ -373,12 +380,12 @@ double rt_unbox_f64(void *box) {
     return b->data.f64_val;
 }
 
-/// @brief Extract the bool contents (returned as 0/1 in i64). **Traps** on tag mismatch.
-int64_t rt_unbox_i1(void *box) {
+/// @brief Extract the bool contents (returned as 0/1). **Traps** on tag mismatch.
+int8_t rt_unbox_i1(void *box) {
     rt_box_t *b = box_require(box, "rt_unbox_i1", RT_BOX_I1);
     if (!b)
         return 0;
-    return b->data.i64_val;
+    return b->data.i64_val ? 1 : 0;
 }
 
 /// @brief Extract the rt_string contents, **retaining a fresh reference** for the caller (the box
@@ -393,6 +400,56 @@ rt_string rt_unbox_str(void *box) {
         rt_string_ref(s);
     }
     return s;
+}
+
+int8_t rt_box_try_to_i64(void *box, int64_t *out) {
+    if (out)
+        *out = 0;
+    if (!out)
+        return 0;
+    rt_box_t *b = box_maybe(box);
+    if (!b || b->tag != RT_BOX_I64)
+        return 0;
+    *out = b->data.i64_val;
+    return 1;
+}
+
+int8_t rt_box_try_to_f64(void *box, double *out) {
+    if (out)
+        *out = 0.0;
+    if (!out)
+        return 0;
+    rt_box_t *b = box_maybe(box);
+    if (!b || b->tag != RT_BOX_F64)
+        return 0;
+    *out = b->data.f64_val;
+    return 1;
+}
+
+int8_t rt_box_try_to_i1(void *box, int8_t *out) {
+    if (out)
+        *out = 0;
+    if (!out)
+        return 0;
+    rt_box_t *b = box_maybe(box);
+    if (!b || b->tag != RT_BOX_I1)
+        return 0;
+    *out = b->data.i64_val ? 1 : 0;
+    return 1;
+}
+
+int8_t rt_box_try_to_str(void *box, rt_string *out) {
+    if (out)
+        *out = NULL;
+    if (!out)
+        return 0;
+    rt_box_t *b = box_maybe(box);
+    if (!b || b->tag != RT_BOX_STR)
+        return 0;
+    if (b->data.str_val)
+        rt_string_ref(b->data.str_val);
+    *out = b->data.str_val;
+    return 1;
 }
 
 /// @brief Read the type tag of a box (`RT_BOX_I64`, `RT_BOX_F64`, `RT_BOX_I1`, `RT_BOX_STR`),

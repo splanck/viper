@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-05-07
+last-verified: 2026-05-08
 ---
 
 # Viper Memory Management
@@ -82,7 +82,7 @@ Every heap-allocated runtime value is preceded by `rt_heap_hdr_t`:
 typedef struct rt_heap_hdr {
     uint32_t magic;                // 0x52504956 ('VIPR') — corruption sentinel
     uint16_t kind;                 // RT_HEAP_STRING(1) | RT_HEAP_ARRAY(2) | RT_HEAP_OBJECT(3)
-    uint16_t elem_kind;            // RT_ELEM_NONE(0) | I32(1) | I64(2) | F64(3) | U8(4) | STR(5) | BOX(6)
+    uint16_t elem_kind;            // RT_ELEM_NONE(0) | I32(1) | I64(2) | F64(3) | U8(4) | STR(5) | BOX(6) | OBJ(7)
     uint32_t flags;                // bit0 = disposed, bit1 = pool-allocated
     size_t   refcnt;               // Atomic reference count; 1 at creation; SIZE_MAX = immortal
     size_t   len;                  // Current logical length (elements)
@@ -115,6 +115,8 @@ typedef struct rt_heap_hdr {
 | `rt_heap_free_zero_ref(payload)` | Free only if refcount is already zero. No-op otherwise. |
 | `rt_memory_retain(payload)` | Public `Viper.Memory.Retain` wrapper; validates live runtime handles before retaining. |
 | `rt_memory_release(payload)` | Public `Viper.Memory.Release` wrapper; releases through managed object/string/array paths and runs finalizers or element cleanup at zero. |
+| `rt_memory_retain_str(str)` | Public `Viper.Memory.RetainStr` wrapper; validates and retains a runtime string. |
+| `rt_memory_release_str(str)` | Public `Viper.Memory.ReleaseStr` wrapper; validates and releases a runtime string. |
 
 Public heap helpers reject non-runtime and already-freed payloads before header
 access. That keeps stale pointers on the trap path instead of relying on
@@ -266,6 +268,10 @@ rt_gc_untrack(obj);              // Remove before manual free
 rt_gc_is_tracked(obj);           // Query tracking status
 ```
 
+`rt_gc_track` accepts heap objects only. Passing a string, array, stale pointer,
+or non-runtime payload traps instead of registering a value the collector cannot
+traverse or reclaim safely.
+
 The `traverse_fn` callback must enumerate all strong references held by the
 object by calling `visitor(child, ctx)` for each one.
 
@@ -284,11 +290,13 @@ Exposed to Viper programs as `Viper.Memory.GC.Collect()`, `SetThreshold(n)`, and
 
 The GC state (tracked-object table, weak reference registry) is protected by a
 global mutex (`pthread_mutex_t` on Unix, `CRITICAL_SECTION` on Windows).
-Finalizers run outside the lock to avoid deadlocks, and an active collection
-flag makes reentrant `rt_gc_collect()` calls return 0 while a pass is still
-reclaiming objects.
-If a finalizer traps during the reclaim phase, the active-collection flag is
-cleared before the trap is re-raised so later collection passes can run.
+Finalizers and traversal callbacks run outside the lock to avoid deadlocks, and
+an active collection flag makes reentrant `rt_gc_collect()` calls return 0 while
+a pass is still reclaiming objects.
+If a trap occurs during collection after the active flag is set, temporary
+collector state is released, retained snapshot entries are balanced, and the
+active-collection flag is cleared before the trap is re-raised so later
+collection passes can run.
 
 ### Statistics
 
@@ -299,6 +307,9 @@ cleared before the trap is re-raised so later collection passes can run.
 | `rt_gc_pass_count()` | Number of `rt_gc_collect()` invocations |
 
 `rt_gc_total_collected()` saturates at `INT64_MAX` rather than wrapping.
+`rt_gc_shutdown()` resets the tracked-object table, weak-reference registry, and
+public statistics so isolated runtime tests and embedders can restart from a
+clean GC state.
 
 ### Limitations
 
@@ -386,6 +397,7 @@ without `malloc`/`free` overhead.
 |------|-----------|-----------|-------------------|-------|
 | **Strings** | Pool (≤512B) or malloc | Refcounted | N/A | Immortal literals, interning, `rt_str_concat` consumes both operands |
 | **Lists** | malloc | Refcounted | Auto retain/release | `rt_list_i64` for unboxed ints (no per-element refcounting) |
+| **Arrays** | malloc | Refcounted | Kind-specific retain/release | Object arrays use `RT_ELEM_OBJ`; string arrays use `RT_ELEM_STR`; `RT_ELEM_NONE` means no managed elements |
 | **Sequences** | malloc | Refcounted | **NOT managed** | Caller must manage element lifetimes |
 | **Maps** | malloc | Refcounted | Keys copied, values retained | String-keyed |
 | **LazySeq** | malloc | **Manual destroy** | On-demand generation | Not refcounted; requires `rt_lazyseq_destroy()` |

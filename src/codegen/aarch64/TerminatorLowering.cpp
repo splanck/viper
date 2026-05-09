@@ -42,11 +42,11 @@ static const char *condForOpcode(Opcode op) {
     return lookupAnyCondition(op);
 }
 
-/// @brief Emit a rt_trap call with a null (0) message payload into @p bb.
+/// @brief Emit a rt_trap_string call with a null (0) message payload into @p bb.
 static void emitNullTrapCall(MBasicBlock &bb) {
     bb.instrs.push_back(
         MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
-    bb.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
+    bb.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_string")}});
 }
 
 /// @brief One case arm in a switch/select table: the integer value and the MIR branch target.
@@ -315,7 +315,8 @@ void lowerTerminators(const il::core::Function &fn,
                         mi.ops[0].kind == MOperand::Kind::Label) {
                         const std::string &callee = mi.ops[0].label;
                         if (callee == "rt_arr_oob_panic" || callee == "rt_trap" ||
-                            callee == "rt_trap_div0" || callee == "rt_trap_ovf") {
+                            callee == "rt_trap_string" || callee == "rt_trap_div0" ||
+                            callee == "rt_trap_ovf") {
                             hasNoreturnCall = true;
                             break;
                         }
@@ -343,7 +344,8 @@ void lowerTerminators(const il::core::Function &fn,
                             MInstr{MOpcode::MovRR,
                                    {MOperand::regOp(PhysReg::X0),
                                     MOperand::vregOp(RegClass::GPR, trapArg)}});
-                        outBB.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
+                        outBB.instrs.push_back(
+                            MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_string")}});
                     } else {
                         emitNullTrapCall(outBB);
                     }

@@ -54,11 +54,11 @@ void emitEhEntry(const ILInstr &, MIRBuilder &) {
 }
 
 void emitTrap(const ILInstr &instr, MIRBuilder &builder) {
-    // Emit a call to rt_trap(payload) which will longjmp to the thread-local
-    // recovery point if one is set, or abort the process otherwise.
+    // Emit a call to rt_trap_string(payload) which validates managed string
+    // handles before routing through the thread-local trap machinery.
 
     CallLoweringPlan plan{};
-    plan.callee = "rt_trap";
+    plan.callee = "rt_trap_string";
     plan.numNamedArgs = 1;
 
     CallArg trapArg{};
@@ -85,8 +85,8 @@ void emitTrap(const ILInstr &instr, MIRBuilder &builder) {
     plan.args.push_back(trapArg);
 
     const uint32_t callPlanId = builder.recordCallPlan(std::move(plan));
-    builder.append(makePlannedCall(makeLabelOperand(std::string{"rt_trap"}), callPlanId));
-    // rt_trap does not return (either longjmp or _Exit), but emit UD2 as a
+    builder.append(makePlannedCall(makeLabelOperand(std::string{"rt_trap_string"}), callPlanId));
+    // rt_trap_string does not return (either longjmp or _Exit), but emit UD2 as a
     // safety net so the CPU faults if we somehow fall through.
     builder.append(MInstr::make(MOpcode::UD2));
 }

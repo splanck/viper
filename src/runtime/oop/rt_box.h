@@ -12,6 +12,7 @@
 // Key invariants:
 //   - Boxed values carry a type tag: 0=i64, 1=f64, 2=i1, 3=str.
 //   - rt_unbox_* traps if the type tag does not match the requested type.
+//   - rt_box_try_to_* variants report mismatches without trapping.
 //   - Boxed values participate in reference counting.
 //   - rt_box_value_type boxes a struct/class by copying all fields into a heap object.
 //
@@ -86,13 +87,37 @@ double rt_unbox_f64(void *box);
 /// @param box Boxed value (must be RT_BOX_I1).
 /// @return The unboxed boolean (0 or 1).
 /// @note Traps if box is NULL or wrong type.
-int64_t rt_unbox_i1(void *box);
+int8_t rt_unbox_i1(void *box);
 
 /// @brief Unbox to string.
 /// @param box Boxed value (must be RT_BOX_STR).
 /// @return The unboxed string (retained).
 /// @note Traps if box is NULL or wrong type.
 rt_string rt_unbox_str(void *box);
+
+/// @brief Try to unbox to integer without trapping.
+/// @param box Candidate boxed value.
+/// @param out Receives the integer on success.
+/// @return 1 on success, 0 for NULL, invalid box, wrong type, or NULL out.
+int8_t rt_box_try_to_i64(void *box, int64_t *out);
+
+/// @brief Try to unbox to float without trapping.
+/// @param box Candidate boxed value.
+/// @param out Receives the double on success.
+/// @return 1 on success, 0 for NULL, invalid box, wrong type, or NULL out.
+int8_t rt_box_try_to_f64(void *box, double *out);
+
+/// @brief Try to unbox to boolean without trapping.
+/// @param box Candidate boxed value.
+/// @param out Receives 0 or 1 on success.
+/// @return 1 on success, 0 for NULL, invalid box, wrong type, or NULL out.
+int8_t rt_box_try_to_i1(void *box, int8_t *out);
+
+/// @brief Try to unbox to string without trapping.
+/// @param box Candidate boxed value.
+/// @param out Receives a retained string reference on success.
+/// @return 1 on success, 0 for NULL, invalid box, wrong type, or NULL out.
+int8_t rt_box_try_to_str(void *box, rt_string *out);
 
 /// @brief Get the type tag of a boxed value.
 /// @param box Boxed value.

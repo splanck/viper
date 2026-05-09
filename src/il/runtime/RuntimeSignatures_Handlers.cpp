@@ -70,8 +70,7 @@ int32_t rt_loc_ch_i32(int32_t channel) {
 
 void trapFromRuntimeString(void **args, void * /*result*/) {
     rt_string str = args ? *reinterpret_cast<rt_string *>(args[0]) : nullptr;
-    const char *msg = (str && str->data) ? str->data : "trap";
-    rt_trap(msg);
+    rt_trap_string(str);
 }
 
 void testMutateStringNoStack(void **args, void * /*result*/) {

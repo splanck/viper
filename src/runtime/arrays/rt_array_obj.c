@@ -57,11 +57,11 @@ static rt_heap_hdr_t *rt_arr_obj_hdr(void **payload) {
 /// @details Verifies allocation kind and element kind to catch misuse early.
 /// @param hdr Heap header to validate (must be non-NULL).
 static void rt_arr_obj_assert_header(rt_heap_hdr_t *hdr) {
-    if (!hdr || hdr->kind != RT_HEAP_ARRAY || hdr->elem_kind != RT_ELEM_NONE)
+    if (!hdr || hdr->kind != RT_HEAP_ARRAY || hdr->elem_kind != RT_ELEM_OBJ)
         rt_trap("rt_array_obj: corrupted header");
     assert(hdr);
     assert(hdr->kind == RT_HEAP_ARRAY);
-    assert(hdr->elem_kind == RT_ELEM_NONE);
+    assert(hdr->elem_kind == RT_ELEM_OBJ);
 }
 
 /// @brief Allocate a new object array with logical length @p len.
@@ -70,7 +70,7 @@ static void rt_arr_obj_assert_header(rt_heap_hdr_t *hdr) {
 /// @param len Number of elements to allocate.
 /// @return Payload pointer for the new array, or NULL on allocation failure.
 void **rt_arr_obj_new(size_t len) {
-    void **arr = (void **)rt_heap_alloc(RT_HEAP_ARRAY, RT_ELEM_NONE, sizeof(void *), len, len);
+    void **arr = (void **)rt_heap_alloc(RT_HEAP_ARRAY, RT_ELEM_OBJ, sizeof(void *), len, len);
     if (arr && len)
         memset(arr, 0, len * sizeof(void *));
     return arr;

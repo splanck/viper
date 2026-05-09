@@ -47,7 +47,7 @@ inline constexpr std::array<std::string_view, kRtSigCount> kRtSigSpecs = {
 ///          These are the linker-visible names used by the runtime bridge.
 inline constexpr std::array<std::string_view, kRtSigCount> kRtSigSymbolNames = {
     "rt_print_str",        "rt_print_i64",        "rt_print_f64",
-    "rt_str_len",          "rt_str_substr",       "rt_trap",
+    "rt_str_len",          "rt_str_substr",       "rt_trap_string",
     "rt_diag_assert",      "rt_str_concat",       "rt_input_line",
     "rt_str_split_fields", "rt_to_int",           "rt_to_double",
     "rt_parse_int64",      "rt_parse_double",     "rt_int_to_str",

@@ -51,6 +51,7 @@ struct Signature {
     bool pure = false;            ///< Helper is free of side effects and memory access.
     std::uint64_t consumedArgMask = 0; ///< IL-visible args whose ownership is consumed.
     std::uint64_t retainedArgMask = 0; ///< IL-visible args whose reference count is retained.
+    std::uint64_t ownedOutArgMask = 0; ///< Pointer args that receive an owned reference.
     bool returnsOwned = false;         ///< Helper returns an owned reference/string handle.
     bool mayAllocate = false;          ///< Helper may allocate runtime-managed storage.
 };
@@ -81,7 +82,8 @@ inline Signature make_signature(std::string name,
                                 std::uint64_t consumedArgMask = 0,
                                 std::uint64_t retainedArgMask = 0,
                                 bool returnsOwned = false,
-                                bool mayAllocate = false) {
+                                bool mayAllocate = false,
+                                std::uint64_t ownedOutArgMask = 0) {
     Signature signature;
     signature.name = std::move(name);
     signature.params.reserve(params.size());
@@ -95,6 +97,7 @@ inline Signature make_signature(std::string name,
     signature.pure = pure;
     signature.consumedArgMask = consumedArgMask;
     signature.retainedArgMask = retainedArgMask;
+    signature.ownedOutArgMask = ownedOutArgMask;
     signature.returnsOwned = returnsOwned;
     signature.mayAllocate = mayAllocate;
     return signature;

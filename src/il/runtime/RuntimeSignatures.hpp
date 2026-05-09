@@ -183,6 +183,7 @@ struct RuntimeSignature {
     std::uint64_t objectParamMask{0};  ///< Parameters spelled `obj` in the runtime surface.
     std::uint64_t consumedArgMask{0}; ///< IL-visible args whose ownership is consumed.
     std::uint64_t retainedArgMask{0}; ///< IL-visible args whose reference count is retained.
+    std::uint64_t ownedOutArgMask{0}; ///< Pointer args that receive an owned reference.
     bool returnsOwned{false};         ///< Helper returns an owned reference/string handle.
     bool mayAllocate{false};          ///< Helper may allocate runtime-managed storage.
     bool valid{true};                 ///< Parsed signature text was well-formed and supported.

@@ -38,6 +38,8 @@
 #include "rt_internal.h"
 #include "rt_array_obj.h"
 #include "rt_array_str.h"
+#include "rt_format.h"
+#include "rt_hash_util.h"
 #include "rt_oop.h"
 #include "rt_option.h"
 #include "rt_platform.h"
@@ -47,6 +49,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "rt_trap.h"
 
@@ -313,7 +316,9 @@ static void rt_memory_release_array_payload(void *p, rt_heap_hdr_t *hdr) {
             }
             break;
         }
-        case RT_ELEM_NONE: {
+        case RT_ELEM_NONE:
+            break;
+        case RT_ELEM_BOX: {
             void **items = (void **)p;
             for (size_t i = 0; i < n; ++i) {
                 void *item = items[i];
@@ -323,7 +328,7 @@ static void rt_memory_release_array_payload(void *p, rt_heap_hdr_t *hdr) {
             }
             break;
         }
-        case RT_ELEM_BOX: {
+        case RT_ELEM_OBJ: {
             void **items = (void **)p;
             for (size_t i = 0; i < n; ++i) {
                 void *item = items[i];
@@ -494,6 +499,12 @@ int64_t rt_obj_reference_equals(void *a, void *b) {
 /// @note Default implementation is reference equality.
 /// @note Derived classes may override to provide value-based equality.
 int64_t rt_obj_equals(void *self, void *other) {
+    int self_is_string = rt_string_is_handle(self);
+    int other_is_string = rt_string_is_handle(other);
+    if (self_is_string || other_is_string)
+        return (self_is_string && other_is_string && rt_str_eq((rt_string)self, (rt_string)other))
+                   ? 1
+                   : 0;
     if (rt_box_type(self) >= 0 || rt_box_type(other) >= 0)
         return rt_box_equal(self, other) ? 1 : 0;
     return self == other ? 1 : 0;
@@ -519,6 +530,13 @@ int64_t rt_obj_equals(void *self, void *other) {
 int64_t rt_obj_get_hash_code(void *self) {
     if (!self)
         return 0;
+    if (rt_string_is_handle(self)) {
+        rt_string s = (rt_string)self;
+        const char *bytes = rt_string_cstr(s);
+        if (!bytes)
+            return 0;
+        return (int64_t)rt_fnv1a(bytes, (size_t)rt_str_len(s));
+    }
     if (rt_box_type(self) >= 0)
         return (int64_t)rt_box_hash(self);
     uintptr_t v = (uintptr_t)self;
@@ -567,10 +585,9 @@ rt_string rt_obj_to_string(void *self) {
             return rt_string_from_bytes(buf, (size_t)n);
         }
         if (tag == RT_BOX_F64) {
-            char buf[32];
-            int n = snprintf(buf, sizeof(buf), "%.15g", rt_unbox_f64(self));
-            if (n < 0)
-                return rt_obj_make_cstr("Object");
+            char buf[64];
+            rt_format_f64(rt_unbox_f64(self), buf, sizeof(buf));
+            size_t n = strlen(buf);
             return rt_string_from_bytes(buf, (size_t)n);
         }
         if (tag == RT_BOX_I1) {

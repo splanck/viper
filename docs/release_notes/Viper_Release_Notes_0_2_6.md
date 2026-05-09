@@ -12,7 +12,7 @@ A focused hardening-and-correctness cycle on the v0.2.5 surface. No new public n
 
 - Memory and GC overhaul — validated `Viper.Memory.Retain` / `Release` wrappers, lock-free traversal, trap-safe finalizer phase, resurrection-aware refcounting.
 - MessageBus end-to-end correctness — class-ID validation, managed callback objects, NUL-safe topic hashing, internal locking, GC traversal registration.
-- `Viper.Threads.*` correctness pass — repeatable joins, distinct class IDs across pool / queue / map / scheduler / debouncer / throttler, idempotent pool shutdown, listener trap isolation, synchronous-channel `TrySend` rendezvous, nested-parallel self-deadlock guard.
+- `Viper.Threads.*` three-round correctness pass — repeatable joins, distinct class IDs, idempotent pool shutdown with sticky-then-cleared task traps, retain-during-call across every public threads entry, monitor finalize-while-waiting safety, async + Parallel.Map retained-result ownership, listener trap isolation, synchronous-channel `TrySend` rendezvous, nested-parallel self-deadlock guard, VM payload OOM handling.
 - Crypto upgrade — `Viper.Text.*` → `Viper.Crypto.*` migration with backward-compat aliases, scrypt-SHA256, AES-256-GCM with AAD, P-256 ECDH, HMAC-SHA384/512, validation-ready `Viper.Crypto.Module` with approved-mode policy gates.
 - TLS X.509 verifier hardening — Key Usage, Basic Constraints, and Extended Key Usage extensions enforced; DNS-name validation tightened.
 - IO security hardening (two rounds) — random-nonce temp files, `openat`-based recursive removal, `O_CLOEXEC` / `O_NOFOLLOW` everywhere, SaveData absolute-path resolution.
@@ -28,13 +28,13 @@ A focused hardening-and-correctness cycle on the v0.2.5 surface. No new public n
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 17 | +17 |
+| Commits | — | 23 | +23 |
 | Source files | 2,996 | 3,005 | +9 |
-| Production SLOC | 552K | 561K | +9K |
+| Production SLOC | 552K | 562K | +10K |
 | Test SLOC | 228K | 232K | +4K |
 | Demo SLOC | 188K | 188K | 0 |
 
-Counts via `scripts/count_sloc.sh` (production 560,950 / test 232,046 / demo 187,826 / source files 3,005).
+Counts via `scripts/count_sloc.sh` (production 561,866 / test 232,404 / demo 187,826 / source files 3,005).
 
 ---
 
@@ -112,16 +112,23 @@ Counts via `scripts/count_sloc.sh` (production 560,950 / test 232,046 / demo 187
 ### Threading runtime
 
 - Thread joins are now repeatable: the first successful `Join`, `TryJoin`, or `JoinFor` reclaims the OS handle; later calls on the same handle return success instead of trapping with `Thread.Join: already joined`. The trap is gone, ADR 0002 and `viperlib/threads.md` updated to match.
-- `Thread.Start` / `StartSafe` borrow their argument consistently across native, VM, and BytecodeVM dispatch; `StartOwned` / `StartSafeOwned` now retain managed arguments across VM and BytecodeVM workers.
+- `Thread.Start` / `StartSafe` borrow their argument consistently across native, VM, and BytecodeVM dispatch; `StartOwned` / `StartSafeOwned` retain managed arguments across all three backends.
 - Safe VM and BytecodeVM workers propagate trap text into the safe-thread error boundary instead of aborting the worker.
 - `ConcurrentQueue`, `ConcurrentMap`, `Scheduler`, `Debouncer`, `Throttler`, and `ThreadPool` each carry a distinct runtime class ID and validate every public-API handle before downcasting.
-- `ConcurrentMap.Keys()` / `Values()` snapshot under the map lock and retain copied values; `ConcurrentMap.Remove()` / `Clear()` / finalization and `ConcurrentQueue.Clear()` / finalization detach nodes before releasing retained values.
-- `Channel.TrySend()` on synchronous (capacity-0) channels publishes a retained handoff only when a receiver is already waiting, then returns without waiting for acknowledgement; `TryRecv()` remains strictly non-blocking.
-- Pool shutdown is idempotent — worker handles stolen under the pool monitor and joined outside the lock — so repeated `Shutdown` / `ShutdownNow` calls and concurrent finalization can no longer double-join or double-release. Pool task trap messages are sticky so a worker trap is still surfaced to later `Wait` / `WaitFor` / `Shutdown` / `ShutdownNow`.
-- `Parallel.*Pool` detects calls from a worker already running in the target pool and runs nested work inline to avoid self-deadlock; worker callback traps preserve the original trap text instead of replacing it with a generic `Parallel.*: task trapped` message.
-- Future completion listeners and listener-cancel hooks isolate trapping callbacks so one bad listener cannot rethrow through promise completion or cancel cleanup.
-- `Async.Map` / `Any` / `All` consult `rt_future_value_is_owned` before `rt_future_peek_value` and release the borrowed retain after forwarding or mapper traps, matching the clarified ownership contract on `peek_value` (returns retained for owned values, borrowed otherwise).
-- `Future` peek/value-ownership helpers temporarily retain the Future handle while reading the shared promise, Debouncer/Throttler no longer use timestamp zero as an implicit state sentinel, and large Win32 Future timeouts saturate instead of wrapping.
+- Retain-during-call discipline applied to every public threads entry — `rt_thread_*`, `rt_threadpool_*`, `rt_concmap_*`, `rt_concqueue_*`, `rt_debounce_*`, `rt_throttle_*`, `rt_scheduler_*`, `rt_cancellation_*`, `rt_future_*`, `rt_promise_*` — so a concurrent finalize on the host object can no longer race the deref. Safe-thread accessors copy the inner-thread pointer under retain via a dedicated `safe_thread_copy_inner_thread` helper.
+- Monitor finalize-while-waiting safety: new `RT_MON_WAITER_CANCELLED` waiter state and `monitor_cancel_queue` wake every parked waiter (acquisition queue and wait queue) when `rt_monitor_forget` retires the entry, so blocked threads bail out with `Monitor.Enter: object finalized while waiting` instead of sleeping forever. All `Enter` / `TryEnter` / `TryEnterFor` paths now check the retired flag up front; recursion overflow at `SIZE_MAX` traps instead of wrapping.
+- `ConcurrentMap.Keys()` / `Values()` snapshot under the map lock and retain copied values; `ConcurrentMap.Remove()` / `Clear()` / finalization and `ConcurrentQueue.Clear()` / finalization detach nodes before releasing retained values. `ConcurrentQueue` finalize broadcasts the condvar and marks the queue closed so any thread parked in `Dequeue` / `DequeueFor` wakes immediately.
+- `Channel.TrySend()` on synchronous (capacity-0) channels publishes a retained handoff only when a receiver is already waiting, then returns without waiting for acknowledgement; `TryRecv()` remains strictly non-blocking. Channel deadline math falls back to `CLOCK_REALTIME` when `CLOCK_MONOTONIC` is unavailable instead of leaving the timespec uninitialised.
+- Pool shutdown is idempotent — worker handles stolen under the pool monitor and joined outside the lock — so repeated `Shutdown` / `ShutdownNow` calls and concurrent finalization can no longer double-join or double-release. Pool task trap messages are sticky-then-cleared: the next `Wait` / `WaitFor` / `Shutdown` / `ShutdownNow` rethrows the captured worker error and drains it, later calls report the current pool state normally.
+- `Parallel.*Pool` detects calls from a worker already running in the target pool and runs nested work inline to avoid self-deadlock; worker callback traps preserve the original trap text instead of replacing it with a generic `Parallel.*: task trapped` message. `_Static_assert` on the function-pointer-to-void* bridge confirms size equality.
+- `Async.Run` / `Map` / `All` / `Any` and `Parallel.Map` switched from a transferred-result model to a retained-result model: every callback return is retained before publication, so borrowed inputs and shared runtime objects survive past the original owner's release. The `parallel_result_is_input` / `parallel_result_is_sequence_input` identity heuristics are gone; cleanup is uniform across success and trap paths. `Async.All` / `Any` state finalizers release every retained source slot.
+- Future completion listeners and listener-cancel hooks isolate trapping callbacks via a new `future_invoke_listener` helper that runs the callback under `setjmp` recovery and, if it traps, runs the registered cancel hook under its own recovery — so one bad listener cannot rethrow through promise completion or cancel cleanup.
+- Cancellation propagation simplified: children retain their parent and `IsCancelled` walks upward through the retained chain, so `cancellation_mark_cancelled` only flips the immediate-children flags under the lock instead of recursing through a snapshot. `IsCancelled` snapshots `parent` under retain so a finalize on `token` between the local-flag check and the parent walk can no longer free the data.
+- VM payload OOM handling: every `new VmThreadStartPayload` / `BytecodeThreadPayload` / `VmAsyncRunPayload` is now `new (std::nothrow)` plus a null-check that traps with `<entry>: payload allocation failed`. The Async.Run path on null-payload resolves the promise with the failure message and returns the future to the caller so the Zia side observes a real Future error.
+- `Promise` / `ConcurrentMap` / `ConcurrentQueue` / `Scheduler` `New()` paths trap with descriptive messages and free their partial allocation when `pthread_mutex_init` or `pthread_cond_init` fails, instead of leaving a half-initialised object in the GC graph.
+- `Debouncer` / `Throttler` no longer use timestamp zero as an implicit state sentinel — explicit `has_signal` / `has_last_allowed` flags distinguish "never triggered" from a coincidental zero reading, and `elapsed_since_ms` clamps backwards-clock readings to zero so a system-time adjustment cannot make a previously-ready debouncer regress.
+- Win32 Future timeouts compute one absolute monotonic deadline up front (`future_deadline_tick_from_now`) saturating at `ULLONG_MAX`, replacing the relative `DWORD`-clamped `future_deadline_ms_from_now`; `rt_future_get_for` / `wait_for` / `get_for_val` no longer round-trip through `MAXDWORD`.
+- `SafeI64.Add` converts the post-add `uint64_t` back to `int64_t` via `memcpy` instead of a C-style cast, avoiding implementation-defined behaviour on signed overflow on both Win32 and POSIX.
 
 ### Audio
 
@@ -170,6 +177,7 @@ Counts via `scripts/count_sloc.sh` (production 560,950 / test 232,046 / demo 187
 - `audit_runtime_surface.sh` and `run_cross_platform_smoke.sh` are WSL-aware: honor `VIPER_BUILD_TYPE`, pass `--config` for multi-config generators, use `cmake.exe` / `ctest.exe` plus `wslpath` when run from WSL against a Windows build tree; capability-macro reads strip CRLF; `rtgen` lookup also handles `build/src/<Config>/rtgen.exe` from Visual Studio generators.
 - `rt_crypto` clamps BCrypt random-fill chunks with `UINT32_MAX` instead of the unavailable `DWORD_MAX` macro — MSVC builds the network runtime without ad-hoc workarounds.
 - D3D11 backend derives the bone-palette buffer allocation from the shared 256-bone palette constants used by the shader and upload-packing path. The old 128-bone hard-coded cbuffer let the first 16 KB palette upload overrun an 8 KB mapped buffer, crashing 3dbowling under the Windows debug UCRT.
+- Windows full-build TLS and timeout test stabilization — flaky network-runtime tests reworked so the MSVC full build runs the network suite cleanly without timing-sensitive false failures.
 
 ### Tests
 
@@ -180,19 +188,19 @@ Counts via `scripts/count_sloc.sh` (production 560,950 / test 232,046 / demo 187
 - New `RTParseTests`: `DoubleOption` / `Int64Option` success and `None`, class IDs, typed return metadata.
 - New `RTTrapContractTests`: NUL-embedded diagnostic message escaping.
 - IO: ZIP64 / extra-field rejection, asset temp-dir isolation, savedata absolute paths, VPA large-file seek, watcher overflow, inflate consumed-bytes, unsigned `BinaryBuffer`, OGG CRC.
-- Threads: repeatable joins, future listener trap isolation, sticky pool errors, idempotent pool shutdown, nested-parallel same-pool execution, borrowed-map result retention, synchronous-channel `TrySend`, VM/BytecodeVM owned thread and async dispatch.
+- Threads: repeatable joins, future listener trap isolation, sticky-then-cleared pool errors through Wait / Shutdown / ShutdownNow, idempotent pool shutdown, nested-parallel same-pool execution, retained borrowed-callback results across `Async.Run` / `Async.Map` / `Parallel.Map`, synchronous-channel `TrySend`, ConcurrentMap remove/clear release-after-unlock, VM/BytecodeVM owned thread and async dispatch.
 - Crypto: scrypt round-trips, AEAD encrypt / decrypt with AAD, `ConstantTimeEquals`, TLS extension parsers.
 - 2D graphics: new `RTBitmapFontContractTests`; expanded `RTCanvasContractTests`; `RTColorUtilsTests` for alpha-tag preservation through `Brighten` / `Darken` / `Invert` / `Grayscale` / `Saturate` / `Desaturate` / `Complement` / `Lerp`; `RTSpriteContractTests` for tint-alpha survival; `RTGraphics2DTests`, `RTPixelsTests`, `RTCameraTests`, `TestTilemapAnim`.
 - x86-64 codegen: out-of-order block-param lowering, instruction-result pre-registration, scheduler prologue-boundary preservation, large-spill `PX_COPY` regression, lone-JCC fallthrough peephole.
 - D3D11: shared-backend coverage tying the bone-palette byte count to the 256 supported shader entries.
 - The seven `Viper.GUI` widget tests in `src/lib/gui/tests/` were relabeled `tui` → `gui` (a new dedicated ctest label); the wheel-scroll regression contract was rewritten with floating-point tolerance to match the new mouse-wheel constant.
 
-Demos and docs changed only as required to track the runtime work above: per-file file-header and `@brief` pass across the `Viper.Graphics.*`, `Viper.Crypto.*`, and `Viper.Threads.*` sources; refreshed `viperlib/` reference pages for the migrated crypto namespace, the threading repeatable-join contract, and the new `rt_future_peek_value` ownership rule; ADR 0002 updated; root `README.md` long-running counts re-audited (optimizer 20→24 passes, runtime 360→378 classes / 23→21 modules, demos 16→17 games, docs 185+→200+).
+Demos and docs changed only as required to track the runtime work above: chess and xenoscape pinned to O0 on Windows until the optimised-build regression they triggered is resolved; per-file file-header and `@brief` audit across the `Viper.Graphics.*`, `Viper.Crypto.*`, and `Viper.Threads.*` sources; refreshed `viperlib/` reference pages for the migrated crypto namespace, the threading repeatable-join contract, the retained `Async.Run` / `Async.Map` / `Parallel.Map` result rules, and the new `rt_future_peek_value` ownership note; ADR 0002 updated; root `README.md` long-running counts re-audited (optimizer 20→24 passes, runtime 360→378 classes / 23→21 modules, demos 16→17 games, docs 185+→200+).
 
 ---
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 17-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 23-commit history since v0.2.5.
 
 <!-- END DRAFT -->

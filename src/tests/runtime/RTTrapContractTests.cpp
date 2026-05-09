@@ -131,6 +131,17 @@ static void trap_diag_embedded_nul_message() {
     rt_diag_assert_eq(1, 2, message);
 }
 
+static void trap_runtime_string_message() {
+    rt_string message = rt_string_from_bytes("managed trap", 12);
+    rt_trap_string(message);
+}
+
+static void trap_runtime_string_embedded_nul_message() {
+    const char raw[] = {'A', '\0', 'B'};
+    rt_string message = rt_string_from_bytes(raw, sizeof(raw));
+    rt_trap_string(message);
+}
+
 } // namespace
 
 int main() {
@@ -166,6 +177,11 @@ int main() {
                 "null receiver");
     expect_trap(trap_url_invalid_port, RT_TRAP_KIND_NETWORK_ERROR, Err_InvalidUrl, "parse URL");
     expect_trap(trap_diag_embedded_nul_message,
+                RT_TRAP_KIND_DOMAIN_ERROR,
+                0,
+                "A\\x00B");
+    expect_trap(trap_runtime_string_message, RT_TRAP_KIND_DOMAIN_ERROR, 0, "managed trap");
+    expect_trap(trap_runtime_string_embedded_nul_message,
                 RT_TRAP_KIND_DOMAIN_ERROR,
                 0,
                 "A\\x00B");

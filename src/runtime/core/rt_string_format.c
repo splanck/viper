@@ -41,6 +41,7 @@
 #include "rt_numeric.h"
 #include "rt_string.h"
 #include "rt_string_builder.h"
+#include "rt_string_internal.h"
 
 #include <errno.h>
 #include <math.h>
@@ -49,11 +50,27 @@
 #include <stdlib.h>
 #include <string.h>
 
+static const char *rt_string_format_bytes(rt_string s, size_t *len, const char *fn_name) {
+    if (len)
+        *len = 0;
+    if (!s)
+        rt_trap(fn_name);
+    if (!rt_string_is_handle(s))
+        rt_trap("INPUT: invalid string handle");
+    size_t n = rt_string_len_bytes(s);
+    const char *data = rt_string_cstr(s);
+    if (!data)
+        rt_trap("INPUT: invalid string data");
+    if (len)
+        *len = n;
+    return data;
+}
+
 static bool rt_string_contains_embedded_nul(rt_string s) {
     if (!s)
         return false;
-    const char *data = s->data;
-    size_t len = (size_t)rt_str_len(s);
+    size_t len = 0;
+    const char *data = rt_string_format_bytes(s, &len, "rt_to_double: null");
     return data && memchr(data, '\0', len) != NULL;
 }
 
@@ -74,10 +91,8 @@ static bool rt_string_format_is_ascii_space(unsigned char ch) {
 /// @param s Runtime string containing the textual representation.
 /// @return Parsed 64-bit integer value.
 int64_t rt_to_int(rt_string s) {
-    if (!s)
-        rt_trap("rt_to_int: null");
-    const char *p = s->data;
-    size_t len = (size_t)rt_str_len(s);
+    size_t len = 0;
+    const char *p = rt_string_format_bytes(s, &len, "rt_to_int: null");
     size_t i = 0;
     while (i < len && rt_string_format_is_ascii_space((unsigned char)p[i]))
         ++i;
@@ -89,7 +104,11 @@ int64_t rt_to_int(rt_string s) {
     size_t sz = j - i;
     if (memchr(p + i, '\0', sz))
         rt_trap("INPUT: expected numeric value");
-    char *buf = (char *)rt_alloc(sz + 1);
+    if (sz == SIZE_MAX || sz > (size_t)INT64_MAX - 1)
+        rt_trap("INPUT: numeric value too large");
+    char *buf = (char *)rt_alloc((int64_t)(sz + 1));
+    if (!buf)
+        rt_trap("INPUT: allocation failed");
     memcpy(buf, p + i, sz);
     buf[sz] = '\0';
     errno = 0;
@@ -116,12 +135,13 @@ int64_t rt_to_int(rt_string s) {
 /// @param s Runtime string handle.
 /// @return Parsed floating-point value.
 double rt_to_double(rt_string s) {
-    if (!s)
-        rt_trap("rt_to_double: null");
     if (rt_string_contains_embedded_nul(s))
         rt_trap("INPUT: expected numeric value");
     double value = 0.0;
-    int32_t err = rt_parse_double(s->data, &value);
+    size_t len = 0;
+    const char *data = rt_string_format_bytes(s, &len, "rt_to_double: null");
+    (void)len;
+    int32_t err = rt_parse_double(data, &value);
     if (err == (int32_t)Err_Overflow)
         rt_trap("INPUT: numeric overflow");
     if (err != (int32_t)Err_None)

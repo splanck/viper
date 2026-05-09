@@ -199,6 +199,14 @@ static void test_unsubscribe() {
     assert(rt_msgbus_unsubscribe(bus, id) == 1);
     assert(rt_msgbus_subscriber_count(bus, topic) == 0);
     assert(rt_msgbus_total_subscriptions(bus) == 0);
+    void *topics = rt_msgbus_topics(bus);
+    assert(rt_seq_len(topics) == 0);
+    destroy_obj(topics);
+
+    int64_t id2 = subscribe_native(bus, topic, cb_second);
+    assert(id2 > 0);
+    assert(rt_msgbus_subscriber_count(bus, topic) == 1);
+    assert(rt_msgbus_total_subscriptions(bus) == 1);
 
     assert(rt_msgbus_unsubscribe(bus, id) == 0);
 
@@ -370,6 +378,12 @@ static void test_clear_topic() {
     rt_msgbus_clear_topic(bus, t);
     assert(rt_msgbus_subscriber_count(bus, t) == 0);
     assert(rt_msgbus_total_subscriptions(bus) == 0);
+    void *topics = rt_msgbus_topics(bus);
+    assert(rt_seq_len(topics) == 0);
+    destroy_obj(topics);
+
+    assert(subscribe_native(bus, t, cb_first) > 0);
+    assert(rt_msgbus_subscriber_count(bus, t) == 1);
 
     rt_string_unref(t);
     destroy_obj(bus);
@@ -386,6 +400,13 @@ static void test_clear() {
 
     rt_msgbus_clear(bus);
     assert(rt_msgbus_total_subscriptions(bus) == 0);
+    void *topics = rt_msgbus_topics(bus);
+    assert(rt_seq_len(topics) == 0);
+    destroy_obj(topics);
+
+    assert(subscribe_native(bus, b, cb_second) > 0);
+    assert(rt_msgbus_total_subscriptions(bus) == 1);
+    assert(rt_msgbus_subscriber_count(bus, b) == 1);
 
     rt_string_unref(a);
     rt_string_unref(b);

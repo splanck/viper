@@ -26,6 +26,7 @@ namespace il::runtime {
 struct RuntimeOwnershipEffects {
     std::uint64_t consumedArgMask{0}; ///< Arguments whose ownership is consumed.
     std::uint64_t retainedArgMask{0}; ///< Arguments whose reference count is retained.
+    std::uint64_t ownedOutArgMask{0}; ///< Pointer args that receive an owned reference.
     bool returnsOwned{false};         ///< Result is an owned string/reference handle.
     bool mayAllocate{false};          ///< Helper may allocate runtime-managed storage.
 
@@ -39,9 +40,15 @@ struct RuntimeOwnershipEffects {
         return index < 64 && (retainedArgMask & (std::uint64_t{1} << index)) != 0;
     }
 
+    /// @brief Query whether pointer argument @p index receives an owned reference.
+    [[nodiscard]] constexpr bool writesOwnedOutArg(unsigned index) const noexcept {
+        return index < 64 && (ownedOutArgMask & (std::uint64_t{1} << index)) != 0;
+    }
+
     /// @brief True when any ownership fact is known.
     [[nodiscard]] constexpr bool hasAny() const noexcept {
-        return consumedArgMask != 0 || retainedArgMask != 0 || returnsOwned || mayAllocate;
+        return consumedArgMask != 0 || retainedArgMask != 0 || ownedOutArgMask != 0 ||
+               returnsOwned || mayAllocate;
     }
 };
 
@@ -79,13 +86,25 @@ namespace detail {
     }
 
     if (name == "rt_str_release" || name == "rt_str_release_maybe" ||
-        name == "Viper.String.ReleaseMaybe") {
+        name == "rt_memory_release_str" || name == "Viper.String.ReleaseMaybe" ||
+        name == "Viper.Memory.ReleaseStr") {
         effects.consumedArgMask = 0b1;
         return effects;
     }
 
     if (name == "rt_str_retain" || name == "rt_str_retain_maybe" ||
-        name == "Viper.String.RetainMaybe") {
+        name == "rt_memory_retain_str" || name == "Viper.String.RetainMaybe" ||
+        name == "Viper.Memory.RetainStr") {
+        effects.retainedArgMask = 0b1;
+        return effects;
+    }
+
+    if (name == "rt_memory_release" || name == "Viper.Memory.Release") {
+        effects.consumedArgMask = 0b1;
+        return effects;
+    }
+
+    if (name == "rt_memory_retain" || name == "Viper.Memory.Retain") {
         effects.retainedArgMask = 0b1;
         return effects;
     }
@@ -149,8 +168,50 @@ namespace detail {
     }
 
     if (name == "rt_obj_new_i64" || name == "rt_box_i64" || name == "rt_box_f64" ||
-        name == "rt_box_i1" || name == "rt_box_str" || name == "rt_box_value_type") {
+        name == "rt_box_i1" || name == "rt_box_i1_bool" || name == "rt_box_value_type" ||
+        name == "Viper.Core.Box.I64" || name == "Viper.Core.Box.F64" ||
+        name == "Viper.Core.Box.I1" || name == "Viper.Core.Box.ValueType") {
         effects.returnsOwned = true;
+        effects.mayAllocate = true;
+        return effects;
+    }
+
+    if (name == "rt_box_str" || name == "Viper.Core.Box.Str") {
+        effects.retainedArgMask = 0b1;
+        effects.returnsOwned = true;
+        effects.mayAllocate = true;
+        return effects;
+    }
+
+    if (name == "rt_box_try_to_str" || name == "Viper.Core.Box.TryToStr") {
+        effects.ownedOutArgMask = 0b10;
+        return effects;
+    }
+
+    if (name == "rt_unbox_str" || name == "Viper.Core.Box.ToStr" ||
+        name == "rt_obj_to_string" || name == "Viper.Core.Object.ToString" ||
+        name == "rt_obj_type_name" || name == "Viper.Core.Object.TypeName" ||
+        name == "Viper.Core.Object.get_TypeName" || name == "rt_parse_double_option" ||
+        name == "rt_parse_int64_option" || name == "Viper.Core.Parse.DoubleOption" ||
+        name == "Viper.Core.Parse.Int64Option" || name == "Viper.Parse.DoubleOption" ||
+        name == "Viper.Parse.Int64Option" || name == "Viper.Core.Convert.ToString_Int" ||
+        name == "Viper.Core.Convert.ToString_Double" || name == "Viper.Convert.ToString_Int" ||
+        name == "Viper.Convert.ToString_Double") {
+        effects.returnsOwned = true;
+        effects.mayAllocate = true;
+        return effects;
+    }
+
+    if (name == "rt_msgbus_new" || name == "Viper.Core.MessageBus.New" ||
+        name == "rt_msgbus_callback_new" || name == "Viper.Core.MessageBus.Callback" ||
+        name == "rt_msgbus_topics" || name == "Viper.Core.MessageBus.Topics") {
+        effects.returnsOwned = true;
+        effects.mayAllocate = true;
+        return effects;
+    }
+
+    if (name == "rt_msgbus_subscribe" || name == "Viper.Core.MessageBus.Subscribe") {
+        effects.retainedArgMask = 0b110;
         effects.mayAllocate = true;
         return effects;
     }

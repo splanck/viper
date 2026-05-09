@@ -61,7 +61,7 @@ int main() {
     auto worker = [&](int idx) {
         il::core::Module module;
         il::build::IRBuilder builder(module);
-        builder.addExtern("rt_trap",
+        builder.addExtern("rt_trap_string",
                           il::core::Type(il::core::Type::Kind::Void),
                           {il::core::Type(il::core::Type::Kind::Str)});
         builder.addGlobalStr(globals[idx], messages[idx]);
@@ -69,7 +69,7 @@ int main() {
         auto &bb = builder.addBlock(fn, blocks[idx]);
         builder.setInsertPoint(bb);
         auto strVal = builder.emitConstStr(globals[idx], locs[idx]);
-        builder.emitCall("rt_trap", {strVal}, std::nullopt, locs[idx]);
+        builder.emitCall("rt_trap_string", {strVal}, std::nullopt, locs[idx]);
         std::optional<il::core::Value> ret = il::core::Value::constInt(0);
         builder.emitRet(ret, locs[idx]);
 

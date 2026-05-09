@@ -659,7 +659,7 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b) {
     };
 
     static constexpr std::array<ManualHelperDescriptor, manualRuntimeHelperCount> manualHelpers{{
-        {"rt_trap", ManualRuntimeHelper::Trap, &Lowerer::requireTrap},
+        {"rt_trap_string", ManualRuntimeHelper::Trap, &Lowerer::requireTrap},
         {"rt_arr_i32_new", ManualRuntimeHelper::ArrayI32New, &Lowerer::requireArrayI32New},
         {"rt_arr_i32_resize", ManualRuntimeHelper::ArrayI32Resize, &Lowerer::requireArrayI32Resize},
         {"rt_arr_i32_len", ManualRuntimeHelper::ArrayI32Len, &Lowerer::requireArrayI32Len},

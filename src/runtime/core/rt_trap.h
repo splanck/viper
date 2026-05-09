@@ -38,6 +38,13 @@ extern "C" {
 /// @param msg Null-terminated trap message, or NULL for a generic trap.
 void rt_trap(const char *msg);
 
+/// @brief Trap with a managed runtime string message.
+/// @details Validates the string handle before reading it. Embedded NUL bytes
+///          are escaped so the C-string trap dispatcher receives the complete
+///          diagnostic text instead of a truncated prefix.
+/// @param msg Runtime string message, or NULL/empty for a generic trap.
+void rt_trap_string(rt_string msg);
+
 /// @brief Traps the runtime on division by zero.
 void rt_trap_div0(void);
 

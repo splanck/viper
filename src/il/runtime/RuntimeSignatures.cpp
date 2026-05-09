@@ -340,6 +340,7 @@ void applyOwnershipEffects(RuntimeSignature &signature, std::string_view name) {
     const auto ownership = classifyRuntimeOwnership(name);
     signature.consumedArgMask |= ownership.consumedArgMask;
     signature.retainedArgMask |= ownership.retainedArgMask;
+    signature.ownedOutArgMask |= ownership.ownedOutArgMask;
     signature.returnsOwned = signature.returnsOwned || ownership.returnsOwned;
     signature.mayAllocate = signature.mayAllocate || ownership.mayAllocate;
 }
@@ -491,7 +492,7 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_trap",
+    DescriptorRow{"rt_trap_string",
                   RtSig::Trap,
                   data::kRtSigSpecs[static_cast<std::size_t>(RtSig::Trap)],
                   &trapFromRuntimeString,

@@ -522,11 +522,13 @@ int8_t rt_string_is_handle(const void *p) {
         return 0;
     rt_string_registry_lock_();
     int found = rt_string_registry_contains_locked_((rt_string)(uintptr_t)p);
+    uint64_t magic = 0;
+    if (found)
+        magic = ((const rt_string)(uintptr_t)p)->magic;
     rt_string_registry_unlock_();
     if (!found)
         return 0;
-    const rt_string s = (const rt_string)(uintptr_t)p;
-    return s->magic == RT_STRING_MAGIC ? 1 : 0;
+    return magic == RT_STRING_MAGIC ? 1 : 0;
 }
 
 /// @brief Increment the ownership count for a runtime string handle.

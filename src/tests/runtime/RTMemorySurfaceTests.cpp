@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "common/ProcessIsolation.hpp"
+#include "rt_array_obj.h"
 #include "rt_box.h"
 #include "rt_heap.h"
 #include "rt_object.h"
@@ -133,7 +134,7 @@ void test_memory_release_array_drops_elements() {
     void *obj = rt_obj_new_i64(0xBEEF, 8);
     rt_obj_set_finalizer(obj, count_finalizer);
 
-    void **arr = (void **)rt_heap_alloc(RT_HEAP_ARRAY, RT_ELEM_NONE, sizeof(void *), 1, 1);
+    void **arr = (void **)rt_heap_alloc(RT_HEAP_ARRAY, RT_ELEM_OBJ, sizeof(void *), 1, 1);
     assert(arr != nullptr);
     arr[0] = obj;
     rt_obj_retain_maybe(obj);
@@ -144,6 +145,22 @@ void test_memory_release_array_drops_elements() {
     assert(rt_memory_release(arr) == 0);
     assert(g_finalizer_count == 1);
     assert(rt_heap_is_payload(arr) == 0);
+}
+
+void test_object_array_uses_object_element_kind() {
+    g_finalizer_count = 0;
+    void *obj = rt_obj_new_i64(0x0B1, 8);
+    rt_obj_set_finalizer(obj, count_finalizer);
+
+    void **arr = rt_arr_obj_new(1);
+    assert(arr != nullptr);
+    rt_heap_hdr_t *hdr = rt_heap_hdr(arr);
+    assert(hdr->elem_kind == RT_ELEM_OBJ);
+    rt_arr_obj_put(arr, 0, obj);
+
+    assert(rt_obj_release_check0(obj) == 0);
+    rt_arr_obj_release(arr);
+    assert(g_finalizer_count == 1);
 }
 
 void test_memory_release_array_drops_box_elements() {
@@ -189,6 +206,7 @@ int main(int argc, char *argv[]) {
     test_memory_release_reports_string_refcount();
     test_memory_release_reports_resurrection_refcount();
     test_memory_release_array_drops_elements();
+    test_object_array_uses_object_element_kind();
     test_memory_release_array_drops_box_elements();
     test_heap_mark_disposed_return_contract();
     expect_trap(call_memory_retain_invalid, "Viper.Memory.Retain");

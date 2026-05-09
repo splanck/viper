@@ -111,6 +111,39 @@ void rt_trap_ovf(void) {
         RT_TRAP_KIND_OVERFLOW, Err_Overflow, -1, "Viper runtime trap: integer overflow");
 }
 
+/// @brief Trap with a managed runtime string message.
+void rt_trap_string(rt_string msg) {
+    if (!msg) {
+        rt_trap("trap");
+        return;
+    }
+    if (!rt_string_is_handle((const void *)msg)) {
+        rt_trap("Viper.Core.Diagnostics.Trap: invalid string handle");
+        return;
+    }
+
+    int64_t len = rt_str_len(msg);
+    if (len <= 0) {
+        rt_trap("trap");
+        return;
+    }
+
+    const char *bytes = rt_string_cstr(msg);
+    if (!bytes) {
+        rt_trap("trap");
+        return;
+    }
+    if (!memchr(bytes, '\0', (size_t)len)) {
+        rt_trap(bytes);
+        return;
+    }
+
+    char escaped[512];
+    escaped[0] = '\0';
+    append_escaped_string(escaped, sizeof(escaped), msg);
+    rt_trap(escaped);
+}
+
 /// @brief Assert that @p condition holds; otherwise trap with @p message.
 /// @details When @p condition is zero, evaluates @p message and raises a runtime
 ///          trap using @ref rt_trap. Empty or null messages use the default

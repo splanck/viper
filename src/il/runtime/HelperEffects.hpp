@@ -64,7 +64,7 @@ inline HelperEffects classifyHelperEffects(std::string_view name) {
         Entry{"rt_round_even", HelperEffects{true, false, true}},
         Entry{"rt_sqrt", HelperEffects{true, false, true}},
         Entry{"rt_abs_f64", HelperEffects{true, false, true}},
-        Entry{"rt_abs_i64", HelperEffects{true, false, true}},
+        Entry{"rt_abs_i64", HelperEffects{false, false, true, true}},
         Entry{"rt_floor", HelperEffects{true, false, true}},
         Entry{"rt_ceil", HelperEffects{true, false, true}},
         Entry{"rt_sin", HelperEffects{true, false, true}},
@@ -92,10 +92,10 @@ inline HelperEffects classifyHelperEffects(std::string_view name) {
         Entry{"rt_arr_i32_len", HelperEffects{true, true, false}},
         Entry{"rt_arr_str_len", HelperEffects{true, true, false}},
 
-        // Conversion helpers: nothrow only (may allocate, not pure)
+        // Conversion helpers.
         Entry{"rt_str_chr", HelperEffects{true, false, false}},
-        Entry{"rt_to_int", HelperEffects{true, false, false}},
-        Entry{"rt_to_double", HelperEffects{true, false, false}},
+        Entry{"rt_to_int", HelperEffects{false, false, false, true}},
+        Entry{"rt_to_double", HelperEffects{false, false, false, true}},
         Entry{"rt_val", HelperEffects{true, false, false}},
     }};
 

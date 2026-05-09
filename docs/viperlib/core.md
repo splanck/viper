@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-07
+last-verified: 2026-05-08
 ---
 
 # Core Types
@@ -51,6 +51,7 @@ Base class for all Viper reference types. Provides fundamental object operations
 > with concrete types rather than calling Object methods directly.
 
 `TypeId()` returns stable built-in identifiers for strings, boxes, boxed value types, and `Viper.Option` objects in addition to user/runtime class IDs.
+Runtime string handles compare and hash by byte content through `Equals` and `HashCode`, so distinct handles with identical bytes behave as equal object keys.
 
 ### BASIC Example
 
@@ -94,6 +95,10 @@ Boxing helpers for storing primitive values in generic collections. Boxed values
 | `ToF64(box)`        | `Double(Object)`          | Unbox double (traps on wrong type)                     |
 | `ToI1(box)`         | `Boolean(Object)`         | Unbox boolean (traps on wrong type)                    |
 | `ToStr(box)`        | `String(Object)`          | Unbox string (traps on wrong type)                     |
+| `TryToI64(box,out)` | `Boolean(Object, Ptr)`    | Write integer to `out`; return false on wrong type     |
+| `TryToF64(box,out)` | `Boolean(Object, Ptr)`    | Write double to `out`; return false on wrong type      |
+| `TryToI1(box,out)`  | `Boolean(Object, Ptr)`    | Write boolean to `out`; return false on wrong type     |
+| `TryToStr(box,out)` | `Boolean(Object, Ptr)`    | Write retained string to `out`; return false on wrong type |
 | `Type(box)`         | `Integer(Object)`         | Return type tag (0=i64, 1=f64, 2=i1, 3=str)           |
 | `EqI64(box,val)`    | `Boolean(Object,Integer)` | Compare boxed value to integer                         |
 | `EqF64(box,val)`    | `Boolean(Object,Double)`  | Compare boxed value to double                          |
@@ -105,6 +110,7 @@ Boxing helpers for storing primitive values in generic collections. Boxed values
 
 - Type tags: 0 = integer, 1 = double, 2 = boolean, 3 = string.
 - Unboxing with the wrong type traps with a runtime diagnostic.
+- The `TryTo*` forms do not trap for type mismatch. They return false and clear the output slot to `0`, `0.0`, or null; `TryToStr` returns a retained string on success.
 - Boxed values report `Viper.Core.Box` through `Viper.Core.Object.TypeName` and use value equality/hash semantics for `Object.Equals` and collection lookup.
 - Floating-point box hashes canonicalize `+0.0` and `-0.0` so values that compare equal hash equally.
 - `ValueType(size)` is used by the compiler when boxing structs. Size `0` is valid and creates a managed empty value-type object; negative sizes trap.
@@ -160,7 +166,7 @@ Assertion and trap utilities for program correctness checks. All methods trap (a
 | `Assert(cond, msg)`         | `Void(Boolean, String)`            | Trap with `msg` if `cond` is false                        |
 | `AssertEq(a, b, msg)`       | `Void(Integer, Integer, String)`   | Trap if `a` and `b` are not equal                         |
 | `AssertNeq(a, b, msg)`      | `Void(Integer, Integer, String)`   | Trap if `a` and `b` are equal                             |
-| `AssertEqNum(a, b, msg)`    | `Void(Double, Double, String)`     | Trap if two numbers are not equal                         |
+| `AssertEqNum(a, b, msg)`    | `Void(Double, Double, String)`     | Trap if two numbers are not equal within relative epsilon |
 | `AssertEqStr(a, b, msg)`    | `Void(String, String, String)`     | Trap if two strings are not equal                         |
 | `AssertNull(obj, msg)`      | `Void(Object, String)`             | Trap if `obj` is not null                                 |
 | `AssertNotNull(obj, msg)`   | `Void(Object, String)`             | Trap if `obj` is null                                     |
@@ -175,6 +181,7 @@ Assertion and trap utilities for program correctness checks. All methods trap (a
 
 - All assertion failures terminate the program via the runtime trap mechanism (equivalent to a bounds-check failure).
 - `Trap` is an unconditional halt; prefer `AssertFail` when the intent is a named assertion failure.
+- `Trap(msg)` accepts a managed `String` handle. Embedded NUL bytes in the message are preserved for validation and escaped in the diagnostic path.
 - `AssertEqStr` compares full runtime string contents, including embedded NUL bytes, and escapes non-printable bytes in failure messages. Invalid string handles produce a trap diagnostic instead of a native crash.
 - These are intended for invariant checking during development and internal consistency validation.
 
@@ -592,6 +599,7 @@ In-process publish/subscribe message bus for decoupled communication between com
 - Subscribe accepts a managed callback returned by `Callback(fn)`. Raw native function pointers must be wrapped first; passing a raw pointer or ordinary heap object traps at subscribe time.
 - Topic matching is byte-length aware; topic names containing embedded NUL bytes remain distinct.
 - `Topics()` returns an owning `Seq` of retained topic strings; the result remains valid after the bus is cleared or destroyed.
+- `Unsubscribe`, `ClearTopic`, and `Clear` remove empty topic records, so a later `Topics()` call reports only active topics.
 - If a handler traps during `Publish`, the in-flight snapshot is released before the trap is re-raised.
 - MessageBus instances are typed runtime objects, participate in GC traversal for retained handlers, and serialize public operations with an internal lock.
 

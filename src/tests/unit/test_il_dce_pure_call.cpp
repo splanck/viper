@@ -111,24 +111,35 @@ bool hasResult(const Module &m, unsigned resultId) {
 
 /// @brief Test: Pure call with unused result should be eliminated.
 void testPureCallEliminated() {
-    // rt_abs_i64 is marked as pure in HelperEffects
+    // rt_sgn_i64 is marked pure and non-trapping in HelperEffects.
+    Module m = buildTestModule("rt_sgn_i64", false);
+    assert(hasCallTo(m, "rt_sgn_i64") && "Precondition: call should exist before DCE");
+
+    il::transform::dce(m);
+
+    assert(!hasCallTo(m, "rt_sgn_i64") && "Pure call with unused result should be eliminated");
+}
+
+/// @brief Test: Pure call with used result should be preserved.
+void testPureCallPreservedWhenUsed() {
+    // rt_sgn_i64 is pure, but result is used.
+    Module m = buildTestModule("rt_sgn_i64", true);
+    assert(hasCallTo(m, "rt_sgn_i64") && "Precondition: call should exist before DCE");
+
+    il::transform::dce(m);
+
+    assert(hasCallTo(m, "rt_sgn_i64") && "Pure call with used result should be preserved");
+}
+
+/// @brief Test: Pure but trapping helpers must be preserved when unused.
+void testTrappingPureHelperPreserved() {
     Module m = buildTestModule("rt_abs_i64", false);
     assert(hasCallTo(m, "rt_abs_i64") && "Precondition: call should exist before DCE");
 
     il::transform::dce(m);
 
-    assert(!hasCallTo(m, "rt_abs_i64") && "Pure call with unused result should be eliminated");
-}
-
-/// @brief Test: Pure call with used result should be preserved.
-void testPureCallPreservedWhenUsed() {
-    // rt_abs_i64 is pure, but result is used
-    Module m = buildTestModule("rt_abs_i64", true);
-    assert(hasCallTo(m, "rt_abs_i64") && "Precondition: call should exist before DCE");
-
-    il::transform::dce(m);
-
-    assert(hasCallTo(m, "rt_abs_i64") && "Pure call with used result should be preserved");
+    assert(hasCallTo(m, "rt_abs_i64") &&
+           "rt_abs_i64 can trap on INT64_MIN and must not be eliminated");
 }
 
 /// @brief Test: Impure call with unused result should be preserved.
@@ -228,7 +239,7 @@ void testDCEIteratesToFixedPoint() {
     call.result = 1;
     call.op = Opcode::Call;
     call.type = Type(Type::Kind::I64);
-    call.callee = "rt_abs_i64";
+    call.callee = "rt_sgn_i64";
     call.operands = {Value::temp(0)};
     call.CallAttr.pure = true;
     call.CallAttr.nothrow = true;
@@ -255,6 +266,7 @@ void testDCEIteratesToFixedPoint() {
 int main() {
     testPureCallEliminated();
     testPureCallPreservedWhenUsed();
+    testTrappingPureHelperPreserved();
     testImpureCallPreserved();
     testUnknownCalleePreserved();
     testReadonlyCallPreserved();

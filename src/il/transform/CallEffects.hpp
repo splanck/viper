@@ -43,6 +43,7 @@ struct CallEffects {
     bool nothrow = false;  ///< Call cannot throw or trap (can hoist across exception boundaries).
     std::uint64_t consumedArgMask = 0; ///< IL-visible args whose ownership is consumed.
     std::uint64_t retainedArgMask = 0; ///< IL-visible args whose reference count is retained.
+    std::uint64_t ownedOutArgMask = 0; ///< Pointer args that receive an owned reference.
     bool returnsOwned = false;         ///< Call returns an owned reference/string handle.
     bool mayAllocate = false;          ///< Call may allocate runtime-managed storage.
 
@@ -66,9 +67,15 @@ struct CallEffects {
         return index < 64 && (retainedArgMask & (std::uint64_t{1} << index)) != 0;
     }
 
+    /// @brief True when pointer argument @p index receives an owned reference.
+    [[nodiscard]] constexpr bool writesOwnedOutArg(unsigned index) const noexcept {
+        return index < 64 && (ownedOutArgMask & (std::uint64_t{1} << index)) != 0;
+    }
+
     /// @brief True when any known ownership effect is attached to this call.
     [[nodiscard]] constexpr bool hasOwnershipEffects() const noexcept {
-        return consumedArgMask != 0 || retainedArgMask != 0 || returnsOwned || mayAllocate;
+        return consumedArgMask != 0 || retainedArgMask != 0 || ownedOutArgMask != 0 ||
+               returnsOwned || mayAllocate;
     }
 };
 
@@ -76,6 +83,7 @@ inline void applyRuntimeOwnership(CallEffects &effects,
                                   il::runtime::RuntimeOwnershipEffects ownership) {
     effects.consumedArgMask |= ownership.consumedArgMask;
     effects.retainedArgMask |= ownership.retainedArgMask;
+    effects.ownedOutArgMask |= ownership.ownedOutArgMask;
     effects.returnsOwned = effects.returnsOwned || ownership.returnsOwned;
     effects.mayAllocate = effects.mayAllocate || ownership.mayAllocate;
 }
@@ -94,6 +102,7 @@ inline void applyRuntimeSignature(CallEffects &effects,
     effects.nothrow = signature.nothrow;
     effects.consumedArgMask = signature.consumedArgMask;
     effects.retainedArgMask = signature.retainedArgMask;
+    effects.ownedOutArgMask = signature.ownedOutArgMask;
     effects.returnsOwned = signature.returnsOwned;
     effects.mayAllocate = signature.mayAllocate;
     applyRuntimeOwnership(effects, il::runtime::classifyRuntimeOwnership(callee));

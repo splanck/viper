@@ -79,9 +79,33 @@ int main() {
     rt_string_unref(box_name);
     assert(rt_obj_equals(box_a, box_b) == 1);
     assert(rt_obj_get_hash_code(box_a) == rt_obj_get_hash_code(box_b));
+    int64_t try_i64 = 0;
+    double try_f64 = 0.0;
+    assert(rt_box_try_to_i64(box_a, &try_i64) == 1);
+    assert(try_i64 == 42);
+    try_f64 = 123.0;
+    assert(rt_box_try_to_f64(box_a, &try_f64) == 0);
+    assert(try_f64 == 0.0);
+    void *box_bool = rt_box_i1_bool(1);
+    int8_t try_i1 = 0;
+    assert(rt_box_try_to_i1(box_bool, &try_i1) == 1);
+    assert(try_i1 == 1);
     void *zero_pos = rt_box_f64(0.0);
     void *zero_neg = rt_box_f64(-0.0);
     assert(rt_box_hash(zero_pos) == rt_box_hash(zero_neg));
+
+    rt_string same_a = rt_string_from_bytes("same string", 11);
+    rt_string same_b = rt_string_from_bytes("same string", 11);
+    assert(same_a != same_b);
+    assert(rt_obj_equals(same_a, same_b) == 1);
+    assert(rt_obj_get_hash_code(same_a) == rt_obj_get_hash_code(same_b));
+
+    void *str_box = rt_box_str(same_a);
+    rt_string try_str = NULL;
+    assert(rt_box_try_to_str(str_box, &try_str) == 1);
+    assert(try_str != NULL);
+    assert(rt_str_eq(try_str, same_a) == 1);
+    rt_string_unref(try_str);
 
     void *opt = rt_option_some_i64(7);
     assert(rt_obj_type_id(opt) == RT_OPTION_CLASS_ID);
@@ -101,10 +125,16 @@ int main() {
     rt_obj_free(box_a);
     rt_obj_release_check0(box_b);
     rt_obj_free(box_b);
+    rt_obj_release_check0(box_bool);
+    rt_obj_free(box_bool);
     rt_obj_release_check0(zero_pos);
     rt_obj_free(zero_pos);
     rt_obj_release_check0(zero_neg);
     rt_obj_free(zero_neg);
+    rt_obj_release_check0(str_box);
+    rt_obj_free(str_box);
+    rt_string_unref(same_a);
+    rt_string_unref(same_b);
     rt_obj_release_check0(opt);
     rt_obj_free(opt);
     rt_obj_release_check0(value_type);

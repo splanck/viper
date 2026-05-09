@@ -814,7 +814,7 @@ TEST(X86BackendRegressions, TrapPayloadIsForwardedToRuntime) {
     const auto trapIt = std::find_if(lowering.callPlans().begin(),
                                      lowering.callPlans().end(),
                                      [](const CallLoweringPlan &plan) {
-                                         return plan.callee == "rt_trap";
+                                         return plan.callee == "rt_trap_string";
                                      });
     ASSERT_TRUE(trapIt != lowering.callPlans().end());
     ASSERT_EQ(trapIt->args.size(), 1u);

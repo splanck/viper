@@ -15,6 +15,8 @@
 #include "rt_option.h"
 #include "rt_result.h"
 #include "rt_string.h"
+#include "il/runtime/HelperEffects.hpp"
+#include "il/runtime/RuntimeOwnership.hpp"
 
 #include <assert.h>
 #include <stdint.h>
@@ -90,6 +92,50 @@ static void test_result_retains_runtime_objects(void) {
     assert(g_finalizer_count == 1);
 }
 
+static void test_runtime_metadata_matches_core_contracts(void) {
+    const auto retain = il::runtime::classifyRuntimeOwnership("Viper.Memory.Retain");
+    assert(retain.retainsArg(0));
+    const auto releaseStr = il::runtime::classifyRuntimeOwnership("Viper.Memory.ReleaseStr");
+    assert(releaseStr.consumesArg(0));
+    const auto releaseStrSym = il::runtime::classifyRuntimeOwnership("rt_memory_release_str");
+    assert(releaseStrSym.consumesArg(0));
+
+    const auto boxStr = il::runtime::classifyRuntimeOwnership("Viper.Core.Box.Str");
+    assert(boxStr.retainsArg(0));
+    assert(boxStr.returnsOwned);
+    assert(boxStr.mayAllocate);
+
+    const auto unboxStr = il::runtime::classifyRuntimeOwnership("Viper.Core.Box.ToStr");
+    assert(unboxStr.returnsOwned);
+    const auto tryToStr = il::runtime::classifyRuntimeOwnership("Viper.Core.Box.TryToStr");
+    assert(tryToStr.writesOwnedOutArg(1));
+    const auto objTypeName = il::runtime::classifyRuntimeOwnership("Viper.Core.Object.TypeName");
+    assert(objTypeName.returnsOwned);
+    assert(objTypeName.mayAllocate);
+    const auto parseOpt = il::runtime::classifyRuntimeOwnership("Viper.Core.Parse.Int64Option");
+    assert(parseOpt.returnsOwned);
+    assert(parseOpt.mayAllocate);
+    const auto parseOptSym = il::runtime::classifyRuntimeOwnership("rt_parse_int64_option");
+    assert(parseOptSym.returnsOwned);
+    assert(parseOptSym.mayAllocate);
+    const auto msgSub = il::runtime::classifyRuntimeOwnership("Viper.Core.MessageBus.Subscribe");
+    assert(msgSub.retainsArg(1));
+    assert(msgSub.retainsArg(2));
+
+    const auto absI64 = il::runtime::classifyHelperEffects("rt_abs_i64");
+    assert(absI64.known);
+    assert(absI64.pure);
+    assert(!absI64.nothrow);
+    const auto toInt = il::runtime::classifyHelperEffects("rt_to_int");
+    assert(toInt.known);
+    assert(!toInt.nothrow);
+    assert(!toInt.pure);
+    const auto toDouble = il::runtime::classifyHelperEffects("rt_to_double");
+    assert(toDouble.known);
+    assert(!toDouble.nothrow);
+    assert(!toDouble.pure);
+}
+
 } // namespace
 
 int main() {
@@ -97,6 +143,7 @@ int main() {
     test_foreign_pointers_are_borrowed();
     test_option_retains_runtime_objects();
     test_result_retains_runtime_objects();
+    test_runtime_metadata_matches_core_contracts();
     printf("RTCoreOwnershipTests passed.\n");
     return 0;
 }

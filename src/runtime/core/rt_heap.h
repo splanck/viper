@@ -55,6 +55,7 @@ typedef enum {
     RT_ELEM_U8 = 4,   ///< Unsigned byte elements (used for strings).
     RT_ELEM_STR = 5,  ///< String pointer (rt_string) elements requiring reference counting.
     RT_ELEM_BOX = 6,  ///< Boxed primitive value (rt_box_t) elements with type tag.
+    RT_ELEM_OBJ = 7,  ///< Object pointer elements requiring reference counting.
 } rt_elem_kind_t;
 
 /// @brief Heap object header preceding every payload.

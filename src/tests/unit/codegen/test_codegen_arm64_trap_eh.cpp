@@ -99,7 +99,7 @@ TEST(Arm64CLI, TrapSimple) {
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     const std::size_t movNullPos = asmText.find("mov x0, #0");
-    const std::size_t trapCallPos = asmText.find(blSym("rt_trap"));
+    const std::size_t trapCallPos = asmText.find(blSym("rt_trap_string"));
     EXPECT_NE(movNullPos, std::string::npos);
     EXPECT_NE(trapCallPos, std::string::npos);
     if (movNullPos != std::string::npos && trapCallPos != std::string::npos)
@@ -161,7 +161,7 @@ TEST(Arm64Lowering, TrapPayloadPreparesX0) {
                     payloadRegs.end();
         }
         if (mi.opc == MOpcode::Bl && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Label &&
-            mi.ops[0].label == "rt_trap") {
+            mi.ops[0].label == "rt_trap_string") {
             sawTrapCall = true;
         }
     }

@@ -110,7 +110,7 @@ TEST(Arm64EH, Trap) {
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Expect call to trap helper
-    EXPECT_NE(asmText.find(blSym("rt_trap")), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("rt_trap_string")), std::string::npos);
 }
 
 // Test 4: trap with error code

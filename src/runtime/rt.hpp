@@ -28,6 +28,10 @@ extern "C" {
 /// @param msg Null-terminated message string.
 void rt_trap(const char *msg);
 
+/// @brief Abort execution with a managed runtime string message.
+/// @param msg Runtime string message, or NULL/empty for a generic trap.
+void rt_trap_string(rt_string msg);
+
 /// @brief Raise a trap with explicit trap metadata.
 /// @param kind Canonical trap classification.
 /// @param code Secondary runtime error code (Err_* or 0).

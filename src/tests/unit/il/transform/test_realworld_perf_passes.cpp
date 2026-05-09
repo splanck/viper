@@ -87,6 +87,17 @@ TEST(RealWorldPerfPasses, RuntimeOwnershipClassifiesArrayAndObjectHelpers) {
 
     const auto releaseKnown = il::runtime::classifyRuntimeOwnership("rt_obj_release_known_check0");
     EXPECT_TRUE(releaseKnown.consumesArg(0));
+
+    const auto memoryRetain = il::runtime::classifyRuntimeOwnership("Viper.Memory.Retain");
+    EXPECT_TRUE(memoryRetain.retainsArg(0));
+
+    const auto boxStr = il::runtime::classifyRuntimeOwnership("Viper.Core.Box.Str");
+    EXPECT_TRUE(boxStr.retainsArg(0));
+    EXPECT_TRUE(boxStr.returnsOwned);
+
+    const auto msgSub = il::runtime::classifyRuntimeOwnership("Viper.Core.MessageBus.Subscribe");
+    EXPECT_TRUE(msgSub.retainsArg(1));
+    EXPECT_TRUE(msgSub.retainsArg(2));
 }
 
 TEST(RealWorldPerfPasses, OwnershipOptRemovesLocalRetainReleasePair) {

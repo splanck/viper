@@ -242,13 +242,13 @@ static int64_t find_entry(void *obj) {
 ///          entry, and frees the old table. Tombstones are discarded. The
 ///          caller must hold gc_lock.
 /// @param new_cap New table capacity (must be a power of two).
-static void gc_rehash(int64_t new_cap) {
+static int gc_rehash(int64_t new_cap) {
     gc_entry *old = g_gc.entries;
     int64_t old_cap = g_gc.capacity;
 
     gc_entry *new_entries = (gc_entry *)calloc((size_t)new_cap, sizeof(gc_entry));
     if (!new_entries)
-        rt_trap("rt_gc: failed to grow hash table (out of memory)");
+        return 0;
 
     uint64_t mask = (uint64_t)(new_cap - 1);
     int64_t live = 0;
@@ -267,6 +267,7 @@ static void gc_rehash(int64_t new_cap) {
     g_gc.capacity = new_cap;
     g_gc.count = live;
     free(old);
+    return 1;
 }
 
 /// @brief Register an object for cycle detection.
@@ -276,8 +277,14 @@ void rt_gc_track(void *obj, rt_gc_traverse_fn traverse) {
     if (!obj || !traverse)
         return;
     rt_heap_hdr_t *hdr = NULL;
-    if (!rt_heap_try_get_header(obj, &hdr) || !hdr)
+    if (!rt_heap_try_get_header(obj, &hdr) || !hdr) {
         rt_trap("rt_gc_track: object is not a live heap payload");
+        return;
+    }
+    if ((rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT) {
+        rt_trap("rt_gc_track: payload is not a heap object");
+        return;
+    }
 
     gc_lock();
 
@@ -292,7 +299,11 @@ void rt_gc_track(void *obj, rt_gc_traverse_fn traverse) {
     /* Grow if needed: maintain < 5/8 load factor. */
     if (g_gc.capacity == 0 || g_gc.count * 8 >= g_gc.capacity * 5) {
         int64_t new_cap = g_gc.capacity == 0 ? 64 : g_gc.capacity * 2;
-        gc_rehash(new_cap);
+        if (!gc_rehash(new_cap)) {
+            gc_unlock();
+            rt_trap("rt_gc: failed to grow hash table (out of memory)");
+            return;
+        }
     }
 
     /* Insert at first empty or tombstone slot. */
@@ -696,7 +707,8 @@ static int gc_reclaim_unreachable(void *obj, rt_gc_traverse_fn traverse, void *r
     if (!rt_heap_try_get_header(obj, &hdr) || !hdr)
         return 0;
 
-    if (__atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) == SIZE_MAX) {
+    size_t current_refs = __atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE);
+    if (current_refs == SIZE_MAX) {
         rt_trap("gc: cannot collect immortal heap object");
         return 0;
     }
@@ -733,6 +745,14 @@ static int gc_reclaim_unreachable(void *obj, rt_gc_traverse_fn traverse, void *r
 /// @return Number of objects freed.
 int64_t rt_gc_collect(void) {
     int64_t freed = 0;
+    int64_t snap_count = 0;
+    gc_snap_entry *snapshot = NULL;
+    gc_edge_list trial_edges = {0};
+    gc_worklist work = {0};
+    int64_t garbage_count = 0;
+    int64_t garbage_processed = 0;
+    gc_snap_entry *garbage = NULL;
+    jmp_buf collection_recovery;
 
     gc_lock();
 
@@ -758,8 +778,7 @@ int64_t rt_gc_collect(void) {
        entries for safe traversal outside the lock.  Promoted objects are
        included in the snapshot but marked black (skipped) unless this is
        a full scan pass. */
-    int64_t snap_count = 0;
-    gc_snap_entry *snapshot = (gc_snap_entry *)malloc((size_t)g_gc.count * sizeof(gc_snap_entry));
+    snapshot = (gc_snap_entry *)malloc((size_t)g_gc.count * sizeof(gc_snap_entry));
     if (!snapshot) {
         g_gc.collecting = 0;
         gc_unlock();
@@ -772,8 +791,19 @@ int64_t rt_gc_collect(void) {
             continue;
 
         rt_heap_hdr_t *hdr = NULL;
-        if (!rt_heap_try_get_header(g_gc.entries[i].obj, &hdr) || !hdr)
+        if (!rt_heap_try_get_header(g_gc.entries[i].obj, &hdr) || !hdr) {
+            g_gc.collecting = 0;
+            gc_unlock();
+            for (int64_t j = 0; j < snap_count; j++) {
+                if (snapshot[j].obj && rt_heap_is_payload(snapshot[j].obj)) {
+                    if (rt_obj_release_check0(snapshot[j].obj))
+                        rt_obj_free(snapshot[j].obj);
+                }
+            }
+            free(snapshot);
             rt_trap("gc: tracked object is not a live heap payload");
+            return 0;
+        }
         g_gc.entries[i].trial_rc = (int64_t)__atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE);
 
         /* Skip promoted objects in non-full-scan passes: mark them black
@@ -791,24 +821,45 @@ int64_t rt_gc_collect(void) {
 
     gc_unlock();
 
+    rt_trap_set_recovery(&collection_recovery);
+    if (setjmp(collection_recovery) != 0) {
+        char saved_error[512];
+        const char *err = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 err && err[0] ? err : "gc: trap during collection");
+        rt_trap_clear_recovery();
+        free(trial_edges.items);
+        free(work.items);
+        int64_t processed_garbage_count = garbage_processed;
+        if (processed_garbage_count < 0)
+            processed_garbage_count = 0;
+        if (processed_garbage_count > garbage_count)
+            processed_garbage_count = garbage_count;
+        for (int64_t i = 0; i < snap_count; i++) {
+            if (garbage && gc_snap_contains(garbage, processed_garbage_count, snapshot[i].obj))
+                continue;
+            if (snapshot[i].obj && rt_heap_is_payload(snapshot[i].obj)) {
+                if (rt_obj_release_check0(snapshot[i].obj))
+                    rt_obj_free(snapshot[i].obj);
+            }
+        }
+        free(garbage);
+        free(snapshot);
+        gc_clear_collecting_flag();
+        rt_trap(saved_error);
+        return 0;
+    }
+
     /* Phase 2: Trial decrement — for each tracked object, visit its
        children.  If a child is also tracked, decrement its trial_rc.
        After this phase, objects whose trial_rc <= 0 are only referenced
        by other tracked objects (potential cycle members). */
-    gc_edge_list trial_edges = {0};
     for (int64_t i = 0; i < snap_count; i++) {
         snapshot[i].traverse(snapshot[i].obj, gc_edge_collector, &trial_edges);
     }
     if (trial_edges.oom) {
-        for (int64_t i = 0; i < snap_count; i++) {
-            if (rt_obj_release_check0(snapshot[i].obj))
-                rt_obj_free(snapshot[i].obj);
-        }
-        free(trial_edges.items);
-        free(snapshot);
-        gc_lock();
-        g_gc.collecting = 0;
-        gc_unlock();
         rt_trap("gc: memory allocation failed");
         return 0;
     }
@@ -819,12 +870,14 @@ int64_t rt_gc_collect(void) {
     }
     gc_unlock();
     free(trial_edges.items);
+    trial_edges.items = NULL;
+    trial_edges.count = 0;
+    trial_edges.cap = 0;
 
     /* Phase 3: Scan — objects with trial_rc > 0 have external references
        and are definitely reachable.  Mark them black and recursively
        mark everything reachable from them. Traversal callbacks run outside
        gc_lock so callbacks can safely use weak/GC APIs. */
-    gc_worklist work = {0};
     gc_lock();
     for (int64_t i = 0; i < snap_count; i++) {
         int64_t idx = find_entry(snapshot[i].obj);
@@ -864,19 +917,13 @@ int64_t rt_gc_collect(void) {
     }
 
     if (work.oom) {
-        for (int64_t i = 0; i < snap_count; i++) {
-            if (rt_obj_release_check0(snapshot[i].obj))
-                rt_obj_free(snapshot[i].obj);
-        }
-        free(work.items);
-        free(snapshot);
-        gc_lock();
-        g_gc.collecting = 0;
-        gc_unlock();
         rt_trap("gc: memory allocation failed");
         return 0;
     }
     free(work.items);
+    work.items = NULL;
+    work.count = 0;
+    work.cap = 0;
 
     /* Phase 3b: Epoch tagging — increment survived counter for objects
        that survived this pass (color == 2, reachable). */
@@ -890,23 +937,15 @@ int64_t rt_gc_collect(void) {
 
     /* Phase 4: Collect — white objects are unreachable cycle members.
        Gather them, remove from the hash table, then finalize and free. */
-    int64_t garbage_count = 0;
     for (int64_t i = 0; i < g_gc.capacity; i++) {
         if (gc_slot_is_live(&g_gc.entries[i]) && g_gc.entries[i].color == 0)
             garbage_count++;
     }
 
-    gc_snap_entry *garbage = NULL;
     if (garbage_count > 0) {
         garbage = (gc_snap_entry *)malloc((size_t)garbage_count * sizeof(gc_snap_entry));
         if (!garbage) {
-            g_gc.collecting = 0;
             gc_unlock();
-            for (int64_t i = 0; i < snap_count; i++) {
-                if (rt_obj_release_check0(snapshot[i].obj))
-                    rt_obj_free(snapshot[i].obj);
-            }
-            free(snapshot);
             rt_trap("gc: memory allocation failed");
             return 0;
         }
@@ -917,10 +956,6 @@ int64_t rt_gc_collect(void) {
                 garbage[gi].obj = g_gc.entries[i].obj;
                 garbage[gi].traverse = g_gc.entries[i].traverse;
                 gi++;
-                /* Tombstone the slot. */
-                g_gc.entries[i].obj = GC_TOMBSTONE;
-                g_gc.entries[i].traverse = NULL;
-                g_gc.count--;
             }
         }
     }
@@ -929,29 +964,14 @@ int64_t rt_gc_collect(void) {
 
     gc_unlock();
 
-    jmp_buf phase4_recovery;
-    rt_trap_set_recovery(&phase4_recovery);
-    if (setjmp(phase4_recovery) != 0) {
-        char saved_error[512];
-        const char *err = rt_trap_get_error();
-        snprintf(saved_error,
-                 sizeof(saved_error),
-                 "%s",
-                 err && err[0] ? err : "gc: trap during collection");
-        rt_trap_clear_recovery();
-        free(garbage);
-        free(snapshot);
-        gc_clear_collecting_flag();
-        rt_trap(saved_error);
-        return 0;
-    }
-
     /* Free garbage objects (outside the lock). */
     if (garbage) {
         gc_release_edges_ctx release_ctx = {garbage, garbage_count};
         for (int64_t i = 0; i < garbage_count; i++) {
+            rt_gc_untrack(garbage[i].obj);
             if (rt_heap_is_payload(garbage[i].obj))
                 (void)rt_heap_release_deferred(garbage[i].obj);
+            garbage_processed = i + 1;
             int reclaimed =
                 gc_reclaim_unreachable(garbage[i].obj, garbage[i].traverse, &release_ctx);
             if (reclaimed) {
@@ -969,10 +989,14 @@ int64_t rt_gc_collect(void) {
             rt_obj_free(snapshot[i].obj);
     }
 
-    rt_trap_clear_recovery();
-
     free(garbage);
+    garbage = NULL;
+    garbage_count = 0;
     free(snapshot);
+    snapshot = NULL;
+    snap_count = 0;
+
+    rt_trap_clear_recovery();
 
     gc_lock();
     if (freed > 0) {
@@ -1126,6 +1150,8 @@ void rt_gc_shutdown(void) {
     g_gc.capacity = 0;
     g_gc.weak_buckets = NULL;
     g_gc.weak_bucket_count = 0;
+    g_gc.total_collected = 0;
+    g_gc.pass_count = 0;
     g_gc.collecting = 0;
 
     /* Reset auto-trigger state. */
