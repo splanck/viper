@@ -41,6 +41,10 @@
 
 using namespace viper::codegen::x64;
 
+namespace viper::codegen::x64 {
+void lowerOverflowOps(MFunction &fn);
+}
+
 namespace {
 
 ILValue val(ILValue::Kind kind, int id) {
@@ -1396,6 +1400,255 @@ TEST(X86BackendRegressions, FlagScanStopsAtSharedFlagDefiners) {
         MInstr::make(MOpcode::JCC, {makeImmOperand(0), makeLabelOperand(".L_done")})};
 
     EXPECT_FALSE(peephole::nextInstrReadsFlags(instructions, 0));
+}
+
+TEST(X86BackendRegressions, ImmediateShiftCountsAreMaskedModulo64) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::I64};
+    entry.instrs = {op("shl", {val(ILValue::Kind::I64, 0), imm(65)}, 1, ILValue::Kind::I64),
+                    op("ashr", {val(ILValue::Kind::I64, 1), imm(-1)}, 2, ILValue::Kind::I64),
+                    op("ret", {val(ILValue::Kind::I64, 2)})};
+
+    ILFunction fn{};
+    fn.name = "shift_mask";
+    fn.blocks = {entry};
+
+    const CodegenResult result = compile(fn);
+    ASSERT_TRUE(result.errors.empty());
+    EXPECT_NE(result.asmText.find("shlq $1"), std::string::npos);
+    EXPECT_NE(result.asmText.find("sarq $63"), std::string::npos);
+}
+
+TEST(X86BackendRegressions, IndexedStoreUsesStoreDisplacementOperand) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0, 1};
+    entry.paramKinds = {ILValue::Kind::PTR, ILValue::Kind::I64};
+    entry.instrs = {op("shl", {val(ILValue::Kind::I64, 1), imm(3)}, 2, ILValue::Kind::I64),
+                    op("add",
+                       {val(ILValue::Kind::PTR, 0), val(ILValue::Kind::I64, 2)},
+                       3,
+                       ILValue::Kind::PTR),
+                    op("store", {val(ILValue::Kind::PTR, 3), imm(42), imm(16)}),
+                    op("ret", {imm(0)})};
+
+    ILFunction fn{};
+    fn.name = "indexed_store_disp";
+    fn.blocks = {entry};
+
+    const CodegenResult result = compile(fn);
+    ASSERT_TRUE(result.errors.empty());
+    EXPECT_TRUE(containsRegex(result.asmText, R"(16\(%r[a-z0-9]+,%r[a-z0-9]+,8\))"));
+    EXPECT_FALSE(containsRegex(result.asmText, R"(42\(%r[a-z0-9]+,%r[a-z0-9]+,8\))"));
+}
+
+TEST(X86BackendRegressions, GepMaterializesImmediateBase) {
+    ILValue nullBase{};
+    nullBase.kind = ILValue::Kind::PTR;
+    nullBase.id = -1;
+    nullBase.i64 = 0;
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {op("gep", {nullBase, imm(8)}, 1, ILValue::Kind::PTR),
+                    op("ret", {val(ILValue::Kind::PTR, 1)})};
+
+    ILFunction fn{};
+    fn.name = "gep_null";
+    fn.blocks = {entry};
+
+    const CodegenResult result = compile(fn);
+    ASSERT_TRUE(result.errors.empty());
+    EXPECT_TRUE(containsRegex(result.asmText, R"(leaq\s+8\(%r[a-z0-9]+\),\s*%r[a-z0-9]+)"));
+}
+
+TEST(X86BackendRegressions, LeaFoldCombinesOuterDisplacement) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::PTR};
+    entry.instrs = {op("gep", {val(ILValue::Kind::PTR, 0), imm(8)}, 1, ILValue::Kind::PTR),
+                    op("load", {val(ILValue::Kind::PTR, 1), imm(4)}, 2, ILValue::Kind::I64),
+                    op("ret", {val(ILValue::Kind::I64, 2)})};
+
+    ILFunction fn{};
+    fn.name = "lea_fold_disp";
+    fn.blocks = {entry};
+
+    const CodegenResult result = compile(fn);
+    ASSERT_TRUE(result.errors.empty());
+    EXPECT_TRUE(containsRegex(result.asmText, R"(movq\s+12\(%r[a-z0-9]+\),\s*%r[a-z0-9]+)"));
+}
+
+TEST(X86BackendRegressions, LeaFoldPreservesOuterIndex) {
+    MFunction fn{};
+    fn.name = "lea_fold_index";
+
+    MBasicBlock entry{};
+    entry.label = ".L_lea_fold_index_entry";
+    const Operand base = makeVRegOperand(RegClass::GPR, 1);
+    const Operand index = makeVRegOperand(RegClass::GPR, 2);
+    const Operand addr = makeVRegOperand(RegClass::GPR, 3);
+    const Operand loaded = makeVRegOperand(RegClass::GPR, 4);
+    entry.instructions = {MInstr::make(MOpcode::LEA, {addr, Operand{baseMem(base, 8)}}),
+                          MInstr::make(MOpcode::MOVmr,
+                                       {loaded, Operand{indexedMem(addr, index, 2, 4)}})};
+    fn.blocks.push_back(std::move(entry));
+
+    ISel isel(sysvTarget());
+    isel.lowerArithmetic(fn);
+
+    const auto &block = fn.blocks.front();
+    ASSERT_EQ(block.instructions.size(), 1u);
+    const OpMem *mem = firstMemOperand(block.instructions.front());
+    ASSERT_TRUE(mem != nullptr);
+    EXPECT_TRUE(mem->hasIndex);
+    EXPECT_EQ(mem->disp, 12);
+    EXPECT_EQ(mem->scale, 2u);
+    EXPECT_EQ(mem->base.idOrPhys, 1u);
+    EXPECT_EQ(mem->index.idOrPhys, 2u);
+}
+
+TEST(X86BackendRegressions, LeaFoldDoesNotEraseAddressUsedInLaterBlock) {
+    MFunction fn{};
+    fn.name = "lea_cross_block";
+
+    MBasicBlock entry{};
+    entry.label = ".L_lea_cross_block_entry";
+    const Operand base = makeVRegOperand(RegClass::GPR, 1);
+    const Operand addr = makeVRegOperand(RegClass::GPR, 2);
+    const Operand value = makeVRegOperand(RegClass::GPR, 3);
+    const Operand loaded = makeVRegOperand(RegClass::GPR, 4);
+    entry.instructions = {
+        MInstr::make(MOpcode::LEA, {addr, Operand{baseMem(base, 8)}}),
+        MInstr::make(MOpcode::MOVrm, {Operand{baseMem(addr)}, value}),
+        MInstr::make(MOpcode::JMP, {makeLabelOperand(".L_lea_cross_block_next")})};
+
+    MBasicBlock next{};
+    next.label = ".L_lea_cross_block_next";
+    next.instructions = {MInstr::make(MOpcode::MOVmr, {loaded, Operand{baseMem(addr)}})};
+
+    fn.blocks = {std::move(entry), std::move(next)};
+
+    ISel isel(sysvTarget());
+    isel.lowerArithmetic(fn);
+
+    ASSERT_EQ(fn.blocks.front().instructions.size(), 3u);
+    EXPECT_EQ(fn.blocks.front().instructions.front().opcode, MOpcode::LEA);
+    const OpMem *entryMem = firstMemOperand(fn.blocks.front().instructions[1]);
+    ASSERT_TRUE(entryMem != nullptr);
+    EXPECT_EQ(entryMem->base.idOrPhys, 2u);
+    const OpMem *nextMem = firstMemOperand(fn.blocks.back().instructions.front());
+    ASSERT_TRUE(nextMem != nullptr);
+    EXPECT_EQ(nextMem->base.idOrPhys, 2u);
+}
+
+TEST(X86BackendRegressions, UremLargePowerOfTwoMaskMaterializesBeforeBinaryEmission) {
+    constexpr int64_t kLargePowerOfTwo = 1LL << 40;
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::I64};
+    entry.instrs = {op("urem", {val(ILValue::Kind::I64, 0), imm(kLargePowerOfTwo)}, 1,
+                       ILValue::Kind::I64),
+                    op("ret", {val(ILValue::Kind::I64, 1)})};
+
+    ILFunction fn{};
+    fn.name = "urem_large_mask";
+    fn.blocks = {entry};
+
+    const CodegenResult asmResult = compile(fn);
+    ASSERT_TRUE(asmResult.errors.empty());
+    EXPECT_EQ(asmResult.asmText.find("andq $1099511627775"), std::string::npos);
+    EXPECT_NE(asmResult.asmText.find("andq %r11"), std::string::npos);
+
+    const BinaryEmitResult binaryResult = compileBinary(fn);
+    EXPECT_TRUE(binaryResult.errors.empty());
+}
+
+TEST(X86BackendRegressions, ExistingOverflowTrapBlockGetsRuntimeCall) {
+    MFunction fn{};
+    fn.name = "ovf_reuse";
+
+    MBasicBlock entry{};
+    entry.label = ".L_ovf_reuse_entry";
+    const Operand lhs = makeVRegOperand(RegClass::GPR, 1);
+    const Operand rhs = makeVRegOperand(RegClass::GPR, 2);
+    entry.instructions = {MInstr::make(MOpcode::ADDOvfrr, {lhs, rhs})};
+
+    MBasicBlock trap{};
+    trap.label = ".Ltrap_ovf_ovf_reuse";
+    trap.instructions = {MInstr::make(MOpcode::UD2)};
+
+    fn.blocks = {entry, trap};
+    lowerOverflowOps(fn);
+
+    const auto trapIt = std::find_if(fn.blocks.begin(), fn.blocks.end(), [](const MBasicBlock &bb) {
+        return bb.label == ".Ltrap_ovf_ovf_reuse";
+    });
+    ASSERT_TRUE(trapIt != fn.blocks.end());
+
+    const auto callIt = std::find_if(
+        trapIt->instructions.begin(), trapIt->instructions.end(), [](const MInstr &instr) {
+            if (instr.opcode != MOpcode::CALL || instr.operands.empty())
+                return false;
+            const auto *label = std::get_if<OpLabel>(&instr.operands.front());
+            return label && label->name == "rt_trap_ovf";
+        });
+    const auto ud2It = std::find_if(
+        trapIt->instructions.begin(), trapIt->instructions.end(), [](const MInstr &instr) {
+            return instr.opcode == MOpcode::UD2;
+        });
+    ASSERT_TRUE(callIt != trapIt->instructions.end());
+    ASSERT_TRUE(ud2It != trapIt->instructions.end());
+    EXPECT_LT(std::distance(trapIt->instructions.begin(), callIt),
+              std::distance(trapIt->instructions.begin(), ud2It));
+}
+
+TEST(X86BackendRegressions, LabelLiteralEdgeArgsMaterializeAsPointers) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(sysvTarget(), roData);
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {op("br", {label("target")})};
+    entry.terminatorEdges = {
+        ILBlock::EdgeArg{.to = "target", .argIds = {-1}, .argValues = {label("global_target")}}};
+
+    ILBlock target{};
+    target.name = "target";
+    target.paramIds = {0};
+    target.paramKinds = {ILValue::Kind::PTR};
+    target.instrs = {op("ret", {val(ILValue::Kind::PTR, 0)})};
+
+    ILFunction fn{};
+    fn.name = "label_edge";
+    fn.blocks = {entry, target};
+
+    const MFunction mir = lowering.lower(fn);
+
+    bool foundLabelLea = false;
+    bool foundBadZeroMove = false;
+    for (const auto &block : mir.blocks) {
+        if (block.label.find(".edge") == std::string::npos)
+            continue;
+        for (const auto &instr : block.instructions) {
+            if (instr.opcode == MOpcode::LEA && instr.operands.size() >= 2) {
+                const auto *rip = std::get_if<OpRipLabel>(&instr.operands[1]);
+                foundLabelLea = foundLabelLea || (rip && rip->name == "global_target");
+            }
+            if (instr.opcode == MOpcode::MOVri && instr.operands.size() >= 2) {
+                const auto *immediate = std::get_if<OpImm>(&instr.operands[1]);
+                foundBadZeroMove = foundBadZeroMove || (immediate && immediate->val == 0);
+            }
+        }
+    }
+
+    EXPECT_TRUE(foundLabelLea);
+    EXPECT_FALSE(foundBadZeroMove);
 }
 
 int main(int argc, char **argv) {

@@ -461,12 +461,20 @@ std::string LowerILToMIR::buildEdgeCopyBlock(MFunction &func,
                 edgeBlock.append(MInstr::make(
                     MOpcode::MOVSDmr,
                     std::vector<Operand>{cloneOperand(srcOp), makeRipLabelOperand(label)}));
+            } else if (val.kind == ILValue::Kind::STR) {
+                srcOp = makeOperandForValue(edgeBlock, val, cls);
             } else {
                 const VReg tmp = makeTempVReg(RegClass::GPR);
                 srcOp = makeVRegOperand(tmp.cls, tmp.id);
-                edgeBlock.append(MInstr::make(
-                    MOpcode::MOVri,
-                    std::vector<Operand>{cloneOperand(srcOp), makeImmOperand(val.i64)}));
+                if (val.kind == ILValue::Kind::LABEL) {
+                    edgeBlock.append(MInstr::make(
+                        MOpcode::LEA,
+                        std::vector<Operand>{cloneOperand(srcOp), makeRipLabelOperand(val.label)}));
+                } else {
+                    edgeBlock.append(MInstr::make(
+                        MOpcode::MOVri,
+                        std::vector<Operand>{cloneOperand(srcOp), makeImmOperand(val.i64)}));
+                }
             }
         }
 

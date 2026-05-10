@@ -27,6 +27,7 @@
 #include "LowerILToMIR.hpp"
 #include "MachineIR.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -162,7 +163,8 @@ class EmitCommon {
     ///          and optional displacement. Future improvements can plumb IL def
     ///          chains; the current implementation conservatively declines when
     ///          insufficient information is available.
-    [[nodiscard]] std::optional<Operand> tryMakeIndexedMem(const ILInstr &addrProducer);
+    [[nodiscard]] std::optional<Operand> tryMakeIndexedMem(const ILInstr &addrProducer,
+                                                           std::size_t displacementOperandIndex);
 
   private:
     MIRBuilder *builder_{nullptr};

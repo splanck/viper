@@ -106,6 +106,11 @@ namespace {
     return x64::makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(reg));
 }
 
+[[nodiscard]] bool fitsSignedImm32(int64_t value) noexcept {
+    return value >= static_cast<int64_t>(std::numeric_limits<int32_t>::min()) &&
+           value <= static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+}
+
 /// @brief Return log2(v) if v is a positive power of 2, else -1.
 [[nodiscard]] int log2IfPowerOf2(int64_t v) {
     if (v <= 0 || (v & (v - 1)) != 0)
@@ -287,12 +292,33 @@ void lowerSignedDivRem(MFunction &fn) {
                                                                   makeImmOperand(log)}));
                         } else {
                             // urem x, 2^k  ->  and x, (2^k - 1)
-                            fn.blocks[blockIdx].instructions.insert(
-                                fn.blocks[blockIdx].instructions.begin() +
-                                    static_cast<std::ptrdiff_t>(instrIdx + 1),
-                                MInstr::make(MOpcode::ANDri,
-                                             std::vector<Operand>{cloneOperand(destClone),
-                                                                  makeImmOperand(*constVal - 1)}));
+                            const int64_t mask = *constVal - 1;
+                            if (fitsSignedImm32(mask)) {
+                                fn.blocks[blockIdx].instructions.insert(
+                                    fn.blocks[blockIdx].instructions.begin() +
+                                        static_cast<std::ptrdiff_t>(instrIdx + 1),
+                                    MInstr::make(
+                                        MOpcode::ANDri,
+                                        std::vector<Operand>{cloneOperand(destClone),
+                                                             makeImmOperand(mask)}));
+                            } else {
+                                const Operand scratchRegOp = makePhysRegOperand(PhysReg::R11);
+                                fn.blocks[blockIdx].instructions.insert(
+                                    fn.blocks[blockIdx].instructions.begin() +
+                                        static_cast<std::ptrdiff_t>(instrIdx + 1),
+                                    MInstr::make(
+                                        MOpcode::MOVri,
+                                        std::vector<Operand>{cloneOperand(scratchRegOp),
+                                                             makeImmOperand(mask)}));
+                                fn.blocks[blockIdx].instructions.insert(
+                                    fn.blocks[blockIdx].instructions.begin() +
+                                        static_cast<std::ptrdiff_t>(instrIdx + 2),
+                                    MInstr::make(
+                                        MOpcode::ANDrr,
+                                        std::vector<Operand>{cloneOperand(destClone),
+                                                             cloneOperand(scratchRegOp)}));
+                                ++instrIdx;
+                            }
                         }
                         instrIdx += 1; // skip the inserted instruction
                         continue;

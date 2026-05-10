@@ -46,7 +46,8 @@ CallArg makeCallArg(const ILValue &argVal, MIRBuilder &builder) {
     arg.cls =
         builder.regClassFor(argVal.kind) == RegClass::GPR ? CallArgClass::GPR : CallArgClass::FPR;
 
-    if (argVal.kind != ILValue::Kind::LABEL && builder.isImmediate(argVal)) {
+    if (argVal.kind != ILValue::Kind::LABEL && argVal.kind != ILValue::Kind::STR &&
+        builder.isImmediate(argVal)) {
         arg.isImm = true;
         arg.imm = (argVal.kind == ILValue::Kind::F64) ? static_cast<int64_t>(
                                                             std::bit_cast<std::uint64_t>(argVal.f64))
@@ -310,14 +311,21 @@ void emitGEP(const ILInstr &instr, MIRBuilder &builder) {
     const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
 
-    // Get the base pointer
-    const Operand baseOp = builder.makeOperandForValue(instr.ops[0], RegClass::GPR);
+    EmitCommon emit(builder);
+
+    // Get the base pointer. It can be a pointer literal such as null, so force
+    // it into a GPR before building LEA-style addressing.
+    const Operand baseOp =
+        emit.materialiseGpr(builder.makeOperandForValue(instr.ops[0], RegClass::GPR));
     const auto *baseReg = std::get_if<OpReg>(&baseOp);
+    if (!baseReg) {
+        phaseAUnsupported("gep: base did not materialize to a register");
+    }
 
     // Get the offset
     const auto &offsetVal = instr.ops[1];
 
-    if (baseReg && builder.isImmediate(offsetVal)) {
+    if (builder.isImmediate(offsetVal)) {
         if (fitsImm32(offsetVal.i64)) {
             // Base is a register, offset is immediate -> use LEA [base + imm]
             const int32_t offset = static_cast<int32_t>(offsetVal.i64);
@@ -331,42 +339,20 @@ void emitGEP(const ILInstr &instr, MIRBuilder &builder) {
             builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{dest, baseOp}));
             builder.append(MInstr::make(MOpcode::ADDrr, std::vector<Operand>{dest, offset}));
         }
-    } else if (baseReg) {
+    } else {
         // Both base and offset are registers -> use LEA [base + index*1]
-        const Operand offsetOp = builder.makeOperandForValue(offsetVal, RegClass::GPR);
+        Operand offsetOp = builder.makeOperandForValue(offsetVal, RegClass::GPR);
         const auto *offsetReg = std::get_if<OpReg>(&offsetOp);
+        if (!offsetReg) {
+            offsetOp = emit.materialiseGpr(std::move(offsetOp));
+            offsetReg = std::get_if<OpReg>(&offsetOp);
+        }
         if (offsetReg) {
             const Operand mem = makeMemOperand(*baseReg, *offsetReg, 1, 0);
             builder.append(MInstr::make(MOpcode::LEA, std::vector<Operand>{dest, mem}));
         } else {
             // Fallback: copy base to dest, then add offset
             builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{dest, baseOp}));
-            builder.append(MInstr::make(MOpcode::ADDrr, std::vector<Operand>{dest, offsetOp}));
-        }
-    } else {
-        // Base is not a register - materialize it first
-        const VReg tmpReg = builder.makeTempVReg(RegClass::GPR);
-        const Operand tmp = makeVRegOperand(tmpReg.cls, tmpReg.id);
-        builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{tmp, baseOp}));
-
-        if (builder.isImmediate(offsetVal)) {
-            if (fitsImm32(offsetVal.i64)) {
-                const int32_t offset = static_cast<int32_t>(offsetVal.i64);
-                const auto tmpBaseReg = std::get<OpReg>(tmp);
-                const Operand mem = makeMemOperand(tmpBaseReg, offset);
-                builder.append(MInstr::make(MOpcode::LEA, std::vector<Operand>{dest, mem}));
-            } else {
-                const VReg offsetReg = builder.makeTempVReg(RegClass::GPR);
-                const Operand offset = makeVRegOperand(offsetReg.cls, offsetReg.id);
-                builder.append(MInstr::make(
-                    MOpcode::MOVri,
-                    std::vector<Operand>{offset, makeImmOperand(offsetVal.i64)}));
-                builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{dest, tmp}));
-                builder.append(MInstr::make(MOpcode::ADDrr, std::vector<Operand>{dest, offset}));
-            }
-        } else {
-            const Operand offsetOp = builder.makeOperandForValue(offsetVal, RegClass::GPR);
-            builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{dest, tmp}));
             builder.append(MInstr::make(MOpcode::ADDrr, std::vector<Operand>{dest, offsetOp}));
         }
     }
