@@ -211,6 +211,7 @@ template <typename T> void writeStruct(std::vector<uint8_t> &buf, size_t off, co
     std::memcpy(buf.data() + off, &value, sizeof(T));
 }
 
+/// @brief Pad @p buf to @p align then append a raw struct copy of @p value.
 template <typename T>
 void appendStruct(std::vector<uint8_t> &buf, const T &value, uint64_t align = alignof(T)) {
     buf.resize(alignUp(buf.size(), align), 0);
@@ -219,6 +220,7 @@ void appendStruct(std::vector<uint8_t> &buf, const T &value, uint64_t align = al
     std::memcpy(buf.data() + off, &value, sizeof(T));
 }
 
+/// @brief Pad @p buf to @p align, write its size to @p outOff, then concat @p src.
 void appendBytes(std::vector<uint8_t> &buf,
                  const std::vector<uint8_t> &src,
                  size_t &outOff,
@@ -228,6 +230,7 @@ void appendBytes(std::vector<uint8_t> &buf,
     buf.insert(buf.end(), src.begin(), src.end());
 }
 
+/// @brief Append a NUL-terminated string to a string table; return its offset.
 uint32_t addString(std::vector<uint8_t> &strtab, const std::string &s) {
     const uint32_t off = static_cast<uint32_t>(strtab.size());
     strtab.insert(strtab.end(), s.begin(), s.end());
@@ -235,14 +238,18 @@ uint32_t addString(std::vector<uint8_t> &strtab, const std::string &s) {
     return off;
 }
 
+/// @brief Compose an ELF r_info value from the symbol index and reloc type.
+/// @details Matches the ELF64 layout: high 32 bits = symbol index, low 32 = type.
 uint64_t dynInfoForSym(uint32_t symIndex, uint32_t type) {
     return (static_cast<uint64_t>(symIndex) << 32) | type;
 }
 
+/// @brief Test whether @p value fits in a signed 32-bit field (PC-relative reach check).
 bool fitsInt32(int64_t value) {
     return value >= -2147483648LL && value <= 2147483647LL;
 }
 
+/// @brief Patch a 32-bit little-endian value at @p offset within @p buf.
 void putLE32(std::vector<uint8_t> &buf, size_t offset, uint32_t val) {
     buf[offset] = static_cast<uint8_t>(val);
     buf[offset + 1] = static_cast<uint8_t>(val >> 8);
@@ -250,6 +257,9 @@ void putLE32(std::vector<uint8_t> &buf, size_t offset, uint32_t val) {
     buf[offset + 3] = static_cast<uint8_t>(val >> 24);
 }
 
+/// @brief Compute the SVR4 ELF hash (`DT_HASH`) of a symbol name.
+/// @details The original Bourne-shell-era PJW hash, specified by the System V
+///          ABI as the function used to populate `.hash` (DT_HASH) sections.
 uint32_t elfHash(std::string_view name) {
     uint32_t h = 0;
     for (unsigned char c : name) {
@@ -262,6 +272,9 @@ uint32_t elfHash(std::string_view name) {
     return h;
 }
 
+/// @brief Find the highest virtual address occupied by any allocatable section.
+/// @details Used as the placement floor for synthesised sections (.dynstr,
+///          .dynsym, .hash, .rela.dyn) added after layout finalisation.
 uint64_t maxAllocEndAddr(const LinkLayout &layout) {
     uint64_t maxEnd = 0;
     for (const auto &sec : layout.sections) {
@@ -272,6 +285,11 @@ uint64_t maxAllocEndAddr(const LinkLayout &layout) {
     return maxEnd;
 }
 
+/// @brief Synthesise an x86_64 _start stub that calls @p entryAddr and exits.
+/// @details Aligns RSP to 16, calls main, passes its return value as the exit
+///          code via the SYS_exit_group syscall (60), and traps if the syscall
+///          returns. Used when the linker is producing a fully static binary
+///          without crt1.o / glibc startup.
 std::vector<uint8_t> buildLinuxX64StartupStub(uint64_t stubVa,
                                               uint64_t entryAddr,
                                               std::ostream &err) {
@@ -294,6 +312,9 @@ std::vector<uint8_t> buildLinuxX64StartupStub(uint64_t stubVa,
     return stub;
 }
 
+/// @brief Synthesise an AArch64 _start stub: BL entry; MOV x8,#93; SVC #0; BRK.
+/// @details Tail-calls main, then issues SYS_exit (93) with the return value
+///          in x0. Bails if the entry point is not within ±128 MB BL range.
 std::vector<uint8_t> buildLinuxAArch64StartupStub(uint64_t stubVa,
                                                   uint64_t entryAddr,
                                                   std::ostream &err) {
@@ -317,6 +338,13 @@ std::vector<uint8_t> buildLinuxAArch64StartupStub(uint64_t stubVa,
     return stub;
 }
 
+/// @brief Construct the .dynamic / .dynsym / .dynstr / .rela.dyn / .hash blobs.
+/// @details Emits one DT_NEEDED per @p neededLibs entry, one .dynsym + .dynstr
+///          entry per @p dynSyms member, and one R_*_GLOB_DAT relocation per
+///          GOT/import slot found in the layout. The synthesised buffers are
+///          page-aligned and placed contiguously after the existing alloc
+///          sections by the caller.
+/// @return false on overflow / unrecoverable layout errors (writes to @p err).
 bool buildDynamicInfo(const LinkLayout &layout,
                       LinkArch arch,
                       const std::vector<std::string> &neededLibs,

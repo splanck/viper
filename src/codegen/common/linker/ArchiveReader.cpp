@@ -31,6 +31,9 @@ static constexpr const char *kArMagic = "!<arch>\n";
 static constexpr size_t kArMagicLen = 8;
 static constexpr size_t kArHeaderLen = 60;
 
+/// @brief Add @p a + @p b into @p out, returning false on size_t overflow.
+/// @details Used throughout this reader to harden against malformed archives
+///          that claim sizes near SIZE_MAX in their member headers.
 static bool checkedAdd(size_t a, size_t b, size_t &out) {
     if (a > std::numeric_limits<size_t>::max() - b)
         return false;
@@ -38,6 +41,9 @@ static bool checkedAdd(size_t a, size_t b, size_t &out) {
     return true;
 }
 
+/// @brief Verify that the byte range [@p off, @p off+@p len) fits within @p size.
+/// @details Avoids the @c off+len overflow trap by computing the bound as
+///          @p size − @p off, which never overflows once @p off ≤ @p size holds.
 static bool checkedRange(size_t off, size_t len, size_t size) {
     return off <= size && len <= size - off;
 }

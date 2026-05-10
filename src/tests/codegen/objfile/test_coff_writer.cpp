@@ -17,6 +17,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <vector>
 
@@ -259,20 +260,46 @@ int main() {
     }
 
     {
-        CodeSection badArmText;
-        CodeSection badArmRodata;
-        badArmText.defineSymbol("caller", SymbolBinding::Global, SymbolSection::Text);
-        const uint32_t calleeIdx = badArmText.findOrDeclareSymbol("callee");
-        badArmText.addRelocation(RelocKind::A64Call26, calleeIdx, 4);
-        badArmText.emit32LE(0x94000000);
+        CodeSection armAddendText;
+        CodeSection armAddendRodata;
+        armAddendText.defineSymbol("caller", SymbolBinding::Global, SymbolSection::Text);
+        const uint32_t calleeIdx = armAddendText.findOrDeclareSymbol("callee");
+        armAddendText.addRelocation(RelocKind::A64Call26, calleeIdx, 4);
+        armAddendText.emit32LE(0x94000000);
 
-        std::ostringstream badErr;
-        CoffWriter badWriter(ObjArch::AArch64);
-        CHECK(!badWriter.write("build/test-out/coff_arm64_bad_addend.obj",
-                               badArmText,
-                               badArmRodata,
-                               badErr));
-        CHECK(badErr.str().find("unsupported non-zero AArch64 addend") != std::string::npos);
+        std::ostringstream armAddendErr;
+        CoffWriter armAddendWriter(ObjArch::AArch64);
+        const std::string armAddendPath = "build/test-out/coff_arm64_branch_addend.obj";
+        ASSERT(armAddendWriter.write(
+            armAddendPath, armAddendText, armAddendRodata, armAddendErr));
+
+        ObjFile armAddendObj;
+        ASSERT(readObjFile(armAddendPath, armAddendObj, armAddendErr));
+        const ObjSection *armAddendSec = findSection(armAddendObj, ".text");
+        ASSERT(armAddendSec != nullptr);
+        ASSERT(armAddendSec->relocs.size() == 1);
+        CHECK(armAddendSec->relocs[0].addend == 4);
+    }
+
+    {
+        CodeSection adrpText;
+        CodeSection adrpRodata;
+        adrpText.defineSymbol("caller", SymbolBinding::Global, SymbolSection::Text);
+        const uint32_t targetIdx = adrpText.findOrDeclareSymbol("target_page");
+        adrpText.addRelocation(RelocKind::A64AdrpPage21, targetIdx, 0x2000);
+        adrpText.emit32LE(0x90000000); // adrp x0, #0
+
+        std::ostringstream adrpErr;
+        CoffWriter adrpWriter(ObjArch::AArch64);
+        const std::string adrpPath = "build/test-out/coff_arm64_adrp_addend.obj";
+        ASSERT(adrpWriter.write(adrpPath, adrpText, adrpRodata, adrpErr));
+
+        ObjFile adrpObj;
+        ASSERT(readObjFile(adrpPath, adrpObj, adrpErr));
+        const ObjSection *adrpSec = findSection(adrpObj, ".text");
+        ASSERT(adrpSec != nullptr);
+        ASSERT(adrpSec->relocs.size() == 1);
+        CHECK(adrpSec->relocs[0].addend == 0x2000);
     }
 
     {
@@ -347,7 +374,12 @@ int main() {
         badRel32Text.emit8(0xE8);
         const size_t dispOff = badRel32Text.currentOffset();
         badRel32Text.emit32LE(0);
-        badRel32Text.addRelocationAt(dispOff, RelocKind::Branch32, target, -8);
+        badRel32Text.addRelocationAt(dispOff,
+                                     RelocKind::Branch32,
+                                     target,
+                                     static_cast<int64_t>(
+                                         std::numeric_limits<int32_t>::max()) +
+                                         16);
 
         std::ostringstream badRel32Err;
         CoffWriter badRel32Writer(ObjArch::X86_64);
@@ -355,7 +387,7 @@ int main() {
                                     badRel32Text,
                                     badRel32Rodata,
                                     badRel32Err));
-        CHECK(badRel32Err.str().find("unsupported addend") != std::string::npos);
+        CHECK(badRel32Err.str().find("outside signed 32-bit range") != std::string::npos);
     }
 
     {
@@ -441,6 +473,63 @@ int main() {
         ASSERT(readObjFile(multiPath, multiObj, multiErr));
         CHECK(findSection(multiObj, ".text.func_a") != nullptr);
         CHECK(findSection(multiObj, ".text.func_b") != nullptr);
+    }
+
+    {
+        CodeSection textA;
+        CodeSection textB;
+        CodeSection rodataMulti;
+
+        textA.defineSymbol("func_a", SymbolBinding::Global, SymbolSection::Text);
+        textA.emit8(0x90);
+        textA.emit8(0xC3);
+        textB.defineSymbol("func_b", SymbolBinding::Global, SymbolSection::Text);
+        textB.emit8(0xC3);
+
+        rodataMulti.addSectionOffsetRelocation(RelocKind::Abs64, SymbolSection::Text, 1);
+        rodataMulti.emit64LE(0);
+
+        std::ostringstream sectionOffErr;
+        CoffWriter sectionOffWriter(ObjArch::X86_64);
+        const std::string sectionOffPath = "build/test-out/coff_multitext_section_offset.obj";
+        ASSERT(sectionOffWriter.write(
+            sectionOffPath, std::vector<CodeSection>{textA, textB}, rodataMulti, sectionOffErr));
+
+        ObjFile sectionOffObj;
+        ASSERT(readObjFile(sectionOffPath, sectionOffObj, sectionOffErr));
+        const ObjSection *sectionOffRdata = findSection(sectionOffObj, ".rdata");
+        ASSERT(sectionOffRdata != nullptr);
+        ASSERT(sectionOffRdata->relocs.size() == 1);
+        CHECK(sectionOffRdata->relocs[0].addend == 1);
+        CHECK(sectionOffObj.symbols[sectionOffRdata->relocs[0].symIndex].sectionIndex != 0);
+    }
+
+    {
+        std::vector<uint8_t> commonObj(20 + 18 + 4, 0);
+        writeLE16(commonObj, 0, 0x8664);      // IMAGE_FILE_MACHINE_AMD64
+        writeLE32(commonObj, 8, 20);          // symbol table immediately after header
+        writeLE32(commonObj, 12, 1);          // one symbol
+        const size_t symOff = 20;
+        const char name[] = "common";
+        for (size_t i = 0; i < sizeof(name) - 1; ++i)
+            commonObj[symOff + i] = static_cast<uint8_t>(name[i]);
+        writeLE32(commonObj, symOff + 8, 16); // common symbol size
+        writeLE16(commonObj, symOff + 12, 0); // IMAGE_SYM_UNDEFINED
+        commonObj[symOff + 16] = 2;           // IMAGE_SYM_CLASS_EXTERNAL
+        writeLE32(commonObj, symOff + 18, 4); // empty string table
+
+        ObjFile commonParsed;
+        std::ostringstream commonErr;
+        ASSERT(readObjFile(
+            commonObj.data(), commonObj.size(), "coff_common.obj", commonParsed, commonErr));
+        const ObjSection *commonSec = findSection(commonParsed, ".common");
+        ASSERT(commonSec != nullptr);
+        CHECK(commonSec->zeroFill);
+        CHECK(commonSec->data.size() == 16);
+        const uint32_t commonIdx = findSymbolIndex(commonParsed, "common");
+        ASSERT(commonIdx != 0);
+        CHECK(commonParsed.symbols[commonIdx].binding == ObjSymbol::Global);
+        CHECK(commonParsed.symbols[commonIdx].sectionIndex != 0);
     }
 
     {

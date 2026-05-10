@@ -30,6 +30,13 @@
 
 namespace viper::codegen::aarch64::passes {
 
+/// @brief Emit AArch64 assembly text for the entire module.
+/// @details Pipeline: validates @p module.ti, prints the rodata pool, then
+///          asks @ref AsmEmitter to print every MIR function. Finally appends
+///          platform-specific module-level directives (`.subsections_via_symbols`
+///          on Mach-O, `.note.GNU-stack` on Linux ELF). The accumulated string
+///          is stored in @p module.assembly for downstream consumers.
+/// @return true on success; on failure records errors via @p diags.
 bool EmitPass::run(AArch64Module &module, Diagnostics &diags) {
     if (!module.ti) {
         diags.error("EmitPass: ti must be non-null");

@@ -53,6 +53,9 @@ namespace macho_x64 {
 constexpr uint32_t kUnsigned = 0; // X86_64_RELOC_UNSIGNED
 constexpr uint32_t kSigned = 1;   // X86_64_RELOC_SIGNED
 constexpr uint32_t kBranch = 2;   // X86_64_RELOC_BRANCH
+constexpr uint32_t kSigned1 = 5;  // X86_64_RELOC_SIGNED_1
+constexpr uint32_t kSigned2 = 6;  // X86_64_RELOC_SIGNED_2
+constexpr uint32_t kSigned4 = 7;  // X86_64_RELOC_SIGNED_4
 } // namespace macho_x64
 
 // ── Mach-O ARM64 Relocation Types (mach-o/arm64/reloc.h) ────────────────

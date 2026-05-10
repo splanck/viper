@@ -7,6 +7,16 @@
 //
 // File: codegen/common/linker/MacImportPlanner.cpp
 // Purpose: macOS framework and dylib import planning for the native linker.
+//          Resolves each undefined dynamic symbol to the dylib that exports it
+//          and produces the LC_LOAD_DYLIB list plus per-symbol ordinal map.
+// Key invariants:
+//   - The symbol-to-dylib lookup is fully baked-in; no filesystem access.
+//   - Symbols absent from the table route to flat-lookup
+//     (BIND_SPECIAL_DYLIB_FLAT_LOOKUP) so dyld searches every dylib.
+//   - Returned ordinals are 1-based and stable for a given input set.
+// Ownership/Lifetime: stateless — caller owns the populated MacImportPlan.
+// Links: codegen/common/linker/PlatformImportPlanner.hpp,
+//        codegen/common/linker/MachOExeWriter.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -22,12 +32,18 @@
 namespace viper::codegen::linker {
 namespace {
 
+/// @brief One row in the baked-in symbol-to-dylib table.
+/// @details Each rule contributes a dylib (`dylibPath`) plus two null-terminated
+///          arrays: name prefixes whose matches are imported from this dylib,
+///          and exact symbol names. Either array may be nullptr.
 struct MacImportRule {
     const char *dylibPath;
     const char *const *prefixes;
     const char *const *exactSyms;
 };
 
+/// @brief Drop leading underscores from a Mach-O symbol so the lookup table
+///        can store unmangled keys (e.g., "main", "printf", not "_main").
 std::string stripLeadingUnderscores(const std::string &name) {
     size_t i = 0;
     while (i < name.size() && name[i] == '_')
@@ -35,6 +51,7 @@ std::string stripLeadingUnderscores(const std::string &name) {
     return (i > 0) ? name.substr(i) : name;
 }
 
+/// @brief Recognise the OBJC_CLASS_$_/OBJC_METACLASS_$_ class-ref naming convention.
 bool isObjcClassLookupSymbol(const std::string &name) {
     const std::string stripped = stripLeadingUnderscores(name);
     return stripped.rfind("OBJC_CLASS_$_", 0) == 0 || stripped.rfind("OBJC_METACLASS_$_", 0) == 0;

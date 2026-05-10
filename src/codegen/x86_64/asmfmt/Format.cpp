@@ -3,6 +3,8 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
+//===----------------------------------------------------------------------===//
+//
 // File: codegen/x86_64/asmfmt/Format.cpp
 // Purpose: Format operands and data blobs for x86-64 assembly emission.
 // Key invariants:

@@ -81,16 +81,28 @@ enum class RelocKind : uint8_t {
     ///   COFF:   IMAGE_REL_ARM64_PAGEOFFSET_12A (6)
     A64AddPageOff12,
 
+    /// LDR/STR 12-bit page offset scaled by 4.
+    ///   ELF:    R_AARCH64_LDST32_ABS_LO12_NC (285)
+    ///   Mach-O: ARM64_RELOC_PAGEOFF12 (4)
+    ///   COFF:   IMAGE_REL_ARM64_PAGEOFFSET_12L (7)
+    A64LdSt32Off12,
+
     /// LDR/STR 12-bit page offset scaled by 8.
     ///   ELF:    R_AARCH64_LDST64_ABS_LO12_NC (286)
     ///   Mach-O: ARM64_RELOC_PAGEOFF12 (4)
     ///   COFF:   IMAGE_REL_ARM64_PAGEOFFSET_12L (7)
     A64LdSt64Off12,
 
+    /// LDR/STR 12-bit page offset scaled by 16.
+    ///   ELF:    R_AARCH64_LDST128_ABS_LO12_NC (299)
+    ///   Mach-O: ARM64_RELOC_PAGEOFF12 (4)
+    ///   COFF:   IMAGE_REL_ARM64_PAGEOFFSET_12L (7)
+    A64LdSt128Off12,
+
     /// B.cond/CBZ/CBNZ 19-bit PC-relative.
     ///   ELF:    R_AARCH64_CONDBR19 (280)
     ///   Mach-O: Not used (conditional branches always resolve internally)
-    ///   COFF:   IMAGE_REL_ARM64_BRANCH19 (8)
+    ///   COFF:   IMAGE_REL_ARM64_BRANCH19 (15)
     A64CondBr19,
 };
 

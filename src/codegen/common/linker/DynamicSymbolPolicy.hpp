@@ -7,7 +7,19 @@
 //
 // File: codegen/common/linker/DynamicSymbolPolicy.hpp
 // Purpose: Shared policy helpers for symbols that are allowed to resolve
-//          dynamically through system libraries or platform frameworks.
+//          dynamically through system libraries or platform frameworks. The
+//          native linker uses these to decide whether an undefined symbol is a
+//          legitimate dyld/dlopen reference (libc, ObjC, Win32, pthreads, etc.)
+//          versus a real linker error.
+// Key invariants:
+//   - The exact-match list and prefix lists are sorted by use frequency, not
+//     alphabetically; do not reorder without measuring impact on link cost.
+//   - Symbols beginning with leading underscores are stripped before matching
+//     to handle the Mach-O "_main"/"main" convention transparently.
+// Ownership/Lifetime: Stateless inline helpers; no allocation beyond returned
+//                     strings.
+// Links: SymbolResolver.cpp, NativeLinker.cpp, MachOExeWriter.cpp,
+//        PeExeWriter.cpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -19,6 +31,11 @@
 
 namespace viper::codegen::linker {
 
+/// @brief Normalise a symbol name to its "bare" form for prefix matching.
+/// @details Drops any leading underscores (Mach-O mangles "main" to "_main")
+///          and trims the trailing "$DARWIN_EXTSN" Darwin-extension marker so
+///          variants like `select` and `select$DARWIN_EXTSN` compare equal.
+/// @return The stripped name, or @p name unchanged when no transform applied.
 inline std::string stripDynamicSymbolLeadingUnderscores(const std::string &name) {
     size_t i = 0;
     while (i < name.size() && name[i] == '_')
@@ -35,6 +52,8 @@ inline std::string stripDynamicSymbolLeadingUnderscores(const std::string &name)
     return (i == 0 && end == name.size()) ? name : name.substr(i, end - i);
 }
 
+/// @brief Test whether @p name (or its stripped form) starts with any of the
+///        null-terminated prefix list @p prefixes (terminated by a nullptr entry).
 inline bool dynamicSymbolHasPrefix(const std::string &name, const char *const *prefixes) {
     const std::string stripped = stripDynamicSymbolLeadingUnderscores(name);
     for (const char *const *p = prefixes; p != nullptr && *p != nullptr; ++p) {
@@ -45,6 +64,9 @@ inline bool dynamicSymbolHasPrefix(const std::string &name, const char *const *p
     return false;
 }
 
+/// @brief Recognise an Itanium-mangled libc++ symbol (`std::*`, type-info, etc.).
+/// @details libc++ symbols are not present in Viper's runtime archives but are
+///          satisfied by `/usr/lib/libc++.dylib` at load time on macOS.
 inline bool isKnownMacLibcxxDynamicSymbol(const std::string &name) {
     static const char *const kMacLibcxxPrefixes[] = {
         "ZNSt",

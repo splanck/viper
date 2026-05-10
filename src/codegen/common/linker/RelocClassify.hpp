@@ -44,7 +44,13 @@ enum class RelocAction {
 };
 
 // ── Per-format mapping functions ─────────────────────────────────────────
+//
+// Each helper maps a single (format × architecture) relocation-type number to
+// a format-independent RelocAction. RelocApplier then performs the patching
+// math by RelocAction, never by raw type number. Unknown types fall through
+// to RelocAction::Unknown so the caller can report a precise diagnostic.
 
+/// @brief Map an ELF/x86_64 relocation type code to a format-independent action.
 inline RelocAction elfX64Action(uint32_t type) {
     switch (type) {
         case elf_x64::kAbs64:
@@ -60,6 +66,7 @@ inline RelocAction elfX64Action(uint32_t type) {
     }
 }
 
+/// @brief Map an ELF/AArch64 relocation type code to a format-independent action.
 inline RelocAction elfA64Action(uint32_t type) {
     switch (type) {
         case elf_a64::kAbs64:
@@ -89,11 +96,15 @@ inline RelocAction elfA64Action(uint32_t type) {
     }
 }
 
+/// @brief Map a Mach-O/x86_64 relocation type code to a format-independent action.
 inline RelocAction machoX64Action(uint32_t type) {
     switch (type) {
         case macho_x64::kUnsigned:
             return RelocAction::Abs64;
         case macho_x64::kSigned:
+        case macho_x64::kSigned1:
+        case macho_x64::kSigned2:
+        case macho_x64::kSigned4:
             return RelocAction::PCRel32;
         case macho_x64::kBranch:
             return RelocAction::PCRel32;
@@ -102,6 +113,7 @@ inline RelocAction machoX64Action(uint32_t type) {
     }
 }
 
+/// @brief Map a Mach-O/AArch64 relocation type code to a format-independent action.
 inline RelocAction machoA64Action(uint32_t type) {
     switch (type) {
         case macho_a64::kUnsigned:
@@ -128,6 +140,7 @@ inline RelocAction machoA64Action(uint32_t type) {
     }
 }
 
+/// @brief Map a COFF/x86_64 relocation type code to a format-independent action.
 inline RelocAction coffX64Action(uint32_t type) {
     switch (type) {
         case coff_x64::kAddr64:
@@ -146,6 +159,7 @@ inline RelocAction coffX64Action(uint32_t type) {
     }
 }
 
+/// @brief Map a COFF/AArch64 relocation type code to a format-independent action.
 inline RelocAction coffA64Action(uint32_t type) {
     switch (type) {
         case coff_a64::kAddr64:

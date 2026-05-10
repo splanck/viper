@@ -7,6 +7,18 @@
 //
 // File: codegen/common/linker/LinuxImportPlanner.cpp
 // Purpose: Linux ELF dynamic import classification for the native linker.
+//          Maps each undefined dynamic symbol to one of a fixed set of libraries
+//          (libc, libm, libdl, libpthread, libX11, libasound) and produces the
+//          deduplicated DT_NEEDED list for the ELF executable writer.
+// Key invariants:
+//   - The lookup table is fully baked-in; no filesystem access.
+//   - DT_NEEDED order follows a stable ABI-conventional sequence: libc.so.6 is
+//     always first (when present) so unresolved C runtime symbols satisfy.
+//   - Returning false leaves @p plan in a partially-populated state; callers
+//     should treat this as a fatal link error.
+// Ownership/Lifetime: stateless — caller owns the populated LinuxImportPlan.
+// Links: codegen/common/linker/PlatformImportPlanner.hpp,
+//        codegen/common/linker/ElfExeWriter.hpp
 //
 //===----------------------------------------------------------------------===//
 

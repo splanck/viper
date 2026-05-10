@@ -170,16 +170,19 @@ ObjFile
 ### Format-Specific Handling
 
 - **ELF**: Explicit addends from `.rela` sections and implicit addends from `.rel` sections are supported. Extended
-  section counts are decoded from section header 0. `COMMON` symbols are materialized as zero-filled storage, and
-  absolute symbols keep their absolute values.
+  section counts are decoded from section header 0. `SHT_GROUP` COMDAT groups are mapped to associative sections,
+  relocation table byte sizes must be exact multiples of their entry size, `COMMON` symbols are materialized as
+  zero-filled storage, and absolute symbols keep their absolute values.
 - **Mach-O**: Addends are extracted from instruction bytes or from ARM64 `ADDEND` relocations. Leading `_` is
   stripped from external symbol names (Mach-O convention). Non-extern section-relative relocations resolve through
-  synthetic local section symbols, ARM64 `ADDEND` payloads are sign-extended, and `__DWARF`/debug sections are
-  preserved as non-alloc sections.
+  synthetic local section symbols, ARM64 `ADDEND` payloads are sign-extended, consecutive addend records are
+  rejected, and `__DWARF`/debug sections are preserved as non-alloc sections. Executable and writable flags are
+  inferred from both section attributes and data-like segment names.
 - **COFF**: Addends are extracted per relocation kind. AMD64/ARM64 `ADDR64` uses an 8-byte addend; ARM64 branch,
   ADRP page, and page-offset relocations decode their instruction fields so writer-emitted placeholders do not
-  become bogus addends. Weak extern fallback records, associative COMDAT section relationships, and COFF relocation
-  overflow records are parsed; unsupported BigObj inputs fail with a specific diagnostic.
+  become bogus addends. Common symbols are allocated into zero-filled storage. Weak extern fallback records,
+  associative COMDAT section relationships, and COFF relocation overflow records are parsed; unsupported BigObj
+  inputs fail with a specific diagnostic.
 
 ### Reader Validation
 
@@ -217,8 +220,8 @@ Missing extra objects, unreadable archives, format mismatches, and machine misma
 Symbol resolution uses an iterative fixed-point algorithm:
 
 1. **Seed**: Add the user's `.o` file. All its globals → defined, all its extern refs → undefined.
-2. **Scan archives**: For each undefined symbol, check each archive's symbol index. If found, extract that member,
-   parse it, add its definitions and new undefined refs.
+2. **Scan archives**: For each undefined symbol, including a COFF weak-external fallback name, check each archive's
+   symbol index. If found, extract that member, parse it, add its definitions and new undefined refs.
 3. **Repeat** until no new definitions are found (handles cross-archive dependencies).
 4. **Classify remaining**: Unresolved symbols are marked as dynamic (expected from shared libraries).
 
@@ -341,8 +344,14 @@ symbol from being rebound to an unrelated global definition.
 - COFF `ADDR32NB`, `SECREL`, and `SECTION` relocations are range-checked before narrowing; negative RVAs are rejected.
 - COFF `SECTION`/`SECREL` relocations resolve the target output section from the symbol's input-section identity,
   not by searching final addresses, so legal end-of-section symbols are accepted.
+- COFF `SECTION` uses a 2-byte patch width, while `SECREL` uses 4 bytes; both can appear near the end of an input
+  chunk as long as their actual field width fits.
+- COFF ARM64 `SECREL_LOW12L` and GOT page-offset relocations validate that the instruction at the patch site is the
+  expected unsigned-offset load/store form before rewriting its immediate field.
 - A live alloc input section that still has relocations must appear in the output layout. Missing placement is a hard
   error because otherwise the linker would silently skip fixups for live bytes.
+- Dynamic symbol bindings requested by symbol resolution are honored directly during relocation application, even
+  when no synthetic GOT symbol has been inserted yet.
 
 ### AArch64 Branch Trampolines
 
@@ -366,6 +375,10 @@ non-redirectable local labels. Executable-section relocations that materialize a
 Within merged output sections, Windows `.CRT$*` and `.tls$*` subsections retain lexicographic order, ELF
 `.preinit_array.*`/`.init_array.*`/`.fini_array.*` inputs sort by constructor priority before generic alignment
 sorting, and Mach-O `__mod_init_func`/`__mod_term_func` inputs preserve source order.
+
+Section merging and virtual-address assignment diagnose alignment exceptions, image-base/page-size overflow, merged
+section byte-size overflow, and alloc-section virtual-address overflow instead of truncating arithmetic. Windows
+`.pdata` tables must be an exact multiple of the platform unwind-record size before they are sorted.
 
 ---
 

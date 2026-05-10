@@ -6,9 +6,24 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/common/LinkerSupport.cpp
-// Purpose: Implementation of shared linker utilities.
-// Cross-platform touchpoints: runtime archive discovery, system-library
-//                             naming, tool invocation, and host linker flags.
+// Purpose: Implementation of shared linker utilities used by both x86_64 and
+//          AArch64 codegen pipelines: runtime symbol scanning, archive
+//          discovery, missing-target rebuild, and system linker invocation.
+// Key invariants:
+//   - Archive paths are always validated via fileExists() before being added
+//     to the link command; missing archives trigger a cmake rebuild instead of
+//     a silent link failure.
+//   - LinkContext cache keys include both the build directory and the sorted
+//     symbol set so cache hits cannot collide across distinct programs.
+// Ownership/Lifetime:
+//   - All exported functions are stateless; per-call state lives in the caller-
+//     provided LinkContext.
+//   - The link-context cache is process-wide, guarded by a static mutex.
+// Cross-platform touchpoints: runtime archive naming (.a/.lib), system-library
+//                             discovery, tool invocation, and host linker flags.
+// Links: codegen/common/LinkerSupport.hpp,
+//        codegen/x86_64/CodegenPipeline.hpp,
+//        codegen/aarch64/CodegenPipeline.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -44,6 +59,9 @@
 namespace viper::codegen::common {
 namespace {
 
+/// @brief Build the platform-correct archive filename for a given library base.
+/// @details Produces `<base>.lib` on Windows and `lib<base>.a` elsewhere; the
+///          base name should not include any prefix or extension.
 #ifdef _WIN32
 std::string archiveFileName(std::string_view libBaseName) {
     return std::string(libBaseName) + ".lib";
@@ -54,16 +72,24 @@ std::string archiveFileName(std::string_view libBaseName) {
 }
 #endif
 
+/// @brief Probe whether @p dir looks like an installed Viper lib directory.
+/// @details Tests for the presence of libviper_rt_base, the always-required
+///          base archive, as a low-cost fingerprint for an installed layout.
 bool dirHasArchiveProbe(const std::filesystem::path &dir) {
     return fileExists(dir / archiveFileName("viper_rt_base"));
 }
 
+/// @brief Resolve the installed-layout path for a runtime/support library, if any.
+/// @return std::nullopt when no installed lib directory has been discovered.
 std::optional<std::filesystem::path> installedLibraryPath(std::string_view libBaseName) {
     if (const auto installedLibDir = findInstalledLibDir())
         return *installedLibDir / archiveFileName(libBaseName);
     return std::nullopt;
 }
 
+/// @brief Best-effort static-layout path for a support lib, used as a final fallback.
+/// @details Treats `vipergui` specially because GUI code lives under src/lib/gui;
+///          everything else falls through to a bare `lib/` prefix.
 std::filesystem::path fallbackSupportLibraryPath(std::string_view libBaseName) {
 #ifdef _WIN32
     if (libBaseName == "vipergui")
@@ -76,6 +102,10 @@ std::filesystem::path fallbackSupportLibraryPath(std::string_view libBaseName) {
 #endif
 }
 
+/// @brief Locate a support-library archive inside a CMake build directory.
+/// @details Probes Release/Debug/no-config sub-paths in that order so the same
+///          binary works against single- and multi-config CMake generators.
+///          Returns an empty path when no candidate exists.
 std::filesystem::path buildTreeSupportLibraryPath(const std::filesystem::path &buildDir,
                                                   std::string_view libBaseName) {
     auto pickFirstExisting =
@@ -103,6 +133,9 @@ std::filesystem::path buildTreeSupportLibraryPath(const std::filesystem::path &b
 #endif
 }
 
+/// @brief Return the platform's standard library search dirs for installed Viper.
+/// @details macOS uses /usr/local/viper/lib; Linux walks the usual /usr/{,local}
+///          tree; Windows returns an empty list (everything is co-located).
 std::vector<std::filesystem::path> standardInstalledLibDirs() {
     std::vector<std::filesystem::path> dirs;
 #if defined(__APPLE__)
@@ -116,10 +149,16 @@ std::vector<std::filesystem::path> standardInstalledLibDirs() {
     return dirs;
 }
 
+/// @brief Order-sensitive equality on two RtComponent lists.
+/// @details Used by the LinkContext cache to detect when a recomputed closure
+///          changed and the cache entry must be evicted.
 bool componentsEqual(const std::vector<RtComponent> &lhs, const std::vector<RtComponent> &rhs) {
     return lhs == rhs;
 }
 
+/// @brief Recompute @p ctx.requiredArchives from its current requiredComponents.
+/// @details Called whenever the component list mutates (initial discovery or
+///          archive-closure expansion) so the archive list stays in sync.
 void rebuildRequiredArchives(LinkContext &ctx) {
     ctx.requiredArchives.clear();
     for (auto comp : ctx.requiredComponents) {
@@ -128,6 +167,10 @@ void rebuildRequiredArchives(LinkContext &ctx) {
     }
 }
 
+/// @brief Build any required runtime/support archives that are missing from disk.
+/// @details Drives `cmake --build <dir> --target <missing...>` for every
+///          required archive plus the appropriate gfx/gui/audio support libs.
+///          Returns false (and writes to @p err) if the cmake invocation fails.
 bool ensureRequiredTargetsBuilt(const LinkContext &ctx, std::ostream &out, std::ostream &err) {
     if (ctx.buildDir.empty())
         return true;
@@ -173,6 +216,15 @@ bool ensureRequiredTargetsBuilt(const LinkContext &ctx, std::ostream &out, std::
     return true;
 }
 
+/// @brief Walk archive members for transitive runtime symbols and union them in.
+/// @details Performs a fixed-point closure: for every undefined symbol in @p
+///          symbols, if a member of any required archive defines it, the
+///          member's other rt_* references are added to @p symbols and a new
+///          iteration is scheduled. Members are extracted at most once.
+/// @param ctx Resolved link context whose archives are scanned.
+/// @param symbols In/out symbol set; expanded to include the transitive closure.
+/// @param err Stream for archive/object-file read errors.
+/// @return true on success, false if any archive or member could not be read.
 bool addArchiveClosureSymbols(const LinkContext &ctx,
                               std::unordered_set<std::string> &symbols,
                               std::ostream &err) {
@@ -260,6 +312,9 @@ bool addArchiveClosureSymbols(const LinkContext &ctx,
     return true;
 }
 
+/// @brief Stable, deterministic cache key for a (build dir, symbol set) pair.
+/// @details Sorts the symbol set so identical inputs produce identical keys
+///          regardless of hash-table iteration order.
 std::string linkContextCacheKey(const std::filesystem::path &buildDir,
                                 const std::unordered_set<std::string> &symbols) {
     std::vector<std::string> ordered(symbols.begin(), symbols.end());

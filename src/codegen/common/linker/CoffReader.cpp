@@ -117,15 +117,18 @@ struct CoffAuxWeakExternal {
 #pragma pack(pop)
 } // namespace coff
 
+/// @brief Decode an unaligned little-endian uint32 from @p p.
 static uint32_t readLE32(const uint8_t *p) {
     return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
 
+/// @brief Decode an unaligned little-endian uint16 from @p p.
 static uint16_t readLE16(const uint8_t *p) {
     return static_cast<uint16_t>(p[0]) | (static_cast<uint16_t>(p[1]) << 8);
 }
 
+/// @brief Decode an unaligned little-endian uint64 from @p p.
 static uint64_t readLE64(const uint8_t *p) {
     uint64_t v = 0;
     for (unsigned i = 0; i < 8; ++i)
@@ -133,10 +136,12 @@ static uint64_t readLE64(const uint8_t *p) {
     return v;
 }
 
+/// @brief Verify that the byte range [@p off, @p off+@p len) fits within @p size.
 static bool checkedRange(size_t off, size_t len, size_t size) {
     return off <= size && len <= size - off;
 }
 
+/// @brief Add @p lhs + @p rhs into @p out, returning false on size_t overflow.
 static bool checkedAdd(size_t lhs, size_t rhs, size_t &out) {
     if (lhs > std::numeric_limits<size_t>::max() - rhs)
         return false;
@@ -144,6 +149,7 @@ static bool checkedAdd(size_t lhs, size_t rhs, size_t &out) {
     return true;
 }
 
+/// @brief Multiply @p lhs * @p rhs into @p out, returning false on size_t overflow.
 static bool checkedMul(size_t lhs, size_t rhs, size_t &out) {
     if (lhs != 0 && rhs > std::numeric_limits<size_t>::max() / lhs)
         return false;
@@ -151,6 +157,8 @@ static bool checkedMul(size_t lhs, size_t rhs, size_t &out) {
     return true;
 }
 
+/// @brief Copy a NUL-terminated string out of @p data within the @p len-byte window.
+/// @return false if no NUL is found inside the bounds.
 static bool readBoundedString(const uint8_t *data, size_t off, size_t len, std::string &out) {
     const uint8_t *begin = data + off;
     const void *nul = std::memchr(begin, '\0', len);
@@ -160,6 +168,9 @@ static bool readBoundedString(const uint8_t *data, size_t off, size_t len, std::
     return true;
 }
 
+/// @brief Sign-extend the low @p bits of @p value to a 64-bit signed integer.
+/// @details Used to recover signed COFF/AArch64 immediate fields from the raw
+///          bit pattern of an instruction word.
 static int64_t signExtend(uint64_t value, unsigned bits) {
     const uint64_t signBit = uint64_t{1} << (bits - 1);
     const uint64_t mask = (uint64_t{1} << bits) - 1;
@@ -167,12 +178,26 @@ static int64_t signExtend(uint64_t value, unsigned bits) {
     return static_cast<int64_t>((value ^ signBit) - signBit);
 }
 
+/// @brief Bounds-checked typed pointer cast at @p offset within a byte buffer.
+/// @return nullptr when reading sizeof(T) bytes at @p offset would exceed @p size.
 template <typename T> static const T *coffAt(const uint8_t *data, size_t size, size_t offset) {
     if (offset > size || sizeof(T) > size - offset)
         return nullptr;
     return reinterpret_cast<const T *>(data + offset);
 }
 
+/// @brief Recover a relocation's signed addend from the live instruction bytes.
+/// @details COFF, unlike ELF RELA, does not carry an explicit addend; the
+///          assembler stores the addend inline in the operand field of the
+///          instruction it patches. This helper decodes the addend per
+///          relocation type — REL32 reads a literal 32-bit slot, ARM64 BR/B.cond
+///          extract their immediate fields and rescale by 4, ADRP recovers the
+///          21-bit page delta, etc.
+/// @param machine     COFF Machine field (AMD64 or ARM64).
+/// @param relocType   Format-native relocation type number.
+/// @param sectionData Section bytes the relocation applies to.
+/// @param offset      Byte offset of the reloc site within @p sectionData.
+/// @return Decoded addend, or 0 when the type is unrecognised or out of range.
 static int64_t extractCoffAddend(uint16_t machine,
                                  uint16_t relocType,
                                  const std::vector<uint8_t> &sectionData,
@@ -208,11 +233,21 @@ static int64_t extractCoffAddend(uint16_t machine,
             const uint32_t immhi = (insn >> 5) & 0x7FFFFu;
             // COFF stores the byte addend in ADRP's immediate field. The linker
             // later applies page rounding when it computes PAGE(S + A) - PAGE(P).
-            return signExtend((immhi << 2) | immlo, 21);
+            return signExtend((immhi << 2) | immlo, 21) << 12;
         }
         case coff_a64::kPageOff12A:
             return static_cast<int64_t>((insn >> 10) & 0xFFFu);
         case coff_a64::kPageOff12L: {
+            uint32_t shift = insn >> 30;
+            if ((insn & 0x04800000u) == 0x04800000u)
+                shift = 4;
+            return static_cast<int64_t>(((insn >> 10) & 0xFFFu) << shift);
+        }
+        case coff_a64::kSecRelLow12A:
+            return static_cast<int64_t>((insn >> 10) & 0xFFFu);
+        case coff_a64::kSecRelHigh12A:
+            return static_cast<int64_t>(((insn >> 10) & 0xFFFu) << 12);
+        case coff_a64::kSecRelLow12L: {
             uint32_t shift = insn >> 30;
             if ((insn & 0x04800000u) == 0x04800000u)
                 shift = 4;
@@ -337,8 +372,19 @@ bool readCoffObj(
         // Parse section name (may reference string table if starts with '/').
         if (sh->Name[0] == '/') {
             size_t off = 0;
-            for (int c = 1; c < 8 && sh->Name[c] >= '0' && sh->Name[c] <= '9'; ++c)
+            int c = 1;
+            if (c >= 8 || sh->Name[c] < '0' || sh->Name[c] > '9') {
+                err << "error: " << name << ": malformed COFF long section name reference\n";
+                return false;
+            }
+            for (; c < 8 && sh->Name[c] >= '0' && sh->Name[c] <= '9'; ++c)
                 off = off * 10 + (sh->Name[c] - '0');
+            for (; c < 8; ++c) {
+                if (sh->Name[c] != '\0') {
+                    err << "error: " << name << ": malformed COFF long section name reference\n";
+                    return false;
+                }
+            }
             if (off > std::numeric_limits<uint32_t>::max() ||
                 !readLongName(static_cast<uint32_t>(off), sec.name))
                 return false;
@@ -439,6 +485,31 @@ bool readCoffObj(
 
     std::vector<uint8_t> comdatSelectionBySection(hdr->NumberOfSections + 1, 0);
     std::vector<uint32_t> associativeSectionBySection(hdr->NumberOfSections + 1, 0);
+    uint32_t commonSecIdx = 0;
+    auto allocateCommon = [&](size_t sizeBytes, size_t alignment) -> size_t {
+        if (commonSecIdx == 0) {
+            ObjSection common;
+            common.name = ".common";
+            common.writable = true;
+            common.alloc = true;
+            common.zeroFill = true;
+            common.alignment = 1;
+            commonSecIdx = static_cast<uint32_t>(obj.sections.size());
+            obj.sections.push_back(std::move(common));
+        }
+        auto &common = obj.sections[commonSecIdx];
+        if (alignment == 0)
+            alignment = 1;
+        if (alignment > common.alignment)
+            common.alignment = static_cast<uint32_t>(alignment);
+        const size_t rem = common.data.size() % alignment;
+        if (rem != 0)
+            common.data.resize(common.data.size() + (alignment - rem), 0);
+        const size_t off = common.data.size();
+        common.data.resize(off + sizeBytes, 0);
+        return off;
+    };
+
     for (uint32_t i = 0; i < hdr->NumberOfSymbols;) {
         const auto *sym = coffAt<coff::CoffSymbol>(
             data, size, hdr->PointerToSymbolTable + i * sizeof(coff::CoffSymbol));
@@ -498,8 +569,18 @@ bool readCoffObj(
         ObjSymbol os;
         if (!readSymName(sym, os.name))
             return false;
+        bool offsetAlreadySet = false;
 
-        if (sym->SectionNumber == coff::IMAGE_SYM_UNDEFINED) {
+        if (sym->SectionNumber == coff::IMAGE_SYM_UNDEFINED &&
+            sym->StorageClass == coff::IMAGE_SYM_CLASS_EXTERNAL && sym->Value > 0) {
+            os.binding = ObjSymbol::Global;
+            os.sectionIndex = commonSecIdx == 0
+                                  ? static_cast<uint32_t>(obj.sections.size())
+                                  : commonSecIdx;
+            os.offset = allocateCommon(static_cast<size_t>(sym->Value), 8);
+            os.size = static_cast<size_t>(sym->Value);
+            offsetAlreadySet = true;
+        } else if (sym->SectionNumber == coff::IMAGE_SYM_UNDEFINED) {
             os.binding = ObjSymbol::Undefined;
             if (sym->StorageClass == coff::IMAGE_SYM_CLASS_WEAK_EXTERNAL) {
                 os.weakExternal = true;
@@ -542,7 +623,8 @@ bool readCoffObj(
         if (sym->SectionNumber > 0 &&
             static_cast<uint16_t>(sym->SectionNumber) <= hdr->NumberOfSections)
             os.sectionIndex = static_cast<uint32_t>(sym->SectionNumber);
-        os.offset = sym->Value;
+        if (!offsetAlreadySet)
+            os.offset = sym->Value;
 
         obj.symbols.push_back(std::move(os));
 

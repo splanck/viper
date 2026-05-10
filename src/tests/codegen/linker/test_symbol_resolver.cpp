@@ -23,12 +23,17 @@
 #include "codegen/common/linker/LinkTypes.hpp"
 #include "codegen/common/linker/ObjFileReader.hpp"
 #include "codegen/common/linker/SymbolResolver.hpp"
+#include "codegen/common/objfile/CodeSection.hpp"
+#include "codegen/common/objfile/ElfWriter.hpp"
 
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 
 using namespace viper::codegen::linker;
+using namespace viper::codegen::objfile;
 
 static int gFail = 0;
 
@@ -83,7 +88,20 @@ static void addSymbol(ObjFile &obj,
     obj.symbols.push_back(sym);
 }
 
+static std::vector<uint8_t> readBinaryFile(const std::string &path) {
+    std::ifstream in(path, std::ios::binary | std::ios::ate);
+    if (!in)
+        return {};
+    const auto size = in.tellg();
+    in.seekg(0);
+    std::vector<uint8_t> bytes(static_cast<size_t>(size));
+    in.read(reinterpret_cast<char *>(bytes.data()), size);
+    return bytes;
+}
+
 int main() {
+    std::filesystem::create_directories("build/test-out");
+
     // --- Single object: global symbol resolves ---
     {
         auto obj = makeObj("main.o", {".text"});
@@ -441,6 +459,49 @@ int main() {
         CHECK(ok);
         CHECK(globalSyms.count("") == 0);
         CHECK(globalSyms.count("real_sym") == 1);
+    }
+
+    // --- COFF weak external fallback triggers archive extraction ---
+    {
+        auto user = makeObj("weak_user.obj", {".text"});
+        addSymbol(user, "main", 1, ObjSymbol::Global);
+        ObjSymbol weak;
+        weak.name = "maybe_func";
+        weak.binding = ObjSymbol::Undefined;
+        weak.weakExternal = true;
+        weak.weakDefaultName = "fallback_func";
+        user.symbols.push_back(std::move(weak));
+
+        CodeSection providerText;
+        CodeSection providerRodata;
+        providerText.defineSymbol("fallback_func", SymbolBinding::Global, SymbolSection::Text);
+        providerText.emit8(0xC3);
+
+        std::ostringstream writeErr;
+        const std::string providerPath = "build/test-out/weak_fallback_provider.o";
+        ElfWriter writer(ObjArch::X86_64);
+        CHECK(writer.write(providerPath, providerText, providerRodata, writeErr));
+
+        Archive archive;
+        archive.path = "synthetic_weak_fallback.a";
+        archive.data = readBinaryFile(providerPath);
+        archive.members.push_back({"fallback.o", 0, archive.data.size()});
+        archive.symbolIndex["fallback_func"] = 0;
+
+        std::vector<ObjFile> initObjs = {user};
+        std::vector<Archive> archives = {archive};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(initObjs, archives, globalSyms, allObjects, dynamicSyms, err);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(allObjects.size() == 2);
+        CHECK(globalSyms.count("fallback_func") == 1);
+        CHECK(globalSyms["fallback_func"].binding == GlobalSymEntry::Global);
+        CHECK(globalSyms["fallback_func"].objIndex == 1);
     }
 
     // --- Undefined then defined in same object ---

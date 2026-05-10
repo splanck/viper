@@ -336,6 +336,14 @@ class CodeSection {
             throw std::length_error("CodeSection relocation reservation exceeds addressable size");
         reserveRelocations(relocations_.size() + other.relocations().size());
         std::vector<uint32_t> symbolRemap(other.symbols().count(), 0);
+        SymbolSection appendedSection = SymbolSection::Undefined;
+        for (uint32_t i = 1; i < other.symbols().count(); ++i) {
+            const Symbol &sym = other.symbols().at(i);
+            if (sym.binding != SymbolBinding::External && sym.section != SymbolSection::Undefined) {
+                appendedSection = sym.section;
+                break;
+            }
+        }
 
         auto rebaseLogicalOffset = [&](size_t logicalOffset) -> size_t {
             if (logicalOffset < other.offsetBias_)
@@ -377,6 +385,8 @@ class CodeSection {
             Relocation rebased = reloc;
             rebased.offset = rebaseLogicalOffset(reloc.offset);
             rebased.symbolIndex = symbolRemap[reloc.symbolIndex];
+            if (rebased.targetOffsetValid && rebased.targetSection == appendedSection)
+                rebased.targetOffset = rebaseLogicalOffset(reloc.targetOffset);
             relocations_.push_back(rebased);
         }
 

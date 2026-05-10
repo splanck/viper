@@ -106,6 +106,10 @@ bool isInitFunction(const std::string &name) {
     return false;
 }
 
+/// @brief Test whether two function declarations share an identical IL signature.
+/// @details Compares return type, parameter count + types, and varargs flag. Used
+///          when matching an Import stub to its Export definition before deciding
+///          whether a thunk is needed.
 bool sameSignature(const Function &a, const Function &b) {
     if (a.retType.kind != b.retType.kind || a.params.size() != b.params.size() ||
         a.isVarArg != b.isVarArg)
@@ -117,11 +121,16 @@ bool sameSignature(const Function &a, const Function &b) {
     return true;
 }
 
+/// @brief Detect the I1 ↔ I64 narrow/widen pair that boolean-interop thunks bridge.
 bool isBooleanMismatch(Type::Kind a, Type::Kind b) {
     return (a == Type::Kind::I1 && b == Type::Kind::I64) ||
            (a == Type::Kind::I64 && b == Type::Kind::I1);
 }
 
+/// @brief Check whether an Import/Export pair differs only by I1↔I64 boolean
+///        coercion in the return type or any parameter slot.
+/// @details When this returns true the linker can synthesise a boolean-coercion
+///          thunk via il::link::generateBooleanThunks instead of erroring out.
 bool booleanInteropCompatible(const Function &importDecl, const Function &definition) {
     if (importDecl.params.size() != definition.params.size() ||
         importDecl.isVarArg != definition.isVarArg)
@@ -138,6 +147,8 @@ bool booleanInteropCompatible(const Function &importDecl, const Function &defini
     return true;
 }
 
+/// @brief Reserve @p base in @p usedNames, appending "$N" suffixes until unique.
+/// @details Mutates @p usedNames so subsequent callers see the chosen name as taken.
 std::string makeUniqueName(const std::string &base, std::unordered_set<std::string> &usedNames) {
     if (usedNames.insert(base).second)
         return base;
@@ -148,6 +159,7 @@ std::string makeUniqueName(const std::string &base, std::unordered_set<std::stri
     }
 }
 
+/// @brief Apply the global-rename map to a single Value if it is a GlobalAddr.
 void rewriteGlobalValue(il::core::Value &value,
                         const std::unordered_map<std::string, std::string> &globalRenameMap) {
     if (value.kind != il::core::Value::Kind::GlobalAddr)
@@ -157,6 +169,9 @@ void rewriteGlobalValue(il::core::Value &value,
         value.str = it->second;
 }
 
+/// @brief Rewrite a Value's symbol reference using the function- or global-rename map.
+/// @details Function renames take precedence — if @p value points at a renamed
+///          function, the global map is not consulted.
 void rewriteSymbolValue(il::core::Value &value,
                         const std::unordered_map<std::string, std::string> &functionRenameMap,
                         const std::unordered_map<std::string, std::string> &globalRenameMap) {

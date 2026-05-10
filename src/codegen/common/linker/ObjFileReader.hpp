@@ -111,11 +111,19 @@ bool readObjFile(
 /// Read an object file from a file path.
 bool readObjFile(const std::string &path, ObjFile &obj, std::ostream &err);
 
-// Format-specific readers (called by readObjFile).
+// Format-specific readers (called by readObjFile after detectFormat).
+// All three share the readObjFile() signature; the dispatcher picks one based
+// on the magic bytes.
+
+/// @brief Parse an ELF relocatable object (ET_REL) into @p obj.
 bool readElfObj(
     const uint8_t *data, size_t size, const std::string &name, ObjFile &obj, std::ostream &err);
+
+/// @brief Parse a Mach-O object file (MH_OBJECT) into @p obj.
 bool readMachOObj(
     const uint8_t *data, size_t size, const std::string &name, ObjFile &obj, std::ostream &err);
+
+/// @brief Parse a COFF object (Microsoft x64 / ARM64) into @p obj.
 bool readCoffObj(
     const uint8_t *data, size_t size, const std::string &name, ObjFile &obj, std::ostream &err);
 

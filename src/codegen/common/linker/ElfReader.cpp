@@ -35,11 +35,13 @@ static constexpr uint32_t SHT_STRTAB = 3;
 static constexpr uint32_t SHT_RELA = 4;
 static constexpr uint32_t SHT_REL = 9;
 static constexpr uint32_t SHT_NOBITS = 8;
+static constexpr uint32_t SHT_GROUP = 17;
 
 static constexpr uint32_t SHF_WRITE = 0x1;
 static constexpr uint32_t SHF_ALLOC = 0x2;
 static constexpr uint32_t SHF_EXECINSTR = 0x4;
 static constexpr uint32_t SHF_TLS = 0x400;
+static constexpr uint32_t GRP_COMDAT = 0x1;
 
 static constexpr uint8_t STB_LOCAL = 0;
 static constexpr uint8_t STB_GLOBAL = 1;
@@ -102,21 +104,26 @@ struct Elf64_Rel {
 
 } // namespace elf
 
+/// @brief Bounds-checked typed pointer cast at @p offset within a byte buffer.
+/// @return nullptr when reading sizeof(T) bytes at @p offset would exceed @p size.
 template <typename T> static const T *readStruct(const uint8_t *data, size_t size, size_t offset) {
     if (offset > size || sizeof(T) > size - offset)
         return nullptr;
     return reinterpret_cast<const T *>(data + offset);
 }
 
+/// @brief Verify that the byte range [@p off, @p off+@p len) fits within @p size.
 static bool checkedRange(size_t off, size_t len, size_t size) {
     return off <= size && len <= size - off;
 }
 
+/// @brief Decode an unaligned little-endian uint32 from @p p.
 static uint32_t readLE32(const uint8_t *p) {
     return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
 
+/// @brief Decode an unaligned little-endian uint64 from @p p.
 static uint64_t readLE64(const uint8_t *p) {
     uint64_t v = 0;
     for (unsigned i = 0; i < 8; ++i)
@@ -124,6 +131,7 @@ static uint64_t readLE64(const uint8_t *p) {
     return v;
 }
 
+/// @brief Sign-extend the low @p bits of @p value to a 64-bit signed integer.
 static int64_t signExtend(uint64_t value, unsigned bits) {
     const uint64_t signBit = uint64_t{1} << (bits - 1);
     const uint64_t mask = (uint64_t{1} << bits) - 1;
@@ -131,6 +139,13 @@ static int64_t signExtend(uint64_t value, unsigned bits) {
     return static_cast<int64_t>((value ^ signBit) - signBit);
 }
 
+/// @brief Recover the implicit addend embedded in instruction bytes for SHT_REL inputs.
+/// @details ELF .rel sections (rare) lack the explicit r_addend field that .rela
+///          sections carry; this helper decodes the addend from the live
+///          instruction at the relocation site, mirroring what the AArch64 ABI
+///          documents for each relocation type. ELF x86_64 uses a literal
+///          32/64-bit slot read; AArch64 BR/B.cond/ADRP/ADD-imm decode their
+///          immediate fields and rescale by their natural shift.
 static int64_t extractRelAddend(uint16_t machine,
                                 uint32_t relocType,
                                 const std::vector<uint8_t> &sectionData,
@@ -162,7 +177,8 @@ static int64_t extractRelAddend(uint16_t machine,
             return signExtend(insn & 0x03FFFFFFu, 26) << 2;
         case elf_a64::kCondBr19:
             return signExtend((insn >> 5) & 0x7FFFFu, 19) << 2;
-        case elf_a64::kAdrPrelPgHi21: {
+        case elf_a64::kAdrPrelPgHi21:
+        case elf_a64::kAdrGotPage: {
             const uint32_t immlo = (insn >> 29) & 0x3u;
             const uint32_t immhi = (insn >> 5) & 0x7FFFFu;
             return signExtend((immhi << 2) | immlo, 21) << 12;
@@ -172,6 +188,7 @@ static int64_t extractRelAddend(uint16_t machine,
         case elf_a64::kLdSt32Lo12Nc:
             return static_cast<int64_t>(((insn >> 10) & 0xFFFu) << 2);
         case elf_a64::kLdSt64Lo12Nc:
+        case elf_a64::kLd64GotLo12Nc:
             return static_cast<int64_t>(((insn >> 10) & 0xFFFu) << 3);
         case elf_a64::kLdSt128Lo12Nc:
             return static_cast<int64_t>(((insn >> 10) & 0xFFFu) << 4);
@@ -180,6 +197,10 @@ static int64_t extractRelAddend(uint16_t machine,
     }
 }
 
+/// @brief Read a NUL-terminated string from an ELF string table (SHT_STRTAB).
+/// @details Returns an empty string when @p strTabOff + @p strTabSize would
+///          escape the buffer, when @p nameOff is past the end of the table,
+///          or when no NUL terminator is found before the table boundary.
 static std::string readString(
     const uint8_t *data, size_t size, size_t strTabOff, size_t strTabSize, uint32_t nameOff) {
     if (!checkedRange(strTabOff, strTabSize, size) || nameOff >= strTabSize)
@@ -260,6 +281,37 @@ bool readElfObj(
         shstrSize = static_cast<size_t>(shdrs[shstrndx]->sh_size);
     }
 
+    std::vector<std::vector<uint32_t>> comdatGroups;
+    for (size_t i = 1; i < shnum; ++i) {
+        const auto *sh = shdrs[i];
+        if (sh->sh_type != elf::SHT_GROUP)
+            continue;
+        if (sh->sh_size < 4 || (sh->sh_size % 4) != 0 ||
+            !checkedRange(static_cast<size_t>(sh->sh_offset),
+                          static_cast<size_t>(sh->sh_size),
+                          size)) {
+            err << "error: " << name << ": malformed ELF section group\n";
+            return false;
+        }
+        const uint32_t flags = readLE32(data + static_cast<size_t>(sh->sh_offset));
+        if ((flags & elf::GRP_COMDAT) == 0)
+            continue;
+        std::vector<uint32_t> members;
+        const size_t count = static_cast<size_t>(sh->sh_size / 4);
+        for (size_t entry = 1; entry < count; ++entry) {
+            const uint32_t member =
+                readLE32(data + static_cast<size_t>(sh->sh_offset) + entry * 4);
+            if (member >= shnum) {
+                err << "error: " << name << ": ELF section group references invalid section "
+                    << member << "\n";
+                return false;
+            }
+            members.push_back(member);
+        }
+        if (!members.empty())
+            comdatGroups.push_back(std::move(members));
+    }
+
     // Build sections (index 0 = null).
     // Map from ELF section index → ObjFile section index.
     std::vector<uint32_t> secMap(shnum, 0);
@@ -269,7 +321,8 @@ bool readElfObj(
     for (size_t i = 1; i < shnum; ++i) {
         const auto *sh = shdrs[i];
         if (sh->sh_type == elf::SHT_SYMTAB || sh->sh_type == elf::SHT_STRTAB ||
-            sh->sh_type == elf::SHT_RELA || sh->sh_type == elf::SHT_REL)
+            sh->sh_type == elf::SHT_RELA || sh->sh_type == elf::SHT_REL ||
+            sh->sh_type == elf::SHT_GROUP)
             continue;
 
         ObjSection sec;
@@ -308,6 +361,22 @@ bool readElfObj(
 
         secMap[i] = static_cast<uint32_t>(obj.sections.size());
         obj.sections.push_back(std::move(sec));
+    }
+
+    for (const auto &group : comdatGroups) {
+        uint32_t leader = 0;
+        for (uint32_t elfSec : group) {
+            if (elfSec < secMap.size() && secMap[elfSec] != 0) {
+                leader = secMap[elfSec];
+                break;
+            }
+        }
+        if (leader == 0)
+            continue;
+        for (uint32_t elfSec : group) {
+            if (elfSec < secMap.size() && secMap[elfSec] != 0 && secMap[elfSec] != leader)
+                obj.sections[secMap[elfSec]].associativeSection = leader;
+        }
     }
 
     // Find symbol table.
@@ -431,6 +500,10 @@ bool readElfObj(
         const size_t relEntSize = isRela ? sizeof(elf::Elf64_Rela) : sizeof(elf::Elf64_Rel);
         if (shdrs[i]->sh_entsize != 0 && shdrs[i]->sh_entsize != relEntSize) {
             err << "error: " << name << ": unsupported ELF relocation entry size\n";
+            return false;
+        }
+        if ((shdrs[i]->sh_size % relEntSize) != 0) {
+            err << "error: " << name << ": malformed ELF relocation table size\n";
             return false;
         }
         const uint64_t rawRelCount = shdrs[i]->sh_size / relEntSize;

@@ -406,7 +406,8 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
         chunk.outputOffset += shift;
     }
 
-    assignSectionVirtualAddresses(layout, platform);
+    if (!assignSectionVirtualAddresses(layout, platform, err))
+        return false;
     locMap = buildLocMap(layout);
 
     for (auto &[name, entry] : layout.globalSyms) {

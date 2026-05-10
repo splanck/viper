@@ -51,6 +51,7 @@ bool writePeExe(const std::string &path,
                 std::size_t stackSize,
                 std::ostream &err);
 
+/// @brief Convenience overload — emits the startup stub, no IAT slot overrides, default stack.
 inline bool writePeExe(const std::string &path,
                        const LinkLayout &layout,
                        LinkArch arch,

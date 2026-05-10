@@ -60,6 +60,10 @@ inline size_t alignUp(size_t val, size_t align) {
     return (val + align - 1) & ~(align - 1);
 }
 
+/// @brief Add @p a + @p b into @p out, writing a writer-prefixed error on overflow.
+/// @details The convention is shared by every writer so a "size_t overflow"
+///          message identifies which writer (ELF/Mach-O/COFF) caught it and
+///          which conceptual quantity (@p what) overflowed.
 inline bool checkedAddSize(size_t a,
                            size_t b,
                            const char *writerName,
@@ -74,6 +78,7 @@ inline bool checkedAddSize(size_t a,
     return true;
 }
 
+/// @brief Multiply @p a * @p b into @p out with the writer-prefixed overflow error.
 inline bool checkedMulSize(size_t a,
                            size_t b,
                            const char *writerName,
@@ -88,6 +93,8 @@ inline bool checkedMulSize(size_t a,
     return true;
 }
 
+/// @brief Align-up @p val to @p align with the writer-prefixed error on overflow
+///        or non-power-of-two alignment.
 inline bool checkedAlignUpSize(size_t val,
                                size_t align,
                                const char *writerName,
@@ -110,6 +117,7 @@ inline bool checkedAlignUpSize(size_t val,
     return true;
 }
 
+/// @brief 64-bit overflow-checked addition for object-file fields like Mach-O VAs.
 inline bool checkedAddU64(uint64_t a,
                           uint64_t b,
                           const char *writerName,

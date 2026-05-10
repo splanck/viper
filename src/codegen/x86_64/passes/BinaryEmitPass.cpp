@@ -25,8 +25,18 @@
 
 namespace viper::codegen::x64::passes {
 
+/// @brief Construct the binary emit pass with backend configuration.
+/// @details Stores @p options by value so the pass survives the caller's local
+///          options object. Used to drive @ref emitModuleToBinary later.
 BinaryEmitPass::BinaryEmitPass(CodegenOptions options) noexcept : options_(std::move(options)) {}
 
+/// @brief Emit raw machine code for a lowered and allocated module.
+/// @details Mirrors @ref EmitPass::run but produces binary CodeSections instead
+///          of assembly text. Validates that register allocation completed,
+///          target/frame state are consistent, then forwards to the backend's
+///          @ref emitModuleToBinary which fills @p module.binaryText and
+///          @p module.binaryRodata.
+/// @return true on success; otherwise records errors via @p diags.
 bool BinaryEmitPass::run(Module &module, Diagnostics &diags) {
     if (!module.registersAllocated) {
         diags.error("binary emit: register allocation has not completed");

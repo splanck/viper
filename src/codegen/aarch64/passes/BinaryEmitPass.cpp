@@ -87,6 +87,12 @@ void seedDebugFiles(DebugLineTable &table,
 
 } // namespace
 
+/// @brief Encode AArch64 MIR functions to raw machine code.
+/// @details Validates @p module.ti, allocates a per-function CodeSection,
+///          drives @ref A64BinaryEncoder for each function, and stores the
+///          resulting bytes plus rodata pool into @p module.binaryText* /
+///          binaryRodata for the object-file writer to consume.
+/// @return true on success; on failure records diagnostics via @p diags.
 bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags) {
     if (!module.ti) {
         diags.error("BinaryEmitPass: ti must be non-null");

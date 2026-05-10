@@ -21,6 +21,8 @@
 #include "codegen/common/linker/NameMangling.hpp"
 
 #include <algorithm>
+#include <cstdint>
+#include <limits>
 #include <sstream>
 
 namespace viper::codegen::linker {
@@ -46,19 +48,25 @@ static bool addObjSymbols(const ObjFile &obj,
             continue;
 
         if (sym.binding == ObjSymbol::Undefined) {
-            if (sym.weakExternal)
-                continue;
+            auto addUndefined = [&](const std::string &undefName) {
+                auto it = findWithMachoFallback(globalSyms, undefName);
+                if (it == globalSyms.end() || it->second.binding == GlobalSymEntry::Undefined)
+                    undefined.insert(undefName);
+                if (it == globalSyms.end()) {
+                    GlobalSymEntry e;
+                    e.name = undefName;
+                    e.binding = GlobalSymEntry::Undefined;
+                    globalSyms[undefName] = std::move(e);
+                }
+            };
 
-            // Only add to undefined set if not already defined.
-            auto it = findWithMachoFallback(globalSyms, sym.name);
-            if (it == globalSyms.end() || it->second.binding == GlobalSymEntry::Undefined)
-                undefined.insert(sym.name);
-            if (it == globalSyms.end()) {
-                GlobalSymEntry e;
-                e.name = sym.name;
-                e.binding = GlobalSymEntry::Undefined;
-                globalSyms[sym.name] = std::move(e);
+            if (sym.weakExternal) {
+                if (!sym.weakDefaultName.empty())
+                    addUndefined(sym.weakDefaultName);
+                continue;
             }
+
+            addUndefined(sym.name);
             continue;
         }
 
@@ -159,7 +167,7 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
     }
 
     // Iteratively resolve from archives until fixed point.
-    std::unordered_set<size_t> extractedMembers; // Track (archiveIdx << 32) | memberIdx.
+    std::unordered_set<uint64_t> extractedMembers; // Track (archiveIdx << 32) | memberIdx.
     constexpr size_t kMaxResolveIterations = 1000;
     size_t iteration = 0;
     bool changed = true;
@@ -180,7 +188,13 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
                     continue;
 
                 size_t memberIdx = symIt->second;
-                size_t key = (ai << 32) | memberIdx;
+                if (ai > std::numeric_limits<uint32_t>::max() ||
+                    memberIdx > std::numeric_limits<uint32_t>::max()) {
+                    err << "error: archive member index exceeds native linker limits\n";
+                    return false;
+                }
+                uint64_t key = (static_cast<uint64_t>(ai) << 32) |
+                               static_cast<uint64_t>(memberIdx);
                 if (extractedMembers.count(key))
                     continue;
 

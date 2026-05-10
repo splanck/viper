@@ -24,6 +24,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <sstream>
 
 using namespace viper::codegen::linker;
@@ -430,6 +431,22 @@ int main() {
         CHECK(layout.sections[0].chunks.size() == 1);
         CHECK(layout.sections[0].chunks[0].inputSecIndex == 1);
         CHECK(layout.sections[0].chunks[0].size == 0);
+    }
+
+    // --- Virtual address overflow is diagnosed ---
+    {
+        LinkLayout layout;
+        layout.pageSize = std::numeric_limits<uint64_t>::max();
+        OutputSection text;
+        text.name = ".text";
+        text.alloc = true;
+        text.executable = true;
+        text.data.resize(1, 0);
+        layout.sections.push_back(std::move(text));
+
+        std::ostringstream err;
+        CHECK(!assignSectionVirtualAddresses(layout, LinkPlatform::Linux, err));
+        CHECK(err.str().find("image base plus page size") != std::string::npos);
     }
 
     // --- Result ---

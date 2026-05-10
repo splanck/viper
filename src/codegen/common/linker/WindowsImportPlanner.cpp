@@ -7,7 +7,18 @@
 //
 // File: codegen/common/linker/WindowsImportPlanner.cpp
 // Purpose: Windows DLL import planning and thunk generation for the native
-//          linker.
+//          linker. Resolves each undefined dynamic symbol to a (DLL, function)
+//          pair, builds the .idata$* import-directory sections, and synthesises
+//          the corresponding ObjFile so SectionMerger can place them.
+// Key invariants:
+//   - Symbol table is fully baked in; no DLL probing on disk.
+//   - When @p debugRuntime is set the planner picks ucrtbased.dll /
+//     vcruntime140d.dll; otherwise the release pair is used.
+//   - Generated thunks honour both the AArch64 and x64 calling conventions —
+//     ABI-divergent routines (chkstk, security cookie) get arch-specific stubs.
+// Ownership/Lifetime: stateless — caller owns the populated WindowsImportPlan.
+// Links: codegen/common/linker/PlatformImportPlanner.hpp,
+//        codegen/common/linker/PeExeWriter.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -24,6 +35,9 @@
 namespace viper::codegen::linker {
 namespace {
 
+/// @brief Strip the COFF __imp_ prefix used for Windows IAT-thunk references.
+/// @details Windows compilers prefix indirect imports with __imp_; the planner
+///          looks up the underlying function by its bare name.
 std::string stripImpPrefix(const std::string &name) {
     if (name.rfind("__imp_", 0) == 0)
         return name.substr(6);

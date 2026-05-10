@@ -327,7 +327,9 @@ static MachoRelocAttrs machoRelocAttrs(RelocKind kind) {
         case RelocKind::A64AdrpPage21:
             return {static_cast<uint8_t>(kArm64RelocPage21), 1, 2, false};
         case RelocKind::A64AddPageOff12:
+        case RelocKind::A64LdSt32Off12:
         case RelocKind::A64LdSt64Off12:
+        case RelocKind::A64LdSt128Off12:
             return {static_cast<uint8_t>(kArm64RelocPageoff12), 0, 2, false};
         case RelocKind::A64CondBr19:
             // Mach-O has no ARM64_RELOC_BRANCH19; conditional branches are

@@ -88,7 +88,9 @@ static constexpr uint32_t kRAarch64_AddAbsLo12Nc = 277;
 static constexpr uint32_t kRAarch64_CondBr19 = 280;
 static constexpr uint32_t kRAarch64_Jump26 = 282;
 static constexpr uint32_t kRAarch64_Call26 = 283;
+static constexpr uint32_t kRAarch64_LdSt32AbsLo12Nc = 285;
 static constexpr uint32_t kRAarch64_LdSt64AbsLo12Nc = 286;
+static constexpr uint32_t kRAarch64_LdSt128AbsLo12Nc = 299;
 
 // Section indices (fixed layout)
 static constexpr uint16_t kSecNull = 0;
@@ -136,8 +138,12 @@ static uint32_t elfRelocType(RelocKind kind, ObjArch arch) {
             return kRAarch64_AdrPrelPgHi21;
         case RelocKind::A64AddPageOff12:
             return kRAarch64_AddAbsLo12Nc;
+        case RelocKind::A64LdSt32Off12:
+            return kRAarch64_LdSt32AbsLo12Nc;
         case RelocKind::A64LdSt64Off12:
             return kRAarch64_LdSt64AbsLo12Nc;
+        case RelocKind::A64LdSt128Off12:
+            return kRAarch64_LdSt128AbsLo12Nc;
         case RelocKind::A64CondBr19:
             return kRAarch64_CondBr19;
     }
@@ -1036,9 +1042,47 @@ bool ElfWriter::write(const std::string &path,
                                const std::unordered_map<uint32_t, uint32_t> &sourceMap,
                                const std::unordered_map<std::string, uint32_t> &targetByName,
                                const char *sectionName,
+                               size_t sourceTextIndex,
                                uint32_t &elfSymIdx) -> bool {
         elfSymIdx = 0;
         if (rel.targetSection != SymbolSection::Undefined) {
+            if (rel.targetOffsetValid) {
+                const CodeSection *target = nullptr;
+                const char *targetName = nullptr;
+                if (rel.targetSection == SymbolSection::Rodata) {
+                    target = &rodata;
+                    targetName = ".rodata";
+                    elfSymIdx = static_cast<uint32_t>(N + 1);
+                } else {
+                    size_t textIdx = sourceTextIndex;
+                    if (textIdx == SIZE_MAX || textIdx >= N ||
+                        rel.targetOffset > textSections[textIdx].bytes().size()) {
+                        textIdx = SIZE_MAX;
+                        for (size_t ti = 0; ti < N; ++ti) {
+                            if (rel.targetOffset <= textSections[ti].bytes().size()) {
+                                textIdx = ti;
+                                break;
+                            }
+                        }
+                    }
+                    if (textIdx == SIZE_MAX || textIdx >= N) {
+                        err << "ElfWriter: relocation in " << sectionName << " at offset "
+                            << rel.offset << " references .text offset " << rel.targetOffset
+                            << " beyond section contents\n";
+                        return false;
+                    }
+                    target = &textSections[textIdx];
+                    targetName = ".text";
+                    elfSymIdx = static_cast<uint32_t>(1 + textIdx);
+                }
+                if (rel.targetOffset > target->bytes().size()) {
+                    err << "ElfWriter: relocation in " << sectionName << " at offset "
+                        << rel.offset << " references " << targetName << " offset "
+                        << rel.targetOffset << " beyond section contents\n";
+                    return false;
+                }
+                return true;
+            }
             if (rel.symbolIndex >= source.symbols().count()) {
                 err << "ElfWriter: relocation in " << sectionName << " at offset " << rel.offset
                     << " references unknown symbol index " << rel.symbolIndex << "\n";
@@ -1081,12 +1125,22 @@ bool ElfWriter::write(const std::string &path,
                                         ? definedRodataByName
                                         : definedTextByName;
             if (!resolveRelocSym(
-                    rel, textSections[ti], textSymMaps[ti], targetMap, ".text", elfSymIdx))
+                    rel, textSections[ti], textSymMaps[ti], targetMap, ".text", ti, elfSymIdx))
                 return false;
+            int64_t effectiveAddend = rel.addend;
+            if (rel.targetOffsetValid) {
+                if (rel.targetOffset > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
+                    rel.addend > std::numeric_limits<int64_t>::max() -
+                                     static_cast<int64_t>(rel.targetOffset)) {
+                    err << "ElfWriter: relocation in .text has a section-offset addend outside int64 range\n";
+                    return false;
+                }
+                effectiveAddend += static_cast<int64_t>(rel.targetOffset);
+            }
             const size_t physicalRelOffset = rel.offset - textSections[ti].logicalOffsetBias();
             uint32_t relocType = elfRelocType(rel.kind, arch_);
             uint64_t rInfo = (static_cast<uint64_t>(elfSymIdx) << 32) | relocType;
-            writeRela(allRelaBytes[ti], static_cast<uint64_t>(physicalRelOffset), rInfo, rel.addend);
+            writeRela(allRelaBytes[ti], static_cast<uint64_t>(physicalRelOffset), rInfo, effectiveAddend);
         }
     }
 
@@ -1097,12 +1151,22 @@ bool ElfWriter::write(const std::string &path,
         uint32_t elfSymIdx = 0;
         const auto &targetMap =
             (rel.targetSection == SymbolSection::Text) ? definedTextByName : definedRodataByName;
-        if (!resolveRelocSym(rel, rodata, rodataSymMap, targetMap, ".rodata", elfSymIdx))
+        if (!resolveRelocSym(rel, rodata, rodataSymMap, targetMap, ".rodata", SIZE_MAX, elfSymIdx))
             return false;
+        int64_t effectiveAddend = rel.addend;
+        if (rel.targetOffsetValid) {
+            if (rel.targetOffset > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
+                rel.addend > std::numeric_limits<int64_t>::max() -
+                                 static_cast<int64_t>(rel.targetOffset)) {
+                err << "ElfWriter: relocation in .rodata has a section-offset addend outside int64 range\n";
+                return false;
+            }
+            effectiveAddend += static_cast<int64_t>(rel.targetOffset);
+        }
         const size_t physicalRelOffset = rel.offset - rodata.logicalOffsetBias();
         uint32_t relocType = elfRelocType(rel.kind, arch_);
         uint64_t rInfo = (static_cast<uint64_t>(elfSymIdx) << 32) | relocType;
-        writeRela(relaRodataBytes, static_cast<uint64_t>(physicalRelOffset), rInfo, rel.addend);
+        writeRela(relaRodataBytes, static_cast<uint64_t>(physicalRelOffset), rInfo, effectiveAddend);
     }
 
     // --- 6. Compute file layout ---

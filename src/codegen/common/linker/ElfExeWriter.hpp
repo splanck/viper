@@ -44,6 +44,7 @@ bool writeElfExe(const std::string &path,
                  bool emitStartupStub,
                  std::ostream &err);
 
+/// @brief Convenience overload — defaults stack size to 0 and disables the startup stub.
 inline bool writeElfExe(const std::string &path,
                         const LinkLayout &layout,
                         LinkArch arch,
@@ -53,6 +54,7 @@ inline bool writeElfExe(const std::string &path,
     return writeElfExe(path, layout, arch, neededLibs, dynSyms, 0, false, err);
 }
 
+/// @brief Convenience overload — static binary with explicit stack size, no startup stub.
 inline bool writeElfExe(const std::string &path,
                         const LinkLayout &layout,
                         LinkArch arch,
@@ -61,6 +63,7 @@ inline bool writeElfExe(const std::string &path,
     return writeElfExe(path, layout, arch, {}, {}, stackSize, false, err);
 }
 
+/// @brief Convenience overload — fully static binary with all link options at default.
 inline bool writeElfExe(const std::string &path,
                         const LinkLayout &layout,
                         LinkArch arch,

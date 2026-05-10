@@ -94,7 +94,9 @@ static uint16_t coffRelocType(RelocKind kind, ObjArch arch) {
             return kImageRelARM64_PagebaseRel21;
         case RelocKind::A64AddPageOff12:
             return kImageRelARM64_Pageoffset12A;
+        case RelocKind::A64LdSt32Off12:
         case RelocKind::A64LdSt64Off12:
+        case RelocKind::A64LdSt128Off12:
             return kImageRelARM64_Pageoffset12L;
         case RelocKind::A64CondBr19:
             return kImageRelARM64_Branch19;
@@ -102,19 +104,77 @@ static uint16_t coffRelocType(RelocKind kind, ObjArch arch) {
     return 0;
 }
 
-static bool validateCoffRelocationAddend(const CodeSection &section,
-                                         const Relocation &rel,
-                                         int64_t effectiveAddend,
-                                         std::ostream &err) {
+static void writeLE32At(std::vector<uint8_t> &bytes, size_t off, uint32_t value) {
+    bytes[off] = static_cast<uint8_t>(value);
+    bytes[off + 1] = static_cast<uint8_t>(value >> 8);
+    bytes[off + 2] = static_cast<uint8_t>(value >> 16);
+    bytes[off + 3] = static_cast<uint8_t>(value >> 24);
+}
+
+static void writeLE64At(std::vector<uint8_t> &bytes, size_t off, uint64_t value) {
+    for (size_t i = 0; i < 8; ++i)
+        bytes[off + i] = static_cast<uint8_t>(value >> (i * 8));
+}
+
+static uint32_t readLE32At(const std::vector<uint8_t> &bytes, size_t off) {
+    return static_cast<uint32_t>(bytes[off]) | (static_cast<uint32_t>(bytes[off + 1]) << 8) |
+           (static_cast<uint32_t>(bytes[off + 2]) << 16) |
+           (static_cast<uint32_t>(bytes[off + 3]) << 24);
+}
+
+static bool checkedI32(int64_t value, const char *what, std::ostream &err, int32_t &out) {
+    if (value < std::numeric_limits<int32_t>::min() ||
+        value > std::numeric_limits<int32_t>::max()) {
+        err << "CoffWriter: " << what << " addend " << value
+            << " is outside signed 32-bit range\n";
+        return false;
+    }
+    out = static_cast<int32_t>(value);
+    return true;
+}
+
+static bool checkedA64BranchAddend(int64_t value,
+                                   unsigned bits,
+                                   const char *what,
+                                   std::ostream &err,
+                                   int64_t &scaled) {
+    if ((value & 0x3) != 0) {
+        err << "CoffWriter: " << what << " addend " << value
+            << " is not instruction aligned\n";
+        return false;
+    }
+    scaled = value >> 2;
+    const int64_t minVal = -(int64_t{1} << (bits - 1));
+    const int64_t maxVal = (int64_t{1} << (bits - 1)) - 1;
+    if (scaled < minVal || scaled > maxVal) {
+        err << "CoffWriter: " << what << " addend " << value << " is out of range\n";
+        return false;
+    }
+    return true;
+}
+
+static bool patchCoffRelocationAddend(const CodeSection &section,
+                                      const Relocation &rel,
+                                      int64_t effectiveAddend,
+                                      std::vector<uint8_t> &bytes,
+                                      std::ostream &err) {
+    if (rel.offset < section.logicalOffsetBias()) {
+        err << "CoffWriter: relocation offset is before logical section bias\n";
+        return false;
+    }
+    const size_t physicalOffset = rel.offset - section.logicalOffsetBias();
+
     switch (rel.kind) {
         case RelocKind::PCRel32:
-        case RelocKind::Branch32:
-            if (effectiveAddend != 0 && effectiveAddend != -4) {
-                err << "CoffWriter: unsupported addend " << effectiveAddend
-                    << " for x86_64 rel32 relocation at offset " << rel.offset << "\n";
+        case RelocKind::Branch32: {
+            int32_t encoded = 0;
+            if (effectiveAddend > std::numeric_limits<int64_t>::max() - 4 ||
+                effectiveAddend < std::numeric_limits<int64_t>::min() + 4 ||
+                !checkedI32(effectiveAddend + 4, "x86_64 rel32", err, encoded))
                 return false;
-            }
+            writeLE32At(bytes, physicalOffset, static_cast<uint32_t>(encoded));
             return true;
+        }
 
         case RelocKind::Abs64: {
             if (effectiveAddend == 0)
@@ -124,33 +184,75 @@ static bool validateCoffRelocationAddend(const CodeSection &section,
                     << " is out of bounds\n";
                 return false;
             }
-
-            uint64_t encoded = 0;
-            const auto &bytes = section.bytes();
-            const size_t physicalOffset = rel.offset - section.logicalOffsetBias();
-            for (size_t i = 0; i < 8; ++i)
-                encoded |= (static_cast<uint64_t>(bytes[physicalOffset + i]) << (i * 8));
-            if (encoded != static_cast<uint64_t>(effectiveAddend)) {
-                err << "CoffWriter: Abs64 addend " << effectiveAddend
-                    << " must already be embedded in section bytes at offset " << rel.offset
-                    << "\n";
-                return false;
-            }
+            writeLE64At(bytes, physicalOffset, static_cast<uint64_t>(effectiveAddend));
             return true;
         }
 
         case RelocKind::A64Call26:
-        case RelocKind::A64Jump26:
-        case RelocKind::A64AdrpPage21:
-        case RelocKind::A64AddPageOff12:
-        case RelocKind::A64LdSt64Off12:
-        case RelocKind::A64CondBr19:
-            if (effectiveAddend != 0) {
-                err << "CoffWriter: unsupported non-zero AArch64 addend " << effectiveAddend
-                    << " at offset " << rel.offset << "\n";
+        case RelocKind::A64Jump26: {
+            int64_t scaled = 0;
+            if (!checkedA64BranchAddend(effectiveAddend, 26, "AArch64 branch26", err, scaled))
+                return false;
+            uint32_t insn = readLE32At(bytes, physicalOffset);
+            insn = (insn & 0xFC000000u) | (static_cast<uint32_t>(scaled) & 0x03FFFFFFu);
+            writeLE32At(bytes, physicalOffset, insn);
+            return true;
+        }
+
+        case RelocKind::A64AdrpPage21: {
+            const int64_t pageAddend = effectiveAddend >> 12;
+            if (pageAddend < -(int64_t{1} << 20) || pageAddend > ((int64_t{1} << 20) - 1)) {
+                err << "CoffWriter: AArch64 ADRP addend " << effectiveAddend
+                    << " is out of range\n";
                 return false;
             }
+            uint32_t insn = readLE32At(bytes, physicalOffset);
+            const uint32_t imm = static_cast<uint32_t>(pageAddend);
+            const uint32_t immlo = imm & 0x3u;
+            const uint32_t immhi = (imm >> 2) & 0x7FFFFu;
+            insn = (insn & 0x9F00001Fu) | (immlo << 29) | (immhi << 5);
+            writeLE32At(bytes, physicalOffset, insn);
             return true;
+        }
+
+        case RelocKind::A64AddPageOff12: {
+            const uint32_t pageOff = static_cast<uint32_t>(effectiveAddend) & 0xFFFu;
+            uint32_t insn = readLE32At(bytes, physicalOffset);
+            insn = (insn & 0xFFC003FFu) |
+                   (pageOff << 10);
+            writeLE32At(bytes, physicalOffset, insn);
+            return true;
+        }
+
+        case RelocKind::A64LdSt32Off12:
+        case RelocKind::A64LdSt64Off12:
+        case RelocKind::A64LdSt128Off12: {
+            const uint32_t shift = rel.kind == RelocKind::A64LdSt32Off12
+                                       ? 2u
+                                       : (rel.kind == RelocKind::A64LdSt64Off12 ? 3u : 4u);
+            const uint32_t pageOff = static_cast<uint32_t>(effectiveAddend) & 0xFFFu;
+            const uint32_t scale = 1u << shift;
+            if ((pageOff & (scale - 1u)) != 0) {
+                err << "CoffWriter: AArch64 load/store addend " << effectiveAddend
+                    << " has a misaligned page offset\n";
+                return false;
+            }
+            uint32_t insn = readLE32At(bytes, physicalOffset);
+            insn = (insn & 0xFFC003FFu) |
+                   ((pageOff >> shift) << 10);
+            writeLE32At(bytes, physicalOffset, insn);
+            return true;
+        }
+
+        case RelocKind::A64CondBr19: {
+            int64_t scaled = 0;
+            if (!checkedA64BranchAddend(effectiveAddend, 19, "AArch64 branch19", err, scaled))
+                return false;
+            uint32_t insn = readLE32At(bytes, physicalOffset);
+            insn = (insn & 0xFF00001Fu) | ((static_cast<uint32_t>(scaled) & 0x7FFFFu) << 5);
+            writeLE32At(bytes, physicalOffset, insn);
+            return true;
+        }
     }
 
     return true;
@@ -844,6 +946,8 @@ bool CoffWriter::write(const std::string &path,
     strtabBytes[2] = static_cast<uint8_t>(strtabSize >> 16);
     strtabBytes[3] = static_cast<uint8_t>(strtabSize >> 24);
 
+    std::vector<uint8_t> patchedTextBytes = text.bytes();
+    std::vector<uint8_t> patchedRodataBytes = rodata.bytes();
     std::vector<uint8_t> textRelocBytes;
     auto resolveRelocSym = [&](const Relocation &rel,
                                const CodeSection &source,
@@ -919,6 +1023,7 @@ bool CoffWriter::write(const std::string &path,
     auto appendRelocBytes = [&](const CodeSection &source,
                                 const std::unordered_map<uint32_t, uint32_t> &sourceMap,
                                 const char *sectionName,
+                                std::vector<uint8_t> &patchedBytes,
                                 std::vector<uint8_t> &relocBytes) -> bool {
         for (const auto &rel : source.relocations()) {
             if (!validateRelocationShape("CoffWriter", arch_, source, rel, sectionName, err))
@@ -927,7 +1032,7 @@ bool CoffWriter::write(const std::string &path,
             int64_t effectiveAddend = rel.addend;
             if (!resolveRelocSym(rel, source, sourceMap, sectionName, coffSymIdx, effectiveAddend))
                 return false;
-            if (!validateCoffRelocationAddend(source, rel, effectiveAddend, err))
+            if (!patchCoffRelocationAddend(source, rel, effectiveAddend, patchedBytes, err))
                 return false;
             const size_t physicalRelOffset = rel.offset - source.logicalOffsetBias();
             uint32_t relocOff = 0;
@@ -938,7 +1043,7 @@ bool CoffWriter::write(const std::string &path,
         return true;
     };
 
-    if (!appendRelocBytes(text, textSymMap, ".text", textRelocBytes))
+    if (!appendRelocBytes(text, textSymMap, ".text", patchedTextBytes, textRelocBytes))
         return false;
     uint32_t numTextRelocs = 0;
     if (!checkedU32(text.relocations().size(), "text relocation count", err, numTextRelocs))
@@ -946,7 +1051,7 @@ bool CoffWriter::write(const std::string &path,
     addRelocationOverflowRecord(textRelocBytes, numTextRelocs);
 
     std::vector<uint8_t> rdataRelocBytes;
-    if (!appendRelocBytes(rodata, rodataSymMap, ".rdata", rdataRelocBytes))
+    if (!appendRelocBytes(rodata, rodataSymMap, ".rdata", patchedRodataBytes, rdataRelocBytes))
         return false;
     uint32_t numRdataRelocs = 0;
     if (!checkedU32(rodata.relocations().size(), ".rdata relocation count", err, numRdataRelocs))
@@ -974,8 +1079,8 @@ bool CoffWriter::write(const std::string &path,
     uint32_t xdataSize = 0;
     uint32_t pdataSize = 0;
     uint32_t debugLineDataSize = 0;
-    if (!checkedU32(text.bytes().size(), ".text size", err, textSize) ||
-        !checkedU32(hasRodata ? rodata.bytes().size() : 0, ".rdata size", err, rdataSize) ||
+    if (!checkedU32(patchedTextBytes.size(), ".text size", err, textSize) ||
+        !checkedU32(hasRodata ? patchedRodataBytes.size() : 0, ".rdata size", err, rdataSize) ||
         !checkedU32(hasXdata ? xdataBytes.size() : 0, ".xdata size", err, xdataSize) ||
         !checkedU32(hasPdata ? pdataBytes.size() : 0, ".pdata size", err, pdataSize) ||
         !checkedU32(
@@ -1130,7 +1235,7 @@ bool CoffWriter::write(const std::string &path,
     }
 
     padTo(file, textDataOff);
-    file.insert(file.end(), text.bytes().begin(), text.bytes().end());
+    file.insert(file.end(), patchedTextBytes.begin(), patchedTextBytes.end());
 
     if (!textRelocBytes.empty()) {
         padTo(file, textRelocOff);
@@ -1138,7 +1243,7 @@ bool CoffWriter::write(const std::string &path,
     }
     if (hasRodata) {
         padTo(file, rdataDataOff);
-        file.insert(file.end(), rodata.bytes().begin(), rodata.bytes().end());
+        file.insert(file.end(), patchedRodataBytes.begin(), patchedRodataBytes.end());
         if (!rdataRelocBytes.empty()) {
             padTo(file, rdataRelocOff);
             file.insert(file.end(), rdataRelocBytes.begin(), rdataRelocBytes.end());
@@ -1313,6 +1418,50 @@ bool CoffWriter::write(const std::string &path,
             return false;
     }
 
+    auto relocationNeedsAnchor = [](const CodeSection &sec, SymbolSection targetSection) {
+        for (const auto &rel : sec.relocations())
+            if (rel.targetOffsetValid && rel.targetSection == targetSection)
+                return true;
+        return false;
+    };
+    std::vector<uint32_t> textAnchorIdx(textCount, UINT32_MAX);
+    bool needAnyTextAnchor = relocationNeedsAnchor(rodata, SymbolSection::Text);
+    for (size_t ti = 0; ti < textCount; ++ti)
+        needAnyTextAnchor = needAnyTextAnchor ||
+                            relocationNeedsAnchor(textSections[ti], SymbolSection::Text);
+    if (needAnyTextAnchor) {
+        for (size_t ti = 0; ti < textCount; ++ti) {
+            const uint32_t strOff =
+                (textSectionNames[ti].size() > 8) ? addToStrTab(textSectionNames[ti]) : 0;
+            writeSymbol(symtabBytes,
+                        textSectionNames[ti],
+                        strOff,
+                        0,
+                        static_cast<int16_t>(secIdxText[ti]),
+                        0,
+                        kImageSymClassStatic);
+            textAnchorIdx[ti] = coffSymCount++;
+        }
+    }
+
+    uint32_t rodataAnchorIdx = UINT32_MAX;
+    const bool needRodataAnchor =
+        hasRodata &&
+        (relocationNeedsAnchor(rodata, SymbolSection::Rodata) ||
+         std::any_of(textSections.begin(), textSections.end(), [&](const CodeSection &sec) {
+             return relocationNeedsAnchor(sec, SymbolSection::Rodata);
+         }));
+    if (needRodataAnchor) {
+        writeSymbol(symtabBytes,
+                    ".rdata",
+                    0,
+                    0,
+                    static_cast<int16_t>(secIdxRdata),
+                    0,
+                    kImageSymClassStatic);
+        rodataAnchorIdx = coffSymCount++;
+    }
+
     if (hasRodata) {
         for (uint32_t i = 1; i < rodata.symbols().count(); ++i) {
             const Symbol &s = rodata.symbols().at(i);
@@ -1468,15 +1617,72 @@ bool CoffWriter::write(const std::string &path,
     strtabBytes[2] = static_cast<uint8_t>(strtabSize >> 16);
     strtabBytes[3] = static_cast<uint8_t>(strtabSize >> 24);
 
+    std::vector<std::vector<uint8_t>> patchedTextBytes(textCount);
+    for (size_t ti = 0; ti < textCount; ++ti)
+        patchedTextBytes[ti] = textSections[ti].bytes();
+    std::vector<uint8_t> patchedRodataBytes = rodata.bytes();
     std::vector<std::vector<uint8_t>> textRelocBytes(textCount);
     std::vector<uint32_t> numTextRelocs(textCount, 0);
     auto resolveRelocSym = [&](const Relocation &rel,
                                const CodeSection &source,
                                const std::unordered_map<uint32_t, uint32_t> &sourceMap,
                                const char *sectionName,
-                               uint32_t &coffSymIdx) -> bool {
+                               size_t sourceTextIndex,
+                               uint32_t &coffSymIdx,
+                               int64_t &effectiveAddend) -> bool {
         coffSymIdx = 0;
+        effectiveAddend = rel.addend;
         if (rel.targetSection != SymbolSection::Undefined) {
+            if (rel.targetOffsetValid) {
+                if (rel.targetOffset > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
+                    rel.addend > std::numeric_limits<int64_t>::max() -
+                                     static_cast<int64_t>(rel.targetOffset)) {
+                    err << "CoffWriter: relocation in " << sectionName
+                        << " has a section-offset addend outside int64 range\n";
+                    return false;
+                }
+                effectiveAddend += static_cast<int64_t>(rel.targetOffset);
+                if (rel.targetSection == SymbolSection::Rodata) {
+                    if (rodataAnchorIdx == UINT32_MAX) {
+                        err << "CoffWriter: missing section anchor for .rdata\n";
+                        return false;
+                    }
+                    if (rel.targetOffset > rodata.bytes().size()) {
+                        err << "CoffWriter: relocation in " << sectionName << " at offset "
+                            << rel.offset << " references .rdata offset " << rel.targetOffset
+                            << " beyond section contents\n";
+                        return false;
+                    }
+                    coffSymIdx = rodataAnchorIdx;
+                    return true;
+                }
+
+                size_t textIdx = sourceTextIndex;
+                if (textIdx == SIZE_MAX || textIdx >= textCount ||
+                    rel.targetOffset > textSections[textIdx].bytes().size()) {
+                    textIdx = SIZE_MAX;
+                    for (size_t ti = 0; ti < textCount; ++ti) {
+                        if (rel.targetOffset <= textSections[ti].bytes().size()) {
+                            textIdx = ti;
+                            break;
+                        }
+                    }
+                }
+                if (textIdx == SIZE_MAX || textIdx >= textCount ||
+                    rel.targetOffset > textSections[textIdx].bytes().size()) {
+                    err << "CoffWriter: relocation in " << sectionName << " at offset "
+                        << rel.offset << " references .text offset " << rel.targetOffset
+                        << " beyond section contents\n";
+                    return false;
+                }
+                if (textAnchorIdx[textIdx] == UINT32_MAX) {
+                    err << "CoffWriter: missing section anchor for " << textSectionNames[textIdx]
+                        << "\n";
+                    return false;
+                }
+                coffSymIdx = textAnchorIdx[textIdx];
+                return true;
+            }
             if (rel.symbolIndex >= source.symbols().count()) {
                 err << "CoffWriter: relocation in " << sectionName << " at offset " << rel.offset
                     << " references unknown symbol index " << rel.symbolIndex << "\n";
@@ -1514,14 +1720,18 @@ bool CoffWriter::write(const std::string &path,
     auto appendRelocBytes = [&](const CodeSection &source,
                                 const std::unordered_map<uint32_t, uint32_t> &sourceMap,
                                 const char *sectionName,
+                                size_t sourceTextIndex,
+                                std::vector<uint8_t> &patchedBytes,
                                 std::vector<uint8_t> &relocBytes) -> bool {
         for (const auto &rel : source.relocations()) {
             if (!validateRelocationShape("CoffWriter", arch_, source, rel, sectionName, err))
                 return false;
-            if (!validateCoffRelocationAddend(source, rel, rel.addend, err))
-                return false;
             uint32_t coffSymIdx = 0;
-            if (!resolveRelocSym(rel, source, sourceMap, sectionName, coffSymIdx))
+            int64_t effectiveAddend = rel.addend;
+            if (!resolveRelocSym(
+                    rel, source, sourceMap, sectionName, sourceTextIndex, coffSymIdx, effectiveAddend))
+                return false;
+            if (!patchCoffRelocationAddend(source, rel, effectiveAddend, patchedBytes, err))
                 return false;
             const size_t physicalRelOffset = rel.offset - source.logicalOffsetBias();
             uint32_t relocOff = 0;
@@ -1535,7 +1745,7 @@ bool CoffWriter::write(const std::string &path,
     for (size_t ti = 0; ti < textCount; ++ti) {
         const auto &text = textSections[ti];
         auto &relocBytes = textRelocBytes[ti];
-        if (!appendRelocBytes(text, textSymMaps[ti], ".text", relocBytes))
+        if (!appendRelocBytes(text, textSymMaps[ti], ".text", ti, patchedTextBytes[ti], relocBytes))
             return false;
         if (!checkedU32(
                 text.relocations().size(), "text relocation count", err, numTextRelocs[ti]))
@@ -1544,7 +1754,7 @@ bool CoffWriter::write(const std::string &path,
     }
 
     std::vector<uint8_t> rdataRelocBytes;
-    if (!appendRelocBytes(rodata, rodataSymMap, ".rdata", rdataRelocBytes))
+    if (!appendRelocBytes(rodata, rodataSymMap, ".rdata", SIZE_MAX, patchedRodataBytes, rdataRelocBytes))
         return false;
     uint32_t numRdataRelocs = 0;
     if (!checkedU32(rodata.relocations().size(), ".rdata relocation count", err, numRdataRelocs))
@@ -1569,14 +1779,14 @@ bool CoffWriter::write(const std::string &path,
 
     std::vector<uint32_t> textSizes(textCount, 0);
     for (size_t ti = 0; ti < textCount; ++ti) {
-        if (!checkedU32(textSections[ti].bytes().size(), ".text size", err, textSizes[ti]))
+        if (!checkedU32(patchedTextBytes[ti].size(), ".text size", err, textSizes[ti]))
             return false;
     }
     uint32_t rdataSize = 0;
     uint32_t xdataSize = 0;
     uint32_t pdataSize = 0;
     uint32_t debugLineDataSize = 0;
-    if (!checkedU32(hasRodata ? rodata.bytes().size() : 0, ".rdata size", err, rdataSize) ||
+    if (!checkedU32(hasRodata ? patchedRodataBytes.size() : 0, ".rdata size", err, rdataSize) ||
         !checkedU32(hasXdata ? xdataBytes.size() : 0, ".xdata size", err, xdataSize) ||
         !checkedU32(hasPdata ? pdataBytes.size() : 0, ".pdata size", err, pdataSize) ||
         !checkedU32(
@@ -1742,7 +1952,7 @@ bool CoffWriter::write(const std::string &path,
 
     for (size_t ti = 0; ti < textCount; ++ti) {
         padTo(file, textDataOff[ti]);
-        file.insert(file.end(), textSections[ti].bytes().begin(), textSections[ti].bytes().end());
+        file.insert(file.end(), patchedTextBytes[ti].begin(), patchedTextBytes[ti].end());
         if (!textRelocBytes[ti].empty()) {
             padTo(file, textRelocOff[ti]);
             file.insert(file.end(), textRelocBytes[ti].begin(), textRelocBytes[ti].end());
@@ -1751,7 +1961,7 @@ bool CoffWriter::write(const std::string &path,
 
     if (hasRodata) {
         padTo(file, rdataDataOff);
-        file.insert(file.end(), rodata.bytes().begin(), rodata.bytes().end());
+        file.insert(file.end(), patchedRodataBytes.begin(), patchedRodataBytes.end());
         if (!rdataRelocBytes.empty()) {
             padTo(file, rdataRelocOff);
             file.insert(file.end(), rdataRelocBytes.begin(), rdataRelocBytes.end());

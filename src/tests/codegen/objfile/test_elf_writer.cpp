@@ -78,6 +78,11 @@ static uint64_t readLE64(const std::vector<uint8_t> &d, size_t off) {
     return val;
 }
 
+static void writeLE64(std::vector<uint8_t> &d, size_t off, uint64_t value) {
+    for (size_t i = 0; i < 8; ++i)
+        d[off + i] = static_cast<uint8_t>(value >> (i * 8));
+}
+
 static constexpr size_t kElfShdrSize = 64;
 static constexpr size_t kSecText = 1;
 static constexpr size_t kSecRodata = 2;
@@ -633,6 +638,66 @@ static void testSectionOffsetRelocationUsesSectionSymbol() {
     std::remove(path.c_str());
 }
 
+static void testMultiSectionOffsetRelocationUsesSectionSymbol() {
+    CodeSection textA, textB, rodata;
+
+    textA.defineSymbol("func_a", SymbolBinding::Global, SymbolSection::Text);
+    textA.emit8(0x90);
+    textA.emit8(0xC3);
+    textB.defineSymbol("func_b", SymbolBinding::Global, SymbolSection::Text);
+    textB.emit8(0xC3);
+
+    rodata.addSectionOffsetRelocation(RelocKind::Abs64, SymbolSection::Text, 1);
+    rodata.emit64LE(0);
+
+    std::string path = "/tmp/viper_test_elf_multisection_offset.o";
+    std::ostringstream errStream;
+
+    ElfWriter writer(ObjArch::X86_64);
+    CHECK(writer.write(path, std::vector<CodeSection>{textA, textB}, rodata, errStream));
+
+    ObjFile obj;
+    CHECK(readObjFile(path, obj, errStream));
+    const ObjSection *rodataSec = findSection(obj, ".rodata");
+    CHECK(rodataSec != nullptr);
+    if (rodataSec != nullptr) {
+        CHECK(rodataSec->relocs.size() == 1);
+        if (!rodataSec->relocs.empty()) {
+            CHECK(rodataSec->relocs[0].addend == 1);
+            CHECK(obj.symbols[rodataSec->relocs[0].symIndex].sectionIndex == 1);
+        }
+    }
+
+    std::remove(path.c_str());
+}
+
+static void testMalformedRelaSizeFails() {
+    CodeSection text, rodata;
+
+    text.defineSymbol("caller", SymbolBinding::Global, SymbolSection::Text);
+    const uint32_t target = text.findOrDeclareSymbol("target");
+    text.emit8(0xE8);
+    text.addRelocation(RelocKind::Branch32, target, -4);
+    text.emit32LE(0);
+
+    std::string path = "/tmp/viper_test_elf_bad_rela_size.o";
+    std::ostringstream errStream;
+
+    ElfWriter writer(ObjArch::X86_64);
+    CHECK(writer.write(path, text, rodata, errStream));
+
+    auto data = readFile(path);
+    size_t relaHdr = sectionHeaderOff(data, kSecRelaText);
+    writeLE64(data, relaHdr + 32, 25); // not divisible by Elf64_Rela size
+
+    ObjFile obj;
+    std::ostringstream readErr;
+    CHECK(!readObjFile(data.data(), data.size(), "bad_rela_size.o", obj, readErr));
+    CHECK(readErr.str().find("malformed ELF relocation table size") != std::string::npos);
+
+    std::remove(path.c_str());
+}
+
 static void testAmbiguousCrossSectionRelocationFails() {
     CodeSection text, rodata;
     text.defineSymbol("dup", SymbolBinding::Local, SymbolSection::Text);
@@ -729,6 +794,8 @@ int main() {
     testRodataRelocations();
     testA64Abs64RelocationUsesAArch64Type();
     testSectionOffsetRelocationUsesSectionSymbol();
+    testMultiSectionOffsetRelocationUsesSectionSymbol();
+    testMalformedRelaSizeFails();
     testAmbiguousCrossSectionRelocationFails();
     testMissingCrossSectionRelocationFails();
     testWrongArchRelocationFails();

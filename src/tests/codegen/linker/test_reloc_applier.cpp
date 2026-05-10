@@ -22,6 +22,7 @@
 #include "codegen/common/linker/LinkTypes.hpp"
 #include "codegen/common/linker/ObjFileReader.hpp"
 #include "codegen/common/linker/RelocApplier.hpp"
+#include "codegen/common/linker/RelocConstants.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -493,6 +494,32 @@ int main() {
         CHECK(patched == 0xFFFFEFFC);
     }
 
+    // --- Mach-O x86_64 SIGNED_4 applies its trailing-instruction bias ---
+    {
+        std::vector<uint8_t> code(8, 0);
+        auto obj = makeObj("test_macho_signed4.o",
+                           ObjFileFormat::MachO,
+                           code,
+                           "target",
+                           macho_x64::kSigned4,
+                           /*relocOff=*/0,
+                           /*addend=*/0);
+
+        std::vector<ObjFile> objs = {obj};
+        auto layout = makeLayout(objs, 0x100001000ULL);
+
+        GlobalSymEntry entry;
+        entry.name = "target";
+        entry.binding = GlobalSymEntry::Dynamic;
+        entry.resolvedAddr = 0x100001010ULL;
+        layout.globalSyms["target"] = entry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(applyRelocations(objs, layout, dynSyms, LinkPlatform::macOS, LinkArch::X86_64, err));
+        CHECK(readLE32(layout.sections[0].data.data()) == 12);
+    }
+
     // --- COFF x86_64 REL32_4 includes the trailing-byte bias ---
     {
         std::vector<uint8_t> code(8, 0);
@@ -605,6 +632,116 @@ int main() {
             applyRelocations(objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::X86_64, err);
         CHECK(ok);
         CHECK(readLE32(layout.sections[0].data.data()) == 4);
+    }
+
+    // --- COFF SECTION may patch a 2-byte field at the end of a chunk ---
+    {
+        ObjFile obj;
+        obj.name = "test_section_tail.obj";
+        obj.format = ObjFileFormat::COFF;
+        obj.sections.push_back({});
+
+        ObjSection text;
+        text.name = ".text";
+        text.data.resize(4, 0);
+        text.executable = true;
+        text.alloc = true;
+        ObjReloc rel;
+        rel.offset = 2;
+        rel.type = coff_x64::kSection;
+        rel.symIndex = 1;
+        text.relocs.push_back(rel);
+        obj.sections.push_back(text);
+
+        obj.symbols.push_back({});
+        ObjSymbol target;
+        target.name = "target";
+        target.binding = ObjSymbol::Global;
+        target.sectionIndex = 1;
+        obj.symbols.push_back(target);
+
+        std::vector<ObjFile> objs = {obj};
+        auto layout = makeLayout(objs, 0x140001000ULL);
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(applyRelocations(
+            objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::X86_64, err));
+        CHECK(layout.sections[0].data[2] == 1);
+        CHECK(layout.sections[0].data[3] == 0);
+    }
+
+    // --- Local symbols are bounded by their input chunk, not the merged output section ---
+    {
+        ObjFile bad;
+        bad.name = "bad_local_offset.o";
+        bad.format = ObjFileFormat::ELF;
+        bad.sections.push_back({});
+
+        ObjSection text;
+        text.name = ".text";
+        text.data.resize(4, 0);
+        text.executable = true;
+        text.alloc = true;
+        ObjReloc rel;
+        rel.offset = 0;
+        rel.type = elf_x64::kAbs32;
+        rel.symIndex = 1;
+        text.relocs.push_back(rel);
+        bad.sections.push_back(text);
+
+        bad.symbols.push_back({});
+        ObjSymbol local;
+        local.name = "bad_local";
+        local.binding = ObjSymbol::Local;
+        local.sectionIndex = 1;
+        local.offset = 6;
+        bad.symbols.push_back(local);
+
+        ObjFile filler;
+        filler.name = "filler.o";
+        filler.format = ObjFileFormat::ELF;
+        filler.sections.push_back({});
+        ObjSection fillerText;
+        fillerText.name = ".text";
+        fillerText.data.resize(4, 0);
+        fillerText.executable = true;
+        fillerText.alloc = true;
+        filler.sections.push_back(fillerText);
+        filler.symbols.push_back({});
+
+        std::vector<ObjFile> objs = {bad, filler};
+        auto layout = makeLayout(objs, 0x401000);
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(!applyRelocations(
+            objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err));
+    }
+
+    // --- Dynamic symbol set creates runtime bind entries even without a synthetic GOT symbol ---
+    {
+        std::vector<uint8_t> code(8, 0);
+        auto obj = makeObj("test_dynamic_abs64.o",
+                           ObjFileFormat::ELF,
+                           code,
+                           "imported_data",
+                           elf_x64::kAbs64,
+                           /*relocOff=*/0,
+                           /*addend=*/0);
+
+        std::vector<ObjFile> objs = {obj};
+        auto layout = makeLayout(objs, 0x401000);
+        layout.globalSyms["imported_data"] =
+            {"imported_data", GlobalSymEntry::Dynamic, 0, 0, 0, 0x500000};
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms = {"imported_data"};
+        CHECK(applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err));
+        CHECK(readLE64(layout.sections[0].data.data()) == 0);
+        CHECK(layout.bindEntries.size() == 1);
+        if (!layout.bindEntries.empty())
+            CHECK(layout.bindEntries[0].symbolName == "imported_data");
     }
 
     // --- COFF AArch64 BRANCH26 patches BL/B using the Windows relocation kind ---
@@ -768,6 +905,70 @@ int main() {
 
         uint32_t patched = readLE32(layout.sections[0].data.data());
         CHECK(((patched >> 10) & 0xFFFu) == 1u);
+    }
+
+    // --- COFF AArch64 SECREL_LOW12L rejects non-load/store opcodes ---
+    {
+        std::vector<uint8_t> code(4, 0);
+        // add x0, x0, #0 is not a load/store unsigned-offset instruction.
+        code[0] = 0x00;
+        code[1] = 0x00;
+        code[2] = 0x00;
+        code[3] = 0x91;
+        auto caller = makeObj("test_bad_secrel_low12l.obj",
+                              ObjFileFormat::COFF,
+                              code,
+                              "target_data",
+                              coff_a64::kSecRelLow12L,
+                              /*relocOff=*/0,
+                              /*addend=*/0);
+
+        ObjFile target;
+        target.name = "target_data.obj";
+        target.format = ObjFileFormat::COFF;
+        target.sections.push_back({});
+        ObjSection targetData;
+        targetData.name = ".data";
+        targetData.data.resize(4, 0xAB);
+        targetData.writable = true;
+        targetData.alloc = true;
+        target.sections.push_back(targetData);
+        target.symbols.push_back({});
+        ObjSymbol targetSym;
+        targetSym.name = "target_data";
+        targetSym.binding = ObjSymbol::Global;
+        targetSym.sectionIndex = 1;
+        target.symbols.push_back(targetSym);
+
+        std::vector<ObjFile> objs = {caller, target};
+        auto layout = makeLayout(objs, 0x140001000ULL);
+        layout.globalSyms["target_data"] =
+            {"target_data", GlobalSymEntry::Global, 1, 1, 0, 0};
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(!applyRelocations(
+            objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::AArch64, err));
+        CHECK(err.str().find("not applied to an AArch64 unsigned-offset load/store") !=
+              std::string::npos);
+    }
+
+    // --- Windows .pdata with trailing bytes is malformed ---
+    {
+        std::vector<ObjFile> objs;
+        LinkLayout layout;
+        layout.pageSize = 0x1000;
+        OutputSection pdata;
+        pdata.name = ".pdata";
+        pdata.alloc = true;
+        pdata.data.resize(13, 0);
+        layout.sections.push_back(std::move(pdata));
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(!applyRelocations(
+            objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::X86_64, err));
+        CHECK(err.str().find("not a multiple of unwind record size") != std::string::npos);
     }
 
     // --- Unknown reloc type produces error ---

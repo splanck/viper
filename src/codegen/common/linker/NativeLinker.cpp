@@ -50,6 +50,11 @@ namespace viper::codegen::linker {
 
 namespace {
 
+/// @brief Promote every Global/Weak symbol in a synthetic ObjFile into the
+///        global symbol table so subsequent passes can resolve references to it.
+/// @details Used after we synthesize helper objects (Windows CRT shims, PE
+///          import stubs, etc.) so they participate in symbol resolution as if
+///          they had been read from a real archive.
 void registerSyntheticSymbols(const ObjFile &obj,
                               size_t objIdx,
                               std::unordered_map<std::string, GlobalSymEntry> &globalSyms) {
@@ -69,10 +74,12 @@ void registerSyntheticSymbols(const ObjFile &obj,
     }
 }
 
+/// @brief Drop @p name from the dynamic-symbol set when a static definition resolves it.
 void removeDynamicSymbol(const char *name, std::unordered_set<std::string> &dynamicSyms) {
     dynamicSyms.erase(name);
 }
 
+/// @brief ASCII case-insensitive string compare (used for Windows DLL name dedup).
 bool equalsIgnoreAsciiCase(const std::string &lhs, const std::string &rhs) {
     return lhs.size() == rhs.size() &&
            std::equal(lhs.begin(), lhs.end(), rhs.begin(), [](unsigned char a, unsigned char b) {
@@ -80,6 +87,10 @@ bool equalsIgnoreAsciiCase(const std::string &lhs, const std::string &rhs) {
            });
 }
 
+/// @brief Ensure the PE import list contains a (DLL, function) pair, dedupe-aware.
+/// @details Walks @p imports for an existing entry matching @p dllName (case-
+///          insensitive — Windows lookup is case-insensitive); appends to its
+///          functions list if absent, otherwise inserts a fresh DllImport.
 void ensurePeImportFunction(std::vector<DllImport> &imports,
                             const std::string &dllName,
                             const std::string &functionName) {
@@ -98,6 +109,12 @@ void ensurePeImportFunction(std::vector<DllImport> &imports,
     imports.push_back({dllName, {functionName}, {}});
 }
 
+/// @brief Build a synthetic ObjFile that refers to @p symbolName as undefined.
+/// @details This is the "GC root" used by DeadStripPass: every section reachable
+///          from this synthetic module's reference to `main` (or a custom entry)
+///          is kept; everything else is stripped. The returned object inherits
+///          @p userObj's format/arch/endianness so it slots cleanly into the
+///          object list.
 ObjFile makeUndefinedRootObject(const ObjFile &userObj, const std::string &symbolName) {
     ObjFile root;
     root.name = "<entry-root>";
@@ -115,6 +132,10 @@ ObjFile makeUndefinedRootObject(const ObjFile &userObj, const std::string &symbo
     return root;
 }
 
+/// @brief Heuristically detect a debug-flavored Windows CRT in the archive list.
+/// @details Inspects each path for the conventional `\Debug\`, `/debug/`, or
+///          `*d.lib` suffixes used by MSVC's debug runtime. The result selects
+///          ucrtbased.dll / vcruntime140d.dll for IAT generation.
 bool usesDebugWindowsRuntime(const std::vector<std::string> &archivePaths) {
     for (const auto &path : archivePaths) {
         std::string lower = path;
@@ -131,6 +152,7 @@ bool usesDebugWindowsRuntime(const std::vector<std::string> &archivePaths) {
     return false;
 }
 
+/// @brief Return a human-readable name for a LinkPlatform (for diagnostics).
 const char *platformName(LinkPlatform platform) {
     switch (platform) {
         case LinkPlatform::Linux:
@@ -143,6 +165,7 @@ const char *platformName(LinkPlatform platform) {
     return "unknown";
 }
 
+/// @brief Return a human-readable name for a LinkArch (for diagnostics).
 const char *archName(LinkArch arch) {
     switch (arch) {
         case LinkArch::X86_64:
@@ -153,6 +176,7 @@ const char *archName(LinkArch arch) {
     return "unknown";
 }
 
+/// @brief Map a target LinkPlatform to its native object-file format.
 ObjFileFormat expectedFormat(LinkPlatform platform) {
     switch (platform) {
         case LinkPlatform::Linux:
@@ -165,12 +189,17 @@ ObjFileFormat expectedFormat(LinkPlatform platform) {
     return ObjFileFormat::Unknown;
 }
 
+/// @brief Compute the machine field expected in input objects for the target.
+/// @details Windows uses the IMAGE_FILE_MACHINE_* values (0x8664/0xAA64); ELF
+///          and Mach-O use the EM_X86_64 (62) / EM_AARCH64 (183) numbering and
+///          MachOReader normalises Mach-O cputype to those same values.
 uint16_t expectedMachine(LinkPlatform platform, LinkArch arch) {
     if (platform == LinkPlatform::Windows)
         return arch == LinkArch::AArch64 ? 0xAA64 : 0x8664;
     return arch == LinkArch::AArch64 ? 183 : 62;
 }
 
+/// @brief Return a human-readable name for an ObjFileFormat (for diagnostics).
 const char *formatName(ObjFileFormat format) {
     switch (format) {
         case ObjFileFormat::ELF:
@@ -185,6 +214,9 @@ const char *formatName(ObjFileFormat format) {
     return "unknown";
 }
 
+/// @brief Reject any input ObjFile whose format/machine does not match the target.
+/// @details Synthetic objects (whose name starts with `<`) are exempt from the
+///          check because they were minted with the target's format already.
 bool validateInputObjects(const std::vector<ObjFile> &objects,
                           LinkPlatform platform,
                           LinkArch arch,
@@ -209,6 +241,7 @@ bool validateInputObjects(const std::vector<ObjFile> &objects,
     return true;
 }
 
+/// @brief Append an AArch64 instruction (32-bit little-endian) to a byte stream.
 void appendArm64Insn(std::vector<uint8_t> &data, uint32_t insn) {
     data.push_back(static_cast<uint8_t>(insn & 0xFF));
     data.push_back(static_cast<uint8_t>((insn >> 8) & 0xFF));
@@ -216,6 +249,15 @@ void appendArm64Insn(std::vector<uint8_t> &data, uint32_t insn) {
     data.push_back(static_cast<uint8_t>((insn >> 24) & 0xFF));
 }
 
+/// @brief Synthesise a COFF object that supplies common Windows runtime stubs.
+/// @details Windows binaries normally pick up many tiny support routines (the
+///          security cookie, TLS index, vm_trap, integer-divide helpers, etc.)
+///          from the vcruntime/crt static libraries. Rather than depending on
+///          those archives we build a minimal "x64 helpers" COFF on the fly so
+///          undefined references resolve cleanly.
+/// @param dynamicSyms     Currently undefined symbols — guides which helpers to emit.
+/// @param haveVmTrapDefault When true, Viper's runtime already provides vm_trap.
+/// @param needTlsIndex    When true, emit `_tls_index` and `_tls_used` placeholders.
 ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamicSyms,
                                   bool haveVmTrapDefault,
                                   bool needTlsIndex) {

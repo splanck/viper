@@ -46,6 +46,7 @@ static constexpr uint32_t S_THREAD_LOCAL_VARIABLES = 0x13;
 
 // Section attribute flags (high bits).
 static constexpr uint32_t S_ATTR_PURE_INSTRUCTIONS = 0x80000000;
+static constexpr uint32_t S_ATTR_SOME_INSTRUCTIONS = 0x00000400;
 static constexpr uint32_t S_ATTR_DEBUG = 0x02000000;
 
 struct mach_header_64 {
@@ -108,16 +109,21 @@ struct relocation_info {
 
 } // namespace macho
 
+/// @brief Bounds-checked typed pointer cast at @p offset within a byte buffer.
 template <typename T> static const T *readAt(const uint8_t *data, size_t size, size_t offset) {
     if (offset > size || sizeof(T) > size - offset)
         return nullptr;
     return reinterpret_cast<const T *>(data + offset);
 }
 
+/// @brief Verify that the byte range [@p off, @p off+@p len) fits within @p size.
 static bool checkedRange(size_t off, size_t len, size_t size) {
     return off <= size && len <= size - off;
 }
 
+/// @brief Copy @p s up to the first NUL or @p maxLen bytes (Mach-O fixed-name fields).
+/// @details Mach-O segment/section names occupy fixed 16-byte slots that are
+///          NUL-padded; this helper trims to the actual logical length.
 static std::string trimNul(const char *s, size_t maxLen) {
     size_t len = 0;
     while (len < maxLen && s[len] != '\0')
@@ -125,6 +131,9 @@ static std::string trimNul(const char *s, size_t maxLen) {
     return std::string(s, len);
 }
 
+/// @brief Read a NUL-terminated string from a Mach-O LC_SYMTAB strtab.
+/// @return Empty string when the table is out of bounds, @p pos is past the end,
+///         or no NUL terminator is found before the end.
 static std::string readString(const uint8_t *data, size_t size, size_t off, size_t len, uint32_t pos) {
     if (!checkedRange(off, len, size) || pos >= len)
         return "";
@@ -137,6 +146,7 @@ static std::string readString(const uint8_t *data, size_t size, size_t off, size
                        static_cast<const char *>(nul));
 }
 
+/// @brief Sign-extend the low @p bits of @p value to a 64-bit signed integer.
 static int64_t signExtend(uint64_t value, unsigned bits) {
     const uint64_t signBit = uint64_t{1} << (bits - 1);
     const uint64_t mask = (uint64_t{1} << bits) - 1;
@@ -301,15 +311,21 @@ bool readMachOObj(
                 ObjSection os;
                 os.name = segName + "," + secName;
                 os.alignment = (sec->align < 30) ? (1u << sec->align) : 1;
-                os.executable = (sec->flags & macho::S_ATTR_PURE_INSTRUCTIONS) != 0;
+                os.executable = (sec->flags &
+                                 (macho::S_ATTR_PURE_INSTRUCTIONS |
+                                  macho::S_ATTR_SOME_INSTRUCTIONS)) != 0;
                 os.alloc = !isDebugSection;
 
                 // Infer writability from Mach-O segment name and section type.
                 // .o files don't have segment permission bits, but each section header
                 // carries the intended segment name (__TEXT vs __DATA).
                 const uint32_t secType = sec->flags & 0xFF;
+                const bool dataLikeSegment =
+                    segName == "__DATA" || segName == "__DATA_CONST" ||
+                    segName == "__DATA_DIRTY" || segName == "__AUTH" ||
+                    segName == "__AUTH_CONST";
                 os.writable = !isDebugSection &&
-                              ((segName == "__DATA") || (secType == macho::S_ZEROFILL) ||
+                              (dataLikeSegment || (secType == macho::S_ZEROFILL) ||
                                (secType == macho::S_THREAD_LOCAL_REGULAR) ||
                                (secType == macho::S_THREAD_LOCAL_ZEROFILL) ||
                                (secType == macho::S_THREAD_LOCAL_VARIABLES) ||
@@ -378,6 +394,12 @@ bool readMachOObj(
 
                     // ARM64_RELOC_ADDEND (type 10): stores addend for next relocation.
                     if (isArm64 && relType == 10) {
+                        if (hasPendingAddend) {
+                            err << "error: " << name
+                                << ": consecutive ARM64_RELOC_ADDEND entries in Mach-O section "
+                                << os.name << "\n";
+                            return false;
+                        }
                         pendingAddend = signExtend(symbolNum, 24);
                         hasPendingAddend = true;
                         continue;

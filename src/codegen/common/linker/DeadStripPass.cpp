@@ -10,10 +10,10 @@
 //          Follows relocations to transitively mark live sections, then
 //          clears data from unreachable sections so they occupy zero bytes.
 // Key invariants:
-    //   - Entry point, synthetic helpers, TLS, and init/runtime metadata are roots
-    //   - Archive-extracted sections are live only if reachable
-    //   - ObjC metadata, TLS, and init/fini sections are always roots
-    //   - Liveness propagates through relocation symbol references
+//   - Entry point, synthetic helpers, TLS, and init/runtime metadata are roots
+//   - Archive-extracted sections are live only if reachable
+//   - ObjC metadata, TLS, and init/fini sections are always roots
+//   - Liveness propagates through relocation symbol references
 // Links: codegen/common/linker/DeadStripPass.hpp
 //
 //===----------------------------------------------------------------------===//

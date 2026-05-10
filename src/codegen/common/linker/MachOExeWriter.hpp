@@ -56,6 +56,7 @@ bool writeMachOExe(const std::string &path,
                    std::size_t stackSize,
                    std::ostream &err);
 
+/// @brief Convenience overload — passes 0 for stackSize (writer picks the default).
 inline bool writeMachOExe(const std::string &path,
                           const LinkLayout &layout,
                           LinkArch arch,

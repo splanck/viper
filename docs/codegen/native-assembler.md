@@ -314,7 +314,9 @@ addresses match the emitted section layout. Mach-O already merges per-function t
 | `A64Jump26` | — | B 26-bit |
 | `A64AdrpPage21` | — | ADRP page |
 | `A64AddPageOff12` | — | ADD offset |
-| `A64LdSt64Off12` | — | LDR/STR scaled |
+| `A64LdSt32Off12` | — | LDR/STR 32-bit scaled |
+| `A64LdSt64Off12` | — | LDR/STR 64-bit scaled |
+| `A64LdSt128Off12` | — | LDR/STR 128-bit scaled |
 | `A64CondBr19` | — | B.cond 19-bit |
 
 Each writer maps these to format-specific codes (ELF `R_X86_64_*`, Mach-O `X86_64_RELOC_*`, COFF `IMAGE_REL_*`).
@@ -337,6 +339,8 @@ Produces valid ELF 64-bit relocatable object files for Linux.
 - Relocations use `.rela` format (explicit addend)
 - Both `.text` and `.rodata` relocations are emitted; `.rela.*` section headers link to `.symtab` and identify the
   relocated input section through `sh_info`.
+- Multi-text output uses section symbols plus addends for explicit section-offset relocations, so duplicate local
+  labels never require name-based target guessing.
 - All local symbols precede global symbols (ELF spec requirement)
 - `.note.GNU-stack` emitted for non-executable stack marker
 
@@ -382,12 +386,16 @@ Produces valid COFF object files for Windows.
 - Machine: `IMAGE_FILE_MACHINE_AMD64` (0x8664) or `IMAGE_FILE_MACHINE_ARM64` (0xAA64)
 - Relocations are 10 bytes: offset(4) + symbolTableIndex(4) + type(2)
 - No explicit addend — addend is embedded in instruction bytes at relocation site
-- x86_64 `PCRel32`/`Branch32` addends are normalized to the COFF relocation convention; only the native zero addend
-  or the encoder's ELF-style `-4` marker is accepted.
+- x86_64 `PCRel32`/`Branch32` addends are normalized to the COFF relocation convention and range-checked before the
+  32-bit displacement field is patched.
+- AArch64 branch, ADRP, ADD page-offset, and scaled load/store page-offset addends are encoded into the instruction
+  field before relocation records are serialized. Misaligned or out-of-range addends are rejected.
 - Symbol names ≤8 chars stored inline; longer names reference string table (4-byte size prefix)
 - Long section-name string-table references are checked to ensure the `/decimal` reference fits in COFF's 8-byte
   section-name field.
 - Relocation symbol indexes must resolve to emitted symbols.
+- Multi-text COFF output emits section-anchor symbols for explicit section-offset relocations and folds the target
+  offset into the embedded addend, matching COFF's no-explicit-addend model.
 - Duplicate global definitions are diagnosed instead of being overwritten in the COFF symbol map.
 - Win64 unwind entries validate stack allocation size/alignment, save-slot alignment, register ranges, and the
   one-byte unwind code count before `.xdata` is serialized. Entries that reference unknown or undefined function

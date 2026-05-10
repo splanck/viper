@@ -98,11 +98,13 @@ struct PeSection {
     bool zeroFill = false;
 };
 
+/// @brief In-place little-endian uint16 patch at @p offset within @p buf.
 void putLE16(std::vector<uint8_t> &buf, size_t offset, uint16_t val) {
     buf[offset + 0] = static_cast<uint8_t>(val & 0xFF);
     buf[offset + 1] = static_cast<uint8_t>((val >> 8) & 0xFF);
 }
 
+/// @brief In-place little-endian uint32 patch at @p offset within @p buf.
 void putLE32(std::vector<uint8_t> &buf, size_t offset, uint32_t val) {
     buf[offset + 0] = static_cast<uint8_t>(val & 0xFF);
     buf[offset + 1] = static_cast<uint8_t>((val >> 8) & 0xFF);
@@ -110,16 +112,19 @@ void putLE32(std::vector<uint8_t> &buf, size_t offset, uint32_t val) {
     buf[offset + 3] = static_cast<uint8_t>((val >> 24) & 0xFF);
 }
 
+/// @brief In-place little-endian uint64 patch at @p offset within @p buf.
 void putLE64(std::vector<uint8_t> &buf, size_t offset, uint64_t val) {
     putLE32(buf, offset, static_cast<uint32_t>(val & 0xFFFFFFFFULL));
     putLE32(buf, offset + 4, static_cast<uint32_t>(val >> 32));
 }
 
+/// @brief Append a little-endian uint16 to @p buf.
 void appendLE16(std::vector<uint8_t> &buf, uint16_t val) {
     buf.push_back(static_cast<uint8_t>(val & 0xFF));
     buf.push_back(static_cast<uint8_t>((val >> 8) & 0xFF));
 }
 
+/// @brief Append a little-endian uint32 to @p buf.
 void appendLE32(std::vector<uint8_t> &buf, uint32_t val) {
     buf.push_back(static_cast<uint8_t>(val & 0xFF));
     buf.push_back(static_cast<uint8_t>((val >> 8) & 0xFF));
@@ -127,6 +132,10 @@ void appendLE32(std::vector<uint8_t> &buf, uint32_t val) {
     buf.push_back(static_cast<uint8_t>((val >> 24) & 0xFF));
 }
 
+/// @brief Build the IMAGE_SCN_* characteristics word for a PE section.
+/// @details Picks code/data/rwdata/discardable bits based on the section's
+///          allocate/exec/write/zerofill attributes. Discardable applies to
+///          non-allocatable sections (.debug_*) so the loader can skip them.
 uint32_t sectionChars(bool executable, bool writable, bool alloc, bool zeroFill = false) {
     if (!alloc)
         return 0x42000040; // CNT_INITIALIZED_DATA | MEM_DISCARDABLE | MEM_READ
@@ -139,6 +148,17 @@ uint32_t sectionChars(bool executable, bool writable, bool alloc, bool zeroFill 
     return 0x40000040;     // CNT_INITIALIZED_DATA | MEM_READ
 }
 
+/// @brief Build the .idata import directory blob from a DLL import list.
+/// @details Materialises the IDT, ILT, hint/name table, DLL name table, and
+///          (when @p externalSlotRvas is empty) a fresh IAT into a single
+///          contiguous buffer. When @p externalSlotRvas is provided each
+///          import binds to a pre-allocated slot in another section instead,
+///          and the writer later patches each slot to the hint-name RVA via
+///          @c slotInitializers.
+/// @param imports          DLL import groups to serialise.
+/// @param sectionRva       RVA at which the resulting buffer will be placed.
+/// @param externalSlotRvas Optional symbol→RVA map for IAT slot reuse.
+/// @return Self-contained blob plus IDT/IAT range descriptors.
 ImportLayout buildImportTables(const std::vector<DllImport> &imports,
                                uint32_t sectionRva,
                                const std::unordered_map<std::string, uint32_t> &externalSlotRvas) {
@@ -264,14 +284,19 @@ ImportLayout buildImportTables(const std::vector<DllImport> &imports,
     return result;
 }
 
+/// @brief Test whether @p value fits in a signed 32-bit field (PE PC-rel reach).
 bool fitsInt32(int64_t value) {
     return value >= static_cast<int64_t>(INT32_MIN) && value <= static_cast<int64_t>(INT32_MAX);
 }
 
+/// @brief Test whether @p value starts with the C-string @p prefix.
 bool hasPrefix(const std::string &value, const char *prefix) {
     return value.rfind(prefix, 0) == 0;
 }
 
+/// @brief Encode a power-of-two alignment as the COFF section-alignment bit field.
+/// @details COFF stores alignment in bits 20-23 of Characteristics. A value of
+///          1 means 1-byte (no alignment), 2 means 2-byte, etc. up to 8192.
 uint32_t encodeCoffAlignment(uint32_t alignment) {
     if (alignment <= 1)
         return 0;
@@ -285,6 +310,8 @@ uint32_t encodeCoffAlignment(uint32_t alignment) {
     return bits << 20;
 }
 
+/// @brief Detect whether the layout contains any TLS-section data.
+/// @details Used to gate emission of the IMAGE_DIRECTORY_ENTRY_TLS data directory.
 bool layoutHasTls(const LinkLayout &layout) {
     for (const auto &sec : layout.sections) {
         if (sec.alloc && sec.tls && !sec.data.empty())
@@ -293,6 +320,12 @@ bool layoutHasTls(const LinkLayout &layout) {
     return false;
 }
 
+/// @brief Synthesise a Windows x64 _start shim that calls main and ExitProcess.
+/// @details The shim runs *before* main, aligns RSP, calls the resolved entry
+///          point, then tail-jumps through the IAT slot for kernel32!ExitProcess
+///          with main's return value as the exit code. Must reach both
+///          @p entryAddr and @p exitProcessIatRva via 32-bit PC-relative
+///          displacement, which the caller checks with @c fitsInt32.
 std::vector<uint8_t> buildX64StartupStub(uint64_t imageBase,
                                          uint64_t entryAddr,
                                          uint32_t stubRva,

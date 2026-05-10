@@ -97,6 +97,9 @@ static constexpr uint32_t VM_PROT_EXECUTE = 4;
 
 static constexpr uint32_t PLATFORM_MACOS = 1;
 
+/// @brief Convert a power-of-two alignment value to its log2 (Mach-O encoding).
+/// @details Mach-O `section_64::align` stores alignment as the exponent (e.g.,
+///          16-byte alignment is stored as 4). Returns 0 for alignment ≤ 1.
 static uint32_t machoSectionAlignLog2(uint32_t alignment) {
     uint32_t pow2 = 0;
     uint32_t value = (alignment == 0) ? 1 : alignment;
@@ -107,6 +110,10 @@ static uint32_t machoSectionAlignLog2(uint32_t alignment) {
     return pow2;
 }
 
+/// @brief Choose the Mach-O section name for an OutputSection.
+/// @details Most outputs collapse to __text (executable) or __const (rodata);
+///          ObjC metadata sections preserve their original "__SEG,__sect" name
+///          because the ObjC runtime locates them by name.
 static std::string machoSectionNameForOutput(const OutputSection &sec) {
     if (!isObjCSection(sec.name))
         return sec.executable ? "__text" : "__const";
@@ -114,6 +121,10 @@ static std::string machoSectionNameForOutput(const OutputSection &sec) {
     return (comma != std::string::npos) ? sec.name.substr(comma + 1) : sec.name;
 }
 
+/// @brief Map an ObjC metadata section name to its required Mach-O flag bits.
+/// @details The ObjC runtime expects S_CSTRING_LITERALS for name pools and
+///          S_ATTR_NO_DEAD_STRIP for class/category lists so the loader cannot
+///          discard them even if no IL code references them directly.
 static uint32_t objcSectionFlags(const std::string &machoSecName) {
     if (machoSecName == "__objc_classname" || machoSecName == "__objc_methname" ||
         machoSecName == "__objc_methtype")

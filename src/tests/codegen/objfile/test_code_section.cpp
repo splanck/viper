@@ -317,6 +317,24 @@ int main() {
         CHECK(a.relocations()[0].offset == 1);
     }
 
+    // --- appendSection rebases direct section-offset relocation targets ---
+    {
+        CodeSection a;
+        a.emit8(0x90);
+
+        CodeSection b;
+        b.setLogicalOffsetBias(100);
+        b.defineSymbol("target", SymbolBinding::Local, SymbolSection::Text);
+        b.addSectionOffsetRelocationAt(100, RelocKind::PCRel32, SymbolSection::Text, 100, -4);
+        b.emit32LE(0);
+
+        a.appendSection(b);
+        CHECK(a.relocations().size() == 1);
+        CHECK(a.relocations()[0].offset == 1);
+        CHECK(a.relocations()[0].targetOffsetValid);
+        CHECK(a.relocations()[0].targetOffset == 1);
+    }
+
     // --- appendSection validates unwind symbol indices ---
     {
         CodeSection a;
