@@ -127,7 +127,7 @@ std::pair<bool, bool> operandRoles(const MInstr &instr, std::size_t idx) noexcep
         case MOpcode::SELECT_XMM:
             if (idx == 0)
                 return {false, true};
-            if (idx == 1 || idx == 2)
+            if (idx == 1 || idx == 2 || idx == 3)
                 return {true, false};
             return {false, false};
     }

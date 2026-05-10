@@ -14,8 +14,11 @@
 
 #include "codegen/x86_64/AsmEmitter.hpp"
 #include "codegen/x86_64/Backend.hpp"
+#include "codegen/x86_64/FrameLowering.hpp"
 #include "codegen/x86_64/ISel.hpp"
 #include "codegen/x86_64/LowerILToMIR.hpp"
+#include "codegen/x86_64/OperandRoles.hpp"
+#include "codegen/x86_64/peephole/PeepholeCommon.hpp"
 #include "codegen/x86_64/RegAllocLinear.hpp"
 #include "codegen/x86_64/TargetX64.hpp"
 #include "codegen/x86_64/ra/Liveness.hpp"
@@ -119,6 +122,33 @@ const OpLabel *jumpTarget(const MInstr &instr) {
     if (instr.operands.empty())
         return nullptr;
     return std::get_if<OpLabel>(&instr.operands.back());
+}
+
+OpMem baseMem(const Operand &base, int32_t disp = 0) {
+    OpMem mem{};
+    mem.base = std::get<OpReg>(base);
+    mem.index = {};
+    mem.scale = 1;
+    mem.disp = disp;
+    mem.hasIndex = false;
+    return mem;
+}
+
+OpMem indexedMem(const Operand &base, const Operand &index, uint8_t scale, int32_t disp = 0) {
+    OpMem mem = baseMem(base, disp);
+    mem.index = std::get<OpReg>(index);
+    mem.scale = scale;
+    mem.hasIndex = true;
+    return mem;
+}
+
+const OpMem *firstMemOperand(const MInstr &instr) {
+    for (const auto &operand : instr.operands) {
+        if (const auto *mem = std::get_if<OpMem>(&operand)) {
+            return mem;
+        }
+    }
+    return nullptr;
 }
 
 int dupFd(int fd) {
@@ -1080,6 +1110,292 @@ TEST(X86BackendRegressions, InvalidConditionCodeThrowsDiagnosticException) {
     std::ostringstream out;
 
     EXPECT_THROWS(emitter.emitFunction(out, fn, sysvTarget()), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, Win64XmmCalleeSaveUnwindOffsetsAre16ByteAligned) {
+    MFunction fn{};
+    fn.name = "xmm_callee_save_align";
+
+    MBasicBlock entry{};
+    entry.label = ".L_xmm_callee_save_align_entry";
+    const Operand rax = makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RAX));
+    const Operand rbx = makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RBX));
+    const Operand xmm0 = makePhysRegOperand(RegClass::XMM, static_cast<uint16_t>(PhysReg::XMM0));
+    const Operand xmm6 = makePhysRegOperand(RegClass::XMM, static_cast<uint16_t>(PhysReg::XMM6));
+    entry.instructions = {MInstr::make(MOpcode::MOVrr, {rbx, rax}),
+                          MInstr::make(MOpcode::MOVSDrr, {xmm6, xmm0}),
+                          MInstr::make(MOpcode::RET)};
+    fn.blocks.push_back(std::move(entry));
+
+    FrameInfo frame{};
+    assignSpillSlots(fn, win64Target(), frame);
+    insertPrologueEpilogue(fn, win64Target(), frame);
+
+    bool sawXmmSave = false;
+    for (const auto &op : frame.win64UnwindOps) {
+        if (op.kind != Win64UnwindOpKind::SaveXmm128) {
+            continue;
+        }
+        sawXmmSave = true;
+        EXPECT_EQ(op.stackOffset % 16u, 0u);
+    }
+    EXPECT_TRUE(sawXmmSave);
+}
+
+TEST(X86BackendRegressions, XorImmediateZeroRemainsIdentityDuringISel) {
+    MFunction fn{};
+    fn.name = "xor_zero_identity";
+    MBasicBlock entry{};
+    entry.label = ".L_xor_zero_identity_entry";
+    const Operand value = makeVRegOperand(RegClass::GPR, 1);
+    entry.instructions = {MInstr::make(MOpcode::XORrr, {value, makeImmOperand(0)})};
+    fn.blocks.push_back(std::move(entry));
+
+    ISel isel(sysvTarget());
+    isel.lowerArithmetic(fn);
+
+    ASSERT_EQ(fn.blocks.front().instructions.size(), 1u);
+    EXPECT_EQ(fn.blocks.front().instructions.front().opcode, MOpcode::XORri);
+}
+
+TEST(X86BackendRegressions, SelectOperandRolesIncludeTrueArm) {
+    const Operand dst = makeVRegOperand(RegClass::GPR, 1);
+    const Operand cond = makeVRegOperand(RegClass::GPR, 2);
+    const Operand falseVal = makeVRegOperand(RegClass::GPR, 3);
+    const Operand trueVal = makeVRegOperand(RegClass::GPR, 4);
+    const MInstr select = MInstr::make(MOpcode::SELECT_GPR, {dst, cond, falseVal, trueVal});
+
+    const auto [isUse, isDef] = operandRoles(select, 3);
+    EXPECT_TRUE(isUse);
+    EXPECT_FALSE(isDef);
+}
+
+TEST(X86BackendRegressions, GprSelectWithImmediateTrueValueLowersToBranch) {
+    MFunction fn{};
+    fn.name = "select_true_imm";
+    MBasicBlock entry{};
+    entry.label = ".L_select_true_imm_entry";
+    const Operand dst = makeVRegOperand(RegClass::GPR, 1);
+    const Operand cond = makeVRegOperand(RegClass::GPR, 2);
+    entry.instructions = {MInstr::make(
+        MOpcode::SELECT_GPR, {dst, cond, makeImmOperand(11), makeImmOperand(22)})};
+    fn.blocks.push_back(std::move(entry));
+
+    ISel isel(sysvTarget());
+    isel.lowerSelect(fn);
+    isel.validateSelectLowering(fn);
+
+    const auto &instructions = fn.blocks.front().instructions;
+    ASSERT_EQ(instructions.size(), 5u);
+    EXPECT_EQ(instructions[0].opcode, MOpcode::TESTrr);
+    EXPECT_EQ(instructions[1].opcode, MOpcode::MOVri);
+    EXPECT_EQ(instructions[2].opcode, MOpcode::JCC);
+    EXPECT_EQ(instructions[3].opcode, MOpcode::MOVri);
+    EXPECT_EQ(instructions[4].opcode, MOpcode::LABEL);
+    const auto *trueImm = std::get_if<OpImm>(&instructions[3].operands[1]);
+    ASSERT_TRUE(trueImm != nullptr);
+    EXPECT_EQ(trueImm->val, 22);
+}
+
+TEST(X86BackendRegressions, MulToLeaRequiresConstantDefinitionBeforeUse) {
+    MFunction fn{};
+    fn.name = "mul_future_const";
+    MBasicBlock entry{};
+    entry.label = ".L_mul_future_const_entry";
+    const Operand dst = makeVRegOperand(RegClass::GPR, 1);
+    const Operand factor = makeVRegOperand(RegClass::GPR, 2);
+    entry.instructions = {MInstr::make(MOpcode::IMULrr, {dst, factor}),
+                          MInstr::make(MOpcode::MOVri, {factor, makeImmOperand(3)})};
+    fn.blocks.push_back(std::move(entry));
+
+    ISel isel(sysvTarget());
+    isel.lowerArithmetic(fn);
+
+    const auto &block = fn.blocks.front();
+    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::IMULrr));
+    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::MOVri));
+}
+
+TEST(X86BackendRegressions, MulToLeaCountsMemoryBaseUsesOfConstantRegister) {
+    MFunction fn{};
+    fn.name = "mul_const_mem_use";
+    MBasicBlock entry{};
+    entry.label = ".L_mul_const_mem_use_entry";
+    const Operand dst = makeVRegOperand(RegClass::GPR, 1);
+    const Operand factor = makeVRegOperand(RegClass::GPR, 2);
+    const Operand loaded = makeVRegOperand(RegClass::GPR, 3);
+    entry.instructions = {MInstr::make(MOpcode::MOVri, {factor, makeImmOperand(3)}),
+                          MInstr::make(MOpcode::IMULrr, {dst, factor}),
+                          MInstr::make(MOpcode::MOVmr, {loaded, Operand{baseMem(factor)}})};
+    fn.blocks.push_back(std::move(entry));
+
+    ISel isel(sysvTarget());
+    isel.lowerArithmetic(fn);
+
+    const auto &block = fn.blocks.front();
+    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::IMULrr));
+    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::MOVri));
+}
+
+TEST(X86BackendRegressions, MulToLeaRejectsSelfConstantMultiply) {
+    MFunction fn{};
+    fn.name = "mul_self_const";
+    MBasicBlock entry{};
+    entry.label = ".L_mul_self_const_entry";
+    const Operand value = makeVRegOperand(RegClass::GPR, 1);
+    entry.instructions = {MInstr::make(MOpcode::MOVri, {value, makeImmOperand(3)}),
+                          MInstr::make(MOpcode::IMULrr, {value, value})};
+    fn.blocks.push_back(std::move(entry));
+
+    ISel isel(sysvTarget());
+    isel.lowerArithmetic(fn);
+
+    const auto &block = fn.blocks.front();
+    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::IMULrr));
+    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::MOVri));
+}
+
+TEST(X86BackendRegressions, MulToLeaFoldsPriorSingleUseConstant) {
+    MFunction fn{};
+    fn.name = "mul_const_fold";
+    MBasicBlock entry{};
+    entry.label = ".L_mul_const_fold_entry";
+    const Operand value = makeVRegOperand(RegClass::GPR, 1);
+    const Operand factor = makeVRegOperand(RegClass::GPR, 2);
+    entry.instructions = {MInstr::make(MOpcode::MOVri, {factor, makeImmOperand(5)}),
+                          MInstr::make(MOpcode::IMULrr, {value, factor})};
+    fn.blocks.push_back(std::move(entry));
+
+    ISel isel(sysvTarget());
+    isel.lowerArithmetic(fn);
+
+    const auto &block = fn.blocks.front();
+    EXPECT_FALSE(blockContainsOpcode(block, MOpcode::MOVri));
+    EXPECT_FALSE(blockContainsOpcode(block, MOpcode::IMULrr));
+    ASSERT_EQ(block.instructions.size(), 1u);
+    EXPECT_EQ(block.instructions.front().opcode, MOpcode::LEA);
+}
+
+TEST(X86BackendRegressions, SibFoldRequiresAddressDefsBeforeMemoryUse) {
+    MFunction fn{};
+    fn.name = "sib_future_defs";
+    MBasicBlock entry{};
+    entry.label = ".L_sib_future_defs_entry";
+    const Operand base = makeVRegOperand(RegClass::GPR, 1);
+    const Operand index = makeVRegOperand(RegClass::GPR, 2);
+    const Operand scaled = makeVRegOperand(RegClass::GPR, 3);
+    const Operand addr = makeVRegOperand(RegClass::GPR, 4);
+    const Operand loaded = makeVRegOperand(RegClass::GPR, 5);
+    entry.instructions = {MInstr::make(MOpcode::MOVmr, {loaded, Operand{baseMem(addr)}}),
+                          MInstr::make(MOpcode::MOVrr, {scaled, index}),
+                          MInstr::make(MOpcode::SHLri, {scaled, makeImmOperand(3)}),
+                          MInstr::make(MOpcode::MOVrr, {addr, base}),
+                          MInstr::make(MOpcode::ADDrr, {addr, scaled})};
+    fn.blocks.push_back(std::move(entry));
+
+    ISel isel(sysvTarget());
+    isel.lowerArithmetic(fn);
+
+    const auto &block = fn.blocks.front();
+    const OpMem *mem = firstMemOperand(block.instructions.front());
+    ASSERT_TRUE(mem != nullptr);
+    EXPECT_FALSE(mem->hasIndex);
+    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::SHLri));
+    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::ADDrr));
+}
+
+TEST(X86BackendRegressions, SibFoldUsesPostDefReadCounts) {
+    MFunction fn{};
+    fn.name = "sib_fold";
+    MBasicBlock entry{};
+    entry.label = ".L_sib_fold_entry";
+    const Operand base = makeVRegOperand(RegClass::GPR, 1);
+    const Operand index = makeVRegOperand(RegClass::GPR, 2);
+    const Operand scaled = makeVRegOperand(RegClass::GPR, 3);
+    const Operand addr = makeVRegOperand(RegClass::GPR, 4);
+    const Operand loaded = makeVRegOperand(RegClass::GPR, 5);
+    entry.instructions = {MInstr::make(MOpcode::MOVrr, {scaled, index}),
+                          MInstr::make(MOpcode::SHLri, {scaled, makeImmOperand(3)}),
+                          MInstr::make(MOpcode::MOVrr, {addr, base}),
+                          MInstr::make(MOpcode::ADDrr, {addr, scaled}),
+                          MInstr::make(MOpcode::MOVmr, {loaded, Operand{baseMem(addr)}})};
+    fn.blocks.push_back(std::move(entry));
+
+    ISel isel(sysvTarget());
+    isel.lowerArithmetic(fn);
+
+    const auto &block = fn.blocks.front();
+    ASSERT_EQ(block.instructions.size(), 1u);
+    EXPECT_EQ(block.instructions.front().opcode, MOpcode::MOVmr);
+    const OpMem *mem = firstMemOperand(block.instructions.front());
+    ASSERT_TRUE(mem != nullptr);
+    EXPECT_TRUE(mem->hasIndex);
+    EXPECT_EQ(mem->scale, 8u);
+    EXPECT_EQ(mem->base.idOrPhys, 1u);
+    EXPECT_EQ(mem->index.idOrPhys, 2u);
+}
+
+TEST(X86BackendRegressions, LeaFoldRequiresDefinitionBeforeMemoryUse) {
+    MFunction fn{};
+    fn.name = "lea_future_def";
+    MBasicBlock entry{};
+    entry.label = ".L_lea_future_def_entry";
+    const Operand base = makeVRegOperand(RegClass::GPR, 1);
+    const Operand index = makeVRegOperand(RegClass::GPR, 2);
+    const Operand addr = makeVRegOperand(RegClass::GPR, 3);
+    const Operand loaded = makeVRegOperand(RegClass::GPR, 4);
+    entry.instructions = {MInstr::make(MOpcode::MOVmr, {loaded, Operand{baseMem(addr)}}),
+                          MInstr::make(MOpcode::LEA, {addr, Operand{indexedMem(base, index, 4)}})};
+    fn.blocks.push_back(std::move(entry));
+
+    ISel isel(sysvTarget());
+    isel.lowerArithmetic(fn);
+
+    const auto &block = fn.blocks.front();
+    const OpMem *mem = firstMemOperand(block.instructions.front());
+    ASSERT_TRUE(mem != nullptr);
+    EXPECT_FALSE(mem->hasIndex);
+    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::LEA));
+}
+
+TEST(X86BackendRegressions, LeaFoldUsesRoleAwareCountsAndDeferredErase) {
+    MFunction fn{};
+    fn.name = "lea_fold";
+    MBasicBlock entry{};
+    entry.label = ".L_lea_fold_entry";
+    const Operand base = makeVRegOperand(RegClass::GPR, 1);
+    const Operand index = makeVRegOperand(RegClass::GPR, 2);
+    const Operand addr = makeVRegOperand(RegClass::GPR, 3);
+    const Operand loaded = makeVRegOperand(RegClass::GPR, 4);
+    entry.instructions = {MInstr::make(MOpcode::LEA, {addr, Operand{indexedMem(base, index, 4, 16)}}),
+                          MInstr::make(MOpcode::MOVmr, {loaded, Operand{baseMem(addr)}})};
+    fn.blocks.push_back(std::move(entry));
+
+    ISel isel(sysvTarget());
+    isel.lowerArithmetic(fn);
+
+    const auto &block = fn.blocks.front();
+    ASSERT_EQ(block.instructions.size(), 1u);
+    EXPECT_EQ(block.instructions.front().opcode, MOpcode::MOVmr);
+    const OpMem *mem = firstMemOperand(block.instructions.front());
+    ASSERT_TRUE(mem != nullptr);
+    EXPECT_TRUE(mem->hasIndex);
+    EXPECT_EQ(mem->scale, 4u);
+    EXPECT_EQ(mem->disp, 16);
+    EXPECT_EQ(mem->base.idOrPhys, 1u);
+    EXPECT_EQ(mem->index.idOrPhys, 2u);
+}
+
+TEST(X86BackendRegressions, FlagScanStopsAtSharedFlagDefiners) {
+    const Operand dst = makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RAX));
+    const Operand xmm0 = makePhysRegOperand(RegClass::XMM, static_cast<uint16_t>(PhysReg::XMM0));
+    const Operand xmm1 = makePhysRegOperand(RegClass::XMM, static_cast<uint16_t>(PhysReg::XMM1));
+    const std::vector<MInstr> instructions = {
+        MInstr::make(MOpcode::MOVri, {dst, makeImmOperand(0)}),
+        MInstr::make(MOpcode::UCOMIS, {xmm0, xmm1}),
+        MInstr::make(MOpcode::JCC, {makeImmOperand(0), makeLabelOperand(".L_done")})};
+
+    EXPECT_FALSE(peephole::nextInstrReadsFlags(instructions, 0));
 }
 
 int main(int argc, char **argv) {

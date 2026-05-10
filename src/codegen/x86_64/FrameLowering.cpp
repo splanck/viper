@@ -114,29 +114,29 @@ struct SlotKeyHash {
     return isXMM(reg) ? 16 : kSlotSizeBytes;
 }
 
+struct CalleeSavedLayout {
+    std::vector<int> offsets{};
+    int totalBytes{0};
+};
+
 /// @brief Compute stack offsets for all callee-saved register spill slots.
-/// @details GPR slots are 8 bytes; XMM slots are 16 bytes.  Offsets are
-///          cumulative, all negative, relative to %rbp.
-/// @param regs Ordered list of callee-saved registers.
-/// @return Vector of byte offsets (all negative) relative to %rbp.
-[[nodiscard]] std::vector<int> calleeSavedOffsets(const std::vector<PhysReg> &regs) {
-    std::vector<int> offsets;
-    offsets.reserve(regs.size());
+/// @details GPR slots are 8 bytes. XMM slots are 16 bytes and must start at a
+///          16-byte unwind offset on Win64, so padding is inserted before XMM
+///          saves when an odd number of preceding GPR saves would misalign them.
+///          Offsets are all negative and relative to %rbp.
+[[nodiscard]] CalleeSavedLayout calleeSavedLayout(const std::vector<PhysReg> &regs) {
+    CalleeSavedLayout layout{};
+    layout.offsets.reserve(regs.size());
     int running = 0;
     for (auto reg : regs) {
+        if (isXMM(reg)) {
+            running = roundUp(running, kStackAlignment);
+        }
         running += calleeSaveSlotSize(reg);
-        offsets.push_back(-running);
+        layout.offsets.push_back(-running);
     }
-    return offsets;
-}
-
-/// @brief Compute total bytes occupied by callee-saved register slots.
-[[nodiscard]] int totalCalleeSavedBytes(const std::vector<PhysReg> &regs) {
-    int total = 0;
-    for (auto reg : regs) {
-        total += calleeSaveSlotSize(reg);
-    }
-    return total;
+    layout.totalBytes = running;
+    return layout;
 }
 
 /// @brief Convert an RBP-relative save slot into a positive offset from final RSP.
@@ -238,7 +238,8 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
         }
     }
 
-    const int calleeSavedBytes = totalCalleeSavedBytes(frame.usedCalleeSaved);
+    const CalleeSavedLayout csLayout = calleeSavedLayout(frame.usedCalleeSaved);
+    const int calleeSavedBytes = csLayout.totalBytes;
 
     std::unordered_map<SlotKey, int, SlotKeyHash> slotOffsets{};
 
@@ -444,7 +445,8 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, FrameInfo
         }
     }
 
-    const auto csOffsets = calleeSavedOffsets(frame.usedCalleeSaved);
+    const CalleeSavedLayout csLayout = calleeSavedLayout(frame.usedCalleeSaved);
+    const auto &csOffsets = csLayout.offsets;
     for (std::size_t idx = 0; idx < frame.usedCalleeSaved.size(); ++idx) {
         const auto reg = frame.usedCalleeSaved[idx];
         const int offset = csOffsets[idx];

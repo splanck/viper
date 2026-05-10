@@ -697,9 +697,23 @@ bool CoffWriter::write(const std::string &path,
         }
     }
 
+    std::unordered_set<uint32_t> crossSectionTextAliases;
+    std::unordered_set<uint32_t> undefinedTextRefs;
+    for (const auto &rel : text.relocations()) {
+        if (rel.symbolIndex >= text.symbols().count())
+            continue;
+        if (rel.targetSection != SymbolSection::Undefined)
+            crossSectionTextAliases.insert(rel.symbolIndex);
+        else
+            undefinedTextRefs.insert(rel.symbolIndex);
+    }
+
     for (uint32_t i = 1; i < text.symbols().count(); ++i) {
         const Symbol &s = text.symbols().at(i);
         if (s.binding == SymbolBinding::External) {
+            if (crossSectionTextAliases.count(i) != 0 && undefinedTextRefs.count(i) == 0) {
+                continue;
+            }
             pendingExternals.push_back({true, i, s.name, 0x20});
             continue;
         }
@@ -1287,11 +1301,29 @@ bool CoffWriter::write(const std::string &path,
         }
     }
 
+    std::vector<std::unordered_set<uint32_t>> crossSectionTextAliases(textCount);
+    std::vector<std::unordered_set<uint32_t>> undefinedTextRefs(textCount);
+    for (size_t ti = 0; ti < textCount; ++ti) {
+        const auto &text = textSections[ti];
+        for (const auto &rel : text.relocations()) {
+            if (rel.symbolIndex >= text.symbols().count())
+                continue;
+            if (rel.targetSection != SymbolSection::Undefined)
+                crossSectionTextAliases[ti].insert(rel.symbolIndex);
+            else
+                undefinedTextRefs[ti].insert(rel.symbolIndex);
+        }
+    }
+
     for (size_t ti = 0; ti < textCount; ++ti) {
         const auto &text = textSections[ti];
         for (uint32_t i = 1; i < text.symbols().count(); ++i) {
             const Symbol &s = text.symbols().at(i);
             if (s.binding == SymbolBinding::External) {
+                if (crossSectionTextAliases[ti].count(i) != 0 &&
+                    undefinedTextRefs[ti].count(i) == 0) {
+                    continue;
+                }
                 pendingExternals.push_back({true, ti, i, s.name, 0x20});
                 continue;
             }

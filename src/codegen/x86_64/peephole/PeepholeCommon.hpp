@@ -366,15 +366,9 @@ inline void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts) {
                                               std::size_t idx) noexcept {
     for (std::size_t j = idx + 1; j < instrs.size(); ++j) {
         const auto opc = instrs[j].opcode;
-        // Instructions that read flags
-        if (opc == MOpcode::JCC || opc == MOpcode::SETcc || opc == MOpcode::CMOVNErr)
+        if (usesEFlags(opc))
             return true;
-        // Instructions that overwrite flags — safe to stop scanning
-        if (opc == MOpcode::CMPrr || opc == MOpcode::CMPri || opc == MOpcode::TESTrr ||
-            opc == MOpcode::ADDrr || opc == MOpcode::ADDri || opc == MOpcode::SUBrr ||
-            opc == MOpcode::ANDrr || opc == MOpcode::ANDri || opc == MOpcode::ORrr ||
-            opc == MOpcode::ORri || opc == MOpcode::XORrr || opc == MOpcode::XORri ||
-            opc == MOpcode::XORrr32 || opc == MOpcode::IMULrr)
+        if (definesEFlags(opc))
             return false;
         // LABEL is a potential branch target — conservatively assume flags are read
         if (opc == MOpcode::LABEL)

@@ -151,8 +151,8 @@ void canonicaliseAddSub(MInstr &instr) {
 ///
 /// @details Normalises AND/OR/XOR to use immediate forms when the second operand
 ///          is a literal and falls back to register forms otherwise. Additionally
-///          rewrites XOR against zero into the canonical 32-bit self-XOR used by
-///          later peephole passes to recognise zeroing patterns.
+///          rewrites register self-XOR into the canonical 32-bit self-XOR used
+///          by later peephole passes to recognise zeroing patterns.
 ///
 /// @param instr Instruction to canonicalise in place.
 void canonicaliseBitwise(MInstr &instr) {
@@ -187,16 +187,22 @@ void canonicaliseBitwise(MInstr &instr) {
         return;
     }
 
-    if (instr.opcode == MOpcode::XORri) {
-        auto *imm = asImm(instr.operands[1]);
-        if (imm && imm->val == 0) {
-            const auto *dst = asReg(instr.operands[0]);
-            if (dst && dst->cls == RegClass::GPR) {
-                instr.opcode = MOpcode::XORrr32;
-                instr.operands[1] = cloneOperand(instr.operands[0]);
-            }
-        }
+    // Do not rewrite XORri $0 as a self-XOR.  "x ^ 0" is an identity, while
+    // "xor r32, r32" zeroes the destination.
+}
+
+bool appendGprMove(std::vector<MInstr> &out, const Operand &dst, const Operand &src) {
+    if (std::holds_alternative<OpImm>(src)) {
+        out.push_back(MInstr::make(MOpcode::MOVri,
+                                   std::vector<Operand>{cloneOperand(dst), cloneOperand(src)}));
+        return true;
     }
+    if (std::holds_alternative<OpReg>(src)) {
+        out.push_back(MInstr::make(MOpcode::MOVrr,
+                                   std::vector<Operand>{cloneOperand(dst), cloneOperand(src)}));
+        return true;
+    }
+    return false;
 }
 
 /// @brief Attempt to lower a GPR select pseudo into TEST/MOV/CMOV sequence.
@@ -205,10 +211,11 @@ void canonicaliseBitwise(MInstr &instr) {
 ///          rebuilds it as a flags-setting TEST followed by MOV (false path)
 ///          and CMOVNE (true path).
 ///
+/// @param func Machine function supplying the label allocator.
 /// @param block Machine basic block undergoing transformation.
 /// @param index Index of the candidate SELECT_GPR instruction within the block.
 /// @return @c true when the pseudo was replaced.
-bool lowerGprSelect(MBasicBlock &block, std::size_t index) {
+bool lowerGprSelect(MFunction &func, MBasicBlock &block, std::size_t index) {
     auto &selectInstr = block.instructions[index];
     if (selectInstr.opcode != MOpcode::SELECT_GPR || selectInstr.operands.size() != 4) {
         return false;
@@ -222,9 +229,6 @@ bool lowerGprSelect(MBasicBlock &block, std::size_t index) {
     const Operand &condVal = selectInstr.operands[1];
     const Operand &falseVal = selectInstr.operands[2];
     const Operand &trueVal = selectInstr.operands[3];
-    if (std::holds_alternative<OpImm>(trueVal)) {
-        return false;
-    }
     if (!std::holds_alternative<OpReg>(condVal)) {
         return false;
     }
@@ -234,14 +238,26 @@ bool lowerGprSelect(MBasicBlock &block, std::size_t index) {
                                        std::vector<Operand>{cloneOperand(condVal),
                                                             cloneOperand(condVal)}));
 
-    const bool falseIsImm = std::holds_alternative<OpImm>(falseVal);
-    replacement.push_back(MInstr::make(
-        falseIsImm ? MOpcode::MOVri : MOpcode::MOVrr,
-        std::vector<Operand>{cloneOperand(selectInstr.operands[0]), cloneOperand(falseVal)}));
+    if (!appendGprMove(replacement, selectInstr.operands[0], falseVal)) {
+        return false;
+    }
 
-    replacement.push_back(MInstr::make(
-        MOpcode::CMOVNErr,
-        std::vector<Operand>{cloneOperand(selectInstr.operands[0]), cloneOperand(trueVal)}));
+    if (std::holds_alternative<OpReg>(trueVal)) {
+        replacement.push_back(MInstr::make(
+            MOpcode::CMOVNErr,
+            std::vector<Operand>{cloneOperand(selectInstr.operands[0]), cloneOperand(trueVal)}));
+    } else if (std::holds_alternative<OpImm>(trueVal)) {
+        const std::string doneLabel = func.makeLocalLabel(".Lselect_gpr_done");
+        replacement.push_back(MInstr::make(
+            MOpcode::JCC, std::vector<Operand>{makeImmOperand(0), makeLabelOperand(doneLabel)}));
+        if (!appendGprMove(replacement, selectInstr.operands[0], trueVal)) {
+            return false;
+        }
+        replacement.push_back(
+            MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(doneLabel)}));
+    } else {
+        return false;
+    }
 
     auto beginIt = block.instructions.begin() + static_cast<std::ptrdiff_t>(index);
     block.instructions.erase(beginIt);
@@ -341,6 +357,77 @@ bool instructionUsesRegister(const MInstr &instr, const Operand &needle) {
         }
     }
     return false;
+}
+
+template <typename CountMap>
+void countVirtualRegisterUses(const MInstr &instr, CountMap &useCount) {
+    for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
+        const auto [isUse, isDef] = operandRoles(instr, idx);
+        (void)isDef;
+        if (!isUse) {
+            continue;
+        }
+
+        if (const auto *reg = asReg(instr.operands[idx])) {
+            if (!reg->isPhys) {
+                ++useCount[reg->idOrPhys];
+            }
+            continue;
+        }
+
+        const auto *mem = std::get_if<OpMem>(&instr.operands[idx]);
+        if (!mem) {
+            continue;
+        }
+        if (!mem->base.isPhys) {
+            ++useCount[mem->base.idOrPhys];
+        }
+        if (mem->hasIndex && !mem->index.isPhys) {
+            ++useCount[mem->index.idOrPhys];
+        }
+    }
+}
+
+std::size_t countVirtualRegisterUsesInInstr(const MInstr &instr, uint16_t vreg) {
+    std::size_t count = 0;
+    for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
+        const auto [isUse, isDef] = operandRoles(instr, idx);
+        (void)isDef;
+        if (!isUse) {
+            continue;
+        }
+
+        if (const auto *reg = asReg(instr.operands[idx])) {
+            if (!reg->isPhys && reg->idOrPhys == vreg) {
+                ++count;
+            }
+            continue;
+        }
+
+        const auto *mem = std::get_if<OpMem>(&instr.operands[idx]);
+        if (!mem) {
+            continue;
+        }
+        if (!mem->base.isPhys && mem->base.idOrPhys == vreg) {
+            ++count;
+        }
+        if (mem->hasIndex && !mem->index.isPhys && mem->index.idOrPhys == vreg) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+std::size_t countVirtualRegisterUsesInRange(const MBasicBlock &block,
+                                            uint16_t vreg,
+                                            std::size_t begin,
+                                            std::size_t end) {
+    const std::size_t limit = std::min(end, block.instructions.size());
+    std::size_t count = 0;
+    for (std::size_t idx = begin; idx < limit; ++idx) {
+        count += countVirtualRegisterUsesInInstr(block.instructions[idx], vreg);
+    }
+    return count;
 }
 
 /// @brief Check whether a register has uses outside the local fold window.
@@ -596,7 +683,7 @@ void ISel::lowerSelect(MFunction &func) const {
                 continue;
             }
 
-            if (lowerGprSelect(block, idx)) {
+            if (lowerGprSelect(func, block, idx)) {
                 idx += 2;
                 continue;
             }
@@ -641,9 +728,8 @@ void ISel::foldSibAddressing(MFunction &func) const {
         std::unordered_map<uint16_t, ShlInfo> shlDefs; // result vreg -> info
         std::unordered_map<uint16_t, AddInfo> addDefs; // result vreg -> info
         std::unordered_map<uint16_t, MovInfo> movDefs; // dest vreg -> info (for O(1) lookup)
-        std::unordered_map<uint16_t, std::size_t> useCount;
 
-        // First pass: record SHL, ADD, and MOVrr definitions, count uses
+        // First pass: record SHL, ADD, and MOVrr definitions.
         for (std::size_t idx = 0; idx < block.instructions.size(); ++idx) {
             const auto &instr = block.instructions[idx];
 
@@ -693,21 +779,6 @@ void ISel::foldSibAddressing(MFunction &func) const {
                 }
             }
 
-            // Count all vreg uses
-            for (const auto &op : instr.operands) {
-                if (const auto *r = asReg(op)) {
-                    if (!r->isPhys) {
-                        ++useCount[r->idOrPhys];
-                    }
-                } else if (const auto *mem = std::get_if<OpMem>(&op)) {
-                    if (!mem->base.isPhys) {
-                        ++useCount[mem->base.idOrPhys];
-                    }
-                    if (mem->hasIndex && !mem->index.isPhys) {
-                        ++useCount[mem->index.idOrPhys];
-                    }
-                }
-            }
         }
 
         // Second pass: find memory operands using ADD results and transform
@@ -739,21 +810,31 @@ void ISel::foldSibAddressing(MFunction &func) const {
 
                 const ShlInfo &shlInfo = shlIt->second;
 
-                // Check that the ADD result and SHL result are single-use
-                auto addUseIt = useCount.find(baseId);
-                auto shlUseIt = useCount.find(addInfo.shiftedVreg);
-                if (addUseIt == useCount.end() || shlUseIt == useCount.end()) {
+                if (shlInfo.defIdx >= addInfo.defIdx || addInfo.defIdx >= idx) {
                     continue;
                 }
-                if (addUseIt->second != 1 || shlUseIt->second != 1) {
-                    continue; // Multiple uses - can't fold
+
+                // Check that the ADD result and SHL result are single-use after
+                // their definitions. The destructive source reads of SHL/ADD
+                // are not uses of the newly defined values.
+                if (countVirtualRegisterUsesInRange(
+                        block, baseId, addInfo.defIdx + 1, block.instructions.size()) != 1) {
+                    continue;
+                }
+                if (countVirtualRegisterUsesInRange(
+                        block, addInfo.shiftedVreg, shlInfo.defIdx + 1,
+                        block.instructions.size()) != 1) {
+                    continue;
                 }
 
                 // Find the original index register before the SHL using O(1) map lookup
                 uint16_t indexVreg = shlInfo.srcVreg;
                 auto movIt = movDefs.find(shlInfo.srcVreg);
                 if (movIt != movDefs.end() && !movIt->second.srcIsPhys &&
-                    movIt->second.defIdx < shlInfo.defIdx) {
+                    movIt->second.defIdx < shlInfo.defIdx &&
+                    countVirtualRegisterUsesInRange(block, shlInfo.srcVreg,
+                                                    movIt->second.defIdx + 1,
+                                                    shlInfo.defIdx + 1) == 1) {
                     indexVreg = movIt->second.srcVreg;
                     toErase.push_back(movIt->second.defIdx); // Mark MOV for removal
                 }
@@ -761,7 +842,10 @@ void ISel::foldSibAddressing(MFunction &func) const {
                 // Find the original base register before ADD using O(1) map lookup
                 uint16_t realBaseVreg = addInfo.baseVreg;
                 auto baseMovIt = movDefs.find(addInfo.baseVreg);
-                if (baseMovIt != movDefs.end() && baseMovIt->second.defIdx < addInfo.defIdx) {
+                if (baseMovIt != movDefs.end() && baseMovIt->second.defIdx < addInfo.defIdx &&
+                    countVirtualRegisterUsesInRange(block, addInfo.baseVreg,
+                                                    baseMovIt->second.defIdx + 1,
+                                                    addInfo.defIdx + 1) == 1) {
                     if (!baseMovIt->second.srcIsPhys) {
                         realBaseVreg = baseMovIt->second.srcVreg;
                     } else {
@@ -864,14 +948,7 @@ void ISel::lowerMulToLea(MFunction &func) const {
                 }
             }
 
-            // Count all vreg uses from all operands.
-            for (const auto &op : instr.operands) {
-                if (const auto *r = asReg(op)) {
-                    if (!r->isPhys) {
-                        ++useCount[r->idOrPhys];
-                    }
-                }
-            }
+            countVirtualRegisterUses(instr, useCount);
         }
 
         // Second pass: find eligible IMULrr and rewrite.
@@ -894,6 +971,8 @@ void ISel::lowerMulToLea(MFunction &func) const {
                 continue;
             if (dst->cls != RegClass::GPR || src->cls != RegClass::GPR)
                 continue;
+            if (dst->idOrPhys == src->idOrPhys)
+                continue;
 
             // The source register must have been defined by a MOVri with an
             // eligible factor.
@@ -902,18 +981,17 @@ void ISel::lowerMulToLea(MFunction &func) const {
             if (defIt == constDefs.end())
                 continue;
 
+            const MovRiDef &def = defIt->second;
+            if (def.defIdx >= idx)
+                continue;
+
             if (flagsReadBeforeClobber(block.instructions, idx))
                 continue;
 
             // The constant register must have exactly one read-use (this IMUL).
-            // useCount tracks all operand occurrences including the defining
-            // MOVri's destination slot, so a count of 2 means one definition
-            // occurrence plus one actual use — safe to erase the MOVri.
             auto useIt = useCount.find(srcId);
-            if (useIt == useCount.end() || useIt->second != 2)
+            if (useIt == useCount.end() || useIt->second != 1)
                 continue;
-
-            const MovRiDef &def = defIt->second;
 
             // Build the replacement LEA: dst ← [dst + dst * scale]
             // OpMem with base == index captures dst*(1+scale) = dst*factor.
@@ -960,9 +1038,8 @@ void ISel::foldLeaIntoMem(MFunction &func) const {
     (void)target_;
     for (auto &block : func.blocks) {
         std::unordered_map<uint16_t, std::size_t> leaDefIdx; // vreg id -> instr idx
-        std::unordered_map<uint16_t, std::size_t> useCount;  // vreg id -> uses in block
 
-        // First pass: record LEA defs and count vreg uses (regs and mem bases/indexes).
+        // First pass: record LEA defs.
         for (std::size_t idx = 0; idx < block.instructions.size(); ++idx) {
             const auto &instr = block.instructions[idx];
             if (instr.opcode == MOpcode::LEA && instr.operands.size() >= 2) {
@@ -972,67 +1049,53 @@ void ISel::foldLeaIntoMem(MFunction &func) const {
                     }
                 }
             }
-
-            for (const auto &op : instr.operands) {
-                if (const auto *r = asReg(op)) {
-                    if (!r->isPhys) {
-                        ++useCount[r->idOrPhys];
-                    }
-                } else if (const auto *mem = std::get_if<OpMem>(&op)) {
-                    if (!mem->base.isPhys) {
-                        ++useCount[mem->base.idOrPhys];
-                    }
-                    if (mem->hasIndex && !mem->index.isPhys) {
-                        ++useCount[mem->index.idOrPhys];
-                    }
-                }
-            }
         }
 
         // Second pass: try to fold at use sites and erase the LEA.
+        std::vector<std::size_t> toErase;
         for (std::size_t idx = 0; idx < block.instructions.size(); ++idx) {
             auto &instr = block.instructions[idx];
-            bool foldedAny = false;
             for (auto &op : instr.operands) {
                 if (auto *mem = std::get_if<OpMem>(&op)) {
                     const OpReg &base = mem->base;
                     if (!base.isPhys && base.cls == RegClass::GPR) {
                         const uint16_t v = base.idOrPhys;
                         auto defIt = leaDefIdx.find(v);
-                        auto useIt = useCount.find(v);
-                        if (defIt != leaDefIdx.end() && useIt != useCount.end() &&
-                            useIt->second == 1) {
-                            const std::size_t defIndex = defIt->second;
-                            if (defIndex < block.instructions.size()) {
-                                const auto &defInstr = block.instructions[defIndex];
-                                if (defInstr.opcode == MOpcode::LEA &&
-                                    defInstr.operands.size() >= 2) {
-                                    if (const auto *srcMem =
-                                            std::get_if<OpMem>(&defInstr.operands[1])) {
-                                        // Replace the memory operand with the LEA's addressing
-                                        // mode.
-                                        *mem = *srcMem;
-                                        // Erase the defining LEA.
-                                        block.instructions.erase(
-                                            block.instructions.begin() +
-                                            static_cast<std::ptrdiff_t>(defIndex));
-                                        // Adjust current index when the erased def was before this
-                                        // instr.
-                                        if (defIndex < idx) {
-                                            --idx;
-                                        }
-                                        foldedAny = true;
-                                        // Prevent re-use: remove from maps.
-                                        leaDefIdx.erase(defIt);
-                                        useCount.erase(useIt);
-                                    }
-                                }
+                        if (defIt == leaDefIdx.end()) {
+                            continue;
+                        }
+
+                        const std::size_t defIndex = defIt->second;
+                        if (defIndex >= idx || defIndex >= block.instructions.size()) {
+                            continue;
+                        }
+
+                        if (countVirtualRegisterUsesInRange(
+                                block, v, defIndex + 1, block.instructions.size()) != 1) {
+                            continue;
+                        }
+
+                        const auto &defInstr = block.instructions[defIndex];
+                        if (defInstr.opcode == MOpcode::LEA && defInstr.operands.size() >= 2) {
+                            if (const auto *srcMem = std::get_if<OpMem>(&defInstr.operands[1])) {
+                                // Replace the memory operand with the LEA's addressing mode.
+                                *mem = *srcMem;
+                                toErase.push_back(defIndex);
+                                leaDefIdx.erase(defIt);
                             }
                         }
                     }
                 }
             }
-            (void)foldedAny;
+        }
+
+        std::sort(toErase.begin(), toErase.end(), std::greater<std::size_t>());
+        toErase.erase(std::unique(toErase.begin(), toErase.end()), toErase.end());
+        for (std::size_t eraseIdx : toErase) {
+            if (eraseIdx < block.instructions.size()) {
+                block.instructions.erase(block.instructions.begin() +
+                                         static_cast<std::ptrdiff_t>(eraseIdx));
+            }
         }
     }
 }
