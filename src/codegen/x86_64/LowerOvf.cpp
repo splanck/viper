@@ -70,11 +70,32 @@ void lowerOverflowOps(MFunction &fn) {
         if (auto existing = findBlock(fn, trapLabel)) {
             trapIndex = *existing;
             auto &trapBlock = fn.blocks[*trapIndex];
-            const bool hasTerminator = std::any_of(
+            const bool hasRuntimeCall = std::any_of(
+                trapBlock.instructions.begin(),
+                trapBlock.instructions.end(),
+                [](const MInstr &instr) {
+                    if (instr.opcode != MOpcode::CALL || instr.operands.empty()) {
+                        return false;
+                    }
+                    const auto *label = std::get_if<OpLabel>(&instr.operands.front());
+                    return label && label->name == "rt_trap_ovf";
+                });
+            auto ud2It = std::find_if(
                 trapBlock.instructions.begin(),
                 trapBlock.instructions.end(),
                 [](const MInstr &instr) { return instr.opcode == MOpcode::UD2; });
-            if (!hasTerminator) {
+            if (!hasRuntimeCall) {
+                MInstr call =
+                    MInstr::make(MOpcode::CALL, std::vector<Operand>{makeLabelOperand("rt_trap_ovf")});
+                if (ud2It != trapBlock.instructions.end()) {
+                    ud2It = trapBlock.instructions.insert(ud2It, std::move(call));
+                    ++ud2It;
+                } else {
+                    trapBlock.append(std::move(call));
+                    ud2It = trapBlock.instructions.end();
+                }
+            }
+            if (ud2It == trapBlock.instructions.end()) {
                 trapBlock.append(MInstr::make(MOpcode::UD2));
             }
             return *trapIndex;

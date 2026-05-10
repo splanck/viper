@@ -31,6 +31,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -112,6 +113,27 @@ void canonicaliseCmp(MInstr &instr) {
     if (instr.opcode == MOpcode::CMPri && !isImm(instr.operands[1])) {
         instr.opcode = MOpcode::CMPrr;
     }
+}
+
+[[nodiscard]] std::optional<OpMem> combineLeaMemUse(const OpMem &leaMem, const OpMem &useMem) {
+    if (leaMem.hasIndex && useMem.hasIndex) {
+        return std::nullopt;
+    }
+
+    const int64_t combinedDisp = static_cast<int64_t>(leaMem.disp) + useMem.disp;
+    if (combinedDisp < static_cast<int64_t>(std::numeric_limits<int32_t>::min()) ||
+        combinedDisp > static_cast<int64_t>(std::numeric_limits<int32_t>::max())) {
+        return std::nullopt;
+    }
+
+    OpMem combined = leaMem;
+    combined.disp = static_cast<int32_t>(combinedDisp);
+    if (useMem.hasIndex) {
+        combined.index = useMem.index;
+        combined.scale = useMem.scale;
+        combined.hasIndex = true;
+    }
+    return combined;
 }
 
 /// @brief Canonicalise add/sub opcodes to use immediate forms when possible.
@@ -426,6 +448,16 @@ std::size_t countVirtualRegisterUsesInRange(const MBasicBlock &block,
     std::size_t count = 0;
     for (std::size_t idx = begin; idx < limit; ++idx) {
         count += countVirtualRegisterUsesInInstr(block.instructions[idx], vreg);
+    }
+    return count;
+}
+
+std::size_t countVirtualRegisterUsesInFunction(const MFunction &func, uint16_t vreg) {
+    std::size_t count = 0;
+    for (const auto &block : func.blocks) {
+        for (const auto &instr : block.instructions) {
+            count += countVirtualRegisterUsesInInstr(instr, vreg);
+        }
     }
     return count;
 }
@@ -1070,18 +1102,18 @@ void ISel::foldLeaIntoMem(MFunction &func) const {
                             continue;
                         }
 
-                        if (countVirtualRegisterUsesInRange(
-                                block, v, defIndex + 1, block.instructions.size()) != 1) {
+                        if (countVirtualRegisterUsesInFunction(func, v) != 1) {
                             continue;
                         }
 
                         const auto &defInstr = block.instructions[defIndex];
                         if (defInstr.opcode == MOpcode::LEA && defInstr.operands.size() >= 2) {
                             if (const auto *srcMem = std::get_if<OpMem>(&defInstr.operands[1])) {
-                                // Replace the memory operand with the LEA's addressing mode.
-                                *mem = *srcMem;
-                                toErase.push_back(defIndex);
-                                leaDefIdx.erase(defIt);
+                                if (auto combined = combineLeaMemUse(*srcMem, *mem)) {
+                                    *mem = *combined;
+                                    toErase.push_back(defIndex);
+                                    leaDefIdx.erase(defIt);
+                                }
                             }
                         }
                     }

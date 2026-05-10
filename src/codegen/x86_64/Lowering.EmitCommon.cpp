@@ -109,9 +109,17 @@ Operand EmitCommon::materialise(Operand operand, RegClass cls) {
         builder().append(MInstr::make(
             MOpcode::LEA,
             std::vector<Operand>{clone(tmpOp), makeRipLabelOperand(label->name)}));
-    } else if (std::holds_alternative<OpRipLabel>(operand)) {
-        builder().append(
-            MInstr::make(MOpcode::LEA, std::vector<Operand>{clone(tmpOp), clone(operand)}));
+    } else if (const auto *rip = std::get_if<OpRipLabel>(&operand)) {
+        if (cls == RegClass::XMM) {
+            builder().append(MInstr::make(
+                MOpcode::MOVSDmr, std::vector<Operand>{clone(tmpOp), clone(operand)}));
+        } else {
+            builder().append(MInstr::make(
+                MOpcode::LEA, std::vector<Operand>{clone(tmpOp), makeRipLabelOperand(rip->name)}));
+        }
+    } else if (std::holds_alternative<OpMem>(operand)) {
+        builder().append(MInstr::make(cls == RegClass::XMM ? MOpcode::MOVSDmr : MOpcode::MOVmr,
+                                      std::vector<Operand>{clone(tmpOp), clone(operand)}));
     } else {
         builder().append(
             MInstr::make(MOpcode::MOVrr, std::vector<Operand>{clone(tmpOp), clone(operand)}));
@@ -120,7 +128,8 @@ Operand EmitCommon::materialise(Operand operand, RegClass cls) {
     return tmpOp;
 }
 
-std::optional<Operand> EmitCommon::tryMakeIndexedMem(const ILInstr &addrProducer) {
+std::optional<Operand> EmitCommon::tryMakeIndexedMem(const ILInstr &addrProducer,
+                                                     std::size_t displacementOperandIndex) {
     // Attempt to reconstruct (base + (idx << k) + disp) from MIR in the current block.
     if (addrProducer.ops.empty()) {
         return std::nullopt;
@@ -212,11 +221,12 @@ std::optional<Operand> EmitCommon::tryMakeIndexedMem(const ILInstr &addrProducer
     }
 
     int32_t disp = 0;
-    if (addrProducer.ops.size() > 1) {
-        if (!fitsImm32(addrProducer.ops[1].i64)) {
+    if (addrProducer.ops.size() > displacementOperandIndex) {
+        const ILValue &dispValue = addrProducer.ops[displacementOperandIndex];
+        if (!builder().isImmediate(dispValue) || !fitsImm32(dispValue.i64)) {
             return std::nullopt;
         }
-        disp = static_cast<int32_t>(addrProducer.ops[1].i64);
+        disp = static_cast<int32_t>(dispValue.i64);
     }
 
     return makeMemOperand(baseReg, actualIdx, scale, disp);
@@ -326,7 +336,7 @@ void EmitCommon::emitShift(const ILInstr &instr, MOpcode opcImm, MOpcode opcReg)
 
     Operand rhs = builder().makeOperandForValue(instr.ops[1], destReg.cls);
     if (auto *imm = std::get_if<OpImm>(&rhs)) {
-        const auto masked = static_cast<int64_t>(static_cast<std::uint8_t>(imm->val));
+        const auto masked = static_cast<int64_t>(static_cast<std::uint64_t>(imm->val) & 63ULL);
         builder().append(
             MInstr::make(opcImm, std::vector<Operand>{clone(dest), makeImmOperand(masked)}));
         return;
@@ -594,7 +604,7 @@ void EmitCommon::emitLoad(const ILInstr &instr, RegClass cls) {
 
     Operand mem = makeMemOperand(std::get<OpReg>(effectiveBase), static_cast<int32_t>(disp64));
     if (fitsImm32(disp64)) {
-        if (const auto indexed = tryMakeIndexedMem(instr)) {
+        if (const auto indexed = tryMakeIndexedMem(instr, 1)) {
             mem = *indexed;
         }
     }
@@ -654,7 +664,7 @@ void EmitCommon::emitStore(const ILInstr &instr) {
 
     Operand mem = makeMemOperand(std::get<OpReg>(effectiveBase), static_cast<int32_t>(disp64));
     if (fitsImm32(disp64)) {
-        if (const auto indexed = tryMakeIndexedMem(instr)) {
+        if (const auto indexed = tryMakeIndexedMem(instr, 2)) {
             mem = *indexed;
         }
     }

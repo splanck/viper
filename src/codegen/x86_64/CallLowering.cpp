@@ -24,6 +24,7 @@
 #include "CallLowering.hpp"
 
 #include "FrameLowering.hpp"
+#include "OperandRoles.hpp"
 #include "OperandUtils.hpp"
 #include "TargetX64.hpp"
 
@@ -40,21 +41,45 @@ constexpr PhysReg kScratchXMM = PhysReg::XMM15;
 
 /// @brief Decide whether an instruction produces the boolean SSA value @p vreg.
 ///
-/// @details Walks the instruction's leading operand to see if it writes the
-///          provided virtual register via a @c SETcc opcode.  This mirrors the
-///          code generator's convention where boolean producers funnel through
-///          @c SETcc before materialisation.
+/// @details Walks the instruction's defined operands to see if it writes the
+///          provided virtual register via a @c SETcc opcode. SETcc carries its
+///          condition code before the destination operand, so the generic
+///          operand-role table is used instead of assuming operand zero is the
+///          def.
 ///
 /// @param instr Instruction whose operands are inspected.
 /// @param vreg Virtual register identifier associated with the SSA value.
 /// @return True when the instruction writes @p vreg as a boolean result.
 [[nodiscard]] bool isBoolProducer(const MInstr &instr, uint16_t vreg) {
-    if (instr.operands.empty()) {
+    if (instr.opcode != MOpcode::SETcc) {
         return false;
     }
-    if (const auto *reg = std::get_if<OpReg>(&instr.operands.front()); reg) {
-        if (!reg->isPhys && reg->idOrPhys == vreg) {
-            return instr.opcode == MOpcode::SETcc;
+    for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
+        const auto [isUse, isDef] = operandRoles(instr, idx);
+        (void)isUse;
+        if (!isDef) {
+            continue;
+        }
+        if (const auto *reg = std::get_if<OpReg>(&instr.operands[idx]); reg) {
+            if (!reg->isPhys && reg->idOrPhys == vreg) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+[[nodiscard]] bool definesVReg(const MInstr &instr, uint16_t vreg) {
+    for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
+        const auto [isUse, isDef] = operandRoles(instr, idx);
+        (void)isUse;
+        if (!isDef) {
+            continue;
+        }
+        if (const auto *reg = std::get_if<OpReg>(&instr.operands[idx]); reg) {
+            if (!reg->isPhys && reg->idOrPhys == vreg) {
+                return true;
+            }
         }
     }
     return false;
@@ -83,12 +108,8 @@ constexpr PhysReg kScratchXMM = PhysReg::XMM15;
         if (isBoolProducer(instr, vreg)) {
             return true;
         }
-        if (!instr.operands.empty()) {
-            if (const auto *reg = std::get_if<OpReg>(&instr.operands.front()); reg) {
-                if (!reg->isPhys && reg->idOrPhys == vreg) {
-                    return false;
-                }
-            }
+        if (definesVReg(instr, vreg)) {
+            return false;
         }
     }
     return false;

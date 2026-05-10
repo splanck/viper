@@ -20,7 +20,9 @@
 #include "codegen/x86_64/LowerILToMIR.hpp"
 #include "codegen/x86_64/TargetX64.hpp"
 
+#include <algorithm>
 #include <optional>
+#include <string>
 #include <vector>
 
 using namespace viper::codegen::x64;
@@ -47,6 +49,15 @@ ILValue makeLabel(const char *name) {
     value.kind = ILValue::Kind::LABEL;
     value.id = -1;
     value.label = name;
+    return value;
+}
+
+ILValue makeStringLiteral(const char *text) {
+    ILValue value{};
+    value.kind = ILValue::Kind::STR;
+    value.id = -1;
+    value.str = text;
+    value.strLen = value.str.size();
     return value;
 }
 
@@ -437,6 +448,63 @@ TEST(X64CallABI, Win64VarArgAssemblyMirrorsFpArgIntoIntegerLane) {
 
     EXPECT_TRUE(result.errors.empty());
     EXPECT_NE(result.asmText.find("movq %xmm1, %rdx"), std::string::npos);
+}
+
+TEST(X64CallABI, DirectStringLiteralCallArgsMaterializeRuntimeStrings) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(sysvTarget(), roData);
+
+    ILInstr call{};
+    call.opcode = "call";
+    call.ops = {makeLabel("consume_str"), makeStringLiteral("hello")};
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {call, makeRet(makeConstI64(0))};
+
+    ILFunction fn{};
+    fn.name = "call_direct_str_lit";
+    fn.blocks = {entry};
+
+    const MFunction mir = lowering.lower(fn);
+    (void)mir;
+    ASSERT_EQ(lowering.callPlans().size(), 2u);
+    EXPECT_EQ(lowering.callPlans()[0].callee, "rt_str_from_lit");
+    EXPECT_EQ(lowering.callPlans()[1].callee, "consume_str");
+    ASSERT_EQ(lowering.callPlans()[1].args.size(), 1u);
+    EXPECT_FALSE(lowering.callPlans()[1].args[0].isImm);
+    EXPECT_NE(lowering.callPlans()[1].args[0].vreg, 0u);
+}
+
+TEST(X64CallABI, SetccCallArgIsZeroExtendedBeforeArgumentMove) {
+    MBasicBlock block{};
+    block.label = "entry";
+    const Operand flag = makeVRegOperand(RegClass::GPR, 1);
+    block.instructions = {MInstr::make(MOpcode::SETcc, {makeImmOperand(1), flag}),
+                          MInstr::make(MOpcode::CALL, {makeLabelOperand(std::string{"sink"})})};
+
+    CallLoweringPlan plan{};
+    plan.callee = "sink";
+    plan.numNamedArgs = 1;
+    plan.args.push_back(CallArg{.cls = CallArgClass::GPR, .vreg = 1, .isImm = false, .imm = 0});
+
+    FrameInfo frame{};
+    lowerCall(block, 1, plan, sysvTarget(), frame);
+
+    const auto movzxIt = std::find_if(block.instructions.begin(), block.instructions.end(),
+                                      [](const MInstr &instr) {
+                                          if (instr.opcode != MOpcode::MOVZXrr32 ||
+                                              instr.operands.size() < 2) {
+                                              return false;
+                                          }
+                                          const auto *dst = asReg(instr.operands[0]);
+                                          const auto *src = asReg(instr.operands[1]);
+                                          return dst && src && dst->isPhys && !src->isPhys &&
+                                                 static_cast<PhysReg>(dst->idOrPhys) ==
+                                                     PhysReg::R11 &&
+                                                 src->idOrPhys == 1;
+                                      });
+    EXPECT_TRUE(movzxIt != block.instructions.end());
 }
 
 int main(int argc, char **argv) {
