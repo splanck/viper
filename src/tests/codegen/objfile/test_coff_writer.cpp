@@ -180,6 +180,52 @@ int main() {
     }
 
     {
+        CodeSection coalesceText;
+        CodeSection coalesceRodata;
+        const uint32_t symIdx = coalesceRodata.findOrDeclareSymbol("later_global");
+        coalesceRodata.emit64LE(0);
+        coalesceRodata.addRelocationAt(0, RelocKind::Abs64, symIdx, 0);
+
+        coalesceText.defineSymbol("later_global", SymbolBinding::Global, SymbolSection::Text);
+        coalesceText.emit8(0xC3);
+
+        std::ostringstream coalesceErr;
+        CoffWriter coalesceWriter(ObjArch::X86_64);
+        const std::string coalescePath = "build/test-out/coff_single_external_coalesce.obj";
+        ASSERT(coalesceWriter.write(
+            coalescePath, coalesceText, coalesceRodata, coalesceErr));
+
+        ObjFile coalesceObj;
+        ASSERT(readObjFile(coalescePath, coalesceObj, coalesceErr));
+        const ObjSection *coalesceRdata = findSection(coalesceObj, ".rdata");
+        ASSERT(coalesceRdata != nullptr);
+        ASSERT(coalesceRdata->relocs.size() == 1);
+        const auto &targetSym = coalesceObj.symbols[coalesceRdata->relocs[0].symIndex];
+        CHECK(targetSym.name == "later_global");
+        CHECK(targetSym.binding == ObjSymbol::Global);
+        CHECK(targetSym.sectionIndex != 0);
+    }
+
+    {
+        CodeSection biasedText;
+        CodeSection biasedRodata;
+        biasedText.setLogicalOffsetBias(128);
+        biasedText.defineSymbol("biased_func", SymbolBinding::Global, SymbolSection::Text);
+        biasedText.emit8(0xC3);
+
+        std::ostringstream biasedErr;
+        CoffWriter biasedWriter(ObjArch::X86_64);
+        const std::string biasedPath = "build/test-out/coff_biased_symbol.obj";
+        ASSERT(biasedWriter.write(biasedPath, biasedText, biasedRodata, biasedErr));
+
+        ObjFile biasedObj;
+        ASSERT(readObjFile(biasedPath, biasedObj, biasedErr));
+        const uint32_t biasedIdx = findSymbolIndex(biasedObj, "biased_func");
+        ASSERT(biasedIdx != 0);
+        CHECK(biasedObj.symbols[biasedIdx].offset == 0);
+    }
+
+    {
         CodeSection ambigText;
         CodeSection ambigRodata;
         ambigText.defineSymbol("dup", SymbolBinding::Local, SymbolSection::Text);
@@ -339,6 +385,27 @@ int main() {
                                   badUnwindRodata,
                                   unwindErr));
         CHECK(unwindErr.str().find("8-byte aligned") != std::string::npos);
+    }
+
+    {
+        CodeSection badUnwindText;
+        CodeSection badUnwindRodata;
+        badUnwindText.defineSymbol("bad_unwind_index", SymbolBinding::Global, SymbolSection::Text);
+        badUnwindText.emit8(0xC3);
+
+        Win64UnwindEntry badUnwind{};
+        badUnwind.symbolIndex = 99;
+        badUnwind.functionLength = 1;
+        badUnwind.prologueSize = 0;
+        badUnwindText.addWin64UnwindEntry(std::move(badUnwind));
+
+        std::ostringstream unwindErr;
+        CoffWriter unwindWriter(ObjArch::X86_64);
+        CHECK(!unwindWriter.write("build/test-out/coff_bad_unwind_index.obj",
+                                  badUnwindText,
+                                  badUnwindRodata,
+                                  unwindErr));
+        CHECK(unwindErr.str().find("unknown symbol index") != std::string::npos);
     }
 
     {

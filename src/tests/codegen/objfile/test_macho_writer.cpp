@@ -829,6 +829,44 @@ static void testRelocationOffsetBoundsFails() {
     std::remove("/tmp/viper_test_macho_bad_reloc_offset.o");
 }
 
+static void testRel32AddendRangeFails() {
+    CodeSection text, rodata;
+    uint32_t symIdx = text.findOrDeclareSymbol("target");
+    text.emit8(0xE8);
+    const size_t dispOff = text.currentOffset();
+    text.emit32LE(0);
+    text.addRelocationAt(
+        dispOff, RelocKind::Branch32, symIdx, static_cast<int64_t>(INT32_MAX) + 1);
+
+    std::ostringstream errStream;
+    MachOWriter writer(ObjArch::X86_64);
+    CHECK(!writer.write("/tmp/viper_test_macho_bad_rel32_addend.o", text, rodata, errStream));
+    CHECK(errStream.str().find("signed 32-bit range") != std::string::npos);
+
+    std::remove("/tmp/viper_test_macho_bad_rel32_addend.o");
+}
+
+static void testLogicalBiasSymbolsArePhysical() {
+    CodeSection text, rodata;
+    text.setLogicalOffsetBias(96);
+    text.defineSymbol("biased_func", SymbolBinding::Global, SymbolSection::Text);
+    text.emit8(0xC3);
+
+    std::ostringstream errStream;
+    MachOWriter writer(ObjArch::X86_64);
+    const std::string path = "/tmp/viper_test_macho_biased_symbol.o";
+    CHECK(writer.write(path, text, rodata, errStream));
+
+    ObjFile obj;
+    CHECK(readObjFile(path, obj, errStream));
+    const ObjSymbol *sym = findSymbol(obj, "biased_func");
+    CHECK(sym != nullptr);
+    if (sym != nullptr)
+        CHECK(sym->offset == 0);
+
+    std::remove(path.c_str());
+}
+
 static void testDuplicateLocalSymbolsStayDistinct() {
     CodeSection text, rodata;
     text.defineSymbol(".Ltmp", SymbolBinding::Local, SymbolSection::Text);
@@ -982,6 +1020,8 @@ int main() {
     testUnsupportedRelocationFails();
     testWrongArchRelocationFails();
     testRelocationOffsetBoundsFails();
+    testRel32AddendRangeFails();
+    testLogicalBiasSymbolsArePhysical();
     testDuplicateLocalSymbolsStayDistinct();
     testUndefinedExternalDoesNotBindLocalSameName();
     testUndefinedRodataLocalReferenceUsesLocalDefinition();

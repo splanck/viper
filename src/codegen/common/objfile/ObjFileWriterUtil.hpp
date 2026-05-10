@@ -19,9 +19,11 @@
 
 #pragma once
 
-#include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
+#include <ostream>
+#include <stdexcept>
 #include <vector>
 
 namespace viper::codegen::objfile {
@@ -51,8 +53,124 @@ inline void appendLE64(std::vector<uint8_t> &out, uint64_t val) {
 inline size_t alignUp(size_t val, size_t align) {
     if (align == 0)
         return val;
-    assert((align & (align - 1)) == 0 && "alignUp: alignment must be a power of two");
+    if ((align & (align - 1)) != 0)
+        throw std::invalid_argument("alignUp: alignment must be a power of two");
+    if (val > std::numeric_limits<size_t>::max() - (align - 1))
+        throw std::length_error("alignUp: aligned value exceeds addressable size");
     return (val + align - 1) & ~(align - 1);
+}
+
+inline bool checkedAddSize(size_t a,
+                           size_t b,
+                           const char *writerName,
+                           const char *what,
+                           std::ostream &err,
+                           size_t &out) {
+    if (a > std::numeric_limits<size_t>::max() - b) {
+        err << writerName << ": " << what << " exceeds addressable size\n";
+        return false;
+    }
+    out = a + b;
+    return true;
+}
+
+inline bool checkedMulSize(size_t a,
+                           size_t b,
+                           const char *writerName,
+                           const char *what,
+                           std::ostream &err,
+                           size_t &out) {
+    if (a != 0 && b > std::numeric_limits<size_t>::max() / a) {
+        err << writerName << ": " << what << " exceeds addressable size\n";
+        return false;
+    }
+    out = a * b;
+    return true;
+}
+
+inline bool checkedAlignUpSize(size_t val,
+                               size_t align,
+                               const char *writerName,
+                               const char *what,
+                               std::ostream &err,
+                               size_t &out) {
+    if (align == 0) {
+        out = val;
+        return true;
+    }
+    if ((align & (align - 1)) != 0) {
+        err << writerName << ": " << what << " alignment is not a power of two\n";
+        return false;
+    }
+    if (val > std::numeric_limits<size_t>::max() - (align - 1)) {
+        err << writerName << ": " << what << " exceeds addressable size after alignment\n";
+        return false;
+    }
+    out = (val + align - 1) & ~(align - 1);
+    return true;
+}
+
+inline bool checkedAddU64(uint64_t a,
+                          uint64_t b,
+                          const char *writerName,
+                          const char *what,
+                          std::ostream &err,
+                          uint64_t &out) {
+    if (a > std::numeric_limits<uint64_t>::max() - b) {
+        err << writerName << ": " << what << " exceeds 64-bit object-file range\n";
+        return false;
+    }
+    out = a + b;
+    return true;
+}
+
+inline bool checkedMulU64(uint64_t a,
+                          uint64_t b,
+                          const char *writerName,
+                          const char *what,
+                          std::ostream &err,
+                          uint64_t &out) {
+    if (a != 0 && b > std::numeric_limits<uint64_t>::max() / a) {
+        err << writerName << ": " << what << " exceeds 64-bit object-file range\n";
+        return false;
+    }
+    out = a * b;
+    return true;
+}
+
+inline bool checkedAlignUpU64(uint64_t val,
+                              uint64_t align,
+                              const char *writerName,
+                              const char *what,
+                              std::ostream &err,
+                              uint64_t &out) {
+    if (align == 0) {
+        out = val;
+        return true;
+    }
+    if ((align & (align - 1)) != 0) {
+        err << writerName << ": " << what << " alignment is not a power of two\n";
+        return false;
+    }
+    if (val > std::numeric_limits<uint64_t>::max() - (align - 1)) {
+        err << writerName << ": " << what << " exceeds 64-bit range after alignment\n";
+        return false;
+    }
+    out = (val + align - 1) & ~(align - 1);
+    return true;
+}
+
+inline bool checkedSizeTFromU64(uint64_t value,
+                                const char *writerName,
+                                const char *what,
+                                std::ostream &err,
+                                size_t &out) {
+    if (value > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
+        err << writerName << ": " << what << " exceeds addressable size\n";
+        return false;
+    }
+    out = static_cast<size_t>(value);
+    return true;
 }
 
 /// Pad \p out with zeros until it reaches \p target bytes.

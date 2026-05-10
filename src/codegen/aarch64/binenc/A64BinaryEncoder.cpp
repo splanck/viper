@@ -222,6 +222,21 @@ static uint32_t checkedU32NonNegative(int64_t value, const char *context) {
     return static_cast<uint32_t>(value);
 }
 
+static uint32_t checkedFunctionLength(size_t value, const std::string &functionName) {
+    if (value > std::numeric_limits<uint32_t>::max()) {
+        throw std::out_of_range("AArch64 binary encoder: function '" + functionName +
+                                "' exceeds 32-bit compact-unwind length range");
+    }
+    return static_cast<uint32_t>(value);
+}
+
+static size_t checkedAddSize(size_t a, size_t b, const char *context) {
+    if (a > std::numeric_limits<size_t>::max() - b)
+        throw std::length_error(std::string("AArch64 binary encoder: ") + context +
+                                " exceeds addressable size");
+    return a + b;
+}
+
 static uint32_t checkedShiftAmount(long long value, const char *opcode) {
     if (!isValidShiftAmount(value))
         throw std::out_of_range(std::string("AArch64 ") + opcode +
@@ -536,8 +551,15 @@ A64BinaryEncoder::LabelOffsetMap A64BinaryEncoder::computeFunctionLabelOffsets(c
             if (!bb.name.empty())
                 assignLabel(bb.name, offset);
             for (const auto &mi : bb.instrs) {
-                offset += measureInstructionSize(
-                    mi, offset, known, ordinal, longConditionalBranches, &nextLongConditionalBranches);
+                offset = checkedAddSize(
+                    offset,
+                    measureInstructionSize(mi,
+                                           offset,
+                                           known,
+                                           ordinal,
+                                           longConditionalBranches,
+                                           &nextLongConditionalBranches),
+                    "estimated function size");
                 ++ordinal;
             }
         }
@@ -573,8 +595,14 @@ A64BinaryEncoder::LabelOffsetMap A64BinaryEncoder::computeFunctionLabelOffsets(c
             conservative[sanitized] = offset;
         }
         for (const auto &mi : bb.instrs) {
-            offset += measureInstructionSize(
-                mi, offset, known, ordinal, allLongConditionalBranches, nullptr);
+            offset = checkedAddSize(offset,
+                                    measureInstructionSize(mi,
+                                                           offset,
+                                                           known,
+                                                           ordinal,
+                                                           allLongConditionalBranches,
+                                                           nullptr),
+                                    "estimated function size");
             ++ordinal;
         }
     }
@@ -589,8 +617,14 @@ size_t A64BinaryEncoder::estimateFunctionSize(const MFunction &fn,
     size_t ordinal = 0;
     for (const auto &bb : fn.blocks) {
         for (const auto &mi : bb.instrs) {
-            size += measureInstructionSize(
-                mi, size, knownLabelOffsets, ordinal, longConditionalBranchOrdinals_, nullptr);
+            size = checkedAddSize(size,
+                                  measureInstructionSize(mi,
+                                                         size,
+                                                         knownLabelOffsets,
+                                                         ordinal,
+                                                         longConditionalBranchOrdinals_,
+                                                         nullptr),
+                                  "estimated function size");
             ++ordinal;
         }
     }
@@ -743,7 +777,7 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
                 encoding |= (fprPairs << 24);
 
                 const uint32_t funcLen =
-                    static_cast<uint32_t>(text.currentOffset() - funcStartOffset);
+                    checkedFunctionLength(text.currentOffset() - funcStartOffset, fn.name);
 
                 objfile::CompactUnwindEntry entry{};
                 entry.symbolIndex = funcSymIdx;
@@ -753,7 +787,7 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
             } else {
                 // Frameless leaf function — UNWIND_ARM64_MODE_FRAMELESS with zero encoding.
                 const uint32_t funcLen =
-                    static_cast<uint32_t>(text.currentOffset() - funcStartOffset);
+                    checkedFunctionLength(text.currentOffset() - funcStartOffset, fn.name);
 
                 objfile::CompactUnwindEntry entry{};
                 entry.symbolIndex = funcSymIdx;

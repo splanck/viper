@@ -159,7 +159,9 @@ namespace {
 }
 
 [[nodiscard]] std::string compileToAsm(ILModule &m) {
-    const CodegenResult res = emitModuleToAssembly(m, {});
+    CodegenOptions options{};
+    options.targetPlatform = CodegenOptions::TargetPlatform::Linux;
+    const CodegenResult res = emitModuleToAssembly(m, options);
     return res.asmText;
 }
 

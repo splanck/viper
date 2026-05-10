@@ -28,7 +28,9 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <exception>
 #include <fstream>
+#include <limits>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -142,6 +144,38 @@ static uint32_t elfRelocType(RelocKind kind, ObjArch arch) {
     return 0;
 }
 
+static bool physicalSymbolValue(const CodeSection &section,
+                                const Symbol &sym,
+                                const char *sectionName,
+                                std::ostream &err,
+                                uint64_t &out) {
+    if (sym.offset < section.logicalOffsetBias()) {
+        err << "ElfWriter: symbol '" << sym.name << "' in " << sectionName
+            << " is before the section logical offset bias\n";
+        return false;
+    }
+    const size_t physicalOffset = sym.offset - section.logicalOffsetBias();
+    if (physicalOffset > section.bytes().size()) {
+        err << "ElfWriter: symbol '" << sym.name << "' in " << sectionName
+            << " is outside section contents\n";
+        return false;
+    }
+    out = static_cast<uint64_t>(physicalOffset);
+    return true;
+}
+
+static bool reserveFileBytes(uint64_t offShtab,
+                             uint16_t numSections,
+                             std::ostream &err,
+                             size_t &out) {
+    uint64_t shtabBytes = 0;
+    uint64_t total = 0;
+    if (!checkedMulU64(numSections, kShEntSize, "ElfWriter", "section header table", err, shtabBytes) ||
+        !checkedAddU64(offShtab, shtabBytes, "ElfWriter", "file reserve size", err, total))
+        return false;
+    return checkedSizeTFromU64(total, "ElfWriter", "file reserve size", err, out);
+}
+
 // =============================================================================
 // ELF Structs written to the output buffer
 // =============================================================================
@@ -229,6 +263,7 @@ bool ElfWriter::write(const std::string &path,
                       const CodeSection &text,
                       const CodeSection &rodata,
                       std::ostream &err) {
+    try {
     // --- 1. Build .shstrtab (section name string table) ---
     StringTable shstrtab;
     uint32_t shNameNull = 0; // empty string at offset 0
@@ -334,12 +369,16 @@ bool ElfWriter::write(const std::string &path,
     for (const auto &ps : pendingLocals) {
         uint32_t nameOff = strtab.add(ps.sym->name);
         uint8_t type = elfSymbolType(*ps.sym);
+        uint64_t value = 0;
+        const CodeSection &source = ps.fromText ? text : rodata;
+        if (!physicalSymbolValue(source, *ps.sym, ps.fromText ? ".text" : ".rodata", err, value))
+            return false;
         writeSym(symtabBytes,
                  nameOff,
                  (kStbLocal << 4) | type,
                  kStvDefault,
                  ps.shndx,
-                 static_cast<uint64_t>(ps.sym->offset),
+                 value,
                  0);
         uint32_t elfIdx = elfLocalCount++;
         if (ps.fromText)
@@ -371,7 +410,10 @@ bool ElfWriter::write(const std::string &path,
         uint32_t nameOff = strtab.add(ps.sym->name);
         uint8_t type = elfSymbolType(*ps.sym);
         uint16_t shndx = ps.shndx;
-        uint64_t value = static_cast<uint64_t>(ps.sym->offset);
+        uint64_t value = 0;
+        const CodeSection &source = ps.fromText ? text : rodata;
+        if (!physicalSymbolValue(source, *ps.sym, ps.fromText ? ".text" : ".rodata", err, value))
+            return false;
         writeSym(symtabBytes, nameOff, (kStbGlobal << 4) | type, kStvDefault, shndx, value, 0);
         if (ps.fromText)
             textSymMap[ps.origIdx] = elfGlobalIdx;
@@ -520,25 +562,54 @@ bool ElfWriter::write(const std::string &path,
     uint64_t shstrtabSize = shstrtab.size();
 
     // File offsets (sequential, aligned)
-    uint64_t offText = alignUp(kEhSize, textAlign);
-    uint64_t offRodata = alignUp(offText + textSize, 8);
-    uint64_t offRelaText = alignUp(offRodata + rodataSize, 8);
-    uint64_t offRelaRodata = alignUp(offRelaText + relaSize, 8);
-    uint64_t offSymtab = alignUp(offRelaRodata + relaRodataSize, 8);
-    uint64_t offStrtab = offSymtab + symtabSize;   // alignment 1
-    uint64_t offShstrtab = offStrtab + strtabSize; // alignment 1
+    uint64_t offText = 0;
+    uint64_t offRodata = 0;
+    uint64_t offRelaText = 0;
+    uint64_t offRelaRodata = 0;
+    uint64_t offSymtab = 0;
+    uint64_t offStrtab = 0;
+    uint64_t offShstrtab = 0;
+    uint64_t cursor = 0;
+    if (!checkedAlignUpU64(kEhSize, textAlign, "ElfWriter", ".text offset", err, offText) ||
+        !checkedAddU64(offText, textSize, "ElfWriter", ".text data", err, cursor) ||
+        !checkedAlignUpU64(cursor, 8, "ElfWriter", ".rodata offset", err, offRodata) ||
+        !checkedAddU64(offRodata, rodataSize, "ElfWriter", ".rodata data", err, cursor) ||
+        !checkedAlignUpU64(cursor, 8, "ElfWriter", ".rela.text offset", err, offRelaText) ||
+        !checkedAddU64(offRelaText, relaSize, "ElfWriter", ".rela.text data", err, cursor) ||
+        !checkedAlignUpU64(
+            cursor, 8, "ElfWriter", ".rela.rodata offset", err, offRelaRodata) ||
+        !checkedAddU64(
+            offRelaRodata, relaRodataSize, "ElfWriter", ".rela.rodata data", err, cursor) ||
+        !checkedAlignUpU64(cursor, 8, "ElfWriter", ".symtab offset", err, offSymtab) ||
+        !checkedAddU64(offSymtab, symtabSize, "ElfWriter", ".symtab data", err, offStrtab) ||
+        !checkedAddU64(offStrtab, strtabSize, "ElfWriter", ".strtab data", err, offShstrtab))
+        return false;
     // .note.GNU-stack has zero size, its offset doesn't matter but we place it next.
-    uint64_t offNoteGnuStack = offShstrtab + shstrtabSize;
+    uint64_t offNoteGnuStack = 0;
+    if (!checkedAddU64(offShstrtab,
+                       shstrtabSize,
+                       "ElfWriter",
+                       ".shstrtab data",
+                       err,
+                       offNoteGnuStack))
+        return false;
     // .debug_line (optional, non-alloc) — placed after .note.GNU-stack.
     uint64_t debugLineSize = debugLineData_.size();
     uint64_t offDebugLine = offNoteGnuStack;
-    uint64_t offShtab = alignUp(offDebugLine + debugLineSize, 8);
+    uint64_t debugEnd = 0;
+    uint64_t offShtab = 0;
+    if (!checkedAddU64(offDebugLine, debugLineSize, "ElfWriter", ".debug_line data", err, debugEnd) ||
+        !checkedAlignUpU64(debugEnd, 8, "ElfWriter", "section header table", err, offShtab))
+        return false;
 
     // --- 5. Build the file ---
     const uint16_t numSections = hasDebugLine ? 10 : 9;
 
     std::vector<uint8_t> file;
-    file.reserve(static_cast<size_t>(offShtab + numSections * kShEntSize));
+    size_t reserveSize = 0;
+    if (!reserveFileBytes(offShtab, numSections, err, reserveSize))
+        return false;
+    file.reserve(reserveSize);
 
     // ELF header (64 bytes)
     uint16_t machine = (arch_ == ObjArch::X86_64) ? kEmX86_64 : kEmAarch64;
@@ -667,6 +738,10 @@ bool ElfWriter::write(const std::string &path,
         return false;
     }
     return true;
+    } catch (const std::exception &ex) {
+        err << "ElfWriter: " << ex.what() << "\n";
+        return false;
+    }
 }
 
 // =============================================================================
@@ -681,6 +756,7 @@ bool ElfWriter::write(const std::string &path,
                       const std::vector<CodeSection> &textSections,
                       const CodeSection &rodata,
                       std::ostream &err) {
+    try {
     // For 0 or 1 text sections, delegate to single-section write.
     if (textSections.size() <= 1) {
         if (textSections.size() == 1)
@@ -691,11 +767,12 @@ bool ElfWriter::write(const std::string &path,
 
     const bool hasDebugLine = !debugLineData_.empty();
     const size_t N = textSections.size();
-    const size_t sectionCount = 2 * N + 7 + (hasDebugLine ? 1 : 0);
-    if (sectionCount > UINT16_MAX) {
-        err << "ElfWriter: too many sections for ELF writer (" << sectionCount << ")\n";
+    const size_t baseSectionCount = 7 + (hasDebugLine ? 1 : 0);
+    if (N > (static_cast<size_t>(UINT16_MAX) - baseSectionCount) / 2) {
+        err << "ElfWriter: too many text sections for ELF writer (" << N << ")\n";
         return false;
     }
+    const size_t sectionCount = 2 * N + baseSectionCount;
 
     // --- 1. Extract function names from each text section ---
     std::vector<std::string> funcNames(N);
@@ -823,12 +900,17 @@ bool ElfWriter::write(const std::string &path,
     for (const auto &ps : pendingLocals) {
         uint32_t nameOff = strtab.add(ps.sym->name);
         uint8_t type = elfSymbolType(*ps.sym);
+        uint64_t value = 0;
+        const CodeSection &source = (ps.textIdx != SIZE_MAX) ? textSections[ps.textIdx] : rodata;
+        if (!physicalSymbolValue(
+                source, *ps.sym, (ps.textIdx != SIZE_MAX) ? ".text" : ".rodata", err, value))
+            return false;
         writeSym(symtabBytes,
                  nameOff,
                  (kStbLocal << 4) | type,
                  kStvDefault,
                  ps.shndx,
-                 static_cast<uint64_t>(ps.sym->offset),
+                 value,
                  0);
         uint32_t elfIdx = elfLocalCount++;
         if (ps.textIdx != SIZE_MAX)
@@ -850,12 +932,17 @@ bool ElfWriter::write(const std::string &path,
             return false;
         }
         uint32_t nameOff = strtab.add(ps.sym->name);
+        uint64_t value = 0;
+        const CodeSection &source = (ps.textIdx != SIZE_MAX) ? textSections[ps.textIdx] : rodata;
+        if (!physicalSymbolValue(
+                source, *ps.sym, (ps.textIdx != SIZE_MAX) ? ".text" : ".rodata", err, value))
+            return false;
         writeSym(symtabBytes,
                  nameOff,
                  (kStbGlobal << 4) | elfSymbolType(*ps.sym),
                  kStvDefault,
                  ps.shndx,
-                 static_cast<uint64_t>(ps.sym->offset),
+                 value,
                  0);
         globalNameMap[ps.sym->name] = elfGlobalIdx;
         if (ps.textIdx != SIZE_MAX)
@@ -999,47 +1086,67 @@ bool ElfWriter::write(const std::string &path,
     uint64_t cursor = kEhSize;
     for (size_t i = 0; i < N; ++i) {
         textSizes[i] = textSections[i].bytes().size();
-        textOffsets[i] = alignUp(cursor, textAlign);
-        cursor = textOffsets[i] + textSizes[i];
+        if (!checkedAlignUpU64(cursor, textAlign, "ElfWriter", ".text offset", err, textOffsets[i]) ||
+            !checkedAddU64(textOffsets[i], textSizes[i], "ElfWriter", ".text data", err, cursor))
+            return false;
     }
 
     uint64_t rodataSize = rodata.bytes().size();
-    uint64_t offRodata = alignUp(cursor, 8);
-    cursor = offRodata + rodataSize;
+    uint64_t offRodata = 0;
+    if (!checkedAlignUpU64(cursor, 8, "ElfWriter", ".rodata offset", err, offRodata) ||
+        !checkedAddU64(offRodata, rodataSize, "ElfWriter", ".rodata data", err, cursor))
+        return false;
 
     // .rela.text.* offsets (always allocated, even if empty).
     std::vector<uint64_t> relaOffsets(N);
     std::vector<uint64_t> relaSizes(N);
     for (size_t i = 0; i < N; ++i) {
         relaSizes[i] = allRelaBytes[i].size();
-        relaOffsets[i] = alignUp(cursor, 8);
-        cursor = relaOffsets[i] + relaSizes[i];
+        if (!checkedAlignUpU64(
+                cursor, 8, "ElfWriter", ".rela.text offset", err, relaOffsets[i]) ||
+            !checkedAddU64(
+                relaOffsets[i], relaSizes[i], "ElfWriter", ".rela.text data", err, cursor))
+            return false;
     }
 
     uint64_t relaRodataSize = relaRodataBytes.size();
-    uint64_t offRelaRodata = alignUp(cursor, 8);
-    cursor = offRelaRodata + relaRodataSize;
+    uint64_t offRelaRodata = 0;
+    if (!checkedAlignUpU64(cursor, 8, "ElfWriter", ".rela.rodata offset", err, offRelaRodata) ||
+        !checkedAddU64(
+            offRelaRodata, relaRodataSize, "ElfWriter", ".rela.rodata data", err, cursor))
+        return false;
 
     uint64_t symtabSize = symtabBytes.size();
-    uint64_t offSymtab = alignUp(cursor, 8);
-    cursor = offSymtab + symtabSize;
+    uint64_t offSymtab = 0;
+    if (!checkedAlignUpU64(cursor, 8, "ElfWriter", ".symtab offset", err, offSymtab) ||
+        !checkedAddU64(offSymtab, symtabSize, "ElfWriter", ".symtab data", err, cursor))
+        return false;
 
     uint64_t strtabSize = strtab.size();
     uint64_t offStrtab = cursor;
-    cursor = offStrtab + strtabSize;
+    if (!checkedAddU64(offStrtab, strtabSize, "ElfWriter", ".strtab data", err, cursor))
+        return false;
 
     uint64_t shstrtabSize = shstrtab.size();
     uint64_t offShstrtab = cursor;
-    cursor = offShstrtab + shstrtabSize;
+    if (!checkedAddU64(offShstrtab, shstrtabSize, "ElfWriter", ".shstrtab data", err, cursor))
+        return false;
 
     uint64_t offNoteGnuStack = cursor;
     uint64_t debugLineSize = debugLineData_.size();
     uint64_t offDebugLine = offNoteGnuStack;
-    uint64_t offShtab = alignUp(offDebugLine + debugLineSize, 8);
+    uint64_t debugEnd = 0;
+    uint64_t offShtab = 0;
+    if (!checkedAddU64(offDebugLine, debugLineSize, "ElfWriter", ".debug_line data", err, debugEnd) ||
+        !checkedAlignUpU64(debugEnd, 8, "ElfWriter", "section header table", err, offShtab))
+        return false;
 
     // --- 7. Build the file ---
     std::vector<uint8_t> file;
-    file.reserve(static_cast<size_t>(offShtab + numSections * kShEntSize));
+    size_t reserveSize = 0;
+    if (!reserveFileBytes(offShtab, numSections, err, reserveSize))
+        return false;
+    file.reserve(reserveSize);
 
     uint16_t machine = (arch_ == ObjArch::X86_64) ? kEmX86_64 : kEmAarch64;
     writeEhdr(file, machine, offShtab, numSections, secShstrtab);
@@ -1170,6 +1277,10 @@ bool ElfWriter::write(const std::string &path,
         return false;
     }
     return true;
+    } catch (const std::exception &ex) {
+        err << "ElfWriter: " << ex.what() << "\n";
+        return false;
+    }
 }
 
 } // namespace viper::codegen::objfile

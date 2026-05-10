@@ -30,6 +30,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <exception>
 #include <fstream>
 #include <limits>
 #include <unordered_map>
@@ -135,6 +136,26 @@ static bool checkedRelocSymbolNum(uint32_t value, const char *what, std::ostream
         err << "MachOWriter: " << what << " exceeds Mach-O relocation symbol-number range\n";
         return false;
     }
+    return true;
+}
+
+static bool physicalSymbolValue(const CodeSection &section,
+                                const Symbol &sym,
+                                const char *sectionName,
+                                std::ostream &err,
+                                uint64_t &out) {
+    if (sym.offset < section.logicalOffsetBias()) {
+        err << "MachOWriter: symbol '" << sym.name << "' in " << sectionName
+            << " is before the section logical offset bias\n";
+        return false;
+    }
+    const size_t physicalOffset = sym.offset - section.logicalOffsetBias();
+    if (physicalOffset > section.bytes().size()) {
+        err << "MachOWriter: symbol '" << sym.name << "' in " << sectionName
+            << " is outside section contents\n";
+        return false;
+    }
+    out = static_cast<uint64_t>(physicalOffset);
     return true;
 }
 
@@ -324,6 +345,7 @@ bool MachOWriter::write(const std::string &path,
                         const CodeSection &text,
                         const CodeSection &rodata,
                         std::ostream &err) {
+    try {
     // --- Architecture-specific parameters ---
     uint32_t cputype, cpusubtype;
     uint32_t textAlignLog2;
@@ -379,7 +401,7 @@ bool MachOWriter::write(const std::string &path,
         return !sawRelocation;
     };
 
-    auto processSymbols = [&](const CodeSection &sec, bool isText) {
+    auto processSymbols = [&](const CodeSection &sec, bool isText) -> bool {
         for (uint32_t i = 1; i < sec.symbols().count(); ++i) {
             const Symbol &s = sec.symbols().at(i);
             if (s.binding == SymbolBinding::External && !externalNeedsUndefinedSymbol(sec, i))
@@ -402,20 +424,23 @@ bool MachOWriter::write(const std::string &path,
             } else if (s.binding == SymbolBinding::Local) {
                 ps.type = kNSect;
                 ps.sect = isText ? kSectText : kSectConst;
-                ps.value = s.offset;
+                if (!physicalSymbolValue(sec, s, isText ? "__text" : "__const", err, ps.value))
+                    return false;
                 pendingLocals.push_back(ps);
             } else {
                 // Global defined.
                 ps.type = kNSect | kNExt;
                 ps.sect = isText ? kSectText : kSectConst;
-                ps.value = s.offset;
+                if (!physicalSymbolValue(sec, s, isText ? "__text" : "__const", err, ps.value))
+                    return false;
                 pendingExtDef.push_back(ps);
             }
         }
+        return true;
     };
 
-    processSymbols(text, true);
-    processSymbols(rodata, false);
+    if (!processSymbols(text, true) || !processSymbols(rodata, false))
+        return false;
 
     // --- 3. Assign Mach-O symbol indices ---
     // Order: locals → external defined → undefined.
@@ -685,9 +710,48 @@ bool MachOWriter::write(const std::string &path,
     // --- 5. Compute file layout ---
     const bool hasDebugLine = !debugLineData_.empty();
     const uint32_t nsects = 2 + (hasUnwind ? 1 : 0) + (hasDebugLine ? 1 : 0);
-    const uint32_t segCmdSize = 72 + nsects * 80;
-    uint32_t sizeOfCmds = segCmdSize + kBuildVerCmdSize + kSymtabCmdSize + kDysymtabCmdSize;
-    size_t afterHeaders = kHeaderSize + sizeOfCmds;
+    size_t sectionHeaderBytes = 0;
+    size_t segCmdSizeSize = 0;
+    size_t sizeOfCmdsSize = 0;
+    size_t afterHeaders = 0;
+    if (!checkedMulSize(nsects,
+                        80,
+                        "MachOWriter",
+                        "LC_SEGMENT_64 section headers",
+                        err,
+                        sectionHeaderBytes) ||
+        !checkedAddSize(72,
+                        sectionHeaderBytes,
+                        "MachOWriter",
+                        "LC_SEGMENT_64 command size",
+                        err,
+                        segCmdSizeSize) ||
+        !checkedAddSize(segCmdSizeSize,
+                        kBuildVerCmdSize,
+                        "MachOWriter",
+                        "load command size",
+                        err,
+                        sizeOfCmdsSize) ||
+        !checkedAddSize(sizeOfCmdsSize,
+                        kSymtabCmdSize,
+                        "MachOWriter",
+                        "load command size",
+                        err,
+                        sizeOfCmdsSize) ||
+        !checkedAddSize(sizeOfCmdsSize,
+                        kDysymtabCmdSize,
+                        "MachOWriter",
+                        "load command size",
+                        err,
+                        sizeOfCmdsSize) ||
+        !checkedAddSize(
+            kHeaderSize, sizeOfCmdsSize, "MachOWriter", "header area", err, afterHeaders))
+        return false;
+    uint32_t segCmdSize = 0;
+    uint32_t sizeOfCmds = 0;
+    if (!checkedU32(segCmdSizeSize, "LC_SEGMENT_64 command size", err, segCmdSize) ||
+        !checkedU32(sizeOfCmdsSize, "load command size", err, sizeOfCmds))
+        return false;
 
     size_t textSize = text.bytes().size();
     size_t rodataSize = rodata.bytes().size();
@@ -695,21 +759,41 @@ bool MachOWriter::write(const std::string &path,
 
     size_t unwindSize = unwindData.size();
 
-    size_t textFileOff = alignUp(afterHeaders, textAlign);
-    size_t constFileOff = alignUp(textFileOff + textSize, constAlign);
+    size_t textFileOff = 0;
+    size_t constFileOff = 0;
+    size_t cursor = 0;
+    if (!checkedAlignUpSize(
+            afterHeaders, textAlign, "MachOWriter", "__text file offset", err, textFileOff) ||
+        !checkedAddSize(textFileOff, textSize, "MachOWriter", "__text data", err, cursor) ||
+        !checkedAlignUpSize(
+            cursor, constAlign, "MachOWriter", "__const file offset", err, constFileOff))
+        return false;
     size_t constAddr = constFileOff - textFileOff; // virtual address of __const
 
     // __compact_unwind goes after __const (8-byte aligned)
-    size_t unwindFileOff = alignUp(constFileOff + rodataSize, 8);
+    size_t unwindFileOff = 0;
+    if (!checkedAddSize(constFileOff, rodataSize, "MachOWriter", "__const data", err, cursor) ||
+        !checkedAlignUpSize(
+            cursor, 8, "MachOWriter", "__compact_unwind file offset", err, unwindFileOff))
+        return false;
     size_t unwindAddr = unwindFileOff - textFileOff;
 
-    size_t debugLineFileOff =
-        hasUnwind ? (unwindFileOff + unwindSize) : (constFileOff + rodataSize);
+    size_t debugLineFileOff = 0;
+    if (hasUnwind) {
+        if (!checkedAddSize(
+                unwindFileOff, unwindSize, "MachOWriter", "__compact_unwind data", err, debugLineFileOff))
+            return false;
+    } else {
+        debugLineFileOff = cursor;
+    }
     size_t debugLineAddr = debugLineFileOff - textFileOff;
 
     size_t segFileOff = textFileOff;
     // Segment size must encompass all section data.
-    size_t lastDataEnd = debugLineFileOff + debugLineSize;
+    size_t lastDataEnd = 0;
+    if (!checkedAddSize(
+            debugLineFileOff, debugLineSize, "MachOWriter", "__debug_line data", err, lastDataEnd))
+        return false;
     size_t segFileSize = lastDataEnd - textFileOff;
     size_t segVmSize = lastDataEnd - textFileOff;
 
@@ -718,17 +802,57 @@ bool MachOWriter::write(const std::string &path,
     const size_t textRelocCount = textRelocs.size();
     uint32_t nTextRelocs = 0;
 
-    size_t constRelocOff = textRelocOff + textRelocCount * kRelocSize;
+    size_t textRelocBytes = 0;
+    size_t constRelocOff = 0;
+    if (!checkedMulSize(
+            textRelocCount, kRelocSize, "MachOWriter", "__text relocation table", err, textRelocBytes) ||
+        !checkedAddSize(
+            textRelocOff, textRelocBytes, "MachOWriter", "__text relocation table", err, constRelocOff))
+        return false;
     const size_t constRelocCount = constRelocs.size();
     uint32_t nConstRelocs = 0;
 
-    size_t unwindRelocOff = constRelocOff + constRelocCount * kRelocSize;
+    size_t constRelocBytes = 0;
+    size_t unwindRelocOff = 0;
+    if (!checkedMulSize(constRelocCount,
+                        kRelocSize,
+                        "MachOWriter",
+                        "__const relocation table",
+                        err,
+                        constRelocBytes) ||
+        !checkedAddSize(constRelocOff,
+                        constRelocBytes,
+                        "MachOWriter",
+                        "__const relocation table",
+                        err,
+                        unwindRelocOff))
+        return false;
     const size_t unwindRelocCount = unwindRelocs.size();
     uint32_t nUnwindRelocs = 0;
 
-    size_t symOff = unwindRelocOff + unwindRelocCount * kRelocSize;
-    size_t strOff = symOff + nsyms * kNlistSize;
-    size_t totalSize = strOff + strtab.size();
+    size_t unwindRelocBytes = 0;
+    size_t symOff = 0;
+    size_t nlistBytes = 0;
+    size_t strOff = 0;
+    size_t totalSize = 0;
+    if (!checkedMulSize(unwindRelocCount,
+                        kRelocSize,
+                        "MachOWriter",
+                        "__compact_unwind relocation table",
+                        err,
+                        unwindRelocBytes) ||
+        !checkedAddSize(unwindRelocOff,
+                        unwindRelocBytes,
+                        "MachOWriter",
+                        "__compact_unwind relocation table",
+                        err,
+                        symOff) ||
+        !checkedMulSize(
+            nsyms, kNlistSize, "MachOWriter", "symbol table", err, nlistBytes) ||
+        !checkedAddSize(symOff, nlistBytes, "MachOWriter", "symbol table", err, strOff) ||
+        !checkedAddSize(
+            strOff, strtab.size(), "MachOWriter", "string table", err, totalSize))
+        return false;
 
     uint32_t textFileOff32 = 0;
     uint32_t constFileOff32 = 0;
@@ -853,8 +977,21 @@ bool MachOWriter::write(const std::string &path,
             for (const auto &rel : section.relocations()) {
                 const size_t physicalRelOffset = rel.offset - section.logicalOffsetBias();
                 if (rel.kind == RelocKind::PCRel32 || rel.kind == RelocKind::Branch32) {
-                    size_t patchOff = sectionFileOff + physicalRelOffset;
-                    if (patchOff + 4 > file.size()) {
+                    if (rel.addend < std::numeric_limits<int32_t>::min() ||
+                        rel.addend > std::numeric_limits<int32_t>::max()) {
+                        err << "MachOWriter: x86_64 rel32 addend " << rel.addend
+                            << " is outside signed 32-bit range\n";
+                        return false;
+                    }
+                    size_t patchOff = 0;
+                    if (!checkedAddSize(sectionFileOff,
+                                        physicalRelOffset,
+                                        "MachOWriter",
+                                        "x86_64 addend patch offset",
+                                        err,
+                                        patchOff))
+                        return false;
+                    if (patchOff > file.size() || 4 > file.size() - patchOff) {
                         err << "error: addend patch at offset " << patchOff
                             << " out of bounds (file size=" << file.size() << ")\n";
                         return false;
@@ -865,8 +1002,15 @@ bool MachOWriter::write(const std::string &path,
                     file[patchOff + 2] = static_cast<uint8_t>(addend >> 16);
                     file[patchOff + 3] = static_cast<uint8_t>(addend >> 24);
                 } else if (rel.kind == RelocKind::Abs64 && rel.addend != 0) {
-                    size_t patchOff = sectionFileOff + physicalRelOffset;
-                    if (patchOff + 8 > file.size()) {
+                    size_t patchOff = 0;
+                    if (!checkedAddSize(sectionFileOff,
+                                        physicalRelOffset,
+                                        "MachOWriter",
+                                        "x86_64 addend patch offset",
+                                        err,
+                                        patchOff))
+                        return false;
+                    if (patchOff > file.size() || 8 > file.size() - patchOff) {
                         err << "error: addend patch at offset " << patchOff
                             << " out of bounds (file size=" << file.size() << ")\n";
                         return false;
@@ -923,12 +1067,17 @@ bool MachOWriter::write(const std::string &path,
         return false;
     }
     return true;
+    } catch (const std::exception &ex) {
+        err << "MachOWriter: " << ex.what() << "\n";
+        return false;
+    }
 }
 
 bool MachOWriter::write(const std::string &path,
                         const std::vector<CodeSection> &textSections,
                         const CodeSection &rodata,
                         std::ostream &err) {
+    try {
     CodeSection merged;
     std::unordered_set<std::string> seenLocalNames;
     size_t sectionIndex = 0;
@@ -946,6 +1095,10 @@ bool MachOWriter::write(const std::string &path,
         ++sectionIndex;
     }
     return write(path, merged, rodata, err);
+    } catch (const std::exception &ex) {
+        err << "MachOWriter: " << ex.what() << "\n";
+        return false;
+    }
 }
 
 } // namespace viper::codegen::objfile

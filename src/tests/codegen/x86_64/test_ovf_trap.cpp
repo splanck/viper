@@ -73,7 +73,9 @@ int main() {
     using namespace viper::codegen::x64;
 
     const ILModule module = makeOverflowModule();
-    const CodegenResult result = emitModuleToAssembly(module, {});
+    CodegenOptions options{};
+    options.targetPlatform = CodegenOptions::TargetPlatform::Linux;
+    const CodegenResult result = emitModuleToAssembly(module, options);
 
     if (!result.errors.empty()) {
         std::cerr << result.errors;

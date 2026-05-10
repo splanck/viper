@@ -24,6 +24,7 @@
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
+#include <string>
 
 using namespace viper::codegen;
 
@@ -351,6 +352,19 @@ int main() {
             (void)table.encodeDwarf5(4);
         } catch (const std::length_error &) {
             threw = true;
+        }
+        CHECK(threw);
+    }
+
+    // --- Test 16: Line 0 is rejected because source lines are 1-based ---
+    {
+        DebugLineTable table;
+        table.addFile("line0.vpr");
+        bool threw = false;
+        try {
+            table.addEntry(0, 1, 0, 0);
+        } catch (const std::runtime_error &ex) {
+            threw = std::string(ex.what()).find("line 0") != std::string::npos;
         }
         CHECK(threw);
     }

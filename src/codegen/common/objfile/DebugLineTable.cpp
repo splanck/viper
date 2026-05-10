@@ -59,6 +59,8 @@ void DebugLineTable::addEntry(uint64_t address,
         throw std::runtime_error("debug_line: invalid file index " + std::to_string(fileIndex) +
                                  " (table has " + std::to_string(files_.size()) + " file slot(s))");
     }
+    if (line == 0)
+        throw std::runtime_error("debug_line: line numbers are 1-based; line 0 is invalid");
     if (!entries_.empty() && address < entries_.back().address) {
         throw std::runtime_error("debug_line: address entries must be added in ascending order");
     }

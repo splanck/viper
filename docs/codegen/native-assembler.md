@@ -96,6 +96,9 @@ Both encoders share the same interface pattern:
 The output is a pair of `CodeSection` objects: one for `.text` (machine code) and one for `.rodata` (string literals,
 float constants).
 
+Object writers validate section layout arithmetic, relocation bounds, string-table growth, and unwind metadata before
+writing output. Format limits are reported through the writer error stream instead of escaping as unchecked exceptions.
+
 ---
 
 ## x86_64 Encoding
@@ -164,6 +167,9 @@ The `PhysReg` enum order differs from hardware encoding. The encoder maps via lo
   and rejects prologue/code offsets that exceed the 8-bit PE unwind fields.
 - **Symbol names**: Encoders record canonical, unmangled names in `CodeSection`; platform ABI spelling is applied
   by the object writer. This keeps ELF/COFF/Mach-O inputs comparable until serialization.
+- **Symbol offsets**: Object writers serialize physical offsets within emitted section bytes. `CodeSection` logical
+  offset bias is reserved for dry-run measurement and is subtracted before ELF, Mach-O, or COFF symbol values are
+  written.
 
 ### Opcode Coverage
 
@@ -356,6 +362,7 @@ LC_BUILD_VERSION → LC_SYMTAB → LC_DYSYMTAB → section data → relocations 
 - Relocations and compact-unwind entries fail fast if they reference an unknown symbol index. Explicit
   cross-section relocation hints must resolve to exactly one target symbol; missing or duplicate target names are
   diagnosed instead of falling back to the source section symbol.
+- AArch64 compact-unwind function lengths are checked before narrowing to the 32-bit Mach-O field.
 
 ### COFF Writer
 
@@ -376,7 +383,8 @@ Produces valid COFF object files for Windows.
 - Relocation symbol indexes must resolve to emitted symbols.
 - Duplicate global definitions are diagnosed instead of being overwritten in the COFF symbol map.
 - Win64 unwind entries validate stack allocation size/alignment, save-slot alignment, register ranges, and the
-  one-byte unwind code count before `.xdata` is serialized.
+  one-byte unwind code count before `.xdata` is serialized. Entries that reference unknown or undefined function
+  symbols are rejected before `.pdata` relocations are emitted.
 - Sections with more than 65,535 relocations use the standard COFF overflow relocation record instead of truncating
   the section-header relocation count.
 

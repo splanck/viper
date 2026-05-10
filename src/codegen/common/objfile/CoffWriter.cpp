@@ -237,6 +237,53 @@ static bool addU32Checked(uint32_t a, uint32_t b, const char *what, std::ostream
     return true;
 }
 
+static bool alignU32Checked(uint32_t value,
+                            uint32_t align,
+                            const char *what,
+                            std::ostream &err,
+                            uint32_t &out) {
+    size_t aligned = 0;
+    if (!checkedAlignUpSize(
+            static_cast<size_t>(value), align, "CoffWriter", what, err, aligned))
+        return false;
+    return checkedU32(aligned, what, err, out);
+}
+
+static bool checkedPhysicalSymbolValue(const CodeSection &section,
+                                       const Symbol &sym,
+                                       const char *sectionName,
+                                       std::ostream &err,
+                                       uint32_t &out) {
+    if (sym.offset < section.logicalOffsetBias()) {
+        err << "CoffWriter: symbol '" << sym.name << "' in " << sectionName
+            << " is before the section logical offset bias\n";
+        return false;
+    }
+    const size_t physicalOffset = sym.offset - section.logicalOffsetBias();
+    if (physicalOffset > section.bytes().size()) {
+        err << "CoffWriter: symbol '" << sym.name << "' in " << sectionName
+            << " is outside section contents\n";
+        return false;
+    }
+    return checkedU32(physicalOffset, "symbol value", err, out);
+}
+
+static bool checkedCoffReserveSize(uint32_t symtabOff,
+                                   size_t symtabSize,
+                                   size_t strtabSize,
+                                   std::ostream &err,
+                                   size_t &out) {
+    size_t total = 0;
+    if (!checkedAddSize(static_cast<size_t>(symtabOff),
+                        symtabSize,
+                        "CoffWriter",
+                        "file reserve size",
+                        err,
+                        total))
+        return false;
+    return checkedAddSize(total, strtabSize, "CoffWriter", "file reserve size", err, out);
+}
+
 static bool validateSectionHeaderName(const std::string &name,
                                       const char *what,
                                       std::ostream &err) {
@@ -306,6 +353,17 @@ struct PendingCoffReloc {
     std::string symbolName;
     uint16_t type{0};
 };
+
+static bool validatePdataRelocOffset(uint32_t offset,
+                                      size_t pdataSize,
+                                      std::ostream &err) {
+    if (static_cast<size_t>(offset) > pdataSize || 4 > pdataSize - static_cast<size_t>(offset)) {
+        err << "CoffWriter: .pdata relocation at offset " << offset
+            << " extends beyond .pdata contents\n";
+        return false;
+    }
+    return true;
+}
 
 static size_t win64UnwindSlotCount(const Win64UnwindCode &code) {
     switch (code.kind) {
@@ -435,12 +493,31 @@ static bool buildWin64UnwindSections(const CodeSection &text,
     const auto &entries = text.win64UnwindEntries();
     for (size_t i = 0; i < entries.size(); ++i) {
         const auto &entry = entries[i];
+        if (entry.symbolIndex >= text.symbols().count()) {
+            err << "CoffWriter: Win64 unwind entry references unknown symbol index "
+                << entry.symbolIndex << "\n";
+            return false;
+        }
+        const auto &funcSym = text.symbols().at(entry.symbolIndex);
+        if (funcSym.binding == SymbolBinding::External ||
+            funcSym.section == SymbolSection::Undefined) {
+            err << "CoffWriter: Win64 unwind entry references undefined symbol '"
+                << funcSym.name << "'\n";
+            return false;
+        }
         if (entry.prologueSize == 0 && !entry.codes.empty()) {
             err << "CoffWriter: Win64 unwind entry has codes but zero prologue size\n";
             return false;
         }
-        const uint32_t xdataOffset = static_cast<uint32_t>(xdataBytes.size());
-        const std::string xdataName = "$xdata$" + std::to_string(xdataNameBase + i);
+        uint32_t xdataOffset = 0;
+        if (!checkedU32(xdataBytes.size(), ".xdata offset", err, xdataOffset))
+            return false;
+        uint32_t xdataOrdinal = 0;
+        uint32_t entryOrdinal = 0;
+        if (!checkedU32(i, ".xdata symbol ordinal", err, entryOrdinal) ||
+            !addU32Checked(xdataNameBase, entryOrdinal, ".xdata symbol ordinal", err, xdataOrdinal))
+            return false;
+        const std::string xdataName = "$xdata$" + std::to_string(xdataOrdinal);
         xdataSymbols.push_back({xdataName, xdataOffset, 0, kImageSymClassStatic});
 
         std::vector<Win64UnwindCode> codes = entry.codes;
@@ -467,15 +544,21 @@ static bool buildWin64UnwindSections(const CodeSection &text,
             emitWin64UnwindNodes(xdataBytes, code);
         padTo(xdataBytes, alignUp(xdataBytes.size(), 4));
 
-        const uint32_t pdataOffset = static_cast<uint32_t>(pdataBytes.size());
+        uint32_t pdataOffset = 0;
+        if (!checkedU32(pdataBytes.size(), ".pdata offset", err, pdataOffset))
+            return false;
         appendLE32(pdataBytes, 0);
         appendLE32(pdataBytes, entry.functionLength);
         appendLE32(pdataBytes, 0);
 
-        const auto &funcSym = text.symbols().at(entry.symbolIndex);
+        uint32_t pdataEndOffset = 0;
+        uint32_t pdataUnwindOffset = 0;
+        if (!addU32Checked(pdataOffset, 4, ".pdata unwind end relocation offset", err, pdataEndOffset) ||
+            !addU32Checked(pdataOffset, 8, ".pdata xdata relocation offset", err, pdataUnwindOffset))
+            return false;
         pdataRelocs.push_back({pdataOffset, funcSym.name, kImageRelAMD64_Addr32Nb});
-        pdataRelocs.push_back({pdataOffset + 4, funcSym.name, kImageRelAMD64_Addr32Nb});
-        pdataRelocs.push_back({pdataOffset + 8, xdataName, kImageRelAMD64_Addr32Nb});
+        pdataRelocs.push_back({pdataEndOffset, funcSym.name, kImageRelAMD64_Addr32Nb});
+        pdataRelocs.push_back({pdataUnwindOffset, xdataName, kImageRelAMD64_Addr32Nb});
     }
     return true;
 }
@@ -484,6 +567,7 @@ bool CoffWriter::write(const std::string &path,
                        const CodeSection &text,
                        const CodeSection &rodata,
                        std::ostream &err) {
+    try {
     std::vector<uint8_t> xdataBytes;
     std::vector<PendingCoffSymbol> xdataSymbols;
     std::vector<uint8_t> pdataBytes;
@@ -519,8 +603,17 @@ bool CoffWriter::write(const std::string &path,
     std::unordered_map<uint32_t, uint32_t> rodataSymMap;
     std::unordered_map<std::string, uint32_t> definedNameMap;
     std::unordered_map<std::string, uint32_t> definedGlobalNameMap;
+    std::unordered_map<std::string, uint32_t> externalNameMap;
     std::unordered_set<std::string> definedGlobalNames;
     uint32_t coffSymCount = 0;
+
+    struct PendingExternal {
+        bool fromText = false;
+        uint32_t origIdx = 0;
+        std::string name;
+        uint16_t type = 0;
+    };
+    std::vector<PendingExternal> pendingExternals;
 
     auto addToStrTab = [&](const std::string &s) -> uint32_t {
         if (strtabBytes.size() > std::numeric_limits<uint32_t>::max())
@@ -543,16 +636,19 @@ bool CoffWriter::write(const std::string &path,
             uint8_t storageClass = kImageSymClassExternal;
 
             if (s.binding == SymbolBinding::External) {
-                secNum = kImageSymUndefined;
+                pendingExternals.push_back({false, i, s.name, 0});
+                continue;
             } else if (s.binding == SymbolBinding::Local) {
                 secNum = static_cast<int16_t>(secIdxRdata);
-                value = static_cast<uint32_t>(s.offset);
+                if (!checkedPhysicalSymbolValue(rodata, s, ".rdata", err, value))
+                    return false;
                 storageClass = kImageSymClassStatic;
             } else {
                 if (!rememberDefinedGlobal(definedGlobalNames, s, ".rdata", err))
                     return false;
                 secNum = static_cast<int16_t>(secIdxRdata);
-                value = static_cast<uint32_t>(s.offset);
+                if (!checkedPhysicalSymbolValue(rodata, s, ".rdata", err, value))
+                    return false;
             }
 
             uint32_t strOff = 0;
@@ -604,11 +700,8 @@ bool CoffWriter::write(const std::string &path,
     for (uint32_t i = 1; i < text.symbols().count(); ++i) {
         const Symbol &s = text.symbols().at(i);
         if (s.binding == SymbolBinding::External) {
-            auto existing = definedGlobalNameMap.find(s.name);
-            if (existing != definedGlobalNameMap.end()) {
-                textSymMap[i] = existing->second;
-                continue;
-            }
+            pendingExternals.push_back({true, i, s.name, 0x20});
+            continue;
         }
 
         int16_t secNum = 0;
@@ -619,13 +712,15 @@ bool CoffWriter::write(const std::string &path,
             secNum = kImageSymUndefined;
         } else if (s.binding == SymbolBinding::Local) {
             secNum = static_cast<int16_t>(secIdxText);
-            value = static_cast<uint32_t>(s.offset);
+            if (!checkedPhysicalSymbolValue(text, s, ".text", err, value))
+                return false;
             storageClass = kImageSymClassStatic;
         } else {
             if (!rememberDefinedGlobal(definedGlobalNames, s, ".text", err))
                 return false;
             secNum = static_cast<int16_t>(secIdxText);
-            value = static_cast<uint32_t>(s.offset);
+            if (!checkedPhysicalSymbolValue(text, s, ".text", err, value))
+                return false;
         }
 
         uint32_t strOff = 0;
@@ -640,6 +735,37 @@ bool CoffWriter::write(const std::string &path,
             if (s.binding == SymbolBinding::Global)
                 definedGlobalNameMap[s.name] = coffIdx;
         }
+    }
+
+    for (const auto &ext : pendingExternals) {
+        const auto definedIt = definedGlobalNameMap.find(ext.name);
+        if (definedIt != definedGlobalNameMap.end()) {
+            if (ext.fromText)
+                textSymMap[ext.origIdx] = definedIt->second;
+            else
+                rodataSymMap[ext.origIdx] = definedIt->second;
+            continue;
+        }
+
+        auto extIt = externalNameMap.find(ext.name);
+        if (extIt == externalNameMap.end()) {
+            uint32_t strOff = 0;
+            if (ext.name.size() > 8)
+                strOff = addToStrTab(ext.name);
+            writeSymbol(symtabBytes,
+                        ext.name,
+                        strOff,
+                        0,
+                        kImageSymUndefined,
+                        ext.type,
+                        kImageSymClassExternal);
+            extIt = externalNameMap.emplace(ext.name, coffSymCount++).first;
+        }
+
+        if (ext.fromText)
+            textSymMap[ext.origIdx] = extIt->second;
+        else
+            rodataSymMap[ext.origIdx] = extIt->second;
     }
 
     std::unordered_map<std::string, uint32_t> definedTextByName;
@@ -747,6 +873,8 @@ bool CoffWriter::write(const std::string &path,
 
     std::vector<uint8_t> pdataRelocBytes;
     for (const auto &rel : pdataRelocs) {
+        if (!validatePdataRelocOffset(rel.offset, pdataBytes.size(), err))
+            return false;
         auto it = definedNameMap.find(rel.symbolName);
         if (it == definedNameMap.end()) {
             err << "CoffWriter: missing symbol '" << rel.symbolName << "' for .pdata relocation\n";
@@ -773,7 +901,9 @@ bool CoffWriter::write(const std::string &path,
         return false;
 
     const uint32_t headerAreaSize = kCoffHeaderSize + numSections * kSectionHeaderSize;
-    const uint32_t textDataOff = static_cast<uint32_t>(alignUp(headerAreaSize, 4));
+    uint32_t textDataOff = 0;
+    if (!alignU32Checked(headerAreaSize, 4, "header area", err, textDataOff))
+        return false;
     uint32_t textRelocOff = 0;
     if (!addU32Checked(textDataOff, textSize, ".text relocation offset", err, textRelocOff))
         return false;
@@ -783,7 +913,9 @@ bool CoffWriter::write(const std::string &path,
     uint32_t textRelocEnd = 0;
     if (!addU32Checked(textRelocOff, textRelocTotalSize, ".text relocation table", err, textRelocEnd))
         return false;
-    uint32_t cursor = static_cast<uint32_t>(alignUp(textRelocEnd, 4));
+    uint32_t cursor = 0;
+    if (!alignU32Checked(textRelocEnd, 4, ".text relocation table", err, cursor))
+        return false;
 
     uint32_t rdataDataOff = 0;
     uint32_t rdataRelocOff = 0;
@@ -797,7 +929,8 @@ bool CoffWriter::write(const std::string &path,
             return false;
         if (!addU32Checked(rdataRelocOff, rdataRelocSize, ".rdata relocation table", err, end))
             return false;
-        cursor = static_cast<uint32_t>(alignUp(end, 4));
+        if (!alignU32Checked(end, 4, ".rdata relocation table", err, cursor))
+            return false;
     }
     uint32_t xdataDataOff = 0;
     if (hasXdata) {
@@ -805,7 +938,8 @@ bool CoffWriter::write(const std::string &path,
         uint32_t end = 0;
         if (!addU32Checked(xdataDataOff, xdataSize, ".xdata data", err, end))
             return false;
-        cursor = static_cast<uint32_t>(alignUp(end, 4));
+        if (!alignU32Checked(end, 4, ".xdata data", err, cursor))
+            return false;
     }
     uint32_t pdataDataOff = 0;
     uint32_t pdataRelocOff = 0;
@@ -820,7 +954,8 @@ bool CoffWriter::write(const std::string &path,
         if (!addU32Checked(
                 pdataRelocOff, pdataRelocSize, ".pdata relocation table", err, pdataRelocEnd))
             return false;
-        cursor = static_cast<uint32_t>(alignUp(pdataRelocEnd, 4));
+        if (!alignU32Checked(pdataRelocEnd, 4, ".pdata relocation table", err, cursor))
+            return false;
     }
     uint32_t debugLineDataOff = 0;
     if (hasDebugLine) {
@@ -828,12 +963,16 @@ bool CoffWriter::write(const std::string &path,
         uint32_t end = 0;
         if (!addU32Checked(debugLineDataOff, debugLineDataSize, ".debug_line data", err, end))
             return false;
-        cursor = static_cast<uint32_t>(alignUp(end, 4));
+        if (!alignU32Checked(end, 4, ".debug_line data", err, cursor))
+            return false;
     }
     const uint32_t symtabOff = cursor;
 
     std::vector<uint8_t> file;
-    file.reserve(symtabOff + symtabBytes.size() + strtabBytes.size());
+    size_t reserveSize = 0;
+    if (!checkedCoffReserveSize(symtabOff, symtabBytes.size(), strtabBytes.size(), err, reserveSize))
+        return false;
+    file.reserve(reserveSize);
 
     const uint16_t machine = (arch_ == ObjArch::X86_64) ? kMachineAMD64 : kMachineARM64;
     appendLE16(file, machine);
@@ -956,6 +1095,10 @@ bool CoffWriter::write(const std::string &path,
         return false;
     }
     return true;
+    } catch (const std::exception &ex) {
+        err << "CoffWriter: " << ex.what() << "\n";
+        return false;
+    }
 }
 
 static std::string inferTextSectionName(const CodeSection &text, size_t index) {
@@ -974,6 +1117,7 @@ bool CoffWriter::write(const std::string &path,
                        const std::vector<CodeSection> &textSections,
                        const CodeSection &rodata,
                        std::ostream &err) {
+    try {
     if (textSections.size() <= 1) {
         if (textSections.empty()) {
             CodeSection empty;
@@ -993,7 +1137,14 @@ bool CoffWriter::write(const std::string &path,
                 if (!buildWin64UnwindSections(
                         text, xdataNameBase, xdataBytes, xdataSymbols, pdataBytes, pdataRelocs, err))
                     return false;
-                xdataNameBase += static_cast<uint32_t>(text.win64UnwindEntries().size());
+                uint32_t entryCount = 0;
+                if (!checkedU32(text.win64UnwindEntries().size(),
+                                ".xdata symbol count",
+                                err,
+                                entryCount) ||
+                    !addU32Checked(
+                        xdataNameBase, entryCount, ".xdata symbol count", err, xdataNameBase))
+                    return false;
             }
         }
     }
@@ -1089,7 +1240,9 @@ bool CoffWriter::write(const std::string &path,
             }
 
             const int16_t secNum = static_cast<int16_t>(secIdxRdata);
-            const uint32_t value = static_cast<uint32_t>(s.offset);
+            uint32_t value = 0;
+            if (!checkedPhysicalSymbolValue(rodata, s, ".rdata", err, value))
+                return false;
             const uint8_t storageClass =
                 (s.binding == SymbolBinding::Local) ? kImageSymClassStatic : kImageSymClassExternal;
             if (!rememberDefinedGlobal(definedGlobalNames, s, ".rdata", err))
@@ -1144,7 +1297,9 @@ bool CoffWriter::write(const std::string &path,
             }
 
             const int16_t secNum = static_cast<int16_t>(secIdxText[ti]);
-            const uint32_t value = static_cast<uint32_t>(s.offset);
+            uint32_t value = 0;
+            if (!checkedPhysicalSymbolValue(text, s, textSectionNames[ti].c_str(), err, value))
+                return false;
             const uint8_t storageClass =
                 (s.binding == SymbolBinding::Local) ? kImageSymClassStatic : kImageSymClassExternal;
             if (!rememberDefinedGlobal(definedGlobalNames, s, textSectionNames[ti].c_str(), err))
@@ -1298,6 +1453,8 @@ bool CoffWriter::write(const std::string &path,
 
     std::vector<uint8_t> pdataRelocBytes;
     for (const auto &rel : pdataRelocs) {
+        if (!validatePdataRelocOffset(rel.offset, pdataBytes.size(), err))
+            return false;
         auto it = definedNameMap.find(rel.symbolName);
         if (it == definedNameMap.end()) {
             err << "CoffWriter: missing symbol '" << rel.symbolName << "' for .pdata relocation\n";
@@ -1327,7 +1484,9 @@ bool CoffWriter::write(const std::string &path,
         return false;
 
     const uint32_t headerAreaSize = kCoffHeaderSize + numSections * kSectionHeaderSize;
-    uint32_t cursor = static_cast<uint32_t>(alignUp(headerAreaSize, 4));
+    uint32_t cursor = 0;
+    if (!alignU32Checked(headerAreaSize, 4, "header area", err, cursor))
+        return false;
 
     std::vector<uint32_t> textDataOff(textCount, 0);
     std::vector<uint32_t> textRelocOff(textCount, 0);
@@ -1347,7 +1506,8 @@ bool CoffWriter::write(const std::string &path,
                                cursor))
                 return false;
         }
-        cursor = static_cast<uint32_t>(alignUp(cursor, 4));
+        if (!alignU32Checked(cursor, 4, ".text data", err, cursor))
+            return false;
     }
 
     uint32_t rdataDataOff = 0;
@@ -1363,7 +1523,8 @@ bool CoffWriter::write(const std::string &path,
         if (!addU32Checked(
                 rdataRelocOff, rdataRelocSize, ".rdata relocation table", err, rdataRelocEnd))
             return false;
-        cursor = static_cast<uint32_t>(alignUp(rdataRelocEnd, 4));
+        if (!alignU32Checked(rdataRelocEnd, 4, ".rdata relocation table", err, cursor))
+            return false;
     }
     uint32_t xdataDataOff = 0;
     if (hasXdata) {
@@ -1371,7 +1532,8 @@ bool CoffWriter::write(const std::string &path,
         uint32_t end = 0;
         if (!addU32Checked(xdataDataOff, xdataSize, ".xdata data", err, end))
             return false;
-        cursor = static_cast<uint32_t>(alignUp(end, 4));
+        if (!alignU32Checked(end, 4, ".xdata data", err, cursor))
+            return false;
     }
     uint32_t pdataDataOff = 0;
     uint32_t pdataRelocOff = 0;
@@ -1386,7 +1548,8 @@ bool CoffWriter::write(const std::string &path,
         if (!addU32Checked(
                 pdataRelocOff, pdataRelocSize, ".pdata relocation table", err, pdataRelocEnd))
             return false;
-        cursor = static_cast<uint32_t>(alignUp(pdataRelocEnd, 4));
+        if (!alignU32Checked(pdataRelocEnd, 4, ".pdata relocation table", err, cursor))
+            return false;
     }
     uint32_t debugLineDataOff = 0;
     if (hasDebugLine) {
@@ -1394,12 +1557,16 @@ bool CoffWriter::write(const std::string &path,
         uint32_t end = 0;
         if (!addU32Checked(debugLineDataOff, debugLineDataSize, ".debug_line data", err, end))
             return false;
-        cursor = static_cast<uint32_t>(alignUp(end, 4));
+        if (!alignU32Checked(end, 4, ".debug_line data", err, cursor))
+            return false;
     }
     const uint32_t symtabOff = cursor;
 
     std::vector<uint8_t> file;
-    file.reserve(symtabOff + symtabBytes.size() + strtabBytes.size());
+    size_t reserveSize = 0;
+    if (!checkedCoffReserveSize(symtabOff, symtabBytes.size(), strtabBytes.size(), err, reserveSize))
+        return false;
+    file.reserve(reserveSize);
 
     const uint16_t machine = (arch_ == ObjArch::X86_64) ? kMachineAMD64 : kMachineARM64;
     appendLE16(file, machine);
@@ -1523,6 +1690,10 @@ bool CoffWriter::write(const std::string &path,
         return false;
     }
     return true;
+    } catch (const std::exception &ex) {
+        err << "CoffWriter: " << ex.what() << "\n";
+        return false;
+    }
 }
 
 } // namespace viper::codegen::objfile

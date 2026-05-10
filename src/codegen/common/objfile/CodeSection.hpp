@@ -115,6 +115,8 @@ class CodeSection {
 
     /// Current write position (byte offset from start of section).
     size_t currentOffset() const {
+        if (offsetBias_ > std::numeric_limits<size_t>::max() - bytes_.size())
+            throw std::length_error("CodeSection current offset exceeds addressable size");
         return offsetBias_ + bytes_.size();
     }
 
@@ -172,9 +174,14 @@ class CodeSection {
             return;
         if ((alignment & (alignment - 1)) != 0)
             throw std::invalid_argument("CodeSection alignment must be a power of two");
-        size_t rem = currentOffset() % alignment;
-        if (rem != 0)
-            emitZeros(alignment - rem);
+        const size_t offset = currentOffset();
+        const size_t rem = offset % alignment;
+        if (rem == 0)
+            return;
+        const size_t padding = alignment - rem;
+        if (padding > std::numeric_limits<size_t>::max() - offset)
+            throw std::length_error("CodeSection alignment exceeds addressable size");
+        emitZeros(padding);
     }
 
     // === Relocation tracking ===
@@ -206,6 +213,10 @@ class CodeSection {
 
     /// Define a symbol at the current offset. Returns its index in the symbol table.
     uint32_t defineSymbol(const std::string &name, SymbolBinding binding, SymbolSection section) {
+        if (binding == SymbolBinding::External)
+            throw std::invalid_argument("CodeSection defineSymbol cannot define External symbols");
+        if (section == SymbolSection::Undefined)
+            throw std::invalid_argument("CodeSection defineSymbol requires a concrete section");
         return symbols_.add(Symbol{name, binding, section, currentOffset(), 0});
     }
 
@@ -294,6 +305,8 @@ class CodeSection {
     void appendSection(const CodeSection &other) {
         const size_t offsetBias = currentOffset();
         reserveAdditionalBytes(other.bytes().size());
+        if (other.relocations().size() > std::numeric_limits<size_t>::max() - relocations_.size())
+            throw std::length_error("CodeSection relocation reservation exceeds addressable size");
         reserveRelocations(relocations_.size() + other.relocations().size());
         std::vector<uint32_t> symbolRemap(other.symbols().count(), 0);
 

@@ -133,13 +133,19 @@ class AsmEmitter {
     /// \param os Output stream for AT&T syntax assembly.
     /// \param block Machine basic block to emit.
     /// \param target Target information for register naming.
-    static void emitBlock(std::ostream &os, const MBasicBlock &block, const TargetInfo &target);
+    static void emitBlock(std::ostream &os,
+                          const MBasicBlock &block,
+                          const TargetInfo &target,
+                          objfile::ObjFormat format);
 
     /// \brief Emit assembly for a single machine instruction.
     /// \param os Output stream for AT&T syntax assembly.
     /// \param instr Machine instruction to emit.
     /// \param target Target information for register naming.
-    static void emitInstruction(std::ostream &os, const MInstr &instr, const TargetInfo &target);
+    static void emitInstruction(std::ostream &os,
+                                const MInstr &instr,
+                                const TargetInfo &target,
+                                objfile::ObjFormat format);
 
     /// \brief Emit instruction text from a matched encoding row.
     /// \param row Encoding specification describing mnemonic and operand ordering.
@@ -149,14 +155,16 @@ class AsmEmitter {
     static void emit_from_row(const EncodingRow &row,
                               std::span<const Operand> operands,
                               std::ostream &os,
-                              const TargetInfo &target);
+                              const TargetInfo &target,
+                              objfile::ObjFormat format);
 
     /// \brief Format an operand for AT&T assembly output.
     /// \param operand Operand to format (reg, imm, mem, or label).
     /// \param target Target information for register naming.
     /// \return Formatted string (e.g., "%rax", "$42", "8(%rbp)").
     [[nodiscard]] static std::string formatOperand(const Operand &operand,
-                                                   const TargetInfo &target);
+                                                   const TargetInfo &target,
+                                                   objfile::ObjFormat format);
 
     /// \brief Format a 64-bit register operand.
     /// \param reg Register operand.
@@ -190,12 +198,14 @@ class AsmEmitter {
     /// \brief Format a symbolic label operand.
     /// \param label Label operand containing symbol name.
     /// \return Label string for use in jumps/calls.
-    [[nodiscard]] static std::string formatLabel(const OpLabel &label);
+    [[nodiscard]] static std::string formatLabel(const OpLabel &label,
+                                                 objfile::ObjFormat format);
 
     /// \brief Format a RIP-relative label operand.
     /// \param label RIP-relative label operand.
     /// \return RIP-relative format (e.g., "_symbol(%rip)").
-    [[nodiscard]] static std::string formatRipLabel(const OpRipLabel &label);
+    [[nodiscard]] static std::string formatRipLabel(const OpRipLabel &label,
+                                                    objfile::ObjFormat format);
 
     /// \brief Format a shift/rotate count operand.
     /// \details Handles both immediate counts and %cl register counts.
@@ -203,14 +213,16 @@ class AsmEmitter {
     /// \param target Target information for register naming.
     /// \return Formatted shift count (e.g., "$3", "%cl").
     [[nodiscard]] static std::string formatShiftCount(const Operand &operand,
-                                                      const TargetInfo &target);
+                                                      const TargetInfo &target,
+                                                      objfile::ObjFormat format);
 
     /// \brief Format the source operand for LEA instructions.
     /// \param operand LEA source (typically memory-style addressing).
     /// \param target Target information for register naming.
     /// \return Formatted LEA source address expression.
     [[nodiscard]] static std::string formatLeaSource(const Operand &operand,
-                                                     const TargetInfo &target);
+                                                     const TargetInfo &target,
+                                                     objfile::ObjFormat format);
 
     /// \brief Format a CALL target operand.
     /// \details Handles direct symbols, indirect registers, and memory targets.
@@ -218,7 +230,8 @@ class AsmEmitter {
     /// \param target Target information for register naming.
     /// \return Formatted call target (e.g., "_func", "*%rax").
     [[nodiscard]] static std::string formatCallTarget(const Operand &operand,
-                                                      const TargetInfo &target);
+                                                      const TargetInfo &target,
+                                                      objfile::ObjFormat format);
 
     /// \brief Get the condition code suffix for Jcc/SETcc instructions.
     /// \param code Condition code value (0=EQ, 1=NE, etc.).

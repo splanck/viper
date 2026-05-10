@@ -122,7 +122,9 @@ int main() {
     using namespace viper::codegen::x64;
 
     const ILModule module = makeProbeModule();
-    const CodegenResult result = emitModuleToAssembly(module, {});
+    CodegenOptions options{};
+    options.targetPlatform = CodegenOptions::TargetPlatform::Linux;
+    const CodegenResult result = emitModuleToAssembly(module, options);
 
     if (!result.errors.empty() || !verifyProbeAssembly(result.asmText)) {
         std::cerr << "Assembly verification failed:\n" << result.asmText;

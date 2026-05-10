@@ -194,9 +194,32 @@ const OpFmt *getFmt(MOpcode opc) noexcept {
 
 [[nodiscard]] int encodeRegister(const OpReg &reg) noexcept;
 
+[[nodiscard]] bool isDarwinLocalSymbol(std::string_view name) noexcept {
+    return !name.empty() &&
+           (name.front() == '.' || name.rfind("L.", 0) == 0 || name.rfind("Ltmp", 0) == 0 ||
+            name.rfind("LBB", 0) == 0);
+}
+
+[[nodiscard]] std::string formatSymbolReference(std::string_view name, objfile::ObjFormat format) {
+    std::string symbol = asmfmt::format_label(name);
+    if (format == objfile::ObjFormat::MachO && !symbol.empty() && !isDarwinLocalSymbol(symbol))
+        symbol.insert(symbol.begin(), '_');
+    return symbol;
+}
+
+[[nodiscard]] std::string formatRipSymbolReference(std::string_view name,
+                                                   objfile::ObjFormat format) {
+    std::string result = formatSymbolReference(name, format);
+    result += "(%rip)";
+    return result;
+}
+
 /// @brief Emits operand.
 template <typename Out>
-void emitOperand(const Operand &operand, Out &out, const TargetInfo &target) {
+void emitOperand(const Operand &operand,
+                 Out &out,
+                 const TargetInfo &target,
+                 objfile::ObjFormat format) {
     static_cast<void>(target);
     std::visit(
         Overload{[&](const OpReg &reg) { out << asmfmt::fmt_reg(encodeRegister(reg)); },
@@ -212,21 +235,26 @@ void emitOperand(const Operand &operand, Out &out, const TargetInfo &target) {
                      }
                      out << asmfmt::format_mem(addr);
                  },
-                 [&](const OpLabel &label) { out << asmfmt::format_label(label.name); },
-                 [&](const OpRipLabel &label) { out << asmfmt::format_rip_label(label.name); }},
+                 [&](const OpLabel &label) { out << formatSymbolReference(label.name, format); },
+                 [&](const OpRipLabel &label) {
+                     out << formatRipSymbolReference(label.name, format);
+                 }},
         operand);
 }
 
 template <typename Out>
 /// @brief Emits operands.
-void emitOperands(std::span<const Operand> operands, Out &out, const TargetInfo &target) {
+void emitOperands(std::span<const Operand> operands,
+                  Out &out,
+                  const TargetInfo &target,
+                  objfile::ObjFormat format) {
     bool first = true;
     for (const auto &operand : operands) {
         if (!first) {
             out << ", ";
         }
         /// @brief Emits operand.
-        emitOperand(operand, out, target);
+        emitOperand(operand, out, target, format);
         first = false;
     }
 }
@@ -406,7 +434,7 @@ void AsmEmitter::emitFunction(std::ostream &os,
                               const MFunction &func,
                               const TargetInfo &target) const {
     os << ".text\n";
-    const std::string linkName = asmfmt::format_label(viper::common::MangleLink(func.name));
+    const std::string linkName = formatSymbolReference(viper::common::MangleLink(func.name), format_);
     os << ".globl " << linkName << "\n";
     if (format_ == objfile::ObjFormat::ELF) {
         os << ".type " << linkName << ", @function\n";
@@ -419,11 +447,11 @@ void AsmEmitter::emitFunction(std::ostream &os,
         if (isEntry) {
             for (const auto &instr : block.instructions) {
                 /// @brief Emits instruction.
-                emitInstruction(os, instr, target);
+                emitInstruction(os, instr, target, format_);
             }
         } else {
             /// @brief Emits block.
-            emitBlock(os, block, target);
+            emitBlock(os, block, target, format_);
         }
         if (i + 1 < func.blocks.size()) {
             os << '\n';
@@ -459,13 +487,16 @@ const AsmEmitter::RoDataPool &AsmEmitter::roDataPool() const noexcept {
 /// @param os Output stream receiving the assembly.
 /// @param block Machine basic block to serialise.
 /// @param target Target lowering information controlling operand formatting.
-void AsmEmitter::emitBlock(std::ostream &os, const MBasicBlock &block, const TargetInfo &target) {
+void AsmEmitter::emitBlock(std::ostream &os,
+                           const MBasicBlock &block,
+                           const TargetInfo &target,
+                           objfile::ObjFormat format) {
     if (!block.label.empty()) {
         os << asmfmt::format_label(block.label) << ":\n";
     }
     for (const auto &instr : block.instructions) {
         /// @brief Emits instruction.
-        emitInstruction(os, instr, target);
+        emitInstruction(os, instr, target, format);
     }
 }
 
@@ -476,7 +507,10 @@ void AsmEmitter::emitBlock(std::ostream &os, const MBasicBlock &block, const Tar
 /// @param os Output stream receiving the assembly.
 /// @param instr Instruction to serialise.
 /// @param target Target lowering information controlling operand formatting.
-void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const TargetInfo &target) {
+void AsmEmitter::emitInstruction(std::ostream &os,
+                                 const MInstr &instr,
+                                 const TargetInfo &target,
+                                 objfile::ObjFormat format) {
     if (instr.opcode == MOpcode::LABEL) {
         if (instr.operands.empty()) {
             os << ".L?\n";
@@ -499,7 +533,7 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         bool first = true;
         for (const auto &operand : instr.operands) {
             line.append(first ? " " : ", ");
-            line.append(formatOperand(operand, target));
+            line.append(formatOperand(operand, target, format));
             first = false;
         }
         line.push_back('\n');
@@ -511,7 +545,7 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         const char *mnemonic = (instr.opcode == MOpcode::PUSH) ? "pushq" : "popq";
         os << "  " << mnemonic;
         if (!instr.operands.empty())
-            os << ' ' << formatOperand(instr.operands.front(), target);
+            os << ' ' << formatOperand(instr.operands.front(), target, format);
         os << '\n';
         return;
     }
@@ -525,13 +559,14 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
     }
 
     /// @brief Emits _from_row.
-    emit_from_row(*row, operands, os, target);
+    emit_from_row(*row, operands, os, target, format);
 }
 
 void AsmEmitter::emit_from_row(const EncodingRow &row,
                                std::span<const Operand> operands,
                                std::ostream &os,
-                               const TargetInfo &target) {
+                               const TargetInfo &target,
+                               objfile::ObjFormat format) {
     const auto *fmt = getFmt(row.opcode);
     const auto mnemonic = fmt ? std::string_view{fmt->mnemonic} : row.mnemonic;
     if (fmt) {
@@ -543,7 +578,7 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
         if (!operands.empty()) {
             os << ' ';
             /// @brief Emits operands.
-            emitOperands(operands, os, target);
+            emitOperands(operands, os, target, format);
         }
         os << '\n';
         return;
@@ -561,8 +596,8 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
             os << " #<missing>\n";
             return;
         }
-        os << ' ' << formatLeaSource(operands[1], target) << ", "
-           << formatOperand(operands[0], target) << '\n';
+        os << ' ' << formatLeaSource(operands[1], target, format) << ", "
+           << formatOperand(operands[0], target, format) << '\n';
         return;
     }
 
@@ -601,7 +636,7 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
             os << " #<missing>\n";
             return;
         }
-        os << ' ' << formatCallTarget(operands.front(), target) << '\n';
+        os << ' ' << formatCallTarget(operands.front(), target, format) << '\n';
         return;
     }
 
@@ -624,9 +659,10 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
             os << suffix << ' ';
             if (branchTarget) {
                 if (std::holds_alternative<OpLabel>(*branchTarget)) {
-                    os << formatOperand(*branchTarget, target) << '\n';
+                    const auto &label = std::get<OpLabel>(*branchTarget);
+                    os << asmfmt::format_label(label.name) << '\n';
                 } else {
-                    os << '*' << formatOperand(*branchTarget, target) << '\n';
+                    os << '*' << formatOperand(*branchTarget, target, format) << '\n';
                 }
             } else {
                 os << "#<missing>\n";
@@ -639,11 +675,12 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
             os << ' ';
             const auto &targetOp = operands.front();
             if (std::holds_alternative<OpLabel>(targetOp)) {
-                os << formatOperand(targetOp, target) << '\n';
+                const auto &label = std::get<OpLabel>(targetOp);
+                os << asmfmt::format_label(label.name) << '\n';
             } else {
                 os << '*';
                 /// @brief Emits operand.
-                emitOperand(targetOp, os, target);
+                emitOperand(targetOp, os, target, format);
                 os << '\n';
             }
         }
@@ -669,7 +706,7 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
             if (const auto *reg = std::get_if<OpReg>(dest)) {
                 os << formatReg8(*reg, target) << '\n';
             } else {
-                os << formatOperand(*dest, target) << '\n';
+                os << formatOperand(*dest, target, format) << '\n';
             }
         } else {
             os << "#<missing>\n";
@@ -682,8 +719,8 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
             os << " #<missing>\n";
             return;
         }
-        os << ' ' << formatShiftCount(operands[1], target) << ", "
-           << formatOperand(operands[0], target) << '\n';
+        os << ' ' << formatShiftCount(operands[1], target, format) << ", "
+           << formatOperand(operands[0], target, format) << '\n';
         return;
     }
 
@@ -694,7 +731,7 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
         }
         os << ' ';
         /// @brief Emits operands.
-        emitOperands(operands, os, target);
+        emitOperands(operands, os, target, format);
         os << '\n';
         return;
     }
@@ -707,7 +744,7 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
             }
             os << ' ';
             /// @brief Emits operand.
-            emitOperand(operands.front(), os, target);
+            emitOperand(operands.front(), os, target, format);
             os << '\n';
             return;
         }
@@ -718,10 +755,10 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
             }
             os << ' ';
             /// @brief Emits operand.
-            emitOperand(operands[1], os, target);
+            emitOperand(operands[1], os, target, format);
             os << ", ";
             /// @brief Emits operand.
-            emitOperand(operands[0], os, target);
+            emitOperand(operands[0], os, target, format);
             os << '\n';
             return;
         }
@@ -732,13 +769,13 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
             }
             os << ' ';
             /// @brief Emits operand.
-            emitOperand(operands[2], os, target);
+            emitOperand(operands[2], os, target, format);
             os << ", ";
             /// @brief Emits operand.
-            emitOperand(operands[1], os, target);
+            emitOperand(operands[1], os, target, format);
             os << ", ";
             /// @brief Emits operand.
-            emitOperand(operands[0], os, target);
+            emitOperand(operands[0], os, target, format);
             os << '\n';
             return;
         }
@@ -749,7 +786,7 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
             }
             os << ' ';
             /// @brief Emits operands.
-            emitOperands(operands, os, target);
+            emitOperands(operands, os, target, format);
             os << '\n';
             return;
         }
@@ -763,10 +800,12 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
 /// @param operand Operand to print.
 /// @param target Target lowering information controlling register names.
 /// @return Textual representation of the operand.
-std::string AsmEmitter::formatOperand(const Operand &operand, const TargetInfo &target) {
+std::string AsmEmitter::formatOperand(const Operand &operand,
+                                      const TargetInfo &target,
+                                      objfile::ObjFormat format) {
     std::ostringstream buffer;
     /// @brief Emits operand.
-    emitOperand(operand, buffer, target);
+    emitOperand(operand, buffer, target, format);
     return std::move(buffer).str();
 }
 
@@ -902,29 +941,31 @@ std::string AsmEmitter::formatMem(const OpMem &mem, const TargetInfo &target) {
 /// @brief Format a label operand.
 /// @param label Label operand to print.
 /// @return Raw label text.
-std::string AsmEmitter::formatLabel(const OpLabel &label) {
-    return asmfmt::format_label(label.name);
+std::string AsmEmitter::formatLabel(const OpLabel &label, objfile::ObjFormat format) {
+    return formatSymbolReference(label.name, format);
 }
 
 /// @brief Format a RIP-relative label operand.
 /// @param label RIP-relative label to print.
 /// @return Label text suffixed with the RIP-relative addressing mode.
-std::string AsmEmitter::formatRipLabel(const OpRipLabel &label) {
-    return asmfmt::format_rip_label(label.name);
+std::string AsmEmitter::formatRipLabel(const OpRipLabel &label, objfile::ObjFormat format) {
+    return formatRipSymbolReference(label.name, format);
 }
 
 /// @brief Format a shift count operand, rewriting RCX to CL when required.
 /// @param operand Operand describing the shift count.
 /// @param target Target lowering context for fallback formatting.
 /// @return Assembly string for the shift count operand.
-std::string AsmEmitter::formatShiftCount(const Operand &operand, const TargetInfo &target) {
+std::string AsmEmitter::formatShiftCount(const Operand &operand,
+                                         const TargetInfo &target,
+                                         objfile::ObjFormat format) {
     if (const auto *reg = std::get_if<OpReg>(&operand)) {
         if (reg->isPhys && reg->cls == RegClass::GPR &&
             reg->idOrPhys == static_cast<uint16_t>(PhysReg::RCX)) {
             return "%cl";
         }
     }
-    return formatOperand(operand, target);
+    return formatOperand(operand, target, format);
 }
 
 /// @brief Format the source operand for an @c LEA instruction.
@@ -933,13 +974,15 @@ std::string AsmEmitter::formatShiftCount(const Operand &operand, const TargetInf
 /// @param operand Operand supplying the effective address computation.
 /// @param target Target lowering context for register/memory formatting.
 /// @return Assembly string representing the effective address source.
-std::string AsmEmitter::formatLeaSource(const Operand &operand, const TargetInfo &target) {
+std::string AsmEmitter::formatLeaSource(const Operand &operand,
+                                        const TargetInfo &target,
+                                        objfile::ObjFormat format) {
     return std::visit(
-        Overload{[&](const OpLabel &label) { return asmfmt::format_rip_label(label.name); },
+        Overload{[&](const OpLabel &label) { return formatRipSymbolReference(label.name, format); },
                  [&](const OpMem &mem) { return formatMem(mem, target); },
                  [&](const OpReg &reg) { return formatReg(reg, target); },
                  [&](const OpImm &imm) { return formatImm(imm); },
-                 [&](const OpRipLabel &label) { return formatRipLabel(label); }},
+                 [&](const OpRipLabel &label) { return formatRipLabel(label, format); }},
         operand);
 }
 
@@ -949,17 +992,21 @@ std::string AsmEmitter::formatLeaSource(const Operand &operand, const TargetInfo
 /// @param operand Operand describing the call target.
 /// @param target Target lowering context for register/memory formatting.
 /// @return Assembly string representing the call target.
-std::string AsmEmitter::formatCallTarget(const Operand &operand, const TargetInfo &target) {
+std::string AsmEmitter::formatCallTarget(const Operand &operand,
+                                         const TargetInfo &target,
+                                         objfile::ObjFormat format) {
     return std::visit(
         Overload{[&](const OpLabel &label) {
                      if (auto mapped = il::runtime::mapCanonicalRuntimeName(label.name))
-                         return asmfmt::format_label(std::string{*mapped});
-                     return asmfmt::format_label(viper::common::MangleLink(label.name));
+                         return formatSymbolReference(std::string{*mapped}, format);
+                     return formatSymbolReference(viper::common::MangleLink(label.name), format);
                  },
                  [&](const OpReg &reg) { return std::string{"*"} + formatReg(reg, target); },
                  [&](const OpMem &mem) { return std::string{"*"} + formatMem(mem, target); },
                  [&](const OpImm &imm) { return formatImm(imm); },
-                 [&](const OpRipLabel &label) { return std::string{"*"} + formatRipLabel(label); }},
+                 [&](const OpRipLabel &label) {
+                     return std::string{"*"} + formatRipLabel(label, format);
+                 }},
         operand);
 }
 

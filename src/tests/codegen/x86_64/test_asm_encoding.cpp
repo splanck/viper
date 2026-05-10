@@ -89,7 +89,7 @@ namespace {
     func.blocks.push_back(std::move(block));
 
     AsmEmitter::RoDataPool pool;
-    AsmEmitter emitter(pool);
+    AsmEmitter emitter(pool, viper::codegen::objfile::ObjFormat::ELF);
 
     std::ostringstream os;
     emitter.emitFunction(os, func, hostTarget());

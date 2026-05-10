@@ -22,6 +22,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 
 using namespace viper::codegen::objfile;
@@ -330,6 +331,55 @@ int main() {
             threw = true;
         }
         CHECK(threw);
+    }
+
+    // --- currentOffset rejects logical-bias overflow ---
+    {
+        CodeSection cs;
+        cs.setLogicalOffsetBias(std::numeric_limits<size_t>::max());
+        cs.emit8(0x90);
+
+        bool threw = false;
+        try {
+            (void)cs.currentOffset();
+        } catch (const std::length_error &) {
+            threw = true;
+        }
+        CHECK(threw);
+    }
+
+    // --- alignTo rejects logical-bias overflow ---
+    {
+        CodeSection cs;
+        cs.setLogicalOffsetBias(std::numeric_limits<size_t>::max());
+
+        bool threw = false;
+        try {
+            cs.alignTo(2);
+        } catch (const std::length_error &) {
+            threw = true;
+        }
+        CHECK(threw);
+    }
+
+    // --- defineSymbol rejects contradictory external/undefined definitions ---
+    {
+        CodeSection cs;
+        bool externalThrew = false;
+        try {
+            cs.defineSymbol("bad_external", SymbolBinding::External, SymbolSection::Text);
+        } catch (const std::invalid_argument &) {
+            externalThrew = true;
+        }
+        CHECK(externalThrew);
+
+        bool undefinedThrew = false;
+        try {
+            cs.defineSymbol("bad_undefined", SymbolBinding::Global, SymbolSection::Undefined);
+        } catch (const std::invalid_argument &) {
+            undefinedThrew = true;
+        }
+        CHECK(undefinedThrew);
     }
 
     // --- Result ---

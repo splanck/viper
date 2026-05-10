@@ -21,7 +21,7 @@ using namespace viper::codegen::x64;
 
 TEST(Codegen_X64_RuntimeNameMap, CanonicalNamesMapToRuntimeSymbols) {
     AsmEmitter::RoDataPool pool;
-    AsmEmitter emitter(pool);
+    AsmEmitter emitter(pool, viper::codegen::objfile::ObjFormat::ELF);
 
     MFunction fn{};
     fn.name = "main";
@@ -37,6 +37,36 @@ TEST(Codegen_X64_RuntimeNameMap, CanonicalNamesMapToRuntimeSymbols) {
 
     EXPECT_NE(asmText.find("rt_print_i64"), std::string::npos);
     EXPECT_EQ(asmText.find("Viper.Terminal.PrintI64"), std::string::npos);
+}
+
+TEST(Codegen_X64_RuntimeNameMap, MachODirectSymbolsUseDarwinPrefix) {
+    AsmEmitter::RoDataPool pool;
+    AsmEmitter emitter(pool, viper::codegen::objfile::ObjFormat::MachO);
+
+    MFunction fn{};
+    fn.name = "main";
+    MBasicBlock entry{};
+    entry.label = fn.name;
+    entry.append(MInstr::make(MOpcode::CALL, {makeLabelOperand("Viper.Terminal.PrintI64")}));
+    entry.append(MInstr::make(MOpcode::LEA,
+                              {makePhysRegOperand(RegClass::GPR,
+                                                  static_cast<uint16_t>(PhysReg::RAX)),
+                               makeRipLabelOperand("global_data")}));
+    entry.append(MInstr::make(MOpcode::JMP, {makeLabelOperand(".Ldone")}));
+    entry.append(MInstr::make(MOpcode::LABEL, {makeLabelOperand(".Ldone")}));
+    entry.append(MInstr::make(MOpcode::RET));
+    fn.blocks.push_back(entry);
+
+    std::ostringstream os;
+    emitter.emitFunction(os, fn, sysvTarget());
+    const std::string asmText = os.str();
+
+    EXPECT_NE(asmText.find(".globl _main"), std::string::npos);
+    EXPECT_NE(asmText.find("_main:"), std::string::npos);
+    EXPECT_NE(asmText.find("callq _rt_print_i64"), std::string::npos);
+    EXPECT_NE(asmText.find("_global_data(%rip)"), std::string::npos);
+    EXPECT_NE(asmText.find("jmp .Ldone"), std::string::npos);
+    EXPECT_EQ(asmText.find("jmp _.Ldone"), std::string::npos);
 }
 
 int main(int argc, char **argv) {

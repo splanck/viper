@@ -99,6 +99,14 @@ static const ObjSection *findSection(const ObjFile &obj, const std::string &name
     return nullptr;
 }
 
+static const ObjSymbol *findSymbol(const ObjFile &obj, const std::string &name) {
+    for (size_t i = 1; i < obj.symbols.size(); ++i) {
+        if (obj.symbols[i].name == name)
+            return &obj.symbols[i];
+    }
+    return nullptr;
+}
+
 // =============================================================================
 // Test: Minimal ELF x86_64
 // =============================================================================
@@ -627,6 +635,26 @@ static void testRelocationOffsetBoundsFails() {
     std::remove("/tmp/viper_test_elf_bad_reloc_offset.o");
 }
 
+static void testLogicalBiasSymbolsArePhysical() {
+    CodeSection text, rodata;
+    text.setLogicalOffsetBias(64);
+    text.defineSymbol("biased_func", SymbolBinding::Global, SymbolSection::Text);
+    text.emit8(0xC3);
+
+    std::ostringstream errStream;
+    ElfWriter writer(ObjArch::X86_64);
+    const std::string path = "/tmp/viper_test_elf_biased_symbol.o";
+    CHECK(writer.write(path, text, rodata, errStream));
+
+    ObjFile obj;
+    CHECK(readObjFile(path, obj, errStream));
+    const ObjSymbol *sym = findSymbol(obj, "biased_func");
+    CHECK(sym != nullptr);
+    if (sym != nullptr)
+        CHECK(sym->offset == 0);
+    std::remove(path.c_str());
+}
+
 int main() {
     testMinimalX64Elf();
     testMinimalA64Elf();
@@ -643,6 +671,7 @@ int main() {
     testMissingCrossSectionRelocationFails();
     testWrongArchRelocationFails();
     testRelocationOffsetBoundsFails();
+    testLogicalBiasSymbolsArePhysical();
 
     if (gFail == 0)
         std::cout << "All ELF writer tests passed.\n";
