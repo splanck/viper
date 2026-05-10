@@ -73,19 +73,20 @@ static constexpr uint16_t kImageRelAMD64_Addr64 = 1;
 static constexpr uint16_t kImageRelAMD64_Addr32Nb = 3;
 static constexpr uint16_t kImageRelAMD64_Rel32 = 4;
 
+static constexpr uint16_t kImageRelARM64_Addr64 = 14;
 static constexpr uint16_t kImageRelARM64_Branch26 = 3;
 static constexpr uint16_t kImageRelARM64_PagebaseRel21 = 4;
 static constexpr uint16_t kImageRelARM64_Pageoffset12A = 6;
 static constexpr uint16_t kImageRelARM64_Pageoffset12L = 7;
-static constexpr uint16_t kImageRelARM64_Branch19 = 8;
+static constexpr uint16_t kImageRelARM64_Branch19 = 15;
 
-static uint16_t coffRelocType(RelocKind kind) {
+static uint16_t coffRelocType(RelocKind kind, ObjArch arch) {
     switch (kind) {
         case RelocKind::PCRel32:
         case RelocKind::Branch32:
             return kImageRelAMD64_Rel32;
         case RelocKind::Abs64:
-            return kImageRelAMD64_Addr64;
+            return arch == ObjArch::AArch64 ? kImageRelARM64_Addr64 : kImageRelAMD64_Addr64;
         case RelocKind::A64Call26:
         case RelocKind::A64Jump26:
             return kImageRelARM64_Branch26;
@@ -103,19 +104,20 @@ static uint16_t coffRelocType(RelocKind kind) {
 
 static bool validateCoffRelocationAddend(const CodeSection &section,
                                          const Relocation &rel,
+                                         int64_t effectiveAddend,
                                          std::ostream &err) {
     switch (rel.kind) {
         case RelocKind::PCRel32:
         case RelocKind::Branch32:
-            if (rel.addend != 0 && rel.addend != -4) {
-                err << "CoffWriter: unsupported addend " << rel.addend
+            if (effectiveAddend != 0 && effectiveAddend != -4) {
+                err << "CoffWriter: unsupported addend " << effectiveAddend
                     << " for x86_64 rel32 relocation at offset " << rel.offset << "\n";
                 return false;
             }
             return true;
 
         case RelocKind::Abs64: {
-            if (rel.addend == 0)
+            if (effectiveAddend == 0)
                 return true;
             if (!section.containsOffsetRange(rel.offset, 8)) {
                 err << "CoffWriter: 64-bit addend relocation at offset " << rel.offset
@@ -128,8 +130,8 @@ static bool validateCoffRelocationAddend(const CodeSection &section,
             const size_t physicalOffset = rel.offset - section.logicalOffsetBias();
             for (size_t i = 0; i < 8; ++i)
                 encoded |= (static_cast<uint64_t>(bytes[physicalOffset + i]) << (i * 8));
-            if (encoded != static_cast<uint64_t>(rel.addend)) {
-                err << "CoffWriter: Abs64 addend " << rel.addend
+            if (encoded != static_cast<uint64_t>(effectiveAddend)) {
+                err << "CoffWriter: Abs64 addend " << effectiveAddend
                     << " must already be embedded in section bytes at offset " << rel.offset
                     << "\n";
                 return false;
@@ -143,8 +145,8 @@ static bool validateCoffRelocationAddend(const CodeSection &section,
         case RelocKind::A64AddPageOff12:
         case RelocKind::A64LdSt64Off12:
         case RelocKind::A64CondBr19:
-            if (rel.addend != 0) {
-                err << "CoffWriter: unsupported non-zero AArch64 addend " << rel.addend
+            if (effectiveAddend != 0) {
+                err << "CoffWriter: unsupported non-zero AArch64 addend " << effectiveAddend
                     << " at offset " << rel.offset << "\n";
                 return false;
             }
@@ -607,6 +609,41 @@ bool CoffWriter::write(const std::string &path,
     std::unordered_set<std::string> definedGlobalNames;
     uint32_t coffSymCount = 0;
 
+    auto relocationNeedsAnchor = [](const CodeSection &sec, SymbolSection targetSection) {
+        for (const auto &rel : sec.relocations())
+            if (rel.targetOffsetValid && rel.targetSection == targetSection)
+                return true;
+        return false;
+    };
+    const bool needTextAnchor = relocationNeedsAnchor(text, SymbolSection::Text) ||
+                                relocationNeedsAnchor(rodata, SymbolSection::Text);
+    const bool needRodataAnchor = hasRodata &&
+                                  (relocationNeedsAnchor(text, SymbolSection::Rodata) ||
+                                   relocationNeedsAnchor(rodata, SymbolSection::Rodata));
+    uint32_t textAnchorIdx = UINT32_MAX;
+    uint32_t rodataAnchorIdx = UINT32_MAX;
+
+    if (needTextAnchor) {
+        writeSymbol(symtabBytes,
+                    ".text",
+                    0,
+                    0,
+                    static_cast<int16_t>(secIdxText),
+                    0,
+                    kImageSymClassStatic);
+        textAnchorIdx = coffSymCount++;
+    }
+    if (needRodataAnchor) {
+        writeSymbol(symtabBytes,
+                    ".rdata",
+                    0,
+                    0,
+                    static_cast<int16_t>(secIdxRdata),
+                    0,
+                    kImageSymClassStatic);
+        rodataAnchorIdx = coffSymCount++;
+    }
+
     struct PendingExternal {
         bool fromText = false;
         uint32_t origIdx = 0;
@@ -812,9 +849,39 @@ bool CoffWriter::write(const std::string &path,
                                const CodeSection &source,
                                const std::unordered_map<uint32_t, uint32_t> &sourceMap,
                                const char *sectionName,
-                               uint32_t &coffSymIdx) -> bool {
+                               uint32_t &coffSymIdx,
+                               int64_t &effectiveAddend) -> bool {
         coffSymIdx = 0;
+        effectiveAddend = rel.addend;
         if (rel.targetSection != SymbolSection::Undefined) {
+            if (rel.targetOffsetValid) {
+                const CodeSection &target =
+                    (rel.targetSection == SymbolSection::Text) ? text : rodata;
+                const char *targetName =
+                    (rel.targetSection == SymbolSection::Text) ? ".text" : ".rdata";
+                const uint32_t anchorIdx =
+                    (rel.targetSection == SymbolSection::Text) ? textAnchorIdx : rodataAnchorIdx;
+                if (anchorIdx == UINT32_MAX) {
+                    err << "CoffWriter: missing section anchor for " << targetName << "\n";
+                    return false;
+                }
+                if (rel.targetOffset > target.bytes().size()) {
+                    err << "CoffWriter: relocation in " << sectionName << " at offset "
+                        << rel.offset << " references " << targetName << " offset "
+                        << rel.targetOffset << " beyond section contents\n";
+                    return false;
+                }
+                if (rel.targetOffset > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
+                    rel.addend > std::numeric_limits<int64_t>::max() -
+                                     static_cast<int64_t>(rel.targetOffset)) {
+                    err << "CoffWriter: relocation in " << sectionName
+                        << " has a section-offset addend outside int64 range\n";
+                    return false;
+                }
+                effectiveAddend = rel.addend + static_cast<int64_t>(rel.targetOffset);
+                coffSymIdx = anchorIdx;
+                return true;
+            }
             if (rel.symbolIndex >= source.symbols().count()) {
                 err << "CoffWriter: relocation in " << sectionName << " at offset " << rel.offset
                     << " references unknown symbol index " << rel.symbolIndex << "\n";
@@ -856,16 +923,17 @@ bool CoffWriter::write(const std::string &path,
         for (const auto &rel : source.relocations()) {
             if (!validateRelocationShape("CoffWriter", arch_, source, rel, sectionName, err))
                 return false;
-            if (!validateCoffRelocationAddend(source, rel, err))
-                return false;
             uint32_t coffSymIdx = 0;
-            if (!resolveRelocSym(rel, source, sourceMap, sectionName, coffSymIdx))
+            int64_t effectiveAddend = rel.addend;
+            if (!resolveRelocSym(rel, source, sourceMap, sectionName, coffSymIdx, effectiveAddend))
+                return false;
+            if (!validateCoffRelocationAddend(source, rel, effectiveAddend, err))
                 return false;
             const size_t physicalRelOffset = rel.offset - source.logicalOffsetBias();
             uint32_t relocOff = 0;
             if (!checkedU32(physicalRelOffset, "relocation offset", err, relocOff))
                 return false;
-            writeReloc(relocBytes, relocOff, coffSymIdx, coffRelocType(rel.kind));
+            writeReloc(relocBytes, relocOff, coffSymIdx, coffRelocType(rel.kind, arch_));
         }
         return true;
     };
@@ -1450,7 +1518,7 @@ bool CoffWriter::write(const std::string &path,
         for (const auto &rel : source.relocations()) {
             if (!validateRelocationShape("CoffWriter", arch_, source, rel, sectionName, err))
                 return false;
-            if (!validateCoffRelocationAddend(source, rel, err))
+            if (!validateCoffRelocationAddend(source, rel, rel.addend, err))
                 return false;
             uint32_t coffSymIdx = 0;
             if (!resolveRelocSym(rel, source, sourceMap, sectionName, coffSymIdx))
@@ -1459,7 +1527,7 @@ bool CoffWriter::write(const std::string &path,
             uint32_t relocOff = 0;
             if (!checkedU32(physicalRelOffset, "relocation offset", err, relocOff))
                 return false;
-            writeReloc(relocBytes, relocOff, coffSymIdx, coffRelocType(rel.kind));
+            writeReloc(relocBytes, relocOff, coffSymIdx, coffRelocType(rel.kind, arch_));
         }
         return true;
     };

@@ -573,6 +573,66 @@ static void testRodataRelocations() {
     std::remove(path.c_str());
 }
 
+static void testA64Abs64RelocationUsesAArch64Type() {
+    CodeSection text, rodata;
+
+    text.defineSymbol("target_func", SymbolBinding::Local, SymbolSection::Text);
+    text.emit32LE(0xD65F03C0); // ret
+
+    const uint32_t symIdx = rodata.findOrDeclareSymbol("target_func");
+    rodata.addRelocation(RelocKind::Abs64, symIdx, 0, SymbolSection::Text);
+    rodata.emit64LE(0);
+
+    std::string path = "/tmp/viper_test_elf_a64_abs64.o";
+    std::ostringstream errStream;
+
+    ElfWriter writer(ObjArch::AArch64);
+    CHECK(writer.write(path, text, rodata, errStream));
+
+    auto data = readFile(path);
+    size_t relaHdr = sectionHeaderOff(data, kSecRelaRodata);
+    uint64_t relaOff = readLE64(data, relaHdr + 24);
+    uint64_t rInfo = readLE64(data, static_cast<size_t>(relaOff) + 8);
+    CHECK((rInfo & 0xFFFFFFFFu) == 257u); // R_AARCH64_ABS64
+
+    ObjFile obj;
+    CHECK(readObjFile(path, obj, errStream));
+    const ObjSection *rodataSec = findSection(obj, ".rodata");
+    CHECK(rodataSec != nullptr);
+    if (rodataSec != nullptr && !rodataSec->relocs.empty())
+        CHECK(rodataSec->relocs[0].type == 257u);
+
+    std::remove(path.c_str());
+}
+
+static void testSectionOffsetRelocationUsesSectionSymbol() {
+    CodeSection text, rodata;
+
+    text.defineSymbol("dup", SymbolBinding::Local, SymbolSection::Text);
+    text.emit8(0xC3);
+    text.defineSymbol("dup", SymbolBinding::Local, SymbolSection::Text);
+    text.emit8(0xC3);
+
+    rodata.addSectionOffsetRelocation(RelocKind::Abs64, SymbolSection::Text, 1);
+    rodata.emit64LE(0);
+
+    std::string path = "/tmp/viper_test_elf_section_offset.o";
+    std::ostringstream errStream;
+
+    ElfWriter writer(ObjArch::X86_64);
+    CHECK(writer.write(path, text, rodata, errStream));
+
+    auto data = readFile(path);
+    size_t relaHdr = sectionHeaderOff(data, kSecRelaRodata);
+    uint64_t relaOff = readLE64(data, relaHdr + 24);
+    uint64_t rInfo = readLE64(data, static_cast<size_t>(relaOff) + 8);
+    int64_t rAddend = static_cast<int64_t>(readLE64(data, static_cast<size_t>(relaOff) + 16));
+    CHECK((rInfo >> 32) == 1u); // .text section symbol
+    CHECK(rAddend == 1);
+
+    std::remove(path.c_str());
+}
+
 static void testAmbiguousCrossSectionRelocationFails() {
     CodeSection text, rodata;
     text.defineSymbol("dup", SymbolBinding::Local, SymbolSection::Text);
@@ -667,6 +727,8 @@ int main() {
     testRodataSymbolType();
     testExplicitRodataRelocationHint();
     testRodataRelocations();
+    testA64Abs64RelocationUsesAArch64Type();
+    testSectionOffsetRelocationUsesSectionSymbol();
     testAmbiguousCrossSectionRelocationFails();
     testMissingCrossSectionRelocationFails();
     testWrongArchRelocationFails();

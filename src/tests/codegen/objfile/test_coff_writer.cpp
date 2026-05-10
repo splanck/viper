@@ -62,6 +62,18 @@ static uint32_t readLE32(const std::vector<uint8_t> &bytes, size_t off) {
            (static_cast<uint32_t>(bytes[off + 3]) << 24);
 }
 
+static void writeLE16(std::vector<uint8_t> &bytes, size_t off, uint16_t v) {
+    bytes[off] = static_cast<uint8_t>(v);
+    bytes[off + 1] = static_cast<uint8_t>(v >> 8);
+}
+
+static void writeLE32(std::vector<uint8_t> &bytes, size_t off, uint32_t v) {
+    bytes[off] = static_cast<uint8_t>(v);
+    bytes[off + 1] = static_cast<uint8_t>(v >> 8);
+    bytes[off + 2] = static_cast<uint8_t>(v >> 16);
+    bytes[off + 3] = static_cast<uint8_t>(v >> 24);
+}
+
 int main() {
     std::filesystem::create_directories("build/test-out");
 
@@ -440,6 +452,23 @@ int main() {
         std::ostringstream bigErr;
         CHECK(!readObjFile(bigObjHeader.data(), bigObjHeader.size(), "bigobj.obj", bigObj, bigErr));
         CHECK(bigErr.str().find("BigObj") != std::string::npos);
+    }
+
+    {
+        std::vector<uint8_t> badLongName(20 + 40, 0);
+        writeLE16(badLongName, 0, 0x8664); // IMAGE_FILE_MACHINE_AMD64
+        writeLE16(badLongName, 2, 1);      // one section
+        const size_t secOff = 20;
+        badLongName[secOff + 0] = '/';
+        badLongName[secOff + 1] = '4'; // References a missing COFF string table.
+        writeLE32(badLongName, secOff + 36, 0x40000040); // initialized readable data
+
+        ObjFile badLongObj;
+        std::ostringstream badLongErr;
+        CHECK(!readObjFile(
+            badLongName.data(), badLongName.size(), "bad_long_name.obj", badLongObj, badLongErr));
+        CHECK(badLongErr.str().find("invalid string table offset") != std::string::npos ||
+              badLongErr.str().find("string table") != std::string::npos);
     }
 
     {

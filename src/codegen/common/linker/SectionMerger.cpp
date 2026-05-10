@@ -175,6 +175,15 @@ bool mergeSections(const std::vector<ObjFile> &objects,
 
     std::vector<PendingChunk> pending;
 
+    auto sectionHasLiveSymbol = [](const ObjFile &obj, size_t secIdx) {
+        for (size_t symIdx = 1; symIdx < obj.symbols.size(); ++symIdx) {
+            const auto &sym = obj.symbols[symIdx];
+            if (sym.binding != ObjSymbol::Undefined && sym.sectionIndex == secIdx)
+                return true;
+        }
+        return false;
+    };
+
     for (size_t oi = 0; oi < objects.size(); ++oi) {
         const auto &obj = objects[oi];
         for (size_t si = 1; si < obj.sections.size(); ++si) {
@@ -183,7 +192,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
                 continue;
             if (!sec.alloc)
                 continue;
-            if (sec.data.empty() && sec.relocs.empty())
+            if (sec.data.empty() && sec.relocs.empty() && !sectionHasLiveSymbol(obj, si))
                 continue;
 
             SectionClass cls =

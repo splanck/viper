@@ -300,6 +300,10 @@ bool readElfObj(
             auto off = static_cast<size_t>(sh->sh_offset);
             auto sz = static_cast<size_t>(sh->sh_size);
             sec.data.assign(data + off, data + off + sz);
+        } else if (sh->sh_size > 0) {
+            err << "error: " << name << ": ELF section '" << sec.name
+                << "' contents are out of bounds\n";
+            return false;
         }
 
         secMap[i] = static_cast<uint32_t>(obj.sections.size());
@@ -331,7 +335,12 @@ bool readElfObj(
             err << "error: " << name << ": symbol table is out of bounds\n";
             return false;
         }
-        const uint32_t symCount = static_cast<uint32_t>(symSh->sh_size / sizeof(elf::Elf64_Sym));
+        const uint64_t rawSymCount = symSh->sh_size / sizeof(elf::Elf64_Sym);
+        if (rawSymCount > std::numeric_limits<uint32_t>::max()) {
+            err << "error: " << name << ": symbol count exceeds 32-bit reader limit\n";
+            return false;
+        }
+        const uint32_t symCount = static_cast<uint32_t>(rawSymCount);
         if (symCount > kMaxObjSymbols) {
             err << "error: " << name << ": symbol count " << symCount << " exceeds limit\n";
             return false;
@@ -424,7 +433,12 @@ bool readElfObj(
             err << "error: " << name << ": unsupported ELF relocation entry size\n";
             return false;
         }
-        const uint32_t relCount = static_cast<uint32_t>(shdrs[i]->sh_size / relEntSize);
+        const uint64_t rawRelCount = shdrs[i]->sh_size / relEntSize;
+        if (rawRelCount > std::numeric_limits<uint32_t>::max()) {
+            err << "error: " << name << ": relocation count exceeds 32-bit reader limit\n";
+            return false;
+        }
+        const uint32_t relCount = static_cast<uint32_t>(rawRelCount);
 
         for (uint32_t r = 0; r < relCount; ++r) {
             ObjReloc rel;

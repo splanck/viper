@@ -47,8 +47,9 @@ inline bool relocationKindMatchesArch(RelocKind kind, ObjArch arch) {
     switch (kind) {
         case RelocKind::PCRel32:
         case RelocKind::Branch32:
-        case RelocKind::Abs64:
             return arch == ObjArch::X86_64;
+        case RelocKind::Abs64:
+            return arch == ObjArch::X86_64 || arch == ObjArch::AArch64;
         case RelocKind::A64Call26:
         case RelocKind::A64Jump26:
         case RelocKind::A64AdrpPage21:

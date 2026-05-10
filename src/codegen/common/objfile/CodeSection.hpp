@@ -209,6 +209,33 @@ class CodeSection {
         relocations_.push_back(Relocation{offset, kind, symbolIndex, addend, targetSection});
     }
 
+    /// Record a relocation that targets a concrete offset in another section.
+    ///
+    /// Object writers serialize this through a section-anchor symbol plus addend,
+    /// which avoids ambiguous name lookup for duplicate local labels.
+    void addSectionOffsetRelocation(RelocKind kind,
+                                    SymbolSection targetSection,
+                                    size_t targetOffset,
+                                    int64_t addend = 0) {
+        addSectionOffsetRelocationAt(currentOffset(), kind, targetSection, targetOffset, addend);
+    }
+
+    /// Record a section-offset relocation at a specific source offset.
+    void addSectionOffsetRelocationAt(size_t offset,
+                                      RelocKind kind,
+                                      SymbolSection targetSection,
+                                      size_t targetOffset,
+                                      int64_t addend = 0) {
+        if (targetSection == SymbolSection::Undefined)
+            throw std::invalid_argument("CodeSection section-offset relocation requires a target section");
+        if (offset < offsetBias_ || offset - offsetBias_ > bytes_.size())
+            throw std::out_of_range("CodeSection relocation offset is out of range");
+        Relocation rel{offset, kind, 0, addend, targetSection};
+        rel.targetOffsetValid = true;
+        rel.targetOffset = targetOffset;
+        relocations_.push_back(rel);
+    }
+
     // === Symbol management ===
 
     /// Define a symbol at the current offset. Returns its index in the symbol table.
@@ -347,11 +374,10 @@ class CodeSection {
         for (const auto &reloc : other.relocations()) {
             if (reloc.symbolIndex >= symbolRemap.size())
                 throw std::out_of_range("CodeSection append relocation symbol index is out of range");
-            addRelocationAt(rebaseLogicalOffset(reloc.offset),
-                            reloc.kind,
-                            symbolRemap[reloc.symbolIndex],
-                            reloc.addend,
-                            reloc.targetSection);
+            Relocation rebased = reloc;
+            rebased.offset = rebaseLogicalOffset(reloc.offset);
+            rebased.symbolIndex = symbolRemap[reloc.symbolIndex];
+            relocations_.push_back(rebased);
         }
 
         for (const auto &entry : other.unwindEntries()) {

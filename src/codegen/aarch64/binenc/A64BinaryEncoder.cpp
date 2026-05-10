@@ -38,6 +38,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 
 namespace viper::codegen::aarch64::binenc {
 
@@ -247,13 +248,23 @@ static uint32_t checkedShiftAmount(long long value, const char *opcode) {
 static void validateFunctionMetadata(const MFunction &fn) {
     if (fn.localFrameSize < 0)
         throw std::out_of_range("AArch64 binary encoder: negative local frame size");
+    if ((fn.localFrameSize % 16) != 0)
+        throw std::out_of_range("AArch64 binary encoder: local frame size must be 16-byte aligned");
+    std::unordered_set<PhysReg> seenSaved;
     for (PhysReg reg : fn.savedGPRs) {
-        if (!isGPR(reg) || reg == PhysReg::SP)
-            throw std::out_of_range("AArch64 binary encoder: saved GPR list contains a non-GPR");
+        if (!isGPR(reg) || reg < PhysReg::X19 || reg > PhysReg::X28)
+            throw std::out_of_range(
+                "AArch64 binary encoder: saved GPR list must contain only X19-X28");
+        if (!seenSaved.insert(reg).second)
+            throw std::out_of_range("AArch64 binary encoder: duplicate saved GPR");
     }
+    seenSaved.clear();
     for (PhysReg reg : fn.savedFPRs) {
-        if (!isFPR(reg))
-            throw std::out_of_range("AArch64 binary encoder: saved FPR list contains a non-FPR");
+        if (reg < PhysReg::V8 || reg > PhysReg::V15)
+            throw std::out_of_range(
+                "AArch64 binary encoder: saved FPR list must contain only V8-V15");
+        if (!seenSaved.insert(reg).second)
+            throw std::out_of_range("AArch64 binary encoder: duplicate saved FPR");
     }
 }
 
@@ -965,6 +976,8 @@ static void emitAddSubImmSmart(
 void A64BinaryEncoder::encodeSubSp(int64_t bytes, objfile::CodeSection &cs) {
     if (bytes < 0 || bytes > std::numeric_limits<uint32_t>::max())
         throw std::out_of_range("AArch64 stack adjustment is out of encodable range");
+    if ((bytes % 16) != 0)
+        throw std::out_of_range("AArch64 stack adjustment must be 16-byte aligned");
     const uint32_t sp = hwGPR(PhysReg::SP);
     emitAddSubImmSmart(kSubRI, sp, sp, static_cast<uint32_t>(bytes), cs);
 }
@@ -972,6 +985,8 @@ void A64BinaryEncoder::encodeSubSp(int64_t bytes, objfile::CodeSection &cs) {
 void A64BinaryEncoder::encodeAddSp(int64_t bytes, objfile::CodeSection &cs) {
     if (bytes < 0 || bytes > std::numeric_limits<uint32_t>::max())
         throw std::out_of_range("AArch64 stack adjustment is out of encodable range");
+    if ((bytes % 16) != 0)
+        throw std::out_of_range("AArch64 stack adjustment must be 16-byte aligned");
     const uint32_t sp = hwGPR(PhysReg::SP);
     emitAddSubImmSmart(kAddRI, sp, sp, static_cast<uint32_t>(bytes), cs);
 }
@@ -1463,8 +1478,8 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
                                     : encodeAddSubImm(tmpl, rd, fp, enc->imm12),
                        cs);
             } else {
-                // Large offset: movz x9, #abs(offset); add/sub rd, x29, x9
-                uint32_t scratch = hwGPR(PhysReg::X9);
+                // Large offset: use a reserved scratch; register allocation never assigns it.
+                uint32_t scratch = chooseGprScratch(fp, rd);
                 encodeMovImm64(scratch, magnitude, cs);
                 if (offset >= 0)
                     emit32(encode3Reg(kAddRRR, rd, fp, scratch), cs);
@@ -1599,7 +1614,7 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
             // Fallback: materialise 64-bit IEEE 754 bits in a GPR, then FMOV Dd, Xn.
             uint64_t bits;
             std::memcpy(&bits, &val, sizeof(bits));
-            uint32_t scratch = hwGPR(PhysReg::X9);
+            uint32_t scratch = hwGPR(kScratchGPR);
             encodeMovImm64(scratch, bits, cs);
             emit32(encode2Reg(kFMovGR, rd, scratch), cs);
             return;

@@ -273,13 +273,15 @@ constexpr uint32_t encode4Reg(uint32_t tmpl, uint32_t rd, uint32_t rn, uint32_t 
 
 /// Build an add/sub immediate instruction: template | (imm12 << 10) | (Rn << 5) | Rd
 inline uint32_t encodeAddSubImm(uint32_t tmpl, uint32_t rd, uint32_t rn, uint32_t imm12) {
-    assert(imm12 <= 0xFFF && "encodeAddSubImm: immediate exceeds 12-bit range");
+    if (imm12 > 0xFFF)
+        throw std::out_of_range("encodeAddSubImm: immediate exceeds 12-bit range");
     return tmpl | ((imm12 & 0xFFF) << 10) | (rn << 5) | rd;
 }
 
 /// Build an add/sub immediate with shift: bit 22 selects lsl #12.
 inline uint32_t encodeAddSubImmShift(uint32_t tmpl, uint32_t rd, uint32_t rn, uint32_t imm12) {
-    assert(imm12 <= 0xFFF && "encodeAddSubImmShift: immediate exceeds 12-bit range");
+    if (imm12 > 0xFFF)
+        throw std::out_of_range("encodeAddSubImmShift: immediate exceeds 12-bit range");
     return tmpl | (1U << 22) | ((imm12 & 0xFFF) << 10) | (rn << 5) | rd;
 }
 

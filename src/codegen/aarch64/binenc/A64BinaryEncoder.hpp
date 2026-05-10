@@ -133,7 +133,7 @@ class A64BinaryEncoder {
     /// Emit add sp, sp, #bytes (chunked if >4080).
     void encodeAddSp(int64_t bytes, objfile::CodeSection &cs);
 
-    /// Emit a large-offset load/store sequence using scratch X9.
+    /// Emit a large-offset load/store sequence using a reserved scratch register.
     void encodeLargeOffsetLdSt(uint32_t rt,
                                uint32_t base,
                                int64_t offset,

@@ -225,7 +225,8 @@ The AArch64 encoder synthesizes function prologues and epilogues at emit time:
 - **Epilogue**: Restore callee-saved regs + `ldp x29, x30, [sp], #frameSize` + `ret`
 - **Large frames**: SP adjustment chunked in multiples of 4080 (preserving 16-byte alignment between steps)
 - **Frame-size checks**: Large-frame helpers reject negative or wider-than-32-bit byte counts before narrowing into
-  instruction immediates.
+  instruction immediates. Function metadata also rejects negative or non-16-byte-aligned local frame sizes,
+  duplicate callee-saved registers, GPR saves outside X19-X28, and FPR saves outside V8-V15 before emission.
 - **Large stack/base offsets**: Materialized-address load/store fallbacks, including SP-relative stores, choose a
   scratch register that does not alias the base register or a GPR store source.
 - **Late immediate materialization**: Compare/logical-immediate fallbacks avoid clobbering source registers when
@@ -234,6 +235,7 @@ The AArch64 encoder synthesizes function prologues and epilogues at emit time:
   before encoding.
 - **Immediate validation**: Shift immediates must be in range `0..63`; invalid condition strings are rejected; logical
   immediates are encoded through a safe decode-equivalence search that avoids 64-bit shift undefined behavior.
+  Low-level ADD/SUB immediate helpers throw on values wider than imm12 in release builds.
 
 ### Branch Resolution
 
@@ -264,6 +266,9 @@ The native assembler validates object metadata before serialization:
   fixup width fits inside the section contents.
 - Undefined external symbols are only coalesced with defined global symbols of the same name. Local same-name
   symbols remain local, and local cross-section references must use an explicit relocation target-section hint.
+- Cross-section references can also target an explicit section offset. Writers lower these to section-symbol
+  relocations where the format supports them, which lets native object output represent duplicate local labels
+  without guessing by name.
 - Standard COFF output is rejected before section indexes exceed the signed 16-bit section-number range used in
   symbol table entries. BigObj emission is not currently implemented.
 
@@ -304,7 +309,7 @@ addresses match the emitted section layout. Mach-O already merges per-function t
 |-----------|--------|---------|
 | `PCRel32` | RIP-relative data ref | — |
 | `Branch32` | CALL/JMP rel32 | — |
-| `Abs64` | 64-bit absolute | — |
+| `Abs64` | 64-bit absolute | 64-bit absolute |
 | `A64Call26` | — | BL 26-bit |
 | `A64Jump26` | — | B 26-bit |
 | `A64AdrpPage21` | — | ADRP page |
@@ -313,6 +318,8 @@ addresses match the emitted section layout. Mach-O already merges per-function t
 | `A64CondBr19` | — | B.cond 19-bit |
 
 Each writer maps these to format-specific codes (ELF `R_X86_64_*`, Mach-O `X86_64_RELOC_*`, COFF `IMAGE_REL_*`).
+For AArch64, `Abs64` maps to the native 64-bit absolute relocation for ELF and COFF rather than being rejected as
+an x86_64-only kind.
 
 ---
 

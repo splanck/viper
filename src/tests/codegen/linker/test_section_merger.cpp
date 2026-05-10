@@ -405,6 +405,33 @@ int main() {
         CHECK(layout.sections[0].chunks[1].inputSecIndex == 2);
     }
 
+    // --- Empty alloc sections with live symbols are preserved ---
+    {
+        ObjSection emptyText = makeSection(".text", 0, true, false);
+        emptyText.data.clear();
+        auto obj = makeObj("empty_live.o", ObjFileFormat::ELF, {emptyText});
+        obj.symbols.push_back({});
+        ObjSymbol marker;
+        marker.name = "empty_marker";
+        marker.binding = ObjSymbol::Global;
+        marker.sectionIndex = 1;
+        marker.offset = 0;
+        obj.symbols.push_back(marker);
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        std::ostringstream err;
+
+        bool ok = mergeSections(objs, LinkPlatform::Linux, LinkArch::X86_64, layout, err);
+        CHECK(ok);
+        CHECK(layout.sections.size() == 1);
+        CHECK(layout.sections[0].name == ".text");
+        CHECK(layout.sections[0].data.empty());
+        CHECK(layout.sections[0].chunks.size() == 1);
+        CHECK(layout.sections[0].chunks[0].inputSecIndex == 1);
+        CHECK(layout.sections[0].chunks[0].size == 0);
+    }
+
     // --- Result ---
     if (gFail == 0) {
         std::cout << "All SectionMerger tests passed.\n";

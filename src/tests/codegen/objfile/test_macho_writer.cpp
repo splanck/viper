@@ -83,6 +83,11 @@ static void writeLE32(std::vector<uint8_t> &d, size_t off, uint32_t value) {
     d[off + 3] = static_cast<uint8_t>(value >> 24);
 }
 
+static void writeLE64(std::vector<uint8_t> &d, size_t off, uint64_t value) {
+    for (int i = 0; i < 8; ++i)
+        d[off + static_cast<size_t>(i)] = static_cast<uint8_t>(value >> (i * 8));
+}
+
 /// Extract a C string from the data at given offset.
 static std::string readCStr(const std::vector<uint8_t> &d, size_t off) {
     std::string s;
@@ -996,6 +1001,49 @@ static void testMalformedSymtabFails() {
     CHECK(errStream.str().find("LC_SYMTAB") != std::string::npos);
 }
 
+static void testMalformedSectionContentsFails() {
+    CodeSection text, rodata;
+    text.defineSymbol("main", SymbolBinding::Global, SymbolSection::Text);
+    text.emit8(0xC3);
+
+    std::ostringstream errStream;
+    const std::string path = "/tmp/viper_test_macho_bad_section.o";
+    MachOWriter writer(ObjArch::X86_64);
+    CHECK(writer.write(path, text, rodata, errStream));
+
+    auto data = readFile(path);
+    writeLE64(data, kOffTextSect + 40, static_cast<uint64_t>(data.size()) + 1024u);
+
+    ObjFile obj;
+    std::ostringstream readErr;
+    CHECK(!readObjFile(data.data(), data.size(), "bad_section.macho", obj, readErr));
+    CHECK(readErr.str().find("contents are out of bounds") != std::string::npos);
+    std::remove(path.c_str());
+}
+
+static void testScatteredRelocationFails() {
+    CodeSection text, rodata;
+    text.defineSymbol("main", SymbolBinding::Global, SymbolSection::Text);
+    const uint32_t ext = text.declareExternal("target");
+    text.addRelocation(RelocKind::Branch32, ext, -4);
+    text.emit32LE(0);
+
+    std::ostringstream errStream;
+    const std::string path = "/tmp/viper_test_macho_scattered_reloc.o";
+    MachOWriter writer(ObjArch::X86_64);
+    CHECK(writer.write(path, text, rodata, errStream));
+
+    auto data = readFile(path);
+    const uint32_t reloff = readLE32(data, kOffTextSect + 56);
+    writeLE32(data, reloff, readLE32(data, reloff) | 0x80000000u);
+
+    ObjFile obj;
+    std::ostringstream readErr;
+    CHECK(!readObjFile(data.data(), data.size(), "scattered.macho", obj, readErr));
+    CHECK(readErr.str().find("scattered relocations") != std::string::npos);
+    std::remove(path.c_str());
+}
+
 // =============================================================================
 // Main
 // =============================================================================
@@ -1027,6 +1075,8 @@ int main() {
     testUndefinedRodataLocalReferenceUsesLocalDefinition();
     testAmbiguousCrossSectionRelocationFails();
     testMalformedSymtabFails();
+    testMalformedSectionContentsFails();
+    testScatteredRelocationFails();
 
     if (gFail == 0)
         std::cout << "All Mach-O writer tests passed.\n";

@@ -635,11 +635,11 @@ static void testMainInit() {
 
 static void testSubSpChunking() {
     // Large frame should produce multiple sub instructions.
-    // 5000 = 4080 + 920, producing exactly 2 sub instructions.
+    // 5008 = 4096 + 912, producing exactly 2 sub instructions.
     MFunction fn;
     fn.name = "large_frame";
     fn.isLeaf = false;
-    fn.localFrameSize = 5000;
+    fn.localFrameSize = 5008;
     MBasicBlock bb;
     bb.name = "entry";
     bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
@@ -654,9 +654,9 @@ static void testSubSpChunking() {
     uint32_t sub1 = readWord(text.bytes(), 16);
     CHECK(sub1 == (0xD1400000u | (1u << 10) | (hwGPR(PhysReg::SP) << 5) | hwGPR(PhysReg::SP)));
 
-    // offset 20: sub sp, sp, #904
+    // offset 20: sub sp, sp, #912
     uint32_t sub2 = readWord(text.bytes(), 20);
-    CHECK(sub2 == (0xD1000000u | (904u << 10) | (hwGPR(PhysReg::SP) << 5) | hwGPR(PhysReg::SP)));
+    CHECK(sub2 == (0xD1000000u | (912u << 10) | (hwGPR(PhysReg::SP) << 5) | hwGPR(PhysReg::SP)));
 }
 
 static void testCalleeSavedPair() {
@@ -1149,6 +1149,67 @@ static void testBranchRejectsMissingTarget() {
     CHECK(threw);
 }
 
+static bool encodeThrowsContaining(const MFunction &fn, const char *needle) {
+    CodeSection text, rodata;
+    A64BinaryEncoder enc;
+    try {
+        enc.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
+    } catch (const std::exception &ex) {
+        return std::string(ex.what()).find(needle) != std::string::npos;
+    }
+    return false;
+}
+
+static void testFunctionMetadataValidation() {
+    MFunction unalignedFrame;
+    unalignedFrame.name = "unaligned_frame";
+    unalignedFrame.localFrameSize = 8;
+    CHECK(encodeThrowsContaining(unalignedFrame, "16-byte aligned"));
+
+    MFunction negativeFrame;
+    negativeFrame.name = "negative_frame";
+    negativeFrame.localFrameSize = -16;
+    CHECK(encodeThrowsContaining(negativeFrame, "negative local frame size"));
+
+    MFunction duplicateGpr;
+    duplicateGpr.name = "duplicate_gpr";
+    duplicateGpr.savedGPRs = {PhysReg::X19, PhysReg::X19};
+    CHECK(encodeThrowsContaining(duplicateGpr, "duplicate saved GPR"));
+
+    MFunction badGpr;
+    badGpr.name = "bad_gpr";
+    badGpr.savedGPRs = {PhysReg::X18};
+    CHECK(encodeThrowsContaining(badGpr, "X19-X28"));
+
+    MFunction duplicateFpr;
+    duplicateFpr.name = "duplicate_fpr";
+    duplicateFpr.savedFPRs = {PhysReg::V8, PhysReg::V8};
+    CHECK(encodeThrowsContaining(duplicateFpr, "duplicate saved FPR"));
+
+    MFunction badFpr;
+    badFpr.name = "bad_fpr";
+    badFpr.savedFPRs = {PhysReg::V16};
+    CHECK(encodeThrowsContaining(badFpr, "V8-V15"));
+}
+
+static void testAddSubImmediateHelpersRejectWideImmediates() {
+    bool threwAdd = false;
+    try {
+        (void)encodeAddSubImm(kAddRI, hwGPR(PhysReg::X0), hwGPR(PhysReg::X0), 0x1000);
+    } catch (const std::out_of_range &ex) {
+        threwAdd = std::string(ex.what()).find("12-bit") != std::string::npos;
+    }
+    CHECK(threwAdd);
+
+    bool threwShift = false;
+    try {
+        (void)encodeAddSubImmShift(kAddRI, hwGPR(PhysReg::X0), hwGPR(PhysReg::X0), 0x1000);
+    } catch (const std::out_of_range &ex) {
+        threwShift = std::string(ex.what()).find("12-bit") != std::string::npos;
+    }
+    CHECK(threwShift);
+}
+
 int main() {
     testAddRRR();
     testSubRRR();
@@ -1217,6 +1278,8 @@ int main() {
     testStrRegSpImm_largeOffsetAvoidsX16Source();
     testAddRI_rejectsNegativeImmediate();
     testBranchRejectsMissingTarget();
+    testFunctionMetadataValidation();
+    testAddSubImmediateHelpersRejectWideImmediates();
 
     // --- Encoding coverage validation (W7 remediation) ---
     // Verify that every non-pseudo MOpcode can be encoded without crashing.

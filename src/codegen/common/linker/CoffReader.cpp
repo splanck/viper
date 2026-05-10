@@ -20,6 +20,7 @@
 #include "codegen/common/linker/RelocConstants.hpp"
 
 #include <cstring>
+#include <limits>
 #include <string>
 
 namespace viper::codegen::linker {
@@ -136,13 +137,27 @@ static bool checkedRange(size_t off, size_t len, size_t size) {
     return off <= size && len <= size - off;
 }
 
-static std::string readBoundedString(const uint8_t *data, size_t off, size_t len) {
+static bool checkedAdd(size_t lhs, size_t rhs, size_t &out) {
+    if (lhs > std::numeric_limits<size_t>::max() - rhs)
+        return false;
+    out = lhs + rhs;
+    return true;
+}
+
+static bool checkedMul(size_t lhs, size_t rhs, size_t &out) {
+    if (lhs != 0 && rhs > std::numeric_limits<size_t>::max() / lhs)
+        return false;
+    out = lhs * rhs;
+    return true;
+}
+
+static bool readBoundedString(const uint8_t *data, size_t off, size_t len, std::string &out) {
     const uint8_t *begin = data + off;
     const void *nul = std::memchr(begin, '\0', len);
     if (!nul)
-        return "";
-    return std::string(reinterpret_cast<const char *>(begin),
-                       static_cast<const char *>(nul));
+        return false;
+    out.assign(reinterpret_cast<const char *>(begin), static_cast<const char *>(nul));
+    return true;
 }
 
 static int64_t signExtend(uint64_t value, unsigned bits) {
@@ -237,48 +252,85 @@ bool readCoffObj(
     }
 
     // Locate string table (immediately after symbol table).
-    size_t strTabOff = hdr->PointerToSymbolTable +
-                       static_cast<size_t>(hdr->NumberOfSymbols) * sizeof(coff::CoffSymbol);
-    uint32_t strTabSize = 0;
-    if (strTabOff + 4 <= size)
-        strTabSize = readLE32(data + strTabOff);
+    size_t symtabBytes = 0;
+    if (!checkedMul(static_cast<size_t>(hdr->NumberOfSymbols), sizeof(coff::CoffSymbol), symtabBytes)) {
+        err << "error: " << name << ": COFF symbol table size overflows address space\n";
+        return false;
+    }
     if (hdr->NumberOfSymbols > 0 &&
-        !checkedRange(hdr->PointerToSymbolTable,
-                      static_cast<size_t>(hdr->NumberOfSymbols) * sizeof(coff::CoffSymbol),
-                      size)) {
+        !checkedRange(hdr->PointerToSymbolTable, symtabBytes, size)) {
         err << "error: " << name << ": COFF symbol table is out of bounds\n";
         return false;
     }
+    size_t strTabOff = 0;
+    if (!checkedAdd(static_cast<size_t>(hdr->PointerToSymbolTable), symtabBytes, strTabOff)) {
+        err << "error: " << name << ": COFF string table offset overflows address space\n";
+        return false;
+    }
+    uint32_t strTabSize = 0;
+    if (checkedRange(strTabOff, 4, size))
+        strTabSize = readLE32(data + strTabOff);
 
-    auto readSymName = [&](const coff::CoffSymbol *sym) -> std::string {
+    auto validateStringTableRef = [&](uint32_t offset, size_t &pos, size_t &remain) -> bool {
+        if (strTabSize < 4 || offset < 4 || offset >= strTabSize) {
+            err << "error: " << name << ": COFF long name references invalid string table offset "
+                << offset << "\n";
+            return false;
+        }
+        if (!checkedAdd(strTabOff, static_cast<size_t>(offset), pos) ||
+            !checkedRange(pos, static_cast<size_t>(strTabSize - offset), size)) {
+            err << "error: " << name << ": COFF string table reference is out of bounds\n";
+            return false;
+        }
+        remain = static_cast<size_t>(strTabSize - offset);
+        return true;
+    };
+
+    auto readLongName = [&](uint32_t offset, std::string &out) -> bool {
+        size_t pos = 0;
+        size_t remain = 0;
+        if (!validateStringTableRef(offset, pos, remain))
+            return false;
+        if (!readBoundedString(data, pos, remain, out)) {
+            err << "error: " << name << ": COFF long name is not NUL-terminated\n";
+            return false;
+        }
+        return true;
+    };
+
+    auto readSymName = [&](const coff::CoffSymbol *sym, std::string &out) -> bool {
         if (sym->Name.LongName.Zeros == 0) {
             // Long name: offset into string table.
-            if (sym->Name.LongName.Offset < strTabSize) {
-                size_t off = strTabOff + sym->Name.LongName.Offset;
-                size_t remain = strTabSize - sym->Name.LongName.Offset;
-                if (checkedRange(off, remain, size))
-                    return readBoundedString(data, off, remain);
-            }
-            return "";
+            return readLongName(sym->Name.LongName.Offset, out);
         }
         // Short name: up to 8 chars, NUL-padded.
         size_t len = 0;
         while (len < 8 && sym->Name.ShortName[len] != '\0')
             ++len;
-        return std::string(sym->Name.ShortName, len);
+        out.assign(sym->Name.ShortName, len);
+        return true;
     };
+
+    const size_t secOff = sizeof(coff::CoffHeader) + hdr->SizeOfOptionalHeader;
+    size_t secBytes = 0;
+    if (!checkedMul(static_cast<size_t>(hdr->NumberOfSections), sizeof(coff::SectionHeader), secBytes) ||
+        !checkedRange(secOff, secBytes, size)) {
+        err << "error: " << name << ": COFF section header table is out of bounds\n";
+        return false;
+    }
 
     // Parse sections.
     obj.sections.resize(1); // Null section at index 0.
     obj.sections[0].name = "";
     std::vector<uint32_t> sectionCharacteristics(hdr->NumberOfSections + 1, 0);
 
-    const size_t secOff = sizeof(coff::CoffHeader) + hdr->SizeOfOptionalHeader;
     for (uint16_t i = 0; i < hdr->NumberOfSections; ++i) {
         const auto *sh =
             coffAt<coff::SectionHeader>(data, size, secOff + i * sizeof(coff::SectionHeader));
-        if (!sh)
-            break;
+        if (!sh) {
+            err << "error: " << name << ": COFF section header is out of bounds\n";
+            return false;
+        }
 
         ObjSection sec;
 
@@ -287,12 +339,9 @@ bool readCoffObj(
             size_t off = 0;
             for (int c = 1; c < 8 && sh->Name[c] >= '0' && sh->Name[c] <= '9'; ++c)
                 off = off * 10 + (sh->Name[c] - '0');
-            if (off < strTabSize) {
-                size_t pos = strTabOff + off;
-                size_t remain = strTabSize - off;
-                if (checkedRange(pos, remain, size))
-                    sec.name = readBoundedString(data, pos, remain);
-            }
+            if (off > std::numeric_limits<uint32_t>::max() ||
+                !readLongName(static_cast<uint32_t>(off), sec.name))
+                return false;
         } else {
             size_t len = 0;
             while (len < 8 && sh->Name[len] != '\0')
@@ -325,6 +374,10 @@ bool readCoffObj(
                    checkedRange(sh->PointerToRawData, sh->SizeOfRawData, size)) {
             sec.data.assign(data + sh->PointerToRawData,
                             data + sh->PointerToRawData + sh->SizeOfRawData);
+        } else if (sh->SizeOfRawData > 0) {
+            err << "error: " << name << ": COFF section '" << sec.name
+                << "' raw data is out of bounds\n";
+            return false;
         }
 
         uint32_t relocCount = sh->NumberOfRelocations;
@@ -339,11 +392,14 @@ bool readCoffObj(
             relocCount = overflow->VirtualAddress;
             firstReloc = 1;
         }
-        if (relocCount > 0 &&
-            !checkedRange(sh->PointerToRelocations,
-                          static_cast<size_t>(relocCount + firstReloc) *
-                              sizeof(coff::CoffReloc),
-                          size)) {
+        size_t totalRelocs = 0;
+        size_t relocBytes = 0;
+        if (!checkedAdd(static_cast<size_t>(relocCount), static_cast<size_t>(firstReloc), totalRelocs) ||
+            !checkedMul(totalRelocs, sizeof(coff::CoffReloc), relocBytes)) {
+            err << "error: " << name << ": COFF relocation table size overflows address space\n";
+            return false;
+        }
+        if (relocCount > 0 && !checkedRange(sh->PointerToRelocations, relocBytes, size)) {
             err << "error: " << name << ": COFF relocation table is out of bounds\n";
             return false;
         }
@@ -352,6 +408,10 @@ bool readCoffObj(
         for (uint32_t r = firstReloc; r < relocCount + firstReloc; ++r) {
             const auto *cr = coffAt<coff::CoffReloc>(
                 data, size, sh->PointerToRelocations + r * sizeof(coff::CoffReloc));
+            if (!cr) {
+                err << "error: " << name << ": COFF relocation entry is out of bounds\n";
+                return false;
+            }
 
             ObjReloc rel;
             rel.offset = cr->VirtualAddress;
@@ -382,8 +442,14 @@ bool readCoffObj(
     for (uint32_t i = 0; i < hdr->NumberOfSymbols;) {
         const auto *sym = coffAt<coff::CoffSymbol>(
             data, size, hdr->PointerToSymbolTable + i * sizeof(coff::CoffSymbol));
-        if (!sym)
-            break;
+        if (!sym) {
+            err << "error: " << name << ": COFF symbol table is truncated\n";
+            return false;
+        }
+        if (sym->NumberOfAuxSymbols > hdr->NumberOfSymbols - i - 1) {
+            err << "error: " << name << ": COFF auxiliary symbol count exceeds symbol table\n";
+            return false;
+        }
 
         const bool hasSectionAux = sym->SectionNumber > 0 &&
                                    static_cast<uint16_t>(sym->SectionNumber) <=
@@ -420,11 +486,18 @@ bool readCoffObj(
     for (uint32_t i = 0; i < hdr->NumberOfSymbols;) {
         const auto *sym = coffAt<coff::CoffSymbol>(
             data, size, hdr->PointerToSymbolTable + i * sizeof(coff::CoffSymbol));
-        if (!sym)
-            break;
+        if (!sym) {
+            err << "error: " << name << ": COFF symbol table is truncated\n";
+            return false;
+        }
+        if (sym->NumberOfAuxSymbols > hdr->NumberOfSymbols - i - 1) {
+            err << "error: " << name << ": COFF auxiliary symbol count exceeds symbol table\n";
+            return false;
+        }
 
         ObjSymbol os;
-        os.name = readSymName(sym);
+        if (!readSymName(sym, os.name))
+            return false;
 
         if (sym->SectionNumber == coff::IMAGE_SYM_UNDEFINED) {
             os.binding = ObjSymbol::Undefined;
@@ -441,8 +514,8 @@ bool readCoffObj(
                             size,
                             hdr->PointerToSymbolTable +
                                 aux->TagIndex * sizeof(coff::CoffSymbol));
-                        if (fallback)
-                            os.weakDefaultName = readSymName(fallback);
+                        if (fallback && !readSymName(fallback, os.weakDefaultName))
+                            return false;
                     }
                 }
             }

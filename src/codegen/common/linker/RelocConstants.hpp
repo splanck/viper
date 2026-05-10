@@ -43,6 +43,8 @@ constexpr uint32_t kCall26 = 283;        // R_AARCH64_CALL26
 constexpr uint32_t kLdSt32Lo12Nc = 285;  // R_AARCH64_LDST32_ABS_LO12_NC
 constexpr uint32_t kLdSt64Lo12Nc = 286;  // R_AARCH64_LDST64_ABS_LO12_NC
 constexpr uint32_t kLdSt128Lo12Nc = 299; // R_AARCH64_LDST128_ABS_LO12_NC
+constexpr uint32_t kAdrGotPage = 311;    // R_AARCH64_ADR_GOT_PAGE
+constexpr uint32_t kLd64GotLo12Nc = 312; // R_AARCH64_LD64_GOT_LO12_NC
 } // namespace elf_a64
 
 // ── Mach-O x86_64 Relocation Types (mach-o/x86_64/reloc.h) ─────────────

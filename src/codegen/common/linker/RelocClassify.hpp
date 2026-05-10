@@ -80,6 +80,10 @@ inline RelocAction elfA64Action(uint32_t type) {
             return RelocAction::LdSt64Off;
         case elf_a64::kLdSt128Lo12Nc:
             return RelocAction::LdSt128Off;
+        case elf_a64::kAdrGotPage:
+            return RelocAction::GotPage21;
+        case elf_a64::kLd64GotLo12Nc:
+            return RelocAction::GotPageOff12;
         default:
             return RelocAction::Unknown;
     }

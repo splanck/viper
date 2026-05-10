@@ -184,12 +184,14 @@ ObjFile
 ### Reader Validation
 
 Readers reject unsupported file types, wrong machines, out-of-bounds section data, unterminated string-table names,
-truncated relocation tables, dangling Mach-O ARM64 addend records, and invalid relocation symbol indexes. Debug and
-unwind metadata such as `__compact_unwind`, `__eh_frame`, `.debug_line`, and `__DWARF` sections is preserved for
-later passes or executable debug-section emission.
+invalid COFF long-name string-table references, truncated section headers, truncated relocation tables, dangling
+Mach-O ARM64 addend records, scattered Mach-O relocations, and invalid relocation symbol indexes. Debug and unwind
+metadata such as `__compact_unwind`, `__eh_frame`, `.debug_line`, and `__DWARF` sections is preserved for later
+passes or executable debug-section emission.
 
-Reader range checks avoid offset+size overflow before slicing input buffers. Mach-O objects that contain relocation
-records must also provide `LC_SYMTAB`; without it relocation symbol indexes cannot be mapped safely.
+Reader range checks avoid offset+size overflow before slicing input buffers, symbol tables, relocation tables, and
+section contents. Mach-O objects that contain relocation records must also provide `LC_SYMTAB`; without it
+relocation symbol indexes cannot be mapped safely.
 
 ### Input Compatibility
 
@@ -232,7 +234,9 @@ Symbol resolution uses an iterative fixed-point algorithm:
 
 ### Runtime Archive Order
 
-Archives are searched in the order provided by `RuntimeComponents.hpp`, which resolves dependencies:
+If an archive index selects a member, that member must parse successfully; a corrupt selected member is a hard error
+rather than being silently skipped. Archives are searched in the order provided by `RuntimeComponents.hpp`, which
+resolves dependencies:
 
 ```
 network → threads → audio → graphics → exec → io_fs → text → collections → arrays → oop → base
@@ -264,8 +268,9 @@ Input sections are classified by name and attributes:
 Output sections are laid out in order: `.text` → `.rodata` → `.data` → `.tdata` → `.bss` → `.tbss`.
 
 Each section starts on a page boundary. Within a section, input chunks are concatenated with their alignment
-requirements preserved. Chunk sorting uses section class as the primary key and alignment only within the same class,
-so a high-alignment data or rodata contribution cannot move ahead of executable code.
+requirements preserved. Empty alloc sections are skipped only when they have no relocations and no live symbols, so
+zero-size labels remain addressable. Chunk sorting uses section class as the primary key and alignment only within
+the same class, so a high-alignment data or rodata contribution cannot move ahead of executable code.
 
 ### Base Addresses
 
@@ -311,6 +316,8 @@ This avoids a single `switch` with colliding cases.
 | **PageOff12** | `(S + A) & 0xFFF` into ADD imm12 | instruction field |
 | **LdSt64Off** | `((S + A) & 0xFFF) >> 3` into LDR/STR imm12 | instruction field |
 | **CondBr19** | `(S + A - P) >> 2` masked to 19 bits | instruction field |
+| **GotPage21** | `Page(GOT(S)+A) - Page(P)` for dynamic symbols, direct page for relaxed locals | instruction field |
+| **GotPageOff12** | 8-byte-scaled GOT LDR page offset for dynamic symbols, or relaxed ADD page offset for locals | instruction field |
 
 Where: `S` = symbol address, `A` = addend, `P` = patch site address, `Page(X)` = `X & ~0xFFF`.
 
@@ -328,9 +335,14 @@ symbol from being rebound to an unrelated global definition.
   unresolved targets are never patched as address zero.
 - AArch64 branch targets must be 4-byte aligned.
 - AArch64 page-offset load/store relocations validate scaled alignment for the instruction size.
+- AArch64 ELF GOT relocation types `R_AARCH64_ADR_GOT_PAGE` and `R_AARCH64_LD64_GOT_LO12_NC` are recognized and
+  validate GOT-slot alignment before patching.
 - `Abs32` relocations must fit in the unsigned 32-bit range.
+- COFF `ADDR32NB`, `SECREL`, and `SECTION` relocations are range-checked before narrowing; negative RVAs are rejected.
 - COFF `SECTION`/`SECREL` relocations resolve the target output section from the symbol's input-section identity,
   not by searching final addresses, so legal end-of-section symbols are accepted.
+- A live alloc input section that still has relocations must appear in the output layout. Missing placement is a hard
+  error because otherwise the linker would silently skip fixups for live bytes.
 
 ### AArch64 Branch Trampolines
 

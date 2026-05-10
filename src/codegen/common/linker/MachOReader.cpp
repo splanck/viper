@@ -340,7 +340,9 @@ bool readMachOObj(
                 } else if (sec->size > 0 && checkedRange(sec->offset, static_cast<size_t>(sec->size), size)) {
                     os.data.assign(data + sec->offset, data + sec->offset + sec->size);
                 } else if (sec->size > 0) {
-                    os.data.resize(static_cast<size_t>(sec->size), 0);
+                    err << "error: " << name << ": Mach-O section '" << os.name
+                        << "' contents are out of bounds\n";
+                    return false;
                 }
 
                 // Parse section relocations.
@@ -360,9 +362,13 @@ bool readMachOObj(
                     const auto *ri = readAt<macho::relocation_info>(
                         data, size, sec->reloff + r * sizeof(macho::relocation_info));
 
-                    // Skip scattered relocations (r_address bit 31 set).
-                    if (ri->r_address & 0x80000000)
-                        continue;
+                    // Scattered relocations carry a different payload layout. Do not
+                    // silently drop them; unresolved fixups would corrupt the link.
+                    if (ri->r_address & 0x80000000) {
+                        err << "error: " << name
+                            << ": Mach-O scattered relocations are not supported\n";
+                        return false;
+                    }
 
                     const uint32_t info = ri->r_info;
                     const uint32_t symbolNum = info & 0x00FFFFFF;
@@ -501,9 +507,21 @@ bool readMachOObj(
                 os.sectionIndex = machoSecMap[nl->n_sect];
             // Convert Mach-O absolute n_value to section-relative offset.
             // n_value is an address in the .o's virtual space; subtract section base.
-            if (os.sectionIndex > 0 && os.sectionIndex < secAddrs.size())
-                os.offset = static_cast<size_t>(nl->n_value - secAddrs[os.sectionIndex]);
-            else
+            if (nl->n_sect > 0 && nl->n_sect < secAddrs.size() && os.sectionIndex > 0) {
+                const uint64_t base = secAddrs[nl->n_sect];
+                if (nl->n_value < base) {
+                    err << "error: " << name << ": Mach-O symbol '" << os.name
+                        << "' value is before its section base\n";
+                    return false;
+                }
+                const uint64_t relValue = nl->n_value - base;
+                if (relValue > static_cast<uint64_t>(SIZE_MAX)) {
+                    err << "error: " << name << ": Mach-O symbol '" << os.name
+                        << "' offset exceeds addressable size\n";
+                    return false;
+                }
+                os.offset = static_cast<size_t>(relValue);
+            } else
                 os.offset = static_cast<size_t>(nl->n_value);
 
             symMap[i] = static_cast<uint32_t>(obj.symbols.size());

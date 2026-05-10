@@ -101,6 +101,8 @@ struct Relocation {
     uint32_t symbolIndex; ///< Index into SymbolTable.
     int64_t addend;       ///< Addend (ELF RELA style; Mach-O embeds in instruction).
     SymbolSection targetSection = SymbolSection::Undefined; ///< Optional cross-section target hint.
+    bool targetOffsetValid = false; ///< True when targetSection/targetOffset identify the target directly.
+    size_t targetOffset = 0;        ///< Byte offset in targetSection for section-relative relocations.
 };
 
 } // namespace viper::codegen::objfile

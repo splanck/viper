@@ -23,6 +23,7 @@
 #include "codegen/common/linker/LinkTypes.hpp"
 #include "codegen/common/linker/ObjFileReader.hpp"
 #include "codegen/common/linker/RelocApplier.hpp"
+#include "codegen/common/linker/RelocConstants.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -661,6 +662,160 @@ int main() {
             applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err);
         CHECK(!ok);
         CHECK(err.str().find("32-bit absolute relocation out of range") != std::string::npos);
+    }
+
+    // --- AArch64 ELF GOT ADRP/LDR relocations use the dynamic GOT slot ---
+    {
+        ObjFile obj;
+        obj.name = "a64_got.o";
+        obj.format = ObjFileFormat::ELF;
+        obj.sections.push_back({});
+
+        ObjSection text;
+        text.name = ".text";
+        text.data = {0x00,
+                     0x00,
+                     0x00,
+                     0x90, // adrp x0, #0
+                     0x00,
+                     0x00,
+                     0x40,
+                     0xF9}; // ldr x0, [x0, #0]
+        text.executable = true;
+        text.alloc = true;
+        text.alignment = 4;
+
+        ObjReloc gotPage;
+        gotPage.offset = 0;
+        gotPage.type = elf_a64::kAdrGotPage;
+        gotPage.symIndex = 1;
+        text.relocs.push_back(gotPage);
+
+        ObjReloc gotOff;
+        gotOff.offset = 4;
+        gotOff.type = elf_a64::kLd64GotLo12Nc;
+        gotOff.symIndex = 1;
+        text.relocs.push_back(gotOff);
+
+        obj.sections.push_back(text);
+        obj.symbols.push_back({});
+        ObjSymbol puts;
+        puts.name = "puts";
+        puts.binding = ObjSymbol::Undefined;
+        obj.symbols.push_back(puts);
+
+        std::vector<ObjFile> objs = {obj};
+        auto layout = makeLayout(objs, 0x100000);
+
+        GlobalSymEntry putsEntry;
+        putsEntry.name = "puts";
+        putsEntry.binding = GlobalSymEntry::Dynamic;
+        putsEntry.resolvedAddr = 0x700000;
+        layout.globalSyms["puts"] = putsEntry;
+
+        GlobalSymEntry gotEntry;
+        gotEntry.name = "__got_puts";
+        gotEntry.binding = GlobalSymEntry::Global;
+        gotEntry.resolvedAddr = 0x102040;
+        layout.globalSyms["__got_puts"] = gotEntry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::AArch64, err);
+        CHECK(ok);
+        if (!err.str().empty())
+            std::cerr << "  GOT err: " << err.str() << "\n";
+
+        const uint32_t adrp = readLE32(layout.sections[0].data.data());
+        const int32_t immhi = static_cast<int32_t>((adrp >> 5) & 0x7FFFF);
+        const int32_t immlo = static_cast<int32_t>((adrp >> 29) & 0x3);
+        CHECK(((immhi << 2) | immlo) == 2);
+
+        const uint32_t ldr = readLE32(layout.sections[0].data.data() + 4);
+        CHECK(((ldr >> 10) & 0xFFF) == 8); // 0x40 / 8-byte GOT slot scale
+    }
+
+    // --- AArch64 dynamic GOT LDR pageoff rejects unaligned GOT slots ---
+    {
+        std::vector<uint8_t> code = {0x00, 0x00, 0x40, 0xF9}; // ldr x0, [x0, #0]
+        auto obj = makeObj("a64_bad_got_pageoff.o",
+                           ObjFileFormat::ELF,
+                           code,
+                           "puts",
+                           elf_a64::kLd64GotLo12Nc,
+                           0,
+                           0);
+
+        std::vector<ObjFile> objs = {obj};
+        auto layout = makeLayout(objs, 0x100000);
+
+        GlobalSymEntry putsEntry;
+        putsEntry.name = "puts";
+        putsEntry.binding = GlobalSymEntry::Dynamic;
+        putsEntry.resolvedAddr = 0x700000;
+        layout.globalSyms["puts"] = putsEntry;
+
+        GlobalSymEntry gotEntry;
+        gotEntry.name = "__got_puts";
+        gotEntry.binding = GlobalSymEntry::Global;
+        gotEntry.resolvedAddr = 0x102042;
+        layout.globalSyms["__got_puts"] = gotEntry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::AArch64, err);
+        CHECK(!ok);
+        CHECK(err.str().find("not aligned") != std::string::npos);
+    }
+
+    // --- Live alloc sections with relocations must be present in the output layout ---
+    {
+        std::vector<uint8_t> code(4, 0);
+        auto obj = makeObj("dropped_live_section.o",
+                           ObjFileFormat::ELF,
+                           code,
+                           "target",
+                           elf_x64::kAbs32,
+                           0,
+                           0);
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err);
+        CHECK(!ok);
+        CHECK(err.str().find("was not placed") != std::string::npos);
+    }
+
+    // --- COFF ADDR32NB rejects negative/out-of-range RVAs instead of truncating ---
+    {
+        std::vector<uint8_t> code(4, 0);
+        auto obj = makeObj("bad_addr32nb.obj",
+                           ObjFileFormat::COFF,
+                           code,
+                           "below_image",
+                           coff_x64::kAddr32Nb,
+                           0,
+                           0);
+        std::vector<ObjFile> objs = {obj};
+        auto layout = makeLayout(objs, 0x140001000ULL);
+
+        GlobalSymEntry entry;
+        entry.name = "below_image";
+        entry.binding = GlobalSymEntry::Dynamic;
+        entry.resolvedAddr = 0x1000;
+        layout.globalSyms["below_image"] = entry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::X86_64, err);
+        CHECK(!ok);
+        CHECK(err.str().find("ADDR32NB relocation out of 32-bit range") != std::string::npos);
     }
 
     // --- Result ---

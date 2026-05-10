@@ -198,7 +198,7 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
                                  memberObj,
                                  memberErr)) {
                     err << memberErr.str();
-                    continue;
+                    return false;
                 }
 
                 size_t newIdx = allObjects.size();

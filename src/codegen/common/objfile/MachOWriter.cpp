@@ -389,6 +389,13 @@ bool MachOWriter::write(const std::string &path,
     std::unordered_map<uint32_t, uint32_t> textSymMap;
     std::unordered_map<uint32_t, uint32_t> rodataSymMap;
 
+    auto relocationNeedsAnchor = [](const CodeSection &sec, SymbolSection targetSection) {
+        for (const auto &rel : sec.relocations())
+            if (rel.targetOffsetValid && rel.targetSection == targetSection)
+                return true;
+        return false;
+    };
+
     auto externalNeedsUndefinedSymbol = [](const CodeSection &sec, uint32_t symbolIndex) {
         bool sawRelocation = false;
         for (const auto &rel : sec.relocations()) {
@@ -441,6 +448,15 @@ bool MachOWriter::write(const std::string &path,
 
     if (!processSymbols(text, true) || !processSymbols(rodata, false))
         return false;
+
+    const bool needTextAnchor = relocationNeedsAnchor(text, SymbolSection::Text) ||
+                                relocationNeedsAnchor(rodata, SymbolSection::Text);
+    const bool needConstAnchor = relocationNeedsAnchor(text, SymbolSection::Rodata) ||
+                                 relocationNeedsAnchor(rodata, SymbolSection::Rodata);
+    if (needTextAnchor)
+        pendingLocals.push_back(PendingSym{0, true, 0, kNSect, kSectText, 0, ""});
+    if (needConstAnchor)
+        pendingLocals.push_back(PendingSym{0, false, 0, kNSect, kSectConst, 0, ""});
 
     // --- 3. Assign Mach-O symbol indices ---
     // Order: locals → external defined → undefined.
@@ -508,6 +524,10 @@ bool MachOWriter::write(const std::string &path,
     uint32_t nundef = machoIdx - iundef;
 
     uint32_t nsyms = machoIdx;
+    const uint32_t textAnchorIdx =
+        needTextAnchor && textSymMap.count(0) ? textSymMap[0] : UINT32_MAX;
+    const uint32_t constAnchorIdx =
+        needConstAnchor && rodataSymMap.count(0) ? rodataSymMap[0] : UINT32_MAX;
 
     // Build the final symbol list (deduplicated, in order).
     struct FinalSym {
@@ -564,9 +584,39 @@ bool MachOWriter::write(const std::string &path,
                                const CodeSection &source,
                                const std::unordered_map<uint32_t, uint32_t> &sourceMap,
                                const char *sectionName,
-                               uint32_t &symIdx) -> bool {
+                               uint32_t &symIdx,
+                               int64_t &effectiveAddend) -> bool {
         symIdx = 0;
+        effectiveAddend = rel.addend;
         if (rel.targetSection != SymbolSection::Undefined) {
+            if (rel.targetOffsetValid) {
+                const CodeSection &target =
+                    (rel.targetSection == SymbolSection::Text) ? text : rodata;
+                const char *targetName =
+                    (rel.targetSection == SymbolSection::Text) ? "__text" : "__const";
+                const uint32_t anchorIdx =
+                    (rel.targetSection == SymbolSection::Text) ? textAnchorIdx : constAnchorIdx;
+                if (anchorIdx == UINT32_MAX) {
+                    err << "MachOWriter: missing section anchor for " << targetName << "\n";
+                    return false;
+                }
+                if (rel.targetOffset > target.bytes().size()) {
+                    err << "MachOWriter: relocation in " << sectionName << " at offset "
+                        << rel.offset << " references " << targetName << " offset "
+                        << rel.targetOffset << " beyond section contents\n";
+                    return false;
+                }
+                if (rel.targetOffset > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
+                    rel.addend > std::numeric_limits<int64_t>::max() -
+                                     static_cast<int64_t>(rel.targetOffset)) {
+                    err << "MachOWriter: relocation in " << sectionName
+                        << " has a section-offset addend outside int64 range\n";
+                    return false;
+                }
+                effectiveAddend = rel.addend + static_cast<int64_t>(rel.targetOffset);
+                symIdx = anchorIdx;
+                return true;
+            }
             if (rel.symbolIndex >= source.symbols().count()) {
                 err << "MachOWriter: relocation in " << sectionName << " at offset " << rel.offset
                     << " references unknown symbol index " << rel.symbolIndex << "\n";
@@ -617,7 +667,8 @@ bool MachOWriter::write(const std::string &path,
             }
 
             uint32_t symIdx = 0;
-            if (!resolveRelocSym(rel, source, sourceMap, sectionName, symIdx))
+            int64_t effectiveAddend = rel.addend;
+            if (!resolveRelocSym(rel, source, sourceMap, sectionName, symIdx, effectiveAddend))
                 return false;
             if (!checkedRelocSymbolNum(symIdx, "relocation symbol index", err))
                 return false;
@@ -626,14 +677,14 @@ bool MachOWriter::write(const std::string &path,
             if (!checkedU32(physicalRelOffset, "relocation address", err, relocAddress))
                 return false;
 
-            if (arch_ == ObjArch::AArch64 && rel.addend != 0) {
-                if (rel.addend < -0x800000LL || rel.addend > 0x7FFFFFLL) {
-                    err << "MachOWriter: AArch64 relocation addend " << rel.addend
+            if (arch_ == ObjArch::AArch64 && effectiveAddend != 0) {
+                if (effectiveAddend < -0x800000LL || effectiveAddend > 0x7FFFFFLL) {
+                    err << "MachOWriter: AArch64 relocation addend " << effectiveAddend
                         << " is outside signed 24-bit ARM64_RELOC_ADDEND range for "
                         << sectionName << " at offset " << rel.offset << "\n";
                     return false;
                 }
-                const uint32_t addend = static_cast<uint32_t>(rel.addend) & 0x00FFFFFFu;
+                const uint32_t addend = static_cast<uint32_t>(effectiveAddend) & 0x00FFFFFFu;
                 outRelocs.push_back(
                     {relocAddress, packRelocInfo(addend, 0, attrs.length, 0, kArm64RelocAddend)});
             }
@@ -973,13 +1024,44 @@ bool MachOWriter::write(const std::string &path,
 
     // --- Patch addends into instruction bytes (Mach-O REL convention) ---
     if (arch_ == ObjArch::X86_64) {
-        auto patchX64Addends = [&](const CodeSection &section, size_t sectionFileOff) -> bool {
+        auto computeEffectiveAddend = [&](const Relocation &rel,
+                                          const char *sectionName,
+                                          int64_t &effectiveAddend) -> bool {
+            effectiveAddend = rel.addend;
+            if (!rel.targetOffsetValid)
+                return true;
+            const CodeSection &target =
+                (rel.targetSection == SymbolSection::Text) ? text : rodata;
+            const char *targetName =
+                (rel.targetSection == SymbolSection::Text) ? "__text" : "__const";
+            if (rel.targetOffset > target.bytes().size()) {
+                err << "MachOWriter: relocation in " << sectionName << " references "
+                    << targetName << " offset " << rel.targetOffset
+                    << " beyond section contents\n";
+                return false;
+            }
+            if (rel.targetOffset > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
+                rel.addend > std::numeric_limits<int64_t>::max() -
+                                 static_cast<int64_t>(rel.targetOffset)) {
+                err << "MachOWriter: relocation in " << sectionName
+                    << " has a section-offset addend outside int64 range\n";
+                return false;
+            }
+            effectiveAddend = rel.addend + static_cast<int64_t>(rel.targetOffset);
+            return true;
+        };
+
+        auto patchX64Addends =
+            [&](const CodeSection &section, size_t sectionFileOff, const char *sectionName) -> bool {
             for (const auto &rel : section.relocations()) {
                 const size_t physicalRelOffset = rel.offset - section.logicalOffsetBias();
+                int64_t effectiveAddend = rel.addend;
+                if (!computeEffectiveAddend(rel, sectionName, effectiveAddend))
+                    return false;
                 if (rel.kind == RelocKind::PCRel32 || rel.kind == RelocKind::Branch32) {
-                    if (rel.addend < std::numeric_limits<int32_t>::min() ||
-                        rel.addend > std::numeric_limits<int32_t>::max()) {
-                        err << "MachOWriter: x86_64 rel32 addend " << rel.addend
+                    if (effectiveAddend < std::numeric_limits<int32_t>::min() ||
+                        effectiveAddend > std::numeric_limits<int32_t>::max()) {
+                        err << "MachOWriter: x86_64 rel32 addend " << effectiveAddend
                             << " is outside signed 32-bit range\n";
                         return false;
                     }
@@ -996,12 +1078,12 @@ bool MachOWriter::write(const std::string &path,
                             << " out of bounds (file size=" << file.size() << ")\n";
                         return false;
                     }
-                    auto addend = static_cast<int32_t>(rel.addend);
+                    auto addend = static_cast<int32_t>(effectiveAddend);
                     file[patchOff + 0] = static_cast<uint8_t>(addend);
                     file[patchOff + 1] = static_cast<uint8_t>(addend >> 8);
                     file[patchOff + 2] = static_cast<uint8_t>(addend >> 16);
                     file[patchOff + 3] = static_cast<uint8_t>(addend >> 24);
-                } else if (rel.kind == RelocKind::Abs64 && rel.addend != 0) {
+                } else if (rel.kind == RelocKind::Abs64 && effectiveAddend != 0) {
                     size_t patchOff = 0;
                     if (!checkedAddSize(sectionFileOff,
                                         physicalRelOffset,
@@ -1015,14 +1097,15 @@ bool MachOWriter::write(const std::string &path,
                             << " out of bounds (file size=" << file.size() << ")\n";
                         return false;
                     }
-                    auto addend = static_cast<uint64_t>(rel.addend);
+                    auto addend = static_cast<uint64_t>(effectiveAddend);
                     for (int i = 0; i < 8; ++i)
                         file[patchOff + i] = static_cast<uint8_t>(addend >> (i * 8));
                 }
             }
             return true;
         };
-        if (!patchX64Addends(text, textFileOff) || !patchX64Addends(rodata, constFileOff))
+        if (!patchX64Addends(text, textFileOff, "__text") ||
+            !patchX64Addends(rodata, constFileOff, "__const"))
             return false;
     }
 
