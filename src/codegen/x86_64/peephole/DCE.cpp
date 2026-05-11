@@ -101,6 +101,10 @@ void collectUsedRegs(const MInstr &instr, std::unordered_set<uint16_t> &usedRegs
     }
 }
 
+/// @brief Mark all registers a CALL implicitly uses as live.
+/// @details Argument registers, plus RAX (vararg vector-arg count for SysV),
+///          plus RSP must stay live across CALL points so DCE cannot drop
+///          the instructions that populate them.
 void addCallUsedRegs(const TargetInfo &target, std::unordered_set<uint16_t> &usedRegs) {
     for (std::size_t i = 0; i < target.maxGPRArgs && i < target.intArgOrder.size(); ++i)
         usedRegs.insert(static_cast<uint16_t>(target.intArgOrder[i]));
@@ -112,6 +116,9 @@ void addCallUsedRegs(const TargetInfo &target, std::unordered_set<uint16_t> &use
     usedRegs.insert(static_cast<uint16_t>(PhysReg::RAX));
 }
 
+/// @brief Mark RET-implicit registers as live.
+/// @details Return value registers (int + fp), the stack pointer, and all
+///          callee-saved registers must survive to the function epilogue.
 void addReturnUsedRegs(const TargetInfo &target, std::unordered_set<uint16_t> &usedRegs) {
     usedRegs.insert(static_cast<uint16_t>(target.intReturnReg));
     usedRegs.insert(static_cast<uint16_t>(target.f64ReturnReg));
@@ -122,11 +129,20 @@ void addReturnUsedRegs(const TargetInfo &target, std::unordered_set<uint16_t> &u
         usedRegs.insert(static_cast<uint16_t>(reg));
 }
 
+/// @brief Seed @p liveRegs with the registers conservatively live at block exit.
+/// @details Equivalent to @ref addReturnUsedRegs but also explicitly
+///          re-adds @c RSP so frame-manipulating blocks always keep stack
+///          accounting alive.
 void addExitLiveRegs(const TargetInfo &target, std::unordered_set<uint16_t> &liveRegs) {
     addReturnUsedRegs(target, liveRegs);
     liveRegs.insert(static_cast<uint16_t>(PhysReg::RSP));
 }
 
+/// @brief Add implicit register uses for @p instr to @p liveRegs / @p flagsLive.
+/// @details Some opcodes touch registers that do not appear in their operand
+///          list — CALL implicitly reads arg registers, RET reads the return
+///          regs, CQO and IDIV/DIV read the RAX/RDX pair, and any opcode in
+///          the EFLAGS-using set marks flags as live.
 void collectImplicitUses(const MInstr &instr,
                          const TargetInfo &target,
                          std::unordered_set<uint16_t> &liveRegs,
@@ -156,6 +172,20 @@ void collectImplicitUses(const MInstr &instr,
 
 } // namespace
 
+/// @brief Run liveness-based dead-code elimination over a single block.
+/// @details Performs a backward sweep maintaining a live-register set and a
+///          flags-live flag. Instructions that define only dead registers
+///          (and lack observable side effects) are marked for removal. The
+///          loop iterates to a fixed point because removing one instruction
+///          can make another dead. @p preservePhysRegsAtExit seeds the
+///          initial live set with every allocatable register — used for
+///          blocks whose successors aren't visible in this analysis (e.g.
+///          when the function has no terminator yet).
+/// @param instrs Block instructions, mutated in place.
+/// @param stats Pass-wide statistics accumulator.
+/// @param target Calling-convention metadata for implicit-use computation.
+/// @param preservePhysRegsAtExit If true, keep every physical reg live.
+/// @return Number of instructions eliminated.
 std::size_t runBlockDCE(std::vector<MInstr> &instrs,
                         PeepholeStats &stats,
                         const TargetInfo &target,

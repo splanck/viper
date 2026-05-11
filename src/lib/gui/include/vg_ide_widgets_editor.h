@@ -141,11 +141,10 @@ typedef struct vg_codeeditor {
     vg_syntax_callback_t syntax_highlighter;
     void *syntax_data;
 
-    // Block-comment nesting depth carried across line-by-line tokenization.
-    // Mutated by the Zia syntax callback as it sees `/*` and `*/`. Reset to 0
-    // by SetText / SetLanguage. Note: only correct for sequential top-down
-    // rendering; jumping the viewport directly into a block comment may
-    // briefly mis-color until the user scrolls back through the opening line.
+    // Last Zia block-comment nesting depth observed by the syntax callback.
+    // The callback derives depth from prior buffer lines for each highlighted
+    // line, so rendering remains correct when the viewport jumps into the
+    // middle of a block comment.
     int zia_block_comment_depth;
 
     // Token colors (overridable per-editor; indices: 0=default, 1=keyword, 2=type,

@@ -34,6 +34,10 @@ namespace viper::codegen::x64 {
 ///          materialises i1 values using byte set + zero-extend idioms.
 class ISel {
   public:
+    /// \brief Construct an instruction selector bound to a target ABI.
+    /// \param target Target info supplying register sizes, ABI argument order,
+    ///        and calling-convention metadata used by the canonicalisation
+    ///        passes; @p target must outlive the ISel instance.
     explicit ISel(const TargetInfo &target) noexcept;
 
     /// \brief Lower arithmetic instructions to concrete encodings.

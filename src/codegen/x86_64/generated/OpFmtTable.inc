@@ -74,4 +74,3 @@ static constexpr std::array<OpFmt, 51> kOpFmt = {{
     {MOpcode::MOVUPSrm, "movups", 2U, 0U},
     {MOpcode::MOVUPSmr, "movups", 2U, 0U},
 }};
-

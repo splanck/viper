@@ -69,6 +69,9 @@ constexpr PhysReg kScratchXMM = PhysReg::XMM15;
     return false;
 }
 
+/// @brief Test whether @p instr writes the virtual register @p vreg through any def-role operand.
+/// @details Used by @ref isI1Value to terminate the backward search as soon as
+///          another definition shadows the candidate boolean producer.
 [[nodiscard]] bool definesVReg(const MInstr &instr, uint16_t vreg) {
     for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
         const auto [isUse, isDef] = operandRoles(instr, idx);

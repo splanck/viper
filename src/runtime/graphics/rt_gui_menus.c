@@ -330,8 +330,11 @@ void rt_menu_set_title(void *menu, rt_string title) {
     if (!menu)
         return;
     vg_menu_t *m = (vg_menu_t *)menu;
+    char *new_title = title ? rt_string_to_cstr(title) : NULL;
+    if (title && !new_title)
+        return;
     free(m->title);
-    m->title = rt_string_to_cstr(title);
+    m->title = new_title;
     rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu(m));
 }
 
@@ -397,9 +400,14 @@ void rt_menuitem_set_text(void *item, rt_string text) {
     if (!item)
         return;
     vg_menu_item_t *mi = (vg_menu_item_t *)item;
+    char *new_text = text ? rt_string_to_cstr(text) : NULL;
+    if (text && !new_text)
+        return;
     free(mi->text);
-    mi->text = rt_string_to_cstr(text);
+    mi->text = new_text;
     rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_item(mi));
+    if (mi->owner_contextmenu)
+        vg_contextmenu_item_set_enabled(mi, mi->enabled);
 }
 
 /// @brief Get the text of the menuitem.
@@ -419,9 +427,14 @@ void rt_menuitem_set_shortcut(void *item, rt_string shortcut) {
     if (!item)
         return;
     vg_menu_item_t *mi = (vg_menu_item_t *)item;
+    char *new_shortcut = shortcut ? rt_string_to_cstr(shortcut) : NULL;
+    if (shortcut && !new_shortcut)
+        return;
     free(mi->shortcut);
-    mi->shortcut = rt_string_to_cstr(shortcut);
+    mi->shortcut = new_shortcut;
     rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_item(mi));
+    if (mi->owner_contextmenu)
+        vg_contextmenu_item_set_enabled(mi, mi->enabled);
 }
 
 /// @brief Get the shortcut of the menuitem.
@@ -457,19 +470,30 @@ void rt_menuitem_set_checkable(void *item, int64_t checkable) {
     RT_ASSERT_MAIN_THREAD();
     if (!item)
         return;
-    /* Mark the item as a toggle type by setting its checked state.
-       When checkable is disabled, also clear the checked state. */
-    if (!checkable)
-        vg_menu_item_set_checked((vg_menu_item_t *)item, false);
-    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_item((vg_menu_item_t *)item));
+    vg_menu_item_t *mi = (vg_menu_item_t *)item;
+    mi->checkable = checkable != 0;
+    if (!mi->checkable)
+        mi->checked = false;
+    if (mi->owner_contextmenu) {
+        if (mi->checkable)
+            vg_contextmenu_item_set_checked(mi, mi->checked);
+        else {
+            vg_contextmenu_item_set_checked(mi, false);
+            mi->checkable = false;
+        }
+    } else if (mi->parent_menu) {
+        if (mi->checkable)
+            vg_menu_item_set_checked(mi, mi->checked);
+        rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_item(mi));
+    }
 }
 
 /// @brief Check whether a menu item supports the checkable toggle state.
 int64_t rt_menuitem_is_checkable(void *item) {
     RT_ASSERT_MAIN_THREAD();
-    /* An item is considered checkable if it has ever had a checked state set. */
-    (void)item;
-    return 1; /* All menu items support the checked field */
+    if (!item)
+        return 0;
+    return ((vg_menu_item_t *)item)->checkable ? 1 : 0;
 }
 
 /// @brief Set the checked of the menuitem.
@@ -477,8 +501,13 @@ void rt_menuitem_set_checked(void *item, int64_t checked) {
     RT_ASSERT_MAIN_THREAD();
     if (!item)
         return;
-    ((vg_menu_item_t *)item)->checked = checked != 0;
-    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_item((vg_menu_item_t *)item));
+    vg_menu_item_t *mi = (vg_menu_item_t *)item;
+    if (mi->owner_contextmenu) {
+        vg_contextmenu_item_set_checked(mi, checked != 0);
+        return;
+    }
+    vg_menu_item_set_checked(mi, checked != 0);
+    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_item(mi));
 }
 
 /// @brief Check whether a menu item is currently in the checked state.
@@ -494,8 +523,13 @@ void rt_menuitem_set_enabled(void *item, int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
     if (!item)
         return;
-    ((vg_menu_item_t *)item)->enabled = enabled != 0;
-    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_item((vg_menu_item_t *)item));
+    vg_menu_item_t *mi = (vg_menu_item_t *)item;
+    if (mi->owner_contextmenu) {
+        vg_contextmenu_item_set_enabled(mi, enabled != 0);
+        return;
+    }
+    vg_menu_item_set_enabled(mi, enabled != 0);
+    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_item(mi));
 }
 
 /// @brief Check whether a menu item is currently enabled.
@@ -1160,10 +1194,14 @@ void rt_toolbar_remove_item(void *toolbar, void *item) {
     RT_ASSERT_MAIN_THREAD();
     if (!toolbar || !item)
         return;
+    vg_toolbar_t *tb =
+        (vg_toolbar_t *)rt_gui_widget_handle_checked_type(toolbar, VG_WIDGET_TOOLBAR);
+    if (!tb)
+        return;
     vg_toolbar_item_t *ti = (vg_toolbar_item_t *)item;
-    if (ti->id) {
-        vg_toolbar_remove_item((vg_toolbar_t *)toolbar, ti->id);
-    }
+    if (ti->owner != tb)
+        return;
+    vg_toolbar_remove_item_ptr(tb, ti);
 }
 
 /// @brief Get a size property of the toolbar (button width or height).

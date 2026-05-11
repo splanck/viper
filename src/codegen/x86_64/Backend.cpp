@@ -68,6 +68,9 @@ void lowerOverflowOps(MFunction &fn);
 
 namespace {
 
+/// @brief Map a target-platform enum to its native object-file format.
+/// @details Darwin → Mach-O, Linux → ELF, Windows → COFF; `Host` falls back to
+///          the compile-time host-format detection.
 [[nodiscard]] objfile::ObjFormat targetObjectFormat(CodegenOptions::TargetPlatform platform) {
     switch (platform) {
         case CodegenOptions::TargetPlatform::Darwin:
@@ -82,11 +85,15 @@ namespace {
     return objfile::detectHostFormat();
 }
 
+/// @brief Return true when `VIPER_X64_BINARY_TRACE` is set in the environment.
+/// @details Cached once at first call; controls verbose stderr tracing during
+///          binary emission for debug builds.
 [[nodiscard]] bool traceX64BinaryEmit() {
     static const bool enabled = std::getenv("VIPER_X64_BINARY_TRACE") != nullptr;
     return enabled;
 }
 
+/// @brief Count the total number of MIR instructions across all blocks in @p fn.
 std::size_t mirInstructionCount(const MFunction &fn) {
     std::size_t count = 0;
     for (const auto &block : fn.blocks)
@@ -94,6 +101,7 @@ std::size_t mirInstructionCount(const MFunction &fn) {
     return count;
 }
 
+/// @brief Return the label name if @p instr is a LABEL pseudo, else nullopt.
 [[nodiscard]] std::optional<std::string> labelDefinedBy(const MInstr &instr) {
     if (instr.opcode != MOpcode::LABEL || instr.operands.empty()) {
         return std::nullopt;
@@ -104,11 +112,16 @@ std::size_t mirInstructionCount(const MFunction &fn) {
     return std::nullopt;
 }
 
+/// @brief Return true if @p opcode ends sequential control flow within a block.
+/// @details Used by `splitInternalLabelBlocks` to start a new MBasicBlock after
+///          any in-block JMP/JCC/RET/UD2.
 [[nodiscard]] bool isControlTerminatorForSplit(MOpcode opcode) noexcept {
     return opcode == MOpcode::JMP || opcode == MOpcode::JCC || opcode == MOpcode::RET ||
            opcode == MOpcode::UD2;
 }
 
+/// @brief Return true if @p label starts with the synthetic ".Lsplit" prefix
+///        used by `splitInternalLabelBlocks` for fresh fall-through blocks.
 [[nodiscard]] bool isSyntheticSplitLabel(std::string_view label) noexcept {
     return label.rfind(".Lsplit", 0) == 0;
 }
@@ -323,6 +336,9 @@ static void seedDebugFiles(DebugLineTable &table,
         table.addFileSlot(filePath);
 }
 
+/// @brief Single-function overload of seedDebugFiles for per-function emit paths.
+/// @details Same semantics as the multi-function version above but scans only
+///          @p fn's instructions for the maximum DWARF file id.
 static void seedDebugFiles(DebugLineTable &table,
                            const MFunction &fn,
                            std::string_view debugSourcePath) {

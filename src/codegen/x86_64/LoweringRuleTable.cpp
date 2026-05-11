@@ -733,6 +733,13 @@ bool opcodeMatches(const RuleSpec &spec, std::string_view opcode) noexcept {
     return opcode == spec.opcode;
 }
 
+/// @brief Partitioned lookup tables for fast rule dispatch.
+/// @details Splits the declarative rule table into:
+///          - @c exact: an opcode-keyed hash map for O(1) exact-match lookup.
+///          - @c prefix: a vector of rules whose opcode is a prefix (e.g.
+///            "icmp_") that must be probed linearly.
+///          Most IL opcodes hit the exact table; prefix probing is reserved
+///          for opcode families.
 struct DispatchTables {
     std::unordered_map<std::string_view, std::vector<const RuleSpec *>> exact{};
     std::vector<const RuleSpec *> prefix{};

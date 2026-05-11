@@ -15,8 +15,8 @@
 //     traversal using swap-with-last.
 //   - items[] is a heap-allocated pointer array; capacity doubles from 8 when
 //     exhausted.
-//   - hovered_index, active_submenu, and parent_menu are all reset on dismiss so
-//     the menu tree never retains dangling pointers.
+//   - hovered_index and active_submenu are reset on dismiss; parent_item tracks
+//     submenu ownership and is cleared when either side is destroyed.
 //   - Input capture is transferred to the parent menu (not released) when a
 //     child submenu is dismissed while the parent is still visible.
 //   - Window-edge clamping is intentionally deferred to contextmenu_paint where
@@ -24,8 +24,8 @@
 // Ownership/Lifetime:
 //   - items[] and each vg_menu_item_t (text, shortcut strings) are owned by the
 //     menu and freed in contextmenu_destroy / vg_contextmenu_clear.
-//   - Submenu pointers in vg_menu_item_t.submenu are not owned — the caller is
-//     responsible for destroying sub-menus independently.
+//   - Submenu pointers in vg_menu_item_t.submenu are owned by the parent context
+//     menu item. Destroying either side detaches the other to avoid stale pointers.
 // Links: lib/gui/include/vg_ide_widgets.h,
 //        lib/gui/include/vg_theme.h,
 //        lib/gui/include/vg_event.h
@@ -126,6 +126,7 @@ static vg_menu_item_t *create_menu_item(const char *label,
     item->action_data = user_data;
     item->enabled = true;
     item->checked = false;
+    item->checkable = false;
     item->separator = false;
     item->icon.type = VG_ICON_NONE;
     item->submenu = NULL;
@@ -136,6 +137,15 @@ static vg_menu_item_t *create_menu_item(const char *label,
 /// @brief Free a menu item's text, shortcut, icon, and the item struct itself.
 static void free_menu_item(vg_menu_item_t *item) {
     if (item) {
+        if (item->submenu) {
+            vg_contextmenu_t *submenu = (vg_contextmenu_t *)item->submenu;
+            item->submenu = NULL;
+            if (submenu->parent_item == item) {
+                submenu->parent_item = NULL;
+                submenu->parent_menu = NULL;
+            }
+            vg_contextmenu_destroy(submenu);
+        }
         free((void *)item->text);
         free((void *)item->shortcut);
         vg_icon_destroy(&item->icon);
@@ -145,7 +155,8 @@ static void free_menu_item(vg_menu_item_t *item) {
 
 /// @brief Return true if the item occupies the leading icon/check column.
 static bool item_uses_leading_column(const vg_menu_item_t *item) {
-    return item && !item->separator && (item->checked || item->icon.type != VG_ICON_NONE);
+    return item && !item->separator &&
+           (item->checkable || item->checked || item->icon.type != VG_ICON_NONE);
 }
 
 /// @brief Return true if any item in the menu uses the leading icon/check column.
@@ -437,6 +448,7 @@ vg_contextmenu_t *vg_contextmenu_create(void) {
     menu->clicked_index = -1;
     menu->active_submenu = NULL;
     menu->parent_menu = NULL;
+    menu->parent_item = NULL;
 
     menu->min_width = 150;
     menu->max_height = 400;
@@ -466,6 +478,15 @@ static void contextmenu_destroy(vg_widget_t *widget) {
     contextmenu_unregister_menu(menu);
     if (vg_widget_get_input_capture() == &menu->base)
         vg_widget_release_input_capture();
+
+    vg_contextmenu_t *parent =
+        menu->parent_item ? menu->parent_item->owner_contextmenu : menu->parent_menu;
+    if (parent && parent->active_submenu == menu)
+        parent->active_submenu = NULL;
+    if (menu->parent_item && menu->parent_item->submenu == (struct vg_menu *)menu)
+        menu->parent_item->submenu = NULL;
+    menu->parent_item = NULL;
+    menu->parent_menu = NULL;
 
     // Free all items
     for (size_t i = 0; i < menu->item_count; i++) {
@@ -900,8 +921,9 @@ vg_menu_item_t *vg_contextmenu_add_item(vg_contextmenu_t *menu,
 
 /// @brief Append a labelled item that opens submenu when hovered or navigated to.
 ///
-/// @details The submenu pointer is stored in item->submenu but is NOT owned —
-///          caller is responsible for destroying submenu independently.
+/// @details The submenu pointer is stored in item->submenu and owned by the
+///          parent menu item. Destroying the parent destroys attached submenus;
+///          destroying a child directly detaches the parent item first.
 ///          Hovering the item triggers vg_contextmenu_show_at on the submenu
 ///          positioned flush to the right edge of the parent menu row.
 ///
@@ -915,24 +937,23 @@ vg_menu_item_t *vg_contextmenu_add_submenu(vg_contextmenu_t *menu,
     if (!menu || !submenu)
         return NULL;
 
+    if (menu->item_count >= menu->item_capacity) {
+        size_t new_cap = menu->item_capacity == 0 ? 8 : menu->item_capacity * 2;
+        vg_menu_item_t **new_items = realloc(menu->items, new_cap * sizeof(vg_menu_item_t *));
+        if (!new_items)
+            return NULL;
+        menu->items = new_items;
+        menu->item_capacity = new_cap;
+    }
+
     vg_menu_item_t *item = create_menu_item(label, NULL, NULL, NULL);
     if (!item)
         return NULL;
 
     item->owner_contextmenu = menu;
     item->submenu = (struct vg_menu *)submenu;
-
-    // Add to array
-    if (menu->item_count >= menu->item_capacity) {
-        size_t new_cap = menu->item_capacity == 0 ? 8 : menu->item_capacity * 2;
-        vg_menu_item_t **new_items = realloc(menu->items, new_cap * sizeof(vg_menu_item_t *));
-        if (!new_items) {
-            free_menu_item(item);
-            return NULL;
-        }
-        menu->items = new_items;
-        menu->item_capacity = new_cap;
-    }
+    submenu->parent_menu = menu;
+    submenu->parent_item = item;
 
     menu->items[menu->item_count++] = item;
     return item;
@@ -1002,6 +1023,7 @@ void vg_contextmenu_item_set_enabled(vg_menu_item_t *item, bool enabled) {
 /// @param checked true to display a checkmark (✓) in the leading column.
 void vg_contextmenu_item_set_checked(vg_menu_item_t *item, bool checked) {
     if (item) {
+        item->checkable = true;
         item->checked = checked;
         contextmenu_mark_item_changed(item, true);
     }

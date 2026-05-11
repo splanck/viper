@@ -49,6 +49,11 @@ namespace viper::codegen::aarch64 {
 ///            maintained for the overall frame.
 class FrameBuilder : public common::FrameLayout {
   public:
+    /// @brief Construct a frame builder bound to @p fn and seed its cursor.
+    /// @details Replays any locals or spills already present in @p fn.frame
+    ///          into the slot cursor so a second builder created after
+    ///          register allocation continues allocation past existing slots
+    ///          instead of overwriting them.
     explicit FrameBuilder(MFunction &fn) noexcept : fn_(&fn), slotCursor_(kSlotSizeBytes) {
         // Resume allocation after any locals/spills assigned by an earlier
         // builder instance (for example, when regalloc creates new spill slots).

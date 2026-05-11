@@ -72,6 +72,10 @@ static uint32_t syn_color(vg_codeeditor_t *ce, int token_type, uint32_t fallback
     return fallback;
 }
 
+static vg_codeeditor_t *rt_codeeditor_handle_checked(void *editor) {
+    return (vg_codeeditor_t *)rt_gui_widget_handle_checked_type(editor, VG_WIDGET_CODEEDITOR);
+}
+
 /// @brief Linear-scan the editor's user-supplied keyword list for an exact match.
 ///
 /// Custom keywords let scripts add domain-specific syntax (e.g., your
@@ -167,15 +171,60 @@ static const char *const zia_types[] = {"Integer",
                                         "Queue",
                                         NULL};
 
+static int rt_zia_comment_depth_before_line(vg_codeeditor_t *ce, int line_num) {
+    if (!ce || line_num <= 0 || !ce->lines)
+        return 0;
+
+    int depth = 0;
+    int limit = line_num < ce->line_count ? line_num : ce->line_count;
+    for (int line_index = 0; line_index < limit; line_index++) {
+        const char *line = ce->lines[line_index].text ? ce->lines[line_index].text : "";
+        size_t len = strlen(line);
+        for (size_t i = 0; i < len;) {
+            if (depth > 0) {
+                if (i + 1 < len && line[i] == '/' && line[i + 1] == '*') {
+                    depth++;
+                    i += 2;
+                } else if (i + 1 < len && line[i] == '*' && line[i + 1] == '/') {
+                    depth--;
+                    i += 2;
+                } else {
+                    i++;
+                }
+                continue;
+            }
+
+            if (i + 1 < len && line[i] == '/' && line[i + 1] == '/')
+                break;
+            if (i + 1 < len && line[i] == '/' && line[i + 1] == '*') {
+                depth = 1;
+                i += 2;
+                continue;
+            }
+            if (line[i] == '"') {
+                i++;
+                while (i < len) {
+                    if (line[i] == '\\' && i + 1 < len) {
+                        i += 2;
+                        continue;
+                    }
+                    if (line[i++] == '"')
+                        break;
+                }
+                continue;
+            }
+            i++;
+        }
+    }
+    return depth;
+}
+
 /// @brief Tokenize a Zia source line and write per-character color codes.
 ///
 /// Walks the line once, classifying each span:
 ///   - `// ...` line comment → green
-///   - `/* ... */` block comment → green (single-line; multi-line tracked
-///     across calls via ce->zia_block_comment_depth — works correctly during
-///     sequential top-down render; may briefly mis-color if the user scrolls
-///     directly into the middle of a block comment without first rendering
-///     the opening `/*` line)
+///   - `/* ... */` block comment → green. Multi-line depth is derived from
+///     prior buffer lines so highlighting is independent of render order.
 ///   - `"..."` string (with `\\` escape handling) → orange
 ///   - `[0-9]+` number → light green
 ///   - identifier → keyword (via real Zia keyword table) / type / custom
@@ -183,7 +232,6 @@ static const char *const zia_types[] = {"Integer",
 ///   - everything else → default color
 static void rt_zia_syntax_cb(
     vg_widget_t *editor, int line_num, const char *text, uint32_t *colors, void *user_data) {
-    (void)line_num;
     vg_codeeditor_t *ce = (vg_codeeditor_t *)user_data;
     (void)editor;
 
@@ -196,25 +244,28 @@ static void rt_zia_syntax_cb(
 
     size_t len = strlen(text);
     size_t i = 0;
+    int block_depth = rt_zia_comment_depth_before_line(ce, line_num);
 
     // If we entered this line inside a block comment, paint until we find */
-    // (with proper nesting). Sets ce->zia_block_comment_depth for the next line.
-    if (ce->zia_block_comment_depth > 0) {
+    // (with proper nesting).
+    if (block_depth > 0) {
         size_t comment_start = 0;
-        while (i < len && ce->zia_block_comment_depth > 0) {
+        while (i < len && block_depth > 0) {
             if (i + 1 < len && text[i] == '/' && text[i + 1] == '*') {
-                ce->zia_block_comment_depth++;
+                block_depth++;
                 i += 2;
             } else if (i + 1 < len && text[i] == '*' && text[i + 1] == '/') {
-                ce->zia_block_comment_depth--;
+                block_depth--;
                 i += 2;
             } else {
                 i++;
             }
         }
         syn_fill(colors, comment_start, i - comment_start, c_comment);
-        if (ce->zia_block_comment_depth > 0) {
+        if (block_depth > 0) {
             // Block comment continues past this line — done with line.
+            if (ce)
+                ce->zia_block_comment_depth = block_depth;
             return;
         }
     }
@@ -229,14 +280,14 @@ static void rt_zia_syntax_cb(
         // Block comment (may continue past end of line)
         if (text[i] == '/' && i + 1 < len && text[i + 1] == '*') {
             size_t start = i;
-            ce->zia_block_comment_depth = 1;
+            block_depth = 1;
             i += 2;
-            while (i < len && ce->zia_block_comment_depth > 0) {
+            while (i < len && block_depth > 0) {
                 if (i + 1 < len && text[i] == '/' && text[i + 1] == '*') {
-                    ce->zia_block_comment_depth++;
+                    block_depth++;
                     i += 2;
                 } else if (i + 1 < len && text[i] == '*' && text[i + 1] == '/') {
-                    ce->zia_block_comment_depth--;
+                    block_depth--;
                     i += 2;
                 } else {
                     i++;
@@ -307,6 +358,8 @@ static void rt_zia_syntax_cb(
         // Default (operators, punctuation)
         colors[i++] = c_default;
     }
+    if (ce)
+        ce->zia_block_comment_depth = block_depth;
 }
 
 // ─── Viper BASIC language tokenizer ───────────────────────────────────────
@@ -403,9 +456,9 @@ static void rt_basic_syntax_cb(
 /// the tokenizer can read the per-editor color overrides + custom
 /// keyword list.
 void rt_codeeditor_set_language(void *editor, rt_string language) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     char *clang = rt_string_to_cstr(language);
     if (!clang)
         return;
@@ -428,9 +481,9 @@ void rt_codeeditor_set_language(void *editor, rt_string language) {
 /// 5=number. `color`: ARGB 0xAARRGGBB. Out-of-range types are ignored.
 /// Triggers a repaint.
 void rt_codeeditor_set_token_color(void *editor, int64_t token_type, int64_t color) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     // Token type indices: 0=default, 1=keyword, 2=type, 3=string, 4=comment, 5=number
     if (token_type >= 0 && token_type < 6) {
         ce->token_colors[token_type] = (uint32_t)color;
@@ -445,9 +498,9 @@ void rt_codeeditor_set_token_color(void *editor, int64_t token_type, int64_t col
 /// previous list (no append). Empty input clears the list. Doubling
 /// growth from an initial capacity of 8.
 void rt_codeeditor_set_custom_keywords(void *editor, rt_string keywords) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
 
     // Parse comma-separated keywords into array
     char *ckw = rt_string_to_cstr(keywords);
@@ -470,6 +523,7 @@ void rt_codeeditor_set_custom_keywords(void *editor, rt_string keywords) {
         return;
     }
     int new_count = 0;
+    int ok = 1;
 
     char *saveptr = NULL;
     char *token = rt_strtok_r(ckw, ",", &saveptr);
@@ -483,19 +537,36 @@ void rt_codeeditor_set_custom_keywords(void *editor, rt_string keywords) {
 
         if (*token) {
             if (new_count >= cap) {
+                if (cap > INT_MAX / 2 ||
+                    (size_t)cap * 2 > SIZE_MAX / sizeof(*new_keywords)) {
+                    ok = 0;
+                    break;
+                }
                 cap *= 2;
                 char **p = (char **)realloc(new_keywords, (size_t)cap * sizeof(char *));
-                if (!p)
+                if (!p) {
+                    ok = 0;
                     break;
+                }
                 new_keywords = p;
             }
             char *copy = strdup(token);
-            if (copy)
-                new_keywords[new_count++] = copy;
+            if (!copy) {
+                ok = 0;
+                break;
+            }
+            new_keywords[new_count++] = copy;
         }
         token = rt_strtok_r(NULL, ",", &saveptr);
     }
     free(ckw);
+
+    if (!ok) {
+        for (int i = 0; i < new_count; i++)
+            free(new_keywords[i]);
+        free(new_keywords);
+        return;
+    }
 
     for (int i = 0; i < ce->custom_keyword_count; i++)
         free(ce->custom_keywords[i]);
@@ -510,9 +581,9 @@ void rt_codeeditor_set_custom_keywords(void *editor, rt_string keywords) {
 /// Highlights are user-defined colored ranges painted on top of the
 /// syntax highlighting (e.g., for diagnostics, find-results, etc.).
 void rt_codeeditor_clear_highlights(void *editor) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     free(ce->highlight_spans);
     ce->highlight_spans = NULL;
     ce->highlight_span_count = 0;
@@ -531,9 +602,9 @@ void rt_codeeditor_add_highlight(void *editor,
                                  int64_t end_line,
                                  int64_t end_col,
                                  int64_t color) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     if (ce->highlight_span_count >= ce->highlight_span_cap) {
         if (ce->highlight_span_cap > INT_MAX / 2)
             return;
@@ -558,9 +629,10 @@ void rt_codeeditor_add_highlight(void *editor,
 /// Useful when callers mutate highlight state through other means
 /// and need the editor to redraw on the next frame.
 void rt_codeeditor_refresh_highlights(void *editor) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    ((vg_codeeditor_t *)editor)->base.needs_paint = true;
+    ce->base.needs_paint = true;
 }
 
 //=============================================================================
@@ -569,9 +641,9 @@ void rt_codeeditor_refresh_highlights(void *editor) {
 
 /// @brief `CodeEditor.SetShowLineNumbers(show)` — toggle the line-number gutter.
 void rt_codeeditor_set_show_line_numbers(void *editor, int64_t show) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     ce->show_line_numbers = show != 0;
     vg_codeeditor_refresh_layout_state(ce);
 }
@@ -580,9 +652,10 @@ void rt_codeeditor_set_show_line_numbers(void *editor, int64_t show) {
 ///
 /// Returns 1 (showing) for NULL receiver to match the default.
 int64_t rt_codeeditor_get_show_line_numbers(void *editor) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return 1; // Default to showing
-    return ((vg_codeeditor_t *)editor)->show_line_numbers ? 1 : 0;
+    return ce->show_line_numbers ? 1 : 0;
 }
 
 /// @brief `CodeEditor.SetLineNumberWidth(width)` — set gutter width in characters.
@@ -590,9 +663,9 @@ int64_t rt_codeeditor_get_show_line_numbers(void *editor) {
 /// Internally stored as pixels (`width * char_width`) so layout doesn't
 /// have to keep recomputing it.
 void rt_codeeditor_set_line_number_width(void *editor, int64_t width) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     ce->line_number_width_override = width > 0 ? (float)((int)width) : 0.0f;
     vg_codeeditor_refresh_layout_state(ce);
 }
@@ -655,9 +728,9 @@ static vg_icon_t rt_codeeditor_icon_from_pixels(void *pixels) {
 /// for the icons array. Default per-slot tint colors are red/orange/
 /// red/blue.
 void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int64_t slot) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     int line_i = rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX);
     /* slot maps to icon type: 0=breakpoint, 1=warning, 2=error, 3=info */
     int type = (int)(slot & 3);
@@ -697,9 +770,9 @@ void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int
 ///
 /// Swap-with-last compaction. No-op if no matching icon exists.
 void rt_codeeditor_clear_gutter_icon(void *editor, int64_t line, int64_t slot) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     int line_i = rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX);
     int type = (int)(slot & 3);
     for (int i = 0; i < ce->gutter_icon_count; i++) {
@@ -721,9 +794,9 @@ void rt_codeeditor_clear_gutter_icon(void *editor, int64_t line, int64_t slot) {
 /// In-place compaction by writing kept entries to `[0..w)` and clearing
 /// the trailing slots. Useful for "clear all breakpoints" type ops.
 void rt_codeeditor_clear_all_gutter_icons(void *editor, int64_t slot) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     int type = (int)(slot & 3);
     int w = 0;
     int original_count = ce->gutter_icon_count;
@@ -769,9 +842,9 @@ void rt_gui_clear_gutter_click(void) {
 /// subsequent reads return 0 until the next click. Pair with
 /// `GetGutterClickedLine`/`Slot` for the click coordinates.
 int64_t rt_codeeditor_was_gutter_clicked(void *editor) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return 0;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     int64_t result = ce->gutter_clicked ? 1 : 0;
     ce->gutter_clicked = false; // Edge-triggered: clear after read
     return result;
@@ -782,16 +855,18 @@ int64_t rt_codeeditor_was_gutter_clicked(void *editor) {
 /// Returns -1 for NULL receiver or no click. Stale after `WasGutterClicked`
 /// reads/clears the flag.
 int64_t rt_codeeditor_get_gutter_clicked_line(void *editor) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return -1;
-    return ((vg_codeeditor_t *)editor)->gutter_clicked_line;
+    return ce->gutter_clicked_line;
 }
 
 /// @brief `CodeEditor.GetGutterClickedSlot` — slot index of the most recent click.
 int64_t rt_codeeditor_get_gutter_clicked_slot(void *editor) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return -1;
-    return ((vg_codeeditor_t *)editor)->gutter_clicked_slot;
+    return ce->gutter_clicked_slot;
 }
 
 /// @brief `CodeEditor.SetShowFoldGutter(show)` — toggle the fold-region gutter.
@@ -799,9 +874,9 @@ int64_t rt_codeeditor_get_gutter_clicked_slot(void *editor) {
 /// The fold gutter sits next to the line-number gutter and shows
 /// triangle indicators next to foldable regions.
 void rt_codeeditor_set_show_fold_gutter(void *editor, int64_t show) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     ce->show_fold_gutter = show != 0;
     vg_codeeditor_refresh_layout_state(ce);
 }
@@ -816,9 +891,9 @@ void rt_codeeditor_set_show_fold_gutter(void *editor, int64_t show) {
 /// or in bulk via `FoldAll`/`UnfoldAll`. Initial state is unfolded.
 /// No overlap detection — caller is responsible for sane region layout.
 void rt_codeeditor_add_fold_region(void *editor, int64_t start_line, int64_t end_line) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     if (start_line < 0)
         start_line = 0;
     if (end_line >= ce->line_count)
@@ -857,9 +932,9 @@ void rt_codeeditor_add_fold_region(void *editor, int64_t start_line, int64_t end
 /// Identified by the start line. Swap-with-last compaction. No-op if
 /// no region starts at the given line.
 void rt_codeeditor_remove_fold_region(void *editor, int64_t start_line) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     int start_i = rt_gui_clamp_i64_to_i32(start_line, 0, INT32_MAX);
     for (int i = 0; i < ce->fold_region_count; i++) {
         if (ce->fold_regions[i].start_line == start_i) {
@@ -872,9 +947,9 @@ void rt_codeeditor_remove_fold_region(void *editor, int64_t start_line) {
 
 /// @brief `CodeEditor.ClearFoldRegions` — drop every registered fold region.
 void rt_codeeditor_clear_fold_regions(void *editor) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     free(ce->fold_regions);
     ce->fold_regions = NULL;
     ce->fold_region_count = 0;
@@ -884,9 +959,9 @@ void rt_codeeditor_clear_fold_regions(void *editor) {
 
 /// @brief `CodeEditor.Fold(line)` — collapse the region starting at `line`.
 void rt_codeeditor_fold(void *editor, int64_t line) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     int line_i = rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX);
     for (int i = 0; i < ce->fold_region_count; i++) {
         if (ce->fold_regions[i].start_line == line_i) {
@@ -899,9 +974,9 @@ void rt_codeeditor_fold(void *editor, int64_t line) {
 
 /// @brief `CodeEditor.Unfold(line)` — expand the region starting at `line`.
 void rt_codeeditor_unfold(void *editor, int64_t line) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     int line_i = rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX);
     for (int i = 0; i < ce->fold_region_count; i++) {
         if (ce->fold_regions[i].start_line == line_i) {
@@ -914,9 +989,9 @@ void rt_codeeditor_unfold(void *editor, int64_t line) {
 
 /// @brief `CodeEditor.ToggleFold(line)` — flip the folded state of one region.
 void rt_codeeditor_toggle_fold(void *editor, int64_t line) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     int line_i = rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX);
     for (int i = 0; i < ce->fold_region_count; i++) {
         if (ce->fold_regions[i].start_line == line_i) {
@@ -929,9 +1004,9 @@ void rt_codeeditor_toggle_fold(void *editor, int64_t line) {
 
 /// @brief `CodeEditor.IsFolded(line)` — true iff the region starting at `line` is collapsed.
 int64_t rt_codeeditor_is_folded(void *editor, int64_t line) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return 0;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     int line_i = rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX);
     for (int i = 0; i < ce->fold_region_count; i++) {
         if (ce->fold_regions[i].start_line == line_i)
@@ -942,9 +1017,9 @@ int64_t rt_codeeditor_is_folded(void *editor, int64_t line) {
 
 /// @brief `CodeEditor.FoldAll` — collapse every fold region.
 void rt_codeeditor_fold_all(void *editor) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     for (int i = 0; i < ce->fold_region_count; i++)
         ce->fold_regions[i].folded = true;
     vg_codeeditor_refresh_layout_state(ce);
@@ -952,9 +1027,9 @@ void rt_codeeditor_fold_all(void *editor) {
 
 /// @brief `CodeEditor.UnfoldAll` — expand every fold region.
 void rt_codeeditor_unfold_all(void *editor) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     for (int i = 0; i < ce->fold_region_count; i++)
         ce->fold_regions[i].folded = false;
     vg_codeeditor_refresh_layout_state(ce);
@@ -968,9 +1043,9 @@ void rt_codeeditor_unfold_all(void *editor) {
 /// indentation drops back. Blank lines extend the fold (don't break it).
 /// Replaces any manually-added regions. No effect if the buffer is empty.
 void rt_codeeditor_set_auto_fold_detection(void *editor, int64_t enable) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     ce->auto_fold_detection = enable != 0;
 
     // When enabling, immediately detect fold regions from indentation.
@@ -1073,9 +1148,9 @@ static void rt_codeeditor_clamp_position(vg_codeeditor_t *ce, int *line, int *co
 /// Always 1 + extras; the primary cursor is always present. Returns 1
 /// for NULL receiver to match the "at least one cursor" invariant.
 int64_t rt_codeeditor_get_cursor_count(void *editor) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return 1;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     return 1 + ce->extra_cursor_count;
 }
 
@@ -1085,9 +1160,9 @@ int64_t rt_codeeditor_get_cursor_count(void *editor) {
 /// indices 1, 2, … Position is clamped to a valid buffer position.
 /// Geometric growth (cap doubles, starting at 4).
 void rt_codeeditor_add_cursor(void *editor, int64_t line, int64_t col) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     if (ce->extra_cursor_count >= ce->extra_cursor_cap) {
         if (ce->extra_cursor_cap > INT_MAX / 2)
             return;
@@ -1113,9 +1188,9 @@ void rt_codeeditor_add_cursor(void *editor, int64_t line, int64_t col) {
 /// the editor). Indices 1+ refer to entries in the `extra_cursors`
 /// array. Shifts remaining cursors down to keep the array dense.
 void rt_codeeditor_remove_cursor(void *editor, int64_t index) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     if (index <= 0 || index > INT32_MAX)
         return;
     int idx = (int)index - 1; /* index 0 = primary cursor (not in extra array) */
@@ -1133,9 +1208,9 @@ void rt_codeeditor_remove_cursor(void *editor, int64_t index) {
 /// Primary cursor stays. Useful for "Escape" key handling in
 /// multi-cursor editing modes.
 void rt_codeeditor_clear_extra_cursors(void *editor) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     free(ce->extra_cursors);
     ce->extra_cursors = NULL;
     ce->extra_cursor_count = 0;
@@ -1148,9 +1223,9 @@ void rt_codeeditor_clear_extra_cursors(void *editor) {
 /// Index 0 is the primary cursor; 1+ are extras. Out-of-range
 /// returns 0 (defensive default).
 int64_t rt_codeeditor_get_cursor_line_at(void *editor, int64_t index) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return 0;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     if (index == 0)
         return ce->cursor_line;
     if (index < 0 || index > INT32_MAX)
@@ -1163,9 +1238,9 @@ int64_t rt_codeeditor_get_cursor_line_at(void *editor, int64_t index) {
 
 /// @brief `CodeEditor.GetCursorColAt(index)` — column of the i-th cursor.
 int64_t rt_codeeditor_get_cursor_col_at(void *editor, int64_t index) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return 0;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     if (index == 0)
         return ce->cursor_col;
     if (index < 0 || index > INT32_MAX)
@@ -1192,9 +1267,9 @@ int64_t rt_codeeditor_get_cursor_col(void *editor) {
 /// scrolls the viewport). Index 1+ updates the extras directly.
 /// Position is clamped; selection is cleared.
 void rt_codeeditor_set_cursor_position_at(void *editor, int64_t index, int64_t line, int64_t col) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     int line_i = rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX);
     int col_i = rt_gui_clamp_i64_to_i32(col, 0, INT32_MAX);
     if (index == 0) {
@@ -1226,9 +1301,9 @@ void rt_codeeditor_set_cursor_selection(void *editor,
                                         int64_t start_col,
                                         int64_t end_line,
                                         int64_t end_col) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     int s_line = rt_gui_clamp_i64_to_i32(start_line, 0, INT32_MAX);
     int s_col = rt_gui_clamp_i64_to_i32(start_col, 0, INT32_MAX);
     int e_line = rt_gui_clamp_i64_to_i32(end_line, 0, INT32_MAX);
@@ -1262,9 +1337,9 @@ void rt_codeeditor_set_cursor_selection(void *editor,
 /// Index 0 reads the editor's main `has_selection` flag; extras keep
 /// their own per-cursor flag set by `SetCursorSelection`.
 int64_t rt_codeeditor_cursor_has_selection(void *editor, int64_t index) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return 0;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     if (index == 0)
         return ce->has_selection ? 1 : 0;
     if (index < 0 || index > INT32_MAX)
@@ -1280,84 +1355,91 @@ int64_t rt_codeeditor_cursor_has_selection(void *editor, int64_t index) {
 
 /// @brief `CodeEditor.Undo` — pop one entry from the undo stack.
 void rt_codeeditor_undo(void *editor) {
-    if (editor)
-        vg_codeeditor_undo((vg_codeeditor_t *)editor);
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (ce)
+        vg_codeeditor_undo(ce);
 }
 
 /// @brief `CodeEditor.Redo` — re-apply one undone entry.
 void rt_codeeditor_redo(void *editor) {
-    if (editor)
-        vg_codeeditor_redo((vg_codeeditor_t *)editor);
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (ce)
+        vg_codeeditor_redo(ce);
 }
 
 /// @brief `CodeEditor.CanUndo` — true when the undo stack has an available entry.
 int64_t rt_codeeditor_can_undo(void *editor) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return 0;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     return (ce->history && ce->history->current_index > 0) ? 1 : 0;
 }
 
 /// @brief `CodeEditor.CanRedo` — true when the redo stack has an available entry.
 int64_t rt_codeeditor_can_redo(void *editor) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return 0;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     return (ce->history && ce->history->current_index < ce->history->count) ? 1 : 0;
 }
 
 /// @brief `CodeEditor.Copy` — copy selection to the system clipboard. Returns 1 on success.
 int64_t rt_codeeditor_copy(void *editor) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return 0;
-    return vg_codeeditor_copy((vg_codeeditor_t *)editor) ? 1 : 0;
+    return vg_codeeditor_copy(ce) ? 1 : 0;
 }
 
 /// @brief `CodeEditor.Cut` — copy selection then delete. Returns 1 on success.
 int64_t rt_codeeditor_cut(void *editor) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return 0;
-    return vg_codeeditor_cut((vg_codeeditor_t *)editor) ? 1 : 0;
+    return vg_codeeditor_cut(ce) ? 1 : 0;
 }
 
 /// @brief `CodeEditor.Paste` — insert clipboard text at cursor. Returns 1 on success.
 int64_t rt_codeeditor_paste(void *editor) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return 0;
-    return vg_codeeditor_paste((vg_codeeditor_t *)editor) ? 1 : 0;
+    return vg_codeeditor_paste(ce) ? 1 : 0;
 }
 
 /// @brief `CodeEditor.SelectAll` — selection from buffer start to end.
 void rt_codeeditor_select_all(void *editor) {
-    if (editor)
-        vg_codeeditor_select_all((vg_codeeditor_t *)editor);
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (ce)
+        vg_codeeditor_select_all(ce);
 }
 
 /// @brief `CodeEditor.SetTabSize` — set tab width in spaces.
 void rt_codeeditor_set_tab_size(void *editor, int64_t size) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
     if (size < 1)
         size = 1;
     if (size > 16)
         size = 16;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     ce->tab_width = (int)size;
     ce->base.needs_paint = true;
 }
 
 /// @brief `CodeEditor.GetTabSize` — return tab width in spaces.
 int64_t rt_codeeditor_get_tab_size(void *editor) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return 0;
-    return ((vg_codeeditor_t *)editor)->tab_width;
+    return ce->tab_width;
 }
 
 /// @brief `CodeEditor.SetWordWrap` — toggle display-only word wrapping.
 void rt_codeeditor_set_word_wrap(void *editor, int64_t enabled) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     ce->word_wrap = enabled != 0;
     if (ce->word_wrap)
         ce->scroll_x = 0.0f;
@@ -1367,9 +1449,10 @@ void rt_codeeditor_set_word_wrap(void *editor, int64_t enabled) {
 
 /// @brief `CodeEditor.GetWordWrap` — return display-only word wrapping state.
 int64_t rt_codeeditor_get_word_wrap(void *editor) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return 0;
-    return ((vg_codeeditor_t *)editor)->word_wrap ? 1 : 0;
+    return ce->word_wrap ? 1 : 0;
 }
 
 //=============================================================================
@@ -1654,9 +1737,9 @@ static void rt_codeeditor_locate_visual_row(const vg_codeeditor_t *ce,
 /// @details Combines the widget's screen-space origin, gutter width, and
 ///          cursor column × character width.
 int64_t rt_codeeditor_get_cursor_pixel_x(void *editor) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return 0;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     float ax = 0, ay = 0;
     vg_widget_get_screen_bounds(&ce->base, &ax, &ay, NULL, NULL);
     (void)ay;
@@ -1677,9 +1760,9 @@ int64_t rt_codeeditor_get_cursor_pixel_x(void *editor) {
 /// @details Combines the widget's screen-space origin with the cursor's
 ///          visible line offset scaled by line height.
 int64_t rt_codeeditor_get_cursor_pixel_y(void *editor) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return 0;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     float ax = 0, ay = 0;
     vg_widget_get_screen_bounds(&ce->base, &ax, &ay, NULL, NULL);
     (void)ax;
@@ -1693,9 +1776,9 @@ int64_t rt_codeeditor_get_cursor_pixel_y(void *editor) {
 
 /// @brief Return the 0-based editor line at a screen-absolute Y coordinate.
 int64_t rt_codeeditor_get_line_at_pixel(void *editor, int64_t y) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return -1;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     if (ce->line_count <= 0 || ce->line_height <= 0.0f)
         return -1;
 
@@ -1717,9 +1800,9 @@ int64_t rt_codeeditor_get_line_at_pixel(void *editor, int64_t y) {
 
 /// @brief Return the 0-based editor column at a screen-absolute X/Y coordinate.
 int64_t rt_codeeditor_get_col_at_pixel(void *editor, int64_t x, int64_t y) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return -1;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     if (ce->line_count <= 0 || ce->char_width <= 0.0f)
         return -1;
 
@@ -1758,21 +1841,22 @@ int64_t rt_codeeditor_get_col_at_pixel(void *editor, int64_t x, int64_t y) {
 
 /// @brief Insert text at the primary cursor position.
 void rt_codeeditor_insert_at_cursor(void *editor, rt_string text) {
-    if (!editor || !text)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce || !text)
         return;
     char *cstr = rt_string_to_cstr(text);
     if (!cstr)
         return;
-    vg_codeeditor_insert_text((vg_codeeditor_t *)editor, cstr);
+    vg_codeeditor_insert_text(ce, cstr);
     free(cstr);
 }
 
 /// @brief Return the identifier word under the primary cursor.
 /// @details Scans left and right from cursor_col over [A-Za-z0-9_] characters.
 rt_string rt_codeeditor_get_word_at_cursor(void *editor) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return rt_str_empty();
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     if (ce->cursor_line < 0 || ce->cursor_line >= ce->line_count)
         return rt_str_empty();
     const char *text = ce->lines[ce->cursor_line].text;
@@ -1796,9 +1880,9 @@ rt_string rt_codeeditor_get_word_at_cursor(void *editor) {
 /// @details Selects the same word range that get_word_at_cursor() would return,
 ///          then inserts the replacement via vg_codeeditor_insert_text.
 void rt_codeeditor_replace_word_at_cursor(void *editor, rt_string new_text) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return;
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     if (ce->cursor_line < 0 || ce->cursor_line >= ce->line_count)
         return;
     const char *text = ce->lines[ce->cursor_line].text;
@@ -1814,20 +1898,19 @@ void rt_codeeditor_replace_word_at_cursor(void *editor, rt_string new_text) {
         ++end;
 
     /* select the word, then insert the replacement (replaces selection) */
-    vg_codeeditor_set_selection(
-        (vg_codeeditor_t *)editor, ce->cursor_line, start, ce->cursor_line, end);
+    vg_codeeditor_set_selection(ce, ce->cursor_line, start, ce->cursor_line, end);
     char *cstr = rt_string_to_cstr(new_text);
     if (cstr) {
-        vg_codeeditor_insert_text((vg_codeeditor_t *)editor, cstr);
+        vg_codeeditor_insert_text(ce, cstr);
         free(cstr);
     }
 }
 
 /// @brief Return the text of a single line (0-based index).
 rt_string rt_codeeditor_get_line(void *editor, int64_t line_index) {
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
         return rt_str_empty();
-    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     if (line_index < 0 || line_index >= (int64_t)ce->line_count)
         return rt_str_empty();
     vg_code_line_t *line = &ce->lines[(int)line_index];

@@ -126,6 +126,10 @@ using TargetPlatform = CodegenOptions::TargetPlatform;
     return {"clang", "--target=x86_64-unknown-linux-gnu"};
 }
 
+/// @brief Return the first path in @p candidates that exists on disk, else empty.
+/// @details Used to probe Release / Debug / no-config sub-paths under CMake
+///          build directories so the same code works against single- and
+///          multi-config generators.
 std::filesystem::path pickFirstExisting(std::initializer_list<std::filesystem::path> candidates) {
     for (const auto &candidate : candidates) {
         if (common::fileExists(candidate))
@@ -232,6 +236,12 @@ int runExecutable(const std::filesystem::path &exePath, std::ostream &out, std::
     return common::runExecutable(toNativePath(exePath), out, err);
 }
 
+/// @brief Append runtime archive paths required by @p ctx in dependency order.
+/// @details Deduplicates by absolute path. On Windows, when the Base component
+///          is required, also pulls in Oop/Arrays/Collections/Threads/Text/IoFs
+///          because Windows CRT startup expects them. Graphics and Audio
+///          support libraries are appended when the corresponding runtime
+///          components are present in the link context.
 void collectNativeLinkArchives(const common::LinkContext &ctx, std::vector<std::string> &archives) {
     std::unordered_set<std::string> seenArchives;
 
@@ -279,6 +289,11 @@ void collectNativeLinkArchives(const common::LinkContext &ctx, std::vector<std::
 
 }
 
+/// @brief Link @p objPath into @p exePath using Viper's in-process linker.
+/// @details Fills NativeLinkerOptions from @p ctx and the caller's flags,
+///          collects archive paths via collectNativeLinkArchives, and invokes
+///          linker::nativeLink. Errors are written to @p err and surfaced via
+///          a non-zero return value.
 int linkObjectWithNativeLinker(const std::filesystem::path &objPath,
                                const std::filesystem::path &exePath,
                                const common::LinkContext &ctx,

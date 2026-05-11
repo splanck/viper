@@ -75,6 +75,9 @@ typedef SOCKET socket_t;
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#if !defined(__viperdos__)
+#include <poll.h>
+#endif
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -99,6 +102,7 @@ typedef int socket_t;
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <poll.h>
 #include <sys/ioctl.h>
 #include <sys/select.h>
 #include <sys/socket.h>
@@ -212,6 +216,14 @@ void rt_net_init_wsa(void);
 
 /// @brief Set socket timeout for send or receive.
 void set_socket_timeout(socket_t sock, int timeout_ms, bool is_recv);
+
+/// @brief Convert a public int64 millisecond timeout to the socket helper range.
+/// @return 1 on success, 0 if negative or larger than INT_MAX.
+int rt_net_timeout_ms_to_int(int64_t timeout_ms, int *out_timeout_ms);
+
+/// @brief Convert a positive byte count to an int-sized socket API length.
+/// @return 1 on success, 0 if the count is larger than INT_MAX.
+int rt_net_i64_len_to_int(int64_t byte_count, int *out_len);
 
 /// @brief Wait for socket to become readable/writable with timeout.
 /// @return 1 if ready, 0 if timeout, -1 on error.

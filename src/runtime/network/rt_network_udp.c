@@ -510,6 +510,9 @@ void *rt_udp_recv_from(void *obj, int64_t max_bytes) {
 
     if (max_bytes <= 0)
         return rt_bytes_new(0);
+    int recv_len = 0;
+    if (!rt_net_i64_len_to_int(max_bytes, &recv_len))
+        rt_trap("Network: receive size too large");
 
     // Allocate receive buffer
     void *result = rt_bytes_new(max_bytes);
@@ -519,7 +522,7 @@ void *rt_udp_recv_from(void *obj, int64_t max_bytes) {
     socklen_t sender_len = sizeof(sender_addr);
 
     int received = recvfrom(
-        udp->sock, (char *)buf, (int)max_bytes, 0, (struct sockaddr *)&sender_addr, &sender_len);
+        udp->sock, (char *)buf, recv_len, 0, (struct sockaddr *)&sender_addr, &sender_len);
 
     if (received == SOCK_ERROR) {
         // Check for timeout
@@ -534,6 +537,8 @@ void *rt_udp_recv_from(void *obj, int64_t max_bytes) {
                 rt_obj_free(result);
             return rt_bytes_new(0);
         }
+        if (rt_obj_release_check0(result))
+            rt_obj_free(result);
         rt_trap_net("Network: receive failed", net_classify_errno());
     }
 
@@ -564,9 +569,15 @@ void *rt_udp_recv_for(void *obj, int64_t max_bytes, int64_t timeout_ms) {
     if (!udp->is_open)
         rt_trap_net("Network: socket closed", Err_ConnectionClosed);
 
+    if (timeout_ms < 0)
+        rt_trap("Network: invalid timeout");
+
     // Use select for timeout
     if (timeout_ms > 0) {
-        int ready = wait_socket(udp->sock, (int)timeout_ms, false);
+        int timeout_int = 0;
+        if (!rt_net_timeout_ms_to_int(timeout_ms, &timeout_int))
+            rt_trap("Network: invalid timeout");
+        int ready = wait_socket(udp->sock, timeout_int, false);
         if (ready == 0) {
             // Timeout - return NULL
             return NULL;
@@ -731,8 +742,11 @@ void rt_udp_set_recv_timeout(void *obj, int64_t timeout_ms) {
         rt_trap("Network: NULL socket");
 
     rt_udp_t *udp = (rt_udp_t *)obj;
-    udp->recv_timeout_ms = (int)timeout_ms;
-    set_socket_timeout(udp->sock, (int)timeout_ms, true);
+    int timeout_int = 0;
+    if (!rt_net_timeout_ms_to_int(timeout_ms, &timeout_int))
+        rt_trap("Network: invalid timeout");
+    udp->recv_timeout_ms = timeout_int;
+    set_socket_timeout(udp->sock, timeout_int, true);
 }
 
 /// @brief Explicit close — releases the kernel socket immediately rather than waiting for GC.

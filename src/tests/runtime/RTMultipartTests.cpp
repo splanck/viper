@@ -100,12 +100,51 @@ static void test_parser_handles_bare_token_params() {
     rt_string_unref(field);
 }
 
+static void test_builder_preserves_empty_parts_and_final_boundary() {
+    printf("\nTesting Multipart empty parts and terminator:\n");
+
+    void *mp = rt_multipart_new();
+    void *empty_file = rt_bytes_new(0);
+    rt_multipart_add_field(mp, rt_const_cstr("empty"), rt_const_cstr(""));
+    rt_multipart_add_file(mp, rt_const_cstr("upload"), rt_const_cstr("empty.bin"), empty_file);
+
+    rt_string content_type = rt_multipart_content_type(mp);
+    void *body = rt_multipart_build(mp);
+    rt_string text = rt_bytes_to_str(body);
+    const char *ct = rt_string_cstr(content_type);
+    const char *cstr = rt_string_cstr(text);
+    const char *boundary = ct ? strstr(ct, "boundary=") : nullptr;
+    char final_boundary[160];
+    bool final_ok = false;
+    if (boundary && cstr) {
+        boundary += strlen("boundary=");
+        snprintf(final_boundary, sizeof(final_boundary), "--%s--\r\n", boundary);
+        int64_t text_len = rt_str_len(text);
+        size_t final_len = strlen(final_boundary);
+        final_ok = text_len >= (int64_t)final_len &&
+                   memcmp(cstr + text_len - (int64_t)final_len, final_boundary, final_len) == 0;
+    }
+    test_result("Multipart body ends with final boundary", final_ok);
+
+    void *parsed = rt_multipart_parse(content_type, body);
+    test_result("Multipart parser keeps empty field and file", rt_multipart_count(parsed) == 2);
+    rt_string field = rt_multipart_get_field(parsed, rt_const_cstr("empty"));
+    test_result("Empty field value round-trips", rt_str_len(field) == 0);
+    rt_string_unref(field);
+    void *file = rt_multipart_get_file(parsed, rt_const_cstr("upload"));
+    test_result("Empty file value round-trips", rt_bytes_len(file) == 0);
+
+    rt_string_unref(text);
+    rt_string_unref(content_type);
+}
+
 int main() {
     printf("=== RT Multipart Tests ===\n\n");
 
     test_builder_escapes_header_params();
     test_parser_handles_quoted_and_escaped_params();
     test_parser_handles_bare_token_params();
+    test_builder_preserves_empty_parts_and_final_boundary();
 
     printf("\nAll Multipart tests passed.\n");
     return 0;

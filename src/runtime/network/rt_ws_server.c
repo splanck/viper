@@ -544,7 +544,7 @@ void rt_ws_server_start(void *obj) {
 }
 
 /// @brief Stop the server: set `running=false`, close the TCP listener (which unblocks
-/// `accept_for`), join the accept thread (5s wait on Win32), then close every active client
+/// `accept_for`), join the accept thread, then close every active client
 /// connection under the mutex. Designed to be safely called from any thread.
 void rt_ws_server_stop(void *obj) {
     if (!obj)
@@ -561,7 +561,7 @@ void rt_ws_server_stop(void *obj) {
 
     if (s->thread_started) {
 #ifdef _WIN32
-        WaitForSingleObject(s->accept_thread, 5000);
+        WaitForSingleObject(s->accept_thread, INFINITE);
         CloseHandle(s->accept_thread);
 #else
         pthread_join(s->accept_thread, NULL);

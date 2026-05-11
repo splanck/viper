@@ -1268,7 +1268,11 @@ void rt_minimap_bind_editor(void *minimap, void *editor) {
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
     if (!data->minimap)
         return;
-    vg_minimap_set_editor(data->minimap, (vg_codeeditor_t *)editor);
+    vg_codeeditor_t *target =
+        (vg_codeeditor_t *)rt_gui_widget_handle_checked_type(editor, VG_WIDGET_CODEEDITOR);
+    if (!target)
+        return;
+    vg_minimap_set_editor(data->minimap, target);
     vg_widget_invalidate(&data->minimap->base);
 }
 
@@ -1447,63 +1451,77 @@ typedef struct rt_drag_drop_data {
 /// @brief Set the draggable of the widget.
 void rt_widget_set_draggable(void *widget, int64_t draggable) {
     RT_ASSERT_MAIN_THREAD();
-    if (!widget)
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (!w)
         return;
-    ((vg_widget_t *)widget)->draggable = draggable != 0;
+    w->draggable = draggable != 0;
 }
 
 /// @brief Set the drag data of the widget.
 void rt_widget_set_drag_data(void *widget, rt_string type, rt_string data) {
     RT_ASSERT_MAIN_THREAD();
-    if (!widget)
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (!w)
         return;
-    vg_widget_t *w = (vg_widget_t *)widget;
+    char *new_type = type ? rt_string_to_cstr(type) : NULL;
+    char *new_data = data ? rt_string_to_cstr(data) : NULL;
+    if ((type && !new_type) || (data && !new_data)) {
+        free(new_type);
+        free(new_data);
+        return;
+    }
     free(w->drag_type);
     free(w->drag_data);
-    w->drag_type = rt_string_to_cstr(type);
-    w->drag_data = rt_string_to_cstr(data);
+    w->drag_type = new_type;
+    w->drag_data = new_data;
 }
 
 /// @brief Check whether a widget is currently being dragged.
 int64_t rt_widget_is_being_dragged(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    if (!widget)
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (!w)
         return 0;
-    return ((vg_widget_t *)widget)->_is_being_dragged ? 1 : 0;
+    return w->_is_being_dragged ? 1 : 0;
 }
 
 /// @brief Get a value from the widget.
 void rt_widget_set_drop_target(void *widget, int64_t target) {
     RT_ASSERT_MAIN_THREAD();
-    if (!widget)
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (!w)
         return;
-    ((vg_widget_t *)widget)->is_drop_target = target != 0;
+    w->is_drop_target = target != 0;
 }
 
 /// @brief Set the accepted drop types of the widget.
 void rt_widget_set_accepted_drop_types(void *widget, rt_string types) {
     RT_ASSERT_MAIN_THREAD();
-    if (!widget)
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (!w)
         return;
-    vg_widget_t *w = (vg_widget_t *)widget;
+    char *new_types = types ? rt_string_to_cstr(types) : NULL;
+    if (types && !new_types)
+        return;
     free(w->accepted_drop_types);
-    w->accepted_drop_types = rt_string_to_cstr(types);
+    w->accepted_drop_types = new_types;
 }
 
 /// @brief Check whether a dragged item is hovering over this drop target.
 int64_t rt_widget_is_drag_over(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    if (!widget)
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (!w)
         return 0;
-    return ((vg_widget_t *)widget)->_is_drag_over ? 1 : 0;
+    return w->_is_drag_over ? 1 : 0;
 }
 
 /// @brief Check whether a drop was completed on this widget this frame.
 int64_t rt_widget_was_dropped(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    if (!widget)
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (!w)
         return 0;
-    vg_widget_t *w = (vg_widget_t *)widget;
     int64_t result = w->_was_dropped ? 1 : 0;
     w->_was_dropped = false; // Clear after read (edge-triggered)
     return result;
@@ -1512,9 +1530,9 @@ int64_t rt_widget_was_dropped(void *widget) {
 /// @brief Get the drop type of the widget.
 rt_string rt_widget_get_drop_type(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    if (!widget)
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (!w)
         return rt_str_empty();
-    vg_widget_t *w = (vg_widget_t *)widget;
     if (w->_drop_received_type)
         return rt_string_from_bytes(w->_drop_received_type, strlen(w->_drop_received_type));
     return rt_str_empty();
@@ -1523,9 +1541,9 @@ rt_string rt_widget_get_drop_type(void *widget) {
 /// @brief Get the drop data of the widget.
 rt_string rt_widget_get_drop_data(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    if (!widget)
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (!w)
         return rt_str_empty();
-    vg_widget_t *w = (vg_widget_t *)widget;
     if (w->_drop_received_data)
         return rt_string_from_bytes(w->_drop_received_data, strlen(w->_drop_received_data));
     return rt_str_empty();
@@ -1567,6 +1585,10 @@ rt_string rt_app_get_dropped_file(void *app, int64_t index) {
 void rt_gui_file_drop_add(rt_gui_app_t *app, const char *path) {
     if (!app || !path)
         return;
+    char *path_copy = strdup(path);
+    if (!path_copy)
+        return;
+
     // Free old data on first file of a new batch
     if (!app->file_drop.was_dropped) {
         for (int64_t i = 0; i < app->file_drop.file_count; i++)
@@ -1577,12 +1599,20 @@ void rt_gui_file_drop_add(rt_gui_app_t *app, const char *path) {
     }
 
     // Grow array
-    char **new_files = (char **)realloc(app->file_drop.files,
-                                        (size_t)(app->file_drop.file_count + 1) * sizeof(char *));
-    if (!new_files)
+    if (app->file_drop.file_count < 0 ||
+        (size_t)app->file_drop.file_count >= SIZE_MAX / sizeof(char *) - 1) {
+        free(path_copy);
         return;
+    }
+    char **new_files =
+        (char **)realloc(app->file_drop.files,
+                         (size_t)(app->file_drop.file_count + 1) * sizeof(char *));
+    if (!new_files) {
+        free(path_copy);
+        return;
+    }
     app->file_drop.files = new_files;
-    app->file_drop.files[app->file_drop.file_count++] = strdup(path);
+    app->file_drop.files[app->file_drop.file_count++] = path_copy;
     app->file_drop.was_dropped = 1;
 }
 

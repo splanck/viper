@@ -44,6 +44,10 @@ namespace viper::codegen::aarch64 {
 ///            this object.
 class LowerILToMIR {
   public:
+    /// @brief Construct a lowerer bound to a target ABI and an optional string-literal size table.
+    /// @param ti Target info (calling convention, register names, alignment).
+    /// @param stringLiteralByteLengths Optional per-symbol byte-length map for
+    ///        runtime-string materialisation; the pointed-to map must outlive the lowerer.
     explicit LowerILToMIR(
         const TargetInfo &ti,
         const std::unordered_map<std::string, std::size_t> *stringLiteralByteLengths = nullptr) noexcept

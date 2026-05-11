@@ -45,6 +45,11 @@ namespace viper::codegen::x64 {
 
 namespace {
 
+/// @brief Build an @ref OperandPattern from up to three operand kind slots.
+/// @details Stops counting once a @c None slot is encountered, so the
+///          resulting @c count field reflects the true arity. Used by the
+///          encoding table to express what shape of operand list a given
+///          encoding row accepts.
 constexpr OperandPattern makePattern(OperandKind first = OperandKind::None,
                                      OperandKind second = OperandKind::None,
                                      OperandKind third = OperandKind::None) noexcept {
@@ -64,6 +69,10 @@ constexpr OperandPattern makePattern(OperandKind first = OperandKind::None,
     return pattern;
 }
 
+/// @brief Bitwise OR for @ref EncodingFlag values.
+/// @details The enum is a bitflag set; this operator allows compact
+///          composition of flag combinations (e.g.
+///          @c RequiresModRM | UsesImm32 | REXW).
 constexpr EncodingFlag operator|(EncodingFlag lhs, EncodingFlag rhs) noexcept {
     return static_cast<EncodingFlag>(static_cast<std::uint32_t>(lhs) |
                                      static_cast<std::uint32_t>(rhs));
@@ -77,6 +86,11 @@ constexpr EncodingFlag operator|(EncodingFlag lhs, EncodingFlag rhs) noexcept {
 // Include the generated encoding table
 #include "generated/EncodingTable.inc"
 
+/// @brief Predicate: does @p operand satisfy the @p kind constraint?
+/// @details The @ref OperandKind enum supports union variants like
+///          @c RegOrMem, @c LabelOrRegOrMem — this helper decodes those
+///          choices into the appropriate @c std::holds_alternative checks
+///          against the variant operand.
 [[nodiscard]] bool matchesOperandKind(OperandKind kind, const Operand &operand) noexcept {
     switch (kind) {
         case OperandKind::None:
@@ -106,6 +120,10 @@ constexpr EncodingFlag operator|(EncodingFlag lhs, EncodingFlag rhs) noexcept {
     return false;
 }
 
+/// @brief Predicate: does @p operands fit the shape declared by @p pattern?
+/// @details First verifies arity then kind by kind. Used by the encoding
+///          lookup to disambiguate rows that share an opcode (e.g. ADDri
+///          vs. ADDrr).
 [[nodiscard]] bool matchesPattern(const OperandPattern &pattern,
                                   std::span<const Operand> operands) noexcept {
     if (static_cast<std::size_t>(pattern.count) != operands.size()) {
@@ -151,6 +169,10 @@ struct OpFmt {
 // Include the generated OpFmt table
 #include "generated/OpFmtTable.inc"
 
+/// @brief Compute the highest @c MOpcode index referenced by @c kOpFmt.
+/// @details Used to size the constexpr lookup table at compile time so
+///          opcode -> @ref OpFmt resolution is O(1) regardless of how
+///          many entries are present.
 consteval std::size_t maxOpFmtOpcodeIndex() {
     std::size_t maxIndex = 0;
     for (const auto &fmt : kOpFmt)
@@ -192,14 +214,22 @@ const OpFmt *getFmt(MOpcode opc) noexcept {
     return &kOpFmt[tableIdx];
 }
 
+/// @brief Forward declaration: convert an @c OpReg to its asmfmt index.
 [[nodiscard]] int encodeRegister(const OpReg &reg) noexcept;
 
+/// @brief Predicate: would @p name be a Mach-O "local" symbol?
+/// @details Mach-O distinguishes local labels by a leading @c '.' or by
+///          known prefixes such as @c L./@c Ltmp/@c LBB. Local symbols are
+///          not given the standard underscore prefix when formatted.
 [[nodiscard]] bool isDarwinLocalSymbol(std::string_view name) noexcept {
     return !name.empty() &&
            (name.front() == '.' || name.rfind("L.", 0) == 0 || name.rfind("Ltmp", 0) == 0 ||
             name.rfind("LBB", 0) == 0);
 }
 
+/// @brief Format a symbol reference, applying Mach-O underscore prefixing.
+/// @details On Mach-O targets non-local symbols carry a leading underscore
+///          in the textual assembly. ELF/COFF use the raw name.
 [[nodiscard]] std::string formatSymbolReference(std::string_view name, objfile::ObjFormat format) {
     std::string symbol = asmfmt::format_label(name);
     if (format == objfile::ObjFormat::MachO && !symbol.empty() && !isDarwinLocalSymbol(symbol))
@@ -207,6 +237,9 @@ const OpFmt *getFmt(MOpcode opc) noexcept {
     return symbol;
 }
 
+/// @brief Format a symbol reference as a RIP-relative memory operand.
+/// @details Delegates to @ref formatSymbolReference then appends @c "(%rip)"
+///          so the resulting string can be used directly in a load/store.
 [[nodiscard]] std::string formatRipSymbolReference(std::string_view name,
                                                    objfile::ObjFormat format) {
     std::string result = formatSymbolReference(name, format);

@@ -22,6 +22,7 @@
 #include "rt_string.h"
 #include "rt_string_builder.h"
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -39,6 +40,14 @@ typedef struct {
     int64_t pool_size;
     int8_t keep_alive;
 } rest_client;
+
+static int rest_timeout_ms_to_int(int64_t timeout_ms, int *out_timeout_ms) {
+    if (timeout_ms < 0 || timeout_ms > INT_MAX)
+        return 0;
+    if (out_timeout_ms)
+        *out_timeout_ms = (int)timeout_ms;
+    return 1;
+}
 
 //=============================================================================
 // Finalizer
@@ -307,8 +316,11 @@ void rt_restclient_clear_auth(void *obj) {
 void rt_restclient_set_timeout(void *obj, int64_t timeout_ms) {
     if (!obj)
         return;
+    int timeout_int = 0;
+    if (!rest_timeout_ms_to_int(timeout_ms, &timeout_int))
+        rt_trap("RestClient: invalid timeout");
     rest_client *client = (rest_client *)obj;
-    client->timeout_ms = timeout_ms;
+    client->timeout_ms = timeout_int;
 }
 
 /// @brief Check whether this RestClient reuses keep-alive connections.

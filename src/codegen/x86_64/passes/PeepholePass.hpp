@@ -26,6 +26,10 @@ namespace viper::codegen::x64::passes {
 /// @brief Post-RA peephole optimization pass for the x86-64 codegen pipeline.
 class PeepholePass final : public Pass {
   public:
+    /// @brief Run peephole rewrites over physical-register MIR.
+    /// @param module Pipeline state whose @c mir vector is mutated in place.
+    /// @param diags Diagnostic sink for ordering failures.
+    /// @return True on success.
     bool run(Module &module, Diagnostics &diags) override;
 };
 

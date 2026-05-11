@@ -41,19 +41,35 @@
 namespace viper::codegen::x64::lowering {
 namespace {
 
+/// @brief Predicate: does @p kind live in a GPR on x86-64?
+/// @details Duplicate of helpers in other lowering TUs; keeping a local copy
+///          avoids cross-file include churn while these emitters remain
+///          stand-alone.
 [[nodiscard]] bool isIntegerLikeKind(ILValue::Kind kind) noexcept {
     return kind == ILValue::Kind::I64 || kind == ILValue::Kind::I1 || kind == ILValue::Kind::PTR;
 }
 
+/// @brief Predicate: is @p value an immediate of integer-class kind?
 [[nodiscard]] bool isIntegerLikeImmediate(const MIRBuilder &builder,
                                           const ILValue &value) noexcept {
     return builder.isImmediate(value) && isIntegerLikeKind(value.kind);
 }
 
+/// @brief Canonicalise an integer-class IL immediate to its signed 64-bit value.
+/// @details I1 booleans are clamped to {0, 1} before being treated as i64.
 [[nodiscard]] int64_t integerImmediateValue(const ILValue &value) noexcept {
     return value.kind == ILValue::Kind::I1 ? (value.i64 != 0 ? 1 : 0) : value.i64;
 }
 
+/// @brief Translate an IL call argument into the @ref CallArg descriptor.
+/// @details The descriptor records whether the argument is an immediate or
+///          lives in a register and tags it with the calling-convention class
+///          (GPR vs FPR) so the eventual argument shuffle in FrameLowering can
+///          route it to the right slot. F64 immediates have their bit pattern
+///          captured so they can be materialised through a GPR scratch.
+/// @param argVal Source IL value (positional argument).
+/// @param builder Active MIR builder (provides immediate detection and class lookup).
+/// @return Populated @ref CallArg.
 CallArg makeCallArg(const ILValue &argVal, MIRBuilder &builder) {
     CallArg arg{};
     arg.cls =
@@ -82,6 +98,16 @@ CallArg makeCallArg(const ILValue &argVal, MIRBuilder &builder) {
     return arg;
 }
 
+/// @brief Populate the variadic-call metadata on a call plan.
+/// @details Combines static tables (@c isVarArgCallee, @c findRuntimeSignature)
+///          with the lowerer's user-supplied set of known vararg targets. If
+///          the callee is a vararg function the plan records the named-arg
+///          count so the SysV "AL holds XMM count" prologue can be emitted
+///          correctly; for non-variadic callees the named count equals the
+///          actual argument count.
+/// @param plan Call plan being populated (modified in place).
+/// @param callee Symbol name as it appears in IL.
+/// @param builder Active MIR builder (used to consult the user vararg set).
 void applyKnownVarArgMetadata(CallLoweringPlan &plan,
                               std::string_view callee,
                               const MIRBuilder &builder) {
@@ -109,12 +135,24 @@ void applyKnownVarArgMetadata(CallLoweringPlan &plan,
         plan.numNamedArgs = 0;
 }
 
+/// @brief Build a CALL instruction tagged with the supplied call-plan id.
+/// @details Tagged CALLs let the FrameLowering pass find their plan when
+///          emitting argument shuffles and stack adjustment.
 MInstr makePlannedCall(Operand target, uint32_t callPlanId) {
     MInstr call = MInstr::make(MOpcode::CALL, std::vector<Operand>{std::move(target)});
     call.callPlanId = callPlanId;
     return call;
 }
 
+/// @brief Emit @c rt_str_retain_maybe(resultVReg) for a freshly returned value.
+/// @details The runtime helper is no-op when the value is not a managed string,
+///          so it can be applied unconditionally to any call whose result kind
+///          is @c STR. Without this retain the caller's reference count would
+///          remain at whatever the callee returned (typically 1) and an
+///          additional decrement during cleanup would prematurely free the
+///          string.
+/// @param resultVReg Virtual register holding the captured return value.
+/// @param builder Active MIR builder.
 void emitRetainStringResultCall(const VReg &resultVReg, MIRBuilder &builder) {
     CallLoweringPlan retainPlan{};
     retainPlan.callee = "rt_str_retain_maybe";
@@ -127,6 +165,18 @@ void emitRetainStringResultCall(const VReg &resultVReg, MIRBuilder &builder) {
         makePlannedCall(makeLabelOperand(std::string{"rt_str_retain_maybe"}), callPlanId));
 }
 
+/// @brief Move a call's ABI return register into the caller's result vreg.
+/// @details Dispatches on the IL result kind:
+///          - F64 returns travel via the FP return register (XMM0 on SysV /
+///            Win64) and are copied with @c MOVSDrr.
+///          - I1 returns occupy the integer return register (RAX) but only
+///            the low byte is meaningful; @c MOVZXrr8 zero-extends.
+///          - All other GPR kinds use @c MOVrr.
+///          When the result kind is @c STR, the captured value is also
+///          retained via @ref emitRetainStringResultCall.
+/// @param instr Original IL call instruction (used to consult result kind).
+/// @param resultVReg Virtual register that will hold the captured value.
+/// @param builder Active MIR builder.
 void emitCapturedCallResult(const ILInstr &instr, const VReg &resultVReg, MIRBuilder &builder) {
     const Operand resultOp = makeVRegOperand(resultVReg.cls, resultVReg.id);
     if (instr.resultKind == ILValue::Kind::F64) {

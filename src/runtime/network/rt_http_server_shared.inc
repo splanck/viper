@@ -47,6 +47,121 @@ static int contains_crlf(const char *text) {
     return 0;
 }
 
+static int http_token_char(unsigned char c) {
+    if (c <= 0x20 || c == 0x7f)
+        return 0;
+    switch (c) {
+        case '(':
+        case ')':
+        case '<':
+        case '>':
+        case '@':
+        case ',':
+        case ';':
+        case ':':
+        case '\\':
+        case '"':
+        case '/':
+        case '[':
+        case ']':
+        case '?':
+        case '=':
+        case '{':
+        case '}':
+            return 0;
+        default:
+            return 1;
+    }
+}
+
+static bool http_method_is_valid(const char *method, size_t method_len) {
+    if (!method || method_len == 0)
+        return false;
+    for (size_t i = 0; i < method_len; i++) {
+        if (!http_token_char((unsigned char)method[i]))
+            return false;
+    }
+    return true;
+}
+
+static bool http_request_target_bytes_are_valid(const char *target, size_t target_len) {
+    if (!target || target_len == 0)
+        return false;
+    for (size_t i = 0; i < target_len; i++) {
+        unsigned char c = (unsigned char)target[i];
+        if (c <= 0x20 || c == 0x7f || c == '#')
+            return false;
+    }
+    return true;
+}
+
+static bool set_request_target(server_req_t *req, const char *uri, size_t uri_len) {
+    const char *target = uri;
+    size_t target_len = uri_len;
+    const char *qmark = NULL;
+    size_t path_len = 0;
+
+    if (!req || !http_request_target_bytes_are_valid(uri, uri_len))
+        return false;
+
+    if (uri_len == 1 && uri[0] == '*') {
+        req->path = strdup("*");
+        return req->path != NULL;
+    }
+
+    if (uri[0] == '/') {
+        target = uri;
+        target_len = uri_len;
+    } else if ((uri_len >= 7 && strncasecmp(uri, "http://", 7) == 0) ||
+               (uri_len >= 8 && strncasecmp(uri, "https://", 8) == 0)) {
+        const char *authority = uri + (strncasecmp(uri, "https://", 8) == 0 ? 8 : 7);
+        const char *end = uri + uri_len;
+        const char *slash = find_char_bounded(authority, (size_t)(end - authority), '/');
+        const char *query = find_char_bounded(authority, (size_t)(end - authority), '?');
+        const char *host_end = slash ? slash : (query ? query : end);
+        if (host_end == authority)
+            return false;
+        if (slash) {
+            target = slash;
+            target_len = (size_t)(end - slash);
+        } else if (query) {
+            target = query;
+            target_len = (size_t)(end - query);
+        } else {
+            req->path = strdup("/");
+            return req->path != NULL;
+        }
+    } else {
+        return false;
+    }
+
+    qmark = find_char_bounded(target, target_len, '?');
+    if (qmark) {
+        path_len = (size_t)(qmark - target);
+        req->query = (char *)malloc(target_len - path_len);
+        if (!req->query)
+            return false;
+        memcpy(req->query, qmark + 1, target_len - path_len - 1);
+        req->query[target_len - path_len - 1] = '\0';
+    } else {
+        path_len = target_len;
+    }
+
+    if (path_len == 0) {
+        if (target[0] != '?')
+            return false;
+        req->path = strdup("/");
+        return req->path != NULL;
+    }
+
+    req->path = (char *)malloc(path_len + 1);
+    if (!req->path)
+        return false;
+    memcpy(req->path, target, path_len);
+    req->path[path_len] = '\0';
+    return true;
+}
+
 /// @brief Test whether a header name is server-managed.
 static int is_server_managed_header_name(const char *name) {
     return name &&
@@ -312,6 +427,8 @@ static bool parse_http_request(const char *raw, size_t raw_len, server_req_t *re
         return false;
     memcpy(req->method, p, method_len);
     req->method[method_len] = '\0';
+    if (!http_method_is_valid(req->method, method_len))
+        goto fail;
 
     p = space + 1;
     space = find_char_bounded(p, (size_t)(line_end - p), ' ');
@@ -325,19 +442,11 @@ static bool parse_http_request(const char *raw, size_t raw_len, server_req_t *re
     memcpy(uri, p, uri_len);
     uri[uri_len] = '\0';
 
-    char *qmark = strchr(uri, '?');
-    if (qmark) {
-        *qmark = '\0';
-        req->query = strdup(qmark + 1);
-        if (!req->query) {
-            free(uri);
-            goto fail;
-        }
-    }
-    req->path = strdup(uri);
-    free(uri);
-    if (!req->path)
+    if (!set_request_target(req, uri, uri_len)) {
+        free(uri);
         goto fail;
+    }
+    free(uri);
 
     p = space + 1;
     if ((size_t)(line_end - p) != strlen("HTTP/1.1") || strncmp(p, "HTTP/1.", 7) != 0 ||

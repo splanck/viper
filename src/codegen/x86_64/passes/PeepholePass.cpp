@@ -33,12 +33,18 @@
 namespace viper::codegen::x64::passes {
 namespace {
 
+/// @brief Check whether the codegen-stats environment toggle is active.
+/// @details Looks at @c VIPER_CODEGEN_STATS — any non-empty value other
+///          than @c "0" enables verbose stats reporting. Used so noisy
+///          diagnostic output stays off by default.
+/// @return True when stats reporting should be emitted.
 [[nodiscard]] bool codegenStatsEnabled() noexcept {
     if (const char *value = std::getenv("VIPER_CODEGEN_STATS"))
         return value[0] != '\0' && value[0] != '0';
     return false;
 }
 
+/// @brief Accumulator for MIR shape statistics emitted by the peephole pass.
 struct MirStats {
     std::size_t functions = 0;
     std::size_t blocks = 0;
@@ -49,16 +55,24 @@ struct MirStats {
     std::size_t stores = 0;
 };
 
+/// @brief Predicate: does @p opcode read memory into a register?
+/// @details Used only by the optional stats counter — does not change codegen.
 [[nodiscard]] bool isLoadOpcode(MOpcode opcode) noexcept {
     return opcode == MOpcode::MOVmr || opcode == MOpcode::MOVSDmr ||
            opcode == MOpcode::MOVUPSmr || opcode == MOpcode::POP;
 }
 
+/// @brief Predicate: does @p opcode write a register to memory?
 [[nodiscard]] bool isStoreOpcode(MOpcode opcode) noexcept {
     return opcode == MOpcode::MOVrm || opcode == MOpcode::MOVSDrm ||
            opcode == MOpcode::MOVUPSrm || opcode == MOpcode::PUSH;
 }
 
+/// @brief Fold per-function MIR statistics into @p stats.
+/// @details Used only when the codegen-stats env var is active so the
+///          peephole pass can emit a summary at the end. Each accumulator
+///          is per-thread when peephole runs in parallel; results are
+///          merged under a mutex by the caller.
 void accumulateStats(const MFunction &fn, MirStats &stats) {
     ++stats.functions;
     stats.blocks += fn.blocks.size();
@@ -80,6 +94,14 @@ void accumulateStats(const MFunction &fn, MirStats &stats) {
 
 } // namespace
 
+/// @brief Run peephole rewrites over every function in @p module.
+/// @details Dispatches per-function work either serially (small modules) or
+///          across all hardware threads (large modules). Each worker pulls
+///          the next function index atomically. Disabled at -O0 to keep
+///          compile latency tight.
+/// @param module Pipeline state whose @c mir vector is mutated in place.
+/// @param diags Diagnostic sink; also receives the optional stats summary.
+/// @return True on success or when peepholes are skipped.
 bool PeepholePass::run(Module &module, Diagnostics &diags) {
     if (!module.registersAllocated) {
         diags.error("peephole: register allocation must run before backend optimization");

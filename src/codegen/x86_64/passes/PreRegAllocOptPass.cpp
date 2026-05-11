@@ -22,6 +22,13 @@
 
 namespace viper::codegen::x64::passes {
 
+/// @brief Run pre-RA MIR cleanup if optimisation is enabled.
+/// @details Disabled at -O0 to keep the compile pipeline tight. Verifies the
+///          legalisation/regalloc gating before applying transformations so
+///          stale pipeline state is reported rather than silently absorbed.
+/// @param module Pipeline state whose @c mir is mutated in place.
+/// @param diags Diagnostic sink.
+/// @return True on success (and trivially true when skipped).
 bool PreRegAllocOptPass::run(Module &module, Diagnostics &diags) {
     if (module.options.optimizeLevel < 1)
         return true;

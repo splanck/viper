@@ -55,6 +55,51 @@ static char *rt_filedialog_strdup(const char *text) {
 #endif
 }
 
+/// @brief Join selected paths as a semicolon-delimited string with '\\' escaping.
+/// @details Escapes literal ';' and '\\' so callers can unambiguously split the result.
+static char *rt_filedialog_join_paths_escaped(char **paths, size_t count, size_t *out_len) {
+    if (out_len)
+        *out_len = 0;
+    if (!paths || count == 0)
+        return NULL;
+
+    size_t needed = 1; // NUL
+    for (size_t i = 0; i < count; i++) {
+        if (i > 0) {
+            if (needed == SIZE_MAX)
+                return NULL;
+            needed++;
+        }
+        const char *path = paths[i] ? paths[i] : "";
+        for (const char *p = path; *p; p++) {
+            size_t add = (*p == ';' || *p == '\\') ? 2 : 1;
+            if (needed > SIZE_MAX - add)
+                return NULL;
+            needed += add;
+        }
+    }
+
+    char *joined = (char *)malloc(needed);
+    if (!joined)
+        return NULL;
+
+    size_t off = 0;
+    for (size_t i = 0; i < count; i++) {
+        if (i > 0)
+            joined[off++] = ';';
+        const char *path = paths[i] ? paths[i] : "";
+        for (const char *p = path; *p; p++) {
+            if (*p == ';' || *p == '\\')
+                joined[off++] = '\\';
+            joined[off++] = *p;
+        }
+    }
+    joined[off] = '\0';
+    if (out_len)
+        *out_len = off;
+    return joined;
+}
+
 /// @brief Configure `dialog` for modal presentation and push it onto the app's dialog stack.
 /// @details Ensures default font is applied, sets the dialog as the modal root over `app->root`,
 ///          shows it, and pushes it so the main loop blocks on it. Returns 0 if any pointer is NULL.
@@ -145,6 +190,28 @@ rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, r
     char *cpath = rt_string_to_cstr(default_path);
     char *cfilter = rt_string_to_cstr(filter);
 
+#ifdef __APPLE__
+    size_t count = 0;
+    char **paths = vg_native_open_files(ctitle, cpath, "Files", cfilter, &count);
+    rt_string result = rt_str_empty();
+    if (paths && count > 0) {
+        size_t joined_len = 0;
+        char *joined = rt_filedialog_join_paths_escaped(paths, count, &joined_len);
+        if (joined) {
+            result = rt_string_from_bytes(joined, joined_len);
+            free(joined);
+        }
+    }
+    vg_native_free_paths(paths, count);
+
+    if (ctitle)
+        free(ctitle);
+    if (cpath)
+        free(cpath);
+    if (cfilter)
+        free(cfilter);
+    return result;
+#else
     vg_filedialog_t *dlg = vg_filedialog_create(VG_FILEDIALOG_OPEN);
     if (!dlg) {
         if (ctitle)
@@ -162,6 +229,7 @@ rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, r
     if (cfilter && cfilter[0]) {
         vg_filedialog_add_filter(dlg, "Files", cfilter);
     }
+    vg_filedialog_add_default_bookmarks(dlg);
 
     if (ctitle)
         free(ctitle);
@@ -177,29 +245,17 @@ rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, r
 
     rt_string result = rt_str_empty();
     if (paths && count > 0) {
-        // Join paths with semicolon
-        size_t total_len = 0;
-        for (size_t i = 0; i < count; i++) {
-            total_len += strlen(paths[i]) + 1;
-        }
-        char *joined = (char *)malloc(total_len);
+        size_t joined_len = 0;
+        char *joined = rt_filedialog_join_paths_escaped(paths, count, &joined_len);
         if (joined) {
-            size_t off = 0;
-            for (size_t i = 0; i < count; i++) {
-                if (i > 0)
-                    joined[off++] = ';';
-                size_t len = strlen(paths[i]);
-                memcpy(joined + off, paths[i], len);
-                off += len;
-            }
-            joined[off] = '\0';
-            result = rt_string_from_bytes(joined, off);
+            result = rt_string_from_bytes(joined, joined_len);
             free(joined);
         }
     }
 
     vg_filedialog_destroy(dlg);
     return result;
+#endif
 }
 
 /// @brief One-shot "save file" dialog. Returns the chosen path (with extension if user typed
@@ -300,6 +356,11 @@ typedef struct {
     size_t selected_count;
     int64_t result;
 } rt_filedialog_data_t;
+
+static rt_filedialog_data_t *rt_filedialog_data_checked(void *dialog) {
+    rt_filedialog_data_t *data = (rt_filedialog_data_t *)dialog;
+    return data && data->dialog ? data : NULL;
+}
 
 /// @brief Free the selected-paths array and reset count to zero.
 static void rt_filedialog_clear_selected_paths(rt_filedialog_data_t *data) {
@@ -424,9 +485,9 @@ void *rt_filedialog_new_folder(void) {
 
 /// @brief Set the dialog's titlebar text. No-op if `dialog` is NULL.
 void rt_filedialog_set_title(void *dialog, rt_string title) {
-    if (!dialog)
+    rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
+    if (!data)
         return;
-    rt_filedialog_data_t *data = (rt_filedialog_data_t *)dialog;
     char *ctitle = rt_string_to_cstr(title);
     vg_filedialog_set_title(data->dialog, ctitle);
     if (ctitle)
@@ -436,9 +497,9 @@ void rt_filedialog_set_title(void *dialog, rt_string title) {
 /// @brief Set the directory the dialog opens in. Subsequent navigation may move elsewhere; the
 /// returned selection is always an absolute path.
 void rt_filedialog_set_path(void *dialog, rt_string path) {
-    if (!dialog)
+    rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
+    if (!data)
         return;
-    rt_filedialog_data_t *data = (rt_filedialog_data_t *)dialog;
     char *cpath = rt_string_to_cstr(path);
     vg_filedialog_set_initial_path(data->dialog, cpath);
     if (cpath)
@@ -448,12 +509,17 @@ void rt_filedialog_set_path(void *dialog, rt_string path) {
 /// @brief Replace all filename filters with a single (`name`, `pattern`) entry. `name` is the
 /// human label shown in the dialog (e.g., "Image files"), `pattern` is the glob (e.g., "*.png").
 void rt_filedialog_set_filter(void *dialog, rt_string name, rt_string pattern) {
-    if (!dialog)
+    rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
+    if (!data)
         return;
-    rt_filedialog_data_t *data = (rt_filedialog_data_t *)dialog;
+    char *cname = name ? rt_string_to_cstr(name) : NULL;
+    char *cpattern = pattern ? rt_string_to_cstr(pattern) : NULL;
+    if ((name && !cname) || (pattern && !cpattern)) {
+        free(cname);
+        free(cpattern);
+        return;
+    }
     vg_filedialog_clear_filters(data->dialog);
-    char *cname = rt_string_to_cstr(name);
-    char *cpattern = rt_string_to_cstr(pattern);
     vg_filedialog_add_filter(data->dialog, cname, cpattern);
     if (cname)
         free(cname);
@@ -464,11 +530,16 @@ void rt_filedialog_set_filter(void *dialog, rt_string name, rt_string pattern) {
 /// @brief Append an additional (`name`, `pattern`) filter without clearing existing ones. The
 /// dialog typically shows them in a dropdown; users can switch between filters at picking time.
 void rt_filedialog_add_filter(void *dialog, rt_string name, rt_string pattern) {
-    if (!dialog)
+    rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
+    if (!data)
         return;
-    rt_filedialog_data_t *data = (rt_filedialog_data_t *)dialog;
-    char *cname = rt_string_to_cstr(name);
-    char *cpattern = rt_string_to_cstr(pattern);
+    char *cname = name ? rt_string_to_cstr(name) : NULL;
+    char *cpattern = pattern ? rt_string_to_cstr(pattern) : NULL;
+    if ((name && !cname) || (pattern && !cpattern)) {
+        free(cname);
+        free(cpattern);
+        return;
+    }
     vg_filedialog_add_filter(data->dialog, cname, cpattern);
     if (cname)
         free(cname);
@@ -478,9 +549,9 @@ void rt_filedialog_add_filter(void *dialog, rt_string name, rt_string pattern) {
 
 /// @brief Pre-fill the filename field (Save dialogs primarily). User can edit before confirming.
 void rt_filedialog_set_default_name(void *dialog, rt_string name) {
-    if (!dialog)
+    rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
+    if (!data)
         return;
-    rt_filedialog_data_t *data = (rt_filedialog_data_t *)dialog;
     char *cname = rt_string_to_cstr(name);
     vg_filedialog_set_filename(data->dialog, cname);
     if (cname)
@@ -490,9 +561,9 @@ void rt_filedialog_set_default_name(void *dialog, rt_string name) {
 /// @brief Toggle multi-select. After `_show`, retrieve count via `_get_path_count` and individual
 /// paths via `_get_path_at(i)`. Has no effect on Save/Folder dialogs.
 void rt_filedialog_set_multiple(void *dialog, int64_t multiple) {
-    if (!dialog)
+    rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
+    if (!data)
         return;
-    rt_filedialog_data_t *data = (rt_filedialog_data_t *)dialog;
     vg_filedialog_set_multi_select(data->dialog, multiple != 0);
 }
 

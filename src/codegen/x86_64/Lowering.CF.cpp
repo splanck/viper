@@ -44,12 +44,23 @@ constexpr int64_t kErrBounds = 7;
     return value.kind == ILValue::Kind::I1 ? (value.i64 != 0 ? 1 : 0) : value.i64;
 }
 
+/// @brief Build a CALL instruction tagged with the supplied call-plan id.
+/// @details Duplicate of the helper in Lowering.Arith.cpp; each translation
+///          unit owns its copy so the helpers can be in anonymous namespaces.
+/// @param target Label operand naming the callee.
+/// @param callPlanId Identifier returned by @c MIRBuilder::recordCallPlan.
+/// @return CALL @c MInstr ready to be appended.
 MInstr makePlannedCall(Operand target, uint32_t callPlanId) {
     MInstr call = MInstr::make(MOpcode::CALL, std::vector<Operand>{std::move(target)});
     call.callPlanId = callPlanId;
     return call;
 }
 
+/// @brief Emit the runtime bounds-trap call followed by UD2.
+/// @details Used by both @ref emitIdxChk paths when an index falls outside
+///          its declared range. UD2 ensures the optimiser cannot let
+///          execution fall through past the trap.
+/// @param builder Active MIR builder.
 void emitBoundsTrap(MIRBuilder &builder) {
     CallLoweringPlan plan{};
     plan.callee = "rt_trap_raise_error";
@@ -61,6 +72,16 @@ void emitBoundsTrap(MIRBuilder &builder) {
     builder.append(MInstr::make(MOpcode::UD2));
 }
 
+/// @brief Sign-extend @p src to @p widthBits in a fresh GPR.
+/// @details Local copy of the helper used in Lowering.Arith.cpp; lives in
+///          this TU's anonymous namespace so the bounds-check lowering can
+///          truncate-then-sign-extend indices before comparison without
+///          polluting the public lowering surface.
+/// @param builder Active MIR builder.
+/// @param emit EmitCommon helper bound to @p builder.
+/// @param src Source operand.
+/// @param widthBits Target signed width (returns unchanged when >= 64).
+/// @return Sign-extended operand in a virtual register.
 Operand emitSignExtendedToWidth(MIRBuilder &builder,
                                 EmitCommon &emit,
                                 Operand src,
@@ -79,11 +100,26 @@ Operand emitSignExtendedToWidth(MIRBuilder &builder,
     return narrowed;
 }
 
+/// @brief One arm of a switch statement during lowering.
 struct SwitchCase {
-    int64_t value{0};
-    Operand label{};
+    int64_t value{0};    ///< Constant value matched by this case.
+    Operand label{};     ///< Successor label when @c value matches the scrutinee.
 };
 
+/// @brief Recursively emit a balanced compare-tree for a sorted case list.
+/// @details For @c N cases this generates @c O(log N) compare/branch steps
+///          in the worst case. Each recursive call picks the middle case
+///          as the pivot, branches to its label on equality, descends left
+///          on less-than, and descends right or falls through to the
+///          default otherwise. Used for switches with more than three
+///          cases — small switches use a linear cascade in
+///          @ref emitSwitchI32.
+/// @param cases Sorted (ascending) list of cases.
+/// @param begin Inclusive start index of the active range.
+/// @param end Exclusive end index of the active range.
+/// @param scrutinee Operand holding the value being switched on.
+/// @param defaultLabel Label to branch to when no case matches.
+/// @param builder Active MIR builder.
 void emitSwitchTree(const std::vector<SwitchCase> &cases,
                     std::size_t begin,
                     std::size_t end,

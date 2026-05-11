@@ -157,6 +157,8 @@ static void set_nodelay(socket_t sock) {
 
 /// @brief Set socket timeout.
 void set_socket_timeout(socket_t sock, int timeout_ms, bool is_recv) {
+    if (timeout_ms < 0)
+        timeout_ms = 0;
 #ifdef _WIN32
     DWORD tv = (DWORD)timeout_ms;
     setsockopt(
@@ -169,11 +171,48 @@ void set_socket_timeout(socket_t sock, int timeout_ms, bool is_recv) {
 #endif
 }
 
+/// @brief Convert an int64 timeout argument to the range supported by socket helpers.
+int rt_net_timeout_ms_to_int(int64_t timeout_ms, int *out_timeout_ms) {
+    if (!out_timeout_ms || timeout_ms < 0 || timeout_ms > INT_MAX)
+        return 0;
+    *out_timeout_ms = (int)timeout_ms;
+    return 1;
+}
+
+/// @brief Convert an int64 byte count to an int-sized recv/send length.
+int rt_net_i64_len_to_int(int64_t byte_count, int *out_len) {
+    if (!out_len || byte_count < 0 || byte_count > INT_MAX)
+        return 0;
+    *out_len = (int)byte_count;
+    return 1;
+}
+
 /// @brief Wait for socket to become readable/writable with timeout.
 /// @return 1 if ready, 0 if timeout, -1 on error.
 int wait_socket(socket_t sock, int timeout_ms, bool for_write) {
+    if (timeout_ms < 0)
+        return -1;
+#if !defined(_WIN32) && !defined(__viperdos__)
+    struct pollfd pfd;
+    pfd.fd = sock;
+    pfd.events = for_write ? POLLOUT : POLLIN;
+    pfd.revents = 0;
+    int result;
+    do {
+        result = poll(&pfd, 1, timeout_ms);
+    } while (result < 0 && errno == EINTR);
+    return result;
+#else
     fd_set fds;
     FD_ZERO(&fds);
+    if (sock == INVALID_SOCK)
+        return -1;
+#if !defined(_WIN32)
+    if (sock < 0 || sock >= FD_SETSIZE) {
+        errno = EINVAL;
+        return -1;
+    }
+#endif
     FD_SET(sock, &fds);
 
     struct timeval tv;
@@ -187,6 +226,7 @@ int wait_socket(socket_t sock, int timeout_ms, bool for_write) {
         result = select((int)(sock + 1), &fds, NULL, NULL, &tv);
 
     return result;
+#endif
 }
 
 /// @brief Get local port from socket.
@@ -328,6 +368,9 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
     if (port < 1 || port > 65535) {
         rt_trap("Network: invalid port number");
     }
+    int timeout_int = 0;
+    if (!rt_net_timeout_ms_to_int(timeout_ms, &timeout_int))
+        rt_trap("Network: invalid timeout");
 
     // Copy host string
     size_t host_len = strlen(host_ptr);
@@ -361,7 +404,7 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
 
         suppress_sigpipe(candidate);
         if (connect_socket_with_timeout(
-                candidate, rp->ai_addr, (socklen_t)rp->ai_addrlen, (int)timeout_ms, &last_err)) {
+                candidate, rp->ai_addr, (socklen_t)rp->ai_addrlen, timeout_int, &last_err)) {
             sock = candidate;
             break;
         }
@@ -615,12 +658,15 @@ void *rt_tcp_recv(void *obj, int64_t max_bytes) {
 
     if (max_bytes <= 0)
         return rt_bytes_new(0);
+    int recv_len = 0;
+    if (!rt_net_i64_len_to_int(max_bytes, &recv_len))
+        rt_trap("Network: receive size too large");
 
     // Allocate receive buffer
     void *result = rt_bytes_new(max_bytes);
     uint8_t *buf = bytes_data(result);
 
-    int received = recv(tcp->sock, (char *)buf, (int)max_bytes, 0);
+    int received = recv(tcp->sock, (char *)buf, recv_len, 0);
     if (received == SOCK_ERROR) {
         if (socket_recv_timed_out()) {
             // Timeout - release over-allocated buffer and return empty bytes
@@ -675,14 +721,21 @@ void *rt_tcp_recv_exact(void *obj, int64_t count) {
 
     if (count <= 0)
         return rt_bytes_new(0);
+    if (count > INT_MAX)
+        rt_trap("Network: receive size too large");
 
     void *result = rt_bytes_new(count);
     uint8_t *buf = bytes_data(result);
 
     int64_t total_received = 0;
     while (total_received < count) {
-        int received =
-            recv(tcp->sock, (char *)(buf + total_received), (int)(count - total_received), 0);
+        int chunk_len = 0;
+        if (!rt_net_i64_len_to_int(count - total_received, &chunk_len)) {
+            if (rt_obj_release_check0(result))
+                rt_obj_free(result);
+            rt_trap("Network: receive size too large");
+        }
+        int received = recv(tcp->sock, (char *)(buf + total_received), chunk_len, 0);
         if (received == SOCK_ERROR) {
             if (rt_obj_release_check0(result))
                 rt_obj_free(result);
@@ -784,8 +837,11 @@ void rt_tcp_set_recv_timeout(void *obj, int64_t timeout_ms) {
         rt_trap("Network: NULL connection");
 
     rt_tcp_t *tcp = (rt_tcp_t *)obj;
-    tcp->recv_timeout_ms = (int)timeout_ms;
-    set_socket_timeout(tcp->sock, (int)timeout_ms, true);
+    int timeout_int = 0;
+    if (!rt_net_timeout_ms_to_int(timeout_ms, &timeout_int))
+        rt_trap("Network: invalid timeout");
+    tcp->recv_timeout_ms = timeout_int;
+    set_socket_timeout(tcp->sock, timeout_int, true);
 }
 
 /// @brief Apply `SO_SNDTIMEO` to the socket — send operations fail with timeout after `timeout_ms`.
@@ -794,8 +850,11 @@ void rt_tcp_set_send_timeout(void *obj, int64_t timeout_ms) {
         rt_trap("Network: NULL connection");
 
     rt_tcp_t *tcp = (rt_tcp_t *)obj;
-    tcp->send_timeout_ms = (int)timeout_ms;
-    set_socket_timeout(tcp->sock, (int)timeout_ms, false);
+    int timeout_int = 0;
+    if (!rt_net_timeout_ms_to_int(timeout_ms, &timeout_int))
+        rt_trap("Network: invalid timeout");
+    tcp->send_timeout_ms = timeout_int;
+    set_socket_timeout(tcp->sock, timeout_int, false);
 }
 
 /// @brief Close the socket immediately. Subsequent send/recv calls return error.
@@ -987,10 +1046,15 @@ void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms) {
     rt_tcp_server_t *server = (rt_tcp_server_t *)obj;
     if (!server->is_listening)
         rt_trap_net("Network: server not listening", Err_ConnectionClosed);
+    if (timeout_ms < 0)
+        rt_trap("Network: invalid timeout");
 
     // Use select for timeout
     if (timeout_ms > 0) {
-        int ready = wait_socket(server->sock, (int)timeout_ms, false);
+        int timeout_int = 0;
+        if (!rt_net_timeout_ms_to_int(timeout_ms, &timeout_int))
+            rt_trap("Network: invalid timeout");
+        int ready = wait_socket(server->sock, timeout_int, false);
         if (ready == 0) {
             // Timeout - return NULL
             return NULL;

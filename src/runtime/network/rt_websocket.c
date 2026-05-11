@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 // Forward declarations (defined in rt_io.c).
 #include "rt_trap.h"
@@ -157,6 +158,14 @@ static int ws_token_is_valid(const char *value) {
         if (*p <= 0x20 || *p == 0x7Fu || strchr(kSeparators, (int)*p) != NULL)
             return 0;
     }
+    return 1;
+}
+
+static int ws_timeout_ms_to_int(int64_t timeout_ms, int *out_timeout_ms) {
+    if (timeout_ms < 0 || timeout_ms > INT_MAX)
+        return 0;
+    if (out_timeout_ms)
+        *out_timeout_ms = (int)timeout_ms;
     return 1;
 }
 
@@ -468,10 +477,13 @@ static int parse_ws_url(const char *url, int *is_secure, char **host, int *port,
         (*host)[host_len] = '\0';
         host_end = bracket_end + 1;
     } else {
-        while (*host_end && *host_end != ':' && *host_end != '/')
+        while (*host_end && *host_end != ':' && *host_end != '/' && *host_end != '?' &&
+               *host_end != '#')
             host_end++;
 
         size_t host_len = (size_t)(host_end - url);
+        if (host_len == 0)
+            return 0;
         *host = malloc(host_len + 1);
         if (!*host)
             return 0;
@@ -479,7 +491,8 @@ static int parse_ws_url(const char *url, int *is_secure, char **host, int *port,
         (*host)[host_len] = '\0';
     }
 
-    if (*host_end && *host_end != ':' && *host_end != '/') {
+    if (*host_end && *host_end != ':' && *host_end != '/' && *host_end != '?' &&
+        *host_end != '#') {
         free(*host);
         *host = NULL;
         return 0;
@@ -487,22 +500,53 @@ static int parse_ws_url(const char *url, int *is_secure, char **host, int *port,
 
     // Check for port
     if (*host_end == ':') {
-        char *endptr = NULL;
-        long port_val = strtol(host_end + 1, &endptr, 10);
-        if (endptr == host_end + 1 || port_val < 1 || port_val > 65535) {
+        const char *p = host_end + 1;
+        uint64_t port_val = 0;
+        if (*p < '0' || *p > '9') {
+            free(*host);
+            *host = NULL;
+            return 0;
+        }
+        while (*p >= '0' && *p <= '9') {
+            port_val = port_val * 10u + (uint64_t)(*p - '0');
+            if (port_val > 65535u) {
+                free(*host);
+                *host = NULL;
+                return 0;
+            }
+            p++;
+        }
+        if (port_val == 0u || (*p != '\0' && *p != '/' && *p != '?' && *p != '#')) {
             free(*host);
             *host = NULL;
             return 0;
         }
         *port = (int)port_val;
-        host_end = endptr;
-        while (*host_end && *host_end != '/')
-            host_end++;
+        host_end = p;
     }
 
     // Path
     if (*host_end == '/') {
-        *path = strdup(host_end);
+        const char *path_end = host_end;
+        while (*path_end && *path_end != '#')
+            path_end++;
+        size_t path_len = (size_t)(path_end - host_end);
+        *path = malloc(path_len + 1);
+        if (*path) {
+            memcpy(*path, host_end, path_len);
+            (*path)[path_len] = '\0';
+        }
+    } else if (*host_end == '?') {
+        const char *query_end = host_end;
+        while (*query_end && *query_end != '#')
+            query_end++;
+        size_t query_len = (size_t)(query_end - host_end);
+        *path = malloc(query_len + 2);
+        if (*path) {
+            (*path)[0] = '/';
+            memcpy(*path + 1, host_end, query_len);
+            (*path)[query_len + 1] = '\0';
+        }
     } else {
         *path = strdup("/");
     }
@@ -529,7 +573,8 @@ static long ws_send_partial(rt_ws_impl *ws, const void *data, size_t len) {
     if (ws->tls) {
         return rt_tls_send(ws->tls, data, len);
     } else {
-        return send(ws->socket_fd, data, (int)len, SEND_FLAGS);
+        size_t chunk = len > INT_MAX ? INT_MAX : len;
+        return send(ws->socket_fd, data, (int)chunk, SEND_FLAGS);
     }
 }
 
@@ -556,18 +601,34 @@ static long ws_recv(rt_ws_impl *ws, void *buffer, size_t len) {
     if (ws->tls) {
         return rt_tls_recv(ws->tls, buffer, len);
     } else {
-        return recv(ws->socket_fd, buffer, (int)len, 0);
+        size_t chunk = len > INT_MAX ? INT_MAX : len;
+        return recv(ws->socket_fd, buffer, (int)chunk, 0);
     }
 }
 
 /// @brief Wait for socket to become readable or writable with timeout.
 /// @return 1 if ready, 0 if timeout, -1 on error.
 static int ws_wait_socket(int fd, int timeout_ms, int for_write) {
-#if 0 // removed: ViperDOS now provides select() via libc
+    if (fd < 0 || timeout_ms < 0)
+        return -1;
+#if !defined(_WIN32) && !defined(__viperdos__)
+    struct pollfd pfd;
+    int result;
+    pfd.fd = fd;
+    pfd.events = for_write ? POLLOUT : POLLIN;
+    pfd.revents = 0;
+    do {
+        result = poll(&pfd, 1, timeout_ms);
+    } while (result < 0 && errno == EINTR);
+    return result;
 #else
     fd_set fds;
+#ifndef _WIN32
+    if (fd >= FD_SETSIZE)
+        return -1;
+#endif
     FD_ZERO(&fds);
-    FD_SET((unsigned)fd, &fds);
+    FD_SET(fd, &fds);
 
     struct timeval tv;
     tv.tv_sec = timeout_ms / 1000;
@@ -591,6 +652,8 @@ static void ws_set_nonblocking(int fd, int nonblocking) {
 #else
     // Unix and ViperDOS: use fcntl.
     int flags = fcntl(fd, F_GETFL, 0);
+    if (flags < 0)
+        return;
     if (nonblocking)
         fcntl(fd, F_SETFL, flags | O_NONBLOCK);
     else
@@ -600,6 +663,8 @@ static void ws_set_nonblocking(int fd, int nonblocking) {
 
 /// @brief Set socket receive/send timeout.
 static void ws_set_socket_timeout(int fd, int timeout_ms, int is_recv) {
+    if (timeout_ms < 0)
+        timeout_ms = 0;
 #ifdef _WIN32
     DWORD tv = (DWORD)timeout_ms;
     setsockopt(fd, SOL_SOCKET, is_recv ? SO_RCVTIMEO : SO_SNDTIMEO, (const char *)&tv, sizeof(tv));
@@ -789,7 +854,7 @@ int rt_ws_validate_handshake_response_for_test(const char *response, const char 
 }
 
 /// @brief Create TCP connection to host:port with optional timeout.
-static int create_tcp_socket(const char *host, int port, int64_t timeout_ms) {
+static int create_tcp_socket(const char *host, int port, int timeout_ms) {
     struct addrinfo hints, *res, *p;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_UNSPEC;
@@ -827,7 +892,7 @@ static int create_tcp_socket(const char *host, int port, int64_t timeout_ms) {
             if (err == EINPROGRESS)
 #endif
             {
-                int ready = ws_wait_socket(fd, (int)timeout_ms, 1);
+                int ready = ws_wait_socket(fd, timeout_ms, 1);
                 if (ready > 0) {
                     // Check if connect succeeded
                     int so_error = 0;
@@ -1296,8 +1361,13 @@ void *rt_ws_connect_for(rt_string url, int64_t timeout_ms) {
 void *rt_ws_connect_for_protocol(rt_string url, int64_t timeout_ms, rt_string subprotocol) {
     const char *url_cstr = rt_string_cstr(url);
     const char *protocol_cstr = subprotocol ? rt_string_cstr(subprotocol) : NULL;
+    int timeout_int = 0;
     if (!url_cstr) {
         rt_trap("WebSocket: NULL URL");
+        return NULL;
+    }
+    if (!ws_timeout_ms_to_int(timeout_ms, &timeout_int)) {
+        rt_trap("WebSocket: invalid timeout");
         return NULL;
     }
     if (protocol_cstr && *protocol_cstr && !ws_token_is_valid(protocol_cstr)) {
@@ -1345,7 +1415,7 @@ void *rt_ws_connect_for_protocol(rt_string url, int64_t timeout_ms, rt_string su
     rt_obj_set_finalizer(ws, rt_ws_finalize);
 
     // Connect TCP (with timeout)
-    ws->socket_fd = create_tcp_socket(host, port, timeout_ms);
+    ws->socket_fd = create_tcp_socket(host, port, timeout_int);
     if (ws->socket_fd < 0) {
         free(host);
         free(path);
@@ -1357,8 +1427,8 @@ void *rt_ws_connect_for_protocol(rt_string url, int64_t timeout_ms, rt_string su
 
     // Set socket-level recv/send timeout for handshake phase
     if (timeout_ms > 0) {
-        ws_set_socket_timeout(ws->socket_fd, (int)timeout_ms, 1);
-        ws_set_socket_timeout(ws->socket_fd, (int)timeout_ms, 0);
+        ws_set_socket_timeout(ws->socket_fd, timeout_int, 1);
+        ws_set_socket_timeout(ws->socket_fd, timeout_int, 0);
     }
 
     // TLS handshake if secure
@@ -1367,6 +1437,7 @@ void *rt_ws_connect_for_protocol(rt_string url, int64_t timeout_ms, rt_string su
         rt_tls_config_init(&config);
         config.hostname = host;
         config.alpn_protocol = "http/1.1";
+        config.timeout_ms = timeout_int;
 
         ws->tls = rt_tls_new(ws->socket_fd, &config);
         if (!ws->tls) {
@@ -1500,7 +1571,11 @@ void rt_ws_send_bytes(void *obj, void *data) {
     }
 
     int64_t len = rt_bytes_len(data);
-    uint8_t *buffer = malloc(len);
+    if (len < 0 || (uint64_t)len > (uint64_t)SIZE_MAX) {
+        rt_trap("WebSocket: invalid bytes length");
+        return;
+    }
+    uint8_t *buffer = malloc((size_t)(len > 0 ? len : 1));
     if (!buffer && len > 0) {
         rt_trap("WebSocket: memory allocation failed");
         return;
@@ -1509,7 +1584,7 @@ void rt_ws_send_bytes(void *obj, void *data) {
     for (int64_t i = 0; i < len; i++)
         buffer[i] = (uint8_t)rt_bytes_get(data, i);
 
-    if (!ws_send_frame(ws, WS_OP_BINARY, buffer, len)) {
+    if (!ws_send_frame(ws, WS_OP_BINARY, buffer, (size_t)len)) {
         free(buffer);
         ws->is_open = 0;
         rt_trap_net("WebSocket: send failed", Err_NetworkError);
@@ -1562,8 +1637,13 @@ rt_string rt_ws_recv_for(void *obj, int64_t timeout_ms) {
     if (!obj)
         return NULL;
     rt_ws_impl *ws = (rt_ws_impl *)obj;
+    int timeout_int = 0;
     if (!ws->is_open)
         return NULL;
+    if (!ws_timeout_ms_to_int(timeout_ms, &timeout_int)) {
+        rt_trap("WebSocket: invalid timeout");
+        return NULL;
+    }
 
     // Wait for data to arrive with timeout.
     // Check TLS buffer first — select() on the raw socket won't see data that
@@ -1572,7 +1652,7 @@ rt_string rt_ws_recv_for(void *obj, int64_t timeout_ms) {
         if (ws->tls && rt_tls_has_buffered_data(ws->tls)) {
             // Data already available in TLS buffer — skip select()
         } else {
-            int ready = ws_wait_socket(ws->socket_fd, (int)timeout_ms, 0);
+            int ready = ws_wait_socket(ws->socket_fd, timeout_int, 0);
             if (ready <= 0)
                 return NULL; // Timeout or error
         }
@@ -1606,8 +1686,13 @@ void *rt_ws_recv_bytes_for(void *obj, int64_t timeout_ms) {
     if (!obj)
         return NULL;
     rt_ws_impl *ws = (rt_ws_impl *)obj;
+    int timeout_int = 0;
     if (!ws->is_open)
         return NULL;
+    if (!ws_timeout_ms_to_int(timeout_ms, &timeout_int)) {
+        rt_trap("WebSocket: invalid timeout");
+        return NULL;
+    }
 
     // Wait for data to arrive with timeout.
     // Check TLS buffer first — select() on the raw socket won't see data that
@@ -1616,7 +1701,7 @@ void *rt_ws_recv_bytes_for(void *obj, int64_t timeout_ms) {
         if (ws->tls && rt_tls_has_buffered_data(ws->tls)) {
             // Data already available in TLS buffer — skip select()
         } else {
-            int ready = ws_wait_socket(ws->socket_fd, (int)timeout_ms, 0);
+            int ready = ws_wait_socket(ws->socket_fd, timeout_int, 0);
             if (ready <= 0)
                 return NULL; // Timeout or error
         }
@@ -1646,6 +1731,14 @@ void rt_ws_close_with(void *obj, int64_t code, rt_string reason) {
 
     const char *reason_cstr = rt_string_cstr(reason);
     size_t reason_len = reason_cstr ? strlen(reason_cstr) : 0;
+    if (code < 1000 || code > 4999 || code == 1005 || code == 1006 || code == 1015) {
+        rt_trap_net("WebSocket: invalid close code", Err_ProtocolError);
+        return;
+    }
+    if (reason_len > 123 || (reason_cstr && !ws_is_valid_utf8((const uint8_t *)reason_cstr, reason_len))) {
+        rt_trap_net("WebSocket: invalid close reason", Err_ProtocolError);
+        return;
+    }
 
     // Build close payload
     size_t payload_len = 2 + reason_len;

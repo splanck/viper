@@ -289,7 +289,6 @@ static bool runIlOptimizations(il::core::Module &mod, int optimizeLevel) {
 /// @details Compile-time dispatch: _WIN32 → Windows AAPCS64/COFF, __APPLE__ → Darwin
 ///          AAPCS64/Mach-O with BTI+PAC, otherwise Linux AAPCS64/ELF.
 /// @return Reference to the appropriate singleton target; lifetime is static.
-/// @brief Return the AArch64 TargetInfo for the host OS at compile time.
 static const TargetInfo &hostAArch64Target() {
 #if defined(_WIN32)
     return windowsTarget();

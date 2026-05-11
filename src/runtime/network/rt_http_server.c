@@ -712,12 +712,12 @@ static void handle_connection(rt_http_server_impl *server, void *tcp) {
                 break;
             }
 
-            typedef struct {
-                int64_t len;
-                uint8_t *d;
-            } bi;
-
-            uint8_t *ptr = ((bi *)data)->d;
+            uint8_t *ptr = rt_bytes_data(data);
+            if (!ptr) {
+                if (data && rt_obj_release_check0(data))
+                    rt_obj_free(data);
+                break;
+            }
             memcpy(buf + buf_len, ptr, (size_t)data_len);
             buf_len += (size_t)data_len;
             if (data && rt_obj_release_check0(data))
@@ -1216,8 +1216,8 @@ void rt_http_server_start(void *obj) {
 ///        accept thread.
 ///
 /// Clears the running flag, closes the underlying TCP server (which
-/// unblocks any in-progress `accept()` call), then waits up to 5s on
-/// Windows (or unbounded on POSIX) for the accept thread to exit. Drains
+/// unblocks any in-progress `accept()` call), then waits for the accept
+/// thread to exit. Drains
 /// any in-flight worker tasks before returning. NULL receiver is a
 /// silent no-op. Safe to call repeatedly.
 ///
@@ -1254,7 +1254,7 @@ void rt_http_server_stop(void *obj) {
 
     if (had_thread) {
 #ifdef _WIN32
-        WaitForSingleObject(accept_thread, 5000);
+        WaitForSingleObject(accept_thread, INFINITE);
         CloseHandle(accept_thread);
 #else
         pthread_join(accept_thread, NULL);
@@ -1447,20 +1447,28 @@ rt_string rt_server_req_query(void *obj, rt_string name) {
     if (!n)
         return rt_string_from_bytes("", 0);
 
-    // Simple query string parsing: find name=value
     size_t nlen = strlen(n);
     const char *p = req->query;
     while (p && *p) {
-        if (strncmp(p, n, nlen) == 0 && p[nlen] == '=') {
-            const char *val = p + nlen + 1;
-            const char *amp = strchr(val, '&');
-            size_t vlen = amp ? (size_t)(amp - val) : strlen(val);
+        const char *amp = strchr(p, '&');
+        const char *param_end = amp ? amp : p + strlen(p);
+        const char *eq = find_char_bounded(p, (size_t)(param_end - p), '=');
+        size_t key_len = eq ? (size_t)(eq - p) : (size_t)(param_end - p);
+        rt_string raw_key = rt_string_from_bytes(p, key_len);
+        rt_string decoded_key = rt_url_decode(raw_key);
+        const char *decoded_key_cstr = rt_string_cstr(decoded_key);
+        int match = decoded_key_cstr && strlen(decoded_key_cstr) == nlen &&
+                    memcmp(decoded_key_cstr, n, nlen) == 0;
+        rt_string_unref(decoded_key);
+        rt_string_unref(raw_key);
+        if (match) {
+            const char *val = eq ? eq + 1 : param_end;
+            size_t vlen = (size_t)(param_end - val);
             rt_string raw = rt_string_from_bytes(val, vlen);
             rt_string decoded = rt_url_decode(raw);
             rt_string_unref(raw);
             return decoded;
         }
-        const char *amp = strchr(p, '&');
         p = amp ? amp + 1 : NULL;
     }
 
@@ -1473,8 +1481,8 @@ rt_string rt_server_req_query(void *obj, rt_string name) {
 
 /// @brief `ServerRes.Status(code)` — set the HTTP status code.
 ///
-/// Stores `code` on the response builder. No range validation: callers
-/// can set non-standard codes (e.g., 418). Returns the receiver to
+/// Stores `code` on the response builder. Only the HTTP status range
+/// 100-599 is accepted. Returns the receiver to
 /// support chained builder syntax: `res.Status(404).Send("Not Found")`.
 /// NULL receiver is a no-op that returns NULL.
 ///
@@ -1484,6 +1492,8 @@ rt_string rt_server_req_query(void *obj, rt_string name) {
 void *rt_server_res_status(void *obj, int64_t code) {
     if (!obj)
         return obj;
+    if (code < 100 || code > 599)
+        rt_trap("HttpServer: invalid status");
     server_res_t *res = (server_res_t *)obj;
     res->status_code = (int)code;
     return obj;
@@ -1533,9 +1543,16 @@ void rt_server_res_send(void *obj, rt_string body) {
         return;
     server_res_t *res = (server_res_t *)obj;
     const char *b = rt_string_cstr(body);
+    int64_t body_len = body ? rt_str_len(body) : 0;
+    if (body_len < 0)
+        body_len = 0;
     free(res->body);
-    res->body = b ? strdup(b) : NULL;
-    res->body_len = b ? strlen(b) : 0;
+    res->body = (b && body_len > 0) ? (char *)malloc((size_t)body_len) : NULL;
+    if (b && body_len > 0 && !res->body)
+        rt_trap("HttpServer: response body allocation failed");
+    if (res->body)
+        memcpy(res->body, b, (size_t)body_len);
+    res->body_len = res->body ? (size_t)body_len : 0;
     res->sent = true;
 }
 
@@ -1584,7 +1601,8 @@ void *rt_http_server_process_request(void *obj, rt_string raw_request) {
     server_res_t res;
     memset(&res, 0, sizeof(res));
 
-    if (!parse_http_request(raw, strlen(raw), &req)) {
+    int64_t raw_len = rt_str_len(raw_request);
+    if (raw_len < 0 || !parse_http_request(raw, (size_t)raw_len, &req)) {
         return rt_string_from_bytes(
             "HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
             sizeof("HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n") -

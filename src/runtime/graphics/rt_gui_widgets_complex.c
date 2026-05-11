@@ -45,6 +45,118 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+static vg_tabbar_t *rt_tabbar_checked(void *handle) {
+    return (vg_tabbar_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_TABBAR);
+}
+
+static vg_splitpane_t *rt_splitpane_checked(void *handle) {
+    return (vg_splitpane_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_SPLITPANE);
+}
+
+static vg_codeeditor_t *rt_codeeditor_checked(void *handle) {
+    return (vg_codeeditor_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_CODEEDITOR);
+}
+
+static vg_dropdown_t *rt_dropdown_checked(void *handle) {
+    return (vg_dropdown_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_DROPDOWN);
+}
+
+static vg_slider_t *rt_slider_checked(void *handle) {
+    return (vg_slider_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_SLIDER);
+}
+
+static vg_progressbar_t *rt_progressbar_checked(void *handle) {
+    return (vg_progressbar_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_PROGRESS);
+}
+
+static vg_listbox_t *rt_listbox_checked(void *handle) {
+    return (vg_listbox_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_LISTBOX);
+}
+
+static vg_radiobutton_t *rt_radiobutton_checked(void *handle) {
+    return (vg_radiobutton_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_RADIO);
+}
+
+static vg_spinner_t *rt_spinner_checked(void *handle) {
+    return (vg_spinner_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_SPINNER);
+}
+
+static vg_image_t *rt_image_checked(void *handle) {
+    return (vg_image_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_IMAGE);
+}
+
+#define RT_RADIOGROUP_MAGIC UINT64_C(0x52474452554E544D)          // "RGDRUNTM"
+#define RT_RADIOGROUP_DESTROYED_MAGIC UINT64_C(0x5247444445414444) // "RGDDEAD"
+
+typedef struct rt_radiogroup_data {
+    uint64_t magic;
+    vg_radiogroup_t *group;
+} rt_radiogroup_data_t;
+
+static rt_radiogroup_data_t **s_radiogroup_handles = NULL;
+static size_t s_radiogroup_handle_count = 0;
+static size_t s_radiogroup_handle_cap = 0;
+
+static int rt_radiogroup_registry_add(rt_radiogroup_data_t *data) {
+    if (!data)
+        return 0;
+    if (s_radiogroup_handle_count >= s_radiogroup_handle_cap) {
+        if (s_radiogroup_handle_cap > SIZE_MAX / 2)
+            return 0;
+        size_t new_cap = s_radiogroup_handle_cap ? s_radiogroup_handle_cap * 2 : 16;
+        if (new_cap > SIZE_MAX / sizeof(*s_radiogroup_handles))
+            return 0;
+        rt_radiogroup_data_t **new_handles =
+            (rt_radiogroup_data_t **)realloc(s_radiogroup_handles,
+                                             new_cap * sizeof(*s_radiogroup_handles));
+        if (!new_handles)
+            return 0;
+        s_radiogroup_handles = new_handles;
+        s_radiogroup_handle_cap = new_cap;
+    }
+    s_radiogroup_handles[s_radiogroup_handle_count++] = data;
+    return 1;
+}
+
+static void rt_radiogroup_registry_remove(rt_radiogroup_data_t *data) {
+    if (!data)
+        return;
+    for (size_t i = 0; i < s_radiogroup_handle_count; i++) {
+        if (s_radiogroup_handles[i] == data) {
+            s_radiogroup_handles[i] = s_radiogroup_handles[--s_radiogroup_handle_count];
+            return;
+        }
+    }
+}
+
+static rt_radiogroup_data_t *rt_radiogroup_handle_checked(void *handle) {
+    if (!handle)
+        return NULL;
+    for (size_t i = 0; i < s_radiogroup_handle_count; i++) {
+        if (s_radiogroup_handles[i] == handle) {
+            rt_radiogroup_data_t *data = (rt_radiogroup_data_t *)handle;
+            return data->magic == RT_RADIOGROUP_MAGIC && data->group ? data : NULL;
+        }
+    }
+    return NULL;
+}
+
+static void rt_radiogroup_dispose(rt_radiogroup_data_t *data) {
+    data = rt_radiogroup_handle_checked(data);
+    if (!data)
+        return;
+    rt_radiogroup_registry_remove(data);
+    if (data->group) {
+        vg_radiogroup_destroy(data->group);
+        data->group = NULL;
+    }
+    data->magic = RT_RADIOGROUP_DESTROYED_MAGIC;
+}
+
+static void rt_radiogroup_finalize(void *handle) {
+    rt_radiogroup_dispose((rt_radiogroup_data_t *)handle);
+}
+
 //=============================================================================
 // TabBar Widget
 //=============================================================================
@@ -74,10 +186,11 @@ void *rt_tabbar_new(void *parent) {
 /// @return Opaque tab handle for later reference, or NULL on failure.
 void *rt_tabbar_add_tab(void *tabbar, rt_string title, int64_t closable) {
     RT_ASSERT_MAIN_THREAD();
-    if (!tabbar)
+    vg_tabbar_t *tb = rt_tabbar_checked(tabbar);
+    if (!tb)
         return NULL;
     char *ctitle = rt_string_to_cstr(title);
-    vg_tab_t *tab = vg_tabbar_add_tab((vg_tabbar_t *)tabbar, ctitle, closable != 0);
+    vg_tab_t *tab = vg_tabbar_add_tab(tb, ctitle, closable != 0);
     free(ctitle);
     return tab;
 }
@@ -85,16 +198,18 @@ void *rt_tabbar_add_tab(void *tabbar, rt_string title, int64_t closable) {
 /// @brief Remove a tab from the tab bar and free its resources.
 void rt_tabbar_remove_tab(void *tabbar, void *tab) {
     RT_ASSERT_MAIN_THREAD();
-    if (tabbar && tab) {
-        vg_tabbar_remove_tab((vg_tabbar_t *)tabbar, (vg_tab_t *)tab);
+    vg_tabbar_t *tb = rt_tabbar_checked(tabbar);
+    if (tb && tab) {
+        vg_tabbar_remove_tab(tb, (vg_tab_t *)tab);
     }
 }
 
 /// @brief Set the currently active (selected) tab in the tab bar.
 void rt_tabbar_set_active(void *tabbar, void *tab) {
     RT_ASSERT_MAIN_THREAD();
-    if (tabbar) {
-        vg_tabbar_set_active((vg_tabbar_t *)tabbar, (vg_tab_t *)tab);
+    vg_tabbar_t *tb = rt_tabbar_checked(tabbar);
+    if (tb) {
+        vg_tabbar_set_active(tb, (vg_tab_t *)tab);
     }
 }
 
@@ -129,24 +244,25 @@ void rt_tab_set_modified(void *tab, int64_t modified) {
 /// @brief Return the currently-active tab handle (NULL when no tabs / null bar).
 void *rt_tabbar_get_active(void *tabbar) {
     RT_ASSERT_MAIN_THREAD();
-    return tabbar ? ((vg_tabbar_t *)tabbar)->active_tab : NULL;
+    vg_tabbar_t *tb = rt_tabbar_checked(tabbar);
+    return tb ? tb->active_tab : NULL;
 }
 
 /// @brief Get the active index of the tabbar.
 int64_t rt_tabbar_get_active_index(void *tabbar) {
     RT_ASSERT_MAIN_THREAD();
-    if (!tabbar)
+    vg_tabbar_t *tb = rt_tabbar_checked(tabbar);
+    if (!tb)
         return -1;
-    vg_tabbar_t *tb = (vg_tabbar_t *)tabbar;
     return vg_tabbar_get_tab_index(tb, tb->active_tab);
 }
 
 /// @brief Check if the active tab changed since the last call (edge-triggered).
 int64_t rt_tabbar_was_changed(void *tabbar) {
     RT_ASSERT_MAIN_THREAD();
-    if (!tabbar)
+    vg_tabbar_t *tb = rt_tabbar_checked(tabbar);
+    if (!tb)
         return 0;
-    vg_tabbar_t *tb = (vg_tabbar_t *)tabbar;
     if (tb->reported_active_change_version != tb->active_change_version) {
         tb->reported_active_change_version = tb->active_change_version;
         return 1;
@@ -157,23 +273,25 @@ int64_t rt_tabbar_was_changed(void *tabbar) {
 /// @brief Get the number of tabs in the tab bar.
 int64_t rt_tabbar_get_tab_count(void *tabbar) {
     RT_ASSERT_MAIN_THREAD();
-    return tabbar ? ((vg_tabbar_t *)tabbar)->tab_count : 0;
+    vg_tabbar_t *tb = rt_tabbar_checked(tabbar);
+    return tb ? tb->tab_count : 0;
 }
 
 /// @brief Check if any tab's close button was clicked this frame.
 int64_t rt_tabbar_was_close_clicked(void *tabbar) {
     RT_ASSERT_MAIN_THREAD();
-    if (!tabbar)
+    vg_tabbar_t *tb = rt_tabbar_checked(tabbar);
+    if (!tb)
         return 0;
-    return ((vg_tabbar_t *)tabbar)->close_clicked_index >= 0 ? 1 : 0;
+    return tb->close_clicked_index >= 0 ? 1 : 0;
 }
 
 /// @brief Get the index of the tab whose close button was clicked (clears after read).
 int64_t rt_tabbar_get_close_clicked_index(void *tabbar) {
     RT_ASSERT_MAIN_THREAD();
-    if (!tabbar)
+    vg_tabbar_t *tb = rt_tabbar_checked(tabbar);
+    if (!tb)
         return -1;
-    vg_tabbar_t *tb = (vg_tabbar_t *)tabbar;
     if (tb->close_clicked_index < 0)
         return -1;
     int index = tb->close_clicked_index;
@@ -184,16 +302,18 @@ int64_t rt_tabbar_get_close_clicked_index(void *tabbar) {
 /// @brief Return the tab at position `index`, or NULL if out of range.
 void *rt_tabbar_get_tab_at(void *tabbar, int64_t index) {
     RT_ASSERT_MAIN_THREAD();
-    if (!tabbar)
+    vg_tabbar_t *tb = rt_tabbar_checked(tabbar);
+    if (!tb)
         return NULL;
-    return vg_tabbar_get_tab_at((vg_tabbar_t *)tabbar, (int)index);
+    return vg_tabbar_get_tab_at(tb, (int)index);
 }
 
 /// @brief Enable or disable automatic tab removal on close-button click.
 void rt_tabbar_set_auto_close(void *tabbar, int64_t auto_close) {
     RT_ASSERT_MAIN_THREAD();
-    if (tabbar) {
-        ((vg_tabbar_t *)tabbar)->auto_close = auto_close != 0;
+    vg_tabbar_t *tb = rt_tabbar_checked(tabbar);
+    if (tb) {
+        tb->auto_close = auto_close != 0;
     }
 }
 
@@ -217,8 +337,9 @@ void *rt_splitpane_new(void *parent, int64_t horizontal) {
 /// @brief Set the divider position as a fraction of the split pane's size.
 void rt_splitpane_set_position(void *split, double position) {
     RT_ASSERT_MAIN_THREAD();
-    if (split) {
-        vg_splitpane_set_position((vg_splitpane_t *)split,
+    vg_splitpane_t *sp = rt_splitpane_checked(split);
+    if (sp) {
+        vg_splitpane_set_position(sp,
                                   (float)rt_gui_clamp_f64(
                                       rt_gui_double_is_finite(position) ? position : 0.5, 0.0, 1.0));
     }
@@ -228,26 +349,29 @@ void rt_splitpane_set_position(void *split, double position) {
 /// @brief Get the position of the splitpane.
 double rt_splitpane_get_position(void *split) {
     RT_ASSERT_MAIN_THREAD();
-    if (!split)
+    vg_splitpane_t *sp = rt_splitpane_checked(split);
+    if (!sp)
         return 0.5;
-    return (double)vg_splitpane_get_position((vg_splitpane_t *)split);
+    return (double)vg_splitpane_get_position(sp);
 }
 
 /// @brief Return the first (left/top) panel container of a split pane.
 /// Add child widgets to this container to populate the leading half.
 void *rt_splitpane_get_first(void *split) {
     RT_ASSERT_MAIN_THREAD();
-    if (!split)
+    vg_splitpane_t *sp = rt_splitpane_checked(split);
+    if (!sp)
         return NULL;
-    return vg_splitpane_get_first((vg_splitpane_t *)split);
+    return vg_splitpane_get_first(sp);
 }
 
 /// @brief Return the second (right/bottom) panel container of a split pane.
 void *rt_splitpane_get_second(void *split) {
     RT_ASSERT_MAIN_THREAD();
-    if (!split)
+    vg_splitpane_t *sp = rt_splitpane_checked(split);
+    if (!sp)
         return NULL;
-    return vg_splitpane_get_second((vg_splitpane_t *)split);
+    return vg_splitpane_get_second(sp);
 }
 
 //=============================================================================
@@ -272,19 +396,21 @@ void *rt_codeeditor_new(void *parent) {
 /// @brief Replace the entire text content of a code editor.
 void rt_codeeditor_set_text(void *editor, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_checked(editor);
+    if (!ce)
         return;
     char *ctext = rt_string_to_cstr(text);
-    vg_codeeditor_set_text((vg_codeeditor_t *)editor, ctext);
+    vg_codeeditor_set_text(ce, ctext);
     free(ctext);
 }
 
 /// @brief Retrieve the full text content of a code editor (caller frees the C string).
 rt_string rt_codeeditor_get_text(void *editor) {
     RT_ASSERT_MAIN_THREAD();
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_checked(editor);
+    if (!ce)
         return rt_str_empty();
-    char *text = vg_codeeditor_get_text((vg_codeeditor_t *)editor);
+    char *text = vg_codeeditor_get_text(ce);
     if (!text)
         return rt_str_empty();
     rt_string result = rt_string_from_bytes(text, strlen(text));
@@ -295,9 +421,10 @@ rt_string rt_codeeditor_get_text(void *editor) {
 /// @brief Retrieve the currently selected text in a code editor.
 rt_string rt_codeeditor_get_selected_text(void *editor) {
     RT_ASSERT_MAIN_THREAD();
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_checked(editor);
+    if (!ce)
         return rt_str_empty();
-    char *text = vg_codeeditor_get_selection((vg_codeeditor_t *)editor);
+    char *text = vg_codeeditor_get_selection(ce);
     if (!text)
         return rt_str_empty();
     rt_string result = rt_string_from_bytes(text, strlen(text));
@@ -308,8 +435,9 @@ rt_string rt_codeeditor_get_selected_text(void *editor) {
 /// @brief Move the cursor to a specific line and column in the code editor.
 void rt_codeeditor_set_cursor(void *editor, int64_t line, int64_t col) {
     RT_ASSERT_MAIN_THREAD();
-    if (editor) {
-        vg_codeeditor_set_cursor((vg_codeeditor_t *)editor,
+    vg_codeeditor_t *ce = rt_codeeditor_checked(editor);
+    if (ce) {
+        vg_codeeditor_set_cursor(ce,
                                  rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX),
                                  rt_gui_clamp_i64_to_i32(col, 0, INT32_MAX));
     }
@@ -318,8 +446,9 @@ void rt_codeeditor_set_cursor(void *editor, int64_t line, int64_t col) {
 /// @brief Scroll the code editor viewport to make a specific line visible.
 void rt_codeeditor_scroll_to_line(void *editor, int64_t line) {
     RT_ASSERT_MAIN_THREAD();
-    if (editor) {
-        vg_codeeditor_scroll_to_line((vg_codeeditor_t *)editor,
+    vg_codeeditor_t *ce = rt_codeeditor_checked(editor);
+    if (ce) {
+        vg_codeeditor_scroll_to_line(ce,
                                      rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX));
     }
 }
@@ -327,36 +456,40 @@ void rt_codeeditor_scroll_to_line(void *editor, int64_t line) {
 /// @brief Get the total number of lines in the code editor.
 int64_t rt_codeeditor_get_line_count(void *editor) {
     RT_ASSERT_MAIN_THREAD();
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_checked(editor);
+    if (!ce)
         return 0;
-    return vg_codeeditor_get_line_count((vg_codeeditor_t *)editor);
+    return vg_codeeditor_get_line_count(ce);
 }
 
 /// @brief Check whether the code editor's content has been modified since last clear.
 int64_t rt_codeeditor_is_modified(void *editor) {
     RT_ASSERT_MAIN_THREAD();
-    if (!editor)
+    vg_codeeditor_t *ce = rt_codeeditor_checked(editor);
+    if (!ce)
         return 0;
-    return vg_codeeditor_is_modified((vg_codeeditor_t *)editor) ? 1 : 0;
+    return vg_codeeditor_is_modified(ce) ? 1 : 0;
 }
 
 /// @brief Reset the code editor's modified flag (e.g., after saving).
 void rt_codeeditor_clear_modified(void *editor) {
     RT_ASSERT_MAIN_THREAD();
-    if (editor) {
-        vg_codeeditor_clear_modified((vg_codeeditor_t *)editor);
+    vg_codeeditor_t *ce = rt_codeeditor_checked(editor);
+    if (ce) {
+        vg_codeeditor_clear_modified(ce);
     }
 }
 
 /// @brief Set the font of the codeeditor.
 void rt_codeeditor_set_font(void *editor, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
-    if (editor) {
-        rt_gui_app_t *app = rt_gui_app_from_widget((vg_widget_t *)editor);
+    vg_codeeditor_t *ce = rt_codeeditor_checked(editor);
+    if (ce) {
+        rt_gui_app_t *app = rt_gui_app_from_widget((vg_widget_t *)ce);
         float _s = (app && app->window) ? vgfx_window_get_scale(app->window) : 1.0f;
         if (!isfinite(_s) || _s <= 0.0f)
             _s = 1.0f;
-        vg_codeeditor_set_font((vg_codeeditor_t *)editor,
+        vg_codeeditor_set_font(ce,
                                (vg_font_t *)font,
                                (float)rt_gui_sanitize_font_size(size, 14.0) * _s);
     }
@@ -365,10 +498,10 @@ void rt_codeeditor_set_font(void *editor, void *font, double size) {
 /// @brief Get or set the font size of the code editor (in logical points).
 double rt_codeeditor_get_font_size(void *editor) {
     RT_ASSERT_MAIN_THREAD();
-    if (!editor)
+    vg_codeeditor_t *ed = rt_codeeditor_checked(editor);
+    if (!ed)
         return 14.0;
-    vg_codeeditor_t *ed = (vg_codeeditor_t *)editor;
-    rt_gui_app_t *app = rt_gui_app_from_widget((vg_widget_t *)editor);
+    rt_gui_app_t *app = rt_gui_app_from_widget((vg_widget_t *)ed);
     // Return logical pt size — divide stored physical pixels by HiDPI scale.
     float _s = (app && app->window) ? vgfx_window_get_scale(app->window) : 1.0f;
     if (!isfinite(_s) || _s <= 0.0f)
@@ -379,11 +512,11 @@ double rt_codeeditor_get_font_size(void *editor) {
 /// @brief Get or set the font size of the code editor (in logical points).
 void rt_codeeditor_set_font_size(void *editor, double size) {
     RT_ASSERT_MAIN_THREAD();
-    if (!editor)
+    vg_codeeditor_t *ed = rt_codeeditor_checked(editor);
+    if (!ed)
         return;
-    vg_codeeditor_t *ed = (vg_codeeditor_t *)editor;
     if (rt_gui_double_is_finite(size) && size > 0.0) {
-        rt_gui_app_t *app = rt_gui_app_from_widget((vg_widget_t *)editor);
+        rt_gui_app_t *app = rt_gui_app_from_widget((vg_widget_t *)ed);
         // Store physical pixels — multiply logical pt size by HiDPI scale.
         float _s = (app && app->window) ? vgfx_window_get_scale(app->window) : 1.0f;
         if (!isfinite(_s) || _s <= 0.0f)
@@ -480,54 +613,59 @@ void rt_container_set_padding(void *container, double padding) {
 /// @brief Check whether the mouse cursor is currently over this widget.
 int64_t rt_widget_is_hovered(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    if (!rt_gui_is_widget_handle(widget))
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (!w)
         return 0;
-    return (((vg_widget_t *)widget)->state & VG_STATE_HOVERED) ? 1 : 0;
+    return (w->state & VG_STATE_HOVERED) ? 1 : 0;
 }
 
 /// @brief Check whether the widget is currently being pressed (mouse down).
 int64_t rt_widget_is_pressed(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    if (!rt_gui_is_widget_handle(widget))
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (!w)
         return 0;
-    return (((vg_widget_t *)widget)->state & VG_STATE_PRESSED) ? 1 : 0;
+    return (w->state & VG_STATE_PRESSED) ? 1 : 0;
 }
 
 /// @brief Check whether the widget currently has keyboard focus.
 int64_t rt_widget_is_focused(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    if (!rt_gui_is_widget_handle(widget))
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (!w)
         return 0;
-    return (((vg_widget_t *)widget)->state & VG_STATE_FOCUSED) ? 1 : 0;
+    return (w->state & VG_STATE_FOCUSED) ? 1 : 0;
 }
 
 /// @brief Move keyboard focus to a widget that participates in the tab order.
 void rt_widget_focus(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    if (!rt_gui_is_widget_handle(widget))
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (!w)
         return;
-    vg_widget_set_focus((vg_widget_t *)widget);
+    vg_widget_set_focus(w);
 }
 
 /// @brief Set the last clicked value.
 /// @param widget
 void rt_gui_set_last_clicked(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    if (widget && !rt_gui_is_widget_handle(widget))
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (widget && !w)
         return;
-    rt_gui_app_t *app =
-        widget ? rt_gui_app_from_widget((vg_widget_t *)widget) : rt_gui_get_active_app();
+    rt_gui_app_t *app = w ? rt_gui_app_from_widget(w) : rt_gui_get_active_app();
     if (app)
-        app->last_clicked = (vg_widget_t *)widget;
+        app->last_clicked = w;
 }
 
 /// @brief Check whether this widget was clicked during the current frame.
 int64_t rt_widget_was_clicked(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    if (!rt_gui_is_widget_handle(widget))
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (!w)
         return 0;
-    rt_gui_app_t *app = rt_gui_app_from_widget((vg_widget_t *)widget);
-    return (app && app->last_clicked == widget) ? 1 : 0;
+    rt_gui_app_t *app = rt_gui_app_from_widget(w);
+    return (app && app->last_clicked == w) ? 1 : 0;
 }
 
 /// @brief Set the position of the widget.
@@ -536,8 +674,8 @@ int64_t rt_widget_was_clicked(void *widget) {
 ///          layout pass.
 void rt_widget_set_position(void *widget, int64_t x, int64_t y) {
     RT_ASSERT_MAIN_THREAD();
-    if (rt_gui_is_widget_handle(widget)) {
-        vg_widget_t *w = (vg_widget_t *)widget;
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (w) {
         w->x = rt_gui_sanitize_signed_float((double)x, RT_GUI_MAX_LAYOUT_VALUE);
         w->y = rt_gui_sanitize_signed_float((double)y, RT_GUI_MAX_LAYOUT_VALUE);
         vg_widget_invalidate_layout(w);
@@ -560,10 +698,11 @@ void *rt_dropdown_new(void *parent) {
 /// @brief Add a selectable item to a dropdown list.
 int64_t rt_dropdown_add_item(void *dropdown, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
-    if (!dropdown)
+    vg_dropdown_t *dd = rt_dropdown_checked(dropdown);
+    if (!dd)
         return -1;
     char *ctext = rt_string_to_cstr(text);
-    int64_t index = vg_dropdown_add_item((vg_dropdown_t *)dropdown, ctext);
+    int64_t index = vg_dropdown_add_item(dd, ctext);
     free(ctext);
     return index;
 }
@@ -571,8 +710,9 @@ int64_t rt_dropdown_add_item(void *dropdown, rt_string text) {
 /// @brief Remove an item from a dropdown by index.
 void rt_dropdown_remove_item(void *dropdown, int64_t index) {
     RT_ASSERT_MAIN_THREAD();
-    if (dropdown) {
-        vg_dropdown_remove_item((vg_dropdown_t *)dropdown,
+    vg_dropdown_t *dd = rt_dropdown_checked(dropdown);
+    if (dd) {
+        vg_dropdown_remove_item(dd,
                                 rt_gui_clamp_i64_to_i32(index, INT32_MIN, INT32_MAX));
     }
 }
@@ -580,16 +720,18 @@ void rt_dropdown_remove_item(void *dropdown, int64_t index) {
 /// @brief Remove all items from a dropdown, leaving it empty.
 void rt_dropdown_clear(void *dropdown) {
     RT_ASSERT_MAIN_THREAD();
-    if (dropdown) {
-        vg_dropdown_clear((vg_dropdown_t *)dropdown);
+    vg_dropdown_t *dd = rt_dropdown_checked(dropdown);
+    if (dd) {
+        vg_dropdown_clear(dd);
     }
 }
 
 /// @brief Programmatically select a dropdown item by index.
 void rt_dropdown_set_selected(void *dropdown, int64_t index) {
     RT_ASSERT_MAIN_THREAD();
-    if (dropdown) {
-        vg_dropdown_set_selected((vg_dropdown_t *)dropdown,
+    vg_dropdown_t *dd = rt_dropdown_checked(dropdown);
+    if (dd) {
+        vg_dropdown_set_selected(dd,
                                  rt_gui_clamp_i64_to_i32(index, INT32_MIN, INT32_MAX));
     }
 }
@@ -597,17 +739,19 @@ void rt_dropdown_set_selected(void *dropdown, int64_t index) {
 /// @brief Get the index of the currently selected dropdown item (-1 if none).
 int64_t rt_dropdown_get_selected(void *dropdown) {
     RT_ASSERT_MAIN_THREAD();
-    if (!dropdown)
+    vg_dropdown_t *dd = rt_dropdown_checked(dropdown);
+    if (!dd)
         return -1;
-    return vg_dropdown_get_selected((vg_dropdown_t *)dropdown);
+    return vg_dropdown_get_selected(dd);
 }
 
 /// @brief Get the selected text of the dropdown.
 rt_string rt_dropdown_get_selected_text(void *dropdown) {
     RT_ASSERT_MAIN_THREAD();
-    if (!dropdown)
+    vg_dropdown_t *dd = rt_dropdown_checked(dropdown);
+    if (!dd)
         return rt_str_empty();
-    const char *text = vg_dropdown_get_selected_text((vg_dropdown_t *)dropdown);
+    const char *text = vg_dropdown_get_selected_text(dd);
     if (!text)
         return rt_str_empty();
     return rt_string_from_bytes(text, strlen(text));
@@ -616,10 +760,11 @@ rt_string rt_dropdown_get_selected_text(void *dropdown) {
 /// @brief Set the placeholder of the dropdown.
 void rt_dropdown_set_placeholder(void *dropdown, rt_string placeholder) {
     RT_ASSERT_MAIN_THREAD();
-    if (!dropdown)
+    vg_dropdown_t *dd = rt_dropdown_checked(dropdown);
+    if (!dd)
         return;
     char *ctext = rt_string_to_cstr(placeholder);
-    vg_dropdown_set_placeholder((vg_dropdown_t *)dropdown, ctext);
+    vg_dropdown_set_placeholder(dd, ctext);
     free(ctext);
 }
 
@@ -638,10 +783,11 @@ void *rt_slider_new(void *parent, int64_t horizontal) {
 /// @brief Set the value of the slider.
 void rt_slider_set_value(void *slider, double value) {
     RT_ASSERT_MAIN_THREAD();
-    if (slider) {
+    vg_slider_t *sl = rt_slider_checked(slider);
+    if (sl) {
         if (!rt_gui_double_is_finite(value))
             return;
-        vg_slider_set_value((vg_slider_t *)slider,
+        vg_slider_set_value(sl,
                             rt_gui_sanitize_signed_float(value, RT_GUI_MAX_LAYOUT_VALUE));
     }
 }
@@ -649,15 +795,17 @@ void rt_slider_set_value(void *slider, double value) {
 /// @brief Get the value of the slider.
 double rt_slider_get_value(void *slider) {
     RT_ASSERT_MAIN_THREAD();
-    if (!slider)
+    vg_slider_t *sl = rt_slider_checked(slider);
+    if (!sl)
         return 0.0;
-    return (double)vg_slider_get_value((vg_slider_t *)slider);
+    return (double)vg_slider_get_value(sl);
 }
 
 /// @brief Set the range of the slider.
 void rt_slider_set_range(void *slider, double min_val, double max_val) {
     RT_ASSERT_MAIN_THREAD();
-    if (slider) {
+    vg_slider_t *sl = rt_slider_checked(slider);
+    if (sl) {
         if (!rt_gui_double_is_finite(min_val) || !rt_gui_double_is_finite(max_val))
             return;
         if (min_val > max_val) {
@@ -665,7 +813,7 @@ void rt_slider_set_range(void *slider, double min_val, double max_val) {
             min_val = max_val;
             max_val = tmp;
         }
-        vg_slider_set_range((vg_slider_t *)slider,
+        vg_slider_set_range(sl,
                             rt_gui_sanitize_signed_float(min_val, RT_GUI_MAX_LAYOUT_VALUE),
                             rt_gui_sanitize_signed_float(max_val, RT_GUI_MAX_LAYOUT_VALUE));
     }
@@ -674,8 +822,9 @@ void rt_slider_set_range(void *slider, double min_val, double max_val) {
 /// @brief Set the step of the slider.
 void rt_slider_set_step(void *slider, double step) {
     RT_ASSERT_MAIN_THREAD();
-    if (slider) {
-        vg_slider_set_step((vg_slider_t *)slider,
+    vg_slider_t *sl = rt_slider_checked(slider);
+    if (sl) {
+        vg_slider_set_step(sl,
                            rt_gui_sanitize_nonnegative_float(step, RT_GUI_MAX_LAYOUT_VALUE));
     }
 }
@@ -693,9 +842,10 @@ void *rt_progressbar_new(void *parent) {
 /// @brief Set the value of the progressbar.
 void rt_progressbar_set_value(void *progress, double value) {
     RT_ASSERT_MAIN_THREAD();
-    if (progress) {
+    vg_progressbar_t *pb = rt_progressbar_checked(progress);
+    if (pb) {
         double sanitized = rt_gui_double_is_finite(value) ? value : 0.0;
-        vg_progressbar_set_value((vg_progressbar_t *)progress,
+        vg_progressbar_set_value(pb,
                                  (float)rt_gui_clamp_f64(sanitized, 0.0, 1.0));
     }
 }
@@ -703,9 +853,10 @@ void rt_progressbar_set_value(void *progress, double value) {
 /// @brief Get the value of the progressbar.
 double rt_progressbar_get_value(void *progress) {
     RT_ASSERT_MAIN_THREAD();
-    if (!progress)
+    vg_progressbar_t *pb = rt_progressbar_checked(progress);
+    if (!pb)
         return 0.0;
-    return (double)vg_progressbar_get_value((vg_progressbar_t *)progress);
+    return (double)vg_progressbar_get_value(pb);
 }
 
 /// @brief Set the visual style of a progress bar (bar, circle, or indeterminate).
@@ -716,11 +867,12 @@ double rt_progressbar_get_value(void *progress) {
 /// @param style    Style enum value (VG_PROGRESS_BAR, VG_PROGRESS_INDETERMINATE, etc.).
 void rt_progressbar_set_style(void *progress, int64_t style) {
     RT_ASSERT_MAIN_THREAD();
-    if (!progress)
+    vg_progressbar_t *pb = rt_progressbar_checked(progress);
+    if (!pb)
         return;
     if (style < (int64_t)VG_PROGRESS_BAR || style > (int64_t)VG_PROGRESS_INDETERMINATE)
         style = (int64_t)VG_PROGRESS_BAR;
-    vg_progressbar_set_style((vg_progressbar_t *)progress, (vg_progress_style_t)style);
+    vg_progressbar_set_style(pb, (vg_progress_style_t)style);
 }
 
 /// @brief Show or hide the percentage text label on a progress bar.
@@ -728,8 +880,9 @@ void rt_progressbar_set_style(void *progress, int64_t style) {
 /// @param show     Non-zero to render the "XX%" label, zero to hide it.
 void rt_progressbar_show_percentage(void *progress, int64_t show) {
     RT_ASSERT_MAIN_THREAD();
-    if (progress)
-        vg_progressbar_show_percentage((vg_progressbar_t *)progress, show != 0);
+    vg_progressbar_t *pb = rt_progressbar_checked(progress);
+    if (pb)
+        vg_progressbar_show_percentage(pb, show != 0);
 }
 
 //=============================================================================
@@ -747,10 +900,11 @@ void *rt_listbox_new(void *parent) {
 /// @brief Append `text` as a new list-box item; returns the new item handle.
 void *rt_listbox_add_item(void *listbox, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
-    if (!listbox)
+    vg_listbox_t *lb = rt_listbox_checked(listbox);
+    if (!lb)
         return NULL;
     char *ctext = rt_string_to_cstr(text);
-    vg_listbox_item_t *item = vg_listbox_add_item((vg_listbox_t *)listbox, ctext, NULL);
+    vg_listbox_item_t *item = vg_listbox_add_item(lb, ctext, NULL);
     free(ctext);
     return item;
 }
@@ -758,50 +912,55 @@ void *rt_listbox_add_item(void *listbox, rt_string text) {
 /// @brief Remove an item from the listbox.
 void rt_listbox_remove_item(void *listbox, void *item) {
     RT_ASSERT_MAIN_THREAD();
-    if (listbox && item) {
-        vg_listbox_remove_item((vg_listbox_t *)listbox, (vg_listbox_item_t *)item);
+    vg_listbox_t *lb = rt_listbox_checked(listbox);
+    if (lb && item) {
+        vg_listbox_remove_item(lb, (vg_listbox_item_t *)item);
     }
 }
 
 /// @brief Remove all entries from the listbox.
 void rt_listbox_clear(void *listbox) {
     RT_ASSERT_MAIN_THREAD();
-    if (listbox) {
-        vg_listbox_clear((vg_listbox_t *)listbox);
+    vg_listbox_t *lb = rt_listbox_checked(listbox);
+    if (lb) {
+        vg_listbox_clear(lb);
     }
 }
 
 /// @brief Programmatically select a listbox item by handle.
 void rt_listbox_select(void *listbox, void *item) {
     RT_ASSERT_MAIN_THREAD();
-    if (listbox) {
-        vg_listbox_select((vg_listbox_t *)listbox, (vg_listbox_item_t *)item);
+    vg_listbox_t *lb = rt_listbox_checked(listbox);
+    if (lb) {
+        vg_listbox_select(lb, (vg_listbox_item_t *)item);
     }
 }
 
 /// @brief Return the currently-selected listbox item handle (NULL when none).
 void *rt_listbox_get_selected(void *listbox) {
     RT_ASSERT_MAIN_THREAD();
-    if (!listbox)
+    vg_listbox_t *lb = rt_listbox_checked(listbox);
+    if (!lb)
         return NULL;
-    return vg_listbox_get_selected((vg_listbox_t *)listbox);
+    return vg_listbox_get_selected(lb);
 }
 
 /// @brief Get the number of items in the listbox.
 int64_t rt_listbox_get_count(void *listbox) {
     RT_ASSERT_MAIN_THREAD();
-    if (!listbox)
+    vg_listbox_t *lb = rt_listbox_checked(listbox);
+    if (!lb)
         return 0;
-    vg_listbox_t *lb = (vg_listbox_t *)listbox;
     return (int64_t)lb->item_count;
 }
 
 /// @brief Get the selected index of the listbox.
 int64_t rt_listbox_get_selected_index(void *listbox) {
     RT_ASSERT_MAIN_THREAD();
-    if (!listbox)
+    vg_listbox_t *lb = rt_listbox_checked(listbox);
+    if (!lb)
         return -1;
-    size_t idx = vg_listbox_get_selected_index((vg_listbox_t *)listbox);
+    size_t idx = vg_listbox_get_selected_index(lb);
     if (idx == (size_t)-1)
         return -1;
     return (int64_t)idx;
@@ -810,17 +969,18 @@ int64_t rt_listbox_get_selected_index(void *listbox) {
 /// @brief Select a listbox item by its zero-based index.
 void rt_listbox_select_index(void *listbox, int64_t index) {
     RT_ASSERT_MAIN_THREAD();
-    if (!listbox || index < 0)
+    vg_listbox_t *lb = rt_listbox_checked(listbox);
+    if (!lb || index < 0)
         return;
-    vg_listbox_select_index((vg_listbox_t *)listbox, (size_t)index);
+    vg_listbox_select_index(lb, (size_t)index);
 }
 
 /// @brief Check if the listbox selection changed since the last call (edge-triggered).
 int64_t rt_listbox_was_selection_changed(void *listbox) {
     RT_ASSERT_MAIN_THREAD();
-    if (!listbox)
+    vg_listbox_t *lb = rt_listbox_checked(listbox);
+    if (!lb)
         return 0;
-    vg_listbox_t *lb = (vg_listbox_t *)listbox;
 
     if (lb->virtual_mode) {
         if (lb->selected_index != lb->prev_selected_index) {
@@ -899,8 +1059,9 @@ rt_string rt_listbox_item_get_data(void *item) {
 /// @brief Set the font of the listbox.
 void rt_listbox_set_font(void *listbox, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
-    if (listbox) {
-        vg_listbox_set_font((vg_listbox_t *)listbox,
+    vg_listbox_t *lb = rt_listbox_checked(listbox);
+    if (lb) {
+        vg_listbox_set_font(lb,
                             (vg_font_t *)font,
                             (float)rt_gui_sanitize_font_size(size, 14.0));
     }
@@ -913,15 +1074,31 @@ void rt_listbox_set_font(void *listbox, void *font, double size) {
 /// @brief Create a radio-button group — only one member may be selected at a time.
 void *rt_radiogroup_new(void) {
     RT_ASSERT_MAIN_THREAD();
-    return vg_radiogroup_create();
+    vg_radiogroup_t *group = vg_radiogroup_create();
+    if (!group)
+        return NULL;
+    rt_radiogroup_data_t *data =
+        (rt_radiogroup_data_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_radiogroup_data_t));
+    if (!data) {
+        vg_radiogroup_destroy(group);
+        return NULL;
+    }
+    data->magic = RT_RADIOGROUP_MAGIC;
+    data->group = group;
+    if (!rt_radiogroup_registry_add(data)) {
+        vg_radiogroup_destroy(group);
+        data->magic = RT_RADIOGROUP_DESTROYED_MAGIC;
+        data->group = NULL;
+        return NULL;
+    }
+    rt_obj_set_finalizer(data, rt_radiogroup_finalize);
+    return data;
 }
 
 /// @brief Release resources and destroy the radiogroup.
 void rt_radiogroup_destroy(void *group) {
     RT_ASSERT_MAIN_THREAD();
-    if (group) {
-        vg_radiogroup_destroy((vg_radiogroup_t *)group);
-    }
+    rt_radiogroup_dispose((rt_radiogroup_data_t *)group);
 }
 
 /// @brief Create a single radio button bound to a given group.
@@ -929,26 +1106,36 @@ void rt_radiogroup_destroy(void *group) {
 void *rt_radiobutton_new(void *parent, rt_string text, void *group) {
     RT_ASSERT_MAIN_THREAD();
     vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
+    rt_radiogroup_data_t *group_data = NULL;
+    if (group) {
+        group_data = rt_radiogroup_handle_checked(group);
+        if (!group_data)
+            return NULL;
+    }
     char *ctext = rt_string_to_cstr(text);
-    vg_radiobutton_t *radio = vg_radiobutton_create(parent_widget, ctext, (vg_radiogroup_t *)group);
+    vg_radiobutton_t *radio =
+        vg_radiobutton_create(parent_widget, ctext, group_data ? group_data->group : NULL);
     free(ctext);
-    rt_gui_apply_default_font((vg_widget_t *)radio);
+    if (radio)
+        rt_gui_apply_default_font((vg_widget_t *)radio);
     return radio;
 }
 
 /// @brief Check whether a radio button is currently selected in its group.
 int64_t rt_radiobutton_is_selected(void *radio) {
     RT_ASSERT_MAIN_THREAD();
-    if (!radio)
+    vg_radiobutton_t *rb = rt_radiobutton_checked(radio);
+    if (!rb)
         return 0;
-    return vg_radiobutton_is_selected((vg_radiobutton_t *)radio) ? 1 : 0;
+    return vg_radiobutton_is_selected(rb) ? 1 : 0;
 }
 
 /// @brief Programmatically select a radio button (deselects siblings in the group).
 void rt_radiobutton_set_selected(void *radio, int64_t selected) {
     RT_ASSERT_MAIN_THREAD();
-    if (radio) {
-        vg_radiobutton_set_selected((vg_radiobutton_t *)radio, selected != 0);
+    vg_radiobutton_t *rb = rt_radiobutton_checked(radio);
+    if (rb) {
+        vg_radiobutton_set_selected(rb, selected != 0);
     }
 }
 
@@ -965,10 +1152,11 @@ void *rt_spinner_new(void *parent) {
 /// @brief Set the value of the spinner.
 void rt_spinner_set_value(void *spinner, double value) {
     RT_ASSERT_MAIN_THREAD();
-    if (spinner) {
+    vg_spinner_t *sp = rt_spinner_checked(spinner);
+    if (sp) {
         if (!rt_gui_double_is_finite(value))
             return;
-        vg_spinner_set_value((vg_spinner_t *)spinner,
+        vg_spinner_set_value(sp,
                              rt_gui_clamp_f64(
                                  value, -RT_GUI_MAX_LAYOUT_VALUE, RT_GUI_MAX_LAYOUT_VALUE));
     }
@@ -977,15 +1165,17 @@ void rt_spinner_set_value(void *spinner, double value) {
 /// @brief Get the value of the spinner.
 double rt_spinner_get_value(void *spinner) {
     RT_ASSERT_MAIN_THREAD();
-    if (!spinner)
+    vg_spinner_t *sp = rt_spinner_checked(spinner);
+    if (!sp)
         return 0.0;
-    return vg_spinner_get_value((vg_spinner_t *)spinner);
+    return vg_spinner_get_value(sp);
 }
 
 /// @brief Set the range of the spinner.
 void rt_spinner_set_range(void *spinner, double min_val, double max_val) {
     RT_ASSERT_MAIN_THREAD();
-    if (spinner) {
+    vg_spinner_t *sp = rt_spinner_checked(spinner);
+    if (sp) {
         if (!rt_gui_double_is_finite(min_val) || !rt_gui_double_is_finite(max_val))
             return;
         if (min_val > max_val) {
@@ -995,15 +1185,16 @@ void rt_spinner_set_range(void *spinner, double min_val, double max_val) {
         }
         min_val = rt_gui_clamp_f64(min_val, -RT_GUI_MAX_LAYOUT_VALUE, RT_GUI_MAX_LAYOUT_VALUE);
         max_val = rt_gui_clamp_f64(max_val, -RT_GUI_MAX_LAYOUT_VALUE, RT_GUI_MAX_LAYOUT_VALUE);
-        vg_spinner_set_range((vg_spinner_t *)spinner, min_val, max_val);
+        vg_spinner_set_range(sp, min_val, max_val);
     }
 }
 
 /// @brief Set the step of the spinner.
 void rt_spinner_set_step(void *spinner, double step) {
     RT_ASSERT_MAIN_THREAD();
-    if (spinner) {
-        vg_spinner_set_step((vg_spinner_t *)spinner,
+    vg_spinner_t *sp = rt_spinner_checked(spinner);
+    if (sp) {
+        vg_spinner_set_step(sp,
                             (double)rt_gui_sanitize_nonnegative_float(step, RT_GUI_MAX_LAYOUT_VALUE));
     }
 }
@@ -1011,8 +1202,9 @@ void rt_spinner_set_step(void *spinner, double step) {
 /// @brief Set the decimals of the spinner.
 void rt_spinner_set_decimals(void *spinner, int64_t decimals) {
     RT_ASSERT_MAIN_THREAD();
-    if (spinner) {
-        vg_spinner_set_decimals((vg_spinner_t *)spinner,
+    vg_spinner_t *sp = rt_spinner_checked(spinner);
+    if (sp) {
+        vg_spinner_set_decimals(sp,
                                 rt_gui_clamp_i64_to_i32(decimals, 0, 9));
     }
 }
@@ -1097,22 +1289,24 @@ static int rt_image_set_from_pixels_object(vg_image_t *image,
 /// @brief Set the pixels of the image.
 void rt_image_set_pixels(void *image, void *pixels, int64_t width, int64_t height) {
     RT_ASSERT_MAIN_THREAD();
-    rt_image_set_from_pixels_object((vg_image_t *)image, pixels, width, height);
+    rt_image_set_from_pixels_object(rt_image_checked(image), pixels, width, height);
 }
 
 /// @brief Clear the image widget's pixel data, showing nothing.
 void rt_image_clear(void *image) {
     RT_ASSERT_MAIN_THREAD();
-    if (image) {
-        vg_image_clear((vg_image_t *)image);
+    vg_image_t *img = rt_image_checked(image);
+    if (img) {
+        vg_image_clear(img);
     }
 }
 
 /// @brief Set the scale mode of the image.
 void rt_image_set_scale_mode(void *image, int64_t mode) {
     RT_ASSERT_MAIN_THREAD();
-    if (image) {
-        vg_image_set_scale_mode((vg_image_t *)image,
+    vg_image_t *img = rt_image_checked(image);
+    if (img) {
+        vg_image_set_scale_mode(img,
                                 (vg_image_scale_t)rt_gui_clamp_i64_to_i32(mode, 0, 3));
     }
 }
@@ -1120,9 +1314,10 @@ void rt_image_set_scale_mode(void *image, int64_t mode) {
 /// @brief Set the opacity of the image.
 void rt_image_set_opacity(void *image, double opacity) {
     RT_ASSERT_MAIN_THREAD();
-    if (image) {
+    vg_image_t *img = rt_image_checked(image);
+    if (img) {
         double sanitized = rt_gui_double_is_finite(opacity) ? opacity : 1.0;
-        vg_image_set_opacity((vg_image_t *)image,
+        vg_image_set_opacity(img,
                              (float)rt_gui_clamp_f64(sanitized, 0.0, 1.0));
     }
 }
@@ -1135,7 +1330,8 @@ void rt_image_set_opacity(void *image, double opacity) {
 /// @return 1 on success, 0 on failure.
 int64_t rt_image_load_file(void *image, void *path) {
     RT_ASSERT_MAIN_THREAD();
-    if (!image || !path)
+    vg_image_t *img = rt_image_checked(image);
+    if (!img || !path)
         return 0;
 
     // Try PNG first, then BMP, then JPEG, then GIF
@@ -1149,7 +1345,7 @@ int64_t rt_image_load_file(void *image, void *path) {
     if (!pixels)
         return 0;
 
-    int ok = rt_image_set_from_pixels_object((vg_image_t *)image, pixels, 0, 0);
+    int ok = rt_image_set_from_pixels_object(img, pixels, 0, 0);
     if (rt_obj_release_check0(pixels))
         rt_obj_free(pixels);
     return ok ? 1 : 0;

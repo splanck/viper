@@ -1903,12 +1903,15 @@ void vg_filedialog_destroy(vg_filedialog_t *dialog) {
 void vg_filedialog_set_title(vg_filedialog_t *dialog, const char *title) {
     if (!dialog)
         return;
-    free((void *)dialog->base.title);
 #ifdef _WIN32
-    dialog->base.title = title ? _strdup(title) : NULL;
+    char *new_title = title ? _strdup(title) : NULL;
 #else
-    dialog->base.title = title ? strdup(title) : NULL;
+    char *new_title = title ? strdup(title) : NULL;
 #endif
+    if (title && !new_title)
+        return;
+    free((void *)dialog->base.title);
+    dialog->base.title = new_title;
 }
 
 /// @brief Set the directory the dialog opens at; defaults to home if NULL.
@@ -1918,12 +1921,15 @@ void vg_filedialog_set_title(vg_filedialog_t *dialog, const char *title) {
 void vg_filedialog_set_initial_path(vg_filedialog_t *dialog, const char *path) {
     if (!dialog)
         return;
-    free(dialog->current_path);
 #ifdef _WIN32
-    dialog->current_path = path ? _strdup(path) : get_home_directory();
+    char *new_path = path ? _strdup(path) : get_home_directory();
 #else
-    dialog->current_path = path ? strdup(path) : get_home_directory();
+    char *new_path = path ? strdup(path) : get_home_directory();
 #endif
+    if (!new_path)
+        return;
+    free(dialog->current_path);
+    dialog->current_path = new_path;
 }
 
 /// @brief Set the default filename pre-filled in the save-mode text field.

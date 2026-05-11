@@ -51,14 +51,15 @@ static int rt_messagebox_label_is_cancel(const char *label) {
 /// @brief Configure a dialog for modal presentation: enforce minimum width, apply font,
 ///        set modal root, center-show, and push onto the app's dialog stack.
 static void rt_messagebox_prepare_modal(rt_gui_app_t *app, vg_dialog_t *dlg) {
+    if (!app || !dlg)
+        return;
     rt_gui_activate_app(app);
     rt_gui_ensure_default_font();
-    if (dlg)
-        rt_gui_apply_default_font((vg_widget_t *)dlg);
-    if (dlg && dlg->min_width < 360)
+    rt_gui_apply_default_font((vg_widget_t *)dlg);
+    if (dlg->min_width < 360)
         vg_dialog_set_size_constraints(dlg, 360, dlg->min_height, 720, dlg->max_height);
-    vg_dialog_set_modal(dlg, true, app ? app->root : NULL);
-    vg_dialog_show_centered(dlg, app ? app->root : NULL);
+    vg_dialog_set_modal(dlg, true, app->root);
+    vg_dialog_show_centered(dlg, app->root);
     rt_gui_push_dialog(app, dlg);
 }
 
@@ -271,7 +272,8 @@ typedef struct {
 static void rt_messagebox_dispose(rt_messagebox_data_t *data) {
     if (!data)
         return;
-    rt_gui_app_t *app = data->owner_app ? data->owner_app : rt_messagebox_app();
+    rt_gui_app_t *app = rt_gui_is_app_handle(data->owner_app) ? data->owner_app
+                                                              : rt_messagebox_app();
     for (size_t i = 0; i < data->custom_button_count; i++)
         free(data->custom_buttons[i].label);
     free(data->custom_buttons);
@@ -370,6 +372,8 @@ void rt_messagebox_add_button(void *box, rt_string text, int64_t id) {
     if (!box)
         return;
     rt_messagebox_data_t *data = (rt_messagebox_data_t *)box;
+    if (!data->dialog)
+        return;
 
     // Grow the custom buttons array if needed
     if (data->custom_button_count >= data->custom_button_cap) {
@@ -405,6 +409,8 @@ void rt_messagebox_set_default_button(void *box, int64_t id) {
     if (!box)
         return;
     rt_messagebox_data_t *data = (rt_messagebox_data_t *)box;
+    if (!data->dialog)
+        return;
     data->default_button = id;
     for (size_t i = 0; i < data->custom_button_count; i++) {
         data->custom_buttons[i].is_default = (data->custom_buttons[i].result == id);
@@ -419,7 +425,8 @@ int64_t rt_messagebox_show(void *box) {
     if (!box)
         return -1;
     rt_messagebox_data_t *data = (rt_messagebox_data_t *)box;
-    rt_gui_app_t *app = data->owner_app ? data->owner_app : rt_messagebox_app();
+    rt_gui_app_t *app = rt_gui_is_app_handle(data->owner_app) ? data->owner_app
+                                                              : rt_messagebox_app();
     if (!app || !data->dialog)
         return -1;
 
@@ -434,7 +441,7 @@ int64_t rt_messagebox_show(void *box) {
     // For custom buttons, the result code maps directly to the id passed
     // to rt_messagebox_add_button. For preset buttons, use standard mapping.
     if (data->custom_button_count > 0)
-        return (int64_t)result;
+        return result == VG_DIALOG_RESULT_NONE ? -1 : (int64_t)result;
 
     if (result == VG_DIALOG_RESULT_OK || result == VG_DIALOG_RESULT_YES)
         return 0;
@@ -442,7 +449,7 @@ int64_t rt_messagebox_show(void *box) {
         return 1;
     if (result == VG_DIALOG_RESULT_CANCEL)
         return 2;
-    return data->default_button;
+    return -1;
 }
 
 /// @brief Manually free dialog resources (custom buttons, backend handle). The GC finalizer
