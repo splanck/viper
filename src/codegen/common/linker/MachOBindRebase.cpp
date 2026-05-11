@@ -163,6 +163,7 @@ void buildRebaseOpcodes(std::vector<uint8_t> &rebaseData,
             offsets.push_back(addr - dataSegVmAddr);
     }
     std::sort(offsets.begin(), offsets.end());
+    offsets.erase(std::unique(offsets.begin(), offsets.end()), offsets.end());
 
     // Emit rebase opcodes.
     rebaseData.push_back(REBASE_OPCODE_SET_TYPE_IMM | REBASE_TYPE_POINTER);

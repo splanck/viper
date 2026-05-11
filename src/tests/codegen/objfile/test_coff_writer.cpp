@@ -545,14 +545,13 @@ int main() {
         std::ostringstream commonErr;
         ASSERT(readObjFile(
             commonObj.data(), commonObj.size(), "coff_common.obj", commonParsed, commonErr));
-        const ObjSection *commonSec = findSection(commonParsed, ".common");
-        ASSERT(commonSec != nullptr);
-        CHECK(commonSec->zeroFill);
-        CHECK(commonSec->data.size() == 16);
         const uint32_t commonIdx = findSymbolIndex(commonParsed, "common");
         ASSERT(commonIdx != 0);
         CHECK(commonParsed.symbols[commonIdx].binding == ObjSymbol::Global);
-        CHECK(commonParsed.symbols[commonIdx].sectionIndex != 0);
+        CHECK(commonParsed.symbols[commonIdx].common);
+        CHECK(commonParsed.symbols[commonIdx].size == 16);
+        CHECK(commonParsed.symbols[commonIdx].commonAlignment == 8);
+        CHECK(commonParsed.symbols[commonIdx].sectionIndex == 0);
     }
 
     {

@@ -26,6 +26,7 @@
 #include <cstring>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace viper::codegen::linker {
@@ -62,7 +63,24 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
 
     std::unordered_map<std::string, std::vector<size_t>> contentMap;
     std::unordered_map<InputSectionKey, std::vector<size_t>, InputSectionKeyHash> sectionMap;
+    std::unordered_set<InputSectionKey, InputSectionKeyHash> sectionsWithIncomingRelocs;
     std::vector<SymLoc> locations;
+
+    for (size_t oi = 0; oi < allObjects.size(); ++oi) {
+        const auto &obj = allObjects[oi];
+        for (size_t si = 1; si < obj.sections.size(); ++si) {
+            const auto &sec = obj.sections[si];
+            for (const auto &rel : sec.relocs) {
+                if (rel.symIndex >= obj.symbols.size())
+                    continue;
+                const auto &target = obj.symbols[rel.symIndex];
+                if (target.sectionIndex == 0 || target.sectionIndex >= obj.sections.size())
+                    continue;
+                if (target.sectionIndex != si)
+                    sectionsWithIncomingRelocs.insert(InputSectionKey{oi, target.sectionIndex});
+            }
+        }
+    }
 
     for (size_t oi = 0; oi < allObjects.size(); ++oi) {
         auto &obj = allObjects[oi];
@@ -168,6 +186,8 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
         auto &obj = allObjects[firstLoc.objIdx];
         auto &sec = obj.sections[firstLoc.secIdx];
         if (!sec.relocs.empty())
+            continue;
+        if (sectionsWithIncomingRelocs.count(sectionKey))
             continue;
 
         std::vector<size_t> sortedByOffset = locIndices;

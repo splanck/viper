@@ -423,6 +423,29 @@ int main() {
         CHECK(!objs[1].sections[2].stripped);
     }
 
+    // --- Weak same-object relocation follows the strong global winner ---
+    {
+        auto user = makeObj("user.o", {".text.main", ".text.weak"});
+        addSymbol(user, "main", 1, ObjSymbol::Global);
+        addSymbol(user, "hook", 2, ObjSymbol::Weak);
+        addReloc(user, 1, 2);
+
+        auto provider = makeObj("provider.o", {".text.hook"});
+        addSymbol(provider, "hook", 1, ObjSymbol::Global);
+
+        std::vector<ObjFile> objs = {user, provider};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        globalSyms["main"] = {"main", GlobalSymEntry::Global, 0, 1, 0, 0};
+        globalSyms["hook"] = {"hook", GlobalSymEntry::Global, 1, 1, 0, 0};
+
+        std::ostringstream err;
+        deadStrip(objs, 1, globalSyms, "main", LinkPlatform::Linux, err);
+
+        CHECK(!objs[0].sections[1].data.empty()); // main
+        CHECK(objs[0].sections[2].data.empty());  // weak local loser
+        CHECK(!objs[1].sections[1].data.empty()); // strong global winner
+    }
+
     // --- Result ---
     if (gFail == 0) {
         std::cout << "All DeadStripPass tests passed.\n";

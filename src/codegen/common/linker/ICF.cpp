@@ -347,6 +347,18 @@ size_t foldIdenticalCode(std::vector<ObjFile> &allObjects,
                     it->second.offset = 0;
                 }
 
+                // Keep relocations in the folded object's other sections from
+                // falling back to a now-stripped same-object symbol definition.
+                for (auto &sym : allObjects[foldCand.objIdx].symbols) {
+                    if (sym.sectionIndex != foldCand.secIdx || sym.name != foldCand.funcSymName)
+                        continue;
+                    if (sym.binding == ObjSymbol::Global || sym.binding == ObjSymbol::Weak) {
+                        sym.binding = ObjSymbol::Undefined;
+                        sym.sectionIndex = 0;
+                        sym.offset = 0;
+                    }
+                }
+
                 // Clear both data AND relocs on the folded section.
                 auto &foldSec = allObjects[foldCand.objIdx].sections[foldCand.secIdx];
                 foldSec.data.clear();

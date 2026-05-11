@@ -169,6 +169,33 @@ int main() {
         CHECK(objs[0].symbols[2].sectionIndex == 0);
     }
 
+    // --- Cstring sections with incoming relocations are aliased but not compacted ---
+    {
+        auto obj1 = makeRodataObj("a.o", "reloc");
+        auto obj2 = makeRodataObj("b.o", "reloc");
+
+        ObjSection text;
+        text.name = ".text";
+        text.data.resize(4, 0);
+        text.executable = true;
+        text.alloc = true;
+        ObjReloc rel;
+        rel.offset = 0;
+        rel.type = 1;
+        rel.symIndex = 1; // Relocation targets obj2's cstring symbol.
+        text.relocs.push_back(rel);
+        obj2.sections.push_back(text);
+
+        std::vector<ObjFile> objs = {obj1, obj2};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        size_t eliminated = deduplicateStrings(objs, globalSyms);
+
+        CHECK(eliminated == 1);
+        CHECK(objs[0].symbols[1].name == objs[1].symbols[1].name);
+        CHECK(objs[1].symbols[1].sectionIndex == 0);
+        CHECK(objs[1].sections[1].data.size() == 6);
+    }
+
     // --- Strings with same prefix but different length are NOT merged ---
     {
         auto obj1 = makeRodataObj("a.o", "he");

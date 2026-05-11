@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "codegen/common/linker/MachOCodeSign.hpp"
+#include "codegen/common/linker/MachOBindRebase.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -152,8 +153,91 @@ static void testAppleStyleSignatureLayout() {
     CHECK(std::memcmp(codeHash1, expectedCodeHash1, 32) == 0);
 }
 
+static uint64_t readULEB(const std::vector<uint8_t> &data, size_t &pos) {
+    uint64_t value = 0;
+    unsigned shift = 0;
+    while (pos < data.size()) {
+        uint8_t byte = data[pos++];
+        value |= static_cast<uint64_t>(byte & 0x7Fu) << shift;
+        if ((byte & 0x80u) == 0)
+            return value;
+        shift += 7;
+    }
+    return value;
+}
+
+static size_t countRebaseFixups(const std::vector<uint8_t> &data) {
+    size_t pos = 0;
+    size_t count = 0;
+    uint64_t offset = 0;
+    while (pos < data.size()) {
+        uint8_t byte = data[pos++];
+        uint8_t opcode = byte & 0xF0u;
+        uint8_t imm = byte & 0x0Fu;
+        switch (opcode) {
+            case 0x00:
+                return count;
+            case 0x10:
+                break;
+            case 0x20:
+                offset = readULEB(data, pos);
+                break;
+            case 0x30:
+                offset += readULEB(data, pos);
+                break;
+            case 0x40:
+                offset += readULEB(data, pos) * 8;
+                break;
+            case 0x50:
+                count += imm;
+                offset += static_cast<uint64_t>(imm) * 8;
+                break;
+            case 0x60: {
+                const uint64_t n = readULEB(data, pos);
+                count += static_cast<size_t>(n);
+                offset += n * 8;
+                break;
+            }
+            case 0x70: {
+                const uint64_t n = readULEB(data, pos);
+                const uint64_t skip = readULEB(data, pos);
+                count += static_cast<size_t>(n);
+                offset += n * (skip + 8);
+                break;
+            }
+            case 0x80:
+                ++count;
+                offset += static_cast<uint64_t>(imm) * 8 + 8;
+                break;
+            default:
+                return count;
+        }
+    }
+    return count;
+}
+
+static void testDuplicateRebaseEntriesAreCoalesced() {
+    LinkLayout layout;
+    OutputSection data;
+    data.name = "__DATA,__objc_data";
+    data.virtualAddr = 0x100010000;
+    data.writable = true;
+    data.data.resize(32);
+    layout.sections.push_back(std::move(data));
+    layout.rebaseEntries.push_back({0, 0});
+    layout.rebaseEntries.push_back({0, 0});
+    layout.rebaseEntries.push_back({0, 8});
+    layout.rebaseEntries.push_back({0, 8});
+
+    std::vector<uint8_t> rebaseData;
+    buildRebaseOpcodes(rebaseData, layout, 0x100010000, 2);
+
+    CHECK(countRebaseFixups(rebaseData) == 2);
+}
+
 int main() {
     testAppleStyleSignatureLayout();
+    testDuplicateRebaseEntriesAreCoalesced();
     if (gFail != 0) {
         std::cerr << gFail << " test(s) failed\n";
         return 1;

@@ -22,6 +22,9 @@ A focused hardening-and-correctness cycle on the v0.2.5 surface. No new public n
 - AArch64 register-allocator correctness — protection set covers def operands, fixing register-reuse clobbers.
 - Windows x64 stabilization — out-of-order block-param lowering, RSP/RBP scheduling boundaries, lone-JCC trace fix, parallel-copy spill scratch reuse, 256-bone D3D11 cbuffer.
 - x86-64 backend liveness contracts — compare/branch fold safety across edge copies, IMUL→LEA refusal when flags are read, block-DCE preservation of physical registers at exits, fixed-physical-register spill-before-clobber, void-return zero exit code.
+- Native assembler & linker hardening — bounds-checked encoders, writers, and readers; alignment-UB fixed; type-safe section keys; new AArch64 LDR/STR scaled-offset relocs; COFF addends patched into instruction bytes with range checks.
+- Native linker correctness pass — COMMON symbol coalescing, ELF weak-undefined handling, platform-specific symbol fallback, Mach-O text subsection splitting, executable entry validation, TLS layout emission, and relocation opcode checks.
+- Native demo regression repairs — three rounds of x86-64 and AArch64 backend fixes the new linker validation surfaced, plus a MOVZX byte-source REX-prefix bug.
 - 2D graphics correctness round 2 — class-id validation on every typed handle, premultiplied-alpha bilinear sampler, tagged `Color.RGBA(...,0)` distinguishable from legacy `0x00RRGGBB`, alpha-preserving Canvas `BlitAlpha` and particle source-over, Lighting2D tile-light per-frame lifetime.
 - Graphics3D correctness round — Canvas3D HUD/skinned/morphed/blended draw entries, Mesh3D skeleton + morph-target retain integration, atomic Scene3D reparent, Physics3D raycast/joint hardening, terrain/skeleton input validation, glTF JOINTS round-trip in `SetBoneWeights`, new `Viper.Graphics3D.GLTF` runtime class plus `Scene3D.Load`.
 - Typed `Parse.*` string ABI — `Viper.Core.Parse.Double` / `Int64` signatures flipped to `i32(str,ptr)`; legacy raw-pointer ABI preserved for INPUT# parsing via internal aliases.
@@ -33,13 +36,13 @@ A focused hardening-and-correctness cycle on the v0.2.5 surface. No new public n
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 33 | +33 |
-| Source files | 2,996 | 3,005 | +9 |
-| Production SLOC | 552K | 564K | +12K |
-| Test SLOC | 228K | 234K | +6K |
+| Commits | — | 43 | +43 |
+| Source files | 2,996 | 3,006 | +10 |
+| Production SLOC | 552K | 567K | +15K |
+| Test SLOC | 228K | 237K | +9K |
 | Demo SLOC | 188K | 188K | 0 |
 
-Counts via `scripts/count_sloc.sh` (production 563,689 / test 233,890 / demo 187,826 / source files 3,005).
+Counts via `scripts/count_sloc.sh` (production 567,071 / test 236,979 / demo 187,826 / source files 3,006).
 
 ---
 
@@ -220,6 +223,21 @@ Counts via `scripts/count_sloc.sh` (production 563,689 / test 233,890 / demo 187
 - Register allocator collects explicit and implicit physical clobbers through operand roles (including `RAX`/`RDX` division setup and `CQO`/`DIV`/`IDIV` results) and spills active live values before instructions that overwrite fixed physical registers — fixes a class of Windows-only corruption in demos that kept values live across those clobbers.
 - Empty native returns now emit a zero integer return value before `RET` so void main-style native executables don't leak stale register contents as their process exit status; regression coverage added for the void-return exit-code path.
 - Optimizer ownership-effect model gains a new `ownedOutArgMask` bitmask describing pointer arguments that receive an owned reference (e.g. `Box.TryToStr`); plumbed through `RuntimeOwnership.hpp`, `CallEffects.hpp`, signature plumbing, and the runtime metadata for `Memory.Retain` / `Release` / `RetainStr` / `ReleaseStr`, the Box family, `Object.ToString` / `TypeName`, `Parse.DoubleOption` / `Int64Option`, `Convert.ToString_*`, and the MessageBus surface.
+- Binary encoders and ELF/Mach-O/COFF object-file writers now bounds-check every emitted instruction and relocation. Malformed input surfaces as an error instead of UB.
+- Object-file readers switched from `reinterpret_cast` on possibly-misaligned bytes to `std::optional<T>` + `memcpy`. Fixes strict-alignment UB on Mach-O load commands and ELF section headers.
+- Per-file caps (`kMaxObjSectionBytes` = 2 GiB, `kMaxObjMaterializedBytes` = 4 GiB) reject crafted inputs that would otherwise exhaust host memory.
+- `ArchiveReader::parseSize` rejects empty fields, digits-after-padding, and trailing garbage. `AlignUtil::alignUp` throws on bad alignment instead of relying on a release-disabled `assert`.
+- COFF writer patches relocation addends directly into instruction bytes per kind, with explicit alignment and range checks for x86-64 rel32, AArch64 branch26/branch19, ADRP page21, page-offset, and Abs64.
+- Three new relocation kinds: `A64LdSt32Off12`, `A64LdSt128Off12`, and the corrected `IMAGE_REL_ARM64_BRANCH19` constant (was 8, should be 15).
+- New `InputSectionKey{objIndex, secIndex}` replaces ad-hoc `(obj<<32)|sec` packing across six passes. The old form silently truncated above 2³²; the new key is `size_t` end-to-end.
+- New `defaultImageBaseForPlatform` constexpr replaces hard-coded `0x140000000` / `0x100000000` / `0x400000` literals scattered across five files.
+- `CodeSection` carries a monotonic identity; ELF/COFF writers prefer identity-based section-offset relocations and reject ambiguous offset-only references. ELF writer now preserves `Symbol::size` (was always 0).
+- `SymbolResolver` tracks per-name candidate lists so duplicate archive definitions resolve in archive order; the Windows CRT-shim override exception is narrowed to Viper's own runtime archives.
+- AArch64 `BranchTrampoline` address arithmetic is overflow-checked end-to-end. Far-conditional encoding fixed. Mach-O `X86_64_RELOC_SIGNED_4` trailing-byte bias now applied.
+- MOVZX byte-source emits a REX prefix when the source is SPL/BPL/SIL/DIL — without REX those encodings name AH/CH/DH/BH and silently moved the wrong byte. AArch64 `SmulhRRR` activated for `IMulOvf` overflow checks.
+- Native linker correctness round adds reader-level COMMON symbols with single-definition coalescing, correct ELF weak-undefined imports, macOS-only underscore fallback, global-preferred relocation and dead-strip resolution, folded-symbol cleanup after ICF, cstring dedup guards for incoming relocations, ELF/PE TLS layout emission, validated executable entries, PE/ELF writer truncation checks, Mach-O `MH_SUBSECTIONS_VIA_SYMBOLS` text splitting, and duplicate dyld rebase coalescing for ASLR-safe ObjC metadata.
+- Three rounds of x86-64 and AArch64 backend regressions repaired: switch edge-copy ordering, R10/R11 scratch reservation, Win64 shadow space, i1 immediate canonicalization, caller-saved live-out across calls, AArch64 branch-patch math.
+- Doc-comment audit across the assembler and linker subtree (~75 files): canonical Viper file headers, per-helper doxygen, refreshed `docs/codegen/native-assembler.md` and `native-linker.md`.
 
 ### Windows / MSVC toolchain
 
@@ -249,6 +267,7 @@ Counts via `scripts/count_sloc.sh` (production 563,689 / test 233,890 / demo 187
 - x86-64 codegen: out-of-order block-param lowering, instruction-result pre-registration, scheduler prologue-boundary preservation, large-spill `PX_COPY` regression, lone-JCC fallthrough peephole. Backend-liveness round adds compare/branch fold-safety across edge copies, IMUL→LEA refusal under live flags, block-DCE physical-register preservation at exits, JCC-only fallthrough preservation under cold-block movement, fixed-physical-register spill-before-clobber for `RAX`/`RDX`/`CQO`/`DIV`/`IDIV`, and a void-return zero-exit-code regression.
 - x86-64 regression additions also cover switch edge-copy ordering, internal-label/control-transfer splitting, `R10`/`R11` scratch reservation, Win64 runtime-call shadow-space detection, I1 immediate canonicalization, and caller-saved live-out preservation across calls.
 - D3D11: shared-backend coverage tying the bone-palette byte count to the 256 supported shader entries.
+- Native assembler & linker: new tests for `parseSize` rejection, archive symbol-candidate ordering, `CodeSection` identity, ELF symbol-size preservation, COFF ambiguous-target rejection, AArch64 addend range/alignment, the new LDR/STR scaled-offset reloc kinds, Mach-O `SIGNED_4` bias, `InputSectionKey` lookups, branch-trampoline overflow guards, and MOVZX REX emission.
 - The seven `Viper.GUI` widget tests in `src/lib/gui/tests/` were relabeled `tui` → `gui` (a new dedicated ctest label); the wheel-scroll regression contract was rewritten with floating-point tolerance to match the new mouse-wheel constant.
 
 Demos and docs were updated to track the runtime work above; the stale Windows debug/O0 pins for chess, xenoscape, and Baseball were removed after optimized x86-64 builds and smoke probes were restored.
@@ -257,6 +276,6 @@ Demos and docs were updated to track the runtime work above; the stale Windows d
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 33-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 43-commit history since v0.2.5.
 
 <!-- END DRAFT -->

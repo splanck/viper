@@ -100,7 +100,7 @@ bool isMachOModInitTermSection(const std::string &name) {
 }
 
 /// @brief Permission-bucket sort key — lower buckets land at lower addresses.
-/// @details Order: text (RX) → rodata (R) → data (RW) → tls_data → bss → tls_bss
+/// @details Order: text (RX) → rodata (R) → data (RW) → tls_data → tls_bss → bss
 ///          → debug. This both produces sensible W^X segment groupings and
 ///          mirrors the order that ELF/Mach-O/PE writers expect.
 int permClass(const OutputSection &s) {
@@ -112,9 +112,9 @@ int permClass(const OutputSection &s) {
         return 2;
     if (s.tls && !s.zeroFill)
         return 3;
-    if (s.writable && s.zeroFill && !s.tls)
-        return 4;
     if (s.tls && s.zeroFill)
+        return 4;
+    if (s.writable && s.zeroFill && !s.tls)
         return 5;
     return 1; // readonly
 }
@@ -130,11 +130,11 @@ int sectionClassOrder(SectionClass cls) {
             return 1;
         case SectionClass::Data:
             return 2;
-        case SectionClass::Bss:
-            return 3;
         case SectionClass::TlsData:
-            return 4;
+            return 3;
         case SectionClass::TlsBss:
+            return 4;
+        case SectionClass::Bss:
             return 5;
         case SectionClass::ObjC:
             return 6;
@@ -453,12 +453,13 @@ bool mergeSections(const std::vector<ObjFile> &objects,
             }
         }
 
-        // TLS template data → .tdata_template (mapped to __thread_data in
-        // MachOExeWriter). On ELF/PE, all TLS data is template data (no TLV
-        // descriptors), so this path handles those platforms correctly.
+        // TLS template data → .tdata on ELF/PE and .tdata_template on Mach-O
+        // (mapped to __thread_data in MachOExeWriter).
         if (hasTlvTemplateData) {
-            auto &tmpl = addOutputSection(
-                SectionClass::TlsData, ".tdata_template", false, true, true, false);
+            const char *tmplName =
+                platform == LinkPlatform::macOS ? ".tdata_template" : ".tdata";
+            auto &tmpl =
+                addOutputSection(SectionClass::TlsData, tmplName, false, true, true, false);
             for (const auto &pc : pending) {
                 if (pc.cls != SectionClass::TlsData)
                     continue;
@@ -473,14 +474,15 @@ bool mergeSections(const std::vector<ObjFile> &objects,
                 try {
                     padded = alignUp(tmpl.data.size(), align);
                 } catch (const std::exception &ex) {
-                    err << "error: section merge alignment failed for '.tdata_template': "
-                        << ex.what() << "\n";
+                    err << "error: section merge alignment failed for '" << tmplName
+                        << "': " << ex.what() << "\n";
                     return false;
                 }
                 if (padded > tmpl.data.size())
                     tmpl.data.resize(padded, 0);
                 if (sec.data.size() > std::numeric_limits<size_t>::max() - tmpl.data.size()) {
-                    err << "error: merged section '.tdata_template' exceeds addressable size\n";
+                    err << "error: merged section '" << tmplName
+                        << "' exceeds addressable size\n";
                     return false;
                 }
 

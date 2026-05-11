@@ -88,6 +88,20 @@ static void addSymbol(ObjFile &obj,
     obj.symbols.push_back(sym);
 }
 
+static void addCommonSymbol(ObjFile &obj,
+                            const std::string &name,
+                            size_t size,
+                            size_t alignment = 8,
+                            ObjSymbol::Binding binding = ObjSymbol::Global) {
+    ObjSymbol sym;
+    sym.name = name;
+    sym.binding = binding;
+    sym.common = true;
+    sym.size = size;
+    sym.commonAlignment = alignment;
+    obj.symbols.push_back(sym);
+}
+
 static std::vector<uint8_t> readBinaryFile(const std::string &path) {
     std::ifstream in(path, std::ios::binary | std::ios::ate);
     if (!in)
@@ -694,6 +708,107 @@ int main() {
         CHECK(globalSyms["mixed_sym"].objIndex == 2);
         CHECK(globalSyms["mixed_sym"].offset == 16);
         CHECK(dynamicSyms.empty());
+    }
+
+    // --- ELF/COFF common symbols coalesce into one linker-owned allocation ---
+    {
+        auto a = makeObj("a.o", {});
+        addCommonSymbol(a, "tentative", 4, 4);
+
+        auto b = makeObj("b.o", {});
+        addCommonSymbol(b, "tentative", 12, 8);
+
+        std::vector<ObjFile> initObjs = {a, b};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(initObjs, archives, globalSyms, allObjects, dynamicSyms, err);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(allObjects.size() == 3);
+        CHECK(allObjects.back().sections.size() == 2);
+        CHECK(allObjects.back().sections[1].name == ".common");
+        CHECK(allObjects.back().sections[1].data.size() == 12);
+        CHECK(allObjects.back().sections[1].alignment == 8);
+        CHECK(globalSyms["tentative"].binding == GlobalSymEntry::Global);
+        CHECK(globalSyms["tentative"].objIndex == 2);
+        CHECK(globalSyms["tentative"].secIndex == 1);
+        CHECK(!globalSyms["tentative"].common);
+    }
+
+    // --- Strong definitions override tentative/common definitions ---
+    {
+        auto common = makeObj("common.o", {});
+        addCommonSymbol(common, "storage", 32, 16);
+
+        auto strong = makeObj("strong.o", {".data"});
+        addSymbol(strong, "storage", 1, ObjSymbol::Global, 4);
+
+        std::vector<ObjFile> initObjs = {common, strong};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(initObjs, archives, globalSyms, allObjects, dynamicSyms, err);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(allObjects.size() == 2);
+        CHECK(globalSyms["storage"].binding == GlobalSymEntry::Global);
+        CHECK(globalSyms["storage"].objIndex == 1);
+        CHECK(globalSyms["storage"].secIndex == 1);
+        CHECK(globalSyms["storage"].offset == 4);
+        CHECK(!globalSyms["storage"].common);
+    }
+
+    // --- ELF/COFF do not apply Mach-O underscore fallback ---
+    {
+        auto caller = makeObj("caller.o", {".text"});
+        addSymbol(caller, "foo", 0, ObjSymbol::Undefined);
+        auto provider = makeObj("provider.o", {".text"});
+        addSymbol(provider, "_foo", 1, ObjSymbol::Global);
+
+        std::vector<ObjFile> initObjs = {caller, provider};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(
+            initObjs, archives, globalSyms, allObjects, dynamicSyms, err, LinkPlatform::Linux);
+        CHECK(!ok);
+        CHECK(err.str().find("undefined symbol 'foo'") != std::string::npos);
+    }
+
+    // --- Mach-O keeps the underscore compatibility fallback ---
+    {
+        auto caller = makeObj("caller.o", {".text"});
+        caller.format = ObjFileFormat::MachO;
+        addSymbol(caller, "foo", 0, ObjSymbol::Undefined);
+        auto provider = makeObj("provider.o", {".text"});
+        provider.format = ObjFileFormat::MachO;
+        addSymbol(provider, "_foo", 1, ObjSymbol::Global, 8);
+
+        std::vector<ObjFile> initObjs = {caller, provider};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(
+            initObjs, archives, globalSyms, allObjects, dynamicSyms, err, LinkPlatform::macOS);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(globalSyms.count("foo") == 1);
+        CHECK(globalSyms["foo"].binding == GlobalSymEntry::Global);
+        CHECK(globalSyms["foo"].objIndex == 1);
+        CHECK(globalSyms["foo"].offset == 8);
     }
 
     // --- Result ---

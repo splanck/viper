@@ -24,6 +24,7 @@
 #include <cstdint>
 #include <limits>
 #include <sstream>
+#include <vector>
 
 namespace viper::codegen::linker {
 
@@ -32,6 +33,44 @@ static bool isPreferredArchiveDefinitionObject(const ObjFile &obj, LinkPlatform 
 static bool allowDuplicateStrongDefinition(const std::string &name,
                                            LinkPlatform platform,
                                            bool allowArchiveDefinitionPreference);
+static bool materializeCommonSymbols(std::vector<ObjFile> &allObjects,
+                                     std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
+                                     std::ostream &err);
+
+static bool isSupportedCommonAlignment(size_t alignment) {
+    return alignment != 0 && (alignment & (alignment - 1)) == 0 &&
+           alignment <= std::numeric_limits<uint32_t>::max();
+}
+
+static void setEntryFromSymbol(GlobalSymEntry &entry,
+                               const ObjSymbol &sym,
+                               size_t objIdx,
+                               GlobalSymEntry::Binding binding) {
+    entry.binding = binding;
+    entry.objIndex = objIdx;
+    entry.secIndex = sym.sectionIndex;
+    entry.offset = sym.offset;
+    entry.resolvedAddr = sym.absolute ? static_cast<uint64_t>(sym.offset) : 0;
+    entry.absolute = sym.absolute;
+    entry.common = false;
+    entry.commonSize = 0;
+    entry.commonAlignment = 1;
+}
+
+static void setEntryFromCommon(GlobalSymEntry &entry,
+                               const ObjSymbol &sym,
+                               size_t objIdx,
+                               GlobalSymEntry::Binding binding) {
+    entry.binding = binding;
+    entry.objIndex = objIdx;
+    entry.secIndex = 0;
+    entry.offset = 0;
+    entry.resolvedAddr = 0;
+    entry.absolute = false;
+    entry.common = true;
+    entry.commonSize = std::max(entry.commonSize, sym.size);
+    entry.commonAlignment = std::max(entry.commonAlignment, sym.commonAlignment);
+}
 
 /// Add symbols from a single object file into the global table.
 /// @param obj        The object file.
@@ -49,10 +88,12 @@ static bool addObjSymbols(const ObjFile &obj,
                           std::ostream &err) {
     auto eraseUndefinedVariants = [&](const std::string &name) {
         undefined.erase(name);
-        if (!name.empty() && name[0] == '_')
-            undefined.erase(name.substr(1));
-        if (!name.empty())
-            undefined.erase("_" + name);
+        if (platform == LinkPlatform::macOS) {
+            if (!name.empty() && name[0] == '_')
+                undefined.erase(name.substr(1));
+            if (!name.empty())
+                undefined.erase("_" + name);
+        }
     };
 
     for (size_t i = 1; i < obj.symbols.size(); ++i) {
@@ -62,7 +103,7 @@ static bool addObjSymbols(const ObjFile &obj,
 
         if (sym.binding == ObjSymbol::Undefined) {
             auto addUndefined = [&](const std::string &undefName) {
-                auto it = findWithMachoFallback(globalSyms, undefName);
+                auto it = findWithPlatformFallback(globalSyms, undefName, platform);
                 if (it == globalSyms.end() || it->second.binding == GlobalSymEntry::Undefined)
                     undefined.insert(undefName);
                 if (it == globalSyms.end()) {
@@ -87,41 +128,65 @@ static bool addObjSymbols(const ObjFile &obj,
             continue; // Locals don't participate in global resolution.
 
         const bool isWeak = (sym.binding == ObjSymbol::Weak);
-        auto it = findWithMachoFallback(globalSyms, sym.name);
+        if (sym.common && !isSupportedCommonAlignment(sym.commonAlignment)) {
+            err << "error: common symbol '" << sym.name << "' has unsupported alignment\n";
+            return false;
+        }
+
+        auto it = findWithPlatformFallback(globalSyms, sym.name, platform);
         if (it == globalSyms.end()) {
             // New symbol.
             GlobalSymEntry e;
             e.name = sym.name;
-            e.binding = isWeak ? GlobalSymEntry::Weak : GlobalSymEntry::Global;
-            e.objIndex = objIdx;
-            e.secIndex = sym.sectionIndex;
-            e.offset = sym.offset;
-            e.absolute = sym.absolute;
-            if (sym.absolute)
-                e.resolvedAddr = static_cast<uint64_t>(sym.offset);
+            if (sym.common)
+                setEntryFromCommon(
+                    e, sym, objIdx, isWeak ? GlobalSymEntry::Weak : GlobalSymEntry::Global);
+            else
+                setEntryFromSymbol(
+                    e, sym, objIdx, isWeak ? GlobalSymEntry::Weak : GlobalSymEntry::Global);
             globalSyms[sym.name] = std::move(e);
             eraseUndefinedVariants(sym.name);
         } else {
             auto &existing = it->second;
             if (existing.binding == GlobalSymEntry::Undefined) {
                 // Was undefined, now defined.
-                existing.binding = isWeak ? GlobalSymEntry::Weak : GlobalSymEntry::Global;
-                existing.objIndex = objIdx;
-                existing.secIndex = sym.sectionIndex;
-                existing.offset = sym.offset;
-                existing.absolute = sym.absolute;
-                if (sym.absolute)
-                    existing.resolvedAddr = static_cast<uint64_t>(sym.offset);
+                if (sym.common)
+                    setEntryFromCommon(existing,
+                                       sym,
+                                       objIdx,
+                                       isWeak ? GlobalSymEntry::Weak : GlobalSymEntry::Global);
+                else
+                    setEntryFromSymbol(existing,
+                                       sym,
+                                       objIdx,
+                                       isWeak ? GlobalSymEntry::Weak : GlobalSymEntry::Global);
                 eraseUndefinedVariants(sym.name);
+            } else if (sym.common) {
+                if (existing.common) {
+                    existing.commonSize = std::max(existing.commonSize, sym.size);
+                    existing.commonAlignment =
+                        std::max(existing.commonAlignment, sym.commonAlignment);
+                    if (!isWeak && existing.binding == GlobalSymEntry::Weak) {
+                        existing.binding = GlobalSymEntry::Global;
+                        existing.objIndex = objIdx;
+                    }
+                    eraseUndefinedVariants(sym.name);
+                } else if (existing.binding == GlobalSymEntry::Weak && !isWeak) {
+                    // A strong common definition overrides a weak real definition.
+                    setEntryFromCommon(existing, sym, objIdx, GlobalSymEntry::Global);
+                    eraseUndefinedVariants(sym.name);
+                }
+                // Existing strong real definitions override tentative definitions.
+            } else if (existing.common) {
+                if (!isWeak) {
+                    // A strong real definition overrides any tentative definition.
+                    setEntryFromSymbol(existing, sym, objIdx, GlobalSymEntry::Global);
+                    eraseUndefinedVariants(sym.name);
+                }
+                // Weak real definitions do not override common definitions.
             } else if (existing.binding == GlobalSymEntry::Weak && !isWeak) {
                 // Strong overrides weak.
-                existing.binding = GlobalSymEntry::Global;
-                existing.objIndex = objIdx;
-                existing.secIndex = sym.sectionIndex;
-                existing.offset = sym.offset;
-                existing.absolute = sym.absolute;
-                if (sym.absolute)
-                    existing.resolvedAddr = static_cast<uint64_t>(sym.offset);
+                setEntryFromSymbol(existing, sym, objIdx, GlobalSymEntry::Global);
             } else if (existing.binding == GlobalSymEntry::Global && !isWeak) {
                 if (allowDuplicateStrongDefinition(
                         sym.name, platform, allowArchiveDefinitionPreference))
@@ -222,13 +287,13 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
                 if (undefined.find(undef) == undefined.end())
                     continue;
                 // Mach-O archives use underscore-prefixed symbol names.
-                auto candIt = findWithMachoFallback(ar.symbolCandidates, undef);
+                auto candIt = findWithPlatformFallback(ar.symbolCandidates, undef, platform);
                 std::vector<size_t> legacyCandidate;
                 const std::vector<size_t> *candidates = nullptr;
                 if (candIt != ar.symbolCandidates.end()) {
                     candidates = &candIt->second;
                 } else {
-                    auto symIt = findWithMachoFallback(ar.symbolIndex, undef);
+                    auto symIt = findWithPlatformFallback(ar.symbolIndex, undef, platform);
                     if (symIt == ar.symbolIndex.end())
                         continue;
                     legacyCandidate.push_back(symIt->second);
@@ -284,6 +349,9 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
         }
     }
 
+    if (!materializeCommonSymbols(allObjects, globalSyms, err))
+        return false;
+
     // Mark remaining undefined as dynamic only when the symbol is explicitly
     // allowlisted as a shared-library import on this platform.
     // Unknown unresolveds remain hard link errors so we do not silently emit
@@ -322,6 +390,92 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
         return false;
     }
 
+    return true;
+}
+
+static bool materializeCommonSymbols(std::vector<ObjFile> &allObjects,
+                                     std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
+                                     std::ostream &err) {
+    std::vector<std::string> names;
+    names.reserve(globalSyms.size());
+    for (const auto &kv : globalSyms) {
+        const auto &entry = kv.second;
+        if (entry.common && entry.binding != GlobalSymEntry::Undefined &&
+            entry.binding != GlobalSymEntry::Dynamic)
+            names.push_back(kv.first);
+    }
+    if (names.empty())
+        return true;
+
+    std::sort(names.begin(), names.end());
+
+    ObjFile commonObj;
+    commonObj.name = "common";
+    if (!allObjects.empty()) {
+        commonObj.format = allObjects.front().format;
+        commonObj.is64bit = allObjects.front().is64bit;
+        commonObj.isLittleEndian = allObjects.front().isLittleEndian;
+        commonObj.machine = allObjects.front().machine;
+    }
+
+    commonObj.sections.push_back(ObjSection{});
+    commonObj.symbols.push_back(ObjSymbol{});
+
+    ObjSection commonSec;
+    commonSec.name = ".common";
+    commonSec.writable = true;
+    commonSec.alloc = true;
+    commonSec.zeroFill = true;
+    commonSec.alignment = 1;
+
+    for (const auto &name : names) {
+        auto it = globalSyms.find(name);
+        if (it == globalSyms.end())
+            continue;
+        auto &entry = it->second;
+        if (!isSupportedCommonAlignment(entry.commonAlignment)) {
+            err << "error: common symbol '" << entry.name << "' has unsupported alignment\n";
+            return false;
+        }
+        if (entry.commonSize > kMaxObjSectionBytes) {
+            err << "error: common symbol '" << entry.name << "' exceeds section size limit\n";
+            return false;
+        }
+
+        const size_t rem = commonSec.data.size() % entry.commonAlignment;
+        const size_t padding = (rem == 0) ? 0 : entry.commonAlignment - rem;
+        if (padding > kMaxObjSectionBytes - commonSec.data.size() ||
+            entry.commonSize > kMaxObjSectionBytes - commonSec.data.size() - padding) {
+            err << "error: materialized common section exceeds size limit\n";
+            return false;
+        }
+        if (padding != 0)
+            commonSec.data.resize(commonSec.data.size() + padding, 0);
+
+        const size_t offset = commonSec.data.size();
+        commonSec.data.resize(offset + entry.commonSize, 0);
+        if (entry.commonAlignment > commonSec.alignment)
+            commonSec.alignment = static_cast<uint32_t>(entry.commonAlignment);
+
+        ObjSymbol sym;
+        sym.name = entry.name.empty() ? name : entry.name;
+        sym.binding =
+            entry.binding == GlobalSymEntry::Weak ? ObjSymbol::Weak : ObjSymbol::Global;
+        sym.sectionIndex = 1;
+        sym.offset = offset;
+        sym.size = entry.commonSize;
+        commonObj.symbols.push_back(std::move(sym));
+
+        entry.objIndex = allObjects.size();
+        entry.secIndex = 1;
+        entry.offset = offset;
+        entry.absolute = false;
+        entry.resolvedAddr = 0;
+        entry.common = false;
+    }
+
+    commonObj.sections.push_back(std::move(commonSec));
+    allObjects.push_back(std::move(commonObj));
     return true;
 }
 

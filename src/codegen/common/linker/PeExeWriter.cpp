@@ -25,7 +25,9 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <exception>
 #include <fstream>
+#include <limits>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -294,6 +296,68 @@ bool hasPrefix(const std::string &value, const char *prefix) {
     return value.rfind(prefix, 0) == 0;
 }
 
+bool checkedU32(uint64_t value, const char *what, std::ostream &err, uint32_t &out) {
+    if (value > std::numeric_limits<uint32_t>::max()) {
+        err << "error: PE " << what << " exceeds 32-bit file format limit\n";
+        return false;
+    }
+    out = static_cast<uint32_t>(value);
+    return true;
+}
+
+bool checkedSizeU32(size_t value, const char *what, std::ostream &err, uint32_t &out) {
+    if (value > std::numeric_limits<uint32_t>::max()) {
+        err << "error: PE " << what << " exceeds 32-bit file format limit\n";
+        return false;
+    }
+    out = static_cast<uint32_t>(value);
+    return true;
+}
+
+bool checkedAddU32(uint32_t lhs,
+                   uint32_t rhs,
+                   const char *what,
+                   std::ostream &err,
+                   uint32_t &out) {
+    if (lhs > std::numeric_limits<uint32_t>::max() - rhs) {
+        err << "error: PE " << what << " overflows 32-bit file format limit\n";
+        return false;
+    }
+    out = lhs + rhs;
+    return true;
+}
+
+bool checkedRva(uint64_t imageBase,
+                uint64_t virtualAddr,
+                const std::string &what,
+                std::ostream &err,
+                uint32_t &out) {
+    if (virtualAddr < imageBase) {
+        err << "error: PE section '" << what << "' is below the image base\n";
+        return false;
+    }
+    return checkedU32(virtualAddr - imageBase, "RVA", err, out);
+}
+
+bool checkedAlignUpU32(uint64_t value,
+                       uint32_t alignment,
+                       const char *what,
+                       std::ostream &err,
+                       uint32_t &out) {
+    if (value > std::numeric_limits<size_t>::max()) {
+        err << "error: PE " << what << " exceeds addressable size\n";
+        return false;
+    }
+    size_t aligned = 0;
+    try {
+        aligned = alignUp(static_cast<size_t>(value), alignment);
+    } catch (const std::exception &ex) {
+        err << "error: PE " << what << " alignment failed: " << ex.what() << "\n";
+        return false;
+    }
+    return checkedSizeU32(aligned, what, err, out);
+}
+
 /// @brief Encode a power-of-two alignment as the COFF section-alignment bit field.
 /// @details COFF stores alignment in bits 20-23 of Characteristics. A value of
 ///          1 means 1-byte (no alignment), 2 means 2-byte, etc. up to 8192.
@@ -453,14 +517,28 @@ TlsLayout buildTlsDirectory(uint64_t imageBase,
     TlsLayout tls{};
 
     uint32_t tlsStartRva = UINT32_MAX;
-    uint32_t tlsEndRva = 0;
+    uint32_t tlsRawEndRva = 0;
+    uint32_t tlsMemEndRva = 0;
     uint32_t tlsAlignment = 1;
+    bool sawRawTemplateBytes = false;
     for (const auto &sec : layout.sections) {
         if (!sec.alloc || !sec.tls || sec.data.empty())
             continue;
-        const uint32_t secRva = static_cast<uint32_t>(sec.virtualAddr - imageBase);
+        uint32_t secRva = 0;
+        if (!checkedRva(imageBase, sec.virtualAddr, sec.name, err, secRva))
+            return {};
+        uint32_t secSize = 0;
+        if (!checkedSizeU32(sec.data.size(), "TLS section size", err, secSize))
+            return {};
+        uint32_t secEnd = 0;
+        if (!checkedAddU32(secRva, secSize, "TLS section RVA range", err, secEnd))
+            return {};
         tlsStartRva = std::min(tlsStartRva, secRva);
-        tlsEndRva = std::max(tlsEndRva, secRva + static_cast<uint32_t>(sec.data.size()));
+        tlsMemEndRva = std::max(tlsMemEndRva, secEnd);
+        if (!sec.zeroFill) {
+            sawRawTemplateBytes = true;
+            tlsRawEndRva = std::max(tlsRawEndRva, secEnd);
+        }
         tlsAlignment = std::max(tlsAlignment, sec.alignment);
     }
 
@@ -473,12 +551,18 @@ TlsLayout buildTlsDirectory(uint64_t imageBase,
         return {};
     }
 
+    const uint32_t tlsEndRva = sawRawTemplateBytes ? tlsRawEndRva : tlsStartRva;
+    const uint32_t tlsZeroFill = tlsMemEndRva > tlsEndRva ? tlsMemEndRva - tlsEndRva : 0;
+    uint32_t callbackArrayRva = 0;
+    if (!checkedAddU32(sectionRva, 40, "TLS callback-array RVA", err, callbackArrayRva))
+        return {};
+
     tls.data.resize(48, 0);
     putLE64(tls.data, 0, imageBase + tlsStartRva);
     putLE64(tls.data, 8, imageBase + tlsEndRva);
     putLE64(tls.data, 16, tlsIndexIt->second.resolvedAddr);
-    putLE64(tls.data, 24, imageBase + sectionRva + 40); // Null-terminated callback array.
-    putLE32(tls.data, 32, 0); // Zero-fill is already materialized in the template.
+    putLE64(tls.data, 24, imageBase + callbackArrayRva); // Null-terminated callback array.
+    putLE32(tls.data, 32, tlsZeroFill);
     putLE32(tls.data, 36, encodeCoffAlignment(tlsAlignment));
     tls.directoryRva = sectionRva;
     tls.directorySize = 40;
@@ -629,20 +713,31 @@ bool writePeExe(const std::string &path,
 
         PeSection ps;
         ps.name = sectionNameFor(sec);
+        if (ps.name.size() > 8) {
+            err << "error: PE section name '" << ps.name << "' exceeds 8 bytes\n";
+            return false;
+        }
         ownedSectionData.push_back(sec.data);
         ps.data = &ownedSectionData.back();
         ps.alloc = sec.alloc;
         ps.executable = sec.executable;
         ps.writable = sec.writable;
         ps.zeroFill = sec.zeroFill;
-        ps.virtualAddress = sec.alloc ? static_cast<uint32_t>(sec.virtualAddr - imageBase) : 0;
-        ps.virtualSize = static_cast<uint32_t>(ownedSectionData.back().size());
+        if (!checkedRva(imageBase, sec.virtualAddr, sec.name, err, ps.virtualAddress))
+            return false;
+        if (!checkedSizeU32(ownedSectionData.back().size(), "section virtual size", err, ps.virtualSize))
+            return false;
         ps.characteristics = sectionChars(sec.executable, sec.writable, sec.alloc, sec.zeroFill);
         sections.push_back(ps);
 
         if (sec.alloc) {
-            const uint32_t end = ps.virtualAddress +
-                                 static_cast<uint32_t>(alignUp(ps.virtualSize, sectionAlignment));
+            uint32_t alignedVirtualSize = 0;
+            if (!checkedAlignUpU32(
+                    ps.virtualSize, sectionAlignment, "section virtual size", err, alignedVirtualSize))
+                return false;
+            uint32_t end = 0;
+            if (!checkedAddU32(ps.virtualAddress, alignedVirtualSize, "section RVA range", err, end))
+                return false;
             nextGeneratedRva = std::max(nextGeneratedRva, end);
         }
     }
@@ -658,8 +753,10 @@ bool writePeExe(const std::string &path,
     ResourceLayout resourceLayout{};
 
     if (!imports.empty()) {
-        const uint32_t importRva =
-            static_cast<uint32_t>(alignUp(nextGeneratedRva, sectionAlignment));
+        uint32_t importRva = 0;
+        if (!checkedAlignUpU32(
+                nextGeneratedRva, sectionAlignment, "import section RVA", err, importRva))
+            return false;
         importLayout = buildImportTables(imports, importRva, slotRvas);
         generatedImportData = importLayout.data;
 
@@ -692,15 +789,26 @@ bool writePeExe(const std::string &path,
         importSec.name = ".idata";
         importSec.data = &generatedImportData;
         importSec.virtualAddress = importRva;
-        importSec.virtualSize = static_cast<uint32_t>(generatedImportData.size());
+        if (!checkedSizeU32(
+                generatedImportData.size(), "import section size", err, importSec.virtualSize))
+            return false;
         importSec.characteristics = sectionChars(false, false, true);
         sections.push_back(importSec);
-        nextGeneratedRva = importRva + static_cast<uint32_t>(
-                                           alignUp(generatedImportData.size(), sectionAlignment));
+        uint32_t alignedImportSize = 0;
+        if (!checkedAlignUpU32(generatedImportData.size(),
+                               sectionAlignment,
+                               "import section size",
+                               err,
+                               alignedImportSize) ||
+            !checkedAddU32(
+                importRva, alignedImportSize, "import section RVA range", err, nextGeneratedRva))
+            return false;
     }
 
     const bool haveTls = layoutHasTls(layout);
-    const uint32_t tlsDirRva = static_cast<uint32_t>(alignUp(nextGeneratedRva, sectionAlignment));
+    uint32_t tlsDirRva = 0;
+    if (!checkedAlignUpU32(nextGeneratedRva, sectionAlignment, "TLS directory RVA", err, tlsDirRva))
+        return false;
     tlsLayout = buildTlsDirectory(imageBase, layout, tlsDirRva, err);
     if (haveTls && tlsLayout.directorySize == 0)
         return false;
@@ -711,14 +819,25 @@ bool writePeExe(const std::string &path,
         tlsMetaSec.name = ".rdata";
         tlsMetaSec.data = &generatedTlsData;
         tlsMetaSec.virtualAddress = tlsDirRva;
-        tlsMetaSec.virtualSize = static_cast<uint32_t>(generatedTlsData.size());
+        if (!checkedSizeU32(
+                generatedTlsData.size(), "TLS metadata section size", err, tlsMetaSec.virtualSize))
+            return false;
         tlsMetaSec.characteristics = sectionChars(false, false, true);
         sections.push_back(tlsMetaSec);
-        nextGeneratedRva =
-            tlsDirRva + static_cast<uint32_t>(alignUp(generatedTlsData.size(), sectionAlignment));
+        uint32_t alignedTlsSize = 0;
+        if (!checkedAlignUpU32(generatedTlsData.size(),
+                               sectionAlignment,
+                               "TLS metadata section size",
+                               err,
+                               alignedTlsSize) ||
+            !checkedAddU32(
+                tlsDirRva, alignedTlsSize, "TLS metadata section RVA range", err, nextGeneratedRva))
+            return false;
     }
 
-    uint32_t entryRva = static_cast<uint32_t>(layout.entryAddr - imageBase);
+    uint32_t entryRva = 0;
+    if (!checkedRva(imageBase, layout.entryAddr, "<entry>", err, entryRva))
+        return false;
     if (emitStartupStub && !imports.empty()) {
         const auto exitIt = importLayout.slotRvas.find("ExitProcess");
         if (exitIt == importLayout.slotRvas.end()) {
@@ -726,7 +845,10 @@ bool writePeExe(const std::string &path,
             return false;
         }
 
-        const uint32_t stubRva = static_cast<uint32_t>(alignUp(nextGeneratedRva, sectionAlignment));
+        uint32_t stubRva = 0;
+        if (!checkedAlignUpU32(
+                nextGeneratedRva, sectionAlignment, "startup stub RVA", err, stubRva))
+            return false;
         if (arch == LinkArch::AArch64) {
             generatedStubData =
                 buildAArch64StartupStub(imageBase, layout.entryAddr, stubRva, exitIt->second, err);
@@ -741,13 +863,22 @@ bool writePeExe(const std::string &path,
         stubSec.name = ".text";
         stubSec.data = &generatedStubData;
         stubSec.virtualAddress = stubRva;
-        stubSec.virtualSize = static_cast<uint32_t>(generatedStubData.size());
+        if (!checkedSizeU32(
+                generatedStubData.size(), "startup stub section size", err, stubSec.virtualSize))
+            return false;
         stubSec.executable = true;
         stubSec.characteristics = sectionChars(true, false, true);
         sections.push_back(stubSec);
         entryRva = stubRva;
-        nextGeneratedRva =
-            stubRva + static_cast<uint32_t>(alignUp(generatedStubData.size(), sectionAlignment));
+        uint32_t alignedStubSize = 0;
+        if (!checkedAlignUpU32(generatedStubData.size(),
+                               sectionAlignment,
+                               "startup stub section size",
+                               err,
+                               alignedStubSize) ||
+            !checkedAddU32(
+                stubRva, alignedStubSize, "startup stub RVA range", err, nextGeneratedRva))
+            return false;
     }
 
     std::vector<uint32_t> baseRelocRvas;
@@ -756,6 +887,10 @@ bool writePeExe(const std::string &path,
             continue;
         const auto &sec = layout.sections[entry.sectionIndex];
         if (!sec.alloc || entry.offset + 8 > sec.data.size())
+            continue;
+        if (sec.virtualAddr < imageBase)
+            continue;
+        if (entry.offset > std::numeric_limits<uint64_t>::max() - (sec.virtualAddr - imageBase))
             continue;
         const uint64_t rva64 = (sec.virtualAddr - imageBase) + entry.offset;
         if (rva64 <= UINT32_MAX)
@@ -771,26 +906,41 @@ bool writePeExe(const std::string &path,
     generatedBaseRelocData =
         buildBaseRelocationBlocks(std::move(baseRelocRvas), arch == LinkArch::AArch64);
     if (!generatedBaseRelocData.empty()) {
-        const uint32_t relocRva = static_cast<uint32_t>(alignUp(nextGeneratedRva, sectionAlignment));
+        uint32_t relocRva = 0;
+        if (!checkedAlignUpU32(
+                nextGeneratedRva, sectionAlignment, "base relocation section RVA", err, relocRva))
+            return false;
 
         PeSection relocSec;
         relocSec.name = ".reloc";
         relocSec.data = &generatedBaseRelocData;
         relocSec.virtualAddress = relocRva;
-        relocSec.virtualSize = static_cast<uint32_t>(generatedBaseRelocData.size());
+        if (!checkedSizeU32(generatedBaseRelocData.size(),
+                            "base relocation section size",
+                            err,
+                            relocSec.virtualSize))
+            return false;
         relocSec.characteristics = kRelocSectionChars;
         sections.push_back(relocSec);
 
         baseRelocLayout.data = generatedBaseRelocData;
         baseRelocLayout.directoryRva = relocRva;
-        baseRelocLayout.directorySize = static_cast<uint32_t>(generatedBaseRelocData.size());
-        nextGeneratedRva =
-            relocRva +
-            static_cast<uint32_t>(alignUp(generatedBaseRelocData.size(), sectionAlignment));
+        baseRelocLayout.directorySize = relocSec.virtualSize;
+        uint32_t alignedRelocSize = 0;
+        if (!checkedAlignUpU32(generatedBaseRelocData.size(),
+                               sectionAlignment,
+                               "base relocation section size",
+                               err,
+                               alignedRelocSize) ||
+            !checkedAddU32(
+                relocRva, alignedRelocSize, "base relocation section RVA range", err, nextGeneratedRva))
+            return false;
     }
 
-    const uint32_t resourceRva =
-        static_cast<uint32_t>(alignUp(nextGeneratedRva, sectionAlignment));
+    uint32_t resourceRva = 0;
+    if (!checkedAlignUpU32(
+            nextGeneratedRva, sectionAlignment, "resource section RVA", err, resourceRva))
+        return false;
     resourceLayout = buildDefaultManifestResource(resourceRva);
     generatedResourceData = resourceLayout.data;
     if (!generatedResourceData.empty()) {
@@ -798,13 +948,21 @@ bool writePeExe(const std::string &path,
         resourceSec.name = ".rsrc";
         resourceSec.data = &generatedResourceData;
         resourceSec.virtualAddress = resourceRva;
-        resourceSec.virtualSize = static_cast<uint32_t>(generatedResourceData.size());
+        if (!checkedSizeU32(
+                generatedResourceData.size(), "resource section size", err, resourceSec.virtualSize))
+            return false;
         resourceSec.characteristics = sectionChars(false, false, true);
         sections.push_back(resourceSec);
 
-        nextGeneratedRva =
-            resourceRva +
-            static_cast<uint32_t>(alignUp(generatedResourceData.size(), sectionAlignment));
+        uint32_t alignedResourceSize = 0;
+        if (!checkedAlignUpU32(generatedResourceData.size(),
+                               sectionAlignment,
+                               "resource section size",
+                               err,
+                               alignedResourceSize) ||
+            !checkedAddU32(
+                resourceRva, alignedResourceSize, "resource section RVA range", err, nextGeneratedRva))
+            return false;
     }
 
     std::stable_sort(sections.begin(), sections.end(), [](const PeSection &a, const PeSection &b) {
@@ -817,10 +975,24 @@ bool writePeExe(const std::string &path,
 
     const ExceptionLayout exceptionLayout = findExceptionDirectory(sections);
 
+    if (sections.size() > std::numeric_limits<uint16_t>::max()) {
+        err << "error: PE section count exceeds 16-bit file format limit\n";
+        return false;
+    }
     const uint16_t numSections = static_cast<uint16_t>(sections.size());
-    const size_t headersWithoutPadding = 64 + 4 + 20 + 240 + numSections * 40;
-    const uint32_t sizeOfHeaders =
-        static_cast<uint32_t>(alignUp(headersWithoutPadding, fileAlignment));
+    if (sections.size() > std::numeric_limits<size_t>::max() / 40) {
+        err << "error: PE section table size overflows addressable size\n";
+        return false;
+    }
+    const size_t sectionTableBytes = sections.size() * 40;
+    if (sectionTableBytes > std::numeric_limits<size_t>::max() - (64 + 4 + 20 + 240)) {
+        err << "error: PE header size overflows addressable size\n";
+        return false;
+    }
+    const size_t headersWithoutPadding = 64 + 4 + 20 + 240 + sectionTableBytes;
+    uint32_t sizeOfHeaders = 0;
+    if (!checkedAlignUpU32(headersWithoutPadding, fileAlignment, "header size", err, sizeOfHeaders))
+        return false;
 
     uint32_t currentFileOff = sizeOfHeaders;
     uint32_t sizeOfCode = 0;
@@ -830,25 +1002,51 @@ bool writePeExe(const std::string &path,
     uint32_t sizeOfImage = sectionAlignment;
 
     for (auto &sec : sections) {
-        sec.sizeOfRawData =
-            sec.zeroFill ? 0 : static_cast<uint32_t>(alignUp(sec.virtualSize, fileAlignment));
+        if (sec.name.size() > 8) {
+            err << "error: PE section name '" << sec.name << "' exceeds 8 bytes\n";
+            return false;
+        }
+        if (sec.zeroFill) {
+            sec.sizeOfRawData = 0;
+        } else if (!checkedAlignUpU32(
+                       sec.virtualSize, fileAlignment, "section raw size", err, sec.sizeOfRawData)) {
+            return false;
+        }
         sec.pointerToRawData = sec.sizeOfRawData == 0 ? 0 : currentFileOff;
-        currentFileOff += sec.sizeOfRawData;
+        if (!checkedAddU32(
+                currentFileOff, sec.sizeOfRawData, "file offset", err, currentFileOff))
+            return false;
 
         if (sec.alloc) {
-            const uint32_t secEnd =
-                sec.virtualAddress +
-                static_cast<uint32_t>(alignUp(sec.virtualSize, sectionAlignment));
+            uint32_t alignedVirtualSize = 0;
+            if (!checkedAlignUpU32(sec.virtualSize,
+                                   sectionAlignment,
+                                   "section virtual size",
+                                   err,
+                                   alignedVirtualSize))
+                return false;
+            uint32_t secEnd = 0;
+            if (!checkedAddU32(
+                    sec.virtualAddress, alignedVirtualSize, "section RVA range", err, secEnd))
+                return false;
             sizeOfImage = std::max(sizeOfImage, secEnd);
             if (sec.executable) {
-                sizeOfCode += sec.sizeOfRawData;
+                if (!checkedAddU32(
+                        sizeOfCode, sec.sizeOfRawData, "SizeOfCode", err, sizeOfCode))
+                    return false;
                 if (baseOfCode == 0)
                     baseOfCode = sec.virtualAddress;
             } else if (sec.zeroFill) {
-                sizeOfUninitData +=
-                    static_cast<uint32_t>(alignUp(sec.virtualSize, sectionAlignment));
+                if (!checkedAddU32(sizeOfUninitData,
+                                   alignedVirtualSize,
+                                   "SizeOfUninitializedData",
+                                   err,
+                                   sizeOfUninitData))
+                    return false;
             } else {
-                sizeOfInitData += sec.sizeOfRawData;
+                if (!checkedAddU32(
+                        sizeOfInitData, sec.sizeOfRawData, "SizeOfInitializedData", err, sizeOfInitData))
+                    return false;
             }
         }
     }

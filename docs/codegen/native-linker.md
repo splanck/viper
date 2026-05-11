@@ -173,16 +173,19 @@ ObjFile
 
 - **ELF**: Explicit addends from `.rela` sections and implicit addends from `.rel` sections are supported. Extended
   section counts are decoded from section header 0. `SHT_GROUP` COMDAT groups are mapped to associative sections,
-  relocation table byte sizes must be exact multiples of their entry size, `COMMON` symbols are materialized as
-  zero-filled storage, and absolute symbols keep their absolute values.
+  relocation table byte sizes must be exact multiples of their entry size, `SHN_COMMON` symbols are preserved as
+  tentative definitions for linker-wide coalescing, weak undefined symbols stay undefined/weak-external, and
+  absolute symbols keep their absolute values.
 - **Mach-O**: Addends are extracted from instruction bytes or from ARM64 `ADDEND` relocations. Leading `_` is
   stripped from external symbol names (Mach-O convention). Non-extern section-relative relocations resolve through
   synthetic local section symbols, ARM64 `ADDEND` payloads are sign-extended, consecutive addend records are
-  rejected, and `__DWARF`/debug sections are preserved as non-alloc sections. Executable and writable flags are
-  inferred from both section attributes and data-like segment names.
+  rejected, and `__DWARF`/debug sections are preserved as non-alloc sections. `MH_SUBSECTIONS_VIA_SYMBOLS`
+  `__TEXT,__text` inputs are split at global function-symbol boundaries for the native linker, preserving
+  function-level dead-strip and ICF behavior even when the object writer emitted one Mach-O text section.
+  Executable and writable flags are inferred from both section attributes and data-like segment names.
 - **COFF**: Addends are extracted per relocation kind. AMD64/ARM64 `ADDR64` uses an 8-byte addend; ARM64 branch,
   ADRP page, and page-offset relocations decode their instruction fields so writer-emitted placeholders do not
-  become bogus addends. Common symbols are allocated into zero-filled storage. Weak extern fallback records,
+  become bogus addends. Common symbols are preserved as tentative definitions. Weak extern fallback records,
   associative COMDAT section relationships, and COFF relocation overflow records are parsed; unsupported BigObj
   inputs fail with a specific diagnostic.
 
@@ -239,6 +242,9 @@ Symbol resolution uses an iterative fixed-point algorithm:
 | Weak | Global | Global wins (strong overrides weak) |
 | Global | Global | **Error** (multiply defined) |
 | Global | Weak | Existing Global kept |
+| Common | Common | Largest size/max alignment coalesced |
+| Common | Global | Strong definition wins |
+| Weak | Common(Global) | Common strong tentative definition wins |
 
 ### Runtime Archive Order
 
@@ -254,6 +260,10 @@ Base is always included. Other components are pulled in based on which `rt_*` sy
 Windows CRT/runtime shim names that Viper intentionally supplies from its own runtime archives are not downgraded to
 dynamic imports. That exception is scoped to Viper runtime archive objects; arbitrary user or third-party archives
 still produce normal multiply-defined diagnostics.
+
+ELF/COFF common symbols are materialized once after archive resolution into a linker-owned zero-fill section. This
+matches tentative-definition semantics and avoids one `.common` allocation per input object. Mach-O underscore
+fallback lookup is restricted to macOS; on ELF/COFF, `foo` and `_foo` are distinct symbols.
 
 ---
 
@@ -276,7 +286,9 @@ Input sections are classified by name and attributes:
 
 ### Layout
 
-Output sections are laid out in order: `.text` → `.rodata` → `.data` → `.tdata` → `.bss` → `.tbss`.
+Output sections are laid out in order: `.text` → `.rodata` → `.data` → `.tdata` → `.tbss` → `.bss`.
+TLS data and TLS BSS stay adjacent in address order so ELF `PT_TLS` and PE TLS metadata do not span ordinary
+process-global BSS.
 
 Each section starts on a page boundary. Within a section, input chunks are concatenated with their alignment
 requirements preserved. Empty alloc sections are skipped only when they have no relocations and no live symbols, so
@@ -335,9 +347,12 @@ This avoids a single `switch` with colliding cases.
 
 Where: `S` = symbol address, `A` = addend, `P` = patch site address, `Page(X)` = `X & ~0xFFF`.
 
-Relocation symbol lookup resolves a defined local or absolute symbol from the referencing object before consulting
-the global symbol table. This keeps duplicate local labels or local symbols with the same spelling as an external
-symbol from being rebound to an unrelated global definition.
+Relocation symbol lookup resolves local symbols from the referencing object. For non-local weak/global symbols with
+a same-object definition, the global table is consulted first so a strong definition in another object correctly
+overrides the weak/common definition. This same rule is used by dead-strip liveness propagation.
+
+AArch64 instruction-field relocations validate the opcode before patching: branch26 requires `B`/`BL`, page21 and
+GOT page21 require `ADRP`, and branch19 requires `B.cond`/`CBZ`/`CBNZ`.
 
 ### Range Checking
 
@@ -422,6 +437,8 @@ Section Header Table
 - Entry point set via `e_entry` field
 - Each PT_LOAD segment is page-aligned
 - `PT_GNU_STACK` flags = `PF_R | PF_W` (no `PF_X`, non-executable stack)
+- TLS sections carry `SHF_TLS`; TLS images emit a `PT_TLS` program header whose file size covers initialized TLS
+  data and whose memory size extends through `.tbss`.
 - File permissions set to 755 after writing
 
 ### Mach-O Executable Writer
@@ -446,10 +463,14 @@ __DATA segment data (page-aligned)
 **Key details:**
 - `__PAGEZERO` must be the first load command (vmaddr=0, vmsize=0x100000000)
 - `LC_MAIN` specifies the entry offset within `__TEXT` file data. A custom `layout.entryAddr` is honored when set;
-  otherwise the writer falls back to `main` / `_main`.
+  otherwise the writer falls back to `main` / `_main`. The entry address must fall inside a `__TEXT` section.
 - No CRT objects needed on macOS (unlike Linux)
 - Page alignment: 16KB on arm64, 4KB on x86_64
 - `MH_PIE` flag set for ASLR
+- Dyld rebase opcode emission sorts and coalesces pointer locations before encoding. Duplicate rebase records would
+  otherwise apply the ASLR slide more than once to ObjC and other absolute metadata pointers.
+- Mach-O-style internal names such as `__LD,__compact_unwind` are split before writing fixed-width section-name
+  fields, so the serialized section name is validated against the actual 16-byte Mach-O field.
 
 ### PE Executable Writer
 
@@ -474,7 +495,9 @@ Section Data (file-aligned to 0x200)
 **Key details:**
 - DLL characteristics: `DYNAMIC_BASE | NX_COMPAT | HIGH_ENTROPY_VA | TERMINAL_SERVER_AWARE`
 - Section data aligned to 0x200 (file) and 0x1000 (memory)
-- 16 data directory entries (all zeroed in minimal output)
+- 16 data directory entries; imports, exceptions, base relocations, resources, IAT, and TLS are populated when used
+- TLS directory raw-data bounds exclude `.tbss`; `SizeOfZeroFill` covers the zero-fill tail instead of embedding it
+  into the TLS template.
 - Stack reserve: 1MB, heap reserve: 1MB
 
 ---
@@ -503,7 +526,8 @@ minimal PE executables with the entry point at `main` and emits the required DLL
 
 The Viper runtime uses 13 thread-local variables across 9 `.c` files. The linker preserves TLS sections (`.tdata`,
 `.tbss`, `__DATA,__thread_data`) when present in input objects. TLS relocations are handled by the relocation
-applier using the appropriate format-specific types.
+applier using the appropriate format-specific types. ELF output emits `PT_TLS`; PE output emits the TLS data
+directory and reports zero-filled TLS separately from initialized template bytes.
 
 ---
 

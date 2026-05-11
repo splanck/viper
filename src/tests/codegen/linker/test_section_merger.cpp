@@ -10,7 +10,7 @@
 //          correct section ordering, alignment, virtual address assignment,
 //          and empty section handling.
 // Key invariants:
-//   - Section order: text → rodata → data → bss → tls_data → tls_bss
+//   - Section order: text → rodata → data → tls_data → tls_bss → bss
 //   - Segments page-aligned at permission boundaries
 //   - Chunks respect their alignment within output sections
 // Ownership/Lifetime: Standalone test binary.
@@ -254,10 +254,10 @@ int main() {
         bool ok = mergeSections(objs, LinkPlatform::Linux, LinkArch::X86_64, layout, err);
         CHECK(ok);
 
-        // Should have text, then tdata.
+        // Should have text, then ELF TLS template data.
         CHECK(layout.sections.size() == 2);
         CHECK(layout.sections[0].name == ".text");
-        CHECK(layout.sections[1].name == ".tdata_template");
+        CHECK(layout.sections[1].name == ".tdata");
         CHECK(layout.sections[1].tls);
     }
 
@@ -344,7 +344,7 @@ int main() {
         bool ok = mergeSections(objs, LinkPlatform::Windows, LinkArch::X86_64, layout, err);
         CHECK(ok);
         CHECK(layout.sections.size() == 1);
-        CHECK(layout.sections[0].name == ".tdata_template");
+        CHECK(layout.sections[0].name == ".tdata");
         CHECK(layout.sections[0].chunks.size() == 2);
         CHECK(layout.sections[0].chunks[0].inputSecIndex == 2); // .tls$
         CHECK(layout.sections[0].chunks[1].inputSecIndex == 1); // .tls$ZZZ
@@ -367,13 +367,13 @@ int main() {
         CHECK(err.str().empty());
         CHECK(layout.sections.size() == 3);
         CHECK(layout.sections[0].name == ".data");
-        CHECK(layout.sections[1].name == ".bss");
+        CHECK(layout.sections[1].name == ".tbss");
         CHECK(layout.sections[1].zeroFill);
         CHECK(layout.sections[1].writable);
-        CHECK(!layout.sections[1].tls);
-        CHECK(layout.sections[2].name == ".tbss");
+        CHECK(layout.sections[1].tls);
+        CHECK(layout.sections[2].name == ".bss");
         CHECK(layout.sections[2].zeroFill);
-        CHECK(layout.sections[2].tls);
+        CHECK(!layout.sections[2].tls);
     }
 
     // --- ELF init/fini arrays use constructor priority instead of alignment order ---

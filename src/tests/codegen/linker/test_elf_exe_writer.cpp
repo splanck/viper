@@ -96,6 +96,7 @@ static constexpr uint16_t EM_AARCH64 = 183;
 static constexpr uint32_t PT_LOAD = 1;
 static constexpr uint32_t PT_DYNAMIC = 2;
 static constexpr uint32_t PT_INTERP = 3;
+static constexpr uint32_t PT_TLS = 7;
 static constexpr uint32_t PT_GNU_STACK = 0x6474E551;
 static constexpr uint32_t PF_X = 1;
 static constexpr uint32_t PF_W = 2;
@@ -110,6 +111,7 @@ static constexpr uint32_t SHT_DYNSYM = 11;
 static constexpr uint32_t SHF_ALLOC = 0x2;
 static constexpr uint32_t SHF_WRITE = 0x1;
 static constexpr uint32_t SHF_EXECINSTR = 0x4;
+static constexpr uint32_t SHF_TLS = 0x400;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -666,6 +668,50 @@ static void testDynamicImports() {
     CHECK(type1 == 1); // R_X86_64_64
 }
 
+/// Test 13: TLS sections emit PT_TLS and SHF_TLS.
+static void testTlsProgramHeaderAndSectionFlags() {
+    auto path = tmpPath("tls.elf");
+    auto tdata = makeSec(".tdata", 8, 0x402000, false, true, 0xAA);
+    tdata.tls = true;
+    tdata.alignment = 8;
+    auto tbss = makeSec(".tbss", 16, 0x403000, false, true, 0x00, true);
+    tbss.tls = true;
+    tbss.alignment = 8;
+
+    auto layout = makeLayout({tdata, tbss});
+    std::ostringstream err;
+    bool ok = writeElfExe(path, layout, LinkArch::X86_64, err);
+    CHECK(ok);
+    CHECK(err.str().empty());
+
+    auto data = readFile(path);
+    Elf64_Ehdr ehdr;
+    std::memcpy(&ehdr, data.data(), sizeof(ehdr));
+
+    std::vector<Elf64_Phdr> phdrs(ehdr.e_phnum);
+    std::memcpy(phdrs.data(), data.data() + ehdr.e_phoff, ehdr.e_phnum * sizeof(Elf64_Phdr));
+    bool foundTlsPhdr = false;
+    for (const auto &phdr : phdrs) {
+        if (phdr.p_type != PT_TLS)
+            continue;
+        foundTlsPhdr = true;
+        CHECK(phdr.p_vaddr == 0x402000);
+        CHECK(phdr.p_filesz == 8);
+        CHECK(phdr.p_memsz == 0x1010);
+        CHECK(phdr.p_align == 8);
+        CHECK((phdr.p_flags & PF_R) != 0);
+    }
+    CHECK(foundTlsPhdr);
+
+    Elf64_Shdr tdataShdr{};
+    Elf64_Shdr tbssShdr{};
+    CHECK(findSectionByName(data, ehdr, ".tdata", tdataShdr));
+    CHECK(findSectionByName(data, ehdr, ".tbss", tbssShdr));
+    CHECK((tdataShdr.sh_flags & SHF_TLS) != 0);
+    CHECK((tbssShdr.sh_flags & SHF_TLS) != 0);
+    CHECK(tbssShdr.sh_type == SHT_NOBITS);
+}
+
 // ─── Main ────────────────────────────────────────────────────────────────
 
 int main() {
@@ -681,6 +727,7 @@ int main() {
     testLargePageSize();
     testGnuStackSectionHeader();
     testDynamicImports();
+    testTlsProgramHeaderAndSectionFlags();
 
     cleanupTmp();
 

@@ -492,52 +492,6 @@ bool readElfObj(
             break;
         }
 
-        uint32_t commonSecIdx = 0;
-        auto allocateCommon = [&](size_t sizeBytes, size_t alignment, size_t &outOffset) -> bool {
-            if (commonSecIdx == 0) {
-                ObjSection common;
-                common.name = ".common";
-                common.writable = true;
-                common.alloc = true;
-                common.zeroFill = true;
-                common.alignment = 1;
-                commonSecIdx = static_cast<uint32_t>(obj.sections.size());
-                obj.sections.push_back(std::move(common));
-            }
-            auto &common = obj.sections[commonSecIdx];
-            if (alignment == 0)
-                alignment = 1;
-            if ((alignment & (alignment - 1)) != 0 ||
-                alignment > std::numeric_limits<uint32_t>::max()) {
-                err << "error: " << name << ": ELF common symbol has unsupported alignment\n";
-                return false;
-            }
-            if (alignment > common.alignment)
-                common.alignment = static_cast<uint32_t>(alignment);
-            const size_t rem = common.data.size() % alignment;
-            const size_t padding = (rem != 0) ? (alignment - rem) : 0;
-            if (padding > kMaxObjMaterializedBytes - materializedBytes ||
-                common.data.size() > std::numeric_limits<size_t>::max() - padding) {
-                err << "error: " << name << ": ELF common section alignment exceeds limit\n";
-                return false;
-            }
-            if (rem != 0) {
-                common.data.resize(common.data.size() + padding, 0);
-                materializedBytes += padding;
-            }
-            const size_t off = common.data.size();
-            if (sizeBytes > kMaxObjSectionBytes ||
-                sizeBytes > kMaxObjMaterializedBytes - materializedBytes ||
-                off > std::numeric_limits<size_t>::max() - sizeBytes) {
-                err << "error: " << name << ": ELF common section data exceeds limit\n";
-                return false;
-            }
-            common.data.resize(off + sizeBytes, 0);
-            materializedBytes += sizeBytes;
-            outOffset = off;
-            return true;
-        };
-
         for (uint32_t i = 1; i < symCount; ++i) {
             const auto symValue = readStruct<elf::Elf64_Sym>(
                 data, size, static_cast<size_t>(symSh->sh_offset) + i * sizeof(elf::Elf64_Sym));
@@ -558,9 +512,10 @@ bool readElfObj(
             }
 
             const uint8_t bind = sym->st_info >> 4;
-            if (effectiveShndx == elf::SHN_UNDEF)
-                os.binding = (bind == elf::STB_WEAK) ? ObjSymbol::Weak : ObjSymbol::Undefined;
-            else if (bind == elf::STB_LOCAL)
+            if (effectiveShndx == elf::SHN_UNDEF) {
+                os.binding = ObjSymbol::Undefined;
+                os.weakExternal = (bind == elf::STB_WEAK);
+            } else if (bind == elf::STB_LOCAL)
                 os.binding = ObjSymbol::Local;
             else if (bind == elf::STB_WEAK)
                 os.binding = ObjSymbol::Weak;
@@ -570,17 +525,21 @@ bool readElfObj(
             if (effectiveShndx == elf::SHN_ABS) {
                 os.absolute = true;
             } else if (effectiveShndx == elf::SHN_COMMON) {
-                if (!allocateCommon(static_cast<size_t>(sym->st_size),
-                                    static_cast<size_t>(sym->st_value),
-                                    os.offset))
+                const size_t alignment = static_cast<size_t>(sym->st_value);
+                if (alignment != 0 &&
+                    ((alignment & (alignment - 1)) != 0 ||
+                     alignment > std::numeric_limits<uint32_t>::max())) {
+                    err << "error: " << name << ": ELF common symbol has unsupported alignment\n";
                     return false;
-                os.sectionIndex = commonSecIdx;
+                }
+                os.common = true;
+                os.commonAlignment = alignment == 0 ? 1 : alignment;
+                os.sectionIndex = 0;
             } else if (effectiveShndx < shnum && effectiveShndx != elf::SHN_UNDEF) {
                 os.sectionIndex = secMap[effectiveShndx];
             }
 
-            if (effectiveShndx != elf::SHN_COMMON)
-                os.offset = static_cast<size_t>(sym->st_value);
+            os.offset = effectiveShndx == elf::SHN_COMMON ? 0 : static_cast<size_t>(sym->st_value);
             os.size = static_cast<size_t>(sym->st_size);
 
             symMap[i] = static_cast<uint32_t>(obj.symbols.size());

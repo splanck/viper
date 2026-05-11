@@ -151,7 +151,7 @@ LinkLayout makeTlsLayout() {
     layout.sections.push_back(std::move(data));
 
     OutputSection tls;
-    tls.name = ".tdata_template";
+    tls.name = ".tdata";
     tls.alloc = true;
     tls.writable = true;
     tls.tls = true;
@@ -159,6 +159,17 @@ LinkLayout makeTlsLayout() {
     tls.data = {0x11, 0x22, 0x00, 0x00};
     tls.virtualAddr = kImageBase + 0x3000;
     layout.sections.push_back(std::move(tls));
+
+    OutputSection tbss;
+    tbss.name = ".tbss";
+    tbss.alloc = true;
+    tbss.writable = true;
+    tbss.tls = true;
+    tbss.zeroFill = true;
+    tbss.alignment = 16;
+    tbss.data.resize(12, 0);
+    tbss.virtualAddr = kImageBase + 0x4000;
+    layout.sections.push_back(std::move(tbss));
 
     GlobalSymEntry tlsIndex;
     tlsIndex.name = "_tls_index";
@@ -504,6 +515,7 @@ TEST(PeWriter, TlsDirectoryIsWritten) {
     EXPECT_EQ(readU64(data, tlsOff + 0), 0x140003000ULL);
     EXPECT_EQ(readU64(data, tlsOff + 8), 0x140003004ULL);
     EXPECT_EQ(readU64(data, tlsOff + 16), 0x140002000ULL);
+    EXPECT_EQ(readU32(data, tlsOff + 32), 0x1008U);
     EXPECT_EQ(readU32(data, tlsOff + 36), 0x00500000U);
 }
 

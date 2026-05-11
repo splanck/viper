@@ -23,6 +23,8 @@
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
+#include <stdexcept>
 #include <unordered_map>
 
 namespace viper::codegen::linker {
@@ -37,6 +39,7 @@ static constexpr uint16_t EM_AARCH64 = 183;
 static constexpr uint32_t PT_LOAD = 1;
 static constexpr uint32_t PT_DYNAMIC = 2;
 static constexpr uint32_t PT_INTERP = 3;
+static constexpr uint32_t PT_TLS = 7;
 static constexpr uint32_t PT_GNU_STACK = 0x6474E551;
 
 // Segment flags.
@@ -58,6 +61,7 @@ static constexpr uint32_t SHT_DYNSYM = 11;
 static constexpr uint32_t SHF_WRITE = 0x1;
 static constexpr uint32_t SHF_ALLOC = 0x2;
 static constexpr uint32_t SHF_EXECINSTR = 0x4;
+static constexpr uint32_t SHF_TLS = 0x400;
 
 // Dynamic tags.
 static constexpr int64_t DT_NULL = 0;
@@ -151,6 +155,15 @@ struct SegmentInfo {
     uint32_t flags = 0;
 };
 
+struct TlsSegmentInfo {
+    bool present = false;
+    size_t fileOffset = 0;
+    uint64_t vaddr = 0;
+    size_t fileSize = 0;
+    size_t memSize = 0;
+    uint64_t align = 1;
+};
+
 struct NonAllocInfo {
     size_t layoutIdx = 0;
     size_t fileOffset = 0;
@@ -206,8 +219,11 @@ struct SyntheticSectionRef {
 };
 
 template <typename T> void writeStruct(std::vector<uint8_t> &buf, size_t off, const T &value) {
-    if (off + sizeof(T) > buf.size())
-        buf.resize(off + sizeof(T), 0);
+    if (off > std::numeric_limits<size_t>::max() - sizeof(T))
+        throw std::length_error("ELF write offset overflow");
+    const size_t end = off + sizeof(T);
+    if (end > buf.size())
+        buf.resize(end, 0);
     std::memcpy(buf.data() + off, &value, sizeof(T));
 }
 
@@ -557,10 +573,21 @@ bool writeElfExe(const std::string &path,
     const size_t baseLoadCount = loadableIndices.size();
     const bool hasDynRo = dynInfo.enabled && !dynInfo.roBlob.empty();
     const bool hasDynRw = dynInfo.enabled && !dynInfo.dynamic.empty();
-    const uint16_t numPhdrs = static_cast<uint16_t>(baseLoadCount + (hasDynRo ? 1 : 0) +
-                                                    (hasDynRw ? 1 : 0) + (hasDynRo ? 1 : 0) +
-                                                    (hasDynRw ? 1 : 0) +
-                                                    (startupStub.enabled ? 1 : 0) + 1);
+    const bool hasTls = std::any_of(loadableIndices.begin(),
+                                    loadableIndices.end(),
+                                    [&](size_t idx) { return layout.sections[idx].tls; });
+    const size_t phdrCount = baseLoadCount + (hasDynRo ? 1 : 0) + (hasDynRw ? 1 : 0) +
+                             (hasDynRo ? 1 : 0) + (hasDynRw ? 1 : 0) +
+                             (startupStub.enabled ? 1 : 0) + (hasTls ? 1 : 0) + 1;
+    if (phdrCount > std::numeric_limits<uint16_t>::max()) {
+        err << "error: ELF program header count exceeds 16-bit file format limit\n";
+        return false;
+    }
+    if (phdrCount > std::numeric_limits<size_t>::max() / sizeof(Elf64_Phdr)) {
+        err << "error: ELF program header table size overflows address space\n";
+        return false;
+    }
+    const uint16_t numPhdrs = static_cast<uint16_t>(phdrCount);
     const size_t phdrTableSize = numPhdrs * sizeof(Elf64_Phdr);
 
     size_t filePos = alignUp(ehdrSize + phdrTableSize, pageSize);
@@ -575,6 +602,42 @@ bool writeElfExe(const std::string &path,
             flags |= PF_W;
         segments.push_back({idx, filePos, sec.virtualAddr, fileSize, sec.data.size(), flags});
         filePos += fileSize;
+    }
+
+    TlsSegmentInfo tlsInfo;
+    for (const auto &seg : segments) {
+        const auto &sec = layout.sections[seg.layoutIdx];
+        if (!sec.tls)
+            continue;
+
+        if (!tlsInfo.present) {
+            tlsInfo.present = true;
+            tlsInfo.fileOffset = seg.fileOffset;
+            tlsInfo.vaddr = seg.vaddr;
+        }
+        if (seg.vaddr < tlsInfo.vaddr) {
+            err << "error: TLS section addresses are not monotonically ordered\n";
+            return false;
+        }
+        const uint64_t rel64 = seg.vaddr - tlsInfo.vaddr;
+        if (rel64 > std::numeric_limits<size_t>::max()) {
+            err << "error: TLS segment span exceeds addressable size\n";
+            return false;
+        }
+        const size_t rel = static_cast<size_t>(rel64);
+        if (seg.memSize > std::numeric_limits<size_t>::max() - rel) {
+            err << "error: TLS segment memory size overflows address space\n";
+            return false;
+        }
+        tlsInfo.memSize = std::max(tlsInfo.memSize, rel + seg.memSize);
+        if (!sec.zeroFill) {
+            if (seg.fileSize > std::numeric_limits<size_t>::max() - rel) {
+                err << "error: TLS segment file size overflows address space\n";
+                return false;
+            }
+            tlsInfo.fileSize = std::max(tlsInfo.fileSize, rel + seg.fileSize);
+        }
+        tlsInfo.align = std::max<uint64_t>(tlsInfo.align, std::max<uint32_t>(sec.alignment, 1u));
     }
 
     if (hasDynRo) {
@@ -637,9 +700,13 @@ bool writeElfExe(const std::string &path,
     const size_t shstrtabOff = alignUp(filePos, 8);
     const size_t shdrsOff = alignUp(shstrtabOff + shstrtab.size(), 8);
 
-    const uint16_t syntheticCount = dynInfo.enabled ? 6 : 0;
-    const uint16_t numShdrs = static_cast<uint16_t>(loadableIndices.size() + nonAllocIndices.size() +
-                                                    syntheticCount + 3);
+    const size_t syntheticCount = dynInfo.enabled ? 6 : 0;
+    const size_t shdrCount = loadableIndices.size() + nonAllocIndices.size() + syntheticCount + 3;
+    if (shdrCount > std::numeric_limits<uint16_t>::max()) {
+        err << "error: ELF section header count exceeds 16-bit file format limit\n";
+        return false;
+    }
+    const uint16_t numShdrs = static_cast<uint16_t>(shdrCount);
 
     Elf64_Ehdr ehdr{};
     ehdr.e_ident[0] = 0x7F;
@@ -672,6 +739,18 @@ bool writeElfExe(const std::string &path,
         phdr.p_memsz = seg.memSize;
         phdr.p_align = pageSize;
         phdrs.push_back(phdr);
+    }
+    if (tlsInfo.present) {
+        Elf64_Phdr tls{};
+        tls.p_type = PT_TLS;
+        tls.p_flags = PF_R;
+        tls.p_offset = tlsInfo.fileOffset;
+        tls.p_vaddr = tlsInfo.vaddr;
+        tls.p_paddr = tlsInfo.vaddr;
+        tls.p_filesz = tlsInfo.fileSize;
+        tls.p_memsz = tlsInfo.memSize;
+        tls.p_align = tlsInfo.align;
+        phdrs.push_back(tls);
     }
     if (hasDynRo) {
         Elf64_Phdr load{};
@@ -737,6 +816,10 @@ bool writeElfExe(const std::string &path,
         phdr.p_flags = PF_R | PF_W;
         phdr.p_memsz = stackSize;
         phdrs.push_back(phdr);
+    }
+    if (phdrs.size() != numPhdrs) {
+        err << "error: internal ELF program header count mismatch\n";
+        return false;
     }
 
     std::vector<SyntheticSectionRef> syntheticSections;
@@ -808,12 +891,32 @@ bool writeElfExe(const std::string &path,
         };
     }
 
-    std::vector<uint8_t> fileData(shdrsOff + static_cast<size_t>(numShdrs) * sizeof(Elf64_Shdr), 0);
-    writeStruct(fileData, 0, ehdr);
+    if (static_cast<size_t>(numShdrs) >
+        std::numeric_limits<size_t>::max() / sizeof(Elf64_Shdr)) {
+        err << "error: ELF section header table size overflows address space\n";
+        return false;
+    }
+    const size_t shdrBytes = static_cast<size_t>(numShdrs) * sizeof(Elf64_Shdr);
+    if (shdrsOff > std::numeric_limits<size_t>::max() - shdrBytes) {
+        err << "error: ELF file size overflows address space\n";
+        return false;
+    }
+    std::vector<uint8_t> fileData(shdrsOff + shdrBytes, 0);
+    try {
+        writeStruct(fileData, 0, ehdr);
+    } catch (const std::exception &ex) {
+        err << "error: ELF header write failed: " << ex.what() << "\n";
+        return false;
+    }
 
     size_t phdrOff = ehdrSize;
     for (const auto &phdr : phdrs) {
-        writeStruct(fileData, phdrOff, phdr);
+        try {
+            writeStruct(fileData, phdrOff, phdr);
+        } catch (const std::exception &ex) {
+            err << "error: ELF program header write failed: " << ex.what() << "\n";
+            return false;
+        }
         phdrOff += sizeof(Elf64_Phdr);
     }
 
@@ -854,6 +957,8 @@ bool writeElfExe(const std::string &path,
             shdr.sh_flags |= SHF_WRITE;
         if (sec.executable)
             shdr.sh_flags |= SHF_EXECINSTR;
+        if (sec.tls)
+            shdr.sh_flags |= SHF_TLS;
         shdr.sh_addr = sec.virtualAddr;
         shdr.sh_offset = segments[i].fileOffset;
         shdr.sh_size = sec.data.size();

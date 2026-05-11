@@ -498,51 +498,6 @@ bool readCoffObj(
 
     std::vector<uint8_t> comdatSelectionBySection(hdr->NumberOfSections + 1, 0);
     std::vector<uint32_t> associativeSectionBySection(hdr->NumberOfSections + 1, 0);
-    uint32_t commonSecIdx = 0;
-    auto allocateCommon = [&](size_t sizeBytes, size_t alignment, size_t &outOffset) -> bool {
-        if (commonSecIdx == 0) {
-            ObjSection common;
-            common.name = ".common";
-            common.writable = true;
-            common.alloc = true;
-            common.zeroFill = true;
-            common.alignment = 1;
-            commonSecIdx = static_cast<uint32_t>(obj.sections.size());
-            obj.sections.push_back(std::move(common));
-        }
-        auto &common = obj.sections[commonSecIdx];
-        if (alignment == 0)
-            alignment = 1;
-        if ((alignment & (alignment - 1)) != 0 ||
-            alignment > std::numeric_limits<uint32_t>::max()) {
-            err << "error: " << name << ": COFF common symbol has unsupported alignment\n";
-            return false;
-        }
-        if (alignment > common.alignment)
-            common.alignment = static_cast<uint32_t>(alignment);
-        const size_t rem = common.data.size() % alignment;
-        const size_t padding = (rem != 0) ? (alignment - rem) : 0;
-        if (padding > kMaxObjMaterializedBytes - materializedBytes ||
-            common.data.size() > std::numeric_limits<size_t>::max() - padding) {
-            err << "error: " << name << ": COFF common section alignment exceeds limit\n";
-            return false;
-        }
-        if (rem != 0) {
-            common.data.resize(common.data.size() + padding, 0);
-            materializedBytes += padding;
-        }
-        const size_t off = common.data.size();
-        if (sizeBytes > kMaxObjSectionBytes ||
-            sizeBytes > kMaxObjMaterializedBytes - materializedBytes ||
-            off > std::numeric_limits<size_t>::max() - sizeBytes) {
-            err << "error: " << name << ": COFF common section data exceeds limit\n";
-            return false;
-        }
-        common.data.resize(off + sizeBytes, 0);
-        materializedBytes += sizeBytes;
-        outOffset = off;
-        return true;
-    };
 
     for (uint32_t i = 0; i < hdr->NumberOfSymbols;) {
         const auto *sym = coffAt<coff::CoffSymbol>(
@@ -608,11 +563,10 @@ bool readCoffObj(
         if (sym->SectionNumber == coff::IMAGE_SYM_UNDEFINED &&
             sym->StorageClass == coff::IMAGE_SYM_CLASS_EXTERNAL && sym->Value > 0) {
             os.binding = ObjSymbol::Global;
-            os.sectionIndex = commonSecIdx == 0
-                                  ? static_cast<uint32_t>(obj.sections.size())
-                                  : commonSecIdx;
-            if (!allocateCommon(static_cast<size_t>(sym->Value), 8, os.offset))
-                return false;
+            os.common = true;
+            os.commonAlignment = 8;
+            os.sectionIndex = 0;
+            os.offset = 0;
             os.size = static_cast<size_t>(sym->Value);
             offsetAlreadySet = true;
         } else if (sym->SectionNumber == coff::IMAGE_SYM_UNDEFINED) {

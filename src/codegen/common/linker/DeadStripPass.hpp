@@ -20,6 +20,8 @@
 
 #pragma once
 
+#include "codegen/common/linker/LinkTypes.hpp"
+
 #include <cstddef>
 #include <ostream>
 #include <string>
@@ -45,6 +47,15 @@ void deadStrip(std::vector<ObjFile> &allObjects,
                size_t userObjCount,
                const std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
                const std::string &entrySymbol,
+               LinkPlatform platform,
                std::ostream &err);
+
+inline void deadStrip(std::vector<ObjFile> &allObjects,
+                      size_t userObjCount,
+                      const std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
+                      const std::string &entrySymbol,
+                      std::ostream &err) {
+    deadStrip(allObjects, userObjCount, globalSyms, entrySymbol, detectLinkPlatform(), err);
+}
 
 } // namespace viper::codegen::linker

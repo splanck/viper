@@ -40,8 +40,10 @@
 #include "codegen/common/linker/ExeWriterUtil.hpp"
 
 #include <cstring>
+#include <exception>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <unordered_map>
 #include <vector>
 
@@ -121,6 +123,20 @@ static std::string machoSectionNameForOutput(const OutputSection &sec) {
     return (comma != std::string::npos) ? sec.name.substr(comma + 1) : sec.name;
 }
 
+static std::string machoSectionFieldName(const std::string &name) {
+    const auto comma = name.find(',');
+    return (comma != std::string::npos) ? name.substr(comma + 1) : name;
+}
+
+static bool validateMachOName(const std::string &name,
+                              const char *field,
+                              std::ostream &err) {
+    if (name.size() <= 16)
+        return true;
+    err << "error: Mach-O " << field << " name '" << name << "' exceeds 16 bytes\n";
+    return false;
+}
+
 /// @brief Map an ObjC metadata section name to its required Mach-O flag bits.
 /// @details The ObjC runtime expects S_CSTRING_LITERALS for name pools and
 ///          S_ATTR_NO_DEAD_STRIP for class/category lists so the loader cannot
@@ -176,8 +192,15 @@ bool writeMachOExe(const std::string &path,
 
     // Compute text/data sizes accounting for VA gaps between sections.
     // Sections within a segment have page-aligned VAs; file layout must mirror this.
-    const size_t textDataSize = computeSegmentSpan(layout, textSections);
-    const size_t dataDataSize = computeSegmentSpan(layout, fileBackedDataSections);
+    size_t textDataSize = 0;
+    size_t dataDataSize = 0;
+    try {
+        textDataSize = computeSegmentSpan(layout, textSections);
+        dataDataSize = computeSegmentSpan(layout, fileBackedDataSections);
+    } catch (const std::exception &ex) {
+        err << "error: Mach-O segment span computation failed: " << ex.what() << "\n";
+        return false;
+    }
 
     // =======================================================================
     // Phase 2: Build __LINKEDIT content.
@@ -404,8 +427,33 @@ bool writeMachOExe(const std::string &path,
                 entryVA = it->second.resolvedAddr;
         }
         if (entryVA != 0 && !textSections.empty()) {
-            uint64_t firstTextSecVA = layout.sections[textSections[0]].virtualAddr;
-            mainEntryOff = textDataFileOff + (entryVA - firstTextSecVA);
+            const uint64_t firstTextSecVA = layout.sections[textSections[0]].virtualAddr;
+            bool foundEntry = false;
+            for (size_t idx : textSections) {
+                const auto &sec = layout.sections[idx];
+                if (sec.data.size() >
+                    std::numeric_limits<uint64_t>::max() - sec.virtualAddr) {
+                    err << "error: Mach-O text section '" << sec.name
+                        << "' address range overflows\n";
+                    return false;
+                }
+                const uint64_t secEnd = sec.virtualAddr + sec.data.size();
+                if (entryVA < sec.virtualAddr || entryVA >= secEnd)
+                    continue;
+                const uint64_t delta = entryVA - firstTextSecVA;
+                if (delta > std::numeric_limits<uint64_t>::max() -
+                                static_cast<uint64_t>(textDataFileOff)) {
+                    err << "error: Mach-O entry file offset overflows\n";
+                    return false;
+                }
+                mainEntryOff = static_cast<uint64_t>(textDataFileOff) + delta;
+                foundEntry = true;
+                break;
+            }
+            if (!foundEntry) {
+                err << "error: Mach-O entry address does not resolve to a __TEXT section\n";
+                return false;
+            }
         }
     }
 
@@ -466,6 +514,8 @@ bool writeMachOExe(const std::string &path,
         const auto &sec = layout.sections[idx];
 
         const std::string machoSecName = machoSectionNameForOutput(sec);
+        if (!validateMachOName(machoSecName, "section", err))
+            return false;
 
         uint32_t secFileOff = static_cast<uint32_t>(sec.virtualAddr - textSegVmAddr);
         writeStr(file, machoSecName.c_str(), 16);
@@ -532,6 +582,8 @@ bool writeMachOExe(const std::string &path,
                 isZerofill = true;
             }
 
+            if (!validateMachOName(machoSecName, "section", err))
+                return false;
             writeStr(file, machoSecName.c_str(), 16);
             writeStr(file, "__DATA", 16);
             writeLE64(file, sec.virtualAddr); // addr = SectionMerger VA
@@ -565,10 +617,12 @@ bool writeMachOExe(const std::string &path,
             const auto &sec = layout.sections[dsi.layoutIdx];
             // Mach-O debug section names: __debug_line, __debug_info, etc.
             // Strip the leading dot from ELF-style names (.debug_line → __debug_line).
-            std::string machoSecName = sec.name;
+            std::string machoSecName = machoSectionFieldName(sec.name);
             if (!machoSecName.empty() && machoSecName[0] == '.')
                 machoSecName[0] = '_';
 
+            if (!validateMachOName(machoSecName, "section", err))
+                return false;
             writeStr(file, machoSecName.c_str(), 16);
             writeStr(file, "__DWARF", 16);
             writeLE64(file, 0); // addr: no VM mapping

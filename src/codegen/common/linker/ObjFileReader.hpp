@@ -52,6 +52,8 @@ struct ObjSymbol {
     bool absolute = false;          ///< Symbol value is absolute, not section-relative.
     bool weakExternal = false;      ///< Undefined weak external that may resolve to zero/default.
     std::string weakDefaultName;    ///< Optional COFF weak-external fallback symbol.
+    bool common = false;            ///< Tentative/common symbol, coalesced by linker.
+    size_t commonAlignment = 1;     ///< Required alignment for common storage.
 };
 
 /// Section in a parsed object file.

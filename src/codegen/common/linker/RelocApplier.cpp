@@ -17,6 +17,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "codegen/common/linker/RelocApplier.hpp"
+#include "codegen/common/linker/NameMangling.hpp"
 #include "codegen/common/linker/RelocClassify.hpp"
 #include "codegen/common/linker/RelocConstants.hpp"
 
@@ -100,6 +101,19 @@ static bool isAArch64UnsignedLdStOffset(uint32_t insn) {
 
 static bool isAArch64LdrXUnsignedOffset(uint32_t insn) {
     return (insn & 0xFFC00000u) == 0xF9400000u;
+}
+
+static bool isAArch64Branch26Opcode(uint32_t insn) {
+    return (insn & 0x7C000000u) == 0x14000000u; // B or BL.
+}
+
+static bool isAArch64AdrpOpcode(uint32_t insn) {
+    return (insn & 0x9F000000u) == 0x90000000u;
+}
+
+static bool isAArch64CondBr19Opcode(uint32_t insn) {
+    return ((insn & 0xFF000010u) == 0x54000000u) || // B.cond.
+           ((insn & 0x7E000000u) == 0x34000000u);  // CBZ/CBNZ.
 }
 
 static uint32_t aarch64LdStOffsetShift(uint32_t insn) {
@@ -303,9 +317,10 @@ static bool resolveGlobalSymLocation(const std::string &symName,
                                      const std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
                                      const LocationMap &locMap,
                                      const LinkLayout &layout,
+                                     LinkPlatform platform,
                                      uint64_t &addr,
                                      size_t *resolvedOutSecIdx = nullptr) {
-    auto it = globalSyms.find(symName);
+    auto it = findWithPlatformFallback(globalSyms, symName, platform);
     if (it == globalSyms.end())
         return false;
 
@@ -421,14 +436,21 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                 bool symResolved = false;
                 size_t symOutSecIdx = SIZE_MAX;
                 bool hasSymOutputSection = false;
-                if (targetSym.sectionIndex > 0 || targetSym.absolute)
-                    symResolved =
-                        resolveLocalSymAddr(targetSym, oi, locMap, layout, S, &symOutSecIdx);
+                const bool preferGlobal = !symName.empty() && targetSym.binding != ObjSymbol::Local;
+                if (preferGlobal) {
+                    symResolved = resolveGlobalSymLocation(
+                        symName, layout.globalSyms, locMap, layout, platform, S, &symOutSecIdx);
+                    if (symResolved && symOutSecIdx != SIZE_MAX)
+                        hasSymOutputSection = true;
+                }
+                if (!symResolved && (targetSym.sectionIndex > 0 || targetSym.absolute))
+                    symResolved = resolveLocalSymAddr(
+                        targetSym, oi, locMap, layout, S, &symOutSecIdx);
                 if (symResolved && symOutSecIdx != SIZE_MAX)
                     hasSymOutputSection = true;
                 if (!symResolved && !symName.empty()) {
-                    symResolved =
-                        resolveGlobalSymLocation(symName, layout.globalSyms, locMap, layout, S, &symOutSecIdx);
+                    symResolved = resolveGlobalSymLocation(
+                        symName, layout.globalSyms, locMap, layout, platform, S, &symOutSecIdx);
                     if (symResolved && symOutSecIdx != SIZE_MAX)
                         hasSymOutputSection = true;
                 }
@@ -436,7 +458,7 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                     const std::string &fallback = targetSym.weakDefaultName;
                     if (!fallback.empty()) {
                         symResolved = resolveGlobalSymLocation(
-                            fallback, layout.globalSyms, locMap, layout, S, &symOutSecIdx);
+                            fallback, layout.globalSyms, locMap, layout, platform, S, &symOutSecIdx);
                         if (symResolved && symOutSecIdx != SIZE_MAX)
                             hasSymOutputSection = true;
                     }
@@ -454,12 +476,14 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                                                                layout.globalSyms,
                                                                locMap,
                                                                layout,
+                                                               platform,
                                                                S,
                                                                &symOutSecIdx) ||
                                       resolveGlobalSymLocation("rt_abort",
                                                                layout.globalSyms,
                                                                locMap,
                                                                layout,
+                                                               platform,
                                                                S,
                                                                &symOutSecIdx);
                         if (symResolved && symOutSecIdx != SIZE_MAX)
@@ -838,6 +862,14 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         if (!requirePatchBytes(4, "branch"))
                             return false;
                         uint32_t insn = readLE32(patch);
+                        if (!isAArch64Branch26Opcode(insn)) {
+                            err << "error: " << obj.name
+                                << ": AArch64 branch relocation is not applied to B/BL";
+                            if (!symName.empty())
+                                err << " for '" << symName << "'";
+                            err << "\n";
+                            return false;
+                        }
                         uint64_t target = 0;
                         int64_t disp = 0;
                         if (!checkedRelocTarget(S, A, obj, symName, "branch", err, target) ||
@@ -859,6 +891,14 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         if (!requirePatchBytes(4, "ADRP"))
                             return false;
                         uint32_t insn = readLE32(patch);
+                        if (!isAArch64AdrpOpcode(insn)) {
+                            err << "error: " << obj.name
+                                << ": AArch64 page relocation is not applied to ADRP";
+                            if (!symName.empty())
+                                err << " for '" << symName << "'";
+                            err << "\n";
+                            return false;
+                        }
                         uint64_t target = 0;
                         if (!checkedRelocTarget(S, A, obj, symName, "ADRP", err, target))
                             return false;
@@ -955,6 +995,15 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         if (!requirePatchBytes(4, "conditional branch"))
                             return false;
                         uint32_t insn = readLE32(patch);
+                        if (!isAArch64CondBr19Opcode(insn)) {
+                            err << "error: " << obj.name
+                                << ": AArch64 conditional branch relocation is not applied to "
+                                   "B.cond/CBZ/CBNZ";
+                            if (!symName.empty())
+                                err << " for '" << symName << "'";
+                            err << "\n";
+                            return false;
+                        }
                         uint64_t target = 0;
                         int64_t disp = 0;
                         if (!checkedRelocTarget(S, A, obj, symName, "conditional branch", err, target) ||
@@ -985,6 +1034,14 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                             target = git->second.resolvedAddr; // Use GOT entry for dynamic sym.
 
                         uint32_t insn = readLE32(patch);
+                        if (!isAArch64AdrpOpcode(insn)) {
+                            err << "error: " << obj.name
+                                << ": AArch64 GOT page relocation is not applied to ADRP";
+                            if (!symName.empty())
+                                err << " for '" << symName << "'";
+                            err << "\n";
+                            return false;
+                        }
                         uint64_t targetWithAddend = 0;
                         if (!checkedRelocTarget(target, A, obj, symName, "GOT ADRP", err, targetWithAddend))
                             return false;

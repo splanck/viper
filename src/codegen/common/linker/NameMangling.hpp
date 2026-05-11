@@ -20,6 +20,8 @@
 
 #pragma once
 
+#include "codegen/common/linker/LinkTypes.hpp"
+
 #include <string>
 #include <unordered_map>
 
@@ -51,6 +53,17 @@ auto findWithMachoFallback(MapT &map, const std::string &name) -> decltype(map.f
     }
 
     return map.find("_" + name);
+}
+
+/// Look up a symbol with platform-appropriate spelling fallbacks. ELF and COFF
+/// treat leading underscores as part of the symbol name; only Mach-O receives
+/// Darwin underscore alias lookup.
+template <typename MapT>
+auto findWithPlatformFallback(MapT &map, const std::string &name, LinkPlatform platform)
+    -> decltype(map.find(name)) {
+    if (platform == LinkPlatform::macOS)
+        return findWithMachoFallback(map, name);
+    return map.find(name);
 }
 
 } // namespace viper::codegen::linker

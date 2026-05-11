@@ -403,6 +403,61 @@ int main() {
         CHECK(readLE64(layout.sections[0].data.data()) == 0x401008);
     }
 
+    // --- Weak/global same-object definitions prefer the resolved global winner ---
+    {
+        ObjFile weakObj;
+        weakObj.name = "weak_ref.o";
+        weakObj.format = ObjFileFormat::ELF;
+        weakObj.sections.push_back({});
+
+        ObjSection text;
+        text.name = ".text";
+        text.data.resize(8, 0);
+        text.executable = true;
+        text.alloc = true;
+        ObjReloc rel;
+        rel.offset = 0;
+        rel.type = elf_x64::kAbs64;
+        rel.symIndex = 1;
+        text.relocs.push_back(rel);
+        weakObj.sections.push_back(text);
+
+        weakObj.symbols.push_back({});
+        ObjSymbol weak;
+        weak.name = "override_me";
+        weak.binding = ObjSymbol::Weak;
+        weak.sectionIndex = 1;
+        weak.offset = 0;
+        weakObj.symbols.push_back(weak);
+
+        ObjFile strongObj;
+        strongObj.name = "strong.o";
+        strongObj.format = ObjFileFormat::ELF;
+        strongObj.sections.push_back({});
+        ObjSection strongText;
+        strongText.name = ".text";
+        strongText.data.resize(8, 0);
+        strongText.executable = true;
+        strongText.alloc = true;
+        strongObj.sections.push_back(strongText);
+        strongObj.symbols.push_back({});
+        ObjSymbol strong;
+        strong.name = "override_me";
+        strong.binding = ObjSymbol::Global;
+        strong.sectionIndex = 1;
+        strongObj.symbols.push_back(strong);
+
+        std::vector<ObjFile> objs = {weakObj, strongObj};
+        auto layout = makeLayout(objs, 0x401000);
+        layout.globalSyms["override_me"] =
+            {"override_me", GlobalSymEntry::Global, 1, 1, 0, 0};
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err));
+        CHECK(readLE64(layout.sections[0].data.data()) == 0x401008);
+    }
+
     // --- COFF x86_64 ADDR32NB writes an RVA (S + A - ImageBase) ---
     {
         std::vector<uint8_t> code(8, 0);
@@ -797,6 +852,54 @@ int main() {
         uint32_t patched = readLE32(layout.sections[0].data.data());
         CHECK((patched & 0xFC000000) == 0x94000000);
         CHECK((patched & 0x03FFFFFF) == 1);
+    }
+
+    // --- COFF AArch64 BRANCH26 rejects non-branch opcodes ---
+    {
+        std::vector<uint8_t> code(4, 0);
+        code[3] = 0x91; // ADD, not B/BL.
+        auto caller = makeObj("test_bad_branch26.obj",
+                              ObjFileFormat::COFF,
+                              code,
+                              "target",
+                              coff_a64::kBranch26,
+                              /*relocOff=*/0,
+                              /*addend=*/0);
+
+        std::vector<ObjFile> objs = {caller};
+        auto layout = makeLayout(objs, 0x140001000ULL);
+        layout.globalSyms["target"] =
+            {"target", GlobalSymEntry::Dynamic, 0, 0, 0, 0x140001004ULL};
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(!applyRelocations(
+            objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::AArch64, err));
+        CHECK(err.str().find("not applied to B/BL") != std::string::npos);
+    }
+
+    // --- COFF AArch64 PAGEBASE_REL21 rejects non-ADRP opcodes ---
+    {
+        std::vector<uint8_t> code(4, 0);
+        code[3] = 0x91; // ADD, not ADRP.
+        auto caller = makeObj("test_bad_adrp.obj",
+                              ObjFileFormat::COFF,
+                              code,
+                              "target",
+                              coff_a64::kPageRel21,
+                              /*relocOff=*/0,
+                              /*addend=*/0);
+
+        std::vector<ObjFile> objs = {caller};
+        auto layout = makeLayout(objs, 0x140001000ULL);
+        layout.globalSyms["target"] =
+            {"target", GlobalSymEntry::Dynamic, 0, 0, 0, 0x140002000ULL};
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(!applyRelocations(
+            objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::AArch64, err));
+        CHECK(err.str().find("not applied to ADRP") != std::string::npos);
     }
 
     // --- COFF AArch64 ADDR64 writes an absolute 64-bit pointer ---

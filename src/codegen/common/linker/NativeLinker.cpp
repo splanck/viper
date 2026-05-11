@@ -177,6 +177,19 @@ const char *archName(LinkArch arch) {
     return "unknown";
 }
 
+bool addressInExecutableSection(const LinkLayout &layout, uint64_t addr) {
+    for (const auto &sec : layout.sections) {
+        if (!sec.alloc || !sec.executable || sec.data.empty())
+            continue;
+        if (sec.data.size() > std::numeric_limits<uint64_t>::max() - sec.virtualAddr)
+            continue;
+        const uint64_t end = sec.virtualAddr + sec.data.size();
+        if (addr >= sec.virtualAddr && addr < end)
+            return true;
+    }
+    return false;
+}
+
 /// @brief Map a target LinkPlatform to its native object-file format.
 ObjFileFormat expectedFormat(LinkPlatform platform) {
     switch (platform) {
@@ -1074,7 +1087,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
 
     // Step 3.5c: Dead-strip unused sections from all non-synthetic input
     // objects, rooting only entry points and always-live metadata.
-    deadStrip(allObjects, initialObjects.size(), globalSyms, opts.entrySymbol, err);
+    deadStrip(allObjects, initialObjects.size(), globalSyms, opts.entrySymbol, opts.platform, err);
 
     if (!opts.fastLink) {
         // Step 3.5d: Deduplicate identical rodata strings across object files.
@@ -1122,9 +1135,17 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
 
     // Step 6.25: Resolve the final entry point after symbol addresses are known.
     {
-        auto it = findWithMachoFallback(layout.globalSyms, opts.entrySymbol);
-        if (it != layout.globalSyms.end())
-            layout.entryAddr = it->second.resolvedAddr;
+        auto it = findWithPlatformFallback(layout.globalSyms, opts.entrySymbol, opts.platform);
+        if (it == layout.globalSyms.end() || it->second.resolvedAddr == 0) {
+            err << "error: entry symbol '" << opts.entrySymbol << "' was not resolved\n";
+            return 1;
+        }
+        layout.entryAddr = it->second.resolvedAddr;
+        if (!addressInExecutableSection(layout, layout.entryAddr)) {
+            err << "error: entry symbol '" << opts.entrySymbol
+                << "' does not resolve to an executable section\n";
+            return 1;
+        }
     }
 
     // Step 6.5: Build GOT entry table for the executable writer (needed for bind opcodes).
@@ -1186,7 +1207,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
                                 std::numeric_limits<uint32_t>::max()) {
                             err << "error: PE import slot RVA for '" << fn
                                 << "' is outside 32-bit range\n";
-                            return false;
+                            return 1;
                         }
                         peImportSlotRvas[fn] =
                             static_cast<uint32_t>(it->second.resolvedAddr - imageBase);

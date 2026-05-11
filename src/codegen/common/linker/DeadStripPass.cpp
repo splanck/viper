@@ -78,6 +78,7 @@ void deadStrip(std::vector<ObjFile> &allObjects,
                size_t userObjCount,
                const std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
                const std::string &entrySymbol,
+               LinkPlatform platform,
                std::ostream &err) {
     // Set of live (objIdx, secIdx) pairs.
     std::unordered_set<InputSectionKey, InputSectionKeyHash> live;
@@ -104,7 +105,7 @@ void deadStrip(std::vector<ObjFile> &allObjects,
 
     // Entry point section is a root.
     {
-        auto it = findWithMachoFallback(globalSyms, entrySymbol);
+        auto it = findWithPlatformFallback(globalSyms, entrySymbol, platform);
         if (it != globalSyms.end() && it->second.secIndex > 0)
             markLive(it->second.objIndex, it->second.secIndex);
     }
@@ -164,7 +165,7 @@ void deadStrip(std::vector<ObjFile> &allObjects,
                         break;
                     }
                     if (!targetSym.name.empty()) {
-                        auto git = globalSyms.find(targetSym.name);
+                        auto git = findWithPlatformFallback(globalSyms, targetSym.name, platform);
                         if (git != globalSyms.end() && git->second.objIndex == oi &&
                             git->second.secIndex == si) {
                             markLive(oi, otherSi);
@@ -182,23 +183,28 @@ void deadStrip(std::vector<ObjFile> &allObjects,
 
             const auto &sym = obj.symbols[rel.symIndex];
 
-            // Local symbols: resolve within same object.
-            if (sym.sectionIndex > 0 && sym.sectionIndex < obj.sections.size()) {
-                markLive(oi, sym.sectionIndex);
-            }
-
             // Global/weak symbols: look up in global table.
+            bool followedGlobal = false;
             if (!sym.name.empty()) {
-                auto git = globalSyms.find(sym.name);
-                if (git != globalSyms.end() && git->second.secIndex > 0)
+                auto git = findWithPlatformFallback(globalSyms, sym.name, platform);
+                if (git != globalSyms.end() && git->second.secIndex > 0) {
                     markLive(git->second.objIndex, git->second.secIndex);
+                    followedGlobal = sym.binding != ObjSymbol::Local;
+                }
 
                 if (sym.weakExternal && !sym.weakDefaultName.empty()) {
-                    auto fallback = globalSyms.find(sym.weakDefaultName);
+                    auto fallback =
+                        findWithPlatformFallback(globalSyms, sym.weakDefaultName, platform);
                     if (fallback != globalSyms.end() && fallback->second.secIndex > 0)
                         markLive(fallback->second.objIndex, fallback->second.secIndex);
                 }
             }
+
+            // Local symbols resolve within the same object. For global/weak
+            // symbols with a same-object definition, prefer the global table so
+            // strong definitions in other objects own liveness.
+            if (!followedGlobal && sym.sectionIndex > 0 && sym.sectionIndex < obj.sections.size())
+                markLive(oi, sym.sectionIndex);
         }
     }
 

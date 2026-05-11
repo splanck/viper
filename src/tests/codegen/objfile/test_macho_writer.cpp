@@ -724,10 +724,10 @@ static void testDysymtabRanges() {
 }
 
 // =============================================================================
-// Test: Multi-section merge rebases non-zero symbol offsets
+// Test: Multi-text Mach-O objects are exposed as per-function sections to the native linker.
 // =============================================================================
 
-static void testMultiSectionMergeRebasesSymbolOffsets() {
+static void testMultiSectionReaderSplitsSubsectionsViaSymbols() {
     CodeSection textA, textB, rodata;
     textA.defineSymbol("func_a", SymbolBinding::Global, SymbolSection::Text);
     textA.emit8(0x90);
@@ -748,10 +748,14 @@ static void testMultiSectionMergeRebasesSymbolOffsets() {
 
     ObjFile obj;
     CHECK(readObjFile(path, obj, errStream));
+    CHECK(findSection(obj, "__TEXT,__text.func_a") != nullptr);
+    CHECK(findSection(obj, "__TEXT,__text.func_b") != nullptr);
     const ObjSymbol *funcB = findSymbol(obj, "func_b");
     CHECK(funcB != nullptr);
-    if (funcB != nullptr)
-        CHECK(funcB->offset == 3);
+    if (funcB != nullptr) {
+        CHECK(funcB->offset == 0);
+        CHECK(funcB->sectionIndex != 1);
+    }
 
     std::remove(path.c_str());
 }
@@ -1063,7 +1067,7 @@ int main() {
     testRodataSection();
     testRodataRelocation();
     testDysymtabRanges();
-    testMultiSectionMergeRebasesSymbolOffsets();
+    testMultiSectionReaderSplitsSubsectionsViaSymbols();
     testMultiSectionMergeUniquifiesDuplicateLocals();
     testUnsupportedRelocationFails();
     testWrongArchRelocationFails();

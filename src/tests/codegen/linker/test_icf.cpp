@@ -119,6 +119,8 @@ int main() {
         // Folded (funcB) should have both data and relocs cleared.
         CHECK(objs[1].sections[1].data.empty());
         CHECK(objs[1].sections[1].relocs.empty());
+        CHECK(objs[1].symbols[1].binding == ObjSymbol::Undefined);
+        CHECK(objs[1].symbols[1].sectionIndex == 0);
 
         // globalSyms["funcB"] should redirect to funcA's section.
         CHECK(globalSyms["funcB"].objIndex == 0);

@@ -32,7 +32,9 @@
 #include <chrono>
 #include <atomic>
 #include <cstring>
+#include <limits>
 #include <ostream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -105,13 +107,14 @@ inline void writePad(std::vector<uint8_t> &buf, size_t count) {
     buf.insert(buf.end(), count, 0);
 }
 
-/// Append a null-terminated string, padded or truncated to \p maxLen bytes.
+/// Append a null-terminated string, padded to \p maxLen bytes.
 inline void writeStr(std::vector<uint8_t> &buf, const char *s, size_t maxLen) {
     size_t len = std::strlen(s);
-    size_t n = (len < maxLen) ? len : maxLen;
-    buf.insert(buf.end(), s, s + n);
-    if (n < maxLen)
-        writePad(buf, maxLen - n);
+    if (len > maxLen)
+        throw std::length_error("fixed-width binary string field overflow");
+    buf.insert(buf.end(), s, s + len);
+    if (len < maxLen)
+        writePad(buf, maxLen - len);
 }
 
 /// Pad the buffer with zeros until it reaches \p targetSize bytes.
@@ -163,7 +166,15 @@ inline size_t computeSegmentSpan(const LinkLayout &layout, const std::vector<siz
     size_t span = 0;
     for (size_t idx : indices) {
         const auto &sec = layout.sections[idx];
-        size_t endOff = static_cast<size_t>(sec.virtualAddr + sec.data.size() - firstVA);
+        if (sec.virtualAddr < firstVA)
+            throw std::length_error("section virtual address precedes segment base");
+        if (sec.data.size() > std::numeric_limits<uint64_t>::max() - sec.virtualAddr)
+            throw std::length_error("section virtual address range overflows");
+        const uint64_t endVA = sec.virtualAddr + sec.data.size();
+        const uint64_t endOff64 = endVA - firstVA;
+        if (endOff64 > std::numeric_limits<size_t>::max())
+            throw std::length_error("segment span exceeds addressable size");
+        size_t endOff = static_cast<size_t>(endOff64);
         if (endOff > span)
             span = endOff;
     }

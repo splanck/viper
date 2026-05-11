@@ -214,6 +214,9 @@ struct GlobalSymEntry {
     size_t offset = 0;         ///< Offset within the section.
     uint64_t resolvedAddr = 0; ///< Final virtual address after layout.
     bool absolute = false;     ///< Symbol resolves to offset/resolvedAddr directly.
+    bool common = false;       ///< Tentative/common symbol awaiting materialization.
+    size_t commonSize = 0;     ///< Largest requested tentative definition size.
+    size_t commonAlignment = 1; ///< Maximum requested tentative definition alignment.
 };
 
 /// A GOT entry for dynamic symbol binding.

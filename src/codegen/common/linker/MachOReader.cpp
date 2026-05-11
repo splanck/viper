@@ -19,6 +19,7 @@
 #include "codegen/common/linker/ObjFileReader.hpp"
 #include "codegen/common/linker/RelocConstants.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include <limits>
 #include <optional>
@@ -30,6 +31,7 @@ namespace viper::codegen::linker {
 namespace macho {
 static constexpr uint32_t MH_MAGIC_64 = 0xFEEDFACF;
 static constexpr uint32_t MH_OBJECT = 1;
+static constexpr uint32_t MH_SUBSECTIONS_VIA_SYMBOLS = 0x2000;
 
 static constexpr uint32_t CPU_TYPE_X86_64 = 0x01000007;
 static constexpr uint32_t CPU_TYPE_ARM64 = 0x0100000C;
@@ -148,6 +150,112 @@ static std::string readString(const uint8_t *data, size_t size, size_t off, size
         return "";
     return std::string(reinterpret_cast<const char *>(begin),
                        static_cast<const char *>(nul));
+}
+
+static void splitMachOTextSubsections(ObjFile &obj) {
+    struct Range {
+        uint32_t oldSec = 0;
+        uint32_t newSec = 0;
+        size_t start = 0;
+        size_t end = 0;
+    };
+
+    std::vector<ObjSection> newSections;
+    newSections.push_back(obj.sections.empty() ? ObjSection{} : obj.sections[0]);
+    std::vector<uint32_t> directMap(obj.sections.size(), 0);
+    std::vector<Range> ranges;
+
+    auto findRange = [&](uint32_t oldSec, size_t off) -> const Range * {
+        const Range *lastForSection = nullptr;
+        for (const auto &range : ranges) {
+            if (range.oldSec != oldSec)
+                continue;
+            lastForSection = &range;
+            if (off >= range.start && off < range.end)
+                return &range;
+        }
+        if (lastForSection && off == lastForSection->end)
+            return lastForSection;
+        return nullptr;
+    };
+
+    for (uint32_t si = 1; si < obj.sections.size(); ++si) {
+        const auto &sec = obj.sections[si];
+        const bool splitCandidate =
+            sec.executable && sec.name == "__TEXT,__text" && sec.data.size() > 1;
+
+        std::vector<size_t> cuts;
+        if (splitCandidate) {
+            for (const auto &sym : obj.symbols) {
+                if (sym.sectionIndex != si || sym.name.empty())
+                    continue;
+                if (sym.binding != ObjSymbol::Global && sym.binding != ObjSymbol::Weak)
+                    continue;
+                if (sym.offset < sec.data.size())
+                    cuts.push_back(sym.offset);
+            }
+            std::sort(cuts.begin(), cuts.end());
+            cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
+        }
+
+        if (cuts.size() < 2 || cuts.front() != 0) {
+            directMap[si] = static_cast<uint32_t>(newSections.size());
+            newSections.push_back(sec);
+            continue;
+        }
+
+        for (size_t i = 0; i < cuts.size(); ++i) {
+            const size_t start = cuts[i];
+            const size_t end = (i + 1 < cuts.size()) ? cuts[i + 1] : sec.data.size();
+            if (start >= end)
+                continue;
+
+            ObjSection part = sec;
+            part.name = "__TEXT,__text";
+            for (const auto &sym : obj.symbols) {
+                if (sym.sectionIndex == si && sym.offset == start &&
+                    (sym.binding == ObjSymbol::Global || sym.binding == ObjSymbol::Weak) &&
+                    !sym.name.empty()) {
+                    part.name = "__TEXT,__text." + sym.name;
+                    break;
+                }
+            }
+            part.data.assign(sec.data.begin() + static_cast<std::ptrdiff_t>(start),
+                             sec.data.begin() + static_cast<std::ptrdiff_t>(end));
+            part.relocs.clear();
+            const uint32_t newSecIdx = static_cast<uint32_t>(newSections.size());
+            ranges.push_back({si, newSecIdx, start, end});
+            newSections.push_back(std::move(part));
+        }
+    }
+
+    if (ranges.empty())
+        return;
+
+    for (auto &sym : obj.symbols) {
+        if (sym.sectionIndex == 0 || sym.sectionIndex >= directMap.size())
+            continue;
+        if (const Range *range = findRange(sym.sectionIndex, sym.offset)) {
+            sym.sectionIndex = range->newSec;
+            sym.offset -= range->start;
+        } else if (directMap[sym.sectionIndex] != 0) {
+            sym.sectionIndex = directMap[sym.sectionIndex];
+        }
+    }
+
+    for (uint32_t oldSec = 1; oldSec < obj.sections.size(); ++oldSec) {
+        for (const auto &rel : obj.sections[oldSec].relocs) {
+            if (const Range *range = findRange(oldSec, rel.offset)) {
+                ObjReloc adjusted = rel;
+                adjusted.offset -= range->start;
+                newSections[range->newSec].relocs.push_back(adjusted);
+            } else if (oldSec < directMap.size() && directMap[oldSec] != 0) {
+                newSections[directMap[oldSec]].relocs.push_back(rel);
+            }
+        }
+    }
+
+    obj.sections = std::move(newSections);
 }
 
 /// @brief Sign-extend the low @p bits of @p value to a 64-bit signed integer.
@@ -628,6 +736,9 @@ bool readMachOObj(
             }
         }
     }
+
+    if ((hdr->flags & macho::MH_SUBSECTIONS_VIA_SYMBOLS) != 0)
+        splitMachOTextSubsections(obj);
 
     return true;
 }
