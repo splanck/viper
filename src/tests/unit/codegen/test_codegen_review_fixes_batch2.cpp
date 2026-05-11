@@ -8,7 +8,8 @@
 // File: tests/unit/codegen/test_codegen_review_fixes_batch2.cpp
 // Purpose: Regression tests for fixes 18-21 from the comprehensive backend
 //          codegen review (session 3). Tests verify:
-//          - Fix 18: ISel SUB negation guards against INT64_MIN overflow
+//          - Fix 18: ISel SUB negation guards against INT64_MIN overflow and
+//                    materializes unencodable immediates
 //          - Fix 19: SysV stack param offset is 16, not Windows 48
 //          - Fix 20: CastSiNarrowChk saves original before modifying X0
 //          - Fix 21: Failed stack arg returns nullopt, not bare Ret
@@ -35,7 +36,7 @@ using namespace viper::codegen::x64;
 TEST(CodegenReviewBatch2, SubNegationGuardsIntMin) {
     // Build a tiny MFunction with a single block containing SUBrr with
     // INT64_MIN as the immediate operand.  After ISel::lowerArithmetic the
-    // instruction must remain SUBrr (since negating INT64_MIN would be UB).
+    // value must be materialized before a legal register-register SUBrr.
     auto &target = sysvTarget();
     ISel isel{target};
 
@@ -54,21 +55,18 @@ TEST(CodegenReviewBatch2, SubNegationGuardsIntMin) {
 
     isel.lowerArithmetic(func);
 
-    // The instruction should NOT have been converted to ADDri because
-    // negating INT64_MIN overflows.  It should remain SUBrr.
     EXPECT_FALSE(func.blocks.empty());
-    EXPECT_FALSE(func.blocks[0].instructions.empty());
+    ASSERT_EQ(func.blocks[0].instructions.size(), 2u);
 
-    const auto &instr = func.blocks[0].instructions[0];
-    // Must still be SUBrr, not ADDri
-    EXPECT_EQ(static_cast<int>(instr.opcode), static_cast<int>(MOpcode::SUBrr));
+    const auto &mov = func.blocks[0].instructions[0];
+    EXPECT_EQ(static_cast<int>(mov.opcode), static_cast<int>(MOpcode::MOVri));
+    const auto *imm = std::get_if<OpImm>(&mov.operands[1]);
+    ASSERT_TRUE(imm != nullptr);
+    EXPECT_EQ(imm->val, intMin);
 
-    // The immediate value must be unchanged
-    const auto *imm = std::get_if<OpImm>(&instr.operands[1]);
-    EXPECT_TRUE(imm != nullptr);
-    if (imm) {
-        EXPECT_EQ(imm->val, intMin);
-    }
+    const auto &loweredSub = func.blocks[0].instructions[1];
+    EXPECT_EQ(static_cast<int>(loweredSub.opcode), static_cast<int>(MOpcode::SUBrr));
+    EXPECT_TRUE(std::holds_alternative<OpReg>(loweredSub.operands[1]));
 }
 
 TEST(CodegenReviewBatch2, SubNegationWorksForNormalValues) {
@@ -103,7 +101,8 @@ TEST(CodegenReviewBatch2, SubNegationWorksForNormalValues) {
 }
 
 TEST(CodegenReviewBatch2, SubNegationIntMaxWorks) {
-    // INT64_MAX negation is valid (-INT64_MAX = INT64_MIN + 1), verify it works
+    // INT64_MAX negation is defined, but the result is outside x86-64's signed
+    // imm32 ALU encoding range, so it must be materialized before SUBrr.
     auto &target = sysvTarget();
     ISel isel{target};
 
@@ -121,14 +120,17 @@ TEST(CodegenReviewBatch2, SubNegationIntMaxWorks) {
 
     isel.lowerArithmetic(func);
 
-    const auto &instr = func.blocks[0].instructions[0];
-    EXPECT_EQ(static_cast<int>(instr.opcode), static_cast<int>(MOpcode::ADDri));
+    ASSERT_EQ(func.blocks[0].instructions.size(), 2u);
 
-    const auto *imm = std::get_if<OpImm>(&instr.operands[1]);
-    EXPECT_TRUE(imm != nullptr);
-    if (imm) {
-        EXPECT_EQ(imm->val, -intMax);
-    }
+    const auto &mov = func.blocks[0].instructions[0];
+    EXPECT_EQ(static_cast<int>(mov.opcode), static_cast<int>(MOpcode::MOVri));
+    const auto *imm = std::get_if<OpImm>(&mov.operands[1]);
+    ASSERT_TRUE(imm != nullptr);
+    EXPECT_EQ(imm->val, intMax);
+
+    const auto &loweredSub = func.blocks[0].instructions[1];
+    EXPECT_EQ(static_cast<int>(loweredSub.opcode), static_cast<int>(MOpcode::SUBrr));
+    EXPECT_TRUE(std::holds_alternative<OpReg>(loweredSub.operands[1]));
 }
 
 // ---------------------------------------------------------------------------

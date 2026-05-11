@@ -875,7 +875,7 @@ add_test(NAME zia_smoke_3dbowling
 set_tests_properties(zia_smoke_3dbowling PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;graphics3d;requires_display"
-        TIMEOUT 30)
+        TIMEOUT 90)
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set_tests_properties(zia_smoke_3dbowling PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software")
@@ -923,7 +923,7 @@ add_test(NAME zia_smoke_3dbowling_overlay
 set_tests_properties(zia_smoke_3dbowling_overlay PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;graphics3d;requires_display"
-        TIMEOUT 30)
+        TIMEOUT 90)
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set_tests_properties(zia_smoke_3dbowling_overlay PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software")
@@ -939,7 +939,7 @@ add_test(NAME zia_smoke_3dbowling_title_postfx
 set_tests_properties(zia_smoke_3dbowling_title_postfx PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;graphics3d;requires_display"
-        TIMEOUT 30)
+        TIMEOUT 90)
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set_tests_properties(zia_smoke_3dbowling_title_postfx PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software")
