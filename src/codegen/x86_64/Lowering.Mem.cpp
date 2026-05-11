@@ -41,6 +41,19 @@
 namespace viper::codegen::x64::lowering {
 namespace {
 
+[[nodiscard]] bool isIntegerLikeKind(ILValue::Kind kind) noexcept {
+    return kind == ILValue::Kind::I64 || kind == ILValue::Kind::I1 || kind == ILValue::Kind::PTR;
+}
+
+[[nodiscard]] bool isIntegerLikeImmediate(const MIRBuilder &builder,
+                                          const ILValue &value) noexcept {
+    return builder.isImmediate(value) && isIntegerLikeKind(value.kind);
+}
+
+[[nodiscard]] int64_t integerImmediateValue(const ILValue &value) noexcept {
+    return value.kind == ILValue::Kind::I1 ? (value.i64 != 0 ? 1 : 0) : value.i64;
+}
+
 CallArg makeCallArg(const ILValue &argVal, MIRBuilder &builder) {
     CallArg arg{};
     arg.cls =
@@ -49,17 +62,16 @@ CallArg makeCallArg(const ILValue &argVal, MIRBuilder &builder) {
     if (argVal.kind != ILValue::Kind::LABEL && argVal.kind != ILValue::Kind::STR &&
         builder.isImmediate(argVal)) {
         arg.isImm = true;
-        arg.imm = (argVal.kind == ILValue::Kind::F64) ? static_cast<int64_t>(
-                                                            std::bit_cast<std::uint64_t>(argVal.f64))
-                                                      : (argVal.kind == ILValue::Kind::I1
-                                                             ? (argVal.i64 != 0 ? 1 : 0)
-                                                             : argVal.i64);
+        arg.imm = (argVal.kind == ILValue::Kind::F64)
+                      ? static_cast<int64_t>(std::bit_cast<std::uint64_t>(argVal.f64))
+                      : (argVal.kind == ILValue::Kind::I1 ? (argVal.i64 != 0 ? 1 : 0) : argVal.i64);
         return arg;
     }
 
     Operand operand = builder.makeOperandForValue(argVal, builder.regClassFor(argVal.kind));
     if (!std::holds_alternative<OpReg>(operand) && !std::holds_alternative<OpImm>(operand)) {
-        operand = EmitCommon(builder).materialise(std::move(operand), builder.regClassFor(argVal.kind));
+        operand =
+            EmitCommon(builder).materialise(std::move(operand), builder.regClassFor(argVal.kind));
     }
     if (const auto *reg = std::get_if<OpReg>(&operand)) {
         arg.vreg = reg->idOrPhys;
@@ -80,7 +92,8 @@ void applyKnownVarArgMetadata(CallLoweringPlan &plan,
     if (const auto mapped = il::runtime::mapCanonicalRuntimeName(callee))
         mappedCallee = *mapped;
 
-    plan.isVarArg = il::runtime::isVarArgCallee(mappedCallee) || il::runtime::isVarArgCallee(callee) ||
+    plan.isVarArg = il::runtime::isVarArgCallee(mappedCallee) ||
+                    il::runtime::isVarArgCallee(callee) ||
                     builder.lower().isKnownVarArgCallee(mappedCallee) ||
                     builder.lower().isKnownVarArgCallee(callee);
     if (!plan.isVarArg) {
@@ -279,10 +292,11 @@ void emitAlloca(const ILInstr &instr, MIRBuilder &builder) {
     if (instr.resultId < 0) {
         return;
     }
-    if (instr.ops.empty() || !builder.isImmediate(instr.ops[0])) {
-        phaseAUnsupported("alloca: size must be a positive immediate");
+    if (instr.ops.empty() || !isIntegerLikeImmediate(builder, instr.ops[0])) {
+        phaseAUnsupported("alloca: size must be a positive integer immediate");
     }
-    if (instr.ops[0].i64 <= 0 || instr.ops[0].i64 > std::numeric_limits<int32_t>::max()) {
+    const int64_t sizeImm = integerImmediateValue(instr.ops[0]);
+    if (sizeImm <= 0 || sizeImm > std::numeric_limits<int32_t>::max()) {
         phaseAUnsupported("alloca: size is out of range");
     }
 
@@ -290,7 +304,7 @@ void emitAlloca(const ILInstr &instr, MIRBuilder &builder) {
     const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
 
-    const int sizeBytes = static_cast<int>(instr.ops[0].i64);
+    const int sizeBytes = static_cast<int>(sizeImm);
     const int32_t placeholderOffset =
         builder.reserveStackLocalPlaceholder(sizeBytes, kSlotSizeBytes);
 
@@ -326,18 +340,22 @@ void emitGEP(const ILInstr &instr, MIRBuilder &builder) {
 
     // Get the offset
     const auto &offsetVal = instr.ops[1];
+    if (!isIntegerLikeKind(offsetVal.kind)) {
+        phaseAUnsupported("gep: offset must be an integer value");
+    }
 
     if (builder.isImmediate(offsetVal)) {
-        if (fitsImm32(offsetVal.i64)) {
+        const int64_t offsetImm = integerImmediateValue(offsetVal);
+        if (fitsImm32(offsetImm)) {
             // Base is a register, offset is immediate -> use LEA [base + imm]
-            const int32_t offset = static_cast<int32_t>(offsetVal.i64);
+            const int32_t offset = static_cast<int32_t>(offsetImm);
             const Operand mem = makeMemOperand(*baseReg, offset);
             builder.append(MInstr::make(MOpcode::LEA, std::vector<Operand>{dest, mem}));
         } else {
             const VReg offsetReg = builder.makeTempVReg(RegClass::GPR);
             const Operand offset = makeVRegOperand(offsetReg.cls, offsetReg.id);
             builder.append(MInstr::make(MOpcode::MOVri,
-                                        std::vector<Operand>{offset, makeImmOperand(offsetVal.i64)}));
+                                        std::vector<Operand>{offset, makeImmOperand(offsetImm)}));
             builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{dest, baseOp}));
             builder.append(MInstr::make(MOpcode::ADDrr, std::vector<Operand>{dest, offset}));
         }

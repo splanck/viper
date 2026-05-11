@@ -41,9 +41,23 @@ void emitRetainStringVReg(MIRBuilder &builder, const VReg &valueVReg) {
     retainPlan.numNamedArgs = retainPlan.args.size();
 
     const uint32_t callPlanId = builder.recordCallPlan(std::move(retainPlan));
-    MInstr call = MInstr::make(MOpcode::CALL, {makeLabelOperand(std::string{"rt_str_retain_maybe"})});
+    MInstr call =
+        MInstr::make(MOpcode::CALL, {makeLabelOperand(std::string{"rt_str_retain_maybe"})});
     call.callPlanId = callPlanId;
     builder.append(std::move(call));
+}
+
+[[nodiscard]] bool isIntegerLikeImmediate(const MIRBuilder &builder,
+                                          const ILValue &value) noexcept {
+    if (!builder.isImmediate(value)) {
+        return false;
+    }
+    return value.kind == ILValue::Kind::I64 || value.kind == ILValue::Kind::I1 ||
+           value.kind == ILValue::Kind::PTR;
+}
+
+[[nodiscard]] int64_t integerImmediateValue(const ILValue &value) noexcept {
+    return value.kind == ILValue::Kind::I1 ? (value.i64 != 0 ? 1 : 0) : value.i64;
 }
 
 } // namespace
@@ -107,12 +121,11 @@ Operand EmitCommon::materialise(Operand operand, RegClass cls) {
         }
     } else if (const auto *label = std::get_if<OpLabel>(&operand)) {
         builder().append(MInstr::make(
-            MOpcode::LEA,
-            std::vector<Operand>{clone(tmpOp), makeRipLabelOperand(label->name)}));
+            MOpcode::LEA, std::vector<Operand>{clone(tmpOp), makeRipLabelOperand(label->name)}));
     } else if (const auto *rip = std::get_if<OpRipLabel>(&operand)) {
         if (cls == RegClass::XMM) {
-            builder().append(MInstr::make(
-                MOpcode::MOVSDmr, std::vector<Operand>{clone(tmpOp), clone(operand)}));
+            builder().append(
+                MInstr::make(MOpcode::MOVSDmr, std::vector<Operand>{clone(tmpOp), clone(operand)}));
         } else {
             builder().append(MInstr::make(
                 MOpcode::LEA, std::vector<Operand>{clone(tmpOp), makeRipLabelOperand(rip->name)}));
@@ -202,6 +215,7 @@ std::optional<Operand> EmitCommon::tryMakeIndexedMem(const ILInstr &addrProducer
                     scale = static_cast<uint8_t>(1U << sh);
                     // Now trace back to find the original index before the SHL
                     // SHL is destructive, so we need to find the MOV that defined the SHL dest
+                    bool foundOriginalIndex = false;
                     for (std::size_t j = i - 1; j > 0; --j) {
                         const auto &mj = blk.instructions[j - 1];
                         if (mj.opcode == MOpcode::MOVrr && mj.operands.size() >= 2) {
@@ -210,9 +224,13 @@ std::optional<Operand> EmitCommon::tryMakeIndexedMem(const ILInstr &addrProducer
                             if (movDst && movSrc && !movDst->isPhys &&
                                 movDst->idOrPhys == idxReg->idOrPhys) {
                                 actualIdx = *movSrc;
+                                foundOriginalIndex = true;
                                 break;
                             }
                         }
+                    }
+                    if (!foundOriginalIndex) {
+                        return std::nullopt;
                     }
                 }
                 break;
@@ -223,10 +241,11 @@ std::optional<Operand> EmitCommon::tryMakeIndexedMem(const ILInstr &addrProducer
     int32_t disp = 0;
     if (addrProducer.ops.size() > displacementOperandIndex) {
         const ILValue &dispValue = addrProducer.ops[displacementOperandIndex];
-        if (!builder().isImmediate(dispValue) || !fitsImm32(dispValue.i64)) {
+        if (!isIntegerLikeImmediate(builder(), dispValue) ||
+            !fitsImm32(integerImmediateValue(dispValue))) {
             return std::nullopt;
         }
-        disp = static_cast<int32_t>(dispValue.i64);
+        disp = static_cast<int32_t>(integerImmediateValue(dispValue));
     }
 
     return makeMemOperand(baseReg, actualIdx, scale, disp);
@@ -452,11 +471,9 @@ void EmitCommon::emitSelect(const ILInstr &instr) {
                 MInstr::make(MOpcode::MOVri, std::vector<Operand>{clone(cmovSource), trueVal}));
         }
 
-        builder().append(MInstr::make(MOpcode::SELECT_GPR,
-                                      std::vector<Operand>{clone(dest),
-                                                           clone(cond),
-                                                           clone(falseVal),
-                                                           clone(cmovSource)}));
+        builder().append(MInstr::make(
+            MOpcode::SELECT_GPR,
+            std::vector<Operand>{clone(dest), clone(cond), clone(falseVal), clone(cmovSource)}));
         return;
     }
 
@@ -465,11 +482,9 @@ void EmitCommon::emitSelect(const ILInstr &instr) {
     const Operand matFalse = materialise(clone(falseVal), RegClass::XMM);
     const Operand matTrue = materialise(clone(trueVal), RegClass::XMM);
 
-    builder().append(MInstr::make(MOpcode::SELECT_XMM,
-                                  std::vector<Operand>{clone(dest),
-                                                       clone(cond),
-                                                       clone(matFalse),
-                                                       clone(matTrue)}));
+    builder().append(MInstr::make(
+        MOpcode::SELECT_XMM,
+        std::vector<Operand>{clone(dest), clone(cond), clone(matFalse), clone(matTrue)}));
 }
 
 /// @brief Emit an unconditional branch to the target label.
@@ -580,9 +595,12 @@ void EmitCommon::emitLoad(const ILInstr &instr, RegClass cls) {
         phaseAUnsupported("load: address base did not materialize to a register");
     }
 
-    int64_t disp64 = instr.ops.size() > 1 ? instr.ops[1].i64 : 0;
-    if (instr.ops.size() > 1 && !builder().isImmediate(instr.ops[1])) {
-        phaseAUnsupported("load: displacement must be an immediate");
+    int64_t disp64 = 0;
+    if (instr.ops.size() > 1) {
+        if (!isIntegerLikeImmediate(builder(), instr.ops[1])) {
+            phaseAUnsupported("load: displacement must be an integer immediate");
+        }
+        disp64 = integerImmediateValue(instr.ops[1]);
     }
     const VReg destReg = builder().ensureVReg(instr.resultId, instr.resultKind);
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
@@ -642,9 +660,12 @@ void EmitCommon::emitStore(const ILInstr &instr) {
     if (!baseReg) {
         phaseAUnsupported("store: address base did not materialize to a register");
     }
-    int64_t disp64 = instr.ops.size() > 2 ? instr.ops[2].i64 : 0;
-    if (instr.ops.size() > 2 && !builder().isImmediate(instr.ops[2])) {
-        phaseAUnsupported("store: displacement must be an immediate");
+    int64_t disp64 = 0;
+    if (instr.ops.size() > 2) {
+        if (!isIntegerLikeImmediate(builder(), instr.ops[2])) {
+            phaseAUnsupported("store: displacement must be an integer immediate");
+        }
+        disp64 = integerImmediateValue(instr.ops[2]);
     }
 
     Operand effectiveBase = clone(baseOp);

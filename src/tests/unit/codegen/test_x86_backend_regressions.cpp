@@ -17,10 +17,11 @@
 #include "codegen/x86_64/FrameLowering.hpp"
 #include "codegen/x86_64/ISel.hpp"
 #include "codegen/x86_64/LowerILToMIR.hpp"
+#include "codegen/x86_64/Lowering.EmitCommon.hpp"
 #include "codegen/x86_64/OperandRoles.hpp"
-#include "codegen/x86_64/peephole/PeepholeCommon.hpp"
 #include "codegen/x86_64/RegAllocLinear.hpp"
 #include "codegen/x86_64/TargetX64.hpp"
+#include "codegen/x86_64/peephole/PeepholeCommon.hpp"
 #include "codegen/x86_64/ra/Liveness.hpp"
 
 #include <algorithm>
@@ -28,10 +29,13 @@
 #include <cstdint>
 #include <cstdio>
 #include <iostream>
+#include <limits>
+#include <optional>
 #include <regex>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 #if defined(_WIN32)
 #include <io.h>
@@ -75,6 +79,15 @@ ILValue immF64(double value) {
     operand.kind = ILValue::Kind::F64;
     operand.id = -1;
     operand.f64 = value;
+    return operand;
+}
+
+ILValue strLit(std::string bytes, std::uint64_t len) {
+    ILValue operand{};
+    operand.kind = ILValue::Kind::STR;
+    operand.id = -1;
+    operand.str = std::move(bytes);
+    operand.strLen = len;
     return operand;
 }
 
@@ -125,9 +138,9 @@ bool containsRegex(const std::string &text, const std::string &pattern) {
 }
 
 bool blockContainsOpcode(const MBasicBlock &block, MOpcode opcode) {
-    return std::any_of(block.instructions.begin(), block.instructions.end(), [&](const MInstr &instr) {
-        return instr.opcode == opcode;
-    });
+    return std::any_of(block.instructions.begin(),
+                       block.instructions.end(),
+                       [&](const MInstr &instr) { return instr.opcode == opcode; });
 }
 
 const OpLabel *jumpTarget(const MInstr &instr) {
@@ -226,8 +239,7 @@ int fileNumber(FILE *file) {
 #endif
 }
 
-template <typename Fn>
-std::string captureStderr(Fn &&fn) {
+template <typename Fn> std::string captureStderr(Fn &&fn) {
     std::fflush(stderr);
     std::cerr.flush();
 
@@ -291,10 +303,9 @@ TEST(X86BackendRegressions, VoidReturnClearsIntegerReturnRegister) {
 TEST(X86BackendRegressions, ConstNullLoadMaterializesBaseAndEmitsMemoryRead) {
     ILBlock entry{};
     entry.name = "entry";
-    entry.instrs = {
-        op("const_null", {}, 0, ILValue::Kind::PTR),
-        op("load", {val(ILValue::Kind::PTR, 0)}, 1, ILValue::Kind::I64),
-        op("ret", {val(ILValue::Kind::I64, 1)})};
+    entry.instrs = {op("const_null", {}, 0, ILValue::Kind::PTR),
+                    op("load", {val(ILValue::Kind::PTR, 0)}, 1, ILValue::Kind::I64),
+                    op("ret", {val(ILValue::Kind::I64, 1)})};
 
     ILFunction fn{};
     fn.name = "null_load";
@@ -313,10 +324,9 @@ TEST(X86BackendRegressions, ConstNullLoadMaterializesBaseAndEmitsMemoryRead) {
 TEST(X86BackendRegressions, ConstNullStoreMaterializesBaseAndEmitsMemoryWrite) {
     ILBlock entry{};
     entry.name = "entry";
-    entry.instrs = {
-        op("const_null", {}, 0, ILValue::Kind::PTR),
-        op("store", {val(ILValue::Kind::PTR, 0), imm(7)}),
-        op("ret", {imm(0)})};
+    entry.instrs = {op("const_null", {}, 0, ILValue::Kind::PTR),
+                    op("store", {val(ILValue::Kind::PTR, 0), imm(7)}),
+                    op("ret", {imm(0)})};
 
     ILFunction fn{};
     fn.name = "null_store";
@@ -448,8 +458,9 @@ TEST(X86BackendRegressions, CheckedSignedNarrowEmitsWidthCheck) {
     entry.name = "entry";
     entry.paramIds = {0};
     entry.paramKinds = {ILValue::Kind::I64};
-    entry.instrs = {opBits("si_narrow_chk", {val(ILValue::Kind::I64, 0)}, 1, ILValue::Kind::I64, 16),
-                    op("ret", {val(ILValue::Kind::I64, 1)})};
+    entry.instrs = {
+        opBits("si_narrow_chk", {val(ILValue::Kind::I64, 0)}, 1, ILValue::Kind::I64, 16),
+        op("ret", {val(ILValue::Kind::I64, 1)})};
 
     ILFunction fn{};
     fn.name = "narrow_i16";
@@ -468,9 +479,9 @@ TEST(X86BackendRegressions, CheckedNarrowLabelsAreSplitBeforeRegisterAllocation)
     entry.name = "entry";
     entry.paramIds = {0};
     entry.paramKinds = {ILValue::Kind::I64};
-    entry.instrs = {opBits("si_narrow_chk", {val(ILValue::Kind::I64, 0)}, 1,
-                           ILValue::Kind::I64, 16),
-                    op("ret", {val(ILValue::Kind::I64, 1)})};
+    entry.instrs = {
+        opBits("si_narrow_chk", {val(ILValue::Kind::I64, 0)}, 1, ILValue::Kind::I64, 16),
+        op("ret", {val(ILValue::Kind::I64, 1)})};
 
     ILFunction fn{};
     fn.name = "narrow_cfg";
@@ -496,10 +507,13 @@ TEST(X86BackendRegressions, CheckedNarrowLabelsAreSplitBeforeRegisterAllocation)
     bool foundDoneBlock = false;
     bool trapEndsInUd2 = false;
     for (const auto &block : mir.front().blocks) {
-        foundTrapBlock = foundTrapBlock || block.label.find(".Lnarrow_chk_trap_") != std::string::npos;
-        foundDoneBlock = foundDoneBlock || block.label.find(".Lnarrow_chk_done_") != std::string::npos;
+        foundTrapBlock =
+            foundTrapBlock || block.label.find(".Lnarrow_chk_trap_") != std::string::npos;
+        foundDoneBlock =
+            foundDoneBlock || block.label.find(".Lnarrow_chk_done_") != std::string::npos;
         foundInlineLabel = foundInlineLabel || blockContainsOpcode(block, MOpcode::LABEL);
-        if (block.label.find(".Lnarrow_chk_trap_") != std::string::npos && !block.instructions.empty()) {
+        if (block.label.find(".Lnarrow_chk_trap_") != std::string::npos &&
+            !block.instructions.empty()) {
             trapEndsInUd2 = block.instructions.back().opcode == MOpcode::UD2;
         }
     }
@@ -515,13 +529,12 @@ TEST(X86BackendRegressions, SubWidthCheckedAddEmitsRangeCheck) {
     entry.name = "entry";
     entry.paramIds = {0, 1};
     entry.paramKinds = {ILValue::Kind::I64, ILValue::Kind::I64};
-    entry.instrs = {
-        opBits("iadd.ovf",
-               {val(ILValue::Kind::I64, 0), val(ILValue::Kind::I64, 1)},
-               2,
-               ILValue::Kind::I64,
-               16),
-        op("ret", {val(ILValue::Kind::I64, 2)})};
+    entry.instrs = {opBits("iadd.ovf",
+                           {val(ILValue::Kind::I64, 0), val(ILValue::Kind::I64, 1)},
+                           2,
+                           ILValue::Kind::I64,
+                           16),
+                    op("ret", {val(ILValue::Kind::I64, 2)})};
 
     ILFunction fn{};
     fn.name = "iadd_i16";
@@ -541,10 +554,11 @@ TEST(X86BackendRegressions, CompareBranchUsesFlagsDirectly) {
     entry.name = "entry";
     entry.paramIds = {0, 1};
     entry.paramKinds = {ILValue::Kind::I64, ILValue::Kind::I64};
-    entry.instrs = {
-        op("icmp_ne", {val(ILValue::Kind::I64, 0), val(ILValue::Kind::I64, 1)}, 2,
-           ILValue::Kind::I1),
-        op("cbr", {val(ILValue::Kind::I1, 2), label("yes"), label("no")})};
+    entry.instrs = {op("icmp_ne",
+                       {val(ILValue::Kind::I64, 0), val(ILValue::Kind::I64, 1)},
+                       2,
+                       ILValue::Kind::I1),
+                    op("cbr", {val(ILValue::Kind::I1, 2), label("yes"), label("no")})};
 
     ILBlock yes{};
     yes.name = "yes";
@@ -578,12 +592,10 @@ TEST(X86BackendRegressions, ConditionalBlockArgsUseDedicatedEdgeBlocks) {
     entry.name = "entry";
     entry.paramIds = {0};
     entry.paramKinds = {ILValue::Kind::I64};
-    entry.instrs = {
-        op("icmp_ne", {val(ILValue::Kind::I64, 0), imm(0)}, 1, ILValue::Kind::I1),
-        op("cbr", {val(ILValue::Kind::I1, 1), label("yes"), label("no")})};
-    entry.terminatorEdges = {
-        ILBlock::EdgeArg{.to = "yes", .argIds = {-1}, .argValues = {imm(7)}},
-        ILBlock::EdgeArg{.to = "no", .argIds = {-1}, .argValues = {imm(13)}}};
+    entry.instrs = {op("icmp_ne", {val(ILValue::Kind::I64, 0), imm(0)}, 1, ILValue::Kind::I1),
+                    op("cbr", {val(ILValue::Kind::I1, 1), label("yes"), label("no")})};
+    entry.terminatorEdges = {ILBlock::EdgeArg{.to = "yes", .argIds = {-1}, .argValues = {imm(7)}},
+                             ILBlock::EdgeArg{.to = "no", .argIds = {-1}, .argValues = {imm(13)}}};
 
     ILBlock yes{};
     yes.name = "yes";
@@ -604,9 +616,10 @@ TEST(X86BackendRegressions, ConditionalBlockArgsUseDedicatedEdgeBlocks) {
     const MFunction mir = lowering.lower(fn);
     ASSERT_EQ(mir.blocks.size(), 5u);
 
-    const auto entryIt = std::find_if(mir.blocks.begin(), mir.blocks.end(), [](const MBasicBlock &bb) {
-        return bb.label == ".L_cbr_edges_entry";
-    });
+    const auto entryIt =
+        std::find_if(mir.blocks.begin(), mir.blocks.end(), [](const MBasicBlock &bb) {
+            return bb.label == ".L_cbr_edges_entry";
+        });
     ASSERT_TRUE(entryIt != mir.blocks.end());
 
     std::size_t edgeBlockCount = 0;
@@ -686,11 +699,13 @@ TEST(X86BackendRegressions, SwitchBlockArgsUseDedicatedEdgeBlocks) {
     ASSERT_TRUE(entryIt != mir.blocks.end());
 
     std::size_t edgeBlockCount = 0;
+
     struct EdgeBlockInfo {
         std::string label;
         std::string target;
         int64_t immediate = 0;
     };
+
     std::vector<EdgeBlockInfo> edgeBlocks;
     for (const auto &bb : mir.blocks) {
         if (bb.label.find(".edge") == std::string::npos)
@@ -814,10 +829,11 @@ TEST(X86BackendRegressions, CheckedSignedDivisionIncludesOverflowTrap) {
     entry.name = "entry";
     entry.paramIds = {0, 1};
     entry.paramKinds = {ILValue::Kind::I64, ILValue::Kind::I64};
-    entry.instrs = {
-        op("sdiv.chk0", {val(ILValue::Kind::I64, 0), val(ILValue::Kind::I64, 1)}, 2,
-           ILValue::Kind::I64),
-        op("ret", {val(ILValue::Kind::I64, 2)})};
+    entry.instrs = {op("sdiv.chk0",
+                       {val(ILValue::Kind::I64, 0), val(ILValue::Kind::I64, 1)},
+                       2,
+                       ILValue::Kind::I64),
+                    op("ret", {val(ILValue::Kind::I64, 2)})};
 
     ILFunction fn{};
     fn.name = "checked_div";
@@ -834,10 +850,11 @@ TEST(X86BackendRegressions, CheckedSignedRemainderZerosMinOverflowPath) {
     entry.name = "entry";
     entry.paramIds = {0, 1};
     entry.paramKinds = {ILValue::Kind::I64, ILValue::Kind::I64};
-    entry.instrs = {
-        op("srem.chk0", {val(ILValue::Kind::I64, 0), val(ILValue::Kind::I64, 1)}, 2,
-           ILValue::Kind::I64),
-        op("ret", {val(ILValue::Kind::I64, 2)})};
+    entry.instrs = {op("srem.chk0",
+                       {val(ILValue::Kind::I64, 0), val(ILValue::Kind::I64, 1)},
+                       2,
+                       ILValue::Kind::I64),
+                    op("ret", {val(ILValue::Kind::I64, 2)})};
 
     ILFunction fn{};
     fn.name = "checked_rem";
@@ -846,17 +863,17 @@ TEST(X86BackendRegressions, CheckedSignedRemainderZerosMinOverflowPath) {
     const CodegenResult result = compile(fn);
     ASSERT_TRUE(result.errors.empty());
     EXPECT_EQ(result.asmText.find("rt_trap_ovf"), std::string::npos);
-    EXPECT_TRUE(result.asmText.find("movq $0") != std::string::npos ||
-                containsRegex(result.asmText,
-                              R"(xor[lq]\s+%(?:e[a-z]+|r[a-z0-9]+d?),\s*%(?:e[a-z]+|r[a-z0-9]+d?))"));
+    EXPECT_TRUE(
+        result.asmText.find("movq $0") != std::string::npos ||
+        containsRegex(result.asmText,
+                      R"(xor[lq]\s+%(?:e[a-z]+|r[a-z0-9]+d?),\s*%(?:e[a-z]+|r[a-z0-9]+d?))"));
 }
 
 TEST(X86BackendRegressions, AssemblyHonorsTargetPlatformSections) {
     ILBlock entry{};
     entry.name = "entry";
-    entry.instrs = {
-        op("const_f64", {immF64(3.25)}, 0, ILValue::Kind::F64),
-        op("ret", {val(ILValue::Kind::F64, 0)}, -1, ILValue::Kind::F64)};
+    entry.instrs = {op("const_f64", {immF64(3.25)}, 0, ILValue::Kind::F64),
+                    op("ret", {val(ILValue::Kind::F64, 0)}, -1, ILValue::Kind::F64)};
 
     ILFunction fn{};
     fn.name = "const_f64_target";
@@ -966,11 +983,10 @@ TEST(X86BackendRegressions, TrapPayloadIsForwardedToRuntime) {
     fn.blocks = {entry};
 
     (void)lowering.lower(fn);
-    const auto trapIt = std::find_if(lowering.callPlans().begin(),
-                                     lowering.callPlans().end(),
-                                     [](const CallLoweringPlan &plan) {
-                                         return plan.callee == "rt_trap_string";
-                                     });
+    const auto trapIt =
+        std::find_if(lowering.callPlans().begin(),
+                     lowering.callPlans().end(),
+                     [](const CallLoweringPlan &plan) { return plan.callee == "rt_trap_string"; });
     ASSERT_TRUE(trapIt != lowering.callPlans().end());
     ASSERT_EQ(trapIt->args.size(), 1u);
     EXPECT_FALSE(trapIt->args[0].isImm);
@@ -981,9 +997,9 @@ TEST(X86BackendRegressions, LargeGepImmediateIsMaterializedInsteadOfTruncated) {
     entry.name = "entry";
     entry.paramIds = {0};
     entry.paramKinds = {ILValue::Kind::PTR};
-    entry.instrs = {op("gep", {val(ILValue::Kind::PTR, 0), imm(2147483648LL)}, 1,
-                       ILValue::Kind::PTR),
-                    op("ret", {val(ILValue::Kind::PTR, 1)})};
+    entry.instrs = {
+        op("gep", {val(ILValue::Kind::PTR, 0), imm(2147483648LL)}, 1, ILValue::Kind::PTR),
+        op("ret", {val(ILValue::Kind::PTR, 1)})};
 
     ILFunction fn{};
     fn.name = "large_gep";
@@ -1001,9 +1017,9 @@ TEST(X86BackendRegressions, LargeLoadDisplacementIsMaterializedInsteadOfTruncate
     entry.name = "entry";
     entry.paramIds = {0};
     entry.paramKinds = {ILValue::Kind::PTR};
-    entry.instrs = {op("load", {val(ILValue::Kind::PTR, 0), imm(2147483648LL)}, 1,
-                       ILValue::Kind::I64),
-                    op("ret", {val(ILValue::Kind::I64, 1)})};
+    entry.instrs = {
+        op("load", {val(ILValue::Kind::PTR, 0), imm(2147483648LL)}, 1, ILValue::Kind::I64),
+        op("ret", {val(ILValue::Kind::I64, 1)})};
 
     ILFunction fn{};
     fn.name = "large_load_disp";
@@ -1019,8 +1035,7 @@ TEST(X86BackendRegressions, LargeLoadDisplacementIsMaterializedInsteadOfTruncate
 TEST(X86BackendRegressions, InvalidAllocaSizeIsRejected) {
     ILBlock entry{};
     entry.name = "entry";
-    entry.instrs = {op("alloca", {imm(0)}, 0, ILValue::Kind::PTR),
-                    op("ret", {imm(0)})};
+    entry.instrs = {op("alloca", {imm(0)}, 0, ILValue::Kind::PTR), op("ret", {imm(0)})};
 
     ILFunction fn{};
     fn.name = "bad_alloca";
@@ -1034,9 +1049,9 @@ TEST(X86BackendRegressions, SelectPseudoIsLoweredBeforeEmission) {
     entry.name = "entry";
     entry.paramIds = {0};
     entry.paramKinds = {ILValue::Kind::I1};
-    entry.instrs = {op("select", {val(ILValue::Kind::I1, 0), imm(7), imm(13)}, 1,
-                       ILValue::Kind::I64),
-                    op("ret", {val(ILValue::Kind::I64, 1)})};
+    entry.instrs = {
+        op("select", {val(ILValue::Kind::I1, 0), imm(7), imm(13)}, 1, ILValue::Kind::I64),
+        op("ret", {val(ILValue::Kind::I64, 1)})};
 
     ILFunction fn{};
     fn.name = "select_i64";
@@ -1104,12 +1119,13 @@ TEST(X86BackendRegressions, RegAllocSpillsLiveValueBeforePhysicalRdxClobber) {
     (void)allocate(fn, sysvTarget());
 
     const auto &instructions = fn.blocks.front().instructions;
-    const auto xorIt = std::find_if(instructions.begin(), instructions.end(), [](const MInstr &instr) {
-        if (instr.opcode != MOpcode::XORrr32 || instr.operands.empty())
-            return false;
-        const auto *dst = std::get_if<OpReg>(&instr.operands[0]);
-        return dst && dst->isPhys && static_cast<PhysReg>(dst->idOrPhys) == PhysReg::RDX;
-    });
+    const auto xorIt =
+        std::find_if(instructions.begin(), instructions.end(), [](const MInstr &instr) {
+            if (instr.opcode != MOpcode::XORrr32 || instr.operands.empty())
+                return false;
+            const auto *dst = std::get_if<OpReg>(&instr.operands[0]);
+            return dst && dst->isPhys && static_cast<PhysReg>(dst->idOrPhys) == PhysReg::RDX;
+        });
     ASSERT_TRUE(xorIt != instructions.end());
 
     bool spilledRdxBeforeClobber = false;
@@ -1149,9 +1165,10 @@ TEST(X86BackendRegressions, RegAllocSpillsLiveValuesBeforeImplicitDivClobber) {
     (void)allocate(fn, sysvTarget());
 
     const auto &instructions = fn.blocks.front().instructions;
-    const auto divIt = std::find_if(instructions.begin(), instructions.end(), [](const MInstr &instr) {
-        return instr.opcode == MOpcode::IDIVrm;
-    });
+    const auto divIt =
+        std::find_if(instructions.begin(), instructions.end(), [](const MInstr &instr) {
+            return instr.opcode == MOpcode::IDIVrm;
+        });
     ASSERT_TRUE(divIt != instructions.end());
 
     bool spilledRax = false;
@@ -1178,8 +1195,8 @@ TEST(X86BackendRegressions, RegAllocDoesNotAllocateFixedScratchRegisters) {
     std::vector<Operand> regs;
     for (uint16_t id = 1; id <= 12; ++id) {
         regs.push_back(makeVRegOperand(RegClass::GPR, id));
-        entry.instructions.push_back(MInstr::make(MOpcode::MOVri,
-                                                  {regs.back(), makeImmOperand(id)}));
+        entry.instructions.push_back(
+            MInstr::make(MOpcode::MOVri, {regs.back(), makeImmOperand(id)}));
     }
     for (std::size_t idx = 1; idx < regs.size(); ++idx) {
         entry.instructions.push_back(MInstr::make(MOpcode::ADDrr, {regs[0], regs[idx]}));
@@ -1223,9 +1240,10 @@ TEST(X86BackendRegressions, RegAllocPreservesCallerSavedLiveOutAcrossCall) {
     (void)allocate(fn, sysvTarget());
 
     const auto &instructions = fn.blocks.front().instructions;
-    const auto callIt = std::find_if(instructions.begin(), instructions.end(), [](const MInstr &instr) {
-        return instr.opcode == MOpcode::CALL;
-    });
+    const auto callIt =
+        std::find_if(instructions.begin(), instructions.end(), [](const MInstr &instr) {
+            return instr.opcode == MOpcode::CALL;
+        });
     ASSERT_TRUE(callIt != instructions.end());
 
     const auto isCallerSaved = [](PhysReg reg) {
@@ -1291,8 +1309,8 @@ TEST(X86BackendRegressions, InvalidConditionCodeThrowsDiagnosticException) {
 
     MBasicBlock entry{};
     entry.label = "bad_cc";
-    entry.instructions = {MInstr::make(MOpcode::JCC,
-                                       {makeImmOperand(99), makeLabelOperand(".Lbad_cc_done")})};
+    entry.instructions = {
+        MInstr::make(MOpcode::JCC, {makeImmOperand(99), makeLabelOperand(".Lbad_cc_done")})};
 
     MBasicBlock done{};
     done.label = ".Lbad_cc_done";
@@ -1372,8 +1390,8 @@ TEST(X86BackendRegressions, GprSelectWithImmediateTrueValueLowersToBranch) {
     entry.label = ".L_select_true_imm_entry";
     const Operand dst = makeVRegOperand(RegClass::GPR, 1);
     const Operand cond = makeVRegOperand(RegClass::GPR, 2);
-    entry.instructions = {MInstr::make(
-        MOpcode::SELECT_GPR, {dst, cond, makeImmOperand(11), makeImmOperand(22)})};
+    entry.instructions = {
+        MInstr::make(MOpcode::SELECT_GPR, {dst, cond, makeImmOperand(11), makeImmOperand(22)})};
     fn.blocks.push_back(std::move(entry));
 
     ISel isel(sysvTarget());
@@ -1562,8 +1580,9 @@ TEST(X86BackendRegressions, LeaFoldUsesRoleAwareCountsAndDeferredErase) {
     const Operand index = makeVRegOperand(RegClass::GPR, 2);
     const Operand addr = makeVRegOperand(RegClass::GPR, 3);
     const Operand loaded = makeVRegOperand(RegClass::GPR, 4);
-    entry.instructions = {MInstr::make(MOpcode::LEA, {addr, Operand{indexedMem(base, index, 4, 16)}}),
-                          MInstr::make(MOpcode::MOVmr, {loaded, Operand{baseMem(addr)}})};
+    entry.instructions = {
+        MInstr::make(MOpcode::LEA, {addr, Operand{indexedMem(base, index, 4, 16)}}),
+        MInstr::make(MOpcode::MOVmr, {loaded, Operand{baseMem(addr)}})};
     fn.blocks.push_back(std::move(entry));
 
     ISel isel(sysvTarget());
@@ -1617,13 +1636,11 @@ TEST(X86BackendRegressions, IndexedStoreUsesStoreDisplacementOperand) {
     entry.name = "entry";
     entry.paramIds = {0, 1};
     entry.paramKinds = {ILValue::Kind::PTR, ILValue::Kind::I64};
-    entry.instrs = {op("shl", {val(ILValue::Kind::I64, 1), imm(3)}, 2, ILValue::Kind::I64),
-                    op("add",
-                       {val(ILValue::Kind::PTR, 0), val(ILValue::Kind::I64, 2)},
-                       3,
-                       ILValue::Kind::PTR),
-                    op("store", {val(ILValue::Kind::PTR, 3), imm(42), imm(16)}),
-                    op("ret", {imm(0)})};
+    entry.instrs = {
+        op("shl", {val(ILValue::Kind::I64, 1), imm(3)}, 2, ILValue::Kind::I64),
+        op("add", {val(ILValue::Kind::PTR, 0), val(ILValue::Kind::I64, 2)}, 3, ILValue::Kind::PTR),
+        op("store", {val(ILValue::Kind::PTR, 3), imm(42), imm(16)}),
+        op("ret", {imm(0)})};
 
     ILFunction fn{};
     fn.name = "indexed_store_disp";
@@ -1683,9 +1700,9 @@ TEST(X86BackendRegressions, LeaFoldPreservesOuterIndex) {
     const Operand index = makeVRegOperand(RegClass::GPR, 2);
     const Operand addr = makeVRegOperand(RegClass::GPR, 3);
     const Operand loaded = makeVRegOperand(RegClass::GPR, 4);
-    entry.instructions = {MInstr::make(MOpcode::LEA, {addr, Operand{baseMem(base, 8)}}),
-                          MInstr::make(MOpcode::MOVmr,
-                                       {loaded, Operand{indexedMem(addr, index, 2, 4)}})};
+    entry.instructions = {
+        MInstr::make(MOpcode::LEA, {addr, Operand{baseMem(base, 8)}}),
+        MInstr::make(MOpcode::MOVmr, {loaded, Operand{indexedMem(addr, index, 2, 4)}})};
     fn.blocks.push_back(std::move(entry));
 
     ISel isel(sysvTarget());
@@ -1743,9 +1760,9 @@ TEST(X86BackendRegressions, UremLargePowerOfTwoMaskMaterializesBeforeBinaryEmiss
     entry.name = "entry";
     entry.paramIds = {0};
     entry.paramKinds = {ILValue::Kind::I64};
-    entry.instrs = {op("urem", {val(ILValue::Kind::I64, 0), imm(kLargePowerOfTwo)}, 1,
-                       ILValue::Kind::I64),
-                    op("ret", {val(ILValue::Kind::I64, 1)})};
+    entry.instrs = {
+        op("urem", {val(ILValue::Kind::I64, 0), imm(kLargePowerOfTwo)}, 1, ILValue::Kind::I64),
+        op("ret", {val(ILValue::Kind::I64, 1)})};
 
     ILFunction fn{};
     fn.name = "urem_large_mask";
@@ -1789,10 +1806,10 @@ TEST(X86BackendRegressions, ExistingOverflowTrapBlockGetsRuntimeCall) {
             const auto *label = std::get_if<OpLabel>(&instr.operands.front());
             return label && label->name == "rt_trap_ovf";
         });
-    const auto ud2It = std::find_if(
-        trapIt->instructions.begin(), trapIt->instructions.end(), [](const MInstr &instr) {
-            return instr.opcode == MOpcode::UD2;
-        });
+    const auto ud2It =
+        std::find_if(trapIt->instructions.begin(),
+                     trapIt->instructions.end(),
+                     [](const MInstr &instr) { return instr.opcode == MOpcode::UD2; });
     ASSERT_TRUE(callIt != trapIt->instructions.end());
     ASSERT_TRUE(ud2It != trapIt->instructions.end());
     EXPECT_LT(std::distance(trapIt->instructions.begin(), callIt),
@@ -1847,15 +1864,14 @@ TEST(X86BackendRegressions, XmmSelectBranchArmIsSplitBeforeRegAlloc) {
     entry.name = "entry";
     entry.paramIds = {0};
     entry.paramKinds = {ILValue::Kind::I1};
-    entry.instrs = {op("const_f64", {immF64(1.5)}, 1, ILValue::Kind::F64),
-                    op("const_f64", {immF64(2.5)}, 2, ILValue::Kind::F64),
-                    op("select",
-                       {val(ILValue::Kind::I1, 0),
-                        val(ILValue::Kind::F64, 1),
-                        val(ILValue::Kind::F64, 2)},
-                       3,
-                       ILValue::Kind::F64),
-                    op("ret", {val(ILValue::Kind::F64, 3)}, -1, ILValue::Kind::F64)};
+    entry.instrs = {
+        op("const_f64", {immF64(1.5)}, 1, ILValue::Kind::F64),
+        op("const_f64", {immF64(2.5)}, 2, ILValue::Kind::F64),
+        op("select",
+           {val(ILValue::Kind::I1, 0), val(ILValue::Kind::F64, 1), val(ILValue::Kind::F64, 2)},
+           3,
+           ILValue::Kind::F64),
+        op("ret", {val(ILValue::Kind::F64, 3)}, -1, ILValue::Kind::F64)};
 
     ILFunction fn{};
     fn.name = "xmm_select_split";
@@ -1876,7 +1892,8 @@ TEST(X86BackendRegressions, XmmSelectBranchArmIsSplitBeforeRegAlloc) {
     bool foundExplicitFalseEdge = false;
     for (const auto &block : mir.front().blocks) {
         EXPECT_FALSE(blockHasNonTerminatorAfterControlTransfer(block));
-        foundExplicitFalseEdge = foundExplicitFalseEdge || blockHasExplicitConditionalFallthrough(block);
+        foundExplicitFalseEdge =
+            foundExplicitFalseEdge || blockHasExplicitConditionalFallthrough(block);
     }
     EXPECT_TRUE(foundExplicitFalseEdge);
 }
@@ -1889,9 +1906,10 @@ TEST(X86BackendRegressions, LivenessCfgTracksNonAdjacentJccBeforeFinalJump) {
     entry.label = ".L_non_adjacent_jcc_entry";
     const Operand dst = makeVRegOperand(RegClass::GPR, 1);
     const Operand src = makeVRegOperand(RegClass::GPR, 2);
-    entry.instructions = {MInstr::make(MOpcode::JCC, {makeImmOperand(1), makeLabelOperand(".L_true")}),
-                          MInstr::make(MOpcode::MOVrr, {dst, src}),
-                          MInstr::make(MOpcode::JMP, {makeLabelOperand(".L_false")})};
+    entry.instructions = {
+        MInstr::make(MOpcode::JCC, {makeImmOperand(1), makeLabelOperand(".L_true")}),
+        MInstr::make(MOpcode::MOVrr, {dst, src}),
+        MInstr::make(MOpcode::JMP, {makeLabelOperand(".L_false")})};
 
     MBasicBlock trueBlock{};
     trueBlock.label = ".L_true";
@@ -2000,6 +2018,184 @@ TEST(X86BackendRegressions, I1ImmediateEdgeArgsCanonicalizeToZeroOrOne) {
 
     EXPECT_TRUE(foundCanonicalMove);
     EXPECT_FALSE(foundRawMove);
+}
+
+TEST(X86BackendRegressions, BlockParameterEdgesRejectTooFewArgs) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(sysvTarget(), roData);
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {op("br", {label("target")})};
+    entry.terminatorEdges = {ILBlock::EdgeArg{.to = "target", .argIds = {}}};
+
+    ILBlock target{};
+    target.name = "target";
+    target.paramIds = {0};
+    target.paramKinds = {ILValue::Kind::I64};
+    target.instrs = {op("ret", {val(ILValue::Kind::I64, 0)})};
+
+    ILFunction fn{};
+    fn.name = "edge_too_few_args";
+    fn.blocks = {entry, target};
+
+    EXPECT_THROWS(lowering.lower(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, BlockParameterEdgesRejectTooManyArgs) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(sysvTarget(), roData);
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {op("br", {label("target")})};
+    entry.terminatorEdges = {
+        ILBlock::EdgeArg{.to = "target", .argIds = {-1, -1}, .argValues = {imm(1), imm(2)}}};
+
+    ILBlock target{};
+    target.name = "target";
+    target.paramIds = {0};
+    target.paramKinds = {ILValue::Kind::I64};
+    target.instrs = {op("ret", {val(ILValue::Kind::I64, 0)})};
+
+    ILFunction fn{};
+    fn.name = "edge_too_many_args";
+    fn.blocks = {entry, target};
+
+    EXPECT_THROWS(lowering.lower(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, BlockParameterEdgesRejectF64ForGprParam) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(sysvTarget(), roData);
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {op("br", {label("target")})};
+    entry.terminatorEdges = {
+        ILBlock::EdgeArg{.to = "target", .argIds = {-1}, .argValues = {immF64(1.25)}}};
+
+    ILBlock target{};
+    target.name = "target";
+    target.paramIds = {0};
+    target.paramKinds = {ILValue::Kind::I64};
+    target.instrs = {op("ret", {val(ILValue::Kind::I64, 0)})};
+
+    ILFunction fn{};
+    fn.name = "edge_f64_to_gpr";
+    fn.blocks = {entry, target};
+
+    EXPECT_THROWS(lowering.lower(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, HugeStringLiteralLengthIsRejectedBeforeResize) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {op("const_str",
+                       {strLit("x", std::numeric_limits<std::uint64_t>::max())},
+                       0,
+                       ILValue::Kind::STR),
+                    op("ret", {val(ILValue::Kind::STR, 0)})};
+
+    ILFunction fn{};
+    fn.name = "huge_string_literal";
+    fn.blocks = {entry};
+
+    EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, LoadRejectsF64Displacement) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::PTR};
+    entry.instrs = {op("load", {val(ILValue::Kind::PTR, 0), immF64(4.0)}, 1, ILValue::Kind::I64),
+                    op("ret", {val(ILValue::Kind::I64, 1)})};
+
+    ILFunction fn{};
+    fn.name = "load_f64_disp";
+    fn.blocks = {entry};
+
+    EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, StoreRejectsF64Displacement) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::PTR};
+    entry.instrs = {op("store", {val(ILValue::Kind::PTR, 0), imm(7), immF64(4.0)}),
+                    op("ret", {imm(0)})};
+
+    ILFunction fn{};
+    fn.name = "store_f64_disp";
+    fn.blocks = {entry};
+
+    EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, AllocaRejectsF64Size) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {op("alloca", {immF64(8.0)}, 0, ILValue::Kind::PTR), op("ret", {imm(0)})};
+
+    ILFunction fn{};
+    fn.name = "alloca_f64_size";
+    fn.blocks = {entry};
+
+    EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, GepRejectsF64ImmediateOffset) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::PTR};
+    entry.instrs = {op("gep", {val(ILValue::Kind::PTR, 0), immF64(8.0)}, 1, ILValue::Kind::PTR),
+                    op("ret", {val(ILValue::Kind::PTR, 1)})};
+
+    ILFunction fn{};
+    fn.name = "gep_f64_offset";
+    fn.blocks = {entry};
+
+    EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, ReusedSsaIdWithDifferentRegisterClassIsRejected) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {op("add", {imm(1), imm(2)}, 0, ILValue::Kind::I64),
+                    op("fadd", {val(ILValue::Kind::F64, 0), immF64(1.0)}, 1, ILValue::Kind::F64),
+                    op("ret", {imm(0)})};
+
+    ILFunction fn{};
+    fn.name = "ssa_type_reuse";
+    fn.blocks = {entry};
+
+    EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, IndexedMemReconstructionRejectsShiftWithoutOriginalIndexCopy) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(sysvTarget(), roData);
+    MBasicBlock block{};
+    block.label = ".L_indexed_mem_no_copy";
+    MIRBuilder builder(lowering, block);
+
+    const VReg base = builder.ensureVReg(0, ILValue::Kind::PTR);
+    const VReg index = builder.ensureVReg(1, ILValue::Kind::I64);
+    const VReg addr = builder.ensureVReg(2, ILValue::Kind::PTR);
+    const Operand baseOp = makeVRegOperand(base.cls, base.id);
+    const Operand indexOp = makeVRegOperand(index.cls, index.id);
+    const Operand addrOp = makeVRegOperand(addr.cls, addr.id);
+
+    block.instructions = {MInstr::make(MOpcode::MOVrr, {addrOp, baseOp}),
+                          MInstr::make(MOpcode::SHLri, {indexOp, makeImmOperand(3)}),
+                          MInstr::make(MOpcode::ADDrr, {addrOp, indexOp})};
+
+    const ILInstr load = op("load", {val(ILValue::Kind::PTR, 2), imm(0)}, 3, ILValue::Kind::I64);
+    const std::optional<Operand> mem = EmitCommon(builder).tryMakeIndexedMem(load, 1);
+    EXPECT_FALSE(mem.has_value());
 }
 
 int main(int argc, char **argv) {

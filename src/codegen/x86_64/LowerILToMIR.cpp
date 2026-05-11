@@ -57,6 +57,10 @@ namespace {
     return value.kind == ILValue::Kind::I1 ? (value.i64 != 0 ? 1 : 0) : value.i64;
 }
 
+[[nodiscard]] bool isIntegerLikeKind(ILValue::Kind kind) noexcept {
+    return kind == ILValue::Kind::I64 || kind == ILValue::Kind::I1 || kind == ILValue::Kind::PTR;
+}
+
 } // namespace
 
 // -----------------------------------------------------------------------------
@@ -273,11 +277,18 @@ RegClass LowerILToMIR::regClassFor(ILValue::Kind kind) noexcept {
 /// @param kind IL value kind associated with @p id.
 /// @return Virtual register descriptor for the identifier.
 VReg LowerILToMIR::ensureVReg(int id, ILValue::Kind kind) {
-    assert(id >= 0 && "SSA value without identifier");
+    if (id < 0) {
+        phaseAUnsupported("SSA value without identifier");
+    }
     const auto it = valueToVReg_.find(id);
     if (it != valueToVReg_.end()) {
-        assert(it->second.cls == regClassFor(kind) && "SSA id reused with new type");
+        if (it->second.cls != regClassFor(kind)) {
+            phaseAUnsupported("SSA id reused with incompatible value type");
+        }
         return it->second;
+    }
+    if (nextVReg_ == std::numeric_limits<std::uint16_t>::max()) {
+        phaseAUnsupported("too many virtual registers in function");
     }
     const VReg vreg{nextVReg_++, regClassFor(kind)};
     valueToVReg_.emplace(id, vreg);
@@ -288,6 +299,9 @@ VReg LowerILToMIR::ensureVReg(int id, ILValue::Kind kind) {
 /// @param cls Register class assigned to the temporary.
 /// @return Newly allocated virtual register descriptor.
 VReg LowerILToMIR::makeTempVReg(RegClass cls) {
+    if (nextVReg_ == std::numeric_limits<std::uint16_t>::max()) {
+        phaseAUnsupported("too many virtual registers in function");
+    }
     return VReg{nextVReg_++, cls};
 }
 
@@ -332,7 +346,9 @@ Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &val
         case ILValue::Kind::PTR:
             return makeImmOperand(canonicalIntegerImmediate(value));
         case ILValue::Kind::F64: {
-            assert(cls == RegClass::XMM && "f64 operands must target XMM registers");
+            if (cls != RegClass::XMM) {
+                phaseAUnsupported("f64 operand requested in a GPR context");
+            }
             assert(roDataPool_ && "RoData pool unavailable for f64 literals");
             const int poolIndex = roDataPool_->addF64Literal(value.f64);
             const std::string label = roDataPool_->f64Label(poolIndex);
@@ -344,9 +360,15 @@ Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &val
             return tempOperand;
         }
         case ILValue::Kind::STR: {
-            assert(cls == RegClass::GPR && "string literals expect GPR destinations");
+            if (cls != RegClass::GPR) {
+                phaseAUnsupported("string literal requested in an XMM context");
+            }
             assert(roDataPool_ && "RoData pool unavailable for string literals");
             assert(target_ && "Target info unavailable for string literal lowering");
+            if (value.strLen >
+                static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+                phaseAUnsupported("string literal byte length is out of range");
+            }
 
             std::string literalBytes = value.str;
             const auto requestedLen = static_cast<std::size_t>(value.strLen);
@@ -426,18 +448,27 @@ std::string LowerILToMIR::buildEdgeCopyBlock(MFunction &func,
     if (destIt == blockInfo_.end()) {
         phaseAUnsupported(("edge references non-existent block: " + edge.to).c_str());
     }
-    if (destIt->second.paramVRegs.empty() || edge.argIds.empty()) {
+    const auto &params = destIt->second.paramVRegs;
+    if (params.empty()) {
+        if (!edge.argIds.empty() || !edge.argValues.empty()) {
+            phaseAUnsupported("block parameter edge supplies arguments to parameterless block");
+        }
         return {};
     }
 
-    const auto &params = destIt->second.paramVRegs;
+    if (edge.argIds.size() != params.size()) {
+        phaseAUnsupported("block parameter edge arity mismatch");
+    }
+    if (edge.argValues.size() > edge.argIds.size()) {
+        phaseAUnsupported("block parameter edge has extra argument values");
+    }
     const std::string destLabel = func.blocks[destIt->second.index].label;
 
     MBasicBlock edgeBlock{};
     edgeBlock.label = func.makeLocalLabel(sourceBlock.label + ".edge");
 
     MInstr px = MInstr::make(MOpcode::PX_COPY, {});
-    for (std::size_t idx = 0; idx < params.size() && idx < edge.argIds.size(); ++idx) {
+    for (std::size_t idx = 0; idx < params.size(); ++idx) {
         Operand srcOp;
         if (edge.argIds[idx] >= 0) {
             auto valIt = valueToVReg_.find(edge.argIds[idx]);
@@ -457,6 +488,9 @@ std::string LowerILToMIR::buildEdgeCopyBlock(MFunction &func,
             const RegClass cls = params[idx].cls;
 
             if (cls == RegClass::XMM) {
+                if (val.kind != ILValue::Kind::F64) {
+                    phaseAUnsupported("non-f64 immediate passed to XMM block parameter");
+                }
                 assert(roDataPool_ && "RoData pool unavailable for f64 block arg");
                 const int poolIdx = roDataPool_->addF64Literal(val.f64);
                 const std::string label = roDataPool_->f64Label(poolIdx);
@@ -475,6 +509,9 @@ std::string LowerILToMIR::buildEdgeCopyBlock(MFunction &func,
                         MOpcode::LEA,
                         std::vector<Operand>{cloneOperand(srcOp), makeRipLabelOperand(val.label)}));
                 } else {
+                    if (!isIntegerLikeKind(val.kind)) {
+                        phaseAUnsupported("non-integer immediate passed to GPR block parameter");
+                    }
                     edgeBlock.append(MInstr::make(
                         MOpcode::MOVri,
                         std::vector<Operand>{cloneOperand(srcOp),
@@ -623,8 +660,8 @@ MFunction LowerILToMIR::lower(const ILFunction &func) {
             px.operands.push_back(dest);
             px.operands.push_back(it->second);
             if (kind == ILValue::Kind::I1) {
-                i1Normalizations.push_back(
-                    MInstr::make(MOpcode::ANDri, {makeVRegOperand(vreg.cls, vreg.id), makeImmOperand(1)}));
+                i1Normalizations.push_back(MInstr::make(
+                    MOpcode::ANDri, {makeVRegOperand(vreg.cls, vreg.id), makeImmOperand(1)}));
             }
         }
 
@@ -650,8 +687,8 @@ MFunction LowerILToMIR::lower(const ILFunction &func) {
             } else {
                 entryBlock.instructions.push_back(MInstr::make(MOpcode::MOVmr, {dest, src}));
                 if (sp.kind == ILValue::Kind::I1) {
-                    entryBlock.instructions.push_back(
-                        MInstr::make(MOpcode::ANDri, {makeVRegOperand(vreg.cls, vreg.id), makeImmOperand(1)}));
+                    entryBlock.instructions.push_back(MInstr::make(
+                        MOpcode::ANDri, {makeVRegOperand(vreg.cls, vreg.id), makeImmOperand(1)}));
                 }
             }
         }
@@ -670,8 +707,8 @@ MFunction LowerILToMIR::lower(const ILFunction &func) {
                         labelValue.kind != ILValue::Kind::LABEL) {
                         return;
                     }
-                    const std::string helperLabel =
-                        buildEdgeCopyBlock(result, ilBlock.terminatorEdges[edgeIndex], result.blocks[idx]);
+                    const std::string helperLabel = buildEdgeCopyBlock(
+                        result, ilBlock.terminatorEdges[edgeIndex], result.blocks[idx]);
                     if (!helperLabel.empty()) {
                         labelValue.label = helperLabel;
                     }
@@ -699,8 +736,8 @@ MFunction LowerILToMIR::lower(const ILFunction &func) {
                             continue;
                         }
                         const bool isDefaultLabel = opIndex + 1 == loweredInstr.ops.size();
-                        rewriteLabelOperand(
-                            loweredInstr.ops[opIndex], isDefaultLabel ? 0 : caseEdgeIndex++);
+                        rewriteLabelOperand(loweredInstr.ops[opIndex],
+                                            isDefaultLabel ? 0 : caseEdgeIndex++);
                     }
                 }
             }
