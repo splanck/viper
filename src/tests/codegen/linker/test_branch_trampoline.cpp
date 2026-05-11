@@ -27,6 +27,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <unordered_set>
 
@@ -639,6 +640,36 @@ int main() {
 
     // --- Test 6: Trampoline reachability error for huge .text ---
     // (Skipped in CI — would require allocating >256MB. Tested conceptually.)
+
+    // --- Test 7: Symbol address overflow is reported before scanning branches ---
+    {
+        auto obj = makeCodeObj("overflow.o", "funcA", {0xC0, 0x03, 0x5F, 0xD6});
+        std::vector<ObjFile> objs = {obj};
+
+        LinkLayout layout;
+        layout.pageSize = 0x1000;
+        OutputSection text;
+        text.name = ".text";
+        text.executable = true;
+        text.alloc = true;
+        text.virtualAddr = std::numeric_limits<uint64_t>::max() - 4;
+        text.data = objs[0].sections[1].data;
+        text.chunks.push_back({0, 1, 0, text.data.size()});
+        layout.sections.push_back(std::move(text));
+
+        GlobalSymEntry entry;
+        entry.name = "funcA";
+        entry.binding = GlobalSymEntry::Global;
+        entry.objIndex = 0;
+        entry.secIndex = 1;
+        entry.offset = 8;
+        layout.globalSyms["funcA"] = entry;
+
+        std::ostringstream err;
+        CHECK(!insertBranchTrampolines(
+            objs, layout, LinkArch::AArch64, LinkPlatform::Linux, err));
+        CHECK(err.str().find("symbol address overflow") != std::string::npos);
+    }
 
     // --- Result ---
     if (gFail == 0) {

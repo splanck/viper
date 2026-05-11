@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <climits>
+#include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <limits>
@@ -73,15 +74,26 @@ static constexpr size_t kMaxMemberSize = 2ULL * 1024 * 1024 * 1024;
 static size_t parseSize(const uint8_t *header) {
     // Size field is at offset 48, 10 bytes, ASCII decimal, space-padded.
     size_t val = 0;
+    bool sawDigit = false;
+    bool sawPadding = false;
     for (int i = 48; i < 58; ++i) {
         if (header[i] >= '0' && header[i] <= '9') {
-            size_t prev = val;
-            val = val * 10 + (header[i] - '0');
-            if (val < prev) // Overflow.
+            if (sawPadding)
                 return SIZE_MAX;
-        } else
-            break;
+            sawDigit = true;
+            const size_t digit = static_cast<size_t>(header[i] - '0');
+            if (val > (std::numeric_limits<size_t>::max() - digit) / 10)
+                return SIZE_MAX;
+            val = val * 10 + digit;
+        } else if (header[i] == ' ') {
+            if (sawDigit)
+                sawPadding = true;
+        } else {
+            return SIZE_MAX;
+        }
     }
+    if (!sawDigit)
+        return SIZE_MAX;
     return val > kMaxMemberSize ? SIZE_MAX : val;
 }
 
@@ -228,8 +240,11 @@ static void parseCoffSecondLinkerMember(const uint8_t *data,
     const size_t indexBytes = static_cast<size_t>(symbolCount) * 2;
     if (symbolCount != 0 && indexBytes / 2 != symbolCount)
         return;
+    size_t indexEndOff = 0;
+    if (!checkedAdd(symbolCountOff, 4, indexEndOff))
+        return;
     size_t namesOff = 0;
-    if (!checkedAdd(symbolCountOff + 4, indexBytes, namesOff) || namesOff > size)
+    if (!checkedAdd(indexEndOff, indexBytes, namesOff) || namesOff > size)
         return;
 
     const uint8_t *indices = symbolCountPtr + 4;
@@ -259,7 +274,21 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
         err << "error: cannot open archive '" << path << "'\n";
         return false;
     }
-    const auto fileSize = static_cast<size_t>(f.tellg());
+    const std::streampos endPos = f.tellg();
+    if (endPos == std::streampos(-1)) {
+        err << "error: failed to determine archive size for '" << path << "'\n";
+        return false;
+    }
+    const auto endOff = static_cast<std::streamoff>(endPos);
+    if (endOff < 0 ||
+        static_cast<uintmax_t>(endOff) >
+            static_cast<uintmax_t>(std::numeric_limits<size_t>::max()) ||
+        static_cast<uintmax_t>(endOff) >
+            static_cast<uintmax_t>(std::numeric_limits<std::streamsize>::max())) {
+        err << "error: archive '" << path << "' is too large to read\n";
+        return false;
+    }
+    const auto fileSize = static_cast<size_t>(endOff);
     f.seekg(0);
     ar.data.resize(fileSize);
     f.read(reinterpret_cast<char *>(ar.data.data()), static_cast<std::streamsize>(fileSize));
@@ -294,7 +323,7 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
 
     size_t pos = kArMagicLen;
     size_t coffLinkerMembersSeen = 0;
-    while (pos + kArHeaderLen <= fileSize) {
+    while (pos <= fileSize && kArHeaderLen <= fileSize - pos) {
         const uint8_t *header = ar.data.data() + pos;
 
         // Verify header end magic "'\n".
@@ -307,8 +336,9 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
                 << "'\n";
             return false;
         }
-        size_t dataStart = pos + kArHeaderLen;
-        if (dataStart + memberSize > fileSize) {
+        size_t dataStart = 0;
+        if (!checkedAdd(pos, kArHeaderLen, dataStart) ||
+            !checkedRange(dataStart, memberSize, fileSize)) {
             err << "error: archive member at offset " << pos << " extends beyond file in '" << path
                 << "'\n";
             return false;
@@ -330,16 +360,29 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
         size_t bsdNameLen = 0;
         if (nameField.size() >= 3 && nameField[0] == '#' && nameField[1] == '1' &&
             nameField[2] == '/') {
+            bool sawNameLenDigit = false;
             for (size_t i = 3; i < nameField.size() && nameField[i] >= '0' && nameField[i] <= '9';
-                 ++i)
-                bsdNameLen = bsdNameLen * 10 + (nameField[i] - '0');
-            if (bsdNameLen <= memberSize && dataStart + bsdNameLen <= fileSize) {
-                const char *nd = reinterpret_cast<const char *>(ar.data.data() + dataStart);
-                size_t effLen = bsdNameLen;
-                while (effLen > 0 && nd[effLen - 1] == '\0')
-                    --effLen;
-                resolvedName.assign(nd, effLen);
+                 ++i) {
+                sawNameLenDigit = true;
+                const size_t digit = static_cast<size_t>(nameField[i] - '0');
+                if (bsdNameLen > (std::numeric_limits<size_t>::max() - digit) / 10) {
+                    err << "error: archive member at offset " << pos
+                        << " has invalid BSD long-name length in '" << path << "'\n";
+                    return false;
+                }
+                bsdNameLen = bsdNameLen * 10 + digit;
             }
+            if (!sawNameLenDigit || bsdNameLen > memberSize ||
+                !checkedRange(dataStart, bsdNameLen, fileSize)) {
+                err << "error: archive member at offset " << pos
+                    << " has invalid BSD long-name length in '" << path << "'\n";
+                return false;
+            }
+            const char *nd = reinterpret_cast<const char *>(ar.data.data() + dataStart);
+            size_t effLen = bsdNameLen;
+            while (effLen > 0 && nd[effLen - 1] == '\0')
+                --effLen;
+            resolvedName.assign(nd, effLen);
         } else {
             resolvedName = nameField;
             if (resolvedName == "/" || resolvedName == "//") {
@@ -349,8 +392,14 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
                 size_t offset = 0;
                 for (size_t i = 1;
                      i < resolvedName.size() && resolvedName[i] >= '0' && resolvedName[i] <= '9';
-                     ++i)
-                    offset = offset * 10 + (resolvedName[i] - '0');
+                     ++i) {
+                    const size_t digit = static_cast<size_t>(resolvedName[i] - '0');
+                    if (offset > (std::numeric_limits<size_t>::max() - digit) / 10) {
+                        offset = std::numeric_limits<size_t>::max();
+                        break;
+                    }
+                    offset = offset * 10 + digit;
+                }
                 if (offset < longNames.size()) {
                     size_t end = offset;
                     while (end < longNames.size() && longNames[end] != '\0')
@@ -369,9 +418,10 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
             resolvedName == "__.SYMDEF SORTED") {
             isSpecial = true;
             // For BSD long names, the symbol data starts AFTER the name bytes.
-            size_t symDataOff = dataStart + bsdNameLen;
+            size_t symDataOff = 0;
             size_t symDataSize = memberSize - bsdNameLen;
-            if (symDataOff + symDataSize <= fileSize) {
+            if (checkedAdd(dataStart, bsdNameLen, symDataOff) &&
+                checkedRange(symDataOff, symDataSize, fileSize)) {
                 if (resolvedName == "/") {
                     ++coffLinkerMembersSeen;
                     if (coffLinkerMembersSeen == 2)
@@ -386,7 +436,7 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
         } else if (resolvedName == "//" || nameField == "//") {
             isSpecial = true;
             // GNU long name string table.
-            if (dataStart + memberSize <= fileSize)
+            if (checkedRange(dataStart, memberSize, fileSize))
                 longNames.assign(reinterpret_cast<const char *>(ar.data.data() + dataStart),
                                  memberSize);
         } else {
@@ -397,9 +447,19 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
         rawMembers.push_back({memberName, pos, dataStart, memberSize, bsdNameLen, isSpecial});
 
         // Advance past data, aligned to 2 bytes.
-        pos = dataStart + memberSize;
-        if (pos & 1)
+        if (!checkedAdd(dataStart, memberSize, pos)) {
+            err << "error: archive member at offset " << dataStart
+                << " exceeds addressable size in '" << path << "'\n";
+            return false;
+        }
+        if (pos & 1) {
+            if (pos == std::numeric_limits<size_t>::max()) {
+                err << "error: archive member alignment exceeds addressable size in '" << path
+                    << "'\n";
+                return false;
+            }
             ++pos;
+        }
     }
 
     // Second pass: build member list (non-special members only).
@@ -428,15 +488,17 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
 
     for (const auto &[symName, fileOffset] : rawSymbols) {
         auto it = headerOffsetToIdx.find(fileOffset);
-        if (it != headerOffsetToIdx.end())
+        if (it != headerOffsetToIdx.end()) {
             ar.symbolIndex.emplace(symName, it->second);
+            ar.symbolCandidates[symName].push_back(it->second);
+        }
     }
 
     return true;
 }
 
 std::vector<uint8_t> extractMember(const Archive &ar, const ArchiveMember &member) {
-    if (member.dataOffset + member.dataSize > ar.data.size())
+    if (!checkedRange(member.dataOffset, member.dataSize, ar.data.size()))
         return {};
     return std::vector<uint8_t>(
         ar.data.begin() + static_cast<std::ptrdiff_t>(member.dataOffset),
@@ -444,7 +506,7 @@ std::vector<uint8_t> extractMember(const Archive &ar, const ArchiveMember &membe
 }
 
 ArchiveMemberView memberDataView(const Archive &ar, const ArchiveMember &member) {
-    if (member.dataOffset + member.dataSize > ar.data.size())
+    if (!checkedRange(member.dataOffset, member.dataSize, ar.data.size()))
         return {};
     return ArchiveMemberView{ar.data.data() + member.dataOffset, member.dataSize};
 }

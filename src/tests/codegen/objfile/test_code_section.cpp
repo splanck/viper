@@ -335,6 +335,25 @@ int main() {
         CHECK(a.relocations()[0].targetOffset == 1);
     }
 
+    // --- appendSection rebases identity-targeted section-offset relocations without symbols ---
+    {
+        CodeSection a;
+        a.emit8(0x90);
+
+        CodeSection b;
+        b.setLogicalOffsetBias(100);
+        b.addSectionOffsetRelocationAt(100, RelocKind::PCRel32, b, SymbolSection::Text, 100, -4);
+        b.emit32LE(0);
+
+        a.appendSection(b);
+        CHECK(a.relocations().size() == 1);
+        CHECK(a.relocations()[0].offset == 1);
+        CHECK(a.relocations()[0].targetOffsetValid);
+        CHECK(a.relocations()[0].targetOffset == 1);
+        CHECK(a.relocations()[0].targetSectionIdentityValid);
+        CHECK(a.relocations()[0].targetSectionIdentity == a.sectionIdentity());
+    }
+
     // --- appendSection validates unwind symbol indices ---
     {
         CodeSection a;

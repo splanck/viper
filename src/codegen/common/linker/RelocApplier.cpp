@@ -228,11 +228,6 @@ static bool sortWindowsPdata(LinkLayout &layout, LinkArch arch, std::ostream &er
     return true;
 }
 
-/// Encode (objIndex, secIndex) into a single 64-bit key for hash map lookup.
-static uint64_t makeKey(size_t objIdx, size_t secIdx) {
-    return (static_cast<uint64_t>(objIdx) << 32) | static_cast<uint64_t>(secIdx);
-}
-
 /// Pre-built reverse index: (objIdx, secIdx) → (outSecIdx, outputOffset).
 /// Built once at the start of applyRelocations(), replaces the previous O(S×C)
 /// linear scan with O(1) amortized lookup per relocation.
@@ -242,14 +237,14 @@ struct OutputLocation {
     size_t inputSize = 0;
 };
 
-using LocationMap = std::unordered_map<uint64_t, OutputLocation>;
+using LocationMap = std::unordered_map<InputSectionKey, OutputLocation, InputSectionKeyHash>;
 
 /// Build the reverse-index map from the link layout.
 static LocationMap buildLocationMap(const LinkLayout &layout) {
     LocationMap map;
     for (size_t si = 0; si < layout.sections.size(); ++si) {
         for (const auto &chunk : layout.sections[si].chunks)
-            map[makeKey(chunk.inputObjIndex, chunk.inputSecIndex)] =
+            map[InputSectionKey{chunk.inputObjIndex, chunk.inputSecIndex}] =
                 OutputLocation{si, chunk.outputOffset, chunk.size};
     }
     return map;
@@ -262,7 +257,7 @@ static bool findOutputLocation(const LocationMap &locMap,
                                size_t &outSecIdx,
                                size_t &outOffset,
                                size_t *inputSize = nullptr) {
-    auto it = locMap.find(makeKey(objIdx, secIdx));
+    auto it = locMap.find(InputSectionKey{objIdx, secIdx});
     if (it == locMap.end())
         return false;
     outSecIdx = it->second.outSecIdx;
@@ -374,8 +369,11 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
             const auto &outSec = layout.sections[outSecIdx];
             if (chunkOffset <= outSec.data.size() && entry.offset <= inputSize) {
                 uint64_t withChunk = 0;
-                if (checkedAddU64(outSec.virtualAddr, static_cast<uint64_t>(chunkOffset), withChunk))
-                    checkedAddU64(withChunk, static_cast<uint64_t>(entry.offset), entry.resolvedAddr);
+                if (!checkedAddU64(outSec.virtualAddr, static_cast<uint64_t>(chunkOffset), withChunk) ||
+                    !checkedAddU64(withChunk, static_cast<uint64_t>(entry.offset), entry.resolvedAddr)) {
+                    err << "error: symbol address overflow while resolving '" << name << "'\n";
+                    return false;
+                }
             }
         }
     }
@@ -449,7 +447,7 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                 }
                 if (!symResolved && !symName.empty()) {
                     if (platform == LinkPlatform::Windows && symName == "__ImageBase") {
-                        S = 0x140000000ULL;
+                        S = defaultImageBaseForPlatform(LinkPlatform::Windows);
                         symResolved = true;
                     } else if (platform == LinkPlatform::Windows && symName == "vm_trap") {
                         symResolved = resolveGlobalSymLocation("vm_trap_default",
@@ -551,7 +549,7 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                     if (rel.type == coff_x64::kAddr32Nb) {
                         if (!requirePatchBytes(4, "ADDR32NB"))
                             return false;
-                        const uint64_t imageBase = 0x140000000ULL;
+                        const uint64_t imageBase = defaultImageBaseForPlatform(LinkPlatform::Windows);
                         uint64_t target = 0;
                         int64_t rva = 0;
                         uint32_t val = 0;
@@ -626,7 +624,7 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                     if (rel.type == coff_a64::kAddr32Nb) {
                         if (!requirePatchBytes(4, "ADDR32NB"))
                             return false;
-                        const uint64_t imageBase = 0x140000000ULL;
+                        const uint64_t imageBase = defaultImageBaseForPlatform(LinkPlatform::Windows);
                         uint64_t target = 0;
                         int64_t rva = 0;
                         uint32_t val = 0;

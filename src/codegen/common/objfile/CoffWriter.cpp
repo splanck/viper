@@ -1658,14 +1658,30 @@ bool CoffWriter::write(const std::string &path,
                 }
 
                 size_t textIdx = sourceTextIndex;
-                if (textIdx == SIZE_MAX || textIdx >= textCount ||
-                    rel.targetOffset > textSections[textIdx].bytes().size()) {
+                if (rel.targetSectionIdentityValid) {
                     textIdx = SIZE_MAX;
                     for (size_t ti = 0; ti < textCount; ++ti) {
-                        if (rel.targetOffset <= textSections[ti].bytes().size()) {
+                        if (textSections[ti].sectionIdentity() == rel.targetSectionIdentity) {
                             textIdx = ti;
                             break;
                         }
+                    }
+                } else if (textIdx == SIZE_MAX || textIdx >= textCount ||
+                           rel.targetOffset > textSections[textIdx].bytes().size()) {
+                    textIdx = SIZE_MAX;
+                    size_t matches = 0;
+                    for (size_t ti = 0; ti < textCount; ++ti) {
+                        if (rel.targetOffset <= textSections[ti].bytes().size()) {
+                            textIdx = ti;
+                            ++matches;
+                        }
+                    }
+                    if (matches > 1) {
+                        err << "CoffWriter: relocation in " << sectionName << " at offset "
+                            << rel.offset << " references ambiguous .text offset "
+                            << rel.targetOffset
+                            << "; use section-identity relocation overload\n";
+                        return false;
                     }
                 }
                 if (textIdx == SIZE_MAX || textIdx >= textCount ||

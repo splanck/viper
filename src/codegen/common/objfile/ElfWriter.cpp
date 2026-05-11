@@ -386,7 +386,7 @@ bool ElfWriter::write(const std::string &path,
                  kStvDefault,
                  ps.shndx,
                  value,
-                 0);
+                 ps.sym->size);
         uint32_t elfIdx = elfLocalCount++;
         if (ps.fromText)
             textSymMap[ps.origIdx] = elfIdx;
@@ -421,7 +421,8 @@ bool ElfWriter::write(const std::string &path,
         const CodeSection &source = ps.fromText ? text : rodata;
         if (!physicalSymbolValue(source, *ps.sym, ps.fromText ? ".text" : ".rodata", err, value))
             return false;
-        writeSym(symtabBytes, nameOff, (kStbGlobal << 4) | type, kStvDefault, shndx, value, 0);
+        writeSym(
+            symtabBytes, nameOff, (kStbGlobal << 4) | type, kStvDefault, shndx, value, ps.sym->size);
         if (ps.fromText)
             textSymMap[ps.origIdx] = elfGlobalIdx;
         else
@@ -945,7 +946,7 @@ bool ElfWriter::write(const std::string &path,
                  kStvDefault,
                  ps.shndx,
                  value,
-                 0);
+                 ps.sym->size);
         uint32_t elfIdx = elfLocalCount++;
         if (ps.textIdx != SIZE_MAX)
             textSymMaps[ps.textIdx][ps.origIdx] = elfIdx;
@@ -977,7 +978,7 @@ bool ElfWriter::write(const std::string &path,
                  kStvDefault,
                  ps.shndx,
                  value,
-                 0);
+                 ps.sym->size);
         globalNameMap[ps.sym->name] = elfGlobalIdx;
         if (ps.textIdx != SIZE_MAX)
             textSymMaps[ps.textIdx][ps.origIdx] = elfGlobalIdx;
@@ -1055,14 +1056,30 @@ bool ElfWriter::write(const std::string &path,
                     elfSymIdx = static_cast<uint32_t>(N + 1);
                 } else {
                     size_t textIdx = sourceTextIndex;
-                    if (textIdx == SIZE_MAX || textIdx >= N ||
-                        rel.targetOffset > textSections[textIdx].bytes().size()) {
+                    if (rel.targetSectionIdentityValid) {
                         textIdx = SIZE_MAX;
                         for (size_t ti = 0; ti < N; ++ti) {
-                            if (rel.targetOffset <= textSections[ti].bytes().size()) {
+                            if (textSections[ti].sectionIdentity() == rel.targetSectionIdentity) {
                                 textIdx = ti;
                                 break;
                             }
+                        }
+                    } else if (textIdx == SIZE_MAX || textIdx >= N ||
+                               rel.targetOffset > textSections[textIdx].bytes().size()) {
+                        textIdx = SIZE_MAX;
+                        size_t matches = 0;
+                        for (size_t ti = 0; ti < N; ++ti) {
+                            if (rel.targetOffset <= textSections[ti].bytes().size()) {
+                                textIdx = ti;
+                                ++matches;
+                            }
+                        }
+                        if (matches > 1) {
+                            err << "ElfWriter: relocation in " << sectionName << " at offset "
+                                << rel.offset << " references ambiguous .text offset "
+                                << rel.targetOffset
+                                << "; use section-identity relocation overload\n";
+                            return false;
                         }
                     }
                     if (textIdx == SIZE_MAX || textIdx >= N) {

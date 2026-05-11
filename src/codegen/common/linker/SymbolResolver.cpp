@@ -28,6 +28,7 @@
 namespace viper::codegen::linker {
 
 static bool preferArchiveDefinition(const std::string &name, LinkPlatform platform);
+static bool isPreferredArchiveDefinitionObject(const ObjFile &obj, LinkPlatform platform);
 
 /// Add symbols from a single object file into the global table.
 /// @param obj        The object file.
@@ -41,7 +42,16 @@ static bool addObjSymbols(const ObjFile &obj,
                           std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
                           std::unordered_set<std::string> &undefined,
                           LinkPlatform platform,
+                          bool allowArchiveDefinitionPreference,
                           std::ostream &err) {
+    auto eraseUndefinedVariants = [&](const std::string &name) {
+        undefined.erase(name);
+        if (!name.empty() && name[0] == '_')
+            undefined.erase(name.substr(1));
+        if (!name.empty())
+            undefined.erase("_" + name);
+    };
+
     for (size_t i = 1; i < obj.symbols.size(); ++i) {
         const auto &sym = obj.symbols[i];
         if (sym.name.empty())
@@ -87,7 +97,7 @@ static bool addObjSymbols(const ObjFile &obj,
             if (sym.absolute)
                 e.resolvedAddr = static_cast<uint64_t>(sym.offset);
             globalSyms[sym.name] = std::move(e);
-            undefined.erase(sym.name);
+            eraseUndefinedVariants(sym.name);
         } else {
             auto &existing = it->second;
             if (existing.binding == GlobalSymEntry::Undefined) {
@@ -99,7 +109,7 @@ static bool addObjSymbols(const ObjFile &obj,
                 existing.absolute = sym.absolute;
                 if (sym.absolute)
                     existing.resolvedAddr = static_cast<uint64_t>(sym.offset);
-                undefined.erase(sym.name);
+                eraseUndefinedVariants(sym.name);
             } else if (existing.binding == GlobalSymEntry::Weak && !isWeak) {
                 // Strong overrides weak.
                 existing.binding = GlobalSymEntry::Global;
@@ -110,7 +120,7 @@ static bool addObjSymbols(const ObjFile &obj,
                 if (sym.absolute)
                     existing.resolvedAddr = static_cast<uint64_t>(sym.offset);
             } else if (existing.binding == GlobalSymEntry::Global && !isWeak) {
-                if (preferArchiveDefinition(sym.name, platform))
+                if (allowArchiveDefinitionPreference && preferArchiveDefinition(sym.name, platform))
                     continue;
                 err << "error: multiply defined symbol '" << sym.name << "' in " << obj.name
                     << "\n";
@@ -150,6 +160,18 @@ static bool preferArchiveDefinition(const std::string &name, LinkPlatform platfo
            name.rfind("__tls_", 0) == 0;
 }
 
+static bool isPreferredArchiveDefinitionObject(const ObjFile &obj, LinkPlatform platform) {
+    if (platform != LinkPlatform::Windows)
+        return false;
+
+    // Keep the Windows CRT/runtime shim exception scoped to Viper's own runtime
+    // archives. User archives that accidentally define the same names should
+    // still participate in normal multiple-definition diagnostics.
+    return obj.name.find("viper_rt") != std::string::npos ||
+           obj.name.find("viper-runtime") != std::string::npos ||
+           obj.name.find("viper_runtime") != std::string::npos;
+}
+
 bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
                     std::vector<Archive> &archives,
                     std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
@@ -162,12 +184,12 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
     std::unordered_set<std::string> undefined;
 
     for (size_t i = 0; i < allObjects.size(); ++i) {
-        if (!addObjSymbols(allObjects[i], i, globalSyms, undefined, platform, err))
+        if (!addObjSymbols(allObjects[i], i, globalSyms, undefined, platform, false, err))
             return false;
     }
 
     // Iteratively resolve from archives until fixed point.
-    std::unordered_set<uint64_t> extractedMembers; // Track (archiveIdx << 32) | memberIdx.
+    std::unordered_set<InputSectionKey, InputSectionKeyHash> extractedMembers;
     constexpr size_t kMaxResolveIterations = 1000;
     size_t iteration = 0;
     bool changed = true;
@@ -182,45 +204,67 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
         for (size_t ai = 0; ai < archives.size(); ++ai) {
             auto &ar = archives[ai];
             for (const auto &undef : undefSnapshot) {
+                if (undefined.find(undef) == undefined.end())
+                    continue;
                 // Mach-O archives use underscore-prefixed symbol names.
-                auto symIt = findWithMachoFallback(ar.symbolIndex, undef);
-                if (symIt == ar.symbolIndex.end())
-                    continue;
-
-                size_t memberIdx = symIt->second;
-                if (ai > std::numeric_limits<uint32_t>::max() ||
-                    memberIdx > std::numeric_limits<uint32_t>::max()) {
-                    err << "error: archive member index exceeds native linker limits\n";
-                    return false;
+                auto candIt = findWithMachoFallback(ar.symbolCandidates, undef);
+                std::vector<size_t> legacyCandidate;
+                const std::vector<size_t> *candidates = nullptr;
+                if (candIt != ar.symbolCandidates.end()) {
+                    candidates = &candIt->second;
+                } else {
+                    auto symIt = findWithMachoFallback(ar.symbolIndex, undef);
+                    if (symIt == ar.symbolIndex.end())
+                        continue;
+                    legacyCandidate.push_back(symIt->second);
+                    candidates = &legacyCandidate;
                 }
-                uint64_t key = (static_cast<uint64_t>(ai) << 32) |
-                               static_cast<uint64_t>(memberIdx);
-                if (extractedMembers.count(key))
+                if (candidates == nullptr || candidates->empty())
                     continue;
 
-                // Extract and parse this member.
-                extractedMembers.insert(key);
-                auto memberData = memberDataView(ar, ar.members[memberIdx]);
-                if (memberData.data == nullptr || memberData.size == 0)
-                    continue;
+                for (size_t memberIdx : *candidates) {
+                    if (memberIdx >= ar.members.size()) {
+                        err << "error: archive symbol index references missing member "
+                            << memberIdx << "\n";
+                        return false;
+                    }
 
-                ObjFile memberObj;
-                std::ostringstream memberErr;
-                if (!readObjFile(memberData.data,
-                                 memberData.size,
-                                 ar.path + "(" + ar.members[memberIdx].name + ")",
-                                 memberObj,
-                                 memberErr)) {
-                    err << memberErr.str();
-                    return false;
+                    InputSectionKey key{ai, memberIdx};
+                    if (extractedMembers.count(key))
+                        continue;
+
+                    // Extract and parse this member.
+                    extractedMembers.insert(key);
+                    auto memberData = memberDataView(ar, ar.members[memberIdx]);
+                    if (memberData.data == nullptr || memberData.size == 0)
+                        continue;
+
+                    ObjFile memberObj;
+                    std::ostringstream memberErr;
+                    if (!readObjFile(memberData.data,
+                                     memberData.size,
+                                     ar.path + "(" + ar.members[memberIdx].name + ")",
+                                     memberObj,
+                                     memberErr)) {
+                        err << memberErr.str();
+                        return false;
+                    }
+
+                    size_t newIdx = allObjects.size();
+                    allObjects.push_back(std::move(memberObj));
+                    const bool allowArchiveDefinitionPreference =
+                        isPreferredArchiveDefinitionObject(allObjects[newIdx], platform);
+                    if (!addObjSymbols(allObjects[newIdx],
+                                       newIdx,
+                                       globalSyms,
+                                       undefined,
+                                       platform,
+                                       allowArchiveDefinitionPreference,
+                                       err))
+                        return false;
+                    changed = true;
+                    break;
                 }
-
-                size_t newIdx = allObjects.size();
-                allObjects.push_back(std::move(memberObj));
-                if (!addObjSymbols(
-                        allObjects[newIdx], newIdx, globalSyms, undefined, platform, err))
-                    return false;
-                changed = true;
             }
         }
     }

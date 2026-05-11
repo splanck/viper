@@ -20,6 +20,8 @@
 #include "codegen/common/linker/RelocConstants.hpp"
 
 #include <cstring>
+#include <limits>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -109,11 +111,13 @@ struct relocation_info {
 
 } // namespace macho
 
-/// @brief Bounds-checked typed pointer cast at @p offset within a byte buffer.
-template <typename T> static const T *readAt(const uint8_t *data, size_t size, size_t offset) {
+/// @brief Bounds-checked struct copy at @p offset within a byte buffer.
+template <typename T> static std::optional<T> readAt(const uint8_t *data, size_t size, size_t offset) {
     if (offset > size || sizeof(T) > size - offset)
-        return nullptr;
-    return reinterpret_cast<const T *>(data + offset);
+        return std::nullopt;
+    T value{};
+    std::memcpy(&value, data + offset, sizeof(T));
+    return value;
 }
 
 /// @brief Verify that the byte range [@p off, @p off+@p len) fits within @p size.
@@ -225,11 +229,12 @@ static int64_t extractMachOAddend(const uint8_t *sectionData,
 
 bool readMachOObj(
     const uint8_t *data, size_t size, const std::string &name, ObjFile &obj, std::ostream &err) {
-    const auto *hdr = readAt<macho::mach_header_64>(data, size, 0);
-    if (!hdr || hdr->magic != macho::MH_MAGIC_64) {
+    const auto hdrValue = readAt<macho::mach_header_64>(data, size, 0);
+    if (!hdrValue || hdrValue->magic != macho::MH_MAGIC_64) {
         err << "error: " << name << ": invalid Mach-O magic\n";
         return false;
     }
+    const auto *hdr = &*hdrValue;
 
     obj.format = ObjFileFormat::MachO;
     obj.is64bit = true;
@@ -249,11 +254,13 @@ bool readMachOObj(
         err << "error: " << name << ": Mach-O load commands are out of bounds\n";
         return false;
     }
+    const size_t loadCommandsEnd = sizeof(macho::mach_header_64) + hdr->sizeofcmds;
 
     // Parse load commands.
     size_t lcOff = sizeof(macho::mach_header_64);
-    const macho::load_command *symtabLc = nullptr;
+    bool haveSymtab = false;
     size_t symtabLcOff = 0;
+    size_t materializedBytes = 0;
 
     // First pass: collect sections and find LC_SYMTAB.
     obj.sections.resize(1); // Null section at index 0.
@@ -270,22 +277,25 @@ bool readMachOObj(
 
     size_t tmpOff = lcOff;
     for (uint32_t c = 0; c < hdr->ncmds; ++c) {
-        const auto *lc = readAt<macho::load_command>(data, size, tmpOff);
-        if (!lc) {
+        const auto lcValue = readAt<macho::load_command>(data, size, tmpOff);
+        if (!lcValue) {
             err << "error: " << name << ": truncated Mach-O load command\n";
             return false;
         }
-        if (lc->cmdsize < sizeof(macho::load_command) || !checkedRange(tmpOff, lc->cmdsize, size)) {
+        const auto *lc = &*lcValue;
+        if (lc->cmdsize < sizeof(macho::load_command) || !checkedRange(tmpOff, lc->cmdsize, size) ||
+            tmpOff + lc->cmdsize > loadCommandsEnd) {
             err << "error: " << name << ": malformed Mach-O load command\n";
             return false;
         }
 
         if (lc->cmd == macho::LC_SEGMENT_64) {
-            const auto *seg = readAt<macho::segment_command_64>(data, size, tmpOff);
-            if (!seg) {
+            const auto segValue = readAt<macho::segment_command_64>(data, size, tmpOff);
+            if (!segValue) {
                 err << "error: " << name << ": truncated Mach-O segment command\n";
                 return false;
             }
+            const auto *seg = &*segValue;
             const size_t secTableOff = tmpOff + sizeof(macho::segment_command_64);
             const size_t secTableSize =
                 static_cast<size_t>(seg->nsects) * sizeof(macho::section_64);
@@ -297,11 +307,12 @@ bool readMachOObj(
 
             size_t secOff = secTableOff;
             for (uint32_t s = 0; s < seg->nsects; ++s) {
-                const auto *sec = readAt<macho::section_64>(data, size, secOff);
-                if (!sec) {
+                const auto secValue = readAt<macho::section_64>(data, size, secOff);
+                if (!secValue) {
                     err << "error: " << name << ": truncated Mach-O section header\n";
                     return false;
                 }
+                const auto *sec = &*secValue;
 
                 std::string segName = trimNul(sec->segname, 16);
                 std::string secName = trimNul(sec->sectname, 16);
@@ -310,7 +321,12 @@ bool readMachOObj(
 
                 ObjSection os;
                 os.name = segName + "," + secName;
-                os.alignment = (sec->align < 30) ? (1u << sec->align) : 1;
+                if (sec->align > 30) {
+                    err << "error: " << name << ": Mach-O section '" << os.name
+                        << "' has unsupported alignment exponent " << sec->align << "\n";
+                    return false;
+                }
+                os.alignment = 1u << sec->align;
                 os.executable = (sec->flags &
                                  (macho::S_ATTR_PURE_INSTRUCTIONS |
                                   macho::S_ATTR_SOME_INSTRUCTIONS)) != 0;
@@ -347,14 +363,21 @@ bool readMachOObj(
                     (secType == macho::S_ZEROFILL) || (secType == macho::S_THREAD_LOCAL_ZEROFILL);
                 os.zeroFill = isZerofill;
 
-                if (sec->size > static_cast<uint64_t>(SIZE_MAX)) {
+                if (sec->size > static_cast<uint64_t>(SIZE_MAX) ||
+                    sec->size > kMaxObjSectionBytes) {
                     err << "error: " << name << ": Mach-O section is too large\n";
+                    return false;
+                }
+                if (sec->size > kMaxObjMaterializedBytes - materializedBytes) {
+                    err << "error: " << name << ": Mach-O materialized section data exceeds limit\n";
                     return false;
                 }
                 if (isZerofill && sec->size > 0) {
                     os.data.resize(static_cast<size_t>(sec->size), 0);
+                    materializedBytes += static_cast<size_t>(sec->size);
                 } else if (sec->size > 0 && checkedRange(sec->offset, static_cast<size_t>(sec->size), size)) {
                     os.data.assign(data + sec->offset, data + sec->offset + sec->size);
+                    materializedBytes += static_cast<size_t>(sec->size);
                 } else if (sec->size > 0) {
                     err << "error: " << name << ": Mach-O section '" << os.name
                         << "' contents are out of bounds\n";
@@ -375,8 +398,13 @@ bool readMachOObj(
                     return false;
                 }
                 for (uint32_t r = 0; r < sec->nreloc; ++r) {
-                    const auto *ri = readAt<macho::relocation_info>(
+                    const auto riValue = readAt<macho::relocation_info>(
                         data, size, sec->reloff + r * sizeof(macho::relocation_info));
+                    if (!riValue) {
+                        err << "error: " << name << ": truncated Mach-O relocation entry\n";
+                        return false;
+                    }
+                    const auto *ri = &*riValue;
 
                     // Scattered relocations carry a different payload layout. Do not
                     // silently drop them; unresolved fixups would corrupt the link.
@@ -441,7 +469,7 @@ bool readMachOObj(
             }
         } else if (lc->cmd == macho::LC_SYMTAB) {
             symtabLcOff = tmpOff;
-            symtabLc = lc;
+            haveSymtab = true;
         }
 
         tmpOff += lc->cmdsize;
@@ -454,7 +482,7 @@ bool readMachOObj(
     }
 
     // Parse symbols from LC_SYMTAB.
-    if (symtabLcOff != 0) {
+    if (haveSymtab) {
         // LC_SYMTAB layout: cmd(4) + cmdsize(4) + symoff(4) + nsyms(4) + stroff(4) + strsize(4)
         if (!checkedRange(symtabLcOff, 24, size)) {
             err << "error: " << name << ": Mach-O LC_SYMTAB is out of bounds\n";
@@ -466,14 +494,13 @@ bool readMachOObj(
         const uint32_t stroff = readLE32(data + symtabLcOff + 16);
         const uint32_t strsize = readLE32(data + symtabLcOff + 20);
 
-        if (!checkedRange(symoff, static_cast<size_t>(nsyms) * sizeof(macho::nlist_64), size) ||
-            !checkedRange(stroff, strsize, size)) {
-            err << "error: " << name << ": Mach-O symbol table is out of bounds\n";
-            return false;
-        }
-
         if (nsyms > kMaxObjSymbols) {
             err << "error: " << name << ": symbol count " << nsyms << " exceeds limit\n";
+            return false;
+        }
+        const size_t symtabBytes = static_cast<size_t>(nsyms) * sizeof(macho::nlist_64);
+        if (!checkedRange(symoff, symtabBytes, size) || !checkedRange(stroff, strsize, size)) {
+            err << "error: " << name << ": Mach-O symbol table is out of bounds\n";
             return false;
         }
 
@@ -482,10 +509,11 @@ bool readMachOObj(
         std::vector<uint32_t> symMap(nsyms, 0);
 
         for (uint32_t i = 0; i < nsyms; ++i) {
-            const auto *nl =
+            const auto nlValue =
                 readAt<macho::nlist_64>(data, size, symoff + i * sizeof(macho::nlist_64));
-            if (!nl)
+            if (!nlValue)
                 break;
+            const auto *nl = &*nlValue;
 
             ObjSymbol os;
 

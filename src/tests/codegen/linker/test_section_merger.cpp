@@ -210,6 +210,20 @@ int main() {
         CHECK(layout.sections[1].name == ".rodata");
     }
 
+    // --- Invalid input alignment is diagnosed instead of rounded silently ---
+    {
+        auto obj =
+            makeObj("bad-align.o", ObjFileFormat::ELF, {makeSection(".text", 4, true, false, false, 3)});
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        std::ostringstream err;
+
+        bool ok = mergeSections(objs, LinkPlatform::Linux, LinkArch::X86_64, layout, err);
+        CHECK(!ok);
+        CHECK(err.str().find("alignment") != std::string::npos);
+    }
+
     // --- Multiple objects merge into same section ---
     {
         auto obj1 = makeObj("a.o", ObjFileFormat::ELF, {makeSection(".text", 10, true, false)});
@@ -369,7 +383,8 @@ int main() {
                            {makeSection(".init_array.65535", 8, false, true, false, 64),
                             makeSection(".init_array.101", 8, false, true, false, 1),
                             makeSection(".fini_array.200", 8, false, true, false, 32),
-                            makeSection(".preinit_array.50", 8, false, true, false, 1)});
+                            makeSection(".preinit_array.50", 8, false, true, false, 1),
+                            makeSection(".init_array.42949672960", 8, false, true, false, 128)});
 
         std::vector<ObjFile> objs = {obj};
         LinkLayout layout;
@@ -379,11 +394,12 @@ int main() {
         CHECK(ok);
         CHECK(layout.sections.size() == 1);
         CHECK(layout.sections[0].name == ".data");
-        CHECK(layout.sections[0].chunks.size() == 4);
+        CHECK(layout.sections[0].chunks.size() == 5);
         CHECK(layout.sections[0].chunks[0].inputSecIndex == 4); // .preinit_array.50
         CHECK(layout.sections[0].chunks[1].inputSecIndex == 2); // .init_array.101
         CHECK(layout.sections[0].chunks[2].inputSecIndex == 1); // .init_array.65535
         CHECK(layout.sections[0].chunks[3].inputSecIndex == 3); // .fini_array.200
+        CHECK(layout.sections[0].chunks[4].inputSecIndex == 5); // overflowed priority ignored
     }
 
     // --- Mach-O mod-init functions preserve source order instead of alignment order ---

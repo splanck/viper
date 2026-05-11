@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <unordered_map>
 
@@ -48,24 +49,38 @@ uint32_t readLE32At(const uint8_t *p) {
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
 
-/// Encode (objIndex, secIndex) into a single 64-bit key.
-uint64_t makeKey(size_t objIdx, size_t secIdx) {
-    return (static_cast<uint64_t>(objIdx) << 32) | static_cast<uint64_t>(secIdx);
+bool checkedAddU64(uint64_t a, uint64_t b, uint64_t &out) {
+    if (a > std::numeric_limits<uint64_t>::max() - b)
+        return false;
+    out = a + b;
+    return true;
+}
+
+bool checkedAddI64(uint64_t base, int64_t addend, uint64_t &out) {
+    if (addend >= 0)
+        return checkedAddU64(base, static_cast<uint64_t>(addend), out);
+    const uint64_t magnitude = static_cast<uint64_t>(-(addend + 1)) + 1ULL;
+    if (base < magnitude)
+        return false;
+    out = base - magnitude;
+    return true;
 }
 
 /// Build LocationMap: (objIdx, secIdx) → (outSecIdx, chunkOffset).
-std::unordered_map<uint64_t, std::pair<size_t, size_t>> buildLocMap(const LinkLayout &layout) {
-    std::unordered_map<uint64_t, std::pair<size_t, size_t>> map;
+using LocationMap = std::unordered_map<InputSectionKey, std::pair<size_t, size_t>, InputSectionKeyHash>;
+
+LocationMap buildLocMap(const LinkLayout &layout) {
+    LocationMap map;
     for (size_t si = 0; si < layout.sections.size(); ++si) {
         for (const auto &chunk : layout.sections[si].chunks)
-            map[makeKey(chunk.inputObjIndex, chunk.inputSecIndex)] = {si, chunk.outputOffset};
+            map[InputSectionKey{chunk.inputObjIndex, chunk.inputSecIndex}] = {si, chunk.outputOffset};
     }
     return map;
 }
 
 bool resolveLocalSymbol(const ObjSymbol &sym,
                         size_t objIdx,
-                        const std::unordered_map<uint64_t, std::pair<size_t, size_t>> &locMap,
+                        const LocationMap &locMap,
                         const LinkLayout &layout,
                         uint64_t &addr) {
     if (sym.absolute) {
@@ -74,13 +89,16 @@ bool resolveLocalSymbol(const ObjSymbol &sym,
     }
     if (sym.sectionIndex == 0)
         return false;
-    auto it = locMap.find(makeKey(objIdx, sym.sectionIndex));
+    auto it = locMap.find(InputSectionKey{objIdx, sym.sectionIndex});
     if (it == locMap.end())
         return false;
     const auto &outSec = layout.sections[it->second.first];
-    if (it->second.second + sym.offset > outSec.data.size())
+    if (it->second.second > outSec.data.size() || sym.offset > outSec.data.size() - it->second.second)
         return false;
-    addr = outSec.virtualAddr + it->second.second + sym.offset;
+    uint64_t withChunk = 0;
+    if (!checkedAddU64(outSec.virtualAddr, static_cast<uint64_t>(it->second.second), withChunk) ||
+        !checkedAddU64(withChunk, static_cast<uint64_t>(sym.offset), addr))
+        return false;
     return true;
 }
 
@@ -100,7 +118,7 @@ bool resolveGlobalSymbol(const std::string &name,
 
 bool resolveRelocSymbol(const ObjSymbol &sym,
                         size_t objIdx,
-                        const std::unordered_map<uint64_t, std::pair<size_t, size_t>> &locMap,
+                        const LocationMap &locMap,
                         const LinkLayout &layout,
                         uint64_t &addr) {
     if ((sym.sectionIndex > 0 || sym.absolute) &&
@@ -222,10 +240,16 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
             entry.resolvedAddr = static_cast<uint64_t>(entry.offset);
             continue;
         }
-        auto it = locMap.find(makeKey(entry.objIndex, entry.secIndex));
+        auto it = locMap.find(InputSectionKey{entry.objIndex, entry.secIndex});
         if (it != locMap.end()) {
-            entry.resolvedAddr =
-                layout.sections[it->second.first].virtualAddr + it->second.second + entry.offset;
+            uint64_t withChunk = 0;
+            if (!checkedAddU64(layout.sections[it->second.first].virtualAddr,
+                               static_cast<uint64_t>(it->second.second),
+                               withChunk) ||
+                !checkedAddU64(withChunk, static_cast<uint64_t>(entry.offset), entry.resolvedAddr)) {
+                err << "error: symbol address overflow while resolving '" << name << "'\n";
+                return false;
+            }
         }
     }
 
@@ -239,7 +263,7 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
             if (sec.relocs.empty() || sec.data.empty())
                 continue;
 
-            auto mapIt = locMap.find(makeKey(oi, static_cast<uint32_t>(si)));
+            auto mapIt = locMap.find(InputSectionKey{oi, si});
             if (mapIt == locMap.end())
                 continue;
 
@@ -265,8 +289,15 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
                 if (!resolveRelocSymbol(targetSym, oi, locMap, layout, S))
                     continue;
                 const int64_t A = rel.addend;
-                const uint64_t P = secVA + chunkBase + rel.offset;
-                if (branch26Reachable(P, static_cast<uint64_t>(static_cast<int64_t>(S) + A)))
+                uint64_t P = 0;
+                uint64_t target = 0;
+                if (!checkedAddU64(secVA, static_cast<uint64_t>(chunkBase), P) ||
+                    !checkedAddU64(P, static_cast<uint64_t>(rel.offset), P) ||
+                    !checkedAddI64(S, A, target)) {
+                    err << "error: branch trampoline address overflow for '" << symName << "'\n";
+                    return false;
+                }
+                if (branch26Reachable(P, target))
                     continue; // In range — no trampoline needed.
 
                 OutOfRangeBranch oob;
@@ -277,7 +308,7 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
                     symName.empty() ? ("$local@" + std::to_string(oi) + ":" +
                                        std::to_string(rel.symIndex))
                                     : symName;
-                oob.targetAddr = static_cast<uint64_t>(static_cast<int64_t>(S) + A);
+                oob.targetAddr = target;
                 outOfRange.push_back(std::move(oob));
             }
         }
@@ -308,7 +339,7 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
     for (auto &oob : outOfRange) {
         size_t chosenBoundary = 0;
         const auto &rel = objects[oob.objIdx].sections[oob.secIdx].relocs[oob.relocIdx];
-        auto mapIt = locMap.find(makeKey(oob.objIdx, static_cast<uint32_t>(oob.secIdx)));
+        auto mapIt = locMap.find(InputSectionKey{oob.objIdx, oob.secIdx});
         if (mapIt == locMap.end())
             continue;
         const uint64_t sourceOffset = mapIt->second.second + rel.offset;
@@ -417,15 +448,25 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
             entry.resolvedAddr = static_cast<uint64_t>(entry.offset);
             continue;
         }
-        auto it = locMap.find(makeKey(entry.objIndex, entry.secIndex));
+        auto it = locMap.find(InputSectionKey{entry.objIndex, entry.secIndex});
         if (it != locMap.end()) {
-            entry.resolvedAddr =
-                layout.sections[it->second.first].virtualAddr + it->second.second + entry.offset;
+            uint64_t withChunk = 0;
+            if (!checkedAddU64(layout.sections[it->second.first].virtualAddr,
+                               static_cast<uint64_t>(it->second.second),
+                               withChunk) ||
+                !checkedAddU64(withChunk, static_cast<uint64_t>(entry.offset), entry.resolvedAddr)) {
+                err << "error: symbol address overflow while resolving '" << name << "'\n";
+                return false;
+            }
         }
     }
 
     for (auto &[key, trampoline] : trampolines) {
-        const uint64_t tramVA = textSec.virtualAddr + trampoline.actualOffset;
+        uint64_t tramVA = 0;
+        if (!checkedAddU64(textSec.virtualAddr, static_cast<uint64_t>(trampoline.actualOffset), tramVA)) {
+            err << "error: trampoline address overflow for '" << trampoline.targetSymName << "'\n";
+            return false;
+        }
         GlobalSymEntry entry;
         entry.name = trampoline.symbolName;
         entry.binding = GlobalSymEntry::Global;
@@ -460,7 +501,7 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
     // Patch original branches to target their trampolines.
     std::unordered_map<std::string, uint32_t> syntheticSymIndexByObjectAndName;
     for (auto &oob : outOfRange) {
-        auto mapIt = locMap.find(makeKey(oob.objIdx, static_cast<uint32_t>(oob.secIdx)));
+        auto mapIt = locMap.find(InputSectionKey{oob.objIdx, oob.secIdx});
         if (mapIt == locMap.end())
             continue;
 
@@ -480,8 +521,13 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
         if (trampIt == trampolines.end())
             continue;
         const size_t tramOff = trampIt->second.actualOffset;
-        const uint64_t tramVA = textSec.virtualAddr + tramOff;
-        const uint64_t P = outSec.virtualAddr + patchOff;
+        uint64_t tramVA = 0;
+        uint64_t P = 0;
+        if (!checkedAddU64(textSec.virtualAddr, static_cast<uint64_t>(tramOff), tramVA) ||
+            !checkedAddU64(outSec.virtualAddr, static_cast<uint64_t>(patchOff), P)) {
+            err << "error: trampoline branch address overflow for '" << oob.targetSymName << "'\n";
+            return false;
+        }
         const int64_t disp = static_cast<int64_t>(tramVA) - static_cast<int64_t>(P);
         if ((disp & 0x3) != 0) {
             err << "error: trampoline at offset " << tramOff

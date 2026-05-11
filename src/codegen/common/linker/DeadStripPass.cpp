@@ -29,11 +29,6 @@
 
 namespace viper::codegen::linker {
 
-/// Encode (objIndex, secIndex) into a single key for the worklist.
-static uint64_t makeKey(size_t objIdx, size_t secIdx) {
-    return (static_cast<uint64_t>(objIdx) << 32) | static_cast<uint64_t>(secIdx);
-}
-
 static bool hasPrefix(const std::string &s, const char *prefix) {
     return s.rfind(prefix, 0) == 0;
 }
@@ -85,11 +80,11 @@ void deadStrip(std::vector<ObjFile> &allObjects,
                const std::string &entrySymbol,
                std::ostream &err) {
     // Set of live (objIdx, secIdx) pairs.
-    std::unordered_set<uint64_t> live;
-    std::queue<uint64_t> worklist;
+    std::unordered_set<InputSectionKey, InputSectionKeyHash> live;
+    std::queue<InputSectionKey> worklist;
 
     auto markLive = [&](size_t objIdx, size_t secIdx) {
-        uint64_t key = makeKey(objIdx, secIdx);
+        InputSectionKey key{objIdx, secIdx};
         if (live.insert(key).second)
             worklist.push(key);
     };
@@ -129,11 +124,11 @@ void deadStrip(std::vector<ObjFile> &allObjects,
     // We reuse globalSyms for global/weak symbols and handle locals per-object.
 
     while (!worklist.empty()) {
-        uint64_t key = worklist.front();
+        InputSectionKey key = worklist.front();
         worklist.pop();
 
-        size_t oi = static_cast<size_t>(key >> 32);
-        size_t si = static_cast<size_t>(key & 0xFFFFFFFF);
+        size_t oi = key.objIndex;
+        size_t si = key.secIndex;
 
         if (oi >= allObjects.size())
             continue;
@@ -217,7 +212,7 @@ void deadStrip(std::vector<ObjFile> &allObjects,
             continue;
 
         for (size_t si = 1; si < obj.sections.size(); ++si) {
-            uint64_t key = makeKey(oi, si);
+            InputSectionKey key{oi, si};
             if (live.count(key))
                 continue;
 

@@ -453,8 +453,10 @@ static void testRodataSymbolType() {
     CodeSection text, rodata;
     text.emit8(0xC3);
 
-    rodata.defineSymbol("const_data", SymbolBinding::Global, SymbolSection::Rodata);
     const char bytes[] = "abc";
+    const uint32_t constSym =
+        rodata.defineSymbol("const_data", SymbolBinding::Global, SymbolSection::Rodata);
+    rodata.symbols().at(constSym).size = sizeof(bytes);
     rodata.emitBytes(bytes, sizeof(bytes));
 
     std::string path = "/tmp/viper_test_rodata_symbol.o";
@@ -487,6 +489,7 @@ static void testRodataSymbolType() {
             continue;
         found = true;
         CHECK((data[off + 4] & 0x0F) == 1); // STT_OBJECT
+        CHECK(readLE64(data, off + 16) == sizeof(bytes));
         break;
     }
     CHECK(found);
@@ -647,7 +650,7 @@ static void testMultiSectionOffsetRelocationUsesSectionSymbol() {
     textB.defineSymbol("func_b", SymbolBinding::Global, SymbolSection::Text);
     textB.emit8(0xC3);
 
-    rodata.addSectionOffsetRelocation(RelocKind::Abs64, SymbolSection::Text, 1);
+    rodata.addSectionOffsetRelocation(RelocKind::Abs64, textA, SymbolSection::Text, 1);
     rodata.emit64LE(0);
 
     std::string path = "/tmp/viper_test_elf_multisection_offset.o";
@@ -667,6 +670,29 @@ static void testMultiSectionOffsetRelocationUsesSectionSymbol() {
             CHECK(obj.symbols[rodataSec->relocs[0].symIndex].sectionIndex == 1);
         }
     }
+
+    std::remove(path.c_str());
+}
+
+static void testMultiSectionOffsetRelocationRejectsAmbiguousLegacyTarget() {
+    CodeSection textA, textB, rodata;
+
+    textA.defineSymbol("func_a", SymbolBinding::Global, SymbolSection::Text);
+    textA.emit8(0x90);
+    textA.emit8(0xC3);
+    textB.defineSymbol("func_b", SymbolBinding::Global, SymbolSection::Text);
+    textB.emit8(0xCC);
+    textB.emit8(0xC3);
+
+    rodata.addSectionOffsetRelocation(RelocKind::Abs64, SymbolSection::Text, 1);
+    rodata.emit64LE(0);
+
+    std::string path = "/tmp/viper_test_elf_multisection_ambiguous_offset.o";
+    std::ostringstream errStream;
+
+    ElfWriter writer(ObjArch::X86_64);
+    CHECK(!writer.write(path, std::vector<CodeSection>{textA, textB}, rodata, errStream));
+    CHECK(errStream.str().find("ambiguous .text offset") != std::string::npos);
 
     std::remove(path.c_str());
 }
@@ -780,6 +806,28 @@ static void testLogicalBiasSymbolsArePhysical() {
     std::remove(path.c_str());
 }
 
+static void testMalformedSectionAlignmentFails() {
+    CodeSection text, rodata;
+    text.emit8(0xC3);
+
+    std::string path = "/tmp/viper_test_elf_bad_section_align.o";
+    std::ostringstream errStream;
+
+    ElfWriter writer(ObjArch::X86_64);
+    CHECK(writer.write(path, text, rodata, errStream));
+
+    auto data = readFile(path);
+    size_t textHdr = sectionHeaderOff(data, kSecText);
+    writeLE64(data, textHdr + 48, 3); // sh_addralign must be zero or a power of two.
+
+    ObjFile obj;
+    std::ostringstream readErr;
+    CHECK(!readObjFile(data.data(), data.size(), "bad_section_align.o", obj, readErr));
+    CHECK(readErr.str().find("unsupported alignment") != std::string::npos);
+
+    std::remove(path.c_str());
+}
+
 int main() {
     testMinimalX64Elf();
     testMinimalA64Elf();
@@ -795,7 +843,9 @@ int main() {
     testA64Abs64RelocationUsesAArch64Type();
     testSectionOffsetRelocationUsesSectionSymbol();
     testMultiSectionOffsetRelocationUsesSectionSymbol();
+    testMultiSectionOffsetRelocationRejectsAmbiguousLegacyTarget();
     testMalformedRelaSizeFails();
+    testMalformedSectionAlignmentFails();
     testAmbiguousCrossSectionRelocationFails();
     testMissingCrossSectionRelocationFails();
     testWrongArchRelocationFails();

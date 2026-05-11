@@ -634,6 +634,14 @@ int main() {
         CHECK(bytesMatch(bytes, {0x48, 0x0F, 0xB6, 0xC0}));
     }
 
+    // movzbq %spl, %rax -> 48 0F B6 C4
+    // A REX prefix is required so r/m=100 names SPL instead of AH.
+    {
+        auto bytes = encodeOne(MOpcode::MOVZXrr8, {gpr(PhysReg::RAX), gpr(PhysReg::RSP)});
+        CHECK(bytes.size() == 4);
+        CHECK(bytesMatch(bytes, {0x48, 0x0F, 0xB6, 0xC4}));
+    }
+
     // movl %ecx, %eax -> 89 C8
     {
         auto bytes = encodeOne(MOpcode::MOVZXrr32, {gpr(PhysReg::RAX), gpr(PhysReg::RCX)});

@@ -99,6 +99,22 @@ static std::vector<uint8_t> readBinaryFile(const std::string &path) {
     return bytes;
 }
 
+static std::vector<uint8_t> writeElfObjectWithGlobals(const std::string &path,
+                                                      const std::vector<std::string> &symbols) {
+    CodeSection text;
+    CodeSection rodata;
+    for (const auto &name : symbols) {
+        text.defineSymbol(name, SymbolBinding::Global, SymbolSection::Text);
+        text.emit8(0xC3);
+    }
+
+    std::ostringstream err;
+    ElfWriter writer(ObjArch::X86_64);
+    CHECK(writer.write(path, text, rodata, err));
+    CHECK(err.str().empty());
+    return readBinaryFile(path);
+}
+
 int main() {
     std::filesystem::create_directories("build/test-out");
 
@@ -502,6 +518,101 @@ int main() {
         CHECK(globalSyms.count("fallback_func") == 1);
         CHECK(globalSyms["fallback_func"].binding == GlobalSymEntry::Global);
         CHECK(globalSyms["fallback_func"].objIndex == 1);
+    }
+
+    // --- Archive duplicate symbol candidates are retried after stale entries ---
+    {
+        auto user = makeObj("dup_candidate_user.o", {".text"});
+        addSymbol(user, "main", 1, ObjSymbol::Global);
+        addSymbol(user, "target_func", 0, ObjSymbol::Undefined);
+
+        auto staleBytes = writeElfObjectWithGlobals("build/test-out/stale_candidate.o", {"other_func"});
+        auto targetBytes = writeElfObjectWithGlobals("build/test-out/target_candidate.o", {"target_func"});
+
+        Archive archive;
+        archive.path = "synthetic_duplicate_candidates.a";
+        archive.data = staleBytes;
+        archive.data.insert(archive.data.end(), targetBytes.begin(), targetBytes.end());
+        archive.members.push_back({"stale.o", 0, staleBytes.size()});
+        archive.members.push_back({"target.o", staleBytes.size(), targetBytes.size()});
+        archive.symbolIndex["target_func"] = 0;
+        archive.symbolCandidates["target_func"] = {0, 1};
+
+        std::vector<ObjFile> initObjs = {user};
+        std::vector<Archive> archives = {archive};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(initObjs, archives, globalSyms, allObjects, dynamicSyms, err);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(allObjects.size() == 3);
+        CHECK(globalSyms["target_func"].binding == GlobalSymEntry::Global);
+        CHECK(globalSyms["target_func"].objIndex == 2);
+    }
+
+    // --- Windows runtime duplicate exceptions do not mask arbitrary archive conflicts ---
+    {
+        auto user = makeObj("user.obj", {".text"});
+        addSymbol(user, "main", 1, ObjSymbol::Global);
+        addSymbol(user, "fprintf", 1, ObjSymbol::Global);
+        addSymbol(user, "need_archive", 0, ObjSymbol::Undefined);
+
+        auto memberBytes = writeElfObjectWithGlobals("build/test-out/third_party_conflict.o",
+                                                     {"need_archive", "fprintf"});
+
+        Archive archive;
+        archive.path = "third_party.lib";
+        archive.data = memberBytes;
+        archive.members.push_back({"conflict.o", 0, memberBytes.size()});
+        archive.symbolIndex["need_archive"] = 0;
+        archive.symbolCandidates["need_archive"] = {0};
+
+        std::vector<ObjFile> initObjs = {user};
+        std::vector<Archive> archives = {archive};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(
+            initObjs, archives, globalSyms, allObjects, dynamicSyms, err, LinkPlatform::Windows);
+        CHECK(!ok);
+        CHECK(err.str().find("multiply defined symbol 'fprintf'") != std::string::npos);
+    }
+
+    // --- Viper runtime archives may provide Windows shim duplicates ---
+    {
+        auto user = makeObj("user.obj", {".text"});
+        addSymbol(user, "main", 1, ObjSymbol::Global);
+        addSymbol(user, "fprintf", 1, ObjSymbol::Global);
+        addSymbol(user, "need_archive", 0, ObjSymbol::Undefined);
+
+        auto memberBytes = writeElfObjectWithGlobals("build/test-out/viper_runtime_shim.o",
+                                                     {"need_archive", "fprintf"});
+
+        Archive archive;
+        archive.path = "viper_rt_base.lib";
+        archive.data = memberBytes;
+        archive.members.push_back({"shim.o", 0, memberBytes.size()});
+        archive.symbolIndex["need_archive"] = 0;
+        archive.symbolCandidates["need_archive"] = {0};
+
+        std::vector<ObjFile> initObjs = {user};
+        std::vector<Archive> archives = {archive};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(
+            initObjs, archives, globalSyms, allObjects, dynamicSyms, err, LinkPlatform::Windows);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(globalSyms["fprintf"].objIndex == 0);
+        CHECK(globalSyms["need_archive"].objIndex == 1);
     }
 
     // --- Undefined then defined in same object ---

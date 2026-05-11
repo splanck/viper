@@ -486,7 +486,7 @@ int main() {
         textB.defineSymbol("func_b", SymbolBinding::Global, SymbolSection::Text);
         textB.emit8(0xC3);
 
-        rodataMulti.addSectionOffsetRelocation(RelocKind::Abs64, SymbolSection::Text, 1);
+        rodataMulti.addSectionOffsetRelocation(RelocKind::Abs64, textA, SymbolSection::Text, 1);
         rodataMulti.emit64LE(0);
 
         std::ostringstream sectionOffErr;
@@ -502,6 +502,29 @@ int main() {
         ASSERT(sectionOffRdata->relocs.size() == 1);
         CHECK(sectionOffRdata->relocs[0].addend == 1);
         CHECK(sectionOffObj.symbols[sectionOffRdata->relocs[0].symIndex].sectionIndex != 0);
+    }
+
+    {
+        CodeSection textA;
+        CodeSection textB;
+        CodeSection rodataMulti;
+
+        textA.defineSymbol("func_a", SymbolBinding::Global, SymbolSection::Text);
+        textA.emit8(0x90);
+        textA.emit8(0xC3);
+        textB.defineSymbol("func_b", SymbolBinding::Global, SymbolSection::Text);
+        textB.emit8(0xCC);
+        textB.emit8(0xC3);
+
+        rodataMulti.addSectionOffsetRelocation(RelocKind::Abs64, SymbolSection::Text, 1);
+        rodataMulti.emit64LE(0);
+
+        std::ostringstream sectionOffErr;
+        CoffWriter sectionOffWriter(ObjArch::X86_64);
+        const std::string sectionOffPath = "build/test-out/coff_multitext_ambiguous_offset.obj";
+        CHECK(!sectionOffWriter.write(
+            sectionOffPath, std::vector<CodeSection>{textA, textB}, rodataMulti, sectionOffErr));
+        CHECK(sectionOffErr.str().find("ambiguous .text offset") != std::string::npos);
     }
 
     {

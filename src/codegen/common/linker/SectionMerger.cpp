@@ -63,12 +63,17 @@ InitArraySortKey elfInitArraySortKey(const std::string &name) {
         if (name.size() <= prefixLen || name[prefixLen] != '.')
             return std::numeric_limits<uint32_t>::max();
         uint32_t value = 0;
+        bool sawDigit = false;
         for (size_t i = prefixLen + 1; i < name.size(); ++i) {
             if (!std::isdigit(static_cast<unsigned char>(name[i])))
                 return std::numeric_limits<uint32_t>::max();
-            value = value * 10 + static_cast<uint32_t>(name[i] - '0');
+            sawDigit = true;
+            const uint32_t digit = static_cast<uint32_t>(name[i] - '0');
+            if (value > (std::numeric_limits<uint32_t>::max() - digit) / 10)
+                return std::numeric_limits<uint32_t>::max();
+            value = value * 10 + digit;
         }
-        return value;
+        return sawDigit ? value : std::numeric_limits<uint32_t>::max();
     };
 
     InitArraySortKey key;
@@ -92,21 +97,6 @@ InitArraySortKey elfInitArraySortKey(const std::string &name) {
 bool isMachOModInitTermSection(const std::string &name) {
     return name.find("__mod_init_func") != std::string::npos ||
            name.find("__mod_term_func") != std::string::npos;
-}
-
-/// @brief Pick the conventional image base address for each platform.
-/// @details macOS=0x1_0000_0000 (4 GB, above __PAGEZERO), Windows=0x1_4000_0000
-///          (PE x64 default), Linux non-PIE=0x40_0000.
-uint64_t imageBaseForPlatform(LinkPlatform platform) {
-    switch (platform) {
-        case LinkPlatform::macOS:
-            return 0x100000000ULL;
-        case LinkPlatform::Windows:
-            return 0x140000000ULL;
-        case LinkPlatform::Linux:
-        default:
-            return 0x400000ULL;
-    }
 }
 
 /// @brief Permission-bucket sort key — lower buckets land at lower addresses.
@@ -157,7 +147,7 @@ int sectionClassOrder(SectionClass cls) {
 } // namespace
 
 bool assignSectionVirtualAddresses(LinkLayout &layout, LinkPlatform platform, std::ostream &err) {
-    const uint64_t imageBase = imageBaseForPlatform(platform);
+    const uint64_t imageBase = defaultImageBaseForPlatform(platform);
     if (imageBase > std::numeric_limits<uint64_t>::max() - layout.pageSize) {
         err << "error: image base plus page size exceeds 64-bit address range\n";
         return false;

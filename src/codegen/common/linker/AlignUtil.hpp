@@ -21,6 +21,8 @@
 
 #include <cassert>
 #include <cstddef>
+#include <limits>
+#include <stdexcept>
 
 namespace viper::codegen::linker {
 
@@ -29,6 +31,10 @@ namespace viper::codegen::linker {
 inline size_t alignUp(size_t val, size_t align) {
     if (align == 0)
         return val;
+    if ((align & (align - 1)) != 0)
+        throw std::invalid_argument("alignUp: alignment must be a power of two");
+    if (val > std::numeric_limits<size_t>::max() - (align - 1))
+        throw std::length_error("alignUp: aligned value exceeds addressable size");
     assert((align & (align - 1)) == 0 && "alignUp: alignment must be a power of two");
     return (val + align - 1) & ~(align - 1);
 }

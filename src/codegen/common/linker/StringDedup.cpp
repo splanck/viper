@@ -42,10 +42,6 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
         bool keepBytes = true;
     };
 
-    auto makeSectionKey = [](size_t objIdx, uint32_t secIdx) -> uint64_t {
-        return (static_cast<uint64_t>(objIdx) << 32) | static_cast<uint64_t>(secIdx);
-    };
-
     auto objectSymbolExists = [&](const std::string &name) -> bool {
         for (const auto &obj : allObjects) {
             for (const auto &sym : obj.symbols) {
@@ -65,7 +61,7 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
     };
 
     std::unordered_map<std::string, std::vector<size_t>> contentMap;
-    std::unordered_map<uint64_t, std::vector<size_t>> sectionMap;
+    std::unordered_map<InputSectionKey, std::vector<size_t>, InputSectionKeyHash> sectionMap;
     std::vector<SymLoc> locations;
 
     for (size_t oi = 0; oi < allObjects.size(); ++oi) {
@@ -117,7 +113,7 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
             const size_t locIdx = locations.size();
             locations.push_back({oi, si, sym.sectionIndex, sym.offset, strLen, content, true});
             contentMap[content].push_back(locIdx);
-            sectionMap[makeSectionKey(oi, sym.sectionIndex)].push_back(locIdx);
+            sectionMap[InputSectionKey{oi, sym.sectionIndex}].push_back(locIdx);
         }
     }
 

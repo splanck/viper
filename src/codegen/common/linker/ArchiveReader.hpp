@@ -43,6 +43,8 @@ struct Archive {
     std::vector<uint8_t> data;                           ///< Raw archive file contents.
     std::vector<ArchiveMember> members;                  ///< All object file members.
     std::unordered_map<std::string, size_t> symbolIndex; ///< Symbol name → member index.
+    std::unordered_map<std::string, std::vector<size_t>>
+        symbolCandidates; ///< Symbol name → all indexed member candidates, in archive order.
 };
 
 /// Non-owning view over an archive member's bytes.

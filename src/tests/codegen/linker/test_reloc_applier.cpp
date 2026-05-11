@@ -26,6 +26,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <sstream>
 
 using namespace viper::codegen::linker;
@@ -969,6 +970,36 @@ int main() {
         CHECK(!applyRelocations(
             objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::X86_64, err));
         CHECK(err.str().find("not a multiple of unwind record size") != std::string::npos);
+    }
+
+    // --- Symbol address overflow is diagnosed during resolution ---
+    {
+        std::vector<uint8_t> code(8, 0);
+        auto obj = makeObj("overflow_addr.o",
+                           ObjFileFormat::ELF,
+                           code,
+                           "unused",
+                           /*R_X86_64_PC32=*/2,
+                           /*relocOff=*/0,
+                           /*addend=*/0);
+
+        std::vector<ObjFile> objs = {obj};
+        auto layout = makeLayout(objs, std::numeric_limits<uint64_t>::max() - 4);
+
+        GlobalSymEntry entry;
+        entry.name = "defined";
+        entry.binding = GlobalSymEntry::Global;
+        entry.objIndex = 0;
+        entry.secIndex = 1;
+        entry.offset = 8;
+        layout.globalSyms["defined"] = entry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err);
+        CHECK(!ok);
+        CHECK(err.str().find("symbol address overflow") != std::string::npos);
     }
 
     // --- Unknown reloc type produces error ---

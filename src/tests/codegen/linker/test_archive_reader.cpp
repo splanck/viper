@@ -18,6 +18,8 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -146,6 +148,49 @@ static void appendLE32(std::vector<uint8_t> &buf, uint32_t value) {
     buf.push_back(static_cast<uint8_t>((value >> 24) & 0xFF));
 }
 
+static void appendBE32(std::vector<uint8_t> &buf, uint32_t value) {
+    buf.push_back(static_cast<uint8_t>((value >> 24) & 0xFF));
+    buf.push_back(static_cast<uint8_t>((value >> 16) & 0xFF));
+    buf.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
+    buf.push_back(static_cast<uint8_t>(value & 0xFF));
+}
+
+static void appendArField(std::vector<uint8_t> &buf, const std::string &value, size_t width) {
+    for (size_t i = 0; i < width; ++i)
+        buf.push_back(i < value.size() ? static_cast<uint8_t>(value[i]) : static_cast<uint8_t>(' '));
+}
+
+static void appendArHeader(std::vector<uint8_t> &buf,
+                           const std::string &name,
+                           size_t dataSize,
+                           const std::string &sizeOverride = {}) {
+    appendArField(buf, name, 16);
+    appendArField(buf, "0", 12);
+    appendArField(buf, "0", 6);
+    appendArField(buf, "0", 6);
+    appendArField(buf, "100644", 8);
+    appendArField(buf, sizeOverride.empty() ? std::to_string(dataSize) : sizeOverride, 10);
+    buf.push_back('`');
+    buf.push_back('\n');
+}
+
+static void appendArMember(std::vector<uint8_t> &buf,
+                           const std::string &name,
+                           const std::vector<uint8_t> &data) {
+    appendArHeader(buf, name, data.size());
+    buf.insert(buf.end(), data.begin(), data.end());
+    if (buf.size() & 1)
+        buf.push_back('\n');
+}
+
+static bool writeBinaryFile(const std::filesystem::path &path, const std::vector<uint8_t> &data) {
+    std::ofstream out(path, std::ios::binary);
+    if (!out)
+        return false;
+    out.write(reinterpret_cast<const char *>(data.data()), static_cast<std::streamsize>(data.size()));
+    return static_cast<bool>(out);
+}
+
 static std::vector<uint8_t> makeSyntheticCoffBssWithBogusRawData() {
     constexpr uint16_t kMachineAmd64 = 0x8664;
     constexpr uint32_t kScnCntUninitializedData = 0x00000080;
@@ -186,7 +231,81 @@ static std::vector<uint8_t> makeSyntheticCoffBssWithBogusRawData() {
     return obj;
 }
 
+static void runPortableArchiveReaderTests() {
+    std::filesystem::create_directories("build/test-out");
+
+    // --- Strict archive size parsing rejects missing decimal digits ---
+    {
+        std::vector<uint8_t> bytes{'!', '<', 'a', 'r', 'c', 'h', '>', '\n'};
+        appendArHeader(bytes, "bad.o/", 0, "          ");
+
+        const auto path = std::filesystem::path("build/test-out/archive_bad_size.a");
+        CHECK(writeBinaryFile(path, bytes));
+
+        Archive ar;
+        std::ostringstream err;
+        CHECK(!readArchive(path.string(), ar, err));
+        CHECK(err.str().find("invalid size") != std::string::npos);
+        std::filesystem::remove(path);
+    }
+
+    // --- Leading padding before a decimal size remains accepted ---
+    {
+        std::vector<uint8_t> bytes{'!', '<', 'a', 'r', 'c', 'h', '>', '\n'};
+        appendArHeader(bytes, "empty.o/", 0, "         0");
+
+        const auto path = std::filesystem::path("build/test-out/archive_padded_size.a");
+        CHECK(writeBinaryFile(path, bytes));
+
+        Archive ar;
+        std::ostringstream err;
+        CHECK(readArchive(path.string(), ar, err));
+        CHECK(err.str().empty());
+        CHECK(ar.members.size() == 1);
+        std::filesystem::remove(path);
+    }
+
+    // --- Duplicate symbols keep every candidate while preserving first-match compatibility ---
+    {
+        constexpr uint32_t firstMemberOffset = 88;
+        constexpr uint32_t secondMemberOffset = 150;
+
+        std::vector<uint8_t> symtab;
+        appendBE32(symtab, 2);
+        appendBE32(symtab, firstMemberOffset);
+        appendBE32(symtab, secondMemberOffset);
+        symtab.insert(symtab.end(), {'d', 'u', 'p', '\0', 'd', 'u', 'p', '\0'});
+
+        std::vector<uint8_t> bytes{'!', '<', 'a', 'r', 'c', 'h', '>', '\n'};
+        appendArMember(bytes, "/", symtab);
+        CHECK(bytes.size() == firstMemberOffset);
+        appendArMember(bytes, "a.o/", {0x01});
+        CHECK(bytes.size() == secondMemberOffset);
+        appendArMember(bytes, "b.o/", {0x02});
+
+        const auto path = std::filesystem::path("build/test-out/archive_duplicate_symbols.a");
+        CHECK(writeBinaryFile(path, bytes));
+
+        Archive ar;
+        std::ostringstream err;
+        CHECK(readArchive(path.string(), ar, err));
+        CHECK(err.str().empty());
+        CHECK(ar.symbolIndex["dup"] == 0);
+        CHECK(ar.symbolCandidates.count("dup") == 1);
+        if (ar.symbolCandidates.count("dup") == 1) {
+            CHECK(ar.symbolCandidates["dup"].size() == 2);
+            CHECK(ar.symbolCandidates["dup"][0] == 0);
+            CHECK(ar.symbolCandidates["dup"][1] == 1);
+        }
+        std::filesystem::remove(path);
+    }
+}
+
 int main() {
+    runPortableArchiveReaderTests();
+    if (gFail != 0)
+        return EXIT_FAILURE;
+
 #if !defined(_WIN32)
     std::cout << "SKIPPED (non-Windows)\n";
     return EXIT_SUCCESS;

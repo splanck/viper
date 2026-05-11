@@ -22,6 +22,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -61,12 +62,43 @@ constexpr LinkArch detectLinkArch() {
 #endif
 }
 
+/// Conventional image base address used by the native linker for each platform.
+constexpr uint64_t defaultImageBaseForPlatform(LinkPlatform platform) {
+    switch (platform) {
+        case LinkPlatform::macOS:
+            return 0x100000000ULL;
+        case LinkPlatform::Windows:
+            return 0x140000000ULL;
+        case LinkPlatform::Linux:
+        default:
+            return 0x400000ULL;
+    }
+}
+
 /// A chunk of data from one input section within an output section.
 struct InputChunk {
     size_t inputObjIndex; ///< Index into the linker's object file list.
     size_t inputSecIndex; ///< Index into that ObjFile's sections.
     size_t outputOffset;  ///< Byte offset within the output section.
     size_t size;          ///< Size in bytes.
+};
+
+/// Hashable key for maps indexed by an input object/section pair.
+struct InputSectionKey {
+    size_t objIndex = 0;
+    size_t secIndex = 0;
+
+    bool operator==(const InputSectionKey &other) const noexcept {
+        return objIndex == other.objIndex && secIndex == other.secIndex;
+    }
+};
+
+struct InputSectionKeyHash {
+    size_t operator()(const InputSectionKey &key) const noexcept {
+        size_t h = std::hash<size_t>{}(key.objIndex);
+        h ^= std::hash<size_t>{}(key.secIndex) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+        return h;
+    }
 };
 
 /// A merged output section.

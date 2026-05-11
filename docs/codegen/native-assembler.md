@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-05-09
+last-verified: 2026-05-11
 ---
 
 # Native Assembler — Binary Encoding & Object File Generation
@@ -98,6 +98,9 @@ float constants).
 
 Object writers validate section layout arithmetic, relocation bounds, string-table growth, and unwind metadata before
 writing output. Format limits are reported through the writer error stream instead of escaping as unchecked exceptions.
+Section-offset relocations can also carry the identity of the target `CodeSection`; multi-text object emission uses
+that identity to select the exact section anchor and rejects legacy offset-only relocations when the offset is
+ambiguous across function sections.
 
 ---
 
@@ -156,6 +159,8 @@ The `PhysReg` enum order differs from hardware encoding. The encoder maps via lo
   that becomes a `PCRel32` relocation. Cross-section references to `.rodata` are recorded with a `.text` symbol
   entry plus a `.rodata` target hint; object writers then resolve the final symbol by name so `.text` and `.rodata`
   symbol-table indexes are never mixed.
+- **MOVZX byte sources**: Sources encoded as SPL/BPL/SIL/DIL require a REX prefix even without high registers;
+  otherwise the same low three bits select AH/CH/DH/BH.
 - **PC-relative addend**: x86_64 branch and RIP-relative relocations always carry addend = −4 because the CPU
   computes displacement relative to the *end* of the instruction, but the relocation offset points to the *start*
   of the 4-byte displacement field
@@ -170,6 +175,8 @@ The `PhysReg` enum order differs from hardware encoding. The encoder maps via lo
 - **Symbol offsets**: Object writers serialize physical offsets within emitted section bytes. `CodeSection` logical
   offset bias is reserved for dry-run measurement and is subtracted before ELF, Mach-O, or COFF symbol values are
   written.
+- **Symbol sizes**: ELF symbol table entries preserve the `Symbol::size` recorded in `CodeSection` for defined
+  symbols, so data/function size metadata survives native object emission.
 
 ### Opcode Coverage
 

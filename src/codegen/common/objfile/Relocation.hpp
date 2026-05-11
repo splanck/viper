@@ -115,6 +115,8 @@ struct Relocation {
     SymbolSection targetSection = SymbolSection::Undefined; ///< Optional cross-section target hint.
     bool targetOffsetValid = false; ///< True when targetSection/targetOffset identify the target directly.
     size_t targetOffset = 0;        ///< Byte offset in targetSection for section-relative relocations.
+    bool targetSectionIdentityValid = false; ///< True when targetSectionIdentity names the exact CodeSection.
+    uint64_t targetSectionIdentity = 0;      ///< Stable CodeSection identity for section-offset relocations.
 };
 
 } // namespace viper::codegen::objfile

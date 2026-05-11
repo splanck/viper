@@ -94,6 +94,8 @@ struct ObjFile {
 /// Guards against corrupt or malicious inputs causing unbounded allocation.
 inline constexpr uint32_t kMaxObjSections = 65536;
 inline constexpr uint32_t kMaxObjSymbols = 1 << 20; // 1M symbols.
+inline constexpr size_t kMaxObjSectionBytes = 2ULL * 1024 * 1024 * 1024;
+inline constexpr size_t kMaxObjMaterializedBytes = 4ULL * 1024 * 1024 * 1024;
 
 /// Detect the object file format from magic bytes.
 ObjFileFormat detectFormat(const uint8_t *data, size_t size);

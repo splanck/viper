@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-05-01
+last-verified: 2026-05-11
 ---
 
 # Native Linker — Object File Linking & Executable Generation
@@ -136,8 +136,10 @@ Archives contain a symbol index mapping symbol names to member offsets. The link
 members that define needed symbols, rather than linking every member. This is critical for keeping executable sizes
 reasonable — the full runtime is ~3,200 symbols across 11 component archives.
 
-The archive parser validates member ranges, symbol-table sizes, string-pool bounds, and long-name offsets before
-using them. Duplicate archive-index entries keep the first definition, matching normal archive resolution behavior.
+The archive parser validates member ranges, decimal size fields, symbol-table sizes, string-pool bounds, and
+long-name offsets before using them. Duplicate archive-index entries keep the first definition for compatibility
+and also retain the full candidate list so symbol resolution can retry later members when an earlier indexed member
+has already been extracted or does not satisfy the unresolved name.
 
 ---
 
@@ -186,15 +188,17 @@ ObjFile
 
 ### Reader Validation
 
-Readers reject unsupported file types, wrong machines, out-of-bounds section data, unterminated string-table names,
-invalid COFF long-name string-table references, truncated section headers, truncated relocation tables, dangling
-Mach-O ARM64 addend records, scattered Mach-O relocations, and invalid relocation symbol indexes. Debug and unwind
-metadata such as `__compact_unwind`, `__eh_frame`, `.debug_line`, and `__DWARF` sections is preserved for later
-passes or executable debug-section emission.
+Readers reject unsupported file types, wrong machines, unsupported section alignment, oversized materialized
+sections, out-of-bounds section data, unterminated string-table names, invalid COFF long-name string-table
+references, truncated section headers, truncated relocation tables, dangling Mach-O ARM64 addend records,
+scattered Mach-O relocations, and invalid relocation symbol indexes. Debug and unwind metadata such as
+`__compact_unwind`, `__eh_frame`, `.debug_line`, and `__DWARF` sections is preserved for later passes or executable
+debug-section emission.
 
 Reader range checks avoid offset+size overflow before slicing input buffers, symbol tables, relocation tables, and
-section contents. Mach-O objects that contain relocation records must also provide `LC_SYMTAB`; without it
-relocation symbol indexes cannot be mapped safely.
+section contents. ELF section headers and relocation records are copied through aligned storage before decoding, so
+malformed or unaligned byte buffers do not rely on host pointer alignment. Mach-O objects that contain relocation
+records must also provide `LC_SYMTAB`; without it relocation symbol indexes cannot be mapped safely.
 
 ### Input Compatibility
 
@@ -222,6 +226,7 @@ Symbol resolution uses an iterative fixed-point algorithm:
 1. **Seed**: Add the user's `.o` file. All its globals → defined, all its extern refs → undefined.
 2. **Scan archives**: For each undefined symbol, including a COFF weak-external fallback name, check each archive's
    symbol index. If found, extract that member, parse it, add its definitions and new undefined refs.
+   Duplicate index entries are tried in archive order across fixed-point iterations.
 3. **Repeat** until no new definitions are found (handles cross-archive dependencies).
 4. **Classify remaining**: Unresolved symbols are marked as dynamic (expected from shared libraries).
 
@@ -246,6 +251,9 @@ network → threads → audio → graphics → exec → io_fs → text → colle
 ```
 
 Base is always included. Other components are pulled in based on which `rt_*` symbols the program references.
+Windows CRT/runtime shim names that Viper intentionally supplies from its own runtime archives are not downgraded to
+dynamic imports. That exception is scoped to Viper runtime archive objects; arbitrary user or third-party archives
+still produce normal multiply-defined diagnostics.
 
 ---
 
@@ -282,6 +290,9 @@ the same class, so a high-alignment data or rodata contribution cannot move ahea
 | macOS | `0x100000000` (4GB, above __PAGEZERO) |
 | Linux | `0x400000` (traditional non-PIE) |
 | Windows | `0x140000000` (PE default ImageBase) |
+
+The section merger and executable writers share the same `defaultImageBaseForPlatform()` helper so relocation
+application and PE/Mach-O/ELF output agree on the platform image base.
 
 ---
 
@@ -352,13 +363,16 @@ symbol from being rebound to an unrelated global definition.
   error because otherwise the linker would silently skip fixups for live bytes.
 - Dynamic symbol bindings requested by symbol resolution are honored directly during relocation application, even
   when no synthetic GOT symbol has been inserted yet.
+- Symbol address, relocation-place, trampoline, and file-offset arithmetic is checked before narrowing or patching.
+  Overflow is a hard link error instead of wrapping through `uint64_t` or packed map keys.
 
 ### AArch64 Branch Trampolines
 
 The trampoline pass can redirect both global and local branch targets. Local targets are resolved from the merged
 section location map, trampoline reuse is keyed by target address rather than display name so duplicate local labels
 from different objects cannot collide, and generated trampoline symbol names are checked against user and global
-symbols before insertion.
+symbols before insertion. Trampoline placement and AArch64 page relocations validate address arithmetic before
+encoding branch islands.
 
 ### Dead Strip and ICF
 

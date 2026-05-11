@@ -25,6 +25,7 @@
 #include "codegen/common/objfile/Relocation.hpp"
 #include "codegen/common/objfile/SymbolTable.hpp"
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -76,6 +77,12 @@ struct Win64UnwindEntry {
 /// and serializes them into the target object file format.
 class CodeSection {
   public:
+    CodeSection() : sectionIdentity_(allocateSectionIdentity()) {}
+    CodeSection(const CodeSection &) = default;
+    CodeSection(CodeSection &&) = default;
+    CodeSection &operator=(const CodeSection &) = default;
+    CodeSection &operator=(CodeSection &&) = default;
+
     // === Byte emission ===
 
     /// Reserve total byte capacity ahead of time.
@@ -220,6 +227,15 @@ class CodeSection {
         addSectionOffsetRelocationAt(currentOffset(), kind, targetSection, targetOffset, addend);
     }
 
+    /// Record a relocation that targets a concrete offset in a specific CodeSection.
+    void addSectionOffsetRelocation(RelocKind kind,
+                                    const CodeSection &target,
+                                    SymbolSection targetSection,
+                                    size_t targetOffset,
+                                    int64_t addend = 0) {
+        addSectionOffsetRelocationAt(currentOffset(), kind, target, targetSection, targetOffset, addend);
+    }
+
     /// Record a section-offset relocation at a specific source offset.
     void addSectionOffsetRelocationAt(size_t offset,
                                       RelocKind kind,
@@ -233,6 +249,25 @@ class CodeSection {
         Relocation rel{offset, kind, 0, addend, targetSection};
         rel.targetOffsetValid = true;
         rel.targetOffset = targetOffset;
+        relocations_.push_back(rel);
+    }
+
+    /// Record a section-offset relocation at a specific source offset, with exact target identity.
+    void addSectionOffsetRelocationAt(size_t offset,
+                                      RelocKind kind,
+                                      const CodeSection &target,
+                                      SymbolSection targetSection,
+                                      size_t targetOffset,
+                                      int64_t addend = 0) {
+        if (targetSection == SymbolSection::Undefined)
+            throw std::invalid_argument("CodeSection section-offset relocation requires a target section");
+        if (offset < offsetBias_ || offset - offsetBias_ > bytes_.size())
+            throw std::out_of_range("CodeSection relocation offset is out of range");
+        Relocation rel{offset, kind, 0, addend, targetSection};
+        rel.targetOffsetValid = true;
+        rel.targetOffset = targetOffset;
+        rel.targetSectionIdentityValid = true;
+        rel.targetSectionIdentity = target.sectionIdentity();
         relocations_.push_back(rel);
     }
 
@@ -305,6 +340,11 @@ class CodeSection {
         return offsetBias_;
     }
 
+    /// Stable logical section identity, preserved by copy/move.
+    uint64_t sectionIdentity() const {
+        return sectionIdentity_;
+    }
+
     /// Return true when [offset, offset + width) is within emitted bytes.
     bool containsOffsetRange(size_t offset, size_t width) const {
         if (offset < offsetBias_)
@@ -336,11 +376,11 @@ class CodeSection {
             throw std::length_error("CodeSection relocation reservation exceeds addressable size");
         reserveRelocations(relocations_.size() + other.relocations().size());
         std::vector<uint32_t> symbolRemap(other.symbols().count(), 0);
-        SymbolSection appendedSection = SymbolSection::Undefined;
+        SymbolSection legacyAppendedSection = SymbolSection::Undefined;
         for (uint32_t i = 1; i < other.symbols().count(); ++i) {
             const Symbol &sym = other.symbols().at(i);
             if (sym.binding != SymbolBinding::External && sym.section != SymbolSection::Undefined) {
-                appendedSection = sym.section;
+                legacyAppendedSection = sym.section;
                 break;
             }
         }
@@ -385,8 +425,18 @@ class CodeSection {
             Relocation rebased = reloc;
             rebased.offset = rebaseLogicalOffset(reloc.offset);
             rebased.symbolIndex = symbolRemap[reloc.symbolIndex];
-            if (rebased.targetOffsetValid && rebased.targetSection == appendedSection)
+            const bool targetsAppendedIdentity =
+                rebased.targetSectionIdentityValid &&
+                rebased.targetSectionIdentity == other.sectionIdentity();
+            const bool legacyTargetsAppendedSection =
+                !rebased.targetSectionIdentityValid && rebased.targetOffsetValid &&
+                rebased.targetSection == legacyAppendedSection;
+            if (rebased.targetOffsetValid &&
+                (targetsAppendedIdentity || legacyTargetsAppendedSection)) {
                 rebased.targetOffset = rebaseLogicalOffset(reloc.targetOffset);
+                rebased.targetSectionIdentityValid = true;
+                rebased.targetSectionIdentity = sectionIdentity_;
+            }
             relocations_.push_back(rebased);
         }
 
@@ -437,12 +487,21 @@ class CodeSection {
     }
 
   private:
+    static uint64_t allocateSectionIdentity() {
+        const uint64_t id = nextSectionIdentity_.fetch_add(1, std::memory_order_relaxed);
+        if (id == 0)
+            throw std::length_error("CodeSection identity counter wrapped");
+        return id;
+    }
+
     std::vector<uint8_t> bytes_;
     std::vector<Relocation> relocations_;
     SymbolTable symbols_;
     std::vector<CompactUnwindEntry> unwindEntries_;
     std::vector<Win64UnwindEntry> win64UnwindEntries_;
     size_t offsetBias_ = 0;
+    uint64_t sectionIdentity_ = 0;
+    inline static std::atomic<uint64_t> nextSectionIdentity_{1};
 };
 
 } // namespace viper::codegen::objfile

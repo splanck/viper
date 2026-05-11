@@ -1298,8 +1298,12 @@ void X64BinaryEncoder::encodeMOVZX(PhysReg dst, PhysReg src, objfile::CodeSectio
     const auto hwDst = hwEncode(dst);
     const auto hwSrc = hwEncode(src);
 
-    // REX.W + 0F B6 + ModR/M(11, dst, src).
-    if (needsRex(true, hwDst.rexBit != 0, false, hwSrc.rexBit != 0)) {
+    // REX.W + 0F B6 + ModR/M(11, dst, src). A REX prefix is also required
+    // for SPL/BPL/SIL/DIL as the 8-bit source; without it, encodings 4-7 name
+    // AH/CH/DH/BH.
+    const bool needsRexForByteSrc = (hwSrc.bits3 >= 4 && hwSrc.rexBit == 0);
+    if (needsRex(true, hwDst.rexBit != 0, false, hwSrc.rexBit != 0) ||
+        needsRexForByteSrc) {
         cs.emit8(computeRex(true, hwDst.rexBit != 0, false, hwSrc.rexBit != 0));
     }
 

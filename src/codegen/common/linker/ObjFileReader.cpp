@@ -15,7 +15,9 @@
 
 #include "codegen/common/linker/ObjFileReader.hpp"
 
+#include <cstdint>
 #include <fstream>
+#include <limits>
 
 namespace viper::codegen::linker {
 
@@ -69,7 +71,21 @@ bool readObjFile(const std::string &path, ObjFile &obj, std::ostream &err) {
         err << "error: cannot open object file '" << path << "'\n";
         return false;
     }
-    const auto fileSize = static_cast<size_t>(f.tellg());
+    const std::streampos endPos = f.tellg();
+    if (endPos == std::streampos(-1)) {
+        err << "error: failed to determine object file size for '" << path << "'\n";
+        return false;
+    }
+    const auto endOff = static_cast<std::streamoff>(endPos);
+    if (endOff < 0 ||
+        static_cast<uintmax_t>(endOff) >
+            static_cast<uintmax_t>(std::numeric_limits<size_t>::max()) ||
+        static_cast<uintmax_t>(endOff) >
+            static_cast<uintmax_t>(std::numeric_limits<std::streamsize>::max())) {
+        err << "error: object file '" << path << "' is too large to read\n";
+        return false;
+    }
+    const auto fileSize = static_cast<size_t>(endOff);
     f.seekg(0);
     std::vector<uint8_t> data(fileSize);
     f.read(reinterpret_cast<char *>(data.data()), static_cast<std::streamsize>(fileSize));

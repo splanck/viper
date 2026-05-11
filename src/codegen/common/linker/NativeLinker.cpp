@@ -42,6 +42,7 @@
 #include <cctype>
 #include <cstdint>
 #include <iomanip>
+#include <limits>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -1175,12 +1176,21 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
             const bool emitStartupStub = opts.entrySymbol == "main";
             if (emitStartupStub)
                 ensurePeImportFunction(peImports, "kernel32.dll", "ExitProcess");
+            const uint64_t imageBase = defaultImageBaseForPlatform(LinkPlatform::Windows);
             for (const auto &imp : peImports) {
                 for (const auto &fn : imp.functions) {
                     auto it = layout.globalSyms.find("__imp_" + fn);
-                    if (it != layout.globalSyms.end())
+                    if (it != layout.globalSyms.end()) {
+                        if (it->second.resolvedAddr < imageBase ||
+                            it->second.resolvedAddr - imageBase >
+                                std::numeric_limits<uint32_t>::max()) {
+                            err << "error: PE import slot RVA for '" << fn
+                                << "' is outside 32-bit range\n";
+                            return false;
+                        }
                         peImportSlotRvas[fn] =
-                            static_cast<uint32_t>(it->second.resolvedAddr - 0x140000000ULL);
+                            static_cast<uint32_t>(it->second.resolvedAddr - imageBase);
+                    }
                 }
             }
             writeOk = writePeExe(opts.exePath,

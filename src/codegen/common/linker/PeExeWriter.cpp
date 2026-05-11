@@ -599,7 +599,7 @@ bool writePeExe(const std::string &path,
                 std::ostream &err) {
     const uint16_t machine =
         (arch == LinkArch::AArch64) ? IMAGE_FILE_MACHINE_ARM64 : IMAGE_FILE_MACHINE_AMD64;
-    const uint64_t imageBase = 0x140000000ULL;
+    const uint64_t imageBase = defaultImageBaseForPlatform(LinkPlatform::Windows);
     const uint32_t sectionAlignment = 0x1000;
     const uint32_t fileAlignment = 0x200;
     const uint64_t stackReserve =

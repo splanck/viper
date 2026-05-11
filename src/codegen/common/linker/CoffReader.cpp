@@ -358,6 +358,7 @@ bool readCoffObj(
     obj.sections.resize(1); // Null section at index 0.
     obj.sections[0].name = "";
     std::vector<uint32_t> sectionCharacteristics(hdr->NumberOfSections + 1, 0);
+    size_t materializedBytes = 0;
 
     for (uint16_t i = 0; i < hdr->NumberOfSections; ++i) {
         const auto *sh =
@@ -415,11 +416,23 @@ bool readCoffObj(
         if (sh->Characteristics & coff::IMAGE_SCN_CNT_UNINITIALIZED_DATA) {
             sec.zeroFill = true;
             const uint32_t zeroSize = sh->VirtualSize != 0 ? sh->VirtualSize : sh->SizeOfRawData;
+            if (zeroSize > kMaxObjSectionBytes ||
+                zeroSize > kMaxObjMaterializedBytes - materializedBytes) {
+                err << "error: " << name << ": COFF section '" << sec.name << "' is too large\n";
+                return false;
+            }
             sec.data.resize(zeroSize, 0);
+            materializedBytes += zeroSize;
         } else if (sh->SizeOfRawData > 0 &&
                    checkedRange(sh->PointerToRawData, sh->SizeOfRawData, size)) {
+            if (sh->SizeOfRawData > kMaxObjSectionBytes ||
+                sh->SizeOfRawData > kMaxObjMaterializedBytes - materializedBytes) {
+                err << "error: " << name << ": COFF section '" << sec.name << "' is too large\n";
+                return false;
+            }
             sec.data.assign(data + sh->PointerToRawData,
                             data + sh->PointerToRawData + sh->SizeOfRawData);
+            materializedBytes += sh->SizeOfRawData;
         } else if (sh->SizeOfRawData > 0) {
             err << "error: " << name << ": COFF section '" << sec.name
                 << "' raw data is out of bounds\n";
@@ -486,7 +499,7 @@ bool readCoffObj(
     std::vector<uint8_t> comdatSelectionBySection(hdr->NumberOfSections + 1, 0);
     std::vector<uint32_t> associativeSectionBySection(hdr->NumberOfSections + 1, 0);
     uint32_t commonSecIdx = 0;
-    auto allocateCommon = [&](size_t sizeBytes, size_t alignment) -> size_t {
+    auto allocateCommon = [&](size_t sizeBytes, size_t alignment, size_t &outOffset) -> bool {
         if (commonSecIdx == 0) {
             ObjSection common;
             common.name = ".common";
@@ -500,14 +513,35 @@ bool readCoffObj(
         auto &common = obj.sections[commonSecIdx];
         if (alignment == 0)
             alignment = 1;
+        if ((alignment & (alignment - 1)) != 0 ||
+            alignment > std::numeric_limits<uint32_t>::max()) {
+            err << "error: " << name << ": COFF common symbol has unsupported alignment\n";
+            return false;
+        }
         if (alignment > common.alignment)
             common.alignment = static_cast<uint32_t>(alignment);
         const size_t rem = common.data.size() % alignment;
-        if (rem != 0)
-            common.data.resize(common.data.size() + (alignment - rem), 0);
+        const size_t padding = (rem != 0) ? (alignment - rem) : 0;
+        if (padding > kMaxObjMaterializedBytes - materializedBytes ||
+            common.data.size() > std::numeric_limits<size_t>::max() - padding) {
+            err << "error: " << name << ": COFF common section alignment exceeds limit\n";
+            return false;
+        }
+        if (rem != 0) {
+            common.data.resize(common.data.size() + padding, 0);
+            materializedBytes += padding;
+        }
         const size_t off = common.data.size();
+        if (sizeBytes > kMaxObjSectionBytes ||
+            sizeBytes > kMaxObjMaterializedBytes - materializedBytes ||
+            off > std::numeric_limits<size_t>::max() - sizeBytes) {
+            err << "error: " << name << ": COFF common section data exceeds limit\n";
+            return false;
+        }
         common.data.resize(off + sizeBytes, 0);
-        return off;
+        materializedBytes += sizeBytes;
+        outOffset = off;
+        return true;
     };
 
     for (uint32_t i = 0; i < hdr->NumberOfSymbols;) {
@@ -577,7 +611,8 @@ bool readCoffObj(
             os.sectionIndex = commonSecIdx == 0
                                   ? static_cast<uint32_t>(obj.sections.size())
                                   : commonSecIdx;
-            os.offset = allocateCommon(static_cast<size_t>(sym->Value), 8);
+            if (!allocateCommon(static_cast<size_t>(sym->Value), 8, os.offset))
+                return false;
             os.size = static_cast<size_t>(sym->Value);
             offsetAlreadySet = true;
         } else if (sym->SectionNumber == coff::IMAGE_SYM_UNDEFINED) {
