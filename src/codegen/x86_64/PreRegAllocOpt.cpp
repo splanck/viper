@@ -29,19 +29,32 @@
 namespace viper::codegen::x64 {
 namespace {
 
+/// @brief Position of a single use within a basic block.
+/// @details Used by the pre-RA copy elimination to record the unique use of
+///          a copy's destination so the use can be rewritten to refer to
+///          the copy's source instead.
 struct UseSite {
-    std::size_t instrIndex{0};
-    std::size_t operandIndex{0};
+    std::size_t instrIndex{0};    ///< Index of the consuming instruction.
+    std::size_t operandIndex{0};  ///< Operand index within that instruction.
 };
 
+/// @brief Compare two register operands for equality (phys flag, class, id).
 [[nodiscard]] bool sameReg(const OpReg &lhs, const OpReg &rhs) noexcept {
     return lhs.isPhys == rhs.isPhys && lhs.cls == rhs.cls && lhs.idOrPhys == rhs.idOrPhys;
 }
 
+/// @brief Predicate: is @p opcode a pure register-to-register copy?
+/// @details MOVrr handles GPRs; MOVSDrr handles XMMs. Other moves (e.g.
+///          MOVri) involve immediates and aren't subject to the same
+///          forwarding logic.
 [[nodiscard]] bool isCopyOpcode(MOpcode opcode) noexcept {
     return opcode == MOpcode::MOVrr || opcode == MOpcode::MOVSDrr;
 }
 
+/// @brief Predicate: does @p opcode terminate a straight-line region?
+/// @details Returns true for the opcodes the analysis treats as block
+///          boundaries — including CALL, since the calling convention can
+///          clobber registers and we must not forward across.
 [[nodiscard]] bool isBlockBoundary(MOpcode opcode) noexcept {
     switch (opcode) {
         case MOpcode::CALL:
@@ -55,20 +68,24 @@ struct UseSite {
     }
 }
 
+/// @brief View an operand as an @c OpReg pointer (const overload).
 [[nodiscard]] const OpReg *asReg(const Operand &operand) noexcept {
     return std::get_if<OpReg>(&operand);
 }
 
+/// @brief View an operand as an @c OpReg pointer (mutable overload).
 [[nodiscard]] OpReg *asReg(Operand &operand) noexcept {
     return std::get_if<OpReg>(&operand);
 }
 
+/// @brief Predicate: does @p mem reference @p reg via base or index?
 [[nodiscard]] bool memUsesReg(const OpMem &mem, const OpReg &reg) noexcept {
     if (sameReg(mem.base, reg))
         return true;
     return mem.hasIndex && sameReg(mem.index, reg);
 }
 
+/// @brief Predicate: does @p operand read @p reg (direct register or via memory)?
 [[nodiscard]] bool operandUsesReg(const Operand &operand, const OpReg &reg) noexcept {
     if (const auto *opReg = asReg(operand))
         return sameReg(*opReg, reg);
@@ -77,6 +94,11 @@ struct UseSite {
     return false;
 }
 
+/// @brief Predicate: does @p instr re-define @p reg?
+/// @details Uses the centralised operand-roles table to ask whether any
+///          def-position operand names @p reg, which is the safest way to
+///          ask "is this value clobbered here?" without hard-coding opcode
+///          knowledge.
 [[nodiscard]] bool definesReg(const MInstr &instr, const OpReg &reg) noexcept {
     for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
         const auto [isUse, isDef] = operandRoles(instr, idx);
@@ -90,6 +112,9 @@ struct UseSite {
     return false;
 }
 
+/// @brief Predicate: is @p instr a copy whose source and destination are identical?
+/// @details Identity copies survive forwarding rewrites and are removed by
+///          the final compaction pass.
 [[nodiscard]] bool isIdentityCopy(const MInstr &instr) noexcept {
     if (!isCopyOpcode(instr.opcode) || instr.operands.size() != 2)
         return false;
@@ -98,6 +123,19 @@ struct UseSite {
     return dst && src && sameReg(*dst, *src);
 }
 
+/// @brief Locate the unique direct use of a copy's destination.
+/// @details Walks forward from @p copyIndex looking for the single
+///          instruction that reads @p dst as a plain register operand
+///          (not embedded in a memory expression as base/index — those
+///          aren't substitutable because the use is implicit).
+///          Bails out as soon as a definition of @p src is encountered or
+///          when more than one use is found, both of which would make
+///          forwarding unsafe.
+/// @param block Block to scan.
+/// @param copyIndex Index of the candidate copy instruction.
+/// @param dst Destination register of the copy.
+/// @param src Source register of the copy.
+/// @return The unique use position or @c std::nullopt when forwarding is unsafe.
 [[nodiscard]] std::optional<UseSite> findSingleDirectUse(const MBasicBlock &block,
                                                          std::size_t copyIndex,
                                                          const OpReg &dst,
@@ -150,6 +188,15 @@ struct UseSite {
     return site;
 }
 
+/// @brief Forward each virtual-to-virtual copy whose destination has exactly one use.
+/// @details For every register-to-register move @c "MOV vDst, vSrc", if the
+///          block contains a single direct read of @c vDst and the
+///          intervening instructions do not redefine @c vSrc, the use is
+///          rewritten to read @c vSrc and the copy itself is dropped.
+///          Physical-register sources are skipped to avoid widening their
+///          live range past the original copy.
+/// @param block Block to mutate in place.
+/// @return Number of copies eliminated.
 std::size_t rewriteSingleUseCopies(MBasicBlock &block) {
     std::vector<bool> erase(block.instructions.size(), false);
     std::size_t removed = 0;
@@ -192,6 +239,12 @@ std::size_t rewriteSingleUseCopies(MBasicBlock &block) {
 
 } // namespace
 
+/// @brief Top-level entry point for pre-register-allocation MIR cleanup.
+/// @details Walks every basic block, first removing identity copies and
+///          then forwarding single-use virtual-to-virtual copies. Returning
+///          a count lets callers report the reduction in statistics output.
+/// @param fn Function to rewrite in place.
+/// @return Number of MIR instructions removed.
 std::size_t runPreRegAllocOpt(MFunction &fn) {
     std::size_t removed = 0;
     for (auto &block : fn.blocks) {

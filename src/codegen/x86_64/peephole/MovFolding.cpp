@@ -23,6 +23,16 @@
 
 namespace viper::codegen::x64::peephole {
 
+/// @brief Coalesce two adjacent reg-to-reg moves when the intermediate is dead.
+/// @details Pattern: @c "MOV r1, r2; MOV r3, r1" — if @c r1 is not used past
+///          the second move and isn't an argument register straddling a
+///          subsequent CALL (which would violate the call ABI), we rewrite to
+///          @c "MOV r3, r2" and reduce @c r1 to a self-move that the
+///          identity-move pass will subsequently drop.
+/// @param instrs Block instructions, mutated in place.
+/// @param idx Index of the candidate first move.
+/// @param stats Pass-wide statistics accumulator.
+/// @return True when a fold was applied.
 bool tryFoldConsecutiveMoves(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats) {
     if (idx + 1 >= instrs.size())
         return false;

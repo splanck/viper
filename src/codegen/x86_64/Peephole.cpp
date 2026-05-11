@@ -46,6 +46,16 @@ namespace ph = peephole;
 /// pathological cases where rewrites keep enabling each other.
 static constexpr std::size_t kMaxIterations = 100;
 
+/// @brief Determine if @p blockIndex can pass control to another block.
+/// @details Scans backward from the block's terminator: RET or UD2 are
+///          absorbing (no successor), JMP/JCC explicitly transfer, and a
+///          fall-through case is detected when the block has a subsequent
+///          sibling. Used by DCE to know whether instructions in this block
+///          can be safely deleted (their effects need not be observable on
+///          paths that abort here).
+/// @param fn Function being inspected.
+/// @param blockIndex Index of the block in question.
+/// @return True when control may exit this block to another block.
 static bool blockMayTransferControl(const MFunction &fn, std::size_t blockIndex) {
     if (blockIndex >= fn.blocks.size())
         return false;

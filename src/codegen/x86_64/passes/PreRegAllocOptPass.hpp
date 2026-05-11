@@ -26,6 +26,10 @@ namespace viper::codegen::x64::passes {
 /// @brief Pre-register-allocation MIR optimization pass for the x86-64 pipeline.
 class PreRegAllocOptPass final : public Pass {
   public:
+    /// @brief Run the cleanup pass over the legalised MIR.
+    /// @param module Pipeline state whose @c mir vector is mutated in place.
+    /// @param diags Diagnostic sink for reporting failures.
+    /// @return True on success.
     bool run(Module &module, Diagnostics &diags) override;
 };
 

@@ -193,6 +193,8 @@ struct MaterializedCallArg {
     viper::codegen::common::CallArgClass cls{viper::codegen::common::CallArgClass::GPR};
 };
 
+/// @brief Emit AND-with-1 to mask an i1 value into its canonical 0-or-1 form.
+/// @return New vreg holding `srcVReg & 1`.
 uint16_t emitMaskedI1Value(MBasicBlock &out, uint16_t srcVReg, uint16_t &nextVRegId) {
     const uint16_t mask = allocateNextVReg(nextVRegId);
     out.instrs.push_back(
@@ -205,6 +207,8 @@ uint16_t emitMaskedI1Value(MBasicBlock &out, uint16_t srcVReg, uint16_t &nextVRe
     return masked;
 }
 
+/// @brief Look up the named-argument count for a known variadic callee.
+/// @return nullopt when @p callee is not in the table.
 std::optional<std::size_t> lookupKnownVarArgNamedArgs(
     std::string_view callee,
     const std::unordered_map<std::string, std::size_t> *knownVarArgNamedArgCounts) {
@@ -216,18 +220,22 @@ std::optional<std::size_t> lookupKnownVarArgNamedArgs(
     return it->second;
 }
 
+/// @brief Test whether @p callee is a known variadic runtime/library function.
 bool isKnownVarArgCallee(std::string_view callee,
                          const std::unordered_map<std::string, std::size_t>
                              *knownVarArgNamedArgCounts) {
     return lookupKnownVarArgNamedArgs(callee, knownVarArgNamedArgCounts).has_value();
 }
 
+/// @brief Emit `mov x0, #code; bl rt_trap_raise_error` to raise a runtime trap.
 void emitTrapRaiseError(MBasicBlock &bb, int code) {
     bb.instrs.push_back(
         MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(code)}});
     bb.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_raise_error")}});
 }
 
+/// @brief Materialise a 64-bit FP value via the integer bit-pattern + FMOV GPR→FPR.
+/// @details Used when the FP immediate doesn't fit AArch64's FMOV immediate encoding.
 void emitF64BitsToVReg(MBasicBlock &out, uint16_t dstVReg, uint64_t bits, uint16_t &nextVRegId) {
     const uint16_t bitsGpr = allocateNextVReg(nextVRegId);
     out.instrs.push_back(MInstr{MOpcode::MovRI,
@@ -238,6 +246,18 @@ void emitF64BitsToVReg(MBasicBlock &out, uint16_t dstVReg, uint64_t bits, uint16
                                  MOperand::vregOp(RegClass::GPR, bitsGpr)}});
 }
 
+/// @brief Place each materialised call argument in its ABI-required home.
+/// @details Calls into the shared planCallArgs() allocator to decide register
+///          vs. stack placement, then emits a MovRR/FMovRR per register arg and
+///          an STR per stack arg into @p seq.prefix. Inserts the SP adjustment
+///          pair (SubSpImm / AddSpImm) around the call when there are stack args.
+/// @param args                Argument vregs and their register classes.
+/// @param numNamedArgs        Number of named (non-variadic) args for tail-on-stack.
+/// @param variadicTailOnStack True when the variadic tail must spill to the stack
+///                            (Darwin AArch64 calling convention).
+/// @param ti                  Target info supplying the AAPCS64 arg-register order.
+/// @param seq                 Output sequence: prefix loads + postfix SP cleanup.
+/// @return Currently always true (failure paths happen earlier in materialisation).
 bool marshalCallArgs(const std::vector<MaterializedCallArg> &args,
                      std::size_t numNamedArgs,
                      bool variadicTailOnStack,
@@ -301,6 +321,13 @@ bool marshalCallArgs(const std::vector<MaterializedCallArg> &args,
     return true;
 }
 
+/// @brief Copy a call's return value out of the ABI return register into a fresh vreg.
+/// @details Picks `intReturnReg` or `f64ReturnReg` based on `ins.type`. Registers
+///          the vreg in @p tempVReg / @p tempRegClass so later uses resolve. For
+///          string returns, also emits `bl rt_str_retain_maybe` to bump the
+///          reference count; for I1 returns, masks to canonical 0/1.
+/// @return The vreg holding the captured (and possibly retained/masked) result,
+///         or 0 if the instruction has no result.
 uint16_t captureCallResult(const il::core::Instr &ins,
                            const TargetInfo &ti,
                            MBasicBlock &out,
@@ -336,6 +363,7 @@ uint16_t captureCallResult(const il::core::Instr &ins,
     return dst;
 }
 
+/// @brief Bump the refcount on a runtime-string vreg via `bl rt_str_retain_maybe`.
 void retainStringVReg(MBasicBlock &out, uint16_t strVReg) {
     out.instrs.push_back(
         MInstr{MOpcode::MovRR,
@@ -343,6 +371,8 @@ void retainStringVReg(MBasicBlock &out, uint16_t strVReg) {
     out.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_str_retain_maybe")}});
 }
 
+/// @brief Look up the recorded byte length for a global string literal symbol.
+/// @return nullopt when @p sym is not in the table.
 std::optional<std::size_t> lookupStringLiteralByteLen(
     const std::string &sym,
     const std::unordered_map<std::string, std::size_t> *stringLiteralByteLengths) {

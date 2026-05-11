@@ -29,6 +29,30 @@
 
 using namespace viper::codegen::x64;
 
+namespace {
+
+void expectMaterializedSubImmediate(const MFunction &func, int64_t expectedImm) {
+    ASSERT_FALSE(func.blocks.empty());
+    const auto &instructions = func.blocks[0].instructions;
+    ASSERT_EQ(instructions.size(), 2U);
+
+    const auto &mov = instructions[0];
+    EXPECT_EQ(static_cast<int>(mov.opcode), static_cast<int>(MOpcode::MOVri));
+    ASSERT_EQ(mov.operands.size(), 2U);
+
+    const auto *materialized = asImm(mov.operands[1]);
+    ASSERT_TRUE(materialized != nullptr);
+    EXPECT_EQ(materialized->val, expectedImm);
+
+    const auto &sub = instructions[1];
+    EXPECT_EQ(static_cast<int>(sub.opcode), static_cast<int>(MOpcode::SUBrr));
+    ASSERT_EQ(sub.operands.size(), 2U);
+    EXPECT_FALSE(isImm(sub.operands[1]));
+    EXPECT_TRUE(sameRegister(mov.operands[0], sub.operands[1]));
+}
+
+} // namespace
+
 // ---------------------------------------------------------------------------
 // Fix 18: ISel SUB negation must not overflow for INT64_MIN
 // ---------------------------------------------------------------------------
@@ -36,7 +60,8 @@ using namespace viper::codegen::x64;
 TEST(CodegenReviewBatch2, SubNegationGuardsIntMin) {
     // Build a tiny MFunction with a single block containing SUBrr with
     // INT64_MIN as the immediate operand.  After ISel::lowerArithmetic the
-    // value must be materialized before a legal register-register SUBrr.
+    // arithmetic instruction must remain SUBrr and materialize the immediate
+    // through a register, since negating INT64_MIN would be UB.
     auto &target = sysvTarget();
     ISel isel{target};
 
@@ -55,18 +80,7 @@ TEST(CodegenReviewBatch2, SubNegationGuardsIntMin) {
 
     isel.lowerArithmetic(func);
 
-    EXPECT_FALSE(func.blocks.empty());
-    ASSERT_EQ(func.blocks[0].instructions.size(), 2u);
-
-    const auto &mov = func.blocks[0].instructions[0];
-    EXPECT_EQ(static_cast<int>(mov.opcode), static_cast<int>(MOpcode::MOVri));
-    const auto *imm = std::get_if<OpImm>(&mov.operands[1]);
-    ASSERT_TRUE(imm != nullptr);
-    EXPECT_EQ(imm->val, intMin);
-
-    const auto &loweredSub = func.blocks[0].instructions[1];
-    EXPECT_EQ(static_cast<int>(loweredSub.opcode), static_cast<int>(MOpcode::SUBrr));
-    EXPECT_TRUE(std::holds_alternative<OpReg>(loweredSub.operands[1]));
+    expectMaterializedSubImmediate(func, intMin);
 }
 
 TEST(CodegenReviewBatch2, SubNegationWorksForNormalValues) {
@@ -100,9 +114,10 @@ TEST(CodegenReviewBatch2, SubNegationWorksForNormalValues) {
     }
 }
 
-TEST(CodegenReviewBatch2, SubNegationIntMaxWorks) {
-    // INT64_MAX negation is defined, but the result is outside x86-64's signed
-    // imm32 ALU encoding range, so it must be materialized before SUBrr.
+TEST(CodegenReviewBatch2, SubNegationIntMaxMaterializesWhenNegatedImmDoesNotFit) {
+    // INT64_MAX negation is defined, but the negated value does not fit x86-64's
+    // signed imm32 ALU encoding. It must therefore fall back to a materialized
+    // SUBrr rather than an unencodable ADDri.
     auto &target = sysvTarget();
     ISel isel{target};
 
@@ -120,17 +135,7 @@ TEST(CodegenReviewBatch2, SubNegationIntMaxWorks) {
 
     isel.lowerArithmetic(func);
 
-    ASSERT_EQ(func.blocks[0].instructions.size(), 2u);
-
-    const auto &mov = func.blocks[0].instructions[0];
-    EXPECT_EQ(static_cast<int>(mov.opcode), static_cast<int>(MOpcode::MOVri));
-    const auto *imm = std::get_if<OpImm>(&mov.operands[1]);
-    ASSERT_TRUE(imm != nullptr);
-    EXPECT_EQ(imm->val, intMax);
-
-    const auto &loweredSub = func.blocks[0].instructions[1];
-    EXPECT_EQ(static_cast<int>(loweredSub.opcode), static_cast<int>(MOpcode::SUBrr));
-    EXPECT_TRUE(std::holds_alternative<OpReg>(loweredSub.operands[1]));
+    expectMaterializedSubImmediate(func, intMax);
 }
 
 // ---------------------------------------------------------------------------

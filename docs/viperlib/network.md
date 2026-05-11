@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-19
+last-verified: 2026-05-11
 ---
 
 # Network
@@ -70,11 +70,15 @@ a descriptive error message and clean exit.
 | HTTP Request  | 30 sec    |
 | WS Connect    | 30 sec    |
 
+Timeout values must fit the runtime socket timeout range: `0` disables an explicit timeout and positive values must be no larger than `2147483647` milliseconds. Negative or overflowing timeout arguments are treated as programming errors by the typed networking APIs.
+
 ### Programming Errors (Not Catchable)
 
 Passing NULL connections, invalid port numbers, or NULL data are
 programming errors that always terminate the program. They are not
 network conditions and cannot be recovered from.
+
+URL parsers for HTTP, HTTPS, WS, WSS, and SSE reject empty hosts, malformed ports, port overflow, and control-character injection. HTTP chunked framing is parsed strictly; malformed chunk-size lines fail as protocol errors instead of being partially accepted.
 
 ---
 
@@ -1856,6 +1860,8 @@ Threaded HTTP/1.1 server with routing and handler-tag lookup.
 - Request bodies can be framed with either `Content-Length` or `Transfer-Encoding: chunked`.
 - Oversize request bodies are rejected.
 - Only `HTTP/1.0` and `HTTP/1.1` request lines are accepted.
+- Request methods must be valid HTTP tokens. Request targets must be origin-form (`/path?...`), absolute-form (`http://host/path?...` or `https://host/path?...`), or `*`; absolute-form targets are normalized to the routed path.
+- Query lookups URL-decode parameter names before matching, so `%71=search` is visible as `Query("q")`.
 - `HttpServer` honors protocol-correct keep-alive semantics: HTTP/1.1 defaults to keep-alive unless `Connection: close` is present, while HTTP/1.0 requires explicit `Connection: keep-alive`.
 - Send and receive timeouts are enforced on live client sockets so slow readers do not stall workers indefinitely.
 
@@ -1976,6 +1982,7 @@ Multipart form-data builder and parser for HTTP file uploads.
 
 - Builder output escapes quoted `name=` / `filename=` values and strips embedded CR/LF from part headers, so untrusted field names and filenames cannot inject extra MIME headers.
 - Parser accepts quoted or bare-token multipart parameters, including quoted `boundary=` values and escaped quotes inside `Content-Disposition`.
+- Empty fields and zero-byte file parts are preserved. Boundaries longer than the runtime storage limit are rejected instead of being silently truncated.
 
 ---
 

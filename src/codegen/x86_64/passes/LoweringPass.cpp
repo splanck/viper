@@ -116,6 +116,13 @@ class ModuleAdapter {
         reportUnsupported("unknown IL type kind encountered during Phase A lowering");
     }
 
+    /// @brief Map an IL type to its integer bit width.
+    /// @details Used by the backend to populate @c ILInstr::resultBits and
+    ///          @c ILValue::bits. All scalar pointer-class kinds report 64
+    ///          because they share GPR storage. Void / resume tokens are
+    ///          considered programmer errors and trap via @ref reportUnsupported.
+    /// @param type Source IL type.
+    /// @return Bit width of the type (1, 16, 32, or 64).
     static std::uint8_t typeBitWidth(const il::core::Type &type) {
         using il::core::Type;
         switch (type.kind) {
@@ -678,12 +685,21 @@ class ModuleAdapter {
     // Arithmetic Instruction Adapters
     //-------------------------------------------------------------------------
 
+    /// @brief Adapt any binary arithmetic IL instruction.
+    /// @details Records the result kind and hints both operands with the
+    ///          same kind so integer/float overloads route correctly.
+    /// @param instr Source IL instruction.
+    /// @param out Adapter instruction being populated.
+    /// @param opcode Adapter opcode string (e.g. "add", "iadd.ovf").
     void adaptBinaryArithmetic(const il::core::Instr &instr, ILInstr &out, const char *opcode) {
         const ILValue::Kind kind = setResultKind(out, instr, instr.type);
         out.opcode = opcode;
         convertOperands(instr, {kind, kind}, out);
     }
 
+    /// @brief Adapt the floating-point division IL instruction.
+    /// @details Hard-codes the F64 result kind because @c fdiv is exclusively
+    ///          a floating-point operation in IL.
     void adaptFDiv(const il::core::Instr &instr, ILInstr &out) {
         out.opcode = "fdiv";
         out.resultKind = ILValue::Kind::F64;
@@ -694,18 +710,29 @@ class ModuleAdapter {
         convertOperands(instr, {ILValue::Kind::F64, ILValue::Kind::F64}, out);
     }
 
+    /// @brief Adapt an integer div/rem family instruction.
+    /// @details Both operands are forced to I64 because IDIV/DIV consume the
+    ///          full 64-bit register pair. Variant selection (signed vs.
+    ///          unsigned, checked vs. plain) is encoded in @p opcode.
     void adaptIntDiv(const il::core::Instr &instr, ILInstr &out, const char *opcode) {
         setResultKind(out, instr, instr.type);
         out.opcode = opcode;
         convertOperands(instr, {ILValue::Kind::I64, ILValue::Kind::I64}, out);
     }
 
+    /// @brief Adapt a shift IL instruction.
+    /// @details The shifted value follows the result kind so 32-bit shifts
+    ///          do not silently widen; the shift count is always I64.
     void adaptShift(const il::core::Instr &instr, ILInstr &out, const char *opcode) {
         const ILValue::Kind kind = setResultKind(out, instr, instr.type);
         out.opcode = opcode;
         convertOperands(instr, {kind, ILValue::Kind::I64}, out);
     }
 
+    /// @brief Adapt a bitwise opcode (AND / OR / XOR).
+    /// @details Result is always pinned to I64 because IL bitwise ops are
+    ///          defined over the full 64-bit register width regardless of
+    ///          declared type.
     void adaptBitwise(const il::core::Instr &instr, ILInstr &out, const char *opcode) {
         setFixedResultKind(out, instr, ILValue::Kind::I64);
         out.opcode = opcode;
@@ -716,6 +743,10 @@ class ModuleAdapter {
     // Comparison Instruction Adapters
     //-------------------------------------------------------------------------
 
+    /// @brief Adapt an integer compare IL instruction.
+    /// @details Emits a "cmp" opcode with an extra trailing immediate that
+    ///          encodes the SETcc condition code derived from the IL opcode.
+    ///          The result is always I1.
     void adaptIntCompare(const il::core::Instr &instr, ILInstr &out) {
         out.opcode = "cmp";
         setFixedResultKind(out, instr, ILValue::Kind::I1);
@@ -723,6 +754,10 @@ class ModuleAdapter {
         out.ops.push_back(makeCondImmediate(condCodeFor(instr.op)));
     }
 
+    /// @brief Adapt a floating-point compare IL instruction.
+    /// @details The adapter opcode (@p opcode) carries the specific
+    ///          predicate suffix (e.g. "fcmp_lt") so the rule table can
+    ///          select the right NaN-safe sequence.
     void adaptFloatCompareAs(const il::core::Instr &instr, ILInstr &out, const char *opcode) {
         out.opcode = opcode;
         setFixedResultKind(out, instr, ILValue::Kind::I1);
@@ -733,6 +768,10 @@ class ModuleAdapter {
     // Call Instruction Adapter
     //-------------------------------------------------------------------------
 
+    /// @brief Adapt a direct call IL instruction.
+    /// @details The callee name is materialised as the first operand (a label
+    ///          @c ILValue) and the IL arg list follows. Void-returning calls
+    ///          that nevertheless carry a result id are rejected as malformed.
     void adaptCall(const il::core::Instr &instr, ILInstr &out) {
         if (instr.type.kind != il::core::Type::Kind::Void) {
             setResultKind(out, instr, instr.type);
@@ -747,6 +786,10 @@ class ModuleAdapter {
         }
     }
 
+    /// @brief Adapt an indirect call IL instruction.
+    /// @details Unlike @ref adaptCall the first operand is a runtime
+    ///          pointer (not a label). The backend's @c emitCallIndirect
+    ///          materialises it into a register before issuing CALL.
     void adaptCallIndirect(const il::core::Instr &instr, ILInstr &out) {
         if (instr.type.kind != il::core::Type::Kind::Void) {
             setResultKind(out, instr, instr.type);
@@ -759,6 +802,14 @@ class ModuleAdapter {
         }
     }
 
+    /// @brief Adapt an IL opcode that lowers to a runtime call.
+    /// @details Used for opcodes like string operations that have no
+    ///          one-to-one MIR opcode and instead invoke a runtime helper.
+    ///          The runtime callee name is supplied explicitly.
+    /// @param instr Source IL instruction.
+    /// @param out Adapter instruction being populated.
+    /// @param callee Fully qualified runtime symbol to dispatch to.
+    /// @param hints Per-argument kind hints used to coerce operand classes.
     void adaptRuntimeCall(const il::core::Instr &instr,
                           ILInstr &out,
                           const char *callee,
@@ -782,23 +833,27 @@ class ModuleAdapter {
     // Constants and Addresses
     //-------------------------------------------------------------------------
 
+    /// @brief Adapt the IL `const_null` opcode (null pointer literal).
     void adaptConstNull(const il::core::Instr &instr, ILInstr &out) {
         setFixedResultKind(out, instr, ILValue::Kind::PTR);
         out.opcode = "const_null";
     }
 
+    /// @brief Adapt the IL `const_f64` opcode (double literal).
     void adaptConstF64(const il::core::Instr &instr, ILInstr &out) {
         setFixedResultKind(out, instr, ILValue::Kind::F64);
         out.opcode = "const_f64";
         convertOperands(instr, {ILValue::Kind::F64}, out);
     }
 
+    /// @brief Adapt the IL `gaddr` opcode (global address materialisation).
     void adaptGAddr(const il::core::Instr &instr, ILInstr &out) {
         setFixedResultKind(out, instr, ILValue::Kind::PTR);
         out.opcode = "gaddr";
         convertOperands(instr, {std::nullopt}, out);
     }
 
+    /// @brief Adapt the IL `addr_of` opcode (address of an alloca slot).
     void adaptAddrOf(const il::core::Instr &instr, ILInstr &out) {
         setFixedResultKind(out, instr, ILValue::Kind::PTR);
         out.opcode = "addr_of";
@@ -809,12 +864,19 @@ class ModuleAdapter {
     // Bounds Check and Switch
     //-------------------------------------------------------------------------
 
+    /// @brief Adapt the IL `idx_chk` opcode (index bounds check + normalise).
+    /// @details Three I64 operands: index, lower bound, upper bound.
     void adaptIdxChk(const il::core::Instr &instr, ILInstr &out) {
         setResultKind(out, instr, instr.type);
         out.opcode = "idx_chk";
         convertOperands(instr, {ILValue::Kind::I64, ILValue::Kind::I64, ILValue::Kind::I64}, out);
     }
 
+    /// @brief Adapt the IL `switch_i32` opcode.
+    /// @details Re-encodes the IL successor table as interleaved
+    ///          (case-value, case-label) pairs followed by the default
+    ///          label. Also records terminator edges so block-parameter
+    ///          copies route correctly per arm.
     void adaptSwitchI32(const il::core::Instr &instr, ILInstr &out, ILBlock &block) {
         using namespace il::core;
         out.opcode = "switch_i32";
@@ -842,6 +904,10 @@ class ModuleAdapter {
     // Exception Handling Adapters
     //-------------------------------------------------------------------------
 
+    /// @brief Adapt the IL `eh.push` opcode (push EH handler frame).
+    /// @details Trimmed to a single operand because @c NativeEHLowering
+    ///          rewrites the structured marker before MIR lowering; the
+    ///          fallback only needs to preserve the handler label.
     void adaptEhPush(const il::core::Instr &instr, ILInstr &out) {
         out.opcode = "eh.push";
         convertOperands(instr, {std::nullopt}, out);
@@ -850,11 +916,16 @@ class ModuleAdapter {
         }
     }
 
+    /// @brief Adapt the IL `eh.pop` opcode.
+    /// @details Inert in the MIR pipeline; NativeEHLowering will have
+    ///          rewritten it before lowering.
     void adaptEhPop(ILInstr &out) {
         out.opcode = "eh.pop";
         out.resultKind = ILValue::Kind::I64; // unused
     }
 
+    /// @brief Adapt the IL `eh.entry` handler-block marker.
+    /// @details Inert fallback like @ref adaptEhPop.
     void adaptEhEntry(ILInstr &out) {
         out.opcode = "eh.entry";
         out.resultKind = ILValue::Kind::I64; // unused
@@ -864,6 +935,10 @@ class ModuleAdapter {
     // Memory Operation Adapters
     //-------------------------------------------------------------------------
 
+    /// @brief Adapt the IL `load` opcode.
+    /// @details Operands: pointer (PTR) + optional displacement (I64).
+    ///          Any extra operands are trimmed because the MIR `load`
+    ///          shape is fixed at two arguments.
     void adaptLoad(const il::core::Instr &instr, ILInstr &out) {
         setResultKind(out, instr, instr.type);
         out.opcode = "load";
@@ -873,6 +948,10 @@ class ModuleAdapter {
         }
     }
 
+    /// @brief Adapt the IL `store` opcode.
+    /// @details Operands: pointer, value (typed to match the stored width),
+    ///          optional displacement. The third operand is dropped when
+    ///          absent so MIR opcode validators see a uniform shape.
     void adaptStore(const il::core::Instr &instr, ILInstr &out) {
         out.opcode = "store";
         out.resultBits = typeBitWidth(instr.type);
@@ -903,42 +982,49 @@ class ModuleAdapter {
     // Cast Operation Adapters
     //-------------------------------------------------------------------------
 
+    /// @brief Adapt the IL `zext` opcode (boolean to integer extension).
     void adaptZext(const il::core::Instr &instr, ILInstr &out) {
         setResultKind(out, instr, instr.type);
         out.opcode = "zext";
         convertOperands(instr, {ILValue::Kind::I1}, out);
     }
 
+    /// @brief Adapt the IL `trunc` opcode (integer width narrowing).
     void adaptTrunc(const il::core::Instr &instr, ILInstr &out) {
         setResultKind(out, instr, instr.type);
         out.opcode = "trunc";
         convertOperands(instr, {ILValue::Kind::I64}, out);
     }
 
+    /// @brief Adapt the IL `sitofp` opcode (signed int to double).
     void adaptSiToFp(const il::core::Instr &instr, ILInstr &out) {
         setResultKind(out, instr, instr.type);
         out.opcode = "sitofp";
         convertOperands(instr, {ILValue::Kind::I64}, out);
     }
 
+    /// @brief Adapt the IL `fptosi` opcode (truncating fp-to-signed-int).
     void adaptFpToSi(const il::core::Instr &instr, ILInstr &out) {
         setResultKind(out, instr, instr.type);
         out.opcode = "fptosi";
         convertOperands(instr, {ILValue::Kind::F64}, out);
     }
 
+    /// @brief Adapt the IL `fptosi.chk` opcode (rounded, range-checked).
     void adaptFpToSiChecked(const il::core::Instr &instr, ILInstr &out) {
         setResultKind(out, instr, instr.type);
         out.opcode = "fptosi_chk";
         convertOperands(instr, {ILValue::Kind::F64}, out);
     }
 
+    /// @brief Adapt the IL `fptoui` opcode (fp-to-unsigned-int with checks).
     void adaptFpToUi(const il::core::Instr &instr, ILInstr &out) {
         setResultKind(out, instr, instr.type);
         out.opcode = "fptoui";
         convertOperands(instr, {ILValue::Kind::F64}, out);
     }
 
+    /// @brief Adapt the IL `uitofp` opcode (unsigned int to double).
     void adaptUiToFp(const il::core::Instr &instr, ILInstr &out) {
         setResultKind(out, instr, instr.type);
         out.opcode = "uitofp";
@@ -957,6 +1043,10 @@ class ModuleAdapter {
     // Control Flow Adapters
     //-------------------------------------------------------------------------
 
+    /// @brief Adapt the IL `ret` opcode.
+    /// @details Uses the enclosing function's declared return type to hint
+    ///          the operand kind so I1 returns survive without surprise
+    ///          widening.
     void adaptRet(const il::core::Instr &instr, ILInstr &out) {
         out.opcode = "ret";
         if (!instr.operands.empty()) {
@@ -968,6 +1058,7 @@ class ModuleAdapter {
         }
     }
 
+    /// @brief Adapt the IL `br` (unconditional branch) opcode.
     void adaptBr(const il::core::Instr &instr, ILInstr &out, ILBlock &block) {
         out.opcode = "br";
         if (!instr.labels.empty()) {
@@ -976,6 +1067,8 @@ class ModuleAdapter {
         addTerminatorEdges(instr, block);
     }
 
+    /// @brief Adapt the IL `cbr` (conditional branch) opcode.
+    /// @details Operands: I1 condition, true-target label, false-target label.
     void adaptCBr(const il::core::Instr &instr, ILInstr &out, ILBlock &block) {
         out.opcode = "cbr";
         if (instr.operands.empty()) {

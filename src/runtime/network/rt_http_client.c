@@ -29,6 +29,7 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -83,6 +84,14 @@ typedef struct {
     http_client_mutex_t lock;
     int8_t lock_initialized;
 } rt_http_client_impl;
+
+static int http_client_timeout_ms_to_int(int64_t timeout_ms, int *out_timeout_ms) {
+    if (timeout_ms < 0 || timeout_ms > INT_MAX)
+        return 0;
+    if (out_timeout_ms)
+        *out_timeout_ms = (int)timeout_ms;
+    return 1;
+}
 
 static void free_cookie_list(rt_http_cookie *cookie) {
     while (cookie) {
@@ -736,8 +745,11 @@ void rt_http_client_set_timeout(void *obj, int64_t timeout_ms) {
     if (!obj)
         return;
     rt_http_client_impl *c = (rt_http_client_impl *)obj;
+    int timeout_int = 0;
+    if (!http_client_timeout_ms_to_int(timeout_ms, &timeout_int))
+        rt_trap("HttpClient: invalid timeout");
     HTTP_CLIENT_MUTEX_LOCK(&c->lock);
-    c->timeout_ms = timeout_ms;
+    c->timeout_ms = timeout_int;
     HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
 }
 

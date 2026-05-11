@@ -25,6 +25,7 @@
 #include "rt_string.h"
 
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -76,6 +77,13 @@ static inline uint8_t *bytes_data(void *obj) {
 
 static inline int64_t bytes_len_impl(void *obj) {
     return rt_bytes_len(obj);
+}
+
+static int multipart_size_add(size_t *total, size_t value) {
+    if (!total || *total > SIZE_MAX - value)
+        return 0;
+    *total += value;
+    return 1;
 }
 
 static const uint8_t *find_bytes(const uint8_t *haystack,
@@ -333,12 +341,20 @@ void *rt_multipart_add_field(void *obj, rt_string name, rt_string value) {
     const char *v = rt_string_cstr(value);
     size_t v_len = v ? strlen(v) : 0;
 
+    char *name_copy = n ? strdup(n) : strdup("");
+    uint8_t *data_copy = (uint8_t *)malloc(v_len > 0 ? v_len : 1);
+    if (!name_copy || !data_copy) {
+        free(name_copy);
+        free(data_copy);
+        rt_trap("Multipart: memory allocation failed");
+    }
+    if (v_len > 0)
+        memcpy(data_copy, v, v_len);
+
     multipart_part_t *part = &mp->parts[mp->part_count++];
-    part->name = n ? strdup(n) : strdup("");
+    part->name = name_copy;
     part->filename = NULL;
-    part->data = (uint8_t *)malloc(v_len);
-    if (part->data && v_len > 0)
-        memcpy(part->data, v, v_len);
+    part->data = data_copy;
     part->data_len = v_len;
     part->is_file = 0;
 
@@ -359,14 +375,26 @@ void *rt_multipart_add_file(void *obj, rt_string name, rt_string filename, void 
     const char *fn = rt_string_cstr(filename);
     int64_t len = data ? bytes_len_impl(data) : 0;
     uint8_t *ptr = data ? bytes_data(data) : NULL;
+    if (len < 0 || (uint64_t)len > (uint64_t)SIZE_MAX)
+        rt_trap("Multipart: invalid file data length");
+    size_t data_len = (size_t)len;
+    char *name_copy = n ? strdup(n) : strdup("");
+    char *filename_copy = fn ? strdup(fn) : strdup("file");
+    uint8_t *data_copy = (uint8_t *)malloc(data_len > 0 ? data_len : 1);
+    if (!name_copy || !filename_copy || !data_copy) {
+        free(name_copy);
+        free(filename_copy);
+        free(data_copy);
+        rt_trap("Multipart: memory allocation failed");
+    }
+    if (data_len > 0 && ptr)
+        memcpy(data_copy, ptr, data_len);
 
     multipart_part_t *part = &mp->parts[mp->part_count++];
-    part->name = n ? strdup(n) : strdup("");
-    part->filename = fn ? strdup(fn) : strdup("file");
-    part->data = (uint8_t *)malloc(len > 0 ? (size_t)len : 1);
-    if (part->data && len > 0)
-        memcpy(part->data, ptr, (size_t)len);
-    part->data_len = (size_t)(len > 0 ? len : 0);
+    part->name = name_copy;
+    part->filename = filename_copy;
+    part->data = data_copy;
+    part->data_len = data_len;
     part->is_file = 1;
 
     return obj;
@@ -399,21 +427,28 @@ void *rt_multipart_build(void *obj) {
         multipart_part_t *part = &mp->parts[i];
         size_t escaped_name_len = multipart_escaped_quoted_length(part->name);
         size_t escaped_filename_len = multipart_escaped_quoted_length(part->filename);
-        total += 2 + blen + 2; // --boundary\r\n
+        if (!multipart_size_add(&total, 2 + blen + 2))
+            return rt_bytes_new(0); // --boundary\r\n
         if (part->is_file) {
-            total += strlen("Content-Disposition: form-data; name=\"\"; filename=\"\"\r\n"
-                            "Content-Type: application/octet-stream\r\n\r\n");
-            total += escaped_name_len + escaped_filename_len;
+            if (!multipart_size_add(&total,
+                                    strlen("Content-Disposition: form-data; name=\"\"; filename=\"\"\r\n"
+                                           "Content-Type: application/octet-stream\r\n\r\n")) ||
+                !multipart_size_add(&total, escaped_name_len) ||
+                !multipart_size_add(&total, escaped_filename_len))
+                return rt_bytes_new(0);
         } else {
-            total += strlen("Content-Disposition: form-data; name=\"\"\r\n\r\n");
-            total += escaped_name_len;
+            if (!multipart_size_add(&total, strlen("Content-Disposition: form-data; name=\"\"\r\n\r\n")) ||
+                !multipart_size_add(&total, escaped_name_len))
+                return rt_bytes_new(0);
         }
-        total += part->data_len;
-        total += 2; // \r\n
+        if (!multipart_size_add(&total, part->data_len) || !multipart_size_add(&total, 2))
+            return rt_bytes_new(0); // \r\n
     }
-    total += 2 + blen + 4; // --boundary--\r\n
+    if (!multipart_size_add(&total, 2 + blen + 4) || total > (size_t)INT64_MAX ||
+        total == SIZE_MAX)
+        return rt_bytes_new(0); // --boundary--\r\n
 
-    uint8_t *buf = (uint8_t *)malloc(total);
+    uint8_t *buf = (uint8_t *)malloc(total + 1);
     if (!buf)
         return rt_bytes_new(0);
 
@@ -430,12 +465,12 @@ void *rt_multipart_build(void *obj) {
         }
 
         // Boundary
-        pos += (size_t)snprintf((char *)buf + pos, total - pos, "--%s\r\n", mp->boundary);
+        pos += (size_t)snprintf((char *)buf + pos, total + 1 - pos, "--%s\r\n", mp->boundary);
 
         // Headers
         if (part->is_file) {
             pos += (size_t)snprintf((char *)buf + pos,
-                                    total - pos,
+                                    total + 1 - pos,
                                     "Content-Disposition: form-data; name=\"%s\"; "
                                     "filename=\"%s\"\r\n"
                                     "Content-Type: application/octet-stream\r\n\r\n",
@@ -443,7 +478,7 @@ void *rt_multipart_build(void *obj) {
                                     escaped_filename);
         } else {
             pos += (size_t)snprintf((char *)buf + pos,
-                                    total - pos,
+                                    total + 1 - pos,
                                     "Content-Disposition: form-data; name=\"%s\"\r\n\r\n",
                                     escaped_name);
         }
@@ -455,14 +490,19 @@ void *rt_multipart_build(void *obj) {
             memcpy(buf + pos, part->data, part->data_len);
             pos += part->data_len;
         }
-        pos += (size_t)snprintf((char *)buf + pos, total - pos, "\r\n");
+        pos += (size_t)snprintf((char *)buf + pos, total + 1 - pos, "\r\n");
     }
 
     // Final boundary
-    pos += (size_t)snprintf((char *)buf + pos, total - pos, "--%s--\r\n", mp->boundary);
+    pos += (size_t)snprintf((char *)buf + pos, total + 1 - pos, "--%s--\r\n", mp->boundary);
+    if (pos > total) {
+        free(buf);
+        return rt_bytes_new(0);
+    }
 
     void *result = rt_bytes_new((int64_t)pos);
-    memcpy(bytes_data(result), buf, pos);
+    if (pos > 0)
+        memcpy(bytes_data(result), buf, pos);
     free(buf);
     return result;
 }
@@ -495,6 +535,8 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
     char boundary[128] = {0};
     if (!multipart_extract_param_value(ct, "boundary", boundary, sizeof(boundary)) || !boundary[0])
         return rt_multipart_new();
+    if (strlen(boundary) >= sizeof(((rt_multipart_impl *)0)->boundary))
+        return rt_multipart_new();
 
     rt_multipart_impl *mp =
         (rt_multipart_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_multipart_impl));
@@ -509,17 +551,20 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
     const uint8_t *data = bytes_data(body);
     if (!data || body_len <= 0)
         return mp;
+    if ((uint64_t)body_len > (uint64_t)SIZE_MAX)
+        return mp;
 
     char delim[140];
     int dlen = snprintf(delim, sizeof(delim), "--%s", boundary);
     char next_delim[144];
     int next_dlen = snprintf(next_delim, sizeof(next_delim), "\r\n--%s", boundary);
-    if (dlen <= 0 || next_dlen <= 0)
+    if (dlen <= 0 || next_dlen <= 0 || (size_t)dlen >= sizeof(delim) ||
+        (size_t)next_dlen >= sizeof(next_delim))
         return mp;
 
     // Find each part between boundaries
     const uint8_t *s = data;
-    const uint8_t *s_end = s + body_len;
+    const uint8_t *s_end = s + (size_t)body_len;
 
     // Skip to first boundary
     const uint8_t *p = find_bytes(s, (size_t)body_len, (const uint8_t *)delim, (size_t)dlen);
@@ -577,12 +622,22 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
 
         size_t data_size = (size_t)(next - data_start);
 
+        char *name_copy = strdup(part_name);
+        char *filename_copy = is_file ? strdup(part_filename) : NULL;
+        uint8_t *data_copy = (uint8_t *)malloc(data_size > 0 ? data_size : 1);
+        if (!name_copy || (is_file && !filename_copy) || !data_copy) {
+            free(name_copy);
+            free(filename_copy);
+            free(data_copy);
+            break;
+        }
+        if (data_size > 0)
+            memcpy(data_copy, data_start, data_size);
+
         multipart_part_t *part = &mp->parts[mp->part_count++];
-        part->name = strdup(part_name);
-        part->filename = is_file ? strdup(part_filename) : NULL;
-        part->data = (uint8_t *)malloc(data_size > 0 ? data_size : 1);
-        if (part->data && data_size > 0)
-            memcpy(part->data, data_start, data_size);
+        part->name = name_copy;
+        part->filename = filename_copy;
+        part->data = data_copy;
         part->data_len = data_size;
         part->is_file = is_file;
 

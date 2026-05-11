@@ -84,6 +84,7 @@ static constexpr uint8_t kFrameSettings = 0x4;
 static constexpr uint8_t kFlagEndStream = 0x1;
 static constexpr uint8_t kFlagAck = 0x1;
 static constexpr uint8_t kFlagEndHeaders = 0x4;
+static constexpr uint16_t kSettingEnablePush = 0x2;
 static constexpr uint32_t kH2RefusedStream = 0x7;
 static constexpr char kClientPreface[] = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
 
@@ -120,6 +121,11 @@ static uint32_t read_u32(const uint8_t *src) {
 
 static void append_u24(std::vector<uint8_t> &out, uint32_t value) {
     out.push_back(static_cast<uint8_t>((value >> 16) & 0xffu));
+    out.push_back(static_cast<uint8_t>((value >> 8) & 0xffu));
+    out.push_back(static_cast<uint8_t>(value & 0xffu));
+}
+
+static void append_u16(std::vector<uint8_t> &out, uint16_t value) {
     out.push_back(static_cast<uint8_t>((value >> 8) & 0xffu));
     out.push_back(static_cast<uint8_t>(value & 0xffu));
 }
@@ -483,11 +489,41 @@ static void test_http2_client_accepts_response_trailers() {
     rt_http2_conn_free(client);
 }
 
+static void test_http2_rejects_invalid_settings_value() {
+    printf("\nTesting HTTP/2 invalid SETTINGS rejection:\n");
+
+    pipe_buffer_t c2s;
+    pipe_buffer_t s2c;
+    pipe_endpoint_t server_ep{&c2s, &s2c};
+    rt_http2_io_t server_io{&server_ep, pipe_read_cb, pipe_write_cb};
+    rt_http2_conn_t *server = rt_http2_server_new(&server_io);
+    assert(server != nullptr);
+
+    send_client_preface(c2s);
+    std::vector<uint8_t> payload;
+    append_u16(payload, kSettingEnablePush);
+    append_u32(payload, 2);
+    write_frame(c2s, kFrameSettings, 0, 0, payload);
+
+    rt_http2_request_t req{};
+    bool ok = rt_http2_server_receive_request(server, 1024, &req) == 0;
+    test_result("HTTP/2 server rejects invalid ENABLE_PUSH setting", ok);
+    const char *err = rt_http2_get_error(server);
+    test_result("HTTP/2 invalid SETTINGS error is reported",
+                err && std::strstr(err, "SETTINGS") != nullptr);
+
+    close_pipe(c2s);
+    close_pipe(s2c);
+    rt_http2_request_free(&req);
+    rt_http2_conn_free(server);
+}
+
 int main() {
     test_http2_roundtrip_basic();
     test_http2_reuses_connection_for_second_stream();
     test_http2_server_refuses_concurrent_streams_without_dropping_connection();
     test_http2_client_accepts_response_trailers();
+    test_http2_rejects_invalid_settings_value();
     printf("\nAll HTTP/2 tests passed.\n");
     return 0;
 }

@@ -20,6 +20,14 @@
 
 namespace viper::codegen::x64 {
 
+/// @brief Compute the (use, def) role pair for operand @p idx of @p instr.
+/// @details Each MIR opcode declares fixed roles for its operands. Two-operand
+///          arithmetic puts the destination at index 0 (use+def), the
+///          right-hand value at index 1 (use only). Loads have dest at 0
+///          (def), address operands at 1+ (use). Stores have address and
+///          value both as uses. The fallback at the end conservatively
+///          treats unknown operands as "use" so liveness analysis cannot
+///          accidentally drop live values.
 std::pair<bool, bool> operandRoles(const MInstr &instr, std::size_t idx) noexcept {
     switch (instr.opcode) {
         case MOpcode::PUSH:
@@ -134,6 +142,10 @@ std::pair<bool, bool> operandRoles(const MInstr &instr, std::size_t idx) noexcep
     return {true, false};
 }
 
+/// @brief Predicate: does @p opcode read x86 EFLAGS?
+/// @details Only branch/setcc/cmov family opcodes consume EFLAGS. Used by
+///          peephole and scheduler passes to determine whether a flag-defining
+///          instruction is still observable.
 bool usesEFlags(MOpcode opcode) noexcept {
     switch (opcode) {
         case MOpcode::JCC:
@@ -145,6 +157,9 @@ bool usesEFlags(MOpcode opcode) noexcept {
     }
 }
 
+/// @brief Predicate: does @p opcode unconditionally write x86 EFLAGS?
+/// @details Almost every ALU instruction defines EFLAGS; MOVs and LEA do not.
+///          Used to bound the "live EFLAGS" window scanned by peepholes.
 bool definesEFlags(MOpcode opcode) noexcept {
     switch (opcode) {
         case MOpcode::ADDrr:
@@ -176,6 +191,12 @@ bool definesEFlags(MOpcode opcode) noexcept {
     }
 }
 
+/// @brief Predicate: does @p opcode have side effects beyond producing a value?
+/// @details Memory writes, control-flow transfers, division traps and the
+///          PX_COPY pseudo all qualify because dropping them could change
+///          observable program behavior. Pure register-to-register data
+///          movement instructions return false so DCE can remove them when
+///          their destinations are dead.
 bool hasObservableSideEffects(MOpcode opcode) noexcept {
     switch (opcode) {
         case MOpcode::PUSH:

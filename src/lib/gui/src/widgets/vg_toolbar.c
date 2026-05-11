@@ -1873,6 +1873,30 @@ vg_toolbar_item_t *vg_toolbar_add_widget(vg_toolbar_t *tb, const char *id, vg_wi
     return item;
 }
 
+static void toolbar_remove_item_at(vg_toolbar_t *tb, size_t index) {
+    if (!tb || index >= tb->item_count)
+        return;
+
+    if (tb->hovered_item == tb->items[index])
+        tb->hovered_item = NULL;
+    if (tb->pressed_item == tb->items[index])
+        tb->pressed_item = NULL;
+    if (tb->focused_index == (int)index)
+        tb->focused_index = -1;
+    else if (tb->focused_index > (int)index && !toolbar_focus_is_overflow(tb, tb->focused_index))
+        tb->focused_index--;
+    if (tb->dropdown_item == tb->items[index])
+        toolbar_dismiss_dropdown_popup(tb);
+    free_item(tb->items[index]);
+    memmove(&tb->items[index],
+            &tb->items[index + 1],
+            (tb->item_count - index - 1) * sizeof(vg_toolbar_item_t *));
+    tb->item_count--;
+    tb->base.needs_layout = true;
+    tb->overflow_popup_dirty = true;
+    toolbar_dismiss_overflow_popup(tb);
+}
+
 /// @brief Remove and free the item with the given id, shifting the items[] array and invalidating layout.
 ///
 /// @param tb Toolbar to modify; may be NULL (no-op).
@@ -1883,24 +1907,19 @@ void vg_toolbar_remove_item(vg_toolbar_t *tb, const char *id) {
 
     for (size_t i = 0; i < tb->item_count; i++) {
         if (tb->items[i]->id && strcmp(tb->items[i]->id, id) == 0) {
-            if (tb->hovered_item == tb->items[i])
-                tb->hovered_item = NULL;
-            if (tb->pressed_item == tb->items[i])
-                tb->pressed_item = NULL;
-            if (tb->focused_index == (int)i)
-                tb->focused_index = -1;
-            else if (tb->focused_index > (int)i && !toolbar_focus_is_overflow(tb, tb->focused_index))
-                tb->focused_index--;
-            if (tb->dropdown_item == tb->items[i])
-                toolbar_dismiss_dropdown_popup(tb);
-            free_item(tb->items[i]);
-            memmove(&tb->items[i],
-                    &tb->items[i + 1],
-                    (tb->item_count - i - 1) * sizeof(vg_toolbar_item_t *));
-            tb->item_count--;
-            tb->base.needs_layout = true;
-            tb->overflow_popup_dirty = true;
-            toolbar_dismiss_overflow_popup(tb);
+            toolbar_remove_item_at(tb, i);
+            return;
+        }
+    }
+}
+
+/// @brief Remove and free an exact item pointer, including runtime-created items without IDs.
+void vg_toolbar_remove_item_ptr(vg_toolbar_t *tb, vg_toolbar_item_t *item) {
+    if (!tb || !item)
+        return;
+    for (size_t i = 0; i < tb->item_count; i++) {
+        if (tb->items[i] == item) {
+            toolbar_remove_item_at(tb, i);
             return;
         }
     }

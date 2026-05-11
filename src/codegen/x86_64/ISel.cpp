@@ -89,17 +89,37 @@ void ensureMovzxAfterSetcc(MBasicBlock &block, std::size_t index) {
                               std::move(movzx));
 }
 
+/// @brief Predicate: does @p value fit into a signed 32-bit immediate?
+/// @details The x86-64 ALU and compare encodings accept a signed-imm32 form;
+///          immediates outside that range must be materialised into a register
+///          before use. This helper centralises the bound check so legalisers
+///          stay self-consistent.
+/// @param value 64-bit candidate immediate.
+/// @return True if @p value lies in [INT32_MIN, INT32_MAX].
 [[nodiscard]] bool fitsSignedImm32(int64_t value) noexcept {
     return value >= std::numeric_limits<int32_t>::min() &&
            value <= std::numeric_limits<int32_t>::max();
 }
 
+/// @brief Track the maximum virtual-register id seen so far.
+/// @details Helper used while scanning the function to find the next available
+///          virtual register id; only virtual (non-physical) operands update
+///          the running maximum.
 void observeVirtualRegister(const OpReg &reg, uint16_t &maxId) noexcept {
     if (!reg.isPhys) {
         maxId = std::max(maxId, reg.idOrPhys);
     }
 }
 
+/// @brief Compute the next free virtual register id for @p func.
+/// @details Scans every operand of every instruction in every block, observing
+///          both top-level register operands and the base/index registers
+///          embedded inside memory operands. Returns @c max(seen) + 1, so the
+///          result can be used directly as the next allocation id without
+///          colliding with existing vregs.
+/// @param func Machine function to scan.
+/// @return The smallest unused virtual GPR/XMM id (callers typically split
+///         by class outside this helper since the id space is shared).
 [[nodiscard]] uint32_t nextVirtualGprId(const MFunction &func) {
     uint16_t maxId = 0;
     for (const auto &block : func.blocks) {
@@ -124,6 +144,13 @@ void observeVirtualRegister(const OpReg &reg, uint16_t &maxId) noexcept {
     return static_cast<uint32_t>(maxId) + 1U;
 }
 
+/// @brief Allocate a fresh GPR-class virtual register and return it as an operand.
+/// @details Bumps @p nextVreg in place. Traps via @ref phaseAUnsupported when
+///          the running counter would overflow the 16-bit operand id space —
+///          this is a synthetic ceiling that protects encoders and analyses
+///          which rely on @c uint16_t register ids.
+/// @param nextVreg Running counter updated in place; receives the new id.
+/// @return @c Operand carrying the freshly allocated virtual GPR.
 [[nodiscard]] Operand makeTempGprOperand(uint32_t &nextVreg) {
     if (nextVreg >= std::numeric_limits<uint16_t>::max()) {
         phaseAUnsupported("too many virtual registers in function");
@@ -131,6 +158,19 @@ void observeVirtualRegister(const OpReg &reg, uint16_t &maxId) noexcept {
     return makeVRegOperand(RegClass::GPR, static_cast<uint16_t>(nextVreg++));
 }
 
+/// @brief Hoist an un-encodable immediate operand into a temporary GPR.
+/// @details When an instruction's RHS holds an immediate that cannot be encoded
+///          as a 32-bit signed displacement, this routine inserts a preceding
+///          @c MOVri that materialises the immediate into a freshly allocated
+///          virtual GPR and rewrites the original instruction to consume the
+///          register form (@p registerOpcode) instead. The MOVri inherits the
+///          source location of the instruction it precedes so diagnostics stay
+///          attributable to the originating IL site.
+/// @param block Machine basic block being legalised in place.
+/// @param index Index of the candidate instruction within @c block.instructions.
+/// @param nextVreg Running counter used to allocate the temporary virtual reg id.
+/// @param registerOpcode Register-register opcode to substitute when lifting.
+/// @return True when a MOVri was inserted (caller must adjust its iterator).
 bool materialiseImmediateRhs(MBasicBlock &block,
                              std::size_t index,
                              uint32_t &nextVreg,
@@ -186,6 +226,15 @@ bool legaliseCmp(MBasicBlock &block, std::size_t index, uint32_t &nextVreg) {
     return false;
 }
 
+/// @brief Attempt to fold an LEA address expression into a downstream memory use.
+/// @details Combines @p leaMem (the LEA's effective address) with @p useMem
+///          (a load/store memory operand) into a single SIB-form address. The
+///          fold fails when both expressions already use an index register —
+///          x86-64 SIB addressing has room for only one — or when the summed
+///          displacement overflows the signed-imm32 range.
+/// @param leaMem Memory expression produced by the LEA being folded.
+/// @param useMem Memory expression of the consuming instruction.
+/// @return The combined memory operand, or @c std::nullopt if no legal fusion exists.
 [[nodiscard]] std::optional<OpMem> combineLeaMemUse(const OpMem &leaMem, const OpMem &useMem) {
     if (leaMem.hasIndex && useMem.hasIndex) {
         return std::nullopt;
@@ -311,6 +360,16 @@ bool legaliseBitwise(MBasicBlock &block, std::size_t index, uint32_t &nextVreg) 
     return false;
 }
 
+/// @brief Append the appropriate GPR-class move for @p src into @p out.
+/// @details Chooses between immediate-to-register (@c MOVri) and register-to-register
+///          (@c MOVrr) based on the variant of @p src. Memory and label operands are
+///          rejected (the caller is expected to use a more specialised emitter for
+///          loads). Both operands are cloned so the caller can keep ownership of the
+///          originals.
+/// @param out Instruction stream the synthesised move is appended to.
+/// @param dst Destination GPR operand.
+/// @param src Source operand; must be an immediate or register.
+/// @return True if a move was appended, false if @p src was not a supported kind.
 bool appendGprMove(std::vector<MInstr> &out, const Operand &dst, const Operand &src) {
     if (std::holds_alternative<OpImm>(src)) {
         out.push_back(MInstr::make(MOpcode::MOVri,
@@ -453,6 +512,14 @@ bool lowerXmmSelect(MFunction &func, MBasicBlock &block, std::size_t index) {
     return true;
 }
 
+/// @brief Determine whether @p instr reads @p needle as a use (not a def).
+/// @details Walks every operand role-pair, ignoring def positions. Memory
+///          operands are recursed: both the base and (optional) index register
+///          are checked because either may carry a use of the queried register
+///          even though the operand itself is a memory expression.
+/// @param instr Instruction to inspect.
+/// @param needle Register operand to look for.
+/// @return True if any use slot or memory operand references @p needle.
 bool instructionUsesRegister(const MInstr &instr, const Operand &needle) {
     for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
         const auto [isUse, isDef] = operandRoles(instr, idx);
@@ -479,6 +546,16 @@ bool instructionUsesRegister(const MInstr &instr, const Operand &needle) {
     return false;
 }
 
+/// @brief Tally per-instruction virtual register uses into @p useCount.
+/// @details Templated on @c CountMap so the same scan can populate either a
+///          @c std::vector<uint32_t> (indexed by vreg id) or a sparse map.
+///          Physical registers are skipped because they are not subject to
+///          allocation. Memory operands contribute uses for both base and
+///          index components, which mirrors the legaliser's view of operand
+///          dependencies.
+/// @tparam CountMap Indexable container supporting @c operator[](uint16_t).
+/// @param instr Instruction whose use operands are inspected.
+/// @param useCount Accumulator updated in place.
 template <typename CountMap>
 void countVirtualRegisterUses(const MInstr &instr, CountMap &useCount) {
     for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
@@ -508,6 +585,13 @@ void countVirtualRegisterUses(const MInstr &instr, CountMap &useCount) {
     }
 }
 
+/// @brief Count occurrences of virtual register @p vreg as a use within @p instr.
+/// @details Same scanning rules as @ref instructionUsesRegister but returns a
+///          count rather than a boolean so callers can detect single-use
+///          versus multi-use patterns (important for fold legality).
+/// @param instr Instruction to scan.
+/// @param vreg Virtual register id to count.
+/// @return Number of distinct use positions referencing @p vreg.
 std::size_t countVirtualRegisterUsesInInstr(const MInstr &instr, uint16_t vreg) {
     std::size_t count = 0;
     for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
@@ -538,6 +622,16 @@ std::size_t countVirtualRegisterUsesInInstr(const MInstr &instr, uint16_t vreg) 
     return count;
 }
 
+/// @brief Sum uses of @p vreg across [@p begin, @p end) inside @p block.
+/// @details Provides a bounded view used by fold legalisers that want to
+///          confirm a value's only uses lie within a specific candidate
+///          window. @p end is clamped to @c block.instructions.size() so
+///          callers do not need to guard against off-by-one ranges.
+/// @param block Block whose instructions form the search range.
+/// @param vreg Virtual register id being counted.
+/// @param begin First instruction index (inclusive).
+/// @param end Past-the-end instruction index (exclusive, clamped).
+/// @return Number of uses of @p vreg within the inspected interval.
 std::size_t countVirtualRegisterUsesInRange(const MBasicBlock &block,
                                             uint16_t vreg,
                                             std::size_t begin,
@@ -550,6 +644,13 @@ std::size_t countVirtualRegisterUsesInRange(const MBasicBlock &block,
     return count;
 }
 
+/// @brief Count every use of @p vreg across all blocks of @p func.
+/// @details Equivalent to summing @ref countVirtualRegisterUsesInRange over
+///          the entire function. Useful when a peephole must verify a vreg
+///          is dead after rewriting (e.g. dead boolean materialisation).
+/// @param func Machine function to scan.
+/// @param vreg Virtual register id being counted.
+/// @return Total number of use-position occurrences.
 std::size_t countVirtualRegisterUsesInFunction(const MFunction &func, uint16_t vreg) {
     std::size_t count = 0;
     for (const auto &block : func.blocks) {
@@ -584,6 +685,15 @@ bool registerUsedOutsideFoldPattern(const MFunction &func,
     return false;
 }
 
+/// @brief Decide whether EFLAGS is still observable after @p index.
+/// @details Scans forward from @p index + 1 and returns true the moment a
+///          downstream instruction is found to read EFLAGS, false when the
+///          next encountered instruction unconditionally redefines EFLAGS
+///          before any read. A LABEL conservatively counts as a read because
+///          it may begin a basic block reachable from elsewhere.
+/// @param instrs Instruction stream to walk.
+/// @param index Index of the instruction whose EFLAGS production is in question.
+/// @return True if any consumer reads EFLAGS before the next redefinition.
 bool flagsReadBeforeClobber(const std::vector<MInstr> &instrs, std::size_t index) {
     for (std::size_t scan = index + 1; scan < instrs.size(); ++scan) {
         const MOpcode opcode = instrs[scan].opcode;

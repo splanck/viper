@@ -254,7 +254,7 @@ static int sse_transport_send_all(rt_sse_impl *sse, const void *data, size_t len
                         (const char *)data + total,
                         (int)((len - total) > INT_MAX ? INT_MAX : (len - total)),
                         SEND_FLAGS);
-        if (sent == SOCK_ERROR)
+        if (sent <= 0)
             return 0;
         total += (size_t)sent;
     }
@@ -338,11 +338,12 @@ static rt_string sse_raw_recv_line(rt_sse_impl *sse) {
 static int sse_parse_chunk_size(const char *line, size_t *size_out) {
     size_t size = 0;
     const char *p = line;
+    int saw_digit = 0;
     if (!p || !*p)
         return 0;
 
-    while (*p && *p != ';') {
-        char c = *p++;
+    while (*p) {
+        char c = *p;
         int digit;
         if (c >= '0' && c <= '9')
             digit = c - '0';
@@ -351,12 +352,20 @@ static int sse_parse_chunk_size(const char *line, size_t *size_out) {
         else if (c >= 'A' && c <= 'F')
             digit = 10 + (c - 'A');
         else
-            return 0;
+            break;
 
+        saw_digit = 1;
         if (size > (SIZE_MAX >> 4))
             return 0;
         size = (size << 4) | (size_t)digit;
+        p++;
     }
+    if (!saw_digit)
+        return 0;
+    while (*p == ' ' || *p == '\t')
+        p++;
+    if (*p != '\0' && *p != ';')
+        return 0;
 
     *size_out = size;
     return 1;
@@ -459,16 +468,19 @@ static rt_string sse_payload_recv_line(rt_sse_impl *sse) {
 }
 
 static int sse_wait_readable(rt_sse_impl *sse, int64_t timeout_ms) {
+    int timeout_int = 0;
     if (timeout_ms <= 0)
         return 1;
+    if (!rt_net_timeout_ms_to_int(timeout_ms, &timeout_int))
+        return 0;
     if (sse->read_buf_pos < sse->read_buf_len)
         return 1;
     if (sse->tls) {
         if (rt_tls_has_buffered_data(sse->tls))
             return 1;
-        return wait_socket(rt_tls_get_socket(sse->tls), (int)timeout_ms, false) > 0;
+        return wait_socket(rt_tls_get_socket(sse->tls), timeout_int, false) > 0;
     }
-    return sse->socket_fd != INVALID_SOCK && wait_socket(sse->socket_fd, (int)timeout_ms, false) > 0;
+    return sse->socket_fd != INVALID_SOCK && wait_socket(sse->socket_fd, timeout_int, false) > 0;
 }
 
 static char *sse_strdup_trimmed(const char *text) {
@@ -606,6 +618,11 @@ retry:
     }
 
     port = rt_url_port(url_obj);
+    if (port < 1 || port > 65535) {
+        if (err_msg && err_msg_cap > 0)
+            snprintf(err_msg, err_msg_cap, "SSE: invalid URL port");
+        goto fail;
+    }
     if (is_secure) {
         rt_tls_config_t cfg;
         rt_tls_config_init(&cfg);
@@ -969,15 +986,25 @@ rt_string rt_sse_recv(void *obj) {
         } else if (strncmp(l, "retry:", 6) == 0) {
             const char *val = l + 6;
             int64_t retry_ms = 0;
+            int saw_digit = 0;
+            int valid_retry = 1;
             if (*val == ' ')
                 val++;
             while (*val >= '0' && *val <= '9') {
-                retry_ms = retry_ms * 10 + (*val - '0');
+                int digit = *val - '0';
+                if (retry_ms > (INT64_MAX - digit) / 10) {
+                    valid_retry = 0;
+                    break;
+                }
+                retry_ms = retry_ms * 10 + digit;
+                saw_digit = 1;
                 val++;
             }
+            while (*val >= '0' && *val <= '9')
+                val++;
             while (*val == ' ' || *val == '\t')
                 val++;
-            if (*val == '\0')
+            if (valid_retry && saw_digit && *val == '\0')
                 sse->retry_ms = retry_ms;
         }
         // Ignore "retry:" and comment lines (starting with ':')
@@ -998,6 +1025,10 @@ rt_string rt_sse_recv_for(void *obj, int64_t timeout_ms) {
     rt_sse_impl *sse = (rt_sse_impl *)obj;
     if (!sse->is_open)
         return rt_string_from_bytes("", 0);
+    if (timeout_ms < 0 || timeout_ms > INT_MAX) {
+        rt_trap("SSE: invalid timeout");
+        return rt_string_from_bytes("", 0);
+    }
     if (!sse_wait_readable(sse, timeout_ms))
         return rt_string_from_bytes("", 0);
     return rt_sse_recv(obj);

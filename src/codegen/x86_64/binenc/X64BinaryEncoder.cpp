@@ -327,6 +327,21 @@ size_t X64BinaryEncoder::measureInstructionSize(const MInstr &instr,
     return text.currentOffset() - currentOffset;
 }
 
+/// @brief Resolve every label in @p fn to a stable byte offset.
+/// @details The encoder must know branch displacements before it emits
+///          instructions because branch encodings depend on size (rel8 vs
+///          rel32). This method iterates a measurement pass to a fixed
+///          point: each pass uses the previous iteration's offsets to
+///          decide short vs near forms, then re-measures. Convergence is
+///          bounded by the number of relaxation-candidate branches plus
+///          one; further iterations cannot enable new short branches once
+///          all candidates stabilise.
+///          When branch relaxation is disabled the function does a single
+///          pass with conservative (always rel32) sizes.
+/// @param fn Function being encoded.
+/// @param isDarwin True when targeting Mach-O (affects symbol mangling
+///        which can change instruction sizes through relocation choices).
+/// @return Map from label name to its byte offset within the function.
 X64BinaryEncoder::LabelOffsetMap X64BinaryEncoder::computeFunctionLabelOffsets(const MFunction &fn,
                                                                                bool isDarwin) {
     LabelOffsetMap estimated;
@@ -390,6 +405,11 @@ X64BinaryEncoder::LabelOffsetMap X64BinaryEncoder::computeFunctionLabelOffsets(c
     return estimated;
 }
 
+/// @brief Predict the total byte size of @p fn given resolved label offsets.
+/// @details Walks every instruction and sums the result of
+///          @ref measureInstructionSize, skipping label markers. Used to
+///          pre-reserve CodeSection capacity and to detect drift during
+///          emission via @ref verifyPredictedLabelOffset.
 size_t X64BinaryEncoder::estimateFunctionSize(const MFunction &fn,
                                               const LabelOffsetMap &knownLabelOffsets,
                                               bool isDarwin) {
@@ -404,6 +424,12 @@ size_t X64BinaryEncoder::estimateFunctionSize(const MFunction &fn,
     return size;
 }
 
+/// @brief Assert that emission matches the pre-computed offset for @p label.
+/// @details Branch-relaxation correctness depends on the predicted size
+///          matching the emitted size byte for byte. When they diverge, the
+///          rel32 patch sites point at the wrong location and the function
+///          would silently produce broken machine code. This routine throws
+///          a descriptive error so the mismatch surfaces immediately.
 void X64BinaryEncoder::verifyPredictedLabelOffset(const std::string &label, size_t actualOffset) const {
     auto it = labelOffsets_.find(label);
     if (it == labelOffsets_.end())

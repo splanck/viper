@@ -106,6 +106,13 @@ namespace {
     return x64::makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(reg));
 }
 
+/// @brief Predicate: does @p value fit a signed 32-bit immediate?
+/// @details Mirrors the helper in ISel.cpp; duplicated here so the div-lowering
+///          translation unit stays self-contained. Used to decide whether the
+///          remainder mask for a power-of-2 @c urem can be encoded directly
+///          into @c ANDri or whether it must be materialised through a temp.
+/// @param value 64-bit candidate immediate.
+/// @return True if @p value is representable as a signed 32-bit integer.
 [[nodiscard]] bool fitsSignedImm32(int64_t value) noexcept {
     return value >= static_cast<int64_t>(std::numeric_limits<int32_t>::min()) &&
            value <= static_cast<int64_t>(std::numeric_limits<int32_t>::max());

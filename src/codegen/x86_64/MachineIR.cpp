@@ -190,6 +190,14 @@ namespace {
     return "unknown";
 }
 
+/// @brief Reject non-GPR registers used in memory-operand base/index slots.
+/// @details x86-64 addressing modes can only consume GPR base and index
+///          registers; XMM cannot serve as either. We throw rather than
+///          assert so misuses produced by upstream lowering are reportable
+///          via the diagnostic path instead of crashing the compiler.
+/// @param reg Register being placed in the memory operand.
+/// @param role @c "base" or @c "index", used to build the error message.
+/// @throws std::invalid_argument when @p reg has a non-GPR class.
 void validateMemReg(const OpReg &reg, const char *role) {
     if (reg.cls != RegClass::GPR) {
         throw std::invalid_argument(std::string("x86-64 memory operand ") + role +
@@ -198,6 +206,11 @@ void validateMemReg(const OpReg &reg, const char *role) {
     }
 }
 
+/// @brief Validate a SIB scale value against the architectural set {1,2,4,8}.
+/// @details SIB encoding has only two bits for the scale, so any other value
+///          would silently truncate. Throw to surface programmer errors.
+/// @param scale Scale to validate.
+/// @throws std::invalid_argument for any value other than 1/2/4/8.
 void validateMemScale(uint8_t scale) {
     switch (scale) {
         case 1:
@@ -210,6 +223,12 @@ void validateMemScale(uint8_t scale) {
     }
 }
 
+/// @brief Detect whether @p reg refers to the architectural @c %rsp register.
+/// @details @c %rsp cannot serve as an index register in SIB encoding (its
+///          slot is reserved as "no index"); callers use this predicate to
+///          reject such operands at construction time.
+/// @param reg Register operand to inspect.
+/// @return True when @p reg is physical @c %rsp.
 bool isRspIndex(const OpReg &reg) noexcept {
     return reg.isPhys && reg.cls == RegClass::GPR &&
            static_cast<PhysReg>(reg.idOrPhys) == PhysReg::RSP;
@@ -342,6 +361,16 @@ Operand makeMemOperand(OpReg base, int32_t disp) {
     return Operand{m};
 }
 
+/// @brief Construct a SIB-form memory operand.
+/// @details Builds an indexed memory operand with the canonical
+///          @c [base + index*scale + disp] shape. Both registers are
+///          validated to be GPRs, @p scale is checked against the legal
+///          set, and @c %rsp is forbidden as an index.
+/// @param base Base register.
+/// @param index Index register (cannot be @c %rsp).
+/// @param scale Architectural scale (1/2/4/8).
+/// @param disp Signed 32-bit displacement.
+/// @return @c Operand variant wrapping the constructed @c OpMem.
 Operand makeMemOperand(OpReg base, OpReg index, uint8_t scale, int32_t disp) {
     validateMemReg(base, "base");
     validateMemReg(index, "index");

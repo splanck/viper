@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-18
+last-verified: 2026-05-11
 ---
 
 # Application Components
@@ -43,11 +43,14 @@ Menu and menu-item handles are owner-checked; removing an item through the wrong
 ### MenuItem
 
 Menu item (returned by `Menu.AddItem()`).
+Checkable state is explicit: `IsCheckable()` is false until `SetCheckable(1)` or `SetChecked(...)` makes the item a toggle. Disabling checkable state clears the checked mark.
 
 | Method                  | Signature       | Description                    |
 |-------------------------|-----------------|--------------------------------|
 | `IsChecked()`           | `Boolean()`     | Check if checked               |
+| `IsCheckable()`         | `Boolean()`     | Check if item supports checked state |
 | `IsEnabled()`           | `Integer()`     | Check if enabled               |
+| `SetCheckable(enabled)` | `Void(Integer)` | Enable/disable checked-state support |
 | `SetChecked(checked)`   | `Void(Integer)` | Set check mark                 |
 | `SetEnabled(enabled)`   | `Void(Integer)` | Enable/disable item            |
 | `SetIcon(pixels)`       | `Void(Object)`  | Set image icon from a `Pixels` handle |
@@ -81,6 +84,7 @@ When the toolbar is narrower than its contents, hidden items are exposed through
 Flexible spacer items now consume the remaining strip width, and dropdown toolbar items open their attached menus directly.
 Runtime text and icon changes invalidate layout and overflow measurement immediately, so the strip repacks without waiting for an unrelated refresh.
 Toolbar items now render pixel icons directly, keyboard focus is visible, and `Left` / `Right` / `Home` / `End` navigate the strip while `Enter` / `Space` activate the focused item or overflow button.
+Items returned by runtime add methods can be removed by handle even when they do not have an internal string id.
 
 **Constructor:** `NEW Viper.GUI.Toolbar(parent)`
 
@@ -168,6 +172,7 @@ item.SetTooltip("File encoding");
 Right-click context menu.
 
 Context menus now anchor in screen space for nested widgets, capture input while open, clamp to the host window, and reliably dismiss on outside click instead of letting clicks fall through to the underlying UI. Dismissing a submenu restores capture to its parent menu, callback payloads are tracked independently for selection and dismiss handlers, and destroyed menus are removed from the right-click registry.
+Nested context submenus are owned by their parent menu item. Destroying the parent destroys attached submenus, while explicitly destroying a child submenu detaches the parent item so later parent cleanup remains safe.
 
 **Constructor:** `NEW Viper.GUI.ContextMenu()`
 
@@ -379,6 +384,8 @@ Dialog hit-testing is local to the dialog surface, so button clicks, close click
 System message dialog boxes (static methods).
 Stateful message boxes are safe to destroy explicitly; calling `Show()` on a
 destroyed wrapper returns `-1` instead of trying to reuse the freed dialog.
+Object-style `Show()` also returns `-1` when the dialog closes without a button
+result, such as a window close or unavailable owner app.
 
 | Method                                       | Signature                 | Description                   |
 |----------------------------------------------|---------------------------|-------------------------------|
@@ -408,7 +415,8 @@ Native or in-app file dialog boxes (static methods).
 
 Save dialogs honor the default filename field, append the configured default extension when needed, and keep buttons/bookmarks/file-list hit-testing correct after the window is repositioned.
 Object-style dialogs snapshot their accepted path list on each `Show()`, so repeated `Show()` / `Destroy()` cycles and multi-select accessors stay valid.
-On macOS, one-shot static dialogs use native panels. On other GUI builds, static and object-style dialogs use the same in-app modal dialog and therefore require an active `Viper.GUI.App` window; they return an empty string or `0` when no active GUI window is available.
+On macOS, one-shot static dialogs use native panels, including native multi-select for `OpenMultiple`. On other GUI builds, static and object-style dialogs use the same in-app modal dialog and therefore require an active `Viper.GUI.App` window; they return an empty string or `0` when no active GUI window is available.
+`OpenMultiple()` returns selected paths joined with semicolons. Literal semicolons and backslashes inside paths are escaped as `\;` and `\\` so callers can split the result without ambiguity.
 The in-app dialog implementation now scrolls long file and bookmark lists, keeps the selected row visible during keyboard navigation, clips long path text, and supports caret-aware editing in the save-name field (`Left` / `Right`, `Home`, `End`, `Backspace`, `Delete`).
 
 | Method                                          | Signature                        | Description                              |
@@ -624,6 +632,7 @@ Viper.GUI.Container.SetPadding(vbox, 20.0)
 Keyboard shortcut registration system (static methods).
 
 Shortcut matching uses the translated `VG_KEY_*` key space, so function keys, arrows, `Home`/`End`, `PageUp`/`PageDown`, and other named keys match the same strings accepted by `Register()`. Focused widgets receive key-down events first; a global shortcut only fires when the widget tree leaves the key unhandled. While a modal dialog is open, global shortcuts are suppressed so accelerators cannot leak through the modal.
+Invalid shortcut strings are rejected without registering a new shortcut or replacing an existing one.
 
 | Method                                          | Signature               | Description                              |
 |-------------------------------------------------|-------------------------|------------------------------------------|

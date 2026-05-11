@@ -59,6 +59,8 @@ static char captured_query[32];
 static char captured_header[32];
 static char captured_param[32];
 static char captured_body[64];
+static char captured_body_bytes[64];
+static int64_t captured_body_len = 0;
 
 static void copy_rt_string(char *dst, size_t cap, rt_string value) {
     const char *cstr = value ? rt_string_cstr(value) : NULL;
@@ -78,6 +80,8 @@ static void reset_captured_request_state(void) {
     captured_header[0] = '\0';
     captured_param[0] = '\0';
     captured_body[0] = '\0';
+    memset(captured_body_bytes, 0, sizeof(captured_body_bytes));
+    captured_body_len = 0;
 }
 
 static void native_http_handler(void *req_obj, void *res_obj) {
@@ -94,6 +98,10 @@ static void native_http_handler(void *req_obj, void *res_obj) {
     copy_rt_string(captured_header, sizeof(captured_header), header);
     copy_rt_string(captured_param, sizeof(captured_param), param);
     copy_rt_string(captured_body, sizeof(captured_body), body);
+    captured_body_len = rt_str_len(body);
+    if (captured_body_len > 0 && captured_body_len <= (int64_t)sizeof(captured_body_bytes)) {
+        memcpy(captured_body_bytes, rt_string_cstr(body), (size_t)captured_body_len);
+    }
 
     rt_string_unref(method);
     rt_string_unref(path);
@@ -142,6 +150,32 @@ static void test_http_server_rejects_invalid_content_length(void) {
                        "Content-Length: -1\r\n"
                        "\r\n";
     ASSERT(rt_http_server_test_parse_request(raw, strlen(raw), NULL, NULL, NULL, NULL) == 0);
+}
+
+static void test_http_server_rejects_invalid_method_and_target(void) {
+    const char bad_method[] = "GE\tT / HTTP/1.1\r\n"
+                              "Host: example.test\r\n"
+                              "\r\n";
+    const char bad_target[] = "GET relative HTTP/1.1\r\n"
+                              "Host: example.test\r\n"
+                              "\r\n";
+    ASSERT(rt_http_server_test_parse_request(
+               bad_method, sizeof(bad_method) - 1, NULL, NULL, NULL, NULL) == 0);
+    ASSERT(rt_http_server_test_parse_request(
+               bad_target, sizeof(bad_target) - 1, NULL, NULL, NULL, NULL) == 0);
+}
+
+static void test_http_server_normalizes_absolute_form_target(void) {
+    const char raw[] = "GET http://example.test/proxy?q=1 HTTP/1.1\r\n"
+                       "Host: example.test\r\n"
+                       "\r\n";
+    char *method = NULL;
+    char *path = NULL;
+    ASSERT(rt_http_server_test_parse_request(raw, strlen(raw), &method, &path, NULL, NULL) == 1);
+    ASSERT(method && strcmp(method, "GET") == 0);
+    ASSERT(path && strcmp(path, "/proxy") == 0);
+    free(method);
+    free(path);
 }
 
 static void test_http_server_rejects_truncated_body(void) {
@@ -256,6 +290,36 @@ static void test_http_server_executes_bound_native_handler(void) {
     ASSERT(strcmp(captured_body, "hello") == 0);
 
     rt_string_unref(response);
+    if (rt_obj_release_check0(server))
+        rt_obj_free(server);
+}
+
+static void test_http_server_process_request_preserves_nul_body_and_decodes_query_key(void) {
+    reset_captured_request_state();
+
+    void *server = rt_http_server_new(8085);
+    rt_http_server_post(server, rt_const_cstr("/users/:id"), rt_const_cstr("handle_user"));
+    rt_http_server_bind_handler(server, rt_const_cstr("handle_user"), (void *)&native_http_handler);
+
+    const char raw[] = "POST /users/42?%71=search HTTP/1.1\r\n"
+                       "Host: example.test\r\n"
+                       "X-Test: abc\r\n"
+                       "Content-Length: 4\r\n"
+                       "\r\n"
+                       "hi\0!";
+    const char expected_body[] = {'h', 'i', '\0', '!'};
+    rt_string raw_str = rt_string_from_bytes(raw, sizeof(raw) - 1);
+    rt_string response = (rt_string)rt_http_server_process_request(server, raw_str);
+    const char *response_cstr = rt_string_cstr(response);
+
+    ASSERT(response_cstr != NULL);
+    ASSERT(strstr(response_cstr, "HTTP/1.1 201 Created\r\n") != NULL);
+    ASSERT(strcmp(captured_query, "search") == 0);
+    ASSERT(captured_body_len == 4);
+    ASSERT(memcmp(captured_body_bytes, expected_body, sizeof(expected_body)) == 0);
+
+    rt_string_unref(response);
+    rt_string_unref(raw_str);
     if (rt_obj_release_check0(server))
         rt_obj_free(server);
 }
@@ -381,6 +445,23 @@ static void test_http_parse_url_rejects_crlf_injection(void) {
     free(path);
 }
 
+static void test_http_parse_url_rejects_bad_ports(void) {
+    char *host = NULL;
+    char *path = NULL;
+    int port = 0;
+    int use_tls = 0;
+    ASSERT(rt_http_parse_url_for_test(
+               "http://example.test:80junk/path", &host, &port, &path, &use_tls) == 0);
+    free(host);
+    free(path);
+    host = NULL;
+    path = NULL;
+    ASSERT(rt_http_parse_url_for_test(
+               "http://example.test:70000/path", &host, &port, &path, &use_tls) == 0);
+    free(host);
+    free(path);
+}
+
 static void test_ws_parse_url_accepts_ipv6_literal(void) {
     int secure = 0;
     int port = 0;
@@ -393,6 +474,31 @@ static void test_ws_parse_url_accepts_ipv6_literal(void) {
     ASSERT(port == 9000);
     ASSERT(path && strcmp(path, "/chat") == 0);
 
+    free(host);
+    free(path);
+}
+
+static void test_ws_parse_url_rejects_bad_authorities(void) {
+    int secure = 0;
+    int port = 0;
+    char *host = NULL;
+    char *path = NULL;
+
+    ASSERT(rt_ws_parse_url_for_test("ws://:80/chat", &secure, &host, &port, &path) == 0);
+    free(host);
+    free(path);
+    host = NULL;
+    path = NULL;
+
+    ASSERT(rt_ws_parse_url_for_test("ws://example.test:80junk/chat", &secure, &host, &port, &path) ==
+           0);
+    free(host);
+    free(path);
+    host = NULL;
+    path = NULL;
+
+    ASSERT(rt_ws_parse_url_for_test("ws://example.test:70000/chat", &secure, &host, &port, &path) ==
+           0);
     free(host);
     free(path);
 }
@@ -488,19 +594,24 @@ int main(void) {
     test_http_server_parses_exact_body();
     test_http_server_rejects_invalid_http_version();
     test_http_server_rejects_invalid_content_length();
+    test_http_server_rejects_invalid_method_and_target();
+    test_http_server_normalizes_absolute_form_target();
     test_http_server_rejects_truncated_body();
     test_http_server_rejects_duplicate_content_length();
     test_http_server_parses_chunked_request_body();
     test_http_server_builds_large_header_block();
     test_http_server_response_filters_managed_and_injected_headers();
     test_http_server_executes_bound_native_handler();
+    test_http_server_process_request_preserves_nul_body_and_decodes_query_key();
     test_http_server_executes_bound_native_handler_for_chunked_body();
     test_http_server_http10_defaults_to_close();
     test_http_server_http10_keepalive_opt_in();
     test_http_server_reports_missing_handler_binding();
     test_http_parse_url_accepts_ipv6_literal();
     test_http_parse_url_rejects_crlf_injection();
+    test_http_parse_url_rejects_bad_ports();
     test_ws_parse_url_accepts_ipv6_literal();
+    test_ws_parse_url_rejects_bad_authorities();
     test_ws_handshake_validation_accepts_valid_response();
     test_ws_handshake_validation_rejects_spurious_101();
     test_ws_handshake_validation_rejects_unsolicited_subprotocol();

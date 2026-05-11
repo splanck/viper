@@ -65,6 +65,7 @@ typedef SOCKET socket_t;
 #include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <poll.h>
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -171,9 +172,28 @@ static void suppress_sigpipe(socket_t sock) {
 /// @param for_write   Non-zero waits for write-readiness, zero waits for read-readiness.
 /// @return >0 if ready, 0 on timeout, -1 on error (caller checks `errno`).
 static int tls_wait_socket(socket_t sock, int timeout_ms, int for_write) {
+    if (timeout_ms < 0)
+        return -1;
+#if !defined(_WIN32) && !defined(__viperdos__)
+    struct pollfd pfd;
+    int result;
+    if (sock < 0)
+        return -1;
+    pfd.fd = sock;
+    pfd.events = for_write ? POLLOUT : POLLIN;
+    pfd.revents = 0;
+    do {
+        result = poll(&pfd, 1, timeout_ms);
+    } while (result < 0 && errno == EINTR);
+    return result;
+#else
     fd_set fds;
+#ifndef _WIN32
+    if (sock < 0 || sock >= FD_SETSIZE)
+        return -1;
+#endif
     FD_ZERO(&fds);
-    FD_SET((unsigned)sock, &fds);
+    FD_SET(sock, &fds);
 
     struct timeval tv;
     tv.tv_sec = timeout_ms / 1000;
@@ -182,6 +202,7 @@ static int tls_wait_socket(socket_t sock, int timeout_ms, int for_write) {
     if (for_write)
         return select((int)sock + 1, NULL, &fds, NULL, &tv);
     return select((int)sock + 1, &fds, NULL, NULL, &tv);
+#endif
 }
 
 /// @brief Toggle a socket between blocking and non-blocking I/O.
@@ -208,6 +229,8 @@ static void tls_set_nonblocking(socket_t sock, int nonblocking) {
 /// Sets `SO_RCVTIMEO` or `SO_SNDTIMEO` (chosen by `is_recv`).
 /// Windows takes a `DWORD` of milliseconds; POSIX takes a `struct timeval`.
 static void tls_set_socket_timeout(socket_t sock, int timeout_ms, int is_recv) {
+    if (timeout_ms < 0)
+        timeout_ms = 0;
 #ifdef _WIN32
     DWORD tv = (DWORD)timeout_ms;
     setsockopt(
@@ -252,14 +275,27 @@ static void tls_release_dynamic_state(rt_tls_session_t *session) {
 ///        hostname and signature verification.
 static int tls_server_ctx_append_cert(
     rt_tls_server_ctx_t *ctx, const uint8_t *der, size_t der_len, int is_leaf) {
-    size_t entry_len = 3 + der_len + 2;
+    size_t entry_len = 0;
     uint8_t *grown = NULL;
-    if (!ctx || !der || der_len == 0 || der_len > 0xFFFFFF)
+    uint8_t *leaf_copy = NULL;
+    if (!ctx || !der || der_len == 0 || der_len > 0xFFFFFFu - 5u)
         return 0;
+    entry_len = 3 + der_len + 2;
+    if (ctx->cert_list_entries_len > 0xFFFFFFu - entry_len ||
+        ctx->cert_list_entries_len > SIZE_MAX - entry_len)
+        return 0;
+    if (is_leaf) {
+        leaf_copy = (uint8_t *)malloc(der_len);
+        if (!leaf_copy)
+            return 0;
+        memcpy(leaf_copy, der, der_len);
+    }
 
     grown = (uint8_t *)realloc(ctx->cert_list_entries, ctx->cert_list_entries_len + entry_len);
-    if (!grown)
+    if (!grown) {
+        free(leaf_copy);
         return 0;
+    }
     ctx->cert_list_entries = grown;
     grown += ctx->cert_list_entries_len;
     grown[0] = (uint8_t)((der_len >> 16) & 0xFF);
@@ -271,10 +307,8 @@ static int tls_server_ctx_append_cert(
     ctx->cert_list_entries_len += entry_len;
 
     if (is_leaf) {
-        ctx->leaf_cert_der = (uint8_t *)malloc(der_len);
-        if (!ctx->leaf_cert_der)
-            return 0;
-        memcpy(ctx->leaf_cert_der, der, der_len);
+        free(ctx->leaf_cert_der);
+        ctx->leaf_cert_der = leaf_copy;
         ctx->leaf_cert_der_len = der_len;
     }
 
@@ -1436,6 +1470,10 @@ static int send_record(rt_tls_session_t *session,
                        uint8_t content_type,
                        const uint8_t *data,
                        size_t len);
+static int send_record_fragmented(rt_tls_session_t *session,
+                                  uint8_t content_type,
+                                  const uint8_t *data,
+                                  size_t len);
 
 /// @brief Send a TLS 1.3 KeyUpdate handshake message to request or acknowledge a key rollover.
 ///        request_update non-zero asks the peer to respond with its own KeyUpdate.
@@ -1485,11 +1523,16 @@ static int send_record(rt_tls_session_t *session,
     // if stack depth is a concern in deeply nested call chains.
     uint8_t record[5 + TLS_MAX_CIPHERTEXT];
     size_t record_len;
+    if (len > TLS_MAX_RECORD_SIZE || (!data && len > 0)) {
+        session->error = "TLS: record payload too large";
+        return RT_TLS_ERROR;
+    }
 
     if (session->keys_established) {
         // Encrypted record
         uint8_t plaintext[TLS_MAX_RECORD_SIZE + 1];
-        memcpy(plaintext, data, len);
+        if (len > 0)
+            memcpy(plaintext, data, len);
         plaintext[len] = content_type; // Inner content type
 
         uint8_t aad[5];
@@ -1527,7 +1570,8 @@ static int send_record(rt_tls_session_t *session,
         record[0] = content_type;
         write_u16(record + 1, TLS_VERSION_1_2);
         write_u16(record + 3, (uint16_t)len);
-        memcpy(record + 5, data, len);
+        if (len > 0)
+            memcpy(record + 5, data, len);
         record_len = 5 + len;
     }
 
@@ -1540,12 +1584,42 @@ static int send_record(rt_tls_session_t *session,
         if (n < 0) {
             if (EINTR_CHECK)
                 continue;
+            if (EAGAIN_CHECK) {
+                int ready = tls_wait_socket((socket_t)session->socket_fd, session->timeout_ms, 1);
+                if (ready > 0)
+                    continue;
+                session->error = ready == 0 ? "TLS: send timeout" : "send failed";
+                return RT_TLS_ERROR_SOCKET;
+            }
             session->error = "send failed";
+            return RT_TLS_ERROR_SOCKET;
+        }
+        if (n == 0) {
+            session->error = "send returned zero";
             return RT_TLS_ERROR_SOCKET;
         }
         sent += n;
     }
 
+    return RT_TLS_OK;
+}
+
+static int send_record_fragmented(rt_tls_session_t *session,
+                                  uint8_t content_type,
+                                  const uint8_t *data,
+                                  size_t len) {
+    size_t pos = 0;
+    if (len == 0)
+        return send_record(session, content_type, data, 0);
+    while (pos < len) {
+        size_t chunk = len - pos;
+        if (chunk > TLS_MAX_RECORD_SIZE)
+            chunk = TLS_MAX_RECORD_SIZE;
+        int rc = send_record(session, content_type, data + pos, chunk);
+        if (rc != RT_TLS_OK)
+            return rc;
+        pos += chunk;
+    }
     return RT_TLS_OK;
 }
 
@@ -1574,8 +1648,15 @@ static int recv_record(rt_tls_session_t *session,
     while (pos < 5) {
         int n = recv(session->socket_fd, (char *)(header + pos), (int)(5 - pos), 0);
         if (n < 0) {
-            if (EINTR_CHECK || EAGAIN_CHECK)
+            if (EINTR_CHECK)
                 continue;
+            if (EAGAIN_CHECK) {
+                int ready = tls_wait_socket((socket_t)session->socket_fd, session->timeout_ms, 0);
+                if (ready > 0)
+                    continue;
+                session->error = ready == 0 ? "TLS: recv timeout" : "recv header failed";
+                return RT_TLS_ERROR_SOCKET;
+            }
             session->error = "recv header failed";
             return RT_TLS_ERROR_SOCKET;
         }
@@ -1600,8 +1681,15 @@ static int recv_record(rt_tls_session_t *session,
     while (pos < length) {
         int n = recv(session->socket_fd, (char *)(payload + pos), (int)(length - pos), 0);
         if (n < 0) {
-            if (EINTR_CHECK || EAGAIN_CHECK)
+            if (EINTR_CHECK)
                 continue;
+            if (EAGAIN_CHECK) {
+                int ready = tls_wait_socket((socket_t)session->socket_fd, session->timeout_ms, 0);
+                if (ready > 0)
+                    continue;
+                session->error = ready == 0 ? "TLS: recv timeout" : "recv payload failed";
+                return RT_TLS_ERROR_SOCKET;
+            }
             session->error = "recv payload failed";
             return RT_TLS_ERROR_SOCKET;
         }
@@ -1837,7 +1925,7 @@ static int send_client_hello(rt_tls_session_t *session) {
     }
 
     // Send
-    int rc = send_record(session, TLS_CONTENT_HANDSHAKE, hs, 4 + pos);
+    int rc = send_record_fragmented(session, TLS_CONTENT_HANDSHAKE, hs, 4 + pos);
     if (rc != RT_TLS_OK)
         return rc;
 
@@ -2711,7 +2799,7 @@ static int send_server_hello(rt_tls_session_t *session) {
     // ServerHello itself is still plaintext in TLS 1.3. Switch to handshake
     // traffic keys only after the record has been transmitted.
     {
-        int rc = send_record(session, TLS_CONTENT_HANDSHAKE, hs, 4 + pos);
+        int rc = send_record_fragmented(session, TLS_CONTENT_HANDSHAKE, hs, 4 + pos);
         if (rc != RT_TLS_OK) {
             memset(shared_secret, 0, sizeof(shared_secret));
             return rc;
@@ -2753,7 +2841,7 @@ static int send_encrypted_extensions_server(rt_tls_session_t *session) {
     memcpy(hs + 4, body, pos);
     if (transcript_update(session, hs, 4 + pos) != 0)
         return RT_TLS_ERROR_HANDSHAKE;
-    return send_record(session, TLS_CONTENT_HANDSHAKE, hs, 4 + pos);
+    return send_record_fragmented(session, TLS_CONTENT_HANDSHAKE, hs, 4 + pos);
 }
 
 /// @brief Build and send the TLS 1.3 Certificate message containing the server's cert chain.
@@ -2761,6 +2849,11 @@ static int send_encrypted_extensions_server(rt_tls_session_t *session) {
 ///        (3-byte length prefix + DER bytes + 2-byte empty extensions per entry).
 static int send_certificate_server(rt_tls_session_t *session) {
     size_t body_len = 1 + 3 + session->server_ctx->cert_list_entries_len;
+    if (session->server_ctx->cert_list_entries_len > 0xFFFFFFu || body_len > 0xFFFFFFu ||
+        body_len > SIZE_MAX - 4) {
+        session->error = "TLS: certificate list too large";
+        return RT_TLS_ERROR;
+    }
     uint8_t *hs = (uint8_t *)malloc(4 + body_len);
     if (!hs) {
         session->error = "TLS: failed to allocate Certificate message";
@@ -2781,7 +2874,7 @@ static int send_certificate_server(rt_tls_session_t *session) {
     }
 
     {
-        int rc = send_record(session, TLS_CONTENT_HANDSHAKE, hs, 4 + body_len);
+        int rc = send_record_fragmented(session, TLS_CONTENT_HANDSHAKE, hs, 4 + body_len);
         free(hs);
         return rc;
     }
@@ -2915,7 +3008,7 @@ static int send_certificate_verify_server(rt_tls_session_t *session) {
 
     if (transcript_update(session, hs, 8 + sig_der_len) != 0)
         return RT_TLS_ERROR_HANDSHAKE;
-    return send_record(session, TLS_CONTENT_HANDSHAKE, hs, 8 + sig_der_len);
+    return send_record_fragmented(session, TLS_CONTENT_HANDSHAKE, hs, 8 + sig_der_len);
 }
 
 /// @brief Accept an inbound TLS 1.3 connection on an already-accepted TCP socket.
@@ -3061,6 +3154,8 @@ void rt_tls_config_init(rt_tls_config_t *config) {
 rt_tls_session_t *rt_tls_new(int socket_fd, const rt_tls_config_t *config) {
     rt_tls_session_t *session =
         (rt_tls_session_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_tls_session_t));
+    if (!session)
+        return NULL;
     memset(session, 0, sizeof(rt_tls_session_t));
 
     session->socket_fd = socket_fd;

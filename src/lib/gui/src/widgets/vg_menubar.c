@@ -978,6 +978,7 @@ void vg_menu_item_set_enabled(vg_menu_item_t *item, bool enabled) {
 /// @param checked true to show a checkmark next to the item label.
 void vg_menu_item_set_checked(vg_menu_item_t *item, bool checked) {
     if (item) {
+        item->checkable = true;
         item->checked = checked;
     }
 }

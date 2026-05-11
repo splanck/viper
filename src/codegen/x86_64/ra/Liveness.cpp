@@ -45,6 +45,15 @@ const std::string *getLabel(const Operand &op) {
     return nullptr;
 }
 
+/// @brief Append the successor index for each label operand of @p instr.
+/// @details Used by CFG construction: every label-typed operand that names
+///          a known block becomes a successor of the block whose terminator
+///          we are analysing. Returns true if at least one successor was
+///          appended so the caller can detect dead-end terminators.
+/// @param blockIndex Map from block label to block index.
+/// @param succs Successor list being appended to.
+/// @param instr Terminator instruction supplying labels.
+/// @return True if any successor was appended.
 bool addLabelSuccessor(const std::unordered_map<std::string, std::size_t> &blockIndex,
                        std::vector<std::size_t> &succs,
                        const MInstr &instr) {
@@ -61,6 +70,11 @@ bool addLabelSuccessor(const std::unordered_map<std::string, std::size_t> &block
     return added;
 }
 
+/// @brief Predicate: does @p opcode terminate control flow for a block?
+/// @details The four MIR opcodes that may end a block — direct/conditional
+///          jumps, returns, and the trap instruction used for unreachable
+///          paths. Anything else (CALL, ALU ops) is treated as falling
+///          through to the next block.
 bool isControlTerminator(MOpcode opcode) {
     return opcode == MOpcode::JMP || opcode == MOpcode::JCC || opcode == MOpcode::RET ||
            opcode == MOpcode::UD2;
@@ -68,6 +82,13 @@ bool isControlTerminator(MOpcode opcode) {
 
 } // namespace
 
+/// @brief Top-level: build CFG, gen/kill, and solve backward dataflow.
+/// @details Initialises per-block data containers, populates the label
+///          index, builds successor/predecessor relations, computes
+///          gen/kill from the operand role tables, then delegates to the
+///          shared backward dataflow solver. The final liveIn/liveOut
+///          vectors are stored on this instance for later queries.
+/// @param func Machine function to analyse (consumed read-only).
 void LivenessAnalysis::run(const MFunction &func) {
     const std::size_t n = func.blocks.size();
     succs_.assign(n, {});
@@ -86,11 +107,22 @@ void LivenessAnalysis::run(const MFunction &func) {
     liveOut_ = std::move(result.liveOut);
 }
 
+/// @brief Build the label -> block-index map used by CFG construction.
+/// @details A simple linear scan; later passes consult this map to resolve
+///          a JMP/JCC's label operand to the destination block index.
 void LivenessAnalysis::buildBlockIndex(const MFunction &func) {
     for (std::size_t i = 0; i < func.blocks.size(); ++i)
         blockIndex_[func.blocks[i].label] = i;
 }
 
+/// @brief Compute the successor list for every block in @p func.
+/// @details Handles three terminator patterns:
+///          - @c JMP after a @c JCC: both labels are successors (the JCC
+///            two-way fork plus the following unconditional jump),
+///          - @c JMP alone: the jump label is the sole successor,
+///          - @c JCC alone: the explicit label plus the next physical block
+///            (the JCC's implicit fall-through).
+///          @c RET / @c UD2 leave the successor list empty (no exit).
 void LivenessAnalysis::buildCFG(const MFunction &func) {
     for (std::size_t bi = 0; bi < func.blocks.size(); ++bi) {
         const auto &block = func.blocks[bi];
@@ -139,6 +171,16 @@ void LivenessAnalysis::buildCFG(const MFunction &func) {
     }
 }
 
+/// @brief Decompose an instruction's operands into use/def vreg lists.
+/// @details Iterates operands and consults the operand-role table to
+///          decide whether each register reference is a use, a def, or
+///          both. Memory operands contribute base/index as uses since
+///          they are read while computing the effective address.
+///          Physical registers are skipped — only virtual-register
+///          liveness is tracked at this stage.
+/// @param instr Instruction whose operands are decomposed.
+/// @param uses Output: virtual registers read by @p instr.
+/// @param defs Output: virtual registers written by @p instr.
 void LivenessAnalysis::collectVregs(const MInstr &instr,
                                     std::vector<uint16_t> &uses,
                                     std::vector<uint16_t> &defs) {
@@ -166,6 +208,12 @@ void LivenessAnalysis::collectVregs(const MInstr &instr,
     }
 }
 
+/// @brief Compute @c gen and @c kill sets for every block.
+/// @details For each block, an instruction's uses contribute to @c gen
+///          only if they are not already killed earlier in the block
+///          (i.e., upward-exposed uses). Defs are added to @c kill
+///          unconditionally. This formulation matches the textbook
+///          backward dataflow equations for liveness.
 void LivenessAnalysis::computeGenKill(const MFunction &func) {
     for (std::size_t bi = 0; bi < func.blocks.size(); ++bi) {
         auto &gen = gen_[bi];

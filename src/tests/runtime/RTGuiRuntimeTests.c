@@ -170,7 +170,7 @@ static void test_default_font_is_applied_to_text_widgets(void) {
     vg_checkbox_t *checkbox = (vg_checkbox_t *)rt_checkbox_new(app.root, rt_const_cstr("check"));
     vg_dropdown_t *dropdown = (vg_dropdown_t *)rt_dropdown_new(app.root);
     vg_listbox_t *listbox = (vg_listbox_t *)rt_listbox_new(app.root);
-    vg_radiogroup_t *group = vg_radiogroup_create();
+    void *group = rt_radiogroup_new();
     vg_radiobutton_t *radio =
         (vg_radiobutton_t *)rt_radiobutton_new(app.root, rt_const_cstr("radio"), group);
 
@@ -186,7 +186,7 @@ static void test_default_font_is_applied_to_text_widgets(void) {
            listbox->font_size == app.default_font_size);
     assert(radio && radio->font == app.default_font && radio->font_size == app.default_font_size);
 
-    vg_radiogroup_destroy(group);
+    rt_radiogroup_destroy(group);
     cleanup_fake_app(&app);
     printf("test_default_font_is_applied_to_text_widgets: PASSED\n");
 }
@@ -471,6 +471,30 @@ static void test_codeeditor_line_number_width_override_tracks_character_width(vo
 
     vg_widget_destroy(&editor->base);
     printf("test_codeeditor_line_number_width_override_tracks_character_width: PASSED\n");
+}
+
+static void test_zia_block_comment_highlighting_is_render_order_independent(void) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    assert(editor);
+
+    rt_codeeditor_set_text(editor, rt_const_cstr("/*\ninside\n*/\nlet value = 1"));
+    rt_codeeditor_set_language(editor, rt_const_cstr("zia"));
+    rt_codeeditor_set_token_color(editor, 0, 0xFF222222);
+    rt_codeeditor_set_token_color(editor, 4, 0xFF111111);
+
+    uint32_t inside_colors[16] = {0};
+    editor->syntax_highlighter(
+        &editor->base, 1, editor->lines[1].text, inside_colors, editor->syntax_data);
+    for (size_t i = 0; i < editor->lines[1].length; i++)
+        assert(inside_colors[i] == 0xFF111111);
+
+    uint32_t after_colors[32] = {0};
+    editor->syntax_highlighter(
+        &editor->base, 3, editor->lines[3].text, after_colors, editor->syntax_data);
+    assert(after_colors[0] != 0xFF111111);
+
+    vg_widget_destroy(&editor->base);
+    printf("test_zia_block_comment_highlighting_is_render_order_independent: PASSED\n");
 }
 
 static void test_findbar_runtime_reads_live_text_and_reports_noop_replace(void) {
@@ -1078,6 +1102,199 @@ static void test_breadcrumb_set_path_uses_literal_separator(void) {
     printf("test_breadcrumb_set_path_uses_literal_separator: PASSED\n");
 }
 
+static void test_shortcuts_reject_invalid_bindings_atomically(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    s_current_app = &app;
+
+    rt_shortcuts_register(rt_const_cstr("bad"), rt_const_cstr("Ctrl+NotAKey"), rt_const_cstr(""));
+    assert(app.shortcut_count == 0);
+
+    rt_shortcuts_register(rt_const_cstr("save"), rt_const_cstr("Ctrl+S"), rt_const_cstr("save"));
+    assert(app.shortcut_count == 1);
+    assert(app.shortcuts[0].parsed_key == 'S');
+
+    rt_shortcuts_register(rt_const_cstr("save"), rt_const_cstr("Ctrl+NotAKey"), rt_const_cstr("bad"));
+    assert(app.shortcut_count == 1);
+    assert(strcmp(app.shortcuts[0].keys, "Ctrl+S") == 0);
+    assert(app.shortcuts[0].parsed_key == 'S');
+
+    rt_shortcuts_clear();
+    s_current_app = NULL;
+    printf("test_shortcuts_reject_invalid_bindings_atomically: PASSED\n");
+}
+
+static void test_type_specific_widget_apis_reject_wrong_types(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    vg_label_t *label = (vg_label_t *)rt_label_new(app.root, rt_const_cstr("label"));
+    vg_button_t *button = (vg_button_t *)rt_button_new(app.root, rt_const_cstr("button"));
+    assert(label && button);
+
+    rt_label_set_text(button, rt_const_cstr("wrong"));
+    rt_button_set_text(label, rt_const_cstr("wrong"));
+    assert(strcmp(label->text, "label") == 0);
+    assert(strcmp(button->text, "button") == 0);
+
+    assert(rt_dropdown_add_item(label, rt_const_cstr("wrong")) == -1);
+    rt_slider_set_value(label, 0.5);
+    assert(rt_slider_get_value(label) == 0.0);
+
+    uint64_t magic_before = app.magic;
+    rt_widget_set_draggable(&app, 1);
+    rt_widget_set_drag_data(&app, rt_const_cstr("text/plain"), rt_const_cstr("data"));
+    assert(app.magic == magic_before);
+
+    cleanup_fake_app(&app);
+    printf("test_type_specific_widget_apis_reject_wrong_types: PASSED\n");
+}
+
+static void test_findbar_methods_after_destroy_are_inert(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    void *editor = rt_codeeditor_new(app.root);
+    void *bar = rt_findbar_new(app.root);
+    assert(editor && bar);
+    rt_findbar_bind_editor(bar, editor);
+    rt_findbar_destroy(bar);
+
+    rt_findbar_bind_editor(bar, editor);
+    rt_findbar_set_find_text(bar, rt_const_cstr("x"));
+    rt_findbar_set_replace_text(bar, rt_const_cstr("y"));
+    rt_findbar_set_case_sensitive(bar, 1);
+    assert(rt_findbar_find_next(bar) == 0);
+    assert(rt_findbar_replace(bar) == 0);
+    assert(rt_findbar_get_match_count(bar) == 0);
+    assert(rt_findbar_is_visible(bar) == 0);
+
+    cleanup_fake_app(&app);
+    printf("test_findbar_methods_after_destroy_are_inert: PASSED\n");
+}
+
+static void test_radiogroup_runtime_handle_invalidates_after_destroy(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    void *group = rt_radiogroup_new();
+    assert(group);
+    vg_radiobutton_t *radio =
+        (vg_radiobutton_t *)rt_radiobutton_new(app.root, rt_const_cstr("one"), group);
+    assert(radio && radio->group != NULL);
+    rt_radiogroup_destroy(group);
+    assert(radio->group == NULL);
+    assert(rt_radiobutton_new(app.root, rt_const_cstr("bad"), group) == NULL);
+    rt_radiobutton_set_selected(radio, 1);
+    assert(rt_radiobutton_is_selected(radio) == 1);
+
+    cleanup_fake_app(&app);
+    printf("test_radiogroup_runtime_handle_invalidates_after_destroy: PASSED\n");
+}
+
+static void test_filedialog_setters_after_destroy_are_inert(void) {
+    void *dialog = rt_filedialog_new_open();
+    assert(dialog);
+    rt_filedialog_destroy(dialog);
+    rt_filedialog_set_title(dialog, rt_const_cstr("title"));
+    rt_filedialog_set_path(dialog, rt_const_cstr("/tmp"));
+    rt_filedialog_set_filter(dialog, rt_const_cstr("Files"), rt_const_cstr("*"));
+    rt_filedialog_add_filter(dialog, rt_const_cstr("Text"), rt_const_cstr("*.txt"));
+    rt_filedialog_set_default_name(dialog, rt_const_cstr("out.txt"));
+    rt_filedialog_set_multiple(dialog, 1);
+    assert(rt_filedialog_show(dialog) == 0);
+    assert(rt_filedialog_get_path_count(dialog) == 0);
+    assert(strcmp(rt_string_cstr(rt_filedialog_get_path(dialog)), "") == 0);
+    printf("test_filedialog_setters_after_destroy_are_inert: PASSED\n");
+}
+
+static void test_menuitem_checkable_state_is_real_and_invalidates_context(void) {
+    vg_contextmenu_t *context = vg_contextmenu_create();
+    assert(context);
+    vg_menu_item_t *context_item = vg_contextmenu_add_item(context, "Toggle", NULL, NULL, NULL);
+    assert(context_item);
+    assert(rt_menuitem_is_checkable(context_item) == 0);
+    context->base.needs_layout = false;
+    rt_menuitem_set_checkable(context_item, 1);
+    assert(rt_menuitem_is_checkable(context_item) == 1);
+    rt_menuitem_set_checked(context_item, 1);
+    assert(rt_menuitem_is_checked(context_item) == 1);
+    assert(context->base.needs_layout || context->base.needs_paint);
+    rt_menuitem_set_checkable(context_item, 0);
+    assert(rt_menuitem_is_checkable(context_item) == 0);
+    assert(rt_menuitem_is_checked(context_item) == 0);
+
+    vg_menubar_t *menubar = vg_menubar_create(NULL);
+    assert(menubar);
+    vg_menu_t *menu = vg_menubar_add_menu(menubar, "View");
+    vg_menu_item_t *menu_item = vg_menu_add_item(menu, "Sidebar", NULL, NULL, NULL);
+    assert(menu_item);
+    assert(rt_menuitem_is_checkable(menu_item) == 0);
+    rt_menuitem_set_checked(menu_item, 1);
+    assert(rt_menuitem_is_checkable(menu_item) == 1);
+    assert(rt_menuitem_is_checked(menu_item) == 1);
+
+    vg_widget_destroy(&context->base);
+    vg_widget_destroy(&menubar->base);
+    printf("test_menuitem_checkable_state_is_real_and_invalidates_context: PASSED\n");
+}
+
+static void test_contextmenu_submenu_ownership_detaches_safely(void) {
+    vg_contextmenu_t *parent = vg_contextmenu_create();
+    vg_contextmenu_t *child = vg_contextmenu_create();
+    assert(parent && child);
+    vg_menu_item_t *item = vg_contextmenu_add_submenu(parent, "Child", child);
+    assert(item);
+    assert(item->submenu == (struct vg_menu *)child);
+    assert(child->parent_item == item);
+
+    vg_contextmenu_destroy(child);
+    assert(item->submenu == NULL);
+    vg_contextmenu_destroy(parent);
+
+    parent = vg_contextmenu_create();
+    child = vg_contextmenu_create();
+    assert(parent && child);
+    item = vg_contextmenu_add_submenu(parent, "Child", child);
+    assert(item && item->submenu == (struct vg_menu *)child);
+    vg_contextmenu_destroy(parent);
+
+    printf("test_contextmenu_submenu_ownership_detaches_safely: PASSED\n");
+}
+
+static void test_toolbar_remove_item_removes_runtime_null_id_items(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    vg_toolbar_t *toolbar = (vg_toolbar_t *)rt_toolbar_new(app.root);
+    assert(toolbar);
+    vg_toolbar_item_t *item =
+        (vg_toolbar_item_t *)rt_toolbar_add_button(toolbar, rt_const_cstr(""), rt_const_cstr(""));
+    assert(item && item->id == NULL);
+    assert(toolbar->item_count == 1);
+    rt_toolbar_remove_item(toolbar, item);
+    assert(toolbar->item_count == 0);
+
+    cleanup_fake_app(&app);
+    printf("test_toolbar_remove_item_removes_runtime_null_id_items: PASSED\n");
+}
+
 int main(void) {
     printf("=== GUI Runtime Regression Tests ===\n\n");
 
@@ -1097,6 +1314,7 @@ int main(void) {
     test_codeeditor_runtime_pixel_helpers_follow_scroll_and_wrap();
     test_codeeditor_runtime_fold_helpers_skip_hidden_lines();
     test_codeeditor_line_number_width_override_tracks_character_width();
+    test_zia_block_comment_highlighting_is_render_order_independent();
     test_splitpane_runtime_boolean_matches_horizontal_semantics();
     test_tabbar_was_changed_tracks_real_active_tab_transitions();
     test_widget_set_position_marks_widget_dirty();
@@ -1120,6 +1338,14 @@ int main(void) {
     test_messagebox_show_after_destroy_returns_minus_one();
     test_toast_duration_is_clamped();
     test_breadcrumb_set_path_uses_literal_separator();
+    test_shortcuts_reject_invalid_bindings_atomically();
+    test_type_specific_widget_apis_reject_wrong_types();
+    test_findbar_methods_after_destroy_are_inert();
+    test_radiogroup_runtime_handle_invalidates_after_destroy();
+    test_filedialog_setters_after_destroy_are_inert();
+    test_menuitem_checkable_state_is_real_and_invalidates_context();
+    test_contextmenu_submenu_ownership_detaches_safely();
+    test_toolbar_remove_item_removes_runtime_null_id_items();
 
     printf("\nAll GUI runtime regression tests passed!\n");
     return 0;

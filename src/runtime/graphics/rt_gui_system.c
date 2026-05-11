@@ -88,7 +88,11 @@ static rt_gui_app_t *rt_shortcuts_app(void) {
 static void rt_shortcuts_ensure_capacity(rt_gui_app_t *app) {
     if (!app || app->shortcut_count < app->shortcut_cap)
         return;
+    if (app->shortcut_cap > INT_MAX / 2)
+        return;
     int new_cap = app->shortcut_cap ? app->shortcut_cap * 2 : 16;
+    if ((size_t)new_cap > SIZE_MAX / sizeof(*app->shortcuts))
+        return;
     void *p = realloc(app->shortcuts, (size_t)new_cap * sizeof(*app->shortcuts));
     if (!p)
         return;
@@ -136,7 +140,7 @@ static int parse_shortcut_keys(const char *keys, int *ctrl, int *shift, int *alt
             *ctrl = 1; // Map Cmd to Ctrl for cross-platform
         } else if (strlen(token) == 1) {
             // Single character key
-            *key = toupper(token[0]);
+            *key = toupper((unsigned char)token[0]);
         } else if (token[0] == 'F' && strlen(token) <= 3) {
             // Function key (F1-F12)
             int fnum = atoi(token + 1);
@@ -205,6 +209,17 @@ void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description) 
         return;
     }
 
+    int parsed_ctrl = 0;
+    int parsed_shift = 0;
+    int parsed_alt = 0;
+    int parsed_key = 0;
+    if (!parse_shortcut_keys(ckeys, &parsed_ctrl, &parsed_shift, &parsed_alt, &parsed_key)) {
+        free(cid);
+        free(ckeys);
+        free(cdesc);
+        return;
+    }
+
     // Check if already registered and update
     for (int i = 0; i < app->shortcut_count; i++) {
         if (app->shortcuts[i].id && strcmp(app->shortcuts[i].id, cid) == 0) {
@@ -212,12 +227,10 @@ void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description) 
             free(app->shortcuts[i].description);
             app->shortcuts[i].keys = ckeys;
             app->shortcuts[i].description = cdesc;
-            // Re-parse cached modifier/key values for the new keys string
-            parse_shortcut_keys(ckeys,
-                                &app->shortcuts[i].parsed_ctrl,
-                                &app->shortcuts[i].parsed_shift,
-                                &app->shortcuts[i].parsed_alt,
-                                &app->shortcuts[i].parsed_key);
+            app->shortcuts[i].parsed_ctrl = parsed_ctrl;
+            app->shortcuts[i].parsed_shift = parsed_shift;
+            app->shortcuts[i].parsed_alt = parsed_alt;
+            app->shortcuts[i].parsed_key = parsed_key;
             free(cid);
             return;
         }
@@ -237,10 +250,10 @@ void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description) 
     sc->description = cdesc;
     sc->enabled = 1;
     sc->triggered = 0;
-    // Pre-parse modifier/key values so rt_shortcuts_check_key doesn't
-    // need to re-parse the string on every keypress.
-    parse_shortcut_keys(
-        ckeys, &sc->parsed_ctrl, &sc->parsed_shift, &sc->parsed_alt, &sc->parsed_key);
+    sc->parsed_ctrl = parsed_ctrl;
+    sc->parsed_shift = parsed_shift;
+    sc->parsed_alt = parsed_alt;
+    sc->parsed_key = parsed_key;
     app->shortcut_count++;
 }
 
@@ -518,14 +531,19 @@ void rt_app_set_title(void *app, rt_string title) {
     if (!gui_app->window)
         return;
     char *cstr = rt_string_to_cstr(title);
-    if (cstr) {
-        vgfx_set_title(gui_app->window, cstr);
-        // Store a copy for rt_app_get_title (no vgfx_get_title API exists)
-        free(gui_app->title);
-        gui_app->title = strdup(cstr);
-        rt_gui_macos_menu_sync_app(gui_app);
+    if (!cstr)
+        return;
+    char *stored = strdup(cstr);
+    if (!stored) {
         free(cstr);
+        return;
     }
+    vgfx_set_title(gui_app->window, cstr);
+    // Store a copy for rt_app_get_title (no vgfx_get_title API exists)
+    free(gui_app->title);
+    gui_app->title = stored;
+    rt_gui_macos_menu_sync_app(gui_app);
+    free(cstr);
 }
 
 /// @brief Get the title of the app.

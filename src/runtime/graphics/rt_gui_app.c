@@ -1643,17 +1643,25 @@ void rt_gui_app_poll(void *app_ptr) {
                     app->drag_source->_is_being_dragged = false;
                     if (hit && hit != app->drag_source &&
                         rt_gui_widget_accepts_drop_type(hit, app->drag_source->drag_type)) {
-                        // Transfer drag data to drop target
-                        free(hit->_drop_received_type);
-                        free(hit->_drop_received_data);
-                        hit->_drop_received_type = app->drag_source->drag_type
-                                                       ? strdup(app->drag_source->drag_type)
-                                                       : NULL;
-                        hit->_drop_received_data = app->drag_source->drag_data
-                                                       ? strdup(app->drag_source->drag_data)
-                                                       : NULL;
-                        hit->_was_dropped = true;
-                        hit->_is_drag_over = false;
+                        char *new_type = app->drag_source->drag_type
+                                             ? strdup(app->drag_source->drag_type)
+                                             : NULL;
+                        char *new_data = app->drag_source->drag_data
+                                             ? strdup(app->drag_source->drag_data)
+                                             : NULL;
+                        if ((app->drag_source->drag_type && !new_type) ||
+                            (app->drag_source->drag_data && !new_data)) {
+                            free(new_type);
+                            free(new_data);
+                        } else {
+                            // Transfer drag data to drop target only after both copies succeeded.
+                            free(hit->_drop_received_type);
+                            free(hit->_drop_received_data);
+                            hit->_drop_received_type = new_type;
+                            hit->_drop_received_data = new_data;
+                            hit->_was_dropped = true;
+                            hit->_is_drag_over = false;
+                        }
                     }
                     app->drag_source = NULL;
                     rt_gui_update_drag_over_target(app, event_root);

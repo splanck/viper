@@ -23,6 +23,13 @@
 
 namespace viper::codegen::x64::passes {
 
+/// @brief Run the post-RA instruction scheduler over the module's MIR.
+/// @details Requires that register allocation has already completed so the
+///          scheduler can reason about physical-register dependencies. At -O0
+///          the pass returns success immediately to keep compile times tight.
+/// @param module Pipeline state holding the legalised, register-allocated MIR.
+/// @param diags Diagnostic sink for pipeline-ordering issues.
+/// @return True on success or when scheduling is skipped.
 bool SchedulerPass::run(Module &module, Diagnostics &diags) {
     if (!module.registersAllocated) {
         diags.error("scheduler: register allocation must run before scheduling");

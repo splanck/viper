@@ -22,6 +22,7 @@
 #include "rt_string.h"
 
 #include <stdbool.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,6 +39,7 @@ typedef SOCKET socket_t;
 #include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <poll.h>
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -68,6 +70,9 @@ int8_t rt_netutils_is_port_open(rt_string host, int64_t port, int64_t timeout_ms
         return 0;
     if (timeout_ms <= 0)
         timeout_ms = 1000;
+    if (timeout_ms > INT_MAX)
+        return 0;
+    int timeout_int = (int)timeout_ms;
 
     struct addrinfo hints, *res, *rp;
     memset(&hints, 0, sizeof(hints));
@@ -106,15 +111,26 @@ int8_t rt_netutils_is_port_open(rt_string host, int64_t port, int64_t timeout_ms
             return 1;
         }
 
+#ifdef _WIN32
         fd_set write_fds;
         FD_ZERO(&write_fds);
         FD_SET(sock, &write_fds);
 
         struct timeval tv;
-        tv.tv_sec = (long)(timeout_ms / 1000);
-        tv.tv_usec = (long)((timeout_ms % 1000) * 1000);
+        tv.tv_sec = (long)(timeout_int / 1000);
+        tv.tv_usec = (long)((timeout_int % 1000) * 1000);
 
         int ready = select((int)(sock + 1), NULL, &write_fds, NULL, &tv);
+#else
+        struct pollfd pfd;
+        pfd.fd = sock;
+        pfd.events = POLLOUT;
+        pfd.revents = 0;
+        int ready;
+        do {
+            ready = poll(&pfd, 1, timeout_int);
+        } while (ready < 0 && errno == EINTR);
+#endif
         if (ready > 0) {
             int so_error = 0;
             socklen_t len = sizeof(so_error);
@@ -203,9 +219,11 @@ int8_t rt_netutils_match_cidr(rt_string ip, rt_string cidr) {
             return 0;
         memcpy(network, cidr_str, net_len);
         network[net_len] = '\0';
-        prefix_len = atoi(slash + 1);
-        if (prefix_len < 0 || prefix_len > 32)
+        char *end = NULL;
+        long parsed_prefix = strtol(slash + 1, &end, 10);
+        if (end == slash + 1 || *end != '\0' || parsed_prefix < 0 || parsed_prefix > 32)
             return 0;
+        prefix_len = (int)parsed_prefix;
     } else {
         size_t len = strlen(cidr_str);
         if (len >= sizeof(network))

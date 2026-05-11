@@ -238,6 +238,28 @@ static char *smtp_sanitize_header_value(const char *value) {
     return copy;
 }
 
+static int smtp_validate_mailbox_path(const char *value) {
+    size_t len = value ? strlen(value) : 0;
+    if (len == 0 || len > 512)
+        return 0;
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)value[i];
+        if (c <= 0x20 || c == 0x7f || c == '<' || c == '>')
+            return 0;
+    }
+    return 1;
+}
+
+static int smtp_header_value_is_command_safe(const char *value) {
+    if (!value || !*value)
+        return 0;
+    for (const unsigned char *p = (const unsigned char *)value; *p; p++) {
+        if (*p == '\r' || *p == '\n' || *p == 0x7f)
+            return 0;
+    }
+    return 1;
+}
+
 /// @brief **RFC 5321 §4.5.2 dot-stuffing:** double any leading `.` on a line so the SMTP DATA
 /// terminator (a lone `.` line) cannot be triggered by user content. Also normalizes line
 /// endings to CRLF and ensures the message ends with CRLF (required before the `.` terminator).
@@ -339,6 +361,15 @@ static char *smtp_dot_stuff_body(const char *body) {
 /// formatted error in `last_error` and the call returns -1.
 typedef void (*smtp_line_callback_t)(const char *line, void *ctx);
 
+static int smtp_parse_response_code(const char *line) {
+    if (!line || strlen(line) < 3)
+        return -1;
+    if (line[0] < '0' || line[0] > '9' || line[1] < '0' || line[1] > '9' ||
+        line[2] < '0' || line[2] > '9')
+        return -1;
+    return (line[0] - '0') * 100 + (line[1] - '0') * 10 + (line[2] - '0');
+}
+
 static int smtp_command_ex(rt_smtp_impl *s,
                            const char *cmd,
                            int expected_code,
@@ -357,7 +388,7 @@ static int smtp_command_ex(rt_smtp_impl *s,
         return -1;
     }
     const char *l = rt_string_cstr(line);
-    int code = l ? atoi(l) : -1;
+    int code = smtp_parse_response_code(l);
     if (l && line_cb)
         line_cb(l, line_ctx);
 
@@ -371,7 +402,7 @@ static int smtp_command_ex(rt_smtp_impl *s,
         }
         l = rt_string_cstr(line);
         if (l)
-            code = atoi(l);
+            code = smtp_parse_response_code(l);
         if (l && line_cb)
             line_cb(l, line_ctx);
     }
@@ -635,14 +666,30 @@ static int smtp_send_message(rt_smtp_impl *s,
                              const char *body,
                              const char *content_type) {
     char cmd[1024];
+    if (!smtp_validate_mailbox_path(from) || !smtp_validate_mailbox_path(to)) {
+        set_error(s, "SMTP: invalid envelope address");
+        return -1;
+    }
+    if (!smtp_header_value_is_command_safe(content_type)) {
+        set_error(s, "SMTP: invalid content type");
+        return -1;
+    }
 
     // MAIL FROM
-    snprintf(cmd, sizeof(cmd), "MAIL FROM:<%s>\r\n", from);
+    int wrote = snprintf(cmd, sizeof(cmd), "MAIL FROM:<%s>\r\n", from);
+    if (wrote < 0 || (size_t)wrote >= sizeof(cmd)) {
+        set_error(s, "SMTP: envelope address too long");
+        return -1;
+    }
     if (smtp_command(s, cmd, 250) < 0)
         return -1;
 
     // RCPT TO
-    snprintf(cmd, sizeof(cmd), "RCPT TO:<%s>\r\n", to);
+    wrote = snprintf(cmd, sizeof(cmd), "RCPT TO:<%s>\r\n", to);
+    if (wrote < 0 || (size_t)wrote >= sizeof(cmd)) {
+        set_error(s, "SMTP: envelope address too long");
+        return -1;
+    }
     {
         int rcpt_code = smtp_command(s, cmd, 0);
         if (!(rcpt_code == 250 || rcpt_code == 251 || rcpt_code == 252)) {
@@ -671,7 +718,30 @@ static int smtp_send_message(rt_smtp_impl *s,
         return -1;
     }
 
-    size_t msg_cap = 1024 + strlen(stuffed_body);
+    int needed = snprintf(NULL,
+                          0,
+                          "From: %s\r\n"
+                          "To: %s\r\n"
+                          "Subject: %s\r\n"
+                          "MIME-Version: 1.0\r\n"
+                          "Content-Type: %s; charset=utf-8\r\n"
+                          "\r\n"
+                          "%s"
+                          ".\r\n",
+                          safe_from,
+                          safe_to,
+                          safe_subject,
+                          content_type,
+                          stuffed_body);
+    if (needed < 0) {
+        free(safe_from);
+        free(safe_to);
+        free(safe_subject);
+        free(stuffed_body);
+        set_error(s, "SMTP: message format failed");
+        return -1;
+    }
+    size_t msg_cap = (size_t)needed + 1;
     char *msg = (char *)malloc(msg_cap);
     if (!msg) {
         free(safe_from);

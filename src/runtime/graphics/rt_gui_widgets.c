@@ -100,13 +100,6 @@ static int rt_widget_tree_contains(vg_widget_t *root, vg_widget_t *candidate) {
     return 0;
 }
 
-/// @brief Return a live widget handle, rejecting app handles, destroyed handles, and arbitrary pointers.
-static vg_widget_t *rt_widget_handle_checked(void *handle) {
-    if (!handle || rt_gui_is_app_handle(handle) || rt_gui_is_destroyed_app_handle(handle))
-        return NULL;
-    return rt_gui_is_widget_handle(handle) ? (vg_widget_t *)handle : NULL;
-}
-
 /// @brief Return non-zero if @p root contains the owner statusbar for @p item.
 static int rt_widget_tree_contains_statusbar_item(vg_widget_t *root, vg_statusbar_item_t *item) {
     if (!root || !item)
@@ -178,7 +171,7 @@ static void rt_widget_forget_runtime_refs(rt_gui_app_t *app, vg_widget_t *widget
 /// @param widget Widget to destroy (opaque handle).
 void rt_widget_destroy(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    vg_widget_t *w = rt_widget_handle_checked(widget);
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (!w)
         return;
 
@@ -198,7 +191,7 @@ void rt_widget_destroy(void *widget) {
 /// @param visible Non-zero to show, zero to hide.
 void rt_widget_set_visible(void *widget, int64_t visible) {
     RT_ASSERT_MAIN_THREAD();
-    vg_widget_t *w = rt_widget_handle_checked(widget);
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (w)
         vg_widget_set_visible(w, visible != 0);
 }
@@ -211,7 +204,7 @@ void rt_widget_set_visible(void *widget, int64_t visible) {
 /// @param enabled Non-zero to enable, zero to disable.
 void rt_widget_set_enabled(void *widget, int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
-    vg_widget_t *w = rt_widget_handle_checked(widget);
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (w)
         vg_widget_set_enabled(w, enabled != 0);
 }
@@ -227,7 +220,7 @@ void rt_widget_set_enabled(void *widget, int64_t enabled) {
 /// @param height Fixed height in logical pixels.
 void rt_widget_set_size(void *widget, int64_t width, int64_t height) {
     RT_ASSERT_MAIN_THREAD();
-    vg_widget_t *w = rt_widget_handle_checked(widget);
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (w) {
         vg_widget_set_fixed_size(
             w,
@@ -246,7 +239,7 @@ void rt_widget_set_size(void *widget, int64_t width, int64_t height) {
 /// @param height Preferred height in logical pixels (>= 0).
 void rt_widget_set_preferred_size(void *widget, double width, double height) {
     RT_ASSERT_MAIN_THREAD();
-    vg_widget_t *w = rt_widget_handle_checked(widget);
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (w) {
         vg_widget_set_preferred_size(w,
                                      rt_gui_sanitize_nonnegative_float(
@@ -265,7 +258,7 @@ void rt_widget_set_preferred_size(void *widget, double width, double height) {
 /// @param height Maximum height in logical pixels (0 = unconstrained).
 void rt_widget_set_max_size(void *widget, double width, double height) {
     RT_ASSERT_MAIN_THREAD();
-    vg_widget_t *w = rt_widget_handle_checked(widget);
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (w) {
         vg_widget_set_max_size(w,
                                rt_gui_sanitize_nonnegative_float(width, RT_GUI_MAX_LAYOUT_VALUE),
@@ -282,7 +275,7 @@ void rt_widget_set_max_size(void *widget, double width, double height) {
 /// @param flex   Flex-grow factor (>= 0.0).
 void rt_widget_set_flex(void *widget, double flex) {
     RT_ASSERT_MAIN_THREAD();
-    vg_widget_t *w = rt_widget_handle_checked(widget);
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (w) {
         vg_widget_set_flex(
             w, rt_gui_sanitize_nonnegative_float(flex, RT_GUI_MAX_LAYOUT_VALUE));
@@ -301,7 +294,7 @@ void rt_widget_add_child(void *parent, void *child) {
     RT_ASSERT_MAIN_THREAD();
     if (parent && child) {
         vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
-        vg_widget_t *child_widget = rt_widget_handle_checked(child);
+        vg_widget_t *child_widget = rt_gui_widget_handle_checked(child);
         if (parent_widget && child_widget)
             vg_widget_add_child(parent_widget, child_widget);
     }
@@ -314,7 +307,7 @@ void rt_widget_add_child(void *parent, void *child) {
 /// @param margin Margin in logical pixels.
 void rt_widget_set_margin(void *widget, int64_t margin) {
     RT_ASSERT_MAIN_THREAD();
-    vg_widget_t *w = rt_widget_handle_checked(widget);
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (w)
         vg_widget_set_margin(
             w,
@@ -329,7 +322,7 @@ void rt_widget_set_margin(void *widget, int64_t margin) {
 /// @param idx    Tab index (>= 0 for explicit ordering, -1 for default DFS).
 void rt_widget_set_tab_index(void *widget, int64_t idx) {
     RT_ASSERT_MAIN_THREAD();
-    vg_widget_t *w = rt_widget_handle_checked(widget);
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (w)
         vg_widget_set_tab_index(
             w, rt_gui_clamp_i64_to_i32(idx, -1, INT32_MAX));
@@ -340,7 +333,7 @@ void rt_widget_set_tab_index(void *widget, int64_t idx) {
 /// @return 1 if visible, 0 if hidden or NULL.
 int64_t rt_widget_is_visible(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    vg_widget_t *w = rt_widget_handle_checked(widget);
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (!w)
         return 0;
     return w->visible ? 1 : 0;
@@ -351,7 +344,7 @@ int64_t rt_widget_is_visible(void *widget) {
 /// @return 1 if enabled, 0 if disabled or NULL.
 int64_t rt_widget_is_enabled(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    vg_widget_t *w = rt_widget_handle_checked(widget);
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (!w)
         return 0;
     return w->enabled ? 1 : 0;
@@ -362,7 +355,7 @@ int64_t rt_widget_is_enabled(void *widget) {
 /// @return Width in pixels, or 0 if NULL.
 int64_t rt_widget_get_width(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    vg_widget_t *w = rt_widget_handle_checked(widget);
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (!w)
         return 0;
     return (int64_t)w->width;
@@ -373,7 +366,7 @@ int64_t rt_widget_get_width(void *widget) {
 /// @return Height in pixels, or 0 if NULL.
 int64_t rt_widget_get_height(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    vg_widget_t *w = rt_widget_handle_checked(widget);
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (!w)
         return 0;
     return (int64_t)w->height;
@@ -384,7 +377,7 @@ int64_t rt_widget_get_height(void *widget) {
 /// @return X offset in pixels, or 0 if NULL.
 int64_t rt_widget_get_x(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    vg_widget_t *w = rt_widget_handle_checked(widget);
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (!w)
         return 0;
     return (int64_t)w->x;
@@ -395,7 +388,7 @@ int64_t rt_widget_get_x(void *widget) {
 /// @return Y offset in pixels, or 0 if NULL.
 int64_t rt_widget_get_y(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    vg_widget_t *w = rt_widget_handle_checked(widget);
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (!w)
         return 0;
     return (int64_t)w->y;
@@ -406,7 +399,7 @@ int64_t rt_widget_get_y(void *widget) {
 /// @return Flex value, or 0.0 if NULL.
 double rt_widget_get_flex(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    vg_widget_t *w = rt_widget_handle_checked(widget);
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (!w)
         return 0.0;
     return (double)w->layout.flex;
@@ -441,10 +434,11 @@ void *rt_label_new(void *parent, rt_string text) {
 /// @param text  New text content (runtime string).
 void rt_label_set_text(void *label, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
-    if (!label)
+    vg_label_t *lbl = (vg_label_t *)rt_gui_widget_handle_checked_type(label, VG_WIDGET_LABEL);
+    if (!lbl)
         return;
     char *ctext = rt_string_to_cstr(text);
-    vg_label_set_text((vg_label_t *)label, ctext);
+    vg_label_set_text(lbl, ctext);
     free(ctext);
 }
 
@@ -458,19 +452,18 @@ void rt_label_set_text(void *label, rt_string text) {
 /// @param size  Font size in points.
 void rt_label_set_font(void *label, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
-    if (label) {
-        vg_label_set_font((vg_label_t *)label,
-                          (vg_font_t *)font,
-                          (float)rt_gui_sanitize_font_size(size, 14.0));
-    }
+    vg_label_t *lbl = (vg_label_t *)rt_gui_widget_handle_checked_type(label, VG_WIDGET_LABEL);
+    if (!lbl)
+        return;
+    vg_label_set_font(lbl, (vg_font_t *)font, (float)rt_gui_sanitize_font_size(size, 14.0));
 }
 
 /// @brief Set the text color of a label as a packed ARGB integer.
 void rt_label_set_color(void *label, int64_t color) {
     RT_ASSERT_MAIN_THREAD();
-    if (label) {
-        vg_label_set_color((vg_label_t *)label, (uint32_t)color);
-    }
+    vg_label_t *lbl = (vg_label_t *)rt_gui_widget_handle_checked_type(label, VG_WIDGET_LABEL);
+    if (lbl)
+        vg_label_set_color(lbl, (uint32_t)color);
 }
 
 //=============================================================================
@@ -498,10 +491,11 @@ void *rt_button_new(void *parent, rt_string text) {
 /// @brief Update the label text displayed on a button.
 void rt_button_set_text(void *button, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
-    if (!button)
+    vg_button_t *btn = (vg_button_t *)rt_gui_widget_handle_checked_type(button, VG_WIDGET_BUTTON);
+    if (!btn)
         return;
     char *ctext = rt_string_to_cstr(text);
-    vg_button_set_text((vg_button_t *)button, ctext);
+    vg_button_set_text(btn, ctext);
     free(ctext);
 }
 
@@ -511,11 +505,10 @@ void rt_button_set_text(void *button, rt_string text) {
 /// @param size   Font size in points.
 void rt_button_set_font(void *button, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
-    if (button) {
-        vg_button_set_font((vg_button_t *)button,
-                           (vg_font_t *)font,
-                           (float)rt_gui_sanitize_font_size(size, 14.0));
-    }
+    vg_button_t *btn = (vg_button_t *)rt_gui_widget_handle_checked_type(button, VG_WIDGET_BUTTON);
+    if (!btn)
+        return;
+    vg_button_set_font(btn, (vg_font_t *)font, (float)rt_gui_sanitize_font_size(size, 14.0));
 }
 
 /// @brief Set the visual style preset for a button (primary, secondary, danger, etc.).
@@ -525,9 +518,9 @@ void rt_button_set_font(void *button, void *font, double size) {
 /// @param style  Style enum value (0 = default, 1 = primary, 2 = danger, etc.).
 void rt_button_set_style(void *button, int64_t style) {
     RT_ASSERT_MAIN_THREAD();
-    if (button) {
-        vg_button_set_style((vg_button_t *)button, (vg_button_style_t)style);
-    }
+    vg_button_t *btn = (vg_button_t *)rt_gui_widget_handle_checked_type(button, VG_WIDGET_BUTTON);
+    if (btn)
+        vg_button_set_style(btn, (vg_button_style_t)style);
 }
 
 /// @brief Set a text/glyph icon to display alongside the button label.
@@ -539,10 +532,11 @@ void rt_button_set_style(void *button, int64_t style) {
 /// @param icon   Icon glyph or text (runtime string).
 void rt_button_set_icon(void *button, rt_string icon) {
     RT_ASSERT_MAIN_THREAD();
-    if (!button)
+    vg_button_t *btn = (vg_button_t *)rt_gui_widget_handle_checked_type(button, VG_WIDGET_BUTTON);
+    if (!btn)
         return;
     char *cicon = rt_string_to_cstr(icon);
-    vg_button_set_icon((vg_button_t *)button, cicon);
+    vg_button_set_icon(btn, cicon);
     free(cicon);
 }
 
@@ -551,8 +545,9 @@ void rt_button_set_icon(void *button, rt_string icon) {
 ///          is drawn with a 4 px gap from the label text.
 void rt_button_set_icon_pos(void *button, int64_t pos) {
     RT_ASSERT_MAIN_THREAD();
-    if (button)
-        vg_button_set_icon_position((vg_button_t *)button, (int)pos);
+    vg_button_t *btn = (vg_button_t *)rt_gui_widget_handle_checked_type(button, VG_WIDGET_BUTTON);
+    if (btn)
+        vg_button_set_icon_position(btn, (int)pos);
 }
 
 //=============================================================================
@@ -582,10 +577,12 @@ void *rt_textinput_new(void *parent) {
 /// @param text  New text content (runtime string).
 void rt_textinput_set_text(void *input, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
-    if (!input)
+    vg_textinput_t *ti =
+        (vg_textinput_t *)rt_gui_widget_handle_checked_type(input, VG_WIDGET_TEXTINPUT);
+    if (!ti)
         return;
     char *ctext = rt_string_to_cstr(text);
-    vg_textinput_set_text((vg_textinput_t *)input, ctext);
+    vg_textinput_set_text(ti, ctext);
     free(ctext);
 }
 
@@ -596,9 +593,11 @@ void rt_textinput_set_text(void *input, rt_string text) {
 /// @return Current text as a runtime string, or empty string if NULL.
 rt_string rt_textinput_get_text(void *input) {
     RT_ASSERT_MAIN_THREAD();
-    if (!input)
+    vg_textinput_t *ti =
+        (vg_textinput_t *)rt_gui_widget_handle_checked_type(input, VG_WIDGET_TEXTINPUT);
+    if (!ti)
         return rt_str_empty();
-    const char *text = vg_textinput_get_text((vg_textinput_t *)input);
+    const char *text = vg_textinput_get_text(ti);
     if (!text)
         return rt_str_empty();
     return rt_string_from_bytes(text, strlen(text));
@@ -609,21 +608,23 @@ rt_string rt_textinput_get_text(void *input) {
 ///          user starts typing. Useful for hinting at expected input format.
 void rt_textinput_set_placeholder(void *input, rt_string placeholder) {
     RT_ASSERT_MAIN_THREAD();
-    if (!input)
+    vg_textinput_t *ti =
+        (vg_textinput_t *)rt_gui_widget_handle_checked_type(input, VG_WIDGET_TEXTINPUT);
+    if (!ti)
         return;
     char *ctext = rt_string_to_cstr(placeholder);
-    vg_textinput_set_placeholder((vg_textinput_t *)input, ctext);
+    vg_textinput_set_placeholder(ti, ctext);
     free(ctext);
 }
 
 /// @brief Set the font of the textinput.
 void rt_textinput_set_font(void *input, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
-    if (input) {
-        vg_textinput_set_font((vg_textinput_t *)input,
-                              (vg_font_t *)font,
-                              (float)rt_gui_sanitize_font_size(size, 14.0));
-    }
+    vg_textinput_t *ti =
+        (vg_textinput_t *)rt_gui_widget_handle_checked_type(input, VG_WIDGET_TEXTINPUT);
+    if (!ti)
+        return;
+    vg_textinput_set_font(ti, (vg_font_t *)font, (float)rt_gui_sanitize_font_size(size, 14.0));
 }
 
 //=============================================================================
@@ -652,9 +653,10 @@ void *rt_checkbox_new(void *parent, rt_string text) {
 /// @param checked  Non-zero to check, zero to uncheck.
 void rt_checkbox_set_checked(void *checkbox, int64_t checked) {
     RT_ASSERT_MAIN_THREAD();
-    if (checkbox) {
-        vg_checkbox_set_checked((vg_checkbox_t *)checkbox, checked != 0);
-    }
+    vg_checkbox_t *cb =
+        (vg_checkbox_t *)rt_gui_widget_handle_checked_type(checkbox, VG_WIDGET_CHECKBOX);
+    if (cb)
+        vg_checkbox_set_checked(cb, checked != 0);
 }
 
 /// @brief Query whether a checkbox is currently checked.
@@ -662,9 +664,11 @@ void rt_checkbox_set_checked(void *checkbox, int64_t checked) {
 /// @return 1 if checked, 0 if unchecked or NULL.
 int64_t rt_checkbox_is_checked(void *checkbox) {
     RT_ASSERT_MAIN_THREAD();
-    if (!checkbox)
+    vg_checkbox_t *cb =
+        (vg_checkbox_t *)rt_gui_widget_handle_checked_type(checkbox, VG_WIDGET_CHECKBOX);
+    if (!cb)
         return 0;
-    return vg_checkbox_is_checked((vg_checkbox_t *)checkbox) ? 1 : 0;
+    return vg_checkbox_is_checked(cb) ? 1 : 0;
 }
 
 /// @brief Update the label text displayed next to a checkbox.
@@ -672,10 +676,12 @@ int64_t rt_checkbox_is_checked(void *checkbox) {
 /// @param text     New label text (runtime string).
 void rt_checkbox_set_text(void *checkbox, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
-    if (!checkbox)
+    vg_checkbox_t *cb =
+        (vg_checkbox_t *)rt_gui_widget_handle_checked_type(checkbox, VG_WIDGET_CHECKBOX);
+    if (!cb)
         return;
     char *ctext = rt_string_to_cstr(text);
-    vg_checkbox_set_text((vg_checkbox_t *)checkbox, ctext);
+    vg_checkbox_set_text(cb, ctext);
     free(ctext);
 }
 
@@ -689,8 +695,10 @@ void rt_checkbox_set_text(void *checkbox, rt_string text) {
 /// @param indeterminate Non-zero to show mixed state, zero to clear it.
 void rt_checkbox_set_indeterminate(void *checkbox, int64_t indeterminate) {
     RT_ASSERT_MAIN_THREAD();
-    if (checkbox)
-        vg_checkbox_set_indeterminate((vg_checkbox_t *)checkbox, indeterminate != 0);
+    vg_checkbox_t *cb =
+        (vg_checkbox_t *)rt_gui_widget_handle_checked_type(checkbox, VG_WIDGET_CHECKBOX);
+    if (cb)
+        vg_checkbox_set_indeterminate(cb, indeterminate != 0);
 }
 
 /// @brief Query whether the checkbox is in the indeterminate (mixed) state.
@@ -698,9 +706,11 @@ void rt_checkbox_set_indeterminate(void *checkbox, int64_t indeterminate) {
 /// @return 1 if indeterminate, 0 if determined (checked or unchecked) or NULL.
 int64_t rt_checkbox_is_indeterminate(void *checkbox) {
     RT_ASSERT_MAIN_THREAD();
-    if (!checkbox)
+    vg_checkbox_t *cb =
+        (vg_checkbox_t *)rt_gui_widget_handle_checked_type(checkbox, VG_WIDGET_CHECKBOX);
+    if (!cb)
         return 0;
-    return vg_checkbox_is_indeterminate((vg_checkbox_t *)checkbox) ? 1 : 0;
+    return vg_checkbox_is_indeterminate(cb) ? 1 : 0;
 }
 
 //=============================================================================
@@ -727,11 +737,13 @@ void *rt_scrollview_new(void *parent) {
 /// @param y      Vertical scroll offset in pixels.
 void rt_scrollview_set_scroll(void *scroll, double x, double y) {
     RT_ASSERT_MAIN_THREAD();
-    if (scroll) {
-        vg_scrollview_set_scroll((vg_scrollview_t *)scroll,
-                                 rt_gui_sanitize_signed_float(x, RT_GUI_MAX_LAYOUT_VALUE),
-                                 rt_gui_sanitize_signed_float(y, RT_GUI_MAX_LAYOUT_VALUE));
-    }
+    vg_scrollview_t *sv =
+        (vg_scrollview_t *)rt_gui_widget_handle_checked_type(scroll, VG_WIDGET_SCROLLVIEW);
+    if (!sv)
+        return;
+    vg_scrollview_set_scroll(sv,
+                             rt_gui_sanitize_signed_float(x, RT_GUI_MAX_LAYOUT_VALUE),
+                             rt_gui_sanitize_signed_float(y, RT_GUI_MAX_LAYOUT_VALUE));
 }
 
 /// @brief Set the total content size of a scroll view (determines scroll range).
@@ -743,31 +755,37 @@ void rt_scrollview_set_scroll(void *scroll, double x, double y) {
 /// @param height Total content height in pixels.
 void rt_scrollview_set_content_size(void *scroll, double width, double height) {
     RT_ASSERT_MAIN_THREAD();
-    if (scroll) {
-        vg_scrollview_set_content_size(
-            (vg_scrollview_t *)scroll,
-            rt_gui_sanitize_nonnegative_float(width, RT_GUI_MAX_LAYOUT_VALUE),
-            rt_gui_sanitize_nonnegative_float(height, RT_GUI_MAX_LAYOUT_VALUE));
-    }
+    vg_scrollview_t *sv =
+        (vg_scrollview_t *)rt_gui_widget_handle_checked_type(scroll, VG_WIDGET_SCROLLVIEW);
+    if (!sv)
+        return;
+    vg_scrollview_set_content_size(
+        sv,
+        rt_gui_sanitize_nonnegative_float(width, RT_GUI_MAX_LAYOUT_VALUE),
+        rt_gui_sanitize_nonnegative_float(height, RT_GUI_MAX_LAYOUT_VALUE));
 }
 
 /// @brief Get the current horizontal scroll offset.
 double rt_scrollview_get_scroll_x(void *scroll) {
     RT_ASSERT_MAIN_THREAD();
-    if (!scroll)
+    vg_scrollview_t *sv =
+        (vg_scrollview_t *)rt_gui_widget_handle_checked_type(scroll, VG_WIDGET_SCROLLVIEW);
+    if (!sv)
         return 0.0;
     float x = 0.0f, y = 0.0f;
-    vg_scrollview_get_scroll((vg_scrollview_t *)scroll, &x, &y);
+    vg_scrollview_get_scroll(sv, &x, &y);
     return (double)x;
 }
 
 /// @brief Get the current vertical scroll offset.
 double rt_scrollview_get_scroll_y(void *scroll) {
     RT_ASSERT_MAIN_THREAD();
-    if (!scroll)
+    vg_scrollview_t *sv =
+        (vg_scrollview_t *)rt_gui_widget_handle_checked_type(scroll, VG_WIDGET_SCROLLVIEW);
+    if (!sv)
         return 0.0;
     float x = 0.0f, y = 0.0f;
-    vg_scrollview_get_scroll((vg_scrollview_t *)scroll, &x, &y);
+    vg_scrollview_get_scroll(sv, &x, &y);
     return (double)y;
 }
 
@@ -801,11 +819,14 @@ void *rt_treeview_new(void *parent) {
 /// @return New node handle, or NULL on failure.
 void *rt_treeview_add_node(void *tree, void *parent_node, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
-    if (!tree)
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    if (!tv)
+        return NULL;
+    if (parent_node && !vg_tree_node_is_live((vg_tree_node_t *)parent_node))
         return NULL;
     char *ctext = rt_string_to_cstr(text);
-    vg_tree_node_t *node =
-        vg_treeview_add_node((vg_treeview_t *)tree, (vg_tree_node_t *)parent_node, ctext);
+    vg_tree_node_t *node = vg_treeview_add_node(tv, (vg_tree_node_t *)parent_node, ctext);
     free(ctext);
     return node;
 }
@@ -813,68 +834,78 @@ void *rt_treeview_add_node(void *tree, void *parent_node, rt_string text) {
 /// @brief Remove a node and its subtree from the tree view.
 void rt_treeview_remove_node(void *tree, void *node) {
     RT_ASSERT_MAIN_THREAD();
-    if (tree && node) {
-        vg_treeview_remove_node((vg_treeview_t *)tree, (vg_tree_node_t *)node);
-    }
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    if (tv && node && vg_tree_node_is_live((vg_tree_node_t *)node))
+        vg_treeview_remove_node(tv, (vg_tree_node_t *)node);
 }
 
 /// @brief Remove all nodes from the tree view, leaving it empty.
 void rt_treeview_clear(void *tree) {
     RT_ASSERT_MAIN_THREAD();
-    if (tree) {
-        vg_treeview_clear((vg_treeview_t *)tree);
-    }
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    if (tv)
+        vg_treeview_clear(tv);
 }
 
 /// @brief Expand a tree node to show its children.
 void rt_treeview_expand(void *tree, void *node) {
     RT_ASSERT_MAIN_THREAD();
-    if (tree && node) {
-        vg_treeview_expand((vg_treeview_t *)tree, (vg_tree_node_t *)node);
-    }
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    if (tv && node && vg_tree_node_is_live((vg_tree_node_t *)node))
+        vg_treeview_expand(tv, (vg_tree_node_t *)node);
 }
 
 /// @brief Collapse a tree node to hide its children.
 void rt_treeview_collapse(void *tree, void *node) {
     RT_ASSERT_MAIN_THREAD();
-    if (tree && node) {
-        vg_treeview_collapse((vg_treeview_t *)tree, (vg_tree_node_t *)node);
-    }
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    if (tv && node && vg_tree_node_is_live((vg_tree_node_t *)node))
+        vg_treeview_collapse(tv, (vg_tree_node_t *)node);
 }
 
 /// @brief Programmatically select a tree node (NULL to clear selection).
 void rt_treeview_select(void *tree, void *node) {
     RT_ASSERT_MAIN_THREAD();
-    if (tree) {
-        vg_treeview_select((vg_treeview_t *)tree, (vg_tree_node_t *)node);
-    }
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    if (!tv)
+        return;
+    if (node && !vg_tree_node_is_live((vg_tree_node_t *)node))
+        return;
+    vg_treeview_select(tv, (vg_tree_node_t *)node);
 }
 
 /// @brief Set the font of the treeview.
 void rt_treeview_set_font(void *tree, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
-    if (tree) {
-        vg_treeview_set_font((vg_treeview_t *)tree,
-                             (vg_font_t *)font,
-                             (float)rt_gui_sanitize_font_size(size, 14.0));
-    }
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    if (!tv)
+        return;
+    vg_treeview_set_font(tv, (vg_font_t *)font, (float)rt_gui_sanitize_font_size(size, 14.0));
 }
 
 /// @brief Currently-selected tree node handle (NULL if none / null tree).
 void *rt_treeview_get_selected(void *tree) {
     RT_ASSERT_MAIN_THREAD();
-    if (!tree)
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    if (!tv)
         return NULL;
-    vg_treeview_t *tv = (vg_treeview_t *)tree;
     return tv->selected;
 }
 
 /// @brief Check if the tree view selection changed since the last call (edge-triggered).
 int64_t rt_treeview_was_selection_changed(void *tree) {
     RT_ASSERT_MAIN_THREAD();
-    if (!tree)
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    if (!tv)
         return 0;
-    vg_treeview_t *tv = (vg_treeview_t *)tree;
 
     // Per-instance selection tracking using prev_selected field
     // (matches the pattern used by rt_tabbar_was_changed / prev_active_tab).

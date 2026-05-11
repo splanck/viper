@@ -33,6 +33,13 @@ namespace viper::codegen::x64 {
 
 namespace {
 
+/// @brief Emit a runtime call that retains @p valueVReg if it holds a managed string.
+/// @details Wraps the @c rt_str_retain_maybe runtime entry point. The
+///          @c _maybe suffix indicates the helper checks the handle's type tag
+///          and no-ops on non-strings, so callers can use it unconditionally
+///          when storing a value to a long-lived location.
+/// @param builder Active MIR builder.
+/// @param valueVReg Virtual register holding the candidate value.
 void emitRetainStringVReg(MIRBuilder &builder, const VReg &valueVReg) {
     CallLoweringPlan retainPlan{};
     retainPlan.callee = "rt_str_retain_maybe";
@@ -47,6 +54,13 @@ void emitRetainStringVReg(MIRBuilder &builder, const VReg &valueVReg) {
     builder.append(std::move(call));
 }
 
+/// @brief Predicate: is @p value an inline integer-class immediate?
+/// @details Combines the builder's @c isImmediate test with a kind check so
+///          opcode emitters can take the "imm" path only when both criteria
+///          hold (some opcodes refuse pointer immediates even when literal).
+/// @param builder Active MIR builder (for the immediate query).
+/// @param value IL value to classify.
+/// @return True for integer-class immediates (I64/I1/PTR).
 [[nodiscard]] bool isIntegerLikeImmediate(const MIRBuilder &builder,
                                           const ILValue &value) noexcept {
     if (!builder.isImmediate(value)) {
@@ -56,6 +70,12 @@ void emitRetainStringVReg(MIRBuilder &builder, const VReg &valueVReg) {
            value.kind == ILValue::Kind::PTR;
 }
 
+/// @brief Read the canonical immediate payload from an integer-class IL value.
+/// @details Same canonicalisation as @ref canonicalIntegerImmediate in
+///          LowerILToMIR.cpp; duplicated here to keep the EmitCommon unit
+///          self-contained.
+/// @param value IL value carrying the payload.
+/// @return Signed 64-bit canonical value.
 [[nodiscard]] int64_t integerImmediateValue(const ILValue &value) noexcept {
     return value.kind == ILValue::Kind::I1 ? (value.i64 != 0 ? 1 : 0) : value.i64;
 }
@@ -179,6 +199,19 @@ Operand EmitCommon::materialise(Operand operand, RegClass cls) {
     return tmpOp;
 }
 
+/// @brief Best-effort attempt to fuse `base + (idx << k) + disp` into a memory operand.
+/// @details Walks backward through the current block looking for the MIR
+///          definition of the address producer's vreg and tries to recover
+///          a (base, index, scale, disp) tuple from a recent ADDrr. Returns
+///          @c std::nullopt when the analysis cannot prove the pattern
+///          (e.g. the def is in a different block or the producer used a
+///          physical register). Conservative — never returns a fused
+///          operand when there is any doubt.
+/// @param addrProducer IL instruction that computes the candidate address.
+/// @param displacementOperandIndex Reserved; not yet consulted but kept in
+///        the signature so future improvements can plumb explicit
+///        displacement operands.
+/// @return Fused memory operand or @c std::nullopt.
 std::optional<Operand> EmitCommon::tryMakeIndexedMem(const ILInstr &addrProducer,
                                                      std::size_t displacementOperandIndex) {
     // Attempt to reconstruct (base + (idx << k) + disp) from MIR in the current block.

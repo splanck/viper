@@ -37,9 +37,12 @@ namespace viper::codegen::x64::ra {
 
 namespace {
 
+/// @brief Ticket recording a temporarily-borrowed scratch register.
+/// @details Used by the coalescer to return scratch registers to the
+///          allocator after a cycle-breaking sequence completes.
 struct ScratchRelease {
-    PhysReg phys{PhysReg::RAX};
-    RegClass cls{RegClass::GPR};
+    PhysReg phys{PhysReg::RAX};   ///< Physical register that was borrowed.
+    RegClass cls{RegClass::GPR};  ///< Register class for the allocator's bookkeeping.
 };
 
 /// @brief Wrap a physical register in a Machine IR operand.

@@ -72,11 +72,17 @@ template <typename... Ts> Overload(Ts...) -> Overload<Ts...>;
     return makePhysRegOperand(cls, static_cast<uint16_t>(reg));
 }
 
+/// @brief Description of a physical register clobbered by an instruction.
 struct PhysClobber {
-    PhysReg reg{PhysReg::RAX};
-    RegClass cls{RegClass::GPR};
+    PhysReg reg{PhysReg::RAX};   ///< Clobbered physical register.
+    RegClass cls{RegClass::GPR}; ///< Register class (GPR or XMM).
 };
 
+/// @brief Append @p reg to @p clobbers, computing its class and de-duplicating.
+/// @details Allocator code needs a set-like view of every physical clobber
+///          implied by an instruction so it can spill conflicting live vregs.
+///          We use a vector (compact, cache-friendly) and dedupe linearly —
+///          the typical clobber count per instruction is < 4.
 void addPhysClobber(std::vector<PhysClobber> &clobbers, PhysReg reg) {
     const RegClass cls = isXMM(reg) ? RegClass::XMM : RegClass::GPR;
     const auto duplicate = std::any_of(clobbers.begin(), clobbers.end(), [&](const auto &item) {
@@ -87,6 +93,11 @@ void addPhysClobber(std::vector<PhysClobber> &clobbers, PhysReg reg) {
     }
 }
 
+/// @brief Compute the full set of physical registers an instruction overwrites.
+/// @details Combines two sources: explicit def-position physical operands, and
+///          implicit clobbers for opcodes that touch fixed registers (CQO,
+///          IDIVrm, DIVrm — all of which clobber RAX/RDX). The result drives
+///          the allocator's "spill any live vreg that lands here" logic.
 std::vector<PhysClobber> collectPhysicalClobbers(const MInstr &instr) {
     std::vector<PhysClobber> clobbers;
     for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
@@ -109,6 +120,12 @@ std::vector<PhysClobber> collectPhysicalClobbers(const MInstr &instr) {
     return clobbers;
 }
 
+/// @brief Return the source vreg of a copy instruction (or @c UINT16_MAX).
+/// @details Used when scanning for a MOVrr/MOVSDrr whose destination is being
+///          allocated — if the source is a virtual register we can sometimes
+///          coalesce by giving the destination the same physical register.
+/// @return Source vreg id, or @c UINT16_MAX when the instruction is not a
+///         vreg-to-anything copy.
 uint16_t passthroughSourceVReg(const MInstr &instr) {
     if (instr.opcode != MOpcode::MOVrr && instr.opcode != MOpcode::MOVSDrr)
         return std::numeric_limits<uint16_t>::max();
@@ -120,6 +137,11 @@ uint16_t passthroughSourceVReg(const MInstr &instr) {
     return srcReg->idOrPhys;
 }
 
+/// @brief Predicate: is @p instr a no-op physical move into @p physDest?
+/// @details After allocation, a MOVrr whose source and destination
+///          resolve to the same physical register is a no-op and can be
+///          discarded. The check is conservative — both operands must be
+///          the same physical register of the same class.
 bool isIdentityPhysicalMove(const MInstr &instr, PhysReg physDest) {
     if (instr.opcode != MOpcode::MOVrr && instr.opcode != MOpcode::MOVSDrr)
         return false;

@@ -31,12 +31,24 @@ namespace viper::codegen::x64::passes {
 /// \brief Encode MIR functions into machine code bytes for the x86-64 backend.
 class BinaryEmitPass final : public Pass {
   public:
+    /// @brief Construct the pass with the supplied codegen options.
+    /// @details Options control output format (ELF/Mach-O/COFF) and debug
+    ///          info presence. Stored by value so the pass can outlive the
+    ///          caller's @ref CodegenOptions instance.
+    /// @param options Backend configuration consumed during @ref run.
     explicit BinaryEmitPass(CodegenOptions options) noexcept;
 
+    /// @brief Encode the module's MIR into machine code sections.
+    /// @details Populates @c Module::binaryText / @c binaryRodata while
+    ///          leaving @c Module::codegenResult empty (text-assembly
+    ///          emission is the @ref EmitPass alternative).
+    /// @param module Pipeline state mutated in place.
+    /// @param diags Diagnostic sink.
+    /// @return True on success.
     bool run(Module &module, Diagnostics &diags) override;
 
   private:
-    CodegenOptions options_{};
+    CodegenOptions options_{}; ///< Backend configuration captured at construction.
 };
 
 } // namespace viper::codegen::x64::passes

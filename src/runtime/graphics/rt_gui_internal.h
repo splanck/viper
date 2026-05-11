@@ -163,6 +163,18 @@ static inline int rt_gui_is_widget_handle(const void *handle) {
     return handle && vg_widget_is_live((const vg_widget_t *)handle);
 }
 
+static inline vg_widget_t *rt_gui_widget_handle_checked(void *handle) {
+    if (!handle || rt_gui_is_app_handle(handle) || rt_gui_is_destroyed_app_handle(handle))
+        return NULL;
+    return rt_gui_is_widget_handle(handle) ? (vg_widget_t *)handle : NULL;
+}
+
+static inline vg_widget_t *rt_gui_widget_handle_checked_type(void *handle,
+                                                            vg_widget_type_t type) {
+    vg_widget_t *widget = rt_gui_widget_handle_checked(handle);
+    return widget && widget->type == type ? widget : NULL;
+}
+
 static inline rt_gui_app_t *rt_gui_app_handle_checked(void *handle) {
     return rt_gui_is_app_handle(handle) ? (rt_gui_app_t *)handle : NULL;
 }

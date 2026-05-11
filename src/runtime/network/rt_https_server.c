@@ -1468,8 +1468,8 @@ void rt_https_server_start(void *obj) {
 ///        accept thread.
 ///
 /// Clears the running flag, closes the underlying TCP server (which
-/// unblocks any in-progress `accept()` call), then waits up to 5s on
-/// Windows (or unbounded on POSIX) for the accept thread to exit. Drains
+/// unblocks any in-progress `accept()` call), then waits for the accept
+/// thread to exit. Drains
 /// any in-flight worker tasks before returning. NULL receiver is a
 /// silent no-op. Safe to call repeatedly.
 ///
@@ -1506,7 +1506,7 @@ void rt_https_server_stop(void *obj) {
 
     if (had_thread) {
 #ifdef _WIN32
-        WaitForSingleObject(accept_thread, 5000);
+        WaitForSingleObject(accept_thread, INFINITE);
         CloseHandle(accept_thread);
 #else
         pthread_join(accept_thread, NULL);
@@ -1584,7 +1584,8 @@ HTTPS_MAYBE_UNUSED void *rt_https_server_process_request(void *obj, rt_string ra
     server_res_t res;
     memset(&res, 0, sizeof(res));
 
-    if (!parse_http_request(raw, strlen(raw), &req)) {
+    int64_t raw_len = rt_str_len(raw_request);
+    if (raw_len < 0 || !parse_http_request(raw, (size_t)raw_len, &req)) {
         return rt_string_from_bytes(
             "HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
             sizeof("HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n") -

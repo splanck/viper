@@ -211,7 +211,7 @@ static int http_conn_send(http_conn_t *conn, const uint8_t *data, size_t len) {
                             (const char *)(data + total_sent),
                             (int)(len - total_sent > INT_MAX ? INT_MAX : len - total_sent),
                             SEND_FLAGS);
-            if (sent == SOCK_ERROR)
+            if (sent <= 0)
                 return -1;
             total_sent += (size_t)sent;
         }
@@ -491,16 +491,23 @@ static void http_conn_pool_release(http_conn_t *conn, int reusable) {
     }
 
     if (!reusable || !http_conn_is_healthy(conn)) {
-        http_conn_close(conn);
+        int slot = conn->pool_slot;
         HTTP_POOL_MUTEX_LOCK(&pool->lock);
-        if (conn->pool_slot >= 0 && conn->pool_slot < pool->count) {
-            http_conn_pool_entry_t *entry = &pool->entries[conn->pool_slot];
+        if (slot >= 0 && slot < pool->count) {
+            http_conn_pool_entry_t *entry = &pool->entries[slot];
             if (entry->in_use) {
-                http_conn_pool_entry_reset(entry);
+                free(entry->key);
+                entry->key = NULL;
+                entry->last_used = 0;
+                entry->in_use = 0;
+                memset(&entry->conn, 0, sizeof(entry->conn));
+                entry->conn.socket_fd = INVALID_SOCK;
+                entry->conn.pool_slot = -1;
             }
         }
         http_conn_pool_trim_locked(pool);
         HTTP_POOL_MUTEX_UNLOCK(&pool->lock);
+        http_conn_close(conn);
         memset(conn, 0, sizeof(*conn));
         conn->socket_fd = INVALID_SOCK;
         conn->pool_slot = -1;
@@ -802,15 +809,24 @@ static int parse_url(const char *url_str, parsed_url_t *result) {
     // Parse port if present
     if (*p == ':') {
         p++;
-        result->port = 0;
-        while (*p >= '0' && *p <= '9') {
-            result->port = result->port * 10 + (*p - '0');
-            p++;
-        }
-        if (result->port <= 0 || result->port > 65535) {
+        uint64_t parsed_port = 0;
+        if (*p < '0' || *p > '9') {
             free_parsed_url(result);
             return -1;
         }
+        while (*p >= '0' && *p <= '9') {
+            parsed_port = parsed_port * 10u + (uint64_t)(*p - '0');
+            if (parsed_port > 65535u) {
+                free_parsed_url(result);
+                return -1;
+            }
+            p++;
+        }
+        if (parsed_port == 0u || (*p != '\0' && *p != '/' && *p != '?' && *p != '#')) {
+            free_parsed_url(result);
+            return -1;
+        }
+        result->port = (int)parsed_port;
     }
 
     // Parse request-target path + query (fragments are never sent on the wire)
@@ -1907,6 +1923,39 @@ static uint8_t *read_body_content_length_conn(http_conn_t *conn,
     return body;
 }
 
+static int parse_http_chunk_size_line(const char *size_line, size_t *chunk_size_out) {
+    size_t chunk_size = 0;
+    int saw_digit = 0;
+    const char *p = size_line;
+    if (!size_line || !chunk_size_out)
+        return 0;
+    while (*p) {
+        char c = *p;
+        unsigned digit = 0;
+        if (c >= '0' && c <= '9')
+            digit = (unsigned)(c - '0');
+        else if (c >= 'a' && c <= 'f')
+            digit = (unsigned)(c - 'a' + 10);
+        else if (c >= 'A' && c <= 'F')
+            digit = (unsigned)(c - 'A' + 10);
+        else
+            break;
+        saw_digit = 1;
+        if (chunk_size > (SIZE_MAX - digit) / 16)
+            return 0;
+        chunk_size = chunk_size * 16 + digit;
+        p++;
+    }
+    if (!saw_digit)
+        return 0;
+    while (*p == ' ' || *p == '\t')
+        p++;
+    if (*p != '\0' && *p != ';')
+        return 0;
+    *chunk_size_out = chunk_size;
+    return 1;
+}
+
 /// @brief Read chunked transfer encoding body.
 static uint8_t *read_body_chunked_conn(http_conn_t *conn, size_t *out_len) {
     size_t body_cap = HTTP_BUFFER_SIZE;
@@ -1926,27 +1975,10 @@ static uint8_t *read_body_chunked_conn(http_conn_t *conn, size_t *out_len) {
 
         // Parse hex chunk size — guard against overflow before each multiply (M-6)
         size_t chunk_size = 0;
-        int overflow = 0;
-        for (char *p = size_line; *p; p++) {
-            char c = *p;
-            unsigned digit;
-            if (c >= '0' && c <= '9')
-                digit = (unsigned)(c - '0');
-            else if (c >= 'a' && c <= 'f')
-                digit = (unsigned)(c - 'a' + 10);
-            else if (c >= 'A' && c <= 'F')
-                digit = (unsigned)(c - 'A' + 10);
-            else
-                break;
-            if (chunk_size > (SIZE_MAX - digit) / 16) {
-                overflow = 1;
-                break;
-            }
-            chunk_size = chunk_size * 16 + digit;
-        }
+        int parsed = parse_http_chunk_size_line(size_line, &chunk_size);
         free(size_line);
 
-        if (overflow) {
+        if (!parsed) {
             free(body);
             *out_len = 0;
             return NULL;
@@ -1968,7 +2000,7 @@ static uint8_t *read_body_chunked_conn(http_conn_t *conn, size_t *out_len) {
         }
 
         /* Reject chunks that would push the total body past the limit (S-09 fix) */
-        if (body_len + chunk_size > HTTP_MAX_BODY_SIZE) {
+        if (body_len > HTTP_MAX_BODY_SIZE || chunk_size > HTTP_MAX_BODY_SIZE - body_len) {
             free(body);
             *out_len = 0;
             return NULL;
@@ -1976,7 +2008,15 @@ static uint8_t *read_body_chunked_conn(http_conn_t *conn, size_t *out_len) {
 
         // Expand body buffer if needed
         while (body_len + chunk_size > body_cap) {
-            body_cap *= 2;
+            if (body_cap > HTTP_MAX_BODY_SIZE / 2)
+                body_cap = HTTP_MAX_BODY_SIZE;
+            else
+                body_cap *= 2;
+            if (body_cap < body_len + chunk_size) {
+                free(body);
+                *out_len = 0;
+                return NULL;
+            }
             uint8_t *new_body = (uint8_t *)realloc(body, body_cap);
             if (!new_body) {
                 free(body);
@@ -2025,9 +2065,30 @@ static uint8_t *read_body_until_close_conn(http_conn_t *conn, size_t *out_len) {
         return NULL;
 
     while (1) {
+        size_t to_read = HTTP_BUFFER_SIZE;
+        if (body_len == HTTP_MAX_BODY_SIZE) {
+            uint8_t extra = 0;
+            long extra_len = http_conn_recv(conn, &extra, 1);
+            if (extra_len <= 0)
+                break;
+            free(body);
+            *out_len = 0;
+            return NULL;
+        }
+        if (to_read > HTTP_MAX_BODY_SIZE - body_len)
+            to_read = HTTP_MAX_BODY_SIZE - body_len;
+
         // Expand buffer if needed
-        if (body_len + HTTP_BUFFER_SIZE > body_cap) {
-            body_cap *= 2;
+        if (body_len + to_read > body_cap) {
+            if (body_cap > HTTP_MAX_BODY_SIZE / 2)
+                body_cap = HTTP_MAX_BODY_SIZE;
+            else
+                body_cap *= 2;
+            if (body_cap < body_len + to_read) {
+                free(body);
+                *out_len = 0;
+                return NULL;
+            }
             uint8_t *new_body = (uint8_t *)realloc(body, body_cap);
             if (!new_body) {
                 free(body);
@@ -2036,7 +2097,7 @@ static uint8_t *read_body_until_close_conn(http_conn_t *conn, size_t *out_len) {
             body = new_body;
         }
 
-        long len = http_conn_recv(conn, body + body_len, HTTP_BUFFER_SIZE);
+        long len = http_conn_recv(conn, body + body_len, to_read);
         if (len <= 0)
             break;
 
@@ -2100,27 +2161,11 @@ static int write_body_chunked_conn(http_conn_t *conn, FILE *out, size_t *out_len
         }
 
         size_t chunk_size = 0;
-        int overflow = 0;
-        for (char *p = size_line; *p; p++) {
-            char c = *p;
-            unsigned digit;
-            if (c >= '0' && c <= '9')
-                digit = (unsigned)(c - '0');
-            else if (c >= 'a' && c <= 'f')
-                digit = (unsigned)(c - 'a' + 10);
-            else if (c >= 'A' && c <= 'F')
-                digit = (unsigned)(c - 'A' + 10);
-            else
-                break;
-            if (chunk_size > (SIZE_MAX - digit) / 16) {
-                overflow = 1;
-                break;
-            }
-            chunk_size = chunk_size * 16 + digit;
-        }
+        int parsed = parse_http_chunk_size_line(size_line, &chunk_size);
         free(size_line);
 
-        if (overflow || total_written + chunk_size > HTTP_MAX_BODY_SIZE) {
+        if (!parsed || total_written > HTTP_MAX_BODY_SIZE ||
+            chunk_size > HTTP_MAX_BODY_SIZE - total_written) {
             *out_len = total_written;
             return 0;
         }
@@ -3605,12 +3650,15 @@ void *rt_http_req_set_body(void *obj, void *data) {
     if (data) {
         int64_t len = rt_bytes_len(data);
         uint8_t *ptr = bytes_data(data);
+        if (len < 0 || (uint64_t)len > (uint64_t)SIZE_MAX)
+            rt_trap("HTTP: invalid body length");
 
         // Make a copy of the body
-        req->body = (uint8_t *)malloc(len);
+        req->body = (uint8_t *)malloc((size_t)(len > 0 ? len : 1));
         if (req->body) {
-            memcpy(req->body, ptr, len);
-            req->body_len = len;
+            if (len > 0)
+                memcpy(req->body, ptr, (size_t)len);
+            req->body_len = (size_t)len;
         }
     }
 
@@ -3633,10 +3681,14 @@ void *rt_http_req_set_body_str(void *obj, rt_string text) {
     }
 
     if (text_str) {
-        size_t len = strlen(text_str);
-        req->body = (uint8_t *)malloc(len);
+        int64_t len64 = rt_str_len(text);
+        if (len64 < 0 || (uint64_t)len64 > (uint64_t)SIZE_MAX)
+            rt_trap("HTTP: invalid body length");
+        size_t len = (size_t)len64;
+        req->body = (uint8_t *)malloc(len > 0 ? len : 1);
         if (req->body) {
-            memcpy(req->body, text_str, len);
+            if (len > 0)
+                memcpy(req->body, text_str, len);
             req->body_len = len;
         }
     }
@@ -3651,7 +3703,10 @@ void *rt_http_req_set_timeout(void *obj, int64_t timeout_ms) {
         rt_trap("HTTP: NULL request");
 
     rt_http_req_t *req = (rt_http_req_t *)obj;
-    req->timeout_ms = (int)timeout_ms;
+    int timeout_int = 0;
+    if (!rt_net_timeout_ms_to_int(timeout_ms, &timeout_int))
+        rt_trap("HTTP: invalid timeout");
+    req->timeout_ms = timeout_int;
 
     return obj;
 }

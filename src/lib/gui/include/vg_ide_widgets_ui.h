@@ -342,6 +342,11 @@ vg_toolbar_item_t *vg_toolbar_add_widget(vg_toolbar_t *tb, const char *id, vg_wi
 /// @param id Identifier of the item to remove.
 void vg_toolbar_remove_item(vg_toolbar_t *tb, const char *id);
 
+/// @brief Remove and free the exact toolbar item pointer.
+/// @param tb Toolbar widget.
+/// @param item Item handle previously returned by a toolbar add function.
+void vg_toolbar_remove_item_ptr(vg_toolbar_t *tb, vg_toolbar_item_t *item);
+
 /// @brief Look up a toolbar item by its unique ID.
 /// @param tb Toolbar widget.
 /// @param id Identifier to search for.

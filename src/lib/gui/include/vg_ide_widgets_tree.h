@@ -51,6 +51,7 @@ typedef struct vg_contextmenu {
     int clicked_index;                     ///< Last clicked item index (-1 if none, edge-triggered)
     struct vg_contextmenu *active_submenu; ///< Open submenu
     struct vg_contextmenu *parent_menu;    ///< Parent menu (for submenus)
+    struct vg_menu_item *parent_item;      ///< Parent item that owns this submenu, if any
 
     // Styling
     uint32_t min_width;  ///< Minimum menu width (default: 150)
@@ -469,6 +470,7 @@ struct vg_menu_item {
     void *action_data;           ///< Action data
     bool enabled;                ///< Is item enabled
     bool checked;                ///< Is item checked (for toggles)
+    bool checkable;              ///< Can item display/toggle checked state
     bool separator;              ///< Is this a separator
     bool was_clicked;            ///< Set true when item is clicked (cleared on read)
     vg_icon_t icon;              ///< Optional icon (VG_ICON_NONE = no icon)

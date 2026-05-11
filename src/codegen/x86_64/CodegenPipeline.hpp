@@ -76,6 +76,12 @@ class CodegenPipeline {
 
     /// \brief Execute the end-to-end code-generation workflow.
     PipelineResult run();
+
+    /// \brief Run the pipeline against an already-loaded IL module.
+    /// \param module IL module to compile; consumed/moved into the pipeline.
+    /// \param debugSourcePath Source path embedded in DWARF line-number entries.
+    /// \param moduleAlreadyVerified Skip the entry-point verifier when true.
+    /// \return PipelineResult with exit_code 0 on success.
     PipelineResult runWithModule(il::core::Module module,
                                  std::string debugSourcePath = {},
                                  bool moduleAlreadyVerified = false);

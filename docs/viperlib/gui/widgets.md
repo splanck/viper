@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-29
+last-verified: 2026-05-11
 ---
 
 # Basic Widgets
@@ -156,6 +156,7 @@ if rememberMe.IsChecked() == 1 { SaveCredentials(); }
 
 Mutually exclusive radio button (use with RadioGroup).
 Radio buttons unregister from their group when destroyed, and destroying a group clears the group reference on surviving radio buttons. This prevents stale selection handles after dynamic UI teardown.
+Runtime-created radio groups are opaque handles. After `Destroy()`, that handle is invalid and cannot be reused to create more radio buttons; existing buttons become ungrouped and remain valid widgets.
 
 **Constructor:** `NEW Viper.GUI.RadioButton(parent, text, group)`
 

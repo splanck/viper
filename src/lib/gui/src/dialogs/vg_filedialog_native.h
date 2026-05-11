@@ -19,6 +19,8 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
+#include <stddef.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -38,6 +40,27 @@ char *vg_native_open_file(const char *title,
                           const char *initial_path,
                           const char *filter_name,
                           const char *filter_pattern);
+
+/// @brief Show a native "Open Files" dialog and return the selected paths.
+///
+/// @details The returned array and each contained string are heap-allocated.
+///          Free them with vg_native_free_paths(). On cancel, returns NULL and
+///          stores 0 in out_count.
+///
+/// @param title          Dialog window title.
+/// @param initial_path   Initial directory to display (may be NULL).
+/// @param filter_name    Human-readable filter label.
+/// @param filter_pattern Semicolon-separated glob patterns.
+/// @param out_count      Receives the number of selected paths.
+/// @return Heap-allocated path array, or NULL on cancel/allocation failure.
+char **vg_native_open_files(const char *title,
+                            const char *initial_path,
+                            const char *filter_name,
+                            const char *filter_pattern,
+                            size_t *out_count);
+
+/// @brief Free an array returned by vg_native_open_files().
+void vg_native_free_paths(char **paths, size_t count);
 
 /// @brief Show a native "Save File" dialog and return the chosen save path.
 ///

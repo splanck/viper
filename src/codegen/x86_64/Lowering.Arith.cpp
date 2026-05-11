@@ -35,6 +35,14 @@ namespace {
 constexpr int64_t kErrInvalidCast = 5;
 constexpr int64_t kErrOverflow = 4;
 
+/// @brief Return the IEEE-754 bit pattern of the most-negative signed value
+///        representable in @p widthBits, encoded as a double.
+/// @details Used by checked floating-point-to-signed-integer conversion to
+///          compare the input against the closed lower bound. The bit
+///          patterns are precomputed for 16/32/64-bit targets; any other
+///          width is unsupported and traps via @ref phaseAUnsupported.
+/// @param widthBits Target signed-integer width (16, 32, or 64).
+/// @return 64-bit IEEE-754 bit pattern.
 uint64_t signedMinF64Bits(std::uint8_t widthBits) {
     switch (widthBits) {
         case 16:
@@ -48,6 +56,13 @@ uint64_t signedMinF64Bits(std::uint8_t widthBits) {
     }
 }
 
+/// @brief Return the IEEE-754 bit pattern of @c 2^widthBits-1 + 1 as a double.
+/// @details The "upper exclusive" bound for checked fp-to-signed-int. The
+///          input must be strictly less than this value to fit in the
+///          signed range. Encoded as a non-inclusive upper bound so the
+///          subsequent JCC can use unsigned-above semantics.
+/// @param widthBits Target signed-integer width (16, 32, or 64).
+/// @return 64-bit IEEE-754 bit pattern.
 uint64_t signedUpperExclusiveF64Bits(std::uint8_t widthBits) {
     switch (widthBits) {
         case 16:
@@ -61,6 +76,13 @@ uint64_t signedUpperExclusiveF64Bits(std::uint8_t widthBits) {
     }
 }
 
+/// @brief Return the IEEE-754 bit pattern of @c 2^widthBits as a double.
+/// @details Used as the upper exclusive bound for checked fp-to-unsigned-int
+///          conversion. For 64-bit unsigned conversion this is 2^64, which
+///          must be handled via the "subtract-and-set-sign-bit" trick in
+///          @ref emitFpToUi because CVTTSD2SI cannot represent it directly.
+/// @param widthBits Target unsigned-integer width (16, 32, or 64).
+/// @return 64-bit IEEE-754 bit pattern.
 uint64_t unsignedUpperExclusiveF64Bits(std::uint8_t widthBits) {
     switch (widthBits) {
         case 16:
@@ -118,12 +140,25 @@ void emitMaskToWidth(MIRBuilder &builder,
     builder.append(MInstr::make(MOpcode::ANDrr, {emit.clone(dest), maskOp}));
 }
 
+/// @brief Build a CALL instruction tagged with the supplied call-plan id.
+/// @details The call plan is what frame lowering uses to materialise argument
+///          shuffles, so we must stamp the id onto the synthesised call.
+/// @param target Label operand naming the callee.
+/// @param callPlanId Identifier returned by @c MIRBuilder::recordCallPlan.
+/// @return CALL @c MInstr ready to be appended to a block.
 MInstr makePlannedCall(Operand target, uint32_t callPlanId) {
     MInstr call = MInstr::make(MOpcode::CALL, std::vector<Operand>{std::move(target)});
     call.callPlanId = callPlanId;
     return call;
 }
 
+/// @brief Emit a call to the runtime trap that raises a typed error.
+/// @details Builds a single-argument call plan (the @p errCode immediate
+///          carried in the SysV first integer-arg register) and follows it
+///          with a UD2 so optimisations cannot let control flow fall past
+///          the trap.
+/// @param builder Active MIR builder.
+/// @param errCode One of the @c kErr* constants identifying the trap reason.
 void emitTrapRaiseError(MIRBuilder &builder, int64_t errCode) {
     CallLoweringPlan plan{};
     plan.callee = "rt_trap_raise_error";
@@ -135,6 +170,17 @@ void emitTrapRaiseError(MIRBuilder &builder, int64_t errCode) {
     builder.append(MInstr::make(MOpcode::UD2));
 }
 
+/// @brief Sign-extend @p src as if it were a @p widthBits-wide signed integer.
+/// @details Emits the canonical "SHL k ; SAR k" sequence where @c k = 64 - widthBits.
+///          For widths of 64 the value is returned unchanged. The narrowing
+///          conversion preserves the sign bit and zero-extends nothing; it is
+///          how the checked-cast paths detect lost information by comparing
+///          the narrowed-then-widened result against the original.
+/// @param builder Active MIR builder.
+/// @param emit EmitCommon helper bound to @p builder.
+/// @param src Source operand (any GPR-compatible operand kind).
+/// @param widthBits Target signed bit width (1..64).
+/// @return Virtual-register operand holding the sign-extended value.
 Operand emitSignExtendedToWidth(MIRBuilder &builder,
                                 EmitCommon &emit,
                                 Operand src,
@@ -153,6 +199,14 @@ Operand emitSignExtendedToWidth(MIRBuilder &builder,
     return narrowed;
 }
 
+/// @brief Zero-extend @p src as if it were a @p widthBits-wide unsigned integer.
+/// @details Twin of @ref emitSignExtendedToWidth using SHL/SHR (logical
+///          right shift) so the high bits are zeroed instead of replicated.
+/// @param builder Active MIR builder.
+/// @param emit EmitCommon helper bound to @p builder.
+/// @param src Source operand (any GPR-compatible operand kind).
+/// @param widthBits Target unsigned bit width (1..64).
+/// @return Virtual-register operand holding the zero-extended value.
 Operand emitZeroExtendedToWidth(MIRBuilder &builder,
                                 EmitCommon &emit,
                                 Operand src,
@@ -171,6 +225,18 @@ Operand emitZeroExtendedToWidth(MIRBuilder &builder,
     return narrowed;
 }
 
+/// @brief Trap when @p value cannot be represented in @p widthBits as a signed integer.
+/// @details Used after a sub-64-bit checked add/sub/mul to validate that the
+///          full 64-bit result still equals its sign-extended narrowing. If
+///          they differ, the high bits carried information that the target
+///          width cannot hold, so we call @c rt_trap_raise_error with the
+///          overflow code. The control flow is structured as
+///          trap-or-fallthrough so the optimiser cannot reorder it.
+/// @param builder Active MIR builder.
+/// @param emit EmitCommon helper bound to @p builder.
+/// @param value Operand holding the candidate result.
+/// @param widthBits Target width (no-op when >= 64).
+/// @param prefix String prefix used to derive unique trap/done labels.
 void emitSubWidthOverflowCheck(MIRBuilder &builder,
                                EmitCommon &emit,
                                const Operand &value,
@@ -193,6 +259,13 @@ void emitSubWidthOverflowCheck(MIRBuilder &builder,
     builder.append(MInstr::make(MOpcode::LABEL, {makeLabelOperand(doneLabel)}));
 }
 
+/// @brief Materialise an XMM operand holding @p bits as a 64-bit IEEE-754 value.
+/// @details Builds the constant by loading the bit pattern into a GPR and then
+///          using @c MOVQrx to transfer it into an XMM register. Avoids a
+///          rodata reference for small one-off constants.
+/// @param builder Active MIR builder.
+/// @param bits 64-bit IEEE-754 representation to load.
+/// @return XMM virtual-register operand carrying the materialised value.
 Operand emitF64BitsConstant(MIRBuilder &builder, uint64_t bits) {
     const VReg bitsReg = builder.makeTempVReg(RegClass::GPR);
     const Operand bitsOp = makeVRegOperand(bitsReg.cls, bitsReg.id);
@@ -204,6 +277,15 @@ Operand emitF64BitsConstant(MIRBuilder &builder, uint64_t bits) {
     return xmmOp;
 }
 
+/// @brief Call the runtime banker's-rounding helper for @p src.
+/// @details Checked fp-to-int conversions must perform IEEE-754 round-to-nearest
+///          ties-to-even rounding before truncation; the SSE @c CVTTSD2SI
+///          opcode truncates toward zero, so we delegate to @c rt_round_even
+///          and then operate on its result. The call uses the f64 return
+///          register defined by the target.
+/// @param builder Active MIR builder.
+/// @param src Source XMM operand to round.
+/// @return XMM virtual-register operand holding the rounded value.
 Operand emitRoundEvenCall(MIRBuilder &builder, const Operand &src) {
     CallLoweringPlan plan{};
     plan.callee = "rt_round_even";
@@ -399,10 +481,23 @@ void emitMulOvf(const ILInstr &instr, MIRBuilder &builder) {
     emit.emitBinary(instr, MOpcode::IMULOvfrr, MOpcode::IMULOvfrr, RegClass::GPR, false);
 }
 
+/// @brief Lower any of the signed/unsigned div or rem IL opcodes.
+/// @details Delegates to @ref EmitCommon::emitDivRem, which selects the
+///          checked or unchecked DIV/REM pseudo based on the IL opcode string.
+///          The actual CQO/IDIV expansion happens later in @ref LowerDiv.
+/// @param instr IL div/rem instruction.
+/// @param builder Active MIR builder.
 void emitDivFamily(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon(builder).emitDivRem(instr, instr.opcode);
 }
 
+/// @brief Lower zero-/sign-extension and truncation IL instructions.
+/// @details Emits a copy followed by the canonical mask or shift sequence
+///          required by the source/result bit-width metadata. This keeps
+///          narrow values from preserving stale high bits after widening or
+///          truncating, including boolean results.
+/// @param instr IL zext/sext/trunc instruction.
+/// @param builder Active MIR builder.
 void emitZSTrunc(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon emit(builder);
     if (instr.resultId < 0 || instr.ops.empty()) {
@@ -449,10 +544,24 @@ void emitZSTrunc(const ILInstr &instr, MIRBuilder &builder) {
     phaseAUnsupported("cast: unsupported integer cast opcode");
 }
 
+/// @brief Lower signed-integer-to-double conversion via CVTSI2SD.
+/// @details Single-instruction lowering — CVTSI2SD handles full 64-bit
+///          signed inputs directly. For the unsigned counterpart see
+///          @ref emitUiToFp which must split the high-bit case.
+/// @param instr IL sitofp instruction.
+/// @param builder Active MIR builder.
 void emitSIToFP(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon(builder).emitCast(instr, MOpcode::CVTSI2SD, RegClass::XMM, RegClass::GPR);
 }
 
+/// @brief Lower unchecked floating-point-to-signed-integer conversion.
+/// @details Performs NaN and range checks against the precomputed F64 bound
+///          patterns and traps when the input would produce a value outside
+///          the signed result type. The truncated value is produced via
+///          @c CVTTSD2SI. A unique label triple is allocated per call site
+///          to keep branch destinations deterministic across the function.
+/// @param instr IL fptosi instruction.
+/// @param builder Active MIR builder.
 void emitFPToSI(const ILInstr &instr, MIRBuilder &builder) {
     if (instr.resultId < 0 || instr.ops.empty()) {
         return;
@@ -497,6 +606,13 @@ void emitFPToSI(const ILInstr &instr, MIRBuilder &builder) {
     builder.append(MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(doneLabel)}));
 }
 
+/// @brief Lower the checked fp-to-signed-int conversion (with explicit rounding).
+/// @details Differs from @ref emitFPToSI in that the input is first rounded
+///          to nearest-even via @ref emitRoundEvenCall, matching the IL
+///          contract for `fptosi.chk`. The rest of the bound checks and
+///          trap structure mirror the unchecked path.
+/// @param instr IL fptosi.chk instruction.
+/// @param builder Active MIR builder.
 void emitFPToSIChecked(const ILInstr &instr, MIRBuilder &builder) {
     if (instr.resultId < 0 || instr.ops.empty())
         return;
@@ -541,6 +657,15 @@ void emitFPToSIChecked(const ILInstr &instr, MIRBuilder &builder) {
     builder.append(MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(doneLabel)}));
 }
 
+/// @brief Lower the checked fp-to-unsigned-int conversion.
+/// @details CVTTSD2SI is signed-only; for unsigned conversion of values in
+///          [2^63, 2^64) we subtract 2^63 from the rounded source, convert
+///          the resulting signed value, then set bit 63 of the result. The
+///          "small" path (input < 2^63) uses CVTTSD2SI directly. NaN and
+///          negative inputs trap as invalid casts; inputs >= 2^64 trap as
+///          overflow.
+/// @param instr IL fptoui.chk instruction.
+/// @param builder Active MIR builder.
 void emitFpToUi(const ILInstr &instr, MIRBuilder &builder) {
     if (instr.resultId < 0 || instr.ops.empty()) {
         return;
@@ -612,6 +737,14 @@ void emitFpToUi(const ILInstr &instr, MIRBuilder &builder) {
     builder.append(MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(doneLabel)}));
 }
 
+/// @brief Common implementation for checked signed/unsigned integer narrowing.
+/// @details Sign- or zero-extends the source to the target width, compares
+///          against the original 64-bit value, and traps with the overflow
+///          error when the two differ. The result lives in the destination
+///          virtual register only on the fallthrough (success) path.
+/// @param instr IL narrow-cast instruction.
+/// @param builder Active MIR builder.
+/// @param isSigned True for `s.narrow.chk`, false for `u.narrow.chk`.
 void emitNarrowCastChecked(const ILInstr &instr, MIRBuilder &builder, bool isSigned) {
     if (instr.resultId < 0 || instr.ops.empty()) {
         return;
@@ -639,10 +772,16 @@ void emitNarrowCastChecked(const ILInstr &instr, MIRBuilder &builder, bool isSig
     builder.append(MInstr::make(MOpcode::LABEL, {makeLabelOperand(doneLabel)}));
 }
 
+/// @brief Lower signed-integer narrowing with overflow trap.
+/// @details Thin wrapper around @ref emitNarrowCastChecked with
+///          @c isSigned == true.
 void emitSiNarrowChecked(const ILInstr &instr, MIRBuilder &builder) {
     emitNarrowCastChecked(instr, builder, true);
 }
 
+/// @brief Lower unsigned-integer narrowing with overflow trap.
+/// @details Thin wrapper around @ref emitNarrowCastChecked with
+///          @c isSigned == false.
 void emitUiNarrowChecked(const ILInstr &instr, MIRBuilder &builder) {
     emitNarrowCastChecked(instr, builder, false);
 }

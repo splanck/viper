@@ -38,6 +38,10 @@ struct InstrDeps {
     unsigned latency{1};
 };
 
+/// @brief Predicate: does @p op contain any virtual register reference?
+/// @details Post-register-allocation scheduling refuses to operate on blocks
+///          that still contain virtual operands because their interference
+///          isn't yet resolved. Used as a guard by @ref isSchedulingBoundary.
 [[nodiscard]] bool isVirtualOperand(const Operand &op) noexcept {
     if (const auto *reg = std::get_if<OpReg>(&op))
         return !reg->isPhys;
@@ -49,6 +53,10 @@ struct InstrDeps {
     return false;
 }
 
+/// @brief Add the physical registers used by @p mem to @p deps.uses.
+/// @details Memory operands implicitly read their base and index registers.
+///          The scheduler records those reads so dependency edges include
+///          address computation.
 void addMemRegs(const OpMem &mem, InstrDeps &deps) {
     if (mem.base.isPhys)
         deps.uses.insert(mem.base.idOrPhys);
@@ -56,6 +64,12 @@ void addMemRegs(const OpMem &mem, InstrDeps &deps) {
         deps.uses.insert(mem.index.idOrPhys);
 }
 
+/// @brief Approximate instruction latency in cycles.
+/// @details Hand-tuned numbers loosely based on modern x86 microarchitectures.
+///          Memory loads (4 cycles), IMUL (3), FDIV (10), and FP arithmetic
+///          (3) form the bulk of the table; everything else defaults to 1.
+///          The scheduler uses this to prefer dispatching long-latency
+///          instructions earlier in the segment.
 [[nodiscard]] unsigned opcodeLatency(MOpcode opcode) noexcept {
     switch (opcode) {
         case MOpcode::MOVmr:
@@ -78,6 +92,11 @@ void addMemRegs(const OpMem &mem, InstrDeps &deps) {
     }
 }
 
+/// @brief Predicate: does @p instr terminate a schedulable segment?
+/// @details Control transfers, calls, parallel-copy pseudos, and
+///          implicit-register opcodes (CQO, IDIV) cannot be reordered around.
+///          Instructions that define RSP or RBP, or that still reference
+///          virtual operands, also serve as boundaries.
 [[nodiscard]] bool isSchedulingBoundary(const MInstr &instr) noexcept {
     switch (instr.opcode) {
         case MOpcode::LABEL:
@@ -118,6 +137,11 @@ void addMemRegs(const OpMem &mem, InstrDeps &deps) {
     return std::any_of(instr.operands.begin(), instr.operands.end(), isVirtualOperand);
 }
 
+/// @brief Build the dependency descriptor for @p instr.
+/// @details Walks each operand and records physical register uses/defs,
+///          whether the instruction reads/writes EFLAGS, whether it
+///          accesses memory, and the assumed latency. The result feeds
+///          the dependency graph constructed by @ref scheduleSegment.
 [[nodiscard]] InstrDeps analyseInstr(const MInstr &instr) {
     InstrDeps deps{};
     deps.usesFlags = usesEFlags(instr.opcode);
@@ -151,6 +175,10 @@ void addMemRegs(const OpMem &mem, InstrDeps &deps) {
     return deps;
 }
 
+/// @brief Does @p a share any element with @p b?
+/// @details Recursion onto the smaller set keeps the hash-set lookup count
+///          minimal. Used by @ref dependsOn to detect def-use, use-def, and
+///          def-def conflicts.
 [[nodiscard]] bool intersects(const std::unordered_set<uint16_t> &a,
                               const std::unordered_set<uint16_t> &b) {
     if (a.size() > b.size())
@@ -158,6 +186,12 @@ void addMemRegs(const OpMem &mem, InstrDeps &deps) {
     return std::any_of(a.begin(), a.end(), [&](uint16_t reg) { return b.count(reg) != 0; });
 }
 
+/// @brief Predicate: must @p second execute after @p first?
+/// @details A dependency exists when:
+///          - one instruction's def aliases another's use (data dep),
+///          - they both define the same register (output dep),
+///          - one defines EFLAGS while the other reads or redefines it,
+///          - or both perform memory accesses (conservative aliasing).
 [[nodiscard]] bool dependsOn(const InstrDeps &first, const InstrDeps &second) {
     if (intersects(first.defs, second.uses))
         return true;
@@ -174,6 +208,14 @@ void addMemRegs(const OpMem &mem, InstrDeps &deps) {
     return first.memory && second.memory;
 }
 
+/// @brief Compute the critical-path height of each instruction.
+/// @details Height = instruction's own latency plus the maximum height of
+///          its successors. A higher height means more downstream work, so
+///          the list scheduler prioritises dispatching that instruction
+///          earlier to expose parallelism.
+/// @param deps Per-instruction dependency descriptors.
+/// @param succs Dependency graph successor lists.
+/// @return Per-instruction critical-path height in cycles.
 [[nodiscard]] std::vector<unsigned> criticalHeights(const std::vector<InstrDeps> &deps,
                                                     const std::vector<std::vector<std::size_t>> &succs) {
     std::vector<unsigned> heights(deps.size(), 0);
@@ -186,6 +228,16 @@ void addMemRegs(const OpMem &mem, InstrDeps &deps) {
     return heights;
 }
 
+/// @brief Reorder a straight-line instruction segment using list scheduling.
+/// @details Builds an upper-triangular dependency graph (for each i < j,
+///          adds i→j when they conflict), tracks ready instructions
+///          (predecessor count zero), and at each step picks the ready
+///          instruction with the highest critical-path height. Ties broken
+///          by latency then by program-order index (preferring the later
+///          instruction to delay it less).
+/// @param segment Instructions to reorder (consumed by move).
+/// @param changed Output: set to true if the order actually changed.
+/// @return Reordered instruction stream.
 [[nodiscard]] std::vector<MInstr> scheduleSegment(std::vector<MInstr> segment, bool &changed) {
     changed = false;
     const std::size_t n = segment.size();
@@ -267,6 +319,11 @@ void addMemRegs(const OpMem &mem, InstrDeps &deps) {
     return scheduledSegment;
 }
 
+/// @brief Schedule @p segment and append its result to @p out.
+/// @details Helper used by the block-walker to drain accumulated
+///          schedulable instructions whenever a boundary is hit. The
+///          @p changedSegments counter is bumped only when the
+///          reordering actually mutated the stream.
 void flushSegment(std::vector<MInstr> &out, std::vector<MInstr> &segment, std::size_t &changedSegments) {
     if (segment.empty())
         return;
@@ -283,6 +340,13 @@ void flushSegment(std::vector<MInstr> &out, std::vector<MInstr> &segment, std::s
 
 } // namespace
 
+/// @brief Schedule every block of @p fn, splitting at boundary instructions.
+/// @details For each block, walks instructions linearly and accumulates a
+///          schedulable segment until a boundary instruction is reached.
+///          Each segment is reordered independently. Boundary instructions
+///          themselves are appended verbatim.
+/// @param fn Machine function rewritten in place.
+/// @return Number of segments whose order changed (useful for stats).
 std::size_t scheduleFunction(MFunction &fn) {
     std::size_t changedSegments = 0;
 
@@ -306,6 +370,8 @@ std::size_t scheduleFunction(MFunction &fn) {
     return changedSegments;
 }
 
+/// @brief Schedule every function in @p mir.
+/// @details Wraps @ref scheduleFunction over the module's function list.
 std::size_t scheduleModule(std::vector<MFunction> &mir) {
     std::size_t changed = 0;
     for (auto &fn : mir)

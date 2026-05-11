@@ -47,6 +47,15 @@ typedef struct {
     int64_t replace_mode;
 } rt_findbar_data_t;
 
+static rt_findbar_data_t *rt_findbar_checked(void *bar) {
+    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
+    return data && data->bar ? data : NULL;
+}
+
+static vg_codeeditor_t *rt_findbar_editor_checked(void *editor) {
+    return (vg_codeeditor_t *)rt_gui_widget_handle_checked_type(editor, VG_WIDGET_CODEEDITOR);
+}
+
 /// @brief Release the find/replace bar widget and free cached text buffers.
 static void rt_findbar_dispose(rt_findbar_data_t *data) {
     if (!data)
@@ -124,56 +133,64 @@ void rt_findbar_destroy(void *bar) {
 /// @param bar    Find bar handle.
 /// @param editor Code editor widget to bind to.
 void rt_findbar_bind_editor(void *bar, void *editor) {
-    if (!bar)
+    rt_findbar_data_t *data = rt_findbar_checked(bar);
+    if (!data)
         return;
-    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
-    data->bound_editor = editor;
-    vg_findreplacebar_set_target(data->bar, (vg_codeeditor_t *)editor);
+    vg_codeeditor_t *target = NULL;
+    if (editor) {
+        target = rt_findbar_editor_checked(editor);
+        if (!target)
+            return;
+    }
+    data->bound_editor = target;
+    vg_findreplacebar_set_target(data->bar, target);
 }
 
 /// @brief Unbind the find bar from its current code editor.
 void rt_findbar_unbind_editor(void *bar) {
-    if (!bar)
+    rt_findbar_data_t *data = rt_findbar_checked(bar);
+    if (!data)
         return;
-    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
     data->bound_editor = NULL;
     vg_findreplacebar_set_target(data->bar, NULL);
 }
 
 /// @brief Toggle between find-only mode and find+replace mode.
 void rt_findbar_set_replace_mode(void *bar, int64_t replace) {
-    if (!bar)
+    rt_findbar_data_t *data = rt_findbar_checked(bar);
+    if (!data)
         return;
-    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
     data->replace_mode = replace;
     vg_findreplacebar_set_show_replace(data->bar, replace != 0);
 }
 
 /// @brief Check whether the find bar is in replace mode.
 int64_t rt_findbar_is_replace_mode(void *bar) {
-    if (!bar)
-        return 0;
     rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
+    if (!data)
+        return 0;
     return data->replace_mode;
 }
 
 /// @brief Set the search text for find operations.
 /// @details Updates both the cached text and the underlying vg find input widget.
 void rt_findbar_set_find_text(void *bar, rt_string text) {
-    if (!bar)
+    rt_findbar_data_t *data = rt_findbar_checked(bar);
+    if (!data)
         return;
-    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
-    if (data->find_text)
-        free(data->find_text);
-    data->find_text = rt_string_to_cstr(text);
+    char *new_text = text ? rt_string_to_cstr(text) : NULL;
+    if (text && !new_text)
+        return;
+    free(data->find_text);
+    data->find_text = new_text;
     vg_findreplacebar_set_find_text(data->bar, data->find_text);
 }
 
 /// @brief Get the current search text.
 rt_string rt_findbar_get_find_text(void *bar) {
-    if (!bar)
-        return rt_str_empty();
     rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
+    if (!data)
+        return rt_str_empty();
     if (data->bar && data->bar->find_input) {
         const char *text = vg_textinput_get_text((vg_textinput_t *)data->bar->find_input);
         if (text)
@@ -188,12 +205,14 @@ rt_string rt_findbar_get_find_text(void *bar) {
 /// @details Updates the cached text and pushes it to the underlying vg replace
 ///          input widget so replace/replace_all use the correct value.
 void rt_findbar_set_replace_text(void *bar, rt_string text) {
-    if (!bar)
+    rt_findbar_data_t *data = rt_findbar_checked(bar);
+    if (!data)
         return;
-    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
-    if (data->replace_text)
-        free(data->replace_text);
-    data->replace_text = rt_string_to_cstr(text);
+    char *new_text = text ? rt_string_to_cstr(text) : NULL;
+    if (text && !new_text)
+        return;
+    free(data->replace_text);
+    data->replace_text = new_text;
     // Apply to the underlying replace text input so replace/replace_all
     // operations use the correct replacement text.
     if (data->bar && data->bar->replace_input)
@@ -202,9 +221,9 @@ void rt_findbar_set_replace_text(void *bar, rt_string text) {
 
 /// @brief Get the current replacement text.
 rt_string rt_findbar_get_replace_text(void *bar) {
-    if (!bar)
-        return rt_str_empty();
     rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
+    if (!data)
+        return rt_str_empty();
     if (data->bar && data->bar->replace_input) {
         const char *text = vg_textinput_get_text((vg_textinput_t *)data->bar->replace_input);
         if (text)
@@ -219,6 +238,8 @@ rt_string rt_findbar_get_replace_text(void *bar) {
 /// @details Called internally after any option change (case-sensitive, whole-word,
 ///          regex) so the underlying search engine picks up the new settings.
 static void rt_findbar_update_options(rt_findbar_data_t *data) {
+    if (!data || !data->bar)
+        return;
     vg_search_options_t opts = {.case_sensitive = data->case_sensitive != 0,
                                 .whole_word = data->whole_word != 0,
                                 .use_regex = data->regex != 0,
@@ -229,61 +250,61 @@ static void rt_findbar_update_options(rt_findbar_data_t *data) {
 
 /// @brief Enable or disable case-sensitive matching.
 void rt_findbar_set_case_sensitive(void *bar, int64_t sensitive) {
-    if (!bar)
+    rt_findbar_data_t *data = rt_findbar_checked(bar);
+    if (!data)
         return;
-    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
     data->case_sensitive = sensitive;
     rt_findbar_update_options(data);
 }
 
 /// @brief Check whether case-sensitive matching is enabled.
 int64_t rt_findbar_is_case_sensitive(void *bar) {
-    if (!bar)
-        return 0;
     rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
+    if (!data)
+        return 0;
     return data->case_sensitive;
 }
 
 /// @brief Enable or disable whole-word matching.
 void rt_findbar_set_whole_word(void *bar, int64_t whole) {
-    if (!bar)
+    rt_findbar_data_t *data = rt_findbar_checked(bar);
+    if (!data)
         return;
-    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
     data->whole_word = whole;
     rt_findbar_update_options(data);
 }
 
 /// @brief Check whether whole-word matching is enabled.
 int64_t rt_findbar_is_whole_word(void *bar) {
-    if (!bar)
-        return 0;
     rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
+    if (!data)
+        return 0;
     return data->whole_word;
 }
 
 /// @brief Enable or disable regex-based pattern matching.
 void rt_findbar_set_regex(void *bar, int64_t regex) {
-    if (!bar)
+    rt_findbar_data_t *data = rt_findbar_checked(bar);
+    if (!data)
         return;
-    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
     data->regex = regex;
     rt_findbar_update_options(data);
 }
 
 /// @brief Check whether regex matching is enabled.
 int64_t rt_findbar_is_regex(void *bar) {
-    if (!bar)
-        return 0;
     rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
+    if (!data)
+        return 0;
     return data->regex;
 }
 
 /// @brief Advance to the next match in the bound editor.
 /// @return 1 if at least one match exists, 0 otherwise.
 int64_t rt_findbar_find_next(void *bar) {
-    if (!bar)
+    rt_findbar_data_t *data = rt_findbar_checked(bar);
+    if (!data || !data->bound_editor)
         return 0;
-    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
     vg_findreplacebar_find_next(data->bar);
     return vg_findreplacebar_get_match_count(data->bar) > 0 ? 1 : 0;
 }
@@ -291,9 +312,9 @@ int64_t rt_findbar_find_next(void *bar) {
 /// @brief Move to the previous match in the bound editor.
 /// @return 1 if at least one match exists, 0 otherwise.
 int64_t rt_findbar_find_previous(void *bar) {
-    if (!bar)
+    rt_findbar_data_t *data = rt_findbar_checked(bar);
+    if (!data || !data->bound_editor)
         return 0;
-    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
     vg_findreplacebar_find_prev(data->bar);
     return vg_findreplacebar_get_match_count(data->bar) > 0 ? 1 : 0;
 }
@@ -301,11 +322,11 @@ int64_t rt_findbar_find_previous(void *bar) {
 /// @brief Replace the current match with the replacement text.
 /// @return 1 on success.
 int64_t rt_findbar_replace(void *bar) {
-    if (!bar)
+    rt_findbar_data_t *data = rt_findbar_checked(bar);
+    if (!data || !data->bound_editor)
         return 0;
-    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
     size_t count_before = vg_findreplacebar_get_match_count(data->bar);
-    if (!data->bar || !data->bound_editor || count_before == 0)
+    if (count_before == 0)
         return 0;
     vg_findreplacebar_replace_current(data->bar);
     return 1;
@@ -314,9 +335,9 @@ int64_t rt_findbar_replace(void *bar) {
 /// @brief Replace all matches in the bound editor with the replacement text.
 /// @return The number of matches that existed before replacement.
 int64_t rt_findbar_replace_all(void *bar) {
-    if (!bar)
+    rt_findbar_data_t *data = rt_findbar_checked(bar);
+    if (!data || !data->bound_editor)
         return 0;
-    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
     size_t count_before = vg_findreplacebar_get_match_count(data->bar);
     vg_findreplacebar_replace_all(data->bar);
     return (int64_t)count_before;
@@ -324,42 +345,41 @@ int64_t rt_findbar_replace_all(void *bar) {
 
 /// @brief Get the total number of matches for the current search text.
 int64_t rt_findbar_get_match_count(void *bar) {
-    if (!bar)
+    rt_findbar_data_t *data = rt_findbar_checked(bar);
+    if (!data)
         return 0;
-    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
     return (int64_t)vg_findreplacebar_get_match_count(data->bar);
 }
 
 /// @brief Get the 1-based index of the currently highlighted match.
 int64_t rt_findbar_get_current_match(void *bar) {
-    if (!bar)
+    rt_findbar_data_t *data = rt_findbar_checked(bar);
+    if (!data)
         return 0;
-    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
     return (int64_t)vg_findreplacebar_get_current_match(data->bar);
 }
 
 /// @brief Show or hide the find bar widget.
 void rt_findbar_set_visible(void *bar, int64_t visible) {
-    if (!bar)
+    rt_findbar_data_t *data = rt_findbar_checked(bar);
+    if (!data)
         return;
-    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
-    if (data->bar)
-        vg_widget_set_visible(&data->bar->base, visible != 0);
+    vg_widget_set_visible(&data->bar->base, visible != 0);
 }
 
 /// @brief Check whether the find bar is currently visible.
 int64_t rt_findbar_is_visible(void *bar) {
-    if (!bar)
+    rt_findbar_data_t *data = rt_findbar_checked(bar);
+    if (!data)
         return 0;
-    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
-    return (data->bar && data->bar->base.visible) ? 1 : 0;
+    return data->bar->base.visible ? 1 : 0;
 }
 
 /// @brief Give keyboard focus to the find bar's search input field.
 void rt_findbar_focus(void *bar) {
-    if (!bar)
+    rt_findbar_data_t *data = rt_findbar_checked(bar);
+    if (!data)
         return;
-    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
     vg_findreplacebar_focus(data->bar);
 }
 

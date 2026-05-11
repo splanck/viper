@@ -53,10 +53,23 @@ namespace {
     phaseAUnsupported(msg.c_str());
 }
 
+/// @brief Canonicalise an integer-class IL constant for MIR emission.
+/// @details I1 booleans are normalised to {0, 1} so downstream code never has
+///          to defend against truthy-but-non-one inputs (e.g. -1 read from
+///          memory). All other integer kinds pass through their @c i64 payload
+///          unchanged. Pointer immediates are intentionally not handled here —
+///          callers select the canonical form based on @ref isIntegerLikeKind.
+/// @param value IL value carrying the immediate payload.
+/// @return The canonical signed 64-bit immediate value.
 [[nodiscard]] int64_t canonicalIntegerImmediate(const ILValue &value) noexcept {
     return value.kind == ILValue::Kind::I1 ? (value.i64 != 0 ? 1 : 0) : value.i64;
 }
 
+/// @brief Predicate: does @p kind use the GPR class for codegen purposes?
+/// @details Integers, booleans, and pointers all live in GPRs on x86-64. F64
+///          uses XMM and LABEL/STR have no native machine representation.
+/// @param kind IL value kind to classify.
+/// @return True for I64/I1/PTR.
 [[nodiscard]] bool isIntegerLikeKind(ILValue::Kind kind) noexcept {
     return kind == ILValue::Kind::I64 || kind == ILValue::Kind::I1 || kind == ILValue::Kind::PTR;
 }
@@ -187,6 +200,12 @@ uint32_t MIRBuilder::recordCallPlan(CallLoweringPlan plan) {
     return lower_->recordCallPlan(std::move(plan));
 }
 
+/// @brief Reserve a stack-local placeholder slot for an alloca.
+/// @details Forwards to the owning adapter; the actual offset is rewritten by
+///          FrameLowering once callee-saved register pressure is known.
+/// @param sizeBytes Size of the allocation in bytes.
+/// @param alignBytes Required alignment in bytes (defaulted by the header).
+/// @return Negative @c %rbp-relative placeholder displacement.
 int32_t MIRBuilder::reserveStackLocalPlaceholder(int sizeBytes, int alignBytes) {
     assert(lower_);
     return lower_->reserveStackLocalPlaceholder(sizeBytes, alignBytes);
@@ -208,10 +227,19 @@ const std::vector<CallLoweringPlan> &LowerILToMIR::callPlans() const noexcept {
     return callPlans_;
 }
 
+/// @brief Install the set of variadic-call targets recognised by call lowering.
+/// @details The compiler may know, ahead of lowering, that certain symbols
+///          obey C variadic calling conventions. Recording them here lets call
+///          rules route through the SysV "AL holds XMM count" path even for
+///          user-defined functions that declare @c ... in IL.
+/// @param callees Symbol names; takes ownership via move.
 void LowerILToMIR::setKnownVarArgCallees(std::unordered_set<std::string> callees) {
     knownVarArgCallees_ = std::move(callees);
 }
 
+/// @brief Query whether @p callee was registered as a vararg function.
+/// @param callee Symbol name as it appears in the call IL instruction.
+/// @return True when @p callee is non-empty and present in the vararg set.
 bool LowerILToMIR::isKnownVarArgCallee(std::string_view callee) const {
     if (callee.empty()) {
         return false;
@@ -219,12 +247,25 @@ bool LowerILToMIR::isKnownVarArgCallee(std::string_view callee) const {
     return knownVarArgCallees_.find(std::string{callee}) != knownVarArgCallees_.end();
 }
 
+/// @brief Record a call-lowering plan and return its stable identifier.
+/// @details The id is later attached to the @c CALL MInstr so frame lowering
+///          can recover the plan when emitting argument shuffles.
+/// @param plan Plan describing the call's argument classes and return wiring.
+/// @return Index of the plan within @c callPlans_.
 uint32_t LowerILToMIR::recordCallPlan(CallLoweringPlan plan) {
     const uint32_t id = static_cast<uint32_t>(callPlans_.size());
     callPlans_.push_back(std::move(plan));
     return id;
 }
 
+/// @brief Reserve a fresh stack slot for an alloca, returning a placeholder offset.
+/// @details The returned offset is negative and refers to a position that the
+///          frame lowering pass will later shift below the callee-saved area.
+///          The slot count and alignment are computed in @c kSlotSizeBytes
+///          units to mirror the layout assumptions made by FrameLowering.
+/// @param sizeBytes Requested allocation size in bytes.
+/// @param alignBytes Requested alignment in bytes (clamped to @c kSlotSizeBytes).
+/// @return Negative @c %rbp-relative placeholder displacement for the slot.
 int32_t LowerILToMIR::reserveStackLocalPlaceholder(int sizeBytes, int alignBytes) {
     const int slotCount = common::bytesToSlots(sizeBytes, kSlotSizeBytes);
     const int alignSlots =
@@ -248,6 +289,12 @@ void LowerILToMIR::resetFunctionState() {
     nextStackLocalSlot_ = 0;
 }
 
+/// @brief Hand out the next module-wide unique local-label id.
+/// @details Unlike per-function adapter state, this counter is intentionally
+///          NOT reset between functions so labels such as
+///          @c .Lfptosi_chk_trap_N stay unique across the whole compilation
+///          unit's assembly stream.
+/// @return Strictly monotonic identifier.
 uint32_t LowerILToMIR::nextLocalLabelId() noexcept {
     return nextLocalLabel_++;
 }

@@ -23,6 +23,12 @@
 
 namespace viper::codegen::x64::peephole {
 
+/// @brief Rewrite @p instr to @c "XOR reg, reg" (the canonical zero idiom).
+/// @details Used by the @c MOVri-zero rewrite to take advantage of the fact
+///          that XORing a register with itself is shorter to encode and
+///          breaks the dependency chain on the previous value of @p regOperand.
+/// @param instr Instruction rewritten in place.
+/// @param regOperand The destination/source register operand (used twice).
 void rewriteToXor(MInstr &instr, Operand regOperand) {
     instr.opcode = MOpcode::XORrr32;
     instr.operands.clear();
@@ -30,6 +36,11 @@ void rewriteToXor(MInstr &instr, Operand regOperand) {
     instr.operands.push_back(regOperand);
 }
 
+/// @brief Rewrite @p instr to @c "TEST reg, reg" — the canonical zero-test.
+/// @details Converts a @c CMP reg, #0 into a self-test that produces the
+///          same EFLAGS (ZF=1 iff register is zero) with a smaller encoding.
+/// @param instr Instruction rewritten in place.
+/// @param regOperand Register being compared (used twice in the new TEST).
 void rewriteToTest(MInstr &instr, Operand regOperand) {
     instr.opcode = MOpcode::TESTrr;
     instr.operands.clear();
@@ -37,6 +48,19 @@ void rewriteToTest(MInstr &instr, Operand regOperand) {
     instr.operands.push_back(regOperand);
 }
 
+/// @brief Detect identity arithmetic instructions that can be removed.
+/// @details Looks at @p instrs[idx] for one of:
+///          - @c "ADD/OR/XOR reg, #0"
+///          - @c "AND reg, #-1"
+///          - @c "SHL/SHR/SAR reg, #0"
+///          and reports it as removable when EFLAGS aren't observed downstream.
+///          The instruction stays in the vector until the caller compacts it
+///          out — this routine only marks the candidate by returning true and
+///          bumping @p stats.
+/// @param instrs Instruction stream being scanned.
+/// @param idx Index of the candidate.
+/// @param stats Pass-wide statistics accumulator (updated on hit).
+/// @return True when the instruction is a removable identity.
 bool tryArithmeticIdentity(const std::vector<MInstr> &instrs,
                            std::size_t idx,
                            PeepholeStats &stats) {
@@ -94,6 +118,17 @@ bool tryArithmeticIdentity(const std::vector<MInstr> &instrs,
     return false;
 }
 
+/// @brief Convert @c "IMUL dst, src" with a power-of-2 source into a left-shift.
+/// @details Walks the register-constant map @p knownConsts to recover the
+///          immediate that flowed into @c src. If it is a power of two and
+///          downstream code does not consume EFLAGS (IMUL and SHL set CF/OF
+///          differently), the instruction is rewritten to @c SHLri with the
+///          appropriate shift count.
+/// @param instrs Instruction stream (mutated in place).
+/// @param idx Index of the candidate IMUL.
+/// @param knownConsts Per-block constant tracking map.
+/// @param stats Pass statistics accumulator.
+/// @return True when the rewrite was applied.
 bool tryStrengthReduction(std::vector<MInstr> &instrs,
                           std::size_t idx,
                           const RegConstMap &knownConsts,

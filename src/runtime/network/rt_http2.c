@@ -64,6 +64,7 @@
 #define H2_ERROR_COMPRESSION 0x9
 
 #define H2_DEFAULT_WINDOW_SIZE 65535u
+#define H2_MAX_WINDOW_SIZE 2147483647u
 #define H2_DEFAULT_FRAME_SIZE 16384u
 #define H2_MAX_FRAME_SIZE 16777215u
 #define H2_MAX_HEADER_BLOCK (256u * 1024u)
@@ -564,6 +565,19 @@ static int h2_header_value_is_valid(const char *value) {
         if (*p == '\r' || *p == '\n' || *p == '\0')
             return 0;
     }
+    return 1;
+}
+
+static int h2_parse_status_code(const char *value, int *status_out) {
+    if (!value || !status_out || strlen(value) != 3)
+        return 0;
+    if (!isdigit((unsigned char)value[0]) || !isdigit((unsigned char)value[1]) ||
+        !isdigit((unsigned char)value[2]))
+        return 0;
+    int status = (value[0] - '0') * 100 + (value[1] - '0') * 10 + (value[2] - '0');
+    if (status < 100 || status > 599)
+        return 0;
+    *status_out = status;
     return 1;
 }
 
@@ -1240,18 +1254,25 @@ static int h2_send_settings(rt_http2_conn_t *conn) {
     return h2_send_frame(conn, H2_FRAME_SETTINGS, 0, 0, payload, sizeof(payload));
 }
 
-static void h2_apply_setting(rt_http2_conn_t *conn,
-                             uint16_t id,
-                             uint32_t value,
-                             int64_t *stream_window_io) {
+static int h2_apply_setting(rt_http2_conn_t *conn,
+                            uint16_t id,
+                            uint32_t value,
+                            int64_t *stream_window_io) {
     switch (id) {
         case H2_SETTINGS_HEADER_TABLE_SIZE:
+            if (value > H2_MAX_DYNAMIC_TABLE_SIZE)
+                return 0;
+            hpack_dyn_table_set_max_size(&conn->decode_table, value);
             break;
         case H2_SETTINGS_ENABLE_PUSH:
+            if (value != 0 && value != 1)
+                return 0;
             break;
         case H2_SETTINGS_MAX_CONCURRENT_STREAMS:
             break;
         case H2_SETTINGS_INITIAL_WINDOW_SIZE: {
+            if (value > H2_MAX_WINDOW_SIZE)
+                return 0;
             int64_t delta = (int64_t)value - (int64_t)conn->peer_initial_window;
             conn->peer_initial_window = value;
             if (stream_window_io)
@@ -1259,14 +1280,16 @@ static void h2_apply_setting(rt_http2_conn_t *conn,
             break;
         }
         case H2_SETTINGS_MAX_FRAME_SIZE:
-            if (value >= H2_DEFAULT_FRAME_SIZE && value <= H2_MAX_FRAME_SIZE)
-                conn->peer_max_frame_size = value;
+            if (value < H2_DEFAULT_FRAME_SIZE || value > H2_MAX_FRAME_SIZE)
+                return 0;
+            conn->peer_max_frame_size = value;
             break;
         case H2_SETTINGS_MAX_HEADER_LIST_SIZE:
             break;
         default:
             break;
     }
+    return 1;
 }
 
 static int h2_send_window_update(rt_http2_conn_t *conn, uint32_t stream_id, uint32_t increment) {
@@ -1505,7 +1528,8 @@ static int h2_handle_common_frame(rt_http2_conn_t *conn,
                 for (size_t pos = 0; pos < frame->payload_len; pos += 6) {
                     uint16_t id = h2_read_u16(frame->payload + pos);
                     uint32_t value = h2_read_u32(frame->payload + pos + 2);
-                    h2_apply_setting(conn, id, value, stream_window_io);
+                    if (!h2_apply_setting(conn, id, value, stream_window_io))
+                        return h2_conn_fail(conn, "HTTP/2: invalid SETTINGS value");
                 }
                 if (!h2_send_frame(conn, H2_FRAME_SETTINGS, H2_FLAG_ACK, 0, NULL, 0))
                     return 0;
@@ -1533,8 +1557,12 @@ static int h2_handle_common_frame(rt_http2_conn_t *conn,
             if (increment == 0)
                 return h2_conn_fail(conn, "HTTP/2: zero WINDOW_UPDATE");
             if (frame->stream_id == 0) {
+                if (conn->peer_conn_window > (int64_t)H2_MAX_WINDOW_SIZE - (int64_t)increment)
+                    return h2_conn_fail(conn, "HTTP/2: connection flow-control window overflow");
                 conn->peer_conn_window += increment;
             } else if (frame->stream_id == stream_id && stream_window_io) {
+                if (*stream_window_io > (int64_t)H2_MAX_WINDOW_SIZE - (int64_t)increment)
+                    return h2_conn_fail(conn, "HTTP/2: stream flow-control window overflow");
                 *stream_window_io += increment;
             }
             if (handled_out)
@@ -1851,7 +1879,13 @@ int rt_http2_client_roundtrip(rt_http2_conn_t *conn,
                             rt_http2_response_free(out_res);
                             return h2_conn_fail(conn, "HTTP/2: duplicate response status");
                         }
-                        out_res->status = atoi(it->value);
+                        if (!h2_parse_status_code(it->value, &out_res->status)) {
+                            rt_http2_headers_free(decoded);
+                            h2_frame_free(&frame);
+                            h2_buf_free(&res_body);
+                            rt_http2_response_free(out_res);
+                            return h2_conn_fail(conn, "HTTP/2: invalid response status");
+                        }
                         saw_status = 1;
                     } else if (it->name[0] != ':') {
                         if (h2_header_is_connection_specific(it->name, it->value) ||

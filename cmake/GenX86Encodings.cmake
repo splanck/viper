@@ -92,7 +92,6 @@ foreach(_i RANGE 0 ${_ENC_LAST})
   _append(_enc_content "     ${_FLAGS_STR}},")
 endforeach()
 _append(_enc_content "}};")
-_append(_enc_content "")
 
 # ----------------- OpFmtTable.inc -----------------
 set(_opfmt_content "")
@@ -172,10 +171,8 @@ foreach(_i RANGE 0 ${_ENC_LAST})
   _append(_opfmt_content "    {MOpcode::${_OPCODE}, \"${_MNEMONIC}\", ${_PAT_LEN}U, ${_FMT_VAL}},")
 endforeach()
 _append(_opfmt_content "}};")
-_append(_opfmt_content "")
 
 # Write outputs
 file(MAKE_DIRECTORY "${OUTPUT_DIR}")
 file(WRITE "${OUTPUT_DIR}/EncodingTable.inc" "${_enc_content}")
 file(WRITE "${OUTPUT_DIR}/OpFmtTable.inc"     "${_opfmt_content}")
-
