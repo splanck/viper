@@ -22,6 +22,8 @@
 
 #include "MachineIR.hpp"
 
+#include "codegen/common/LabelUtil.hpp"
+
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
@@ -258,13 +260,17 @@ MBasicBlock &MFunction::addBlock(MBasicBlock block) {
     return blocks.back();
 }
 
-/// @brief Generate a unique label local to this function using the given prefix.
+/// @brief Generate an assembler-local label that is unique across this module's functions.
 /// @param prefix Prefix to prepend to the generated label.
-/// @return New label string guaranteed unique within the function.
+/// @return New label string guaranteed unique across the emitted assembly module.
 std::string MFunction::makeLocalLabel(std::string_view prefix) {
     std::string label;
-    label.reserve(prefix.size() + 12); // prefix + counter digits + null terminator
+    const std::string functionStem = common::sanitizeLabel(name);
+    label.reserve(prefix.size() + functionStem.size() + 14);
     label = prefix;
+    label += '.';
+    label += functionStem;
+    label += '.';
     label += std::to_string(localLabelCounter++);
     return label;
 }

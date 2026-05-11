@@ -63,6 +63,10 @@ bool sameFrameSlot(const FrameAccess &a, const FrameAccess &b) {
     return a.disp == b.disp && a.cls == b.cls;
 }
 
+bool sameFrameAddress(const FrameAccess &a, const FrameAccess &b) {
+    return a.disp == b.disp;
+}
+
 bool definesOperandReg(const MInstr &instr, const Operand &regOperand) {
     const auto *reg = std::get_if<OpReg>(&regOperand);
     if (!reg || !reg->isPhys)
@@ -117,12 +121,21 @@ std::size_t eliminateDeadFrameStores(std::vector<MInstr> &instrs, PeepholeStats 
                 remove[it->second] = true;
                 ++removed;
             }
+            auto &otherStores =
+                mapFor(store->cls == RegClass::XMM ? RegClass::GPR : RegClass::XMM);
+            auto otherIt = otherStores.find(store->disp);
+            if (otherIt != otherStores.end() && !remove[otherIt->second]) {
+                remove[otherIt->second] = true;
+                ++removed;
+            }
+            otherStores.erase(store->disp);
             stores[store->disp] = i;
             continue;
         }
 
         if (auto load = frameLoad(instrs[i])) {
-            mapFor(load->cls).erase(load->disp);
+            lastGprStore.erase(load->disp);
+            lastXmmStore.erase(load->disp);
             continue;
         }
 
@@ -152,7 +165,8 @@ std::size_t forwardFrameStoreLoads(std::vector<MInstr> &instrs, PeepholeStats &s
             if (isMemoryBarrier(instrs[j]))
                 break;
 
-            if (auto laterStore = frameStore(instrs[j]); laterStore && sameFrameSlot(*store, *laterStore))
+            if (auto laterStore = frameStore(instrs[j]);
+                laterStore && sameFrameAddress(*store, *laterStore))
                 break;
 
             if (definesOperandReg(instrs[j], storedReg))

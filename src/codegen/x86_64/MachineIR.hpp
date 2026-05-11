@@ -11,7 +11,8 @@
 //   - Operand lists preserve emission order.
 //   - Virtual register IDs are unique per function, starting at 1.
 //   - Physical registers use PhysReg enum values.
-//   - Block labels are unique within a function.
+//   - Block labels are unique within a function; generated local labels include
+//     a function stem so textual assembly has a module-wide label namespace.
 // Ownership/Lifetime:
 //   - All IR nodes own their contained data via value semantics (vectors,
 //     strings); no external resource ownership.
@@ -203,9 +204,9 @@ struct MFunction {
     /// @return Reference to the newly appended basic block.
     MBasicBlock &addBlock(MBasicBlock block);
 
-    /// \brief Generate a function-local unique label using the provided prefix.
+    /// \brief Generate a module-unique local label using the provided prefix.
     /// @param prefix Short descriptive prefix for the label (e.g. "if_true").
-    /// @return A label string guaranteed unique within this MFunction.
+    /// @return A label string guaranteed unique across emitted x86-64 assembly.
     [[nodiscard]] std::string makeLocalLabel(std::string_view prefix);
 };
 

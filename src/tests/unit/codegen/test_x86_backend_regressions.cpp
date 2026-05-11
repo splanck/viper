@@ -21,6 +21,8 @@
 #include "codegen/x86_64/OperandRoles.hpp"
 #include "codegen/x86_64/RegAllocLinear.hpp"
 #include "codegen/x86_64/TargetX64.hpp"
+#include "codegen/x86_64/peephole/BranchOpt.hpp"
+#include "codegen/x86_64/peephole/MemoryOpt.hpp"
 #include "codegen/x86_64/peephole/PeepholeCommon.hpp"
 #include "codegen/x86_64/ra/Liveness.hpp"
 
@@ -2196,6 +2198,246 @@ TEST(X86BackendRegressions, IndexedMemReconstructionRejectsShiftWithoutOriginalI
     const ILInstr load = op("load", {val(ILValue::Kind::PTR, 2), imm(0)}, 3, ILValue::Kind::I64);
     const std::optional<Operand> mem = EmitCommon(builder).tryMakeIndexedMem(load, 1);
     EXPECT_FALSE(mem.has_value());
+}
+
+TEST(X86BackendRegressions, LargeAluAndCompareImmediatesMaterializeBeforeEmission) {
+    MFunction fn{};
+    fn.name = "large_alu_immediates";
+
+    MBasicBlock entry{};
+    entry.label = ".L_large_alu_immediates_entry";
+    const int64_t big = 1LL << 40;
+    entry.instructions = {
+        MInstr::make(MOpcode::ADDrr, {makeVRegOperand(RegClass::GPR, 1), makeImmOperand(big)}),
+        MInstr::make(MOpcode::SUBrr,
+                     {makeVRegOperand(RegClass::GPR, 2),
+                      makeImmOperand(std::numeric_limits<int64_t>::min())}),
+        MInstr::make(MOpcode::SUBrr,
+                     {makeVRegOperand(RegClass::GPR, 3),
+                      makeImmOperand(static_cast<int64_t>(std::numeric_limits<int32_t>::min()))}),
+        MInstr::make(MOpcode::ANDrr, {makeVRegOperand(RegClass::GPR, 4), makeImmOperand(big)}),
+        MInstr::make(MOpcode::ORrr, {makeVRegOperand(RegClass::GPR, 5), makeImmOperand(big)}),
+        MInstr::make(MOpcode::XORrr, {makeVRegOperand(RegClass::GPR, 6), makeImmOperand(big)}),
+        MInstr::make(MOpcode::CMPrr, {makeVRegOperand(RegClass::GPR, 7), makeImmOperand(big)})};
+    fn.blocks.push_back(std::move(entry));
+
+    ISel isel(sysvTarget());
+    isel.lowerArithmetic(fn);
+    isel.lowerCompareAndBranch(fn);
+
+    std::size_t materialized = 0;
+    for (const auto &instr : fn.blocks.front().instructions) {
+        if (instr.opcode == MOpcode::MOVri) {
+            ++materialized;
+        }
+
+        if (instr.operands.size() < 2 || !std::holds_alternative<OpImm>(instr.operands[1])) {
+            continue;
+        }
+
+        const int64_t imm = std::get<OpImm>(instr.operands[1]).val;
+        const bool fitsImm32 = imm >= std::numeric_limits<int32_t>::min() &&
+                               imm <= std::numeric_limits<int32_t>::max();
+        switch (instr.opcode) {
+            case MOpcode::ADDri:
+            case MOpcode::ANDri:
+            case MOpcode::ORri:
+            case MOpcode::XORri:
+            case MOpcode::CMPri:
+                EXPECT_TRUE(fitsImm32);
+                break;
+            case MOpcode::ADDrr:
+            case MOpcode::SUBrr:
+            case MOpcode::ANDrr:
+            case MOpcode::ORrr:
+            case MOpcode::XORrr:
+            case MOpcode::CMPrr:
+                EXPECT_TRUE(false);
+                break;
+            default:
+                break;
+        }
+    }
+    EXPECT_EQ(materialized, 7u);
+}
+
+TEST(X86BackendRegressions, BranchChainEliminationRetargetsJccBeforeFinalJump) {
+    MFunction fn{};
+    fn.name = "jcc_branch_chain";
+
+    MBasicBlock entry{};
+    entry.label = ".L_jcc_branch_chain_entry";
+    entry.instructions = {
+        MInstr::make(MOpcode::JCC, {makeImmOperand(1), makeLabelOperand(".L_chain")}),
+        MInstr::make(MOpcode::JMP, {makeLabelOperand(".L_exit")})};
+
+    MBasicBlock chain{};
+    chain.label = ".L_chain";
+    chain.instructions = {MInstr::make(MOpcode::JMP, {makeLabelOperand(".L_target")})};
+
+    MBasicBlock target{};
+    target.label = ".L_target";
+    target.instructions = {MInstr::make(MOpcode::RET)};
+
+    MBasicBlock exit{};
+    exit.label = ".L_exit";
+    exit.instructions = {MInstr::make(MOpcode::RET)};
+
+    fn.blocks = {entry, chain, target, exit};
+
+    peephole::PeepholeStats stats{};
+    peephole::eliminateBranchChains(fn, stats);
+
+    ASSERT_EQ(fn.blocks.front().instructions.front().opcode, MOpcode::JCC);
+    ASSERT_GE(fn.blocks.front().instructions.front().operands.size(), 2u);
+    const auto *targetLabel =
+        std::get_if<OpLabel>(&fn.blocks.front().instructions.front().operands[1]);
+    ASSERT_TRUE(targetLabel != nullptr);
+    EXPECT_EQ(targetLabel->name, ".L_target");
+    EXPECT_EQ(stats.branchChainsEliminated, 1u);
+}
+
+TEST(X86BackendRegressions, ColdBlockMovementPreservesImplicitFallthrough) {
+    MFunction fn{};
+    fn.name = "cold_fallthrough";
+
+    MBasicBlock entry{};
+    entry.label = ".L_cold_fallthrough_entry";
+    entry.instructions = {
+        MInstr::make(MOpcode::MOVri, {makeVRegOperand(RegClass::GPR, 1), makeImmOperand(1)})};
+
+    MBasicBlock trap{};
+    trap.label = ".L_cold_fallthrough_trap";
+    trap.instructions = {MInstr::make(MOpcode::UD2)};
+
+    MBasicBlock hot{};
+    hot.label = ".L_cold_fallthrough_hot";
+    hot.instructions = {MInstr::make(MOpcode::RET)};
+
+    fn.blocks = {entry, trap, hot};
+
+    peephole::PeepholeStats stats{};
+    peephole::moveColdBlocks(fn, stats);
+
+    ASSERT_EQ(fn.blocks.size(), 3u);
+    EXPECT_EQ(fn.blocks[1].label, ".L_cold_fallthrough_trap");
+    EXPECT_EQ(stats.coldBlocksMoved, 0u);
+}
+
+TEST(X86BackendRegressions, FrameStoreForwardingHonorsCrossClassAliases) {
+    const OpReg rbp = makePhysReg(RegClass::GPR, static_cast<uint16_t>(PhysReg::RBP));
+    const Operand rax = makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RAX));
+    const Operand rbx = makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RBX));
+    const Operand xmm0 = makePhysRegOperand(RegClass::XMM, static_cast<uint16_t>(PhysReg::XMM0));
+
+    std::vector<MInstr> instrs = {
+        MInstr::make(MOpcode::MOVrm, {makeMemOperand(rbp, -8), rax}),
+        MInstr::make(MOpcode::MOVSDrm, {makeMemOperand(rbp, -8), xmm0}),
+        MInstr::make(MOpcode::MOVmr, {rbx, makeMemOperand(rbp, -8)})};
+
+    peephole::PeepholeStats stats{};
+    const std::size_t forwarded = peephole::forwardFrameStoreLoads(instrs, stats);
+
+    EXPECT_EQ(forwarded, 0u);
+    ASSERT_EQ(instrs.size(), 3u);
+    EXPECT_EQ(instrs[2].opcode, MOpcode::MOVmr);
+}
+
+TEST(X86BackendRegressions, DeadFrameStoreEliminationHonorsCrossClassAliases) {
+    const OpReg rbp = makePhysReg(RegClass::GPR, static_cast<uint16_t>(PhysReg::RBP));
+    const Operand rax = makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RAX));
+    const Operand rbx = makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RBX));
+    const Operand xmm0 = makePhysRegOperand(RegClass::XMM, static_cast<uint16_t>(PhysReg::XMM0));
+
+    std::vector<MInstr> overwritten = {
+        MInstr::make(MOpcode::MOVrm, {makeMemOperand(rbp, -8), rax}),
+        MInstr::make(MOpcode::MOVSDrm, {makeMemOperand(rbp, -8), xmm0})};
+
+    peephole::PeepholeStats stats{};
+    EXPECT_EQ(peephole::eliminateDeadFrameStores(overwritten, stats), 1u);
+    ASSERT_EQ(overwritten.size(), 1u);
+    EXPECT_EQ(overwritten.front().opcode, MOpcode::MOVSDrm);
+
+    std::vector<MInstr> observed = {
+        MInstr::make(MOpcode::MOVrm, {makeMemOperand(rbp, -8), rax}),
+        MInstr::make(MOpcode::MOVSDmr, {xmm0, makeMemOperand(rbp, -8)}),
+        MInstr::make(MOpcode::MOVrm, {makeMemOperand(rbp, -8), rbx})};
+
+    peephole::PeepholeStats observedStats{};
+    EXPECT_EQ(peephole::eliminateDeadFrameStores(observed, observedStats), 0u);
+    EXPECT_EQ(observed.size(), 3u);
+}
+
+TEST(X86BackendRegressions, FrameLoweringPreservesCalleeSavedAddressRegisters) {
+    struct Case {
+        const TargetInfo *target;
+        PhysReg addressReg;
+        bool asIndex;
+        const char *name;
+    };
+
+    const std::array<Case, 10> cases{{
+        {&sysvTarget(), PhysReg::RBX, false, "sysv_rbx_base"},
+        {&sysvTarget(), PhysReg::R12, true, "sysv_r12_index"},
+        {&sysvTarget(), PhysReg::R13, false, "sysv_r13_base"},
+        {&sysvTarget(), PhysReg::R14, true, "sysv_r14_index"},
+        {&sysvTarget(), PhysReg::R15, false, "sysv_r15_base"},
+        {&win64Target(), PhysReg::RBX, false, "win64_rbx_base"},
+        {&win64Target(), PhysReg::RDI, true, "win64_rdi_index"},
+        {&win64Target(), PhysReg::RSI, false, "win64_rsi_base"},
+        {&win64Target(), PhysReg::R12, true, "win64_r12_index"},
+        {&win64Target(), PhysReg::R15, false, "win64_r15_base"},
+    }};
+
+    for (const auto &testCase : cases) {
+        MFunction fn{};
+        fn.name = testCase.name;
+
+        MBasicBlock entry{};
+        entry.label = std::string(".L_") + testCase.name;
+
+        const Operand dst =
+            makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RAX));
+        const OpReg address =
+            makePhysReg(RegClass::GPR, static_cast<uint16_t>(testCase.addressReg));
+        const Operand mem =
+            testCase.asIndex
+                ? makeMemOperand(makePhysReg(RegClass::GPR, static_cast<uint16_t>(PhysReg::RAX)),
+                                 address,
+                                 2,
+                                 16)
+                : makeMemOperand(address, 16);
+        entry.instructions = {MInstr::make(MOpcode::MOVmr, {dst, mem}), MInstr::make(MOpcode::RET)};
+        fn.blocks.push_back(std::move(entry));
+
+        FrameInfo frame{};
+        assignSpillSlots(fn, *testCase.target, frame);
+
+        EXPECT_TRUE(std::find(frame.usedCalleeSaved.begin(),
+                              frame.usedCalleeSaved.end(),
+                              testCase.addressReg) != frame.usedCalleeSaved.end());
+    }
+}
+
+TEST(X86BackendRegressions, LocalLabelsAreUniqueAcrossFunctions) {
+    MFunction first{};
+    first.name = "select_label_first";
+    MFunction second{};
+    second.name = "select_label_second";
+
+    const std::string firstGprLabel = first.makeLocalLabel(".Lselect_gpr_done");
+    const std::string secondGprLabel = second.makeLocalLabel(".Lselect_gpr_done");
+    EXPECT_NE(firstGprLabel, secondGprLabel);
+    EXPECT_NE(firstGprLabel.find("select_label_first"), std::string::npos);
+    EXPECT_NE(secondGprLabel.find("select_label_second"), std::string::npos);
+
+    const std::string firstFalseLabel = first.makeLocalLabel(".Lfalse");
+    const std::string secondFalseLabel = second.makeLocalLabel(".Lfalse");
+    EXPECT_NE(firstFalseLabel, secondFalseLabel);
+
+    const std::string firstSplitLabel = first.makeLocalLabel(".Lsplit");
+    const std::string secondSplitLabel = second.makeLocalLabel(".Lsplit");
+    EXPECT_NE(firstSplitLabel, secondSplitLabel);
 }
 
 int main(int argc, char **argv) {

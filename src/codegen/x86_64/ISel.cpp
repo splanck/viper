@@ -89,30 +89,101 @@ void ensureMovzxAfterSetcc(MBasicBlock &block, std::size_t index) {
                               std::move(movzx));
 }
 
-/// @brief Normalise CMP opcodes based on operand kinds.
-///
-/// @details Some passes emit `cmp` using register-register opcodes even when the
-///          right-hand side is an immediate and vice versa.  This helper flips
-///          between @ref MOpcode::CMPrr and @ref MOpcode::CMPri so the encoding
-///          matches operand types, ensuring later passes do not need to handle
-///          redundant cases.
-///
-/// @param instr Instruction to canonicalise in place.
-void canonicaliseCmp(MInstr &instr) {
-    if (instr.operands.size() < 2) {
-        return;
+[[nodiscard]] bool fitsSignedImm32(int64_t value) noexcept {
+    return value >= std::numeric_limits<int32_t>::min() &&
+           value <= std::numeric_limits<int32_t>::max();
+}
+
+void observeVirtualRegister(const OpReg &reg, uint16_t &maxId) noexcept {
+    if (!reg.isPhys) {
+        maxId = std::max(maxId, reg.idOrPhys);
     }
-    if (instr.opcode == MOpcode::CMPrr && isImm(instr.operands[1])) {
-        // Only promote to CMPri when the immediate fits in a sign-extended imm32.
-        const auto &imm = std::get<OpImm>(instr.operands[1]);
-        if (imm.val >= std::numeric_limits<int32_t>::min() &&
-            imm.val <= std::numeric_limits<int32_t>::max()) {
-            instr.opcode = MOpcode::CMPri;
+}
+
+[[nodiscard]] uint32_t nextVirtualGprId(const MFunction &func) {
+    uint16_t maxId = 0;
+    for (const auto &block : func.blocks) {
+        for (const auto &instr : block.instructions) {
+            for (const auto &operand : instr.operands) {
+                if (const auto *reg = asReg(operand)) {
+                    observeVirtualRegister(*reg, maxId);
+                    continue;
+                }
+
+                const auto *mem = asMem(operand);
+                if (!mem) {
+                    continue;
+                }
+                observeVirtualRegister(mem->base, maxId);
+                if (mem->hasIndex) {
+                    observeVirtualRegister(mem->index, maxId);
+                }
+            }
         }
     }
+    return static_cast<uint32_t>(maxId) + 1U;
+}
+
+[[nodiscard]] Operand makeTempGprOperand(uint32_t &nextVreg) {
+    if (nextVreg > std::numeric_limits<uint16_t>::max()) {
+        phaseAUnsupported("too many virtual registers in function");
+    }
+    return makeVRegOperand(RegClass::GPR, static_cast<uint16_t>(nextVreg++));
+}
+
+bool materialiseImmediateRhs(MBasicBlock &block,
+                             std::size_t index,
+                             uint32_t &nextVreg,
+                             MOpcode registerOpcode) {
+    if (index >= block.instructions.size()) {
+        return false;
+    }
+
+    auto &instr = block.instructions[index];
+    if (instr.operands.size() < 2 || !isImm(instr.operands[1])) {
+        return false;
+    }
+
+    const Operand immediate = cloneOperand(instr.operands[1]);
+    const Operand temp = makeTempGprOperand(nextVreg);
+    MInstr materialise =
+        MInstr::make(MOpcode::MOVri, std::vector<Operand>{cloneOperand(temp), immediate});
+    materialise.loc = instr.loc;
+
+    instr.opcode = registerOpcode;
+    instr.operands[1] = cloneOperand(temp);
+    block.instructions.insert(block.instructions.begin() + static_cast<std::ptrdiff_t>(index),
+                              std::move(materialise));
+    return true;
+}
+
+/// @brief Normalise CMP opcodes and materialise unencodable immediates.
+///
+/// @return True when a MOVri was inserted before @p index.
+bool legaliseCmp(MBasicBlock &block, std::size_t index, uint32_t &nextVreg) {
+    if (index >= block.instructions.size()) {
+        return false;
+    }
+
+    auto &instr = block.instructions[index];
+    if (instr.operands.size() < 2) {
+        return false;
+    }
+
+    if ((instr.opcode == MOpcode::CMPrr || instr.opcode == MOpcode::CMPri) &&
+        isImm(instr.operands[1])) {
+        const auto &imm = std::get<OpImm>(instr.operands[1]);
+        if (fitsSignedImm32(imm.val)) {
+            instr.opcode = MOpcode::CMPri;
+            return false;
+        }
+        return materialiseImmediateRhs(block, index, nextVreg, MOpcode::CMPrr);
+    }
+
     if (instr.opcode == MOpcode::CMPri && !isImm(instr.operands[1])) {
         instr.opcode = MOpcode::CMPrr;
     }
+    return false;
 }
 
 [[nodiscard]] std::optional<OpMem> combineLeaMemUse(const OpMem &leaMem, const OpMem &useMem) {
@@ -136,67 +207,93 @@ void canonicaliseCmp(MInstr &instr) {
     return combined;
 }
 
-/// @brief Canonicalise add/sub opcodes to use immediate forms when possible.
+/// @brief Canonicalise add/sub opcodes to legal immediate/register forms.
 ///
-/// @details Instruction selection prefers `add` with immediates because it
-///          exposes more opportunities for constant folding in later passes.  If
-///          a subtraction uses an immediate the helper negates the constant and
-///          replaces the opcode with `add` to keep the IR uniform.
+/// @details Instruction selection prefers `add` with signed-imm32 immediates
+///          because those map directly to x86-64 ALU encodings. Larger
+///          immediates, or subtraction immediates whose negation cannot be
+///          encoded, are materialised in a temporary GPR.
 ///
-/// @param instr Instruction to canonicalise in place.
-void canonicaliseAddSub(MInstr &instr) {
+/// @return True when a MOVri was inserted before @p index.
+bool legaliseAddSub(MBasicBlock &block, std::size_t index, uint32_t &nextVreg) {
+    auto &instr = block.instructions[index];
     if (instr.operands.size() < 2) {
-        return;
+        return false;
     }
     switch (instr.opcode) {
         case MOpcode::ADDrr:
+        case MOpcode::ADDri:
             if (isImm(instr.operands[1])) {
-                instr.opcode = MOpcode::ADDri;
+                const auto &imm = std::get<OpImm>(instr.operands[1]);
+                if (fitsSignedImm32(imm.val)) {
+                    instr.opcode = MOpcode::ADDri;
+                    return false;
+                }
+                return materialiseImmediateRhs(block, index, nextVreg, MOpcode::ADDrr);
+            }
+            if (instr.opcode == MOpcode::ADDri) {
+                instr.opcode = MOpcode::ADDrr;
             }
             break;
         case MOpcode::SUBrr:
             if (auto *imm = asImm(instr.operands[1])) {
-                // Guard against INT64_MIN: negation of the minimum signed value
-                // is undefined behaviour in C++.  Leave the SUB form intact.
                 if (imm->val != std::numeric_limits<int64_t>::min()) {
-                    imm->val = -imm->val;
-                    instr.opcode = MOpcode::ADDri;
+                    const int64_t negated = -imm->val;
+                    if (fitsSignedImm32(negated)) {
+                        imm->val = negated;
+                        instr.opcode = MOpcode::ADDri;
+                        return false;
+                    }
                 }
+                return materialiseImmediateRhs(block, index, nextVreg, MOpcode::SUBrr);
             }
             break;
         default:
             break;
     }
+    return false;
 }
 
-/// @brief Canonicalise bitwise opcodes to match operand kinds and zeroing idioms.
+/// @brief Canonicalise bitwise opcodes to legal operand kinds and zeroing idioms.
 ///
 /// @details Normalises AND/OR/XOR to use immediate forms when the second operand
-///          is a literal and falls back to register forms otherwise. Additionally
-///          rewrites register self-XOR into the canonical 32-bit self-XOR used
-///          by later peephole passes to recognise zeroing patterns.
+///          is a signed-imm32 literal and falls back to register forms otherwise.
+///          Larger constants are materialised into temporary GPRs. Additionally
+///          rewrites register self-XOR into the canonical 32-bit self-XOR used by
+///          later peephole passes to recognise zeroing patterns.
 ///
-/// @param instr Instruction to canonicalise in place.
-void canonicaliseBitwise(MInstr &instr) {
+/// @return True when a MOVri was inserted before @p index.
+bool legaliseBitwise(MBasicBlock &block, std::size_t index, uint32_t &nextVreg) {
+    auto &instr = block.instructions[index];
     if (instr.operands.size() < 2) {
-        return;
+        return false;
     }
 
-    const auto convertForm = [&](MOpcode rr, MOpcode ri) {
-        if (instr.opcode == rr && isImm(instr.operands[1])) {
-            instr.opcode = ri;
-            return true;
+    const auto convertForm = [&](MOpcode rr, MOpcode ri) -> bool {
+        if (instr.opcode != rr && instr.opcode != ri) {
+            return false;
         }
+
+        if (isImm(instr.operands[1])) {
+            const auto &imm = std::get<OpImm>(instr.operands[1]);
+            if (fitsSignedImm32(imm.val)) {
+                instr.opcode = ri;
+                return false;
+            }
+            return materialiseImmediateRhs(block, index, nextVreg, rr);
+        }
+
         if (instr.opcode == ri && !isImm(instr.operands[1])) {
             instr.opcode = rr;
-            return true;
         }
         return false;
     };
 
-    convertForm(MOpcode::ANDrr, MOpcode::ANDri);
-    convertForm(MOpcode::ORrr, MOpcode::ORri);
-    convertForm(MOpcode::XORrr, MOpcode::XORri);
+    if (convertForm(MOpcode::ANDrr, MOpcode::ANDri) ||
+        convertForm(MOpcode::ORrr, MOpcode::ORri) ||
+        convertForm(MOpcode::XORrr, MOpcode::XORri)) {
+        return true;
+    }
 
     if (instr.opcode == MOpcode::XORrr) {
         if (sameRegister(instr.operands[0], instr.operands[1])) {
@@ -206,11 +303,12 @@ void canonicaliseBitwise(MInstr &instr) {
                 instr.operands[1] = cloneOperand(instr.operands[0]);
             }
         }
-        return;
+        return false;
     }
 
     // Do not rewrite XORri $0 as a self-XOR.  "x ^ 0" is an identity, while
     // "xor r32, r32" zeroes the destination.
+    return false;
 }
 
 bool appendGprMove(std::vector<MInstr> &out, const Operand &dst, const Operand &src) {
@@ -619,13 +717,15 @@ ISel::ISel(const TargetInfo &target) noexcept : target_{&target} {}
 /// @param func Machine function undergoing selection.
 void ISel::lowerArithmetic(MFunction &func) const {
     (void)target_;
+    uint32_t nextVreg = nextVirtualGprId(func);
     for (auto &block : func.blocks) {
-        for (auto &instr : block.instructions) {
-            switch (instr.opcode) {
+        for (std::size_t idx = 0; idx < block.instructions.size(); ++idx) {
+            bool insertedMaterialise = false;
+            switch (block.instructions[idx].opcode) {
                 case MOpcode::ADDrr:
                 case MOpcode::ADDri:
                 case MOpcode::SUBrr:
-                    canonicaliseAddSub(instr);
+                    insertedMaterialise = legaliseAddSub(block, idx, nextVreg);
                     break;
                 case MOpcode::ANDrr:
                 case MOpcode::ANDri:
@@ -633,7 +733,7 @@ void ISel::lowerArithmetic(MFunction &func) const {
                 case MOpcode::ORri:
                 case MOpcode::XORrr:
                 case MOpcode::XORri:
-                    canonicaliseBitwise(instr);
+                    insertedMaterialise = legaliseBitwise(block, idx, nextVreg);
                     break;
                 case MOpcode::IMULrr:
                 case MOpcode::FADD:
@@ -644,6 +744,9 @@ void ISel::lowerArithmetic(MFunction &func) const {
                     break;
                 default:
                     break;
+            }
+            if (insertedMaterialise) {
+                ++idx;
             }
         }
     }
@@ -670,17 +773,24 @@ void ISel::lowerArithmetic(MFunction &func) const {
 /// @param func Machine function undergoing selection.
 void ISel::lowerCompareAndBranch(MFunction &func) const {
     (void)target_;
+    uint32_t nextVreg = nextVirtualGprId(func);
     for (auto &block : func.blocks) {
         for (std::size_t idx = 0; idx < block.instructions.size(); ++idx) {
             if (foldCompareBranch(func, block, idx)) {
+                if (legaliseCmp(block, idx, nextVreg)) {
+                    ++idx;
+                }
                 continue;
             }
             auto &instr = block.instructions[idx];
             switch (instr.opcode) {
                 case MOpcode::CMPrr:
                 case MOpcode::CMPri:
+                    if (legaliseCmp(block, idx, nextVreg)) {
+                        ++idx;
+                    }
+                    break;
                 case MOpcode::UCOMIS:
-                    canonicaliseCmp(instr);
                     break;
                 case MOpcode::SETcc:
                     ensureMovzxAfterSetcc(block, idx);

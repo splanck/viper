@@ -78,6 +78,23 @@ struct SlotKeyHash {
     return calleeSavedSet.count(reg) > 0;
 }
 
+/// @brief Record a physical callee-saved register use when frame lowering must preserve it.
+/// @details RBP/RSP are managed by the canonical frame setup and are therefore excluded here.
+void markUsedCalleeSaved(const OpReg &reg,
+                         const std::unordered_set<PhysReg> &calleeSavedSet,
+                         std::unordered_set<PhysReg> &usedCalleeSaved) {
+    if (!reg.isPhys) {
+        return;
+    }
+    const auto phys = static_cast<PhysReg>(reg.idOrPhys);
+    if (phys == PhysReg::RBP || phys == PhysReg::RSP) {
+        return;
+    }
+    if (isCalleeSaved(calleeSavedSet, phys)) {
+        usedCalleeSaved.insert(phys);
+    }
+}
+
 /// @brief Guess the register class used by a memory operand.
 /// @details Scans all other operands in the instruction looking for physical
 ///          registers to infer whether the memory slot stores GPR or XMM state.
@@ -176,16 +193,16 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
             hasCall = hasCall || instr.opcode == MOpcode::CALL;
             for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
                 auto &operand = instr.operands[idx];
-                if (auto *reg = std::get_if<OpReg>(&operand); reg && reg->isPhys) {
-                    const auto phys = static_cast<PhysReg>(reg->idOrPhys);
-                    if (phys != PhysReg::RBP && phys != PhysReg::RSP &&
-                        isCalleeSaved(calleeSavedSet, phys)) {
-                        usedCalleeSaved.insert(phys);
-                    }
+                if (const auto *reg = std::get_if<OpReg>(&operand)) {
+                    markUsedCalleeSaved(*reg, calleeSavedSet, usedCalleeSaved);
                 }
                 auto *mem = std::get_if<OpMem>(&operand);
                 if (!mem) {
                     continue;
+                }
+                markUsedCalleeSaved(mem->base, calleeSavedSet, usedCalleeSaved);
+                if (mem->hasIndex) {
+                    markUsedCalleeSaved(mem->index, calleeSavedSet, usedCalleeSaved);
                 }
                 if (!mem->base.isPhys) {
                     continue;

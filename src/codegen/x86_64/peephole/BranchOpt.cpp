@@ -47,8 +47,35 @@ std::optional<std::size_t> lookupUnplacedTarget(const MInstr &instr,
     return std::nullopt;
 }
 
-bool endsWithLoneJcc(const MBasicBlock &block) {
-    return !block.instructions.empty() && block.instructions.back().opcode == MOpcode::JCC;
+bool fallsThroughToNext(const MBasicBlock &block) {
+    if (block.instructions.empty()) {
+        return true;
+    }
+
+    const MOpcode last = block.instructions.back().opcode;
+    return last != MOpcode::JMP && last != MOpcode::RET && last != MOpcode::UD2;
+}
+
+bool retargetBranchLabel(MInstr &instr,
+                         const std::unordered_map<std::string, std::string> &forwarding) {
+    OpLabel *label = nullptr;
+    if (instr.opcode == MOpcode::JMP && !instr.operands.empty()) {
+        label = std::get_if<OpLabel>(&instr.operands[0]);
+    } else if (instr.opcode == MOpcode::JCC && instr.operands.size() >= 2) {
+        label = std::get_if<OpLabel>(&instr.operands[1]);
+    }
+
+    if (!label) {
+        return false;
+    }
+
+    const auto it = forwarding.find(label->name);
+    if (it == forwarding.end() || it->second == label->name) {
+        return false;
+    }
+
+    label->name = it->second;
+    return true;
 }
 
 } // namespace
@@ -149,7 +176,7 @@ void moveColdBlocks(MFunction &fn, PeepholeStats &stats) {
     std::vector<bool> fallthroughProtected(fn.blocks.size(), false);
 
     for (std::size_t bi = 0; bi + 1 < fn.blocks.size(); ++bi) {
-        if (!endsWithLoneJcc(fn.blocks[bi]))
+        if (!fallsThroughToNext(fn.blocks[bi]))
             continue;
         fallthroughProtected[bi] = true;
         fallthroughProtected[bi + 1] = true;
@@ -231,26 +258,9 @@ void eliminateBranchChains(MFunction &fn, PeepholeStats &stats) {
     // Retarget branches.
     if (!forwarding.empty()) {
         for (auto &block : fn.blocks) {
-            if (block.instructions.empty())
-                continue;
-            auto &last = block.instructions.back();
-            if (last.opcode == MOpcode::JMP) {
-                auto *lbl = std::get_if<OpLabel>(&last.operands[0]);
-                if (lbl) {
-                    auto it = forwarding.find(lbl->name);
-                    if (it != forwarding.end() && it->second != lbl->name) {
-                        lbl->name = it->second;
-                        ++stats.branchChainsEliminated;
-                    }
-                }
-            } else if (last.opcode == MOpcode::JCC && last.operands.size() >= 2) {
-                auto *lbl = std::get_if<OpLabel>(&last.operands[1]);
-                if (lbl) {
-                    auto it = forwarding.find(lbl->name);
-                    if (it != forwarding.end() && it->second != lbl->name) {
-                        lbl->name = it->second;
-                        ++stats.branchChainsEliminated;
-                    }
+            for (auto &instr : block.instructions) {
+                if (retargetBranchLabel(instr, forwarding)) {
+                    ++stats.branchChainsEliminated;
                 }
             }
         }
