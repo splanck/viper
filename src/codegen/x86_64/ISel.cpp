@@ -125,7 +125,7 @@ void observeVirtualRegister(const OpReg &reg, uint16_t &maxId) noexcept {
 }
 
 [[nodiscard]] Operand makeTempGprOperand(uint32_t &nextVreg) {
-    if (nextVreg > std::numeric_limits<uint16_t>::max()) {
+    if (nextVreg >= std::numeric_limits<uint16_t>::max()) {
         phaseAUnsupported("too many virtual registers in function");
     }
     return makeVRegOperand(RegClass::GPR, static_cast<uint16_t>(nextVreg++));

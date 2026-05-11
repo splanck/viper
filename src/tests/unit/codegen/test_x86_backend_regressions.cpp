@@ -2177,6 +2177,186 @@ TEST(X86BackendRegressions, ReusedSsaIdWithDifferentRegisterClassIsRejected) {
     EXPECT_THROWS(compile(fn), std::runtime_error);
 }
 
+TEST(X86BackendRegressions, BranchEmitterRejectsNonLabelTarget) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(sysvTarget(), roData);
+    MBasicBlock block{};
+    block.label = ".L_bad_branch";
+    MIRBuilder builder(lowering, block);
+
+    ILInstr instr = op("br", {imm(0)});
+
+    EXPECT_THROWS(EmitCommon(builder).emitBranch(instr), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, CondBranchEmitterRejectsNonLabelTarget) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(sysvTarget(), roData);
+    MBasicBlock block{};
+    block.label = ".L_bad_cbr";
+    MIRBuilder builder(lowering, block);
+
+    ILInstr instr = op("cbr", {val(ILValue::Kind::I1, 0), label("yes"), imm(0)});
+
+    EXPECT_THROWS(EmitCommon(builder).emitCondBranch(instr), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, CondBranchRejectsF64Condition) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::F64};
+    entry.instrs = {op("cbr", {val(ILValue::Kind::F64, 0), label("yes"), label("no")})};
+
+    ILBlock yes{};
+    yes.name = "yes";
+    yes.instrs = {op("ret", {imm(1)})};
+
+    ILBlock no{};
+    no.name = "no";
+    no.instrs = {op("ret", {imm(0)})};
+
+    ILFunction fn{};
+    fn.name = "cbr_f64_condition";
+    fn.blocks = {entry, yes, no};
+
+    EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, SelectRejectsF64Condition) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::F64};
+    entry.instrs = {op("select", {val(ILValue::Kind::F64, 0), imm(1), imm(2)}, 1),
+                    op("ret", {val(ILValue::Kind::I64, 1)})};
+
+    ILFunction fn{};
+    fn.name = "select_f64_condition";
+    fn.blocks = {entry};
+
+    EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, IndirectCallRejectsF64TargetRegister) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::F64};
+    entry.instrs = {op("call.indirect", {val(ILValue::Kind::F64, 0)}), op("ret", {imm(0)})};
+
+    ILFunction fn{};
+    fn.name = "call_indirect_f64_target";
+    fn.blocks = {entry};
+
+    EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, FpAddRejectsGprOperand) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::I64};
+    entry.instrs = {op("add", {val(ILValue::Kind::I64, 0), immF64(1.0)}, 1, ILValue::Kind::F64),
+                    op("ret", {val(ILValue::Kind::F64, 1)}, -1, ILValue::Kind::F64)};
+
+    ILFunction fn{};
+    fn.name = "fp_add_gpr_operand";
+    fn.blocks = {entry};
+
+    EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, FcmpEqRejectsGprOperand) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0, 1};
+    entry.paramKinds = {ILValue::Kind::I64, ILValue::Kind::F64};
+    entry.instrs = {
+        op("fcmp_eq", {val(ILValue::Kind::I64, 0), val(ILValue::Kind::F64, 1)}, 2, ILValue::Kind::I1),
+        op("ret", {val(ILValue::Kind::I1, 2)})};
+
+    ILFunction fn{};
+    fn.name = "fcmp_eq_gpr_operand";
+    fn.blocks = {entry};
+
+    EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, FcmpGtRejectsGprOperand) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0, 1};
+    entry.paramKinds = {ILValue::Kind::I64, ILValue::Kind::F64};
+    entry.instrs = {
+        op("fcmp_gt", {val(ILValue::Kind::I64, 0), val(ILValue::Kind::F64, 1)}, 2, ILValue::Kind::I1),
+        op("ret", {val(ILValue::Kind::I1, 2)})};
+
+    ILFunction fn{};
+    fn.name = "fcmp_gt_gpr_operand";
+    fn.blocks = {entry};
+
+    EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, SwitchRejectsMissingDefaultLabel) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::I64};
+    entry.instrs = {op("switch_i32", {val(ILValue::Kind::I64, 0), imm(1)})};
+
+    ILFunction fn{};
+    fn.name = "switch_missing_default_label";
+    fn.blocks = {entry};
+
+    EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, SwitchRejectsNonIntegerCaseValue) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::I64};
+    entry.instrs = {
+        op("switch_i32", {val(ILValue::Kind::I64, 0), immF64(1.0), label("case1"), label("def")})};
+
+    ILFunction fn{};
+    fn.name = "switch_f64_case_value";
+    fn.blocks = {entry};
+
+    EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, SwitchRejectsDanglingCaseValue) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::I64};
+    entry.instrs = {op("switch_i32", {val(ILValue::Kind::I64, 0), imm(1), label("def")})};
+
+    ILFunction fn{};
+    fn.name = "switch_dangling_case_value";
+    fn.blocks = {entry};
+
+    EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, ISelRejectsReservedTemporaryVregSentinel) {
+    MFunction fn{};
+    fn.name = "isel_reserved_temp";
+
+    MBasicBlock entry{};
+    entry.label = ".L_isel_reserved_temp";
+    const Operand dst =
+        makeVRegOperand(RegClass::GPR, static_cast<uint16_t>(std::numeric_limits<uint16_t>::max() - 1));
+    entry.instructions = {MInstr::make(MOpcode::ADDrr, {dst, makeImmOperand(1LL << 40)})};
+    fn.blocks = {entry};
+
+    ISel isel(sysvTarget());
+    EXPECT_THROWS(isel.lowerArithmetic(fn), std::runtime_error);
+}
+
 TEST(X86BackendRegressions, IndexedMemReconstructionRejectsShiftWithoutOriginalIndexCopy) {
     AsmEmitter::RoDataPool roData;
     LowerILToMIR lowering(sysvTarget(), roData);

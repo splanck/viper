@@ -199,6 +199,9 @@ void emitCallIndirect(const ILInstr &instr, MIRBuilder &builder) {
     if (instr.ops.empty()) {
         phaseAUnsupported("call.indirect: missing target");
     }
+    if (instr.ops[0].kind != ILValue::Kind::LABEL && !isIntegerLikeKind(instr.ops[0].kind)) {
+        phaseAUnsupported("call.indirect: target must be a pointer or label");
+    }
 
     CallLoweringPlan plan{};
     if (instr.ops[0].kind == ILValue::Kind::LABEL)
@@ -221,6 +224,9 @@ void emitCallIndirect(const ILInstr &instr, MIRBuilder &builder) {
     const uint32_t callPlanId = builder.recordCallPlan(std::move(plan));
     // Use GPR as preferred class when materialising the callee pointer.
     Operand calleeOp = builder.makeOperandForValue(instr.ops[0], RegClass::GPR);
+    if (const auto *reg = std::get_if<OpReg>(&calleeOp); reg && reg->cls != RegClass::GPR) {
+        phaseAUnsupported("call.indirect: target register must be GPR");
+    }
     // The CALL instruction requires a register, memory, or label operand.
     // If the callee materialised as an immediate (e.g. null function pointer),
     // load it into a register so the encoder can emit an indirect call.

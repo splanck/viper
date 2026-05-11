@@ -35,6 +35,15 @@ namespace {
 
 constexpr int64_t kErrBounds = 7;
 
+[[nodiscard]] bool isIntegerLikeKind(ILValue::Kind kind) noexcept {
+    return kind == ILValue::Kind::I64 || kind == ILValue::Kind::I1 ||
+           kind == ILValue::Kind::PTR;
+}
+
+[[nodiscard]] int64_t integerImmediateValue(const ILValue &value) noexcept {
+    return value.kind == ILValue::Kind::I1 ? (value.i64 != 0 ? 1 : 0) : value.i64;
+}
+
 MInstr makePlannedCall(Operand target, uint32_t callPlanId) {
     MInstr call = MInstr::make(MOpcode::CALL, std::vector<Operand>{std::move(target)});
     call.callPlanId = callPlanId;
@@ -255,23 +264,39 @@ void emitIdxChk(const ILInstr &instr, MIRBuilder &builder) {
 /// @param instr IL switch_i32 instruction with variable-length operands.
 /// @param builder Machine IR builder receiving the emitted code.
 void emitSwitchI32(const ILInstr &instr, MIRBuilder &builder) {
-    if (instr.ops.empty()) {
-        phaseAUnsupported("switch: missing scrutinee");
+    if (instr.ops.size() < 2) {
+        phaseAUnsupported("switch: missing default label");
+    }
+    if (!isIntegerLikeKind(instr.ops[0].kind)) {
+        phaseAUnsupported("switch: scrutinee must be integer-like");
+    }
+    if (instr.ops.back().kind != ILValue::Kind::LABEL) {
+        phaseAUnsupported("switch: default target must be a label");
+    }
+
+    const std::size_t caseOperandCount = instr.ops.size() - 2;
+    if ((caseOperandCount % 2) != 0) {
+        phaseAUnsupported("switch: case value missing target label");
     }
 
     EmitCommon emit(builder);
     Operand scrutinee =
         emit.materialiseGpr(builder.makeOperandForValue(instr.ops[0], RegClass::GPR));
     std::vector<SwitchCase> cases{};
-    std::size_t idx = 1;
-    while (idx + 1 < instr.ops.size() && instr.ops[idx].kind != ILValue::Kind::LABEL) {
+    for (std::size_t idx = 1; idx + 2 < instr.ops.size(); idx += 2) {
+        const ILValue &caseValue = instr.ops[idx];
+        const ILValue &caseLabel = instr.ops[idx + 1];
+        if (!builder.isImmediate(caseValue) || !isIntegerLikeKind(caseValue.kind)) {
+            phaseAUnsupported("switch: case value must be an integer immediate");
+        }
+        if (caseLabel.kind != ILValue::Kind::LABEL) {
+            phaseAUnsupported("switch: case target must be a label");
+        }
         cases.push_back(
-            SwitchCase{instr.ops[idx].i64, builder.makeLabelOperand(instr.ops[idx + 1])});
-        idx += 2;
+            SwitchCase{integerImmediateValue(caseValue), builder.makeLabelOperand(caseLabel)});
     }
 
-    Operand defLabel = (idx < instr.ops.size()) ? builder.makeLabelOperand(instr.ops[idx])
-                                                : makeLabelOperand(".Lswitch_default_missing");
+    Operand defLabel = builder.makeLabelOperand(instr.ops.back());
     std::sort(cases.begin(), cases.end(), [](const SwitchCase &lhs, const SwitchCase &rhs) {
         return lhs.value < rhs.value;
     });

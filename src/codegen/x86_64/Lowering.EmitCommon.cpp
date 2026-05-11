@@ -60,6 +60,43 @@ void emitRetainStringVReg(MIRBuilder &builder, const VReg &valueVReg) {
     return value.kind == ILValue::Kind::I1 ? (value.i64 != 0 ? 1 : 0) : value.i64;
 }
 
+[[nodiscard]] bool isIntegerLikeKind(ILValue::Kind kind) noexcept {
+    return kind == ILValue::Kind::I64 || kind == ILValue::Kind::I1 ||
+           kind == ILValue::Kind::PTR;
+}
+
+void requireIntegerLike(const ILValue &value, const char *context) {
+    if (!isIntegerLikeKind(value.kind)) {
+        phaseAUnsupported(context);
+    }
+}
+
+void requireLabel(const ILValue &value, const char *context) {
+    if (value.kind != ILValue::Kind::LABEL) {
+        phaseAUnsupported(context);
+    }
+}
+
+void requireRegOrImmForClass(const Operand &operand, RegClass cls, const char *context) {
+    if (const auto *reg = std::get_if<OpReg>(&operand)) {
+        if (reg->cls != cls) {
+            phaseAUnsupported(context);
+        }
+        return;
+    }
+    if (cls == RegClass::GPR && std::holds_alternative<OpImm>(operand)) {
+        return;
+    }
+    phaseAUnsupported(context);
+}
+
+void requireRegisterForClass(const Operand &operand, RegClass cls, const char *context) {
+    const auto *reg = std::get_if<OpReg>(&operand);
+    if (!reg || reg->cls != cls) {
+        phaseAUnsupported(context);
+    }
+}
+
 } // namespace
 
 // fitsImm32() is now declared inline in Lowering.EmitCommon.hpp.
@@ -99,6 +136,7 @@ Operand EmitCommon::clone(const Operand &operand) const {
 /// @return Operand referencing the original value or the created temporary.
 Operand EmitCommon::materialise(Operand operand, RegClass cls) {
     if (std::holds_alternative<OpReg>(operand)) {
+        requireRegisterForClass(operand, cls, "operand register class mismatch");
         return operand;
     }
 
@@ -284,6 +322,12 @@ void EmitCommon::emitBinary(
     const Operand lhs = builder().makeOperandForValue(instr.ops[0], cls);
     Operand rhs = builder().makeOperandForValue(instr.ops[1], cls);
 
+    if (destReg.cls != cls) {
+        phaseAUnsupported("binary op result register class mismatch");
+    }
+    requireRegOrImmForClass(lhs, cls, "binary op lhs register class mismatch");
+    requireRegOrImmForClass(rhs, cls, "binary op rhs register class mismatch");
+
     if (std::holds_alternative<OpImm>(lhs)) {
         if (cls == RegClass::XMM) {
             // XMM registers cannot be loaded directly from immediates.
@@ -403,6 +447,8 @@ void EmitCommon::emitCmp(const ILInstr &instr, RegClass cls, int defaultCond) {
 
     Operand lhs = builder().makeOperandForValue(instr.ops[0], cls);
     Operand rhs = builder().makeOperandForValue(instr.ops[1], cls);
+    requireRegOrImmForClass(lhs, cls, "compare lhs register class mismatch");
+    requireRegOrImmForClass(rhs, cls, "compare rhs register class mismatch");
 
     // x86 CMP requires the first operand to be a register, not an immediate.
     // If LHS is an immediate, materialize it to a temporary register first.
@@ -456,6 +502,7 @@ void EmitCommon::emitSelect(const ILInstr &instr) {
 
     const VReg destReg = builder().ensureVReg(instr.resultId, instr.resultKind);
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
+    requireIntegerLike(instr.ops[0], "select: condition must be integer-like");
     // TESTrr requires register operands — materialise the condition if it is
     // an immediate (constant-folded select condition).
     const Operand cond = materialiseGpr(builder().makeOperandForValue(instr.ops[0], RegClass::GPR));
@@ -495,6 +542,7 @@ void EmitCommon::emitBranch(const ILInstr &instr) {
     if (instr.ops.empty()) {
         phaseAUnsupported("branch: missing target label");
     }
+    requireLabel(instr.ops[0], "branch: target must be a label");
     builder().append(
         MInstr::make(MOpcode::JMP, std::vector<Operand>{builder().makeLabelOperand(instr.ops[0])}));
 }
@@ -508,6 +556,10 @@ void EmitCommon::emitCondBranch(const ILInstr &instr) {
     if (instr.ops.size() < 3) {
         phaseAUnsupported("cond branch: missing operands");
     }
+
+    requireIntegerLike(instr.ops[0], "cond branch: condition must be integer-like");
+    requireLabel(instr.ops[1], "cond branch: true target must be a label");
+    requireLabel(instr.ops[2], "cond branch: false target must be a label");
 
     // TESTrr requires register operands — materialise the condition if it is
     // an immediate (constant-folded branch condition).
@@ -859,6 +911,8 @@ void EmitCommon::emitFCmpNanSafe(const ILInstr &instr, std::string_view suffix) 
 
     Operand lhs = builder().makeOperandForValue(instr.ops[0], RegClass::XMM);
     Operand rhs = builder().makeOperandForValue(instr.ops[1], RegClass::XMM);
+    requireRegisterForClass(lhs, RegClass::XMM, "fcmp lhs register class mismatch");
+    requireRegisterForClass(rhs, RegClass::XMM, "fcmp rhs register class mismatch");
 
     const VReg destReg = builder().ensureVReg(instr.resultId, instr.resultKind);
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
