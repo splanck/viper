@@ -25,6 +25,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define VG_PROGRESS_PI 3.14159265358979323846f
+
 //=============================================================================
 // Forward declarations
 //=============================================================================
@@ -32,6 +34,7 @@
 static void progressbar_measure(vg_widget_t *widget, float avail_w, float avail_h);
 static void progressbar_arrange(vg_widget_t *widget, float x, float y, float w, float h);
 static void progressbar_paint(vg_widget_t *widget, void *canvas);
+static void progressbar_paint_circular(vg_widget_t *widget, void *canvas);
 static void progressbar_fill_round_rect(vgfx_window_t win,
                                         int32_t x,
                                         int32_t y,
@@ -64,6 +67,12 @@ static void progressbar_measure(vg_widget_t *widget, float avail_w, float avail_
     vg_theme_t *theme = vg_theme_get_current();
     (void)avail_w;
     (void)avail_h;
+    if (pb->style == VG_PROGRESS_CIRCULAR) {
+        widget->measured_width = 48.0f;
+        widget->measured_height = 48.0f;
+        vg_widget_apply_constraints(widget);
+        return;
+    }
     widget->measured_width = 100.0f;
     widget->measured_height = 8.0f;
     if (pb->show_percentage && pb->font) {
@@ -116,6 +125,12 @@ static void progressbar_paint(vg_widget_t *widget, void *canvas) {
     vg_theme_t *theme = vg_theme_get_current();
     int32_t x = (int32_t)widget->x, y = (int32_t)widget->y;
     int32_t w = (int32_t)widget->width, h = (int32_t)widget->height;
+
+    if (pb->style == VG_PROGRESS_CIRCULAR) {
+        progressbar_paint_circular(widget, canvas);
+        return;
+    }
+
     uint32_t track_color = pb->track_color ? pb->track_color
                                            : vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.45f);
     uint32_t fill_color = pb->fill_color ? pb->fill_color : theme->colors.accent_primary;
@@ -167,6 +182,71 @@ static void progressbar_paint(vg_widget_t *widget, void *canvas) {
             vg_font_draw_text(canvas, pb->font, pb->font_size, text_x, text_y, buf, text_color);
             vgfx_clear_clip(win);
         }
+    }
+}
+
+/// @brief Draw a determinate circular/ring progress indicator.
+static void progressbar_paint_circular(vg_widget_t *widget, void *canvas) {
+    vg_progressbar_t *pb = (vg_progressbar_t *)widget;
+    vgfx_window_t win = (vgfx_window_t)canvas;
+    vg_theme_t *theme = vg_theme_get_current();
+    int32_t x = (int32_t)widget->x, y = (int32_t)widget->y;
+    int32_t w = (int32_t)widget->width, h = (int32_t)widget->height;
+    int32_t size = w < h ? w : h;
+    if (size <= 4)
+        return;
+
+    uint32_t track_color = pb->track_color ? pb->track_color
+                                           : vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.45f);
+    uint32_t fill_color = pb->fill_color ? pb->fill_color : theme->colors.accent_primary;
+    int32_t cx = x + w / 2;
+    int32_t cy = y + h / 2;
+    int32_t thickness = size / 10;
+    if (thickness < 3)
+        thickness = 3;
+    if (thickness > 10)
+        thickness = 10;
+    int32_t radius = size / 2 - thickness;
+    if (radius <= 1)
+        return;
+
+    for (int32_t i = 0; i < thickness; i++) {
+        int32_t r = radius - thickness / 2 + i;
+        if (r > 0)
+            vgfx_circle(win, cx, cy, r, track_color);
+    }
+
+    float clamped = pb->value < 0.0f ? 0.0f : (pb->value > 1.0f ? 1.0f : pb->value);
+    int total_segments = 96;
+    int fill_segments = (int)(clamped * (float)total_segments + 0.5f);
+    int dot_radius = thickness / 2;
+    if (dot_radius < 1)
+        dot_radius = 1;
+    if (clamped > 0.0f) {
+        if (fill_segments < 1)
+            fill_segments = 1;
+        for (int i = 0; i <= fill_segments; i++) {
+            float t = (float)i / (float)total_segments;
+            float angle = -VG_PROGRESS_PI * 0.5f + t * VG_PROGRESS_PI * 2.0f;
+            int32_t px = cx + (int32_t)roundf(cosf(angle) * (float)radius);
+            int32_t py = cy + (int32_t)roundf(sinf(angle) * (float)radius);
+            vgfx_fill_circle(win, px, py, dot_radius, fill_color);
+        }
+    }
+
+    if (pb->show_percentage && pb->font) {
+        char buf[8];
+        int pct = (int)(clamped * 100.0f + 0.5f);
+        snprintf(buf, sizeof(buf), "%d%%", pct);
+        vg_text_metrics_t text_metrics = {0};
+        vg_font_measure_text(pb->font, pb->font_size, buf, &text_metrics);
+        vg_font_metrics_t font_metrics = {0};
+        vg_font_get_metrics(pb->font, pb->font_size, &font_metrics);
+        float text_x = widget->x + (widget->width - text_metrics.width) * 0.5f;
+        float text_y =
+            widget->y + (widget->height - (font_metrics.ascent - font_metrics.descent)) * 0.5f +
+            font_metrics.ascent;
+        vg_font_draw_text(canvas, pb->font, pb->font_size, text_x, text_y, buf, theme->colors.fg_primary);
     }
 }
 

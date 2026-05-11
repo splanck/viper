@@ -68,23 +68,25 @@ static uint32_t commandpalette_decode_utf8(const char **cursor) {
     const unsigned char *s = (const unsigned char *)*cursor;
     if (!s || !*s)
         return 0;
+    size_t remaining = strlen((const char *)s);
     if (s[0] < 0x80) {
         *cursor += 1;
         return s[0];
     }
-    if ((s[0] & 0xE0) == 0xC0 && (s[1] & 0xC0) == 0x80) {
+    if (remaining >= 2 && (s[0] & 0xE0) == 0xC0 && (s[1] & 0xC0) == 0x80) {
         uint32_t cp = ((uint32_t)(s[0] & 0x1F) << 6) | (uint32_t)(s[1] & 0x3F);
         *cursor += 2;
         return cp >= 0x80 ? cp : 0xFFFD;
     }
-    if ((s[0] & 0xF0) == 0xE0 && (s[1] & 0xC0) == 0x80 && (s[2] & 0xC0) == 0x80) {
+    if (remaining >= 3 && (s[0] & 0xF0) == 0xE0 && (s[1] & 0xC0) == 0x80 &&
+        (s[2] & 0xC0) == 0x80) {
         uint32_t cp = ((uint32_t)(s[0] & 0x0F) << 12) | ((uint32_t)(s[1] & 0x3F) << 6) |
                       (uint32_t)(s[2] & 0x3F);
         *cursor += 3;
         return cp >= 0x800 && !(cp >= 0xD800 && cp <= 0xDFFF) ? cp : 0xFFFD;
     }
-    if ((s[0] & 0xF8) == 0xF0 && (s[1] & 0xC0) == 0x80 && (s[2] & 0xC0) == 0x80 &&
-        (s[3] & 0xC0) == 0x80) {
+    if (remaining >= 4 && (s[0] & 0xF8) == 0xF0 && (s[1] & 0xC0) == 0x80 &&
+        (s[2] & 0xC0) == 0x80 && (s[3] & 0xC0) == 0x80) {
         uint32_t cp = ((uint32_t)(s[0] & 0x07) << 18) | ((uint32_t)(s[1] & 0x3F) << 12) |
                       ((uint32_t)(s[2] & 0x3F) << 6) | (uint32_t)(s[3] & 0x3F);
         *cursor += 4;
@@ -608,6 +610,10 @@ vg_command_t *vg_commandpalette_add_command(vg_commandpalette_t *palette,
     cmd->label = strdup(label);
     if (shortcut)
         cmd->shortcut = strdup(shortcut);
+    if (!cmd->id || !cmd->label || (shortcut && !cmd->shortcut)) {
+        free_command(cmd);
+        return NULL;
+    }
     cmd->action = action;
     cmd->user_data = user_data;
     cmd->enabled = true;
@@ -617,6 +623,11 @@ vg_command_t *vg_commandpalette_add_command(vg_commandpalette_t *palette,
         size_t new_cap = palette->command_capacity * 2;
         if (new_cap < 32)
             new_cap = 32;
+        if (new_cap <= palette->command_capacity ||
+            new_cap > SIZE_MAX / sizeof(vg_command_t *)) {
+            free_command(cmd);
+            return NULL;
+        }
         vg_command_t **new_cmds = realloc(palette->commands, new_cap * sizeof(vg_command_t *));
         if (!new_cmds) {
             free_command(cmd);

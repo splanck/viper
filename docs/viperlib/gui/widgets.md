@@ -196,7 +196,7 @@ optA.SetSelected(1);
 ### Slider
 
 Draggable value slider.
-Non-finite values are rejected or replaced with bounded defaults; ranges are normalized so the minimum is never greater than the maximum. Step snapping is clamped after rounding, so a stepped value cannot overshoot the range.
+Non-finite values are rejected or replaced with bounded defaults; ranges are normalized so the minimum is never greater than the maximum. Step snapping is clamped after rounding, so a stepped value cannot overshoot the range. Changing `SetStep()` immediately re-snaps the current value to the new grid, so a slider cannot remain between valid step positions.
 
 **Constructor:** `NEW Viper.GUI.Slider(parent, horizontal)`
 
@@ -277,7 +277,7 @@ quantity.SetValue(1.0);
 
 Progress indicator bar.
 
-Indeterminate progress bars created through the underlying C GUI layer now advance their animation during the normal app render loop.
+Styles `0`, `1`, and `2` render as a horizontal bar, a circular ring indicator, and an indeterminate sliding bar respectively. Indeterminate progress bars created through the underlying C GUI layer now advance their animation during the normal app render loop.
 Programmatic values are clamped to the `0.0` through `1.0` range, with non-finite values treated as `0.0`.
 
 **Constructor:** `NEW Viper.GUI.ProgressBar(parent)`

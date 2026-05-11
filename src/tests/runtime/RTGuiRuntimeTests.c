@@ -37,6 +37,15 @@ typedef struct {
     int64_t replace_mode;
 } rt_findbar_data_view_t;
 
+typedef struct {
+    vg_breadcrumb_t *breadcrumb;
+    int64_t clicked_index;
+    char *clicked_data;
+    int64_t was_clicked;
+    const vg_widget_vtable_t *original_vtable;
+    vg_widget_vtable_t vtable;
+} rt_breadcrumb_data_view_t;
+
 void vm_trap(const char *msg) {
     (void)msg;
     assert(0 && "unexpected vm_trap");
@@ -667,6 +676,72 @@ static void test_widget_destroy_refuses_app_root_and_app_handle(void) {
     printf("test_widget_destroy_refuses_app_root_and_app_handle: PASSED\n");
 }
 
+static void test_widget_base_apis_reject_app_handles_and_invalid_children(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    rt_widget_set_visible(&app, 0);
+    rt_widget_set_enabled(&app, 0);
+    rt_widget_set_size(&app, 20, 30);
+    rt_widget_set_flex(&app, 2.0);
+    rt_widget_set_margin(&app, 5);
+    rt_widget_set_tab_index(&app, 3);
+
+    assert(rt_widget_is_visible(&app) == 0);
+    assert(rt_widget_is_enabled(&app) == 0);
+    assert(rt_widget_get_width(&app) == 0);
+    assert(rt_widget_get_height(&app) == 0);
+    assert(rt_widget_get_x(&app) == 0);
+    assert(rt_widget_get_y(&app) == 0);
+    assert(rt_widget_get_flex(&app) == 0.0);
+
+    rt_widget_add_child(&app, &app);
+    assert(app.root->child_count == 0);
+
+    cleanup_fake_app(&app);
+    printf("test_widget_base_apis_reject_app_handles_and_invalid_children: PASSED\n");
+}
+
+static void test_widget_destroy_clears_nested_toolbar_statusbar_runtime_refs(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    vg_widget_t *container = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(container);
+    vg_widget_add_child(app.root, container);
+
+    vg_statusbar_t *statusbar = vg_statusbar_create(container);
+    assert(statusbar);
+    vg_statusbar_item_t *status_item =
+        vg_statusbar_add_text(statusbar, VG_STATUSBAR_ZONE_LEFT, "ready");
+    assert(status_item);
+
+    vg_toolbar_t *toolbar = vg_toolbar_create(container, VG_TOOLBAR_HORIZONTAL);
+    assert(toolbar);
+    vg_toolbar_item_t *tool_item =
+        vg_toolbar_add_button(toolbar, "open", NULL, vg_icon_from_glyph('O'), NULL, NULL);
+    assert(tool_item);
+
+    app.last_statusbar_clicked = status_item;
+    app.last_toolbar_clicked = tool_item;
+    rt_widget_destroy(container);
+
+    assert(app.last_statusbar_clicked == NULL);
+    assert(app.last_toolbar_clicked == NULL);
+    assert(app.root->child_count == 0);
+
+    cleanup_fake_app(&app);
+    printf("test_widget_destroy_clears_nested_toolbar_statusbar_runtime_refs: PASSED\n");
+}
+
 static void test_widget_focus_null_is_noop(void) {
     rt_widget_focus(NULL);
     printf("test_widget_focus_null_is_noop: PASSED\n");
@@ -940,6 +1015,69 @@ static void test_detached_widgets_do_not_inherit_current_app_font(void) {
     printf("test_detached_widgets_do_not_inherit_current_app_font: PASSED\n");
 }
 
+static void test_messagebox_show_after_destroy_returns_minus_one(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    void *box = rt_messagebox_new_info(rt_const_cstr("title"), rt_const_cstr("body"));
+    assert(box);
+    rt_messagebox_add_button(box, rt_const_cstr("OK"), 7);
+    rt_messagebox_destroy(box);
+    assert(rt_messagebox_show(box) == -1);
+
+    cleanup_fake_app(&app);
+    printf("test_messagebox_show_after_destroy_returns_minus_one: PASSED\n");
+}
+
+static void test_toast_duration_is_clamped(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    rt_gui_activate_app(&app);
+
+    void *negative = rt_toast_new(rt_const_cstr("negative"), RT_TOAST_INFO, -1);
+    assert(negative);
+    assert(app.notification_manager);
+    assert(app.notification_manager->notification_count == 1);
+    assert(app.notification_manager->notifications[0]->duration_ms == 0);
+
+    void *huge = rt_toast_new(rt_const_cstr("huge"), RT_TOAST_INFO, (int64_t)UINT32_MAX + 99);
+    assert(huge);
+    assert(app.notification_manager->notification_count == 2);
+    assert(app.notification_manager->notifications[1]->duration_ms == UINT32_MAX);
+
+    rt_gui_features_cleanup(&app);
+    rt_gui_activate_app(NULL);
+    printf("test_toast_duration_is_clamped: PASSED\n");
+}
+
+static void test_breadcrumb_set_path_uses_literal_separator(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    void *crumb = rt_breadcrumb_new(&app);
+    assert(crumb);
+    rt_breadcrumb_set_path(crumb, rt_const_cstr("alpha::beta::gamma"), rt_const_cstr("::"));
+
+    rt_breadcrumb_data_view_t *view = (rt_breadcrumb_data_view_t *)crumb;
+    assert(view->breadcrumb);
+    assert(view->breadcrumb->item_count == 3);
+    assert(strcmp(view->breadcrumb->items[0].label, "alpha") == 0);
+    assert(strcmp(view->breadcrumb->items[1].label, "beta") == 0);
+    assert(strcmp(view->breadcrumb->items[2].label, "gamma") == 0);
+
+    rt_breadcrumb_destroy(crumb);
+    cleanup_fake_app(&app);
+    printf("test_breadcrumb_set_path_uses_literal_separator: PASSED\n");
+}
+
 int main(void) {
     printf("=== GUI Runtime Regression Tests ===\n\n");
 
@@ -966,6 +1104,8 @@ int main(void) {
     test_findbar_runtime_reads_live_text_and_reports_noop_replace();
     test_menu_and_toolbar_pixel_icons_become_image_icons();
     test_widget_destroy_refuses_app_root_and_app_handle();
+    test_widget_base_apis_reject_app_handles_and_invalid_children();
+    test_widget_destroy_clears_nested_toolbar_statusbar_runtime_refs();
     test_widget_focus_null_is_noop();
     test_image_set_pixels_converts_viper_pixels_to_rgba();
     test_treeview_and_listbox_data_preserve_embedded_nuls();
@@ -977,6 +1117,9 @@ int main(void) {
     test_numeric_setters_sanitize_invalid_values();
     test_font_destroy_defers_live_app_font();
     test_detached_widgets_do_not_inherit_current_app_font();
+    test_messagebox_show_after_destroy_returns_minus_one();
+    test_toast_duration_is_clamped();
+    test_breadcrumb_set_path_uses_literal_separator();
 
     printf("\nAll GUI runtime regression tests passed!\n");
     return 0;

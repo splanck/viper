@@ -219,6 +219,8 @@ static vg_event_root_state_slot_t *event_find_root_state_slot(vg_widget_t *root,
         old_capacity > 0 ? old_capacity * 2u : (size_t)VG_EVENT_ROOT_STATE_INITIAL_CAPACITY;
     if (new_capacity <= old_capacity)
         return NULL;
+    if (new_capacity > SIZE_MAX / sizeof(vg_event_root_state_slot_t))
+        return NULL;
 
     vg_event_root_state_slot_t *new_slots =
         (vg_event_root_state_slot_t *)realloc(g_root_state_slots,

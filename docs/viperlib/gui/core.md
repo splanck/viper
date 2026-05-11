@@ -147,6 +147,10 @@ Low-level widget dispatch keeps focus, hover, modal, click, and capture state
 separate for each recently dispatched root. When a subtree is hidden, detached,
 or destroyed, cached event state for that subtree is cleared so later root
 switches cannot restore stale widget handles.
+Runtime widget methods validate handles before touching widget memory. App
+handles, destroyed app handles, stale widget handles, and arbitrary object
+pointers are ignored by the common `Widget.*` methods instead of being cast as
+widgets.
 
 Paint callbacks receive screen-space `x`/`y` for direct drawing compatibility;
 use `vg_widget_get_bounds()` inside paint when a custom C widget needs its

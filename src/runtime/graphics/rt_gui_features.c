@@ -328,6 +328,22 @@ int64_t rt_commandpalette_was_command_selected(void *palette) {
 // Phase 7: Tooltip Implementation
 //=============================================================================
 
+/// @brief Allocate "title\nbody" with overflow checks.
+static char *rt_gui_join_title_body(const char *title, const char *body) {
+    const char *t = title ? title : "";
+    const char *b = body ? body : "";
+    size_t title_len = strlen(t);
+    size_t body_len = strlen(b);
+    if (body_len > SIZE_MAX - 2 || title_len > SIZE_MAX - body_len - 2)
+        return NULL;
+    size_t needed = title_len + body_len + 2;
+    char *combined = (char *)malloc(needed);
+    if (!combined)
+        return NULL;
+    snprintf(combined, needed, "%s\n%s", t, b);
+    return combined;
+}
+
 /// @brief Show the tooltip.
 void rt_tooltip_show(rt_string text, int64_t x, int64_t y) {
     RT_ASSERT_MAIN_THREAD();
@@ -374,12 +390,8 @@ void rt_tooltip_show_rich(rt_string title, rt_string body, int64_t x, int64_t y)
     if (app->manual_tooltip) {
         // Combines title and body as plain text separated by newline.
         // Rich formatting (bold, colors) would require vg_tooltip_t enhancements.
-        const char *t = ctitle ? ctitle : "";
-        const char *b = cbody ? cbody : "";
-        size_t needed = strlen(t) + strlen(b) + 2;
-        char *combined = (char *)malloc(needed);
+        char *combined = rt_gui_join_title_body(ctitle, cbody);
         if (combined) {
-            snprintf(combined, needed, "%s\n%s", t, b);
             if (app->default_font) {
                 app->manual_tooltip->font = app->default_font;
                 app->manual_tooltip->font_size = app->default_font_size;
@@ -431,7 +443,7 @@ void rt_tooltip_set_delay(int64_t delay_ms) {
 /// @brief Set the tooltip of the widget.
 void rt_widget_set_tooltip(void *widget, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
-    if (!widget)
+    if (!rt_gui_is_widget_handle(widget))
         return;
     char *ctext = rt_string_to_cstr(text);
     vg_widget_set_tooltip_text((vg_widget_t *)widget, ctext);
@@ -442,19 +454,15 @@ void rt_widget_set_tooltip(void *widget, rt_string text) {
 /// @brief Attach a rich tooltip (title + body) to a widget for hover display.
 void rt_widget_set_tooltip_rich(void *widget, rt_string title, rt_string body) {
     RT_ASSERT_MAIN_THREAD();
-    if (!widget)
+    if (!rt_gui_is_widget_handle(widget))
         return;
     // Combines title and body as plain text. Rich formatting would require
     // vg_tooltip_t enhancements.
     char *ctitle = rt_string_to_cstr(title);
     char *cbody = rt_string_to_cstr(body);
 
-    const char *t = ctitle ? ctitle : "";
-    const char *b = cbody ? cbody : "";
-    size_t needed = strlen(t) + strlen(b) + 2;
-    char *combined = (char *)malloc(needed);
+    char *combined = rt_gui_join_title_body(ctitle, cbody);
     if (combined) {
-        snprintf(combined, needed, "%s\n%s", t, b);
         vg_widget_set_tooltip_text((vg_widget_t *)widget, combined);
         free(combined);
     }
@@ -468,7 +476,7 @@ void rt_widget_set_tooltip_rich(void *widget, rt_string title, rt_string body) {
 /// @brief Clear the tooltip of the widget.
 void rt_widget_clear_tooltip(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    if (!widget)
+    if (!rt_gui_is_widget_handle(widget))
         return;
     vg_widget_set_tooltip_text((vg_widget_t *)widget, NULL);
 }
@@ -492,6 +500,36 @@ static void rt_toast_on_action(uint32_t id, void *user_data) {
     if (!data || data->id != id)
         return;
     data->was_action_clicked = 1;
+}
+
+/// @brief Return the toast's live app, rejecting stale app handles without dereferencing them.
+static rt_gui_app_t *rt_toast_live_app(rt_toast_data_t *data) {
+    return data && data->app && rt_gui_is_app_handle(data->app) ? data->app : NULL;
+}
+
+/// @brief Detach notification callbacks that point at this toast wrapper and free owned state.
+static void rt_toast_dispose(rt_toast_data_t *data) {
+    if (!data)
+        return;
+    rt_gui_app_t *app = rt_toast_live_app(data);
+    vg_notification_manager_t *mgr = app ? app->notification_manager : NULL;
+    if (mgr) {
+        for (size_t i = 0; i < mgr->notification_count; i++) {
+            vg_notification_t *notif = mgr->notifications[i];
+            if (notif && notif->action_user_data == data) {
+                notif->action_user_data = NULL;
+                notif->action_callback = NULL;
+            }
+        }
+    }
+    free(data->action_label);
+    data->action_label = NULL;
+    data->app = NULL;
+}
+
+/// @brief GC finalizer for toast handles.
+static void rt_toast_finalize(void *toast) {
+    rt_toast_dispose((rt_toast_data_t *)toast);
 }
 
 /// @brief Return (and lazily create) the per-app notification manager.
@@ -651,9 +689,14 @@ void *rt_toast_new(rt_string message, int64_t type, int64_t duration_ms) {
         return NULL;
     }
     data->app = app;
+    rt_obj_set_finalizer(data, rt_toast_finalize);
+
+    uint32_t clamped_duration = 0;
+    if (duration_ms > 0)
+        clamped_duration = duration_ms > UINT32_MAX ? UINT32_MAX : (uint32_t)duration_ms;
 
     data->id =
-        vg_notification_show(mgr, rt_toast_type_to_vg(type), NULL, cmsg, (uint32_t)duration_ms);
+        vg_notification_show(mgr, rt_toast_type_to_vg(type), NULL, cmsg, clamped_duration);
     data->was_action_clicked = 0;
     data->was_dismissed = 0;
     for (size_t i = 0; i < mgr->notification_count; i++) {
@@ -676,7 +719,7 @@ void rt_toast_set_action(void *toast, rt_string label) {
     rt_toast_data_t *data = (rt_toast_data_t *)toast;
     free(data->action_label);
     data->action_label = rt_string_to_cstr(label);
-    vg_notification_manager_t *mgr = rt_get_notification_manager(data->app);
+    vg_notification_manager_t *mgr = rt_get_notification_manager(rt_toast_live_app(data));
     if (!mgr)
         return;
     for (size_t i = 0; i < mgr->notification_count; i++) {
@@ -715,7 +758,7 @@ int64_t rt_toast_was_dismissed(void *toast) {
         return 1;
 
     // Check with the notification manager for auto-timeout dismissal
-    vg_notification_manager_t *mgr = rt_get_notification_manager(data->app);
+    vg_notification_manager_t *mgr = rt_get_notification_manager(rt_toast_live_app(data));
     if (mgr) {
         bool found = false;
         for (size_t i = 0; i < mgr->notification_count; i++) {
@@ -743,7 +786,7 @@ void rt_toast_dismiss(void *toast) {
     if (!toast)
         return;
     rt_toast_data_t *data = (rt_toast_data_t *)toast;
-    vg_notification_manager_t *mgr = rt_get_notification_manager(data->app);
+    vg_notification_manager_t *mgr = rt_get_notification_manager(rt_toast_live_app(data));
     if (mgr) {
         vg_notification_dismiss(mgr, data->id);
         data->was_dismissed = 1;
@@ -851,6 +894,36 @@ static void rt_breadcrumb_on_click(vg_breadcrumb_t *bc, int index, void *user_da
     }
 }
 
+/// @brief Append a copied path segment as both visible label and owned click data.
+static void rt_breadcrumb_push_path_segment(vg_breadcrumb_t *breadcrumb,
+                                            const char *segment,
+                                            size_t len) {
+    if (!breadcrumb || !segment || len == 0)
+        return;
+    if (len > SIZE_MAX - 1)
+        return;
+    char *label = (char *)malloc(len + 1);
+    if (!label)
+        return;
+    memcpy(label, segment, len);
+    label[len] = '\0';
+
+    char *data = strdup(label);
+    if (!data) {
+        free(label);
+        return;
+    }
+
+    size_t prev_count = breadcrumb->item_count;
+    vg_breadcrumb_push(breadcrumb, label, data);
+    if (breadcrumb->item_count > prev_count) {
+        breadcrumb->items[breadcrumb->item_count - 1].owns_user_data = true;
+    } else {
+        free(data);
+    }
+    free(label);
+}
+
 /// @brief Create a breadcrumb navigation widget (e.g. `Home > Docs > Project`).
 ///
 /// Returns a wrapper struct (`rt_breadcrumb_data_t`) so callers can
@@ -920,22 +993,18 @@ void rt_breadcrumb_set_path(void *crumb, rt_string path, rt_string separator) {
     // Clear existing items
     vg_breadcrumb_clear(data->breadcrumb);
 
-    // Parse path and add items
+    // Parse path and add items. The separator is a literal string, not a
+    // strtok-style set of delimiter characters.
     if (cpath && csep && csep[0]) {
-        char *saveptr = NULL;
-        char *token = rt_strtok_r(cpath, csep, &saveptr);
-        while (token) {
-            char *label = strdup(token);
-            if (label) {
-                size_t prev_count = data->breadcrumb->item_count;
-                vg_breadcrumb_push(data->breadcrumb, token, label);
-                if (data->breadcrumb->item_count > prev_count) {
-                    data->breadcrumb->items[data->breadcrumb->item_count - 1].owns_user_data = true;
-                } else {
-                    free(label);
-                }
-            }
-            token = rt_strtok_r(NULL, csep, &saveptr);
+        size_t sep_len = strlen(csep);
+        const char *cursor = cpath;
+        while (cursor && *cursor) {
+            const char *next = strstr(cursor, csep);
+            size_t len = next ? (size_t)(next - cursor) : strlen(cursor);
+            rt_breadcrumb_push_path_segment(data->breadcrumb, cursor, len);
+            if (!next)
+                break;
+            cursor = next + sep_len;
         }
     }
 

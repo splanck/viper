@@ -301,11 +301,20 @@ static inline rt_string rt_gui_string_data_to_rt_string(const void *ptr) {
 static inline char *rt_string_to_cstr(rt_string str) {
     if (!str)
         return NULL;
-    size_t len = (size_t)rt_str_len(str);
+    int64_t len64 = rt_str_len(str);
+    if (len64 < 0)
+        return NULL;
+    size_t len = (size_t)len64;
+    if (len > SIZE_MAX - 1)
+        return NULL;
+    const char *bytes = len ? rt_string_cstr(str) : "";
+    if (len && !bytes)
+        return NULL;
     char *result = malloc(len + 1);
     if (!result)
         return NULL;
-    memcpy(result, rt_string_cstr(str), len);
+    if (len)
+        memcpy(result, bytes, len);
     result[len] = '\0';
     return result;
 }

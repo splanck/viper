@@ -480,7 +480,7 @@ void rt_container_set_padding(void *container, double padding) {
 /// @brief Check whether the mouse cursor is currently over this widget.
 int64_t rt_widget_is_hovered(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    if (!widget)
+    if (!rt_gui_is_widget_handle(widget))
         return 0;
     return (((vg_widget_t *)widget)->state & VG_STATE_HOVERED) ? 1 : 0;
 }
@@ -488,7 +488,7 @@ int64_t rt_widget_is_hovered(void *widget) {
 /// @brief Check whether the widget is currently being pressed (mouse down).
 int64_t rt_widget_is_pressed(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    if (!widget)
+    if (!rt_gui_is_widget_handle(widget))
         return 0;
     return (((vg_widget_t *)widget)->state & VG_STATE_PRESSED) ? 1 : 0;
 }
@@ -496,7 +496,7 @@ int64_t rt_widget_is_pressed(void *widget) {
 /// @brief Check whether the widget currently has keyboard focus.
 int64_t rt_widget_is_focused(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    if (!widget)
+    if (!rt_gui_is_widget_handle(widget))
         return 0;
     return (((vg_widget_t *)widget)->state & VG_STATE_FOCUSED) ? 1 : 0;
 }
@@ -504,7 +504,7 @@ int64_t rt_widget_is_focused(void *widget) {
 /// @brief Move keyboard focus to a widget that participates in the tab order.
 void rt_widget_focus(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    if (!widget)
+    if (!rt_gui_is_widget_handle(widget))
         return;
     vg_widget_set_focus((vg_widget_t *)widget);
 }
@@ -513,6 +513,8 @@ void rt_widget_focus(void *widget) {
 /// @param widget
 void rt_gui_set_last_clicked(void *widget) {
     RT_ASSERT_MAIN_THREAD();
+    if (widget && !rt_gui_is_widget_handle(widget))
+        return;
     rt_gui_app_t *app =
         widget ? rt_gui_app_from_widget((vg_widget_t *)widget) : rt_gui_get_active_app();
     if (app)
@@ -522,7 +524,7 @@ void rt_gui_set_last_clicked(void *widget) {
 /// @brief Check whether this widget was clicked during the current frame.
 int64_t rt_widget_was_clicked(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    if (!widget)
+    if (!rt_gui_is_widget_handle(widget))
         return 0;
     rt_gui_app_t *app = rt_gui_app_from_widget((vg_widget_t *)widget);
     return (app && app->last_clicked == widget) ? 1 : 0;
@@ -534,7 +536,7 @@ int64_t rt_widget_was_clicked(void *widget) {
 ///          layout pass.
 void rt_widget_set_position(void *widget, int64_t x, int64_t y) {
     RT_ASSERT_MAIN_THREAD();
-    if (widget) {
+    if (rt_gui_is_widget_handle(widget)) {
         vg_widget_t *w = (vg_widget_t *)widget;
         w->x = rt_gui_sanitize_signed_float((double)x, RT_GUI_MAX_LAYOUT_VALUE);
         w->y = rt_gui_sanitize_signed_float((double)y, RT_GUI_MAX_LAYOUT_VALUE);

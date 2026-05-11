@@ -1590,12 +1590,18 @@ void rt_gui_app_poll(void *app_ptr) {
                 vgfx_get_size(app->window, &win_w, &win_h);
                 rt_gui_layout_command_palette(app, top_palette, win_w, win_h);
             }
-            rt_gui_update_drag_over_target(app, event_root);
 
             // Track mouse position from events
+            if (event.type == VGFX_EVENT_MOUSE_DOWN || event.type == VGFX_EVENT_MOUSE_UP) {
+                app->mouse_x = event.data.mouse_button.x;
+                app->mouse_y = event.data.mouse_button.y;
+            }
             if (event.type == VGFX_EVENT_MOUSE_MOVE) {
                 app->mouse_x = event.data.mouse_move.x;
                 app->mouse_y = event.data.mouse_move.y;
+            }
+            rt_gui_update_drag_over_target(app, event_root);
+            if (event.type == VGFX_EVENT_MOUSE_MOVE) {
 
                 // Drag-and-drop: update drag-over state during drag
                 rt_gui_update_drag_over_target(app, event_root);
@@ -1682,17 +1688,23 @@ void rt_gui_app_poll(void *app_ptr) {
                 }
             }
 
-            // Check keyboard shortcuts after modal overlays get first chance.
-            // If a shortcut matches, consume the key-down so the widget tree
-            // does not also process the accelerator key as normal input.
-            if (gui_event.type == VG_EVENT_KEY_DOWN &&
-                rt_shortcuts_check_key(app, gui_event.key.key, (int)gui_event.modifiers)) {
-                continue;
-            }
-
             if (app->notification_manager &&
                 rt_gui_send_event_to_widget(&app->notification_manager->base, &gui_event)) {
                 rt_gui_capture_reported_click(app, &gui_event);
+                continue;
+            }
+
+            if (gui_event.type == VG_EVENT_KEY_DOWN) {
+                bool handled = vg_event_dispatch(app->root, &gui_event);
+                rt_gui_capture_reported_click(app, &gui_event);
+                rt_gui_sync_modal_root(app);
+                if (handled || rt_gui_top_dialog(app))
+                    continue;
+
+                // Let the focused widget/root see the key first; only unhandled
+                // non-modal key-downs become global shortcuts.
+                if (rt_shortcuts_check_key(app, gui_event.key.key, (int)gui_event.modifiers))
+                    continue;
                 continue;
             }
 

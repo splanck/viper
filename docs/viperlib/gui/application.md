@@ -295,6 +295,9 @@ Breadcrumb navigation widget.
 
 When the path is truncated, the overflow affordance now opens a real dropdown menu that paints, tracks hover, captures input while open, and reports the selected breadcrumb normally.
 Breadcrumb wrappers install runtime finalizers and ignore calls after `Destroy()`, which keeps repeated cleanup safe.
+`SetPath(path, separator)` treats `separator` as a literal string. For example,
+`"alpha::beta"` split with `"::"` yields `alpha`, `beta`; it does not split on
+each `:` character independently.
 
 **Constructor:** `NEW Viper.GUI.Breadcrumb(parent)`
 
@@ -374,6 +377,8 @@ Dialog hit-testing is local to the dialog surface, so button clicks, close click
 ### MessageBox
 
 System message dialog boxes (static methods).
+Stateful message boxes are safe to destroy explicitly; calling `Show()` on a
+destroyed wrapper returns `-1` instead of trying to reuse the freed dialog.
 
 | Method                                       | Signature                 | Description                   |
 |----------------------------------------------|---------------------------|-------------------------------|
@@ -462,7 +467,7 @@ dlg.Destroy();
 
 Toast notification system.
 
-Toasts now render as wrapped card-style notifications with animated slide/fade entry and exit. Manual dismissals and auto-expiry both honor the exit animation before the toast is removed, and long message/action text is wrapped instead of overflowing off the card.
+Toasts now render as wrapped card-style notifications with animated slide/fade entry and exit. Manual dismissals and auto-expiry both honor the exit animation before the toast is removed, and long message/action text is wrapped instead of overflowing off the card. Custom toast durations are clamped to the supported `uint32` millisecond range; negative durations become `0`, which means sticky/no auto-dismiss.
 
 | Method                                  | Signature                  | Description                              |
 |-----------------------------------------|----------------------------|------------------------------------------|
@@ -618,7 +623,7 @@ Viper.GUI.Container.SetPadding(vbox, 20.0)
 
 Keyboard shortcut registration system (static methods).
 
-Shortcut matching uses the translated `VG_KEY_*` key space, so function keys, arrows, `Home`/`End`, `PageUp`/`PageDown`, and other named keys match the same strings accepted by `Register()`. Matching key-down events are consumed after modal overlays such as `CommandPalette` get first chance at the input.
+Shortcut matching uses the translated `VG_KEY_*` key space, so function keys, arrows, `Home`/`End`, `PageUp`/`PageDown`, and other named keys match the same strings accepted by `Register()`. Focused widgets receive key-down events first; a global shortcut only fires when the widget tree leaves the key unhandled. While a modal dialog is open, global shortcuts are suppressed so accelerators cannot leak through the modal.
 
 | Method                                          | Signature               | Description                              |
 |-------------------------------------------------|-------------------------|------------------------------------------|

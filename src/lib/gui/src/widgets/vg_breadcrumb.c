@@ -30,6 +30,7 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -681,6 +682,8 @@ void vg_breadcrumb_push(vg_breadcrumb_t *bc, const char *label, void *data) {
         size_t new_cap = bc->item_capacity * 2;
         if (new_cap < 8)
             new_cap = 8;
+        if (new_cap <= bc->item_capacity || new_cap > SIZE_MAX / sizeof(vg_breadcrumb_item_t))
+            return;
         vg_breadcrumb_item_t *new_items =
             realloc(bc->items, new_cap * sizeof(vg_breadcrumb_item_t));
         if (!new_items)
@@ -688,6 +691,10 @@ void vg_breadcrumb_push(vg_breadcrumb_t *bc, const char *label, void *data) {
         bc->items = new_items;
         bc->item_capacity = new_cap;
     }
+
+    char *label_copy = strdup(label);
+    if (!label_copy)
+        return;
 
     /* Enforce max_items: remove oldest (index 0) when limit exceeded */
     if (bc->max_items > 0 && (int)bc->item_count >= bc->max_items) {
@@ -698,7 +705,7 @@ void vg_breadcrumb_push(vg_breadcrumb_t *bc, const char *label, void *data) {
 
     vg_breadcrumb_item_t *item = &bc->items[bc->item_count++];
     memset(item, 0, sizeof(vg_breadcrumb_item_t));
-    item->label = strdup(label);
+    item->label = label_copy;
     item->user_data = data;
     item->owns_user_data = false;
 
@@ -732,7 +739,11 @@ void vg_breadcrumb_clear(vg_breadcrumb_t *bc) {
     }
     bc->item_count = 0;
 
+    if (vg_widget_get_input_capture() == &bc->base)
+        vg_widget_release_input_capture();
     bc->dropdown_open = false;
+    bc->dropdown_index = -1;
+    bc->dropdown_hovered = -1;
     bc->hovered_index = -1;
 
     bc->base.needs_layout = true;
@@ -756,6 +767,9 @@ void vg_breadcrumb_item_add_dropdown(vg_breadcrumb_item_t *item, const char *lab
         size_t new_cap = item->dropdown_capacity * 2;
         if (new_cap < 4)
             new_cap = 4;
+        if (new_cap <= item->dropdown_capacity ||
+            new_cap > SIZE_MAX / sizeof(vg_breadcrumb_dropdown_t))
+            return;
         vg_breadcrumb_dropdown_t *new_items =
             realloc(item->dropdown_items, new_cap * sizeof(vg_breadcrumb_dropdown_t));
         if (!new_items)
@@ -764,8 +778,12 @@ void vg_breadcrumb_item_add_dropdown(vg_breadcrumb_item_t *item, const char *lab
         item->dropdown_capacity = new_cap;
     }
 
+    char *label_copy = strdup(label);
+    if (!label_copy)
+        return;
+
     vg_breadcrumb_dropdown_t *dd = &item->dropdown_items[item->dropdown_count++];
-    dd->label = strdup(label);
+    dd->label = label_copy;
     dd->data = data;
 }
 

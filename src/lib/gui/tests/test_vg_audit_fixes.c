@@ -2333,6 +2333,20 @@ TEST(commandpalette_and_filedialog_reject_surrogate_codepoints) {
     vg_filedialog_destroy(dialog);
 }
 
+/// @brief R8 — malformed/truncated UTF-8 labels do not read past the terminator while filtering.
+TEST(commandpalette_filter_handles_truncated_utf8_labels) {
+    vg_commandpalette_t *palette = vg_commandpalette_create();
+    ASSERT_NOT_NULL(palette);
+    ASSERT_NOT_NULL(vg_commandpalette_add_command(palette, "bad", "\xE2", NULL, NULL, NULL));
+    vg_commandpalette_show(palette);
+
+    vg_event_t query = vg_event_key(VG_EVENT_KEY_CHAR, 0, 'x', 0);
+    ASSERT_TRUE(palette->base.vtable->handle_event(&palette->base, &query));
+    ASSERT_EQ(palette->filtered_count, (size_t)0);
+
+    vg_commandpalette_destroy(palette);
+}
+
 /// @brief R6 — insert with max_length truncates the replacement text before clearing the selection.
 TEST(textinput_replacement_validates_before_mutating_selection) {
     vg_textinput_t *input = vg_textinput_create(NULL);
@@ -2933,6 +2947,77 @@ TEST(progressbar_sanitizes_nan_value_and_normalizes_phase) {
     vg_widget_destroy(&pb->base);
 }
 
+/// @brief R8 — circular progress is a real rendering style with square natural measurement.
+TEST(progressbar_circular_style_measures_as_square_indicator) {
+    vg_progressbar_t *pb = vg_progressbar_create(NULL);
+    ASSERT_NOT_NULL(pb);
+
+    vg_progressbar_set_style(pb, VG_PROGRESS_CIRCULAR);
+    vg_widget_measure(&pb->base, 1000.0f, 1000.0f);
+    ASSERT_EQ(pb->style, VG_PROGRESS_CIRCULAR);
+    ASSERT_NEAR(pb->base.measured_width, 48.0f, 0.001f);
+    ASSERT_NEAR(pb->base.measured_height, 48.0f, 0.001f);
+
+    vg_widget_destroy(&pb->base);
+}
+
+/// @brief R8 — changing the step immediately re-snaps the current slider value.
+TEST(slider_set_step_resnaps_current_value) {
+    vg_slider_t *slider = vg_slider_create(NULL, VG_SLIDER_HORIZONTAL);
+    ASSERT_NOT_NULL(slider);
+
+    vg_slider_set_range(slider, 0.0f, 10.0f);
+    vg_slider_set_value(slider, 2.3f);
+    ASSERT_NEAR(vg_slider_get_value(slider), 2.3f, 0.001f);
+    vg_slider_set_step(slider, 1.0f);
+    ASSERT_NEAR(vg_slider_get_value(slider), 2.0f, 0.001f);
+
+    vg_widget_destroy(&slider->base);
+}
+
+/// @brief R8 — clearing custom dialog buttons resets the preset/count coherently.
+TEST(dialog_custom_buttons_clear_resets_custom_state) {
+    vg_dialog_t *dialog = vg_dialog_create("buttons");
+    ASSERT_NOT_NULL(dialog);
+
+    vg_dialog_button_def_t defs[1] = {
+        {.label = "Apply", .result = VG_DIALOG_RESULT_OK, .is_default = true, .is_cancel = false},
+    };
+    vg_dialog_set_custom_buttons(dialog, defs, 1);
+    ASSERT_EQ(dialog->custom_button_count, (size_t)1);
+    ASSERT_EQ(dialog->button_preset, VG_DIALOG_BUTTONS_CUSTOM);
+
+    vg_dialog_set_custom_buttons(dialog, NULL, 0);
+    ASSERT_NULL(dialog->custom_buttons);
+    ASSERT_EQ(dialog->custom_button_count, (size_t)0);
+    ASSERT_NEQ(dialog->button_preset, VG_DIALOG_BUTTONS_CUSTOM);
+
+    vg_widget_destroy(&dialog->base);
+}
+
+/// @brief R8 — breadcrumb clear closes dropdown state and releases input capture.
+TEST(breadcrumb_clear_releases_dropdown_capture) {
+    vg_breadcrumb_t *bc = vg_breadcrumb_create();
+    ASSERT_NOT_NULL(bc);
+    vg_breadcrumb_push(bc, "root", NULL);
+    ASSERT_EQ(bc->item_count, (size_t)1);
+    vg_breadcrumb_item_add_dropdown(&bc->items[0], "child", NULL);
+
+    bc->dropdown_open = true;
+    bc->dropdown_index = 0;
+    bc->dropdown_hovered = 0;
+    vg_widget_set_input_capture(&bc->base);
+    ASSERT(vg_widget_get_input_capture() == &bc->base);
+
+    vg_breadcrumb_clear(bc);
+    ASSERT_FALSE(bc->dropdown_open);
+    ASSERT_EQ(bc->dropdown_index, -1);
+    ASSERT_EQ(bc->dropdown_hovered, -1);
+    ASSERT_NULL(vg_widget_get_input_capture());
+
+    vg_widget_destroy(&bc->base);
+}
+
 /// @brief R7 — set_font with a negative or NaN size leaves font_size unchanged at the current valid value.
 TEST(spinner_set_font_rejects_invalid_sizes) {
     vg_spinner_t *spinner = vg_spinner_create(NULL);
@@ -3188,6 +3273,7 @@ int main(void) {
     RUN(event_handler_can_destroy_target_during_dispatch);
     RUN(event_dispatch_keeps_focus_state_per_root);
     RUN(commandpalette_and_filedialog_reject_surrogate_codepoints);
+    RUN(commandpalette_filter_handles_truncated_utf8_labels);
     RUN(textinput_replacement_validates_before_mutating_selection);
     RUN(outputpane_append_line_and_clear_keep_line_state_consistent);
     RUN(contextmenu_callbacks_capture_and_registry_are_lifetime_safe);
@@ -3208,6 +3294,10 @@ int main(void) {
     RUN(specialized_widgets_honor_preferred_size_constraints);
     RUN(specialized_widgets_honor_max_size_constraints);
     RUN(progressbar_sanitizes_nan_value_and_normalizes_phase);
+    RUN(progressbar_circular_style_measures_as_square_indicator);
+    RUN(slider_set_step_resnaps_current_value);
+    RUN(dialog_custom_buttons_clear_resets_custom_state);
+    RUN(breadcrumb_clear_releases_dropdown_capture);
     RUN(spinner_set_font_rejects_invalid_sizes);
     RUN(dropdown_placeholder_marks_layout_dirty);
 

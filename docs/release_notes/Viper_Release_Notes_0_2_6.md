@@ -36,13 +36,13 @@ A focused hardening-and-correctness cycle on the v0.2.5 surface. No new public n
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 45 | +45 |
+| Commits | — | 46 | +46 |
 | Source files | 2,996 | 3,006 | +10 |
-| Production SLOC | 552K | 568K | +16K |
+| Production SLOC | 552K | 569K | +17K |
 | Test SLOC | 228K | 238K | +10K |
 | Demo SLOC | 188K | 188K | 0 |
 
-Counts via `scripts/count_sloc.sh` (production 567,831 / test 237,581 / demo 187,826 / source files 3,006).
+Counts via `scripts/count_sloc.sh` (production 568,658 / test 237,975 / demo 187,826 / source files 3,006).
 
 ---
 
@@ -244,6 +244,8 @@ Counts via `scripts/count_sloc.sh` (production 567,831 / test 237,581 / demo 187
 - `RelocApplier` and `DeadStripPass` prefer global resolutions over same-object local definitions when the reference is a Global or Weak binding. A strong def in another object now wins over a local def in the referencing object.
 - ICF redirects folded-section symbols to Undefined so subsequent relocs route through the canonical copy via global lookup instead of pointing into stripped bytes.
 - Dead-strip preserves EH/unwind roots and preserves non-alloc debug sections (`.debug*`, `__DWARF`) only for debug-section-preserving links; ICF now tracks address-taken local/section-symbol references by object/section/offset.
+- `preserveDebugSections` plumbed end-to-end through `CodegenPipeline::link` → `linkToExe` → linker options, so `.debug_line` data survives the link step when `emit_debug_lines` is set.
+- Branch trampolines now key dedup on `symName + addend` and resolve target addresses after all trampolines are placed, so the address shifts that insertion induces no longer desync the dedup map.
 - ELF executables emit a proper `PT_TLS` program header when the layout contains TLS sections, with monotonic ordering and overflow-checked span/memSize math. Dynamic metadata, startup-stub placement, section names, and section-header offsets now reject overflow before narrowing or allocation.
 - Mach-O `MH_SUBSECTIONS_VIA_SYMBOLS` inputs split `__TEXT,__text` per global/weak atom on read, so dead-strip and ICF operate at function granularity instead of treating `__text` as one chunk.
 - PE writer narrows 64-bit virtual addresses, sizes, and offsets to 32-bit fields through a uniform set of overflow-checked helpers (`checkedU32` / `checkedSizeU32` / `checkedAddU32` / `checkedRva` / `checkedAlignUpU32`) instead of silent truncation; reused external IAT slots must map to writable output sections before being seeded.
@@ -293,6 +295,6 @@ Demos and docs were updated to track the runtime work above; the stale Windows d
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 45-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 46-commit history since v0.2.5.
 
 <!-- END DRAFT -->

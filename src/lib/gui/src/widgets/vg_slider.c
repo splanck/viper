@@ -430,6 +430,7 @@ void vg_slider_set_step(vg_slider_t *slider, float step) {
     if (!slider)
         return;
     slider->step = isfinite(step) && step > 0 ? step : 0;
+    vg_slider_set_value(slider, slider->value);
     slider->base.needs_paint = true;
 }
 

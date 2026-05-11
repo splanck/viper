@@ -100,6 +100,57 @@ static int rt_widget_tree_contains(vg_widget_t *root, vg_widget_t *candidate) {
     return 0;
 }
 
+/// @brief Return a live widget handle, rejecting app handles, destroyed handles, and arbitrary pointers.
+static vg_widget_t *rt_widget_handle_checked(void *handle) {
+    if (!handle || rt_gui_is_app_handle(handle) || rt_gui_is_destroyed_app_handle(handle))
+        return NULL;
+    return rt_gui_is_widget_handle(handle) ? (vg_widget_t *)handle : NULL;
+}
+
+/// @brief Return non-zero if @p root contains the owner statusbar for @p item.
+static int rt_widget_tree_contains_statusbar_item(vg_widget_t *root, vg_statusbar_item_t *item) {
+    if (!root || !item)
+        return 0;
+    if (root->type == VG_WIDGET_STATUSBAR) {
+        vg_statusbar_t *bar = (vg_statusbar_t *)root;
+        for (size_t i = 0; i < bar->left_count; i++) {
+            if (bar->left_items[i] == item)
+                return 1;
+        }
+        for (size_t i = 0; i < bar->center_count; i++) {
+            if (bar->center_items[i] == item)
+                return 1;
+        }
+        for (size_t i = 0; i < bar->right_count; i++) {
+            if (bar->right_items[i] == item)
+                return 1;
+        }
+    }
+    for (vg_widget_t *child = root->first_child; child; child = child->next_sibling) {
+        if (rt_widget_tree_contains_statusbar_item(child, item))
+            return 1;
+    }
+    return 0;
+}
+
+/// @brief Return non-zero if @p root contains the owner toolbar for @p item.
+static int rt_widget_tree_contains_toolbar_item(vg_widget_t *root, vg_toolbar_item_t *item) {
+    if (!root || !item)
+        return 0;
+    if (root->type == VG_WIDGET_TOOLBAR) {
+        vg_toolbar_t *bar = (vg_toolbar_t *)root;
+        for (size_t i = 0; i < bar->item_count; i++) {
+            if (bar->items[i] == item)
+                return 1;
+        }
+    }
+    for (vg_widget_t *child = root->first_child; child; child = child->next_sibling) {
+        if (rt_widget_tree_contains_toolbar_item(child, item))
+            return 1;
+    }
+    return 0;
+}
+
 /// @brief Clear any rt_gui_app_t back-pointers that reference `widget` or its subtree.
 /// @details Called immediately before vg_widget_destroy to prevent the app's cached
 ///          raw pointers (last_clicked, drag_source, drag_over_widget,
@@ -114,9 +165,9 @@ static void rt_widget_forget_runtime_refs(rt_gui_app_t *app, vg_widget_t *widget
         app->drag_source = NULL;
     if (rt_widget_tree_contains(widget, app->drag_over_widget))
         app->drag_over_widget = NULL;
-    if (widget->type == VG_WIDGET_STATUSBAR)
+    if (rt_widget_tree_contains_statusbar_item(widget, app->last_statusbar_clicked))
         app->last_statusbar_clicked = NULL;
-    if (widget->type == VG_WIDGET_TOOLBAR)
+    if (rt_widget_tree_contains_toolbar_item(widget, app->last_toolbar_clicked))
         app->last_toolbar_clicked = NULL;
 }
 
@@ -127,10 +178,10 @@ static void rt_widget_forget_runtime_refs(rt_gui_app_t *app, vg_widget_t *widget
 /// @param widget Widget to destroy (opaque handle).
 void rt_widget_destroy(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    if (!widget || rt_gui_is_destroyed_app_handle(widget) || rt_gui_is_app_handle(widget))
+    vg_widget_t *w = rt_widget_handle_checked(widget);
+    if (!w)
         return;
 
-    vg_widget_t *w = (vg_widget_t *)widget;
     rt_gui_app_t *app = rt_gui_app_from_widget(w);
     if (app && app->root == w)
         return;
@@ -147,9 +198,9 @@ void rt_widget_destroy(void *widget) {
 /// @param visible Non-zero to show, zero to hide.
 void rt_widget_set_visible(void *widget, int64_t visible) {
     RT_ASSERT_MAIN_THREAD();
-    if (widget) {
-        vg_widget_set_visible((vg_widget_t *)widget, visible != 0);
-    }
+    vg_widget_t *w = rt_widget_handle_checked(widget);
+    if (w)
+        vg_widget_set_visible(w, visible != 0);
 }
 
 /// @brief Enable or disable user interaction with a widget.
@@ -160,9 +211,9 @@ void rt_widget_set_visible(void *widget, int64_t visible) {
 /// @param enabled Non-zero to enable, zero to disable.
 void rt_widget_set_enabled(void *widget, int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
-    if (widget) {
-        vg_widget_set_enabled((vg_widget_t *)widget, enabled != 0);
-    }
+    vg_widget_t *w = rt_widget_handle_checked(widget);
+    if (w)
+        vg_widget_set_enabled(w, enabled != 0);
 }
 
 /// @brief Set a fixed width and height on the widget.
@@ -176,9 +227,10 @@ void rt_widget_set_enabled(void *widget, int64_t enabled) {
 /// @param height Fixed height in logical pixels.
 void rt_widget_set_size(void *widget, int64_t width, int64_t height) {
     RT_ASSERT_MAIN_THREAD();
-    if (widget) {
+    vg_widget_t *w = rt_widget_handle_checked(widget);
+    if (w) {
         vg_widget_set_fixed_size(
-            (vg_widget_t *)widget,
+            w,
             rt_gui_sanitize_nonnegative_float((double)width, RT_GUI_MAX_LAYOUT_VALUE),
             rt_gui_sanitize_nonnegative_float((double)height, RT_GUI_MAX_LAYOUT_VALUE));
     }
@@ -194,8 +246,9 @@ void rt_widget_set_size(void *widget, int64_t width, int64_t height) {
 /// @param height Preferred height in logical pixels (>= 0).
 void rt_widget_set_preferred_size(void *widget, double width, double height) {
     RT_ASSERT_MAIN_THREAD();
-    if (widget) {
-        vg_widget_set_preferred_size((vg_widget_t *)widget,
+    vg_widget_t *w = rt_widget_handle_checked(widget);
+    if (w) {
+        vg_widget_set_preferred_size(w,
                                      rt_gui_sanitize_nonnegative_float(
                                          width, RT_GUI_MAX_LAYOUT_VALUE),
                                      rt_gui_sanitize_nonnegative_float(
@@ -212,8 +265,9 @@ void rt_widget_set_preferred_size(void *widget, double width, double height) {
 /// @param height Maximum height in logical pixels (0 = unconstrained).
 void rt_widget_set_max_size(void *widget, double width, double height) {
     RT_ASSERT_MAIN_THREAD();
-    if (widget) {
-        vg_widget_set_max_size((vg_widget_t *)widget,
+    vg_widget_t *w = rt_widget_handle_checked(widget);
+    if (w) {
+        vg_widget_set_max_size(w,
                                rt_gui_sanitize_nonnegative_float(width, RT_GUI_MAX_LAYOUT_VALUE),
                                rt_gui_sanitize_nonnegative_float(height, RT_GUI_MAX_LAYOUT_VALUE));
     }
@@ -228,9 +282,10 @@ void rt_widget_set_max_size(void *widget, double width, double height) {
 /// @param flex   Flex-grow factor (>= 0.0).
 void rt_widget_set_flex(void *widget, double flex) {
     RT_ASSERT_MAIN_THREAD();
-    if (widget) {
+    vg_widget_t *w = rt_widget_handle_checked(widget);
+    if (w) {
         vg_widget_set_flex(
-            (vg_widget_t *)widget, rt_gui_sanitize_nonnegative_float(flex, RT_GUI_MAX_LAYOUT_VALUE));
+            w, rt_gui_sanitize_nonnegative_float(flex, RT_GUI_MAX_LAYOUT_VALUE));
     }
 }
 
@@ -246,8 +301,9 @@ void rt_widget_add_child(void *parent, void *child) {
     RT_ASSERT_MAIN_THREAD();
     if (parent && child) {
         vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
-        if (parent_widget)
-            vg_widget_add_child(parent_widget, (vg_widget_t *)child);
+        vg_widget_t *child_widget = rt_widget_handle_checked(child);
+        if (parent_widget && child_widget)
+            vg_widget_add_child(parent_widget, child_widget);
     }
 }
 
@@ -258,9 +314,10 @@ void rt_widget_add_child(void *parent, void *child) {
 /// @param margin Margin in logical pixels.
 void rt_widget_set_margin(void *widget, int64_t margin) {
     RT_ASSERT_MAIN_THREAD();
-    if (widget)
+    vg_widget_t *w = rt_widget_handle_checked(widget);
+    if (w)
         vg_widget_set_margin(
-            (vg_widget_t *)widget,
+            w,
             rt_gui_sanitize_nonnegative_float((double)margin, RT_GUI_MAX_LAYOUT_VALUE));
 }
 
@@ -272,9 +329,10 @@ void rt_widget_set_margin(void *widget, int64_t margin) {
 /// @param idx    Tab index (>= 0 for explicit ordering, -1 for default DFS).
 void rt_widget_set_tab_index(void *widget, int64_t idx) {
     RT_ASSERT_MAIN_THREAD();
-    if (widget)
+    vg_widget_t *w = rt_widget_handle_checked(widget);
+    if (w)
         vg_widget_set_tab_index(
-            (vg_widget_t *)widget, rt_gui_clamp_i64_to_i32(idx, -1, INT32_MAX));
+            w, rt_gui_clamp_i64_to_i32(idx, -1, INT32_MAX));
 }
 
 /// @brief Check whether the widget is currently visible.
@@ -282,9 +340,10 @@ void rt_widget_set_tab_index(void *widget, int64_t idx) {
 /// @return 1 if visible, 0 if hidden or NULL.
 int64_t rt_widget_is_visible(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    if (!widget)
+    vg_widget_t *w = rt_widget_handle_checked(widget);
+    if (!w)
         return 0;
-    return ((vg_widget_t *)widget)->visible ? 1 : 0;
+    return w->visible ? 1 : 0;
 }
 
 /// @brief Check whether the widget is currently enabled for interaction.
@@ -292,9 +351,10 @@ int64_t rt_widget_is_visible(void *widget) {
 /// @return 1 if enabled, 0 if disabled or NULL.
 int64_t rt_widget_is_enabled(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    if (!widget)
+    vg_widget_t *w = rt_widget_handle_checked(widget);
+    if (!w)
         return 0;
-    return ((vg_widget_t *)widget)->enabled ? 1 : 0;
+    return w->enabled ? 1 : 0;
 }
 
 /// @brief Get the current laid-out width of the widget in physical pixels.
@@ -302,9 +362,10 @@ int64_t rt_widget_is_enabled(void *widget) {
 /// @return Width in pixels, or 0 if NULL.
 int64_t rt_widget_get_width(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    if (!widget)
+    vg_widget_t *w = rt_widget_handle_checked(widget);
+    if (!w)
         return 0;
-    return (int64_t)((vg_widget_t *)widget)->width;
+    return (int64_t)w->width;
 }
 
 /// @brief Get the current laid-out height of the widget in physical pixels.
@@ -312,9 +373,10 @@ int64_t rt_widget_get_width(void *widget) {
 /// @return Height in pixels, or 0 if NULL.
 int64_t rt_widget_get_height(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    if (!widget)
+    vg_widget_t *w = rt_widget_handle_checked(widget);
+    if (!w)
         return 0;
-    return (int64_t)((vg_widget_t *)widget)->height;
+    return (int64_t)w->height;
 }
 
 /// @brief Get the widget's X position relative to its parent.
@@ -322,9 +384,10 @@ int64_t rt_widget_get_height(void *widget) {
 /// @return X offset in pixels, or 0 if NULL.
 int64_t rt_widget_get_x(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    if (!widget)
+    vg_widget_t *w = rt_widget_handle_checked(widget);
+    if (!w)
         return 0;
-    return (int64_t)((vg_widget_t *)widget)->x;
+    return (int64_t)w->x;
 }
 
 /// @brief Get the widget's Y position relative to its parent.
@@ -332,9 +395,10 @@ int64_t rt_widget_get_x(void *widget) {
 /// @return Y offset in pixels, or 0 if NULL.
 int64_t rt_widget_get_y(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    if (!widget)
+    vg_widget_t *w = rt_widget_handle_checked(widget);
+    if (!w)
         return 0;
-    return (int64_t)((vg_widget_t *)widget)->y;
+    return (int64_t)w->y;
 }
 
 /// @brief Get the widget's flex-grow factor.
@@ -342,9 +406,10 @@ int64_t rt_widget_get_y(void *widget) {
 /// @return Flex value, or 0.0 if NULL.
 double rt_widget_get_flex(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    if (!widget)
+    vg_widget_t *w = rt_widget_handle_checked(widget);
+    if (!w)
         return 0.0;
-    return (double)((vg_widget_t *)widget)->layout.flex;
+    return (double)w->layout.flex;
 }
 
 //=============================================================================

@@ -36,6 +36,7 @@
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widget.h"
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -288,6 +289,27 @@ static int dialog_wrap_text(vg_dialog_t *dlg,
             }
             break;
         }
+        if (text[start] == '\n') {
+            if (out_lines && lines) {
+                if (count >= cap) {
+                    int new_cap = cap * 2;
+                    char **new_lines = (char **)realloc(lines, (size_t)new_cap * sizeof(char *));
+                    if (!new_lines)
+                        break;
+                    memset(new_lines + cap, 0, (size_t)(new_cap - cap) * sizeof(char *));
+                    lines = new_lines;
+                    cap = new_cap;
+                }
+                lines[count] = strdup("");
+                if (!lines[count])
+                    break;
+                count++;
+            } else {
+                count++;
+            }
+            start++;
+            continue;
+        }
 
         size_t line_end = start;
         size_t best_end = start;
@@ -368,7 +390,7 @@ static int dialog_wrap_text(vg_dialog_t *dlg,
         }
         if (text[start] == '\n') {
             start++;
-            if (out_lines && lines) {
+            if (text[start] == '\0' && out_lines && lines) {
                 if (count >= cap) {
                     int new_cap = cap * 2;
                     char **new_lines = (char **)realloc(lines, (size_t)new_cap * sizeof(char *));
@@ -382,7 +404,7 @@ static int dialog_wrap_text(vg_dialog_t *dlg,
                 if (!lines[count])
                     break;
                 count++;
-            } else {
+            } else if (text[start] == '\0') {
                 count++;
             }
         }
@@ -1409,6 +1431,32 @@ void vg_dialog_set_custom_buttons(vg_dialog_t *dialog,
     if (!dialog)
         return;
 
+    if (count > 0 && !buttons)
+        return;
+    if (count > SIZE_MAX / sizeof(vg_dialog_button_def_t))
+        return;
+
+    vg_dialog_button_def_t *new_buttons = NULL;
+    if (count > 0) {
+        new_buttons = calloc(count, sizeof(vg_dialog_button_def_t));
+        if (!new_buttons)
+            return;
+        for (size_t i = 0; i < count; i++) {
+            if (buttons[i].label) {
+                new_buttons[i].label = strdup(buttons[i].label);
+                if (!new_buttons[i].label) {
+                    for (size_t j = 0; j < i; j++)
+                        free(new_buttons[j].label);
+                    free(new_buttons);
+                    return;
+                }
+            }
+            new_buttons[i].result = buttons[i].result;
+            new_buttons[i].is_default = buttons[i].is_default;
+            new_buttons[i].is_cancel = buttons[i].is_cancel;
+        }
+    }
+
     // Free existing custom buttons
     if (dialog->custom_buttons) {
         for (size_t i = 0; i < dialog->custom_button_count; i++) {
@@ -1417,18 +1465,9 @@ void vg_dialog_set_custom_buttons(vg_dialog_t *dialog,
         free(dialog->custom_buttons);
     }
 
-    // Copy new buttons
-    dialog->custom_buttons = calloc(count, sizeof(vg_dialog_button_def_t));
-    if (dialog->custom_buttons) {
-        for (size_t i = 0; i < count; i++) {
-            dialog->custom_buttons[i].label = buttons[i].label ? strdup(buttons[i].label) : NULL;
-            dialog->custom_buttons[i].result = buttons[i].result;
-            dialog->custom_buttons[i].is_default = buttons[i].is_default;
-            dialog->custom_buttons[i].is_cancel = buttons[i].is_cancel;
-        }
-        dialog->custom_button_count = count;
-        dialog->button_preset = VG_DIALOG_BUTTONS_CUSTOM;
-    }
+    dialog->custom_buttons = new_buttons;
+    dialog->custom_button_count = count;
+    dialog->button_preset = count > 0 ? VG_DIALOG_BUTTONS_CUSTOM : VG_DIALOG_BUTTONS_OK;
 
     dialog->base.needs_layout = true;
     dialog->base.needs_paint = true;

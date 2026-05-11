@@ -373,6 +373,11 @@ void rt_messagebox_add_button(void *box, rt_string text, int64_t id) {
 
     // Grow the custom buttons array if needed
     if (data->custom_button_count >= data->custom_button_cap) {
+        if (data->custom_button_cap > SIZE_MAX / 2 ||
+            (data->custom_button_cap ? data->custom_button_cap * 2 : 4) >
+                SIZE_MAX / sizeof(vg_dialog_button_def_t)) {
+            return;
+        }
         size_t new_cap = data->custom_button_cap ? data->custom_button_cap * 2 : 4;
         vg_dialog_button_def_t *p = (vg_dialog_button_def_t *)realloc(
             data->custom_buttons, new_cap * sizeof(vg_dialog_button_def_t));
@@ -383,8 +388,12 @@ void rt_messagebox_add_button(void *box, rt_string text, int64_t id) {
     }
 
     char *clabel = rt_string_to_cstr(text);
+    if (!clabel)
+        clabel = strdup("OK");
+    if (!clabel)
+        return;
     vg_dialog_button_def_t *btn = &data->custom_buttons[data->custom_button_count++];
-    btn->label = clabel ? clabel : strdup("OK");
+    btn->label = clabel;
     btn->result = (vg_dialog_result_t)id;
     btn->is_default = (id == data->default_button);
     btn->is_cancel = rt_messagebox_label_is_cancel(btn->label);
@@ -411,7 +420,7 @@ int64_t rt_messagebox_show(void *box) {
         return -1;
     rt_messagebox_data_t *data = (rt_messagebox_data_t *)box;
     rt_gui_app_t *app = data->owner_app ? data->owner_app : rt_messagebox_app();
-    if (!app)
+    if (!app || !data->dialog)
         return -1;
 
     // Apply custom buttons if any were added via rt_messagebox_add_button
