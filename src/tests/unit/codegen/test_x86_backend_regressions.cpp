@@ -62,6 +62,14 @@ ILValue imm(int64_t value) {
     return operand;
 }
 
+ILValue immI1(int64_t value) {
+    ILValue operand{};
+    operand.kind = ILValue::Kind::I1;
+    operand.id = -1;
+    operand.i64 = value;
+    return operand;
+}
+
 ILValue immF64(double value) {
     ILValue operand{};
     operand.kind = ILValue::Kind::F64;
@@ -153,6 +161,37 @@ const OpMem *firstMemOperand(const MInstr &instr) {
         }
     }
     return nullptr;
+}
+
+bool isControlTerminator(MOpcode opcode) {
+    return opcode == MOpcode::JMP || opcode == MOpcode::JCC || opcode == MOpcode::RET ||
+           opcode == MOpcode::UD2;
+}
+
+bool blockHasNonTerminatorAfterControlTransfer(const MBasicBlock &block) {
+    bool seenControlTransfer = false;
+    for (const auto &instr : block.instructions) {
+        if (seenControlTransfer && !isControlTerminator(instr.opcode)) {
+            return true;
+        }
+        if (isControlTerminator(instr.opcode)) {
+            seenControlTransfer = true;
+        }
+    }
+    return false;
+}
+
+bool blockHasExplicitConditionalFallthrough(const MBasicBlock &block) {
+    if (block.instructions.size() < 2) {
+        return false;
+    }
+    for (std::size_t i = 0; i + 1 < block.instructions.size(); ++i) {
+        if (block.instructions[i].opcode == MOpcode::JCC &&
+            block.instructions[i + 1].opcode == MOpcode::JMP) {
+            return true;
+        }
+    }
+    return false;
 }
 
 int dupFd(int fd) {
@@ -611,9 +650,9 @@ TEST(X86BackendRegressions, SwitchBlockArgsUseDedicatedEdgeBlocks) {
                         label("case2"),
                         label("def")})};
     entry.terminatorEdges = {
+        ILBlock::EdgeArg{.to = "def", .argIds = {-1}, .argValues = {imm(33)}},
         ILBlock::EdgeArg{.to = "case1", .argIds = {-1}, .argValues = {imm(11)}},
-        ILBlock::EdgeArg{.to = "case2", .argIds = {-1}, .argValues = {imm(22)}},
-        ILBlock::EdgeArg{.to = "def", .argIds = {-1}, .argValues = {imm(33)}}};
+        ILBlock::EdgeArg{.to = "case2", .argIds = {-1}, .argValues = {imm(22)}}};
 
     ILBlock case1{};
     case1.name = "case1";
@@ -647,6 +686,12 @@ TEST(X86BackendRegressions, SwitchBlockArgsUseDedicatedEdgeBlocks) {
     ASSERT_TRUE(entryIt != mir.blocks.end());
 
     std::size_t edgeBlockCount = 0;
+    struct EdgeBlockInfo {
+        std::string label;
+        std::string target;
+        int64_t immediate = 0;
+    };
+    std::vector<EdgeBlockInfo> edgeBlocks;
     for (const auto &bb : mir.blocks) {
         if (bb.label.find(".edge") == std::string::npos)
             continue;
@@ -654,8 +699,66 @@ TEST(X86BackendRegressions, SwitchBlockArgsUseDedicatedEdgeBlocks) {
         EXPECT_TRUE(blockContainsOpcode(bb, MOpcode::PX_COPY));
         ASSERT_FALSE(bb.instructions.empty());
         EXPECT_EQ(bb.instructions.back().opcode, MOpcode::JMP);
+        const OpLabel *target = jumpTarget(bb.instructions.back());
+        ASSERT_TRUE(target != nullptr);
+
+        int64_t immediate = 0;
+        bool foundImmediate = false;
+        for (const auto &instr : bb.instructions) {
+            if (instr.opcode != MOpcode::MOVri || instr.operands.size() < 2)
+                continue;
+            const auto *immOp = std::get_if<OpImm>(&instr.operands[1]);
+            if (immOp) {
+                immediate = immOp->val;
+                foundImmediate = true;
+            }
+        }
+        ASSERT_TRUE(foundImmediate);
+        edgeBlocks.push_back({bb.label, target->name, immediate});
     }
     EXPECT_EQ(edgeBlockCount, 3u);
+
+    auto assertEdge = [&](const std::string &helperLabel,
+                          const std::string &expectedTarget,
+                          int64_t expectedImmediate) {
+        const auto edgeIt =
+            std::find_if(edgeBlocks.begin(), edgeBlocks.end(), [&](const EdgeBlockInfo &info) {
+                return info.label == helperLabel;
+            });
+        ASSERT_TRUE(edgeIt != edgeBlocks.end());
+        EXPECT_EQ(edgeIt->target, expectedTarget);
+        EXPECT_EQ(edgeIt->immediate, expectedImmediate);
+    };
+
+    std::string case1Edge;
+    std::string case2Edge;
+    std::string defaultEdge;
+    for (std::size_t i = 0; i < entryIt->instructions.size(); ++i) {
+        const auto &instr = entryIt->instructions[i];
+        if (instr.opcode == MOpcode::CMPri && instr.operands.size() >= 2) {
+            const auto *caseValue = std::get_if<OpImm>(&instr.operands[1]);
+            ASSERT_TRUE(caseValue != nullptr);
+            ASSERT_LT(i + 1, entryIt->instructions.size());
+            const OpLabel *target = jumpTarget(entryIt->instructions[i + 1]);
+            ASSERT_TRUE(target != nullptr);
+            if (caseValue->val == 1) {
+                case1Edge = target->name;
+            } else if (caseValue->val == 2) {
+                case2Edge = target->name;
+            }
+        } else if (instr.opcode == MOpcode::JMP) {
+            const OpLabel *target = jumpTarget(instr);
+            ASSERT_TRUE(target != nullptr);
+            defaultEdge = target->name;
+        }
+    }
+
+    ASSERT_FALSE(case1Edge.empty());
+    ASSERT_FALSE(case2Edge.empty());
+    ASSERT_FALSE(defaultEdge.empty());
+    assertEdge(case1Edge, ".L_switch_edges_case1", 11);
+    assertEdge(case2Edge, ".L_switch_edges_case2", 22);
+    assertEdge(defaultEdge, ".L_switch_edges_def", 33);
 }
 
 TEST(X86BackendRegressions, LargerSwitchUsesBalancedDecisionLabels) {
@@ -1064,6 +1167,94 @@ TEST(X86BackendRegressions, RegAllocSpillsLiveValuesBeforeImplicitDivClobber) {
     }
     EXPECT_TRUE(spilledRax);
     EXPECT_TRUE(spilledRdx);
+}
+
+TEST(X86BackendRegressions, RegAllocDoesNotAllocateFixedScratchRegisters) {
+    MFunction fn{};
+    fn.name = "reserved_scratch_regs";
+
+    MBasicBlock entry{};
+    entry.label = ".L_reserved_scratch_regs_entry";
+    std::vector<Operand> regs;
+    for (uint16_t id = 1; id <= 12; ++id) {
+        regs.push_back(makeVRegOperand(RegClass::GPR, id));
+        entry.instructions.push_back(MInstr::make(MOpcode::MOVri,
+                                                  {regs.back(), makeImmOperand(id)}));
+    }
+    for (std::size_t idx = 1; idx < regs.size(); ++idx) {
+        entry.instructions.push_back(MInstr::make(MOpcode::ADDrr, {regs[0], regs[idx]}));
+    }
+    entry.instructions.push_back(MInstr::make(MOpcode::RET));
+    fn.blocks.push_back(std::move(entry));
+
+    (void)allocate(fn, win64Target());
+
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
+            for (const auto &operand : instr.operands) {
+                const auto *reg = std::get_if<OpReg>(&operand);
+                if (!reg || !reg->isPhys || reg->cls != RegClass::GPR)
+                    continue;
+                EXPECT_NE(static_cast<PhysReg>(reg->idOrPhys), PhysReg::R10);
+                EXPECT_NE(static_cast<PhysReg>(reg->idOrPhys), PhysReg::R11);
+            }
+        }
+    }
+}
+
+TEST(X86BackendRegressions, RegAllocPreservesCallerSavedLiveOutAcrossCall) {
+    MFunction fn{};
+    fn.name = "call_liveout";
+
+    MBasicBlock entry{};
+    entry.label = ".L_call_liveout_entry";
+    const Operand live = makeVRegOperand(RegClass::GPR, 1);
+    entry.instructions = {MInstr::make(MOpcode::MOVri, {live, makeImmOperand(42)}),
+                          MInstr::make(MOpcode::CALL, {makeLabelOperand("opaque_call")}),
+                          MInstr::make(MOpcode::JMP, {makeLabelOperand(".L_call_liveout_join")})};
+
+    MBasicBlock join{};
+    join.label = ".L_call_liveout_join";
+    const Operand tmp = makeVRegOperand(RegClass::GPR, 2);
+    join.instructions = {MInstr::make(MOpcode::MOVrr, {tmp, live}), MInstr::make(MOpcode::RET)};
+
+    fn.blocks = {entry, join};
+
+    (void)allocate(fn, sysvTarget());
+
+    const auto &instructions = fn.blocks.front().instructions;
+    const auto callIt = std::find_if(instructions.begin(), instructions.end(), [](const MInstr &instr) {
+        return instr.opcode == MOpcode::CALL;
+    });
+    ASSERT_TRUE(callIt != instructions.end());
+
+    const auto isCallerSaved = [](PhysReg reg) {
+        return reg == PhysReg::RAX || reg == PhysReg::RDI || reg == PhysReg::RSI ||
+               reg == PhysReg::RDX || reg == PhysReg::RCX || reg == PhysReg::R8 ||
+               reg == PhysReg::R9 || reg == PhysReg::R10 || reg == PhysReg::R11;
+    };
+
+    bool preservedBeforeCall = false;
+    for (auto it = instructions.begin(); it != callIt; ++it) {
+        if (it->opcode == MOpcode::MOVrr && it->operands.size() >= 2) {
+            const auto *dst = std::get_if<OpReg>(&it->operands[0]);
+            const auto *src = std::get_if<OpReg>(&it->operands[1]);
+            if (dst && src && dst->isPhys && src->isPhys) {
+                const auto dstReg = static_cast<PhysReg>(dst->idOrPhys);
+                const auto srcReg = static_cast<PhysReg>(src->idOrPhys);
+                preservedBeforeCall =
+                    preservedBeforeCall || (isCallerSaved(srcReg) && !isCallerSaved(dstReg));
+            }
+        }
+        if (it->opcode == MOpcode::MOVrm && it->operands.size() >= 2) {
+            const auto *src = std::get_if<OpReg>(&it->operands[1]);
+            if (src && src->isPhys) {
+                preservedBeforeCall =
+                    preservedBeforeCall || isCallerSaved(static_cast<PhysReg>(src->idOrPhys));
+            }
+        }
+    }
+    EXPECT_TRUE(preservedBeforeCall);
 }
 
 TEST(X86BackendRegressions, LivenessCfgIgnoresInternalSelectLabels) {
@@ -1649,6 +1840,166 @@ TEST(X86BackendRegressions, LabelLiteralEdgeArgsMaterializeAsPointers) {
 
     EXPECT_TRUE(foundLabelLea);
     EXPECT_FALSE(foundBadZeroMove);
+}
+
+TEST(X86BackendRegressions, XmmSelectBranchArmIsSplitBeforeRegAlloc) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::I1};
+    entry.instrs = {op("const_f64", {immF64(1.5)}, 1, ILValue::Kind::F64),
+                    op("const_f64", {immF64(2.5)}, 2, ILValue::Kind::F64),
+                    op("select",
+                       {val(ILValue::Kind::I1, 0),
+                        val(ILValue::Kind::F64, 1),
+                        val(ILValue::Kind::F64, 2)},
+                       3,
+                       ILValue::Kind::F64),
+                    op("ret", {val(ILValue::Kind::F64, 3)}, -1, ILValue::Kind::F64)};
+
+    ILFunction fn{};
+    fn.name = "xmm_select_split";
+    fn.blocks = {entry};
+
+    ILModule module{};
+    module.funcs = {fn};
+
+    AsmEmitter::RoDataPool roData;
+    std::vector<MFunction> mir;
+    std::vector<FrameInfo> frames;
+    std::string errors;
+    CodegenOptions options;
+    ASSERT_TRUE(legalizeModuleToMIR(module, sysvTarget(), options, roData, mir, frames, errors));
+    ASSERT_TRUE(errors.empty());
+    ASSERT_EQ(mir.size(), 1u);
+
+    bool foundExplicitFalseEdge = false;
+    for (const auto &block : mir.front().blocks) {
+        EXPECT_FALSE(blockHasNonTerminatorAfterControlTransfer(block));
+        foundExplicitFalseEdge = foundExplicitFalseEdge || blockHasExplicitConditionalFallthrough(block);
+    }
+    EXPECT_TRUE(foundExplicitFalseEdge);
+}
+
+TEST(X86BackendRegressions, LivenessCfgTracksNonAdjacentJccBeforeFinalJump) {
+    MFunction fn{};
+    fn.name = "non_adjacent_jcc";
+
+    MBasicBlock entry{};
+    entry.label = ".L_non_adjacent_jcc_entry";
+    const Operand dst = makeVRegOperand(RegClass::GPR, 1);
+    const Operand src = makeVRegOperand(RegClass::GPR, 2);
+    entry.instructions = {MInstr::make(MOpcode::JCC, {makeImmOperand(1), makeLabelOperand(".L_true")}),
+                          MInstr::make(MOpcode::MOVrr, {dst, src}),
+                          MInstr::make(MOpcode::JMP, {makeLabelOperand(".L_false")})};
+
+    MBasicBlock trueBlock{};
+    trueBlock.label = ".L_true";
+    trueBlock.instructions = {MInstr::make(MOpcode::RET)};
+
+    MBasicBlock falseBlock{};
+    falseBlock.label = ".L_false";
+    falseBlock.instructions = {MInstr::make(MOpcode::RET)};
+
+    fn.blocks = {entry, trueBlock, falseBlock};
+
+    ra::LivenessAnalysis liveness;
+    liveness.run(fn);
+    const auto &succs = liveness.successors(0);
+    ASSERT_EQ(succs.size(), 2u);
+    EXPECT_NE(std::find(succs.begin(), succs.end(), 1u), succs.end());
+    EXPECT_NE(std::find(succs.begin(), succs.end(), 2u), succs.end());
+}
+
+TEST(X86BackendRegressions, Win64RawRuntimeCallsReserveShadowSpace) {
+    MFunction fn{};
+    fn.name = "raw_trap_call";
+
+    MBasicBlock entry{};
+    entry.label = ".L_raw_trap_call_entry";
+    entry.instructions = {MInstr::make(MOpcode::CALL, {makeLabelOperand("rt_trap_ovf")}),
+                          MInstr::make(MOpcode::UD2)};
+    fn.blocks.push_back(std::move(entry));
+
+    FrameInfo frame{};
+    assignSpillSlots(fn, win64Target(), frame);
+    EXPECT_GE(frame.outgoingArgArea, 32);
+}
+
+TEST(X86BackendRegressions, I1ImmediateOperandsCanonicalizeToZeroOrOne) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {op("zext", {immI1(7)}, 0, ILValue::Kind::I64),
+                    op("ret", {val(ILValue::Kind::I64, 0)})};
+
+    ILFunction fn{};
+    fn.name = "i1_imm_zext";
+    fn.blocks = {entry};
+
+    const CodegenResult result = compile(fn);
+    ASSERT_TRUE(result.errors.empty());
+    EXPECT_NE(result.asmText.find("$1"), std::string::npos);
+    EXPECT_EQ(result.asmText.find("$7"), std::string::npos);
+}
+
+TEST(X86BackendRegressions, I1ImmediateCallArgsCanonicalizeToZeroOrOne) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(sysvTarget(), roData);
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {op("call", {label("sink"), immI1(-3)}), op("ret", {imm(0)})};
+
+    ILFunction fn{};
+    fn.name = "i1_call_arg";
+    fn.blocks = {entry};
+
+    (void)lowering.lower(fn);
+    ASSERT_EQ(lowering.callPlans().size(), 1u);
+    ASSERT_EQ(lowering.callPlans().front().args.size(), 1u);
+    EXPECT_TRUE(lowering.callPlans().front().args[0].isImm);
+    EXPECT_EQ(lowering.callPlans().front().args[0].imm, 1);
+}
+
+TEST(X86BackendRegressions, I1ImmediateEdgeArgsCanonicalizeToZeroOrOne) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(sysvTarget(), roData);
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {op("br", {label("target")})};
+    entry.terminatorEdges = {
+        ILBlock::EdgeArg{.to = "target", .argIds = {-1}, .argValues = {immI1(99)}}};
+
+    ILBlock target{};
+    target.name = "target";
+    target.paramIds = {0};
+    target.paramKinds = {ILValue::Kind::I1};
+    target.instrs = {op("ret", {val(ILValue::Kind::I1, 0)})};
+
+    ILFunction fn{};
+    fn.name = "i1_edge_arg";
+    fn.blocks = {entry, target};
+
+    const MFunction mir = lowering.lower(fn);
+    bool foundCanonicalMove = false;
+    bool foundRawMove = false;
+    for (const auto &block : mir.blocks) {
+        if (block.label.find(".edge") == std::string::npos) {
+            continue;
+        }
+        for (const auto &instr : block.instructions) {
+            if (instr.opcode != MOpcode::MOVri || instr.operands.size() < 2) {
+                continue;
+            }
+            const auto *imm = std::get_if<OpImm>(&instr.operands[1]);
+            foundCanonicalMove = foundCanonicalMove || (imm && imm->val == 1);
+            foundRawMove = foundRawMove || (imm && imm->val == 99);
+        }
+    }
+
+    EXPECT_TRUE(foundCanonicalMove);
+    EXPECT_FALSE(foundRawMove);
 }
 
 int main(int argc, char **argv) {

@@ -142,6 +142,11 @@ inline bool isWindowsMetadataSection(const std::string &name) {
 
 /// Symbols synthesized by the Windows native linker rather than imported from
 /// a DLL or provided by a runtime archive.
+inline bool isWindowsStdioOptionsStorageSymbol(const std::string &name) {
+    return name == "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9" ||
+           name == "?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9";
+}
+
 inline bool isWindowsLinkerHelperSymbol(const std::string &name) {
     return name == "_fltused" || name == "__ImageBase" ||
            name == "__security_cookie" || name == "__security_check_cookie" ||
@@ -158,8 +163,7 @@ inline bool isWindowsLinkerHelperSymbol(const std::string &name) {
            name == "__acrt_uninitialize_critical" || name == "__isa_available_init" ||
            name == "__scrt_exe_initialize_mta" ||
            name == "IID_ID3D11Texture2D" ||
-           name == "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9" ||
-           name == "?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9" || name == "vm_trap" ||
+           isWindowsStdioOptionsStorageSymbol(name) || name == "vm_trap" ||
            name == "rt_audio_shutdown";
 }
 

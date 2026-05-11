@@ -51,7 +51,9 @@ CallArg makeCallArg(const ILValue &argVal, MIRBuilder &builder) {
         arg.isImm = true;
         arg.imm = (argVal.kind == ILValue::Kind::F64) ? static_cast<int64_t>(
                                                             std::bit_cast<std::uint64_t>(argVal.f64))
-                                                      : argVal.i64;
+                                                      : (argVal.kind == ILValue::Kind::I1
+                                                             ? (argVal.i64 != 0 ? 1 : 0)
+                                                             : argVal.i64);
         return arg;
     }
 

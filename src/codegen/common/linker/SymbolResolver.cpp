@@ -29,6 +29,9 @@ namespace viper::codegen::linker {
 
 static bool preferArchiveDefinition(const std::string &name, LinkPlatform platform);
 static bool isPreferredArchiveDefinitionObject(const ObjFile &obj, LinkPlatform platform);
+static bool allowDuplicateStrongDefinition(const std::string &name,
+                                           LinkPlatform platform,
+                                           bool allowArchiveDefinitionPreference);
 
 /// Add symbols from a single object file into the global table.
 /// @param obj        The object file.
@@ -120,7 +123,8 @@ static bool addObjSymbols(const ObjFile &obj,
                 if (sym.absolute)
                     existing.resolvedAddr = static_cast<uint64_t>(sym.offset);
             } else if (existing.binding == GlobalSymEntry::Global && !isWeak) {
-                if (allowArchiveDefinitionPreference && preferArchiveDefinition(sym.name, platform))
+                if (allowDuplicateStrongDefinition(
+                        sym.name, platform, allowArchiveDefinitionPreference))
                     continue;
                 err << "error: multiply defined symbol '" << sym.name << "' in " << obj.name
                     << "\n";
@@ -170,6 +174,17 @@ static bool isPreferredArchiveDefinitionObject(const ObjFile &obj, LinkPlatform 
     return obj.name.find("viper_rt") != std::string::npos ||
            obj.name.find("viper-runtime") != std::string::npos ||
            obj.name.find("viper_runtime") != std::string::npos;
+}
+
+/// MSVC emits some CRT inline-function local statics in every object that uses
+/// the inline helper. Link.exe picks one definition; keep normal user duplicate
+/// strong definitions strict while modeling that pick-any behavior.
+static bool allowDuplicateStrongDefinition(const std::string &name,
+                                           LinkPlatform platform,
+                                           bool allowArchiveDefinitionPreference) {
+    if (platform == LinkPlatform::Windows && isWindowsStdioOptionsStorageSymbol(name))
+        return true;
+    return allowArchiveDefinitionPreference && preferArchiveDefinition(name, platform);
 }
 
 bool resolveSymbols(const std::vector<ObjFile> &initialObjects,

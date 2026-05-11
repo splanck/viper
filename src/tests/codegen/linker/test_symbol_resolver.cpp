@@ -210,6 +210,38 @@ int main() {
         CHECK(err.str().find("collide") != std::string::npos);
     }
 
+    // --- Windows CRT inline stdio option storage is pick-any ---
+    {
+        const std::string printfOptions =
+            "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9";
+        const std::string scanfOptions =
+            "?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9";
+
+        auto obj1 = makeObj("a.obj", {".data"});
+        addSymbol(obj1, printfOptions, 1, ObjSymbol::Global);
+        addSymbol(obj1, scanfOptions, 1, ObjSymbol::Global, 8);
+
+        auto obj2 = makeObj("b.obj", {".data"});
+        addSymbol(obj2, printfOptions, 1, ObjSymbol::Global);
+        addSymbol(obj2, scanfOptions, 1, ObjSymbol::Global, 8);
+
+        std::vector<ObjFile> initObjs = {obj1, obj2};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(
+            initObjs, archives, globalSyms, allObjects, dynamicSyms, err, LinkPlatform::Windows);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(globalSyms[printfOptions].binding == GlobalSymEntry::Global);
+        CHECK(globalSyms[printfOptions].objIndex == 0);
+        CHECK(globalSyms[scanfOptions].binding == GlobalSymEntry::Global);
+        CHECK(globalSyms[scanfOptions].objIndex == 0);
+    }
+
     // --- Undefined symbol resolved by second object ---
     {
         auto caller = makeObj("caller.o", {".text"});

@@ -166,12 +166,14 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
     std::set<int> gprSpillSlots{};
     std::set<int> xmmSpillSlots{};
     int maxAllocaSlotIndex = -1; // Track the highest alloca slot index
+    bool hasCall = false;
 
     // Alloca slots use indices 0..N; spill slots use kSpillSlotOffset+0, kSpillSlotOffset+1, ...
     // (kSpillSlotOffset is defined in TargetX64.hpp)
 
     for (auto &block : func.blocks) {
         for (auto &instr : block.instructions) {
+            hasCall = hasCall || instr.opcode == MOpcode::CALL;
             for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
                 auto &operand = instr.operands[idx];
                 if (auto *reg = std::get_if<OpReg>(&operand); reg && reg->isPhys) {
@@ -268,7 +270,8 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
     if (frame.outgoingArgArea < 0) {
         frame.outgoingArgArea = 0;
     }
-    if (target.shadowSpace != 0 && (func.name == "main" || func.name == "@main")) {
+    if (target.shadowSpace != 0 &&
+        (hasCall || func.name == "main" || func.name == "@main")) {
         frame.outgoingArgArea = std::max(frame.outgoingArgArea, static_cast<int>(target.shadowSpace));
     }
     frame.outgoingArgArea = roundUp(frame.outgoingArgArea, kStackAlignment);

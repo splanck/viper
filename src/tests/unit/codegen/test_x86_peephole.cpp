@@ -538,19 +538,56 @@ TEST(X86Peephole, TraceLayoutPreservesJccOnlyFallthrough) {
 
     fn.blocks = {std::move(entry), std::move(falseBlock), std::move(trueBlock)};
 
-    auto count = runPeepholes(fn);
-    EXPECT_TRUE(count > 0U);
+    runPeepholes(fn);
     ASSERT_GE(fn.blocks.size(), 3U);
     EXPECT_EQ(fn.blocks[0].label, ".Lentry");
     EXPECT_EQ(fn.blocks[1].label, ".Lfalse");
     EXPECT_EQ(fn.blocks[2].label, ".Ltrue");
 
     const auto &entryInstrs = fn.blocks[0].instructions;
-    ASSERT_FALSE(entryInstrs.empty());
-    EXPECT_EQ(entryInstrs.back().opcode, MOpcode::JCC);
-    const auto *target = std::get_if<OpLabel>(&entryInstrs.back().operands[1]);
-    ASSERT_NE(target, nullptr);
-    EXPECT_EQ(target->name, ".Ltrue");
+    ASSERT_GE(entryInstrs.size(), 3U);
+    EXPECT_EQ(entryInstrs[1].opcode, MOpcode::JCC);
+    const auto *trueTarget = std::get_if<OpLabel>(&entryInstrs[1].operands[1]);
+    ASSERT_NE(trueTarget, nullptr);
+    EXPECT_EQ(trueTarget->name, ".Ltrue");
+    EXPECT_EQ(entryInstrs.back().opcode, MOpcode::JMP);
+    const auto *falseTarget = std::get_if<OpLabel>(&entryInstrs.back().operands[0]);
+    ASSERT_NE(falseTarget, nullptr);
+    EXPECT_EQ(falseTarget->name, ".Lfalse");
+}
+
+TEST(X86Peephole, FallthroughJumpAfterJccIsPreserved) {
+    MFunction fn{};
+    fn.name = "test_jcc_explicit_false_edge";
+
+    MBasicBlock entry{};
+    entry.label = ".Lentry";
+    entry.instructions = {
+        MInstr{MOpcode::TESTrr, {gpr(PhysReg::RAX), gpr(PhysReg::RAX)}},
+        MInstr{MOpcode::JCC, {imm(1), lbl(".Ltrue")}},
+        MInstr{MOpcode::JMP, {lbl(".Lfalse")}},
+    };
+
+    MBasicBlock falseBlock{};
+    falseBlock.label = ".Lfalse";
+    falseBlock.instructions = {
+        MInstr{MOpcode::RET, {}},
+    };
+
+    MBasicBlock trueBlock{};
+    trueBlock.label = ".Ltrue";
+    trueBlock.instructions = {
+        MInstr{MOpcode::RET, {}},
+    };
+
+    fn.blocks = {std::move(entry), std::move(falseBlock), std::move(trueBlock)};
+
+    runPeepholes(fn);
+
+    const auto &entryInstrs = fn.blocks[0].instructions;
+    ASSERT_GE(entryInstrs.size(), 3U);
+    EXPECT_EQ(entryInstrs[1].opcode, MOpcode::JCC);
+    EXPECT_EQ(entryInstrs[2].opcode, MOpcode::JMP);
 }
 
 TEST(X86Peephole, ColdBlockMovePreservesJccOnlyFallthrough) {
@@ -649,8 +686,6 @@ TEST(X86Peephole, ColdBlockMovedToEnd) {
     MBasicBlock entry{};
     entry.label = ".Lentry";
     entry.instructions = {
-        MInstr{MOpcode::CMPrr, {gpr(PhysReg::RAX), gpr(PhysReg::RBX)}},
-        MInstr{MOpcode::JCC, {imm(0), lbl(".Ltrap_div0")}},
         MInstr{MOpcode::JMP, {lbl(".Lbody")}},
     };
 

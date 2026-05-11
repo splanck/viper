@@ -104,6 +104,15 @@ std::size_t mirInstructionCount(const MFunction &fn) {
     return std::nullopt;
 }
 
+[[nodiscard]] bool isControlTerminatorForSplit(MOpcode opcode) noexcept {
+    return opcode == MOpcode::JMP || opcode == MOpcode::JCC || opcode == MOpcode::RET ||
+           opcode == MOpcode::UD2;
+}
+
+[[nodiscard]] bool isSyntheticSplitLabel(std::string_view label) noexcept {
+    return label.rfind(".Lsplit", 0) == 0;
+}
+
 /// @brief Promote in-block labels to real MachineIR basic blocks.
 ///
 /// @details Several lowering rules emit local labels for cold trap paths before
@@ -111,18 +120,24 @@ std::size_t mirInstructionCount(const MFunction &fn) {
 ///          block-CFG based; leaving those labels inside one block lets
 ///          trap-only moves and calls pollute the normal path's register cache.
 ///          Splitting here preserves layout while making those edges visible.
+///          It also starts a fresh block after in-block control transfers so
+///          branch-arm instructions are not hidden behind an earlier JCC.
 void splitInternalLabelBlocks(MFunction &fn) {
-    bool hasInternalLabels = false;
+    bool needsSplit = false;
     std::size_t labelCount = 0;
     for (const auto &block : fn.blocks) {
-        for (const auto &instr : block.instructions) {
+        for (std::size_t idx = 0; idx < block.instructions.size(); ++idx) {
+            const auto &instr = block.instructions[idx];
             if (labelDefinedBy(instr)) {
-                hasInternalLabels = true;
+                needsSplit = true;
                 ++labelCount;
+            }
+            if (isControlTerminatorForSplit(instr.opcode) && idx + 1 < block.instructions.size()) {
+                needsSplit = true;
             }
         }
     }
-    if (!hasInternalLabels) {
+    if (!needsSplit) {
         return;
     }
 
@@ -133,9 +148,16 @@ void splitInternalLabelBlocks(MFunction &fn) {
         MBasicBlock current{};
         current.label = std::move(block.label);
 
-        for (auto &instr : block.instructions) {
+        for (std::size_t idx = 0; idx < block.instructions.size(); ++idx) {
+            auto &instr = block.instructions[idx];
             if (auto label = labelDefinedBy(instr)) {
-                if (current.instructions.empty() && current.label == *label) {
+                if (current.instructions.empty()) {
+                    if (current.label.empty() || current.label == *label ||
+                        isSyntheticSplitLabel(current.label)) {
+                        current.label = std::move(*label);
+                        continue;
+                    }
+                    current.instructions.push_back(std::move(instr));
                     continue;
                 }
                 splitBlocks.push_back(std::move(current));
@@ -144,6 +166,24 @@ void splitInternalLabelBlocks(MFunction &fn) {
                 continue;
             }
             current.instructions.push_back(std::move(instr));
+
+            if (isControlTerminatorForSplit(current.instructions.back().opcode) &&
+                idx + 1 < block.instructions.size()) {
+                const MOpcode terminator = current.instructions.back().opcode;
+                std::string nextLabel;
+                if (auto label = labelDefinedBy(block.instructions[idx + 1])) {
+                    nextLabel = *label;
+                } else {
+                    nextLabel = fn.makeLocalLabel(".Lsplit");
+                }
+                if (terminator == MOpcode::JCC) {
+                    current.instructions.push_back(
+                        MInstr::make(MOpcode::JMP, {makeLabelOperand(nextLabel)}));
+                }
+                splitBlocks.push_back(std::move(current));
+                current = MBasicBlock{};
+                current.label = std::move(nextLabel);
+            }
         }
 
         splitBlocks.push_back(std::move(current));

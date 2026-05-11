@@ -174,9 +174,12 @@ std::size_t runPeepholes(MFunction &fn, const TargetInfo &target) {
 
     // Layout and branch passes can expose each other: chain elimination may
     // create fallthrough jumps, and block layout can create branch-inversion
-    // opportunities. Iterate them to the same bounded fixed point.
+    // opportunities. Try inversion before layout as well so an already-adjacent
+    // true edge is folded before trace layout follows an explicit false edge.
     for (std::size_t iter = 0; iter < kMaxIterations; ++iter) {
         const std::size_t before = stats.total();
+        ph::eliminateBranchChains(fn, stats);
+        ph::invertConditionalBranches(fn, stats);
         ph::traceBlockLayout(fn, stats);
         ph::moveColdBlocks(fn, stats);
         ph::eliminateBranchChains(fn, stats);

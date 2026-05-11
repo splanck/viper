@@ -50,12 +50,15 @@ template <typename... Ts> struct Overload : Ts... {
 template <typename... Ts> Overload(Ts...) -> Overload<Ts...>;
 
 /// @brief Identify general-purpose registers that must never be allocated.
-/// @details The stack pointer and frame pointer are reserved by the calling
-///          convention, so the allocator filters them out of the initial pools.
+/// @details The stack/frame pointers are reserved by the calling convention.
+///          R10/R11 are backend scratch registers used by multi-instruction
+///          lowering sequences; keeping them out of the general pool prevents a
+///          later vreg reload from overwriting scratch state before it is read.
 /// @param reg Candidate register.
 /// @return @c true when @p reg is reserved.
 [[nodiscard]] bool isReservedGPR(PhysReg reg) noexcept {
-    return reg == PhysReg::RSP || reg == PhysReg::RBP;
+    return reg == PhysReg::RSP || reg == PhysReg::RBP || reg == PhysReg::R10 ||
+           reg == PhysReg::R11;
 }
 
 /// @brief Wrap a physical register into a Machine IR operand.
@@ -571,7 +574,8 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
                 // Check if this value is used after the call.
                 // If we don't have interval info, conservatively spill to avoid data loss.
                 const auto *interval = intervals_.lookup(vreg);
-                if (interval && interval->end <= currentInstrIdx_ + 1) {
+                const bool liveOut = liveness_.liveOut(currentBlockIdx_).count(vreg) != 0;
+                if (!liveOut && interval && interval->end <= currentInstrIdx_ + 1) {
                     continue; // Only skip if interval confirms value is dead after call
                 }
                 gprToSpill.push_back(vreg);
@@ -589,7 +593,8 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
                 }
                 // If we don't have interval info, conservatively spill to avoid data loss.
                 const auto *interval = intervals_.lookup(vreg);
-                if (interval && interval->end <= currentInstrIdx_ + 1) {
+                const bool liveOut = liveness_.liveOut(currentBlockIdx_).count(vreg) != 0;
+                if (!liveOut && interval && interval->end <= currentInstrIdx_ + 1) {
                     continue; // Only skip if interval confirms value is dead after call
                 }
                 xmmToSpill.push_back(vreg);
@@ -732,10 +737,11 @@ void LinearScanAllocator::releaseActiveForBlock(MBasicBlock &block, std::size_t 
 
     // Find insertion point — before the terminator if present.
     std::size_t insertPos = block.instructions.size();
-    if (!block.instructions.empty() && isTerminator(block.instructions.back().opcode)) {
-        insertPos = block.instructions.size() - 1;
-        if (insertPos > 0 && isTerminator(block.instructions[insertPos - 1].opcode))
-            insertPos--;
+    for (std::size_t idx = 0; idx < block.instructions.size(); ++idx) {
+        if (isTerminator(block.instructions[idx].opcode)) {
+            insertPos = idx;
+            break;
+        }
     }
 
     std::vector<MInstr> spills{};

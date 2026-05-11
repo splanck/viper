@@ -320,6 +320,10 @@ void removeFallthroughJumps(MFunction &fn, PeepholeStats &stats) {
 
         // Check if the last instruction is an unconditional jump to the next block
         auto &lastInstr = block.instructions.back();
+        if (block.instructions.size() >= 2 &&
+            block.instructions[block.instructions.size() - 2].opcode == MOpcode::JCC) {
+            continue;
+        }
         if (isJumpTo(lastInstr, nextBlock.label)) {
             block.instructions.pop_back();
             ++stats.branchesToNextRemoved;

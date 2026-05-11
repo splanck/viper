@@ -114,8 +114,16 @@ void LivenessAnalysis::buildCFG(const MFunction &func) {
         }
 
         if (term.opcode == MOpcode::JMP) {
-            if (termIndex > 0 && block.instructions[termIndex - 1].opcode == MOpcode::JCC) {
-                addLabelSuccessor(blockIndex_, succs_[bi], block.instructions[termIndex - 1]);
+            for (std::size_t scan = termIndex; scan > 0; --scan) {
+                const MInstr &candidate = block.instructions[scan - 1];
+                if (candidate.opcode == MOpcode::JCC) {
+                    addLabelSuccessor(blockIndex_, succs_[bi], candidate);
+                    break;
+                }
+                if (candidate.opcode == MOpcode::JMP || candidate.opcode == MOpcode::RET ||
+                    candidate.opcode == MOpcode::UD2) {
+                    break;
+                }
             }
             addLabelSuccessor(blockIndex_, succs_[bi], term);
         } else if (term.opcode == MOpcode::JCC) {

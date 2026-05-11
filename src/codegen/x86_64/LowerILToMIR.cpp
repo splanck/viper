@@ -53,6 +53,10 @@ namespace {
     phaseAUnsupported(msg.c_str());
 }
 
+[[nodiscard]] int64_t canonicalIntegerImmediate(const ILValue &value) noexcept {
+    return value.kind == ILValue::Kind::I1 ? (value.i64 != 0 ? 1 : 0) : value.i64;
+}
+
 } // namespace
 
 // -----------------------------------------------------------------------------
@@ -326,7 +330,7 @@ Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &val
         case ILValue::Kind::I64:
         case ILValue::Kind::I1:
         case ILValue::Kind::PTR:
-            return makeImmOperand(value.i64);
+            return makeImmOperand(canonicalIntegerImmediate(value));
         case ILValue::Kind::F64: {
             assert(cls == RegClass::XMM && "f64 operands must target XMM registers");
             assert(roDataPool_ && "RoData pool unavailable for f64 literals");
@@ -473,7 +477,8 @@ std::string LowerILToMIR::buildEdgeCopyBlock(MFunction &func,
                 } else {
                     edgeBlock.append(MInstr::make(
                         MOpcode::MOVri,
-                        std::vector<Operand>{cloneOperand(srcOp), makeImmOperand(val.i64)}));
+                        std::vector<Operand>{cloneOperand(srcOp),
+                                             makeImmOperand(canonicalIntegerImmediate(val))}));
                 }
             }
         }
@@ -660,15 +665,13 @@ MFunction LowerILToMIR::lower(const ILFunction &func) {
 
             if (loweredInstr.opcode == "br" || loweredInstr.opcode == "cbr" ||
                 loweredInstr.opcode == "switch_i32") {
-                std::size_t edgeIndex = 0;
-                auto rewriteLabelOperand = [&](ILValue &labelValue) {
+                auto rewriteLabelOperand = [&](ILValue &labelValue, std::size_t edgeIndex) {
                     if (edgeIndex >= ilBlock.terminatorEdges.size() ||
                         labelValue.kind != ILValue::Kind::LABEL) {
                         return;
                     }
                     const std::string helperLabel =
                         buildEdgeCopyBlock(result, ilBlock.terminatorEdges[edgeIndex], result.blocks[idx]);
-                    ++edgeIndex;
                     if (!helperLabel.empty()) {
                         labelValue.label = helperLabel;
                     }
@@ -676,13 +679,28 @@ MFunction LowerILToMIR::lower(const ILFunction &func) {
 
                 if (loweredInstr.opcode == "br") {
                     if (!loweredInstr.ops.empty()) {
-                        rewriteLabelOperand(loweredInstr.ops[0]);
+                        rewriteLabelOperand(loweredInstr.ops[0], 0);
                     }
-                } else {
+                } else if (loweredInstr.opcode == "cbr") {
+                    std::size_t edgeIndex = 0;
                     for (std::size_t opIndex = 0; opIndex < loweredInstr.ops.size(); ++opIndex) {
                         if (loweredInstr.ops[opIndex].kind == ILValue::Kind::LABEL) {
-                            rewriteLabelOperand(loweredInstr.ops[opIndex]);
+                            rewriteLabelOperand(loweredInstr.ops[opIndex], edgeIndex++);
                         }
+                    }
+                } else {
+                    // Switch operands are emitted as (scrutinee, case-value/case-label pairs,
+                    // default-label), while IL successor metadata stores default first and then
+                    // the cases. Rewrite each label with the edge that corresponds to that
+                    // destination instead of walking labels in operand order.
+                    std::size_t caseEdgeIndex = 1;
+                    for (std::size_t opIndex = 1; opIndex < loweredInstr.ops.size(); ++opIndex) {
+                        if (loweredInstr.ops[opIndex].kind != ILValue::Kind::LABEL) {
+                            continue;
+                        }
+                        const bool isDefaultLabel = opIndex + 1 == loweredInstr.ops.size();
+                        rewriteLabelOperand(
+                            loweredInstr.ops[opIndex], isDefaultLabel ? 0 : caseEdgeIndex++);
                     }
                 }
             }
