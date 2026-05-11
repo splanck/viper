@@ -137,6 +137,7 @@ static int linkObjToExe(const std::string &objPath,
                         std::size_t stackSize,
                         const std::vector<std::string> &extraObjects,
                         bool fastLink,
+                        bool preserveDebugSections,
                         std::ostream &out,
                         std::ostream &err);
 
@@ -147,6 +148,7 @@ static int linkToExe(const std::string &asmPath,
                      TargetPlatform targetPlatform,
                      std::size_t stackSize,
                      const std::vector<std::string> &extraObjects,
+                     bool preserveDebugSections,
                      std::ostream &out,
                      std::ostream &err) {
     using namespace viper::codegen::common;
@@ -163,7 +165,16 @@ static int linkToExe(const std::string &asmPath,
         return arc;
 
     const int lrc = linkObjToExe(
-        objPath.string(), exePath, ctx, targetPlatform, stackSize, extraObjects, false, out, err);
+        objPath.string(),
+        exePath,
+        ctx,
+        targetPlatform,
+        stackSize,
+        extraObjects,
+        false,
+        preserveDebugSections,
+        out,
+        err);
     std::error_code ec;
     std::filesystem::remove(objPath, ec);
     return lrc;
@@ -226,6 +237,7 @@ static void collectNativeLinkArchives(const common::LinkContext &ctx,
 /// @param stackSize     Requested thread stack size in bytes; 0 means platform default.
 /// @param extraObjects  Additional .o files to include in the link (e.g. runtime stubs).
 /// @param fastLink      Skip non-essential size-reduction passes in the linker.
+/// @param preserveDebugSections Keep non-alloc DWARF/debug sections in linked output.
 /// @param out           Stream for linker stdout diagnostics.
 /// @param err           Stream for linker stderr diagnostics.
 /// @return 0 on success, non-zero on link failure.
@@ -236,6 +248,7 @@ static int linkObjToExe(const std::string &objPath,
                         std::size_t stackSize,
                         const std::vector<std::string> &extraObjects,
                         bool fastLink,
+                        bool preserveDebugSections,
                         std::ostream &out,
                         std::ostream &err) {
     using namespace viper::codegen::common;
@@ -250,6 +263,7 @@ static int linkObjToExe(const std::string &objPath,
     linkOpts.entrySymbol = "main";
     linkOpts.stackSize = stackSize;
     linkOpts.fastLink = fastLink;
+    linkOpts.preserveDebugSections = preserveDebugSections;
     linkOpts.extraObjPaths = extraObjects;
     collectNativeLinkArchives(ctx, linkOpts.archivePaths);
 
@@ -643,6 +657,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
                          opts_.stack_size,
                          opts_.extra_objects,
                          opts_.fast_link,
+                         opts_.emit_debug_lines,
                          out,
                          err);
 
@@ -688,9 +703,14 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
 
         if (opts_.link_mode == LinkMode::System)
             err << "warning: --system-link is deprecated; using the native linker\n";
-        const int lrc =
-            linkToExe(
-                asmPath, outPath, opts_.target_platform, opts_.stack_size, opts_.extra_objects, out, err);
+        const int lrc = linkToExe(asmPath,
+                                  outPath,
+                                  opts_.target_platform,
+                                  opts_.stack_size,
+                                  opts_.extra_objects,
+                                  opts_.emit_debug_lines,
+                                  out,
+                                  err);
         if (lrc == 0 && !opts_.emit_asm) {
             std::error_code ec;
             std::filesystem::remove(asmPath, ec);
@@ -708,8 +728,14 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
 
     if (opts_.link_mode == LinkMode::System)
         err << "warning: --system-link is deprecated; using the native linker\n";
-    if (linkToExe(
-            asmPath, exe.string(), opts_.target_platform, opts_.stack_size, opts_.extra_objects, out, err) != 0) {
+    if (linkToExe(asmPath,
+                  exe.string(),
+                  opts_.target_platform,
+                  opts_.stack_size,
+                  opts_.extra_objects,
+                  opts_.emit_debug_lines,
+                  out,
+                  err) != 0) {
         result.exit_code = 1;
         result.stdout_text = out.str();
         result.stderr_text = err.str();

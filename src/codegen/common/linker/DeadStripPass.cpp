@@ -74,11 +74,19 @@ static bool isWindowsUnwindSection(const std::string &name) {
     return name.rfind(".pdata", 0) == 0 || name.rfind(".xdata", 0) == 0;
 }
 
+static bool isDebugSection(const ObjSection &sec) {
+    if (sec.alloc)
+        return false;
+    return hasPrefix(sec.name, ".debug") || sec.name.find("__DWARF") != std::string::npos ||
+           sec.name.find("__debug") != std::string::npos;
+}
+
 void deadStrip(std::vector<ObjFile> &allObjects,
                size_t userObjCount,
                const std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
                const std::string &entrySymbol,
                LinkPlatform platform,
+               bool preserveDebugSections,
                std::ostream &err) {
     // Set of live (objIdx, secIdx) pairs.
     std::unordered_set<InputSectionKey, InputSectionKeyHash> live;
@@ -115,7 +123,8 @@ void deadStrip(std::vector<ObjFile> &allObjects,
         const auto &obj = allObjects[oi];
         for (size_t si = 1; si < obj.sections.size(); ++si) {
             const auto &sec = obj.sections[si];
-            if (sec.tls || isAlwaysLiveSection(sec.name))
+            if (sec.tls || (preserveDebugSections && isDebugSection(sec)) ||
+                isAlwaysLiveSection(sec.name))
                 markLive(oi, si);
         }
     }

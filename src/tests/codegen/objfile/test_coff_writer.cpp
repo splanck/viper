@@ -16,7 +16,9 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <sstream>
 #include <vector>
@@ -61,6 +63,11 @@ static uint32_t readLE32(const std::vector<uint8_t> &bytes, size_t off) {
     return static_cast<uint32_t>(bytes[off]) | (static_cast<uint32_t>(bytes[off + 1]) << 8) |
            (static_cast<uint32_t>(bytes[off + 2]) << 16) |
            (static_cast<uint32_t>(bytes[off + 3]) << 24);
+}
+
+static std::vector<uint8_t> readFile(const std::string &path) {
+    std::ifstream in(path, std::ios::binary);
+    return {std::istreambuf_iterator<char>(in), {}};
 }
 
 static void writeLE16(std::vector<uint8_t> &bytes, size_t off, uint16_t v) {
@@ -598,6 +605,14 @@ int main() {
         CoffWriter overflowWriter(ObjArch::X86_64);
         const std::string overflowPath = "build/test-out/coff_reloc_overflow.obj";
         ASSERT(overflowWriter.write(overflowPath, manyRelocs, emptyRodata, overflowErr));
+
+        const auto overflowBytes = readFile(overflowPath);
+        ASSERT(overflowBytes.size() >= 20 + 40);
+        const size_t textHeader = 20;
+        CHECK(readLE32(overflowBytes, textHeader + 36) & 0x01000000U);
+        const uint32_t relocOff = readLE32(overflowBytes, textHeader + 24);
+        ASSERT(relocOff + 10 <= overflowBytes.size());
+        CHECK(readLE32(overflowBytes, relocOff) == kRelocCount + 1);
 
         ObjFile overflowObj;
         ASSERT(readObjFile(overflowPath, overflowObj, overflowErr));

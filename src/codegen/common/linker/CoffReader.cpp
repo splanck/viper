@@ -441,6 +441,7 @@ bool readCoffObj(
 
         uint32_t relocCount = sh->NumberOfRelocations;
         uint32_t firstReloc = 0;
+        uint32_t totalRelocRecords = relocCount;
         if ((sh->Characteristics & coff::IMAGE_SCN_LNK_NRELOC_OVFL) != 0 &&
             sh->NumberOfRelocations == 0xFFFF) {
             const auto *overflow = coffAt<coff::CoffReloc>(data, size, sh->PointerToRelocations);
@@ -448,13 +449,16 @@ bool readCoffObj(
                 err << "error: " << name << ": COFF relocation overflow record is out of bounds\n";
                 return false;
             }
-            relocCount = overflow->VirtualAddress;
+            if (overflow->VirtualAddress <= 1) {
+                err << "error: " << name << ": COFF relocation overflow count is malformed\n";
+                return false;
+            }
+            totalRelocRecords = overflow->VirtualAddress;
+            relocCount = totalRelocRecords - 1;
             firstReloc = 1;
         }
-        size_t totalRelocs = 0;
         size_t relocBytes = 0;
-        if (!checkedAdd(static_cast<size_t>(relocCount), static_cast<size_t>(firstReloc), totalRelocs) ||
-            !checkedMul(totalRelocs, sizeof(coff::CoffReloc), relocBytes)) {
+        if (!checkedMul(static_cast<size_t>(totalRelocRecords), sizeof(coff::CoffReloc), relocBytes)) {
             err << "error: " << name << ": COFF relocation table size overflows address space\n";
             return false;
         }
@@ -464,7 +468,7 @@ bool readCoffObj(
         }
 
         // Read relocations.
-        for (uint32_t r = firstReloc; r < relocCount + firstReloc; ++r) {
+        for (uint32_t r = firstReloc; r < totalRelocRecords; ++r) {
             const auto *cr = coffAt<coff::CoffReloc>(
                 data, size, sh->PointerToRelocations + r * sizeof(coff::CoffReloc));
             if (!cr) {

@@ -45,6 +45,7 @@ struct NativeLinkerOptions {
     std::size_t stackSize = 0; ///< Requested stack size in bytes; 0 uses format defaults.
     std::optional<bool> windowsDebugRuntime; ///< Override CRT flavor on Windows when set.
     bool fastLink = false; ///< Skip non-essential size-reduction passes for edit/build cycles.
+    bool preserveDebugSections = false; ///< Keep non-alloc DWARF/debug sections in output.
 };
 
 /// Run the native linker.

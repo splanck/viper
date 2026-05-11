@@ -51,6 +51,28 @@ namespace viper::codegen::linker {
 
 namespace {
 
+bool installSyntheticGlobal(const ObjSymbol &sym,
+                            size_t objIdx,
+                            std::unordered_map<std::string, GlobalSymEntry> &globalSyms) {
+    if (sym.binding == ObjSymbol::Local || sym.binding == ObjSymbol::Undefined || sym.name.empty())
+        return false;
+
+    auto existing = globalSyms.find(sym.name);
+    if (existing != globalSyms.end() &&
+        existing->second.binding != GlobalSymEntry::Undefined &&
+        existing->second.binding != GlobalSymEntry::Dynamic)
+        return false;
+
+    GlobalSymEntry e;
+    e.name = sym.name;
+    e.binding = GlobalSymEntry::Global;
+    e.objIndex = objIdx;
+    e.secIndex = sym.sectionIndex;
+    e.offset = sym.offset;
+    globalSyms[sym.name] = std::move(e);
+    return true;
+}
+
 /// @brief Promote every Global/Weak symbol in a synthetic ObjFile into the
 ///        global symbol table so subsequent passes can resolve references to it.
 /// @details Used after we synthesize helper objects (Windows CRT shims, PE
@@ -61,17 +83,7 @@ void registerSyntheticSymbols(const ObjFile &obj,
                               std::unordered_map<std::string, GlobalSymEntry> &globalSyms) {
     for (size_t i = 1; i < obj.symbols.size(); ++i) {
         const auto &sym = obj.symbols[i];
-        if (sym.binding == ObjSymbol::Local || sym.binding == ObjSymbol::Undefined ||
-            sym.name.empty())
-            continue;
-
-        GlobalSymEntry e;
-        e.name = sym.name;
-        e.binding = GlobalSymEntry::Global;
-        e.objIndex = objIdx;
-        e.secIndex = sym.sectionIndex;
-        e.offset = sym.offset;
-        globalSyms[sym.name] = std::move(e);
+        installSyntheticGlobal(sym, objIdx, globalSyms);
     }
 }
 
@@ -969,15 +981,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
             const auto &stubs = allObjects[objcIdx];
             for (size_t i = 1; i < stubs.symbols.size(); ++i) {
                 const auto &sym = stubs.symbols[i];
-                if (sym.binding == ObjSymbol::Local || sym.binding == ObjSymbol::Undefined)
-                    continue;
-                GlobalSymEntry e;
-                e.name = sym.name;
-                e.binding = GlobalSymEntry::Global;
-                e.objIndex = objcIdx;
-                e.secIndex = sym.sectionIndex;
-                e.offset = sym.offset;
-                globalSyms[sym.name] = std::move(e);
+                installSyntheticGlobal(sym, objcIdx, globalSyms);
             }
         }
     }
@@ -1049,21 +1053,12 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
 
         // Manually register stub and GOT symbols in globalSyms.
         // This overrides Dynamic entries with Global entries pointing to stubs.
-        const auto &stubs = allObjects[stubObjIdx];
-        for (size_t i = 1; i < stubs.symbols.size(); ++i) {
-            const auto &sym = stubs.symbols[i];
-            if (sym.binding == ObjSymbol::Local)
-                continue;
-
-            GlobalSymEntry e;
-            e.name = sym.name;
-            e.binding = GlobalSymEntry::Global;
-            e.objIndex = stubObjIdx;
-            e.secIndex = sym.sectionIndex;
-            e.offset = sym.offset;
-            globalSyms[sym.name] = std::move(e);
+            const auto &stubs = allObjects[stubObjIdx];
+            for (size_t i = 1; i < stubs.symbols.size(); ++i) {
+                const auto &sym = stubs.symbols[i];
+                installSyntheticGlobal(sym, stubObjIdx, globalSyms);
+            }
         }
-    }
 
     if (opts.platform == LinkPlatform::Windows) {
         dynamicSyms.erase("__ImageBase");
@@ -1087,7 +1082,13 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
 
     // Step 3.5c: Dead-strip unused sections from all non-synthetic input
     // objects, rooting only entry points and always-live metadata.
-    deadStrip(allObjects, initialObjects.size(), globalSyms, opts.entrySymbol, opts.platform, err);
+    deadStrip(allObjects,
+              initialObjects.size(),
+              globalSyms,
+              opts.entrySymbol,
+              opts.platform,
+              opts.preserveDebugSections,
+              err);
 
     if (!opts.fastLink) {
         // Step 3.5d: Deduplicate identical rodata strings across object files.

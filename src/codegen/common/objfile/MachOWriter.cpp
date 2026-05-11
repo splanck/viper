@@ -311,6 +311,11 @@ struct MachoReloc {
     uint32_t packed;
 };
 
+struct MachoRelocGroup {
+    uint32_t address;
+    std::vector<MachoReloc> entries;
+};
+
 static MachoRelocAttrs machoRelocAttrs(RelocKind kind) {
     switch (kind) {
         // x86_64
@@ -369,13 +374,14 @@ bool MachOWriter::write(const std::string &path,
     strtab.add(" "); // Mach-O convention: space at offset 1
 
     // --- 2. Collect and categorize symbols ---
-    struct PendingSym {
-        uint32_t encoderIdx;
-        bool fromText;
-        uint32_t strx;
-        uint8_t type;
-        uint8_t sect;
-        uint64_t value;
+struct PendingSym {
+    uint32_t encoderIdx;
+    bool fromText;
+    bool syntheticOffsetAnchor = false;
+    uint32_t strx;
+    uint8_t type;
+    uint8_t sect;
+    uint64_t value;
         std::string mangledName;
     };
 
@@ -390,6 +396,24 @@ bool MachOWriter::write(const std::string &path,
     // Map from (CodeSection symbol index) → Mach-O symbol table index.
     std::unordered_map<uint32_t, uint32_t> textSymMap;
     std::unordered_map<uint32_t, uint32_t> rodataSymMap;
+    std::unordered_map<size_t, uint32_t> textOffsetAnchorMap;
+    std::unordered_map<size_t, uint32_t> constOffsetAnchorMap;
+
+    auto fitsArm64RelocAddend = [](int64_t value) {
+        return value >= -0x800000LL && value <= 0x7FFFFFLL;
+    };
+
+    auto sectionOffsetAddend = [&](const Relocation &rel, int64_t &out) -> bool {
+        if (rel.targetOffset > static_cast<size_t>(std::numeric_limits<int64_t>::max()))
+            return false;
+        const int64_t targetOffset = static_cast<int64_t>(rel.targetOffset);
+        if (rel.addend > 0 && targetOffset > std::numeric_limits<int64_t>::max() - rel.addend)
+            return false;
+        if (rel.addend < 0 && targetOffset < std::numeric_limits<int64_t>::min() - rel.addend)
+            return false;
+        out = targetOffset + rel.addend;
+        return true;
+    };
 
     auto relocationNeedsAnchor = [](const CodeSection &sec, SymbolSection targetSection) {
         for (const auto &rel : sec.relocations())
@@ -451,24 +475,75 @@ bool MachOWriter::write(const std::string &path,
     if (!processSymbols(text, true) || !processSymbols(rodata, false))
         return false;
 
+    std::unordered_set<size_t> textOffsetAnchors;
+    std::unordered_set<size_t> constOffsetAnchors;
+    auto collectLargeOffsetAnchors = [&](const CodeSection &source, const char *sectionName) -> bool {
+        if (arch_ != ObjArch::AArch64)
+            return true;
+        for (const auto &rel : source.relocations()) {
+            if (!rel.targetOffsetValid || rel.targetSection == SymbolSection::Undefined)
+                continue;
+            const CodeSection &target =
+                (rel.targetSection == SymbolSection::Text) ? text : rodata;
+            const char *targetName =
+                (rel.targetSection == SymbolSection::Text) ? "__text" : "__const";
+            if (rel.targetOffset > target.bytes().size()) {
+                err << "MachOWriter: relocation in " << sectionName << " at offset "
+                    << rel.offset << " references " << targetName << " offset "
+                    << rel.targetOffset << " beyond section contents\n";
+                return false;
+            }
+            int64_t effectiveAddend = 0;
+            const bool needsAnchor =
+                !sectionOffsetAddend(rel, effectiveAddend) ||
+                !fitsArm64RelocAddend(effectiveAddend);
+            if (!needsAnchor)
+                continue;
+            auto &seen =
+                (rel.targetSection == SymbolSection::Text) ? textOffsetAnchors : constOffsetAnchors;
+            if (!seen.insert(rel.targetOffset).second)
+                continue;
+            pendingLocals.push_back(PendingSym{0,
+                                               rel.targetSection == SymbolSection::Text,
+                                               true,
+                                               0,
+                                               kNSect,
+                                               rel.targetSection == SymbolSection::Text ? kSectText
+                                                                                       : kSectConst,
+                                               static_cast<uint64_t>(rel.targetOffset),
+                                               ""});
+        }
+        return true;
+    };
+
+    if (!collectLargeOffsetAnchors(text, "__text") ||
+        !collectLargeOffsetAnchors(rodata, "__const"))
+        return false;
+
     const bool needTextAnchor = relocationNeedsAnchor(text, SymbolSection::Text) ||
                                 relocationNeedsAnchor(rodata, SymbolSection::Text);
     const bool needConstAnchor = relocationNeedsAnchor(text, SymbolSection::Rodata) ||
                                  relocationNeedsAnchor(rodata, SymbolSection::Rodata);
     if (needTextAnchor)
-        pendingLocals.push_back(PendingSym{0, true, 0, kNSect, kSectText, 0, ""});
+        pendingLocals.push_back(PendingSym{0, true, false, 0, kNSect, kSectText, 0, ""});
     if (needConstAnchor)
-        pendingLocals.push_back(PendingSym{0, false, 0, kNSect, kSectConst, 0, ""});
+        pendingLocals.push_back(PendingSym{0, false, false, 0, kNSect, kSectConst, 0, ""});
 
     // --- 3. Assign Mach-O symbol indices ---
     // Order: locals → external defined → undefined.
     uint32_t machoIdx = 0;
 
     auto assignFreshIndex = [&](const PendingSym &ps) {
-        if (ps.fromText)
+        if (ps.syntheticOffsetAnchor) {
+            if (ps.fromText)
+                textOffsetAnchorMap[static_cast<size_t>(ps.value)] = machoIdx;
+            else
+                constOffsetAnchorMap[static_cast<size_t>(ps.value)] = machoIdx;
+        } else if (ps.fromText) {
             textSymMap[ps.encoderIdx] = machoIdx;
-        else
+        } else {
             rodataSymMap[ps.encoderIdx] = machoIdx;
+        }
         ++machoIdx;
     };
 
@@ -608,14 +683,27 @@ bool MachOWriter::write(const std::string &path,
                         << rel.targetOffset << " beyond section contents\n";
                     return false;
                 }
-                if (rel.targetOffset > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
-                    rel.addend > std::numeric_limits<int64_t>::max() -
-                                     static_cast<int64_t>(rel.targetOffset)) {
+                const bool haveSectionOffsetAddend = sectionOffsetAddend(rel, effectiveAddend);
+                if (arch_ == ObjArch::AArch64 &&
+                    (!haveSectionOffsetAddend || !fitsArm64RelocAddend(effectiveAddend))) {
+                    const auto &anchorMap = (rel.targetSection == SymbolSection::Text)
+                                                ? textOffsetAnchorMap
+                                                : constOffsetAnchorMap;
+                    auto anchorIt = anchorMap.find(rel.targetOffset);
+                    if (anchorIt == anchorMap.end()) {
+                        err << "MachOWriter: missing section-offset anchor for " << targetName
+                            << " offset " << rel.targetOffset << "\n";
+                        return false;
+                    }
+                    symIdx = anchorIt->second;
+                    effectiveAddend = rel.addend;
+                    return true;
+                }
+                if (!haveSectionOffsetAddend) {
                     err << "MachOWriter: relocation in " << sectionName
                         << " has a section-offset addend outside int64 range\n";
                     return false;
                 }
-                effectiveAddend = rel.addend + static_cast<int64_t>(rel.targetOffset);
                 symIdx = anchorIdx;
                 return true;
             }
@@ -657,6 +745,7 @@ bool MachOWriter::write(const std::string &path,
                             const std::unordered_map<uint32_t, uint32_t> &sourceMap,
                             const char *sectionName,
                             std::vector<MachoReloc> &outRelocs) -> bool {
+        std::vector<MachoRelocGroup> groups;
         for (const auto &rel : source.relocations()) {
             if (!validateRelocationShape("MachOWriter", arch_, source, rel, sectionName, err))
                 return false;
@@ -679,6 +768,8 @@ bool MachOWriter::write(const std::string &path,
             if (!checkedU32(physicalRelOffset, "relocation address", err, relocAddress))
                 return false;
 
+            MachoRelocGroup group;
+            group.address = relocAddress;
             if (arch_ == ObjArch::AArch64 && effectiveAddend != 0) {
                 if (effectiveAddend < -0x800000LL || effectiveAddend > 0x7FFFFFLL) {
                     err << "MachOWriter: AArch64 relocation addend " << effectiveAddend
@@ -687,17 +778,20 @@ bool MachOWriter::write(const std::string &path,
                     return false;
                 }
                 const uint32_t addend = static_cast<uint32_t>(effectiveAddend) & 0x00FFFFFFu;
-                outRelocs.push_back(
+                group.entries.push_back(
                     {relocAddress, packRelocInfo(addend, 0, attrs.length, 0, kArm64RelocAddend)});
             }
 
             uint32_t packed =
                 packRelocInfo(symIdx, attrs.pcrel, attrs.length, 1 /*extern*/, attrs.type);
-            outRelocs.push_back({relocAddress, packed});
+            group.entries.push_back({relocAddress, packed});
+            groups.push_back(std::move(group));
         }
-        std::stable_sort(outRelocs.begin(), outRelocs.end(), [](const MachoReloc &a, const MachoReloc &b) {
+        std::stable_sort(groups.begin(), groups.end(), [](const MachoRelocGroup &a, const MachoRelocGroup &b) {
             return a.address > b.address;
         });
+        for (const auto &group : groups)
+            outRelocs.insert(outRelocs.end(), group.entries.begin(), group.entries.end());
         return true;
     };
 

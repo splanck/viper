@@ -492,6 +492,27 @@ TEST(PeWriter, ExternalIatSlotsAreSeededWithLookupEntries) {
     EXPECT_EQ(readU64(data, iatOff + 8), 0U);
 }
 
+TEST(PeWriter, ExternalIatSlotsMustBeWritable) {
+    auto layout = makeExternalIatLayout();
+    ASSERT_GT(layout.sections.size(), 1U);
+    layout.sections[1].writable = false;
+
+    std::ostringstream err;
+    std::string path = "build/test-out/pe_test_external_iat_readonly.exe";
+    std::filesystem::create_directories("build/test-out");
+
+    bool ok = writePeExe(path,
+                         layout,
+                         LinkArch::X86_64,
+                         {DllImport{"kernel32.dll", {"ExitProcess"}, {}}},
+                         {{"ExitProcess", 0x2000}},
+                         false,
+                         0,
+                         err);
+    EXPECT_FALSE(ok);
+    EXPECT_TRUE(err.str().find("writable output section") != std::string::npos);
+}
+
 TEST(PeWriter, TlsDirectoryIsWritten) {
     auto layout = makeTlsLayout();
     std::ostringstream err;

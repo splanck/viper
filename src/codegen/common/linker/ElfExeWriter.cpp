@@ -246,12 +246,70 @@ void appendBytes(std::vector<uint8_t> &buf,
     buf.insert(buf.end(), src.begin(), src.end());
 }
 
+bool checkedU32(uint64_t value, const char *what, std::ostream &err, uint32_t &out) {
+    if (value > std::numeric_limits<uint32_t>::max()) {
+        err << "error: ELF " << what << " exceeds 32-bit file format limit\n";
+        return false;
+    }
+    out = static_cast<uint32_t>(value);
+    return true;
+}
+
+bool checkedAddU64(uint64_t lhs,
+                   uint64_t rhs,
+                   const char *what,
+                   std::ostream &err,
+                   uint64_t &out) {
+    if (lhs > std::numeric_limits<uint64_t>::max() - rhs) {
+        err << "error: ELF " << what << " overflows 64-bit address range\n";
+        return false;
+    }
+    out = lhs + rhs;
+    return true;
+}
+
+bool checkedAddSize(size_t lhs,
+                    size_t rhs,
+                    const char *what,
+                    std::ostream &err,
+                    size_t &out) {
+    if (lhs > std::numeric_limits<size_t>::max() - rhs) {
+        err << "error: ELF " << what << " overflows addressable size\n";
+        return false;
+    }
+    out = lhs + rhs;
+    return true;
+}
+
+bool checkedAlignUpSize(size_t value,
+                        size_t alignment,
+                        const char *what,
+                        std::ostream &err,
+                        size_t &out) {
+    try {
+        out = alignUp(value, alignment);
+    } catch (const std::exception &ex) {
+        err << "error: ELF " << what << " alignment failed: " << ex.what() << "\n";
+        return false;
+    }
+    return true;
+}
+
 /// @brief Append a NUL-terminated string to a string table; return its offset.
-uint32_t addString(std::vector<uint8_t> &strtab, const std::string &s) {
-    const uint32_t off = static_cast<uint32_t>(strtab.size());
+bool addString(std::vector<uint8_t> &strtab,
+               const std::string &s,
+               uint32_t &out,
+               std::ostream &err) {
+    if (!checkedU32(strtab.size(), "string-table offset", err, out))
+        return false;
+    if (s.size() == std::numeric_limits<size_t>::max() ||
+        strtab.size() > std::numeric_limits<size_t>::max() - (s.size() + 1)) {
+        err << "error: ELF string table overflows addressable size\n";
+        return false;
+    }
     strtab.insert(strtab.end(), s.begin(), s.end());
     strtab.push_back(0);
-    return off;
+    return true;
 }
 
 /// @brief Compose an ELF r_info value from the symbol index and reloc type.
@@ -291,14 +349,21 @@ uint32_t elfHash(std::string_view name) {
 /// @brief Find the highest virtual address occupied by any allocatable section.
 /// @details Used as the placement floor for synthesised sections (.dynstr,
 ///          .dynsym, .hash, .rela.dyn) added after layout finalisation.
-uint64_t maxAllocEndAddr(const LinkLayout &layout) {
-    uint64_t maxEnd = 0;
+bool maxAllocEndAddr(const LinkLayout &layout, uint64_t &maxEnd, std::ostream &err) {
+    maxEnd = 0;
     for (const auto &sec : layout.sections) {
         if (!sec.alloc || sec.data.empty())
             continue;
-        maxEnd = std::max(maxEnd, sec.virtualAddr + static_cast<uint64_t>(sec.data.size()));
+        uint64_t secEnd = 0;
+        if (!checkedAddU64(sec.virtualAddr,
+                           static_cast<uint64_t>(sec.data.size()),
+                           "section address range",
+                           err,
+                           secEnd))
+            return false;
+        maxEnd = std::max(maxEnd, secEnd);
     }
-    return maxEnd;
+    return true;
 }
 
 /// @brief Synthesise an x86_64 _start stub that calls @p entryAddr and exits.
@@ -391,11 +456,17 @@ bool buildDynamicInfo(const LinkLayout &layout,
 
     info.dynstr.push_back(0);
     for (const auto &lib : info.neededLibs)
-        info.neededNameOff[lib] = addString(info.dynstr, lib);
+        if (!addString(info.dynstr, lib, info.neededNameOff[lib], err))
+            return false;
     for (const auto &sym : info.dynSymbols)
-        info.dynStrOff[sym] = addString(info.dynstr, sym);
+        if (!addString(info.dynstr, sym, info.dynStrOff[sym], err))
+            return false;
 
     appendStruct(info.dynsym, Elf64_Sym{}, 8);
+    if (info.dynSymbols.size() >= std::numeric_limits<uint32_t>::max()) {
+        err << "error: ELF dynamic symbol count exceeds 32-bit file format limit\n";
+        return false;
+    }
     for (size_t i = 0; i < info.dynSymbols.size(); ++i) {
         Elf64_Sym sym{};
         sym.st_name = info.dynStrOff[info.dynSymbols[i]];
@@ -404,7 +475,9 @@ bool buildDynamicInfo(const LinkLayout &layout,
         info.dynSymIndex[info.dynSymbols[i]] = static_cast<uint32_t>(i + 1);
     }
 
-    const uint32_t dynSymCount = static_cast<uint32_t>(info.dynSymbols.size() + 1);
+    uint32_t dynSymCount = 0;
+    if (!checkedU32(info.dynSymbols.size() + 1, "dynamic symbol count", err, dynSymCount))
+        return false;
     const uint32_t bucketCount = std::max<uint32_t>(1, dynSymCount - 1);
     std::vector<uint32_t> buckets(bucketCount, 0);
     std::vector<uint32_t> chains(dynSymCount, 0);
@@ -468,9 +541,10 @@ bool buildDynamicInfo(const LinkLayout &layout,
         const auto &sec = layout.sections[bind.sectionIndex];
         if (!sec.writable)
             info.hasTextRel = true;
-        emitRela(sec.virtualAddr + bind.offset,
-                 it->second,
-                 arch == LinkArch::AArch64 ? R_AARCH64_ABS64 : R_X86_64_64);
+        uint64_t relocAddr = 0;
+        if (!checkedAddU64(sec.virtualAddr, bind.offset, "dynamic relocation address", err, relocAddr))
+            return false;
+        emitRela(relocAddr, it->second, arch == LinkArch::AArch64 ? R_AARCH64_ABS64 : R_X86_64_64);
     }
 
     appendBytes(info.roBlob, info.interp, info.interpOff, 1);
@@ -479,20 +553,60 @@ bool buildDynamicInfo(const LinkLayout &layout,
     appendBytes(info.roBlob, info.hash, info.hashOff, 8);
     appendBytes(info.roBlob, info.rela, info.relaOff, 8);
 
-    const uint64_t roBase = alignUp(maxAllocEndAddr(layout), pageSize);
+    uint64_t maxAllocEnd = 0;
+    if (!maxAllocEndAddr(layout, maxAllocEnd, err))
+        return false;
+    size_t maxAllocEndSize = 0;
+    if (maxAllocEnd > std::numeric_limits<size_t>::max()) {
+        err << "error: ELF dynamic section placement exceeds addressable size\n";
+        return false;
+    }
+    size_t roBaseSize = 0;
+    if (!checkedAlignUpSize(static_cast<size_t>(maxAllocEnd),
+                            pageSize,
+                            "dynamic section placement",
+                            err,
+                            roBaseSize))
+        return false;
+    const uint64_t roBase = roBaseSize;
     info.roVaddr = roBase;
-    info.rwVaddr = alignUp(roBase + info.roBlob.size(), pageSize);
+    uint64_t roEnd = 0;
+    if (!checkedAddU64(roBase, info.roBlob.size(), "dynamic read-only section range", err, roEnd))
+        return false;
+    if (roEnd > std::numeric_limits<size_t>::max()) {
+        err << "error: ELF dynamic writable section placement exceeds addressable size\n";
+        return false;
+    }
+    size_t rwBaseSize = 0;
+    if (!checkedAlignUpSize(static_cast<size_t>(roEnd),
+                            pageSize,
+                            "dynamic writable section placement",
+                            err,
+                            rwBaseSize))
+        return false;
+    info.rwVaddr = rwBaseSize;
 
-    auto dynSectionVA = [&](size_t off) { return info.roVaddr + off; };
+    auto dynSectionVA = [&](size_t off, const char *what, uint64_t &out) {
+        return checkedAddU64(info.roVaddr, off, what, err, out);
+    };
+    uint64_t hashVA = 0;
+    uint64_t dynstrVA = 0;
+    uint64_t dynsymVA = 0;
+    uint64_t relaVA = 0;
+    if (!dynSectionVA(info.hashOff, ".hash virtual address", hashVA) ||
+        !dynSectionVA(info.dynstrOff, ".dynstr virtual address", dynstrVA) ||
+        !dynSectionVA(info.dynsymOff, ".dynsym virtual address", dynsymVA) ||
+        !dynSectionVA(info.relaOff, ".rela.dyn virtual address", relaVA))
+        return false;
 
     std::vector<Elf64_Dyn> entries;
     entries.reserve(info.neededLibs.size() + 8);
     for (const auto &lib : info.neededLibs)
         entries.push_back({DT_NEEDED, info.neededNameOff[lib]});
-    entries.push_back({DT_HASH, dynSectionVA(info.hashOff)});
-    entries.push_back({DT_STRTAB, dynSectionVA(info.dynstrOff)});
-    entries.push_back({DT_SYMTAB, dynSectionVA(info.dynsymOff)});
-    entries.push_back({DT_RELA, dynSectionVA(info.relaOff)});
+    entries.push_back({DT_HASH, hashVA});
+    entries.push_back({DT_STRTAB, dynstrVA});
+    entries.push_back({DT_SYMTAB, dynsymVA});
+    entries.push_back({DT_RELA, relaVA});
     entries.push_back({DT_RELASZ, info.rela.size()});
     entries.push_back({DT_RELAENT, sizeof(Elf64_Rela)});
     entries.push_back({DT_STRSZ, info.dynstr.size()});
@@ -549,14 +663,33 @@ bool writeElfExe(const std::string &path,
             return false;
         }
 
-        uint64_t maxEnd = maxAllocEndAddr(layout);
+        uint64_t maxEnd = 0;
+        if (!maxAllocEndAddr(layout, maxEnd, err))
+            return false;
         if (dynInfo.enabled) {
-            if (!dynInfo.roBlob.empty())
-                maxEnd = std::max(maxEnd, dynInfo.roVaddr + dynInfo.roBlob.size());
-            if (!dynInfo.dynamic.empty())
-                maxEnd = std::max(maxEnd, dynInfo.rwVaddr + dynInfo.dynamic.size());
+            if (!dynInfo.roBlob.empty()) {
+                uint64_t roEnd = 0;
+                if (!checkedAddU64(
+                        dynInfo.roVaddr, dynInfo.roBlob.size(), "dynamic read-only range", err, roEnd))
+                    return false;
+                maxEnd = std::max(maxEnd, roEnd);
+            }
+            if (!dynInfo.dynamic.empty()) {
+                uint64_t rwEnd = 0;
+                if (!checkedAddU64(
+                        dynInfo.rwVaddr, dynInfo.dynamic.size(), "dynamic writable range", err, rwEnd))
+                    return false;
+                maxEnd = std::max(maxEnd, rwEnd);
+            }
         }
-        startupStub.vaddr = alignUp(maxEnd, pageSize);
+        if (maxEnd > std::numeric_limits<size_t>::max()) {
+            err << "error: ELF startup stub placement exceeds addressable size\n";
+            return false;
+        }
+        size_t stubVaddr = 0;
+        if (!checkedAlignUpSize(static_cast<size_t>(maxEnd), pageSize, "startup stub placement", err, stubVaddr))
+            return false;
+        startupStub.vaddr = stubVaddr;
 
         if (arch == LinkArch::X86_64)
             startupStub.bytes = buildLinuxX64StartupStub(startupStub.vaddr, layout.entryAddr, err);
@@ -590,10 +723,16 @@ bool writeElfExe(const std::string &path,
     const uint16_t numPhdrs = static_cast<uint16_t>(phdrCount);
     const size_t phdrTableSize = numPhdrs * sizeof(Elf64_Phdr);
 
-    size_t filePos = alignUp(ehdrSize + phdrTableSize, pageSize);
+    size_t headerTablesSize = 0;
+    if (!checkedAddSize(ehdrSize, phdrTableSize, "header table size", err, headerTablesSize))
+        return false;
+    size_t filePos = 0;
+    if (!checkedAlignUpSize(headerTablesSize, pageSize, "first load segment offset", err, filePos))
+        return false;
     for (size_t idx : loadableIndices) {
         const auto &sec = layout.sections[idx];
-        filePos = alignUp(filePos, pageSize);
+        if (!checkedAlignUpSize(filePos, pageSize, "load segment file offset", err, filePos))
+            return false;
         const size_t fileSize = sec.zeroFill ? 0 : sec.data.size();
         uint32_t flags = PF_R;
         if (sec.executable)
@@ -601,7 +740,8 @@ bool writeElfExe(const std::string &path,
         if (sec.writable)
             flags |= PF_W;
         segments.push_back({idx, filePos, sec.virtualAddr, fileSize, sec.data.size(), flags});
-        filePos += fileSize;
+        if (!checkedAddSize(filePos, fileSize, "load segment file range", err, filePos))
+            return false;
     }
 
     TlsSegmentInfo tlsInfo;
@@ -641,27 +781,35 @@ bool writeElfExe(const std::string &path,
     }
 
     if (hasDynRo) {
-        filePos = alignUp(filePos, pageSize);
+        if (!checkedAlignUpSize(filePos, pageSize, "dynamic read-only file offset", err, filePos))
+            return false;
         dynInfo.roFileOff = filePos;
-        filePos += dynInfo.roBlob.size();
+        if (!checkedAddSize(filePos, dynInfo.roBlob.size(), "dynamic read-only file range", err, filePos))
+            return false;
     }
     if (hasDynRw) {
-        filePos = alignUp(filePos, pageSize);
+        if (!checkedAlignUpSize(filePos, pageSize, "dynamic writable file offset", err, filePos))
+            return false;
         dynInfo.rwFileOff = filePos;
-        filePos += dynInfo.dynamic.size();
+        if (!checkedAddSize(filePos, dynInfo.dynamic.size(), "dynamic writable file range", err, filePos))
+            return false;
     }
     if (startupStub.enabled) {
-        filePos = alignUp(filePos, pageSize);
+        if (!checkedAlignUpSize(filePos, pageSize, "startup stub file offset", err, filePos))
+            return false;
         startupStub.fileOffset = filePos;
-        filePos += startupStub.bytes.size();
+        if (!checkedAddSize(filePos, startupStub.bytes.size(), "startup stub file range", err, filePos))
+            return false;
     }
 
     std::vector<NonAllocInfo> nonAllocInfo;
     for (size_t idx : nonAllocIndices) {
         const auto &sec = layout.sections[idx];
-        filePos = alignUp(filePos, sec.alignment);
+        if (!checkedAlignUpSize(filePos, sec.alignment, "non-alloc section file offset", err, filePos))
+            return false;
         nonAllocInfo.push_back({idx, filePos});
-        filePos += sec.data.size();
+        if (!checkedAddSize(filePos, sec.data.size(), "non-alloc section file range", err, filePos))
+            return false;
     }
 
     std::string shstrtab;
@@ -669,14 +817,20 @@ bool writeElfExe(const std::string &path,
 
     std::vector<uint32_t> loadableNameOffsets;
     for (size_t idx : loadableIndices) {
-        loadableNameOffsets.push_back(static_cast<uint32_t>(shstrtab.size()));
+        uint32_t off = 0;
+        if (!checkedU32(shstrtab.size(), "section-name string-table offset", err, off))
+            return false;
+        loadableNameOffsets.push_back(off);
         shstrtab += layout.sections[idx].name;
         shstrtab.push_back('\0');
     }
 
     std::vector<uint32_t> nonAllocNameOffsets;
     for (size_t idx : nonAllocIndices) {
-        nonAllocNameOffsets.push_back(static_cast<uint32_t>(shstrtab.size()));
+        uint32_t off = 0;
+        if (!checkedU32(shstrtab.size(), "section-name string-table offset", err, off))
+            return false;
+        nonAllocNameOffsets.push_back(off);
         shstrtab += layout.sections[idx].name;
         shstrtab.push_back('\0');
     }
@@ -684,21 +838,35 @@ bool writeElfExe(const std::string &path,
     std::vector<uint32_t> syntheticNameOffsets;
     if (dynInfo.enabled) {
         for (const char *name : {".interp", ".dynstr", ".dynsym", ".hash", ".rela.dyn", ".dynamic"}) {
-            syntheticNameOffsets.push_back(static_cast<uint32_t>(shstrtab.size()));
+            uint32_t off = 0;
+            if (!checkedU32(shstrtab.size(), "section-name string-table offset", err, off))
+                return false;
+            syntheticNameOffsets.push_back(off);
             shstrtab += name;
             shstrtab.push_back('\0');
         }
     }
 
-    const uint32_t gnuStackNameOff = static_cast<uint32_t>(shstrtab.size());
+    uint32_t gnuStackNameOff = 0;
+    if (!checkedU32(shstrtab.size(), "section-name string-table offset", err, gnuStackNameOff))
+        return false;
     shstrtab += ".note.GNU-stack";
     shstrtab.push_back('\0');
-    const uint32_t shstrtabNameOff = static_cast<uint32_t>(shstrtab.size());
+    uint32_t shstrtabNameOff = 0;
+    if (!checkedU32(shstrtab.size(), "section-name string-table offset", err, shstrtabNameOff))
+        return false;
     shstrtab += ".shstrtab";
     shstrtab.push_back('\0');
 
-    const size_t shstrtabOff = alignUp(filePos, 8);
-    const size_t shdrsOff = alignUp(shstrtabOff + shstrtab.size(), 8);
+    size_t shstrtabOff = 0;
+    if (!checkedAlignUpSize(filePos, 8, "section-name string-table offset", err, shstrtabOff))
+        return false;
+    size_t shstrtabEnd = 0;
+    if (!checkedAddSize(shstrtabOff, shstrtab.size(), "section-name string-table range", err, shstrtabEnd))
+        return false;
+    size_t shdrsOff = 0;
+    if (!checkedAlignUpSize(shstrtabEnd, 8, "section-header table offset", err, shdrsOff))
+        return false;
 
     const size_t syntheticCount = dynInfo.enabled ? 6 : 0;
     const size_t shdrCount = loadableIndices.size() + nonAllocIndices.size() + syntheticCount + 3;

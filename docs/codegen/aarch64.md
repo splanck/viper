@@ -235,8 +235,9 @@ The AArch64 backend uses `CodegenPipeline` to orchestrate passes. The pipeline s
 Set `VIPER_CODEGEN_STATS=1` to emit non-fatal diagnostics with peephole transformation counts and MIR
 function/block/instruction, call, branch, load, and store counters.
 
-Native assembler debug line tables are disabled by default for faster object generation. Use `--debug-lines` on
-`viper codegen arm64` when DWARF `.debug_line` output is needed.
+Native assembler debug line tables are disabled by default for faster object generation and smaller native-link
+executables. Use `--debug-lines` on `viper codegen arm64` when DWARF `.debug_line` output and linked debug sections
+are needed.
 
 Before MIR lowering, `CodegenPipeline` now runs a selective IL optimization stage:
 

@@ -275,7 +275,8 @@ The native assembler validates object metadata before serialization:
   symbols remain local, and local cross-section references must use an explicit relocation target-section hint.
 - Cross-section references can also target an explicit section offset. Writers lower these to section-symbol
   relocations where the format supports them, which lets native object output represent duplicate local labels
-  without guessing by name.
+  without guessing by name. Mach-O AArch64 creates synthetic local anchors for section offsets whose effective
+  addend cannot fit in `ARM64_RELOC_ADDEND`'s signed 24-bit payload.
 - Standard COFF output is rejected before section indexes exceed the signed 16-bit section-number range used in
   symbol table entries. BigObj emission is not currently implemented.
 
@@ -368,7 +369,8 @@ LC_BUILD_VERSION → LC_SYMTAB → LC_DYSYMTAB → section data → relocations 
 - Relocations stored per-section (not in separate `.rela` sections like ELF)
 - Both `__TEXT,__text` and `__TEXT,__const` publish their own relocation tables when needed.
 - AArch64 non-zero addends are range-checked as signed 24-bit values and serialized with paired
-  `ARM64_RELOC_ADDEND` records before the target relocation.
+  `ARM64_RELOC_ADDEND` records before the target relocation. Addend+target pairs stay adjacent even when multiple
+  relocations share the same address, preserving Mach-O's paired-record semantics after descending-address sorting.
 - Mach-O 32-bit file fields such as section offsets, relocation addresses, relocation counts, symbol counts, and
   string-table sizes are checked before narrowing.
 - Compact format: `r_address(32) | r_symbolnum(24) | r_pcrel(1) | r_length(2) | r_extern(1) | r_type(4)`
@@ -408,7 +410,8 @@ Produces valid COFF object files for Windows.
   one-byte unwind code count before `.xdata` is serialized. Entries that reference unknown or undefined function
   symbols are rejected before `.pdata` relocations are emitted.
 - Sections with more than 65,535 relocations use the standard COFF overflow relocation record instead of truncating
-  the section-header relocation count.
+  the section-header relocation count. The overflow marker records the total relocation-table entry count,
+  including the marker itself, matching COFF reader expectations.
 
 ---
 
@@ -451,7 +454,7 @@ Both x86_64 and AArch64 have their own `BinaryEmitPass` implementations that:
 | `--native-asm` | Use native binary encoder (this is the default) |
 | `--system-asm` | Override: use system assembler (`cc -c`) instead |
 | `-S <path>` | Emit text assembly (always uses text emitter, no assembling) |
-| `--debug-lines` | Emit DWARF `.debug_line` tables in native object output |
+| `--debug-lines` | Emit DWARF `.debug_line` tables in native object output and preserve native-link debug sections |
 | `--no-debug-lines` | Disable debug line tables explicitly; this is the default |
 
 The AArch64 encoder measures instruction sizes against a logical offset when resolving labels, so large functions no

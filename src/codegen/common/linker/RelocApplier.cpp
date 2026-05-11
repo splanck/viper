@@ -99,6 +99,10 @@ static bool isAArch64UnsignedLdStOffset(uint32_t insn) {
     return (insn & 0x3B000000u) == 0x39000000u;
 }
 
+static bool isAArch64AddSubImmediate(uint32_t insn) {
+    return (insn & 0x1F000000u) == 0x11000000u;
+}
+
 static bool isAArch64LdrXUnsignedOffset(uint32_t insn) {
     return (insn & 0xFFC00000u) == 0xF9400000u;
 }
@@ -940,6 +944,11 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                             if (!checkPageOffsetAlignment(pageOff, shift, obj, symName, err))
                                 return false;
                             pageOff >>= shift;
+                        } else if (!isAArch64AddSubImmediate(insn)) {
+                            err << "error: " << obj.name
+                                << ": AArch64 page offset relocation for '" << symName
+                                << "' targets an unsupported instruction\n";
+                            return false;
                         }
 
                         insn = (insn & 0xFFC003FF) | (pageOff << 10);

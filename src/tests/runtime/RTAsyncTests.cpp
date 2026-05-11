@@ -475,11 +475,16 @@ static void test_async_all_already_complete_error_short_circuits() {
 static void test_async_any_basic() {
     void *futures = rt_seq_new();
     void *fast_val = make_obj();
+    void *slow_val1 = make_obj();
+    void *slow_val2 = make_obj();
 
     // One fast, two slow
-    rt_seq_push(futures, rt_async_run((void *)identity_cb, fast_val));
-    rt_seq_push(futures, rt_async_run((void *)slow_cb, make_obj()));
-    rt_seq_push(futures, rt_async_run((void *)slow_cb, make_obj()));
+    void *fast_future = rt_async_run((void *)identity_cb, fast_val);
+    void *slow_future1 = rt_async_run((void *)slow_cb, slow_val1);
+    void *slow_future2 = rt_async_run((void *)slow_cb, slow_val2);
+    rt_seq_push(futures, fast_future);
+    rt_seq_push(futures, slow_future1);
+    rt_seq_push(futures, slow_future2);
 
     void *any_future = rt_async_any(futures);
     assert(any_future != NULL);
@@ -487,6 +492,12 @@ static void test_async_any_basic() {
     void *result = rt_future_get(any_future);
     // The fast one should complete first
     assert(result == fast_val);
+
+    // Async.Any cancels remaining listeners, not the underlying work. Wait for
+    // the intentionally slow workers so process-exit finalizer sweep cannot race
+    // detached async completions.
+    rt_future_wait(slow_future1);
+    rt_future_wait(slow_future2);
 }
 
 static void test_async_any_empty() {
@@ -748,6 +759,11 @@ int main() {
     test_cancellable_pre_cancelled();
     test_async_run_trap_becomes_error();
     test_async_runs_concurrently();
+
+    // Futures are resolved before the detached runtime thread wrapper has
+    // necessarily finished releasing its thread handle/context. Give those
+    // cleanup tails a bounded drain before the process-exit finalizer sweep.
+    rt_thread_sleep(100);
 
     printf("Async tests: all passed\n");
     return 0;

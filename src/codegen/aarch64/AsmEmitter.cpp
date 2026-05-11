@@ -80,6 +80,7 @@ inline void emit3D(std::ostream &os, const char *mnem, PhysReg d, PhysReg a, Phy
 #include <iomanip>
 #include <optional>
 #include <stdexcept>
+#include <string_view>
 
 namespace viper::codegen::aarch64 {
 
@@ -93,14 +94,19 @@ static std::string mapRuntimeSymbol(const std::string &name) {
     return name;
 }
 
+static bool isDarwinLocalSymbolName(std::string_view name) {
+    return !name.empty() &&
+           (name.front() == '.' || name.rfind("L.", 0) == 0 || name.rfind("Ltmp", 0) == 0 ||
+            name.rfind("LBB", 0) == 0);
+}
+
 /// @brief Mangle a symbol name for the target platform.
 /// On Darwin (macOS), C symbols require an underscore prefix.
-/// Local labels (starting with L or .) are not mangled.
+/// Assembler local labels are not mangled.
 /// On Linux ELF, no prefix is applied.
 static std::string mangleSymbolImpl(const std::string &name, bool isDarwin) {
     if (isDarwin) {
-        // Don't mangle local labels (L* or .L*)
-        if (!name.empty() && (name[0] == 'L' || name[0] == '.'))
+        if (isDarwinLocalSymbolName(name))
             return name;
         return "_" + name;
     }
@@ -132,12 +138,12 @@ void AsmEmitter::emitFunctionHeader(std::ostream &os, const std::string &name) c
 
     const std::string sym = mangleSymbolImpl(name, darwin);
 
-    // Darwin:  skip .globl for L*/_L*-prefixed local labels.
+    // Darwin:  skip .globl for assembler-local labels.
     // Linux:   always emit .globl + .type (ELF function metadata).
     // Windows: emit .globl only; PE/COFF has no .type/.size directives.
     if (darwin) {
-        if (!(sym.size() >= 1 &&
-              (sym[0] == 'L' || (sym.size() >= 2 && sym[0] == '_' && sym[1] == 'L')))) {
+        if (!isDarwinLocalSymbolName(sym) &&
+            !(sym.size() > 1 && sym[0] == '_' && isDarwinLocalSymbolName(std::string_view(sym).substr(1)))) {
             os << ".globl " << sym << "\n";
         }
     } else if (target_->isLinux()) {

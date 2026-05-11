@@ -402,9 +402,12 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
                 }
                 if (offset < longNames.size()) {
                     size_t end = offset;
-                    while (end < longNames.size() && longNames[end] != '\0')
+                    while (end < longNames.size() && longNames[end] != '\0' &&
+                           longNames[end] != '\n')
                         ++end;
                     resolvedName = longNames.substr(offset, end - offset);
+                    while (!resolvedName.empty() && resolvedName.back() == '/')
+                        resolvedName.pop_back();
                 }
             } else {
                 // Trim trailing '/' (GNU terminator) for normal short names.

@@ -158,6 +158,24 @@ TEST(CrossPlatformABI, AArch64DarwinFunctionHeaderHasUnderscorePrefix) {
     EXPECT_NE(out.find("_myfunc"), std::string::npos);
 }
 
+TEST(CrossPlatformABI, AArch64DarwinLocalLabelsAreNotMangledOrGlobal) {
+    const auto &ti = viper::codegen::aarch64::darwinTarget();
+
+    const std::string tmp = emitAarch64FunctionHeader(ti, "Ltmp0");
+    EXPECT_NE(tmp.find("Ltmp0:\n"), std::string::npos);
+    EXPECT_EQ(tmp.find("_Ltmp0"), std::string::npos);
+    EXPECT_EQ(tmp.find(".globl"), std::string::npos);
+
+    const std::string block = emitAarch64FunctionHeader(ti, "LBB0_1");
+    EXPECT_NE(block.find("LBB0_1:\n"), std::string::npos);
+    EXPECT_EQ(block.find("_LBB0_1"), std::string::npos);
+    EXPECT_EQ(block.find(".globl"), std::string::npos);
+
+    const std::string publicL = emitAarch64FunctionHeader(ti, "Logger");
+    EXPECT_NE(publicL.find(".globl _Logger"), std::string::npos);
+    EXPECT_NE(publicL.find("_Logger:\n"), std::string::npos);
+}
+
 TEST(CrossPlatformABI, AArch64LinuxFunctionHeaderHasELFType) {
     // Linux ELF emits .type for function metadata.
     const auto &ti = viper::codegen::aarch64::linuxTarget();

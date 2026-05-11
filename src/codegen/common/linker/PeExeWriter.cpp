@@ -160,42 +160,106 @@ uint32_t sectionChars(bool executable, bool writable, bool alloc, bool zeroFill 
 /// @param imports          DLL import groups to serialise.
 /// @param sectionRva       RVA at which the resulting buffer will be placed.
 /// @param externalSlotRvas Optional symbol→RVA map for IAT slot reuse.
-/// @return Self-contained blob plus IDT/IAT range descriptors.
-ImportLayout buildImportTables(const std::vector<DllImport> &imports,
-                               uint32_t sectionRva,
-                               const std::unordered_map<std::string, uint32_t> &externalSlotRvas) {
-    ImportLayout result{};
+/// @return true on success; @p result receives the blob plus IDT/IAT range descriptors.
+bool buildImportTables(const std::vector<DllImport> &imports,
+                       uint32_t sectionRva,
+                       const std::unordered_map<std::string, uint32_t> &externalSlotRvas,
+                       ImportLayout &result,
+                       std::ostream &err) {
+    result = ImportLayout{};
     if (imports.empty())
-        return result;
+        return true;
 
-    uint32_t idtSize = static_cast<uint32_t>((imports.size() + 1) * 20);
+    auto checkedLocalU32 = [&](uint64_t value, const char *what, uint32_t &out) -> bool {
+        if (value > std::numeric_limits<uint32_t>::max()) {
+            err << "error: PE import table " << what << " exceeds 32-bit file format limit\n";
+            return false;
+        }
+        out = static_cast<uint32_t>(value);
+        return true;
+    };
+    auto checkedAddLocal = [&](uint32_t lhs, uint32_t rhs, const char *what, uint32_t &out) {
+        if (lhs > std::numeric_limits<uint32_t>::max() - rhs) {
+            err << "error: PE import table " << what << " overflows 32-bit file format limit\n";
+            return false;
+        }
+        out = lhs + rhs;
+        return true;
+    };
+    auto checkedAlignLocal = [&](uint32_t value, uint32_t alignment, const char *what, uint32_t &out) {
+        size_t aligned = 0;
+        try {
+            aligned = alignUp(static_cast<size_t>(value), alignment);
+        } catch (const std::exception &ex) {
+            err << "error: PE import table " << what << " alignment failed: " << ex.what() << "\n";
+            return false;
+        }
+        return checkedLocalU32(aligned, what, out);
+    };
+    auto checkedCountBytes = [&](size_t count, uint32_t elemSize, const char *what, uint32_t &out) {
+        const uint64_t count64 = static_cast<uint64_t>(count);
+        if (count64 > (std::numeric_limits<uint64_t>::max() / elemSize) - 1) {
+            err << "error: PE import table " << what << " overflows addressable size\n";
+            return false;
+        }
+        return checkedLocalU32((count64 + 1) * elemSize, what, out);
+    };
+
+    uint32_t idtSize = 0;
+    if (!checkedCountBytes(imports.size(), 20, "directory size", idtSize))
+        return false;
     uint32_t iltSize = 0;
     uint32_t hintNameSize = 0;
     uint32_t dllNameSize = 0;
     bool useExternalSlots = !externalSlotRvas.empty();
 
     for (const auto &imp : imports) {
-        iltSize += static_cast<uint32_t>((imp.functions.size() + 1) * 8);
-        dllNameSize += static_cast<uint32_t>(imp.dllName.size() + 1);
+        uint32_t importIltSize = 0;
+        if (!checkedCountBytes(imp.functions.size(), 8, "lookup-table size", importIltSize) ||
+            !checkedAddLocal(iltSize, importIltSize, "lookup-table size", iltSize))
+            return false;
+        uint32_t dllNameBytes = 0;
+        if (imp.dllName.size() == std::numeric_limits<size_t>::max() ||
+            !checkedLocalU32(imp.dllName.size() + 1, "DLL-name table size", dllNameBytes) ||
+            !checkedAddLocal(dllNameSize, dllNameBytes, "DLL-name table size", dllNameSize))
+            return false;
         for (const auto &fn : imp.functions) {
             auto importIt = imp.importNames.find(fn);
             const std::string &importName =
                 (importIt != imp.importNames.end()) ? importIt->second : fn;
-            hintNameSize += static_cast<uint32_t>(alignUp(2 + importName.size() + 1, 2));
+            if (importName.size() > std::numeric_limits<uint32_t>::max() - 3) {
+                err << "error: PE import table hint-name entry exceeds 32-bit file format limit\n";
+                return false;
+            }
+            uint32_t rawHintSize = static_cast<uint32_t>(2 + importName.size() + 1);
+            uint32_t alignedHintSize = 0;
+            if (!checkedAlignLocal(rawHintSize, 2, "hint-name table size", alignedHintSize) ||
+                !checkedAddLocal(
+                    hintNameSize, alignedHintSize, "hint-name table size", hintNameSize))
+                return false;
         }
     }
 
     uint32_t idtOff = 0;
-    uint32_t iltOff = idtOff + idtSize;
-    uint32_t hintOff = iltOff + iltSize;
-    uint32_t dllNameOff = hintOff + hintNameSize;
+    uint32_t iltOff = 0;
+    uint32_t hintOff = 0;
+    uint32_t dllNameOff = 0;
+    if (!checkedAddLocal(idtOff, idtSize, "lookup-table offset", iltOff) ||
+        !checkedAddLocal(iltOff, iltSize, "hint-name table offset", hintOff) ||
+        !checkedAddLocal(hintOff, hintNameSize, "DLL-name table offset", dllNameOff))
+        return false;
     uint32_t iatOff = 0;
     uint32_t iatSize = 0;
-    uint32_t totalSize = static_cast<uint32_t>(alignUp(dllNameOff + dllNameSize, 8));
+    uint32_t totalRawSize = 0;
+    uint32_t totalSize = 0;
+    if (!checkedAddLocal(dllNameOff, dllNameSize, "total size", totalRawSize) ||
+        !checkedAlignLocal(totalRawSize, 8, "total size", totalSize))
+        return false;
     if (!useExternalSlots) {
         iatOff = totalSize;
         iatSize = iltSize;
-        totalSize = iatOff + iatSize;
+        if (!checkedAddLocal(iatOff, iatSize, "total size", totalSize))
+            return false;
     }
 
     result.data.resize(totalSize, 0);
@@ -209,7 +273,11 @@ ImportLayout buildImportTables(const std::vector<DllImport> &imports,
 
     for (size_t i = 0; i < imports.size(); ++i) {
         const auto &imp = imports[i];
-        const uint32_t idtEntryOff = idtOff + static_cast<uint32_t>(i) * 20;
+        uint32_t idtEntryDelta = 0;
+        uint32_t idtEntryOff = 0;
+        if (!checkedLocalU32(static_cast<uint64_t>(i) * 20ULL, "directory entry offset", idtEntryDelta) ||
+            !checkedAddLocal(idtOff, idtEntryDelta, "directory entry offset", idtEntryOff))
+            return false;
         uint32_t firstThunkRva = 0;
         if (useExternalSlots) {
             if (!imp.functions.empty()) {
@@ -218,32 +286,50 @@ ImportLayout buildImportTables(const std::vector<DllImport> &imports,
                     firstThunkRva = firstIt->second;
             }
         } else {
-            firstThunkRva = sectionRva + curIatOff;
+            if (!checkedAddLocal(sectionRva, curIatOff, "IAT RVA", firstThunkRva))
+                return false;
         }
 
-        putLE32(result.data, idtEntryOff + 0, sectionRva + curIltOff);
+        uint32_t iltRva = 0;
+        uint32_t dllNameRva = 0;
+        if (!checkedAddLocal(sectionRva, curIltOff, "lookup-table RVA", iltRva) ||
+            !checkedAddLocal(sectionRva, curDllNameOff, "DLL-name RVA", dllNameRva))
+            return false;
+        putLE32(result.data, idtEntryOff + 0, iltRva);
         putLE32(result.data, idtEntryOff + 4, 0);
         putLE32(result.data, idtEntryOff + 8, 0);
-        putLE32(result.data, idtEntryOff + 12, sectionRva + curDllNameOff);
+        putLE32(result.data, idtEntryOff + 12, dllNameRva);
         putLE32(result.data, idtEntryOff + 16, firstThunkRva);
 
         std::memcpy(
             result.data.data() + curDllNameOff, imp.dllName.c_str(), imp.dllName.size() + 1);
-        curDllNameOff += static_cast<uint32_t>(imp.dllName.size() + 1);
+        uint32_t dllNameBytes = 0;
+        if (!checkedLocalU32(imp.dllName.size() + 1, "DLL-name table cursor", dllNameBytes) ||
+            !checkedAddLocal(
+                curDllNameOff, dllNameBytes, "DLL-name table cursor", curDllNameOff))
+            return false;
 
         for (const auto &fn : imp.functions) {
             auto importIt = imp.importNames.find(fn);
             const std::string &importName =
                 (importIt != imp.importNames.end()) ? importIt->second : fn;
-            const uint32_t hintNameRva = sectionRva + curHintOff;
+            uint32_t hintNameRva = 0;
+            if (!checkedAddLocal(sectionRva, curHintOff, "hint-name RVA", hintNameRva))
+                return false;
             putLE16(result.data, curHintOff, 0);
             std::memcpy(
                 result.data.data() + curHintOff + 2, importName.c_str(), importName.size() + 1);
-            curHintOff += static_cast<uint32_t>(alignUp(2 + importName.size() + 1, 2));
+            uint32_t rawHintSize = static_cast<uint32_t>(2 + importName.size() + 1);
+            uint32_t alignedHintSize = 0;
+            if (!checkedAlignLocal(rawHintSize, 2, "hint-name table cursor", alignedHintSize) ||
+                !checkedAddLocal(
+                    curHintOff, alignedHintSize, "hint-name table cursor", curHintOff))
+                return false;
 
             putLE32(result.data, curIltOff, hintNameRva);
             putLE32(result.data, curIltOff + 4, 0);
-            curIltOff += 8;
+            if (!checkedAddLocal(curIltOff, 8, "lookup-table cursor", curIltOff))
+                return false;
 
             if (useExternalSlots) {
                 const auto slotIt = externalSlotRvas.find(fn);
@@ -251,28 +337,40 @@ ImportLayout buildImportTables(const std::vector<DllImport> &imports,
                     result.slotRvas[fn] = slotIt->second;
                     result.slotInitializers.push_back({slotIt->second, hintNameRva});
                     minIatRva = std::min(minIatRva, slotIt->second);
-                    maxIatEndRva = std::max(maxIatEndRva, slotIt->second + 8);
+                    uint32_t slotEnd = 0;
+                    if (!checkedAddLocal(slotIt->second, 8, "external IAT slot range", slotEnd))
+                        return false;
+                    maxIatEndRva = std::max(maxIatEndRva, slotEnd);
                 }
             } else {
                 putLE32(result.data, curIatOff, hintNameRva);
                 putLE32(result.data, curIatOff + 4, 0);
-                result.slotRvas[fn] = sectionRva + curIatOff;
-                curIatOff += 8;
+                uint32_t slotRva = 0;
+                if (!checkedAddLocal(sectionRva, curIatOff, "IAT slot RVA", slotRva) ||
+                    !checkedAddLocal(curIatOff, 8, "IAT cursor", curIatOff))
+                    return false;
+                result.slotRvas[fn] = slotRva;
             }
         }
 
-        curIltOff += 8;
-        if (!useExternalSlots)
-            curIatOff += 8;
-        else if (firstThunkRva != 0) {
+        if (!checkedAddLocal(curIltOff, 8, "lookup-table null terminator", curIltOff))
+            return false;
+        if (!useExternalSlots) {
+            if (!checkedAddLocal(curIatOff, 8, "IAT null terminator", curIatOff))
+                return false;
+        } else if (firstThunkRva != 0) {
             minIatRva = std::min(minIatRva, firstThunkRva);
-            maxIatEndRva =
-                std::max(maxIatEndRva,
-                         firstThunkRva + static_cast<uint32_t>((imp.functions.size() + 1) * 8));
+            uint32_t thunkSpan = 0;
+            uint32_t thunkEnd = 0;
+            if (!checkedCountBytes(imp.functions.size(), 8, "external IAT range", thunkSpan) ||
+                !checkedAddLocal(firstThunkRva, thunkSpan, "external IAT range", thunkEnd))
+                return false;
+            maxIatEndRva = std::max(maxIatEndRva, thunkEnd);
         }
     }
 
-    result.importDirRva = sectionRva + idtOff;
+    if (!checkedAddLocal(sectionRva, idtOff, "directory RVA", result.importDirRva))
+        return false;
     result.importDirSize = idtSize;
     if (useExternalSlots) {
         if (minIatRva != UINT32_MAX) {
@@ -280,10 +378,11 @@ ImportLayout buildImportTables(const std::vector<DllImport> &imports,
             result.iatSize = maxIatEndRva - minIatRva;
         }
     } else {
-        result.iatRva = sectionRva + iatOff;
+        if (!checkedAddLocal(sectionRva, iatOff, "IAT RVA", result.iatRva))
+            return false;
         result.iatSize = iatSize;
     }
-    return result;
+    return true;
 }
 
 /// @brief Test whether @p value fits in a signed 32-bit field (PE PC-rel reach).
@@ -757,15 +856,18 @@ bool writePeExe(const std::string &path,
         if (!checkedAlignUpU32(
                 nextGeneratedRva, sectionAlignment, "import section RVA", err, importRva))
             return false;
-        importLayout = buildImportTables(imports, importRva, slotRvas);
+        if (!buildImportTables(imports, importRva, slotRvas, importLayout, err))
+            return false;
         generatedImportData = importLayout.data;
 
         auto patchExternalIatSlot = [&](uint32_t slotRva, uint64_t thunkValue) -> bool {
             for (auto &sec : sections) {
-                if (!sec.alloc || sec.data == nullptr)
+                if (!sec.alloc || !sec.writable || sec.data == nullptr)
                     continue;
-                if (slotRva < sec.virtualAddress ||
-                    slotRva + 8 > sec.virtualAddress + sec.virtualSize)
+                const uint64_t slotEnd = static_cast<uint64_t>(slotRva) + 8;
+                const uint64_t secEnd =
+                    static_cast<uint64_t>(sec.virtualAddress) + sec.virtualSize;
+                if (slotRva < sec.virtualAddress || slotEnd > secEnd)
                     continue;
                 auto *bytes = const_cast<std::vector<uint8_t> *>(sec.data);
                 const size_t off = static_cast<size_t>(slotRva - sec.virtualAddress);

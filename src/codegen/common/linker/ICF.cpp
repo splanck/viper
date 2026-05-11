@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -100,6 +101,42 @@ struct Candidate {
     uint64_t hash;           ///< Combined hash of bytes + reloc sigs.
     std::vector<RelocSig> sigs;
 };
+
+struct CodeAddressKey {
+    size_t objIdx = 0;
+    uint32_t secIdx = 0;
+    size_t offset = 0;
+
+    bool operator==(const CodeAddressKey &o) const {
+        return objIdx == o.objIdx && secIdx == o.secIdx && offset == o.offset;
+    }
+};
+
+struct CodeAddressKeyHash {
+    size_t operator()(const CodeAddressKey &k) const noexcept {
+        size_t h = std::hash<size_t>{}(k.objIdx);
+        h ^= std::hash<uint32_t>{}(k.secIdx) + 0x9e3779b9u + (h << 6) + (h >> 2);
+        h ^= std::hash<size_t>{}(k.offset) + 0x9e3779b9u + (h << 6) + (h >> 2);
+        return h;
+    }
+};
+
+bool addSignedOffset(size_t base, int64_t addend, size_t &out) {
+    if (addend >= 0) {
+        const auto u = static_cast<uint64_t>(addend);
+        if (u > std::numeric_limits<size_t>::max() ||
+            base > std::numeric_limits<size_t>::max() - static_cast<size_t>(u))
+            return false;
+        out = base + static_cast<size_t>(u);
+        return true;
+    }
+
+    const uint64_t mag = static_cast<uint64_t>(-(addend + 1)) + 1ULL;
+    if (mag > base)
+        return false;
+    out = base - static_cast<size_t>(mag);
+    return true;
+}
 
 /// Build sorted relocation signatures for a section.
 std::vector<RelocSig> buildRelocSigs(const ObjFile &obj, size_t objIdx, const ObjSection &sec) {
@@ -204,6 +241,7 @@ size_t foldIdenticalCode(std::vector<ObjFile> &allObjects,
     // scanned too so RIP-relative LEA / ADRP+ADD materialization preserves
     // observable function identity while direct branches remain foldable.
     std::unordered_set<std::string> addressTaken;
+    std::unordered_set<CodeAddressKey, CodeAddressKeyHash> addressTakenAddresses;
     for (size_t oi = 0; oi < allObjects.size(); ++oi) {
         const auto &obj = allObjects[oi];
         for (size_t si = 1; si < obj.sections.size(); ++si) {
@@ -218,8 +256,16 @@ size_t foldIdenticalCode(std::vector<ObjFile> &allObjects,
                 const auto &targetSym = obj.symbols[rel.symIndex];
                 if (targetSym.sectionIndex > 0 && targetSym.sectionIndex < obj.sections.size()) {
                     // If the target is in an executable section, this is an address-taken ref.
-                    if (obj.sections[targetSym.sectionIndex].executable)
+                    if (obj.sections[targetSym.sectionIndex].executable) {
                         addressTaken.insert(targetSym.name);
+                        size_t targetOffset = 0;
+                        if (addSignedOffset(targetSym.offset, rel.addend, targetOffset))
+                            addressTakenAddresses.insert(
+                                CodeAddressKey{oi, targetSym.sectionIndex, targetOffset});
+                        else
+                            addressTakenAddresses.insert(
+                                CodeAddressKey{oi, targetSym.sectionIndex, targetSym.offset});
+                    }
                     continue;
                 }
 
@@ -234,8 +280,13 @@ size_t foldIdenticalCode(std::vector<ObjFile> &allObjects,
                 const auto &targetObj = allObjects[git->second.objIndex];
                 if (git->second.secIndex == 0 || git->second.secIndex >= targetObj.sections.size())
                     continue;
-                if (targetObj.sections[git->second.secIndex].executable)
+                if (targetObj.sections[git->second.secIndex].executable) {
                     addressTaken.insert(targetSym.name);
+                    size_t targetOffset = 0;
+                    if (addSignedOffset(git->second.offset, rel.addend, targetOffset))
+                        addressTakenAddresses.insert(
+                            CodeAddressKey{git->second.objIndex, git->second.secIndex, targetOffset});
+                }
             }
         }
     }
@@ -282,7 +333,8 @@ size_t foldIdenticalCode(std::vector<ObjFile> &allObjects,
                 continue;
 
             // Skip address-taken functions.
-            if (addressTaken.count(funcName))
+            if (addressTaken.count(funcName) ||
+                addressTakenAddresses.count(CodeAddressKey{oi, static_cast<uint32_t>(si), 0}))
                 continue;
 
             // Build candidate.

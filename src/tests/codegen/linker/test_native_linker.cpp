@@ -426,6 +426,39 @@ int main() {
     }
 
     {
+        LinkLayout layout;
+        layout.pageSize = 0x4000;
+        layout.entryAddr = 0x100004000ULL;
+
+        OutputSection textA;
+        textA.name = ".text.a";
+        textA.data.resize(16, 0x90);
+        textA.virtualAddr = 0x100004000ULL;
+        textA.alignment = 4;
+        textA.executable = true;
+
+        OutputSection textB;
+        textB.name = ".text.b";
+        textB.data = {0xC0, 0x03, 0x5F, 0xD6};
+        textB.virtualAddr = 0x100004004ULL;
+        textB.alignment = 4;
+        textB.executable = true;
+
+        layout.sections = {textA, textB};
+
+        const std::string exePath = tmpPath("macho_overlapping_text");
+        std::ostringstream err;
+        CHECK(!writeMachOExe(exePath,
+                             layout,
+                             LinkArch::AArch64,
+                             {{"/usr/lib/libSystem.B.dylib"}},
+                             {},
+                             {},
+                             err));
+        CHECK(err.str().find("overlaps previously written data") != std::string::npos);
+    }
+
+    {
         NativeLinkerOptions opts;
         opts.platform = LinkPlatform::Windows;
         opts.arch = LinkArch::AArch64;
@@ -1016,6 +1049,46 @@ int main() {
         const std::vector<uint8_t> exe = readFile(exePath);
         CHECK(containsAscii(exe, "Foundation.framework"));
         CHECK(!containsAscii(exe, "Cocoa.framework"));
+    }
+
+    {
+        CodeSection text;
+        CodeSection rodata;
+        text.defineSymbol("entry", SymbolBinding::Global, SymbolSection::Text);
+        text.emit32LE(0xD65F03C0U); // ret
+
+        const std::string objPath = tmpPath("macho_debug_line_input.o");
+
+        std::ostringstream writerErr;
+        MachOWriter writer(ObjArch::AArch64);
+        writer.setDebugLineData({0x01, 0x02, 0x03, 0x04});
+        CHECK(writer.write(objPath, text, rodata, writerErr));
+        CHECK(writerErr.str().empty());
+
+        auto linkMachO = [&](bool preserveDebugSections, const std::string &name) {
+            NativeLinkerOptions opts;
+            opts.platform = LinkPlatform::macOS;
+            opts.arch = LinkArch::AArch64;
+            opts.objPath = objPath;
+            opts.exePath = tmpPath(name);
+            opts.entrySymbol = "entry";
+            opts.preserveDebugSections = preserveDebugSections;
+
+            std::ostringstream out;
+            std::ostringstream err;
+            const int rc = nativeLink(opts, out, err);
+            CHECK(rc == 0);
+            CHECK(err.str().find("error:") == std::string::npos);
+            return readFile(opts.exePath);
+        };
+
+        uint32_t alignLog2 = 0;
+        uint32_t flags = 0;
+        const std::vector<uint8_t> stripped = linkMachO(false, "macho_debug_line_stripped");
+        CHECK(!findMachOSection(stripped, "__DWARF", "__debug_line", alignLog2, flags));
+
+        const std::vector<uint8_t> preserved = linkMachO(true, "macho_debug_line_preserved");
+        CHECK(findMachOSection(preserved, "__DWARF", "__debug_line", alignLog2, flags));
     }
 
     {

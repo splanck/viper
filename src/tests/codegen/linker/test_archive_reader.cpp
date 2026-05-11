@@ -265,6 +265,29 @@ static void runPortableArchiveReaderTests() {
         std::filesystem::remove(path);
     }
 
+    // --- GNU long names strip the "/\n" terminator from string-table entries ---
+    {
+        std::vector<uint8_t> longNames;
+        const std::string longNameEntry = "very/long/member.o/\n";
+        longNames.insert(longNames.end(), longNameEntry.begin(), longNameEntry.end());
+
+        std::vector<uint8_t> bytes{'!', '<', 'a', 'r', 'c', 'h', '>', '\n'};
+        appendArMember(bytes, "//", longNames);
+        appendArMember(bytes, "/0", {0x01, 0x02, 0x03});
+
+        const auto path = std::filesystem::path("build/test-out/archive_gnu_long_name.a");
+        CHECK(writeBinaryFile(path, bytes));
+
+        Archive ar;
+        std::ostringstream err;
+        CHECK(readArchive(path.string(), ar, err));
+        CHECK(err.str().empty());
+        CHECK(ar.members.size() == 1);
+        if (ar.members.size() == 1)
+            CHECK(ar.members[0].name == "very/long/member.o");
+        std::filesystem::remove(path);
+    }
+
     // --- Duplicate symbols keep every candidate while preserving first-match compatibility ---
     {
         constexpr uint32_t firstMemberOffset = 88;

@@ -42,20 +42,33 @@ struct GlobalSymEntry;
 ///                         (not from archives). These are always live.
 /// @param globalSyms       Global symbol table (used to find entry point).
 /// @param entrySymbol      Entry point symbol name (e.g., "main").
+/// @param preserveDebugSections Keep non-alloc debug sections rooted.
 /// @param err              Diagnostic output.
 void deadStrip(std::vector<ObjFile> &allObjects,
                size_t userObjCount,
                const std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
                const std::string &entrySymbol,
                LinkPlatform platform,
+               bool preserveDebugSections,
                std::ostream &err);
 
 inline void deadStrip(std::vector<ObjFile> &allObjects,
                       size_t userObjCount,
                       const std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
                       const std::string &entrySymbol,
+                      LinkPlatform platform,
                       std::ostream &err) {
-    deadStrip(allObjects, userObjCount, globalSyms, entrySymbol, detectLinkPlatform(), err);
+    deadStrip(
+        allObjects, userObjCount, globalSyms, entrySymbol, platform, false, err);
+}
+
+inline void deadStrip(std::vector<ObjFile> &allObjects,
+                      size_t userObjCount,
+                      const std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
+                      const std::string &entrySymbol,
+                      std::ostream &err) {
+    deadStrip(
+        allObjects, userObjCount, globalSyms, entrySymbol, detectLinkPlatform(), false, err);
 }
 
 } // namespace viper::codegen::linker

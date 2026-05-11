@@ -30,6 +30,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <vector>
 
@@ -712,6 +713,18 @@ static void testTlsProgramHeaderAndSectionFlags() {
     CHECK(tbssShdr.sh_type == SHT_NOBITS);
 }
 
+/// Test 14: Overflowing allocatable section ranges are rejected before placement.
+static void testAllocSectionAddressOverflow() {
+    auto path = tmpPath("overflow_alloc.elf");
+    auto text = makeSec(".text", 4, std::numeric_limits<uint64_t>::max() - 1, true, false, 0xC3);
+    auto layout = makeLayout({text}, text.virtualAddr);
+
+    std::ostringstream err;
+    bool ok = writeElfExe(path, layout, LinkArch::X86_64, {}, {}, 0, true, err);
+    CHECK(!ok);
+    CHECK(err.str().find("section address range") != std::string::npos);
+}
+
 // ─── Main ────────────────────────────────────────────────────────────────
 
 int main() {
@@ -728,6 +741,7 @@ int main() {
     testGnuStackSectionHeader();
     testDynamicImports();
     testTlsProgramHeaderAndSectionFlags();
+    testAllocSectionAddressOverflow();
 
     cleanupTmp();
 

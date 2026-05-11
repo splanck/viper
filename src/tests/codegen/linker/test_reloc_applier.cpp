@@ -1057,6 +1057,29 @@ int main() {
               std::string::npos);
     }
 
+    // --- COFF AArch64 PAGEOFFSET_12A rejects unrelated opcodes ---
+    {
+        std::vector<uint8_t> code = {0x1F, 0x20, 0x03, 0xD5}; // nop
+        auto caller = makeObj("test_bad_pageoff12a.obj",
+                              ObjFileFormat::COFF,
+                              code,
+                              "target_data",
+                              coff_a64::kPageOff12A,
+                              /*relocOff=*/0,
+                              /*addend=*/0);
+
+        std::vector<ObjFile> objs = {caller};
+        auto layout = makeLayout(objs, 0x140001000ULL);
+        layout.globalSyms["target_data"] =
+            {"target_data", GlobalSymEntry::Dynamic, 0, 0, 0, 0x140002008ULL};
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(!applyRelocations(
+            objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::AArch64, err));
+        CHECK(err.str().find("unsupported instruction") != std::string::npos);
+    }
+
     // --- Windows .pdata with trailing bytes is malformed ---
     {
         std::vector<ObjFile> objs;

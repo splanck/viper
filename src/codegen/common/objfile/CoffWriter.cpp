@@ -418,7 +418,7 @@ static void addRelocationOverflowRecord(std::vector<uint8_t> &relocBytes, uint32
         return;
     std::vector<uint8_t> withOverflow;
     withOverflow.reserve(relocBytes.size() + kCoffRelocSize);
-    writeReloc(withOverflow, relocCount, 0, 0);
+    writeReloc(withOverflow, relocCount + 1u, 0, 0);
     withOverflow.insert(withOverflow.end(), relocBytes.begin(), relocBytes.end());
     relocBytes.swap(withOverflow);
 }

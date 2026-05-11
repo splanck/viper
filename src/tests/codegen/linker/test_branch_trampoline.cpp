@@ -58,6 +58,23 @@ static size_t countInsn(const std::vector<uint8_t> &data, uint32_t word) {
     return count;
 }
 
+static int64_t signExtend(uint64_t value, unsigned bits) {
+    const uint64_t signBit = 1ULL << (bits - 1);
+    return static_cast<int64_t>((value ^ signBit) - signBit);
+}
+
+static uint64_t decodeA64AdrpAddTarget(const std::vector<uint8_t> &data,
+                                       size_t off,
+                                       uint64_t instrVA) {
+    const uint32_t adrp = readLE32(data.data() + off);
+    const uint32_t add = readLE32(data.data() + off + 4);
+    const uint64_t immlo = (adrp >> 29) & 0x3;
+    const uint64_t immhi = (adrp >> 5) & 0x7FFFF;
+    const int64_t pageDelta = signExtend((immhi << 2) | immlo, 21) << 12;
+    const uint64_t page = (instrVA & ~0xFFFULL) + static_cast<uint64_t>(pageDelta);
+    return page + ((add >> 10) & 0xFFFu);
+}
+
 /// Helper: create a minimal ObjFile with a .text section containing code.
 static ObjFile makeCodeObj(const std::string &name,
                            const std::string &func,
@@ -636,6 +653,88 @@ int main() {
         CHECK(rodataVA >= textEnd);
         // Rodata must exist and have a valid VA.
         CHECK(rodataVA > 0);
+    }
+
+    // --- Test 5b: Trampoline target encoding uses post-insertion target VAs ---
+    {
+        ObjFile obj1;
+        obj1.name = "caller.o";
+        obj1.format = ObjFileFormat::ELF;
+        obj1.sections.push_back({});
+
+        ObjSection textA;
+        textA.name = ".text.funcA";
+        textA.data = {0x00, 0x00, 0x00, 0x94}; // BL +0
+        textA.executable = true;
+        textA.alloc = true;
+        textA.alignment = 4;
+        ObjReloc rel;
+        rel.offset = 0;
+        rel.type = elf_a64::kCall26;
+        rel.symIndex = 2;
+        rel.addend = 0;
+        textA.relocs.push_back(rel);
+        obj1.sections.push_back(textA);
+
+        ObjSection bigText;
+        bigText.name = ".text.padding";
+        bigText.data.resize(140 * 1024 * 1024, 0);
+        bigText.executable = true;
+        bigText.alloc = true;
+        bigText.alignment = 4;
+        obj1.sections.push_back(bigText);
+
+        ObjSection textB;
+        textB.name = ".text.funcB";
+        textB.data = {0xC0, 0x03, 0x5F, 0xD6}; // RET
+        textB.executable = true;
+        textB.alloc = true;
+        textB.alignment = 4;
+        obj1.sections.push_back(textB);
+
+        obj1.symbols.push_back({});
+        ObjSymbol funcA;
+        funcA.name = "funcA";
+        funcA.sectionIndex = 1;
+        funcA.binding = ObjSymbol::Global;
+        obj1.symbols.push_back(funcA);
+        ObjSymbol funcBUndef;
+        funcBUndef.name = "funcB";
+        funcBUndef.binding = ObjSymbol::Undefined;
+        obj1.symbols.push_back(funcBUndef);
+        ObjSymbol padding;
+        padding.name = "__padding";
+        padding.sectionIndex = 2;
+        padding.binding = ObjSymbol::Global;
+        obj1.symbols.push_back(padding);
+        ObjSymbol funcB;
+        funcB.name = "funcB";
+        funcB.sectionIndex = 3;
+        funcB.binding = ObjSymbol::Global;
+        obj1.symbols.push_back(funcB);
+
+        std::vector<ObjFile> objs = {obj1};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        globalSyms["funcA"] = {"funcA", GlobalSymEntry::Global, 0, 1, 0, 0};
+        globalSyms["__padding"] = {"__padding", GlobalSymEntry::Global, 0, 2, 0, 0};
+        globalSyms["funcB"] = {"funcB", GlobalSymEntry::Global, 0, 3, 0, 0};
+
+        LinkLayout layout;
+        std::ostringstream err;
+        CHECK(runPipeline(objs, globalSyms, layout, LinkArch::AArch64, LinkPlatform::Linux, err));
+        CHECK(layout.globalSyms.count("__viper_trampoline_0") == 1);
+        CHECK(layout.globalSyms.count("funcB") == 1);
+        if (layout.globalSyms.count("__viper_trampoline_0") == 1 && !layout.sections.empty()) {
+            const auto &text = layout.sections[0];
+            const uint64_t tramVA = layout.globalSyms["__viper_trampoline_0"].resolvedAddr;
+            const size_t tramOff = static_cast<size_t>(tramVA - text.virtualAddr);
+            CHECK(tramOff + 8 < text.data.size());
+            if (tramOff + 8 < text.data.size()) {
+                const uint64_t decoded =
+                    decodeA64AdrpAddTarget(text.data, tramOff, text.virtualAddr + tramOff);
+                CHECK(decoded == layout.globalSyms["funcB"].resolvedAddr);
+            }
+        }
     }
 
     // --- Test 6: Trampoline reachability error for huge .text ---

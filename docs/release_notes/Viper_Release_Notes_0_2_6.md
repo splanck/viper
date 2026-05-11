@@ -36,13 +36,13 @@ A focused hardening-and-correctness cycle on the v0.2.5 surface. No new public n
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 43 | +43 |
+| Commits | — | 45 | +45 |
 | Source files | 2,996 | 3,006 | +10 |
-| Production SLOC | 552K | 567K | +15K |
-| Test SLOC | 228K | 237K | +9K |
+| Production SLOC | 552K | 568K | +16K |
+| Test SLOC | 228K | 238K | +10K |
 | Demo SLOC | 188K | 188K | 0 |
 
-Counts via `scripts/count_sloc.sh` (production 567,071 / test 236,979 / demo 187,826 / source files 3,006).
+Counts via `scripts/count_sloc.sh` (production 567,831 / test 237,581 / demo 187,826 / source files 3,006).
 
 ---
 
@@ -227,15 +227,29 @@ Counts via `scripts/count_sloc.sh` (production 567,071 / test 236,979 / demo 187
 - Object-file readers switched from `reinterpret_cast` on possibly-misaligned bytes to `std::optional<T>` + `memcpy`. Fixes strict-alignment UB on Mach-O load commands and ELF section headers.
 - Per-file caps (`kMaxObjSectionBytes` = 2 GiB, `kMaxObjMaterializedBytes` = 4 GiB) reject crafted inputs that would otherwise exhaust host memory.
 - `ArchiveReader::parseSize` rejects empty fields, digits-after-padding, and trailing garbage. `AlignUtil::alignUp` throws on bad alignment instead of relying on a release-disabled `assert`.
+- Archive extraction now treats corrupt or empty indexed members as hard errors, preserves duplicate candidates across retries, and canonicalizes GNU long-name entries by stripping their `/\n` terminators.
 - COFF writer patches relocation addends directly into instruction bytes per kind, with explicit alignment and range checks for x86-64 rel32, AArch64 branch26/branch19, ADRP page21, page-offset, and Abs64.
+- COFF relocation-overflow records now store the total relocation-table entry count including the overflow marker, and the reader validates malformed overflow counts before iterating.
 - Three new relocation kinds: `A64LdSt32Off12`, `A64LdSt128Off12`, and the corrected `IMAGE_REL_ARM64_BRANCH19` constant (was 8, should be 15).
 - New `InputSectionKey{objIndex, secIndex}` replaces ad-hoc `(obj<<32)|sec` packing across six passes. The old form silently truncated above 2³²; the new key is `size_t` end-to-end.
 - New `defaultImageBaseForPlatform` constexpr replaces hard-coded `0x140000000` / `0x100000000` / `0x400000` literals scattered across five files.
 - `CodeSection` carries a monotonic identity; ELF/COFF writers prefer identity-based section-offset relocations and reject ambiguous offset-only references. ELF writer now preserves `Symbol::size` (was always 0).
 - `SymbolResolver` tracks per-name candidate lists so duplicate archive definitions resolve in archive order; the Windows CRT-shim override exception is narrowed to Viper's own runtime archives.
-- AArch64 `BranchTrampoline` address arithmetic is overflow-checked end-to-end. Far-conditional encoding fixed. Mach-O `X86_64_RELOC_SIGNED_4` trailing-byte bias now applied.
+- AArch64 `BranchTrampoline` address arithmetic is overflow-checked end-to-end and trampoline target addresses are recomputed after island insertion shifts later chunks. Far-conditional encoding fixed. Mach-O `X86_64_RELOC_SIGNED_4` trailing-byte bias now applied.
 - MOVZX byte-source emits a REX prefix when the source is SPL/BPL/SIL/DIL — without REX those encodings name AH/CH/DH/BH and silently moved the wrong byte. AArch64 `SmulhRRR` activated for `IMulOvf` overflow checks.
-- Native linker correctness round adds reader-level COMMON symbols with single-definition coalescing, correct ELF weak-undefined imports, macOS-only underscore fallback, global-preferred relocation and dead-strip resolution, folded-symbol cleanup after ICF, cstring dedup guards for incoming relocations, ELF/PE TLS layout emission, validated executable entries, PE/ELF writer truncation checks, Mach-O `MH_SUBSECTIONS_VIA_SYMBOLS` text splitting, and duplicate dyld rebase coalescing for ASLR-safe ObjC metadata.
+- COMMON symbols enter the global table at read time with size and alignment preserved. A post-resolution pass materialises them as zero-filled storage, picking the largest size and strictest alignment across all referencing objects.
+- Mach-O underscore alias lookup is now gated on platform. ELF and COFF treat leading underscores as literal name bytes, so the previous unconditional alias could pull the wrong definition on Linux and Windows.
+- `RelocApplier` and `DeadStripPass` prefer global resolutions over same-object local definitions when the reference is a Global or Weak binding. A strong def in another object now wins over a local def in the referencing object.
+- ICF redirects folded-section symbols to Undefined so subsequent relocs route through the canonical copy via global lookup instead of pointing into stripped bytes.
+- Dead-strip preserves EH/unwind roots and preserves non-alloc debug sections (`.debug*`, `__DWARF`) only for debug-section-preserving links; ICF now tracks address-taken local/section-symbol references by object/section/offset.
+- ELF executables emit a proper `PT_TLS` program header when the layout contains TLS sections, with monotonic ordering and overflow-checked span/memSize math. Dynamic metadata, startup-stub placement, section names, and section-header offsets now reject overflow before narrowing or allocation.
+- Mach-O `MH_SUBSECTIONS_VIA_SYMBOLS` inputs split `__TEXT,__text` per global/weak atom on read, so dead-strip and ICF operate at function granularity instead of treating `__text` as one chunk.
+- PE writer narrows 64-bit virtual addresses, sizes, and offsets to 32-bit fields through a uniform set of overflow-checked helpers (`checkedU32` / `checkedSizeU32` / `checkedAddU32` / `checkedRva` / `checkedAlignUpU32`) instead of silent truncation; reused external IAT slots must map to writable output sections before being seeded.
+- Mach-O executable output now checks load-command and link-edit field narrowing and rejects overlapping section file offsets instead of appending bytes at the wrong position.
+- `RelocApplier` validates AArch64 instruction class: Branch26 relocs must land on B/BL, ADRP-page21 on ADRP, page-offset relocs on ADD/SUB-immediate or load/store, and conditional 19-bit on B.cond/CBZ/CBNZ. Wrong-class targets surface as a named error instead of garbage patching.
+- Mach-O writer rejects section and segment names longer than the 16-byte field instead of silently truncating; AArch64 addend pairs remain adjacent after sorting, large section-offset relocations use synthetic anchors, and `MH_SUBSECTIONS_VIA_SYMBOLS` moved to a shared header.
+- ELF and Mach-O readers reject invalid section/symbol string-table offsets and undersized Mach-O command payloads instead of returning truncated or empty names.
+- x86-64 lowerer validates malformed inputs (empty blocks, dangling branches, mismatched edge-copy arity, unresolved phi predecessors) and surfaces them through the diagnostic engine instead of asserting or producing broken MIR.
 - Three rounds of x86-64 and AArch64 backend regressions repaired: switch edge-copy ordering, R10/R11 scratch reservation, Win64 shadow space, i1 immediate canonicalization, caller-saved live-out across calls, AArch64 branch-patch math.
 - Doc-comment audit across the assembler and linker subtree (~75 files): canonical Viper file headers, per-helper doxygen, refreshed `docs/codegen/native-assembler.md` and `native-linker.md`.
 
@@ -267,7 +281,8 @@ Counts via `scripts/count_sloc.sh` (production 567,071 / test 236,979 / demo 187
 - x86-64 codegen: out-of-order block-param lowering, instruction-result pre-registration, scheduler prologue-boundary preservation, large-spill `PX_COPY` regression, lone-JCC fallthrough peephole. Backend-liveness round adds compare/branch fold-safety across edge copies, IMUL→LEA refusal under live flags, block-DCE physical-register preservation at exits, JCC-only fallthrough preservation under cold-block movement, fixed-physical-register spill-before-clobber for `RAX`/`RDX`/`CQO`/`DIV`/`IDIV`, and a void-return zero-exit-code regression.
 - x86-64 regression additions also cover switch edge-copy ordering, internal-label/control-transfer splitting, `R10`/`R11` scratch reservation, Win64 runtime-call shadow-space detection, I1 immediate canonicalization, and caller-saved live-out preservation across calls.
 - D3D11: shared-backend coverage tying the bone-palette byte count to the 256 supported shader entries.
-- Native assembler & linker: new tests for `parseSize` rejection, archive symbol-candidate ordering, `CodeSection` identity, ELF symbol-size preservation, COFF ambiguous-target rejection, AArch64 addend range/alignment, the new LDR/STR scaled-offset reloc kinds, Mach-O `SIGNED_4` bias, `InputSectionKey` lookups, branch-trampoline overflow guards, and MOVZX REX emission.
+- Native assembler & linker: new tests for `parseSize` rejection, archive symbol-candidate ordering and GNU long names, `CodeSection` identity, ELF symbol-size preservation, COFF ambiguous-target rejection and relocation-overflow records, AArch64 addend range/alignment/instruction-class validation, the new LDR/STR scaled-offset reloc kinds, Mach-O `SIGNED_4` bias and large section-offset anchors, `InputSectionKey` lookups, branch-trampoline overflow/retargeting guards, executable-writer overflow/overlap checks, and MOVZX REX emission.
+- Linker correctness round: COMMON coalescing across mixed alignments, per-platform underscore fallback (Mach-O accepts, ELF/COFF reject), strong-global precedence over same-object local definitions, ICF folded-symbol redirect, ELF `PT_TLS` emission, Mach-O 16-byte name validation, AArch64 reloc instruction-class validators, PE 32-bit field-overflow guards, and Mach-O subsections-via-symbols splitting.
 - The seven `Viper.GUI` widget tests in `src/lib/gui/tests/` were relabeled `tui` → `gui` (a new dedicated ctest label); the wheel-scroll regression contract was rewritten with floating-point tolerance to match the new mouse-wheel constant.
 
 Demos and docs were updated to track the runtime work above; the stale Windows debug/O0 pins for chess, xenoscape, and Baseball were removed after optimized x86-64 builds and smoke probes were restored.
@@ -276,6 +291,6 @@ Demos and docs were updated to track the runtime work above; the stale Windows d
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 43-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 45-commit history since v0.2.5.
 
 <!-- END DRAFT -->

@@ -970,6 +970,43 @@ static void testUndefinedRodataLocalReferenceUsesLocalDefinition() {
     std::remove(path.c_str());
 }
 
+static void testA64LargeSectionOffsetRelocationUsesAnchor() {
+    CodeSection text, rodata;
+    text.defineSymbol("main", SymbolBinding::Global, SymbolSection::Text);
+
+    constexpr size_t kLargeOffset = 0x800000;
+    rodata.emitZeros(kLargeOffset + 4);
+
+    text.addSectionOffsetRelocation(
+        RelocKind::A64AdrpPage21, SymbolSection::Rodata, kLargeOffset);
+    text.emit32LE(0x90000000); // adrp placeholder
+    text.addSectionOffsetRelocation(
+        RelocKind::A64AddPageOff12, SymbolSection::Rodata, kLargeOffset);
+    text.emit32LE(0x91000000); // add placeholder
+    text.emit32LE(0xD65F03C0); // ret
+
+    std::ostringstream errStream;
+    MachOWriter writer(ObjArch::AArch64);
+    const std::string path = "/tmp/viper_test_macho_large_section_offset.o";
+    CHECK(writer.write(path, text, rodata, errStream));
+    CHECK(errStream.str().empty());
+
+    ObjFile obj;
+    std::ostringstream readErr;
+    CHECK(readObjFile(path, obj, readErr));
+    const ObjSection *textSec = findSection(obj, "__TEXT,__text");
+    CHECK(textSec != nullptr);
+    if (textSec != nullptr) {
+        CHECK(textSec->relocs.size() == 2);
+        for (const auto &rel : textSec->relocs) {
+            CHECK(rel.addend == 0);
+            CHECK(rel.symIndex < obj.symbols.size());
+        }
+    }
+
+    std::remove(path.c_str());
+}
+
 static void testAmbiguousCrossSectionRelocationFails() {
     CodeSection text, rodata;
     text.defineSymbol("dup", SymbolBinding::Local, SymbolSection::Text);
@@ -1048,6 +1085,30 @@ static void testScatteredRelocationFails() {
     std::remove(path.c_str());
 }
 
+static void testMalformedSymbolStringOffsetFails() {
+    CodeSection text, rodata;
+    text.defineSymbol("main", SymbolBinding::Global, SymbolSection::Text);
+    text.emit8(0xC3);
+
+    std::ostringstream errStream;
+    const std::string path = "/tmp/viper_test_macho_bad_symbol_name.o";
+    MachOWriter writer(ObjArch::X86_64);
+    CHECK(writer.write(path, text, rodata, errStream));
+
+    auto data = readFile(path);
+    const uint32_t symoff = readLE32(data, kOffLcSymtab + 8);
+    const uint32_t nsyms = readLE32(data, kOffLcSymtab + 12);
+    CHECK(nsyms > 0);
+    if (nsyms > 0)
+        writeLE32(data, symoff, 0x7FFFFFFFu);
+
+    ObjFile obj;
+    std::ostringstream readErr;
+    CHECK(!readObjFile(data.data(), data.size(), "bad_symbol_name.macho", obj, readErr));
+    CHECK(readErr.str().find("symbol name offset") != std::string::npos);
+    std::remove(path.c_str());
+}
+
 // =============================================================================
 // Main
 // =============================================================================
@@ -1077,10 +1138,12 @@ int main() {
     testDuplicateLocalSymbolsStayDistinct();
     testUndefinedExternalDoesNotBindLocalSameName();
     testUndefinedRodataLocalReferenceUsesLocalDefinition();
+    testA64LargeSectionOffsetRelocationUsesAnchor();
     testAmbiguousCrossSectionRelocationFails();
     testMalformedSymtabFails();
     testMalformedSectionContentsFails();
     testScatteredRelocationFails();
+    testMalformedSymbolStringOffsetFails();
 
     if (gFail == 0)
         std::cout << "All Mach-O writer tests passed.\n";

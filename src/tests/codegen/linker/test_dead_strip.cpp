@@ -381,6 +381,46 @@ int main() {
         CHECK(!objs[1].sections[3].data.empty());
     }
 
+    // --- Non-alloc debug sections are stripped by default and preserved on request ---
+    {
+        auto user = makeObj("user.o", {".text"});
+        addSymbol(user, "main", 1, ObjSymbol::Global);
+
+        auto makeDebugObj = []() {
+            ObjFile debugObj;
+            debugObj.name = "debug.o";
+            debugObj.format = ObjFileFormat::ELF;
+            debugObj.sections.push_back({});
+            ObjSection debugLine;
+            debugLine.name = ".debug_line";
+            debugLine.data.resize(16, 0x42);
+            debugLine.alloc = false;
+            debugLine.alignment = 1;
+            debugObj.sections.push_back(debugLine);
+            debugObj.symbols.push_back({});
+            return debugObj;
+        };
+
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        globalSyms["main"] = {"main", GlobalSymEntry::Global, 0, 1, 0, 0};
+
+        {
+            std::vector<ObjFile> objs = {user, makeDebugObj()};
+            std::ostringstream err;
+            deadStrip(objs, 1, globalSyms, "main", err);
+            CHECK(objs[1].sections[1].data.empty());
+            CHECK(objs[1].sections[1].stripped);
+        }
+
+        {
+            std::vector<ObjFile> objs = {user, makeDebugObj()};
+            std::ostringstream err;
+            deadStrip(objs, 1, globalSyms, "main", LinkPlatform::Linux, true, err);
+            CHECK(!objs[1].sections[1].data.empty());
+            CHECK(!objs[1].sections[1].stripped);
+        }
+    }
+
     // --- COFF associative COMDAT sections follow their parent section ---
     {
         auto user = makeObj("user.o", {".text"});

@@ -187,6 +187,7 @@ static bool addObjSymbols(const ObjFile &obj,
             } else if (existing.binding == GlobalSymEntry::Weak && !isWeak) {
                 // Strong overrides weak.
                 setEntryFromSymbol(existing, sym, objIdx, GlobalSymEntry::Global);
+                eraseUndefinedVariants(sym.name);
             } else if (existing.binding == GlobalSymEntry::Global && !isWeak) {
                 if (allowDuplicateStrongDefinition(
                         sym.name, platform, allowArchiveDefinitionPreference))
@@ -313,11 +314,15 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
                     if (extractedMembers.count(key))
                         continue;
 
-                    // Extract and parse this member.
-                    extractedMembers.insert(key);
+                    // Extract and parse this member. Only mark it extracted after
+                    // it has been successfully materialized; otherwise a malformed
+                    // archive member could be skipped permanently for later symbols.
                     auto memberData = memberDataView(ar, ar.members[memberIdx]);
-                    if (memberData.data == nullptr || memberData.size == 0)
-                        continue;
+                    if (memberData.data == nullptr || memberData.size == 0) {
+                        err << "error: archive member '" << ar.members[memberIdx].name
+                            << "' has no object data\n";
+                        return false;
+                    }
 
                     ObjFile memberObj;
                     std::ostringstream memberErr;
@@ -329,6 +334,7 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
                         err << memberErr.str();
                         return false;
                     }
+                    extractedMembers.insert(key);
 
                     size_t newIdx = allObjects.size();
                     allObjects.push_back(std::move(memberObj));

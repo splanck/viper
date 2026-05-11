@@ -140,14 +140,15 @@ static std::string trimNul(const char *s, size_t maxLen) {
 /// @brief Read a NUL-terminated string from a Mach-O LC_SYMTAB strtab.
 /// @return Empty string when the table is out of bounds, @p pos is past the end,
 ///         or no NUL terminator is found before the end.
-static std::string readString(const uint8_t *data, size_t size, size_t off, size_t len, uint32_t pos) {
+static std::optional<std::string> readStringOpt(
+    const uint8_t *data, size_t size, size_t off, size_t len, uint32_t pos) {
     if (!checkedRange(off, len, size) || pos >= len)
-        return "";
+        return std::nullopt;
     const uint8_t *begin = data + off + pos;
     const uint8_t *end = data + off + len;
     const void *nul = std::memchr(begin, '\0', static_cast<size_t>(end - begin));
     if (!nul)
-        return "";
+        return std::nullopt;
     return std::string(reinterpret_cast<const char *>(begin),
                        static_cast<const char *>(nul));
 }
@@ -398,6 +399,10 @@ bool readMachOObj(
         }
 
         if (lc->cmd == macho::LC_SEGMENT_64) {
+            if (lc->cmdsize < sizeof(macho::segment_command_64)) {
+                err << "error: " << name << ": malformed Mach-O segment command size\n";
+                return false;
+            }
             const auto segValue = readAt<macho::segment_command_64>(data, size, tmpOff);
             if (!segValue) {
                 err << "error: " << name << ": truncated Mach-O segment command\n";
@@ -576,6 +581,10 @@ bool readMachOObj(
                 secOff += sizeof(macho::section_64);
             }
         } else if (lc->cmd == macho::LC_SYMTAB) {
+            if (lc->cmdsize < 24) {
+                err << "error: " << name << ": malformed Mach-O LC_SYMTAB command size\n";
+                return false;
+            }
             symtabLcOff = tmpOff;
             haveSymtab = true;
         }
@@ -626,7 +635,13 @@ bool readMachOObj(
             ObjSymbol os;
 
             // Read name from string table.
-            os.name = readString(data, size, stroff, strsize, nl->n_strx);
+            auto symName = readStringOpt(data, size, stroff, strsize, nl->n_strx);
+            if (!symName && nl->n_strx != 0) {
+                err << "error: " << name << ": Mach-O symbol name offset " << nl->n_strx
+                    << " is invalid\n";
+                return false;
+            }
+            os.name = symName.value_or("");
             // Strip leading underscore (Mach-O convention).
             if (!os.name.empty() && os.name[0] == '_')
                 os.name.erase(0, 1);

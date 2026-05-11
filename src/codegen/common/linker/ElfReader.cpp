@@ -209,18 +209,18 @@ static int64_t extractRelAddend(uint16_t machine,
 /// @details Returns an empty string when @p strTabOff + @p strTabSize would
 ///          escape the buffer, when @p nameOff is past the end of the table,
 ///          or when no NUL terminator is found before the table boundary.
-static std::string readString(
+static std::optional<std::string> readStringOpt(
     const uint8_t *data, size_t size, size_t strTabOff, size_t strTabSize, uint32_t nameOff) {
     if (!checkedRange(strTabOff, strTabSize, size) || nameOff >= strTabSize)
-        return "";
+        return std::nullopt;
     size_t pos = strTabOff + nameOff;
     if (pos < strTabOff || pos >= strTabOff + strTabSize)
-        return "";
+        return std::nullopt;
     const uint8_t *begin = data + pos;
     const uint8_t *end = data + strTabOff + strTabSize;
     const void *nul = std::memchr(begin, '\0', static_cast<size_t>(end - begin));
     if (!nul)
-        return "";
+        return std::nullopt;
     return std::string(reinterpret_cast<const char *>(begin),
                        static_cast<const char *>(nul));
 }
@@ -343,7 +343,13 @@ bool readElfObj(
             continue;
 
         ObjSection sec;
-        sec.name = readString(data, size, shstrOff, shstrSize, sh->sh_name);
+        auto secName = readStringOpt(data, size, shstrOff, shstrSize, sh->sh_name);
+        if (!secName && sh->sh_name != 0) {
+            err << "error: " << name << ": ELF section name offset " << sh->sh_name
+                << " is invalid\n";
+            return false;
+        }
+        sec.name = secName.value_or("");
         if (!isPowerOfTwoOrZero(sh->sh_addralign) ||
             sh->sh_addralign > std::numeric_limits<uint32_t>::max()) {
             err << "error: " << name << ": ELF section '" << sec.name
@@ -500,7 +506,13 @@ bool readElfObj(
             const auto *sym = &*symValue;
 
             ObjSymbol os;
-            os.name = readString(data, size, strOff, strSize, sym->st_name);
+            auto symName = readStringOpt(data, size, strOff, strSize, sym->st_name);
+            if (!symName && sym->st_name != 0) {
+                err << "error: " << name << ": ELF symbol name offset " << sym->st_name
+                    << " is invalid\n";
+                return false;
+            }
+            os.name = symName.value_or("");
             uint32_t effectiveShndx = sym->st_shndx;
             if (sym->st_shndx == elf::SHN_XINDEX) {
                 if (i >= extendedSectionIndexes.size() || extendedSectionIndexes[i] == 0) {

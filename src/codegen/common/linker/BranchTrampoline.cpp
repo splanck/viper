@@ -204,6 +204,8 @@ struct OutOfRangeBranch {
     size_t objIdx;
     size_t secIdx;
     size_t relocIdx;
+    uint32_t targetSymIndex;
+    int64_t targetAddend;
     std::string targetSymName;
     uint64_t targetAddr;
     size_t islandBoundary = 0;
@@ -212,6 +214,9 @@ struct OutOfRangeBranch {
 
 struct TrampolineEntry {
     std::string targetSymName;
+    size_t targetObjIdx = 0;
+    uint32_t targetSymIndex = 0;
+    int64_t targetAddend = 0;
     uint64_t targetAddr = 0;
     size_t islandBoundary = 0;
     size_t actualOffset = 0;
@@ -304,6 +309,8 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
                 oob.objIdx = oi;
                 oob.secIdx = si;
                 oob.relocIdx = ri;
+                oob.targetSymIndex = rel.symIndex;
+                oob.targetAddend = A;
                 oob.targetSymName =
                     symName.empty() ? ("$local@" + std::to_string(oi) + ":" +
                                        std::to_string(rel.symIndex))
@@ -347,7 +354,8 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
         TrampolineEntry *chosenExisting = nullptr;
         uint64_t bestExistingDistance = 0;
         for (auto &[key, trampoline] : trampolines) {
-            if (trampoline.targetAddr != oob.targetAddr ||
+            if (trampoline.targetSymName != oob.targetSymName ||
+                trampoline.targetAddend != oob.targetAddend ||
                 !branch26Reachable(sourceOffset, trampoline.islandBoundary))
                 continue;
             const uint64_t dist = (sourceOffset > trampoline.islandBoundary)
@@ -374,11 +382,15 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
         }
         oob.islandBoundary = chosenBoundary;
 
-        const std::string trampolineKey =
-            std::to_string(oob.targetAddr) + "@" + std::to_string(oob.islandBoundary);
+        const std::string trampolineKey = oob.targetSymName + "+" +
+                                          std::to_string(oob.targetAddend) + "@" +
+                                          std::to_string(oob.islandBoundary);
         auto [it, inserted] = trampolines.emplace(trampolineKey, TrampolineEntry{});
         if (inserted) {
             it->second.targetSymName = oob.targetSymName;
+            it->second.targetObjIdx = oob.objIdx;
+            it->second.targetSymIndex = oob.targetSymIndex;
+            it->second.targetAddend = oob.targetAddend;
             it->second.targetAddr = oob.targetAddr;
             it->second.islandBoundary = oob.islandBoundary;
             it->second.symbolName =
@@ -462,6 +474,21 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
     }
 
     for (auto &[key, trampoline] : trampolines) {
+        if (trampoline.targetObjIdx >= objects.size() ||
+            trampoline.targetSymIndex >= objects[trampoline.targetObjIdx].symbols.size()) {
+            err << "error: trampoline target symbol index is invalid for '"
+                << trampoline.targetSymName << "'\n";
+            return false;
+        }
+        uint64_t resolvedTarget = 0;
+        const auto &targetSym = objects[trampoline.targetObjIdx].symbols[trampoline.targetSymIndex];
+        if (!resolveRelocSymbol(targetSym, trampoline.targetObjIdx, locMap, layout, resolvedTarget) ||
+            !checkedAddI64(resolvedTarget, trampoline.targetAddend, trampoline.targetAddr)) {
+            err << "error: trampoline target address overflow for '"
+                << trampoline.targetSymName << "'\n";
+            return false;
+        }
+
         uint64_t tramVA = 0;
         if (!checkedAddU64(textSec.virtualAddr, static_cast<uint64_t>(trampoline.actualOffset), tramVA)) {
             err << "error: trampoline address overflow for '" << trampoline.targetSymName << "'\n";

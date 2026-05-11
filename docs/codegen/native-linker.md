@@ -137,9 +137,10 @@ members that define needed symbols, rather than linking every member. This is cr
 reasonable — the full runtime is ~3,200 symbols across 11 component archives.
 
 The archive parser validates member ranges, decimal size fields, symbol-table sizes, string-pool bounds, and
-long-name offsets before using them. Duplicate archive-index entries keep the first definition for compatibility
-and also retain the full candidate list so symbol resolution can retry later members when an earlier indexed member
-has already been extracted or does not satisfy the unresolved name.
+long-name offsets before using them. GNU long-name entries trim both NUL and newline terminators and remove the
+trailing `/` marker, so member names are canonical before symbol-index matching. Duplicate archive-index entries
+keep the first definition for compatibility and also retain the full candidate list so symbol resolution can retry
+later members when an earlier indexed member has already been extracted or does not satisfy the unresolved name.
 
 ---
 
@@ -179,7 +180,7 @@ ObjFile
 - **Mach-O**: Addends are extracted from instruction bytes or from ARM64 `ADDEND` relocations. Leading `_` is
   stripped from external symbol names (Mach-O convention). Non-extern section-relative relocations resolve through
   synthetic local section symbols, ARM64 `ADDEND` payloads are sign-extended, consecutive addend records are
-  rejected, and `__DWARF`/debug sections are preserved as non-alloc sections. `MH_SUBSECTIONS_VIA_SYMBOLS`
+  rejected, and `__DWARF`/debug sections are decoded as non-alloc sections. `MH_SUBSECTIONS_VIA_SYMBOLS`
   `__TEXT,__text` inputs are split at global function-symbol boundaries for the native linker, preserving
   function-level dead-strip and ICF behavior even when the object writer emitted one Mach-O text section.
   Executable and writable flags are inferred from both section attributes and data-like segment names.
@@ -192,11 +193,13 @@ ObjFile
 ### Reader Validation
 
 Readers reject unsupported file types, wrong machines, unsupported section alignment, oversized materialized
-sections, out-of-bounds section data, unterminated string-table names, invalid COFF long-name string-table
-references, truncated section headers, truncated relocation tables, dangling Mach-O ARM64 addend records,
-scattered Mach-O relocations, and invalid relocation symbol indexes. Debug and unwind metadata such as
-`__compact_unwind`, `__eh_frame`, `.debug_line`, and `__DWARF` sections is preserved for later passes or executable
-debug-section emission.
+sections, out-of-bounds section data, unterminated or out-of-range ELF/Mach-O string-table names, invalid COFF
+long-name string-table references, truncated section headers, truncated relocation tables, undersized Mach-O
+load commands, dangling Mach-O ARM64 addend records, scattered Mach-O relocations, and invalid relocation symbol
+indexes. Debug and unwind metadata such as
+`__compact_unwind`, `__eh_frame`, `.debug_line`, and `__DWARF` sections is preserved in the intermediate object
+model for later passes. Executable links strip non-alloc debug sections by default and keep them only when
+`NativeLinkerOptions::preserveDebugSections` is set.
 
 Reader range checks avoid offset+size overflow before slicing input buffers, symbol tables, relocation tables, and
 section contents. ELF section headers and relocation records are copied through aligned storage before decoding, so
@@ -248,9 +251,9 @@ Symbol resolution uses an iterative fixed-point algorithm:
 
 ### Runtime Archive Order
 
-If an archive index selects a member, that member must parse successfully; a corrupt selected member is a hard error
-rather than being silently skipped. Archives are searched in the order provided by `RuntimeComponents.hpp`, which
-resolves dependencies:
+If an archive index selects a member, that member must contain object bytes and parse successfully; a corrupt or
+empty selected member is a hard error rather than being marked extracted and silently skipped. Archives are searched
+in the order provided by `RuntimeComponents.hpp`, which resolves dependencies:
 
 ```
 network → threads → audio → graphics → exec → io_fs → text → collections → arrays → oop → base
@@ -352,7 +355,8 @@ a same-object definition, the global table is consulted first so a strong defini
 overrides the weak/common definition. This same rule is used by dead-strip liveness propagation.
 
 AArch64 instruction-field relocations validate the opcode before patching: branch26 requires `B`/`BL`, page21 and
-GOT page21 require `ADRP`, and branch19 requires `B.cond`/`CBZ`/`CBNZ`.
+GOT page21 require `ADRP`, page-offset relocations require the matching ADD/SUB-immediate or unsigned-offset
+load/store form, and branch19 requires `B.cond`/`CBZ`/`CBNZ`.
 
 ### Range Checking
 
@@ -372,8 +376,9 @@ GOT page21 require `ADRP`, and branch19 requires `B.cond`/`CBZ`/`CBNZ`.
   not by searching final addresses, so legal end-of-section symbols are accepted.
 - COFF `SECTION` uses a 2-byte patch width, while `SECREL` uses 4 bytes; both can appear near the end of an input
   chunk as long as their actual field width fits.
-- COFF ARM64 `SECREL_LOW12L` and GOT page-offset relocations validate that the instruction at the patch site is the
-  expected unsigned-offset load/store form before rewriting its immediate field.
+- COFF ARM64 `SECREL_LOW12L`, page-offset, and GOT page-offset relocations validate that the instruction at the
+  patch site is the expected ADD/SUB-immediate or unsigned-offset load/store form before rewriting its immediate
+  field.
 - A live alloc input section that still has relocations must appear in the output layout. Missing placement is a hard
   error because otherwise the linker would silently skip fixups for live bytes.
 - Dynamic symbol bindings requested by symbol resolution are honored directly during relocation application, even
@@ -384,20 +389,24 @@ GOT page21 require `ADRP`, and branch19 requires `B.cond`/`CBZ`/`CBNZ`.
 ### AArch64 Branch Trampolines
 
 The trampoline pass can redirect both global and local branch targets. Local targets are resolved from the merged
-section location map, trampoline reuse is keyed by target address rather than display name so duplicate local labels
-from different objects cannot collide, and generated trampoline symbol names are checked against user and global
-symbols before insertion. Trampoline placement and AArch64 page relocations validate address arithmetic before
-encoding branch islands.
+section location map, trampoline reuse is keyed by target identity and addend rather than display name alone so
+duplicate local labels from different objects cannot collide, and generated trampoline symbol names are checked
+against user and global symbols before insertion. After island insertion shifts later chunks, trampoline target
+addresses are resolved again before ADRP/ADD/BR encoding. Trampoline placement and AArch64 page relocations
+validate address arithmetic before encoding branch islands.
 
 ### Dead Strip and ICF
 
 Dead stripping keeps EH/unwind metadata roots alive (`.eh_frame`, `.gcc_except_table`, `__compact_unwind`, and
-`__eh_frame`) and treats ELF constructor/destructor arrays as live by prefix, including priority-suffixed
-`.preinit_array.*`, `.init_array.*`, and `.fini_array.*` inputs. Weak COFF external fallback definitions are also
-marked live when referenced. Identical Code Folding includes local relocation identity in function signatures and
-skips candidates with extra local symbols in the function section, preventing folds that would strand
-non-redirectable local labels. Executable-section relocations that materialize a function address, such as x86_64
-`PCRel32` LEA patterns, mark that function address-taken; only known direct branch relocations remain foldable.
+`__eh_frame`). Non-alloc debug sections (`.debug*`, `__DWARF`) are rooted only when
+`NativeLinkerOptions::preserveDebugSections` is set. ELF constructor/destructor arrays are live by prefix, including
+priority-suffixed `.preinit_array.*`, `.init_array.*`, and `.fini_array.*` inputs.
+Weak COFF external fallback definitions are also marked live when referenced. Identical Code Folding includes local
+relocation identity in function signatures and skips candidates with extra local symbols in the function section,
+preventing folds that would strand non-redirectable local labels. Executable-section relocations that materialize a
+function address, such as x86_64 `PCRel32` LEA patterns, mark that function address-taken; local and section-symbol
+address-taken references are tracked by object/section/offset as well as by name. Only known direct branch
+relocations remain foldable.
 
 ### Section Ordering
 
@@ -439,6 +448,8 @@ Section Header Table
 - `PT_GNU_STACK` flags = `PF_R | PF_W` (no `PF_X`, non-executable stack)
 - TLS sections carry `SHF_TLS`; TLS images emit a `PT_TLS` program header whose file size covers initialized TLS
   data and whose memory size extends through `.tbss`.
+- Dynamic string/symbol table offsets, generated section placement, startup-stub placement, and final section-header
+  table offsets are checked before narrowing or allocation.
 - File permissions set to 755 after writing
 
 ### Mach-O Executable Writer
@@ -471,6 +482,9 @@ __DATA segment data (page-aligned)
   otherwise apply the ASLR slide more than once to ObjC and other absolute metadata pointers.
 - Mach-O-style internal names such as `__LD,__compact_unwind` are split before writing fixed-width section-name
   fields, so the serialized section name is validated against the actual 16-byte Mach-O field.
+- Load-command sizes, section counts, link-edit offsets, code-signature offsets, and section file offsets are
+  checked against Mach-O's 32-bit fields. Segment data writes now fail if a section would overlap bytes already
+  emitted instead of appending at the wrong location.
 
 ### PE Executable Writer
 
@@ -498,6 +512,8 @@ Section Data (file-aligned to 0x200)
 - 16 data directory entries; imports, exceptions, base relocations, resources, IAT, and TLS are populated when used
 - TLS directory raw-data bounds exclude `.tbss`; `SizeOfZeroFill` covers the zero-fill tail instead of embedding it
   into the TLS template.
+- Import-table sizing is checked before 32-bit RVAs are materialized. When reusing external IAT slots, the slot must
+  map to a writable output section before the writer seeds it with the import lookup entry.
 - Stack reserve: 1MB, heap reserve: 1MB
 
 ---

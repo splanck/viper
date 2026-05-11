@@ -791,7 +791,7 @@ std::cout << "Instructions: " << runner.instructionCount() << "\n";
 | Full backtrace API | Not implemented | `execStack` is private; only single-frame `TrapInfo` exposed |
 | Conditional breakpoints | Not implemented | No expression evaluation on break condition |
 | Source-to-IL name mapping | Partial | Zia local slots carry source names; generated temporaries and some BASIC paths still require IL names |
-| DWARF debug info | Partial | Linker preserves DWARF v5 sections; codegen-generated line tables are limited |
+| DWARF debug info | Partial | `--debug-lines` preserves linked DWARF v5 sections; codegen-generated line tables are limited |
 | Debug Adapter Protocol | Not implemented | No IDE integration (VS Code, etc.) |
 | Signal/crash handler | Not implemented | Native crashes produce no diagnostic output |
 | In-VM profiling | Not implemented | No function-level timing or allocation tracking |
