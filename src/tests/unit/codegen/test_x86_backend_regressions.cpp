@@ -76,6 +76,14 @@ ILValue immI1(int64_t value) {
     return operand;
 }
 
+ILValue immPtr(int64_t value) {
+    ILValue operand{};
+    operand.kind = ILValue::Kind::PTR;
+    operand.id = -1;
+    operand.i64 = value;
+    return operand;
+}
+
 ILValue immF64(double value) {
     ILValue operand{};
     operand.kind = ILValue::Kind::F64;
@@ -2618,6 +2626,216 @@ TEST(X86BackendRegressions, LocalLabelsAreUniqueAcrossFunctions) {
     const std::string firstSplitLabel = first.makeLocalLabel(".Lsplit");
     const std::string secondSplitLabel = second.makeLocalLabel(".Lsplit");
     EXPECT_NE(firstSplitLabel, secondSplitLabel);
+}
+
+TEST(X86BackendRegressions, ZextMasksToSourceBitWidth) {
+    ILValue source = val(ILValue::Kind::I64, 0);
+    source.bits = 8;
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::I64};
+    entry.instrs = {op("zext", {source}, 1, ILValue::Kind::I64),
+                    op("ret", {val(ILValue::Kind::I64, 1)})};
+
+    ILFunction fn{};
+    fn.name = "zext_i8";
+    fn.blocks = {entry};
+
+    const CodegenResult result = compile(fn);
+    if (!result.errors.empty()) {
+        std::cerr << result.errors << '\n';
+    }
+    ASSERT_TRUE(result.errors.empty());
+    EXPECT_NE(result.asmText.find("andq $255"), std::string::npos);
+}
+
+TEST(X86BackendRegressions, SextSignExtendsFromSourceBitWidth) {
+    ILValue source = val(ILValue::Kind::I64, 0);
+    source.bits = 8;
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::I64};
+    entry.instrs = {op("sext", {source}, 1, ILValue::Kind::I64),
+                    op("ret", {val(ILValue::Kind::I64, 1)})};
+
+    ILFunction fn{};
+    fn.name = "sext_i8";
+    fn.blocks = {entry};
+
+    const CodegenResult result = compile(fn);
+    if (!result.errors.empty()) {
+        std::cerr << result.errors << '\n';
+    }
+    ASSERT_TRUE(result.errors.empty());
+    EXPECT_NE(result.asmText.find("shlq $56"), std::string::npos);
+    EXPECT_NE(result.asmText.find("sarq $56"), std::string::npos);
+}
+
+TEST(X86BackendRegressions, TruncMasksBooleanResultWidth) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::I64};
+    entry.instrs = {opBits("trunc",
+                           {val(ILValue::Kind::I64, 0)},
+                           1,
+                           ILValue::Kind::I1,
+                           1),
+                    op("ret", {val(ILValue::Kind::I1, 1)})};
+
+    ILFunction fn{};
+    fn.name = "trunc_i1";
+    fn.blocks = {entry};
+
+    const CodegenResult result = compile(fn);
+    if (!result.errors.empty()) {
+        std::cerr << result.errors << '\n';
+    }
+    ASSERT_TRUE(result.errors.empty());
+    EXPECT_NE(result.asmText.find("andq $1"), std::string::npos);
+}
+
+TEST(X86BackendRegressions, SelectTrueLabelArmMaterializesBeforeISel) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::I1};
+    entry.instrs = {op("select",
+                       {val(ILValue::Kind::I1, 0), label("select_true_symbol"), immPtr(0)},
+                       1,
+                       ILValue::Kind::PTR),
+                    op("ret", {val(ILValue::Kind::PTR, 1)})};
+
+    ILFunction fn{};
+    fn.name = "select_true_label";
+    fn.blocks = {entry};
+
+    const CodegenResult result = compile(fn);
+    if (!result.errors.empty()) {
+        std::cerr << result.errors << '\n';
+    }
+    ASSERT_TRUE(result.errors.empty());
+    EXPECT_NE(result.asmText.find("leaq select_true_symbol(%rip)"), std::string::npos);
+    EXPECT_EQ(result.asmText.find("select pseudo survived"), std::string::npos);
+}
+
+TEST(X86BackendRegressions, SelectFalseLabelArmMaterializesBeforeISel) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::I1};
+    entry.instrs = {op("select",
+                       {val(ILValue::Kind::I1, 0), immPtr(0), label("select_false_symbol")},
+                       1,
+                       ILValue::Kind::PTR),
+                    op("ret", {val(ILValue::Kind::PTR, 1)})};
+
+    ILFunction fn{};
+    fn.name = "select_false_label";
+    fn.blocks = {entry};
+
+    const CodegenResult result = compile(fn);
+    if (!result.errors.empty()) {
+        std::cerr << result.errors << '\n';
+    }
+    ASSERT_TRUE(result.errors.empty());
+    EXPECT_NE(result.asmText.find("leaq select_false_symbol(%rip)"), std::string::npos);
+    EXPECT_EQ(result.asmText.find("select pseudo survived"), std::string::npos);
+}
+
+TEST(X86BackendRegressions, StoreLabelValueMaterializesBeforeMemoryStore) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {op("alloca", {imm(8)}, 0, ILValue::Kind::PTR),
+                    op("store", {val(ILValue::Kind::PTR, 0), label("stored_label_symbol")}),
+                    op("ret", {})};
+
+    ILFunction fn{};
+    fn.name = "store_label_value";
+    fn.blocks = {entry};
+
+    const CodegenResult result = compile(fn);
+    if (!result.errors.empty()) {
+        std::cerr << result.errors << '\n';
+    }
+    ASSERT_TRUE(result.errors.empty());
+    EXPECT_NE(result.asmText.find("leaq stored_label_symbol(%rip)"), std::string::npos);
+    EXPECT_NE(result.asmText.find("movq"), std::string::npos);
+}
+
+TEST(X86BackendRegressions, XmmAllocaSlotRemapsBelowCalleeSavedArea) {
+    MFunction fn{};
+    fn.name = "xmm_alloca_slot";
+
+    const Operand rax = makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RAX));
+    const Operand rbx = makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RBX));
+    const Operand xmm0 = makePhysRegOperand(RegClass::XMM, static_cast<uint16_t>(PhysReg::XMM0));
+    const OpReg rbp = makePhysReg(RegClass::GPR, static_cast<uint16_t>(PhysReg::RBP));
+
+    MBasicBlock entry{};
+    entry.label = ".L_xmm_alloca_slot_entry";
+    entry.instructions = {MInstr::make(MOpcode::MOVrr, {rbx, rax}),
+                          MInstr::make(MOpcode::MOVSDmr, {xmm0, makeMemOperand(rbp, -8)}),
+                          MInstr::make(MOpcode::RET)};
+    fn.blocks.push_back(std::move(entry));
+
+    FrameInfo frame{};
+    assignSpillSlots(fn, sysvTarget(), frame);
+
+    ASSERT_FALSE(frame.usedCalleeSaved.empty());
+    EXPECT_EQ(frame.usedCalleeSaved.front(), PhysReg::RBX);
+    const auto &load = fn.blocks.front().instructions[1];
+    ASSERT_EQ(load.opcode, MOpcode::MOVSDmr);
+    const auto *mem = std::get_if<OpMem>(&load.operands[1]);
+    ASSERT_TRUE(mem != nullptr);
+    EXPECT_EQ(mem->disp, -16);
+}
+
+namespace {
+
+void expectThreeOperandOverflowPseudoLowered(MOpcode pseudo, MOpcode real) {
+    MFunction fn{};
+    fn.name = "three_operand_ovf";
+
+    MBasicBlock entry{};
+    entry.label = ".L_three_operand_ovf_entry";
+    const Operand dest = makeVRegOperand(RegClass::GPR, 3);
+    const Operand lhs = makeVRegOperand(RegClass::GPR, 1);
+    const Operand rhs = makeVRegOperand(RegClass::GPR, 2);
+    entry.instructions = {MInstr::make(pseudo, {dest, lhs, rhs}), MInstr::make(MOpcode::RET)};
+    fn.blocks.push_back(std::move(entry));
+
+    lowerOverflowOps(fn);
+
+    const auto &instructions = fn.blocks.front().instructions;
+    ASSERT_GE(instructions.size(), 4u);
+    EXPECT_EQ(instructions[0].opcode, MOpcode::MOVrr);
+    EXPECT_EQ(instructions[0].operands.size(), 2u);
+    EXPECT_EQ(instructions[1].opcode, real);
+    EXPECT_EQ(instructions[1].operands.size(), 2u);
+    EXPECT_EQ(instructions[2].opcode, MOpcode::JCC);
+    ASSERT_FALSE(instructions[2].operands.empty());
+    const auto *trapLabel = std::get_if<OpLabel>(&instructions[2].operands.back());
+    ASSERT_TRUE(trapLabel != nullptr);
+    EXPECT_EQ(trapLabel->name, ".Ltrap_ovf_three_operand_ovf");
+}
+
+} // namespace
+
+TEST(X86BackendRegressions, ThreeOperandAddOverflowPseudoLowersToTwoOperandAdd) {
+    expectThreeOperandOverflowPseudoLowered(MOpcode::ADDOvfrr, MOpcode::ADDrr);
+}
+
+TEST(X86BackendRegressions, ThreeOperandSubOverflowPseudoLowersToTwoOperandSub) {
+    expectThreeOperandOverflowPseudoLowered(MOpcode::SUBOvfrr, MOpcode::SUBrr);
+}
+
+TEST(X86BackendRegressions, ThreeOperandMulOverflowPseudoLowersToTwoOperandMul) {
+    expectThreeOperandOverflowPseudoLowered(MOpcode::IMULOvfrr, MOpcode::IMULrr);
 }
 
 int main(int argc, char **argv) {

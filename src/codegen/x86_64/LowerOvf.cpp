@@ -138,7 +138,7 @@ rewrite:
         }
         auto &block = fn.blocks[blockIdx];
         for (std::size_t i = 0; i < block.instructions.size(); ++i) {
-            const MInstr &instr = block.instructions[i];
+            const MInstr instr = block.instructions[i];
             MOpcode realOpc;
             switch (instr.opcode) {
                 case MOpcode::ADDOvfrr:
@@ -158,26 +158,48 @@ rewrite:
                 continue;
             }
 
-            // Clone operands from the pseudo instruction
-            std::vector<Operand> realOps;
-            realOps.reserve(instr.operands.size());
-            for (const auto &op : instr.operands) {
-                realOps.push_back(cloneOp(op));
+            std::vector<MInstr> replacement{};
+            replacement.reserve(3);
+
+            if (instr.operands.size() >= 3U) {
+                const Operand dest = cloneOp(instr.operands[0]);
+                const Operand lhs = cloneOp(instr.operands[1]);
+                const Operand rhs = cloneOp(instr.operands[2]);
+                if (std::holds_alternative<OpImm>(lhs)) {
+                    replacement.push_back(MInstr::make(
+                        MOpcode::MOVri, std::vector<Operand>{cloneOp(dest), cloneOp(lhs)}));
+                } else if (std::holds_alternative<OpReg>(lhs)) {
+                    replacement.push_back(MInstr::make(
+                        MOpcode::MOVrr, std::vector<Operand>{cloneOp(dest), cloneOp(lhs)}));
+                } else {
+                    continue;
+                }
+                replacement.push_back(
+                    MInstr::make(realOpc, std::vector<Operand>{cloneOp(dest), cloneOp(rhs)}));
+            } else {
+                replacement.push_back(MInstr::make(
+                    realOpc,
+                    std::vector<Operand>{cloneOp(instr.operands[0]), cloneOp(instr.operands[1])}));
             }
 
-            // Replace pseudo with real arithmetic instruction
-            block.instructions[i] = MInstr::make(realOpc, std::move(realOps));
+            for (auto &replacementInstr : replacement) {
+                replacementInstr.loc = instr.loc;
+            }
 
-            // Insert JO (jump on overflow) to trap block after the arithmetic
             auto joInstr = MInstr::make(
                 MOpcode::JCC,
                 std::vector<Operand>{makeImmOperand(kCondOverflow), makeLabelOperand(trapLabel)});
-            block.instructions.insert(block.instructions.begin() +
-                                          static_cast<std::ptrdiff_t>(i + 1U),
-                                      std::move(joInstr));
+            joInstr.loc = instr.loc;
+            replacement.push_back(std::move(joInstr));
 
-            // Skip past the JO we just inserted
-            ++i;
+            const auto beginIt =
+                block.instructions.begin() + static_cast<std::ptrdiff_t>(i);
+            block.instructions.erase(beginIt);
+            block.instructions.insert(block.instructions.begin() + static_cast<std::ptrdiff_t>(i),
+                                      replacement.begin(),
+                                      replacement.end());
+
+            i += replacement.size() - 1U;
         }
     }
 }

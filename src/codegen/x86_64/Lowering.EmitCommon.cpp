@@ -510,17 +510,25 @@ void EmitCommon::emitSelect(const ILInstr &instr) {
     const Operand falseVal = builder().makeOperandForValue(instr.ops[2], destReg.cls);
 
     if (destReg.cls == RegClass::GPR) {
-        Operand cmovSource = trueVal;
+        auto materialiseGprSelectValue = [&](Operand operand) -> Operand {
+            if (std::holds_alternative<OpReg>(operand) || std::holds_alternative<OpImm>(operand)) {
+                return operand;
+            }
+            return materialise(std::move(operand), RegClass::GPR);
+        };
+
+        const Operand falseArm = materialiseGprSelectValue(clone(falseVal));
+        Operand cmovSource = materialiseGprSelectValue(clone(trueVal));
         if (std::holds_alternative<OpImm>(cmovSource)) {
             const VReg tmpVReg = builder().makeTempVReg(destReg.cls);
             cmovSource = makeVRegOperand(tmpVReg.cls, tmpVReg.id);
-            builder().append(
-                MInstr::make(MOpcode::MOVri, std::vector<Operand>{clone(cmovSource), trueVal}));
+            builder().append(MInstr::make(
+                MOpcode::MOVri, std::vector<Operand>{clone(cmovSource), clone(trueVal)}));
         }
 
         builder().append(MInstr::make(
             MOpcode::SELECT_GPR,
-            std::vector<Operand>{clone(dest), clone(cond), clone(falseVal), clone(cmovSource)}));
+            std::vector<Operand>{clone(dest), clone(cond), clone(falseArm), clone(cmovSource)}));
         return;
     }
 
@@ -706,8 +714,11 @@ void EmitCommon::emitStore(const ILInstr &instr) {
     // ops[0] = address (Ptr type)
     // ops[1] = value to store (InstrType)
     Operand baseOp = materialiseGpr(builder().makeOperandForValue(instr.ops[0], RegClass::GPR));
-    const Operand value =
-        builder().makeOperandForValue(instr.ops[1], builder().regClassFor(instr.ops[1].kind));
+    const RegClass valueCls = builder().regClassFor(instr.ops[1].kind);
+    Operand value = builder().makeOperandForValue(instr.ops[1], valueCls);
+    if (!std::holds_alternative<OpReg>(value) && !std::holds_alternative<OpImm>(value)) {
+        value = materialise(std::move(value), valueCls);
+    }
     const auto *baseReg = std::get_if<OpReg>(&baseOp);
     if (!baseReg) {
         phaseAUnsupported("store: address base did not materialize to a register");

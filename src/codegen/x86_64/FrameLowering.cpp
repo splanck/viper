@@ -318,7 +318,8 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
                     continue;
                 }
                 const int slotIndex = placeholder / kSlotSizeBytes - 1;
-                const RegClass cls = deduceMemClass(instr, idx);
+                const RegClass cls =
+                    slotIndex >= kSpillSlotOffset ? deduceMemClass(instr, idx) : RegClass::GPR;
                 const SlotKey key{cls, slotIndex};
                 auto it = slotOffsets.find(key);
                 if (it != slotOffsets.end()) {

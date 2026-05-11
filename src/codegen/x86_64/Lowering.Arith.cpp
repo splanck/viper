@@ -26,6 +26,9 @@
 #include "Lowering.EmitCommon.hpp"
 #include "Unsupported.hpp"
 
+#include <algorithm>
+#include <cstdint>
+
 namespace viper::codegen::x64::lowering {
 namespace {
 
@@ -69,6 +72,50 @@ uint64_t unsignedUpperExclusiveF64Bits(std::uint8_t widthBits) {
         default:
             phaseAUnsupported("checked fp-to-ui cast: unsupported result width");
     }
+}
+
+[[nodiscard]] bool isIntegerLikeKind(ILValue::Kind kind) noexcept {
+    return kind == ILValue::Kind::I64 || kind == ILValue::Kind::I1 ||
+           kind == ILValue::Kind::PTR;
+}
+
+[[nodiscard]] std::uint8_t normalizedIntegerBits(std::uint8_t bits, ILValue::Kind kind) noexcept {
+    if (kind == ILValue::Kind::I1) {
+        return 1;
+    }
+    if (bits == 0 || bits > 64) {
+        return 64;
+    }
+    return bits;
+}
+
+[[nodiscard]] uint64_t lowBitsMask(std::uint8_t bits) noexcept {
+    if (bits >= 64) {
+        return ~uint64_t{0};
+    }
+    return (uint64_t{1} << bits) - uint64_t{1};
+}
+
+void emitMaskToWidth(MIRBuilder &builder,
+                     EmitCommon &emit,
+                     const Operand &dest,
+                     std::uint8_t widthBits) {
+    if (widthBits >= 64) {
+        return;
+    }
+
+    const uint64_t mask = lowBitsMask(widthBits);
+    if (fitsImm32(static_cast<int64_t>(mask))) {
+        builder.append(
+            MInstr::make(MOpcode::ANDri, {emit.clone(dest), makeImmOperand(static_cast<int64_t>(mask))}));
+        return;
+    }
+
+    const VReg maskReg = builder.makeTempVReg(RegClass::GPR);
+    const Operand maskOp = makeVRegOperand(maskReg.cls, maskReg.id);
+    builder.append(
+        MInstr::make(MOpcode::MOVri, {emit.clone(maskOp), makeImmOperand(static_cast<int64_t>(mask))}));
+    builder.append(MInstr::make(MOpcode::ANDrr, {emit.clone(dest), maskOp}));
 }
 
 MInstr makePlannedCall(Operand target, uint32_t callPlanId) {
@@ -358,11 +405,48 @@ void emitDivFamily(const ILInstr &instr, MIRBuilder &builder) {
 
 void emitZSTrunc(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon emit(builder);
-    emit.emitCast(
-        instr,
-        MOpcode::MOVrr,
-        builder.regClassFor(instr.resultKind),
-        builder.regClassFor(instr.ops.empty() ? instr.resultKind : instr.ops.front().kind));
+    if (instr.resultId < 0 || instr.ops.empty()) {
+        phaseAUnsupported("cast: missing operands");
+    }
+    if (!isIntegerLikeKind(instr.resultKind) || !isIntegerLikeKind(instr.ops.front().kind)) {
+        phaseAUnsupported("cast: integer zext/sext/trunc expected integer-like operands");
+    }
+
+    const ILValue &sourceValue = instr.ops.front();
+    const std::uint8_t sourceBits = normalizedIntegerBits(sourceValue.bits, sourceValue.kind);
+    const std::uint8_t resultBits = normalizedIntegerBits(instr.resultBits, instr.resultKind);
+
+    const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
+    if (destReg.cls != RegClass::GPR) {
+        phaseAUnsupported("cast: integer zext/sext/trunc destination must be a GPR");
+    }
+    const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
+    const Operand src =
+        emit.materialiseGpr(builder.makeOperandForValue(sourceValue, RegClass::GPR));
+
+    builder.append(MInstr::make(MOpcode::MOVrr, {emit.clone(dest), emit.clone(src)}));
+
+    if (instr.opcode == "trunc") {
+        emitMaskToWidth(builder, emit, dest, resultBits);
+        return;
+    }
+
+    const std::uint8_t valueBits = std::min(sourceBits, resultBits);
+    if (instr.opcode == "zext") {
+        emitMaskToWidth(builder, emit, dest, valueBits);
+        return;
+    }
+
+    if (instr.opcode == "sext") {
+        if (valueBits < 64) {
+            const int shift = 64 - static_cast<int>(valueBits);
+            builder.append(MInstr::make(MOpcode::SHLri, {emit.clone(dest), makeImmOperand(shift)}));
+            builder.append(MInstr::make(MOpcode::SARri, {emit.clone(dest), makeImmOperand(shift)}));
+        }
+        return;
+    }
+
+    phaseAUnsupported("cast: unsupported integer cast opcode");
 }
 
 void emitSIToFP(const ILInstr &instr, MIRBuilder &builder) {
