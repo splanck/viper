@@ -32,20 +32,20 @@ A focused hardening-and-correctness cycle on the v0.2.5 surface. No new public n
 - MSVC build hardening — embedded debug info via CMP0141, expanded import policy for UCRT/Win32 symbols, WSL-aware audit and smoke scripts.
 - ViperIDE polish — IntelliSense linkage fix via `fe_zia` force-load, real keyword highlighting from the live `Lexer`, scrollBeyondLastLine, BMP toolbar glyphs.
 - GUI runtime widget-handle correctness — every public entry routes through centralised type-checked wrappers, contextmenu submenu ownership is now bidirectional, code-editor block-comment depth derives from a buffer scan instead of render state, and progressbar/breadcrumb/slider/toast/shortcut paths receive lifetime, range, and focus-routing fixes.
-- Network runtime hardening — WebSocket URL parser handles query/fragment/IPv6 and saturates port scans, HTTP server enforces RFC 7230 token characters on methods and request targets, HTTP client connection pool releases its slot before closing the socket, and `send`/`recv` returning `<= 0` is treated as a hard error across HTTP/2, HTTPS, SSE, REST, and UDP transports.
+- Network runtime hardening — HTTP/2 HPACK now uses separate encode/decode dynamic tables (a single table was conflating both directions and corrupting outbound headers after any dynamic-table churn), WebSocket servers reject non-minimal-length frames per RFC 6455 §5.2 and clients validate close codes per §7.4, the URL parser tightens IPv6 bracket handling and replaces silent port clamping with explicit traps, HTTP header field names are validated as full RFC 7230 tokens, UDP recv detects truncation via `MSG_TRUNC`/`WSAEMSGSIZE`, and the connection-pool health-drop path releases its slot under the pool lock instead of leaking it.
 - x86-64 backend regression repairs — integer cast width selection, label-operand validation, frame-slot aliasing, overflow-pseudo lowering, switch operand normalisation, and a documentation pass across ~50 backend source files with doxygen on every helper.
 
 ### By the Numbers
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 53 | +53 |
+| Commits | — | 54 | +54 |
 | Source files | 2,996 | 3,006 | +10 |
 | Production SLOC | 552K | 571K | +19K |
 | Test SLOC | 228K | 239K | +11K |
 | Demo SLOC | 188K | 188K | 0 |
 
-Counts via `scripts/count_sloc.sh` (production 570,641 / test 239,177 / demo 187,826 / source files 3,006).
+Counts via `scripts/count_sloc.sh` (production 571,012 / test 239,415 / demo 187,826 / source files 3,006).
 
 ---
 
@@ -207,12 +207,20 @@ Counts via `scripts/count_sloc.sh` (production 570,641 / test 239,177 / demo 187
 
 ### Network runtime
 
-- WebSocket URL parser accepts `?` and `#` as path/query/fragment terminators, rejects zero-length hosts, scans the port as a bounded unsigned with overflow guard, and trims path copying at the fragment delimiter so query-only URLs and `wss://host?q=…` forms parse correctly.
-- HTTP server gains an RFC 7230 token-character classifier and request-target byte validator; malformed methods and paths return 400 before reaching application handlers instead of being forwarded blindly.
-- HTTP client connection pool now releases the slot before closing the socket — a concurrent reuser can no longer observe a half-released entry. Pool entry fields are cleared explicitly so the pool never reuses stale `key`/`last_used`/`pool_slot` values.
-- HTTP/2, HTTPS server, REST client, network_udp, and the network_http transport treat `send()`/`recv()` returning `<= 0` as a hard error, not just the platform-specific `SOCK_ERROR` sentinel — previously zero-return on some Windows configurations silently dropped bytes.
-- SSE chunked-encoding parser distinguishes "no hex digit" from "malformed extension", so trailing semicolons + extensions parse per spec; `sse_transport_send_all` adopts the same `<= 0`-is-error convention.
-- New `rt_net_timeout_ms_to_int` and `rt_net_i64_len_to_int` helpers saturate `int64_t` arguments into the `int`-sized socket/poll APIs uniformly across every network call site; negative timeouts in `set_socket_timeout` and `wait_socket` are clamped or rejected.
+- **HTTP/2 HPACK encode/decode table separation.** A single dynamic table was previously being used for both inbound and outbound HPACK state, so `SETTINGS_HEADER_TABLE_SIZE` (a sender-tells-receiver setting) resized the wrong table and outbound request headers were encoded against the peer's decode state. After any dynamic-table churn the wire bytes the peer received could no longer be decoded. Split into independent `encode_table` and `decode_table` with RFC 7540 §6.5.2 semantics.
+- **WebSocket non-minimal length frames rejected.** RFC 6455 §5.2 requires the shortest length encoding sufficient for the payload size. Both plaintext (`rt_ws_server.c`) and TLS (`rt_wss_server.c`) servers now reject frames that use the 2-byte extended length field for payloads < 126 or the 8-byte field for payloads < 65536, closing the connection with code 1002. Client close codes are validated against RFC 6455 §7.4 (1000–1014 minus the reserved 1004/1005/1006 triplet and 1015, plus the private 3000–4999 range) before being sent.
+- **HTTP URL parser correctness.** IPv6 literal parsing rejects trailing junk between the closing bracket and the port colon, refuses unclosed brackets, and rejects empty `host:` forms. `set_Scheme("")` clears the field instead of allocating empty string; non-empty schemes are validated against the RFC 3986 grammar and trap on violation. `set_Port` traps on out-of-range values instead of silently clamping. Percent-decoding splits into path-mode and query-component-mode so `+` is treated as space only in query parameters.
+- **WebSocket / SSE / HTTP transport URL validation.** New host validators reject control bytes, `0x7F`, `/`, `?`, and `#` in the host component; request-target validators require a leading `/` and reject control bytes and embedded `#`. SSE header values reject embedded CR/LF/`0x7F` so a malformed `Last-Event-Id` can no longer split the response. The WebSocket URL parser accepts `?` and `#` as path terminators, rejects zero-length hosts, and scans the port as a bounded unsigned with overflow guard.
+- **HTTP header and scheme normalisation.** Scheme prefix matching is now case-insensitive (`http://` and `HTTP://` parse identically per RFC 3986 §3.1). Header field names are validated as full RFC 7230 token-character sequences instead of merely rejecting CRLF, closing a class of header-name smuggling.
+- **HTTP server entry hardening.** Token-character classifier and request-target byte validator on the server side; malformed methods and paths return 400 before reaching application handlers.
+- **Connection pool race fixes.** Tracked unhealthy connections now release the pool slot via `remove_entry_at` under the lock instead of closing the socket and leaving the slot occupied with a dead file descriptor that the next acquire would attempt to reuse. Untracked unhealthy connections release the lock before closing. The HTTP-client per-route pool similarly releases its slot before closing so a concurrent reuser cannot observe a half-released entry.
+- **UDP truncation detection.** New `udp_recvfrom_checked` issues `recvmsg` on POSIX so `MSG_TRUNC` surfaces explicit truncation; on Windows `WSAEMSGSIZE` is mapped to the same flag. `udp_pending_datagram_size` queries `FIONREAD` so callers can size buffers to the next datagram instead of guessing. `setsockopt(IPV6_V6ONLY)` failure on dual-stack opens now closes the socket and returns `INVALID_SOCK` rather than silently inheriting the platform default. The `recvmsg` symbol joined `DynamicSymbolPolicy` so native-linked Linux binaries pass the allowlist.
+- **DNS.** `rt_dns_local_host` zeroes the hostname buffer and pins a terminating NUL before `strlen` — Windows `gethostname` is not guaranteed to terminate when the system hostname matches the buffer length.
+- **Retry policy.** `Retry.New` and `Retry.Exponential` validate `base_delay_ms` once and reuse the validated value to clamp `max_delay_ms`. Previously a negative `base_delay_ms` flowed into the cap comparison, producing an exponential backoff with a negative ceiling.
+- **TLS verifier.** CN extraction split out into `tls_extract_cn_from_name` so SAN-fallback and direct subject-DER paths share one walker; constant-time helpers and per-namespace class IDs threaded through the handshake state.
+- **Send/recv error semantics.** HTTP/2, HTTPS server, REST client, `network_udp`, and the `network_http` transport now treat `send()`/`recv()` returning `<= 0` as a hard error, not just the platform-specific `SOCK_ERROR` sentinel — Windows configurations that return 0 on connection drop no longer silently truncated payloads.
+- **SSE parser.** Chunked-encoding parser distinguishes "no hex digit" from "malformed extension" so trailing semicolons + extensions parse per spec; `sse_transport_send_all` adopts the same `<= 0`-is-error convention; a dedicated `sse_set_recv_timeout` consolidates the recv-timeout pattern previously duplicated across three sites.
+- **Timeout/length saturation helpers.** New `rt_net_timeout_ms_to_int` and `rt_net_i64_len_to_int` saturate `int64_t` arguments into the `int`-sized socket/poll APIs uniformly across every call site; negative timeouts in `set_socket_timeout` and `wait_socket` are clamped or rejected.
 
 ### ViperIDE
 
@@ -316,6 +324,6 @@ Demos and docs were updated to track the runtime work above; the stale Windows d
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 53-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 54-commit history since v0.2.5.
 
 <!-- END DRAFT -->
