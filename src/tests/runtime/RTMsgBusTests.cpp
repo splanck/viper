@@ -36,7 +36,7 @@ static void destroy_obj(void *obj) {
 }
 
 static int64_t subscribe_native(void *bus, rt_string topic, rt_msgbus_callback_fn fn) {
-    void *callback = rt_msgbus_callback_new((void *)fn);
+    void *callback = rt_msgbus_callback_new(fn);
     assert(callback != NULL);
     int64_t id = rt_msgbus_subscribe(bus, topic, callback);
     destroy_obj(callback);
@@ -50,6 +50,7 @@ static void *g_current_bus = NULL;
 static int64_t g_victim_sub_id = 0;
 static int g_callback_finalized = 0;
 static int g_payload_finalized = 0;
+static int g_bus_finalized = 0;
 
 static void reset_trace() {
     g_trace_len = 0;
@@ -102,6 +103,20 @@ static void payload_finalizer(void *obj) {
     g_payload_finalized++;
 }
 
+static void bus_finalizer(void *obj) {
+    (void)obj;
+    g_bus_finalized++;
+}
+
+static void cb_release_current_bus(void *data) {
+    (void)data;
+    g_trace[g_trace_len++] = 5;
+    if (g_current_bus) {
+        destroy_obj(g_current_bus);
+        g_current_bus = NULL;
+    }
+}
+
 static void test_new() {
     void *bus = rt_msgbus_new();
     assert(bus != NULL);
@@ -113,7 +128,7 @@ static void test_new() {
 
 static void test_callback_wrapper() {
     void *bus = rt_msgbus_new();
-    void *callback = rt_msgbus_callback_new((void *)cb_first);
+    void *callback = rt_msgbus_callback_new(cb_first);
     assert(callback != NULL);
     assert(rt_obj_class_id(callback) == RT_MSGBUS_CALLBACK_CLASS_ID);
     rt_string topic = make_str("wrapped");
@@ -276,6 +291,25 @@ static void test_publish_retains_managed_payload_for_dispatch() {
     destroy_obj(bus);
 }
 
+static void test_publish_retains_bus_during_callback_release() {
+    void *bus = rt_msgbus_new();
+    rt_obj_set_finalizer(bus, bus_finalizer);
+    rt_string topic = make_str("bus_lifetime");
+    int payload = 1;
+    g_bus_finalized = 0;
+    g_current_bus = bus;
+
+    subscribe_native(bus, topic, cb_release_current_bus);
+
+    reset_trace();
+    assert(rt_msgbus_publish(bus, topic, &payload) == 1);
+    assert(g_trace_len == 1);
+    assert(g_trace[0] == 5);
+    assert(g_bus_finalized == 1);
+    g_current_bus = NULL;
+    rt_string_unref(topic);
+}
+
 static void test_unsubscribe_during_publish_uses_snapshot() {
     void *bus = rt_msgbus_new();
     rt_string topic = make_str("snapshot");
@@ -377,7 +411,7 @@ static void test_rejects_raw_pointer_callback() {
 static void test_publish_trap_releases_snapshot_callbacks() {
     void *bus = rt_msgbus_new();
     rt_string topic = make_str("trap_cleanup");
-    void *callback = rt_msgbus_callback_new((void *)cb_trap);
+    void *callback = rt_msgbus_callback_new(cb_trap);
     rt_obj_set_finalizer(callback, callback_finalizer);
     g_callback_finalized = 0;
 
@@ -453,7 +487,7 @@ static void test_clear() {
 static void test_callback_object_cleanup_on_unsubscribe() {
     void *bus = rt_msgbus_new();
     rt_string topic = make_str("cleanup");
-    void *callback_obj = rt_msgbus_callback_new((void *)cb_first);
+    void *callback_obj = rt_msgbus_callback_new(cb_first);
     rt_obj_set_finalizer(callback_obj, callback_finalizer);
     g_callback_finalized = 0;
 
@@ -475,7 +509,7 @@ static void test_null_safety() {
     assert(rt_msgbus_subscriber_count(NULL, NULL) == 0);
     assert(rt_msgbus_publish(NULL, NULL, NULL) == 0);
     assert(rt_msgbus_subscribe(NULL, NULL, NULL) == -1);
-    void *callback = rt_msgbus_callback_new((void *)cb_first);
+    void *callback = rt_msgbus_callback_new(cb_first);
     assert(rt_msgbus_subscribe(bus, NULL, callback) == -1);
     destroy_obj(callback);
     assert(rt_msgbus_subscribe(bus, x, NULL) == -1);
@@ -494,6 +528,7 @@ int main() {
     test_unsubscribe();
     test_publish_invokes_callbacks_in_order();
     test_publish_retains_managed_payload_for_dispatch();
+    test_publish_retains_bus_during_callback_release();
     test_unsubscribe_during_publish_uses_snapshot();
     test_topics();
     test_rejects_plain_heap_callback();

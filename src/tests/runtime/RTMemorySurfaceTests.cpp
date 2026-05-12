@@ -102,6 +102,15 @@ void call_memory_release_unknown_array_element_kind() {
     rt_memory_release(payload);
 }
 
+void call_memory_release_array_len_past_cap() {
+    void **payload = (void **)rt_heap_alloc(RT_HEAP_ARRAY, RT_ELEM_OBJ, sizeof(void *), 1, 1);
+    assert(payload != nullptr);
+    rt_heap_hdr_t *hdr = rt_heap_hdr(payload);
+    hdr->len = 2;
+    hdr->cap = 1;
+    rt_memory_release(payload);
+}
+
 void call_resurrect_live_object() {
     void *obj = rt_obj_new_i64(10, 8);
     rt_obj_resurrect(obj);
@@ -234,6 +243,7 @@ int main(int argc, char *argv[]) {
     viper::tests::registerChildFunction(call_heap_set_len_past_capacity);
     viper::tests::registerChildFunction(call_memory_release_unknown_heap_kind);
     viper::tests::registerChildFunction(call_memory_release_unknown_array_element_kind);
+    viper::tests::registerChildFunction(call_memory_release_array_len_past_cap);
     viper::tests::registerChildFunction(call_resurrect_live_object);
     viper::tests::registerChildFunction(call_obj_free_live_object);
     if (viper::tests::dispatchChild(argc, argv))
@@ -257,6 +267,7 @@ int main(int argc, char *argv[]) {
     expect_trap(call_heap_set_len_past_capacity, "length exceeds capacity");
     expect_trap(call_memory_release_unknown_heap_kind, "unsupported heap payload kind");
     expect_trap(call_memory_release_unknown_array_element_kind, "unsupported array element kind");
+    expect_trap(call_memory_release_array_len_past_cap, "array length exceeds capacity");
     expect_trap(call_resurrect_live_object, "refcount is not zero");
     expect_trap(call_obj_free_live_object, "refcount is not zero");
     return 0;

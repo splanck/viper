@@ -40,8 +40,8 @@ Type conversion utilities.
 ### Conversion Rules
 
 - `ToInt` and `ToInt64` parse decimal integer text with optional leading/trailing ASCII whitespace.
-- `ToDouble` parses locale-independent decimal floating-point text with `.` as the decimal separator. C-style hexadecimal floats such as `0x1p4`, non-finite results, overflow, embedded NUL bytes, and non-whitespace trailing characters are rejected.
-- `ToString_Double` uses locale-independent round-trip precision for finite values, so text it emits can be parsed back to the same `Double`.
+- `ToDouble` parses locale-independent decimal floating-point text with `.` as the decimal separator. It also accepts the formatter's non-finite spellings: `NaN`, `Inf`, and `-Inf`. C-style hexadecimal floats such as `0x1p4`, overflow, embedded NUL bytes, and non-whitespace trailing characters are rejected.
+- `ToString_Double` uses locale-independent round-trip precision for finite values, and emits `NaN`, `Inf`, or `-Inf` for non-finite values, so text it emits can be parsed back through `ToDouble`.
 - Embedded NUL bytes and non-whitespace trailing characters are rejected.
 - `NumToInt` truncates finite values toward zero. `NaN` converts to `0`; values outside the signed 64-bit range clamp to the nearest endpoint.
 

@@ -151,11 +151,6 @@ void rt_trap_string(rt_string msg) {
         rt_trap("trap");
         return;
     }
-    if (!memchr(bytes, '\0', (size_t)len)) {
-        rt_trap(bytes);
-        return;
-    }
-
     char escaped[512];
     escaped[0] = '\0';
     append_escaped_string(escaped, sizeof(escaped), msg);

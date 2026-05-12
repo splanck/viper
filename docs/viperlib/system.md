@@ -360,8 +360,8 @@ Low-level garbage collector diagnostics. Provides visibility into the reference-
 
 - The Viper runtime uses reference counting with a cycle-collector sweep. `Collect()` forces a sweep to run now rather than waiting for the next automatic trigger.
 - Promoted long-lived roots are still used as restore roots during non-full passes, so newly attached young children remain reachable.
-- Finalizers for collected objects run before weak references are cleared; if a finalizer resurrects the object, weak references remain live.
-- If a finalizer traps during `Collect()`, the collector clears its in-progress state before re-raising the trap so later collection attempts are not permanently suppressed.
+- Finalizers for collected objects run before weak references are cleared; if any finalizer resurrects an unreachable cycle member, the entire candidate set is restored and weak references remain live.
+- If a finalizer traps during `Collect()` or shutdown finalizer sweeping, the collector balances retained snapshots and clears its in-progress state before re-raising the trap.
 - `TrackedCount` is useful for detecting object leaks in long-running programs.
 - `TotalCollected()` saturates at the maximum `Integer` value rather than wrapping.
 - `SetThreshold()` treats negative values as `0`.

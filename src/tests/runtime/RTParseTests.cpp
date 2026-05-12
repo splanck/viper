@@ -23,6 +23,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 
 extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
@@ -64,10 +65,19 @@ static void test_try_int_valid() {
 static void test_try_int_invalid() {
     int64_t result = 999;
     assert(rt_parse_try_int(make_str(""), &result) == 0);
+    assert(result == 0);
+    result = 999;
     assert(rt_parse_try_int(make_str("abc"), &result) == 0);
+    assert(result == 0);
+    result = 999;
     assert(rt_parse_try_int(make_str("12.34"), &result) == 0);
+    assert(result == 0);
+    result = 999;
     assert(rt_parse_try_int(make_str("12abc"), &result) == 0);
+    assert(result == 0);
+    result = 999;
     assert(rt_parse_try_int(make_str("   "), &result) == 0);
+    assert(result == 0);
 
     printf("test_try_int_invalid: PASSED\n");
 }
@@ -99,13 +109,64 @@ static void test_try_num_valid() {
 static void test_try_num_invalid() {
     double result = 999.0;
     assert(rt_parse_try_num(make_str(""), &result) == 0);
+    assert(result == 0.0);
+    result = 999.0;
     assert(rt_parse_try_num(make_str("abc"), &result) == 0);
+    assert(result == 0.0);
+    result = 999.0;
     assert(rt_parse_try_num(make_str("12.34.56"), &result) == 0);
+    assert(result == 0.0);
+    result = 999.0;
     assert(rt_parse_try_num(make_str("   "), &result) == 0);
+    assert(result == 0.0);
+    result = 999.0;
     assert(rt_parse_try_num(make_str("0x1p4"), &result) == 0);
+    assert(result == 0.0);
+    result = 999.0;
     assert(rt_parse_try_num(make_str("1e"), &result) == 0);
+    assert(result == 0.0);
 
     printf("test_try_num_invalid: PASSED\n");
+}
+
+static void test_double_nonfinite_roundtrip() {
+    double result = 0.0;
+    assert(rt_parse_double("NaN", &result) == (int32_t)Err_None);
+    assert(std::isnan(result));
+    assert(rt_parse_double("Inf", &result) == (int32_t)Err_None);
+    assert(std::isinf(result) && result > 0.0);
+    assert(rt_parse_double("-Inf", &result) == (int32_t)Err_None);
+    assert(std::isinf(result) && result < 0.0);
+
+    result = 0.0;
+    assert(rt_parse_try_num(make_str("nan"), &result) == 1);
+    assert(std::isnan(result));
+    assert(rt_parse_try_num(make_str("+inf"), &result) == 1);
+    assert(std::isinf(result) && result > 0.0);
+
+    rt_string nan_text = rt_f64_to_str(NAN);
+    rt_string inf_text = rt_f64_to_str(INFINITY);
+    assert(std::strcmp(rt_string_cstr(nan_text), "NaN") == 0);
+    assert(std::strcmp(rt_string_cstr(inf_text), "Inf") == 0);
+    assert(rt_parse_try_num(nan_text, &result) == 1);
+    assert(std::isnan(result));
+    assert(rt_parse_try_num(inf_text, &result) == 1);
+    assert(std::isinf(result) && result > 0.0);
+    rt_string_unref(nan_text);
+    rt_string_unref(inf_text);
+
+    printf("test_double_nonfinite_roundtrip: PASSED\n");
+}
+
+static void test_double_format_roundtrip_precision() {
+    double value = 0.84551240822557006;
+    rt_string text = rt_f64_to_str(value);
+    double parsed = 0.0;
+    assert(rt_parse_double(rt_string_cstr(text), &parsed) == (int32_t)Err_None);
+    assert(std::memcmp(&value, &parsed, sizeof(value)) == 0);
+    rt_string_unref(text);
+
+    printf("test_double_format_roundtrip_precision: PASSED\n");
 }
 
 static void test_low_level_double_rejects_hex_float() {
@@ -166,7 +227,8 @@ static void test_parse_option_wrappers() {
 
     void *bad_num = rt_parse_double_option(make_str("nan"));
     assert(rt_obj_class_id(bad_num) == RT_OPTION_CLASS_ID);
-    assert(rt_option_is_some(bad_num) == 0);
+    assert(rt_option_is_some(bad_num) == 1);
+    assert(std::isnan(rt_option_unwrap_f64(bad_num)));
 
     void *ival = rt_parse_int64_option(make_str("64"));
     assert(rt_obj_class_id(ival) == RT_OPTION_CLASS_ID);
@@ -245,10 +307,19 @@ static void test_try_bool_false_values() {
 static void test_try_bool_invalid() {
     int8_t result = 1;
     assert(rt_parse_try_bool(make_str(""), &result) == 0);
+    assert(result == 0);
+    result = 1;
     assert(rt_parse_try_bool(make_str("abc"), &result) == 0);
+    assert(result == 0);
+    result = 1;
     assert(rt_parse_try_bool(make_str("maybe"), &result) == 0);
+    assert(result == 0);
+    result = 1;
     assert(rt_parse_try_bool(make_str("2"), &result) == 0);
+    assert(result == 0);
+    result = 1;
     assert(rt_parse_try_bool(make_str("   "), &result) == 0);
+    assert(result == 0);
 
     printf("test_try_bool_invalid: PASSED\n");
 }
@@ -389,11 +460,11 @@ static void test_null_inputs() {
     int8_t b = 1;
 
     assert(rt_parse_try_int(NULL, &i) == 0);
-    assert(i == 123);
+    assert(i == 0);
     assert(rt_parse_try_num(NULL, &d) == 0);
-    assert(fabs(d - 4.5) < 0.001);
+    assert(d == 0.0);
     assert(rt_parse_try_bool(NULL, &b) == 0);
-    assert(b == 1);
+    assert(b == 0);
 
     assert(rt_parse_int_or(NULL, 7) == 7);
     assert(fabs(rt_parse_num_or(NULL, 2.5) - 2.5) < 0.001);
@@ -405,8 +476,11 @@ static void test_null_inputs() {
     rt_string bogus = (rt_string)(uintptr_t)1;
     assert(rt_string_is_handle((const void *)bogus) == 0);
     assert(rt_parse_try_int(bogus, &i) == 0);
+    assert(i == 0);
     assert(rt_parse_try_num(bogus, &d) == 0);
+    assert(d == 0.0);
     assert(rt_parse_try_bool(bogus, &b) == 0);
+    assert(b == 0);
     assert(rt_parse_is_int(bogus) == 0);
     assert(rt_parse_is_num(bogus) == 0);
     assert(rt_parse_int_radix(bogus, 10, 99) == 99);
@@ -432,9 +506,9 @@ static void test_embedded_nul_inputs() {
     int8_t b = 0;
 
     assert(rt_parse_try_int(int_s, &i) == 0);
-    assert(i == 999);
+    assert(i == 0);
     assert(rt_parse_try_num(num_s, &d) == 0);
-    assert(fabs(d - 9.0) < 0.001);
+    assert(d == 0.0);
     assert(rt_parse_try_bool(bool_s, &b) == 0);
     assert(b == 0);
 
@@ -466,6 +540,8 @@ int main() {
     // TryNum
     test_try_num_valid();
     test_try_num_invalid();
+    test_double_nonfinite_roundtrip();
+    test_double_format_roundtrip_precision();
     test_low_level_double_rejects_hex_float();
     test_low_level_parse_failures_zero_output();
     test_public_parse_string_wrappers();

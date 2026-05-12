@@ -13,7 +13,9 @@
 //
 // Key invariants:
 //   - All TryParse* functions return false on invalid input; they never trap.
-//   - NULL output pointers cause immediate false return without side effects.
+//   - NULL output pointers cause immediate false return.
+//   - Non-NULL output pointers are always reset before parsing so failed parses
+//     cannot leak a caller's previous value.
 //   - Empty strings are treated as invalid for all types.
 //   - Integer overflow causes false return; the output is not written.
 //   - Floating-point parsing uses the C locale's decimal separator.
@@ -170,6 +172,34 @@ static const char *scan_decimal_float(const char *cursor) {
     return p;
 }
 
+/// @brief Recognize canonical non-finite floating literals.
+/// @details Accepts the formatter's `NaN`, `Inf`, and `-Inf` spellings plus a
+///          leading `+` and case-insensitive input so Convert.ToString_Double
+///          and Parse/Convert.ToDouble round-trip through the public APIs.
+static int scan_nonfinite_float(const char *cursor, double *out_value, const char **out_end) {
+    if (!cursor || !out_value || !out_end)
+        return 0;
+    const char *p = cursor;
+    int negative = 0;
+    if (*p == '+' || *p == '-') {
+        negative = *p == '-';
+        ++p;
+    }
+    if ((p[0] == 'n' || p[0] == 'N') && (p[1] == 'a' || p[1] == 'A') &&
+        (p[2] == 'n' || p[2] == 'N')) {
+        *out_value = NAN;
+        *out_end = p + 3;
+        return 1;
+    }
+    if ((p[0] == 'i' || p[0] == 'I') && (p[1] == 'n' || p[1] == 'N') &&
+        (p[2] == 'f' || p[2] == 'F')) {
+        *out_value = negative ? -INFINITY : INFINITY;
+        *out_end = p + 3;
+        return 1;
+    }
+    return 0;
+}
+
 /// @brief Parse a string as a 64-bit decimal integer; on success writes to `*out_value` and
 /// returns 1. Strict validation: rejects empty input, non-numeric trailing characters, and
 /// overflow (ERANGE). Leading/trailing whitespace is tolerated. Never traps — designed for
@@ -177,6 +207,7 @@ static const char *scan_decimal_float(const char *cursor) {
 int8_t rt_parse_try_int(rt_string s, int64_t *out_value) {
     if (!out_value)
         return 0;
+    *out_value = 0;
     if (!s)
         return 0;
 
@@ -210,6 +241,7 @@ int8_t rt_parse_try_int(rt_string s, int64_t *out_value) {
 int8_t rt_parse_try_num(rt_string s, double *out_value) {
     if (!out_value)
         return 0;
+    *out_value = 0.0;
     if (!s)
         return 0;
 
@@ -220,6 +252,15 @@ int8_t rt_parse_try_num(rt_string s, double *out_value) {
     const char *cursor = skip_whitespace(text);
     if (*cursor == '\0')
         return 0;
+
+    const char *nonfinite_end = NULL;
+    double nonfinite = 0.0;
+    if (scan_nonfinite_float(cursor, &nonfinite, &nonfinite_end)) {
+        if (!is_end_of_input(nonfinite_end))
+            return 0;
+        *out_value = nonfinite;
+        return 1;
+    }
 
     const char *literal_end = scan_decimal_float(cursor);
     if (!literal_end || !is_end_of_input(literal_end))
@@ -266,6 +307,7 @@ int8_t rt_parse_try_num(rt_string s, double *out_value) {
 int8_t rt_parse_try_bool(rt_string s, int8_t *out_value) {
     if (!out_value)
         return 0;
+    *out_value = 0;
     if (!s)
         return 0;
 

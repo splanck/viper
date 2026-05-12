@@ -485,90 +485,7 @@ bool requireArchivePaths(const std::set<std::string> &names,
     return true;
 }
 
-/// @brief Verify a ZIP archive and assert the presence of all requiredEntries.
-/// Combines verifyZip (structural check) with requireArchivePaths (payload check).
-bool verifyZipPayload(const std::vector<uint8_t> &data,
-                      const std::vector<std::string> &requiredEntries,
-                      const char *kind,
-                      std::ostream &err) {
-    if (!verifyZip(data, err))
-        return false;
-    try {
-        ZipReader reader(data.data(), data.size());
-        std::set<std::string> names;
-        for (const auto &entry : reader.entries())
-            names.insert(sanitizePackageRelativePath(entry.name, kind));
-        if (!requireArchivePaths(names, requiredEntries, kind, err))
-            return false;
-
-        if (const ZipEntry *manifest = reader.find("meta/manifest.sha256")) {
-            const auto manifestBytes = reader.extract(*manifest);
-            const std::string text(manifestBytes.begin(), manifestBytes.end());
-            std::istringstream lines(text);
-            std::string line;
-            size_t lineNo = 0;
-            std::set<std::string> manifestPaths;
-            while (std::getline(lines, line)) {
-                ++lineNo;
-                while (!line.empty() && (line.back() == '\r' || line.back() == '\n'))
-                    line.pop_back();
-                if (line.empty())
-                    continue;
-                if (line.size() < 67 || !isSha256Hex(line.substr(0, 64)) ||
-                    line[64] != ' ' || line[65] != ' ') {
-                    err << kind << ": invalid SHA-256 manifest line " << lineNo << "\n";
-                    return false;
-                }
-                const std::string path = sanitizePackageRelativePath(line.substr(66), kind);
-                if (!manifestPaths.insert(path).second) {
-                    err << kind << ": SHA-256 manifest lists duplicate entry '" << path
-                        << "'\n";
-                    return false;
-                }
-                const ZipEntry *listed = reader.find(path);
-                if (listed == nullptr) {
-                    err << kind << ": SHA-256 manifest references missing entry '" << path
-                        << "'\n";
-                    return false;
-                }
-                const auto bytes = reader.extract(*listed);
-                const std::string actual = sha256Hex(bytes.data(), bytes.size());
-                std::string expected = line.substr(0, 64);
-                std::transform(expected.begin(), expected.end(), expected.begin(), [](char ch) {
-                    return static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-                });
-                if (actual != expected) {
-                    err << kind << ": SHA-256 mismatch for '" << path << "'\n";
-                    return false;
-                }
-            }
-            for (const auto &entry : reader.entries()) {
-                if (!entry.name.empty() && entry.name.back() == '/')
-                    continue;
-                const std::string path = sanitizePackageRelativePath(entry.name, kind);
-                if (path.empty() || path == "meta/manifest.sha256")
-                    continue;
-                if (manifestPaths.find(path) == manifestPaths.end()) {
-                    err << kind << ": SHA-256 manifest does not cover entry '" << path
-                        << "'\n";
-                    return false;
-                }
-            }
-        }
-        return true;
-    } catch (const std::exception &ex) {
-        err << kind << ": " << ex.what() << "\n";
-        return false;
-    }
-}
-
-} // namespace
-
-// ============================================================================
-// ZIP Verification
-// ============================================================================
-
-bool verifyZip(const std::vector<uint8_t> &data, std::ostream &err) {
+bool verifyZipStructure(const std::vector<uint8_t> &data, std::ostream &err) {
     try {
         ZipReader reader(data.data(), data.size());
         std::set<std::string> seen;
@@ -577,7 +494,8 @@ bool verifyZip(const std::vector<uint8_t> &data, std::ostream &err) {
             try {
                 clean = sanitizePackageRelativePath(entry.name, "zip entry path");
             } catch (const std::exception &ex) {
-                err << "ZIP: unsafe entry path '" << entry.name << "': " << ex.what() << "\n";
+                err << "ZIP: unsafe entry path '" << entry.name << "': " << ex.what()
+                    << "\n";
                 return false;
             }
             if (clean.empty()) {
@@ -595,6 +513,103 @@ bool verifyZip(const std::vector<uint8_t> &data, std::ostream &err) {
         return false;
     }
     return true;
+}
+
+bool verifyZipSha256Manifest(const ZipReader &reader, const char *kind, std::ostream &err) {
+    const ZipEntry *manifest = reader.find("meta/manifest.sha256");
+    if (manifest == nullptr)
+        return true;
+
+    const auto manifestBytes = reader.extract(*manifest);
+    const std::string text(manifestBytes.begin(), manifestBytes.end());
+    std::istringstream lines(text);
+    std::string line;
+    size_t lineNo = 0;
+    std::set<std::string> manifestPaths;
+    while (std::getline(lines, line)) {
+        ++lineNo;
+        while (!line.empty() && (line.back() == '\r' || line.back() == '\n'))
+            line.pop_back();
+        if (line.empty())
+            continue;
+        if (line.size() < 67 || !isSha256Hex(line.substr(0, 64)) || line[64] != ' ' ||
+            line[65] != ' ') {
+            err << kind << ": invalid SHA-256 manifest line " << lineNo << "\n";
+            return false;
+        }
+        const std::string path = sanitizePackageRelativePath(line.substr(66), kind);
+        if (!manifestPaths.insert(path).second) {
+            err << kind << ": SHA-256 manifest lists duplicate entry '" << path << "'\n";
+            return false;
+        }
+        const ZipEntry *listed = reader.find(path);
+        if (listed == nullptr) {
+            err << kind << ": SHA-256 manifest references missing entry '" << path << "'\n";
+            return false;
+        }
+        const auto bytes = reader.extract(*listed);
+        const std::string actual = sha256Hex(bytes.data(), bytes.size());
+        std::string expected = line.substr(0, 64);
+        std::transform(expected.begin(), expected.end(), expected.begin(), [](char ch) {
+            return static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        });
+        if (actual != expected) {
+            err << kind << ": SHA-256 mismatch for '" << path << "'\n";
+            return false;
+        }
+    }
+    for (const auto &entry : reader.entries()) {
+        if (!entry.name.empty() && entry.name.back() == '/')
+            continue;
+        const std::string path = sanitizePackageRelativePath(entry.name, kind);
+        if (path.empty() || path == "meta/manifest.sha256")
+            continue;
+        if (manifestPaths.find(path) == manifestPaths.end()) {
+            err << kind << ": SHA-256 manifest does not cover entry '" << path << "'\n";
+            return false;
+        }
+    }
+    return true;
+}
+
+/// @brief Verify a ZIP archive and assert the presence of all requiredEntries.
+/// Combines verifyZip (structural check) with requireArchivePaths (payload check).
+bool verifyZipPayload(const std::vector<uint8_t> &data,
+                      const std::vector<std::string> &requiredEntries,
+                      const char *kind,
+                      std::ostream &err) {
+    if (!verifyZipStructure(data, err))
+        return false;
+    try {
+        ZipReader reader(data.data(), data.size());
+        std::set<std::string> names;
+        for (const auto &entry : reader.entries())
+            names.insert(sanitizePackageRelativePath(entry.name, kind));
+        if (!requireArchivePaths(names, requiredEntries, kind, err))
+            return false;
+        return verifyZipSha256Manifest(reader, kind, err);
+    } catch (const std::exception &ex) {
+        err << kind << ": " << ex.what() << "\n";
+        return false;
+    }
+}
+
+} // namespace
+
+// ============================================================================
+// ZIP Verification
+// ============================================================================
+
+bool verifyZip(const std::vector<uint8_t> &data, std::ostream &err) {
+    if (!verifyZipStructure(data, err))
+        return false;
+    try {
+        ZipReader reader(data.data(), data.size());
+        return verifyZipSha256Manifest(reader, "ZIP", err);
+    } catch (const std::exception &ex) {
+        err << "ZIP: " << ex.what() << "\n";
+        return false;
+    }
 }
 
 bool verifyMacOSAppZip(const std::vector<uint8_t> &data,

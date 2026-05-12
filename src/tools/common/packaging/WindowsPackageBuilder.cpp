@@ -592,6 +592,18 @@ void addParentDirs(std::vector<WindowsPackageDirEntry> &out,
 /// entries in layout. The layout entry captures the local-data offset and CRC-32
 /// from the freshly-written ZIP entry so the installer stub can locate and verify
 /// each file without parsing the central directory at runtime.
+void appendPayloadManifestEntry(std::ostringstream *payloadManifest,
+                                const std::string &overlayName,
+                                const uint8_t *data,
+                                size_t len) {
+    if (payloadManifest == nullptr)
+        return;
+    *payloadManifest << sha256Hex(data, len) << "  "
+                     << sanitizePackageRelativePath(overlayName,
+                                                    "Windows package manifest path")
+                     << "\n";
+}
+
 void addOverlayFile(ZipWriter &zip,
                     const std::string &overlayName,
                     const uint8_t *data,
@@ -606,12 +618,7 @@ void addOverlayFile(ZipWriter &zip,
     const auto &entry = zip.layoutEntries().back();
     layout.installFiles.push_back(WindowsPackageFileEntry{
         root, installRelativePath, entry.localDataOffset, entry.uncompressedSize, entry.crc32});
-    if (payloadManifest) {
-        *payloadManifest << sha256Hex(data, len) << "  "
-                         << sanitizePackageRelativePath(overlayName,
-                                                        "Windows package manifest path")
-                         << "\n";
-    }
+    appendPayloadManifestEntry(payloadManifest, overlayName, data, len);
     if (deleteOnUninstall) {
         layout.uninstallFiles.push_back(
             WindowsPackageFileEntry{root, installRelativePath, 0, entry.uncompressedSize, 0});
@@ -1005,6 +1012,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
             const std::string overlayName =
                 lowerName == "license" ? "meta/license.txt" : "meta/readme.txt";
             zip.addFile(overlayName, data.data(), data.size(), 0100644);
+            appendPayloadManifestEntry(&payloadManifest, overlayName, data.data(), data.size());
         }
     }
 

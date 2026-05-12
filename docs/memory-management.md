@@ -277,7 +277,7 @@ object by calling `visitor(child, ctx)` for each one.
 
 ### Triggering
 
-By default the collector does not run automatically. It can be triggered explicitly, or by setting an allocation threshold via `rt_gc_set_threshold(n)` (default 0 = disabled; negative values are clamped to 0). At program shutdown, `rt_gc_run_all_finalizers()` runs a final collection pass.
+By default the collector does not run automatically. It can be triggered explicitly, or by setting an allocation threshold via `rt_gc_set_threshold(n)` (default 0 = disabled; negative values are clamped to 0). At program shutdown, `rt_gc_run_all_finalizers()` runs the finalizers for currently tracked objects without performing a cycle-collection pass.
 
 ```c
 int64_t freed = rt_gc_collect();  // Run one collection pass
@@ -296,7 +296,9 @@ a pass is still reclaiming objects.
 If a trap occurs during collection after the active flag is set, temporary
 collector state is released, retained snapshot entries are balanced, and the
 active-collection flag is cleared before the trap is re-raised so later
-collection passes can run.
+collection passes can run. If a finalizer resurrects any member of an
+unreachable garbage set, the collector restores the entire set's refcounts and
+tracking entries instead of freeing only part of the object graph.
 
 ### Statistics
 
@@ -335,6 +337,10 @@ void        rt_weakref_reset(ref, target); // Retarget an existing weak ref
 void        rt_weakref_free(ref);       // Destroy handle (does not affect target)
 ```
 
+Weak targets must be live runtime handles: `NULL`, heap objects, arrays, or
+runtime strings. Raw foreign pointers are rejected so the weak-reference
+registry never tracks memory it cannot zero safely.
+
 When a target object is freed, `rt_gc_clear_weak_refs(target)` automatically
 nullifies all weak references pointing to it. This is called from `rt_obj_free()`
 and from the GC collector after the object's finalizer has run and did not
@@ -367,6 +373,11 @@ rt_obj_set_finalizer(obj, fn);  // Install callback (one per object, replaces pr
 - During cycle collection, outgoing references owned by unreachable objects are
   released after finalization while edges to other objects in the same garbage set
   are skipped.
+- If any finalizer in an unreachable cycle resurrects an object, the whole
+  garbage set is restored and re-tracked to avoid dangling references between
+  surviving and collected cycle members.
+- Finalizer traps during collection or shutdown finalizer sweeps re-raise the
+  original trap after snapshot retains are balanced.
 - Calling `rt_gc_collect()` from a finalizer is safe but returns 0 while another
   collection pass is already active.
 

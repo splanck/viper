@@ -726,11 +726,11 @@ String manipulation:
 
 Type conversion:
 
-- `Viper.Core.Convert.ToDouble(str)->f64` — String to double (throws on error)
+- `Viper.Core.Convert.ToDouble(str)->f64` — String to double (throws on error; accepts `NaN`, `Inf`, and `-Inf`)
 - `Viper.Core.Convert.ToInt(str)->i64` — String to int (throws on error)
 - `Viper.Core.Convert.ToInt64(str)->i64` — String to int (throws on error)
-- `Viper.Core.Convert.NumToInt(f64)->i64` — Truncate/clamp double to int
-- `Viper.Core.Convert.ToString_Double(f64)->str` — Convert double to round-trip decimal string
+- `Viper.Core.Convert.NumToInt(f64)->i64` — Truncate/clamp double to int (`NaN` becomes `0`)
+- `Viper.Core.Convert.ToString_Double(f64)->str` — Convert double to round-trip decimal string, including `NaN`, `Inf`, and `-Inf`
 - `Viper.Core.Convert.ToString_Int(i64)->str` — Convert int64 to string
 
 `Viper.Convert` is a public alias for the same methods.
@@ -759,7 +759,7 @@ Type parsing with explicit error codes:
 
 Error and diagnostic utilities:
 
-- `Viper.Core.Diagnostics.Trap(str)->void` — Trigger runtime trap
+- `Viper.Core.Diagnostics.Trap(str)->void` — Trigger runtime trap; control bytes in managed-string messages are escaped in diagnostics
 
 ### Runtime Classes (Viper.*)
 

@@ -25,6 +25,11 @@ static void msgbus_test_callback(void *data) {
     (void)data;
 }
 
+struct box_layout_probe {
+    int64_t tag;
+    int64_t payload;
+};
+
 int main() {
     // Test IsNull with null pointer
     assert(rt_obj_is_null(NULL) == 1);
@@ -99,6 +104,13 @@ int main() {
     void *zero_neg = rt_box_f64(-0.0);
     assert(rt_box_hash(zero_pos) == rt_box_hash(zero_neg));
 
+    void *invalid_tag_box = rt_box_i64(5);
+    ((box_layout_probe *)invalid_tag_box)->tag = 999;
+    assert(rt_box_type(invalid_tag_box) == -1);
+    int64_t invalid_try = 123;
+    assert(rt_box_try_to_i64(invalid_tag_box, &invalid_try) == 0);
+    assert(invalid_try == 0);
+
     rt_string same_a = rt_string_from_bytes("same string", 11);
     rt_string same_b = rt_string_from_bytes("same string", 11);
     assert(same_a != same_b);
@@ -139,7 +151,7 @@ int main() {
     assert(strcmp(rt_string_cstr(bus_string), "Viper.Core.MessageBus") == 0);
     rt_string_unref(bus_string);
 
-    void *callback = rt_msgbus_callback_new((void *)msgbus_test_callback);
+    void *callback = rt_msgbus_callback_new(msgbus_test_callback);
     assert(rt_obj_type_id(callback) == RT_MSGBUS_CALLBACK_CLASS_ID);
     rt_string callback_name = rt_obj_type_name(callback);
     assert(strcmp(rt_string_cstr(callback_name), "Viper.Core.MessageBus.Callback") == 0);
@@ -157,6 +169,8 @@ int main() {
     rt_obj_free(zero_pos);
     rt_obj_release_check0(zero_neg);
     rt_obj_free(zero_neg);
+    rt_obj_release_check0(invalid_tag_box);
+    rt_obj_free(invalid_tag_box);
     rt_obj_release_check0(str_box);
     rt_obj_free(str_box);
     rt_string_unref(same_a);

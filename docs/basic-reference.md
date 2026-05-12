@@ -842,10 +842,10 @@ Type conversion:
 
 - `Viper.Convert.ToInt(str)->i64` — Convert string to integer (alias for ToInt64, throws on error)
 - `Viper.Convert.ToInt64(str)->i64` — Convert string to integer (throws on error)
-- `Viper.Convert.ToDouble(str)->f64` — Convert string to double (throws on error)
+- `Viper.Convert.ToDouble(str)->f64` — Convert string to double (throws on error; accepts `NaN`, `Inf`, and `-Inf`)
 - `Viper.Convert.NumToInt(f64)->i64` — Truncate finite double to integer; NaN becomes 0 and out-of-range values clamp
 - `Viper.Convert.ToString_Int(i64)->str` — Convert integer to string
-- `Viper.Convert.ToString_Double(f64)->str` — Convert double to round-trip decimal string
+- `Viper.Convert.ToString_Double(f64)->str` — Convert double to round-trip decimal string, including `NaN`, `Inf`, and `-Inf`
 
 #### Viper.Parse
 

@@ -468,9 +468,9 @@ uint64_t ToolchainInstallManifest::totalSizeBytes() const {
 /// registered with the OS by all platform package builders (deb, pkg, msi).
 std::vector<FileAssoc> defaultToolchainFileAssociations() {
     return {
-        {".zia", "Zia Source File", "text/x-zia"},
-        {".bas", "BASIC Source File", "text/x-basic"},
-        {".il", "Viper IL Module", "text/x-viper-il"},
+        {".zia", "Zia Source File", "text/x-zia", ""},
+        {".bas", "BASIC Source File", "text/x-basic", ""},
+        {".il", "Viper IL Module", "text/x-viper-il", ""},
     };
 }
 

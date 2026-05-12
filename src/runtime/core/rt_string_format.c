@@ -194,15 +194,16 @@ rt_string rt_int_to_str(int64_t v) {
     return s;
 }
 
-/// @brief Convert a double to a runtime string using BASIC formatting rules.
-/// @details Relies on @ref rt_format_f64 to produce locale-stable decimal text,
-///          then copies the result into a freshly allocated runtime string whose
+/// @brief Convert a double to a runtime string using exact round-trip formatting.
+/// @details Relies on @ref rt_format_f64_roundtrip to produce locale-stable
+///          decimal text that parses back to the same IEEE-754 value, then
+///          copies the result into a freshly allocated runtime string whose
 ///          ownership transfers to the caller.
 /// @param v Floating-point value to format.
 /// @return Newly allocated runtime string containing the formatted value.
 rt_string rt_f64_to_str(double v) {
     char buf[64];
-    rt_format_f64(v, buf, sizeof(buf));
+    rt_format_f64_roundtrip(v, buf, sizeof(buf));
     return rt_string_from_bytes(buf, strlen(buf));
 }
 
@@ -213,7 +214,7 @@ rt_string rt_f64_to_str(double v) {
 /// @return Newly allocated runtime string containing the formatted value.
 rt_string rt_str_d_alloc(double v) {
     char buf[64];
-    rt_format_f64(v, buf, sizeof(buf));
+    rt_format_f64_roundtrip(v, buf, sizeof(buf));
     return rt_string_from_bytes(buf, strlen(buf));
 }
 

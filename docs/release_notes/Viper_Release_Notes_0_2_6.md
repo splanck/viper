@@ -10,8 +10,8 @@
 
 A focused hardening-and-correctness cycle on the v0.2.5 surface. No new public namespaces; every change closes an attack surface, eliminates a latent correctness bug, or tightens a lifetime, locking, or type-identity invariant.
 
-- Memory and GC overhaul — validated `Viper.Memory.Retain` / `Release` wrappers, lock-free traversal, trap-safe finalizer phase, resurrection-aware refcounting.
-- MessageBus end-to-end correctness — class-ID validation, managed callback objects, NUL-safe topic hashing, internal locking, GC traversal registration.
+- Memory and GC overhaul — validated `Viper.Memory.Retain` / `Release` wrappers, lock-free traversal, trap-safe finalizer phase, resurrection-aware refcounting, and `rt_weakref_get` now retains its target inside the GC lock via CAS so a concurrent free can no longer race the deref.
+- MessageBus end-to-end correctness — class-ID validation, managed callback objects, NUL-safe topic hashing, internal locking, GC traversal registration, and reentrancy-safe unsubscribe (snapshot / null / free / unref ordering so unref can no longer re-enter bus code through a half-freed node).
 - `Viper.Threads.*` three-round correctness pass — repeatable joins, distinct class IDs, idempotent pool shutdown with sticky-then-cleared task traps, retain-during-call across every public threads entry, monitor finalize-while-waiting safety, async + Parallel.Map retained-result ownership, listener trap isolation, synchronous-channel `TrySend` rendezvous, nested-parallel self-deadlock guard, VM payload OOM handling.
 - Crypto upgrade — `Viper.Text.*` → `Viper.Crypto.*` migration with backward-compat aliases, scrypt-SHA256, AES-256-GCM with AAD, P-256 ECDH, HMAC-SHA384/512, validation-ready `Viper.Crypto.Module` with approved-mode policy gates. Round 2 adds RSA 1024-bit modulus floor, ECDSA P-256 fixed-schedule scalar multiplication, point-on-curve validation at every public-point ingress, and DER decoding that rejects non-minimal length encodings.
 - TLS X.509 verifier hardening — Key Usage, Basic Constraints, and Extended Key Usage extensions enforced; DNS-name validation tightened.
@@ -35,18 +35,19 @@ A focused hardening-and-correctness cycle on the v0.2.5 surface. No new public n
 - Network runtime hardening — HTTP/2 HPACK split into independent encode/decode tables with `pthread_once`-guarded Huffman init; HTTP/1.1 `Transfer-Encoding` parsed as a strict RFC 7230 token list; WebSocket servers reject non-minimal frames and clients validate close codes per RFC 6455; URL parser traps on out-of-range ports; TLS `ServerHello` `key_share` exact-length validated; UDP recv detects truncation.
 - D3D11 backend correctness — render-target and overlay lifetimes corrected so transparent draws no longer corrupt motion-vector targets; shaders gain `safeNormalize3` and explicit NDC/UV helpers for consistent texture-space conventions; skinning normalises non-zero weights and identity-pads unused bone slots; dynamic buffers route through checked size multiplication.
 - x86-64 backend regression repairs — integer cast width selection, label-operand validation, frame-slot aliasing, overflow-pseudo lowering, switch operand normalisation, and a documentation pass across ~50 backend source files with doxygen on every helper.
+- Windows VAPS installer hardening — PE32+ payload validation against the selected x64/arm64 target, recursive adjacent-DLL discovery with Windows/UCRT/VC redistributable classification, `SHGetKnownFolderPath` + `RegDeleteTreeW` modernisation, embedded VERSIONINFO + InstallDate metadata, `windows-install-scope machine|user` + custom `windows-install-dir`, `windows-sign-thumbprint` parity across `viper package` and `viper install-package`, ZIP SHA-256 manifest coverage with duplicate / uncovered-entry rejection, and a non-elevated user-scope smoke ctest exercising install / launch / file-association / uninstall end-to-end.
 
 ### By the Numbers
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 61 | +61 |
+| Commits | — | 63 | +63 |
 | Source files | 2,996 | 3,006 | +10 |
-| Production SLOC | 552K | 573K | +21K |
+| Production SLOC | 552K | 574K | +22K |
 | Test SLOC | 228K | 240K | +12K |
 | Demo SLOC | 188K | 188K | 0 |
 
-Counts via `scripts/count_sloc.sh` (production 573,316 / test 240,144 / demo 187,826 / source files 3,006).
+Counts via `scripts/count_sloc.sh` (production 574,163 / test 240,526 / demo 187,826 / source files 3,006).
 
 ---
 
@@ -63,6 +64,12 @@ Counts via `scripts/count_sloc.sh` (production 573,316 / test 240,144 / demo 187
 - Snapshots retained via `rt_obj_retain_maybe` before lock release — prevents UAF if another thread drops the last external reference.
 - Promoted-root restoration during non-full passes preserves young objects reachable from long-lived roots; weak references cleared only after finalizers decline resurrection.
 - `TotalCollected` saturates at `INT64_MAX`.
+- `rt_weakref_get` now retains the live target through a CAS loop while the GC lock is held — closes a TOCTOU window where a weakly-referenced object could be freed between deref and the caller's first use. Immortal refcounts take a no-op fast path; mortal-refcount overflow saturates and traps via the immortal-promotion guard.
+- String weak references are special-cased through the shared `literal_refs` table for SSO strings and the heap refcount for heap-backed strings, so both string flavours retain correctly through the same `rt_weakref_get` entry.
+- `rt_memory_retain_str` now rejects non-string handles with a clean trap instead of forwarding garbage into `rt_memory_retain`; gives the Zia/BASIC IL boundary a typed precondition.
+- `value_type_traverse` replaced raw `calloc` with `rt_alloc` plus an explicit `count * sizeof(void *)` overflow guard so a malicious child count cannot wrap into a small allocation.
+- `rt_memory_release_array_payload` now releases `RT_ELEM_I32` and `RT_ELEM_I64` slots through the same path as the object cases — primitive arrays no longer skip the array-payload release machinery.
+- `rt_to_int`'s string-format buffer free switched from system `free` to `rt_free` to match the `rt_alloc` it was paired with, fixing a mixed-allocator path that bypassed the runtime's allocator accounting.
 
 ### Runtime objects and MessageBus
 
@@ -87,6 +94,10 @@ Counts via `scripts/count_sloc.sh` (production 573,316 / test 240,144 / demo 187
 - `Box.ValueType.AddField` now traps on offsets that aren't pointer-aligned.
 - New `RT_ELEM_OBJ` heap element kind disambiguates "no managed elements" from "object pointer elements"; object arrays release-per-pointer, primitive arrays remain a true no-op.
 - `Diagnostics.Trap` routes through new validating `rt_trap_string` dispatcher that escapes embedded NULs and rejects invalid string handles before reaching the C-string trap formatter; AArch64 + x86-64 backends and BASIC + Zia frontends all retargeted at the new symbol.
+- MessageBus unsubscribe is now reentrancy-safe: `mb_free_sub` and `mb_free_topic_node` snapshot the topic and callback, null the fields on the containing node, free the node, and only then unref the topic string and release the callback — so an unref that re-enters bus code can no longer observe a half-freed node. Managed-payload retain and topic-list traversal received a parallel hardening pass so registration churn no longer races with publish.
+- `rt_parse_int_radix` now rejects leading `+` / `-` signs on non-decimal radices (was silently negating the unsigned bit pattern); decimal radix continues to accept both signs so `Fmt.IntRadix` output round-trips. The accepted grammar is documented inline.
+- `rt_parse` float grammar tightened: the leading-dot form (`.123`) is recognised explicitly, and the exponent body now requires digits — `1e` / `1e+` no longer parse as 1.0.
+- `rt_weakmap_get` is marked `returnsOwned` in `RuntimeOwnership` so the IL-side policy stops over-retaining the result and matches the runtime ABI; the get path promotes a live weak value to a retained reference and returns `NULL` after the value has been collected.
 
 ### Crypto
 
@@ -309,13 +320,27 @@ Counts via `scripts/count_sloc.sh` (production 573,316 / test 240,144 / demo 187
 - D3D11 backend derives the bone-palette buffer allocation from the shared 256-bone palette constants used by the shader and upload-packing path. The old 128-bone hard-coded cbuffer let the first 16 KB palette upload overrun an 8 KB mapped buffer, crashing 3dbowling under the Windows debug UCRT.
 - Windows full-build TLS and timeout test stabilization — flaky network-runtime tests reworked so the MSVC full build runs the network suite cleanly without timing-sensitive false failures.
 
+### Packaging & distribution
+
+Two-round hardening pass on the Windows VAPS installer pipeline.
+
+- **PE payload validation** — Windows app payloads are validated as PE32+ before packaging and rejected on x64/arm64 architecture mismatch against the selected target. ARM64 app packages keep the existing x64 bootstrap, but the ARM64 payload itself is validated and the Windows-on-ARM emulation contract is documented.
+- **Recursive adjacent-DLL discovery** — Adjacent non-system DLL dependencies are discovered recursively so helper DLLs bring their own local dependencies into the installer overlay. Windows, API-set, VC runtime, and MSVC debug CRT DLL names are classified as system redistributables so local system-named files are not accidentally bundled and Debug-built payloads still package. Scanning is tolerant of unstatable temp files (Windows socket-like filesystem entries no longer hard-fail).
+- **Install-scope and dir control** — `windows-install-scope machine|user` directs install root, registry hive, and shortcut placement (Program Files/HKLM vs LocalAppData/HKCU); `windows-install-dir` is an explicit install-root override. User-scope manifests are `asInvoker` and include Windows compatibility metadata when `min-os-windows` is provided. Owned app install roots are cleaned before extraction so upgrades do not leave removed payload files behind.
+- **Installer-stub modernisation** — Legacy `SHGetFolderPathW` + CSIDL replaced with `SHGetKnownFolderPath` / `CoTaskMemFree` for install, Desktop, and Start Menu roots. Package-owned registry subtrees clean up via `RegDeleteTreeW` instead of shallow key deletion. `GetModuleFileNameW` truncation is checked in both installer and uninstaller stubs. A runtime `InstallDate` is emitted through `GetDateFormatW` with the generated package date as fallback. An interactive uninstaller confirmation is shown unless `/quiet` or `/silent` is passed.
+- **VERSIONINFO embedding** — Generated setup and uninstall PEs carry embedded VERSIONINFO resources so Explorer, SmartScreen, and Add/Remove Programs have package metadata to inspect. SemVer-style Windows package versions are accepted for metadata while the numeric prefix is still used for VERSIONINFO fixed fields.
+- **Signing parity** — `windows-sign-thumbprint` manifest entry, `--windows-sign-thumbprint` CLI flag, and `VIPER_WINDOWS_SIGN_THUMBPRINT` env fallback select a certificate-store identity by SHA-1 thumbprint; thumbprints are normalised (spaces/tabs stripped, lowercased) and validated up front for both `viper package` and `viper install-package`. PFX signing, certificate-store signing, timestamp-URL override, signtool override, and post-sign verify suppression are now available on `install-package` as well.
+- **Manifest coverage verification** — Windows installer overlays include a `meta/manifest.sha256` covering payload files; ZIP SHA-256 verification rejects duplicate manifest entries and any payload file not covered by the manifest, while preserving directory-entry handling so directory entries are ignored before sanitised names lose their trailing slash.
+- **Dry-run output** — Expanded to surface custom Windows install directories, thumbprints, and file-association open arguments so a `--dry-run` review reflects what the resulting installer will actually do.
+
 ### Tests
 
-- Memory / GC: traversal callbacks, promoted roots, weak-ref resurrection, finalizer trap recovery.
-- MessageBus: NUL-embedded topics, callback class-ID validation, raw-callback rejection, owning topic snapshots, publish trap cleanup, subscription-ID overflow, payload retention through dispatch.
+- Memory / GC: traversal callbacks, promoted roots, weak-ref resurrection, finalizer trap recovery, plus new `RTGCTests` coverage for `rt_weakref_get` CAS-loop retain semantics, immortal-refcount fast path, and mortal-refcount overflow trap.
+- MessageBus: NUL-embedded topics, callback class-ID validation, raw-callback rejection, owning topic snapshots, publish trap cleanup, subscription-ID overflow, payload retention through dispatch, and reentrancy-safe unsubscribe ordering.
 - Object: `rt_obj_equals` / `GetHashCode` Box dispatch, `±0.0` hash equality, type identity, `RefEquals`, `Object.TypeName` for built-in MessageBus / Box / ValueType / Option / Callback class IDs.
 - New `RTMemorySurfaceTests`: invalid-handle traps, resurrected release counts, array-element release, `RetainStr` / `ReleaseStr` round-trip, immortal-release trap, `RT_ELEM_OBJ` array regression.
-- New `RTParseTests`: `DoubleOption` / `Int64Option` success and `None`, class IDs, typed return metadata, leading-`+` sign, typed-string vs C-string ABI parity.
+- New `RTParseTests`: `DoubleOption` / `Int64Option` success and `None`, class IDs, typed return metadata, leading-`+` sign, typed-string vs C-string ABI parity, radix-sign rejection on non-decimal bases, and the dot-prefix `.123` float form.
+- New `RTWeakMapTests` extensions: CAS-loop release path on `rt_weakmap_get`, `returnsOwned` ABI contract.
 - New `RTTrapContractTests`: NUL-embedded diagnostic message escaping; `Diagnostics.Trap` routes through `rt_trap_string`.
 - New `RTSeqBoxTests::call_value_type_misaligned_field`: pointer-aligned offset validation for `Box.ValueType.AddField`.
 - New `RTCoreOwnershipTests::test_runtime_metadata_matches_core_contracts`: end-to-end ownership classifications for `Memory.*`, Box family, `Object.ToString` / `TypeName`, `Parse.*Option`, `Convert.ToString_*`, and MessageBus.
@@ -330,13 +355,14 @@ Counts via `scripts/count_sloc.sh` (production 573,316 / test 240,144 / demo 187
 - Native assembler & linker: new tests for `parseSize`, archive symbol-candidate ordering and GNU long names, `CodeSection` identity, ELF symbol-size preservation, COFF ambiguous-target + reloc-overflow records, AArch64 addend validation and LDR/STR scaled-offset reloc kinds, Mach-O `SIGNED_4` bias plus anchor-symbol routing, `InputSectionKey` lookups, branch-trampoline overflow guards, and MOVZX REX emission.
 - Linker correctness round: COMMON coalescing across mixed alignments, per-platform underscore fallback (Mach-O accepts, ELF/COFF reject), strong-global precedence over same-object local definitions, ICF folded-symbol redirect, ELF `PT_TLS` emission, Mach-O 16-byte name validation, AArch64 reloc instruction-class validators, PE 32-bit field-overflow guards, and Mach-O subsections-via-symbols splitting.
 - The seven `Viper.GUI` widget tests in `src/lib/gui/tests/` were relabeled `tui` → `gui` (a new dedicated ctest label); the wheel-scroll regression contract was rewritten with floating-point tolerance to match the new mouse-wheel constant.
+- Packaging: PE VERSIONINFO emission, Windows thumbprint normalisation, ZIP manifest duplicate / uncovered-entry rejection, PE payload format + architecture rejection, recursive DLL dependency discovery, custom install-dir / open-args / manifest / VERSIONINFO assertions, installer-stub coverage for `SHGetKnownFolderPath` / `CoTaskMemFree` / `RegDeleteTreeW` / `GetDateFormatW` / uninstaller confirmation, and updated CLI tests for Windows install dir, file-association open args, signing thumbprints, and `install-package` thumbprint validation. New non-elevated `windows_installer_user_smoke` ctest builds a real user-scope app installer end-to-end and verifies install / launch / file-association command / Desktop and Start Menu shortcuts / uninstall cleanup; the existing elevated Windows smoke fixture's generated Zia source gained its required module declaration.
 
-Demos and docs were updated to track the runtime work above; the stale Windows debug/O0 pins for chess, xenoscape, and Baseball were removed after optimized x86-64 builds and smoke probes were restored.
+Demos and docs were updated to track the runtime work above; the stale Windows debug/O0 pins for chess, xenoscape, and Baseball were removed after optimized x86-64 builds and smoke probes were restored. Bible review fixes corrected the Chapter 3 (Values and Names) note about `+=` (Zia already supports compound assignment) and the Chapter 7 (Functions) BASIC sidebar (`Greet("Alice")` rather than `CALL Greet("Alice")`, since Viper BASIC does not recognise the `CALL` keyword).
 
 ---
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 61-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 63-commit history since v0.2.5.
 
 <!-- END DRAFT -->

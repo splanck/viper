@@ -12,8 +12,9 @@
 // File: src/runtime/core/rt_format.c
 // Purpose: Implements numeric and CSV formatting helpers that mirror BASIC
 //          runtime semantics. Provides deterministic double-to-string
-//          conversion with C-locale decimal separators, special-value
-//          handling (NaN, infinity), and CSV string quoting.
+//          display and exact round-trip conversion with C-locale decimal
+//          separators, special-value handling (NaN, infinity), and CSV string
+//          quoting.
 //
 // Key invariants:
 //   - Caller-provided output buffers must be non-NULL and non-zero in capacity;
@@ -24,6 +25,9 @@
 //     provide buffers large enough for the expected value range.
 //   - NaN and infinity are formatted as their canonical string representations
 //     ("NaN", "Inf", "-Inf") rather than locale-dependent variants.
+//   - BASIC display formatting intentionally uses 15 significant digits for
+//     compatibility, while conversion formatting uses enough digits to
+//     round-trip exactly.
 //   - CSV quoting doubles internal double-quotes and wraps the result in
 //     double-quote delimiters.
 //
@@ -45,6 +49,7 @@
 #include <locale.h>
 #include <math.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -102,6 +107,45 @@ static int rt_format_snprintf_c_locale(char *buffer, size_t capacity, const char
     return written;
 }
 
+/// @brief Parse a formatter candidate under the C numeric locale.
+static int rt_format_strtod_c_locale(const char *text, double *out) {
+    if (!text || !out)
+        return 0;
+    char *endptr = NULL;
+#if defined(_WIN32)
+    _locale_t c_locale = _create_locale(LC_NUMERIC, "C");
+    if (!c_locale)
+        return 0;
+    double parsed = _strtod_l(text, &endptr, c_locale);
+    _free_locale(c_locale);
+#else
+    locale_t c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
+    if (!c_locale)
+        return 0;
+    locale_t previous = uselocale(c_locale);
+    if (previous == (locale_t)0) {
+        freelocale(c_locale);
+        return 0;
+    }
+    double parsed = strtod(text, &endptr);
+    uselocale(previous);
+    freelocale(c_locale);
+#endif
+    if (!endptr || *endptr != '\0')
+        return 0;
+    *out = parsed;
+    return 1;
+}
+
+/// @brief Compare two doubles by exact IEEE-754 representation.
+static int rt_format_f64_bits_equal(double a, double b) {
+    uint64_t aa = 0;
+    uint64_t bb = 0;
+    memcpy(&aa, &a, sizeof(aa));
+    memcpy(&bb, &b, sizeof(bb));
+    return aa == bb;
+}
+
 /// @brief Copy formatted text into a caller-provided buffer.
 /// @details Validates buffer arguments, traps on truncation, and performs a
 ///          full copy including the null terminator.  Keeping the check in a
@@ -118,13 +162,27 @@ static void rt_format_write(const char *text, char *buffer, size_t capacity) {
     memcpy(buffer, text, len + 1);
 }
 
-/// @brief Format a double according to BASIC runtime rules.
-/// @details Handles NaN and infinity explicitly. For finite values uses a
-///          shortest-round-trip search: tries `%.*g` at increasing precision
-///          from 1 to 17 digits and picks the first precision whose `strtod`
-///          recovers the original double. This yields user-friendly output
-///          ("3.14" instead of "3.1400000000000001") while still guaranteeing
-///          that re-parsing recovers the exact value.
+static int rt_format_f64_write_special(double value, char *buffer, size_t capacity) {
+    if (isnan(value)) {
+        rt_format_write("NaN", buffer, capacity);
+        return 1;
+    }
+    if (isinf(value)) {
+        if (signbit(value))
+            rt_format_write("-Inf", buffer, capacity);
+        else
+            rt_format_write("Inf", buffer, capacity);
+        return 1;
+    }
+    return 0;
+}
+
+/// @brief Format a double according to BASIC display rules.
+/// @details Handles NaN and infinity explicitly. Finite values use the legacy
+///          15-significant-digit `%g` display form used by BASIC `PRINT`
+///          output. This is intentionally not an exact-round-trip formatter;
+///          use @ref rt_format_f64_roundtrip for conversion APIs that require
+///          exact reparsing.
 /// @param value Floating-point value to format.
 /// @param buffer Destination buffer supplied by the caller.
 /// @param capacity Size of the destination buffer in bytes.
@@ -132,27 +190,69 @@ void rt_format_f64(double value, char *buffer, size_t capacity) {
     if (!buffer || capacity == 0)
         rt_trap("rt_format_f64: invalid buffer");
 
-    if (isnan(value)) {
-        rt_format_write("NaN", buffer, capacity);
+    if (rt_format_f64_write_special(value, buffer, capacity))
         return;
-    }
-    if (isinf(value)) {
-        if (signbit(value))
-            rt_format_write("-Inf", buffer, capacity);
-        else
-            rt_format_write("Inf", buffer, capacity);
-        return;
-    }
 
-    // %.15g is the historical Viper default — matches Python repr()-style
-    // 15-sig-digit output, trailing zeros stripped via %g. Goldens in
-    // basic_random_repro and comprehensive_control_flow_strings were recorded
-    // against this precision.
     int written = rt_format_snprintf_c_locale(buffer, capacity, "%.15g", value);
     if (written < 0)
         rt_trap("rt_format_f64: format error");
     if ((size_t)written >= capacity)
         rt_trap("rt_format_f64: truncated");
+}
+
+static int rt_format_should_replace_roundtrip(const char *candidate, const char *best) {
+    size_t candidate_len = strlen(candidate);
+    size_t best_len = strlen(best);
+    if (candidate_len != best_len)
+        return candidate_len < best_len;
+
+    int candidate_exp = strchr(candidate, 'e') != NULL || strchr(candidate, 'E') != NULL;
+    int best_exp = strchr(best, 'e') != NULL || strchr(best, 'E') != NULL;
+    return best_exp && !candidate_exp;
+}
+
+/// @brief Format a double according to exact round-trip conversion rules.
+/// @details Handles NaN and infinity explicitly. For finite values uses a
+///          shortest-round-trip search: tries `%.*g` at precision 1 through 17,
+///          keeps candidates whose `strtod` recovers the original double, and
+///          chooses the shortest text. Ties prefer fixed notation over
+///          exponent notation so integer-valued doubles remain readable when
+///          that costs no additional bytes.
+/// @param value Floating-point value to format.
+/// @param buffer Destination buffer supplied by the caller.
+/// @param capacity Size of the destination buffer in bytes.
+void rt_format_f64_roundtrip(double value, char *buffer, size_t capacity) {
+    if (!buffer || capacity == 0)
+        rt_trap("rt_format_f64_roundtrip: invalid buffer");
+
+    if (rt_format_f64_write_special(value, buffer, capacity))
+        return;
+
+    char candidate[64];
+    char best[64];
+    best[0] = '\0';
+    for (int precision = 1; precision <= 17; ++precision) {
+        int n = rt_format_snprintf_c_locale(
+            candidate, sizeof(candidate), "%.*g", precision, value);
+        if (n < 0 || (size_t)n >= sizeof(candidate))
+            continue;
+        double reparsed = 0.0;
+        if (rt_format_strtod_c_locale(candidate, &reparsed) &&
+            rt_format_f64_bits_equal(value, reparsed)) {
+            if (best[0] == '\0' || rt_format_should_replace_roundtrip(candidate, best))
+                memcpy(best, candidate, (size_t)n + 1);
+        }
+    }
+
+    if (best[0] != '\0') {
+        rt_format_write(best, buffer, capacity);
+        return;
+    }
+
+    int written = rt_format_snprintf_c_locale(candidate, sizeof(candidate), "%.17g", value);
+    if (written < 0 || (size_t)written >= sizeof(candidate))
+        rt_trap("rt_format_f64_roundtrip: format error");
+    rt_format_write(candidate, buffer, capacity);
 }
 
 /// @brief Allocate a freshly quoted CSV string from a runtime string handle.

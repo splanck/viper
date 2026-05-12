@@ -164,6 +164,12 @@ The VM and native backends trap `fptosi` on NaN and overflow (not UB).
 The public verifier currently directs source IL toward `cast.fp_to_si.rte.chk`;
 these `fptosi` rules apply to execution layers that receive the opcode.
 
+`Viper.Core.Convert.NumToInt` is a separate public conversion helper with
+saturating semantics for compatibility with existing library code: finite inputs
+truncate toward zero, `NaN` returns `0`, and values outside the signed 64-bit
+range clamp to `INT64_MIN` / `INT64_MAX`. Use checked IL casts when NaN or range
+violations must trap.
+
 Checked FP-to-integer casts use the static result type as the range contract:
 `i16`, `i32`, and `i64` results check against their own signed or unsigned
 exclusive upper bounds. For unsigned casts, NaN and negative inputs are

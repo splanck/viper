@@ -332,6 +332,22 @@ static void test_weakref_survives_finalizer_resurrection() {
     rt_weakref_free(ref);
 }
 
+static void test_weakref_rejects_raw_target() {
+    int local = 42;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_weakref_new(&local);
+        rt_trap_clear_recovery();
+        ASSERT(0, "weakref raw target should trap");
+    } else {
+        std::string message = rt_trap_get_error();
+        rt_trap_clear_recovery();
+        ASSERT(message.find("weak reference target") != std::string::npos,
+               "weakref raw target trap mentions target");
+    }
+}
+
 //=============================================================================
 // Cycle Collection Tests
 //=============================================================================
@@ -598,6 +614,47 @@ static void test_collect_reclaims_cycle_storage_and_finalizers() {
     rt_weakref_free(ref_b);
 }
 
+static void test_collect_restores_cycle_after_finalizer_resurrection() {
+    g_resurrected_object = NULL;
+    void *a = make_node();
+    void *b = make_node();
+    rt_obj_set_finalizer(a, resurrecting_finalizer);
+    set_child_retained(a, b);
+    set_child_retained(b, a);
+
+    rt_weakref *ref_a = rt_weakref_new(a);
+    rt_weakref *ref_b = rt_weakref_new(b);
+    rt_gc_track(a, test_node_traverse);
+    rt_gc_track(b, test_node_traverse);
+
+    ASSERT(rt_obj_release_check0(a) == 0, "drop external a leaves cycle ref");
+    ASSERT(rt_obj_release_check0(b) == 0, "drop external b leaves cycle ref");
+
+    int64_t freed = rt_gc_collect();
+    ASSERT(freed == 0, "resurrected cycle collection aborts reclaim");
+    ASSERT(g_resurrected_object == a, "cycle finalizer resurrected a");
+    ASSERT(rt_heap_is_payload(a) == 1, "resurrected a remains live");
+    ASSERT(rt_heap_is_payload(b) == 1, "cycle peer remains live");
+    ASSERT(rt_gc_is_tracked(a) == 1, "resurrected a re-tracked");
+    ASSERT(rt_gc_is_tracked(b) == 1, "cycle peer re-tracked");
+    assert_weakref_get(ref_a, a, "weak ref a remains live after resurrection");
+    assert_weakref_get(ref_b, b, "weak ref b remains live after resurrection");
+
+    rt_gc_untrack(a);
+    rt_gc_untrack(b);
+    struct test_node *na = (struct test_node *)a;
+    struct test_node *nb = (struct test_node *)b;
+    na->child = NULL;
+    nb->child = NULL;
+    release_obj(b); // drop a -> b edge
+    release_obj(a); // drop b -> a edge
+    release_obj(a); // drop resurrection reference
+    assert_weakref_get(ref_a, NULL, "weak ref a cleared after final release");
+    assert_weakref_get(ref_b, NULL, "weak ref b cleared after final release");
+    rt_weakref_free(ref_a);
+    rt_weakref_free(ref_b);
+}
+
 static void test_collect_releases_untracked_external_children() {
     g_external_finalizer_count = 0;
     g_cycle_finalizer_count = 0;
@@ -667,6 +724,29 @@ static void test_collecting_flag_cleared_after_finalizer_trap() {
         rt_heap_free_zero_ref(a);
 }
 
+static void test_run_all_finalizers_releases_snapshot_after_trap() {
+    void *a = make_node();
+    rt_obj_set_finalizer(a, trapping_finalizer);
+    rt_gc_track(a, test_node_traverse);
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        rt_gc_run_all_finalizers();
+        rt_trap_clear_recovery();
+        ASSERT(0, "run_all_finalizers should propagate finalizer trap");
+    } else {
+        std::string message = rt_trap_get_error();
+        rt_trap_clear_recovery();
+        ASSERT(message.find("gc finalizer boom") != std::string::npos,
+               "run_all_finalizers trap is propagated");
+    }
+
+    rt_gc_untrack(a);
+    release_obj(a);
+    ASSERT(rt_heap_is_payload(a) == 0, "snapshot retain released after finalizer trap");
+}
+
 //=============================================================================
 // Statistics Tests
 //=============================================================================
@@ -720,6 +800,7 @@ int main() {
     test_weakref_free_unregisters();
     test_weakref_reset_after_clear();
     test_weakref_survives_finalizer_resurrection();
+    test_weakref_rejects_raw_target();
 
     // Cycle collection
     test_collect_empty();
@@ -732,9 +813,11 @@ int main() {
     test_weakref_cleared_by_collect();
     test_weak_field_zeroed_by_collect();
     test_collect_reclaims_cycle_storage_and_finalizers();
+    test_collect_restores_cycle_after_finalizer_resurrection();
     test_collect_releases_untracked_external_children();
     test_traverse_can_touch_gc_without_deadlock();
     test_collecting_flag_cleared_after_finalizer_trap();
+    test_run_all_finalizers_releases_snapshot_after_trap();
 
     // Statistics
     test_statistics();

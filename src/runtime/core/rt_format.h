@@ -5,17 +5,19 @@
 //
 // File: src/runtime/core/rt_format.h
 // Purpose: Deterministic, locale-independent formatting utilities providing f64-to-string
-// conversion and CSV quoting for BASIC PRINT and WRITE# statement output.
+// conversion and CSV quoting for BASIC PRINT, WRITE#, and conversion helpers.
 //
 // Key invariants:
 //   - rt_format_f64 output is identical across platforms and locales.
+//   - rt_format_f64_roundtrip output parses back to the same IEEE-754 value.
 //   - The caller supplies the output buffer and must ensure sufficient capacity.
 //   - rt_csv_quote_alloc always surrounds the value with double-quotes and doubles any internal
 //   quotes.
 //   - NULL input to rt_csv_quote_alloc is treated as empty string.
 //
 // Ownership/Lifetime:
-//   - rt_format_f64 writes into a caller-managed buffer with no heap allocation.
+//   - rt_format_f64 and rt_format_f64_roundtrip write into caller-managed buffers with no
+//     heap allocation.
 //   - rt_csv_quote_alloc returns a new rt_string owned by the caller (must release).
 //
 // Links: src/runtime/core/rt_format.c (implementation), src/runtime/core/rt_string.h
@@ -31,12 +33,24 @@
 extern "C" {
 #endif
 
-/// @brief Format a double-precision value into a deterministic, locale-independent string.
+/// @brief Format a double-precision value into a deterministic display string.
+///
+/// @details This is the BASIC PRINT/WRITE# display form. It keeps historical
+/// 15-significant-digit output for finite values and canonical spellings for
+/// NaN/Inf. Use @ref rt_format_f64_roundtrip when the string must reparse to
+/// the exact same double.
 ///
 /// @param value Value to format.
 /// @param buffer Destination buffer for the textual representation.
 /// @param capacity Size of @p buffer in bytes, including space for the null terminator.
 void rt_format_f64(double value, char *buffer, size_t capacity);
+
+/// @brief Format a double-precision value into an exact round-trip string.
+///
+/// @param value Value to format.
+/// @param buffer Destination buffer for the textual representation.
+/// @param capacity Size of @p buffer in bytes, including space for the null terminator.
+void rt_format_f64_roundtrip(double value, char *buffer, size_t capacity);
 
 /// @brief Produce a CSV-escaped string literal for WRITE # statements.
 /// @param value Source string to escape; NULL treated as empty.

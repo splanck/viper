@@ -455,12 +455,12 @@ String manipulation class. In Viper, strings are immutable sequences of characte
 | Function                                       | Signature                  | Description                              |
 |------------------------------------------------|----------------------------|------------------------------------------|
 | `Viper.Convert.ToString_Int(value)`            | `String(Integer)`          | Convert integer to string                |
-| `Viper.Convert.ToString_Double(value)`         | `String(Double)`           | Convert double to string                 |
+| `Viper.Convert.ToString_Double(value)`         | `String(Double)`           | Convert double to round-trip string      |
 | `Viper.Convert.ToInt64(text)`                  | `Integer(String)`          | Parse string to integer (traps on failure) |
-| `Viper.Convert.ToDouble(text)`                 | `Double(String)`           | Parse string to double (traps on failure)  |
-| `Viper.Convert.NumToInt(value)`                | `Integer(Number)`          | Convert floating-point Number to Integer (truncates toward zero) |
+| `Viper.Convert.ToDouble(text)`                 | `Double(String)`           | Parse string to double, including `NaN` / `Inf` / `-Inf` (traps on failure) |
+| `Viper.Convert.NumToInt(value)`                | `Integer(Number)`          | Convert floating-point Number to Integer (truncates/clamps) |
 
-**Note:** `Convert.NumToInt(3.7)` returns `3`. This is distinct from `Convert.ToInt64(str)` which parses from a string.
+**Note:** `Convert.NumToInt(3.7)` returns `3`, `NaN` returns `0`, and out-of-range values clamp to the nearest signed 64-bit endpoint. This is distinct from `Convert.ToInt64(str)` which parses from a string.
 
 **Note:** `Flip()` performs byte-level reversal. It works correctly for ASCII strings but may produce invalid results
 for multi-byte UTF-8 characters.
@@ -601,10 +601,10 @@ In-process publish/subscribe message bus for decoupled communication between com
 - Publish retains managed string/object payloads for the duration of dispatch so one handler cannot free the payload before later handlers run. Raw foreign pointers are still passed through as borrowed values.
 - Subscribe accepts a managed callback returned by `Callback(fn)`. Raw native function pointers must be wrapped first; passing a raw pointer or ordinary heap object traps at subscribe time.
 - Topic matching is byte-length aware; topic names containing embedded NUL bytes remain distinct.
-- `Topics()` returns an owning `Seq` of retained topic strings; the result remains valid after the bus is cleared or destroyed.
+- `Topics()` returns an owning `Seq` of copied topic strings; the result remains valid after the bus is cleared or destroyed.
 - `Unsubscribe`, `ClearTopic`, and `Clear` remove empty topic records, so a later `Topics()` call reports only active topics.
 - If a handler traps during `Publish`, the in-flight snapshot is released before the trap is re-raised.
-- MessageBus instances are typed runtime objects, participate in GC traversal for retained handlers, and serialize public operations with an internal lock.
+- MessageBus instances are typed runtime objects, participate in GC traversal for retained handlers, serialize public operations with an internal lock, and retain the bus for the duration of each public operation so callbacks can release their last external bus reference safely.
 
 ### Zia Example
 

@@ -355,6 +355,10 @@ static int64_t rt_memory_release_string(rt_string s) {
 static void rt_memory_release_array_payload(void *p, rt_heap_hdr_t *hdr) {
     if (!p || !hdr)
         return;
+    if (hdr->len > hdr->cap) {
+        rt_trap("Viper.Memory.Release: array length exceeds capacity");
+        return;
+    }
     size_t n = hdr->len;
     switch ((rt_elem_kind_t)hdr->elem_kind) {
         case RT_ELEM_STR: {
@@ -609,7 +613,12 @@ int64_t rt_obj_get_hash_code(void *self) {
     }
     if (rt_box_type(self) >= 0)
         return (int64_t)rt_box_hash(self);
-    uintptr_t v = (uintptr_t)self;
+    uint64_t v = (uint64_t)(uintptr_t)self;
+    v ^= v >> 33;
+    v *= UINT64_C(0xff51afd7ed558ccd);
+    v ^= v >> 33;
+    v *= UINT64_C(0xc4ceb9fe1a85ec53);
+    v ^= v >> 33;
     return (int64_t)v;
 }
 

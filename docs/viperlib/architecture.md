@@ -130,8 +130,9 @@ available via `rt_gc_total_collected()` and `rt_gc_pass_count()`.
 
 ### Zeroing Weak References
 
-The GC provides zeroing weak references via `rt_weakref`. When a target object is collected, all weak references
-pointing to it are automatically set to NULL. This prevents dangling pointer access.
+The GC provides zeroing weak references via `rt_weakref`. Targets must be live runtime handles (`NULL`, heap
+payloads, or runtime strings); raw foreign pointers are rejected. When a target object is collected, all weak
+references pointing to it are automatically set to NULL. This prevents dangling pointer access.
 
 ```c
 rt_weakref *ref = rt_weakref_new(target);
@@ -164,4 +165,3 @@ Weak references use a per-target bucket chain in a hash table, protected by a gl
 | `String`   | `str`   | Immutable string        |
 | `Object`   | `obj`   | Reference to any object |
 | `Void`     | `void`  | No return value         |
-

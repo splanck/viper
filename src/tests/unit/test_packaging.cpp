@@ -1382,7 +1382,7 @@ TEST(DesktopEntry, SupportsHiddenMimeHandlerEntry) {
     params.execPath = "/usr/bin/editor";
     params.iconName = "editor";
     params.noDisplay = true;
-    params.fileAssociations.push_back({".zia", "Zia Source", "text/x-zia"});
+    params.fileAssociations.push_back({".zia", "Zia Source", "text/x-zia", ""});
 
     auto content = generateDesktopEntry(params);
     EXPECT_CONTAINS(content, "NoDisplay=true");
@@ -1396,7 +1396,7 @@ TEST(DesktopEntry, SupportsHiddenMimeHandlerEntry) {
 
 TEST(MimeXml, ContainsGlobPattern) {
     std::vector<FileAssoc> assocs;
-    assocs.push_back({".zia", "Zia Source File", "text/x-zia"});
+    assocs.push_back({".zia", "Zia Source File", "text/x-zia", ""});
 
     auto xml = generateMimeTypeXml("mypackage", assocs);
     EXPECT_CONTAINS(xml, "text/x-zia");
@@ -1405,7 +1405,7 @@ TEST(MimeXml, ContainsGlobPattern) {
 
 TEST(MimeXml, EscapesXmlFields) {
     std::vector<FileAssoc> assocs;
-    assocs.push_back({".vp", "A & B <C>", "application/x-viper"});
+    assocs.push_back({".vp", "A & B <C>", "application/x-viper", ""});
 
     auto xml = generateMimeTypeXml("mypackage", assocs);
     EXPECT_CONTAINS(xml, "A &amp; B &lt;C&gt;");
@@ -1831,8 +1831,8 @@ TEST(PackageUtils, RejectsInvalidFileAssociations) {
 
 TEST(PackageUtils, RejectsDuplicateFileAssociationExtensions) {
     std::vector<FileAssoc> assocs = {
-        {".zia", "Zia Source", "text/x-zia"},
-        {".ZIA", "Zia Source 2", "text/x-zia-2"},
+        {".zia", "Zia Source", "text/x-zia", ""},
+        {".ZIA", "Zia Source 2", "text/x-zia-2", ""},
     };
     EXPECT_THROWS(validatePackageFileAssociations(assocs), std::runtime_error);
 }
@@ -2503,7 +2503,7 @@ TEST(WindowsPackageBuilder, BuildsInstallerWithStoredZipOverlay) {
     pkg.shortcutMenu = true;
     pkg.iconPath = "icon.png";
     pkg.assets.push_back({"assets", "data"});
-    pkg.fileAssociations.push_back({".zia", "Zia Source", "text/x-zia"});
+    pkg.fileAssociations.push_back({".zia", "Zia Source", "text/x-zia", ""});
 
     const fs::path outPath = tmpRoot / "test_setup.exe";
     WindowsBuildParams params;
@@ -2927,7 +2927,7 @@ TEST(LinuxPackageBuilder, DebPreservesHiddenMimeDesktopEntryAndEmptyAssetDir) {
     pkg.shortcutMenu = false;
     pkg.shortcutDesktop = false;
     pkg.assets.push_back({"empty-assets", "data/empty"});
-    pkg.fileAssociations.push_back({".zia", "Zia Source", "text/x-zia"});
+    pkg.fileAssociations.push_back({".zia", "Zia Source", "text/x-zia", ""});
 
     LinuxBuildParams params;
     params.projectName = "emptyapp";

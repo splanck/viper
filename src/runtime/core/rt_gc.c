@@ -249,6 +249,8 @@ static int64_t find_entry(void *obj) {
 ///          caller must hold gc_lock.
 /// @param new_cap New table capacity (must be a power of two).
 static int gc_rehash(int64_t new_cap) {
+    if (new_cap <= 0 || (uint64_t)new_cap > (uint64_t)SIZE_MAX / sizeof(gc_entry))
+        return 0;
     gc_entry *old = g_gc.entries;
     int64_t old_cap = g_gc.capacity;
 
@@ -303,7 +305,12 @@ void rt_gc_track(void *obj, rt_gc_traverse_fn traverse) {
     }
 
     /* Grow if needed: maintain < 5/8 load factor. */
-    if (g_gc.capacity == 0 || g_gc.count * 8 >= g_gc.capacity * 5) {
+    if (g_gc.capacity == 0 || g_gc.count >= (g_gc.capacity / 8) * 5) {
+        if (g_gc.capacity > 0 && g_gc.capacity > INT64_MAX / 2) {
+            gc_unlock();
+            rt_trap("rt_gc: hash table capacity overflow");
+            return;
+        }
         int64_t new_cap = g_gc.capacity == 0 ? 64 : g_gc.capacity * 2;
         if (!gc_rehash(new_cap)) {
             gc_unlock();
@@ -451,6 +458,16 @@ static int gc_is_weakref_handle_unlocked(void *candidate) {
                : 0;
 }
 
+/// @brief Return 1 if @p target can be registered as a zeroing weak target.
+static int gc_weak_target_is_valid(void *target) {
+    if (!target)
+        return 1;
+    if (rt_string_is_handle(target))
+        return 1;
+    rt_heap_hdr_t *hdr = NULL;
+    return rt_heap_try_get_header(target, &hdr) && hdr ? 1 : 0;
+}
+
 //=============================================================================
 // Zeroing Weak References (Public API)
 //=============================================================================
@@ -458,6 +475,10 @@ static int gc_is_weakref_handle_unlocked(void *candidate) {
 /// @brief Create a zeroing weak reference. The target's refcount is NOT bumped.
 /// @details When the target is freed, the reference automatically becomes NULL.
 rt_weakref *rt_weakref_new(void *target) {
+    if (!gc_weak_target_is_valid(target)) {
+        rt_trap("gc: weak reference target is not a live runtime handle");
+        return NULL;
+    }
     rt_weakref *ref = (rt_weakref *)rt_obj_new_i64(RT_WEAKREF_CLASS_ID, (int64_t)sizeof(rt_weakref));
     if (!ref) {
         rt_trap("gc: weak reference allocation failed");
@@ -621,6 +642,10 @@ int8_t rt_weakref_is_handle(void *candidate) {
 void rt_weakref_reset(rt_weakref *ref, void *target) {
     if (!ref)
         return;
+    if (!gc_weak_target_is_valid(target)) {
+        rt_trap("gc: weak reference target is not a live runtime handle");
+        return;
+    }
 
     gc_lock();
     if (!gc_is_weakref_handle_unlocked(ref)) {
@@ -699,6 +724,15 @@ typedef struct {
     void *obj;
     rt_gc_traverse_fn traverse;
 } gc_snap_entry;
+
+typedef struct {
+    gc_snap_entry entry;
+    size_t saved_refs;
+    int snapshot_released;
+    int finalized;
+    int resurrected;
+    int reclaimed;
+} gc_garbage_state;
 
 typedef struct {
     void **items;
@@ -786,20 +820,16 @@ static int gc_worklist_push(gc_worklist *work, void *obj, rt_gc_traverse_fn trav
     return 1;
 }
 
-/// @brief Linear-search a snapshot array for @p obj. Returns 1 if found, else 0.
-/// @details Used by the reclaim phase to test whether an outgoing edge points to another
-///          object that's also in the garbage set — those edges are skipped during ref
-///          release because both endpoints are about to be freed together.
-static int gc_snap_contains(const gc_snap_entry *items, int64_t count, void *obj) {
+static int gc_garbage_contains(const gc_garbage_state *items, int64_t count, void *obj) {
     for (int64_t i = 0; i < count; ++i) {
-        if (items[i].obj == obj)
+        if (items[i].entry.obj == obj)
             return 1;
     }
     return 0;
 }
 
 typedef struct {
-    const gc_snap_entry *garbage;
+    const gc_garbage_state *garbage;
     int64_t garbage_count;
 } gc_release_edges_ctx;
 
@@ -812,26 +842,31 @@ static void gc_release_outgoing_ref(void *child, void *ctx) {
     if (!child)
         return;
     gc_release_edges_ctx *release_ctx = (gc_release_edges_ctx *)ctx;
-    if (release_ctx && gc_snap_contains(release_ctx->garbage, release_ctx->garbage_count, child))
+    if (release_ctx && gc_garbage_contains(release_ctx->garbage, release_ctx->garbage_count, child))
         return;
     if (rt_obj_release_check0(child))
         rt_obj_free(child);
 }
 
-/// @brief Zero the refcount of a confirmed-unreachable cycle member and free it.
-/// @details Fires the finalizer, releases outgoing edges owned by this object,
-///          clears weak refs only after no resurrection happened, and calls
-///          rt_heap_free_zero_ref.
-/// @return 1 if the object was reclaimed, 0 if it was skipped (immortal or invalid).
-static int gc_reclaim_unreachable(void *obj, rt_gc_traverse_fn traverse, void *release_ctx) {
+/// @brief Prepare a confirmed-unreachable cycle member for finalization.
+/// @details Drops the GC snapshot retain, remembers the object's real refcount,
+///          zeros the count for finalizer semantics, and runs the finalizer once.
+///          The caller either restores every garbage member when any object
+///          resurrects, or frees every member when no resurrection occurs.
+static void gc_finalize_unreachable(gc_garbage_state *state) {
+    if (!state || !state->entry.obj)
+        return;
+    void *obj = state->entry.obj;
     rt_heap_hdr_t *hdr = NULL;
     if (!rt_heap_try_get_header(obj, &hdr) || !hdr)
-        return 0;
+        return;
 
-    size_t current_refs = __atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE);
-    if (current_refs == SIZE_MAX) {
+    size_t current_refs = rt_heap_release_deferred(obj);
+    state->snapshot_released = 1;
+    state->saved_refs = current_refs;
+    if (current_refs >= RT_HEAP_IMMORTAL_REFCNT) {
         rt_trap("gc: cannot collect immortal heap object");
-        return 0;
+        return;
     }
 
     __atomic_store_n(&hdr->refcnt, 0, __ATOMIC_RELEASE);
@@ -842,15 +877,60 @@ static int gc_reclaim_unreachable(void *obj, rt_gc_traverse_fn traverse, void *r
             hdr->finalizer = NULL;
             fin(obj);
         }
-        if (__atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE) != 0)
-            return 0;
-        if (traverse)
-            traverse(obj, gc_release_outgoing_ref, release_ctx);
+        state->finalized = 1;
+        if (__atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE) != 0) {
+            state->resurrected = 1;
+            return;
+        }
+    }
+}
+
+/// @brief Restore garbage members after finalizer resurrection or trap recovery.
+static void gc_restore_garbage_state(gc_garbage_state *garbage, int64_t garbage_count) {
+    if (!garbage)
+        return;
+    for (int64_t i = 0; i < garbage_count; ++i) {
+        gc_garbage_state *state = &garbage[i];
+        void *obj = state->entry.obj;
+        if (!obj || state->reclaimed || !rt_heap_is_payload(obj))
+            continue;
+        rt_heap_hdr_t *hdr = NULL;
+        if (!rt_heap_try_get_header(obj, &hdr) || !hdr)
+            continue;
+        if (state->snapshot_released) {
+            size_t current = __atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE);
+            size_t restored = state->saved_refs;
+            if (current > 0) {
+                if (restored > SIZE_MAX - current)
+                    restored = SIZE_MAX;
+                else
+                    restored += current;
+            }
+            __atomic_store_n(&hdr->refcnt, restored, __ATOMIC_RELEASE);
+        }
+        if (state->entry.traverse)
+            rt_gc_track(obj, state->entry.traverse);
+    }
+}
+
+/// @brief Free a finalized unreachable object after the no-resurrection decision.
+static int gc_free_finalized_unreachable(gc_garbage_state *state, void *release_ctx) {
+    if (!state || !state->entry.obj || state->reclaimed)
+        return 0;
+    void *obj = state->entry.obj;
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header(obj, &hdr) || !hdr)
+        return 0;
+
+    if ((rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT) {
+        if (state->entry.traverse)
+            state->entry.traverse(obj, gc_release_outgoing_ref, release_ctx);
         rt_gc_clear_weak_refs(obj);
         rt_monitor_forget(obj);
     }
 
     rt_heap_free_zero_ref(obj);
+    state->reclaimed = 1;
     return 1;
 }
 
@@ -871,8 +951,7 @@ int64_t rt_gc_collect(void) {
     gc_edge_list trial_edges = {0};
     gc_worklist work = {0};
     int64_t garbage_count = 0;
-    int64_t garbage_processed = 0;
-    gc_snap_entry *garbage = NULL;
+    gc_garbage_state *garbage = NULL;
     jmp_buf collection_recovery;
 
     gc_lock();
@@ -953,14 +1032,25 @@ int64_t rt_gc_collect(void) {
         rt_trap_clear_recovery();
         free(trial_edges.items);
         free(work.items);
-        int64_t processed_garbage_count = garbage_processed;
-        if (processed_garbage_count < 0)
-            processed_garbage_count = 0;
-        if (processed_garbage_count > garbage_count)
-            processed_garbage_count = garbage_count;
+        gc_restore_garbage_state(garbage, garbage_count);
         for (int64_t i = 0; i < snap_count; i++) {
-            if (garbage && gc_snap_contains(garbage, processed_garbage_count, snapshot[i].obj))
+            if (garbage && gc_garbage_contains(garbage, garbage_count, snapshot[i].obj)) {
+                int snapshot_released = 0;
+                for (int64_t gi = 0; gi < garbage_count; ++gi) {
+                    if (garbage[gi].entry.obj == snapshot[i].obj) {
+                        snapshot_released = garbage[gi].snapshot_released;
+                        break;
+                    }
+                }
+                if (snapshot_released)
+                    continue;
+            }
+            if (garbage && gc_garbage_contains(garbage, garbage_count, snapshot[i].obj) &&
+                rt_heap_is_payload(snapshot[i].obj)) {
+                if (rt_obj_release_check0(snapshot[i].obj))
+                    rt_obj_free(snapshot[i].obj);
                 continue;
+            }
             if (snapshot[i].obj && rt_heap_is_payload(snapshot[i].obj)) {
                 if (rt_obj_release_check0(snapshot[i].obj))
                     rt_obj_free(snapshot[i].obj);
@@ -1064,7 +1154,7 @@ int64_t rt_gc_collect(void) {
     }
 
     if (garbage_count > 0) {
-        garbage = (gc_snap_entry *)malloc((size_t)garbage_count * sizeof(gc_snap_entry));
+        garbage = (gc_garbage_state *)calloc((size_t)garbage_count, sizeof(gc_garbage_state));
         if (!garbage) {
             gc_unlock();
             rt_trap("gc: memory allocation failed");
@@ -1074,8 +1164,8 @@ int64_t rt_gc_collect(void) {
 
         for (int64_t i = 0; i < g_gc.capacity && gi < garbage_count; i++) {
             if (gc_slot_is_live(&g_gc.entries[i]) && g_gc.entries[i].color == 0) {
-                garbage[gi].obj = g_gc.entries[i].obj;
-                garbage[gi].traverse = g_gc.entries[i].traverse;
+                garbage[gi].entry.obj = g_gc.entries[i].obj;
+                garbage[gi].entry.traverse = g_gc.entries[i].traverse;
                 gi++;
             }
         }
@@ -1088,23 +1178,26 @@ int64_t rt_gc_collect(void) {
     /* Free garbage objects (outside the lock). */
     if (garbage) {
         gc_release_edges_ctx release_ctx = {garbage, garbage_count};
+        int resurrected = 0;
         for (int64_t i = 0; i < garbage_count; i++) {
-            rt_gc_untrack(garbage[i].obj);
-            if (rt_heap_is_payload(garbage[i].obj))
-                (void)rt_heap_release_deferred(garbage[i].obj);
-            garbage_processed = i + 1;
-            int reclaimed =
-                gc_reclaim_unreachable(garbage[i].obj, garbage[i].traverse, &release_ctx);
-            if (reclaimed) {
-                freed++;
-            } else if (garbage[i].traverse && rt_heap_is_payload(garbage[i].obj)) {
-                rt_gc_track(garbage[i].obj, garbage[i].traverse);
+            rt_gc_untrack(garbage[i].entry.obj);
+            if (rt_heap_is_payload(garbage[i].entry.obj))
+                gc_finalize_unreachable(&garbage[i]);
+            if (garbage[i].resurrected)
+                resurrected = 1;
+        }
+        if (resurrected) {
+            gc_restore_garbage_state(garbage, garbage_count);
+        } else {
+            for (int64_t i = 0; i < garbage_count; i++) {
+                if (gc_free_finalized_unreachable(&garbage[i], &release_ctx))
+                    freed++;
             }
         }
     }
 
     for (int64_t i = 0; i < snap_count; i++) {
-        if (garbage && gc_snap_contains(garbage, garbage_count, snapshot[i].obj))
+        if (garbage && gc_garbage_contains(garbage, garbage_count, snapshot[i].obj))
             continue;
         if (rt_obj_release_check0(snapshot[i].obj))
             rt_obj_free(snapshot[i].obj);
@@ -1232,10 +1325,35 @@ void rt_gc_run_all_finalizers(void) {
        rt_obj_free performs because at shutdown ALL tracked objects must
        release external resources regardless of outstanding references
        (cycle members typically have refcnt > 0). */
+    volatile int64_t cleanup_from = 0;
+    jmp_buf finalizer_recovery;
+    rt_trap_set_recovery(&finalizer_recovery);
+    if (setjmp(finalizer_recovery) != 0) {
+        char saved_error[512];
+        const char *err = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 err && err[0] ? err : "gc: trap during finalizer sweep");
+        rt_trap_clear_recovery();
+        for (int64_t i = (int64_t)cleanup_from; i < snap_count; ++i) {
+            if (snapshot[i] && rt_heap_is_payload(snapshot[i])) {
+                if (rt_obj_release_check0(snapshot[i]))
+                    rt_obj_free(snapshot[i]);
+            }
+        }
+        free(snapshot);
+        rt_trap(saved_error);
+        return;
+    }
+
     for (int64_t i = 0; i < snap_count; i++) {
+        cleanup_from = i;
         rt_heap_hdr_t *hdr = NULL;
-        if (!rt_heap_try_get_header(snapshot[i], &hdr) || !hdr)
+        if (!rt_heap_try_get_header(snapshot[i], &hdr) || !hdr) {
+            cleanup_from = i + 1;
             continue;
+        }
         if (hdr && (rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT && hdr->finalizer) {
             rt_heap_finalizer_t fin = hdr->finalizer;
             hdr->finalizer = NULL; /* prevent double-finalization */
@@ -1245,8 +1363,10 @@ void rt_gc_run_all_finalizers(void) {
             if (rt_obj_release_check0(snapshot[i]))
                 rt_obj_free(snapshot[i]);
         }
+        cleanup_from = i + 1;
     }
 
+    rt_trap_clear_recovery();
     free(snapshot);
 }
 

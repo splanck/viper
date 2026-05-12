@@ -47,7 +47,7 @@ void *rt_msgbus_new(void);
 /// @brief Wrap a native callback pointer in a runtime-managed callback object.
 /// @param callback Function pointer of shape `void (*)(void *data)`.
 /// @return Callback object, or NULL when callback is NULL.
-void *rt_msgbus_callback_new(void *callback);
+void *rt_msgbus_callback_new(rt_msgbus_callback_fn callback);
 
 /// @brief Subscribe to a topic. Returns subscription ID for later unsubscribe.
 /// @param obj MessageBus pointer.

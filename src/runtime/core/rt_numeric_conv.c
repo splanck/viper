@@ -340,6 +340,36 @@ static const unsigned char *rt_scan_decimal_float(const unsigned char *cursor) {
     return p;
 }
 
+/// @brief Recognize canonical non-finite floating literals.
+/// @details Accepts `NaN`, `Inf`, `+Inf`, and `-Inf` case-insensitively so
+///          Convert.ToString_Double output can be parsed back through
+///          Convert.ToDouble and Viper.Core.Parse.Double.
+static int rt_scan_nonfinite_float(const unsigned char *cursor,
+                                   double *out_value,
+                                   const unsigned char **out_end) {
+    if (!cursor || !out_value || !out_end)
+        return 0;
+    const unsigned char *p = cursor;
+    int negative = 0;
+    if (*p == '+' || *p == '-') {
+        negative = *p == '-';
+        ++p;
+    }
+    if ((p[0] == 'n' || p[0] == 'N') && (p[1] == 'a' || p[1] == 'A') &&
+        (p[2] == 'n' || p[2] == 'N')) {
+        *out_value = NAN;
+        *out_end = p + 3;
+        return 1;
+    }
+    if ((p[0] == 'i' || p[0] == 'I') && (p[1] == 'n' || p[1] == 'N') &&
+        (p[2] == 'f' || p[2] == 'F')) {
+        *out_value = negative ? -INFINITY : INFINITY;
+        *out_end = p + 3;
+        return 1;
+    }
+    return 0;
+}
+
 /// @brief Parse a signed 64-bit integer from ASCII text.
 /// @details Skips leading whitespace, invokes @ref strtoll using base 10,
 ///          validates that the entire string was consumed, and reports
@@ -414,6 +444,16 @@ static int32_t rt_parse_double_impl(const char *text, double *out_value) {
     const unsigned char *cursor = rt_skip_ascii_space((const unsigned char *)text);
     if (*cursor == '\0')
         return (int32_t)Err_InvalidCast;
+
+    const unsigned char *nonfinite_end = NULL;
+    double nonfinite = 0.0;
+    if (rt_scan_nonfinite_float(cursor, &nonfinite, &nonfinite_end)) {
+        const unsigned char *literal_tail = rt_skip_ascii_space(nonfinite_end);
+        if (*literal_tail != '\0')
+            return (int32_t)Err_InvalidCast;
+        *out_value = nonfinite;
+        return (int32_t)Err_None;
+    }
 
     const unsigned char *literal_end = rt_scan_decimal_float(cursor);
     if (!literal_end)

@@ -41,6 +41,7 @@
 #include "rt_platform.h"
 #include "rt_string.h"
 
+#include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -50,6 +51,10 @@
 #elif !RT_PLATFORM_VIPERDOS
 #include <sched.h>
 #endif
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
 
 /// @brief Internal payload layout for heap-allocated boxed primitive values.
 typedef struct rt_box {
@@ -67,6 +72,11 @@ typedef struct value_type_field {
     int64_t kind;
     struct value_type_field *next;
 } value_type_field;
+
+typedef struct value_type_field_desc {
+    size_t offset;
+    int64_t kind;
+} value_type_field_desc;
 
 typedef struct value_type_layout {
     void *obj;
@@ -180,6 +190,10 @@ static void value_type_free_layout(value_type_layout *layout) {
     free(layout);
 }
 
+static int box_tag_is_valid(int64_t tag) {
+    return tag == RT_BOX_I64 || tag == RT_BOX_F64 || tag == RT_BOX_I1 || tag == RT_BOX_STR;
+}
+
 static void value_type_finalizer(void *obj) {
     value_type_lock();
     value_type_layout *layout = value_type_detach_locked(obj);
@@ -202,31 +216,48 @@ static void value_type_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
         if (field->kind == RT_VALUE_FIELD_OBJ)
             count++;
     }
-    value_type_unlock();
-    if (count <= 0)
+    if (count <= 0) {
+        value_type_unlock();
         return;
+    }
 
     if ((uint64_t)count > (uint64_t)SIZE_MAX / sizeof(void *)) {
+        value_type_unlock();
         rt_trap("rt_box_value_type: traversal allocation too large");
         return;
     }
-    void **children = (void **)rt_alloc((int64_t)((size_t)count * sizeof(void *)));
-    if (!children)
+    value_type_field_desc *fields =
+        (value_type_field_desc *)calloc((size_t)count, sizeof(value_type_field_desc));
+    if (!fields) {
+        value_type_unlock();
+        rt_trap("rt_box_value_type: traversal allocation failed");
         return;
+    }
 
     int64_t copied = 0;
-    value_type_lock();
-    layout = value_type_find_locked(obj);
-    for (value_type_field *field = layout ? layout->fields : NULL; field && copied < count;
-         field = field->next) {
+    for (value_type_field *field = layout ? layout->fields : NULL; field; field = field->next) {
         if (field->kind == RT_VALUE_FIELD_OBJ) {
-            void *child = *(void **)((unsigned char *)obj + field->offset);
-            if (child)
-                rt_obj_retain_maybe(child);
-            children[copied++] = child;
+            fields[copied].offset = field->offset;
+            fields[copied].kind = field->kind;
+            copied++;
         }
     }
     value_type_unlock();
+
+    void **children = (void **)calloc((size_t)copied, sizeof(void *));
+    if (!children) {
+        free(fields);
+        rt_trap("rt_box_value_type: traversal allocation failed");
+        return;
+    }
+
+    for (int64_t i = 0; i < copied; ++i) {
+        void *child = *(void **)((unsigned char *)obj + fields[i].offset);
+        if (child)
+            rt_obj_retain_maybe(child);
+        children[i] = child;
+    }
+    free(fields);
 
     for (int64_t i = 0; i < copied; ++i) {
         void *child = children[i];
@@ -235,7 +266,7 @@ static void value_type_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
         if (rt_obj_release_check0(child))
             rt_obj_free(child);
     }
-    rt_free(children);
+    free(children);
 }
 
 /// @brief Allocate a fresh boxed-value object via the heap (refcount=1, tagged RT_ELEM_BOX so
@@ -260,7 +291,8 @@ static rt_box_t *box_maybe(void *box) {
         hdr->class_id != RT_BOX_CLASS_ID || hdr->elem_kind != RT_ELEM_BOX ||
         hdr->cap < sizeof(rt_box_t))
         return NULL;
-    return (rt_box_t *)box;
+    rt_box_t *b = (rt_box_t *)box;
+    return box_tag_is_valid(b->tag) ? b : NULL;
 }
 
 /// @brief Strict accessor used by the unbox-* primitives: traps with a formatted message if `box`
@@ -636,7 +668,28 @@ void rt_box_value_type_add_field(void *obj, int64_t offset, int64_t kind, int8_t
 
     if (installed_layout) {
         rt_obj_set_finalizer(obj, value_type_finalizer);
+        jmp_buf track_recovery;
+        rt_trap_set_recovery(&track_recovery);
+        if (setjmp(track_recovery) != 0) {
+            char saved_error[256];
+            const char *err = rt_trap_get_error();
+            snprintf(saved_error,
+                     sizeof(saved_error),
+                     "%s",
+                     err && err[0] ? err : "rt_box_value_type_add_field: GC track failed");
+            rt_trap_clear_recovery();
+            value_type_lock();
+            value_type_layout *removed = value_type_detach_locked(obj);
+            value_type_unlock();
+            if (retained_slot)
+                value_type_release_retained_slot(obj, &retain_field);
+            value_type_free_layout(removed);
+            rt_obj_set_finalizer(obj, NULL);
+            rt_trap(saved_error);
+            return;
+        }
         rt_gc_track(obj, value_type_traverse);
+        rt_trap_clear_recovery();
     }
     (void)inserted_field;
 }

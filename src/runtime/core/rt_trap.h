@@ -39,9 +39,10 @@ extern "C" {
 void rt_trap(const char *msg);
 
 /// @brief Trap with a managed runtime string message.
-/// @details Validates the string handle before reading it. Embedded NUL bytes
-///          are escaped so the C-string trap dispatcher receives the complete
-///          diagnostic text instead of a truncated prefix.
+/// @details Validates the string handle before reading it. Control bytes,
+///          quotes, backslashes, and embedded NUL bytes are escaped so the
+///          C-string trap dispatcher receives bounded, unambiguous diagnostic
+///          text instead of a truncated or multi-line raw payload.
 /// @param msg Runtime string message, or NULL/empty for a generic trap.
 void rt_trap_string(rt_string msg);
 
