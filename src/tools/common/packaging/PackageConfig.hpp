@@ -66,6 +66,14 @@ struct PackageConfig {
     std::string macosNotaryProfile; ///< notarytool keychain profile
     bool macosStaple{false};
 
+    std::string windowsInstallScope; ///< machine (default) or user
+    bool windowsSign{false};         ///< Request Authenticode signing for Windows installers.
+    bool windowsSignSet{false};      ///< True when windows-sign was specified.
+    std::string windowsSignPfx;      ///< PFX certificate path, project-relative unless absolute.
+    std::string windowsTimestampUrl; ///< RFC3161 timestamp URL for signtool.
+    std::string windowsSigntoolPath; ///< signtool.exe path override.
+    bool windowsSignNoVerify{false}; ///< Skip signtool verify after signing.
+
     std::vector<std::string> targetArchitectures; ///< "x64", "arm64"
 
     std::string category;             ///< package-category (e.g. "Game", "Development", "Utility")
@@ -82,8 +90,10 @@ struct PackageConfig {
                !minOsWindows.empty() || !minOsMacos.empty() || !macosSignMode.empty() ||
                !macosSignIdentity.empty() || !macosEntitlements.empty() ||
                macosHardenedRuntime || !macosNotaryProfile.empty() || macosStaple ||
-               !targetArchitectures.empty() || !category.empty() || !depends.empty() ||
-               !postInstallScript.empty() || !preUninstallScript.empty();
+               !windowsInstallScope.empty() || windowsSignSet || !windowsSignPfx.empty() ||
+               !windowsTimestampUrl.empty() || !windowsSigntoolPath.empty() ||
+               windowsSignNoVerify || !targetArchitectures.empty() || !category.empty() ||
+               !depends.empty() || !postInstallScript.empty() || !preUninstallScript.empty();
     }
 };
 

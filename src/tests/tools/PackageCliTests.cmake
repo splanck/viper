@@ -305,6 +305,65 @@ if (NOT _macos_sign_err MATCHES "macOS signing: adhoc")
     message(FATAL_ERROR "macOS signing dry-run did not report signing mode\nstdout:\n${_macos_sign_out}\nstderr:\n${_macos_sign_err}")
 endif ()
 
+set(_windows_scope_project "${TEST_WORK_DIR}/windows-scope-project")
+file(MAKE_DIRECTORY "${_windows_scope_project}")
+file(WRITE "${_windows_scope_project}/main.zia" "func start() {}\n")
+file(WRITE "${_windows_scope_project}/viper.project"
+"project winscope
+version 1.0.0
+lang zia
+entry main.zia
+windows-install-scope user
+windows-sign off
+")
+
+execute_process(
+        COMMAND "${VIPER_BIN}" package "${_windows_scope_project}" --target windows --dry-run
+        RESULT_VARIABLE _windows_scope_rv
+        OUTPUT_VARIABLE _windows_scope_out
+        ERROR_VARIABLE _windows_scope_err)
+if (NOT _windows_scope_rv EQUAL 0)
+    message(FATAL_ERROR "Windows user-scope dry-run should succeed\nstdout:\n${_windows_scope_out}\nstderr:\n${_windows_scope_err}")
+endif ()
+if (NOT _windows_scope_err MATCHES "Windows install scope: user")
+    message(FATAL_ERROR "Windows dry-run did not report user install scope\nstdout:\n${_windows_scope_out}\nstderr:\n${_windows_scope_err}")
+endif ()
+
+execute_process(
+        COMMAND "${VIPER_BIN}" package "${_windows_scope_project}" --target windows --dry-run --windows-install-scope machine
+        RESULT_VARIABLE _windows_scope_cli_rv
+        OUTPUT_VARIABLE _windows_scope_cli_out
+        ERROR_VARIABLE _windows_scope_cli_err)
+if (NOT _windows_scope_cli_rv EQUAL 0)
+    message(FATAL_ERROR "Windows CLI scope override dry-run should succeed\nstdout:\n${_windows_scope_cli_out}\nstderr:\n${_windows_scope_cli_err}")
+endif ()
+if (NOT _windows_scope_cli_err MATCHES "Windows install scope: machine")
+    message(FATAL_ERROR "Windows CLI scope override was not reported\nstdout:\n${_windows_scope_cli_out}\nstderr:\n${_windows_scope_cli_err}")
+endif ()
+
+set(_bad_windows_scope_project "${TEST_WORK_DIR}/bad-windows-scope-project")
+file(MAKE_DIRECTORY "${_bad_windows_scope_project}")
+file(WRITE "${_bad_windows_scope_project}/main.zia" "func start() {}\n")
+file(WRITE "${_bad_windows_scope_project}/viper.project"
+"project badwinscope
+version 1.0.0
+lang zia
+entry main.zia
+windows-install-scope portable
+")
+
+execute_process(
+        COMMAND "${VIPER_BIN}" package "${_bad_windows_scope_project}" --target windows --dry-run
+        RESULT_VARIABLE _bad_windows_scope_rv
+        OUTPUT_VARIABLE _bad_windows_scope_out
+        ERROR_VARIABLE _bad_windows_scope_err)
+if (_bad_windows_scope_rv EQUAL 0)
+    message(FATAL_ERROR "dry-run with invalid Windows install scope should fail")
+endif ()
+if (NOT _bad_windows_scope_err MATCHES "windows-install-scope")
+    message(FATAL_ERROR "bad Windows scope diagnostic did not mention the directive\nstdout:\n${_bad_windows_scope_out}\nstderr:\n${_bad_windows_scope_err}")
+endif ()
+
 set(_no_version_project "${TEST_WORK_DIR}/no-version-project")
 file(MAKE_DIRECTORY "${_no_version_project}")
 file(WRITE "${_no_version_project}/main.zia" "func start() {}\n")

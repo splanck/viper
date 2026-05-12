@@ -395,6 +395,7 @@ std::vector<std::string> requiredPayloadPaths(
                                              file.stagedRelativePath, "windows toolchain path"));
             }
             paths.push_back("app/uninstall.exe");
+            paths.push_back("meta/manifest.sha256");
             break;
         case InstallPackageTarget::LinuxDeb:
         case InstallPackageTarget::LinuxRpm:

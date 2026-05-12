@@ -35,9 +35,12 @@ lang zia
 entry main.zia
 package-name \"VAPS Smoke\"
 package-author \"Viper Project\"
+package-homepage https://example.invalid/vaps-smoke
 package-identifier org.viper.smoke.install
+windows-install-scope machine
 shortcut-menu on
 shortcut-desktop off
+file-assoc .vapsmoke \"VAPS Smoke Source\" text/x-vaps-smoke
 ")
 
 set(_installer "${TEST_WORK_DIR}/vaps-smoke-setup.exe")
@@ -51,7 +54,7 @@ if (NOT _package_rv EQUAL 0)
 endif ()
 
 execute_process(
-        COMMAND "${_installer}" /quiet
+        COMMAND "${_installer}" /quiet /norestart
         RESULT_VARIABLE _install_rv
         OUTPUT_VARIABLE _install_out
         ERROR_VARIABLE _install_err
@@ -79,8 +82,28 @@ if (NOT _reg_rv EQUAL 0)
     message(FATAL_ERROR "Uninstall registry key missing\nstdout:\n${_reg_out}\nstderr:\n${_reg_err}")
 endif ()
 
+foreach (_arp_value QuietUninstallString DisplayIcon EstimatedSize InstallDate URLInfoAbout)
+    execute_process(
+            COMMAND reg query "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\org.viper.smoke.install" /v "${_arp_value}"
+            RESULT_VARIABLE _arp_rv
+            OUTPUT_VARIABLE _arp_out
+            ERROR_VARIABLE _arp_err)
+    if (NOT _arp_rv EQUAL 0)
+        message(FATAL_ERROR "Uninstall registry value ${_arp_value} missing\nstdout:\n${_arp_out}\nstderr:\n${_arp_err}")
+    endif ()
+endforeach ()
+
 execute_process(
-        COMMAND "${_uninstall_exe}" /quiet
+        COMMAND reg query "HKLM\\Software\\Classes\\.vapsmoke\\OpenWithProgids"
+        RESULT_VARIABLE _assoc_rv
+        OUTPUT_VARIABLE _assoc_out
+        ERROR_VARIABLE _assoc_err)
+if (NOT _assoc_rv EQUAL 0)
+    message(FATAL_ERROR "File association key missing\nstdout:\n${_assoc_out}\nstderr:\n${_assoc_err}")
+endif ()
+
+execute_process(
+        COMMAND "${_uninstall_exe}" /quiet /norestart
         RESULT_VARIABLE _uninstall_rv
         OUTPUT_VARIABLE _uninstall_out
         ERROR_VARIABLE _uninstall_err

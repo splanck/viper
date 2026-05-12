@@ -75,13 +75,18 @@ struct WindowsPackageLayout {
     std::string identifier;        ///< Reverse-DNS identifier for registry keys
     std::string publisher;         ///< Publisher name shown in Add/Remove Programs
     std::string executableName;    ///< Name of the main executable (e.g. "crackman.exe")
-    uint32_t overlayFileOffset{0}; ///< Byte offset within the installer PE where the ZIP overlay begins
+    uint64_t overlayFileOffset{0}; ///< Byte offset within the installer PE where the ZIP overlay begins
     bool createDesktopShortcut{false};          ///< Create a .lnk on the user's Desktop
     bool createStartMenuShortcut{false};        ///< Create a .lnk in the Start Menu Programs folder
     bool addToPath{false};                      ///< Add installDir\pathRelativePath to the system Path
     bool cleanInstallRootBeforeInstall{false};  ///< Remove the install root before extracting (upgrade path)
     std::string pathRelativePath;               ///< Subdir within installDir to add to Path (e.g. "bin")
     std::string fileAssociationExecutableRelativePath; ///< Exe used for Open commands (relative to installDir)
+    bool perUserInstall{false};                 ///< Install under the current user profile and HKCU.
+    std::string homepage;                       ///< Optional support/update URL for Add/Remove Programs.
+    std::string displayIconRelativePath;        ///< Icon path relative to installDir for Add/Remove Programs.
+    uint32_t estimatedSizeKb{0};                ///< Approximate installed size in KiB for ARP.
+    std::string installDate;                    ///< YYYYMMDD packaging/install metadata date.
     std::vector<WindowsPackageDirEntry> installDirectories;   ///< Directories to create on install
     std::vector<WindowsPackageDirEntry> uninstallDirectories; ///< Directories to remove on uninstall
     std::vector<WindowsPackageFileEntry> installFiles;         ///< Files to extract on install

@@ -24,6 +24,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "cli.hpp"
+#include "common/RunProcess.hpp"
 #include "tools/common/native_compiler.hpp"
 #include "tools/common/packaging/LinuxPackageBuilder.hpp"
 #include "tools/common/packaging/MacOSPackageBuilder.hpp"
@@ -39,6 +40,7 @@
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -90,6 +92,17 @@ void packageUsage() {
         << "  --macos-notary-profile <profile>\n"
         << "                        notarytool keychain profile for macOS notarization\n"
         << "  --macos-staple        Staple the notarization ticket before final ZIP output\n"
+        << "  --windows-install-scope <s>\n"
+        << "                        Windows install scope: machine or user (default: machine)\n"
+        << "  --windows-sign        Sign Windows installer with signtool\n"
+        << "  --windows-sign-pfx <path>\n"
+        << "                        PFX certificate for Windows signing\n"
+        << "  --windows-timestamp-url <url>\n"
+        << "                        RFC3161 timestamp URL for Windows signing\n"
+        << "  --windows-signtool <path>\n"
+        << "                        signtool.exe path override\n"
+        << "  --windows-sign-no-verify\n"
+        << "                        Skip signtool verify after signing\n"
         << "  --dry-run             List package contents without building\n"
         << "  --verbose, -v         Show detailed packaging output\n"
         << "  --help, -h            Show this help\n"
@@ -114,6 +127,12 @@ void packageUsage() {
         << "  macos-hardened-runtime on|off       Enable hardened runtime\n"
         << "  macos-notary-profile <profile>      notarytool keychain profile\n"
         << "  macos-staple on|off                 Staple notarization ticket\n"
+        << "  windows-install-scope machine|user  Program Files/HKLM or LocalAppData/HKCU\n"
+        << "  windows-sign on|off                 Enable Authenticode signing\n"
+        << "  windows-sign-pfx <path>             PFX certificate path\n"
+        << "  windows-timestamp-url <url>         RFC3161 timestamp URL\n"
+        << "  windows-signtool <path>             signtool.exe path\n"
+        << "  windows-sign-no-verify on|off       Skip signtool verify\n"
         << "  package-category <category>          Application category (e.g. Game, Utility)\n"
         << "  package-depends <pkg1>, <pkg2>      Package dependencies (Linux .deb)\n"
         << "  target-arch x64|arm64               Target architecture\n"
@@ -146,6 +165,14 @@ struct PackageArgs {
     bool macosHardenedRuntimeSet{false};
     bool macosStaple{false};
     bool macosStapleSet{false};
+    std::string windowsInstallScope;
+    bool windowsSign{false};
+    bool windowsSignSet{false};
+    std::string windowsSignPfx;
+    std::string windowsTimestampUrl;
+    std::string windowsSigntoolPath;
+    bool windowsSignNoVerify{false};
+    bool windowsSignNoVerifySet{false};
     bool dryRun{false};
     bool verbose{false};
     bool help{false};
@@ -333,6 +360,98 @@ void validateExecutableForPackageTarget(const std::string &path,
     }
 }
 
+std::string getenvOrEmpty(const char *name) {
+    const char *value = std::getenv(name);
+    return value == nullptr ? std::string{} : std::string(value);
+}
+
+fs::path resolveOptionalProjectPath(const std::string &projectRoot, const std::string &pathText) {
+    fs::path p(pathText);
+    if (p.is_absolute())
+        return p.lexically_normal();
+    return (fs::path(projectRoot) / p).lexically_normal();
+}
+
+bool windowsSigningRequested(const viper::pkg::PackageConfig &pkg) {
+    return pkg.windowsSign || !pkg.windowsSignPfx.empty();
+}
+
+bool signWindowsInstallerArtifact(const ProjectConfig &proj,
+                                  const fs::path &artifactPath,
+                                  bool verbose,
+                                  std::ostream &err) {
+    const auto &pkg = proj.packageConfig;
+    if (!windowsSigningRequested(pkg))
+        return true;
+
+    std::string pfxPath = pkg.windowsSignPfx;
+    if (pfxPath.empty())
+        pfxPath = getenvOrEmpty("VIPER_WINDOWS_SIGN_PFX");
+    if (pfxPath.empty()) {
+        err << "error: Windows signing requested but no PFX was provided "
+               "(use --windows-sign-pfx, windows-sign-pfx, or VIPER_WINDOWS_SIGN_PFX)\n";
+        return false;
+    }
+    const fs::path resolvedPfx = resolveOptionalProjectPath(proj.rootDir, pfxPath);
+    if (!fs::is_regular_file(resolvedPfx)) {
+        err << "error: Windows signing PFX not found: " << resolvedPfx.string() << "\n";
+        return false;
+    }
+
+    const std::string password = getenvOrEmpty("VIPER_WINDOWS_SIGN_PASSWORD");
+    if (password.empty()) {
+        err << "error: Windows signing requires VIPER_WINDOWS_SIGN_PASSWORD\n";
+        return false;
+    }
+
+    std::string timestampUrl = pkg.windowsTimestampUrl;
+    if (timestampUrl.empty())
+        timestampUrl = getenvOrEmpty("VIPER_WINDOWS_TIMESTAMP_URL");
+    if (timestampUrl.empty())
+        timestampUrl = "http://timestamp.digicert.com";
+
+    std::string signtool = pkg.windowsSigntoolPath;
+    if (signtool.empty())
+        signtool = getenvOrEmpty("VIPER_WINDOWS_SIGNTOOL");
+    if (signtool.empty())
+        signtool = "signtool.exe";
+
+    std::vector<std::string> signCmd = {signtool,
+                                        "sign",
+                                        "/fd",
+                                        "SHA256",
+                                        "/tr",
+                                        timestampUrl,
+                                        "/td",
+                                        "SHA256",
+                                        "/f",
+                                        resolvedPfx.string(),
+                                        "/p",
+                                        password,
+                                        artifactPath.string()};
+    const RunResult signResult = run_process(signCmd);
+    if (signResult.exit_code != 0) {
+        err << "error: signtool sign failed with exit code " << signResult.exit_code << "\n"
+            << signResult.out << signResult.err;
+        return false;
+    }
+
+    if (!pkg.windowsSignNoVerify) {
+        const RunResult verifyResult =
+            run_process({signtool, "verify", "/pa", "/all", artifactPath.string()});
+        if (verifyResult.exit_code != 0) {
+            err << "error: signtool verify failed with exit code " << verifyResult.exit_code
+                << "\n"
+                << verifyResult.out << verifyResult.err;
+            return false;
+        }
+    }
+
+    if (verbose)
+        err << "  Windows signing: passed\n";
+    return true;
+}
+
 bool parsePackageArgs(int argc, char **argv, PackageArgs &args) {
     for (int i = 0; i < argc; i++) {
         std::string arg = argv[i];
@@ -408,6 +527,41 @@ bool parsePackageArgs(int argc, char **argv, PackageArgs &args) {
         } else if (arg == "--macos-staple") {
             args.macosStaple = true;
             args.macosStapleSet = true;
+        } else if (arg == "--windows-install-scope") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --windows-install-scope requires a value\n";
+                return false;
+            }
+            args.windowsInstallScope = argv[++i];
+            if (args.windowsInstallScope != "machine" && args.windowsInstallScope != "user") {
+                std::cerr << "error: unknown Windows install scope '" << args.windowsInstallScope
+                          << "'; expected machine or user\n";
+                return false;
+            }
+        } else if (arg == "--windows-sign") {
+            args.windowsSign = true;
+            args.windowsSignSet = true;
+        } else if (arg == "--windows-sign-pfx") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --windows-sign-pfx requires a path\n";
+                return false;
+            }
+            args.windowsSignPfx = argv[++i];
+        } else if (arg == "--windows-timestamp-url") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --windows-timestamp-url requires a URL\n";
+                return false;
+            }
+            args.windowsTimestampUrl = argv[++i];
+        } else if (arg == "--windows-signtool") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --windows-signtool requires a path\n";
+                return false;
+            }
+            args.windowsSigntoolPath = argv[++i];
+        } else if (arg == "--windows-sign-no-verify") {
+            args.windowsSignNoVerify = true;
+            args.windowsSignNoVerifySet = true;
         } else if (arg == "--dry-run") {
             args.dryRun = true;
         } else if (arg == "--verbose" || arg == "-v") {
@@ -525,9 +679,26 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
                 viper::pkg::validateWindowsProgIdBase(pkg.identifier,
                                                        "Windows package identifier");
                 viper::pkg::validateDottedNumericVersion(version, "Windows package version");
+                if (!pkg.windowsInstallScope.empty() && pkg.windowsInstallScope != "machine" &&
+                    pkg.windowsInstallScope != "user") {
+                    throw std::runtime_error(
+                        "Windows install scope must be machine or user: " +
+                        pkg.windowsInstallScope);
+                }
                 if (!pkg.minOsWindows.empty())
                     viper::pkg::validateDottedNumericVersion(pkg.minOsWindows,
                                                              "minimum Windows version");
+                viper::pkg::validatePackageUrl(pkg.windowsTimestampUrl,
+                                                "Windows timestamp URL");
+                viper::pkg::validateSingleLineField(pkg.windowsSigntoolPath,
+                                                     "Windows signtool path");
+                if (!pkg.windowsSignPfx.empty()) {
+                    const fs::path pfx = resolveOptionalProjectPath(proj.rootDir, pkg.windowsSignPfx);
+                    if (!fs::is_regular_file(pfx)) {
+                        throw std::runtime_error("Windows signing PFX not found: " +
+                                                 pfx.string());
+                    }
+                }
                 (void)viper::pkg::normalizeExecName(proj.name);
                 break;
             case PackageTarget::Tarball:
@@ -585,6 +756,20 @@ int cmdPackage(int argc, char **argv) {
         proj.packageConfig.macosHardenedRuntime = args.macosHardenedRuntime;
     if (args.macosStapleSet)
         proj.packageConfig.macosStaple = args.macosStaple;
+    if (!args.windowsInstallScope.empty())
+        proj.packageConfig.windowsInstallScope = args.windowsInstallScope;
+    if (args.windowsSignSet) {
+        proj.packageConfig.windowsSign = args.windowsSign;
+        proj.packageConfig.windowsSignSet = true;
+    }
+    if (!args.windowsSignPfx.empty())
+        proj.packageConfig.windowsSignPfx = args.windowsSignPfx;
+    if (!args.windowsTimestampUrl.empty())
+        proj.packageConfig.windowsTimestampUrl = args.windowsTimestampUrl;
+    if (!args.windowsSigntoolPath.empty())
+        proj.packageConfig.windowsSigntoolPath = args.windowsSigntoolPath;
+    if (args.windowsSignNoVerifySet)
+        proj.packageConfig.windowsSignNoVerify = args.windowsSignNoVerify;
 
     // Check that package config is present
     if (!proj.packageConfig.hasPackageConfig()) {
@@ -688,6 +873,21 @@ int cmdPackage(int argc, char **argv) {
                           << proj.packageConfig.macosNotaryProfile << "\n";
             if (proj.packageConfig.macosStaple)
                 std::cerr << "  macOS staple: on\n";
+        }
+        if (args.platformTarget == PackageTarget::Windows) {
+            const std::string scope = proj.packageConfig.windowsInstallScope.empty()
+                                          ? "machine"
+                                          : proj.packageConfig.windowsInstallScope;
+            std::cerr << "  Windows install scope: " << scope << "\n";
+            if (windowsSigningRequested(proj.packageConfig)) {
+                std::cerr << "  Windows signing: on\n";
+                if (!proj.packageConfig.windowsSignPfx.empty())
+                    std::cerr << "  Windows signing PFX: "
+                              << proj.packageConfig.windowsSignPfx << "\n";
+                if (!proj.packageConfig.windowsTimestampUrl.empty())
+                    std::cerr << "  Windows timestamp URL: "
+                              << proj.packageConfig.windowsTimestampUrl << "\n";
+            }
         }
         for (const auto &asset : proj.packageConfig.assets) {
             fs::path assetPath;
@@ -906,6 +1106,14 @@ int cmdPackage(int argc, char **argv) {
         return 1;
     }
 
+    if (args.platformTarget == PackageTarget::Windows &&
+        !signWindowsInstallerArtifact(proj, args.outputPath, args.verbose, std::cerr)) {
+        fs::remove(args.outputPath, ec);
+        if (cleanupPackagedBinary)
+            fs::remove(packageBinaryPath, ec);
+        return 1;
+    }
+
     std::vector<uint8_t> pkgData;
     try {
         pkgData = viper::pkg::readFile(args.outputPath);
@@ -930,7 +1138,9 @@ int cmdPackage(int argc, char **argv) {
             break;
         case PackageTarget::Windows:
             valid = viper::pkg::verifyPEZipOverlayPayload(
-                pkgData, {"app/" + execName + ".exe", "app/uninstall.exe"}, verifyErr);
+                pkgData,
+                {"app/" + execName + ".exe", "app/uninstall.exe", "meta/manifest.sha256"},
+                verifyErr);
             break;
         case PackageTarget::Tarball: {
             const std::string version = proj.version.empty() ? "0.0.0" : proj.version;

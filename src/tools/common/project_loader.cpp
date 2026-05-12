@@ -721,6 +721,49 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
             if (!b)
                 return il::support::Expected<ProjectConfig>(b.error());
             config.packageConfig.macosStaple = b.value();
+        } else if (directive == "windows-install-scope") {
+            auto scalar = parsePackageScalar(directive, value, lineNum);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            if (scalar.value() != "machine" && scalar.value() != "user") {
+                return makeManifestErr(manifestPath,
+                                       lineNum,
+                                       "invalid windows-install-scope '" + scalar.value() +
+                                           "'; expected 'machine' or 'user'");
+            }
+            config.packageConfig.windowsInstallScope = scalar.value();
+        } else if (directive == "windows-sign") {
+            auto ok = markPackageScalar(directive, lineNum);
+            if (!ok)
+                return il::support::Expected<ProjectConfig>(ok.error());
+            auto b = parseBool(value, manifestPath, lineNum, directive);
+            if (!b)
+                return il::support::Expected<ProjectConfig>(b.error());
+            config.packageConfig.windowsSign = b.value();
+            config.packageConfig.windowsSignSet = true;
+        } else if (directive == "windows-sign-pfx") {
+            auto scalar = parsePackageScalar(directive, value, lineNum);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            config.packageConfig.windowsSignPfx = scalar.value();
+        } else if (directive == "windows-timestamp-url") {
+            auto scalar = parsePackageScalar(directive, value, lineNum);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            config.packageConfig.windowsTimestampUrl = scalar.value();
+        } else if (directive == "windows-signtool") {
+            auto scalar = parsePackageScalar(directive, value, lineNum);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            config.packageConfig.windowsSigntoolPath = scalar.value();
+        } else if (directive == "windows-sign-no-verify") {
+            auto ok = markPackageScalar(directive, lineNum);
+            if (!ok)
+                return il::support::Expected<ProjectConfig>(ok.error());
+            auto b = parseBool(value, manifestPath, lineNum, directive);
+            if (!b)
+                return il::support::Expected<ProjectConfig>(b.error());
+            config.packageConfig.windowsSignNoVerify = b.value();
         } else if (directive == "asset") {
             // Format: asset <source-path> <target-relative-dir>
             auto tokens = tokenizeManifestValue(value, manifestPath, lineNum, directive);
