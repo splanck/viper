@@ -1526,6 +1526,67 @@ static void test_http_server_keepalive_response() {
                 connection2.find("close") != std::string::npos);
 }
 
+static void test_http_server_pipelined_keepalive_requests() {
+    printf("\nTesting HttpServer pipelined keep-alive requests:\n");
+
+    const int port = get_bindable_local_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    void *server = rt_http_server_new(port);
+    rt_http_server_get(server, rt_const_cstr("/ping"), rt_const_cstr("ping"));
+    rt_http_server_bind_handler(server, rt_const_cstr("ping"), (void *)&http_server_keepalive_handler);
+    rt_http_server_start(server);
+    if (!wait_for_condition([&]() { return rt_http_server_is_running(server) == 1; }, 1000)) {
+        rt_http_server_stop(server);
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    void *client = rt_tcp_connect(rt_const_cstr("127.0.0.1"), port);
+    send_text(client,
+              "GET /ping HTTP/1.1\r\n"
+              "Host: 127.0.0.1\r\n"
+              "Connection: keep-alive\r\n"
+              "\r\n"
+              "GET /ping HTTP/1.1\r\n"
+              "Host: 127.0.0.1\r\n"
+              "Connection: close\r\n"
+              "\r\n");
+
+    rt_string status1 = rt_tcp_recv_line(client);
+    test_result("HttpServer pipelined first response status is 200",
+                strcmp(rt_string_cstr(status1), "HTTP/1.1 200 OK") == 0);
+    rt_string_unref(status1);
+    std::string connection1 = read_http_header_value(client, "Connection");
+    void *body1 = rt_tcp_recv_exact(client, 2);
+    rt_string body1_str = rt_bytes_to_str(body1);
+    test_result("HttpServer pipelined first response body matches",
+                strcmp(rt_string_cstr(body1_str), "ok") == 0);
+    rt_string_unref(body1_str);
+
+    rt_string status2 = rt_tcp_recv_line(client);
+    test_result("HttpServer pipelined second response status is 200",
+                strcmp(rt_string_cstr(status2), "HTTP/1.1 200 OK") == 0);
+    rt_string_unref(status2);
+    std::string connection2 = read_http_header_value(client, "Connection");
+    void *body2 = rt_tcp_recv_exact(client, 2);
+    rt_string body2_str = rt_bytes_to_str(body2);
+    test_result("HttpServer pipelined second response body matches",
+                strcmp(rt_string_cstr(body2_str), "ok") == 0);
+    rt_string_unref(body2_str);
+
+    rt_http_server_stop(server);
+    rt_tcp_close(client);
+
+    test_result("HttpServer pipelined first response keeps connection alive",
+                connection1.find("keep-alive") != std::string::npos);
+    test_result("HttpServer pipelined second response closes connection",
+                connection2.find("close") != std::string::npos);
+}
+
 static void test_https_server_roundtrip() {
     printf("\nTesting HttpsServer round-trip and TLS keep-alive:\n");
 
@@ -2050,6 +2111,7 @@ int main() {
     test_http_client_consumes_informational_responses();
     test_http_client_keepalive_reuse();
     test_http_server_keepalive_response();
+    test_http_server_pipelined_keepalive_requests();
     test_https_server_roundtrip();
     test_https_server_http2_roundtrip();
     test_https_server_rsa_roundtrip_with_verification();

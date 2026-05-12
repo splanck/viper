@@ -30,6 +30,7 @@
 #include "rt_string.h"
 
 #include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -269,6 +270,47 @@ static int parse_cookie_expires(const char *text, int64_t *out_epoch) {
     return 0;
 }
 
+static int parse_cookie_max_age(const char *text, int64_t *out_delta) {
+    const char *p = text;
+    int negative = 0;
+    uint64_t value = 0;
+    uint64_t limit = 0;
+
+    if (!text || !*text || !out_delta)
+        return -1;
+    if (*p == '-') {
+        negative = 1;
+        p++;
+        if (!*p)
+            return -1;
+    } else if (*p == '+') {
+        return -1;
+    }
+
+    limit = negative ? ((uint64_t)INT64_MAX + 1u) : (uint64_t)INT64_MAX;
+    for (; *p; p++) {
+        uint64_t digit = 0;
+        if (*p < '0' || *p > '9')
+            return -1;
+        digit = (uint64_t)(*p - '0');
+        if (value > (limit - digit) / 10u) {
+            *out_delta = negative ? INT64_MIN : INT64_MAX;
+            return 0;
+        }
+        value = value * 10u + digit;
+    }
+
+    if (negative) {
+        if (value == (uint64_t)INT64_MAX + 1u)
+            *out_delta = INT64_MIN;
+        else
+            *out_delta = -(int64_t)value;
+    } else {
+        *out_delta = (int64_t)value;
+    }
+    return 0;
+}
+
 static int cookie_domain_matches(const rt_http_cookie *cookie, const char *host) {
     size_t host_len, domain_len;
     if (!cookie || !cookie->domain || !host)
@@ -430,6 +472,7 @@ static void store_cookie_line_locked(rt_http_client_impl *c,
     size_t name_len;
     size_t value_len;
     rt_http_cookie *cookie;
+    int max_age_seen = 0;
 
     if (!host || !line || !*line)
         return;
@@ -489,10 +532,15 @@ static void store_cookie_line_locked(rt_http_client_impl *c,
         }
 
         if (strcasecmp(attr_name, "Domain") == 0 && attr_value && *attr_value) {
-            while (*attr_value == '.')
-                memmove(attr_value, attr_value + 1, strlen(attr_value));
+            char *domain = cookie_strdup_manual_domain(attr_value);
+            if (!domain) {
+                free(attr_value);
+                free(attr_name);
+                free_cookie_list(cookie);
+                return;
+            }
             free(cookie->domain);
-            cookie->domain = cookie_strdup_lower(attr_value);
+            cookie->domain = domain;
             cookie->host_only = 0;
         } else if (strcasecmp(attr_name, "Path") == 0 && attr_value && attr_value[0] == '/') {
             free(cookie->path);
@@ -500,12 +548,20 @@ static void store_cookie_line_locked(rt_http_client_impl *c,
         } else if (strcasecmp(attr_name, "Secure") == 0) {
             cookie->secure = 1;
         } else if (strcasecmp(attr_name, "Max-Age") == 0 && attr_value) {
-            long long max_age = atoll(attr_value);
-            cookie->persistent = 1;
-            cookie->expires_at = cookie_now_seconds() + max_age;
-            if (max_age <= 0)
-                cookie->expires_at = cookie_now_seconds() - 1;
-        } else if (strcasecmp(attr_name, "Expires") == 0 && attr_value) {
+            int64_t max_age = 0;
+            if (parse_cookie_max_age(attr_value, &max_age) == 0) {
+                int64_t now = cookie_now_seconds();
+                cookie->persistent = 1;
+                if (max_age <= 0) {
+                    cookie->expires_at = now - 1;
+                } else if (max_age > INT64_MAX - now) {
+                    cookie->expires_at = INT64_MAX;
+                } else {
+                    cookie->expires_at = now + max_age;
+                }
+                max_age_seen = 1;
+            }
+        } else if (strcasecmp(attr_name, "Expires") == 0 && attr_value && !max_age_seen) {
             int64_t expires_at = 0;
             if (parse_cookie_expires(attr_value, &expires_at) == 0) {
                 cookie->persistent = 1;

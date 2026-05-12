@@ -1373,6 +1373,81 @@ int8_t rt_http_header_value_has_token(const char *value, const char *token) {
     return 0;
 }
 
+static int parse_transfer_encoding_supported(const char *value, int *chunked_out) {
+    const char *p = value;
+    const char *end = value ? value + strlen(value) : NULL;
+    int saw_chunked = 0;
+
+    if (chunked_out)
+        *chunked_out = 0;
+    if (!value)
+        return 0;
+
+    while (p < end) {
+        const char *token_start;
+        const char *token_end;
+
+        while (p < end && (*p == ' ' || *p == '\t'))
+            p++;
+        if (p >= end)
+            return 0;
+
+        token_start = p;
+        while (p < end && *p != ',')
+            p++;
+        token_end = p;
+        while (token_end > token_start && (token_end[-1] == ' ' || token_end[-1] == '\t'))
+            token_end--;
+        if (token_end == token_start)
+            return 0;
+        if ((size_t)(token_end - token_start) != 7 ||
+            strncasecmp(token_start, "chunked", 7) != 0) {
+            return 0;
+        }
+        if (saw_chunked)
+            return 0;
+        saw_chunked = 1;
+
+        if (p < end) {
+            p++;
+            while (p < end && (*p == ' ' || *p == '\t'))
+                p++;
+            if (p >= end)
+                return 0;
+        }
+    }
+
+    if (!saw_chunked)
+        return 0;
+    if (chunked_out)
+        *chunked_out = 1;
+    return 1;
+}
+
+int rt_http_transfer_encoding_supported_for_test(const char *value, int *chunked_out) {
+    return parse_transfer_encoding_supported(value, chunked_out);
+}
+
+static void set_request_body_from_string(rt_http_req_t *req, rt_string body) {
+    const char *body_str = rt_string_cstr(body);
+    int64_t body_len64 = 0;
+    size_t body_len = 0;
+
+    if (!req || !body_str)
+        return;
+    body_len64 = rt_str_len(body);
+    if (body_len64 < 0 || (uint64_t)body_len64 > (uint64_t)SIZE_MAX)
+        rt_trap("HTTP: invalid body length");
+    body_len = (size_t)body_len64;
+    if (body_len == 0)
+        return;
+    req->body = (uint8_t *)malloc(body_len);
+    if (!req->body)
+        rt_trap("HTTP: memory allocation failed");
+    memcpy(req->body, body_str, body_len);
+    req->body_len = body_len;
+}
+
 static void remove_header_if(rt_http_req_t *req, int8_t (*predicate)(const char *)) {
     http_header_t **link = req ? &req->headers : NULL;
     while (link && *link) {
@@ -2773,10 +2848,17 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
     int has_content_length = content_length_val != NULL;
 
     bool no_body = response_has_no_body(req, status) != 0;
-    bool chunked_transfer =
-        transfer_encoding_val &&
-        rt_http_header_value_has_token(rt_string_cstr(transfer_encoding_val), "chunked");
-    bool unsupported_transfer_encoding = transfer_encoding_val && !chunked_transfer;
+    bool chunked_transfer = false;
+    bool unsupported_transfer_encoding = false;
+    if (transfer_encoding_val) {
+        int parsed_chunked = 0;
+        if (!parse_transfer_encoding_supported(rt_string_cstr(transfer_encoding_val),
+                                               &parsed_chunked)) {
+            unsupported_transfer_encoding = true;
+        } else {
+            chunked_transfer = parsed_chunked != 0;
+        }
+    }
 
     if (no_body) {
         body = NULL;
@@ -3030,11 +3112,13 @@ static int do_http_download_request(rt_http_req_t *req, int redirects_remaining,
 
     if (response_has_no_body(req, status)) {
         ok = 1;
-    } else if (transfer_encoding_val &&
-               !rt_http_header_value_has_token(rt_string_cstr(transfer_encoding_val), "chunked")) {
-        goto cleanup;
-    } else if (transfer_encoding_val &&
-               rt_http_header_value_has_token(rt_string_cstr(transfer_encoding_val), "chunked")) {
+    } else if (transfer_encoding_val) {
+        int parsed_chunked = 0;
+        if (!parse_transfer_encoding_supported(rt_string_cstr(transfer_encoding_val),
+                                               &parsed_chunked) ||
+            !parsed_chunked) {
+            goto cleanup;
+        }
         size_t streamed_len = 0;
         ok = write_body_chunked_conn(&conn, out, &streamed_len);
     } else if (content_length_val) {
@@ -3171,14 +3255,8 @@ rt_string rt_http_post(rt_string url, rt_string body) {
     if (parse_url(url_str, &req.url) < 0)
         rt_trap_net("HTTP: invalid URL format", Err_InvalidUrl);
 
-    if (body_str) {
-        // Copy body so the request owns the data independently of the GC-managed string
-        req.body_len = strlen(body_str);
-        req.body = (uint8_t *)malloc(req.body_len);
-        if (!req.body)
-            rt_trap("HTTP: memory allocation failed");
-        memcpy(req.body, body_str, req.body_len);
-    }
+    if (body_str)
+        set_request_body_from_string(&req, body);
 
     // Add Content-Type if not empty body
     if (req.body_len > 0)
@@ -3361,13 +3439,8 @@ rt_string rt_http_patch(rt_string url, rt_string body) {
     if (parse_url(url_str, &req.url) < 0)
         rt_trap_net("HTTP: invalid URL format", Err_InvalidUrl);
 
-    if (body_str) {
-        req.body_len = strlen(body_str);
-        req.body = (uint8_t *)malloc(req.body_len);
-        if (!req.body)
-            rt_trap("HTTP: memory allocation failed");
-        memcpy(req.body, body_str, req.body_len);
-    }
+    if (body_str)
+        set_request_body_from_string(&req, body);
 
     if (req.body_len > 0)
         add_header(&req, "Content-Type", "text/plain; charset=utf-8");
@@ -3446,13 +3519,8 @@ rt_string rt_http_put(rt_string url, rt_string body) {
     if (parse_url(url_str, &req.url) < 0)
         rt_trap_net("HTTP: invalid URL format", Err_InvalidUrl);
 
-    if (body_str) {
-        req.body_len = strlen(body_str);
-        req.body = (uint8_t *)malloc(req.body_len);
-        if (!req.body)
-            rt_trap("HTTP: memory allocation failed");
-        memcpy(req.body, body_str, req.body_len);
-    }
+    if (body_str)
+        set_request_body_from_string(&req, body);
 
     if (req.body_len > 0)
         add_header(&req, "Content-Type", "text/plain; charset=utf-8");

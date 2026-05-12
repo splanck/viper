@@ -1667,6 +1667,10 @@ void rt_ws_send_bytes(void *obj, void *data) {
         rt_trap_net("WebSocket: connection is closed", Err_ConnectionClosed);
         return;
     }
+    if (!data) {
+        rt_trap("WebSocket: NULL bytes");
+        return;
+    }
 
     int64_t len = rt_bytes_len(data);
     if (len < 0 || (uint64_t)len > (uint64_t)SIZE_MAX) {

@@ -79,8 +79,10 @@ struct raw_frame_t {
 
 static constexpr uint8_t kFrameData = 0x0;
 static constexpr uint8_t kFrameHeaders = 0x1;
+static constexpr uint8_t kFramePriority = 0x2;
 static constexpr uint8_t kFrameRstStream = 0x3;
 static constexpr uint8_t kFrameSettings = 0x4;
+static constexpr uint8_t kFrameUnknownExtension = 0x0b;
 static constexpr uint8_t kFlagEndStream = 0x1;
 static constexpr uint8_t kFlagAck = 0x1;
 static constexpr uint8_t kFlagEndHeaders = 0x4;
@@ -193,6 +195,10 @@ static void hpack_encode_literal(std::vector<uint8_t> &out, const char *name, co
     hpack_encode_int(out, 0, 4, 0x00);
     hpack_encode_string(out, name ? name : "");
     hpack_encode_string(out, value);
+}
+
+static void hpack_encode_dynamic_table_size_update(std::vector<uint8_t> &out, uint32_t value) {
+    hpack_encode_int(out, value, 5, 0x20);
 }
 
 static std::vector<uint8_t> make_request_header_block(const char *method, const char *authority, const char *path) {
@@ -489,6 +495,226 @@ static void test_http2_client_accepts_response_trailers() {
     rt_http2_conn_free(client);
 }
 
+static void test_http2_client_ignores_unknown_stream_extension_frame() {
+    printf("\nTesting HTTP/2 unknown extension frame handling:\n");
+
+    pipe_buffer_t c2s;
+    pipe_buffer_t s2c;
+    pipe_endpoint_t client_ep{&s2c, &c2s};
+    rt_http2_io_t client_io{&client_ep, pipe_read_cb, pipe_write_cb};
+    rt_http2_conn_t *client = rt_http2_client_new(&client_io);
+    assert(client != nullptr);
+
+    std::thread server_thread([&]() {
+        raw_frame_t frame{};
+        char preface[sizeof(kClientPreface) - 1];
+        bool ok = pipe_pop_exact(c2s, reinterpret_cast<uint8_t *>(preface), sizeof(preface));
+        test_result("HTTP/2 extension test reads client preface",
+                    ok && std::memcmp(preface, kClientPreface, sizeof(preface)) == 0);
+        ok = read_frame(c2s, &frame);
+        test_result("HTTP/2 extension test reads client SETTINGS",
+                    ok && frame.type == kFrameSettings && frame.stream_id == 0);
+        write_frame(s2c, kFrameSettings, 0, 0, {});
+        bool saw_request = false;
+        while (!saw_request) {
+            ok = read_frame(c2s, &frame);
+            test_result("HTTP/2 extension test reads request frame", ok);
+            if (frame.type == kFrameHeaders && frame.stream_id == 1)
+                saw_request = true;
+        }
+
+        write_frame(s2c, kFrameUnknownExtension, 0, 1, std::vector<uint8_t>{1, 2, 3});
+        write_frame(s2c,
+                    kFrameHeaders,
+                    kFlagEndHeaders,
+                    1,
+                    make_response_header_block(200, "content-type", "text/plain"));
+        write_frame(s2c, kFrameData, kFlagEndStream, 1, std::vector<uint8_t>{'o', 'k'});
+    });
+
+    rt_http2_response_t res{};
+    bool ok = rt_http2_client_roundtrip(
+                  client, "GET", "https", "example.test", "/extension", nullptr, nullptr, 0, 1024, &res) == 1;
+    test_result("HTTP/2 client ignores unknown stream extension frame", ok);
+    test_result("HTTP/2 extension response body preserved",
+                res.body_len == 2 && std::memcmp(res.body, "ok", 2) == 0);
+
+    server_thread.join();
+    close_pipe(c2s);
+    close_pipe(s2c);
+    rt_http2_response_free(&res);
+    rt_http2_conn_free(client);
+}
+
+static void test_http2_client_ignores_informational_response() {
+    printf("\nTesting HTTP/2 informational response handling:\n");
+
+    pipe_buffer_t c2s;
+    pipe_buffer_t s2c;
+    pipe_endpoint_t client_ep{&s2c, &c2s};
+    rt_http2_io_t client_io{&client_ep, pipe_read_cb, pipe_write_cb};
+    rt_http2_conn_t *client = rt_http2_client_new(&client_io);
+    assert(client != nullptr);
+
+    std::thread server_thread([&]() {
+        raw_frame_t frame{};
+        char preface[sizeof(kClientPreface) - 1];
+        bool ok = pipe_pop_exact(c2s, reinterpret_cast<uint8_t *>(preface), sizeof(preface));
+        test_result("HTTP/2 informational test reads client preface",
+                    ok && std::memcmp(preface, kClientPreface, sizeof(preface)) == 0);
+        ok = read_frame(c2s, &frame);
+        test_result("HTTP/2 informational test reads client SETTINGS",
+                    ok && frame.type == kFrameSettings && frame.stream_id == 0);
+        write_frame(s2c, kFrameSettings, 0, 0, {});
+        bool saw_request = false;
+        while (!saw_request) {
+            ok = read_frame(c2s, &frame);
+            test_result("HTTP/2 informational test reads request frame", ok);
+            if (frame.type == kFrameHeaders && frame.stream_id == 1)
+                saw_request = true;
+        }
+
+        write_frame(s2c,
+                    kFrameHeaders,
+                    kFlagEndHeaders,
+                    1,
+                    make_response_header_block(103, "x-hint", "preload"));
+        write_frame(s2c,
+                    kFrameHeaders,
+                    kFlagEndHeaders,
+                    1,
+                    make_response_header_block(200, "content-type", "text/plain"));
+        write_frame(s2c, kFrameData, kFlagEndStream, 1, std::vector<uint8_t>{'d', 'o', 'n', 'e'});
+    });
+
+    rt_http2_response_t res{};
+    bool ok = rt_http2_client_roundtrip(
+                  client, "GET", "https", "example.test", "/early", nullptr, nullptr, 0, 1024, &res) == 1;
+    test_result("HTTP/2 client completes after informational response", ok);
+    test_result("HTTP/2 final response status wins", res.status == 200);
+    test_result("HTTP/2 informational headers are not stored",
+                rt_http2_header_get(res.headers, "x-hint") == nullptr);
+    test_result("HTTP/2 final response body preserved",
+                res.body_len == 4 && std::memcmp(res.body, "done", 4) == 0);
+
+    server_thread.join();
+    close_pipe(c2s);
+    close_pipe(s2c);
+    rt_http2_response_free(&res);
+    rt_http2_conn_free(client);
+}
+
+static void test_http2_rejects_priority_on_connection_stream() {
+    printf("\nTesting HTTP/2 PRIORITY stream validation:\n");
+
+    pipe_buffer_t c2s;
+    pipe_buffer_t s2c;
+    pipe_endpoint_t server_ep{&c2s, &s2c};
+    rt_http2_io_t server_io{&server_ep, pipe_read_cb, pipe_write_cb};
+    rt_http2_conn_t *server = rt_http2_server_new(&server_io);
+    assert(server != nullptr);
+
+    send_client_preface(c2s);
+    write_frame(c2s, kFrameSettings, 0, 0, {});
+    write_frame(c2s, kFramePriority, 0, 0, std::vector<uint8_t>{0, 0, 0, 0, 0});
+
+    rt_http2_request_t req{};
+    bool ok = rt_http2_server_receive_request(server, 1024, &req) == 0;
+    test_result("HTTP/2 server rejects PRIORITY on stream 0", ok);
+    const char *err = rt_http2_get_error(server);
+    test_result("HTTP/2 PRIORITY error is reported", err && std::strstr(err, "PRIORITY") != nullptr);
+
+    close_pipe(c2s);
+    close_pipe(s2c);
+    rt_http2_request_free(&req);
+    rt_http2_conn_free(server);
+}
+
+static void test_http2_rejects_oversized_inbound_frame() {
+    printf("\nTesting HTTP/2 local max frame size enforcement:\n");
+
+    pipe_buffer_t c2s;
+    pipe_buffer_t s2c;
+    pipe_endpoint_t server_ep{&c2s, &s2c};
+    rt_http2_io_t server_io{&server_ep, pipe_read_cb, pipe_write_cb};
+    rt_http2_conn_t *server = rt_http2_server_new(&server_io);
+    assert(server != nullptr);
+
+    send_client_preface(c2s);
+    write_frame(c2s, kFrameSettings, 0, 0, {});
+    write_frame(c2s, kFrameUnknownExtension, 0, 1, std::vector<uint8_t>(16385, 0));
+
+    rt_http2_request_t req{};
+    bool ok = rt_http2_server_receive_request(server, 1024, &req) == 0;
+    test_result("HTTP/2 server rejects frame above default local max", ok);
+    const char *err = rt_http2_get_error(server);
+    test_result("HTTP/2 oversized frame error is reported",
+                err && std::strstr(err, "oversized frame") != nullptr);
+
+    close_pipe(c2s);
+    close_pipe(s2c);
+    rt_http2_request_free(&req);
+    rt_http2_conn_free(server);
+}
+
+static void test_http2_rejects_invalid_hpack_header_blocks() {
+    printf("\nTesting HTTP/2 HPACK header block validation:\n");
+
+    {
+        pipe_buffer_t c2s;
+        pipe_buffer_t s2c;
+        pipe_endpoint_t server_ep{&c2s, &s2c};
+        rt_http2_io_t server_io{&server_ep, pipe_read_cb, pipe_write_cb};
+        rt_http2_conn_t *server = rt_http2_server_new(&server_io);
+        assert(server != nullptr);
+
+        std::vector<uint8_t> block;
+        hpack_encode_literal(block, ":method", "GET");
+        hpack_encode_dynamic_table_size_update(block, 0);
+        hpack_encode_literal(block, ":scheme", "https");
+        hpack_encode_literal(block, ":authority", "example.test");
+        hpack_encode_literal(block, ":path", "/");
+
+        send_client_preface(c2s);
+        write_frame(c2s, kFrameSettings, 0, 0, {});
+        write_frame(c2s, kFrameHeaders, static_cast<uint8_t>(kFlagEndHeaders | kFlagEndStream), 1, block);
+
+        rt_http2_request_t req{};
+        bool ok = rt_http2_server_receive_request(server, 1024, &req) == 0;
+        test_result("HTTP/2 server rejects mid-block dynamic table size update", ok);
+
+        close_pipe(c2s);
+        close_pipe(s2c);
+        rt_http2_request_free(&req);
+        rt_http2_conn_free(server);
+    }
+
+    {
+        pipe_buffer_t c2s;
+        pipe_buffer_t s2c;
+        pipe_endpoint_t server_ep{&c2s, &s2c};
+        rt_http2_io_t server_io{&server_ep, pipe_read_cb, pipe_write_cb};
+        rt_http2_conn_t *server = rt_http2_server_new(&server_io);
+        assert(server != nullptr);
+
+        std::vector<uint8_t> block = make_request_header_block("GET", "example.test", "/nul");
+        hpack_encode_literal(block, "x-bad", std::string("ok\0bad", 6));
+
+        send_client_preface(c2s);
+        write_frame(c2s, kFrameSettings, 0, 0, {});
+        write_frame(c2s, kFrameHeaders, static_cast<uint8_t>(kFlagEndHeaders | kFlagEndStream), 1, block);
+
+        rt_http2_request_t req{};
+        bool ok = rt_http2_server_receive_request(server, 1024, &req) == 0;
+        test_result("HTTP/2 server rejects embedded NUL in decoded header value", ok);
+
+        close_pipe(c2s);
+        close_pipe(s2c);
+        rt_http2_request_free(&req);
+        rt_http2_conn_free(server);
+    }
+}
+
 static void test_http2_rejects_invalid_settings_value() {
     printf("\nTesting HTTP/2 invalid SETTINGS rejection:\n");
 
@@ -523,6 +749,11 @@ int main() {
     test_http2_reuses_connection_for_second_stream();
     test_http2_server_refuses_concurrent_streams_without_dropping_connection();
     test_http2_client_accepts_response_trailers();
+    test_http2_client_ignores_unknown_stream_extension_frame();
+    test_http2_client_ignores_informational_response();
+    test_http2_rejects_priority_on_connection_stream();
+    test_http2_rejects_oversized_inbound_frame();
+    test_http2_rejects_invalid_hpack_header_blocks();
     test_http2_rejects_invalid_settings_value();
     printf("\nAll HTTP/2 tests passed.\n");
     return 0;

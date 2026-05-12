@@ -225,10 +225,13 @@ static void **https_server_snapshot_active_conns(rt_http_server_impl *server, in
     count = server->active_conn_count;
     if (count > 0) {
         snapshot = (void **)malloc((size_t)count * sizeof(void *));
-        if (snapshot)
+        if (snapshot) {
             memcpy(snapshot, server->active_conns, (size_t)count * sizeof(void *));
-        else
+            for (int i = 0; i < count; i++)
+                rt_obj_retain_maybe(snapshot[i]);
+        } else {
             count = 0;
+        }
     }
     https_server_state_unlock(server);
     if (count_out)
@@ -610,8 +613,17 @@ static HTTPS_MAYBE_UNUSED int rt_https_server_test_parse_request(const char *raw
         *method_out = req.method ? strdup(req.method) : NULL;
     if (path_out)
         *path_out = req.path ? strdup(req.path) : NULL;
-    if (body_out)
-        *body_out = req.body ? strdup(req.body) : NULL;
+    if (body_out) {
+        *body_out = NULL;
+        if (req.body) {
+            char *body_copy = (char *)malloc(req.body_len + 1);
+            if (body_copy) {
+                memcpy(body_copy, req.body, req.body_len);
+                body_copy[req.body_len] = '\0';
+                *body_out = body_copy;
+            }
+        }
+    }
     if (body_len_out)
         *body_len_out = req.body_len;
 
@@ -917,88 +929,53 @@ static void handle_connection(rt_http_server_impl *server, void *tcp) {
     }
     https_conn_set_recv_timeout(tls, 30000);
     https_conn_set_send_timeout(tls, 30000);
+    size_t buf_cap = 65536;
+    size_t buf_len = 0;
+    char *buf = (char *)malloc(buf_cap);
+    if (!buf)
+        goto done;
+
     while (https_conn_is_open(tls) && https_server_is_running(server)) {
-        size_t buf_cap = 65536;
-        char *buf = (char *)malloc(buf_cap);
-        if (!buf)
-            break;
-
-        size_t buf_len = 0;
-        bool headers_done = false;
-        size_t content_length = 0;
-        size_t header_end_pos = 0;
-        bool chunked = false;
+        size_t request_len = 0;
         bool bad_request = false;
+        bool peer_closed = false;
 
-        while (buf_len < buf_cap && https_conn_is_open(tls)) {
+        while (https_conn_is_open(tls)) {
+            size_t desired_cap = 0;
+            http_request_frame_status_t frame_status =
+                find_complete_http_request_frame(buf, buf_len, &request_len, &desired_cap);
+            if (frame_status == HTTP_REQUEST_FRAME_COMPLETE)
+                break;
+            if (frame_status == HTTP_REQUEST_FRAME_INVALID) {
+                bad_request = true;
+                break;
+            }
+            if (desired_cap > buf_cap) {
+                char *new_buf = (char *)realloc(buf, desired_cap);
+                if (!new_buf) {
+                    bad_request = true;
+                    break;
+                }
+                buf = new_buf;
+                buf_cap = desired_cap;
+            }
+            if (buf_len == buf_cap) {
+                bad_request = true;
+                break;
+            }
+
             long data_len = https_conn_recv(tls, (uint8_t *)buf + buf_len, buf_cap - buf_len);
             if (data_len <= 0) {
+                peer_closed = true;
                 break;
             }
             buf_len += (size_t)data_len;
-
-            if (!headers_done) {
-                const char *header_end = find_header_end(buf, buf_len);
-                if (header_end) {
-                    headers_done = true;
-                    header_end_pos = (size_t)(header_end - buf);
-                    if (!parse_content_length_header_block(
-                            buf, header_end_pos, &content_length, &chunked) ||
-                        content_length > HTTP_REQ_MAX_BODY) {
-                        bad_request = true;
-                        break;
-                    }
-                }
-            }
-
-            if (bad_request)
-                break;
-            if (headers_done) {
-                if (chunked) {
-                    size_t consumed_len = 0;
-                    chunk_parse_status_t status =
-                        decode_chunked_body(buf + header_end_pos,
-                                            buf_len - header_end_pos,
-                                            NULL,
-                                            NULL,
-                                            &consumed_len);
-                    if (status == CHUNK_PARSE_OK)
-                        break;
-                    if (status == CHUNK_PARSE_INVALID) {
-                        bad_request = true;
-                        break;
-                    }
-                    if (buf_cap < header_end_pos + HTTP_REQ_MAX_ENCODED_BODY) {
-                        size_t next_cap = buf_cap * 2;
-                        size_t max_cap = header_end_pos + HTTP_REQ_MAX_ENCODED_BODY + 1;
-                        if (next_cap > max_cap)
-                            next_cap = max_cap;
-                        if (next_cap > buf_cap) {
-                            char *new_buf = (char *)realloc(buf, next_cap);
-                            if (!new_buf)
-                                break;
-                            buf = new_buf;
-                            buf_cap = next_cap;
-                        }
-                    }
-                } else {
-                    if (content_length == 0 || buf_len >= header_end_pos + content_length)
-                        break;
-                    if (header_end_pos + content_length > buf_cap) {
-                        buf_cap = header_end_pos + content_length + 1;
-                        char *new_buf = (char *)realloc(buf, buf_cap);
-                        if (!new_buf)
-                            break;
-                        buf = new_buf;
-                    }
-                }
-            }
         }
 
-        if (buf_len == 0) {
-            free(buf);
+        if (peer_closed && buf_len == 0)
             break;
-        }
+        if (!bad_request && request_len == 0)
+            break;
 
         if (buf_len < buf_cap)
             buf[buf_len] = '\0';
@@ -1006,14 +983,12 @@ static void handle_connection(rt_http_server_impl *server, void *tcp) {
             buf[buf_cap - 1] = '\0';
 
         server_req_t req;
-        if (bad_request || !parse_http_request(buf, buf_len, &req)) {
+        if (bad_request || !parse_http_request(buf, request_len, &req)) {
             const char *bad =
                 "HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n";
             https_conn_send_all(tls, bad, strlen(bad));
-            free(buf);
             break;
         }
-        free(buf);
 
         server_res_t res;
         memset(&res, 0, sizeof(res));
@@ -1036,7 +1011,15 @@ static void handle_connection(rt_http_server_impl *server, void *tcp) {
 
         if (!keep_alive)
             break;
+        if (request_len < buf_len) {
+            memmove(buf, buf + request_len, buf_len - request_len);
+            buf_len -= request_len;
+        } else {
+            buf_len = 0;
+        }
     }
+    free(buf);
+done:
     https_server_unregister_active_conn(server, tls);
     rt_tls_close(tls);
 }
@@ -1499,8 +1482,11 @@ void rt_https_server_stop(void *obj) {
     {
         int conn_count = 0;
         void **active_conns = https_server_snapshot_active_conns(server, &conn_count);
-        for (int i = 0; i < conn_count; i++)
+        for (int i = 0; i < conn_count; i++) {
             https_server_interrupt_conn(active_conns[i]);
+            if (active_conns[i] && rt_obj_release_check0(active_conns[i]))
+                rt_obj_free(active_conns[i]);
+        }
         free(active_conns);
     }
 

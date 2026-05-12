@@ -357,6 +357,10 @@ static chunk_parse_status_t decode_chunked_body(const char *encoded,
 }
 
 /// @brief Scan a raw HTTP header block to extract framing hints.
+static bool parse_transfer_encoding_value_strict(const char *value,
+                                                 size_t value_len,
+                                                 bool *chunked_out);
+
 static bool parse_content_length_header_block(const char *headers,
                                               size_t headers_len,
                                               size_t *content_length_out,
@@ -392,8 +396,15 @@ static bool parse_content_length_header_block(const char *headers,
                 const char *value = colon + 1;
                 while (value < line_end && (*value == ' ' || *value == '\t'))
                     value++;
-                if (header_value_contains_token(value, (size_t)(line_end - value), "chunked", 7))
+                bool value_chunked = false;
+                if (!parse_transfer_encoding_value_strict(
+                        value, (size_t)(line_end - value), &value_chunked))
+                    return false;
+                if (value_chunked) {
+                    if (saw_chunked)
+                        return false;
                     saw_chunked = true;
+                }
             }
         }
 
@@ -406,6 +417,121 @@ static bool parse_content_length_header_block(const char *headers,
     if (chunked_out)
         *chunked_out = saw_chunked;
     return true;
+}
+
+static bool parse_transfer_encoding_value_strict(const char *value,
+                                                 size_t value_len,
+                                                 bool *chunked_out) {
+    const char *p = value;
+    const char *end = value + value_len;
+    bool saw_token = false;
+    bool saw_chunked = false;
+
+    if (chunked_out)
+        *chunked_out = false;
+    if (!value)
+        return false;
+
+    while (p < end) {
+        const char *token_start;
+        const char *token_end;
+        bool token_is_chunked = false;
+
+        while (p < end && (*p == ' ' || *p == '\t'))
+            p++;
+        if (p >= end)
+            return false;
+        if (*p == ',')
+            return false;
+
+        token_start = p;
+        while (p < end && *p != ',')
+            p++;
+        token_end = p;
+        while (token_end > token_start && (token_end[-1] == ' ' || token_end[-1] == '\t'))
+            token_end--;
+
+        if (token_end == token_start)
+            return false;
+        token_is_chunked =
+            (size_t)(token_end - token_start) == 7 &&
+            strncasecmp(token_start, "chunked", 7) == 0;
+        if (!token_is_chunked)
+            return false;
+        if (saw_chunked)
+            return false;
+        saw_token = true;
+        saw_chunked = true;
+
+        if (p < end) {
+            p++;
+            while (p < end && (*p == ' ' || *p == '\t'))
+                p++;
+            if (p >= end)
+                return false;
+        }
+    }
+
+    if (!saw_token)
+        return false;
+    if (chunked_out)
+        *chunked_out = saw_chunked;
+    return true;
+}
+
+typedef enum {
+    HTTP_REQUEST_FRAME_INCOMPLETE = 0,
+    HTTP_REQUEST_FRAME_COMPLETE = 1,
+    HTTP_REQUEST_FRAME_INVALID = -1
+} http_request_frame_status_t;
+
+static http_request_frame_status_t find_complete_http_request_frame(const char *buf,
+                                                                    size_t buf_len,
+                                                                    size_t *request_len_out,
+                                                                    size_t *desired_cap_out) {
+    const char *header_end = find_header_end(buf, buf_len);
+    size_t header_end_pos = 0;
+    size_t content_length = 0;
+    bool chunked = false;
+
+    if (request_len_out)
+        *request_len_out = 0;
+    if (desired_cap_out)
+        *desired_cap_out = 0;
+    if (!buf)
+        return HTTP_REQUEST_FRAME_INVALID;
+    if (!header_end)
+        return HTTP_REQUEST_FRAME_INCOMPLETE;
+
+    header_end_pos = (size_t)(header_end - buf);
+    if (!parse_content_length_header_block(buf, header_end_pos, &content_length, &chunked) ||
+        content_length > HTTP_REQ_MAX_BODY) {
+        return HTTP_REQUEST_FRAME_INVALID;
+    }
+
+    if (chunked) {
+        size_t consumed_len = 0;
+        chunk_parse_status_t status = decode_chunked_body(
+            buf + header_end_pos, buf_len - header_end_pos, NULL, NULL, &consumed_len);
+        if (status == CHUNK_PARSE_OK) {
+            if (request_len_out)
+                *request_len_out = header_end_pos + consumed_len;
+            return HTTP_REQUEST_FRAME_COMPLETE;
+        }
+        if (status == CHUNK_PARSE_INVALID)
+            return HTTP_REQUEST_FRAME_INVALID;
+        if (desired_cap_out)
+            *desired_cap_out = header_end_pos + HTTP_REQ_MAX_ENCODED_BODY + 1;
+        return HTTP_REQUEST_FRAME_INCOMPLETE;
+    }
+
+    if (request_len_out)
+        *request_len_out = header_end_pos + content_length;
+    if (buf_len >= header_end_pos + content_length)
+        return HTTP_REQUEST_FRAME_COMPLETE;
+    if (desired_cap_out)
+        *desired_cap_out = header_end_pos + content_length + 1;
+    return HTTP_REQUEST_FRAME_INCOMPLETE;
 }
 
 /// @brief Parse an HTTP request from raw bytes.

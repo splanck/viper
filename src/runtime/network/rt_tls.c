@@ -2009,6 +2009,10 @@ static int process_server_hello(rt_tls_session_t *session,
     }
     uint16_t ext_len = read_u16(data + pos);
     pos += 2;
+    if ((size_t)ext_len > len - pos) {
+        session->error = "ServerHello extensions overflow message";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
 
     size_t ext_end = pos + ext_len;
     uint16_t selected_group = 0;
@@ -2026,12 +2030,24 @@ static int process_server_hello(rt_tls_session_t *session,
         }
 
         if (ext_type == TLS_EXT_KEY_SHARE) {
-            if (is_hrr && ext_data_len == 2) {
+            if (is_hrr) {
+                if (ext_data_len != 2) {
+                    session->error = "HelloRetryRequest key_share malformed";
+                    return RT_TLS_ERROR_HANDSHAKE;
+                }
                 selected_group = read_u16(data + pos);
                 found_key_share = 1;
-            } else if (!is_hrr && ext_data_len >= 36) {
+            } else {
+                if (ext_data_len != 36) {
+                    session->error = "ServerHello key_share malformed";
+                    return RT_TLS_ERROR_HANDSHAKE;
+                }
                 uint16_t group = read_u16(data + pos);
                 uint16_t key_len = read_u16(data + pos + 2);
+                if ((size_t)key_len + 4 != ext_data_len) {
+                    session->error = "ServerHello key_share length mismatch";
+                    return RT_TLS_ERROR_HANDSHAKE;
+                }
                 if (group == 0x001D && key_len == 32) {
                     memcpy(session->server_public_key, data + pos + 4, 32);
                     selected_group = group;
@@ -2066,6 +2082,10 @@ static int process_server_hello(rt_tls_session_t *session,
                 found_supported_versions = 1;
         }
         pos += ext_data_len;
+    }
+    if (pos != ext_end) {
+        session->error = "ServerHello extension header truncated";
+        return RT_TLS_ERROR_HANDSHAKE;
     }
 
     if (!found_key_share) {

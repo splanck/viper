@@ -25,6 +25,7 @@
 #define strcasecmp _stricmp
 #define strncasecmp _strnicmp
 #else
+#include <pthread.h>
 #include <strings.h>
 #endif
 
@@ -107,6 +108,7 @@ struct rt_http2_conn {
     char error[256];
     uint32_t peer_initial_window;
     uint32_t peer_max_frame_size;
+    uint32_t local_max_frame_size;
     int64_t peer_conn_window;
     int next_stream_id;
     int sent_goaway;
@@ -454,7 +456,12 @@ typedef struct {
 
 static huff_node_t g_huff_nodes[H2_MAX_HUFF_NODES];
 static int g_huff_node_count = 0;
-static int g_huff_initialized = 0;
+static int g_huff_init_ok = 0;
+#ifdef _WIN32
+static INIT_ONCE g_huff_once = INIT_ONCE_STATIC_INIT;
+#else
+static pthread_once_t g_huff_once = PTHREAD_ONCE_INIT;
+#endif
 
 static void h2_write_u16(uint8_t *dst, uint16_t v) {
     dst[0] = (uint8_t)(v >> 8);
@@ -547,26 +554,36 @@ static void h2_buf_free(h2_buf_t *buf) {
     buf->cap = 0;
 }
 
-static int h2_header_name_is_valid(const char *name) {
-    if (!name || !*name)
+static int h2_header_name_bytes_is_valid(const char *name, size_t len) {
+    if (!name || len == 0)
         return 0;
-    for (const unsigned char *p = (const unsigned char *)name; *p; ++p) {
-        if (*p <= 0x20 || *p == 0x7f)
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)name[i];
+        if (c <= 0x20 || c == 0x7f)
             return 0;
-        if (*p >= 'A' && *p <= 'Z')
+        if (c >= 'A' && c <= 'Z')
+            return 0;
+    }
+    return 1;
+}
+
+static int h2_header_name_is_valid(const char *name) {
+    return name && h2_header_name_bytes_is_valid(name, strlen(name));
+}
+
+static int h2_header_value_bytes_is_valid(const char *value, size_t len) {
+    if (!value)
+        return 0;
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)value[i];
+        if (c == '\0' || c == '\r' || c == '\n')
             return 0;
     }
     return 1;
 }
 
 static int h2_header_value_is_valid(const char *value) {
-    if (!value)
-        return 0;
-    for (const unsigned char *p = (const unsigned char *)value; *p; ++p) {
-        if (*p == '\r' || *p == '\n' || *p == '\0')
-            return 0;
-    }
-    return 1;
+    return value && h2_header_value_bytes_is_valid(value, strlen(value));
 }
 
 static int h2_parse_status_code(const char *value, int *status_out) {
@@ -899,9 +916,7 @@ static int huff_new_node(void) {
     return index;
 }
 
-static int hpack_huffman_init(void) {
-    if (g_huff_initialized)
-        return 1;
+static int hpack_huffman_build(void) {
     g_huff_node_count = 0;
     if (huff_new_node() != 0)
         return 0;
@@ -931,13 +946,40 @@ static int hpack_huffman_init(void) {
             g_huff_nodes[node].pad_ok = 1;
         }
     }
-    g_huff_initialized = 1;
     return 1;
 }
 
-static char *hpack_decode_huffman(const uint8_t *src, size_t src_len) {
+#ifdef _WIN32
+static BOOL CALLBACK hpack_huffman_once(PINIT_ONCE init_once, PVOID parameter, PVOID *context) {
+    (void)init_once;
+    (void)parameter;
+    (void)context;
+    g_huff_init_ok = hpack_huffman_build();
+    return TRUE;
+}
+#else
+static void hpack_huffman_once(void) {
+    g_huff_init_ok = hpack_huffman_build();
+}
+#endif
+
+static int hpack_huffman_init(void) {
+#ifdef _WIN32
+    if (!InitOnceExecuteOnce(&g_huff_once, hpack_huffman_once, NULL, NULL))
+        return 0;
+#else
+    if (pthread_once(&g_huff_once, hpack_huffman_once) != 0)
+        return 0;
+#endif
+    return g_huff_init_ok;
+}
+
+static char *hpack_decode_huffman(const uint8_t *src, size_t src_len, size_t *decoded_len_out) {
     h2_buf_t out = {0};
     int node = 0;
+    size_t decoded_len = 0;
+    if (decoded_len_out)
+        *decoded_len_out = 0;
     if (!hpack_huffman_init())
         return NULL;
     for (size_t i = 0; i < src_len; i++) {
@@ -967,16 +1009,20 @@ static char *hpack_decode_huffman(const uint8_t *src, size_t src_len) {
         h2_buf_free(&out);
         return NULL;
     }
+    decoded_len = out.len;
     if (!h2_buf_append_byte(&out, '\0')) {
         h2_buf_free(&out);
         return NULL;
     }
+    if (decoded_len_out)
+        *decoded_len_out = decoded_len;
     return (char *)out.data;
 }
 
 static int hpack_decode_string(const uint8_t *src,
                                size_t src_len,
                                char **out,
+                               size_t *value_len_out,
                                size_t *consumed_out) {
     size_t str_len = 0;
     size_t int_consumed = 0;
@@ -989,10 +1035,14 @@ static int hpack_decode_string(const uint8_t *src,
         return 0;
     if (int_consumed > src_len || str_len > src_len - int_consumed)
         return 0;
+    if (value_len_out)
+        *value_len_out = 0;
     if (huffman) {
-        value = hpack_decode_huffman(src + int_consumed, str_len);
+        value = hpack_decode_huffman(src + int_consumed, str_len, value_len_out);
     } else {
         value = h2_strdup_range(src + int_consumed, str_len);
+        if (value_len_out)
+            *value_len_out = str_len;
     }
     if (!value)
         return 0;
@@ -1060,6 +1110,7 @@ static int hpack_decode_header_block(hpack_dyn_table_t *table,
                                      rt_http2_header_t **headers_out) {
     size_t pos = 0;
     rt_http2_header_t *headers = NULL;
+    int saw_header = 0;
     if (!table || !headers_out)
         return 0;
     *headers_out = NULL;
@@ -1068,6 +1119,8 @@ static int hpack_decode_header_block(hpack_dyn_table_t *table,
         const char *value_ref = NULL;
         char *name = NULL;
         char *value = NULL;
+        size_t name_len = 0;
+        size_t value_len = 0;
         size_t index = 0;
         size_t consumed = 0;
         int add_index = 0;
@@ -1075,16 +1128,28 @@ static int hpack_decode_header_block(hpack_dyn_table_t *table,
 
         if ((b & 0x80) != 0) {
             if (!hpack_int_decode(block + pos, block_len - pos, 7, &index, &consumed) ||
-                !hpack_get_by_index(table, index, &name_ref, &value_ref) ||
+                !hpack_get_by_index(table, index, &name_ref, &value_ref)) {
+                rt_http2_headers_free(headers);
+                return 0;
+            }
+            name_len = strlen(name_ref);
+            value_len = strlen(value_ref);
+            if (!h2_header_name_bytes_is_valid(name_ref, name_len) ||
+                !h2_header_value_bytes_is_valid(value_ref, value_len) ||
                 !rt_http2_header_append_copy(&headers, name_ref, value_ref)) {
                 rt_http2_headers_free(headers);
                 return 0;
             }
             pos += consumed;
+            saw_header = 1;
             continue;
         }
 
         if ((b & 0x20) != 0) {
+            if (saw_header) {
+                rt_http2_headers_free(headers);
+                return 0;
+            }
             if (!hpack_int_decode(block + pos, block_len - pos, 5, &index, &consumed) ||
                 !hpack_dyn_table_set_max_size(table, index)) {
                 rt_http2_headers_free(headers);
@@ -1114,6 +1179,7 @@ static int hpack_decode_header_block(hpack_dyn_table_t *table,
                 rt_http2_headers_free(headers);
                 return 0;
             }
+            name_len = strlen(name_ref);
             name = strdup(name_ref);
             if (!name) {
                 rt_http2_headers_free(headers);
@@ -1121,7 +1187,11 @@ static int hpack_decode_header_block(hpack_dyn_table_t *table,
             }
         } else {
             size_t name_consumed = 0;
-            if (!hpack_decode_string(block + pos, block_len - pos, &name, &name_consumed)) {
+            if (!hpack_decode_string(block + pos,
+                                     block_len - pos,
+                                     &name,
+                                     &name_len,
+                                     &name_consumed)) {
                 rt_http2_headers_free(headers);
                 return 0;
             }
@@ -1130,7 +1200,11 @@ static int hpack_decode_header_block(hpack_dyn_table_t *table,
 
         {
             size_t value_consumed = 0;
-            if (!hpack_decode_string(block + pos, block_len - pos, &value, &value_consumed)) {
+            if (!hpack_decode_string(block + pos,
+                                     block_len - pos,
+                                     &value,
+                                     &value_len,
+                                     &value_consumed)) {
                 free(name);
                 rt_http2_headers_free(headers);
                 return 0;
@@ -1138,7 +1212,8 @@ static int hpack_decode_header_block(hpack_dyn_table_t *table,
             pos += value_consumed;
         }
 
-        if (!h2_header_name_is_valid(name) || !h2_header_value_is_valid(value) ||
+        if (!h2_header_name_bytes_is_valid(name, name_len) ||
+            !h2_header_value_bytes_is_valid(value, value_len) ||
             !rt_http2_header_append_copy(&headers, name, value)) {
             free(name);
             free(value);
@@ -1154,6 +1229,7 @@ static int hpack_decode_header_block(hpack_dyn_table_t *table,
         }
         free(name);
         free(value);
+        saw_header = 1;
     }
     *headers_out = headers;
     return 1;
@@ -1226,7 +1302,7 @@ static int h2_read_frame(rt_http2_conn_t *conn, h2_frame_t *frame) {
     if (!h2_io_read_exact(conn, header, sizeof(header)))
         return 0;
     payload_len = h2_read_u24(header);
-    if (payload_len > H2_MAX_FRAME_SIZE)
+    if (payload_len > conn->local_max_frame_size)
         return h2_conn_fail(conn, "HTTP/2: oversized frame");
     frame->type = header[3];
     frame->flags = header[4];
@@ -1572,7 +1648,7 @@ static int h2_handle_common_frame(rt_http2_conn_t *conn,
         }
 
         case H2_FRAME_PRIORITY:
-            if (frame->payload_len != 5)
+            if (frame->stream_id == 0 || frame->payload_len != 5)
                 return h2_conn_fail(conn, "HTTP/2: malformed PRIORITY frame");
             if (handled_out)
                 *handled_out = 1;
@@ -1599,8 +1675,10 @@ static int h2_handle_common_frame(rt_http2_conn_t *conn,
             return 1;
 
         default:
-            if (frame->stream_id == 0 && handled_out)
+            if (frame->type != H2_FRAME_DATA && frame->type != H2_FRAME_HEADERS &&
+                frame->type != H2_FRAME_CONTINUATION && handled_out) {
                 *handled_out = 1;
+            }
             return 1;
     }
 }
@@ -1735,6 +1813,7 @@ static rt_http2_conn_t *h2_conn_new_common(const rt_http2_io_t *io, int is_serve
     conn->is_server = is_server ? 1 : 0;
     conn->peer_initial_window = H2_DEFAULT_WINDOW_SIZE;
     conn->peer_max_frame_size = H2_DEFAULT_FRAME_SIZE;
+    conn->local_max_frame_size = H2_DEFAULT_FRAME_SIZE;
     conn->peer_conn_window = H2_DEFAULT_WINDOW_SIZE;
     conn->next_stream_id = 1;
     conn->encode_table.max_bytes = 4096;
@@ -1873,16 +1952,20 @@ int rt_http2_client_roundtrip(rt_http2_conn_t *conn,
             }
             if (!saw_response_headers) {
                 int saw_status = 0;
+                int status_tmp = 0;
+                rt_http2_header_t *response_headers = NULL;
                 for (rt_http2_header_t *it = decoded; it; it = it->next) {
                     if (strcmp(it->name, ":status") == 0) {
                         if (saw_status) {
+                            rt_http2_headers_free(response_headers);
                             rt_http2_headers_free(decoded);
                             h2_frame_free(&frame);
                             h2_buf_free(&res_body);
                             rt_http2_response_free(out_res);
                             return h2_conn_fail(conn, "HTTP/2: duplicate response status");
                         }
-                        if (!h2_parse_status_code(it->value, &out_res->status)) {
+                        if (!h2_parse_status_code(it->value, &status_tmp)) {
+                            rt_http2_headers_free(response_headers);
                             rt_http2_headers_free(decoded);
                             h2_frame_free(&frame);
                             h2_buf_free(&res_body);
@@ -1892,7 +1975,8 @@ int rt_http2_client_roundtrip(rt_http2_conn_t *conn,
                         saw_status = 1;
                     } else if (it->name[0] != ':') {
                         if (h2_header_is_connection_specific(it->name, it->value) ||
-                            !rt_http2_header_append_copy(&out_res->headers, it->name, it->value)) {
+                            !rt_http2_header_append_copy(&response_headers, it->name, it->value)) {
+                            rt_http2_headers_free(response_headers);
                             rt_http2_headers_free(decoded);
                             h2_frame_free(&frame);
                             h2_buf_free(&res_body);
@@ -1900,6 +1984,7 @@ int rt_http2_client_roundtrip(rt_http2_conn_t *conn,
                             return h2_conn_fail(conn, "HTTP/2: invalid response header");
                         }
                     } else {
+                        rt_http2_headers_free(response_headers);
                         rt_http2_headers_free(decoded);
                         h2_frame_free(&frame);
                         h2_buf_free(&res_body);
@@ -1907,13 +1992,29 @@ int rt_http2_client_roundtrip(rt_http2_conn_t *conn,
                         return h2_conn_fail(conn, "HTTP/2: invalid response pseudo-header");
                     }
                 }
-                if (!saw_status || out_res->status < 100 || out_res->status > 599) {
+                if (!saw_status || status_tmp < 100 || status_tmp > 599) {
+                    rt_http2_headers_free(response_headers);
                     rt_http2_headers_free(decoded);
                     h2_frame_free(&frame);
                     h2_buf_free(&res_body);
                     rt_http2_response_free(out_res);
                     return h2_conn_fail(conn, "HTTP/2: missing response status");
                 }
+                if (status_tmp >= 100 && status_tmp < 200) {
+                    rt_http2_headers_free(response_headers);
+                    if (status_tmp == 101 || end_stream) {
+                        rt_http2_headers_free(decoded);
+                        h2_frame_free(&frame);
+                        h2_buf_free(&res_body);
+                        rt_http2_response_free(out_res);
+                        return h2_conn_fail(conn, "HTTP/2: invalid informational response");
+                    }
+                    rt_http2_headers_free(decoded);
+                    h2_frame_free(&frame);
+                    continue;
+                }
+                out_res->status = status_tmp;
+                out_res->headers = response_headers;
                 saw_response_headers = 1;
             } else {
                 if (!h2_append_trailer_headers(&out_res->headers, decoded)) {

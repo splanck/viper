@@ -42,6 +42,8 @@
 
 #include "rt_trap.h"
 
+#define SMTP_MAX_LINE_LEN (64u * 1024u)
+
 //=============================================================================
 // Internal Structure
 //=============================================================================
@@ -199,8 +201,21 @@ static rt_string smtp_recv_line(rt_smtp_impl *s) {
             break;
         }
 
-        if (len + 1 >= cap) {
+        if (len >= SMTP_MAX_LINE_LEN) {
+            free(line);
+            set_error(s, "SMTP: response line too long");
+            return NULL;
+        }
+
+        if (len >= cap) {
             size_t new_cap = cap * 2;
+            if (new_cap < cap || new_cap > SMTP_MAX_LINE_LEN)
+                new_cap = SMTP_MAX_LINE_LEN;
+            if (new_cap <= cap) {
+                free(line);
+                set_error(s, "SMTP: response line too long");
+                return NULL;
+            }
             char *grown = (char *)realloc(line, new_cap);
             if (!grown) {
                 free(line);
@@ -423,6 +438,56 @@ static int smtp_command(rt_smtp_impl *s, const char *cmd, int expected_code) {
     return smtp_command_ex(s, cmd, expected_code, NULL, NULL);
 }
 
+static int smtp_send_base64_line(rt_smtp_impl *s, const char *plain, int expected_code) {
+    rt_string plain_str = NULL;
+    rt_string encoded = NULL;
+    const char *encoded_cstr = NULL;
+    int64_t encoded_len64 = 0;
+    size_t encoded_len = 0;
+    char *cmd = NULL;
+    int rc = -1;
+
+    plain_str = rt_string_from_bytes(plain ? plain : "", strlen(plain ? plain : ""));
+    if (!plain_str) {
+        set_error(s, "SMTP: OOM");
+        return -1;
+    }
+    encoded = rt_codec_base64_enc(plain_str);
+    rt_string_unref(plain_str);
+    if (!encoded) {
+        set_error(s, "SMTP: base64 encoding failed");
+        return -1;
+    }
+    encoded_cstr = rt_string_cstr(encoded);
+    encoded_len64 = rt_str_len(encoded);
+    if (!encoded_cstr || encoded_len64 < 0 ||
+        (uint64_t)encoded_len64 > (uint64_t)SIZE_MAX) {
+        rt_string_unref(encoded);
+        set_error(s, "SMTP: invalid base64 credential");
+        return -1;
+    }
+    encoded_len = (size_t)encoded_len64;
+    if (strlen(encoded_cstr) != encoded_len || encoded_len > SIZE_MAX - 3) {
+        rt_string_unref(encoded);
+        set_error(s, "SMTP: invalid base64 credential");
+        return -1;
+    }
+    cmd = (char *)malloc(encoded_len + 3);
+    if (!cmd) {
+        rt_string_unref(encoded);
+        set_error(s, "SMTP: OOM");
+        return -1;
+    }
+    memcpy(cmd, encoded_cstr, encoded_len);
+    cmd[encoded_len] = '\r';
+    cmd[encoded_len + 1] = '\n';
+    cmd[encoded_len + 2] = '\0';
+    rt_string_unref(encoded);
+    rc = smtp_command(s, cmd, expected_code);
+    free(cmd);
+    return rc;
+}
+
 static void smtp_parse_ehlo_caps_line(const char *line, void *ctx) {
     smtp_caps_t *caps = (smtp_caps_t *)ctx;
     const char *value = line;
@@ -626,28 +691,10 @@ static int smtp_connect_and_handshake(rt_smtp_impl *s) {
         if (smtp_command(s, "AUTH LOGIN\r\n", 334) < 0)
             return -1;
 
-        // Send base64-encoded username
-        rt_string user_str = rt_string_from_bytes(s->username, strlen(s->username));
-        rt_string user_b64 = rt_codec_base64_enc(user_str);
-        rt_string_unref(user_str);
-
-        const char *ub = rt_string_cstr(user_b64);
-        char user_cmd[512];
-        snprintf(user_cmd, sizeof(user_cmd), "%s\r\n", ub);
-        rt_string_unref(user_b64);
-        if (smtp_command(s, user_cmd, 334) < 0)
+        if (smtp_send_base64_line(s, s->username, 334) < 0)
             return -1;
 
-        // Send base64-encoded password
-        rt_string pass_str = rt_string_from_bytes(s->password, strlen(s->password));
-        rt_string pass_b64 = rt_codec_base64_enc(pass_str);
-        rt_string_unref(pass_str);
-
-        const char *pb = rt_string_cstr(pass_b64);
-        char pass_cmd[512];
-        snprintf(pass_cmd, sizeof(pass_cmd), "%s\r\n", pb);
-        rt_string_unref(pass_b64);
-        if (smtp_command(s, pass_cmd, 235) < 0)
+        if (smtp_send_base64_line(s, s->password, 235) < 0)
             return -1;
     }
 

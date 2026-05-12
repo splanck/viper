@@ -58,6 +58,7 @@ extern char *rt_ws_compute_accept_key(const char *key_cstr);
 extern char *rt_ws_format_host_header_for_test(const char *host, int port, int is_secure);
 extern int rt_ws_close_code_valid_for_test(int code);
 extern int rt_http_header_name_valid_for_test(const char *name);
+extern int rt_http_transfer_encoding_supported_for_test(const char *value, int *chunked_out);
 
 static char captured_method[32];
 static char captured_path[64];
@@ -221,6 +222,70 @@ static void test_http_server_parses_chunked_request_body(void) {
     free(method);
     free(path);
     free(body);
+}
+
+static void test_http_server_rejects_unsupported_transfer_encoding(void) {
+    const char gzip[] = "POST /stream HTTP/1.1\r\n"
+                        "Transfer-Encoding: gzip\r\n"
+                        "\r\n";
+    const char gzip_chunked[] = "POST /stream HTTP/1.1\r\n"
+                                "Transfer-Encoding: gzip, chunked\r\n"
+                                "\r\n"
+                                "0\r\n\r\n";
+    const char chunked_gzip[] = "POST /stream HTTP/1.1\r\n"
+                                "Transfer-Encoding: chunked, gzip\r\n"
+                                "\r\n"
+                                "0\r\n\r\n";
+    const char duplicate_chunked[] = "POST /stream HTTP/1.1\r\n"
+                                     "Transfer-Encoding: chunked, chunked\r\n"
+                                     "\r\n"
+                                     "0\r\n\r\n";
+    const char trailing_comma[] = "POST /stream HTTP/1.1\r\n"
+                                  "Transfer-Encoding: chunked,\r\n"
+                                  "\r\n"
+                                  "0\r\n\r\n";
+
+    ASSERT(rt_http_server_test_parse_request(
+               gzip, sizeof(gzip) - 1, NULL, NULL, NULL, NULL) == 0);
+    ASSERT(rt_http_server_test_parse_request(
+               gzip_chunked, sizeof(gzip_chunked) - 1, NULL, NULL, NULL, NULL) == 0);
+    ASSERT(rt_http_server_test_parse_request(
+               chunked_gzip, sizeof(chunked_gzip) - 1, NULL, NULL, NULL, NULL) == 0);
+    ASSERT(rt_http_server_test_parse_request(
+               duplicate_chunked, sizeof(duplicate_chunked) - 1, NULL, NULL, NULL, NULL) == 0);
+    ASSERT(rt_http_server_test_parse_request(
+               trailing_comma, sizeof(trailing_comma) - 1, NULL, NULL, NULL, NULL) == 0);
+}
+
+static void test_http_server_test_parse_preserves_nul_body(void) {
+    const char raw[] = "POST /binary HTTP/1.1\r\n"
+                       "Content-Length: 4\r\n"
+                       "\r\n"
+                       "a\0bc";
+    const char expected[] = {'a', '\0', 'b', 'c'};
+    char *body = NULL;
+    size_t body_len = 0;
+
+    ASSERT(rt_http_server_test_parse_request(
+               raw, sizeof(raw) - 1, NULL, NULL, &body, &body_len) == 1);
+    ASSERT(body_len == sizeof(expected));
+    ASSERT(body != NULL && memcmp(body, expected, sizeof(expected)) == 0);
+    free(body);
+}
+
+static void test_http_client_transfer_encoding_validation(void) {
+    int chunked = 0;
+    ASSERT(rt_http_transfer_encoding_supported_for_test("chunked", &chunked) == 1);
+    ASSERT(chunked == 1);
+    chunked = 0;
+    ASSERT(rt_http_transfer_encoding_supported_for_test("  Chunked\t", &chunked) == 1);
+    ASSERT(chunked == 1);
+    ASSERT(rt_http_transfer_encoding_supported_for_test("gzip", &chunked) == 0);
+    ASSERT(rt_http_transfer_encoding_supported_for_test("gzip, chunked", &chunked) == 0);
+    ASSERT(rt_http_transfer_encoding_supported_for_test("chunked, gzip", &chunked) == 0);
+    ASSERT(rt_http_transfer_encoding_supported_for_test("chunked, chunked", &chunked) == 0);
+    ASSERT(rt_http_transfer_encoding_supported_for_test("chunked,", &chunked) == 0);
+    ASSERT(rt_http_transfer_encoding_supported_for_test(", chunked", &chunked) == 0);
 }
 
 static void test_http_server_builds_large_header_block(void) {
@@ -747,6 +812,9 @@ int main(void) {
     test_http_server_rejects_truncated_body();
     test_http_server_rejects_duplicate_content_length();
     test_http_server_parses_chunked_request_body();
+    test_http_server_rejects_unsupported_transfer_encoding();
+    test_http_server_test_parse_preserves_nul_body();
+    test_http_client_transfer_encoding_validation();
     test_http_server_builds_large_header_block();
     test_http_server_response_filters_managed_and_injected_headers();
     test_http_server_executes_bound_native_handler();

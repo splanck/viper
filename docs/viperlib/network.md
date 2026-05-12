@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-11
+last-verified: 2026-05-12
 ---
 
 # Network
@@ -78,7 +78,7 @@ Passing NULL connections, invalid port numbers, or NULL data are
 programming errors that always terminate the program. They are not
 network conditions and cannot be recovered from.
 
-URL parsers for HTTP, HTTPS, WS, WSS, and SSE reject empty hosts, malformed ports, malformed IPv6 authorities, port overflow, and control-character injection. HTTP chunked framing is parsed strictly; malformed chunk-size lines and non-empty chunk terminators fail as protocol errors instead of being partially accepted. HTTP responses with unsupported `Transfer-Encoding` values are rejected rather than falling back to `Content-Length`.
+URL parsers for HTTP, HTTPS, WS, WSS, and SSE reject empty hosts, malformed ports, malformed IPv6 authorities, port overflow, and control-character injection. HTTP chunked framing is parsed strictly; malformed chunk-size lines and non-empty chunk terminators fail as protocol errors instead of being partially accepted. HTTP request and response `Transfer-Encoding` handling supports a single final `chunked` coding; unsupported, duplicate, trailing-comma, or non-final transfer codings are rejected rather than falling back to `Content-Length`.
 
 ---
 
@@ -110,6 +110,8 @@ TCP client connection for sending and receiving data over a network.
 | `Send(data)`          | Integer | Send Bytes, return number of bytes sent        |
 | `SendAll(data)`       | void    | Send all bytes, block until complete           |
 | `SendStr(text)`       | Integer | Send string as UTF-8 bytes, return bytes sent  |
+
+`SendStr` uses the runtime string byte length, so embedded NUL bytes are sent instead of truncating the payload at the first NUL.
 
 ### Receive Methods
 
@@ -427,6 +429,8 @@ UDP datagram socket for connectionless communication.
 |------------------------------|---------|---------------------------------------|
 | `SendTo(host, port, data)`   | Integer | Send Bytes to address, return bytes sent |
 | `SendToStr(host, port, text)`| Integer | Send string as UTF-8, return bytes sent  |
+
+`SendToStr` uses the runtime string byte length, so embedded NUL bytes are included in the datagram.
 
 ### Receive Methods
 
@@ -787,7 +791,7 @@ PRINT "Content-Length: "; headers.Get("content-length")
 - **Redirect handling** - Automatically follows 301, 302, 303, 307, 308 redirects (up to 5), including relative `Location:` targets
 - **Informational responses** - Consumes interim `1xx` responses (for example `100 Continue` and `103 Early Hints`) and returns the final response
 - **Content-Length** - Handles Content-Length bodies
-- **Chunked encoding** - Handles Transfer-Encoding: chunked responses
+- **Chunked encoding** - Handles a single `Transfer-Encoding: chunked` response coding and rejects unsupported transfer codings
 - **Gzip decoding** - `Http`, `HttpReq`, and `HttpClient` automatically advertise `Accept-Encoding: gzip` and transparently decode `Content-Encoding: gzip` responses
 - **Streaming download** - `Http.Download()` writes response bytes directly to disk instead of buffering the entire body in memory
 - **Timeout** - Default 30 second timeout
@@ -1874,7 +1878,7 @@ Threaded HTTP/1.1 server with routing and handler-tag lookup.
 - Only `HTTP/1.0` and `HTTP/1.1` request lines are accepted.
 - Request methods must be valid HTTP tokens. Request targets must be origin-form (`/path?...`), absolute-form (`http://host/path?...` or `https://host/path?...`), or `*`; absolute-form targets are normalized to the routed path.
 - Query lookups URL-decode parameter names before matching, so `%71=search` is visible as `Query("q")`.
-- `HttpServer` honors protocol-correct keep-alive semantics: HTTP/1.1 defaults to keep-alive unless `Connection: close` is present, while HTTP/1.0 requires explicit `Connection: keep-alive`.
+- `HttpServer` honors protocol-correct keep-alive semantics: HTTP/1.1 defaults to keep-alive unless `Connection: close` is present, while HTTP/1.0 requires explicit `Connection: keep-alive`. Pipelined HTTP/1.1 requests on the same socket are preserved and processed in order.
 - Send and receive timeouts are enforced on live client sockets so slow readers do not stall workers indefinitely.
 
 ---
@@ -1920,9 +1924,9 @@ Threaded TLS-backed HTTP/1.1 + HTTP/2 server built on the in-tree TLS 1.3 runtim
 
 - `HttpsServer.New(0, certFile, keyFile)` is supported. Read the actual bound port back from `server.Port` after `Start()`.
 - The request/response handler model mirrors `HttpServer`.
-- Sequential HTTPS keep-alive requests on the same TLS connection are supported when response framing is safe.
+- Sequential and pipelined HTTPS keep-alive requests on the same TLS connection are supported when response framing is safe.
 - When ALPN selects `h2`, the same route table serves HTTP/2 streams through the existing `ServerReq` / `ServerRes` handler model.
-- HTTP/2 request trailers are merged into `req.Headers`, and HTTP/2 response trailers are preserved in the client-visible header list.
+- HTTP/2 request trailers are merged into `req.Headers`, and HTTP/2 response trailers are preserved in the client-visible header list. Unknown HTTP/2 extension frames are ignored, informational `1xx` responses are skipped until the final response, and inbound frames are capped at the local advertised maximum frame size.
 - If a peer opens another request stream before the active one finishes, `HttpsServer` refuses that extra stream with `RST_STREAM` and keeps the TLS connection alive for later requests.
 - The built-in TLS server stack performs the full TLS 1.3 handshake in-tree, including `ClientHello`/`ServerHello`, ALPN negotiation, certificate chain delivery, `CertificateVerify`, and bidirectional `Finished` processing.
 - `Start()` now fails cleanly on listener-bind or accept-thread startup errors instead of leaving the server in a partial running state.
@@ -2119,6 +2123,7 @@ Server-Sent Events (SSE) client for receiving event streams over HTTP.
 ### Stream Behavior
 
 - Supports both plain `Content-Length` and HTTP chunked `text/event-stream` responses.
+- URLs without an explicit port use `80` for `http://` and `443` for `https://`.
 - Follows ordinary HTTP redirects before the event stream is established.
 - When the server drops the stream after delivering an event, the client reconnects automatically.
 - `retry:` updates the reconnect delay in milliseconds.
@@ -2166,6 +2171,7 @@ Session-based HTTP client with cookie jar, auto-redirect, and persistent headers
 - Path-scoped cookies are only sent to matching request paths.
 - `Secure` cookies are only sent over `https://` requests.
 - `Secure` cookies received over plain `http://` responses are rejected instead of being stored.
+- `Domain` attributes are normalized before storage, and invalid `Max-Age` values are ignored instead of silently overflowing.
 - Expired cookies are purged automatically before requests and lookups.
 
 ### Transport Behavior
@@ -2208,6 +2214,7 @@ Simple SMTP client for sending emails with optional AUTH LOGIN and negotiated ST
 
 - `SetTls(true)` on submission ports negotiates `STARTTLS` only when the server advertises it after `EHLO`.
 - `AUTH LOGIN` is only attempted when the server advertises it and the connection is encrypted.
+- SMTP response lines are capped to prevent unbounded memory growth, and AUTH LOGIN credential commands are sized from the base64 output instead of a fixed buffer.
 - Recipient replies `250`, `251`, and `252` are accepted so forwarded/local-alias deliveries interoperate with real SMTP servers.
 
 ---

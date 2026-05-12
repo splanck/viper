@@ -655,6 +655,8 @@ retry:
     }
 
     port = rt_url_port(url_obj);
+    if (port == 0)
+        port = is_secure ? 443 : 80;
     if (port < 1 || port > 65535) {
         if (err_msg && err_msg_cap > 0)
             snprintf(err_msg, err_msg_cap, "SSE: invalid URL port");

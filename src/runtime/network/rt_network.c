@@ -559,7 +559,12 @@ int64_t rt_tcp_send_str(void *obj, rt_string text) {
         rt_trap_net("Network: connection closed", Err_ConnectionClosed);
 
     const char *text_ptr = rt_string_cstr(text);
-    size_t len = strlen(text_ptr);
+    if (!text_ptr)
+        rt_trap("Network: NULL string");
+    int64_t len64 = rt_str_len(text);
+    if (len64 < 0 || (uint64_t)len64 > (uint64_t)SIZE_MAX)
+        rt_trap("Network: invalid string length");
+    size_t len = (size_t)len64;
     if (len == 0)
         return 0;
 
