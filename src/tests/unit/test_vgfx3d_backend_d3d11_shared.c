@@ -4,6 +4,7 @@
 
 #include "vgfx3d_backend_d3d11_shared.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -223,15 +224,33 @@ static void test_target_kind_blend_and_color_format_helpers(void) {
                 "GPU postfx main passes render into the HDR scene target");
     EXPECT_TRUE(vgfx3d_d3d11_choose_target_kind(0, 1, 1) == VGFX3D_D3D11_TARGET_OVERLAY,
                 "GPU postfx overlay passes render into the overlay target");
+    EXPECT_TRUE(vgfx3d_d3d11_should_load_existing_color(VGFX3D_D3D11_TARGET_SCENE, 1, 0) == 1,
+                "Scene passes honor requested color preservation");
+    EXPECT_TRUE(vgfx3d_d3d11_should_load_existing_color(VGFX3D_D3D11_TARGET_OVERLAY, 1, 0) == 0,
+                "First overlay pass clears the overlay target");
+    EXPECT_TRUE(vgfx3d_d3d11_should_load_existing_color(VGFX3D_D3D11_TARGET_OVERLAY, 1, 1) == 1,
+                "Later overlay passes preserve prior overlay contents");
 
     memset(&cmd, 0, sizeof(cmd));
     cmd.workflow = RT_MATERIAL3D_WORKFLOW_PBR;
     cmd.alpha_mode = RT_MATERIAL3D_ALPHA_MODE_BLEND;
     EXPECT_TRUE(vgfx3d_d3d11_choose_blend_mode(&cmd) == VGFX3D_D3D11_BLEND_ALPHA,
                 "PBR blend materials use alpha blending");
+    EXPECT_TRUE(vgfx3d_d3d11_choose_motion_attachment_mode(
+                    VGFX3D_D3D11_TARGET_SCENE, &cmd) ==
+                    VGFX3D_D3D11_MOTION_ATTACHMENTS_COLOR_ONLY,
+                "Alpha-blended scene draws disable the motion attachment");
     cmd.alpha_mode = RT_MATERIAL3D_ALPHA_MODE_MASK;
     EXPECT_TRUE(vgfx3d_d3d11_choose_blend_mode(&cmd) == VGFX3D_D3D11_BLEND_OPAQUE,
                 "PBR mask materials keep opaque render-target writes");
+    EXPECT_TRUE(vgfx3d_d3d11_choose_motion_attachment_mode(
+                    VGFX3D_D3D11_TARGET_SCENE, &cmd) ==
+                    VGFX3D_D3D11_MOTION_ATTACHMENTS_COLOR_AND_MOTION,
+                "Opaque scene draws keep the motion attachment enabled");
+    EXPECT_TRUE(vgfx3d_d3d11_choose_motion_attachment_mode(
+                    VGFX3D_D3D11_TARGET_SWAPCHAIN, &cmd) ==
+                    VGFX3D_D3D11_MOTION_ATTACHMENTS_COLOR_ONLY,
+                "Swapchain draws never target a scene-motion attachment");
     cmd.workflow = 0;
     cmd.alpha = 0.5f;
     cmd.alpha_mode = RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
@@ -254,6 +273,12 @@ static void test_target_kind_blend_and_color_format_helpers(void) {
                     vgfx3d_d3d11_choose_color_format(VGFX3D_D3D11_TARGET_OVERLAY) ==
                         VGFX3D_D3D11_COLOR_FORMAT_UNORM8,
                 "Swapchain and overlay targets use UNORM8 output");
+    EXPECT_TRUE(vgfx3d_d3d11_has_complete_splat(1, 1, 1, 1, 1, 1) == 1,
+                "Splatting is enabled when the weight map and all four layers are bound");
+    EXPECT_TRUE(vgfx3d_d3d11_has_complete_splat(1, 1, 1, 0, 1, 1) == 0,
+                "Splatting is disabled when any layer texture is missing");
+    EXPECT_TRUE(vgfx3d_d3d11_has_complete_splat(0, 1, 1, 1, 1, 1) == 0,
+                "Splatting respects the draw command enable flag");
 }
 
 static void test_capacity_and_mip_helpers(void) {
@@ -265,6 +290,40 @@ static void test_capacity_and_mip_helpers(void) {
                 "Capacity helper grows fixed caches beyond the old hard cap");
     EXPECT_TRUE(vgfx3d_d3d11_next_capacity(16, 8, 16) == 16,
                 "Capacity helper keeps existing storage when it is already large enough");
+    EXPECT_TRUE(vgfx3d_d3d11_next_capacity(0, 0, 0) == 1,
+                "Capacity helper never returns a non-positive capacity");
+}
+
+static void test_d3d11_limits_and_prune_helpers(void) {
+    EXPECT_TRUE(vgfx3d_d3d11_is_valid_texture2d_extent(1, 1) == 1,
+                "Texture extent helper accepts the smallest valid texture");
+    EXPECT_TRUE(vgfx3d_d3d11_is_valid_texture2d_extent(
+                    VGFX3D_D3D11_MAX_TEXTURE2D_DIMENSION,
+                    VGFX3D_D3D11_MAX_TEXTURE2D_DIMENSION) == 1,
+                "Texture extent helper accepts the D3D11 maximum");
+    EXPECT_TRUE(vgfx3d_d3d11_is_valid_texture2d_extent(
+                    VGFX3D_D3D11_MAX_TEXTURE2D_DIMENSION + 1, 16) == 0,
+                "Texture extent helper rejects oversized widths before D3D allocation");
+    EXPECT_TRUE(vgfx3d_d3d11_is_valid_cubemap_extent(0) == 0,
+                "Cubemap extent helper rejects non-positive face sizes");
+    EXPECT_TRUE(vgfx3d_d3d11_is_valid_cubemap_extent(
+                    VGFX3D_D3D11_MAX_CUBEMAP_DIMENSION + 1) == 0,
+                "Cubemap extent helper rejects oversized faces");
+
+    EXPECT_TRUE(vgfx3d_d3d11_clamp_morph_shape_count(1024u, 64) ==
+                    VGFX3D_D3D11_MAX_MORPH_SHAPES,
+                "Morph shape helper applies the backend shape cap");
+    EXPECT_TRUE(vgfx3d_d3d11_clamp_morph_shape_count((uint32_t)INT_MAX, 1) == 0,
+                "Morph shape helper prevents signed shader-index overflow");
+    EXPECT_TRUE(vgfx3d_d3d11_clamp_morph_shape_count(1u << 28, 8) == 2,
+                "Morph shape helper clamps by the maximum HLSL int buffer index");
+
+    EXPECT_TRUE(vgfx3d_d3d11_should_prune_cache_entry(100, 0, 0, 1000, 64, 240) == 1,
+                "Cache prune helper evicts aged entries while above the resident floor");
+    EXPECT_TRUE(vgfx3d_d3d11_should_prune_cache_entry(100, 0, 36, 1000, 64, 240) == 0,
+                "Cache prune helper keeps enough entries to preserve the resident floor");
+    EXPECT_TRUE(vgfx3d_d3d11_should_prune_cache_entry(100, 0, 0, 12, 64, 240) == 0,
+                "Cache prune helper keeps recently used entries");
 }
 
 int main(void) {
@@ -278,6 +337,7 @@ int main(void) {
     test_upload_status_helpers_drop_stale_state();
     test_target_kind_blend_and_color_format_helpers();
     test_capacity_and_mip_helpers();
+    test_d3d11_limits_and_prune_helpers();
 
     printf("vgfx3d d3d11 shared tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

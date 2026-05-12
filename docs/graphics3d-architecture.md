@@ -134,6 +134,9 @@ The D3D11 backend now uses two window-backed presentation modes:
 
 - direct mode: when GPU postfx is disabled, draws render straight into the swapchain backbuffer
 - postfx mode: the main scene renders into HDR scene targets, optional overlays render into a separate UNORM overlay target, and `present_postfx` composites the final image to the swapchain
+- overlay composition: the first overlay pass clears the overlay target to transparent black, while later overlay passes in the same frame preserve the existing overlay contents before final compositing
+- motion history: only opaque scene draws write the D3D11 motion-vector render target; alpha-blended and additive draws write color only so they do not corrupt motion blur / temporal reconstruction inputs
+- resource lifetime: scene resolves fall back to a backend pass-through composite instead of presenting stale swapchain contents, texture/cubemap caches prune aged entries while preserving a resident floor, and shadow slots are advertised to shaders only after a valid depth target was rendered
 
 This split keeps the no-postfx path cheap while preserving correct motion/depth history for SSAO, DOF, and motion blur when the GPU postfx path is active.
 

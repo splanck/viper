@@ -46,7 +46,7 @@ void vgfx3d_d3d11_pack_scalar_array4(float (*dst)[4],
     if (!src || src_scalar_count <= 0)
         return;
 
-    scalar_capacity = dst_vec_count * 4;
+    scalar_capacity = dst_vec_count > INT_MAX / 4 ? INT_MAX : dst_vec_count * 4;
     if (src_scalar_count > scalar_capacity)
         src_scalar_count = scalar_capacity;
     for (int32_t i = 0; i < src_scalar_count; i++)
@@ -192,8 +192,11 @@ int32_t vgfx3d_d3d11_next_capacity(int32_t current_capacity,
                                    int32_t minimum_capacity) {
     int32_t next_capacity;
 
-    if (needed <= 0)
-        return current_capacity > 0 ? current_capacity : minimum_capacity;
+    if (needed <= 0) {
+        if (current_capacity > 0)
+            return current_capacity;
+        return minimum_capacity > 0 ? minimum_capacity : 1;
+    }
     next_capacity = current_capacity > 0 ? current_capacity : minimum_capacity;
     if (next_capacity < 1)
         next_capacity = 1;
@@ -203,6 +206,53 @@ int32_t vgfx3d_d3d11_next_capacity(int32_t current_capacity,
         next_capacity *= 2;
     }
     return next_capacity;
+}
+
+int vgfx3d_d3d11_is_valid_texture2d_extent(int32_t width, int32_t height) {
+    return width > 0 && height > 0 && width <= VGFX3D_D3D11_MAX_TEXTURE2D_DIMENSION &&
+           height <= VGFX3D_D3D11_MAX_TEXTURE2D_DIMENSION;
+}
+
+int vgfx3d_d3d11_is_valid_cubemap_extent(int32_t face_size) {
+    return face_size > 0 && face_size <= VGFX3D_D3D11_MAX_CUBEMAP_DIMENSION;
+}
+
+int32_t vgfx3d_d3d11_clamp_morph_shape_count(uint32_t vertex_count,
+                                             int32_t requested_shape_count) {
+    int32_t shape_count;
+    uint32_t max_indexed_vertices;
+    uint32_t max_shapes_by_index;
+
+    if (vertex_count == 0 || requested_shape_count <= 0)
+        return 0;
+    shape_count = requested_shape_count;
+    if (shape_count > VGFX3D_D3D11_MAX_MORPH_SHAPES)
+        shape_count = VGFX3D_D3D11_MAX_MORPH_SHAPES;
+    max_indexed_vertices = (uint32_t)((INT_MAX - 2) / 3);
+    max_shapes_by_index = max_indexed_vertices / vertex_count;
+    if (max_shapes_by_index == 0)
+        return 0;
+    if ((uint32_t)shape_count > max_shapes_by_index)
+        shape_count = (int32_t)max_shapes_by_index;
+    return shape_count;
+}
+
+int vgfx3d_d3d11_should_prune_cache_entry(int32_t total_count,
+                                          int32_t kept_count,
+                                          int32_t scan_index,
+                                          uint64_t age,
+                                          int32_t max_resident,
+                                          uint64_t prune_age) {
+    int32_t remaining_after_current;
+
+    if (total_count <= 0 || kept_count < 0 || scan_index < 0 || scan_index >= total_count)
+        return 0;
+    if (max_resident < 0)
+        max_resident = 0;
+    if (total_count <= max_resident || age <= prune_age)
+        return 0;
+    remaining_after_current = total_count - scan_index - 1;
+    return kept_count + remaining_after_current >= max_resident;
 }
 
 /// @brief Pick the right render-target classification for the current draw context.
@@ -220,6 +270,16 @@ vgfx3d_d3d11_target_kind_t vgfx3d_d3d11_choose_target_kind(int8_t rtt_active,
     return VGFX3D_D3D11_TARGET_SCENE;
 }
 
+int8_t vgfx3d_d3d11_should_load_existing_color(vgfx3d_d3d11_target_kind_t target_kind,
+                                               int8_t requested_load_existing_color,
+                                               int8_t overlay_used_this_frame) {
+    if (!requested_load_existing_color)
+        return 0;
+    if (target_kind != VGFX3D_D3D11_TARGET_OVERLAY)
+        return 1;
+    return overlay_used_this_frame ? 1 : 0;
+}
+
 /// @brief Map a draw command to its required blend state (alpha vs opaque).
 vgfx3d_d3d11_blend_mode_t
 vgfx3d_d3d11_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd) {
@@ -235,4 +295,24 @@ vgfx3d_d3d11_color_format_t
 vgfx3d_d3d11_choose_color_format(vgfx3d_d3d11_target_kind_t target_kind) {
     return target_kind == VGFX3D_D3D11_TARGET_SCENE ? VGFX3D_D3D11_COLOR_FORMAT_HDR16F
                                                     : VGFX3D_D3D11_COLOR_FORMAT_UNORM8;
+}
+
+vgfx3d_d3d11_motion_attachment_mode_t
+vgfx3d_d3d11_choose_motion_attachment_mode(vgfx3d_d3d11_target_kind_t target_kind,
+                                           const vgfx3d_draw_cmd_t *cmd) {
+    if (target_kind != VGFX3D_D3D11_TARGET_SCENE)
+        return VGFX3D_D3D11_MOTION_ATTACHMENTS_COLOR_ONLY;
+    return vgfx3d_d3d11_choose_blend_mode(cmd) == VGFX3D_D3D11_BLEND_OPAQUE
+               ? VGFX3D_D3D11_MOTION_ATTACHMENTS_COLOR_AND_MOTION
+               : VGFX3D_D3D11_MOTION_ATTACHMENTS_COLOR_ONLY;
+}
+
+int vgfx3d_d3d11_has_complete_splat(int8_t cmd_has_splat,
+                                    int has_splat_map,
+                                    int has_layer0,
+                                    int has_layer1,
+                                    int has_layer2,
+                                    int has_layer3) {
+    return cmd_has_splat && has_splat_map && has_layer0 && has_layer1 && has_layer2 &&
+           has_layer3;
 }
