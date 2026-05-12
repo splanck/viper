@@ -240,7 +240,12 @@ static void async_send_worker(void *arg) {
     free(a);
 }
 
-/// @brief Async send.
+/// @brief Initiate a non-blocking TCP send and return a Future[Integer].
+/// @details Retains both the TCP handle and the data object before
+///          submission so the worker can read them after the caller's
+///          frame returns. On thread-pool refusal the promise is
+///          resolved synchronously as Err and the held references are
+///          dropped before returning.
 void *rt_async_send(void *tcp, void *data) {
     if (!tcp || !data)
         rt_trap("AsyncSocket: NULL arg");
@@ -295,7 +300,11 @@ static void async_recv_worker(void *arg) {
     free(a);
 }
 
-/// @brief Async recv.
+/// @brief Initiate a non-blocking TCP recv and return a Future[Bytes].
+/// @details Retains the TCP handle so the worker thread can hold a
+///          stable reference. The blocking `rt_tcp_recv` runs on the
+///          pool thread and the promise is resolved with the resulting
+///          Bytes payload (or an error message via the trap recovery).
 void *rt_async_recv(void *tcp, int64_t max_bytes) {
     if (!tcp)
         rt_trap("AsyncSocket: NULL tcp");
@@ -355,7 +364,10 @@ static void async_http_get_worker(void *arg) {
     free(a);
 }
 
-/// @brief Async http get.
+/// @brief Initiate an HTTP GET and return a Future[String] for the response body.
+/// @details Heap-copies the URL via @c strdup so the worker owns a stable
+///          C-string. The pool thread reconstitutes the URL as an
+///          @c rt_string before calling the blocking @c rt_http_get.
 void *rt_async_http_get(rt_string url) {
     const char *u = rt_string_cstr(url);
     if (!u)
@@ -418,7 +430,11 @@ static void async_http_post_worker(void *arg) {
     free(a);
 }
 
-/// @brief Async http post.
+/// @brief Initiate an HTTP POST and return a Future[String] for the response body.
+/// @details URL and body are both heap-copied so the worker can outlive
+///          the calling frame. A NULL body is normalised to an empty
+///          string before the blocking @c rt_http_post call so callers
+///          don't have to special-case the no-body case.
 void *rt_async_http_post(rt_string url, rt_string body) {
     const char *u = rt_string_cstr(url);
     const char *b = rt_string_cstr(body);

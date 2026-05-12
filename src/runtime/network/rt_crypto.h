@@ -98,10 +98,20 @@ void rt_hmac_sha256(
     const uint8_t *key, size_t key_len, const void *data, size_t data_len, uint8_t mac[32]);
 
 /// @brief Compute HMAC-SHA384.
+/// @param key Pointer to the HMAC key.
+/// @param key_len Length of @p key in bytes.
+/// @param data Pointer to the input data to authenticate.
+/// @param data_len Length of @p data in bytes.
+/// @param mac Output buffer for the 48-byte message authentication code.
 void rt_hmac_sha384(
     const uint8_t *key, size_t key_len, const void *data, size_t data_len, uint8_t mac[48]);
 
 /// @brief Compute HMAC-SHA512.
+/// @param key Pointer to the HMAC key.
+/// @param key_len Length of @p key in bytes.
+/// @param data Pointer to the input data to authenticate.
+/// @param data_len Length of @p data in bytes.
+/// @param mac Output buffer for the 64-byte message authentication code.
 void rt_hmac_sha512(
     const uint8_t *key, size_t key_len, const void *data, size_t data_len, uint8_t mac[64]);
 
@@ -142,15 +152,34 @@ int rt_hkdf_expand_label(const uint8_t secret[32],
                          uint8_t *out,
                          size_t out_len);
 
-/// @brief HKDF-Extract with HMAC-SHA384.
+/// @brief HKDF-Extract using HMAC-SHA384 (RFC 5869, hash = SHA-384).
+/// @param salt Optional salt value (NULL for the all-zero default salt).
+/// @param salt_len Length of @p salt in bytes.
+/// @param ikm Input keying material.
+/// @param ikm_len Length of @p ikm in bytes.
+/// @param prk Output buffer for the 48-byte pseudorandom key.
 void rt_hkdf_extract_sha384(
     const uint8_t *salt, size_t salt_len, const uint8_t *ikm, size_t ikm_len, uint8_t prk[48]);
 
-/// @brief HKDF-Expand with HMAC-SHA384.
+/// @brief HKDF-Expand using HMAC-SHA384.
+/// @param prk Pseudorandom key from `rt_hkdf_extract_sha384` (48 bytes).
+/// @param info Application-specific info string (NULL for none).
+/// @param info_len Length of @p info in bytes.
+/// @param okm Output buffer for the derived keying material.
+/// @param okm_len Desired length in bytes (max 255 * 48 = 12240 per RFC 5869).
+/// @return 0 on success; non-zero when @p okm_len exceeds the per-call cap.
 int rt_hkdf_expand_sha384(
     const uint8_t prk[48], const uint8_t *info, size_t info_len, uint8_t *okm, size_t okm_len);
 
-/// @brief TLS 1.3 HKDF-Expand-Label with HMAC-SHA384.
+/// @brief HKDF-Expand-Label for TLS 1.3 with the SHA-384 cipher suite family.
+/// @param secret The 48-byte secret from which to derive keying material.
+/// @param label TLS 1.3 label string (without the "tls13 " prefix; this
+///        function prepends it internally).
+/// @param context Hash context or transcript hash (NULL for none).
+/// @param context_len Length of @p context in bytes.
+/// @param out Output buffer for the derived keying material.
+/// @param out_len Desired length of output in bytes.
+/// @return 0 on success; non-zero on encoding / length overflow.
 int rt_hkdf_expand_label_sha384(const uint8_t secret[48],
                                 const char *label,
                                 const uint8_t *context,
@@ -241,6 +270,12 @@ long rt_aes128_gcm_decrypt(const uint8_t key[16],
 /// @brief Encrypt with AES-256-GCM.
 /// @param key The 256-bit encryption key (32 bytes).
 /// @param nonce The 96-bit nonce (12 bytes, must be unique per key).
+/// @param aad Pointer to additional authenticated data (can be NULL).
+/// @param aad_len Length of @p aad in bytes.
+/// @param plaintext Pointer to the plaintext to encrypt.
+/// @param plaintext_len Length of @p plaintext in bytes.
+/// @param ciphertext Output buffer for ciphertext and 16-byte authentication
+///        tag (must hold plaintext_len + 16 bytes).
 /// @return Ciphertext length (plaintext_len + 16 for tag).
 size_t rt_aes256_gcm_encrypt(const uint8_t key[32],
                              const uint8_t nonce[12],
@@ -251,6 +286,14 @@ size_t rt_aes256_gcm_encrypt(const uint8_t key[32],
                              uint8_t *ciphertext);
 
 /// @brief Decrypt with AES-256-GCM.
+/// @param key The 256-bit decryption key (32 bytes).
+/// @param nonce The 96-bit nonce (12 bytes, same as used during encryption).
+/// @param aad Pointer to additional authenticated data (can be NULL).
+/// @param aad_len Length of @p aad in bytes.
+/// @param ciphertext Pointer to the ciphertext with appended 16-byte tag.
+/// @param ciphertext_len Length of @p ciphertext in bytes (including tag).
+/// @param plaintext Output buffer for decrypted data (must hold
+///        ciphertext_len - 16 bytes).
 /// @return Plaintext length on success, -1 on authentication failure.
 long rt_aes256_gcm_decrypt(const uint8_t key[32],
                            const uint8_t nonce[12],

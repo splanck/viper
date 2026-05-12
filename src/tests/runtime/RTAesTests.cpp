@@ -42,6 +42,13 @@ static rt_string S_raw(const char *s, size_t len) {
     return rt_string_from_bytes(s, len);
 }
 
+static void *B_raw(const uint8_t *data, size_t len) {
+    void *bytes = rt_bytes_new((int64_t)len);
+    for (size_t i = 0; i < len; i++)
+        rt_bytes_set(bytes, (int64_t)i, data[i]);
+    return bytes;
+}
+
 static void test_str_roundtrip(void) {
     printf("rt_aes_encrypt_str / rt_aes_decrypt_str roundtrip:\n");
 
@@ -219,6 +226,28 @@ static void test_raw_aes128_invalid_padding_returns_null(void) {
     obj_release(key);
 }
 
+static void test_auth_malformed_frame_returns_null(void) {
+    printf("rt_aes_decrypt_auth returns NULL for malformed frames:\n");
+
+    uint8_t key_raw[16];
+    memset(key_raw, 0x42, sizeof(key_raw));
+    void *key = B_raw(key_raw, sizeof(key_raw));
+
+    uint8_t malformed[32];
+    memset(malformed, 0, sizeof(malformed));
+    malformed[0] = 'B';
+    malformed[1] = 'A';
+    malformed[2] = 'D';
+    malformed[3] = '!';
+    void *ciphertext = B_raw(malformed, sizeof(malformed));
+
+    void *decrypted = rt_aes_decrypt_auth(ciphertext, key, NULL);
+    check("malformed auth frame returns NULL", decrypted == NULL);
+
+    obj_release(ciphertext);
+    obj_release(key);
+}
+
 int main(void) {
     printf("=== RTAesTests ===\n");
     test_str_roundtrip();
@@ -227,6 +256,7 @@ int main(void) {
     test_str_format_magic();
     test_raw_aes128_roundtrip();
     test_raw_aes128_invalid_padding_returns_null();
+    test_auth_malformed_frame_returns_null();
     printf("All AES tests passed.\n");
     return 0;
 }

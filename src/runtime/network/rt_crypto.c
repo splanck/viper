@@ -51,6 +51,22 @@ static void rt_secure_zero(void *ptr, size_t len) {
         *p++ = 0;
 }
 
+/// @brief Validate a buffer pointer against its declared length.
+/// @details Many crypto entry points accept `(NULL, 0)` as a legal no-op but
+///          must trap when `data == NULL` with a positive length — the latter
+///          would otherwise UB inside @c memcpy. The helper returns a
+///          1-byte empty-string sentinel so callers can pass the result to
+///          unconditional pointer arithmetic without first checking @p len.
+/// @param data Caller buffer (may be NULL when @p len is 0).
+/// @param len Declared length in bytes.
+/// @param what Trap message identifying the failing call site.
+/// @return @p data when non-NULL, else a static empty-string sentinel.
+static const uint8_t *rt_crypto_checked_input(const void *data, size_t len, const char *what) {
+    if (!data && len > 0)
+        rt_trap(what);
+    return data ? (const uint8_t *)data : (const uint8_t *)"";
+}
+
 /// @brief Store a 64-bit value as 8 little-endian bytes.
 /// Used to encode the AAD and ciphertext length fields in AEAD constructions.
 static void store64_le(uint8_t out[8], uint64_t value) {
@@ -154,7 +170,11 @@ void rt_sha256_init(rt_sha256_ctx *ctx) {
 /// bytes have accumulated. Tracks the cumulative bit count so the
 /// MD-strengthening step in `final()` can append the correct length.
 void rt_sha256_update(rt_sha256_ctx *ctx, const void *data, size_t len) {
-    const uint8_t *ptr = (const uint8_t *)data;
+    if (!ctx)
+        rt_trap("SHA256: context is null");
+    if (len == 0)
+        return;
+    const uint8_t *ptr = rt_crypto_checked_input(data, len, "SHA256: input buffer is null");
     size_t idx = (ctx->count / 8) % 64;
 
     if (len > (UINT64_MAX - ctx->count) / 8)
@@ -214,6 +234,8 @@ void rt_sha256_final(rt_sha256_ctx *ctx, uint8_t digest[32]) {
 /// @brief One-shot SHA-256: init → update → final into a fresh context.
 void rt_sha256(const void *data, size_t len, uint8_t digest[32]) {
     rt_sha256_ctx ctx;
+    if (!digest)
+        rt_trap("SHA256: digest output is null");
     rt_sha256_init(&ctx);
     rt_sha256_update(&ctx, data, len);
     rt_sha256_final(&ctx, digest);
@@ -347,7 +369,11 @@ static void sha512_family_init(rt_sha512_ctx_internal *ctx, int is_sha384) {
 /// that SHA-512 supports in theory. In practice `count_hi` carries
 /// overflow from count_lo so the implementation handles files > 2 EiB.
 static void sha512_family_update(rt_sha512_ctx_internal *ctx, const void *data, size_t len) {
-    const uint8_t *ptr = (const uint8_t *)data;
+    if (!ctx)
+        rt_trap("SHA512: context is null");
+    if (len == 0)
+        return;
+    const uint8_t *ptr = rt_crypto_checked_input(data, len, "SHA512: input buffer is null");
     size_t idx = (size_t)((ctx->count_lo >> 3) & 127u);
     uint64_t prev_lo = ctx->count_lo;
 
@@ -417,6 +443,8 @@ static void sha512_family_final(
 /// @brief One-shot SHA-384: init → update → final → 48-byte digest.
 void rt_sha384(const void *data, size_t len, uint8_t digest[48]) {
     rt_sha512_ctx_internal ctx;
+    if (!digest)
+        rt_trap("SHA384: digest output is null");
     sha512_family_init(&ctx, 1);
     sha512_family_update(&ctx, data, len);
     sha512_family_final(&ctx, digest, 48);
@@ -425,6 +453,8 @@ void rt_sha384(const void *data, size_t len, uint8_t digest[48]) {
 /// @brief One-shot SHA-512: init → update → final → 64-byte digest.
 void rt_sha512(const void *data, size_t len, uint8_t digest[64]) {
     rt_sha512_ctx_internal ctx;
+    if (!digest)
+        rt_trap("SHA512: digest output is null");
     sha512_family_init(&ctx, 0);
     sha512_family_update(&ctx, data, len);
     sha512_family_final(&ctx, digest, 64);
@@ -444,6 +474,17 @@ void rt_sha512(const void *data, size_t len, uint8_t digest[64]) {
 void rt_hmac_sha256(
     const uint8_t *key, size_t key_len, const void *data, size_t data_len, uint8_t mac[32]) {
     uint8_t k[64], ipad[64], opad[64];
+
+    if (!mac)
+        rt_trap("HMAC-SHA256: output buffer is null");
+    if (!key && key_len > 0)
+        rt_trap("HMAC-SHA256: key buffer is null");
+    if (!data && data_len > 0)
+        rt_trap("HMAC-SHA256: input buffer is null");
+    if (!key)
+        key = (const uint8_t *)"";
+    if (!data)
+        data = "";
 
     if (key_len > 64) {
         rt_sha256(key, key_len, k);
@@ -474,6 +515,20 @@ void rt_hmac_sha256(
     rt_secure_zero(opad, sizeof(opad));
 }
 
+/// @brief Shared HMAC-SHA-384 / HMAC-SHA-512 implementation.
+/// @details Mirrors @ref rt_hmac_sha256 but operates on 128-byte blocks and
+///          uses the SHA-512/384 compression function selected by
+///          @p is_sha384. The inner hash is truncated to @p mac_len bytes
+///          (matching the chosen variant) before being fed into the outer
+///          hash. All intermediate key-derived material is scrubbed before
+///          return.
+/// @param key Pointer to the HMAC key.
+/// @param key_len Length of @p key in bytes.
+/// @param data Pointer to the input data.
+/// @param data_len Length of @p data in bytes.
+/// @param mac Output buffer (@p mac_len bytes).
+/// @param mac_len 48 for SHA-384, 64 for SHA-512.
+/// @param is_sha384 Non-zero to use SHA-384 IVs, zero for SHA-512.
 static void hmac_sha512_family(const uint8_t *key,
                                size_t key_len,
                                const void *data,
@@ -485,6 +540,17 @@ static void hmac_sha512_family(const uint8_t *key,
     uint8_t ipad[128];
     uint8_t opad[128];
     uint8_t inner[64];
+
+    if (!mac)
+        rt_trap("HMAC-SHA2: output buffer is null");
+    if (!key && key_len > 0)
+        rt_trap("HMAC-SHA2: key buffer is null");
+    if (!data && data_len > 0)
+        rt_trap("HMAC-SHA2: input buffer is null");
+    if (!key)
+        key = (const uint8_t *)"";
+    if (!data)
+        data = "";
 
     if (key_len > sizeof(k)) {
         if (is_sha384) {
@@ -522,11 +588,13 @@ static void hmac_sha512_family(const uint8_t *key,
     rt_secure_zero(&ctx, sizeof(ctx));
 }
 
+/// @brief HMAC-SHA-384 wrapper over @ref hmac_sha512_family.
 void rt_hmac_sha384(
     const uint8_t *key, size_t key_len, const void *data, size_t data_len, uint8_t mac[48]) {
     hmac_sha512_family(key, key_len, data, data_len, mac, 48, 1);
 }
 
+/// @brief HMAC-SHA-512 wrapper over @ref hmac_sha512_family.
 void rt_hmac_sha512(
     const uint8_t *key, size_t key_len, const void *data, size_t data_len, uint8_t mac[64]) {
     hmac_sha512_family(key, key_len, data, data_len, mac, 64, 0);
@@ -675,6 +743,10 @@ int rt_hkdf_expand_label(const uint8_t secret[32],
 
 #define RT_HKDF_SHA384_MAX_OKM_LEN (255u * 48u)
 
+/// @brief HKDF-Extract over HMAC-SHA-384, producing a 48-byte PRK.
+/// @details Mirrors @ref rt_hkdf_extract but uses the SHA-384 hash and a
+///          48-byte zero-salt default. Used by the TLS 1.3 SHA-384
+///          cipher-suite family.
 void rt_hkdf_extract_sha384(
     const uint8_t *salt, size_t salt_len, const uint8_t *ikm, size_t ikm_len, uint8_t prk[48]) {
     if (salt == NULL || salt_len == 0) {
@@ -686,6 +758,14 @@ void rt_hkdf_extract_sha384(
     }
 }
 
+/// @brief HKDF-Expand over HMAC-SHA-384 (RFC 5869 §2.3, hash = SHA-384).
+/// @details Iterates @c T(n) = HMAC-SHA-384(PRK, T(n-1) || info || n)
+///          and copies up to 48 bytes per iteration into @p okm.
+///          Allocates a temporary scratch buffer for the concatenated
+///          input rather than streaming the HMAC update — keeps the
+///          implementation small at the cost of one malloc/free per
+///          iteration. Cap is @c 255 * 48 = 12240 bytes.
+/// @return 0 on success; -1 on bad argument, OOM, or oversize @p okm_len.
 int rt_hkdf_expand_sha384(
     const uint8_t prk[48], const uint8_t *info, size_t info_len, uint8_t *okm, size_t okm_len) {
     uint8_t t[48] = {0};
@@ -733,6 +813,12 @@ int rt_hkdf_expand_sha384(
     return 0;
 }
 
+/// @brief TLS 1.3 HKDF-Expand-Label using HMAC-SHA-384.
+/// @details Mirrors @ref rt_hkdf_expand_label but encodes the label list
+///          for the SHA-384 PRK path. The 48-byte secret + 6-byte
+///          "tls13 " prefix + label + context all fit inside the
+///          stack-resident 512-byte scratch buffer.
+/// @return 0 on success; -1 on bad input or oversize encoding.
 int rt_hkdf_expand_label_sha384(const uint8_t secret[48],
                                 const char *label,
                                 const uint8_t *context,
@@ -1693,6 +1779,14 @@ long rt_aes128_gcm_decrypt(const uint8_t key[16],
     return (long)data_len;
 }
 
+/// @brief AES-256-GCM authenticated encryption (NIST SP 800-38D, 256-bit key).
+/// @details Mirrors @ref rt_aes128_gcm_encrypt but uses the AES-256
+///          key schedule (14 rounds, 240-byte round-key buffer) and
+///          calls @ref aes256_encrypt_block for both keystream
+///          generation and the GHASH subkey derivation. The 12-byte
+///          IV path is the only supported nonce shape.
+/// @param ciphertext Output buffer; must have room for plaintext_len + 16 bytes.
+/// @return Total bytes written, or 0 if @p plaintext_len exceeds the safety cap.
 size_t rt_aes256_gcm_encrypt(const uint8_t key[32],
                              const uint8_t nonce[12],
                              const void *aad,
@@ -1752,6 +1846,12 @@ size_t rt_aes256_gcm_encrypt(const uint8_t key[32],
     return plaintext_len + 16;
 }
 
+/// @brief AES-256-GCM authenticated decryption.
+/// @details Recomputes the GHASH tag, compares it against the trailing
+///          16 bytes of @p ciphertext in constant time, and only on
+///          tag match decrypts the leading data into @p plaintext.
+///          Returns -1 on tag failure or too-short input; on success
+///          returns the plaintext length (@c ciphertext_len - 16).
 long rt_aes256_gcm_decrypt(const uint8_t key[32],
                            const uint8_t nonce[12],
                            const void *aad,
@@ -2143,6 +2243,17 @@ static void fe_to_bytes(uint8_t s[32], const fe h) {
     s[31] = (uint8_t)(h9 >> 18);
 }
 
+static void fe_cswap(fe a, fe b, int swap) {
+    uint64_t mask = UINT64_C(0) - (uint64_t)(swap & 1);
+    for (int i = 0; i < 10; i++) {
+        uint64_t x = (uint64_t)a[i];
+        uint64_t y = (uint64_t)b[i];
+        uint64_t t = mask & (x ^ y);
+        a[i] = (int64_t)(x ^ t);
+        b[i] = (int64_t)(y ^ t);
+    }
+}
+
 /// @brief Constant-time X25519 scalar multiplication (RFC 7748).
 ///
 /// Implements the Montgomery ladder over Curve25519. The scalar is
@@ -2169,14 +2280,8 @@ static void x25519_scalarmult(uint8_t out[32], const uint8_t scalar[32], const u
     for (int pos = 254; pos >= 0; pos--) {
         int b = (e[pos / 8] >> (pos & 7)) & 1;
         swap ^= b;
-        for (int i = 0; i < 10; i++) {
-            int64_t dummy = swap * (x2[i] ^ x3[i]);
-            x2[i] ^= dummy;
-            x3[i] ^= dummy;
-            dummy = swap * (z2[i] ^ z3[i]);
-            z2[i] ^= dummy;
-            z3[i] ^= dummy;
-        }
+        fe_cswap(x2, x3, swap);
+        fe_cswap(z2, z3, swap);
         swap = b;
 
         fe_sub(tmp0, x3, z3);
@@ -2200,18 +2305,20 @@ static void x25519_scalarmult(uint8_t out[32], const uint8_t scalar[32], const u
         fe_mul(z2, tmp1, tmp0);
     }
 
-    for (int i = 0; i < 10; i++) {
-        int64_t dummy = swap * (x2[i] ^ x3[i]);
-        x2[i] ^= dummy;
-        x3[i] ^= dummy;
-        dummy = swap * (z2[i] ^ z3[i]);
-        z2[i] ^= dummy;
-        z3[i] ^= dummy;
-    }
+    fe_cswap(x2, x3, swap);
+    fe_cswap(z2, z3, swap);
 
     fe_invert(z2, z2);
     fe_mul(x2, x2, z2);
     fe_to_bytes(out, x2);
+    rt_secure_zero(e, sizeof(e));
+    rt_secure_zero(x1, sizeof(x1));
+    rt_secure_zero(x2, sizeof(x2));
+    rt_secure_zero(z2, sizeof(z2));
+    rt_secure_zero(x3, sizeof(x3));
+    rt_secure_zero(z3, sizeof(z3));
+    rt_secure_zero(tmp0, sizeof(tmp0));
+    rt_secure_zero(tmp1, sizeof(tmp1));
 }
 
 static const uint8_t x25519_basepoint[32] = {9};
@@ -2222,6 +2329,8 @@ static const uint8_t x25519_basepoint[32] = {9};
 /// `x25519_scalarmult` — callers can therefore pass any 32 random
 /// bytes as the secret without pre-clamping.
 void rt_x25519_keygen(uint8_t secret[32], uint8_t public_key[32]) {
+    if (!secret || !public_key)
+        rt_trap("X25519.Keygen: output buffer is null");
     rt_crypto_random_bytes(secret, 32);
     x25519_scalarmult(public_key, secret, x25519_basepoint);
 }

@@ -948,7 +948,7 @@ void *rt_aes_decrypt(void *data, void *key, void *iv) {
 ///          to the output, runs AES-128-GCM or AES-256-GCM over the plaintext with
 ///          [magic_header || user_aad] as the AEAD AAD, and appends the
 ///          16-byte GCM tag. The returned bytes object layout is:
-///          [16-byte header][12-byte nonce][ciphertext][16-byte tag].
+///          [magic(4)|nonce(12)|ciphertext|tag(16)].
 ///          Decryption via rt_aes_decrypt_auth refuses to proceed if the
 ///          header doesn't match, so plain-CBC ciphertexts can't be passed
 ///          through here by accident.
@@ -1055,13 +1055,12 @@ void *rt_aes_decrypt_auth(void *data, void *key, void *aad) {
         rt_trap("AES.Auth: key must be exactly 16 or 32 bytes");
         return NULL;
     }
-    if (data_len < AES_AUTH_HEADER_LEN + 16 || !encoded || encoded[0] != AES_AUTH_MAGIC0 ||
+    if (!encoded || data_len < AES_AUTH_HEADER_LEN + 16 || encoded[0] != AES_AUTH_MAGIC0 ||
         encoded[1] != AES_AUTH_MAGIC1 || encoded[2] != AES_AUTH_MAGIC2 ||
         encoded[3] != AES_AUTH_MAGIC3) {
         free(encoded);
         aes_secure_zero(key_raw, key_len);
         free(key_raw);
-        rt_trap("AES.Auth: encrypted data is malformed");
         return NULL;
     }
 

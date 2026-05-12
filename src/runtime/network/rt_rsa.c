@@ -31,8 +31,55 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define RT_RSA_MIN_MOD_BYTES 128
 #define RT_RSA_MAX_MOD_BYTES 512
 #define RT_RSA_MAX_WORDS (RT_RSA_MAX_MOD_BYTES / sizeof(uint64_t))
+
+static void rsa_secure_zero(void *ptr, size_t len) {
+    volatile uint8_t *p = (volatile uint8_t *)ptr;
+    while (len-- > 0)
+        *p++ = 0;
+}
+
+static void rsa_secure_free(uint8_t *ptr, size_t len) {
+    if (ptr) {
+        rsa_secure_zero(ptr, len);
+        free(ptr);
+    }
+}
+
+static int rsa_be_is_zero(const uint8_t *data, size_t len) {
+    uint8_t acc = 0;
+    if (!data || len == 0)
+        return 1;
+    for (size_t i = 0; i < len; i++)
+        acc |= data[i];
+    return acc == 0;
+}
+
+static int rsa_validate_public_components(const rt_rsa_key_t *key) {
+    if (!key || !key->modulus || !key->public_exponent)
+        return 0;
+    if (key->modulus_len < RT_RSA_MIN_MOD_BYTES || key->modulus_len > RT_RSA_MAX_MOD_BYTES)
+        return 0;
+    if (rsa_be_is_zero(key->modulus, key->modulus_len) || (key->modulus[key->modulus_len - 1] & 1u) == 0)
+        return 0;
+    if (key->public_exponent_len == 0 || key->public_exponent_len > 8 ||
+        key->public_exponent_len > key->modulus_len)
+        return 0;
+    if (rsa_be_is_zero(key->public_exponent, key->public_exponent_len) ||
+        (key->public_exponent[key->public_exponent_len - 1] & 1u) == 0)
+        return 0;
+    if (key->public_exponent_len == 1 && key->public_exponent[0] < 3)
+        return 0;
+    return 1;
+}
+
+static int rsa_validate_private_components(const rt_rsa_key_t *key) {
+    return rsa_validate_public_components(key) && key->private_exponent &&
+           key->private_exponent_len > 0 && key->private_exponent_len <= key->modulus_len &&
+           !rsa_be_is_zero(key->private_exponent, key->private_exponent_len);
+}
 
 /// @brief Compute (a * b + addend + carry_in) into a 128-bit pair (low, high).
 /// @details The fundamental Montgomery-multiply micro-op: takes two 64-bit
@@ -106,15 +153,20 @@ static int rsa_der_read_tlv(
     } else {
         size_t num_len_bytes = (size_t)(buf[1] & 0x7F);
         size_t value = 0;
-        if (num_len_bytes == 0 || num_len_bytes > 4 || 2 + num_len_bytes > buf_len)
+        if (num_len_bytes == 0 || num_len_bytes > sizeof(size_t) ||
+            2 + num_len_bytes > buf_len || buf[2] == 0x00)
             return 0;
         for (size_t i = 0; i < num_len_bytes; i++)
             value = (value << 8) | buf[2 + i];
+        if (value < 128)
+            return 0;
         *val_len = value;
         *hdr_len = 2 + num_len_bytes;
     }
 
-    return (*hdr_len + *val_len <= buf_len) ? 1 : 0;
+    if (*hdr_len > buf_len || *val_len > buf_len - *hdr_len)
+        return 0;
+    return 1;
 }
 
 /// @brief Heap-duplicate a big-endian integer value, stripping any leading zero padding.
@@ -158,6 +210,13 @@ static int rsa_parse_der_integer(
     if (!der || !pos || !out || !out_len || *pos >= der_len)
         return 0;
     if (!rsa_der_read_tlv(der + *pos, der_len - *pos, &tag, &value_len, &hdr_len) || tag != 0x02)
+        return 0;
+    if (value_len == 0)
+        return 0;
+    const uint8_t *value = der + *pos + hdr_len;
+    if ((value[0] & 0x80u) != 0)
+        return 0;
+    if (value_len > 1 && value[0] == 0x00 && (value[1] & 0x80u) == 0)
         return 0;
     *out = rsa_dup_be_trimmed(der + *pos + hdr_len, value_len, out_len);
     if (!*out)
@@ -626,15 +685,16 @@ static int rsa_pss_encode(const rt_rsa_key_t *key,
     size_t masked_db_len = 0;
     size_t ps_len = 0;
     uint8_t top_mask = 0xFF;
+    int ok = 0;
 
     if (!key || !digest || !em || h_len == 0 || digest_len != h_len)
-        return 0;
+        goto done;
     if (em_len < h_len * 2 + 2 || h_len > sizeof(salt))
-        return 0;
+        goto done;
 
     masked_db_len = em_len - h_len - 1;
     if (masked_db_len > sizeof(db))
-        return 0;
+        goto done;
     ps_len = masked_db_len - h_len - 1;
     if (8 * em_len > em_bits)
         top_mask = (uint8_t)(0xFFu >> (8 * em_len - em_bits));
@@ -644,19 +704,29 @@ static int rsa_pss_encode(const rt_rsa_key_t *key,
     memcpy(m_prime + 8, digest, h_len);
     memcpy(m_prime + 8 + h_len, salt, h_len);
     if (!rsa_hash_buffer(hash_id, m_prime, 8 + h_len + h_len, h))
-        return 0;
+        goto done;
 
     memset(db, 0, ps_len);
     db[ps_len] = 0x01;
     memcpy(db + ps_len + 1, salt, h_len);
     if (!rsa_mgf1(hash_id, h, h_len, db_mask, masked_db_len))
-        return 0;
+        goto done;
     for (size_t i = 0; i < masked_db_len; i++)
         em[i] = db[i] ^ db_mask[i];
     em[0] &= top_mask;
     memcpy(em + masked_db_len, h, h_len);
     em[em_len - 1] = 0xBC;
-    return 1;
+    ok = 1;
+
+done:
+    rsa_secure_zero(salt, sizeof(salt));
+    rsa_secure_zero(m_prime, sizeof(m_prime));
+    rsa_secure_zero(h, sizeof(h));
+    rsa_secure_zero(db, sizeof(db));
+    rsa_secure_zero(db_mask, sizeof(db_mask));
+    if (!ok && em && em_len > 0)
+        rsa_secure_zero(em, em_len);
+    return ok;
 }
 
 /// @brief Verify a PSS-encoded message against an expected digest (RFC 8017 §9.1.2).
@@ -789,9 +859,9 @@ void rt_rsa_key_init(rt_rsa_key_t *key) {
 void rt_rsa_key_free(rt_rsa_key_t *key) {
     if (!key)
         return;
-    free(key->modulus);
-    free(key->public_exponent);
-    free(key->private_exponent);
+    rsa_secure_free(key->modulus, key->modulus_len);
+    rsa_secure_free(key->public_exponent, key->public_exponent_len);
+    rsa_secure_free(key->private_exponent, key->private_exponent_len);
     memset(key, 0, sizeof(*key));
 }
 
@@ -807,6 +877,7 @@ void rt_rsa_key_free(rt_rsa_key_t *key) {
 int rt_rsa_parse_public_key_pkcs1(const uint8_t *der, size_t der_len, rt_rsa_key_t *out) {
     uint8_t tag;
     size_t value_len, hdr_len, pos = 0;
+    size_t end = 0;
     rt_rsa_key_t key;
 
     if (!der || der_len == 0 || !out)
@@ -814,10 +885,14 @@ int rt_rsa_parse_public_key_pkcs1(const uint8_t *der, size_t der_len, rt_rsa_key
     rt_rsa_key_init(&key);
     if (!rsa_der_read_tlv(der, der_len, &tag, &value_len, &hdr_len) || tag != 0x30)
         return 0;
+    end = hdr_len + value_len;
+    if (end != der_len)
+        return 0;
     pos = hdr_len;
-    if (!rsa_parse_der_integer(der, hdr_len + value_len, &pos, &key.modulus, &key.modulus_len) ||
+    if (!rsa_parse_der_integer(der, end, &pos, &key.modulus, &key.modulus_len) ||
         !rsa_parse_der_integer(
-            der, hdr_len + value_len, &pos, &key.public_exponent, &key.public_exponent_len)) {
+            der, end, &pos, &key.public_exponent, &key.public_exponent_len) ||
+        pos != end || !rsa_validate_public_components(&key)) {
         rt_rsa_key_free(&key);
         return 0;
     }
@@ -830,105 +905,145 @@ int rt_rsa_parse_public_key_pkcs1(const uint8_t *der, size_t der_len, rt_rsa_key
 /// @details PKCS#1 RSAPrivateKey is a longer SEQUENCE: version,
 ///          modulus, public exponent, private exponent, primes p
 ///          and q, exponents dP and dQ, coefficient qInv, and an
-///          optional otherPrimeInfos. We parse just the version,
-///          modulus, public exponent, and private exponent —
-///          everything else is for CRT-accelerated decryption,
-///          which Viper doesn't currently use (we only need the
-///          private exponent for direct mod-exp).
-///          The version field is parsed and discarded (we don't
-///          enforce a specific value because both single-prime and
-///          multi-prime versions use the same first four fields).
+///          optional otherPrimeInfos. We parse and validate the full
+///          mandatory two-prime structure, retain n/e/d for the runtime's
+///          direct mod-exp path, and reject multi-prime version 1 keys
+///          until CRT/multi-prime support exists.
 int rt_rsa_parse_private_key_pkcs1(const uint8_t *der, size_t der_len, rt_rsa_key_t *out) {
     uint8_t tag;
     size_t value_len, hdr_len, pos = 0;
+    size_t end = 0;
     uint8_t *version = NULL;
     size_t version_len = 0;
+    uint8_t *prime1 = NULL;
+    uint8_t *prime2 = NULL;
+    uint8_t *exponent1 = NULL;
+    uint8_t *exponent2 = NULL;
+    uint8_t *coefficient = NULL;
+    size_t prime1_len = 0;
+    size_t prime2_len = 0;
+    size_t exponent1_len = 0;
+    size_t exponent2_len = 0;
+    size_t coefficient_len = 0;
     rt_rsa_key_t key;
+    int ok = 0;
 
     if (!der || der_len == 0 || !out)
         return 0;
     rt_rsa_key_init(&key);
     if (!rsa_der_read_tlv(der, der_len, &tag, &value_len, &hdr_len) || tag != 0x30)
         return 0;
-    pos = hdr_len;
-    if (!rsa_parse_der_integer(der, hdr_len + value_len, &pos, &version, &version_len) ||
-        !rsa_parse_der_integer(der, hdr_len + value_len, &pos, &key.modulus, &key.modulus_len) ||
-        !rsa_parse_der_integer(
-            der, hdr_len + value_len, &pos, &key.public_exponent, &key.public_exponent_len) ||
-        !rsa_parse_der_integer(
-            der, hdr_len + value_len, &pos, &key.private_exponent, &key.private_exponent_len)) {
-        free(version);
-        rt_rsa_key_free(&key);
+    end = hdr_len + value_len;
+    if (end != der_len)
         return 0;
+    pos = hdr_len;
+    if (!rsa_parse_der_integer(der, end, &pos, &version, &version_len) ||
+        version_len != 1 || version[0] != 0x00 ||
+        !rsa_parse_der_integer(der, end, &pos, &key.modulus, &key.modulus_len) ||
+        !rsa_parse_der_integer(
+            der, end, &pos, &key.public_exponent, &key.public_exponent_len) ||
+        !rsa_parse_der_integer(
+            der, end, &pos, &key.private_exponent, &key.private_exponent_len) ||
+        !rsa_parse_der_integer(der, end, &pos, &prime1, &prime1_len) ||
+        !rsa_parse_der_integer(der, end, &pos, &prime2, &prime2_len) ||
+        !rsa_parse_der_integer(der, end, &pos, &exponent1, &exponent1_len) ||
+        !rsa_parse_der_integer(der, end, &pos, &exponent2, &exponent2_len) ||
+        !rsa_parse_der_integer(der, end, &pos, &coefficient, &coefficient_len) ||
+        pos != end || !rsa_validate_private_components(&key) ||
+        rsa_be_is_zero(prime1, prime1_len) || rsa_be_is_zero(prime2, prime2_len) ||
+        rsa_be_is_zero(exponent1, exponent1_len) || rsa_be_is_zero(exponent2, exponent2_len) ||
+        rsa_be_is_zero(coefficient, coefficient_len)) {
+        goto done;
     }
-    free(version);
+
     rt_rsa_key_free(out);
     *out = key;
-    return 1;
+    rt_rsa_key_init(&key);
+    ok = 1;
+
+done:
+    rsa_secure_free(version, version_len);
+    rsa_secure_free(prime1, prime1_len);
+    rsa_secure_free(prime2, prime2_len);
+    rsa_secure_free(exponent1, exponent1_len);
+    rsa_secure_free(exponent2, exponent2_len);
+    rsa_secure_free(coefficient, coefficient_len);
+    rt_rsa_key_free(&key);
+    return ok;
+}
+
+/// @brief Validate optional AlgorithmIdentifier parameters are absent or DER NULL.
+static int rsa_der_params_absent_or_null(const uint8_t *params, size_t params_len) {
+    uint8_t tag;
+    size_t value_len;
+    size_t hdr_len;
+
+    if (params_len == 0)
+        return 1;
+    if (!rsa_der_read_tlv(params, params_len, &tag, &value_len, &hdr_len) || tag != 0x05)
+        return 0;
+    return value_len == 0 && hdr_len + value_len == params_len;
 }
 
 /// @brief Parse an RSA private key from PKCS#8 PrivateKeyInfo DER bytes.
 /// @details PKCS#8 is the modern wrapper that most contemporary tools
 ///          (OpenSSL, Go, etc.) emit by default for `.key` files.
-///          Layout:
-///          ```
-///          PrivateKeyInfo ::= SEQUENCE {
-///              version                Integer (0)
-///              algorithm              AlgorithmIdentifier
-///              privateKey             OCTET STRING (containing PKCS#1 RSAPrivateKey)
-///          }
-///          ```
-///          We:
-///          1. Read the outer SEQUENCE.
-///          2. Skip the version INTEGER.
-///          3. Read the AlgorithmIdentifier and verify the OID is
-///             rsaEncryption (`1.2.840.113549.1.1.1` =
-///             `OID_RSA_ENCRYPTION` in DER).
-///          4. Read the OCTET STRING and recursively parse its
-///             contents as PKCS#1 RSAPrivateKey via
-///             `rt_rsa_parse_private_key_pkcs1`.
-///          Returns 0 on any algorithm mismatch (we only support
-///          rsaEncryption — encrypted PKCS#8 keys would need
-///          additional handling).
+///          We require exact DER consumption, version 0, rsaEncryption
+///          AlgorithmIdentifier with absent/NULL parameters, and an
+///          OCTET STRING containing a PKCS#1 RSAPrivateKey.
 int rt_rsa_parse_private_key_pkcs8(const uint8_t *der, size_t der_len, rt_rsa_key_t *out) {
     static const uint8_t OID_RSA_ENCRYPTION[] = {
         0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01};
     uint8_t tag;
     size_t value_len, hdr_len, pos = 0;
+    size_t outer_end = 0;
     size_t alg_len = 0, alg_hdr = 0;
     uint8_t *version = NULL;
     size_t version_len = 0;
+    int ok = 0;
 
     if (!der || der_len == 0 || !out)
         return 0;
     if (!rsa_der_read_tlv(der, der_len, &tag, &value_len, &hdr_len) || tag != 0x30)
         return 0;
+    outer_end = hdr_len + value_len;
+    if (outer_end != der_len)
+        return 0;
     pos = hdr_len;
-    if (!rsa_parse_der_integer(der, hdr_len + value_len, &pos, &version, &version_len)) {
-        free(version);
-        return 0;
-    }
-    free(version);
-    if (!rsa_der_read_tlv(der + pos, hdr_len + value_len - pos, &tag, &alg_len, &alg_hdr) ||
+    if (!rsa_parse_der_integer(der, outer_end, &pos, &version, &version_len) ||
+        version_len != 1 || version[0] != 0x00)
+        goto done;
+
+    if (!rsa_der_read_tlv(der + pos, outer_end - pos, &tag, &alg_len, &alg_hdr) ||
         tag != 0x30) {
-        return 0;
+        goto done;
     }
     {
         const uint8_t *alg = der + pos + alg_hdr;
-        size_t alg_rem = alg_len;
+        size_t alg_pos = 0;
+        size_t oid_len = 0;
+        size_t oid_hdr = 0;
         pos += alg_hdr + alg_len;
-        if (!rsa_der_read_tlv(alg, alg_rem, &tag, &value_len, &hdr_len) || tag != 0x06)
-            return 0;
-        if (value_len != sizeof(OID_RSA_ENCRYPTION) ||
-            memcmp(alg + hdr_len, OID_RSA_ENCRYPTION, sizeof(OID_RSA_ENCRYPTION)) != 0) {
-            return 0;
-        }
+        if (!rsa_der_read_tlv(alg, alg_len, &tag, &oid_len, &oid_hdr) || tag != 0x06)
+            goto done;
+        if (oid_hdr + oid_len > alg_len || oid_len != sizeof(OID_RSA_ENCRYPTION) ||
+            memcmp(alg + oid_hdr, OID_RSA_ENCRYPTION, sizeof(OID_RSA_ENCRYPTION)) != 0)
+            goto done;
+        alg_pos = oid_hdr + oid_len;
+        if (!rsa_der_params_absent_or_null(alg + alg_pos, alg_len - alg_pos))
+            goto done;
     }
-    if (!rsa_der_read_tlv(der + pos, hdr_len + value_len - pos, &tag, &value_len, &hdr_len) ||
+    if (!rsa_der_read_tlv(der + pos, outer_end - pos, &tag, &value_len, &hdr_len) ||
         tag != 0x04) {
-        return 0;
+        goto done;
     }
-    return rt_rsa_parse_private_key_pkcs1(der + pos + hdr_len, value_len, out);
+    if (pos + hdr_len + value_len != outer_end)
+        goto done;
+    ok = rt_rsa_parse_private_key_pkcs1(der + pos + hdr_len, value_len, out);
+
+done:
+    rsa_secure_free(version, version_len);
+    return ok;
 }
 
 /// @brief Compare two RSA public keys for byte-for-byte equality of modulus and public exponent.
@@ -972,14 +1087,15 @@ int rt_rsa_pss_sign(const rt_rsa_key_t *key,
                     size_t *sig_len_out) {
     uint8_t em[RT_RSA_MAX_MOD_BYTES];
     size_t em_len = 0;
+    int ok = 0;
 
-    if (!key || !key->modulus || !key->private_exponent || !sig_out || !sig_len_out)
+    if (!key || !sig_out || !sig_len_out || !rsa_validate_private_components(key))
         return 0;
     em_len = key->modulus_len;
     if (em_len == 0 || em_len > sizeof(em) || *sig_len_out < em_len)
         return 0;
     if (!rsa_pss_encode(key, hash_id, digest, digest_len, em, em_len))
-        return 0;
+        goto done;
     if (!rsa_modexp_bytes(em,
                           em_len,
                           key->private_exponent,
@@ -987,11 +1103,15 @@ int rt_rsa_pss_sign(const rt_rsa_key_t *key,
                           key->modulus,
                           key->modulus_len,
                           sig_out,
-                          *sig_len_out)) {
-        return 0;
+                          em_len)) {
+        goto done;
     }
     *sig_len_out = em_len;
-    return 1;
+    ok = 1;
+
+done:
+    rsa_secure_zero(em, sizeof(em));
+    return ok;
 }
 
 /// @brief Verify an RSA-PSS signature against an expected digest using the public key in `key`.
@@ -1014,8 +1134,9 @@ int rt_rsa_pss_verify(const rt_rsa_key_t *key,
                       const uint8_t *sig,
                       size_t sig_len) {
     uint8_t em[RT_RSA_MAX_MOD_BYTES];
+    int ok = 0;
 
-    if (!key || !key->modulus || !key->public_exponent || !sig)
+    if (!sig || !rsa_validate_public_components(key))
         return 0;
     if (key->modulus_len == 0 || key->modulus_len > sizeof(em) || sig_len != key->modulus_len)
         return 0;
@@ -1026,10 +1147,14 @@ int rt_rsa_pss_verify(const rt_rsa_key_t *key,
                           key->modulus,
                           key->modulus_len,
                           em,
-                          sizeof(em))) {
-        return 0;
+                          key->modulus_len)) {
+        goto done;
     }
-    return rsa_pss_verify_encoded(key, hash_id, digest, digest_len, em, key->modulus_len);
+    ok = rsa_pss_verify_encoded(key, hash_id, digest, digest_len, em, key->modulus_len);
+
+done:
+    rsa_secure_zero(em, sizeof(em));
+    return ok;
 }
 
 /// @brief Verify an RSA PKCS#1 v1.5 signature against an expected digest using the public key.
@@ -1060,8 +1185,9 @@ int rt_rsa_pkcs1_v15_verify(const rt_rsa_key_t *key,
     const uint8_t *prefix = NULL;
     size_t prefix_len = 0;
     size_t i = 0;
+    int ok = 0;
 
-    if (!key || !key->modulus || !key->public_exponent || !digest || !sig)
+    if (!digest || !sig || !rsa_validate_public_components(key))
         return 0;
     if (key->modulus_len == 0 || key->modulus_len > sizeof(em) || sig_len != key->modulus_len)
         return 0;
@@ -1077,19 +1203,23 @@ int rt_rsa_pkcs1_v15_verify(const rt_rsa_key_t *key,
                           key->modulus,
                           key->modulus_len,
                           em,
-                          sizeof(em))) {
-        return 0;
+                          key->modulus_len)) {
+        goto done;
     }
     if (em[0] != 0x00 || em[1] != 0x01)
-        return 0;
+        goto done;
     for (i = 2; i < key->modulus_len && em[i] == 0xFF; i++) {
     }
     if (i < 10 || i >= key->modulus_len || em[i] != 0x00)
-        return 0;
+        goto done;
     i++;
     if (key->modulus_len - i != prefix_len + digest_len)
-        return 0;
+        goto done;
     if (memcmp(em + i, prefix, prefix_len) != 0)
-        return 0;
-    return memcmp(em + i + prefix_len, digest, digest_len) == 0 ? 1 : 0;
+        goto done;
+    ok = memcmp(em + i + prefix_len, digest, digest_len) == 0 ? 1 : 0;
+
+done:
+    rsa_secure_zero(em, sizeof(em));
+    return ok;
 }

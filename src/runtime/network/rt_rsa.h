@@ -55,7 +55,7 @@ void rt_rsa_key_free(rt_rsa_key_t *key);
 /// @return 1 on success; 0 on malformed input.
 int rt_rsa_parse_public_key_pkcs1(const uint8_t *der, size_t der_len, rt_rsa_key_t *out);
 
-/// @brief Parse a PKCS#1 RSAPrivateKey DER blob (version, modulus, public and private exponents).
+/// @brief Parse a two-prime PKCS#1 RSAPrivateKey DER blob and retain n/e/d.
 /// @return 1 on success; 0 on malformed input.
 int rt_rsa_parse_private_key_pkcs1(const uint8_t *der, size_t der_len, rt_rsa_key_t *out);
 

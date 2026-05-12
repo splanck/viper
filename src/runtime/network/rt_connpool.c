@@ -86,6 +86,11 @@ typedef struct {
 // Helpers
 //=============================================================================
 
+/// @brief Format a "host:port" cache key, bracketing bare IPv6 literals.
+/// @details An unbracketed colon in @p host indicates an IPv6 address that
+///          would otherwise collide with the port colon, so we wrap it as
+///          @c [::1]:443. Already-bracketed hosts and plain hostnames flow
+///          through unchanged.
 static void make_key(const char *host, int port, char *buf, size_t buf_len) {
     if (host && strchr(host, ':') != NULL && host[0] != '[')
         snprintf(buf, buf_len, "[%s]:%d", host, port);
@@ -93,6 +98,10 @@ static void make_key(const char *host, int port, char *buf, size_t buf_len) {
         snprintf(buf, buf_len, "%s:%d", host ? host : "", port);
 }
 
+/// @brief Close a TCP handle and drop the pool's reference.
+/// @details Used in every code path where the pool is shedding a connection
+///          (eviction, health-drop, capacity overflow). The @c rt_tcp_close
+///          call is idempotent so an already-closed handle is fine.
 static void close_tcp_connection(void *tcp) {
     if (!tcp)
         return;
@@ -101,6 +110,10 @@ static void close_tcp_connection(void *tcp) {
         rt_obj_free(tcp);
 }
 
+/// @brief Tear down a pooled entry's TCP handle and free its key.
+/// @details Leaves the entry struct itself zeroed so the slot can be
+///          repurposed by the next `track_connection` call or the
+///          subsequent compaction in @ref remove_entry_at.
 static void close_entry(pooled_entry_t *entry) {
     if (entry->tcp) {
         close_tcp_connection(entry->tcp);
@@ -111,6 +124,10 @@ static void close_entry(pooled_entry_t *entry) {
     entry->in_use = false;
 }
 
+/// @brief Remove the entry at @p index using swap-with-last for O(1) deletion.
+/// @details Order within the @c entries array is not meaningful — slots are
+///          looked up linearly by `(key, in_use)` — so the cheap swap is
+///          preferred over a memmove. The vacated tail slot is zeroed.
 static void remove_entry_at(rt_connpool_impl *pool, int index) {
     if (!pool || index < 0 || index >= pool->count)
         return;
@@ -120,6 +137,14 @@ static void remove_entry_at(rt_connpool_impl *pool, int index) {
     pool->count--;
 }
 
+/// @brief Insert a new entry recording @p tcp under @p key.
+/// @details Used by both `acquire` (when opening a fresh connection that
+///          should immediately appear as checked-out) and `release` (when
+///          a caller returns an unknown connection that the pool may
+///          want to keep). Refuses to grow past @c max_size and copies
+///          @p key into heap storage so the caller's buffer can be
+///          stack-allocated.
+/// @return True when the entry was appended; false on capacity or OOM.
 static bool track_connection(rt_connpool_impl *pool,
                              void *tcp,
                              const char *key,
@@ -288,7 +313,14 @@ void *rt_connpool_acquire(void *obj, rt_string host, int64_t port) {
     return tcp;
 }
 
-/// @brief Release the connpool.
+/// @brief Return a single connection to the pool, or close it.
+/// @details Locates the entry by pointer identity under the pool mutex.
+///          - Tracked + healthy: cleared `in_use` and stamped with the
+///            current time so the idle-timeout sweep can later reclaim it.
+///          - Tracked + unhealthy: removed via @ref remove_entry_at so
+///            the slot doesn't keep a dead fd around.
+///          - Untracked + healthy: adopted into a free slot if any.
+///          - Untracked + unhealthy or pool full: closed and dropped.
 void rt_connpool_release(void *obj, void *conn) {
     if (!obj || !conn)
         return;
@@ -339,7 +371,11 @@ void rt_connpool_release(void *obj, void *conn) {
     close_tcp_connection(conn);
 }
 
-/// @brief Remove all entries from the connpool.
+/// @brief Close every pooled connection and reset the entry count to zero.
+/// @details Holds the pool mutex across the entire sweep so a concurrent
+///          `acquire`/`release` cannot observe a partially-cleared pool.
+///          Idle and in-use entries are both closed — callers should not
+///          retain pooled connections across a `Clear`.
 void rt_connpool_clear(void *obj) {
     if (!obj)
         return;
@@ -364,7 +400,10 @@ int64_t rt_connpool_size(void *obj) {
     return n;
 }
 
-/// @brief Available the connpool.
+/// @brief Count entries that are tracked but not currently checked out.
+/// @details Useful for sizing decisions — when this returns 0 the next
+///          `acquire` will either reuse an in-use entry (impossible — the
+///          pool only reuses idle entries) or open a fresh connection.
 int64_t rt_connpool_available(void *obj) {
     if (!obj)
         return 0;

@@ -42,7 +42,7 @@ AES utilities: authenticated AES-128-GCM/AES-256-GCM for `Bytes` and password-en
 
 ### Notes
 
-- `EncryptAuth`/`DecryptAuth` accept a 16-byte AES-128 key or a 32-byte AES-256 key and bind the `[magic][nonce]` header plus caller-provided AAD into the GCM tag
+- `EncryptAuth`/`DecryptAuth` accept a 16-byte AES-128 key or a 32-byte AES-256 key and bind the `[magic(4)][nonce(12)]` header plus caller-provided AAD into the GCM tag. Malformed frames, wrong AAD, wrong keys, and modified ciphertext return `null`.
 - `Encrypt`/`Decrypt` are legacy AES-CBC helpers. CBC ciphertext is not authenticated; prefer `EncryptAuth`, `EncryptStr`, or `Viper.Crypto.Cipher`. `Decrypt` returns `null` when CBC padding is invalid. CBC helpers trap in approved mode.
 - `EncryptStr` rejects empty passwords, derives an AES-128 key from the password using PBKDF2-HMAC-SHA256 with a random salt and a 300,000-iteration default, and authenticates its header as AAD
 - `EncryptStr` output format is `[magic(4)][iterations(4)][salt(16)][nonce(12)][ciphertext][tag(16)]`
@@ -160,6 +160,7 @@ Approved-mode key encryption produces:
 - **Authentication Tag:** 128 bits (16 bytes)
 - **Key Derivation:** PBKDF2-HMAC-SHA256 with random 16-byte salt and a 300,000-iteration default
 - Header bytes and caller-provided AAD are authenticated by the AEAD tag
+- Decryption verifies that the AEAD backend returned exactly the expected plaintext length; malformed or truncated payloads return `null`
 - `Decrypt()` remains backward-compatible with older unversioned PBKDF2/HKDF payloads; new payloads use the versioned `VCP2` format
 - Approved mode rejects compatibility and legacy ciphertext formats instead of silently decrypting with non-approved algorithms
 - Password strings use their stored byte length, so embedded `NUL` bytes are part of the password
@@ -579,8 +580,9 @@ Validation-readiness controls for the zero-dependency in-tree crypto module.
 
 ### Approved-Mode Behavior
 
-- Runs startup self-tests for SHA-2, HMAC/HKDF-SHA256, AES-128-GCM, AES-256-GCM, and the HMAC-DRBG path before enabling approved mode
+- Runs startup self-tests for SHA-2, HMAC/HKDF-SHA256, AES-128-GCM, AES-256-GCM, and an HMAC-DRBG known-answer path before enabling approved mode
 - Routes `Viper.Crypto.Rand` and internal nonce/key generation through the module HMAC-DRBG once approved mode is enabled
+- Serializes module state and DRBG access, chunks oversized random requests to the DRBG request limit, and reseeds the DRBG from OS entropy on the configured reseed interval
 - Keeps compatibility-mode algorithms available when approved mode is disabled
 - Disables non-approved public services in approved mode: MD5, SHA-1, HMAC-MD5, HMAC-SHA1, CRC32, fast hash, scrypt, ChaCha20-Poly1305 formats, legacy Cipher formats, AES-CBC helpers, and current X25519-only TLS
 - Uses AES-256-GCM for `Viper.Crypto.Cipher` in approved mode
@@ -774,7 +776,8 @@ The TLS implementation uses:
 - **Certificate Verification:** Enabled by default against the runtime trust source. Windows uses CryptoAPI; macOS and Linux use the built-in PEM-bundle verifier with standard system trust bundles.
 - **Trust and ALPN controls:** `ConnectOptions` can pin validation to a PEM bundle, advertise comma-separated ALPN preferences such as `"h2,http/1.1"`, and read the negotiated protocol from `NegotiatedAlpn`.
 - **Certificate Signature Support:** In-tree verification of ECDSA P-256, RSA PKCS#1 v1.5, and RSA-PSS certificate signatures. The TLS client advertises only signature algorithms it can verify; ECDSA P-384 is not advertised until P-384 CertificateVerify support is implemented.
-- **Leaf-certificate policy:** Built-in verification enforces TLS server-auth EKU / compatible key-usage on the presented server certificate
+- **Leaf-certificate policy:** Built-in verification enforces TLS server-auth EKU and requires the `digitalSignature` KeyUsage bit when KeyUsage is present on the server certificate
+- **DER strictness:** Certificate signature algorithms, ECDSA signatures, RSA public keys, and PSS parameters are parsed as strict DER with exact length consumption and canonical INTEGERs
 - **Hostname / SNI behavior:** DNS hostnames are sent in SNI; IP literals are verified against IP SANs but are not sent in SNI. SubjectAltName suppresses CommonName fallback even when the SAN contains no DNS names, and broad public-suffix wildcards are rejected.
 - **Handshake strictness:** Unexpected handshake messages and trailing certificate-message bytes fail the handshake instead of being skipped.
 - **Key-share validation:** X25519 all-zero shared secrets are rejected during the handshake
@@ -865,7 +868,7 @@ Use `Error()` to get descriptive error messages for debugging.
 
 - **Certificate verification:** Server certificates are validated against system trust store
 - **Hostname verification:** Server certificate must match the requested hostname
-- **Leaf certificate purpose:** The server certificate must be valid for TLS server authentication
+- **Leaf certificate purpose:** The server certificate must be valid for TLS server authentication and, when KeyUsage is present, include `digitalSignature`
 - **No self-signed certificates:** Self-signed or untrusted certificates will fail
 - **Forward secrecy:** X25519 key exchange provides perfect forward secrecy
 - **AEAD encryption:** ChaCha20-Poly1305 provides authenticated encryption
@@ -929,11 +932,12 @@ This format stores everything needed for verification: the algorithm identifier,
 - Approved mode changes `Hash` to PBKDF2-HMAC-SHA256 and disables `HashScrypt` / `HashScryptParams`
 - `HashScryptParams` rejects parameters weaker than the default password policy (`N=16384`, `r=8`, `p=1`) and rejects unsupported memory costs before derivation
 - `HashIters` is retained for PBKDF2 compatibility and rejects requests below 100,000
+- Hashing a null password traps; `Verify(NULL, hash)` returns `false`
 - A random 16-byte salt is generated automatically for each hash
 - The salt and cost parameters are embedded in the output string, so no separate storage is needed
 - `Verify` parses the stored hash string to extract parameters before re-deriving
 - `Verify` accepts current `SCRYPT$...` hashes and legacy `PBKDF2$...` hashes
-- `NeedsRehash` is policy-aware: compatibility mode recommends upgrading PBKDF2 to scrypt, while approved mode accepts PBKDF2 hashes at or above the default iteration count and recommends rehashing scrypt hashes
+- `NeedsRehash` is policy-aware: compatibility mode recommends upgrading PBKDF2 to scrypt, while approved mode fully validates PBKDF2 salt/hash fields and accepts only well-formed hashes at or above the default iteration count
 - `Verify` returns `false` for malformed, null, or non-canonical stored hashes instead of trapping
 - Stored password hashes require strict Base64 salt/hash fields with the expected decoded lengths
 - Embedded `NUL` bytes in passwords are significant

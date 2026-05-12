@@ -1351,5 +1351,9 @@ int64_t rt_hash_fast_bytes(void *bytes) {
 /// @return 64-bit hash value.
 int64_t rt_hash_fast_int(int64_t value) {
     hash_require_service(RT_CRYPTO_SERVICE_SIPHASH, "Hash.FastInt is disabled in approved mode");
-    return (int64_t)rt_fnv1a(&value, sizeof(value));
+    uint64_t u = (uint64_t)value;
+    uint8_t encoded[8];
+    for (size_t i = 0; i < sizeof(encoded); i++)
+        encoded[i] = (uint8_t)(u >> (i * 8));
+    return (int64_t)rt_fnv1a(encoded, sizeof(encoded));
 }

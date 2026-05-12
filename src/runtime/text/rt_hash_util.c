@@ -21,6 +21,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <errno.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -63,13 +64,23 @@ static int hash_random_fill(uint8_t *buf, size_t len) {
     NTSTATUS status = BCryptGenRandom(NULL, buf, (ULONG)len, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
     return NT_SUCCESS(status) ? 0 : -1;
 #else
+#ifdef O_CLOEXEC
+    int fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
+#else
     int fd = open("/dev/urandom", O_RDONLY);
+#endif
     if (fd < 0)
         return -1;
     size_t done = 0;
     while (done < len) {
         ssize_t r = read(fd, buf + done, len - done);
-        if (r <= 0) {
+        if (r < 0) {
+            if (errno == EINTR)
+                continue;
+            close(fd);
+            return -1;
+        }
+        if (r == 0) {
             close(fd);
             return -1;
         }

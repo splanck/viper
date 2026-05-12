@@ -122,6 +122,8 @@ void rt_keyderive_pbkdf2_sha256_raw(const uint8_t *password,
                                     uint32_t iterations,
                                     uint8_t *out,
                                     size_t out_len) {
+    if (!password && password_len > 0)
+        rt_trap("PBKDF2: invalid password buffer");
     if (!salt && salt_len > 0)
         rt_trap("PBKDF2: invalid salt buffer");
     if (iterations == 0)

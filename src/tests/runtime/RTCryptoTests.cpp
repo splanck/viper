@@ -289,6 +289,41 @@ static void test_sha256_incremental_matches_one_shot() {
     printf("\n");
 }
 
+static void test_sha_hmac_null_zero_inputs() {
+    printf("Testing SHA/HMAC NULL zero-length inputs:\n");
+
+    uint8_t sha_empty[64];
+    uint8_t sha_null[64];
+    uint8_t mac_empty[64];
+    uint8_t mac_null[64];
+
+    rt_sha256("", 0, sha_empty);
+    rt_sha256(NULL, 0, sha_null);
+    test_result("SHA-256 accepts NULL with zero length",
+                memcmp(sha_empty, sha_null, 32) == 0);
+
+    rt_sha384("", 0, sha_empty);
+    rt_sha384(NULL, 0, sha_null);
+    test_result("SHA-384 accepts NULL with zero length",
+                memcmp(sha_empty, sha_null, 48) == 0);
+
+    rt_sha512("", 0, sha_empty);
+    rt_sha512(NULL, 0, sha_null);
+    test_result("SHA-512 accepts NULL with zero length",
+                memcmp(sha_empty, sha_null, 64) == 0);
+
+    rt_hmac_sha256((const uint8_t *)"", 0, (const uint8_t *)"", 0, mac_empty);
+    rt_hmac_sha256(NULL, 0, NULL, 0, mac_null);
+    test_result("HMAC-SHA256 accepts NULL key/data with zero lengths",
+                memcmp(mac_empty, mac_null, 32) == 0);
+
+    rt_hmac_sha512((const uint8_t *)"", 0, (const uint8_t *)"", 0, mac_empty);
+    rt_hmac_sha512(NULL, 0, NULL, 0, mac_null);
+    test_result("HMAC-SHA512 accepts NULL key/data with zero lengths",
+                memcmp(mac_empty, mac_null, 64) == 0);
+    printf("\n");
+}
+
 static void test_string_inputs_preserve_embedded_nul() {
     printf("Testing string APIs preserve embedded NUL bytes:\n");
 
@@ -722,6 +757,22 @@ static void test_p256_ecdh_shared_secret_agreement() {
     bad_y[31] ^= 1;
     test_result("P-256 ECDH rejects invalid peer point",
                 ecdsa_p256_ecdh(alice_priv, bob_x, bad_y, shared1) == 0);
+
+    static const uint8_t p256_p_bytes[32] = {
+        0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x01,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+    uint8_t digest[32] = {0};
+    uint8_t sig_r[32] = {0};
+    uint8_t sig_s[32] = {0};
+    digest[31] = 1;
+    sig_r[31] = 1;
+    sig_s[31] = 1;
+    test_result("P-256 ECDH rejects non-canonical peer x",
+                ecdsa_p256_ecdh(alice_priv, p256_p_bytes, bob_y, shared1) == 0);
+    test_result("P-256 verify rejects non-canonical public x",
+                ecdsa_p256_verify(p256_p_bytes, bob_y, digest, sig_r, sig_s) == 0);
     printf("\n");
 }
 
@@ -737,6 +788,18 @@ static void test_crypto_module_approved_mode() {
                 rt_crypto_module_service_allowed(RT_CRYPTO_SERVICE_CHACHA20_POLY1305) == 0);
     test_result("scrypt is rejected",
                 rt_crypto_module_service_allowed(RT_CRYPTO_SERVICE_SCRYPT) == 0);
+
+    uint8_t random_probe[70000];
+    memset(random_probe, 0, sizeof(random_probe));
+    rt_crypto_module_random_bytes(random_probe, sizeof(random_probe));
+    bool any_random = false;
+    for (size_t i = 0; i < sizeof(random_probe); i++) {
+        if (random_probe[i] != 0) {
+            any_random = true;
+            break;
+        }
+    }
+    test_result("Approved DRBG handles chunked large requests", any_random);
 
     const uint8_t plain_data[] = {'a', 'p', 'p', 'r', 'o', 'v', 'e', 'd'};
     void *plain = make_bytes(plain_data, sizeof(plain_data));
@@ -785,6 +848,7 @@ int main() {
     test_hmac_sha256();
     test_hmac_sha384_sha512();
     test_sha256_incremental_matches_one_shot();
+    test_sha_hmac_null_zero_inputs();
     test_string_inputs_preserve_embedded_nul();
     test_pbkdf2_sha256();
     test_constant_time_equals_and_passwords();

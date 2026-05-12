@@ -11,7 +11,9 @@
 // Key invariants:
 //   - Signing support is limited to caller-supplied private scalars.
 //   - All inputs are big-endian byte arrays; no heap allocation.
-//   - Constant-time field arithmetic is NOT guaranteed (verify-only, public data).
+//   - Verification uses public-data scalar multiplication.
+//   - Private-key paths use a fixed scalar-multiply schedule; full
+//     constant-time field arithmetic is not claimed.
 // Ownership/Lifetime:
 //   - Pure functions operating on caller-owned buffers; no ownership transfer.
 // Links: src/runtime/network/rt_ecdsa_p256.c (implementation),
@@ -52,7 +54,7 @@ int ecdsa_p256_verify(const uint8_t pubkey_x[32],
 /// @param privkey  32-byte big-endian private scalar d where 1 <= d < n.
 /// @param pubkey_x Output 32-byte big-endian affine X coordinate.
 /// @param pubkey_y Output 32-byte big-endian affine Y coordinate.
-/// @return 1 on success, 0 if the private scalar is invalid.
+/// @return 1 on success, 0 if the private scalar or output buffers are invalid.
 int ecdsa_p256_public_from_private(const uint8_t privkey[32],
                                    uint8_t pubkey_x[32],
                                    uint8_t pubkey_y[32]);
@@ -62,7 +64,7 @@ int ecdsa_p256_public_from_private(const uint8_t privkey[32],
 /// @param digest  32-byte SHA-256 digest of the message to sign.
 /// @param sig_r   Output 32-byte big-endian R component.
 /// @param sig_s   Output 32-byte big-endian S component.
-/// @return 1 on success, 0 on invalid key material or repeated nonce failure.
+/// @return 1 on success, 0 on invalid key material, null buffers, or repeated nonce failure.
 int ecdsa_p256_sign(const uint8_t privkey[32],
                     const uint8_t digest[32],
                     uint8_t sig_r[32],
@@ -73,7 +75,7 @@ int ecdsa_p256_sign(const uint8_t privkey[32],
 /// @param peer_x  Peer public key affine X coordinate.
 /// @param peer_y  Peer public key affine Y coordinate.
 /// @param shared_x Output shared point X coordinate.
-/// @return 1 on success, 0 on invalid key material or invalid peer point.
+/// @return 1 on success, 0 on invalid key material, null buffers, or invalid/non-canonical peer point.
 int ecdsa_p256_ecdh(const uint8_t privkey[32],
                     const uint8_t peer_x[32],
                     const uint8_t peer_y[32],

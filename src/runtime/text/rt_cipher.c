@@ -68,6 +68,7 @@
 #define CIPHER_PW_HEADER_SIZE 36
 #define CIPHER_KEY_HEADER_SIZE 16
 #define CIPHER_CHACHA20_MAX_BYTES (((UINT64_C(1) << 32) - 1u) * 64u)
+#define CIPHER_AES_GCM_MAX_BYTES (((UINT64_C(1) << 32) - 2u) * 16u)
 
 static const uint8_t CIPHER_PW_MAGIC[4] = {'V', 'C', 'P', '2'};
 static const uint8_t CIPHER_KEY_MAGIC[4] = {'V', 'C', 'K', '2'};
@@ -135,7 +136,10 @@ static const char *cipher_password_bytes(rt_string password, size_t *len, const 
 /// @brief Compute and validate the output length for an encryption operation.
 ///        Traps if input_len is negative, would overflow when added to @p overhead,
 ///        or exceeds the AEAD single-key stream limit.
-static int64_t cipher_checked_output_len(int64_t input_len, int64_t overhead, const char *op) {
+static int64_t cipher_checked_output_len(int64_t input_len,
+                                         int64_t overhead,
+                                         uint64_t max_input_len,
+                                         const char *op) {
     if (input_len < 0) {
         rt_trap(op);
         return 0;
@@ -144,7 +148,7 @@ static int64_t cipher_checked_output_len(int64_t input_len, int64_t overhead, co
         rt_trap("Cipher: input is too large");
         return 0;
     }
-    if ((uint64_t)input_len > CIPHER_CHACHA20_MAX_BYTES) {
+    if ((uint64_t)input_len > max_input_len) {
         rt_trap("Cipher: input exceeds AEAD size limit");
         return 0;
     }
@@ -322,8 +326,12 @@ void *rt_cipher_encrypt_aad(void *plaintext, rt_string password, void *aad) {
 
     uint8_t *plain_data = bytes_data(plaintext);
     int64_t plain_len = bytes_len(plaintext);
+    int approved = rt_crypto_module_is_approved_mode();
     int64_t out_len = cipher_checked_output_len(
-        plain_len, CIPHER_PW_HEADER_SIZE + CIPHER_TAG_SIZE, "Cipher.Encrypt: plaintext length is invalid");
+        plain_len,
+        CIPHER_PW_HEADER_SIZE + CIPHER_TAG_SIZE,
+        approved ? CIPHER_AES_GCM_MAX_BYTES : CIPHER_CHACHA20_MAX_BYTES,
+        "Cipher.Encrypt: plaintext length is invalid");
 
     // Generate random salt and nonce
     uint8_t salt[CIPHER_SALT_SIZE];
@@ -338,7 +346,6 @@ void *rt_cipher_encrypt_aad(void *plaintext, rt_string password, void *aad) {
     void *result = rt_bytes_new(out_len);
     uint8_t *out_data = bytes_data(result);
 
-    int approved = rt_crypto_module_is_approved_mode();
     memcpy(out_data,
            approved ? CIPHER_PW_APPROVED_MAGIC : CIPHER_PW_MAGIC,
            sizeof(CIPHER_PW_MAGIC));
@@ -482,7 +489,7 @@ void *rt_cipher_decrypt_aad(void *ciphertext, rt_string password, void *aad) {
         if (aad_alloc)
             free(aad_alloc);
         cipher_secure_zero(key, sizeof(key));
-        if (decrypt_result < 0) {
+        if (decrypt_result < 0 || decrypt_result != plain_len) {
             if (plain_len > 0)
                 cipher_secure_zero(plain_data, (size_t)plain_len);
             if (result && rt_obj_release_check0(result))
@@ -519,13 +526,13 @@ void *rt_cipher_decrypt_aad(void *ciphertext, rt_string password, void *aad) {
     long decrypt_result =
         rt_chacha20_poly1305_decrypt(key, nonce, NULL, 0, encrypted, (size_t)encrypted_len, plain_data);
 
-    if (decrypt_result < 0) {
+    if (decrypt_result < 0 || decrypt_result != plain_len) {
         if (plain_len > 0)
             cipher_secure_zero(plain_data, (size_t)plain_len);
         derive_key_legacy(pwd, pwd_len, salt, CIPHER_SALT_SIZE, key);
         decrypt_result =
             rt_chacha20_poly1305_decrypt(key, nonce, NULL, 0, encrypted, (size_t)encrypted_len, plain_data);
-        if (decrypt_result < 0) {
+        if (decrypt_result < 0 || decrypt_result != plain_len) {
             cipher_secure_zero(key, sizeof(key));
             if (plain_len > 0)
                 cipher_secure_zero(plain_data, (size_t)plain_len);
@@ -583,8 +590,12 @@ void *rt_cipher_encrypt_with_key_aad(void *plaintext, void *key_bytes, void *aad
     uint8_t *plain_data = bytes_data(plaintext);
     int64_t plain_len = bytes_len(plaintext);
     const uint8_t *key = bytes_data(key_bytes);
+    int approved = rt_crypto_module_is_approved_mode();
     int64_t out_len = cipher_checked_output_len(
-        plain_len, CIPHER_KEY_HEADER_SIZE + CIPHER_TAG_SIZE, "Cipher.EncryptWithKey: plaintext length is invalid");
+        plain_len,
+        CIPHER_KEY_HEADER_SIZE + CIPHER_TAG_SIZE,
+        approved ? CIPHER_AES_GCM_MAX_BYTES : CIPHER_CHACHA20_MAX_BYTES,
+        "Cipher.EncryptWithKey: plaintext length is invalid");
 
     // Generate random nonce
     uint8_t nonce[CIPHER_NONCE_SIZE];
@@ -593,7 +604,6 @@ void *rt_cipher_encrypt_with_key_aad(void *plaintext, void *key_bytes, void *aad
     void *result = rt_bytes_new(out_len);
     uint8_t *out_data = bytes_data(result);
 
-    int approved = rt_crypto_module_is_approved_mode();
     memcpy(out_data,
            approved ? CIPHER_KEY_APPROVED_MAGIC : CIPHER_KEY_MAGIC,
            sizeof(CIPHER_KEY_MAGIC));
@@ -717,7 +727,7 @@ void *rt_cipher_decrypt_with_key_aad(void *ciphertext, void *key_bytes, void *aa
     if (aad_alloc)
         free(aad_alloc);
 
-    if (decrypt_result < 0) {
+    if (decrypt_result < 0 || decrypt_result != plain_len) {
         if (plain_len > 0)
             cipher_secure_zero(plain_data, (size_t)plain_len);
         if (result && rt_obj_release_check0(result))

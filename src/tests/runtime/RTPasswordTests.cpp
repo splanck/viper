@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_password.h"
+#include "rt_crypto_module.h"
 #include "rt_string.h"
 
 #include <cassert>
@@ -220,7 +221,15 @@ static void test_password_invalid_input() {
         test_result("NULL hash input returns 0", result == 0);
     }
 
-    // Test 6: Malformed Base64 padding is rejected
+    // Test 6: NULL password input returns 0 instead of crashing
+    {
+        rt_string hash = rt_const_cstr("PBKDF2$100000$AAAAAAAAAAAAAAAAAAAAAA==$"
+                                       "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
+        int8_t result = rt_password_verify(NULL, hash);
+        test_result("NULL password input returns 0", result == 0);
+    }
+
+    // Test 7: Malformed Base64 padding is rejected
     {
         rt_string password = rt_const_cstr("password");
         rt_string invalid_hash = rt_const_cstr("PBKDF2$100000$AAA=AAAAAAAAAAAAAAAAAAAA$"
@@ -229,7 +238,7 @@ static void test_password_invalid_input() {
         test_result("Malformed salt base64 padding returns 0", result == 0);
     }
 
-    // Test 7: Wrong decoded hash length is rejected before comparison
+    // Test 8: Wrong decoded hash length is rejected before comparison
     {
         rt_string password = rt_const_cstr("password");
         rt_string invalid_hash = rt_const_cstr("PBKDF2$100000$AAAAAAAAAAAAAAAAAAAAAA==$"
@@ -238,7 +247,7 @@ static void test_password_invalid_input() {
         test_result("Wrong hash base64 shape returns 0", result == 0);
     }
 
-    // Test 8: Embedded NUL in stored hash is rejected
+    // Test 9: Embedded NUL in stored hash is rejected
     {
         const char raw[] = "PBKDF2$100000$AAAAAAAAAAAAAAAAAAAAAA==$"
                            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
@@ -252,7 +261,7 @@ static void test_password_invalid_input() {
         test_result("Stored hash with embedded NUL returns 0", result == 0);
     }
 
-    // Test 9: NeedsRehash fully validates current-looking scrypt hashes
+    // Test 10: NeedsRehash fully validates current-looking scrypt hashes
     {
         rt_string invalid_hash = rt_const_cstr("SCRYPT$14$8$1$AAA=AAAAAAAAAAAAAAAAAAAA$"
                                                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
@@ -260,7 +269,7 @@ static void test_password_invalid_input() {
                     rt_password_needs_rehash(invalid_hash) == 1);
     }
 
-    // Test 10: Unsupported scrypt parameters return 0 instead of trapping
+    // Test 11: Unsupported scrypt parameters return 0 instead of trapping
     {
         rt_string password = rt_const_cstr("password");
         rt_string hostile_hash = rt_const_cstr("SCRYPT$20$32$1$AAAAAAAAAAAAAAAAAAAAAA==$"
@@ -269,6 +278,20 @@ static void test_password_invalid_input() {
                     rt_password_verify(password, hostile_hash) == 0);
         test_result("Unsupported scrypt hash needs rehash",
                     rt_password_needs_rehash(hostile_hash) == 1);
+    }
+
+    // Test 12: Approved mode NeedsRehash fully validates current-looking PBKDF2 hashes
+    {
+        test_result("Enable approved mode for PBKDF2 rehash test",
+                    rt_crypto_module_enable_approved_mode() == 1);
+        rt_string malformed_hash = rt_const_cstr("PBKDF2$300000$AAA=AAAAAAAAAAAAAAAAAAAA$"
+                                                 "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
+        test_result("Malformed current PBKDF2 hash needs rehash in approved mode",
+                    rt_password_needs_rehash(malformed_hash) == 1);
+        rt_string valid_hash = rt_password_hash(rt_const_cstr("password"));
+        test_result("Valid approved PBKDF2 hash is current",
+                    rt_password_needs_rehash(valid_hash) == 0);
+        rt_crypto_module_disable_approved_mode();
     }
 
     printf("\n");

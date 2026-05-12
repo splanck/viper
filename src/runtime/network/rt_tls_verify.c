@@ -347,7 +347,7 @@ int tls_parse_certificate_msg(rt_tls_session_t *session, const uint8_t *data, si
 /// @return 0 on success, -1 on error.
 static int der_read_tlv(
     const uint8_t *buf, size_t buf_len, uint8_t *tag, size_t *val_len, size_t *hdr_len) {
-    if (buf_len < 2)
+    if (!buf || !tag || !val_len || !hdr_len || buf_len < 2)
         return -1;
 
     *tag = buf[0];
@@ -358,21 +358,35 @@ static int der_read_tlv(
         *hdr_len = 2;
     } else {
         size_t num_len_bytes = l0 & 0x7F;
-        if (num_len_bytes == 0 || num_len_bytes > 4 || 2 + num_len_bytes > buf_len)
+        if (num_len_bytes == 0 || num_len_bytes > sizeof(size_t) ||
+            2 + num_len_bytes > buf_len || buf[2] == 0x00)
             return -1;
 
         size_t v = 0;
         for (size_t i = 0; i < num_len_bytes; i++)
             v = (v << 8) | buf[2 + i];
+        if (v < 128)
+            return -1;
 
         *val_len = v;
         *hdr_len = 2 + num_len_bytes;
     }
 
-    if (*hdr_len + *val_len > buf_len)
+    if (*hdr_len > buf_len || *val_len > buf_len - *hdr_len)
         return -1;
 
     return 0;
+}
+
+static RT_TLS_MAYBE_UNUSED int der_params_absent_or_null(const uint8_t *params, size_t params_len) {
+    uint8_t tag;
+    size_t vl;
+    size_t hl;
+    if (params_len == 0)
+        return 1;
+    if (der_read_tlv(params, params_len, &tag, &vl, &hl) != 0 || tag != 0x05)
+        return 0;
+    return vl == 0 && hl + vl == params_len;
 }
 
 /// @brief Compare buf[0..oid_len-1] to the encoded OID bytes.
@@ -1186,7 +1200,7 @@ int tls_verify_hostname(rt_tls_session_t *session) {
 #if defined(_WIN32)
 
 /// @brief Check whether a certificate permits TLS server authentication (Windows).
-///        Inspects KeyUsage (digitalSignature/keyAgreement) and ExtendedKeyUsage
+///        Inspects KeyUsage (digitalSignature) and ExtendedKeyUsage
 ///        (id-kp-serverAuth or anyExtendedKeyUsage) extensions via DER parsing.
 /// @return 1 if both checks pass, 0 if any extension explicitly forbids server auth.
 static RT_TLS_MAYBE_UNUSED int cert_allows_tls_server_auth(const uint8_t *cert_der, size_t cert_len) {
@@ -1271,10 +1285,11 @@ static RT_TLS_MAYBE_UNUSED int cert_allows_tls_server_auth(const uint8_t *cert_d
 
                     if (is_key_usage) {
                         if (der_read_tlv(extn_value, extn_value_len, &tag, &vl, &hl) == 0 &&
-                            tag == 0x03 && vl >= 2) {
+                            tag == 0x03 && vl >= 2 && extn_value[hl] <= 7) {
                             const uint8_t *bits = extn_value + hl;
-                            key_usage_allows = (bits[1] & 0x80) != 0 || (bits[1] & 0x20) != 0;
-                        }
+                            key_usage_allows = (bits[1] & 0x80) != 0;
+                        } else
+                            key_usage_allows = 0;
                     } else if (is_eku) {
                         const uint8_t *eku = extn_value;
                         size_t eku_len = extn_value_len;
@@ -1837,10 +1852,11 @@ static RT_TLS_MAYBE_UNUSED int cert_allows_tls_server_auth(const uint8_t *cert_d
 
                     if (is_key_usage) {
                         if (der_read_tlv(extn_value, extn_value_len, &tag, &vl, &hl) == 0 &&
-                            tag == 0x03 && vl >= 2) {
+                            tag == 0x03 && vl >= 2 && extn_value[hl] <= 7) {
                             const uint8_t *bits = extn_value + hl;
-                            key_usage_allows = (bits[1] & 0x80) != 0 || (bits[1] & 0x20) != 0;
-                        }
+                            key_usage_allows = (bits[1] & 0x80) != 0;
+                        } else
+                            key_usage_allows = 0;
                     } else if (is_eku) {
                         const uint8_t *eku = extn_value;
                         size_t eku_len = extn_value_len;
@@ -2010,6 +2026,8 @@ static RT_TLS_MAYBE_UNUSED int cert_get_rsa_pubkey(const uint8_t *cert_der,
     size_t algo_rem = 0;
     const uint8_t *bits = NULL;
 
+    if (!cert_der || !out)
+        return 0;
     rt_rsa_key_init(out);
     if (der_read_tlv(p, rem, &tag, &vl, &hl) != 0 || tag != 0x30)
         return 0;
@@ -2049,7 +2067,13 @@ static RT_TLS_MAYBE_UNUSED int cert_get_rsa_pubkey(const uint8_t *cert_der,
         vl != sizeof(OID_RSA_ENCRYPTION)) {
         return 0;
     }
+    algo += hl + vl;
+    algo_rem -= hl + vl;
+    if (!der_params_absent_or_null(algo, algo_rem))
+        return 0;
     if (der_read_tlv(spki, spki_rem, &tag, &vl, &hl) != 0 || tag != 0x03 || vl < 2)
+        return 0;
+    if (hl + vl != spki_rem)
         return 0;
     bits = spki + hl;
     if (bits[0] != 0x00)
@@ -2081,6 +2105,8 @@ static RT_TLS_MAYBE_UNUSED int cert_get_ec_pubkey(const uint8_t *cert_der,
     size_t algo_rem = 0;
     const uint8_t *bits = NULL;
 
+    if (!cert_der || !x_out || !y_out)
+        return -1;
     if (der_read_tlv(p, rem, &tag, &vl, &hl) != 0 || tag != 0x30)
         return -1;
     p += hl;
@@ -2123,7 +2149,13 @@ static RT_TLS_MAYBE_UNUSED int cert_get_ec_pubkey(const uint8_t *cert_der,
         memcmp(algo + hl, OID_PRIME256V1, sizeof(OID_PRIME256V1)) != 0) {
         return -1;
     }
-    if (der_read_tlv(spki, spki_rem, &tag, &vl, &hl) != 0 || tag != 0x03 || vl < 66)
+    algo += hl + vl;
+    algo_rem -= hl + vl;
+    if (algo_rem != 0)
+        return -1;
+    if (der_read_tlv(spki, spki_rem, &tag, &vl, &hl) != 0 || tag != 0x03 || vl != 66)
+        return -1;
+    if (hl + vl != spki_rem)
         return -1;
     bits = spki + hl;
     if (bits[0] != 0x00 || bits[1] != 0x04)
@@ -2131,6 +2163,18 @@ static RT_TLS_MAYBE_UNUSED int cert_get_ec_pubkey(const uint8_t *cert_der,
     memcpy(x_out, bits + 2, 32);
     memcpy(y_out, bits + 34, 32);
     return 0;
+}
+
+static int ecdsa_der_integer_is_canonical(const uint8_t *bytes, size_t len) {
+    if (!bytes || len == 0)
+        return 0;
+    if ((bytes[0] & 0x80u) != 0)
+        return 0;
+    if (len == 1)
+        return bytes[0] != 0x00;
+    if (bytes[0] == 0x00)
+        return (bytes[1] & 0x80u) != 0;
+    return 1;
 }
 
 /// @brief Parse a DER-encoded ECDSA signature (SEQUENCE { INTEGER r, INTEGER s }) and write
@@ -2149,7 +2193,8 @@ static RT_TLS_MAYBE_UNUSED int parse_ecdsa_sig_der(const uint8_t *sig,
     size_t r_len = 0;
     size_t s_len = 0;
 
-    if (der_read_tlv(sig, sig_len, &tag, &vl, &hl) != 0 || tag != 0x30)
+    if (der_read_tlv(sig, sig_len, &tag, &vl, &hl) != 0 || tag != 0x30 ||
+        hl + vl != sig_len)
         return -1;
     inner = sig + hl;
     inner_rem = vl;
@@ -2157,18 +2202,26 @@ static RT_TLS_MAYBE_UNUSED int parse_ecdsa_sig_der(const uint8_t *sig,
         return -1;
     r_bytes = inner + hl;
     r_len = vl;
+    if (!ecdsa_der_integer_is_canonical(r_bytes, r_len))
+        return -1;
     inner += hl + vl;
     inner_rem -= hl + vl;
     if (der_read_tlv(inner, inner_rem, &tag, &vl, &hl) != 0 || tag != 0x02)
         return -1;
     s_bytes = inner + hl;
     s_len = vl;
+    if (!ecdsa_der_integer_is_canonical(s_bytes, s_len))
+        return -1;
+    inner += hl + vl;
+    inner_rem -= hl + vl;
+    if (inner_rem != 0)
+        return -1;
 
-    while (r_len > 1 && r_bytes[0] == 0x00) {
+    if (r_len > 1 && r_bytes[0] == 0x00) {
         r_bytes++;
         r_len--;
     }
-    while (s_len > 1 && s_bytes[0] == 0x00) {
+    if (s_len > 1 && s_bytes[0] == 0x00) {
         s_bytes++;
         s_len--;
     }
@@ -2198,9 +2251,11 @@ static RT_TLS_MAYBE_UNUSED int cert_extract_signature_parts(const uint8_t *cert_
     const uint8_t *p = cert_der;
     size_t rem = cert_len;
 
-    if (!tbs_der || !tbs_len || !alg_der || !alg_len || !sig_bytes || !sig_len)
+    if (!cert_der || !tbs_der || !tbs_len || !alg_der || !alg_len || !sig_bytes || !sig_len)
         return 0;
     if (der_read_tlv(p, rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return 0;
+    if (hl + vl != cert_len)
         return 0;
     p += hl;
     rem = vl;
@@ -2225,6 +2280,10 @@ static RT_TLS_MAYBE_UNUSED int cert_extract_signature_parts(const uint8_t *cert_
         return 0;
     *sig_bytes = p + hl + 1;
     *sig_len = vl - 1;
+    p += hl + vl;
+    rem -= hl + vl;
+    if (rem != 0)
+        return 0;
     return 1;
 }
 
@@ -2271,16 +2330,26 @@ static RT_TLS_MAYBE_UNUSED int cert_parse_pss_params(const uint8_t *params_der,
 
     if (!alg || der_read_tlv(p, rem, &tag, &vl, &hl) != 0 || tag != 0x30)
         return 0;
+    if (hl + vl != params_len)
+        return 0;
     p += hl;
     rem = vl;
 
     while (rem > 0) {
         if (der_read_tlv(p, rem, &tag, &vl, &hl) != 0)
             return 0;
-        if (tag == 0xA0) {
-            const uint8_t *q = p + hl;
-            size_t q_rem = vl;
+        uint8_t field_tag = tag;
+        const uint8_t *field_value = p + hl;
+        size_t field_len = vl;
+        size_t field_total_len = hl + vl;
+        if (field_tag == 0xA0) {
+            const uint8_t *q = field_value;
+            size_t q_rem = field_len;
+            if (have_hash)
+                return 0;
             if (der_read_tlv(q, q_rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+                return 0;
+            if (hl + vl != q_rem)
                 return 0;
             q += hl;
             q_rem = vl;
@@ -2288,11 +2357,19 @@ static RT_TLS_MAYBE_UNUSED int cert_parse_pss_params(const uint8_t *params_der,
                 return 0;
             if (!cert_parse_hash_oid(q + hl, vl, &alg->hash_id))
                 return 0;
+            q += hl + vl;
+            q_rem -= hl + vl;
+            if (!der_params_absent_or_null(q, q_rem))
+                return 0;
             have_hash = 1;
-        } else if (tag == 0xA1) {
-            const uint8_t *q = p + hl;
-            size_t q_rem = vl;
+        } else if (field_tag == 0xA1) {
+            const uint8_t *q = field_value;
+            size_t q_rem = field_len;
+            if (have_mgf)
+                return 0;
             if (der_read_tlv(q, q_rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+                return 0;
+            if (hl + vl != q_rem)
                 return 0;
             q += hl;
             q_rem = vl;
@@ -2304,31 +2381,47 @@ static RT_TLS_MAYBE_UNUSED int cert_parse_pss_params(const uint8_t *params_der,
             q_rem -= hl + vl;
             if (der_read_tlv(q, q_rem, &tag, &vl, &hl) != 0 || tag != 0x30)
                 return 0;
+            if (hl + vl != q_rem)
+                return 0;
             q += hl;
             q_rem = vl;
             if (der_read_tlv(q, q_rem, &tag, &vl, &hl) != 0 || tag != 0x06)
                 return 0;
             if (!cert_parse_hash_oid(q + hl, vl, &mgf_hash))
                 return 0;
+            q += hl + vl;
+            q_rem -= hl + vl;
+            if (!der_params_absent_or_null(q, q_rem))
+                return 0;
             have_mgf = 1;
-        } else if (tag == 0xA2) {
-            const uint8_t *q = p + hl;
-            size_t q_rem = vl;
+        } else if (field_tag == 0xA2) {
+            const uint8_t *q = field_value;
+            size_t q_rem = field_len;
             size_t parsed_salt_len = 0;
+            if (have_salt)
+                return 0;
             if (der_read_tlv(q, q_rem, &tag, &vl, &hl) != 0 || tag != 0x02 || vl == 0 || vl > 4)
+                return 0;
+            if (hl + vl != q_rem)
+                return 0;
+            if ((q[hl] & 0x80u) != 0 || (vl > 1 && q[hl] == 0x00 && (q[hl + 1] & 0x80u) == 0))
                 return 0;
             for (size_t i = 0; i < vl; i++)
                 parsed_salt_len = (parsed_salt_len << 8) | q[hl + i];
             salt_len = parsed_salt_len;
             have_salt = 1;
-        } else if (tag == 0xA3) {
-            const uint8_t *q = p + hl;
-            size_t q_rem = vl;
+        } else if (field_tag == 0xA3) {
+            const uint8_t *q = field_value;
+            size_t q_rem = field_len;
             if (der_read_tlv(q, q_rem, &tag, &vl, &hl) != 0 || tag != 0x02 || vl != 1 || q[hl] != 1)
                 return 0;
+            if (hl + vl != q_rem)
+                return 0;
+        } else {
+            return 0;
         }
-        p += hl + vl;
-        rem -= hl + vl;
+        p += field_total_len;
+        rem -= field_total_len;
     }
 
     return have_hash && have_mgf && have_salt && mgf_hash == alg->hash_id &&
@@ -2363,47 +2456,63 @@ static RT_TLS_MAYBE_UNUSED int cert_parse_signature_algorithm(const uint8_t *alg
     memset(alg, 0, sizeof(*alg));
     if (der_read_tlv(p, rem, &tag, &vl, &hl) != 0 || tag != 0x30)
         return 0;
+    if (hl + vl != alg_len)
+        return 0;
     p += hl;
     rem = vl;
     if (der_read_tlv(p, rem, &tag, &vl, &hl) != 0 || tag != 0x06)
         return 0;
-    if (vl == sizeof(OID_SHA256_RSA) && memcmp(p + hl, OID_SHA256_RSA, sizeof(OID_SHA256_RSA)) == 0) {
+    const uint8_t *oid = p + hl;
+    size_t oid_len = vl;
+    p += hl + vl;
+    rem -= hl + vl;
+    if (oid_len == sizeof(OID_SHA256_RSA) && memcmp(oid, OID_SHA256_RSA, sizeof(OID_SHA256_RSA)) == 0) {
+        if (!der_params_absent_or_null(p, rem))
+            return 0;
         alg->kind = TLS_CERT_SIG_RSA_PKCS1;
         alg->hash_id = RT_RSA_HASH_SHA256;
         return 1;
     }
-    if (vl == sizeof(OID_SHA384_RSA) && memcmp(p + hl, OID_SHA384_RSA, sizeof(OID_SHA384_RSA)) == 0) {
+    if (oid_len == sizeof(OID_SHA384_RSA) && memcmp(oid, OID_SHA384_RSA, sizeof(OID_SHA384_RSA)) == 0) {
+        if (!der_params_absent_or_null(p, rem))
+            return 0;
         alg->kind = TLS_CERT_SIG_RSA_PKCS1;
         alg->hash_id = RT_RSA_HASH_SHA384;
         return 1;
     }
-    if (vl == sizeof(OID_SHA512_RSA) && memcmp(p + hl, OID_SHA512_RSA, sizeof(OID_SHA512_RSA)) == 0) {
+    if (oid_len == sizeof(OID_SHA512_RSA) && memcmp(oid, OID_SHA512_RSA, sizeof(OID_SHA512_RSA)) == 0) {
+        if (!der_params_absent_or_null(p, rem))
+            return 0;
         alg->kind = TLS_CERT_SIG_RSA_PKCS1;
         alg->hash_id = RT_RSA_HASH_SHA512;
         return 1;
     }
-    if (vl == sizeof(OID_ECDSA_SHA256) &&
-        memcmp(p + hl, OID_ECDSA_SHA256, sizeof(OID_ECDSA_SHA256)) == 0) {
+    if (oid_len == sizeof(OID_ECDSA_SHA256) &&
+        memcmp(oid, OID_ECDSA_SHA256, sizeof(OID_ECDSA_SHA256)) == 0) {
+        if (rem != 0)
+            return 0;
         alg->kind = TLS_CERT_SIG_ECDSA_P256;
         alg->hash_id = RT_RSA_HASH_SHA256;
         return 1;
     }
-    if (vl == sizeof(OID_ECDSA_SHA384) &&
-        memcmp(p + hl, OID_ECDSA_SHA384, sizeof(OID_ECDSA_SHA384)) == 0) {
+    if (oid_len == sizeof(OID_ECDSA_SHA384) &&
+        memcmp(oid, OID_ECDSA_SHA384, sizeof(OID_ECDSA_SHA384)) == 0) {
+        if (rem != 0)
+            return 0;
         alg->kind = TLS_CERT_SIG_ECDSA_P256;
         alg->hash_id = RT_RSA_HASH_SHA384;
         return 1;
     }
-    if (vl == sizeof(OID_ECDSA_SHA512) &&
-        memcmp(p + hl, OID_ECDSA_SHA512, sizeof(OID_ECDSA_SHA512)) == 0) {
+    if (oid_len == sizeof(OID_ECDSA_SHA512) &&
+        memcmp(oid, OID_ECDSA_SHA512, sizeof(OID_ECDSA_SHA512)) == 0) {
+        if (rem != 0)
+            return 0;
         alg->kind = TLS_CERT_SIG_ECDSA_P256;
         alg->hash_id = RT_RSA_HASH_SHA512;
         return 1;
     }
-    if (vl == sizeof(OID_RSA_PSS) && memcmp(p + hl, OID_RSA_PSS, sizeof(OID_RSA_PSS)) == 0) {
+    if (oid_len == sizeof(OID_RSA_PSS) && memcmp(oid, OID_RSA_PSS, sizeof(OID_RSA_PSS)) == 0) {
         alg->kind = TLS_CERT_SIG_RSA_PSS;
-        p += hl + vl;
-        rem -= hl + vl;
         if (rem == 0)
             return 0;
         return cert_parse_pss_params(p, rem, alg);
@@ -2765,6 +2874,18 @@ static void build_cert_verify_message(const uint8_t transcript_hash[32], uint8_t
 
 static size_t sig_scheme_hash_len(uint16_t sig_scheme);
 #if defined(_WIN32)
+static int ecdsa_der_integer_is_canonical(const uint8_t *bytes, size_t len) {
+    if (!bytes || len == 0)
+        return 0;
+    if ((bytes[0] & 0x80u) != 0)
+        return 0;
+    if (len == 1)
+        return bytes[0] != 0x00;
+    if (bytes[0] == 0x00)
+        return (bytes[1] & 0x80u) != 0;
+    return 1;
+}
+
 /// @brief Parse a DER-encoded ECDSA signature for CNG, writing raw r || s bytes.
 /// @return 0 on success, -1 on malformed input.
 static int parse_ecdsa_sig_der(const uint8_t *sig,
@@ -2780,7 +2901,8 @@ static int parse_ecdsa_sig_der(const uint8_t *sig,
     size_t r_len = 0;
     size_t s_len = 0;
 
-    if (der_read_tlv(sig, sig_len, &tag, &vl, &hl) != 0 || tag != 0x30)
+    if (der_read_tlv(sig, sig_len, &tag, &vl, &hl) != 0 || tag != 0x30 ||
+        hl + vl != sig_len)
         return -1;
     inner = sig + hl;
     inner_rem = vl;
@@ -2788,18 +2910,26 @@ static int parse_ecdsa_sig_der(const uint8_t *sig,
         return -1;
     r_bytes = inner + hl;
     r_len = vl;
+    if (!ecdsa_der_integer_is_canonical(r_bytes, r_len))
+        return -1;
     inner += hl + vl;
     inner_rem -= hl + vl;
     if (der_read_tlv(inner, inner_rem, &tag, &vl, &hl) != 0 || tag != 0x02)
         return -1;
     s_bytes = inner + hl;
     s_len = vl;
+    if (!ecdsa_der_integer_is_canonical(s_bytes, s_len))
+        return -1;
+    inner += hl + vl;
+    inner_rem -= hl + vl;
+    if (inner_rem != 0)
+        return -1;
 
-    while (r_len > 1 && r_bytes[0] == 0x00) {
+    if (r_len > 1 && r_bytes[0] == 0x00) {
         r_bytes++;
         r_len--;
     }
-    while (s_len > 1 && s_bytes[0] == 0x00) {
+    if (s_len > 1 && s_bytes[0] == 0x00) {
         s_bytes++;
         s_len--;
     }

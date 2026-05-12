@@ -14,7 +14,9 @@
 //   - Field elements are uint64_t[4] in big-endian limb order (limb[0] = MSW).
 //   - Point-at-infinity represented by Z == 0 in Jacobian coordinates.
 //   - No heap allocation; all temporaries are stack-local.
-//   - Verification-only: constant-time not required (all inputs are public).
+//   - Public verification uses variable-time scalar multiplication.
+//   - Private-key paths use a fixed scalar-multiplication schedule; this
+//     reduces obvious secret-bit branching but is not a formal side-channel proof.
 // Ownership/Lifetime:
 //   - Pure functions; no state, no side effects beyond output parameters.
 // Links: rt_ecdsa_p256.h (API), rt_tls.c (caller)
@@ -30,6 +32,12 @@
 #else
 #define ECDSA_P256_MAYBE_UNUSED
 #endif
+
+static void ecdsa_secure_zero(void *ptr, size_t len) {
+    volatile uint8_t *p = (volatile uint8_t *)ptr;
+    while (len-- > 0)
+        *p++ = 0;
+}
 
 //=============================================================================
 // 256-bit unsigned integer type (big-endian limb order: [0]=MSW, [3]=LSW)
@@ -823,6 +831,37 @@ static void jpoint_scalar_mul(jpoint *R, const u256 k, const jpoint *P) {
     }
 }
 
+static int u256_bit_at(const u256 k, int bit) {
+    int limb = 3 - (bit / 64);
+    int shift = bit & 63;
+    return (int)((k[limb] >> shift) & 1u);
+}
+
+static void jpoint_cmov(jpoint *dst, const jpoint *src, uint64_t mask) {
+    for (int i = 0; i < 4; i++) {
+        dst->X[i] = (dst->X[i] & ~mask) | (src->X[i] & mask);
+        dst->Y[i] = (dst->Y[i] & ~mask) | (src->Y[i] & mask);
+        dst->Z[i] = (dst->Z[i] & ~mask) | (src->Z[i] & mask);
+    }
+}
+
+/// @brief Fixed-schedule scalar multiplication for private-key operations.
+/// @details Executes one double and one add for every scalar bit, then
+///          conditionally selects the add result with a mask. Point formulas
+///          still contain exceptional-case branches, so this is a hardening
+///          step rather than a complete constant-time implementation.
+static void jpoint_scalar_mul_fixed(jpoint *R, const u256 k, const jpoint *P) {
+    jpoint_set_infinity(R);
+    for (int bit = 255; bit >= 0; bit--) {
+        jpoint doubled;
+        jpoint added;
+        jpoint_double(&doubled, R);
+        jpoint_add(&added, &doubled, P);
+        memcpy(R, &doubled, sizeof(jpoint));
+        jpoint_cmov(R, &added, UINT64_C(0) - (uint64_t)u256_bit_at(k, bit));
+    }
+}
+
 /// @brief Convert a Jacobian projective point to affine coordinates: x = X/Z^2, y = Y/Z^3.
 ///        Returns (0, 0) for the point at infinity.
 static void jpoint_to_affine(u256 x, u256 y, const jpoint *P) {
@@ -841,6 +880,22 @@ static void jpoint_to_affine(u256 x, u256 y, const jpoint *P) {
     fp_mul(y, P->Y, z_inv3);
 }
 
+static int p256_point_valid(const u256 x, const u256 y) {
+    if (u256_cmp(x, P256_P) >= 0 || u256_cmp(y, P256_P) >= 0)
+        return 0;
+    if (u256_is_zero(x) && u256_is_zero(y))
+        return 0;
+
+    u256 lhs, rhs, x2, x3, ax;
+    fp_sqr(lhs, y);
+    fp_sqr(x2, x);
+    fp_mul(x3, x2, x);
+    fp_mul(ax, P256_A, x);
+    fp_add(rhs, x3, ax);
+    fp_add(rhs, rhs, P256_B);
+    return u256_cmp(lhs, rhs) == 0;
+}
+
 //=============================================================================
 // ECDSA P-256 Verification (FIPS 186-4 / SEC1 §4.1.4)
 //=============================================================================
@@ -855,6 +910,9 @@ int ecdsa_p256_verify(const uint8_t pubkey_x[32],
                       const uint8_t digest[32],
                       const uint8_t sig_r[32],
                       const uint8_t sig_s[32]) {
+    if (!pubkey_x || !pubkey_y || !digest || !sig_r || !sig_s)
+        return 0;
+
     u256 r, s, e, qx, qy;
 
     u256_from_bytes(r, sig_r);
@@ -869,20 +927,9 @@ int ecdsa_p256_verify(const uint8_t pubkey_x[32],
     if (u256_is_zero(s) || u256_cmp(s, P256_N) >= 0)
         return 0;
 
-    // Step 2: Validate public key is on the curve
-    // Check y^2 = x^3 + ax + b (mod p)
-    {
-        u256 lhs, rhs, x2, x3, ax, tmp;
-        fp_sqr(lhs, qy);          // y^2
-        fp_sqr(x2, qx);           // x^2
-        fp_mul(x3, x2, qx);       // x^3
-        fp_mul(ax, P256_A, qx);   // a*x
-        fp_add(rhs, x3, ax);      // x^3 + a*x
-        fp_add(rhs, rhs, P256_B); // x^3 + a*x + b
-        (void)tmp;
-        if (u256_cmp(lhs, rhs) != 0)
-            return 0;
-    }
+    // Step 2: Validate public key is canonical and on the curve.
+    if (!p256_point_valid(qx, qy))
+        return 0;
 
     // Step 3: w = s^(-1) mod n
     u256 w;
@@ -927,64 +974,78 @@ int ecdsa_p256_verify(const uint8_t pubkey_x[32],
 int ecdsa_p256_public_from_private(const uint8_t privkey[32],
                                    uint8_t pubkey_x[32],
                                    uint8_t pubkey_y[32]) {
-    u256 d;
-    u256_from_bytes(d, privkey);
-    if (u256_is_zero(d) || u256_cmp(d, P256_N) >= 0)
+    if (!privkey || !pubkey_x || !pubkey_y)
         return 0;
 
+    u256 d;
+    u256 qx, qy;
     jpoint G;
     jpoint Q;
-    u256 qx, qy;
+    int ok = 0;
+
+    u256_from_bytes(d, privkey);
+    if (u256_is_zero(d) || u256_cmp(d, P256_N) >= 0)
+        goto done;
+
     jpoint_from_affine(&G, P256_GX, P256_GY);
-    jpoint_scalar_mul(&Q, d, &G);
+    jpoint_scalar_mul_fixed(&Q, d, &G);
     if (jpoint_is_infinity(&Q))
-        return 0;
+        goto done;
     jpoint_to_affine(qx, qy, &Q);
     u256_to_bytes(pubkey_x, qx);
     u256_to_bytes(pubkey_y, qy);
-    return 1;
+    ok = 1;
+
+done:
+    ecdsa_secure_zero(d, sizeof(d));
+    ecdsa_secure_zero(qx, sizeof(qx));
+    ecdsa_secure_zero(qy, sizeof(qy));
+    ecdsa_secure_zero(&Q, sizeof(Q));
+    return ok;
 }
 
 /// @brief Compute P-256 ECDH shared point x-coordinate.
 /// @details Validates both the private scalar and the peer public key, then
 ///          computes `S = d * Q_peer` and returns S.x. This is the primitive
 ///          needed by a TLS 1.3 secp256r1 key-share implementation. The
-///          current scalar multiply is portable but not yet constant-time for
-///          secret scalars, so the validation plan still tracks side-channel
-///          hardening before any production approved-mode TLS claim.
+///          Uses the fixed-schedule scalar-multiply path for the private scalar.
 int ecdsa_p256_ecdh(const uint8_t privkey[32],
                     const uint8_t peer_x[32],
                     const uint8_t peer_y[32],
                     uint8_t shared_x[32]) {
+    if (!privkey || !peer_x || !peer_y || !shared_x)
+        return 0;
+
     u256 d, qx, qy;
+    u256 sx, sy;
+    jpoint Q;
+    jpoint R;
+    int ok = 0;
+
     u256_from_bytes(d, privkey);
     u256_from_bytes(qx, peer_x);
     u256_from_bytes(qy, peer_y);
     if (u256_is_zero(d) || u256_cmp(d, P256_N) >= 0)
-        return 0;
-    if (u256_is_zero(qx) && u256_is_zero(qy))
-        return 0;
+        goto done;
+    if (!p256_point_valid(qx, qy))
+        goto done;
 
-    u256 lhs, rhs, x2, x3, ax;
-    fp_sqr(lhs, qy);
-    fp_sqr(x2, qx);
-    fp_mul(x3, x2, qx);
-    fp_mul(ax, P256_A, qx);
-    fp_add(rhs, x3, ax);
-    fp_add(rhs, rhs, P256_B);
-    if (u256_cmp(lhs, rhs) != 0)
-        return 0;
-
-    jpoint Q;
-    jpoint R;
-    u256 sx, sy;
     jpoint_from_affine(&Q, qx, qy);
-    jpoint_scalar_mul(&R, d, &Q);
+    jpoint_scalar_mul_fixed(&R, d, &Q);
     if (jpoint_is_infinity(&R))
-        return 0;
+        goto done;
     jpoint_to_affine(sx, sy, &R);
     u256_to_bytes(shared_x, sx);
-    return 1;
+    ok = 1;
+
+done:
+    ecdsa_secure_zero(d, sizeof(d));
+    ecdsa_secure_zero(qx, sizeof(qx));
+    ecdsa_secure_zero(qy, sizeof(qy));
+    ecdsa_secure_zero(sx, sizeof(sx));
+    ecdsa_secure_zero(sy, sizeof(sy));
+    ecdsa_secure_zero(&R, sizeof(R));
+    return ok;
 }
 
 /// @brief Produce an ECDSA-P256 signature over `digest` using the private key.
@@ -1011,11 +1072,17 @@ int ecdsa_p256_sign(const uint8_t privkey[32],
                     const uint8_t digest[32],
                     uint8_t sig_r[32],
                     uint8_t sig_s[32]) {
+    if (!privkey || !digest || !sig_r || !sig_s)
+        return 0;
+
     u256 d, e;
     u256_from_bytes(d, privkey);
     u256_from_bytes(e, digest);
-    if (u256_is_zero(d) || u256_cmp(d, P256_N) >= 0)
+    if (u256_is_zero(d) || u256_cmp(d, P256_N) >= 0) {
+        ecdsa_secure_zero(d, sizeof(d));
+        ecdsa_secure_zero(e, sizeof(e));
         return 0;
+    }
 
     jpoint G;
     jpoint_from_affine(&G, P256_GX, P256_GY);
@@ -1026,31 +1093,32 @@ int ecdsa_p256_sign(const uint8_t privkey[32],
         u256 r, s, tmp, kinv;
         jpoint R;
         u256 rx, ry;
+        int produced = 0;
 
         rt_crypto_random_bytes(nonce_bytes, sizeof(nonce_bytes));
         u256_from_bytes(k, nonce_bytes);
         sn_reduce_once(k, k);
         if (u256_is_zero(k) || u256_cmp(k, P256_N) >= 0)
-            continue;
+            goto attempt_done;
 
-        jpoint_scalar_mul(&R, k, &G);
+        jpoint_scalar_mul_fixed(&R, k, &G);
         if (jpoint_is_infinity(&R))
-            continue;
+            goto attempt_done;
 
         jpoint_to_affine(rx, ry, &R);
         sn_reduce_once(r, rx);
         if (u256_is_zero(r))
-            continue;
+            goto attempt_done;
 
         sn_mul(tmp, r, d);
         sn_add(tmp, tmp, e);
         if (u256_is_zero(tmp))
-            continue;
+            goto attempt_done;
 
         sn_inv(kinv, k);
         sn_mul(s, kinv, tmp);
         if (u256_is_zero(s))
-            continue;
+            goto attempt_done;
 
         // Canonicalize to low-S form for broader interoperability.
         u256 half_n = {
@@ -1060,8 +1128,26 @@ int ecdsa_p256_sign(const uint8_t privkey[32],
 
         u256_to_bytes(sig_r, r);
         u256_to_bytes(sig_s, s);
-        return 1;
+        produced = 1;
+
+attempt_done:
+        ecdsa_secure_zero(nonce_bytes, sizeof(nonce_bytes));
+        ecdsa_secure_zero(k, sizeof(k));
+        ecdsa_secure_zero(r, sizeof(r));
+        ecdsa_secure_zero(s, sizeof(s));
+        ecdsa_secure_zero(tmp, sizeof(tmp));
+        ecdsa_secure_zero(kinv, sizeof(kinv));
+        ecdsa_secure_zero(rx, sizeof(rx));
+        ecdsa_secure_zero(ry, sizeof(ry));
+        ecdsa_secure_zero(&R, sizeof(R));
+        if (produced) {
+            ecdsa_secure_zero(d, sizeof(d));
+            ecdsa_secure_zero(e, sizeof(e));
+            return 1;
+        }
     }
 
+    ecdsa_secure_zero(d, sizeof(d));
+    ecdsa_secure_zero(e, sizeof(e));
     return 0;
 }
