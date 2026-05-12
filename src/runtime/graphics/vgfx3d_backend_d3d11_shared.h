@@ -93,12 +93,12 @@ typedef struct {
     int8_t overlay_used_this_frame;
 } vgfx3d_d3d11_frame_history_t;
 
-/// @brief Pack scalar array into HLSL float4-aligned slots (one scalar per .x lane, .yzw zeroed).
+/// @brief Pack scalar array into HLSL float4-aligned slots (four scalars per float4).
 void vgfx3d_d3d11_pack_scalar_array4(float (*dst)[4],
                                      int32_t dst_vec_count,
                                      const float *src,
                                      int32_t src_scalar_count);
-/// @brief Copy bone palette into a fixed-size cbuffer slot (zero-pads unused bones).
+/// @brief Copy bone palette into a fixed-size cbuffer slot (identity-pads unused bones).
 void vgfx3d_d3d11_pack_bone_palette(float *dst, const float *src, int32_t bone_count);
 /// @brief Build per-instance cbuffer entries (model + normal + prev_model) for instanced draws.
 void vgfx3d_d3d11_fill_instance_data(vgfx3d_d3d11_instance_data_t *dst,

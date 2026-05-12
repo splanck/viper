@@ -390,9 +390,39 @@ static const uint8_t OID_X509_KEY_USAGE[] = {0x55, 0x1d, 0x0f};        // 2.5.29
 static const uint8_t OID_X509_BASIC_CONSTRAINTS[] = {0x55, 0x1d, 0x13}; // 2.5.29.19
 static const uint8_t OID_X509_EXT_KEY_USAGE[] = {0x55, 0x1d, 0x25};    // 2.5.29.37
 
+/// @brief Return a pointer into cert_der at the DER-encoded Subject field, and write its total
+///        TLV length (header + value) into *subject_len.
+/// @return Non-null pointer into cert_der on success, NULL if the certificate is malformed.
 static RT_TLS_MAYBE_UNUSED const uint8_t *cert_get_subject(const uint8_t *cert_der,
                                                            size_t cert_len,
-                                                           size_t *subject_len);
+                                                           size_t *subject_len) {
+    uint8_t t;
+    size_t vl, hl, cert_hl, tbs_hl;
+    const uint8_t *tbs = NULL;
+    size_t tbs_len = 0;
+    size_t pos = 0;
+
+    if (!subject_len || der_read_tlv(cert_der, cert_len, &t, &vl, &cert_hl) != 0 || t != 0x30)
+        return NULL;
+    if (der_read_tlv(cert_der + cert_hl, vl, &t, &tbs_len, &tbs_hl) != 0 || t != 0x30)
+        return NULL;
+    tbs = cert_der + cert_hl + tbs_hl;
+
+    if (der_read_tlv(tbs + pos, tbs_len - pos, &t, &vl, &hl) != 0)
+        return NULL;
+    if (t == 0xA0)
+        pos += hl + vl;
+
+    for (int i = 0; i < 4; i++) {
+        if (der_read_tlv(tbs + pos, tbs_len - pos, &t, &vl, &hl) != 0)
+            return NULL;
+        pos += hl + vl;
+    }
+    if (der_read_tlv(tbs + pos, tbs_len - pos, &t, &vl, &hl) != 0 || t != 0x30)
+        return NULL;
+    *subject_len = hl + vl;
+    return tbs + pos;
+}
 
 /// @brief Validate a DNS name byte sequence for TLS hostname matching.
 /// @details Enforces RFC 1035 / RFC 6125 hostname rules:
@@ -1510,40 +1540,6 @@ static RT_TLS_MAYBE_UNUSED int der_names_equal(const uint8_t *a_der,
                                                const uint8_t *b_der,
                                                size_t b_len) {
     return a_len == b_len && memcmp(a_der, b_der, a_len) == 0;
-}
-
-/// @brief Return a pointer into cert_der at the DER-encoded Subject field, and write its total
-///        TLV length (header + value) into *subject_len.
-/// @return Non-null pointer into cert_der on success, NULL if the certificate is malformed.
-static RT_TLS_MAYBE_UNUSED const uint8_t *cert_get_subject(const uint8_t *cert_der,
-                                                           size_t cert_len,
-                                                           size_t *subject_len) {
-    uint8_t t;
-    size_t vl, hl, cert_hl, tbs_hl;
-    const uint8_t *tbs = NULL;
-    size_t tbs_len = 0;
-    size_t pos = 0;
-
-    if (!subject_len || der_read_tlv(cert_der, cert_len, &t, &vl, &cert_hl) != 0 || t != 0x30)
-        return NULL;
-    if (der_read_tlv(cert_der + cert_hl, vl, &t, &tbs_len, &tbs_hl) != 0 || t != 0x30)
-        return NULL;
-    tbs = cert_der + cert_hl + tbs_hl;
-
-    if (der_read_tlv(tbs + pos, tbs_len - pos, &t, &vl, &hl) != 0)
-        return NULL;
-    if (t == 0xA0)
-        pos += hl + vl;
-
-    for (int i = 0; i < 4; i++) {
-        if (der_read_tlv(tbs + pos, tbs_len - pos, &t, &vl, &hl) != 0)
-            return NULL;
-        pos += hl + vl;
-    }
-    if (der_read_tlv(tbs + pos, tbs_len - pos, &t, &vl, &hl) != 0 || t != 0x30)
-        return NULL;
-    *subject_len = hl + vl;
-    return tbs + pos;
 }
 
 /// @brief Return a pointer into cert_der at the DER-encoded Issuer field, and write its total

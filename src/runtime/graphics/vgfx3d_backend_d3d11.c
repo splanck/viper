@@ -272,6 +272,16 @@ static const char *d3d11_shader_source =
     "    return float2(uv.x * m.x + uv.y * m.y + t.x,\n"
     "                  uv.x * m.z + uv.y * m.w + t.y);\n"
     "}\n"
+    "float3 safeNormalize3(float3 v, float3 fallback) {\n"
+    "    float len2 = dot(v, v);\n"
+    "    return len2 > 1e-12 ? v * rsqrt(len2) : fallback;\n"
+    "}\n"
+    "float2 ndcToTextureUv(float2 ndc) {\n"
+    "    return float2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);\n"
+    "}\n"
+    "float2 ndcDeltaToUvDelta(float2 delta) {\n"
+    "    return float2(delta.x * 0.5, -delta.y * 0.5);\n"
+    "}\n"
     "\n"
     "float3 applyMorphPosition(float3 pos, uint vid, int usePrevWeights) {\n"
     "    if (morphShapeCount <= 0 || vertexCount <= 0)\n"
@@ -300,7 +310,7 @@ static const char *d3d11_shader_source =
     "            nrm.z += morphNormalDeltas[base + 2] * w;\n"
     "        }\n"
     "    }\n"
-    "    return normalize(nrm);\n"
+    "    return safeNormalize3(nrm, float3(0.0, 1.0, 0.0));\n"
     "}\n"
     "\n"
     "float4 skinPosition(float4 pos, uint4 boneIdx, float4 boneWt, int usePrevPalette) {\n"
@@ -308,30 +318,34 @@ static const char *d3d11_shader_source =
     "== 0))\n"
     "        return pos;\n"
     "    float4 skinned = float4(0.0, 0.0, 0.0, 0.0);\n"
+    "    float totalWeight = 0.0;\n"
     "    for (int i = 0; i < 4; i++) {\n"
-    "        float w = boneWt[i];\n"
+    "        float w = max(boneWt[i], 0.0);\n"
     "        if (w <= 0.0001)\n"
     "            continue;\n"
     "        uint idx = min(boneIdx[i], 255u);\n"
     "        row_major float4x4 bm = usePrevPalette != 0 ? prevBonePalette[idx] : "
     "bonePalette[idx];\n"
     "        skinned += mul(bm, pos) * w;\n"
+    "        totalWeight += w;\n"
     "    }\n"
-    "    return skinned;\n"
+    "    return totalWeight > 0.0001 ? skinned / totalWeight : pos;\n"
     "}\n"
     "\n"
     "float3 skinVector(float3 vec, uint4 boneIdx, float4 boneWt) {\n"
     "    if (hasSkinning == 0)\n"
     "        return vec;\n"
     "    float3 skinned = float3(0.0, 0.0, 0.0);\n"
+    "    float totalWeight = 0.0;\n"
     "    for (int i = 0; i < 4; i++) {\n"
-    "        float w = boneWt[i];\n"
+    "        float w = max(boneWt[i], 0.0);\n"
     "        if (w <= 0.0001)\n"
     "            continue;\n"
     "        uint idx = min(boneIdx[i], 255u);\n"
     "        skinned += mul(bonePalette[idx], float4(vec, 0.0)).xyz * w;\n"
+    "        totalWeight += w;\n"
     "    }\n"
-    "    return skinned;\n"
+    "    return totalWeight > 0.0001 ? skinned / totalWeight : vec;\n"
     "}\n"
     "\n"
     "float4x4 makeMatrixRows(float4 r0, float4 r1, float4 r2, float4 r3) {\n"
@@ -379,12 +393,14 @@ static const char *d3d11_shader_source =
     "    float4 skinnedPos = skinPosition(float4(pos, 1.0), input.boneIdx, input.boneWt, 0);\n"
     "    float4 prevSkinnedPos = skinPosition(float4(prevPos, 1.0), input.boneIdx, input.boneWt, "
     "1);\n"
-    "    float3 skinnedNormal = normalize(skinVector(nrm, input.boneIdx, input.boneWt));\n"
-    "    float3 skinnedTangent = normalize(skinVector(tan.xyz, input.boneIdx, input.boneWt));\n"
+    "    float3 skinnedNormal = safeNormalize3(skinVector(nrm, input.boneIdx, input.boneWt), "
+    "float3(0.0, 1.0, 0.0));\n"
+    "    float3 skinnedTangent = safeNormalize3(skinVector(tan.xyz, input.boneIdx, input.boneWt), "
+    "float3(1.0, 0.0, 0.0));\n"
     "    if (hasSkinning == 0) {\n"
     "        skinnedPos = float4(pos, 1.0);\n"
-    "        skinnedNormal = normalize(nrm);\n"
-    "        skinnedTangent = normalize(tan.xyz);\n"
+    "        skinnedNormal = safeNormalize3(nrm, float3(0.0, 1.0, 0.0));\n"
+    "        skinnedTangent = safeNormalize3(tan.xyz, float3(1.0, 0.0, 0.0));\n"
     "    }\n"
     "    if (hasPrevSkinning == 0)\n"
     "        prevSkinnedPos = float4(prevPos, 1.0);\n"
@@ -422,12 +438,14 @@ static const char *d3d11_shader_source =
     "    float4 skinnedPos = skinPosition(float4(pos, 1.0), input.boneIdx, input.boneWt, 0);\n"
     "    float4 prevSkinnedPos = skinPosition(float4(prevPos, 1.0), input.boneIdx, input.boneWt, "
     "1);\n"
-    "    float3 skinnedNormal = normalize(skinVector(nrm, input.boneIdx, input.boneWt));\n"
-    "    float3 skinnedTangent = normalize(skinVector(tan.xyz, input.boneIdx, input.boneWt));\n"
+    "    float3 skinnedNormal = safeNormalize3(skinVector(nrm, input.boneIdx, input.boneWt), "
+    "float3(0.0, 1.0, 0.0));\n"
+    "    float3 skinnedTangent = safeNormalize3(skinVector(tan.xyz, input.boneIdx, input.boneWt), "
+    "float3(1.0, 0.0, 0.0));\n"
     "    if (hasSkinning == 0) {\n"
     "        skinnedPos = float4(pos, 1.0);\n"
-    "        skinnedNormal = normalize(nrm);\n"
-    "        skinnedTangent = normalize(tan.xyz);\n"
+    "        skinnedNormal = safeNormalize3(nrm, float3(0.0, 1.0, 0.0));\n"
+    "        skinnedTangent = safeNormalize3(tan.xyz, float3(1.0, 0.0, 0.0));\n"
     "    }\n"
     "    if (hasPrevSkinning == 0)\n"
     "        prevSkinnedPos = float4(prevPos, 1.0);\n"
@@ -450,11 +468,13 @@ static const char *d3d11_shader_source =
     "        return 1.0;\n"
     "    row_major float4x4 shadowMatrix = shadowVP[shadowIndex];\n"
     "    float4 lc = mul(shadowMatrix, float4(worldPos, 1.0));\n"
+    "    if (lc.w <= 0.0001)\n"
+    "        return 1.0;\n"
     "    float invW = 1.0 / max(lc.w, 0.0001);\n"
     "    float3 ndc = lc.xyz * invW;\n"
-    "    float2 uv = ndc.xy * 0.5 + 0.5;\n"
+    "    float2 uv = ndcToTextureUv(ndc.xy);\n"
     "    float depth = ndc.z * 0.5 + 0.5;\n"
-    "    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || depth > 1.0)\n"
+    "    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || depth < 0.0 || depth > 1.0)\n"
     "        return 1.0;\n"
     "    float shadow = shadowIndex == 0\n"
     "        ? shadowTex0.SampleCmpLevelZero(shadowSampler, uv, depth - shadowBias)\n"
@@ -516,20 +536,24 @@ static const char *d3d11_shader_source =
     "            baseColor = splatColor * diffuseColor.rgb * input.color.rgb;\n"
     "        }\n"
     "    }\n"
-    "    float3 N = normalize(input.normal);\n"
+    "    float3 N = safeNormalize3(input.normal, float3(0.0, 1.0, 0.0));\n"
     "    if (flags0.z != 0) {\n"
     "        float3 mapN = normalTex.Sample(normalSampler, materialUv(input, 1)).xyz * 2.0 - 1.0;\n"
     "        mapN.xy *= pbrScalars1.x;\n"
-    "        float3 T = normalize(input.tangent.xyz - N * dot(input.tangent.xyz, N));\n"
+    "        float3 T = safeNormalize3(input.tangent.xyz - N * dot(input.tangent.xyz, N), "
+    "float3(1.0, 0.0, 0.0));\n"
     "        if (dot(T, T) > 0.0001) {\n"
-    "            float3 B = normalize(cross(N, T)) * (input.tangent.w < 0.0 ? -1.0 : 1.0);\n"
-    "            N = normalize(mapN.x * T + mapN.y * B + mapN.z * N);\n"
+    "            float3 B = safeNormalize3(cross(N, T), float3(0.0, 0.0, 1.0)) * "
+    "(input.tangent.w < 0.0 ? -1.0 : 1.0);\n"
+    "            N = safeNormalize3(mapN.x * T + mapN.y * B + mapN.z * N, N);\n"
     "        }\n"
     "    }\n"
+    "    float3 safeCameraForward = safeNormalize3(cameraForward, float3(0.0, 0.0, -1.0));\n"
     "    float3 cameraToWorld = cameraPosition.xyz - input.worldPos;\n"
-    "    float3 V = normalize(cameraPosition.w > 0.5 ? -cameraForward : cameraToWorld);\n"
+    "    float3 V = cameraPosition.w > 0.5 ? -safeCameraForward : "
+    "safeNormalize3(cameraToWorld, -safeCameraForward);\n"
     "    float viewDistance = cameraPosition.w > 0.5\n"
-    "        ? abs(dot(input.worldPos - cameraPosition.xyz, cameraForward))\n"
+    "        ? abs(dot(input.worldPos - cameraPosition.xyz, safeCameraForward))\n"
     "        : length(cameraToWorld);\n"
     "    float3 emissive = emissiveColor.rgb * pbrScalars0.w;\n"
     "    if (flags1.x != 0) {\n"
@@ -569,7 +593,7 @@ static const char *d3d11_shader_source =
     "                float3 L = float3(0.0, 0.0, 0.0);\n"
     "                float atten = 1.0;\n"
     "                if (lights[i].type == 0) {\n"
-    "                    L = normalize(-lights[i].direction.xyz);\n"
+    "                    L = safeNormalize3(-lights[i].direction.xyz, float3(0.0, -1.0, 0.0));\n"
     "                    atten *= lerp(0.15, 1.0, sampleShadow(lights[i].shadowIndex, input.worldPos));\n"
     "                } else if (lights[i].type == 1) {\n"
     "                    float3 toLight = lights[i].position.xyz - input.worldPos;\n"
@@ -584,7 +608,8 @@ static const char *d3d11_shader_source =
     "                    float d = length(toLight);\n"
     "                    L = toLight / max(d, 0.0001);\n"
     "                    atten = 1.0 / (1.0 + lights[i].attenuation * d * d);\n"
-    "                    float spotDot = dot(-L, normalize(lights[i].direction.xyz));\n"
+    "                    float spotDot = dot(-L, safeNormalize3(lights[i].direction.xyz, "
+    "float3(0.0, -1.0, 0.0)));\n"
     "                    if (spotDot < lights[i].outer_cos) {\n"
     "                        atten = 0.0;\n"
     "                    } else if (spotDot < lights[i].inner_cos) {\n"
@@ -598,7 +623,7 @@ static const char *d3d11_shader_source =
     "                float NdotL = max(dot(N, L), 0.0);\n"
     "                if (NdotL <= 0.0)\n"
     "                    continue;\n"
-    "                float3 H = normalize(L + V);\n"
+    "                float3 H = safeNormalize3(L + V, N);\n"
     "                float NdotV = max(dot(N, V), 0.001);\n"
     "                float NdotH = max(dot(N, H), 0.0);\n"
     "                float VdotH = max(dot(V, H), 0.0);\n"
@@ -621,7 +646,7 @@ static const char *d3d11_shader_source =
     "                float3 L = float3(0.0, 0.0, 0.0);\n"
     "                float atten = 1.0;\n"
     "                if (lights[i].type == 0) {\n"
-    "                    L = normalize(-lights[i].direction.xyz);\n"
+    "                    L = safeNormalize3(-lights[i].direction.xyz, float3(0.0, -1.0, 0.0));\n"
     "                    atten *= lerp(0.15, 1.0, sampleShadow(lights[i].shadowIndex, input.worldPos));\n"
     "                } else if (lights[i].type == 1) {\n"
     "                    float3 toLight = lights[i].position.xyz - input.worldPos;\n"
@@ -637,7 +662,8 @@ static const char *d3d11_shader_source =
     "                    L = toLight / max(d, 0.0001);\n"
     "                    float cone = smoothstep(lights[i].outer_cos,\n"
     "                                            lights[i].inner_cos,\n"
-    "                                            dot(normalize(-lights[i].direction.xyz), L));\n"
+    "                                            dot(safeNormalize3(-lights[i].direction.xyz, "
+    "float3(0.0, -1.0, 0.0)), L));\n"
     "                    atten = cone / (1.0 + lights[i].attenuation * d * d);\n"
     "                } else {\n"
     "                    continue;\n"
@@ -650,7 +676,7 @@ static const char *d3d11_shader_source =
     "                result += lights[i].color.rgb * lights[i].intensity * NdotL * baseColor * "
     "atten;\n"
     "                if (NdotL > 0.0 && specularColor.w > 0.0) {\n"
-    "                    float3 H = normalize(L + V);\n"
+    "                    float3 H = safeNormalize3(L + V, N);\n"
     "                    float spec = pow(max(dot(N, H), 0.0), specularColor.w);\n"
     "                    if (shadingModel == 1)\n"
     "                        spec = spec >= max(customParamAt(1), 0.5) ? 1.0 : 0.0;\n"
@@ -662,7 +688,7 @@ static const char *d3d11_shader_source =
     "    }\n"
     "    result += emissive;\n"
     "    if (flags1.y != 0) {\n"
-    "        float3 R = reflect(-V, normalize(N));\n"
+    "        float3 R = reflect(-V, safeNormalize3(N, float3(0.0, 1.0, 0.0)));\n"
     "        float envLod = saturate(envRoughness) * max(scalars.z, 0.0);\n"
     "        float3 envColor = envTex.SampleLevel(envSampler, R, envLod).rgb;\n"
     "        result = lerp(result, envColor, saturate(scalars.y));\n"
@@ -688,7 +714,7 @@ static const char *d3d11_shader_source =
     "    output.color = float4(result, finalAlpha);\n"
     "    float2 currNdc = input.currClip.xy / max(input.currClip.w, 0.0001);\n"
     "    float2 prevNdc = input.prevClip.xy / max(input.prevClip.w, 0.0001);\n"
-    "    float2 velocity = (currNdc - prevNdc) * 0.5;\n"
+    "    float2 velocity = ndcDeltaToUvDelta(currNdc - prevNdc);\n"
     "    output.motion = float4(saturate(velocity * 0.5 + 0.5), input.hasObjectHistory, 1.0);\n"
     "    return output;\n"
     "}\n"
@@ -729,14 +755,20 @@ static const char *d3d11_skybox_shader_source =
     "    output.ndc = input.pos.xy;\n"
     "    return output;\n"
     "}\n"
+    "float3 safeNormalize3(float3 v, float3 fallback) {\n"
+    "    float len2 = dot(v, v);\n"
+    "    return len2 > 1e-12 ? v * rsqrt(len2) : fallback;\n"
+    "}\n"
     "float4 PSSkybox(VS_OUTPUT input) : SV_Target {\n"
     "    float3 worldDir;\n"
     "    if (cameraForward.w > 0.5) {\n"
-    "        worldDir = normalize(cameraForward.xyz);\n"
+    "        worldDir = safeNormalize3(cameraForward.xyz, float3(0.0, 0.0, -1.0));\n"
     "    } else {\n"
     "        float4 view = mul(inverseProjection, float4(input.ndc, 1.0, 1.0));\n"
-    "        float3 viewDir = normalize(view.xyz / max(abs(view.w), 0.0001));\n"
-    "        worldDir = normalize(mul(inverseViewRotation, float4(viewDir, 0.0)).xyz);\n"
+    "        float3 viewDir = safeNormalize3(view.xyz / max(abs(view.w), 0.0001), "
+    "float3(0.0, 0.0, 1.0));\n"
+    "        worldDir = safeNormalize3(mul(inverseViewRotation, float4(viewDir, 0.0)).xyz, "
+    "float3(0.0, 0.0, -1.0));\n"
     "    }\n"
     "    return skyboxTex.SampleLevel(skyboxSampler, worldDir, 0.0);\n"
     "}\n";
@@ -795,10 +827,12 @@ static const char *d3d11_postfx_shader_source =
     "float luminance(float3 c) { return dot(c, float3(0.299, 0.587, 0.114)); }\n"
     "float depthAt(float2 uv) { return depthTex.Sample(postSampler, uv).r; }\n"
     "float3 sceneAt(float2 uv) { return sceneTex.Sample(postSampler, uv).rgb; }\n"
+    "float2 uvToNdc(float2 uv) { return float2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0); }\n"
+    "float2 ndcDeltaToUvDelta(float2 delta) { return float2(delta.x * 0.5, -delta.y * 0.5); }\n"
     "float3 reconstructWorld(float2 uv, float depth) {\n"
-    "    float4 clip = float4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);\n"
+    "    float4 clip = float4(uvToNdc(uv), depth * 2.0 - 1.0, 1.0);\n"
     "    float4 world = mul(invViewProjection, clip);\n"
-    "    return world.xyz / max(world.w, 0.0001);\n"
+    "    return world.xyz / max(abs(world.w), 0.0001);\n"
     "}\n"
     "float computeSSAO(float2 uv, float depth) {\n"
     "    if (ssaoEnabled == 0)\n"
@@ -818,8 +852,8 @@ static const char *d3d11_postfx_shader_source =
     "    float3 worldPos = reconstructWorld(uv, depth);\n"
     "    float4 prevClip = mul(prevViewProjection, float4(worldPos, 1.0));\n"
     "    float2 prevNdc = prevClip.xy / max(prevClip.w, 0.0001);\n"
-    "    float2 currNdc = uv * 2.0 - 1.0;\n"
-    "    return (currNdc - prevNdc) * 0.5;\n"
+    "    float2 currNdc = uvToNdc(uv);\n"
+    "    return ndcDeltaToUvDelta(currNdc - prevNdc);\n"
     "}\n"
     "float3 applyMotionBlur(float2 uv, float depth, float3 color) {\n"
     "    if (motionBlurEnabled == 0)\n"
@@ -4217,37 +4251,37 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
     layout[0].SemanticIndex = 0;
     layout[0].Format = DXGI_FORMAT_R32G32B32_FLOAT;
     layout[0].InputSlot = 0;
-    layout[0].AlignedByteOffset = 0;
+    layout[0].AlignedByteOffset = (UINT)offsetof(vgfx3d_vertex_t, pos);
     layout[0].InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
     layout[0].InstanceDataStepRate = 0;
     layout[1] = layout[0];
     layout[1].SemanticName = "NORMAL";
-    layout[1].AlignedByteOffset = 12;
+    layout[1].AlignedByteOffset = (UINT)offsetof(vgfx3d_vertex_t, normal);
     layout[2] = layout[0];
     layout[2].SemanticName = "TEXCOORD";
     layout[2].Format = DXGI_FORMAT_R32G32_FLOAT;
-    layout[2].AlignedByteOffset = 24;
+    layout[2].AlignedByteOffset = (UINT)offsetof(vgfx3d_vertex_t, uv);
     layout[3] = layout[0];
     layout[3].SemanticName = "TEXCOORD";
     layout[3].SemanticIndex = 1;
     layout[3].Format = DXGI_FORMAT_R32G32_FLOAT;
-    layout[3].AlignedByteOffset = 32;
+    layout[3].AlignedByteOffset = (UINT)offsetof(vgfx3d_vertex_t, uv1);
     layout[4] = layout[0];
     layout[4].SemanticName = "COLOR";
     layout[4].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-    layout[4].AlignedByteOffset = 40;
+    layout[4].AlignedByteOffset = (UINT)offsetof(vgfx3d_vertex_t, color);
     layout[5] = layout[0];
     layout[5].SemanticName = "TANGENT";
     layout[5].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-    layout[5].AlignedByteOffset = 56;
+    layout[5].AlignedByteOffset = (UINT)offsetof(vgfx3d_vertex_t, tangent);
     layout[6] = layout[0];
     layout[6].SemanticName = "BLENDINDICES";
     layout[6].Format = DXGI_FORMAT_R8G8B8A8_UINT;
-    layout[6].AlignedByteOffset = 72;
+    layout[6].AlignedByteOffset = (UINT)offsetof(vgfx3d_vertex_t, bone_indices);
     layout[7] = layout[0];
     layout[7].SemanticName = "BLENDWEIGHT";
     layout[7].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-    layout[7].AlignedByteOffset = 76;
+    layout[7].AlignedByteOffset = (UINT)offsetof(vgfx3d_vertex_t, bone_weights);
     hr = ID3D11Device_CreateInputLayout(ctx->device,
                                         layout,
                                         8,
@@ -4554,10 +4588,7 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
         return;
 
     ctx->frame_serial++;
-    ctx->current_pass_is_overlay = (!ctx->rtt_active && cam->load_existing_color) ? 1 : 0;
     ctx->shadow_pass_slot = -1;
-    if (!ctx->current_pass_is_overlay)
-        ctx->shadow_count = 0;
 
     memcpy(ctx->view, cam->view, sizeof(ctx->view));
     memcpy(ctx->projection, cam->projection, sizeof(ctx->projection));
@@ -4573,11 +4604,15 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     memcpy(ctx->fog_color, cam->fog_color, sizeof(ctx->fog_color));
     ctx->active_target_kind = vgfx3d_d3d11_choose_target_kind(
         ctx->rtt_active, ctx->gpu_postfx_enabled, cam->load_existing_color);
+    ctx->current_pass_is_overlay =
+        ctx->active_target_kind == VGFX3D_D3D11_TARGET_OVERLAY ? 1 : 0;
     ctx->current_load_existing_color = vgfx3d_d3d11_should_load_existing_color(
         ctx->active_target_kind, cam->load_existing_color, ctx->overlay_used_this_frame);
 
-    if (!ctx->current_pass_is_overlay)
+    if (!ctx->current_pass_is_overlay) {
+        ctx->shadow_count = 0;
         ctx->overlay_used_this_frame = 0;
+    }
 
     if (!ctx->rtt_active && ctx->active_target_kind != VGFX3D_D3D11_TARGET_SWAPCHAIN) {
         hr = d3d11_ensure_scene_targets(ctx, ctx->width, ctx->height);

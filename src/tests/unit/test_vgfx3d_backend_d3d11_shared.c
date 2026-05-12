@@ -38,7 +38,7 @@ static void set_identity4x4(float *m) {
     m[15] = 1.0f;
 }
 
-static void test_pack_bone_palette_zero_pads_unused_bones(void) {
+static void test_pack_bone_palette_identity_pads_unused_bones(void) {
     float src[16];
     float dst[VGFX3D_D3D11_MAX_BONES * 16];
 
@@ -52,9 +52,25 @@ static void test_pack_bone_palette_zero_pads_unused_bones(void) {
         snprintf(msg, sizeof(msg), "Bone palette preserves matrix element %d", i);
         EXPECT_NEAR(dst[i], src[i], 1e-6f, msg);
     }
-    EXPECT_NEAR(dst[16], 0.0f, 1e-6f, "Bone palette zero-pads the second bone");
-    EXPECT_NEAR(dst[sizeof(dst) / sizeof(dst[0]) - 1], 0.0f, 1e-6f,
-                "Bone palette zero-pads the tail of the upload buffer");
+    EXPECT_NEAR(dst[16], 1.0f, 1e-6f, "Bone palette identity-pads the second bone");
+    EXPECT_NEAR(dst[21], 1.0f, 1e-6f, "Bone palette identity-pads the second bone diagonal");
+    EXPECT_NEAR(dst[31], 1.0f, 1e-6f, "Bone palette identity-pads the second bone tail diagonal");
+    EXPECT_NEAR(dst[17], 0.0f, 1e-6f, "Bone palette clears off-diagonal padding");
+    EXPECT_NEAR(dst[sizeof(dst) / sizeof(dst[0]) - 1], 1.0f, 1e-6f,
+                "Bone palette identity-pads the tail of the upload buffer");
+}
+
+static void test_pack_bone_palette_identity_pads_empty_source(void) {
+    float dst[VGFX3D_D3D11_MAX_BONES * 16];
+
+    memset(dst, 0xCD, sizeof(dst));
+    vgfx3d_d3d11_pack_bone_palette(dst, NULL, 0);
+
+    EXPECT_NEAR(dst[0], 1.0f, 1e-6f, "Empty bone palette starts with identity");
+    EXPECT_NEAR(dst[5], 1.0f, 1e-6f, "Empty bone palette fills identity diagonal");
+    EXPECT_NEAR(dst[10], 1.0f, 1e-6f, "Empty bone palette fills third diagonal");
+    EXPECT_NEAR(dst[15], 1.0f, 1e-6f, "Empty bone palette fills fourth diagonal");
+    EXPECT_NEAR(dst[1], 0.0f, 1e-6f, "Empty bone palette clears off-diagonal values");
 }
 
 static void test_pack_bone_palette_keeps_highest_supported_bone(void) {
@@ -327,7 +343,8 @@ static void test_d3d11_limits_and_prune_helpers(void) {
 }
 
 int main(void) {
-    test_pack_bone_palette_zero_pads_unused_bones();
+    test_pack_bone_palette_identity_pads_unused_bones();
+    test_pack_bone_palette_identity_pads_empty_source();
     test_pack_bone_palette_keeps_highest_supported_bone();
     test_bone_palette_upload_size_covers_supported_bone_count();
     test_pack_scalar_array4_matches_hlsl_layout();

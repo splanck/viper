@@ -31,8 +31,8 @@
 #include <limits.h>
 #include <string.h>
 
-/// @brief Pack a flat scalar array into HLSL-aligned float4 slots, one scalar per .x lane.
-/// Remaining lanes (.yzw) are zeroed. Truncates if @p src exceeds @p dst capacity.
+/// @brief Pack a flat scalar array into HLSL-aligned float4 slots, four scalars per vector.
+/// Remaining vector lanes are zeroed. Truncates if @p src exceeds @p dst capacity.
 void vgfx3d_d3d11_pack_scalar_array4(float (*dst)[4],
                                      int32_t dst_vec_count,
                                      const float *src,
@@ -53,24 +53,34 @@ void vgfx3d_d3d11_pack_scalar_array4(float (*dst)[4],
         dst[i / 4][i % 4] = src[i];
 }
 
+static void vgfx3d_d3d11_store_identity4x4(float *dst) {
+    memset(dst, 0, sizeof(float) * 16u);
+    dst[0] = 1.0f;
+    dst[5] = 1.0f;
+    dst[10] = 1.0f;
+    dst[15] = 1.0f;
+}
+
 /// @brief Copy a bone palette (mat4 per bone) into a fixed-size cbuffer slot.
-/// Zero-fills the entire palette first so unused slots produce identity-like behavior.
+/// Fills unused slots with identity so out-of-range indices do not collapse vertices.
 /// If @p bone_count exceeds `VGFX3D_D3D11_MAX_BONES`, the upload is clamped to
 /// the largest supported palette size for this backend.
 void vgfx3d_d3d11_pack_bone_palette(float *dst, const float *src, int32_t bone_count) {
     size_t copy_count;
+    int32_t first_unused = 0;
 
     if (!dst)
         return;
 
-    memset(dst, 0, VGFX3D_D3D11_BONE_PALETTE_BYTES);
-    if (!src || bone_count <= 0)
-        return;
-
-    if (bone_count > VGFX3D_D3D11_MAX_BONES)
-        bone_count = VGFX3D_D3D11_MAX_BONES;
-    copy_count = (size_t)bone_count * 16u;
-    memcpy(dst, src, copy_count * sizeof(float));
+    if (src && bone_count > 0) {
+        if (bone_count > VGFX3D_D3D11_MAX_BONES)
+            bone_count = VGFX3D_D3D11_MAX_BONES;
+        copy_count = (size_t)bone_count * 16u;
+        memcpy(dst, src, copy_count * sizeof(float));
+        first_unused = bone_count;
+    }
+    for (int32_t i = first_unused; i < VGFX3D_D3D11_MAX_BONES; i++)
+        vgfx3d_d3d11_store_identity4x4(&dst[(size_t)i * 16u]);
 }
 
 /// @brief Build per-instance cbuffer entries (model + normal + prev_model) for instanced draws.
