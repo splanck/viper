@@ -1283,6 +1283,7 @@ static void d3d11_destroy_ctx(void *ctx_ptr);
 static void d3d11_log_hresult(const char *msg, HRESULT hr);
 static void d3d11_log_shader_error(const char *stage, ID3DBlob *err_blob);
 static void d3d11_present_swapchain(d3d11_context_t *ctx);
+static void d3d11_bind_render_targets(d3d11_context_t *ctx);
 
 /// @brief Multiply two row-major 4×4 matrices: `out = a * b`.
 ///
@@ -1448,25 +1449,6 @@ static int d3d11_checked_mul_size(size_t a, size_t b, size_t *out) {
     return 1;
 }
 
-static int d3d11_validate_rgba8_destination(int32_t width,
-                                            int32_t height,
-                                            int32_t stride,
-                                            size_t *out_bytes) {
-    size_t min_stride;
-
-    if (out_bytes)
-        *out_bytes = 0;
-    if (width <= 0 || height <= 0 || stride <= 0)
-        return 0;
-    if (!d3d11_checked_mul_size((size_t)width, 4u, &min_stride))
-        return 0;
-    if ((size_t)stride < min_stride)
-        return 0;
-    if (out_bytes && !d3d11_checked_mul_size((size_t)stride, (size_t)height, out_bytes))
-        return 0;
-    return 1;
-}
-
 static void d3d11_clear_current_target_bindings(d3d11_context_t *ctx) {
     if (!ctx)
         return;
@@ -1479,6 +1461,19 @@ static void d3d11_clear_current_target_bindings(d3d11_context_t *ctx) {
     ctx->current_target_kind = VGFX3D_D3D11_TARGET_SWAPCHAIN;
 }
 
+static void d3d11_unbind_output_targets(d3d11_context_t *ctx) {
+    if (!ctx || !ctx->ctx)
+        return;
+    ID3D11DeviceContext_OMSetRenderTargets(ctx->ctx, 0, NULL, NULL);
+}
+
+static void d3d11_restore_current_target_bindings(d3d11_context_t *ctx) {
+    if (!ctx || !ctx->ctx)
+        return;
+    if (ctx->current_rtv_count > 0 || ctx->current_dsv)
+        d3d11_bind_render_targets(ctx);
+}
+
 /// @brief Map our color-format class to a DXGI texture format.
 ///
 /// HDR16F → R16G16B16A16_FLOAT (linear, 8 bits/channel for HDR);
@@ -1486,6 +1481,36 @@ static void d3d11_clear_current_target_bindings(d3d11_context_t *ctx) {
 static DXGI_FORMAT d3d11_color_format_to_dxgi(vgfx3d_d3d11_color_format_t format_class) {
     return format_class == VGFX3D_D3D11_COLOR_FORMAT_HDR16F ? DXGI_FORMAT_R16G16B16A16_FLOAT
                                                             : DXGI_FORMAT_R8G8B8A8_UNORM;
+}
+
+static int d3d11_has_scene_targets(const d3d11_context_t *ctx) {
+    return ctx && ctx->scene_color_rtv && ctx->scene_motion_rtv && ctx->scene_dsv;
+}
+
+static int d3d11_has_overlay_target(const d3d11_context_t *ctx) {
+    return ctx && ctx->overlay_color_rtv != NULL;
+}
+
+static int d3d11_has_rtt_targets(const d3d11_context_t *ctx) {
+    return ctx && ctx->rtt_rtv && ctx->rtt_dsv;
+}
+
+static void d3d11_refresh_pass_flags(d3d11_context_t *ctx,
+                                     const vgfx3d_camera_params_t *cam) {
+    if (!ctx || !cam)
+        return;
+    ctx->active_target_kind = vgfx3d_d3d11_resolve_available_target(
+        ctx->active_target_kind,
+        d3d11_has_scene_targets(ctx),
+        d3d11_has_overlay_target(ctx),
+        d3d11_has_rtt_targets(ctx));
+    ctx->current_pass_is_overlay =
+        ctx->active_target_kind == VGFX3D_D3D11_TARGET_OVERLAY ? 1 : 0;
+    ctx->current_load_existing_color = vgfx3d_d3d11_should_load_existing_color(
+        ctx->active_target_kind, cam->load_existing_color, ctx->overlay_used_this_frame);
+    if (ctx->active_target_kind == VGFX3D_D3D11_TARGET_SCENE &&
+        cam->load_existing_color)
+        ctx->current_load_existing_color = 1;
 }
 
 /// @brief Map-write-unmap a constant buffer with `data`.
@@ -1506,6 +1531,10 @@ static HRESULT d3d11_update_constant_buffer(d3d11_context_t *ctx,
         ctx->ctx, (ID3D11Resource *)buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
     if (FAILED(hr))
         return hr;
+    if (!mapped.pData) {
+        ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)buffer, 0);
+        return E_POINTER;
+    }
     memcpy(mapped.pData, data, size);
     ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)buffer, 0);
     return S_OK;
@@ -1582,6 +1611,11 @@ static int d3d11_upload_dynamic_buffer(d3d11_context_t *ctx,
         ctx->ctx, (ID3D11Resource *)*buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
     if (FAILED(hr)) {
         d3d11_log_hresult("Map(dynamic)", hr);
+        return 0;
+    }
+    if (!mapped.pData) {
+        ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)*buffer, 0);
+        d3d11_log_hresult("Map(dynamic)", E_POINTER);
         return 0;
     }
     memcpy(mapped.pData, data, bytes);
@@ -1881,8 +1915,10 @@ static void d3d11_prune_texture_cache(d3d11_context_t *ctx) {
             memset(&ctx->tex_cache[i], 0, sizeof(ctx->tex_cache[i]));
             continue;
         }
-        if (write_index != i)
+        if (write_index != i) {
             ctx->tex_cache[write_index] = ctx->tex_cache[i];
+            memset(&ctx->tex_cache[i], 0, sizeof(ctx->tex_cache[i]));
+        }
         write_index++;
     }
     ctx->tex_cache_count = write_index;
@@ -1932,8 +1968,10 @@ static void d3d11_prune_cubemap_cache(d3d11_context_t *ctx) {
             memset(&ctx->cubemap_cache[i], 0, sizeof(ctx->cubemap_cache[i]));
             continue;
         }
-        if (write_index != i)
+        if (write_index != i) {
             ctx->cubemap_cache[write_index] = ctx->cubemap_cache[i];
+            memset(&ctx->cubemap_cache[i], 0, sizeof(ctx->cubemap_cache[i]));
+        }
         write_index++;
     }
     ctx->cubemap_cache_count = write_index;
@@ -2060,6 +2098,10 @@ static HRESULT d3d11_create_texture_srv(d3d11_context_t *ctx,
     int32_t mip_count;
     HRESULT hr;
 
+    if (out_tex)
+        *out_tex = NULL;
+    if (out_srv)
+        *out_srv = NULL;
     if (!ctx || !pixels || !out_tex || !out_srv)
         return E_INVALIDARG;
     if (vgfx3d_unpack_pixels_rgba(pixels, &w, &h, &rgba) != 0)
@@ -2197,6 +2239,10 @@ static HRESULT d3d11_create_cubemap_srv(d3d11_context_t *ctx,
     int32_t mip_count;
     HRESULT hr;
 
+    if (out_tex)
+        *out_tex = NULL;
+    if (out_srv)
+        *out_srv = NULL;
     if (!ctx || !cubemap || !out_tex || !out_srv)
         return E_INVALIDARG;
     if (vgfx3d_unpack_cubemap_faces_rgba(cubemap, &face_size, faces) != 0) {
@@ -2348,6 +2394,12 @@ static HRESULT d3d11_create_color_target(d3d11_context_t *ctx,
     D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc;
     HRESULT hr;
 
+    if (out_tex)
+        *out_tex = NULL;
+    if (out_rtv)
+        *out_rtv = NULL;
+    if (out_srv)
+        *out_srv = NULL;
     if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height) || !out_tex ||
         !out_rtv)
         return E_INVALIDARG;
@@ -2410,6 +2462,12 @@ static HRESULT d3d11_create_depth_target(d3d11_context_t *ctx,
     D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc;
     HRESULT hr;
 
+    if (out_tex)
+        *out_tex = NULL;
+    if (out_dsv)
+        *out_dsv = NULL;
+    if (out_srv)
+        *out_srv = NULL;
     if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height) || !out_tex ||
         !out_dsv)
         return E_INVALIDARG;
@@ -2467,6 +2525,8 @@ static HRESULT d3d11_create_staging_texture(d3d11_context_t *ctx,
                                             ID3D11Texture2D **out_tex) {
     D3D11_TEXTURE2D_DESC desc;
 
+    if (out_tex)
+        *out_tex = NULL;
     if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height) || !out_tex)
         return E_INVALIDARG;
 
@@ -2490,6 +2550,11 @@ static HRESULT d3d11_create_staging_texture(d3d11_context_t *ctx,
 static void d3d11_destroy_scene_targets(d3d11_context_t *ctx) {
     if (!ctx)
         return;
+    if (ctx->current_target_kind == VGFX3D_D3D11_TARGET_SCENE ||
+        ctx->current_target_kind == VGFX3D_D3D11_TARGET_OVERLAY) {
+        d3d11_unbind_output_targets(ctx);
+        d3d11_clear_current_target_bindings(ctx);
+    }
     SAFE_RELEASE(ctx->postfx_color_srv);
     SAFE_RELEASE(ctx->postfx_color_rtv);
     SAFE_RELEASE(ctx->postfx_color_tex);
@@ -2511,9 +2576,6 @@ static void d3d11_destroy_scene_targets(d3d11_context_t *ctx) {
     ctx->overlay_height = 0;
     ctx->postfx_width = 0;
     ctx->postfx_height = 0;
-    if (ctx->current_target_kind == VGFX3D_D3D11_TARGET_SCENE ||
-        ctx->current_target_kind == VGFX3D_D3D11_TARGET_OVERLAY)
-        d3d11_clear_current_target_bindings(ctx);
 }
 
 /// @brief Allocate scene render targets at the requested size, idempotent on size match.
@@ -2653,6 +2715,9 @@ static int d3d11_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     D3D11_MAPPED_SUBRESOURCE mapped;
     HRESULT hr;
+    int restore_target = 0;
+    int mapped_ok = 0;
+    int ok = 0;
 
     if (!ctx || !target || !ctx->rtt_color_tex || !ctx->rtt_staging || ctx->rtt_target != target ||
         target->width <= 0 || target->height <= 0) {
@@ -2663,26 +2728,31 @@ static int d3d11_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *
     if (vgfx3d_rendertarget_is_hdr(target) && !vgfx3d_rendertarget_ensure_hdr_color(target))
         return 0;
 
+    restore_target = ctx->current_target_kind == VGFX3D_D3D11_TARGET_RTT ? 1 : 0;
+    if (restore_target)
+        d3d11_unbind_output_targets(ctx);
+
     ID3D11DeviceContext_CopyResource(
         ctx->ctx, (ID3D11Resource *)ctx->rtt_staging, (ID3D11Resource *)ctx->rtt_color_tex);
     hr = ID3D11DeviceContext_Map(
         ctx->ctx, (ID3D11Resource *)ctx->rtt_staging, 0, D3D11_MAP_READ, 0, &mapped);
     if (FAILED(hr)) {
         d3d11_log_hresult("Map(rttStaging)", hr);
-        return 0;
+        goto cleanup;
     }
+    if (!mapped.pData)
+        goto cleanup;
+    mapped_ok = 1;
 
     if (vgfx3d_rendertarget_is_hdr(target)) {
         size_t hdr_row_bytes;
-        if (mapped.RowPitch > (UINT)INT32_MAX) {
-            ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)ctx->rtt_staging, 0);
-            return 0;
-        }
-        if (!d3d11_checked_mul_size((size_t)target->width, 8u, &hdr_row_bytes) ||
-            mapped.RowPitch < hdr_row_bytes) {
-            ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)ctx->rtt_staging, 0);
-            return 0;
-        }
+        size_t rgba_row_bytes;
+        if (mapped.RowPitch > (UINT)INT32_MAX)
+            goto cleanup;
+        if (!vgfx3d_d3d11_compute_row_bytes(target->width, 8, &hdr_row_bytes) ||
+            !vgfx3d_d3d11_compute_row_bytes(target->width, 4, &rgba_row_bytes) ||
+            mapped.RowPitch < hdr_row_bytes || (size_t)target->stride < rgba_row_bytes)
+            goto cleanup;
         vgfx3d_copy_linear_rgba16f_to_rgba8(target->color_buf,
                                             target->stride,
                                             target->width,
@@ -2696,22 +2766,29 @@ static int d3d11_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *
                                              (const uint16_t *)mapped.pData,
                                              (int32_t)mapped.RowPitch);
         target->hdr_color_valid = 1;
+        ok = 1;
     } else {
-        int32_t row_bytes = target->stride;
-        if (row_bytes <= 0 || mapped.RowPitch < (UINT)row_bytes) {
-            ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)ctx->rtt_staging, 0);
-            return 0;
-        }
+        size_t row_bytes;
+        if (!vgfx3d_d3d11_compute_row_bytes(target->width, 4, &row_bytes) ||
+            (size_t)target->stride < row_bytes || mapped.RowPitch < row_bytes)
+            goto cleanup;
         for (int32_t y = 0; y < target->height; y++) {
-            memcpy(&target->color_buf[(size_t)y * (size_t)row_bytes],
+            memcpy(&target->color_buf[(size_t)y * (size_t)target->stride],
                    (const uint8_t *)mapped.pData + (size_t)y * mapped.RowPitch,
                    (size_t)row_bytes);
         }
         target->hdr_color_valid = 0;
+        ok = 1;
     }
-    ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)ctx->rtt_staging, 0);
-    target->color_dirty = 0;
-    return 1;
+
+cleanup:
+    if (mapped_ok)
+        ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)ctx->rtt_staging, 0);
+    if (restore_target)
+        d3d11_restore_current_target_bindings(ctx);
+    if (ok)
+        target->color_dirty = 0;
+    return ok;
 }
 
 /// @brief Release every offscreen render-to-texture (RTT) resource.
@@ -2721,6 +2798,10 @@ static int d3d11_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *
 static void d3d11_destroy_rtt_targets(d3d11_context_t *ctx) {
     if (!ctx)
         return;
+    if (ctx->current_target_kind == VGFX3D_D3D11_TARGET_RTT) {
+        d3d11_unbind_output_targets(ctx);
+        d3d11_clear_current_target_bindings(ctx);
+    }
     if (ctx->rtt_target) {
         if (ctx->rtt_target->color_dirty)
             d3d11_sync_render_target_color(ctx, ctx->rtt_target);
@@ -2736,8 +2817,6 @@ static void d3d11_destroy_rtt_targets(d3d11_context_t *ctx) {
     ctx->rtt_color_format = (int32_t)VGFX3D_RENDERTARGET_COLOR_FORMAT_UNORM8;
     ctx->rtt_active = 0;
     ctx->rtt_target = NULL;
-    if (ctx->current_target_kind == VGFX3D_D3D11_TARGET_RTT)
-        d3d11_clear_current_target_bindings(ctx);
 }
 
 /// @brief Allocate RTT color + depth + staging textures sized to `rt`.
@@ -2819,6 +2898,10 @@ static void d3d11_destroy_shadow_targets(d3d11_context_t *ctx) {
 static void d3d11_release_shadow_slot(d3d11_context_t *ctx, int32_t slot) {
     if (!ctx || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
         return;
+    if (ctx->shadow_pass_slot == slot) {
+        d3d11_unbind_output_targets(ctx);
+        ctx->shadow_pass_slot = -1;
+    }
     SAFE_RELEASE(ctx->shadow_srv[slot]);
     SAFE_RELEASE(ctx->shadow_dsv[slot]);
     SAFE_RELEASE(ctx->shadow_depth_tex[slot]);
@@ -4604,15 +4687,6 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     memcpy(ctx->fog_color, cam->fog_color, sizeof(ctx->fog_color));
     ctx->active_target_kind = vgfx3d_d3d11_choose_target_kind(
         ctx->rtt_active, ctx->gpu_postfx_enabled, cam->load_existing_color);
-    ctx->current_pass_is_overlay =
-        ctx->active_target_kind == VGFX3D_D3D11_TARGET_OVERLAY ? 1 : 0;
-    ctx->current_load_existing_color = vgfx3d_d3d11_should_load_existing_color(
-        ctx->active_target_kind, cam->load_existing_color, ctx->overlay_used_this_frame);
-
-    if (!ctx->current_pass_is_overlay) {
-        ctx->shadow_count = 0;
-        ctx->overlay_used_this_frame = 0;
-    }
 
     if (!ctx->rtt_active && ctx->active_target_kind != VGFX3D_D3D11_TARGET_SWAPCHAIN) {
         hr = d3d11_ensure_scene_targets(ctx, ctx->width, ctx->height);
@@ -4625,6 +4699,12 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
         hr = d3d11_ensure_overlay_target(ctx, ctx->width, ctx->height);
         if (FAILED(hr))
             d3d11_log_hresult("CreateOverlayTarget", hr);
+    }
+    d3d11_refresh_pass_flags(ctx, cam);
+
+    if (!ctx->current_pass_is_overlay) {
+        ctx->shadow_count = 0;
+        ctx->overlay_used_this_frame = 0;
     }
 
     {
@@ -4740,14 +4820,14 @@ static void d3d11_resize(void *ctx_ptr, int32_t w, int32_t h) {
 /// Direct memcpy for R8G8B8A8_UNORM. For R16G16B16A16_FLOAT, decodes
 /// each half to float then quantizes to 8-bit. Other formats are
 /// silently skipped.
-static void d3d11_copy_mapped_texture_to_rgba8(uint8_t *dst_rgba,
-                                               int32_t dst_stride,
-                                               int32_t copy_w,
-                                               int32_t copy_h,
-                                               const D3D11_MAPPED_SUBRESOURCE *mapped,
-                                               DXGI_FORMAT format) {
+static int d3d11_copy_mapped_texture_to_rgba8(uint8_t *dst_rgba,
+                                              int32_t dst_stride,
+                                              int32_t copy_w,
+                                              int32_t copy_h,
+                                              const D3D11_MAPPED_SUBRESOURCE *mapped,
+                                              DXGI_FORMAT format) {
     if (!dst_rgba || !mapped || copy_w <= 0 || copy_h <= 0)
-        return;
+        return 0;
 
     for (int32_t y = 0; y < copy_h; y++) {
         uint8_t *dst_row = dst_rgba + (size_t)y * (size_t)dst_stride;
@@ -4755,20 +4835,27 @@ static void d3d11_copy_mapped_texture_to_rgba8(uint8_t *dst_rgba,
         size_t min_src_row_bytes;
 
         if (format == DXGI_FORMAT_R8G8B8A8_UNORM) {
-            if (!d3d11_checked_mul_size((size_t)copy_w, 4u, &min_src_row_bytes) ||
+            if (!vgfx3d_d3d11_compute_row_bytes(copy_w, 4, &min_src_row_bytes) ||
+                (size_t)dst_stride < min_src_row_bytes ||
                 mapped->RowPitch < min_src_row_bytes)
-                return;
+                return 0;
             memcpy(dst_row, src_row, (size_t)copy_w * 4u);
             continue;
         }
         if (format == DXGI_FORMAT_R16G16B16A16_FLOAT) {
-            if (!d3d11_checked_mul_size((size_t)copy_w, 8u, &min_src_row_bytes) ||
+            size_t dst_row_bytes;
+            if (!vgfx3d_d3d11_compute_row_bytes(copy_w, 8, &min_src_row_bytes) ||
+                !vgfx3d_d3d11_compute_row_bytes(copy_w, 4, &dst_row_bytes) ||
+                (size_t)dst_stride < dst_row_bytes ||
                 mapped->RowPitch < min_src_row_bytes)
-                return;
+                return 0;
             vgfx3d_copy_linear_rgba16f_to_rgba8(
                 dst_row, dst_stride, copy_w, 1, (const uint16_t *)src_row, copy_w * 8);
+            continue;
         }
+        return 0;
     }
+    return 1;
 }
 
 /// @brief Read back a Texture2D into a host RGBA8 buffer.
@@ -4790,9 +4877,12 @@ static int d3d11_readback_texture_rgba(d3d11_context_t *ctx,
     int32_t copy_w;
     int32_t copy_h;
     size_t clear_bytes;
+    int restore_target = 0;
+    int mapped_ok = 0;
+    int ok = 0;
 
     if (!ctx || !source_tex || !dst_rgba ||
-        !d3d11_validate_rgba8_destination(w, h, stride, &clear_bytes))
+        !vgfx3d_d3d11_validate_rgba8_destination(w, h, stride, &clear_bytes))
         return 0;
 
     ID3D11Texture2D_GetDesc(source_tex, &desc);
@@ -4808,24 +4898,32 @@ static int d3d11_readback_texture_rgba(d3d11_context_t *ctx,
     }
 
     memset(dst_rgba, 0, clear_bytes);
+    restore_target = (ctx->current_rtv_count > 0 || ctx->current_dsv) ? 1 : 0;
     d3d11_unbind_draw_resources(ctx);
-    ID3D11DeviceContext_OMSetRenderTargets(ctx->ctx, 0, NULL, NULL);
+    d3d11_unbind_output_targets(ctx);
     ID3D11DeviceContext_CopyResource(
         ctx->ctx, (ID3D11Resource *)staging, (ID3D11Resource *)source_tex);
     hr =
         ID3D11DeviceContext_Map(ctx->ctx, (ID3D11Resource *)staging, 0, D3D11_MAP_READ, 0, &mapped);
     if (FAILED(hr)) {
         d3d11_log_hresult("Map(sceneStaging)", hr);
-        SAFE_RELEASE(staging);
-        return 0;
+        goto cleanup;
     }
+    if (!mapped.pData)
+        goto cleanup;
+    mapped_ok = 1;
 
     copy_w = (int32_t)desc.Width < w ? (int32_t)desc.Width : w;
     copy_h = (int32_t)desc.Height < h ? (int32_t)desc.Height : h;
-    d3d11_copy_mapped_texture_to_rgba8(dst_rgba, stride, copy_w, copy_h, &mapped, desc.Format);
-    ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)staging, 0);
+    ok = d3d11_copy_mapped_texture_to_rgba8(dst_rgba, stride, copy_w, copy_h, &mapped, desc.Format);
+
+cleanup:
+    if (mapped_ok)
+        ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)staging, 0);
     SAFE_RELEASE(staging);
-    return 1;
+    if (restore_target)
+        d3d11_restore_current_target_bindings(ctx);
+    return ok;
 }
 
 /// @brief Point the D3D11 output-merger at one postfx render target and set its viewport.
@@ -5109,7 +5207,7 @@ static int d3d11_readback_rgba(
     ID3D11Texture2D *source_tex = NULL;
     HRESULT hr;
 
-    if (!ctx || !dst_rgba || !d3d11_validate_rgba8_destination(w, h, stride, NULL))
+    if (!ctx || !dst_rgba || !vgfx3d_d3d11_validate_rgba8_destination(w, h, stride, NULL))
         return 0;
     if (ctx->gpu_postfx_enabled && ctx->gpu_postfx_chain_valid &&
         ctx->gpu_postfx_chain.enabled && ctx->gpu_postfx_chain.effect_count > 0) {

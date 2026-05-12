@@ -218,6 +218,45 @@ int32_t vgfx3d_d3d11_next_capacity(int32_t current_capacity,
     return next_capacity;
 }
 
+static int vgfx3d_d3d11_checked_mul_size(size_t a, size_t b, size_t *out) {
+    if (!out)
+        return 0;
+    if (a != 0 && b > SIZE_MAX / a)
+        return 0;
+    *out = a * b;
+    return 1;
+}
+
+int vgfx3d_d3d11_compute_row_bytes(int32_t width,
+                                   int32_t bytes_per_pixel,
+                                   size_t *out_bytes) {
+    if (out_bytes)
+        *out_bytes = 0;
+    if (!out_bytes || width <= 0 || bytes_per_pixel <= 0)
+        return 0;
+    return vgfx3d_d3d11_checked_mul_size((size_t)width, (size_t)bytes_per_pixel, out_bytes);
+}
+
+int vgfx3d_d3d11_validate_rgba8_destination(int32_t width,
+                                            int32_t height,
+                                            int32_t stride,
+                                            size_t *out_bytes) {
+    size_t min_stride;
+
+    if (out_bytes)
+        *out_bytes = 0;
+    if (width <= 0 || height <= 0 || stride <= 0)
+        return 0;
+    if (!vgfx3d_d3d11_compute_row_bytes(width, 4, &min_stride))
+        return 0;
+    if ((size_t)stride < min_stride)
+        return 0;
+    if (out_bytes &&
+        !vgfx3d_d3d11_checked_mul_size((size_t)stride, (size_t)height, out_bytes))
+        return 0;
+    return 1;
+}
+
 int vgfx3d_d3d11_is_valid_texture2d_extent(int32_t width, int32_t height) {
     return width > 0 && height > 0 && width <= VGFX3D_D3D11_MAX_TEXTURE2D_DIMENSION &&
            height <= VGFX3D_D3D11_MAX_TEXTURE2D_DIMENSION;
@@ -278,6 +317,23 @@ vgfx3d_d3d11_target_kind_t vgfx3d_d3d11_choose_target_kind(int8_t rtt_active,
     if (load_existing_color)
         return VGFX3D_D3D11_TARGET_OVERLAY;
     return VGFX3D_D3D11_TARGET_SCENE;
+}
+
+vgfx3d_d3d11_target_kind_t
+vgfx3d_d3d11_resolve_available_target(vgfx3d_d3d11_target_kind_t requested,
+                                      int scene_available,
+                                      int overlay_available,
+                                      int rtt_available) {
+    if (requested == VGFX3D_D3D11_TARGET_RTT)
+        return rtt_available ? VGFX3D_D3D11_TARGET_RTT : VGFX3D_D3D11_TARGET_SWAPCHAIN;
+    if (requested == VGFX3D_D3D11_TARGET_OVERLAY) {
+        if (overlay_available)
+            return VGFX3D_D3D11_TARGET_OVERLAY;
+        return scene_available ? VGFX3D_D3D11_TARGET_SCENE : VGFX3D_D3D11_TARGET_SWAPCHAIN;
+    }
+    if (requested == VGFX3D_D3D11_TARGET_SCENE && !scene_available)
+        return VGFX3D_D3D11_TARGET_SWAPCHAIN;
+    return requested;
 }
 
 int8_t vgfx3d_d3d11_should_load_existing_color(vgfx3d_d3d11_target_kind_t target_kind,

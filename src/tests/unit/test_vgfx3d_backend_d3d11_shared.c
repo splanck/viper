@@ -298,16 +298,34 @@ static void test_target_kind_blend_and_color_format_helpers(void) {
 }
 
 static void test_capacity_and_mip_helpers(void) {
+    size_t bytes = 0;
+
     EXPECT_TRUE(vgfx3d_d3d11_compute_mip_count(1, 1) == 1,
                 "1x1 textures use a single mip level");
     EXPECT_TRUE(vgfx3d_d3d11_compute_mip_count(4, 2) == 3,
                 "Mip-count helper follows the full downsample chain");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_mip_count(0, 2) == 1,
+                "Invalid texture dimensions still produce a safe single mip");
     EXPECT_TRUE(vgfx3d_d3d11_next_capacity(0, 65, 64) == 128,
                 "Capacity helper grows fixed caches beyond the old hard cap");
     EXPECT_TRUE(vgfx3d_d3d11_next_capacity(16, 8, 16) == 16,
                 "Capacity helper keeps existing storage when it is already large enough");
     EXPECT_TRUE(vgfx3d_d3d11_next_capacity(0, 0, 0) == 1,
                 "Capacity helper never returns a non-positive capacity");
+    EXPECT_TRUE(vgfx3d_d3d11_next_capacity(INT_MAX / 2 + 1, INT_MAX - 1, 64) ==
+                    INT_MAX - 1,
+                "Capacity helper saturates without overflowing signed int");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_row_bytes(7, 4, &bytes) == 1 && bytes == 28u,
+                "Row-byte helper computes tightly packed RGBA8 rows");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_row_bytes(7, 8, &bytes) == 1 && bytes == 56u,
+                "Row-byte helper computes tightly packed RGBA16F rows");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_row_bytes(0, 4, &bytes) == 0 && bytes == 0u,
+                "Row-byte helper rejects non-positive widths");
+    EXPECT_TRUE(vgfx3d_d3d11_validate_rgba8_destination(3, 2, 12, &bytes) == 1 &&
+                    bytes == 24u,
+                "RGBA8 destination validation returns the full writable span");
+    EXPECT_TRUE(vgfx3d_d3d11_validate_rgba8_destination(3, 2, 8, &bytes) == 0,
+                "RGBA8 destination validation rejects short strides");
 }
 
 static void test_d3d11_limits_and_prune_helpers(void) {
@@ -342,6 +360,24 @@ static void test_d3d11_limits_and_prune_helpers(void) {
                 "Cache prune helper keeps recently used entries");
 }
 
+static void test_target_fallback_helper(void) {
+    EXPECT_TRUE(vgfx3d_d3d11_resolve_available_target(
+                    VGFX3D_D3D11_TARGET_SCENE, 1, 0, 0) == VGFX3D_D3D11_TARGET_SCENE,
+                "Scene target stays selected when scene resources exist");
+    EXPECT_TRUE(vgfx3d_d3d11_resolve_available_target(
+                    VGFX3D_D3D11_TARGET_SCENE, 0, 0, 0) == VGFX3D_D3D11_TARGET_SWAPCHAIN,
+                "Scene target falls back to swapchain when allocation failed");
+    EXPECT_TRUE(vgfx3d_d3d11_resolve_available_target(
+                    VGFX3D_D3D11_TARGET_OVERLAY, 1, 0, 0) == VGFX3D_D3D11_TARGET_SCENE,
+                "Missing overlay target preserves the existing scene color target");
+    EXPECT_TRUE(vgfx3d_d3d11_resolve_available_target(
+                    VGFX3D_D3D11_TARGET_OVERLAY, 0, 0, 0) == VGFX3D_D3D11_TARGET_SWAPCHAIN,
+                "Missing overlay and scene targets fall back to swapchain");
+    EXPECT_TRUE(vgfx3d_d3d11_resolve_available_target(
+                    VGFX3D_D3D11_TARGET_RTT, 1, 1, 0) == VGFX3D_D3D11_TARGET_SWAPCHAIN,
+                "Missing RTT resources do not leave the backend targeting stale RTVs");
+}
+
 int main(void) {
     test_pack_bone_palette_identity_pads_unused_bones();
     test_pack_bone_palette_identity_pads_empty_source();
@@ -355,6 +391,7 @@ int main(void) {
     test_target_kind_blend_and_color_format_helpers();
     test_capacity_and_mip_helpers();
     test_d3d11_limits_and_prune_helpers();
+    test_target_fallback_helper();
 
     printf("vgfx3d d3d11 shared tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

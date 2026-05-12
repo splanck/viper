@@ -139,6 +139,7 @@ The D3D11 backend now uses two window-backed presentation modes:
 - texture-space conversion: D3D11 shader code converts clip/NDC coordinates to top-left-origin texture UVs for shadow maps, post-FX world reconstruction, and motion-vector sampling so vertical motion and shadow lookups match the rest of the runtime
 - skinning robustness: D3D11 normalizes non-zero bone weights in the shader, falls back to the original position/vector when a skinned vertex has no usable weights, and identity-pads unused palette entries to avoid collapsing malformed or partially weighted meshes
 - resource lifetime: scene resolves fall back to a backend pass-through composite instead of presenting stale swapchain contents, texture/cubemap caches prune aged entries while preserving a resident floor, and shadow slots are advertised to shaders only after a valid depth target was rendered
+- allocation fallback/readback: if an offscreen D3D11 target cannot be allocated, the backend downgrades to an available target before clear/draw; readback and render-target sync unbind output resources for `CopyResource` and restore the previous target binding afterward
 
 This split keeps the no-postfx path cheap while preserving correct motion/depth history for SSAO, DOF, and motion blur when the GPU postfx path is active.
 

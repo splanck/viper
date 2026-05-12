@@ -3,6 +3,7 @@
 #include "vgfx3d_backend.h"
 
 #include <stdint.h>
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -127,6 +128,15 @@ int32_t vgfx3d_d3d11_compute_mip_count(int32_t width, int32_t height);
 int32_t vgfx3d_d3d11_next_capacity(int32_t current_capacity,
                                    int32_t needed,
                                    int32_t minimum_capacity);
+/// @brief Overflow-safe row byte computation for tightly packed readback rows.
+int vgfx3d_d3d11_compute_row_bytes(int32_t width,
+                                   int32_t bytes_per_pixel,
+                                   size_t *out_bytes);
+/// @brief Validate an RGBA8 readback destination span.
+int vgfx3d_d3d11_validate_rgba8_destination(int32_t width,
+                                            int32_t height,
+                                            int32_t stride,
+                                            size_t *out_bytes);
 /// @brief Check dimensions against D3D11 feature-level 11 texture limits.
 int vgfx3d_d3d11_is_valid_texture2d_extent(int32_t width, int32_t height);
 /// @brief Check a square cubemap face dimension against D3D11 limits.
@@ -145,6 +155,12 @@ int vgfx3d_d3d11_should_prune_cache_entry(int32_t total_count,
 vgfx3d_d3d11_target_kind_t vgfx3d_d3d11_choose_target_kind(int8_t rtt_active,
                                                            int8_t gpu_postfx_enabled,
                                                            int8_t load_existing_color);
+/// @brief Downgrade an intended target when allocation failed or the resource is unavailable.
+vgfx3d_d3d11_target_kind_t
+vgfx3d_d3d11_resolve_available_target(vgfx3d_d3d11_target_kind_t requested,
+                                      int scene_available,
+                                      int overlay_available,
+                                      int rtt_available);
 /// @brief Map a draw command to its required blend state (alpha vs opaque).
 vgfx3d_d3d11_blend_mode_t
 vgfx3d_d3d11_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd);
