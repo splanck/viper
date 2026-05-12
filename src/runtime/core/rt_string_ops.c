@@ -40,6 +40,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_int_format.h"
+#include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_platform.h"
 #include "rt_seq.h"
@@ -588,6 +589,7 @@ size_t rt_string_unref_count(rt_string s) {
         if (prev == 1) {
             // We held the last reference - ensure all writes are visible before free
             __atomic_thread_fence(__ATOMIC_ACQUIRE);
+            rt_gc_clear_weak_refs(s);
             rt_string_unregister_handle(s);
             free(s);
             return 0;
@@ -604,6 +606,7 @@ size_t rt_string_unref_count(rt_string s) {
         if (prev == 1) {
             // We held the last reference - ensure all writes are visible before free
             __atomic_thread_fence(__ATOMIC_ACQUIRE);
+            rt_gc_clear_weak_refs(s);
             rt_string_unregister_handle(s);
             free(s);
             return 0;
@@ -613,8 +616,10 @@ size_t rt_string_unref_count(rt_string s) {
     }
     if (rt_string_is_immortal_hdr(hdr))
         return SIZE_MAX;
-    size_t next = rt_heap_release(s->data);
+    size_t next = rt_heap_release_deferred(s->data);
     if (next == 0) {
+        rt_gc_clear_weak_refs(s);
+        rt_heap_free_zero_ref(s->data);
         rt_string_unregister_handle(s);
         free(s);
     }

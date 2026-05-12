@@ -93,3 +93,10 @@ void *rt_alloc(int64_t bytes) {
         return g_rt_alloc_hook(bytes, rt_alloc_impl);
     return rt_alloc_impl(bytes);
 }
+
+/// @brief Free storage returned by @ref rt_alloc.
+/// @details This is intentionally small today, but keeps allocation call sites
+///          paired with the runtime allocator shim for future instrumentation.
+void rt_free(void *ptr) {
+    free(ptr);
+}

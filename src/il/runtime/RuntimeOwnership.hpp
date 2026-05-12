@@ -162,6 +162,11 @@ namespace detail {
         return effects;
     }
 
+    if (name == "rt_weakmap_get" || name == "Viper.Collections.WeakMap.Get") {
+        effects.returnsOwned = true;
+        return effects;
+    }
+
     if (name == "rt_arr_str_put" || name == "rt_arr_obj_put") {
         effects.retainedArgMask = 0b100;
         return effects;

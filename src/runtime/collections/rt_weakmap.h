@@ -16,7 +16,7 @@
 // Ownership/Lifetime:
 //   - WeakMap objects are GC-managed.
 //   - Entry keys and weak-reference handles are owned by the map.
-//   - Values should be runtime heap objects so rt_obj_free can zero registered weak references.
+//   - Values should be runtime-managed objects or strings so final release can zero weak refs.
 //
 // Links: src/runtime/collections/rt_weakmap.c (implementation), src/runtime/core/rt_string.h
 //

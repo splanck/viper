@@ -35,12 +35,20 @@
 #define RT_RSA_MAX_MOD_BYTES 512
 #define RT_RSA_MAX_WORDS (RT_RSA_MAX_MOD_BYTES / sizeof(uint64_t))
 
+/// @brief Volatile-pointer zeroing that the compiler cannot elide.
+/// @details Used to scrub Montgomery scratch, decrypted intermediate
+///          blocks, and private key material before they fall out of
+///          scope. The volatile cast defeats dead-store elimination.
 static void rsa_secure_zero(void *ptr, size_t len) {
     volatile uint8_t *p = (volatile uint8_t *)ptr;
     while (len-- > 0)
         *p++ = 0;
 }
 
+/// @brief Zero @p len bytes at @p ptr then free the buffer.
+/// @details The companion `free`-with-scrub for heap allocations that
+///          held sensitive material (decrypted ciphertext, padded
+///          plaintext, key schedule extracts).
 static void rsa_secure_free(uint8_t *ptr, size_t len) {
     if (ptr) {
         rsa_secure_zero(ptr, len);
@@ -48,6 +56,11 @@ static void rsa_secure_free(uint8_t *ptr, size_t len) {
     }
 }
 
+/// @brief Predicate: are all @p len bytes at @p data zero?
+/// @details Constant-time bit-OR accumulator so an attacker cannot time
+///          the function to infer where the first non-zero byte sits.
+///          NULL pointer or zero length is treated as "all zero" so the
+///          caller's "empty field rejected" guard fires consistently.
 static int rsa_be_is_zero(const uint8_t *data, size_t len) {
     uint8_t acc = 0;
     if (!data || len == 0)
@@ -57,6 +70,14 @@ static int rsa_be_is_zero(const uint8_t *data, size_t len) {
     return acc == 0;
 }
 
+/// @brief Validate that a parsed key has plausible public components.
+/// @details Sanity checks the @c modulus + @c public_exponent pair before
+///          we hand them to the modular-exponentiation core:
+///          - Modulus length is in [128, 512] bytes (1024–4096-bit RSA).
+///          - Modulus is non-zero and odd.
+///          - Public exponent has length 1–8 bytes and ≤ modulus length.
+///          - Public exponent is non-zero, odd, and >= 3.
+/// @return 1 when every check passes, 0 otherwise.
 static int rsa_validate_public_components(const rt_rsa_key_t *key) {
     if (!key || !key->modulus || !key->public_exponent)
         return 0;
@@ -75,6 +96,13 @@ static int rsa_validate_public_components(const rt_rsa_key_t *key) {
     return 1;
 }
 
+/// @brief Validate the private-component extension of @ref rsa_validate_public_components.
+/// @details Requires the public checks to pass, then additionally
+///          confirms @c private_exponent is present, non-zero, and
+///          within the modulus byte length. Does not verify that
+///          `d * e ≡ 1 (mod φ(n))` — that would require the CRT
+///          factors, which the PKCS#1 / PKCS#8 parsers discard.
+/// @return 1 when every check passes, 0 otherwise.
 static int rsa_validate_private_components(const rt_rsa_key_t *key) {
     return rsa_validate_public_components(key) && key->private_exponent &&
            key->private_exponent_len > 0 && key->private_exponent_len <= key->modulus_len &&

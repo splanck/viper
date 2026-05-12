@@ -363,6 +363,7 @@ static void test_int_radix() {
     assert(rt_parse_int_radix(make_str("GG"), 16, -1) == -1);
     assert(rt_parse_int_radix(make_str(""), 10, -1) == -1);
     assert(rt_parse_int_radix(make_str("0x10"), 16, -1) == -1);
+    assert(rt_parse_int_radix(make_str("+FF"), 16, -1) == -1);
     assert(rt_parse_int_radix(make_str("-2a"), 16, -1) == -1);
     assert(rt_parse_int_radix(make_str("9223372036854775808"), 10, -1) == -1);
 

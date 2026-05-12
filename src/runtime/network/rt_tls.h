@@ -38,17 +38,17 @@ extern "C" {
 
 #define RT_TLS_CLASS_ID INT64_C(-0x720101)
 
-/// TLS status/error codes.
+/// @brief TLS status / error codes returned by low-level entry points.
 typedef enum {
-    RT_TLS_OK = 0,
-    RT_TLS_ERROR = -1,
-    RT_TLS_ERROR_SOCKET = -2,
-    RT_TLS_ERROR_HANDSHAKE = -3,
-    RT_TLS_ERROR_CERTIFICATE = -4,
-    RT_TLS_ERROR_CLOSED = -5,
-    RT_TLS_ERROR_TIMEOUT = -6,
-    RT_TLS_ERROR_MEMORY = -7,
-    RT_TLS_ERROR_INVALID_ARG = -8,
+    RT_TLS_OK = 0,                  ///< Operation completed successfully.
+    RT_TLS_ERROR = -1,              ///< Generic / unclassified TLS error.
+    RT_TLS_ERROR_SOCKET = -2,       ///< Underlying socket read/write or close failed.
+    RT_TLS_ERROR_HANDSHAKE = -3,    ///< TLS 1.3 handshake violated the protocol.
+    RT_TLS_ERROR_CERTIFICATE = -4,  ///< Peer certificate failed chain or name verification.
+    RT_TLS_ERROR_CLOSED = -5,       ///< Peer issued a clean close_notify.
+    RT_TLS_ERROR_TIMEOUT = -6,      ///< Configured handshake / I/O deadline expired.
+    RT_TLS_ERROR_MEMORY = -7,       ///< Allocation failed inside the TLS state machine.
+    RT_TLS_ERROR_INVALID_ARG = -8,  ///< Caller supplied NULL or out-of-range arguments.
 } rt_tls_status_t;
 
 /// @brief Opaque TLS session handle.

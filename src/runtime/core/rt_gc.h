@@ -88,9 +88,10 @@ typedef struct rt_weakref rt_weakref;
 ///         rt_weakref_free()).
 rt_weakref *rt_weakref_new(void *target);
 
-/// @brief Dereference a weak reference.
+/// @brief Dereference a weak reference and retain the live target.
 /// @param ref The weak reference handle.
-/// @return The target object, or NULL if the target has been freed.
+/// @return The retained target object, or NULL if the target has been freed.
+///         Callers own the returned reference and must release it.
 void *rt_weakref_get(rt_weakref *ref);
 
 /// @brief Check if the weak reference's target is still alive.

@@ -3871,6 +3871,18 @@ void *rt_viper_tls_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
     return rt_viper_tls_connect_impl(host, port, timeout_ms, NULL, NULL, 1);
 }
 
+/// @brief Connect to @p host:@p port with explicit verification and ALPN policy.
+/// @details Full-feature constructor: caller supplies a CA bundle path (or
+///          empty for the system store), an ALPN preference list, the
+///          verify-cert flag, and a per-handshake timeout. All four
+///          options thread directly into @c rt_tls_connect.
+/// @param host TLS hostname (also used for SNI and cert verification).
+/// @param port TCP port.
+/// @param ca_file Optional PEM bundle path; empty string falls back to the OS store.
+/// @param alpn Optional comma-separated ALPN list (e.g. "h2,http/1.1").
+/// @param verify_cert 0 to skip chain verification (development only); 1 (default) to enforce.
+/// @param timeout_ms Handshake timeout in ms; 0 uses the runtime default (30 s).
+/// @return New TLS connection handle, or NULL on failure.
 void *rt_viper_tls_connect_options(rt_string host,
                                    int64_t port,
                                    rt_string ca_file,
@@ -3901,6 +3913,11 @@ int64_t rt_viper_tls_port(void *obj) {
     return tls->port;
 }
 
+/// @brief Return the ALPN protocol negotiated on this TLS connection.
+/// @details Returns an empty string when no ALPN extension was exchanged
+///          or when the peer did not select any advertised protocol.
+///          Useful for HTTPS callers that need to know whether the
+///          connection is HTTP/2 vs HTTP/1.1.
 rt_string rt_viper_tls_negotiated_alpn(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);

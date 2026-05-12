@@ -859,7 +859,7 @@ Type parsing (with explicit error handling):
 - `Viper.Parse.BoolOr(str, i1)->i1` — Parse boolean or return default
 - `Viper.Parse.IsInt(str)->i1` — Validate integer text
 - `Viper.Parse.IsNum(str)->i1` — Validate numeric text
-- `Viper.Parse.IntRadix(str, i64, i64)->i64` — Parse radix 2-36 integer or return default
+- `Viper.Parse.IntRadix(str, i64, i64)->i64` — Parse radix 2-36 integer or return default; decimal accepts `+`/`-`, non-decimal rejects signs and prefixes
 - `Viper.Parse.Int64(cstr, ptr i64)->i32` — Low-level int64 parser, returns error code
 - `Viper.Parse.Double(cstr, ptr f64)->i32` — Low-level double parser, returns error code
 - `Viper.Parse.Int64Option(str)->obj<Viper.Option>` — Parse int64 to `Viper.Option`

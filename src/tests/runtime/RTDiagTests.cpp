@@ -125,6 +125,7 @@ static void test_assert_eq_str_passing() {
     rt_diag_assert_eq_str(make_str("hello"), make_str("hello"), make_str("equal strings"));
     rt_diag_assert_eq_str(make_str(""), make_str(""), make_str("empty strings"));
     rt_diag_assert_eq_str(make_str("abc123"), make_str("abc123"), make_str("alphanumeric"));
+    rt_diag_assert_eq_str(NULL, NULL, make_str("null strings"));
 
     const char bytes[] = {'a', '\0', 'b'};
     rt_string lhs = rt_string_from_bytes(bytes, sizeof(bytes));

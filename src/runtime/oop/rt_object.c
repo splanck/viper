@@ -273,11 +273,17 @@ void rt_memory_retain(void *p) {
 }
 
 /// @brief Public string-typed wrapper for `Viper.Memory.RetainStr`.
-/// @details Forwards to `rt_memory_retain`, which validates the handle before retaining.
+/// @details Validates that @p s is a runtime string handle before retaining it.
 ///          The typed wrapper exists so Zia and BASIC code can call it without a `void *`
 ///          cast at the IL boundary.
 void rt_memory_retain_str(rt_string s) {
-    rt_memory_retain((void *)s);
+    if (!s)
+        return;
+    if (!rt_string_is_handle(s)) {
+        rt_trap("Viper.Memory.RetainStr: invalid string handle");
+        return;
+    }
+    rt_str_retain_maybe(s);
 }
 
 /// @brief Decrement the reference count and report last-user semantics.
@@ -360,6 +366,10 @@ static void rt_memory_release_array_payload(void *p, rt_heap_hdr_t *hdr) {
             break;
         }
         case RT_ELEM_NONE:
+        case RT_ELEM_I32:
+        case RT_ELEM_I64:
+        case RT_ELEM_F64:
+        case RT_ELEM_U8:
             break;
         case RT_ELEM_BOX: {
             void **items = (void **)p;
@@ -382,6 +392,7 @@ static void rt_memory_release_array_payload(void *p, rt_heap_hdr_t *hdr) {
             break;
         }
         default:
+            rt_trap("Viper.Memory.Release: unsupported array element kind");
             break;
     }
 }
@@ -457,12 +468,14 @@ int64_t rt_memory_release(void *p) {
         size_t next = rt_heap_release_deferred(p);
         if (next == 0) {
             rt_memory_release_array_payload(p, hdr);
+            rt_gc_clear_weak_refs(p);
             rt_heap_free_zero_ref(p);
         }
         return rt_memory_refcount_to_i64(next);
     }
 
-    return rt_memory_refcount_to_i64(rt_heap_release(p));
+    rt_trap("Viper.Memory.Release: unsupported heap payload kind");
+    return 0;
 }
 
 /// @brief Public string-typed wrapper for `Viper.Memory.ReleaseStr`.
@@ -471,7 +484,9 @@ int64_t rt_memory_release(void *p) {
 ///          Returns the post-release refcount (saturated at `INT64_MAX` for immortal
 ///          strings) so callers can publish the observed value through the typed API.
 int64_t rt_memory_release_str(rt_string s) {
-    return rt_memory_release((void *)s);
+    if (!s)
+        return 0;
+    return rt_memory_release_string(s);
 }
 
 /// @brief Compatibility shim matching the string free entry point.
@@ -501,6 +516,7 @@ void rt_obj_free(void *p) {
     }
     if ((rt_heap_kind_t)hdr->kind == RT_HEAP_ARRAY) {
         rt_memory_release_array_payload(p, hdr);
+        rt_gc_clear_weak_refs(p);
         rt_heap_free_zero_ref(p);
         return;
     }
@@ -764,9 +780,10 @@ void rt_weak_store(void **addr, void *value) {
 
 /// @brief Load a weak reference.
 ///
-/// Retrieves the stored pointer value. Currently returns the raw pointer
-/// without validation. Future versions may check if the target object is
-/// still alive and return NULL if it has been freed.
+/// Retrieves the stored pointer value. Runtime-managed weak handles are
+/// promoted to a retained strong reference before returning so callers can
+/// safely use the target after the GC lock is released. Raw legacy pointers
+/// are still returned as borrowed values.
 ///
 /// **Usage example:**
 /// ```
@@ -777,12 +794,11 @@ void rt_weak_store(void **addr, void *value) {
 ///
 /// @param addr Address of the field to load from.
 ///
-/// @return The stored pointer value, or NULL if the field is nil.
+/// @return The stored pointer value, or NULL if the field is nil. Managed
+///         weak handles return an owned reference that must be released.
 ///
-/// @warning The returned pointer may be dangling if the target object has
-///          been freed. The caller must ensure the target is still valid
-///          through other means (e.g., knowing the object lifetime).
-/// @note Future versions may validate the object is still alive.
+/// @warning Legacy/raw pointer slots are not lifetime-checked and remain
+///          borrowed for compatibility.
 void *rt_weak_load(void **addr) {
     if (!addr)
         return NULL;

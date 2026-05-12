@@ -59,6 +59,11 @@ static void hash_secure_zero(void *ptr, size_t len) {
         *p++ = 0;
 }
 
+/// @brief Refuse the call when @p service is gated off by the crypto module.
+/// @details In APPROVED mode the policy gate returns 0 for legacy services
+///          (MD5, SHA-1, CRC32, SipHash). This helper traps with @p message
+///          before reaching the primitive so a caller sees a clean error
+///          instead of a primitive-internal failure.
 static void hash_require_service(rt_crypto_module_service_t service, const char *message) {
     if (!rt_crypto_module_service_allowed(service))
         rt_trap(message);

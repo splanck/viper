@@ -206,7 +206,11 @@ static void value_type_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (count <= 0)
         return;
 
-    void **children = (void **)calloc((size_t)count, sizeof(void *));
+    if ((uint64_t)count > (uint64_t)SIZE_MAX / sizeof(void *)) {
+        rt_trap("rt_box_value_type: traversal allocation too large");
+        return;
+    }
+    void **children = (void **)rt_alloc((int64_t)((size_t)count * sizeof(void *)));
     if (!children)
         return;
 
@@ -231,7 +235,7 @@ static void value_type_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
         if (rt_obj_release_check0(child))
             rt_obj_free(child);
     }
-    free(children);
+    rt_free(children);
 }
 
 /// @brief Allocate a fresh boxed-value object via the heap (refcount=1, tagged RT_ELEM_BOX so
@@ -252,7 +256,9 @@ static rt_box_t *box_maybe(void *box) {
     rt_heap_hdr_t *hdr = NULL;
     if (!box || !rt_heap_try_get_header(box, &hdr))
         return NULL;
-    if (!hdr || hdr->elem_kind != RT_ELEM_BOX)
+    if (!hdr || (rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT ||
+        hdr->class_id != RT_BOX_CLASS_ID || hdr->elem_kind != RT_ELEM_BOX ||
+        hdr->cap < sizeof(rt_box_t))
         return NULL;
     return (rt_box_t *)box;
 }
@@ -505,6 +511,8 @@ int64_t rt_box_eq_str(void *box, rt_string val) {
         return 0;
     if (b->tag != RT_BOX_STR)
         return 0;
+    if (!b->data.str_val || !val)
+        return b->data.str_val == val ? 1 : 0;
     return rt_str_eq(b->data.str_val, val);
 }
 
@@ -705,6 +713,8 @@ int8_t rt_box_equal(void *a, void *b) {
         case RT_BOX_F64:
             return ba->data.f64_val == bb->data.f64_val;
         case RT_BOX_STR:
+            if (!ba->data.str_val || !bb->data.str_val)
+                return ba->data.str_val == bb->data.str_val;
             return rt_str_eq(ba->data.str_val, bb->data.str_val) != 0;
         default:
             return 0;

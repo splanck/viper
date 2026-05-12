@@ -30,19 +30,29 @@
 extern "C" {
 #endif
 
+/// @brief Hash function selector for RSA-PSS and PKCS#1 v1.5 signing/verification.
+/// @details Maps to the SHA-2 family digest length and the corresponding
+///          OID inside the DigestInfo structure used by PKCS#1 v1.5.
 typedef enum {
-    RT_RSA_HASH_SHA256 = 0,
-    RT_RSA_HASH_SHA384 = 1,
-    RT_RSA_HASH_SHA512 = 2,
+    RT_RSA_HASH_SHA256 = 0, ///< SHA-256 (32-byte digest, OID 2.16.840.1.101.3.4.2.1).
+    RT_RSA_HASH_SHA384 = 1, ///< SHA-384 (48-byte digest, OID 2.16.840.1.101.3.4.2.2).
+    RT_RSA_HASH_SHA512 = 2, ///< SHA-512 (64-byte digest, OID 2.16.840.1.101.3.4.2.3).
 } rt_rsa_hash_t;
 
+/// @brief Parsed RSA key material with separately-owned big-endian components.
+/// @details The key fields are big-endian byte arrays sized exactly to their
+///          significant byte length (no leading zero padding). All three
+///          buffers are heap-allocated by the parse routines and freed by
+///          @ref rt_rsa_key_free. Only the public components are populated
+///          when parsing an RSAPublicKey; PKCS#1 / PKCS#8 private-key parses
+///          additionally populate @c private_exponent.
 typedef struct {
-    uint8_t *modulus;
-    size_t modulus_len;
-    uint8_t *public_exponent;
-    size_t public_exponent_len;
-    uint8_t *private_exponent;
-    size_t private_exponent_len;
+    uint8_t *modulus;           ///< Public modulus n (big-endian, no leading zeros).
+    size_t modulus_len;         ///< Length of @c modulus in bytes.
+    uint8_t *public_exponent;   ///< Public exponent e (big-endian, typically 65537).
+    size_t public_exponent_len; ///< Length of @c public_exponent in bytes.
+    uint8_t *private_exponent;  ///< Private exponent d (big-endian); NULL for public-only keys.
+    size_t private_exponent_len;///< Length of @c private_exponent in bytes (0 when @c d is absent).
 } rt_rsa_key_t;
 
 /// @brief Zero-initialise an rt_rsa_key_t so it is safe to pass to rt_rsa_key_free without prior parse.

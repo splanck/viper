@@ -775,7 +775,7 @@ A map with weak value references. Values may become NULL when their referent is 
 | Method           | Signature              | Description                                                |
 |------------------|------------------------|------------------------------------------------------------|
 | `Set(key, value)`| `Void(String, Object)` | Set a value (stored as weak reference)                     |
-| `Get(key)`       | `Object(String)`       | Get value for key (NULL if not found or collected)         |
+| `Get(key)`       | `Object(String)`       | Get a retained live value for key (NULL if not found or collected) |
 | `Has(key)`       | `Boolean(String)`      | Check if key exists and its weak value is still live       |
 | `Remove(key)`    | `Boolean(String)`      | Remove entry; returns true if found                        |
 | `Keys()`         | `Seq()`                | Get all keys whose weak values are still live              |
@@ -785,10 +785,10 @@ A map with weak value references. Values may become NULL when their referent is 
 ### Notes
 
 - **Weak references:** Values are stored without preventing garbage collection. If the only reference to an object is through a WeakMap, it may be collected.
-- **Stale entries:** After a value is collected, `Get()` returns NULL for that key. Use `Compact()` to clean up stale entries.
+- **Stale entries:** After a value is collected, `Get()` returns NULL for that key. A live result is promoted to a retained strong reference for the caller. Use `Compact()` to clean up stale entries.
 - **String keys:** Keys are regular strong string references and are compared by full byte length; embedded NUL bytes are part of the key.
 - **Live views:** `Length`, `IsEmpty`, `Has`, and `Keys` expose live weak values only. `Compact()` removes the stale internal slots.
-- **Runtime objects:** Values should be runtime heap objects so `rt_obj_free` can zero the registered weak references.
+- **Runtime values:** Values should be runtime-managed objects or strings so final release can zero the registered weak references.
 
 ### Zia Example
 

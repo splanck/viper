@@ -148,9 +148,11 @@ int64_t rt_obj_is_null(void *self);
 ///          non-runtime raw pointers are stored as-is for compatibility.
 void rt_weak_store(void **addr, void *value);
 
-/// @brief Load a weak reference.
+/// @brief Load a weak reference and retain the live target.
 /// @param addr Address of the field to load from.
-/// @return The live target pointer, or NULL after the target has been freed.
+/// @return The retained live target pointer, or NULL after the target has been freed.
+///         Runtime-managed weak handles return owned references; legacy raw
+///         pointer slots are returned borrowed.
 void *rt_weak_load(void **addr);
 
 #ifdef __cplusplus

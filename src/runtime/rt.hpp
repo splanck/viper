@@ -178,6 +178,10 @@ int32_t rt_seek_ch_err(int ch, int64_t pos);
 /// @return Pointer to zeroed block or trap on failure.
 void *rt_alloc(int64_t bytes);
 
+/// @brief Free storage returned by @ref rt_alloc.
+/// @param ptr Pointer returned by rt_alloc, or NULL.
+void rt_free(void *ptr);
+
 // Terminal control + single-key input
 
 /// @brief Clear the terminal when stdout is a TTY.

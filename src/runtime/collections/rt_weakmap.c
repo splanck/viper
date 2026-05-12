@@ -16,6 +16,7 @@
 //   - FNV-1a hashes the raw key bytes, so embedded NUL bytes are part of keys.
 //   - Load factor is kept below roughly 70% by doubling and rehashing.
 //   - Values are stored as rt_weakref handles and are never strongly retained.
+//     Runtime-managed objects and strings are zeroed on final release.
 //   - `count` tracks occupied slots; public Len counts only live weak targets.
 //   - Not thread-safe; external synchronization required.
 //

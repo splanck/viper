@@ -1446,7 +1446,7 @@ END SUB
 ' Main program
 DIM sum AS INTEGER
 sum = Add(3, 4)
-CALL Greet("Alice")
+Greet("Alice")
 ```
 
 BASIC distinguishes between `FUNCTION` (returns a value) and `SUB` (no return value, short for "subroutine"). The return value is assigned to the function name, which feels strange to modern programmers but was common in early languages.

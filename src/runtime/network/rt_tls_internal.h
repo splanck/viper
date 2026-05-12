@@ -38,25 +38,31 @@ struct rt_tls_server_ctx;
 #define TLS_MAX_RECORD_SIZE 16384
 #define TLS_MAX_CIPHERTEXT (TLS_MAX_RECORD_SIZE + 256)
 
-// Handshake states
+/// @brief TLS 1.3 client-side handshake state machine positions.
+/// @details RFC 8446 §A.1 client state diagram. The session advances
+///          through each value monotonically; ERROR and CLOSED are
+///          sinks that no transition can leave.
 typedef enum {
-    TLS_STATE_INITIAL,
-    TLS_STATE_CLIENT_HELLO_SENT,
-    TLS_STATE_SERVER_HELLO_RECEIVED,
-    TLS_STATE_WAIT_ENCRYPTED_EXTENSIONS,
-    TLS_STATE_WAIT_CERTIFICATE,
-    TLS_STATE_WAIT_CERTIFICATE_VERIFY,
-    TLS_STATE_WAIT_FINISHED,
-    TLS_STATE_CONNECTED,
-    TLS_STATE_CLOSED,
-    TLS_STATE_ERROR
+    TLS_STATE_INITIAL,                    ///< No bytes on wire yet.
+    TLS_STATE_CLIENT_HELLO_SENT,          ///< ClientHello flushed; waiting for response.
+    TLS_STATE_SERVER_HELLO_RECEIVED,      ///< Cipher suite + key_share negotiated.
+    TLS_STATE_WAIT_ENCRYPTED_EXTENSIONS,  ///< Server-handshake keys derived; awaiting EE.
+    TLS_STATE_WAIT_CERTIFICATE,           ///< Awaiting peer Certificate message.
+    TLS_STATE_WAIT_CERTIFICATE_VERIFY,    ///< Certificate seen; awaiting CertificateVerify.
+    TLS_STATE_WAIT_FINISHED,              ///< CertificateVerify validated; awaiting Finished.
+    TLS_STATE_CONNECTED,                  ///< Application traffic keys live, ready for I/O.
+    TLS_STATE_CLOSED,                     ///< Peer or local close_notify processed.
+    TLS_STATE_ERROR                       ///< Unrecoverable handshake / protocol failure.
 } tls_state_t;
 
-// Traffic keys
+/// @brief One direction's record-layer traffic keys + monotonic sequence number.
+/// @details The AEAD nonce per record is @c iv XOR @c seq_num (big-endian
+///          padded). Sequence counters never wrap — sender bails out
+///          before key reuse becomes possible.
 typedef struct {
-    uint8_t key[32];
-    uint8_t iv[12];
-    uint64_t seq_num;
+    uint8_t key[32];     ///< Application traffic key (AES-128/256-GCM or ChaCha20-Poly1305).
+    uint8_t iv[12];      ///< Per-direction static IV xored with @c seq_num to form the nonce.
+    uint64_t seq_num;    ///< Records sent or received in this direction since key install.
 } traffic_keys_t;
 
 // TLS session structure

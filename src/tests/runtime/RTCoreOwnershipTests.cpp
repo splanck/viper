@@ -122,6 +122,8 @@ static void test_runtime_metadata_matches_core_contracts(void) {
     const auto msgSub = il::runtime::classifyRuntimeOwnership("Viper.Core.MessageBus.Subscribe");
     assert(msgSub.retainsArg(1));
     assert(msgSub.retainsArg(2));
+    const auto weakGet = il::runtime::classifyRuntimeOwnership("Viper.Collections.WeakMap.Get");
+    assert(weakGet.returnsOwned);
 
     const auto absI64 = il::runtime::classifyHelperEffects("rt_abs_i64");
     assert(absI64.known);

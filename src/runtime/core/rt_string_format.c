@@ -132,14 +132,14 @@ int64_t rt_to_int(rt_string s) {
     char *endp = NULL;
     long long v = strtoll(buf, &endp, 10);
     if (errno == ERANGE) {
-        free(buf);
+        rt_free(buf);
         rt_trap("INPUT: numeric overflow");
     }
     if (!endp || *endp != '\0') {
-        free(buf);
+        rt_free(buf);
         rt_trap("INPUT: expected numeric value");
     }
-    free(buf);
+    rt_free(buf);
     return (int64_t)v;
 }
 

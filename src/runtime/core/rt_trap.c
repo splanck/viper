@@ -229,6 +229,8 @@ void rt_diag_assert_eq_num(double expected, double actual, rt_string message) {
 void rt_diag_assert_eq_str(rt_string expected, rt_string actual, rt_string message) {
     int expected_valid = !expected || rt_string_is_handle((const void *)expected);
     int actual_valid = !actual || rt_string_is_handle((const void *)actual);
+    if (expected_valid && actual_valid && expected == actual)
+        return;
     if (expected_valid && actual_valid && rt_str_eq(expected, actual) != 0)
         return;
 

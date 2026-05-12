@@ -256,11 +256,16 @@ static int mb_retain_managed_payload(void *data) {
 static void mb_free_sub(mb_sub *s) {
     if (!s)
         return;
-    if (s->topic)
-        rt_string_unref(s->topic);
-    if (rt_obj_release_check0(s->callback))
-        rt_obj_free(s->callback);
+    rt_string topic = s->topic;
+    void *callback = s->callback;
+    s->topic = NULL;
+    s->callback = NULL;
+    s->next = NULL;
     free(s);
+    if (topic)
+        rt_string_unref(topic);
+    if (rt_obj_release_check0(callback))
+        rt_obj_free(callback);
 }
 
 /// @brief Free a single topic node — releases the topic name and the allocation itself.
@@ -270,9 +275,44 @@ static void mb_free_sub(mb_sub *s) {
 static void mb_free_topic_node(mb_topic *t) {
     if (!t)
         return;
-    if (t->name)
-        rt_string_unref(t->name);
+    rt_string name = t->name;
+    t->name = NULL;
+    t->subs = NULL;
+    t->next = NULL;
     free(t);
+    if (name)
+        rt_string_unref(name);
+}
+
+static void mb_free_sub_chain(mb_sub *s) {
+    mb_sub * volatile cursor = s;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        const char *err = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 err && err[0] ? err : "rt_msgbus: trap while freeing subscribers");
+        rt_trap_clear_recovery();
+        while (cursor) {
+            mb_sub *current = cursor;
+            cursor = current->next;
+            current->next = NULL;
+            mb_free_sub(current);
+        }
+        rt_trap(saved_error);
+        return;
+    }
+
+    while (cursor) {
+        mb_sub *current = cursor;
+        cursor = current->next;
+        current->next = NULL;
+        mb_free_sub(current);
+    }
+    rt_trap_clear_recovery();
 }
 
 /// @brief Free an entire bucket chain of topics, including each topic's subscriber list.
@@ -281,17 +321,48 @@ static void mb_free_topic_node(mb_topic *t) {
 ///          name and free the node. Iterative (no recursion) so deep buckets don't
 ///          consume stack.
 static void mb_free_topic_chain(mb_topic *t) {
-    while (t) {
-        mb_topic *next = t->next;
-        mb_sub *s = t->subs;
-        while (s) {
-            mb_sub *ns = s->next;
-            mb_free_sub(s);
-            s = ns;
+    mb_topic * volatile cursor = t;
+    mb_topic * volatile active_topic = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        const char *err = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 err && err[0] ? err : "rt_msgbus: trap while freeing topics");
+        rt_trap_clear_recovery();
+        if (active_topic) {
+            mb_topic *topic = active_topic;
+            active_topic = NULL;
+            mb_free_topic_node(topic);
         }
-        mb_free_topic_node(t);
-        t = next;
+        while (cursor) {
+            mb_topic *current = cursor;
+            cursor = current->next;
+            current->next = NULL;
+            mb_sub *s = current->subs;
+            current->subs = NULL;
+            mb_free_sub_chain(s);
+            mb_free_topic_node(current);
+        }
+        rt_trap(saved_error);
+        return;
     }
+
+    while (cursor) {
+        mb_topic *current = cursor;
+        cursor = current->next;
+        current->next = NULL;
+        mb_sub *s = current->subs;
+        current->subs = NULL;
+        active_topic = current;
+        mb_free_sub_chain(s);
+        active_topic = NULL;
+        mb_free_topic_node(current);
+    }
+    rt_trap_clear_recovery();
 }
 
 /// @brief GC finalizer — walk every bucket and free every topic + subscriber.
@@ -347,7 +418,11 @@ static void mb_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (count <= 0)
         return;
 
-    void **callbacks = (void **)calloc((size_t)count, sizeof(void *));
+    if ((uint64_t)count > (uint64_t)SIZE_MAX / sizeof(void *)) {
+        rt_trap("rt_msgbus: traversal allocation too large");
+        return;
+    }
+    void **callbacks = (void **)rt_alloc((int64_t)((size_t)count * sizeof(void *)));
     if (!callbacks)
         return;
 
@@ -373,7 +448,7 @@ static void mb_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
         if (rt_obj_release_check0(callbacks[i]))
             rt_obj_free(callbacks[i]);
     }
-    free(callbacks);
+    rt_free(callbacks);
 }
 
 /// @brief Look up the topic node for `topic_cstr` (returns NULL if not present).
@@ -632,8 +707,24 @@ int8_t rt_msgbus_unsubscribe(void *obj, int64_t sub_id) {
                         t->next = NULL;
                     }
                     mb_unlock(mb);
+                    jmp_buf recovery;
+                    rt_trap_set_recovery(&recovery);
+                    if (setjmp(recovery) != 0) {
+                        char saved_error[512];
+                        const char *err = rt_trap_get_error();
+                        snprintf(saved_error,
+                                 sizeof(saved_error),
+                                 "%s",
+                                 err && err[0] ? err
+                                               : "rt_msgbus_unsubscribe: trap while freeing subscription");
+                        rt_trap_clear_recovery();
+                        mb_free_topic_node(empty_topic);
+                        rt_trap(saved_error);
+                        return 0;
+                    }
                     mb_free_sub(victim);
                     mb_free_topic_node(empty_topic);
+                    rt_trap_clear_recovery();
                     return 1;
                 }
                 pp = &(*pp)->next;
@@ -673,6 +764,12 @@ int64_t rt_msgbus_publish(void *obj, rt_string topic, void *data) {
         return 0;
     }
 
+    if ((uint64_t)t->count > (uint64_t)SIZE_MAX / sizeof(void *)) {
+        mb_unlock(mb);
+        rt_trap("rt_msgbus_publish: subscriber count too large");
+        return 0;
+    }
+
     void **callbacks = (void **)calloc((size_t)t->count, sizeof(void *));
     if (!callbacks) {
         mb_unlock(mb);
@@ -681,7 +778,8 @@ int64_t rt_msgbus_publish(void *obj, rt_string topic, void *data) {
     }
 
     int64_t count = 0;
-    for (mb_sub *s = t->subs; s; s = s->next) {
+    int64_t snapshot_cap = t->count;
+    for (mb_sub *s = t->subs; s && count < snapshot_cap; s = s->next) {
         callbacks[count++] = s->callback;
         rt_obj_retain_maybe(s->callback);
     }
@@ -700,8 +798,12 @@ int64_t rt_msgbus_publish(void *obj, rt_string topic, void *data) {
                  err && err[0] ? err : "rt_msgbus_publish: subscriber trap");
         rt_trap_clear_recovery();
         for (int64_t i = (int64_t)release_from; i < count; ++i) {
-            if (rt_obj_release_check0(callbacks[i]))
-                rt_obj_free(callbacks[i]);
+            void *callback = callbacks[i];
+            if (!callback)
+                continue;
+            callbacks[i] = NULL;
+            if (rt_obj_release_check0(callback))
+                rt_obj_free(callback);
         }
         if (data_retained)
             (void)rt_memory_release(data);
@@ -710,15 +812,18 @@ int64_t rt_msgbus_publish(void *obj, rt_string topic, void *data) {
         return 0;
     }
     for (int64_t i = 0; i < count; ++i) {
+        release_from = i;
         mb_invoke_callback(callbacks[i], data);
+        void *callback = callbacks[i];
+        callbacks[i] = NULL;
+        if (rt_obj_release_check0(callback))
+            rt_obj_free(callback);
         release_from = i + 1;
-        if (rt_obj_release_check0(callbacks[i]))
-            rt_obj_free(callbacks[i]);
     }
-    rt_trap_clear_recovery();
 
     if (data_retained)
         (void)rt_memory_release(data);
+    rt_trap_clear_recovery();
     free(callbacks);
     return count;
 }
@@ -817,10 +922,33 @@ void *rt_msgbus_topics(void *obj) {
     }
     mb_unlock(mb);
 
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        const char *err = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 err && err[0] ? err : "rt_msgbus_topics: trap while building topic sequence");
+        rt_trap_clear_recovery();
+        for (int64_t i = 0; i < copied; ++i) {
+            if (topics[i])
+                rt_string_unref(topics[i]);
+        }
+        free(topics);
+        if (rt_obj_release_check0(seq))
+            rt_obj_free(seq);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
     for (int64_t i = 0; i < copied; ++i) {
         rt_seq_push(seq, topics[i]);
         rt_string_unref(topics[i]);
+        topics[i] = NULL;
     }
+    rt_trap_clear_recovery();
     free(topics);
     return seq;
 }
@@ -874,12 +1002,23 @@ void rt_msgbus_clear_topic(void *obj, rt_string topic) {
     removed->count = 0;
     mb_unlock(mb);
 
-    while (s) {
-        mb_sub *next = s->next;
-        mb_free_sub(s);
-        s = next;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        const char *err = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 err && err[0] ? err : "rt_msgbus_clear_topic: trap while freeing topic");
+        rt_trap_clear_recovery();
+        mb_free_topic_node(removed);
+        rt_trap(saved_error);
+        return;
     }
+    mb_free_sub_chain(s);
     mb_free_topic_node(removed);
+    rt_trap_clear_recovery();
 }
 
 /// @brief Remove all subscriptions and topic nodes from the message bus.

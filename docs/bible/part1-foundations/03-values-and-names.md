@@ -882,7 +882,7 @@ score = score / 4;   // Quarter the score
 score = score % 10;  // Take remainder after dividing by 10
 ```
 
-This pattern is so common that most languages (including future versions of Zia) provide shorthand compound assignment operators like `+=`, `-=`, `*=`, `/=`, and `%=`. For now, always use the explicit long form shown above.
+This pattern is so common that Zia provides shorthand compound assignment operators: `+=`, `-=`, `*=`, `/=`, and `%=`. So `score = score + 5` can be written `score += 5`. The explicit long form shown above also works and may be clearer when you're starting out.
 
 ### Variable Lifetime
 

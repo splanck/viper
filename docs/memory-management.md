@@ -401,7 +401,7 @@ without `malloc`/`free` overhead.
 | **Sequences** | malloc | Refcounted | **NOT managed** | Caller must manage element lifetimes |
 | **Maps** | malloc | Refcounted | Keys copied, values retained | String-keyed |
 | **LazySeq** | malloc | **Manual destroy** | On-demand generation | Not refcounted; requires `rt_lazyseq_destroy()` |
-| **Boxed values** | malloc | Refcounted | Type-tagged (I64/F64/I1/STR) | Runtime class id `Viper.Core.Box`; unbox does not consume the box |
+| **Boxed values** | malloc | Refcounted | Type-tagged (I64/F64/I1/STR) | Runtime class id `Viper.Core.Box`; unbox does not consume the box; box helpers validate class id, heap kind, and payload size |
 | **Objects** | malloc | Refcounted | Optional finalizer | Optional GC tracking for cycles |
 | **Vec2/Vec3** | Thread-local pool (cap 32) | Refcounted + resurrection | Immutable values | Pool recycling via finalizer |
 | **Files** | Stack (`RtFile`) | Caller-owned | POSIX fd | Manual close or finalizer-based cleanup |
@@ -453,7 +453,8 @@ without `malloc`/`free` overhead.
 - **LRU Cache**: GC object containing a `malloc`'d bucket array and node chain.
   Values are weak (non-retained). Finalizer frees all internal allocations.
 - **WeakMap**: GC object with `malloc`'d hash table. Keys are retained; values
-  are weak. Stale value pointers may be returned if the value was collected.
+  are weak runtime-managed objects or strings. `Get` promotes a live weak value
+  to a retained reference and returns `NULL` after the value has been collected.
 
 ---
 

@@ -10,6 +10,7 @@
 // Key invariants: Boxed values are compared by content, not pointer identity.
 
 #include "rt_box.h"
+#include "rt_heap.h"
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
@@ -194,6 +195,36 @@ static void test_seq_pointer_identity() {
     printf("\n");
 }
 
+static void test_box_type_rejects_box_element_arrays() {
+    printf("Testing Box helpers reject box-element arrays:\n");
+
+    void *box = rt_box_i64(42);
+    void **arr = (void **)rt_heap_alloc(RT_HEAP_ARRAY, RT_ELEM_BOX, sizeof(void *), 1, 1);
+    arr[0] = box;
+
+    test_result("Box.Type ignores RT_ELEM_BOX arrays", rt_box_type(arr) == -1);
+    int64_t out = 0;
+    test_result("Box.TryToI64 ignores RT_ELEM_BOX arrays",
+                rt_box_try_to_i64(arr, &out) == 0 && out == 0);
+
+    release_object(arr);
+    printf("\n");
+}
+
+static void test_null_string_boxes_compare_equal() {
+    printf("Testing null string box equality:\n");
+
+    void *a = rt_box_str(NULL);
+    void *b = rt_box_str(NULL);
+
+    test_result("Box.EqStr accepts null string", rt_box_eq_str(a, NULL) == 1);
+    test_result("Two null string boxes compare equal", rt_box_equal(a, b) == 1);
+
+    release_object(a);
+    release_object(b);
+    printf("\n");
+}
+
 static void test_value_type_managed_fields() {
     printf("Testing Box.ValueType managed field registration:\n");
 
@@ -286,6 +317,8 @@ int main() {
     test_seq_find_boxed_floats();
     test_seq_find_boxed_booleans();
     test_seq_pointer_identity();
+    test_box_type_rejects_box_element_arrays();
+    test_null_string_boxes_compare_equal();
     test_value_type_managed_fields();
     test_value_type_zero_size_and_duplicate_fields();
 

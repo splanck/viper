@@ -104,6 +104,18 @@ static void release_obj(void *obj) {
         rt_obj_free(obj);
 }
 
+static void assert_weakref_get(rt_weakref *ref, void *expected, const char *message) {
+    void *got = rt_weakref_get(ref);
+    ASSERT(got == expected, message);
+    release_obj(got);
+}
+
+static void assert_weak_load(void **slot, void *expected, const char *message) {
+    void *got = rt_weak_load(slot);
+    ASSERT(got == expected, message);
+    release_obj(got);
+}
+
 static void count_cycle_finalizer(void *obj) {
     (void)obj;
     g_cycle_finalizer_count++;
@@ -217,7 +229,7 @@ static void test_weakref_basic() {
     rt_weakref *ref = rt_weakref_new(obj);
 
     ASSERT(ref != NULL, "weakref created");
-    ASSERT(rt_weakref_get(ref) == obj, "weakref returns target");
+    assert_weakref_get(ref, obj, "weakref returns target");
     ASSERT(rt_weakref_alive(ref) == 1, "weakref alive");
 
     rt_weakref_free(ref);
@@ -228,13 +240,13 @@ static void test_weakref_basic() {
 static void test_weakref_null_target() {
     rt_weakref *ref = rt_weakref_new(NULL);
     ASSERT(ref != NULL, "weakref with null target created");
-    ASSERT(rt_weakref_get(ref) == NULL, "weakref to null returns null");
+    assert_weakref_get(ref, NULL, "weakref to null returns null");
     ASSERT(rt_weakref_alive(ref) == 0, "weakref to null not alive");
     rt_weakref_free(ref);
 }
 
 static void test_weakref_null_ref() {
-    ASSERT(rt_weakref_get(NULL) == NULL, "get(null) = null");
+    assert_weakref_get(NULL, NULL, "get(null) = null");
     ASSERT(rt_weakref_alive(NULL) == 0, "alive(null) = 0");
     /// @brief Rt_weakref_free.
     rt_weakref_free(NULL); // should not crash
@@ -246,14 +258,14 @@ static void test_weakref_clear_on_free() {
     rt_weakref *ref1 = rt_weakref_new(obj);
     rt_weakref *ref2 = rt_weakref_new(obj);
 
-    ASSERT(rt_weakref_get(ref1) == obj, "ref1 alive before clear");
-    ASSERT(rt_weakref_get(ref2) == obj, "ref2 alive before clear");
+    assert_weakref_get(ref1, obj, "ref1 alive before clear");
+    assert_weakref_get(ref2, obj, "ref2 alive before clear");
 
     // Simulate object being freed - clear weak refs
     rt_gc_clear_weak_refs(obj);
 
-    ASSERT(rt_weakref_get(ref1) == NULL, "ref1 cleared");
-    ASSERT(rt_weakref_get(ref2) == NULL, "ref2 cleared");
+    assert_weakref_get(ref1, NULL, "ref1 cleared");
+    assert_weakref_get(ref2, NULL, "ref2 cleared");
     ASSERT(rt_weakref_alive(ref1) == 0, "ref1 not alive");
     ASSERT(rt_weakref_alive(ref2) == 0, "ref2 not alive");
 
@@ -285,17 +297,17 @@ static void test_weakref_reset_after_clear() {
     rt_weakref *ref2 = rt_weakref_new(old_target);
 
     rt_gc_clear_weak_refs(old_target);
-    ASSERT(rt_weakref_get(ref1) == NULL, "ref1 cleared before reset");
-    ASSERT(rt_weakref_get(ref2) == NULL, "ref2 cleared before reset");
+    assert_weakref_get(ref1, NULL, "ref1 cleared before reset");
+    assert_weakref_get(ref2, NULL, "ref2 cleared before reset");
 
     rt_weakref_reset(ref1, new_target);
     rt_weakref_reset(ref2, new_target);
-    ASSERT(rt_weakref_get(ref1) == new_target, "ref1 reset to new target");
-    ASSERT(rt_weakref_get(ref2) == new_target, "ref2 reset to new target");
+    assert_weakref_get(ref1, new_target, "ref1 reset to new target");
+    assert_weakref_get(ref2, new_target, "ref2 reset to new target");
 
     rt_gc_clear_weak_refs(new_target);
-    ASSERT(rt_weakref_get(ref1) == NULL, "ref1 cleared after reset target freed");
-    ASSERT(rt_weakref_get(ref2) == NULL, "ref2 cleared after reset target freed");
+    assert_weakref_get(ref1, NULL, "ref1 cleared after reset target freed");
+    assert_weakref_get(ref2, NULL, "ref2 cleared after reset target freed");
 
     rt_weakref_free(ref1);
     rt_weakref_free(ref2);
@@ -312,11 +324,11 @@ static void test_weakref_survives_finalizer_resurrection() {
     release_obj(obj);
     ASSERT(g_resurrected_object == obj, "finalizer resurrected object");
     ASSERT(rt_heap_is_payload(obj) == 1, "resurrected object remains live");
-    ASSERT(rt_weakref_get(ref) == obj, "weak ref still points at resurrected object");
+    assert_weakref_get(ref, obj, "weak ref still points at resurrected object");
 
     release_obj(obj);
     ASSERT(rt_heap_is_payload(obj) == 0, "second release frees resurrected object");
-    ASSERT(rt_weakref_get(ref) == NULL, "weak ref cleared after real free");
+    assert_weakref_get(ref, NULL, "weak ref cleared after real free");
     rt_weakref_free(ref);
 }
 
@@ -522,8 +534,8 @@ static void test_weakref_cleared_by_collect() {
 
     ASSERT(rt_weakref_alive(ref_a) == 0, "ref_a dead after collect");
     ASSERT(rt_weakref_alive(ref_b) == 0, "ref_b dead after collect");
-    ASSERT(rt_weakref_get(ref_a) == NULL, "ref_a null after collect");
-    ASSERT(rt_weakref_get(ref_b) == NULL, "ref_b null after collect");
+    assert_weakref_get(ref_a, NULL, "ref_a null after collect");
+    assert_weakref_get(ref_b, NULL, "ref_b null after collect");
 
     rt_weakref_free(ref_a);
     rt_weakref_free(ref_b);
@@ -540,14 +552,14 @@ static void test_weak_field_zeroed_by_collect() {
     nb->child = a;
 
     rt_weak_store(&slot, a);
-    ASSERT(rt_weak_load(&slot) == a, "weak field returns live target before collect");
+    assert_weak_load(&slot, a, "weak field returns live target before collect");
 
     rt_gc_track(a, test_node_traverse);
     rt_gc_track(b, test_node_traverse);
 
     int64_t freed = rt_gc_collect();
     ASSERT(freed == 2, "cycle with weak field collected");
-    ASSERT(rt_weak_load(&slot) == NULL, "weak field cleared after collect");
+    assert_weak_load(&slot, NULL, "weak field cleared after collect");
 
     rt_weak_store(&slot, NULL);
 }
@@ -579,8 +591,8 @@ static void test_collect_reclaims_cycle_storage_and_finalizers() {
     ASSERT(g_cycle_finalizer_count == 2, "cycle finalizers run");
     ASSERT(rt_heap_is_payload(a) == 0, "a removed from heap registry");
     ASSERT(rt_heap_is_payload(b) == 0, "b removed from heap registry");
-    ASSERT(rt_weakref_get(ref_a) == NULL, "weak ref a zeroed by reclaim");
-    ASSERT(rt_weakref_get(ref_b) == NULL, "weak ref b zeroed by reclaim");
+    assert_weakref_get(ref_a, NULL, "weak ref a zeroed by reclaim");
+    assert_weakref_get(ref_b, NULL, "weak ref b zeroed by reclaim");
 
     rt_weakref_free(ref_a);
     rt_weakref_free(ref_b);

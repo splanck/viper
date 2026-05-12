@@ -45,6 +45,7 @@
 #include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_string.h"
 #include "rt_threads.h"
 
 #include <setjmp.h>
@@ -480,7 +481,7 @@ rt_weakref *rt_weakref_new(void *target) {
     return ref;
 }
 
-/// @brief Dereference a weak ref, returning the target or NULL if freed.
+/// @brief Dereference a weak ref, retaining and returning the target or NULL if freed.
 void *rt_weakref_get(rt_weakref *ref) {
     if (!ref)
         return NULL;
@@ -491,6 +492,65 @@ void *rt_weakref_get(rt_weakref *ref) {
         return NULL;
     }
     void *t = ref->target;
+    if (t) {
+        if (rt_string_is_handle(t)) {
+            rt_string s = (rt_string)t;
+            rt_heap_hdr_t *hdr = s->heap && s->heap != RT_SSO_SENTINEL ? s->heap : NULL;
+            size_t *refs = hdr ? &hdr->refcnt : &s->literal_refs;
+            size_t old = __atomic_load_n(refs, __ATOMIC_RELAXED);
+            for (;;) {
+                if (old == 0) {
+                    t = NULL;
+                    break;
+                }
+                if (old >= RT_HEAP_IMMORTAL_REFCNT)
+                    break;
+                if (old >= RT_HEAP_MAX_MORTAL_REFCNT) {
+                    gc_unlock();
+                    rt_trap("gc: weak reference promotion refcount overflow");
+                    return NULL;
+                }
+                size_t next = old + 1;
+                if (__atomic_compare_exchange_n(refs,
+                                                &old,
+                                                next,
+                                                /*weak=*/0,
+                                                __ATOMIC_RELAXED,
+                                                __ATOMIC_RELAXED)) {
+                    break;
+                }
+            }
+        } else {
+            rt_heap_hdr_t *hdr = NULL;
+            if (!rt_heap_try_get_header(t, &hdr) || !hdr) {
+                t = NULL;
+            } else {
+                size_t old = __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED);
+                for (;;) {
+                    if (old == 0) {
+                        t = NULL;
+                        break;
+                    }
+                    if (old >= RT_HEAP_IMMORTAL_REFCNT)
+                        break;
+                    if (old >= RT_HEAP_MAX_MORTAL_REFCNT) {
+                        gc_unlock();
+                        rt_trap("gc: weak reference promotion refcount overflow");
+                        return NULL;
+                    }
+                    size_t next = old + 1;
+                    if (__atomic_compare_exchange_n(&hdr->refcnt,
+                                                    &old,
+                                                    next,
+                                                    /*weak=*/0,
+                                                    __ATOMIC_RELAXED,
+                                                    __ATOMIC_RELAXED)) {
+                        break;
+                    }
+                }
+            }
+        }
+    }
     gc_unlock();
     return t;
 }
@@ -505,7 +565,23 @@ int8_t rt_weakref_alive(rt_weakref *ref) {
         gc_unlock();
         return 0;
     }
-    int8_t alive = ref->target != NULL ? 1 : 0;
+    int8_t alive = 0;
+    void *target = ref->target;
+    if (target) {
+        if (rt_string_is_handle(target)) {
+            rt_string s = (rt_string)target;
+            rt_heap_hdr_t *hdr = s->heap && s->heap != RT_SSO_SENTINEL ? s->heap : NULL;
+            size_t refs =
+                __atomic_load_n(hdr ? &hdr->refcnt : &s->literal_refs, __ATOMIC_RELAXED);
+            alive = refs > 0 ? 1 : 0;
+        } else {
+            rt_heap_hdr_t *hdr = NULL;
+            if (rt_heap_try_get_header(target, &hdr) && hdr) {
+                size_t refs = __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED);
+                alive = refs > 0 ? 1 : 0;
+            }
+        }
+    }
     gc_unlock();
     return alive;
 }
@@ -648,7 +724,15 @@ static int gc_edge_list_push(gc_edge_list *list, void *child) {
     if (!list || list->oom || !child)
         return 0;
     if (list->count == list->cap) {
+        if (list->cap > INT64_MAX / 2) {
+            list->oom = 1;
+            return 0;
+        }
         int64_t new_cap = list->cap ? list->cap * 2 : 16;
+        if ((uint64_t)new_cap > (uint64_t)SIZE_MAX / sizeof(void *)) {
+            list->oom = 1;
+            return 0;
+        }
         void **items = (void **)realloc(list->items, (size_t)new_cap * sizeof(void *));
         if (!items) {
             list->oom = 1;
@@ -678,7 +762,15 @@ static int gc_worklist_push(gc_worklist *work, void *obj, rt_gc_traverse_fn trav
     if (!work || work->oom || !obj || !traverse)
         return 0;
     if (work->count == work->cap) {
+        if (work->cap > INT64_MAX / 2) {
+            work->oom = 1;
+            return 0;
+        }
         int64_t new_cap = work->cap ? work->cap * 2 : 16;
+        if ((uint64_t)new_cap > (uint64_t)SIZE_MAX / sizeof(gc_snap_entry)) {
+            work->oom = 1;
+            return 0;
+        }
         gc_snap_entry *items =
             (gc_snap_entry *)realloc(work->items, (size_t)new_cap * sizeof(gc_snap_entry));
         if (!items) {
@@ -1049,6 +1141,7 @@ int64_t rt_gc_collect(void) {
 ///          Set to 0 (default) to disable automatic collection.
 void rt_gc_set_threshold(int64_t n) {
     __atomic_store_n(&g_gc_threshold, n > 0 ? n : 0, __ATOMIC_RELAXED);
+    __atomic_store_n(&g_gc_alloc_counter, 0, __ATOMIC_RELAXED);
 }
 
 /// @brief Read the current auto-collection threshold (0 = disabled).
@@ -1066,11 +1159,14 @@ void rt_gc_notify_alloc(void) {
         return;
     int64_t count = __atomic_fetch_add(&g_gc_alloc_counter, 1, __ATOMIC_RELAXED) + 1;
     if (count >= threshold) {
-        /* CONC-003 fix: use CAS to atomically claim the counter reset.
-           Only the thread that successfully resets the counter triggers
-           collection, preventing redundant double-collects. */
-        int64_t expected = count;
-        if (gc_atomic_cas_i64(&g_gc_alloc_counter, &expected, 0)) {
+        int64_t observed = count;
+        while (observed >= threshold) {
+            if (gc_atomic_cas_i64(&g_gc_alloc_counter, &observed, 0)) {
+                rt_gc_collect();
+                return;
+            }
+        }
+        if (observed < 0 && gc_atomic_cas_i64(&g_gc_alloc_counter, &observed, 0)) {
             rt_gc_collect();
         }
     }
@@ -1123,8 +1219,11 @@ void rt_gc_run_all_finalizers(void) {
     }
 
     for (int64_t i = 0; i < g_gc.capacity; i++) {
-        if (gc_slot_is_live(&g_gc.entries[i]))
-            snapshot[snap_count++] = g_gc.entries[i].obj;
+        if (gc_slot_is_live(&g_gc.entries[i])) {
+            snapshot[snap_count] = g_gc.entries[i].obj;
+            rt_obj_retain_maybe(snapshot[snap_count]);
+            snap_count++;
+        }
     }
 
     gc_unlock();
@@ -1141,6 +1240,10 @@ void rt_gc_run_all_finalizers(void) {
             rt_heap_finalizer_t fin = hdr->finalizer;
             hdr->finalizer = NULL; /* prevent double-finalization */
             fin(snapshot[i]);
+        }
+        if (snapshot[i] && rt_heap_is_payload(snapshot[i])) {
+            if (rt_obj_release_check0(snapshot[i]))
+                rt_obj_free(snapshot[i]);
         }
     }
 

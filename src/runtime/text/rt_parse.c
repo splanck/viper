@@ -121,7 +121,8 @@ static const char *string_cstr_without_embedded_nul(rt_string s) {
 }
 
 /// @brief Walk past a well-formed decimal float at @p cursor, returning the byte after it.
-/// @details Recognises the grammar `[+|-]? digits ('.' digits)? ([eE][+|-]? digits)?`.
+/// @details Recognises the grammar `[+|-]?([0-9]+('.'[0-9]*)?|'.'[0-9]+)
+///          ([eE][+|-]?[0-9]+)?`.
 ///          Returns NULL when no recognisable number is found at the cursor (zero
 ///          mantissa digits, or a missing exponent body after `e`/`E`). Otherwise
 ///          returns a pointer one byte past the last consumed character — callers use
@@ -344,9 +345,9 @@ int8_t rt_parse_is_num(rt_string s) {
 /// @brief Parse an integer in any radix from 2 to 36 (covers binary, octal,
 /// decimal, hex, base32, base36). Returns `default_value` for out-of-range
 /// radix or any parse failure. Alphabetic digits beyond 9 use `a-z`/`A-Z`
-/// case-insensitively. Decimal input may use a leading '-' so decimal
-/// Fmt.IntRadix output round-trips; non-decimal input parses the full unsigned
-/// 64-bit bit pattern and casts it back to int64_t.
+/// case-insensitively. Decimal input may use a leading '+' or '-' so decimal
+/// Fmt.IntRadix output round-trips; non-decimal input rejects signs and parses
+/// the full unsigned 64-bit bit pattern before casting it back to int64_t.
 int64_t rt_parse_int_radix(rt_string s, int64_t radix, int64_t default_value) {
     // Validate radix range
     if (radix < 2 || radix > 36)
@@ -369,6 +370,8 @@ int64_t rt_parse_int_radix(rt_string s, int64_t radix, int64_t default_value) {
         negative = 1;
         ++cursor;
     } else if (*cursor == '+') {
+        if (radix != 10)
+            return default_value;
         ++cursor;
     }
 
