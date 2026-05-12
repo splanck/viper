@@ -507,6 +507,7 @@ bool verifyZipPayload(const std::vector<uint8_t> &data,
             std::istringstream lines(text);
             std::string line;
             size_t lineNo = 0;
+            std::set<std::string> manifestPaths;
             while (std::getline(lines, line)) {
                 ++lineNo;
                 while (!line.empty() && (line.back() == '\r' || line.back() == '\n'))
@@ -519,6 +520,11 @@ bool verifyZipPayload(const std::vector<uint8_t> &data,
                     return false;
                 }
                 const std::string path = sanitizePackageRelativePath(line.substr(66), kind);
+                if (!manifestPaths.insert(path).second) {
+                    err << kind << ": SHA-256 manifest lists duplicate entry '" << path
+                        << "'\n";
+                    return false;
+                }
                 const ZipEntry *listed = reader.find(path);
                 if (listed == nullptr) {
                     err << kind << ": SHA-256 manifest references missing entry '" << path
@@ -533,6 +539,18 @@ bool verifyZipPayload(const std::vector<uint8_t> &data,
                 });
                 if (actual != expected) {
                     err << kind << ": SHA-256 mismatch for '" << path << "'\n";
+                    return false;
+                }
+            }
+            for (const auto &entry : reader.entries()) {
+                if (!entry.name.empty() && entry.name.back() == '/')
+                    continue;
+                const std::string path = sanitizePackageRelativePath(entry.name, kind);
+                if (path.empty() || path == "meta/manifest.sha256")
+                    continue;
+                if (manifestPaths.find(path) == manifestPaths.end()) {
+                    err << kind << ": SHA-256 manifest does not cover entry '" << path
+                        << "'\n";
                     return false;
                 }
             }

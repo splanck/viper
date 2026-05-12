@@ -732,6 +732,11 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
                                            "'; expected 'machine' or 'user'");
             }
             config.packageConfig.windowsInstallScope = scalar.value();
+        } else if (directive == "windows-install-dir") {
+            auto scalar = parsePackageScalar(directive, value, lineNum);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            config.packageConfig.windowsInstallDir = scalar.value();
         } else if (directive == "windows-sign") {
             auto ok = markPackageScalar(directive, lineNum);
             if (!ok)
@@ -746,6 +751,11 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
             if (!scalar)
                 return il::support::Expected<ProjectConfig>(scalar.error());
             config.packageConfig.windowsSignPfx = scalar.value();
+        } else if (directive == "windows-sign-thumbprint") {
+            auto scalar = parsePackageScalar(directive, value, lineNum);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            config.packageConfig.windowsSignThumbprint = scalar.value();
         } else if (directive == "windows-timestamp-url") {
             auto scalar = parsePackageScalar(directive, value, lineNum);
             if (!scalar)
@@ -806,17 +816,22 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
             }
 
         } else if (directive == "file-assoc") {
-            // Format: file-assoc <extension> <description> <mime-type>
+            // Format: file-assoc <extension> <description> <mime-type> [windows-open-args]
             auto tokens = tokenizeManifestValue(value, manifestPath, lineNum, directive);
             if (!tokens)
                 return il::support::Expected<ProjectConfig>(tokens.error());
-            if (tokens.value().size() != 3)
+            if (tokens.value().size() != 3 && tokens.value().size() != 4)
                 return makeManifestErr(manifestPath,
                                        lineNum,
-                                       "file-assoc requires <ext> <description> <mime>; got '" +
+                                       "file-assoc requires <ext> <description> <mime> "
+                                       "[windows-open-args]; got '" +
                                            value + "'");
-            config.packageConfig.fileAssociations.push_back(
-                {tokens.value()[0], tokens.value()[1], tokens.value()[2]});
+            config.packageConfig.fileAssociations.push_back({tokens.value()[0],
+                                                             tokens.value()[1],
+                                                             tokens.value()[2],
+                                                             tokens.value().size() == 4
+                                                                 ? tokens.value()[3]
+                                                                 : std::string{}});
         } else if (directive == "shortcut-desktop") {
             auto seen = markPackageScalar(directive, lineNum);
             if (!seen)

@@ -49,6 +49,7 @@
 #include "viper/runtime/RuntimeComponentManifest.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -87,6 +88,21 @@ static uint64_t readLE64(const uint8_t *p) {
            (static_cast<uint64_t>(p[2]) << 16) | (static_cast<uint64_t>(p[3]) << 24) |
            (static_cast<uint64_t>(p[4]) << 32) | (static_cast<uint64_t>(p[5]) << 40) |
            (static_cast<uint64_t>(p[6]) << 48) | (static_cast<uint64_t>(p[7]) << 56);
+}
+
+static void writeBytes(const std::filesystem::path &path, const std::vector<uint8_t> &bytes) {
+    std::ofstream out(path, std::ios::binary);
+    out.write(reinterpret_cast<const char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+}
+
+static void writeTestWindowsPe(const std::filesystem::path &path,
+                               const std::string &arch = "x64",
+                               std::vector<PEImport> imports = {}) {
+    PEBuildParams pe;
+    pe.arch = arch;
+    pe.textSection = {0xC3};
+    pe.imports = std::move(imports);
+    writeBytes(path, buildPE(pe));
 }
 
 static uint32_t readBE32(const uint8_t *p) {
@@ -153,6 +169,18 @@ static bool containsUtf16LE(const std::vector<uint8_t> &data, const std::string 
 static bool containsUtf16LEStringData(const std::vector<uint8_t> &data, const std::string &text) {
     const auto needle = utf8ToUtf16LEBytes(text, false);
     return std::search(data.begin(), data.end(), needle.begin(), needle.end()) != data.end();
+}
+
+static bool containsAscii(const std::vector<uint8_t> &data, const std::string &text) {
+    return std::search(data.begin(), data.end(), text.begin(), text.end()) != data.end();
+}
+
+static std::vector<uint8_t> extractFirstZipOverlay(const std::vector<uint8_t> &pe) {
+    const std::array<uint8_t, 4> localHeader{{'P', 'K', 0x03, 0x04}};
+    auto it = std::search(pe.begin(), pe.end(), localHeader.begin(), localHeader.end());
+    if (it == pe.end())
+        return {};
+    return std::vector<uint8_t>(it, pe.end());
 }
 
 static uint32_t alignUpTest(uint32_t value, uint32_t alignment) {
@@ -1683,6 +1711,44 @@ TEST(Verify, PEZipOverlayPayloadRequiresExpectedEntry) {
     EXPECT_FALSE(verifyPEZipOverlayPayload(pe, {"app/missing.exe"}, missingErr));
 }
 
+TEST(Verify, ZipSha256ManifestAllowsDirectoryEntries) {
+    ZipWriter zip;
+    zip.addDirectory("app/");
+    zip.addFileString("app/app.exe", "Hello");
+    zip.addFileString(
+        "meta/manifest.sha256",
+        "185f8db32271fe25f561a6fc938b2e264306ec304eda518007d1764826381969  app/app.exe\n");
+
+    std::ostringstream err;
+    EXPECT_TRUE(verifyZip(zip.finishToVector(), err));
+}
+
+TEST(Verify, ZipSha256ManifestRejectsUncoveredFiles) {
+    ZipWriter zip;
+    zip.addFileString("covered.txt", "Hello");
+    zip.addFileString("orphan.txt", "not listed");
+    zip.addFileString(
+        "meta/manifest.sha256",
+        "185f8db32271fe25f561a6fc938b2e264306ec304eda518007d1764826381969  covered.txt\n");
+
+    std::ostringstream err;
+    EXPECT_FALSE(verifyZip(zip.finishToVector(), err));
+    EXPECT_CONTAINS(err.str(), "does not cover entry");
+}
+
+TEST(Verify, ZipSha256ManifestRejectsDuplicateEntries) {
+    ZipWriter zip;
+    zip.addFileString("covered.txt", "Hello");
+    zip.addFileString(
+        "meta/manifest.sha256",
+        "185f8db32271fe25f561a6fc938b2e264306ec304eda518007d1764826381969  covered.txt\n"
+        "185f8db32271fe25f561a6fc938b2e264306ec304eda518007d1764826381969  covered.txt\n");
+
+    std::ostringstream err;
+    EXPECT_FALSE(verifyZip(zip.finishToVector(), err));
+    EXPECT_CONTAINS(err.str(), "duplicate entry");
+}
+
 TEST(Verify, PEZipOverlayMissing) {
     PEBuildParams params;
     params.textSection = {0xC3};
@@ -1711,6 +1777,28 @@ TEST(PE, ImportsAndCustomRdataCoexist) {
         }
     }
     EXPECT_TRUE(foundMarker);
+}
+
+TEST(PE, EmbedsVersionInfoResource) {
+    PEBuildParams params;
+    params.textSection = {0xC3};
+    params.versionInfo.enabled = true;
+    params.versionInfo.fileVersion = {1, 2, 3, 4};
+    params.versionInfo.productVersion = {1, 2, 3, 4};
+    params.versionInfo.companyName = "Viper Project";
+    params.versionInfo.fileDescription = "Versioned Test Stub";
+    params.versionInfo.fileVersionText = "1.2.3.4";
+    params.versionInfo.internalName = "versioned.exe";
+    params.versionInfo.originalFilename = "versioned.exe";
+    params.versionInfo.productName = "Versioned Test";
+    params.versionInfo.productVersionText = "1.2.3.4";
+    auto pe = buildPE(params);
+
+    std::ostringstream err;
+    EXPECT_TRUE(verifyPE(pe, err));
+    EXPECT_TRUE(containsUtf16LE(pe, "VS_VERSION_INFO"));
+    EXPECT_TRUE(containsUtf16LE(pe, "FileDescription"));
+    EXPECT_TRUE(containsUtf16LE(pe, "Versioned Test Stub"));
 }
 
 TEST(PackageUtils, SanitizesRelativePaths) {
@@ -1747,6 +1835,18 @@ TEST(PackageUtils, RejectsDuplicateFileAssociationExtensions) {
         {".ZIA", "Zia Source 2", "text/x-zia-2"},
     };
     EXPECT_THROWS(validatePackageFileAssociations(assocs), std::runtime_error);
+}
+
+TEST(PackageUtils, NormalizesWindowsSigningThumbprints) {
+    EXPECT_EQ(normalizeWindowsCertificateThumbprint(
+                  "ABCD EFFE 0011 2233 4455 6677 8899 AABB CCDD EEFF",
+                  "thumbprint"),
+              std::string("abcdeffe00112233445566778899aabbccddeeff"));
+    EXPECT_THROWS(validateWindowsCertificateThumbprint("1234", "thumbprint"),
+                  std::runtime_error);
+    EXPECT_THROWS(validateWindowsCertificateThumbprint(
+                      "abcdeffe00112233445566778899aabbccddeefg", "thumbprint"),
+                  std::runtime_error);
 }
 
 TEST(PackageUtils, ValidatesMacOSSigningSemantics) {
@@ -2205,6 +2305,40 @@ TEST(InstallerStub, ImportsRegistryQueryForOwnedFileAssociationCleanup) {
     EXPECT_TRUE(containsUtf16LE(uninstaller.stubData, "VAPSContentTypeOwner"));
 }
 
+TEST(InstallerStub, UsesModernKnownFoldersAndRecursiveRegistryCleanup) {
+    WindowsPackageLayout layout;
+    layout.displayName = "TestApp";
+    layout.installDirName = "TestApp";
+    layout.executableName = "testapp.exe";
+    layout.identifier = "org.viper.testapp";
+    layout.createDesktopShortcut = true;
+    layout.createStartMenuShortcut = true;
+    layout.fileAssociations.push_back(
+        {".zia", "Zia Source", "text/x-zia", "org.viper.testapp.zia", {}});
+
+    auto installer = buildInstallerStub(layout, "x64");
+    auto uninstaller = buildUninstallerStub(layout, "x64");
+
+    auto hasImport = [](const StubResult &stub, const std::string &dll, const std::string &fn) {
+        return std::any_of(stub.imports.begin(), stub.imports.end(), [&](const PEImport &imp) {
+            return imp.dllName == dll &&
+                   std::find(imp.functions.begin(), imp.functions.end(), fn) !=
+                       imp.functions.end();
+        });
+    };
+
+    EXPECT_TRUE(hasImport(installer, "shell32.dll", "SHGetKnownFolderPath"));
+    EXPECT_TRUE(hasImport(installer, "ole32.dll", "CoTaskMemFree"));
+    EXPECT_TRUE(hasImport(installer, "advapi32.dll", "RegDeleteTreeW"));
+    EXPECT_TRUE(hasImport(installer, "kernel32.dll", "GetDateFormatW"));
+    EXPECT_TRUE(hasImport(uninstaller, "shell32.dll", "SHGetKnownFolderPath"));
+    EXPECT_TRUE(hasImport(uninstaller, "ole32.dll", "CoTaskMemFree"));
+    EXPECT_TRUE(hasImport(uninstaller, "advapi32.dll", "RegDeleteTreeW"));
+    EXPECT_FALSE(hasImport(installer, "shell32.dll", "SHGetFolderPathW"));
+    EXPECT_FALSE(hasImport(uninstaller, "advapi32.dll", "RegDeleteKeyW"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, "yyyyMMdd"));
+}
+
 TEST(InstallerStub, ImportsPathAndDirectoryFailureChecks) {
     WindowsPackageLayout layout;
     layout.displayName = "TestApp";
@@ -2220,10 +2354,12 @@ TEST(InstallerStub, ImportsPathAndDirectoryFailureChecks) {
         if (imp.dllName != "kernel32.dll")
             continue;
         foundGetLastError =
+            foundGetLastError ||
             std::find(imp.functions.begin(), imp.functions.end(), "GetLastError") !=
-            imp.functions.end();
-        foundLstrlen = std::find(imp.functions.begin(), imp.functions.end(), "lstrlenW") !=
-                       imp.functions.end();
+                imp.functions.end();
+        foundLstrlen = foundLstrlen ||
+                       std::find(imp.functions.begin(), imp.functions.end(), "lstrlenW") !=
+                           imp.functions.end();
     }
     EXPECT_TRUE(foundGetLastError);
     EXPECT_TRUE(foundLstrlen);
@@ -2256,6 +2392,7 @@ TEST(InstallerStub, SupportsQuietAutomationFlags) {
     EXPECT_TRUE(containsUtf16LE(uninstaller.stubData, "/quiet"));
     EXPECT_TRUE(containsUtf16LE(uninstaller.stubData, "/silent"));
     EXPECT_TRUE(containsUtf16LE(uninstaller.stubData, "/norestart"));
+    EXPECT_TRUE(containsUtf16LE(uninstaller.stubData, "Choose OK to continue or Cancel to exit."));
 }
 
 TEST(InstallerStubGen, RejectsOutOfRangeIATSlotFixup) {
@@ -2342,10 +2479,7 @@ TEST(WindowsPackageBuilder, BuildsInstallerWithStoredZipOverlay) {
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot / "assets" / "themes");
 
-    {
-        std::ofstream exe(tmpRoot / "app.exe", std::ios::binary);
-        exe.write("MZstub", 6);
-    }
+    writeTestWindowsPe(tmpRoot / "app.exe");
     {
         std::ofstream asset(tmpRoot / "assets" / "themes" / "dark.json", std::ios::binary);
         asset << "{\"theme\":\"dark\"}";
@@ -2385,10 +2519,13 @@ TEST(WindowsPackageBuilder, BuildsInstallerWithStoredZipOverlay) {
 
     auto pe = readFile(outPath.string());
     std::ostringstream err;
-    EXPECT_TRUE(verifyPEZipOverlayPayload(
+    const bool overlayOk = verifyPEZipOverlayPayload(
         pe,
         {"app/testapp.exe", "app/uninstall.exe", "app/testapp.ico", "meta/manifest.sha256"},
-        err));
+        err);
+    if (!overlayOk)
+        std::cerr << err.str();
+    EXPECT_TRUE(overlayOk);
     EXPECT_TRUE(containsUtf16LE(pe, "%ProgramFiles%\\Test App\\testapp.exe"));
     EXPECT_TRUE(containsUtf16LEStringData(pe, "%ProgramFiles%\\Test App\\testapp.ico"));
     EXPECT_TRUE(containsUtf16LE(pe, "Software\\Classes\\.zia"));
@@ -2411,15 +2548,7 @@ TEST(WindowsPackageBuilder, PerUserInstallerUsesLocalAppDataAndBundlesAdjacentDl
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot);
 
-    PEBuildParams appPe;
-    appPe.textSection = {0xC3};
-    appPe.imports = {{"helper.dll", {"helper_entry"}}};
-    const auto appBytes = buildPE(appPe);
-    {
-        std::ofstream exe(tmpRoot / "app.exe", std::ios::binary);
-        exe.write(reinterpret_cast<const char *>(appBytes.data()),
-                  static_cast<std::streamsize>(appBytes.size()));
-    }
+    writeTestWindowsPe(tmpRoot / "app.exe", "x64", {{"helper.dll", {"helper_entry"}}});
     {
         std::ofstream dll(tmpRoot / "helper.dll", std::ios::binary);
         dll << "helper";
@@ -2448,13 +2577,108 @@ TEST(WindowsPackageBuilder, PerUserInstallerUsesLocalAppDataAndBundlesAdjacentDl
 
     auto pe = readFile(outPath.string());
     std::ostringstream err;
-    EXPECT_TRUE(verifyPEZipOverlayPayload(
-        pe, {"app/userapp.exe", "app/helper.dll", "app/uninstall.exe", "meta/manifest.sha256"}, err));
+    const bool overlayOk = verifyPEZipOverlayPayload(
+        pe, {"app/userapp.exe", "app/helper.dll", "app/uninstall.exe", "meta/manifest.sha256"}, err);
+    if (!overlayOk)
+        std::cerr << err.str();
+    EXPECT_TRUE(overlayOk);
     EXPECT_TRUE(containsUtf16LE(pe, "%LocalAppData%\\User App\\userapp.exe"));
     EXPECT_TRUE(containsUtf16LE(pe, "Environment"));
     EXPECT_FALSE(containsUtf16LE(pe,
                                  "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment"));
     EXPECT_TRUE(containsUtf16LE(pe, "https://example.invalid/userapp"));
+
+    fs::remove_all(tmpRoot);
+}
+
+TEST(WindowsPackageBuilder, UsesCustomInstallDirOpenArgsManifestAndVersionInfo) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot =
+        fs::temp_directory_path() / "viper_packaging_windows_custom_dir_test";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot);
+
+    writeTestWindowsPe(tmpRoot / "app.exe");
+
+    PackageConfig pkg;
+    pkg.displayName = "Display App";
+    pkg.identifier = "org.viper.displayapp";
+    pkg.author = "Viper";
+    pkg.windowsInstallDir = "DisplayAppCustom";
+    pkg.minOsWindows = "10.0";
+    pkg.fileAssociations.push_back(
+        {".vap", "Viper App Project", "text/x-viper-app", "--open-project"});
+
+    WindowsBuildParams params;
+    params.projectName = "displayapp";
+    params.version = "1.2.3-beta";
+    params.executablePath = (tmpRoot / "app.exe").string();
+    params.projectRoot = tmpRoot.string();
+    params.pkgConfig = pkg;
+    params.outputPath = (tmpRoot / "display_setup.exe").string();
+    params.archStr = "x64";
+
+    buildWindowsPackage(params);
+
+    auto pe = readFile(params.outputPath);
+    std::ostringstream err;
+    EXPECT_TRUE(verifyPEZipOverlayPayload(
+        pe, {"app/displayapp.exe", "app/uninstall.exe", "meta/manifest.sha256"}, err));
+    EXPECT_TRUE(containsUtf16LE(pe, "%ProgramFiles%\\DisplayAppCustom\\displayapp.exe"));
+    EXPECT_FALSE(containsUtf16LE(pe, "%ProgramFiles%\\Display App\\displayapp.exe"));
+    EXPECT_TRUE(containsUtf16LE(pe, " --open-project"));
+    EXPECT_TRUE(containsUtf16LE(pe, " \"%1\""));
+    EXPECT_TRUE(containsUtf16LE(pe, "VS_VERSION_INFO"));
+    EXPECT_TRUE(containsUtf16LE(pe, "Display App Setup"));
+    EXPECT_TRUE(containsUtf16LE(pe, "1.2.3-beta"));
+    EXPECT_TRUE(containsAscii(pe, "{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"));
+
+    fs::remove_all(tmpRoot);
+}
+
+TEST(WindowsPackageBuilder, BundlesRecursiveDllsAndSkipsSystemNamedLocals) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot =
+        fs::temp_directory_path() / "viper_packaging_windows_recursive_dll_test";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot);
+
+    writeTestWindowsPe(
+        tmpRoot / "app.exe", "x64", {{"helper.dll", {"helper_entry"}}, {"kernel32.dll", {"Sleep"}}});
+    writeTestWindowsPe(tmpRoot / "helper.dll", "x64", {{"plugin.dll", {"plugin_entry"}}});
+    writeTestWindowsPe(tmpRoot / "plugin.dll");
+    writeBytes(tmpRoot / "kernel32.dll", {'n', 'o', 't', ' ', 'b', 'u', 'n', 'd', 'l', 'e', 'd'});
+
+    PackageConfig pkg;
+    pkg.displayName = "Recursive DLL App";
+
+    WindowsBuildParams params;
+    params.projectName = "recursivedll";
+    params.version = "1.0.0";
+    params.executablePath = (tmpRoot / "app.exe").string();
+    params.projectRoot = tmpRoot.string();
+    params.pkgConfig = pkg;
+    params.outputPath = (tmpRoot / "recursive_setup.exe").string();
+    params.archStr = "x64";
+
+    buildWindowsPackage(params);
+
+    const auto pe = readFile(params.outputPath);
+    std::ostringstream err;
+    EXPECT_TRUE(verifyPEZipOverlayPayload(
+        pe,
+        {"app/recursivedll.exe",
+         "app/helper.dll",
+         "app/plugin.dll",
+         "app/uninstall.exe",
+         "meta/manifest.sha256"},
+        err));
+    const auto overlay = extractFirstZipOverlay(pe);
+    ASSERT_FALSE(overlay.empty());
+    ZipReader reader(overlay.data(), overlay.size());
+    EXPECT_TRUE(reader.find("app/helper.dll") != nullptr);
+    EXPECT_TRUE(reader.find("app/plugin.dll") != nullptr);
+    EXPECT_TRUE(reader.find("app/kernel32.dll") == nullptr);
 
     fs::remove_all(tmpRoot);
 }
@@ -2491,16 +2715,60 @@ TEST(WindowsPackageBuilder, RejectsMissingAdjacentDllDependency) {
     fs::remove_all(tmpRoot);
 }
 
+TEST(WindowsPackageBuilder, RejectsNonPePayload) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_windows_non_pe_test";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot);
+    writeBytes(tmpRoot / "app.exe", std::vector<uint8_t>{'M', 'Z', 's', 't', 'u', 'b'});
+
+    PackageConfig pkg;
+    pkg.displayName = "Valid Name";
+
+    WindowsBuildParams params;
+    params.projectName = "nonpe";
+    params.version = "1.0.0";
+    params.executablePath = (tmpRoot / "app.exe").string();
+    params.projectRoot = tmpRoot.string();
+    params.pkgConfig = pkg;
+    params.outputPath = (tmpRoot / "nonpe_setup.exe").string();
+    params.archStr = "x64";
+
+    EXPECT_THROWS(buildWindowsPackage(params), std::runtime_error);
+    fs::remove_all(tmpRoot);
+}
+
+TEST(WindowsPackageBuilder, RejectsPayloadArchitectureMismatch) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot =
+        fs::temp_directory_path() / "viper_packaging_windows_arch_mismatch_test";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot);
+    writeTestWindowsPe(tmpRoot / "app.exe", "arm64");
+
+    PackageConfig pkg;
+    pkg.displayName = "Arch Mismatch";
+
+    WindowsBuildParams params;
+    params.projectName = "archmismatch";
+    params.version = "1.0.0";
+    params.executablePath = (tmpRoot / "app.exe").string();
+    params.projectRoot = tmpRoot.string();
+    params.pkgConfig = pkg;
+    params.outputPath = (tmpRoot / "arch_setup.exe").string();
+    params.archStr = "x64";
+
+    EXPECT_THROWS(buildWindowsPackage(params), std::runtime_error);
+    fs::remove_all(tmpRoot);
+}
+
 TEST(WindowsPackageBuilder, BuildsArm64PayloadPackageWithX64Bootstrap) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot =
         fs::temp_directory_path() / "viper_packaging_windows_builder_arm64_test";
     fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot);
-    {
-        std::ofstream exe(tmpRoot / "app.exe", std::ios::binary);
-        exe.write("MZstub", 6);
-    }
+    writeTestWindowsPe(tmpRoot / "app.exe", "arm64");
 
     PackageConfig pkg;
     pkg.displayName = "Test App";

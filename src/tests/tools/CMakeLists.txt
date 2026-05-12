@@ -72,6 +72,17 @@ function(viper_add_tools_tests)
     endif ()
 
     if (WIN32)
+        viper_add_ctest(windows_installer_user_smoke
+                ${CMAKE_COMMAND}
+                -DVIPER_BIN=$<TARGET_FILE:viper>
+                -DTEST_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/windows_installer_user_smoke
+                -P ${_VIPER_TOOLS_DIR}/WindowsUserInstallerSmoke.cmake)
+        set_tests_properties(windows_installer_user_smoke PROPERTIES
+                RUN_SERIAL TRUE
+                TIMEOUT 300
+                SKIP_REGULAR_EXPRESSION "Skipping .*Windows user installer smoke")
+        viper_add_test_labels(windows_installer_user_smoke installer tools requires_windows slow)
+
         viper_add_ctest(windows_installer_elevated_smoke
                 ${CMAKE_COMMAND}
                 -DVIPER_BIN=$<TARGET_FILE:viper>

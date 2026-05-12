@@ -650,7 +650,9 @@ if(NOT TARGET uninstall)
     COMMENT "Uninstall installed files (from install_manifest.txt)")
 endif()
 
-# ---- Packaging (CPack) ----
+# ---- Legacy developer archives (CPack) ----
+# Release installers are produced by `viper package` and `viper install-package`.
+# Keep CPack available only as a generic developer archive fallback.
 set(CPACK_PACKAGE_NAME "Viper")
 set(CPACK_PACKAGE_VENDOR "Viper Project")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Viper IL compiler toolchain and VM")
@@ -664,7 +666,7 @@ if(APPLE)
   set(CPACK_GENERATOR "productbuild")
   set(CPACK_PACKAGE_FILE_NAME "Viper-${PROJECT_VERSION}-macos")
 elseif(WIN32)
-  # Windows: ZIP archive (always works) and NSIS installer if available
+  # Windows: ZIP archive fallback, plus NSIS if a developer has it installed.
   set(CPACK_GENERATOR "ZIP")
   set(CPACK_PACKAGE_FILE_NAME "Viper-${PROJECT_VERSION}-win64")
   # Optional: Enable NSIS installer if available

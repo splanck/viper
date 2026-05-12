@@ -314,7 +314,10 @@ version 1.0.0
 lang zia
 entry main.zia
 windows-install-scope user
+windows-install-dir WinScopeRoot
 windows-sign off
+windows-sign-thumbprint ABCDEFFE00112233445566778899AABBCCDDEEFF
+file-assoc .vap \"VAPS Project\" text/x-vaps --open-project
 ")
 
 execute_process(
@@ -328,6 +331,15 @@ endif ()
 if (NOT _windows_scope_err MATCHES "Windows install scope: user")
     message(FATAL_ERROR "Windows dry-run did not report user install scope\nstdout:\n${_windows_scope_out}\nstderr:\n${_windows_scope_err}")
 endif ()
+if (NOT _windows_scope_err MATCHES "Windows install directory: WinScopeRoot")
+    message(FATAL_ERROR "Windows dry-run did not report custom install directory\nstdout:\n${_windows_scope_out}\nstderr:\n${_windows_scope_err}")
+endif ()
+if (NOT _windows_scope_err MATCHES "Windows signing thumbprint: ABCDEFFE00112233445566778899AABBCCDDEEFF")
+    message(FATAL_ERROR "Windows dry-run did not report signing thumbprint\nstdout:\n${_windows_scope_out}\nstderr:\n${_windows_scope_err}")
+endif ()
+if (NOT _windows_scope_err MATCHES "Windows open args: --open-project")
+    message(FATAL_ERROR "Windows dry-run did not report file-association open arguments\nstdout:\n${_windows_scope_out}\nstderr:\n${_windows_scope_err}")
+endif ()
 
 execute_process(
         COMMAND "${VIPER_BIN}" package "${_windows_scope_project}" --target windows --dry-run --windows-install-scope machine
@@ -339,6 +351,18 @@ if (NOT _windows_scope_cli_rv EQUAL 0)
 endif ()
 if (NOT _windows_scope_cli_err MATCHES "Windows install scope: machine")
     message(FATAL_ERROR "Windows CLI scope override was not reported\nstdout:\n${_windows_scope_cli_out}\nstderr:\n${_windows_scope_cli_err}")
+endif ()
+
+execute_process(
+        COMMAND "${VIPER_BIN}" package "${_windows_scope_project}" --target windows --dry-run --windows-sign-thumbprint 1234
+        RESULT_VARIABLE _bad_windows_thumb_rv
+        OUTPUT_VARIABLE _bad_windows_thumb_out
+        ERROR_VARIABLE _bad_windows_thumb_err)
+if (_bad_windows_thumb_rv EQUAL 0)
+    message(FATAL_ERROR "dry-run with invalid Windows signing thumbprint should fail")
+endif ()
+if (NOT _bad_windows_thumb_err MATCHES "SHA-1 thumbprint")
+    message(FATAL_ERROR "bad Windows thumbprint diagnostic did not mention SHA-1\nstdout:\n${_bad_windows_thumb_out}\nstderr:\n${_bad_windows_thumb_err}")
 endif ()
 
 set(_bad_windows_scope_project "${TEST_WORK_DIR}/bad-windows-scope-project")
@@ -396,4 +420,16 @@ if (_verify_unknown_rv EQUAL 0)
 endif ()
 if (NOT _verify_unknown_err MATCHES "cannot infer")
     message(FATAL_ERROR "unknown verify-only extension diagnostic did not mention inference\nstdout:\n${_verify_unknown_out}\nstderr:\n${_verify_unknown_err}")
+endif ()
+
+execute_process(
+        COMMAND "${VIPER_BIN}" install-package --verify-only "${TEST_WORK_DIR}/not-an-installer.zip" --windows-sign-thumbprint 1234
+        RESULT_VARIABLE _install_bad_thumb_rv
+        OUTPUT_VARIABLE _install_bad_thumb_out
+        ERROR_VARIABLE _install_bad_thumb_err)
+if (_install_bad_thumb_rv EQUAL 0)
+    message(FATAL_ERROR "install-package with invalid Windows signing thumbprint should fail")
+endif ()
+if (NOT _install_bad_thumb_err MATCHES "SHA-1 thumbprint")
+    message(FATAL_ERROR "install-package bad thumbprint diagnostic did not mention SHA-1\nstdout:\n${_install_bad_thumb_out}\nstderr:\n${_install_bad_thumb_err}")
 endif ()

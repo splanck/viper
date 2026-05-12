@@ -27,7 +27,7 @@ endif ()
 
 file(REMOVE_RECURSE "${TEST_WORK_DIR}")
 file(MAKE_DIRECTORY "${TEST_WORK_DIR}/project")
-file(WRITE "${TEST_WORK_DIR}/project/main.zia" "func start() {}\n")
+file(WRITE "${TEST_WORK_DIR}/project/main.zia" "module VAPSSmoke;\n\nfunc start() {}\n")
 file(WRITE "${TEST_WORK_DIR}/project/viper.project"
 "project vaps_smoke
 version 1.0.0

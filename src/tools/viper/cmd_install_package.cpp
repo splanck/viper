@@ -19,6 +19,7 @@
 #include <chrono>
 #include <cctype>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -50,6 +51,12 @@ struct InstallPackageArgs {
     fs::path outputPath;
     fs::path verifyOnlyPath;
     std::string macosPackageVersion;
+    bool windowsSign{false};
+    std::string windowsSignPfx;
+    std::string windowsSignThumbprint;
+    std::string windowsTimestampUrl;
+    std::string windowsSigntoolPath;
+    bool windowsSignNoVerify{false};
     bool noVerify{false};
     bool verbose{false};
     bool keepStageDir{false};
@@ -75,6 +82,12 @@ void installPackageUsage() {
         << "  --config <cfg>        Build configuration for cmake --install from a build tree\n"
         << "  --verify-only <path>  Verify an existing artifact and exit\n"
         << "  --macos-pkg-version <v> Dotted numeric pkgbuild version override\n"
+        << "  --windows-sign        Authenticode-sign generated Windows installer\n"
+        << "  --windows-sign-pfx <path> PFX certificate for Windows signing\n"
+        << "  --windows-sign-thumbprint <sha1> Certificate store SHA-1 thumbprint\n"
+        << "  --windows-timestamp-url <url> RFC3161 timestamp URL for Windows signing\n"
+        << "  --windows-signtool <path> signtool.exe path override\n"
+        << "  --windows-sign-no-verify Skip signtool verify after signing\n"
         << "  --stage-only          Validate/gather the staged install tree and stop\n"
         << "  --keep-stage-dir      Preserve auto-generated stage directories\n"
         << "  -o <path>             Output file or directory\n"
@@ -106,6 +119,92 @@ std::string rpmArchFor(const std::string &arch) {
 bool rpmbuildAvailable() {
     const RunResult rr = run_process({"rpmbuild", "--version"});
     return rr.exit_code == 0;
+}
+
+std::string getenvOrEmpty(const char *name) {
+    const char *value = std::getenv(name);
+    return value == nullptr ? std::string{} : std::string(value);
+}
+
+bool windowsSigningRequested(const InstallPackageArgs &args) {
+    return args.windowsSign || !args.windowsSignPfx.empty() ||
+           !args.windowsSignThumbprint.empty();
+}
+
+bool signWindowsInstallerArtifact(const InstallPackageArgs &args,
+                                  const fs::path &artifactPath,
+                                  std::ostream &err) {
+    if (!windowsSigningRequested(args))
+        return true;
+
+    std::string pfxPath = args.windowsSignPfx.empty() ? getenvOrEmpty("VIPER_WINDOWS_SIGN_PFX")
+                                                      : args.windowsSignPfx;
+    std::string thumbprint = args.windowsSignThumbprint.empty()
+                                 ? getenvOrEmpty("VIPER_WINDOWS_SIGN_THUMBPRINT")
+                                 : args.windowsSignThumbprint;
+    try {
+        thumbprint =
+            viper::pkg::normalizeWindowsCertificateThumbprint(thumbprint,
+                                                              "Windows signing thumbprint");
+    } catch (const std::exception &ex) {
+        err << "error: " << ex.what() << "\n";
+        return false;
+    }
+    if (pfxPath.empty() && thumbprint.empty()) {
+        err << "error: Windows signing requested but no PFX or certificate thumbprint was "
+               "provided\n";
+        return false;
+    }
+
+    std::vector<std::string> signCmd;
+    std::string signtool = args.windowsSigntoolPath.empty()
+                               ? getenvOrEmpty("VIPER_WINDOWS_SIGNTOOL")
+                               : args.windowsSigntoolPath;
+    if (signtool.empty())
+        signtool = "signtool.exe";
+    std::string timestampUrl = args.windowsTimestampUrl.empty()
+                                   ? getenvOrEmpty("VIPER_WINDOWS_TIMESTAMP_URL")
+                                   : args.windowsTimestampUrl;
+    if (timestampUrl.empty())
+        timestampUrl = "http://timestamp.digicert.com";
+
+    signCmd = {signtool, "sign", "/fd", "SHA256", "/tr", timestampUrl, "/td", "SHA256"};
+    if (!thumbprint.empty()) {
+        signCmd.push_back("/sha1");
+        signCmd.push_back(thumbprint);
+    } else {
+        if (!fs::is_regular_file(pfxPath)) {
+            err << "error: Windows signing PFX not found: " << pfxPath << "\n";
+            return false;
+        }
+        const std::string password = getenvOrEmpty("VIPER_WINDOWS_SIGN_PASSWORD");
+        if (password.empty()) {
+            err << "error: Windows PFX signing requires VIPER_WINDOWS_SIGN_PASSWORD\n";
+            return false;
+        }
+        signCmd.push_back("/f");
+        signCmd.push_back(pfxPath);
+        signCmd.push_back("/p");
+        signCmd.push_back(password);
+    }
+    signCmd.push_back(artifactPath.string());
+    const RunResult signResult = run_process(signCmd);
+    if (signResult.exit_code != 0) {
+        err << "error: signtool sign failed with exit code " << signResult.exit_code << "\n"
+            << signResult.out << signResult.err;
+        return false;
+    }
+    if (!args.windowsSignNoVerify) {
+        const RunResult verifyResult =
+            run_process({signtool, "verify", "/pa", "/all", artifactPath.string()});
+        if (verifyResult.exit_code != 0) {
+            err << "error: signtool verify failed with exit code " << verifyResult.exit_code
+                << "\n"
+                << verifyResult.out << verifyResult.err;
+            return false;
+        }
+    }
+    return true;
 }
 
 uint16_t readBE16(const std::vector<uint8_t> &data, size_t off) {
@@ -309,6 +408,18 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
                 std::cerr << "error: " << ex.what() << "\n";
                 return false;
             }
+        } else if (arg == "--windows-sign") {
+            args.windowsSign = true;
+        } else if (arg == "--windows-sign-pfx" && i + 1 < argc) {
+            args.windowsSignPfx = argv[++i];
+        } else if (arg == "--windows-sign-thumbprint" && i + 1 < argc) {
+            args.windowsSignThumbprint = argv[++i];
+        } else if (arg == "--windows-timestamp-url" && i + 1 < argc) {
+            args.windowsTimestampUrl = argv[++i];
+        } else if (arg == "--windows-signtool" && i + 1 < argc) {
+            args.windowsSigntoolPath = argv[++i];
+        } else if (arg == "--windows-sign-no-verify") {
+            args.windowsSignNoVerify = true;
         } else if (arg == "-o" && i + 1 < argc) {
             args.outputPath = argv[++i];
         } else if (arg == "--no-verify") {
@@ -334,6 +445,16 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
         ++modeCount;
     if (modeCount != 1) {
         std::cerr << "error: require exactly one of --stage-dir, --build-dir, or --verify-only\n";
+        return false;
+    }
+    try {
+        viper::pkg::validatePackageUrl(args.windowsTimestampUrl, "Windows timestamp URL");
+        viper::pkg::validateSingleLineField(args.windowsSigntoolPath,
+                                            "Windows signtool path");
+        viper::pkg::validateWindowsCertificateThumbprint(
+            args.windowsSignThumbprint, "Windows signing thumbprint");
+    } catch (const std::exception &ex) {
+        std::cerr << "error: " << ex.what() << "\n";
         return false;
     }
     return true;
@@ -887,6 +1008,13 @@ int cmdInstallPackage(int argc, char **argv) {
             }
             case InstallPackageTarget::All:
                 break;
+        }
+
+        if (target == InstallPackageTarget::Windows &&
+            !signWindowsInstallerArtifact(args, artifactPath, std::cerr)) {
+            std::error_code removeEc;
+            fs::remove(artifactPath, removeEc);
+            return 1;
         }
 
         if (!args.noVerify) {

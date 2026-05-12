@@ -257,6 +257,49 @@ struct PeSectionInfo {
     uint32_t rawSize{0};
 };
 
+struct PeExecutableInfo {
+    uint16_t machine{0};
+    bool pe32Plus{false};
+};
+
+std::optional<PeExecutableInfo> inspectPeExecutable(const std::vector<uint8_t> &data) {
+    if (!hasBytes(data, 0, 64) || data[0] != 'M' || data[1] != 'Z')
+        return std::nullopt;
+    const size_t peOff = rd32(data, 60);
+    if (!hasBytes(data, peOff, 24) || data[peOff] != 'P' || data[peOff + 1] != 'E' ||
+        data[peOff + 2] != 0 || data[peOff + 3] != 0)
+        return std::nullopt;
+    const size_t coffOff = peOff + 4;
+    const uint16_t optSize = rd16(data, coffOff + 16);
+    const size_t optOff = coffOff + 20;
+    if (!hasBytes(data, optOff, optSize) || optSize < 2)
+        return std::nullopt;
+    return PeExecutableInfo{rd16(data, coffOff), rd16(data, optOff) == 0x020B};
+}
+
+uint16_t windowsMachineForArch(const std::string &arch) {
+    if (arch.empty() || arch == "x64")
+        return 0x8664;
+    if (arch == "arm64")
+        return 0xAA64;
+    throw std::runtime_error("unsupported Windows package architecture '" + arch + "'");
+}
+
+void validateWindowsPayloadExecutable(const fs::path &path, const std::string &arch) {
+    const auto data = readFile(path.string());
+    const auto info = inspectPeExecutable(data);
+    if (!info || !info->pe32Plus)
+        throw std::runtime_error("Windows package executable must be a PE32+ executable: " +
+                                 path.string());
+    const uint16_t expected = windowsMachineForArch(arch);
+    if (info->machine != expected) {
+        std::ostringstream os;
+        os << "Windows package executable architecture does not match selected architecture '"
+           << (arch.empty() ? "x64" : arch) << "': " << path.string();
+        throw std::runtime_error(os.str());
+    }
+}
+
 std::optional<size_t> peRvaToFileOffset(const std::vector<PeSectionInfo> &sections,
                                         uint32_t rva) {
     for (const auto &sec : sections) {
@@ -343,7 +386,8 @@ bool isKnownWindowsRedistributableDll(const std::string &dll) {
         "secur32.dll",     "setupapi.dll",     "shell32.dll",    "shlwapi.dll",
         "user32.dll",      "uxtheme.dll",      "version.dll",    "winmm.dll",
         "winspool.drv",    "ws2_32.dll",       "wtsapi32.dll",   "ucrtbase.dll",
-        "vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll"};
+        "ucrtbased.dll",   "vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll",
+        "vcruntime140d.dll", "vcruntime140_1d.dll", "msvcp140d.dll"};
     if (exact.find(dll) != exact.end())
         return true;
     return dll.rfind("api-ms-win-", 0) == 0 || dll.rfind("ext-ms-win-", 0) == 0 ||
@@ -353,13 +397,15 @@ bool isKnownWindowsRedistributableDll(const std::string &dll) {
 std::optional<fs::path> findAdjacentFileCaseInsensitive(const fs::path &dir,
                                                         const std::string &filename) {
     const fs::path direct = dir / filename;
-    if (fs::is_regular_file(direct))
+    std::error_code directEc;
+    if (fs::is_regular_file(direct, directEc))
         return direct;
     std::error_code ec;
     for (const auto &entry : fs::directory_iterator(dir, ec)) {
         if (ec)
             break;
-        if (!fs::is_regular_file(entry.path()))
+        std::error_code statusEc;
+        if (!fs::is_regular_file(entry.path(), statusEc))
             continue;
         if (lowerAscii(entry.path().filename().generic_string()) == filename)
             return entry.path();
@@ -369,18 +415,23 @@ std::optional<fs::path> findAdjacentFileCaseInsensitive(const fs::path &dir,
 
 std::vector<fs::path> discoverAdjacentDllDependencies(const fs::path &exePath) {
     std::vector<fs::path> deps;
-    const auto imports = importedDllNamesFromPe(readFile(exePath.string()));
     const fs::path dir = exePath.parent_path();
     std::set<std::string> seen;
-    for (const auto &dll : imports) {
-        if (!seen.insert(dll).second)
-            continue;
-        const auto local = findAdjacentFileCaseInsensitive(dir, dll);
-        if (local) {
-            deps.push_back(*local);
-            continue;
-        }
-        if (!isKnownWindowsRedistributableDll(dll)) {
+    std::vector<fs::path> queue{exePath};
+    for (size_t index = 0; index < queue.size(); ++index) {
+        const fs::path current = queue[index];
+        const auto imports = importedDllNamesFromPe(readFile(current.string()));
+        for (const auto &dll : imports) {
+            if (!seen.insert(dll).second)
+                continue;
+            if (isKnownWindowsRedistributableDll(dll))
+                continue;
+            const auto local = findAdjacentFileCaseInsensitive(dir, dll);
+            if (local) {
+                deps.push_back(*local);
+                queue.push_back(*local);
+                continue;
+            }
             throw std::runtime_error("Windows package executable imports non-system DLL '" + dll +
                                      "' but no adjacent DLL was found next to " +
                                      exePath.string());
@@ -444,7 +495,52 @@ uint32_t estimatedInstalledSizeKb(const WindowsPackageLayout &layout) {
 
 std::string windowsManifestForLayout(const WindowsPackageLayout &layout,
                                      const std::string &minOsWindows) {
-    return layout.perUserInstall ? generateAsInvokerManifest() : generateUacManifest(minOsWindows);
+    return layout.perUserInstall ? generateAsInvokerManifest(minOsWindows)
+                                 : generateUacManifest(minOsWindows);
+}
+
+std::array<uint16_t, 4> windowsVersionPartsForResource(const std::string &version) {
+    std::array<uint16_t, 4> parts{0, 0, 0, 0};
+    size_t partIndex = 0;
+    size_t pos = 0;
+    while (pos < version.size() && partIndex < parts.size()) {
+        if (!std::isdigit(static_cast<unsigned char>(version[pos])))
+            break;
+        uint32_t value = 0;
+        while (pos < version.size() &&
+               std::isdigit(static_cast<unsigned char>(version[pos]))) {
+            value = value * 10u + static_cast<uint32_t>(version[pos] - '0');
+            if (value > 65535u)
+                throw std::runtime_error("Windows VERSIONINFO numeric version component "
+                                         "exceeds 65535: " +
+                                         version);
+            ++pos;
+        }
+        parts[partIndex++] = static_cast<uint16_t>(value);
+        if (pos >= version.size() || version[pos] != '.')
+            break;
+        ++pos;
+    }
+    return parts;
+}
+
+PEVersionInfo windowsVersionInfoForLayout(const WindowsPackageLayout &layout,
+                                          const std::string &filename,
+                                          const std::string &descriptionSuffix) {
+    const std::string version = layout.version.empty() ? "0.0.0" : layout.version;
+    PEVersionInfo info;
+    info.enabled = true;
+    info.fileVersion = windowsVersionPartsForResource(version);
+    info.productVersion = info.fileVersion;
+    info.companyName = layout.publisher;
+    info.fileDescription =
+        descriptionSuffix.empty() ? layout.displayName : layout.displayName + " " + descriptionSuffix;
+    info.fileVersionText = version;
+    info.internalName = filename;
+    info.originalFilename = filename;
+    info.productName = layout.displayName;
+    info.productVersionText = version;
+    return info;
 }
 
 /// @brief Build the Windows ProgID for a toolchain file association.
@@ -551,11 +647,12 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     const auto &pkg = params.pkgConfig;
     const std::string displayName = pkg.displayName.empty() ? params.projectName : pkg.displayName;
     const std::string exec = normalizeExecName(params.projectName);
-    const std::string installDir = displayName;
+    const std::string installDir = pkg.windowsInstallDir.empty() ? displayName : pkg.windowsInstallDir;
     validateWindowsFileName(displayName, "Windows display name");
+    validateWindowsFileName(installDir, "Windows install directory");
     validateWindowsProgIdBase(pkg.identifier, "Windows package identifier");
-    validateDottedNumericVersion(params.version.empty() ? "0.0.0" : params.version,
-                                 "Windows package version");
+    validateSingleLineField(params.version.empty() ? "0.0.0" : params.version,
+                            "Windows package version");
     if (!pkg.minOsWindows.empty())
         validateDottedNumericVersion(pkg.minOsWindows, "minimum Windows version");
     validateSingleLineField(pkg.author, "Windows package author");
@@ -565,6 +662,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     if (!fs::is_regular_file(params.executablePath))
         throw std::runtime_error("Windows package executable is not a regular file: " +
                                  params.executablePath);
+    validateWindowsPayloadExecutable(params.executablePath, params.archStr);
 
     WindowsPackageLayout layout;
     layout.displayName = displayName;
@@ -578,13 +676,14 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     layout.installDate = currentInstallDate();
     layout.createDesktopShortcut = pkg.shortcutDesktop;
     layout.createStartMenuShortcut = pkg.shortcutMenu;
+    layout.cleanInstallRootBeforeInstall = true;
     for (const auto &assoc : pkg.fileAssociations) {
         layout.fileAssociations.push_back(
             {assoc.extension,
              assoc.description,
              assoc.mimeType,
              windowsProgIdFor(pkg, exec, assoc),
-             {}});
+             assoc.openCommandArguments});
     }
 
     std::set<std::string> installDirSet;
@@ -771,6 +870,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     uninstPe.imports = uninstStub.imports;
     uninstPe.manifest = windowsManifestForLayout(layout, pkg.minOsWindows);
     uninstPe.iconData = icoData;
+    uninstPe.versionInfo = windowsVersionInfoForLayout(layout, "uninstall.exe", "Uninstaller");
     configureInstallerStack(uninstPe);
     auto uninstBytes = buildPE(uninstPe);
     addOverlayFile(zip,
@@ -802,6 +902,8 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     provisionalPe.manifest = windowsManifestForLayout(layout, pkg.minOsWindows);
     provisionalPe.iconData = icoData;
     provisionalPe.overlay = zipPayload;
+    provisionalPe.versionInfo = windowsVersionInfoForLayout(
+        layout, fs::path(params.outputPath).filename().generic_string(), "Setup");
     configureInstallerStack(provisionalPe);
     const auto provisionalBytes = buildPE(provisionalPe);
     layout.overlayFileOffset = static_cast<uint64_t>(provisionalBytes.size() - zipPayload.size());
@@ -815,6 +917,8 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     pe.manifest = windowsManifestForLayout(layout, pkg.minOsWindows);
     pe.iconData = icoData;
     pe.overlay = zipPayload;
+    pe.versionInfo = windowsVersionInfoForLayout(
+        layout, fs::path(params.outputPath).filename().generic_string(), "Setup");
     configureInstallerStack(pe);
 
     const auto peBytes = buildPE(pe);
@@ -914,6 +1018,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     uninstPe.rdataSection = uninstStub.stubData;
     uninstPe.imports = uninstStub.imports;
     uninstPe.manifest = generateUacManifest();
+    uninstPe.versionInfo = windowsVersionInfoForLayout(layout, "uninstall.exe", "Uninstaller");
     configureInstallerStack(uninstPe);
     const auto uninstBytes = buildPE(uninstPe);
     addOverlayFile(zip,
@@ -944,6 +1049,8 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     provisionalPe.imports = provisionalStub.imports;
     provisionalPe.manifest = generateUacManifest();
     provisionalPe.overlay = zipPayload;
+    provisionalPe.versionInfo = windowsVersionInfoForLayout(
+        layout, fs::path(params.outputPath).filename().generic_string(), "Setup");
     configureInstallerStack(provisionalPe);
     const auto provisionalBytes = buildPE(provisionalPe);
     layout.overlayFileOffset = static_cast<uint64_t>(provisionalBytes.size() - zipPayload.size());
@@ -956,6 +1063,8 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     pe.imports = instStub.imports;
     pe.manifest = generateUacManifest();
     pe.overlay = zipPayload;
+    pe.versionInfo = windowsVersionInfoForLayout(
+        layout, fs::path(params.outputPath).filename().generic_string(), "Setup");
     configureInstallerStack(pe);
     const auto peBytes = buildPE(pe);
     writePEToFile(peBytes, params.outputPath);

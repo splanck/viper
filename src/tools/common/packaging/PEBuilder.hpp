@@ -26,6 +26,7 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -36,6 +37,20 @@ namespace viper::pkg {
 struct PEImport {
     std::string dllName;
     std::vector<std::string> functions;
+};
+
+/// @brief VERSIONINFO metadata embedded as an RT_VERSION resource.
+struct PEVersionInfo {
+    bool enabled{false};
+    std::array<uint16_t, 4> fileVersion{0, 0, 0, 0};
+    std::array<uint16_t, 4> productVersion{0, 0, 0, 0};
+    std::string companyName;
+    std::string fileDescription;
+    std::string fileVersionText;
+    std::string internalName;
+    std::string originalFilename;
+    std::string productName;
+    std::string productVersionText;
 };
 
 /// @brief Parameters for building a PE32+ executable.
@@ -58,6 +73,9 @@ struct PEBuildParams {
     /// If non-empty, the icon is embedded in the .rsrc section so that
     /// Windows Explorer displays the icon for the .exe file.
     std::vector<uint8_t> iconData;
+
+    /// Optional VERSIONINFO resource for Explorer, SmartScreen, and Add/Remove Programs.
+    PEVersionInfo versionInfo;
 
     /// Raw data to append after all PE sections (e.g. ZIP payload).
     std::vector<uint8_t> overlay;
@@ -110,5 +128,8 @@ std::string generateUacManifest(const std::string &minOsWindows);
 
 /// @brief Generate a UAC manifest requesting asInvoker (no elevation).
 std::string generateAsInvokerManifest();
+
+/// @brief Generate an asInvoker manifest with optional Windows compatibility metadata.
+std::string generateAsInvokerManifest(const std::string &minOsWindows);
 
 } // namespace viper::pkg

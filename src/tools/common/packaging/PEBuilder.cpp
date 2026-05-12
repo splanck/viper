@@ -29,6 +29,7 @@
 #include "PkgUtils.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <fstream>
 #include <initializer_list>
@@ -286,6 +287,94 @@ struct ResItem {
     std::vector<uint8_t> data; ///< Raw resource data
 };
 
+size_t appendVersionHeader(std::vector<uint8_t> &buf,
+                           uint16_t valueLength,
+                           uint16_t type,
+                           const std::string &key) {
+    const size_t start = buf.size();
+    appendLE16(buf, 0);
+    appendLE16(buf, valueLength);
+    appendLE16(buf, type);
+    for (char ch : key)
+        appendLE16(buf, static_cast<uint16_t>(static_cast<unsigned char>(ch)));
+    appendLE16(buf, 0);
+    padTo(buf, 4);
+    return start;
+}
+
+void patchVersionLength(std::vector<uint8_t> &buf, size_t start) {
+    const size_t len = buf.size() - start;
+    if (len > std::numeric_limits<uint16_t>::max())
+        throw std::runtime_error("PEBuilder: VERSIONINFO resource is too large");
+    putLE16(buf, start, static_cast<uint16_t>(len));
+}
+
+void appendUtf16Value(std::vector<uint8_t> &buf, const std::string &value) {
+    for (uint16_t ch : utf8ToUtf16CodeUnits(value))
+        appendLE16(buf, ch);
+    appendLE16(buf, 0);
+}
+
+uint32_t versionDword(const std::array<uint16_t, 4> &parts, size_t high) {
+    return (static_cast<uint32_t>(parts[high]) << 16) | parts[high + 1];
+}
+
+void appendVersionString(std::vector<uint8_t> &buf,
+                         const std::string &key,
+                         const std::string &value) {
+    if (value.empty())
+        return;
+    const size_t valueUnits = utf16CodeUnitCountFromUtf8(value) + 1;
+    if (valueUnits > std::numeric_limits<uint16_t>::max())
+        throw std::runtime_error("PEBuilder: VERSIONINFO string is too large");
+    const size_t start =
+        appendVersionHeader(buf, static_cast<uint16_t>(valueUnits), 1, key);
+    appendUtf16Value(buf, value);
+    padTo(buf, 4);
+    patchVersionLength(buf, start);
+}
+
+std::vector<uint8_t> buildVersionInfoResource(const PEVersionInfo &info) {
+    std::vector<uint8_t> buf;
+    const size_t root = appendVersionHeader(buf, 52, 0, "VS_VERSION_INFO");
+    appendLE32(buf, 0xFEEF04BDu);
+    appendLE32(buf, 0x00010000u);
+    appendLE32(buf, versionDword(info.fileVersion, 0));
+    appendLE32(buf, versionDword(info.fileVersion, 2));
+    appendLE32(buf, versionDword(info.productVersion, 0));
+    appendLE32(buf, versionDword(info.productVersion, 2));
+    appendLE32(buf, 0x0000003Fu);
+    appendLE32(buf, 0);
+    appendLE32(buf, 0x00000004u);
+    appendLE32(buf, 0);
+    appendLE32(buf, 0);
+    appendLE32(buf, 0);
+    appendLE32(buf, 0);
+    padTo(buf, 4);
+
+    const size_t stringFileInfo = appendVersionHeader(buf, 0, 1, "StringFileInfo");
+    const size_t stringTable = appendVersionHeader(buf, 0, 1, "040904b0");
+    appendVersionString(buf, "CompanyName", info.companyName);
+    appendVersionString(buf, "FileDescription", info.fileDescription);
+    appendVersionString(buf, "FileVersion", info.fileVersionText);
+    appendVersionString(buf, "InternalName", info.internalName);
+    appendVersionString(buf, "OriginalFilename", info.originalFilename);
+    appendVersionString(buf, "ProductName", info.productName);
+    appendVersionString(buf, "ProductVersion", info.productVersionText);
+    patchVersionLength(buf, stringTable);
+    patchVersionLength(buf, stringFileInfo);
+
+    const size_t varFileInfo = appendVersionHeader(buf, 0, 1, "VarFileInfo");
+    const size_t translation = appendVersionHeader(buf, 4, 0, "Translation");
+    appendLE16(buf, 0x0409);
+    appendLE16(buf, 0x04b0);
+    padTo(buf, 4);
+    patchVersionLength(buf, translation);
+    patchVersionLength(buf, varFileInfo);
+    patchVersionLength(buf, root);
+    return buf;
+}
+
 /// @brief Parse ICO data into RT_ICON + RT_GROUP_ICON resource items.
 void parseIcoToResources(const std::vector<uint8_t> &ico, std::vector<ResItem> &items) {
     if (ico.size() < 6)
@@ -344,6 +433,7 @@ void parseIcoToResources(const std::vector<uint8_t> &ico, std::vector<ResItem> &
 /// unsorted entries cause lookup failures at runtime.
 ResourceResult buildResourceSection(const std::string &manifest,
                                     const std::vector<uint8_t> &iconData,
+                                    const PEVersionInfo &versionInfo,
                                     uint32_t rsrcRVA) {
     ResourceResult result{};
 
@@ -352,6 +442,14 @@ ResourceResult buildResourceSection(const std::string &manifest,
 
     if (!iconData.empty())
         parseIcoToResources(iconData, items);
+
+    if (versionInfo.enabled) {
+        ResItem version;
+        version.typeId = 16; // RT_VERSION
+        version.nameId = 1;
+        version.data = buildVersionInfoResource(versionInfo);
+        items.push_back(std::move(version));
+    }
 
     if (!manifest.empty()) {
         ResItem man;
@@ -554,7 +652,8 @@ std::vector<uint8_t> buildPE(const PEBuildParams &params) {
     // Count sections: .text is required; .rdata if imports; .rsrc if manifest
     uint32_t numSections = 1; // .text
     bool hasRdata = !params.imports.empty() || !params.rdataSection.empty();
-    bool hasRsrc = !params.manifest.empty() || !params.iconData.empty();
+    bool hasRsrc = !params.manifest.empty() || !params.iconData.empty() ||
+                   params.versionInfo.enabled;
     bool hasReloc = params.emitRelocations;
     if (hasRdata)
         numSections++;
@@ -623,7 +722,8 @@ std::vector<uint8_t> buildPE(const PEBuildParams &params) {
         for (const auto &sec : sections)
             rsrcVA += alignUp(sec.virtualSize, kSectionAlignment);
 
-        rsrcResult = buildResourceSection(params.manifest, params.iconData, rsrcVA);
+        rsrcResult =
+            buildResourceSection(params.manifest, params.iconData, params.versionInfo, rsrcVA);
         s.data = rsrcResult.data;
         s.virtualSize = checkedU32Size(s.data.size(), ".rsrc section size");
         s.rawDataSize = alignUp(s.virtualSize, kFileAlignment);
@@ -907,6 +1007,11 @@ std::string generateUacManifest(const std::string &minOsWindows) {
 /// Used for app executables that run at the user's current privilege level.
 std::string generateAsInvokerManifest() {
     return generateManifestWithExecutionLevel("asInvoker", {});
+}
+
+/// @brief Generate a non-elevating manifest with a Windows OS compatibility block.
+std::string generateAsInvokerManifest(const std::string &minOsWindows) {
+    return generateManifestWithExecutionLevel("asInvoker", minOsWindows);
 }
 
 } // namespace viper::pkg

@@ -670,12 +670,47 @@ inline void validatePackageFileAssociations(const std::vector<FileAssoc> &associ
     std::set<std::string> seenExtensions;
     for (const auto &assoc : associations) {
         validateFileAssociation(assoc.extension, assoc.description, assoc.mimeType);
+        validateSingleLineField(assoc.openCommandArguments,
+                                "file association open command arguments");
         const std::string key = lowerAsciiCopy(assoc.extension);
         if (!seenExtensions.insert(key).second) {
             throw std::runtime_error("duplicate file association extension: '" + assoc.extension +
                                      "'");
         }
     }
+}
+
+/// @brief Normalize and validate a Windows certificate-store SHA-1 thumbprint.
+/// Accepts optional spaces/tabs for paste-friendliness, rejects line breaks, and
+/// returns the compact lowercase 40-hex-character form expected by signtool /sha1.
+inline std::string normalizeWindowsCertificateThumbprint(const std::string &thumbprint,
+                                                         const char *fieldName) {
+    if (thumbprint.empty())
+        return {};
+    rejectLineBreaks(thumbprint, fieldName);
+    std::string compact;
+    compact.reserve(40);
+    for (char c : thumbprint) {
+        if (c == ' ' || c == '\t')
+            continue;
+        const unsigned char uc = static_cast<unsigned char>(c);
+        if (!std::isxdigit(uc)) {
+            throw std::runtime_error(std::string(fieldName) +
+                                     " must contain only SHA-1 hexadecimal digits");
+        }
+        compact.push_back(static_cast<char>(std::tolower(uc)));
+    }
+    if (compact.size() != 40) {
+        throw std::runtime_error(std::string(fieldName) +
+                                 " must be a 40-character SHA-1 thumbprint");
+    }
+    return compact;
+}
+
+/// @brief Validate a Windows certificate-store SHA-1 thumbprint when present.
+inline void validateWindowsCertificateThumbprint(const std::string &thumbprint,
+                                                 const char *fieldName) {
+    (void)normalizeWindowsCertificateThumbprint(thumbprint, fieldName);
 }
 
 /// @brief Return true if mode is one of the four supported macOS signing modes.

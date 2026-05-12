@@ -38,6 +38,7 @@ struct FileAssoc {
     std::string extension;   ///< e.g. ".zia"
     std::string description; ///< e.g. "Zia Source File"
     std::string mimeType;    ///< e.g. "text/x-zia"
+    std::string openCommandArguments; ///< Optional Windows Open verb args before "%1".
 };
 
 /// @brief All package-related configuration from viper.project.
@@ -67,9 +68,11 @@ struct PackageConfig {
     bool macosStaple{false};
 
     std::string windowsInstallScope; ///< machine (default) or user
+    std::string windowsInstallDir;   ///< Optional install directory override.
     bool windowsSign{false};         ///< Request Authenticode signing for Windows installers.
     bool windowsSignSet{false};      ///< True when windows-sign was specified.
     std::string windowsSignPfx;      ///< PFX certificate path, project-relative unless absolute.
+    std::string windowsSignThumbprint; ///< Certificate store SHA-1 thumbprint for signtool /sha1.
     std::string windowsTimestampUrl; ///< RFC3161 timestamp URL for signtool.
     std::string windowsSigntoolPath; ///< signtool.exe path override.
     bool windowsSignNoVerify{false}; ///< Skip signtool verify after signing.

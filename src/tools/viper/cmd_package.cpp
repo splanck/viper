@@ -94,9 +94,13 @@ void packageUsage() {
         << "  --macos-staple        Staple the notarization ticket before final ZIP output\n"
         << "  --windows-install-scope <s>\n"
         << "                        Windows install scope: machine or user (default: machine)\n"
+        << "  --windows-install-dir <name>\n"
+        << "                        Windows install directory name override\n"
         << "  --windows-sign        Sign Windows installer with signtool\n"
         << "  --windows-sign-pfx <path>\n"
         << "                        PFX certificate for Windows signing\n"
+        << "  --windows-sign-thumbprint <sha1>\n"
+        << "                        Certificate store SHA-1 thumbprint for Windows signing\n"
         << "  --windows-timestamp-url <url>\n"
         << "                        RFC3161 timestamp URL for Windows signing\n"
         << "  --windows-signtool <path>\n"
@@ -116,7 +120,8 @@ void packageUsage() {
         << "  package-identifier <id>             Reverse-DNS identifier\n"
         << "  package-icon <path>                 Source PNG for generated icons\n"
         << "  asset <source> <target>             Include asset files\n"
-        << "  file-assoc <ext> <desc> <mime>      Register file type association\n"
+        << "  file-assoc <ext> <desc> <mime> [windows-open-args]\n"
+        << "                                      Register file type association\n"
         << "  shortcut-desktop on|off             Create desktop shortcut (Windows/Linux)\n"
         << "  shortcut-menu on|off                Create menu entry (default: on)\n"
         << "  min-os-macos <ver>                  Minimum macOS version (default: 10.13)\n"
@@ -128,8 +133,10 @@ void packageUsage() {
         << "  macos-notary-profile <profile>      notarytool keychain profile\n"
         << "  macos-staple on|off                 Staple notarization ticket\n"
         << "  windows-install-scope machine|user  Program Files/HKLM or LocalAppData/HKCU\n"
+        << "  windows-install-dir <name>          Windows install directory name\n"
         << "  windows-sign on|off                 Enable Authenticode signing\n"
         << "  windows-sign-pfx <path>             PFX certificate path\n"
+        << "  windows-sign-thumbprint <sha1>      Certificate store SHA-1 thumbprint\n"
         << "  windows-timestamp-url <url>         RFC3161 timestamp URL\n"
         << "  windows-signtool <path>             signtool.exe path\n"
         << "  windows-sign-no-verify on|off       Skip signtool verify\n"
@@ -166,9 +173,11 @@ struct PackageArgs {
     bool macosStaple{false};
     bool macosStapleSet{false};
     std::string windowsInstallScope;
+    std::string windowsInstallDir;
     bool windowsSign{false};
     bool windowsSignSet{false};
     std::string windowsSignPfx;
+    std::string windowsSignThumbprint;
     std::string windowsTimestampUrl;
     std::string windowsSigntoolPath;
     bool windowsSignNoVerify{false};
@@ -373,7 +382,7 @@ fs::path resolveOptionalProjectPath(const std::string &projectRoot, const std::s
 }
 
 bool windowsSigningRequested(const viper::pkg::PackageConfig &pkg) {
-    return pkg.windowsSign || !pkg.windowsSignPfx.empty();
+    return pkg.windowsSign || !pkg.windowsSignPfx.empty() || !pkg.windowsSignThumbprint.empty();
 }
 
 bool signWindowsInstallerArtifact(const ProjectConfig &proj,
@@ -387,21 +396,37 @@ bool signWindowsInstallerArtifact(const ProjectConfig &proj,
     std::string pfxPath = pkg.windowsSignPfx;
     if (pfxPath.empty())
         pfxPath = getenvOrEmpty("VIPER_WINDOWS_SIGN_PFX");
-    if (pfxPath.empty()) {
+    std::string thumbprint = pkg.windowsSignThumbprint;
+    if (thumbprint.empty())
+        thumbprint = getenvOrEmpty("VIPER_WINDOWS_SIGN_THUMBPRINT");
+    try {
+        thumbprint =
+            viper::pkg::normalizeWindowsCertificateThumbprint(thumbprint,
+                                                              "Windows signing thumbprint");
+    } catch (const std::exception &ex) {
+        err << "error: " << ex.what() << "\n";
+        return false;
+    }
+    if (pfxPath.empty() && thumbprint.empty()) {
         err << "error: Windows signing requested but no PFX was provided "
-               "(use --windows-sign-pfx, windows-sign-pfx, or VIPER_WINDOWS_SIGN_PFX)\n";
+               "and no certificate thumbprint was provided (use --windows-sign-pfx, "
+               "windows-sign-pfx, VIPER_WINDOWS_SIGN_PFX, --windows-sign-thumbprint, "
+               "windows-sign-thumbprint, or VIPER_WINDOWS_SIGN_THUMBPRINT)\n";
         return false;
     }
-    const fs::path resolvedPfx = resolveOptionalProjectPath(proj.rootDir, pfxPath);
-    if (!fs::is_regular_file(resolvedPfx)) {
-        err << "error: Windows signing PFX not found: " << resolvedPfx.string() << "\n";
-        return false;
-    }
-
-    const std::string password = getenvOrEmpty("VIPER_WINDOWS_SIGN_PASSWORD");
-    if (password.empty()) {
-        err << "error: Windows signing requires VIPER_WINDOWS_SIGN_PASSWORD\n";
-        return false;
+    fs::path resolvedPfx;
+    std::string password;
+    if (!pfxPath.empty()) {
+        resolvedPfx = resolveOptionalProjectPath(proj.rootDir, pfxPath);
+        if (!fs::is_regular_file(resolvedPfx)) {
+            err << "error: Windows signing PFX not found: " << resolvedPfx.string() << "\n";
+            return false;
+        }
+        password = getenvOrEmpty("VIPER_WINDOWS_SIGN_PASSWORD");
+        if (password.empty()) {
+            err << "error: Windows PFX signing requires VIPER_WINDOWS_SIGN_PASSWORD\n";
+            return false;
+        }
     }
 
     std::string timestampUrl = pkg.windowsTimestampUrl;
@@ -416,19 +441,18 @@ bool signWindowsInstallerArtifact(const ProjectConfig &proj,
     if (signtool.empty())
         signtool = "signtool.exe";
 
-    std::vector<std::string> signCmd = {signtool,
-                                        "sign",
-                                        "/fd",
-                                        "SHA256",
-                                        "/tr",
-                                        timestampUrl,
-                                        "/td",
-                                        "SHA256",
-                                        "/f",
-                                        resolvedPfx.string(),
-                                        "/p",
-                                        password,
-                                        artifactPath.string()};
+    std::vector<std::string> signCmd = {
+        signtool, "sign", "/fd", "SHA256", "/tr", timestampUrl, "/td", "SHA256"};
+    if (!thumbprint.empty()) {
+        signCmd.push_back("/sha1");
+        signCmd.push_back(thumbprint);
+    } else {
+        signCmd.push_back("/f");
+        signCmd.push_back(resolvedPfx.string());
+        signCmd.push_back("/p");
+        signCmd.push_back(password);
+    }
+    signCmd.push_back(artifactPath.string());
     const RunResult signResult = run_process(signCmd);
     if (signResult.exit_code != 0) {
         err << "error: signtool sign failed with exit code " << signResult.exit_code << "\n"
@@ -538,6 +562,12 @@ bool parsePackageArgs(int argc, char **argv, PackageArgs &args) {
                           << "'; expected machine or user\n";
                 return false;
             }
+        } else if (arg == "--windows-install-dir") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --windows-install-dir requires a value\n";
+                return false;
+            }
+            args.windowsInstallDir = argv[++i];
         } else if (arg == "--windows-sign") {
             args.windowsSign = true;
             args.windowsSignSet = true;
@@ -547,6 +577,12 @@ bool parsePackageArgs(int argc, char **argv, PackageArgs &args) {
                 return false;
             }
             args.windowsSignPfx = argv[++i];
+        } else if (arg == "--windows-sign-thumbprint") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --windows-sign-thumbprint requires a SHA-1 thumbprint\n";
+                return false;
+            }
+            args.windowsSignThumbprint = argv[++i];
         } else if (arg == "--windows-timestamp-url") {
             if (i + 1 >= argc) {
                 std::cerr << "error: --windows-timestamp-url requires a URL\n";
@@ -678,13 +714,16 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
                 viper::pkg::validateWindowsFileName(displayName, "Windows display name");
                 viper::pkg::validateWindowsProgIdBase(pkg.identifier,
                                                        "Windows package identifier");
-                viper::pkg::validateDottedNumericVersion(version, "Windows package version");
+                viper::pkg::validateSingleLineField(version, "Windows package version");
                 if (!pkg.windowsInstallScope.empty() && pkg.windowsInstallScope != "machine" &&
                     pkg.windowsInstallScope != "user") {
                     throw std::runtime_error(
                         "Windows install scope must be machine or user: " +
                         pkg.windowsInstallScope);
                 }
+                if (!pkg.windowsInstallDir.empty())
+                    viper::pkg::validateWindowsFileName(pkg.windowsInstallDir,
+                                                        "Windows install directory");
                 if (!pkg.minOsWindows.empty())
                     viper::pkg::validateDottedNumericVersion(pkg.minOsWindows,
                                                              "minimum Windows version");
@@ -692,6 +731,8 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
                                                 "Windows timestamp URL");
                 viper::pkg::validateSingleLineField(pkg.windowsSigntoolPath,
                                                      "Windows signtool path");
+                viper::pkg::validateWindowsCertificateThumbprint(
+                    pkg.windowsSignThumbprint, "Windows signing thumbprint");
                 if (!pkg.windowsSignPfx.empty()) {
                     const fs::path pfx = resolveOptionalProjectPath(proj.rootDir, pkg.windowsSignPfx);
                     if (!fs::is_regular_file(pfx)) {
@@ -758,12 +799,16 @@ int cmdPackage(int argc, char **argv) {
         proj.packageConfig.macosStaple = args.macosStaple;
     if (!args.windowsInstallScope.empty())
         proj.packageConfig.windowsInstallScope = args.windowsInstallScope;
+    if (!args.windowsInstallDir.empty())
+        proj.packageConfig.windowsInstallDir = args.windowsInstallDir;
     if (args.windowsSignSet) {
         proj.packageConfig.windowsSign = args.windowsSign;
         proj.packageConfig.windowsSignSet = true;
     }
     if (!args.windowsSignPfx.empty())
         proj.packageConfig.windowsSignPfx = args.windowsSignPfx;
+    if (!args.windowsSignThumbprint.empty())
+        proj.packageConfig.windowsSignThumbprint = args.windowsSignThumbprint;
     if (!args.windowsTimestampUrl.empty())
         proj.packageConfig.windowsTimestampUrl = args.windowsTimestampUrl;
     if (!args.windowsSigntoolPath.empty())
@@ -879,11 +924,17 @@ int cmdPackage(int argc, char **argv) {
                                           ? "machine"
                                           : proj.packageConfig.windowsInstallScope;
             std::cerr << "  Windows install scope: " << scope << "\n";
+            if (!proj.packageConfig.windowsInstallDir.empty())
+                std::cerr << "  Windows install directory: "
+                          << proj.packageConfig.windowsInstallDir << "\n";
             if (windowsSigningRequested(proj.packageConfig)) {
                 std::cerr << "  Windows signing: on\n";
                 if (!proj.packageConfig.windowsSignPfx.empty())
                     std::cerr << "  Windows signing PFX: "
                               << proj.packageConfig.windowsSignPfx << "\n";
+                if (!proj.packageConfig.windowsSignThumbprint.empty())
+                    std::cerr << "  Windows signing thumbprint: "
+                              << proj.packageConfig.windowsSignThumbprint << "\n";
                 if (!proj.packageConfig.windowsTimestampUrl.empty())
                     std::cerr << "  Windows timestamp URL: "
                               << proj.packageConfig.windowsTimestampUrl << "\n";
@@ -911,8 +962,12 @@ int cmdPackage(int argc, char **argv) {
             }
             std::cerr << "\n";
         }
-        for (const auto &assoc : proj.packageConfig.fileAssociations)
-            std::cerr << "  File assoc: " << assoc.extension << " (" << assoc.description << ")\n";
+        for (const auto &assoc : proj.packageConfig.fileAssociations) {
+            std::cerr << "  File assoc: " << assoc.extension << " (" << assoc.description << ")";
+            if (!assoc.openCommandArguments.empty())
+                std::cerr << " [Windows open args: " << assoc.openCommandArguments << "]";
+            std::cerr << "\n";
+        }
         if (!proj.packageConfig.category.empty())
             std::cerr << "  Category: " << proj.packageConfig.category << "\n";
         if (!proj.packageConfig.depends.empty()) {
