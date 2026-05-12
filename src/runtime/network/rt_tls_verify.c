@@ -390,6 +390,10 @@ static const uint8_t OID_X509_KEY_USAGE[] = {0x55, 0x1d, 0x0f};        // 2.5.29
 static const uint8_t OID_X509_BASIC_CONSTRAINTS[] = {0x55, 0x1d, 0x13}; // 2.5.29.19
 static const uint8_t OID_X509_EXT_KEY_USAGE[] = {0x55, 0x1d, 0x25};    // 2.5.29.37
 
+static RT_TLS_MAYBE_UNUSED const uint8_t *cert_get_subject(const uint8_t *cert_der,
+                                                           size_t cert_len,
+                                                           size_t *subject_len);
+
 /// @brief Validate a DNS name byte sequence for TLS hostname matching.
 /// @details Enforces RFC 1035 / RFC 6125 hostname rules:
 ///          - Length 1..255 bytes total.
@@ -928,6 +932,64 @@ int tls_cert_has_san_extension(const uint8_t *der, size_t der_len) {
 }
 
 /// @brief Extract the CommonName (CN) attribute from the certificate Subject.
+static int tls_extract_cn_from_name(const uint8_t *name_der, size_t name_len, char cn_out[256]) {
+    uint8_t t;
+    size_t vl, hl;
+    if (!name_der || !cn_out || der_read_tlv(name_der, name_len, &t, &vl, &hl) != 0 ||
+        t != 0x30) {
+        return 0;
+    }
+
+    const uint8_t *seq_val = name_der + hl;
+    size_t seq_len = vl;
+    size_t sp = 0;
+
+    while (sp < seq_len) {
+        uint8_t ts;
+        size_t vls, hls;
+        if (der_read_tlv(seq_val + sp, seq_len - sp, &ts, &vls, &hls) != 0)
+            return 0;
+
+        if (ts == 0x31) {
+            const uint8_t *set_val = seq_val + sp + hls;
+            size_t set_pos = 0;
+            while (set_pos < vls) {
+                uint8_t ta;
+                size_t vla, hla;
+                if (der_read_tlv(set_val + set_pos, vls - set_pos, &ta, &vla, &hla) != 0)
+                    return 0;
+                if (ta == 0x30) {
+                    const uint8_t *atv = set_val + set_pos + hla;
+                    uint8_t to;
+                    size_t vlo, hlo;
+                    if (der_read_tlv(atv, vla, &to, &vlo, &hlo) == 0 && to == 0x06 &&
+                        oid_matches(atv + hlo, vlo, OID_COMMON_NAME, sizeof(OID_COMMON_NAME))) {
+                        size_t after_oid = hlo + vlo;
+                        if (after_oid >= vla)
+                            return 0;
+                        const uint8_t *val_start = atv + after_oid;
+                        size_t val_remaining = vla - after_oid;
+                        uint8_t tv;
+                        size_t vlv, hlv;
+                        if (der_read_tlv(val_start, val_remaining, &tv, &vlv, &hlv) == 0 &&
+                            tls_dns_name_bytes_valid(val_start + hlv, vlv, 1)) {
+                            memcpy(cn_out, val_start + hlv, vlv);
+                            cn_out[vlv] = '\0';
+                            return 1;
+                        }
+                    }
+                }
+                set_pos += hla + vla;
+            }
+        }
+
+        sp += hls + vls;
+    }
+
+    return 0;
+}
+
+/// @brief Extract the CommonName (CN) attribute from the certificate Subject.
 /// @details Walks the ASN.1 tree: Certificate → TBSCertificate → looking for
 ///          a SEQUENCE whose children include a SET containing an
 ///          AttributeTypeAndValue with OID 2.5.4.3 (commonName). The first
@@ -948,81 +1010,11 @@ int tls_cert_has_san_extension(const uint8_t *der, size_t der_len) {
 /// @return 1 if a CN was found and written, 0 if no CN is present or it
 ///         would not fit in the buffer.
 int tls_extract_cn(const uint8_t *der, size_t der_len, char cn_out[256]) {
-    // Certificate SEQUENCE
-    uint8_t t;
-    size_t vl, hl;
-    if (der_read_tlv(der, der_len, &t, &vl, &hl) != 0 || t != 0x30)
+    size_t subject_len = 0;
+    const uint8_t *subject = cert_get_subject(der, der_len, &subject_len);
+    if (!subject)
         return 0;
-
-    // TBSCertificate SEQUENCE
-    const uint8_t *cert_val = der + hl;
-    if (der_read_tlv(cert_val, vl, &t, &vl, &hl) != 0 || t != 0x30)
-        return 0;
-
-    const uint8_t *tbs_val = cert_val + hl;
-    size_t tbs_len = vl;
-    size_t pos = 0;
-
-    while (pos < tbs_len) {
-        if (der_read_tlv(tbs_val + pos, tbs_len - pos, &t, &vl, &hl) != 0)
-            break;
-
-        // Subject is a SEQUENCE at index 5 in TBS (0:version, 1:serial, 2:alg, 3:issuer,
-        // 4:validity, 5:subject) Walk until we find two consecutive SEQUENCEs — the second is
-        // Subject (Actually, both Issuer and Subject are SEQUENCE/SET, so we need to count.
-        //  Simpler: find any SEQUENCE whose children contain OID 2.5.4.3)
-        if (t == 0x30) // SEQUENCE — could be Issuer or Subject
-        {
-            const uint8_t *seq_val = tbs_val + pos + hl;
-            size_t seq_len = vl;
-            size_t sp = 0;
-
-            // Each child of Issuer/Subject is a SET containing AttributeTypeAndValue
-            while (sp < seq_len) {
-                uint8_t ts;
-                size_t vls, hls;
-                if (der_read_tlv(seq_val + sp, seq_len - sp, &ts, &vls, &hls) != 0)
-                    break;
-
-                if (ts == 0x31) // SET
-                {
-                    // AttributeTypeAndValue SEQUENCE
-                    uint8_t ta;
-                    size_t vla, hla;
-                    if (der_read_tlv(seq_val + sp + hls, vls, &ta, &vla, &hla) == 0 && ta == 0x30) {
-                        const uint8_t *atv = seq_val + sp + hls + hla;
-
-                        // OID
-                        uint8_t to;
-                        size_t vlo, hlo;
-                        if (der_read_tlv(atv, vla, &to, &vlo, &hlo) == 0 && to == 0x06) {
-                            if (oid_matches(atv + hlo, vlo, OID_COMMON_NAME, 3)) {
-                                // Value: UTF8String (0x0C), PrintableString (0x13), IA5String
-                                // (0x16), etc.
-                                const uint8_t *val_start = atv + hlo + vlo;
-                                size_t val_remaining = vla - hlo - vlo;
-                                uint8_t tv;
-                                size_t vlv, hlv;
-                                if (der_read_tlv(val_start, val_remaining, &tv, &vlv, &hlv) == 0) {
-                                    if (tls_dns_name_bytes_valid(val_start + hlv, vlv, 1)) {
-                                        memcpy(cn_out, val_start + hlv, vlv);
-                                        cn_out[vlv] = '\0';
-                                        return 1;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                sp += hls + vls;
-            }
-        }
-
-        pos += hl + vl;
-    }
-
-    return 0;
+    return tls_extract_cn_from_name(subject, subject_len, cn_out);
 }
 
 /// @brief Match a hostname against a certificate name pattern (RFC 6125 § 6.4).

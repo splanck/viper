@@ -291,10 +291,18 @@ static int ws_server_recv_frame(
         if (!ws_tls_recv_exact(tcp, ext8, 2))
             return 0;
         payload_len = ((size_t)ext8[0] << 8) | ext8[1];
+        if (payload_len < 126) {
+            ws_server_send_frame(tcp, WS_OP_CLOSE, "\x03\xEA", 2);
+            return 0;
+        }
     } else if (payload_len == 127) {
         if (!ws_tls_recv_exact(tcp, ext8, 8))
             return 0;
         if (!ws_decode_u64_len(ext8, &payload_len)) {
+            ws_server_send_frame(tcp, WS_OP_CLOSE, "\x03\xEA", 2);
+            return 0;
+        }
+        if (payload_len < 65536) {
             ws_server_send_frame(tcp, WS_OP_CLOSE, "\x03\xEA", 2);
             return 0;
         }

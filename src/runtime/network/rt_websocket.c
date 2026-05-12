@@ -161,6 +161,43 @@ static int ws_token_is_valid(const char *value) {
     return 1;
 }
 
+static int ws_ascii_ieq_prefix(const char *text, const char *prefix) {
+    size_t i = 0;
+    if (!text || !prefix)
+        return 0;
+    for (; prefix[i]; ++i) {
+        unsigned char a = (unsigned char)text[i];
+        unsigned char b = (unsigned char)prefix[i];
+        if (a >= 'A' && a <= 'Z')
+            a = (unsigned char)(a + ('a' - 'A'));
+        if (b >= 'A' && b <= 'Z')
+            b = (unsigned char)(b + ('a' - 'A'));
+        if (a != b)
+            return 0;
+    }
+    return 1;
+}
+
+static int ws_host_is_valid(const char *host) {
+    if (!host || !*host)
+        return 0;
+    for (const unsigned char *p = (const unsigned char *)host; *p; ++p) {
+        if (*p <= 0x20 || *p == 0x7Fu || *p == '/' || *p == '?' || *p == '#')
+            return 0;
+    }
+    return 1;
+}
+
+static int ws_request_target_is_valid(const char *target) {
+    if (!target || target[0] != '/')
+        return 0;
+    for (const unsigned char *p = (const unsigned char *)target; *p; ++p) {
+        if (*p <= 0x20 || *p == 0x7Fu || *p == '#')
+            return 0;
+    }
+    return 1;
+}
+
 static int ws_timeout_ms_to_int(int64_t timeout_ms, int *out_timeout_ms) {
     if (timeout_ms < 0 || timeout_ms > INT_MAX)
         return 0;
@@ -229,6 +266,20 @@ static int ws_decode_u64_len(const uint8_t in[8], size_t *len_out) {
         return 0;
     *len_out = (size_t)value;
     return 1;
+}
+
+static int ws_close_code_is_valid(uint16_t code) {
+    if (code >= 3000 && code <= 4999)
+        return 1;
+    if (code < 1000 || code > 1014)
+        return 0;
+    return code != 1004 && code != 1005 && code != 1006;
+}
+
+int rt_ws_close_code_valid_for_test(int code) {
+    if (code < 0 || code > 65535)
+        return 0;
+    return ws_close_code_is_valid((uint16_t)code);
 }
 
 /// @brief Validate a byte buffer as well-formed UTF-8 per RFC 3629.
@@ -315,14 +366,14 @@ static int ws_is_valid_utf8(const uint8_t *data, size_t len) {
 /// @brief Minimal SHA-1 (RFC 3174) for Sec-WebSocket-Accept validation (RFC 6455 §4.1).
 /// SHA-1 is acceptable here: it is used as a protocol-mandated HMAC-like check,
 /// not for general cryptographic security.
-static void ws_sha1(const uint8_t *data, size_t len, uint8_t digest[20]) {
+static int ws_sha1(const uint8_t *data, size_t len, uint8_t digest[20]) {
     uint32_t h0 = 0x67452301u, h1 = 0xEFCDAB89u, h2 = 0x98BADCFEu;
     uint32_t h3 = 0x10325476u, h4 = 0xC3D2E1F0u;
 
     size_t padded_len = ((len + 9 + 63) / 64) * 64;
     uint8_t *padded = (uint8_t *)calloc(padded_len, 1);
     if (!padded)
-        return;
+        return 0;
     memcpy(padded, data, len);
     padded[len] = 0x80;
     uint64_t bit_len = (uint64_t)len * 8;
@@ -379,6 +430,7 @@ static void ws_sha1(const uint8_t *data, size_t len, uint8_t digest[20]) {
         digest[12 + i] = (uint8_t)(h3 >> (24 - i * 8));
         digest[16 + i] = (uint8_t)(h4 >> (24 - i * 8));
     }
+    return 1;
 }
 
 /// @brief Generate a random WebSocket key (16 random bytes, base64 encoded).
@@ -420,7 +472,10 @@ char *rt_ws_compute_accept_key(const char *key_cstr) {
     concat[key_len + magic_len] = '\0';
 
     uint8_t sha1_digest[20];
-    ws_sha1((const uint8_t *)concat, key_len + magic_len, sha1_digest);
+    if (!ws_sha1((const uint8_t *)concat, key_len + magic_len, sha1_digest)) {
+        free(concat);
+        return NULL;
+    }
     free(concat);
 
     // Base64-encode using rt_bytes_to_base64
@@ -452,11 +507,11 @@ static int parse_ws_url(const char *url, int *is_secure, char **host, int *port,
     *port = 80;
     *path = NULL;
 
-    if (strncmp(url, "wss://", 6) == 0) {
+    if (ws_ascii_ieq_prefix(url, "wss://")) {
         *is_secure = 1;
         *port = 443;
         url += 6;
-    } else if (strncmp(url, "ws://", 5) == 0) {
+    } else if (ws_ascii_ieq_prefix(url, "ws://")) {
         url += 5;
     } else {
         return 0; // Invalid scheme
@@ -493,6 +548,11 @@ static int parse_ws_url(const char *url, int *is_secure, char **host, int *port,
 
     if (*host_end && *host_end != ':' && *host_end != '/' && *host_end != '?' &&
         *host_end != '#') {
+        free(*host);
+        *host = NULL;
+        return 0;
+    }
+    if (!ws_host_is_valid(*host)) {
         free(*host);
         *host = NULL;
         return 0;
@@ -554,6 +614,13 @@ static int parse_ws_url(const char *url, int *is_secure, char **host, int *port,
     if (!*path) {
         free(*host);
         *host = NULL;
+        return 0;
+    }
+    if (!ws_request_target_is_valid(*path)) {
+        free(*host);
+        free(*path);
+        *host = NULL;
+        *path = NULL;
         return 0;
     }
 
@@ -675,6 +742,12 @@ static void ws_set_socket_timeout(int fd, int timeout_ms, int is_recv) {
     tv.tv_usec = (timeout_ms % 1000) * 1000;
     setsockopt(fd, SOL_SOCKET, is_recv ? SO_RCVTIMEO : SO_SNDTIMEO, &tv, sizeof(tv));
 #endif
+}
+
+static void ws_set_recv_timeout(rt_ws_impl *ws, int timeout_ms) {
+    if (!ws || ws->socket_fd < 0)
+        return;
+    ws_set_socket_timeout(ws->socket_fd, timeout_ms, 1);
 }
 
 /// @brief Case-insensitive ASCII compare of two `len`-byte regions.
@@ -820,7 +893,10 @@ static int ws_validate_handshake_response(const char *response,
     concat[key_len + magic_len] = '\0';
 
     uint8_t sha1_digest[20];
-    ws_sha1((const uint8_t *)concat, key_len + magic_len, sha1_digest);
+    if (!ws_sha1((const uint8_t *)concat, key_len + magic_len, sha1_digest)) {
+        free(concat);
+        return 0;
+    }
     free(concat);
 
     void *digest_bytes = rt_bytes_new(20);
@@ -1109,11 +1185,19 @@ static int ws_recv_frame(
         if (!ws_recv_exact(ws, ext, 2))
             return 0;
         payload_len = ((size_t)ext[0] << 8) | ext[1];
+        if (payload_len < 126) {
+            ws->close_code = WS_CLOSE_PROTOCOL_ERROR;
+            return 0;
+        }
     } else if (payload_len == 127) {
         uint8_t ext[8];
         if (!ws_recv_exact(ws, ext, 8))
             return 0;
         if (!ws_decode_u64_len(ext, &payload_len)) {
+            ws->close_code = WS_CLOSE_PROTOCOL_ERROR;
+            return 0;
+        }
+        if (payload_len < 65536) {
             ws->close_code = WS_CLOSE_PROTOCOL_ERROR;
             return 0;
         }
@@ -1293,8 +1377,22 @@ static void ws_handle_control(rt_ws_impl *ws, uint8_t opcode, uint8_t *data, siz
         case WS_OP_CLOSE:
             // Parse close code and reason
             ws->is_open = 0;
+            if (len == 1) {
+                ws->close_code = WS_CLOSE_PROTOCOL_ERROR;
+                ws_send_frame(ws, WS_OP_CLOSE, "\x03\xEA", 2);
+                break;
+            }
             if (len >= 2) {
-                ws->close_code = ((int64_t)data[0] << 8) | data[1];
+                uint16_t code = ((uint16_t)data[0] << 8) | data[1];
+                if (!ws_close_code_is_valid(code) ||
+                    (len > 2 && !ws_is_valid_utf8(data + 2, len - 2))) {
+                    ws->close_code = WS_CLOSE_PROTOCOL_ERROR;
+                    ws_send_frame(ws, WS_OP_CLOSE, "\x03\xEA", 2);
+                    break;
+                }
+                ws->close_code = code;
+                free(ws->close_reason);
+                ws->close_reason = NULL;
                 if (len > 2) {
                     ws->close_reason = malloc(len - 1);
                     if (ws->close_reason) {
@@ -1658,7 +1756,14 @@ rt_string rt_ws_recv_for(void *obj, int64_t timeout_ms) {
         }
     }
 
-    return rt_ws_recv(obj);
+    ws_set_recv_timeout(ws, timeout_int);
+    rt_string result = rt_ws_recv(obj);
+    ws_set_recv_timeout(ws, 0);
+    if (result && rt_str_len(result) == 0 && !ws->is_open) {
+        rt_string_unref(result);
+        return NULL;
+    }
+    return result;
 }
 
 /// @brief Block for a complete message and return its raw bytes.
@@ -1707,7 +1812,15 @@ void *rt_ws_recv_bytes_for(void *obj, int64_t timeout_ms) {
         }
     }
 
-    return rt_ws_recv_bytes(obj);
+    ws_set_recv_timeout(ws, timeout_int);
+    void *result = rt_ws_recv_bytes(obj);
+    ws_set_recv_timeout(ws, 0);
+    if (result && rt_bytes_len(result) == 0 && !ws->is_open) {
+        if (rt_obj_release_check0(result))
+            rt_obj_free(result);
+        return NULL;
+    }
+    return result;
 }
 
 /// @brief Send a normal close (code 1000) and mark the connection closed.
@@ -1731,7 +1844,7 @@ void rt_ws_close_with(void *obj, int64_t code, rt_string reason) {
 
     const char *reason_cstr = rt_string_cstr(reason);
     size_t reason_len = reason_cstr ? strlen(reason_cstr) : 0;
-    if (code < 1000 || code > 4999 || code == 1005 || code == 1006 || code == 1015) {
+    if (code < 0 || code > 4999 || !ws_close_code_is_valid((uint16_t)code)) {
         rt_trap_net("WebSocket: invalid close code", Err_ProtocolError);
         return;
     }

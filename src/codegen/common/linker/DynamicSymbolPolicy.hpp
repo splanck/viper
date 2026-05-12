@@ -186,6 +186,7 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "connect",
         "send",
         "recv",
+        "recvmsg",
         "select",
         "poll",
         "setsockopt",

@@ -84,6 +84,14 @@ static int http_method_is_token(const char *method) {
     return 1;
 }
 
+static int http_header_field_name_is_token(const char *name) {
+    return http_method_is_token(name);
+}
+
+int rt_http_header_name_valid_for_test(const char *name) {
+    return http_header_field_name_is_token(name);
+}
+
 static int http_contains_any_char(const char *text, const char *chars) {
     if (!text || !chars)
         return 0;
@@ -750,11 +758,11 @@ static int parse_url(const char *url_str, parsed_url_t *result) {
     }
 
     // Check for http:// or https:// prefix; reject any other scheme
-    if (strncmp(url_str, "http://", 7) == 0) {
+    if (strncasecmp(url_str, "http://", 7) == 0) {
         url_str += 7;
         result->use_tls = 0;
         result->port = 80;
-    } else if (strncmp(url_str, "https://", 8) == 0) {
+    } else if (strncasecmp(url_str, "https://", 8) == 0) {
         url_str += 8;
         result->use_tls = 1;
         result->port = 443;
@@ -1299,7 +1307,7 @@ static bool has_crlf(const char *s) {
 /// @brief Add header to request.
 static void add_header(rt_http_req_t *req, const char *name, const char *value) {
     /* Reject headers that contain CR or LF — they would split the HTTP stream (S-08 fix) */
-    if (!name || !value || has_crlf(name) || has_crlf(value))
+    if (!name || !value || !http_header_field_name_is_token(name) || has_crlf(value))
         return;
 
     http_header_t *h = (http_header_t *)malloc(sizeof(http_header_t));
@@ -2044,7 +2052,8 @@ static uint8_t *read_body_chunked_conn(http_conn_t *conn, size_t *out_len) {
 
         // Read trailing CRLF after chunk
         char *chunk_end = read_line_conn(conn);
-        if (!chunk_end) {
+        if (!chunk_end || chunk_end[0] != '\0') {
+            free(chunk_end);
             free(body);
             *out_len = 0;
             return NULL;
@@ -2198,7 +2207,8 @@ static int write_body_chunked_conn(http_conn_t *conn, FILE *out, size_t *out_len
         }
 
         char *chunk_end = read_line_conn(conn);
-        if (!chunk_end) {
+        if (!chunk_end || chunk_end[0] != '\0') {
+            free(chunk_end);
             *out_len = total_written;
             return 0;
         }
@@ -2766,10 +2776,24 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
     bool chunked_transfer =
         transfer_encoding_val &&
         rt_http_header_value_has_token(rt_string_cstr(transfer_encoding_val), "chunked");
+    bool unsupported_transfer_encoding = transfer_encoding_val && !chunked_transfer;
 
     if (no_body) {
         body = NULL;
         body_len = 0;
+    } else if (unsupported_transfer_encoding) {
+        http_conn_pool_release(&conn, 0);
+        if (connection_val)
+            rt_string_unref(connection_val);
+        if (transfer_encoding_val)
+            rt_string_unref(transfer_encoding_val);
+        if (content_length_val)
+            rt_string_unref(content_length_val);
+        if (headers_map && rt_obj_release_check0(headers_map))
+            rt_obj_free(headers_map);
+        free(status_text);
+        rt_trap_net("HTTP: unsupported Transfer-Encoding", Err_ProtocolError);
+        return NULL;
     } else if (chunked_transfer) {
         body = read_body_chunked_conn(&conn, &body_len);
     } else if (content_length_val) {
@@ -3006,6 +3030,9 @@ static int do_http_download_request(rt_http_req_t *req, int redirects_remaining,
 
     if (response_has_no_body(req, status)) {
         ok = 1;
+    } else if (transfer_encoding_val &&
+               !rt_http_header_value_has_token(rt_string_cstr(transfer_encoding_val), "chunked")) {
+        goto cleanup;
     } else if (transfer_encoding_val &&
                rt_http_header_value_has_token(rt_string_cstr(transfer_encoding_val), "chunked")) {
         size_t streamed_len = 0;
@@ -3653,11 +3680,11 @@ void *rt_http_req_set_body(void *obj, void *data) {
         if (len < 0 || (uint64_t)len > (uint64_t)SIZE_MAX)
             rt_trap("HTTP: invalid body length");
 
-        // Make a copy of the body
-        req->body = (uint8_t *)malloc((size_t)(len > 0 ? len : 1));
-        if (req->body) {
-            if (len > 0)
-                memcpy(req->body, ptr, (size_t)len);
+        if (len > 0) {
+            req->body = (uint8_t *)malloc((size_t)len);
+            if (!req->body)
+                rt_trap("HTTP: memory allocation failed");
+            memcpy(req->body, ptr, (size_t)len);
             req->body_len = (size_t)len;
         }
     }
@@ -3685,10 +3712,11 @@ void *rt_http_req_set_body_str(void *obj, rt_string text) {
         if (len64 < 0 || (uint64_t)len64 > (uint64_t)SIZE_MAX)
             rt_trap("HTTP: invalid body length");
         size_t len = (size_t)len64;
-        req->body = (uint8_t *)malloc(len > 0 ? len : 1);
-        if (req->body) {
-            if (len > 0)
-                memcpy(req->body, text_str, len);
+        if (len > 0) {
+            req->body = (uint8_t *)malloc(len);
+            if (!req->body)
+                rt_trap("HTTP: memory allocation failed");
+            memcpy(req->body, text_str, len);
             req->body_len = len;
         }
     }
@@ -3742,6 +3770,8 @@ void *rt_http_req_set_max_redirects(void *obj, int64_t max_redirects) {
     rt_http_req_t *req = (rt_http_req_t *)obj;
     if (max_redirects < 0)
         max_redirects = 0;
+    if (max_redirects > INT_MAX)
+        rt_trap("HTTP: invalid redirect limit");
     req->max_redirects = (int)max_redirects;
     return obj;
 }

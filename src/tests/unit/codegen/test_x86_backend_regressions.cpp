@@ -2719,7 +2719,7 @@ TEST(X86BackendRegressions, SelectTrueLabelArmMaterializesBeforeISel) {
         std::cerr << result.errors << '\n';
     }
     ASSERT_TRUE(result.errors.empty());
-    EXPECT_NE(result.asmText.find("leaq select_true_symbol(%rip)"), std::string::npos);
+    EXPECT_TRUE(containsRegex(result.asmText, R"(leaq\s+_?select_true_symbol\(%rip\))"));
     EXPECT_EQ(result.asmText.find("select pseudo survived"), std::string::npos);
 }
 
@@ -2743,7 +2743,7 @@ TEST(X86BackendRegressions, SelectFalseLabelArmMaterializesBeforeISel) {
         std::cerr << result.errors << '\n';
     }
     ASSERT_TRUE(result.errors.empty());
-    EXPECT_NE(result.asmText.find("leaq select_false_symbol(%rip)"), std::string::npos);
+    EXPECT_TRUE(containsRegex(result.asmText, R"(leaq\s+_?select_false_symbol\(%rip\))"));
     EXPECT_EQ(result.asmText.find("select pseudo survived"), std::string::npos);
 }
 
@@ -2763,7 +2763,7 @@ TEST(X86BackendRegressions, StoreLabelValueMaterializesBeforeMemoryStore) {
         std::cerr << result.errors << '\n';
     }
     ASSERT_TRUE(result.errors.empty());
-    EXPECT_NE(result.asmText.find("leaq stored_label_symbol(%rip)"), std::string::npos);
+    EXPECT_TRUE(containsRegex(result.asmText, R"(leaq\s+_?stored_label_symbol\(%rip\))"));
     EXPECT_NE(result.asmText.find("movq"), std::string::npos);
 }
 

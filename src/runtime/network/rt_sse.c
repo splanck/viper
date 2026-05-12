@@ -67,6 +67,42 @@ static int sse_host_needs_brackets(const char *host) {
     return host && strchr(host, ':') != NULL && host[0] != '[';
 }
 
+static int sse_header_value_is_valid(const char *value) {
+    if (!value)
+        return 0;
+    for (const unsigned char *p = (const unsigned char *)value; *p; ++p) {
+        if (*p == '\r' || *p == '\n' || *p == 0x7Fu)
+            return 0;
+    }
+    return 1;
+}
+
+static int sse_host_is_valid(const char *host) {
+    if (!host || !*host)
+        return 0;
+    for (const unsigned char *p = (const unsigned char *)host; *p; ++p) {
+        if (*p <= 0x20 || *p == 0x7Fu || *p == '/' || *p == '?' || *p == '#')
+            return 0;
+    }
+    return 1;
+}
+
+static int sse_request_target_is_valid(const char *target) {
+    if (!target || target[0] != '/')
+        return 0;
+    for (const unsigned char *p = (const unsigned char *)target; *p; ++p) {
+        if (*p <= 0x20 || *p == 0x7Fu || *p == '#')
+            return 0;
+    }
+    return 1;
+}
+
+static void sse_set_recv_timeout(rt_sse_impl *sse, int timeout_ms) {
+    if (!sse || sse->socket_fd == INVALID_SOCK)
+        return;
+    set_socket_timeout(sse->socket_fd, timeout_ms, true);
+}
+
 static bool sse_set_nonblocking(socket_t sock, bool nonblocking) {
 #ifdef _WIN32
     u_long mode = nonblocking ? 1 : 0;
@@ -577,6 +613,7 @@ static int sse_open_url(
     size_t target_len;
     size_t request_cap;
     char host_header[512];
+    int host_header_len = 0;
 
     if (err_msg && err_msg_cap > 0)
         err_msg[0] = '\0';
@@ -610,7 +647,7 @@ retry:
     query_cstr = rt_string_cstr(query);
     is_secure = scheme_cstr && strcmp(scheme_cstr, "https") == 0;
 
-    if (!scheme_cstr || !host_cstr || !*host_cstr ||
+    if (!scheme_cstr || !sse_host_is_valid(host_cstr) ||
         (strcmp(scheme_cstr, "http") != 0 && strcmp(scheme_cstr, "https") != 0)) {
         if (err_msg && err_msg_cap > 0)
             snprintf(err_msg, err_msg_cap, "SSE: invalid URL");
@@ -667,19 +704,31 @@ retry:
              query_len ? "%s?%s" : "%s",
              path_cstr && *path_cstr ? path_cstr : "/",
              query_cstr ? query_cstr : "");
+    if (!sse_request_target_is_valid(target)) {
+        if (err_msg && err_msg_cap > 0)
+            snprintf(err_msg, err_msg_cap, "SSE: invalid URL target");
+        goto fail;
+    }
 
     if (port != (is_secure ? 443 : 80)) {
-        snprintf(host_header,
-                 sizeof(host_header),
-                 sse_host_needs_brackets(host_cstr) ? "[%s]:%lld" : "%s:%lld",
-                 host_cstr,
-                 (long long)port);
+        host_header_len = snprintf(host_header,
+                                   sizeof(host_header),
+                                   sse_host_needs_brackets(host_cstr) ? "[%s]:%lld" : "%s:%lld",
+                                   host_cstr,
+                                   (long long)port);
     } else {
-        snprintf(host_header,
-                 sizeof(host_header),
-                 sse_host_needs_brackets(host_cstr) ? "[%s]" : "%s",
-                 host_cstr);
+        host_header_len = snprintf(host_header,
+                                   sizeof(host_header),
+                                   sse_host_needs_brackets(host_cstr) ? "[%s]" : "%s",
+                                   host_cstr);
     }
+    if (host_header_len <= 0 || (size_t)host_header_len >= sizeof(host_header)) {
+        if (err_msg && err_msg_cap > 0)
+            snprintf(err_msg, err_msg_cap, "SSE: Host header too large");
+        goto fail;
+    }
+    if (last_event_id && !sse_header_value_is_valid(last_event_id))
+        last_event_id = NULL;
 
     request_cap = strlen(target) + strlen(host_header) + 256 +
                   (last_event_id ? strlen(last_event_id) + 32 : 0);
@@ -981,8 +1030,10 @@ rt_string rt_sse_recv(void *obj) {
             const char *val = l + 3;
             if (*val == ' ')
                 val++;
-            free(sse->last_event_id);
-            sse->last_event_id = strdup(val);
+            if (sse_header_value_is_valid(val)) {
+                free(sse->last_event_id);
+                sse->last_event_id = strdup(val);
+            }
         } else if (strncmp(l, "retry:", 6) == 0) {
             const char *val = l + 6;
             int64_t retry_ms = 0;
@@ -1023,15 +1074,20 @@ rt_string rt_sse_recv_for(void *obj, int64_t timeout_ms) {
     if (!obj)
         return rt_string_from_bytes("", 0);
     rt_sse_impl *sse = (rt_sse_impl *)obj;
+    int timeout_int = 0;
     if (!sse->is_open)
         return rt_string_from_bytes("", 0);
     if (timeout_ms < 0 || timeout_ms > INT_MAX) {
         rt_trap("SSE: invalid timeout");
         return rt_string_from_bytes("", 0);
     }
+    timeout_int = (int)timeout_ms;
     if (!sse_wait_readable(sse, timeout_ms))
         return rt_string_from_bytes("", 0);
-    return rt_sse_recv(obj);
+    sse_set_recv_timeout(sse, timeout_int);
+    rt_string result = rt_sse_recv(obj);
+    sse_set_recv_timeout(sse, 30000);
+    return result;
 }
 
 /// @brief Check whether the SSE connection is still open and the underlying TCP socket is alive.

@@ -35,6 +35,10 @@
 
 #include "rt_map.h"
 
+#ifndef _WIN32
+#include <sys/uio.h>
+#endif
+
 typedef struct rt_udp {
     socket_t sock;                     // Socket descriptor
     char *address;                     // Bound address (allocated, or NULL if unbound)
@@ -64,10 +68,83 @@ static socket_t udp_create_socket(int family, int dual_stack) {
 #ifdef IPV6_V6ONLY
     if (family == AF_INET6) {
         int v6only = dual_stack ? 0 : 1;
-        setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (const char *)&v6only, sizeof(v6only));
+        if (setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (const char *)&v6only, sizeof(v6only)) !=
+            0) {
+            CLOSE_SOCKET(sock);
+            return INVALID_SOCK;
+        }
     }
 #endif
     return sock;
+}
+
+static int udp_pending_datagram_size(socket_t sock, int *size_out) {
+    if (!size_out)
+        return 0;
+    *size_out = 0;
+#ifdef _WIN32
+    {
+        u_long available = 0;
+        if (ioctlsocket(sock, FIONREAD, &available) == 0) {
+            *size_out = available > (u_long)INT_MAX ? INT_MAX : (int)available;
+            return 1;
+        }
+    }
+#elif defined(FIONREAD)
+    {
+        int available = 0;
+        if (ioctl(sock, FIONREAD, &available) == 0) {
+            *size_out = available;
+            return 1;
+        }
+    }
+#else
+    (void)sock;
+#endif
+    return 0;
+}
+
+static int udp_recvfrom_checked(socket_t sock,
+                                uint8_t *buf,
+                                int recv_len,
+                                struct sockaddr_storage *sender_addr,
+                                socklen_t *sender_len,
+                                int *truncated_out) {
+    if (truncated_out)
+        *truncated_out = 0;
+#ifdef _WIN32
+    int received = recvfrom(
+        sock, (char *)buf, recv_len, 0, (struct sockaddr *)sender_addr, sender_len);
+    if (received == SOCK_ERROR && WSAGetLastError() == WSAEMSGSIZE && truncated_out)
+        *truncated_out = 1;
+    return received;
+#else
+    struct iovec iov;
+    struct msghdr msg;
+    ssize_t received;
+    memset(&iov, 0, sizeof(iov));
+    memset(&msg, 0, sizeof(msg));
+    iov.iov_base = buf;
+    iov.iov_len = (size_t)recv_len;
+    msg.msg_name = sender_addr;
+    msg.msg_namelen = *sender_len;
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+    received = recvmsg(sock, &msg, 0);
+    if (received >= 0) {
+        *sender_len = msg.msg_namelen;
+#ifdef MSG_TRUNC
+        if ((msg.msg_flags & MSG_TRUNC) != 0 && truncated_out)
+            *truncated_out = 1;
+#endif
+        if (received > recv_len) {
+            if (truncated_out)
+                *truncated_out = 1;
+            received = recv_len;
+        }
+    }
+    return received < 0 ? SOCK_ERROR : (int)received;
+#endif
 }
 
 static void udp_make_v4_mapped(const struct sockaddr_in *src,
@@ -514,6 +591,10 @@ void *rt_udp_recv_from(void *obj, int64_t max_bytes) {
     if (!rt_net_i64_len_to_int(max_bytes, &recv_len))
         rt_trap("Network: receive size too large");
 
+    int pending_len = 0;
+    if (udp_pending_datagram_size(udp->sock, &pending_len) && pending_len > recv_len)
+        rt_trap_net("Network: datagram exceeds receive buffer", Err_ProtocolError);
+
     // Allocate receive buffer
     void *result = rt_bytes_new(max_bytes);
     uint8_t *buf = bytes_data(result);
@@ -521,8 +602,15 @@ void *rt_udp_recv_from(void *obj, int64_t max_bytes) {
     struct sockaddr_storage sender_addr;
     socklen_t sender_len = sizeof(sender_addr);
 
-    int received = recvfrom(
-        udp->sock, (char *)buf, recv_len, 0, (struct sockaddr *)&sender_addr, &sender_len);
+    int truncated = 0;
+    int received =
+        udp_recvfrom_checked(udp->sock, buf, recv_len, &sender_addr, &sender_len, &truncated);
+
+    if (truncated) {
+        if (rt_obj_release_check0(result))
+            rt_obj_free(result);
+        rt_trap_net("Network: datagram exceeds receive buffer", Err_ProtocolError);
+    }
 
     if (received == SOCK_ERROR) {
         // Check for timeout

@@ -110,6 +110,7 @@ struct rt_http2_conn {
     int64_t peer_conn_window;
     int next_stream_id;
     int sent_goaway;
+    hpack_dyn_table_t encode_table;
     hpack_dyn_table_t decode_table;
 };
 
@@ -1262,7 +1263,7 @@ static int h2_apply_setting(rt_http2_conn_t *conn,
         case H2_SETTINGS_HEADER_TABLE_SIZE:
             if (value > H2_MAX_DYNAMIC_TABLE_SIZE)
                 return 0;
-            hpack_dyn_table_set_max_size(&conn->decode_table, value);
+            hpack_dyn_table_set_max_size(&conn->encode_table, value);
             break;
         case H2_SETTINGS_ENABLE_PUSH:
             if (value != 0 && value != 1)
@@ -1671,10 +1672,10 @@ static int h2_build_request_block(rt_http2_conn_t *conn,
     if (!conn || !method || !scheme || !authority || !path || !out)
         return 0;
     memset(out, 0, sizeof(*out));
-    if (!hpack_encode_header_field(out, &conn->decode_table, ":method", method) ||
-        !hpack_encode_header_field(out, &conn->decode_table, ":scheme", scheme) ||
-        !hpack_encode_header_field(out, &conn->decode_table, ":authority", authority) ||
-        !hpack_encode_header_field(out, &conn->decode_table, ":path", path)) {
+    if (!hpack_encode_header_field(out, &conn->encode_table, ":method", method) ||
+        !hpack_encode_header_field(out, &conn->encode_table, ":scheme", scheme) ||
+        !hpack_encode_header_field(out, &conn->encode_table, ":authority", authority) ||
+        !hpack_encode_header_field(out, &conn->encode_table, ":path", path)) {
         h2_buf_free(out);
         return 0;
     }
@@ -1687,7 +1688,7 @@ static int h2_build_request_block(rt_http2_conn_t *conn,
             continue;
         if (h2_header_is_connection_specific(it->name, it->value))
             continue;
-        if (!hpack_encode_header_field(out, &conn->decode_table, it->name, it->value)) {
+        if (!hpack_encode_header_field(out, &conn->encode_table, it->name, it->value)) {
             h2_buf_free(out);
             return 0;
         }
@@ -1704,7 +1705,7 @@ static int h2_build_response_block(rt_http2_conn_t *conn,
         return 0;
     snprintf(status_buf, sizeof(status_buf), "%d", status);
     memset(out, 0, sizeof(*out));
-    if (!hpack_encode_header_field(out, &conn->decode_table, ":status", status_buf)) {
+    if (!hpack_encode_header_field(out, &conn->encode_table, ":status", status_buf)) {
         h2_buf_free(out);
         return 0;
     }
@@ -1715,7 +1716,7 @@ static int h2_build_response_block(rt_http2_conn_t *conn,
             continue;
         if (h2_header_is_connection_specific(it->name, it->value))
             continue;
-        if (!hpack_encode_header_field(out, &conn->decode_table, it->name, it->value)) {
+        if (!hpack_encode_header_field(out, &conn->encode_table, it->name, it->value)) {
             h2_buf_free(out);
             return 0;
         }
@@ -1736,6 +1737,7 @@ static rt_http2_conn_t *h2_conn_new_common(const rt_http2_io_t *io, int is_serve
     conn->peer_max_frame_size = H2_DEFAULT_FRAME_SIZE;
     conn->peer_conn_window = H2_DEFAULT_WINDOW_SIZE;
     conn->next_stream_id = 1;
+    conn->encode_table.max_bytes = 4096;
     conn->decode_table.max_bytes = 4096;
     return conn;
 }
@@ -1751,6 +1753,7 @@ rt_http2_conn_t *rt_http2_server_new(const rt_http2_io_t *io) {
 void rt_http2_conn_free(rt_http2_conn_t *conn) {
     if (!conn)
         return;
+    hpack_dyn_table_free(&conn->encode_table);
     hpack_dyn_table_free(&conn->decode_table);
     free(conn);
 }
@@ -1948,8 +1951,9 @@ int rt_http2_client_roundtrip(rt_http2_conn_t *conn,
             }
             if (!h2_parse_data_payload(&frame, &data_ptr, &data_len, &end_stream) ||
                 !h2_append_body(&res_body, max_body_len, data_ptr, data_len) ||
-                !h2_send_window_update(conn, 0, (uint32_t)data_len) ||
-                !h2_send_window_update(conn, stream_id, (uint32_t)data_len)) {
+                (data_len > 0 &&
+                 (!h2_send_window_update(conn, 0, (uint32_t)data_len) ||
+                  !h2_send_window_update(conn, stream_id, (uint32_t)data_len)))) {
                 h2_frame_free(&frame);
                 h2_buf_free(&res_body);
                 rt_http2_response_free(out_res);
@@ -2139,8 +2143,9 @@ int rt_http2_server_receive_request(
                 int end_stream = 0;
                 if (!h2_parse_data_payload(&frame, &data_ptr, &data_len, &end_stream) ||
                     !h2_append_body(&body, max_body_len, data_ptr, data_len) ||
-                    !h2_send_window_update(conn, 0, (uint32_t)data_len) ||
-                    !h2_send_window_update(conn, active_stream, (uint32_t)data_len)) {
+                    (data_len > 0 &&
+                     (!h2_send_window_update(conn, 0, (uint32_t)data_len) ||
+                      !h2_send_window_update(conn, active_stream, (uint32_t)data_len)))) {
                     h2_frame_free(&frame);
                     h2_buf_free(&body);
                     rt_http2_request_free(out_req);

@@ -228,6 +228,12 @@ static int ws_server_recv_frame(
             return 0;
         uint8_t *e = ((bi *)ext)->d;
         payload_len = ((size_t)e[0] << 8) | e[1];
+        if (payload_len < 126) {
+            if (rt_obj_release_check0(ext))
+                rt_obj_free(ext);
+            ws_server_send_frame(tcp, WS_OP_CLOSE, "\x03\xEA", 2);
+            return 0;
+        }
         if (rt_obj_release_check0(ext))
             rt_obj_free(ext);
     } else if (payload_len == 127) {
@@ -236,6 +242,12 @@ static int ws_server_recv_frame(
             return 0;
         uint8_t *e = ((bi *)ext)->d;
         if (!ws_decode_u64_len(e, &payload_len)) {
+            if (rt_obj_release_check0(ext))
+                rt_obj_free(ext);
+            ws_server_send_frame(tcp, WS_OP_CLOSE, "\x03\xEA", 2);
+            return 0;
+        }
+        if (payload_len < 65536) {
             if (rt_obj_release_check0(ext))
                 rt_obj_free(ext);
             ws_server_send_frame(tcp, WS_OP_CLOSE, "\x03\xEA", 2);

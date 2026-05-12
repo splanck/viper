@@ -78,7 +78,7 @@ Passing NULL connections, invalid port numbers, or NULL data are
 programming errors that always terminate the program. They are not
 network conditions and cannot be recovered from.
 
-URL parsers for HTTP, HTTPS, WS, WSS, and SSE reject empty hosts, malformed ports, port overflow, and control-character injection. HTTP chunked framing is parsed strictly; malformed chunk-size lines fail as protocol errors instead of being partially accepted.
+URL parsers for HTTP, HTTPS, WS, WSS, and SSE reject empty hosts, malformed ports, malformed IPv6 authorities, port overflow, and control-character injection. HTTP chunked framing is parsed strictly; malformed chunk-size lines and non-empty chunk terminators fail as protocol errors instead of being partially accepted. HTTP responses with unsupported `Transfer-Encoding` values are rejected rather than falling back to `Content-Length`.
 
 ---
 
@@ -548,6 +548,7 @@ UDP operations trap on errors:
 - `SendTo()` traps on host not found
 - `SendTo()` traps if message is too large (>65507 bytes)
 - `Recv()` traps if socket is closed
+- `Recv()` traps with a protocol error if the next datagram is larger than the requested receive buffer
 - `JoinGroup()` traps on invalid multicast address
 - `Bind()` traps if port is in use or permission denied
 
@@ -1020,6 +1021,8 @@ All properties are read/write.
 | `HostPort`  | String | `host:port` (port omitted if default for scheme)    |
 | `Full`      | String | Complete URL string                                 |
 
+IPv6 literal hosts are bracketed automatically when `Authority`, `HostPort`, or `Full` is composed from a manually-set bare IPv6 host such as `::1`.
+
 ### Query Parameter Methods
 
 | Method                           | Returns | Description                        |
@@ -1188,6 +1191,9 @@ PRINT encoded  ' "hello%20world%21"
 DIM decoded AS STRING = Viper.Network.Url.Decode("hello%20world%21")
 PRINT decoded  ' "hello world!"
 
+' Decode does not treat + as a space outside query strings
+PRINT Viper.Network.Url.Decode("a+b")  ' "a+b"
+
 ' Encode Map as query string
 DIM params AS OBJECT = Viper.Collections.Map.New()
 params.Set("name", "John Doe")
@@ -1196,9 +1202,12 @@ DIM query AS STRING = Viper.Network.Url.EncodeQuery(params)
 PRINT query  ' "name=John%20Doe&city=New%20York"
 
 ' Decode query string to Map
-DIM parsed AS OBJECT = Viper.Network.Url.DecodeQuery("a=1&b=2")
+DIM parsed AS OBJECT = Viper.Network.Url.DecodeQuery("a=1&b=hello+world")
 PRINT parsed.Get("a")  ' "1"
+PRINT parsed.Get("b")  ' "hello world"
 ```
+
+`Scheme` setters validate RFC 3986 scheme syntax and lowercase the stored value. `Port` setters accept `0..65535`; values outside that range trap instead of being clamped.
 
 ---
 
@@ -1338,6 +1347,7 @@ WebSocket operations trap on errors:
 ### Protocol Notes
 
 - **Frame masking:** Client frames are automatically masked per RFC 6455
+- **Frame validation:** Non-minimal payload-length encodings, invalid close-frame lengths, reserved close codes, and non-UTF-8 close reasons are rejected as protocol errors
 - **Handshake formatting:** Client `Host` headers use canonical authority formatting, omitting default ports while still bracketing IPv6 literals
 - **Handshake validation:** `WsServer` / `WssServer` reject malformed `Sec-WebSocket-Key` values and invalid `Host` headers before switching protocols
 - **Subprotocol negotiation:** `ConnectProtocol` / `ConnectForProtocol` require the server to echo the requested `Sec-WebSocket-Protocol` token or the handshake fails
@@ -1634,7 +1644,9 @@ Configurable retry policy with backoff strategies for handling transient failure
 | Strategy     | Constructor     | Delay Pattern                                    |
 |--------------|-----------------|--------------------------------------------------|
 | Fixed        | `New()`         | Same delay every time: `base, base, base, ...`   |
-| Exponential  | `Exponential()` | Doubles each time: `base, 2*base, 4*base, ...` (capped at max, with ±25% jitter) |
+| Exponential  | `Exponential()` | Doubles each time: `base, 2*base, 4*base, ...` (capped at max, with 0-25% additive jitter) |
+
+Negative retry counts and delay inputs are normalized to `0` before a policy is created. For exponential policies, `maxDelayMs` is compared against that normalized base delay.
 
 > **Attempt count semantics:** `RetryPolicy.New(n)` allows up to `n` calls to `NextDelay()` before the policy is exhausted. `Attempt` is 0-based and reflects how many `NextDelay()` calls have been made. The first `NextDelay()` call returns the initial delay (attempt 0); after `n` total calls the policy is exhausted and `NextDelay()` returns -1.
 
@@ -2110,7 +2122,8 @@ Server-Sent Events (SSE) client for receiving event streams over HTTP.
 - Follows ordinary HTTP redirects before the event stream is established.
 - When the server drops the stream after delivering an event, the client reconnects automatically.
 - `retry:` updates the reconnect delay in milliseconds.
-- When an `id:` field has been seen, reconnect requests include `Last-Event-ID` so the server can resume from the last delivered event.
+- When a valid `id:` field has been seen, reconnect requests include `Last-Event-ID` so the server can resume from the last delivered event. IDs containing header-breaking control characters are ignored.
+- `RecvFor(timeoutMs)` applies the timeout to the actual event read after readiness is observed, so partial event frames cannot block forever.
 - Unsupported `Content-Encoding` values are rejected instead of being misparsed as SSE frames.
 
 ---

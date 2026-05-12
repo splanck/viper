@@ -433,7 +433,83 @@ static void test_http_invalid_content_length() {
     server.join();
 }
 
-// ── Scenario 12: Async connect failure resolves as Future error ───────────
+// ── Scenario 12: HTTP unsupported Transfer-Encoding is rejected ────────────
+static void test_http_unsupported_transfer_encoding() {
+    int port = 0;
+    sock_t listener = make_listener(&port);
+    if (listener == SOCK_INVALID) {
+        printf("  SKIP: HttpUnsupportedTransferEncoding → local bind unavailable\n");
+        return;
+    }
+
+    std::thread server([listener]() {
+        sock_t client_fd = accept(listener, NULL, NULL);
+        assert(client_fd != SOCK_INVALID);
+
+        char byte = 0;
+        char tail[4] = {0, 0, 0, 0};
+        while (recv(client_fd, &byte, 1, 0) == 1) {
+            tail[0] = tail[1];
+            tail[1] = tail[2];
+            tail[2] = tail[3];
+            tail[3] = byte;
+            if (tail[0] == '\r' && tail[1] == '\n' && tail[2] == '\r' && tail[3] == '\n')
+                break;
+        }
+
+        const char *response = "HTTP/1.1 200 OK\r\n"
+                               "Transfer-Encoding: gzip\r\n"
+                               "Content-Length: 5\r\n"
+                               "\r\n"
+                               "hello";
+        send(client_fd, response, (int)strlen(response), 0);
+        SOCK_CLOSE(client_fd);
+        SOCK_CLOSE(listener);
+    });
+
+    char url[64];
+    snprintf(url, sizeof(url), "http://127.0.0.1:%d/bad-transfer", port);
+    EXPECT_TRAP(rt_http_get(rt_const_cstr(url)));
+
+    assert(g_last_trap != nullptr);
+    assert(strstr(g_last_trap, "Transfer-Encoding") != nullptr);
+    int code = rt_trap_get_net_code();
+    assert(code == Err_ProtocolError);
+
+    printf("  PASS: HttpUnsupportedTransferEncoding → Err_ProtocolError (%d)\n", code);
+    server.join();
+}
+
+// ── Scenario 13: UDP oversized datagrams are not silently truncated ─────────
+static void test_udp_oversized_datagram_traps() {
+    void *receiver = rt_udp_bind_at(rt_const_cstr("127.0.0.1"), 0);
+    void *sender = rt_udp_bind_at(rt_const_cstr("127.0.0.1"), 0);
+    assert(receiver != nullptr);
+    assert(sender != nullptr);
+
+    int64_t recv_port = rt_udp_port(receiver);
+    void *payload = rt_bytes_new(16);
+    for (int64_t i = 0; i < 16; ++i)
+        rt_bytes_set(payload, i, (uint8_t)i);
+
+    int64_t sent = rt_udp_send_to(sender, rt_const_cstr("127.0.0.1"), recv_port, payload);
+    assert(sent == 16);
+
+    EXPECT_TRAP(rt_udp_recv(receiver, 4));
+    assert(g_last_trap != nullptr);
+    assert(strstr(g_last_trap, "datagram") != nullptr);
+    int code = rt_trap_get_net_code();
+    assert(code == Err_ProtocolError);
+
+    printf("  PASS: UdpOversizedDatagram → Err_ProtocolError (%d)\n", code);
+
+    if (rt_obj_release_check0(payload))
+        rt_obj_free(payload);
+    rt_udp_close(sender);
+    rt_udp_close(receiver);
+}
+
+// ── Scenario 14: Async connect failure resolves as Future error ───────────
 static void test_async_connect_failure_surfaces_as_future_error() {
     void *future = rt_async_connect_for(rt_const_cstr("127.0.0.1"), 1, 2000);
     assert(future != nullptr);
@@ -463,6 +539,8 @@ int main() {
     test_dns_resolve4_nonexistent();
     test_dns_reverse_invalid();
     test_http_invalid_content_length();
+    test_http_unsupported_transfer_encoding();
+    test_udp_oversized_datagram_traps();
     test_async_connect_failure_surfaces_as_future_error();
 
     net_cleanup();

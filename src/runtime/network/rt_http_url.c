@@ -227,7 +227,7 @@ static char *percent_encode(const char *str, bool encode_slash) {
 
 /// @brief Percent-decode a string.
 /// @return Allocated string, caller must free.
-static char *percent_decode(const char *str) {
+static char *percent_decode_internal(const char *str, bool plus_as_space) {
     if (!str)
         return strdup("");
 
@@ -252,8 +252,7 @@ static char *percent_decode(const char *str) {
                 i += 2;
                 continue;
             }
-        } else if (str[i] == '+') {
-            // Plus is space in query strings
+        } else if (plus_as_space && str[i] == '+') {
             *p++ = ' ';
             continue;
         }
@@ -261,6 +260,14 @@ static char *percent_decode(const char *str) {
     }
     *p = '\0';
     return result;
+}
+
+static char *percent_decode(const char *str) {
+    return percent_decode_internal(str, false);
+}
+
+static char *percent_decode_query_component(const char *str) {
+    return percent_decode_internal(str, true);
 }
 
 /// @brief Internal URL parsing.
@@ -349,11 +356,18 @@ static int parse_url_full(const char *url_str, rt_url_t *result) {
             // IPv6 literal
             const char *bracket_end = strchr(host_start, ']');
             if (bracket_end && bracket_end < auth_end) {
+                if (bracket_end + 1 < auth_end && *(bracket_end + 1) != ':') {
+                    free_url(result);
+                    return -1;
+                }
                 size_t host_len = bracket_end - host_start + 1;
                 result->host = rt_url_dup_slice_or_trap_cleanup(
                     result, host_start, host_len, "URL.Parse: host allocation failed");
                 if (bracket_end + 1 < auth_end && *(bracket_end + 1) == ':')
                     port_colon = bracket_end + 1;
+            } else {
+                free_url(result);
+                return -1;
             }
         } else {
             // Regular host
@@ -371,7 +385,11 @@ static int parse_url_full(const char *url_str, rt_url_t *result) {
         }
 
         // Parse port
-        if (port_colon && port_colon + 1 < auth_end) {
+        if (port_colon && port_colon + 1 >= auth_end) {
+            free_url(result);
+            return -1;
+        }
+        if (port_colon) {
             result->port = 0;
             const char *s = port_colon + 1;
             if (*s < '0' || *s > '9') {
@@ -634,6 +652,14 @@ rt_string rt_url_scheme(void *obj) {
 
 void rt_url_set_scheme(void *obj, rt_string scheme) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.set_Scheme: null receiver");
+    const char *scheme_str = scheme ? rt_string_cstr(scheme) : NULL;
+    if (!scheme_str || !*scheme_str) {
+        free(url->scheme);
+        url->scheme = NULL;
+        return;
+    }
+    if (!rt_url_scheme_is_valid(scheme_str, strlen(scheme_str)))
+        rt_trap_net("URL.set_Scheme: invalid scheme", Err_InvalidUrl);
     rt_url_replace_field(&url->scheme, scheme, "URL.set_Scheme: allocation failed", 1);
 }
 
@@ -658,13 +684,30 @@ int64_t rt_url_port(void *obj) {
 void rt_url_set_port(void *obj, int64_t port) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.set_Port: null receiver");
 
-    // Clamp to valid port range (0 = unset, 1-65535 = valid).
-    if (port < 0)
-        port = 0;
-    else if (port > 65535)
-        port = 65535;
+    if (port < 0 || port > 65535)
+        rt_trap_net("URL.set_Port: invalid port", Err_InvalidUrl);
 
     url->port = port;
+}
+
+static bool rt_url_host_needs_brackets(const char *host) {
+    return host && host[0] != '[' && strchr(host, ':') != NULL;
+}
+
+static size_t rt_url_formatted_host_len(const char *host) {
+    if (!host)
+        return 0;
+    return strlen(host) + (rt_url_host_needs_brackets(host) ? 2 : 0);
+}
+
+static char *rt_url_append_formatted_host(char *p, char *end, const char *host) {
+    if (!host)
+        return p;
+    if (rt_url_host_needs_brackets(host))
+        p += snprintf(p, (size_t)(end - p), "[%s]", host);
+    else
+        p += snprintf(p, (size_t)(end - p), "%s", host);
+    return p;
 }
 
 rt_string rt_url_path(void *obj) {
@@ -751,7 +794,7 @@ rt_string rt_url_authority(void *obj) {
         size += 1;                         // @
     }
     if (url->host)
-        size += strlen(url->host);
+        size += rt_url_formatted_host_len(url->host);
     if (url->port > 0)
         size += 22; // :PORT (max 19 digits for int64_t + colon + margin)
 
@@ -768,8 +811,7 @@ rt_string rt_url_authority(void *obj) {
             p += snprintf(p, (size_t)(end - p), ":%s", url->pass);
         *p++ = '@';
     }
-    if (url->host)
-        p += snprintf(p, (size_t)(end - p), "%s", url->host);
+    p = rt_url_append_formatted_host(p, end, url->host);
     if (url->port > 0)
         p += snprintf(p, (size_t)(end - p), ":%lld", (long long)url->port);
 
@@ -791,15 +833,14 @@ rt_string rt_url_host_port(void *obj) {
     int64_t default_port = default_port_for_scheme(url->scheme);
     bool show_port = url->port > 0 && url->port != default_port;
 
-    size_t size = strlen(url->host) + (show_port ? 22 : 0);
+    size_t size = rt_url_formatted_host_len(url->host) + (show_port ? 22 : 0);
     char *result = rt_url_alloc_or_trap(size + 1, "URL.HostPort: allocation failed");
 
+    char *p = result;
+    char *end = result + size + 1;
+    p = rt_url_append_formatted_host(p, end, url->host);
     if (show_port)
-        snprintf(result, size + 1, "%s:%lld", url->host, (long long)url->port);
-    else {
-        size_t hlen = strlen(url->host);
-        memcpy(result, url->host, hlen + 1);
-    }
+        snprintf(p, (size_t)(end - p), ":%lld", (long long)url->port);
 
     rt_string str = rt_url_string_from_bytes_or_trap(
         result, strlen(result), "URL.HostPort: string allocation failed");
@@ -823,7 +864,7 @@ rt_string rt_url_full(void *obj) {
         size += 1; // @
     }
     if (url->host)
-        size += strlen(url->host);
+        size += rt_url_formatted_host_len(url->host);
     if (url->port > 0)
         size += 22; // :PORT (max 19 digits for int64_t + colon + margin)
     if (url->path)
@@ -848,8 +889,7 @@ rt_string rt_url_full(void *obj) {
             p += snprintf(p, (size_t)(end - p), ":%s", url->pass);
         *p++ = '@';
     }
-    if (url->host)
-        p += snprintf(p, (size_t)(end - p), "%s", url->host);
+    p = rt_url_append_formatted_host(p, end, url->host);
     if (url->port > 0) {
         int64_t default_port = default_port_for_scheme(url->scheme);
         if (url->port != default_port)
@@ -1004,11 +1044,11 @@ void *rt_url_resolve(void *obj, rt_string relative) {
     if (!rel_str || *rel_str == '\0')
         return rt_url_clone(obj);
 
-    // Parse relative URL (failure yields empty rel → resolution uses base only)
+    // Parse relative URL.
     rt_url_t rel;
     memset(&rel, 0, sizeof(rel));
     if (parse_url_full(rel_str, &rel) != 0)
-        memset(&rel, 0, sizeof(rel));
+        rt_trap_net("URL.Resolve: invalid relative URL", Err_InvalidUrl);
 
     // Create new URL
     rt_url_t *result = (rt_url_t *)rt_obj_new_i64(0, sizeof(rt_url_t));
@@ -1267,7 +1307,7 @@ void *rt_url_decode_query(rt_string query) {
             if (end > p) {
                 char *key = rt_url_dup_slice_or_trap_cleanup(
                     NULL, p, (size_t)(end - p), "URL.DecodeQuery: key allocation failed");
-                char *dec_key = percent_decode(key);
+                char *dec_key = percent_decode_query_component(key);
                 if (!dec_key) {
                     free(key);
                     rt_url_trap_runtime("URL.DecodeQuery: key decode allocation failed");
@@ -1293,8 +1333,8 @@ void *rt_url_decode_query(rt_string query) {
                                                  val_start,
                                                  (size_t)(val_end - val_start),
                                                  "URL.DecodeQuery: value allocation failed");
-            char *dec_key = percent_decode(key);
-            char *dec_val = percent_decode(val);
+            char *dec_key = percent_decode_query_component(key);
+            char *dec_val = percent_decode_query_component(val);
             if (!dec_key || !dec_val) {
                 free(key);
                 free(val);

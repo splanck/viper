@@ -295,21 +295,27 @@ void rt_connpool_release(void *obj, void *conn) {
 
     rt_connpool_impl *pool = (rt_connpool_impl *)obj;
 
-    if (!tcp_connection_healthy(conn)) {
-        close_tcp_connection(conn);
-        return;
-    }
-
     POOL_MUTEX_LOCK(&pool->lock);
 
     // Find the entry for this connection (if it was tracked)
     for (int i = 0; i < pool->count; i++) {
         if (pool->entries[i].tcp == conn) {
+            if (!tcp_connection_healthy(conn)) {
+                remove_entry_at(pool, i);
+                POOL_MUTEX_UNLOCK(&pool->lock);
+                return;
+            }
             pool->entries[i].in_use = false;
             pool->entries[i].last_used = time(NULL);
             POOL_MUTEX_UNLOCK(&pool->lock);
             return;
         }
+    }
+
+    if (!tcp_connection_healthy(conn)) {
+        POOL_MUTEX_UNLOCK(&pool->lock);
+        close_tcp_connection(conn);
+        return;
     }
 
     // Not tracked — add it if there's space
@@ -320,9 +326,11 @@ void rt_connpool_release(void *obj, void *conn) {
         char key[300];
         make_key(rt_string_cstr(h), (int)p, key, sizeof(key));
         if (track_connection(pool, conn, key, false, time(NULL))) {
+            rt_string_unref(h);
             POOL_MUTEX_UNLOCK(&pool->lock);
             return;
         }
+        rt_string_unref(h);
     }
 
     POOL_MUTEX_UNLOCK(&pool->lock);

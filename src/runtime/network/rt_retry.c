@@ -34,9 +34,10 @@ static void retry_finalizer(void *obj) {
 void *rt_retry_new(int64_t max_retries, int64_t base_delay_ms) {
     void *obj = rt_obj_new_i64(0, sizeof(rt_retry_data));
     rt_retry_data *data = (rt_retry_data *)obj;
+    int64_t base = base_delay_ms >= 0 ? base_delay_ms : 0;
     data->max_retries = max_retries >= 0 ? max_retries : 0;
-    data->base_delay_ms = base_delay_ms >= 0 ? base_delay_ms : 0;
-    data->max_delay_ms = base_delay_ms; // Fixed delay
+    data->base_delay_ms = base;
+    data->max_delay_ms = base; // Fixed delay
     data->current_attempt = 0;
     data->exponential = 0;
     rt_obj_set_finalizer(obj, retry_finalizer);
@@ -50,9 +51,11 @@ void *rt_retry_new(int64_t max_retries, int64_t base_delay_ms) {
 void *rt_retry_exponential(int64_t max_retries, int64_t base_delay_ms, int64_t max_delay_ms) {
     void *obj = rt_obj_new_i64(0, sizeof(rt_retry_data));
     rt_retry_data *data = (rt_retry_data *)obj;
+    int64_t base = base_delay_ms >= 0 ? base_delay_ms : 0;
+    int64_t max_delay = max_delay_ms >= base ? max_delay_ms : base;
     data->max_retries = max_retries >= 0 ? max_retries : 0;
-    data->base_delay_ms = base_delay_ms >= 0 ? base_delay_ms : 0;
-    data->max_delay_ms = max_delay_ms >= base_delay_ms ? max_delay_ms : base_delay_ms;
+    data->base_delay_ms = base;
+    data->max_delay_ms = max_delay;
     data->current_attempt = 0;
     data->exponential = 1;
     rt_obj_set_finalizer(obj, retry_finalizer);

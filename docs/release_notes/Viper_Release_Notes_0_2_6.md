@@ -31,18 +31,21 @@ A focused hardening-and-correctness cycle on the v0.2.5 surface. No new public n
 - Heap immortal-refcount sentinel split — `RT_HEAP_IMMORTAL_REFCNT` (`SIZE_MAX-1`) reserved as a sticky immortal value distinct from the `SIZE_MAX` corruption marker.
 - MSVC build hardening — embedded debug info via CMP0141, expanded import policy for UCRT/Win32 symbols, WSL-aware audit and smoke scripts.
 - ViperIDE polish — IntelliSense linkage fix via `fe_zia` force-load, real keyword highlighting from the live `Lexer`, scrollBeyondLastLine, BMP toolbar glyphs.
+- GUI runtime widget-handle correctness — every public entry routes through centralised type-checked wrappers, contextmenu submenu ownership is now bidirectional, code-editor block-comment depth derives from a buffer scan instead of render state, and progressbar/breadcrumb/slider/toast/shortcut paths receive lifetime, range, and focus-routing fixes.
+- Network runtime hardening — WebSocket URL parser handles query/fragment/IPv6 and saturates port scans, HTTP server enforces RFC 7230 token characters on methods and request targets, HTTP client connection pool releases its slot before closing the socket, and `send`/`recv` returning `<= 0` is treated as a hard error across HTTP/2, HTTPS, SSE, REST, and UDP transports.
+- x86-64 backend regression repairs — integer cast width selection, label-operand validation, frame-slot aliasing, overflow-pseudo lowering, switch operand normalisation, and a documentation pass across ~50 backend source files with doxygen on every helper.
 
 ### By the Numbers
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 46 | +46 |
+| Commits | — | 53 | +53 |
 | Source files | 2,996 | 3,006 | +10 |
-| Production SLOC | 552K | 569K | +17K |
-| Test SLOC | 228K | 238K | +10K |
+| Production SLOC | 552K | 571K | +19K |
+| Test SLOC | 228K | 239K | +11K |
 | Demo SLOC | 188K | 188K | 0 |
 
-Counts via `scripts/count_sloc.sh` (production 568,658 / test 237,975 / demo 187,826 / source files 3,006).
+Counts via `scripts/count_sloc.sh` (production 570,641 / test 239,177 / demo 187,826 / source files 3,006).
 
 ---
 
@@ -193,6 +196,24 @@ Counts via `scripts/count_sloc.sh` (production 568,658 / test 237,975 / demo 187
 - `Water3D.IsPixelsHandle` drops a redundant `rt_heap_is_payload` precheck that was producing false negatives on Pixels handles whose heap-registry registration window had closed; the class-id check alone is sufficient.
 - New `Viper.Graphics3D.GLTF` runtime class registered with `MeshCount`, `MaterialCount` properties and `GetMesh` / `GetMaterial` methods, mirroring the existing `FBX` import surface; `Scene3D.Load(path)` registered as a new public method.
 
+### GUI runtime
+
+- Widget handle validation centralised through `rt_gui_widget_handle_checked` and `_checked_type` — every runtime entry now rejects NULL, destroyed, and wrong-type handles before casting. Per-widget-type wrappers (tabbar, splitpane, dropdown, slider, progressbar, listbox, radiobutton, spinner, image, codeeditor) replace the previous unchecked casts that crashed on cross-type passes.
+- Radiogroup handles carry a magic-tagged registry so dangling group pointers fail safely rather than miscasting; toolbar removal extracted into a shared `toolbar_remove_item_at` helper that consistently dismisses dropdown and overflow popups.
+- Context menu submenu ownership is now bidirectional — `parent_item`/`parent_menu` are linked at attach time and cleared on either side's destruction, eliminating the stale-pointer class that produced UAF on dynamic submenu trees. Menu items gain a `checkable` flag.
+- Code-editor Zia syntax highlighting derives block-comment nesting depth from a forward scan of preceding buffer lines instead of a render-order stateful counter; scrolling into the middle of a `/* … */` no longer mis-colors until the user scrolls back through the opening delimiter.
+- Progressbar `set_style(circular)` rendering path; breadcrumb/file-dialog memory safety; slider step values re-snap on `set_value`; toast duration clamping; keyboard shortcuts route through the focus chain instead of bypassing it.
+- File dialog (Cocoa) sheet bridge moved behind a typed header so retain/release pairs stay balanced through native callbacks.
+
+### Network runtime
+
+- WebSocket URL parser accepts `?` and `#` as path/query/fragment terminators, rejects zero-length hosts, scans the port as a bounded unsigned with overflow guard, and trims path copying at the fragment delimiter so query-only URLs and `wss://host?q=…` forms parse correctly.
+- HTTP server gains an RFC 7230 token-character classifier and request-target byte validator; malformed methods and paths return 400 before reaching application handlers instead of being forwarded blindly.
+- HTTP client connection pool now releases the slot before closing the socket — a concurrent reuser can no longer observe a half-released entry. Pool entry fields are cleared explicitly so the pool never reuses stale `key`/`last_used`/`pool_slot` values.
+- HTTP/2, HTTPS server, REST client, network_udp, and the network_http transport treat `send()`/`recv()` returning `<= 0` as a hard error, not just the platform-specific `SOCK_ERROR` sentinel — previously zero-return on some Windows configurations silently dropped bytes.
+- SSE chunked-encoding parser distinguishes "no hex digit" from "malformed extension", so trailing semicolons + extensions parse per spec; `sse_transport_send_all` adopts the same `<= 0`-is-error convention.
+- New `rt_net_timeout_ms_to_int` and `rt_net_i64_len_to_int` helpers saturate `int64_t` arguments into the `int`-sized socket/poll APIs uniformly across every network call site; negative timeouts in `set_socket_timeout` and `wait_socket` are clamped or rejected.
+
 ### ViperIDE
 
 - The `zia` binary's CMake target now force-loads `fe_zia` (`LINKER:-force_load` on macOS, `--whole-archive` on Linux) — without this the static linker satisfied every `rt_zia_*` reference from the weak stubs in `viper_runtime/core/rt_zia_completion_stub.c`, so completion / hover / diagnostics / symbols silently returned `"Zia completion unavailable"`.
@@ -254,8 +275,8 @@ Counts via `scripts/count_sloc.sh` (production 568,658 / test 237,975 / demo 187
 - Mach-O writer rejects section and segment names longer than the 16-byte field instead of silently truncating; AArch64 addend pairs remain adjacent after sorting, large section-offset relocations use synthetic anchors, and `MH_SUBSECTIONS_VIA_SYMBOLS` moved to a shared header.
 - ELF and Mach-O readers reject invalid section/symbol string-table offsets and undersized Mach-O command payloads instead of returning truncated or empty names.
 - x86-64 lowerer validates malformed inputs (empty blocks, dangling branches, mismatched edge-copy arity, unresolved phi predecessors) and surfaces them through the diagnostic engine instead of asserting or producing broken MIR.
-- Three rounds of x86-64 and AArch64 backend regressions repaired: switch edge-copy ordering, R10/R11 scratch reservation, Win64 shadow space, i1 immediate canonicalization, caller-saved live-out across calls, AArch64 branch-patch math.
-- Doc-comment audit across the assembler and linker subtree (~75 files): canonical Viper file headers, per-helper doxygen, refreshed `docs/codegen/native-assembler.md` and `native-linker.md`.
+- Multiple rounds of x86-64 and AArch64 backend regressions repaired: switch edge-copy ordering, R10/R11 scratch reservation, Win64 shadow space, i1 immediate canonicalization, caller-saved live-out across calls, AArch64 branch-patch math, integer cast width selection, label-operand validation, frame-slot aliasing, overflow-pseudo lowering, switch operand normalisation, and malformed-IL diagnostics at the lowerer boundary.
+- Doc-comment audit across the codegen tree: assembler and linker subtree (~75 files) plus the full x86-64 backend (~50 files in `src/codegen/x86_64/` covering ISel, lowering rules, peephole sub-passes, register allocator, scheduler, binary encoder, asm emitter, and pass-manager wrappers). Canonical Viper file headers, per-helper doxygen, refreshed `docs/codegen/native-assembler.md` and `native-linker.md`.
 
 ### Windows / MSVC toolchain
 
@@ -295,6 +316,6 @@ Demos and docs were updated to track the runtime work above; the stale Windows d
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 46-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 53-commit history since v0.2.5.
 
 <!-- END DRAFT -->

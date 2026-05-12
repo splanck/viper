@@ -11,8 +11,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_http_server.h"
+#include "rt_map.h"
+#include "rt_network.h"
 #include "rt_object.h"
+#include "rt_retry.h"
 #include "rt_string.h"
+#include "rt_tls.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -52,6 +56,8 @@ extern int rt_ws_parse_url_for_test(
 extern int rt_ws_validate_handshake_response_for_test(const char *response, const char *key_copy);
 extern char *rt_ws_compute_accept_key(const char *key_cstr);
 extern char *rt_ws_format_host_header_for_test(const char *host, int port, int is_secure);
+extern int rt_ws_close_code_valid_for_test(int code);
+extern int rt_http_header_name_valid_for_test(const char *name);
 
 static char captured_method[32];
 static char captured_path[64];
@@ -462,6 +468,47 @@ static void test_http_parse_url_rejects_bad_ports(void) {
     free(path);
 }
 
+static void test_http_parse_url_accepts_case_insensitive_scheme(void) {
+    char *host = NULL;
+    char *path = NULL;
+    int port = 0;
+    int use_tls = 0;
+
+    ASSERT(rt_http_parse_url_for_test(
+               "HTTPS://example.test:9443/path?q=1", &host, &port, &path, &use_tls) == 1);
+    ASSERT(host && strcmp(host, "example.test") == 0);
+    ASSERT(port == 9443);
+    ASSERT(path && strcmp(path, "/path?q=1") == 0);
+    ASSERT(use_tls == 1);
+    free(host);
+    free(path);
+}
+
+static void test_http_parse_url_rejects_malformed_ipv6_authority(void) {
+    char *host = NULL;
+    char *path = NULL;
+    int port = 0;
+    int use_tls = 0;
+
+    ASSERT(rt_http_parse_url_for_test(
+               "http://[::1]junk/path", &host, &port, &path, &use_tls) == 0);
+    free(host);
+    free(path);
+    host = NULL;
+    path = NULL;
+    ASSERT(rt_http_parse_url_for_test(
+               "http://example.test:/path", &host, &port, &path, &use_tls) == 0);
+    free(host);
+    free(path);
+}
+
+static void test_http_header_name_validation_rejects_invalid_fields(void) {
+    ASSERT(rt_http_header_name_valid_for_test("X-Test") == 1);
+    ASSERT(rt_http_header_name_valid_for_test("Bad:Name") == 0);
+    ASSERT(rt_http_header_name_valid_for_test("Bad Name") == 0);
+    ASSERT(rt_http_header_name_valid_for_test("") == 0);
+}
+
 static void test_ws_parse_url_accepts_ipv6_literal(void) {
     int secure = 0;
     int port = 0;
@@ -499,6 +546,36 @@ static void test_ws_parse_url_rejects_bad_authorities(void) {
 
     ASSERT(rt_ws_parse_url_for_test("ws://example.test:70000/chat", &secure, &host, &port, &path) ==
            0);
+    free(host);
+    free(path);
+}
+
+static void test_ws_parse_url_accepts_case_insensitive_scheme(void) {
+    int secure = 0;
+    int port = 0;
+    char *host = NULL;
+    char *path = NULL;
+
+    ASSERT(rt_ws_parse_url_for_test("WSS://example.test/chat", &secure, &host, &port, &path) == 1);
+    ASSERT(secure == 1);
+    ASSERT(port == 443);
+    ASSERT(host && strcmp(host, "example.test") == 0);
+    ASSERT(path && strcmp(path, "/chat") == 0);
+    free(host);
+    free(path);
+}
+
+static void test_ws_parse_url_rejects_request_injection(void) {
+    int secure = 0;
+    int port = 0;
+    char *host = NULL;
+    char *path = NULL;
+
+    ASSERT(rt_ws_parse_url_for_test("ws://example.test/\r\nX-Evil: yes",
+                                    &secure,
+                                    &host,
+                                    &port,
+                                    &path) == 0);
     free(host);
     free(path);
 }
@@ -590,6 +667,77 @@ static void test_ws_host_header_formatting(void) {
     free(header);
 }
 
+static void test_ws_close_code_validation(void) {
+    ASSERT(rt_ws_close_code_valid_for_test(1000) == 1);
+    ASSERT(rt_ws_close_code_valid_for_test(1014) == 1);
+    ASSERT(rt_ws_close_code_valid_for_test(3000) == 1);
+    ASSERT(rt_ws_close_code_valid_for_test(4999) == 1);
+    ASSERT(rt_ws_close_code_valid_for_test(999) == 0);
+    ASSERT(rt_ws_close_code_valid_for_test(1004) == 0);
+    ASSERT(rt_ws_close_code_valid_for_test(1005) == 0);
+    ASSERT(rt_ws_close_code_valid_for_test(1006) == 0);
+    ASSERT(rt_ws_close_code_valid_for_test(1015) == 0);
+    ASSERT(rt_ws_close_code_valid_for_test(5000) == 0);
+}
+
+static void test_url_decode_plus_semantics(void) {
+    rt_string decoded = rt_url_decode(rt_const_cstr("a+b%20c"));
+    ASSERT(decoded && strcmp(rt_string_cstr(decoded), "a+b c") == 0);
+    rt_string_unref(decoded);
+
+    void *map = rt_url_decode_query(rt_const_cstr("q=a+b"));
+    rt_string value = rt_map_get_str(map, rt_const_cstr("q"));
+    ASSERT(value && strcmp(rt_string_cstr(value), "a b") == 0);
+    if (rt_obj_release_check0(map))
+        rt_obj_free(map);
+}
+
+static void test_url_ipv6_building_and_authority_validation(void) {
+    ASSERT(rt_url_is_valid(rt_const_cstr("http://[::1]junk/path")) == 0);
+    ASSERT(rt_url_is_valid(rt_const_cstr("http://example.test:/path")) == 0);
+
+    void *url = rt_url_new();
+    rt_url_set_scheme(url, rt_const_cstr("HTTP"));
+    rt_url_set_host(url, rt_const_cstr("::1"));
+    rt_url_set_path(url, rt_const_cstr("/"));
+
+    rt_string host_port = rt_url_host_port(url);
+    rt_string authority = rt_url_authority(url);
+    rt_string full = rt_url_full(url);
+    ASSERT(host_port && strcmp(rt_string_cstr(host_port), "[::1]") == 0);
+    ASSERT(authority && strcmp(rt_string_cstr(authority), "[::1]") == 0);
+    ASSERT(full && strcmp(rt_string_cstr(full), "http://[::1]/") == 0);
+    rt_string_unref(host_port);
+    rt_string_unref(authority);
+    rt_string_unref(full);
+    if (rt_obj_release_check0(url))
+        rt_obj_free(url);
+}
+
+static void test_retry_negative_delays_normalize_to_zero(void) {
+    void *fixed = rt_retry_new(1, -100);
+    void *expo = rt_retry_exponential(1, -100, -50);
+    ASSERT(rt_retry_next_delay(fixed) == 0);
+    ASSERT(rt_retry_next_delay(expo) == 0);
+    if (rt_obj_release_check0(fixed))
+        rt_obj_free(fixed);
+    if (rt_obj_release_check0(expo))
+        rt_obj_free(expo);
+}
+
+static void test_tls_extract_cn_uses_subject_not_issuer(void) {
+    static const uint8_t cert[] = {
+        0x30, 0x3E, 0x30, 0x3C, 0xA0, 0x03, 0x02, 0x01, 0x02, 0x02, 0x01, 0x01,
+        0x30, 0x00, 0x30, 0x15, 0x31, 0x13, 0x30, 0x11, 0x06, 0x03, 0x55, 0x04,
+        0x03, 0x0C, 0x0A, 'i',  's',  's',  'u',  'e',  'r',  '.',  'c',  'o',
+        'm',  0x30, 0x00, 0x30, 0x17, 0x31, 0x15, 0x30, 0x13, 0x06, 0x03, 0x55,
+        0x04, 0x03, 0x0C, 0x0C, 's',  'u',  'b',  'j',  'e',  'c',  't',  '.',
+        't',  'e',  's',  't'};
+    char cn[256] = {0};
+    ASSERT(tls_extract_cn(cert, sizeof(cert), cn) == 1);
+    ASSERT(strcmp(cn, "subject.test") == 0);
+}
+
 int main(void) {
     test_http_server_parses_exact_body();
     test_http_server_rejects_invalid_http_version();
@@ -610,12 +758,22 @@ int main(void) {
     test_http_parse_url_accepts_ipv6_literal();
     test_http_parse_url_rejects_crlf_injection();
     test_http_parse_url_rejects_bad_ports();
+    test_http_parse_url_accepts_case_insensitive_scheme();
+    test_http_parse_url_rejects_malformed_ipv6_authority();
+    test_http_header_name_validation_rejects_invalid_fields();
     test_ws_parse_url_accepts_ipv6_literal();
     test_ws_parse_url_rejects_bad_authorities();
+    test_ws_parse_url_accepts_case_insensitive_scheme();
+    test_ws_parse_url_rejects_request_injection();
     test_ws_handshake_validation_accepts_valid_response();
     test_ws_handshake_validation_rejects_spurious_101();
     test_ws_handshake_validation_rejects_unsolicited_subprotocol();
     test_ws_host_header_formatting();
+    test_ws_close_code_validation();
+    test_url_decode_plus_semantics();
+    test_url_ipv6_building_and_authority_validation();
+    test_retry_negative_delays_normalize_to_zero();
+    test_tls_extract_cn_uses_subject_not_issuer();
 
     printf("%d/%d tests passed\n", tests_run - tests_failed, tests_run);
     return tests_failed > 0 ? 1 : 0;

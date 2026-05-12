@@ -2055,10 +2055,11 @@ static void test_url_encode_decode() {
     const char *dec_str = rt_string_cstr(decoded);
     test_result("Decode restores string", strcmp(dec_str, "hello world!") == 0);
 
-    // Test plus decoding
+    // Test plus decoding. Plain URL decoding follows RFC 3986; query decoding
+    // keeps HTML form compatibility by treating '+' as a space.
     rt_string decoded_plus = rt_url_decode(rt_const_cstr("hello+world"));
     const char *dec_plus = rt_string_cstr(decoded_plus);
-    test_result("Decode plus as space", strcmp(dec_plus, "hello world") == 0);
+    test_result("Decode preserves plus", strcmp(dec_plus, "hello+world") == 0);
 }
 
 /// @brief Test query string encoding/decoding.
@@ -2087,6 +2088,11 @@ static void test_url_encode_decode_query() {
     test_result("DecodeQuery city matches",
                 strcmp(rt_string_cstr(rt_map_get_str(decoded_map, rt_const_cstr("city"))),
                        "New York") == 0);
+
+    void *plus_map = rt_url_decode_query(rt_const_cstr("q=hello+world"));
+    test_result("DecodeQuery plus as space",
+                strcmp(rt_string_cstr(rt_map_get_str(plus_map, rt_const_cstr("q"))),
+                       "hello world") == 0);
 }
 
 /// @brief Test URL validation.

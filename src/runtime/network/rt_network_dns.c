@@ -294,9 +294,11 @@ rt_string rt_dns_local_host(void) {
     rt_net_init_wsa();
 
     char hostname[256];
+    memset(hostname, 0, sizeof(hostname));
     if (gethostname(hostname, sizeof(hostname)) != 0) {
         rt_trap_net("Network: failed to get hostname", Err_DnsError);
     }
+    hostname[sizeof(hostname) - 1] = '\0';
 
     return rt_string_from_bytes(hostname, strlen(hostname));
 }

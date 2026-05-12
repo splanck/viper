@@ -741,8 +741,7 @@ static void test_ws_invalid_utf8_closes_with_1007() {
     test_result("WebSocket connect succeeds", ws != nullptr);
 
     rt_string msg = rt_ws_recv_for(ws, 2000);
-    test_result("Invalid UTF-8 yields empty message",
-                msg != nullptr && strcmp(rt_string_cstr(msg), "") == 0);
+    test_result("Invalid UTF-8 closes timed recv", msg == nullptr);
     test_result("Close code is 1007", rt_ws_close_code(ws) == 1007);
     test_result("Connection is closed", rt_ws_is_open(ws) == 0);
 
