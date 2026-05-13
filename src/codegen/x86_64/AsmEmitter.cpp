@@ -645,6 +645,9 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
             os << " #<invalid>\n";
             return;
         }
+        if (dest->cls != RegClass::GPR || src->cls != RegClass::GPR) {
+            throw std::runtime_error("x86-64 asm emitter: MOVZXrr8 requires GPR operands");
+        }
         os << ' ' << formatReg8(*src, target) << ", " << formatReg(*dest, target) << '\n';
         return;
     }
@@ -659,6 +662,10 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
         if (!dest || !src) {
             os << " #<invalid>\n";
             return;
+        }
+        if (dest->cls != RegClass::GPR || src->cls != RegClass::GPR) {
+            throw std::runtime_error(
+                "x86-64 asm emitter: 32-bit GPR operation requires GPR operands");
         }
         os << ' ' << formatReg32(*src, target) << ", " << formatReg32(*dest, target) << '\n';
         return;
@@ -690,16 +697,15 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
             }
             const auto suffix = cond ? conditionSuffix(cond->val) : std::string_view{"e"};
             os << suffix << ' ';
-            if (branchTarget) {
-                if (std::holds_alternative<OpLabel>(*branchTarget)) {
-                    const auto &label = std::get<OpLabel>(*branchTarget);
-                    os << asmfmt::format_label(label.name) << '\n';
-                } else {
-                    os << '*' << formatOperand(*branchTarget, target, format) << '\n';
-                }
-            } else {
+            if (!branchTarget) {
                 os << "#<missing>\n";
+                return;
             }
+            if (!std::holds_alternative<OpLabel>(*branchTarget)) {
+                throw std::runtime_error("x86-64 asm emitter: JCC requires a label target");
+            }
+            const auto &label = std::get<OpLabel>(*branchTarget);
+            os << asmfmt::format_label(label.name) << '\n';
         } else {
             if (operands.empty()) {
                 os << " #<missing>\n";
@@ -710,7 +716,15 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
             if (std::holds_alternative<OpLabel>(targetOp)) {
                 const auto &label = std::get<OpLabel>(targetOp);
                 os << asmfmt::format_label(label.name) << '\n';
+            } else if (std::holds_alternative<OpImm>(targetOp)) {
+                throw std::runtime_error(
+                    "x86-64 asm emitter: JMP requires a label, register, or memory target");
             } else {
+                if (const auto *reg = std::get_if<OpReg>(&targetOp);
+                    reg && reg->cls != RegClass::GPR) {
+                    throw std::runtime_error(
+                        "x86-64 asm emitter: JMP requires a GPR register target");
+                }
                 os << '*';
                 /// @brief Emits operand.
                 emitOperand(targetOp, os, target, format);
@@ -737,6 +751,10 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
         if (dest) {
             // SETcc requires 8-bit destination register
             if (const auto *reg = std::get_if<OpReg>(dest)) {
+                if (reg->cls != RegClass::GPR) {
+                    throw std::runtime_error(
+                        "x86-64 asm emitter: SETcc requires GPR or memory destination");
+                }
                 os << formatReg8(*reg, target) << '\n';
             } else {
                 os << formatOperand(*dest, target, format) << '\n';
@@ -997,6 +1015,10 @@ std::string AsmEmitter::formatShiftCount(const Operand &operand,
             reg->idOrPhys == static_cast<uint16_t>(PhysReg::RCX)) {
             return "%cl";
         }
+        throw std::runtime_error("x86-64 asm emitter: register-count shift requires RCX/CL");
+    }
+    if (!std::holds_alternative<OpImm>(operand)) {
+        throw std::runtime_error("x86-64 asm emitter: shift count must be immediate or RCX/CL");
     }
     return formatOperand(operand, target, format);
 }
@@ -1013,8 +1035,14 @@ std::string AsmEmitter::formatLeaSource(const Operand &operand,
     return std::visit(
         Overload{[&](const OpLabel &label) { return formatRipSymbolReference(label.name, format); },
                  [&](const OpMem &mem) { return formatMem(mem, target); },
-                 [&](const OpReg &reg) { return formatReg(reg, target); },
-                 [&](const OpImm &imm) { return formatImm(imm); },
+                 [&](const OpReg &) -> std::string {
+                     throw std::runtime_error(
+                         "x86-64 asm emitter: LEA requires a memory or RIP-relative source");
+                 },
+                 [&](const OpImm &) -> std::string {
+                     throw std::runtime_error(
+                         "x86-64 asm emitter: LEA requires a memory or RIP-relative source");
+                 },
                  [&](const OpRipLabel &label) { return formatRipLabel(label, format); }},
         operand);
 }
@@ -1034,9 +1062,18 @@ std::string AsmEmitter::formatCallTarget(const Operand &operand,
                          return formatSymbolReference(std::string{*mapped}, format);
                      return formatSymbolReference(viper::common::MangleLink(label.name), format);
                  },
-                 [&](const OpReg &reg) { return std::string{"*"} + formatReg(reg, target); },
+                 [&](const OpReg &reg) {
+                     if (reg.cls != RegClass::GPR) {
+                         throw std::runtime_error(
+                             "x86-64 asm emitter: CALL requires a GPR register target");
+                     }
+                     return std::string{"*"} + formatReg(reg, target);
+                 },
                  [&](const OpMem &mem) { return std::string{"*"} + formatMem(mem, target); },
-                 [&](const OpImm &imm) { return formatImm(imm); },
+                 [&](const OpImm &) -> std::string {
+                     throw std::runtime_error(
+                         "x86-64 asm emitter: CALL requires a label, register, or memory target");
+                 },
                  [&](const OpRipLabel &label) {
                      return std::string{"*"} + formatRipLabel(label, format);
                  }},

@@ -661,6 +661,27 @@ std::size_t countVirtualRegisterUsesInFunction(const MFunction &func, uint16_t v
     return count;
 }
 
+/// @brief Check whether @p vreg is read from any block other than @p localBlock.
+/// @details Local fold legalisers can combine this with a bounded same-block
+///          use count before deleting a virtual-register definition. Without
+///          the whole-function side of the check, a single local use can hide
+///          a live use in a later basic block.
+bool virtualRegisterUsedOutsideBlock(const MFunction &func,
+                                     const MBasicBlock &localBlock,
+                                     uint16_t vreg) {
+    for (const auto &candidateBlock : func.blocks) {
+        if (&candidateBlock == &localBlock) {
+            continue;
+        }
+        for (const auto &instr : candidateBlock.instructions) {
+            if (countVirtualRegisterUsesInInstr(instr, vreg) != 0) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 /// @brief Check whether a register has uses outside the local fold window.
 /// @details The compare/branch fold may only remove boolean materialisation
 ///          when the materialized value feeds the local test and nothing else.
@@ -1070,12 +1091,14 @@ void ISel::foldSibAddressing(MFunction &func) const {
                 // their definitions. The destructive source reads of SHL/ADD
                 // are not uses of the newly defined values.
                 if (countVirtualRegisterUsesInRange(
-                        block, baseId, addInfo.defIdx + 1, block.instructions.size()) != 1) {
+                        block, baseId, addInfo.defIdx + 1, block.instructions.size()) != 1 ||
+                    virtualRegisterUsedOutsideBlock(func, block, baseId)) {
                     continue;
                 }
                 if (countVirtualRegisterUsesInRange(
                         block, addInfo.shiftedVreg, shlInfo.defIdx + 1,
-                        block.instructions.size()) != 1) {
+                        block.instructions.size()) != 1 ||
+                    virtualRegisterUsedOutsideBlock(func, block, addInfo.shiftedVreg)) {
                     continue;
                 }
 
@@ -1086,7 +1109,8 @@ void ISel::foldSibAddressing(MFunction &func) const {
                     movIt->second.defIdx < shlInfo.defIdx &&
                     countVirtualRegisterUsesInRange(block, shlInfo.srcVreg,
                                                     movIt->second.defIdx + 1,
-                                                    shlInfo.defIdx + 1) == 1) {
+                                                    shlInfo.defIdx + 1) == 1 &&
+                    !virtualRegisterUsedOutsideBlock(func, block, shlInfo.srcVreg)) {
                     indexVreg = movIt->second.srcVreg;
                     toErase.push_back(movIt->second.defIdx); // Mark MOV for removal
                 }
@@ -1097,7 +1121,8 @@ void ISel::foldSibAddressing(MFunction &func) const {
                 if (baseMovIt != movDefs.end() && baseMovIt->second.defIdx < addInfo.defIdx &&
                     countVirtualRegisterUsesInRange(block, addInfo.baseVreg,
                                                     baseMovIt->second.defIdx + 1,
-                                                    addInfo.defIdx + 1) == 1) {
+                                                    addInfo.defIdx + 1) == 1 &&
+                    !virtualRegisterUsedOutsideBlock(func, block, addInfo.baseVreg)) {
                     if (!baseMovIt->second.srcIsPhys) {
                         realBaseVreg = baseMovIt->second.srcVreg;
                     } else {
@@ -1171,7 +1196,8 @@ void ISel::lowerMulToLea(MFunction &func) const {
 
     for (auto &block : func.blocks) {
         // First pass: collect MOVri definitions of eligible constants
-        // and count all vreg uses so we can check single-use invariant.
+        // inside this block. Use legality is checked at function scope below
+        // because the supplying constant register may be live into another block.
         struct MovRiDef {
             std::size_t defIdx{0};
             int64_t factor{0};
@@ -1179,7 +1205,6 @@ void ISel::lowerMulToLea(MFunction &func) const {
         };
 
         std::unordered_map<uint16_t, MovRiDef> constDefs; // vreg id → MOVri info
-        std::unordered_map<uint16_t, int> useCount;       // vreg id → use count
 
         for (std::size_t idx = 0; idx < block.instructions.size(); ++idx) {
             const auto &instr = block.instructions[idx];
@@ -1200,7 +1225,6 @@ void ISel::lowerMulToLea(MFunction &func) const {
                 }
             }
 
-            countVirtualRegisterUses(instr, useCount);
         }
 
         // Second pass: find eligible IMULrr and rewrite.
@@ -1240,9 +1264,10 @@ void ISel::lowerMulToLea(MFunction &func) const {
             if (flagsReadBeforeClobber(block.instructions, idx))
                 continue;
 
-            // The constant register must have exactly one read-use (this IMUL).
-            auto useIt = useCount.find(srcId);
-            if (useIt == useCount.end() || useIt->second != 1)
+            // The constant register must have exactly one read-use in the whole
+            // function (this IMUL); otherwise erasing the MOVri would break a
+            // later block.
+            if (countVirtualRegisterUsesInFunction(func, srcId) != 1)
                 continue;
 
             // Build the replacement LEA: dst ← [dst + dst * scale]

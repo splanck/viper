@@ -143,6 +143,11 @@ BinaryEmitResult compileBinary(const ILFunction &fn, const CodegenOptions &optio
     return emitModuleToBinary(module, options);
 }
 
+CodegenResult emitRawAssembly(const MFunction &fn) {
+    AsmEmitter::RoDataPool roData{};
+    return emitMIRToAssembly({fn}, roData, sysvTarget(), {});
+}
+
 bool containsRegex(const std::string &text, const std::string &pattern) {
     return std::regex_search(text, std::regex(pattern));
 }
@@ -151,6 +156,16 @@ bool blockContainsOpcode(const MBasicBlock &block, MOpcode opcode) {
     return std::any_of(block.instructions.begin(),
                        block.instructions.end(),
                        [&](const MInstr &instr) { return instr.opcode == opcode; });
+}
+
+MFunction rawFunction(std::string name, std::vector<MInstr> instructions) {
+    MFunction fn{};
+    fn.name = std::move(name);
+    MBasicBlock entry{};
+    entry.label = ".L_" + fn.name + "_entry";
+    entry.instructions = std::move(instructions);
+    fn.blocks.push_back(std::move(entry));
+    return fn;
 }
 
 const OpLabel *jumpTarget(const MInstr &instr) {
@@ -953,6 +968,71 @@ TEST(X86BackendRegressions, UnknownOpcodeFailsAssemblyEmission) {
     EXPECT_EQ(result.asmText.find("# unknown"), std::string::npos);
 }
 
+TEST(X86BackendRegressions, AssemblyEmitterRejectsImmediateCallTarget) {
+    const MFunction fn =
+        rawFunction("bad_call_imm", {MInstr::make(MOpcode::CALL, {makeImmOperand(1)})});
+
+    const CodegenResult result = emitRawAssembly(fn);
+    EXPECT_NE(result.errors.find("CALL requires a label, register, or memory target"),
+              std::string::npos);
+}
+
+TEST(X86BackendRegressions, AssemblyEmitterRejectsXmmJumpTarget) {
+    const Operand target = makePhysRegOperand(RegClass::XMM, static_cast<uint16_t>(PhysReg::XMM0));
+    const MFunction fn = rawFunction("bad_jmp_xmm", {MInstr::make(MOpcode::JMP, {target})});
+
+    const CodegenResult result = emitRawAssembly(fn);
+    EXPECT_NE(result.errors.find("JMP requires a GPR register target"), std::string::npos);
+}
+
+TEST(X86BackendRegressions, AssemblyEmitterRejectsNonLabelConditionalBranchTarget) {
+    const Operand target = makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RAX));
+    const MFunction fn =
+        rawFunction("bad_jcc_reg", {MInstr::make(MOpcode::JCC, {makeImmOperand(1), target})});
+
+    const CodegenResult result = emitRawAssembly(fn);
+    EXPECT_NE(result.errors.find("JCC requires a label target"), std::string::npos);
+}
+
+TEST(X86BackendRegressions, AssemblyEmitterRejectsRegisterLeaSource) {
+    const Operand dst = makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RAX));
+    const Operand src = makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RBX));
+    const MFunction fn = rawFunction("bad_lea_reg", {MInstr::make(MOpcode::LEA, {dst, src})});
+
+    const CodegenResult result = emitRawAssembly(fn);
+    EXPECT_NE(result.errors.find("LEA requires a memory or RIP-relative source"),
+              std::string::npos);
+}
+
+TEST(X86BackendRegressions, AssemblyEmitterRejectsNonClShiftCount) {
+    const Operand dst = makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RAX));
+    const Operand count = makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RDX));
+    const MFunction fn =
+        rawFunction("bad_shift_count", {MInstr::make(MOpcode::SHLrc, {dst, count})});
+
+    const CodegenResult result = emitRawAssembly(fn);
+    EXPECT_NE(result.errors.find("register-count shift requires RCX/CL"), std::string::npos);
+}
+
+TEST(X86BackendRegressions, AssemblyEmitterRejectsXmmSetccDestination) {
+    const Operand dst = makePhysRegOperand(RegClass::XMM, static_cast<uint16_t>(PhysReg::XMM0));
+    const MFunction fn =
+        rawFunction("bad_setcc_xmm", {MInstr::make(MOpcode::SETcc, {makeImmOperand(0), dst})});
+
+    const CodegenResult result = emitRawAssembly(fn);
+    EXPECT_NE(result.errors.find("SETcc requires GPR or memory destination"), std::string::npos);
+}
+
+TEST(X86BackendRegressions, AssemblyEmitterRejectsXmmMovzxOperand) {
+    const Operand dst = makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RAX));
+    const Operand src = makePhysRegOperand(RegClass::XMM, static_cast<uint16_t>(PhysReg::XMM0));
+    const MFunction fn =
+        rawFunction("bad_movzx_xmm", {MInstr::make(MOpcode::MOVZXrr8, {dst, src})});
+
+    const CodegenResult result = emitRawAssembly(fn);
+    EXPECT_NE(result.errors.find("MOVZXrr8 requires GPR operands"), std::string::npos);
+}
+
 TEST(X86BackendRegressions, SuccessfulAssemblyEmissionIsSilentOnStderr) {
     ILBlock entry{};
     entry.name = "entry";
@@ -1460,6 +1540,34 @@ TEST(X86BackendRegressions, MulToLeaCountsMemoryBaseUsesOfConstantRegister) {
     EXPECT_TRUE(blockContainsOpcode(block, MOpcode::MOVri));
 }
 
+TEST(X86BackendRegressions, MulToLeaDoesNotEraseConstantUsedInLaterBlock) {
+    MFunction fn{};
+    fn.name = "mul_const_cross_block";
+    MBasicBlock entry{};
+    entry.label = ".L_mul_const_cross_block_entry";
+    const Operand value = makeVRegOperand(RegClass::GPR, 1);
+    const Operand factor = makeVRegOperand(RegClass::GPR, 2);
+    entry.instructions = {MInstr::make(MOpcode::MOVri, {factor, makeImmOperand(5)}),
+                          MInstr::make(MOpcode::IMULrr, {value, factor}),
+                          MInstr::make(MOpcode::JMP,
+                                       {makeLabelOperand(".L_mul_const_cross_block_next")})};
+
+    MBasicBlock next{};
+    next.label = ".L_mul_const_cross_block_next";
+    const Operand copy = makeVRegOperand(RegClass::GPR, 3);
+    next.instructions = {MInstr::make(MOpcode::MOVrr, {copy, factor})};
+
+    fn.blocks = {entry, next};
+
+    ISel isel(sysvTarget());
+    isel.lowerArithmetic(fn);
+
+    const auto &block = fn.blocks.front();
+    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::IMULrr));
+    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::MOVri));
+    EXPECT_FALSE(blockContainsOpcode(block, MOpcode::LEA));
+}
+
 TEST(X86BackendRegressions, MulToLeaRejectsSelfConstantMultiply) {
     MFunction fn{};
     fn.name = "mul_self_const";
@@ -1556,6 +1664,80 @@ TEST(X86BackendRegressions, SibFoldUsesPostDefReadCounts) {
     EXPECT_EQ(mem->scale, 8u);
     EXPECT_EQ(mem->base.idOrPhys, 1u);
     EXPECT_EQ(mem->index.idOrPhys, 2u);
+}
+
+TEST(X86BackendRegressions, SibFoldDoesNotEraseAddResultUsedInLaterBlock) {
+    MFunction fn{};
+    fn.name = "sib_add_cross_block";
+    MBasicBlock entry{};
+    entry.label = ".L_sib_add_cross_block_entry";
+    const Operand base = makeVRegOperand(RegClass::GPR, 1);
+    const Operand index = makeVRegOperand(RegClass::GPR, 2);
+    const Operand scaled = makeVRegOperand(RegClass::GPR, 3);
+    const Operand addr = makeVRegOperand(RegClass::GPR, 4);
+    const Operand loaded = makeVRegOperand(RegClass::GPR, 5);
+    entry.instructions = {MInstr::make(MOpcode::MOVrr, {scaled, index}),
+                          MInstr::make(MOpcode::SHLri, {scaled, makeImmOperand(3)}),
+                          MInstr::make(MOpcode::MOVrr, {addr, base}),
+                          MInstr::make(MOpcode::ADDrr, {addr, scaled}),
+                          MInstr::make(MOpcode::MOVmr, {loaded, Operand{baseMem(addr)}}),
+                          MInstr::make(MOpcode::JMP,
+                                       {makeLabelOperand(".L_sib_add_cross_block_next")})};
+
+    MBasicBlock next{};
+    next.label = ".L_sib_add_cross_block_next";
+    const Operand copy = makeVRegOperand(RegClass::GPR, 6);
+    next.instructions = {MInstr::make(MOpcode::MOVrr, {copy, addr})};
+
+    fn.blocks = {entry, next};
+
+    ISel isel(sysvTarget());
+    isel.lowerArithmetic(fn);
+
+    const auto &block = fn.blocks.front();
+    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::ADDrr));
+    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::SHLri));
+    ASSERT_GT(block.instructions.size(), 4u);
+    const OpMem *mem = firstMemOperand(block.instructions[4]);
+    ASSERT_TRUE(mem != nullptr);
+    EXPECT_FALSE(mem->hasIndex);
+}
+
+TEST(X86BackendRegressions, SibFoldDoesNotEraseShiftResultUsedInLaterBlock) {
+    MFunction fn{};
+    fn.name = "sib_shift_cross_block";
+    MBasicBlock entry{};
+    entry.label = ".L_sib_shift_cross_block_entry";
+    const Operand base = makeVRegOperand(RegClass::GPR, 1);
+    const Operand index = makeVRegOperand(RegClass::GPR, 2);
+    const Operand scaled = makeVRegOperand(RegClass::GPR, 3);
+    const Operand addr = makeVRegOperand(RegClass::GPR, 4);
+    const Operand loaded = makeVRegOperand(RegClass::GPR, 5);
+    entry.instructions = {MInstr::make(MOpcode::MOVrr, {scaled, index}),
+                          MInstr::make(MOpcode::SHLri, {scaled, makeImmOperand(3)}),
+                          MInstr::make(MOpcode::MOVrr, {addr, base}),
+                          MInstr::make(MOpcode::ADDrr, {addr, scaled}),
+                          MInstr::make(MOpcode::MOVmr, {loaded, Operand{baseMem(addr)}}),
+                          MInstr::make(MOpcode::JMP,
+                                       {makeLabelOperand(".L_sib_shift_cross_block_next")})};
+
+    MBasicBlock next{};
+    next.label = ".L_sib_shift_cross_block_next";
+    const Operand copy = makeVRegOperand(RegClass::GPR, 6);
+    next.instructions = {MInstr::make(MOpcode::MOVrr, {copy, scaled})};
+
+    fn.blocks = {entry, next};
+
+    ISel isel(sysvTarget());
+    isel.lowerArithmetic(fn);
+
+    const auto &block = fn.blocks.front();
+    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::ADDrr));
+    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::SHLri));
+    ASSERT_GT(block.instructions.size(), 4u);
+    const OpMem *mem = firstMemOperand(block.instructions[4]);
+    ASSERT_TRUE(mem != nullptr);
+    EXPECT_FALSE(mem->hasIndex);
 }
 
 TEST(X86BackendRegressions, LeaFoldRequiresDefinitionBeforeMemoryUse) {
