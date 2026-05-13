@@ -39,6 +39,9 @@ void rt_trap_string(rt_string msg);
 /// @param msg User-visible trap message.
 void rt_trap_raise_kind(int32_t kind, int32_t code, int32_t line, const char *msg);
 
+/// @brief Raise a trap with explicit trap metadata and no message.
+void rt_trap_raise_kind_nomsg(int32_t kind, int32_t code, int32_t line);
+
 /// @brief Trap when @p condition is false with the provided diagnostic.
 /// @param condition Boolean flag; zero triggers a trap.
 /// @param message Runtime string describing the assertion; defaults to

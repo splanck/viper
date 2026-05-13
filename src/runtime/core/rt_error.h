@@ -136,6 +136,12 @@ void *rt_trap_error_make(int32_t code, rt_string msg);
 /// @param msg User-visible trap message.
 void rt_trap_raise_kind(int32_t kind, int32_t code, int32_t line, const char *msg);
 
+/// @brief Raise a trap with explicit trap metadata and no message.
+/// @param kind Canonical trap classification.
+/// @param code Secondary runtime error code (Err_* or 0).
+/// @param line Source line number (-1 if unknown).
+void rt_trap_raise_kind_nomsg(int32_t kind, int32_t code, int32_t line);
+
 /// @brief Raise a trap classified from a legacy Err_* code while preserving @p msg.
 /// @param code Legacy Err_* code.
 /// @param msg User-visible trap message.

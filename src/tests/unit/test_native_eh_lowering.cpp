@@ -165,6 +165,43 @@ TEST(NativeEHLowering, RewritesResumeSameIntoFaultSiteDispatch) {
     EXPECT_TRUE(sawResumeBackedge);
 }
 
+TEST(NativeEHLowering, RewritesTypedCatchHelperBlocks) {
+    const std::string il = "il 0.1\n"
+                           "func @f() -> void {\n"
+                           "entry:\n"
+                           "  eh.push ^handler\n"
+                           "  trap.from_err i32 9\n"
+                           "after:\n"
+                           "  ret\n"
+                           "handler ^handler(%err:Error, %tok:ResumeTok):\n"
+                           "  eh.entry\n"
+                           "  %kind = trap.kind\n"
+                           "  %match = icmp_eq %kind, 9\n"
+                           "  cbr %match, catch(%err, %tok), rethrow(%err, %tok)\n"
+                           "handler ^catch(%err:Error, %tok:ResumeTok):\n"
+                           "  eh.entry\n"
+                           "  resume.label %tok, ^after\n"
+                           "handler ^rethrow(%err:Error, %tok:ResumeTok):\n"
+                           "  eh.entry\n"
+                           "  resume.same %tok\n"
+                           "}\n";
+
+    il::core::Module mod = parseModule(il);
+    ASSERT_TRUE(viper::codegen::common::lowerNativeEh(mod));
+    auto verify = il::api::v2::verify_module_expected(mod);
+    ASSERT_TRUE(verify.hasValue());
+    EXPECT_FALSE(viper::codegen::common::findResidualStructuredEh(mod).has_value());
+
+    const auto &fn = mod.functions.front();
+    for (const auto *label : {"handler", "catch", "rethrow"}) {
+        const auto *block = findBlock(fn, label);
+        ASSERT_TRUE(block != nullptr);
+        ASSERT_EQ(block->params.size(), 2U);
+        EXPECT_EQ(block->params[0].type.kind, il::core::Type::Kind::Ptr);
+        EXPECT_EQ(block->params[1].type.kind, il::core::Type::Kind::I64);
+    }
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();

@@ -238,6 +238,11 @@ void rt_trap_raise_kind(int32_t kind, int32_t code, int32_t line, const char *ms
     rt_trap_dispatch(msg, kind, code, line, rt_capture_return_address());
 }
 
+/// @brief Raise a trap with explicit kind/code/line classification and no message.
+void rt_trap_raise_kind_nomsg(int32_t kind, int32_t code, int32_t line) {
+    rt_trap_raise_kind(kind, code, line, NULL);
+}
+
 /// @brief Raise a generic domain-error trap with the supplied message.
 /// Convenience wrapper that defaults kind=RT_TRAP_KIND_DOMAIN_ERROR, code=0, line=-1.
 void rt_trap(const char *msg) {

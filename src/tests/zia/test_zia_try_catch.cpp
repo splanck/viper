@@ -170,7 +170,7 @@ func start() {    try {
     EXPECT_TRUE(hasOpcode(result.module, "main", il::core::Opcode::ResumeLabel));
 }
 
-/// @brief Test throw statement compiles and emits Trap.
+/// @brief Test throw statement compiles and emits a RuntimeError trap.
 TEST(ZiaTryCatch, ThrowStatement) {
     SourceManager sm;
     const std::string source = R"(
@@ -186,8 +186,38 @@ func start() {    throw 42;
 
     ASSERT_TRUE(result.succeeded());
 
-    // Should have Trap instruction from throw
-    EXPECT_TRUE(hasOpcode(result.module, "main", il::core::Opcode::Trap));
+    // Zia throw is a language-level RuntimeError, emitted through trap.from_err.
+    EXPECT_TRUE(hasOpcode(result.module, "main", il::core::Opcode::TrapFromErr));
+    EXPECT_FALSE(hasOpcode(result.module, "main", il::core::Opcode::Trap));
+}
+
+/// @brief Named catch bindings are initialized before the catch body is analyzed.
+TEST(ZiaTryCatch, CatchBindingCanBeRead) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    try {
+        throw "boom";
+    } catch(e) {
+        Viper.Terminal.Say(e);
+    }
+}
+)";
+
+    CompilerInput input{.source = source, .path = "test_catch_binding_read.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded()) {
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    ASSERT_TRUE(result.succeeded());
 }
 
 /// @brief Test catch without variable binding.
@@ -224,7 +254,7 @@ module Test;
 func start() {
     try {
         throw 1;
-    } catch(e: DomainError) {
+    } catch(e: RuntimeError) {
         Viper.Terminal.Say("caught");
     } finally {
         Viper.Terminal.Say("done");

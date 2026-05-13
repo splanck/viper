@@ -114,6 +114,7 @@ void Sema::analyzeStmt(Stmt *stmt) {
                     sym.name = tryStmt->catchVar;
                     sym.type = types::string();
                     defineSymbol(tryStmt->catchVar, sym, tryStmt->loc);
+                    markInitialized(tryStmt->catchVar);
                 }
                 analyzeStmt(tryStmt->catchBody.get());
                 popScope(tryStmt->catchBody ? scopeEndForStmt(tryStmt->catchBody.get())

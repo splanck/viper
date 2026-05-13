@@ -162,10 +162,9 @@ void *rt_trap_error_make(int32_t code, rt_string msg) {
 }
 
 /// @brief Raise a trap with the given error code and an optional C-string message.
-/// Populates trap classification fields from @p code before calling `rt_trap`.
+/// Preserves the trap classification mapped from @p code.
 void rt_trap_raise_error_msg(int32_t code, const char *msg) {
-    rt_trap_fields_set(rt_err_to_trap_kind(code), code, -1);
-    rt_trap(msg);
+    rt_trap_raise_kind(rt_err_to_trap_kind(code), code, -1, msg);
 }
 
 /// @brief Raise a trap with the given error code and no associated message.

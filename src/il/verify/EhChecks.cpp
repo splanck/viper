@@ -209,10 +209,16 @@ bool checkUnreachableAfterThrow(const EhModel &model,
         return false;
     }
 
-    if (!handlerStack.empty())
-        handlerStack.pop_back();
     hasResumeToken = false;
     return true;
+}
+
+std::vector<const BasicBlock *>
+handlerStackAfterDispatch(const std::vector<const BasicBlock *> &handlerStack) {
+    std::vector<const BasicBlock *> nextStack = handlerStack;
+    if (!nextStack.empty())
+        nextStack.pop_back();
+    return nextStack;
 }
 
 bool checkAllPathsCloseTry(const EhModel &model,
@@ -337,10 +343,10 @@ class EhStackTraversal {
 
         StackState nextState;
         nextState.block = handlerBlock;
-        nextState.handlerStack = handlerStack;
+        nextState.handlerStack = handlerStackAfterDispatch(handlerStack);
         nextState.hasResumeToken = true;
         nextState.parent = stateIndex;
-        nextState.depth = static_cast<int>(handlerStack.size());
+        nextState.depth = static_cast<int>(nextState.handlerStack.size());
         enqueueState(std::move(nextState));
     }
 
@@ -504,8 +510,6 @@ class HandlerCoverageTraversal {
                 state.handlerStack.pop_back();
         } else if (instr.op == Opcode::ResumeSame || instr.op == Opcode::ResumeNext ||
                    instr.op == Opcode::ResumeLabel) {
-            if (!state.handlerStack.empty())
-                state.handlerStack.pop_back();
             state.hasResumeToken = false;
         }
 
@@ -537,7 +541,7 @@ class HandlerCoverageTraversal {
 
         State nextState;
         nextState.block = handlerBlock;
-        nextState.handlerStack = state.handlerStack;
+        nextState.handlerStack = handlerStackAfterDispatch(state.handlerStack);
         nextState.hasResumeToken = true;
         enqueueState(std::move(nextState), worklist);
     }
@@ -1049,7 +1053,7 @@ il::support::Expected<void> checkUnreachableHandlers(const EhModel &model) {
                     shouldBeReachable.insert(handlerBlock);
                     if (reachable.insert(handlerBlock).second) {
                         worklist.push_back(handlerBlock);
-                        blockHandlerStack[handlerBlock] = currentStack;
+                        blockHandlerStack[handlerBlock] = handlerStackAfterDispatch(currentStack);
                     }
                 }
             }
@@ -1073,7 +1077,8 @@ il::support::Expected<void> checkUnreachableHandlers(const EhModel &model) {
                         shouldBeReachable.insert(handlerBlock);
                         if (reachable.insert(handlerBlock).second) {
                             worklist.push_back(handlerBlock);
-                            blockHandlerStack[handlerBlock] = currentStack;
+                            blockHandlerStack[handlerBlock] =
+                                handlerStackAfterDispatch(currentStack);
                         }
                     }
                 }

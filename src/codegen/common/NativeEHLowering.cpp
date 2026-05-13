@@ -126,6 +126,11 @@ static bool isEhOpcode(Opcode op) {
     }
 }
 
+static bool hasStructuredHandlerParams(const BasicBlock &bb) {
+    return bb.params.size() >= 2 && bb.params[0].type.kind == Type::Kind::Error &&
+           bb.params[1].type.kind == Type::Kind::ResumeTok;
+}
+
 static bool mayTrap(Opcode op) {
     switch (op) {
         case Opcode::Call:
@@ -316,6 +321,7 @@ static RewrittenFunction rewriteFunction(Module &module, Function &fn) {
     std::unordered_map<std::string, std::vector<int>> handlerScopes;
     std::unordered_map<PushKey, SiteInfo, PushKeyHash> siteForInstr;
     std::unordered_map<std::string, std::vector<SiteInfo>> handlerSites;
+    std::vector<SiteInfo> allSites;
 
     bool hasEh = false;
     for (std::size_t bi = 0; bi < fn.blocks.size(); ++bi) {
@@ -417,14 +423,15 @@ static RewrittenFunction rewriteFunction(Module &module, Function &fn) {
             siteForInstr.emplace(PushKey{bi, ii}, site);
             scope.sites.push_back(site);
             handlerSites[scope.handlerLabel].push_back(site);
+            allSites.push_back(site);
         }
     }
 
     std::unordered_map<std::string, unsigned> handlerErrParam;
     std::unordered_map<std::string, unsigned> handlerSiteParam;
     for (auto &bb : fn.blocks) {
-        auto it = handlerScopes.find(bb.label);
-        if (it == handlerScopes.end())
+        const bool isPushedHandler = handlerScopes.find(bb.label) != handlerScopes.end();
+        if (!isPushedHandler && !hasStructuredHandlerParams(bb))
             continue;
         if (!bb.params.empty()) {
             bb.params[0].type = ptrTy();
@@ -567,7 +574,7 @@ static RewrittenFunction rewriteFunction(Module &module, Function &fn) {
 
             if ((instr.op == Opcode::ResumeLabel || instr.op == Opcode::ResumeSame ||
                  instr.op == Opcode::ResumeNext) &&
-                handlerScopes.find(orig.label) != handlerScopes.end()) {
+                handlerSiteParam.find(orig.label) != handlerSiteParam.end()) {
                 rewritten.changed = true;
                 if (instr.op == Opcode::ResumeLabel) {
                     current.instructions.push_back(
@@ -581,14 +588,16 @@ static RewrittenFunction rewriteFunction(Module &module, Function &fn) {
                     needsInvalidResume = true;
                     std::string nextDispatchLabel = invalidResumeLabel;
                     const auto siteListIt = handlerSites.find(orig.label);
-                    if (tokIt == handlerSiteParam.end() || siteListIt == handlerSites.end() ||
-                        siteListIt->second.empty()) {
+                    const std::vector<SiteInfo> &siteList =
+                        (siteListIt != handlerSites.end() && !siteListIt->second.empty())
+                            ? siteListIt->second
+                            : allSites;
+                    if (tokIt == handlerSiteParam.end() || siteList.empty()) {
                         current.instructions.push_back(makeBr(invalidResumeLabel));
                         current.terminated = true;
                         appendBlock(std::move(current));
                         current = {};
                     } else {
-                        const auto &siteList = siteListIt->second;
                         for (std::size_t si = 0; si < siteList.size(); ++si) {
                             const auto &site = siteList[si];
                             const std::string fallback = (si + 1 < siteList.size())

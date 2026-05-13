@@ -853,15 +853,20 @@ try {
 
 - The `try` block is always required.
 - The `catch` block handles exceptions. Named error binding uses parentheses: `catch(e) { ... }`.
+  The binding is a `String` containing the value passed to `throw` after string conversion.
   Anonymous catch `catch { ... }` is also supported.
 - Typed catch is supported for runtime error kinds such as `DivideByZero`,
   `Bounds`, `RuntimeError`, and the catch-all alias `Error`.
 - Both `catch` and `finally` are optional, but at least one must be present.
-- `finally` runs regardless of whether an exception was thrown.
+- `throw value;` raises a `RuntimeError`; runtime faults such as divide-by-zero keep
+  their specific trap kind.
+- `finally` runs on normal exit and while unwinding. If no catch clause handles the
+  error, or a typed catch does not match it, the original error is rethrown after
+  the `finally` block runs.
 
 ### Throw Statement
 
-Raises a runtime error:
+Raises a `RuntimeError`:
 
 ```viper
 throw someErrorValue;

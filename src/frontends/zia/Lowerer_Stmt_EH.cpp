@@ -39,14 +39,17 @@
 /// ^handler(%err: error, %tok: resumetok):
 ///   eh.entry
 ///   %kind_i64 = trap.kind                // I64
-///   %kind_i32 = err.get_kind %err        // I32 (must be in handler block)
 ///   %expected = const.i64 <kind_value>
 ///   %match = icmp.eq %kind_i64, %expected
-///   cbr %match, ^catch_body(%err, %tok), ^rethrow(%tok)
+///   cbr %match, ^catch_body(%err, %tok), ^rethrow(%err, %tok)
 ///
 /// ^rethrow(%err: error, %tok: resumetok):
 ///   eh.entry
-///   resume.same %tok                     // re-raises the original error
+///   %kind = err.get_kind %err
+///   %code = err.get_code %err
+///   %line = err.get_line %err
+///   call @Viper.Error.RaiseKind(%kind, %code, %line)
+///   trap.from_err i32 9                 // unreachable fallback
 ///
 /// ^catch_body(%err: error, %tok: resumetok):
 ///   eh.entry                             // required: makes block a handler
@@ -94,6 +97,9 @@ static int trapKindFromName(const std::string &name) {
     return -1; // "Error" catch-all or unknown
 }
 
+static constexpr int kErrRuntimeError = 9;
+static constexpr const char *kErrorRaiseKind = "Viper.Error.RaiseKind";
+
 void Lowerer::lowerTryStmt(TryStmt *stmt) {
     ZiaLocationScope locScope(*this, stmt->loc);
 
@@ -104,6 +110,25 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
     // the generic "Error" catch-all).
     bool isTypedCatch = !stmt->catchTypeName.empty() && stmt->catchTypeName != "Error";
     int expectedKind = isTypedCatch ? trapKindFromName(stmt->catchTypeName) : -1;
+
+    auto emitRethrowFromError = [&](Value errVal) {
+        Value errKind = emitUnary(Opcode::ErrGetKind, Type(Type::Kind::I32), errVal);
+        Value errCode = emitUnary(Opcode::ErrGetCode, Type(Type::Kind::I32), errVal);
+        Value errLine = emitUnary(Opcode::ErrGetLine, Type(Type::Kind::I32), errVal);
+
+        emitCall(kErrorRaiseKind, {errKind, errCode, errLine});
+
+        // The runtime call raises through the active VM/native trap bridge. Keep
+        // a terminator fallback so the IL remains structurally valid if a host
+        // installs a non-terminating trap observer.
+        il::core::Instr trapInstr;
+        trapInstr.op = Opcode::TrapFromErr;
+        trapInstr.type = Type(Type::Kind::I32);
+        trapInstr.operands.push_back(Value::constInt(kErrRuntimeError));
+        trapInstr.loc = curLoc_;
+        blockMgr_.currentBlock()->instructions.push_back(std::move(trapInstr));
+        blockMgr_.currentBlock()->terminated = true;
+    };
 
     // Create all blocks upfront to avoid stale indices after vector reallocation.
     // The handler block needs special params: %err (error type) and %tok (resumetok).
@@ -127,8 +152,8 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
 
     // For typed catch: create extra blocks for the kind check.
     // catch_body must be a handler block (eh.entry + Error/ResumeTok params) so it
-    // can use resume.label. rethrow keeps the handler signature so the verifier
-    // permits resume.same.
+    // can use resume.label. rethrow keeps the handler signature so it can
+    // retrieve the original error kind/code before raising it again.
     size_t catchBodyIdx = 0;
     size_t rethrowIdx = 0;
     if (isTypedCatch) {
@@ -237,7 +262,7 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
             blockMgr_.currentBlock()->terminated = true;
         }
 
-        // --- Rethrow block: re-raise the original error ---
+        // --- Rethrow block: run finally for mismatches, then re-raise the original error. ---
         setBlock(rethrowIdx);
         {
             il::core::Instr ehEntryInstr;
@@ -245,18 +270,14 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
             ehEntryInstr.type = Type(Type::Kind::Void);
             ehEntryInstr.loc = curLoc_;
             blockMgr_.currentBlock()->instructions.push_back(std::move(ehEntryInstr));
+        }
 
-            // %tok is the block's second param — the original resume token.
+        if (hasFinally && stmt->finallyBody && !isTerminated())
+            lowerStmt(stmt->finallyBody.get());
+
+        if (!isTerminated()) {
             const auto &rethrowBp = currentFunc_->blocks[rethrowIdx].params;
-            Value rethrowTok = Value::temp(rethrowBp[1].id);
-
-            il::core::Instr rethrowInstr;
-            rethrowInstr.op = Opcode::ResumeSame;
-            rethrowInstr.type = Type(Type::Kind::Void);
-            rethrowInstr.operands = {rethrowTok};
-            rethrowInstr.loc = curLoc_;
-            blockMgr_.currentBlock()->instructions.push_back(std::move(rethrowInstr));
-            blockMgr_.currentBlock()->terminated = true;
+            emitRethrowFromError(Value::temp(rethrowBp[0].id));
         }
 
         // --- Catch body block (handler-style: eh.entry + Error/ResumeTok params) ---
@@ -295,21 +316,28 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
     if (hasFinally && stmt->finallyBody && !isTerminated())
         lowerStmt(stmt->finallyBody.get());
 
-    // Terminate with resume.label to ^after.
-    // Use the current block's own %tok param (catch_body's for typed, handler's for non-typed).
+    // Catch handlers consume the exception and continue after the try statement.
+    // Finally-only handlers must rethrow after cleanup so outer handlers still see
+    // the original error.
+    // Use the current block's own handler params (catch_body's for typed, handler's for non-typed).
     if (!isTerminated()) {
-        size_t tokBlockIdx = isTypedCatch ? catchBodyIdx : handlerIdx;
-        const auto &bp = currentFunc_->blocks[tokBlockIdx].params;
-        Value resumeTok = Value::temp(bp[1].id); // %tok / %ctok is second param
+        size_t handlerParamBlockIdx = isTypedCatch ? catchBodyIdx : handlerIdx;
+        const auto &bp = currentFunc_->blocks[handlerParamBlockIdx].params;
 
-        il::core::Instr resumeInstr;
-        resumeInstr.op = Opcode::ResumeLabel;
-        resumeInstr.type = Type(Type::Kind::Void);
-        resumeInstr.operands.push_back(resumeTok);
-        resumeInstr.labels.push_back(currentFunc_->blocks[afterIdx].label);
-        resumeInstr.loc = curLoc_;
-        blockMgr_.currentBlock()->instructions.push_back(std::move(resumeInstr));
-        blockMgr_.currentBlock()->terminated = true;
+        if (hasCatch) {
+            Value resumeTok = Value::temp(bp[1].id); // %tok / %ctok is second param
+
+            il::core::Instr resumeInstr;
+            resumeInstr.op = Opcode::ResumeLabel;
+            resumeInstr.type = Type(Type::Kind::Void);
+            resumeInstr.operands.push_back(resumeTok);
+            resumeInstr.labels.push_back(currentFunc_->blocks[afterIdx].label);
+            resumeInstr.loc = curLoc_;
+            blockMgr_.currentBlock()->instructions.push_back(std::move(resumeInstr));
+            blockMgr_.currentBlock()->terminated = true;
+        } else {
+            emitRethrowFromError(Value::temp(bp[0].id));
+        }
     }
 
     // --- Finally normal block (normal path) ---
@@ -339,10 +367,13 @@ void Lowerer::lowerThrowStmt(ThrowStmt *stmt) {
         emitCall("Viper.Error.SetThrowMsg", {msgStr});
     }
 
-    // Emit trap instruction to raise the exception.
+    // Emit a RuntimeError trap for user-visible throw statements. Plain IL
+    // `trap` remains a DomainError for lower-level users; Zia `throw` is the
+    // language-level runtime error promised by typed catch documentation.
     il::core::Instr trapInstr;
-    trapInstr.op = Opcode::Trap;
-    trapInstr.type = Type(Type::Kind::Void);
+    trapInstr.op = Opcode::TrapFromErr;
+    trapInstr.type = Type(Type::Kind::I32);
+    trapInstr.operands.push_back(Value::constInt(kErrRuntimeError));
     trapInstr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(std::move(trapInstr));
     blockMgr_.currentBlock()->terminated = true;

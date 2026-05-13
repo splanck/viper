@@ -50,11 +50,11 @@ void bytecodeRuntimeTrapPassthrough(const il::vm::RuntimeTrapSignal &, void *) {
 int32_t defaultBytecodeTrapErrorCode(TrapKind trapKind) {
     switch (trapKind) {
         case TrapKind::DivideByZero:
-            return 11;
+            return 0;
         case TrapKind::Overflow:
-            return 6;
+            return 4;
         case TrapKind::Bounds:
-            return 9;
+            return 7;
         case TrapKind::NullPointer:
             return 91;
         default:

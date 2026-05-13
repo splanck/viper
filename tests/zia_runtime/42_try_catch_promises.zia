@@ -1,0 +1,148 @@
+module RuntimeTest42;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+func userLeaf() {
+    throw "boom";
+}
+
+func userMiddle() {
+    userLeaf();
+}
+
+func runtimeLeaf() -> Integer {
+    var zero = 0;
+    return 1 / zero;
+}
+
+func runtimeMiddle() -> Integer {
+    return runtimeLeaf();
+}
+
+func testCatchBindingMessage() {
+    var caught = false;
+    var message = "";
+    try {
+        userMiddle();
+    } catch(e) {
+        caught = true;
+        message = e;
+    }
+    assertTrue(caught, "catch_binding_caught");
+    assertEqStr(message, "boom", "catch_binding_message");
+}
+
+func testTypedUserThrowRuntimeError() {
+    var caught = false;
+    var message = "";
+    try {
+        userMiddle();
+    } catch(e: RuntimeError) {
+        caught = true;
+        message = e;
+    }
+    assertTrue(caught, "typed_user_throw_runtime_error_caught");
+    assertEqStr(message, "boom", "typed_user_throw_runtime_error_message");
+}
+
+func testTypedRuntimeTrapAcrossCalls() {
+    var caught = false;
+    try {
+        var value = runtimeMiddle();
+        assertEqInt(value, -1, "typed_runtime_trap_unreachable");
+    } catch(e: DivideByZero) {
+        caught = true;
+    }
+    assertTrue(caught, "typed_runtime_trap_across_calls");
+}
+
+func testErrorCatchAll() {
+    var caught = false;
+    try {
+        userMiddle();
+    } catch(e: Error) {
+        caught = true;
+    }
+    assertTrue(caught, "typed_error_catch_all");
+}
+
+func testTypedMismatchRunsFinallyAndRethrows() {
+    var caughtInner = false;
+    var caughtOuter = false;
+    var finalized = false;
+    try {
+        try {
+            userMiddle();
+        } catch(e: DivideByZero) {
+            caughtInner = true;
+        } finally {
+            finalized = true;
+        }
+    } catch(e: RuntimeError) {
+        caughtOuter = true;
+    }
+    assertTrue(!caughtInner, "typed_mismatch_inner_not_caught");
+    assertTrue(finalized, "typed_mismatch_finally_ran");
+    assertTrue(caughtOuter, "typed_mismatch_outer_caught");
+}
+
+func testFinallyOnlyPropagatesUserThrow() {
+    var caught = false;
+    var finalized = false;
+    try {
+        try {
+            userMiddle();
+        } finally {
+            finalized = true;
+        }
+    } catch(e: RuntimeError) {
+        caught = true;
+    }
+    assertTrue(finalized, "finally_only_user_throw_finalized");
+    assertTrue(caught, "finally_only_user_throw_caught");
+}
+
+func testFinallyOnlyPropagatesRuntimeTrap() {
+    var caught = false;
+    var finalized = false;
+    try {
+        try {
+            var value = runtimeMiddle();
+            assertEqInt(value, -1, "finally_runtime_trap_unreachable");
+        } finally {
+            finalized = true;
+        }
+    } catch(e: DivideByZero) {
+        caught = true;
+    }
+    assertTrue(finalized, "finally_only_runtime_trap_finalized");
+    assertTrue(caught, "finally_only_runtime_trap_caught");
+}
+
+func testHandledCatchStillRunsFinally() {
+    var caught = false;
+    var finalized = false;
+    try {
+        userMiddle();
+    } catch(e: RuntimeError) {
+        caught = true;
+    } finally {
+        finalized = true;
+    }
+    assertTrue(caught, "handled_catch_finally_caught");
+    assertTrue(finalized, "handled_catch_finally_finalized");
+}
+
+func start() {
+    testCatchBindingMessage();
+    testTypedUserThrowRuntimeError();
+    testTypedRuntimeTrapAcrossCalls();
+    testErrorCatchAll();
+    testTypedMismatchRunsFinallyAndRethrows();
+    testFinallyOnlyPropagatesUserThrow();
+    testFinallyOnlyPropagatesRuntimeTrap();
+    testHandledCatchStillRunsFinally();
+    report();
+}

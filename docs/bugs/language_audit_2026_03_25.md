@@ -15,7 +15,7 @@ and adds concrete recommendations.
 
 ### ZIA-BUG-001: Guard clause narrowing fails for optional primitives at lowering
 **Severity:** P1
-**Status:** FIXED (revalidated 2026-04-06)
+**Status:** FIXED (revalidated 2026-05-13)
 
 ```zia
 func check(x: Integer?) {
@@ -63,7 +63,7 @@ match c {
 
 ### ZIA-BUG-004: Typed catch parses, but lowering produces invalid EH IL
 **Severity:** P1
-**Status:** FIXED (revalidated 2026-04-06)
+**Status:** FIXED (revalidated 2026-05-13)
 
 ```zia
 try {
@@ -74,13 +74,22 @@ try {
 ```
 
 **Resolved behavior**
-- `catch(e)` works.
-- `catch(e: RuntimeError)` works.
-- Typed catch composes with `finally` without verifier failures.
+- `catch(e)` works, and the bound `String` can be read in the catch body.
+- `throw value` is caught by `catch(e: RuntimeError)`.
+- Typed catch composes with `finally`; mismatched typed catches run `finally` before
+  rethrowing to an outer handler.
+- Zia rethrow paths preserve `finally` side effects by raising the original
+  trap kind/code instead of using retry-style `resume.same`.
+- Native EH lowering rewrites typed-catch helper blocks instead of leaving residual
+  `Error` / `ResumeTok` handler parameters.
 
 **Regression coverage**
 - `test_zia_try_catch`
 - `zia_lang_31_typed_catch_list_shorthand`
+- `zia_lang_42_try_catch_promises`
+- `viper_run_o1_zia_42_try_catch_promises`
+- `native_run_zia_42_try_catch_promises`
+- `test_native_eh_lowering`
 
 ### ZIA-BUG-005: Child class `init` requires explicit `override`
 **Severity:** P3 — Confirmed behavior, mostly a DX issue
@@ -244,11 +253,14 @@ var m = Map.New(); // WORKS
 - The shipped API audit examples already rely on this.
 
 ### ZIA-BUG-014: No `finally` block support
-**Status:** Invalid
+**Status:** FIXED / revalidated
 
 **Validated behavior**
 - `try { ... } finally { ... }` parses, lowers, and runs.
-- There are also local tests for Zia and BASIC `finally`.
+- `finally` runs before handled catches continue, before typed-catch mismatches
+  rethrow, and in finally-only forms before the original error reaches an outer
+  handler.
+- Regression coverage: `zia_lang_42_try_catch_promises`.
 
 ### ZIA-BUG-015: Map/Set/List not accessible via short bind
 **Status:** Invalid
@@ -259,7 +271,7 @@ Same invalidation as ZIA-BUG-009.
 **Status:** Invalid as written
 
 **Validated behavior**
-- `catch(e) { ... }` works.
+- `catch(e) { ... }` works, including reading `e` inside the catch body.
 - The missing/broken piece is typed catch lowering, covered by ZIA-BUG-004.
 - `catch e { ... }` without parentheses is still not supported.
 
