@@ -190,7 +190,8 @@ int main() {
     assert(checkEhStackBalance(multiCatchModel));
     assert(checkResumeEdges(multiCatchModel));
 
-    // Finally-only handler triggered by trap should pass checks.
+    // Finally-only handler triggered by trap should pass checks. Dispatching to
+    // the handler consumes the pushed finally scope, so the handler only resumes.
     Function finallyFn;
     finallyFn.name = "finally";
     {
@@ -211,9 +212,6 @@ int main() {
         Instr entryInstr;
         entryInstr.op = Opcode::EhEntry;
         finallyHandler.instructions.push_back(entryInstr);
-        Instr popInstr;
-        popInstr.op = Opcode::EhPop;
-        finallyHandler.instructions.push_back(popInstr);
         Instr resume;
         resume.op = Opcode::ResumeLabel;
         resume.labels = {"after"};
@@ -681,7 +679,8 @@ int main() {
     // Additional resume edge tests
     // -------------------------------------------------------------------------
 
-    // Valid resume edge: resume.label target postdominates faulting block
+    // Valid resume edge: resume.label target postdominates faulting block. The
+    // handler is entered after the active scope has already been consumed.
     Function validResumeFn;
     validResumeFn.name = "valid_resume";
     {
@@ -705,9 +704,6 @@ int main() {
         Instr entryInstr;
         entryInstr.op = Opcode::EhEntry;
         handler.instructions.push_back(entryInstr);
-        Instr pop;
-        pop.op = Opcode::EhPop;
-        handler.instructions.push_back(pop);
         Instr resume;
         resume.op = Opcode::ResumeLabel;
         resume.labels = {"cleanup"};

@@ -59,11 +59,6 @@ TEST(IL, SimplifyCFGEhGuard) {
     entryMarker.type = Type(Type::Kind::Void);
     handler.instructions.push_back(entryMarker);
 
-    Instr pop;
-    pop.op = Opcode::EhPop;
-    pop.type = Type(Type::Kind::Void);
-    handler.instructions.push_back(pop);
-
     Instr resume;
     resume.op = Opcode::ResumeNext;
     resume.type = Type(Type::Kind::Void);
@@ -100,12 +95,11 @@ TEST(IL, SimplifyCFGEhGuard) {
             continue;
 
         foundHandler = true;
-        ASSERT_EQ(block.instructions.size(), 3);
+        ASSERT_EQ(block.instructions.size(), 2);
         ASSERT_EQ(block.instructions[0].op, Opcode::EhEntry);
-        ASSERT_EQ(block.instructions[1].op, Opcode::EhPop);
-        ASSERT_EQ(block.instructions[2].op, Opcode::ResumeNext);
-        ASSERT_EQ(block.instructions[2].operands.size(), 1);
-        const Value &resumeTok = block.instructions[2].operands.front();
+        ASSERT_EQ(block.instructions[1].op, Opcode::ResumeNext);
+        ASSERT_EQ(block.instructions[1].operands.size(), 1);
+        const Value &resumeTok = block.instructions[1].operands.front();
         ASSERT_EQ(resumeTok.kind, Value::Kind::Temp);
         ASSERT_EQ(resumeTok.id, handler.params[1].id);
     }
