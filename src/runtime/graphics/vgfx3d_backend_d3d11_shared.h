@@ -132,6 +132,10 @@ int32_t vgfx3d_d3d11_next_capacity(int32_t current_capacity,
 int vgfx3d_d3d11_compute_row_bytes(int32_t width,
                                    int32_t bytes_per_pixel,
                                    size_t *out_bytes);
+/// @brief Compute a D3D11 vertex-buffer upload span for per-instance data.
+int vgfx3d_d3d11_compute_instance_upload_bytes(int32_t instance_count,
+                                               size_t instance_stride,
+                                               size_t *out_bytes);
 /// @brief Compute the byte span for a partial float-SRV buffer update.
 int vgfx3d_d3d11_compute_float_srv_update_bytes(size_t element_count,
                                                 size_t capacity,
@@ -172,6 +176,20 @@ int vgfx3d_d3d11_should_reuse_morph_cache(const void *cached_key,
                                           uint32_t cached_vertex_count,
                                           int8_t cached_has_normal_deltas,
                                           const vgfx3d_draw_cmd_t *cmd);
+/// @brief Count the contiguous complete shadow slots that are safe to advertise to HLSL.
+int32_t vgfx3d_d3d11_compute_shadow_count(int32_t slot_count,
+                                          const int *slot_complete);
+/// @brief Clamp or disable a light's shadow slot against the advertised slot range.
+int32_t vgfx3d_d3d11_sanitize_shadow_index(int32_t requested_shadow_index,
+                                           int32_t advertised_shadow_count);
+/// @brief Decide whether an RTT frame has enough state to mark its CPU mirror dirty.
+int vgfx3d_d3d11_should_mark_rtt_dirty(int8_t rtt_active,
+                                       int has_target,
+                                       int has_color_tex,
+                                       int has_color_rtv,
+                                       int has_depth_tex,
+                                       int has_depth_dsv,
+                                       int has_staging);
 /// @brief Map a draw command to its required blend state (alpha vs opaque).
 vgfx3d_d3d11_blend_mode_t
 vgfx3d_d3d11_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd);

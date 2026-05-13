@@ -1300,11 +1300,6 @@ static void mat4f_mul_d3d(const float *a, const float *b, float *out) {
     }
 }
 
-/// @brief Format and emit a D3D11 HRESULT failure to debug output + stderr.
-///
-/// `OutputDebugStringA` so the message shows in the IDE debugger,
-/// `fputs(stderr)` so it's visible from a console-launched process.
-/// Used everywhere a D3D call returns a non-S_OK HRESULT.
 /// @brief Log a D3D11 API failure to both the debugger output and stderr.
 /// @details Formats `msg` and the raw HRESULT value as a hex string into a
 ///   256-byte stack buffer, then writes it via `OutputDebugStringA` (visible
@@ -1415,6 +1410,11 @@ static HRESULT d3d11_create_rasterizer_state(d3d11_context_t *ctx,
                                              D3D11_CULL_MODE cull_mode,
                                              ID3D11RasterizerState **out_state) {
     D3D11_RASTERIZER_DESC desc;
+
+    if (out_state)
+        *out_state = NULL;
+    if (!ctx || !ctx->device || !out_state)
+        return E_INVALIDARG;
     memset(&desc, 0, sizeof(desc));
     desc.FillMode = fill_mode;
     desc.CullMode = cull_mode;
@@ -1480,7 +1480,9 @@ static HRESULT d3d11_create_constant_buffer(d3d11_context_t *ctx,
                                             ID3D11Buffer **out_buffer) {
     D3D11_BUFFER_DESC desc;
 
-    if (!ctx || !out_buffer)
+    if (out_buffer)
+        *out_buffer = NULL;
+    if (!ctx || !ctx->device || !out_buffer)
         return E_INVALIDARG;
     memset(&desc, 0, sizeof(desc));
     desc.Usage = D3D11_USAGE_DYNAMIC;
@@ -1808,7 +1810,9 @@ static HRESULT d3d11_create_static_buffer(d3d11_context_t *ctx,
     D3D11_BUFFER_DESC desc;
     D3D11_SUBRESOURCE_DATA init;
 
-    if (!ctx || !data || bytes == 0 || !out_buffer || bytes > UINT_MAX)
+    if (out_buffer)
+        *out_buffer = NULL;
+    if (!ctx || !ctx->device || !data || bytes == 0 || !out_buffer || bytes > UINT_MAX)
         return E_INVALIDARG;
     memset(&desc, 0, sizeof(desc));
     memset(&init, 0, sizeof(init));
@@ -1936,7 +1940,7 @@ static HRESULT d3d11_ensure_float_srv_buffer(d3d11_context_t *ctx,
         return E_INVALIDARG;
     if (element_count == 0)
         return S_OK;
-    if (*buffer && *capacity >= element_count)
+    if (*buffer && *srv && *capacity >= element_count)
         return S_OK;
 
     if (!d3d11_checked_mul_size(element_count, sizeof(float), &bytes))
@@ -1994,6 +1998,8 @@ static HRESULT d3d11_update_float_srv_buffer(d3d11_context_t *ctx,
     hr = d3d11_ensure_float_srv_buffer(ctx, buffer, srv, capacity, element_count);
     if (FAILED(hr))
         return hr;
+    if (!buffer || !srv || !*buffer || !*srv || !capacity)
+        return E_POINTER;
     if (!vgfx3d_d3d11_compute_float_srv_update_bytes(element_count, *capacity, &upload_bytes) ||
         upload_bytes > UINT_MAX)
         return E_INVALIDARG;
@@ -2961,6 +2967,11 @@ static void d3d11_destroy_rtt_targets(d3d11_context_t *ctx) {
     ctx->rtt_color_format = (int32_t)VGFX3D_RENDERTARGET_COLOR_FORMAT_UNORM8;
     ctx->rtt_active = 0;
     ctx->rtt_target = NULL;
+    if (ctx->active_target_kind == VGFX3D_D3D11_TARGET_RTT)
+        ctx->active_target_kind = VGFX3D_D3D11_TARGET_SWAPCHAIN;
+    ctx->current_pass_is_overlay = 0;
+    ctx->current_load_existing_color = 0;
+    ctx->overlay_used_this_frame = 0;
 }
 
 /// @brief Allocate RTT color + depth + staging textures sized to `rt`.
@@ -3075,15 +3086,15 @@ static void d3d11_release_shadow_slot(d3d11_context_t *ctx, int32_t slot) {
 ///   `shadowIndex` against it. Recomputing after allocation failures prevents a
 ///   stale count from making an empty slot sample a NULL SRV.
 static void d3d11_recompute_shadow_count(d3d11_context_t *ctx) {
-    int32_t count = 0;
+    int complete[VGFX3D_MAX_SHADOW_LIGHTS] = {0};
 
     if (!ctx)
         return;
     for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
         if (ctx->shadow_srv[slot] && ctx->shadow_dsv[slot] && ctx->shadow_depth_tex[slot])
-            count = slot + 1;
+            complete[slot] = 1;
     }
-    ctx->shadow_count = count;
+    ctx->shadow_count = vgfx3d_d3d11_compute_shadow_count(VGFX3D_MAX_SHADOW_LIGHTS, complete);
 }
 
 /// @brief Allocate the shadow-map depth target at the requested size.
@@ -3151,7 +3162,7 @@ static void d3d11_bind_render_targets(d3d11_context_t *ctx) {
 static void d3d11_select_current_targets(d3d11_context_t *ctx) {
     if (!ctx)
         return;
-    if (ctx->active_target_kind == VGFX3D_D3D11_TARGET_RTT && ctx->rtt_rtv && ctx->rtt_dsv) {
+    if (ctx->active_target_kind == VGFX3D_D3D11_TARGET_RTT && d3d11_has_rtt_targets(ctx)) {
         ctx->current_rtvs[0] = ctx->rtt_rtv;
         ctx->current_rtvs[1] = NULL;
         ctx->current_rtv_count = 1;
@@ -3159,8 +3170,8 @@ static void d3d11_select_current_targets(d3d11_context_t *ctx) {
         ctx->current_width = ctx->rtt_width;
         ctx->current_height = ctx->rtt_height;
         ctx->current_target_kind = VGFX3D_D3D11_TARGET_RTT;
-    } else if (ctx->active_target_kind == VGFX3D_D3D11_TARGET_SCENE && ctx->scene_color_rtv &&
-               ctx->scene_motion_rtv && ctx->scene_dsv) {
+    } else if (ctx->active_target_kind == VGFX3D_D3D11_TARGET_SCENE &&
+               d3d11_has_scene_targets(ctx)) {
         ctx->current_rtvs[0] = ctx->scene_color_rtv;
         ctx->current_rtvs[1] = ctx->scene_motion_rtv;
         ctx->current_rtv_count = 2;
@@ -3172,15 +3183,16 @@ static void d3d11_select_current_targets(d3d11_context_t *ctx) {
         ctx->current_rtvs[1] = NULL;
         ctx->current_rtv_count = 1;
         ctx->current_dsv = NULL;
-        ctx->current_target_kind = VGFX3D_D3D11_TARGET_OVERLAY;
-        if (ctx->overlay_color_rtv) {
+        if (d3d11_has_overlay_target(ctx)) {
             ctx->current_rtvs[0] = ctx->overlay_color_rtv;
             ctx->current_width = ctx->overlay_width;
             ctx->current_height = ctx->overlay_height;
-        } else if (ctx->scene_color_rtv) {
+            ctx->current_target_kind = VGFX3D_D3D11_TARGET_OVERLAY;
+        } else if (d3d11_has_scene_targets(ctx)) {
             ctx->current_rtvs[0] = ctx->scene_color_rtv;
             ctx->current_width = ctx->scene_width;
             ctx->current_height = ctx->scene_height;
+            ctx->current_target_kind = VGFX3D_D3D11_TARGET_SCENE;
         } else {
             ctx->current_rtvs[0] = ctx->rtv;
             ctx->current_dsv = ctx->dsv;
@@ -3518,9 +3530,12 @@ static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
 ///
 /// Each light contributes type, direction, position, color, intensity,
 /// attenuation, and spot-cone parameters. Anything beyond `VGFX3D_MAX_LIGHTS`
-/// is dropped silently (the shader's array is fixed-size).
+/// is dropped silently (the shader's array is fixed-size). Shadow indices are
+/// sanitized against the contiguous advertised shadow-slot range so a stale or
+/// sparse light cannot sample an unbound shadow SRV.
 static void d3d11_prepare_light_data(const vgfx3d_light_params_t *lights,
                                      int32_t light_count,
+                                     int32_t advertised_shadow_count,
                                      d3d_light_t *light_data) {
     if (!light_data)
         return;
@@ -3529,7 +3544,8 @@ static void d3d11_prepare_light_data(const vgfx3d_light_params_t *lights,
         return;
     for (int32_t i = 0; i < light_count && i < VGFX3D_MAX_LIGHTS; i++) {
         light_data[i].type = lights[i].type;
-        light_data[i].shadow_index = lights[i].shadow_index;
+        light_data[i].shadow_index = vgfx3d_d3d11_sanitize_shadow_index(
+            lights[i].shadow_index, advertised_shadow_count);
         light_data[i].direction[0] = lights[i].direction[0];
         light_data[i].direction[1] = lights[i].direction[1];
         light_data[i].direction[2] = lights[i].direction[2];
@@ -3985,7 +4001,7 @@ static void d3d11_submit_draw(void *ctx_ptr,
 
     d3d11_prepare_object_data(cmd, &object_data);
     d3d11_prepare_scene_data(ctx, lights, light_count, ambient, &scene_data);
-    d3d11_prepare_light_data(lights, scene_data.light_count, light_data);
+    d3d11_prepare_light_data(lights, scene_data.light_count, scene_data.shadow_count, light_data);
     d3d11_prepare_anim_resources(ctx, cmd, &object_data);
 
     hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_object, &object_data, sizeof(object_data));
@@ -4064,6 +4080,7 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
     d3d_draw_resources_t draw_resources;
     int has_splat;
     HRESULT hr;
+    size_t instance_upload_bytes;
     UINT strides[2];
     UINT offsets[2] = {0, 0};
     ID3D11Buffer *vertex_buffers[2];
@@ -4087,7 +4104,7 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
     object_data.has_prev_model_matrix = 0;
     object_data.has_prev_instance_matrices = cmd->has_prev_instance_matrices ? 1 : 0;
     d3d11_prepare_scene_data(ctx, lights, light_count, ambient, &scene_data);
-    d3d11_prepare_light_data(lights, scene_data.light_count, light_data);
+    d3d11_prepare_light_data(lights, scene_data.light_count, scene_data.shadow_count, light_data);
     d3d11_prepare_anim_resources(ctx, cmd, &object_data);
 
     hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_object, &object_data, sizeof(object_data));
@@ -4126,13 +4143,15 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
         return;
     }
 
-    if (!d3d11_acquire_mesh_buffers(ctx, cmd, &mesh_vb, &mesh_ib) ||
+    if (!vgfx3d_d3d11_compute_instance_upload_bytes(
+            instance_count, sizeof(d3d_instance_data_t), &instance_upload_bytes) ||
+        !d3d11_acquire_mesh_buffers(ctx, cmd, &mesh_vb, &mesh_ib) ||
         !d3d11_upload_dynamic_buffer(ctx,
                                      &ctx->instance_buffer,
                                      &ctx->instance_buffer_size,
                                      D3D11_BIND_VERTEX_BUFFER,
                                      ctx->instance_upload_data,
-                                     (size_t)instance_count * sizeof(d3d_instance_data_t),
+                                     instance_upload_bytes,
                                      D3D11_INITIAL_INSTANCE_BUFFER_SIZE)) {
         d3d11_unbind_draw_resources(ctx);
         d3d11_release_temporary_resources(&draw_resources);
@@ -4887,13 +4906,15 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
         memcpy(history.scene_cam_pos, ctx->scene_cam_pos, sizeof(history.scene_cam_pos));
         history.scene_history_valid = ctx->scene_history_valid;
         history.overlay_used_this_frame = ctx->overlay_used_this_frame;
-        vgfx3d_d3d11_update_frame_history(
-            &history,
-            ctx->vp,
-            ctx->inv_vp,
-            cam->position,
-            ctx->current_pass_is_overlay,
-            (ctx->gpu_postfx_enabled && ctx->overlay_color_rtv != NULL) ? 1 : 0);
+        vgfx3d_d3d11_update_frame_history(&history,
+                                          ctx->vp,
+                                          ctx->inv_vp,
+                                          cam->position,
+                                          ctx->current_pass_is_overlay,
+                                          (ctx->gpu_postfx_enabled &&
+                                           d3d11_has_overlay_target(ctx))
+                                              ? 1
+                                              : 0);
         memcpy(ctx->scene_vp, history.scene_vp, sizeof(ctx->scene_vp));
         memcpy(ctx->scene_prev_vp, history.scene_prev_vp, sizeof(ctx->scene_prev_vp));
         memcpy(ctx->scene_inv_vp, history.scene_inv_vp, sizeof(ctx->scene_inv_vp));
@@ -4923,7 +4944,13 @@ static void d3d11_end_frame(void *ctx_ptr) {
 
     if (!ctx)
         return;
-    if (!ctx->rtt_active || !ctx->rtt_target || !ctx->rtt_color_tex || !ctx->rtt_staging)
+    if (!vgfx3d_d3d11_should_mark_rtt_dirty(ctx->rtt_active,
+                                            ctx->rtt_target != NULL,
+                                            ctx->rtt_color_tex != NULL,
+                                            ctx->rtt_rtv != NULL,
+                                            ctx->rtt_depth_tex != NULL,
+                                            ctx->rtt_dsv != NULL,
+                                            ctx->rtt_staging != NULL))
         return;
     ctx->rtt_target->sync_color = d3d11_sync_render_target_color;
     ctx->rtt_target->sync_color_userdata = ctx;
@@ -5392,9 +5419,9 @@ static int d3d11_readback_rgba(
                                       &source_tex)) {
             return 0;
         }
-    } else if (ctx->scene_color_tex && ctx->scene_width > 0 && ctx->scene_height > 0 &&
+    } else if (d3d11_has_scene_targets(ctx) && ctx->scene_width > 0 && ctx->scene_height > 0 &&
                ctx->current_target_kind != VGFX3D_D3D11_TARGET_SWAPCHAIN) {
-        if (ctx->overlay_used_this_frame && ctx->overlay_color_srv) {
+        if (ctx->overlay_used_this_frame && d3d11_has_overlay_target(ctx)) {
             if (!d3d11_resolve_scene_to_target(ctx, NULL, 0, 0, 1, &source_tex))
                 return 0;
         } else {
@@ -5423,13 +5450,12 @@ static void d3d11_present_internal(d3d11_context_t *ctx, const vgfx3d_postfx_cha
 
     if (!ctx || ctx->rtt_active)
         return;
-    use_postfx = (chain != NULL && chain->enabled && chain->effect_count > 0 && ctx->gpu_postfx_enabled &&
-                  ctx->scene_color_srv && ctx->scene_depth_srv && ctx->scene_motion_srv)
+    use_postfx = (chain != NULL && chain->enabled && chain->effect_count > 0 &&
+                  ctx->gpu_postfx_enabled && d3d11_has_scene_targets(ctx))
                      ? 1
                      : 0;
     if (!use_postfx) {
-        if (ctx->gpu_postfx_enabled && ctx->scene_color_srv && ctx->scene_depth_srv &&
-            ctx->scene_motion_srv &&
+        if (ctx->gpu_postfx_enabled && d3d11_has_scene_targets(ctx) &&
             d3d11_resolve_scene_to_target(ctx, ctx->rtv, ctx->width, ctx->height, 0, NULL)) {
             d3d11_present_swapchain(ctx);
             return;
@@ -5632,11 +5658,9 @@ static void d3d11_shadow_end(void *ctx_ptr, int32_t slot, float bias) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     if (!ctx || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
         return;
-    if (ctx->shadow_pass_slot == slot && ctx->shadow_srv[slot] && ctx->shadow_dsv[slot] &&
-        ctx->shadow_depth_tex[slot] && ctx->shadow_count < slot + 1)
-        ctx->shadow_count = slot + 1;
-    else if (ctx->shadow_pass_slot == slot)
-        d3d11_recompute_shadow_count(ctx);
+    if (ctx->shadow_pass_slot != slot)
+        return;
+    d3d11_recompute_shadow_count(ctx);
     ctx->shadow_bias = bias;
     ctx->shadow_pass_slot = -1;
     d3d11_select_current_targets(ctx);

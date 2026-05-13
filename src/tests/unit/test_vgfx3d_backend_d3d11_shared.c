@@ -321,6 +321,19 @@ static void test_capacity_and_mip_helpers(void) {
                 "Row-byte helper computes tightly packed RGBA16F rows");
     EXPECT_TRUE(vgfx3d_d3d11_compute_row_bytes(0, 4, &bytes) == 0 && bytes == 0u,
                 "Row-byte helper rejects non-positive widths");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_instance_upload_bytes(
+                    3, sizeof(vgfx3d_d3d11_instance_data_t), &bytes) == 1 &&
+                    bytes == 3u * sizeof(vgfx3d_d3d11_instance_data_t),
+                "Instance upload helper computes the D3D11 vertex-buffer byte span");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_instance_upload_bytes(0,
+                                                           sizeof(vgfx3d_d3d11_instance_data_t),
+                                                           &bytes) == 0 &&
+                    bytes == 0u,
+                "Instance upload helper rejects non-positive instance counts");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_instance_upload_bytes(
+                    INT_MAX, sizeof(vgfx3d_d3d11_instance_data_t), &bytes) == 0 &&
+                    bytes == 0u,
+                "Instance upload helper rejects spans larger than a D3D11 UINT ByteWidth");
     EXPECT_TRUE(vgfx3d_d3d11_compute_float_srv_update_bytes(3, 8, &bytes) == 1 &&
                     bytes == 12u,
                 "Float-SRV update helper covers only live elements, not total capacity");
@@ -431,6 +444,46 @@ static void test_morph_cache_reuse_helper(void) {
                 "Morph cache reuse compares against the clamped D3D11 shape count");
 }
 
+static void test_shadow_and_rtt_policy_helpers(void) {
+    int complete_none[VGFX3D_MAX_SHADOW_LIGHTS] = {0};
+    int complete_first[VGFX3D_MAX_SHADOW_LIGHTS] = {0};
+    int complete_sparse[VGFX3D_MAX_SHADOW_LIGHTS] = {0};
+    int complete_all[VGFX3D_MAX_SHADOW_LIGHTS] = {0};
+
+    complete_first[0] = 1;
+    if (VGFX3D_MAX_SHADOW_LIGHTS > 1)
+        complete_sparse[1] = 1;
+    for (int i = 0; i < VGFX3D_MAX_SHADOW_LIGHTS; i++)
+        complete_all[i] = 1;
+
+    EXPECT_TRUE(vgfx3d_d3d11_compute_shadow_count(
+                    VGFX3D_MAX_SHADOW_LIGHTS, complete_none) == 0,
+                "Shadow count helper reports no advertised slots when slot zero is absent");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_shadow_count(
+                    VGFX3D_MAX_SHADOW_LIGHTS, complete_first) == 1,
+                "Shadow count helper advertises the first complete slot");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_shadow_count(
+                    VGFX3D_MAX_SHADOW_LIGHTS, complete_sparse) == 0,
+                "Shadow count helper rejects sparse shadow slots");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_shadow_count(
+                    VGFX3D_MAX_SHADOW_LIGHTS, complete_all) == VGFX3D_MAX_SHADOW_LIGHTS,
+                "Shadow count helper advertises only a contiguous complete prefix");
+
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_index(0, 1) == 0,
+                "Shadow index sanitizer preserves valid advertised slots");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_index(1, 1) == -1,
+                "Shadow index sanitizer disables slots outside the advertised range");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_index(-1, 1) == -1,
+                "Shadow index sanitizer keeps negative slots unshadowed");
+
+    EXPECT_TRUE(vgfx3d_d3d11_should_mark_rtt_dirty(1, 1, 1, 1, 1, 1, 1) == 1,
+                "RTT dirty helper accepts complete active RTT state");
+    EXPECT_TRUE(vgfx3d_d3d11_should_mark_rtt_dirty(1, 1, 1, 0, 1, 1, 1) == 0,
+                "RTT dirty helper rejects partial color target state");
+    EXPECT_TRUE(vgfx3d_d3d11_should_mark_rtt_dirty(0, 1, 1, 1, 1, 1, 1) == 0,
+                "RTT dirty helper ignores inactive RTT state");
+}
+
 int main(void) {
     test_pack_bone_palette_identity_pads_unused_bones();
     test_pack_bone_palette_identity_pads_empty_source();
@@ -446,6 +499,7 @@ int main(void) {
     test_d3d11_limits_and_prune_helpers();
     test_target_fallback_helper();
     test_morph_cache_reuse_helper();
+    test_shadow_and_rtt_policy_helpers();
 
     printf("vgfx3d d3d11 shared tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

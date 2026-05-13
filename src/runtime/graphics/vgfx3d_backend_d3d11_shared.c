@@ -250,6 +250,27 @@ int vgfx3d_d3d11_compute_row_bytes(int32_t width,
     return vgfx3d_d3d11_checked_mul_size((size_t)width, (size_t)bytes_per_pixel, out_bytes);
 }
 
+/// @brief Compute a checked per-instance vertex-buffer upload size.
+/// @details The D3D11 `ByteWidth` field is a UINT, so the helper rejects both
+///   size_t multiplication overflow and byte counts that cannot be represented
+///   by the D3D11 buffer descriptor. The output is cleared on failure.
+int vgfx3d_d3d11_compute_instance_upload_bytes(int32_t instance_count,
+                                               size_t instance_stride,
+                                               size_t *out_bytes) {
+    size_t bytes;
+
+    if (out_bytes)
+        *out_bytes = 0;
+    if (!out_bytes || instance_count <= 0 || instance_stride == 0)
+        return 0;
+    if (!vgfx3d_d3d11_checked_mul_size((size_t)instance_count, instance_stride, &bytes))
+        return 0;
+    if (bytes > UINT_MAX)
+        return 0;
+    *out_bytes = bytes;
+    return 1;
+}
+
 /// @brief Compute the exact byte range for updating live float SRV elements.
 /// @details The backing buffer can be larger than the live morph payload after
 ///   capacity growth; this helper keeps UpdateSubresource boxed to the live
@@ -427,6 +448,51 @@ int vgfx3d_d3d11_should_reuse_morph_cache(const void *cached_key,
     return cached_key == cmd->morph_key && cached_revision == cmd->morph_revision &&
            cached_shape_count == shape_count && cached_vertex_count == cmd->vertex_count &&
            (cached_has_normal_deltas ? 1 : 0) == has_normal_deltas;
+}
+
+/// @brief Count contiguous complete shadow slots starting at slot 0.
+/// @details The HLSL shader receives only `shadowCount` plus two fixed SRV
+///   bindings, so advertising a higher slot while an earlier slot is missing
+///   would let a light sample an unbound shadow texture. Requiring a contiguous
+///   prefix keeps `0 <= shadowIndex < shadowCount` equivalent to "SRV exists".
+int32_t vgfx3d_d3d11_compute_shadow_count(int32_t slot_count,
+                                          const int *slot_complete) {
+    int32_t count = 0;
+    int32_t max_slots;
+
+    if (!slot_complete || slot_count <= 0)
+        return 0;
+    max_slots = slot_count > VGFX3D_MAX_SHADOW_LIGHTS ? VGFX3D_MAX_SHADOW_LIGHTS : slot_count;
+    while (count < max_slots && slot_complete[count])
+        count++;
+    return count;
+}
+
+/// @brief Sanitize a light's requested shadow slot against the advertised range.
+/// @details Invalid, negative, sparse, or out-of-range slots are converted to -1,
+///   which the shader treats as unshadowed. This prevents stale scene data from
+///   indexing a shadow SRV that was not allocated this frame.
+int32_t vgfx3d_d3d11_sanitize_shadow_index(int32_t requested_shadow_index,
+                                           int32_t advertised_shadow_count) {
+    if (advertised_shadow_count <= 0 || requested_shadow_index < 0 ||
+        requested_shadow_index >= advertised_shadow_count)
+        return -1;
+    return requested_shadow_index;
+}
+
+/// @brief Decide whether an RTT can safely mark its CPU-side mirror dirty.
+/// @details End-of-frame dirtying is meaningful only when the target handle and
+///   every GPU resource needed for a later staging copy are present. This helper
+///   keeps partial allocation failures from installing stale sync hooks.
+int vgfx3d_d3d11_should_mark_rtt_dirty(int8_t rtt_active,
+                                       int has_target,
+                                       int has_color_tex,
+                                       int has_color_rtv,
+                                       int has_depth_tex,
+                                       int has_depth_dsv,
+                                       int has_staging) {
+    return rtt_active && has_target && has_color_tex && has_color_rtv && has_depth_tex &&
+           has_depth_dsv && has_staging;
 }
 
 /// @brief Map a draw command to its required blend state (alpha vs opaque).
