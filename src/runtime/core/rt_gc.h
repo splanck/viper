@@ -103,6 +103,12 @@ int8_t rt_weakref_alive(rt_weakref *ref);
 /// @param ref The weak reference handle to free.
 void rt_weakref_free(rt_weakref *ref);
 
+/// @brief Return non-zero when @p candidate is a weak reference handle.
+int8_t rt_weakref_is_handle(void *candidate);
+
+/// @brief Re-point a weak reference at a different target, or NULL to clear.
+void rt_weakref_reset(rt_weakref *ref, void *target);
+
 /// @brief Clear all weak references pointing to a target being freed.
 /// @details Called internally when an object is being freed. Integrated
 ///          into rt_obj_free().

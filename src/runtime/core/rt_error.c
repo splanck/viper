@@ -29,6 +29,8 @@
 #include "rt_error.h"
 
 #include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -61,6 +63,14 @@ void rt_throw_msg_set(rt_string msg) {
     }
 }
 
+/// @brief Clear the thread-local exception message used by `catch(e)`.
+void rt_throw_msg_clear(void) {
+    if (tls_throw_msg) {
+        rt_str_release_maybe(tls_throw_msg);
+        tls_throw_msg = NULL;
+    }
+}
+
 /// @brief Read the most recently thrown message on this thread (returns a fresh ref).
 /// Returns the empty string if no exception has been thrown.
 rt_string rt_throw_msg_get(void) {
@@ -68,6 +78,97 @@ rt_string rt_throw_msg_get(void) {
         return rt_string_ref(tls_throw_msg);
     }
     return rt_str_empty();
+}
+
+static const char *rt_trap_kind_name_cstr(int32_t kind) {
+    switch (kind) {
+        case RT_TRAP_KIND_DIVIDE_BY_ZERO:
+            return "DivideByZero";
+        case RT_TRAP_KIND_OVERFLOW:
+            return "Overflow";
+        case RT_TRAP_KIND_INVALID_CAST:
+            return "InvalidCast";
+        case RT_TRAP_KIND_DOMAIN_ERROR:
+            return "DomainError";
+        case RT_TRAP_KIND_BOUNDS:
+            return "Bounds";
+        case RT_TRAP_KIND_FILE_NOT_FOUND:
+            return "FileNotFound";
+        case RT_TRAP_KIND_EOF:
+            return "EOF";
+        case RT_TRAP_KIND_IO_ERROR:
+            return "IOError";
+        case RT_TRAP_KIND_INVALID_OPERATION:
+            return "InvalidOperation";
+        case RT_TRAP_KIND_RUNTIME_ERROR:
+            return "RuntimeError";
+        case RT_TRAP_KIND_INTERRUPT:
+            return "Interrupt";
+        case RT_TRAP_KIND_NETWORK_ERROR:
+            return "NetworkError";
+        default:
+            return "RuntimeError";
+    }
+}
+
+static const char *rt_trap_kind_default_message_cstr(int32_t kind) {
+    switch (kind) {
+        case RT_TRAP_KIND_DIVIDE_BY_ZERO:
+            return "Division by zero";
+        case RT_TRAP_KIND_OVERFLOW:
+            return "Numeric overflow";
+        case RT_TRAP_KIND_INVALID_CAST:
+            return "Invalid cast";
+        case RT_TRAP_KIND_DOMAIN_ERROR:
+            return "Domain error";
+        case RT_TRAP_KIND_BOUNDS:
+            return "Bounds check failed";
+        case RT_TRAP_KIND_FILE_NOT_FOUND:
+            return "File not found";
+        case RT_TRAP_KIND_EOF:
+            return "End of file";
+        case RT_TRAP_KIND_IO_ERROR:
+            return "I/O error";
+        case RT_TRAP_KIND_INVALID_OPERATION:
+            return "Invalid operation";
+        case RT_TRAP_KIND_INTERRUPT:
+            return "Interrupted";
+        case RT_TRAP_KIND_NETWORK_ERROR:
+            return "Network error";
+        case RT_TRAP_KIND_RUNTIME_ERROR:
+        default:
+            return "Runtime error";
+    }
+}
+
+rt_string rt_error_kind_name(int32_t kind) {
+    const char *name = rt_trap_kind_name_cstr(kind);
+    return rt_string_from_bytes(name, strlen(name));
+}
+
+rt_string rt_error_message(int32_t kind, int32_t code, int32_t line) {
+    (void)code;
+    (void)line;
+    if (kind == RT_TRAP_KIND_RUNTIME_ERROR && tls_throw_msg) {
+        return rt_string_ref(tls_throw_msg);
+    }
+    const char *message = rt_trap_kind_default_message_cstr(kind);
+    return rt_string_from_bytes(message, strlen(message));
+}
+
+rt_string rt_error_location(int32_t kind, int32_t code, int32_t line) {
+    (void)kind;
+    (void)code;
+    if (line < 0)
+        return rt_str_empty();
+    char buf[64];
+    int written = snprintf(buf, sizeof(buf), "line %d", line);
+    if (written <= 0)
+        return rt_str_empty();
+    size_t len = (size_t)written;
+    if (len >= sizeof(buf))
+        len = sizeof(buf) - 1;
+    return rt_string_from_bytes(buf, len);
 }
 
 /// Thread-local storage for the most recently raised trap's classification.

@@ -682,7 +682,7 @@ void Sema::analyzeClassDecl(ClassDecl &decl) {
                     continue;
                 }
 
-                if (parentMethod && !method->isOverride) {
+                if (parentMethod && !method->isOverride && method->name != "init") {
                     error(method->loc,
                           "Method '" + method->name +
                               "' must be marked override to replace an inherited overload");
@@ -815,12 +815,15 @@ void Sema::analyzeEnumDecl(EnumDecl &decl) {
 void Sema::analyzeFunctionDecl(FunctionDecl &decl) {
     // Generic functions are registered in the first pass; skip body analysis
     // The body will be analyzed when the function is instantiated
-    if (!decl.genericParams.empty())
+    const bool analyzingGenericInstantiation = !decl.genericParams.empty() && inGenericContext();
+    if (!decl.genericParams.empty() && !analyzingGenericInstantiation)
         return;
 
     currentFunction_ = &decl;
-    TypeRef funcType =
-        functionDeclTypes_.count(&decl) ? functionDeclTypes_[&decl] : functionTypeForDecl(decl);
+    TypeRef funcType = analyzingGenericInstantiation
+                           ? functionTypeForDecl(decl)
+                           : (functionDeclTypes_.count(&decl) ? functionDeclTypes_[&decl]
+                                                              : functionTypeForDecl(decl));
     if (decl.isAsync)
         expectedReturnType_ =
             decl.returnType ? resolveTypeNode(decl.returnType.get()) : types::voidType();
@@ -871,6 +874,29 @@ void Sema::analyzeFunctionDecl(FunctionDecl &decl) {
 /// @param ownerType The type that owns this field.
 void Sema::analyzeFieldDecl(FieldDecl &decl, TypeRef ownerType) {
     TypeRef fieldType = decl.type ? resolveTypeNode(decl.type.get()) : types::unknown();
+
+    if (decl.isWeak) {
+        auto weakTargetType = fieldType;
+        if (weakTargetType && weakTargetType->kind == TypeKindSem::Optional &&
+            weakTargetType->innerType()) {
+            weakTargetType = weakTargetType->innerType();
+        }
+        bool weakCompatible =
+            weakTargetType &&
+            (weakTargetType->kind == TypeKindSem::Class ||
+             weakTargetType->kind == TypeKindSem::Interface ||
+             weakTargetType->kind == TypeKindSem::Ptr || weakTargetType->kind == TypeKindSem::Any);
+        if (!weakCompatible) {
+            error(decl.loc,
+                  "weak fields require a class, interface, Ptr, Any, or optional reference type");
+        }
+        if (decl.isStatic) {
+            error(decl.loc, "weak fields cannot be static");
+        }
+        if (ownerType && ownerType->kind != TypeKindSem::Class) {
+            error(decl.loc, "weak fields are only supported on class types");
+        }
+    }
 
     // Check initializer type
     if (decl.initializer) {

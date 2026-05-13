@@ -99,28 +99,116 @@ static int trapKindFromName(const std::string &name) {
 
 static constexpr int kErrRuntimeError = 9;
 static constexpr const char *kErrorRaiseKind = "Viper.Error.RaiseKind";
+static constexpr const char *kErrorGetThrowMsg = "Viper.Error.GetThrowMsg";
+static constexpr const char *kErrorClearThrowMsg = "Viper.Error.ClearThrowMsg";
+
+void Lowerer::emitEhPop() {
+    il::core::Instr ehPopInstr;
+    ehPopInstr.op = Opcode::EhPop;
+    ehPopInstr.type = Type(Type::Kind::Void);
+    ehPopInstr.loc = curLoc_;
+    blockMgr_.currentBlock()->instructions.push_back(std::move(ehPopInstr));
+}
+
+void Lowerer::emitActiveCleanups() {
+    if (cleanupStack_.empty() || isTerminated())
+        return;
+
+    auto savedFrames = cleanupStack_;
+
+    for (size_t i = savedFrames.size(); i-- > 0;) {
+        cleanupStack_.assign(savedFrames.begin(), savedFrames.begin() + static_cast<ptrdiff_t>(i));
+
+        const CleanupFrame &frame = savedFrames[i];
+        if (frame.popEhBeforeFinally && !isTerminated())
+            emitEhPop();
+        if (frame.finallyBody && !isTerminated())
+            lowerStmt(frame.finallyBody);
+        if (isTerminated())
+            break;
+    }
+
+    cleanupStack_ = std::move(savedFrames);
+}
+
+void Lowerer::emitCatchBodyCleanupsBeforeThrow() {
+    if (cleanupStack_.empty() || isTerminated())
+        return;
+
+    auto savedFrames = cleanupStack_;
+
+    for (size_t i = savedFrames.size(); i-- > 0;) {
+        const CleanupFrame &frame = savedFrames[i];
+        if (frame.popEhBeforeFinally)
+            break;
+
+        cleanupStack_.assign(savedFrames.begin(), savedFrames.begin() + static_cast<ptrdiff_t>(i));
+        if (frame.finallyBody && !isTerminated())
+            lowerStmt(frame.finallyBody);
+        if (isTerminated())
+            break;
+    }
+
+    cleanupStack_ = std::move(savedFrames);
+}
 
 void Lowerer::lowerTryStmt(TryStmt *stmt) {
     ZiaLocationScope locScope(*this, stmt->loc);
 
     bool hasFinally = stmt->finallyBody != nullptr;
-    bool hasCatch = stmt->catchBody != nullptr;
+    bool hasCatch = !stmt->catches.empty();
 
-    // Determine if this is a typed catch (non-empty catchTypeName that isn't
-    // the generic "Error" catch-all).
-    bool isTypedCatch = !stmt->catchTypeName.empty() && stmt->catchTypeName != "Error";
-    int expectedKind = isTypedCatch ? trapKindFromName(stmt->catchTypeName) : -1;
+    // Create the post-try continuation first so helper lambdas can target it.
+    size_t afterIdx = createBlock("after_try");
 
-    auto emitRethrowFromError = [&](Value errVal) {
-        Value errKind = emitUnary(Opcode::ErrGetKind, Type(Type::Kind::I32), errVal);
-        Value errCode = emitUnary(Opcode::ErrGetCode, Type(Type::Kind::I32), errVal);
-        Value errLine = emitUnary(Opcode::ErrGetLine, Type(Type::Kind::I32), errVal);
+    auto createHandlerBlock = [&](const std::string &base) -> size_t {
+        std::vector<il::core::Param> params;
+        params.push_back({"err", Type(Type::Kind::Error)});
+        params.push_back({"tok", Type(Type::Kind::ResumeTok)});
+        unsigned blockId = blockMgr_.nextBlockId();
+        blockMgr_.setNextBlockId(blockId + 1);
+        builder_->createBlock(*currentFunc_, base + "_" + std::to_string(blockId), params);
+        return currentFunc_->blocks.size() - 1;
+    };
 
-        emitCall(kErrorRaiseKind, {errKind, errCode, errLine});
+    auto emitEhEntry = [&]() {
+        il::core::Instr ehEntryInstr;
+        ehEntryInstr.op = Opcode::EhEntry;
+        ehEntryInstr.type = Type(Type::Kind::Void);
+        ehEntryInstr.loc = curLoc_;
+        blockMgr_.currentBlock()->instructions.push_back(std::move(ehEntryInstr));
+    };
 
-        // The runtime call raises through the active VM/native trap bridge. Keep
-        // a terminator fallback so the IL remains structurally valid if a host
-        // installs a non-terminating trap observer.
+    auto emitBrWithArgs = [&](size_t targetIdx, const std::vector<Value> &args) {
+        il::core::Instr brInstr;
+        brInstr.op = Opcode::Br;
+        brInstr.type = Type(Type::Kind::Void);
+        brInstr.labels.push_back(currentFunc_->blocks[targetIdx].label);
+        brInstr.brArgs.push_back(args);
+        brInstr.loc = curLoc_;
+        blockMgr_.currentBlock()->instructions.push_back(std::move(brInstr));
+        blockMgr_.currentBlock()->terminated = true;
+    };
+
+    auto emitCBrWithArgs = [&](Value cond,
+                               size_t trueIdx,
+                               const std::vector<Value> &trueArgs,
+                               size_t falseIdx,
+                               const std::vector<Value> &falseArgs) {
+        il::core::Instr cbrInstr;
+        cbrInstr.op = Opcode::CBr;
+        cbrInstr.type = Type(Type::Kind::Void);
+        cbrInstr.operands.push_back(cond);
+        cbrInstr.labels.push_back(currentFunc_->blocks[trueIdx].label);
+        cbrInstr.labels.push_back(currentFunc_->blocks[falseIdx].label);
+        cbrInstr.brArgs.push_back(trueArgs);
+        cbrInstr.brArgs.push_back(falseArgs);
+        cbrInstr.loc = curLoc_;
+        blockMgr_.currentBlock()->instructions.push_back(std::move(cbrInstr));
+        blockMgr_.currentBlock()->terminated = true;
+    };
+
+    auto emitTrapFallback = [&]() {
         il::core::Instr trapInstr;
         trapInstr.op = Opcode::TrapFromErr;
         trapInstr.type = Type(Type::Kind::I32);
@@ -130,19 +218,81 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
         blockMgr_.currentBlock()->terminated = true;
     };
 
+    auto captureErrorFields = [&](Value errVal, const std::string &prefix) -> CatchErrorBinding {
+        CatchErrorBinding slots;
+        const std::string base = "__zia_" + prefix + "_" + std::to_string(nextTempId());
+        slots.kindSlot = base + "_kind";
+        slots.codeSlot = base + "_code";
+        slots.lineSlot = base + "_line";
+
+        Value errKind = emitUnary(Opcode::ErrGetKind, Type(Type::Kind::I32), errVal);
+        Value errCode = emitUnary(Opcode::ErrGetCode, Type(Type::Kind::I32), errVal);
+        Value errLine = emitUnary(Opcode::ErrGetLine, Type(Type::Kind::I32), errVal);
+
+        createSlot(slots.kindSlot, Type(Type::Kind::I32));
+        storeToSlot(slots.kindSlot, errKind, Type(Type::Kind::I32));
+        createSlot(slots.codeSlot, Type(Type::Kind::I32));
+        storeToSlot(slots.codeSlot, errCode, Type(Type::Kind::I32));
+        createSlot(slots.lineSlot, Type(Type::Kind::I32));
+        storeToSlot(slots.lineSlot, errLine, Type(Type::Kind::I32));
+
+        return slots;
+    };
+
+    auto emitRethrowFromCaptured = [&](const CatchErrorBinding &slots) {
+        Value errKind = loadFromSlot(slots.kindSlot, Type(Type::Kind::I32));
+        Value errCode = loadFromSlot(slots.codeSlot, Type(Type::Kind::I32));
+        Value errLine = loadFromSlot(slots.lineSlot, Type(Type::Kind::I32));
+
+        emitCall(kErrorRaiseKind, {errKind, errCode, errLine});
+
+        // The runtime call raises through the active VM/native trap bridge. Keep
+        // a terminator fallback so the IL remains structurally valid if a host
+        // installs a non-terminating trap observer.
+        emitTrapFallback();
+    };
+
+    auto emitResumeToAfter = [&](Value errVal, Value tokVal, const std::string &base) {
+        size_t resumeIdx = createHandlerBlock(base);
+        emitBrWithArgs(resumeIdx, {errVal, tokVal});
+
+        setBlock(resumeIdx);
+        emitEhEntry();
+        const auto &resumeBp = currentFunc_->blocks[resumeIdx].params;
+        Value resumeTok = Value::temp(resumeBp[1].id);
+
+        il::core::Instr resumeInstr;
+        resumeInstr.op = Opcode::ResumeLabel;
+        resumeInstr.type = Type(Type::Kind::Void);
+        resumeInstr.operands.push_back(resumeTok);
+        resumeInstr.labels.push_back(currentFunc_->blocks[afterIdx].label);
+        resumeInstr.loc = curLoc_;
+        blockMgr_.currentBlock()->instructions.push_back(std::move(resumeInstr));
+        blockMgr_.currentBlock()->terminated = true;
+    };
+
+    auto bindCatchPayload =
+        [&](const TryStmt::CatchClause &catchClause, size_t paramBlockIdx) -> CatchErrorBinding {
+        const auto &bp = currentFunc_->blocks[paramBlockIdx].params;
+        if (bp.empty())
+            return {};
+
+        Value errVal = Value::temp(bp[0].id);
+        CatchErrorBinding captured = captureErrorFields(errVal, "catch");
+        if (catchClause.var.empty())
+            return captured;
+
+        defineLocal(catchClause.var, errVal);
+        localTypes_[catchClause.var] = types::error();
+        catchErrorBindings_[catchClause.var] = captured;
+        return captured;
+    };
+
     // Create all blocks upfront to avoid stale indices after vector reallocation.
     // The handler block needs special params: %err (error type) and %tok (resumetok).
-    size_t afterIdx = createBlock("after_try");
-
     // Create handler block with parameters via the builder directly
     // Handler receives: %err (error) and %tok (resumetok) per IL spec
-    std::vector<il::core::Param> handlerParams;
-    handlerParams.push_back({"err", Type(Type::Kind::Error)});
-    handlerParams.push_back({"tok", Type(Type::Kind::ResumeTok)});
-
-    builder_->createBlock(
-        *currentFunc_, "handler_" + std::to_string(blockMgr_.nextBlockId()), handlerParams);
-    size_t handlerIdx = currentFunc_->blocks.size() - 1;
+    size_t handlerIdx = createHandlerBlock("handler");
 
     // Optional: finally_normal block (only if we have a finally clause)
     size_t finallyNormalIdx = 0;
@@ -150,31 +300,20 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
         finallyNormalIdx = createBlock("finally_normal");
     }
 
-    // For typed catch: create extra blocks for the kind check.
-    // catch_body must be a handler block (eh.entry + Error/ResumeTok params) so it
-    // can use resume.label. rethrow keeps the handler signature so it can
-    // retrieve the original error kind/code before raising it again.
-    size_t catchBodyIdx = 0;
-    size_t rethrowIdx = 0;
-    if (isTypedCatch) {
-        // catch_body: handler-style block with Error + ResumeTok params
-        // Verifier requires params named exactly "err" and "tok"
-        std::vector<il::core::Param> catchBodyParams;
-        catchBodyParams.push_back({"err", Type(Type::Kind::Error)});
-        catchBodyParams.push_back({"tok", Type(Type::Kind::ResumeTok)});
-        builder_->createBlock(*currentFunc_,
-                              "catch_body_" + std::to_string(blockMgr_.nextBlockId()),
-                              catchBodyParams);
-        catchBodyIdx = currentFunc_->blocks.size() - 1;
-
-        // rethrow: handler-style block with Error + ResumeTok params
-        std::vector<il::core::Param> rethrowParams;
-        rethrowParams.push_back({"err", Type(Type::Kind::Error)});
-        rethrowParams.push_back({"tok", Type(Type::Kind::ResumeTok)});
-        builder_->createBlock(
-            *currentFunc_, "rethrow_" + std::to_string(blockMgr_.nextBlockId()), rethrowParams);
-        rethrowIdx = currentFunc_->blocks.size() - 1;
+    std::vector<size_t> catchCheckBlocks;
+    std::vector<size_t> catchBodyBlocks;
+    catchCheckBlocks.reserve(stmt->catches.size());
+    catchBodyBlocks.reserve(stmt->catches.size());
+    if (hasCatch) {
+        catchCheckBlocks.push_back(handlerIdx);
+        for (size_t i = 1; i < stmt->catches.size(); ++i)
+            catchCheckBlocks.push_back(createHandlerBlock("catch_check"));
+        for (size_t i = 0; i < stmt->catches.size(); ++i)
+            catchBodyBlocks.push_back(createHandlerBlock("catch_body"));
     }
+    size_t rethrowIdx = 0;
+    if (hasCatch)
+        rethrowIdx = createHandlerBlock("rethrow");
 
     // --- Emit eh.push in current block ---
     {
@@ -187,16 +326,14 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
     }
 
     // --- Lower try body ---
+    cleanupStack_.push_back({stmt->finallyBody.get(), true});
     if (stmt->tryBody)
         lowerStmt(stmt->tryBody.get());
+    cleanupStack_.pop_back();
 
     // --- On normal exit from try: eh.pop + branch ---
     if (!isTerminated()) {
-        il::core::Instr ehPopInstr;
-        ehPopInstr.op = Opcode::EhPop;
-        ehPopInstr.type = Type(Type::Kind::Void);
-        ehPopInstr.loc = curLoc_;
-        blockMgr_.currentBlock()->instructions.push_back(std::move(ehPopInstr));
+        emitEhPop();
 
         if (hasFinally)
             emitBr(finallyNormalIdx);
@@ -204,140 +341,98 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
             emitBr(afterIdx);
     }
 
-    // --- Handler block: catch clause ---
-    setBlock(handlerIdx);
+    if (hasCatch) {
+        for (size_t i = 0; i < stmt->catches.size(); ++i) {
+            setBlock(catchCheckBlocks[i]);
+            emitEhEntry();
+            const auto &bp = currentFunc_->blocks[catchCheckBlocks[i]].params;
+            Value errVal = Value::temp(bp[0].id);
+            Value tokVal = Value::temp(bp[1].id);
 
-    // Emit eh.entry marker
-    {
-        il::core::Instr ehEntryInstr;
-        ehEntryInstr.op = Opcode::EhEntry;
-        ehEntryInstr.type = Type(Type::Kind::Void);
-        ehEntryInstr.loc = curLoc_;
-        blockMgr_.currentBlock()->instructions.push_back(std::move(ehEntryInstr));
-    }
+            const auto &catchClause = stmt->catches[i];
+            const bool catchAll =
+                catchClause.typeName.empty() || catchClause.typeName == "Error";
+            if (catchAll) {
+                emitBrWithArgs(catchBodyBlocks[i], {errVal, tokVal});
+                continue;
+            }
 
-    if (isTypedCatch) {
-        // --- Typed catch: check trap kind before entering catch body ---
-        // All err.get_* must happen in handler block (verifier constraint).
-
-        const auto &handlerBp = currentFunc_->blocks[handlerIdx].params;
-        Value errVal = Value::temp(handlerBp[0].id);
-        Value tokVal = Value::temp(handlerBp[1].id);
-
-        // %kind_i64 = trap.kind  (I64, no operands)
-        unsigned kindI64Id = nextTempId();
-        {
-            il::core::Instr trapKindInstr;
-            trapKindInstr.op = Opcode::TrapKind;
-            trapKindInstr.type = Type(Type::Kind::I64);
-            trapKindInstr.result = kindI64Id;
-            trapKindInstr.loc = curLoc_;
-            blockMgr_.currentBlock()->instructions.push_back(std::move(trapKindInstr));
-        }
-
-        // %match = icmp.eq %kind_i64, <expected>  (I1)
-        Value kindI64Val = Value::temp(kindI64Id);
-        Value expectedVal = Value::constInt(static_cast<int64_t>(expectedKind));
-        Value match = emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), kindI64Val, expectedVal);
-
-        // No explicit eh.pop needed here — both prepareTrap() and dispatchTrap()
-        // auto-pop the handler from the EH stack when dispatching. The handler
-        // block always starts with a clean stack.
-
-        // cbr %match, ^catch_body(%err, %tok), ^rethrow(%err, %tok)
-        // Manual CBr construction to pass branch arguments
-        {
-            il::core::Instr cbrInstr;
-            cbrInstr.op = Opcode::CBr;
-            cbrInstr.type = Type(Type::Kind::Void);
-            cbrInstr.operands.push_back(match);
-            cbrInstr.labels.push_back(currentFunc_->blocks[catchBodyIdx].label);
-            cbrInstr.labels.push_back(currentFunc_->blocks[rethrowIdx].label);
-            // Branch args for catch_body: forward %err, %tok
-            cbrInstr.brArgs.push_back({errVal, tokVal});
-            // Branch args for rethrow: forward %err, %tok
-            cbrInstr.brArgs.push_back({errVal, tokVal});
-            cbrInstr.loc = curLoc_;
-            blockMgr_.currentBlock()->instructions.push_back(std::move(cbrInstr));
-            blockMgr_.currentBlock()->terminated = true;
+            int expectedKind = trapKindFromName(catchClause.typeName);
+            Value errKindI32 = emitUnary(Opcode::ErrGetKind, Type(Type::Kind::I32), errVal);
+            Value errKind = widenIntegralToI64(errKindI32, Type(Type::Kind::I32));
+            Value expectedVal = Value::constInt(static_cast<int64_t>(expectedKind));
+            Value match =
+                emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), errKind, expectedVal);
+            size_t missBlock =
+                (i + 1 < stmt->catches.size()) ? catchCheckBlocks[i + 1] : rethrowIdx;
+            emitCBrWithArgs(match,
+                            catchBodyBlocks[i],
+                            {errVal, tokVal},
+                            missBlock,
+                            {errVal, tokVal});
         }
 
         // --- Rethrow block: run finally for mismatches, then re-raise the original error. ---
         setBlock(rethrowIdx);
-        {
-            il::core::Instr ehEntryInstr;
-            ehEntryInstr.op = Opcode::EhEntry;
-            ehEntryInstr.type = Type(Type::Kind::Void);
-            ehEntryInstr.loc = curLoc_;
-            blockMgr_.currentBlock()->instructions.push_back(std::move(ehEntryInstr));
-        }
+        emitEhEntry();
+        const auto &rethrowBp = currentFunc_->blocks[rethrowIdx].params;
+        CatchErrorBinding captured =
+            captureErrorFields(Value::temp(rethrowBp[0].id), "rethrow");
 
         if (hasFinally && stmt->finallyBody && !isTerminated())
             lowerStmt(stmt->finallyBody.get());
 
-        if (!isTerminated()) {
-            const auto &rethrowBp = currentFunc_->blocks[rethrowIdx].params;
-            emitRethrowFromError(Value::temp(rethrowBp[0].id));
+        if (!isTerminated())
+            emitRethrowFromCaptured(captured);
+
+        for (size_t i = 0; i < stmt->catches.size(); ++i) {
+            const auto &catchClause = stmt->catches[i];
+            auto localsBackup = locals_;
+            auto slotsBackup = slots_;
+            auto localTypesBackup = localTypes_;
+            auto catchErrorBindingsBackup = catchErrorBindings_;
+
+            setBlock(catchBodyBlocks[i]);
+            emitEhEntry();
+            CatchErrorBinding activeError = bindCatchPayload(catchClause, catchBodyBlocks[i]);
+
+            if (hasFinally)
+                cleanupStack_.push_back({stmt->finallyBody.get(), false});
+            activeCatchErrors_.push_back(activeError);
+            if (catchClause.body)
+                lowerStmt(catchClause.body.get());
+            activeCatchErrors_.pop_back();
+            if (hasFinally)
+                cleanupStack_.pop_back();
+
+            locals_ = std::move(localsBackup);
+            slots_ = std::move(slotsBackup);
+            localTypes_ = std::move(localTypesBackup);
+            catchErrorBindings_ = std::move(catchErrorBindingsBackup);
+
+            if (!isTerminated())
+                emitCall(kErrorClearThrowMsg, {});
+
+            if (hasFinally && stmt->finallyBody && !isTerminated())
+                lowerStmt(stmt->finallyBody.get());
+
+            if (!isTerminated()) {
+                const auto &bp = currentFunc_->blocks[catchBodyBlocks[i]].params;
+                emitResumeToAfter(Value::temp(bp[0].id), Value::temp(bp[1].id), "catch_resume");
+            }
         }
-
-        // --- Catch body block (handler-style: eh.entry + Error/ResumeTok params) ---
-        setBlock(catchBodyIdx);
-        {
-            il::core::Instr ehEntryInstr;
-            ehEntryInstr.op = Opcode::EhEntry;
-            ehEntryInstr.type = Type(Type::Kind::Void);
-            ehEntryInstr.loc = curLoc_;
-            blockMgr_.currentBlock()->instructions.push_back(std::move(ehEntryInstr));
-        }
-    }
-
-    // Bind catch variable (if named).
-    // For typed catch we're in catch_body (which has its own Error/ResumeTok params).
-    // For non-typed catch we're in the handler block itself.
-    {
-        size_t errBlockIdx = isTypedCatch ? catchBodyIdx : handlerIdx;
-        const auto &bp = currentFunc_->blocks[errBlockIdx].params;
-
-        if (!stmt->catchVar.empty() && !bp.empty()) {
-            // Retrieve the thrown message via the runtime function.
-            // For user throws, this returns the message from throw "msg".
-            // For system errors (div by zero etc.), returns empty string.
-            Value msgStr = emitCallRet(Type(Type::Kind::Str), "Viper.Error.GetThrowMsg", {});
-            createSlot(stmt->catchVar, Type(Type::Kind::Str));
-            storeToSlot(stmt->catchVar, msgStr, Type(Type::Kind::Str));
-        }
-    }
-
-    // Lower catch body
-    if (hasCatch && stmt->catchBody)
-        lowerStmt(stmt->catchBody.get());
-
-    // Duplicate finally body in handler path (if present)
-    if (hasFinally && stmt->finallyBody && !isTerminated())
-        lowerStmt(stmt->finallyBody.get());
-
-    // Catch handlers consume the exception and continue after the try statement.
-    // Finally-only handlers must rethrow after cleanup so outer handlers still see
-    // the original error.
-    // Use the current block's own handler params (catch_body's for typed, handler's for non-typed).
-    if (!isTerminated()) {
-        size_t handlerParamBlockIdx = isTypedCatch ? catchBodyIdx : handlerIdx;
-        const auto &bp = currentFunc_->blocks[handlerParamBlockIdx].params;
-
-        if (hasCatch) {
-            Value resumeTok = Value::temp(bp[1].id); // %tok / %ctok is second param
-
-            il::core::Instr resumeInstr;
-            resumeInstr.op = Opcode::ResumeLabel;
-            resumeInstr.type = Type(Type::Kind::Void);
-            resumeInstr.operands.push_back(resumeTok);
-            resumeInstr.labels.push_back(currentFunc_->blocks[afterIdx].label);
-            resumeInstr.loc = curLoc_;
-            blockMgr_.currentBlock()->instructions.push_back(std::move(resumeInstr));
-            blockMgr_.currentBlock()->terminated = true;
-        } else {
-            emitRethrowFromError(Value::temp(bp[0].id));
-        }
+    } else {
+        // Finally-only handlers must rethrow after cleanup so outer handlers
+        // still observe the original error.
+        setBlock(handlerIdx);
+        emitEhEntry();
+        const auto &bp = currentFunc_->blocks[handlerIdx].params;
+        CatchErrorBinding captured =
+            captureErrorFields(Value::temp(bp[0].id), "finally_rethrow");
+        if (hasFinally && stmt->finallyBody && !isTerminated())
+            lowerStmt(stmt->finallyBody.get());
+        if (!isTerminated())
+            emitRethrowFromCaptured(captured);
     }
 
     // --- Finally normal block (normal path) ---
@@ -355,6 +450,29 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
 
 void Lowerer::lowerThrowStmt(ThrowStmt *stmt) {
     ZiaLocationScope locScope(*this, stmt->loc);
+
+    emitCatchBodyCleanupsBeforeThrow();
+    if (isTerminated())
+        return;
+
+    if (!stmt->value && !activeCatchErrors_.empty()) {
+        const CatchErrorBinding &active = activeCatchErrors_.back();
+        if (!active.kindSlot.empty()) {
+            Value errKind = loadFromSlot(active.kindSlot, Type(Type::Kind::I32));
+            Value errCode = loadFromSlot(active.codeSlot, Type(Type::Kind::I32));
+            Value errLine = loadFromSlot(active.lineSlot, Type(Type::Kind::I32));
+            emitCall(kErrorRaiseKind, {errKind, errCode, errLine});
+        }
+
+        il::core::Instr trapInstr;
+        trapInstr.op = Opcode::TrapFromErr;
+        trapInstr.type = Type(Type::Kind::I32);
+        trapInstr.operands.push_back(Value::constInt(kErrRuntimeError));
+        trapInstr.loc = curLoc_;
+        blockMgr_.currentBlock()->instructions.push_back(std::move(trapInstr));
+        blockMgr_.currentBlock()->terminated = true;
+        return;
+    }
 
     // Lower the thrown expression and store the message via the runtime
     // so catch handlers can retrieve it.

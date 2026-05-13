@@ -299,11 +299,11 @@ func start() {}
     EXPECT_TRUE(hasDiagContaining(result.diagnostics, "bind alias already specified before '='"));
 }
 
-TEST(ZiaParserErrors, RejectsTupleDestructuringVarDecl) {
+TEST(ZiaParserErrors, RejectsMalformedTupleDestructuringVarDecl) {
     auto result = compileSource(R"(
 module Test;
 func start() {
-    var (x, y) = (1, 2);
+    var (x, y = (1, 2);
 }
 )");
     EXPECT_FALSE(result.succeeded());

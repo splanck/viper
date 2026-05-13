@@ -793,10 +793,13 @@ std::optional<LowerResult> Lowerer::lowerClassTypeConstruction(const std::string
             }
 
             Value fieldAddr = emitGEP(ptr, static_cast<int64_t>(field.offset));
-            if (fieldValue)
+            if (field.isWeak && fieldValue) {
+                emitFieldStore(&field, ptr, *fieldValue);
+            } else if (fieldValue) {
                 emitInlineValueStore(field.type, fieldAddr, *fieldValue, false);
-            else
+            } else {
                 emitInlineValueZero(field.type, fieldAddr);
+            }
         }
     }
 

@@ -748,6 +748,8 @@ set(ZIA_LANG_TESTS
         40_variadic_functions
         41_runtime_reference_types
         42_try_catch_promises
+        43_alpha_hardening
+        44_language_promises
 )
 
 foreach (test_name IN LISTS ZIA_LANG_TESTS)
@@ -767,6 +769,8 @@ set(ZIA_VIPER_RUN_O1_REGRESSION_TESTS
         18_numeric_algorithms
         31_typed_catch_list_shorthand
         42_try_catch_promises
+        43_alpha_hardening
+        44_language_promises
 )
 
 foreach (test_name IN LISTS ZIA_VIPER_RUN_O1_REGRESSION_TESTS)
@@ -791,6 +795,28 @@ if (NOT WIN32)
             -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_zia_native_run.cmake
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_run_zia_42_try_catch_promises PROPERTIES
+            LABELS "zia;native_run"
+            TIMEOUT 60)
+
+    add_test(NAME native_run_zia_43_alpha_hardening
+            COMMAND ${CMAKE_COMMAND}
+            -DVIPER_EXE=$<TARGET_FILE:viper>
+            -DTEST_FILE=${ZIA_LANG_TESTS_DIR}/43_alpha_hardening.zia
+            -DOUT_EXE=${CMAKE_BINARY_DIR}/zia_43_alpha_hardening_native
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_zia_native_run.cmake
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(native_run_zia_43_alpha_hardening PROPERTIES
+            LABELS "zia;native_run"
+            TIMEOUT 60)
+
+    add_test(NAME native_run_zia_44_language_promises
+            COMMAND ${CMAKE_COMMAND}
+            -DVIPER_EXE=$<TARGET_FILE:viper>
+            -DTEST_FILE=${ZIA_LANG_TESTS_DIR}/44_language_promises.zia
+            -DOUT_EXE=${CMAKE_BINARY_DIR}/zia_44_language_promises_native
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_zia_native_run.cmake
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(native_run_zia_44_language_promises PROPERTIES
             LABELS "zia;native_run"
             TIMEOUT 60)
 endif ()

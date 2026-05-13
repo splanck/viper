@@ -1225,8 +1225,14 @@ bool Sema::analyze(ModuleDecl &module) {
                 break;
             }
             case DeclKind::Namespace: {
-                // Namespaces are processed in a separate pass to handle their
-                // nested declarations properly
+                auto *ns = static_cast<NamespaceDecl *>(decl.get());
+                Symbol sym;
+                sym.kind = Symbol::Kind::Module;
+                sym.name = ns->name;
+                sym.type = types::module(ns->name);
+                sym.decl = ns;
+                sym.isFinal = true;
+                defineSymbol(ns->name, sym);
                 break;
             }
             case DeclKind::TypeAlias: {
@@ -1865,8 +1871,8 @@ SourceLoc Sema::scopeEndForStmt(const Stmt *stmt) {
         case StmtKind::Try: {
             auto *tryStmt = static_cast<const TryStmt *>(stmt);
             SourceLoc end = scopeEndForStmt(tryStmt->tryBody.get());
-            if (tryStmt->catchBody) {
-                SourceLoc catchEnd = scopeEndForStmt(tryStmt->catchBody.get());
+            for (const auto &catchClause : tryStmt->catches) {
+                SourceLoc catchEnd = scopeEndForStmt(catchClause.body.get());
                 if (!end.isValid() || (catchEnd.isValid() && compareLoc(catchEnd, end) > 0))
                     end = catchEnd;
             }
@@ -2243,8 +2249,16 @@ void Sema::analyzeNamespaceDecl(NamespaceDecl &decl) {
                 break;
             }
             case DeclKind::Namespace: {
-                // Nested namespace - recursively process
-                analyzeNamespaceDecl(*static_cast<NamespaceDecl *>(innerDecl.get()));
+                auto *ns = static_cast<NamespaceDecl *>(innerDecl.get());
+                std::string qualifiedName = qualifyName(ns->name);
+                Symbol sym;
+                sym.kind = Symbol::Kind::Module;
+                sym.name = qualifiedName;
+                sym.type = types::module(qualifiedName);
+                sym.decl = ns;
+                sym.isFinal = true;
+                defineSymbol(qualifiedName, sym);
+                analyzeNamespaceDecl(*ns);
                 break;
             }
             default:

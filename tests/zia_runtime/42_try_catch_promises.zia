@@ -28,7 +28,7 @@ func testCatchBindingMessage() {
         userMiddle();
     } catch(e) {
         caught = true;
-        message = e;
+        message = e.message;
     }
     assertTrue(caught, "catch_binding_caught");
     assertEqStr(message, "boom", "catch_binding_message");
@@ -41,7 +41,7 @@ func testTypedUserThrowRuntimeError() {
         userMiddle();
     } catch(e: RuntimeError) {
         caught = true;
-        message = e;
+        message = e.message;
     }
     assertTrue(caught, "typed_user_throw_runtime_error_caught");
     assertEqStr(message, "boom", "typed_user_throw_runtime_error_message");
@@ -49,13 +49,22 @@ func testTypedUserThrowRuntimeError() {
 
 func testTypedRuntimeTrapAcrossCalls() {
     var caught = false;
+    var kind = "";
+    var message = "";
+    var code = -1;
     try {
         var value = runtimeMiddle();
         assertEqInt(value, -1, "typed_runtime_trap_unreachable");
     } catch(e: DivideByZero) {
         caught = true;
+        kind = e.kind;
+        message = e.message;
+        code = e.code;
     }
     assertTrue(caught, "typed_runtime_trap_across_calls");
+    assertEqStr(kind, "DivideByZero", "typed_runtime_trap_kind");
+    assertEqStr(message, "Division by zero", "typed_runtime_trap_message");
+    assertEqInt(code, 0, "typed_runtime_trap_code");
 }
 
 func testErrorCatchAll() {
@@ -135,6 +144,72 @@ func testHandledCatchStillRunsFinally() {
     assertTrue(finalized, "handled_catch_finally_finalized");
 }
 
+func testMultipleCatchClauses() {
+    var caughtBounds = false;
+    var caughtRuntime = false;
+    var message = "";
+    try {
+        userMiddle();
+    } catch(e: Bounds) {
+        caughtBounds = true;
+    } catch(e: RuntimeError) {
+        caughtRuntime = true;
+        message = e.message;
+    }
+    assertTrue(!caughtBounds, "multiple_catch_first_missed");
+    assertTrue(caughtRuntime, "multiple_catch_second_caught");
+    assertEqStr(message, "boom", "multiple_catch_message");
+}
+
+func testBareRethrowPreservesOriginal() {
+    var message = "";
+    var kind = "";
+    try {
+        try {
+            throw "rethrow-me";
+        } catch(e: RuntimeError) {
+            throw;
+        }
+    } catch(e: RuntimeError) {
+        message = e.message;
+        kind = e.kind;
+    }
+    assertEqStr(message, "rethrow-me", "bare_rethrow_message");
+    assertEqStr(kind, "RuntimeError", "bare_rethrow_kind");
+}
+
+func testCatchThrowRunsFinally() {
+    var finalized = false;
+    var message = "";
+    try {
+        try {
+            throw "catch-rethrow";
+        } catch(e: RuntimeError) {
+            throw;
+        } finally {
+            finalized = true;
+        }
+    } catch(e: RuntimeError) {
+        message = e.message;
+    }
+    assertTrue(finalized, "catch_throw_finally_ran");
+    assertEqStr(message, "catch-rethrow", "catch_throw_message");
+}
+
+func testFinallyThrowWhileUnwinding() {
+    var message = "";
+    try {
+        try {
+            throw "original";
+        } finally {
+            throw "finally";
+        }
+    } catch(e: RuntimeError) {
+        message = e.message;
+    }
+    assertEqStr(message, "finally", "finally_throw_overrides_unwind");
+}
+
 func start() {
     testCatchBindingMessage();
     testTypedUserThrowRuntimeError();
@@ -144,5 +219,9 @@ func start() {
     testFinallyOnlyPropagatesUserThrow();
     testFinallyOnlyPropagatesRuntimeTrap();
     testHandledCatchStillRunsFinally();
+    testMultipleCatchClauses();
+    testBareRethrowPreservesOriginal();
+    testCatchThrowRunsFinally();
+    testFinallyThrowWhileUnwinding();
     report();
 }

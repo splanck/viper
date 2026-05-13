@@ -163,6 +163,8 @@ struct MethodInstanceKeyHash {
 /// @invariant Scope stack is balanced (pushScope/popScope pairs).
 /// @invariant Expression type map is populated after analyze().
 class Sema {
+    friend class Lowerer;
+
   public:
     /// @brief Bound argument layout for a resolved call site.
     /// @details `fixedParamSources[i]` is the source-argument index used for
@@ -896,6 +898,8 @@ class Sema {
         bool hasIrrefutable = false;
         bool coversNull = false;
         bool coversSome = false;
+        bool coversResultOk = false;
+        bool coversResultErr = false;
         std::set<int64_t> coveredIntegers;
         std::set<bool> coveredBooleans;
         std::set<std::string> coveredEnumVariants;
@@ -1492,6 +1496,9 @@ class Sema {
 
     /// @brief Current loop nesting depth for break/continue validation.
     int loopDepth_{0};
+
+    /// @brief Current catch nesting depth for bare `throw;` validation.
+    int catchDepth_{0};
 
     /// @brief Current type resolution nesting depth for recursion guard.
     unsigned typeResolveDepth_{0};

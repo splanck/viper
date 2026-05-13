@@ -118,6 +118,57 @@ void Lowerer::lowerExprStmt(ExprStmt *stmt) {
 }
 
 void Lowerer::lowerVarStmt(VarStmt *stmt) {
+    if (stmt->isTupleDestructure) {
+        TypeRef initType =
+            stmt->initializer ? sema_.typeOf(stmt->initializer.get()) : types::unknown();
+        if (!stmt->initializer || !initType || initType->kind != TypeKindSem::Tuple) {
+            reportLoweringInvariant(stmt->loc,
+                                    "V-ZIA-LOWER-TUPLE-DESTRUCTURE",
+                                    "tuple destructuring reached lowering without tuple initializer");
+            return;
+        }
+
+        auto init = lowerExpr(stmt->initializer.get());
+        const auto &elements = initType->tupleElementTypes();
+        if (elements.size() != 2) {
+            reportLoweringInvariant(stmt->loc,
+                                    "V-ZIA-LOWER-TUPLE-DESTRUCTURE-ARITY",
+                                    "tuple destructuring reached lowering with unsupported arity");
+            return;
+        }
+
+        TypeRef firstType = stmt->type ? sema_.resolveType(stmt->type.get()) : elements[0];
+        TypeRef secondType =
+            stmt->secondType ? sema_.resolveType(stmt->secondType.get()) : elements[1];
+
+        PatternValue tupleValue{init.value, initType};
+        PatternValue first = emitTupleElement(tupleValue, 0, elements[0]);
+        PatternValue second = emitTupleElement(tupleValue, 1, elements[1]);
+
+        auto firstCoerced = coerceValueToType(first.value, mapType(elements[0]), elements[0], firstType);
+        auto secondCoerced =
+            coerceValueToType(second.value, mapType(elements[1]), elements[1], secondType);
+
+        if (!stmt->isFinal) {
+            createSlot(stmt->name, mapType(firstType));
+            storeToSlot(stmt->name, firstCoerced.value, mapType(firstType));
+            consumeDeferred(firstCoerced.value);
+
+            createSlot(stmt->secondName, mapType(secondType));
+            storeToSlot(stmt->secondName, secondCoerced.value, mapType(secondType));
+            consumeDeferred(secondCoerced.value);
+        } else {
+            defineLocal(stmt->name, firstCoerced.value);
+            consumeDeferred(firstCoerced.value);
+            defineLocal(stmt->secondName, secondCoerced.value);
+            consumeDeferred(secondCoerced.value);
+        }
+
+        localTypes_[stmt->name] = firstType;
+        localTypes_[stmt->secondName] = secondType;
+        return;
+    }
+
     Value initValue;
     Type ilType;
     TypeRef varType =
@@ -815,11 +866,31 @@ void Lowerer::lowerReturnStmt(ReturnStmt *stmt) {
         if (valueType && valueType->kind == TypeKindSem::Unit && currentReturnType_ &&
             currentReturnType_->kind == TypeKindSem::Void) {
             releaseDeferredTemps();
+            if (!cleanupStack_.empty()) {
+                emitActiveCleanups();
+                if (isTerminated())
+                    return;
+            }
             emitRetVoid();
             return;
         }
         auto coerced = coerceValueToType(result.value, result.type, valueType, currentReturnType_);
         Value returnValue = coerced.value;
+        Type returnIlType = coerced.type;
+
+        if (!cleanupStack_.empty()) {
+            const std::string slotName = "__zia_return_" + std::to_string(nextTempId());
+            createSlot(slotName, returnIlType);
+            storeToSlot(slotName, returnValue, returnIlType);
+            consumeDeferred(returnValue);
+            releaseDeferredTemps();
+
+            emitActiveCleanups();
+            if (isTerminated())
+                return;
+
+            returnValue = loadFromSlot(slotName, returnIlType);
+        }
 
         if (currentAsyncWorker_) {
             Type payloadIlType = mapType(currentReturnType_);
@@ -853,6 +924,13 @@ void Lowerer::lowerReturnStmt(ReturnStmt *stmt) {
         releaseDeferredTemps();
         emitRet(returnValue);
     } else {
+        if (!cleanupStack_.empty()) {
+            releaseDeferredTemps();
+            emitActiveCleanups();
+            if (isTerminated())
+                return;
+        }
+
         if (currentAsyncWorker_) {
             for (const auto &owned : asyncOwnedValues_)
                 emitManagedRelease(owned, /*isString=*/false);
@@ -870,6 +948,11 @@ void Lowerer::lowerReturnStmt(ReturnStmt *stmt) {
 void Lowerer::lowerBreakStmt(BreakStmt * /*stmt*/) {
     if (!loopStack_.empty()) {
         releaseDeferredTemps(); // Release any pending temps before branch
+        if (!cleanupStack_.empty()) {
+            emitActiveCleanups();
+            if (isTerminated())
+                return;
+        }
         emitBr(loopStack_.breakTarget());
     } else {
         // Defensive: semantic analysis should reject this; emit trap for safety.
@@ -885,6 +968,11 @@ void Lowerer::lowerBreakStmt(BreakStmt * /*stmt*/) {
 void Lowerer::lowerContinueStmt(ContinueStmt * /*stmt*/) {
     if (!loopStack_.empty()) {
         releaseDeferredTemps(); // Release any pending temps before branch
+        if (!cleanupStack_.empty()) {
+            emitActiveCleanups();
+            if (isTerminated())
+                return;
+        }
         emitBr(loopStack_.continueTarget());
     } else {
         // Defensive: semantic analysis should reject this; emit trap for safety.

@@ -367,6 +367,8 @@ void Sema::collectCaptures(const Expr *expr,
                 if (var->initializer)
                     collectExpr(var->initializer.get());
                 localScopes.back().insert(var->name);
+                if (var->isTupleDestructure && !var->secondName.empty())
+                    localScopes.back().insert(var->secondName);
                 break;
             }
             case StmtKind::If: {
@@ -444,11 +446,11 @@ void Sema::collectCaptures(const Expr *expr,
                 localScopes.push_back({});
                 collectStmt(tryStmt->tryBody.get());
                 localScopes.pop_back();
-                if (tryStmt->catchBody) {
+                for (const auto &catchClause : tryStmt->catches) {
                     localScopes.push_back({});
-                    if (!tryStmt->catchVar.empty())
-                        localScopes.back().insert(tryStmt->catchVar);
-                    collectStmt(tryStmt->catchBody.get());
+                    if (!catchClause.var.empty())
+                        localScopes.back().insert(catchClause.var);
+                    collectStmt(catchClause.body.get());
                     localScopes.pop_back();
                 }
                 if (tryStmt->finallyBody) {

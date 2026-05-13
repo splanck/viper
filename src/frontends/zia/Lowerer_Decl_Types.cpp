@@ -113,12 +113,15 @@ void Lowerer::computeClassFieldLayout(ClassDecl &decl,
 
         // Compute size and alignment using semantic inline layout so nested
         // structs, tuples, and fixed-size arrays occupy their full storage.
-        size_t fieldLayoutSize = getSemanticTypeSize(fieldType);
-        size_t fieldLayoutAlignment = getSemanticTypeAlignment(fieldType);
+        size_t fieldLayoutSize = field->isWeak ? getILTypeSize(Type(Type::Kind::Ptr))
+                                                : getSemanticTypeSize(fieldType);
+        size_t fieldLayoutAlignment = field->isWeak ? getILTypeAlignment(Type(Type::Kind::Ptr))
+                                                     : getSemanticTypeAlignment(fieldType);
 
         FieldLayout layout;
         layout.name = field->name;
         layout.type = fieldType;
+        layout.isWeak = field->isWeak;
         layout.offset = alignTo(info.totalSize, fieldLayoutAlignment);
         layout.size = fieldLayoutSize;
 
@@ -192,6 +195,10 @@ void Lowerer::registerStructLayout(StructDecl &decl) {
     StructTypeInfo info;
     info.name = qualifiedName;
     info.totalSize = 0;
+    info.classId = nextClassId_++;
+    for (const auto &iface : decl.interfaces) {
+        info.implementedInterfaces.insert(iface);
+    }
 
     for (auto &member : decl.members) {
         if (member->kind == DeclKind::Field) {
@@ -204,12 +211,16 @@ void Lowerer::registerStructLayout(StructDecl &decl) {
 
             // Compute size and alignment using semantic inline layout so nested
             // structs, tuples, and fixed-size arrays occupy their full storage.
-            size_t fieldLayoutSize = getSemanticTypeSize(fieldType);
-            size_t fieldLayoutAlignment = getSemanticTypeAlignment(fieldType);
+            size_t fieldLayoutSize = field->isWeak ? getILTypeSize(Type(Type::Kind::Ptr))
+                                                    : getSemanticTypeSize(fieldType);
+            size_t fieldLayoutAlignment =
+                field->isWeak ? getILTypeAlignment(Type(Type::Kind::Ptr))
+                              : getSemanticTypeAlignment(fieldType);
 
             FieldLayout layout;
             layout.name = field->name;
             layout.type = fieldType;
+            layout.isWeak = field->isWeak;
             layout.offset = alignTo(info.totalSize, fieldLayoutAlignment);
             layout.size = fieldLayoutSize;
 
@@ -247,6 +258,104 @@ void Lowerer::emitItableInit() {
     auto savedLocals = std::move(locals_);
     auto savedSlots = std::move(slots_);
     auto savedLocalTypes = std::move(localTypes_);
+
+    auto adapterKey = [](const std::string &structName,
+                         const std::string &ifaceName,
+                         const std::string &methodName) {
+        return structName + "|" + ifaceName + "|" + methodName;
+    };
+
+    std::unordered_map<std::string, std::string> structIfaceAdapters;
+
+    auto emitStructInterfaceAdapter = [&](const StructTypeInfo &structInfo,
+                                          const InterfaceTypeInfo &ifaceInfo,
+                                          MethodDecl *ifaceMethod,
+                                          MethodDecl *implMethod) -> std::string {
+        std::string adapterName =
+            structInfo.name + ".__iface_" + ifaceInfo.name + "." + ifaceMethod->name;
+        if (definedFunctions_.count(adapterName))
+            return adapterName;
+
+        TypeRef methodType = sema_.getMethodType(ifaceInfo.name, ifaceMethod);
+        if (!methodType)
+            methodType = sema_.getMethodType(structInfo.name, implMethod);
+
+        std::vector<TypeRef> paramTypes;
+        TypeRef returnType = types::voidType();
+        if (methodType && methodType->kind == TypeKindSem::Function) {
+            paramTypes = methodType->paramTypes();
+            returnType = methodType->returnType();
+        }
+
+        Type ilReturnType = mapType(returnType);
+        std::vector<il::core::Param> params;
+        params.push_back({"self", Type(Type::Kind::Ptr)});
+        for (size_t i = 0; i < ifaceMethod->params.size(); ++i) {
+            TypeRef paramType = i < paramTypes.size() ? paramTypes[i] : types::unknown();
+            params.push_back({ifaceMethod->params[i].name, mapType(paramType)});
+        }
+
+        currentFunc_ = &builder_->startFunction(adapterName, ilReturnType, params);
+        definedFunctions_.insert(adapterName);
+        blockMgr_.bind(builder_.get(), currentFunc_);
+        locals_.clear();
+        slots_.clear();
+        localTypes_.clear();
+        deferredTemps_.clear();
+        currentStructType_ = nullptr;
+        currentClassType_ = nullptr;
+
+        builder_->createBlock(*currentFunc_, "entry_0", currentFunc_->params);
+        size_t entryIdx = currentFunc_->blocks.size() - 1;
+        setBlock(entryIdx);
+
+        const auto &bp = currentFunc_->blocks[entryIdx].params;
+        Value wrapperSelf = Value::temp(bp[0].id);
+        Value structSelf = emitGEP(wrapperSelf, static_cast<int64_t>(kClassFieldsOffset));
+
+        std::vector<Value> args;
+        args.reserve(bp.size());
+        args.push_back(structSelf);
+        for (size_t i = 1; i < bp.size(); ++i)
+            args.push_back(Value::temp(bp[i].id));
+
+        std::string implName = sema_.loweredMethodName(structInfo.name, implMethod);
+        if (implName.empty())
+            implName = structInfo.name + "." + implMethod->name;
+
+        if (ilReturnType.kind == Type::Kind::Void) {
+            emitCall(implName, args);
+            releaseDeferredTemps();
+            emitRetVoid();
+        } else {
+            Value result = emitCallRet(ilReturnType, implName, args);
+            consumeDeferred(result);
+            releaseDeferredTemps();
+            emitRet(result);
+        }
+
+        currentFunc_ = nullptr;
+        currentReturnType_ = nullptr;
+        deferredTemps_.clear();
+        return adapterName;
+    };
+
+    for (const auto &[structName, structInfo] : structTypes_) {
+        for (const auto &ifaceName : structInfo.implementedInterfaces) {
+            auto ifaceIt = interfaceTypes_.find(ifaceName);
+            if (ifaceIt == interfaceTypes_.end())
+                continue;
+            const InterfaceTypeInfo &ifaceInfo = ifaceIt->second;
+            for (auto *ifaceMethod : ifaceInfo.methods) {
+                MethodDecl *implMethod = structInfo.findMethod(ifaceMethod->name);
+                if (!implMethod)
+                    continue;
+                std::string key = adapterKey(structName, ifaceName, ifaceMethod->name);
+                structIfaceAdapters[key] =
+                    emitStructInterfaceAdapter(structInfo, ifaceInfo, ifaceMethod, implMethod);
+            }
+        }
+    }
 
     // Create __zia_iface_init() function
     auto &fn = builder_->startFunction("__zia_iface_init", Type(Type::Kind::Void), {});
@@ -318,6 +427,20 @@ void Lowerer::emitItableInit() {
                   Value::constInt(baseClassId)});
     }
 
+    for (const auto &[structName, structInfo] : structTypes_) {
+        if (structInfo.implementedInterfaces.empty())
+            continue;
+
+        Value vtablePtr = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(8)});
+        Value qnameStr = emitConstStr(stringTable_.intern(structName));
+        emitCall("rt_register_class_with_base_rs",
+                 {Value::constInt(static_cast<int64_t>(structInfo.classId)),
+                  vtablePtr,
+                  qnameStr,
+                  Value::constInt(0),
+                  Value::constInt(-1)});
+    }
+
     // Phase 2: Register each interface
     for (const auto &[ifaceName, ifaceInfo] : interfaceTypes_) {
         // rt_register_interface_direct_rs(ifaceId, qname, slotCount)
@@ -385,6 +508,43 @@ void Lowerer::emitItableInit() {
         }
     }
 
+    // Phase 4: Struct interface bindings use heap wrappers plus small adapters
+    // that translate wrapper self pointers back to the inline struct payload.
+    for (const auto &[structName, structInfo] : structTypes_) {
+        for (const auto &ifaceName : structInfo.implementedInterfaces) {
+            auto ifaceIt = interfaceTypes_.find(ifaceName);
+            if (ifaceIt == interfaceTypes_.end())
+                continue;
+            const InterfaceTypeInfo &ifaceInfo = ifaceIt->second;
+            if (ifaceInfo.methods.empty())
+                continue;
+
+            size_t slotCount = ifaceInfo.methods.size();
+            int64_t bytes = static_cast<int64_t>(slotCount * 8ULL);
+            Value itablePtr =
+                emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(bytes)});
+
+            for (size_t s = 0; s < slotCount; ++s) {
+                MethodDecl *ifaceMethod = ifaceInfo.methods[s];
+                int64_t offset = static_cast<int64_t>(s * 8ULL);
+                Value slotPtr = emitBinary(
+                    Opcode::GEP, Type(Type::Kind::Ptr), itablePtr, Value::constInt(offset));
+
+                std::string key = adapterKey(structName, ifaceName, ifaceMethod->name);
+                auto adapterIt = structIfaceAdapters.find(key);
+                if (adapterIt == structIfaceAdapters.end())
+                    emitStore(slotPtr, Value::null(), Type(Type::Kind::Ptr));
+                else
+                    emitStore(slotPtr, Value::global(adapterIt->second), Type(Type::Kind::Ptr));
+            }
+
+            emitCall("rt_bind_interface",
+                     {Value::constInt(static_cast<int64_t>(structInfo.classId)),
+                      Value::constInt(static_cast<int64_t>(ifaceInfo.ifaceId)),
+                      itablePtr});
+        }
+    }
+
     emitRetVoid();
 
     // Restore previous function context
@@ -439,6 +599,10 @@ const StructTypeInfo *Lowerer::getOrCreateStructTypeInfo(const std::string &type
     StructTypeInfo info;
     info.name = typeName;
     info.totalSize = 0;
+    info.classId = nextClassId_++;
+    for (const auto &iface : structDecl->interfaces) {
+        info.implementedInterfaces.insert(iface);
+    }
 
     for (auto &member : structDecl->members) {
         if (member->kind == DeclKind::Field) {
@@ -450,12 +614,16 @@ const StructTypeInfo *Lowerer::getOrCreateStructTypeInfo(const std::string &type
 
             // Compute size and alignment using semantic inline layout so nested
             // structs, tuples, and fixed-size arrays occupy their full storage.
-            size_t fieldLayoutSize = getSemanticTypeSize(fieldType);
-            size_t fieldLayoutAlignment = getSemanticTypeAlignment(fieldType);
+            size_t fieldLayoutSize = field->isWeak ? getILTypeSize(Type(Type::Kind::Ptr))
+                                                    : getSemanticTypeSize(fieldType);
+            size_t fieldLayoutAlignment =
+                field->isWeak ? getILTypeAlignment(Type(Type::Kind::Ptr))
+                              : getSemanticTypeAlignment(fieldType);
 
             FieldLayout layout;
             layout.name = field->name;
             layout.type = fieldType;
+            layout.isWeak = field->isWeak;
             layout.offset = alignTo(info.totalSize, fieldLayoutAlignment);
             layout.size = fieldLayoutSize;
 
@@ -548,12 +716,16 @@ const ClassTypeInfo *Lowerer::getOrCreateClassTypeInfo(const std::string &typeNa
 
             // Compute size and alignment using semantic inline layout so nested
             // structs, tuples, and fixed-size arrays occupy their full storage.
-            size_t fieldLayoutSize = getSemanticTypeSize(fieldType);
-            size_t fieldLayoutAlignment = getSemanticTypeAlignment(fieldType);
+            size_t fieldLayoutSize = field->isWeak ? getILTypeSize(Type(Type::Kind::Ptr))
+                                                    : getSemanticTypeSize(fieldType);
+            size_t fieldLayoutAlignment =
+                field->isWeak ? getILTypeAlignment(Type(Type::Kind::Ptr))
+                              : getSemanticTypeAlignment(fieldType);
 
             FieldLayout layout;
             layout.name = field->name;
             layout.type = fieldType;
+            layout.isWeak = field->isWeak;
             layout.offset = alignTo(info.totalSize, fieldLayoutAlignment);
             layout.size = fieldLayoutSize;
 

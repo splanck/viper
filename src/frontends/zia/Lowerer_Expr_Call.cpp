@@ -292,6 +292,80 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
     if (collectRangeModifierChain(expr, rangeInfo) && rangeInfo.range)
         return lowerRangeWithModifiers(rangeInfo.range, rangeInfo.reversed, rangeInfo.stepArg);
 
+    auto resultOkCallee = [&](TypeRef type) -> const char * {
+        if (!type)
+            return "Viper.Result.Ok";
+        switch (type->kind) {
+            case TypeKindSem::String:
+                return "Viper.Result.OkStr";
+            case TypeKindSem::Integer:
+            case TypeKindSem::Enum:
+                return "Viper.Result.OkI64";
+            case TypeKindSem::Number:
+                return "Viper.Result.OkF64";
+            default:
+                return "Viper.Result.Ok";
+        }
+    };
+
+    auto resultUnwrapCallee = [&](TypeRef type) -> const char * {
+        if (!type)
+            return "Viper.Result.Unwrap";
+        switch (type->kind) {
+            case TypeKindSem::String:
+                return "Viper.Result.UnwrapStr";
+            case TypeKindSem::Integer:
+            case TypeKindSem::Enum:
+                return "Viper.Result.UnwrapI64";
+            case TypeKindSem::Number:
+                return "Viper.Result.UnwrapF64";
+            default:
+                return "Viper.Result.Unwrap";
+        }
+    };
+
+    auto resultUnwrapOrCallee = [&](TypeRef type) -> const char * {
+        if (!type)
+            return "Viper.Result.UnwrapOr";
+        switch (type->kind) {
+            case TypeKindSem::String:
+                return "Viper.Result.UnwrapOrStr";
+            case TypeKindSem::Integer:
+            case TypeKindSem::Enum:
+                return "Viper.Result.UnwrapOrI64";
+            case TypeKindSem::Number:
+                return "Viper.Result.UnwrapOrF64";
+            default:
+                return "Viper.Result.UnwrapOr";
+        }
+    };
+
+    if (auto *ident = dynamic_cast<IdentExpr *>(expr->callee.get())) {
+        if (ident->name == "Ok" || ident->name == "Err") {
+            if (expr->args.empty())
+                return {Value::null(), Type(Type::Kind::Ptr)};
+            auto payload = lowerExpr(expr->args[0].value.get());
+            TypeRef payloadType = sema_.typeOf(expr->args[0].value.get());
+            Value argValue = payload.value;
+            std::string callee;
+            if (ident->name == "Ok") {
+                callee = resultOkCallee(payloadType);
+                if (callee == "Viper.Result.Ok" && payload.type.kind != Type::Kind::Ptr)
+                    argValue = emitBoxValue(payload.value, payload.type, payloadType);
+            } else {
+                if (payloadType && payloadType->kind == TypeKindSem::String) {
+                    callee = "Viper.Result.ErrStr";
+                } else {
+                    callee = "Viper.Result.Err";
+                    if (payload.type.kind != Type::Kind::Ptr)
+                        argValue = emitBoxValue(payload.value, payload.type, payloadType);
+                }
+            }
+            Value result = emitCallRet(Type(Type::Kind::Ptr), callee, {argValue});
+            return {result, Type(Type::Kind::Ptr)};
+        }
+    }
+
     // Check for generic function call: identity[Integer](42)
     std::string genericCallee = sema_.genericFunctionCallee(expr);
     if (!genericCallee.empty()) {
@@ -460,6 +534,59 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
             // return; }`)
             if (baseType->kind == TypeKindSem::Optional && baseType->innerType()) {
                 baseType = baseType->innerType();
+            }
+
+            if (baseType->kind == TypeKindSem::Result) {
+                TypeRef successType =
+                    !baseType->typeArgs.empty() ? baseType->typeArgs[0] : types::unknown();
+                auto baseResult = lowerExpr(fieldExpr->base.get());
+
+                if (fieldExpr->field == "isOk") {
+                    Value result = emitCallRet(
+                        Type(Type::Kind::I1), "Viper.Result.get_IsOk", {baseResult.value});
+                    return {result, Type(Type::Kind::I1)};
+                }
+                if (fieldExpr->field == "isErr") {
+                    Value result = emitCallRet(
+                        Type(Type::Kind::I1), "Viper.Result.get_IsErr", {baseResult.value});
+                    return {result, Type(Type::Kind::I1)};
+                }
+                if (fieldExpr->field == "unwrap") {
+                    Type ilSuccessType = mapType(successType);
+                    const char *callee = resultUnwrapCallee(successType);
+                    Type runtimeReturn = ilSuccessType;
+                    if (std::string_view(callee) == "Viper.Result.Unwrap")
+                        runtimeReturn = Type(Type::Kind::Ptr);
+                    Value raw = emitCallRet(runtimeReturn, callee, {baseResult.value});
+                    if (runtimeReturn.kind == ilSuccessType.kind)
+                        return {raw, ilSuccessType};
+                    return emitUnboxValue(raw, ilSuccessType, successType);
+                }
+                if (fieldExpr->field == "unwrapOr") {
+                    auto def = lowerExpr(expr->args[0].value.get());
+                    TypeRef defType = sema_.typeOf(expr->args[0].value.get());
+                    auto coerced =
+                        coerceValueToType(def.value, def.type, defType, successType);
+                    Value defaultValue = coerced.value;
+                    const char *callee = resultUnwrapOrCallee(successType);
+                    Type ilSuccessType = mapType(successType);
+                    Type runtimeReturn = ilSuccessType;
+                    if (std::string_view(callee) == "Viper.Result.UnwrapOr") {
+                        runtimeReturn = Type(Type::Kind::Ptr);
+                        if (coerced.type.kind != Type::Kind::Ptr)
+                            defaultValue = emitBoxValue(coerced.value, coerced.type, successType);
+                    }
+                    Value raw =
+                        emitCallRet(runtimeReturn, callee, {baseResult.value, defaultValue});
+                    if (runtimeReturn.kind == ilSuccessType.kind)
+                        return {raw, ilSuccessType};
+                    return emitUnboxValue(raw, ilSuccessType, successType);
+                }
+                if (fieldExpr->field == "unwrapErr") {
+                    Value result = emitCallRet(
+                        Type(Type::Kind::Str), "Viper.Result.UnwrapErrStr", {baseResult.value});
+                    return {result, Type(Type::Kind::Str)};
+                }
             }
 
             std::string typeName = baseType->name;

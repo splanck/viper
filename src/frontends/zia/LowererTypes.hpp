@@ -37,6 +37,7 @@ struct FieldLayout {
     TypeRef type;
     size_t offset;
     size_t size;
+    bool isWeak{false};
 };
 
 struct StructTypeInfo {
@@ -44,8 +45,10 @@ struct StructTypeInfo {
     std::vector<FieldLayout> fields;
     std::vector<MethodDecl *> methods;
     size_t totalSize;
+    int classId{-1};
     std::unordered_map<std::string, size_t> fieldIndex;
     std::unordered_map<std::string, MethodDecl *> methodMap;
+    std::set<std::string> implementedInterfaces;
 
     const FieldLayout *findField(const std::string &n) const {
         auto it = fieldIndex.find(n);

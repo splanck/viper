@@ -209,9 +209,13 @@ List[Integer]           // List of integers
 List[Player]            // List of class instances
 Map[String, Integer]    // Map from strings to integers
 [Integer]               // Shorthand for List[Integer]
+Result[Integer]         // Success value or error string
 ```
 
 Map keys are restricted to `String`.
+
+`Result[T]` values are constructed with `Ok(value)` and `Err(message)`. The
+success type is `T`; the error payload is a `String`.
 
 ### Class Types
 
@@ -537,10 +541,18 @@ Tuples group multiple values. Access elements with `.0`, `.1`, etc.:
 var pair = (42, "hello");
 var num = pair.0;           // 42
 var str = pair.1;           // "hello"
+var (n: Integer, s: String) = pair;
 ```
 
-> **Known limitation:** Tuple destructuring in `var` declarations (`var (x, y) = expr;`)
-> is not yet supported. Use `.0` / `.1` element access instead.
+Tuple destructuring is supported for two-element tuple declarations:
+
+```viper
+var (x, y) = (1, 2);
+final (code: Integer, label: String) = (200, "ok");
+```
+
+The initializer must be a two-element tuple. Optional type annotations are
+checked against the corresponding tuple element.
 
 ### Collection Literals
 
@@ -636,6 +648,34 @@ value as Type           // Type cast
 ```
 
 Lambda parameters must include explicit type annotations.
+
+### Result Values
+
+`Result[T]` represents either `Ok(T)` or `Err(String)`:
+
+```viper
+var ok: Result[Integer] = Ok(7);
+var err: Result[Integer] = Err("bad");
+
+if ok.isOk() {
+    SayInt(ok.unwrap());
+}
+
+var fallback = err.unwrapOr(0);
+var message = err.unwrapErr();
+```
+
+Result patterns are supported in `match` statements and expressions:
+
+```viper
+match ok {
+    Ok(value) => SayInt(value);
+    Err(message) => Say(message);
+}
+```
+
+`unwrap()` traps when called on `Err`, and `unwrapErr()` traps when called on
+`Ok`. `unwrapOr(default)` returns the success value or the provided default.
 
 ### `is` Type Check
 
@@ -839,6 +879,18 @@ match x {
 }
 ```
 
+Statement arms may use a single statement directly after `=>`:
+
+```viper
+func classify(x: Integer) -> Integer {
+    match x {
+        1 => return 10;
+        _ => return 20;
+    }
+    return -1;
+}
+```
+
 ### Try/Catch/Finally Statement
 
 Structured exception handling for runtime errors:
@@ -847,22 +899,36 @@ Structured exception handling for runtime errors:
 try {
     riskyOperation();
 } catch(e) {
-    Say("caught: " + e);
+    Say("caught: " + e.message);
+} catch(e: DivideByZero) {
+    Say("math failed: " + e.kind);
 }
 ```
 
 - The `try` block is always required.
-- The `catch` block handles exceptions. Named error binding uses parentheses: `catch(e) { ... }`.
-  The binding is a `String` containing the value passed to `throw` after string conversion.
-  Anonymous catch `catch { ... }` is also supported.
+- One or more `catch` clauses may follow the `try` block. Named error binding
+  uses parentheses: `catch(e) { ... }`.
+- A named catch binding has type `Error`. It exposes:
+  - `kind` / `type`: runtime error kind name such as `"RuntimeError"` or `"DivideByZero"`
+  - `message`: `throw` payload text for language throws, or a default message for runtime faults
+  - `code`: numeric runtime error code
+  - `line`: source line if available, otherwise `-1`
+  - `location`: formatted source location string when available
+- Anonymous catch `catch { ... }` is supported.
 - Typed catch is supported for runtime error kinds such as `DivideByZero`,
   `Bounds`, `RuntimeError`, and the catch-all alias `Error`.
+- Catch clauses are checked in source order. A catch-all clause (`catch`,
+  `catch(e)`, or `catch(e: Error)`) must be last.
 - Both `catch` and `finally` are optional, but at least one must be present.
 - `throw value;` raises a `RuntimeError`; runtime faults such as divide-by-zero keep
   their specific trap kind.
-- `finally` runs on normal exit and while unwinding. If no catch clause handles the
-  error, or a typed catch does not match it, the original error is rethrown after
-  the `finally` block runs.
+- `throw;` is a bare rethrow and is only valid inside a catch clause. It preserves
+  the original error kind, code, line, and message.
+- `finally` runs on normal exit, while unwinding, and before nonlocal control flow
+  leaves the protected region through `return`, `break`, or `continue`. If no catch
+  clause handles the error, or a typed catch does not match it, the original error
+  is rethrown after the `finally` block runs. If the `finally` block itself throws
+  while unwinding, that new error becomes the propagated error.
 
 ### Throw Statement
 
@@ -871,6 +937,8 @@ Raises a `RuntimeError`:
 ```viper
 throw someErrorValue;
 ```
+
+Inside a catch clause, `throw;` rethrows the active error.
 
 ---
 
@@ -923,7 +991,7 @@ func findMax[T: Comparable](a: T, b: T) -> T {
 }
 ```
 
-Type parameters are declared in `[...]` after the function name. Constraints (like `T: Comparable`) restrict the type parameter to types implementing the named interface.
+Type parameters are declared in `[...]` after the function name. Constraints (like `T: Comparable`) restrict the type parameter to types implementing the named interface, and constrained interface methods are callable inside instantiated generic functions.
 Type inference works through generic container parameters such as `List[T]` and
 `Map[String, T]`. Explicit type arguments may be comma-separated and nested:
 `pair[Integer, String](1, "one")` and `identity[List[Integer]]([1])`.
@@ -984,6 +1052,9 @@ This desugars to a `return` statement wrapping the expression. Works for both to
 foreign func Factorial(n: Integer) -> Integer;
 foreign func Render(canvas: Canvas, frame: Integer);
 ```
+
+The semicolon terminator shown above is the documented form. A legacy spelling
+without the semicolon is still accepted for compatibility.
 
 Use a foreign declaration when the function is implemented in BASIC and called from Zia, or when binding to a runtime entry that isn't already exposed through `Viper.*`. Calling a foreign function uses the same syntax as any other function call.
 
@@ -1046,6 +1117,18 @@ class Player {
     Integer health;         // Default visibility
     hide Integer secret;    // Private field
     expose String name;     // Public field
+    expose weak var parent: Player?;
+}
+```
+
+Class fields may use familiar `var name: Type;` syntax or the original
+`Type name;` syntax. A `weak` field stores a non-owning reference to a class,
+interface, `Ptr`, `Any`, or optional reference type. Weak fields cannot be
+`static`, and are loaded like ordinary fields:
+
+```viper
+class Node {
+    expose weak var parent: Node?;
 }
 ```
 
@@ -1082,6 +1165,10 @@ class Derived extends Base {
     override func describe() -> String { return "Derived"; }
 }
 ```
+
+`init` methods are constructor bodies. A child `init` with the same signature as
+a parent `init` does not require the `override` keyword; call `super.init(...)`
+when the parent initializer must run.
 
 ### Creating Instances
 
@@ -1237,9 +1324,18 @@ class MyClass implements InterfaceName {
         // Implementation
     }
 }
+
+struct MyStruct implements InterfaceName {
+    expose func methodSignature(params) -> ReturnType {
+        // Implementation
+    }
+}
 ```
 
-Implementing methods must be marked `expose` (public visibility).
+Implementing methods must be marked `expose` (public visibility). Classes dispatch
+through their object identity. Struct values are boxed when coerced to an
+interface-typed value, and dispatch then uses adapter thunks for the struct
+methods.
 
 ### Interface Dispatch
 
@@ -1261,7 +1357,7 @@ func printArea(s: IShape) {
 }
 ```
 
-At module initialization, a `__zia_iface_init` function registers each interface and binds implementation itables. Method calls on interface-typed parameters use `rt_get_interface_impl` to find the function pointer at the correct slot, then invoke it via indirect call.
+At module initialization, a `__zia_iface_init` function registers each interface and binds implementation itables for both class and struct implementors. Method calls on interface-typed parameters use `rt_get_interface_impl` to find the function pointer at the correct slot, then invoke it via indirect call.
 
 ---
 
@@ -1484,6 +1580,8 @@ Access namespaced members using dot notation:
 ```viper
 var result = MyLib.helper();
 var p = new MyLib.Parser();
+var version = Config.VERSION;
+Config.debug = true;
 ```
 
 ### Dotted Namespace Names
@@ -1754,7 +1852,7 @@ bind        ::= "bind" STRING ["as" IDENT] ";"
 ### Declarations
 
 ```text
-decl        ::= classDecl | structDecl | interfaceDecl | enumDecl | funcDecl | varDecl | namespaceDecl | typeAlias
+decl        ::= classDecl | structDecl | interfaceDecl | enumDecl | funcDecl | foreignFuncDecl | varDecl | namespaceDecl | typeAlias
 typeAlias   ::= "type" IDENT "=" type ";"
 classDecl   ::= "class" IDENT ["extends" IDENT] ["implements" identList] "{" member* "}"
 structDecl  ::= "struct" IDENT ["implements" identList] "{" member* "}"
@@ -1762,12 +1860,16 @@ interfaceDecl ::= "interface" IDENT "{" methodSig* "}"
 enumDecl    ::= ["expose"] "enum" IDENT "{" enumVariant ("," enumVariant)* [","] "}"
 enumVariant ::= IDENT ["=" ["-"] INTEGER]
 funcDecl    ::= "func" IDENT ["[" genericParams "]"] "(" params ")" ["->" type] (block | "=" expr ";")
+foreignFuncDecl ::= "foreign" "func" IDENT "(" params ")" ["->" type] [";"]
 genericParams ::= IDENT [":" IDENT] ("," IDENT [":" IDENT])*
 param       ::= IDENT ":" ["..."] type ["=" expr]
-varDecl     ::= ("var" | "final" | "let") IDENT [":" type] ["=" expr] ";"
+varDecl     ::= ("var" | "final" | "let") (IDENT [":" type] | tupleBinding) ["=" expr] ";"
+tupleBinding ::= "(" IDENT [":" type] "," IDENT [":" type] ")"
 namespaceDecl ::= "namespace" qualifiedName "{" decl* "}"
 qualifiedName ::= IDENT ("." IDENT)*
-member      ::= ["expose" | "hide"] ["static" | "override"] (fieldDecl | funcDecl | propertyDecl | deinitDecl)
+member      ::= memberModifier* (fieldDecl | funcDecl | propertyDecl | deinitDecl)
+memberModifier ::= "expose" | "hide" | "static" | "override" | "weak"
+fieldDecl   ::= ["var"] (IDENT ":" type | type IDENT) ["=" expr] ";"
 propertyDecl ::= "property" IDENT ":" type "{" ["get" block] ["set" "(" IDENT ")" block] "}"
 deinitDecl  ::= "deinit" block
 ```
@@ -1790,9 +1892,10 @@ breakStmt   ::= "break" ";"
 continueStmt ::= "continue" ";"
 guardStmt   ::= "guard" expr "else" block
 matchStmt   ::= "match" expr "{" matchArm* "}"
-matchArm    ::= pattern ["if" expr] "=>" (block | expr ";")
-tryStmt     ::= "try" block ["catch" ["(" IDENT [":" type] ")"] block] ["finally" block]
-throwStmt   ::= "throw" expr ";"
+matchArm    ::= pattern ["if" expr] "=>" (block | stmt | expr ";")
+tryStmt     ::= "try" block catchClause* ["finally" block]
+catchClause ::= "catch" ["(" IDENT [":" type] ")"] block
+throwStmt   ::= "throw" [expr] ";"
 exprStmt    ::= expr ";"
 ```
 

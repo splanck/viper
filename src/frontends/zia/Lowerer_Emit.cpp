@@ -193,6 +193,21 @@ LowerResult Lowerer::coerceValueToType(Value value,
         return {value, mapType(targetType)};
     }
 
+    if (targetType->kind == TypeKindSem::Interface && effectiveSource &&
+        effectiveSource->kind == TypeKindSem::Struct) {
+        const StructTypeInfo *info = getOrCreateStructTypeInfo(effectiveSource->name);
+        if (info && info->classId > 0) {
+            Value wrapper = emitCallRet(
+                Type(Type::Kind::Ptr),
+                "rt_obj_new_i64",
+                {Value::constInt(static_cast<int64_t>(info->classId)),
+                 Value::constInt(static_cast<int64_t>(kClassFieldsOffset + info->totalSize))});
+            Value payload = emitGEP(wrapper, static_cast<int64_t>(kClassFieldsOffset));
+            emitStructTypeInitialize(*info, payload, value);
+            return {wrapper, Type(Type::Kind::Ptr)};
+        }
+    }
+
     if (effectiveSource && effectiveSource->kind == TypeKindSem::Unknown &&
         valueIlType.kind == Type::Kind::Ptr && targetIlType.kind != Type::Kind::Ptr) {
         return emitUnbox(value, targetIlType);
@@ -655,6 +670,10 @@ void Lowerer::emitStore(Value ptr, Value val, Type type) {
 
 Lowerer::Value Lowerer::emitFieldLoad(const FieldLayout *field, Value selfPtr) {
     Value fieldAddr = emitGEP(selfPtr, static_cast<int64_t>(field->offset));
+    if (field->isWeak) {
+        Value weakHandle = emitLoad(fieldAddr, Type(Type::Kind::Ptr));
+        return emitCallRet(Type(Type::Kind::Ptr), "Viper.Memory.WeakRef.Get", {weakHandle});
+    }
     // Inline aggregates live directly inside the containing value. Loading them
     // as a pointer-sized scalar would read the first bytes of the aggregate.
     if (isInlineAggregateType(field->type))
@@ -671,6 +690,14 @@ Lowerer::Value Lowerer::emitFieldLoad(const FieldLayout *field, Value selfPtr) {
 
 void Lowerer::emitFieldStore(const FieldLayout *field, Value selfPtr, Value val) {
     Value fieldAddr = emitGEP(selfPtr, static_cast<int64_t>(field->offset));
+    if (field->isWeak) {
+        Value oldHandle = emitLoad(fieldAddr, Type(Type::Kind::Ptr));
+        Value newHandle =
+            emitCallRet(Type(Type::Kind::Ptr), "Viper.Memory.WeakRef.New", {val});
+        emitStore(fieldAddr, newHandle, Type(Type::Kind::Ptr));
+        emitCall("Viper.Memory.WeakRef.Free", {oldHandle});
+        return;
+    }
     emitInlineValueStore(field->type, fieldAddr, val, true);
 }
 

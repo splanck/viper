@@ -201,7 +201,7 @@ func start() {
     try {
         throw "boom";
     } catch(e) {
-        Viper.Terminal.Say(e);
+        Viper.Terminal.Say(e.message);
     }
 }
 )";

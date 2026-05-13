@@ -304,7 +304,11 @@ DeclPtr Parser::parseFunctionDecl(bool isForeign) {
 
     // Body — foreign functions have no body (they are import declarations).
     if (isForeign) {
-        // No body expected — function is defined in another module.
+        // No body expected — function is defined in another module. The
+        // documented spelling ends with a semicolon; keep it optional so older
+        // imports without one continue to parse.
+        if (check(TokenKind::Semicolon))
+            advance();
         return func;
     }
 
@@ -492,10 +496,12 @@ bool Parser::parseMemberBlock(std::vector<DeclPtr> &members,
         Visibility visibility = defaultVisibility;
         bool isOverride = false;
         bool isStatic = false;
+        bool isWeak = false;
 
         // Parse modifiers (can appear in any order when override is allowed)
         while (check(TokenKind::KwExpose) || check(TokenKind::KwHide) ||
-               (allowOverride && check(TokenKind::KwOverride)) || check(TokenKind::KwStatic)) {
+               (allowOverride && check(TokenKind::KwOverride)) || check(TokenKind::KwStatic) ||
+               check(TokenKind::KwWeak)) {
             if (match(TokenKind::KwExpose))
                 visibility = Visibility::Public;
             else if (match(TokenKind::KwHide))
@@ -504,6 +510,8 @@ bool Parser::parseMemberBlock(std::vector<DeclPtr> &members,
                 isOverride = true;
             else if (match(TokenKind::KwStatic))
                 isStatic = true;
+            else if (match(TokenKind::KwWeak))
+                isWeak = true;
         }
 
         if (check(TokenKind::KwFunc)) {
@@ -548,12 +556,13 @@ bool Parser::parseMemberBlock(std::vector<DeclPtr> &members,
                 if (check(TokenKind::Semicolon))
                     advance();
             }
-        } else if (check(TokenKind::Identifier)) {
+        } else if (check(TokenKind::Identifier) || check(TokenKind::KwVar)) {
             auto field = parseFieldDecl();
             if (field) {
                 auto *f = static_cast<FieldDecl *>(field.get());
                 f->visibility = visibility;
                 f->isStatic = isStatic;
+                f->isWeak = isWeak;
                 members.push_back(std::move(field));
             }
         } else {
@@ -811,6 +820,8 @@ DeclPtr Parser::parseGlobalVarDecl() {
 /// @return The parsed FieldDecl, or nullptr on error.
 DeclPtr Parser::parseFieldDecl() {
     SourceLoc loc = peek().loc;
+    if (match(TokenKind::KwVar))
+        loc = peek().loc;
 
     TypePtr type;
     std::string fieldName;

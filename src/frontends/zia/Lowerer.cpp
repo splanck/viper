@@ -93,6 +93,7 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module) {
     pendingFunctionInstantiations_.clear();
     asyncOwnedValues_.clear();
     deferredTemps_.clear();
+    cleanupStack_.clear();
     currentFunc_ = nullptr;
     currentReturnType_ = nullptr;
     currentStructType_ = nullptr;

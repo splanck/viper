@@ -407,6 +407,19 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
         return types::unknown();
     }
 
+    // Structured catch bindings expose stable error metadata.
+    if (baseType && baseType->kind == TypeKindSem::Error) {
+        if (expr->field == "kind" || expr->field == "type" || expr->field == "message" ||
+            expr->field == "location") {
+            return types::string();
+        }
+        if (expr->field == "code" || expr->field == "line") {
+            return types::integer();
+        }
+        error(expr->loc, "Unknown field '" + expr->field + "' on Error");
+        return types::unknown();
+    }
+
     // Reject field access on primitive types that have no members
     if (baseType &&
         (baseType->kind == TypeKindSem::Integer || baseType->kind == TypeKindSem::Number ||
@@ -860,6 +873,37 @@ bool Sema::analyzeMatchPattern(const MatchArm::Pattern &pattern,
                 return false;
             }
 
+            if (scrutineeType && scrutineeType->kind == TypeKindSem::Result) {
+                if (pattern.binding == "Ok") {
+                    coverage.coversResultOk = true;
+                    if (pattern.subpatterns.size() != 1) {
+                        error(pattern.literal ? pattern.literal->loc : SourceLoc{},
+                              "Ok() pattern requires exactly one subpattern");
+                        return false;
+                    }
+                    TypeRef success = !scrutineeType->typeArgs.empty()
+                                          ? scrutineeType->typeArgs[0]
+                                          : types::unknown();
+                    analyzeMatchPattern(pattern.subpatterns[0], success, coverage, bindings);
+                    return true;
+                }
+                if (pattern.binding == "Err") {
+                    coverage.coversResultErr = true;
+                    if (pattern.subpatterns.size() != 1) {
+                        error(pattern.literal ? pattern.literal->loc : SourceLoc{},
+                              "Err() pattern requires exactly one subpattern");
+                        return false;
+                    }
+                    analyzeMatchPattern(
+                        pattern.subpatterns[0], types::string(), coverage, bindings);
+                    return true;
+                }
+
+                error(pattern.literal ? pattern.literal->loc : SourceLoc{},
+                      "Unknown Result constructor pattern: " + pattern.binding);
+                return false;
+            }
+
             if (!scrutineeType || (scrutineeType->kind != TypeKindSem::Struct &&
                                    scrutineeType->kind != TypeKindSem::Class)) {
                 error(pattern.literal ? pattern.literal->loc : SourceLoc{},
@@ -1006,6 +1050,12 @@ TypeRef Sema::analyzeMatchExpr(MatchExpr *expr) {
                 error(expr->loc,
                       "Non-exhaustive patterns: match on optional type should use a "
                       "wildcard (_) or handle all cases");
+            }
+        } else if (scrutineeType && scrutineeType->kind == TypeKindSem::Result) {
+            if (!(coverage.coversResultOk && coverage.coversResultErr)) {
+                error(expr->loc,
+                      "Non-exhaustive patterns: match on Result should handle Ok and Err or use "
+                      "a wildcard (_)");
             }
         } else {
             warn(WarningCode::W019_NonExhaustiveMatch,

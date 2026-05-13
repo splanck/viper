@@ -1,0 +1,144 @@
+module RuntimeTest43;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+// Foreign imports are declarations and should accept the documented semicolon.
+foreign func AlphaForeignIgnored() -> Integer;
+
+namespace Config {
+    final VERSION = 7;
+    var debug: Boolean = false;
+}
+
+interface HasArea {
+    func area() -> Integer;
+}
+
+struct Tile implements HasArea {
+    expose Integer side;
+
+    expose func init(s: Integer) {
+        side = s;
+    }
+
+    expose func area() -> Integer {
+        return side * side;
+    }
+}
+
+var finallyReturnTouched: Boolean = false;
+
+func areaOf(h: HasArea) -> Integer {
+    return h.area();
+}
+
+func genericArea[T: HasArea](h: T) -> Integer {
+    return h.area();
+}
+
+func finallyReturn() -> Integer {
+    try {
+        return 3;
+    } finally {
+        finallyReturnTouched = true;
+    }
+    return 0;
+}
+
+func tryAwareReturn() -> Integer {
+    try {
+        return 11;
+    } catch(e: RuntimeError) {
+        return 12 + e.message.length();
+    }
+}
+
+func branchyCatch() -> Integer {
+    var result = 0;
+    try {
+        throw "branchy";
+    } catch(e: RuntimeError) {
+        if (e.message == "branchy") {
+            result = 5;
+        } else {
+            result = -5;
+        }
+    }
+    return result;
+}
+
+func branchyFinallyUnwind() -> Integer {
+    var result = 0;
+    try {
+        try {
+            throw "unwind";
+        } finally {
+            if (result == 0) {
+                result = 6;
+            } else {
+                result = -6;
+            }
+        }
+    } catch(e: RuntimeError) {
+        result = result + 1 + (e.message.length() - e.message.length());
+    }
+    return result;
+}
+
+func staleMessageCheck() -> String {
+    var first = "";
+    var second = "unset";
+    try {
+        throw "first-message";
+    } catch(e: RuntimeError) {
+        first = e.message;
+    }
+
+    try {
+        var zero = 0;
+        var value = 1 / zero;
+        second = toString(value);
+    } catch(e: DivideByZero) {
+        second = e.message;
+    }
+    return first + ":" + second;
+}
+
+func breakContinueFinally() -> Integer {
+    var count = 0;
+    var i = 0;
+    while (i < 3) {
+        i = i + 1;
+        try {
+            if (i == 1) {
+                continue;
+            }
+            if (i == 2) {
+                break;
+            }
+        } finally {
+            count = count + 1;
+        }
+    }
+    return count;
+}
+
+func start() {
+    assertEqInt(Config.VERSION, 7, "namespace_final");
+    Config.debug = true;
+    assertTrue(Config.debug, "namespace_var");
+
+    var tile = new Tile(4);
+    assertEqInt(areaOf(tile), 16, "struct_interface_dispatch");
+    assertEqInt(genericArea[Tile](tile), 16, "generic_constraint_method");
+    assertEqInt(finallyReturn(), 3, "finally_return_value");
+    assertTrue(finallyReturnTouched, "finally_return_touched");
+    assertEqInt(tryAwareReturn(), 11, "try_return_analysis");
+    assertEqInt(branchyCatch(), 5, "branchy_catch");
+    assertEqInt(branchyFinallyUnwind(), 7, "branchy_finally_unwind");
+    assertEqStr(staleMessageCheck(), "first-message:Division by zero", "catch_message_not_stale");
+    assertEqInt(breakContinueFinally(), 2, "break_continue_finally");
+    report();
+}

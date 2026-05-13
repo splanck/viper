@@ -188,6 +188,60 @@ StmtPtr Parser::parseVarDecl() {
     SourceLoc loc = kwTok.loc;
     bool isFinal = kwTok.kind == TokenKind::KwFinal || kwTok.kind == TokenKind::KwLet;
 
+    if (match(TokenKind::LParen)) {
+        if (!checkIdentifierLike()) {
+            error("expected variable name in tuple binding");
+            return nullptr;
+        }
+        Token firstTok = advance();
+        std::string firstName = firstTok.text;
+
+        TypePtr firstType;
+        if (match(TokenKind::Colon)) {
+            firstType = parseType();
+            if (!firstType)
+                return nullptr;
+        }
+
+        if (!expect(TokenKind::Comma, "','"))
+            return nullptr;
+
+        if (!checkIdentifierLike()) {
+            error("expected variable name in tuple binding");
+            return nullptr;
+        }
+        Token secondTok = advance();
+        std::string secondName = secondTok.text;
+
+        TypePtr secondType;
+        if (match(TokenKind::Colon)) {
+            secondType = parseType();
+            if (!secondType)
+                return nullptr;
+        }
+
+        if (!expect(TokenKind::RParen, "')'"))
+            return nullptr;
+
+        if (!expect(TokenKind::Equal, "'='"))
+            return nullptr;
+
+        ExprPtr init = parseExpressionAllowingStructLiterals();
+        if (!init)
+            return nullptr;
+
+        if (!expect(TokenKind::Semicolon, ";"))
+            return nullptr;
+
+        return std::make_unique<VarStmt>(loc,
+                                         std::move(firstName),
+                                         std::move(firstType),
+                                         std::move(secondName),
+                                         std::move(secondType),
+                                         std::move(init),
+                                         isFinal);
+    }
+
     if (!checkIdentifierLike()) {
         error("expected variable name");
         return nullptr;
@@ -507,7 +561,28 @@ StmtPtr Parser::parseMatchStmt() {
         if (!expect(TokenKind::FatArrow, "=>"))
             return nullptr;
 
-        // Parse arm body (expression or block)
+        auto startsStatementArm = [&]() {
+            switch (peek().kind) {
+                case TokenKind::KwReturn:
+                case TokenKind::KwBreak:
+                case TokenKind::KwContinue:
+                case TokenKind::KwThrow:
+                case TokenKind::KwVar:
+                case TokenKind::KwFinal:
+                case TokenKind::KwLet:
+                case TokenKind::KwIf:
+                case TokenKind::KwWhile:
+                case TokenKind::KwFor:
+                case TokenKind::KwGuard:
+                case TokenKind::KwTry:
+                case TokenKind::KwMatch:
+                    return true;
+                default:
+                    return false;
+            }
+        };
+
+        // Parse arm body (statement, expression, or block)
         if (check(TokenKind::LBrace)) {
             // Block body - parse as block expression
             Token lbraceTok = advance(); // consume '{'
@@ -527,6 +602,16 @@ StmtPtr Parser::parseMatchStmt() {
                 return nullptr;
 
             arm.body = std::make_unique<BlockExpr>(blockLoc, std::move(statements), nullptr);
+        } else if (startsStatementArm()) {
+            StmtPtr stmt = parseStatement();
+            if (!stmt)
+                return nullptr;
+            std::vector<StmtPtr> statements;
+            statements.push_back(std::move(stmt));
+            arm.body = std::make_unique<BlockExpr>(arm.pattern.literal ? arm.pattern.literal->loc
+                                                                        : loc,
+                                                   std::move(statements),
+                                                   nullptr);
         } else {
             // Expression body
             arm.body = parseExpressionAllowingStructLiterals();
@@ -551,7 +636,7 @@ StmtPtr Parser::parseMatchStmt() {
 /// @brief Parse a try/catch/finally statement.
 /// @details Syntax:
 ///   try { body }
-///   [catch(varName) { catchBody }]
+///   [catch(varName) { catchBody }]*
 ///   [finally { finallyBody }]
 /// At least one of catch or finally must be present.
 StmtPtr Parser::parseTryStmt() {
@@ -565,12 +650,16 @@ StmtPtr Parser::parseTryStmt() {
     if (!stmt->tryBody)
         return nullptr;
 
-    // Parse optional catch clause
-    if (match(TokenKind::KwCatch)) {
+    // Parse zero or more catch clauses
+    while (check(TokenKind::KwCatch)) {
+        Token catchTok = advance();
+        TryStmt::CatchClause clause;
+        clause.loc = catchTok.loc;
+
         // Optional catch variable: catch(e), catch(e: ErrorType), or catch
         if (match(TokenKind::LParen)) {
             if (checkIdentifierLike()) {
-                stmt->catchVar = advance().text;
+                clause.var = advance().text;
 
                 // Optional typed catch: catch(e: ErrorType)
                 if (match(TokenKind::Colon)) {
@@ -578,16 +667,22 @@ StmtPtr Parser::parseTryStmt() {
                         error("expected error type name after ':' in catch clause");
                         return nullptr;
                     }
-                    stmt->catchTypeName = advance().text;
+                    clause.typeName = advance().text;
                 }
             }
             if (!expect(TokenKind::RParen, "')'"))
                 return nullptr;
         }
 
-        stmt->catchBody = parseBlock();
-        if (!stmt->catchBody)
+        clause.body = parseBlock();
+        if (!clause.body)
             return nullptr;
+
+        if (stmt->catches.empty()) {
+            stmt->catchVar = clause.var;
+            stmt->catchTypeName = clause.typeName;
+        }
+        stmt->catches.push_back(std::move(clause));
     }
 
     // Parse optional finally clause
@@ -598,7 +693,7 @@ StmtPtr Parser::parseTryStmt() {
     }
 
     // At least one of catch or finally must be present
-    if (!stmt->catchBody && !stmt->finallyBody) {
+    if (stmt->catches.empty() && !stmt->finallyBody) {
         error("try statement requires at least a catch or finally clause");
         return nullptr;
     }
@@ -611,9 +706,12 @@ StmtPtr Parser::parseThrowStmt() {
     Token throwTok = advance(); // consume 'throw'
     SourceLoc loc = throwTok.loc;
 
-    ExprPtr value = parseExpressionAllowingStructLiterals();
-    if (!value)
-        return nullptr;
+    ExprPtr value;
+    if (!check(TokenKind::Semicolon)) {
+        value = parseExpressionAllowingStructLiterals();
+        if (!value)
+            return nullptr;
+    }
 
     if (!expect(TokenKind::Semicolon, ";"))
         return nullptr;

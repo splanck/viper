@@ -1,0 +1,134 @@
+module RuntimeTest44;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+func promisedOverload(x: Integer) -> Integer {
+    return x + 1;
+}
+
+func promisedOverload(x: String) -> Integer {
+    return x.length();
+}
+
+func callback(arg: Ptr) {
+    if (arg == null) {
+        return;
+    }
+}
+
+func acceptCallback(cb: Ptr) {
+    assertTrue(cb != null, "function_reference_not_null");
+}
+
+class BaseBox {
+    expose Integer value;
+
+    expose func init(v: Integer) {
+        value = v;
+    }
+}
+
+class ChildBox extends BaseBox {
+    expose Integer extra;
+
+    expose func init(v: Integer) {
+        super.init(v);
+        extra = v + 1;
+    }
+}
+
+class WeakNode {
+    expose Integer id;
+    expose weak var parent: WeakNode?;
+
+    expose func init(v: Integer) {
+        id = v;
+    }
+}
+
+func matchStatementShorthand(v: Integer) -> Integer {
+    match v {
+        1 => return 10;
+        _ => return 20;
+    }
+    return -1;
+}
+
+func resultText(r: Result[Integer]) -> String {
+    match r {
+        Ok(v) => return "ok " + toString(v);
+        Err(msg) => return "err " + msg;
+    }
+    return "none";
+}
+
+func testTupleDestructuring() {
+    var pair = (41, "answer");
+    var (n: Integer, label: String) = pair;
+    assertEqInt(n + 1, 42, "tuple_destructure_integer");
+    assertEqStr(label, "answer", "tuple_destructure_string");
+}
+
+func testResultConstructorsAndPatterns() {
+    var ok: Result[Integer] = Ok(7);
+    var err: Result[Integer] = Err("bad");
+
+    assertTrue(ok.isOk(), "result_ok_is_ok");
+    assertTrue(!ok.isErr(), "result_ok_not_err");
+    assertEqInt(ok.unwrap(), 7, "result_ok_unwrap");
+    assertEqInt(err.unwrapOr(9), 9, "result_err_unwrap_or");
+    assertEqStr(err.unwrapErr(), "bad", "result_err_unwrap_err");
+    assertEqStr(resultText(ok), "ok 7", "result_match_ok");
+    assertEqStr(resultText(err), "err bad", "result_match_err");
+}
+
+func testFunctionReferences() {
+    var cb: Ptr = &callback;
+    acceptCallback(cb);
+    acceptCallback(&callback);
+}
+
+func testInitOverrideInference() {
+    var child = new ChildBox(5);
+    assertEqInt(child.value, 5, "init_override_base_value");
+    assertEqInt(child.extra, 6, "init_override_child_value");
+}
+
+func testWeakFields() {
+    var root = new WeakNode(10);
+    var child = new WeakNode(20);
+    child.parent = root;
+
+    var parent = child.parent;
+    guard parent != null else {
+        fail("weak_parent_present");
+        return;
+    }
+    assertEqInt(parent.id, 10, "weak_parent_load");
+}
+
+func returnUnitFromVoid() {
+    return ();
+}
+
+func testUnitVoidBoundary() {
+    returnUnitFromVoid();
+    assertTrue(true, "unit_value_available");
+}
+
+func start() {
+    assertEqInt(promisedOverload(2), 3, "overload_integer");
+    assertEqInt(promisedOverload("four"), 4, "overload_string");
+    assertEqInt(matchStatementShorthand(1), 10, "match_statement_return_first");
+    assertEqInt(matchStatementShorthand(2), 20, "match_statement_return_wildcard");
+
+    testTupleDestructuring();
+    testResultConstructorsAndPatterns();
+    testFunctionReferences();
+    testInitOverrideInference();
+    testWeakFields();
+    testUnitVoidBoundary();
+    report();
+}

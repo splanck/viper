@@ -93,10 +93,22 @@ extern const RtError RT_ERROR_NONE;
 /// @param msg The message string (ownership is NOT transferred; the string is copied).
 void rt_throw_msg_set(rt_string msg);
 
+/// @brief Clear the last thrown message string.
+void rt_throw_msg_clear(void);
+
 /// @brief Retrieve the last thrown message string.
 /// @return The message string, or an empty string if none was stored.
 ///         Caller receives a new reference (must release).
 rt_string rt_throw_msg_get(void);
+
+/// @brief Convert a trap kind enum value to a stable user-facing type name.
+rt_string rt_error_kind_name(int32_t kind);
+
+/// @brief Build a user-facing message for a caught trap.
+rt_string rt_error_message(int32_t kind, int32_t code, int32_t line);
+
+/// @brief Build a user-facing location string for a caught trap.
+rt_string rt_error_location(int32_t kind, int32_t code, int32_t line);
 
 /// @brief Store trap classification fields for retrieval by catch handlers.
 /// @param kind TrapKind enum value (0=DivByZero, 3=DomainError, 9=RuntimeError, etc.)

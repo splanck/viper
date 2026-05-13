@@ -483,6 +483,8 @@ void Lowerer::lowerGenericFunctionInstantiation(const std::string &mangledName,
                                                 FunctionDecl *decl) {
     // Push substitution context so type parameters resolve correctly
     bool pushedContext = sema_.pushSubstitutionContext(mangledName);
+    if (pushedContext)
+        sema_.analyzeFunctionDecl(*decl);
 
     // Get the instantiated function type from Sema
     // The types should resolve with substitutions active
@@ -1018,6 +1020,12 @@ void Lowerer::lowerDestructorDecl(DestructorDecl &decl, const std::string &typeN
         const ClassTypeInfo &info = *currentClassType_;
 
         for (const auto &field : info.fields) {
+            if (field.isWeak) {
+                Value fieldAddr = emitGEP(selfPtr, static_cast<int64_t>(field.offset));
+                Value fieldValue = emitLoad(fieldAddr, Type(Type::Kind::Ptr));
+                emitCall("Viper.Memory.WeakRef.Free", {fieldValue});
+                continue;
+            }
             Type ilFieldType = mapType(field.type);
             if (ilFieldType.kind == Type::Kind::Str) {
                 Value fieldAddr = emitGEP(selfPtr, static_cast<int64_t>(field.offset));

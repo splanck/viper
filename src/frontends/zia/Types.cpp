@@ -285,6 +285,15 @@ bool ViperType::isAssignableFrom(const ViperType &source) const {
     // that return specific Ptr subtypes (e.g., Viper.Collections.Bytes)
     if (kind == TypeKindSem::Ptr && source.kind == TypeKindSem::Ptr)
         return true;
+    if (kind == TypeKindSem::Ptr && source.kind == TypeKindSem::Function)
+        return true;
+
+    if (kind == TypeKindSem::Result && source.kind == TypeKindSem::Result &&
+        !typeArgs.empty() && !source.typeArgs.empty()) {
+        if (source.typeArgs[0]->kind == TypeKindSem::Unknown)
+            return true;
+        return typeArgs[0]->isAssignableFrom(*source.typeArgs[0]);
+    }
 
     // Interface assignment (requires declared implementation)
     if (kind == TypeKindSem::Interface &&

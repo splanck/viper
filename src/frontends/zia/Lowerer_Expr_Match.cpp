@@ -230,6 +230,64 @@ void Lowerer::emitPatternTest(const MatchArm::Pattern &pattern,
                 return;
             }
 
+            if (scrutinee.type->kind == TypeKindSem::Result) {
+                if (pattern.binding == "Ok") {
+                    Value isOk = emitCallRet(
+                        Type(Type::Kind::I1), "Viper.Result.get_IsOk", {scrutinee.value});
+                    if (pattern.subpatterns.empty()) {
+                        emitCBr(isOk, successBlock, failureBlock);
+                        return;
+                    }
+                    size_t okBlock = createBlock("match_result_ok");
+                    emitCBr(isOk, okBlock, failureBlock);
+                    setBlock(okBlock);
+                    TypeRef successType = !scrutinee.type->typeArgs.empty()
+                                              ? scrutinee.type->typeArgs[0]
+                                              : types::unknown();
+                    Type ilSuccessType = mapType(successType);
+                    const char *callee = "Viper.Result.Unwrap";
+                    Type runtimeReturn = Type(Type::Kind::Ptr);
+                    if (successType && successType->kind == TypeKindSem::String) {
+                        callee = "Viper.Result.UnwrapStr";
+                        runtimeReturn = Type(Type::Kind::Str);
+                    } else if (successType &&
+                               (successType->kind == TypeKindSem::Integer ||
+                                successType->kind == TypeKindSem::Enum)) {
+                        callee = "Viper.Result.UnwrapI64";
+                        runtimeReturn = Type(Type::Kind::I64);
+                    } else if (successType && successType->kind == TypeKindSem::Number) {
+                        callee = "Viper.Result.UnwrapF64";
+                        runtimeReturn = Type(Type::Kind::F64);
+                    }
+                    Value raw = emitCallRet(runtimeReturn, callee, {scrutinee.value});
+                    PatternValue okValue{raw, successType};
+                    if (runtimeReturn.kind != ilSuccessType.kind) {
+                        auto unboxed = emitUnboxValue(raw, ilSuccessType, successType);
+                        okValue.value = unboxed.value;
+                    }
+                    emitPatternTest(pattern.subpatterns[0], okValue, successBlock, failureBlock);
+                    return;
+                }
+                if (pattern.binding == "Err") {
+                    Value isErr = emitCallRet(
+                        Type(Type::Kind::I1), "Viper.Result.get_IsErr", {scrutinee.value});
+                    if (pattern.subpatterns.empty()) {
+                        emitCBr(isErr, successBlock, failureBlock);
+                        return;
+                    }
+                    size_t errBlock = createBlock("match_result_err");
+                    emitCBr(isErr, errBlock, failureBlock);
+                    setBlock(errBlock);
+                    Value err =
+                        emitCallRet(Type(Type::Kind::Str), "Viper.Result.UnwrapErrStr", {scrutinee.value});
+                    PatternValue errValue{err, types::string()};
+                    emitPatternTest(pattern.subpatterns[0], errValue, successBlock, failureBlock);
+                    return;
+                }
+                emitBr(failureBlock);
+                return;
+            }
+
             const std::vector<FieldLayout> *fields = nullptr;
             if (scrutinee.type->kind == TypeKindSem::Struct) {
                 const StructTypeInfo *valueInfo = getOrCreateStructTypeInfo(scrutinee.type->name);
@@ -312,6 +370,45 @@ void Lowerer::emitPatternBindings(const MatchArm::Pattern &pattern, const Patter
 
             if (!scrutinee.type)
                 return;
+
+            if (scrutinee.type->kind == TypeKindSem::Result) {
+                if (pattern.binding == "Ok" && !pattern.subpatterns.empty()) {
+                    TypeRef successType = !scrutinee.type->typeArgs.empty()
+                                              ? scrutinee.type->typeArgs[0]
+                                              : types::unknown();
+                    Type ilSuccessType = mapType(successType);
+                    const char *callee = "Viper.Result.Unwrap";
+                    Type runtimeReturn = Type(Type::Kind::Ptr);
+                    if (successType && successType->kind == TypeKindSem::String) {
+                        callee = "Viper.Result.UnwrapStr";
+                        runtimeReturn = Type(Type::Kind::Str);
+                    } else if (successType &&
+                               (successType->kind == TypeKindSem::Integer ||
+                                successType->kind == TypeKindSem::Enum)) {
+                        callee = "Viper.Result.UnwrapI64";
+                        runtimeReturn = Type(Type::Kind::I64);
+                    } else if (successType && successType->kind == TypeKindSem::Number) {
+                        callee = "Viper.Result.UnwrapF64";
+                        runtimeReturn = Type(Type::Kind::F64);
+                    }
+                    Value raw = emitCallRet(runtimeReturn, callee, {scrutinee.value});
+                    PatternValue okValue{raw, successType};
+                    if (runtimeReturn.kind != ilSuccessType.kind) {
+                        auto unboxed = emitUnboxValue(raw, ilSuccessType, successType);
+                        okValue.value = unboxed.value;
+                    }
+                    emitPatternBindings(pattern.subpatterns[0], okValue);
+                    return;
+                }
+                if (pattern.binding == "Err" && !pattern.subpatterns.empty()) {
+                    Value err = emitCallRet(
+                        Type(Type::Kind::Str), "Viper.Result.UnwrapErrStr", {scrutinee.value});
+                    PatternValue errValue{err, types::string()};
+                    emitPatternBindings(pattern.subpatterns[0], errValue);
+                    return;
+                }
+                return;
+            }
 
             const std::vector<FieldLayout> *fields = nullptr;
             if (scrutinee.type->kind == TypeKindSem::Struct) {

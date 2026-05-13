@@ -190,6 +190,51 @@ LowerResult Lowerer::lowerField(FieldExpr *expr) {
     // Lower the base expression
     auto base = lowerExpr(expr->base.get());
 
+    if (baseType->kind == TypeKindSem::Error) {
+        Value errKind;
+        Value errCode;
+        Value errLine;
+        bool hasSnapshot = false;
+        if (auto *ident = dynamic_cast<IdentExpr *>(expr->base.get())) {
+            auto bindingIt = catchErrorBindings_.find(ident->name);
+            if (bindingIt != catchErrorBindings_.end()) {
+                errKind = loadFromSlot(bindingIt->second.kindSlot, Type(Type::Kind::I32));
+                errCode = loadFromSlot(bindingIt->second.codeSlot, Type(Type::Kind::I32));
+                errLine = loadFromSlot(bindingIt->second.lineSlot, Type(Type::Kind::I32));
+                hasSnapshot = true;
+            }
+        }
+        if (!hasSnapshot) {
+            errKind = emitUnary(Opcode::ErrGetKind, Type(Type::Kind::I32), base.value);
+            errCode = emitUnary(Opcode::ErrGetCode, Type(Type::Kind::I32), base.value);
+            errLine = emitUnary(Opcode::ErrGetLine, Type(Type::Kind::I32), base.value);
+        }
+
+        if (expr->field == "kind" || expr->field == "type") {
+            Value result =
+                emitCallRet(Type(Type::Kind::Str), "Viper.Error.KindName", {errKind});
+            return {result, Type(Type::Kind::Str)};
+        }
+        if (expr->field == "message") {
+            Value result = emitCallRet(
+                Type(Type::Kind::Str), "Viper.Error.Message", {errKind, errCode, errLine});
+            return {result, Type(Type::Kind::Str)};
+        }
+        if (expr->field == "location") {
+            Value result = emitCallRet(
+                Type(Type::Kind::Str), "Viper.Error.Location", {errKind, errCode, errLine});
+            return {result, Type(Type::Kind::Str)};
+        }
+        if (expr->field == "code") {
+            Value result = widenIntegralToI64(errCode, Type(Type::Kind::I32));
+            return {result, Type(Type::Kind::I64)};
+        }
+        if (expr->field == "line") {
+            Value result = widenIntegralToI64(errLine, Type(Type::Kind::I32));
+            return {result, Type(Type::Kind::I64)};
+        }
+    }
+
     // Check if base is a struct type
     std::string typeName = baseType->name;
     const StructTypeInfo *info = getOrCreateStructTypeInfo(typeName);
@@ -578,8 +623,12 @@ LowerResult Lowerer::lowerNew(NewExpr *expr) {
                 }
             }
 
-            Value fieldAddr = emitGEP(ptr, static_cast<int64_t>(field.offset));
-            emitStore(fieldAddr, fieldValue, ilFieldType);
+            if (field.isWeak) {
+                emitFieldStore(&field, ptr, fieldValue);
+            } else {
+                Value fieldAddr = emitGEP(ptr, static_cast<int64_t>(field.offset));
+                emitStore(fieldAddr, fieldValue, ilFieldType);
+            }
         }
     }
 

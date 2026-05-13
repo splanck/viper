@@ -18,23 +18,23 @@ A focused hardening cycle on the v0.2.5 surface. No new public namespaces; every
 - **Collections family.** All 26 collection types now carry stable class IDs, register typed GC traversal callbacks, and follow a uniform retain-on-return contract. `Queue` / `Stack` gain `Seq`-style `owns_elements`; `Map.Values` / `IntMap.Values` / `FrozenMap.Values` / `MultiMap.Get` return owning Seqs; `Bytes.ReadI16/I32` LE/BE sign-extend (was zero-extending). `RuntimeOwnership.hpp` declares `returnsOwned` for every accessor.
 - **Numeric round-trip.** `Convert.ToString_Double` emits the shortest exact-reparse form; `Parse.Double` / `TryParse` / `Convert.ToDouble` accept the formatter's `NaN` / `Inf` / `+Inf` / `-Inf`. The BASIC 15-digit `PRINT` display form is preserved as a separate entry point so goldens are unchanged.
 - **2D and 3D graphics correctness.** Sprite/Scene/Camera/Pixels class-ID validation, premultiplied-alpha bilinear sampler, tagged `Color.RGBA(...,0)` distinct from legacy `0x00RRGGBB`, `BlitAlpha` source-over preservation, Canvas3D HUD/skinned/morphed/blended draws, Mesh3D skeleton + morph retain integration, atomic Scene3D reparent, glTF JOINTS round-trip, new `Viper.Graphics3D.GLTF` + `Scene3D.Load`.
-- **D3D11 backend.** Render-target and overlay lifetimes corrected, `safeNormalize3` + NDC/UV helpers, weight-normalising skinning, identity-pad bone palettes, checked size multiplication on dynamic buffers, target fallback on allocation failure, readback / RTT-sync paths unbind output resources for `CopyResource` and restore prior binding.
+- **D3D11 backend.** Render-target and overlay lifetimes corrected, `safeNormalize3` + NDC/UV helpers, weight-normalising skinning, identity-pad bone palettes, checked size multiplication on dynamic buffers, target fallback on allocation failure, readback / RTT-sync paths unbind output resources for `CopyResource` and restore prior binding. Focused postfx / shadow / draw SRV unbinds before resource release; centralised temporal-scene reset on target destruction or RTT activation; float-SRV updates use a bounded `D3D11_BOX` covering only live elements.
 - **x86-64 + AArch64 backends.** AArch64 protection set covers def operands; x86-64 gains cross-block fold liveness on SIB and IMUL→LEA, compare/branch fold safety across edge copies, fixed-physical-register spill-before-clobber, label/frame/cast/overflow lowering repairs, and AT&T asm emitter operand-class validation matching the binary encoder.
 - **Native assembler + linker.** Bounds-checked encoders / writers / readers, alignment-UB elimination, type-safe `InputSectionKey`, COMMON coalescing, ELF weak-undefined + `PT_TLS`, Mach-O subsections-via-symbols, AArch64 LDR/STR scaled-offset relocs, COFF addends patched into instruction bytes with range checks, PE32+ overflow guards.
 - **Windows / packaging.** Win32 HiDPI normalised (physical-pixel client/resize/mouse paths, `AdjustWindowRectExForDpi`); waitable-timer frame pacing replaces `Sleep` quantization; MSVC embedded debug info via CMP0141; expanded UCRT/Win32 import policy; WSL-aware audit scripts; VAPS installer PE32+ validation, recursive adjacent-DLL discovery, `SHGetKnownFolderPath`/`RegDeleteTreeW`/VERSIONINFO/`InstallDate`, `windows-install-scope` + `windows-sign-thumbprint` + `meta/manifest.sha256` coverage with a non-elevated user-scope smoke ctest.
-- **Frontends + tooling.** Zia `try`/`catch`/`finally` now matches the reference across catch bindings, typed catches, `throw` as `RuntimeError`, native EH lowering, and bytecode `finally` unwinding. Typed `Parse.*(str,ptr)` ABI with `INPUT#` raw-pointer aliases preserved; ViperIDE IntelliSense linkage repaired via `fe_zia` force-load, live-`Lexer` keyword highlighting, scrollBeyondLastLine, BMP toolbar glyphs, untitled-buffer module declarations; GUI widget handles route through centralised typed wrappers with bidirectional submenu ownership and proper code-editor block-comment depth scan.
+- **Frontends + tooling.** Zia `try`/`catch`/`finally` now matches the reference across structured `Error` catch bindings, multiple typed catches, bare rethrow, `throw` as `RuntimeError`, native EH lowering, bytecode `finally` unwinding, and `return` / `break` / `continue` cleanup. Zia also accepts the documented semicolon form of `foreign func`, exposes namespace globals through qualified names, supports struct-to-interface dispatch, tuple destructuring, match statement arms with direct `return`, language-level `Result[T]` constructors/helpers/patterns, weak fields, function references as `Ptr`, child `init` override inference, and constrained generic method calls at instantiation time. Typed `Parse.*(str,ptr)` ABI with `INPUT#` raw-pointer aliases preserved; ViperIDE IntelliSense linkage repaired via `fe_zia` force-load, live-`Lexer` keyword highlighting, scrollBeyondLastLine, BMP toolbar glyphs, untitled-buffer module declarations; GUI widget handles route through centralised typed wrappers with bidirectional submenu ownership and proper code-editor block-comment depth scan.
 
 ### By the Numbers
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 69 | +69 |
+| Commits | — | 71 | +71 |
 | Source files | 2,996 | 3,008 | +12 |
 | Production SLOC | 552K | 576K | +24K |
 | Test SLOC | 228K | 242K | +14K |
 | Demo SLOC | 188K | 188K | 0 |
 
-Counts via `scripts/count_sloc.sh` (production 575,795 / test 241,895 / demo 187,842 / source files 3,008).
+Counts via `scripts/count_sloc.sh` (production 575,910 / test 241,972 / demo 187,989 / source files 3,008).
 
 ---
 
@@ -117,6 +117,7 @@ Counts via `scripts/count_sloc.sh` (production 575,795 / test 241,895 / demo 187
 - **Memory / GC / MessageBus / Box / Parse** — new contract suites for the validated `Memory.*` surface, weak-ref CAS retain and resurrected-cycle finalizers, `Box.ValueType` alignment + tag validation, `rt_trap_string` control-byte escaping, MessageBus payload retain through publish and lock-held CAS traversal, and the `Parse.*Option` typed-string ABI with NaN/Inf round-trip.
 - **Collections** — new `RTCollectionsCorrectnessTests` for class-ID distinctness, retain-on-return, and owning value snapshots on `Map.Values` / `FrozenMap.Values` / `IntMap.Values`; extended Bytes (negative signed reads), Queue / Stack (`owns_elements` + finalize-while-owning), Seq (slice/keep/reject/apply ownership), and Convert.* suites.
 - **Codegen** — cross-block SIB and IMUL→LEA fold-liveness MIR cases plus `AsmEmitter` operand-class diagnostics for the rejected `CALL` / `JMP` / `JCC` / `LEA` / `SETcc` / `MOVZX` and non-`RCX` shift-count forms.
+- **Zia alpha hardening** — `42_try_catch_promises`, `43_alpha_hardening`, and `44_language_promises` cover interpreted, optimized `viper run`, and native paths for structured catch bindings, multiple typed catches, bare rethrow, branchy catch/finally, finally-only rethrow, stale catch-message clearing, namespace globals, struct interface dispatch, constrained generics, tuple destructuring, `Result[T]`, weak fields, function references, documented `foreign func`, and cleanup on `return` / `break` / `continue`.
 - **Native assembler / linker** — coverage for `parseSize`, archive symbol-candidate ordering, `CodeSection` identity, ELF symbol-size preservation, COFF reloc-overflow records, AArch64 reloc instruction-class validators, Mach-O `SIGNED_4` bias, PE 32-bit overflow guards, branch-trampoline overflow, and MOVZX REX emission.
 - **Packaging / D3D11 / Window** — PE VERSIONINFO, Windows thumbprint normalisation, ZIP manifest duplicate / uncovered-entry, recursive DLL dependency, and the non-elevated `windows_installer_user_smoke` end-to-end. D3D11 row-byte / destination-span / overflow / target-fallback resolution. Window: physical framebuffer + logical Canvas + resize under a 2× mock display scale.
 
@@ -126,6 +127,6 @@ Demos and docs were updated to track the runtime work above; stale Windows debug
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 69-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 71-commit history since v0.2.5.
 
 <!-- END DRAFT -->

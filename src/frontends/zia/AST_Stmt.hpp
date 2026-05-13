@@ -194,8 +194,17 @@ struct VarStmt : Stmt {
     /// @brief The variable name.
     std::string name;
 
+    /// @brief True when this declaration destructures a two-element tuple.
+    bool isTupleDestructure = false;
+
+    /// @brief The second variable name for tuple destructuring.
+    std::string secondName;
+
     /// @brief The declared type (nullptr = inferred from initializer).
     TypePtr type;
+
+    /// @brief The second declared type for tuple destructuring.
+    TypePtr secondType;
 
     /// @brief The initializer expression (nullptr = default value).
     ExprPtr initializer;
@@ -212,6 +221,19 @@ struct VarStmt : Stmt {
     VarStmt(SourceLoc l, std::string n, TypePtr t, ExprPtr init, bool final)
         : Stmt(StmtKind::Var, l), name(std::move(n)), type(std::move(t)),
           initializer(std::move(init)), isFinal(final) {}
+
+    /// @brief Construct a two-name tuple destructuring declaration.
+    VarStmt(SourceLoc l,
+            std::string first,
+            TypePtr firstType,
+            std::string second,
+            TypePtr secondTypeAnnotation,
+            ExprPtr init,
+            bool final)
+        : Stmt(StmtKind::Var, l), name(std::move(first)), isTupleDestructure(true),
+          secondName(std::move(second)), type(std::move(firstType)),
+          secondType(std::move(secondTypeAnnotation)), initializer(std::move(init)),
+          isFinal(final) {}
 };
 
 /// @brief Conditional if-statement: `if (c) { ... } else { ... }`.
@@ -435,18 +457,31 @@ struct MatchStmt : Stmt {
 /// }
 /// ```
 struct TryStmt : Stmt {
+    struct CatchClause {
+        std::string var;
+        std::string typeName;
+        StmtPtr body;
+        SourceLoc loc;
+    };
+
     /// @brief The try body.
     StmtPtr tryBody;
 
+    /// @brief Ordered catch clauses.
+    std::vector<CatchClause> catches;
+
     /// @brief Catch variable name (empty if no catch clause).
+    /// @deprecated Use catches instead. Kept for older code paths during migration.
     std::string catchVar;
 
     /// @brief Catch error type name for typed catch (empty for catch-all).
     /// @details When non-empty, only errors matching this TrapKind are caught.
     /// Unmatched errors are re-raised to the next handler in the chain.
+    /// @deprecated Use catches instead. Kept for older code paths during migration.
     std::string catchTypeName;
 
     /// @brief Catch body (nullptr if no catch clause).
+    /// @deprecated Use catches instead. Kept for older code paths during migration.
     StmtPtr catchBody;
 
     /// @brief Finally body (nullptr if no finally clause).

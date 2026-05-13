@@ -65,6 +65,12 @@ TEST(ZiaDocs, NoKnownStaleSyntaxOrApiPatterns) {
          {
              "Either `get` or `set` may be omitted for read-only or write-only properties.",
              "Reading a write-only property is an error.",
+             "Tuple destructuring in `var` declarations",
+             "The binding is a `String`",
+             "runtime faults such as divide-by-zero bind an empty string",
+             "tryStmt     ::= \"try\" block [\"catch\"",
+             "throwStmt   ::= \"throw\" expr \";\"",
+             "member      ::= [\"expose\" | \"hide\"] [\"static\" | \"override\"]",
          }},
         {"docs/bible/part2-building-blocks/12-modules.md",
          {

@@ -76,8 +76,9 @@ void Sema::analyzeStmt(Stmt *stmt) {
             if (tryStmt->tryBody)
                 analyzeStmt(tryStmt->tryBody.get());
 
-            // Validate typed catch error type name.
-            if (!tryStmt->catchTypeName.empty()) {
+            auto validateCatchType = [&](const std::string &typeName) {
+                if (typeName.empty())
+                    return;
                 static const char *const validErrorTypes[] = {
                     "DivideByZero",
                     "Overflow",
@@ -95,30 +96,40 @@ void Sema::analyzeStmt(Stmt *stmt) {
                 };
                 bool found = false;
                 for (const auto *name : validErrorTypes) {
-                    if (tryStmt->catchTypeName == name) {
+                    if (typeName == name) {
                         found = true;
                         break;
                     }
                 }
                 if (!found) {
-                    error(tryStmt->loc,
-                          "unknown error type '" + tryStmt->catchTypeName + "' in catch clause");
+                    error(tryStmt->loc, "unknown error type '" + typeName + "' in catch clause");
                 }
-            }
+            };
 
-            if (tryStmt->catchBody) {
-                pushScope(tryStmt->loc);
-                if (!tryStmt->catchVar.empty()) {
+            for (size_t i = 0; i < tryStmt->catches.size(); ++i) {
+                auto &catchClause = tryStmt->catches[i];
+                validateCatchType(catchClause.typeName);
+                if ((catchClause.typeName.empty() || catchClause.typeName == "Error") &&
+                    i + 1 < tryStmt->catches.size()) {
+                    error(catchClause.loc,
+                          "catch-all clause must be the last catch clause in a try statement");
+                }
+
+                pushScope(catchClause.loc.isValid() ? catchClause.loc : tryStmt->loc);
+                if (!catchClause.var.empty()) {
                     Symbol sym;
                     sym.kind = Symbol::Kind::Variable;
-                    sym.name = tryStmt->catchVar;
-                    sym.type = types::string();
-                    defineSymbol(tryStmt->catchVar, sym, tryStmt->loc);
-                    markInitialized(tryStmt->catchVar);
+                    sym.name = catchClause.var;
+                    sym.type = types::error();
+                    sym.isFinal = true;
+                    defineSymbol(catchClause.var, sym, catchClause.loc);
+                    markInitialized(catchClause.var);
                 }
-                analyzeStmt(tryStmt->catchBody.get());
-                popScope(tryStmt->catchBody ? scopeEndForStmt(tryStmt->catchBody.get())
-                                            : tryStmt->loc);
+                catchDepth_++;
+                analyzeStmt(catchClause.body.get());
+                catchDepth_--;
+                popScope(catchClause.body ? scopeEndForStmt(catchClause.body.get())
+                                          : catchClause.loc);
             }
             if (tryStmt->finallyBody)
                 analyzeStmt(tryStmt->finallyBody.get());
@@ -126,8 +137,11 @@ void Sema::analyzeStmt(Stmt *stmt) {
         }
         case StmtKind::Throw: {
             auto *throwStmt = static_cast<ThrowStmt *>(stmt);
-            if (throwStmt->value)
+            if (throwStmt->value) {
                 analyzeExpr(throwStmt->value.get());
+            } else if (catchDepth_ == 0) {
+                error(stmt->loc, "bare throw may only be used inside a catch clause");
+            }
             break;
         }
     }
@@ -144,6 +158,25 @@ static bool stmtTerminates(const Stmt *s) {
         auto *block = static_cast<const BlockStmt *>(s);
         if (!block->statements.empty())
             return stmtTerminates(block->statements.back().get());
+    }
+    if (s->kind == StmtKind::If) {
+        auto *ifStmt = static_cast<const IfStmt *>(s);
+        return ifStmt->elseBranch && stmtTerminates(ifStmt->thenBranch.get()) &&
+               stmtTerminates(ifStmt->elseBranch.get());
+    }
+    if (s->kind == StmtKind::Try) {
+        auto *tryStmt = static_cast<const TryStmt *>(s);
+        if (tryStmt->finallyBody && stmtTerminates(tryStmt->finallyBody.get()))
+            return true;
+        bool tryExits = stmtTerminates(tryStmt->tryBody.get());
+        if (!tryStmt->catches.empty()) {
+            for (const auto &catchClause : tryStmt->catches) {
+                if (!stmtTerminates(catchClause.body.get()))
+                    return false;
+            }
+            return tryExits;
+        }
+        return tryExits;
     }
     return false;
 }
@@ -216,6 +249,58 @@ void Sema::analyzeBlockStmt(BlockStmt *stmt) {
 }
 
 void Sema::analyzeVarStmt(VarStmt *stmt) {
+    if (stmt->isTupleDestructure) {
+        if (!stmt->initializer) {
+            error(stmt->loc, "Tuple destructuring requires an initializer");
+            return;
+        }
+
+        TypeRef initType = analyzeExpr(stmt->initializer.get());
+        if (!initType || initType->kind != TypeKindSem::Tuple) {
+            error(stmt->initializer->loc, "Tuple destructuring requires a tuple initializer");
+            return;
+        }
+
+        const auto &elements = initType->tupleElementTypes();
+        if (elements.size() != 2) {
+            error(stmt->initializer->loc, "Tuple destructuring currently requires exactly two elements");
+            return;
+        }
+
+        TypeRef firstType = stmt->type ? resolveTypeNode(stmt->type.get()) : elements[0];
+        TypeRef secondType =
+            stmt->secondType ? resolveTypeNode(stmt->secondType.get()) : elements[1];
+
+        if (firstType && elements[0] && !firstType->isAssignableFrom(*elements[0]))
+            errorTypeMismatch(stmt->loc, firstType, elements[0]);
+        if (secondType && elements[1] && !secondType->isAssignableFrom(*elements[1]))
+            errorTypeMismatch(stmt->loc, secondType, elements[1]);
+
+        auto defineTupleBinding = [&](const std::string &name, TypeRef type) {
+            if (currentScope_ && currentScope_->parent()) {
+                Symbol *existing = currentScope_->parent()->lookup(name);
+                if (existing && (existing->kind == Symbol::Kind::Variable ||
+                                 existing->kind == Symbol::Kind::Parameter)) {
+                    warn(WarningCode::W004_VariableShadowing,
+                         stmt->loc,
+                         "Variable '" + name + "' shadows a variable in an outer scope");
+                }
+            }
+
+            Symbol sym;
+            sym.kind = Symbol::Kind::Variable;
+            sym.name = name;
+            sym.type = type ? type : types::unknown();
+            sym.isFinal = stmt->isFinal;
+            defineSymbol(name, sym, stmt->loc);
+            markInitialized(name);
+        };
+
+        defineTupleBinding(stmt->name, firstType);
+        defineTupleBinding(stmt->secondName, secondType);
+        return;
+    }
+
     TypeRef declaredType = stmt->type ? resolveTypeNode(stmt->type.get()) : nullptr;
     TypeRef initType = stmt->initializer ? analyzeExpr(stmt->initializer.get()) : nullptr;
     if (initType && initType->kind == TypeKindSem::Unit) {
@@ -660,6 +745,12 @@ void Sema::analyzeMatchStmt(MatchStmt *stmt) {
                       "Non-exhaustive patterns: match on optional type should use a "
                       "wildcard (_) or handle all cases");
             }
+        } else if (scrutineeType && scrutineeType->kind == TypeKindSem::Result) {
+            if (!(coverage.coversResultOk && coverage.coversResultErr)) {
+                error(stmt->loc,
+                      "Non-exhaustive patterns: match on Result should handle Ok and Err or use "
+                      "a wildcard (_)");
+            }
         }
     }
 }
@@ -688,6 +779,21 @@ bool Sema::stmtAlwaysExits(Stmt *stmt) {
                 return false;
             return stmtAlwaysExits(ifStmt->thenBranch.get()) &&
                    stmtAlwaysExits(ifStmt->elseBranch.get());
+        }
+
+        case StmtKind::Try: {
+            auto *tryStmt = static_cast<TryStmt *>(stmt);
+            if (tryStmt->finallyBody && stmtAlwaysExits(tryStmt->finallyBody.get()))
+                return true;
+            bool tryExits = stmtAlwaysExits(tryStmt->tryBody.get());
+            if (!tryStmt->catches.empty()) {
+                for (const auto &catchClause : tryStmt->catches) {
+                    if (!stmtAlwaysExits(catchClause.body.get()))
+                        return false;
+                }
+                return tryExits;
+            }
+            return tryExits;
         }
 
         default:

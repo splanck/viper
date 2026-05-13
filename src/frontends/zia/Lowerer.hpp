@@ -255,6 +255,17 @@ class Lowerer {
     /// @brief Loop context stack for break/continue.
     ::il::frontends::common::LoopContextStack loopStack_;
 
+    /// @brief Active cleanup actions for non-local control flow.
+    /// @details Each entry represents an enclosing try statement. Normal exits
+    ///          from the try body must close the EH frame before running its
+    ///          finally body; exits from catch bodies only run finally.
+    struct CleanupFrame {
+        Stmt *finallyBody{nullptr};
+        bool popEhBeforeFinally{false};
+    };
+
+    std::vector<CleanupFrame> cleanupStack_;
+
     /// @brief Current namespace prefix for qualified names.
     /// @details When inside a namespace block, this contains the namespace path.
     /// Empty when at module level. Example: "MyLib.Internal"
@@ -271,6 +282,18 @@ class Lowerer {
     /// @brief Mutable variable slots: name -> slot pointer.
     /// @details Uses unordered_map for O(1) lookup instead of O(log n).
     std::unordered_map<std::string, Value> slots_;
+
+    struct CatchErrorBinding {
+        std::string kindSlot;
+        std::string codeSlot;
+        std::string lineSlot;
+    };
+
+    /// @brief Catch binding metadata snapshots, keyed by catch variable name.
+    std::unordered_map<std::string, CatchErrorBinding> catchErrorBindings_;
+
+    /// @brief Active catch error snapshots for bare `throw;` rethrow.
+    std::vector<CatchErrorBinding> activeCatchErrors_;
 
     /// @brief External functions used (for declaration).
     /// @details Uses unordered_set for O(1) lookup instead of O(log n).
@@ -651,6 +674,22 @@ class Lowerer {
     /// @brief Lower a throw statement.
     /// @param stmt The throw statement.
     void lowerThrowStmt(ThrowStmt *stmt);
+
+    /// @brief Emit an `eh.pop` instruction for the active protected region.
+    void emitEhPop();
+
+    /// @brief Emit all active cleanup frames for a non-local exit.
+    /// @details Runs innermost-to-outermost cleanups and exposes only the
+    ///          still-outer frames while lowering each finally body, so control
+    ///          transfers inside a finally do not recursively run the same
+    ///          cleanup again.
+    void emitActiveCleanups();
+
+    /// @brief Run catch-body cleanup frames before emitting a throw.
+    /// @details Throws from try bodies are handled by the active EH frame, but
+    ///          throws from catch bodies must explicitly run their `finally`
+    ///          clauses before propagating to an outer handler.
+    void emitCatchBodyCleanupsBeforeThrow();
 
     /// @}
     //=========================================================================

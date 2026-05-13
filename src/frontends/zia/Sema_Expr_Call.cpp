@@ -590,6 +590,27 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
         return true;
     };
 
+    auto shouldDeferDottedCalleeToQualifiedLookup = [&]() -> bool {
+        std::string dottedName;
+        if (!extractDottedName(expr->callee.get(), dottedName))
+            return false;
+
+        auto dotPos = dottedName.find('.');
+        if (dotPos == std::string::npos)
+            return false;
+
+        std::string root = dottedName.substr(0, dotPos);
+        if (root == "Viper" || aliasToNamespace_.find(root) != aliasToNamespace_.end() ||
+            importedSymbols_.find(root) != importedSymbols_.end() ||
+            moduleExports_.find(root) != moduleExports_.end()) {
+            return true;
+        }
+
+        Symbol *rootSym = currentScope_ ? currentScope_->lookup(root) : nullptr;
+        return rootSym && (rootSym->kind == Symbol::Kind::Module ||
+                           rootSym->kind == Symbol::Kind::Type);
+    };
+
     auto refineRuntimeReturnType = [&](const std::string &calleeName, TypeRef fallback) -> TypeRef {
         fallback = normalizeRuntimeSurfaceType(fallback);
 
@@ -687,6 +708,62 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
 
         return fallback;
     };
+
+    if (auto *ident = dynamic_cast<IdentExpr *>(expr->callee.get())) {
+        if (ident->name == "Ok" || ident->name == "Err") {
+            std::vector<TypeRef> argTypes = analyzeArgTypes();
+            if (argTypes.size() != 1) {
+                error(expr->loc,
+                      ident->name + " expects exactly one argument when constructing Result");
+                return types::result(types::unknown());
+            }
+            TypeRef payload = argTypes.empty() || !argTypes[0] ? types::unknown() : argTypes[0];
+            TypeRef success = ident->name == "Ok" ? payload : types::unknown();
+            TypeRef resultType = types::result(success);
+            exprTypes_[expr->callee.get()] = types::function({payload}, resultType);
+            return resultType;
+        }
+    }
+
+    if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get());
+        fieldExpr && !shouldDeferDottedCalleeToQualifiedLookup()) {
+        TypeRef baseType = analyzeExpr(fieldExpr->base.get());
+        if (baseType && baseType->kind == TypeKindSem::Result) {
+            TypeRef successType =
+                !baseType->typeArgs.empty() ? baseType->typeArgs[0] : types::unknown();
+            std::vector<TypeRef> argTypes;
+            argTypes.reserve(expr->args.size());
+            for (auto &arg : expr->args)
+                argTypes.push_back(analyzeExpr(arg.value.get()));
+
+            if (fieldExpr->field == "isOk" || fieldExpr->field == "isErr") {
+                if (!argTypes.empty())
+                    error(expr->loc, fieldExpr->field + "() does not take arguments");
+                return types::boolean();
+            }
+            if (fieldExpr->field == "unwrap") {
+                if (!argTypes.empty())
+                    error(expr->loc, "unwrap() does not take arguments");
+                return successType ? successType : types::unknown();
+            }
+            if (fieldExpr->field == "unwrapOr") {
+                if (argTypes.size() != 1) {
+                    error(expr->loc, "unwrapOr() expects exactly one default value");
+                } else if (successType && argTypes[0] &&
+                           !successType->isAssignableFrom(*argTypes[0])) {
+                    errorTypeMismatch(expr->args[0].value->loc, successType, argTypes[0]);
+                }
+                return successType ? successType : types::unknown();
+            }
+            if (fieldExpr->field == "unwrapErr") {
+                if (!argTypes.empty())
+                    error(expr->loc, "unwrapErr() does not take arguments");
+                return types::string();
+            }
+            error(expr->loc, "Result has no method '" + fieldExpr->field + "'");
+            return types::unknown();
+        }
+    }
 
     // Handle generic function calls: identity[Integer](100)
     // Parser produces: CallExpr(callee=IndexExpr(base=IdentExpr, index=IdentExpr/expr), args)

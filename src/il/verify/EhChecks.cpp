@@ -168,6 +168,7 @@ bool checkNoHandlerCrossing(const EhModel &model,
                             const BasicBlock &bb,
                             const Instr &instr,
                             std::vector<const BasicBlock *> &handlerStack,
+                            bool hasResumeToken,
                             Diagnostics &diags,
                             const std::vector<StackState> &states,
                             int stateIndex) {
@@ -175,6 +176,14 @@ bool checkNoHandlerCrossing(const EhModel &model,
         handlerStack.pop_back();
         return true;
     }
+
+    // Runtime dispatch auto-pops the selected handler before entering the
+    // handler block. Older IL still emits an eh.pop in handler/finally blocks as
+    // a cleanup guard, and the VM treats that as a no-op when a resume token is
+    // active. Keep verifier stack simulation aligned with that runtime contract
+    // while still rejecting ordinary eh.pop underflow.
+    if (hasResumeToken)
+        return true;
 
     emitInvariantFailure(diags,
                          "checkNoHandlerCrossing",
@@ -299,7 +308,7 @@ class EhStackTraversal {
                 handlerStack.push_back(handlerBlock);
             } else if (instr.op == Opcode::EhPop) {
                 if (!checkNoHandlerCrossing(
-                        model, bb, instr, handlerStack, diags, states, stateIndex))
+                        model, bb, instr, handlerStack, hasResumeToken, diags, states, stateIndex))
                     return false;
             } else if (instr.op == Opcode::ResumeSame || instr.op == Opcode::ResumeNext ||
                        instr.op == Opcode::ResumeLabel) {
@@ -537,7 +546,8 @@ class HandlerCoverageTraversal {
         if (!handlerBlock)
             return;
 
-        coverage[handlerBlock].insert(&bb);
+        if (!state.hasResumeToken)
+            coverage[handlerBlock].insert(&bb);
 
         State nextState;
         nextState.block = handlerBlock;
