@@ -3,11 +3,11 @@ module TestSafeThread;
 
 bind Viper.Terminal;
 
-func worker_ok(arg: Ptr) {
+func worker_ok(arg: Any) {
     Say("worker running");
 }
 
-func worker_trap(arg: Ptr) {
+func worker_trap(arg: Any) {
     // Trigger a trap via out-of-bounds access
     var list = new Viper.Collections.List();
     var x = list.Get(999);

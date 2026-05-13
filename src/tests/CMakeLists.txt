@@ -721,7 +721,7 @@ file(GLOB ZIA_AUDIT_TEST_FILES CONFIGURE_DEPENDS "${ZIA_AUDIT_TESTS_DIR}/*.zia")
 foreach (test_file IN LISTS ZIA_AUDIT_TEST_FILES)
     get_filename_component(test_name "${test_file}" NAME_WE)
     add_test(NAME zia_audit_${test_name}
-            COMMAND $<TARGET_FILE:zia> "${test_file}"
+            COMMAND $<TARGET_FILE:zia> "${test_file}" --unsafe-pointers
             WORKING_DIRECTORY "${ZIA_AUDIT_TESTS_DIR}")
     set_tests_properties(zia_audit_${test_name} PROPERTIES
             LABELS "zia;audit"

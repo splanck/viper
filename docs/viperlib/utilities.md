@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-07
+last-verified: 2026-05-13
 ---
 
 # Utilities
@@ -291,20 +291,23 @@ graceful error handling.
 
 | Method                           | Signature                           | Description                               |
 |----------------------------------|-------------------------------------|-------------------------------------------|
-| `TryInt(text, outPtr)`           | `Boolean(String, Ptr)`              | Try to parse integer, return success      |
-| `TryNum(text, outPtr)`           | `Boolean(String, Ptr)`              | Try to parse double, return success       |
-| `TryBool(text, outPtr)`          | `Boolean(String, Ptr)`              | Try to parse boolean, return success      |
+| `TryInt(text, outPtr)`           | `Boolean(String, Ptr)`              | Unsafe interop: parse integer into `outPtr` |
+| `TryNum(text, outPtr)`           | `Boolean(String, Ptr)`              | Unsafe interop: parse double into `outPtr`  |
+| `TryBool(text, outPtr)`          | `Boolean(String, Ptr)`              | Unsafe interop: parse boolean into `outPtr` |
 | `IntOr(text, default)`           | `Integer(String, Integer)`          | Parse integer or return default           |
 | `NumOr(text, default)`           | `Double(String, Double)`            | Parse double or return default            |
 | `BoolOr(text, default)`          | `Boolean(String, Boolean)`          | Parse boolean or return default           |
 | `IsInt(text)`                    | `Boolean(String)`                   | Check if string is a valid integer        |
 | `IsNum(text)`                    | `Boolean(String)`                   | Check if string is a valid number         |
 | `IntRadix(text, radix, default)` | `Integer(String, Integer, Integer)` | Parse integer in given radix with default |
-| `Int64(cstr, outPtr)`            | `Int32(Ptr, Ptr)`                   | Low-level C-string parser with error code |
-| `Double(cstr, outPtr)`           | `Int32(Ptr, Ptr)`                   | Low-level C-string parser with error code |
+| `Int64(cstr, outPtr)`            | `Int32(Ptr, Ptr)`                   | Unsafe interop: low-level C-string parser with error code |
+| `Double(cstr, outPtr)`           | `Int32(Ptr, Ptr)`                   | Unsafe interop: low-level C-string parser with error code |
 
 ### Notes
 
+- The `Try*` and low-level C-string parser forms expose raw output pointers.
+  Safe Zia rejects them unless compiled with `--unsafe-pointers`; use
+  `IntOr`, `NumOr`, `BoolOr`, or the `Viper.Core.Parse.*Option` APIs instead.
 - **Boolean parsing** accepts (case-insensitive):
     - True: `"true"`, `"yes"`, `"1"`, `"on"`
     - False: `"false"`, `"no"`, `"0"`, `"off"`

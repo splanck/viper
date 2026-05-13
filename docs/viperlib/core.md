@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-08
+last-verified: 2026-05-13
 ---
 
 # Core Types
@@ -96,10 +96,10 @@ Boxing helpers for storing primitive values in generic collections. Boxed values
 | `ToF64(box)`        | `Double(Object)`          | Unbox double (traps on wrong type)                     |
 | `ToI1(box)`         | `Boolean(Object)`         | Unbox boolean (traps on wrong type)                    |
 | `ToStr(box)`        | `String(Object)`          | Unbox string as a retained result (traps on wrong type) |
-| `TryToI64(box,out)` | `Boolean(Object, Ptr)`    | Write integer to `out`; return false on wrong type     |
-| `TryToF64(box,out)` | `Boolean(Object, Ptr)`    | Write double to `out`; return false on wrong type      |
-| `TryToI1(box,out)`  | `Boolean(Object, Ptr)`    | Write boolean to `out`; return false on wrong type     |
-| `TryToStr(box,out)` | `Boolean(Object, Ptr)`    | Write retained string to `out`; return false on wrong type |
+| `TryToI64(box,out)` | `Boolean(Object, Ptr)`    | Unsafe interop: write integer to `out`; return false on wrong type |
+| `TryToF64(box,out)` | `Boolean(Object, Ptr)`    | Unsafe interop: write double to `out`; return false on wrong type |
+| `TryToI1(box,out)`  | `Boolean(Object, Ptr)`    | Unsafe interop: write boolean to `out`; return false on wrong type |
+| `TryToStr(box,out)` | `Boolean(Object, Ptr)`    | Unsafe interop: write retained string to `out`; return false on wrong type |
 | `Type(box)`         | `Integer(Object)`         | Return type tag (0=i64, 1=f64, 2=i1, 3=str)           |
 | `EqI64(box,val)`    | `Boolean(Object,Integer)` | Compare boxed value to integer                         |
 | `EqF64(box,val)`    | `Boolean(Object,Double)`  | Compare boxed value to double                          |
@@ -112,7 +112,7 @@ Boxing helpers for storing primitive values in generic collections. Boxed values
 - Type tags: 0 = integer, 1 = double, 2 = boolean, 3 = string.
 - Unboxing with the wrong type traps with a runtime diagnostic.
 - `ToStr` returns an owned/retained string; generated code releases it like other string-returning runtime calls.
-- The `TryTo*` forms do not trap for type mismatch. They return false and clear the output slot to `0`, `0.0`, or null; `TryToStr` returns a retained string on success.
+- The `TryTo*` forms do not trap for type mismatch, but they write through raw output pointers. Safe Zia rejects them unless compiled with `--unsafe-pointers`; use `To*` after checking the box type, or keep values as `Any`/typed runtime objects.
 - Boxed values report `Viper.Core.Box` through `Viper.Core.Object.TypeName` and use value equality/hash semantics for `Object.Equals` and collection lookup.
 - Floating-point box hashes canonicalize `+0.0` and `-0.0` so values that compare equal hash equally.
 - `ValueType(size)` is used by the compiler when boxing structs. Size `0` is valid and creates a managed empty value-type object; negative sizes trap.
@@ -245,27 +245,27 @@ Safe string parsing utilities. Methods return a success flag or a default value 
 
 | Method                      | Signature                           | Description                                                        |
 |-----------------------------|-------------------------------------|--------------------------------------------------------------------|
-| `TryInt(s, outPtr)`         | `Boolean(String, Ptr)`              | Parse `s` as integer; write result to `outPtr`; return success     |
-| `TryNum(s, outPtr)`         | `Boolean(String, Ptr)`              | Parse `s` as double; write result to `outPtr`; return success      |
-| `TryBool(s, outPtr)`        | `Boolean(String, Ptr)`              | Parse `s` as boolean (`"true"`/`"false"`); write to `outPtr`       |
+| `TryInt(s, outPtr)`         | `Boolean(String, Ptr)`              | Unsafe interop: parse integer into `outPtr`; return success        |
+| `TryNum(s, outPtr)`         | `Boolean(String, Ptr)`              | Unsafe interop: parse double into `outPtr`; return success         |
+| `TryBool(s, outPtr)`        | `Boolean(String, Ptr)`              | Unsafe interop: parse boolean into `outPtr`; return success        |
 | `IntOr(s, default)`         | `Integer(String, Integer)`          | Parse `s` as integer; return `default` on failure                  |
 | `NumOr(s, default)`         | `Double(String, Double)`            | Parse `s` as double; return `default` on failure                   |
 | `BoolOr(s, default)`        | `Boolean(String, Boolean)`          | Parse `s` as boolean; return `default` on failure                  |
 | `IsInt(s)`                  | `Boolean(String)`                   | Return true if `s` is a valid integer (no side effects)            |
 | `IsNum(s)`                  | `Boolean(String)`                   | Return true if `s` is a valid number (no side effects)             |
 | `IntRadix(s, radix, default)` | `Integer(String, Integer, Integer)` | Parse `s` in the given radix (2–36); return `default` on failure |
-| `Double(text, outPtr)`      | `ErrorCode(String, Ptr)`            | Parse runtime string as double; writes to raw output pointer       |
-| `Int64(text, outPtr)`       | `ErrorCode(String, Ptr)`            | Parse runtime string as integer; writes to raw output pointer      |
+| `Double(text, outPtr)`      | `ErrorCode(String, Ptr)`            | Unsafe interop: parse runtime string as double into `outPtr`       |
+| `Int64(text, outPtr)`       | `ErrorCode(String, Ptr)`            | Unsafe interop: parse runtime string as integer into `outPtr`      |
 | `DoubleOption(text)`        | `Option<Double>(String)`            | Parse string to floating-point; returns `None` if invalid          |
 | `Int64Option(text)`         | `Option<Integer>(String)`           | Parse string to integer; returns `None` if invalid                 |
 
 ### Notes
 
-- `TryInt`/`TryNum`/`TryBool` write through a raw pointer and are most useful from IL or advanced Zia/BASIC code. For typical use, prefer `IntOr`/`NumOr`/`BoolOr`.
+- `TryInt`/`TryNum`/`TryBool` write through a raw pointer and are unsafe interop APIs. Safe Zia rejects them unless compiled with `--unsafe-pointers`; prefer `IntOr`/`NumOr`/`BoolOr` or the `*Option` variants.
 - Null input is treated as parse failure: `Try*` returns false, `Is*` returns false, and `*Or`/`IntRadix` returns the supplied default.
 - `IntRadix` supports bases 2 through 36 (e.g., 16 for hex, 2 for binary). A leading `+` is accepted; a leading `-` is accepted for radix 10 only.
 - Leading/trailing ASCII whitespace is accepted; non-whitespace trailing characters and embedded NUL bytes are rejected.
-- `Double` and `Int64` are low-level status-code APIs for advanced callers that need an explicit output pointer. They accept runtime strings, reject embedded NUL bytes, and clear the output slot to `0`/`0.0` on failure. Raw C-string helpers remain internal for native interop.
+- `Double` and `Int64` are low-level status-code APIs for callers that explicitly opt in to raw output pointers. Safe Zia rejects them unless compiled with `--unsafe-pointers`. They accept runtime strings, reject embedded NUL bytes, and clear the output slot to `0`/`0.0` on failure. Raw C-string helpers remain internal for native interop.
 - `DoubleOption` and `Int64Option` are the user-facing optional-return variants. Use them when invalid input is expected and should be handled gracefully rather than terminating the program.
 
 ### Parse.DoubleOption and Parse.Int64Option Example
@@ -448,7 +448,7 @@ String manipulation class. In Viper, strings are immutable sequences of characte
 | `Viper.String.FromSingle(value)`               | `String(Double)`           | Convert a double formatted as single-precision (f32) to string   |
 | `Viper.String.FromStr(text)`                   | `String(String)`           | Create a runtime string from text                                |
 | `Viper.String.Join(separator, items)`          | `String(String, Seq)`      | Joins sequence of strings with separator                         |
-| `Viper.String.SplitFields(text, buf, maxCount)` | `Integer(String, Ptr, Integer)` | Split by whitespace into a buffer; returns field count      |
+| `Viper.String.SplitFields(text, buf, maxCount)` | `Integer(String, Ptr, Integer)` | Unsafe interop: split by whitespace into a caller buffer    |
 
 ### Conversion Functions (Viper.Convert)
 
@@ -583,7 +583,7 @@ In-process publish/subscribe message bus for decoupled communication between com
 
 | Method                     | Signature                     | Description                                                     |
 |----------------------------|-------------------------------|-----------------------------------------------------------------|
-| `Callback(fn)`             | `Object(Ptr)`                 | Wrap a native `void (*)(void*)` callback pointer as a managed handler |
+| `Callback(fn)`             | `Object(Ptr)`                 | Unsafe interop: wrap a native `void (*)(void*)` callback pointer as a managed handler |
 | `Subscribe(topic, handler)` | `Integer(String, Object)`    | Subscribe a handler to a topic; returns subscription ID         |
 | `Unsubscribe(id)`          | `Boolean(Integer)`           | Remove a subscription by ID; returns true if found              |
 | `Publish(topic, data)`     | `Integer(String, Object)`    | Publish data to all subscribers of a topic; returns count notified |
@@ -598,8 +598,8 @@ In-process publish/subscribe message bus for decoupled communication between com
 - `Publish` invokes all handlers for the given topic synchronously; returns the number of handlers called
 - Handler functions receive the published data as their argument
 - Publish uses a stable subscriber snapshot; unsubscribes during a handler affect later publishes, not the in-flight one
-- Publish retains managed string/object payloads for the duration of dispatch so one handler cannot free the payload before later handlers run. Raw foreign pointers are still passed through as borrowed values.
-- Subscribe accepts a managed callback returned by `Callback(fn)`. Raw native function pointers must be wrapped first; passing a raw pointer or ordinary heap object traps at subscribe time.
+- Publish retains managed string/object payloads for the duration of dispatch so one handler cannot free the payload before later handlers run. Raw foreign pointers are unsafe borrowed interop values.
+- Subscribe accepts a managed callback returned by `Callback(fn)`. `Callback(fn)` is currently a native-pointer wrapper, not a safe Zia function-reference bridge; safe Zia rejects it unless compiled with `--unsafe-pointers`.
 - Topic matching is byte-length aware; topic names containing embedded NUL bytes remain distinct.
 - `Topics()` returns an owning `Seq` of copied topic strings; the result remains valid after the bus is cleared or destroyed.
 - `Unsubscribe`, `ClearTopic`, and `Clear` remove empty topic records, so a later `Topics()` call reports only active topics.
@@ -632,9 +632,8 @@ DIM bus AS OBJECT = Viper.Core.MessageBus.New()
 PRINT "Total subscriptions: "; bus.TotalSubscriptions  ' Output: 0
 PRINT "Subscribers for 'test': "; bus.SubscriberCount("test")  ' Output: 0
 
-' Subscribe and publish require callbacks created with MessageBus.Callback(fn)
-' which are typically used in larger application architectures.
-' See the Threads and Game documentation for callback patterns.
+' Subscribe and publish require native callbacks created with MessageBus.Callback(fn).
+' Safe Zia code should not use this raw callback API without --unsafe-pointers.
 ```
 
 ---

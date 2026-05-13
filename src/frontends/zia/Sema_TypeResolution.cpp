@@ -47,8 +47,20 @@ TypeRef Sema::resolveNamedType(const std::string &name, SourceLoc useLoc) const 
         return types::voidType();
     if (name == "Error" || name == "error")
         return types::error();
-    if (name == "Ptr" || name == "ptr")
+    if (name == "Any" || name == "any")
+        return types::any();
+    if (name == "Never" || name == "never")
+        return types::never();
+    if (name == "Ptr" || name == "ptr" || name == "Viper.Unsafe.Ptr") {
+        if (!allowUnsafePointers_) {
+            const_cast<Sema *>(this)->error(
+                useLoc,
+                "Raw Ptr is unsafe in ordinary Zia; use typed runtime classes, Any, or compile "
+                "with --unsafe-pointers for low-level interop");
+            return types::unknown();
+        }
         return types::ptr();
+    }
 
     // Built-in collection types (default element type is unknown for non-generic usage)
     if (name == "List")
@@ -274,7 +286,8 @@ TypeRef Sema::resolveTypeNode(const TypeNode *node) {
 void Sema::defineExternFunction(const std::string &name,
                                 TypeRef returnType,
                                 const std::vector<TypeRef> &paramTypes,
-                                const std::vector<std::string> &paramNames) {
+                                const std::vector<std::string> &paramNames,
+                                std::optional<RuntimePointerSafety> pointerSafety) {
     Symbol sym;
     sym.kind = Symbol::Kind::Function;
     sym.name = name;
@@ -287,6 +300,8 @@ void Sema::defineExternFunction(const std::string &name,
                existing && existing->isExtern && existing->kind == Symbol::Kind::Function) {
         sym.paramNames = existing->paramNames;
     }
+    if (pointerSafety)
+        runtimePointerSafety_[name] = std::move(*pointerSafety);
     defineSymbol(name, std::move(sym));
 }
 

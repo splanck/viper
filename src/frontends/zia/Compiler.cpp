@@ -171,6 +171,7 @@ CompilerResult compile(const CompilerInput &input,
     }
 
     Sema sema(result.diagnostics);
+    sema.setAllowUnsafePointers(options.allowUnsafePointers);
     sema.initWarnings(options.warningPolicy);
     sema.addWarningSuppressions(result.fileId, input.source);
 
@@ -316,8 +317,8 @@ CompilerResult compileFile(const std::string &path,
         return result;
     }
     if (options.timeCompile) {
-        const auto elapsed = std::chrono::duration<double, std::milli>(
-            std::chrono::steady_clock::now() - readStart);
+        const auto elapsed =
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - readStart);
         std::cerr << "[time-compile] zia.read " << elapsed.count() << "ms\n";
     }
 

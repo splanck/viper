@@ -22,19 +22,20 @@ A focused hardening cycle on the v0.2.5 surface. No new public namespaces; every
 - **x86-64 + AArch64 backends.** AArch64 protection set covers def operands; x86-64 gains cross-block fold liveness on SIB and IMUL→LEA, compare/branch fold safety across edge copies, fixed-physical-register spill-before-clobber, label/frame/cast/overflow lowering repairs, and AT&T asm emitter operand-class validation matching the binary encoder.
 - **Native assembler + linker.** Bounds-checked encoders / writers / readers, alignment-UB elimination, type-safe `InputSectionKey`, COMMON coalescing, ELF weak-undefined + `PT_TLS`, Mach-O subsections-via-symbols, AArch64 LDR/STR scaled-offset relocs, COFF addends patched into instruction bytes with range checks, PE32+ overflow guards.
 - **Windows / packaging.** Win32 HiDPI normalised (physical-pixel client/resize/mouse paths, `AdjustWindowRectExForDpi`); waitable-timer frame pacing replaces `Sleep` quantization; MSVC embedded debug info via CMP0141; expanded UCRT/Win32 import policy; WSL-aware audit scripts; VAPS installer PE32+ validation, recursive adjacent-DLL discovery, `SHGetKnownFolderPath`/`RegDeleteTreeW`/VERSIONINFO/`InstallDate`, `windows-install-scope` + `windows-sign-thumbprint` + `meta/manifest.sha256` coverage with a non-elevated user-scope smoke ctest.
-- **Frontends + tooling.** Zia `try`/`catch`/`finally` now matches the reference across structured `Error` catch bindings, multiple typed catches, bare rethrow, `throw` as `RuntimeError`, native EH lowering, bytecode `finally` unwinding, and `return` / `break` / `continue` cleanup. Zia also accepts the documented semicolon form of `foreign func`, exposes namespace globals through qualified names, supports struct-to-interface dispatch, tuple destructuring, match statement arms with direct `return`, language-level `Result[T]` constructors/helpers/patterns, weak fields, function references as `Ptr`, child `init` override inference, and constrained generic method calls at instantiation time. Typed `Parse.*(str,ptr)` ABI with `INPUT#` raw-pointer aliases preserved; ViperIDE IntelliSense linkage repaired via `fe_zia` force-load, live-`Lexer` keyword highlighting, scrollBeyondLastLine, BMP toolbar glyphs, untitled-buffer module declarations; GUI widget handles route through centralised typed wrappers with bidirectional submenu ownership and proper code-editor block-comment depth scan.
+- **Frontends + tooling.** Zia `try`/`catch`/`finally` now matches the reference across structured `Error` catch bindings, multiple typed catches, bare rethrow, `throw` as `RuntimeError`, native EH lowering, bytecode `finally` unwinding, and `return` / `break` / `continue` cleanup. Zia also accepts the documented semicolon form of `foreign func`, exposes namespace globals through qualified names, supports struct-to-interface dispatch, tuple destructuring, match statement arms with direct `return`, language-level `Result[T]` constructors/helpers/patterns, weak fields, safe function references with managed runtime bridges, child `init` override inference, and constrained generic method calls at instantiation time. Typed `Parse.*(str,ptr)` ABI with `INPUT#` raw-pointer aliases is preserved behind unsafe interop; ViperIDE IntelliSense linkage repaired via `fe_zia` force-load, live-`Lexer` keyword highlighting, scrollBeyondLastLine, BMP toolbar glyphs, untitled-buffer module declarations; GUI widget handles route through centralised typed wrappers with bidirectional submenu ownership and proper code-editor block-comment depth scan.
+- **Runtime API conformance.** Documented-but-missing public surface across the collections family is now wired through: `Keys` / `Values` on Map, IntMap, OrderedMap, TreeMap, Trie, BiMap, CountMap, MultiMap, LruCache, WeakMap; `Indices` / `Values` on SparseArray; `Map.Clone` and `Map.SetBool` / `GetBool` / `GetBoolOr`; public Seq constructors (`New` / `NewSized` / `WithCapacity`). New `Viper.Crypto.Rand.Bytes(count)` direct byte allocator; `Viper.Machine.Arch` / `PageSize` / `PointerSize` properties; `Math.Random.NextIntRange` registered as an instance method. Sema owner-return inference distinguishes borrowed accessors (`Keys`, `Values`, `Get*`, `Find`, `Fold`) from owning ones so the new entries don't over-retain.
 
 ### By the Numbers
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 71 | +71 |
+| Commits | — | 74 | +74 |
 | Source files | 2,996 | 3,008 | +12 |
-| Production SLOC | 552K | 576K | +24K |
+| Production SLOC | 552K | 578K | +26K |
 | Test SLOC | 228K | 242K | +14K |
-| Demo SLOC | 188K | 188K | 0 |
+| Demo SLOC | 188K | 189K | +1K |
 
-Counts via `scripts/count_sloc.sh` (production 575,910 / test 241,972 / demo 187,989 / source files 3,008).
+Counts via `scripts/count_sloc.sh` (production 577,500 / test 241,997 / demo 188,547 / source files 3,008).
 
 ---
 
@@ -127,6 +128,6 @@ Demos and docs were updated to track the runtime work above; stale Windows debug
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 71-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 74-commit history since v0.2.5.
 
 <!-- END DRAFT -->

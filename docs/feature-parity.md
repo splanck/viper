@@ -32,9 +32,9 @@ This document is a comprehensive feature parity audit between the two Viper fron
 | String | **Full** (`String`) | **Full** (`Str`, `$`) | Same runtime ref-counted strings |
 | Byte | **Full** (`Byte`) | None | Zia only — lowered as i32 |
 | Unit type | **Full** (`Unit`) | None | Zia only — for `Result[Unit]` |
-| Ptr (opaque) | **Full** | **Full** (`Object`) | Both use IL `ptr` |
-| Any (top type) | **Full** | None | Zia only |
-| Never (bottom type) | **Full** | None | Zia only |
+| Raw pointer (`Ptr`) | **Unsafe opt-in** (`--unsafe-pointers`) | **Full** (`Object`) | Zia hides raw pointers by default; IL still uses `ptr` internally |
+| Any (managed top type) | **Full** | None | Zia only; boxes primitives and carries objects/function refs |
+| Never (bottom type) | **Partial** | None | Name resolves; useful for type analysis, but no storable value |
 | Type suffixes (`$`, `%`, `#`) | None | **Full** | BASIC only |
 | Type inference | **Full** | **Partial** (from context) | Zia infers from initializer; BASIC from suffix or AS |
 | Mutable variable | **Full** (`var`) | **Full** (`DIM`) | |
@@ -306,7 +306,7 @@ Features where the IL and/or runtime supports something but a frontend hasn't co
 | Operator confusion warnings | **Full** | W017 (`^` XOR) and W018 (`&` AND) default-enabled |
 | Function overloading | **Full** | Overload resolution by signature/arity |
 | Result construction and patterns | **Full** | `Ok`, `Err`, helpers, and `match` destructuring |
-| Weak fields | **Full** | Non-owning class/interface/Ptr/Any optional reference fields |
+| Weak fields | **Full** | Non-owning class/interface/Any optional reference fields; unsafe `Ptr` only with `--unsafe-pointers` |
 
 ### BASIC hasn't wired up:
 

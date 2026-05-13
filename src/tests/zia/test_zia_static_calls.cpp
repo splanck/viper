@@ -21,10 +21,9 @@ using namespace il::support;
 namespace {
 
 /// Helper: compile a Zia source string and return whether it succeeded.
-bool compileOk(const std::string &source) {
+bool compileOk(const std::string &source, CompilerOptions opts = {}) {
     SourceManager sm;
     CompilerInput input{.source = source, .path = "<test>"};
-    CompilerOptions opts{};
     auto result = compile(input, opts, sm);
     if (!result.succeeded()) {
         std::cerr << "Compilation failed:\n";
@@ -178,6 +177,8 @@ func start() {    var anim = Viper.Graphics.SpriteAnimator.New();
 }
 
 TEST(ZiaStaticCalls, RuntimeObjectCallbackMethod) {
+    CompilerOptions opts{};
+    opts.allowUnsafePointers = true;
     ASSERT_TRUE(compileOk(R"(
 module Test;
 
@@ -190,7 +191,8 @@ func start() {    var list = Viper.Collections.List.New();
     var mapped = opt.Map(keepList);
     var out = Viper.Option.Unwrap(mapped);
 }
-)"));
+)",
+                          opts));
 }
 
 TEST(ZiaStaticCalls, ExplicitReceiverRuntimeMethodsAndProperties) {
@@ -200,7 +202,7 @@ bind Viper.String as Str;
 bind Viper.Collections.Seq as Seq;
 bind Viper.Network;
 
-func worker(arg: Ptr) {}
+func worker(arg: Any) {}
 
 /// @brief Start.
 func start() {
@@ -212,7 +214,7 @@ func start() {
     Viper.Network.Tcp.Close(tcp);
     var thread = Viper.Threads.Thread.StartSafe(&worker, 0);
     var pool = Viper.Threads.Pool.New(1);
-    var submitted = Viper.Threads.Pool.Submit(pool, &worker, 0);
+    var pending = Viper.Threads.Pool.get_Pending(pool);
 }
 )"));
 }
@@ -227,7 +229,7 @@ func start() {
     var thread = Viper.Threads.Thread.StartSafe(&worker, 0);
 }
 
-func worker(arg: Ptr) {}
+func worker(arg: Any) {}
 )"));
 }
 

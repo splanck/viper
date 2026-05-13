@@ -99,9 +99,9 @@ static bool shouldInferOwnerReturnForPlainObject(const il::runtime::RuntimeMetho
 
     std::string_view name(method.name);
     if (name == "Keys" || name == "Values" || name == "Items" || name == "Indices" ||
-        name == "Get" || name == "GetOr" || name == "GetFirst" || name == "Peek" ||
-        name == "Pop" || name == "TryPop" || name == "First" || name == "Last" ||
-        name == "Next" || name == "Find" || name == "FindWhere" || name == "Fold")
+        name == "Get" || name == "GetOr" || name == "GetFirst" || name == "Peek" || name == "Pop" ||
+        name == "TryPop" || name == "First" || name == "Last" || name == "Next" || name == "Find" ||
+        name == "FindWhere" || name == "Fold")
         return false;
 
     if (name.rfind("Get", 0) == 0)
@@ -163,18 +163,27 @@ void Sema::initRuntimeFunctions() {
     const auto &catalog = registry.rawCatalog();
     auto registerOrRefineExtern = [&](const std::string &name,
                                       TypeRef returnType,
-                                      const std::vector<TypeRef> &fallbackParamTypes) {
+                                      const std::vector<TypeRef> &fallbackParamTypes,
+                                      std::optional<RuntimePointerSafety> pointerSafety =
+                                          std::nullopt) {
         if (name.empty())
             return;
 
         if (Symbol *existing = currentScope_->lookupLocal(name);
             existing && existing->isExtern && existing->kind == Symbol::Kind::Function &&
             existing->type && existing->type->kind == TypeKindSem::Function) {
-            defineExternFunction(name, returnType, existing->type->paramTypes(), existing->paramNames);
+            std::optional<RuntimePointerSafety> refinedSafety = std::nullopt;
+            if (runtimePointerSafety_.find(name) == runtimePointerSafety_.end())
+                refinedSafety = std::move(pointerSafety);
+            defineExternFunction(name,
+                                 returnType,
+                                 existing->type->paramTypes(),
+                                 existing->paramNames,
+                                 refinedSafety);
             return;
         }
 
-        defineExternFunction(name, returnType, fallbackParamTypes);
+        defineExternFunction(name, returnType, fallbackParamTypes, {}, std::move(pointerSafety));
     };
 
     //==========================================================================
@@ -221,16 +230,16 @@ void Sema::initRuntimeFunctions() {
             // opaque unless runtime.def provides an explicit obj<Class> or seq<T> return.
             if (sig.returnType == il::runtime::ILScalarType::Object &&
                 sig.elementTypeName.empty() && sig.objectTypeName.empty() && cls.qname &&
-                methodTargetBelongsToClass(m, cls.qname) &&
-                shouldInferOwnerReturnForPlainObject(m))
+                methodTargetBelongsToClass(m, cls.qname) && shouldInferOwnerReturnForPlainObject(m))
                 returnType = types::runtimeClass(cls.qname);
             if (sig.isOptionalReturn)
                 returnType = types::optional(returnType);
             std::vector<TypeRef> paramTypes = toZiaParamTypes(sig);
+            RuntimePointerSafety pointerSafety{sig.rawPointerReturn, sig.rawPointerParams};
 
             // Preserve ABI-shaped explicit receiver signatures from Phase 2 while
             // refining the return type for method-style semantic analysis.
-            registerOrRefineExtern(m.target ? m.target : "", returnType, paramTypes);
+            registerOrRefineExtern(m.target ? m.target : "", returnType, paramTypes, pointerSafety);
         }
 
         //----------------------------------------------------------------------

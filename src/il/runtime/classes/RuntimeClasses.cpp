@@ -279,6 +279,7 @@ namespace {
 
 struct ParsedTypeToken {
     ILScalarType scalar{ILScalarType::Unknown};
+    bool rawPointer{false};
     std::string containerTypeName;
     std::string elementTypeName;
     std::string objectTypeName;
@@ -312,12 +313,16 @@ ParsedTypeToken parseTypeToken(std::string_view tok) {
                 result.containerTypeName = std::string(outerTok);
                 result.elementTypeName = std::move(typeArg);
             } else if (outerTok == "obj" || outerTok == "ptr") {
+                result.rawPointer = outerTok == "ptr";
                 result.objectTypeName = std::move(typeArg);
             }
 
             tok = outerTok;
         }
     }
+
+    if (tok == "ptr")
+        result.rawPointer = true;
 
     if (tok == "seq" || tok == "list")
         result.scalar = ILScalarType::Object;
@@ -400,6 +405,7 @@ ParsedSignature parseRuntimeSignature(std::string_view sig) {
     //     concrete runtime class behind an otherwise opaque pointer return.
     ParsedTypeToken returnToken = parseTypeToken(retTok);
     result.returnType = returnToken.scalar;
+    result.rawPointerReturn = returnToken.rawPointer;
     result.containerTypeName = std::move(returnToken.containerTypeName);
     result.elementTypeName = std::move(returnToken.elementTypeName);
     result.objectTypeName = std::move(returnToken.objectTypeName);
@@ -423,8 +429,11 @@ ParsedSignature parseRuntimeSignature(std::string_view sig) {
             ++pos;
 
         std::string_view tok = args.substr(start, pos - start);
-        if (!tok.empty())
-            result.params.push_back(parseTypeToken(tok).scalar);
+        if (!tok.empty()) {
+            ParsedTypeToken paramToken = parseTypeToken(tok);
+            result.params.push_back(paramToken.scalar);
+            result.rawPointerParams.push_back(paramToken.rawPointer);
+        }
     }
 
     return result;

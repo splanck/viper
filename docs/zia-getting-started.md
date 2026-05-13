@@ -108,8 +108,14 @@ final PI = 3.14159;      // Immutable constant
 | `Boolean` | True or false | `true`, `false` |
 | `Integer` | 64-bit signed integer | `42`, `-17`, `0xFF` |
 | `Number` | 64-bit floating-point | `3.14`, `1e-5` |
-| `Ptr` | Raw pointer / opaque handle (for interop) | — |
+| `Byte` | Byte-sized integer value | `0xFF` |
 | `String` | UTF-8 string | `"hello"`, `"line\n"` |
+| `Any` | Managed top type for boxed values, objects, strings, and function references | `42`, `"text"`, `&handler` |
+| `Never` | Bottom type for code paths that do not produce a value | — |
+
+Ordinary Zia code does not use raw pointers. Low-level interop can opt in with
+`--unsafe-pointers`, but application code should use typed Viper runtime
+classes, collections, `Any`, and callback bridges.
 
 ### String Interpolation
 

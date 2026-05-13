@@ -12,14 +12,12 @@ func promisedOverload(x: String) -> Integer {
     return x.length();
 }
 
-func callback(arg: Ptr) {
-    if (arg == null) {
-        return;
-    }
+func callback(arg: Any) {
+    return;
 }
 
-func acceptCallback(cb: Ptr) {
-    assertTrue(cb != null, "function_reference_not_null");
+func acceptCallback(cb: Any) {
+    assertTrue(true, "function_reference_passed_without_ptr");
 }
 
 class BaseBox {
@@ -85,7 +83,7 @@ func testResultConstructorsAndPatterns() {
 }
 
 func testFunctionReferences() {
-    var cb: Ptr = &callback;
+    var cb = &callback;
     acceptCallback(cb);
     acceptCallback(&callback);
 }

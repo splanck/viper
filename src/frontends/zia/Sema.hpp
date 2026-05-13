@@ -175,6 +175,16 @@ class Sema {
         std::vector<int> variadicSources;
     };
 
+    /// @brief Raw-pointer exposure metadata for runtime extern signatures.
+    /// @details The Zia surface maps both runtime `obj` and low-level `ptr`
+    ///          to IL pointers. This metadata preserves which parameters came
+    ///          from explicit runtime `ptr` tokens so safe Zia can reject raw
+    ///          pointer APIs while still allowing typed runtime objects.
+    struct RuntimePointerSafety {
+        bool rawPointerReturn{false};
+        std::vector<bool> rawPointerParams;
+    };
+
     /// @brief Create a semantic analyzer with the given diagnostic engine.
     /// @param diag Diagnostic engine for error reporting.
     ///
@@ -188,6 +198,16 @@ class Sema {
     /// @details Must be called before analyze() for warning support. If not
     ///          called, warnings use the default policy (conservative set).
     void initWarnings(const WarningPolicy &policy);
+
+    /// @brief Configure whether explicit unsafe pointer usage is allowed.
+    void setAllowUnsafePointers(bool allow) {
+        allowUnsafePointers_ = allow;
+    }
+
+    /// @brief Query whether unsafe pointer syntax and raw runtime APIs are enabled.
+    [[nodiscard]] bool allowUnsafePointers() const {
+        return allowUnsafePointers_;
+    }
 
     /// @brief Scan one source file for inline warning suppressions.
     /// @param fileId SourceManager file identifier for the scanned file.
@@ -839,7 +859,8 @@ class Sema {
     void defineExternFunction(const std::string &name,
                               TypeRef returnType,
                               const std::vector<TypeRef> &paramTypes = {},
-                              const std::vector<std::string> &paramNames = {});
+                              const std::vector<std::string> &paramNames = {},
+                              std::optional<RuntimePointerSafety> pointerSafety = std::nullopt);
 
     /// @}
     //=========================================================================
@@ -1477,6 +1498,9 @@ class Sema {
     /// @brief Whether any errors have occurred.
     bool hasError_{false};
 
+    /// @brief Whether raw Ptr syntax and raw-pointer runtime APIs are enabled.
+    bool allowUnsafePointers_{false};
+
     /// @brief Current module being analyzed.
     ModuleDecl *currentModule_{nullptr};
 
@@ -1618,6 +1642,9 @@ class Sema {
     /// @details Populated for calls to extern functions (runtime library).
     /// Used during lowering to emit extern calls instead of direct calls.
     std::unordered_map<const CallExpr *, std::string> runtimeCallees_;
+
+    /// @brief Raw-pointer metadata keyed by canonical runtime function name.
+    std::unordered_map<std::string, RuntimePointerSafety> runtimePointerSafety_;
 
     /// @brief Map from identifier expressions to zero-arg getter function names.
     /// @details Populated for property-like identifiers imported via bind
@@ -1764,6 +1791,13 @@ class Sema {
                       int *score = nullptr,
                       bool reportErrors = false,
                       bool allowRuntimeObjectCoercion = false) const;
+
+    bool checkRuntimePointerSafety(const std::string &calleeName,
+                                   const std::vector<CallArg> &args,
+                                   const std::vector<CallParamSpec> &params,
+                                   const CallArgBinding &binding,
+                                   size_t skipLeadingParams,
+                                   SourceLoc loc) const;
 
     FunctionDecl *resolveFunctionArgOverload(const std::string &name,
                                              const std::vector<CallArg> &args,

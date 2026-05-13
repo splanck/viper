@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-24
+last-verified: 2026-05-13
 ---
 
 # Zia — Reference
@@ -21,7 +21,7 @@ Complete language reference for Zia. This document describes **syntax**, **types
 - **Exception handling**: `try`/`catch`/`finally` with structured error propagation
 - **Modules**: File-based modules with bind system
 - **C-like syntax**: Familiar braces, semicolons, and operators
-- **Runtime library**: Full access to Viper.* classes
+- **Runtime library**: Typed access to supported Viper.* classes and safe callback bridges
 
 ---
 
@@ -183,8 +183,16 @@ sets, call arguments, or assignments.
 | `Boolean` | True or false | `false` |
 | `Integer` | 64-bit signed integer | `0` |
 | `Number` | 64-bit floating-point | `0.0` |
-| `Ptr` | Raw pointer / opaque handle (for interop) | `null` |
+| `Byte` | 8-bit value lowered through the IL integer path | `0` |
 | `String` | UTF-8 string | `""` |
+| `Any` | Managed top type for boxed values, objects, strings, and function references | `null` |
+| `Never` | Bottom type for code paths that do not produce a value | — |
+| `Unit` | Explicit no-value marker for `Result[Unit]` and `()` | `()` |
+
+`Ptr` is not part of ordinary safe Zia. It is available only when compiling
+with `--unsafe-pointers` or when using the explicit `Viper.Unsafe.Ptr` alias
+under that same flag. Prefer typed runtime classes, collections, `Any`, and
+function references.
 
 ### Optional Types
 
@@ -302,22 +310,24 @@ variableName        // Variable reference
 
 ### Function References
 
-The `&` operator obtains a reference (pointer) to a function, which can be stored in a variable or passed as an argument:
+The `&` operator obtains a typed function reference. It can be inferred into a
+variable, passed through `Any`, or passed directly to runtime APIs that expose a
+safe callback bridge:
 
 ```viper
 bind Viper.Threads;
 
-func handler(arg: Ptr) {
+func handler(arg: Any) {
     // Handle something
 }
 
-func takeCallback(callback: Ptr) {
-    // Use the callback
+func takeCallback(callback: Any) {
+    // Store or forward the callback as a managed value
 }
 
 func start() {
-    var h = &handler;           // Get function reference
-    takeCallback(&handler);     // Pass function reference directly
+    var h = &handler;           // Inferred function-reference type
+    takeCallback(&handler);     // Pass through Any
 
     // With Thread.Start
     var thread = Thread.Start(&handler, 0);
@@ -326,7 +336,7 @@ func start() {
 
 **Notes:**
 - The `&` operator can only be applied to function names, not variables or expressions
-- Function references are stored as `Ptr` type
+- Function references lower to runtime function handles; source code should not use `Ptr`
 - Use with `Viper.Threads.Thread.Start()` to spawn threads with custom entry points
 
 ### Binary Operators
@@ -1123,7 +1133,8 @@ class Player {
 
 Class fields may use familiar `var name: Type;` syntax or the original
 `Type name;` syntax. A `weak` field stores a non-owning reference to a class,
-interface, `Ptr`, `Any`, or optional reference type. Weak fields cannot be
+interface, `Any`, optional reference type, or unsafe `Ptr` when
+`--unsafe-pointers` is enabled. Weak fields cannot be
 `static`, and are loaded like ordinary fields:
 
 ```viper
@@ -1832,7 +1843,8 @@ There are currently no lexer-only reserved keywords documented here. Keywords li
 
 ```text
 Boolean     Integer     List        Map
-Number      Ptr         Set         String
+Number      Byte        Set         String
+Any         Never       Unit        Void
 ```
 
 `Bytes` is a runtime class (`Viper.Collections.Bytes`) rather than a language-level type name and is accessed via the runtime library, not the type-name reserved set above.

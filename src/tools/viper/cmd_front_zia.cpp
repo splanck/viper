@@ -136,6 +136,7 @@ int runFrontZia(const FrontZiaConfig &config,
     CompilerInput compilerInput{source, config.sourcePath};
     CompilerOptions compilerOpts{};
     compilerOpts.boundsChecks = config.shared.boundsChecks;
+    compilerOpts.allowUnsafePointers = config.shared.allowUnsafePointers;
     compilerOpts.dumpTokens = config.shared.dumpTokens;
     compilerOpts.dumpAst = config.shared.dumpAst;
     compilerOpts.dumpSemaAst = config.shared.dumpSemaAst;

@@ -46,9 +46,7 @@ std::string readFile(const fs::path &path) {
     return buffer.str();
 }
 
-void expectMissing(const fs::path &path,
-                   const std::string &content,
-                   const std::string &needle) {
+void expectMissing(const fs::path &path, const std::string &content, const std::string &needle) {
     if (content.find(needle) != std::string::npos) {
         std::cerr << path << " still contains stale doc pattern: " << needle << '\n';
         EXPECT_TRUE(false);
@@ -74,6 +72,9 @@ TEST(ZiaDocs, NoKnownStaleSyntaxOrApiPatterns) {
              "A setter-only property is not currently supported",
              "Zia programs have access to the full Viper Runtime through",
              "The following keyword is recognized by the lexer but has no current semantics",
+             "| `Ptr` | Raw pointer / opaque handle",
+             "Function references are stored as `Ptr` type",
+             "func handler(arg: Ptr)",
          }},
         {"docs/feature-parity.md",
          {
@@ -145,6 +146,19 @@ TEST(ZiaDocs, NoKnownStaleSyntaxOrApiPatterns) {
         {"docs/viperlib/collections/functional.md",
          {
              "Viper.Random.Seed(",
+         }},
+        {"docs/viperlib/core.md",
+         {
+             "advanced Zia/BASIC code",
+             "Wrap a native `void (*)(void*)` callback pointer as a managed handler",
+         }},
+        {"docs/viperlib/threads.md",
+         {
+             "advanced Zia feature",
+             "advanced Zia code",
+             "Callback `arg` values are forwarded as raw pointers",
+             "Pool requires function pointers (`addr_of`)",
+             "Parallel requires function pointers (`addr_of`)",
          }},
     };
 

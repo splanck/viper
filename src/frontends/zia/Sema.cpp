@@ -26,6 +26,7 @@
 
 #include "frontends/zia/Sema.hpp"
 #include "frontends/zia/Types.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cctype>
@@ -47,17 +48,14 @@ int compareLoc(const SourceLoc &a, const SourceLoc &b) {
 }
 
 std::string classifySemanticError(const std::string &message) {
-    auto startsWith = [&](const char *prefix) {
-        return message.rfind(prefix, 0) == 0;
-    };
+    auto startsWith = [&](const char *prefix) { return message.rfind(prefix, 0) == 0; };
     if (startsWith("Undefined identifier"))
         return "V-ZIA-UNDEFINED";
     if (startsWith("Type mismatch"))
         return "V-ZIA-TYPE-MISMATCH";
     if (message.find("out of bounds") != std::string::npos)
         return "V-ZIA-BOUNDS";
-    if (message.find("Index") != std::string::npos ||
-        message.find("index") != std::string::npos)
+    if (message.find("Index") != std::string::npos || message.find("index") != std::string::npos)
         return "V-ZIA-INDEX";
     if (message.find("duplicate") != std::string::npos ||
         message.find("already defined") != std::string::npos)
@@ -65,8 +63,7 @@ std::string classifySemanticError(const std::string &message) {
     if (message.find("optional") != std::string::npos ||
         message.find("Optional") != std::string::npos)
         return "V-ZIA-OPTIONAL";
-    if (message.find("return") != std::string::npos ||
-        message.find("Return") != std::string::npos)
+    if (message.find("return") != std::string::npos || message.find("Return") != std::string::npos)
         return "V-ZIA-RETURN";
     return "V-ZIA-SEMA";
 }
@@ -161,8 +158,80 @@ bool allowsFunctionPointerParam(std::string_view name) {
         lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
 
     return lower == "fn" || lower == "func" || lower == "entry" || lower == "callback" ||
-           lower == "handler" || lower.find("callback") != std::string::npos ||
-           lower.find("handler") != std::string::npos || lower.find("entry") != std::string::npos;
+           lower == "handler" || lower == "pred" || lower == "predicate" || lower == "transform" ||
+           lower == "mapper" || lower == "reducer" || lower == "action" || lower == "compare" ||
+           lower == "comparator" || lower.find("callback") != std::string::npos ||
+           lower.find("handler") != std::string::npos || lower.find("entry") != std::string::npos ||
+           lower.find("predicate") != std::string::npos ||
+           lower.find("transform") != std::string::npos ||
+           lower.find("mapper") != std::string::npos ||
+           lower.find("reducer") != std::string::npos ||
+           lower.find("comparator") != std::string::npos;
+}
+
+bool isCallbackPayloadParam(std::string_view name) {
+    std::string lower;
+    lower.reserve(name.size());
+    for (char ch : name)
+        lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+
+    return lower == "arg" || lower == "ctx" || lower == "context" || lower == "data" ||
+           lower == "user_data" || lower == "userdata" || lower == "payload";
+}
+
+bool runtimeApiAllowsSafeFunctionBridge(std::string_view calleeName) {
+    return calleeName == "Viper.Threads.Thread.Start" ||
+           calleeName == "Viper.Threads.Thread.StartOwned" ||
+           calleeName == "Viper.Threads.Thread.StartSafe" ||
+           calleeName == "Viper.Threads.Thread.StartSafeOwned" ||
+           calleeName == "Viper.Threads.Async.Run" ||
+           calleeName == "Viper.Network.HttpServer.BindHandler" ||
+           calleeName == "Viper.Network.HttpsServer.BindHandler";
+}
+
+std::string saferRuntimePointerAlternative(std::string_view calleeName) {
+    static const std::unordered_map<std::string_view, std::string_view> alternatives = {
+        {"Viper.IO.Dir.List", "Viper.IO.Dir.ListSeq"},
+        {"Viper.IO.Dir.Files", "Viper.IO.Dir.FilesSeq"},
+        {"Viper.IO.Dir.Dirs", "Viper.IO.Dir.DirsSeq"},
+        {"Viper.IO.File.ReadBytes", "Viper.IO.File.ReadAllBytes"},
+        {"Viper.IO.File.ReadLines", "Viper.IO.File.ReadAllLines"},
+        {"Viper.IO.File.WriteBytes", "Viper.IO.File.WriteAllBytes"},
+        {"Viper.IO.File.WriteLines", "Viper.IO.File.WriteAllLines"},
+        {"Viper.Core.Parse.Double", "Viper.Core.Parse.DoubleOption or Viper.Core.Parse.NumOr"},
+        {"Viper.Core.Parse.Int64", "Viper.Core.Parse.Int64Option or Viper.Core.Parse.IntOr"},
+        {"Viper.Core.Parse.TryInt", "Viper.Core.Parse.IntOr or Viper.Core.Parse.Int64Option"},
+        {"Viper.Core.Parse.TryNum", "Viper.Core.Parse.NumOr or Viper.Core.Parse.DoubleOption"},
+        {"Viper.Core.Parse.TryBool", "Viper.Core.Parse.BoolOr"},
+        {"Viper.Parse.Double", "Viper.Parse.DoubleOption or Viper.Parse.NumOr"},
+        {"Viper.Parse.Int64", "Viper.Parse.Int64Option or Viper.Parse.IntOr"},
+        {"Viper.Parse.TryInt", "Viper.Parse.IntOr or Viper.Parse.Int64Option"},
+        {"Viper.Parse.TryNum", "Viper.Parse.NumOr or Viper.Parse.DoubleOption"},
+        {"Viper.Parse.TryBool", "Viper.Parse.BoolOr"},
+        {"Viper.Threads.Pool.Submit",
+         "Viper.Threads.Thread.Start or Viper.Threads.Async.Run for managed Zia callbacks"},
+        {"Viper.Core.MessageBus.Callback",
+         "a typed managed callback API when available, or --unsafe-pointers for native callbacks"},
+        {"Viper.Option.Map",
+         "ordinary Zia optional control flow, or --unsafe-pointers for native callbacks"},
+        {"Viper.Option.AndThen",
+         "ordinary Zia optional control flow, or --unsafe-pointers for native callbacks"},
+        {"Viper.Option.OrElse",
+         "ordinary Zia optional control flow, or --unsafe-pointers for native callbacks"},
+        {"Viper.Option.Filter",
+         "ordinary Zia optional control flow, or --unsafe-pointers for native callbacks"},
+        {"Viper.Result.Map",
+         "ordinary Zia result control flow, or --unsafe-pointers for native callbacks"},
+        {"Viper.Result.MapErr",
+         "ordinary Zia result control flow, or --unsafe-pointers for native callbacks"},
+        {"Viper.Result.AndThen",
+         "ordinary Zia result control flow, or --unsafe-pointers for native callbacks"},
+        {"Viper.Result.OrElse",
+         "ordinary Zia result control flow, or --unsafe-pointers for native callbacks"},
+    };
+
+    auto it = alternatives.find(calleeName);
+    return it == alternatives.end() ? std::string{} : std::string(it->second);
 }
 
 int conversionCost(TypeRef paramType, TypeRef argType, bool allowRuntimeObjectCoercion) {
@@ -243,8 +312,8 @@ Sema::Sema(il::support::DiagnosticEngine &diag) : diag_(diag) {
 }
 
 TypeRef Sema::functionTypeForDecl(const FunctionDecl &decl) const {
-    TypeRef declaredReturn = decl.returnType ? resolveType(decl.returnType.get())
-                                             : types::voidType();
+    TypeRef declaredReturn =
+        decl.returnType ? resolveType(decl.returnType.get()) : types::voidType();
     TypeRef returnType = decl.isAsync ? types::futureOf(declaredReturn) : declaredReturn;
     std::vector<TypeRef> paramTypes;
     paramTypes.reserve(decl.params.size());
@@ -802,6 +871,108 @@ bool Sema::bindCallArgs(const std::vector<CallArg> &args,
 
     if (score)
         *score = totalScore;
+    return true;
+}
+
+bool Sema::checkRuntimePointerSafety(const std::string &calleeName,
+                                     const std::vector<CallArg> &args,
+                                     const std::vector<CallParamSpec> &params,
+                                     const CallArgBinding &binding,
+                                     size_t skipLeadingParams,
+                                     SourceLoc loc) const {
+    if (allowUnsafePointers_)
+        return true;
+
+    RuntimePointerSafety safety;
+    bool hasSafety = false;
+    if (auto it = runtimePointerSafety_.find(calleeName); it != runtimePointerSafety_.end()) {
+        safety = it->second;
+        hasSafety = true;
+    } else {
+        const auto &registry = il::runtime::RuntimeRegistry::instance();
+        if (auto sig = registry.findFunction(calleeName)) {
+            safety.rawPointerReturn = sig->rawPointerReturn;
+            safety.rawPointerParams = sig->rawPointerParams;
+            hasSafety = true;
+        }
+    }
+
+    if (!hasSafety)
+        return true;
+
+    auto diagnosticMessage = [&](std::string detail) {
+        std::string message = "Runtime API '" + calleeName + "' exposes " + detail +
+                              " and is unavailable in safe Zia";
+        if (std::string alternative = saferRuntimePointerAlternative(calleeName);
+            !alternative.empty()) {
+            message += "; use " + alternative;
+        } else {
+            message += "; use a typed runtime class/API or compile with --unsafe-pointers";
+        }
+        return message;
+    };
+
+    if (safety.rawPointerReturn) {
+        const_cast<Sema *>(this)->error(loc, diagnosticMessage("a raw pointer return"));
+        return false;
+    }
+
+    auto isRawParam = [&](size_t exposedParamIndex) -> bool {
+        size_t fullIndex = skipLeadingParams + exposedParamIndex;
+        if (fullIndex < safety.rawPointerParams.size())
+            return static_cast<bool>(safety.rawPointerParams[fullIndex]);
+        if (skipLeadingParams > 0 && exposedParamIndex < safety.rawPointerParams.size())
+            return static_cast<bool>(safety.rawPointerParams[exposedParamIndex]);
+        return false;
+    };
+
+    const bool apiAllowsSafeFunctionBridge = runtimeApiAllowsSafeFunctionBridge(calleeName);
+    std::vector<bool> safeFunctionBridge(params.size(), false);
+    for (size_t i = 0; i < params.size(); ++i) {
+        if (!isRawParam(i))
+            continue;
+
+        int sourceIndex = i < binding.fixedParamSources.size() ? binding.fixedParamSources[i] : -1;
+        TypeRef argType = nullptr;
+        const CallArg *sourceArg = nullptr;
+        SourceLoc errLoc = loc;
+        if (sourceIndex >= 0 && static_cast<size_t>(sourceIndex) < args.size()) {
+            sourceArg = &args[static_cast<size_t>(sourceIndex)];
+            if (sourceArg->value) {
+                errLoc = sourceArg->value->loc;
+                auto typeIt = exprTypes_.find(sourceArg->value.get());
+                if (typeIt != exprTypes_.end())
+                    argType = typeIt->second;
+            }
+        }
+
+        if (apiAllowsSafeFunctionBridge && allowsFunctionPointerParam(params[i].name) &&
+            sourceArg && isFunctionPointerArg(*sourceArg) && argType &&
+            argType->kind == TypeKindSem::Function) {
+            safeFunctionBridge[i] = true;
+            continue;
+        }
+
+        bool pairedWithFunctionBridge = false;
+        if (isCallbackPayloadParam(params[i].name)) {
+            for (size_t prior = 0; prior < i; ++prior) {
+                if (safeFunctionBridge[prior]) {
+                    pairedWithFunctionBridge = true;
+                    break;
+                }
+            }
+        }
+        if (pairedWithFunctionBridge && (!argType || (argType->kind != TypeKindSem::Ptr &&
+                                                      argType->kind != TypeKindSem::Function))) {
+            continue;
+        }
+
+        const std::string paramName = params[i].name.empty() ? "argument " + std::to_string(i + 1)
+                                                             : "parameter '" + params[i].name + "'";
+        const_cast<Sema *>(this)->error(errLoc, diagnosticMessage("raw pointer " + paramName));
+        return false;
+    }
+
     return true;
 }
 
@@ -1709,11 +1880,11 @@ void Sema::warn(WarningCode code, SourceLoc loc, const std::string &message) {
     };
 
     // Determine severity: Warning or Error (-Werror or strict safety diagnostics).
-    auto sev = (warningPolicy_ &&
-                (warningPolicy_->warningsAsErrors ||
-                 (warningPolicy_->strictSafetyWarnings && isSafetyCritical(code))))
-                   ? il::support::Severity::Error
-                   : il::support::Severity::Warning;
+    auto sev =
+        (warningPolicy_ && (warningPolicy_->warningsAsErrors ||
+                            (warningPolicy_->strictSafetyWarnings && isSafetyCritical(code))))
+            ? il::support::Severity::Error
+            : il::support::Severity::Warning;
 
     if (sev == il::support::Severity::Error)
         hasError_ = true;
@@ -1771,7 +1942,8 @@ void Sema::errorWithCode(SourceLoc loc,
             il::support::SourceLoc{loc.file_id, loc.line, loc.column + 1},
         };
     }
-    il::support::Diagnostic diag{il::support::Severity::Error, std::move(message), loc, std::move(code)};
+    il::support::Diagnostic diag{
+        il::support::Severity::Error, std::move(message), loc, std::move(code)};
     diag.range = range;
     diag.notes = std::move(notes);
     diag.stage = "sema";
@@ -1897,8 +2069,10 @@ void Sema::errorUndefined(SourceLoc loc, const std::string &name) {
     if (loc.isValid()) {
         range = il::support::SourceRange{
             loc,
-            il::support::SourceLoc{
-                loc.file_id, loc.line, loc.column + static_cast<uint32_t>(std::max<size_t>(1, name.size()))},
+            il::support::SourceLoc{loc.file_id,
+                                   loc.line,
+                                   loc.column +
+                                       static_cast<uint32_t>(std::max<size_t>(1, name.size()))},
         };
     }
     if (auto suggestion = suggestSymbolName(name)) {

@@ -566,6 +566,10 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
         if (!bindCallArgs(expr->args, specs, expr->loc, calleeName, binding, nullptr, true, true)) {
             return false;
         }
+        if (!checkRuntimePointerSafety(
+                calleeName, expr->args, specs, binding, skipLeadingParams, expr->loc)) {
+            return false;
+        }
         callArgBindings_[expr] = binding;
         return true;
     };
@@ -607,8 +611,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
         }
 
         Symbol *rootSym = currentScope_ ? currentScope_->lookup(root) : nullptr;
-        return rootSym && (rootSym->kind == Symbol::Kind::Module ||
-                           rootSym->kind == Symbol::Kind::Type);
+        return rootSym &&
+               (rootSym->kind == Symbol::Kind::Module || rootSym->kind == Symbol::Kind::Type);
     };
 
     auto refineRuntimeReturnType = [&](const std::string &calleeName, TypeRef fallback) -> TypeRef {
@@ -1383,9 +1387,9 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                 return normalizeRuntimeSurfaceType(sym->type);
             }
             analyzeAllArgs();
-            std::string typeName = baseType->kind == TypeKindSem::List   ? "List"
-                                   : baseType->kind == TypeKindSem::Map  ? "Map"
-                                                                         : "Set";
+            std::string typeName = baseType->kind == TypeKindSem::List  ? "List"
+                                   : baseType->kind == TypeKindSem::Map ? "Map"
+                                                                        : "Set";
             error(expr->loc, typeName + " has no method '" + fieldExpr->field + "'");
             return types::unknown();
         }

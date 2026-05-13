@@ -114,14 +114,14 @@ void printCompileTime(const ilc::SharedCliOptions &shared,
                       std::chrono::steady_clock::time_point start) {
     if (!shared.timeCompile)
         return;
-    const auto elapsed = std::chrono::duration<double, std::milli>(
-        std::chrono::steady_clock::now() - start);
+    const auto elapsed =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start);
     std::cerr << "[time-compile] " << phase << " " << elapsed.count() << "ms\n";
 }
 
 bool shouldEnableParallelFunctionPasses(const ilc::SharedCliOptions &shared) {
-    return !shared.verifyEachPass && !shared.dumpILPasses && !shared.dumpIL &&
-           !shared.dumpILOpt && !shared.dumpAst && !shared.dumpSemaAst && !shared.dumpTokens;
+    return !shared.verifyEachPass && !shared.dumpILPasses && !shared.dumpIL && !shared.dumpILOpt &&
+           !shared.dumpAst && !shared.dumpSemaAst && !shared.dumpTokens;
 }
 
 il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, char **argv) {
@@ -151,11 +151,11 @@ il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, 
             config.optimizeLevelOverride = std::string(arg.substr(1));
         } else if (arg == "--build-profile") {
             if (i + 1 >= argc) {
-                return il::support::Expected<RunBuildConfig>(il::support::Diagnostic{
-                    il::support::Severity::Error,
-                    "--build-profile requires debug, balanced, or release",
-                    {},
-                    {}});
+                return il::support::Expected<RunBuildConfig>(
+                    il::support::Diagnostic{il::support::Severity::Error,
+                                            "--build-profile requires debug, balanced, or release",
+                                            {},
+                                            {}});
             }
             std::string_view value = argv[++i];
             if (!optimizeForBuildProfile(value)) {
@@ -306,6 +306,7 @@ il::support::Expected<CompiledProjectModule> compileZiaProject(const ProjectConf
     opts.boundsChecks = project.boundsChecks;
     opts.overflowChecks = project.overflowChecks;
     opts.nullChecks = project.nullChecks;
+    opts.allowUnsafePointers = shared.allowUnsafePointers;
     opts.dumpTokens = shared.dumpTokens;
     opts.dumpAst = shared.dumpAst;
     opts.dumpSemaAst = shared.dumpSemaAst;
@@ -340,8 +341,7 @@ il::support::Expected<CompiledProjectModule> compileZiaProject(const ProjectConf
     opts.verifyAfterOptimization = optimized || shared.paranoidVerify;
 
     auto result = il::frontends::zia::compileFile(project.entryFile, opts, sm);
-    if (!result.succeeded() ||
-        (shared.showWarnings && result.diagnostics.warningCount() != 0)) {
+    if (!result.succeeded() || (shared.showWarnings && result.diagnostics.warningCount() != 0)) {
         ilc::printDiagnosticEngine(result.diagnostics, std::cerr, &sm, shared.diagnosticFormat);
     }
     if (!result.succeeded()) {
@@ -353,11 +353,12 @@ il::support::Expected<CompiledProjectModule> compileZiaProject(const ProjectConf
 }
 
 /// @brief Compile a BASIC project and return the module.
-il::support::Expected<CompiledProjectModule> compileBasicProject(const ProjectConfig &project,
-                                                                 bool noRuntimeNamespaces,
-                                                                 const ilc::SharedCliOptions &shared,
-                                                                 il::support::SourceManager &sm,
-                                                                 bool optimizeModule = true) {
+il::support::Expected<CompiledProjectModule> compileBasicProject(
+    const ProjectConfig &project,
+    bool noRuntimeNamespaces,
+    const ilc::SharedCliOptions &shared,
+    il::support::SourceManager &sm,
+    bool optimizeModule = true) {
     const auto readStart = std::chrono::steady_clock::now();
     auto source = loadSourceBuffer(project.entryFile, sm);
     if (!source) {
@@ -426,11 +427,11 @@ il::support::Expected<CompiledProjectModule> compileBasicProject(const ProjectCo
 
         if (!reportVerifierDiagnostics(
                 result.module, std::cerr, sm, shared.diagnosticFormat, shared.showWarnings)) {
-            return il::support::Expected<CompiledProjectModule>(il::support::Diagnostic{
-                il::support::Severity::Error,
-                "optimized BASIC IL failed verification",
-                {},
-                "V-OPT-VERIFY"});
+            return il::support::Expected<CompiledProjectModule>(
+                il::support::Diagnostic{il::support::Severity::Error,
+                                        "optimized BASIC IL failed verification",
+                                        {},
+                                        "V-OPT-VERIFY"});
         }
         result.moduleVerified = true;
 
@@ -446,10 +447,11 @@ il::support::Expected<CompiledProjectModule> compileBasicProject(const ProjectCo
 }
 
 /// @brief Compile a mixed-language project (Zia + BASIC) and link the modules.
-il::support::Expected<CompiledProjectModule> compileMixedProject(const ProjectConfig &project,
-                                                                 bool noRuntimeNamespaces,
-                                                                 const ilc::SharedCliOptions &shared,
-                                                                 il::support::SourceManager &sm) {
+il::support::Expected<CompiledProjectModule> compileMixedProject(
+    const ProjectConfig &project,
+    bool noRuntimeNamespaces,
+    const ilc::SharedCliOptions &shared,
+    il::support::SourceManager &sm) {
     // Determine entry language from file extension.
     std::string entryExt;
     if (project.entryFile.size() >= 4)
@@ -591,9 +593,11 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
     if (mode == RunMode::Build) {
         // Verify before emitting
         const auto verifyStart = std::chrono::steady_clock::now();
-        if (!moduleVerified &&
-            !reportVerifierDiagnostics(
-                module, std::cerr, sm, config.shared.diagnosticFormat, config.shared.showWarnings)) {
+        if (!moduleVerified && !reportVerifierDiagnostics(module,
+                                                          std::cerr,
+                                                          sm,
+                                                          config.shared.diagnosticFormat,
+                                                          config.shared.showWarnings)) {
             return 1;
         }
         moduleVerified = true;

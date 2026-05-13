@@ -167,6 +167,14 @@ LowerResult Lowerer::coerceValueToType(Value value,
     bool sourceIsUnknownish = !effectiveSource || effectiveSource->kind == TypeKindSem::Unknown ||
                               effectiveSource->kind == TypeKindSem::Any;
 
+    if (targetType->kind == TypeKindSem::Any) {
+        if (valueIlType.kind == Type::Kind::Ptr)
+            return {value, Type(Type::Kind::Ptr)};
+        TypeRef boxType = (!sourceIsUnknownish && effectiveSource) ? effectiveSource
+                                                                   : reverseMapType(valueIlType);
+        return {emitBoxValue(value, valueIlType, boxType), Type(Type::Kind::Ptr)};
+    }
+
     if (sourceIsUnknownish && valueIlType.kind == Type::Kind::Ptr &&
         targetIlType.kind != Type::Kind::Ptr) {
         return emitUnbox(value, targetIlType);
@@ -471,48 +479,49 @@ Lowerer::Value Lowerer::emitBoxValue(Value val, Type ilType, TypeRef semanticTyp
                 int64_t kind;
                 int8_t retainNow;
             };
+
             std::vector<ManagedValueField> managedFields;
-            std::function<void(TypeRef, size_t)> collectManagedFields =
-                [&](TypeRef type, size_t baseOffset) {
-                    if (!type)
-                        return;
-                    if (type->kind == TypeKindSem::Struct) {
-                        if (const StructTypeInfo *nested = getOrCreateStructTypeInfo(type->name)) {
-                            for (const auto &field : nested->fields)
-                                collectManagedFields(field.type, baseOffset + field.offset);
-                        }
-                        return;
+            std::function<void(TypeRef, size_t)> collectManagedFields = [&](TypeRef type,
+                                                                            size_t baseOffset) {
+                if (!type)
+                    return;
+                if (type->kind == TypeKindSem::Struct) {
+                    if (const StructTypeInfo *nested = getOrCreateStructTypeInfo(type->name)) {
+                        for (const auto &field : nested->fields)
+                            collectManagedFields(field.type, baseOffset + field.offset);
                     }
-                    if (type->kind == TypeKindSem::FixedArray) {
-                        TypeRef elemType = type->elementType();
-                        const size_t elemSize = getSemanticTypeSize(elemType);
-                        for (size_t i = 0; i < type->elementCount; ++i)
-                            collectManagedFields(elemType, baseOffset + i * elemSize);
-                        return;
-                    }
-                    if (type->kind == TypeKindSem::Tuple) {
-                        const auto elements = type->tupleElementTypes();
-                        for (size_t i = 0; i < elements.size(); ++i)
-                            collectManagedFields(elements[i],
-                                                 baseOffset + getTupleElementOffset(type, i));
-                        return;
-                    }
+                    return;
+                }
+                if (type->kind == TypeKindSem::FixedArray) {
+                    TypeRef elemType = type->elementType();
+                    const size_t elemSize = getSemanticTypeSize(elemType);
+                    for (size_t i = 0; i < type->elementCount; ++i)
+                        collectManagedFields(elemType, baseOffset + i * elemSize);
+                    return;
+                }
+                if (type->kind == TypeKindSem::Tuple) {
+                    const auto elements = type->tupleElementTypes();
+                    for (size_t i = 0; i < elements.size(); ++i)
+                        collectManagedFields(elements[i],
+                                             baseOffset + getTupleElementOffset(type, i));
+                    return;
+                }
 
-                    if (isStringType(type)) {
-                        managedFields.push_back(
-                            {baseOffset, /*RT_VALUE_FIELD_STR=*/2, /*retainNow=*/1});
-                        return;
-                    }
+                if (isStringType(type)) {
+                    managedFields.push_back(
+                        {baseOffset, /*RT_VALUE_FIELD_STR=*/2, /*retainNow=*/1});
+                    return;
+                }
 
-                    bool objectLike = needsRelease(type);
-                    if (type->kind == TypeKindSem::Interface ||
-                        type->kind == TypeKindSem::Function || type->kind == TypeKindSem::Any)
-                        objectLike = true;
-                    if (objectLike && mapType(type).kind == Type::Kind::Ptr) {
-                        managedFields.push_back(
-                            {baseOffset, /*RT_VALUE_FIELD_OBJ=*/1, /*retainNow=*/1});
-                    }
-                };
+                bool objectLike = needsRelease(type);
+                if (type->kind == TypeKindSem::Interface || type->kind == TypeKindSem::Function ||
+                    type->kind == TypeKindSem::Any)
+                    objectLike = true;
+                if (objectLike && mapType(type).kind == Type::Kind::Ptr) {
+                    managedFields.push_back(
+                        {baseOffset, /*RT_VALUE_FIELD_OBJ=*/1, /*retainNow=*/1});
+                }
+            };
             collectManagedFields(semanticType, 0);
 
             // Read all field values BEFORE allocating heap memory. The source
@@ -692,8 +701,7 @@ void Lowerer::emitFieldStore(const FieldLayout *field, Value selfPtr, Value val)
     Value fieldAddr = emitGEP(selfPtr, static_cast<int64_t>(field->offset));
     if (field->isWeak) {
         Value oldHandle = emitLoad(fieldAddr, Type(Type::Kind::Ptr));
-        Value newHandle =
-            emitCallRet(Type(Type::Kind::Ptr), "Viper.Memory.WeakRef.New", {val});
+        Value newHandle = emitCallRet(Type(Type::Kind::Ptr), "Viper.Memory.WeakRef.New", {val});
         emitStore(fieldAddr, newHandle, Type(Type::Kind::Ptr));
         emitCall("Viper.Memory.WeakRef.Free", {oldHandle});
         return;

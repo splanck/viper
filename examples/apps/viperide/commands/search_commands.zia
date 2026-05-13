@@ -74,7 +74,7 @@ func handleProjectSearch(shell: app_shell.AppShell,
 
 /// @brief Substring-search every file in `files` for `query`.
 /// @return Match count (rows added to the output panel).
-func searchFiles(shell: app_shell.AppShell, files: Ptr, query: String) -> Integer {
+func searchFiles(shell: app_shell.AppShell, files: Seq[String], query: String) -> Integer {
     var count = 0;
     var fileIdx = 0;
     while fileIdx < Seq.get_Length(files) {

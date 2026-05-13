@@ -95,6 +95,10 @@ SharedOptionParseResult parseSharedOption(int &index,
         opts.boundsChecksSpecified = true;
         return SharedOptionParseResult::Parsed;
     }
+    if (arg == "--unsafe-pointers") {
+        opts.allowUnsafePointers = true;
+        return SharedOptionParseResult::Parsed;
+    }
     if (arg == "--dump-trap") {
         opts.dumpTrap = true;
         return SharedOptionParseResult::Parsed;

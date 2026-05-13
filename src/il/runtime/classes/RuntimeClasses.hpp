@@ -548,7 +548,9 @@ enum class ILScalarType : std::uint8_t {
 struct ParsedSignature {
     ILScalarType returnType{ILScalarType::Unknown};
     bool isOptionalReturn{false};
+    bool rawPointerReturn{false};
     std::vector<ILScalarType> params;
+    std::vector<bool> rawPointerParams;
 
     /// @brief Parameterized outer return type name (e.g. "seq" from "seq<str>").
     /// @details Empty for non-parameterized returns. Frontends can use this to

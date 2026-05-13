@@ -1645,6 +1645,27 @@ static void emitZiaParamNames(std::ostream &out, const std::vector<std::string> 
     out << "}";
 }
 
+static bool ziaTypeTokenIsRawPointer(std::string type) {
+    while (!type.empty() && std::isspace(static_cast<unsigned char>(type.front())))
+        type.erase(type.begin());
+    while (!type.empty() && std::isspace(static_cast<unsigned char>(type.back())))
+        type.pop_back();
+    if (!type.empty() && type.back() == '?')
+        type.pop_back();
+    return stripTypeArgs(type) == "ptr";
+}
+
+static void emitZiaPointerSafety(std::ostream &out, const ParsedSignature &sig) {
+    out << ", RuntimePointerSafety{"
+        << (ziaTypeTokenIsRawPointer(sig.returnType) ? "true" : "false") << ", {";
+    for (size_t i = 0; i < sig.argTypes.size(); ++i) {
+        if (i > 0)
+            out << ", ";
+        out << (ziaTypeTokenIsRawPointer(sig.argTypes[i]) ? "true" : "false");
+    }
+    out << "}}";
+}
+
 static std::vector<std::string> ziaExternParamNamesFor(const RuntimeFunc &func,
                                                        const RuntimePrototype *proto) {
     if (!proto)
@@ -1734,20 +1755,20 @@ static void generateZiaExterns(const ParseState &state,
             ParsedSignature sig = parseSignature(func->signature);
             std::string ziaType = ilTypeToZiaType(sig.returnType, func->canonical);
             out << "defineExternFunction(\"" << func->canonical << "\", " << ziaType;
-            if (!sig.argTypes.empty()) {
-                out << ", {";
-                for (size_t i = 0; i < sig.argTypes.size(); ++i) {
-                    if (i > 0)
-                        out << ", ";
-                    out << ilParamTypeToZiaType(sig.argTypes[i]);
-                }
-                out << "}";
+            out << ", {";
+            for (size_t i = 0; i < sig.argTypes.size(); ++i) {
+                if (i > 0)
+                    out << ", ";
+                out << ilParamTypeToZiaType(sig.argTypes[i]);
             }
+            out << "}";
             if (auto declIt = headerDecls.find(func->c_symbol); declIt != headerDecls.end()) {
                 auto paramNames = ziaExternParamNamesFor(*func, &declIt->second);
-                if (!paramNames.empty())
-                    emitZiaParamNames(out, paramNames);
+                emitZiaParamNames(out, paramNames);
+            } else {
+                emitZiaParamNames(out, {});
             }
+            emitZiaPointerSafety(out, sig);
             out << ");\n";
         }
         out << "}();\n\n";
@@ -1767,20 +1788,20 @@ static void generateZiaExterns(const ParseState &state,
                 ParsedSignature sig = parseSignature(target.signature);
                 std::string ziaType = ilTypeToZiaType(sig.returnType, alias.canonical);
                 out << "defineExternFunction(\"" << alias.canonical << "\", " << ziaType;
-                if (!sig.argTypes.empty()) {
-                    out << ", {";
-                    for (size_t i = 0; i < sig.argTypes.size(); ++i) {
-                        if (i > 0)
-                            out << ", ";
-                        out << ilParamTypeToZiaType(sig.argTypes[i]);
-                    }
-                    out << "}";
+                out << ", {";
+                for (size_t i = 0; i < sig.argTypes.size(); ++i) {
+                    if (i > 0)
+                        out << ", ";
+                    out << ilParamTypeToZiaType(sig.argTypes[i]);
                 }
+                out << "}";
                 if (auto declIt = headerDecls.find(target.c_symbol); declIt != headerDecls.end()) {
                     auto paramNames = ziaExternParamNamesFor(target, &declIt->second);
-                    if (!paramNames.empty())
-                        emitZiaParamNames(out, paramNames);
+                    emitZiaParamNames(out, paramNames);
+                } else {
+                    emitZiaParamNames(out, {});
                 }
+                emitZiaPointerSafety(out, sig);
                 out << ");\n";
             }
         }

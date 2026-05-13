@@ -10,9 +10,9 @@ func testCompatibilityAliases() {
     assertEqStr(Viper.String.FromInt(42), "42", "string_from_int_alias");
     assertTrue(Viper.String.Has(Viper.String.FromDouble(1.5), "1.5"), "string_from_double_alias");
 
-    var seq: Ptr = Viper.Collections.Seq.New(5);
-    assertEqInt(Viper.Collections.Seq.Length(seq), 5, "seq_new_sized_length");
-    Viper.Collections.Seq.Set(seq, 0, "x");
+    var seq = new Viper.Collections.Seq();
+    assertEqInt(seq.Length, 0, "seq_new_length");
+    seq.Push("x");
     assertEqStr(Viper.Collections.Seq.GetStr(seq, 0), "x", "seq_new_sized_set");
 
     var list = Viper.Collections.List.New();

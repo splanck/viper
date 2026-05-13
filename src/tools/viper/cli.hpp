@@ -25,7 +25,7 @@ namespace il::support {
 struct Diagnostic;
 class DiagnosticEngine;
 class SourceManager;
-}
+} // namespace il::support
 
 namespace ilc {
 
@@ -48,6 +48,9 @@ struct SharedCliOptions {
 
     /// @brief Whether the bounds-check setting was explicitly supplied on the CLI.
     bool boundsChecksSpecified = false;
+
+    /// @brief Permit raw pointer syntax and unsafe runtime pointer APIs in Zia.
+    bool allowUnsafePointers = false;
 
     /// @brief Request formatted trap diagnostics on unhandled errors.
     bool dumpTrap = false;
