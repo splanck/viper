@@ -237,6 +237,16 @@ int vgfx3d_d3d11_compute_row_bytes(int32_t width,
     return vgfx3d_d3d11_checked_mul_size((size_t)width, (size_t)bytes_per_pixel, out_bytes);
 }
 
+int vgfx3d_d3d11_compute_float_srv_update_bytes(size_t element_count,
+                                                size_t capacity,
+                                                size_t *out_bytes) {
+    if (out_bytes)
+        *out_bytes = 0;
+    if (!out_bytes || element_count == 0 || element_count > capacity)
+        return 0;
+    return vgfx3d_d3d11_checked_mul_size(element_count, sizeof(float), out_bytes);
+}
+
 int vgfx3d_d3d11_validate_rgba8_destination(int32_t width,
                                             int32_t height,
                                             int32_t stride,

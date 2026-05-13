@@ -132,6 +132,10 @@ int32_t vgfx3d_d3d11_next_capacity(int32_t current_capacity,
 int vgfx3d_d3d11_compute_row_bytes(int32_t width,
                                    int32_t bytes_per_pixel,
                                    size_t *out_bytes);
+/// @brief Compute the byte span for a partial float-SRV buffer update.
+int vgfx3d_d3d11_compute_float_srv_update_bytes(size_t element_count,
+                                                size_t capacity,
+                                                size_t *out_bytes);
 /// @brief Validate an RGBA8 readback destination span.
 int vgfx3d_d3d11_validate_rgba8_destination(int32_t width,
                                             int32_t height,

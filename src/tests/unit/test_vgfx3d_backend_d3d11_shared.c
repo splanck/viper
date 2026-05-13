@@ -321,6 +321,17 @@ static void test_capacity_and_mip_helpers(void) {
                 "Row-byte helper computes tightly packed RGBA16F rows");
     EXPECT_TRUE(vgfx3d_d3d11_compute_row_bytes(0, 4, &bytes) == 0 && bytes == 0u,
                 "Row-byte helper rejects non-positive widths");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_float_srv_update_bytes(3, 8, &bytes) == 1 &&
+                    bytes == 12u,
+                "Float-SRV update helper covers only live elements, not total capacity");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_float_srv_update_bytes(9, 8, &bytes) == 0 &&
+                    bytes == 0u,
+                "Float-SRV update helper rejects spans beyond allocated capacity");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_float_srv_update_bytes(SIZE_MAX / sizeof(float) + 1u,
+                                                            SIZE_MAX,
+                                                            &bytes) == 0 &&
+                    bytes == 0u,
+                "Float-SRV update helper rejects byte-size overflow");
     EXPECT_TRUE(vgfx3d_d3d11_validate_rgba8_destination(3, 2, 12, &bytes) == 1 &&
                     bytes == 24u,
                 "RGBA8 destination validation returns the full writable span");
