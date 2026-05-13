@@ -35,6 +35,7 @@
 
 #include "rt_seq.h"
 #include "rt_box.h"
+#include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_random.h"
@@ -66,6 +67,16 @@ static void seq_release_element(void *val) {
         return;
     if (rt_obj_release_check0(val))
         rt_obj_free(val);
+}
+
+static void rt_seq_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    if (!obj || !visitor)
+        return;
+    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    if (!seq->owns_elements || !seq->items)
+        return;
+    for (int64_t i = 0; i < seq->len; i++)
+        visitor(seq->items[i], ctx);
 }
 
 /// @brief GC finalizer for `Seq[T]` — releases each owned element and the items array.
@@ -173,6 +184,7 @@ void *rt_seq_new(void) {
     seq->owns_elements = 0;
     seq->items = malloc((size_t)SEQ_DEFAULT_CAP * sizeof(void *));
     rt_obj_set_finalizer(seq, rt_seq_finalize);
+    rt_gc_track(seq, rt_seq_traverse);
 
     if (!seq->items) {
         if (rt_obj_release_check0(seq))
@@ -230,6 +242,7 @@ void *rt_seq_with_capacity(int64_t cap) {
     seq->owns_elements = 0;
     seq->items = malloc((size_t)cap * sizeof(void *));
     rt_obj_set_finalizer(seq, rt_seq_finalize);
+    rt_gc_track(seq, rt_seq_traverse);
 
     if (!seq->items) {
         if (rt_obj_release_check0(seq))
@@ -1167,9 +1180,11 @@ void *rt_seq_slice(void *obj, int64_t start, int64_t end) {
 
     int64_t new_len = end - start;
     rt_seq_impl *result = rt_seq_with_capacity(new_len);
+    if (seq->owns_elements)
+        rt_seq_set_owns_elements(result, 1);
 
-    memcpy(result->items, &seq->items[start], (size_t)new_len * sizeof(void *));
-    ((rt_seq_impl *)result)->len = new_len;
+    for (int64_t i = start; i < end; i++)
+        rt_seq_push(result, seq->items[i]);
 
     return result;
 }

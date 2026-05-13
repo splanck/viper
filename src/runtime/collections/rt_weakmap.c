@@ -32,6 +32,7 @@
 
 #include "rt_weakmap.h"
 
+#include "rt_collection_ids.h"
 #include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_object.h"
@@ -175,7 +176,7 @@ static void weakmap_finalizer(void *obj) {
 }
 
 void *rt_weakmap_new(void) {
-    void *obj = rt_obj_new_i64(0, sizeof(rt_weakmap_data));
+    void *obj = rt_obj_new_i64(RT_WEAKMAP_CLASS_ID, sizeof(rt_weakmap_data));
     rt_weakmap_data *data = (rt_weakmap_data *)obj;
     data->entries = wm_alloc_entries(WM_INITIAL_CAP);
     data->capacity = WM_INITIAL_CAP;

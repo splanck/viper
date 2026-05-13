@@ -11,11 +11,13 @@
 //   - LIFO ordering: push and pop both operate on the top.
 //   - Pop and peek on an empty stack trap immediately.
 //   - Internal array doubles capacity on overflow.
-//   - Elements are not individually retained by the stack.
+//   - By default elements are borrowed; runtime conversion helpers can enable
+//     retained-element ownership before inserting values.
 //
 // Ownership/Lifetime:
 //   - Stack objects are heap-allocated opaque pointers.
-//   - Caller is responsible for lifetime management.
+//   - Caller is responsible for stack lifetime management.
+//   - Owned-element stacks retain on push and release on pop/clear/finalize.
 //
 // Error conventions:
 //   - Allocation failure → rt_trap()
@@ -36,6 +38,12 @@ extern "C" {
 /// @brief Create a new empty stack with default capacity.
 /// @return Opaque pointer to the new Stack object.
 void *rt_stack_new(void);
+
+/// @brief Enable or disable retained-element ownership for an empty stack.
+void rt_stack_set_owns_elements(void *obj, int8_t owns);
+
+/// @brief Return whether the stack retains its elements.
+int8_t rt_stack_owns_elements(void *obj);
 
 /// @brief Get the number of elements on the stack.
 /// @param obj Opaque Stack object pointer.

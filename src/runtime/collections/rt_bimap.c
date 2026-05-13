@@ -36,6 +36,7 @@
 
 #include "rt_bimap.h"
 
+#include "rt_collection_ids.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -169,6 +170,8 @@ static void resize_fwd(rt_bimap_impl *bm) {
     if (bm->fwd_capacity > SIZE_MAX / 2)
         return;
     size_t new_cap = bm->fwd_capacity * 2;
+    if (new_cap > SIZE_MAX / sizeof(rt_bm_entry *))
+        rt_trap("BiMap: allocation size overflow");
     rt_bm_entry **new_buckets = (rt_bm_entry **)calloc(new_cap, sizeof(rt_bm_entry *));
     if (!new_buckets)
         return;
@@ -194,6 +197,8 @@ static void resize_inv(rt_bimap_impl *bm) {
     if (bm->inv_capacity > SIZE_MAX / 2)
         return;
     size_t new_cap = bm->inv_capacity * 2;
+    if (new_cap > SIZE_MAX / sizeof(rt_bm_inv_link *))
+        rt_trap("BiMap: allocation size overflow");
     rt_bm_inv_link **new_chains = (rt_bm_inv_link **)calloc(new_cap, sizeof(rt_bm_inv_link *));
     if (!new_chains)
         return;
@@ -219,7 +224,7 @@ static void resize_inv(rt_bimap_impl *bm) {
 /// hash tables so both `_get_by_key` and `_get_by_value` are O(1) average. Useful for two-way
 /// lookups (e.g., name ↔ id) that would otherwise need two parallel maps.
 void *rt_bimap_new(void) {
-    rt_bimap_impl *bm = (rt_bimap_impl *)rt_obj_new_i64(0, sizeof(rt_bimap_impl));
+    rt_bimap_impl *bm = (rt_bimap_impl *)rt_obj_new_i64(RT_BIMAP_CLASS_ID, sizeof(rt_bimap_impl));
     if (!bm)
         rt_trap("BiMap: memory allocation failed");
 
@@ -266,15 +271,21 @@ void rt_bimap_put(void *obj, rt_string key, rt_string value) {
     const char *vdata = get_str_data(value, &vlen);
 
     // Check load factor on forward table
-    if (bm->count * BM_LOAD_FACTOR_DEN >= bm->fwd_capacity * BM_LOAD_FACTOR_NUM)
+    if ((long double)bm->count * (long double)BM_LOAD_FACTOR_DEN >=
+        (long double)bm->fwd_capacity * (long double)BM_LOAD_FACTOR_NUM)
         resize_fwd(bm);
-    if (bm->count * BM_LOAD_FACTOR_DEN >= bm->inv_capacity * BM_LOAD_FACTOR_NUM)
+    if ((long double)bm->count * (long double)BM_LOAD_FACTOR_DEN >=
+        (long double)bm->inv_capacity * (long double)BM_LOAD_FACTOR_NUM)
         resize_inv(bm);
 
     // Create entry
     rt_bm_entry *entry = (rt_bm_entry *)malloc(sizeof(rt_bm_entry));
     if (!entry)
         rt_trap("BiMap: memory allocation failed");
+    if (klen == SIZE_MAX || vlen == SIZE_MAX) {
+        free(entry);
+        rt_trap("BiMap: string allocation overflow");
+    }
     entry->key = (char *)malloc(klen + 1);
     entry->value = (char *)malloc(vlen + 1);
     if (!entry->key || !entry->value) {

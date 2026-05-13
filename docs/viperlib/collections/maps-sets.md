@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-22
+last-verified: 2026-05-12
 ---
 
 # Maps & Sets
@@ -59,6 +59,7 @@ Convenience methods for storing and retrieving typed values without manual boxin
 
 - String keys are compared by full byte length; embedded NUL bytes are part of the key.
 - Values are retained while stored and released when overwritten, removed, cleared, or finalized.
+- `Keys()` and `Values()` return independent snapshots. Key snapshots own copied strings; value snapshots retain the object values so they remain valid after the source map is cleared.
 - Map growth and key-copy allocation paths trap on overflow instead of wrapping.
 
 ### Zia Example
@@ -188,6 +189,7 @@ intersection, difference), and subset/superset queries. Unlike `Bag` which store
 
 - Objects are compared by reference identity, not value equality
 - Order of objects returned by `Items()` is not guaranteed (hash table)
+- `Items()` and `ToSeq()` return retained snapshots; elements remain valid after the source set is cleared.
 - Set operations (`Union`, `Intersect`, `Diff`) return new sets; originals are unchanged
 - Uses object identity hash for O(1) average-case operations
 - Automatically resizes when load factor exceeds threshold
@@ -319,6 +321,7 @@ regardless of updates.
 - String keys are compared by full byte length; embedded NUL bytes are part of the key
 - Passing a null key through the runtime API is treated as the empty string key
 - Values are retained while stored and released when overwritten, removed, cleared, or finalized
+- `Keys()` and `Values()` return independent snapshots. Value snapshots retain object values.
 - Values are boxed objects in Zia (use `Viper.Core.Box`); BASIC auto-boxes string values
 
 ### Zia Example

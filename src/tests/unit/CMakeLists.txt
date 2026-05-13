@@ -1061,6 +1061,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_convert_coll PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_convert_coll test_rt_convert_coll)
 
+    viper_add_test(test_rt_collections_correctness ${VIPER_TESTS_DIR}/runtime/RTCollectionsCorrectnessTests.cpp)
+    target_link_libraries(test_rt_collections_correctness PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_collections_correctness test_rt_collections_correctness)
+
     viper_add_test(test_rt_set ${VIPER_TESTS_DIR}/runtime/RTSetTests.cpp)
     target_link_libraries(test_rt_set PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_set test_rt_set)

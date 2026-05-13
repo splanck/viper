@@ -37,6 +37,7 @@
 
 #include "rt_iter.h"
 
+#include "rt_collection_ids.h"
 #include "rt_deque.h"
 #include "rt_internal.h"
 #include "rt_list.h"
@@ -67,6 +68,11 @@ typedef struct {
     int64_t len; ///< Cached length at creation time
 } rt_iter_impl;
 
+static void release_temp_obj(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 static void iter_finalizer(void *obj) {
     rt_iter_impl *it = (rt_iter_impl *)obj;
     if (it && it->source) {
@@ -81,7 +87,7 @@ static rt_iter_impl *make_iter(void *source, iter_kind kind, int64_t len) {
     rt_iter_impl *it;
     if (!source)
         return NULL;
-    it = (rt_iter_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_iter_impl));
+    it = (rt_iter_impl *)rt_obj_new_i64(RT_ITERATOR_CLASS_ID, (int64_t)sizeof(rt_iter_impl));
     if (!it) {
         rt_trap("Iterator: allocation failed");
         return NULL;
@@ -101,7 +107,7 @@ static rt_iter_impl *make_iter_snapshot(void *snapshot, int64_t len) {
     rt_iter_impl *it;
     if (!snapshot)
         return NULL;
-    it = (rt_iter_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_iter_impl));
+    it = (rt_iter_impl *)rt_obj_new_i64(RT_ITERATOR_CLASS_ID, (int64_t)sizeof(rt_iter_impl));
     if (!it) {
         /* Failed to create iterator — release the snapshot we own. */
         if (rt_obj_release_check0(snapshot))
@@ -157,6 +163,7 @@ void *rt_iter_from_deque(void *deque) {
     snapshot = rt_seq_new();
     if (!snapshot)
         return NULL;
+    rt_seq_set_owns_elements(snapshot, 1);
     for (i = 0; i < len; i++)
         rt_seq_push(snapshot, rt_deque_get(deque, i));
     return make_iter_snapshot(snapshot, len);
@@ -218,6 +225,7 @@ void *rt_iter_from_stack(void *stack) {
         snapshot = rt_seq_with_capacity(len);
     if (!snapshot)
         return NULL;
+    rt_seq_set_owns_elements(snapshot, 1);
     if (len <= 0)
         return make_iter_snapshot(snapshot, 0);
     if ((uint64_t)len > SIZE_MAX / sizeof(void *)) {
@@ -232,6 +240,7 @@ void *rt_iter_from_stack(void *stack) {
         rt_trap("Iterator: allocation failed");
     }
 
+    int8_t stack_owns = rt_stack_owns_elements(stack);
     while (!rt_stack_is_empty(stack) && count < len)
         items[count++] = rt_stack_pop(stack);
 
@@ -239,6 +248,8 @@ void *rt_iter_from_stack(void *stack) {
         void *item = items[i - 1];
         rt_seq_push(snapshot, item);
         rt_stack_push(stack, item);
+        if (stack_owns)
+            release_temp_obj(item);
     }
     free(items);
     return make_iter_snapshot(snapshot, rt_seq_len(snapshot));
@@ -283,6 +294,8 @@ void *rt_iter_next(void *iter) {
         return NULL;
     elem = get_element(it, it->pos);
     it->pos++;
+    if (it->kind != ITER_LIST)
+        rt_obj_retain_maybe(elem);
     return elem;
 }
 
@@ -328,10 +341,11 @@ void *rt_iter_to_seq(void *iter) {
         return rt_seq_new();
     it = (rt_iter_impl *)iter;
     seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     while (it->pos < it->len) {
-        void *elem = get_element(it, it->pos);
+        void *elem = rt_iter_next(iter);
         rt_seq_push(seq, elem);
-        it->pos++;
+        release_temp_obj(elem);
     }
     return seq;
 }

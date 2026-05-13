@@ -34,7 +34,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_orderedmap.h"
+#include "rt_collection_ids.h"
 #include "rt_error.h"
+#include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -169,22 +171,38 @@ static void orderedmap_finalizer(void *obj) {
     m->head = m->tail = NULL;
 }
 
+static void orderedmap_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    if (!obj || !visitor)
+        return;
+    rt_orderedmap_impl *m = (rt_orderedmap_impl *)obj;
+    for (rt_om_entry *e = m->head; e; e = e->next)
+        visitor(e->value, ctx);
+}
+
 // ---------------------------------------------------------------------------
 // Constructor
 // ---------------------------------------------------------------------------
 
 void *rt_orderedmap_new(void) {
-    rt_orderedmap_impl *m = (rt_orderedmap_impl *)rt_obj_new_i64(0, sizeof(rt_orderedmap_impl));
+    rt_orderedmap_impl *m =
+        (rt_orderedmap_impl *)rt_obj_new_i64(RT_ORDEREDMAP_CLASS_ID, sizeof(rt_orderedmap_impl));
+    if (!m)
+        rt_trap_raise_kind(
+            RT_TRAP_KIND_RUNTIME_ERROR, Err_RuntimeError, -1, "OrderedMap: memory allocation failed");
     m->capacity = 16;
     m->count = 0;
     m->buckets = (rt_om_entry **)calloc(16, sizeof(rt_om_entry *));
-    if (!m->buckets)
+    if (!m->buckets) {
+        if (rt_obj_release_check0(m))
+            rt_obj_free(m);
         rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR,
                            Err_RuntimeError,
                            -1,
                            "OrderedMap: memory allocation failed");
+    }
     m->head = m->tail = NULL;
     rt_obj_set_finalizer(m, orderedmap_finalizer);
+    rt_gc_track(m, orderedmap_traverse);
     return m;
 }
 
@@ -374,6 +392,7 @@ void *rt_orderedmap_keys(void *map) {
 
 void *rt_orderedmap_values(void *map) {
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     if (!map)
         return seq;
     rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;

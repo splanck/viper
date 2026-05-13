@@ -37,6 +37,8 @@
 #include "rt_sparsearray.h"
 
 #include "rt_box.h"
+#include "rt_collection_ids.h"
+#include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -87,6 +89,18 @@ static void sa_finalizer(void *obj) {
         }
         free(sa->slots);
         sa->slots = NULL;
+    }
+}
+
+static void sa_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    if (!obj || !visitor)
+        return;
+    rt_sparse_impl *sa = (rt_sparse_impl *)obj;
+    if (!sa->slots)
+        return;
+    for (int64_t i = 0; i < sa->capacity; i++) {
+        if (sa->slots[i].occupied)
+            visitor(sa->slots[i].value, ctx);
     }
 }
 
@@ -178,7 +192,8 @@ static sa_slot *sa_find(rt_sparse_impl *sa, int64_t key) {
 /// capacity grows past 70% load. Suitable when most indices in a logical range are unused
 /// (e.g., entity IDs scattered across a wide ID space).
 void *rt_sparse_new(void) {
-    rt_sparse_impl *sa = (rt_sparse_impl *)rt_obj_new_i64(0, sizeof(rt_sparse_impl));
+    rt_sparse_impl *sa =
+        (rt_sparse_impl *)rt_obj_new_i64(RT_SPARSEARRAY_CLASS_ID, sizeof(rt_sparse_impl));
     if (!sa)
         rt_trap("SparseArray: memory allocation failed");
     sa->count = 0;
@@ -190,6 +205,7 @@ void *rt_sparse_new(void) {
         rt_trap("SparseArray: memory allocation failed");
     }
     rt_obj_set_finalizer(sa, sa_finalizer);
+    rt_gc_track(sa, sa_traverse);
     return (void *)sa;
 }
 
@@ -309,6 +325,7 @@ void *rt_sparse_indices(void *obj) {
 /// @brief Return a Seq of every stored value (parallel to `_indices` order).
 void *rt_sparse_values(void *obj) {
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
     rt_sparse_impl *sa = (rt_sparse_impl *)obj;

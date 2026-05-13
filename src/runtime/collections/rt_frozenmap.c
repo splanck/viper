@@ -36,6 +36,8 @@
 #include "rt_frozenmap.h"
 
 #include "rt_box.h"
+#include "rt_collection_ids.h"
+#include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -136,6 +138,18 @@ static void fm_finalizer(void *obj) {
     }
 }
 
+static void fm_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    if (!obj || !visitor)
+        return;
+    rt_frozenmap_impl *fm = (rt_frozenmap_impl *)obj;
+    if (!fm->slots)
+        return;
+    for (int64_t i = 0; i < fm->capacity; i++) {
+        if (fm->slots[i].key)
+            visitor(fm->slots[i].value, ctx);
+    }
+}
+
 static int64_t fm_next_pow2(int64_t n) {
     int64_t p = 16;
     while (p < n) {
@@ -154,7 +168,8 @@ static rt_frozenmap_impl *fm_alloc(int64_t count) {
         needed = count * 2;
     }
     int64_t cap = fm_next_pow2(needed);
-    rt_frozenmap_impl *fm = (rt_frozenmap_impl *)rt_obj_new_i64(0, sizeof(rt_frozenmap_impl));
+    rt_frozenmap_impl *fm =
+        (rt_frozenmap_impl *)rt_obj_new_i64(RT_FROZENMAP_CLASS_ID, sizeof(rt_frozenmap_impl));
     if (!fm)
         rt_trap("FrozenMap: memory allocation failed");
     fm->count = 0;
@@ -168,6 +183,7 @@ static rt_frozenmap_impl *fm_alloc(int64_t count) {
         rt_trap("rt_frozenmap: memory allocation failed");
     }
     rt_obj_set_finalizer(fm, fm_finalizer);
+    rt_gc_track(fm, fm_traverse);
     return fm;
 }
 
@@ -279,6 +295,7 @@ int8_t rt_frozenmap_has(void *obj, rt_string key) {
 /// @brief Return a Seq of every key in the map (slot-iteration order, not insertion order).
 void *rt_frozenmap_keys(void *obj) {
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
 
@@ -293,6 +310,7 @@ void *rt_frozenmap_keys(void *obj) {
 /// @brief Return a Seq of every value in the map (parallel order to `_keys`).
 void *rt_frozenmap_values(void *obj) {
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
 

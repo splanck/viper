@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-22
+last-verified: 2026-05-12
 ---
 
 # Sequential Collections
@@ -168,6 +168,11 @@ circular buffer for O(1) add and take operations.
 | `ToList()`    | `List()`       | Returns elements as a new List                         |
 | `ToSeq()`     | `Seq()`        | Returns elements as a new Seq                          |
 
+### Notes
+
+- Queue stores borrowed elements when used directly through the C runtime API. Runtime conversion helpers that return queues or snapshots retain the elements they place in the destination.
+- `Pop()` and `TryPop()` transfer an owned element reference to the caller for queues created by conversion helpers.
+
 ### Zia Example
 
 ```rust
@@ -258,6 +263,8 @@ A LIFO (last-in-first-out) collection. Elements are added and removed from the t
 ### Notes
 
 - Stack-to-list, stack-to-seq, and iterator snapshots preserve bottom-to-top order without mutating the source stack.
+- Stack stores borrowed elements when used directly through the C runtime API. Runtime conversion helpers that return stacks or snapshots retain the elements they place in the destination.
+- `Pop()` and `TryPop()` transfer an owned element reference to the caller for stacks created by conversion helpers.
 - Constructor allocation failures trap cleanly instead of returning a partial stack.
 
 ### Zia Example

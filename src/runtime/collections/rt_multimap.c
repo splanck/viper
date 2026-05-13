@@ -36,6 +36,8 @@
 
 #include "rt_multimap.h"
 
+#include "rt_collection_ids.h"
+#include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -144,11 +146,24 @@ static void rt_multimap_finalize(void *obj) {
     mm->capacity = 0;
 }
 
+static void rt_multimap_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    if (!obj || !visitor)
+        return;
+    rt_multimap_impl *mm = (rt_multimap_impl *)obj;
+    if (!mm->buckets || mm->capacity == 0)
+        return;
+    for (size_t i = 0; i < mm->capacity; ++i) {
+        for (rt_mm_entry *entry = mm->buckets[i]; entry; entry = entry->next)
+            visitor(entry->values, ctx);
+    }
+}
+
 /// @brief Construct an empty multimap (string → list-of-values). Internal storage is a chained
 /// hash table where each bucket holds a Seq of values per key. Useful when one key maps to
 /// many values (URL params, headers, multiset, etc.).
 void *rt_multimap_new(void) {
-    rt_multimap_impl *mm = (rt_multimap_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_multimap_impl));
+    rt_multimap_impl *mm =
+        (rt_multimap_impl *)rt_obj_new_i64(RT_MULTIMAP_CLASS_ID, (int64_t)sizeof(rt_multimap_impl));
     if (!mm)
         rt_trap("MultiMap: memory allocation failed");
     mm->vptr = NULL;
@@ -162,6 +177,7 @@ void *rt_multimap_new(void) {
     mm->key_count = 0;
     mm->total_count = 0;
     rt_obj_set_finalizer(mm, rt_multimap_finalize);
+    rt_gc_track(mm, rt_multimap_traverse);
     return mm;
 }
 
@@ -263,8 +279,10 @@ void *rt_multimap_get(void *obj, rt_string key) {
     void *result = rt_seq_new();
     rt_seq_set_owns_elements(result, 1);
     int64_t len = rt_seq_len(entry->values);
-    for (int64_t i = 0; i < len; ++i)
-        rt_seq_push(result, rt_seq_get(entry->values, i));
+    for (int64_t i = 0; i < len; ++i) {
+        void *value = rt_seq_get(entry->values, i);
+        rt_seq_push(result, value);
+    }
     return result;
 }
 

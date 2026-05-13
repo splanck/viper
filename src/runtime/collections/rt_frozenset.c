@@ -35,6 +35,7 @@
 #include "rt_frozenset.h"
 
 #include "rt_box.h"
+#include "rt_collection_ids.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -146,7 +147,8 @@ static rt_frozenset_impl *fs_alloc(int64_t count) {
         needed = count * 2;
     }
     int64_t cap = fs_next_pow2(needed);
-    rt_frozenset_impl *fs = (rt_frozenset_impl *)rt_obj_new_i64(0, sizeof(rt_frozenset_impl));
+    rt_frozenset_impl *fs =
+        (rt_frozenset_impl *)rt_obj_new_i64(RT_FROZENSET_CLASS_ID, sizeof(rt_frozenset_impl));
     if (!fs)
         rt_trap("FrozenSet: memory allocation failed");
     fs->count = 0;
@@ -250,6 +252,7 @@ int8_t rt_frozenset_has(void *obj, rt_string elem) {
 /// @brief Return a Seq of every element in the set (slot-iteration order, not insertion order).
 void *rt_frozenset_items(void *obj) {
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
 

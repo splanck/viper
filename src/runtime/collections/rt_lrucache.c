@@ -35,6 +35,8 @@
 
 #include "rt_lrucache.h"
 
+#include "rt_collection_ids.h"
+#include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -258,6 +260,14 @@ static void rt_lrucache_finalize(void *obj) {
     cache->bucket_count = 0;
 }
 
+static void rt_lrucache_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    if (!obj || !visitor)
+        return;
+    rt_lrucache_impl *cache = (rt_lrucache_impl *)obj;
+    for (rt_lru_node *node = cache->head; node; node = node->next)
+        visitor(node->value, ctx);
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -267,7 +277,7 @@ void *rt_lrucache_new(int64_t capacity) {
         capacity = 1; // Minimum capacity of 1
 
     rt_lrucache_impl *cache =
-        (rt_lrucache_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_lrucache_impl));
+        (rt_lrucache_impl *)rt_obj_new_i64(RT_LRUCACHE_CLASS_ID, (int64_t)sizeof(rt_lrucache_impl));
     if (!cache)
         rt_trap("LRUCache: memory allocation failed");
 
@@ -297,6 +307,7 @@ void *rt_lrucache_new(int64_t capacity) {
     cache->head = NULL;
     cache->tail = NULL;
     rt_obj_set_finalizer(cache, rt_lrucache_finalize);
+    rt_gc_track(cache, rt_lrucache_traverse);
     return cache;
 }
 
@@ -533,6 +544,7 @@ void *rt_lrucache_keys(void *obj) {
 /// next eviction — copy or retain if you need to outlive the cache.
 void *rt_lrucache_values(void *obj) {
     void *result = rt_seq_new();
+    rt_seq_set_owns_elements(result, 1);
     if (!obj)
         return result;
 

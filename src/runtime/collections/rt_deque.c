@@ -32,6 +32,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_deque.h"
+#include "rt_collection_ids.h"
+#include "rt_gc.h"
 #include "rt_object.h"
 
 #include <stdio.h>
@@ -118,11 +120,23 @@ static void deque_finalize(void *obj) {
     }
 }
 
+static void deque_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    if (!obj || !visitor)
+        return;
+    Deque *d = (Deque *)obj;
+    if (!d->data || d->cap <= 0)
+        return;
+    for (int64_t i = 0; i < d->len; i++) {
+        int64_t idx = (d->front + i) % d->cap;
+        visitor(d->data[idx], ctx);
+    }
+}
+
 void *rt_deque_with_capacity(int64_t cap) {
     if (cap < 1)
         cap = 1;
 
-    Deque *d = (Deque *)rt_obj_new_i64(0, (int64_t)sizeof(Deque));
+    Deque *d = (Deque *)rt_obj_new_i64(RT_DEQUE_CLASS_ID, (int64_t)sizeof(Deque));
     if (!d)
         trap_with_message("Deque: memory allocation failed");
 
@@ -139,6 +153,7 @@ void *rt_deque_with_capacity(int64_t cap) {
     d->len = 0;
     d->front = 0;
     rt_obj_set_finalizer(d, deque_finalize);
+    rt_gc_track(d, deque_traverse);
     return d;
 }
 

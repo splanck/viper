@@ -35,6 +35,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_defaultmap.h"
+#include "rt_collection_ids.h"
+#include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -140,7 +142,11 @@ static int dm_should_resize(rt_defaultmap_impl *m) {
 // ---------------------------------------------------------------------------
 
 static void defaultmap_finalizer(void *obj) {
+    if (!obj)
+        return;
     rt_defaultmap_impl *m = (rt_defaultmap_impl *)obj;
+    if (!m->buckets)
+        return;
     for (int64_t i = 0; i < m->capacity; i++) {
         rt_dm_entry *e = m->buckets[i];
         while (e) {
@@ -154,6 +160,22 @@ static void defaultmap_finalizer(void *obj) {
     free(m->buckets);
     dm_release_value(m->default_value);
     m->buckets = NULL;
+    m->capacity = 0;
+    m->count = 0;
+    m->default_value = NULL;
+}
+
+static void defaultmap_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    if (!obj || !visitor)
+        return;
+    rt_defaultmap_impl *m = (rt_defaultmap_impl *)obj;
+    visitor(m->default_value, ctx);
+    if (!m->buckets)
+        return;
+    for (int64_t i = 0; i < m->capacity; i++) {
+        for (rt_dm_entry *e = m->buckets[i]; e; e = e->next)
+            visitor(e->value, ctx);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -161,18 +183,24 @@ static void defaultmap_finalizer(void *obj) {
 // ---------------------------------------------------------------------------
 
 void *rt_defaultmap_new(void *default_value) {
-    rt_defaultmap_impl *m = (rt_defaultmap_impl *)rt_obj_new_i64(0, sizeof(rt_defaultmap_impl));
+    rt_defaultmap_impl *m =
+        (rt_defaultmap_impl *)rt_obj_new_i64(RT_DEFAULTMAP_CLASS_ID, sizeof(rt_defaultmap_impl));
+    if (!m)
+        rt_trap("DefaultMap: memory allocation failed");
     m->capacity = 16;
     m->count = 0;
+    m->default_value = NULL;
     m->buckets = (rt_dm_entry **)calloc(16, sizeof(rt_dm_entry *));
     if (!m->buckets) {
+        if (rt_obj_release_check0(m))
+            rt_obj_free(m);
         rt_trap("DefaultMap: memory allocation failed");
-        return NULL;
     }
     m->default_value = default_value;
     if (default_value)
         rt_obj_retain_maybe(default_value);
     rt_obj_set_finalizer(m, defaultmap_finalizer);
+    rt_gc_track(m, defaultmap_traverse);
     return m;
 }
 
@@ -252,8 +280,10 @@ void rt_defaultmap_set(void *map, rt_string key, void *value) {
         rt_trap("rt_defaultmap: key allocation overflow");
     }
     ne->key = (char *)malloc(klen + 1);
-    if (!ne->key)
+    if (!ne->key) {
+        free(ne);
         rt_trap("rt_defaultmap: memory allocation failed");
+    }
     memcpy(ne->key, kstr, klen);
     ne->key[klen] = '\0';
     ne->key_len = klen;

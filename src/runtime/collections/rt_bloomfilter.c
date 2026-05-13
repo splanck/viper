@@ -32,6 +32,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_bloomfilter.h"
+#include "rt_collection_ids.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_trap.h"
@@ -117,7 +118,8 @@ void *rt_bloomfilter_new(int64_t expected_items, double false_positive_rate) {
     if ((uint64_t)byte_count > SIZE_MAX)
         rt_trap("BloomFilter: allocation size overflow");
 
-    rt_bloomfilter_impl *bf = (rt_bloomfilter_impl *)rt_obj_new_i64(0, sizeof(rt_bloomfilter_impl));
+    rt_bloomfilter_impl *bf =
+        (rt_bloomfilter_impl *)rt_obj_new_i64(RT_BLOOMFILTER_CLASS_ID, sizeof(rt_bloomfilter_impl));
     if (!bf)
         rt_trap("BloomFilter: memory allocation failed");
     bf->bits = (uint8_t *)calloc((size_t)byte_count, 1);

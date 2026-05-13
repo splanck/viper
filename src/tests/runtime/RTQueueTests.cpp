@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_queue.h"
 
 #include <cassert>
@@ -21,6 +22,7 @@ namespace {
 static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
+static int g_finalizer_calls = 0;
 } // namespace
 
 extern "C" void vm_trap(const char *msg) {
@@ -40,6 +42,21 @@ extern "C" void vm_trap(const char *msg) {
         }                                                                                          \
         g_trap_expected = false;                                                                   \
     } while (0)
+
+static void count_finalizer(void *) {
+    ++g_finalizer_calls;
+}
+
+static void *new_obj() {
+    void *p = rt_obj_new_i64(0, 8);
+    assert(p != nullptr);
+    return p;
+}
+
+static void release_obj(void *p) {
+    if (p && rt_obj_release_check0(p))
+        rt_obj_free(p);
+}
 
 static void test_new_and_basic_properties() {
     void *queue = rt_queue_new();
@@ -300,6 +317,73 @@ static void test_interleaved_operations() {
     assert(rt_queue_is_empty(queue) == 1);
 }
 
+static void test_owns_elements_mode_releases_on_clear() {
+    void *queue = rt_queue_new();
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_queue_set_owns_elements(queue, 1);
+    assert(rt_queue_owns_elements(queue) == 1);
+    rt_queue_push(queue, value);
+    release_obj(value); // Queue now owns the only reference.
+    assert(g_finalizer_calls == 0);
+
+    rt_queue_clear(queue);
+    assert(g_finalizer_calls == 1);
+    release_obj(queue);
+}
+
+static void test_owns_elements_pop_transfers_reference() {
+    void *queue = rt_queue_new();
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_queue_set_owns_elements(queue, 1);
+    rt_queue_push(queue, value);
+    release_obj(value); // Queue now owns the only reference.
+
+    void *popped = rt_queue_pop(queue);
+    assert(popped == value);
+    assert(g_finalizer_calls == 0);
+    release_obj(popped);
+    assert(g_finalizer_calls == 1);
+    release_obj(queue);
+}
+
+static void test_owns_elements_clone_retains_values() {
+    void *queue = rt_queue_new();
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_queue_set_owns_elements(queue, 1);
+    rt_queue_push(queue, value);
+    release_obj(value); // Queue now owns the only reference.
+
+    void *clone = rt_queue_clone(queue);
+    assert(rt_queue_owns_elements(clone) == 1);
+
+    rt_queue_clear(queue);
+    assert(g_finalizer_calls == 0);
+    rt_queue_clear(clone);
+    assert(g_finalizer_calls == 1);
+    release_obj(clone);
+    release_obj(queue);
+}
+
+static void test_owns_elements_mode_change_non_empty_traps() {
+    void *queue = rt_queue_new();
+    int value = 42;
+    rt_queue_push(queue, &value);
+    EXPECT_TRAP(rt_queue_set_owns_elements(queue, 1));
+    release_obj(queue);
+}
+
 int main() {
     test_new_and_basic_properties();
     test_add_increases_length();
@@ -316,6 +400,10 @@ int main() {
     test_null_queue_traps();
     test_add_null_value();
     test_interleaved_operations();
+    test_owns_elements_mode_releases_on_clear();
+    test_owns_elements_pop_transfers_reference();
+    test_owns_elements_clone_retains_values();
+    test_owns_elements_mode_change_non_empty_traps();
 
     return 0;
 }

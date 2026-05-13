@@ -35,6 +35,8 @@
 #include "rt_intmap.h"
 
 #include "rt_box.h"
+#include "rt_collection_ids.h"
+#include "rt_gc.h"
 #include "rt_hash_util.h"
 #include "rt_internal.h"
 #include "rt_object.h"
@@ -87,6 +89,18 @@ static void free_entry(rt_intmap_entry *entry) {
     }
 }
 
+static void rt_intmap_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    if (!obj || !visitor)
+        return;
+    rt_intmap_impl *map = (rt_intmap_impl *)obj;
+    if (!map->buckets || map->capacity == 0)
+        return;
+    for (size_t i = 0; i < map->capacity; ++i) {
+        for (rt_intmap_entry *entry = map->buckets[i]; entry; entry = entry->next)
+            visitor(entry->value, ctx);
+    }
+}
+
 /// @brief Finalizer callback invoked when an IntMap is garbage collected.
 /// @param obj Pointer to the IntMap object being finalized (NULL is a no-op).
 static void rt_intmap_finalize(void *obj) {
@@ -106,6 +120,8 @@ static void rt_intmap_finalize(void *obj) {
 /// @param map IntMap to resize.
 /// @param new_capacity New number of buckets.
 static void map_resize(rt_intmap_impl *map, size_t new_capacity) {
+    if (new_capacity > SIZE_MAX / sizeof(rt_intmap_entry *))
+        rt_trap("IntMap: allocation size overflow");
     rt_intmap_entry **new_buckets =
         (rt_intmap_entry **)calloc(new_capacity, sizeof(rt_intmap_entry *));
     if (!new_buckets)
@@ -133,7 +149,8 @@ static void map_resize(rt_intmap_impl *map, size_t new_capacity) {
 /// @param map IntMap to potentially resize.
 static void maybe_resize(rt_intmap_impl *map) {
     // Resize when count * DEN > capacity * NUM (i.e., load factor > NUM/DEN)
-    if (map->count * MAP_LOAD_FACTOR_DEN > map->capacity * MAP_LOAD_FACTOR_NUM) {
+    if ((long double)map->count * (long double)MAP_LOAD_FACTOR_DEN >
+        (long double)map->capacity * (long double)MAP_LOAD_FACTOR_NUM) {
         if (map->capacity > SIZE_MAX / 2)
             return;
         map_resize(map, map->capacity * 2);
@@ -143,22 +160,22 @@ static void maybe_resize(rt_intmap_impl *map) {
 /// @brief Create a new empty IntMap.
 /// @return Pointer to the newly created IntMap object, or NULL on failure.
 void *rt_intmap_new(void) {
-    rt_intmap_impl *map = (rt_intmap_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_intmap_impl));
+    rt_intmap_impl *map =
+        (rt_intmap_impl *)rt_obj_new_i64(RT_INTMAP_CLASS_ID, (int64_t)sizeof(rt_intmap_impl));
     if (!map)
         return NULL;
 
     map->vptr = NULL;
     map->buckets = (rt_intmap_entry **)calloc(MAP_INITIAL_CAPACITY, sizeof(rt_intmap_entry *));
     if (!map->buckets) {
-        // Can't trap here, just return partially initialized
-        map->capacity = 0;
-        map->count = 0;
-        rt_obj_set_finalizer(map, rt_intmap_finalize);
-        return map;
+        if (rt_obj_release_check0(map))
+            rt_obj_free(map);
+        rt_trap("IntMap: memory allocation failed");
     }
     map->capacity = MAP_INITIAL_CAPACITY;
     map->count = 0;
     rt_obj_set_finalizer(map, rt_intmap_finalize);
+    rt_gc_track(map, rt_intmap_traverse);
     return map;
 }
 
@@ -361,6 +378,7 @@ void *rt_intmap_keys(void *obj) {
 /// @return New Seq containing all values.
 void *rt_intmap_values(void *obj) {
     void *result = rt_seq_new();
+    rt_seq_set_owns_elements(result, 1);
     if (!obj)
         return result;
 

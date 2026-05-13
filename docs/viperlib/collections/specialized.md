@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-22
+last-verified: 2026-05-12
 ---
 
 # Specialized Structures
@@ -45,6 +45,7 @@ intersection, difference), and enumeration.
 
 - Strings are stored by value (copied into the bag)
 - Order of strings returned by `Items()` is not guaranteed (hash table)
+- `Items()` and `ToSeq()` return independent snapshots containing copied strings.
 - Set operations (`Union`, `Intersect`, `Diff`) return new bags; originals are unchanged
 - Uses FNV-1a hash function for O(1) average-case operations
 - Automatically resizes when load factor exceeds 75%
@@ -713,7 +714,8 @@ An efficient byte array for binary data. More memory-efficient than Seq for byte
 ### Notes
 
 - `FromHex()` and `FromBase64()` validate the full runtime string byte length. Embedded NUL bytes do not truncate parsing.
-- `Copy()` traps when source or destination ranges overflow or exceed bounds.
+- `Copy()` traps when source or destination arguments are not Bytes objects, when ranges overflow, or when ranges exceed bounds.
+- `ReadI16*()` and `ReadI32*()` sign-extend into the returned Integer. Values with the high bit set return negative numbers.
 - Raw byte inputs larger than the maximum runtime `Bytes` length are rejected before allocation.
 
 ### Zia Example

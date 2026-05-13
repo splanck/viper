@@ -307,6 +307,8 @@ void *rt_seq_keep(void *obj, int8_t (*pred)(void *)) {
 
     rt_seq_impl *seq = (rt_seq_impl *)obj;
     void *result = rt_seq_new();
+    if (seq->owns_elements)
+        rt_seq_set_owns_elements(result, 1);
 
     for (int64_t i = 0; i < seq->len; i++) {
         if (pred(seq->items[i])) {
@@ -355,6 +357,8 @@ void *rt_seq_reject(void *obj, int8_t (*pred)(void *)) {
 
     rt_seq_impl *seq = (rt_seq_impl *)obj;
     void *result = rt_seq_new();
+    if (seq->owns_elements)
+        rt_seq_set_owns_elements(result, 1);
 
     for (int64_t i = 0; i < seq->len; i++) {
         if (!pred(seq->items[i])) {
@@ -401,6 +405,7 @@ void *rt_seq_apply(void *obj, void *(*fn)(void *)) {
 
     rt_seq_impl *seq = (rt_seq_impl *)obj;
     void *result = rt_seq_with_capacity(seq->len);
+    rt_seq_set_owns_elements(result, 1);
 
     for (int64_t i = 0; i < seq->len; i++) {
         rt_seq_push(result, fn(seq->items[i]));
@@ -727,6 +732,8 @@ void *rt_seq_take_while(void *obj, int8_t (*pred)(void *)) {
 
     rt_seq_impl *seq = (rt_seq_impl *)obj;
     void *result = rt_seq_new();
+    if (seq->owns_elements)
+        rt_seq_set_owns_elements(result, 1);
 
     for (int64_t i = 0; i < seq->len; i++) {
         if (!pred(seq->items[i])) {

@@ -519,8 +519,8 @@ void rt_bytes_copy(void *dst, int64_t dst_idx, void *src, int64_t src_idx, int64
     if (!src)
         rt_bytes_trap_invalid_operation("Bytes.Copy: null source");
 
-    rt_bytes_impl *dst_bytes = (rt_bytes_impl *)dst;
-    rt_bytes_impl *src_bytes = (rt_bytes_impl *)src;
+    rt_bytes_impl *dst_bytes = rt_bytes_require(dst, "Bytes.Copy: invalid destination");
+    rt_bytes_impl *src_bytes = rt_bytes_require(src, "Bytes.Copy: invalid source");
 
     if (count < 0)
         rt_bytes_trap_domain("Bytes.Copy: count cannot be negative");
@@ -979,7 +979,8 @@ int64_t rt_bytes_read_i16le(void *obj, int64_t offset) {
     rt_bytes_impl *b = rt_bytes_require(obj, "Bytes.ReadI16LE: invalid Bytes object");
     bytes_check_bounds(b, offset, 2);
     uint8_t *d = b->data + offset;
-    return (int64_t)((uint16_t)d[0] | ((uint16_t)d[1] << 8));
+    uint16_t raw = (uint16_t)((uint16_t)d[0] | ((uint16_t)d[1] << 8));
+    return (int64_t)(int16_t)raw;
 }
 
 /// @brief Read a big-endian int16 at `offset` (sign-extended).
@@ -987,7 +988,8 @@ int64_t rt_bytes_read_i16be(void *obj, int64_t offset) {
     rt_bytes_impl *b = rt_bytes_require(obj, "Bytes.ReadI16BE: invalid Bytes object");
     bytes_check_bounds(b, offset, 2);
     uint8_t *d = b->data + offset;
-    return (int64_t)(((uint16_t)d[0] << 8) | (uint16_t)d[1]);
+    uint16_t raw = (uint16_t)(((uint16_t)d[0] << 8) | (uint16_t)d[1]);
+    return (int64_t)(int16_t)raw;
 }
 
 /// @brief Read a little-endian int32 at `offset` (sign-extended).
@@ -995,8 +997,9 @@ int64_t rt_bytes_read_i32le(void *obj, int64_t offset) {
     rt_bytes_impl *b = rt_bytes_require(obj, "Bytes.ReadI32LE: invalid Bytes object");
     bytes_check_bounds(b, offset, 4);
     uint8_t *d = b->data + offset;
-    return (int64_t)((uint32_t)d[0] | ((uint32_t)d[1] << 8) | ((uint32_t)d[2] << 16) |
-                     ((uint32_t)d[3] << 24));
+    uint32_t raw = (uint32_t)((uint32_t)d[0] | ((uint32_t)d[1] << 8) | ((uint32_t)d[2] << 16) |
+                              ((uint32_t)d[3] << 24));
+    return (int64_t)(int32_t)raw;
 }
 
 /// @brief Read a big-endian int32 at `offset` (sign-extended).
@@ -1004,8 +1007,9 @@ int64_t rt_bytes_read_i32be(void *obj, int64_t offset) {
     rt_bytes_impl *b = rt_bytes_require(obj, "Bytes.ReadI32BE: invalid Bytes object");
     bytes_check_bounds(b, offset, 4);
     uint8_t *d = b->data + offset;
-    return (int64_t)(((uint32_t)d[0] << 24) | ((uint32_t)d[1] << 16) | ((uint32_t)d[2] << 8) |
-                     (uint32_t)d[3]);
+    uint32_t raw = (uint32_t)(((uint32_t)d[0] << 24) | ((uint32_t)d[1] << 16) |
+                              ((uint32_t)d[2] << 8) | (uint32_t)d[3]);
+    return (int64_t)(int32_t)raw;
 }
 
 /// @brief Read a little-endian int64 at `offset`.

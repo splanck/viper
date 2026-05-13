@@ -36,6 +36,8 @@
 #include "rt_set.h"
 
 #include "rt_box.h"
+#include "rt_collection_ids.h"
+#include "rt_gc.h"
 #include "rt_object.h"
 #include "rt_seq.h"
 
@@ -71,6 +73,18 @@ static rt_set_entry *find_entry(rt_set_entry *head, void *elem) {
             return e;
     }
     return NULL;
+}
+
+static void rt_set_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    if (!obj || !visitor)
+        return;
+    rt_set_impl *set = obj;
+    if (!set->buckets || set->capacity == 0)
+        return;
+    for (size_t i = 0; i < set->capacity; ++i) {
+        for (rt_set_entry *e = set->buckets[i]; e; e = e->next)
+            visitor(e->elem, ctx);
+    }
 }
 
 /// @brief Resize the hash table when load factor is exceeded.
@@ -118,7 +132,7 @@ static void rt_set_finalize(void *obj) {
 /// @brief Construct an empty mutable set. Internal storage is open-addressed hashed buckets;
 /// resizes when load factor exceeds 0.75. Elements are reference-counted via Box hash/equality.
 void *rt_set_new(void) {
-    rt_set_impl *set = (rt_set_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_set_impl));
+    rt_set_impl *set = (rt_set_impl *)rt_obj_new_i64(RT_SET_CLASS_ID, (int64_t)sizeof(rt_set_impl));
     if (!set)
         return NULL;
 
@@ -134,6 +148,7 @@ void *rt_set_new(void) {
     }
 
     rt_obj_set_finalizer(set, rt_set_finalize);
+    rt_gc_track(set, rt_set_traverse);
     return set;
 }
 
@@ -249,11 +264,12 @@ void rt_set_clear(void *obj) {
 
 /// @brief Return a Seq containing all elements in bucket-iteration order (not insertion order).
 void *rt_set_items(void *obj) {
+    void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     if (!obj)
-        return rt_seq_new();
+        return seq;
 
     rt_set_impl *set = obj;
-    void *seq = rt_seq_new();
 
     for (size_t i = 0; i < set->capacity; ++i) {
         for (rt_set_entry *e = set->buckets[i]; e; e = e->next) {

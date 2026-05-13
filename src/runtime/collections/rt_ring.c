@@ -35,6 +35,7 @@
 
 #include "rt_ring.h"
 
+#include "rt_collection_ids.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 
@@ -121,18 +122,19 @@ void *rt_ring_new(int64_t capacity) {
     if (capacity <= 0)
         capacity = 1; // Minimum capacity of 1
 
-    rt_ring_impl *ring = (rt_ring_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_ring_impl));
+    if ((uint64_t)capacity > SIZE_MAX / sizeof(void *))
+        rt_trap("Ring: allocation size overflow");
+
+    rt_ring_impl *ring = (rt_ring_impl *)rt_obj_new_i64(RT_RING_CLASS_ID, (int64_t)sizeof(rt_ring_impl));
     if (!ring)
         return NULL;
 
     ring->vptr = NULL;
     ring->items = (void **)calloc((size_t)capacity, sizeof(void *));
     if (!ring->items) {
-        ring->capacity = 0;
-        ring->head = 0;
-        ring->count = 0;
-        rt_obj_set_finalizer(ring, rt_ring_finalize);
-        return ring;
+        if (rt_obj_release_check0(ring))
+            rt_obj_free(ring);
+        rt_trap("Ring: memory allocation failed");
     }
     ring->capacity = (size_t)capacity;
     ring->head = 0;

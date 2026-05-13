@@ -32,6 +32,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_sortedset.h"
+#include "rt_collection_ids.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -160,7 +161,8 @@ static void sortedset_finalizer(void *obj) {
 /// search + O(n) shift; `_has` is O(log n). Use FrozenSet for read-only sets, regular Set for
 /// hash-based unordered storage.
 void *rt_sortedset_new(void) {
-    rt_sortedset set = (rt_sortedset)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_sortedset_impl));
+    rt_sortedset set =
+        (rt_sortedset)rt_obj_new_i64(RT_SORTEDSET_CLASS_ID, (int64_t)sizeof(struct rt_sortedset_impl));
     if (set)
         rt_obj_set_finalizer(set, sortedset_finalizer);
     return set;

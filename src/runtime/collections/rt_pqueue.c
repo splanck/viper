@@ -33,6 +33,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_pqueue.h"
+#include "rt_collection_ids.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -163,7 +164,8 @@ void *rt_pqueue_new(void) {
 /// @brief Construct a priority queue. `is_max=1` makes it a max-heap (largest priority first);
 /// `is_max=0` makes it a min-heap. Internal storage is a binary heap on a dynamic array.
 void *rt_pqueue_new_max(int8_t is_max) {
-    rt_pqueue_impl *h = (rt_pqueue_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_pqueue_impl));
+    rt_pqueue_impl *h =
+        (rt_pqueue_impl *)rt_obj_new_i64(RT_PQUEUE_CLASS_ID, (int64_t)sizeof(rt_pqueue_impl));
     if (!h) {
         rt_trap("Heap: memory allocation failed");
     }

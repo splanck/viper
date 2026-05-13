@@ -37,6 +37,8 @@
 
 #include "rt_trie.h"
 
+#include "rt_collection_ids.h"
+#include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -95,6 +97,22 @@ static void free_node(rt_trie_node *node) {
     free(node);
 }
 
+static void traverse_node(rt_trie_node *node, rt_gc_visitor_t visitor, void *ctx) {
+    if (!node || !visitor)
+        return;
+    if (node->is_terminal)
+        visitor(node->value, ctx);
+    for (int i = 0; i < TRIE_ALPHABET_SIZE; ++i)
+        traverse_node(node->children[i], visitor, ctx);
+}
+
+static void rt_trie_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    if (!obj || !visitor)
+        return;
+    rt_trie_impl *trie = (rt_trie_impl *)obj;
+    traverse_node(trie->root, visitor, ctx);
+}
+
 /// Collect all keys under a node into a Seq.
 /// buf/buf_cap are passed by pointer so the buffer can grow as needed.
 static void collect_keys(rt_trie_node *node, char **buf, size_t *buf_cap, size_t depth, void *seq) {
@@ -149,13 +167,20 @@ static void rt_trie_finalize(void *obj) {
 /// @brief Construct an empty trie. Each node has a 256-way child array (one slot per byte
 /// value), so memory cost is high per node but lookups are O(key length).
 void *rt_trie_new(void) {
-    rt_trie_impl *trie = (rt_trie_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_trie_impl));
+    rt_trie_impl *trie = (rt_trie_impl *)rt_obj_new_i64(RT_TRIE_CLASS_ID, (int64_t)sizeof(rt_trie_impl));
     if (!trie)
         return NULL;
     trie->vptr = NULL;
-    trie->root = new_node();
+    trie->root = NULL;
     trie->count = 0;
     rt_obj_set_finalizer(trie, rt_trie_finalize);
+    rt_gc_track(trie, rt_trie_traverse);
+    trie->root = (rt_trie_node *)calloc(1, sizeof(rt_trie_node));
+    if (!trie->root) {
+        if (rt_obj_release_check0(trie))
+            rt_obj_free(trie);
+        rt_trap("rt_trie: memory allocation failed");
+    }
     return trie;
 }
 

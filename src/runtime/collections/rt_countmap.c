@@ -35,6 +35,7 @@
 
 #include "rt_countmap.h"
 
+#include "rt_collection_ids.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -149,7 +150,8 @@ static int should_resize(rt_countmap_impl *cm) {
 /// @brief Construct an empty count map (string → int64). Designed for tally workloads —
 /// histogram counting, frequency tables, vote totals. Internal storage is a chained hash table.
 void *rt_countmap_new(void) {
-    rt_countmap_impl *cm = (rt_countmap_impl *)rt_obj_new_i64(0, sizeof(rt_countmap_impl));
+    rt_countmap_impl *cm =
+        (rt_countmap_impl *)rt_obj_new_i64(RT_COUNTMAP_CLASS_ID, sizeof(rt_countmap_impl));
     if (!cm)
         return NULL;
 

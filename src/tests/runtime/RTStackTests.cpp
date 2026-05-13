@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_stack.h"
 
 #include <cassert>
@@ -21,6 +22,7 @@ namespace {
 static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
+static int g_finalizer_calls = 0;
 } // namespace
 
 extern "C" void vm_trap(const char *msg) {
@@ -40,6 +42,21 @@ extern "C" void vm_trap(const char *msg) {
         }                                                                                          \
         g_trap_expected = false;                                                                   \
     } while (0)
+
+static void count_finalizer(void *) {
+    ++g_finalizer_calls;
+}
+
+static void *new_obj() {
+    void *p = rt_obj_new_i64(0, 8);
+    assert(p != nullptr);
+    return p;
+}
+
+static void release_obj(void *p) {
+    if (p && rt_obj_release_check0(p))
+        rt_obj_free(p);
+}
 
 static void test_new_and_basic_properties() {
     void *stack = rt_stack_new();
@@ -235,6 +252,73 @@ static void test_interleaved_operations() {
     assert(rt_stack_is_empty(stack) == 1);
 }
 
+static void test_owns_elements_mode_releases_on_clear() {
+    void *stack = rt_stack_new();
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_stack_set_owns_elements(stack, 1);
+    assert(rt_stack_owns_elements(stack) == 1);
+    rt_stack_push(stack, value);
+    release_obj(value); // Stack now owns the only reference.
+    assert(g_finalizer_calls == 0);
+
+    rt_stack_clear(stack);
+    assert(g_finalizer_calls == 1);
+    release_obj(stack);
+}
+
+static void test_owns_elements_pop_transfers_reference() {
+    void *stack = rt_stack_new();
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_stack_set_owns_elements(stack, 1);
+    rt_stack_push(stack, value);
+    release_obj(value); // Stack now owns the only reference.
+
+    void *popped = rt_stack_pop(stack);
+    assert(popped == value);
+    assert(g_finalizer_calls == 0);
+    release_obj(popped);
+    assert(g_finalizer_calls == 1);
+    release_obj(stack);
+}
+
+static void test_owns_elements_clone_retains_values() {
+    void *stack = rt_stack_new();
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_stack_set_owns_elements(stack, 1);
+    rt_stack_push(stack, value);
+    release_obj(value); // Stack now owns the only reference.
+
+    void *clone = rt_stack_clone(stack);
+    assert(rt_stack_owns_elements(clone) == 1);
+
+    rt_stack_clear(stack);
+    assert(g_finalizer_calls == 0);
+    rt_stack_clear(clone);
+    assert(g_finalizer_calls == 1);
+    release_obj(clone);
+    release_obj(stack);
+}
+
+static void test_owns_elements_mode_change_non_empty_traps() {
+    void *stack = rt_stack_new();
+    int value = 42;
+    rt_stack_push(stack, &value);
+    EXPECT_TRAP(rt_stack_set_owns_elements(stack, 1));
+    release_obj(stack);
+}
+
 int main() {
     test_new_and_basic_properties();
     test_push_increases_length();
@@ -249,6 +333,10 @@ int main() {
     test_null_stack_traps();
     test_push_null_value();
     test_interleaved_operations();
+    test_owns_elements_mode_releases_on_clear();
+    test_owns_elements_pop_transfers_reference();
+    test_owns_elements_clone_retains_values();
+    test_owns_elements_mode_change_non_empty_traps();
 
     return 0;
 }

@@ -11,14 +11,16 @@
 //   - FIFO ordering: enqueue at back, dequeue from front.
 //   - Dequeue and peek on empty queue trap immediately.
 //   - Internal ring buffer doubles capacity on overflow.
-//   - Elements are not retained; callers manage element lifetimes.
+//   - By default elements are borrowed; runtime conversion helpers can enable
+//     retained-element ownership before inserting values.
 //
 // Ownership/Lifetime:
 //   - Queue objects are heap-allocated opaque pointers.
-//   - Caller is responsible for lifetime management.
+//   - Caller is responsible for queue lifetime management.
+//   - Owned-element queues retain on push and release on pop/clear/finalize.
 //
 // Error conventions:
-//   - Allocation failure → returns NULL
+//   - Allocation failure → rt_trap()
 //   - Pop/Peek on empty → rt_trap()
 //   - TryPop on empty → returns NULL
 //
@@ -36,6 +38,12 @@ extern "C" {
 /// @brief Create a new empty queue with default capacity.
 /// @return Opaque pointer to the new Queue object.
 void *rt_queue_new(void);
+
+/// @brief Enable or disable retained-element ownership for an empty queue.
+void rt_queue_set_owns_elements(void *obj, int8_t owns);
+
+/// @brief Return whether the queue retains its elements.
+int8_t rt_queue_owns_elements(void *obj);
 
 /// @brief Get the number of elements in the queue.
 /// @param obj Opaque Queue object pointer.

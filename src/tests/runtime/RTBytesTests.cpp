@@ -233,6 +233,32 @@ static void test_copy_bounds_check() {
     EXPECT_TRAP(rt_bytes_copy(dst, 0, src, 0, -1)); // negative count
 }
 
+static void test_copy_rejects_non_bytes_even_for_zero_count() {
+    void *bytes = rt_bytes_new(5);
+    void *not_bytes = rt_obj_new_i64(12345, 8);
+    assert(not_bytes != nullptr);
+
+    EXPECT_TRAP(rt_bytes_copy(not_bytes, 0, bytes, 0, 0));
+    EXPECT_TRAP(rt_bytes_copy(bytes, 0, not_bytes, 0, 0));
+
+    if (rt_obj_release_check0(not_bytes))
+        rt_obj_free(not_bytes);
+}
+
+static void test_signed_binary_reads_sign_extend() {
+    void *bytes = rt_bytes_new(16);
+
+    rt_bytes_write_i16le(bytes, 0, -1);
+    rt_bytes_write_i16be(bytes, 2, -2);
+    rt_bytes_write_i32le(bytes, 4, -1);
+    rt_bytes_write_i32be(bytes, 8, -2);
+
+    assert(rt_bytes_read_i16le(bytes, 0) == -1);
+    assert(rt_bytes_read_i16be(bytes, 2) == -2);
+    assert(rt_bytes_read_i32le(bytes, 4) == -1);
+    assert(rt_bytes_read_i32be(bytes, 8) == -2);
+}
+
 static void test_to_str() {
     void *bytes = rt_bytes_new(5);
     rt_bytes_set(bytes, 0, 'H');
@@ -448,6 +474,8 @@ int main() {
     test_copy();
     test_copy_overlapping();
     test_copy_bounds_check();
+    test_copy_rejects_non_bytes_even_for_zero_count();
+    test_signed_binary_reads_sign_extend();
     test_to_str();
     test_to_hex();
     test_to_base64();

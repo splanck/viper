@@ -32,6 +32,7 @@
 
 #include "rt_bag.h"
 
+#include "rt_collection_ids.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -182,6 +183,8 @@ static void rt_bag_finalize(void *obj) {
 /// @note On allocation failure, the old buckets are kept (silent failure).
 /// @note O(n) time complexity where n is the number of entries.
 static void bag_resize(rt_bag_impl *bag, size_t new_capacity) {
+    if (new_capacity > SIZE_MAX / sizeof(rt_bag_entry *))
+        rt_trap("Bag: allocation size overflow");
     rt_bag_entry **new_buckets = (rt_bag_entry **)calloc(new_capacity, sizeof(rt_bag_entry *));
     if (!new_buckets)
         return; // Keep old buckets on allocation failure
@@ -215,7 +218,8 @@ static void bag_resize(rt_bag_impl *bag, size_t new_capacity) {
 /// @note The capacity doubles on each resize.
 static void maybe_resize(rt_bag_impl *bag) {
     // Resize when count * DEN > capacity * NUM (i.e., load factor > NUM/DEN)
-    if (bag->count * BAG_LOAD_FACTOR_DEN > bag->capacity * BAG_LOAD_FACTOR_NUM) {
+    if ((long double)bag->count * (long double)BAG_LOAD_FACTOR_DEN >
+        (long double)bag->capacity * (long double)BAG_LOAD_FACTOR_NUM) {
         if (bag->capacity > SIZE_MAX / 2)
             return;
         bag_resize(bag, bag->capacity * 2);
@@ -256,7 +260,7 @@ static void maybe_resize(rt_bag_impl *bag) {
 /// @see rt_bag_has For membership testing
 /// @see rt_bag_finalize For cleanup behavior
 void *rt_bag_new(void) {
-    rt_bag_impl *bag = (rt_bag_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_bag_impl));
+    rt_bag_impl *bag = (rt_bag_impl *)rt_obj_new_i64(RT_BAG_CLASS_ID, (int64_t)sizeof(rt_bag_impl));
     if (!bag)
         rt_trap("Bag: memory allocation failed");
 
@@ -374,6 +378,10 @@ int8_t rt_bag_add(void *obj, rt_string str) {
     if (!entry)
         return 0;
 
+    if (key_len == SIZE_MAX) {
+        free(entry);
+        rt_trap("Bag.Add: key allocation overflow");
+    }
     entry->key = (char *)malloc(key_len + 1);
     if (!entry->key) {
         free(entry);
@@ -594,6 +602,7 @@ void rt_bag_clear(void *obj) {
 /// @see rt_bag_len For getting the count without creating a list
 void *rt_bag_items(void *obj) {
     void *result = rt_seq_new();
+    rt_seq_set_owns_elements(result, 1);
     if (!obj)
         return result;
 
@@ -606,6 +615,7 @@ void *rt_bag_items(void *obj) {
             // Create a copy of the string and push to seq
             rt_string str = rt_string_from_bytes(entry->key, entry->key_len);
             rt_seq_push(result, (void *)str);
+            rt_str_release_maybe(str);
             entry = entry->next;
         }
     }

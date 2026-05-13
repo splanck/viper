@@ -1293,6 +1293,11 @@ int64_t rt_gc_pass_count(void) {
 /// Called at process shutdown to clean up resources that depend on side-effects (file handles,
 /// network sockets) before the heap arena is released.
 void rt_gc_run_all_finalizers(void) {
+    typedef struct gc_shutdown_snapshot_entry {
+        void *obj;
+        int8_t retained;
+    } gc_shutdown_snapshot_entry;
+
     gc_lock();
 
     if (g_gc.count == 0) {
@@ -1303,7 +1308,8 @@ void rt_gc_run_all_finalizers(void) {
     /* Snapshot all live entries so we can release the lock before running
        finalizers (same pattern as rt_gc_collect phase 4). */
     int64_t snap_count = 0;
-    void **snapshot = (void **)malloc((size_t)g_gc.count * sizeof(void *));
+    gc_shutdown_snapshot_entry *snapshot =
+        (gc_shutdown_snapshot_entry *)malloc((size_t)g_gc.count * sizeof(*snapshot));
     if (!snapshot) {
         /* Best-effort: if malloc fails during shutdown, skip finalizer sweep.
            The OS will reclaim file descriptors and sockets on process exit. */
@@ -1313,8 +1319,19 @@ void rt_gc_run_all_finalizers(void) {
 
     for (int64_t i = 0; i < g_gc.capacity; i++) {
         if (gc_slot_is_live(&g_gc.entries[i])) {
-            snapshot[snap_count] = g_gc.entries[i].obj;
-            rt_obj_retain_maybe(snapshot[snap_count]);
+            void *obj = g_gc.entries[i].obj;
+            rt_heap_hdr_t *hdr = NULL;
+            if (!rt_heap_try_get_header(obj, &hdr) || !hdr)
+                continue;
+
+            snapshot[snap_count].obj = obj;
+            snapshot[snap_count].retained = 0;
+
+            size_t refcnt = __atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE);
+            if (refcnt > 0 && refcnt < RT_HEAP_IMMORTAL_REFCNT) {
+                rt_obj_retain_maybe(obj);
+                snapshot[snap_count].retained = 1;
+            }
             snap_count++;
         }
     }
@@ -1337,9 +1354,10 @@ void rt_gc_run_all_finalizers(void) {
                  err && err[0] ? err : "gc: trap during finalizer sweep");
         rt_trap_clear_recovery();
         for (int64_t i = (int64_t)cleanup_from; i < snap_count; ++i) {
-            if (snapshot[i] && rt_heap_is_payload(snapshot[i])) {
-                if (rt_obj_release_check0(snapshot[i]))
-                    rt_obj_free(snapshot[i]);
+            void *obj = snapshot[i].obj;
+            if (snapshot[i].retained && obj && rt_heap_is_payload(obj)) {
+                if (rt_obj_release_check0(obj))
+                    rt_obj_free(obj);
             }
         }
         free(snapshot);
@@ -1349,19 +1367,27 @@ void rt_gc_run_all_finalizers(void) {
 
     for (int64_t i = 0; i < snap_count; i++) {
         cleanup_from = i;
+        void *obj = snapshot[i].obj;
         rt_heap_hdr_t *hdr = NULL;
-        if (!rt_heap_try_get_header(snapshot[i], &hdr) || !hdr) {
+        if (!rt_heap_try_get_header(obj, &hdr) || !hdr) {
             cleanup_from = i + 1;
             continue;
         }
+
+        if (__atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE) == 0) {
+            rt_obj_free(obj);
+            cleanup_from = i + 1;
+            continue;
+        }
+
         if (hdr && (rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT && hdr->finalizer) {
             rt_heap_finalizer_t fin = hdr->finalizer;
             hdr->finalizer = NULL; /* prevent double-finalization */
-            fin(snapshot[i]);
+            fin(obj);
         }
-        if (snapshot[i] && rt_heap_is_payload(snapshot[i])) {
-            if (rt_obj_release_check0(snapshot[i]))
-                rt_obj_free(snapshot[i]);
+        if (snapshot[i].retained && obj && rt_heap_is_payload(obj)) {
+            if (rt_obj_release_check0(obj))
+                rt_obj_free(obj);
         }
         cleanup_from = i + 1;
     }

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-22
+last-verified: 2026-05-12
 ---
 
 # Collections
@@ -25,7 +25,8 @@ last-verified: 2026-04-22
 
 - String-keyed collection types compare the full string byte length. Embedded NUL bytes are significant and do not truncate keys or set elements.
 - Owning collections retain stored objects and release them when overwritten, removed, cleared, or finalized. WeakMap is the exception: it stores zeroing weak references and does not keep values alive.
-- Collection APIs that expose keys, values, indices, or sorted slices return snapshots. String snapshots own copied strings, and integer index/key snapshots use boxed `i64` values.
+- Collection APIs that expose keys, values, indices, or sorted slices return snapshots. String snapshots own copied strings, object-value snapshots retain their elements, and integer index/key snapshots use boxed `i64` values.
+- Stack and Queue default to borrowed elements at the C runtime layer, but conversion helpers such as `Seq.ToStack`, `List.ToQueue`, and `Stack.ToSeq` create retained snapshots so returned containers remain valid after the source is cleared.
 - Capacity and count growth paths trap on overflow instead of wrapping into undersized allocations.
 
 ## See Also

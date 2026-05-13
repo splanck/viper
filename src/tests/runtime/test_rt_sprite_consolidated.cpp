@@ -33,6 +33,11 @@ extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
+static void release_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 // ============================================================================
 // SpriteBatch Creation Tests
 // ============================================================================
@@ -238,8 +243,8 @@ TEST(RTSprite, TextureAtlasAddAndLookup) {
     ASSERT_TRUE(rt_texatlas_get_h(atlas, name) == 16);
 
     rt_string_unref(name);
-    rt_obj_release_check0(atlas);
-    rt_obj_release_check0(pixels);
+    release_object(atlas);
+    release_object(pixels);
 }
 
 TEST(RTSprite, TextureAtlasLoadGrid) {
@@ -261,8 +266,8 @@ TEST(RTSprite, TextureAtlasLoadGrid) {
 
     rt_string_unref(zero);
     rt_string_unref(one);
-    rt_obj_release_check0(atlas);
-    rt_obj_release_check0(pixels);
+    release_object(atlas);
+    release_object(pixels);
 }
 
 TEST(RTSprite, SpritebatchDrawAtlasVariantsIncrementCount) {
@@ -286,9 +291,9 @@ TEST(RTSprite, SpritebatchDrawAtlasVariantsIncrementCount) {
     ASSERT_TRUE(rt_spritebatch_count(batch) == 3);
 
     rt_string_unref(name);
-    rt_obj_release_check0(batch);
-    rt_obj_release_check0(atlas);
-    rt_obj_release_check0(pixels);
+    release_object(batch);
+    release_object(atlas);
+    release_object(pixels);
 }
 
 TEST(RTSprite, SpriteContainsUsesScaledOrigin) {
@@ -375,8 +380,8 @@ TEST(RTSprite, NewBasic) {
     ASSERT(rt_spritesheet_region_count(sheet) == 0, "new sheet has 0 regions");
     ASSERT(rt_spritesheet_width(sheet) == 64, "width matches atlas");
     ASSERT(rt_spritesheet_height(sheet) == 64, "height matches atlas");
-    rt_obj_release_check0(sheet);
-    rt_obj_release_check0(atlas);
+    release_object(sheet);
+    release_object(atlas);
 }
 
 TEST(RTSprite, NewNullAtlas) {
@@ -388,7 +393,7 @@ TEST(RTSprite, NewRejectsWrongAtlasHandle) {
     void *not_pixels = rt_obj_new_i64(0, 8);
     void *sheet = rt_spritesheet_new(not_pixels);
     ASSERT(sheet == NULL, "wrong atlas handle returns null sheet");
-    rt_obj_release_check0(not_pixels);
+    release_object(not_pixels);
 }
 
 TEST(RTSprite, SetAndGetRegion) {
@@ -408,9 +413,9 @@ TEST(RTSprite, SetAndGetRegion) {
     int64_t expected = rt_pixels_get(atlas, 0, 0);
     ASSERT(p == expected, "region pixel 0,0 matches atlas 0,0");
 
-    rt_obj_release_check0(region);
-    rt_obj_release_check0(sheet);
-    rt_obj_release_check0(atlas);
+    release_object(region);
+    release_object(sheet);
+    release_object(atlas);
 }
 
 TEST(RTSprite, RegionOffset) {
@@ -428,9 +433,9 @@ TEST(RTSprite, RegionOffset) {
     int64_t expected = rt_pixels_get(atlas, 16, 16);
     ASSERT(p == expected, "offset region pixel matches atlas at correct position");
 
-    rt_obj_release_check0(region);
-    rt_obj_release_check0(sheet);
-    rt_obj_release_check0(atlas);
+    release_object(region);
+    release_object(sheet);
+    release_object(atlas);
 }
 
 TEST(RTSprite, HasRegionFalse) {
@@ -441,8 +446,8 @@ TEST(RTSprite, HasRegionFalse) {
     ASSERT(rt_spritesheet_has_region(sheet, name) == 0, "has_region returns 0 for missing");
     ASSERT(rt_spritesheet_get_region(sheet, name) == NULL, "get_region returns null for missing");
 
-    rt_obj_release_check0(sheet);
-    rt_obj_release_check0(atlas);
+    release_object(sheet);
+    release_object(atlas);
 }
 
 TEST(RTSprite, UpdateExistingRegion) {
@@ -465,9 +470,9 @@ TEST(RTSprite, UpdateExistingRegion) {
     int64_t expected = rt_pixels_get(atlas, 32, 32);
     ASSERT(p == expected, "updated region reads from new atlas position");
 
-    rt_obj_release_check0(region);
-    rt_obj_release_check0(sheet);
-    rt_obj_release_check0(atlas);
+    release_object(region);
+    release_object(sheet);
+    release_object(atlas);
 }
 
 TEST(RTSprite, InvalidRegionsRejected) {
@@ -489,9 +494,9 @@ TEST(RTSprite, InvalidRegionsRejected) {
     ASSERT(region != NULL, "region remains valid after rejected update");
     ASSERT(rt_pixels_width(region) == 16, "rejected update preserves width");
 
-    rt_obj_release_check0(region);
-    rt_obj_release_check0(sheet);
-    rt_obj_release_check0(atlas);
+    release_object(region);
+    release_object(sheet);
+    release_object(atlas);
 }
 
 TEST(RTSprite, RemoveRegion) {
@@ -511,8 +516,8 @@ TEST(RTSprite, RemoveRegion) {
     int8_t removed2 = rt_spritesheet_remove_region(sheet, name);
     ASSERT(removed2 == 0, "remove non-existent returns 0");
 
-    rt_obj_release_check0(sheet);
-    rt_obj_release_check0(atlas);
+    release_object(sheet);
+    release_object(atlas);
 }
 
 TEST(RTSprite, MultipleRegions) {
@@ -532,8 +537,8 @@ TEST(RTSprite, MultipleRegions) {
     ASSERT(rt_spritesheet_has_region(sheet, n1) == 1, "has b");
     ASSERT(rt_spritesheet_has_region(sheet, n2) == 1, "has c");
 
-    rt_obj_release_check0(sheet);
-    rt_obj_release_check0(atlas);
+    release_object(sheet);
+    release_object(atlas);
 }
 
 TEST(RTSprite, FromGrid) {
@@ -556,9 +561,9 @@ TEST(RTSprite, FromGrid) {
     int64_t expected = rt_pixels_get(atlas, 32, 0);
     ASSERT(p == expected, "grid region 1 starts at correct atlas offset");
 
-    rt_obj_release_check0(r1);
-    rt_obj_release_check0(sheet);
-    rt_obj_release_check0(atlas);
+    release_object(r1);
+    release_object(sheet);
+    release_object(atlas);
 }
 
 TEST(RTSprite, FromGridInvalid) {
@@ -566,7 +571,7 @@ TEST(RTSprite, FromGridInvalid) {
     ASSERT(rt_spritesheet_from_grid(NULL, 16, 16) == NULL, "null atlas returns null");
     ASSERT(rt_spritesheet_from_grid(atlas, 0, 16) == NULL, "zero frame_w returns null");
     ASSERT(rt_spritesheet_from_grid(atlas, 16, 0) == NULL, "zero frame_h returns null");
-    rt_obj_release_check0(atlas);
+    release_object(atlas);
 }
 
 TEST(RTSprite, RegionNames) {
@@ -582,9 +587,9 @@ TEST(RTSprite, RegionNames) {
     ASSERT(names != NULL, "region_names returns non-null");
     ASSERT(rt_seq_len(names) == 2, "names seq has 2 entries");
 
-    rt_obj_release_check0(names);
-    rt_obj_release_check0(sheet);
-    rt_obj_release_check0(atlas);
+    release_object(names);
+    release_object(sheet);
+    release_object(atlas);
 }
 
 TEST(RTSprite, NullSafety) {
@@ -635,7 +640,7 @@ TEST(RTSprite, AnimatorRejectsWrongHandleClass) {
     ASSERT_TRUE(rt_sprite_animator_get_current(wrong) == nullptr);
     rt_sprite_animator_destroy(wrong);
 
-    rt_obj_release_check0(pixels);
+    release_object(pixels);
 }
 
 /// @brief Main.

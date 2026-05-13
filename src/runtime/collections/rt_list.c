@@ -36,6 +36,8 @@
 
 #include "rt_array_obj.h"
 #include "rt_box.h"
+#include "rt_collection_ids.h"
+#include "rt_gc.h"
 #include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
@@ -102,6 +104,17 @@ static void rt_list_finalize(void *obj) {
     }
 }
 
+static void rt_list_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    if (!obj || !visitor)
+        return;
+    rt_list_impl *L = (rt_list_impl *)obj;
+    if (!L->arr)
+        return;
+    size_t len = rt_arr_obj_len(L->arr);
+    for (size_t i = 0; i < len; ++i)
+        visitor(L->arr[i], ctx);
+}
+
 /// @brief Creates a new empty List.
 ///
 /// Allocates and initializes a List data structure for storing a dynamic
@@ -133,12 +146,13 @@ static void rt_list_finalize(void *obj) {
 /// @see rt_list_finalize For cleanup behavior
 void *rt_list_new(void) {
     // Allocate object payload with header via object allocator to match object lifetime rules
-    rt_list_impl *list = (rt_list_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_list_impl));
+    rt_list_impl *list = (rt_list_impl *)rt_obj_new_i64(RT_LIST_CLASS_ID, (int64_t)sizeof(rt_list_impl));
     if (!list)
         return NULL;
     list->vptr = NULL;
     list->arr = NULL;
     rt_obj_set_finalizer(list, rt_list_finalize);
+    rt_gc_track(list, rt_list_traverse);
     return list;
 }
 

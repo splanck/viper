@@ -33,7 +33,8 @@ A focused hardening-and-correctness cycle on the v0.2.5 surface. No new public n
 - ViperIDE polish — IntelliSense linkage fix via `fe_zia` force-load, real keyword highlighting from the live `Lexer`, scrollBeyondLastLine, BMP toolbar glyphs.
 - GUI runtime widget-handle correctness — every public entry routes through centralised type-checked wrappers, contextmenu submenu ownership is now bidirectional, code-editor block-comment depth derives from a buffer scan instead of render state, and progressbar/breadcrumb/slider/toast/shortcut paths receive lifetime, range, and focus-routing fixes.
 - Network runtime hardening — HTTP/2 HPACK split into independent encode/decode tables with `pthread_once`-guarded Huffman init; HTTP/1.1 `Transfer-Encoding` parsed as a strict RFC 7230 token list; WebSocket servers reject non-minimal frames and clients validate close codes per RFC 6455; URL parser traps on out-of-range ports; TLS `ServerHello` `key_share` exact-length validated; UDP recv detects truncation.
-- D3D11 backend correctness — render-target and overlay lifetimes corrected so transparent draws no longer corrupt motion-vector targets; shaders gain `safeNormalize3` and explicit NDC/UV helpers for consistent texture-space conventions; skinning normalises non-zero weights and identity-pads unused bone slots; dynamic buffers route through checked size multiplication.
+- D3D11 backend correctness — render-target and overlay lifetimes corrected so transparent draws no longer corrupt motion-vector targets; shaders gain `safeNormalize3` and explicit NDC/UV helpers for consistent texture-space conventions; skinning normalises non-zero weights and identity-pads unused bone slots; dynamic buffers route through checked size multiplication; offscreen-target allocation failures fall back to an available target before clear/draw, and readback / RTT-sync paths unbind output resources for `CopyResource` and restore the previous binding afterward.
+- Numeric round-trip — `Convert.ToString_Double` / `rt_f64_to_str` now emit the shortest exact-reparse form (`%.*g` 1..17 with fixed-vs-exponent tie-break) and `Parse.Double` / `TryParse` / `Convert.ToDouble` accept the formatter's `NaN` / `Inf` / `+Inf` / `-Inf` spellings, so doubles round-trip end-to-end through the public APIs. The 15-significant-digit BASIC `PRINT` / `WRITE#` display form is preserved as a separate dedicated entry point so golden output is unchanged.
 - x86-64 backend regression repairs — integer cast width selection, label-operand validation, frame-slot aliasing, overflow-pseudo lowering, switch operand normalisation, and a documentation pass across ~50 backend source files with doxygen on every helper.
 - Windows VAPS installer hardening — PE32+ payload validation against the selected x64/arm64 target, recursive adjacent-DLL discovery with Windows/UCRT/VC redistributable classification, `SHGetKnownFolderPath` + `RegDeleteTreeW` modernisation, embedded VERSIONINFO + InstallDate metadata, `windows-install-scope machine|user` + custom `windows-install-dir`, `windows-sign-thumbprint` parity across `viper package` and `viper install-package`, ZIP SHA-256 manifest coverage with duplicate / uncovered-entry rejection, and a non-elevated user-scope smoke ctest exercising install / launch / file-association / uninstall end-to-end.
 
@@ -41,13 +42,13 @@ A focused hardening-and-correctness cycle on the v0.2.5 surface. No new public n
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 63 | +63 |
+| Commits | — | 65 | +65 |
 | Source files | 2,996 | 3,006 | +10 |
-| Production SLOC | 552K | 574K | +22K |
-| Test SLOC | 228K | 240K | +12K |
+| Production SLOC | 552K | 575K | +23K |
+| Test SLOC | 228K | 241K | +13K |
 | Demo SLOC | 188K | 188K | 0 |
 
-Counts via `scripts/count_sloc.sh` (production 574,163 / test 240,526 / demo 187,826 / source files 3,006).
+Counts via `scripts/count_sloc.sh` (production 574,840 / test 240,789 / demo 187,826 / source files 3,006).
 
 ---
 
@@ -70,6 +71,11 @@ Counts via `scripts/count_sloc.sh` (production 574,163 / test 240,526 / demo 187
 - `value_type_traverse` replaced raw `calloc` with `rt_alloc` plus an explicit `count * sizeof(void *)` overflow guard so a malicious child count cannot wrap into a small allocation.
 - `rt_memory_release_array_payload` now releases `RT_ELEM_I32` and `RT_ELEM_I64` slots through the same path as the object cases — primitive arrays no longer skip the array-payload release machinery.
 - `rt_to_int`'s string-format buffer free switched from system `free` to `rt_free` to match the `rt_alloc` it was paired with, fixing a mixed-allocator path that bypassed the runtime's allocator accounting.
+- `rt_gc_track` hash-table growth now guards `capacity * 2` against `INT64_MAX/2` and uses an overflow-safe `count >= (capacity/8) * 5` load-factor check instead of `count * 8`; `gc_rehash` rejects non-positive capacities and capacities that would overflow `size_t * sizeof(gc_entry)` before allocating.
+- `rt_weakref_new` / `rt_weakref_reset` now require the target to be a live runtime handle (string handle or live heap payload). Non-handle targets trap up front with `gc: weak reference target is not a live runtime handle` instead of being silently registered as zeroing weak refs that would never fire.
+- Reclaim-phase bookkeeping consolidated into a new `gc_garbage_state` record (snapshot entry, saved refs, finalized/resurrected/reclaimed flags) so trap recovery and resurrection paths share one cohesive data layout.
+- `rt_obj_get_hash_code` pointer-identity hashes now run the address through a splitmix64-style finalizer (two multiplies + xor-shifts) instead of returning the raw `uintptr_t` — Map/Set bucket masks that alias the low bits no longer cluster on adjacent allocations.
+- `rt_memory_release_array_payload` traps cleanly when `hdr->len > hdr->cap` instead of walking past the end of the payload on a corrupted header.
 
 ### Runtime objects and MessageBus
 
@@ -98,6 +104,23 @@ Counts via `scripts/count_sloc.sh` (production 574,163 / test 240,526 / demo 187
 - `rt_parse_int_radix` now rejects leading `+` / `-` signs on non-decimal radices (was silently negating the unsigned bit pattern); decimal radix continues to accept both signs so `Fmt.IntRadix` output round-trips. The accepted grammar is documented inline.
 - `rt_parse` float grammar tightened: the leading-dot form (`.123`) is recognised explicitly, and the exponent body now requires digits — `1e` / `1e+` no longer parse as 1.0.
 - `rt_weakmap_get` is marked `returnsOwned` in `RuntimeOwnership` so the IL-side policy stops over-retaining the result and matches the runtime ABI; the get path promotes a live weak value to a retained reference and returns `NULL` after the value has been collected.
+- MessageBus topics now cache their key bytes, length, and FNV-1a hash alongside the retained `rt_string`. Lookups compare the cached fields directly instead of recomputing `rt_str_len` + `rt_string_cstr` on every probe, also closing a window where a topic's name handle could transiently fail `rt_string_is_handle` during shutdown.
+- Every public MessageBus entry routes through a retain-during-call wrapper so a concurrent finalize cannot free the bus mid-publish.
+- `mb_traverse` switched its per-callback retain from `rt_obj_retain_maybe` to a lock-held atomic CAS that detects refcount overflow, rolls back already-retained callbacks, and traps with `rt_msgbus: traversal callback refcount overflow` — overflow no longer leaks the partial retain set.
+- `rt_trap_string` now always routes through the escaping path. Control bytes, quotes, backslashes, and embedded NULs are always escaped; the previous short-circuit that called `rt_trap(bytes)` directly for NUL-free strings could leak raw newlines and control characters into the diagnostic stream.
+- `Box.ValueType.AddField` now installs the field, calls `rt_gc_track` under `setjmp` recovery, and on a trapping track reverts the field install, releases the retained slot, frees the layout, clears the finalizer, and re-raises the captured error — a failing track no longer leaves a half-installed layout in the registry.
+- `value_type_traverse` enumerates fields under the layout lock into a stack-allocated descriptor array, then releases the lock before retaining children and invoking the visitor; the retain step was previously inside the lock, blocking unrelated traversals on a slow retain.
+- `Box` unboxing rejects boxes whose tag is not one of the four canonical values (`I64`, `F64`, `I1`, `STR`); corrupted or zero-tagged box payloads can no longer be unboxed.
+- `rt_parse_try_int` / `try_num` / `try_bool` now zero the non-NULL output pointer before parsing so a failed parse cannot leak a caller's prior value. The header invariant is documented accordingly.
+- Parse / Convert / TryParse all accept the formatter's `NaN`, `Inf`, `+Inf`, and `-Inf` spellings (case-insensitive, optional leading sign) so `Convert.ToString_Double` round-trips through `Viper.Core.Parse.Double`, `Convert.ToDouble`, and `TryParse` without `InvalidCast`.
+
+### Collections runtime
+
+- Collection heap objects now use stable negative class IDs across List, Set, Stack, Queue, Ring, Deque, Bag, maps, filters, tries, queues, and related specialized structures. This prevents collection instances from colliding with core runtime IDs during introspection and dispatch.
+- Seq, map/set value snapshots, frozen snapshots, conversions, and iterators now preserve retained-element ownership where the returned collection can outlive the source. Stack and Queue gained an internal retained-element mode for conversion-created containers; pop/try-pop transfer that retained reference to the caller.
+- Map, Set, List, Seq, OrderedMap, TreeMap, FrozenMap, Deque, IntMap, DefaultMap, MultiMap, LruCache, Trie, SparseArray, Stack, and Queue are GC-traversable where they hold object references, so cycles through collection fields are visible to `Viper.Memory.GC.Collect()`.
+- Bytes signed 16/32-bit readers now sign-extend correctly, and `Bytes.Copy` validates both source and destination as Bytes objects before accepting even zero-length copies.
+- Growth and allocation paths in Bag, BiMap, IntMap, BitSet, Ring, DefaultMap, and related constructors now trap on size overflow or allocation failure instead of silently wrapping, returning partial objects, or leaking failed intermediate allocations.
 
 ### Crypto
 
@@ -169,6 +192,12 @@ Counts via `scripts/count_sloc.sh` (production 574,163 / test 240,526 / demo 187
 - Win32 Future timeouts compute one absolute monotonic deadline up front (`future_deadline_tick_from_now`) saturating at `ULLONG_MAX`, replacing the relative `DWORD`-clamped `future_deadline_ms_from_now`; `rt_future_get_for` / `wait_for` / `get_for_val` no longer round-trip through `MAXDWORD`.
 - `SafeI64.Add` converts the post-add `uint64_t` back to `int64_t` via `memcpy` instead of a C-style cast, avoiding implementation-defined behaviour on signed overflow on both Win32 and POSIX.
 
+### Core runtime
+
+- `rt_format_f64_roundtrip` is a new exact-reparse formatter that tries `%.*g` at precisions 1..17 under the C numeric locale, keeps every candidate whose `strtod` recovers the original IEEE-754 bits, picks the shortest result, and breaks ties by preferring fixed notation over exponent notation when both forms are the same length. `Convert.ToString_Double` / `rt_f64_to_str` / `rt_str_d_alloc` route through this new entry so the public conversion APIs round-trip exactly.
+- The legacy 15-significant-digit `rt_format_f64` is preserved verbatim as the BASIC `PRINT` / `WRITE#` display formatter so existing golden output stays unchanged; it is now explicitly documented as display-only.
+- Locale handling lives in the formatter rather than at every call site: a per-call temporary C numeric locale (`_create_locale` / `newlocale` + `uselocale`) wraps the `snprintf` and `strtod` pair so output is deterministic regardless of the process `setlocale` state.
+
 ### Audio
 
 - `Viper.Audio.*` compatibility namespace rebuilt from `RT_ALIAS` forwarding entries into full `RT_CLASS_BEGIN` / `RT_FUNC` / `RT_METHOD` / `RT_PROP` registrations — `RT_ALIAS` cannot carry typed object return values, so `obj<Viper.Audio.Sound>` was failing type resolution at every call site.
@@ -217,6 +246,9 @@ Counts via `scripts/count_sloc.sh` (production 574,163 / test 240,526 / demo 187
 - **D3D11 shader correctness** — `safeNormalize3` and explicit NDC/UV helpers give shadow-map lookups, world reconstruction, and motion-vector deltas a consistent top-left texture-space convention; shadow samples behind the light or outside `[0, 1]` depth are rejected before comparison sampling.
 - **D3D11 skinning** — `skinPosition`/`skinVector` normalise non-zero weights and clamp negatives, falling back to the original vector when no usable weights exist. Bone-palette uploads identity-pad unused slots so out-of-range indices no longer collapse to an all-zero matrix.
 - **D3D11 resource validation** — checked size multiplication on dynamic buffers, instance uploads, static mesh buffers, float SRVs, readback destinations, and mapped-row copies; input-layout offsets use `offsetof` against `vgfx3d_vertex_t` so the declaration stays in sync with layout changes.
+- **D3D11 target fallback** — requested scene, overlay, and render-to-texture targets are now resolved against the resources that actually allocated before clearing or drawing. Overlay passes downgrade to scene or swapchain targets, missing scene targets downgrade to swapchain, and unavailable RTT targets no longer leave stale pass state behind. Scene, RTT, and shadow output resources are unbound before their COM objects are released, including the active shadow slot, so the D3D11 context can no longer keep references to resources the backend is tearing down.
+- **D3D11 readback and CopyResource safety** — RGBA8 row-byte and destination-buffer validation is centralised in shared `size_t`-overflow-checked helpers used by both backend readback and render-target sync. Readback and RTT-sync paths unbind the active render target and depth target for `CopyResource` and restore the previous bindings afterward. Mapped-texture conversion now reports failure on unsupported formats, invalid row pitch, or too-small destination stride instead of silently claiming success; non-HDR RTT rows copy by source row width into the destination stride so destination padding cannot trigger overreads. Map results are validated for non-null `pData` on the constant-buffer, dynamic-buffer, staging-readback, and RTT-sync paths.
+- **D3D11 cache hygiene** — create-helper output pointers are cleared before validation and failure paths so callers cannot reuse stale SRV / RTV / texture pointers; compacted texture and cubemap cache source slots are cleared after pruning so the inactive cache tail no longer retains duplicate COM ownership across slot moves.
 
 ### GUI runtime
 
@@ -330,7 +362,7 @@ Two-round hardening pass on the Windows VAPS installer pipeline.
 - **Installer-stub modernisation** — Legacy `SHGetFolderPathW` + CSIDL replaced with `SHGetKnownFolderPath` / `CoTaskMemFree` for install, Desktop, and Start Menu roots. Package-owned registry subtrees clean up via `RegDeleteTreeW` instead of shallow key deletion. `GetModuleFileNameW` truncation is checked in both installer and uninstaller stubs. A runtime `InstallDate` is emitted through `GetDateFormatW` with the generated package date as fallback. An interactive uninstaller confirmation is shown unless `/quiet` or `/silent` is passed.
 - **VERSIONINFO embedding** — Generated setup and uninstall PEs carry embedded VERSIONINFO resources so Explorer, SmartScreen, and Add/Remove Programs have package metadata to inspect. SemVer-style Windows package versions are accepted for metadata while the numeric prefix is still used for VERSIONINFO fixed fields.
 - **Signing parity** — `windows-sign-thumbprint` manifest entry, `--windows-sign-thumbprint` CLI flag, and `VIPER_WINDOWS_SIGN_THUMBPRINT` env fallback select a certificate-store identity by SHA-1 thumbprint; thumbprints are normalised (spaces/tabs stripped, lowercased) and validated up front for both `viper package` and `viper install-package`. PFX signing, certificate-store signing, timestamp-URL override, signtool override, and post-sign verify suppression are now available on `install-package` as well.
-- **Manifest coverage verification** — Windows installer overlays include a `meta/manifest.sha256` covering payload files; ZIP SHA-256 verification rejects duplicate manifest entries and any payload file not covered by the manifest, while preserving directory-entry handling so directory entries are ignored before sanitised names lose their trailing slash.
+- **Manifest coverage verification** — Windows installer overlays include a `meta/manifest.sha256` covering payload files; ZIP SHA-256 verification rejects duplicate manifest entries and any payload file not covered by the manifest, while preserving directory-entry handling so directory entries are ignored before sanitised names lose their trailing slash. Manifest verification is now factored into a shared helper invoked by both `verifyZip` and `verifyZipPayload`, so structural ZIPs receive the same digest / coverage / duplicate-entry checks as fully payload-required ones. Toolchain installer overlays emit manifest lines for the bundled `meta/license.txt` and `meta/readme.txt` through a single `appendPayloadManifestEntry` helper, closing a gap where those overlay files were previously omitted from the manifest.
 - **Dry-run output** — Expanded to surface custom Windows install directories, thumbprints, and file-association open arguments so a `--dry-run` review reflects what the resulting installer will actually do.
 
 ### Tests
@@ -341,9 +373,15 @@ Two-round hardening pass on the Windows VAPS installer pipeline.
 - New `RTMemorySurfaceTests`: invalid-handle traps, resurrected release counts, array-element release, `RetainStr` / `ReleaseStr` round-trip, immortal-release trap, `RT_ELEM_OBJ` array regression.
 - New `RTParseTests`: `DoubleOption` / `Int64Option` success and `None`, class IDs, typed return metadata, leading-`+` sign, typed-string vs C-string ABI parity, radix-sign rejection on non-decimal bases, and the dot-prefix `.123` float form.
 - New `RTWeakMapTests` extensions: CAS-loop release path on `rt_weakmap_get`, `returnsOwned` ABI contract.
+- `RTGCTests` extensions: weakref-on-non-runtime-handle traps cleanly; resurrected-cycle finalizers re-track both peers and leave them live; `run_all_finalizers` propagates a finalizer trap while releasing the snapshot retain.
+- `RTMsgBusTests` extensions: payload retain-through-publish lifetime; lock-held CAS retain path in `mb_traverse`; topic-key cache regression coverage.
+- `RTParseTests` extensions: `NaN` / `Inf` / `+Inf` / `-Inf` parsing through `Parse.Double`, `Convert.ToDouble`, `TryParse`, and end-to-end round-trip via `Convert.ToString_Double`; out-pointer reset on every failed parse.
+- `RTMemorySurfaceTests`: array `len > cap` trap.
+- `RTObjectIntrospectTests` / `RTDiagTests`: hash-finalizer regression coverage and `rt_trap_string` control-byte / quote / backslash escaping coverage.
 - New `RTTrapContractTests`: NUL-embedded diagnostic message escaping; `Diagnostics.Trap` routes through `rt_trap_string`.
 - New `RTSeqBoxTests::call_value_type_misaligned_field`: pointer-aligned offset validation for `Box.ValueType.AddField`.
 - New `RTCoreOwnershipTests::test_runtime_metadata_matches_core_contracts`: end-to-end ownership classifications for `Memory.*`, Box family, `Object.ToString` / `TypeName`, `Parse.*Option`, `Convert.ToString_*`, and MessageBus.
+- New `RTCollectionsCorrectnessTests` plus extensions to `RTBytesTests`, `RTConvertCollTests`, `RTSeqTests`, `RTStackTests`, `RTQueueTests`, and `test_bytes_binary.zia`: stable collection class IDs, retained snapshot lifetimes, Stack/Queue retained-pop transfer, signed byte reads, and `Bytes.Copy` type validation.
 - IO: ZIP64 / extra-field rejection, asset temp-dir isolation, savedata absolute paths, VPA large-file seek, watcher overflow, inflate consumed-bytes, unsigned `BinaryBuffer`, OGG CRC.
 - Threads: repeatable joins, future listener trap isolation, sticky-then-cleared pool errors through Wait / Shutdown / ShutdownNow, idempotent pool shutdown, nested-parallel same-pool execution, retained borrowed-callback results across `Async.Run` / `Async.Map` / `Parallel.Map`, synchronous-channel `TrySend`, ConcurrentMap remove/clear release-after-unlock, VM/BytecodeVM owned thread and async dispatch.
 - Crypto: scrypt round-trips, AEAD encrypt / decrypt with AAD, `ConstantTimeEquals`, TLS extension parsers.
@@ -351,7 +389,7 @@ Two-round hardening pass on the Windows VAPS installer pipeline.
 - Graphics3D: `RTGraphics3DRobustnessTests` extended with introspection structs for the Water3D and Vegetation3D internal layouts and regression coverage for the new Canvas3D draw entries, terrain Perlin clamping, mesh skeleton binding, morph Mat4 validation, scene reparent atomicity, physics joint deduplication, glTF JOINTS preservation in `SetBoneWeights`, and the bone-count derivation rule on `Mesh3D.Clone`.
 - x86-64 codegen: out-of-order block-param lowering, instruction-result pre-registration, scheduler prologue-boundary preservation, large-spill `PX_COPY` regression, lone-JCC fallthrough peephole. Backend-liveness round adds compare/branch fold-safety across edge copies, IMUL→LEA refusal under live flags, block-DCE physical-register preservation, fixed-physical-register spill-before-clobber, and a void-return zero-exit-code regression.
 - x86-64 regression additions also cover switch edge-copy ordering, internal-label/control-transfer splitting, `R10`/`R11` scratch reservation, Win64 runtime-call shadow-space detection, I1 immediate canonicalization, and caller-saved live-out preservation across calls.
-- D3D11: shared-backend coverage tying the bone-palette byte count to the 256 supported shader entries.
+- D3D11: shared-backend coverage tying the bone-palette byte count to the 256 supported shader entries, plus new `test_vgfx3d_backend_d3d11_shared` cases for checked row-byte math, destination-span validation, size overflow, and target fallback resolution.
 - Native assembler & linker: new tests for `parseSize`, archive symbol-candidate ordering and GNU long names, `CodeSection` identity, ELF symbol-size preservation, COFF ambiguous-target + reloc-overflow records, AArch64 addend validation and LDR/STR scaled-offset reloc kinds, Mach-O `SIGNED_4` bias plus anchor-symbol routing, `InputSectionKey` lookups, branch-trampoline overflow guards, and MOVZX REX emission.
 - Linker correctness round: COMMON coalescing across mixed alignments, per-platform underscore fallback (Mach-O accepts, ELF/COFF reject), strong-global precedence over same-object local definitions, ICF folded-symbol redirect, ELF `PT_TLS` emission, Mach-O 16-byte name validation, AArch64 reloc instruction-class validators, PE 32-bit field-overflow guards, and Mach-O subsections-via-symbols splitting.
 - The seven `Viper.GUI` widget tests in `src/lib/gui/tests/` were relabeled `tui` → `gui` (a new dedicated ctest label); the wheel-scroll regression contract was rewritten with floating-point tolerance to match the new mouse-wheel constant.
@@ -363,6 +401,6 @@ Demos and docs were updated to track the runtime work above; the stale Windows d
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 63-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 65-commit history since v0.2.5.
 
 <!-- END DRAFT -->

@@ -32,6 +32,7 @@
 
 #include "rt_bitset.h"
 
+#include "rt_collection_ids.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_string.h"
@@ -72,6 +73,8 @@ static int popcount64(uint64_t x) {
 
 /// Grow the bitset to accommodate at least `min_bits` bits.
 static void bitset_grow(rt_bitset_impl *bs, size_t min_bits) {
+    if (min_bits > SIZE_MAX - (BITS_PER_WORD - 1))
+        rt_trap("BitSet: bit capacity overflow");
     size_t new_word_count = WORDS_FOR_BITS(min_bits);
     if (new_word_count <= bs->word_count) {
         if (min_bits > bs->bit_count)
@@ -88,11 +91,11 @@ static void bitset_grow(rt_bitset_impl *bs, size_t min_bits) {
     if (grow < new_word_count)
         grow = new_word_count;
     if (grow > SIZE_MAX / sizeof(uint64_t))
-        return; // Allocation would overflow
+        rt_trap("BitSet: allocation size overflow");
 
     uint64_t *new_words = (uint64_t *)realloc(bs->words, grow * sizeof(uint64_t));
     if (!new_words)
-        return;
+        rt_trap("BitSet: memory allocation failed");
 
     // Zero new words
     memset(new_words + bs->word_count, 0, (grow - bs->word_count) * sizeof(uint64_t));
@@ -124,18 +127,23 @@ void *rt_bitset_new(int64_t nbits) {
     if (nbits <= 0)
         nbits = 64; // Default to 64 bits
 
-    rt_bitset_impl *bs = (rt_bitset_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_bitset_impl));
+    if ((uint64_t)nbits > SIZE_MAX - (BITS_PER_WORD - 1))
+        rt_trap("BitSet: bit capacity overflow");
+    size_t wc = WORDS_FOR_BITS((size_t)nbits);
+    if (wc > SIZE_MAX / sizeof(uint64_t))
+        rt_trap("BitSet: allocation size overflow");
+
+    rt_bitset_impl *bs =
+        (rt_bitset_impl *)rt_obj_new_i64(RT_BITSET_CLASS_ID, (int64_t)sizeof(rt_bitset_impl));
     if (!bs)
         return NULL;
 
     bs->vptr = NULL;
-    size_t wc = WORDS_FOR_BITS((size_t)nbits);
     bs->words = (uint64_t *)calloc(wc, sizeof(uint64_t));
     if (!bs->words) {
-        bs->word_count = 0;
-        bs->bit_count = 0;
-        rt_obj_set_finalizer(bs, rt_bitset_finalize);
-        return bs;
+        if (rt_obj_release_check0(bs))
+            rt_obj_free(bs);
+        rt_trap("BitSet: memory allocation failed");
     }
     bs->word_count = wc;
     bs->bit_count = (size_t)nbits;

@@ -31,6 +31,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_internal.h"
+#include "rt_collection_ids.h"
+#include "rt_gc.h"
 #include "rt_object.h"
 
 #include <stdlib.h>
@@ -67,7 +69,13 @@ typedef struct rt_stack_impl {
     int64_t len;  ///< Number of elements currently on the stack
     int64_t cap;  ///< Current capacity (allocated slots)
     void **items; ///< Array of element pointers
+    int8_t owns_elements;
 } rt_stack_impl;
+
+static void stack_release_value(void *value) {
+    if (value && rt_obj_release_check0(value))
+        rt_obj_free(value);
+}
 
 /// @brief Finalizer callback invoked when a Stack is garbage collected.
 ///
@@ -87,10 +95,24 @@ static void rt_stack_finalize(void *obj) {
     if (!obj)
         return;
     rt_stack_impl *stack = (rt_stack_impl *)obj;
+    if (stack->owns_elements && stack->items) {
+        for (int64_t i = 0; i < stack->len; i++)
+            stack_release_value(stack->items[i]);
+    }
     free(stack->items);
     stack->items = NULL;
     stack->len = 0;
     stack->cap = 0;
+}
+
+static void rt_stack_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    if (!obj || !visitor)
+        return;
+    rt_stack_impl *stack = (rt_stack_impl *)obj;
+    if (!stack->owns_elements || !stack->items)
+        return;
+    for (int64_t i = 0; i < stack->len; i++)
+        visitor(stack->items[i], ctx);
 }
 
 /// @brief Ensures the stack has capacity for at least `needed` elements.
@@ -167,15 +189,18 @@ static void stack_ensure_capacity(rt_stack_impl *stack, int64_t needed) {
 /// @see rt_stack_pop For removing elements
 /// @see rt_stack_finalize For cleanup behavior
 void *rt_stack_new(void) {
-    rt_stack_impl *stack = (rt_stack_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_stack_impl));
+    rt_stack_impl *stack =
+        (rt_stack_impl *)rt_obj_new_i64(RT_STACK_CLASS_ID, (int64_t)sizeof(rt_stack_impl));
     if (!stack) {
         rt_trap("Stack: memory allocation failed");
     }
 
     stack->len = 0;
     stack->cap = STACK_DEFAULT_CAP;
+    stack->owns_elements = 0;
     stack->items = malloc((size_t)STACK_DEFAULT_CAP * sizeof(void *));
     rt_obj_set_finalizer(stack, rt_stack_finalize);
+    rt_gc_track(stack, rt_stack_traverse);
 
     if (!stack->items) {
         if (rt_obj_release_check0(stack))
@@ -184,6 +209,22 @@ void *rt_stack_new(void) {
     }
 
     return stack;
+}
+
+void rt_stack_set_owns_elements(void *obj, int8_t owns) {
+    if (!obj)
+        return;
+    rt_stack_impl *stack = (rt_stack_impl *)obj;
+    owns = owns ? 1 : 0;
+    if (stack->len != 0 && stack->owns_elements != owns)
+        rt_trap("Stack.SetOwnsElements: cannot change ownership mode on non-empty stack");
+    stack->owns_elements = owns;
+}
+
+int8_t rt_stack_owns_elements(void *obj) {
+    if (!obj)
+        return 0;
+    return ((rt_stack_impl *)obj)->owns_elements ? 1 : 0;
 }
 
 /// @brief Returns the number of elements currently on the Stack.
@@ -264,6 +305,8 @@ void rt_stack_push(void *obj, void *elem) {
     if (stack->len >= INT64_MAX)
         rt_trap("Stack: maximum length reached");
     stack_ensure_capacity(stack, stack->len + 1);
+    if (stack->owns_elements)
+        rt_obj_retain_maybe(elem);
     stack->items[stack->len] = elem;
     stack->len++;
 }
@@ -309,7 +352,13 @@ void *rt_stack_pop(void *obj) {
     }
 
     stack->len--;
-    return stack->items[stack->len];
+    void *value = stack->items[stack->len];
+    stack->items[stack->len] = NULL;
+    if (stack->owns_elements) {
+        rt_obj_retain_maybe(value);
+        stack_release_value(value);
+    }
+    return value;
 }
 
 /// @brief Returns the top element without removing it from the Stack.
@@ -381,7 +430,12 @@ void *rt_stack_peek(void *obj) {
 void rt_stack_clear(void *obj) {
     if (!obj)
         return;
-    ((rt_stack_impl *)obj)->len = 0;
+    rt_stack_impl *stack = (rt_stack_impl *)obj;
+    if (stack->owns_elements) {
+        for (int64_t i = 0; i < stack->len; i++)
+            stack_release_value(stack->items[i]);
+    }
+    stack->len = 0;
 }
 
 /// @brief Check if the stack contains a given element (pointer equality).
@@ -412,7 +466,13 @@ void *rt_stack_try_pop(void *obj) {
         return NULL;
 
     stack->len--;
-    return stack->items[stack->len];
+    void *value = stack->items[stack->len];
+    stack->items[stack->len] = NULL;
+    if (stack->owns_elements) {
+        rt_obj_retain_maybe(value);
+        stack_release_value(value);
+    }
+    return value;
 }
 
 /// @brief Create a shallow copy of the stack.
@@ -428,6 +488,8 @@ void *rt_stack_clone(void *obj) {
         return result;
 
     rt_stack_impl *stack = (rt_stack_impl *)obj;
+    if (stack->owns_elements)
+        rt_stack_set_owns_elements(result, 1);
     for (int64_t i = 0; i < stack->len; i++) {
         rt_stack_push(result, stack->items[i]);
     }

@@ -205,7 +205,9 @@ static void test_list_to_seq_releases_get_temp_ref() {
     test_result("Seq created", seq != NULL && rt_seq_len(seq) == 1);
 
     cleanup_list(list);
-    test_result("No temp retain leaked from List.Get", g_finalizer_calls == 1);
+    test_result("Seq keeps value alive after List cleanup", g_finalizer_calls == 0);
+    rt_seq_clear(seq);
+    test_result("No temp retain leaked after Seq cleanup", g_finalizer_calls == 1);
     release_obj(seq);
 
     printf("\n");
@@ -235,6 +237,54 @@ static void test_list_to_set_releases_get_temp_ref() {
     printf("\n");
 }
 
+static void test_list_to_stack_retains_elements() {
+    printf("Testing List to Stack ownership transfer:\n");
+
+    void *list = rt_list_new();
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_list_push(list, value);
+    release_obj(value); // List now owns the only reference.
+
+    void *stack = rt_list_to_stack(list);
+    test_result("Stack created", stack != NULL && rt_stack_len(stack) == 1);
+
+    cleanup_list(list);
+    test_result("Stack keeps value alive after List cleanup", g_finalizer_calls == 0);
+    rt_stack_clear(stack);
+    test_result("Stack cleanup releases retained value", g_finalizer_calls == 1);
+    release_obj(stack);
+
+    printf("\n");
+}
+
+static void test_list_to_queue_retains_elements() {
+    printf("Testing List to Queue ownership transfer:\n");
+
+    void *list = rt_list_new();
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_list_push(list, value);
+    release_obj(value); // List now owns the only reference.
+
+    void *queue = rt_list_to_queue(list);
+    test_result("Queue created", queue != NULL && rt_queue_len(queue) == 1);
+
+    cleanup_list(list);
+    test_result("Queue keeps value alive after List cleanup", g_finalizer_calls == 0);
+    rt_queue_clear(queue);
+    test_result("Queue cleanup releases retained value", g_finalizer_calls == 1);
+    release_obj(queue);
+
+    printf("\n");
+}
+
 //=============================================================================
 // Set Conversion Tests
 //=============================================================================
@@ -249,6 +299,85 @@ static void test_set_to_seq() {
     void *seq = rt_set_to_seq(set);
     test_result("Seq created", seq != NULL);
     test_result("Seq has 2 elements", rt_seq_len(seq) == 2);
+
+    printf("\n");
+}
+
+static void test_set_to_seq_retains_elements() {
+    printf("Testing Set to Seq ownership transfer:\n");
+
+    void *set = rt_set_new();
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_set_add(set, value);
+    release_obj(value); // Set now owns the only reference.
+
+    void *seq = rt_set_to_seq(set);
+    test_result("Seq created", seq != NULL && rt_seq_len(seq) == 1);
+
+    rt_set_clear(set);
+    test_result("Seq keeps value alive after Set cleanup", g_finalizer_calls == 0);
+    rt_seq_clear(seq);
+    test_result("Seq cleanup releases retained value", g_finalizer_calls == 1);
+    release_obj(seq);
+    release_obj(set);
+
+    printf("\n");
+}
+
+static void test_stack_to_seq_retains_owned_elements() {
+    printf("Testing Stack to Seq retained snapshots:\n");
+
+    void *stack = rt_stack_new();
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_stack_set_owns_elements(stack, 1);
+    rt_stack_push(stack, value);
+    release_obj(value); // Stack now owns the only reference.
+
+    void *seq = rt_stack_to_seq(stack);
+    test_result("Seq snapshot created", seq != NULL && rt_seq_len(seq) == 1);
+    test_result("Stack remains intact", rt_stack_len(stack) == 1);
+
+    rt_stack_clear(stack);
+    test_result("Seq keeps value alive after Stack cleanup", g_finalizer_calls == 0);
+    rt_seq_clear(seq);
+    test_result("Seq cleanup releases retained value", g_finalizer_calls == 1);
+    release_obj(seq);
+    release_obj(stack);
+
+    printf("\n");
+}
+
+static void test_queue_to_seq_retains_owned_elements() {
+    printf("Testing Queue to Seq retained snapshots:\n");
+
+    void *queue = rt_queue_new();
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_queue_set_owns_elements(queue, 1);
+    rt_queue_push(queue, value);
+    release_obj(value); // Queue now owns the only reference.
+
+    void *seq = rt_queue_to_seq(queue);
+    test_result("Seq snapshot created", seq != NULL && rt_seq_len(seq) == 1);
+    test_result("Queue remains intact", rt_queue_len(queue) == 1);
+
+    rt_queue_clear(queue);
+    test_result("Seq keeps value alive after Queue cleanup", g_finalizer_calls == 0);
+    rt_seq_clear(seq);
+    test_result("Seq cleanup releases retained value", g_finalizer_calls == 1);
+    release_obj(seq);
+    release_obj(queue);
 
     printf("\n");
 }
@@ -274,6 +403,31 @@ static void test_deque_to_seq() {
     printf("\n");
 }
 
+static void test_deque_to_seq_retains_elements() {
+    printf("Testing Deque to Seq retained snapshots:\n");
+
+    void *deque = rt_deque_new();
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_deque_push_back(deque, value);
+    release_obj(value); // Deque now owns the only reference.
+
+    void *seq = rt_deque_to_seq(deque);
+    test_result("Seq snapshot created", seq != NULL && rt_seq_len(seq) == 1);
+
+    rt_deque_clear(deque);
+    test_result("Seq keeps value alive after Deque cleanup", g_finalizer_calls == 0);
+    rt_seq_clear(seq);
+    test_result("Seq cleanup releases retained value", g_finalizer_calls == 1);
+    release_obj(seq);
+    release_obj(deque);
+
+    printf("\n");
+}
+
 //=============================================================================
 // Ring Conversion Tests
 //=============================================================================
@@ -288,6 +442,29 @@ static void test_ring_to_seq() {
     void *seq = rt_ring_to_seq(ring);
     test_result("Seq created", seq != NULL);
     test_result("Seq has 2 elements", rt_seq_len(seq) == 2);
+
+    printf("\n");
+}
+
+static void test_ring_to_seq_retains_borrowed_elements() {
+    printf("Testing Ring to Seq retained snapshots:\n");
+
+    void *ring = rt_ring_new(4);
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_ring_push(ring, value); // Ring stores borrowed references.
+    void *seq = rt_ring_to_seq(ring);
+    test_result("Seq snapshot created", seq != NULL && rt_seq_len(seq) == 1);
+
+    release_obj(value); // Seq should now own the only reference.
+    test_result("Seq keeps borrowed ring value alive", g_finalizer_calls == 0);
+    rt_seq_clear(seq);
+    test_result("Seq cleanup releases retained value", g_finalizer_calls == 1);
+    release_obj(seq);
+    release_obj(ring);
 
     printf("\n");
 }
@@ -370,15 +547,22 @@ int main() {
     test_list_to_set();
     test_list_to_seq_releases_get_temp_ref();
     test_list_to_set_releases_get_temp_ref();
+    test_list_to_stack_retains_elements();
+    test_list_to_queue_retains_elements();
 
     // Set conversions
     test_set_to_seq();
+    test_set_to_seq_retains_elements();
+    test_stack_to_seq_retains_owned_elements();
+    test_queue_to_seq_retains_owned_elements();
 
     // Deque conversions
     test_deque_to_seq();
+    test_deque_to_seq_retains_elements();
 
     // Ring conversions
     test_ring_to_seq();
+    test_ring_to_seq_retains_borrowed_elements();
 
     // Utility functions
     test_seq_of();

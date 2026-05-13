@@ -34,6 +34,7 @@
 
 #include "rt_map.h"
 
+#include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -164,6 +165,18 @@ static void free_entry(rt_map_entry *entry) {
     }
 }
 
+static void rt_map_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    if (!obj || !visitor)
+        return;
+    rt_map_impl *map = (rt_map_impl *)obj;
+    if (!map->buckets || map->capacity == 0)
+        return;
+    for (size_t i = 0; i < map->capacity; ++i) {
+        for (rt_map_entry *entry = map->buckets[i]; entry; entry = entry->next)
+            visitor(entry->value, ctx);
+    }
+}
+
 /// @brief Finalizer callback invoked when a Map is garbage collected.
 ///
 /// This function is automatically called by Viper's garbage collector when a
@@ -283,6 +296,7 @@ void *rt_map_new(void) {
     map->capacity = MAP_INITIAL_CAPACITY;
     map->count = 0;
     rt_obj_set_finalizer(map, rt_map_finalize);
+    rt_gc_track(map, rt_map_traverse);
     return map;
 }
 
@@ -802,6 +816,7 @@ void *rt_map_keys(void *obj) {
 /// @see rt_map_keys For getting all keys
 void *rt_map_values(void *obj) {
     void *result = rt_seq_new();
+    rt_seq_set_owns_elements(result, 1);
     if (!obj)
         return result;
 

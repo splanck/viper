@@ -36,6 +36,8 @@
 
 #include "rt_treemap.h"
 
+#include "rt_collection_ids.h"
+#include "rt_gc.h"
 #include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
@@ -254,8 +256,17 @@ static void treemap_finalizer(void *obj) {
     tm->capacity = 0;
 }
 
+static void treemap_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    if (!obj || !visitor)
+        return;
+    treemap_impl *tm = (treemap_impl *)obj;
+    for (size_t i = 0; i < tm->count; i++)
+        visitor(tm->entries[i].value, ctx);
+}
+
 void *rt_treemap_new(void) {
-    treemap_impl *tm = (treemap_impl *)rt_obj_new_i64(0, (int64_t)sizeof(treemap_impl));
+    treemap_impl *tm =
+        (treemap_impl *)rt_obj_new_i64(RT_TREEMAP_CLASS_ID, (int64_t)sizeof(treemap_impl));
     if (!tm) {
         rt_trap("TreeMap: memory allocation failed");
         return NULL;
@@ -267,6 +278,7 @@ void *rt_treemap_new(void) {
     tm->count = 0;
 
     rt_obj_set_finalizer(tm, treemap_finalizer);
+    rt_gc_track(tm, treemap_traverse);
     return tm;
 }
 
@@ -534,6 +546,7 @@ void *rt_treemap_keys(void *obj) {
 /// @see rt_treemap_keys For retrieving keys
 void *rt_treemap_values(void *obj) {
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
     treemap_impl *tm = (treemap_impl *)obj;

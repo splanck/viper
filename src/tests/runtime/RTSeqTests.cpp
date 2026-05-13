@@ -60,6 +60,9 @@ static void release_obj(void *p) {
         rt_obj_free(p);
 }
 
+static int8_t always_true(void *p);
+static void *identity(void *p);
+
 static void test_new_and_basic_properties() {
     void *seq = rt_seq_new();
     assert(seq != nullptr);
@@ -159,6 +162,43 @@ static void test_owns_elements_mode() {
     int x = 1;
     rt_seq_push(non_empty, &x);
     EXPECT_TRAP(rt_seq_set_owns_elements(non_empty, 1));
+}
+
+static void test_owned_seq_slices_and_filters_retain_elements() {
+    void *seq = rt_seq_new();
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_seq_set_owns_elements(seq, 1);
+    rt_seq_push(seq, value);
+    release_obj(value); // Seq now owns the only reference.
+
+    void *clone = rt_seq_clone(seq);
+    rt_seq_clear(seq);
+    assert(g_finalizer_calls == 0);
+
+    void *taken = rt_seq_take(clone, 1);
+    rt_seq_clear(clone);
+    assert(g_finalizer_calls == 0);
+
+    void *kept = rt_seq_keep(taken, always_true);
+    rt_seq_clear(taken);
+    assert(g_finalizer_calls == 0);
+
+    void *applied = rt_seq_apply(kept, identity);
+    rt_seq_clear(kept);
+    assert(g_finalizer_calls == 0);
+
+    rt_seq_clear(applied);
+    assert(g_finalizer_calls == 1);
+
+    release_obj(applied);
+    release_obj(kept);
+    release_obj(taken);
+    release_obj(clone);
+    release_obj(seq);
 }
 
 static void test_set() {
@@ -938,6 +978,7 @@ int main() {
     test_push_all_appends();
     test_push_all_self_doubles();
     test_owns_elements_mode();
+    test_owned_seq_slices_and_filters_retain_elements();
     test_set();
     test_pop();
     test_peek();

@@ -409,7 +409,7 @@ without `malloc`/`free` overhead.
 | **Strings** | Pool (≤512B) or malloc | Refcounted | N/A | Immortal literals, interning, `rt_str_concat` consumes both operands |
 | **Lists** | malloc | Refcounted | Auto retain/release | `rt_list_i64` for unboxed ints (no per-element refcounting) |
 | **Arrays** | malloc | Refcounted | Kind-specific retain/release | Object arrays use `RT_ELEM_OBJ`; string arrays use `RT_ELEM_STR`; `RT_ELEM_NONE` means no managed elements |
-| **Sequences** | malloc | Refcounted | **NOT managed** | Caller must manage element lifetimes |
+| **Sequences** | malloc | Refcounted | Borrowed by default; optional retained mode | Caller-managed by default; collection snapshots/conversions retain elements |
 | **Maps** | malloc | Refcounted | Keys copied, values retained | String-keyed |
 | **LazySeq** | malloc | **Manual destroy** | On-demand generation | Not refcounted; requires `rt_lazyseq_destroy()` |
 | **Boxed values** | malloc | Refcounted | Type-tagged (I64/F64/I1/STR) | Runtime class id `Viper.Core.Box`; unbox does not consume the box; box helpers validate class id, heap kind, and payload size |
@@ -444,11 +444,14 @@ without `malloc`/`free` overhead.
 ### Sequences (Seq)
 
 - The container itself is refcounted.
-- **Elements are NOT individually reference-counted.** The base `rt_seq` stores
-  opaque `void*` pointers without retaining or releasing them.
-- This means: placing refcounted objects into a Seq without retaining them is
-  unsafe; the Seq may outlive the elements. Similarly, destroying a Seq does not
-  release its elements.
+- Plain `rt_seq_new()` sequences borrow elements by default. Placing
+  refcounted objects into a borrowed Seq without retaining them remains unsafe
+  if the Seq can outlive those elements.
+- Runtime collection snapshots and conversions can enable retained-element
+  mode before inserting values. Owned Seq instances retain on push/insert/set
+  and release on clear/finalize. `Slice`, `Clone`, `Take`, `Drop`, `Keep`,
+  `Reject`, `TakeWhile`, and `Iterator.ToSeq` preserve retained ownership when
+  their source owns elements.
 
 ### LazySeq
 
@@ -540,12 +543,18 @@ The cycle collector only runs when explicitly called via
 doubly-linked lists, parent-child class references) without calling
 `GC.Collect()` will leak those cycles indefinitely.
 
-### 3. HIGH: Seq Elements Not Lifetime-Managed
+### 3. HIGH: Borrowed Seq Elements Require Explicit Lifetime Management
 
-`rt_seq` does not retain or release elements. This creates two hazards:
+Plain `rt_seq_new()` uses borrowed-element mode. This still creates two hazards
+when callers insert refcounted values without retaining them:
 - **Dangling references**: an element may be freed while still referenced by the
   Seq.
-- **Leaks**: destroying a Seq does not release its elements.
+- **Leaks**: callers that retain before insertion must release those references
+  when they are no longer needed.
+
+Collection APIs that return snapshots, such as `Map.Values`, `Set.Items`, and
+the `ToSeq` conversion helpers, use retained-element mode so the returned Seq
+keeps its values alive independently of the source collection.
 
 ### 4. MEDIUM: LazySeq Requires Manual Destroy
 
@@ -690,9 +699,11 @@ GC-tracked so the finalizer sweep joins worker threads. See §6 above.
 3. `rt_heap_release` / `rt_string_unref` to relinquish ownership.
 4. The last release frees the object.
 5. Immortal strings (literals, interned) skip the retain/release cycle entirely.
-6. **List elements** are auto-managed by the list (retained on store, released
-   on removal).
-7. **Seq elements** are **NOT** auto-managed — caller's responsibility.
+6. **List, Map, Set, Deque, and most specialized collection values** are
+   auto-managed by their containers (retained on store, released on removal).
+7. **Plain Seq, Stack, Queue, and Ring elements** are borrowed by default.
+   Runtime conversion and snapshot helpers enable retained-element mode where
+   needed, except Ring itself remains a borrowed circular buffer.
 8. The cycle GC only helps objects explicitly registered via `rt_gc_track`.
 9. `rt_str_concat` consumes both operands — do not use `a` or `b` after calling.
 

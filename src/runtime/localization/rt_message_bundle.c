@@ -33,6 +33,7 @@
 
 #include "rt_asset.h"
 #include "rt_bytes.h"
+#include "rt_collection_ids.h"
 #include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_list.h"
@@ -90,7 +91,7 @@ static int is_list_like_object(void *obj) {
     if (rt_string_is_handle(obj))
         return 0;
     int64_t cid = rt_obj_class_id(obj);
-    return cid == 0;
+    return cid == RT_LIST_CLASS_ID;
 }
 
 static void bundle_finalizer(void *obj) {

@@ -32,6 +32,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_internal.h"
+#include "rt_collection_ids.h"
+#include "rt_gc.h"
 #include "rt_object.h"
 
 #include <stdlib.h>
@@ -76,7 +78,13 @@ typedef struct rt_queue_impl {
     int64_t head; ///< Index of first element (front of queue)
     int64_t tail; ///< Index where next element will be inserted (back of queue)
     void **items; ///< Circular buffer of element pointers
+    int8_t owns_elements;
 } rt_queue_impl;
+
+static void queue_release_value(void *value) {
+    if (value && rt_obj_release_check0(value))
+        rt_obj_free(value);
+}
 
 /// @brief Finalizer callback invoked when a Queue is garbage collected.
 ///
@@ -95,12 +103,26 @@ static void rt_queue_finalize(void *obj) {
     if (!obj)
         return;
     rt_queue_impl *q = (rt_queue_impl *)obj;
+    if (q->owns_elements && q->items && q->cap > 0) {
+        for (int64_t i = 0; i < q->len; i++)
+            queue_release_value(q->items[(q->head + i) % q->cap]);
+    }
     free(q->items);
     q->items = NULL;
     q->len = 0;
     q->cap = 0;
     q->head = 0;
     q->tail = 0;
+}
+
+static void rt_queue_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    if (!obj || !visitor)
+        return;
+    rt_queue_impl *q = (rt_queue_impl *)obj;
+    if (!q->owns_elements || !q->items || q->cap <= 0)
+        return;
+    for (int64_t i = 0; i < q->len; i++)
+        visitor(q->items[(q->head + i) % q->cap], ctx);
 }
 
 /// @brief Grows the queue capacity and linearizes the circular buffer.
@@ -186,7 +208,8 @@ static void queue_grow(rt_queue_impl *q) {
 /// @see rt_queue_pop For removing elements
 /// @see rt_queue_finalize For cleanup behavior
 void *rt_queue_new(void) {
-    rt_queue_impl *q = (rt_queue_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_queue_impl));
+    rt_queue_impl *q =
+        (rt_queue_impl *)rt_obj_new_i64(RT_QUEUE_CLASS_ID, (int64_t)sizeof(rt_queue_impl));
     if (!q) {
         rt_trap("Queue: memory allocation failed");
     }
@@ -195,8 +218,10 @@ void *rt_queue_new(void) {
     q->cap = QUEUE_DEFAULT_CAP;
     q->head = 0;
     q->tail = 0;
+    q->owns_elements = 0;
     q->items = malloc((size_t)QUEUE_DEFAULT_CAP * sizeof(void *));
     rt_obj_set_finalizer(q, rt_queue_finalize);
+    rt_gc_track(q, rt_queue_traverse);
 
     if (!q->items) {
         if (rt_obj_release_check0(q))
@@ -205,6 +230,22 @@ void *rt_queue_new(void) {
     }
 
     return q;
+}
+
+void rt_queue_set_owns_elements(void *obj, int8_t owns) {
+    if (!obj)
+        return;
+    rt_queue_impl *q = (rt_queue_impl *)obj;
+    owns = owns ? 1 : 0;
+    if (q->len != 0 && q->owns_elements != owns)
+        rt_trap("Queue.SetOwnsElements: cannot change ownership mode on non-empty queue");
+    q->owns_elements = owns;
+}
+
+int8_t rt_queue_owns_elements(void *obj) {
+    if (!obj)
+        return 0;
+    return ((rt_queue_impl *)obj)->owns_elements ? 1 : 0;
 }
 
 /// @brief Returns the number of elements currently in the Queue.
@@ -288,6 +329,8 @@ void rt_queue_push(void *obj, void *elem) {
         queue_grow(q);
     }
 
+    if (q->owns_elements)
+        rt_obj_retain_maybe(elem);
     q->items[q->tail] = elem;
     q->tail = (q->tail + 1) % q->cap;
     q->len++;
@@ -333,8 +376,13 @@ void *rt_queue_pop(void *obj) {
     }
 
     void *val = q->items[q->head];
+    q->items[q->head] = NULL;
     q->head = (q->head + 1) % q->cap;
     q->len--;
+    if (q->owns_elements) {
+        rt_obj_retain_maybe(val);
+        queue_release_value(val);
+    }
 
     return val;
 }
@@ -408,6 +456,13 @@ void rt_queue_clear(void *obj) {
         return;
 
     rt_queue_impl *q = (rt_queue_impl *)obj;
+    if (q->owns_elements && q->items && q->cap > 0) {
+        for (int64_t i = 0; i < q->len; i++) {
+            int64_t idx = (q->head + i) % q->cap;
+            queue_release_value(q->items[idx]);
+            q->items[idx] = NULL;
+        }
+    }
     q->len = 0;
     q->head = 0;
     q->tail = 0;
@@ -441,8 +496,13 @@ void *rt_queue_try_pop(void *obj) {
         return NULL;
 
     void *val = q->items[q->head];
+    q->items[q->head] = NULL;
     q->head = (q->head + 1) % q->cap;
     q->len--;
+    if (q->owns_elements) {
+        rt_obj_retain_maybe(val);
+        queue_release_value(val);
+    }
     return val;
 }
 
@@ -459,6 +519,8 @@ void *rt_queue_clone(void *obj) {
         return result;
 
     rt_queue_impl *q = (rt_queue_impl *)obj;
+    if (q->owns_elements)
+        rt_queue_set_owns_elements(result, 1);
     for (int64_t i = 0; i < q->len; i++) {
         rt_queue_push(result, q->items[(q->head + i) % q->cap]);
     }
