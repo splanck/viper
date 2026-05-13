@@ -1284,6 +1284,7 @@ static void d3d11_log_hresult(const char *msg, HRESULT hr);
 static void d3d11_log_shader_error(const char *stage, ID3DBlob *err_blob);
 static void d3d11_present_swapchain(d3d11_context_t *ctx);
 static void d3d11_bind_render_targets(d3d11_context_t *ctx);
+static void d3d11_unbind_draw_resources(d3d11_context_t *ctx);
 
 /// @brief Multiply two row-major 4×4 matrices: `out = a * b`.
 ///
@@ -1467,6 +1468,23 @@ static void d3d11_unbind_output_targets(d3d11_context_t *ctx) {
     ID3D11DeviceContext_OMSetRenderTargets(ctx->ctx, 0, NULL, NULL);
 }
 
+static void d3d11_unbind_postfx_resources(d3d11_context_t *ctx) {
+    ID3D11ShaderResourceView *null_srvs[4] = {NULL, NULL, NULL, NULL};
+
+    if (!ctx || !ctx->ctx)
+        return;
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 4, null_srvs);
+}
+
+static void d3d11_unbind_shadow_resources(d3d11_context_t *ctx) {
+    ID3D11ShaderResourceView *null_shadow_srvs[VGFX3D_MAX_SHADOW_LIGHTS] = {NULL};
+
+    if (!ctx || !ctx->ctx)
+        return;
+    ID3D11DeviceContext_PSSetShaderResources(
+        ctx->ctx, 4, VGFX3D_MAX_SHADOW_LIGHTS, null_shadow_srvs);
+}
+
 static void d3d11_restore_current_target_bindings(d3d11_context_t *ctx) {
     if (!ctx || !ctx->ctx)
         return;
@@ -1481,6 +1499,20 @@ static void d3d11_restore_current_target_bindings(d3d11_context_t *ctx) {
 static DXGI_FORMAT d3d11_color_format_to_dxgi(vgfx3d_d3d11_color_format_t format_class) {
     return format_class == VGFX3D_D3D11_COLOR_FORMAT_HDR16F ? DXGI_FORMAT_R16G16B16A16_FLOAT
                                                             : DXGI_FORMAT_R8G8B8A8_UNORM;
+}
+
+static void d3d11_reset_temporal_scene_state(d3d11_context_t *ctx) {
+    if (!ctx)
+        return;
+    memcpy(ctx->draw_prev_vp, k_identity4x4, sizeof(ctx->draw_prev_vp));
+    memcpy(ctx->scene_vp, k_identity4x4, sizeof(ctx->scene_vp));
+    memcpy(ctx->scene_prev_vp, k_identity4x4, sizeof(ctx->scene_prev_vp));
+    memcpy(ctx->scene_inv_vp, k_identity4x4, sizeof(ctx->scene_inv_vp));
+    memset(ctx->scene_cam_pos, 0, sizeof(ctx->scene_cam_pos));
+    ctx->scene_history_valid = 0;
+    ctx->current_pass_is_overlay = 0;
+    ctx->current_load_existing_color = 0;
+    ctx->overlay_used_this_frame = 0;
 }
 
 static int d3d11_has_scene_targets(const d3d11_context_t *ctx) {
@@ -1826,6 +1858,7 @@ static HRESULT d3d11_ensure_float_srv_buffer(d3d11_context_t *ctx,
     if (element_count > UINT_MAX)
         return E_OUTOFMEMORY;
 
+    d3d11_unbind_draw_resources(ctx);
     SAFE_RELEASE(*srv);
     SAFE_RELEASE(*buffer);
 
@@ -1862,6 +1895,8 @@ static HRESULT d3d11_update_float_srv_buffer(d3d11_context_t *ctx,
                                              size_t *capacity,
                                              const float *data,
                                              size_t element_count) {
+    D3D11_BOX box;
+    size_t upload_bytes;
     HRESULT hr;
 
     if (!ctx || !data || element_count == 0)
@@ -1869,7 +1904,15 @@ static HRESULT d3d11_update_float_srv_buffer(d3d11_context_t *ctx,
     hr = d3d11_ensure_float_srv_buffer(ctx, buffer, srv, capacity, element_count);
     if (FAILED(hr))
         return hr;
-    ID3D11DeviceContext_UpdateSubresource(ctx->ctx, (ID3D11Resource *)*buffer, 0, NULL, data, 0, 0);
+    if (!vgfx3d_d3d11_compute_float_srv_update_bytes(element_count, *capacity, &upload_bytes) ||
+        upload_bytes > UINT_MAX)
+        return E_INVALIDARG;
+    memset(&box, 0, sizeof(box));
+    box.right = (UINT)upload_bytes;
+    box.bottom = 1;
+    box.back = 1;
+    d3d11_unbind_draw_resources(ctx);
+    ID3D11DeviceContext_UpdateSubresource(ctx->ctx, (ID3D11Resource *)*buffer, 0, &box, data, 0, 0);
     return S_OK;
 }
 
@@ -2550,9 +2593,11 @@ static HRESULT d3d11_create_staging_texture(d3d11_context_t *ctx,
 static void d3d11_destroy_scene_targets(d3d11_context_t *ctx) {
     if (!ctx)
         return;
+    d3d11_unbind_postfx_resources(ctx);
+    d3d11_unbind_shadow_resources(ctx);
+    d3d11_unbind_output_targets(ctx);
     if (ctx->current_target_kind == VGFX3D_D3D11_TARGET_SCENE ||
         ctx->current_target_kind == VGFX3D_D3D11_TARGET_OVERLAY) {
-        d3d11_unbind_output_targets(ctx);
         d3d11_clear_current_target_bindings(ctx);
     }
     SAFE_RELEASE(ctx->postfx_color_srv);
@@ -2576,6 +2621,7 @@ static void d3d11_destroy_scene_targets(d3d11_context_t *ctx) {
     ctx->overlay_height = 0;
     ctx->postfx_width = 0;
     ctx->postfx_height = 0;
+    d3d11_reset_temporal_scene_state(ctx);
 }
 
 /// @brief Allocate scene render targets at the requested size, idempotent on size match.
@@ -2643,11 +2689,17 @@ static HRESULT d3d11_ensure_overlay_target(d3d11_context_t *ctx, int32_t width, 
         ctx->overlay_width == width && ctx->overlay_height == height)
         return S_OK;
     if (ctx->overlay_color_tex || ctx->overlay_color_rtv || ctx->overlay_color_srv) {
+        d3d11_unbind_postfx_resources(ctx);
+        if (ctx->current_target_kind == VGFX3D_D3D11_TARGET_OVERLAY) {
+            d3d11_unbind_output_targets(ctx);
+            d3d11_clear_current_target_bindings(ctx);
+        }
         SAFE_RELEASE(ctx->overlay_color_srv);
         SAFE_RELEASE(ctx->overlay_color_rtv);
         SAFE_RELEASE(ctx->overlay_color_tex);
         ctx->overlay_width = 0;
         ctx->overlay_height = 0;
+        ctx->overlay_used_this_frame = 0;
     }
     hr = d3d11_create_color_target(ctx,
                                    width,
@@ -2683,6 +2735,8 @@ static HRESULT d3d11_ensure_postfx_target(d3d11_context_t *ctx, int32_t width, i
         ctx->postfx_width == width && ctx->postfx_height == height)
         return S_OK;
 
+    d3d11_unbind_postfx_resources(ctx);
+    d3d11_unbind_output_targets(ctx);
     SAFE_RELEASE(ctx->postfx_color_srv);
     SAFE_RELEASE(ctx->postfx_color_rtv);
     SAFE_RELEASE(ctx->postfx_color_tex);
@@ -2798,14 +2852,14 @@ cleanup:
 static void d3d11_destroy_rtt_targets(d3d11_context_t *ctx) {
     if (!ctx)
         return;
-    if (ctx->current_target_kind == VGFX3D_D3D11_TARGET_RTT) {
-        d3d11_unbind_output_targets(ctx);
-        d3d11_clear_current_target_bindings(ctx);
-    }
     if (ctx->rtt_target) {
         if (ctx->rtt_target->color_dirty)
             d3d11_sync_render_target_color(ctx, ctx->rtt_target);
         vgfx3d_rendertarget_clear_sync(ctx->rtt_target);
+    }
+    if (ctx->current_target_kind == VGFX3D_D3D11_TARGET_RTT) {
+        d3d11_unbind_output_targets(ctx);
+        d3d11_clear_current_target_bindings(ctx);
     }
     SAFE_RELEASE(ctx->rtt_staging);
     SAFE_RELEASE(ctx->rtt_dsv);
@@ -2840,6 +2894,9 @@ static HRESULT d3d11_ensure_rtt_targets(d3d11_context_t *ctx, vgfx3d_rendertarge
         }
         ctx->rtt_active = 1;
         ctx->rtt_target = rt;
+        ctx->current_pass_is_overlay = 0;
+        ctx->current_load_existing_color = 0;
+        ctx->overlay_used_this_frame = 0;
         rt->color_dirty = 0;
         rt->sync_color = d3d11_sync_render_target_color;
         rt->sync_color_userdata = ctx;
@@ -2874,6 +2931,9 @@ static HRESULT d3d11_ensure_rtt_targets(d3d11_context_t *ctx, vgfx3d_rendertarge
     ctx->rtt_color_format = rt->color_format;
     ctx->rtt_active = 1;
     ctx->rtt_target = rt;
+    ctx->current_pass_is_overlay = 0;
+    ctx->current_load_existing_color = 0;
+    ctx->overlay_used_this_frame = 0;
     rt->color_dirty = 0;
     rt->sync_color = d3d11_sync_render_target_color;
     rt->sync_color_userdata = ctx;
@@ -2884,6 +2944,11 @@ static HRESULT d3d11_ensure_rtt_targets(d3d11_context_t *ctx, vgfx3d_rendertarge
 static void d3d11_destroy_shadow_targets(d3d11_context_t *ctx) {
     if (!ctx)
         return;
+    d3d11_unbind_shadow_resources(ctx);
+    if (ctx->shadow_pass_slot >= 0) {
+        d3d11_unbind_output_targets(ctx);
+        ctx->shadow_pass_slot = -1;
+    }
     for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
         SAFE_RELEASE(ctx->shadow_srv[slot]);
         SAFE_RELEASE(ctx->shadow_dsv[slot]);
@@ -2898,6 +2963,7 @@ static void d3d11_destroy_shadow_targets(d3d11_context_t *ctx) {
 static void d3d11_release_shadow_slot(d3d11_context_t *ctx, int32_t slot) {
     if (!ctx || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
         return;
+    d3d11_unbind_shadow_resources(ctx);
     if (ctx->shadow_pass_slot == slot) {
         d3d11_unbind_output_targets(ctx);
         ctx->shadow_pass_slot = -1;
@@ -3467,6 +3533,7 @@ static int d3d11_prepare_anim_resources(d3d11_context_t *ctx,
                 slot->shape_count != (uint32_t)object_data->morph_shape_count || !slot->buffer ||
                 !slot->srv ||
                 (object_data->has_morph_normal_deltas && (!slot->normal_buffer || !slot->normal_srv))) {
+                d3d11_unbind_draw_resources(ctx);
                 d3d11_release_morph_cache_entry(slot);
                 hr = d3d11_update_float_srv_buffer(ctx,
                                                    &slot->buffer,
@@ -3617,7 +3684,7 @@ static void d3d11_bind_main_pipeline(d3d11_context_t *ctx,
 static void d3d11_unbind_draw_resources(d3d11_context_t *ctx) {
     ID3D11ShaderResourceView *null_vs[2] = {NULL, NULL};
     ID3D11ShaderResourceView *null_ps[16] = {NULL};
-    if (!ctx)
+    if (!ctx || !ctx->ctx)
         return;
     ID3D11DeviceContext_VSSetShaderResources(ctx->ctx, 0, 2, null_vs);
     ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 16, null_ps);
@@ -4574,6 +4641,14 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
     if (!ctx)
         return;
 
+    if (ctx->ctx) {
+        d3d11_unbind_draw_resources(ctx);
+        d3d11_unbind_shadow_resources(ctx);
+        d3d11_unbind_output_targets(ctx);
+        ID3D11DeviceContext_ClearState(ctx->ctx);
+        ID3D11DeviceContext_Flush(ctx->ctx);
+    }
+
     d3d11_release_texture_cache(ctx);
     d3d11_release_cubemap_cache(ctx);
     d3d11_release_mesh_cache(ctx);
@@ -4813,6 +4888,7 @@ static void d3d11_resize(void *ctx_ptr, int32_t w, int32_t h) {
 
     ctx->width = w;
     ctx->height = h;
+    d3d11_reset_temporal_scene_state(ctx);
 }
 
 /// @brief Copy a mapped texture's rows to an RGBA8 destination, format-aware.
@@ -4942,6 +5018,7 @@ static void d3d11_bind_postfx_target(
     viewport.Height = (FLOAT)height;
     viewport.MinDepth = 0.0f;
     viewport.MaxDepth = 1.0f;
+    d3d11_unbind_postfx_resources(ctx);
     ID3D11DeviceContext_OMSetRenderTargets(ctx->ctx, 1, &rtv, NULL);
     ID3D11DeviceContext_RSSetViewports(ctx->ctx, 1, &viewport);
 }
@@ -5033,7 +5110,7 @@ static int d3d11_draw_overlay_composite(d3d11_context_t *ctx,
                                         int32_t width,
                                         int32_t height) {
     ID3D11ShaderResourceView *overlay_srv;
-    ID3D11ShaderResourceView *null_srv = NULL;
+    ID3D11ShaderResourceView *null_srvs[4] = {NULL, NULL, NULL, NULL};
     float blend_factor[4] = {0, 0, 0, 0};
 
     if (!ctx || !dest_rtv || width <= 0 || height <= 0 || !ctx->overlay_used_this_frame ||
@@ -5055,7 +5132,7 @@ static int d3d11_draw_overlay_composite(d3d11_context_t *ctx,
     ID3D11DeviceContext_OMSetBlendState(
         ctx->ctx, ctx->blend_state_alpha, blend_factor, 0xFFFFFFFF);
     ID3D11DeviceContext_Draw(ctx->ctx, 3, 0);
-    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 3, 1, &null_srv);
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 4, null_srvs);
     return 1;
 }
 
@@ -5299,6 +5376,8 @@ static void d3d11_set_gpu_postfx_enabled(void *ctx_ptr, int8_t enabled) {
     if (!ctx->gpu_postfx_enabled) {
         vgfx3d_postfx_chain_reset(&ctx->gpu_postfx_chain);
         ctx->gpu_postfx_chain_valid = 0;
+        d3d11_unbind_postfx_resources(ctx);
+        d3d11_reset_temporal_scene_state(ctx);
     }
 }
 
@@ -5358,7 +5437,6 @@ static void d3d11_shadow_begin(
     void *ctx_ptr, int32_t slot, float *depth_buf, int32_t width, int32_t height, const float *light_vp) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     D3D11_VIEWPORT viewport;
-    ID3D11ShaderResourceView *null_shadow_srvs[VGFX3D_MAX_SHADOW_LIGHTS] = {NULL, NULL};
     HRESULT hr;
 
     (void)depth_buf;
@@ -5375,8 +5453,7 @@ static void d3d11_shadow_begin(
 
     ctx->shadow_pass_slot = slot;
     memcpy(ctx->shadow_vp[slot], light_vp, sizeof(ctx->shadow_vp[slot]));
-    ID3D11DeviceContext_PSSetShaderResources(
-        ctx->ctx, 4, VGFX3D_MAX_SHADOW_LIGHTS, null_shadow_srvs);
+    d3d11_unbind_shadow_resources(ctx);
     ID3D11DeviceContext_OMSetRenderTargets(ctx->ctx, 0, NULL, ctx->shadow_dsv[slot]);
     ID3D11DeviceContext_ClearDepthStencilView(
         ctx->ctx, ctx->shadow_dsv[slot], D3D11_CLEAR_DEPTH, 1.0f, 0);
