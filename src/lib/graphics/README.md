@@ -211,6 +211,11 @@ that exceed framebuffer safety limits before allocating presentation buffers, so
 native resize storms cannot leave the framebuffer and presentation surface with
 different committed sizes.
 
+Window creation dimensions are logical units. Backends create a native client
+area large enough for the display scale and allocate the framebuffer in physical
+pixels. Canvas enables coordinate scaling so drawing, size queries, and input
+remain in logical pixels on Retina/HiDPI displays.
+
 `vgfx_mouse_pos` always writes the last known window-relative coordinates, even
 when the cursor is outside the client area. In that case it returns `0` and the
 coordinates may be negative or greater than/equal to the current window size.
@@ -559,6 +564,10 @@ Required functions:
 - `vgfx_platform_present()`
 - `vgfx_platform_sleep_ms()`
 - `vgfx_platform_now_ms()`
+
+Frame limiting depends on `vgfx_platform_sleep_ms()` having millisecond-class
+precision; the Windows backend uses waitable timers rather than plain
+`Sleep()` to avoid coarse scheduler-tick frame pacing.
 
 See `MACOS_BACKEND.md` for implementation guidance.
 

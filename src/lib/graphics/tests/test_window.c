@@ -21,6 +21,7 @@
 
 #include "test_harness.h"
 #include "vgfx.h"
+#include "vgfx_mock.h"
 #include <string.h>
 
 /* T1: Window Creation – Valid Parameters */
@@ -83,6 +84,70 @@ void test_window_invalid_dimensions_use_defaults(void) {
     TEST_END();
 }
 
+void test_hidpi_canvas_logical_size_contract(void) {
+    TEST_BEGIN("Audit: HiDPI Canvas Logical Size Contract");
+
+    vgfx_mock_set_display_scale(2.0f);
+    vgfx_window_params_t params = {
+        .width = 320, .height = 240, .title = "HiDPI", .fps = -1, .resizable = 1};
+
+    vgfx_window_t win = vgfx_create_window(&params);
+    vgfx_mock_set_display_scale(1.0f);
+    ASSERT_NOT_NULL(win);
+
+    vgfx_framebuffer_t fb;
+    ASSERT_EQ(vgfx_get_framebuffer(win, &fb), 1);
+    ASSERT_EQ(fb.width, 640);
+    ASSERT_EQ(fb.height, 480);
+
+    int32_t w = 0;
+    int32_t h = 0;
+    ASSERT_EQ(vgfx_get_size(win, &w, &h), 1);
+    ASSERT_EQ(w, 640);
+    ASSERT_EQ(h, 480);
+
+    vgfx_set_coord_scale(win, vgfx_window_get_scale(win));
+    ASSERT_EQ(vgfx_get_size(win, &w, &h), 1);
+    ASSERT_EQ(w, 320);
+    ASSERT_EQ(h, 240);
+
+    vgfx_destroy_window(win);
+    TEST_END();
+}
+
+void test_hidpi_resize_reports_physical_and_logical_size(void) {
+    TEST_BEGIN("Audit: HiDPI Resize Physical and Logical Size");
+
+    vgfx_mock_set_display_scale(2.0f);
+    vgfx_window_params_t params = {
+        .width = 320, .height = 240, .title = "HiDPI", .fps = -1, .resizable = 1};
+
+    vgfx_window_t win = vgfx_create_window(&params);
+    vgfx_mock_set_display_scale(1.0f);
+    ASSERT_NOT_NULL(win);
+    vgfx_set_coord_scale(win, vgfx_window_get_scale(win));
+
+    vgfx_mock_inject_resize(win, 1000, 750);
+    ASSERT_EQ(vgfx_pump_events(win), 1);
+
+    vgfx_event_t ev;
+    ASSERT_EQ(vgfx_poll_event(win, &ev), 1);
+    ASSERT_EQ(ev.type, VGFX_EVENT_RESIZE);
+    ASSERT_EQ(ev.data.resize.width, 1000);
+    ASSERT_EQ(ev.data.resize.height, 750);
+    ASSERT_EQ(ev.data.resize.logical_width, 500);
+    ASSERT_EQ(ev.data.resize.logical_height, 375);
+
+    int32_t w = 0;
+    int32_t h = 0;
+    ASSERT_EQ(vgfx_get_size(win, &w, &h), 1);
+    ASSERT_EQ(w, 500);
+    ASSERT_EQ(h, 375);
+
+    vgfx_destroy_window(win);
+    TEST_END();
+}
+
 void test_monitor_size_allows_null_window(void) {
     TEST_BEGIN("Audit: Monitor Size Allows Null Window");
 
@@ -107,6 +172,8 @@ int main(void) {
     test_window_valid_params();
     test_window_exceed_max();
     test_window_invalid_dimensions_use_defaults();
+    test_hidpi_canvas_logical_size_contract();
+    test_hidpi_resize_reports_physical_and_logical_size();
     test_monitor_size_allows_null_window();
 
     TEST_SUMMARY();

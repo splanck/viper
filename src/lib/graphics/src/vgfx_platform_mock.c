@@ -46,6 +46,12 @@
 /// @invariant g_mock_time_ms >= 0 (never negative)
 static int64_t g_mock_time_ms = 0;
 
+/// @brief Mock display scale returned for newly-created windows.
+/// @details Defaults to 1.0 so existing tests use physical == logical. Tests
+///          can set a HiDPI scale before vgfx_create_window() to validate
+///          framebuffer/logical coordinate contracts without a real display.
+static float g_mock_display_scale = 1.0f;
+
 #define VGFX_MOCK_PENDING_QUEUE_SLOTS (VGFX_EVENT_QUEUE_SIZE * 8)
 
 /// @brief Mock platform data structure (minimal, no OS resources).
@@ -120,7 +126,8 @@ static void mock_apply_event(struct vgfx_window *win,
             win->mouse_y = event->data.scroll.y;
             break;
         case VGFX_EVENT_RESIZE:
-            vgfx_internal_resize_framebuffer(win, event->data.resize.width, event->data.resize.height);
+            vgfx_internal_resize_framebuffer(
+                win, event->data.resize.width, event->data.resize.height);
             break;
         case VGFX_EVENT_CLOSE:
             if (!win->prevent_close)
@@ -256,7 +263,7 @@ void vgfx_platform_sleep_ms(int32_t ms) {
 /// @details Tests run at 1:1 scale so all existing tests continue to pass
 ///          unchanged.  Physical == logical in the mock backend.
 float vgfx_platform_get_display_scale(void) {
-    return 1.0f;
+    return vgfx_internal_sanitize_scale(g_mock_display_scale);
 }
 
 /// @brief Get current time in milliseconds (mock version - returns mock time).
@@ -335,6 +342,10 @@ int64_t vgfx_mock_get_time_ms(void) {
 /// @note Only available in mock backend (not in real platform backends).
 void vgfx_mock_advance_time_ms(int64_t delta_ms) {
     g_mock_time_ms += delta_ms;
+}
+
+void vgfx_mock_set_display_scale(float scale) {
+    g_mock_display_scale = vgfx_internal_sanitize_scale(scale);
 }
 
 //===----------------------------------------------------------------------===//

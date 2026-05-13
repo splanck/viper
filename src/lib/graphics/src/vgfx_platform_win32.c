@@ -48,6 +48,16 @@
 #define WM_DPICHANGED 0x02E0
 #endif
 
+#ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
+#define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
+#endif
+
+#if defined(_MSC_VER)
+#define VGFX_WIN32_THREAD_LOCAL __declspec(thread)
+#else
+#define VGFX_WIN32_THREAD_LOCAL _Thread_local
+#endif
+
 //===----------------------------------------------------------------------===//
 // Platform Data Structure
 //===----------------------------------------------------------------------===//
@@ -66,10 +76,10 @@ typedef struct {
     HBITMAP hbmp;                 ///< DIB section bitmap handle
     HGDIOBJ old_bitmap;           ///< Original object selected into memdc
     void *dib_pixels;             ///< Pointer to DIB pixel data (BGRA format)
-    int dib_width;                 ///< Current DIB width in physical pixels
-    int dib_height;                ///< Current DIB height in physical pixels
-    int width;                    ///< Cached window width
-    int height;                   ///< Cached window height
+    int dib_width;                ///< Current DIB width in physical pixels
+    int dib_height;               ///< Current DIB height in physical pixels
+    int width;                    ///< Cached client width in physical pixels
+    int height;                   ///< Cached client height in physical pixels
     int close_requested;          ///< 1 if WM_CLOSE received, 0 otherwise
     WCHAR pending_high_surrogate; ///< Pending UTF-16 high surrogate from WM_CHAR
     DWORD saved_style;            ///< Windowed style saved for fullscreen restore
@@ -133,27 +143,36 @@ static int utf16_to_utf8_buffer(const WCHAR *wstr, char *out, size_t out_size) {
     return 1;
 }
 
-static int32_t win32_logical_to_physical(const struct vgfx_window *win, int32_t logical) {
-    float scale = (win && win->scale_factor >= 1.0f) ? win->scale_factor : 1.0f;
-    return vgfx_internal_scale_up_i32(logical, scale);
-}
-
-static void win32_client_to_physical_mouse(struct vgfx_window *win,
-                                           int32_t client_x,
-                                           int32_t client_y,
-                                           int32_t *out_x,
-                                           int32_t *out_y) {
-    int32_t x = win32_logical_to_physical(win, client_x);
-    int32_t y = win32_logical_to_physical(win, client_y);
+static void win32_client_to_physical_mouse(
+    struct vgfx_window *win, int32_t client_x, int32_t client_y, int32_t *out_x, int32_t *out_y) {
+    (void)win;
     if (out_x)
-        *out_x = x;
+        *out_x = client_x;
     if (out_y)
-        *out_y = y;
+        *out_y = client_y;
 }
 
 static int32_t win32_public_to_client_coord(const struct vgfx_window *win, int32_t value) {
-    int32_t physical = vgfx_internal_scale_up_i32(value, vgfx_internal_coord_scale(win));
-    return vgfx_internal_scale_down_i32(physical, vgfx_internal_sanitize_scale(win->scale_factor));
+    return vgfx_internal_scale_up_i32(value, vgfx_internal_coord_scale(win));
+}
+
+static BOOL win32_adjust_window_rect_for_scale(
+    const struct vgfx_window *win, LPRECT rect, DWORD style, BOOL has_menu, DWORD exstyle) {
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (user32) {
+        typedef BOOL(WINAPI * AdjustWindowRectExForDpiFn)(LPRECT, DWORD, BOOL, DWORD, UINT);
+        AdjustWindowRectExForDpiFn fn =
+            (AdjustWindowRectExForDpiFn)(void *)GetProcAddress(user32, "AdjustWindowRectExForDpi");
+        if (fn) {
+            float scale = (win && win->scale_factor >= 1.0f) ? win->scale_factor : 1.0f;
+            UINT dpi = (UINT)vgfx_internal_round_scaled(scale * 96.0f);
+            if (dpi < 96)
+                dpi = 96;
+            if (fn(rect, style, has_menu, exstyle, dpi))
+                return TRUE;
+        }
+    }
+    return AdjustWindowRectEx(rect, style, has_menu, exstyle);
 }
 
 static HCURSOR win32_cursor_handle(int32_t type) {
@@ -203,8 +222,7 @@ static int win32_recreate_dib(struct vgfx_window *win) {
     bmi.bmiHeader.biBitCount = 32;
     bmi.bmiHeader.biCompression = BI_RGB;
 
-    w32->hbmp =
-        CreateDIBSection(w32->memdc, &bmi, DIB_RGB_COLORS, &w32->dib_pixels, NULL, 0);
+    w32->hbmp = CreateDIBSection(w32->memdc, &bmi, DIB_RGB_COLORS, &w32->dib_pixels, NULL, 0);
     if (!w32->hbmp || !w32->dib_pixels) {
         w32->hbmp = NULL;
         w32->dib_pixels = NULL;
@@ -222,11 +240,8 @@ static int win32_recreate_dib(struct vgfx_window *win) {
     return 1;
 }
 
-static int win32_create_dib_for_size(vgfx_win32_data *w32,
-                                     int width,
-                                     int height,
-                                     HBITMAP *out_hbmp,
-                                     void **out_pixels) {
+static int win32_create_dib_for_size(
+    vgfx_win32_data *w32, int width, int height, HBITMAP *out_hbmp, void **out_pixels) {
     if (!w32 || !w32->memdc || width <= 0 || height <= 0 || !out_hbmp || !out_pixels)
         return 0;
 
@@ -256,19 +271,19 @@ static int win32_create_dib_for_size(vgfx_win32_data *w32,
 }
 
 static int win32_resize_backing_store(struct vgfx_window *win,
-                                      int dip_w,
-                                      int dip_h,
+                                      int client_w,
+                                      int client_h,
                                       int64_t timestamp) {
-    if (!win || !win->platform_data || dip_w <= 0 || dip_h <= 0)
+    if (!win || !win->platform_data || client_w <= 0 || client_h <= 0)
         return 0;
 
     vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
-    int phys_w = win32_logical_to_physical(win, dip_w);
-    int phys_h = win32_logical_to_physical(win, dip_h);
+    int phys_w = client_w;
+    int phys_h = client_h;
     if (phys_w <= 0 || phys_h <= 0)
         return 0;
 
-    if (dip_w == w32->width && dip_h == w32->height && phys_w == win->width &&
+    if (client_w == w32->width && client_h == w32->height && phys_w == win->width &&
         phys_h == win->height && w32->memdc && w32->hdc && w32->hbmp && w32->dib_pixels) {
         return 1;
     }
@@ -308,8 +323,8 @@ static int win32_resize_backing_store(struct vgfx_window *win,
             DeleteObject(old_hbmp);
     }
 
-    w32->width = dip_w;
-    w32->height = dip_h;
+    w32->width = client_w;
+    w32->height = client_h;
 
     if (w32->memdc && w32->hdc) {
         vgfx_event_t event = {0};
@@ -447,13 +462,13 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
         }
 
         case WM_SIZE: {
-            int dip_w = LOWORD(lparam);
-            int dip_h = HIWORD(lparam);
+            int client_w = LOWORD(lparam);
+            int client_h = HIWORD(lparam);
 
-            if (!w32 || dip_w <= 0 || dip_h <= 0)
+            if (!w32 || client_w <= 0 || client_h <= 0)
                 return 0;
 
-            (void)win32_resize_backing_store(win, dip_w, dip_h, timestamp);
+            (void)win32_resize_backing_store(win, client_w, client_h, timestamp);
             return 0;
         }
 
@@ -478,9 +493,9 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             if (w32 && w32->hwnd) {
                 RECT client = {0};
                 if (GetClientRect(w32->hwnd, &client)) {
-                    int dip_w = (int)(client.right - client.left);
-                    int dip_h = (int)(client.bottom - client.top);
-                    (void)win32_resize_backing_store(win, dip_w, dip_h, timestamp);
+                    int client_w = (int)(client.right - client.left);
+                    int client_h = (int)(client.bottom - client.top);
+                    (void)win32_resize_backing_store(win, client_w, client_h, timestamp);
                 }
             }
             return 0;
@@ -706,12 +721,10 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             win->mouse_y = y;
 
             float delta = (float)GET_WHEEL_DELTA_WPARAM(wparam) / (float)WHEEL_DELTA;
-            vgfx_event_t event = {.type = VGFX_EVENT_SCROLL,
-                                  .time_ms = timestamp,
-                                  .data.scroll = {.delta_x = 0.0f,
-                                                  .delta_y = 0.0f,
-                                                  .x = x,
-                                                  .y = y}};
+            vgfx_event_t event = {
+                .type = VGFX_EVENT_SCROLL,
+                .time_ms = timestamp,
+                .data.scroll = {.delta_x = 0.0f, .delta_y = 0.0f, .x = x, .y = y}};
             if (msg == WM_MOUSEWHEEL)
                 event.data.scroll.delta_y = -delta;
             else
@@ -753,9 +766,8 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
                 if (!wpath)
                     continue;
                 if (DragQueryFileW(hDrop, i, wpath, wlen + 1u) == wlen &&
-                    utf16_to_utf8_buffer(wpath,
-                                         event.data.file_drop.path,
-                                         sizeof(event.data.file_drop.path))) {
+                    utf16_to_utf8_buffer(
+                        wpath, event.data.file_drop.path, sizeof(event.data.file_drop.path))) {
                     vgfx_internal_enqueue_event(win, &event);
                 } else {
                     vgfx_internal_note_event_overflow(win);
@@ -770,6 +782,8 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             /* Use default window procedure for unhandled messages */
             return DefWindowProcW(hwnd, msg, wparam, lparam);
     }
+
+    return DefWindowProcW(hwnd, msg, wparam, lparam);
 }
 
 //===----------------------------------------------------------------------===//
@@ -785,11 +799,11 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 ///           144 DPI  → 1.5   (150% scaling)
 ///
 ///          DPI_AWARENESS_CONTEXT_SYSTEM_AWARE is loaded dynamically so the
-///          code compiles against older SDKs.  With system awareness active:
-///            - CreateWindowExW dimensions are in DIP (device-independent pixel)
-///            - Mouse/WM_SIZE coordinates are also in DIP
-///            - Windows does NOT auto-scale rendered content
-///          Multiply DIP coords by scale_factor to convert to physical pixels.
+///          code compiles against older SDKs. With system awareness active,
+///          raw Win32 window, mouse, and WM_SIZE coordinates are physical
+///          screen pixels. ViperGFX keeps its public Canvas coordinates
+///          logical by scaling the requested client size and dividing through
+///          coord_scale at the public API boundary.
 ///
 /// @note This must be called before any windows are created.
 /// @return Scale factor ≥ 1.0
@@ -852,8 +866,8 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
 
     win->platform_data = w32;
     w32->close_requested = 0;
-    w32->width = params->width;
-    w32->height = params->height;
+    w32->width = win->width;
+    w32->height = win->height;
 
     /* Get application instance */
     w32->hInstance = GetModuleHandleW(NULL);
@@ -894,9 +908,12 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
         style |= WS_THICKFRAME | WS_MAXIMIZEBOX;
     }
 
-    /* Adjust window rect to account for borders/title bar */
-    RECT rect = {0, 0, params->width, params->height};
-    AdjustWindowRect(&rect, style, FALSE);
+    /* Adjust window rect to account for borders/title bar. Win32 client sizes
+     * are physical pixels for DPI-aware processes, while params->width/height
+     * are logical Canvas units. win->width/height already include the current
+     * display scale and therefore match the backing framebuffer. */
+    RECT rect = {0, 0, win->width, win->height};
+    win32_adjust_window_rect_for_scale(win, &rect, style, FALSE, 0);
     int win_width = rect.right - rect.left;
     int win_height = rect.bottom - rect.top;
 
@@ -1111,16 +1128,12 @@ int vgfx_platform_present(struct vgfx_window *win) {
         dst[3] = src[3]; /* A */
     }
 
-    /* Blit from memory DC (physical pixels) to window DC (logical DIP units).
-     * With system DPI awareness the window DC coordinate space is in DIP;
-     * StretchBlt maps the physical-size DIB (win->width × win->height pixels)
-     * into the logical window rect (w32->width × w32->height DIP).  On a
-     * 2× HiDPI display this renders 1 DIB pixel per physical screen pixel. */
-    if (!StretchBlt(w32->hdc, /* Destination DC (window, DIP coords) */
+    /* Blit from memory DC to the DPI-aware window DC in physical pixels. */
+    if (!StretchBlt(w32->hdc, /* Destination DC (window client pixels) */
                     0,
                     0,
-                    w32->width,  /* Destination width in DIP */
-                    w32->height, /* Destination height in DIP */
+                    w32->width,  /* Destination width in physical pixels */
+                    w32->height, /* Destination height in physical pixels */
                     w32->memdc,  /* Source DC (physical DIB) */
                     0,
                     0,
@@ -1146,22 +1159,46 @@ int64_t vgfx_platform_now_ms(void) {
     QueryPerformanceCounter(&counter);
     if (freq.QuadPart <= 0)
         return 0;
-    long double millis =
-        ((long double)counter.QuadPart * 1000.0L) / (long double)freq.QuadPart;
+    long double millis = ((long double)counter.QuadPart * 1000.0L) / (long double)freq.QuadPart;
     if (millis > (long double)INT64_MAX)
         return INT64_MAX;
     return (int64_t)millis;
 }
 
+static HANDLE win32_get_sleep_timer(void) {
+    static VGFX_WIN32_THREAD_LOCAL HANDLE timer = NULL;
+    if (timer)
+        return timer;
+
+    timer = CreateWaitableTimerExW(
+        NULL, NULL, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_MODIFY_STATE | SYNCHRONIZE);
+    if (!timer) {
+        timer = CreateWaitableTimerExW(NULL, NULL, 0, TIMER_MODIFY_STATE | SYNCHRONIZE);
+    }
+    return timer;
+}
+
 /// @brief Sleep for the specified duration in milliseconds.
-/// @details Uses Win32 Sleep() function.  If ms <= 0, returns immediately
-///          without sleeping.  Used for FPS limiting.
+/// @details Uses a waitable timer instead of plain Sleep() so 60 FPS frame
+///          pacing is not quantized by the default Windows scheduler tick.
+///          If ms <= 0, returns immediately without sleeping.
 ///
 /// @param ms Duration to sleep in milliseconds
 void vgfx_platform_sleep_ms(int32_t ms) {
-    if (ms > 0) {
-        Sleep((DWORD)ms);
+    if (ms <= 0)
+        return;
+
+    HANDLE timer = win32_get_sleep_timer();
+    if (timer) {
+        LARGE_INTEGER due_time;
+        due_time.QuadPart = -(LONGLONG)ms * 10000LL;
+        if (SetWaitableTimer(timer, &due_time, 0, NULL, NULL, FALSE)) {
+            WaitForSingleObject(timer, INFINITE);
+            return;
+        }
     }
+
+    Sleep((DWORD)ms);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1504,10 +1541,12 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
     vgfx_win32_data *data = (vgfx_win32_data *)win->platform_data;
     if (!data->hwnd)
         return;
-    RECT rect = {0, 0, w, h};
+    int32_t client_w = win32_public_to_client_coord(win, w);
+    int32_t client_h = win32_public_to_client_coord(win, h);
+    RECT rect = {0, 0, client_w, client_h};
     DWORD style = (DWORD)GetWindowLong(data->hwnd, GWL_STYLE);
     DWORD exstyle = (DWORD)GetWindowLong(data->hwnd, GWL_EXSTYLE);
-    AdjustWindowRectEx(&rect, style, FALSE, exstyle);
+    win32_adjust_window_rect_for_scale(win, &rect, style, FALSE, exstyle);
     SetWindowPos(data->hwnd,
                  NULL,
                  0,

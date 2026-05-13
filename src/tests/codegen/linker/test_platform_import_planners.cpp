@@ -184,8 +184,9 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
     WindowsImportPlan plan;
     std::ostringstream err;
     ASSERT_TRUE(generateWindowsImports(LinkArch::X86_64,
-                                       {"ExitProcess", "CreateWindowExW", "D3D11CreateDevice", "cbrtf",
-                                        "cos", "__imp_ExitProcess"},
+                                       {"ExitProcess", "CreateWindowExW", "CreateWaitableTimerExW",
+                                        "SetWaitableTimer", "D3D11CreateDevice", "cbrtf", "cos",
+                                        "__imp_ExitProcess"},
                                        false, plan, err));
 
     EXPECT_TRUE(importPlanHasDll(plan, "kernel32.dll"));

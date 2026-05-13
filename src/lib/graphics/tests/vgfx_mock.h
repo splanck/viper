@@ -43,6 +43,9 @@ int64_t vgfx_mock_get_time_ms(void);
 /** Advance mock time by delta (milliseconds) */
 void vgfx_mock_advance_time_ms(int64_t delta_ms);
 
+/** Set mock display scale for newly-created windows */
+void vgfx_mock_set_display_scale(float scale);
+
 /*
  * ============================================================================
  * Event Injection Functions

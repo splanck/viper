@@ -95,6 +95,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "GlobalUnlock","InitializeSRWLock","AcquireSRWLockExclusive","AcquireSRWLockShared",
         "ReleaseSRWLockExclusive","ReleaseSRWLockShared","QueryPerformanceCounter","VirtualQuery",
         "WideCharToMultiByte","Beep","CloseHandle","CancelIo","CreateEventA","CreateFileA","CreateFileW",
+        "CreateWaitableTimerExW",
         "CreateDirectoryW","CreatePipe","CreateProcessA","CreateThread","DeleteFileW","FindClose",
         "FindFirstFileA","FindFirstFileW","FindNextFileA","FindNextFileW","GetFileAttributesA",
         "GetFileAttributesW","GetFileAttributesExW","GetFileSizeEx","GetConsoleMode",
@@ -103,7 +104,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "GlobalMemoryStatusEx","FlushFileBuffers","LocalFree",
         "InitializeConditionVariable","QueryPerformanceFrequency","ReadDirectoryChangesW","ReadFile",
         "MoveFileExA","MoveFileExW","RemoveDirectoryW","SetConsoleCP","SetConsoleMode",
-        "SetConsoleOutputCP","ResetEvent","SetEvent","SetHandleInformation","Sleep",
+        "SetConsoleOutputCP","ResetEvent","SetEvent","SetHandleInformation","SetWaitableTimer","Sleep",
         "SleepConditionVariableCS","WaitForMultipleObjects","WaitForSingleObject",
         "WakeAllConditionVariable","WakeConditionVariable","GetTempPathW",
     };
