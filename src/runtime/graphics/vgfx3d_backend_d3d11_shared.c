@@ -53,6 +53,10 @@ void vgfx3d_d3d11_pack_scalar_array4(float (*dst)[4],
         dst[i / 4][i % 4] = src[i];
 }
 
+/// @brief Store a row-major identity matrix into one fixed bone-palette slot.
+/// @details D3D11 identity-pads unused bones instead of zero-padding them so
+///   malformed skinning indices that reference an unused palette entry leave
+///   vertices in bind pose instead of collapsing them to the origin.
 static void vgfx3d_d3d11_store_identity4x4(float *dst) {
     memset(dst, 0, sizeof(float) * 16u);
     dst[0] = 1.0f;
@@ -218,7 +222,12 @@ int32_t vgfx3d_d3d11_next_capacity(int32_t current_capacity,
     return next_capacity;
 }
 
+/// @brief Overflow-checked size_t multiplication used by byte-span helpers.
+/// @details The destination is cleared before any validation so callers never
+///   observe a stale byte count after a rejected span.
 static int vgfx3d_d3d11_checked_mul_size(size_t a, size_t b, size_t *out) {
+    if (out)
+        *out = 0;
     if (!out)
         return 0;
     if (a != 0 && b > SIZE_MAX / a)
@@ -227,6 +236,10 @@ static int vgfx3d_d3d11_checked_mul_size(size_t a, size_t b, size_t *out) {
     return 1;
 }
 
+/// @brief Compute tightly packed row bytes for a positive-width pixel row.
+/// @details Used before upload/readback copies so all callers share the same
+///   overflow behavior and reject non-positive dimensions before casting to
+///   unsigned D3D11 pitches.
 int vgfx3d_d3d11_compute_row_bytes(int32_t width,
                                    int32_t bytes_per_pixel,
                                    size_t *out_bytes) {
@@ -237,6 +250,10 @@ int vgfx3d_d3d11_compute_row_bytes(int32_t width,
     return vgfx3d_d3d11_checked_mul_size((size_t)width, (size_t)bytes_per_pixel, out_bytes);
 }
 
+/// @brief Compute the exact byte range for updating live float SRV elements.
+/// @details The backing buffer can be larger than the live morph payload after
+///   capacity growth; this helper keeps UpdateSubresource boxed to the live
+///   elements and rejects stale counts that exceed the allocation.
 int vgfx3d_d3d11_compute_float_srv_update_bytes(size_t element_count,
                                                 size_t capacity,
                                                 size_t *out_bytes) {
@@ -247,11 +264,16 @@ int vgfx3d_d3d11_compute_float_srv_update_bytes(size_t element_count,
     return vgfx3d_d3d11_checked_mul_size(element_count, sizeof(float), out_bytes);
 }
 
+/// @brief Validate an RGBA8 destination rectangle and optionally return its byte span.
+/// @details The total stride * height span is checked even when @p out_bytes is
+///   NULL. That keeps callers that only need a boolean answer from accepting an
+///   impossible destination size on narrower hosts.
 int vgfx3d_d3d11_validate_rgba8_destination(int32_t width,
                                             int32_t height,
                                             int32_t stride,
                                             size_t *out_bytes) {
     size_t min_stride;
+    size_t total_bytes;
 
     if (out_bytes)
         *out_bytes = 0;
@@ -261,21 +283,28 @@ int vgfx3d_d3d11_validate_rgba8_destination(int32_t width,
         return 0;
     if ((size_t)stride < min_stride)
         return 0;
-    if (out_bytes &&
-        !vgfx3d_d3d11_checked_mul_size((size_t)stride, (size_t)height, out_bytes))
+    if (!vgfx3d_d3d11_checked_mul_size((size_t)stride, (size_t)height, &total_bytes))
         return 0;
+    if (out_bytes)
+        *out_bytes = total_bytes;
     return 1;
 }
 
+/// @brief Check 2D texture dimensions against D3D11 feature-level 11 limits.
 int vgfx3d_d3d11_is_valid_texture2d_extent(int32_t width, int32_t height) {
     return width > 0 && height > 0 && width <= VGFX3D_D3D11_MAX_TEXTURE2D_DIMENSION &&
            height <= VGFX3D_D3D11_MAX_TEXTURE2D_DIMENSION;
 }
 
+/// @brief Check a square cubemap face dimension against D3D11 limits.
 int vgfx3d_d3d11_is_valid_cubemap_extent(int32_t face_size) {
     return face_size > 0 && face_size <= VGFX3D_D3D11_MAX_CUBEMAP_DIMENSION;
 }
 
+/// @brief Clamp morph shape count to shader and index-range limits.
+/// @details HLSL buffer indexing is signed-int based in the shader source, so
+///   the largest accepted shape count is also bounded by
+///   `(shape * vertex_count + vertex_id) * 3 + component <= INT_MAX`.
 int32_t vgfx3d_d3d11_clamp_morph_shape_count(uint32_t vertex_count,
                                              int32_t requested_shape_count) {
     int32_t shape_count;
@@ -296,6 +325,10 @@ int32_t vgfx3d_d3d11_clamp_morph_shape_count(uint32_t vertex_count,
     return shape_count;
 }
 
+/// @brief Decide whether a compacting cache sweep can drop one aged entry.
+/// @details The predicate keeps enough unvisited entries to preserve the
+///   resident floor. `kept_count` is the number already copied to the compacted
+///   prefix, and `scan_index` is the current entry in the original array.
 int vgfx3d_d3d11_should_prune_cache_entry(int32_t total_count,
                                           int32_t kept_count,
                                           int32_t scan_index,
@@ -329,6 +362,11 @@ vgfx3d_d3d11_target_kind_t vgfx3d_d3d11_choose_target_kind(int8_t rtt_active,
     return VGFX3D_D3D11_TARGET_SCENE;
 }
 
+/// @brief Resolve a requested target to one with complete backing resources.
+/// @details Invalid enum values are treated as swapchain requests rather than
+///   propagated to the backend state machine. Overlay falls back to scene first
+///   because that preserves the already-rendered 3D color when a separate HUD
+///   target allocation failed.
 vgfx3d_d3d11_target_kind_t
 vgfx3d_d3d11_resolve_available_target(vgfx3d_d3d11_target_kind_t requested,
                                       int scene_available,
@@ -343,9 +381,16 @@ vgfx3d_d3d11_resolve_available_target(vgfx3d_d3d11_target_kind_t requested,
     }
     if (requested == VGFX3D_D3D11_TARGET_SCENE && !scene_available)
         return VGFX3D_D3D11_TARGET_SWAPCHAIN;
-    return requested;
+    if (requested == VGFX3D_D3D11_TARGET_SCENE ||
+        requested == VGFX3D_D3D11_TARGET_SWAPCHAIN)
+        return requested;
+    return VGFX3D_D3D11_TARGET_SWAPCHAIN;
 }
 
+/// @brief Decide whether a pass should preserve existing color contents.
+/// @details Overlay targets only load after this frame has already rendered
+///   into the separate overlay target; the first overlay pass clears stale HUD
+///   contents from prior frames.
 int8_t vgfx3d_d3d11_should_load_existing_color(vgfx3d_d3d11_target_kind_t target_kind,
                                                int8_t requested_load_existing_color,
                                                int8_t overlay_used_this_frame) {
@@ -354,6 +399,34 @@ int8_t vgfx3d_d3d11_should_load_existing_color(vgfx3d_d3d11_target_kind_t target
     if (target_kind != VGFX3D_D3D11_TARGET_OVERLAY)
         return 1;
     return overlay_used_this_frame ? 1 : 0;
+}
+
+/// @brief Decide whether a cached morph SRV payload can be reused for a draw.
+/// @details The key includes the normal-delta presence bit in addition to the
+///   stable morph identity, revision, clamped shape count, and vertex count.
+///   Without that bit, a payload uploaded for position-only morphing could be
+///   reused for a later draw that requires normal deltas but did not change the
+///   content revision.
+int vgfx3d_d3d11_should_reuse_morph_cache(const void *cached_key,
+                                          uint64_t cached_revision,
+                                          int32_t cached_shape_count,
+                                          uint32_t cached_vertex_count,
+                                          int8_t cached_has_normal_deltas,
+                                          const vgfx3d_draw_cmd_t *cmd) {
+    int32_t shape_count;
+    int8_t has_normal_deltas;
+
+    if (!cmd || !cmd->morph_key || cmd->morph_revision == 0 || !cmd->morph_deltas ||
+        !cmd->morph_weights || cmd->morph_shape_count <= 0 || cmd->vertex_count == 0)
+        return 0;
+
+    shape_count = vgfx3d_d3d11_clamp_morph_shape_count(cmd->vertex_count, cmd->morph_shape_count);
+    if (shape_count <= 0)
+        return 0;
+    has_normal_deltas = cmd->morph_normal_deltas ? 1 : 0;
+    return cached_key == cmd->morph_key && cached_revision == cmd->morph_revision &&
+           cached_shape_count == shape_count && cached_vertex_count == cmd->vertex_count &&
+           (cached_has_normal_deltas ? 1 : 0) == has_normal_deltas;
 }
 
 /// @brief Map a draw command to its required blend state (alpha vs opaque).
@@ -373,6 +446,10 @@ vgfx3d_d3d11_choose_color_format(vgfx3d_d3d11_target_kind_t target_kind) {
                                                     : VGFX3D_D3D11_COLOR_FORMAT_UNORM8;
 }
 
+/// @brief Decide whether the current pass should bind the motion-vector target.
+/// @details Motion vectors are only meaningful for opaque scene draws. Alpha
+///   and additive passes blend multiple histories into one pixel, so they draw
+///   color only and leave motion at the clear "no object history" sentinel.
 vgfx3d_d3d11_motion_attachment_mode_t
 vgfx3d_d3d11_choose_motion_attachment_mode(vgfx3d_d3d11_target_kind_t target_kind,
                                            const vgfx3d_draw_cmd_t *cmd) {
@@ -383,6 +460,10 @@ vgfx3d_d3d11_choose_motion_attachment_mode(vgfx3d_d3d11_target_kind_t target_kin
                : VGFX3D_D3D11_MOTION_ATTACHMENTS_COLOR_ONLY;
 }
 
+/// @brief Decide whether terrain splatting has every required texture bound.
+/// @details D3D11's shader samples the control map plus four layers as a unit;
+///   partial binds are treated as no splat so missing layers do not sample NULL
+///   resources or produce backend-specific black terrain.
 int vgfx3d_d3d11_has_complete_splat(int8_t cmd_has_splat,
                                     int has_splat_map,
                                     int has_layer0,

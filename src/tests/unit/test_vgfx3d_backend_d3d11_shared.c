@@ -335,6 +335,8 @@ static void test_capacity_and_mip_helpers(void) {
     EXPECT_TRUE(vgfx3d_d3d11_validate_rgba8_destination(3, 2, 12, &bytes) == 1 &&
                     bytes == 24u,
                 "RGBA8 destination validation returns the full writable span");
+    EXPECT_TRUE(vgfx3d_d3d11_validate_rgba8_destination(3, 2, 12, NULL) == 1,
+                "RGBA8 destination validation still checks spans without an out parameter");
     EXPECT_TRUE(vgfx3d_d3d11_validate_rgba8_destination(3, 2, 8, &bytes) == 0,
                 "RGBA8 destination validation rejects short strides");
 }
@@ -387,6 +389,46 @@ static void test_target_fallback_helper(void) {
     EXPECT_TRUE(vgfx3d_d3d11_resolve_available_target(
                     VGFX3D_D3D11_TARGET_RTT, 1, 1, 0) == VGFX3D_D3D11_TARGET_SWAPCHAIN,
                 "Missing RTT resources do not leave the backend targeting stale RTVs");
+    EXPECT_TRUE(vgfx3d_d3d11_resolve_available_target(
+                    (vgfx3d_d3d11_target_kind_t)99, 1, 1, 1) ==
+                    VGFX3D_D3D11_TARGET_SWAPCHAIN,
+                "Invalid target kinds fall back to the swapchain");
+}
+
+static void test_morph_cache_reuse_helper(void) {
+    vgfx3d_draw_cmd_t cmd;
+    float deltas[9] = {0};
+    float weights[3] = {0};
+    float normal_deltas[9] = {0};
+
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.morph_key = &cmd;
+    cmd.morph_revision = 7;
+    cmd.morph_deltas = deltas;
+    cmd.morph_weights = weights;
+    cmd.morph_shape_count = 3;
+    cmd.vertex_count = 1;
+
+    EXPECT_TRUE(vgfx3d_d3d11_should_reuse_morph_cache(
+                    cmd.morph_key, 7, 3, 1, 0, &cmd) == 1,
+                "Morph cache reuse accepts matching position-only payloads");
+    EXPECT_TRUE(vgfx3d_d3d11_should_reuse_morph_cache(
+                    cmd.morph_key, 6, 3, 1, 0, &cmd) == 0,
+                "Morph cache reuse rejects stale revisions");
+    EXPECT_TRUE(vgfx3d_d3d11_should_reuse_morph_cache(
+                    cmd.morph_key, 7, 2, 1, 0, &cmd) == 0,
+                "Morph cache reuse rejects mismatched shape counts");
+    cmd.morph_normal_deltas = normal_deltas;
+    EXPECT_TRUE(vgfx3d_d3d11_should_reuse_morph_cache(
+                    cmd.morph_key, 7, 3, 1, 0, &cmd) == 0,
+                "Morph cache reuse includes normal-delta presence");
+    EXPECT_TRUE(vgfx3d_d3d11_should_reuse_morph_cache(
+                    cmd.morph_key, 7, 3, 1, 1, &cmd) == 1,
+                "Morph cache reuse accepts matching normal-delta payloads");
+    cmd.morph_shape_count = VGFX3D_D3D11_MAX_MORPH_SHAPES + 4;
+    EXPECT_TRUE(vgfx3d_d3d11_should_reuse_morph_cache(
+                    cmd.morph_key, 7, VGFX3D_D3D11_MAX_MORPH_SHAPES, 1, 1, &cmd) == 1,
+                "Morph cache reuse compares against the clamped D3D11 shape count");
 }
 
 int main(void) {
@@ -403,6 +445,7 @@ int main(void) {
     test_capacity_and_mip_helpers();
     test_d3d11_limits_and_prune_helpers();
     test_target_fallback_helper();
+    test_morph_cache_reuse_helper();
 
     printf("vgfx3d d3d11 shared tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

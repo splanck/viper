@@ -165,6 +165,13 @@ vgfx3d_d3d11_resolve_available_target(vgfx3d_d3d11_target_kind_t requested,
                                       int scene_available,
                                       int overlay_available,
                                       int rtt_available);
+/// @brief Decide whether a cached morph payload still matches a draw command.
+int vgfx3d_d3d11_should_reuse_morph_cache(const void *cached_key,
+                                          uint64_t cached_revision,
+                                          int32_t cached_shape_count,
+                                          uint32_t cached_vertex_count,
+                                          int8_t cached_has_normal_deltas,
+                                          const vgfx3d_draw_cmd_t *cmd);
 /// @brief Map a draw command to its required blend state (alpha vs opaque).
 vgfx3d_d3d11_blend_mode_t
 vgfx3d_d3d11_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd);

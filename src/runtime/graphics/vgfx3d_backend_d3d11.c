@@ -1278,6 +1278,7 @@ typedef struct {
 #define D3D11_INITIAL_DYNAMIC_VB_SIZE (4u * 1024u * 1024u)
 #define D3D11_INITIAL_DYNAMIC_IB_SIZE (1u * 1024u * 1024u)
 #define D3D11_INITIAL_INSTANCE_BUFFER_SIZE (256u * 1024u)
+#define D3D11_MAX_CONSTANT_BUFFER_BYTES (64u * 1024u)
 
 static void d3d11_destroy_ctx(void *ctx_ptr);
 static void d3d11_log_hresult(const char *msg, HRESULT hr);
@@ -1436,12 +1437,13 @@ static ID3D11RasterizerState *d3d11_choose_rasterizer(d3d11_context_t *ctx,
     return backface_cull ? ctx->rs_solid_cull : ctx->rs_solid_no_cull;
 }
 
-/// @brief Round a buffer size up to the 16-byte boundary D3D11 requires for cbuffers.
-static UINT d3d11_constant_buffer_byte_width(size_t size) {
-    return (UINT)((size + 15u) & ~15u);
-}
-
+/// @brief Overflow-checked size_t multiplication used by backend byte calculations.
+/// @details Clears @p out before validation so a failed computation never leaves
+///   a stale byte count in the caller. Used for CPU-side allocations and D3D11
+///   ByteWidth / pitch calculations before narrowing to UINT.
 static int d3d11_checked_mul_size(size_t a, size_t b, size_t *out) {
+    if (out)
+        *out = 0;
     if (!out)
         return 0;
     if (a != 0 && b > SIZE_MAX / a)
@@ -1450,6 +1452,61 @@ static int d3d11_checked_mul_size(size_t a, size_t b, size_t *out) {
     return 1;
 }
 
+/// @brief Compute a valid D3D11 constant-buffer ByteWidth.
+/// @details D3D11 constant buffers must be 16-byte aligned and cannot exceed
+///   4096 float4 registers (64 KiB). Returning 0 lets creation fail before a
+///   wrapped or oversized ByteWidth reaches `CreateBuffer`.
+static int d3d11_compute_constant_buffer_byte_width(size_t size, UINT *out_width) {
+    size_t aligned_size;
+
+    if (out_width)
+        *out_width = 0;
+    if (!out_width || size == 0 || size > D3D11_MAX_CONSTANT_BUFFER_BYTES ||
+        size > SIZE_MAX - 15u)
+        return 0;
+    aligned_size = (size + 15u) & ~(size_t)15u;
+    if (aligned_size == 0 || aligned_size > D3D11_MAX_CONSTANT_BUFFER_BYTES ||
+        aligned_size > UINT_MAX)
+        return 0;
+    *out_width = (UINT)aligned_size;
+    return 1;
+}
+
+/// @brief Create a dynamic D3D11 constant buffer for one CPU-side cbuffer struct.
+/// @details Centralizes the size validation and alignment policy so every cbuffer
+///   created by the backend obeys the same 16-byte and 64 KiB limits.
+static HRESULT d3d11_create_constant_buffer(d3d11_context_t *ctx,
+                                            size_t size,
+                                            ID3D11Buffer **out_buffer) {
+    D3D11_BUFFER_DESC desc;
+
+    if (!ctx || !out_buffer)
+        return E_INVALIDARG;
+    memset(&desc, 0, sizeof(desc));
+    desc.Usage = D3D11_USAGE_DYNAMIC;
+    desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    if (!d3d11_compute_constant_buffer_byte_width(size, &desc.ByteWidth))
+        return E_OUTOFMEMORY;
+    return ID3D11Device_CreateBuffer(ctx->device, &desc, NULL, out_buffer);
+}
+
+/// @brief Initialize common non-comparison sampler fields to D3D11-valid defaults.
+/// @details `D3D11_SAMPLER_DESC` is not fully valid when left zeroed: the debug
+///   layer can reject `ComparisonFunc == 0` or `MaxAnisotropy == 0` even when the
+///   filter is non-comparison. Callers then override filter/address modes.
+static void d3d11_init_sampler_desc_defaults(D3D11_SAMPLER_DESC *desc) {
+    if (!desc)
+        return;
+    memset(desc, 0, sizeof(*desc));
+    desc->MaxAnisotropy = 1;
+    desc->ComparisonFunc = D3D11_COMPARISON_NEVER;
+    desc->MaxLOD = D3D11_FLOAT32_MAX;
+}
+
+/// @brief Clear the cached description of whatever RTV/DSV set the backend thinks is bound.
+/// @details This updates only the CPU mirror in `d3d11_context_t`; callers that need
+///   the D3D11 immediate context unbound must call `d3d11_unbind_output_targets` too.
 static void d3d11_clear_current_target_bindings(d3d11_context_t *ctx) {
     if (!ctx)
         return;
@@ -1462,12 +1519,18 @@ static void d3d11_clear_current_target_bindings(d3d11_context_t *ctx) {
     ctx->current_target_kind = VGFX3D_D3D11_TARGET_SWAPCHAIN;
 }
 
+/// @brief Unbind all output-merger render targets and depth-stencil views.
+/// @details Required before releasing backbuffer/offscreen targets and before
+///   copying from textures that may currently be bound as RTVs.
 static void d3d11_unbind_output_targets(d3d11_context_t *ctx) {
     if (!ctx || !ctx->ctx)
         return;
     ID3D11DeviceContext_OMSetRenderTargets(ctx->ctx, 0, NULL, NULL);
 }
 
+/// @brief Clear the pixel-shader SRV slots used by post-FX and overlay passes.
+/// @details Slots 0..3 are scene color, depth, motion, and overlay. Clearing them
+///   prevents read/write hazards before those same textures are rebound as RTVs.
 static void d3d11_unbind_postfx_resources(d3d11_context_t *ctx) {
     ID3D11ShaderResourceView *null_srvs[4] = {NULL, NULL, NULL, NULL};
 
@@ -1476,6 +1539,9 @@ static void d3d11_unbind_postfx_resources(d3d11_context_t *ctx) {
     ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 4, null_srvs);
 }
 
+/// @brief Clear the pixel-shader SRV slots used by shadow-map sampling.
+/// @details Shadow maps are rebound as depth outputs during shadow passes; D3D11
+///   requires their shader-resource views to be detached first.
 static void d3d11_unbind_shadow_resources(d3d11_context_t *ctx) {
     ID3D11ShaderResourceView *null_shadow_srvs[VGFX3D_MAX_SHADOW_LIGHTS] = {NULL};
 
@@ -1485,6 +1551,9 @@ static void d3d11_unbind_shadow_resources(d3d11_context_t *ctx) {
         ctx->ctx, 4, VGFX3D_MAX_SHADOW_LIGHTS, null_shadow_srvs);
 }
 
+/// @brief Rebind the CPU-tracked current output targets after a temporary unbind.
+/// @details Readback and RTT sync paths unbind outputs for `CopyResource`; this
+///   helper restores the render target set only when one was known to be active.
 static void d3d11_restore_current_target_bindings(d3d11_context_t *ctx) {
     if (!ctx || !ctx->ctx)
         return;
@@ -1501,6 +1570,10 @@ static DXGI_FORMAT d3d11_color_format_to_dxgi(vgfx3d_d3d11_color_format_t format
                                                             : DXGI_FORMAT_R8G8B8A8_UNORM;
 }
 
+/// @brief Reset scene-history and overlay-pass state after target lifetime changes.
+/// @details Resizes, post-FX disable, and target destruction invalidate the prior
+///   view-projection/depth/motion history. Resetting to identity avoids using stale
+///   matrices for motion blur, SSAO reconstruction, or overlay load decisions.
 static void d3d11_reset_temporal_scene_state(d3d11_context_t *ctx) {
     if (!ctx)
         return;
@@ -1515,18 +1588,32 @@ static void d3d11_reset_temporal_scene_state(d3d11_context_t *ctx) {
     ctx->overlay_used_this_frame = 0;
 }
 
+/// @brief Return whether every scene color/motion/depth resource is complete.
+/// @details Target selection needs more than RTV/DSV pointers: post-FX presentation
+///   and readback also require the SRVs and owning textures to exist.
 static int d3d11_has_scene_targets(const d3d11_context_t *ctx) {
-    return ctx && ctx->scene_color_rtv && ctx->scene_motion_rtv && ctx->scene_dsv;
+    return ctx && ctx->scene_color_tex && ctx->scene_color_rtv && ctx->scene_color_srv &&
+           ctx->scene_motion_tex && ctx->scene_motion_rtv && ctx->scene_motion_srv &&
+           ctx->scene_depth_tex && ctx->scene_dsv && ctx->scene_depth_srv;
 }
 
+/// @brief Return whether the separate overlay color target is complete.
 static int d3d11_has_overlay_target(const d3d11_context_t *ctx) {
-    return ctx && ctx->overlay_color_rtv != NULL;
+    return ctx && ctx->overlay_color_tex && ctx->overlay_color_rtv && ctx->overlay_color_srv;
 }
 
+/// @brief Return whether all render-to-texture resources are complete.
+/// @details RTT needs color/depth outputs plus staging readback storage; a partial
+///   set must fall back before the backend binds stale or NULL resources.
 static int d3d11_has_rtt_targets(const d3d11_context_t *ctx) {
-    return ctx && ctx->rtt_rtv && ctx->rtt_dsv;
+    return ctx && ctx->rtt_color_tex && ctx->rtt_rtv && ctx->rtt_depth_tex && ctx->rtt_dsv &&
+           ctx->rtt_staging;
 }
 
+/// @brief Recompute pass flags after target allocation or fallback decisions.
+/// @details The active target kind is downgraded to a complete target set first,
+///   then overlay/load-existing flags are derived from the resolved target so the
+///   clear path never preserves stale contents from a failed allocation.
 static void d3d11_refresh_pass_flags(d3d11_context_t *ctx,
                                      const vgfx3d_camera_params_t *cam) {
     if (!ctx || !cam)
@@ -1607,6 +1694,7 @@ static HRESULT d3d11_ensure_dynamic_buffer(d3d11_context_t *ctx,
         return E_OUTOFMEMORY;
 
     SAFE_RELEASE(*buffer);
+    *capacity = 0;
     memset(&desc, 0, sizeof(desc));
     desc.Usage = D3D11_USAGE_DYNAMIC;
     desc.ByteWidth = (UINT)new_capacity;
@@ -1861,6 +1949,7 @@ static HRESULT d3d11_ensure_float_srv_buffer(d3d11_context_t *ctx,
     d3d11_unbind_draw_resources(ctx);
     SAFE_RELEASE(*srv);
     SAFE_RELEASE(*buffer);
+    *capacity = 0;
 
     memset(&desc, 0, sizeof(desc));
     desc.ByteWidth = (UINT)bytes;
@@ -1880,6 +1969,7 @@ static HRESULT d3d11_ensure_float_srv_buffer(d3d11_context_t *ctx,
     if (FAILED(hr)) {
         SAFE_RELEASE(*buffer);
         SAFE_RELEASE(*srv);
+        *capacity = 0;
         return hr;
     }
     *capacity = element_count;
@@ -2337,8 +2427,8 @@ static HRESULT d3d11_create_cubemap_srv(d3d11_context_t *ctx,
         free(faces[i]);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateTexture2D/ShaderResourceView(cubemap)", hr);
-        SAFE_RELEASE(*out_tex);
         SAFE_RELEASE(*out_srv);
+        SAFE_RELEASE(*out_tex);
     }
     return hr;
 }
@@ -2960,6 +3050,11 @@ static void d3d11_destroy_shadow_targets(d3d11_context_t *ctx) {
     ctx->shadow_count = 0;
 }
 
+/// @brief Release one shadow-map slot and detach it from any active bindings.
+/// @details Clears all shadow SRVs first because D3D11 forbids releasing/rebinding
+///   a depth texture while a shader-resource view of the same texture is still
+///   visible to the pixel shader. If the slot is currently being rendered, the
+///   output-merger is also detached and the active shadow-pass marker is cleared.
 static void d3d11_release_shadow_slot(d3d11_context_t *ctx, int32_t slot) {
     if (!ctx || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
         return;
@@ -2975,6 +3070,10 @@ static void d3d11_release_shadow_slot(d3d11_context_t *ctx, int32_t slot) {
     ctx->shadow_height[slot] = 0;
 }
 
+/// @brief Recompute the highest contiguous shadow slot advertised to shaders.
+/// @details The shader receives `shadowCount` and validates each light's
+///   `shadowIndex` against it. Recomputing after allocation failures prevents a
+///   stale count from making an empty slot sample a NULL SRV.
 static void d3d11_recompute_shadow_count(d3d11_context_t *ctx) {
     int32_t count = 0;
 
@@ -3024,7 +3123,7 @@ d3d11_ensure_shadow_targets(d3d11_context_t *ctx, int32_t slot, int32_t width, i
 static void d3d11_bind_render_targets(d3d11_context_t *ctx) {
     D3D11_VIEWPORT viewport;
 
-    if (!ctx)
+    if (!ctx || !ctx->ctx)
         return;
     ID3D11DeviceContext_OMSetRenderTargets(
         ctx->ctx, ctx->current_rtv_count, ctx->current_rtvs, ctx->current_dsv);
@@ -3211,13 +3310,13 @@ static ID3D11SamplerState *d3d11_get_material_sampler(d3d11_context_t *ctx,
     }
     if (ctx->material_samplers[wrap_s][wrap_t][filter])
         return ctx->material_samplers[wrap_s][wrap_t][filter];
-    memset(&desc, 0, sizeof(desc));
+    d3d11_init_sampler_desc_defaults(&desc);
     desc.Filter = filter ? D3D11_FILTER_MIN_MAG_MIP_POINT : D3D11_FILTER_MIN_MAG_MIP_LINEAR;
     desc.AddressU = d3d11_sampler_address_mode(wrap_s);
     desc.AddressV = d3d11_sampler_address_mode(wrap_t);
     desc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
-    desc.MaxLOD = D3D11_FLOAT32_MAX;
-    hr = ID3D11Device_CreateSamplerState(ctx->device, &desc, &ctx->material_samplers[wrap_s][wrap_t][filter]);
+    hr = ID3D11Device_CreateSamplerState(
+        ctx->device, &desc, &ctx->material_samplers[wrap_s][wrap_t][filter]);
     if (FAILED(hr))
         return ctx->linear_wrap_sampler;
     return ctx->material_samplers[wrap_s][wrap_t][filter];
@@ -3423,7 +3522,11 @@ static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
 static void d3d11_prepare_light_data(const vgfx3d_light_params_t *lights,
                                      int32_t light_count,
                                      d3d_light_t *light_data) {
+    if (!light_data)
+        return;
     memset(light_data, 0, sizeof(d3d_light_t) * VGFX3D_MAX_LIGHTS);
+    if (!lights || light_count <= 0)
+        return;
     for (int32_t i = 0; i < light_count && i < VGFX3D_MAX_LIGHTS; i++) {
         light_data[i].type = lights[i].type;
         light_data[i].shadow_index = lights[i].shadow_index;
@@ -3528,11 +3631,17 @@ static int d3d11_prepare_anim_resources(d3d11_context_t *ctx,
         if (!slot)
             slot = oldest;
         if (slot) {
-            if (slot->key != cmd->morph_key || slot->generation != cmd->morph_revision ||
-                slot->vertex_count != cmd->vertex_count ||
-                slot->shape_count != (uint32_t)object_data->morph_shape_count || !slot->buffer ||
-                !slot->srv ||
-                (object_data->has_morph_normal_deltas && (!slot->normal_buffer || !slot->normal_srv))) {
+            int cache_reusable =
+                slot->buffer && slot->srv &&
+                (!object_data->has_morph_normal_deltas ||
+                 (slot->normal_buffer && slot->normal_srv)) &&
+                vgfx3d_d3d11_should_reuse_morph_cache(slot->key,
+                                                       slot->generation,
+                                                       (int32_t)slot->shape_count,
+                                                       slot->vertex_count,
+                                                       (int8_t)slot->has_normal_deltas,
+                                                       cmd);
+            if (!cache_reusable) {
                 d3d11_unbind_draw_resources(ctx);
                 d3d11_release_morph_cache_entry(slot);
                 hr = d3d11_update_float_srv_buffer(ctx,
@@ -4073,7 +4182,6 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
     D3D11_INPUT_ELEMENT_DESC layout[8];
     D3D11_INPUT_ELEMENT_DESC instanced_layout[20];
     D3D11_INPUT_ELEMENT_DESC skybox_layout[1];
-    D3D11_BUFFER_DESC cb_desc;
     D3D11_BUFFER_DESC skybox_desc;
     static const float skybox_vertices[] = {
         -1.0f, -1.0f, 1.0f, 3.0f, -1.0f, 1.0f, -1.0f, 3.0f, 1.0f,
@@ -4250,12 +4358,11 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
         goto fail;
     }
 
-    memset(&sampler_desc, 0, sizeof(sampler_desc));
+    d3d11_init_sampler_desc_defaults(&sampler_desc);
     sampler_desc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
     sampler_desc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
     sampler_desc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
     sampler_desc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
-    sampler_desc.MaxLOD = D3D11_FLOAT32_MAX;
     hr = ID3D11Device_CreateSamplerState(ctx->device, &sampler_desc, &ctx->linear_wrap_sampler);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateSamplerState(linearWrap)", hr);
@@ -4269,7 +4376,7 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
         d3d11_log_hresult("CreateSamplerState(linearClamp)", hr);
         goto fail;
     }
-    memset(&sampler_desc, 0, sizeof(sampler_desc));
+    d3d11_init_sampler_desc_defaults(&sampler_desc);
     sampler_desc.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT;
     sampler_desc.AddressU = D3D11_TEXTURE_ADDRESS_BORDER;
     sampler_desc.AddressV = D3D11_TEXTURE_ADDRESS_BORDER;
@@ -4279,7 +4386,6 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
     sampler_desc.BorderColor[2] = 1.0f;
     sampler_desc.BorderColor[3] = 1.0f;
     sampler_desc.ComparisonFunc = D3D11_COMPARISON_LESS_EQUAL;
-    sampler_desc.MaxLOD = D3D11_FLOAT32_MAX;
     hr = ID3D11Device_CreateSamplerState(ctx->device, &sampler_desc, &ctx->shadow_cmp_sampler);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateSamplerState(shadowCmp)", hr);
@@ -4507,54 +4613,43 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
         goto fail;
     }
 
-    memset(&cb_desc, 0, sizeof(cb_desc));
-    cb_desc.Usage = D3D11_USAGE_DYNAMIC;
-    cb_desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-    cb_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    cb_desc.ByteWidth = d3d11_constant_buffer_byte_width(sizeof(d3d_per_object_t));
-    hr = ID3D11Device_CreateBuffer(ctx->device, &cb_desc, NULL, &ctx->cb_per_object);
+    hr = d3d11_create_constant_buffer(ctx, sizeof(d3d_per_object_t), &ctx->cb_per_object);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateBuffer(cbPerObject)", hr);
         goto fail;
     }
-    cb_desc.ByteWidth = d3d11_constant_buffer_byte_width(sizeof(d3d_per_scene_t));
-    hr = ID3D11Device_CreateBuffer(ctx->device, &cb_desc, NULL, &ctx->cb_per_scene);
+    hr = d3d11_create_constant_buffer(ctx, sizeof(d3d_per_scene_t), &ctx->cb_per_scene);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateBuffer(cbPerScene)", hr);
         goto fail;
     }
-    cb_desc.ByteWidth = d3d11_constant_buffer_byte_width(sizeof(d3d_per_material_t));
-    hr = ID3D11Device_CreateBuffer(ctx->device, &cb_desc, NULL, &ctx->cb_per_material);
+    hr = d3d11_create_constant_buffer(ctx, sizeof(d3d_per_material_t), &ctx->cb_per_material);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateBuffer(cbPerMaterial)", hr);
         goto fail;
     }
-    cb_desc.ByteWidth =
-        d3d11_constant_buffer_byte_width(sizeof(d3d_light_t) * (uint32_t)VGFX3D_MAX_LIGHTS);
-    hr = ID3D11Device_CreateBuffer(ctx->device, &cb_desc, NULL, &ctx->cb_per_lights);
+    hr = d3d11_create_constant_buffer(
+        ctx, sizeof(d3d_light_t) * (uint32_t)VGFX3D_MAX_LIGHTS, &ctx->cb_per_lights);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateBuffer(cbPerLights)", hr);
         goto fail;
     }
-    cb_desc.ByteWidth = d3d11_constant_buffer_byte_width(VGFX3D_D3D11_BONE_PALETTE_BYTES);
-    hr = ID3D11Device_CreateBuffer(ctx->device, &cb_desc, NULL, &ctx->cb_bones);
+    hr = d3d11_create_constant_buffer(ctx, VGFX3D_D3D11_BONE_PALETTE_BYTES, &ctx->cb_bones);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateBuffer(cbBones)", hr);
         goto fail;
     }
-    hr = ID3D11Device_CreateBuffer(ctx->device, &cb_desc, NULL, &ctx->cb_prev_bones);
+    hr = d3d11_create_constant_buffer(ctx, VGFX3D_D3D11_BONE_PALETTE_BYTES, &ctx->cb_prev_bones);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateBuffer(cbPrevBones)", hr);
         goto fail;
     }
-    cb_desc.ByteWidth = d3d11_constant_buffer_byte_width(sizeof(d3d_skybox_cb_t));
-    hr = ID3D11Device_CreateBuffer(ctx->device, &cb_desc, NULL, &ctx->cb_skybox);
+    hr = d3d11_create_constant_buffer(ctx, sizeof(d3d_skybox_cb_t), &ctx->cb_skybox);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateBuffer(cbSkybox)", hr);
         goto fail;
     }
-    cb_desc.ByteWidth = d3d11_constant_buffer_byte_width(sizeof(d3d_postfx_cb_t));
-    hr = ID3D11Device_CreateBuffer(ctx->device, &cb_desc, NULL, &ctx->cb_postfx);
+    hr = d3d11_create_constant_buffer(ctx, sizeof(d3d_postfx_cb_t), &ctx->cb_postfx);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateBuffer(cbPostFX)", hr);
         goto fail;
