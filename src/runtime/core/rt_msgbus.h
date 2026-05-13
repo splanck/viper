@@ -31,8 +31,8 @@
 
 #include "rt_string.h"
 
-#define RT_MSGBUS_CLASS_ID INT64_C(-0x430301)
-#define RT_MSGBUS_CALLBACK_CLASS_ID INT64_C(-0x430302)
+#define RT_MSGBUS_CLASS_ID INT64_C(-0x430501)
+#define RT_MSGBUS_CALLBACK_CLASS_ID INT64_C(-0x430502)
 
 #ifdef __cplusplus
 extern "C" {

@@ -72,6 +72,12 @@ typedef struct rt_stack_impl {
     int8_t owns_elements;
 } rt_stack_impl;
 
+static rt_stack_impl *as_stack(void *obj, const char *what) {
+    if (!obj || rt_obj_class_id(obj) != RT_STACK_CLASS_ID)
+        rt_trap(what);
+    return (rt_stack_impl *)obj;
+}
+
 static void stack_release_value(void *value) {
     if (value && rt_obj_release_check0(value))
         rt_obj_free(value);
@@ -94,7 +100,7 @@ static void stack_release_value(void *value) {
 static void rt_stack_finalize(void *obj) {
     if (!obj)
         return;
-    rt_stack_impl *stack = (rt_stack_impl *)obj;
+    rt_stack_impl *stack = as_stack(obj, "Stack: invalid Stack object");
     if (stack->owns_elements && stack->items) {
         for (int64_t i = 0; i < stack->len; i++)
             stack_release_value(stack->items[i]);
@@ -108,7 +114,7 @@ static void rt_stack_finalize(void *obj) {
 static void rt_stack_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
-    rt_stack_impl *stack = (rt_stack_impl *)obj;
+    rt_stack_impl *stack = as_stack(obj, "Stack: invalid Stack object");
     if (!stack->owns_elements || !stack->items)
         return;
     for (int64_t i = 0; i < stack->len; i++)
@@ -214,7 +220,7 @@ void *rt_stack_new(void) {
 void rt_stack_set_owns_elements(void *obj, int8_t owns) {
     if (!obj)
         return;
-    rt_stack_impl *stack = (rt_stack_impl *)obj;
+    rt_stack_impl *stack = as_stack(obj, "Stack: invalid Stack object");
     owns = owns ? 1 : 0;
     if (stack->len != 0 && stack->owns_elements != owns)
         rt_trap("Stack.SetOwnsElements: cannot change ownership mode on non-empty stack");
@@ -224,7 +230,7 @@ void rt_stack_set_owns_elements(void *obj, int8_t owns) {
 int8_t rt_stack_owns_elements(void *obj) {
     if (!obj)
         return 0;
-    return ((rt_stack_impl *)obj)->owns_elements ? 1 : 0;
+    return as_stack(obj, "Stack: invalid Stack object")->owns_elements ? 1 : 0;
 }
 
 /// @brief Returns the number of elements currently on the Stack.
@@ -244,7 +250,7 @@ int8_t rt_stack_owns_elements(void *obj) {
 int64_t rt_stack_len(void *obj) {
     if (!obj)
         return 0;
-    return ((rt_stack_impl *)obj)->len;
+    return as_stack(obj, "Stack: invalid Stack object")->len;
 }
 
 /// @brief Checks whether the Stack contains no elements.
@@ -268,7 +274,7 @@ int64_t rt_stack_len(void *obj) {
 int8_t rt_stack_is_empty(void *obj) {
     if (!obj)
         return 1;
-    return ((rt_stack_impl *)obj)->len == 0 ? 1 : 0;
+    return as_stack(obj, "Stack: invalid Stack object")->len == 0 ? 1 : 0;
 }
 
 /// @brief Pushes an element onto the top of the Stack.
@@ -300,7 +306,7 @@ void rt_stack_push(void *obj, void *elem) {
     if (!obj)
         rt_trap("Stack.Push: null stack");
 
-    rt_stack_impl *stack = (rt_stack_impl *)obj;
+    rt_stack_impl *stack = as_stack(obj, "Stack: invalid Stack object");
 
     if (stack->len >= INT64_MAX)
         rt_trap("Stack: maximum length reached");
@@ -345,7 +351,7 @@ void *rt_stack_pop(void *obj) {
     if (!obj)
         rt_trap("Stack.Pop: null stack");
 
-    rt_stack_impl *stack = (rt_stack_impl *)obj;
+    rt_stack_impl *stack = as_stack(obj, "Stack: invalid Stack object");
 
     if (stack->len == 0) {
         rt_trap("Stack.Pop: stack is empty");
@@ -354,8 +360,8 @@ void *rt_stack_pop(void *obj) {
     stack->len--;
     void *value = stack->items[stack->len];
     stack->items[stack->len] = NULL;
+    rt_obj_retain_maybe(value);
     if (stack->owns_elements) {
-        rt_obj_retain_maybe(value);
         stack_release_value(value);
     }
     return value;
@@ -395,7 +401,7 @@ void *rt_stack_peek(void *obj) {
     if (!obj)
         rt_trap("Stack.Peek: null stack");
 
-    rt_stack_impl *stack = (rt_stack_impl *)obj;
+    rt_stack_impl *stack = as_stack(obj, "Stack: invalid Stack object");
 
     if (stack->len == 0) {
         rt_trap("Stack.Peek: stack is empty");
@@ -430,7 +436,7 @@ void *rt_stack_peek(void *obj) {
 void rt_stack_clear(void *obj) {
     if (!obj)
         return;
-    rt_stack_impl *stack = (rt_stack_impl *)obj;
+    rt_stack_impl *stack = as_stack(obj, "Stack: invalid Stack object");
     if (stack->owns_elements) {
         for (int64_t i = 0; i < stack->len; i++)
             stack_release_value(stack->items[i]);
@@ -446,7 +452,7 @@ int8_t rt_stack_has(void *obj, void *elem) {
     if (!obj)
         return 0;
 
-    rt_stack_impl *stack = (rt_stack_impl *)obj;
+    rt_stack_impl *stack = as_stack(obj, "Stack: invalid Stack object");
     for (int64_t i = 0; i < stack->len; i++) {
         if (stack->items[i] == elem)
             return 1;
@@ -461,15 +467,15 @@ void *rt_stack_try_pop(void *obj) {
     if (!obj)
         return NULL;
 
-    rt_stack_impl *stack = (rt_stack_impl *)obj;
+    rt_stack_impl *stack = as_stack(obj, "Stack: invalid Stack object");
     if (stack->len == 0)
         return NULL;
 
     stack->len--;
     void *value = stack->items[stack->len];
     stack->items[stack->len] = NULL;
+    rt_obj_retain_maybe(value);
     if (stack->owns_elements) {
-        rt_obj_retain_maybe(value);
         stack_release_value(value);
     }
     return value;
@@ -487,7 +493,7 @@ void *rt_stack_clone(void *obj) {
     if (!obj)
         return result;
 
-    rt_stack_impl *stack = (rt_stack_impl *)obj;
+    rt_stack_impl *stack = as_stack(obj, "Stack: invalid Stack object");
     if (stack->owns_elements)
         rt_stack_set_owns_elements(result, 1);
     for (int64_t i = 0; i < stack->len; i++) {

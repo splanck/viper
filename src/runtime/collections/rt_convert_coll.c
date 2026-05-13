@@ -257,7 +257,6 @@ void *rt_stack_to_seq(void *stack) {
         return seq;
 
     int64_t count = 0;
-    int8_t stack_owns = rt_stack_owns_elements(stack);
     while (!rt_stack_is_empty(stack)) {
         temp[count++] = rt_stack_pop(stack);
     }
@@ -267,8 +266,7 @@ void *rt_stack_to_seq(void *stack) {
         rt_seq_push(seq, temp[i]);
         // Also restore the stack
         rt_stack_push(stack, temp[i]);
-        if (stack_owns)
-            release_temp_obj(temp[i]);
+        release_temp_obj(temp[i]);
     }
 
     free(temp);
@@ -307,7 +305,6 @@ void *rt_queue_to_seq(void *queue) {
         return seq;
 
     int64_t count = 0;
-    int8_t queue_owns = rt_queue_owns_elements(queue);
     while (!rt_queue_is_empty(queue)) {
         temp[count++] = rt_queue_pop(queue);
     }
@@ -316,8 +313,7 @@ void *rt_queue_to_seq(void *queue) {
     for (int64_t i = 0; i < count; i++) {
         rt_seq_push(seq, temp[i]);
         rt_queue_push(queue, temp[i]);
-        if (queue_owns)
-            release_temp_obj(temp[i]);
+        release_temp_obj(temp[i]);
     }
 
     free(temp);
@@ -348,6 +344,7 @@ void *rt_deque_to_seq(void *deque) {
     for (int64_t i = 0; i < len; i++) {
         void *elem = rt_deque_get(deque, i);
         rt_seq_push(seq, elem);
+        release_temp_obj(elem);
     }
     return seq;
 }

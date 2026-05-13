@@ -65,6 +65,13 @@ static rt_string copy_string(rt_string s) {
     return rt_string_from_bytes(cstr, (size_t)len);
 }
 
+static rt_string retain_result_string(rt_string s) {
+    if (!s)
+        return rt_const_cstr("");
+    rt_string_ref(s);
+    return s;
+}
+
 static void seq_push_string_copy(void *seq, rt_string s) {
     rt_string copy = copy_string(s);
     rt_seq_push(seq, copy);
@@ -276,7 +283,7 @@ rt_string rt_sortedset_first(void *obj) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set || set->len == 0)
         return rt_const_cstr("");
-    return set->data[0];
+    return retain_result_string(set->data[0]);
 }
 
 /// @brief Return the largest element in the sorted set.
@@ -285,7 +292,7 @@ rt_string rt_sortedset_last(void *obj) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set || set->len == 0)
         return rt_const_cstr("");
-    return set->data[set->len - 1];
+    return retain_result_string(set->data[set->len - 1]);
 }
 
 /// @brief Return the greatest element less than or equal to the given value.
@@ -301,10 +308,10 @@ rt_string rt_sortedset_floor(void *obj, rt_string str) {
     int64_t idx = binary_search(set, str, &found);
 
     if (found)
-        return set->data[idx];
+        return retain_result_string(set->data[idx]);
     if (idx == 0)
         return rt_const_cstr("");
-    return set->data[idx - 1];
+    return retain_result_string(set->data[idx - 1]);
 }
 
 /// @brief Return the smallest element greater than or equal to the given value.
@@ -320,10 +327,10 @@ rt_string rt_sortedset_ceil(void *obj, rt_string str) {
     int64_t idx = binary_search(set, str, &found);
 
     if (found)
-        return set->data[idx];
+        return retain_result_string(set->data[idx]);
     if (idx >= set->len)
         return rt_const_cstr("");
-    return set->data[idx];
+    return retain_result_string(set->data[idx]);
 }
 
 /// @brief Return the greatest element strictly less than the given value.
@@ -344,7 +351,7 @@ rt_string rt_sortedset_lower(void *obj, rt_string str) {
 
     if (idx < 0)
         return rt_const_cstr("");
-    return set->data[idx];
+    return retain_result_string(set->data[idx]);
 }
 
 /// @brief Return the smallest element strictly greater than the given value.
@@ -363,7 +370,7 @@ rt_string rt_sortedset_higher(void *obj, rt_string str) {
 
     if (idx >= set->len)
         return rt_const_cstr("");
-    return set->data[idx];
+    return retain_result_string(set->data[idx]);
 }
 
 /// @brief Return the element at the given rank (0-based index in sorted order).
@@ -372,7 +379,7 @@ rt_string rt_sortedset_at(void *obj, int64_t index) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set || index < 0 || index >= set->len)
         return rt_const_cstr("");
-    return set->data[index];
+    return retain_result_string(set->data[index]);
 }
 
 /// @brief Return the 0-based rank of an element in sorted order.

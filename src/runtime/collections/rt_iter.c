@@ -150,22 +150,23 @@ void *rt_iter_from_list(void *list) {
     return make_iter(list, ITER_LIST, rt_list_len(list));
 }
 
-/// @brief Snapshot a Deque into an iterator. Deques use plain malloc (not GC), so we copy
-/// every element into a fresh Seq at iter creation. Later mutations of the deque are NOT seen.
+/// @brief Snapshot a Deque into an iterator. Later mutations of the deque are NOT seen.
 void *rt_iter_from_deque(void *deque) {
     void *snapshot;
     int64_t len, i;
     if (!deque)
         return NULL;
-    /* Deque uses plain malloc, not rt_obj_new_i64, so we cannot retain it.
-       Snapshot all elements into a heap-managed Seq instead. */
+    /* Snapshot all elements into an owning Seq so iterator values survive source mutations. */
     len = rt_deque_len(deque);
     snapshot = rt_seq_new();
     if (!snapshot)
         return NULL;
     rt_seq_set_owns_elements(snapshot, 1);
-    for (i = 0; i < len; i++)
-        rt_seq_push(snapshot, rt_deque_get(deque, i));
+    for (i = 0; i < len; i++) {
+        void *item = rt_deque_get(deque, i);
+        rt_seq_push(snapshot, item);
+        release_temp_obj(item);
+    }
     return make_iter_snapshot(snapshot, len);
 }
 
@@ -240,7 +241,6 @@ void *rt_iter_from_stack(void *stack) {
         rt_trap("Iterator: allocation failed");
     }
 
-    int8_t stack_owns = rt_stack_owns_elements(stack);
     while (!rt_stack_is_empty(stack) && count < len)
         items[count++] = rt_stack_pop(stack);
 
@@ -248,8 +248,7 @@ void *rt_iter_from_stack(void *stack) {
         void *item = items[i - 1];
         rt_seq_push(snapshot, item);
         rt_stack_push(stack, item);
-        if (stack_owns)
-            release_temp_obj(item);
+        release_temp_obj(item);
     }
     free(items);
     return make_iter_snapshot(snapshot, rt_seq_len(snapshot));
@@ -302,12 +301,16 @@ void *rt_iter_next(void *iter) {
 /// @brief Look at the current element without advancing the cursor.
 void *rt_iter_peek(void *iter) {
     rt_iter_impl *it;
+    void *elem;
     if (!iter)
         return NULL;
     it = (rt_iter_impl *)iter;
     if (it->pos >= it->len)
         return NULL;
-    return get_element(it, it->pos);
+    elem = get_element(it, it->pos);
+    if (it->kind != ITER_LIST)
+        rt_obj_retain_maybe(elem);
+    return elem;
 }
 
 /// @brief Reset the iterator to the beginning of the collection.

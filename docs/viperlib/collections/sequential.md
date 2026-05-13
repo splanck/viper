@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-12
+last-verified: 2026-05-13
 ---
 
 # Sequential Collections
@@ -57,6 +57,7 @@ Dynamic array that grows automatically. Stores object references.
 ### Notes
 
 - List retains stored objects and releases them when removed, overwritten, cleared, or finalized.
+- `Get()`, `First()`, `Last()`, and `Pop()` return owned object references, so callers can keep the result after the list changes or is released.
 - `Slice()` and `Clone()` return independent lists that retain their elements without leaking temporary `Get()` references.
 
 ### Zia Example
@@ -170,8 +171,8 @@ circular buffer for O(1) add and take operations.
 
 ### Notes
 
-- Queue stores borrowed elements when used directly through the C runtime API. Runtime conversion helpers that return queues or snapshots retain the elements they place in the destination.
-- `Pop()` and `TryPop()` transfer an owned element reference to the caller for queues created by conversion helpers.
+- Queue stores borrowed elements when used directly through the C runtime API unless `set_owns_elements(true)` is selected on an empty queue. Runtime conversion helpers return owning queues or owning snapshots.
+- `Pop()` and `TryPop()` return owned object references. In owning mode, the queue's retained reference is transferred to the caller.
 
 ### Zia Example
 
@@ -263,8 +264,8 @@ A LIFO (last-in-first-out) collection. Elements are added and removed from the t
 ### Notes
 
 - Stack-to-list, stack-to-seq, and iterator snapshots preserve bottom-to-top order without mutating the source stack.
-- Stack stores borrowed elements when used directly through the C runtime API. Runtime conversion helpers that return stacks or snapshots retain the elements they place in the destination.
-- `Pop()` and `TryPop()` transfer an owned element reference to the caller for stacks created by conversion helpers.
+- Stack stores borrowed elements when used directly through the C runtime API unless `set_owns_elements(true)` is selected on an empty stack. Runtime conversion helpers return owning stacks or owning snapshots.
+- `Pop()` and `TryPop()` return owned object references. In owning mode, the stack's retained reference is transferred to the caller.
 - Constructor allocation failures trap cleanly instead of returning a partial stack.
 
 ### Zia Example
@@ -362,6 +363,12 @@ stacks and queues while also supporting indexed access.
 | `Clone()`            | `Deque()`               | Create shallow copy                                   |
 | `ToSeq()`            | `Seq()`                 | Returns elements as a new Seq                         |
 | `ToList()`           | `List()`                | Returns elements as a new List                        |
+
+### Notes
+
+- Deque retains stored objects and releases them when removed, overwritten, cleared, or finalized.
+- `Get()`, `PeekFront()`, `PeekBack()`, `PopFront()`, `PopBack()`, `TryPopFront()`, and `TryPopBack()` return owned object references.
+- `Clone()`, `ToSeq()`, and `ToList()` return independent collections that retain their elements.
 
 ### Zia Example
 
@@ -573,6 +580,12 @@ A priority queue implemented as a binary heap. Elements are stored with an integ
 | `Clear()`            | `Void()`               | Remove all elements                                        |
 | `Items()`            | `Seq()`                | Return elements in priority order as a Seq (alias for ToSeq) |
 | `ToSeq()`            | `Seq()`                | Return elements in priority order as a Seq                 |
+
+### Notes
+
+- Heap retains pushed object values and releases them when removed, cleared, or finalized.
+- `Pop()` and `TryPop()` transfer the heap's retained object reference to the caller. `Peek()` and `TryPeek()` return an additional owned reference without removing the item.
+- `Items()` and `ToSeq()` return independent owning snapshots in priority order.
 
 ### Zia Example
 

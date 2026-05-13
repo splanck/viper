@@ -81,6 +81,12 @@ typedef struct rt_queue_impl {
     int8_t owns_elements;
 } rt_queue_impl;
 
+static rt_queue_impl *as_queue(void *obj, const char *what) {
+    if (!obj || rt_obj_class_id(obj) != RT_QUEUE_CLASS_ID)
+        rt_trap(what);
+    return (rt_queue_impl *)obj;
+}
+
 static void queue_release_value(void *value) {
     if (value && rt_obj_release_check0(value))
         rt_obj_free(value);
@@ -102,7 +108,7 @@ static void queue_release_value(void *value) {
 static void rt_queue_finalize(void *obj) {
     if (!obj)
         return;
-    rt_queue_impl *q = (rt_queue_impl *)obj;
+    rt_queue_impl *q = as_queue(obj, "Queue: invalid Queue object");
     if (q->owns_elements && q->items && q->cap > 0) {
         for (int64_t i = 0; i < q->len; i++)
             queue_release_value(q->items[(q->head + i) % q->cap]);
@@ -118,7 +124,7 @@ static void rt_queue_finalize(void *obj) {
 static void rt_queue_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
-    rt_queue_impl *q = (rt_queue_impl *)obj;
+    rt_queue_impl *q = as_queue(obj, "Queue: invalid Queue object");
     if (!q->owns_elements || !q->items || q->cap <= 0)
         return;
     for (int64_t i = 0; i < q->len; i++)
@@ -235,7 +241,7 @@ void *rt_queue_new(void) {
 void rt_queue_set_owns_elements(void *obj, int8_t owns) {
     if (!obj)
         return;
-    rt_queue_impl *q = (rt_queue_impl *)obj;
+    rt_queue_impl *q = as_queue(obj, "Queue: invalid Queue object");
     owns = owns ? 1 : 0;
     if (q->len != 0 && q->owns_elements != owns)
         rt_trap("Queue.SetOwnsElements: cannot change ownership mode on non-empty queue");
@@ -245,7 +251,7 @@ void rt_queue_set_owns_elements(void *obj, int8_t owns) {
 int8_t rt_queue_owns_elements(void *obj) {
     if (!obj)
         return 0;
-    return ((rt_queue_impl *)obj)->owns_elements ? 1 : 0;
+    return as_queue(obj, "Queue: invalid Queue object")->owns_elements ? 1 : 0;
 }
 
 /// @brief Returns the number of elements currently in the Queue.
@@ -265,7 +271,7 @@ int8_t rt_queue_owns_elements(void *obj) {
 int64_t rt_queue_len(void *obj) {
     if (!obj)
         return 0;
-    return ((rt_queue_impl *)obj)->len;
+    return as_queue(obj, "Queue: invalid Queue object")->len;
 }
 
 /// @brief Checks whether the Queue contains no elements.
@@ -289,7 +295,7 @@ int64_t rt_queue_len(void *obj) {
 int8_t rt_queue_is_empty(void *obj) {
     if (!obj)
         return 1;
-    return ((rt_queue_impl *)obj)->len == 0 ? 1 : 0;
+    return as_queue(obj, "Queue: invalid Queue object")->len == 0 ? 1 : 0;
 }
 
 /// @brief Adds an element to the back of the Queue.
@@ -321,7 +327,7 @@ void rt_queue_push(void *obj, void *elem) {
     if (!obj)
         rt_trap("Queue.Add: null queue");
 
-    rt_queue_impl *q = (rt_queue_impl *)obj;
+    rt_queue_impl *q = as_queue(obj, "Queue: invalid Queue object");
 
     if (q->len >= INT64_MAX)
         rt_trap("Queue: maximum length reached");
@@ -369,7 +375,7 @@ void *rt_queue_pop(void *obj) {
     if (!obj)
         rt_trap("Queue.Take: null queue");
 
-    rt_queue_impl *q = (rt_queue_impl *)obj;
+    rt_queue_impl *q = as_queue(obj, "Queue: invalid Queue object");
 
     if (q->len == 0) {
         rt_trap("Queue.Take: queue is empty");
@@ -379,8 +385,8 @@ void *rt_queue_pop(void *obj) {
     q->items[q->head] = NULL;
     q->head = (q->head + 1) % q->cap;
     q->len--;
+    rt_obj_retain_maybe(val);
     if (q->owns_elements) {
-        rt_obj_retain_maybe(val);
         queue_release_value(val);
     }
 
@@ -421,7 +427,7 @@ void *rt_queue_peek(void *obj) {
     if (!obj)
         rt_trap("Queue.Peek: null queue");
 
-    rt_queue_impl *q = (rt_queue_impl *)obj;
+    rt_queue_impl *q = as_queue(obj, "Queue: invalid Queue object");
 
     if (q->len == 0) {
         rt_trap("Queue.Peek: queue is empty");
@@ -455,7 +461,7 @@ void rt_queue_clear(void *obj) {
     if (!obj)
         return;
 
-    rt_queue_impl *q = (rt_queue_impl *)obj;
+    rt_queue_impl *q = as_queue(obj, "Queue: invalid Queue object");
     if (q->owns_elements && q->items && q->cap > 0) {
         for (int64_t i = 0; i < q->len; i++) {
             int64_t idx = (q->head + i) % q->cap;
@@ -476,7 +482,7 @@ int8_t rt_queue_has(void *obj, void *elem) {
     if (!obj)
         return 0;
 
-    rt_queue_impl *q = (rt_queue_impl *)obj;
+    rt_queue_impl *q = as_queue(obj, "Queue: invalid Queue object");
     for (int64_t i = 0; i < q->len; i++) {
         if (q->items[(q->head + i) % q->cap] == elem)
             return 1;
@@ -491,7 +497,7 @@ void *rt_queue_try_pop(void *obj) {
     if (!obj)
         return NULL;
 
-    rt_queue_impl *q = (rt_queue_impl *)obj;
+    rt_queue_impl *q = as_queue(obj, "Queue: invalid Queue object");
     if (q->len == 0)
         return NULL;
 
@@ -499,8 +505,8 @@ void *rt_queue_try_pop(void *obj) {
     q->items[q->head] = NULL;
     q->head = (q->head + 1) % q->cap;
     q->len--;
+    rt_obj_retain_maybe(val);
     if (q->owns_elements) {
-        rt_obj_retain_maybe(val);
         queue_release_value(val);
     }
     return val;
@@ -518,7 +524,7 @@ void *rt_queue_clone(void *obj) {
     if (!obj)
         return result;
 
-    rt_queue_impl *q = (rt_queue_impl *)obj;
+    rt_queue_impl *q = as_queue(obj, "Queue: invalid Queue object");
     if (q->owns_elements)
         rt_queue_set_owns_elements(result, 1);
     for (int64_t i = 0; i < q->len; i++) {

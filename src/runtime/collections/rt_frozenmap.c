@@ -50,12 +50,16 @@
 
 // --- Helper: extract string from seq element (may be boxed) ---
 
-static rt_string fm_extract_str(void *elem) {
+static rt_string fm_extract_str(void *elem, int *owned) {
+    if (owned)
+        *owned = 0;
     if (!elem)
         return NULL;
     if (rt_string_is_handle(elem))
         return (rt_string)elem;
     // Not a raw string -- assume boxed value and unbox.
+    if (owned)
+        *owned = 1;
     return rt_unbox_str(elem);
 }
 
@@ -251,10 +255,13 @@ void *rt_frozenmap_from_seqs(void *keys, void *values) {
     rt_frozenmap_impl *fm = fm_alloc(n);
 
     for (int64_t i = 0; i < n; i++) {
-        rt_string k = fm_extract_str(rt_seq_get(keys, i));
+        int owned_key = 0;
+        rt_string k = fm_extract_str(rt_seq_get(keys, i), &owned_key);
         void *v = rt_seq_get(values, i);
         if (k)
             fm_insert(fm, k, v);
+        if (owned_key)
+            rt_str_release_maybe(k);
     }
     return (void *)fm;
 }

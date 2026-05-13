@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-verified: 2026-04-09
+last-verified: 2026-05-13
 ---
 
 # Adding a New Runtime Class: Complete Guide
@@ -64,6 +64,8 @@ This guide covers adding a **new runtime class** — a type with a constructor, 
 | **Instance class** | Has constructor (`ctor_id`) | `"obj"` | `Viper.Collections.Stack` |
 | **Static utility** | `none` | `"none"` | `Viper.Math` |
 | **Hybrid** | Has constructor + static factory methods | `"obj"` | `Viper.Collections.Map` |
+
+Instance classes that allocate heap objects must use stable, unique runtime class IDs. Shared families should centralize those constants in one header, such as `src/runtime/collections/rt_collection_ids.h`, and every public method that downcasts an object should validate the ID before casting. Do not reuse small positive IDs or a family-wide zero ID; they collide with other runtime objects and disable typed-handle validation.
 
 ### Prerequisites
 
@@ -242,6 +244,8 @@ This is the trickiest part of runtime class development. The same C function is 
 | C function declaration | **Yes** — first param is `void *obj` | `void rt_gauge_push(void *obj, void *item)` |
 
 The `RT_FUNC` describes the actual C ABI. The `RT_METHOD` describes the user-facing API (what the programmer sees). For instance methods, the receiver is implicit in `RT_METHOD` because it comes from the object the method is called on. Static/factory methods are receiverless: their `RT_FUNC` ABI has the same parameter count as the `RT_METHOD` signature, and frontend metadata records `hasReceiver=false`.
+
+If a method returns a retained object or copied string, update `src/il/runtime/RuntimeOwnership.hpp` at the same time as the runtime implementation. The optimizer and verifier use this metadata to avoid inserting incorrect extra retains or releases around runtime calls.
 
 ### Complete Header Example
 

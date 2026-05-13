@@ -48,12 +48,16 @@
 
 // --- Helper: extract string from seq element (may be boxed) ---
 
-static rt_string fs_extract_str(void *elem) {
+static rt_string fs_extract_str(void *elem, int *owned) {
+    if (owned)
+        *owned = 0;
     if (!elem)
         return NULL;
     if (rt_string_is_handle(elem))
         return (rt_string)elem;
     // Not a raw string -- assume boxed value and unbox.
+    if (owned)
+        *owned = 1;
     return rt_unbox_str(elem);
 }
 
@@ -217,9 +221,12 @@ void *rt_frozenset_from_seq(void *items) {
     rt_frozenset_impl *fs = fs_alloc(n);
 
     for (int64_t i = 0; i < n; i++) {
-        rt_string elem = fs_extract_str(rt_seq_get(items, i));
+        int owned = 0;
+        rt_string elem = fs_extract_str(rt_seq_get(items, i), &owned);
         if (elem)
             fs_insert(fs, elem);
+        if (owned)
+            rt_str_release_maybe(elem);
     }
     return (void *)fs;
 }

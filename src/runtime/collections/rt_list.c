@@ -160,6 +160,8 @@ void *rt_list_new(void) {
 /// @param p Raw pointer to cast.
 /// @return Pointer cast to rt_list_impl*.
 static inline rt_list_impl *as_list(void *p) {
+    if (!p || rt_obj_class_id(p) != RT_LIST_CLASS_ID)
+        rt_trap("List: invalid List object");
     return (rt_list_impl *)p;
 }
 
@@ -769,11 +771,16 @@ void *rt_list_pop(void *list) {
 /// @details List elements may be raw rt_string handles or boxed strings
 ///          (RT_BOX_STR). This helper returns the underlying rt_string
 ///          for either representation, or NULL if the element is not a string.
-static rt_string list_extract_str(void *p) {
+static rt_string list_extract_str(void *p, int *owned) {
+    if (owned)
+        *owned = 0;
     if (rt_string_is_handle(p))
         return (rt_string)p;
-    if (rt_box_type(p) == RT_BOX_STR)
+    if (rt_box_type(p) == RT_BOX_STR) {
+        if (owned)
+            *owned = 1;
         return rt_unbox_str(p);
+    }
     return NULL;
 }
 
@@ -802,10 +809,22 @@ static int64_t list_default_compare(void *a, void *b) {
         return 1;
 
     // Try string comparison (handles both raw and boxed strings)
-    rt_string sa = list_extract_str(a);
-    rt_string sb = list_extract_str(b);
-    if (sa && sb)
-        return rt_str_cmp(sa, sb);
+    int own_sa = 0;
+    int own_sb = 0;
+    rt_string sa = list_extract_str(a, &own_sa);
+    rt_string sb = list_extract_str(b, &own_sb);
+    if (sa && sb) {
+        int64_t cmp = rt_str_cmp(sa, sb);
+        if (own_sa)
+            rt_str_release_maybe(sa);
+        if (own_sb)
+            rt_str_release_maybe(sb);
+        return cmp;
+    }
+    if (own_sa)
+        rt_str_release_maybe(sa);
+    if (own_sb)
+        rt_str_release_maybe(sb);
 
     // Try integer comparison (boxed i64)
     int ok_a = 0, ok_b = 0;

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-12
+last-verified: 2026-05-13
 ---
 
 # Specialized Structures
@@ -171,7 +171,7 @@ expected number of elements and desired false positive rate
 
 - `MightContain` returning true means the element *may* be present; returning false means it is *definitely* not present
 - The actual false positive rate depends on the number of elements added relative to the configured capacity
-- `Merge` combines two filters that were created with the same capacity and false positive rate parameters
+- `Merge` combines two filters that were created with the same capacity and false positive rate parameters. Merging a filter with itself is a no-op that leaves `Count` unchanged.
 - After `Clear()`, `MightContain` returns false for all elements
 - Invalid false-positive rates such as NaN, infinity, or values outside `(0, 1)` are sanitized to a safe default
 - Sizing and item-count overflow trap instead of wrapping
@@ -294,7 +294,7 @@ existence checking, longest prefix matching, and retrieving all keys with a give
 - `LongestPrefix` finds the longest stored key that is a prefix of the input string (useful for routing)
 - `WithPrefix` returns all keys that start with the given prefix, including exact matches
 - Trie keys and prefixes use the full runtime string byte length; embedded NUL bytes are part of the key
-- `WithPrefix()` and `Keys()` return owning snapshots of copied strings
+- `LongestPrefix()` returns an owned copied string. `WithPrefix()` and `Keys()` return owning snapshots of copied strings, including when the requested prefix is longer than the default internal buffer size.
 - Removing a key does not affect other keys that share the same prefix
 
 ### Zia Example

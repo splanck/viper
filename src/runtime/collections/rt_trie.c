@@ -316,7 +316,7 @@ void *rt_trie_with_prefix(void *obj, rt_string prefix) {
     }
 
     // Collect all keys under this node; buffer grows as needed
-    size_t buf_cap = 4096;
+    size_t buf_cap = plen + 1 > 4096 ? plen + 1 : 4096;
     char *buf = (char *)malloc(buf_cap);
     if (!buf)
         rt_trap("rt_trie: memory allocation failed");
@@ -407,8 +407,9 @@ void rt_trie_clear(void *obj) {
     if (!obj)
         return;
     rt_trie_impl *trie = (rt_trie_impl *)obj;
+    rt_trie_node *replacement = new_node();
     free_node(trie->root);
-    trie->root = new_node();
+    trie->root = replacement;
     trie->count = 0;
 }
 
@@ -460,9 +461,11 @@ void *rt_trie_clone(void *obj) {
     if (!dst)
         return NULL;
 
+    rt_trie_node *cloned_root = clone_node(src->root);
+
     // Free the default empty root from rt_trie_new, replace with deep copy
     free_node(dst->root);
-    dst->root = clone_node(src->root);
+    dst->root = cloned_root;
     dst->count = src->count;
 
     return dst;

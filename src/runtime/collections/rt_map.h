@@ -29,14 +29,13 @@
 
 #include <stdint.h>
 
+#include "rt_collection_ids.h"
+
 #include "rt_string.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/// @brief Map class identifier for heap header tagging.
-#define RT_MAP_CLASS_ID 3
 
 /// @brief Create a new empty map.
 /// @return Pointer to map object.

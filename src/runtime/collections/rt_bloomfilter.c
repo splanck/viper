@@ -234,6 +234,8 @@ void rt_bloomfilter_clear(void *filter) {
 int64_t rt_bloomfilter_merge(void *filter, void *other) {
     if (!filter || !other)
         return 0;
+    if (filter == other)
+        return 1;
     rt_bloomfilter_impl *a = (rt_bloomfilter_impl *)filter;
     rt_bloomfilter_impl *b = (rt_bloomfilter_impl *)other;
 

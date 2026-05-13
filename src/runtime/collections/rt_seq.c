@@ -48,6 +48,12 @@
 #define SEQ_DEFAULT_CAP 16
 #define SEQ_GROWTH_FACTOR 2
 
+static rt_seq_impl *as_seq(void *obj, const char *what) {
+    if (!obj || rt_obj_class_id(obj) != RT_SEQ_CLASS_ID)
+        rt_trap(what);
+    return (rt_seq_impl *)obj;
+}
+
 /// @brief Finalizer callback invoked when a Seq is garbage collected.
 ///
 /// This function is automatically called by Viper's garbage collector when a
@@ -72,7 +78,7 @@ static void seq_release_element(void *val) {
 static void rt_seq_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
     if (!seq->owns_elements || !seq->items)
         return;
     for (int64_t i = 0; i < seq->len; i++)
@@ -88,7 +94,7 @@ static void rt_seq_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
 static void rt_seq_finalize(void *obj) {
     if (!obj)
         return;
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
     if (seq->owns_elements && seq->items) {
         for (int64_t i = 0; i < seq->len; i++)
             seq_release_element(seq->items[i]);
@@ -267,7 +273,7 @@ void *rt_seq_with_capacity(int64_t cap) {
 void rt_seq_set_owns_elements(void *obj, int8_t owns) {
     if (!obj)
         return;
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
     owns = owns ? 1 : 0;
     if (seq->len != 0 && seq->owns_elements != owns)
         rt_trap("Seq.SetOwnsElements: cannot change ownership mode on non-empty sequence");
@@ -290,7 +296,7 @@ void rt_seq_set_owns_elements(void *obj, int8_t owns) {
 int64_t rt_seq_len(void *obj) {
     if (!obj)
         return 0;
-    return ((rt_seq_impl *)obj)->len;
+    return as_seq(obj, "Seq: invalid Seq object")->len;
 }
 
 /// @brief Returns the current allocated capacity of the Seq.
@@ -314,7 +320,7 @@ int64_t rt_seq_len(void *obj) {
 int64_t rt_seq_cap(void *obj) {
     if (!obj)
         return 0;
-    return ((rt_seq_impl *)obj)->cap;
+    return as_seq(obj, "Seq: invalid Seq object")->cap;
 }
 
 /// @brief Checks whether the Seq contains no elements.
@@ -335,7 +341,7 @@ int64_t rt_seq_cap(void *obj) {
 int8_t rt_seq_is_empty(void *obj) {
     if (!obj)
         return 1;
-    return ((rt_seq_impl *)obj)->len == 0 ? 1 : 0;
+    return as_seq(obj, "Seq: invalid Seq object")->len == 0 ? 1 : 0;
 }
 
 /// @brief Returns the element at the specified index.
@@ -373,7 +379,7 @@ void *rt_seq_get(void *obj, int64_t idx) {
     if (!obj)
         rt_trap("Seq.Get: null sequence");
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
 
     if (idx < 0 || idx >= seq->len) {
         rt_trap("Seq.Get: index out of bounds");
@@ -426,7 +432,7 @@ void rt_seq_set(void *obj, int64_t idx, void *val) {
     if (!obj)
         rt_trap("Seq.Set: null sequence");
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
 
     if (idx < 0 || idx >= seq->len) {
         rt_trap("Seq.Set: index out of bounds");
@@ -444,7 +450,7 @@ void rt_seq_set_raw(void *obj, int64_t idx, void *val) {
     if (!obj)
         rt_trap("Seq.Set: null sequence");
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
 
     if (idx < 0 || idx >= seq->len) {
         rt_trap("Seq.Set: index out of bounds");
@@ -491,7 +497,7 @@ void rt_seq_push(void *obj, void *val) {
     if (!obj)
         rt_trap("Seq.Push: null sequence");
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
 
     if (seq->len >= INT64_MAX)
         rt_trap("Seq: maximum length reached");
@@ -511,7 +517,7 @@ void rt_seq_push_raw(void *obj, void *val) {
     if (!obj)
         rt_trap("Seq.Push: null sequence");
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
 
     if (seq->len >= INT64_MAX)
         rt_trap("Seq: maximum length reached");
@@ -566,8 +572,8 @@ void rt_seq_push_all(void *obj, void *other) {
     if (!other)
         return;
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
-    rt_seq_impl *src = (rt_seq_impl *)other;
+    rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
+    rt_seq_impl *src = as_seq(other, "Seq: invalid Seq object");
 
     if (src->len <= 0)
         return;
@@ -639,7 +645,7 @@ void *rt_seq_pop(void *obj) {
     if (!obj)
         rt_trap("Seq.Pop: null sequence");
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
 
     if (seq->len == 0) {
         rt_trap("Seq.Pop: sequence is empty");
@@ -648,6 +654,9 @@ void *rt_seq_pop(void *obj) {
     seq->len--;
     void *val = seq->items[seq->len];
     seq->items[seq->len] = NULL; // Clear slot to prevent stale pointer access
+    rt_obj_retain_maybe(val);
+    if (seq->owns_elements)
+        seq_release_element(val);
     return val;
 }
 
@@ -685,7 +694,7 @@ void *rt_seq_peek(void *obj) {
     if (!obj)
         rt_trap("Seq.Peek: null sequence");
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
 
     if (seq->len == 0) {
         rt_trap("Seq.Peek: sequence is empty");
@@ -726,7 +735,7 @@ void *rt_seq_first(void *obj) {
     if (!obj)
         rt_trap("Seq.First: null sequence");
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
 
     if (seq->len == 0) {
         rt_trap("Seq.First: sequence is empty");
@@ -768,7 +777,7 @@ void *rt_seq_last(void *obj) {
     if (!obj)
         rt_trap("Seq.Last: null sequence");
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
 
     if (seq->len == 0) {
         rt_trap("Seq.Last: sequence is empty");
@@ -820,7 +829,7 @@ void rt_seq_insert(void *obj, int64_t idx, void *val) {
     if (!obj)
         rt_trap("Seq.Insert: null sequence");
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
 
     if (idx < 0 || idx > seq->len) {
         rt_trap("Seq.Insert: index out of bounds");
@@ -880,13 +889,16 @@ void *rt_seq_remove(void *obj, int64_t idx) {
     if (!obj)
         rt_trap("Seq.Remove: null sequence");
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
 
     if (idx < 0 || idx >= seq->len) {
         rt_trap("Seq.Remove: index out of bounds");
     }
 
     void *val = seq->items[idx];
+    rt_obj_retain_maybe(val);
+    if (seq->owns_elements)
+        seq_release_element(val);
 
     // Shift elements to the left
     if (idx < seq->len - 1) {
@@ -934,7 +946,7 @@ void *rt_seq_remove(void *obj, int64_t idx) {
 void rt_seq_clear(void *obj) {
     if (!obj)
         return;
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
     if (seq->owns_elements && seq->items) {
         for (int64_t i = 0; i < seq->len; i++)
             seq_release_element(seq->items[i]);
@@ -979,7 +991,7 @@ int64_t rt_seq_find(void *obj, void *val) {
     if (!obj)
         return -1;
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
 
     for (int64_t i = 0; i < seq->len; i++) {
         if (rt_box_equal(seq->items[i], val)) {
@@ -1054,7 +1066,7 @@ void rt_seq_reverse(void *obj) {
     if (!obj)
         return;
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
 
     for (int64_t i = 0; i < seq->len / 2; i++) {
         int64_t j = seq->len - 1 - i;
@@ -1107,7 +1119,7 @@ void rt_seq_shuffle(void *obj) {
     if (!obj)
         return;
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
     if (seq->len <= 1)
         return;
 
@@ -1167,7 +1179,7 @@ void *rt_seq_slice(void *obj, int64_t start, int64_t end) {
     if (!obj)
         return rt_seq_new();
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
 
     // Clamp bounds
     if (start < 0)
@@ -1233,6 +1245,6 @@ void *rt_seq_clone(void *obj) {
     if (!obj)
         return rt_seq_new();
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
     return rt_seq_slice(obj, 0, seq->len);
 }

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-22
+last-verified: 2026-05-13
 ---
 
 # Specialized Maps
@@ -154,6 +154,7 @@ stores a list of values for each key.
 - `KeyCount` gives the number of distinct keys
 - `Get` returns an empty Seq (not null) if the key does not exist
 - `Get` returns an owning snapshot Seq; values remain retained by the snapshot until it is released
+- `GetFirst` returns an owned object reference for the first value, or null when the key has no values
 - String keys are compared by full byte length; embedded NUL bytes are part of the key
 - Values are boxed objects in Zia (use `Viper.Core.Box`); BASIC auto-boxes string values
 

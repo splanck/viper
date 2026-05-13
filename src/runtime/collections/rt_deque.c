@@ -63,6 +63,12 @@ static void trap_with_message(const char *msg) {
     rt_trap(msg);
 }
 
+static Deque *as_deque(void *obj, const char *what) {
+    if (!obj || rt_obj_class_id(obj) != RT_DEQUE_CLASS_ID)
+        trap_with_message(what);
+    return (Deque *)obj;
+}
+
 static void deque_release_value(void *value) {
     if (value && rt_obj_release_check0(value))
         rt_obj_free(value);
@@ -105,7 +111,7 @@ void *rt_deque_new(void) {
 }
 
 static void deque_finalize(void *obj) {
-    Deque *d = (Deque *)obj;
+    Deque *d = as_deque(obj, "Deque: invalid Deque object");
     if (d && d->data) {
         for (int64_t i = 0; i < d->len; i++) {
             int64_t idx = (d->front + i) % d->cap;
@@ -123,7 +129,7 @@ static void deque_finalize(void *obj) {
 static void deque_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
-    Deque *d = (Deque *)obj;
+    Deque *d = as_deque(obj, "Deque: invalid Deque object");
     if (!d->data || d->cap <= 0)
         return;
     for (int64_t i = 0; i < d->len; i++) {
@@ -167,7 +173,7 @@ void *rt_deque_with_capacity(int64_t cap) {
 int64_t rt_deque_len(void *obj) {
     if (!obj)
         return 0;
-    Deque *d = (Deque *)obj;
+    Deque *d = as_deque(obj, "Deque: invalid Deque object");
     return d->len;
 }
 
@@ -177,7 +183,7 @@ int64_t rt_deque_len(void *obj) {
 int64_t rt_deque_cap(void *obj) {
     if (!obj)
         return 0;
-    Deque *d = (Deque *)obj;
+    Deque *d = as_deque(obj, "Deque: invalid Deque object");
     return d->cap;
 }
 
@@ -187,7 +193,7 @@ int64_t rt_deque_cap(void *obj) {
 int8_t rt_deque_is_empty(void *obj) {
     if (!obj)
         return 1;
-    Deque *d = (Deque *)obj;
+    Deque *d = as_deque(obj, "Deque: invalid Deque object");
     return d->len == 0 ? 1 : 0;
 }
 
@@ -202,7 +208,7 @@ int8_t rt_deque_is_empty(void *obj) {
 void rt_deque_push_front(void *obj, void *elem) {
     if (!obj)
         return;
-    Deque *d = (Deque *)obj;
+    Deque *d = as_deque(obj, "Deque: invalid Deque object");
 
     if (d->len >= INT64_MAX)
         trap_with_message("Deque: maximum capacity reached");
@@ -222,7 +228,7 @@ void rt_deque_push_front(void *obj, void *elem) {
 void *rt_deque_pop_front(void *obj) {
     if (!obj)
         trap_with_message("PopFront called on NULL deque");
-    Deque *d = (Deque *)obj;
+    Deque *d = as_deque(obj, "Deque: invalid Deque object");
     if (d->len == 0)
         trap_with_message("PopFront called on empty deque");
 
@@ -242,11 +248,13 @@ void *rt_deque_pop_front(void *obj) {
 void *rt_deque_peek_front(void *obj) {
     if (!obj)
         trap_with_message("PeekFront called on NULL deque");
-    Deque *d = (Deque *)obj;
+    Deque *d = as_deque(obj, "Deque: invalid Deque object");
     if (d->len == 0)
         trap_with_message("PeekFront called on empty deque");
 
-    return d->data[d->front];
+    void *val = d->data[d->front];
+    rt_obj_retain_maybe(val);
+    return val;
 }
 
 //=============================================================================
@@ -260,7 +268,7 @@ void *rt_deque_peek_front(void *obj) {
 void rt_deque_push_back(void *obj, void *elem) {
     if (!obj)
         return;
-    Deque *d = (Deque *)obj;
+    Deque *d = as_deque(obj, "Deque: invalid Deque object");
 
     if (d->len >= INT64_MAX)
         trap_with_message("Deque: maximum capacity reached");
@@ -279,7 +287,7 @@ void rt_deque_push_back(void *obj, void *elem) {
 void *rt_deque_pop_back(void *obj) {
     if (!obj)
         trap_with_message("PopBack called on NULL deque");
-    Deque *d = (Deque *)obj;
+    Deque *d = as_deque(obj, "Deque: invalid Deque object");
     if (d->len == 0)
         trap_with_message("PopBack called on empty deque");
 
@@ -299,12 +307,14 @@ void *rt_deque_pop_back(void *obj) {
 void *rt_deque_peek_back(void *obj) {
     if (!obj)
         trap_with_message("PeekBack called on NULL deque");
-    Deque *d = (Deque *)obj;
+    Deque *d = as_deque(obj, "Deque: invalid Deque object");
     if (d->len == 0)
         trap_with_message("PeekBack called on empty deque");
 
     int64_t back = (d->front + d->len - 1) % d->cap;
-    return d->data[back];
+    void *val = d->data[back];
+    rt_obj_retain_maybe(val);
+    return val;
 }
 
 //=============================================================================
@@ -319,12 +329,14 @@ void *rt_deque_peek_back(void *obj) {
 void *rt_deque_get(void *obj, int64_t idx) {
     if (!obj)
         trap_with_message("Get called on NULL deque");
-    Deque *d = (Deque *)obj;
+    Deque *d = as_deque(obj, "Deque: invalid Deque object");
     if (idx < 0 || idx >= d->len)
         trap_with_message("Index out of bounds");
 
     int64_t actual = (d->front + idx) % d->cap;
-    return d->data[actual];
+    void *val = d->data[actual];
+    rt_obj_retain_maybe(val);
+    return val;
 }
 
 /// @brief Replaces the element at the given logical index.
@@ -335,7 +347,7 @@ void *rt_deque_get(void *obj, int64_t idx) {
 void rt_deque_set(void *obj, int64_t idx, void *elem) {
     if (!obj)
         trap_with_message("Set called on NULL deque");
-    Deque *d = (Deque *)obj;
+    Deque *d = as_deque(obj, "Deque: invalid Deque object");
     if (idx < 0 || idx >= d->len)
         trap_with_message("Index out of bounds");
 
@@ -355,7 +367,7 @@ void rt_deque_set(void *obj, int64_t idx, void *elem) {
 void rt_deque_clear(void *obj) {
     if (!obj)
         return;
-    Deque *d = (Deque *)obj;
+    Deque *d = as_deque(obj, "Deque: invalid Deque object");
     for (int64_t i = 0; i < d->len; i++) {
         int64_t idx = (d->front + i) % d->cap;
         deque_release_value(d->data[idx]);
@@ -373,7 +385,7 @@ void rt_deque_clear(void *obj) {
 int8_t rt_deque_has(void *obj, void *elem) {
     if (!obj)
         return 0;
-    Deque *d = (Deque *)obj;
+    Deque *d = as_deque(obj, "Deque: invalid Deque object");
 
     for (int64_t i = 0; i < d->len; i++) {
         int64_t idx = (d->front + i) % d->cap;
@@ -389,7 +401,7 @@ int8_t rt_deque_has(void *obj, void *elem) {
 void rt_deque_reverse(void *obj) {
     if (!obj)
         return;
-    Deque *d = (Deque *)obj;
+    Deque *d = as_deque(obj, "Deque: invalid Deque object");
     if (d->len < 2)
         return;
 
@@ -411,7 +423,7 @@ void rt_deque_reverse(void *obj) {
 void *rt_deque_clone(void *obj) {
     if (!obj)
         return rt_deque_new();
-    Deque *d = (Deque *)obj;
+    Deque *d = as_deque(obj, "Deque: invalid Deque object");
 
     void *new_d = rt_deque_with_capacity(d->cap);
     if (!new_d)
@@ -431,7 +443,7 @@ void *rt_deque_clone(void *obj) {
 void *rt_deque_try_pop_front(void *obj) {
     if (!obj)
         return NULL;
-    Deque *d = (Deque *)obj;
+    Deque *d = as_deque(obj, "Deque: invalid Deque object");
     if (d->len == 0)
         return NULL;
 
@@ -450,7 +462,7 @@ void *rt_deque_try_pop_front(void *obj) {
 void *rt_deque_try_pop_back(void *obj) {
     if (!obj)
         return NULL;
-    Deque *d = (Deque *)obj;
+    Deque *d = as_deque(obj, "Deque: invalid Deque object");
     if (d->len == 0)
         return NULL;
 

@@ -124,6 +124,34 @@ static void test_runtime_metadata_matches_core_contracts(void) {
     assert(msgSub.retainsArg(2));
     const auto weakGet = il::runtime::classifyRuntimeOwnership("Viper.Collections.WeakMap.Get");
     assert(weakGet.returnsOwned);
+    const auto listGet = il::runtime::classifyRuntimeOwnership("Viper.Collections.List.Get");
+    assert(listGet.returnsOwned);
+    const auto dequePeek =
+        il::runtime::classifyRuntimeOwnership("Viper.Collections.Deque.PeekFront");
+    assert(dequePeek.returnsOwned);
+    const auto seqRemove = il::runtime::classifyRuntimeOwnership("Viper.Collections.Seq.Remove");
+    assert(seqRemove.returnsOwned);
+    const auto heapPop = il::runtime::classifyRuntimeOwnership("Viper.Collections.Heap.Pop");
+    assert(heapPop.returnsOwned);
+    const auto heapItems = il::runtime::classifyRuntimeOwnership("Viper.Collections.Heap.Items");
+    assert(heapItems.returnsOwned);
+    assert(heapItems.mayAllocate);
+    const auto sortedFirst =
+        il::runtime::classifyRuntimeOwnership("Viper.Collections.SortedSet.First");
+    assert(sortedFirst.returnsOwned);
+    assert(sortedFirst.mayAllocate);
+    const auto bytesHex = il::runtime::classifyRuntimeOwnership("Viper.Collections.Bytes.ToHex");
+    assert(bytesHex.returnsOwned);
+    assert(bytesHex.mayAllocate);
+    const auto orderedKey =
+        il::runtime::classifyRuntimeOwnership("Viper.Collections.OrderedMap.KeyAt");
+    assert(orderedKey.returnsOwned);
+    assert(orderedKey.mayAllocate);
+    const auto iterNext = il::runtime::classifyRuntimeOwnership("Viper.Collections.Iterator.Next");
+    assert(iterNext.returnsOwned);
+    const auto heapToSeq = il::runtime::classifyRuntimeOwnership("rt_pqueue_to_seq");
+    assert(heapToSeq.returnsOwned);
+    assert(heapToSeq.mayAllocate);
 
     const auto absI64 = il::runtime::classifyHelperEffects("rt_abs_i64");
     assert(absI64.known);

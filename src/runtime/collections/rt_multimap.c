@@ -227,6 +227,8 @@ void rt_multimap_put(void *obj, rt_string key, void *value) {
     }
 
     // New key
+    if (mm->key_count >= (size_t)INT64_MAX || mm->total_count >= (size_t)INT64_MAX)
+        rt_trap("MultiMap: length overflow");
     rt_mm_entry *entry = (rt_mm_entry *)malloc(sizeof(rt_mm_entry));
     if (!entry)
         return;
@@ -250,8 +252,6 @@ void rt_multimap_put(void *obj, rt_string key, void *value) {
 
     entry->next = mm->buckets[idx];
     mm->buckets[idx] = entry;
-    if (mm->key_count >= (size_t)INT64_MAX || mm->total_count >= (size_t)INT64_MAX)
-        rt_trap("MultiMap: length overflow");
     mm->key_count++;
     mm->total_count++;
     maybe_resize(mm);
@@ -303,7 +303,9 @@ void *rt_multimap_get_first(void *obj, rt_string key) {
     rt_mm_entry *entry = find_entry(mm->buckets[idx], key_data, key_len);
     if (!entry || rt_seq_len(entry->values) == 0)
         return NULL;
-    return rt_seq_get(entry->values, 0);
+    void *value = rt_seq_get(entry->values, 0);
+    rt_obj_retain_maybe(value);
+    return value;
 }
 
 /// @brief Check whether a key exists in the multimap.

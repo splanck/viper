@@ -15,6 +15,7 @@
 #include "rt_bitset.h"
 #include "rt_bloomfilter.h"
 #include "rt_collection_ids.h"
+#include "rt_convert_coll.h"
 #include "rt_countmap.h"
 #include "rt_defaultmap.h"
 #include "rt_deque.h"
@@ -26,6 +27,7 @@
 #include "rt_list.h"
 #include "rt_lrucache.h"
 #include "rt_map.h"
+#include "rt_msgbus.h"
 #include "rt_multimap.h"
 #include "rt_object.h"
 #include "rt_orderedmap.h"
@@ -83,6 +85,8 @@ static void assert_class_id(void *obj, int64_t expected) {
 }
 
 static void test_collection_class_ids_are_specific() {
+    assert_class_id(rt_seq_new(), RT_SEQ_CLASS_ID);
+    assert_class_id(rt_map_new(), RT_MAP_CLASS_ID);
     assert_class_id(rt_list_new(), RT_LIST_CLASS_ID);
     assert_class_id(rt_set_new(), RT_SET_CLASS_ID);
     assert_class_id(rt_stack_new(), RT_STACK_CLASS_ID);
@@ -113,6 +117,267 @@ static void test_collection_class_ids_are_specific() {
     void *iter = rt_iter_from_seq(seq);
     assert_class_id(iter, RT_ITERATOR_CLASS_ID);
     release_obj(seq);
+}
+
+static void test_runtime_class_ids_are_unique() {
+    const int64_t ids[] = {
+        RT_SEQ_CLASS_ID,
+        RT_LIST_CLASS_ID,
+        RT_SET_CLASS_ID,
+        RT_STACK_CLASS_ID,
+        RT_QUEUE_CLASS_ID,
+        RT_RING_CLASS_ID,
+        RT_DEQUE_CLASS_ID,
+        RT_BAG_CLASS_ID,
+        RT_ORDEREDMAP_CLASS_ID,
+        RT_TREEMAP_CLASS_ID,
+        RT_FROZENMAP_CLASS_ID,
+        RT_FROZENSET_CLASS_ID,
+        RT_SPARSEARRAY_CLASS_ID,
+        RT_INTMAP_CLASS_ID,
+        RT_DEFAULTMAP_CLASS_ID,
+        RT_MULTIMAP_CLASS_ID,
+        RT_LRUCACHE_CLASS_ID,
+        RT_TRIE_CLASS_ID,
+        RT_BIMAP_CLASS_ID,
+        RT_BITSET_CLASS_ID,
+        RT_BLOOMFILTER_CLASS_ID,
+        RT_COUNTMAP_CLASS_ID,
+        RT_PQUEUE_CLASS_ID,
+        RT_ITERATOR_CLASS_ID,
+        RT_SORTEDSET_CLASS_ID,
+        RT_UNIONFIND_CLASS_ID,
+        RT_WEAKMAP_CLASS_ID,
+        RT_MAP_CLASS_ID,
+        RT_MSGBUS_CLASS_ID,
+        RT_MSGBUS_CALLBACK_CLASS_ID,
+    };
+    for (size_t i = 0; i < sizeof(ids) / sizeof(ids[0]); i++) {
+        for (size_t j = i + 1; j < sizeof(ids) / sizeof(ids[0]); j++)
+            assert(ids[i] != ids[j]);
+    }
+}
+
+static void test_list_get_returns_owned_reference() {
+    void *list = rt_list_new();
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_list_push(list, value);
+    release_obj(value); // List now owns the only reference.
+    void *got = rt_list_get(list, 0);
+
+    rt_list_clear(list);
+    assert(g_finalizer_calls == 0);
+    release_obj(got);
+    assert(g_finalizer_calls == 1);
+
+    release_obj(list);
+}
+
+static void test_deque_peek_and_get_return_owned_references() {
+    void *deque = rt_deque_new();
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_deque_push_back(deque, value);
+    release_obj(value); // Deque now owns the only reference.
+    void *peeked = rt_deque_peek_front(deque);
+    void *got = rt_deque_get(deque, 0);
+
+    rt_deque_clear(deque);
+    assert(g_finalizer_calls == 0);
+    release_obj(peeked);
+    assert(g_finalizer_calls == 0);
+    release_obj(got);
+    assert(g_finalizer_calls == 1);
+
+    release_obj(deque);
+}
+
+static void test_owned_seq_pop_and_remove_transfer_reference() {
+    void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
+    void *a = new_obj();
+    void *b = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(a, count_finalizer);
+    rt_obj_set_finalizer(b, count_finalizer);
+
+    rt_seq_push(seq, a);
+    rt_seq_push(seq, b);
+    release_obj(a);
+    release_obj(b);
+
+    void *removed = rt_seq_remove(seq, 0);
+    void *popped = rt_seq_pop(seq);
+    assert(g_finalizer_calls == 0);
+    release_obj(removed);
+    assert(g_finalizer_calls == 1);
+    release_obj(popped);
+    assert(g_finalizer_calls == 2);
+
+    release_obj(seq);
+}
+
+static void test_multimap_get_first_returns_owned_reference() {
+    void *mm = rt_multimap_new();
+    rt_string key = make_str("key");
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_multimap_put(mm, key, value);
+    release_obj(value); // MultiMap now owns the only reference.
+    void *first = rt_multimap_get_first(mm, key);
+
+    rt_multimap_clear(mm);
+    assert(g_finalizer_calls == 0);
+    release_obj(first);
+    assert(g_finalizer_calls == 1);
+
+    rt_string_unref(key);
+    release_obj(mm);
+}
+
+static void test_heap_retains_values_and_transfers_on_pop() {
+    void *heap = rt_pqueue_new();
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_pqueue_push(heap, 10, value);
+    release_obj(value); // Heap now owns the only reference.
+    void *popped = rt_pqueue_pop(heap);
+
+    release_obj(heap);
+    assert(g_finalizer_calls == 0);
+    release_obj(popped);
+    assert(g_finalizer_calls == 1);
+}
+
+static void test_heap_to_seq_returns_owned_snapshot() {
+    void *heap = rt_pqueue_new();
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_pqueue_push(heap, 10, value);
+    release_obj(value); // Heap now owns the only reference.
+    void *seq = rt_pqueue_to_seq(heap);
+
+    rt_pqueue_clear(heap);
+    assert(g_finalizer_calls == 0);
+    rt_seq_clear(seq);
+    assert(g_finalizer_calls == 1);
+
+    release_obj(seq);
+    release_obj(heap);
+}
+
+static void test_sortedset_accessors_return_stable_strings() {
+    void *set = rt_sortedset_new();
+    rt_string apple = make_str("apple");
+    rt_sortedset_add(set, apple);
+
+    rt_string first = rt_sortedset_first(set);
+    rt_sortedset_clear(set);
+    assert(strcmp(rt_string_cstr(first), "apple") == 0);
+
+    rt_string_unref(first);
+    rt_string_unref(apple);
+    release_obj(set);
+}
+
+static void test_trie_with_long_prefix() {
+    char key_buf[5001];
+    memset(key_buf, 'a', sizeof(key_buf));
+    key_buf[5000] = '\0';
+    rt_string key = rt_string_from_bytes(key_buf, 5000);
+    void *trie = rt_trie_new();
+    void *value = new_obj();
+
+    rt_trie_set(trie, key, value);
+    void *matches = rt_trie_with_prefix(trie, key);
+    assert(rt_seq_len(matches) == 1);
+
+    release_obj(matches);
+    release_obj(value);
+    release_obj(trie);
+    rt_string_unref(key);
+}
+
+static void test_bloomfilter_self_merge_preserves_count() {
+    void *filter = rt_bloomfilter_new(16, 0.01);
+    rt_string key = make_str("alpha");
+    rt_bloomfilter_add(filter, key);
+    assert(rt_bloomfilter_count(filter) == 1);
+    assert(rt_bloomfilter_merge(filter, filter) == 1);
+    assert(rt_bloomfilter_count(filter) == 1);
+    rt_string_unref(key);
+    release_obj(filter);
+}
+
+static void test_stack_to_seq_releases_borrowed_pop_temps() {
+    void *stack = rt_stack_new();
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_stack_push(stack, value); // Borrowed stack mode.
+    void *seq = rt_stack_to_seq(stack);
+
+    release_obj(stack);
+    release_obj(seq);
+    assert(g_finalizer_calls == 0);
+    release_obj(value);
+    assert(g_finalizer_calls == 1);
+}
+
+static void test_queue_to_seq_releases_borrowed_pop_temps() {
+    void *queue = rt_queue_new();
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_queue_push(queue, value); // Borrowed queue mode.
+    void *seq = rt_queue_to_seq(queue);
+
+    release_obj(queue);
+    release_obj(seq);
+    assert(g_finalizer_calls == 0);
+    release_obj(value);
+    assert(g_finalizer_calls == 1);
+}
+
+static void test_iterator_deque_snapshot_releases_get_temps() {
+    void *deque = rt_deque_new();
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_deque_push_back(deque, value);
+    release_obj(value); // Deque now owns the only reference.
+
+    void *iter = rt_iter_from_deque(deque);
+    void *next = rt_iter_next(iter);
+
+    release_obj(deque);
+    release_obj(iter);
+    assert(g_finalizer_calls == 0);
+    release_obj(next);
+    assert(g_finalizer_calls == 1);
 }
 
 static void test_map_values_snapshot_retains_values() {
@@ -187,6 +452,19 @@ static void test_intmap_values_snapshot_retains_values() {
 
 int main() {
     test_collection_class_ids_are_specific();
+    test_runtime_class_ids_are_unique();
+    test_list_get_returns_owned_reference();
+    test_deque_peek_and_get_return_owned_references();
+    test_owned_seq_pop_and_remove_transfer_reference();
+    test_multimap_get_first_returns_owned_reference();
+    test_heap_retains_values_and_transfers_on_pop();
+    test_heap_to_seq_returns_owned_snapshot();
+    test_sortedset_accessors_return_stable_strings();
+    test_trie_with_long_prefix();
+    test_bloomfilter_self_merge_preserves_count();
+    test_stack_to_seq_releases_borrowed_pop_temps();
+    test_queue_to_seq_releases_borrowed_pop_temps();
+    test_iterator_deque_snapshot_releases_get_temps();
     test_map_values_snapshot_retains_values();
     test_frozenmap_values_snapshot_retains_values();
     test_intmap_values_snapshot_retains_values();

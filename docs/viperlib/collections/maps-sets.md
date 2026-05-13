@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-12
+last-verified: 2026-05-13
 ---
 
 # Maps & Sets
@@ -321,7 +321,7 @@ regardless of updates.
 - String keys are compared by full byte length; embedded NUL bytes are part of the key
 - Passing a null key through the runtime API is treated as the empty string key
 - Values are retained while stored and released when overwritten, removed, cleared, or finalized
-- `Keys()` and `Values()` return independent snapshots. Value snapshots retain object values.
+- `KeyAt()` returns an owned copied string. `Keys()` and `Values()` return independent snapshots. Value snapshots retain object values.
 - Values are boxed objects in Zia (use `Viper.Core.Box`); BASIC auto-boxes string values
 
 ### Zia Example
@@ -480,6 +480,7 @@ keeps elements sorted, enabling efficient range queries, ordered iteration, and 
 
 - Elements are compared by full byte length; embedded NUL bytes are part of element identity.
 - `Range(from, to)` includes both bounds. Pass null for `to` through the runtime API to scan to the end.
+- `First()`, `Last()`, `Floor()`, `Ceil()`, `Lower()`, `Higher()`, and `At()` return owned copied strings.
 - `Items()`, `Range()`, `Take()`, and `Skip()` return independent snapshots containing copied strings.
 - Capacity growth traps on overflow instead of wrapping.
 

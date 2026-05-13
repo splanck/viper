@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-22
+last-verified: 2026-05-13
 ---
 
 # Functional & Lazy
@@ -75,6 +75,8 @@ push/pop, insert/remove, and slicing operations.
 
 - Public `Seq` instances borrow elements by default. Runtime-owned snapshots can enable element ownership before insertion so values are retained and released with the sequence.
 - Ownership mode must be selected while the sequence is empty; changing it after insertion traps.
+- `Pop()` and `Remove(index)` return an owned object reference. When the sequence owns elements, the removed element's retained reference is transferred to the caller.
+- `Slice()`, `Keep()`, `Reject()`, `Take()`, and `TakeWhile()` preserve owned-element mode in the returned sequence when the source sequence owns its elements; `Apply()` always returns an owning output sequence.
 - `Push`, `PushAll`, and capacity growth trap on length or allocation overflow instead of wrapping.
 
 ### Zia Example
@@ -433,7 +435,7 @@ capabilities.
 
 ### Notes
 
-- `Next()` and `Peek()` return boxed values in Zia; use `Box.ToStr()`, `Box.ToI64()`, etc. to unwrap
+- `Next()` and `Peek()` return owned object references. In Zia these are usually boxed values; use `Box.ToStr()`, `Box.ToI64()`, etc. to unwrap
 - In BASIC, `Next()` and `Peek()` return values directly
 - `Skip(n)` returns the actual number of elements skipped, which may be less than n if the iterator is near the end
 - `ToSeq()` collects only the *remaining* elements from the current position onward

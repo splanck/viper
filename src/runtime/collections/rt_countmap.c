@@ -226,6 +226,8 @@ int64_t rt_countmap_inc_by(void *obj, rt_string key, int64_t n) {
 
     if (n > INT64_MAX - cm->total)
         rt_trap("CountMap: total overflow");
+    if (cm->count >= (size_t)INT64_MAX)
+        rt_trap("CountMap: length overflow");
     e = (rt_cm_entry *)malloc(sizeof(rt_cm_entry));
     if (!e)
         return 0;
@@ -357,6 +359,8 @@ void rt_countmap_set(void *obj, rt_string key, int64_t count) {
 
     if (count > INT64_MAX - cm->total)
         rt_trap("CountMap: total overflow");
+    if (cm->count >= (size_t)INT64_MAX)
+        rt_trap("CountMap: length overflow");
     e = (rt_cm_entry *)malloc(sizeof(rt_cm_entry));
     if (!e)
         return;

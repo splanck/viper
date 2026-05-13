@@ -99,6 +99,12 @@ typedef struct rt_map_impl {
     size_t count;           ///< Number of key-value pairs currently in the Map.
 } rt_map_impl;
 
+static rt_map_impl *as_map(void *obj, const char *what) {
+    if (!obj || rt_obj_class_id(obj) != RT_MAP_CLASS_ID)
+        rt_trap(what);
+    return (rt_map_impl *)obj;
+}
+
 /// @brief Extracts C string data and length from a Viper string.
 ///
 /// Helper function to safely get the underlying character data from a
@@ -168,7 +174,7 @@ static void free_entry(rt_map_entry *entry) {
 static void rt_map_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
-    rt_map_impl *map = (rt_map_impl *)obj;
+    rt_map_impl *map = as_map(obj, "Map: invalid Map object");
     if (!map->buckets || map->capacity == 0)
         return;
     for (size_t i = 0; i < map->capacity; ++i) {
@@ -189,7 +195,7 @@ static void rt_map_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
 static void rt_map_finalize(void *obj) {
     if (!obj)
         return;
-    rt_map_impl *map = (rt_map_impl *)obj;
+    rt_map_impl *map = as_map(obj, "Map: invalid Map object");
     if (!map->buckets || map->capacity == 0)
         return;
     rt_map_clear(map);
@@ -317,7 +323,7 @@ void *rt_map_new(void) {
 int64_t rt_map_len(void *obj) {
     if (!obj)
         return 0;
-    return (int64_t)((rt_map_impl *)obj)->count;
+    return (int64_t)as_map(obj, "Map: invalid Map object")->count;
 }
 
 /// @brief Checks whether the Map contains no entries.
@@ -376,7 +382,7 @@ void rt_map_set(void *obj, rt_string key, void *value) {
     if (!obj)
         return;
 
-    rt_map_impl *map = (rt_map_impl *)obj;
+    rt_map_impl *map = as_map(obj, "Map: invalid Map object");
 
     size_t key_len;
     const char *key_data = get_key_data(key, &key_len);
@@ -453,7 +459,7 @@ void *rt_map_get(void *obj, rt_string key) {
     if (!obj)
         return NULL;
 
-    rt_map_impl *map = (rt_map_impl *)obj;
+    rt_map_impl *map = as_map(obj, "Map: invalid Map object");
     if (map->capacity == 0)
         return NULL;
 
@@ -499,7 +505,7 @@ void *rt_map_get_or(void *obj, rt_string key, void *default_value) {
     if (!obj)
         return default_value;
 
-    rt_map_impl *map = (rt_map_impl *)obj;
+    rt_map_impl *map = as_map(obj, "Map: invalid Map object");
     if (map->capacity == 0)
         return default_value;
 
@@ -540,7 +546,7 @@ int8_t rt_map_has(void *obj, rt_string key) {
     if (!obj)
         return 0;
 
-    rt_map_impl *map = (rt_map_impl *)obj;
+    rt_map_impl *map = as_map(obj, "Map: invalid Map object");
     if (map->capacity == 0)
         return 0;
 
@@ -587,7 +593,7 @@ int8_t rt_map_set_if_missing(void *obj, rt_string key, void *value) {
     if (!obj)
         return 0;
 
-    rt_map_impl *map = (rt_map_impl *)obj;
+    rt_map_impl *map = as_map(obj, "Map: invalid Map object");
     if (map->capacity == 0)
         return 0;
 
@@ -658,7 +664,7 @@ int8_t rt_map_remove(void *obj, rt_string key) {
     if (!obj)
         return 0;
 
-    rt_map_impl *map = (rt_map_impl *)obj;
+    rt_map_impl *map = as_map(obj, "Map: invalid Map object");
     if (map->capacity == 0)
         return 0;
 
@@ -719,7 +725,7 @@ void rt_map_clear(void *obj) {
     if (!obj)
         return;
 
-    rt_map_impl *map = (rt_map_impl *)obj;
+    rt_map_impl *map = as_map(obj, "Map: invalid Map object");
     for (size_t i = 0; i < map->capacity; ++i) {
         rt_map_entry *entry = map->buckets[i];
         while (entry) {
@@ -768,7 +774,7 @@ void *rt_map_keys(void *obj) {
     if (!obj)
         return result;
 
-    rt_map_impl *map = (rt_map_impl *)obj;
+    rt_map_impl *map = as_map(obj, "Map: invalid Map object");
 
     // Iterate through all buckets and entries
     for (size_t i = 0; i < map->capacity; ++i) {
@@ -820,7 +826,7 @@ void *rt_map_values(void *obj) {
     if (!obj)
         return result;
 
-    rt_map_impl *map = (rt_map_impl *)obj;
+    rt_map_impl *map = as_map(obj, "Map: invalid Map object");
 
     // Iterate through all buckets and entries
     for (size_t i = 0; i < map->capacity; ++i) {
@@ -925,7 +931,7 @@ void *rt_map_clone(void *obj) {
     if (!obj)
         return result;
 
-    rt_map_impl *map = (rt_map_impl *)obj;
+    rt_map_impl *map = as_map(obj, "Map: invalid Map object");
     for (size_t i = 0; i < map->capacity; ++i) {
         rt_map_entry *entry = map->buckets[i];
         while (entry) {

@@ -37,18 +37,20 @@ A focused hardening-and-correctness cycle on the v0.2.5 surface. No new public n
 - Numeric round-trip — `Convert.ToString_Double` / `rt_f64_to_str` now emit the shortest exact-reparse form (`%.*g` 1..17 with fixed-vs-exponent tie-break) and `Parse.Double` / `TryParse` / `Convert.ToDouble` accept the formatter's `NaN` / `Inf` / `+Inf` / `-Inf` spellings, so doubles round-trip end-to-end through the public APIs. The 15-significant-digit BASIC `PRINT` / `WRITE#` display form is preserved as a separate dedicated entry point so golden output is unchanged.
 - x86-64 backend regression repairs — integer cast width selection, label-operand validation, frame-slot aliasing, overflow-pseudo lowering, switch operand normalisation, and a documentation pass across ~50 backend source files with doxygen on every helper.
 - Windows VAPS installer hardening — PE32+ payload validation against the selected x64/arm64 target, recursive adjacent-DLL discovery with Windows/UCRT/VC redistributable classification, `SHGetKnownFolderPath` + `RegDeleteTreeW` modernisation, embedded VERSIONINFO + InstallDate metadata, `windows-install-scope machine|user` + custom `windows-install-dir`, `windows-sign-thumbprint` parity across `viper package` and `viper install-package`, ZIP SHA-256 manifest coverage with duplicate / uncovered-entry rejection, and a non-elevated user-scope smoke ctest exercising install / launch / file-association / uninstall end-to-end.
+- Collections-wide correctness round — all 26 collection types now carry stable class IDs in a new `rt_collection_ids.h` header, register typed GC traversal callbacks so cycles through containers are visible to the cycle collector, and follow consistent retain semantics: `Queue` and `Stack` join `Seq`'s opt-in `owns_elements` model; `Convert.*` cross-container helpers (`seq_to_stack`, `list_to_seq`, `stack_to_seq`, `queue_to_seq`, `deque_to_seq`, `ring_to_seq`, …) mark their output as owning and balance temp retains during round-trip restoration; `Map.Values` / `IntMap.Values` / `FrozenMap.Values` / `MultiMap.Get` return owning Seqs. `Bytes.ReadI16/I32` LE/BE now sign-extend through a staged `uint→same-width-signed→int64` cast (the previous zero-extension made negative stored values read back as large positive ints).
+- x86-64 cross-block fold liveness — SIB folding and IMUL-by-constant→LEA strength reduction now consult a whole-function outside-block use guard before erasing the producer of an address-strength-reduction temporary, so a virtual register still consumed in another basic block survives the fold. The AT&T asm emitter additionally rejects invalid CALL/JMP/JCC/LEA/SETcc/MOVZX operand classes and non-RCX shift counts before printing, matching the binary encoder's contracts.
 
 ### By the Numbers
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 65 | +65 |
-| Source files | 2,996 | 3,006 | +10 |
+| Commits | — | 67 | +67 |
+| Source files | 2,996 | 3,008 | +12 |
 | Production SLOC | 552K | 575K | +23K |
-| Test SLOC | 228K | 241K | +13K |
+| Test SLOC | 228K | 242K | +14K |
 | Demo SLOC | 188K | 188K | 0 |
 
-Counts via `scripts/count_sloc.sh` (production 574,840 / test 240,789 / demo 187,826 / source files 3,006).
+Counts via `scripts/count_sloc.sh` (production 575,414 / test 241,588 / demo 187,842 / source files 3,008).
 
 ---
 
@@ -76,6 +78,7 @@ Counts via `scripts/count_sloc.sh` (production 574,840 / test 240,789 / demo 187
 - Reclaim-phase bookkeeping consolidated into a new `gc_garbage_state` record (snapshot entry, saved refs, finalized/resurrected/reclaimed flags) so trap recovery and resurrection paths share one cohesive data layout.
 - `rt_obj_get_hash_code` pointer-identity hashes now run the address through a splitmix64-style finalizer (two multiplies + xor-shifts) instead of returning the raw `uintptr_t` — Map/Set bucket masks that alias the low bits no longer cluster on adjacent allocations.
 - `rt_memory_release_array_payload` traps cleanly when `hdr->len > hdr->cap` instead of walking past the end of the payload on a corrupted header.
+- `rt_gc_run_all_finalizers` (shutdown sweep) now snapshots a `{obj, retained}` tuple per live entry and only releases the entries it actually retained. Heap headers are pre-validated, and entries already at refcount 0 are freed directly without rerunning the finalizer — previously the up-front retain loop bumped every live object but the cleanup path released them all unconditionally, which could underflow an entry whose retain failed.
 
 ### Runtime objects and MessageBus
 
@@ -113,14 +116,6 @@ Counts via `scripts/count_sloc.sh` (production 574,840 / test 240,789 / demo 187
 - `Box` unboxing rejects boxes whose tag is not one of the four canonical values (`I64`, `F64`, `I1`, `STR`); corrupted or zero-tagged box payloads can no longer be unboxed.
 - `rt_parse_try_int` / `try_num` / `try_bool` now zero the non-NULL output pointer before parsing so a failed parse cannot leak a caller's prior value. The header invariant is documented accordingly.
 - Parse / Convert / TryParse all accept the formatter's `NaN`, `Inf`, `+Inf`, and `-Inf` spellings (case-insensitive, optional leading sign) so `Convert.ToString_Double` round-trips through `Viper.Core.Parse.Double`, `Convert.ToDouble`, and `TryParse` without `InvalidCast`.
-
-### Collections runtime
-
-- Collection heap objects now use stable negative class IDs across List, Set, Stack, Queue, Ring, Deque, Bag, maps, filters, tries, queues, and related specialized structures. This prevents collection instances from colliding with core runtime IDs during introspection and dispatch.
-- Seq, map/set value snapshots, frozen snapshots, conversions, and iterators now preserve retained-element ownership where the returned collection can outlive the source. Stack and Queue gained an internal retained-element mode for conversion-created containers; pop/try-pop transfer that retained reference to the caller.
-- Map, Set, List, Seq, OrderedMap, TreeMap, FrozenMap, Deque, IntMap, DefaultMap, MultiMap, LruCache, Trie, SparseArray, Stack, and Queue are GC-traversable where they hold object references, so cycles through collection fields are visible to `Viper.Memory.GC.Collect()`.
-- Bytes signed 16/32-bit readers now sign-extend correctly, and `Bytes.Copy` validates both source and destination as Bytes objects before accepting even zero-length copies.
-- Growth and allocation paths in Bag, BiMap, IntMap, BitSet, Ring, DefaultMap, and related constructors now trap on size overflow or allocation failure instead of silently wrapping, returning partial objects, or leaking failed intermediate allocations.
 
 ### Crypto
 
@@ -170,6 +165,13 @@ Counts via `scripts/count_sloc.sh` (production 574,840 / test 240,789 / demo 187
 
 - Eight new unsigned `BinaryBuffer` methods: `WriteU16LE/BE`, `WriteU32LE/BE`, `ReadU16LE/BE`, `ReadU32LE/BE` (with `[0, UINT16_MAX]` / `[0, UINT32_MAX]` range validation).
 - Retroactive range-check guards on `WriteI16LE/BE` and `WriteI32LE/BE` — previously truncated silently.
+- **Stable class IDs across the family** — new `rt_collection_ids.h` reserves 26 stable class IDs in the `-0x430300` range (List, Set, Stack, Queue, Ring, Deque, Bag, OrderedMap, TreeMap, FrozenMap, FrozenSet, SparseArray, IntMap, DefaultMap, MultiMap, LruCache, Trie, BiMap, BitSet, BloomFilter, CountMap, PriorityQueue, Iterator, SortedSet, UnionFind, WeakMap). Every constructor now passes its specific class ID to `rt_obj_new_i64`; the previous family-wide `class_id=0` had silently blocked typed handle validation across the entire collections surface.
+- **GC traversal registration** — every collection that owns retained references now registers a typed `rt_gc_track` traversal callback. Cycles through containers (a Map whose value list references the Map, a Seq holding objects with finalizer-only back-references, …) are now visible to the cycle collector. Covers List, Map, IntMap, MultiMap, DefaultMap, FrozenMap, OrderedMap, TreeMap, LRUCache, Trie, SparseArray, Seq, Queue, Stack, Deque, Ring.
+- **Queue and Stack opt-in `owns_elements`** — both join `Seq`'s two-mode ownership model: borrowed by default, owning when `set_owns_elements(true)` is called on an empty collection. Push retains, pop / try_pop / clear / finalize release, traversal visits owned elements only, and `clone` propagates the ownership flag to the new collection. `rt_queue_set_owns_elements` / `rt_queue_owns_elements` and the Stack equivalents are now part of `RuntimeSurfacePolicy.inc`.
+- **`Convert.*` retain consistency** — `seq_to_stack`, `seq_to_queue`, `list_to_seq`, `list_to_stack`, `list_to_queue`, `stack_to_seq`, `queue_to_seq`, `deque_to_seq`, `ring_to_seq` all mark their output as owning and release temp retains when round-tripping values back into the source container, so a conversion through a temporary helper can no longer leave the result holding the last live reference.
+- **Owning value snapshots** — `Map.Values`, `IntMap.Values`, `FrozenMap.Values`, and `MultiMap.Get` now return owning Seqs, so caller-side iteration survives the source collection's release. `Seq.Keep` / `Reject` / `TakeWhile` propagate the source's `owns_elements` flag; `Seq.Apply` always owns its output. `Seq.Slice` copies through `rt_seq_push` instead of `memcpy` so the destination retains under the owning mode.
+- **`Bytes.ReadI16/I32` LE/BE sign-extension** — staged `uint→same-width-signed→int64` cast now properly sign-extends. Previously zero-extending through `uint16_t` / `uint32_t` made any stored negative signed value read back as a large positive `int64`. `Bytes.Copy` routes both destination and source through `rt_bytes_require` for class-id validation before casting.
+- **`IntMap` / `DefaultMap` allocation hygiene** — allocation failure releases the partially-initialised object and traps with a real error message instead of returning a half-initialised handle. `rt_intmap` `map_resize` pre-checks `capacity * sizeof(entry*)` for `size_t` overflow before `calloc`, and `maybe_resize` compares load factor in `long double` to avoid `int64` overflow at very large capacities. `defaultmap_finalizer` is null-guarded on both the object and its buckets so a finalizer fired on an already-finalised map is a no-op. Bag, BiMap, BitSet, and Ring constructors received the same hygiene pass so size overflow or allocation failure traps cleanly instead of returning a partial object or leaking the intermediate allocation.
 
 ### Threading runtime
 
@@ -340,6 +342,8 @@ Counts via `scripts/count_sloc.sh` (production 574,840 / test 240,789 / demo 187
 - ELF and Mach-O readers reject invalid section/symbol string-table offsets and undersized Mach-O command payloads instead of returning truncated or empty names.
 - x86-64 lowerer validates malformed inputs (empty blocks, dangling branches, mismatched edge-copy arity, unresolved phi predecessors) and surfaces them through the diagnostic engine instead of asserting or producing broken MIR.
 - Multiple rounds of x86-64 and AArch64 backend regressions repaired: switch edge-copy ordering, R10/R11 scratch reservation, Win64 shadow space, i1 immediate canonicalization, caller-saved live-out across calls, AArch64 branch-patch math, integer cast width selection, label-operand validation, frame-slot aliasing, overflow-pseudo lowering, switch operand normalisation, and malformed-IL diagnostics at the lowerer boundary.
+- x86-64 cross-block fold liveness — SIB folding (collapsing `ADD` + scaled `SHL` into a single memory operand) and IMUL-by-constant→LEA strength reduction now run a whole-function outside-block use guard before erasing the producer of an address-strength-reduction temporary. A virtual register still consumed in another basic block can no longer have its defining instruction folded away. The guard also covers removable base/index `MOV` copies used by the SIB fold and counts the constant register's uses across the entire function before erasing its `MOVri` producer.
+- AT&T `AsmEmitter` operand validation tightened — invalid immediate `CALL` targets, conditional branches whose target is not a label, indirect `JMP` into an XMM register, `LEA` sources that are plain registers or immediates, `SHL/SHR` register-count shifts whose count isn't `RCX`/`CL`, and `SETcc` / `MOVZX` non-GPR destinations / sources are all rejected before emission so the textual asm path matches the binary encoder's contracts. Invalid forms surface as real diagnostics instead of printing assembler-rejected output.
 - Doc-comment audit across the codegen tree: assembler and linker subtree (~75 files) plus the full x86-64 backend (~50 files in `src/codegen/x86_64/` covering ISel, lowering rules, peephole sub-passes, register allocator, scheduler, binary encoder, asm emitter, and pass-manager wrappers). Canonical Viper file headers, per-helper doxygen, refreshed `docs/codegen/native-assembler.md` and `native-linker.md`.
 
 ### Windows / MSVC toolchain
@@ -388,7 +392,8 @@ Two-round hardening pass on the Windows VAPS installer pipeline.
 - 2D graphics: new `RTBitmapFontContractTests`, expanded `RTCanvasContractTests`, `RTColorUtilsTests`, `RTSpriteContractTests`, plus `RTGraphics2DTests` / `RTPixelsTests` / `RTCameraTests` / `TestTilemapAnim`. Round 2 covers legacy-vs-tagged `rt_color_get_a`, premultiplied bilerp on transparent edges, non-BitmapFont rejection, and SpriteRenderer2D state isolation.
 - Graphics3D: `RTGraphics3DRobustnessTests` extended with introspection structs for the Water3D and Vegetation3D internal layouts and regression coverage for the new Canvas3D draw entries, terrain Perlin clamping, mesh skeleton binding, morph Mat4 validation, scene reparent atomicity, physics joint deduplication, glTF JOINTS preservation in `SetBoneWeights`, and the bone-count derivation rule on `Mesh3D.Clone`.
 - x86-64 codegen: out-of-order block-param lowering, instruction-result pre-registration, scheduler prologue-boundary preservation, large-spill `PX_COPY` regression, lone-JCC fallthrough peephole. Backend-liveness round adds compare/branch fold-safety across edge copies, IMUL→LEA refusal under live flags, block-DCE physical-register preservation, fixed-physical-register spill-before-clobber, and a void-return zero-exit-code regression.
-- x86-64 regression additions also cover switch edge-copy ordering, internal-label/control-transfer splitting, `R10`/`R11` scratch reservation, Win64 runtime-call shadow-space detection, I1 immediate canonicalization, and caller-saved live-out preservation across calls.
+- x86-64 regression additions also cover switch edge-copy ordering, internal-label/control-transfer splitting, `R10`/`R11` scratch reservation, Win64 runtime-call shadow-space detection, I1 immediate canonicalization, and caller-saved live-out preservation across calls. New `test_x86_backend_regressions` MIR cases cover the cross-block SIB and IMUL→LEA fold-liveness guards; new `AsmEmitter` diagnostics tests cover the rejected `CALL` / `JMP` / `JCC` / `LEA` / `SETcc` / `MOVZX` and non-`RCX` shift-count forms.
+- New `RTCollectionsCorrectnessTests` suite covering distinct class IDs across the 26 collection types and value-snapshot retain semantics on `Map.Values`, `FrozenMap.Values`, and `IntMap.Values`. `RTBytesTests` extended with negative-value coverage on `I16LE/BE` and `I32LE/BE` reads. `RTQueueTests` / `RTStackTests` extended with `set_owns_elements` behaviour, retain-on-push / release-on-pop, clone ownership propagation, and finalize-while-owning paths. `RTSeqTests` extended for `Slice` / `Keep` / `Reject` / `Apply` / `TakeWhile` ownership propagation. `RTConvertCollTests` extended for owning output mode on every conversion direction. The sprite-runtime suite (`test_rt_sprite_consolidated`) fixed a teardown path that was discarding the `rt_obj_release_check0` return value and leaving objects in their finalizer-pending state.
 - D3D11: shared-backend coverage tying the bone-palette byte count to the 256 supported shader entries, plus new `test_vgfx3d_backend_d3d11_shared` cases for checked row-byte math, destination-span validation, size overflow, and target fallback resolution.
 - Native assembler & linker: new tests for `parseSize`, archive symbol-candidate ordering and GNU long names, `CodeSection` identity, ELF symbol-size preservation, COFF ambiguous-target + reloc-overflow records, AArch64 addend validation and LDR/STR scaled-offset reloc kinds, Mach-O `SIGNED_4` bias plus anchor-symbol routing, `InputSectionKey` lookups, branch-trampoline overflow guards, and MOVZX REX emission.
 - Linker correctness round: COMMON coalescing across mixed alignments, per-platform underscore fallback (Mach-O accepts, ELF/COFF reject), strong-global precedence over same-object local definitions, ICF folded-symbol redirect, ELF `PT_TLS` emission, Mach-O 16-byte name validation, AArch64 reloc instruction-class validators, PE 32-bit field-overflow guards, and Mach-O subsections-via-symbols splitting.
@@ -401,6 +406,6 @@ Demos and docs were updated to track the runtime work above; the stale Windows d
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 65-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 67-commit history since v0.2.5.
 
 <!-- END DRAFT -->

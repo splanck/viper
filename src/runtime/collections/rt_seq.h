@@ -28,12 +28,11 @@
 
 #include <stdint.h>
 
+#include "rt_collection_ids.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/// @brief Seq class identifier for heap header tagging.
-#define RT_SEQ_CLASS_ID 2
 
 /// @brief Create a new empty sequence with default capacity.
 /// @return Opaque pointer to the new Seq object.
