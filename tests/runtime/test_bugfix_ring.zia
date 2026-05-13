@@ -1,4 +1,4 @@
-// BUG-007 regression: Ring constructor should work with explicit capacity
+// BUG-007 regression: Ring constructors should work with default and explicit capacity.
 module TestBugfixRing;
 
 bind Viper.Terminal;
@@ -14,6 +14,18 @@ func start() {
     }
     if (!ring.IsEmpty) {
         Say("FAIL: new Ring should be empty");
+        passed = false;
+    }
+
+    var defaultRing = new Viper.Collections.Ring();
+    if (defaultRing.Cap <= 0) {
+        Say("FAIL: default Ring capacity should be positive");
+        passed = false;
+    }
+    defaultRing.Push("a");
+    defaultRing.Push("b");
+    if (defaultRing.Length != 2) {
+        Say("FAIL: default Ring should accept pushed values");
         passed = false;
     }
 

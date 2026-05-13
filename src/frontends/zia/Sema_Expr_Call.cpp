@@ -1056,6 +1056,13 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
         }
 
         if (!dottedName.empty()) {
+            if (dottedName == "Viper.Collections.Seq.New" && expr->args.size() == 1)
+                dottedName = "Viper.Collections.Seq.NewSized";
+            else if (dottedName == "Viper.String.FromInt")
+                dottedName = "Viper.Core.Convert.ToString_Int";
+            else if (dottedName == "Viper.String.FromDouble")
+                dottedName = "Viper.Core.Convert.ToString_Double";
+
             analyzeArgTypes();
 
             std::string loweredName;

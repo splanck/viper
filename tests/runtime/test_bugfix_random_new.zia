@@ -1,5 +1,5 @@
 // BUG-011 regression test: Viper.Math.Random should be constructible via `new`
-// The constructor seeds the global RNG and returns a wrapper object.
+// and should keep per-instance RNG state.
 module TestBugfixRandomNew;
 
 bind Viper.Terminal;
@@ -7,12 +7,10 @@ bind Viper.Terminal;
 func start() {
     var passed = true;
 
-    // Test: NEW should work for Random with a seed argument
+    // Test: NEW should work for Random with a seed argument.
     var rng = new Viper.Math.Random(42);
-
-    // After seeding with 42, the RNG should produce deterministic values
-    var val1 = Viper.Math.Random.NextInt(100);
-    var val2 = Viper.Math.Random.NextInt(100);
+    var val1 = rng.NextInt(100);
+    var val2 = rng.NextInt(100);
 
     // Values should be in range [0, 100)
     if (val1 < 0) {
@@ -32,10 +30,10 @@ func start() {
         passed = false;
     }
 
-    // Re-seed with same value — should produce same sequence
+    // Same seed should produce the same instance sequence.
     var rng2 = new Viper.Math.Random(42);
-    var val1b = Viper.Math.Random.NextInt(100);
-    var val2b = Viper.Math.Random.NextInt(100);
+    var val1b = rng2.NextInt(100);
+    var val2b = rng2.NextInt(100);
 
     if (val1 != val1b) {
         Say("FAIL: determinism broken (val1)");
@@ -43,6 +41,32 @@ func start() {
     }
     if (val2 != val2b) {
         Say("FAIL: determinism broken (val2)");
+        passed = false;
+    }
+
+    var ranged = rng.NextInt(10, 20);
+    if (ranged < 10 || ranged > 20) {
+        Say("FAIL: NextInt(min,max) out of range");
+        passed = false;
+    }
+
+    rng.Seed(99);
+    var reseed1 = rng.NextInt(1000);
+    rng.Seed(99);
+    var reseed2 = rng.NextInt(1000);
+    if (reseed1 != reseed2) {
+        Say("FAIL: instance Seed did not reset sequence");
+        passed = false;
+    }
+
+    // Constructing an instance must not mutate the global/static RNG sequence.
+    Viper.Math.Random.Seed(7);
+    var globalExpected = Viper.Math.Random.NextInt(1000);
+    Viper.Math.Random.Seed(7);
+    var unused = new Viper.Math.Random(123);
+    var globalActual = Viper.Math.Random.NextInt(1000);
+    if (globalActual != globalExpected) {
+        Say("FAIL: Random constructor mutated global RNG state");
         passed = false;
     }
 

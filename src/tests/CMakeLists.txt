@@ -700,6 +700,49 @@ foreach (test_name IN LISTS ZIA_RUNTIME_TESTS)
 endforeach ()
 
 # =============================================================================
+# Zia Runtime API, Audit, and Sweep Suites
+# These suites are intentionally discovered from their directories because they
+# are broad hardening sweeps rather than curated language chapters.
+# =============================================================================
+set(ZIA_RT_API_TESTS_DIR "${CMAKE_SOURCE_DIR}/tests/rt_api")
+file(GLOB ZIA_RT_API_TEST_FILES CONFIGURE_DEPENDS "${ZIA_RT_API_TESTS_DIR}/*.zia")
+foreach (test_file IN LISTS ZIA_RT_API_TEST_FILES)
+    get_filename_component(test_name "${test_file}" NAME_WE)
+    add_test(NAME zia_rt_api_${test_name}
+            COMMAND $<TARGET_FILE:zia> "${test_file}"
+            WORKING_DIRECTORY "${ZIA_RT_API_TESTS_DIR}")
+    set_tests_properties(zia_rt_api_${test_name} PROPERTIES
+            LABELS "runtime;zia;rt_api"
+            TIMEOUT 30)
+endforeach ()
+
+set(ZIA_AUDIT_TESTS_DIR "${CMAKE_SOURCE_DIR}/tests/zia_audit")
+file(GLOB ZIA_AUDIT_TEST_FILES CONFIGURE_DEPENDS "${ZIA_AUDIT_TESTS_DIR}/*.zia")
+foreach (test_file IN LISTS ZIA_AUDIT_TEST_FILES)
+    get_filename_component(test_name "${test_file}" NAME_WE)
+    add_test(NAME zia_audit_${test_name}
+            COMMAND $<TARGET_FILE:zia> "${test_file}"
+            WORKING_DIRECTORY "${ZIA_AUDIT_TESTS_DIR}")
+    set_tests_properties(zia_audit_${test_name} PROPERTIES
+            LABELS "zia;audit"
+            TIMEOUT 30)
+endforeach ()
+
+set(ZIA_SWEEP_TESTS_DIR "${CMAKE_SOURCE_DIR}/tests/zia_sweep")
+file(GLOB ZIA_SWEEP_TEST_FILES CONFIGURE_DEPENDS "${ZIA_SWEEP_TESTS_DIR}/*.zia")
+foreach (test_file IN LISTS ZIA_SWEEP_TEST_FILES)
+    get_filename_component(test_name "${test_file}" NAME_WE)
+    if (NOT test_name STREQUAL "_support")
+        add_test(NAME zia_sweep_${test_name}
+                COMMAND $<TARGET_FILE:zia> "${test_file}"
+                WORKING_DIRECTORY "${ZIA_SWEEP_TESTS_DIR}")
+        set_tests_properties(zia_sweep_${test_name} PROPERTIES
+                LABELS "zia;sweep"
+                TIMEOUT 30)
+    endif ()
+endforeach ()
+
+# =============================================================================
 # Zia Language Feature Tests
 # These tests verify Zia language features work correctly.
 # Each test outputs "RESULT: ok" on success.
@@ -750,6 +793,7 @@ set(ZIA_LANG_TESTS
         42_try_catch_promises
         43_alpha_hardening
         44_language_promises
+        45_runtime_api_conformance
 )
 
 foreach (test_name IN LISTS ZIA_LANG_TESTS)

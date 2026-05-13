@@ -89,7 +89,37 @@
 #include "frontends/zia/Sema.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
+#include <string_view>
+
 namespace il::frontends::zia {
+
+static bool shouldInferOwnerReturnForPlainObject(const il::runtime::RuntimeMethod &method) {
+    if (!method.name)
+        return true;
+
+    std::string_view name(method.name);
+    if (name == "Keys" || name == "Values" || name == "Items" || name == "Indices" ||
+        name == "Get" || name == "GetOr" || name == "GetFirst" || name == "Peek" ||
+        name == "Pop" || name == "TryPop" || name == "First" || name == "Last" ||
+        name == "Next" || name == "Find" || name == "FindWhere" || name == "Fold")
+        return false;
+
+    if (name.rfind("Get", 0) == 0)
+        return false;
+
+    return true;
+}
+
+static bool methodTargetBelongsToClass(const il::runtime::RuntimeMethod &method,
+                                       const char *className) {
+    if (!method.target || !className)
+        return false;
+
+    std::string_view target(method.target);
+    std::string_view owner(className);
+    return target.size() > owner.size() && target.compare(0, owner.size(), owner) == 0 &&
+           target[owner.size()] == '.';
+}
 
 /// @brief Initializes all runtime function bindings for semantic analysis.
 ///
@@ -186,10 +216,13 @@ void Sema::initRuntimeFunctions() {
             // Convert IL types to Zia types, honouring element type hints from seq<T>.
             TypeRef returnType = toZiaReturnType(sig);
             // When a class method returns plain 'obj' (no element type annotation),
-            // infer the owning class type for constructor/factory methods so callers
-            // get proper type tracking. Do NOT override typed seq returns.
+            // infer the owning class type only for methods that conventionally return
+            // the receiver's class. Accessors and snapshot methods intentionally remain
+            // opaque unless runtime.def provides an explicit obj<Class> or seq<T> return.
             if (sig.returnType == il::runtime::ILScalarType::Object &&
-                sig.elementTypeName.empty() && sig.objectTypeName.empty() && cls.qname)
+                sig.elementTypeName.empty() && sig.objectTypeName.empty() && cls.qname &&
+                methodTargetBelongsToClass(m, cls.qname) &&
+                shouldInferOwnerReturnForPlainObject(m))
                 returnType = types::runtimeClass(cls.qname);
             if (sig.isOptionalReturn)
                 returnType = types::optional(returnType);

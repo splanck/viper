@@ -127,8 +127,14 @@ func testCryptoRandInt() {
     }
 }
 
-// Note: testCryptoRandBytes removed - Viper.Collections.Bytes not available in Zia
-// Rand.Bytes() works but cannot verify length/contents without Bytes API
+func testCryptoRandBytes() {
+    setTest("CryptoRandBytes");
+
+    var bytes = Viper.Crypto.Rand.Bytes(16);
+    assertEqInt(bytes.Length, 16, "crypto rand bytes length");
+    assertEqInt(Viper.String.Length(bytes.ToHex()), 32, "crypto rand bytes hex length");
+}
+
 
 func testHashDeterminism() {
     setTest("HashDeterminism");
@@ -168,7 +174,7 @@ func start() {
     testCRC32();
     testHMAC();
     testCryptoRandInt();
-    // testCryptoRandBytes removed - Bytes API not available in Zia
+    testCryptoRandBytes();
     testHashDeterminism();
     testHashLength();
 

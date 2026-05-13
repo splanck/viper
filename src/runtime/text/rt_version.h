@@ -76,6 +76,21 @@ rt_string rt_version_to_string(void *ver);
 /// @return -1 if a < b, 0 if equal, 1 if a > b.
 int64_t rt_version_cmp(void *a, void *b);
 
+/// @brief Parse and compare two semantic version strings.
+/// @param a First version string.
+/// @param b Second version string.
+/// @return -1 if a < b, 0 if equal, 1 if a > b.
+int64_t rt_version_compare(rt_string a, rt_string b);
+
+/// @brief Parse a semantic version string and return its major component.
+int64_t rt_version_major_str(rt_string str);
+
+/// @brief Parse a semantic version string and return its minor component.
+int64_t rt_version_minor_str(rt_string str);
+
+/// @brief Parse a semantic version string and return its patch component.
+int64_t rt_version_patch_str(rt_string str);
+
 /// @brief Check if version satisfies a simple constraint.
 /// @param ver Version object.
 /// @param constraint Constraint string (e.g., ">=1.0.0", "<2.0.0", "^1.2", "~1.2.3").

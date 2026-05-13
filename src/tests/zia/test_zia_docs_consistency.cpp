@@ -71,6 +71,25 @@ TEST(ZiaDocs, NoKnownStaleSyntaxOrApiPatterns) {
              "tryStmt     ::= \"try\" block [\"catch\"",
              "throwStmt   ::= \"throw\" expr \";\"",
              "member      ::= [\"expose\" | \"hide\"] [\"static\" | \"override\"]",
+             "A setter-only property is not currently supported",
+             "Zia programs have access to the full Viper Runtime through",
+             "The following keyword is recognized by the lexer but has no current semantics",
+         }},
+        {"docs/feature-parity.md",
+         {
+             "| Function overloading | None | None | Neither |",
+             "Zia parses `weak` but doesn't lower",
+             "Zia has the type but no construction/destructure",
+             "**No construction or destructuring**",
+             "**No lowering or runtime support**",
+         }},
+        {"docs/GENERICS_IMPLEMENTATION_PLAN.md",
+         {
+             "user-defined generics are parsed but full monomorphization is not yet implemented",
+         }},
+        {"docs/bible/appendices/a-zia-reference.md",
+         {
+             "../../../zia-reference.md",
          }},
         {"docs/bible/part2-building-blocks/12-modules.md",
          {

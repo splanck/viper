@@ -38,6 +38,15 @@ extern "C" {
 /// @return Opaque pointer to the new Seq object.
 void *rt_seq_new(void);
 
+/// @brief Create a new public sequence that owns pushed elements.
+/// @return Opaque pointer to the new Seq object.
+void *rt_seq_new_owned(void);
+
+/// @brief Create a new public sequence with a fixed initial length.
+/// @param len Initial length. Slots are initialized to null.
+/// @return Opaque pointer to the new Seq object.
+void *rt_seq_new_sized(int64_t len);
+
 /// @brief Enable or disable element ownership for an empty Seq.
 /// @details When enabled, the Seq retains elements on push/insert/set and
 ///          releases them on clear/finalize. Ownership mode changes trap once
@@ -56,6 +65,11 @@ void rt_seq_push_raw(void *obj, void *val);
 /// @param cap Initial capacity (minimum 1).
 /// @return Opaque pointer to the new Seq object.
 void *rt_seq_with_capacity(int64_t cap);
+
+/// @brief Create a new public sequence with specified capacity that owns pushed elements.
+/// @param cap Initial capacity (minimum 1).
+/// @return Opaque pointer to the new Seq object.
+void *rt_seq_with_capacity_owned(int64_t cap);
 
 /// @brief Get the number of elements in the sequence.
 /// @param obj Opaque Seq object pointer.
@@ -79,8 +93,8 @@ int8_t rt_seq_is_empty(void *obj);
 void *rt_seq_get(void *obj, int64_t idx);
 
 /// @brief Get a string element at the specified index from a string sequence.
-/// @details For seq<str> sequences (e.g. from Viper.String.Split), elements are
-///          stored as raw rt_string pointers (not boxed). This casts directly.
+/// @details Accepts raw string elements from runtime snapshots and boxed strings
+///          pushed through the public Object ABI. Returns an owned string.
 /// @param obj Opaque Seq object pointer.
 /// @param idx Index of element to retrieve.
 /// @return String element at the index; traps if out of bounds.

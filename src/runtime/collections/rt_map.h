@@ -127,6 +127,15 @@ double rt_map_get_float(void *obj, rt_string key);
 /// @brief Get a float value with default (unboxes, returns def if missing).
 double rt_map_get_float_or(void *obj, rt_string key, double def);
 
+/// @brief Set a boolean value (boxes automatically).
+void rt_map_set_bool(void *obj, rt_string key, int8_t value);
+
+/// @brief Get a boolean value (unboxes, returns false if missing).
+int8_t rt_map_get_bool(void *obj, rt_string key);
+
+/// @brief Get a boolean value with default (unboxes, returns def if missing).
+int8_t rt_map_get_bool_or(void *obj, rt_string key, int8_t def);
+
 /// @brief Set a string value (wraps as object).
 void rt_map_set_str(void *obj, rt_string key, rt_string value);
 

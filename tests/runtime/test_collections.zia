@@ -3,13 +3,12 @@ module TestCollections;
 bind "./_support";
 
 // EXPECT_OUT: RESULT: ok
-// Note: Advanced collections (Seq, Stack, Queue, Ring, Bag, Heap, TreeMap)
-// are not directly accessible in Zia syntax. They can only be used from BASIC.
-// This test verifies that lists and maps (which ARE available in Zia) work correctly.
-//
-// Note: There's a compiler bug where indexing a list that was initialized empty
-// and had items added causes a crash. Tests work around this by initializing
-// lists with values.
+// COVER: Zia list and map literals
+// COVER: Viper.Collections.Map
+// COVER: Viper.Collections.Stack
+// COVER: Viper.Collections.Queue
+// COVER: Viper.Collections.Ring
+// COVER: Viper.Collections.Bag
 
 func testListWithValues() {
     setTest("ListWithValues");
@@ -94,12 +93,54 @@ func testNestedMapList() {
     assertEqInt((groups.get("odds") ?? [])[2], 5, "odds third");
 }
 
+func testRuntimeCollections() {
+    setTest("RuntimeCollections");
+
+    var stack = new Viper.Collections.Stack();
+    assertTrue(stack.IsEmpty, "stack starts empty");
+    stack.Push("a");
+    stack.Push("b");
+    assertEqInt(stack.Length, 2, "stack length");
+    stack.Pop();
+    assertEqInt(stack.Length, 1, "stack pop length");
+
+    var queue = new Viper.Collections.Queue();
+    queue.Push("a");
+    queue.Push("b");
+    assertEqInt(queue.Length, 2, "queue length");
+    queue.Pop();
+    assertEqInt(queue.Length, 1, "queue pop length");
+
+    var ring = new Viper.Collections.Ring();
+    assertGtInt(ring.Cap, 0, "ring default cap");
+    ring.Push("a");
+    ring.Push("b");
+    assertEqInt(ring.Length, 2, "ring length");
+
+    var bag = new Viper.Collections.Bag();
+    bag.Add("apple");
+    bag.Add("banana");
+    assertEqInt(bag.Length, 2, "bag length");
+    assertTrue(bag.Has("apple"), "bag has item");
+    assertEqInt(bag.Items().Length, 2, "bag items length");
+
+    var map = new Viper.Collections.Map();
+    map.SetStr("name", "zia");
+    map.SetInt("version", 1);
+    map.SetBool("ready", true);
+    assertEqStr(map.GetStr("name"), "zia", "map typed string");
+    assertEqInt(map.GetInt("version"), 1, "map typed int");
+    assertTrue(map.GetBool("ready"), "map typed bool");
+    assertEqInt(map.Keys().Length, 3, "map keys length");
+}
+
 func start() {
     testListWithValues();
     testEmptyList();
     testMapAsCollection();
     testNestedLists();
     testNestedMapList();
+    testRuntimeCollections();
 
     report();
 }

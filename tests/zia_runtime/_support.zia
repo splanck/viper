@@ -16,6 +16,21 @@ func assertEqInt(actual: Integer, expected: Integer, msg: String) {    if (actua
     }
 }
 
+func assertGtInt(actual: Integer, expected: Integer, msg: String) {    if (actual <= expected) {
+        fail(msg + " (got " + toString(actual) + ", want > " + toString(expected) + ")");
+    }
+}
+
+func assertGteInt(actual: Integer, expected: Integer, msg: String) {    if (actual < expected) {
+        fail(msg + " (got " + toString(actual) + ", want >= " + toString(expected) + ")");
+    }
+}
+
+func assertLteInt(actual: Integer, expected: Integer, msg: String) {    if (actual > expected) {
+        fail(msg + " (got " + toString(actual) + ", want <= " + toString(expected) + ")");
+    }
+}
+
 func assertEqStr(actual: String, expected: String, msg: String) {    if (actual != expected) {
         fail(msg + " (got \"" + actual + "\", want \"" + expected + "\")");
     }
@@ -23,6 +38,11 @@ func assertEqStr(actual: String, expected: String, msg: String) {    if (actual 
 
 func assertApprox(actual: Number, expected: Number, eps: Number, msg: String) {    if (Viper.Math.Abs(actual - expected) > eps) {
         fail(msg + " (got " + toString(actual) + ", want " + toString(expected) + ")");
+    }
+}
+
+func assertInRange(actual: Number, min: Number, max: Number, msg: String) {    if (actual < min || actual > max) {
+        fail(msg + " (got " + toString(actual) + ", want range [" + toString(min) + ", " + toString(max) + "])");
     }
 }
 

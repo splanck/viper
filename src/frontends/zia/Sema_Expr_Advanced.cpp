@@ -1075,6 +1075,34 @@ TypeRef Sema::analyzeMatchExpr(MatchExpr *expr) {
 TypeRef Sema::analyzeNew(NewExpr *expr) {
     TypeRef type = resolveTypeNode(expr->type.get());
 
+    auto findRuntimeCtor = [&](TypeRef candidate) -> Symbol * {
+        if (!candidate || candidate->name.empty())
+            return nullptr;
+
+        if (expr->args.empty()) {
+            std::string defaultCtorName = candidate->name + ".NewDefault";
+            if (Symbol *sym = lookupSymbol(defaultCtorName);
+                sym && sym->kind == Symbol::Kind::Function) {
+                return sym;
+            }
+        }
+
+        std::string ctorName = candidate->name + ".New";
+        if (Symbol *sym = lookupSymbol(ctorName); sym && sym->kind == Symbol::Kind::Function)
+            return sym;
+
+        if (const auto *rtClass = il::runtime::findRuntimeClassByQName(candidate->name)) {
+            if (rtClass->ctor) {
+                if (Symbol *sym = lookupSymbol(rtClass->ctor);
+                    sym && sym->kind == Symbol::Kind::Function) {
+                    return sym;
+                }
+            }
+        }
+
+        return nullptr;
+    };
+
     // Allow new for value/class types and collection types (List, Set, Map)
     bool allowed = type->kind == TypeKindSem::Struct || type->kind == TypeKindSem::Class ||
                    type->kind == TypeKindSem::List || type->kind == TypeKindSem::Set ||
@@ -1082,23 +1110,8 @@ TypeRef Sema::analyzeNew(NewExpr *expr) {
 
     // Also allow new for runtime classes that have a constructor
     if (!allowed && type && !type->name.empty()) {
-        // First try the conventional .New suffix
-        std::string ctorName = type->name + ".New";
-        Symbol *sym = lookupSymbol(ctorName);
-        if (sym && sym->kind == Symbol::Kind::Function) {
+        if (findRuntimeCtor(type)) {
             allowed = true;
-        } else {
-            // Fall back to looking up the actual ctor from RuntimeRegistry catalog.
-            // The ctor field is already a fully-qualified extern target, e.g.,
-            // "Viper.Collections.FrozenSet.FromSeq"
-            if (const auto *rtClass = il::runtime::findRuntimeClassByQName(type->name)) {
-                if (rtClass->ctor) {
-                    sym = lookupSymbol(rtClass->ctor);
-                    if (sym && sym->kind == Symbol::Kind::Function) {
-                        allowed = true;
-                    }
-                }
-            }
         }
     }
 
@@ -1114,15 +1127,7 @@ TypeRef Sema::analyzeNew(NewExpr *expr) {
     if (type->kind != TypeKindSem::Struct && type->kind != TypeKindSem::Class) {
         Symbol *ctorSym = nullptr;
         if (type && !type->name.empty()) {
-            std::string ctorName = type->name + ".New";
-            ctorSym = lookupSymbol(ctorName);
-            if ((!ctorSym || ctorSym->kind != Symbol::Kind::Function) &&
-                il::runtime::findRuntimeClassByQName(type->name)) {
-                if (const auto *rtClass = il::runtime::findRuntimeClassByQName(type->name);
-                    rtClass && rtClass->ctor) {
-                    ctorSym = lookupSymbol(rtClass->ctor);
-                }
-            }
+            ctorSym = findRuntimeCtor(type);
         }
 
         if (ctorSym && ctorSym->kind == Symbol::Kind::Function && ctorSym->isExtern) {

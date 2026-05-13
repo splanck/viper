@@ -3,21 +3,36 @@ module TestFile;
 bind "./_support";
 
 // EXPECT_OUT: RESULT: ok
-// Note: The Viper.IO.* (File, Directory, Path) APIs are not directly accessible from Zia.
-// File operations are only available from BASIC.
-// This test serves as a placeholder to document this limitation.
+// COVER: Viper.IO.File.Exists
+// COVER: Viper.IO.File.WriteAllText
+// COVER: Viper.IO.File.ReadAllText
+// COVER: Viper.IO.File.Append
+// COVER: Viper.IO.File.Size
+// COVER: Viper.IO.File.Delete
+// COVER: Viper.IO.TempFile.PathWithPrefix
 
-func testFileNotAvailable() {
-    setTest("FileNotAvailable");
+func testTextFileRoundtrip() {
+    setTest("TextFileRoundtrip");
 
-    // File I/O functions (Exists, ReadAllText, WriteAllText, Delete, etc.)
-    // are not exposed in Zia. They can only be used from BASIC.
+    var path = Viper.IO.TempFile.PathWithPrefix("zia_file_");
+    if (Viper.IO.File.Exists(path)) {
+        Viper.IO.File.Delete(path);
+    }
 
-    assertTrue(true, "file I/O API not available in Zia");
+    Viper.IO.File.WriteAllText(path, "alpha");
+    assertTrue(Viper.IO.File.Exists(path), "created file exists");
+    assertEqStr(Viper.IO.File.ReadAllText(path), "alpha", "read all text");
+    assertGtInt(Viper.IO.File.Size(path), 0, "file size after write");
+
+    Viper.IO.File.Append(path, " beta");
+    assertEqStr(Viper.IO.File.ReadAllText(path), "alpha beta", "append text");
+
+    Viper.IO.File.Delete(path);
+    assertFalse(Viper.IO.File.Exists(path), "deleted file missing");
 }
 
 func start() {
-    testFileNotAvailable();
+    testTextFileRoundtrip();
 
     report();
 }

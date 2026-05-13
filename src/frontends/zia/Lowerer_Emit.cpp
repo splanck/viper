@@ -242,11 +242,11 @@ LowerResult Lowerer::coerceValueToType(Value value,
 }
 
 /// @brief Check if a string-returning call returns a borrowed reference.
-/// @details These functions return pointers into existing data structures
-///          rather than newly allocated strings. Releasing them would cause
-///          dangling pointers in the owning collection.
+/// @details Runtime string accessors should return owned handles. Keep this
+///          hook for future borrowed APIs, but default to the owned contract.
 static bool isBorrowedStringCall(const std::string &callee) {
-    return callee == kSeqGetStr; // raw pointer into Seq
+    (void)callee;
+    return false;
 }
 
 Lowerer::Value Lowerer::emitCallRet(Type retTy,

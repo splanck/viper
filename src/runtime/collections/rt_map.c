@@ -858,14 +858,29 @@ int64_t rt_map_get_int(void *obj, rt_string key) {
     void *val = rt_map_get(obj, key);
     if (!val)
         return 0;
-    return rt_unbox_i64(val);
+    int64_t tag = rt_box_type(val);
+    if (tag == RT_BOX_I64)
+        return rt_unbox_i64(val);
+    if (tag == RT_BOX_F64)
+        return (int64_t)rt_unbox_f64(val);
+    if (tag == RT_BOX_I1)
+        return rt_unbox_i1(val) ? 1 : 0;
+    rt_trap("Map.GetInt: value is not numeric");
+    return 0;
 }
 
 int64_t rt_map_get_int_or(void *obj, rt_string key, int64_t def) {
     void *val = rt_map_get(obj, key);
     if (!val)
         return def;
-    return rt_unbox_i64(val);
+    int64_t tag = rt_box_type(val);
+    if (tag == RT_BOX_I64)
+        return rt_unbox_i64(val);
+    if (tag == RT_BOX_F64)
+        return (int64_t)rt_unbox_f64(val);
+    if (tag == RT_BOX_I1)
+        return rt_unbox_i1(val) ? 1 : 0;
+    return def;
 }
 
 void rt_map_set_float(void *obj, rt_string key, double value) {
@@ -880,14 +895,65 @@ double rt_map_get_float(void *obj, rt_string key) {
     void *val = rt_map_get(obj, key);
     if (!val)
         return 0.0;
-    return rt_unbox_f64(val);
+    int64_t tag = rt_box_type(val);
+    if (tag == RT_BOX_F64)
+        return rt_unbox_f64(val);
+    if (tag == RT_BOX_I64)
+        return (double)rt_unbox_i64(val);
+    if (tag == RT_BOX_I1)
+        return rt_unbox_i1(val) ? 1.0 : 0.0;
+    rt_trap("Map.GetFloat: value is not numeric");
+    return 0.0;
 }
 
 double rt_map_get_float_or(void *obj, rt_string key, double def) {
     void *val = rt_map_get(obj, key);
     if (!val)
         return def;
-    return rt_unbox_f64(val);
+    int64_t tag = rt_box_type(val);
+    if (tag == RT_BOX_F64)
+        return rt_unbox_f64(val);
+    if (tag == RT_BOX_I64)
+        return (double)rt_unbox_i64(val);
+    if (tag == RT_BOX_I1)
+        return rt_unbox_i1(val) ? 1.0 : 0.0;
+    return def;
+}
+
+void rt_map_set_bool(void *obj, rt_string key, int8_t value) {
+    void *boxed = rt_box_i1_bool(value);
+    rt_map_set(obj, key, boxed);
+    if (boxed && rt_obj_release_check0(boxed))
+        rt_obj_free(boxed);
+}
+
+int8_t rt_map_get_bool(void *obj, rt_string key) {
+    void *val = rt_map_get(obj, key);
+    if (!val)
+        return 0;
+    int64_t tag = rt_box_type(val);
+    if (tag == RT_BOX_I1)
+        return rt_unbox_i1(val);
+    if (tag == RT_BOX_I64)
+        return rt_unbox_i64(val) != 0 ? 1 : 0;
+    if (tag == RT_BOX_F64)
+        return rt_unbox_f64(val) != 0.0 ? 1 : 0;
+    rt_trap("Map.GetBool: value is not boolean or numeric");
+    return 0;
+}
+
+int8_t rt_map_get_bool_or(void *obj, rt_string key, int8_t def) {
+    void *val = rt_map_get(obj, key);
+    if (!val)
+        return def;
+    int64_t tag = rt_box_type(val);
+    if (tag == RT_BOX_I1)
+        return rt_unbox_i1(val);
+    if (tag == RT_BOX_I64)
+        return rt_unbox_i64(val) != 0 ? 1 : 0;
+    if (tag == RT_BOX_F64)
+        return rt_unbox_f64(val) != 0.0 ? 1 : 0;
+    return def;
 }
 
 void rt_map_set_str(void *obj, rt_string key, rt_string value) {

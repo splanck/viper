@@ -296,9 +296,9 @@ PRINT Viper.Math.Hypot(3, 4)             ' Output: 5.0
 
 Random number generation with uniform and distribution-based functions.
 
-**Type:** Static utility class
+**Type:** Static utility class plus seeded instances
 
-**Constructor:** `Viper.Math.Random.New(seed)` - Create a seeded random generator instance
+**Constructor:** `Viper.Math.Random.New(seed)` or `new Viper.Math.Random(seed)` creates a seeded random generator instance with state independent from the static/global generator.
 
 ### Core Methods
 
@@ -306,7 +306,9 @@ Random number generation with uniform and distribution-based functions.
 |----------------|--------------------|-------------------------------------------------|
 | `Seed(value)`  | `Void(Integer)`    | Seeds the random number generator               |
 | `Next()`       | `Double()`         | Returns a random double in the range [0.0, 1.0) |
+| `NextDouble()` | `Double()`         | Alias for `Next()` on instances and static calls |
 | `NextInt(max)` | `Integer(Integer)` | Returns a random integer in the range [0, max)  |
+| `NextInt(min, max)` | `Integer(Integer, Integer)` | Instance alias for inclusive `Range(min, max)` |
 
 ### Distribution Methods
 
@@ -428,14 +430,18 @@ Viper.Math.Random.Shuffle(seq)  ' Now shuffled: e.g., [3, 1, 5, 2, 4]
 | `Add(other)`     | `obj(obj)`      | Add two vectors: self + other                              |
 | `Sub(other)`     | `obj(obj)`      | Subtract vectors: self - other                             |
 | `Mul(scalar)`    | `obj(f64)`      | Multiply by scalar: self * s                               |
+| `Scale(scalar)`  | `obj(f64)`      | Alias for `Mul(scalar)`                                    |
 | `Div(scalar)`    | `obj(f64)`      | Divide by scalar: self / s                                 |
 | `Neg()`          | `obj()`         | Negate vector: -self                                       |
 | `Dot(other)`     | `f64(obj)`      | Dot product of two vectors                                 |
 | `Cross(other)`   | `f64(obj)`      | 2D cross product (scalar z-component)                      |
 | `Len()`          | `f64()`         | Length (magnitude) of vector                               |
+| `Length()`       | `f64()`         | Alias for `Len()`                                          |
 | `LenSq()`        | `f64()`         | Squared length (avoids sqrt)                               |
 | `Norm()`         | `obj()`         | Normalize to unit length                                   |
+| `Normalize()`    | `obj()`         | Alias for `Norm()`                                         |
 | `Dist(other)`    | `f64(obj)`      | Distance to another point                                  |
+| `Distance(other)`| `f64(obj)`      | Alias for `Dist(other)`                                    |
 | `Lerp(other, t)` | `obj(obj, f64)` | Linear interpolation (t=0 returns self, t=1 returns other) |
 | `Angle()`        | `f64()`         | Angle in radians (atan2(y, x))                             |
 | `Rotate(angle)`  | `obj(f64)`      | Rotate by angle in radians                                 |
@@ -753,8 +759,11 @@ Standard easing functions for smooth animation and interpolation. Each function 
 |------------------|-------------|----------------------------------------------|
 | `Linear(t)`      | `Double(Double)` | Linear (no easing)                       |
 | `InQuad(t)`      | `Double(Double)` | Quadratic ease in (accelerate)           |
+| `EaseInQuad(t)`  | `Double(Double)` | Alias for `InQuad(t)`                    |
 | `OutQuad(t)`     | `Double(Double)` | Quadratic ease out (decelerate)          |
+| `EaseOutQuad(t)` | `Double(Double)` | Alias for `OutQuad(t)`                   |
 | `InOutQuad(t)`   | `Double(Double)` | Quadratic ease in-out                    |
+| `EaseInOutQuad(t)` | `Double(Double)` | Alias for `InOutQuad(t)`               |
 | `InCubic(t)`     | `Double(Double)` | Cubic ease in                            |
 | `OutCubic(t)`    | `Double(Double)` | Cubic ease out                           |
 | `InOutCubic(t)`  | `Double(Double)` | Cubic ease in-out                        |

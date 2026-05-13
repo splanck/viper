@@ -358,13 +358,33 @@ LowerResult Lowerer::lowerNew(NewExpr *expr) {
     if (type && !type->name.empty() && type->kind != TypeKindSem::Class &&
         type->kind != TypeKindSem::Struct) {
         std::string ctorName;
-        if (const auto *rtClass = il::runtime::findRuntimeClassByQName(type->name)) {
-            if (rtClass->ctor)
-                ctorName = rtClass->ctor;
+        if (expr->args.empty()) {
+            std::string defaultCtorName = type->name + ".NewDefault";
+            if (il::runtime::findRuntimeDescriptor(defaultCtorName))
+                ctorName = defaultCtorName;
+        }
+        if (ctorName.empty()) {
+            if (const auto *rtClass = il::runtime::findRuntimeClassByQName(type->name)) {
+                if (rtClass->ctor)
+                    ctorName = rtClass->ctor;
+            }
         }
         // Fall back to conventional .New suffix
         if (ctorName.empty())
             ctorName = type->name + ".New";
+        // Prefer an arity-matching New overload when the class catalog constructor
+        // points at a non-default overload but a zero-arg NewDefault exists.
+        if (expr->args.empty()) {
+            std::string defaultCtorName = type->name + ".NewDefault";
+            if (il::runtime::findRuntimeDescriptor(defaultCtorName))
+                ctorName = defaultCtorName;
+        } else if (const auto *rtDesc = il::runtime::findRuntimeDescriptor(type->name + ".New")) {
+            if (rtDesc->signature.paramTypes.size() == expr->args.size())
+                ctorName = type->name + ".New";
+        } else if (const auto *rtClass = il::runtime::findRuntimeClassByQName(type->name)) {
+            if (rtClass->ctor)
+                ctorName = rtClass->ctor;
+        }
 
         const auto *binding = sema_.newArgBinding(expr);
         std::vector<int> orderedSources = orderedArgSources(expr->args, binding);

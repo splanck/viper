@@ -1,16 +1,16 @@
 ---
-status: draft
+status: historical
 audience: contributors
-last-verified: 2026-04-09
+last-verified: 2026-05-13
 ---
 
 # Zia Generics Implementation Plan
 
 ## Executive Summary
 
-This document outlines a comprehensive plan to implement full generics support in the Zia language. The implementation builds on existing infrastructure (generic parameter parsing, TypeParam kind, typeArgs storage) and fills the semantic analysis and lowering gaps required for user-defined generic types and functions.
+This document is retained as historical implementation context for Zia generics. It describes the architecture that led to the current implementation and should not be read as the active feature status.
 
-**Current State**: Parser supports generic syntax; semantic analysis partially handles built-in collections; `Sema_Generics.cpp` exists with initial generics infrastructure; user-defined generics are parsed but full monomorphization is not yet implemented.
+**Current State**: Zia supports generic functions, constrained generics, generic classes/structs, nested type arguments, and collection generics. New work should update the language reference and conformance tests first, then use this plan only for background on the monomorphization design.
 
 **Target State**: Full monomorphization-based generics with type inference, supporting user-defined generic types, functions, and methods.
 

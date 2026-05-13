@@ -33,8 +33,8 @@ func start() {
     uf.Union(1, 2);
     uf.Union(3, 4);
     uf.Union(2, 3);
-    SayInt(uf.Connected(1, 4));
-    SayInt(uf.Connected(1, 5));
+    SayBool(uf.Connected(1, 4));
+    SayBool(uf.Connected(1, 5));
     SayInt(uf.SetSize(1));
 
     var by = new Viper.Collections.Bytes(8);

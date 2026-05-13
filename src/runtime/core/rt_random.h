@@ -15,8 +15,8 @@
 //   - rt_rand_range normalizes inverted bounds and samples the inclusive range uniformly.
 //
 // Ownership/Lifetime:
-//   - Generator state is held by the active RtContext; no separate allocation is made here.
-//   - No heap allocation; all functions are value-returning.
+//   - Static generator state is held by the active RtContext.
+//   - Random instances store their own independent RNG state in a GC-managed object.
 //
 // Links: src/runtime/core/rt_random.c (implementation)
 //
@@ -24,6 +24,8 @@
 #pragma once
 
 #include <stdint.h>
+
+#define RT_RANDOM_CLASS_ID INT64_C(-0x430601)
 
 #ifdef __cplusplus
 extern "C" {
@@ -95,14 +97,15 @@ long long rt_rand_chance(double probability);
 ///          Deterministic when the RNG is seeded.
 void rt_rand_shuffle(void *seq);
 
-/// @brief Create a Random object (seeds the global RNG and returns a wrapper).
-/// @param seed Seed value for the RNG.
-/// @return A GC-managed wrapper object.
+/// @brief Create a Random object with independent state.
+/// @param seed Seed value for this Random instance.
+/// @return A GC-managed Random object.
 void *rt_random_new(long long seed);
 
-// Instance method wrappers (accept and ignore receiver)
+// Instance methods operate on the receiver's independent RNG state.
 double rt_rnd_method(void *self);
 long long rt_rand_int_method(void *self, long long max);
+long long rt_rand_range_method(void *self, long long min, long long max);
 void rt_randomize_i64_method(void *self, long long seed);
 
 #ifdef __cplusplus

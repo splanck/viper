@@ -17,7 +17,7 @@ Dynamic sequence (growable array) with stack and queue operations. Viper's prima
 push/pop, insert/remove, and slicing operations.
 
 **Type:** Instance (obj)
-**Constructor:** `NEW Viper.Collections.Seq()` or `Viper.Collections.Seq.WithCapacity(cap)`
+**Constructor:** `NEW Viper.Collections.Seq()`, `Viper.Collections.Seq.New(size)`, or `Viper.Collections.Seq.WithCapacity(cap)`
 
 ### Properties
 
@@ -73,8 +73,9 @@ push/pop, insert/remove, and slicing operations.
 
 ### Notes
 
-- Public `Seq` instances borrow elements by default. Runtime-owned snapshots can enable element ownership before insertion so values are retained and released with the sequence.
-- Ownership mode must be selected while the sequence is empty; changing it after insertion traps.
+- Public `Seq` constructors (`new Seq()`, `Seq.New()`, `Seq.New(size)`, and `Seq.WithCapacity(cap)`) create owning sequences, so pushed strings and objects remain valid until removed or the sequence is released.
+- `Seq.New(size)` creates a sequence with `Length == size` and null-initialized slots. Use `Seq.WithCapacity(cap)` to reserve capacity without changing length.
+- The lower-level C helpers `rt_seq_new` and `rt_seq_with_capacity` still create borrowed-element sequences for internal runtime views; ownership mode must be selected while the sequence is empty.
 - `Pop()` and `Remove(index)` return an owned object reference. When the sequence owns elements, the removed element's retained reference is transferred to the caller.
 - `Slice()`, `Keep()`, `Reject()`, `Take()`, and `TakeWhile()` preserve owned-element mode in the returned sequence when the source sequence owns its elements; `Apply()` always returns an owning output sequence.
 - `Push`, `PushAll`, and capacity growth trap on length or allocation overflow instead of wrapping.
@@ -169,17 +170,21 @@ seq.Shuffle()
 seq.Clear()
 ```
 
-### Creating with Initial Capacity
+### Creating with Initial Length or Capacity
 
-For better performance when the size is known in advance:
+Use `Seq.New(size)` when you want indexed slots immediately, and `Seq.WithCapacity(cap)` when you only want to reserve append space:
 
 ```basic
 DIM seq AS Viper.Collections.Seq
-seq = Viper.Collections.Seq.WithCapacity(1000)
+seq = Viper.Collections.Seq.New(1000)
+seq.Set(0, firstItem)
+
+DIM buffered AS Viper.Collections.Seq
+buffered = Viper.Collections.Seq.WithCapacity(1000)
 
 ' No reallocations needed for first 1000 pushes
 FOR i = 1 TO 1000
-    seq.Push(items(i))
+    buffered.Push(items(i))
 NEXT i
 ```
 

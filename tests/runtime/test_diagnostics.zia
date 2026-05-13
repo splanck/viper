@@ -3,23 +3,30 @@ module TestDiagnostics;
 bind "./_support";
 
 // EXPECT_OUT: RESULT: ok
-// Note: The Viper.Diagnostics.Stopwatch API is not directly accessible from Zia.
-// Stopwatch operations are only available from BASIC.
-// This test serves as a placeholder to document this limitation.
+// COVER: Viper.Time.Stopwatch
 
-func testDiagnosticsNotAvailable() {
-    setTest("DiagnosticsNotAvailable");
+func testStopwatch() {
+    setTest("Stopwatch");
 
-    // Diagnostics.Stopwatch functions (New, Start, Stop, ElapsedMs, etc.)
-    // are not exposed in Zia. They can only be used from BASIC.
-    //
-    // For timing in Zia, use Viper.Time.TickMs() or Viper.Time.TickUs().
+    var sw = new Viper.Time.Stopwatch();
+    assertFalse(sw.IsRunning, "new stopwatch is stopped");
 
-    assertTrue(true, "diagnostics stopwatch API not available in Zia");
+    sw.Start();
+    assertTrue(sw.IsRunning, "stopwatch starts");
+    Viper.Time.Clock.Sleep(1);
+    sw.Stop();
+    assertFalse(sw.IsRunning, "stopwatch stops");
+    assertGteInt(sw.ElapsedNs, 0, "elapsed ns non-negative");
+    assertGteInt(sw.ElapsedUs, 0, "elapsed us non-negative");
+    assertGteInt(sw.ElapsedMs, 0, "elapsed ms non-negative");
+
+    sw.Reset();
+    assertFalse(sw.IsRunning, "reset leaves stopwatch stopped");
+    assertEqInt(sw.ElapsedMs, 0, "reset clears elapsed ms");
 }
 
 func start() {
-    testDiagnosticsNotAvailable();
+    testStopwatch();
 
     report();
 }

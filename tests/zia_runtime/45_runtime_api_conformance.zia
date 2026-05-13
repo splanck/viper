@@ -1,0 +1,72 @@
+module RuntimeTest45;
+
+bind "./_support";
+bind Viper.Text.Json;
+bind Viper.Math.Easing;
+
+// EXPECT_OUT: RESULT: ok
+
+func testCompatibilityAliases() {
+    assertEqStr(Viper.String.FromInt(42), "42", "string_from_int_alias");
+    assertTrue(Viper.String.Has(Viper.String.FromDouble(1.5), "1.5"), "string_from_double_alias");
+
+    var seq: Ptr = Viper.Collections.Seq.New(5);
+    assertEqInt(Viper.Collections.Seq.Length(seq), 5, "seq_new_sized_length");
+    Viper.Collections.Seq.Set(seq, 0, "x");
+    assertEqStr(Viper.Collections.Seq.GetStr(seq, 0), "x", "seq_new_sized_set");
+
+    var list = Viper.Collections.List.New();
+    assertEqInt(Viper.Collections.List.Length(list), 0, "list_length_alias");
+}
+
+func testCollectionSnapshots() {
+    var map = new Viper.Collections.Map();
+    map.SetStr("name", "zia");
+    map.SetInt("version", 1);
+    assertEqInt(map.Keys().Length, 2, "map_keys_length");
+    assertEqInt(map.Values().Length, 2, "map_values_length");
+}
+
+func testConstructorsAndRandom() {
+    var ring = new Viper.Collections.Ring();
+    assertGtInt(ring.Cap, 0, "ring_default_ctor");
+
+    var a = new Viper.Math.Random(123);
+    var b = new Viper.Math.Random(123);
+    assertEqInt(a.NextInt(1000), b.NextInt(1000), "random_same_seed_first");
+    assertEqInt(a.NextInt(1000), b.NextInt(1000), "random_same_seed_second");
+    assertInRange(a.NextDouble(), 0.0, 1.0, "random_next_double");
+    var ranged = a.NextInt(10, 20);
+    assertGteInt(ranged, 10, "random_range_min");
+    assertLteInt(ranged, 20, "random_range_max");
+}
+
+func testJsonMachineVecAndEasing() {
+    var obj = NewObject();
+    SetStr(obj, "name", "zia");
+    SetInt(obj, "version", 1);
+    SetBool(obj, "ready", true);
+    assertEqStr(GetStr(obj, "name"), "zia", "json_get_str");
+    assertEqInt(GetInt(obj, "version"), 1, "json_get_int");
+    assertTrue(GetBool(obj, "ready"), "json_get_bool");
+    assertTrue(Has(obj, "name"), "json_has");
+    assertTrue(Viper.String.Has(Stringify(obj), "zia"), "json_stringify_alias");
+
+    assertNotEmpty(Viper.Environment.Platform(), "environment_platform");
+    assertNotEmpty(Viper.Machine.Arch(), "machine_arch");
+    assertGtInt(Viper.Machine.PageSize(), 0, "machine_page_size");
+    assertGtInt(Viper.Machine.PointerSize(), 0, "machine_pointer_size");
+
+    var v = new Viper.Math.Vec2(3.0, 4.0);
+    assertApprox(v.Length(), 5.0, 0.0001, "vec2_length_alias");
+    assertApprox(Viper.Math.Vec2.Distance(new Viper.Math.Vec2(0.0, 0.0), v), 5.0, 0.0001, "vec2_distance_alias");
+    assertApprox(EaseInQuad(0.5), 0.25, 0.0001, "easing_ease_in_quad_alias");
+}
+
+func start() {
+    testCompatibilityAliases();
+    testCollectionSnapshots();
+    testConstructorsAndRandom();
+    testJsonMachineVecAndEasing();
+    report();
+}

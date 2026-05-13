@@ -201,6 +201,26 @@ void *rt_seq_new(void) {
     return seq;
 }
 
+/// @brief Creates a public Seq that retains pushed elements.
+void *rt_seq_new_owned(void) {
+    void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
+    return seq;
+}
+
+/// @brief Creates a public Seq with a fixed initial length.
+void *rt_seq_new_sized(int64_t len) {
+    if (len < 0)
+        rt_trap("Seq.NewSized: negative length");
+
+    void *obj = rt_seq_with_capacity_owned(len > 0 ? len : 1);
+    rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
+    for (int64_t i = 0; i < len; i++)
+        seq->items[i] = NULL;
+    seq->len = len;
+    return obj;
+}
+
 /// @brief Creates a new empty Seq with a specified initial capacity.
 ///
 /// Allocates a Seq with pre-allocated space for the specified number of elements.
@@ -256,6 +276,13 @@ void *rt_seq_with_capacity(int64_t cap) {
         rt_trap("Seq: memory allocation failed");
     }
 
+    return seq;
+}
+
+/// @brief Creates a public capacity-reserved Seq that retains pushed elements.
+void *rt_seq_with_capacity_owned(int64_t cap) {
+    void *seq = rt_seq_with_capacity(cap);
+    rt_seq_set_owns_elements(seq, 1);
     return seq;
 }
 
@@ -390,15 +417,21 @@ void *rt_seq_get(void *obj, int64_t idx) {
 
 /// @brief Get string element at index from a string sequence.
 ///
-/// All seq<str>-returning runtime functions store raw rt_string pointers
-/// directly in the sequence (not boxed). This helper casts the void* element
-/// to rt_string without any boxing/unboxing, for use in for-in iteration.
+/// Runtime string snapshots store raw rt_string pointers, while general Zia
+/// calls to Seq.Push(String) pass boxed strings through the object ABI. This
+/// helper accepts both representations and returns an owned string handle.
 ///
 /// @param obj Opaque Seq object pointer.
 /// @param idx Index of element to retrieve.
 /// @return String element at the index (raw rt_string pointer).
 struct rt_string_impl *rt_seq_get_str(void *obj, int64_t idx) {
-    return (struct rt_string_impl *)rt_seq_get(obj, idx);
+    void *val = rt_seq_get(obj, idx);
+    if (rt_string_is_handle(val))
+        return rt_string_ref((rt_string)val);
+    if (rt_box_type(val) == RT_BOX_STR)
+        return rt_unbox_str(val);
+    rt_trap("Seq.GetStr: value is not a string");
+    return NULL;
 }
 
 /// @brief Replaces the element at the specified index.

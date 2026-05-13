@@ -81,7 +81,7 @@ This document is a comprehensive feature parity audit between the two Viper fron
 | ByVal parameters | Implicit (all by-value) | **Full** (`BYVAL`, default) | |
 | Array parameters | None | **Full** (`arr()` syntax) | BASIC only |
 | Variadic parameters | **Full** (`func sum(nums: ...Integer)`) | None | Zia packs extra args into `List[T]` |
-| Function overloading | None | None | Neither |
+| Function overloading | **Full** | None | Zia supports overloads by compatible signature/arity |
 | Generic functions | **Full** (`func f[T](x: T)`) | None | Zia only |
 | Constrained generics | **Full** (`[T: Interface]`) | None | Zia only |
 | Function references | **Full** (`&funcName`) | **Full** (`ADDRESSOF`) | Both produce function pointers |
@@ -113,7 +113,7 @@ This document is a comprehensive feature parity audit between the two Viper fron
 | Base class call | **Full** (`super.method()`) | **Full** (`BASE.Method()`) | |
 | Null reference | **Full** (`null`) | **Full** (`NOTHING`) | |
 | Struct literal init | **Full** (`Point { x=1, y=2 }`) | None | Zia only |
-| Weak references | **Parsed** | None | Zia parses `weak` but doesn't lower |
+| Weak references | **Full** | None | Zia supports `weak` fields for non-owning references |
 
 ### 1.5 Collections
 
@@ -162,7 +162,7 @@ This document is a comprehensive feature parity audit between the two Viper fron
 | Optional chaining (?.) | **Full** | None | Zia only |
 | Try propagation (?) | **Full** | None | Zia only — early return on null |
 | Force unwrap (!) | **Full** | None | Zia only — trap on null |
-| Result type | **Typed** (exists in type system) | None | Zia has the type but no construction/destructure |
+| Result type | **Full** (`Ok(value)`, `Err(message)`) | None | Zia supports construction, helpers, and pattern matching |
 
 **Analysis**: Both frontends now have structured exception handling. Zia additionally uses null-safe optional types for expected failures. BASIC also has unstructured EH (ON ERROR GOTO) which Zia does not support.
 
@@ -286,8 +286,6 @@ Features where the IL and/or runtime supports something but a frontend hasn't co
 
 | IL/Runtime Capability | IL Opcodes | Status in Zia |
 |----------------------|------------|---------------|
-| Result type | Type exists in type system | **No construction or destructuring** |
-| Weak references | `weak` keyword parsed | **No lowering or runtime support** |
 | Abstract/Final modifiers | Could validate in sema | **No syntax** |
 | ByRef parameters | IL supports pointer-based pass-by-ref | **No syntax** |
 | DELETE statement | `rt_heap_release` exists | **No explicit delete** — relies on deinit + GC |
@@ -306,6 +304,9 @@ Features where the IL and/or runtime supports something but a frontend hasn't co
 | Destructors | **Full** | `deinit` block → `__dtor_TypeName` with field release |
 | Compound assignment | **Full** | `+=`, `-=`, `*=`, `/=`, `%=` desugared in parser |
 | Operator confusion warnings | **Full** | W017 (`^` XOR) and W018 (`&` AND) default-enabled |
+| Function overloading | **Full** | Overload resolution by signature/arity |
+| Result construction and patterns | **Full** | `Ok`, `Err`, helpers, and `match` destructuring |
+| Weak fields | **Full** | Non-owning class/interface/Ptr/Any optional reference fields |
 
 ### BASIC hasn't wired up:
 

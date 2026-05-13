@@ -71,6 +71,18 @@ rt_string rt_machine_temp(void);
 /// @return Number of logical CPU cores, or 0 if the query fails.
 int64_t rt_machine_cores(void);
 
+/// @brief Get a stable CPU architecture identifier.
+/// @return "x86_64", "arm64", "x86", "arm", "wasm32", or "unknown".
+rt_string rt_machine_arch(void);
+
+/// @brief Get the host memory page size in bytes.
+/// @return Page size, or 4096 as a conservative fallback when unavailable.
+int64_t rt_machine_page_size(void);
+
+/// @brief Get the native pointer width in bits.
+/// @return 32, 64, or another platform-specific pointer width.
+int64_t rt_machine_pointer_size(void);
+
 /// @brief Get the total system memory in bytes.
 /// @details Queries the operating system for the total installed RAM.
 /// @return Total RAM in bytes, or 0 if the information is unavailable.

@@ -329,6 +329,46 @@ int64_t rt_machine_cores(void) {
 #endif
 }
 
+/// @brief Return a stable CPU architecture identifier.
+rt_string rt_machine_arch(void) {
+#if defined(__x86_64__) || defined(_M_X64)
+    return make_str("x86_64");
+#elif defined(__aarch64__) || defined(_M_ARM64)
+    return make_str("arm64");
+#elif defined(__i386__) || defined(_M_IX86)
+    return make_str("x86");
+#elif defined(__arm__) || defined(_M_ARM)
+    return make_str("arm");
+#elif defined(__wasm32__)
+    return make_str("wasm32");
+#else
+    return make_str("unknown");
+#endif
+}
+
+/// @brief Return the system page size in bytes.
+int64_t rt_machine_page_size(void) {
+#ifdef _WIN32
+    SYSTEM_INFO sysinfo;
+    GetSystemInfo(&sysinfo);
+    return (int64_t)sysinfo.dwPageSize;
+#else
+#if defined(_SC_PAGESIZE)
+    long size = sysconf(_SC_PAGESIZE);
+#elif defined(_SC_PAGE_SIZE)
+    long size = sysconf(_SC_PAGE_SIZE);
+#else
+    long size = 0;
+#endif
+    return size > 0 ? (int64_t)size : 4096;
+#endif
+}
+
+/// @brief Return native pointer width in bits.
+int64_t rt_machine_pointer_size(void) {
+    return (int64_t)(sizeof(void *) * 8);
+}
+
 /// @brief Return total physical RAM in bytes. Win32: `GlobalMemoryStatusEx.ullTotalPhys`.
 /// macOS: `sysctlbyname("hw.memsize")`. Linux: `sysinfo.totalram * mem_unit`. Generic POSIX
 /// fallback: `sysconf(_SC_PHYS_PAGES) * _SC_PAGE_SIZE`. Returns 0 if no probe succeeds.

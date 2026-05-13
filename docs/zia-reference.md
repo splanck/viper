@@ -1212,7 +1212,7 @@ class Temperature {
 - The `get` body returns the computed value.
 - The `set` body receives a parameter whose name is declared in parentheses.
 - A property may omit `set` to be read-only.
-- A setter-only property is not currently supported; the frontend still requires a getter.
+- A property may omit `get` to be write-only; reading a write-only property is an error.
 - Writing a read-only property is an error.
 - Use `expose property` when the property should be accessible outside the declaring type.
 - Properties are accessed like fields: `temp.fahrenheit` calls the getter, `temp.fahrenheit = 212.0` calls the setter.
@@ -1654,7 +1654,7 @@ The `Viper.*` namespaces (Viper.Terminal, Viper.Math, etc.) use the same namespa
 
 ## Runtime Library Access
 
-Zia programs have access to the full Viper Runtime through the `Viper.*` namespace.
+Zia programs have access to the registered Viper runtime APIs through the `Viper.*` namespace. The exposed surface is generated from `src/il/runtime/runtime.def`; APIs not registered there are not part of Zia's callable runtime surface.
 
 ### Common Runtime Classes
 
@@ -1728,6 +1728,11 @@ Ceil(x);                 // Ceiling
 ```viper
 // Use the fully qualified name, or bind Viper.Math and use Viper.Math.Random.NextInt
 Viper.Math.Random.NextInt(max);   // Random integer [0, max)
+
+// Seeded instances keep independent state.
+var rng = new Viper.Math.Random(42);
+rng.NextDouble();                 // Random Number [0.0, 1.0)
+rng.NextInt(10, 20);              // Random integer [10, 20]
 ```
 
 #### Generic Collections
@@ -1821,11 +1826,7 @@ Compatibility aliases:
 
 ### Reserved for Future Use
 
-The following keyword is recognized by the lexer but has no current semantics:
-
-```text
-weak
-```
+There are currently no lexer-only reserved keywords documented here. Keywords listed above either have language semantics or are accepted compatibility aliases.
 
 ### Type Names
 

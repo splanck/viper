@@ -476,8 +476,9 @@ func start() {
 
 ## 9. Working with the Runtime
 
-Zia programs have access to the full Viper Runtime Library. Import namespaces
-with `bind` or use fully qualified names.
+Zia programs have access to the registered Viper runtime APIs. Import namespaces
+with `bind` or use fully qualified names; the exposed surface is generated from
+`src/il/runtime/runtime.def`.
 
 ### Terminal I/O
 

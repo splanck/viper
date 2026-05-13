@@ -25,9 +25,18 @@ JSON parsing and formatting per ECMA-404/RFC 8259.
 | `ParseObject(text)` | `Object(String)`    | Parse JSON, expecting an object (Map)            |
 | `ParseArray(text)`  | `Object(String)`    | Parse JSON, expecting an array (Seq)             |
 | `Format(value)`     | `String(Object)`    | Format value as compact JSON string              |
+| `Stringify(value)`  | `String(Object)`    | Alias for `Format(value)`                        |
 | `FormatPretty(v,n)` | `String(Object,Int)`| Format with indentation (n spaces)               |
 | `IsValid(text)`     | `Boolean(String)`   | Check if string is valid JSON                    |
 | `TypeOf(value)`     | `String(Object)`    | Get type: "null", "bool", "int", "float", "str", "array", "object" |
+| `NewObject()`       | `Object()`          | Create an empty JSON object backed by `Map`      |
+| `Has(obj,key)`      | `Boolean(Object,String)` | Check object key existence                 |
+| `GetStr(obj,key)`   | `String(Object,String)` | Read a string object field                  |
+| `GetInt(obj,key)`   | `Integer(Object,String)` | Read a numeric object field as an integer   |
+| `GetBool(obj,key)`  | `Boolean(Object,String)` | Read a boolean object field                |
+| `SetStr(obj,key,value)` | `Void(Object,String,String)` | Write a string object field          |
+| `SetInt(obj,key,value)` | `Void(Object,String,Integer)` | Write an integer object field        |
+| `SetBool(obj,key,value)` | `Void(Object,String,Boolean)` | Write a boolean object field       |
 
 ### Value Access
 
@@ -37,8 +46,7 @@ JSON values are returned as native Viper types:
 |-------------|--------------------|------------------------------------|
 | null        | null               | Check with `value = NULL`          |
 | boolean     | Boolean (boxed)    | `Viper.Unbox.I1(value)`            |
-| number (int)| Integer (boxed)    | `Viper.Unbox.I64(value)`           |
-| number (dec)| Double (boxed)     | `Viper.Unbox.F64(value)`           |
+| number      | Double (boxed)      | `GetInt` coerces to integer, `Viper.Unbox.F64(value)` returns the raw parsed number |
 | string      | String (boxed)     | `Viper.Unbox.Str(value)`           |
 | array       | Seq                | `value.Get(index)`, `value.Length`    |
 | object      | Map                | `value.Get(key)`, `value.Keys()`   |

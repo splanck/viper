@@ -409,6 +409,40 @@ int64_t rt_version_cmp(void *a, void *b) {
     return cmp_prerelease(va->prerelease, vb->prerelease);
 }
 
+/// @brief Parse and compare two semantic version strings.
+int64_t rt_version_compare(rt_string a, rt_string b) {
+    void *av = rt_version_parse(a);
+    void *bv = rt_version_parse(b);
+    int64_t result = rt_version_cmp(av, bv);
+    release_version(av);
+    release_version(bv);
+    return result;
+}
+
+/// @brief Parse a semantic version string and return its major component.
+int64_t rt_version_major_str(rt_string str) {
+    void *ver = rt_version_parse(str);
+    int64_t result = rt_version_major(ver);
+    release_version(ver);
+    return result;
+}
+
+/// @brief Parse a semantic version string and return its minor component.
+int64_t rt_version_minor_str(rt_string str) {
+    void *ver = rt_version_parse(str);
+    int64_t result = rt_version_minor(ver);
+    release_version(ver);
+    return result;
+}
+
+/// @brief Parse a semantic version string and return its patch component.
+int64_t rt_version_patch_str(rt_string str) {
+    void *ver = rt_version_parse(str);
+    int64_t result = rt_version_patch(ver);
+    release_version(ver);
+    return result;
+}
+
 /// @brief Satisfies the version.
 int8_t rt_version_satisfies(void *ver, rt_string constraint) {
     if (!ver || !constraint)

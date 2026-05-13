@@ -280,12 +280,11 @@ bool ViperType::isAssignableFrom(const ViperType &source) const {
     if (kind == TypeKindSem::Number && source.kind == TypeKindSem::Enum)
         return true; // Enum -> Number (via Integer)
 
-    // Ptr subtype compatibility: any named Ptr can be assigned to base Ptr
-    // This allows functions returning Ptr to accept results from runtime functions
-    // that return specific Ptr subtypes (e.g., Viper.Collections.Bytes)
-    if (kind == TypeKindSem::Ptr && source.kind == TypeKindSem::Ptr)
-        return true;
-    if (kind == TypeKindSem::Ptr && source.kind == TypeKindSem::Function)
+    // Ptr compatibility: concrete runtime reference values lower to pointers,
+    // so they can be stored in an explicitly type-erased Ptr slot.
+    if (kind == TypeKindSem::Ptr &&
+        (source.kind == TypeKindSem::Ptr || source.kind == TypeKindSem::Function ||
+         source.isReference()))
         return true;
 
     if (kind == TypeKindSem::Result && source.kind == TypeKindSem::Result &&

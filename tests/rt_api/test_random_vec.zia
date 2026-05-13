@@ -8,12 +8,12 @@ bind Viper.Terminal;
 
 func start() {
     var rng = new Viper.Math.Random(42);
-    SayInt(rng.Next());
+    SayNum(rng.Next());
     SayInt(rng.NextInt(1, 10));
     SayNum(rng.NextDouble());
 
     var rng2 = new Viper.Math.Random(42);
-    SayInt(rng2.Next());
+    SayNum(rng2.Next());
 
     // Vec2
     var v = new Viper.Math.Vec2(3.0, 4.0);

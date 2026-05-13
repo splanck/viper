@@ -23,9 +23,8 @@
 //     sequences for a given seed across execution modes.
 //
 // Ownership/Lifetime:
-//   - The RNG state is a uint64_t field inside RtContext; no separate
-//     allocation is made.
-//   - No heap allocation is performed by any function in this file.
+//   - Static RNG state is a uint64_t field inside RtContext.
+//   - Random class instances are GC-managed objects with their own uint64_t state.
 //
 // Links: src/runtime/core/rt_random.h (public API),
 //        src/runtime/core/rt_context.h (RtContext definition, rng_state field)
@@ -35,6 +34,7 @@
 #include "rt_random.h"
 #include "rt_context.h"
 #include "rt_internal.h"
+#include "rt_object.h"
 #include <assert.h>
 #include <math.h>
 #include <stdint.h>
@@ -43,6 +43,13 @@
 extern int64_t rt_seq_len(void *);
 extern void *rt_seq_get(void *, int64_t);
 extern void rt_seq_set(void *, int64_t, void *);
+
+typedef struct rt_random_impl {
+    void **vptr;
+    uint64_t state;
+} rt_random_impl;
+
+static uint64_t rt_random_bounded_u64_from_state(uint64_t *state, uint64_t bound);
 
 /// @brief Resolve the runtime context whose RNG state we read/write.
 /// @details Prefers the per-thread `rt_get_current_context()` for proper isolation when
@@ -55,15 +62,19 @@ static RtContext *rt_random_context(void) {
     return ctx;
 }
 
-/// @brief Step the LCG forward and return the new 64-bit state.
-/// @details Implements MCG (multiplicative congruential generator) with constants from
-///          Donald Knuth's `MMIX` table — fast, full-period over 64 bits, suitable for
-///          non-cryptographic use. The state lives on the active runtime context so VMs
-///          isolate their RNG streams.
+static rt_random_impl *as_random(void *self) {
+    if (!self || rt_obj_class_id(self) != RT_RANDOM_CLASS_ID)
+        rt_trap("Random: invalid Random object");
+    return (rt_random_impl *)self;
+}
+
+static uint64_t rt_random_step_u64(uint64_t *state) {
+    *state = *state * 6364136223846793005ULL + 1ULL;
+    return *state;
+}
+
 static uint64_t rt_random_next_u64(void) {
-    RtContext *ctx = rt_random_context();
-    ctx->rng_state = ctx->rng_state * 6364136223846793005ULL + 1ULL;
-    return ctx->rng_state;
+    return rt_random_step_u64(&rt_random_context()->rng_state);
 }
 
 /// @brief Sample a uniform random integer in `[0, bound)` with rejection sampling.
@@ -73,15 +84,24 @@ static uint64_t rt_random_next_u64(void) {
 ///          tiny for any realistic `bound`. A `bound` of 0 is treated as "no upper
 ///          bound" and returns the raw next-state.
 static uint64_t rt_random_bounded_u64(uint64_t bound) {
+    return rt_random_bounded_u64_from_state(&rt_random_context()->rng_state, bound);
+}
+
+static uint64_t rt_random_bounded_u64_from_state(uint64_t *state, uint64_t bound) {
     if (bound == 0)
-        return rt_random_next_u64();
+        return rt_random_step_u64(state);
 
     const uint64_t threshold = (uint64_t)(0ULL - bound) % bound;
     for (;;) {
-        uint64_t x = rt_random_next_u64();
+        uint64_t x = rt_random_step_u64(state);
         if (x >= threshold)
             return x % bound;
     }
+}
+
+static double rt_random_unit_from_state(uint64_t *state) {
+    uint64_t x = (rt_random_step_u64(state) >> 11) & ((1ULL << 53) - 1);
+    return (double)x * (1.0 / 9007199254740992.0);
 }
 
 /// @brief Seed the random generator with an unsigned 64-bit value.
@@ -107,8 +127,7 @@ void rt_randomize_i64(long long seed) {
 ///          range.  The algorithm mirrors the VM implementation so identical
 ///          seeds yield identical sequences across VM instances.
 double rt_rnd(void) {
-    uint64_t x = (rt_random_next_u64() >> 11) & ((1ULL << 53) - 1);
-    return (double)x * (1.0 / 9007199254740992.0);
+    return rt_random_unit_from_state(&rt_random_context()->rng_state);
 }
 
 /// @brief Generate a random integer in the half-open interval [0, max).
@@ -199,41 +218,49 @@ long long rt_rand_chance(double probability) {
     return rt_rnd() < probability ? 1 : 0;
 }
 
-/// @brief Create a Random object (seeds the global RNG and returns a wrapper).
-/// @details Seeds the global RNG with the given seed and returns a GC-managed
-///          object. This enables `NEW Viper.Math.Random(seed)` in frontends.
-///          The Random class uses global state, so this is equivalent to calling
-///          Random.Seed(seed) and returning a handle.
+/// @brief Create a Random object with independent RNG state.
+/// @details This enables `new Viper.Math.Random(seed)` without mutating the
+///          VM/global RNG used by static Viper.Math.Random functions.
 void *rt_random_new(long long seed) {
-    // Seed the global RNG
-    rt_randomize_i64(seed);
-
-    // Return a minimal GC-managed object as the Random instance handle
-    void *obj = rt_obj_new_i64(0, (int64_t)sizeof(void *));
-    return obj;
+    rt_random_impl *rng =
+        (rt_random_impl *)rt_obj_new_i64(RT_RANDOM_CLASS_ID, (int64_t)sizeof(rt_random_impl));
+    rng->state = (uint64_t)seed;
+    return rng;
 }
 
-/// @brief Instance method wrapper for rt_rnd; ignores the receiver.
-/// @details Allows the Random class to expose NextFloat() as an instance method
-///          while delegating to the global LCG state. The receiver is unused
-///          because Random state is process-global per RtContext.
+/// @brief Instance method for Random.Next/NextDouble.
 double rt_rnd_method(void *self) {
-    (void)self;
-    return rt_rnd();
+    rt_random_impl *rng = as_random(self);
+    return rt_random_unit_from_state(&rng->state);
 }
 
-/// @brief Instance method wrapper for rt_rand_int; ignores the receiver.
-/// @details Allows the Random class to expose NextInt(max) as an instance method.
+/// @brief Instance method for Random.NextInt(max).
 long long rt_rand_int_method(void *self, long long max) {
-    (void)self;
-    return rt_rand_int(max);
+    if (max <= 0)
+        return 0;
+    rt_random_impl *rng = as_random(self);
+    return (long long)rt_random_bounded_u64_from_state(&rng->state, (uint64_t)max);
 }
 
-/// @brief Instance method wrapper for rt_randomize_i64; ignores the receiver.
-/// @details Allows re-seeding via the Random.Seed() instance method.
+/// @brief Instance method for Random.Range(min, max) / NextInt(min, max).
+long long rt_rand_range_method(void *self, long long min, long long max) {
+    rt_random_impl *rng = as_random(self);
+    if (min > max) {
+        long long tmp = min;
+        min = max;
+        max = tmp;
+    }
+    unsigned long long urange = (unsigned long long)max - (unsigned long long)min + 1ULL;
+    if (urange == 0)
+        return (long long)rt_random_step_u64(&rng->state);
+    return (long long)((uint64_t)min +
+                       rt_random_bounded_u64_from_state(&rng->state, (uint64_t)urange));
+}
+
+/// @brief Instance method for Random.Seed(seed).
 void rt_randomize_i64_method(void *self, long long seed) {
-    (void)self;
-    rt_randomize_i64(seed);
+    rt_random_impl *rng = as_random(self);
+    rng->state = (uint64_t)seed;
 }
 
 /// @brief Shuffle elements in a Seq randomly (Fisher-Yates algorithm).
