@@ -20,6 +20,7 @@
 #include "frontends/basic/constfold/Dispatch.hpp"
 #include "support/source_manager.hpp"
 #include <cassert>
+#include <iterator>
 #include <sstream>
 #include <string>
 
@@ -110,6 +111,32 @@ int main() {
         auto *let = dynamic_cast<LetStmt *>(prog->main[0].get());
         auto *flt = dynamic_cast<FloatExpr *>(let->expr.get());
         assert(flt && flt->value == 2147483649.0);
+    }
+
+    // Based integer literals parse and fold with BASIC's case-insensitive prefixes.
+    {
+        std::string src = "10 LET A = &H2A\n"
+                          "20 LET B = &B101010\n"
+                          "30 LET C = 0x2A\n"
+                          "40 LET D = 0b101010\n"
+                          "50 LET E% = &H7FFF%\n"
+                          "60 LET F& = 0X80000000&\n"
+                          "70 LET G = &h2a + 0b10\n"
+                          "80 LET H = &hdead + &HF0\n"
+                          "90 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("based_literals.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        foldConstants(*prog);
+
+        const long long expected[] = {42, 42, 42, 42, 32767, 2147483648LL, 44, 57245};
+        for (size_t i = 0; i < std::size(expected); ++i) {
+            auto *let = dynamic_cast<LetStmt *>(prog->main[i].get());
+            assert(let);
+            auto *intExpr = dynamic_cast<IntExpr *>(let->expr.get());
+            assert(intExpr && intExpr->value == expected[i]);
+        }
     }
 
     // SINGLE + INTEGER promotes to floating result

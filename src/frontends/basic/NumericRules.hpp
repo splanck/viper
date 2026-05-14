@@ -200,11 +200,11 @@ using IlKind = il::core::Type::Kind;
 // ============================================================================
 
 /// @brief Check if a binary operator requires floating-point operands.
-/// @details Power (^) always operates on floats.
+/// @details Power (^) and BASIC real division (/) always operate on floats.
 /// @param op Binary operator to check.
 /// @return True if the operator requires float operands.
 [[nodiscard]] constexpr bool requiresFloatOperands(BinaryExpr::Op op) noexcept {
-    return op == BinaryExpr::Op::Pow;
+    return op == BinaryExpr::Op::Pow || op == BinaryExpr::Op::Div;
 }
 
 /// @brief Check if a binary operator requires integer-only operands.

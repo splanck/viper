@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdlib>
+#include <string_view>
 
 namespace il::frontends::basic {
 namespace {
@@ -117,6 +118,42 @@ inline const InfixParselet *findInfix(TokenKind kind) {
     if (idx >= static_cast<size_t>(TokenKind::Count))
         return nullptr;
     return infixLookup()[idx];
+}
+
+/// @brief Recognize integer literals with explicit hexadecimal or binary radix.
+/// @details The lexer canonicalizes prefixes, but this accepts mixed case as a
+///          defensive parser boundary because BASIC source is case-insensitive.
+/// @param lex Literal text with any type suffix already removed.
+/// @param base Output numeric base: 16 for hex, 2 for binary.
+/// @param digitOffset Output offset where radix digits begin.
+/// @return True when @p lex uses a supported based-integer prefix.
+bool classifyBasedIntegerLiteral(std::string_view lex, int &base, size_t &digitOffset) {
+    if (lex.size() < 3)
+        return false;
+
+    const char first = lex[0];
+    const char marker = lex[1];
+    if (first == '&' && (marker == 'H' || marker == 'h')) {
+        base = 16;
+        digitOffset = 2;
+        return true;
+    }
+    if (first == '&' && (marker == 'B' || marker == 'b')) {
+        base = 2;
+        digitOffset = 2;
+        return true;
+    }
+    if (first == '0' && (marker == 'X' || marker == 'x')) {
+        base = 16;
+        digitOffset = 2;
+        return true;
+    }
+    if (first == '0' && (marker == 'B' || marker == 'b')) {
+        base = 2;
+        digitOffset = 2;
+        return true;
+    }
+    return false;
 }
 
 } // namespace
@@ -251,9 +288,27 @@ ExprPtr Parser::parseNumber() {
         }
     }
 
+    int base = 10;
+    size_t digitOffset = 0;
+    const bool isBasedInteger = classifyBasedIntegerLiteral(lex, base, digitOffset);
+
     const bool hasDot = lex.find('.') != std::string::npos;
-    const bool hasExp = lex.find_first_of("Ee") != std::string::npos;
-    const bool isFloatLiteral = hasDot || hasExp || suffix == '!' || suffix == '#';
+    const bool hasExp = !isBasedInteger && lex.find_first_of("Ee") != std::string::npos;
+    const bool isFloatLiteral =
+        !isBasedInteger && (hasDot || hasExp || suffix == '!' || suffix == '#');
+
+    if (isBasedInteger) {
+        const std::string digits = lex.substr(digitOffset);
+        const auto raw = std::strtoull(digits.c_str(), nullptr, base);
+        auto e = makeIntExpr(static_cast<int64_t>(raw), loc);
+        auto *intExpr = static_cast<IntExpr *>(e.get());
+        if (suffix == '%')
+            intExpr->suffix = IntExpr::Suffix::Integer;
+        else if (suffix == '&')
+            intExpr->suffix = IntExpr::Suffix::Long;
+        consume();
+        return e;
+    }
 
     if (isFloatLiteral) {
         auto e = makeFloatExpr(std::strtod(lex.c_str(), nullptr), loc);

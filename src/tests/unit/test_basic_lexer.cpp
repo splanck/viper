@@ -66,6 +66,25 @@ int main() {
         t = lex.next();
         assert(t.kind == TokenKind::Identifier && t.lexeme == "X#");
     }
+    // Verify hex and binary integer literals are single Number tokens, including
+    // legacy BASIC and C-style prefixes with integer suffixes.
+    {
+        std::string src = "&H2A &hdead &h2a& &B101010 0x2A 0X2a& 0b101010 0B101010%\n";
+        Lexer lex(src, fid);
+        const std::vector<std::string> expected = {"&H2A",
+                                                   "&HDEAD",
+                                                   "&H2A&",
+                                                   "&B101010",
+                                                   "0X2A",
+                                                   "0X2A&",
+                                                   "0B101010",
+                                                   "0B101010%"};
+        for (const auto &lexeme : expected) {
+            Token t = lex.next();
+            assert(t.kind == TokenKind::Number);
+            assert(t.lexeme == lexeme);
+        }
+    }
     // Check lexing of a function call with string argument and parentheses.
     {
         std::string src = "LEN(\"A\")\n";

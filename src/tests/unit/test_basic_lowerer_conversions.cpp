@@ -92,5 +92,40 @@ int main() {
     assert(hasLine(truncLines, 6));   // INPUT "?", FLAG
     assert(!toDoubleLines.empty());   // INPUT "?", D# uses rt_to_double
 
+    {
+        const std::string divSrc = "10 LET Q# = 7 / 2\n"
+                                   "20 LET I = 7 \\ 2\n";
+        Parser divParser(divSrc, fid);
+        auto divProg = divParser.parseProgram();
+        assert(divProg);
+
+        il::core::Module divModule = lowerer.lowerProgram(*divProg);
+        const il::core::Function *divMain = nullptr;
+        for (const auto &fn : divModule.functions) {
+            if (fn.name == "main") {
+                divMain = &fn;
+                break;
+            }
+        }
+        assert(divMain);
+
+        bool hasRealDivision = false;
+        bool hasIntegerDivision = false;
+        bool promotedIntegerOperand = false;
+        for (const auto &block : divMain->blocks) {
+            for (const auto &instr : block.instructions) {
+                if (instr.op == il::core::Opcode::FDiv && instr.loc.line == 1)
+                    hasRealDivision = true;
+                if (instr.op == il::core::Opcode::SDivChk0 && instr.loc.line == 2)
+                    hasIntegerDivision = true;
+                if (instr.op == il::core::Opcode::Sitofp && instr.loc.line == 1)
+                    promotedIntegerOperand = true;
+            }
+        }
+        assert(hasRealDivision);
+        assert(hasIntegerDivision);
+        assert(promotedIntegerOperand);
+    }
+
     return 0;
 }
