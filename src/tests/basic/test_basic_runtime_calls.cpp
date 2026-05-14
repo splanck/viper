@@ -20,12 +20,6 @@ using namespace il::support;
 
 namespace {
 
-BasicCompilerResult compileResult(const std::string &source, BasicCompilerOptions opts = {}) {
-    SourceManager sm;
-    BasicCompilerInput input{source, "<test>"};
-    return compileBasic(input, opts, sm);
-}
-
 std::optional<il::core::Module> compileModule(const std::string &source) {
     SourceManager sm;
     BasicCompilerOptions opts{};
@@ -44,14 +38,6 @@ std::optional<il::core::Module> compileModule(const std::string &source) {
 /// Helper: compile a BASIC source string and return whether it succeeded.
 bool compileOk(const std::string &source) {
     return compileModule(source).has_value();
-}
-
-bool hasDiagnostic(const BasicCompilerResult &result, const std::string &needle) {
-    for (const auto &diag : result.diagnostics.diagnostics()) {
-        if (diag.message.find(needle) != std::string::npos)
-            return true;
-    }
-    return false;
 }
 
 const il::core::Function *findFunction(const il::core::Module &module, const std::string &name) {
@@ -75,28 +61,15 @@ size_t countCallsTo(const il::core::Function &fn, const std::string &callee) {
 
 } // namespace
 
-TEST(BasicRuntimeCalls, RawPointerRuntimeCallsRejectedByDefault) {
-    auto result = compileResult(R"(
-DIM ok AS BOOLEAN
-DIM out AS OBJECT
-ok = Viper.Core.Parse.TryInt("123", out)
-)");
-
-    ASSERT_TRUE(!result.succeeded());
-    ASSERT_TRUE(hasDiagnostic(result, "raw pointer"));
-}
-
-TEST(BasicRuntimeCalls, UnsafePointerModeAllowsRawRuntimeCalls) {
-    BasicCompilerOptions opts{};
-    opts.allowUnsafePointers = true;
-    auto result = compileResult(R"(
-DIM ok AS BOOLEAN
-DIM out AS OBJECT
-ok = Viper.Core.Parse.TryInt("123", out)
-)",
-                                opts);
-
-    ASSERT_TRUE(result.succeeded());
+TEST(BasicRuntimeCalls, LegacyRuntimeOutParameterApisReturnObjects) {
+    ASSERT_TRUE(compileOk(R"(
+DIM opt AS OBJECT
+opt = Viper.Core.Parse.TryInt("123")
+opt = Viper.Core.Parse.TryNum("12.5")
+opt = Viper.Core.Parse.TryBool("yes")
+opt = Viper.Core.Parse.Int64("123")
+opt = Viper.Core.Parse.Double("12.5")
+)"));
 }
 
 TEST(BasicRuntimeCalls, SafePointerAlternativesCompile) {
@@ -109,9 +82,10 @@ DIM pe AS OBJECT
 entries = Viper.IO.Dir.List(".")
 box = Viper.Core.Box.I64(42)
 opt = Viper.Core.Box.ToI64Option(box)
-fields = Viper.String.SplitFieldsSeq("a,b")
+opt = Viper.Core.Box.TryToI64(box)
+fields = Viper.String.SplitFields("a,b")
 pe = Viper.Game.ParticleEmitter.New(4)
-opt = Viper.Game.ParticleEmitter.ParticleAt(pe, 0)
+opt = Viper.Game.ParticleEmitter.Get(pe, 0)
 PRINT "ok"
 )"));
 }
@@ -125,19 +99,20 @@ thread = Viper.Threads.Thread.Start(ADDRESSOF Worker, 0)
 )"));
 }
 
-TEST(BasicRuntimeCalls, NonBridgeFunctionPointerRuntimeCallsRejected) {
-    auto result = compileResult(R"(
+TEST(BasicRuntimeCalls, CallbackRuntimeCallsCompileThroughAddressOf) {
+    ASSERT_TRUE(compileOk(R"(
 FUNCTION KeepIt(item AS OBJECT) AS BOOLEAN
   KeepIt = 1
 END FUNCTION
+SUB OnMessage()
+END SUB
 DIM seq AS OBJECT
 DIM kept AS OBJECT
+DIM handler AS OBJECT
 seq = Viper.Collections.Seq.New()
 kept = Viper.Collections.Seq.Keep(seq, ADDRESSOF KeepIt)
-)");
-
-    ASSERT_TRUE(!result.succeeded());
-    ASSERT_TRUE(hasDiagnostic(result, "raw pointer"));
+handler = Viper.Core.MessageBus.Callback(ADDRESSOF OnMessage)
+)"));
 }
 
 // A-044: Result static calls in BASIC

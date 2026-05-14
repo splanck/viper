@@ -675,6 +675,17 @@ static ParsedSignature parseSignature(const std::string &sig) {
     return result;
 }
 
+static bool signatureExposesRawPointer(const std::string &sig) {
+    ParsedSignature parsed = parseSignature(sig);
+    if (stripTypeArgs(parsed.returnType) == "ptr")
+        return true;
+    for (const auto &arg : parsed.argTypes) {
+        if (stripTypeArgs(arg) == "ptr")
+            return true;
+    }
+    return false;
+}
+
 //===----------------------------------------------------------------------===//
 // Runtime signature helpers
 //===----------------------------------------------------------------------===//
@@ -1979,6 +1990,10 @@ static int runAudit(const ParseState &state,
     };
 
     for (const auto &func : state.functions) {
+        if (signatureExposesRawPointer(func.signature)) {
+            addError("runtime.def function " + func.canonical +
+                     " exposes raw ptr in frontend signature " + func.signature);
+        }
         if (headerDecls.find(func.c_symbol) == headerDecls.end()) {
             addHeaderFinding("runtime.def function " + func.canonical + " maps to " +
                              func.c_symbol +
@@ -2008,6 +2023,10 @@ static int runAudit(const ParseState &state,
             }
         }
         for (const auto &method : cls.methods) {
+            if (signatureExposesRawPointer(method.signature)) {
+                addError("runtime method " + cls.name + "." + method.name +
+                         " exposes raw ptr in frontend signature " + method.signature);
+            }
             if (!method.target_id.empty() && method.target_id != "none" &&
                 !resolveRuntimeCanonical(state, method.target_id)) {
                 addError("runtime method " + cls.name + "." + method.name +

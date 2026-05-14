@@ -5,10 +5,10 @@ module Test;
 func start() {
     Viper.Terminal.Say("=== List Raw Test ===");
 
-    var list: Ptr = Viper.Collections.List.New();
+    var list: Viper.Collections.List = Viper.Collections.List.New();
     Viper.Collections.List.Push(list, 100);
 
-    var item: Ptr = Viper.Collections.List.Get(list, 0);
+    var item: Any = Viper.Collections.List.Get(list, 0);
     Viper.Terminal.Say("Got item");
 
     Viper.Terminal.Say("RESULT: ok");

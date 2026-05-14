@@ -719,7 +719,7 @@ String manipulation:
 - `Viper.String.get_Length(str)->i64` — String length
 - `Viper.String.Mid(str,i64)->str` — Substring from position to end
 - `Viper.String.MidLen(str,i64,i64)->str` — Substring with start and length
-- `Viper.String.SplitFields(str,ptr,i64)->i64` — Split into fields
+- `Viper.String.SplitFields(str)->seq<str>` — Split into fields
 - `Viper.Text.StringBuilder.New()->obj` — Create StringBuilder
 
 #### Viper.Core.Convert
@@ -739,17 +739,17 @@ Type conversion:
 
 Type parsing with explicit error codes:
 
-- `Viper.Core.Parse.TryInt(str,ptr)->i1` — Try to parse integer
-- `Viper.Core.Parse.TryNum(str,ptr)->i1` — Try to parse double
-- `Viper.Core.Parse.TryBool(str,ptr)->i1` — Try to parse boolean
+- `Viper.Core.Parse.TryInt(str)->obj<Viper.Option>` — Try to parse integer
+- `Viper.Core.Parse.TryNum(str)->obj<Viper.Option>` — Try to parse double
+- `Viper.Core.Parse.TryBool(str)->obj<Viper.Option>` — Try to parse boolean
 - `Viper.Core.Parse.IntOr(str,i64)->i64` — Parse integer or default
 - `Viper.Core.Parse.NumOr(str,f64)->f64` — Parse double or default
 - `Viper.Core.Parse.BoolOr(str,i1)->i1` — Parse boolean or default
 - `Viper.Core.Parse.IsInt(str)->i1` — Validate integer text
 - `Viper.Core.Parse.IsNum(str)->i1` — Validate numeric text
 - `Viper.Core.Parse.IntRadix(str,i64,i64)->i64` — Parse radix 2-36 integer or default; decimal accepts `+`/`-`, non-decimal rejects signs and prefixes
-- `Viper.Core.Parse.Double(ptr,ptr)->i32` — Low-level C-string double parser
-- `Viper.Core.Parse.Int64(ptr,ptr)->i32` — Low-level C-string int64 parser
+- `Viper.Core.Parse.Double(str)->obj<Viper.Option>` — Parse double to `Viper.Option`
+- `Viper.Core.Parse.Int64(str)->obj<Viper.Option>` — Parse int64 to `Viper.Option`
 - `Viper.Core.Parse.DoubleOption(str)->obj<Viper.Option>` — Parse double to `Viper.Option`
 - `Viper.Core.Parse.Int64Option(str)->obj<Viper.Option>` — Parse int64 to `Viper.Option`
 

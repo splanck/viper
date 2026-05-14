@@ -177,8 +177,6 @@ func start() {    var anim = Viper.Graphics.SpriteAnimator.New();
 }
 
 TEST(ZiaStaticCalls, RuntimeObjectCallbackMethod) {
-    CompilerOptions opts{};
-    opts.allowUnsafePointers = true;
     ASSERT_TRUE(compileOk(R"(
 module Test;
 
@@ -188,11 +186,10 @@ func keepList(x: Viper.Collections.List) -> Viper.Collections.List {    return x
 /// @brief Start.
 func start() {    var list = Viper.Collections.List.New();
     var opt = Viper.Option.Some(list);
-    var mapped = opt.Map(keepList);
+    var mapped = opt.Map(&keepList);
     var out = Viper.Option.Unwrap(mapped);
 }
-)",
-                          opts));
+)"));
 }
 
 TEST(ZiaStaticCalls, ExplicitReceiverRuntimeMethodsAndProperties) {

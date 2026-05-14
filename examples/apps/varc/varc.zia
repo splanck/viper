@@ -48,13 +48,13 @@ func strToInt(s: String) -> Integer {
 }
 
 // Write a 16-bit little-endian integer to bytes at position
-func writeU16(data: Ptr, pos: Integer, value: Integer) {
+func writeU16(data: Viper.Collections.Bytes, pos: Integer, value: Integer) {
     Collections.Bytes.Set(data, pos, value % 256);
     Collections.Bytes.Set(data, pos + 1, (value / 256) % 256);
 }
 
 // Write a 32-bit little-endian integer to bytes at position
-func writeU32(data: Ptr, pos: Integer, value: Integer) {
+func writeU32(data: Viper.Collections.Bytes, pos: Integer, value: Integer) {
     Collections.Bytes.Set(data, pos, value % 256);
     Collections.Bytes.Set(data, pos + 1, (value / 256) % 256);
     Collections.Bytes.Set(data, pos + 2, (value / 65536) % 256);
@@ -62,14 +62,14 @@ func writeU32(data: Ptr, pos: Integer, value: Integer) {
 }
 
 // Read a 16-bit little-endian integer from bytes at position
-func readU16(data: Ptr, pos: Integer) -> Integer {
+func readU16(data: Viper.Collections.Bytes, pos: Integer) -> Integer {
     var b0 = Collections.Bytes.Get(data, pos);
     var b1 = Collections.Bytes.Get(data, pos + 1);
     return b0 + b1 * 256;
 }
 
 // Read a 32-bit little-endian integer from bytes at position
-func readU32(data: Ptr, pos: Integer) -> Integer {
+func readU32(data: Viper.Collections.Bytes, pos: Integer) -> Integer {
     var b0 = Collections.Bytes.Get(data, pos);
     var b1 = Collections.Bytes.Get(data, pos + 1);
     var b2 = Collections.Bytes.Get(data, pos + 2);
@@ -78,7 +78,7 @@ func readU32(data: Ptr, pos: Integer) -> Integer {
 }
 
 // Simple checksum (sum of all bytes mod 2^32)
-func checksum(data: Ptr) -> Integer {
+func checksum(data: Viper.Collections.Bytes) -> Integer {
     var len = Collections.Bytes.get_Length(data);
     var sum = 0;
     var i = 0;
@@ -105,7 +105,7 @@ func dirname(path: String) -> String {
 
 // Process file data for storage: compress and/or encrypt
 // Uses Base64 encoding for binary-safe encryption of compressed data
-func processFileData(data: Ptr, compress: Boolean, password: String) -> Ptr {
+func processFileData(data: Viper.Collections.Bytes, compress: Boolean, password: String) -> Viper.Collections.Bytes {
     if (compress && String.Length(password) > 0) {
         var compressed = IO.Compress.Deflate(data);
         // Encode compressed bytes as base64 for safe string encryption
@@ -125,7 +125,7 @@ func processFileData(data: Ptr, compress: Boolean, password: String) -> Ptr {
 
 // Process stored data for retrieval: decrypt and/or decompress
 // Decryption returns base64-encoded data that needs to be decoded
-func restoreFileData(data: Ptr, isCompressed: Boolean, isEncrypted: Boolean, password: String) -> Ptr {
+func restoreFileData(data: Viper.Collections.Bytes, isCompressed: Boolean, isEncrypted: Boolean, password: String) -> Viper.Collections.Bytes {
     if (isEncrypted && isCompressed) {
         // Decrypt to get base64 string, then decode to get compressed bytes
         var base64 = Crypto.Aes.DecryptStr(data, password);
@@ -175,8 +175,8 @@ func createArchiveEx(archivePath: String, filePaths: List[String], compress: Boo
     }
 
     // First pass: process all file data and calculate total size
-    var allStored: List[Ptr] = [];
-    var allOriginal: List[Ptr] = [];
+    var allStored: List[Viper.Collections.Bytes] = [];
+    var allOriginal: List[Viper.Collections.Bytes] = [];
 
     var totalSize = HDR_SIZE;
     var i = 0;

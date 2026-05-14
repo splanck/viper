@@ -81,7 +81,7 @@ func start() {
     var star_tex = make_star_sprite();
 
     // Create tree sprites scattered around
-    var trees: List[Ptr] = [];
+    var trees: List[Any] = [];
     var i = 0;
     while (i < 12) {
         var angle = i * 0.524;
@@ -97,7 +97,7 @@ func start() {
     }
 
     // Floating star collectibles
-    var stars: List[Ptr] = [];
+    var stars: List[Any] = [];
     i = 0;
     while (i < 6) {
         var sx = Cos(i * 1.047) * 4.0;

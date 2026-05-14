@@ -15,7 +15,7 @@ bind "./_support";
 // COVER: Viper.Collections.IntMap.Keys
 // COVER: Viper.Collections.IntMap.Values
 
-// Note: IntMap.Get/GetOr return obj (Ptr in Zia), which cannot be directly
+// Note: IntMap.Get/GetOr return managed objects, which cannot be directly
 // compared as String or Integer. We verify value correctness through
 // Has/Len/Remove and structural assertions. Map.GetStr provides the
 // pattern for typed accessors if needed in the future.

@@ -189,10 +189,9 @@ sets, call arguments, or assignments.
 | `Never` | Bottom type for code paths that do not produce a value | — |
 | `Unit` | Explicit no-value marker for `Result[Unit]` and `()` | `()` |
 
-`Ptr` is not part of ordinary safe Zia. It is available only when compiling
-with `--unsafe-pointers` or when using the explicit `Viper.Unsafe.Ptr` alias
-under that same flag. Prefer typed runtime classes, collections, `Any`, and
-function references.
+`Ptr` is not part of the Zia source surface. Runtime handles are exposed as
+typed runtime classes, collections, `Any`, or function references; raw pointer
+details remain inside the runtime and backend.
 
 ### Optional Types
 
@@ -1133,9 +1132,8 @@ class Player {
 
 Class fields may use familiar `var name: Type;` syntax or the original
 `Type name;` syntax. A `weak` field stores a non-owning reference to a class,
-interface, `Any`, optional reference type, or unsafe `Ptr` when
-`--unsafe-pointers` is enabled. Weak fields cannot be
-`static`, and are loaded like ordinary fields:
+interface, `Any`, or optional reference type. Weak fields cannot be `static`,
+and are loaded like ordinary fields:
 
 ```viper
 class Node {

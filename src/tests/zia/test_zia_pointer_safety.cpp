@@ -43,10 +43,10 @@ func start() {
 )");
 
     EXPECT_TRUE(!result.succeeded());
-    EXPECT_TRUE(hasDiagnostic(result, "Raw Ptr is unsafe"));
+    EXPECT_TRUE(hasDiagnostic(result, "Raw Ptr is not part of the Zia source surface"));
 }
 
-TEST(ZiaPointerSafety, UnsafePointerModeAllowsExplicitPtr) {
+TEST(ZiaPointerSafety, UnsafePointerModeDoesNotExposeExplicitPtr) {
     CompilerOptions opts{};
     opts.allowUnsafePointers = true;
 
@@ -55,15 +55,12 @@ module Test;
 
 func start() {
     var p: Ptr = null;
-    var q: Viper.Unsafe.Ptr = null;
-    if p == null {
-        Viper.Terminal.Say("ok");
-    }
 }
 )",
                                 opts);
 
-    EXPECT_TRUE(result.succeeded());
+    EXPECT_TRUE(!result.succeeded());
+    EXPECT_TRUE(hasDiagnostic(result, "Raw Ptr is not part of the Zia source surface"));
 }
 
 TEST(ZiaPointerSafety, AnyAcceptsPrimitiveStringAndFunctionReferences) {
@@ -104,17 +101,20 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-TEST(ZiaPointerSafety, RawRuntimeOutParameterRejectedByDefault) {
+TEST(ZiaPointerSafety, LegacyRuntimeOutParameterApisReturnOptions) {
     auto result = compileSource(R"(
 module Test;
 
 func start() {
-    var ok = Viper.Core.Parse.TryInt("123", 0);
+    var i = Viper.Core.Parse.TryInt("123");
+    var n = Viper.Core.Parse.TryNum("12.5");
+    var b = Viper.Core.Parse.TryBool("yes");
+    var d = Viper.Core.Parse.Double("12.5");
+    var i64 = Viper.Core.Parse.Int64("123");
 }
 )");
 
-    EXPECT_TRUE(!result.succeeded());
-    EXPECT_TRUE(hasDiagnostic(result, "raw pointer parameter 'out_value'"));
+    EXPECT_TRUE(result.succeeded());
 }
 
 TEST(ZiaPointerSafety, RuntimeCallbackBridgeDoesNotExposePtr) {
@@ -153,13 +153,13 @@ module Test;
 
 func start() {
     var box = Viper.Core.Box.I64(12);
-    var opt = Viper.Core.Box.ToI64Option(box);
-    var fields = Viper.String.SplitFieldsSeq("a,\"b,c\"");
+    var opt = Viper.Core.Box.TryToI64(box);
+    var fields = Viper.String.SplitFields("a,\"b,c\"");
     var path = Viper.Graphics.Path2D.New(4);
     var canvas = Viper.Graphics.Canvas.New("x", 16, 16);
-    Viper.Graphics.Canvas.PolylinePath(canvas, path, 16777215);
+    Viper.Graphics.Canvas.Polyline(canvas, path, 16777215);
     var emitter = Viper.Game.ParticleEmitter.New(4);
-    var particle = Viper.Game.ParticleEmitter.ParticleAt(emitter, 0);
+    var particle = Viper.Game.ParticleEmitter.Get(emitter, 0);
 }
 )");
 
@@ -183,7 +183,7 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-TEST(ZiaPointerSafety, NativeOnlyCallbackApisRejectedByDefault) {
+TEST(ZiaPointerSafety, RuntimeCallbackApisCompileThroughManagedReferences) {
     auto poolResult = compileSource(R"(
 module Test;
 
@@ -196,9 +196,7 @@ func start() {
 }
 )");
 
-    EXPECT_TRUE(!poolResult.succeeded());
-    EXPECT_TRUE(hasDiagnostic(poolResult, "Viper.Threads.Pool.Submit"));
-    EXPECT_TRUE(hasDiagnostic(poolResult, "raw pointer parameter 'callback'"));
+    EXPECT_TRUE(poolResult.succeeded());
 
     auto busResult = compileSource(R"(
 module Test;
@@ -211,9 +209,22 @@ func start() {
 }
 )");
 
-    EXPECT_TRUE(!busResult.succeeded());
-    EXPECT_TRUE(hasDiagnostic(busResult, "Viper.Core.MessageBus.Callback"));
-    EXPECT_TRUE(hasDiagnostic(busResult, "raw pointer parameter 'callback'"));
+    EXPECT_TRUE(busResult.succeeded());
+
+    auto functionalResult = compileSource(R"(
+module Test;
+
+func keep(item: Any) -> Boolean {
+    return true;
+}
+
+func start() {
+    var seq = Viper.Collections.Seq.New();
+    var kept = Viper.Collections.Seq.Keep(seq, &keep);
+}
+)");
+
+    EXPECT_TRUE(functionalResult.succeeded());
 }
 
 } // namespace

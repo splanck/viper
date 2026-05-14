@@ -256,23 +256,21 @@ std::string saferRuntimePointerAlternative(std::string_view calleeName) {
         {"Viper.Threads.Pool.Submit",
          "Viper.Threads.Thread.Start or Viper.Threads.Async.Run for managed Zia callbacks"},
         {"Viper.Core.MessageBus.Callback",
-         "a typed managed callback API when available, or --unsafe-pointers for native callbacks"},
-        {"Viper.Option.Map",
-         "ordinary Zia optional control flow, or --unsafe-pointers for native callbacks"},
+         "a managed callback returned by Viper.Core.MessageBus.Callback(&handler)"},
+        {"Viper.Option.Map", "ordinary Zia optional control flow or a managed function reference"},
         {"Viper.Option.AndThen",
-         "ordinary Zia optional control flow, or --unsafe-pointers for native callbacks"},
+         "ordinary Zia optional control flow or a managed function reference"},
         {"Viper.Option.OrElse",
-         "ordinary Zia optional control flow, or --unsafe-pointers for native callbacks"},
+         "ordinary Zia optional control flow or a managed function reference"},
         {"Viper.Option.Filter",
-         "ordinary Zia optional control flow, or --unsafe-pointers for native callbacks"},
-        {"Viper.Result.Map",
-         "ordinary Zia result control flow, or --unsafe-pointers for native callbacks"},
+         "ordinary Zia optional control flow or a managed function reference"},
+        {"Viper.Result.Map", "ordinary Zia result control flow or a managed function reference"},
         {"Viper.Result.MapErr",
-         "ordinary Zia result control flow, or --unsafe-pointers for native callbacks"},
+         "ordinary Zia result control flow or a managed function reference"},
         {"Viper.Result.AndThen",
-         "ordinary Zia result control flow, or --unsafe-pointers for native callbacks"},
+         "ordinary Zia result control flow or a managed function reference"},
         {"Viper.Result.OrElse",
-         "ordinary Zia result control flow, or --unsafe-pointers for native callbacks"},
+         "ordinary Zia result control flow or a managed function reference"},
     };
 
     auto it = alternatives.find(calleeName);
@@ -871,6 +869,12 @@ bool Sema::bindCallArgs(const std::vector<CallArg> &args,
                               ? exprTypes_.at(args[static_cast<size_t>(sourceIndex)].value.get())
                               : nullptr;
         int cost = conversionCost(paramType, argType, allowRuntimeObjectCoercion);
+        if (allowRuntimeObjectCoercion && paramType && paramType->kind == TypeKindSem::Ptr &&
+            argType && argType->kind == TypeKindSem::Function &&
+            allowsFunctionPointerParam(params[i].name) &&
+            !isFunctionPointerArg(args[static_cast<size_t>(sourceIndex)])) {
+            cost = 1000;
+        }
         if (cost >= 1000 && allowRuntimeObjectCoercion && paramType &&
             paramType->kind == TypeKindSem::Ptr && argType &&
             argType->kind == TypeKindSem::Function && allowsFunctionPointerParam(params[i].name) &&
@@ -896,6 +900,12 @@ bool Sema::bindCallArgs(const std::vector<CallArg> &args,
                     ? exprTypes_.at(args[static_cast<size_t>(sourceIndex)].value.get())
                     : nullptr;
             int cost = conversionCost(elemType, argType, allowRuntimeObjectCoercion);
+            if (allowRuntimeObjectCoercion && elemType && elemType->kind == TypeKindSem::Ptr &&
+                argType && argType->kind == TypeKindSem::Function &&
+                allowsFunctionPointerParam(params.back().name) &&
+                !isFunctionPointerArg(args[static_cast<size_t>(sourceIndex)])) {
+                cost = 1000;
+            }
             if (cost >= 1000 && allowRuntimeObjectCoercion && elemType &&
                 elemType->kind == TypeKindSem::Ptr && argType &&
                 argType->kind == TypeKindSem::Function &&
@@ -925,9 +935,6 @@ bool Sema::checkRuntimePointerSafety(const std::string &calleeName,
                                      const CallArgBinding &binding,
                                      size_t skipLeadingParams,
                                      SourceLoc loc) const {
-    if (allowUnsafePointers_)
-        return true;
-
     RuntimePointerSafety safety;
     bool hasSafety = false;
     if (auto it = runtimePointerSafety_.find(calleeName); it != runtimePointerSafety_.end()) {
@@ -952,7 +959,7 @@ bool Sema::checkRuntimePointerSafety(const std::string &calleeName,
             !alternative.empty()) {
             message += "; use " + alternative;
         } else {
-            message += "; use a typed runtime class/API or compile with --unsafe-pointers";
+            message += "; use a typed runtime class/API";
         }
         return message;
     };

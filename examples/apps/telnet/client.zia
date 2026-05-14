@@ -94,12 +94,12 @@ func main() {
 }
 
 // Send a command to the server
-func sendCommand(conn: Ptr, cmd: String) {
+func sendCommand(conn: Viper.Network.Tcp, cmd: String) {
     Network.Tcp.SendStr(conn, cmd + "\n");
 }
 
 // Receive response from server (read until prompt or timeout)
-func receiveResponse(conn: Ptr) -> String {
+func receiveResponse(conn: Viper.Network.Tcp) -> String {
     var response = "";
     var reading = 1;
 
@@ -137,7 +137,7 @@ func receiveResponse(conn: Ptr) -> String {
 }
 
 // Read all available data (non-blocking style)
-func readAvailable(conn: Ptr) -> String {
+func readAvailable(conn: Viper.Network.Tcp) -> String {
     var result = "";
     Network.Tcp.SetRecvTimeout(conn, 50);
 

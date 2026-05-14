@@ -193,11 +193,11 @@ TEST(RuntimeClassParseBinding, CatalogContainsParseAliases) {
             hasIntRadix = hasIntRadix || std::string(m.name) == "IntRadix";
             if (std::string(m.name) == "Int64") {
                 hasInt64 = true;
-                EXPECT_EQ(std::string(m.signature), std::string("i32(str,ptr)"));
+                EXPECT_EQ(std::string(m.signature), std::string("obj<Viper.Option>(str)"));
             }
             if (std::string(m.name) == "Double") {
                 hasDouble = true;
-                EXPECT_EQ(std::string(m.signature), std::string("i32(str,ptr)"));
+                EXPECT_EQ(std::string(m.signature), std::string("obj<Viper.Option>(str)"));
             }
         }
         EXPECT_TRUE(hasTryInt);
@@ -229,7 +229,7 @@ TEST(RuntimeClassParseBinding, MethodIndexTargets) {
     ASSERT_TRUE(radix.has_value());
     EXPECT_EQ(radix->target, std::string("Viper.Core.Parse.IntRadix"));
 
-    auto tryNum = midx.find("Viper.Core.Parse", "TryNum", 2);
+    auto tryNum = midx.find("Viper.Core.Parse", "TryNum", 1);
     ASSERT_TRUE(tryNum.has_value());
     EXPECT_EQ(tryNum->target, std::string("Viper.Core.Parse.TryNum"));
 }

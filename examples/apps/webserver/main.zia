@@ -521,7 +521,7 @@ func extractStatusCode(response: String) -> Integer {
     return d1 * 100 + d2 * 10 + d3;
 }
 
-func handleClient(client: Ptr) {
+func handleClient(client: Viper.Network.Tcp) {
     var startTime = log_startTimer();
     var clientHost = Network.Tcp.get_Host(client);
     var statusCode = 200;

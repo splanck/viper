@@ -271,6 +271,11 @@ std::string signatureReturnToken(std::string signature) {
     return signature;
 }
 
+bool signatureHasRawPointerToken(const std::string &signature) {
+    const std::regex rawPtrToken(R"((^|[,(]\s*)ptr(\s*[,)])?)");
+    return std::regex_search(signature, rawPtrToken);
+}
+
 std::unordered_set<std::string> runtimeSourceTokens() {
     std::unordered_set<std::string> tokens;
     const std::regex re(R"(\brt_[A-Za-z0-9_]+\b)");
@@ -399,10 +404,11 @@ TEST(RuntimeSurfaceAudit, RuntimeDefSymbolsExistInRuntimeSources) {
     }
 }
 
-TEST(RuntimeSurfaceAudit, RuntimeDefHasNoRawPointerReturns) {
+TEST(RuntimeSurfaceAudit, RuntimeDefHasNoRawPointerSurfaceTypes) {
     for (const auto &record : runtimeDefSignatures()) {
-        if (signatureReturnToken(record.signature) == "ptr") {
-            std::cerr << "Raw pointer return remains in runtime.def surface: " << record.owner
+        if (signatureReturnToken(record.signature) == "ptr" ||
+            signatureHasRawPointerToken(record.signature)) {
+            std::cerr << "Raw pointer type remains in runtime.def surface: " << record.owner
                       << " : " << record.signature << "\n";
             EXPECT_TRUE(false);
         }

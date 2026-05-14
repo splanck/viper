@@ -6,7 +6,7 @@ func start() {
     Viper.Terminal.Say("=== Box Test ===");
 
     // Box an integer
-    var boxed: Ptr = Viper.Core.Box.I64(42);
+    var boxed: Any = Viper.Core.Box.I64(42);
     Viper.Terminal.Say("Boxed");
 
     // Unbox it

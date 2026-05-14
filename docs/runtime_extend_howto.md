@@ -308,7 +308,8 @@ Use parameterized signatures whenever the runtime object type is known:
 
 ### Raw Pointer Policy
 
-`ptr` is reserved for native implementation details and unsafe interop. Do not expose a new `ptr` return or parameter to frontend languages unless there is no typed runtime alternative.
+`ptr` is reserved for native implementation details. Do not expose a new `ptr`
+return or parameter to frontend languages; add a typed wrapper instead.
 
 Preferred replacements:
 
@@ -316,9 +317,9 @@ Preferred replacements:
 - Return `seq<T>` for arrays/lists of values instead of raw buffers.
 - Return `obj<Viper.Option>` or `obj<Viper.Result>` instead of using out parameters.
 - Accept typed runtime classes such as `obj<Viper.Graphics.Path2D>` instead of raw coordinate buffers.
-- For callbacks, add a managed bridge that takes an explicit `&function` and a typed/object payload; keep native callback pointers behind `--unsafe-pointers`.
+- For callbacks, add a managed bridge that takes an explicit `&function` and a typed/object payload; keep native callback pointers inside the runtime implementation.
 
-Safe frontend builds reject raw pointer APIs by default. If a legacy C ABI must remain, add a safe wrapper beside it and document the wrapper in the diagnostic alternative map and tests.
+Frontend builds reject raw pointer APIs. If a legacy C ABI must remain, add a safe wrapper beside it and document the wrapper in the diagnostic alternative map and tests.
 
 ---
 

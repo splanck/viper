@@ -659,7 +659,7 @@ accept classic BASIC `&H2A` and C-style `0x2A` prefixes; binary integers accept
 use the `%` or `&` integer suffixes. Floating literals use decimal notation with
 optional exponent and `!` or `#` suffixes.
 
-- Arithmetic: `+ - * / \` (integer division), `MOD`
+- Arithmetic: `+ - *`, `/` (floating-point division), `\` (integer division), `MOD`
 - Comparison: `= <> < <= > >=`
 - Logical words: `NOT`, `AND`, `OR`
 - Short-circuit booleans: **`ANDALSO`**, **`ORELSE`**
@@ -836,11 +836,11 @@ String manipulation:
 - `Viper.String.get_Length(str)->i64` — Get string length
 - `Viper.String.Mid(str, i64, i64)->str` — Extract substring (start, length)
 - `Viper.String.Concat(str, str)->str` — Concatenate two strings
-- `Viper.String.SplitFields(str, ptr str, i64)->i64` — Split string into fields
+- `Viper.String.SplitFields(str)->seq<str>` — Split string into fields
 - `Viper.String.FromI16(i16)->str` — Convert int16 to string
 - `Viper.String.FromI32(i32)->str` — Convert int32 to string
 - `Viper.String.FromSingle(f64)->str` — Convert float to string (formats with single precision)
-- `Viper.Text.StringBuilder.New()->ptr` — Create a new StringBuilder instance
+- `Viper.Text.StringBuilder.New()->obj` — Create a new StringBuilder instance
 
 #### Viper.Convert
 
@@ -857,17 +857,17 @@ Type conversion:
 
 Type parsing (with explicit error handling):
 
-- `Viper.Parse.TryInt(str, ptr i64)->i1` — Try to parse integer
-- `Viper.Parse.TryNum(str, ptr f64)->i1` — Try to parse double
-- `Viper.Parse.TryBool(str, ptr i1)->i1` — Try to parse boolean
+- `Viper.Parse.TryInt(str)->obj<Viper.Option>` — Try to parse integer
+- `Viper.Parse.TryNum(str)->obj<Viper.Option>` — Try to parse double
+- `Viper.Parse.TryBool(str)->obj<Viper.Option>` — Try to parse boolean
 - `Viper.Parse.IntOr(str, i64)->i64` — Parse integer or return default
 - `Viper.Parse.NumOr(str, f64)->f64` — Parse double or return default
 - `Viper.Parse.BoolOr(str, i1)->i1` — Parse boolean or return default
 - `Viper.Parse.IsInt(str)->i1` — Validate integer text
 - `Viper.Parse.IsNum(str)->i1` — Validate numeric text
 - `Viper.Parse.IntRadix(str, i64, i64)->i64` — Parse radix 2-36 integer or return default; decimal accepts `+`/`-`, non-decimal rejects signs and prefixes
-- `Viper.Parse.Int64(cstr, ptr i64)->i32` — Low-level int64 parser, returns error code
-- `Viper.Parse.Double(cstr, ptr f64)->i32` — Low-level double parser, returns error code
+- `Viper.Parse.Int64(str)->obj<Viper.Option>` — Parse int64 to `Viper.Option`
+- `Viper.Parse.Double(str)->obj<Viper.Option>` — Parse double to `Viper.Option`
 - `Viper.Parse.Int64Option(str)->obj<Viper.Option>` — Parse int64 to `Viper.Option`
 - `Viper.Parse.DoubleOption(str)->obj<Viper.Option>` — Parse double to `Viper.Option`
 

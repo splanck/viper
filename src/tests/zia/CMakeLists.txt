@@ -186,7 +186,7 @@ function(viper_add_zia_tests)
     target_link_libraries(test_zia_type_soundness PRIVATE ${VIPER_ZIA_LIBS})
     viper_add_ctest(test_zia_type_soundness test_zia_type_soundness)
 
-    # Safe pointer surface tests (Ptr is unsafe by default; Any/function bridges are safe)
+    # Safe pointer surface tests (Ptr is not source-visible; Any/function bridges are safe)
     viper_add_test(test_zia_pointer_safety ${_VIPER_ZIA_DIR}/test_zia_pointer_safety.cpp)
     target_link_libraries(test_zia_pointer_safety PRIVATE ${VIPER_ZIA_LIBS})
     viper_add_ctest(test_zia_pointer_safety test_zia_pointer_safety)

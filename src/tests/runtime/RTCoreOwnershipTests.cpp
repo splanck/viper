@@ -172,11 +172,13 @@ static void test_runtime_metadata_matches_core_contracts(void) {
 
     const auto *parseDouble = il::runtime::findRuntimeSignature("Viper.Core.Parse.Double");
     assert(parseDouble != nullptr);
-    assert(parseDouble->paramTypes.size() == 2);
+    assert(parseDouble->paramTypes.size() == 1);
+    assert(parseDouble->retType.kind == il::core::Type::Kind::Ptr);
     assert(parseDouble->paramTypes[0].kind == il::core::Type::Kind::Str);
     const auto *parseInt64 = il::runtime::findRuntimeSignature("Viper.Core.Parse.Int64");
     assert(parseInt64 != nullptr);
-    assert(parseInt64->paramTypes.size() == 2);
+    assert(parseInt64->paramTypes.size() == 1);
+    assert(parseInt64->retType.kind == il::core::Type::Kind::Ptr);
     assert(parseInt64->paramTypes[0].kind == il::core::Type::Kind::Str);
 }
 

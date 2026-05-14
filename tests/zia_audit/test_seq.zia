@@ -5,7 +5,7 @@ module TestSeq;
 func start() {
     Viper.Terminal.Say("=== Seq Collection Test ===");
 
-    var arr: Ptr = Viper.Collections.Seq.New(5);
+    var arr: Viper.Collections.Seq = Viper.Collections.Seq.New(5);
     Viper.Collections.Seq.Set(arr, 0, 10);
     Viper.Collections.Seq.Set(arr, 1, 20);
     Viper.Collections.Seq.Set(arr, 2, 30);

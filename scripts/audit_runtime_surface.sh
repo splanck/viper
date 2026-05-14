@@ -77,4 +77,4 @@ echo "[audit] Running rtgen surface audit..."
 
 echo "[audit] Running focused runtime surface tests..."
 "${CTEST_CMD}" --test-dir "${BUILD_DIR_FOR_TOOLS}" "${CTEST_CONFIG_ARGS[@]}" --output-on-failure -R \
-    '^(test_runtime_surface_audit|test_runtime_name_map|test_runtime_classes_catalog|test_zia_static_calls|test_basic_runtime_calls|test_rt_graphics_surface_link|test_rt_audio_surface_link)$'
+    '^(test_runtime_surface_audit|test_runtime_name_map|test_runtime_classes_catalog|test_zia_static_calls|test_zia_pointer_safety|test_basic_runtime_calls|test_rt_graphics_surface_link|test_rt_audio_surface_link)$'

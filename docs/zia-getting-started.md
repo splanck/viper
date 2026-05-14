@@ -113,9 +113,8 @@ final PI = 3.14159;      // Immutable constant
 | `Any` | Managed top type for boxed values, objects, strings, and function references | `42`, `"text"`, `&handler` |
 | `Never` | Bottom type for code paths that do not produce a value | — |
 
-Ordinary Zia code does not use raw pointers. Low-level interop can opt in with
-`--unsafe-pointers`, but application code should use typed Viper runtime
-classes, collections, `Any`, and callback bridges.
+Zia code does not use raw pointers. Runtime handles are represented by typed
+Viper runtime classes, collections, `Any`, and callback bridges.
 
 ### String Interpolation
 

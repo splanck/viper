@@ -148,7 +148,7 @@ func sum4(a: Integer, b: Integer, c: Integer, d: Integer) -> Integer {
 
 func testCollectionIndexing() {
     // Using Viper.Collections.Seq (fixed-size array)
-    var arr: Ptr = Viper.Collections.Seq.New(5);
+    var arr: Viper.Collections.Seq = Viper.Collections.Seq.New(5);
     Viper.Collections.Seq.Set(arr, 0, 10);
     Viper.Collections.Seq.Set(arr, 1, 20);
     Viper.Collections.Seq.Set(arr, 2, 30);
@@ -162,7 +162,7 @@ func testCollectionIndexing() {
     check("Seq set modifies", Viper.Core.Box.ToI64(Viper.Collections.Seq.Get(arr, 0)), 999);
 
     // List indexing
-    var list: Ptr = Viper.Collections.List.New();
+    var list: Viper.Collections.List = Viper.Collections.List.New();
     Viper.Collections.List.Push(list, 100);
     Viper.Collections.List.Push(list, 200);
     check("List get index 0", Viper.Core.Box.ToI64(Viper.Collections.List.Get(list, 0)), 100);

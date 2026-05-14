@@ -468,6 +468,13 @@ void *rt_parse_int64_option(rt_string s) {
     return rt_option_some_i64(value);
 }
 
+void *rt_parse_bool_option(rt_string s) {
+    int8_t value = 0;
+    if (!rt_parse_try_bool(s, &value))
+        return rt_option_none();
+    return rt_option_some_i1(value);
+}
+
 #ifdef __cplusplus
 }
 #endif

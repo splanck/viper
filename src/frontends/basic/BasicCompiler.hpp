@@ -116,7 +116,7 @@ struct BasicCompilerOptions {
     /// @brief Print frontend phase timings to stderr.
     bool timeCompile{false};
 
-    /// @brief Permit runtime APIs whose signatures expose raw pointers.
+    /// @brief Reserved compatibility flag; BASIC source no longer exposes raw pointers.
     bool allowUnsafePointers{false};
 };
 

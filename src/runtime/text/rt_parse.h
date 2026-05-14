@@ -97,6 +97,11 @@ void *rt_parse_double_option(rt_string s);
 /// @return Viper.Option.SomeI64(parsed) or Viper.Option.None().
 void *rt_parse_int64_option(rt_string s);
 
+/// @brief Parse a boolean into Option<i1>; returns None on failure.
+/// @param s Input string to parse.
+/// @return Viper.Option.SomeI1(parsed) or Viper.Option.None().
+void *rt_parse_bool_option(rt_string s);
+
 #ifdef __cplusplus
 }
 #endif

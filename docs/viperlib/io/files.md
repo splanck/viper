@@ -29,12 +29,12 @@ File system operations.
 | `Move(src, dst)`              | `Void(String, String)` | Moves or renames a file; traps if `dst` already exists                                    |
 | `MoveOver(src, dst)`          | `Void(String, String)` | Moves or renames a file, replacing `dst` when supported by the platform                   |
 | `Size(path)`                  | `Integer(String)`      | Returns regular-file size in bytes, or -1 if not found or not a regular file              |
-| `ReadBytes(path)`             | `ptr(String)`          | Reads the entire file as a raw runtime buffer; traps on I/O errors                        |
-| `WriteBytes(path, data)`      | `Void(String, ptr)`    | Atomically replaces a file with a raw runtime buffer                                      |
+| `ReadBytes(path)`             | `Bytes(String)`        | Reads the entire file as binary data; traps on I/O errors                                |
+| `WriteBytes(path, data)`      | `Void(String, Bytes)`  | Atomically replaces a file with binary data                                               |
 | `ReadAllBytes(path)`          | `Bytes(String)`        | Reads the entire file as binary data (traps on I/O errors)                                |
 | `WriteAllBytes(path, bytes)`  | `Void(String, Bytes)`  | Atomically replaces a file with binary data (traps on I/O errors)                         |
-| `ReadLines(path)`             | `ptr(String)`          | Reads the file as a runtime sequence of lines; traps on I/O errors                        |
-| `WriteLines(path, lines)`     | `Void(String, Seq)`    | Atomically writes a sequence of strings as lines; traps on I/O errors                     |
+| `ReadLines(path)`             | `Seq(String)`          | Reads the file as a runtime sequence of lines; traps on I/O errors                        |
+| `WriteLines(path, lines)`     | `Void(String, Seq(String))` | Atomically writes a sequence of strings as lines; traps on I/O errors                |
 | `Append(path, text)`          | `Void(String, String)` | Appends text to a file; traps on I/O errors                                               |
 | `AppendLine(path, text)`      | `Void(String, String)` | Appends text followed by `\n` to a file (creates if missing)                              |
 | `ReadAllLines(path)`          | `Seq(String)`          | Reads file as a sequence of lines; strips `\n` / `\r\n` terminators (traps on I/O errors) |
@@ -54,7 +54,7 @@ File system operations.
 - `ReadAllLines` splits on `\n`, `\r`, and `\r\n` and does not include line endings in returned strings. Trailing empty lines are preserved.
 - `WriteAllText`, `ReadAllText`, `ReadBytes`, `ReadAllBytes`, `WriteAllBytes`, `ReadAllLines`, `WriteBytes`, `WriteLines`, `Append`, and `Touch` trap on I/O errors.
 - POSIX file descriptors and Windows CRT handles opened by the runtime are created as close-on-exec/non-inheritable where the platform API supports it.
-- `ReadBytes` and `ReadLines` return raw `ptr` values representing internal runtime buffer objects. They are intended for use with other low-level runtime functions and are not strongly-typed Zia objects. Similarly, `WriteBytes` accepts a raw `ptr` for the data parameter. For strongly-typed binary and line I/O, prefer `ReadAllBytes`, `WriteAllBytes`, and `ReadAllLines`.
+- `ReadBytes`/`WriteBytes` use the typed `Viper.Collections.Bytes` runtime class. `ReadLines`/`WriteLines` use `Seq(String)`. The runtime keeps any raw buffer pointers internal.
 
 ### Zia Example
 
@@ -562,8 +562,8 @@ The three listing functions return `Seq` objects containing entry names (not ful
 | `Files(path)` | Files only       | Regular files, no directories |
 | `Dirs(path)`  | Directories only | Subdirectories, no files      |
 
-The `ListSeq()`/`FilesSeq()`/`DirsSeq()` variants are equivalent Seq-returning aliases for these legacy `ptr(str)` APIs.
-Use the `*Seq` forms when a frontend or toolchain stage requires an object-typed `Seq` result explicitly.
+The `ListSeq()`/`FilesSeq()`/`DirsSeq()` variants are equivalent Seq-returning aliases.
+Use the `*Seq` forms when a frontend or toolchain stage wants the explicit suffix.
 
 ```basic
 DIM names AS Viper.Collections.Seq

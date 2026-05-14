@@ -496,9 +496,6 @@ bool SemanticAnalyzer::checkRuntimePointerSafety(std::string_view target,
                                                  const std::vector<ExprPtr> &args,
                                                  il::support::SourceLoc loc,
                                                  std::string_view displayName) {
-    if (allowUnsafePointers_)
-        return true;
-
     bool hasRawParam = false;
     for (bool raw : rawPointerParams) {
         if (raw) {
@@ -521,7 +518,7 @@ bool SemanticAnalyzer::checkRuntimePointerSafety(std::string_view target,
             !alternative.empty()) {
             message += "; use " + alternative;
         } else {
-            message += "; use a typed runtime class/API or compile with --unsafe-pointers";
+            message += "; use a typed runtime class/API";
         }
         return message;
     };

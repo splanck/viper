@@ -49,10 +49,10 @@ OS threads for Viper programs (VM and native backends).
 | `SafeIsAlive()`          | `Boolean()`                      | Check if a safe thread is still running    |
 | `SafeJoin()`             | `Void()`                         | Join a safe thread handle                  |
 | `Sleep(ms)`              | `Void(Integer)`                  | Sleep the current thread (ms, clamped)     |
-| `Start(entry, arg)`      | `Thread(Ptr, Ptr)`               | Start a new thread; safe Zia passes `&entry` and does not declare `Ptr` |
-| `StartOwned(entry, arg)` | `Thread(Ptr, Object)`            | Start a new thread and retain a runtime object argument until the entry returns |
-| `StartSafe(entry, arg)`  | `Thread(Ptr, Ptr)`               | Start a bridged Zia thread with error boundaries; traps are captured instead of crashing |
-| `StartSafeOwned(entry, arg)` | `Thread(Ptr, Object)`        | Safe-thread variant of `StartOwned`        |
+| `Start(entry, arg)`      | `Thread(Function, Object)`       | Start a new thread with a managed callback reference |
+| `StartOwned(entry, arg)` | `Thread(Function, Object)`       | Start a new thread and retain a runtime object argument until the entry returns |
+| `StartSafe(entry, arg)`  | `Thread(Function, Object)`       | Start a bridged Zia thread with error boundaries; traps are captured instead of crashing |
+| `StartSafeOwned(entry, arg)` | `Thread(Function, Object)`    | Safe-thread variant of `StartOwned`        |
 | `TryJoin()`              | `Boolean()`                      | Non-blocking join attempt                  |
 | `Yield()`                | `Void()`                         | Yield the current thread's time slice      |
 
@@ -67,7 +67,7 @@ OS threads for Viper programs (VM and native backends).
 
 ### Entry Function
 
-`Start(entry, arg)` expects `entry` to be a function pointer with one of these low-level IL signatures:
+`Start(entry, arg)` expects a frontend function reference. Internally the runtime accepts one of these low-level IL signatures:
 
 - `void()` (no args), or
 - `void(ptr)` (one `ptr` argument).
@@ -102,7 +102,7 @@ func worker(arg: Any) {
 var t = Viper.Threads.Thread.StartSafe(&worker, 0);
 ```
 
-The Zia frontend lowers `&worker` to the backend-specific function handle and boxes ordinary arguments as needed. Source code should not declare `Ptr`; explicit raw-pointer threading interop requires `--unsafe-pointers`.
+The Zia frontend lowers `&worker` to the backend-specific function handle and boxes ordinary arguments as needed. Source code should not declare `Ptr`; callback handles are managed by the runtime bridge.
 
 ### Safe Threads (Error Boundaries)
 
@@ -610,7 +610,7 @@ Thread pool for submitting tasks to a fixed set of worker threads.
 
 | Method           | Signature             | Description                                                     |
 |------------------|-----------------------|-----------------------------------------------------------------|
-| `Submit(cb, arg)`| `Boolean(Ptr, Ptr)` | Unsafe interop: submit a native function pointer task; returns false if shut down |
+| `Submit(cb, arg)`| `Boolean(Function, Object)` | Submit a managed callback task; returns false if shut down |
 | `Wait()`         | `Void()`              | Block until all pending tasks complete                          |
 | `WaitFor(ms)`    | `Boolean(Integer)`    | Wait with timeout; returns true if all tasks completed          |
 | `Shutdown()`     | `Void()`              | Graceful shutdown: finish pending tasks, then stop workers      |
@@ -633,11 +633,18 @@ Thread pool for submitting tasks to a fixed set of worker threads.
 - Calling `Wait`, `WaitFor`, `Shutdown`, or `ShutdownNow` from a worker in the same pool traps to prevent self-deadlock.
 - Traps raised by a task do not leave the pool stuck in an active state. Once the pool drains, the next `Wait()`, successful `WaitFor(ms)`, `Shutdown()`, or `ShutdownNow()` rethrows the last task trap and clears it; later calls report the current pool state normally unless another task traps.
 - Pool handles own their worker thread handles and release them after joins. Releasing a pool from one of its own workers requests shutdown and defers reclamation rather than freeing state out from under the running worker.
-- `Pool.Submit` is not a safe frontend function-reference bridge. VM and BytecodeVM execution reject managed callback pointers for this API; safe frontends reject it unless compiled with `--unsafe-pointers`. Use `Thread.Start*` or `Async.Run` for managed callbacks.
+- `Pool.Submit(pool, callback, arg)` accepts a frontend function reference (`&worker` in Zia, `ADDRESSOF Worker` in BASIC). The runtime owns the native callback adaptation internally.
 
 ### Zia Example
 
-> Safe frontends can create and manage pools, but `Pool.Submit` still requires native callback pointers and is available only with `--unsafe-pointers`. VM and BytecodeVM execution support `Thread.Start`, `Thread.StartOwned`, `Thread.StartSafe`, `Thread.StartSafeOwned`, and `Async.Run` with managed function references.
+```rust
+func work(arg: Any) {
+    // ...
+}
+
+var pool = Viper.Threads.Pool.New(4);
+var ok = Viper.Threads.Pool.Submit(pool, &work, 0);
+```
 
 ### BASIC Example
 
@@ -647,13 +654,13 @@ DIM pool AS OBJECT = Viper.Threads.Pool.New(4)
 PRINT "Size: "; pool.Size         ' Output: 4
 PRINT "IsShutdown: "; pool.IsShutdown  ' Output: 0
 
-' Submit tasks (callback takes a single ptr argument)
-SUB DoWork(arg AS PTR)
+' Submit tasks
+SUB DoWork(arg AS OBJECT)
     ' Perform task work
     Viper.Threads.Thread.Sleep(10)
 END SUB
 
-pool.Submit(ADDR_OF DoWork, 0)
+pool.Submit(ADDRESSOF DoWork, 0)
 pool.Submit(ADDR_OF DoWork, 0)
 pool.Submit(ADDR_OF DoWork, 0)
 
@@ -893,27 +900,27 @@ Provides common parallel patterns like ForEach, Map, and Invoke using a shared t
 
 | Method                            | Signature                                 | Description                                           |
 |-----------------------------------|-------------------------------------------|-------------------------------------------------------|
-| `ForEach(seq, func)`              | `Void(Seq, Ptr)`                          | Unsafe interop: execute native func for each item      |
-| `ForEachPool(seq, func, pool)`    | `Void(Seq, Ptr, Pool)`                    | Unsafe interop: ForEach with custom thread pool        |
-| `Map(seq, func)`                  | `Seq(Seq, Ptr)`                           | Unsafe interop: transform items in parallel            |
-| `MapPool(seq, func, pool)`        | `Seq(Seq, Ptr, Pool)`                     | Unsafe interop: Map with custom thread pool            |
+| `ForEach(seq, func)`              | `Void(Seq, Function)`                     | Execute managed function for each item                 |
+| `ForEachPool(seq, func, pool)`    | `Void(Seq, Function, Pool)`               | ForEach with custom thread pool                        |
+| `Map(seq, func)`                  | `Seq(Seq, Function)`                      | Transform items in parallel                            |
+| `MapPool(seq, func, pool)`        | `Seq(Seq, Function, Pool)`                | Map with custom thread pool                            |
 | `Invoke(funcs)`                   | `Void(Seq)`                               | Execute multiple functions in parallel                |
 | `InvokePool(funcs, pool)`         | `Void(Seq, Pool)`                         | Invoke with custom thread pool                        |
-| `For(start, end, func)`           | `Void(Integer, Integer, Ptr)`             | Unsafe interop: parallel native callback loop          |
-| `ForPool(start, end, func, pool)` | `Void(Integer, Integer, Ptr, Pool)`       | Unsafe interop: parallel native callback loop with pool |
-| `Reduce(seq, func, identity)`     | `Object(Seq, Ptr, Object)`               | Unsafe interop: reduce using a native combine function |
-| `ReducePool(seq, func, id, pool)` | `Object(Seq, Ptr, Object, Pool)`          | Unsafe interop: Reduce with custom thread pool         |
+| `For(start, end, func)`           | `Void(Integer, Integer, Function)`        | Parallel callback loop                                 |
+| `ForPool(start, end, func, pool)` | `Void(Integer, Integer, Function, Pool)`  | Parallel callback loop with custom pool                |
+| `Reduce(seq, func, identity)`     | `Object(Seq, Function, Object)`           | Reduce using a managed combine function                |
+| `ReducePool(seq, func, id, pool)` | `Object(Seq, Function, Object, Pool)`     | Reduce with custom thread pool                         |
 | `DefaultWorkers()`                | `Integer()`                               | Get number of CPU cores                               |
 | `DefaultPool()`                   | `Pool()`                                  | Get or create the shared default thread pool          |
 
 ### Zia Example
 
-> `Parallel` callback operations currently require native function pointers. Safe frontends reject these APIs unless compiled with `--unsafe-pointers`; use `Async.Run` or explicit `Thread.Start*` workers for managed function references.
+`Parallel` callback operations accept managed function references. The native worker callback pointer remains an implementation detail of the runtime.
 
 ### BASIC ForEach Example
 
 ```basic
-SUB ProcessItem(item AS PTR)
+SUB ProcessItem(item AS OBJECT)
     ' Process each item
     PRINT "Processing: "; item
 END SUB
@@ -1008,7 +1015,7 @@ pool.Shutdown()
 - **For range bounds:** `For(start, end, func)` traps if the half-open range is larger than `Integer` can represent.
 - **Task traps:** If a worker callback traps, the operation wakes its caller and rethrows the callback's trap message instead of hanging.
 - **Nested pool calls:** A `Parallel.*Pool` call made from a worker already running in the target pool executes inline to avoid self-deadlock.
-- **VM callback limit:** `Parallel` callback APIs require native callback pointers; VM code should use VM-aware `Thread.Start` or `Async.Run` until VM-backed `Parallel` callbacks are implemented.
+- **Callback bridge:** `Parallel` callback APIs take managed function references at the frontend boundary; native worker callbacks remain internal.
 
 ### Use Cases
 
@@ -1315,12 +1322,12 @@ Async task combinators for composing asynchronous results. Built on Future/Promi
 | `Delay(ms)`                       | `Future(Integer)`                  | Return a Future that resolves after `ms` milliseconds with NULL |
 | `All(futures)`                    | `Future(Seq)`                      | Return a Future that resolves when all input futures resolve (with a Seq of results) |
 | `Any(futures)`                    | `Future(Object)`                   | Return a Future that resolves with the value of whichever input future completes first |
-| `Run(callback, arg)`              | `Future(Ptr, Ptr)`                 | Spawn a bridged Zia function reference and return a Future |
-| `RunOwned(callback, arg)`         | `Future(Ptr, Object)`              | Unsafe interop/native variant that retains a runtime-managed argument |
-| `Map(future, mapper, arg)`        | `Future(Future, Ptr, Ptr)`         | Unsafe interop: chain a native mapper on a Future result |
-| `MapOwned(future, mapper, arg)`   | `Future(Future, Ptr, Object)`      | Unsafe interop/native variant that retains mapper argument |
-| `RunCancellable(callback, arg, token)` | `Future(Ptr, Ptr, CancelToken)` | Unsafe interop/native cancellable callback variant |
-| `RunCancellableOwned(callback, arg, token)` | `Future(Ptr, Object, CancelToken)` | Unsafe interop/native cancellable owned-arg variant |
+| `Run(callback, arg)`              | `Future(Function, Object)`         | Spawn a bridged function reference and return a Future |
+| `RunOwned(callback, arg)`         | `Future(Function, Object)`         | Retain a runtime-managed argument until the callback finishes |
+| `Map(future, mapper, arg)`        | `Future(Future, Function, Object)` | Chain a mapper on a Future result |
+| `MapOwned(future, mapper, arg)`   | `Future(Future, Function, Object)` | Retain mapper argument until the callback finishes |
+| `RunCancellable(callback, arg, token)` | `Future(Function, Object, CancelToken)` | Cancellable callback variant |
+| `RunCancellableOwned(callback, arg, token)` | `Future(Function, Object, CancelToken)` | Cancellable owned-arg variant |
 
 ### Notes
 
@@ -1329,13 +1336,12 @@ Async task combinators for composing asynchronous results. Built on Future/Promi
 - `All` returns a Future resolving to a Seq of results. If any input future has an error, the combined Future resolves with that error without waiting for the remaining inputs.
 - The Seq returned by `All` owns retained runtime-managed result values, so results remain valid after the source futures are released.
 - `Any` returns a Future resolving with the value of the first completed input future.
-- `Run` spawns a new thread to execute the callback and returns a Future that resolves with the callback's return value. Safe Zia may pass `&function` to `Run`; the frontend/runtime hide the function handle and raw argument pointer.
-- In unsafe/native interop, `Map` chains a transformation: when the input future resolves, `mapper` is called with the result and `arg`, producing a new Future.
-- In unsafe/native interop, `RunCancellable` is like `Run` but associates the spawned task with a `CancelToken` for cooperative cancellation.
+- `Run` spawns a new thread to execute the callback and returns a Future that resolves with the callback's return value. Zia may pass `&function`; BASIC may pass `ADDRESSOF Function`.
+- `Map` chains a transformation: when the input future resolves, `mapper` is called with the result and `arg`, producing a new Future.
+- `RunCancellable` is like `Run` but associates the spawned task with a `CancelToken` for cooperative cancellation.
 - Traps raised inside `Run`, `RunCancellable`, or `Map` callbacks are converted into Future errors.
-- In safe Zia, callback `arg` values passed to `Async.Run` are treated as managed values and retained for the worker lifetime. Raw pointer forwarding applies only to unsafe/native interop.
-- Use `RunOwned`, `MapOwned`, and `RunCancellableOwned` only from unsafe/native interop when the callback argument is a runtime-managed object or string handle that should be retained for the duration of the callback.
-- VM-backed `Async.Run` retains its managed argument for the worker lifetime; native callback use should still choose the `Owned` variants when passing runtime-managed callback arguments.
+- Callback `arg` values passed to `Async.Run` are treated as managed values and retained for the worker lifetime.
+- The `Owned` variants remain as explicit retaining forms for code that wants that contract visible at the call site.
 - Runtime-managed values returned from `Run`, `RunCancellable`, and `Map` are retained before being published through the returned Future, so borrowed argument/input values and shared runtime objects remain valid after the original owner is released.
 - If a callback wants to document ownership explicitly in custom promise/future flows, use `Promise.SetOwned`; it has the same retaining behavior as `Promise.Set`.
 

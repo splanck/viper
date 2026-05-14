@@ -1498,7 +1498,7 @@ class Sema {
     /// @brief Whether any errors have occurred.
     bool hasError_{false};
 
-    /// @brief Whether raw Ptr syntax and raw-pointer runtime APIs are enabled.
+    /// @brief Reserved compatibility flag; raw pointers are not source-visible.
     bool allowUnsafePointers_{false};
 
     /// @brief Current module being analyzed.

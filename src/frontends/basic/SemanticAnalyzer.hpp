@@ -176,7 +176,7 @@ class SemanticAnalyzer {
     /// @brief Active instance receiver class while analyzing an instance member.
     [[nodiscard]] std::optional<std::string> activeInstanceClassQName() const;
 
-    /// @brief Allow raw pointer runtime APIs during semantic analysis.
+    /// @brief Reserved compatibility hook; BASIC source no longer exposes raw pointers.
     void setAllowUnsafePointers(bool allow) noexcept {
         allowUnsafePointers_ = allow;
     }

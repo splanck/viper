@@ -16,10 +16,10 @@ final POOL_DEFAULT_WORKER_COUNT = 4;
 // ============================================================================
 
 // The connection queue - used as the monitor object
-var pool_queue: List[Ptr];
+var pool_queue: List[Viper.Network.Tcp];
 
 // Worker thread handles for cleanup
-var pool_workers: List[Ptr];
+var pool_workers: List[Viper.Threads.Thread];
 
 // Flag to signal shutdown
 var pool_running: Integer;
@@ -31,9 +31,9 @@ var pool_workerCount: Integer;
 // WORKER THREAD
 // ============================================================================
 
-func pool_workerLoop(arg: Ptr) {
+func pool_workerLoop(arg: Any) {
     while pool_running == 1 {
-        var conn: Ptr = null;
+        var conn: Viper.Network.Tcp = null;
 
         // Acquire the queue lock
         Threads.Monitor.Enter(pool_queue);
@@ -65,7 +65,7 @@ func pool_workerLoop(arg: Ptr) {
 }
 
 // Internal: call the handler - this will be called with the stored function pointer
-func pool_handleConnection(conn: Ptr) {
+func pool_handleConnection(conn: Viper.Network.Tcp) {
     // For now, we call handleClient directly since indirect calls through
     // stored function pointers require more lowerer work.
     // The handleClient function is defined in main.zia and merged via bind.
@@ -88,10 +88,10 @@ func pool_init(numWorkers: Integer) {
     }
 
     // Create the connection queue
-    pool_queue = new List[Ptr]();
+    pool_queue = new List[Viper.Network.Tcp]();
 
     // Create worker list
-    pool_workers = new List[Ptr]();
+    pool_workers = new List[Viper.Threads.Thread]();
 
     // Spawn worker threads
     var i = 0;
@@ -103,7 +103,7 @@ func pool_init(numWorkers: Integer) {
 }
 
 // Submit a connection to be handled by the pool
-func pool_submit(conn: Ptr) {
+func pool_submit(conn: Viper.Network.Tcp) {
     Threads.Monitor.Enter(pool_queue);
     pool_queue.add(conn);
     // Signal one waiting worker

@@ -52,14 +52,10 @@ TypeRef Sema::resolveNamedType(const std::string &name, SourceLoc useLoc) const 
     if (name == "Never" || name == "never")
         return types::never();
     if (name == "Ptr" || name == "ptr" || name == "Viper.Unsafe.Ptr") {
-        if (!allowUnsafePointers_) {
-            const_cast<Sema *>(this)->error(
-                useLoc,
-                "Raw Ptr is unsafe in ordinary Zia; use typed runtime classes, Any, or compile "
-                "with --unsafe-pointers for low-level interop");
-            return types::unknown();
-        }
-        return types::ptr();
+        const_cast<Sema *>(this)->error(
+            useLoc,
+            "Raw Ptr is not part of the Zia source surface; use typed runtime classes or Any");
+        return types::unknown();
     }
 
     // Built-in collection types (default element type is unknown for non-generic usage)

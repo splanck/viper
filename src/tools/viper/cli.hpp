@@ -49,7 +49,7 @@ struct SharedCliOptions {
     /// @brief Whether the bounds-check setting was explicitly supplied on the CLI.
     bool boundsChecksSpecified = false;
 
-    /// @brief Permit raw pointer syntax and unsafe runtime pointer APIs in Zia.
+    /// @brief Reserved compatibility flag; frontend source no longer exposes raw pointers.
     bool allowUnsafePointers = false;
 
     /// @brief Request formatted trap diagnostics on unhandled errors.

@@ -5,7 +5,7 @@ module TestListNew;
 func start() {
     Viper.Terminal.Say("=== List New Test ===");
 
-    var list: Ptr = Viper.Collections.List.New();
+    var list: Viper.Collections.List = Viper.Collections.List.New();
     Viper.Terminal.Say("Created list");
 
     Viper.Terminal.Say("RESULT: ok");

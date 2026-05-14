@@ -35,5 +35,6 @@ inline constexpr const char *kParseDouble = kCoreParseDouble;
 inline constexpr const char *kParseInt64 = kCoreParseInt64;
 inline constexpr const char *kParseDoubleCStr = "rt_parse_double";
 inline constexpr const char *kParseInt64CStr = "rt_parse_int64";
+inline constexpr const char *kStringSplitFieldsRaw = "rt_str_split_fields";
 
 } // namespace il::frontends::basic::runtime

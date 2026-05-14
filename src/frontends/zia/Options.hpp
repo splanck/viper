@@ -50,10 +50,9 @@ struct CompilerOptions {
     /// @brief Enable null checks for optional access.
     bool nullChecks{true};
 
-    /// @brief Permit explicit raw pointer surface in Zia source.
-    /// @details Safe Zia keeps Viper runtime pointers behind typed classes,
-    ///          managed objects, and function references. This option is an
-    ///          audited escape hatch for low-level interop and legacy tests.
+    /// @brief Reserved compatibility flag; Zia source no longer exposes raw pointers.
+    /// @details Runtime pointers stay behind typed classes, managed objects, and
+    ///          function references.
     bool allowUnsafePointers{false};
 
     /// @brief Dump the raw token stream from the lexer.

@@ -27,7 +27,6 @@ inline void printSharedOptions(std::ostream &os) {
        << "  --trace[=il|src]               Enable execution tracing\n"
        << "  --bounds-checks                Enable array bounds checking (default for source)\n"
        << "  --no-bounds-checks             Disable generated source bounds checks\n"
-       << "  --unsafe-pointers              Permit raw Ptr syntax and unsafe runtime pointer APIs\n"
        << "  --stdin-from FILE              Redirect stdin from file\n"
        << "  --max-steps N                  Limit execution steps\n"
        << "  --dump-trap                    Show detailed trap diagnostics\n"

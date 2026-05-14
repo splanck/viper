@@ -562,8 +562,9 @@ void IoStatementLowerer::lowerInput(const InputStmt &stmt) {
     Value fields = lowerer_.emitAlloca(static_cast<int>(fieldCount * 8));
     // Split the input line into fields using the rt_* helper
     lowerer_.requestHelper(il::runtime::RuntimeFeature::SplitFields);
-    lowerer_.emitCallRet(
-        IlType(IlType::Kind::I64), kStringSplitFields, {line, fields, Value::constInt(fieldCount)});
+    lowerer_.emitCallRet(IlType(IlType::Kind::I64),
+                         il::frontends::basic::runtime::kStringSplitFieldsRaw,
+                         {line, fields, Value::constInt(fieldCount)});
     lowerer_.requireStrReleaseMaybe();
     lowerer_.emitCall("rt_str_release_maybe", {line});
 
@@ -605,7 +606,7 @@ void IoStatementLowerer::lowerInputCh(const InputChStmt &stmt) {
     Value fieldsMem = lowerer_.emitAlloca(static_cast<int>(fieldCount * 8));
     lowerer_.emitStore(IlType(IlType::Kind::Ptr), fieldsMem, Value::null());
     lowerer_.emitCallRet(IlType(IlType::Kind::I64),
-                         kStringSplitFields,
+                         il::frontends::basic::runtime::kStringSplitFieldsRaw,
                          {line, fieldsMem, Value::constInt(fieldCount)});
     lowerer_.requireStrReleaseMaybe();
     lowerer_.emitCall("rt_str_release_maybe", {line});

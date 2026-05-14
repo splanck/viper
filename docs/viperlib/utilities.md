@@ -291,35 +291,33 @@ graceful error handling.
 
 | Method                           | Signature                           | Description                               |
 |----------------------------------|-------------------------------------|-------------------------------------------|
-| `TryInt(text, outPtr)`           | `Boolean(String, Ptr)`              | Unsafe interop: parse integer into `outPtr` |
-| `TryNum(text, outPtr)`           | `Boolean(String, Ptr)`              | Unsafe interop: parse double into `outPtr`  |
-| `TryBool(text, outPtr)`          | `Boolean(String, Ptr)`              | Unsafe interop: parse boolean into `outPtr` |
+| `TryInt(text)`                   | `Option<Integer>(String)`           | Parse integer or return `None`       |
+| `TryNum(text)`                   | `Option<Double>(String)`            | Parse double or return `None`        |
+| `TryBool(text)`                  | `Option<Boolean>(String)`           | Parse boolean or return `None`       |
 | `IntOr(text, default)`           | `Integer(String, Integer)`          | Parse integer or return default           |
 | `NumOr(text, default)`           | `Double(String, Double)`            | Parse double or return default            |
 | `BoolOr(text, default)`          | `Boolean(String, Boolean)`          | Parse boolean or return default           |
 | `IsInt(text)`                    | `Boolean(String)`                   | Check if string is a valid integer        |
 | `IsNum(text)`                    | `Boolean(String)`                   | Check if string is a valid number         |
 | `IntRadix(text, radix, default)` | `Integer(String, Integer, Integer)` | Parse integer in given radix with default |
-| `Int64(cstr, outPtr)`            | `Int32(Ptr, Ptr)`                   | Unsafe interop: low-level C-string parser with error code |
-| `Double(cstr, outPtr)`           | `Int32(Ptr, Ptr)`                   | Unsafe interop: low-level C-string parser with error code |
+| `Int64(text)`                    | `Option<Integer>(String)`           | Parse integer or return `None`       |
+| `Double(text)`                   | `Option<Double>(String)`            | Parse double or return `None`        |
 
 ### Notes
 
-- The `Try*` and low-level C-string parser forms expose raw output pointers.
-  Safe frontends reject them unless compiled with `--unsafe-pointers`; use
-  `IntOr`, `NumOr`, `BoolOr`, or the `Viper.Core.Parse.*Option` APIs instead.
+- The `Try*`, `Int64`, and `Double` parser forms return managed `Option`
+  objects. Raw output-pointer helpers are runtime-internal and are not part of
+  the Zia or BASIC source surface.
 - **Boolean parsing** accepts (case-insensitive):
     - True: `"true"`, `"yes"`, `"1"`, `"on"`
     - False: `"false"`, `"no"`, `"0"`, `"off"`
 - `IsInt` and `IsNum` accept optional leading `+` or `-`
-- `TryInt`, `TryNum`, and `TryBool` require an output pointer; frontends without pointer/out parameters should use
-  `IntOr`, `NumOr`, `BoolOr`, `IsInt`, or `IsNum` instead.
-- Null input is treated as parse failure: `Try*` returns false, `Is*` returns false, and `*Or`/`IntRadix` returns the supplied default.
+- Null input is treated as parse failure: `Try*` returns `None`, `Is*` returns false, and `*Or`/`IntRadix` returns the supplied default.
 - `IntRadix` supports radix 2-36 (digits 0-9, letters a-z). Radix 10 accepts a leading `-`; other radices parse unsigned 64-bit bit patterns so `Viper.Fmt.Hex(-1)` and `Viper.Fmt.Bin(-1)` round-trip to `-1`. Prefixes such as `0x` and leading `+` are rejected.
 - Leading/trailing whitespace is trimmed before parsing
 - Numeric parsing is locale-independent, uses `.` as the decimal separator, and accepts only decimal float syntax. C-style hexadecimal floats such as `0x1p4` are rejected.
 - Embedded NUL bytes are rejected, even when the bytes before the NUL form a valid value.
-- Low-level `Int64(cstr, outPtr)` and `Double(cstr, outPtr)` clear the output slot to `0` or `0.0` before returning any failure code.
+- Internal C helpers still clear their output slots before returning failure, but frontend code should use the managed `Option` APIs.
 
 ### Zia Example
 

@@ -263,7 +263,7 @@ func echoCommand(cmd: String) -> String {
 // CLIENT SESSION HANDLING (Functional API style)
 // ============================================================================
 
-func handleClient(client: Ptr) {
+func handleClient(client: Viper.Network.Tcp) {
     // Initialize session
     initSession();
 
