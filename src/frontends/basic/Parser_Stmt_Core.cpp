@@ -375,29 +375,13 @@ StmtPtr Parser::parseConstStatement() {
     auto loc = peek().loc;
     consume(); // CONST keyword
 
-    auto isSoftIdent = [&](TokenKind k) {
-        if (k == TokenKind::Identifier)
-            return true;
-        switch (k) {
-            case TokenKind::KeywordColor:
-            case TokenKind::KeywordFloor:
-            case TokenKind::KeywordRandom:
-            case TokenKind::KeywordCos:
-            case TokenKind::KeywordSin:
-            case TokenKind::KeywordPow:
-                return true;
-            default:
-                return false;
-        }
-    };
-
-    if (!isSoftIdent(peek().kind)) {
+    if (!isSoftIdentToken(peek().kind)) {
         emitError("B0001", peek(), "expected identifier after CONST");
         resyncAfterError();
         return std::make_unique<LetStmt>(); // Return dummy statement
     }
 
-    auto identTok = consume();
+    auto identTok = expectSoftIdentifier();
     std::string name = identTok.lexeme;
 
     Type type = typeFromSuffix(name);
@@ -521,27 +505,8 @@ std::vector<Param> Parser::parseParamList() {
             // BYVAL is the default, just consume and continue
         }
 
-        auto isSoftIdent = [&](TokenKind k) {
-            if (k == TokenKind::Identifier)
-                return true;
-            switch (k) {
-                case TokenKind::KeywordColor:
-                case TokenKind::KeywordFloor:
-                case TokenKind::KeywordRandom:
-                case TokenKind::KeywordCos:
-                case TokenKind::KeywordSin:
-                case TokenKind::KeywordPow:
-                    return true;
-                default:
-                    return false;
-            }
-        };
-
         Token id;
-        if (isSoftIdent(peek().kind))
-            id = consume();
-        else
-            id = expect(TokenKind::Identifier);
+        id = expectSoftIdentifier();
         Param p;
         p.loc = id.loc;
         p.name = id.lexeme;

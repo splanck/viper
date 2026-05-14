@@ -110,14 +110,14 @@ StmtPtr Parser::parseForStatement() {
         stmt->loc = loc;
 
         // Parse element variable name
-        Token elemTok = expect(TokenKind::Identifier);
+        Token elemTok = expectSoftIdentifier();
         stmt->elementVar = elemTok.lexeme;
 
         // Expect IN keyword
         expect(TokenKind::KeywordIn);
 
         // Parse array name
-        Token arrayTok = expect(TokenKind::Identifier);
+        Token arrayTok = expectSoftIdentifier();
         stmt->arrayName = arrayTok.lexeme;
 
         // Collect body until NEXT
@@ -125,7 +125,7 @@ StmtPtr Parser::parseForStatement() {
         ctxFor.collectStatements(TokenKind::KeywordNext, stmt->body);
 
         // Optionally consume variable name after NEXT
-        if (at(TokenKind::Identifier)) {
+        if (isSoftIdentToken(peek().kind)) {
             consume();
         }
         return stmt;
@@ -143,7 +143,12 @@ StmtPtr Parser::parseForStatement() {
     while (at(TokenKind::Dot) || at(TokenKind::LParen)) {
         if (at(TokenKind::Dot)) {
             consume(); // .
-            Token memberTok = expect(TokenKind::Identifier);
+            Token memberTok = peek();
+            if (isMemberIdentToken(memberTok.kind)) {
+                consume();
+            } else {
+                memberTok = expect(TokenKind::Identifier);
+            }
             auto access = std::make_unique<MemberAccessExpr>();
             access->loc = memberTok.loc;
             access->base = std::move(stmt->varExpr);
@@ -173,7 +178,7 @@ StmtPtr Parser::parseForStatement() {
     }
     auto ctxFor = statementSequencer();
     ctxFor.collectStatements(TokenKind::KeywordNext, stmt->body);
-    if (at(TokenKind::Identifier)) {
+    if (isSoftIdentToken(peek().kind)) {
         consume();
     }
     return stmt;
@@ -190,7 +195,7 @@ StmtPtr Parser::parseNextStatement() {
     auto loc = peek().loc;
     consume(); // NEXT
     std::string name;
-    if (at(TokenKind::Identifier)) {
+    if (isSoftIdentToken(peek().kind)) {
         name = peek().lexeme;
         consume();
     }

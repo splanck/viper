@@ -97,6 +97,30 @@ Token Parser::expect(TokenKind k) {
     return consume();
 }
 
+/// @brief Consume a token that may stand in for an identifier in contextual positions.
+/// @details BASIC reserves a handful of keywords only in statement/operator
+///          positions.  In declaration and lvalue contexts those tokens remain
+///          valid names, so callers use this helper instead of duplicating the
+///          soft-keyword list.
+/// @return The consumed identifier-like token, or the offending token after
+///         emitting an expected-identifier diagnostic.
+Token Parser::expectSoftIdentifier() {
+    if (!isSoftIdentToken(peek().kind)) {
+        Token t = peek();
+        if (emitter_) {
+            emitter_->emitExpected(t.kind, TokenKind::Identifier, t.loc);
+        } else {
+            std::fprintf(stderr,
+                         "expected %s, got %s\n",
+                         tokenKindToString(TokenKind::Identifier),
+                         tokenKindToString(t.kind));
+        }
+        syncToStmtBoundary();
+        return t;
+    }
+    return consume();
+}
+
 /// @brief Discard buffered tokens until a statement boundary is found.
 /// @details Used during error recovery, the method consumes tokens until it
 ///          encounters an end-of-line, colon, or end-of-file token.  It avoids

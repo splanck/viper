@@ -153,7 +153,7 @@ StmtPtr Parser::parseDimStatement() {
         } else if (isSoftIdentToken(peek().kind)) {
             nameTok = consume();
         } else {
-            nameTok = expect(TokenKind::Identifier);
+            nameTok = expectSoftIdentifier();
         }
 
         auto node = std::make_unique<DimStmt>();
@@ -317,7 +317,7 @@ StmtPtr Parser::parseStaticStatement() {
     auto loc = peek().loc;
     consume(); // STATIC
 
-    Token nameTok = expect(TokenKind::Identifier);
+    Token nameTok = expectSoftIdentifier();
 
     auto node = std::make_unique<StaticStmt>();
     node->loc = loc;
@@ -343,11 +343,11 @@ StmtPtr Parser::parseSharedStatement() {
     auto node = std::make_unique<SharedStmt>();
     node->loc = loc;
     // At least one identifier
-    Token nameTok = expect(TokenKind::Identifier);
+    Token nameTok = expectSoftIdentifier();
     node->names.push_back(nameTok.lexeme);
     while (at(TokenKind::Comma)) {
         consume();
-        Token more = expect(TokenKind::Identifier);
+        Token more = expectSoftIdentifier();
         node->names.push_back(more.lexeme);
     }
     return node;
@@ -363,7 +363,7 @@ StmtPtr Parser::parseReDimStatement() {
     // Optionally consume PRESERVE keyword (REDIM already preserves by default)
     if (peek().kind == TokenKind::KeywordPreserve)
         consume();
-    Token nameTok = expect(TokenKind::Identifier);
+    Token nameTok = expectSoftIdentifier();
     expect(TokenKind::LParen);
     auto size = parseExpression();
     expect(TokenKind::RParen);

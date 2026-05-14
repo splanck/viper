@@ -110,6 +110,12 @@ if (NOT TARGET test_basic_parse_array_single_index)
     viper_add_ctest(test_basic_parse_array_single_index test_basic_parse_array_single_index)
 endif ()
 
+if (NOT TARGET test_basic_soft_identifier_contexts)
+    viper_add_test(test_basic_soft_identifier_contexts ${VIPER_TESTS_DIR}/unit/test_basic_soft_identifier_contexts.cpp)
+    target_link_libraries(test_basic_soft_identifier_contexts PRIVATE fe_basic)
+    viper_add_ctest(test_basic_soft_identifier_contexts test_basic_soft_identifier_contexts)
+endif ()
+
 # Builtins ARGC/ARG$/COMMAND$ lowering test
 if (NOT TARGET test_basic_builtins_args_cmd)
     viper_add_test(test_basic_builtins_args_cmd ${VIPER_TESTS_DIR}/unit/test_basic_builtins_args_cmd.cpp)
