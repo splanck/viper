@@ -366,6 +366,51 @@ inline bool isIdentifierContinue(char c) {
     return isLetter(c) || isDigit(c) || c == '_';
 }
 
+inline bool isNumericSeparator(char c) {
+    return c == '_';
+}
+
+bool validateNumericSeparators(std::string_view text, size_t start = 0) {
+    for (size_t i = start; i < text.size(); ++i) {
+        if (text[i] != '_')
+            continue;
+        if (i == start || i + 1 >= text.size())
+            return false;
+        if (!isDigit(text[i - 1]) || !isDigit(text[i + 1]))
+            return false;
+    }
+    return true;
+}
+
+std::string removeNumericSeparators(std::string_view text, size_t start = 0) {
+    std::string result;
+    result.reserve(text.size() - start);
+    for (size_t i = start; i < text.size(); ++i) {
+        if (text[i] != '_')
+            result.push_back(text[i]);
+    }
+    return result;
+}
+
+bool validateBasedIntegerSeparators(std::string_view text,
+                                    size_t digitStart,
+                                    bool (*isDigitForBase)(char)) {
+    bool previousWasDigit = false;
+    for (size_t i = digitStart; i < text.size(); ++i) {
+        char c = text[i];
+        if (isDigitForBase(c)) {
+            previousWasDigit = true;
+            continue;
+        }
+        if (c != '_' || !previousWasDigit || i + 1 >= text.size() ||
+            !isDigitForBase(text[i + 1])) {
+            return false;
+        }
+        previousWasDigit = false;
+    }
+    return previousWasDigit;
+}
+
 std::string classifyLexError(const std::string &message) {
     if (message.find("unterminated block comment") != std::string::npos)
         return "V-ZIA-LEX-UNTERMINATED-COMMENT";
@@ -542,6 +587,12 @@ Token Lexer::lexIdentifierOrKeyword() {
     return tok;
 }
 
+void Lexer::consumeMalformedBasedLiteralTail(Token &tok) {
+    while (!eof() && isIdentifierContinue(peekChar())) {
+        tok.text.push_back(getChar());
+    }
+}
+
 Token Lexer::lexNumber() {
     Token tok;
     tok.loc = currentLoc();
@@ -556,17 +607,26 @@ Token Lexer::lexNumber() {
             tok.text.push_back(getChar()); // 'x'
 
             if (!isHexDigit(peekChar())) {
+                consumeMalformedBasedLiteralTail(tok);
                 reportError(tok.loc, "invalid hex literal: expected hex digits after 0x");
                 tok.kind = TokenKind::Error;
                 return tok;
             }
 
-            while (!eof() && isHexDigit(peekChar())) {
+            while (!eof() && (isHexDigit(peekChar()) || isNumericSeparator(peekChar()))) {
                 tok.text.push_back(getChar());
             }
 
+            if (!validateBasedIntegerSeparators(
+                    tok.text, 2, [](char ch) { return isHexDigit(ch); })) {
+                reportError(tok.loc, "invalid hex literal: '_' must separate digits");
+                tok.kind = TokenKind::Error;
+                return tok;
+            }
+
             // Parse hex value
-            std::string_view hexDigits(tok.text.data() + 2, tok.text.size() - 2);
+            std::string normalized = removeNumericSeparators(tok.text, 2);
+            std::string_view hexDigits(normalized);
             auto parsed = common::number_parsing::parseHexLiteral(hexDigits);
             if (!parsed.valid) {
                 if (parsed.overflow)
@@ -584,24 +644,34 @@ Token Lexer::lexNumber() {
             tok.text.push_back(getChar()); // 'b'
 
             if (peekChar() != '0' && peekChar() != '1') {
+                consumeMalformedBasedLiteralTail(tok);
                 reportError(tok.loc, "invalid binary literal: expected binary digits after 0b");
                 tok.kind = TokenKind::Error;
                 return tok;
             }
 
-            while (!eof() && (peekChar() == '0' || peekChar() == '1')) {
+            while (!eof() &&
+                   (peekChar() == '0' || peekChar() == '1' || isNumericSeparator(peekChar()))) {
                 tok.text.push_back(getChar());
+            }
+
+            if (!validateBasedIntegerSeparators(
+                    tok.text, 2, [](char ch) { return ch == '0' || ch == '1'; })) {
+                reportError(tok.loc, "invalid binary literal: '_' must separate digits");
+                tok.kind = TokenKind::Error;
+                return tok;
             }
 
             // Parse binary value
             uint64_t value = 0;
-            for (size_t i = 2; i < tok.text.size(); ++i) {
+            std::string binaryDigits = removeNumericSeparators(tok.text, 2);
+            for (char digit : binaryDigits) {
                 if (value > (UINT64_MAX >> 1)) {
                     reportError(tok.loc, "binary literal out of range");
                     tok.kind = TokenKind::Error;
                     return tok;
                 }
-                value = (value << 1) | static_cast<uint64_t>(tok.text[i] - '0');
+                value = (value << 1) | static_cast<uint64_t>(digit - '0');
             }
             tok.intValue = static_cast<int64_t>(value);
             return tok;
@@ -609,7 +679,7 @@ Token Lexer::lexNumber() {
     }
 
     // Decimal number
-    while (!eof() && isDigit(peekChar())) {
+    while (!eof() && (isDigit(peekChar()) || isNumericSeparator(peekChar()))) {
         tok.text.push_back(getChar());
     }
 
@@ -619,7 +689,7 @@ Token Lexer::lexNumber() {
         tok.text.push_back(getChar()); // consume '.'
 
         // Consume fractional part
-        while (!eof() && isDigit(peekChar())) {
+        while (!eof() && (isDigit(peekChar()) || isNumericSeparator(peekChar()))) {
             tok.text.push_back(getChar());
         }
     }
@@ -643,13 +713,20 @@ Token Lexer::lexNumber() {
             return tok;
         }
 
-        while (!eof() && isDigit(peekChar())) {
+        while (!eof() && (isDigit(peekChar()) || isNumericSeparator(peekChar()))) {
             tok.text.push_back(getChar());
         }
     }
 
+    if (!validateNumericSeparators(tok.text)) {
+        reportError(tok.loc, "invalid numeric literal: '_' must separate digits");
+        tok.kind = TokenKind::Error;
+        return tok;
+    }
+
     // Parse the value
-    auto parsed = common::number_parsing::parseDecimalLiteral(tok.text);
+    std::string normalized = removeNumericSeparators(tok.text);
+    auto parsed = common::number_parsing::parseDecimalLiteral(normalized);
     if (!parsed.valid) {
         if (parsed.overflow)
             reportError(tok.loc, "numeric literal out of range");
@@ -673,6 +750,72 @@ Token Lexer::lexNumber() {
 // by the templated processHexEscape and processUnicodeEscape utilities.
 // The namespace alias below keeps call sites concise.
 namespace esc = common::escape_sequences;
+
+bool Lexer::lexStringEscape(Token &tok) {
+    tok.text.push_back(getChar()); // consume '\'
+    if (eof()) {
+        reportError(tok.loc, "unterminated escape sequence");
+        tok.kind = TokenKind::Error;
+        return false;
+    }
+
+    char escaped = peekChar();
+    tok.text.push_back(getChar()); // consume the escape character
+
+    // Handle unicode escape \uXXXX
+    if (escaped == 'u') {
+        char digits[4];
+        bool valid = true;
+        for (int i = 0; i < 4 && valid; ++i) {
+            if (eof() || !isHexDigit(peekChar())) {
+                valid = false;
+            } else {
+                digits[i] = getChar();
+                tok.text.push_back(digits[i]);
+            }
+        }
+        if (valid) {
+            if (auto utf8 = esc::processUnicodeEscape(digits)) {
+                for (char ch : *utf8)
+                    tok.stringValue.push_back(ch);
+            } else {
+                reportError(tok.loc, "invalid unicode escape sequence: expected \\uXXXX");
+            }
+        } else {
+            reportError(tok.loc, "invalid unicode escape sequence: expected \\uXXXX");
+        }
+        return true;
+    }
+
+    // Handle hex escape \xXX
+    if (escaped == 'x') {
+        if (!eof() && isHexDigit(peekChar())) {
+            char high = getChar();
+            tok.text.push_back(high);
+            if (!eof() && isHexDigit(peekChar())) {
+                char low = getChar();
+                tok.text.push_back(low);
+                if (auto hexChar = esc::processHexEscape(high, low)) {
+                    tok.stringValue.push_back(*hexChar);
+                } else {
+                    reportError(tok.loc, "invalid hex escape sequence: expected \\xXX");
+                }
+            } else {
+                reportError(tok.loc, "invalid hex escape sequence: expected \\xXX");
+            }
+        } else {
+            reportError(tok.loc, "invalid hex escape sequence: expected \\xXX");
+        }
+        return true;
+    }
+
+    if (auto escaped_ch = esc::processEscape(escaped)) {
+        tok.stringValue.push_back(*escaped_ch);
+    } else {
+        reportError(tok.loc, std::string("invalid escape sequence: \\") + escaped);
+    }
+    return true;
+}
 
 Token Lexer::lexString() {
     Token tok;
@@ -735,67 +878,8 @@ Token Lexer::lexString() {
 
         // Check for escape sequence
         if (c == '\\') {
-            tok.text.push_back(getChar()); // consume '\'
-            if (eof()) {
-                reportError(tok.loc, "unterminated escape sequence");
-                tok.kind = TokenKind::Error;
+            if (!lexStringEscape(tok))
                 return tok;
-            }
-            char escaped = peekChar();
-            tok.text.push_back(getChar()); // consume the escape character
-
-            // Handle unicode escape \uXXXX
-            if (escaped == 'u') {
-                // Read 4 hex digits, then delegate to common utility
-                char digits[4];
-                bool valid = true;
-                for (int i = 0; i < 4 && valid; ++i) {
-                    if (eof() || !isHexDigit(peekChar())) {
-                        valid = false;
-                    } else {
-                        digits[i] = getChar();
-                    }
-                }
-                if (valid) {
-                    if (auto utf8 = esc::processUnicodeEscape(digits)) {
-                        for (char ch : *utf8)
-                            tok.stringValue.push_back(ch);
-                    } else {
-                        reportError(tok.loc, "invalid unicode escape sequence: expected \\uXXXX");
-                    }
-                } else {
-                    reportError(tok.loc, "invalid unicode escape sequence: expected \\uXXXX");
-                }
-                continue;
-            }
-
-            // Handle hex escape \xXX
-            if (escaped == 'x') {
-                // Read 2 hex digits, then delegate to common utility
-                if (!eof() && isHexDigit(peekChar())) {
-                    char high = getChar();
-                    if (!eof() && isHexDigit(peekChar())) {
-                        char low = getChar();
-                        if (auto hexChar = esc::processHexEscape(high, low)) {
-                            tok.stringValue.push_back(*hexChar);
-                        } else {
-                            reportError(tok.loc, "invalid hex escape sequence: expected \\xXX");
-                        }
-                    } else {
-                        reportError(tok.loc, "invalid hex escape sequence: expected \\xXX");
-                    }
-                } else {
-                    reportError(tok.loc, "invalid hex escape sequence: expected \\xXX");
-                }
-                continue;
-            }
-
-            // Handle simple escape sequences
-            if (auto escaped_ch = esc::processEscape(escaped)) {
-                tok.stringValue.push_back(*escaped_ch);
-            } else {
-                reportError(tok.loc, std::string("invalid escape sequence: \\") + escaped);
-            }
             continue;
         }
 
@@ -852,20 +936,10 @@ Token Lexer::lexInterpolatedStringContinuation() {
 
         // Check for escape sequence
         if (c == '\\') {
-            tok.text.push_back(getChar()); // consume '\'
-            if (eof()) {
-                reportError(tok.loc, "unterminated escape sequence");
+            if (!lexStringEscape(tok)) {
                 interpolationDepth_ = 0;
                 braceDepth_.clear();
-                tok.kind = TokenKind::Error;
                 return tok;
-            }
-            char escaped = peekChar();
-            tok.text.push_back(getChar()); // consume the escape character
-            if (auto escaped_ch = esc::processEscape(escaped)) {
-                tok.stringValue.push_back(*escaped_ch);
-            } else {
-                reportError(tok.loc, std::string("invalid escape sequence: \\") + escaped);
             }
             continue;
         }

@@ -108,17 +108,24 @@ identifier  ::= [a-zA-Z_][a-zA-Z0-9_]*
 
 ```viper
 42          // Decimal
+1_000_000   // Decimal with digit separators
 0xFF        // Hexadecimal
+0xDEAD_BEEF // Hexadecimal with digit separators
 0b1010      // Binary
+0b1010_0101 // Binary with digit separators
 ```
 
 #### Floating-Point Literals
 
 ```viper
 3.14159     // Decimal
+1_024.5     // Decimal with digit separators
 1e10        // Scientific notation
 2.5e-3      // Scientific with negative exponent
+1.0e+1_0    // Digit separators in exponent digits
 ```
+
+Digit separators (`_`) are allowed only between digits.
 
 #### String Literals
 

@@ -18,6 +18,25 @@
 
 namespace il::frontends::zia {
 
+namespace {
+
+bool integerLiteralFitsByte(Expr *expr) {
+    auto *lit = dynamic_cast<IntLiteralExpr *>(expr);
+    return lit && lit->value >= 0 && lit->value <= 255;
+}
+
+TypeRef contextualizeIntegerLiteralForDeclaredType(TypeRef declaredType,
+                                                   TypeRef initType,
+                                                   Expr *initializer) {
+    if (declaredType && initType && declaredType->kind == TypeKindSem::Byte &&
+        initType->kind == TypeKindSem::Integer && integerLiteralFitsByte(initializer)) {
+        return types::byte();
+    }
+    return initType;
+}
+
+} // namespace
+
 //=============================================================================
 // Declaration Analysis
 //=============================================================================
@@ -391,13 +410,41 @@ void Sema::analyzeGlobalVarDecl(GlobalVarDecl &decl) {
     // Analyze initializer if present
     if (decl.initializer) {
         TypeRef initType = analyzeExpr(decl.initializer.get());
+        if (initType && initType->kind == TypeKindSem::Unit) {
+            error(decl.initializer->loc,
+                  "Unit literal cannot be stored; use null for optional values or omit the value "
+                  "in a void context");
+            initType = types::unknown();
+        }
 
         // If type was inferred, update the symbol
-        Symbol *sym = lookupSymbol(decl.name);
+        Symbol *sym = lookupSymbol(qualifyName(decl.name));
+        if (!sym)
+            sym = lookupSymbol(decl.name);
+        if (sym && sym->type->isUnknown() && decl.initializer->kind == ExprKind::NullLiteral &&
+            initType && initType->kind == TypeKindSem::Optional && initType->innerType() &&
+            initType->innerType()->kind == TypeKindSem::Unknown) {
+            error(decl.loc,
+                  "Cannot infer type from null initializer; add an explicit type annotation "
+                  "such as 'String?', 'MyType', or 'GUI.Font'");
+            return;
+        }
         if (sym && sym->type->isUnknown()) {
             sym->type = initType;
-        } else if (sym && !sym->type->isAssignableFrom(*initType)) {
-            errorTypeMismatch(decl.initializer->loc, sym->type, initType);
+        } else if (sym) {
+            initType = contextualizeIntegerLiteralForDeclaredType(
+                sym->type, initType, decl.initializer.get());
+            if (!sym->type->isAssignableFrom(*initType))
+                errorTypeMismatch(decl.initializer->loc, sym->type, initType);
+        }
+    } else {
+        Symbol *sym = lookupSymbol(qualifyName(decl.name));
+        if (!sym)
+            sym = lookupSymbol(decl.name);
+        if (decl.isFinal) {
+            error(decl.loc, "'final' declarations require an initializer");
+        } else if (sym && sym->type->isUnknown()) {
+            error(decl.loc, "Cannot infer type without initializer");
         }
     }
 }
@@ -507,7 +554,8 @@ template <typename T> void Sema::registerTypeMembers(T &decl, bool includeFields
         for (auto &member : decl.members) {
             if (member->kind == DeclKind::Field) {
                 auto *field = static_cast<FieldDecl *>(member.get());
-                if (!seenFields.insert(field->name).second) {
+                if (!seenFields.insert(field->name).second ||
+                    seenProperties.contains(field->name)) {
                     error(field->loc,
                           "Duplicate definition of '" + field->name + "' in type '" + decl.name +
                               "'");
@@ -780,8 +828,9 @@ void Sema::analyzeInterfaceDecl(InterfaceDecl &decl) {
 /// @brief Analyze an enum declaration: validate variants and register them.
 /// @param decl The enum declaration to analyze.
 void Sema::analyzeEnumDecl(EnumDecl &decl) {
-    auto enumT = types::enumType(decl.name);
-    enumDecls_[decl.name] = &decl;
+    std::string enumName = qualifyName(decl.name);
+    auto enumT = types::enumType(enumName);
+    enumDecls_[enumName] = &decl;
 
     // Validate variants and resolve values
     std::unordered_set<std::string> seenNames;
@@ -803,9 +852,18 @@ void Sema::analyzeEnumDecl(EnumDecl &decl) {
         }
 
         // Register the variant as a field-like entry: EnumName.VariantName -> EnumType
-        std::string key = decl.name + "." + variant.name;
+        std::string key = enumName + "." + variant.name;
         fieldTypes_[key] = enumT;
 
+        if (&variant == &decl.variants.back())
+            continue;
+
+        if (nextValue == INT64_MAX) {
+            error(variant.loc,
+                  "Enum '" + decl.name +
+                      "' auto-increment would exceed the maximum Integer value");
+            continue;
+        }
         ++nextValue;
     }
 }
@@ -901,6 +959,14 @@ void Sema::analyzeFieldDecl(FieldDecl &decl, TypeRef ownerType) {
     // Check initializer type
     if (decl.initializer) {
         TypeRef initType = analyzeExpr(decl.initializer.get());
+        if (initType && initType->kind == TypeKindSem::Unit) {
+            error(decl.initializer->loc,
+                  "Unit literal cannot be stored; use null for optional values or omit the value "
+                  "in a void context");
+            initType = types::unknown();
+        }
+        initType = contextualizeIntegerLiteralForDeclaredType(
+            fieldType, initType, decl.initializer.get());
         if (!fieldType->isAssignableFrom(*initType)) {
             errorTypeMismatch(decl.initializer->loc, fieldType, initType);
         }

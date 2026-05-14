@@ -2825,6 +2825,249 @@ func start() {
     EXPECT_TRUE(findFunction(result.module, "check") != nullptr);
 }
 
+TEST(ZiaBugFixes, FixedArraySizesUseParsedIntegerLiteralValues) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+class Buffer {
+    expose Integer[0x1_0] values;
+
+    expose func init() {
+        values[15] = 7;
+    }
+
+    expose func last() -> Integer {
+        return values[0b1111];
+    }
+}
+
+func start() {
+    var b = new Buffer();
+    b.init();
+    Viper.Terminal.SayInt(b.last());
+}
+)";
+    CompilerInput input{.source = source, .path = "fixed_array_parsed_literal_sizes.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *initFn = findFunction(result.module, "Buffer.init");
+    const auto *lastFn = findFunction(result.module, "Buffer.last");
+    ASSERT_TRUE(initFn != nullptr);
+    ASSERT_TRUE(lastFn != nullptr);
+    EXPECT_GE(countOpcode(*initFn, il::core::Opcode::IdxChk), static_cast<size_t>(1));
+    EXPECT_GE(countOpcode(*lastFn, il::core::Opcode::IdxChk), static_cast<size_t>(1));
+}
+
+TEST(ZiaBugFixes, EnumExplicitInt64MinAndAutoIncrementOverflow) {
+    CompilerOptions opts{};
+
+    SourceManager sm;
+    const std::string minSource = R"(
+module Test;
+
+enum Code {
+    Min = -9223372036854775808,
+    Next
+}
+
+func start() {
+    var x: Integer = Code.Min;
+    Viper.Terminal.SayInt(x);
+}
+)";
+    CompilerInput minInput{.source = minSource, .path = "enum_int64_min.zia"};
+    auto minResult = compile(minInput, opts, sm);
+    ASSERT_TRUE(minResult.succeeded());
+
+    bool foundMin = false;
+    for (const auto &fn : minResult.module.functions) {
+        for (const auto &bb : fn.blocks) {
+            for (const auto &instr : bb.instructions) {
+                for (const auto &op : instr.operands) {
+                    if (op.kind == il::core::Value::Kind::ConstInt && op.i64 == INT64_MIN)
+                        foundMin = true;
+                }
+            }
+        }
+    }
+    EXPECT_TRUE(foundMin);
+
+    SourceManager sm2;
+    const std::string overflowSource = R"(
+module Test;
+
+enum Bad {
+    Last = 9223372036854775807,
+    Wrap
+}
+
+func start() {}
+)";
+    CompilerInput overflowInput{.source = overflowSource, .path = "enum_auto_overflow.zia"};
+    auto overflowResult = compile(overflowInput, opts, sm2);
+    EXPECT_FALSE(overflowResult.succeeded());
+    EXPECT_TRUE(hasErrorContaining(overflowResult, "auto-increment would exceed"));
+}
+
+TEST(ZiaBugFixes, NamespaceEnumFinalConstantsUseQualifiedVariantValues) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+namespace Inner {
+    enum Mode {
+        Off = 0,
+        On = 7
+    }
+}
+
+final ACTIVE = Inner.Mode.On;
+
+func start() {
+    var active: Integer = ACTIVE;
+    Viper.Terminal.SayInt(active);
+}
+)";
+    CompilerInput input{.source = source, .path = "namespace_enum_final.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    bool foundSeven = false;
+    for (const auto &fn : result.module.functions) {
+        for (const auto &bb : fn.blocks) {
+            for (const auto &instr : bb.instructions) {
+                for (const auto &op : instr.operands) {
+                    if (op.kind == il::core::Value::Kind::ConstInt && op.i64 == 7)
+                        foundSeven = true;
+                }
+            }
+        }
+    }
+    EXPECT_TRUE(foundSeven);
+}
+
+TEST(ZiaBugFixes, InvalidGlobalAndFinalDeclarationsAreRejected) {
+    CompilerOptions opts{};
+
+    SourceManager sm;
+    const std::string finalGlobal = R"(
+module Test;
+
+final Missing: Integer;
+func start() {}
+)";
+    CompilerInput finalGlobalInput{.source = finalGlobal, .path = "final_global_no_init.zia"};
+    auto finalGlobalResult = compile(finalGlobalInput, opts, sm);
+    EXPECT_FALSE(finalGlobalResult.succeeded());
+    EXPECT_TRUE(hasErrorContaining(finalGlobalResult, "'final' declarations require an initializer"));
+
+    SourceManager sm2;
+    const std::string finalLocal = R"(
+module Test;
+
+func start() {
+    let x: Integer;
+}
+)";
+    CompilerInput finalLocalInput{.source = finalLocal, .path = "final_local_no_init.zia"};
+    auto finalLocalResult = compile(finalLocalInput, opts, sm2);
+    EXPECT_FALSE(finalLocalResult.succeeded());
+    EXPECT_TRUE(hasErrorContaining(finalLocalResult, "'final' declarations require an initializer"));
+
+    SourceManager sm3;
+    const std::string untypedGlobal = R"(
+module Test;
+
+var value;
+func start() {}
+)";
+    CompilerInput untypedInput{.source = untypedGlobal, .path = "global_no_type_no_init.zia"};
+    auto untypedResult = compile(untypedInput, opts, sm3);
+    EXPECT_FALSE(untypedResult.succeeded());
+    EXPECT_TRUE(hasErrorContaining(untypedResult, "Cannot infer type without initializer"));
+
+    SourceManager sm4;
+    const std::string nullGlobal = R"(
+module Test;
+
+var maybe = null;
+func start() {}
+)";
+    CompilerInput nullInput{.source = nullGlobal, .path = "global_null_infer.zia"};
+    auto nullResult = compile(nullInput, opts, sm4);
+    EXPECT_FALSE(nullResult.succeeded());
+    EXPECT_TRUE(hasErrorContaining(nullResult, "Cannot infer type from null initializer"));
+
+    SourceManager sm5;
+    const std::string unitGlobal = R"(
+module Test;
+
+var unitValue = ();
+func start() {}
+)";
+    CompilerInput unitInput{.source = unitGlobal, .path = "global_unit_init.zia"};
+    auto unitResult = compile(unitInput, opts, sm5);
+    EXPECT_FALSE(unitResult.succeeded());
+    EXPECT_TRUE(hasErrorContaining(unitResult, "Unit literal cannot be stored"));
+}
+
+TEST(ZiaBugFixes, GlobalAndFieldByteLiteralInitializersAreContextual) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+var globalByte: Byte = 7;
+
+class Packet {
+    expose Byte tag = 8;
+}
+
+func start() {
+    var p = new Packet();
+    Viper.Terminal.SayInt(globalByte);
+    Viper.Terminal.SayInt(p.tag);
+}
+)";
+    CompilerInput input{.source = source, .path = "byte_global_field_init.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    EXPECT_TRUE(findFunction(result.module, "main") != nullptr);
+}
+
+TEST(ZiaBugFixes, FieldPropertyNameCollisionsAreRejectedInDeclarationOrder) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+class Bad {
+    expose property value: Integer {
+        get {
+            return 1;
+        }
+    }
+    expose Integer value;
+}
+
+func start() {}
+)";
+    CompilerInput input{.source = source, .path = "property_then_field_duplicate.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasErrorContaining(result, "Duplicate definition of 'value' in type 'Bad'"));
+}
+
 } // namespace
 
 int main() {

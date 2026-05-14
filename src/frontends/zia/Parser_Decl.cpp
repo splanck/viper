@@ -1021,9 +1021,26 @@ DeclPtr Parser::parseEnumDecl() {
                 resyncAfterError();
                 continue;
             }
-            int64_t val = valTok.intValue;
-            if (negative)
-                val = -val;
+            int64_t val = 0;
+            if (valTok.requiresNegation) {
+                if (!negative) {
+                    error("integer literal 9223372036854775808 out of range (use "
+                          "-9223372036854775808 for minimum signed integer)");
+                    resyncAfterError();
+                    continue;
+                }
+                val = INT64_MIN;
+            } else {
+                val = valTok.intValue;
+                if (negative) {
+                    if (val == INT64_MIN) {
+                        error("enum value is out of range");
+                        resyncAfterError();
+                        continue;
+                    }
+                    val = -val;
+                }
+            }
             variant.explicitValue = val;
         }
 

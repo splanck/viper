@@ -292,6 +292,14 @@ class Lexer {
     /// @pre Current character is a digit.
     Token lexNumber();
 
+    /// @brief Consume identifier-like characters following a malformed based literal.
+    void consumeMalformedBasedLiteralTail(Token &tok);
+
+    /// @brief Consume a backslash escape sequence into a string token.
+    /// @param tok Token receiving source text and decoded string bytes.
+    /// @return True if lexing may continue; false on an unterminated escape.
+    bool lexStringEscape(Token &tok);
+
     /// @brief Lex a string literal.
     /// @return Token with kind StringLiteral, StringStart, or Error.
     ///

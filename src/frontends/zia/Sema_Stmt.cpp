@@ -306,6 +306,11 @@ void Sema::analyzeVarStmt(VarStmt *stmt) {
         return;
     }
 
+    if (stmt->isFinal && !stmt->initializer) {
+        error(stmt->loc, "'final' declarations require an initializer");
+        return;
+    }
+
     TypeRef declaredType = stmt->type ? resolveTypeNode(stmt->type.get()) : nullptr;
     TypeRef initType = stmt->initializer ? analyzeExpr(stmt->initializer.get()) : nullptr;
     if (initType && initType->kind == TypeKindSem::Unit) {

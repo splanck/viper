@@ -128,6 +128,39 @@ TEST(ZiaLexer, DecimalZero) {
     EXPECT_EQ(tokens[0].intValue, 0);
 }
 
+TEST(ZiaLexer, DecimalIntegerSeparators) {
+    auto tokens = tokenize("1_234_567");
+    ASSERT_EQ(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].kind, TokenKind::IntegerLiteral);
+    EXPECT_EQ(tokens[0].intValue, 1234567);
+}
+
+TEST(ZiaLexer, HexAndBinarySeparators) {
+    auto tokens = tokenize("0xDEAD_BEEF 0b1010_0101");
+    ASSERT_EQ(tokens.size(), 2u);
+    EXPECT_EQ(tokens[0].kind, TokenKind::IntegerLiteral);
+    EXPECT_EQ(tokens[0].intValue, static_cast<int64_t>(0xDEADBEEF));
+    EXPECT_EQ(tokens[1].kind, TokenKind::IntegerLiteral);
+    EXPECT_EQ(tokens[1].intValue, 0b10100101);
+}
+
+TEST(ZiaLexer, FloatSeparators) {
+    auto tokens = tokenize("1_024.5_25e+1_0");
+    ASSERT_EQ(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].kind, TokenKind::NumberLiteral);
+    EXPECT_EQ(tokens[0].floatValue, 1024.525e10);
+}
+
+TEST(ZiaLexer, NumericSeparatorMustSeparateDigits) {
+    DiagnosticEngine diag;
+    auto tokens = tokenizeWithDiags("1__2 0x_FF 0b1010_", diag);
+    EXPECT_TRUE(hasErrors(diag));
+    ASSERT_EQ(tokens.size(), 3u);
+    EXPECT_EQ(tokens[0].kind, TokenKind::Error);
+    EXPECT_EQ(tokens[1].kind, TokenKind::Error);
+    EXPECT_EQ(tokens[2].kind, TokenKind::Error);
+}
+
 TEST(ZiaLexer, FloatWithExponent) {
     auto tokens = tokenize("1e10");
     ASSERT_EQ(tokens.size(), 1u);
@@ -373,6 +406,15 @@ TEST(ZiaLexer, MultipleInterpolations) {
     EXPECT_EQ(tokens[3].kind, TokenKind::Identifier);
     EXPECT_EQ(tokens[3].text, "y");
     EXPECT_EQ(tokens[4].kind, TokenKind::StringEnd);
+}
+
+TEST(ZiaLexer, InterpolationContinuationHexAndUnicodeEscapes) {
+    auto tokens = tokenize("\"${x}\\x41\\u0042\"");
+    ASSERT_EQ(tokens.size(), 3u);
+    EXPECT_EQ(tokens[0].kind, TokenKind::StringStart);
+    EXPECT_EQ(tokens[1].kind, TokenKind::Identifier);
+    EXPECT_EQ(tokens[2].kind, TokenKind::StringEnd);
+    EXPECT_EQ(tokens[2].stringValue, "AB");
 }
 
 TEST(ZiaLexer, InterpolationEscapedDollar) {

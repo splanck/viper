@@ -79,17 +79,16 @@ TypePtr Parser::parseBaseType() {
             // Otherwise fall through to the generic type path: T[Type, ...].
             if (peek(1).kind == TokenKind::IntegerLiteral) {
                 advance(); // consume '['
-                int64_t count = std::stoll(peek().text);
-                if (count < 0) {
-                    error("fixed-size array count must be non-negative");
+                Token countTok = advance(); // consume N
+                if (countTok.requiresNegation || countTok.intValue < 0) {
+                    error("fixed-size array count must be a non-negative Integer literal");
                     return nullptr;
                 }
-                advance(); // consume N
                 if (!expect(TokenKind::RBracket, "]"))
                     return nullptr;
                 auto elemType = std::make_unique<NamedType>(loc, std::move(name));
                 return std::make_unique<FixedArrayType>(
-                    loc, std::move(elemType), static_cast<size_t>(count));
+                    loc, std::move(elemType), static_cast<size_t>(countTok.intValue));
             }
 
             advance(); // consume '['

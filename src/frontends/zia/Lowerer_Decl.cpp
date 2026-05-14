@@ -287,15 +287,23 @@ void Lowerer::registerAllEnumValues(std::vector<DeclPtr> &declarations) {
             auto *enumDecl = static_cast<EnumDecl *>(decl.get());
             int64_t nextValue = 0;
             for (const auto &variant : enumDecl->variants) {
-                std::string key = enumDecl->name + "." + variant.name;
+                std::string key = qualifyName(enumDecl->name) + "." + variant.name;
                 if (variant.explicitValue.has_value())
                     nextValue = *variant.explicitValue;
                 enumVariantValues_[key] = nextValue;
+                if (&variant == &enumDecl->variants.back() || nextValue == INT64_MAX)
+                    continue;
                 ++nextValue;
             }
         } else if (decl->kind == DeclKind::Namespace) {
             auto *ns = static_cast<NamespaceDecl *>(decl.get());
+            std::string savedPrefix = namespacePrefix_;
+            if (namespacePrefix_.empty())
+                namespacePrefix_ = ns->name;
+            else
+                namespacePrefix_ = namespacePrefix_ + "." + ns->name;
             registerAllEnumValues(ns->declarations);
+            namespacePrefix_ = savedPrefix;
         }
     }
 }
@@ -398,6 +406,8 @@ void Lowerer::lowerEnumDecl(EnumDecl &decl) {
         if (variant.explicitValue.has_value())
             nextValue = *variant.explicitValue;
         enumVariantValues_[key] = nextValue;
+        if (&variant == &decl.variants.back() || nextValue == INT64_MAX)
+            continue;
         ++nextValue;
     }
 }
