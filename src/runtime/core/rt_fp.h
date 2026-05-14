@@ -36,10 +36,22 @@ extern "C" {
 /// @return Power result when @p ok is true; unspecified when false.
 double rt_pow_f64_chkdom(double base, double exp, bool *ok);
 
-/// @brief Simple 2-arg pow for IL calling convention (no domain checks).
+/// @brief Simple 2-arg `pow` for the IL `Math.Pow` calling convention.
+/// @details Forwards directly to the C library `pow`; performs no domain
+///          validation. Used by IL paths that do their own overflow check
+///          before calling.
+/// @param base     Base value.
+/// @param exponent Exponent value.
+/// @return `base ^ exponent` per IEEE-754 (may be NaN / Inf without trapping).
 double rt_math_pow(double base, double exponent);
 
-/// @brief 2-arg pow with BASIC domain checking for native codegen.
+/// @brief 2-arg `pow` with BASIC domain checking for native codegen entries.
+/// @details Wraps `rt_pow_f64_chkdom` and traps on the failure path so the
+///          caller doesn't have to thread an `ok` flag through the IL.
+///          Native codegen uses this entry directly from lowered BASIC `^` ops.
+/// @param base     Base value.
+/// @param exponent Exponent value.
+/// @return Power result; traps with `DomainError` / `Overflow` on invalid input.
 double rt_pow_f64(double base, double exponent);
 
 #ifdef __cplusplus

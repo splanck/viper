@@ -20,8 +20,8 @@
 //   - Push when not full: writes to (head + count) % capacity and increments count.
 //   - Pop removes and returns the oldest element (head advances); returns NULL
 //     if empty.
-//   - The Ring does NOT retain element references; element lifetime is the
-//     caller's responsibility.
+//   - By default the Ring retains element references and releases them when
+//     overwritten, popped, cleared, or finalized.
 //   - Not thread-safe; external synchronization required.
 //
 // Ownership/Lifetime:
@@ -44,12 +44,24 @@
 
 /// @brief Ring buffer implementation structure.
 typedef struct rt_ring_impl {
-    void **vptr;     ///< Vtable pointer placeholder.
-    void **items;    ///< Array of element pointers.
-    size_t capacity; ///< Maximum number of elements.
-    size_t head;     ///< Index of oldest element.
-    size_t count;    ///< Number of elements currently stored.
+    void **vptr;           ///< Vtable pointer placeholder.
+    void **items;          ///< Array of element pointers.
+    size_t capacity;       ///< Maximum number of elements.
+    size_t head;           ///< Index of oldest element.
+    size_t count;          ///< Number of elements currently stored.
+    int8_t owns_elements;  ///< Whether stored elements are retained/released.
 } rt_ring_impl;
+
+static rt_ring_impl *as_ring(void *obj, const char *what) {
+    if (!obj || rt_obj_class_id(obj) != RT_RING_CLASS_ID)
+        rt_trap(what);
+    return (rt_ring_impl *)obj;
+}
+
+static void ring_release_value(void *value) {
+    if (value && rt_obj_release_check0(value))
+        rt_obj_free(value);
+}
 
 /// @brief Finalizer callback invoked by the garbage collector when a Ring is collected.
 ///
@@ -57,18 +69,18 @@ typedef struct rt_ring_impl {
 /// when a Ring object becomes unreachable and is about to be freed. The finalizer
 /// releases the internal items array that was allocated to store element pointers.
 ///
-/// @note The Ring container does NOT take ownership of the elements it stores.
-///       Elements are not released during finalization - they must be managed
-///       separately by the caller. This is consistent with other Viper containers
-///       like Stack and Queue, which store references without owning them.
-///
 /// @param obj Pointer to the Ring object being finalized. May be NULL (no-op).
 static void rt_ring_finalize(void *obj) {
     if (!obj)
         return;
-    rt_ring_impl *ring = (rt_ring_impl *)obj;
-    // Note: We don't release contained items - container doesn't own them
-    // (same behavior as Stack and Queue)
+    rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
+    if (ring->owns_elements && ring->items) {
+        for (size_t i = 0; i < ring->count; i++) {
+            size_t idx = (ring->head + i) % ring->capacity;
+            ring_release_value(ring->items[idx]);
+            ring->items[idx] = NULL;
+        }
+    }
     free(ring->items);
     ring->items = NULL;
     ring->capacity = 0;
@@ -103,23 +115,19 @@ static void rt_ring_finalize(void *obj) {
 ///   (capacity slots, all initially NULL)
 /// ```
 ///
-/// @param capacity The maximum number of elements the Ring can hold. If <= 0,
-///                 a minimum capacity of 1 is used. Large values may fail if
-///                 memory allocation fails.
+/// @param capacity The maximum number of elements the Ring can hold. If 0,
+///                 a minimum capacity of 1 is used. Negative values trap.
 ///
 /// @return A pointer to the newly created Ring, or NULL if the Ring object
-///         allocation fails. Note: If the items array allocation fails, a
-///         Ring with capacity=0 is returned (all operations become no-ops).
-///
-/// @note The returned Ring does not own the elements stored in it. When elements
-///       are overwritten or the Ring is finalized, elements are NOT freed.
-///       Callers must manage element lifetimes separately.
+///         allocation fails. Items-array allocation failure traps.
 ///
 /// @see rt_ring_push For adding elements to the Ring
 /// @see rt_ring_pop For removing elements from the Ring
 /// @see rt_ring_finalize For cleanup behavior
 void *rt_ring_new(int64_t capacity) {
-    if (capacity <= 0)
+    if (capacity < 0)
+        rt_trap("Ring: negative capacity");
+    if (capacity == 0)
         capacity = 1; // Minimum capacity of 1
 
     if ((uint64_t)capacity > SIZE_MAX / sizeof(void *))
@@ -139,6 +147,7 @@ void *rt_ring_new(int64_t capacity) {
     ring->capacity = (size_t)capacity;
     ring->head = 0;
     ring->count = 0;
+    ring->owns_elements = 1;
     rt_obj_set_finalizer(ring, rt_ring_finalize);
     return ring;
 }
@@ -170,7 +179,7 @@ void *rt_ring_new_default(void) {
 int64_t rt_ring_len(void *obj) {
     if (!obj)
         return 0;
-    return (int64_t)((rt_ring_impl *)obj)->count;
+    return (int64_t)as_ring(obj, "Ring: invalid Ring object")->count;
 }
 
 /// @brief Returns the maximum capacity of the Ring.
@@ -192,7 +201,7 @@ int64_t rt_ring_len(void *obj) {
 int64_t rt_ring_cap(void *obj) {
     if (!obj)
         return 0;
-    return (int64_t)((rt_ring_impl *)obj)->capacity;
+    return (int64_t)as_ring(obj, "Ring: invalid Ring object")->capacity;
 }
 
 /// @brief Checks whether the Ring contains no elements.
@@ -240,8 +249,22 @@ int8_t rt_ring_is_empty(void *obj) {
 int8_t rt_ring_is_full(void *obj) {
     if (!obj)
         return 0;
-    rt_ring_impl *ring = (rt_ring_impl *)obj;
+    rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
     return ring->count == ring->capacity;
+}
+
+void rt_ring_set_owns_elements(void *obj, int8_t owns) {
+    rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
+    owns = owns ? 1 : 0;
+    if (ring->count != 0 && ring->owns_elements != owns)
+        rt_trap("Ring: cannot change ownership mode while non-empty");
+    ring->owns_elements = owns;
+}
+
+int8_t rt_ring_owns_elements(void *obj) {
+    if (!obj)
+        return 0;
+    return as_ring(obj, "Ring: invalid Ring object")->owns_elements ? 1 : 0;
 }
 
 /// @brief Adds an element to the Ring buffer.
@@ -258,7 +281,7 @@ int8_t rt_ring_is_full(void *obj) {
 /// - The element overwrites the oldest element (at head position)
 /// - The head advances to the next-oldest element
 /// - The count stays the same (still full)
-/// - The overwritten element's pointer is lost (caller must manage lifetime)
+/// - In owning mode, the overwritten element is released.
 ///
 /// Visual example with capacity=3:
 /// ```
@@ -274,8 +297,7 @@ int8_t rt_ring_is_full(void *obj) {
 /// @param elem The element pointer to add. May be NULL (NULL is a valid element).
 ///
 /// @note O(1) time complexity - no memory allocation or copying occurs.
-/// @note The Ring does NOT take ownership of the elem. When an elem is overwritten,
-///       it is simply replaced in the array - no destructor or free is called.
+/// @note In owning mode, the Ring retains elem and releases an overwritten value.
 /// @note Thread safety: Not thread-safe. External synchronization required for
 ///       concurrent access.
 ///
@@ -288,17 +310,22 @@ void rt_ring_push(void *obj, void *elem) {
     if (!obj)
         return;
 
-    rt_ring_impl *ring = (rt_ring_impl *)obj;
+    rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
     if (ring->capacity == 0 || !ring->items)
         return;
+
+    if (ring->owns_elements)
+        rt_obj_retain_maybe(elem);
 
     // Calculate tail position (where new element goes)
     size_t tail = (ring->head + ring->count) % ring->capacity;
 
     if (ring->count == ring->capacity) {
-        // Ring is full - overwrite oldest element (caller-owned; not released here
-        // since ring does not retain elements). Data loss is by design for ring buffers.
+        // Ring is full - overwrite oldest element. Data loss is by design for ring buffers.
+        void *old = ring->items[ring->head];
         ring->items[ring->head] = elem;
+        if (ring->owns_elements)
+            ring_release_value(old);
         // Advance head to next oldest
         ring->head = (ring->head + 1) % ring->capacity;
         // count stays the same (still full)
@@ -337,9 +364,8 @@ void rt_ring_push(void *obj, void *elem) {
 ///         "contains NULL".
 ///
 /// @note O(1) time complexity.
-/// @note Ownership transfer: The Ring releases its reference to the element.
-///       The caller is now responsible for the element's lifetime. The Ring
-///       never frees elements - it only stores and returns pointers.
+/// @note Ownership transfer: In owning mode, the returned value is retained for
+///       the caller before the Ring drops its stored reference.
 /// @note Thread safety: Not thread-safe. External synchronization required.
 ///
 /// @see rt_ring_peek For reading the oldest element without removing it
@@ -349,19 +375,22 @@ void *rt_ring_pop(void *obj) {
     if (!obj)
         return NULL;
 
-    rt_ring_impl *ring = (rt_ring_impl *)obj;
+    rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
     if (ring->count == 0 || !ring->items)
         return NULL;
 
     // Get oldest element (at head)
     void *item = ring->items[ring->head];
+    if (ring->owns_elements)
+        rt_obj_retain_maybe(item);
     ring->items[ring->head] = NULL;
 
     // Advance head
     ring->head = (ring->head + 1) % ring->capacity;
     ring->count--;
 
-    // Note: We don't release here - caller takes ownership
+    if (ring->owns_elements)
+        ring_release_value(item);
     return item;
 }
 
@@ -396,7 +425,7 @@ void *rt_ring_peek(void *obj) {
     if (!obj)
         return NULL;
 
-    rt_ring_impl *ring = (rt_ring_impl *)obj;
+    rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
     if (ring->count == 0 || !ring->items)
         return NULL;
 
@@ -449,7 +478,7 @@ void *rt_ring_get(void *obj, int64_t index) {
     if (!obj)
         return NULL;
 
-    rt_ring_impl *ring = (rt_ring_impl *)obj;
+    rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
     if (index < 0 || (size_t)index >= ring->count || !ring->items)
         return NULL;
 
@@ -482,11 +511,7 @@ void *rt_ring_get(void *obj, int64_t index) {
 ///       at its original capacity. To fully free a Ring, let the garbage
 ///       collector reclaim it (which triggers rt_ring_finalize).
 ///
-/// @note Ownership: The Ring does NOT free the elements it contained. Callers
-///       must ensure elements are either:
-///       - Freed before calling clear (if caller owns them)
-///       - Still referenced elsewhere (if shared ownership)
-///       - Garbage-collected objects (if using Viper's GC)
+/// @note Ownership: In owning mode, each stored element is released.
 ///
 /// @note Thread safety: Not thread-safe. External synchronization required.
 ///
@@ -496,13 +521,14 @@ void rt_ring_clear(void *obj) {
     if (!obj)
         return;
 
-    rt_ring_impl *ring = (rt_ring_impl *)obj;
+    rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
     if (!ring->items)
         return;
 
-    // Clear element pointers (container doesn't own them)
     for (size_t i = 0; i < ring->count; i++) {
         size_t idx = (ring->head + i) % ring->capacity;
+        if (ring->owns_elements)
+            ring_release_value(ring->items[idx]);
         ring->items[idx] = NULL;
     }
 
@@ -514,7 +540,7 @@ int8_t rt_ring_has(void *obj, void *elem) {
     if (!obj)
         return 0;
 
-    rt_ring_impl *ring = (rt_ring_impl *)obj;
+    rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
     if (!ring->items)
         return 0;
 
@@ -534,7 +560,7 @@ void *rt_ring_last(void *obj) {
     if (!obj)
         return NULL;
 
-    rt_ring_impl *ring = (rt_ring_impl *)obj;
+    rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
     if (ring->count == 0 || !ring->items)
         return NULL;
 
@@ -546,7 +572,7 @@ void rt_ring_reverse(void *obj) {
     if (!obj)
         return;
 
-    rt_ring_impl *ring = (rt_ring_impl *)obj;
+    rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
     if (ring->count < 2 || !ring->items)
         return;
 
@@ -564,11 +590,13 @@ void *rt_ring_clone(void *obj) {
     if (!obj)
         return rt_ring_new(1);
 
-    rt_ring_impl *ring = (rt_ring_impl *)obj;
+    rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
 
     void *new_ring = rt_ring_new((int64_t)ring->capacity);
     if (!new_ring)
         return NULL;
+    if (!ring->owns_elements)
+        rt_ring_set_owns_elements(new_ring, 0);
 
     for (size_t i = 0; i < ring->count; i++) {
         size_t idx = (ring->head + i) % ring->capacity;

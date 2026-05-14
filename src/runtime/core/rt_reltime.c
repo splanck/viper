@@ -44,6 +44,11 @@
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+/// @brief Return the current Unix time in seconds.
+/// @details Thin wrapper over `time(NULL)` that pre-casts the result so call
+///          sites use a uniform `int64_t` type without C-style casts at each
+///          callsite.
+/// @return Seconds since the Unix epoch (UTC).
 static int64_t current_unix_seconds(void) {
     return (int64_t)time(NULL);
 }

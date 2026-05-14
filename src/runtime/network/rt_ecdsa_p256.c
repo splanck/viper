@@ -33,6 +33,15 @@
 #define ECDSA_P256_MAYBE_UNUSED
 #endif
 
+/// @brief Volatile zero-fill that the compiler cannot optimise away.
+/// @details Used to scrub secret material (private scalars, intermediate
+///          field elements) from stack and heap memory before it falls out
+///          of scope. The volatile-pointer write per byte forces the compiler
+///          to actually emit the stores even when it can prove the buffer is
+///          dead. Equivalent to `memset_s` / `explicit_bzero` on platforms
+///          that have them.
+/// @param ptr Buffer to zero (may be `NULL` when @p len is 0).
+/// @param len Number of bytes to clear.
 static void ecdsa_secure_zero(void *ptr, size_t len) {
     volatile uint8_t *p = (volatile uint8_t *)ptr;
     while (len-- > 0)
@@ -1078,6 +1087,7 @@ int ecdsa_p256_sign(const uint8_t privkey[32],
     u256 d, e;
     u256_from_bytes(d, privkey);
     u256_from_bytes(e, digest);
+    sn_reduce_once(e, e);
     if (u256_is_zero(d) || u256_cmp(d, P256_N) >= 0) {
         ecdsa_secure_zero(d, sizeof(d));
         ecdsa_secure_zero(e, sizeof(e));

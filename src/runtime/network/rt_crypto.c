@@ -772,6 +772,7 @@ int rt_hkdf_expand_sha384(
     size_t t_len = 0;
     uint8_t counter = 1;
     size_t pos = 0;
+    int rc = -1;
 
     if (!prk || !okm)
         return -1;
@@ -782,11 +783,11 @@ int rt_hkdf_expand_sha384(
 
     while (pos < okm_len) {
         if (t_len > SIZE_MAX - info_len - 1)
-            return -1;
+            goto done;
         size_t msg_len = t_len + info_len + 1;
         uint8_t *msg = (uint8_t *)malloc(msg_len > 0 ? msg_len : 1);
         if (!msg)
-            return -1;
+            goto done;
         size_t msg_pos = 0;
         if (t_len > 0) {
             memcpy(msg + msg_pos, t, t_len);
@@ -809,8 +810,10 @@ int rt_hkdf_expand_sha384(
         pos += copy;
         counter++;
     }
+    rc = 0;
+done:
     rt_secure_zero(t, sizeof(t));
-    return 0;
+    return rc;
 }
 
 /// @brief TLS 1.3 HKDF-Expand-Label using HMAC-SHA-384.
@@ -1107,6 +1110,10 @@ static void poly1305_blocks(poly1305_ctx *ctx, const uint8_t *data, size_t len, 
 
 /// @brief Stream `len` bytes through Poly1305, buffering partial 16-byte blocks.
 static void poly1305_update(poly1305_ctx *ctx, const void *data, size_t len) {
+    if (len == 0)
+        return;
+    if (!data)
+        rt_trap("Poly1305: input buffer is null");
     const uint8_t *ptr = (const uint8_t *)data;
 
     if (ctx->buffer_len > 0) {
@@ -2371,6 +2378,10 @@ int rt_x25519(const uint8_t secret[32], const uint8_t peer_public[32], uint8_t s
 /// generator (S-03): a predictable RNG would silently compromise
 /// every key derived from it.
 void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
+    if (!buf && len > 0)
+        rt_trap("Crypto: random output buffer is null");
+    if (len == 0)
+        return;
     if (rt_crypto_module_is_approved_mode()) {
         rt_crypto_module_random_bytes(buf, len);
         return;
@@ -2416,6 +2427,10 @@ void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
 /// Traps on every-source-failed (S-03) so we never silently fall
 /// back to a non-cryptographic source.
 void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
+    if (!buf && len > 0)
+        rt_trap("Crypto: random output buffer is null");
+    if (len == 0)
+        return;
     if (rt_crypto_module_is_approved_mode()) {
         rt_crypto_module_random_bytes(buf, len);
         return;

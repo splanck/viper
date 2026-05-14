@@ -32,6 +32,17 @@ extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_trap_expected = true;                                                                    \
+        g_last_trap = nullptr;                                                                     \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
+            expr;                                                                                  \
+            assert(false && "Expected trap did not occur");                                        \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
+    } while (0)
+
 static void rt_release_obj(void *p) {
     if (p && rt_obj_release_check0(p))
         rt_obj_free(p);
@@ -53,6 +64,11 @@ static void test_new_bitset() {
     assert(rt_bitset_count(bs) == 0);
     assert(rt_bitset_is_empty(bs) == 1);
     rt_release_obj(bs);
+}
+
+static void test_negative_size_traps() {
+    EXPECT_TRAP(rt_bitset_new(-1));
+    assert(g_last_trap && strstr(g_last_trap, "BitSet") != nullptr);
 }
 
 static void test_set_and_get() {
@@ -296,6 +312,7 @@ static void test_negative_index() {
 
 int main() {
     test_new_bitset();
+    test_negative_size_traps();
     test_set_and_get();
     test_clear_bit();
     test_toggle();

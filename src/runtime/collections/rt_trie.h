@@ -12,6 +12,8 @@
 //   - Prefix search returns all keys with the given prefix.
 //   - rt_trie_has returns 1 only for exact key matches, not just prefixes.
 //   - Values are retained while stored in the trie.
+//   - Node traversal, clone, clear, and finalization use heap-backed iterative
+//     walks so deeply nested keys do not overflow the C stack.
 //
 // Ownership/Lifetime:
 //   - Trie objects are heap-allocated; caller is responsible for lifetime management.

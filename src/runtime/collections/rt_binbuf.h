@@ -37,7 +37,7 @@ extern "C" {
 void *rt_binbuf_new(void);
 
 /// @brief Create a new binary buffer with custom initial capacity.
-/// @param capacity Initial capacity in bytes (clamped to 1 if < 1).
+/// @param capacity Initial capacity in bytes. Zero maps to 1; negative traps.
 /// @return Pointer to new BinaryBuffer object.
 void *rt_binbuf_new_cap(int64_t capacity);
 
@@ -105,7 +105,7 @@ void rt_binbuf_write_i64be(void *obj, int64_t value);
 
 /// @brief Write a length-prefixed string (4-byte LE byte length + full string bytes).
 /// @param obj BinaryBuffer pointer.
-/// @param value String to write. Embedded NUL bytes are preserved.
+/// @param value String to write. NULL serializes as length 0. Embedded NUL bytes are preserved.
 void rt_binbuf_write_str(void *obj, rt_string value);
 
 /// @brief Write length-prefixed bytes (4-byte LE byte length + raw bytes).

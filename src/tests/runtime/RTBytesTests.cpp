@@ -62,10 +62,8 @@ static void test_new_with_zero_length() {
 }
 
 static void test_new_with_negative_length() {
-    // Negative length should be clamped to 0
-    void *bytes = rt_bytes_new(-5);
-    assert(bytes != nullptr);
-    assert(rt_bytes_len(bytes) == 0);
+    EXPECT_TRAP(rt_bytes_new(-5));
+    assert(g_last_trap && strstr(g_last_trap, "Bytes.New") != nullptr);
 }
 
 static void test_from_str() {
@@ -246,17 +244,21 @@ static void test_copy_rejects_non_bytes_even_for_zero_count() {
 }
 
 static void test_signed_binary_reads_sign_extend() {
-    void *bytes = rt_bytes_new(16);
+    void *bytes = rt_bytes_new(28);
 
     rt_bytes_write_i16le(bytes, 0, -1);
     rt_bytes_write_i16be(bytes, 2, -2);
     rt_bytes_write_i32le(bytes, 4, -1);
     rt_bytes_write_i32be(bytes, 8, -2);
+    rt_bytes_write_i64le(bytes, 12, INT64_MIN);
+    rt_bytes_write_i64be(bytes, 20, -1);
 
     assert(rt_bytes_read_i16le(bytes, 0) == -1);
     assert(rt_bytes_read_i16be(bytes, 2) == -2);
     assert(rt_bytes_read_i32le(bytes, 4) == -1);
     assert(rt_bytes_read_i32be(bytes, 8) == -2);
+    assert(rt_bytes_read_i64le(bytes, 12) == INT64_MIN);
+    assert(rt_bytes_read_i64be(bytes, 20) == -1);
 }
 
 static void test_to_str() {
@@ -446,6 +448,17 @@ static void test_from_raw_rejects_size_t_overflow() {
     }
 }
 
+static void test_from_raw_rejects_null_nonempty_data() {
+    EXPECT_TRAP(rt_bytes_from_raw(nullptr, 1));
+    assert(g_last_trap && strstr(g_last_trap, "Bytes.FromRaw") != nullptr);
+}
+
+static void test_extract_raw_requires_length_output() {
+    void *bytes = rt_bytes_new(1);
+    EXPECT_TRAP(rt_bytes_extract_raw(bytes, nullptr));
+    assert(g_last_trap && strstr(g_last_trap, "Bytes.ExtractRaw") != nullptr);
+}
+
 static void test_rejects_non_bytes_objects() {
     void *obj = rt_obj_new_i64(12345, 8);
     assert(rt_bytes_is_bytes(obj) == 0);
@@ -493,6 +506,8 @@ int main() {
     test_null_handling();
     test_null_traps();
     test_from_raw_rejects_size_t_overflow();
+    test_from_raw_rejects_null_nonempty_data();
+    test_extract_raw_requires_length_output();
     test_rejects_non_bytes_objects();
 
     return 0;

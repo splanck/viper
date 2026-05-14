@@ -69,10 +69,11 @@ static void test_new_cap() {
 }
 
 static void test_new_cap_clamped() {
-    // Negative capacity is clamped to 1
-    void *bb = rt_binbuf_new_cap(-5);
+    void *bb = rt_binbuf_new_cap(0);
     assert(bb != nullptr);
     assert(rt_binbuf_get_len(bb) == 0);
+    EXPECT_TRAP(rt_binbuf_new_cap(-5));
+    assert(g_last_trap && strstr(g_last_trap, "BinaryBuffer") != nullptr);
 }
 
 static void test_from_bytes() {
@@ -259,6 +260,18 @@ static void test_write_read_str_preserves_embedded_nul() {
     rt_string_unref(out);
 }
 
+static void test_write_null_str_writes_empty() {
+    void *bb = rt_binbuf_new();
+    rt_binbuf_write_str(bb, nullptr);
+    assert(rt_binbuf_get_len(bb) == 4);
+
+    rt_binbuf_set_position(bb, 0);
+    rt_string out = rt_binbuf_read_str(bb);
+    assert(out != nullptr);
+    assert(rt_str_len(out) == 0);
+    rt_string_unref(out);
+}
+
 static void test_write_read_bytes() {
     void *src = rt_bytes_new(4);
     rt_bytes_set(src, 0, 0xDE);
@@ -284,7 +297,6 @@ static void test_write_read_bytes() {
 
 static void test_write_invalid_payloads_trap() {
     void *bb = rt_binbuf_new();
-    EXPECT_TRAP(rt_binbuf_write_str(bb, nullptr));
     EXPECT_TRAP(rt_binbuf_write_bytes(bb, nullptr));
 }
 
@@ -468,6 +480,7 @@ int main() {
     test_narrow_integer_range_traps();
     test_write_read_str();
     test_write_read_str_preserves_embedded_nul();
+    test_write_null_str_writes_empty();
     test_write_read_bytes();
     test_write_invalid_payloads_trap();
 

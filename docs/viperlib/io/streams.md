@@ -249,7 +249,7 @@ All multi-byte integers and floats use **little-endian** byte order. This matche
 - **Gap filling:** Writing past the current length fills the gap with zeros
 - **Read traps:** Reading past the end of data traps with an error
 - **Overflow traps:** `Seek`, `Skip`, and writes that would overflow the signed 64-bit position or addressable capacity trap instead of wrapping.
-- **Input validation:** `NewCapacity()` traps on negative capacities, `FromBytes()` and `WriteBytes()` require a `Bytes` object, fixed-width integer writes trap outside their representable range, and `WriteStr()` requires a valid runtime string.
+- **Input validation:** `NewCapacity()` traps on negative capacities, `FromBytes()` and `WriteBytes()` require a `Bytes` object, fixed-width integer writes trap outside their representable range, and `WriteStr()` accepts a valid runtime string or null to encode an empty string.
 
 ### Zia Example
 
@@ -706,7 +706,7 @@ Positioned binary read/write buffer for constructing and parsing binary data in 
 ### Notes
 
 - `WriteStr()` uses the runtime string byte length, so embedded NUL bytes are preserved.
-- `FromBytes()` and `WriteBytes()` require a `Bytes` object. `WriteStr()` requires a valid runtime string. `WriteByte()` traps outside `0..255`, and fixed-width integer writes trap outside their declared signed or unsigned range.
+- `FromBytes()` and `WriteBytes()` require a `Bytes` object. `WriteStr()` accepts a valid runtime string or null to encode an empty string. `WriteByte()` traps outside `0..255`, and fixed-width integer writes trap outside their declared signed or unsigned range.
 - `WriteStr()` and `WriteBytes()` trap if the payload length cannot fit in their signed 32-bit length prefix.
 - Setting `Pos` traps for negative positions or positions beyond `Length`; it does not clamp.
 - Signed integer readers sign-extend their declared width: `ReadI16*()` returns -32768..32767, `ReadI32*()` returns signed 32-bit values, and `ReadI64*()` preserves the full signed 64-bit bit pattern.

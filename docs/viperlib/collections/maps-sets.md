@@ -468,7 +468,7 @@ keeps elements sorted, enabling efficient range queries, ordered iteration, and 
 | `At(index)`         | `String(Integer)`          | Get element at index in sorted order                               |
 | `IndexOf(str)`      | `Integer(String)`          | Get index of element (-1 if not found)                             |
 | `Items()`           | `Seq()`                    | Get all elements as a Seq in sorted order                          |
-| `Range(from, to)`   | `Seq(String, String)`      | Get elements in range [from, to]; null `to` is open-ended          |
+| `Range(from, to)`   | `Seq(String, String)`      | Get elements in range [from, to]; null bounds are open-ended       |
 | `Take(n)`           | `Seq(Integer)`             | Get first n elements                                               |
 | `Skip(n)`           | `Seq(Integer)`             | Get all elements except first n                                    |
 | `Union(other)`      | `SortedSet(SortedSet)`     | Return new set with union of both sets                             |
@@ -479,7 +479,7 @@ keeps elements sorted, enabling efficient range queries, ordered iteration, and 
 ### Notes
 
 - Elements are compared by full byte length; embedded NUL bytes are part of element identity.
-- `Range(from, to)` includes both bounds. Pass null for `to` through the runtime API to scan to the end.
+- `Range(from, to)` includes both bounds. Pass null for `from` or `to` through the runtime API to leave that side open.
 - `First()`, `Last()`, `Floor()`, `Ceil()`, `Lower()`, `Higher()`, and `At()` return owned copied strings.
 - `Items()`, `Range()`, `Take()`, and `Skip()` return independent snapshots containing copied strings.
 - Capacity growth traps on overflow instead of wrapping.
@@ -616,7 +616,7 @@ lookup, merging (which returns a new FrozenMap), and equality comparison.
 - Keys in the `FromSeqs` constructor should be boxed strings (e.g., `Box.Str("key")`) in Zia; BASIC auto-boxes strings
 - FrozenMap is truly immutable: there are no Set, Remove, or Clear methods
 - `Merge` returns a new FrozenMap; when both maps have the same key, the other map's value wins
-- `Equals` compares by value, not reference identity
+- `Equals` compares boxed values by value, not reference identity
 - Keys are compared by full byte length; embedded NUL bytes are part of the key
 - Keys and values are retained by the frozen map until the map is released
 

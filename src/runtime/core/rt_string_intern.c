@@ -141,7 +141,14 @@ static void intern_ensure_capacity(void) {
 // Public API
 // ============================================================================
 
-/// @brief Intern @p s, returning the canonical rt_string for its byte content.
+/// @brief Intern @p s, returning the canonical `rt_string` for its byte content.
+/// @details Looks up @p s by FNV-1a hash + byte-equal compare. On a hit, returns
+///          a retained reference to the existing canonical string; on a miss,
+///          inserts a retained reference for the table and returns a second
+///          retained reference for the caller. If the table cannot grow (OOM),
+///          returns @p s unchanged so the caller still receives a valid handle.
+/// @param s String to intern (NULL returns NULL).
+/// @return Retained reference to the canonical string; caller must release.
 rt_string rt_string_intern(rt_string s) {
     if (!s)
         return NULL;
@@ -187,7 +194,12 @@ rt_string rt_string_intern(rt_string s) {
     }
 }
 
-/// @brief Release all interned strings and free the table.
+/// @brief Release every interned string and free the intern-table storage.
+/// @details Called at process shutdown (or in tests that need a clean slate).
+///          Walks every slot, drops the table's retained reference on the
+///          canonical string, then frees the slot array. On Windows the
+///          critical-section is also destroyed and the `INIT_ONCE` flag is
+///          reset so a subsequent intern call rebuilds the lock cleanly.
 void rt_string_intern_drain(void) {
     intern_lock();
 

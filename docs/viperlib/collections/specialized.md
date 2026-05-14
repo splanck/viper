@@ -151,6 +151,8 @@ the set, but may produce false positives. Ideal for pre-filtering expensive look
 **Constructor:** `Viper.Collections.BloomFilter.New(capacity, falsePositiveRate)` - creates a filter sized for the
 expected number of elements and desired false positive rate
 
+`capacity = 0` is treated as one expected item. Negative capacity traps.
+
 ### Properties
 
 | Property | Type    | Description                          |
@@ -170,7 +172,7 @@ expected number of elements and desired false positive rate
 ### Notes
 
 - `MightContain` returning true means the element *may* be present; returning false means it is *definitely* not present
-- The actual false positive rate depends on the number of elements added relative to the configured capacity
+- `Fpr()` estimates the current false positive rate from the fraction of bits currently set, so duplicate additions do not inflate the estimate
 - `Merge` combines two filters that were created with the same capacity and false positive rate parameters. Merging a filter with itself is a no-op that leaves `Count` unchanged.
 - After `Clear()`, `MightContain` returns false for all elements
 - Invalid false-positive rates such as NaN, infinity, or values outside `(0, 1)` are sanitized to a safe default
@@ -295,6 +297,7 @@ existence checking, longest prefix matching, and retrieving all keys with a give
 - `WithPrefix` returns all keys that start with the given prefix, including exact matches
 - Trie keys and prefixes use the full runtime string byte length; embedded NUL bytes are part of the key
 - `LongestPrefix()` returns an owned copied string. `WithPrefix()` and `Keys()` return owning snapshots of copied strings, including when the requested prefix is longer than the default internal buffer size.
+- Deep key traversal, cloning, clearing, and finalization use iterative walks rather than recursive C calls.
 - Removing a key does not affect other keys that share the same prefix
 
 ### Zia Example
@@ -416,6 +419,8 @@ elements belong to the same group and supports merging groups.
 **Type:** Instance (obj)
 **Constructor:** `Viper.Collections.UnionFind.New(size)` - creates a structure with `size` elements, each in its own set
 
+`size = 0` creates one element. Negative sizes trap.
+
 ### Properties
 
 | Property | Type    | Description                                    |
@@ -534,11 +539,13 @@ PRINT uf.SetSize(0)          ' 1
 
 ## Viper.Collections.BitSet
 
-A fixed-size set of bits supporting efficient bitwise operations. Useful for compact storage of boolean flags and
+A growable set of bits supporting efficient bitwise operations. Useful for compact storage of boolean flags and
 set operations on integer-indexed elements.
 
 **Type:** Instance (obj)
 **Constructor:** `Viper.Collections.BitSet.New(size)` - creates a BitSet with the given number of bits
+
+`size = 0` uses the default capacity. Negative sizes trap.
 
 ### Properties
 
@@ -566,7 +573,7 @@ set operations on integer-indexed elements.
 
 ### Notes
 
-- Size is fixed at creation time and cannot grow
+- The bitset auto-grows when setting or toggling beyond the current length
 - Bitwise operations (`And`, `Or`, `Xor`, `Not`) return new BitSet instances; originals are unchanged
 - `ToString()` returns a binary string with the most significant bit on the left
 - Indices are zero-based; index 0 is the least significant bit
@@ -716,7 +723,7 @@ An efficient byte array for binary data. More memory-efficient than Seq for byte
 - `FromHex()` and `FromBase64()` validate the full runtime string byte length. Embedded NUL bytes do not truncate parsing.
 - `Copy()` traps when source or destination arguments are not Bytes objects, when ranges overflow, or when ranges exceed bounds.
 - `ReadI16*()` and `ReadI32*()` sign-extend into the returned Integer. Values with the high bit set return negative numbers.
-- Raw byte inputs larger than the maximum runtime `Bytes` length are rejected before allocation.
+- Negative byte-array lengths trap. Raw byte inputs larger than the maximum runtime `Bytes` length, or null raw inputs with non-zero length, are rejected before allocation.
 
 ### Zia Example
 

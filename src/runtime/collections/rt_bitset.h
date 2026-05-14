@@ -11,7 +11,7 @@
 // Key invariants:
 //   - Bit indices are 0-based; the bitset auto-grows when setting beyond current size.
 //   - All bits start as 0 on allocation.
-//   - Bitwise AND/OR/XOR operations require both operands to have the same size.
+//   - Bitwise AND/OR/XOR operations return a result sized to the larger operand.
 //   - rt_bitset_count returns the population count (number of set bits).
 //
 // Ownership/Lifetime:
@@ -32,7 +32,8 @@ extern "C" {
 #endif
 
 /// @brief Create a new BitSet with room for at least nbits bits.
-/// @param nbits Initial capacity in bits (all bits start as 0).
+/// @param nbits Initial capacity in bits (all bits start as 0). Zero uses the
+///              default capacity; negative values trap.
 /// @return Pointer to BitSet object.
 void *rt_bitset_new(int64_t nbits);
 

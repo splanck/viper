@@ -126,6 +126,13 @@ static uint64_t mb_hash_bytes(const char *s, size_t len) {
 
 // --- Internal helpers ---
 
+/// @brief Acquire the bus's internal spinlock with acquire ordering.
+/// @details Uses `__atomic_test_and_set` and yields on contention. The yield
+///          uses platform-appropriate primitives (`SwitchToThread` on Windows,
+///          `sched_yield` on POSIX, busy-wait on ViperDOS). No-op on a NULL
+///          bus so call-sites that handle a NULL bus uniformly don't have to
+///          special-case the lock.
+/// @param mb Bus instance (may be NULL).
 static void mb_lock(rt_msgbus_impl *mb) {
     if (!mb)
         return;
@@ -198,6 +205,13 @@ static rt_msgbus_impl *mb_require(void *obj, const char *fn_name) {
     return (rt_msgbus_impl *)obj;
 }
 
+/// @brief Validate @p obj as a `MessageBus` and retain it for the duration of the call.
+/// @details Public entry points retain the bus on entry and release on exit
+///          so a concurrent finalize cannot free the bus mid-publish or
+///          mid-traversal. NULL traps fall through silently as in @ref mb_require.
+/// @param obj      Caller-supplied handle.
+/// @param fn_name  Function name used in the trap message on type mismatch.
+/// @return Retained bus pointer; the caller must pair with @ref mb_release_bus.
 static rt_msgbus_impl *mb_require_retained(void *obj, const char *fn_name) {
     rt_msgbus_impl *mb = mb_require(obj, fn_name);
     if (!mb)
@@ -206,11 +220,23 @@ static rt_msgbus_impl *mb_require_retained(void *obj, const char *fn_name) {
     return mb;
 }
 
+/// @brief Release the bus retain acquired by @ref mb_require_retained.
+/// @details Frees the bus when the retain count drops to zero. No-op on NULL.
+/// @param mb Bus instance previously retained by @ref mb_require_retained.
 static void mb_release_bus(rt_msgbus_impl *mb) {
     if (mb && rt_obj_release_check0(mb))
         rt_obj_free(mb);
 }
 
+/// @brief Release a single retained-callback entry in a snapshot array.
+/// @details The traversal-time snapshot retains every managed callback under
+///          the bus lock. This helper unwinds one entry: NULLs its slot, clears
+///          the per-entry `retained` flag, and decrements the refcount. Used by
+///          both the success path (after the visitor runs) and the overflow
+///          rollback path (when CAS retain failed mid-snapshot).
+/// @param callbacks Snapshot array of callback pointers (modified in place).
+/// @param retained  Parallel array of one-byte "was retained" flags (may be NULL).
+/// @param index     Slot to release; negative indices are ignored.
 static void mb_release_snapshot_callback(void **callbacks,
                                          unsigned char *retained,
                                          int64_t index) {

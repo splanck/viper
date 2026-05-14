@@ -31,12 +31,20 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_seq_internal.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
 #include <stdlib.h>
 #include <string.h>
+
+static rt_seq_impl *as_seq(void *obj, const char *what) {
+    if (!obj || rt_obj_class_id(obj) != RT_SEQ_CLASS_ID)
+        rt_trap(what);
+    return (rt_seq_impl *)obj;
+}
 
 //=============================================================================
 // Sorting Implementation
@@ -208,7 +216,7 @@ void rt_seq_sort_by(void *obj, int64_t (*cmp)(void *, void *)) {
     if (!obj)
         return;
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq.Sort: invalid Seq object");
 
     // Nothing to sort
     if (seq->len <= 1)
@@ -305,7 +313,7 @@ void *rt_seq_keep(void *obj, int8_t (*pred)(void *)) {
     if (!pred)
         return rt_seq_clone(obj);
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq.Keep: invalid Seq object");
     void *result = rt_seq_new();
     if (seq->owns_elements)
         rt_seq_set_owns_elements(result, 1);
@@ -355,7 +363,7 @@ void *rt_seq_reject(void *obj, int8_t (*pred)(void *)) {
     if (!pred)
         return rt_seq_clone(obj);
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq.Reject: invalid Seq object");
     void *result = rt_seq_new();
     if (seq->owns_elements)
         rt_seq_set_owns_elements(result, 1);
@@ -403,7 +411,7 @@ void *rt_seq_apply(void *obj, void *(*fn)(void *)) {
     if (!fn)
         return rt_seq_clone(obj);
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq.Apply: invalid Seq object");
     void *result = rt_seq_with_capacity(seq->len);
     rt_seq_set_owns_elements(result, 1);
 
@@ -449,7 +457,7 @@ int8_t rt_seq_all(void *obj, int8_t (*pred)(void *)) {
     if (!obj || !pred)
         return 1;
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq.All: invalid Seq object");
 
     for (int64_t i = 0; i < seq->len; i++) {
         if (!pred(seq->items[i])) {
@@ -494,7 +502,7 @@ int8_t rt_seq_any(void *obj, int8_t (*pred)(void *)) {
     if (!obj || !pred)
         return 0;
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq.Any: invalid Seq object");
 
     for (int64_t i = 0; i < seq->len; i++) {
         if (pred(seq->items[i])) {
@@ -563,7 +571,7 @@ int64_t rt_seq_count_where(void *obj, int8_t (*pred)(void *)) {
     if (!obj)
         return 0;
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq.CountWhere: invalid Seq object");
 
     if (!pred)
         return seq->len;
@@ -606,7 +614,7 @@ void *rt_seq_find_where(void *obj, int8_t (*pred)(void *)) {
     if (!obj)
         return NULL;
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq.FindWhere: invalid Seq object");
 
     if (seq->len == 0)
         return NULL;
@@ -649,7 +657,7 @@ void *rt_seq_take(void *obj, int64_t n) {
     if (!obj || n <= 0)
         return rt_seq_new();
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq.Take: invalid Seq object");
 
     if (n >= seq->len)
         return rt_seq_clone(obj);
@@ -683,7 +691,7 @@ void *rt_seq_drop(void *obj, int64_t n) {
     if (!obj)
         return rt_seq_new();
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq.Drop: invalid Seq object");
 
     if (n <= 0)
         return rt_seq_clone(obj);
@@ -730,7 +738,7 @@ void *rt_seq_take_while(void *obj, int8_t (*pred)(void *)) {
     if (!pred)
         return rt_seq_clone(obj);
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq.TakeWhile: invalid Seq object");
     void *result = rt_seq_new();
     if (seq->owns_elements)
         rt_seq_set_owns_elements(result, 1);
@@ -781,7 +789,7 @@ void *rt_seq_drop_while(void *obj, int8_t (*pred)(void *)) {
     if (!pred)
         return rt_seq_new();
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq.DropWhile: invalid Seq object");
 
     // Find the first non-matching element
     int64_t start = 0;
@@ -825,7 +833,7 @@ void *rt_seq_fold(void *obj, void *init, void *(*fn)(void *, void *)) {
     if (!obj || !fn)
         return init;
 
-    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    rt_seq_impl *seq = as_seq(obj, "Seq.Fold: invalid Seq object");
     void *acc = init;
 
     for (int64_t i = 0; i < seq->len; i++) {

@@ -783,7 +783,9 @@ static int tls_cert_has_matching_ip_san(const uint8_t *der,
                     uint8_t t4;
                     size_t vl4, hl4;
                     if (der_read_tlv(ext, vl3, &t4, &vl4, &hl4) == 0 && t4 == 0x06 &&
-                        oid_matches(ext + hl4, vl4, OID_SUBJECT_ALT_NAME, 3)) {
+                        oid_matches(ext + hl4, vl4,
+                                    OID_SUBJECT_ALT_NAME,
+                                    sizeof(OID_SUBJECT_ALT_NAME))) {
                         size_t after_oid = hl4 + vl4;
                         if (after_oid < vl3) {
                             uint8_t nt;
@@ -884,7 +886,9 @@ int tls_extract_san_names(const uint8_t *der, size_t der_len, char san_out[][256
 
                     // OID
                     if (der_read_tlv(ext, vl3, &t4, &vl4, &hl4) == 0 && t4 == 0x06) {
-                        if (oid_matches(ext + hl4, vl4, OID_SUBJECT_ALT_NAME, 3)) {
+                        if (oid_matches(ext + hl4, vl4,
+                                        OID_SUBJECT_ALT_NAME,
+                                        sizeof(OID_SUBJECT_ALT_NAME))) {
                             // Skip optional BOOLEAN (critical flag)
                             size_t after_oid = hl4 + vl4;
                             if (after_oid < vl3) {
@@ -1107,7 +1111,129 @@ int tls_match_hostname(const char *pattern, const char *hostname) {
     return strcasecmp(pattern, hostname) == 0 ? 1 : 0;
 }
 
-// Maximum number of SAN DNS names to check
+/// @brief Walk one SAN extension and check every dNSName against @p hostname.
+/// @details This is separate from tls_extract_san_names because verification
+///          must not be capped by the fixed-size public extraction buffer.
+static int san_ext_has_dns_match(const uint8_t *ext_val,
+                                 size_t ext_len,
+                                 const char *hostname,
+                                 int *saw_dns_san) {
+    uint8_t t;
+    size_t vl, hl;
+    if (saw_dns_san)
+        *saw_dns_san = 0;
+
+    if (der_read_tlv(ext_val, ext_len, &t, &vl, &hl) != 0 || t != 0x04)
+        return 0;
+
+    const uint8_t *inner = ext_val + hl;
+    size_t inner_len = vl;
+    if (der_read_tlv(inner, inner_len, &t, &vl, &hl) != 0 || t != 0x30)
+        return 0;
+
+    const uint8_t *names = inner + hl;
+    size_t names_len = vl;
+    size_t pos = 0;
+    while (pos < names_len) {
+        if (der_read_tlv(names + pos, names_len - pos, &t, &vl, &hl) != 0)
+            break;
+        if (t == 0x82 && tls_dns_name_bytes_valid(names + pos + hl, vl, 1)) {
+            char name[256];
+            if (saw_dns_san)
+                *saw_dns_san = 1;
+            memcpy(name, names + pos + hl, vl);
+            name[vl] = '\0';
+            if (tls_match_hostname(name, hostname))
+                return 1;
+        }
+        pos += hl + vl;
+    }
+    return 0;
+}
+
+/// @brief Return whether any DNS SubjectAltName matches, scanning all names.
+static int tls_cert_has_matching_dns_san(const uint8_t *der,
+                                         size_t der_len,
+                                         const char *hostname,
+                                         int *saw_dns_san) {
+    int saw_any = 0;
+    uint8_t t;
+    size_t vl, hl;
+    if (saw_dns_san)
+        *saw_dns_san = 0;
+
+    if (der_read_tlv(der, der_len, &t, &vl, &hl) != 0 || t != 0x30)
+        return 0;
+
+    const uint8_t *cert_val = der + hl;
+    if (der_read_tlv(cert_val, vl, &t, &vl, &hl) != 0 || t != 0x30)
+        return 0;
+
+    const uint8_t *tbs_val = cert_val + hl;
+    size_t tbs_len = vl;
+    size_t pos = 0;
+
+    while (pos < tbs_len) {
+        if (der_read_tlv(tbs_val + pos, tbs_len - pos, &t, &vl, &hl) != 0)
+            break;
+
+        if (t == 0xA3) {
+            const uint8_t *exts_wrap = tbs_val + pos + hl;
+            uint8_t t2;
+            size_t vl2, hl2;
+            if (der_read_tlv(exts_wrap, vl, &t2, &vl2, &hl2) != 0 || t2 != 0x30)
+                break;
+
+            const uint8_t *exts = exts_wrap + hl2;
+            size_t exts_len = vl2;
+            size_t ep = 0;
+            while (ep < exts_len) {
+                uint8_t t3;
+                size_t vl3, hl3;
+                if (der_read_tlv(exts + ep, exts_len - ep, &t3, &vl3, &hl3) != 0)
+                    break;
+
+                if (t3 == 0x30) {
+                    const uint8_t *ext = exts + ep + hl3;
+                    uint8_t t4;
+                    size_t vl4, hl4;
+                    if (der_read_tlv(ext, vl3, &t4, &vl4, &hl4) == 0 && t4 == 0x06 &&
+                        oid_matches(ext + hl4, vl4,
+                                    OID_SUBJECT_ALT_NAME,
+                                    sizeof(OID_SUBJECT_ALT_NAME))) {
+                        size_t after_oid = hl4 + vl4;
+                        if (after_oid < vl3) {
+                            uint8_t nt;
+                            size_t nvl, nhl;
+                            if (der_read_tlv(ext + after_oid, vl3 - after_oid, &nt, &nvl, &nhl) == 0) {
+                                if (nt == 0x01)
+                                    after_oid += nhl + nvl;
+                                if (after_oid < vl3) {
+                                    int saw_this_ext = 0;
+                                    if (san_ext_has_dns_match(
+                                            ext + after_oid, vl3 - after_oid, hostname, &saw_this_ext))
+                                        return 1;
+                                    if (saw_this_ext)
+                                        saw_any = 1;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                ep += hl3 + vl3;
+            }
+        }
+
+        pos += hl + vl;
+    }
+
+    if (saw_dns_san)
+        *saw_dns_san = saw_any;
+    return 0;
+}
+
+// Maximum number of SAN DNS names exposed through tls_extract_san_names.
 #define TLS_MAX_SAN_NAMES 64
 
 /// @brief Verify that the session's intended hostname matches the leaf
@@ -1118,8 +1244,8 @@ int tls_match_hostname(const char *pattern, const char *hostname) {
 ///             SAN or CN matching for an IP literal would be a bypass —
 ///             `"192.0.2.1"` should never match a cert issued for the literal
 ///             string `"192.0.2.1"` as a DNS name.
-///          2. **DNS hostnames** check dNSName SAN entries first via
-///             `tls_extract_san_names` + `tls_match_hostname` against each one.
+///          2. **DNS hostnames** scan every dNSName SAN entry before falling
+///             back to CommonName.
 ///          3. **CN fallback** is consulted *only* when no SAN extension is
 ///             present at all (per RFC 6125 § 6.4.4 — CN must be ignored when
 ///             SAN is present, even if SAN doesn't list any dNSName entries).
@@ -1162,16 +1288,12 @@ int tls_verify_hostname(rt_tls_session_t *session) {
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
-    // Try SubjectAltName first (RFC 6125 §6.4: SAN takes precedence over CN)
-    char san_names[TLS_MAX_SAN_NAMES][256];
-    int san_count = tls_extract_san_names(
-        session->server_cert_der, session->server_cert_der_len, san_names, TLS_MAX_SAN_NAMES);
-
-    if (san_count > 0) {
-        for (int i = 0; i < san_count; i++) {
-            if (tls_match_hostname(san_names[i], host))
-                return RT_TLS_OK;
-        }
+    // Try SubjectAltName first (RFC 6125 §6.4: SAN takes precedence over CN).
+    int saw_dns_san = 0;
+    if (tls_cert_has_matching_dns_san(
+            session->server_cert_der, session->server_cert_der_len, host, &saw_dns_san))
+        return RT_TLS_OK;
+    if (saw_dns_san) {
         session->error = "TLS: certificate hostname mismatch (SAN did not match)";
         return RT_TLS_ERROR_HANDSHAKE;
     }
@@ -1725,6 +1847,7 @@ static RT_TLS_MAYBE_UNUSED int cert_check_expiry(const uint8_t *cert_der, size_t
         size_t vpos = 0;
         time_t not_before;
         time_t not_after;
+        time_t now;
         if (der_read_tlv(validity + vpos, validity_len - vpos, &t, &vl, &hl) != 0) {
             return -1;
         }
@@ -1737,7 +1860,8 @@ static RT_TLS_MAYBE_UNUSED int cert_check_expiry(const uint8_t *cert_der, size_t
         if (not_before == (time_t)-1 || not_after == (time_t)-1) {
             return -1;
         }
-        if (time(NULL) < not_before || time(NULL) > not_after) {
+        now = time(NULL);
+        if (now == (time_t)-1 || now < not_before || now > not_after) {
             return -1;
         }
         return 0;
@@ -2768,7 +2892,7 @@ int tls_verify_chain(rt_tls_session_t *session) {
 
     if (session->server_cert_list && session->server_cert_list_len > 0) {
         size_t cert_index = 0;
-        while (list_pos < session->server_cert_list_len && intermediate_count < 16) {
+        while (list_pos < session->server_cert_list_len) {
             const uint8_t *cert_der = NULL;
             size_t cert_len = 0;
             if (tls_next_certificate_entry(session->server_cert_list,
@@ -2781,6 +2905,10 @@ int tls_verify_chain(rt_tls_session_t *session) {
             }
             if (cert_index++ == 0)
                 continue;
+            if (intermediate_count >= 16) {
+                session->error = "TLS: certificate chain has too many intermediates";
+                return RT_TLS_ERROR_HANDSHAKE;
+            }
             intermediates[intermediate_count].der = cert_der;
             intermediates[intermediate_count].len = cert_len;
             intermediates[intermediate_count].used = 0;

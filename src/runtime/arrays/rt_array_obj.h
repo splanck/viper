@@ -62,6 +62,7 @@ void rt_arr_obj_put(void **arr, size_t idx, void *obj);
 /// @details Supports dynamic growth and shrink for collections and properties.
 ///          Reallocates backing storage when needed and zero-initializes any
 ///          new tail elements. Elements beyond the new length are released.
+///          Resizing an existing array to length 0 releases it and returns NULL.
 /// @param arr Pointer to the first element slot.
 /// @param len New logical length.
 /// @return Pointer to the (possibly reallocated) first element slot.

@@ -15,8 +15,9 @@
 //   - Signature verification is public-data-only; not constant-time on sig/key.
 //   - Maximum modulus size: RT_RSA_MAX_MOD_BYTES (512 bytes = 4096-bit RSA).
 // Ownership/Lifetime:
-//   - After a successful parse call, *out holds heap-allocated buffers;
-//     caller must call rt_rsa_key_free(out) when done.
+//   - Parse output parameters must first be initialized with rt_rsa_key_init.
+//     On success the previous initialized contents are released and *out holds
+//     heap-allocated buffers; caller must call rt_rsa_key_free(out) when done.
 // Links: src/runtime/network/rt_rsa.c (implementation),
 //        src/runtime/network/rt_tls_verify.c (caller)
 //
@@ -62,14 +63,17 @@ void rt_rsa_key_init(rt_rsa_key_t *key);
 void rt_rsa_key_free(rt_rsa_key_t *key);
 
 /// @brief Parse a PKCS#1 RSAPublicKey DER blob (SEQUENCE { modulus INTEGER, exponent INTEGER }).
+/// @param out Initialized key object to replace on success.
 /// @return 1 on success; 0 on malformed input.
 int rt_rsa_parse_public_key_pkcs1(const uint8_t *der, size_t der_len, rt_rsa_key_t *out);
 
 /// @brief Parse a two-prime PKCS#1 RSAPrivateKey DER blob and retain n/e/d.
+/// @param out Initialized key object to replace on success.
 /// @return 1 on success; 0 on malformed input.
 int rt_rsa_parse_private_key_pkcs1(const uint8_t *der, size_t der_len, rt_rsa_key_t *out);
 
 /// @brief Parse a PKCS#8 PrivateKeyInfo DER blob containing an rsaEncryption key.
+/// @param out Initialized key object to replace on success.
 /// @return 1 on success; 0 on malformed input or unrecognised algorithm.
 int rt_rsa_parse_private_key_pkcs8(const uint8_t *der, size_t der_len, rt_rsa_key_t *out);
 

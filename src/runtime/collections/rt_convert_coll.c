@@ -46,6 +46,7 @@
 #include "rt_seq.h"
 #include "rt_set.h"
 #include "rt_stack.h"
+#include "rt_string.h"
 #include <stdarg.h>
 #include <stdlib.h>
 
@@ -138,8 +139,9 @@ void *rt_seq_to_bag(void *seq) {
 
     int64_t len = rt_seq_len(seq);
     for (int64_t i = 0; i < len; i++) {
-        void *elem = rt_seq_get(seq, i);
-        rt_bag_add(bag, (rt_string)elem);
+        rt_string elem = rt_seq_get_str(seq, i);
+        rt_bag_add(bag, elem);
+        rt_str_release_maybe(elem);
     }
     return bag;
 }

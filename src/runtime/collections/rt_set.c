@@ -66,6 +66,12 @@ typedef struct rt_set_impl {
     size_t count;           ///< Number of elements currently in the Set.
 } rt_set_impl;
 
+static rt_set_impl *as_set(void *obj, const char *what) {
+    if (!obj || rt_obj_class_id(obj) != RT_SET_CLASS_ID)
+        rt_trap(what);
+    return (rt_set_impl *)obj;
+}
+
 /// @brief Find an entry in a bucket's collision chain using content equality.
 static rt_set_entry *find_entry(rt_set_entry *head, void *elem) {
     for (rt_set_entry *e = head; e; e = e->next) {
@@ -78,7 +84,7 @@ static rt_set_entry *find_entry(rt_set_entry *head, void *elem) {
 static void rt_set_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
-    rt_set_impl *set = obj;
+    rt_set_impl *set = as_set(obj, "Set: invalid Set object");
     if (!set->buckets || set->capacity == 0)
         return;
     for (size_t i = 0; i < set->capacity; ++i) {
@@ -119,7 +125,7 @@ static void resize_set(rt_set_impl *set) {
 static void rt_set_finalize(void *obj) {
     if (!obj)
         return;
-    rt_set_impl *set = obj;
+    rt_set_impl *set = as_set(obj, "Set: invalid Set object");
     if (!set->buckets || set->capacity == 0)
         return;
     rt_set_clear(obj);
@@ -156,7 +162,7 @@ void *rt_set_new(void) {
 int64_t rt_set_len(void *obj) {
     if (!obj)
         return 0;
-    rt_set_impl *set = obj;
+    rt_set_impl *set = as_set(obj, "Set: invalid Set object");
     return (int64_t)set->count;
 }
 
@@ -164,7 +170,7 @@ int64_t rt_set_len(void *obj) {
 int8_t rt_set_is_empty(void *obj) {
     if (!obj)
         return 1;
-    rt_set_impl *set = obj;
+    rt_set_impl *set = as_set(obj, "Set: invalid Set object");
     return set->count == 0 ? 1 : 0;
 }
 
@@ -173,7 +179,7 @@ int8_t rt_set_is_empty(void *obj) {
 int8_t rt_set_add(void *obj, void *elem) {
     if (!obj)
         return 0;
-    rt_set_impl *set = obj;
+    rt_set_impl *set = as_set(obj, "Set.Add: invalid Set object");
 
     // Check load factor and resize if needed
     if ((long double)set->count * (long double)SET_LOAD_FACTOR_DEN >=
@@ -207,7 +213,7 @@ int8_t rt_set_add(void *obj, void *elem) {
 int8_t rt_set_remove(void *obj, void *elem) {
     if (!obj)
         return 0;
-    rt_set_impl *set = obj;
+    rt_set_impl *set = as_set(obj, "Set.Remove: invalid Set object");
 
     size_t idx = rt_box_hash(elem) % set->capacity;
 
@@ -236,7 +242,7 @@ int8_t rt_set_remove(void *obj, void *elem) {
 int8_t rt_set_has(void *obj, void *elem) {
     if (!obj)
         return 0;
-    rt_set_impl *set = obj;
+    rt_set_impl *set = as_set(obj, "Set.Has: invalid Set object");
 
     size_t idx = rt_box_hash(elem) % set->capacity;
     return find_entry(set->buckets[idx], elem) ? 1 : 0;
@@ -246,7 +252,7 @@ int8_t rt_set_has(void *obj, void *elem) {
 void rt_set_clear(void *obj) {
     if (!obj)
         return;
-    rt_set_impl *set = obj;
+    rt_set_impl *set = as_set(obj, "Set.Clear: invalid Set object");
 
     for (size_t i = 0; i < set->capacity; ++i) {
         rt_set_entry *e = set->buckets[i];
@@ -269,7 +275,7 @@ void *rt_set_items(void *obj) {
     if (!obj)
         return seq;
 
-    rt_set_impl *set = obj;
+    rt_set_impl *set = as_set(obj, "Set.Items: invalid Set object");
 
     for (size_t i = 0; i < set->capacity; ++i) {
         for (rt_set_entry *e = set->buckets[i]; e; e = e->next) {
@@ -288,7 +294,7 @@ void *rt_set_union(void *obj, void *other) {
 
     // Add all from first set
     if (obj) {
-        rt_set_impl *set = obj;
+        rt_set_impl *set = as_set(obj, "Set.Union: invalid Set object");
         for (size_t i = 0; i < set->capacity; ++i) {
             for (rt_set_entry *e = set->buckets[i]; e; e = e->next) {
                 rt_set_add(result, e->elem);
@@ -298,7 +304,7 @@ void *rt_set_union(void *obj, void *other) {
 
     // Add all from second set
     if (other) {
-        rt_set_impl *set2 = other;
+        rt_set_impl *set2 = as_set(other, "Set.Union: invalid Set object");
         for (size_t i = 0; i < set2->capacity; ++i) {
             for (rt_set_entry *e = set2->buckets[i]; e; e = e->next) {
                 rt_set_add(result, e->elem);
@@ -318,7 +324,8 @@ void *rt_set_intersect(void *obj, void *other) {
     if (!obj || !other)
         return result; // Empty intersection
 
-    rt_set_impl *set = obj;
+    rt_set_impl *set = as_set(obj, "Set.Intersect: invalid Set object");
+    as_set(other, "Set.Intersect: invalid Set object");
     for (size_t i = 0; i < set->capacity; ++i) {
         for (rt_set_entry *e = set->buckets[i]; e; e = e->next) {
             if (rt_set_has(other, e->elem)) {
@@ -339,7 +346,9 @@ void *rt_set_diff(void *obj, void *other) {
     if (!obj)
         return result; // Empty difference
 
-    rt_set_impl *set = obj;
+    rt_set_impl *set = as_set(obj, "Set.Diff: invalid Set object");
+    if (other)
+        as_set(other, "Set.Diff: invalid Set object");
     for (size_t i = 0; i < set->capacity; ++i) {
         for (rt_set_entry *e = set->buckets[i]; e; e = e->next) {
             if (!other || !rt_set_has(other, e->elem)) {
@@ -358,7 +367,8 @@ int8_t rt_set_is_subset(void *obj, void *other) {
     if (!other)
         return 0; // Non-empty set can't be subset of empty
 
-    rt_set_impl *set = obj;
+    rt_set_impl *set = as_set(obj, "Set.IsSubset: invalid Set object");
+    as_set(other, "Set.IsSubset: invalid Set object");
     for (size_t i = 0; i < set->capacity; ++i) {
         for (rt_set_entry *e = set->buckets[i]; e; e = e->next) {
             if (!rt_set_has(other, e->elem))
@@ -378,7 +388,8 @@ int8_t rt_set_is_disjoint(void *obj, void *other) {
     if (!obj || !other)
         return 1; // Empty sets are disjoint
 
-    rt_set_impl *set = obj;
+    rt_set_impl *set = as_set(obj, "Set.IsDisjoint: invalid Set object");
+    as_set(other, "Set.IsDisjoint: invalid Set object");
     for (size_t i = 0; i < set->capacity; ++i) {
         for (rt_set_entry *e = set->buckets[i]; e; e = e->next) {
             if (rt_set_has(other, e->elem))
@@ -401,7 +412,7 @@ void *rt_set_clone(void *obj) {
     if (!obj)
         return result;
 
-    rt_set_impl *set = (rt_set_impl *)obj;
+    rt_set_impl *set = as_set(obj, "Set.Clone: invalid Set object");
     for (size_t i = 0; i < set->capacity; ++i) {
         for (rt_set_entry *e = set->buckets[i]; e; e = e->next) {
             rt_set_add(result, e->elem);

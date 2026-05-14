@@ -164,8 +164,8 @@ static void heap_swim(rt_pqueue_impl *h, int64_t k) {
 
 /// @brief Restore heap property by moving an element down.
 static void heap_sink(rt_pqueue_impl *h, int64_t k) {
-    while (2 * k + 1 < h->len) {
-        int64_t child = 2 * k + 1; // Left child
+    while (h->len >= 2 && k <= (h->len - 2) / 2) {
+        int64_t child = k * 2 + 1; // Left child. Safe because of the loop guard.
         // Pick the child with higher priority
         if (child + 1 < h->len &&
             heap_compare(h, h->items[child + 1].priority, h->items[child].priority)) {

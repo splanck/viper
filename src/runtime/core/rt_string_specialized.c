@@ -387,14 +387,29 @@ int64_t rt_str_hamming(rt_string a, rt_string b) {
 // Case conversion utilities
 // ---------------------------------------------------------------------------
 
-// Helper: check if char is a word separator
+/// @brief Test whether @p c is one of the conventional word-separator characters.
+/// @details Recognises space, underscore, hyphen, and tab. Used by camelCase
+///          and snake_case splitter heuristics that need a uniform definition
+///          of "boundary".
+/// @param c Byte to classify.
+/// @return Non-zero if @p c is a separator.
 static int is_separator(char c) {
     return c == ' ' || c == '_' || c == '-' || c == '\t';
 }
 
-// Helper: split a string into words, handling camelCase boundaries too.
-// Writes words into a flat buffer with null terminators, returns word count.
-// words[] points into buf.
+/// @brief Split @p src into words, recognising both explicit separators and camelCase.
+/// @details Copies each detected word into @p buf with NUL terminators packed
+///          end-to-end, and writes a pointer to each word into @p words.
+///          Word boundaries are explicit separators (@ref is_separator) or a
+///          lowercase→uppercase transition (camelCase). Stops at
+///          @p max_words even if @p src has more.
+/// @param src       Input bytes.
+/// @param len       Input length in bytes.
+/// @param buf       Output buffer that the @p words pointers index into.
+/// @param buf_cap   Capacity of @p buf in bytes.
+/// @param words     Receives a pointer to each word (NUL-terminated within @p buf).
+/// @param max_words Capacity of @p words; further words are dropped.
+/// @return Number of words written (≤ @p max_words).
 static int split_words(
     const char *src, size_t len, char *buf, size_t buf_cap, const char **words, int max_words) {
     int wcount = 0;

@@ -10,13 +10,34 @@
 #include "rt_string.h"
 
 #include <cassert>
+#include <csetjmp>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 
+namespace {
+static jmp_buf g_trap_jmp;
+static const char *g_last_trap = nullptr;
+static bool g_trap_expected = false;
+} // namespace
+
 extern "C" void vm_trap(const char *msg) {
+    g_last_trap = msg;
+    if (g_trap_expected)
+        longjmp(g_trap_jmp, 1);
     rt_abort(msg);
 }
+
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_trap_expected = true;                                                                    \
+        g_last_trap = nullptr;                                                                     \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
+            expr;                                                                                  \
+            assert(false && "Expected trap did not occur");                                        \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
+    } while (0)
 
 static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
@@ -26,6 +47,11 @@ static void test_new() {
     void *bf = rt_bloomfilter_new(100, 0.01);
     assert(bf != NULL);
     assert(rt_bloomfilter_count(bf) == 0);
+}
+
+static void test_negative_expected_items_traps() {
+    EXPECT_TRAP(rt_bloomfilter_new(-1, 0.01));
+    assert(g_last_trap && strstr(g_last_trap, "BloomFilter") != nullptr);
 }
 
 static void test_invalid_fpr_is_sanitized() {
@@ -107,6 +133,20 @@ static void test_fpr() {
     rt_string_unref(s);
 }
 
+static void test_duplicate_add_does_not_inflate_fpr() {
+    void *bf = rt_bloomfilter_new(100, 0.01);
+    rt_string s = make_str("duplicate");
+
+    rt_bloomfilter_add(bf, s);
+    double first = rt_bloomfilter_fpr(bf);
+    rt_bloomfilter_add(bf, s);
+    double second = rt_bloomfilter_fpr(bf);
+
+    assert(rt_bloomfilter_count(bf) == 2);
+    assert(first == second);
+    rt_string_unref(s);
+}
+
 static void test_clear() {
     void *bf = rt_bloomfilter_new(100, 0.01);
     rt_string s = make_str("test");
@@ -149,11 +189,13 @@ static void test_null_safety() {
 /// @brief Main.
 int main() {
     test_new();
+    test_negative_expected_items_traps();
     test_invalid_fpr_is_sanitized();
     test_add_and_check();
     test_definitely_not_present();
     test_many_items();
     test_fpr();
+    test_duplicate_add_does_not_inflate_fpr();
     test_clear();
     test_merge();
     test_null_safety();

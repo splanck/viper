@@ -409,7 +409,13 @@ static int rt_crypto_module_self_test_unlocked(void) {
 int rt_crypto_module_self_test(void) {
     int ok;
     module_lock();
+    if (g_state == RT_CRYPTO_MODULE_STATE_ERROR) {
+        module_unlock();
+        return 0;
+    }
     ok = rt_crypto_module_self_test_unlocked();
+    if (!ok)
+        g_state = RT_CRYPTO_MODULE_STATE_ERROR;
     module_unlock();
     return ok;
 }
@@ -468,6 +474,10 @@ int rt_crypto_module_set_mode(rt_crypto_module_mode_t mode) {
             return 0;
     }
     module_lock();
+    if (g_state == RT_CRYPTO_MODULE_STATE_ERROR) {
+        module_unlock();
+        return 0;
+    }
     if (mode == RT_CRYPTO_MODULE_MODE_APPROVED) {
         g_state = RT_CRYPTO_MODULE_STATE_SELF_TESTING;
         g_status = "self-testing";
@@ -513,7 +523,17 @@ int rt_crypto_module_is_approved_mode(void) {
 ///          HKDF-SHA-2, PBKDF2-SHA-256, DRBG, ECDSA-P256, RSA-PSS)
 ///          returns non-zero — legacy services refuse.
 int rt_crypto_module_service_allowed(rt_crypto_module_service_t service) {
-    if (!rt_crypto_module_is_approved_mode())
+    rt_crypto_module_mode_t mode;
+    rt_crypto_module_state_t state;
+
+    module_lock();
+    mode = g_mode;
+    state = g_state;
+    module_unlock();
+
+    if (state == RT_CRYPTO_MODULE_STATE_ERROR)
+        return 0;
+    if (mode != RT_CRYPTO_MODULE_MODE_APPROVED)
         return 1;
     switch (service) {
     case RT_CRYPTO_SERVICE_AES_GCM:

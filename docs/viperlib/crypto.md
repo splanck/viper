@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-06
+last-verified: 2026-05-14
 ---
 
 # Cryptography
@@ -43,7 +43,7 @@ AES utilities: authenticated AES-128-GCM/AES-256-GCM for `Bytes` and password-en
 ### Notes
 
 - `EncryptAuth`/`DecryptAuth` accept a 16-byte AES-128 key or a 32-byte AES-256 key and bind the `[magic(4)][nonce(12)]` header plus caller-provided AAD into the GCM tag. Malformed frames, wrong AAD, wrong keys, and modified ciphertext return `null`.
-- `Encrypt`/`Decrypt` are legacy AES-CBC helpers. CBC ciphertext is not authenticated; prefer `EncryptAuth`, `EncryptStr`, or `Viper.Crypto.Cipher`. `Decrypt` returns `null` when CBC padding is invalid. CBC helpers trap in approved mode.
+- `Encrypt`/`Decrypt` are legacy AES-CBC helpers. CBC ciphertext is not authenticated; prefer `EncryptAuth`, `EncryptStr`, or `Viper.Crypto.Cipher`. Empty plaintext is valid and round-trips through PKCS7 padding. `Decrypt` returns `null` when CBC padding is invalid. CBC helpers trap in approved mode.
 - `EncryptStr` rejects empty passwords, derives an AES-128 key from the password using PBKDF2-HMAC-SHA256 with a random salt and a 300,000-iteration default, and authenticates its header as AAD
 - `EncryptStr` output format is `[magic(4)][iterations(4)][salt(16)][nonce(12)][ciphertext][tag(16)]`
 - `DecryptStr` remains backward-compatible with older `[IV(16)][AES-CBC ciphertext]` payloads
@@ -272,7 +272,7 @@ Cipher operations use two failure modes:
 - `Decrypt()` returns `NULL` when authentication fails (wrong password or corrupted ciphertext)
 - `DecryptWithKey()` returns `NULL` when authentication fails (wrong key or corrupted data)
 - `EncryptWithKey()`/`DecryptWithKey()` trap if key is not exactly 32 bytes
-- Structural misuse still traps: null ciphertext, empty password, or malformed too-short ciphertext
+- Structural misuse still traps: null ciphertext, empty password, invalid AAD objects, or malformed too-short ciphertext
 - Empty plaintext is allowed and produces valid ciphertext
 
 ### Security Recommendations
@@ -342,7 +342,7 @@ Cryptographic hash functions, checksums, and HMAC authentication for strings and
 | HMAC-*    | Same as hash  | Same as underlying hash   |
 | Fast      | 64 bits       | Integer (i64), process-keyed SipHash |
 
-String hash and HMAC methods use the stored Viper string byte length. Embedded `NUL` bytes are hashed as data, matching the corresponding `Bytes` methods for the same byte sequence.
+String hash and HMAC methods use the stored Viper string byte length. Embedded `NUL` bytes are hashed as data, matching the corresponding `Bytes` methods for the same byte sequence. Empty strings are valid inputs; null string references trap instead of being silently hashed as empty strings.
 
 ### Fast Hash Methods
 
@@ -480,6 +480,7 @@ Key derivation functions for deriving cryptographic keys from passwords.
 ### Traps
 
 - `iterations < 100000` or `iterations > 10000000`: Traps instead of silently changing the requested work factor
+- null `password`: Traps instead of deriving the empty-password key. A real empty string is allowed when the application explicitly wants that input.
 - empty `salt`: Traps with "salt must not be empty"
 - `keyLen < 1 or keyLen > 1024`: Traps with "key_len must be between 1 and 1024"
 - unsupported scrypt memory/cost parameters: Traps before allocating memory
@@ -583,6 +584,7 @@ Validation-readiness controls for the zero-dependency in-tree crypto module.
 - Runs startup self-tests for SHA-2, HMAC/HKDF-SHA256, AES-128-GCM, AES-256-GCM, and an HMAC-DRBG known-answer path before enabling approved mode
 - Routes `Viper.Crypto.Rand` and internal nonce/key generation through the module HMAC-DRBG once approved mode is enabled
 - Serializes module state and DRBG access, chunks oversized random requests to the DRBG request limit, and reseeds the DRBG from OS entropy on the configured reseed interval
+- Self-test or DRBG initialization failure pins the module in an error state. The error state fails closed for service checks, and disabling approved mode does not re-enable compatibility algorithms after such a failure.
 - Keeps compatibility-mode algorithms available when approved mode is disabled
 - Disables non-approved public services in approved mode: MD5, SHA-1, HMAC-MD5, HMAC-SHA1, CRC32, fast hash, scrypt, ChaCha20-Poly1305 formats, legacy Cipher formats, AES-CBC helpers, and current X25519-only TLS
 - Uses AES-256-GCM for `Viper.Crypto.Cipher` in approved mode
@@ -779,6 +781,8 @@ The TLS implementation uses:
 - **Leaf-certificate policy:** Built-in verification enforces TLS server-auth EKU and requires the `digitalSignature` KeyUsage bit when KeyUsage is present on the server certificate
 - **DER strictness:** Certificate signature algorithms, ECDSA signatures, RSA public keys, and PSS parameters are parsed as strict DER with exact length consumption and canonical INTEGERs
 - **Hostname / SNI behavior:** DNS hostnames are sent in SNI; IP literals are verified against IP SANs but are not sent in SNI. SubjectAltName suppresses CommonName fallback even when the SAN contains no DNS names, and broad public-suffix wildcards are rejected.
+- **SubjectAltName matching:** Hostname verification scans all DNS SAN entries. The public C extraction helper still writes only up to its caller-provided output capacity.
+- **Certificate chain behavior:** Built-in verification rejects malformed certificate-list tails and chains with more than 16 intermediates instead of silently ignoring excess entries.
 - **Handshake strictness:** Unexpected handshake messages and trailing certificate-message bytes fail the handshake instead of being skipped.
 - **Key-share validation:** X25519 all-zero shared secrets are rejected during the handshake
 - **String handling:** `SendStr` sends the full stored string byte length, including embedded `NUL` bytes
@@ -861,6 +865,7 @@ TLS wrapper methods use return values for routine failures:
 - Host strings containing embedded `NUL` bytes are rejected instead of being truncated
 - `Send()` / `SendStr()` return a negative value if the connection is closed or invalid
 - `Recv()` returns `NULL` on receive errors; `RecvStr()` returns an empty string on receive errors
+- `RecvLine()` returns an empty string if the connection closes or errors before a newline, so truncated protocol lines are not reported as complete lines
 
 Use `Error()` to get descriptive error messages for debugging.
 

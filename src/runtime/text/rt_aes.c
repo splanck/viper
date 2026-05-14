@@ -612,6 +612,8 @@ static void aes_decrypt_block(const uint8_t *input, uint8_t *output, const uint8
 /// @param out_len Output: length of padded data (always multiple of 16)
 /// @return Newly allocated padded data
 static uint8_t *pkcs7_pad(const uint8_t *data, size_t len, size_t *out_len) {
+    if (!data && len > 0)
+        rt_trap("AES: input buffer is null");
     size_t pad_len = AES_BLOCK_SIZE - (len % AES_BLOCK_SIZE);
     if (len > SIZE_MAX - pad_len)
         rt_trap("AES: input too large");
@@ -621,7 +623,8 @@ static uint8_t *pkcs7_pad(const uint8_t *data, size_t len, size_t *out_len) {
     if (!padded)
         rt_trap("AES: memory allocation failed");
 
-    memcpy(padded, data, len);
+    if (len > 0)
+        memcpy(padded, data, len);
     memset(padded + len, (uint8_t)pad_len, pad_len);
 
     return padded;
@@ -840,14 +843,6 @@ void *rt_aes_encrypt(void *data, void *key, void *iv) {
             free(iv_raw);
         rt_trap("AES: IV must be exactly 16 bytes");
         return NULL;
-    }
-
-    // Handle empty data
-    if (data_len == 0) {
-        data_raw = (uint8_t *)malloc(1);
-        if (!data_raw)
-            rt_trap("AES: memory allocation failed");
-        data_len = 0;
     }
 
     // Encrypt

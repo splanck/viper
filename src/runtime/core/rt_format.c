@@ -162,6 +162,15 @@ static void rt_format_write(const char *text, char *buffer, size_t capacity) {
     memcpy(buffer, text, len + 1);
 }
 
+/// @brief Handle NaN / ±infinity printing for both formatter entry points.
+/// @details Writes the canonical spellings (`"NaN"`, `"Inf"`, `"-Inf"`) into
+///          @p buffer and returns 1 when @p value is non-finite; otherwise
+///          leaves the buffer untouched and returns 0 so the caller proceeds
+///          to its decimal formatter.
+/// @param value    Value to classify.
+/// @param buffer   Destination buffer for the special-value string.
+/// @param capacity Capacity of @p buffer in bytes (must include the NUL).
+/// @return 1 if a special-value string was written, 0 if @p value is finite.
 static int rt_format_f64_write_special(double value, char *buffer, size_t capacity) {
     if (isnan(value)) {
         rt_format_write("NaN", buffer, capacity);
@@ -200,6 +209,14 @@ void rt_format_f64(double value, char *buffer, size_t capacity) {
         rt_trap("rt_format_f64: truncated");
 }
 
+/// @brief Compare two candidate round-trip strings and decide whether to replace the current best.
+/// @details The shortest exact-reparse representation wins. When two
+///          candidates are the same length, the fixed-notation form is
+///          preferred over scientific notation so integer-valued doubles
+///          remain readable without extra bytes.
+/// @param candidate Newly-generated formatted representation.
+/// @param best      The current best representation (must be non-null and non-empty).
+/// @return Non-zero if @p candidate should replace @p best.
 static int rt_format_should_replace_roundtrip(const char *candidate, const char *best) {
     size_t candidate_len = strlen(candidate);
     size_t best_len = strlen(best);

@@ -36,6 +36,7 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -57,6 +58,12 @@ typedef struct rt_bitset_impl {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+static rt_bitset_impl *as_bitset(void *obj, const char *what) {
+    if (!obj || rt_obj_class_id(obj) != RT_BITSET_CLASS_ID)
+        rt_trap(what);
+    return (rt_bitset_impl *)obj;
+}
 
 /// Popcount for a 64-bit word.
 static int popcount64(uint64_t x) {
@@ -112,7 +119,7 @@ static void bitset_grow(rt_bitset_impl *bs, size_t min_bits) {
 static void rt_bitset_finalize(void *obj) {
     if (!obj)
         return;
-    rt_bitset_impl *bs = (rt_bitset_impl *)obj;
+    rt_bitset_impl *bs = as_bitset(obj, "BitSet: invalid BitSet object");
     free(bs->words);
     bs->words = NULL;
     bs->word_count = 0;
@@ -124,7 +131,9 @@ static void rt_bitset_finalize(void *obj) {
 // ---------------------------------------------------------------------------
 
 void *rt_bitset_new(int64_t nbits) {
-    if (nbits <= 0)
+    if (nbits < 0)
+        rt_trap("BitSet: negative length");
+    if (nbits == 0)
         nbits = 64; // Default to 64 bits
 
     if ((uint64_t)nbits > SIZE_MAX - (BITS_PER_WORD - 1))
@@ -155,14 +164,14 @@ void *rt_bitset_new(int64_t nbits) {
 int64_t rt_bitset_len(void *obj) {
     if (!obj)
         return 0;
-    return (int64_t)((rt_bitset_impl *)obj)->bit_count;
+    return (int64_t)as_bitset(obj, "BitSet.Len: invalid BitSet object")->bit_count;
 }
 
 /// @brief Population count: number of bits set to 1 across the entire bitset (popcount).
 int64_t rt_bitset_count(void *obj) {
     if (!obj)
         return 0;
-    rt_bitset_impl *bs = (rt_bitset_impl *)obj;
+    rt_bitset_impl *bs = as_bitset(obj, "BitSet.Count: invalid BitSet object");
     int64_t total = 0;
     for (size_t i = 0; i < bs->word_count; ++i)
         total += popcount64(bs->words[i]);
@@ -178,7 +187,7 @@ int8_t rt_bitset_is_empty(void *obj) {
 int8_t rt_bitset_get(void *obj, int64_t idx) {
     if (!obj || idx < 0)
         return 0;
-    rt_bitset_impl *bs = (rt_bitset_impl *)obj;
+    rt_bitset_impl *bs = as_bitset(obj, "BitSet.Get: invalid BitSet object");
     if ((size_t)idx >= bs->bit_count)
         return 0;
     size_t w = (size_t)idx / BITS_PER_WORD;
@@ -191,7 +200,7 @@ int8_t rt_bitset_get(void *obj, int64_t idx) {
 void rt_bitset_set(void *obj, int64_t idx) {
     if (!obj || idx < 0)
         return;
-    rt_bitset_impl *bs = (rt_bitset_impl *)obj;
+    rt_bitset_impl *bs = as_bitset(obj, "BitSet.Set: invalid BitSet object");
     if ((size_t)idx >= bs->bit_count)
         bitset_grow(bs, (size_t)idx + 1);
     size_t w = (size_t)idx / BITS_PER_WORD;
@@ -204,7 +213,7 @@ void rt_bitset_set(void *obj, int64_t idx) {
 void rt_bitset_clear(void *obj, int64_t idx) {
     if (!obj || idx < 0)
         return;
-    rt_bitset_impl *bs = (rt_bitset_impl *)obj;
+    rt_bitset_impl *bs = as_bitset(obj, "BitSet.Clear: invalid BitSet object");
     if ((size_t)idx >= bs->bit_count)
         return; // Nothing to clear
     size_t w = (size_t)idx / BITS_PER_WORD;
@@ -216,7 +225,7 @@ void rt_bitset_clear(void *obj, int64_t idx) {
 void rt_bitset_toggle(void *obj, int64_t idx) {
     if (!obj || idx < 0)
         return;
-    rt_bitset_impl *bs = (rt_bitset_impl *)obj;
+    rt_bitset_impl *bs = as_bitset(obj, "BitSet.Toggle: invalid BitSet object");
     if ((size_t)idx >= bs->bit_count)
         bitset_grow(bs, (size_t)idx + 1);
     size_t w = (size_t)idx / BITS_PER_WORD;
@@ -230,7 +239,7 @@ void rt_bitset_toggle(void *obj, int64_t idx) {
 void rt_bitset_set_all(void *obj) {
     if (!obj)
         return;
-    rt_bitset_impl *bs = (rt_bitset_impl *)obj;
+    rt_bitset_impl *bs = as_bitset(obj, "BitSet.SetAll: invalid BitSet object");
     if (bs->word_count == 0)
         return;
     memset(bs->words, 0xFF, bs->word_count * sizeof(uint64_t));
@@ -244,7 +253,7 @@ void rt_bitset_set_all(void *obj) {
 void rt_bitset_clear_all(void *obj) {
     if (!obj)
         return;
-    rt_bitset_impl *bs = (rt_bitset_impl *)obj;
+    rt_bitset_impl *bs = as_bitset(obj, "BitSet.ClearAll: invalid BitSet object");
     if (bs->word_count == 0)
         return;
     memset(bs->words, 0, bs->word_count * sizeof(uint64_t));
@@ -256,8 +265,8 @@ void *rt_bitset_and(void *a, void *b) {
     if (!a || !b)
         return rt_bitset_new(64);
 
-    rt_bitset_impl *ba = (rt_bitset_impl *)a;
-    rt_bitset_impl *bb = (rt_bitset_impl *)b;
+    rt_bitset_impl *ba = as_bitset(a, "BitSet.And: invalid BitSet object");
+    rt_bitset_impl *bb = as_bitset(b, "BitSet.And: invalid BitSet object");
     size_t max_bits = ba->bit_count > bb->bit_count ? ba->bit_count : bb->bit_count;
 
     void *result = rt_bitset_new((int64_t)max_bits);
@@ -278,8 +287,8 @@ void *rt_bitset_or(void *a, void *b) {
     if (!a || !b)
         return rt_bitset_new(64);
 
-    rt_bitset_impl *ba = (rt_bitset_impl *)a;
-    rt_bitset_impl *bb = (rt_bitset_impl *)b;
+    rt_bitset_impl *ba = as_bitset(a, "BitSet.Or: invalid BitSet object");
+    rt_bitset_impl *bb = as_bitset(b, "BitSet.Or: invalid BitSet object");
     size_t max_bits = ba->bit_count > bb->bit_count ? ba->bit_count : bb->bit_count;
 
     void *result = rt_bitset_new((int64_t)max_bits);
@@ -304,8 +313,8 @@ void *rt_bitset_xor(void *a, void *b) {
     if (!a || !b)
         return rt_bitset_new(64);
 
-    rt_bitset_impl *ba = (rt_bitset_impl *)a;
-    rt_bitset_impl *bb = (rt_bitset_impl *)b;
+    rt_bitset_impl *ba = as_bitset(a, "BitSet.Xor: invalid BitSet object");
+    rt_bitset_impl *bb = as_bitset(b, "BitSet.Xor: invalid BitSet object");
     size_t max_bits = ba->bit_count > bb->bit_count ? ba->bit_count : bb->bit_count;
 
     void *result = rt_bitset_new((int64_t)max_bits);
@@ -331,7 +340,7 @@ void *rt_bitset_not(void *obj) {
     if (!obj)
         return rt_bitset_new(64);
 
-    rt_bitset_impl *bs = (rt_bitset_impl *)obj;
+    rt_bitset_impl *bs = as_bitset(obj, "BitSet.Not: invalid BitSet object");
     void *result = rt_bitset_new((int64_t)bs->bit_count);
     if (!result)
         return NULL;
@@ -355,7 +364,7 @@ rt_string rt_bitset_to_string(void *obj) {
     if (!obj)
         return rt_string_from_bytes("0", 1);
 
-    rt_bitset_impl *bs = (rt_bitset_impl *)obj;
+    rt_bitset_impl *bs = as_bitset(obj, "BitSet.ToString: invalid BitSet object");
     if (bs->bit_count == 0)
         return rt_string_from_bytes("0", 1);
 

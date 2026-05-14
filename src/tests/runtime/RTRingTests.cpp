@@ -12,13 +12,51 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_ring.h"
 
 #include <cassert>
+#include <csetjmp>
 #include <cstring>
 
+namespace {
+static jmp_buf g_trap_jmp;
+static const char *g_last_trap = nullptr;
+static bool g_trap_expected = false;
+static int g_finalizer_calls = 0;
+} // namespace
+
 extern "C" void vm_trap(const char *msg) {
+    g_last_trap = msg;
+    if (g_trap_expected)
+        longjmp(g_trap_jmp, 1);
     rt_abort(msg);
+}
+
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_trap_expected = true;                                                                    \
+        g_last_trap = nullptr;                                                                     \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
+            expr;                                                                                  \
+            assert(false && "Expected trap did not occur");                                        \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
+    } while (0)
+
+static void count_finalizer(void *) {
+    ++g_finalizer_calls;
+}
+
+static void release_obj(void *p) {
+    if (p && rt_obj_release_check0(p))
+        rt_obj_free(p);
+}
+
+static void *new_obj() {
+    void *p = rt_obj_new_i64(0, 8);
+    assert(p != nullptr);
+    return p;
 }
 
 static void test_new_and_basic_properties() {
@@ -31,14 +69,12 @@ static void test_new_and_basic_properties() {
 }
 
 static void test_capacity_clamped_to_minimum() {
-    // Capacity of 0 or negative should clamp to 1
     void *ring = rt_ring_new(0);
     assert(ring != nullptr);
     assert(rt_ring_cap(ring) == 1);
 
-    ring = rt_ring_new(-5);
-    assert(ring != nullptr);
-    assert(rt_ring_cap(ring) == 1);
+    EXPECT_TRAP(rt_ring_new(-5));
+    assert(g_last_trap && strstr(g_last_trap, "Ring") != nullptr);
 }
 
 static void test_push_increases_length() {
@@ -436,6 +472,45 @@ static void test_overwrite_sequence() {
     assert(rt_ring_pop(ring) == &vals[9]);
 }
 
+static void test_owning_ring_releases_overwritten_and_popped_values() {
+    void *ring = rt_ring_new(1);
+    void *a = new_obj();
+    void *b = new_obj();
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(a, count_finalizer);
+    rt_obj_set_finalizer(b, count_finalizer);
+
+    assert(rt_ring_owns_elements(ring) == 1);
+    rt_ring_push(ring, a);
+    release_obj(a); // Ring owns the only reference.
+    rt_ring_push(ring, b);
+    assert(g_finalizer_calls == 1); // Overwriting released a.
+
+    release_obj(b); // Ring owns the only reference.
+    void *popped = rt_ring_pop(ring);
+    assert(popped == b);
+    assert(g_finalizer_calls == 1);
+    release_obj(popped);
+    assert(g_finalizer_calls == 2);
+
+    release_obj(ring);
+}
+
+static void test_borrowed_ring_mode_does_not_release_values() {
+    void *ring = rt_ring_new(2);
+    void *value = new_obj();
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_ring_set_owns_elements(ring, 0);
+    assert(rt_ring_owns_elements(ring) == 0);
+    rt_ring_push(ring, value);
+    release_obj(ring);
+    assert(g_finalizer_calls == 0);
+    release_obj(value);
+    assert(g_finalizer_calls == 1);
+}
+
 int main() {
     test_new_and_basic_properties();
     test_capacity_clamped_to_minimum();
@@ -458,6 +533,8 @@ int main() {
     test_capacity_one();
     test_large_capacity();
     test_overwrite_sequence();
+    test_owning_ring_releases_overwritten_and_popped_values();
+    test_borrowed_ring_mode_does_not_release_values();
 
     return 0;
 }

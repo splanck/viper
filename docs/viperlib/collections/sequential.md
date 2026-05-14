@@ -454,6 +454,8 @@ elements.
 - `NEW Viper.Collections.Ring(capacity)` — fixed capacity ring buffer
 - `Viper.Collections.Ring.NewDefault()` — ring buffer with default capacity (implementation-defined)
 
+`capacity = 0` creates a one-slot ring. Negative capacities trap.
+
 ### Properties
 
 | Property  | Type      | Description                          |
@@ -462,6 +464,7 @@ elements.
 | `Cap`     | `Integer` | Maximum capacity (fixed at creation) |
 | `IsEmpty` | `Boolean` | True if ring has no elements         |
 | `IsFull`  | `Boolean` | True if ring is at capacity          |
+| `OwnsElements` | `Boolean` | True when the ring retains/releases stored runtime objects |
 
 ### Methods
 
@@ -475,9 +478,13 @@ elements.
 | `First()`    | Object  | Return the oldest element (same as Peek)            |
 | `Last()`     | Object  | Return the newest element                           |
 | `Reverse()`  | void    | Reverse all elements in place                       |
+| `SetOwnsElements(owns)` | void | Select owned or borrowed element mode while empty |
 | `Clone()`    | Ring    | Create a shallow copy of the ring                   |
 | `Clear()`    | void    | Remove all elements                                 |
 | `ToSeq()`    | Seq     | Return all elements as a new Seq (oldest to newest) |
+
+Rings retain stored runtime objects by default and release overwritten, popped, cleared, or finalized values. Runtime
+callers can switch an empty ring to borrowed-element mode before pushing values with `SetOwnsElements(false)`.
 
 ### Zia Example
 

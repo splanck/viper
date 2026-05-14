@@ -412,8 +412,12 @@ void rt_list_remove_at(void *list, int64_t index) {
         }
         // Clear last slot
         rt_arr_obj_put(L->arr, len - 1, NULL);
-        // Shrink storage
-        L->arr = rt_arr_obj_resize(L->arr, len - 1);
+        // Shrink storage. Resize-to-zero releases the backing array and
+        // returns NULL, which is the empty-list state.
+        void **shrunk = rt_arr_obj_resize(L->arr, len - 1);
+        if (len - 1 > 0 && !shrunk)
+            rt_trap("List.RemoveAt: memory allocation failed");
+        L->arr = shrunk;
     }
 }
 
@@ -759,7 +763,10 @@ void *rt_list_pop(void *list) {
 
     void *elem = rt_arr_obj_get(L->arr, len - 1);
     rt_arr_obj_put(L->arr, len - 1, NULL);
-    L->arr = rt_arr_obj_resize(L->arr, len - 1);
+    void **shrunk = rt_arr_obj_resize(L->arr, len - 1);
+    if (len - 1 > 0 && !shrunk)
+        rt_trap("List.Pop: memory allocation failed");
+    L->arr = shrunk;
     return elem;
 }
 

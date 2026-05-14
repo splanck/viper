@@ -109,8 +109,8 @@ static void rt_bytes_trap_overflow(const char *msg) {
 /// total_size = sizeof(rt_bytes_impl) + len
 /// ```
 ///
-/// @param len The number of bytes to allocate. Negative values are treated
-///            as 0. Values exceeding available memory will trigger a trap.
+/// @param len The number of bytes to allocate. Negative values trap.
+///            Values exceeding available memory will trigger a trap.
 ///
 /// @return A pointer to the newly allocated rt_bytes_impl structure.
 ///
@@ -119,7 +119,7 @@ static void rt_bytes_trap_overflow(const char *msg) {
 /// @note The allocated bytes are zero-initialized.
 static rt_bytes_impl *rt_bytes_alloc(int64_t len) {
     if (len < 0)
-        len = 0;
+        rt_bytes_trap_domain("Bytes.New: negative length");
 
     size_t total = sizeof(rt_bytes_impl);
     if (len > 0) {
@@ -200,8 +200,7 @@ static int b64_digit_value(char c) {
 /// Print data.Get(0)             ' Outputs: 255
 /// ```
 ///
-/// @param len The number of bytes to allocate. Negative values are treated
-///            as 0 (creates an empty Bytes object).
+/// @param len The number of bytes to allocate. Negative values trap.
 ///
 /// @return A pointer to the newly created Bytes object.
 ///
@@ -936,6 +935,8 @@ void *rt_bytes_clone(void *obj) {
 ///
 /// @note Traps on allocation failure.
 uint8_t *rt_bytes_extract_raw(void *bytes, size_t *out_len) {
+    if (!out_len)
+        rt_bytes_trap_invalid_operation("Bytes.ExtractRaw: null length output");
     if (!bytes) {
         *out_len = 0;
         return NULL;
@@ -1037,8 +1038,9 @@ void rt_bytes_write_i16le(void *obj, int64_t offset, int64_t value) {
     rt_bytes_impl *b = rt_bytes_require(obj, "Bytes.WriteI16LE: invalid Bytes object");
     bytes_check_bounds(b, offset, 2);
     uint8_t *d = b->data + offset;
-    d[0] = (uint8_t)(value & 0xFF);
-    d[1] = (uint8_t)((value >> 8) & 0xFF);
+    uint16_t raw = (uint16_t)value;
+    d[0] = (uint8_t)(raw & 0xFFu);
+    d[1] = (uint8_t)((raw >> 8) & 0xFFu);
 }
 
 /// @brief Write `value` (truncated to int16) at `offset` in big-endian byte order.
@@ -1046,8 +1048,9 @@ void rt_bytes_write_i16be(void *obj, int64_t offset, int64_t value) {
     rt_bytes_impl *b = rt_bytes_require(obj, "Bytes.WriteI16BE: invalid Bytes object");
     bytes_check_bounds(b, offset, 2);
     uint8_t *d = b->data + offset;
-    d[0] = (uint8_t)((value >> 8) & 0xFF);
-    d[1] = (uint8_t)(value & 0xFF);
+    uint16_t raw = (uint16_t)value;
+    d[0] = (uint8_t)((raw >> 8) & 0xFFu);
+    d[1] = (uint8_t)(raw & 0xFFu);
 }
 
 /// @brief Write `value` (truncated to int32) at `offset` in little-endian byte order.
@@ -1055,10 +1058,11 @@ void rt_bytes_write_i32le(void *obj, int64_t offset, int64_t value) {
     rt_bytes_impl *b = rt_bytes_require(obj, "Bytes.WriteI32LE: invalid Bytes object");
     bytes_check_bounds(b, offset, 4);
     uint8_t *d = b->data + offset;
-    d[0] = (uint8_t)(value & 0xFF);
-    d[1] = (uint8_t)((value >> 8) & 0xFF);
-    d[2] = (uint8_t)((value >> 16) & 0xFF);
-    d[3] = (uint8_t)((value >> 24) & 0xFF);
+    uint32_t raw = (uint32_t)value;
+    d[0] = (uint8_t)(raw & 0xFFu);
+    d[1] = (uint8_t)((raw >> 8) & 0xFFu);
+    d[2] = (uint8_t)((raw >> 16) & 0xFFu);
+    d[3] = (uint8_t)((raw >> 24) & 0xFFu);
 }
 
 /// @brief Write `value` (truncated to int32) at `offset` in big-endian byte order.
@@ -1066,10 +1070,11 @@ void rt_bytes_write_i32be(void *obj, int64_t offset, int64_t value) {
     rt_bytes_impl *b = rt_bytes_require(obj, "Bytes.WriteI32BE: invalid Bytes object");
     bytes_check_bounds(b, offset, 4);
     uint8_t *d = b->data + offset;
-    d[0] = (uint8_t)((value >> 24) & 0xFF);
-    d[1] = (uint8_t)((value >> 16) & 0xFF);
-    d[2] = (uint8_t)((value >> 8) & 0xFF);
-    d[3] = (uint8_t)(value & 0xFF);
+    uint32_t raw = (uint32_t)value;
+    d[0] = (uint8_t)((raw >> 24) & 0xFFu);
+    d[1] = (uint8_t)((raw >> 16) & 0xFFu);
+    d[2] = (uint8_t)((raw >> 8) & 0xFFu);
+    d[3] = (uint8_t)(raw & 0xFFu);
 }
 
 /// @brief Write a full 64-bit `value` at `offset` in little-endian byte order.
@@ -1077,14 +1082,15 @@ void rt_bytes_write_i64le(void *obj, int64_t offset, int64_t value) {
     rt_bytes_impl *b = rt_bytes_require(obj, "Bytes.WriteI64LE: invalid Bytes object");
     bytes_check_bounds(b, offset, 8);
     uint8_t *d = b->data + offset;
-    d[0] = (uint8_t)(value & 0xFF);
-    d[1] = (uint8_t)((value >> 8) & 0xFF);
-    d[2] = (uint8_t)((value >> 16) & 0xFF);
-    d[3] = (uint8_t)((value >> 24) & 0xFF);
-    d[4] = (uint8_t)((value >> 32) & 0xFF);
-    d[5] = (uint8_t)((value >> 40) & 0xFF);
-    d[6] = (uint8_t)((value >> 48) & 0xFF);
-    d[7] = (uint8_t)((value >> 56) & 0xFF);
+    uint64_t raw = (uint64_t)value;
+    d[0] = (uint8_t)(raw & 0xFFu);
+    d[1] = (uint8_t)((raw >> 8) & 0xFFu);
+    d[2] = (uint8_t)((raw >> 16) & 0xFFu);
+    d[3] = (uint8_t)((raw >> 24) & 0xFFu);
+    d[4] = (uint8_t)((raw >> 32) & 0xFFu);
+    d[5] = (uint8_t)((raw >> 40) & 0xFFu);
+    d[6] = (uint8_t)((raw >> 48) & 0xFFu);
+    d[7] = (uint8_t)((raw >> 56) & 0xFFu);
 }
 
 /// @brief Write a full 64-bit `value` at `offset` in big-endian byte order.
@@ -1092,14 +1098,15 @@ void rt_bytes_write_i64be(void *obj, int64_t offset, int64_t value) {
     rt_bytes_impl *b = rt_bytes_require(obj, "Bytes.WriteI64BE: invalid Bytes object");
     bytes_check_bounds(b, offset, 8);
     uint8_t *d = b->data + offset;
-    d[0] = (uint8_t)((value >> 56) & 0xFF);
-    d[1] = (uint8_t)((value >> 48) & 0xFF);
-    d[2] = (uint8_t)((value >> 40) & 0xFF);
-    d[3] = (uint8_t)((value >> 32) & 0xFF);
-    d[4] = (uint8_t)((value >> 24) & 0xFF);
-    d[5] = (uint8_t)((value >> 16) & 0xFF);
-    d[6] = (uint8_t)((value >> 8) & 0xFF);
-    d[7] = (uint8_t)(value & 0xFF);
+    uint64_t raw = (uint64_t)value;
+    d[0] = (uint8_t)((raw >> 56) & 0xFFu);
+    d[1] = (uint8_t)((raw >> 48) & 0xFFu);
+    d[2] = (uint8_t)((raw >> 40) & 0xFFu);
+    d[3] = (uint8_t)((raw >> 32) & 0xFFu);
+    d[4] = (uint8_t)((raw >> 24) & 0xFFu);
+    d[5] = (uint8_t)((raw >> 16) & 0xFFu);
+    d[6] = (uint8_t)((raw >> 8) & 0xFFu);
+    d[7] = (uint8_t)(raw & 0xFFu);
 }
 
 //=============================================================================
@@ -1119,6 +1126,8 @@ void rt_bytes_write_i64be(void *obj, int64_t offset, int64_t value) {
 void *rt_bytes_from_raw(const uint8_t *data, size_t len) {
     if (len > (size_t)INT64_MAX)
         rt_bytes_trap_overflow("Bytes.FromRaw: length exceeds maximum Bytes size");
+    if (len > 0 && !data)
+        rt_bytes_trap_invalid_operation("Bytes.FromRaw: null data with non-zero length");
     rt_bytes_impl *bytes = rt_bytes_alloc((int64_t)len);
     if (len > 0 && data)
         memcpy(bytes->data, data, len);

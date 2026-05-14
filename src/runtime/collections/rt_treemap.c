@@ -82,6 +82,12 @@ typedef struct {
     size_t count;           ///< Number of entries currently stored.
 } treemap_impl;
 
+static treemap_impl *as_treemap(void *obj, const char *what) {
+    if (!obj || rt_obj_class_id(obj) != RT_TREEMAP_CLASS_ID)
+        rt_trap(what);
+    return (treemap_impl *)obj;
+}
+
 /// @brief Extracts raw key data and length from an rt_string.
 ///
 /// Converts a Viper string to a C string pointer and computes its length.
@@ -243,9 +249,9 @@ static void free_entry_contents(treemap_entry *e) {
 /// @see rt_treemap_keys For retrieving keys in sorted order
 
 static void treemap_finalizer(void *obj) {
-    treemap_impl *tm = (treemap_impl *)obj;
-    if (!tm)
+    if (!obj)
         return;
+    treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
     if (tm->entries) {
         for (size_t i = 0; i < tm->count; i++)
             free_entry_contents(&tm->entries[i]);
@@ -259,7 +265,7 @@ static void treemap_finalizer(void *obj) {
 static void treemap_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
-    treemap_impl *tm = (treemap_impl *)obj;
+    treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
     for (size_t i = 0; i < tm->count; i++)
         visitor(tm->entries[i].value, ctx);
 }
@@ -292,7 +298,7 @@ void *rt_treemap_new(void) {
 int64_t rt_treemap_len(void *obj) {
     if (!obj)
         return 0;
-    treemap_impl *tm = (treemap_impl *)obj;
+    treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
     return (int64_t)tm->count;
 }
 
@@ -306,7 +312,7 @@ int64_t rt_treemap_len(void *obj) {
 int8_t rt_treemap_is_empty(void *obj) {
     if (!obj)
         return 1;
-    treemap_impl *tm = (treemap_impl *)obj;
+    treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
     return tm->count == 0 ? 1 : 0;
 }
 
@@ -335,7 +341,7 @@ int8_t rt_treemap_is_empty(void *obj) {
 void rt_treemap_set(void *obj, rt_string key, void *value) {
     if (!obj)
         return;
-    treemap_impl *tm = (treemap_impl *)obj;
+    treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
 
     size_t keylen;
     const char *keydata = get_key_data(key, &keylen);
@@ -356,6 +362,16 @@ void rt_treemap_set(void *obj, rt_string key, void *value) {
         // Insert new entry
         ensure_capacity(tm);
 
+        if (keylen == SIZE_MAX)
+            rt_trap("TreeMap: key allocation overflow");
+        char *key_copy = (char *)malloc(keylen + 1);
+        if (!key_copy) {
+            rt_trap("TreeMap: memory allocation failed");
+            return;
+        }
+        memcpy(key_copy, keydata, keylen);
+        key_copy[keylen] = '\0';
+
         // Make room by shifting entries
         if (idx < tm->count) {
             memmove(&tm->entries[idx + 1],
@@ -365,15 +381,7 @@ void rt_treemap_set(void *obj, rt_string key, void *value) {
 
         // Create new entry
         treemap_entry *e = &tm->entries[idx];
-        if (keylen == SIZE_MAX)
-            rt_trap("TreeMap: key allocation overflow");
-        e->key = (char *)malloc(keylen + 1);
-        if (!e->key) {
-            rt_trap("TreeMap: memory allocation failed");
-            return;
-        }
-        memcpy(e->key, keydata, keylen);
-        e->key[keylen] = '\0';
+        e->key = key_copy;
         e->keylen = keylen;
 
         // Retain value
@@ -400,7 +408,7 @@ void rt_treemap_set(void *obj, rt_string key, void *value) {
 void *rt_treemap_get(void *obj, rt_string key) {
     if (!obj)
         return NULL;
-    treemap_impl *tm = (treemap_impl *)obj;
+    treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
 
     size_t keylen;
     const char *keydata = get_key_data(key, &keylen);
@@ -424,7 +432,7 @@ void *rt_treemap_get(void *obj, rt_string key) {
 int8_t rt_treemap_has(void *obj, rt_string key) {
     if (!obj)
         return 0;
-    treemap_impl *tm = (treemap_impl *)obj;
+    treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
 
     size_t keylen;
     const char *keydata = get_key_data(key, &keylen);
@@ -449,7 +457,7 @@ int8_t rt_treemap_has(void *obj, rt_string key) {
 int8_t rt_treemap_remove(void *obj, rt_string key) {
     if (!obj)
         return 0;
-    treemap_impl *tm = (treemap_impl *)obj;
+    treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
 
     size_t keylen;
     const char *keydata = get_key_data(key, &keylen);
@@ -485,7 +493,7 @@ int8_t rt_treemap_remove(void *obj, rt_string key) {
 void rt_treemap_clear(void *obj) {
     if (!obj)
         return;
-    treemap_impl *tm = (treemap_impl *)obj;
+    treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
 
     for (size_t i = 0; i < tm->count; i++) {
         free_entry_contents(&tm->entries[i]);
@@ -521,7 +529,7 @@ void *rt_treemap_keys(void *obj) {
     rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
-    treemap_impl *tm = (treemap_impl *)obj;
+    treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
 
     for (size_t i = 0; i < tm->count; i++) {
         rt_string str = rt_string_from_bytes(tm->entries[i].key, tm->entries[i].keylen);
@@ -549,7 +557,7 @@ void *rt_treemap_values(void *obj) {
     rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
-    treemap_impl *tm = (treemap_impl *)obj;
+    treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
 
     for (size_t i = 0; i < tm->count; i++) {
         rt_seq_push(seq, tm->entries[i].value);
@@ -582,7 +590,7 @@ void *rt_treemap_values(void *obj) {
 rt_string rt_treemap_first(void *obj) {
     if (!obj)
         return rt_const_cstr("");
-    treemap_impl *tm = (treemap_impl *)obj;
+    treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
 
     if (tm->count == 0)
         return rt_const_cstr("");
@@ -614,7 +622,7 @@ rt_string rt_treemap_first(void *obj) {
 rt_string rt_treemap_last(void *obj) {
     if (!obj)
         return rt_const_cstr("");
-    treemap_impl *tm = (treemap_impl *)obj;
+    treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
 
     if (tm->count == 0)
         return rt_const_cstr("");
@@ -651,7 +659,7 @@ rt_string rt_treemap_last(void *obj) {
 rt_string rt_treemap_floor(void *obj, rt_string key) {
     if (!obj)
         return rt_const_cstr("");
-    treemap_impl *tm = (treemap_impl *)obj;
+    treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
 
     if (tm->count == 0)
         return rt_const_cstr("");
@@ -702,7 +710,7 @@ rt_string rt_treemap_floor(void *obj, rt_string key) {
 rt_string rt_treemap_ceil(void *obj, rt_string key) {
     if (!obj)
         return rt_const_cstr("");
-    treemap_impl *tm = (treemap_impl *)obj;
+    treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
 
     if (tm->count == 0)
         return rt_const_cstr("");

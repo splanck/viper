@@ -455,6 +455,7 @@ static void test_ring_to_seq_retains_borrowed_elements() {
     g_finalizer_calls = 0;
     rt_obj_set_finalizer(value, count_finalizer);
 
+    rt_ring_set_owns_elements(ring, 0);
     rt_ring_push(ring, value); // Ring stores borrowed references.
     void *seq = rt_ring_to_seq(ring);
     test_result("Seq snapshot created", seq != NULL && rt_seq_len(seq) == 1);

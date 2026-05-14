@@ -848,6 +848,8 @@ int8_t rt_box_equal(void *a, void *b) {
         case RT_BOX_I1:
             return ba->data.i64_val == bb->data.i64_val;
         case RT_BOX_F64:
+            if (isnan(ba->data.f64_val) && isnan(bb->data.f64_val))
+                return 1;
             return ba->data.f64_val == bb->data.f64_val;
         case RT_BOX_STR:
             if (!ba->data.str_val || !bb->data.str_val)

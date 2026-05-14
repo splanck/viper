@@ -74,16 +74,35 @@ static RtArgsState *rt_args_state_with_kind(int *is_legacy) {
     return legacy ? &legacy->args_state : NULL;
 }
 
+/// @brief Mark the legacy-context host-init state as complete.
+/// @details Flips the init flag from `0` (uninitialised) or `2` (already done)
+///          to `2`. Refuses to overwrite state `1` (initialisation in progress
+///          on another thread) so a re-entrant call doesn't race past the
+///          population step. Used by manual mutation paths to suppress an
+///          impending lazy host-argv import.
 static void rt_args_mark_legacy_host_initialized(void) {
     if (g_legacy_args_host_init_state != 1)
         g_legacy_args_host_init_state = 2;
 }
 
+/// @brief Record that the user code has manually pushed/cleared arguments.
+/// @details Once user code has mutated the legacy context, the lazy host-argv
+///          import must not run — it would overwrite the user-supplied list.
+///          Calling this from `rt_args_push` / `rt_args_clear` makes those
+///          entry points idempotent with respect to host initialisation.
+/// @param is_legacy True when the mutation targeted the legacy context.
 static void rt_args_note_manual_mutation(int is_legacy) {
     if (is_legacy)
         rt_args_mark_legacy_host_initialized();
 }
 
+/// @brief Append @p s to @p state's argv list, retaining the string.
+/// @details Grows the underlying capacity if needed. `NULL` is normalised to
+///          the empty string so callers don't need to guard. Retains the
+///          incoming string on success; on grow failure the caller's
+///          reference is unchanged.
+/// @param state Args state to append to (may be `NULL`).
+/// @param s     String to append; `NULL` treated as empty.
 static void rt_args_append(RtArgsState *state, rt_string s) {
     if (!state)
         return;
@@ -96,12 +115,31 @@ static void rt_args_append(RtArgsState *state, rt_string s) {
     state->items[state->size++] = s;
 }
 
+/// @brief Append a raw byte run to @p state by first wrapping it in an `rt_string`.
+/// @details Convenience around `rt_args_append` for callers (host-argv import)
+///          that read raw C strings. The temporary is unreffed after append so
+///          only the state's retained reference survives.
+/// @param state Args state to append to.
+/// @param bytes Pointer to the byte run; `NULL` treated as empty.
+/// @param len   Length in bytes (only honoured when @p bytes is non-NULL).
 static void rt_args_append_bytes(RtArgsState *state, const char *bytes, size_t len) {
     rt_string tmp = rt_string_from_bytes(bytes ? bytes : "", bytes ? len : 0);
     rt_args_append(state, tmp);
     rt_string_unref(tmp);
 }
 
+/// @brief Populate @p state from the host operating system's argv on the active
+///        platform.
+/// @details Compiled in three platform-specific variants:
+///          - **Windows**: `CommandLineToArgvW(GetCommandLineW(), …)` for UTF-16
+///            argv, then converts each element to UTF-8 via the wide-to-string
+///            helper. The Win32 buffer is freed with `LocalFree` before return.
+///          - **Apple**: `_NSGetArgv()` / `_NSGetArgc()` to walk the embedded
+///            byte argv (already UTF-8 on macOS).
+///          - **Linux**: reads `/proc/self/cmdline`, which stores arguments
+///            separated by NUL bytes, into a heap buffer and splits on every NUL.
+///          - **Other**: no-op (the legacy context simply stays empty).
+/// @param state Args state to populate.
 #if defined(_WIN32)
 static void rt_args_populate_host(RtArgsState *state) {
     int argc = 0;
@@ -190,6 +228,15 @@ static void rt_args_populate_host(RtArgsState *state) {
 }
 #endif
 
+/// @brief Lazily import host argv into @p state on the first legacy-context read.
+/// @details The legacy context delays host-argv import until first read so a
+///          process that wants to provide its own argv (test harness, tool
+///          runner) gets a chance to push first. State transitions:
+///            - `0` → `1` → `2`: first thread runs the import and locks others out.
+///            - `2`: no-op.
+///            - `1`: another thread is mid-import; yield and spin until it
+///              transitions to `2` so we don't race past a partial population.
+/// @param state Legacy args state to populate (no-op when NULL).
 static void rt_args_ensure_legacy_host_initialized(RtArgsState *state) {
     if (!state)
         return;
@@ -210,6 +257,13 @@ static void rt_args_ensure_legacy_host_initialized(RtArgsState *state) {
     }
 }
 
+/// @brief Resolve the active args state for a read, triggering lazy host-import.
+/// @details Combines `rt_args_state_with_kind` with
+///          `rt_args_ensure_legacy_host_initialized` so a fresh process that
+///          hasn't pushed any args yet still observes the host argv on first
+///          read. Active (non-legacy) contexts skip the lazy import — those
+///          contexts are owned by an explicit caller (tool runner, REPL).
+/// @return The args state to read from; `NULL` if no context is active.
 static RtArgsState *rt_args_query_state(void) {
     int is_legacy = 0;
     RtArgsState *state = rt_args_state_with_kind(&is_legacy);

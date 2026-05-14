@@ -838,6 +838,15 @@ static int gc_worklist_push(gc_worklist *work, void *obj, rt_gc_traverse_fn trav
     return 1;
 }
 
+/// @brief Linear search for @p obj in a garbage-state array.
+/// @details Used by the reclaim phase to test whether an outgoing edge points
+///          to another object that's also in the garbage set — those edges are
+///          skipped during ref-release because both endpoints are about to be
+///          freed together.
+/// @param items Garbage-state array (snapshot of objects being reclaimed).
+/// @param count Number of entries in @p items.
+/// @param obj   Object pointer to search for.
+/// @return 1 if @p obj appears in @p items, 0 otherwise.
 static int gc_garbage_contains(const gc_garbage_state *items, int64_t count, void *obj) {
     for (int64_t i = 0; i < count; ++i) {
         if (items[i].entry.obj == obj)
@@ -846,6 +855,13 @@ static int gc_garbage_contains(const gc_garbage_state *items, int64_t count, voi
     return 0;
 }
 
+/// @brief Release one snapshot entry's retained reference, if any.
+/// @details Called from both the success and trap-recovery paths to unwind a
+///          retain acquired by the snapshot construction step. Skips entries
+///          that were never retained, never had a live payload, or whose
+///          payload has since been detached. On a refcount-to-zero result,
+///          frees the heap object.
+/// @param entry Snapshot entry to release; NULL is treated as a no-op.
 static void gc_release_snapshot_entry(gc_snap_entry *entry) {
     if (!entry || !entry->retained || !entry->obj || !rt_heap_is_payload(entry->obj))
         return;

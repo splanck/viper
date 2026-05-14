@@ -70,19 +70,22 @@ static void hash_require_service(rt_crypto_module_service_t service, const char 
 }
 
 /// @brief Extract a raw byte pointer and byte count from an rt_string.
-///        Returns an empty string and sets *len = 0 for null or zero-length input.
+///        Returns an empty buffer for real zero-length strings, but traps on
+///        NULL or invalid string objects so they are not silently hashed as "".
 static const uint8_t *hash_string_bytes(rt_string str, size_t *len) {
+    if (!str)
+        rt_trap("Hash: string must not be null");
     int64_t len64 = rt_str_len(str);
-    if (len64 <= 0) {
+    if (len64 < 0)
+        rt_trap("Hash: invalid string length");
+    if (len64 == 0) {
         *len = 0;
         return (const uint8_t *)"";
     }
 
     const char *cstr = rt_string_cstr(str);
-    if (!cstr) {
-        *len = 0;
-        return (const uint8_t *)"";
-    }
+    if (!cstr)
+        rt_trap("Hash: string data is null");
 
     *len = (size_t)len64;
     return (const uint8_t *)cstr;

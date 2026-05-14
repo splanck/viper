@@ -243,7 +243,7 @@ static void test_boxed_nan_hash_is_canonical() {
     payload_nan.bits = UINT64_C(0x7ff8000000000001);
     void *nan_b = rt_box_f64(payload_nan.value);
 
-    test_result("Distinct NaN boxes are not value-equal", rt_box_equal(nan_a, nan_b) == 0);
+    test_result("Distinct NaN boxes are value-equal", rt_box_equal(nan_a, nan_b) == 1);
     test_result("NaN box hashes are canonical", rt_box_hash(nan_a) == rt_box_hash(nan_b));
 
     release_object(nan_a);

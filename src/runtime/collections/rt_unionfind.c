@@ -56,12 +56,20 @@ typedef struct {
     int64_t sets;    // Number of disjoint sets
 } rt_unionfind_impl;
 
+static rt_unionfind_impl *as_unionfind(void *obj, const char *what) {
+    if (!obj || rt_obj_class_id(obj) != RT_UNIONFIND_CLASS_ID)
+        rt_trap(what);
+    return (rt_unionfind_impl *)obj;
+}
+
 // ---------------------------------------------------------------------------
 // Finalizer
 // ---------------------------------------------------------------------------
 
 static void unionfind_finalizer(void *obj) {
-    rt_unionfind_impl *uf = (rt_unionfind_impl *)obj;
+    rt_unionfind_impl *uf = obj ? as_unionfind(obj, "UnionFind: invalid UnionFind object") : NULL;
+    if (!uf)
+        return;
     free(uf->parent);
     free(uf->rank);
     free(uf->size);
@@ -75,7 +83,9 @@ static void unionfind_finalizer(void *obj) {
 // ---------------------------------------------------------------------------
 
 void *rt_unionfind_new(int64_t n) {
-    if (n < 1)
+    if (n < 0)
+        rt_trap("UnionFind: negative element count");
+    if (n == 0)
         n = 1;
     if ((uint64_t)n > SIZE_MAX / sizeof(int64_t))
         rt_trap("UnionFind: allocation size overflow");
@@ -117,7 +127,7 @@ void *rt_unionfind_new(int64_t n) {
 int64_t rt_unionfind_find(void *uf_ptr, int64_t x) {
     if (!uf_ptr)
         return -1;
-    rt_unionfind_impl *uf = (rt_unionfind_impl *)uf_ptr;
+    rt_unionfind_impl *uf = as_unionfind(uf_ptr, "UnionFind.Find: invalid UnionFind object");
 
     if (x < 0 || x >= uf->n)
         return -1;
@@ -147,7 +157,7 @@ int64_t rt_unionfind_find(void *uf_ptr, int64_t x) {
 int64_t rt_unionfind_union(void *uf_ptr, int64_t x, int64_t y) {
     if (!uf_ptr)
         return 0;
-    rt_unionfind_impl *uf = (rt_unionfind_impl *)uf_ptr;
+    rt_unionfind_impl *uf = as_unionfind(uf_ptr, "UnionFind.Union: invalid UnionFind object");
 
     int64_t rx = rt_unionfind_find(uf, x);
     int64_t ry = rt_unionfind_find(uf, y);
@@ -190,7 +200,7 @@ int8_t rt_unionfind_connected(void *uf_ptr, int64_t x, int64_t y) {
 int64_t rt_unionfind_count(void *uf_ptr) {
     if (!uf_ptr)
         return 0;
-    return ((rt_unionfind_impl *)uf_ptr)->sets;
+    return as_unionfind(uf_ptr, "UnionFind.Count: invalid UnionFind object")->sets;
 }
 
 /// @brief Return the number of elements in the set containing element @p x.
@@ -204,14 +214,14 @@ int64_t rt_unionfind_set_size(void *uf_ptr, int64_t x) {
     int64_t root = rt_unionfind_find(uf_ptr, x);
     if (root < 0)
         return 0;
-    return ((rt_unionfind_impl *)uf_ptr)->size[root];
+    return as_unionfind(uf_ptr, "UnionFind.SetSize: invalid UnionFind object")->size[root];
 }
 
 /// @brief Reset the union-find so every element is its own set.
 void rt_unionfind_reset(void *uf_ptr) {
     if (!uf_ptr)
         return;
-    rt_unionfind_impl *uf = (rt_unionfind_impl *)uf_ptr;
+    rt_unionfind_impl *uf = as_unionfind(uf_ptr, "UnionFind.Reset: invalid UnionFind object");
 
     for (int64_t i = 0; i < uf->n; i++) {
         uf->parent[i] = i;

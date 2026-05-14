@@ -72,10 +72,23 @@ extern "C" {
 /// @details Holds 64 digits plus a NUL terminator.
 #define FMT_BIN_BUFFER_SIZE 65
 
+/// @brief Allocate and return an empty runtime string.
+/// @details Used as the failure return for every formatter so callers always
+///          receive a valid handle, even when conversion overflowed the
+///          internal buffer.
+/// @return Newly-allocated empty `rt_string` owned by the caller.
 static rt_string rt_fmt_empty(void) {
     return rt_string_from_bytes("", 0);
 }
 
+/// @brief Add two `size_t` values reporting overflow without crashing.
+/// @details Helper used by the digit-grouping path to avoid integer-overflow
+///          UB in buffer-size calculations. Returns 0 on overflow rather than
+///          trapping so the caller can fall back to an empty result.
+/// @param a   First addend.
+/// @param b   Second addend.
+/// @param out On success, receives `a + b`.
+/// @return 1 when the addition fits in `size_t`, 0 on overflow.
 static int rt_fmt_checked_add(size_t a, size_t b, size_t *out) {
     if (a > SIZE_MAX - b)
         return 0;
@@ -83,6 +96,17 @@ static int rt_fmt_checked_add(size_t a, size_t b, size_t *out) {
     return 1;
 }
 
+/// @brief `vsnprintf` wrapped to run under the C numeric locale.
+/// @details Formats numeric output deterministically regardless of the
+///          process `setlocale` state: on Windows uses `_vsnprintf_l` with a
+///          freshly-created `LC_NUMERIC = "C"` locale; on POSIX swaps in a
+///          `newlocale("C")` for the duration of the call via `uselocale`.
+/// @param buffer Destination buffer (must be non-null and capacity > 0).
+/// @param size   Capacity of @p buffer in bytes including the NUL terminator.
+/// @param fmt    `printf`-style format string.
+/// @param args   Pre-started `va_list` consumed by the formatter.
+/// @return Same as `vsnprintf` — number of bytes that *would* have been
+///         written excluding the NUL, or a negative value on failure.
 static int rt_fmt_vsnprintf_c_locale(char *buffer, size_t size, const char *fmt, va_list args) {
     if (!buffer || size == 0 || !fmt)
         return -1;
@@ -116,6 +140,13 @@ static int rt_fmt_vsnprintf_c_locale(char *buffer, size_t size, const char *fmt,
 #endif
 }
 
+/// @brief Variadic wrapper over @ref rt_fmt_vsnprintf_c_locale.
+/// @details Convenience for one-off format calls. See @ref rt_fmt_vsnprintf_c_locale
+///          for the locale-isolation contract.
+/// @param buffer Destination buffer.
+/// @param size   Capacity in bytes including the NUL terminator.
+/// @param fmt    `printf`-style format string.
+/// @return Same as `snprintf` — bytes that would have been written, or negative on failure.
 static int rt_fmt_snprintf_c_locale(char *buffer, size_t size, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -124,6 +155,15 @@ static int rt_fmt_snprintf_c_locale(char *buffer, size_t size, const char *fmt, 
     return written;
 }
 
+/// @brief Extract the byte view of @p s, falling back to @p fallback on any failure.
+/// @details Validates @p s as a live string handle and rejects zero-length
+///          payloads. On a hit, writes the byte length through @p out_len and
+///          returns the data pointer. On a miss, returns @p fallback and writes
+///          `strlen(fallback)` so the caller can use the result uniformly.
+/// @param s         Input runtime string (may be `NULL`).
+/// @param fallback  C-string returned on rejection (must be valid).
+/// @param out_len   Receives the byte length of the returned data (must be non-null).
+/// @return Pointer to @p s's bytes on success, or @p fallback on rejection.
 static const char *rt_fmt_string_bytes(rt_string s, const char *fallback, size_t *out_len) {
     if (!out_len)
         return fallback;
@@ -148,6 +188,14 @@ static const char *rt_fmt_string_bytes(rt_string s, const char *fallback, size_t
     return data;
 }
 
+/// @brief Same as @ref rt_fmt_string_bytes but accepts an empty `rt_string`.
+/// @details Used by paths that want to round-trip an empty input as-is rather
+///          than substituting @p fallback for it. Only an invalid handle or
+///          a `NULL` `data` pointer triggers the fallback.
+/// @param s         Input runtime string (may be `NULL`).
+/// @param fallback  C-string returned on rejection.
+/// @param out_len   Receives the byte length of the returned data.
+/// @return Pointer to @p s's bytes (possibly zero-length) on success, fallback otherwise.
 static const char *rt_fmt_string_bytes_allow_empty(rt_string s,
                                                    const char *fallback,
                                                    size_t *out_len) {
@@ -162,10 +210,23 @@ static const char *rt_fmt_string_bytes_allow_empty(rt_string s,
     return s->data;
 }
 
+/// @brief Test whether @p ch is a UTF-8 continuation byte.
+/// @details Continuation bytes have the high two bits set to `10`.
+/// @param ch Raw byte to classify.
+/// @return Non-zero if @p ch is a continuation byte.
 static int rt_fmt_is_utf8_cont(unsigned char ch) {
     return (ch & 0xC0) == 0x80;
 }
 
+/// @brief Return the byte length of the first UTF-8 code point in @p data.
+/// @details Recognises 1-byte ASCII, 2-byte (`C2..DF`), 3-byte (`E0..EF` with
+///          the architectural surrogate / overlong checks for the `E0`/`ED`
+///          rows), and 4-byte (`F0..F4` with high-plane bound checks)
+///          sequences. Returns 0 for invalid leading bytes, overlong
+///          sequences, surrogate pairs, or truncated input.
+/// @param data Pointer to UTF-8 bytes.
+/// @param len  Number of bytes available at @p data.
+/// @return Length in bytes of the first complete code point, or 0 on invalid input.
 static size_t rt_fmt_first_utf8_len(const char *data, size_t len) {
     if (!data || len == 0)
         return 0;
@@ -228,6 +289,14 @@ static size_t rt_fmt_first_utf8_len(const char *data, size_t len) {
     return 0;
 }
 
+/// @brief Test whether @p text encodes decimal zero in any of the formatter's textual forms.
+/// @details Ignores sign characters (`+`, `-`), a decimal point, an exponent
+///          marker (`e`/`E`), and a trailing percent sign — anything else is
+///          counted as a "digit". Returns true only when every counted digit
+///          is `'0'`. Used to suppress the `-` prefix on `-0` / `-0.00%`.
+/// @param text Pointer to decimal text (may be `NULL`, treated as zero).
+/// @param len  Number of bytes in @p text.
+/// @return 1 if every non-format character is `'0'`; 0 otherwise.
 static int rt_fmt_decimal_string_is_zero(const char *text, size_t len) {
     if (!text)
         return 1;
@@ -241,6 +310,20 @@ static int rt_fmt_decimal_string_is_zero(const char *text, size_t len) {
     return 1;
 }
 
+/// @brief Allocate a new C buffer that groups @p digits into thousands separated by @p sep.
+/// @details Lays out the first 1-3 digits, then alternating `sep`+three-digit
+///          chunks, optionally prefixed by `-`. Overflow-checks every size
+///          contribution before allocating so an absurdly long digit string
+///          cannot wrap the buffer length.
+/// @param digits     Pointer to ASCII digit characters (no sign / decimal).
+/// @param digits_len Number of digits.
+/// @param sep        Grouping separator (e.g. `","` or `"."`).
+/// @param sep_len    Length of @p sep in bytes.
+/// @param negative   Non-zero to prepend `-` to the result.
+/// @param out_len    On success, receives the byte length of the buffer
+///                   (not counting the NUL terminator). May be `NULL`.
+/// @return Newly-allocated NUL-terminated buffer (caller-owned), or `NULL`
+///         on allocation failure / overflow / invalid arguments.
 static char *rt_fmt_group_digits_alloc(const char *digits,
                                        size_t digits_len,
                                        const char *sep,
@@ -297,6 +380,15 @@ static char *rt_fmt_group_digits_alloc(const char *digits,
     return buf;
 }
 
+/// @brief Append @p len bytes from @p text to @p buf at offset @p *pos.
+/// @details Returns 0 (without writing) when the destination would overflow
+///          or any pointer is NULL. On success, advances `*pos` by @p len.
+/// @param buf   Destination buffer.
+/// @param cap   Capacity of @p buf in bytes.
+/// @param pos   Current write offset; receives the new offset on success.
+/// @param text  Source bytes.
+/// @param len   Number of bytes to copy.
+/// @return 1 on success, 0 on overflow / invalid input.
 static int rt_fmt_append_bytes(char *buf, size_t cap, size_t *pos, const char *text, size_t len) {
     if (!buf || !pos || !text || *pos > cap)
         return 0;
@@ -307,6 +399,14 @@ static int rt_fmt_append_bytes(char *buf, size_t cap, size_t *pos, const char *t
     return 1;
 }
 
+/// @brief Append a NUL-terminated string to @p buf at offset @p *pos.
+/// @details Convenience wrapper around @ref rt_fmt_append_bytes that computes
+///          the length via `strlen`.
+/// @param buf   Destination buffer.
+/// @param cap   Capacity of @p buf in bytes.
+/// @param pos   Current write offset; receives the new offset on success.
+/// @param text  NUL-terminated source string.
+/// @return 1 on success, 0 on overflow / invalid input.
 static int rt_fmt_append_cstr(char *buf, size_t cap, size_t *pos, const char *text) {
     return rt_fmt_append_bytes(buf, cap, pos, text, strlen(text));
 }

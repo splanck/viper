@@ -130,7 +130,7 @@ int64_t rt_sortedset_index_of(void *obj, rt_string str);
 
 /// @brief Get all elements in a range [from, to].
 /// @param obj SortedSet pointer.
-/// @param from Start of range (inclusive).
+/// @param from Start of range (inclusive), or NULL for an open lower bound.
 /// @param to End of range (inclusive), or NULL for an open upper bound.
 /// @return Owning Seq of copied elements in the range.
 void *rt_sortedset_range(void *obj, rt_string from, rt_string to);

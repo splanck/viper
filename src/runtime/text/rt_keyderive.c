@@ -45,22 +45,25 @@
 
 /// @brief Extract a borrowed byte pointer + length from an `rt_string` password.
 /// @details Used by every public PBKDF2/scrypt entry point that accepts a
-///          string password. NULL or zero-length strings are normalized to
-///          an empty (one-byte) buffer so the downstream HMAC code never
-///          sees NULL — it is then free to hash the empty input. The
-///          returned pointer is borrowed; caller must not free it.
+///          string password. A NULL or invalid string traps so callers do
+///          not accidentally derive the key for the empty password. A real
+///          zero-length string is still accepted and represented by a stable
+///          empty buffer. The returned pointer is borrowed; caller must not
+///          free it.
 static const uint8_t *pbkdf2_string_bytes(rt_string password, size_t *len) {
+    if (!password)
+        rt_trap("KeyDerive: password must not be null");
     int64_t len64 = rt_str_len(password);
-    if (len64 <= 0) {
+    if (len64 < 0)
+        rt_trap("KeyDerive: invalid password length");
+    if (len64 == 0) {
         *len = 0;
         return (const uint8_t *)"";
     }
 
     const char *pwd_cstr = rt_string_cstr(password);
-    if (!pwd_cstr) {
-        *len = 0;
-        return (const uint8_t *)"";
-    }
+    if (!pwd_cstr)
+        rt_trap("KeyDerive: password data is null");
 
     *len = (size_t)len64;
     return (const uint8_t *)pwd_cstr;

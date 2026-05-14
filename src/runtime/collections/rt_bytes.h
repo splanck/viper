@@ -38,7 +38,7 @@ extern "C" {
 #define RT_BYTES_CLASS_ID INT64_C(-0x430201)
 
 /// @brief Create a new zero-filled byte array of given length.
-/// @param len Number of bytes to allocate (clamped to 0 if negative).
+/// @param len Number of bytes to allocate. Negative values trap.
 /// @return Pointer to new Bytes object.
 void *rt_bytes_new(int64_t len);
 

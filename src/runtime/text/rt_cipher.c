@@ -504,8 +504,13 @@ void *rt_cipher_decrypt_aad(void *ciphertext, rt_string password, void *aad) {
         return NULL;
     }
 
-    if (aad && bytes_len(aad) > 0)
-        return NULL;
+    if (aad) {
+        int64_t aad_len = bytes_len(aad);
+        if (aad_len < 0)
+            rt_trap("Cipher.Decrypt: invalid AAD length");
+        if (aad_len > 0)
+            return NULL;
+    }
 
     int64_t min_len = CIPHER_SALT_SIZE + CIPHER_NONCE_SIZE + CIPHER_TAG_SIZE;
     if (ct_len < min_len) {
@@ -692,8 +697,13 @@ void *rt_cipher_decrypt_with_key_aad(void *ciphertext, void *key_bytes, void *aa
         rt_trap("Cipher.DecryptWithKey: ciphertext too short");
         return NULL;
     }
-    if (!versioned && aad && bytes_len(aad) > 0)
-        return NULL;
+    if (!versioned && aad) {
+        int64_t aad_len = bytes_len(aad);
+        if (aad_len < 0)
+            rt_trap("Cipher.DecryptWithKey: invalid AAD length");
+        if (aad_len > 0)
+            return NULL;
+    }
 
     const uint8_t *nonce = versioned ? ct_data + 4 : ct_data;
     const uint8_t *encrypted = ct_data + header_len;

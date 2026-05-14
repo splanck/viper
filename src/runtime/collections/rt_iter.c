@@ -68,13 +68,19 @@ typedef struct {
     int64_t len; ///< Cached length at creation time
 } rt_iter_impl;
 
+static rt_iter_impl *as_iter(void *obj, const char *what) {
+    if (!obj || rt_obj_class_id(obj) != RT_ITERATOR_CLASS_ID)
+        rt_trap(what);
+    return (rt_iter_impl *)obj;
+}
+
 static void release_temp_obj(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
 static void iter_finalizer(void *obj) {
-    rt_iter_impl *it = (rt_iter_impl *)obj;
+    rt_iter_impl *it = obj ? as_iter(obj, "Iterator: invalid Iterator object") : NULL;
     if (it && it->source) {
         if (rt_obj_release_check0(it->source))
             rt_obj_free(it->source);
@@ -277,7 +283,7 @@ int8_t rt_iter_has_next(void *iter) {
     rt_iter_impl *it;
     if (!iter)
         return 0;
-    it = (rt_iter_impl *)iter;
+    it = as_iter(iter, "Iterator.HasNext: invalid Iterator object");
     return (it->pos < it->len) ? 1 : 0;
 }
 
@@ -288,7 +294,7 @@ void *rt_iter_next(void *iter) {
     void *elem;
     if (!iter)
         return NULL;
-    it = (rt_iter_impl *)iter;
+    it = as_iter(iter, "Iterator.Next: invalid Iterator object");
     if (it->pos >= it->len)
         return NULL;
     elem = get_element(it, it->pos);
@@ -304,7 +310,7 @@ void *rt_iter_peek(void *iter) {
     void *elem;
     if (!iter)
         return NULL;
-    it = (rt_iter_impl *)iter;
+    it = as_iter(iter, "Iterator.Peek: invalid Iterator object");
     if (it->pos >= it->len)
         return NULL;
     elem = get_element(it, it->pos);
@@ -317,7 +323,7 @@ void *rt_iter_peek(void *iter) {
 void rt_iter_reset(void *iter) {
     if (!iter)
         return;
-    ((rt_iter_impl *)iter)->pos = 0;
+    as_iter(iter, "Iterator.Reset: invalid Iterator object")->pos = 0;
 }
 
 /// @brief Return the current position (0-based index) of the iterator.
@@ -326,14 +332,14 @@ void rt_iter_reset(void *iter) {
 int64_t rt_iter_index(void *iter) {
     if (!iter)
         return 0;
-    return ((rt_iter_impl *)iter)->pos;
+    return as_iter(iter, "Iterator.Index: invalid Iterator object")->pos;
 }
 
 /// @brief Return the total number of elements in the iterable collection.
 int64_t rt_iter_count(void *iter) {
     if (!iter)
         return 0;
-    return ((rt_iter_impl *)iter)->len;
+    return as_iter(iter, "Iterator.Count: invalid Iterator object")->len;
 }
 
 /// @brief Drain the remaining iterator elements into a fresh Seq. Advances the cursor to end.
@@ -342,7 +348,7 @@ void *rt_iter_to_seq(void *iter) {
     void *seq;
     if (!iter)
         return rt_seq_new();
-    it = (rt_iter_impl *)iter;
+    it = as_iter(iter, "Iterator.ToSeq: invalid Iterator object");
     seq = rt_seq_new();
     rt_seq_set_owns_elements(seq, 1);
     while (it->pos < it->len) {
@@ -364,7 +370,7 @@ int64_t rt_iter_skip(void *iter, int64_t n) {
     int64_t remaining, skipped;
     if (!iter || n <= 0)
         return 0;
-    it = (rt_iter_impl *)iter;
+    it = as_iter(iter, "Iterator.Skip: invalid Iterator object");
     remaining = it->len - it->pos;
     skipped = (n < remaining) ? n : remaining;
     it->pos += skipped;

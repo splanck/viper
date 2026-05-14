@@ -53,6 +53,18 @@ typedef struct {
     int64_t item_count; // Items added
 } rt_bloomfilter_impl;
 
+static rt_bloomfilter_impl *as_bloomfilter(void *obj, const char *what) {
+    if (!obj || rt_obj_class_id(obj) != RT_BLOOMFILTER_CLASS_ID)
+        rt_trap(what);
+    return (rt_bloomfilter_impl *)obj;
+}
+
+static int popcount8(uint8_t x) {
+    x = (uint8_t)(x - ((x >> 1) & 0x55u));
+    x = (uint8_t)((x & 0x33u) + ((x >> 2) & 0x33u));
+    return (int)((x + (x >> 4)) & 0x0Fu);
+}
+
 // ---------------------------------------------------------------------------
 // Hash functions (MurmurHash3-style with seed variation)
 // ---------------------------------------------------------------------------
@@ -76,7 +88,9 @@ static uint64_t bloom_hash(const char *data, size_t len, uint64_t seed) {
 // ---------------------------------------------------------------------------
 
 static void bloomfilter_finalizer(void *obj) {
-    rt_bloomfilter_impl *bf = (rt_bloomfilter_impl *)obj;
+    rt_bloomfilter_impl *bf = obj ? as_bloomfilter(obj, "BloomFilter: invalid BloomFilter object") : NULL;
+    if (!bf)
+        return;
     if (bf->bits) {
         free(bf->bits);
         bf->bits = NULL;
@@ -88,7 +102,9 @@ static void bloomfilter_finalizer(void *obj) {
 // ---------------------------------------------------------------------------
 
 void *rt_bloomfilter_new(int64_t expected_items, double false_positive_rate) {
-    if (expected_items < 1)
+    if (expected_items < 0)
+        rt_trap("BloomFilter: negative expected item count");
+    if (expected_items == 0)
         expected_items = 1;
     if (!isfinite(false_positive_rate) || false_positive_rate <= 0.0)
         false_positive_rate = 0.01;
@@ -147,7 +163,7 @@ void *rt_bloomfilter_new(int64_t expected_items, double false_positive_rate) {
 void rt_bloomfilter_add(void *filter, rt_string item) {
     if (!filter || !item)
         return;
-    rt_bloomfilter_impl *bf = (rt_bloomfilter_impl *)filter;
+    rt_bloomfilter_impl *bf = as_bloomfilter(filter, "BloomFilter.Add: invalid BloomFilter object");
 
     size_t len = (size_t)rt_str_len(item);
     const char *data = item->data;
@@ -170,7 +186,7 @@ void rt_bloomfilter_add(void *filter, rt_string item) {
 int64_t rt_bloomfilter_might_contain(void *filter, rt_string item) {
     if (!filter || !item)
         return 0;
-    rt_bloomfilter_impl *bf = (rt_bloomfilter_impl *)filter;
+    rt_bloomfilter_impl *bf = as_bloomfilter(filter, "BloomFilter.MightContain: invalid BloomFilter object");
 
     size_t len = (size_t)rt_str_len(item);
     const char *data = item->data;
@@ -196,7 +212,7 @@ int64_t rt_bloomfilter_might_contain(void *filter, rt_string item) {
 int64_t rt_bloomfilter_count(void *filter) {
     if (!filter)
         return 0;
-    return ((rt_bloomfilter_impl *)filter)->item_count;
+    return as_bloomfilter(filter, "BloomFilter.Count: invalid BloomFilter object")->item_count;
 }
 
 /// @brief Estimate the current false positive rate of the Bloom filter.
@@ -205,16 +221,19 @@ int64_t rt_bloomfilter_count(void *filter) {
 double rt_bloomfilter_fpr(void *filter) {
     if (!filter)
         return 0.0;
-    rt_bloomfilter_impl *bf = (rt_bloomfilter_impl *)filter;
+    rt_bloomfilter_impl *bf = as_bloomfilter(filter, "BloomFilter.Fpr: invalid BloomFilter object");
 
-    // Estimated FPR: (1 - e^(-kn/m))^k
-    double m = (double)bf->bit_count;
-    double n = (double)bf->item_count;
-    double k = (double)bf->hash_count;
+    int64_t set_bits = 0;
+    int64_t byte_count = (bf->bit_count + 7) / 8;
+    for (int64_t i = 0; i < byte_count; i++)
+        set_bits += popcount8(bf->bits[i]);
 
-    if (n == 0.0)
+    if (set_bits <= 0)
         return 0.0;
-    return pow(1.0 - exp(-k * n / m), k);
+    double fill = (double)set_bits / (double)bf->bit_count;
+    if (fill >= 1.0)
+        return 1.0;
+    return pow(fill, (double)bf->hash_count);
 }
 
 /// @brief Reset the Bloom filter by clearing all bits and the element count.
@@ -222,7 +241,7 @@ double rt_bloomfilter_fpr(void *filter) {
 void rt_bloomfilter_clear(void *filter) {
     if (!filter)
         return;
-    rt_bloomfilter_impl *bf = (rt_bloomfilter_impl *)filter;
+    rt_bloomfilter_impl *bf = as_bloomfilter(filter, "BloomFilter.Clear: invalid BloomFilter object");
     int64_t byte_count = (bf->bit_count + 7) / 8;
     memset(bf->bits, 0, (size_t)byte_count);
     bf->item_count = 0;
@@ -234,10 +253,10 @@ void rt_bloomfilter_clear(void *filter) {
 int64_t rt_bloomfilter_merge(void *filter, void *other) {
     if (!filter || !other)
         return 0;
+    rt_bloomfilter_impl *a = as_bloomfilter(filter, "BloomFilter.Merge: invalid BloomFilter object");
+    rt_bloomfilter_impl *b = as_bloomfilter(other, "BloomFilter.Merge: invalid BloomFilter object");
     if (filter == other)
         return 1;
-    rt_bloomfilter_impl *a = (rt_bloomfilter_impl *)filter;
-    rt_bloomfilter_impl *b = (rt_bloomfilter_impl *)other;
 
     if (a->bit_count != b->bit_count || a->hash_count != b->hash_count)
         return 0;

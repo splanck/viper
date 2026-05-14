@@ -69,7 +69,7 @@ push/pop, insert/remove, and slicing operations.
 | `ToStack()`            | `Stack()`                 | Returns elements as a new Stack                                                       |
 | `ToQueue()`            | `Queue()`                 | Returns elements as a new Queue                                                       |
 | `ToDeque()`            | `Deque()`                 | Returns elements as a new Deque                                                       |
-| `ToBag()`              | `Bag()`                   | Returns unique string elements as a new Bag                                           |
+| `ToBag()`              | `Bag()`                   | Returns raw or boxed string elements as a new Bag                                      |
 
 ### Notes
 
@@ -78,6 +78,7 @@ push/pop, insert/remove, and slicing operations.
 - The lower-level C helpers `rt_seq_new` and `rt_seq_with_capacity` still create borrowed-element sequences for internal runtime views; ownership mode must be selected while the sequence is empty.
 - `Pop()` and `Remove(index)` return an owned object reference. When the sequence owns elements, the removed element's retained reference is transferred to the caller.
 - `Slice()`, `Keep()`, `Reject()`, `Take()`, and `TakeWhile()` preserve owned-element mode in the returned sequence when the source sequence owns its elements; `Apply()` always returns an owning output sequence.
+- `ToBag()` accepts raw runtime strings and boxed strings; any other element type traps.
 - `Push`, `PushAll`, and capacity growth trap on length or allocation overflow instead of wrapping.
 
 ### Zia Example

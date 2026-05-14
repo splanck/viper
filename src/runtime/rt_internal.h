@@ -61,14 +61,14 @@ void rt_set_alloc_hook(rt_alloc_hook_fn hook);
 /// @details Allocates a new buffer and copies the bytes data. Caller is
 ///          responsible for freeing the returned buffer with free().
 /// @param bytes Bytes object pointer (may be NULL).
-/// @param out_len Output parameter for the length of the data.
+/// @param out_len Output parameter for the length of the data. Must not be NULL.
 /// @return Newly allocated buffer containing the bytes, or NULL if empty/NULL.
 ///         Traps on allocation failure.
 uint8_t *rt_bytes_extract_raw(void *bytes, size_t *out_len);
 
 /// @brief Create a Bytes object from raw data.
 /// @details Allocates a new Bytes object and copies the data into it.
-/// @param data Raw data buffer (may be NULL if len is 0).
+/// @param data Raw data buffer (may be NULL only when len is 0).
 /// @param len Length of the data in bytes.
 /// @return New Bytes object containing a copy of the data.
 void *rt_bytes_from_raw(const uint8_t *data, size_t len);

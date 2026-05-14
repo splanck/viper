@@ -71,6 +71,12 @@ extern void arc4random_buf(void *buf, size_t nbytes);
 #include <unistd.h>
 #endif
 
+static void rand_secure_zero(void *ptr, size_t len) {
+    volatile uint8_t *p = (volatile uint8_t *)ptr;
+    while (len-- > 0)
+        *p++ = 0;
+}
+
 /// @brief Fill a buffer with cryptographically secure random bytes.
 /// @details Uses the platform's preferred CSPRNG with documented fallbacks:
 ///          - **Windows**: `BCryptGenRandom` with `BCRYPT_USE_SYSTEM_PREFERRED_RNG`.
@@ -99,6 +105,8 @@ extern void arc4random_buf(void *buf, size_t nbytes);
 static int secure_random_fill(uint8_t *buf, size_t len) {
     if (len == 0)
         return 0;
+    if (!buf)
+        return -1;
     if (rt_crypto_module_is_approved_mode()) {
         rt_crypto_module_random_bytes(buf, len);
         return 0;
@@ -199,6 +207,7 @@ void *rt_crypto_rand_bytes(int64_t count) {
     // Create Bytes object directly from the filled buffer (bulk copy)
     void *result = rt_bytes_from_raw(buf, (size_t)count);
 
+    rand_secure_zero(buf, (size_t)count);
     free(buf);
     return result;
 }

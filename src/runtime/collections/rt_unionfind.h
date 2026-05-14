@@ -30,7 +30,8 @@ extern "C" {
 #endif
 
 /// @brief Create a new Union-Find with n elements (0..n-1).
-/// @param n Number of elements.
+/// @param n Number of elements. Zero creates a one-element structure; negative
+///          values trap.
 /// @return Union-Find object.
 void *rt_unionfind_new(int64_t n);
 

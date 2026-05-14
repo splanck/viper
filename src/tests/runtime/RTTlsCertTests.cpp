@@ -208,6 +208,57 @@ static std::vector<uint8_t> decode_pem_certificate(const char *pem) {
     return decoded;
 }
 
+static void append_der_len(std::vector<uint8_t> &out, size_t len) {
+    if (len < 128) {
+        out.push_back((uint8_t)len);
+        return;
+    }
+    uint8_t tmp[sizeof(size_t)];
+    size_t count = 0;
+    while (len > 0) {
+        tmp[count++] = (uint8_t)(len & 0xff);
+        len >>= 8;
+    }
+    out.push_back((uint8_t)(0x80 | count));
+    while (count > 0)
+        out.push_back(tmp[--count]);
+}
+
+static std::vector<uint8_t> der_tlv(uint8_t tag, const std::vector<uint8_t> &value) {
+    std::vector<uint8_t> out;
+    out.push_back(tag);
+    append_der_len(out, value.size());
+    out.insert(out.end(), value.begin(), value.end());
+    return out;
+}
+
+static std::vector<uint8_t> der_dns_name(const std::string &name) {
+    std::vector<uint8_t> value(name.begin(), name.end());
+    return der_tlv(0x82, value);
+}
+
+static std::vector<uint8_t> make_minimal_cert_with_dns_sans(size_t filler_count,
+                                                            const std::string &target_name) {
+    std::vector<uint8_t> names;
+    for (size_t i = 0; i < filler_count; ++i) {
+        std::string name = "filler" + std::to_string(i) + ".example.com";
+        std::vector<uint8_t> entry = der_dns_name(name);
+        names.insert(names.end(), entry.begin(), entry.end());
+    }
+    std::vector<uint8_t> target = der_dns_name(target_name);
+    names.insert(names.end(), target.begin(), target.end());
+
+    std::vector<uint8_t> san_sequence = der_tlv(0x30, names);
+    std::vector<uint8_t> san_octet = der_tlv(0x04, san_sequence);
+    std::vector<uint8_t> san_extension_value = {0x06, 0x03, 0x55, 0x1d, 0x11};
+    san_extension_value.insert(san_extension_value.end(), san_octet.begin(), san_octet.end());
+    std::vector<uint8_t> san_extension = der_tlv(0x30, san_extension_value);
+    std::vector<uint8_t> extensions = der_tlv(0x30, san_extension);
+    std::vector<uint8_t> explicit_extensions = der_tlv(0xa3, extensions);
+    std::vector<uint8_t> tbs = der_tlv(0x30, explicit_extensions);
+    return der_tlv(0x30, tbs);
+}
+
 struct temp_text_file_t {
     std::string path;
 
@@ -287,6 +338,29 @@ static void build_tls_cert_msg(const uint8_t *der, size_t der_len, uint8_t *out,
     out[pos++] = (uint8_t)(extensions_len & 0xFF);
 
     *out_len = pos;
+}
+
+static std::vector<uint8_t> build_tls_cert_msg_multi(const std::vector<std::vector<uint8_t>> &certs) {
+    std::vector<uint8_t> entries;
+    for (const std::vector<uint8_t> &cert : certs) {
+        size_t cert_len = cert.size();
+        assert(cert_len <= 0xFFFFFFu);
+        entries.push_back((uint8_t)((cert_len >> 16) & 0xFF));
+        entries.push_back((uint8_t)((cert_len >> 8) & 0xFF));
+        entries.push_back((uint8_t)(cert_len & 0xFF));
+        entries.insert(entries.end(), cert.begin(), cert.end());
+        entries.push_back(0x00);
+        entries.push_back(0x00);
+    }
+
+    assert(entries.size() <= 0xFFFFFFu);
+    std::vector<uint8_t> msg;
+    msg.push_back(0x00);
+    msg.push_back((uint8_t)((entries.size() >> 16) & 0xFF));
+    msg.push_back((uint8_t)((entries.size() >> 8) & 0xFF));
+    msg.push_back((uint8_t)(entries.size() & 0xFF));
+    msg.insert(msg.end(), entries.begin(), entries.end());
+    return msg;
 }
 
 // ---------------------------------------------------------------------------
@@ -630,6 +704,28 @@ static void test_hostname_verified_www_san(void) {
     printf("  PASS: test_hostname_verified_www_san\n");
 }
 
+static void test_hostname_verification_scans_past_san_extraction_cap(void) {
+    const std::string target = "target.example.com";
+    std::vector<uint8_t> der = make_minimal_cert_with_dns_sans(70, target);
+    const int san_cap = 64;
+
+    char san[san_cap][256];
+    int count = tls_extract_san_names(der.data(), der.size(), san, san_cap);
+    assert(count == san_cap);
+    for (int i = 0; i < count; i++)
+        assert(strcmp(san[i], target.c_str()) != 0);
+
+    rt_tls_session_t session;
+    memset(&session, 0, sizeof(session));
+    assert(der.size() <= sizeof(session.server_cert_der));
+    memcpy(session.server_cert_der, der.data(), der.size());
+    session.server_cert_der_len = der.size();
+    strncpy(session.hostname, target.c_str(), sizeof(session.hostname) - 1);
+
+    assert(tls_verify_hostname(&session) == RT_TLS_OK);
+    printf("  PASS: test_hostname_verification_scans_past_san_extraction_cap\n");
+}
+
 static void test_chain_verification_custom_bundle_rsa(void) {
     std::vector<uint8_t> leaf_der = decode_pem_certificate(TEST_RSA_LEAF_CERT_PEM);
     temp_text_file_t ca_file = write_temp_text_file("_rsa_ca.pem", TEST_RSA_ROOT_CERT_PEM);
@@ -653,6 +749,27 @@ static void test_chain_verification_custom_bundle_rsa(void) {
     }
     assert(verify_rc == RT_TLS_OK);
     printf("  PASS: test_chain_verification_custom_bundle_rsa\n");
+}
+
+static void test_chain_verification_rejects_too_many_intermediates(void) {
+    std::vector<uint8_t> leaf_der = decode_pem_certificate(TEST_RSA_LEAF_CERT_PEM);
+    std::vector<std::vector<uint8_t>> certs;
+    rt_tls_session_t session;
+
+    assert(!leaf_der.empty());
+    certs.push_back(leaf_der);
+    for (int i = 0; i < 17; ++i)
+        certs.push_back(leaf_der);
+
+    std::vector<uint8_t> msg = build_tls_cert_msg_multi(certs);
+    memset(&session, 0, sizeof(session));
+    assert(tls_parse_certificate_msg(&session, msg.data(), msg.size()) == RT_TLS_OK);
+
+    int verify_rc = tls_verify_chain(&session);
+    assert(verify_rc == RT_TLS_ERROR_HANDSHAKE);
+    assert(session.error && strcmp(session.error, "TLS: certificate chain has too many intermediates") == 0);
+    free(session.server_cert_list);
+    printf("  PASS: test_chain_verification_rejects_too_many_intermediates\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -691,9 +808,11 @@ int main(void) {
     test_hostname_rejects_cn_when_san_has_no_dns();
     test_hostname_verified_wildcard_san_two_levels();
     test_hostname_verified_www_san();
+    test_hostname_verification_scans_past_san_extraction_cap();
 
     printf("-- Native RSA chain verification --\n");
     test_chain_verification_custom_bundle_rsa();
+    test_chain_verification_rejects_too_many_intermediates();
 
     printf("=== All RTTlsCertTests passed ===\n");
     return 0;

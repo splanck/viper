@@ -25,15 +25,37 @@
 #include "rt_string.h"
 
 #include <cassert>
+#include <csetjmp>
 #include <cstdio>
 #include <cstring>
 #include <limits>
 #include <set>
 
+extern "C" void rt_trap_set_recovery(jmp_buf *buf);
+extern "C" void rt_trap_clear_recovery(void);
+extern "C" const char *rt_trap_get_error(void);
+
 /// @brief Helper to print test result.
 static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
+}
+
+template <typename Fn>
+static bool expect_trap(Fn fn, const char *message_substr) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        fn();
+        rt_trap_clear_recovery();
+        return false;
+    }
+
+    const char *message = rt_trap_get_error();
+    bool matched = !message_substr ||
+                   (message && strstr(message, message_substr) != nullptr);
+    rt_trap_clear_recovery();
+    return matched;
 }
 
 /// @brief Create a Bytes object from raw data.
@@ -431,6 +453,35 @@ static void test_pbkdf2_sha256() {
     printf("\n");
 }
 
+static void test_crypto_input_validation() {
+    printf("Testing Crypto input validation:\n");
+
+    void *salt = make_bytes_str("salt");
+    rt_string empty = rt_const_cstr("");
+    rt_string empty_hash = rt_hash_sha256(empty);
+    test_result("Hash accepts real empty strings",
+                strcmp(rt_string_cstr(empty_hash),
+                       "e3b0c44298fc1c149afbf4c8996fb924"
+                       "27ae41e4649b934ca495991b7852b855") == 0);
+    test_result("PBKDF2 accepts real empty password strings",
+                rt_keyderive_pbkdf2_sha256_str(empty, salt, 100000, 16) != nullptr);
+    test_result("Hash rejects NULL string input",
+                expect_trap([]() { (void)rt_hash_sha256(nullptr); }, "Hash: string must not be null"));
+    test_result("KeyDerive rejects NULL password",
+                expect_trap([&]() {
+                    (void)rt_keyderive_pbkdf2_sha256_str(nullptr, salt, 100000, 16);
+                },
+                            "KeyDerive: password must not be null"));
+
+    rt_crypto_random_bytes(nullptr, 0);
+    test_result("Crypto random allows NULL zero-length output", true);
+    test_result("Crypto random rejects NULL positive-length output",
+                expect_trap([]() { rt_crypto_random_bytes(nullptr, 1); },
+                            "random output buffer is null"));
+
+    printf("\n");
+}
+
 static void test_constant_time_equals_and_passwords() {
     printf("Testing constant-time compare and Password:\n");
 
@@ -524,6 +575,18 @@ static void test_high_level_aead_wrappers() {
     void *aes256_opened = rt_aes_decrypt_auth(aes256_cipher, aes256_key, aad);
     test_result("Aes.EncryptAuth accepts AES-256 key",
                 bytes_equal(aes256_opened, plain_data, sizeof(plain_data)));
+
+    uint8_t cbc_key_data[16];
+    uint8_t cbc_iv_data[16];
+    memset(cbc_key_data, 0x31, sizeof(cbc_key_data));
+    memset(cbc_iv_data, 0x7c, sizeof(cbc_iv_data));
+    void *cbc_key = make_bytes(cbc_key_data, sizeof(cbc_key_data));
+    void *cbc_iv = make_bytes(cbc_iv_data, sizeof(cbc_iv_data));
+    void *empty_plain = make_bytes(nullptr, 0);
+    void *cbc_cipher = rt_aes_encrypt(empty_plain, cbc_key, cbc_iv);
+    void *cbc_opened = rt_aes_decrypt(cbc_cipher, cbc_key, cbc_iv);
+    test_result("Aes.CBC round-trips empty plaintext",
+                cbc_opened && rt_bytes_len(cbc_opened) == 0);
 
     printf("\n");
 }
@@ -664,6 +727,13 @@ static void test_aead_tamper_detection() {
         test_result("ChaCha20 rejects NULL AAD with nonzero length",
                     rt_chacha20_poly1305_encrypt(
                         key, nonce, nullptr, 1, msg, strlen(msg), ciphertext) == 0);
+        uint8_t tag_only[16];
+        test_result("ChaCha20 handles NULL zero-length plaintext",
+                    rt_chacha20_poly1305_encrypt(key, nonce, nullptr, 0, nullptr, 0, tag_only) ==
+                        sizeof(tag_only));
+        test_result("ChaCha20 decrypts tag-only ciphertext with NULL plaintext",
+                    rt_chacha20_poly1305_decrypt(
+                        key, nonce, nullptr, 0, tag_only, sizeof(tag_only), nullptr) == 0);
     }
 
     {
@@ -851,6 +921,7 @@ int main() {
     test_sha_hmac_null_zero_inputs();
     test_string_inputs_preserve_embedded_nul();
     test_pbkdf2_sha256();
+    test_crypto_input_validation();
     test_constant_time_equals_and_passwords();
     test_high_level_aead_wrappers();
     test_crypto_rand();

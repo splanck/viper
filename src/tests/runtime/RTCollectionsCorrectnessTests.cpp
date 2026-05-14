@@ -14,6 +14,7 @@
 #include "rt_bimap.h"
 #include "rt_bitset.h"
 #include "rt_bloomfilter.h"
+#include "rt_box.h"
 #include "rt_collection_ids.h"
 #include "rt_convert_coll.h"
 #include "rt_countmap.h"
@@ -49,6 +50,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 
 extern "C" void vm_trap(const char *msg) {
     fprintf(stderr, "TRAP: %s\n", msg);
@@ -297,6 +299,96 @@ static void test_sortedset_accessors_return_stable_strings() {
     release_obj(set);
 }
 
+static void test_sortedset_null_start_range_includes_lowest_values() {
+    void *set = rt_sortedset_new();
+    rt_string a = make_str("a");
+    rt_string b = make_str("b");
+    rt_string c = make_str("c");
+
+    rt_sortedset_add(set, c);
+    rt_sortedset_add(set, a);
+    rt_sortedset_add(set, b);
+
+    void *range = rt_sortedset_range(set, nullptr, b);
+    assert(rt_seq_len(range) == 2);
+    assert(strcmp(rt_string_cstr((rt_string)rt_seq_get(range, 0)), "a") == 0);
+    assert(strcmp(rt_string_cstr((rt_string)rt_seq_get(range, 1)), "b") == 0);
+
+    release_obj(range);
+    rt_string_unref(a);
+    rt_string_unref(b);
+    rt_string_unref(c);
+    release_obj(set);
+}
+
+static void test_frozenmap_equals_uses_boxed_value_equality() {
+    void *keys1 = rt_seq_new();
+    void *vals1 = rt_seq_new();
+    void *keys2 = rt_seq_new();
+    void *vals2 = rt_seq_new();
+    rt_string key1 = make_str("k");
+    rt_string key2 = make_str("k");
+    void *value1 = rt_box_i64(42);
+    void *value2 = rt_box_i64(42);
+
+    rt_seq_push(keys1, key1);
+    rt_seq_push(vals1, value1);
+    rt_seq_push(keys2, key2);
+    rt_seq_push(vals2, value2);
+
+    void *fm1 = rt_frozenmap_from_seqs(keys1, vals1);
+    void *fm2 = rt_frozenmap_from_seqs(keys2, vals2);
+    assert(rt_frozenmap_equals(fm1, fm2) == 1);
+
+    release_obj(fm1);
+    release_obj(fm2);
+    release_obj(value1);
+    release_obj(value2);
+    rt_string_unref(key1);
+    rt_string_unref(key2);
+    release_obj(vals1);
+    release_obj(vals2);
+    release_obj(keys1);
+    release_obj(keys2);
+}
+
+static void test_seq_to_bag_accepts_raw_and_boxed_strings() {
+    void *seq = rt_seq_new();
+    rt_string raw = make_str("raw");
+    rt_string boxed_text = make_str("boxed");
+    void *boxed = rt_box_str(boxed_text);
+
+    rt_seq_push(seq, raw);
+    rt_seq_push(seq, boxed);
+    void *bag = rt_seq_to_bag(seq);
+
+    assert(rt_bag_len(bag) == 2);
+    assert(rt_bag_has(bag, raw) == 1);
+    assert(rt_bag_has(bag, boxed_text) == 1);
+
+    release_obj(bag);
+    release_obj(boxed);
+    rt_string_unref(raw);
+    rt_string_unref(boxed_text);
+    release_obj(seq);
+}
+
+static void test_boxed_nan_equality_is_hash_compatible() {
+    double nan = std::numeric_limits<double>::quiet_NaN();
+    void *a = rt_box_f64(nan);
+    void *b = rt_box_f64(nan);
+    void *set = rt_set_new();
+
+    assert(rt_box_equal(a, b) == 1);
+    assert(rt_set_add(set, a) == 1);
+    assert(rt_set_add(set, b) == 0);
+    assert(rt_set_has(set, b) == 1);
+
+    release_obj(set);
+    release_obj(a);
+    release_obj(b);
+}
+
 static void test_trie_with_long_prefix() {
     char key_buf[5001];
     memset(key_buf, 'a', sizeof(key_buf));
@@ -308,11 +400,45 @@ static void test_trie_with_long_prefix() {
     rt_trie_set(trie, key, value);
     void *matches = rt_trie_with_prefix(trie, key);
     assert(rt_seq_len(matches) == 1);
+    void *clone = rt_trie_clone(trie);
+    assert(rt_trie_has(clone, key) == 1);
+    void *keys = rt_trie_keys(clone);
+    assert(rt_seq_len(keys) == 1);
+    rt_string cloned_key = (rt_string)rt_seq_get(keys, 0);
+    assert(rt_str_len(cloned_key) == 5000);
 
+    release_obj(keys);
+    release_obj(clone);
     release_obj(matches);
     release_obj(value);
     release_obj(trie);
     rt_string_unref(key);
+}
+
+static void test_list_pop_and_remove_at_leave_empty_list_reusable() {
+    void *list = rt_list_new();
+    void *first = new_obj();
+    void *second = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(first, count_finalizer);
+    rt_obj_set_finalizer(second, count_finalizer);
+
+    rt_list_push(list, first);
+    release_obj(first);
+    void *popped = rt_list_pop(list);
+    assert(rt_list_len(list) == 0);
+    assert(g_finalizer_calls == 0);
+    release_obj(popped);
+    assert(g_finalizer_calls == 1);
+
+    rt_list_push(list, second);
+    release_obj(second);
+    rt_list_remove_at(list, 0);
+    assert(rt_list_len(list) == 0);
+    assert(g_finalizer_calls == 2);
+
+    release_obj(list);
 }
 
 static void test_bloomfilter_self_merge_preserves_count() {
@@ -460,7 +586,12 @@ int main() {
     test_heap_retains_values_and_transfers_on_pop();
     test_heap_to_seq_returns_owned_snapshot();
     test_sortedset_accessors_return_stable_strings();
+    test_sortedset_null_start_range_includes_lowest_values();
+    test_frozenmap_equals_uses_boxed_value_equality();
+    test_seq_to_bag_accepts_raw_and_boxed_strings();
+    test_boxed_nan_equality_is_hash_compatible();
     test_trie_with_long_prefix();
+    test_list_pop_and_remove_at_leave_empty_list_reusable();
     test_bloomfilter_self_merge_preserves_count();
     test_stack_to_seq_releases_borrowed_pop_temps();
     test_queue_to_seq_releases_borrowed_pop_temps();

@@ -12,6 +12,8 @@
 //   - The filter cannot remove elements once added.
 //   - Optimal bit array size and hash count are computed from expected_items and
 //   false_positive_rate.
+//   - Current false-positive-rate estimates are based on the fraction of bits
+//     currently set, so duplicate additions do not inflate the estimate.
 //   - rt_bloomfilter_might_contain returns 1 for possible membership, 0 for definite absence.
 //
 // Ownership/Lifetime:
@@ -32,7 +34,8 @@ extern "C" {
 #endif
 
 /// @brief Create a new Bloom filter.
-/// @param expected_items Expected number of items.
+/// @param expected_items Expected number of items. Zero uses one expected item;
+///                       negative values trap.
 /// @param false_positive_rate Desired false positive rate (0.0-1.0).
 /// @return Bloom filter object.
 void *rt_bloomfilter_new(int64_t expected_items, double false_positive_rate);
@@ -53,7 +56,7 @@ int64_t rt_bloomfilter_might_contain(void *filter, rt_string item);
 /// @return Number of items added.
 int64_t rt_bloomfilter_count(void *filter);
 
-/// @brief Get the estimated false positive rate based on current fill.
+/// @brief Get the estimated false positive rate based on current set-bit fill.
 /// @param filter Bloom filter object.
 /// @return Estimated false positive rate (0.0-1.0).
 double rt_bloomfilter_fpr(void *filter);

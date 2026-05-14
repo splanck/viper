@@ -182,6 +182,8 @@ size_t rt_box_hash(void *elem);
 
 /// @brief Content-aware equality for two elements.
 /// Boxed values (RT_ELEM_BOX) are compared by content (tag + data);
+/// boxed floating-point NaN values compare equal to each other to keep
+/// equality compatible with canonical NaN hashing.
 /// non-boxed objects fall back to pointer identity.
 /// @param a First element (may be NULL).
 /// @param b Second element (may be NULL).

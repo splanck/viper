@@ -77,6 +77,12 @@ typedef struct {
     fm_slot *slots;
 } rt_frozenmap_impl;
 
+static rt_frozenmap_impl *as_frozenmap(void *obj, const char *what) {
+    if (!obj || rt_obj_class_id(obj) != RT_FROZENMAP_CLASS_ID)
+        rt_trap(what);
+    return (rt_frozenmap_impl *)obj;
+}
+
 // --- FNV-1a hash ---
 
 static uint64_t fm_hash(const char *data, int64_t len) {
@@ -129,7 +135,9 @@ static void fm_release_value(void *value) {
 }
 
 static void fm_finalizer(void *obj) {
-    rt_frozenmap_impl *fm = (rt_frozenmap_impl *)obj;
+    if (!obj)
+        return;
+    rt_frozenmap_impl *fm = as_frozenmap(obj, "FrozenMap: invalid FrozenMap object");
     if (fm->slots) {
         for (int64_t i = 0; i < fm->capacity; i++) {
             if (fm->slots[i].key) {
@@ -145,7 +153,7 @@ static void fm_finalizer(void *obj) {
 static void fm_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
-    rt_frozenmap_impl *fm = (rt_frozenmap_impl *)obj;
+    rt_frozenmap_impl *fm = as_frozenmap(obj, "FrozenMap: invalid FrozenMap object");
     if (!fm->slots)
         return;
     for (int64_t i = 0; i < fm->capacity; i++) {
@@ -275,7 +283,7 @@ void *rt_frozenmap_empty(void) {
 int64_t rt_frozenmap_len(void *obj) {
     if (!obj)
         return 0;
-    return ((rt_frozenmap_impl *)obj)->count;
+    return as_frozenmap(obj, "FrozenMap: invalid FrozenMap object")->count;
 }
 
 /// @brief Check whether the frozen map has no entries.
@@ -287,7 +295,7 @@ int8_t rt_frozenmap_is_empty(void *obj) {
 void *rt_frozenmap_get(void *obj, rt_string key) {
     if (!obj || !key)
         return NULL;
-    fm_slot *s = fm_find((rt_frozenmap_impl *)obj, key);
+    fm_slot *s = fm_find(as_frozenmap(obj, "FrozenMap: invalid FrozenMap object"), key);
     return s ? s->value : NULL;
 }
 
@@ -296,7 +304,7 @@ void *rt_frozenmap_get(void *obj, rt_string key) {
 int8_t rt_frozenmap_has(void *obj, rt_string key) {
     if (!obj || !key)
         return 0;
-    return fm_find((rt_frozenmap_impl *)obj, key) != NULL ? 1 : 0;
+    return fm_find(as_frozenmap(obj, "FrozenMap: invalid FrozenMap object"), key) != NULL ? 1 : 0;
 }
 
 /// @brief Return a Seq of every key in the map (slot-iteration order, not insertion order).
@@ -306,7 +314,7 @@ void *rt_frozenmap_keys(void *obj) {
     if (!obj)
         return seq;
 
-    rt_frozenmap_impl *fm = (rt_frozenmap_impl *)obj;
+    rt_frozenmap_impl *fm = as_frozenmap(obj, "FrozenMap: invalid FrozenMap object");
     for (int64_t i = 0; i < fm->capacity; i++) {
         if (fm->slots[i].key)
             rt_seq_push(seq, fm->slots[i].key);
@@ -321,7 +329,7 @@ void *rt_frozenmap_values(void *obj) {
     if (!obj)
         return seq;
 
-    rt_frozenmap_impl *fm = (rt_frozenmap_impl *)obj;
+    rt_frozenmap_impl *fm = as_frozenmap(obj, "FrozenMap: invalid FrozenMap object");
     for (int64_t i = 0; i < fm->capacity; i++) {
         if (fm->slots[i].key)
             rt_seq_push(seq, fm->slots[i].value);
@@ -334,7 +342,7 @@ void *rt_frozenmap_values(void *obj) {
 void *rt_frozenmap_get_or(void *obj, rt_string key, void *default_value) {
     if (!obj || !key)
         return default_value;
-    fm_slot *s = fm_find((rt_frozenmap_impl *)obj, key);
+    fm_slot *s = fm_find(as_frozenmap(obj, "FrozenMap: invalid FrozenMap object"), key);
     return s ? s->value : default_value;
 }
 
@@ -350,7 +358,7 @@ void *rt_frozenmap_merge(void *obj, void *other) {
 
     // Insert from first map
     if (obj) {
-        rt_frozenmap_impl *a = (rt_frozenmap_impl *)obj;
+        rt_frozenmap_impl *a = as_frozenmap(obj, "FrozenMap: invalid FrozenMap object");
         for (int64_t i = 0; i < a->capacity; i++) {
             if (a->slots[i].key)
                 fm_insert(fm, a->slots[i].key, a->slots[i].value);
@@ -358,13 +366,17 @@ void *rt_frozenmap_merge(void *obj, void *other) {
     }
     // Insert from second map (overwrites on conflict)
     if (other) {
-        rt_frozenmap_impl *b = (rt_frozenmap_impl *)other;
+        rt_frozenmap_impl *b = as_frozenmap(other, "FrozenMap: invalid FrozenMap object");
         for (int64_t i = 0; i < b->capacity; i++) {
             if (b->slots[i].key)
                 fm_insert(fm, b->slots[i].key, b->slots[i].value);
         }
     }
     return (void *)fm;
+}
+
+static int8_t fm_value_equals(void *a, void *b) {
+    return a == b || rt_box_equal(a, b);
 }
 
 /// @brief Compare two frozen maps for structural equality.
@@ -380,14 +392,16 @@ int8_t rt_frozenmap_equals(void *obj, void *other) {
 
     if (!obj)
         return 1; // both empty
+    if (!other)
+        return 1; // both empty after matching counts
 
-    rt_frozenmap_impl *a = (rt_frozenmap_impl *)obj;
-    rt_frozenmap_impl *b = (rt_frozenmap_impl *)other;
+    rt_frozenmap_impl *a = as_frozenmap(obj, "FrozenMap: invalid FrozenMap object");
+    rt_frozenmap_impl *b = as_frozenmap(other, "FrozenMap: invalid FrozenMap object");
 
     for (int64_t i = 0; i < a->capacity; i++) {
         if (a->slots[i].key) {
             fm_slot *bs = fm_find(b, a->slots[i].key);
-            if (!bs || bs->value != a->slots[i].value)
+            if (!bs || !fm_value_equals(bs->value, a->slots[i].value))
                 return 0;
         }
     }

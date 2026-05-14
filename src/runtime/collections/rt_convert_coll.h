@@ -59,7 +59,8 @@ void *rt_seq_to_queue(void *seq);
 void *rt_seq_to_deque(void *seq);
 
 /// @brief Convert a Seq to a Bag (string set).
-/// @param seq Source Seq (must contain strings).
+/// @param seq Source Seq. Elements may be raw runtime strings or boxed strings;
+///            other element types trap.
 /// @return New Bag with unique strings.
 void *rt_seq_to_bag(void *seq);
 

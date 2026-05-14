@@ -137,6 +137,7 @@ void rt_arr_obj_put(void **arr, size_t idx, void *obj) {
 /// @brief Resize an object array to the requested length.
 /// @details When growing, new elements are zero-initialized. When shrinking,
 ///          truncated elements are released before the buffer is reallocated.
+///          Resizing to zero releases the array and returns NULL.
 ///          The array may move in memory due to reallocation.
 /// @param arr Existing array payload pointer (may be NULL).
 /// @param len New logical length.
@@ -159,6 +160,11 @@ void **rt_arr_obj_resize(void **arr, size_t len) {
                 arr[i] = NULL;
             }
         }
+    }
+
+    if (len == 0) {
+        rt_heap_release(arr);
+        return NULL;
     }
 
     size_t new_cap = len;

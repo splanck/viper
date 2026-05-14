@@ -3953,6 +3953,8 @@ int64_t rt_viper_tls_send(void *obj, void *data) {
         return -1;
 
     int64_t len = rt_bytes_len(data);
+    if (len < 0)
+        return -1;
     if (len == 0)
         return 0;
 
@@ -4080,6 +4082,7 @@ rt_string rt_viper_tls_recv_line(void *obj) {
 
     size_t cap = 256;
     size_t len = 0;
+    int saw_newline = 0;
     char *line = (char *)malloc(cap);
     if (!line)
         return rt_string_from_bytes("", 0);
@@ -4088,7 +4091,6 @@ rt_string rt_viper_tls_recv_line(void *obj) {
         char c;
         long received = rt_tls_recv(tls->session, &c, 1);
         if (received <= 0) {
-            // Connection closed or error before newline
             break;
         }
 
@@ -4096,6 +4098,7 @@ rt_string rt_viper_tls_recv_line(void *obj) {
             // Strip trailing CR if present
             if (len > 0 && line[len - 1] == '\r')
                 len--;
+            saw_newline = 1;
             break;
         }
 
@@ -4118,6 +4121,11 @@ rt_string rt_viper_tls_recv_line(void *obj) {
             line = new_line;
         }
         line[len++] = c;
+    }
+
+    if (!saw_newline) {
+        free(line);
+        return rt_string_from_bytes("", 0);
     }
 
     rt_string result = rt_string_from_bytes(line, len);

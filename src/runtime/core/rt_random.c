@@ -62,17 +62,33 @@ static RtContext *rt_random_context(void) {
     return ctx;
 }
 
+/// @brief Validate a `void *` handle as a `Random` instance.
+/// @details Checks the class ID and traps on mismatch so a wrong-type handle
+///          surfaces as a real error instead of corrupted RNG state.
+/// @param self Caller-supplied handle expected to be a `Random` object.
+/// @return Validated typed pointer; traps on mismatch.
 static rt_random_impl *as_random(void *self) {
     if (!self || rt_obj_class_id(self) != RT_RANDOM_CLASS_ID)
         rt_trap("Random: invalid Random object");
     return (rt_random_impl *)self;
 }
 
+/// @brief Advance an LCG state and return the new value.
+/// @details Single step of a 64-bit linear-congruential generator with the
+///          MMIX multiplier (`6364136223846793005`) and increment `1`. The
+///          increment is co-prime with `2^64` so the period is the full
+///          state space.
+/// @param state Pointer to the 64-bit state; updated in place.
+/// @return The new state value (also the function's raw u64 output).
 static uint64_t rt_random_step_u64(uint64_t *state) {
     *state = *state * 6364136223846793005ULL + 1ULL;
     return *state;
 }
 
+/// @brief Step the active context's RNG and return one raw 64-bit sample.
+/// @details Thin wrapper over @ref rt_random_step_u64 against the per-context
+///          RNG state, so independent contexts/threads see independent sequences.
+/// @return Raw 64-bit LCG output (no bound applied).
 static uint64_t rt_random_next_u64(void) {
     return rt_random_step_u64(&rt_random_context()->rng_state);
 }
@@ -87,6 +103,16 @@ static uint64_t rt_random_bounded_u64(uint64_t bound) {
     return rt_random_bounded_u64_from_state(&rt_random_context()->rng_state, bound);
 }
 
+/// @brief Sample `[0, bound)` from an explicit RNG state with rejection sampling.
+/// @details Implementation behind @ref rt_random_bounded_u64 that takes the
+///          state by pointer so it can also serve the per-instance `Random`
+///          object. Computes the rejection threshold `(2^64 mod bound)` and
+///          rejects samples below it; the surviving samples are exactly
+///          uniform after `x % bound`. `bound == 0` falls back to returning
+///          the raw step output (treated as unbounded).
+/// @param state Pointer to the LCG state; updated each iteration.
+/// @param bound Upper bound (exclusive); 0 means "no bound".
+/// @return Uniform random integer in `[0, bound)`, or a raw u64 when `bound == 0`.
 static uint64_t rt_random_bounded_u64_from_state(uint64_t *state, uint64_t bound) {
     if (bound == 0)
         return rt_random_step_u64(state);
@@ -99,6 +125,13 @@ static uint64_t rt_random_bounded_u64_from_state(uint64_t *state, uint64_t bound
     }
 }
 
+/// @brief Sample a uniform `[0.0, 1.0)` double from an explicit RNG state.
+/// @details Takes the top 53 bits of one LCG step (matching the precision of
+///          a `double`'s significand) and divides by `2^53` to produce a
+///          uniformly-distributed result in the half-open interval `[0, 1)`.
+///          Skipping the low 11 bits avoids the LCG's weaker low-order bits.
+/// @param state Pointer to the LCG state; advanced by one step.
+/// @return Uniform double in `[0.0, 1.0)`.
 static double rt_random_unit_from_state(uint64_t *state) {
     uint64_t x = (rt_random_step_u64(state) >> 11) & ((1ULL << 53) - 1);
     return (double)x * (1.0 / 9007199254740992.0);

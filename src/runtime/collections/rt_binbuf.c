@@ -161,6 +161,8 @@ void *rt_binbuf_new(void) {
 }
 
 void *rt_binbuf_new_cap(int64_t capacity) {
+    if (capacity < 0)
+        rt_trap("BinaryBuffer: negative capacity");
     if (capacity < 1)
         capacity = 1;
     if ((uint64_t)capacity > (uint64_t)SIZE_MAX)
@@ -371,12 +373,12 @@ void rt_binbuf_write_i64be(void *obj, int64_t value) {
 void rt_binbuf_write_str(void *obj, rt_string value) {
     rt_binbuf_impl *buf = binbuf_require(obj);
 
-    const char *cstr = rt_string_cstr(value);
-    if (!cstr)
-        rt_trap("BinaryBuffer: invalid string");
-    int64_t slen = rt_str_len(value);
+    const char *cstr = value ? rt_string_cstr(value) : "";
+    int64_t slen = value ? rt_str_len(value) : 0;
     if (slen < 0)
         rt_trap("BinaryBuffer: invalid string length");
+    if (slen > 0 && !cstr)
+        rt_trap("BinaryBuffer: invalid string");
     if (slen > INT32_MAX)
         rt_trap("BinaryBuffer: string length exceeds i32 length prefix");
 

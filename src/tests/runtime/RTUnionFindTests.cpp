@@ -9,15 +9,42 @@
 #include "rt_unionfind.h"
 
 #include <cassert>
+#include <csetjmp>
+#include <cstring>
+
+namespace {
+static jmp_buf g_trap_jmp;
+static const char *g_last_trap = nullptr;
+static bool g_trap_expected = false;
+} // namespace
 
 extern "C" void vm_trap(const char *msg) {
+    g_last_trap = msg;
+    if (g_trap_expected)
+        longjmp(g_trap_jmp, 1);
     rt_abort(msg);
 }
+
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_trap_expected = true;                                                                    \
+        g_last_trap = nullptr;                                                                     \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
+            expr;                                                                                  \
+            assert(false && "Expected trap did not occur");                                        \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
+    } while (0)
 
 static void test_new() {
     void *uf = rt_unionfind_new(10);
     assert(uf != NULL);
     assert(rt_unionfind_count(uf) == 10); // 10 disjoint sets
+}
+
+static void test_negative_size_traps() {
+    EXPECT_TRAP(rt_unionfind_new(-1));
+    assert(g_last_trap && strstr(g_last_trap, "UnionFind") != nullptr);
 }
 
 static void test_find() {
@@ -126,6 +153,7 @@ static void test_null_safety() {
 /// @brief Main.
 int main() {
     test_new();
+    test_negative_size_traps();
     test_find();
     test_union();
     test_already_connected();

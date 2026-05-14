@@ -11,11 +11,12 @@
 //   - Fixed capacity set at creation; cannot be resized.
 //   - When full, push overwrites the oldest element (no trap).
 //   - Peek returns the oldest (front) element without removing it.
-//   - Elements are retained when pushed and released when overwritten or popped.
+//   - Elements are retained when pushed and released when overwritten, popped,
+//     cleared, or finalized while ownership mode is enabled.
 //
 // Ownership/Lifetime:
-//   - Ring objects are heap-allocated; caller is responsible for lifetime management.
-//   - No reference counting; explicit destruction is required.
+//   - Ring objects are heap-allocated and runtime-managed.
+//   - Popped elements are returned with a caller-owned reference in ownership mode.
 //
 // Error conventions:
 //   - Allocation failure → returns NULL
@@ -34,7 +35,7 @@ extern "C" {
 #endif
 
 /// @brief Create a new ring buffer with specified capacity.
-/// @param capacity Maximum number of elements (must be > 0).
+/// @param capacity Maximum number of elements. Zero maps to 1; negative traps.
 /// @return Pointer to ring object.
 void *rt_ring_new(int64_t capacity);
 
@@ -61,6 +62,18 @@ int8_t rt_ring_is_empty(void *obj);
 /// @param obj Ring pointer.
 /// @return 1 if full, 0 otherwise.
 int8_t rt_ring_is_full(void *obj);
+
+/// @brief Set whether the ring retains/releases stored runtime objects.
+/// @details The default for new rings is enabled. Ownership mode can only be
+/// changed while the ring is empty.
+/// @param obj Ring pointer.
+/// @param owns 1 to enable ownership, 0 to store borrowed pointers.
+void rt_ring_set_owns_elements(void *obj, int8_t owns);
+
+/// @brief Return whether the ring owns stored elements.
+/// @param obj Ring pointer.
+/// @return 1 when owning mode is enabled, 0 otherwise.
+int8_t rt_ring_owns_elements(void *obj);
 
 /// @brief Push element to ring (overwrites oldest if full).
 /// @param obj Ring pointer.

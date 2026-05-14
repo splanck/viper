@@ -10,7 +10,7 @@
 
 A focused hardening cycle on the v0.2.5 surface. No new public namespaces; every change closes a correctness hole, attack surface, or lifetime invariant under code that already shipped.
 
-- **Memory, GC, and object identity.** Validated `Viper.Memory.Retain` / `Release` wrappers, weak-ref CAS retain inside the GC lock, lock-free traversal, trap-safe finalizer phase, splitmix-style pointer hashing, and a `{obj, retained}` snapshot for the shutdown sweep.
+- **Memory, GC, and object identity.** Validated `Viper.Memory.Retain` / `Release` wrappers, weak-ref CAS retain inside the GC lock, lock-free traversal, trap-safe finalizer phase, splitmix-style pointer hashing, and a `{obj, retained}` snapshot for the shutdown sweep. New shared `rt_heap_try_retain_live` (4-status: retained / immortal / dead / overflow) unifies the non-trapping retain pattern across `rt_msgbus` and `rt_gc`; weak references gain a real finalizer that detaches from the zeroing table before the heap header is reclaimed; immortal heap entries are marked `color=2` so the cycle collector skips them.
 - **MessageBus + Threads three-round pass.** Class-ID validation, retain-during-call across every public entry, reentrancy-safe unsubscribe, cached topic key bytes, monitor finalize-while-waiting safety, async/Parallel retained-result ownership, idempotent pool shutdown.
 - **Crypto migration and hardening.** `Viper.Text.*` → `Viper.Crypto.*` with backward-compat aliases, scrypt-SHA256, AES-256-GCM with AAD, P-256 ECDH, HMAC-SHA384/512, `Viper.Crypto.Module` with approved-mode gates, RSA 1024-bit floor, ECDSA P-256 fixed-schedule scalar mul, point-on-curve validation, DER non-minimal-length rejection.
 - **TLS / IO / archive security.** X.509 Key Usage / Basic Constraints / EKU enforcement, DNS-name tightening, random-nonce temp files, `openat`-based recursive removal, `O_CLOEXEC` / `O_NOFOLLOW` everywhere, ZIP64 rejection with local-vs-central cross-check, exact GZIP boundary detection, 64-bit VPA seeks.
@@ -23,7 +23,8 @@ A focused hardening cycle on the v0.2.5 surface. No new public namespaces; every
 - **x86-64 + AArch64 backends.** AArch64 protection set covers def operands; x86-64 gains cross-block fold liveness on SIB and IMUL→LEA, compare/branch fold safety across edge copies, fixed-physical-register spill-before-clobber, label/frame/cast/overflow lowering repairs, and AT&T asm emitter operand-class validation matching the binary encoder.
 - **Native assembler + linker.** Bounds-checked encoders / writers / readers, alignment-UB elimination, type-safe `InputSectionKey`, COMMON coalescing, ELF weak-undefined + `PT_TLS`, Mach-O subsections-via-symbols, AArch64 LDR/STR scaled-offset relocs, COFF addends patched into instruction bytes with range checks, PE32+ overflow guards.
 - **Windows / packaging.** Win32 HiDPI normalised (physical-pixel client/resize/mouse paths, `AdjustWindowRectExForDpi`); waitable-timer frame pacing replaces `Sleep` quantization; MSVC embedded debug info via CMP0141; expanded UCRT/Win32 import policy; WSL-aware audit scripts; VAPS installer PE32+ validation, recursive adjacent-DLL discovery, `SHGetKnownFolderPath`/`RegDeleteTreeW`/VERSIONINFO/`InstallDate`, `windows-install-scope` + `windows-sign-thumbprint` + `meta/manifest.sha256` coverage with a non-elevated user-scope smoke ctest.
-- **Zia language.** `try`/`catch`/`finally` matches the reference across structured `Error` catch bindings, multiple typed catches, bare rethrow, `throw` as `RuntimeError`, native EH lowering, bytecode `finally` unwinding, and `return` / `break` / `continue` cleanup. New surface: `foreign func ...;`, namespace globals via qualified names, struct-to-interface dispatch, tuple destructuring, match-arm `return`, language-level `Result[T]`, weak fields, safe function references with managed runtime bridges, child `init` override inference, constrained generic method dispatch.
+- **Zia control flow + EH.** `try`/`catch`/`finally` matches the reference across structured `Error` catch bindings, multiple typed catches, bare rethrow, `throw` as `RuntimeError`, native EH lowering, bytecode `finally` unwinding, and `return` / `break` / `continue` cleanup. New `defer` blocks run LIFO on every scope exit including typed-catch rethrow.
+- **Zia language surface.** `foreign func ...;`, namespace globals via qualified names, struct-to-interface dispatch, tuple destructuring, match-arm `return`, language-level `Result[T]`, weak fields, safe function references with managed runtime bridges, child `init` override inference, constrained generic method dispatch, typed collection generics (`Queue[T]` / `Stack[T]` / `Deque[T]` / `Ring[T]` / `Bag[T]` with element-type inference on pop / peek), local fixed-size arrays (`var a: Integer[N]`), numeric literal separators (`1_000_000`), and interpolation-string escape preservation.
 - **Pointer safety.** Zia and BASIC source no longer expose raw `Ptr` types or runtime APIs with pointer signatures. Legacy parse, box, canvas, string-field, particle, thread, async, pool, parallel, message-bus, option/result/lazy callback surfaces now route through managed `Option`, `Seq`, `Path2D`, typed runtime objects, or frontend function references. BASIC lexer/parser additionally correct hex/octal/binary numeric literal parsing and float division.
 - **Tooling + GUI.** ViperIDE IntelliSense linkage repaired (`fe_zia` force-load, live-`Lexer` keyword highlighting, scrollBeyondLastLine, BMP toolbar glyphs, untitled-buffer module declarations). GUI widget handles route through centralised typed wrappers; bidirectional context-menu submenu ownership; code-editor block-comment depth derives from a buffer scan.
 - **Runtime API conformance — collections + introspection.** Documented-but-missing public surface wired through: `Keys` / `Values` on Map, IntMap, OrderedMap, TreeMap, Trie, BiMap, CountMap, MultiMap, LruCache, WeakMap; `Indices` / `Values` on SparseArray; `Map.Clone` and `Map.SetBool` / `GetBool` / `GetBoolOr`; public Seq constructors. New `Viper.Crypto.Rand.Bytes(count)`; `Viper.Machine.Arch` / `PageSize` / `PointerSize`; `Math.Random.NextIntRange` as an instance method.
@@ -33,13 +34,13 @@ A focused hardening cycle on the v0.2.5 surface. No new public namespaces; every
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 82 | +82 |
-| Source files | 2,996 | 3,009 | +13 |
-| Production SLOC | 552K | 579K | +27K |
-| Test SLOC | 228K | 243K | +15K |
+| Commits | — | 87 | +87 |
+| Source files | 2,996 | 3,010 | +14 |
+| Production SLOC | 552K | 580K | +28K |
+| Test SLOC | 228K | 244K | +16K |
 | Demo SLOC | 188K | 189K | +1K |
 
-Counts via `scripts/count_sloc.sh` (production 578,679 / test 242,604 / demo 188,558 / source files 3,009).
+Counts via `scripts/count_sloc.sh` (production 579,744 / test 243,574 / demo 188,673 / source files 3,010).
 
 ---
 
@@ -60,8 +61,9 @@ Counts via `scripts/count_sloc.sh` (production 578,679 / test 242,604 / demo 188
 ### Crypto and TLS
 
 - Password / KeyDerive / Aes / Cipher / Hash / Rand are canonical members of `Viper.Crypto.*`; `Viper.Text.*` names remain as aliases. New: `KeyDerive.ScryptSHA256` (RFC 7914, bounded memory cap), `Password.Hash` default `SCRYPT$…` format with PBKDF2 legacy-verify, `Cipher.EncryptAAD` / `DecryptAAD` accepting AES-128/256-GCM, a 16-byte `VAK1` magic header so plain-AES and AEAD ciphertexts can't be confused, `Viper.Crypto.Module` approved-mode + self-tests + HMAC-DRBG, `Hash.ConstantTimeEquals`.
-- RSA modulus floor raised to 1024 bits; public exponent and modulus parity / size validated; key buffers scrubbed with a secure-zero helper. ECDSA P-256 private path uses a fixed-schedule scalar mul (one double + one add per bit, conditional-select via 64-bit mask); new point-on-curve validator runs at every public-point ingress. `base64_encode` overflow-guards the group-count multiplication.
-- TLS chain validation enforces Key Usage, Basic Constraints (cA flag), and Extended Key Usage; intermediates without cA and leaves without Server-Auth EKU are rejected. `tls_dns_name_bytes_valid` rejects empty / non-ASCII / over-length names and improper wildcards. DER TLV reader rejects non-minimal long-form length encodings. Windows Key Usage parsing requires `digitalSignature` alone for TLS server auth.
+- RSA modulus floor raised to 1024 bits; public exponent and modulus parity / size validated; key buffers scrubbed with a secure-zero helper. ECDSA P-256 private path uses a fixed-schedule scalar mul (one double + one add per bit, conditional-select via 64-bit mask); new point-on-curve validator runs at every public-point ingress, and P-256 signing reduces the message representative modulo the group order. `base64_encode` overflow-guards the group-count multiplication.
+- TLS chain validation enforces Key Usage, Basic Constraints (cA flag), and Extended Key Usage; intermediates without cA and leaves without Server-Auth EKU are rejected. Hostname verification scans every DNS SubjectAltName instead of the extraction helper's fixed output cap; certificate chains with malformed tails or more than 16 intermediates fail closed. `tls_dns_name_bytes_valid` rejects empty / non-ASCII / over-length names and improper wildcards. DER TLV reader rejects non-minimal long-form length encodings. Windows Key Usage parsing requires `digitalSignature` alone for TLS server auth.
+- Crypto runtime correctness pass: Hash / KeyDerive distinguish null string references from real empty strings, AES-CBC accepts empty plaintext, random-output buffers validate null/nonzero requests, temporary random buffers are scrubbed, legacy Cipher invalid AAD traps instead of being treated as absent, `Crypto.Module` error state is sticky and fail-closed, and TLS `RecvLine` no longer reports EOF-before-newline as a complete line.
 
 ### IO and packaging
 
@@ -100,7 +102,7 @@ Counts via `scripts/count_sloc.sh` (production 578,679 / test 242,604 / demo 188
 
 ### Compiler, IL, codegen, native toolchain
 
-- AArch64 protection set in `Allocator.cpp` covers both *use* and *def* operands (fields renamed `protectedOperand{GPR,FPR}_`), fixing a class of register-reuse clobbers. `DynamicSymbolPolicy` and `RuntimeSurfacePolicy.inc` extended for the new IO syscalls (`openat`, `fstatat`, `unlinkat`, `renameat`, `fdopendir`, `mkdtemp`, …) and the threads / Queue / Stack ownership accessors.
+- AArch64 protection set in `Allocator.cpp` covers both *use* and *def* operands (fields renamed `protectedOperand{GPR,FPR}_`), fixing a class of register-reuse clobbers. `DynamicSymbolPolicy` and `RuntimeSurfacePolicy.inc` extended for the new IO syscalls (`openat`, `fstatat`, `unlinkat`, `renameat`, `fdopendir`, `mkdtemp`, …) and the threads / Queue / Stack / Ring ownership accessors.
 - x86-64: cross-block fold-liveness guards on SIB and IMUL→LEA so address-strength reductions can't erase virtual registers still consumed in another block; compare/branch fold-safety routed through shared operand-role metadata; IMUL→LEA refusal under live flags; block-DCE preserves physical registers at exits; fixed-physical-register spill-before-clobber; switch-edge default-first ordering; integer-cast width / label-operand / frame-slot / overflow-pseudo lowering repairs; AT&T `AsmEmitter` rejects invalid `CALL` / `JMP` / `JCC` / `LEA` / `SETcc` / `MOVZX` operand classes and non-`RCX` shift counts before printing.
 - Optimizer ownership-effect model gains an `ownedOutArgMask` for pointer args that receive an owned reference; plumbed through `RuntimeOwnership.hpp` for `Memory.*` / Box / `Object.ToString` / `Parse.*Option` / `Convert.ToString_*` / MessageBus. The retain-on-return contract is captured via `returnsOwned` on all collection accessors so optimizer-side defensive retains are gone.
 - Native assembler / linker — readers and writers: all four object-file readers (ELF / COFF / Mach-O / Archive) and three writers received bounds-checking and alignment-UB fixes; per-file caps reject crafted inputs; `ArchiveReader::parseSize` rejects empty / padded / trailing-garbage fields. New typed `InputSectionKey{objIndex, secIndex}` replaces ad-hoc bit-packing.
@@ -127,6 +129,7 @@ Counts via `scripts/count_sloc.sh` (production 578,679 / test 242,604 / demo 188
 - **Zia alpha hardening** — `42_try_catch_promises`, `43_alpha_hardening`, and `44_language_promises` cover interpreted, optimized `viper run`, and native paths for structured catch bindings, multiple typed catches, bare rethrow, branchy catch/finally, finally-only rethrow, stale catch-message clearing, namespace globals, struct interface dispatch, constrained generics, tuple destructuring, `Result[T]`, weak fields, function references, documented `foreign func`, and cleanup on `return` / `break` / `continue`.
 - **Native assembler / linker** — coverage for `parseSize`, archive symbol-candidate ordering, `CodeSection` identity, ELF symbol-size preservation, COFF reloc-overflow records, AArch64 reloc instruction-class validators, Mach-O `SIGNED_4` bias, PE 32-bit overflow guards, branch-trampoline overflow, and MOVZX REX emission.
 - **Packaging / D3D11 / Window** — PE VERSIONINFO, Windows thumbprint normalisation, ZIP manifest duplicate / uncovered-entry, recursive DLL dependency, and the non-elevated `windows_installer_user_smoke` end-to-end. D3D11 row-byte / destination-span / overflow / target-fallback resolution. Window: physical framebuffer + logical Canvas + resize under a 2× mock display scale.
+- **Crypto / TLS** — runtime CTests cover null-vs-empty string handling, random buffer validation, AES-CBC empty plaintext, ChaCha20-Poly1305 tag-only messages, SAN matching beyond the public extraction cap, and rejection of overlong certificate chains.
 
 Demos and docs were updated to track the runtime work above; stale Windows debug/O0 pins for Chess, XENOSCAPE, and Baseball were removed after optimized x86-64 builds were restored.
 
@@ -134,6 +137,6 @@ Demos and docs were updated to track the runtime work above; stale Windows debug
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 82-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 87-commit history since v0.2.5.
 
 <!-- END DRAFT -->

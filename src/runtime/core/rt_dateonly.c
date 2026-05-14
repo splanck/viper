@@ -61,6 +61,12 @@ typedef struct {
 // Helper Functions
 //=============================================================================
 
+/// @brief Test whether @p year is a Gregorian leap year.
+/// @details Implements the Gregorian leap-year rule: years divisible by 4 are
+///          leap, except century years (`% 100 == 0`) which are leap only
+///          when also divisible by 400.
+/// @param year Proleptic Gregorian year (negative values are valid).
+/// @return 1 if @p year is a leap year, 0 otherwise.
 static int8_t is_leap_year(int64_t year) {
     return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
 }
