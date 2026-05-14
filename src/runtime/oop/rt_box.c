@@ -206,8 +206,23 @@ static void value_type_finalizer(void *obj) {
 
     if (!layout)
         return;
-    if (previous && previous != value_type_finalizer)
-        previous(obj);
+    int previous_trapped = 0;
+    char previous_error[512] = {0};
+    if (previous && previous != value_type_finalizer) {
+        jmp_buf previous_recovery;
+        rt_trap_set_recovery(&previous_recovery);
+        if (setjmp(previous_recovery) != 0) {
+            const char *err = rt_trap_get_error();
+            snprintf(previous_error,
+                     sizeof(previous_error),
+                     "%s",
+                     err && err[0] ? err : "rt_box_value_type: chained finalizer trap");
+            previous_trapped = 1;
+        } else {
+            previous(obj);
+        }
+        rt_trap_clear_recovery();
+    }
 
     rt_heap_hdr_t *hdr = NULL;
     if (rt_heap_try_get_header(obj, &hdr) && hdr &&
@@ -219,6 +234,8 @@ static void value_type_finalizer(void *obj) {
             live_layout->previous_finalizer = reinstalled;
         value_type_unlock();
         rt_obj_set_finalizer(obj, value_type_finalizer);
+        if (previous_trapped)
+            rt_trap(previous_error);
         return;
     }
 
@@ -230,6 +247,8 @@ static void value_type_finalizer(void *obj) {
     for (value_type_field *field = layout->fields; field; field = field->next)
         value_type_release_slot(obj, field);
     value_type_free_layout(layout);
+    if (previous_trapped)
+        rt_trap(previous_error);
 }
 
 static void value_type_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
@@ -419,17 +438,33 @@ void *rt_box_str(rt_string val) {
         rt_trap("rt_box_str: invalid string handle");
         return NULL;
     }
-    rt_box_t *box = (rt_box_t *)alloc_box();
-    if (!box)
+    rt_string retained = val ? rt_string_ref(val) : NULL;
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *err = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 err && err[0] ? err : "rt_box_str: allocation failed");
+        rt_trap_clear_recovery();
+        rt_str_release_maybe(retained);
+        rt_trap(saved_error);
         return NULL;
-    box->tag = RT_BOX_STR;
-    box->data.str_val = val;
-    // Retain the string since we're storing it
-    // Use rt_string_ref to handle both heap and literal strings
-    if (val) {
-        rt_string_ref(val);
     }
+
+    rt_box_t *box = (rt_box_t *)alloc_box();
+    if (!box) {
+        rt_trap_clear_recovery();
+        rt_str_release_maybe(retained);
+        return NULL;
+    }
+    box->tag = RT_BOX_STR;
+    box->data.str_val = retained;
     rt_obj_set_finalizer(box, box_str_finalizer);
+    rt_trap_clear_recovery();
     return box;
 }
 
@@ -556,7 +591,22 @@ void *rt_box_to_str_option(void *box) {
     if (!rt_box_try_to_str(box, &value))
         return rt_option_none();
 
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *err = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 err && err[0] ? err : "rt_box_to_str_option: option allocation failed");
+        rt_trap_clear_recovery();
+        rt_str_release_maybe(value);
+        rt_trap(saved_error);
+        return NULL;
+    }
     void *option = rt_option_some_str(value);
+    rt_trap_clear_recovery();
     rt_str_release_maybe(value);
     return option;
 }
@@ -699,7 +749,23 @@ void rt_box_value_type_add_field(void *obj, int64_t offset, int64_t kind, int8_t
             rt_trap("rt_box_value_type_add_field: invalid managed field value");
             return;
         }
+        jmp_buf retain_recovery;
+        rt_trap_set_recovery(&retain_recovery);
+        if (setjmp(retain_recovery) != 0) {
+            char saved_error[256];
+            const char *err = rt_trap_get_error();
+            snprintf(saved_error,
+                     sizeof(saved_error),
+                     "%s",
+                     err && err[0] ? err : "rt_box_value_type_add_field: retain failed");
+            rt_trap_clear_recovery();
+            free(field);
+            free(new_layout);
+            rt_trap(saved_error);
+            return;
+        }
         value_type_retain_slot(obj, &retain_field);
+        rt_trap_clear_recovery();
         retained_slot = 1;
     }
 

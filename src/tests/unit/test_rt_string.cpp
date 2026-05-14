@@ -155,6 +155,23 @@ int main() {
     }
 
     {
+        rt_string original = rt_const_cstr("clone-source");
+        auto *original_impl = (rt_string_impl *)original;
+        assert(original_impl->heap == nullptr || original_impl->heap == RT_SSO_SENTINEL);
+        size_t before = original_impl->literal_refs;
+
+        rt_string cloned = rt_str_clone(original);
+        assert(cloned == original);
+        assert(original_impl->literal_refs == before + 1);
+
+        rt_string_unref(original);
+        rt_string expected = rt_const_cstr("clone-source");
+        assert(rt_str_eq(cloned, expected));
+        rt_string_unref(expected);
+        rt_string_unref(cloned);
+    }
+
+    {
         rt_string_impl huge_literal = {
             RT_STRING_MAGIC, nullptr, nullptr, std::numeric_limits<size_t>::max(), 0};
         rt_string_impl small_literal = {RT_STRING_MAGIC, nullptr, nullptr, 16, 0};

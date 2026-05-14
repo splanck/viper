@@ -16,10 +16,13 @@
 #include "rt_box.h"
 #include "rt_heap.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
 #include <assert.h>
 #include <csetjmp>
+#include <cstring>
 #include <stdint.h>
 #include <string>
 
@@ -30,6 +33,8 @@ extern "C" const char *rt_trap_get_error(void);
 namespace {
 
 int g_finalizer_count = 0;
+int g_trapping_finalizer_count = 0;
+int g_second_finalizer_count = 0;
 void *g_resurrected = nullptr;
 
 void count_finalizer(void *obj) {
@@ -40,6 +45,17 @@ void count_finalizer(void *obj) {
 void resurrect_finalizer(void *obj) {
     g_resurrected = obj;
     rt_obj_resurrect(obj);
+}
+
+void trapping_finalizer(void *obj) {
+    (void)obj;
+    g_trapping_finalizer_count++;
+    rt_trap("finalizer boom");
+}
+
+void second_count_finalizer(void *obj) {
+    (void)obj;
+    g_second_finalizer_count++;
 }
 
 void call_memory_retain_invalid() {
@@ -114,6 +130,50 @@ void call_memory_release_array_len_past_cap() {
     hdr->len = 2;
     hdr->cap = 1;
     rt_memory_release(payload);
+}
+
+void call_box_str_retain_overflow() {
+    const char *raw = "heap-backed box string retain overflow";
+    rt_string text = rt_string_from_bytes(raw, std::strlen(raw));
+    assert(text != nullptr);
+    void *payload = (void *)rt_string_cstr(text);
+    assert(rt_heap_is_payload(payload) == 1);
+    rt_heap_hdr_t *hdr = rt_heap_hdr(payload);
+    hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+    (void)rt_box_str(text);
+}
+
+void call_value_type_add_field_retain_overflow() {
+    void *value_type = rt_box_value_type((int64_t)sizeof(void *));
+    assert(value_type != nullptr);
+    const char *raw = "heap-backed value type string retain overflow";
+    rt_string text = rt_string_from_bytes(raw, std::strlen(raw));
+    assert(text != nullptr);
+    void *payload = (void *)rt_string_cstr(text);
+    assert(rt_heap_is_payload(payload) == 1);
+    rt_heap_hdr_t *hdr = rt_heap_hdr(payload);
+    *(rt_string *)value_type = text;
+    hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+    rt_box_value_type_add_field(value_type, 0, RT_VALUE_FIELD_STR, 1);
+}
+
+void call_option_some_retain_overflow() {
+    void *obj = rt_obj_new_i64(16, 8);
+    assert(obj != nullptr);
+    rt_heap_hdr_t *hdr = rt_heap_hdr(obj);
+    hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+    (void)rt_option_some(obj);
+}
+
+void call_option_some_str_retain_overflow() {
+    const char *raw = "heap-backed option string retain overflow";
+    rt_string text = rt_string_from_bytes(raw, std::strlen(raw));
+    assert(text != nullptr);
+    void *payload = (void *)rt_string_cstr(text);
+    assert(rt_heap_is_payload(payload) == 1);
+    rt_heap_hdr_t *hdr = rt_heap_hdr(payload);
+    hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+    (void)rt_option_some_str(text);
 }
 
 void call_resurrect_live_object() {
@@ -236,6 +296,99 @@ void test_memory_release_array_drops_elements() {
     assert(rt_heap_is_payload(arr) == 0);
 }
 
+void test_memory_release_trapping_finalizer_frees_object() {
+    g_trapping_finalizer_count = 0;
+    void *obj = rt_obj_new_i64(0xBAD, 16);
+    assert(obj != nullptr);
+    rt_obj_set_finalizer(obj, trapping_finalizer);
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_memory_release(obj);
+        rt_trap_clear_recovery();
+        assert(false && "trapping finalizer should re-trap");
+    } else {
+        std::string message = rt_trap_get_error();
+        rt_trap_clear_recovery();
+        assert(message.find("finalizer boom") != std::string::npos);
+    }
+
+    assert(g_trapping_finalizer_count == 1);
+    assert(rt_heap_is_payload(obj) == 0);
+}
+
+void test_memory_release_array_trap_drains_and_frees() {
+    g_trapping_finalizer_count = 0;
+    g_second_finalizer_count = 0;
+
+    void *first = rt_obj_new_i64(0xA11, 8);
+    void *second = rt_obj_new_i64(0xA12, 8);
+    assert(first != nullptr);
+    assert(second != nullptr);
+    rt_obj_set_finalizer(first, trapping_finalizer);
+    rt_obj_set_finalizer(second, second_count_finalizer);
+
+    void **arr = (void **)rt_heap_alloc(RT_HEAP_ARRAY, RT_ELEM_OBJ, sizeof(void *), 2, 2);
+    assert(arr != nullptr);
+    arr[0] = first;
+    arr[1] = second;
+    rt_obj_retain_maybe(first);
+    rt_obj_retain_maybe(second);
+    assert(rt_obj_release_check0(first) == 0);
+    assert(rt_obj_release_check0(second) == 0);
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_memory_release(arr);
+        rt_trap_clear_recovery();
+        assert(false && "trapping array element finalizer should re-trap");
+    } else {
+        std::string message = rt_trap_get_error();
+        rt_trap_clear_recovery();
+        assert(message.find("finalizer boom") != std::string::npos);
+    }
+
+    assert(g_trapping_finalizer_count == 1);
+    assert(g_second_finalizer_count == 1);
+    assert(rt_heap_is_payload(first) == 0);
+    assert(rt_heap_is_payload(second) == 0);
+    assert(rt_heap_is_payload(arr) == 0);
+}
+
+void test_value_type_trapping_previous_finalizer_releases_fields() {
+    g_trapping_finalizer_count = 0;
+    void *value_type = rt_box_value_type((int64_t)sizeof(rt_string));
+    assert(value_type != nullptr);
+    rt_obj_set_finalizer(value_type, trapping_finalizer);
+
+    const char *raw = "value type field survives until chained finalizer trap cleanup";
+    rt_string text = rt_string_from_bytes(raw, std::strlen(raw));
+    assert(text != nullptr);
+    void *text_payload = (void *)rt_string_cstr(text);
+    assert(rt_heap_is_payload(text_payload) == 1);
+    *(rt_string *)value_type = text;
+    rt_box_value_type_add_field(value_type, 0, RT_VALUE_FIELD_STR, 1);
+    rt_string_unref(text);
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_memory_release(value_type);
+        rt_trap_clear_recovery();
+        assert(false && "trapping chained finalizer should re-trap");
+    } else {
+        std::string message = rt_trap_get_error();
+        rt_trap_clear_recovery();
+        assert(message.find("finalizer boom") != std::string::npos);
+    }
+
+    assert(g_trapping_finalizer_count == 1);
+    assert(rt_heap_is_payload(text_payload) == 0);
+    assert(rt_heap_is_payload(value_type) == 0);
+}
+
 void test_object_array_uses_object_element_kind() {
     g_finalizer_count = 0;
     void *obj = rt_obj_new_i64(0x0B1, 8);
@@ -292,6 +445,10 @@ int main(int argc, char *argv[]) {
     viper::tests::registerChildFunction(call_memory_release_unknown_heap_kind);
     viper::tests::registerChildFunction(call_memory_release_unknown_array_element_kind);
     viper::tests::registerChildFunction(call_memory_release_array_len_past_cap);
+    viper::tests::registerChildFunction(call_box_str_retain_overflow);
+    viper::tests::registerChildFunction(call_value_type_add_field_retain_overflow);
+    viper::tests::registerChildFunction(call_option_some_retain_overflow);
+    viper::tests::registerChildFunction(call_option_some_str_retain_overflow);
     viper::tests::registerChildFunction(call_resurrect_live_object);
     viper::tests::registerChildFunction(call_obj_free_live_object);
     if (viper::tests::dispatchChild(argc, argv))
@@ -301,6 +458,9 @@ int main(int argc, char *argv[]) {
     test_memory_release_reports_string_refcount();
     test_memory_release_reports_resurrection_refcount();
     test_memory_release_array_drops_elements();
+    test_memory_release_trapping_finalizer_frees_object();
+    test_memory_release_array_trap_drains_and_frees();
+    test_value_type_trapping_previous_finalizer_releases_fields();
     test_memory_release_array_validation_preserves_refcount();
     test_object_array_uses_object_element_kind();
     test_memory_release_array_drops_box_elements();
@@ -317,6 +477,10 @@ int main(int argc, char *argv[]) {
     expect_trap(call_memory_release_unknown_heap_kind, "unsupported heap payload kind");
     expect_trap(call_memory_release_unknown_array_element_kind, "unsupported array element kind");
     expect_trap(call_memory_release_array_len_past_cap, "array length exceeds capacity");
+    expect_trap(call_box_str_retain_overflow, "refcount overflow");
+    expect_trap(call_value_type_add_field_retain_overflow, "refcount overflow");
+    expect_trap(call_option_some_retain_overflow, "refcount overflow");
+    expect_trap(call_option_some_str_retain_overflow, "refcount overflow");
     expect_trap(call_resurrect_live_object, "refcount is not zero");
     expect_trap(call_obj_free_live_object, "refcount is not zero");
     return 0;

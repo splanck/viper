@@ -675,13 +675,14 @@ int64_t rt_str_is_empty(rt_string s) {
     return rt_str_len(s) == 0 ? 1 : 0;
 }
 
-/// @brief Identity constructor from an existing runtime string handle.
-/// @details Used as a thin shim for Viper.Strings.FromStr; returns the input
-///          handle unchanged. Callers manage ownership according to IL/VM rules.
+/// @brief Retaining constructor from an existing runtime string handle.
+/// @details Used as a thin shim for Viper.String.FromStr. The runtime string
+///          return ABI transfers an owned reference to callers, so this helper
+///          retains before returning even though the underlying handle is shared.
 /// @param s Runtime string handle.
-/// @return The same handle.
+/// @return The same handle with an additional owned reference.
 rt_string rt_str_clone(rt_string s) {
-    return s;
+    return rt_string_ref(s);
 }
 
 /// @brief Concatenate two runtime strings, consuming the inputs.

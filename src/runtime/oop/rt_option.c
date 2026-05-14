@@ -33,10 +33,16 @@
 #include "rt_object.h"
 #include "rt_result.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
+#include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
 
 //=============================================================================
 // Internal Structure
@@ -86,25 +92,72 @@ static void option_finalizer(void *obj) {
 /// @brief Construct `Some(value)` over a generic pointer payload. Retains `value` via the heap
 /// refcount path (so it survives until the Option is finalized).
 void *rt_option_some(void *value) {
+    rt_obj_retain_maybe(value);
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *err = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 err && err[0] ? err : "Option.Some: allocation failed");
+        rt_trap_clear_recovery();
+        if (rt_obj_release_check0(value))
+            rt_obj_free(value);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
     Option *o = (Option *)rt_obj_new_i64(RT_OPTION_CLASS_ID, (int64_t)sizeof(Option));
+    if (!o) {
+        rt_trap_clear_recovery();
+        if (rt_obj_release_check0(value))
+            rt_obj_free(value);
+        return NULL;
+    }
 
     o->variant = OPTION_SOME;
     o->value_type = VALUE_PTR;
     o->value.ptr = value;
-    rt_obj_retain_maybe(value);
     rt_obj_set_finalizer(o, option_finalizer);
+    rt_trap_clear_recovery();
     return o;
 }
 
 /// @brief Construct `Some(string)`. Retains the string via `rt_string_ref` (handles both heap
 /// and literal-pool strings); accepts NULL (stored as NULL).
 void *rt_option_some_str(rt_string value) {
+    rt_string retained = value ? rt_string_ref(value) : NULL;
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *err = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 err && err[0] ? err : "Option.SomeStr: allocation failed");
+        rt_trap_clear_recovery();
+        rt_str_release_maybe(retained);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
     Option *o = (Option *)rt_obj_new_i64(RT_OPTION_CLASS_ID, (int64_t)sizeof(Option));
+    if (!o) {
+        rt_trap_clear_recovery();
+        rt_str_release_maybe(retained);
+        return NULL;
+    }
 
     o->variant = OPTION_SOME;
     o->value_type = VALUE_STR;
-    o->value.str = value ? rt_string_ref(value) : NULL;
+    o->value.str = retained;
     rt_obj_set_finalizer(o, option_finalizer);
+    rt_trap_clear_recovery();
     return o;
 }
 
