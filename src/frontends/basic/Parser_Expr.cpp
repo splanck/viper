@@ -561,10 +561,10 @@ ExprPtr Parser::parsePrimary() {
     if (at(TokenKind::KeywordAddressOf)) {
         auto loc = peek().loc;
         consume(); // ADDRESSOF
-        Token ident = expect(TokenKind::Identifier);
+        Token ident = expectSoftIdentifier();
         auto expr = std::make_unique<AddressOfExpr>();
         expr->loc = loc;
-        if (ident.kind == TokenKind::Identifier)
+        if (isSoftIdentToken(ident.kind))
             expr->targetName = ident.lexeme;
         return expr;
     }
@@ -760,8 +760,8 @@ ExprPtr Parser::parseBoundIntrinsic(TokenKind keyword) {
     consume();
     expect(TokenKind::LParen);
     std::string name;
-    Token ident = expect(TokenKind::Identifier);
-    if (ident.kind == TokenKind::Identifier)
+    Token ident = expectSoftIdentifier();
+    if (isSoftIdentToken(ident.kind))
         name = ident.lexeme;
     expect(TokenKind::RParen);
 
@@ -817,11 +817,11 @@ ExprPtr Parser::parsePostfix(ExprPtr expr) {
         // to support runtime namespaces like Viper.Random.Next().
         if (!isMemberIdentToken(peek().kind)) {
             // Preserve original expectation for diagnostics when not matching.
-            Token ident = expect(TokenKind::Identifier);
-            (void)ident; // fall through; error already emitted if not identifier
+            Token bad = expect(TokenKind::Identifier);
+            (void)bad;
+            break;
         }
-        Token ident = peek();
-        consume();
+        Token ident = consume();
         std::string member;
         if (isMemberIdentToken(ident.kind))
             member = ident.lexeme;

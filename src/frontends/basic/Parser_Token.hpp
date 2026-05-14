@@ -40,6 +40,10 @@ Token consume();
 /// @note Advances the parser and may emit a diagnostic on mismatch.
 Token expect(TokenKind k);
 
+/// @brief Consume an identifier or contextual keyword accepted as an identifier.
+/// @return The consumed token, or the offending token after emitting a diagnostic.
+Token expectSoftIdentifier();
+
 /// @brief Skip tokens until reaching a statement boundary.
 /// @note Consumes tokens until a boundary token (e.g., newline or EOF) is encountered.
 void syncToStmtBoundary();

@@ -227,7 +227,7 @@ StmtPtr Parser::parseInputStatement() {
         stmt->channel = channel;
         // Parse one or more comma-separated identifier targets
         while (true) {
-            Token targetTok = expect(TokenKind::Identifier);
+            Token targetTok = expectSoftIdentifier();
             NameRef ref;
             ref.name = targetTok.lexeme;
             ref.loc = targetTok.loc;
@@ -248,12 +248,12 @@ StmtPtr Parser::parseInputStatement() {
     stmt->loc = loc;
     stmt->prompt = std::move(prompt);
 
-    Token nameTok = expect(TokenKind::Identifier);
+    Token nameTok = expectSoftIdentifier();
     stmt->vars.push_back(nameTok.lexeme);
 
     while (at(TokenKind::Comma)) {
         consume();
-        Token nextTok = expect(TokenKind::Identifier);
+        Token nextTok = expectSoftIdentifier();
         stmt->vars.push_back(nextTok.lexeme);
     }
 
@@ -270,6 +270,23 @@ StmtPtr Parser::parseLineInputStatement() {
     auto loc = peek().loc;
     consume(); // LINE
     expect(TokenKind::KeywordInput);
+
+    if (!at(TokenKind::Hash)) {
+        ExprPtr prompt;
+        if (at(TokenKind::String)) {
+            prompt = makeStrExpr(peek().lexeme, peek().loc);
+            consume();
+            expect(TokenKind::Comma);
+        }
+
+        auto stmt = std::make_unique<InputStmt>();
+        stmt->loc = loc;
+        stmt->prompt = std::move(prompt);
+        Token targetTok = expectSoftIdentifier();
+        stmt->vars.push_back(targetTok.lexeme);
+        return stmt;
+    }
+
     expect(TokenKind::Hash);
     auto stmt = std::make_unique<LineInputChStmt>();
     stmt->loc = loc;
