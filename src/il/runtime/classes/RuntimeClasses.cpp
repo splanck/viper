@@ -242,6 +242,7 @@ const RuntimeClass *findRuntimeClassByQName(std::string_view qname) {
 /// |-------|--------------|--------------------------------|
 /// | i64   | I64          | 64-bit signed integer          |
 /// | f64   | F64          | 64-bit floating point          |
+/// | f32   | F64          | 32-bit float widened to f64    |
 /// | i1    | Bool         | Boolean (true/false)           |
 /// | str   | String       | String reference               |
 /// | void  | Void         | No value (procedures)          |
@@ -260,7 +261,7 @@ ILScalarType mapILToken(std::string_view tok) {
     // without meaningful performance benefit.
     if (tok == "i64")
         return ILScalarType::I64;
-    if (tok == "f64")
+    if (tok == "f64" || tok == "f32")
         return ILScalarType::F64;
     if (tok == "i1" || tok == "bool")
         return ILScalarType::Bool;

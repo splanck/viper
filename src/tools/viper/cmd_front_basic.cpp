@@ -169,6 +169,7 @@ int runFrontBasic(const FrontBasicConfig &config,
     compilerOpts.dumpIL = config.shared.dumpIL;
     compilerOpts.dumpILOpt = config.shared.dumpILOpt;
     compilerOpts.dumpILPasses = config.shared.dumpILPasses;
+    compilerOpts.allowUnsafePointers = config.shared.allowUnsafePointers;
 
     BasicCompilerInput compilerInput{source, config.sourcePath};
     compilerInput.fileId = config.sourceFileId;

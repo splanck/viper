@@ -21,6 +21,7 @@
 #include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/types/TypeMapping.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 
 #include <unordered_set>
 #include <utility>
@@ -317,6 +318,19 @@ void ProcRegistry::seedRuntimeBuiltins() {
         sig.retType = retTy;
         for (const auto &p : params)
             sig.params.push_back({p.type, p.is_array});
+        sig.isRuntimeBuiltin = true;
+        sig.runtimeTarget = std::string(desc.name);
+        sig.rawPointerParams.reserve(desc.signature.paramTypes.size());
+        for (std::size_t i = 0; i < desc.signature.paramTypes.size(); ++i) {
+            const bool objectParam =
+                (desc.signature.objectParamMask & (std::uint64_t{1} << i)) != 0;
+            sig.rawPointerParams.push_back(desc.signature.paramTypes[i].kind ==
+                                               il::core::Type::Kind::Ptr &&
+                                           !objectParam);
+        }
+        if (auto parsed = RuntimeRegistry::instance().findFunction(desc.name)) {
+            sig.rawPointerReturn = parsed->rawPointerReturn;
+        }
 
         // Canonical qualified key
         std::string key = canonicalizeQualifiedFlat(desc.name);

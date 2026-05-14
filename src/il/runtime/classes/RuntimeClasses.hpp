@@ -239,6 +239,7 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_ButtonGroup,
     RTCLS_SmoothValue,
     RTCLS_ParticleEmitter,
+    RTCLS_ParticleSnapshot,
     RTCLS_SpriteAnimation,
     RTCLS_CollisionRect,
     RTCLS_Collision,

@@ -1,15 +1,14 @@
 // =============================================================================
-// threadpool.zia — Thread pool for accepting concurrent clients
+// threadpool.zia — Managed worker handoff for concurrent clients
 // Part of ViperSQL  (package: server)
 // =============================================================================
 //
 // PURPOSE
 // -------
-// Wraps the Viper runtime's `Viper.Threads.Pool` class so the SQL
-// server can hand every new client to a worker thread without
-// blocking its accept loop.  When the pool is off (the default for
-// standalone-REPL mode), we fall back to spawning a fresh thread
-// per connection — still correct, just less efficient.
+// Provides the SQL server's safe managed worker handoff.  The native
+// pool submit API is not VM-safe for managed callbacks yet,
+// so ViperSQL uses `Thread.StartSafe` plus a `Gate` to cap active
+// connection handlers while keeping socket handles strongly typed.
 //
 // WHERE THIS FITS
 // ---------------
@@ -19,15 +18,15 @@
 //     server/tcp_server.zia
 //         │  accept loop
 //         ▼
-//     server/threadpool.zia   (YOU ARE HERE — submit to pool)
+//     server/threadpool.zia   (YOU ARE HERE — managed worker handoff)
 //         │
 //         ▼
 //     server/connection.zia   (handleSqlClient / handlePgClient)
 //
 // KEY DESIGN CHOICES
 // ------------------
-//   1. Module-level state.  The pool is a singleton — one
-//      server, one pool.  `pool`, `poolRunning`, `poolSize` are
+//   1. Module-level state.  The worker gate is a singleton — one
+//      server, one concurrency gate.  `workerGate`, `poolRunning`, `poolSize` are
 //      plain module variables.  No class ceremony for a
 //      genuinely-global resource.
 //
@@ -36,11 +35,9 @@
 //      upper bound is a defensive cap against
 //      `--pool-size=1000000`.
 //
-//   3. Fallback to direct thread spawn.  If the pool was never
-//      initialised, `sql_pool_submit*` still works — it just
-//      runs `Threads.Thread.StartSafe` for every client.  Means
-//      the REPL mode doesn't need to bring up a pool it would
-//      never use.
+//   3. Safe thread bridge.  Each accepted client runs through
+//      `Threads.Thread.StartSafe`; when the gate is initialised,
+//      only `poolSize` handlers may be active at once.
 //
 // HOW TO READ THIS FILE
 // ---------------------
@@ -57,18 +54,17 @@ module threadpool;
 bind Viper.Terminal as Terminal;
 bind Viper.Threads as Threads;
 bind Viper.Fmt as Fmt;
-bind Viper.Threads.Pool as Pool;
+bind Viper.Threads.Gate as Gate;
 bind "./connection";
 
 //=============================================================================
 // MODULE STATE
 //=============================================================================
 
-// Pool handle.  Valid after `sql_pool_init` returns.
-var pool: Pool;
+// Worker gate.  Valid after `sql_pool_init` returns.
+var workerGate: Gate;
 
-// Whether `sql_pool_init` ran and set `pool`.  The submit paths
-// branch on this — if false, they spawn threads directly.
+// Whether `sql_pool_init` ran and set `workerGate`.
 var poolRunning: Boolean;
 
 // Configured worker count.  Captured for the stats line.
@@ -78,10 +74,10 @@ var poolSize: Integer;
 // INITIALIZATION
 //=============================================================================
 
-/// @brief Build the pool with `size` worker threads.
+/// @brief Build the managed worker gate with `size` permits.
 ///
 /// Clamps `size` to [1, 100] for the reasons in design choice 2.
-/// Must be called before `sql_pool_submit*` if pool mode is
+/// Must be called before `sql_pool_submit*` if bounded worker mode is
 /// desired; otherwise the fallback thread-per-connection path
 /// still works.
 func sql_pool_init(size: Integer) {
@@ -89,49 +85,62 @@ func sql_pool_init(size: Integer) {
     if requestedSize < 1 { requestedSize = 1; }
     if requestedSize > 100 { requestedSize = 100; }
     poolSize = requestedSize;
-    pool = Pool.New(requestedSize);
+    workerGate = Gate.New(requestedSize);
     poolRunning = true;
-    Terminal.Say("Thread pool initialized: " + Fmt.Int(poolSize) + " workers");
+    Terminal.Say("Managed worker gate initialized: " + Fmt.Int(poolSize) + " active handlers");
 }
 
 //=============================================================================
 // SUBMIT
 //=============================================================================
 
-/// @brief Run a text-protocol client in the pool (or a fresh
-///        thread if no pool).  `client` is a raw network-handle
-///        pointer the connection handler will unwrap.
-func sql_pool_submit(client: Ptr) {
+/// @brief Text-protocol worker entry used by the safe thread bridge.
+func runSqlClientWithGate(client: Viper.Network.Tcp) {
     if poolRunning {
-        Pool.Submit(pool, &handleSqlClient, client);
+        Gate.Enter(workerGate);
+        handleSqlClient(client);
+        Gate.Leave(workerGate);
     } else {
-        Threads.Thread.StartSafe(&handleSqlClient, client);
+        handleSqlClient(client);
     }
+}
+
+/// @brief PG-wire worker entry used by the safe thread bridge.
+func runPgClientWithGate(client: Viper.Network.Tcp) {
+    if poolRunning {
+        Gate.Enter(workerGate);
+        handlePgClient(client);
+        Gate.Leave(workerGate);
+    } else {
+        handlePgClient(client);
+    }
+}
+
+/// @brief Run a text-protocol client on the safe managed thread bridge.
+func sql_pool_submit(client: Viper.Network.Tcp) {
+    Threads.Thread.StartSafe(&runSqlClientWithGate, client);
 }
 
 /// @brief Same as `sql_pool_submit` but dispatches to the PG
 ///        wire-protocol handler.  Separate function because the
 ///        two protocols have completely different entry points
-///        and we want the pool-submit site to name the right
+///        and we want the submit site to name the right
 ///        worker directly.
-func sql_pool_submit_pg(client: Ptr) {
-    if poolRunning {
-        Pool.Submit(pool, &handlePgClient, client);
-    } else {
-        Threads.Thread.StartSafe(&handlePgClient, client);
-    }
+func sql_pool_submit_pg(client: Viper.Network.Tcp) {
+    Threads.Thread.StartSafe(&runPgClientWithGate, client);
 }
 
 //=============================================================================
 // STATISTICS
 //=============================================================================
 
-/// @brief One-line pool status for the SHOW STATUS command.
+/// @brief One-line worker status for the SHOW STATUS command.
 func sql_pool_stats() -> String {
-    if poolRunning == false { return "Pool: not initialized"; }
-    return "Pool: " + Fmt.Int(poolSize) + " workers, " +
-           Fmt.Int(Pool.get_Active(pool)) + " active, " +
-           Fmt.Int(Pool.get_Pending(pool)) + " pending";
+    if poolRunning == false { return "Worker gate: not initialized"; }
+    var available = Gate.get_Permits(workerGate);
+    return "Worker gate: " + Fmt.Int(poolSize) + " max active, " +
+           Fmt.Int(poolSize - available) + " active, " +
+           Fmt.Int(available) + " available";
 }
 
 /// @brief Configured worker count.
@@ -139,7 +148,7 @@ func sql_pool_size() -> Integer {
     return poolSize;
 }
 
-/// @brief "Has the pool been initialised?"
+/// @brief "Has the worker gate been initialised?"
 func sql_pool_is_running() -> Boolean {
     return poolRunning;
 }

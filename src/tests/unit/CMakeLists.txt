@@ -1369,6 +1369,7 @@ function(viper_add_runtime_tests)
             ${CMAKE_SOURCE_DIR}/src/runtime/graphics/rt_drawing_advanced.c)
     target_compile_definitions(test_rt_canvas_contract PRIVATE
             VIPER_ENABLE_GRAPHICS=1
+            RT_DRAWING_ADVANCED_NO_PATH2D=1
             RT_PIXELS_INTERNAL_ASSUME_STRUCT_HANDLE=1)
 
     viper_add_isolated_runtime_test(test_rt_canvas_state_contract

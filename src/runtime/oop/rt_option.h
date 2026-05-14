@@ -50,6 +50,11 @@ void *rt_option_some_str(rt_string value);
 /// @return Opaque Option object pointer.
 void *rt_option_some_i64(int64_t value);
 
+/// @brief Create Some option with a boolean value.
+/// @param value The boolean value.
+/// @return Opaque Option object pointer.
+void *rt_option_some_i1(int8_t value);
+
 /// @brief Create Some option with a float value.
 /// @param value The float value.
 /// @return Opaque Option object pointer.
@@ -92,6 +97,11 @@ rt_string rt_option_unwrap_str(void *obj);
 /// @return The integer value.
 int64_t rt_option_unwrap_i64(void *obj);
 
+/// @brief Get the Some value as a boolean, traps if None.
+/// @param obj Opaque Option object pointer.
+/// @return The boolean value.
+int8_t rt_option_unwrap_i1(void *obj);
+
 /// @brief Get the Some value as a float, traps if None.
 /// @param obj Opaque Option object pointer.
 /// @return The float value.
@@ -114,6 +124,12 @@ rt_string rt_option_unwrap_or_str(void *obj, rt_string def);
 /// @param def Default value to return if None.
 /// @return The integer value or default.
 int64_t rt_option_unwrap_or_i64(void *obj, int64_t def);
+
+/// @brief Get the Some boolean value or a default if None.
+/// @param obj Opaque Option object pointer.
+/// @param def Default value to return if None.
+/// @return The boolean value or default.
+int8_t rt_option_unwrap_or_i1(void *obj, int8_t def);
 
 /// @brief Get the Some float value or a default if None.
 /// @param obj Opaque Option object pointer.

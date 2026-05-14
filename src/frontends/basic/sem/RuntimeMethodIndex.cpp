@@ -67,6 +67,8 @@ RuntimeMethodInfo makeRuntimeMethodInfo(std::string_view classQName,
 
     info.ret = toBasicType(parsed.signature.returnType);
     info.returnClassQName = il::runtime::concreteRuntimeReturnClassQName(parsed.signature);
+    info.rawPointerReturn = parsed.signature.rawPointerReturn;
+    info.rawPointerParams = parsed.signature.rawPointerParams;
 
     info.args.reserve(parsed.signature.params.size());
     for (auto p : parsed.signature.params)

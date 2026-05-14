@@ -1282,6 +1282,11 @@ void rt_file_write_lines(rt_string path, void *lines) {
     free(tmp_path);
 }
 
+/// @brief Alias for `rt_file_write_lines` using the Viper.IO.File.WriteAllLines spelling.
+void rt_io_file_write_all_lines(rt_string path, void *lines) {
+    rt_file_write_lines(path, lines);
+}
+
 /// What: Append text to an existing file.
 /// Why:  Support appending without reading+writing entire file.
 /// How:  Opens file with O_APPEND and writes text.

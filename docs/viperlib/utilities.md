@@ -306,7 +306,7 @@ graceful error handling.
 ### Notes
 
 - The `Try*` and low-level C-string parser forms expose raw output pointers.
-  Safe Zia rejects them unless compiled with `--unsafe-pointers`; use
+  Safe frontends reject them unless compiled with `--unsafe-pointers`; use
   `IntOr`, `NumOr`, `BoolOr`, or the `Viper.Core.Parse.*Option` APIs instead.
 - **Boolean parsing** accepts (case-insensitive):
     - True: `"true"`, `"yes"`, `"1"`, `"on"`

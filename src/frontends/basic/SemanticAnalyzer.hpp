@@ -176,6 +176,11 @@ class SemanticAnalyzer {
     /// @brief Active instance receiver class while analyzing an instance member.
     [[nodiscard]] std::optional<std::string> activeInstanceClassQName() const;
 
+    /// @brief Allow raw pointer runtime APIs during semantic analysis.
+    void setAllowUnsafePointers(bool allow) noexcept {
+        allowUnsafePointers_ = allow;
+    }
+
   private:
     friend class sem::ControlCheckContext;
     friend class sem::ExprCheckContext;
@@ -507,6 +512,14 @@ class SemanticAnalyzer {
     /// @brief Analyze array access expression.
     Type analyzeArray(ArrayExpr &a);
 
+    /// @brief Reject runtime calls that expose raw pointers in safe BASIC mode.
+    bool checkRuntimePointerSafety(std::string_view target,
+                                   bool rawPointerReturn,
+                                   const std::vector<bool> &rawPointerParams,
+                                   const std::vector<ExprPtr> &args,
+                                   il::support::SourceLoc loc,
+                                   std::string_view displayName);
+
     /// @brief Record that @p expr should be implicitly converted to @p targetType.
     void markImplicitConversion(const Expr &expr, Type targetType);
 
@@ -601,6 +614,7 @@ class SemanticAnalyzer {
     bool activeMemberHasMe_{false};
     const FunctionDecl *activeFunction_{nullptr};
     BasicType activeFunctionExplicitRet_{BasicType::Unknown};
+    bool allowUnsafePointers_{false};
     bool activeFunctionNameAssigned_{
         false}; ///< Track if function name was assigned (VB-style implicit return). (BUG-003)
 };

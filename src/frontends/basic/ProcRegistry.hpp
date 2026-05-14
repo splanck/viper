@@ -86,6 +86,18 @@ struct ProcSignature {
     };
 
     std::vector<Param> params;
+
+    /// @brief True when this signature was imported from the runtime catalog.
+    bool isRuntimeBuiltin{false};
+
+    /// @brief Canonical runtime target name for imported helpers.
+    std::string runtimeTarget;
+
+    /// @brief Whether the runtime helper returns an unsafe raw pointer.
+    bool rawPointerReturn{false};
+
+    /// @brief Per-parameter unsafe raw pointer flags from the runtime catalog.
+    std::vector<bool> rawPointerParams;
 };
 
 using ProcTable = std::unordered_map<std::string, ProcSignature, ProcStringHash, std::equal_to<>>;

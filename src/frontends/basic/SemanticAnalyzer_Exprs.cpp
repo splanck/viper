@@ -104,6 +104,89 @@ static std::optional<std::string> runtimeClassQNameFromExpr(const Expr &expr) {
     return JoinDots(parts);
 }
 
+enum class RuntimePointerBridgeRole { None, Callback, Payload };
+
+static RuntimePointerBridgeRole runtimePointerBridgeRole(std::string_view target,
+                                                         std::size_t argIndex) {
+    auto is = [&](std::string_view name) { return target == name; };
+
+    if (is("Viper.Threads.Thread.Start") || is("Viper.Threads.Thread.StartSafe") ||
+        is("Viper.Threads.Async.Run")) {
+        if (argIndex == 0)
+            return RuntimePointerBridgeRole::Callback;
+        if (argIndex == 1)
+            return RuntimePointerBridgeRole::Payload;
+    }
+
+    if (is("Viper.Threads.Thread.StartOwned") ||
+        is("Viper.Threads.Thread.StartSafeOwned") || is("Viper.Threads.Async.RunOwned")) {
+        return argIndex == 0 ? RuntimePointerBridgeRole::Callback : RuntimePointerBridgeRole::None;
+    }
+
+    if (is("Viper.Threads.Async.RunCancellable")) {
+        if (argIndex == 0)
+            return RuntimePointerBridgeRole::Callback;
+        if (argIndex == 1)
+            return RuntimePointerBridgeRole::Payload;
+    }
+
+    if (is("Viper.Threads.Async.RunCancellableOwned"))
+        return argIndex == 0 ? RuntimePointerBridgeRole::Callback : RuntimePointerBridgeRole::None;
+
+    if (is("Viper.Threads.Async.Map")) {
+        if (argIndex == 1)
+            return RuntimePointerBridgeRole::Callback;
+        if (argIndex == 2)
+            return RuntimePointerBridgeRole::Payload;
+    }
+
+    if (is("Viper.Threads.Async.MapOwned"))
+        return argIndex == 1 ? RuntimePointerBridgeRole::Callback : RuntimePointerBridgeRole::None;
+
+    if (is("Viper.Network.HttpServer.BindHandler") ||
+        is("Viper.Network.HttpsServer.BindHandler")) {
+        return argIndex == 1 ? RuntimePointerBridgeRole::Callback : RuntimePointerBridgeRole::None;
+    }
+
+    return RuntimePointerBridgeRole::None;
+}
+
+static std::string saferRuntimePointerAlternative(std::string_view target) {
+    if (target == "Viper.Core.Parse.Double")
+        return "Viper.Core.Parse.DoubleOption";
+    if (target == "Viper.Core.Parse.Int64")
+        return "Viper.Core.Parse.Int64Option";
+    if (target == "Viper.Core.Parse.TryInt")
+        return "Viper.Core.Parse.Int64Option or Viper.Core.Parse.IntOr";
+    if (target == "Viper.Core.Parse.TryNum")
+        return "Viper.Core.Parse.DoubleOption or Viper.Core.Parse.NumOr";
+    if (target == "Viper.Core.Parse.TryBool")
+        return "Viper.Core.Parse.BoolOr";
+    if (target == "Viper.Core.Box.TryToI64")
+        return "Viper.Core.Box.ToI64Option";
+    if (target == "Viper.Core.Box.TryToF64")
+        return "Viper.Core.Box.ToF64Option";
+    if (target == "Viper.Core.Box.TryToI1")
+        return "Viper.Core.Box.ToI1Option";
+    if (target == "Viper.Core.Box.TryToStr")
+        return "Viper.Core.Box.ToStrOption";
+    if (target == "Viper.String.SplitFields")
+        return "Viper.String.SplitFieldsSeq";
+    if (target == "Viper.Graphics.Canvas.Polyline")
+        return "Viper.Graphics.Canvas.PolylinePath";
+    if (target == "Viper.Graphics.Canvas.Polygon")
+        return "Viper.Graphics.Canvas.PolygonPath";
+    if (target == "Viper.Graphics.Canvas.PolygonFrame")
+        return "Viper.Graphics.Canvas.PolygonFramePath";
+    if (target == "Viper.Game.ParticleEmitter.Get")
+        return "Viper.Game.ParticleEmitter.ParticleAt";
+    return {};
+}
+
+static bool isAddressOfArg(const ExprPtr &expr) {
+    return expr && expr->kind() == Expr::Kind::AddressOf;
+}
+
 /// @brief Map runtime IL type names to BASIC semantic types.
 /// @param ty The IL type string (e.g., "i64", "f64", "str").
 /// @return The corresponding SemanticAnalyzer::Type, or nullopt if unknown.
@@ -407,6 +490,95 @@ using semantic_analyzer_detail::runtimeClassQNameFromExpr;
 using semantic_analyzer_detail::semanticTypeName;
 using semantic_analyzer_detail::toLowerQualified;
 
+bool SemanticAnalyzer::checkRuntimePointerSafety(std::string_view target,
+                                                 bool rawPointerReturn,
+                                                 const std::vector<bool> &rawPointerParams,
+                                                 const std::vector<ExprPtr> &args,
+                                                 il::support::SourceLoc loc,
+                                                 std::string_view displayName) {
+    if (allowUnsafePointers_)
+        return true;
+
+    bool hasRawParam = false;
+    for (bool raw : rawPointerParams) {
+        if (raw) {
+            hasRawParam = true;
+            break;
+        }
+    }
+    if (!rawPointerReturn && !hasRawParam)
+        return true;
+
+    std::string targetName(target);
+    if (targetName.empty())
+        targetName = std::string(displayName);
+
+    auto diagnosticMessage = [&](std::string detail) {
+        std::string message = "Runtime API '" + targetName + "' exposes " + detail +
+                              " and is unavailable in safe BASIC";
+        if (std::string alternative =
+                semantic_analyzer_detail::saferRuntimePointerAlternative(targetName);
+            !alternative.empty()) {
+            message += "; use " + alternative;
+        } else {
+            message += "; use a typed runtime class/API or compile with --unsafe-pointers";
+        }
+        return message;
+    };
+
+    const uint32_t displayLength =
+        static_cast<uint32_t>(std::max<std::size_t>(displayName.size(), 1));
+    if (rawPointerReturn) {
+        de.emit(il::support::Severity::Error,
+                "B2131",
+                loc,
+                displayLength,
+                diagnosticMessage("a raw pointer return"));
+        return false;
+    }
+
+    std::vector<bool> safeCallbacks(rawPointerParams.size(), false);
+    for (std::size_t i = 0; i < rawPointerParams.size(); ++i) {
+        if (!rawPointerParams[i])
+            continue;
+
+        semantic_analyzer_detail::RuntimePointerBridgeRole role =
+            semantic_analyzer_detail::runtimePointerBridgeRole(targetName, i);
+        if (role == semantic_analyzer_detail::RuntimePointerBridgeRole::Callback &&
+            i < args.size() &&
+            semantic_analyzer_detail::isAddressOfArg(args[i])) {
+            safeCallbacks[i] = true;
+            continue;
+        }
+
+        if (role == semantic_analyzer_detail::RuntimePointerBridgeRole::Payload &&
+            i < args.size() &&
+            !semantic_analyzer_detail::isAddressOfArg(args[i])) {
+            bool pairedWithCallback = false;
+            for (std::size_t prior = 0; prior < i && prior < safeCallbacks.size(); ++prior) {
+                if (safeCallbacks[prior]) {
+                    pairedWithCallback = true;
+                    break;
+                }
+            }
+            if (pairedWithCallback)
+                continue;
+        }
+
+        il::support::SourceLoc argLoc = loc;
+        if (i < args.size() && args[i])
+            argLoc = args[i]->loc;
+        de.emit(il::support::Severity::Error,
+                "B2131",
+                argLoc,
+                1,
+                diagnosticMessage("raw pointer argument " + std::to_string(i + 1)));
+        return false;
+    }
+
+    return true;
+}
+
 /// @brief Visitor that routes AST expression nodes through SemanticAnalyzer helpers.
 ///
 /// @details Each override forwards to the corresponding SemanticAnalyzer method
@@ -562,6 +734,15 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor {
                 result_ = SemanticAnalyzer::Type::Unknown;
                 return;
             }
+            if (!analyzer_.checkRuntimePointerSafety(info->target,
+                                                     info->rawPointerReturn,
+                                                     info->rawPointerParams,
+                                                     expr.args,
+                                                     expr.loc,
+                                                     expr.method)) {
+                result_ = SemanticAnalyzer::Type::Unknown;
+                return;
+            }
             result_ = semantic_analyzer_detail::semanticTypeFromBasicType(info->ret);
             return;
         }
@@ -609,6 +790,15 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor {
                     auto objectInfo = runtimeMethodIndex().find(
                         std::string(il::runtime::RTCLASS_OBJECT), expr.method, runtimeArgTypes);
                     if (objectInfo) {
+                        if (!analyzer_.checkRuntimePointerSafety(objectInfo->target,
+                                                                 objectInfo->rawPointerReturn,
+                                                                 objectInfo->rawPointerParams,
+                                                                 expr.args,
+                                                                 expr.loc,
+                                                                 expr.method)) {
+                            result_ = SemanticAnalyzer::Type::Unknown;
+                            return;
+                        }
                         result_ =
                             semantic_analyzer_detail::semanticTypeFromBasicType(objectInfo->ret);
                     } else {
@@ -635,6 +825,15 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor {
             auto info = runtimeMethodIndex().find(
                 std::string(il::runtime::RTCLASS_OBJECT), expr.method, runtimeArgTypes);
             if (info) {
+                if (!analyzer_.checkRuntimePointerSafety(info->target,
+                                                         info->rawPointerReturn,
+                                                         info->rawPointerParams,
+                                                         expr.args,
+                                                         expr.loc,
+                                                         expr.method)) {
+                    result_ = SemanticAnalyzer::Type::Unknown;
+                    return;
+                }
                 result_ = semantic_analyzer_detail::semanticTypeFromBasicType(info->ret);
                 return;
             }

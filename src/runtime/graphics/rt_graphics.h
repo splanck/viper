@@ -450,6 +450,15 @@ void rt_canvas_polygon(void *canvas, void *points, int64_t count, int64_t color)
 /// @param color Outline color (0x00RRGGBB).
 void rt_canvas_polygon_frame(void *canvas, void *points, int64_t count, int64_t color);
 
+/// @brief Draw connected line segments from a typed Path2D.
+void rt_canvas_polyline_path(void *canvas, void *path, int64_t color);
+
+/// @brief Draw a filled polygon from a typed Path2D.
+void rt_canvas_polygon_path(void *canvas, void *path, int64_t color);
+
+/// @brief Draw a polygon outline from a typed Path2D.
+void rt_canvas_polygon_frame_path(void *canvas, void *path, int64_t color);
+
 //=========================================================================
 // Phase 5: Canvas Utilities
 //=========================================================================

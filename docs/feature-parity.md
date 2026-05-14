@@ -32,7 +32,7 @@ This document is a comprehensive feature parity audit between the two Viper fron
 | String | **Full** (`String`) | **Full** (`Str`, `$`) | Same runtime ref-counted strings |
 | Byte | **Full** (`Byte`) | None | Zia only — lowered as i32 |
 | Unit type | **Full** (`Unit`) | None | Zia only — for `Result[Unit]` |
-| Raw pointer (`Ptr`) | **Unsafe opt-in** (`--unsafe-pointers`) | **Full** (`Object`) | Zia hides raw pointers by default; IL still uses `ptr` internally |
+| Raw pointer (`Ptr`) | **Unsafe opt-in** (`--unsafe-pointers`) | **Unsafe opt-in** (`--unsafe-pointers`) | Frontends hide raw runtime pointers by default; BASIC `Object` remains the managed runtime object type |
 | Any (managed top type) | **Full** | None | Zia only; boxes primitives and carries objects/function refs |
 | Never (bottom type) | **Partial** | None | Name resolves; useful for type analysis, but no storable value |
 | Type suffixes (`$`, `%`, `#`) | None | **Full** | BASIC only |

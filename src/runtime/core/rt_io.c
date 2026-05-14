@@ -43,6 +43,7 @@
 #include "rt_int_format.h"
 #include "rt_internal.h"
 #include "rt_output.h"
+#include "rt_seq.h"
 #include "rt_string_builder.h"
 
 #include "rt_platform.h"
@@ -600,6 +601,26 @@ int64_t rt_str_split_fields(rt_string line, rt_string *out_fields, int64_t max_f
     }
 
     return total;
+}
+
+/// @brief Split an input line into an owned Seq[str] instead of caller-owned out buffers.
+void *rt_str_split_fields_seq(rt_string line) {
+    int64_t total = rt_str_split_fields(line, NULL, 0);
+    void *seq = rt_seq_with_capacity_owned(total > 0 ? total : 1);
+    if (total <= 0)
+        return seq;
+
+    if ((uint64_t)total > SIZE_MAX / sizeof(rt_string))
+        rt_trap("rt_str_split_fields_seq: allocation size overflow");
+    rt_string *fields = (rt_string *)calloc((size_t)total, sizeof(rt_string));
+    if (!fields)
+        rt_trap("out of memory");
+
+    int64_t parsed = rt_str_split_fields(line, fields, total);
+    for (int64_t i = 0; i < parsed && i < total; ++i)
+        rt_seq_push_raw(seq, fields[i]);
+    free(fields);
+    return seq;
 }
 
 /// @brief Determine whether a file channel has reached EOF.

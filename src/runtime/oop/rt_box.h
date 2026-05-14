@@ -119,6 +119,18 @@ int8_t rt_box_try_to_i1(void *box, int8_t *out);
 /// @return 1 on success, 0 for NULL, invalid box, wrong type, or NULL out.
 int8_t rt_box_try_to_str(void *box, rt_string *out);
 
+/// @brief Convert to integer Option without exposing an out pointer.
+void *rt_box_to_i64_option(void *box);
+
+/// @brief Convert to float Option without exposing an out pointer.
+void *rt_box_to_f64_option(void *box);
+
+/// @brief Convert to boolean Option without exposing an out pointer.
+void *rt_box_to_i1_option(void *box);
+
+/// @brief Convert to string Option without exposing an out pointer.
+void *rt_box_to_str_option(void *box);
+
 /// @brief Get the type tag of a boxed value.
 /// @param box Boxed value.
 /// @return Type tag (0=i64, 1=f64, 2=i1, 3=str), or -1 if NULL.

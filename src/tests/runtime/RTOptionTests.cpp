@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_option.h"
+#include "rt_box.h"
 #include "rt_object.h"
 #include "rt_result.h"
 #include "rt_string.h"
@@ -66,6 +67,13 @@ static void test_option_some_creation() {
         test_result("SomeF64 unwrap value", val > 3.14 && val < 3.15);
     }
 
+    // Test 5: Create Some with i1
+    {
+        void *o = rt_option_some_i1(7);
+        test_result("SomeI1 is Some", rt_option_is_some(o) == 1);
+        test_result("SomeI1 unwrap value", rt_option_unwrap_i1(o) == 1);
+    }
+
     printf("\n");
 }
 
@@ -114,7 +122,15 @@ static void test_option_unwrap_or() {
         test_result("UnwrapOrI64 on None returns default", rt_option_unwrap_or_i64(o, -1) == -1);
     }
 
-    // Test 5: UnwrapOrStr on Some
+    // Test 5: UnwrapOrI1 on Some/None
+    {
+        void *o = rt_option_some_i1(0);
+        test_result("UnwrapOrI1 on Some returns value", rt_option_unwrap_or_i1(o, 1) == 0);
+        void *none = rt_option_none();
+        test_result("UnwrapOrI1 on None returns default", rt_option_unwrap_or_i1(none, 1) == 1);
+    }
+
+    // Test 6: UnwrapOrStr on Some
     {
         void *o = rt_option_some_str(rt_const_cstr("hello"));
         rt_string result = rt_option_unwrap_or_str(o, rt_const_cstr("default"));
@@ -122,7 +138,7 @@ static void test_option_unwrap_or() {
                     strcmp(rt_string_cstr(result), "hello") == 0);
     }
 
-    // Test 6: UnwrapOrStr on None
+    // Test 7: UnwrapOrStr on None
     {
         void *o = rt_option_none();
         rt_string result = rt_option_unwrap_or_str(o, rt_const_cstr("default"));
@@ -278,6 +294,47 @@ static void test_option_null_handling() {
     printf("\n");
 }
 
+static void test_box_option_conversions() {
+    printf("Testing Box Option conversions:\n");
+
+    {
+        void *box = rt_box_i64(42);
+        void *opt = rt_box_to_i64_option(box);
+        test_result("Box ToI64Option is Some", rt_option_is_some(opt) == 1);
+        test_result("Box ToI64Option unwrap", rt_option_unwrap_i64(opt) == 42);
+    }
+
+    {
+        void *box = rt_box_f64(2.5);
+        void *opt = rt_box_to_f64_option(box);
+        test_result("Box ToF64Option is Some", rt_option_is_some(opt) == 1);
+        test_result("Box ToF64Option unwrap", rt_option_unwrap_f64(opt) == 2.5);
+    }
+
+    {
+        void *box = rt_box_i1(1);
+        void *opt = rt_box_to_i1_option(box);
+        test_result("Box ToI1Option is Some", rt_option_is_some(opt) == 1);
+        test_result("Box ToI1Option unwrap", rt_option_unwrap_i1(opt) == 1);
+    }
+
+    {
+        void *box = rt_box_str(rt_const_cstr("boxed"));
+        void *opt = rt_box_to_str_option(box);
+        test_result("Box ToStrOption is Some", rt_option_is_some(opt) == 1);
+        test_result("Box ToStrOption unwrap",
+                    strcmp(rt_string_cstr(rt_option_unwrap_str(opt)), "boxed") == 0);
+    }
+
+    {
+        void *box = rt_box_i64(7);
+        void *opt = rt_box_to_str_option(box);
+        test_result("Mismatched Box option is None", rt_option_is_none(opt) == 1);
+    }
+
+    printf("\n");
+}
+
 //=============================================================================
 // Entry Point
 //=============================================================================
@@ -293,6 +350,7 @@ int main() {
     test_option_equality();
     test_option_conversion();
     test_option_null_handling();
+    test_box_option_conversions();
 
     printf("All Option tests passed!\n");
     return 0;

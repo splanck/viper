@@ -74,6 +74,11 @@ void rt_io_file_write_all_bytes(rt_string path, void *bytes);
 /// @return Seq of strings (one per line).
 void *rt_io_file_read_all_lines(rt_string path);
 
+/// @brief Write a sequence of strings as lines to a file.
+/// @param path File path to write.
+/// @param lines Seq of strings to write.
+void rt_io_file_write_all_lines(rt_string path, void *lines);
+
 /// @brief Delete a file.
 /// @param path File path to delete.
 void rt_io_file_delete(rt_string path);

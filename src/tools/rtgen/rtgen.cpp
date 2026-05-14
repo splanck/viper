@@ -1501,9 +1501,9 @@ static std::string ilTypeToZiaType(const std::string &ilType, const std::string 
 
     if (baseType == "str")
         return "types::string()";
-    if (baseType == "i64")
+    if (baseType == "i64" || baseType == "i32" || baseType == "i16" || baseType == "i8")
         return "types::integer()";
-    if (baseType == "f64")
+    if (baseType == "f64" || baseType == "f32")
         return "types::number()";
     if (baseType == "i1" || baseType == "bool")
         return "types::boolean()";
@@ -1519,9 +1519,11 @@ static std::string ilTypeToZiaType(const std::string &ilType, const std::string 
             return "types::runtimeClass(\"Viper.Collections.List\")";
         return "types::list(" + ilTypeToZiaType(typeArg, canonical) + ")";
     }
-    if ((baseType == "obj" || baseType == "ptr") && !typeArg.empty())
+    if (baseType == "obj" && !typeArg.empty())
         return "types::runtimeClass(\"" + typeArg + "\")";
-    if (baseType == "obj" || baseType == "ptr") {
+    if (baseType == "ptr")
+        return "types::ptr()";
+    if (baseType == "obj") {
         // Explicit return type overrides for functions that return objects
         // from a different namespace than their own.
         static const std::unordered_map<std::string, std::string> returnTypeOverrides = {
@@ -1610,9 +1612,9 @@ static std::string ilParamTypeToZiaType(const std::string &ilType) {
 
     if (baseType == "str")
         return "types::string()";
-    if (baseType == "i64")
+    if (baseType == "i64" || baseType == "i32" || baseType == "i16" || baseType == "i8")
         return "types::integer()";
-    if (baseType == "f64")
+    if (baseType == "f64" || baseType == "f32")
         return "types::number()";
     if (baseType == "i1" || baseType == "bool")
         return "types::boolean()";

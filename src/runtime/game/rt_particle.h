@@ -30,12 +30,16 @@ extern "C" {
 #endif
 
 #define RT_PARTICLE_EMITTER_CLASS_ID INT64_C(-0x510204)
+#define RT_PARTICLE_SNAPSHOT_CLASS_ID INT64_C(-0x510205)
 
 /// Maximum particles per emitter.
 #define RT_PARTICLE_MAX 1024
 
 /// Opaque handle to a ParticleEmitter instance.
 typedef struct rt_particle_emitter_impl *rt_particle_emitter;
+
+/// Opaque immutable particle snapshot returned by safe query APIs.
+typedef struct rt_particle_snapshot_impl *rt_particle_snapshot;
 
 /// @brief Allocates and initializes a new particle emitter with the given
 ///   pool capacity.
@@ -215,6 +219,24 @@ int8_t rt_particle_emitter_get(rt_particle_emitter emitter,
                                double *out_y,
                                double *out_size,
                                int64_t *out_color);
+
+/// @brief Return Option<ParticleSnapshot> for a live particle index.
+void *rt_particle_emitter_particle_at(rt_particle_emitter emitter, int64_t index);
+
+/// @brief Create a snapshot object from particle values.
+rt_particle_snapshot rt_particle_snapshot_new(double x, double y, double size, int64_t color);
+
+/// @brief Snapshot X coordinate.
+double rt_particle_snapshot_x(rt_particle_snapshot snapshot);
+
+/// @brief Snapshot Y coordinate.
+double rt_particle_snapshot_y(rt_particle_snapshot snapshot);
+
+/// @brief Snapshot rendered size.
+double rt_particle_snapshot_size(rt_particle_snapshot snapshot);
+
+/// @brief Snapshot rendered color.
+int64_t rt_particle_snapshot_color(rt_particle_snapshot snapshot);
 
 /// @brief Batch-render all live particles directly into a Pixels buffer.
 ///

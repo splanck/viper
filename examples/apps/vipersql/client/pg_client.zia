@@ -142,7 +142,7 @@ class PgQueryResult {
 //=============================================================================
 
 class PgConnection {
-    expose Ptr socket;
+    expose Viper.Network.Tcp socket;
     expose Boolean connected;
     expose String host;
     expose Integer port;

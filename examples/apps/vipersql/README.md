@@ -97,9 +97,9 @@ OPEN 'mydb.vdb';   -- reload on next run
 - **VACUUM / ANALYZE** for dead-row reclamation and statistics updates
 
 ### Server & Protocol
-- **Database server:** `vipersql` runs as a server process with CLI configuration (`--port`, `--data-dir`, `--max-connections`, `--log-queries`)
+- **Database server:** `vipersql` runs as a server process with CLI configuration (`--port`, `--data-dir`, `--max-connections`, `--pool-size`, `--log-queries`)
 - **vsql client:** dedicated interactive SQL client connecting via PG wire protocol, with aligned output, multi-line input, and meta-commands (`\dt`, `\d`, `\l`, `\c`, `\i`, `\timing`, `\x`)
-- **Multi-user TCP server:** thread-per-connection, PostgreSQL wire protocol v3 (port 5432) and simple text protocol (port 5433)
+- **Multi-user TCP server:** managed `Thread.StartSafe` workers with a bounded active-handler gate, PostgreSQL wire protocol v3 (port 5432), and simple text protocol (port 5433)
 - **Extended Query protocol:** Parse/Bind/Describe/Execute for prepared statements and parameterized queries
 - **Multi-database:** CREATE DATABASE, USE, DROP DATABASE; each database has its own storage file
 - **Session isolation:** per-connection session state, temporary tables, transaction isolation
@@ -116,7 +116,7 @@ OPEN 'mydb.vdb';   -- reload on next run
 
 The query pipeline goes: **SQL text → Lexer → Parser → AST → Semantic Analysis → Optimizer → Executor → Storage**. Each SELECT query walks through expression evaluation, join ordering, and predicate pushdown before hitting the storage layer. The executor is composed of modular operator nodes (scan, filter, join, aggregate, sort, limit) that form a tree — each node pulls rows from its children.
 
-The storage engine is independent of the query layer: it manages pages, buffer pools, B-tree index traversal, and the WAL. MVCC is implemented at the row level with xmin/xmax transaction IDs; snapshot visibility is computed on read without taking locks. The TCP server runs one thread per connection, each with its own session and transaction context. See [Architecture](docs/architecture.md) for the full breakdown.
+The storage engine is independent of the query layer: it manages pages, buffer pools, B-tree index traversal, and the WAL. MVCC is implemented at the row level with xmin/xmax transaction IDs; snapshot visibility is computed on read without taking locks. The TCP server runs each accepted connection on a safe managed worker, with `--pool-size` bounding the number of active handlers. See [Architecture](docs/architecture.md) for the full breakdown.
 
 ---
 

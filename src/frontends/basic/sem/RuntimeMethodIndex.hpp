@@ -165,6 +165,12 @@ struct RuntimeMethodInfo {
     /// @brief Parameter types excluding the implicit receiver (arg0).
     std::vector<BasicType> args;
 
+    /// @brief Whether the method return type is a raw pointer (`ptr`).
+    bool rawPointerReturn{false};
+
+    /// @brief Per-parameter raw pointer flags, excluding the implicit receiver.
+    std::vector<bool> rawPointerParams;
+
     /// @brief Whether the runtime target expects an implicit receiver argument.
     /// @details Factory/static methods in the runtime catalog do not have a
     ///          receiver even though they are grouped under a runtime class.

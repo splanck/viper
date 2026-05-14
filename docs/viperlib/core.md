@@ -112,7 +112,7 @@ Boxing helpers for storing primitive values in generic collections. Boxed values
 - Type tags: 0 = integer, 1 = double, 2 = boolean, 3 = string.
 - Unboxing with the wrong type traps with a runtime diagnostic.
 - `ToStr` returns an owned/retained string; generated code releases it like other string-returning runtime calls.
-- The `TryTo*` forms do not trap for type mismatch, but they write through raw output pointers. Safe Zia rejects them unless compiled with `--unsafe-pointers`; use `To*` after checking the box type, or keep values as `Any`/typed runtime objects.
+- The `TryTo*` forms do not trap for type mismatch, but they write through raw output pointers. Safe frontends reject them unless compiled with `--unsafe-pointers`; use `To*Option` or keep values as `Any`/typed runtime objects.
 - Boxed values report `Viper.Core.Box` through `Viper.Core.Object.TypeName` and use value equality/hash semantics for `Object.Equals` and collection lookup.
 - Floating-point box hashes canonicalize `+0.0` and `-0.0` so values that compare equal hash equally.
 - `ValueType(size)` is used by the compiler when boxing structs. Size `0` is valid and creates a managed empty value-type object; negative sizes trap.
@@ -261,11 +261,11 @@ Safe string parsing utilities. Methods return a success flag or a default value 
 
 ### Notes
 
-- `TryInt`/`TryNum`/`TryBool` write through a raw pointer and are unsafe interop APIs. Safe Zia rejects them unless compiled with `--unsafe-pointers`; prefer `IntOr`/`NumOr`/`BoolOr` or the `*Option` variants.
+- `TryInt`/`TryNum`/`TryBool` write through a raw pointer and are unsafe interop APIs. Safe frontends reject them unless compiled with `--unsafe-pointers`; prefer `IntOr`/`NumOr`/`BoolOr` or the `*Option` variants.
 - Null input is treated as parse failure: `Try*` returns false, `Is*` returns false, and `*Or`/`IntRadix` returns the supplied default.
 - `IntRadix` supports bases 2 through 36 (e.g., 16 for hex, 2 for binary). A leading `+` is accepted; a leading `-` is accepted for radix 10 only.
 - Leading/trailing ASCII whitespace is accepted; non-whitespace trailing characters and embedded NUL bytes are rejected.
-- `Double` and `Int64` are low-level status-code APIs for callers that explicitly opt in to raw output pointers. Safe Zia rejects them unless compiled with `--unsafe-pointers`. They accept runtime strings, reject embedded NUL bytes, and clear the output slot to `0`/`0.0` on failure. Raw C-string helpers remain internal for native interop.
+- `Double` and `Int64` are low-level status-code APIs for callers that explicitly opt in to raw output pointers. Safe frontends reject them unless compiled with `--unsafe-pointers`. They accept runtime strings, reject embedded NUL bytes, and clear the output slot to `0`/`0.0` on failure. Raw C-string helpers remain internal for native interop.
 - `DoubleOption` and `Int64Option` are the user-facing optional-return variants. Use them when invalid input is expected and should be handled gracefully rather than terminating the program.
 
 ### Parse.DoubleOption and Parse.Int64Option Example
@@ -599,7 +599,7 @@ In-process publish/subscribe message bus for decoupled communication between com
 - Handler functions receive the published data as their argument
 - Publish uses a stable subscriber snapshot; unsubscribes during a handler affect later publishes, not the in-flight one
 - Publish retains managed string/object payloads for the duration of dispatch so one handler cannot free the payload before later handlers run. Raw foreign pointers are unsafe borrowed interop values.
-- Subscribe accepts a managed callback returned by `Callback(fn)`. `Callback(fn)` is currently a native-pointer wrapper, not a safe Zia function-reference bridge; safe Zia rejects it unless compiled with `--unsafe-pointers`.
+- Subscribe accepts a managed callback returned by `Callback(fn)`. `Callback(fn)` is currently a native-pointer wrapper, not a safe frontend function-reference bridge; safe frontends reject it unless compiled with `--unsafe-pointers`.
 - Topic matching is byte-length aware; topic names containing embedded NUL bytes remain distinct.
 - `Topics()` returns an owning `Seq` of copied topic strings; the result remains valid after the bus is cleared or destroyed.
 - `Unsubscribe`, `ClearTopic`, and `Clear` remove empty topic records, so a later `Topics()` call reports only active topics.

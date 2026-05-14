@@ -107,7 +107,7 @@
 ### Phase 7: Multi-User Server & PostgreSQL Wire Protocol
 **Status:** DONE
 
-- TCP server with thread pool
+- TCP server with safe managed worker gate
 - PostgreSQL wire protocol v3 (authentication, simple query, error response)
 - Per-connection sessions with isolated temp tables
 - Multi-database support (CREATE DATABASE, USE, DROP DATABASE)

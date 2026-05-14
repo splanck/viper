@@ -90,18 +90,18 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-TEST(ZiaPointerSafety, RawRuntimeReturnRejectedByDefault) {
+TEST(ZiaPointerSafety, LegacyDirectoryApisExposeSafeSeqs) {
     auto result = compileSource(R"(
 module Test;
 
 func start() {
     var entries = Viper.IO.Dir.List(".");
+    var files = Viper.IO.Dir.Files(".");
+    var dirs = Viper.IO.Dir.Dirs(".");
 }
 )");
 
-    EXPECT_TRUE(!result.succeeded());
-    EXPECT_TRUE(hasDiagnostic(result, "raw pointer return"));
-    EXPECT_TRUE(hasDiagnostic(result, "Viper.IO.Dir.ListSeq"));
+    EXPECT_TRUE(result.succeeded());
 }
 
 TEST(ZiaPointerSafety, RawRuntimeOutParameterRejectedByDefault) {
@@ -126,6 +126,57 @@ func worker(arg: Any) {
 
 func start() {
     var thread = Viper.Threads.Thread.Start(&worker, 0);
+}
+)");
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+TEST(ZiaPointerSafety, RuntimeCallbackBridgeRequiresAddressOf) {
+    auto result = compileSource(R"(
+module Test;
+
+func worker(arg: Any) {
+}
+
+func start() {
+    var thread = Viper.Threads.Thread.Start(worker, 0);
+}
+)");
+
+    EXPECT_TRUE(!result.succeeded());
+}
+
+TEST(ZiaPointerSafety, SafePointerAlternativesCompile) {
+    auto result = compileSource(R"(
+module Test;
+
+func start() {
+    var box = Viper.Core.Box.I64(12);
+    var opt = Viper.Core.Box.ToI64Option(box);
+    var fields = Viper.String.SplitFieldsSeq("a,\"b,c\"");
+    var path = Viper.Graphics.Path2D.New(4);
+    var canvas = Viper.Graphics.Canvas.New("x", 16, 16);
+    Viper.Graphics.Canvas.PolylinePath(canvas, path, 16777215);
+    var emitter = Viper.Game.ParticleEmitter.New(4);
+    var particle = Viper.Game.ParticleEmitter.ParticleAt(emitter, 0);
+}
+)");
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+TEST(ZiaPointerSafety, RuntimeCallbackBridgeAcceptsTypedRuntimeClassPayload) {
+    auto result = compileSource(R"(
+module Test;
+
+func worker(client: Viper.Network.Tcp) {
+}
+
+func start() {
+    var server = Viper.Network.TcpServer.Listen(0);
+    var client = Viper.Network.TcpServer.Accept(server);
+    var thread = Viper.Threads.Thread.StartSafe(&worker, client);
 }
 )");
 

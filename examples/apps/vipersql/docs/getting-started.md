@@ -56,7 +56,8 @@ You'll see:
 
 Database server initialized (database: main)
 Default user: admin / admin
-Thread model: thread-per-connection (max 100)
+Managed worker gate initialized: 10 active handlers
+Thread model: managed workers (10 active handlers, max 100 connections)
 
 PG wire protocol listening on port 5432
 

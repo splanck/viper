@@ -121,6 +121,11 @@ rt_string rt_input_line(void);
 /// @return Total number of fields discovered in @p line.
 int64_t rt_str_split_fields(rt_string line, rt_string *out_fields, int64_t max_fields);
 
+/// @brief Split comma-separated fields into an owned Seq[str].
+/// @param line Input line to split; may be NULL.
+/// @return Owned sequence of runtime strings.
+void *rt_str_split_fields_seq(rt_string line);
+
 // =========================================================================
 // Viper.Terminal I/O Functions
 // =========================================================================

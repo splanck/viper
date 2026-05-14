@@ -193,6 +193,7 @@ BasicCompilerResult compileBasic(const BasicCompilerInput &input,
     printPhaseTime("fold");
 
     SemanticAnalyzer sema(*result.emitter);
+    sema.setAllowUnsafePointers(options.allowUnsafePointers);
     sema.analyze(*program);
     printPhaseTime("sema");
 

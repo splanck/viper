@@ -1009,6 +1009,18 @@ std::vector<SemanticAnalyzer::Type> SemanticAnalyzer::checkCallArgs(const CallEx
             }
         }
     }
+
+    if (sig->isRuntimeBuiltin) {
+        std::string display = sig->runtimeTarget;
+        if (display.empty())
+            display = !c.calleeQualified.empty() ? JoinQualified(c.calleeQualified) : c.callee;
+        checkRuntimePointerSafety(sig->runtimeTarget,
+                                  sig->rawPointerReturn,
+                                  sig->rawPointerParams,
+                                  c.args,
+                                  c.loc,
+                                  display);
+    }
     return argTys;
 }
 

@@ -27,6 +27,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_graphics_internal.h"
+#include "rt_graphics2d.h"
 #include "rt_heap.h"
 
 #include <limits.h>
@@ -1119,13 +1120,11 @@ void rt_canvas_bezier(void *canvas_ptr,
     }
 }
 
-/// @brief Polyline operation.
-void rt_canvas_polyline(void *canvas_ptr, void *points_ptr, int64_t count, int64_t color) {
-    if (!canvas_ptr || !points_ptr || count < 2)
-        return;
-
-    const int64_t *points = NULL;
-    if (!rt_canvas_points_checked(points_ptr, count, &points))
+static void rt_canvas_polyline_points(void *canvas_ptr,
+                                      const int64_t *points,
+                                      int64_t count,
+                                      int64_t color) {
+    if (!canvas_ptr || !points || count < 2)
         return;
 
     for (int64_t i = 0; i < count - 1; i++) {
@@ -1137,17 +1136,15 @@ void rt_canvas_polyline(void *canvas_ptr, void *points_ptr, int64_t count, int64
     }
 }
 
-/// @brief Polygon operation.
-void rt_canvas_polygon(void *canvas_ptr, void *points_ptr, int64_t count, int64_t color) {
-    if (!canvas_ptr || !points_ptr || count < 3)
+static void rt_canvas_polygon_points(void *canvas_ptr,
+                                     const int64_t *points,
+                                     int64_t count,
+                                     int64_t color) {
+    if (!canvas_ptr || !points || count < 3)
         return;
 
     rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
     if (!canvas || !canvas->gfx_win)
-        return;
-
-    const int64_t *points = NULL;
-    if (!rt_canvas_points_checked(points_ptr, count, &points))
         return;
 
     // Find bounding box
@@ -1219,13 +1216,11 @@ void rt_canvas_polygon(void *canvas_ptr, void *points_ptr, int64_t count, int64_
     free(intersections);
 }
 
-/// @brief Frame the polygon.
-void rt_canvas_polygon_frame(void *canvas_ptr, void *points_ptr, int64_t count, int64_t color) {
-    if (!canvas_ptr || !points_ptr || count < 3)
-        return;
-
-    const int64_t *points = NULL;
-    if (!rt_canvas_points_checked(points_ptr, count, &points))
+static void rt_canvas_polygon_frame_points(void *canvas_ptr,
+                                           const int64_t *points,
+                                           int64_t count,
+                                           int64_t color) {
+    if (!canvas_ptr || !points || count < 3)
         return;
 
     // Draw lines connecting all vertices, including back to start
@@ -1238,6 +1233,108 @@ void rt_canvas_polygon_frame(void *canvas_ptr, void *points_ptr, int64_t count, 
         rt_canvas_line(canvas_ptr, x1, y1, x2, y2, color);
     }
 }
+
+/// @brief Polyline operation.
+void rt_canvas_polyline(void *canvas_ptr, void *points_ptr, int64_t count, int64_t color) {
+    const int64_t *points = NULL;
+    if (!rt_canvas_points_checked(points_ptr, count, &points))
+        return;
+    rt_canvas_polyline_points(canvas_ptr, points, count, color);
+}
+
+/// @brief Polygon operation.
+void rt_canvas_polygon(void *canvas_ptr, void *points_ptr, int64_t count, int64_t color) {
+    const int64_t *points = NULL;
+    if (!rt_canvas_points_checked(points_ptr, count, &points))
+        return;
+    rt_canvas_polygon_points(canvas_ptr, points, count, color);
+}
+
+/// @brief Frame the polygon.
+void rt_canvas_polygon_frame(void *canvas_ptr, void *points_ptr, int64_t count, int64_t color) {
+    const int64_t *points = NULL;
+    if (!rt_canvas_points_checked(points_ptr, count, &points))
+        return;
+    rt_canvas_polygon_frame_points(canvas_ptr, points, count, color);
+}
+
+#ifndef RT_DRAWING_ADVANCED_NO_PATH2D
+static int8_t rt_canvas_path_points(void *path,
+                                    int64_t min_count,
+                                    int64_t **points_out,
+                                    int64_t *count_out) {
+    if (points_out)
+        *points_out = NULL;
+    if (count_out)
+        *count_out = 0;
+    if (!path)
+        return 0;
+
+    int64_t count = rt_path2d_count(path);
+    if (count < min_count || count > INT64_MAX / 2)
+        return 0;
+    if ((uint64_t)count > SIZE_MAX / (2u * sizeof(int64_t)))
+        return 0;
+
+    int64_t *points = (int64_t *)malloc((size_t)count * 2u * sizeof(int64_t));
+    if (!points)
+        return 0;
+    for (int64_t i = 0; i < count; ++i) {
+        points[i * 2] = rt_path2d_get_x(path, i);
+        points[i * 2 + 1] = rt_path2d_get_y(path, i);
+    }
+    if (points_out)
+        *points_out = points;
+    if (count_out)
+        *count_out = count;
+    return 1;
+}
+
+void rt_canvas_polyline_path(void *canvas_ptr, void *path, int64_t color) {
+    int64_t *points = NULL;
+    int64_t count = 0;
+    if (!rt_canvas_path_points(path, 2, &points, &count))
+        return;
+    rt_canvas_polyline_points(canvas_ptr, points, count, color);
+    free(points);
+}
+
+void rt_canvas_polygon_path(void *canvas_ptr, void *path, int64_t color) {
+    int64_t *points = NULL;
+    int64_t count = 0;
+    if (!rt_canvas_path_points(path, 3, &points, &count))
+        return;
+    rt_canvas_polygon_points(canvas_ptr, points, count, color);
+    free(points);
+}
+
+void rt_canvas_polygon_frame_path(void *canvas_ptr, void *path, int64_t color) {
+    int64_t *points = NULL;
+    int64_t count = 0;
+    if (!rt_canvas_path_points(path, 3, &points, &count))
+        return;
+    rt_canvas_polygon_frame_points(canvas_ptr, points, count, color);
+    free(points);
+}
+#else
+void rt_canvas_polyline_path(void *canvas_ptr, void *path, int64_t color) {
+    (void)canvas_ptr;
+    (void)path;
+    (void)color;
+}
+
+void rt_canvas_polygon_path(void *canvas_ptr, void *path, int64_t color) {
+    (void)canvas_ptr;
+    (void)path;
+    (void)color;
+}
+
+void rt_canvas_polygon_frame_path(void *canvas_ptr, void *path, int64_t color) {
+    (void)canvas_ptr;
+    (void)path;
+    (void)color;
+}
+#endif
 
 //=============================================================================
 // Gradients

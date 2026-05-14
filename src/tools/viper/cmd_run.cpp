@@ -379,6 +379,7 @@ il::support::Expected<CompiledProjectModule> compileBasicProject(
     opts.dumpILOpt = shared.dumpILOpt;
     opts.dumpILPasses = shared.dumpILPasses;
     opts.timeCompile = shared.timeCompile;
+    opts.allowUnsafePointers = shared.allowUnsafePointers;
 
     il::frontends::basic::BasicCompilerInput input{source.value().buffer, project.entryFile};
     input.fileId = source.value().fileId;

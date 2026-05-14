@@ -24,7 +24,7 @@
 //
 // Each accepted connection gets its own thread via
 // `Threads.Thread.StartSafe`.  The richer
-// `vipersql.zia::runServer` uses the thread pool in
+// `vipersql.zia::runServer` uses the managed worker gate in
 // `./threadpool.zia` instead; both paths funnel down to the
 // same handler functions in `./connection.zia`.
 //
@@ -82,7 +82,7 @@ final TEXT_PORT = 5433;
 ///   * a foreground accept loop on the PG wire port.
 ///
 /// Each accepted client is handed to `Threads.Thread.StartSafe`
-/// — thread-per-connection.  No pool; for pool mode use
+/// — thread-per-connection.  For bounded worker mode use
 /// `vipersql.zia::runServer` instead.
 func sqlServerStart(pgPort: Integer, textPort: Integer) {
     Terminal.Say("========================================");

@@ -633,11 +633,11 @@ Thread pool for submitting tasks to a fixed set of worker threads.
 - Calling `Wait`, `WaitFor`, `Shutdown`, or `ShutdownNow` from a worker in the same pool traps to prevent self-deadlock.
 - Traps raised by a task do not leave the pool stuck in an active state. Once the pool drains, the next `Wait()`, successful `WaitFor(ms)`, `Shutdown()`, or `ShutdownNow()` rethrows the last task trap and clears it; later calls report the current pool state normally unless another task traps.
 - Pool handles own their worker thread handles and release them after joins. Releasing a pool from one of its own workers requests shutdown and defers reclamation rather than freeing state out from under the running worker.
-- `Pool.Submit` is not a safe Zia function-reference bridge. VM and BytecodeVM execution reject managed callback pointers for this API; safe Zia rejects it unless compiled with `--unsafe-pointers`. Use `Thread.Start*` or `Async.Run` for managed Zia callbacks.
+- `Pool.Submit` is not a safe frontend function-reference bridge. VM and BytecodeVM execution reject managed callback pointers for this API; safe frontends reject it unless compiled with `--unsafe-pointers`. Use `Thread.Start*` or `Async.Run` for managed callbacks.
 
 ### Zia Example
 
-> Safe Zia can create and manage pools, but `Pool.Submit` still requires native callback pointers and is available only with `--unsafe-pointers`. VM and BytecodeVM execution support `Thread.Start`, `Thread.StartOwned`, `Thread.StartSafe`, `Thread.StartSafeOwned`, and `Async.Run` with managed function references.
+> Safe frontends can create and manage pools, but `Pool.Submit` still requires native callback pointers and is available only with `--unsafe-pointers`. VM and BytecodeVM execution support `Thread.Start`, `Thread.StartOwned`, `Thread.StartSafe`, `Thread.StartSafeOwned`, and `Async.Run` with managed function references.
 
 ### BASIC Example
 
@@ -908,7 +908,7 @@ Provides common parallel patterns like ForEach, Map, and Invoke using a shared t
 
 ### Zia Example
 
-> `Parallel` callback operations currently require native function pointers. Safe Zia rejects these APIs unless compiled with `--unsafe-pointers`; use `Async.Run` or explicit `Thread.Start*` workers for managed function references.
+> `Parallel` callback operations currently require native function pointers. Safe frontends reject these APIs unless compiled with `--unsafe-pointers`; use `Async.Run` or explicit `Thread.Start*` workers for managed function references.
 
 ### BASIC ForEach Example
 

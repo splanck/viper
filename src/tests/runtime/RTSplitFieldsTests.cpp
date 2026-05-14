@@ -14,6 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
+#include "rt_seq.h"
 
 #include <assert.h>
 #include <string.h>
@@ -91,6 +92,21 @@ int main() {
 
     rt_string_unref(escaped_fields[0]);
     rt_string_unref(escaped_line);
+
+    const char *seq_raw = "left,\"middle,value\",right";
+    rt_string seq_line = rt_string_from_bytes(seq_raw, (int64_t)strlen(seq_raw));
+    void *seq = rt_str_split_fields_seq(seq_line);
+    assert(rt_seq_len(seq) == 3);
+    rt_string seq0 = rt_seq_get_str(seq, 0);
+    rt_string seq1 = rt_seq_get_str(seq, 1);
+    rt_string seq2 = rt_seq_get_str(seq, 2);
+    assert(strcmp(rt_string_cstr(seq0), "left") == 0);
+    assert(strcmp(rt_string_cstr(seq1), "middle,value") == 0);
+    assert(strcmp(rt_string_cstr(seq2), "right") == 0);
+    rt_string_unref(seq0);
+    rt_string_unref(seq1);
+    rt_string_unref(seq2);
+    rt_string_unref(seq_line);
 
     return 0;
 }

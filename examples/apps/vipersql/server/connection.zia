@@ -6,7 +6,7 @@
 // PURPOSE
 // -------
 // When a client connects to the SQL server (either through the
-// thread pool or direct thread spawn), we land in one of two
+// managed worker gate or direct thread spawn), we land in one of two
 // handler functions here:
 //
 //   * `handlePgClient(client)`  — PG wire protocol v3: psql,
@@ -178,8 +178,8 @@ func sql_getTotalQueries() -> Integer {
 //=============================================================================
 
 // Handle a PostgreSQL wire protocol client connection.
-// Called by the thread pool worker for each accepted connection.
-func handlePgClient(client: Ptr) {
+// Called by the managed worker bridge for each accepted connection.
+func handlePgClient(client: Viper.Network.Tcp) {
     var clientHost = Network.Tcp.get_Host(client);
     var sessionId = nextSessionId();
     connectionOpened();
@@ -293,7 +293,7 @@ func handlePgClient(client: Ptr) {
 }
 
 // Handle a single PG Query message
-func handlePgQuery(client: Ptr, session: Session, query: String) {
+func handlePgQuery(client: Viper.Network.Tcp, session: Session, query: String) {
     var trimmed = String.Trim(query);
 
     // Empty query
@@ -320,7 +320,7 @@ func handlePgQuery(client: Ptr, session: Session, query: String) {
 }
 
 // Execute a single query and send PG wire protocol responses
-func executePgSingleQuery(client: Ptr, session: Session, query: String) {
+func executePgSingleQuery(client: Viper.Network.Tcp, session: Session, query: String) {
     queryExecuted();
 
     // Query logging
@@ -438,7 +438,7 @@ func isPgCatalogQuery(upper: String) -> Boolean {
 
 // Handle Parse message — create a prepared statement
 // Returns true on success, false if error was sent
-func handlePgParse(client: Ptr, session: Session, body: Bytes) -> Boolean {
+func handlePgParse(client: Viper.Network.Tcp, session: Session, body: Bytes) -> Boolean {
     var parsed = pgParseParse(body);
 
     // If unnamed statement, replace any existing one
@@ -467,7 +467,7 @@ func handlePgParse(client: Ptr, session: Session, body: Bytes) -> Boolean {
 
 // Handle Bind message — bind parameters to create a portal
 // Returns true on success, false if error was sent
-func handlePgBind(client: Ptr, session: Session, body: Bytes) -> Boolean {
+func handlePgBind(client: Viper.Network.Tcp, session: Session, body: Bytes) -> Boolean {
     var parsed = pgParseBind(body);
 
     // Find the prepared statement
@@ -505,7 +505,7 @@ func handlePgBind(client: Ptr, session: Session, body: Bytes) -> Boolean {
 
 // Handle Describe message — describe a statement or portal
 // Returns true on success, false if error was sent
-func handlePgDescribe(client: Ptr, session: Session, body: Bytes) -> Boolean {
+func handlePgDescribe(client: Viper.Network.Tcp, session: Session, body: Bytes) -> Boolean {
     var parsed = pgParseDescribe(body);
 
     if parsed.describeType == 83 {
@@ -579,7 +579,7 @@ func handlePgDescribe(client: Ptr, session: Session, body: Bytes) -> Boolean {
 
 // Handle Execute message — execute a portal and send results
 // Returns true on success, false if error was sent
-func handlePgExecute(client: Ptr, session: Session, body: Bytes) -> Boolean {
+func handlePgExecute(client: Viper.Network.Tcp, session: Session, body: Bytes) -> Boolean {
     var parsed = pgParseExecute(body);
 
     var maybePortal = session.findPortal(parsed.portalName);
@@ -681,7 +681,7 @@ func handlePgExecute(client: Ptr, session: Session, body: Bytes) -> Boolean {
 }
 
 // Handle Close message — close a statement or portal
-func handlePgClose(client: Ptr, session: Session, body: Bytes) {
+func handlePgClose(client: Viper.Network.Tcp, session: Session, body: Bytes) {
     var parsed = pgParseClose(body);
 
     if parsed.closeType == 83 {
@@ -910,7 +910,7 @@ func inferColumnOids(result: QueryResult) -> List[Integer] {
 //=============================================================================
 
 // Send an empty SELECT result (0 rows) for pg_catalog queries
-func sendEmptySelectResult(client: Ptr, query: String) {
+func sendEmptySelectResult(client: Viper.Network.Tcp, query: String) {
     // For version() queries, return a reasonable version string
     var upper = String.ToUpper(query);
     if upper == "SELECT VERSION()" {
@@ -939,7 +939,7 @@ func sendEmptySelectResult(client: Ptr, query: String) {
 //=============================================================================
 
 // Handle a single SQL client connection using the simple text protocol.
-func handleSqlClient(client: Ptr) {
+func handleSqlClient(client: Viper.Network.Tcp) {
     var clientHost = Network.Tcp.get_Host(client);
     var sessionId = nextSessionId();
     connectionOpened();

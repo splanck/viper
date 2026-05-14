@@ -446,6 +446,8 @@ static void test_read_write_lines() {
     // Write lines
     rt_file_write_lines(path, lines);
     test_result("file created", rt_io_file_exists(path) == 1);
+    rt_io_file_write_all_lines(path, lines);
+    test_result("write all lines alias keeps file", rt_io_file_exists(path) == 1);
 
     // Read lines back
     // Note: WriteLines adds a newline after each line, so ReadLines will get

@@ -29,13 +29,13 @@ A focused hardening cycle on the v0.2.5 surface. No new public namespaces; every
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 74 | +74 |
-| Source files | 2,996 | 3,008 | +12 |
+| Commits | — | 78 | +78 |
+| Source files | 2,996 | 3,009 | +13 |
 | Production SLOC | 552K | 578K | +26K |
 | Test SLOC | 228K | 242K | +14K |
 | Demo SLOC | 188K | 189K | +1K |
 
-Counts via `scripts/count_sloc.sh` (production 577,500 / test 241,997 / demo 188,547 / source files 3,008).
+Counts via `scripts/count_sloc.sh` (production 577,953 / test 242,260 / demo 188,545 / source files 3,009).
 
 ---
 
@@ -128,6 +128,6 @@ Demos and docs were updated to track the runtime work above; stale Windows debug
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 74-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 78-commit history since v0.2.5.
 
 <!-- END DRAFT -->

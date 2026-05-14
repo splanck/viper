@@ -119,6 +119,11 @@ void *rt_option_some_i64(int64_t value) {
     return o;
 }
 
+/// @brief Construct `Some(i1)` as a normalized inline integer payload.
+void *rt_option_some_i1(int8_t value) {
+    return rt_option_some_i64(value ? 1 : 0);
+}
+
 /// @brief Construct `Some(f64)` with the value stored inline (no heap retention).
 void *rt_option_some_f64(double value) {
     Option *o = (Option *)rt_obj_new_i64(RT_OPTION_CLASS_ID, (int64_t)sizeof(Option));
@@ -207,6 +212,11 @@ int64_t rt_option_unwrap_i64(void *obj) {
     return o->value.i64;
 }
 
+/// @brief Extract a normalized boolean value from a Some option.
+int8_t rt_option_unwrap_i1(void *obj) {
+    return rt_option_unwrap_i64(obj) ? 1 : 0;
+}
+
 /// @brief Extract the f64 value from a Some option; traps if None or wrong type.
 double rt_option_unwrap_f64(void *obj) {
     if (!obj)
@@ -252,6 +262,11 @@ int64_t rt_option_unwrap_or_i64(void *obj, int64_t def) {
     if (o->value_type != VALUE_I64)
         return def;
     return o->value.i64;
+}
+
+/// @brief Unwrap a boolean option or return a normalized default.
+int8_t rt_option_unwrap_or_i1(void *obj, int8_t def) {
+    return rt_option_unwrap_or_i64(obj, def ? 1 : 0) ? 1 : 0;
 }
 
 /// @brief Unwrap the or f64 of the option.

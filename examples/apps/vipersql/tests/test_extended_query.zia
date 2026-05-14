@@ -37,7 +37,7 @@ func assert(cond: Boolean, msg: String) {
 // PG CLIENT HELPERS — Simple Query (reused from test_pg_wire)
 //=============================================================================
 
-func sendStartupMessage(client: Ptr, user: String, database: String) {
+func sendStartupMessage(client: Viper.Network.Tcp, user: String, database: String) {
     var body = new PgMsg(128);
     body.writeInt32(196608);
     body.writeCString("user");
@@ -54,7 +54,7 @@ func sendStartupMessage(client: Ptr, user: String, database: String) {
     Network.Tcp.SendAll(client, msg);
 }
 
-func sendPassword(client: Ptr, password: String) {
+func sendPassword(client: Viper.Network.Tcp, password: String) {
     var body = new PgMsg(64);
     body.writeCString(password);
     var bodyBytes = body.toBytes();
@@ -67,7 +67,7 @@ func sendPassword(client: Ptr, password: String) {
     Network.Tcp.SendAll(client, msg);
 }
 
-func sendQuery(client: Ptr, query: String) {
+func sendQuery(client: Viper.Network.Tcp, query: String) {
     var body = new PgMsg(256);
     body.writeCString(query);
     var bodyBytes = body.toBytes();
@@ -80,7 +80,7 @@ func sendQuery(client: Ptr, query: String) {
     Network.Tcp.SendAll(client, msg);
 }
 
-func sendTerminate(client: Ptr) {
+func sendTerminate(client: Viper.Network.Tcp) {
     var msg = Bytes.New(5);
     msg.Set(0, 88);
     writeInt32BE(msg, 1, 4);
@@ -93,7 +93,7 @@ func sendTerminate(client: Ptr) {
 
 // Send a Parse message
 // Format: 'P' + len + stmtName\0 + query\0 + int16(nParamTypes) + int32[](oids)
-func sendParse(client: Ptr, stmtName: String, query: String, paramOids: List[Integer]) {
+func sendParse(client: Viper.Network.Tcp, stmtName: String, query: String, paramOids: List[Integer]) {
     var body = new PgMsg(512);
     body.writeCString(stmtName);
     body.writeCString(query);
@@ -114,7 +114,7 @@ func sendParse(client: Ptr, stmtName: String, query: String, paramOids: List[Int
 
 // Send a Bind message
 // Format: 'B' + len + portalName\0 + stmtName\0 + int16(nFormats) + int16(nParams) + [int32(len) + bytes]* + int16(0)
-func sendBind(client: Ptr, portalName: String, stmtName: String, paramValues: List[String], paramNulls: List[Integer]) {
+func sendBind(client: Viper.Network.Tcp, portalName: String, stmtName: String, paramValues: List[String], paramNulls: List[Integer]) {
     var body = new PgMsg(512);
     body.writeCString(portalName);
     body.writeCString(stmtName);
@@ -143,7 +143,7 @@ func sendBind(client: Ptr, portalName: String, stmtName: String, paramValues: Li
 
 // Send a Describe message
 // Format: 'D' + len + byte('S'|'P') + name\0
-func sendDescribe(client: Ptr, descType: Integer, name: String) {
+func sendDescribe(client: Viper.Network.Tcp, descType: Integer, name: String) {
     var body = new PgMsg(64);
     body.writeByte(descType);
     body.writeCString(name);
@@ -158,7 +158,7 @@ func sendDescribe(client: Ptr, descType: Integer, name: String) {
 
 // Send an Execute message
 // Format: 'E' + len + portalName\0 + int32(maxRows)
-func sendExecute(client: Ptr, portalName: String, maxRows: Integer) {
+func sendExecute(client: Viper.Network.Tcp, portalName: String, maxRows: Integer) {
     var body = new PgMsg(64);
     body.writeCString(portalName);
     body.writeInt32(maxRows);
@@ -173,7 +173,7 @@ func sendExecute(client: Ptr, portalName: String, maxRows: Integer) {
 
 // Send a Sync message
 // Format: 'S' + int32(4)
-func sendSync(client: Ptr) {
+func sendSync(client: Viper.Network.Tcp) {
     var msg = Bytes.New(5);
     msg.Set(0, 83);  // 'S'
     writeInt32BE(msg, 1, 4);
@@ -182,7 +182,7 @@ func sendSync(client: Ptr) {
 
 // Send a Close message
 // Format: 'C' + len + byte('S'|'P') + name\0
-func sendCloseMsg(client: Ptr, closeType: Integer, name: String) {
+func sendCloseMsg(client: Viper.Network.Tcp, closeType: Integer, name: String) {
     var body = new PgMsg(64);
     body.writeByte(closeType);
     body.writeCString(name);
@@ -213,7 +213,7 @@ class PgResponse {
     }
 }
 
-func recvResponse(client: Ptr) -> PgResponse {
+func recvResponse(client: Viper.Network.Tcp) -> PgResponse {
     var resp = new PgResponse();
     resp.init();
 
@@ -233,7 +233,7 @@ func recvResponse(client: Ptr) -> PgResponse {
     return resp;
 }
 
-func recvUntil(client: Ptr, targetType: Integer) -> PgResponse {
+func recvUntil(client: Viper.Network.Tcp, targetType: Integer) -> PgResponse {
     var maxTries = 50;
     var i = 0;
     while i < maxTries {
@@ -248,7 +248,7 @@ func recvUntil(client: Ptr, targetType: Integer) -> PgResponse {
     return empty;
 }
 
-func performStartup(client: Ptr, user: String, database: String, password: String) {
+func performStartup(client: Viper.Network.Tcp, user: String, database: String, password: String) {
     sendStartupMessage(client, user, database);
     var authReq = recvResponse(client);
     sendPassword(client, password);
@@ -266,7 +266,7 @@ func extractCString(data: Bytes, offset: Integer) -> String {
 }
 
 // Count DataRow messages until CommandComplete, then consume ReadyForQuery
-func countDataRows(client: Ptr) -> Integer {
+func countDataRows(client: Viper.Network.Tcp) -> Integer {
     var count = 0;
     var maxMsgs = 200;
     var i = 0;
@@ -283,7 +283,7 @@ func countDataRows(client: Ptr) -> Integer {
 }
 
 // Count DataRow messages until CommandComplete or PortalSuspended (no Sync expected)
-func countDataRowsExtended(client: Ptr) -> Integer {
+func countDataRowsExtended(client: Viper.Network.Tcp) -> Integer {
     var count = 0;
     var maxMsgs = 200;
     var i = 0;

@@ -46,6 +46,7 @@
 #include "rt_particle.h"
 #include "rt_graphics.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_pixels.h"
 #include "rt_trap.h"
 
@@ -100,6 +101,13 @@ struct rt_particle_emitter_impl {
     uint64_t rand_state;
 };
 
+struct rt_particle_snapshot_impl {
+    double x;
+    double y;
+    double size;
+    int64_t color;
+};
+
 static struct rt_particle_emitter_impl *checked_emitter(rt_particle_emitter emitter,
                                                         const char *api) {
     if (!emitter)
@@ -109,6 +117,50 @@ static struct rt_particle_emitter_impl *checked_emitter(rt_particle_emitter emit
         return NULL;
     }
     return emitter;
+}
+
+static struct rt_particle_snapshot_impl *checked_snapshot(rt_particle_snapshot snapshot,
+                                                          const char *api) {
+    if (!snapshot)
+        return NULL;
+    if (rt_obj_class_id(snapshot) != RT_PARTICLE_SNAPSHOT_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
+    return snapshot;
+}
+
+rt_particle_snapshot rt_particle_snapshot_new(double x, double y, double size, int64_t color) {
+    struct rt_particle_snapshot_impl *snapshot =
+        (struct rt_particle_snapshot_impl *)rt_obj_new_i64(
+            RT_PARTICLE_SNAPSHOT_CLASS_ID, (int64_t)sizeof(struct rt_particle_snapshot_impl));
+    if (!snapshot)
+        return NULL;
+    snapshot->x = x;
+    snapshot->y = y;
+    snapshot->size = size;
+    snapshot->color = color;
+    return snapshot;
+}
+
+double rt_particle_snapshot_x(rt_particle_snapshot snapshot) {
+    snapshot = checked_snapshot(snapshot, "ParticleSnapshot.X: expected Viper.Game.ParticleSnapshot");
+    return snapshot ? snapshot->x : 0.0;
+}
+
+double rt_particle_snapshot_y(rt_particle_snapshot snapshot) {
+    snapshot = checked_snapshot(snapshot, "ParticleSnapshot.Y: expected Viper.Game.ParticleSnapshot");
+    return snapshot ? snapshot->y : 0.0;
+}
+
+double rt_particle_snapshot_size(rt_particle_snapshot snapshot) {
+    snapshot = checked_snapshot(snapshot, "ParticleSnapshot.Size: expected Viper.Game.ParticleSnapshot");
+    return snapshot ? snapshot->size : 0.0;
+}
+
+int64_t rt_particle_snapshot_color(rt_particle_snapshot snapshot) {
+    snapshot = checked_snapshot(snapshot, "ParticleSnapshot.Color: expected Viper.Game.ParticleSnapshot");
+    return snapshot ? snapshot->color : 0;
 }
 
 static double particle_finite_or(double value, double fallback) {
@@ -663,6 +715,23 @@ int8_t rt_particle_emitter_get(rt_particle_emitter emitter,
         found++;
     }
     return 0;
+}
+
+void *rt_particle_emitter_particle_at(rt_particle_emitter emitter, int64_t index) {
+    double x = 0.0;
+    double y = 0.0;
+    double size = 0.0;
+    int64_t color = 0;
+    if (!rt_particle_emitter_get(emitter, index, &x, &y, &size, &color))
+        return rt_option_none();
+
+    rt_particle_snapshot snapshot = rt_particle_snapshot_new(x, y, size, color);
+    if (!snapshot)
+        return rt_option_none();
+    void *option = rt_option_some(snapshot);
+    if (rt_obj_release_check0(snapshot))
+        rt_obj_free(snapshot);
+    return option;
 }
 
 /// @brief Render all active particles as filled discs to a Pixels buffer (software renderer).

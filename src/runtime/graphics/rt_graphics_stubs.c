@@ -1017,6 +1017,27 @@ void rt_canvas_polygon_frame(void *canvas, void *points, int64_t count, int64_t 
     RT_GRAPHICS_TRAP_VOID("Canvas.PolygonFrame: graphics support not compiled in");
 }
 
+void rt_canvas_polyline_path(void *canvas, void *path, int64_t color) {
+    (void)canvas;
+    (void)path;
+    (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.PolylinePath: graphics support not compiled in");
+}
+
+void rt_canvas_polygon_path(void *canvas, void *path, int64_t color) {
+    (void)canvas;
+    (void)path;
+    (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.PolygonPath: graphics support not compiled in");
+}
+
+void rt_canvas_polygon_frame_path(void *canvas, void *path, int64_t color) {
+    (void)canvas;
+    (void)path;
+    (void)color;
+    RT_GRAPHICS_TRAP_VOID("Canvas.PolygonFramePath: graphics support not compiled in");
+}
+
 /// @brief Stub for `Canvas.GetPixel` — would normally read the
 ///        framebuffer's current color at `(x, y)`.
 ///

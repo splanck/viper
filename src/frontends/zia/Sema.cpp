@@ -148,7 +148,7 @@ bool isFunctionPointerArg(const CallArg &arg) {
         return unary->op == UnaryOp::AddressOf;
     }
 
-    return arg.value->kind == ExprKind::Ident || arg.value->kind == ExprKind::Field;
+    return false;
 }
 
 bool allowsFunctionPointerParam(std::string_view name) {
@@ -169,24 +169,60 @@ bool allowsFunctionPointerParam(std::string_view name) {
            lower.find("comparator") != std::string::npos;
 }
 
-bool isCallbackPayloadParam(std::string_view name) {
-    std::string lower;
-    lower.reserve(name.size());
-    for (char ch : name)
-        lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
-
-    return lower == "arg" || lower == "ctx" || lower == "context" || lower == "data" ||
-           lower == "user_data" || lower == "userdata" || lower == "payload";
+bool isSafeFunctionBridgePayload(TypeRef type) {
+    if (!type)
+        return true;
+    if (type->kind == TypeKindSem::Function)
+        return false;
+    if (type->kind == TypeKindSem::Ptr)
+        return !type->name.empty();
+    return true;
 }
 
-bool runtimeApiAllowsSafeFunctionBridge(std::string_view calleeName) {
-    return calleeName == "Viper.Threads.Thread.Start" ||
-           calleeName == "Viper.Threads.Thread.StartOwned" ||
-           calleeName == "Viper.Threads.Thread.StartSafe" ||
-           calleeName == "Viper.Threads.Thread.StartSafeOwned" ||
-           calleeName == "Viper.Threads.Async.Run" ||
-           calleeName == "Viper.Network.HttpServer.BindHandler" ||
-           calleeName == "Viper.Network.HttpsServer.BindHandler";
+enum class RuntimePointerBridgeRole { None, Callback, Payload };
+
+RuntimePointerBridgeRole runtimePointerBridgeRole(std::string_view calleeName, size_t paramIndex) {
+    auto is = [&](std::string_view name) { return calleeName == name; };
+
+    if (is("Viper.Threads.Thread.Start") || is("Viper.Threads.Thread.StartSafe") ||
+        is("Viper.Threads.Async.Run")) {
+        if (paramIndex == 0)
+            return RuntimePointerBridgeRole::Callback;
+        if (paramIndex == 1)
+            return RuntimePointerBridgeRole::Payload;
+    }
+
+    if (is("Viper.Threads.Thread.StartOwned") ||
+        is("Viper.Threads.Thread.StartSafeOwned") || is("Viper.Threads.Async.RunOwned")) {
+        return paramIndex == 0 ? RuntimePointerBridgeRole::Callback : RuntimePointerBridgeRole::None;
+    }
+
+    if (is("Viper.Threads.Async.RunCancellable")) {
+        if (paramIndex == 0)
+            return RuntimePointerBridgeRole::Callback;
+        if (paramIndex == 1)
+            return RuntimePointerBridgeRole::Payload;
+    }
+
+    if (is("Viper.Threads.Async.RunCancellableOwned"))
+        return paramIndex == 0 ? RuntimePointerBridgeRole::Callback : RuntimePointerBridgeRole::None;
+
+    if (is("Viper.Threads.Async.Map")) {
+        if (paramIndex == 1)
+            return RuntimePointerBridgeRole::Callback;
+        if (paramIndex == 2)
+            return RuntimePointerBridgeRole::Payload;
+    }
+
+    if (is("Viper.Threads.Async.MapOwned"))
+        return paramIndex == 1 ? RuntimePointerBridgeRole::Callback : RuntimePointerBridgeRole::None;
+
+    if (is("Viper.Network.HttpServer.BindHandler") ||
+        is("Viper.Network.HttpsServer.BindHandler")) {
+        return paramIndex == 1 ? RuntimePointerBridgeRole::Callback : RuntimePointerBridgeRole::None;
+    }
+
+    return RuntimePointerBridgeRole::None;
 }
 
 std::string saferRuntimePointerAlternative(std::string_view calleeName) {
@@ -198,6 +234,10 @@ std::string saferRuntimePointerAlternative(std::string_view calleeName) {
         {"Viper.IO.File.ReadLines", "Viper.IO.File.ReadAllLines"},
         {"Viper.IO.File.WriteBytes", "Viper.IO.File.WriteAllBytes"},
         {"Viper.IO.File.WriteLines", "Viper.IO.File.WriteAllLines"},
+        {"Viper.Core.Box.TryToI64", "Viper.Core.Box.ToI64Option"},
+        {"Viper.Core.Box.TryToF64", "Viper.Core.Box.ToF64Option"},
+        {"Viper.Core.Box.TryToI1", "Viper.Core.Box.ToI1Option"},
+        {"Viper.Core.Box.TryToStr", "Viper.Core.Box.ToStrOption"},
         {"Viper.Core.Parse.Double", "Viper.Core.Parse.DoubleOption or Viper.Core.Parse.NumOr"},
         {"Viper.Core.Parse.Int64", "Viper.Core.Parse.Int64Option or Viper.Core.Parse.IntOr"},
         {"Viper.Core.Parse.TryInt", "Viper.Core.Parse.IntOr or Viper.Core.Parse.Int64Option"},
@@ -208,6 +248,11 @@ std::string saferRuntimePointerAlternative(std::string_view calleeName) {
         {"Viper.Parse.TryInt", "Viper.Parse.IntOr or Viper.Parse.Int64Option"},
         {"Viper.Parse.TryNum", "Viper.Parse.NumOr or Viper.Parse.DoubleOption"},
         {"Viper.Parse.TryBool", "Viper.Parse.BoolOr"},
+        {"Viper.String.SplitFields", "Viper.String.SplitFieldsSeq"},
+        {"Viper.Graphics.Canvas.Polyline", "Viper.Graphics.Canvas.PolylinePath"},
+        {"Viper.Graphics.Canvas.Polygon", "Viper.Graphics.Canvas.PolygonPath"},
+        {"Viper.Graphics.Canvas.PolygonFrame", "Viper.Graphics.Canvas.PolygonFramePath"},
+        {"Viper.Game.ParticleEmitter.Get", "Viper.Game.ParticleEmitter.ParticleAt"},
         {"Viper.Threads.Pool.Submit",
          "Viper.Threads.Thread.Start or Viper.Threads.Async.Run for managed Zia callbacks"},
         {"Viper.Core.MessageBus.Callback",
@@ -926,7 +971,6 @@ bool Sema::checkRuntimePointerSafety(const std::string &calleeName,
         return false;
     };
 
-    const bool apiAllowsSafeFunctionBridge = runtimeApiAllowsSafeFunctionBridge(calleeName);
     std::vector<bool> safeFunctionBridge(params.size(), false);
     for (size_t i = 0; i < params.size(); ++i) {
         if (!isRawParam(i))
@@ -946,15 +990,16 @@ bool Sema::checkRuntimePointerSafety(const std::string &calleeName,
             }
         }
 
-        if (apiAllowsSafeFunctionBridge && allowsFunctionPointerParam(params[i].name) &&
-            sourceArg && isFunctionPointerArg(*sourceArg) && argType &&
+        RuntimePointerBridgeRole bridgeRole = runtimePointerBridgeRole(calleeName, i);
+        if (bridgeRole == RuntimePointerBridgeRole::Callback && sourceArg &&
+            isFunctionPointerArg(*sourceArg) && argType &&
             argType->kind == TypeKindSem::Function) {
             safeFunctionBridge[i] = true;
             continue;
         }
 
         bool pairedWithFunctionBridge = false;
-        if (isCallbackPayloadParam(params[i].name)) {
+        if (bridgeRole == RuntimePointerBridgeRole::Payload) {
             for (size_t prior = 0; prior < i; ++prior) {
                 if (safeFunctionBridge[prior]) {
                     pairedWithFunctionBridge = true;
@@ -962,8 +1007,7 @@ bool Sema::checkRuntimePointerSafety(const std::string &calleeName,
                 }
             }
         }
-        if (pairedWithFunctionBridge && (!argType || (argType->kind != TypeKindSem::Ptr &&
-                                                      argType->kind != TypeKindSem::Function))) {
+        if (pairedWithFunctionBridge && isSafeFunctionBridgePayload(argType)) {
             continue;
         }
 

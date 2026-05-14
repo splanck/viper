@@ -131,9 +131,9 @@ Each connection gets its own `Session` with its own `Executor` instance. Multipl
 
 ## Multi-User TCP Server
 
-The `server/` module implements a multi-user TCP server using a thread-per-connection model (like PostgreSQL):
+The `server/` module implements a multi-user TCP server using safe managed workers:
 
-- **Thread-per-connection**: Each accepted TCP connection spawns a dedicated thread via `Thread.StartSafe` for error isolation
+- **Managed workers**: Each accepted TCP connection runs through `Thread.StartSafe`; server mode uses a `Gate` to bound active handlers by `--pool-size`
 - **PostgreSQL wire protocol (v3)**: Binary protocol on port 5432 for standard client compatibility (psql, ODBC, pgAdmin). Supports both Simple Query (Q) and Extended Query (Parse/Bind/Describe/Execute) protocols with prepared statements, parameterized queries, and portal suspension.
 - **Simple text protocol**: SQL terminated by newline, response terminated by double-newline on port 5433
 - **Authentication**: Cleartext password authentication via the PG wire protocol handshake (AuthenticationCleartextPassword / PasswordMessage)

@@ -295,6 +295,31 @@ RT_METHOD("name", "signature", target_id)
 | `obj` | Object reference | `void*` |
 | `ptr` | Raw pointer | `void*` |
 
+`i8`, `i16`, and `i32` are frontend-mapped as integer values. `f32` is frontend-mapped as a number.
+
+Use parameterized signatures whenever the runtime object type is known:
+
+| Signature | Meaning |
+|-----------|---------|
+| `obj<Viper.Collections.Bytes>` | A typed runtime object |
+| `obj<Viper.Option>` | An Option object |
+| `seq<str>` | A sequence of strings |
+| `seq<obj>` | A sequence of runtime objects |
+
+### Raw Pointer Policy
+
+`ptr` is reserved for native implementation details and unsafe interop. Do not expose a new `ptr` return or parameter to frontend languages unless there is no typed runtime alternative.
+
+Preferred replacements:
+
+- Return `obj<Runtime.Class>` for managed handles instead of `ptr`.
+- Return `seq<T>` for arrays/lists of values instead of raw buffers.
+- Return `obj<Viper.Option>` or `obj<Viper.Result>` instead of using out parameters.
+- Accept typed runtime classes such as `obj<Viper.Graphics.Path2D>` instead of raw coordinate buffers.
+- For callbacks, add a managed bridge that takes an explicit `&function` and a typed/object payload; keep native callback pointers behind `--unsafe-pointers`.
+
+Safe frontend builds reject raw pointer APIs by default. If a legacy C ABI must remain, add a safe wrapper beside it and document the wrapper in the diagnostic alternative map and tests.
+
 ---
 
 ## 6. Code Generation with rtgen

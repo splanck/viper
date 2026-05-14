@@ -5,6 +5,7 @@
 
 #include "rt_particle.h"
 #include "rt_graphics.h"
+#include "rt_option.h"
 #include "rt_pixels.h"
 #include <cassert>
 #include <cmath>
@@ -176,6 +177,30 @@ TEST(get_normalizes_legacy_rgb_alpha) {
     rt_particle_emitter_destroy(pe);
 }
 
+TEST(particle_at_returns_snapshot_option) {
+    rt_particle_emitter pe = rt_particle_emitter_new(1);
+    rt_particle_emitter_set_position(pe, 12.0, 34.0);
+    rt_particle_emitter_set_lifetime(pe, 10, 10);
+    rt_particle_emitter_set_velocity(pe, 0.0, 0.0, 0.0, 0.0);
+    rt_particle_emitter_set_size(pe, 6.0, 6.0);
+    rt_particle_emitter_set_fade_out(pe, 0);
+    rt_particle_emitter_set_color(pe, 0x00112233);
+    rt_particle_emitter_burst(pe, 1);
+
+    void *opt = rt_particle_emitter_particle_at(pe, 0);
+    ASSERT(rt_option_is_some(opt) == 1);
+    rt_particle_snapshot snapshot = (rt_particle_snapshot)rt_option_unwrap(opt);
+    ASSERT(fabs(rt_particle_snapshot_x(snapshot) - 12.0) < 0.001);
+    ASSERT(fabs(rt_particle_snapshot_y(snapshot) - 34.0) < 0.001);
+    ASSERT(fabs(rt_particle_snapshot_size(snapshot) - 6.0) < 0.001);
+    ASSERT(rt_particle_snapshot_color(snapshot) == 0xFF112233);
+
+    void *missing = rt_particle_emitter_particle_at(pe, 1);
+    ASSERT(rt_option_is_none(missing) == 1);
+
+    rt_particle_emitter_destroy(pe);
+}
+
 TEST(draw_to_pixels_alpha_blends_over_existing_background) {
     rt_particle_emitter pe = rt_particle_emitter_new(1);
     void *pixels = rt_pixels_new(5, 5);
@@ -277,6 +302,7 @@ int main() {
     RUN_TEST(draw_to_pixels_null_safety);
     RUN_TEST(full_emitters_do_not_build_emission_debt);
     RUN_TEST(get_normalizes_legacy_rgb_alpha);
+    RUN_TEST(particle_at_returns_snapshot_option);
     RUN_TEST(draw_to_pixels_alpha_blends_over_existing_background);
     RUN_TEST(color_rgba_zero_alpha_is_transparent);
     RUN_TEST(draw_to_pixels_preserves_transparent_destination_alpha);

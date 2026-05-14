@@ -1,6 +1,6 @@
 // =============================================================================
 // vipersql.zia — Full-featured server entry point (argument parsing,
-//                dual-protocol listeners, thread pool, optional REPL)
+//                dual-protocol listeners, managed workers, optional REPL)
 // Part of ViperSQL
 // =============================================================================
 //
@@ -12,7 +12,7 @@
 //   * parse CLI arguments (`--port`, `--max-connections`,
 //     `--pool-size`, `--data-dir`, `--log-queries`, `--repl`, ...)
 //   * construct a shared `DatabaseServer`
-//   * initialise the connection handler and thread pool
+//   * initialise the connection handler and managed worker gate
 //   * start the text protocol listener on a background thread
 //   * run the PG wire protocol accept loop on the main thread
 //   * OR, if `--repl` is given, enter standalone in-memory REPL
@@ -177,7 +177,7 @@ func printUsage() {
     Terminal.Say("  --text-port N       Text protocol port (default: 5433, 0 to disable)");
     Terminal.Say("  --no-text           Disable text protocol listener");
     Terminal.Say("  --max-connections N Maximum concurrent connections (default: 100)");
-    Terminal.Say("  --pool-size N       Thread pool size (default: 10)");
+    Terminal.Say("  --pool-size N       Maximum active worker handlers (default: 10)");
     Terminal.Say("  --data-dir PATH     Data directory (default: ./data)");
     Terminal.Say("  --log-queries       Log all queries to stdout");
     Terminal.Say("  --repl              Start in standalone REPL mode (no server)");
@@ -192,12 +192,12 @@ func printUsage() {
 ///
 /// Concrete sequence:
 ///   1. Construct a shared `DatabaseServer`.
-///   2. Initialise the connection handler + thread pool.
+///   2. Initialise the connection handler + managed worker gate.
 ///   3. (Optional) enable query logging.
 ///   4. Spawn the text-protocol listener on a background thread
 ///      (unless disabled via `--no-text`).
 ///   5. Open the PG-wire listener on the main thread and run
-///      its accept loop, submitting each client to the pool.
+///      its accept loop, handing each client to the managed worker bridge.
 ///
 /// Graceful shutdown is not yet wired — the loop terminates on
 /// process signal only.
@@ -217,7 +217,7 @@ func runServer(config: ServerConfig) {
 
     sql_pool_init(config.poolSize);
 
-    Terminal.Say("Thread model: pool (" + Fmt.Int(config.poolSize) + " workers, max " + Fmt.Int(config.maxConnections) + " connections)");
+    Terminal.Say("Thread model: managed workers (" + Fmt.Int(config.poolSize) + " active handlers, max " + Fmt.Int(config.maxConnections) + " connections)");
     if config.logQueries {
         sql_connection_enable_logging();
         Terminal.Say("Query logging: enabled");

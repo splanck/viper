@@ -510,6 +510,10 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor {
                     else if (paramTy.kind == IlType::Kind::I32) {
                         arg = lowerer_.ensureI64(std::move(arg), expr.loc);
                         arg.value = lowerer_.emitCommon(expr.loc).narrow_to(arg.value, 64, 32);
+                    } else if (paramTy.kind == IlType::Kind::Ptr &&
+                               arg.type.kind != IlType::Kind::Ptr &&
+                               arg.value.kind == IlValue::Kind::ConstInt && arg.value.i64 == 0) {
+                        arg = Lowerer::RVal{IlValue::null(), paramTy};
                     }
                 }
                 args.push_back(arg.value);

@@ -13,6 +13,7 @@
 #include "il/runtime/classes/RuntimeClasses.hpp"
 #include "tests/TestHarness.hpp"
 
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <regex>
@@ -42,6 +43,11 @@ struct PropertyExpectation {
     std::string className;
     std::string propertyName;
     std::string typeName;
+};
+
+struct SignatureRecord {
+    std::string owner;
+    std::string signature;
 };
 
 std::vector<std::string> internalHeaders() {
@@ -232,6 +238,39 @@ std::unordered_set<std::string> runtimeDefSymbols() {
     return symbols;
 }
 
+std::vector<SignatureRecord> runtimeDefSignatures() {
+    const std::string text = readText(repoRoot() / "src/il/runtime/runtime.def");
+    std::vector<SignatureRecord> signatures;
+
+    const std::regex funcRe(
+        R"RTFUNC(RT_FUNC\([^,]+,\s*rt_[A-Za-z0-9_]+\s*,\s*"([^"]+)"\s*,\s*"([^"]+)")RTFUNC");
+    for (std::sregex_iterator it(text.begin(), text.end(), funcRe), end; it != end; ++it)
+        signatures.push_back(SignatureRecord{(*it)[1].str(), (*it)[2].str()});
+
+    const std::regex methodRe(
+        R"RTMETHOD(RT_METHOD\(\s*"([^"]+)"\s*,\s*"([^"]+)")RTMETHOD");
+    for (std::sregex_iterator it(text.begin(), text.end(), methodRe), end; it != end; ++it)
+        signatures.push_back(SignatureRecord{(*it)[1].str(), (*it)[2].str()});
+
+    return signatures;
+}
+
+std::string signatureReturnToken(std::string signature) {
+    size_t paren = signature.find('(');
+    if (paren != std::string::npos)
+        signature.resize(paren);
+    while (!signature.empty() && std::isspace(static_cast<unsigned char>(signature.front())))
+        signature.erase(signature.begin());
+    while (!signature.empty() && std::isspace(static_cast<unsigned char>(signature.back())))
+        signature.pop_back();
+    if (!signature.empty() && signature.back() == '?')
+        signature.pop_back();
+    size_t typeArgs = signature.find('<');
+    if (typeArgs != std::string::npos)
+        signature.resize(typeArgs);
+    return signature;
+}
+
 std::unordered_set<std::string> runtimeSourceTokens() {
     std::unordered_set<std::string> tokens;
     const std::regex re(R"(\brt_[A-Za-z0-9_]+\b)");
@@ -357,6 +396,16 @@ TEST(RuntimeSurfaceAudit, RuntimeDefSymbolsExistInRuntimeSources) {
         if (!present)
             std::cerr << "Missing runtime implementation token for " << symbol << "\n";
         EXPECT_TRUE(present);
+    }
+}
+
+TEST(RuntimeSurfaceAudit, RuntimeDefHasNoRawPointerReturns) {
+    for (const auto &record : runtimeDefSignatures()) {
+        if (signatureReturnToken(record.signature) == "ptr") {
+            std::cerr << "Raw pointer return remains in runtime.def surface: " << record.owner
+                      << " : " << record.signature << "\n";
+            EXPECT_TRUE(false);
+        }
     }
 }
 

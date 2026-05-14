@@ -38,6 +38,7 @@
 #include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_platform.h"
 #include "rt_string.h"
 
@@ -502,6 +503,31 @@ int8_t rt_box_try_to_str(void *box, rt_string *out) {
         rt_string_ref(b->data.str_val);
     *out = b->data.str_val;
     return 1;
+}
+
+void *rt_box_to_i64_option(void *box) {
+    int64_t value = 0;
+    return rt_box_try_to_i64(box, &value) ? rt_option_some_i64(value) : rt_option_none();
+}
+
+void *rt_box_to_f64_option(void *box) {
+    double value = 0.0;
+    return rt_box_try_to_f64(box, &value) ? rt_option_some_f64(value) : rt_option_none();
+}
+
+void *rt_box_to_i1_option(void *box) {
+    int8_t value = 0;
+    return rt_box_try_to_i1(box, &value) ? rt_option_some_i1(value) : rt_option_none();
+}
+
+void *rt_box_to_str_option(void *box) {
+    rt_string value = NULL;
+    if (!rt_box_try_to_str(box, &value))
+        return rt_option_none();
+
+    void *option = rt_option_some_str(value);
+    rt_str_release_maybe(value);
+    return option;
 }
 
 /// @brief Read the type tag of a box (`RT_BOX_I64`, `RT_BOX_F64`, `RT_BOX_I1`, `RT_BOX_STR`),
