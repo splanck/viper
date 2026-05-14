@@ -1,0 +1,54 @@
+module RuntimeTest47;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+func testQueue() {
+    var q: Queue[String] = new Queue[String]();
+    q.push("first");
+    q.push("second");
+
+    assertEqStr(q.peek(), "first", "typed_queue_peek");
+    assertEqStr(q.pop(), "first", "typed_queue_pop");
+    assertEqStr(q.pop(), "second", "typed_queue_second");
+}
+
+func testStack() {
+    var s: Stack[Integer] = new Stack[Integer]();
+    s.push(10);
+    s.push(20);
+
+    assertEqInt(s.peek(), 20, "typed_stack_peek");
+    assertEqInt(s.pop(), 20, "typed_stack_pop");
+    assertEqInt(s.pop(), 10, "typed_stack_second");
+}
+
+func testDeque() {
+    var d: Deque[String] = new Deque[String]();
+    d.pushBack("back");
+    d.pushFront("front");
+
+    assertEqStr(d.get(0), "front", "typed_deque_get_front");
+    assertEqStr(d.popFront(), "front", "typed_deque_pop_front");
+    assertEqStr(d.popBack(), "back", "typed_deque_pop_back");
+}
+
+func testBytes() {
+    var b: Bytes = new Bytes(3);
+    b.set(0, 65);
+    b.set(1, 66);
+    b.set(2, 67);
+
+    assertEqInt(b.length, 3, "bytes_alias_length");
+    assertEqInt(b.get(1), 66, "bytes_alias_get");
+    assertEqStr(b.toStr(), "ABC", "bytes_alias_to_str");
+}
+
+func start() {
+    testQueue();
+    testStack();
+    testDeque();
+    testBytes();
+    report();
+}

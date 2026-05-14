@@ -55,6 +55,7 @@ struct RuntimeFunc {
     std::string canonical; // Canonical Viper.* name (e.g., "Viper.Console.PrintStr")
     std::string signature; // Type signature (e.g., "void(str)")
     std::string lowering;  // Lowering kind: "always" or "" (default: manual)
+    std::vector<std::string> bridgeRoles; // Safe Zia bridge roles: none/callback/payload
 };
 
 struct RuntimeAlias {
@@ -356,7 +357,7 @@ static std::optional<std::string> extractParens(std::string_view line, std::stri
 
 static void parseRtFunc(ParseState &state, const std::string &args) {
     // RT_FUNC(id, c_symbol, canonical, signature [, lowering])
-    auto parts = split(args, ',');
+    auto parts = splitTopLevel(args, ',');
     if (parts.size() < 4 || parts.size() > 5) {
         state.error(
             "RT_FUNC requires 4-5 arguments: id, c_symbol, canonical, signature [, lowering]");
@@ -414,6 +415,41 @@ static void parseRtAlias(ParseState &state, const std::string &args) {
 
     state.all_canonicals.insert(alias.canonical);
     state.aliases.push_back(std::move(alias));
+}
+
+static void parseRtBridge(ParseState &state, const std::string &args) {
+    // RT_BRIDGE(target_id, "role0,role1,...")
+    auto parts = splitTopLevel(args, ',');
+    if (parts.size() != 2)
+        state.error("RT_BRIDGE requires 2 arguments: target_id, role_list");
+
+    const std::string targetId = parts[0];
+    auto it = state.func_by_id.find(targetId);
+    if (it == state.func_by_id.end())
+        state.error("RT_BRIDGE target not found: " + targetId);
+
+    RuntimeFunc &func = state.functions[it->second];
+    size_t surfaceParamCount = 0;
+    size_t parenPos = func.signature.find('(');
+    size_t closePos = func.signature.rfind(')');
+    if (parenPos != std::string::npos && closePos != std::string::npos &&
+        closePos > parenPos + 1) {
+        surfaceParamCount = splitTopLevel(
+                                func.signature.substr(parenPos + 1, closePos - parenPos - 1),
+                                ',')
+                                .size();
+    }
+    auto roles = splitTopLevel(stripQuotes(parts[1]), ',');
+    if (roles.size() != surfaceParamCount) {
+        state.error("RT_BRIDGE for " + targetId + " has " + std::to_string(roles.size()) +
+                    " roles but signature has " + std::to_string(surfaceParamCount) +
+                    " parameters");
+    }
+    for (const auto &role : roles) {
+        if (role != "none" && role != "callback" && role != "payload")
+            state.error("RT_BRIDGE role must be none, callback, or payload: " + role);
+    }
+    func.bridgeRoles = std::move(roles);
 }
 
 static void parseRtClassBegin(ParseState &state, const std::string &args) {
@@ -520,6 +556,8 @@ static void parseLine(ParseState &state, const std::string &line) {
         parseRtFunc(state, *args);
     } else if (auto args = extractParens(trimmed, "RT_ALIAS")) {
         parseRtAlias(state, *args);
+    } else if (auto args = extractParens(trimmed, "RT_BRIDGE")) {
+        parseRtBridge(state, *args);
     } else if (auto args = extractParens(trimmed, "RT_CLASS_BEGIN")) {
         parseRtClassBegin(state, *args);
     } else if (auto args = extractParens(trimmed, "RT_PROP")) {
@@ -1606,10 +1644,10 @@ static std::string ilTypeToZiaType(const std::string &ilType, const std::string 
                     return "types::runtimeClass(\"" + className + "\")";
             }
         }
-        return "types::ptr()";
+        return "types::any()";
     }
-    // Default to ptr for unknown types
-    return "types::ptr()";
+    // Default unrecognized object-like tokens to safe type erasure.
+    return "types::any()";
 }
 
 /// @brief Map IL parameter type to a Zia types:: expression.
@@ -1643,9 +1681,11 @@ static std::string ilParamTypeToZiaType(const std::string &ilType) {
             return "types::ptr()";
         return "types::list(" + ilParamTypeToZiaType(typeArg) + ")";
     }
-    if (baseType == "obj" || baseType == "ptr")
+    if (baseType == "obj")
+        return "types::any()";
+    if (baseType == "ptr")
         return "types::ptr()";
-    return "types::ptr()";
+    return "types::any()";
 }
 
 static void emitZiaParamNames(std::ostream &out, const std::vector<std::string> &paramNames) {
@@ -1668,13 +1708,30 @@ static bool ziaTypeTokenIsRawPointer(std::string type) {
     return stripTypeArgs(type) == "ptr";
 }
 
-static void emitZiaPointerSafety(std::ostream &out, const ParsedSignature &sig) {
+static std::string bridgeRoleExpr(const std::string &role) {
+    if (role == "callback")
+        return "RuntimePointerBridgeRole::Callback";
+    if (role == "payload")
+        return "RuntimePointerBridgeRole::Payload";
+    return "RuntimePointerBridgeRole::None";
+}
+
+static void emitZiaPointerSafety(std::ostream &out,
+                                 const ParsedSignature &sig,
+                                 const std::vector<std::string> &bridgeRoles) {
     out << ", RuntimePointerSafety{"
         << (ziaTypeTokenIsRawPointer(sig.returnType) ? "true" : "false") << ", {";
     for (size_t i = 0; i < sig.argTypes.size(); ++i) {
         if (i > 0)
             out << ", ";
         out << (ziaTypeTokenIsRawPointer(sig.argTypes[i]) ? "true" : "false");
+    }
+    out << "}, {";
+    for (size_t i = 0; i < sig.argTypes.size(); ++i) {
+        if (i > 0)
+            out << ", ";
+        std::string role = i < bridgeRoles.size() ? bridgeRoles[i] : "none";
+        out << bridgeRoleExpr(role);
     }
     out << "}}";
 }
@@ -1781,7 +1838,7 @@ static void generateZiaExterns(const ParseState &state,
             } else {
                 emitZiaParamNames(out, {});
             }
-            emitZiaPointerSafety(out, sig);
+            emitZiaPointerSafety(out, sig, func->bridgeRoles);
             out << ");\n";
         }
         out << "}();\n\n";
@@ -1814,7 +1871,7 @@ static void generateZiaExterns(const ParseState &state,
                 } else {
                     emitZiaParamNames(out, {});
                 }
-                emitZiaPointerSafety(out, sig);
+                emitZiaPointerSafety(out, sig, target.bridgeRoles);
                 out << ");\n";
             }
         }

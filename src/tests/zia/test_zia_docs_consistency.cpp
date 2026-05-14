@@ -9,6 +9,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "frontends/zia/Compiler.hpp"
+#include "support/source_manager.hpp"
 #include "tests/TestHarness.hpp"
 #include <filesystem>
 #include <fstream>
@@ -17,6 +19,8 @@
 #include <vector>
 
 namespace fs = std::filesystem;
+using namespace il::frontends::zia;
+using namespace il::support;
 
 namespace {
 
@@ -53,6 +57,22 @@ void expectMissing(const fs::path &path, const std::string &content, const std::
     }
 }
 
+CompilerResult compileSnippet(const std::string &source, const std::string &path) {
+    SourceManager sm;
+    CompilerInput input{.source = source, .path = path};
+    return compile(input, {}, sm);
+}
+
+void expectCompileSuccess(const std::string &source, const std::string &path) {
+    auto result = compileSnippet(source, path);
+    if (!result.succeeded()) {
+        std::cerr << "doc snippet failed to compile: " << path << '\n';
+        for (const auto &diag : result.diagnostics.diagnostics())
+            std::cerr << diag.message << '\n';
+    }
+    EXPECT_TRUE(result.succeeded());
+}
+
 } // namespace
 
 TEST(ZiaDocs, NoKnownStaleSyntaxOrApiPatterns) {
@@ -75,6 +95,8 @@ TEST(ZiaDocs, NoKnownStaleSyntaxOrApiPatterns) {
              "| `Ptr` | Raw pointer / opaque handle",
              "Function references are stored as `Ptr` type",
              "func handler(arg: Ptr)",
+             "function pointer at the correct slot",
+             "Viper.Memory.Release(handle)",
          }},
         {"docs/feature-parity.md",
          {
@@ -83,6 +105,17 @@ TEST(ZiaDocs, NoKnownStaleSyntaxOrApiPatterns) {
              "Zia has the type but no construction/destructure",
              "**No construction or destructuring**",
              "**No lowering or runtime support**",
+             "Both produce function pointers",
+             "address-of (unary)",
+         }},
+        {"docs/viperlib/collections/sequential.md",
+         {
+             "pointer value",
+             "pointer equality",
+         }},
+        {"docs/viperlib/network.md",
+         {
+             "cache the pointer",
          }},
         {"docs/GENERICS_IMPLEMENTATION_PLAN.md",
          {
@@ -168,6 +201,105 @@ TEST(ZiaDocs, NoKnownStaleSyntaxOrApiPatterns) {
         ASSERT_FALSE(content.empty());
         for (const auto &needle : check.forbiddenSubstrings)
             expectMissing(path, content, needle);
+    }
+}
+
+TEST(ZiaDocs, ReferenceAndGettingStartedSnippetsCompile) {
+    expectCompileSuccess(R"(
+module DocReferenceSnippet;
+
+func cleanup() {
+}
+
+func useInt(value: Integer) {
+    if value == -1 {
+        return;
+    }
+}
+
+func useString(value: String) {
+    if value == "" {
+        return;
+    }
+}
+
+func start() {
+    var grid: Integer[4];
+    grid[0] = 1;
+    grid[1] = 2;
+    useInt(grid[0] + grid[1]);
+
+    var ages: Map[String, Integer] = new Map[String, Integer]();
+    useInt(ages.count());
+
+    var queue: Queue[String] = new Queue[String]();
+    queue.push("ready");
+    var item: String = queue.peek();
+    useString(item);
+
+    defer cleanup();
+}
+)",
+                         "doc_reference_snippet.zia");
+
+    expectCompileSuccess(R"(
+module DocGettingStartedSnippet;
+
+func useInt(value: Integer) {
+    if value == -1 {
+        return;
+    }
+}
+
+func useString(value: String) {
+    if value == "" {
+        return;
+    }
+}
+
+func start() {
+    var scores: Map[String, Integer] = new Map[String, Integer]();
+    useInt(scores.count());
+
+    var bytes: Bytes = new Bytes(2);
+    bytes.set(0, 65);
+    bytes.set(1, 66);
+    useString(bytes.toStr());
+}
+)",
+                         "doc_getting_started_snippet.zia");
+}
+
+TEST(ZiaDocs, PointerDiagnosticsUseSafeVocabulary) {
+    auto result = compileSnippet(R"(
+module PointerDiagnosticSnippet;
+
+func takeAny(value: Any) {
+}
+
+func start() {
+    var p: Ptr = null;
+    var x = 1;
+    takeAny(&x);
+}
+)",
+                                 "pointer_diagnostic_snippet.zia");
+
+    EXPECT_TRUE(!result.succeeded());
+    const std::vector<std::string> banned = {
+        "raw pointer",
+        "opaque pointer",
+        "function pointer",
+        "address-of",
+    };
+    for (const auto &diag : result.diagnostics.diagnostics()) {
+        for (const auto &needle : banned) {
+            if (diag.message.find(needle) != std::string::npos) {
+                std::cerr << "diagnostic contains stale pointer vocabulary: " << diag.message
+                          << '\n';
+                EXPECT_TRUE(false);
+            }
+        }
     }
 }
 

@@ -43,7 +43,7 @@ func start() {
 )");
 
     EXPECT_TRUE(!result.succeeded());
-    EXPECT_TRUE(hasDiagnostic(result, "Raw Ptr is not part of the Zia source surface"));
+    EXPECT_TRUE(hasDiagnostic(result, "Ptr is not part of the Zia source surface"));
 }
 
 TEST(ZiaPointerSafety, UnsafePointerModeDoesNotExposeExplicitPtr) {
@@ -60,7 +60,7 @@ func start() {
                                 opts);
 
     EXPECT_TRUE(!result.succeeded());
-    EXPECT_TRUE(hasDiagnostic(result, "Raw Ptr is not part of the Zia source surface"));
+    EXPECT_TRUE(hasDiagnostic(result, "Ptr is not part of the Zia source surface"));
 }
 
 TEST(ZiaPointerSafety, AnyAcceptsPrimitiveStringAndFunctionReferences) {
@@ -145,6 +145,37 @@ func start() {
 )");
 
     EXPECT_TRUE(!result.succeeded());
+}
+
+TEST(ZiaPointerSafety, FunctionReferenceRejectsNonFunctions) {
+    auto variableResult = compileSource(R"(
+module Test;
+
+func takeAny(value: Any) {
+}
+
+func start() {
+    var x = 1;
+    takeAny(&x);
+}
+)");
+
+    EXPECT_TRUE(!variableResult.succeeded());
+    EXPECT_TRUE(hasDiagnostic(variableResult, "Function reference operator '&' requires a function name"));
+
+    auto expressionResult = compileSource(R"(
+module Test;
+
+func takeAny(value: Any) {
+}
+
+func start() {
+    takeAny(&(1 + 2));
+}
+)");
+
+    EXPECT_TRUE(!expressionResult.succeeded());
+    EXPECT_TRUE(hasDiagnostic(expressionResult, "Function reference operator '&' requires a function name"));
 }
 
 TEST(ZiaPointerSafety, SafePointerAlternativesCompile) {

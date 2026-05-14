@@ -531,7 +531,7 @@ struct ViperType {
         return nullptr;
     }
 
-    /// @brief Get the element type for List[T], Set[T], typed Seq[T], or FixedArray T[N].
+    /// @brief Get the element type for List[T], Set[T], typed runtime collections, or FixedArray.
     /// @return The element type T, or nullptr if not a collection.
     /// @details For `List[Integer]`, `Seq[String]`, or `Integer[64]`, returns the element type.
     TypeRef elementType() const {
@@ -539,7 +539,11 @@ struct ViperType {
              kind == TypeKindSem::FixedArray) &&
             !typeArgs.empty())
             return typeArgs[0];
-        if (kind == TypeKindSem::Ptr && name == "Viper.Collections.Seq" && !typeArgs.empty())
+        if (kind == TypeKindSem::Ptr && !typeArgs.empty() &&
+            (name == "Viper.Collections.Seq" || name == "Viper.Collections.Queue" ||
+             name == "Viper.Collections.Stack" || name == "Viper.Collections.Deque" ||
+             name == "Viper.Collections.List" || name == "Viper.Collections.Ring" ||
+             name == "Viper.Collections.Heap"))
             return typeArgs[0];
         return nullptr;
     }
@@ -550,6 +554,13 @@ struct ViperType {
     TypeRef keyType() const {
         if (kind == TypeKindSem::Map && typeArgs.size() >= 2)
             return typeArgs[0];
+        if (kind == TypeKindSem::Ptr && typeArgs.size() >= 2 &&
+            (name == "Viper.Collections.Map" || name == "Viper.Collections.OrderedMap" ||
+             name == "Viper.Collections.TreeMap" || name == "Viper.Collections.Trie" ||
+             name == "Viper.Collections.FrozenMap" || name == "Viper.Collections.DefaultMap" ||
+             name == "Viper.Collections.WeakMap" || name == "Viper.Collections.LruCache" ||
+             name == "Viper.Collections.MultiMap"))
+            return typeArgs[0];
         return nullptr;
     }
 
@@ -558,6 +569,13 @@ struct ViperType {
     /// @details For `Map[String, Integer]`, returns the Integer type.
     TypeRef valueType() const {
         if (kind == TypeKindSem::Map && typeArgs.size() >= 2)
+            return typeArgs[1];
+        if (kind == TypeKindSem::Ptr && typeArgs.size() >= 2 &&
+            (name == "Viper.Collections.Map" || name == "Viper.Collections.OrderedMap" ||
+             name == "Viper.Collections.TreeMap" || name == "Viper.Collections.Trie" ||
+             name == "Viper.Collections.FrozenMap" || name == "Viper.Collections.DefaultMap" ||
+             name == "Viper.Collections.WeakMap" || name == "Viper.Collections.LruCache" ||
+             name == "Viper.Collections.MultiMap"))
             return typeArgs[1];
         return nullptr;
     }
@@ -843,6 +861,7 @@ TypeRef typeParam(const std::string &name);
 /// @details Used for runtime classes where we need to track the type name
 /// for method call resolution.
 TypeRef runtimeClass(const std::string &name);
+TypeRef runtimeClass(const std::string &name, std::vector<TypeRef> typeArgs);
 
 /// @brief Create a module namespace type.
 /// @param name The module name (e.g., "colors").

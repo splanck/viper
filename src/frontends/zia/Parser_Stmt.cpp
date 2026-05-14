@@ -74,6 +74,13 @@ StmtPtr Parser::parseStatement() {
         return result;
     }
 
+    // Defer statement
+    if (check(TokenKind::KwDefer)) {
+        result = parseDeferStmt();
+        --stmtDepth_;
+        return result;
+    }
+
     // Guard statement
     if (check(TokenKind::KwGuard)) {
         result = parseGuardStmt();
@@ -501,6 +508,30 @@ StmtPtr Parser::parseReturnStmt() {
     return std::make_unique<ReturnStmt>(loc, std::move(value));
 }
 
+/// @brief Parse a defer statement.
+/// @details Supports `defer { ... }` and `defer expr;`.
+StmtPtr Parser::parseDeferStmt() {
+    Token deferTok = advance(); // consume 'defer'
+    SourceLoc loc = deferTok.loc;
+
+    if (check(TokenKind::LBrace)) {
+        StmtPtr action = parseBlock();
+        if (!action)
+            return nullptr;
+        return std::make_unique<DeferStmt>(loc, std::move(action));
+    }
+
+    ExprPtr expr = parseExpressionAllowingStructLiterals();
+    if (!expr)
+        return nullptr;
+
+    if (!expect(TokenKind::Semicolon, ";"))
+        return nullptr;
+
+    return std::make_unique<DeferStmt>(
+        loc, std::make_unique<ExprStmt>(loc, std::move(expr)));
+}
+
 /// @brief Parse a guard statement (guard condition else { body }).
 /// @details The else block must contain a control flow exit (return, break, continue).
 /// @return The parsed GuardStmt, or nullptr on error.
@@ -566,6 +597,7 @@ StmtPtr Parser::parseMatchStmt() {
                 case TokenKind::KwReturn:
                 case TokenKind::KwBreak:
                 case TokenKind::KwContinue:
+                case TokenKind::KwDefer:
                 case TokenKind::KwThrow:
                 case TokenKind::KwVar:
                 case TokenKind::KwFinal:

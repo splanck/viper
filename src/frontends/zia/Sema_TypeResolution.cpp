@@ -54,7 +54,7 @@ TypeRef Sema::resolveNamedType(const std::string &name, SourceLoc useLoc) const 
     if (name == "Ptr" || name == "ptr" || name == "Viper.Unsafe.Ptr") {
         const_cast<Sema *>(this)->error(
             useLoc,
-            "Raw Ptr is not part of the Zia source surface; use typed runtime classes or Any");
+            "Ptr is not part of the Zia source surface; use typed runtime classes or Any");
         return types::unknown();
     }
 
@@ -65,6 +65,36 @@ TypeRef Sema::resolveNamedType(const std::string &name, SourceLoc useLoc) const 
         return types::set(types::unknown());
     if (name == "Map")
         return types::map(types::string(), types::unknown());
+    if (name == "Seq")
+        return types::seqOf(types::unknown());
+    if (name == "Queue")
+        return types::runtimeClass("Viper.Collections.Queue", {types::unknown()});
+    if (name == "Stack")
+        return types::runtimeClass("Viper.Collections.Stack", {types::unknown()});
+    if (name == "Deque")
+        return types::runtimeClass("Viper.Collections.Deque", {types::unknown()});
+    if (name == "Bytes")
+        return types::runtimeClass("Viper.Collections.Bytes");
+    if (name == "Viper.Collections.List")
+        return types::runtimeClass("Viper.Collections.List", {types::unknown()});
+    if (name == "Viper.Collections.Seq")
+        return types::seqOf(types::unknown());
+    if (name == "Viper.Collections.Queue")
+        return types::runtimeClass("Viper.Collections.Queue", {types::unknown()});
+    if (name == "Viper.Collections.Stack")
+        return types::runtimeClass("Viper.Collections.Stack", {types::unknown()});
+    if (name == "Viper.Collections.Deque")
+        return types::runtimeClass("Viper.Collections.Deque", {types::unknown()});
+    if (name == "Viper.Collections.Ring")
+        return types::runtimeClass("Viper.Collections.Ring", {types::unknown()});
+    if (name == "Viper.Collections.Heap")
+        return types::runtimeClass("Viper.Collections.Heap", {types::unknown()});
+    if (name == "Viper.Collections.Map" || name == "Viper.Collections.OrderedMap" ||
+        name == "Viper.Collections.TreeMap" || name == "Viper.Collections.Trie" ||
+        name == "Viper.Collections.FrozenMap" || name == "Viper.Collections.DefaultMap" ||
+        name == "Viper.Collections.WeakMap" || name == "Viper.Collections.LruCache" ||
+        name == "Viper.Collections.MultiMap")
+        return types::runtimeClass(name, {types::string(), types::unknown()});
 
     if (Symbol *sym = const_cast<Sema *>(this)->lookupAccessibleSymbol(name, useLoc);
         sym && sym->kind == Symbol::Kind::Type) {
@@ -221,6 +251,21 @@ TypeRef Sema::resolveTypeNode(const TypeNode *node) {
             }
             if (generic->name == "Result") {
                 return types::result(args.empty() ? types::unit() : args[0]);
+            }
+            if (generic->name == "Seq") {
+                return types::seqOf(args.empty() ? types::unknown() : args[0]);
+            }
+            if (generic->name == "Queue") {
+                return types::runtimeClass("Viper.Collections.Queue",
+                                           {args.empty() ? types::unknown() : args[0]});
+            }
+            if (generic->name == "Stack") {
+                return types::runtimeClass("Viper.Collections.Stack",
+                                           {args.empty() ? types::unknown() : args[0]});
+            }
+            if (generic->name == "Deque") {
+                return types::runtimeClass("Viper.Collections.Deque",
+                                           {args.empty() ? types::unknown() : args[0]});
             }
 
             // User-defined generic type - check if registered for instantiation
@@ -432,6 +477,13 @@ void Sema::collectCaptures(const Expr *expr,
             case StmtKind::Break:
             case StmtKind::Continue:
                 break;
+            case StmtKind::Defer: {
+                auto *deferStmt = static_cast<const DeferStmt *>(stmt);
+                localScopes.push_back({});
+                collectStmt(deferStmt->action.get());
+                localScopes.pop_back();
+                break;
+            }
             case StmtKind::Guard: {
                 auto *guard = static_cast<const GuardStmt *>(stmt);
                 collectExpr(guard->condition.get());

@@ -47,7 +47,7 @@
 /// | Bool         | types::boolean()| Boolean true/false                   |
 /// | String       | types::string() | Immutable string reference           |
 /// | Void         | types::voidType()| No return value                     |
-/// | Object       | types::ptr()    | Opaque object pointer (runtime class)|
+/// | Object       | types::any()    | Type-erased runtime value            |
 /// | Unknown      | types::unknown()| Parse error or unrecognized type     |
 ///
 /// ## Usage Example
@@ -127,12 +127,11 @@ namespace il::frontends::zia {
 ///         - Bool → types::boolean() (boolean)
 ///         - String → types::string() (string reference)
 ///         - Void → types::voidType() (void/unit type)
-///         - Object → types::ptr() (opaque object pointer)
+///         - Object → types::any() (type-erased runtime value)
 ///         - Unknown → types::unknown() (error/unrecognized)
 ///
-/// @note The Object type maps to ptr() because runtime class instances are
-///       represented as opaque pointers at the IL level. The actual class
-///       type information is tracked separately in the type registry.
+/// @note Annotated object signatures such as obj<Viper.Graphics.Canvas> are
+///       converted by toZiaReturnType(); plain obj remains a safe Any value.
 ///
 TypeRef toZiaType(il::runtime::ILScalarType t);
 

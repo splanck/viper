@@ -191,6 +191,20 @@ static bool isAddressOfArg(const ExprPtr &expr) {
 /// @param ty The IL type string (e.g., "i64", "f64", "str").
 /// @return The corresponding SemanticAnalyzer::Type, or nullopt if unknown.
 static std::optional<SemanticAnalyzer::Type> semanticTypeFromRuntimeType(std::string_view ty) {
+    auto trimRuntimeToken = [](std::string_view token) {
+        while (!token.empty() &&
+               (token.front() == ' ' || token.front() == '\t' || token.front() == '\n' ||
+                token.front() == '\r'))
+            token.remove_prefix(1);
+        while (!token.empty() &&
+               (token.back() == ' ' || token.back() == '\t' || token.back() == '\n' ||
+                token.back() == '\r'))
+            token.remove_suffix(1);
+        if (!token.empty() && token.back() == '?')
+            token.remove_suffix(1);
+        return token;
+    };
+    ty = trimRuntimeToken(ty);
     if (ty == "i64")
         return SemanticAnalyzer::Type::Int;
     if (ty == "f64")
@@ -199,7 +213,8 @@ static std::optional<SemanticAnalyzer::Type> semanticTypeFromRuntimeType(std::st
         return SemanticAnalyzer::Type::Bool;
     if (ty == "str")
         return SemanticAnalyzer::Type::String;
-    if (ty == "obj")
+    if (ty == "obj" || ty == "ptr" || ty.rfind("obj<", 0) == 0 || ty.rfind("ptr<", 0) == 0 ||
+        ty == "seq" || ty.rfind("seq<", 0) == 0 || ty == "list" || ty.rfind("list<", 0) == 0)
         return SemanticAnalyzer::Type::Object;
     return std::nullopt;
 }

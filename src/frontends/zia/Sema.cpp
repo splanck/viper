@@ -179,52 +179,6 @@ bool isSafeFunctionBridgePayload(TypeRef type) {
     return true;
 }
 
-enum class RuntimePointerBridgeRole { None, Callback, Payload };
-
-RuntimePointerBridgeRole runtimePointerBridgeRole(std::string_view calleeName, size_t paramIndex) {
-    auto is = [&](std::string_view name) { return calleeName == name; };
-
-    if (is("Viper.Threads.Thread.Start") || is("Viper.Threads.Thread.StartSafe") ||
-        is("Viper.Threads.Async.Run")) {
-        if (paramIndex == 0)
-            return RuntimePointerBridgeRole::Callback;
-        if (paramIndex == 1)
-            return RuntimePointerBridgeRole::Payload;
-    }
-
-    if (is("Viper.Threads.Thread.StartOwned") ||
-        is("Viper.Threads.Thread.StartSafeOwned") || is("Viper.Threads.Async.RunOwned")) {
-        return paramIndex == 0 ? RuntimePointerBridgeRole::Callback : RuntimePointerBridgeRole::None;
-    }
-
-    if (is("Viper.Threads.Async.RunCancellable")) {
-        if (paramIndex == 0)
-            return RuntimePointerBridgeRole::Callback;
-        if (paramIndex == 1)
-            return RuntimePointerBridgeRole::Payload;
-    }
-
-    if (is("Viper.Threads.Async.RunCancellableOwned"))
-        return paramIndex == 0 ? RuntimePointerBridgeRole::Callback : RuntimePointerBridgeRole::None;
-
-    if (is("Viper.Threads.Async.Map")) {
-        if (paramIndex == 1)
-            return RuntimePointerBridgeRole::Callback;
-        if (paramIndex == 2)
-            return RuntimePointerBridgeRole::Payload;
-    }
-
-    if (is("Viper.Threads.Async.MapOwned"))
-        return paramIndex == 1 ? RuntimePointerBridgeRole::Callback : RuntimePointerBridgeRole::None;
-
-    if (is("Viper.Network.HttpServer.BindHandler") ||
-        is("Viper.Network.HttpsServer.BindHandler")) {
-        return paramIndex == 1 ? RuntimePointerBridgeRole::Callback : RuntimePointerBridgeRole::None;
-    }
-
-    return RuntimePointerBridgeRole::None;
-}
-
 std::string saferRuntimePointerAlternative(std::string_view calleeName) {
     static const std::unordered_map<std::string_view, std::string_view> alternatives = {
         {"Viper.IO.Dir.List", "Viper.IO.Dir.ListSeq"},
@@ -965,7 +919,7 @@ bool Sema::checkRuntimePointerSafety(const std::string &calleeName,
     };
 
     if (safety.rawPointerReturn) {
-        const_cast<Sema *>(this)->error(loc, diagnosticMessage("a raw pointer return"));
+        const_cast<Sema *>(this)->error(loc, diagnosticMessage("a runtime-internal return handle"));
         return false;
     }
 
@@ -978,9 +932,20 @@ bool Sema::checkRuntimePointerSafety(const std::string &calleeName,
         return false;
     };
 
+    auto bridgeRoleFor = [&](size_t exposedParamIndex) -> RuntimePointerBridgeRole {
+        size_t fullIndex = skipLeadingParams + exposedParamIndex;
+        if (fullIndex < safety.bridgeRoles.size())
+            return safety.bridgeRoles[fullIndex];
+        if (skipLeadingParams > 0 && exposedParamIndex < safety.bridgeRoles.size())
+            return safety.bridgeRoles[exposedParamIndex];
+        return RuntimePointerBridgeRole::None;
+    };
+
     std::vector<bool> safeFunctionBridge(params.size(), false);
     for (size_t i = 0; i < params.size(); ++i) {
-        if (!isRawParam(i))
+        RuntimePointerBridgeRole bridgeRole = bridgeRoleFor(i);
+        const bool rawParam = isRawParam(i);
+        if (!rawParam && bridgeRole == RuntimePointerBridgeRole::None)
             continue;
 
         int sourceIndex = i < binding.fixedParamSources.size() ? binding.fixedParamSources[i] : -1;
@@ -997,12 +962,21 @@ bool Sema::checkRuntimePointerSafety(const std::string &calleeName,
             }
         }
 
-        RuntimePointerBridgeRole bridgeRole = runtimePointerBridgeRole(calleeName, i);
-        if (bridgeRole == RuntimePointerBridgeRole::Callback && sourceArg &&
-            isFunctionPointerArg(*sourceArg) && argType &&
-            argType->kind == TypeKindSem::Function) {
-            safeFunctionBridge[i] = true;
-            continue;
+        const std::string paramName = params[i].name.empty() ? "argument " + std::to_string(i + 1)
+                                                             : "parameter '" + params[i].name + "'";
+
+        if (bridgeRole == RuntimePointerBridgeRole::Callback) {
+            if (sourceArg && isFunctionPointerArg(*sourceArg) && argType &&
+                argType->kind == TypeKindSem::Function) {
+                safeFunctionBridge[i] = true;
+                continue;
+            }
+
+            const_cast<Sema *>(this)->error(
+                errLoc,
+                "Runtime API '" + calleeName + "' callback " + paramName +
+                    " requires a function reference such as '&handler'");
+            return false;
         }
 
         bool pairedWithFunctionBridge = false;
@@ -1017,10 +991,12 @@ bool Sema::checkRuntimePointerSafety(const std::string &calleeName,
         if (pairedWithFunctionBridge && isSafeFunctionBridgePayload(argType)) {
             continue;
         }
+        if (bridgeRole == RuntimePointerBridgeRole::Payload && !rawParam) {
+            continue;
+        }
 
-        const std::string paramName = params[i].name.empty() ? "argument " + std::to_string(i + 1)
-                                                             : "parameter '" + params[i].name + "'";
-        const_cast<Sema *>(this)->error(errLoc, diagnosticMessage("raw pointer " + paramName));
+        const_cast<Sema *>(this)->error(errLoc,
+                                        diagnosticMessage("runtime-internal handle " + paramName));
         return false;
     }
 
@@ -2091,6 +2067,8 @@ SourceLoc Sema::scopeEndForStmt(const Stmt *stmt) {
             return scopeEndForStmt(static_cast<const ForStmt *>(stmt)->body.get());
         case StmtKind::ForIn:
             return scopeEndForStmt(static_cast<const ForInStmt *>(stmt)->body.get());
+        case StmtKind::Defer:
+            return scopeEndForStmt(static_cast<const DeferStmt *>(stmt)->action.get());
         case StmtKind::Try: {
             auto *tryStmt = static_cast<const TryStmt *>(stmt);
             SourceLoc end = scopeEndForStmt(tryStmt->tryBody.get());

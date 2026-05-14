@@ -180,9 +180,12 @@ class Sema {
     ///          to IL pointers. This metadata preserves which parameters came
     ///          from explicit runtime `ptr` tokens so safe Zia can reject raw
     ///          pointer APIs while still allowing typed runtime objects.
+    enum class RuntimePointerBridgeRole { None, Callback, Payload };
+
     struct RuntimePointerSafety {
         bool rawPointerReturn{false};
         std::vector<bool> rawPointerParams;
+        std::vector<RuntimePointerBridgeRole> bridgeRoles;
     };
 
     /// @brief Create a semantic analyzer with the given diagnostic engine.

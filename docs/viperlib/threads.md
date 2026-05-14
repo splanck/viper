@@ -72,7 +72,7 @@ OS threads for Viper programs (VM and native backends).
 - `void()` (no args), or
 - `void(ptr)` (one `ptr` argument).
 
-In IL, obtain an entry pointer via `addr_of`:
+In IL, obtain an entry handle via `addr_of`:
 
 ```text
 func @worker(ptr %arg) -> void { ... }
@@ -88,8 +88,8 @@ entry:
 
 **Backend notes:**
 
-- **Native:** `entry` is a raw code pointer with C ABI `void (*)(void *)`.
-- **VM / BytecodeVM:** `entry` is a managed function pointer and is invoked by a per-thread VM runner.
+- **Native:** `entry` is a backend callback handle with C ABI `void (*)(void *)`.
+- **VM / BytecodeVM:** `entry` is a managed function reference and is invoked by a per-thread VM runner.
 - `Start` and `StartSafe` do not retain `arg`; use `StartOwned` / `StartSafeOwned` when `arg` is a runtime-managed object or string handle that should stay alive until the callback returns.
 
 In safe Zia, use a function reference and a typed callback parameter:
@@ -915,7 +915,7 @@ Provides common parallel patterns like ForEach, Map, and Invoke using a shared t
 
 ### Zia Example
 
-`Parallel` callback operations accept managed function references. The native worker callback pointer remains an implementation detail of the runtime.
+`Parallel` callback operations accept managed function references. The native worker callback handle remains an implementation detail of the runtime.
 
 ### BASIC ForEach Example
 

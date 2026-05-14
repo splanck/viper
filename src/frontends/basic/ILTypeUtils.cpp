@@ -24,6 +24,30 @@
 #include <string_view>
 
 namespace il::frontends::basic::type_conv {
+namespace {
+
+std::string_view normalizeRuntimeToken(std::string_view token) noexcept {
+    while (!token.empty() &&
+           (token.front() == ' ' || token.front() == '\t' || token.front() == '\n' ||
+            token.front() == '\r'))
+        token.remove_prefix(1);
+    while (!token.empty() &&
+           (token.back() == ' ' || token.back() == '\t' || token.back() == '\n' ||
+            token.back() == '\r'))
+        token.remove_suffix(1);
+    if (!token.empty() && token.back() == '?')
+        token.remove_suffix(1);
+    return token;
+}
+
+bool isRuntimeObjectToken(std::string_view token) noexcept {
+    token = normalizeRuntimeToken(token);
+    return token == "obj" || token == "ptr" || token.rfind("obj<", 0) == 0 ||
+           token.rfind("ptr<", 0) == 0 || token == "seq" || token.rfind("seq<", 0) == 0 ||
+           token == "list" || token.rfind("list<", 0) == 0;
+}
+
+} // namespace
 
 /// @brief Convert a BASIC AST scalar type to an IL core type.
 /// @details Returns the canonical IL kind used by the lowering pipeline for the
@@ -90,6 +114,7 @@ il::core::Type::Kind basicTypeToIlKind(BasicType t) noexcept {
 
 il::core::Type runtimeScalarToType(std::string_view token) noexcept {
     using IlType = il::core::Type;
+    token = normalizeRuntimeToken(token);
     if (token == "i64")
         return IlType(IlType::Kind::I64);
     if (token == "f64")
@@ -98,7 +123,7 @@ il::core::Type runtimeScalarToType(std::string_view token) noexcept {
         return IlType(IlType::Kind::I1);
     if (token == "str")
         return IlType(IlType::Kind::Str);
-    if (token == "obj")
+    if (isRuntimeObjectToken(token))
         return IlType(IlType::Kind::Ptr);
     if (token == "void")
         return IlType(IlType::Kind::Void);

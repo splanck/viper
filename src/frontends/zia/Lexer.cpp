@@ -14,7 +14,7 @@
 /// ## Keyword Lookup
 ///
 /// Keywords are stored in a sorted array (kKeywordTable) for O(log n) binary
-/// search lookup. The table contains 33 keywords from "as" to "while".
+/// search lookup.
 ///
 /// ## String Interpolation
 ///
@@ -136,6 +136,8 @@ const char *tokenKindToString(TokenKind kind) {
             return "break";
         case TokenKind::KwContinue:
             return "continue";
+        case TokenKind::KwDefer:
+            return "defer";
         case TokenKind::KwTry:
             return "try";
         case TokenKind::KwType:
@@ -292,7 +294,7 @@ struct KeywordEntry {
 };
 
 // Sorted for binary search.
-constexpr std::array<KeywordEntry, 52> kKeywordTable = {{
+constexpr std::array<KeywordEntry, 53> kKeywordTable = {{
     {"and", TokenKind::KwAnd},
     {"as", TokenKind::KwAs},
     {"async", TokenKind::KwAsync},
@@ -302,6 +304,7 @@ constexpr std::array<KeywordEntry, 52> kKeywordTable = {{
     {"catch", TokenKind::KwCatch},
     {"class", TokenKind::KwClass},
     {"continue", TokenKind::KwContinue},
+    {"defer", TokenKind::KwDefer},
     {"deinit", TokenKind::KwDeinit},
     {"else", TokenKind::KwElse},
     {"enum", TokenKind::KwEnum},

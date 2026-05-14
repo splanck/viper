@@ -1031,6 +1031,17 @@ static void printStmt(const Stmt &stmt, Printer &p) {
             p.line("ContinueStmt " + locStr(stmt.loc));
             break;
         }
+        case StmtKind::Defer: {
+            const auto &s = static_cast<const DeferStmt &>(stmt);
+            p.line("DeferStmt " + locStr(s.loc));
+            p.push();
+            if (s.action)
+                printStmt(*s.action, p);
+            else
+                p.line("<null>");
+            p.pop();
+            break;
+        }
         case StmtKind::Guard: {
             const auto &s = static_cast<const GuardStmt &>(stmt);
             p.line("GuardStmt " + locStr(s.loc));

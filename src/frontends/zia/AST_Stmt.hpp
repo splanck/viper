@@ -91,6 +91,10 @@ enum class StmtKind {
     /// @see ContinueStmt
     Continue,
 
+    /// @brief Cleanup action registered for scope exit: `defer cleanup();`.
+    /// @see DeferStmt
+    Defer,
+
     /// @brief Guard statement: `guard (c) else { return; }`.
     /// @see GuardStmt
     Guard,
@@ -388,6 +392,18 @@ struct ContinueStmt : Stmt {
     /// @brief Construct a continue statement.
     /// @param l Source location.
     ContinueStmt(SourceLoc l) : Stmt(StmtKind::Continue, l) {}
+};
+
+/// @brief Defer statement: `defer cleanup();` or `defer { cleanup(); }`.
+/// @details Registers an action to run when the current block exits.
+struct DeferStmt : Stmt {
+    /// @brief The deferred action, stored as a statement or block.
+    StmtPtr action;
+
+    /// @brief Construct a defer statement.
+    /// @param l Source location.
+    /// @param a Deferred action.
+    DeferStmt(SourceLoc l, StmtPtr a) : Stmt(StmtKind::Defer, l), action(std::move(a)) {}
 };
 
 /// @brief Guard statement: `guard (c) else { return; }`.

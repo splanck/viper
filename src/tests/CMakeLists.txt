@@ -794,6 +794,8 @@ set(ZIA_LANG_TESTS
         43_alpha_hardening
         44_language_promises
         45_runtime_api_conformance
+        46_local_fixed_arrays_defer
+        47_typed_runtime_collections
 )
 
 foreach (test_name IN LISTS ZIA_LANG_TESTS)

@@ -12,7 +12,7 @@
 //          drift-prone duplicate. The runtime highlighter calls
 //          rt_zia_is_keyword(name, len) for every identifier; this bridge
 //          delegates to Lexer::lookupKeyword which binary-searches the
-//          authoritative 52-entry table.
+//          authoritative keyword table.
 //
 // Key invariants:
 //   - Strong-symbol implementation. Wins over the weak fallback in

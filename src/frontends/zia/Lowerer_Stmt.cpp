@@ -19,6 +19,15 @@ namespace il::frontends::zia {
 
 using namespace runtime;
 
+namespace {
+
+bool isInlineAggregateType(TypeRef type) {
+    return type && (type->kind == TypeKindSem::Struct || type->kind == TypeKindSem::FixedArray ||
+                    type->kind == TypeKindSem::Tuple);
+}
+
+} // namespace
+
 //=============================================================================
 // Statement Lowering
 //=============================================================================
@@ -78,6 +87,9 @@ void Lowerer::lowerStmt(Stmt *stmt) {
         case StmtKind::Continue:
             lowerContinueStmt(static_cast<ContinueStmt *>(stmt));
             break;
+        case StmtKind::Defer:
+            lowerDeferStmt(static_cast<DeferStmt *>(stmt));
+            break;
         case StmtKind::Guard:
             lowerGuardStmt(static_cast<GuardStmt *>(stmt));
             break;
@@ -101,12 +113,17 @@ void Lowerer::lowerBlockStmt(BlockStmt *stmt) {
     auto localsBackup = locals_;
     auto slotsBackup = slots_;
     auto localTypesBackup = localTypes_;
+    const size_t cleanupStart = cleanupStack_.size();
 
     for (auto &s : stmt->statements) {
         if (isTerminated())
             break;
         lowerStmt(s.get());
     }
+
+    if (!isTerminated())
+        emitCleanupsFrom(cleanupStart);
+    cleanupStack_.resize(cleanupStart);
 
     locals_ = std::move(localsBackup);
     slots_ = std::move(slotsBackup);
@@ -187,14 +204,13 @@ void Lowerer::lowerVarStmt(VarStmt *stmt) {
             varType = reverseMapType(ilType);
         }
 
-        // Handle struct type copy semantics - deep copy on assignment
-        if (initType && initType->kind == TypeKindSem::Struct) {
-            const StructTypeInfo *info = getOrCreateStructTypeInfo(initType->name);
-            if (info) {
-                // Deep copy the struct type
-                initValue = emitStructTypeCopy(*info, initValue);
-                ilType = Type(Type::Kind::Ptr);
-            }
+        // Inline aggregate locals own their own storage. Initializers are copied
+        // so later writes cannot alias literal/temporary storage.
+        if (initType && isInlineAggregateType(initType)) {
+            Value copy = emitInlineValueAlloc(initType);
+            emitInlineValueCopy(initType, copy, initValue, true);
+            initValue = copy;
+            ilType = Type(Type::Kind::Ptr);
         }
 
         auto coerced = coerceValueToType(initValue, ilType, initType, varType);
@@ -204,16 +220,11 @@ void Lowerer::lowerVarStmt(VarStmt *stmt) {
         // Default initialization
         ilType = mapType(varType);
 
-        // Special handling for struct types - allocate proper stack space
-        if (varType && varType->kind == TypeKindSem::Struct) {
-            const StructTypeInfo *info = getOrCreateStructTypeInfo(varType->name);
-            if (info) {
-                // Allocate and zero-initialize the struct type
-                initValue = emitStructTypeAlloc(*info);
-            } else {
-                // Fallback if type info not found
-                initValue = Value::null();
-            }
+        // Inline aggregate locals need real stack storage; a null ptr would make
+        // field/index access operate on invalid memory.
+        if (isInlineAggregateType(varType)) {
+            initValue = emitInlineValueAlloc(varType);
+            ilType = Type(Type::Kind::Ptr);
         } else {
             switch (ilType.kind) {
                 case Type::Kind::I64:
@@ -983,6 +994,11 @@ void Lowerer::lowerContinueStmt(ContinueStmt * /*stmt*/) {
         blockMgr_.currentBlock()->instructions.push_back(trap);
         blockMgr_.currentBlock()->terminated = true;
     }
+}
+
+void Lowerer::lowerDeferStmt(DeferStmt *stmt) {
+    if (stmt && stmt->action)
+        cleanupStack_.push_back({stmt->action.get(), false});
 }
 
 void Lowerer::lowerGuardStmt(GuardStmt *stmt) {

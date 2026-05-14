@@ -415,6 +415,23 @@ TEST(RuntimeSurfaceAudit, RuntimeDefHasNoRawPointerSurfaceTypes) {
     }
 }
 
+TEST(RuntimeSurfaceAudit, ZiaCallbackBridgeRolesAreDeclaredInRuntimeDef) {
+    const std::string text = readText(repoRoot() / "src/il/runtime/runtime.def");
+    const std::vector<std::string> required = {
+        "RT_BRIDGE(ThreadStart, \"callback,payload\")",
+        "RT_BRIDGE(ThreadStartSafe, \"callback,payload\")",
+        "RT_BRIDGE(AsyncRun, \"callback,payload\")",
+        "RT_BRIDGE(AsyncMap, \"none,callback,payload\")",
+        "RT_BRIDGE(HttpServerBindHandler, \"none,none,callback\")",
+        "RT_BRIDGE(HttpsServerBindHandler, \"none,none,callback\")",
+    };
+    for (const auto &needle : required) {
+        if (text.find(needle) == std::string::npos)
+            std::cerr << "Missing runtime.def callback bridge metadata: " << needle << "\n";
+        EXPECT_TRUE(text.find(needle) != std::string::npos);
+    }
+}
+
 TEST(RuntimeSurfaceAudit, ExpectedFunctionsAreRegistered) {
     const auto canonicals = runtimeDefCanonicalsToSymbols();
 

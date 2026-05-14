@@ -259,7 +259,8 @@ var grid: Integer[100];     // Fixed array of 100 integers
 
 Fixed-size array indexes must be integral. Reads and writes use the configured
 bounds-checking mode, and sub-width indexes such as `Byte` are widened before
-offset arithmetic.
+offset arithmetic. Fixed arrays are available as local variables, struct/class
+fields, and assignable values; assignment copies the inline elements.
 
 ### Set Types
 
@@ -939,6 +940,30 @@ try {
   is rethrown after the `finally` block runs. If the `finally` block itself throws
   while unwinding, that new error becomes the propagated error.
 
+### Defer Statement
+
+`defer` registers a cleanup action for the current block. Deferred actions run
+when the block exits normally and before `return`, `break`, or `continue` leaves
+the scope.
+
+```viper
+func writeLine(path: String, text: String) {
+    var file = openFile(path);
+    defer file.close();
+    file.write(text);
+}
+
+func withBlockCleanup() {
+    defer {
+        Viper.Terminal.Say("leaving scope");
+    }
+}
+```
+
+Use `defer` for deterministic high-level cleanup. Direct memory release APIs are
+runtime primitives; ordinary Zia code should rely on scoped cleanup, object
+lifetimes, and `deinit`.
+
 ### Throw Statement
 
 Raises a `RuntimeError`:
@@ -1269,8 +1294,8 @@ class FileHandle {
 - The destructor automatically releases reference-typed fields after the user body executes.
 - The generated IL function is named `TypeName.__dtor`.
 - Bound runtime/module symbols remain visible inside `deinit`, just like other class members.
-- If you need deterministic cleanup, releasing the last reference explicitly with
-  `Viper.Memory.Release(handle)` will run `deinit` before the object storage is freed.
+- If you need deterministic cleanup around a resource, use `defer` to call the
+  resource's close/dispose method at scope exit.
 
 ---
 
@@ -1366,7 +1391,7 @@ func printArea(s: IShape) {
 }
 ```
 
-At module initialization, a `__zia_iface_init` function registers each interface and binds implementation itables for both class and struct implementors. Method calls on interface-typed parameters use `rt_get_interface_impl` to find the function pointer at the correct slot, then invoke it via indirect call.
+At module initialization, a `__zia_iface_init` function registers each interface and binds implementation itables for both class and struct implementors. Method calls on interface-typed parameters dispatch through a managed function reference stored in the interface table.
 
 ---
 
@@ -1778,7 +1803,11 @@ set.count();
 These language-level collections are distinct from the object-style runtime
 classes in `Viper.Collections.*`. For runtime collection classes such as
 `Viper.Collections.List`, `Viper.Collections.Map`, `Viper.Collections.Set`,
-`Queue`, and `Seq`, see **[Runtime Library Reference](viperlib/README.md)**.
+`Queue`, `Stack`, `Deque`, `Bytes`, and `Seq`, see
+**[Runtime Library Reference](viperlib/README.md)**. Zia provides typed aliases
+for common object-style collections, so `Queue[String]`, `Stack[Integer]`, and
+`Deque[MyType]` preserve element types for `push`, `pop`, `peek`, and iteration
+helpers without exposing runtime handles directly.
 
 ---
 
@@ -1822,7 +1851,7 @@ hide        if          implements  in          interface
 is          match       module      namespace   new
 not         null        or          override    property
 public      return      self        static      struct      super
-throw       true        try         type        var
+defer       throw       true        try         type        var
 while       export      let
 ```
 
@@ -1889,7 +1918,7 @@ deinitDecl  ::= "deinit" block
 
 ```text
 stmt        ::= block | varStmt | ifStmt | whileStmt | forStmt | forInStmt
-              | returnStmt | breakStmt | continueStmt | guardStmt | matchStmt
+              | returnStmt | breakStmt | continueStmt | deferStmt | guardStmt | matchStmt
               | tryStmt | throwStmt | exprStmt
 block       ::= "{" stmt* "}"
 ifStmt      ::= "if" expr block ["else" (ifStmt | block)]
@@ -1901,6 +1930,7 @@ forBinding  ::= IDENT [":" type] ["," IDENT [":" type]]
 returnStmt  ::= "return" [expr] ";"
 breakStmt   ::= "break" ";"
 continueStmt ::= "continue" ";"
+deferStmt   ::= "defer" (block | expr ";")
 guardStmt   ::= "guard" expr "else" block
 matchStmt   ::= "match" expr "{" matchArm* "}"
 matchArm    ::= pattern ["if" expr] "=>" (block | stmt | expr ";")

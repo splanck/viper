@@ -659,6 +659,10 @@ class Lowerer {
     /// @param stmt The continue statement.
     void lowerContinueStmt(ContinueStmt *stmt);
 
+    /// @brief Register a deferred cleanup action for the current block.
+    /// @param stmt The defer statement.
+    void lowerDeferStmt(DeferStmt *stmt);
+
     /// @brief Lower a guard statement.
     /// @param stmt The guard statement.
     void lowerGuardStmt(GuardStmt *stmt);
@@ -684,6 +688,9 @@ class Lowerer {
     ///          transfers inside a finally do not recursively run the same
     ///          cleanup again.
     void emitActiveCleanups();
+
+    /// @brief Emit cleanup frames added at or after @p startIndex.
+    void emitCleanupsFrom(size_t startIndex);
 
     /// @brief Run catch-body cleanup frames before emitting a throw.
     /// @details Throws from try bodies are handled by the active EH frame, but
@@ -1070,6 +1077,9 @@ class Lowerer {
 
     /// @brief Zero-initialize inline semantic storage.
     void emitInlineValueZero(TypeRef valueType, Value destPtr);
+
+    /// @brief Allocate and zero-initialize stack storage for an inline semantic value.
+    Value emitInlineValueAlloc(TypeRef valueType);
 
     /// @brief Deep copy a struct type (for copy-on-assign semantics).
     /// @param info The struct type info.

@@ -111,12 +111,16 @@ void Lowerer::emitEhPop() {
 }
 
 void Lowerer::emitActiveCleanups() {
-    if (cleanupStack_.empty() || isTerminated())
+    emitCleanupsFrom(0);
+}
+
+void Lowerer::emitCleanupsFrom(size_t startIndex) {
+    if (cleanupStack_.size() <= startIndex || isTerminated())
         return;
 
     auto savedFrames = cleanupStack_;
 
-    for (size_t i = savedFrames.size(); i-- > 0;) {
+    for (size_t i = savedFrames.size(); i-- > startIndex;) {
         cleanupStack_.assign(savedFrames.begin(), savedFrames.begin() + static_cast<ptrdiff_t>(i));
 
         const CleanupFrame &frame = savedFrames[i];

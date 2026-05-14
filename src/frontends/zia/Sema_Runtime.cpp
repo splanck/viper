@@ -51,7 +51,7 @@
 /// - ILScalarType::F64 → types::number()
 /// - ILScalarType::Bool → types::boolean()
 /// - ILScalarType::String → types::string()
-/// - ILScalarType::Object → types::ptr()
+/// - ILScalarType::Object → typed runtime classes or types::any()
 /// - ILScalarType::Void → types::voidType()
 ///
 /// ## Example Registration
@@ -100,8 +100,9 @@ static bool shouldInferOwnerReturnForPlainObject(const il::runtime::RuntimeMetho
     std::string_view name(method.name);
     if (name == "Keys" || name == "Values" || name == "Items" || name == "Indices" ||
         name == "Get" || name == "GetOr" || name == "GetFirst" || name == "Peek" || name == "Pop" ||
-        name == "TryPop" || name == "First" || name == "Last" || name == "Next" || name == "Find" ||
-        name == "FindWhere" || name == "Fold")
+        name == "TryPop" || name == "PeekFront" || name == "PeekBack" || name == "PopFront" ||
+        name == "PopBack" || name == "TryPopFront" || name == "TryPopBack" || name == "First" ||
+        name == "Last" || name == "Next" || name == "Find" || name == "FindWhere" || name == "Fold")
         return false;
 
     if (name.rfind("Get", 0) == 0)
@@ -235,7 +236,7 @@ void Sema::initRuntimeFunctions() {
             if (sig.isOptionalReturn)
                 returnType = types::optional(returnType);
             std::vector<TypeRef> paramTypes = toZiaParamTypes(sig);
-            RuntimePointerSafety pointerSafety{sig.rawPointerReturn, sig.rawPointerParams};
+            RuntimePointerSafety pointerSafety{sig.rawPointerReturn, sig.rawPointerParams, {}};
 
             // Preserve ABI-shaped explicit receiver signatures from Phase 2 while
             // refining the return type for method-style semantic analysis.
@@ -246,8 +247,19 @@ void Sema::initRuntimeFunctions() {
         // Register property getters and setters
         //----------------------------------------------------------------------
         for (const auto &p : cls.properties) {
-            // Convert the property's IL type to a Zia type
-            auto propType = toZiaType(il::runtime::mapILToken(p.type ? p.type : ""));
+            // Convert the property's IL type to a Zia type. Property type strings
+            // may use the same typed object annotation as function signatures
+            // (for example obj<Viper.GUI.Widget>).
+            TypeRef propType = nullptr;
+            std::string propSigText = std::string(p.type ? p.type : "") + "()";
+            auto propSig = il::runtime::parseRuntimeSignature(propSigText);
+            if (propSig.isValid()) {
+                propType = toZiaReturnType(propSig);
+                if (propSig.isOptionalReturn)
+                    propType = types::optional(propType);
+            } else {
+                propType = toZiaType(il::runtime::mapILToken(p.type ? p.type : ""));
+            }
 
             // Register getter: no parameters, returns property type
             // Example: Viper.String.get_Length() -> Integer

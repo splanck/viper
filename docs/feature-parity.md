@@ -84,7 +84,7 @@ This document is a comprehensive feature parity audit between the two Viper fron
 | Function overloading | **Full** | None | Zia supports overloads by compatible signature/arity |
 | Generic functions | **Full** (`func f[T](x: T)`) | None | Zia only |
 | Constrained generics | **Full** (`[T: Interface]`) | None | Zia only |
-| Function references | **Full** (`&funcName`) | **Full** (`ADDRESSOF`) | Both produce function pointers |
+| Function references | **Full** (`&funcName`) | **Full** (`ADDRESSOF`) | Both produce managed callback/function references |
 | Lambda / closure | **Full** (`(x: Integer) => x + 1`) | None | **Major gap** — Zia only |
 
 ### 1.4 Classes & OOP
@@ -122,7 +122,7 @@ This document is a comprehensive feature parity audit between the two Viper fron
 | Dynamic list | **Full** (List literal `[1,2,3]`) | Via runtime (`Viper.Collections.List`) | Zia has literal syntax + sugar |
 | Map / Dictionary | **Full** (Map literal `{"a":1}`) | Via runtime (`Viper.Collections.Map`) | Zia has literal syntax + sugar |
 | Set | **Full** (Set literal `{1,2,3}`) | Via runtime | Zia lowers set literals via `rt_set_new` + `rt_set_add` |
-| Seq (lazy sequence) | **Full** | Via runtime | Zia has specific for-in integration |
+| Seq (sequence snapshot) | **Full** | Via runtime | Zia has specific for-in integration; use LazySeq for lazy pipelines |
 | Native arrays | **Full** (FixedArray `T[N]`) | **Full** (`DIM arr(size)`) | Different models: Zia=fixed-size inline, BASIC=dynamic |
 | Multi-dim arrays | None | **Full** | BASIC only |
 | Array bounds query | None | **Full** (`LBOUND`/`UBOUND`) | BASIC only |
@@ -251,7 +251,7 @@ Ranked by potential for **silent incorrect behavior** (no compile error, just wr
 
 ### HIGH: `&` operator means different things
 - **BASIC**: `"hello" & " world"` = `"hello world"` (string concatenation)
-- **Zia**: `&` is bitwise AND (binary) or address-of (unary)
+- **Zia**: `&` is bitwise AND (binary) or the function-reference prefix (`&funcName`)
 - **Impact**: `intA & intB` computes different operations. String cases produce type errors (caught).
 - **Mitigation**: Warning W018 (default-enabled) alerts: "'&' is bitwise AND in Zia; use '+' for string concatenation".
 
@@ -287,8 +287,8 @@ Features where the IL and/or runtime supports something but a frontend hasn't co
 | IL/Runtime Capability | IL Opcodes | Status in Zia |
 |----------------------|------------|---------------|
 | Abstract/Final modifiers | Could validate in sema | **No syntax** |
-| ByRef parameters | IL supports pointer-based pass-by-ref | **No syntax** |
-| DELETE statement | `rt_heap_release` exists | **No explicit delete** — relies on deinit + GC |
+| ByRef parameters | IL supports pass-by-reference internally | **No syntax** |
+| DELETE statement | runtime release primitives exist | **No explicit delete** — use `defer`, `deinit`, and managed lifetimes |
 
 ### Recently closed Zia gaps (implemented):
 

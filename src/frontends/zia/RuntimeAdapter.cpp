@@ -29,7 +29,7 @@
 /// - **Floats**: IL uses f64 exclusively; Zia maps this to Number
 /// - **Booleans**: IL uses i1; Zia maps this to Boolean
 /// - **Strings**: IL uses str (a reference type); Zia maps to String
-/// - **Objects**: IL uses ptr/obj for runtime class instances; Zia maps to Ptr
+/// - **Objects**: IL uses ptr/obj for runtime handles; Zia maps unannotated obj to Any
 ///
 /// Collection types (List, Map, Set) and user-defined types are represented
 /// as Object/ptr at the IL level—their specific type information is tracked
@@ -77,10 +77,9 @@ TypeRef toZiaType(il::runtime::ILScalarType t) {
             return types::voidType();
 
         case il::runtime::ILScalarType::Object:
-            // Opaque object pointer. Used for runtime class instances (like
-            // Viper.File, Viper.Graphics.Canvas) where the actual type is
-            // tracked separately in Zia's type registry.
-            return types::ptr();
+            // Plain obj is type-erased runtime data. Annotated obj<Class> and seq<T>
+            // signatures are handled by toZiaReturnType() before reaching here.
+            return types::any();
 
         case il::runtime::ILScalarType::Unknown:
         default:

@@ -65,6 +65,11 @@ void Sema::analyzeStmt(Stmt *stmt) {
                                                     : "continue used outside of loop");
             }
             break;
+        case StmtKind::Defer: {
+            auto *deferStmt = static_cast<DeferStmt *>(stmt);
+            analyzeStmt(deferStmt->action.get());
+            break;
+        }
         case StmtKind::Guard:
             analyzeGuardStmt(static_cast<GuardStmt *>(stmt));
             break;
@@ -373,10 +378,15 @@ void Sema::analyzeVarStmt(VarStmt *stmt) {
     sym.isFinal = stmt->isFinal;
     defineSymbol(stmt->name, sym, stmt->loc);
 
-    // Track definite initialization
-    if (stmt->initializer) {
+    // Fixed arrays are zero-initialized aggregate storage. Scalar declarations
+    // without explicit initializers keep the existing W015 definite-init warning.
+    bool defaultInitializedAggregate =
+        declaredType && declaredType->kind == TypeKindSem::FixedArray && !stmt->initializer;
+    if (stmt->initializer || defaultInitializedAggregate) {
         markInitialized(stmt->name);
+    }
 
+    if (stmt->initializer) {
         // A non-null initializer narrows Optional[T] to T until a later assignment
         // clears or replaces that flow fact.
         if (varType && varType->kind == TypeKindSem::Optional && initType &&

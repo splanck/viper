@@ -21,6 +21,15 @@ using il::core::Opcode;
 using il::core::Type;
 using il::core::Value;
 
+namespace {
+
+bool isInlineAggregateType(TypeRef type) {
+    return type && (type->kind == TypeKindSem::Struct || type->kind == TypeKindSem::FixedArray ||
+                    type->kind == TypeKindSem::Tuple);
+}
+
+} // namespace
+
 //=============================================================================
 // Helper Functions
 //=============================================================================
@@ -129,16 +138,22 @@ LowerResult Lowerer::lowerAssignment(BinaryExpr *expr) {
         // copying after that would turn the boxed payload back into a stack
         // pointer and make globals/fields dangle.
         const bool targetIsOptional = targetType && targetType->kind == TypeKindSem::Optional;
-        if (!targetIsOptional && rightType && rightType->kind == TypeKindSem::Struct) {
-            const StructTypeInfo *info = getOrCreateStructTypeInfo(rightType->name);
-            if (info) {
-                assignValue = emitStructTypeCopy(*info, assignValue);
-            }
+        if (!targetIsOptional && rightType && isInlineAggregateType(rightType)) {
+            Value copy = emitInlineValueAlloc(rightType);
+            emitInlineValueCopy(rightType, copy, assignValue, true);
+            assignValue = copy;
+            assignType = Type(Type::Kind::Ptr);
         }
 
         // Check if this is a slot-based variable
         auto slotIt = slots_.find(ident->name);
         if (slotIt != slots_.end()) {
+            if (isInlineAggregateType(targetType)) {
+                Value destPtr = loadFromSlot(ident->name, Type(Type::Kind::Ptr));
+                emitInlineValueCopy(targetType, destPtr, assignValue, true);
+                consumeDeferred(assignValue);
+                return {destPtr, Type(Type::Kind::Ptr)};
+            }
             storeToSlot(ident->name, assignValue, assignType);
             // The assigned value is consumed by the slot — don't release
             consumeDeferred(assignValue);
@@ -488,7 +503,7 @@ LowerResult Lowerer::lowerUnary(UnaryExpr *expr) {
         auto *ident = dynamic_cast<IdentExpr *>(expr->operand.get());
         if (!ident) {
             diag_.report({il::support::Severity::Error,
-                          "Unsupported address-of operand reached lowering",
+                          "Unsupported function reference operand reached lowering",
                           expr->loc,
                           "V3000"});
             return {Value::constInt(0), Type(Type::Kind::Ptr)};

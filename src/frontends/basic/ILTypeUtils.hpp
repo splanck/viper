@@ -95,7 +95,8 @@ namespace il::frontends::basic::type_conv {
 /// @brief Convert a runtime scalar type token to an IL Type.
 ///
 /// @details Maps string tokens from runtime property/method signatures
-///          (e.g., "i64", "f64", "str", "obj") to their IL Type equivalents.
+///          (e.g., "i64", "f64", "str", "obj", "obj<Viper.Math.Vec3>") to their IL Type
+///          equivalents.
 ///          Used when processing runtime property types from the catalog.
 ///
 /// @param token Runtime scalar type string (e.g., "i64", "f64", "i1", "str", "obj").

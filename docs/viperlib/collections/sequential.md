@@ -44,7 +44,7 @@ Dynamic array that grows automatically. Stores object references.
 | `Reverse()`              | `Void()`                | Reverses the elements of the list in place                                            |
 | `First()`                | `Object()`              | Returns the first element in the list                                                 |
 | `Last()`                 | `Object()`              | Returns the last element in the list                                                  |
-| `Sort()`                 | `Void()`                | Sorts the list in ascending order (strings lexicographic, otherwise by pointer value) |
+| `Sort()`                 | `Void()`                | Sorts the list in ascending order (strings lexicographic, otherwise by object identity) |
 | `SortDesc()`             | `Void()`                | Sorts the list in descending order                                                    |
 | `Pop()`                  | `Object()`              | Removes and returns the last element (traps if empty)                                 |
 | `Shuffle()`              | `Void()`                | Shuffles the list in place (Fisher-Yates)                                             |
@@ -357,7 +357,7 @@ stacks and queues while also supporting indexed access.
 | `PeekBack()`         | `Object()`              | Return back element without removing (traps if empty) |
 | `Get(index)`         | `Object(Integer)`       | Get element at index (0 = front)                      |
 | `Set(index, value)`  | `Void(Integer, Object)` | Set element at index                                  |
-| `Has(value)`         | `Boolean(Object)`       | Check if element exists (pointer equality)            |
+| `Has(value)`         | `Boolean(Object)`       | Check if element exists (object identity)             |
 | `Clear()`            | `Void()`                | Remove all elements                                   |
 | `Reverse()`          | `Void()`                | Reverse elements in place                             |
 | `Clone()`            | `Deque()`               | Create shallow copy                                   |

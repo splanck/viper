@@ -399,8 +399,8 @@ if scores.has("Alice") {
 > `Map.get` returns `V?`; use `??`, `getOr`, or an explicit null check before
 > passing the value to non-optional code. Map keys must be `String` (the Sema
 > layer rejects other key types). For `Map[String, String]`, a missing key is
-> `null`, not an empty string. Use the literal form `{}` for an empty map; there
-> is no `new Map[K, V]()` constructor in the language-level generics.
+> `null`, not an empty string. Use `{}` for an empty map literal, or
+> `new Map[String, V]()` when an explicit constructed map is clearer.
 
 ### Class Instance Lists
 

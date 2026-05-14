@@ -18,6 +18,7 @@
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <string_view>
 
 using il::frontends::common::string_utils::iequals;
@@ -29,6 +30,13 @@ namespace il::frontends::zia {
 //=============================================================================
 
 namespace {
+
+std::string capitalizedRuntimeMember(std::string_view name) {
+    std::string out(name);
+    if (!out.empty())
+        out[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[0])));
+    return out;
+}
 
 /// @brief Return type categories for collection methods.
 enum class MethodReturnKind {
@@ -655,49 +663,111 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
         };
 
         TypeRef firstArg = argTypeAt(0);
+        TypeRef receiverArg = nullptr;
+        if (expr->callee && expr->callee->kind == ExprKind::Field) {
+            auto *fieldExpr = static_cast<FieldExpr *>(expr->callee.get());
+            auto it = exprTypes_.find(fieldExpr->base.get());
+            if (it != exprTypes_.end()) {
+                receiverArg = it->second;
+                if (receiverArg && receiverArg->kind == TypeKindSem::Optional &&
+                    receiverArg->innerType())
+                    receiverArg = receiverArg->innerType();
+            }
+        }
+        TypeRef elementReceiver = receiverArg && receiverArg->elementType() ? receiverArg : firstArg;
+        TypeRef mapReceiver = receiverArg && receiverArg->valueType() ? receiverArg : firstArg;
+        TypeRef setReceiver =
+            receiverArg && receiverArg->kind == TypeKindSem::Set ? receiverArg : firstArg;
         auto asSeq = [&](TypeRef elemType) -> TypeRef {
             return elemType ? normalizeRuntimeSurfaceType(types::seqOf(elemType)) : fallback;
         };
 
-        if (calleeName == "Viper.Collections.Seq.Get") {
-            return firstArg && firstArg->elementType()
-                       ? normalizeRuntimeSurfaceType(firstArg->elementType())
+        if (calleeName == "Viper.Collections.Seq.Get" ||
+            calleeName == "Viper.Collections.Seq.First" ||
+            calleeName == "Viper.Collections.Seq.Last" ||
+            calleeName == "Viper.Collections.Seq.Peek" ||
+            calleeName == "Viper.Collections.Seq.Pop" ||
+            calleeName == "Viper.Collections.Seq.Remove" ||
+            calleeName == "Viper.Collections.Seq.FindWhere") {
+            return elementReceiver && elementReceiver->elementType()
+                       ? normalizeRuntimeSurfaceType(elementReceiver->elementType())
                        : fallback;
         }
 
         if (calleeName == "Viper.Collections.List.Get" ||
+            calleeName == "Viper.Collections.List.First" ||
+            calleeName == "Viper.Collections.List.Last" ||
+            calleeName == "Viper.Collections.List.Pop" ||
             calleeName == "Viper.Collections.Queue.Peek" ||
+            calleeName == "Viper.Collections.Queue.Pop" ||
+            calleeName == "Viper.Collections.Queue.TryPop" ||
             calleeName == "Viper.Collections.Stack.Peek" ||
+            calleeName == "Viper.Collections.Stack.Pop" ||
+            calleeName == "Viper.Collections.Stack.TryPop" ||
+            calleeName == "Viper.Collections.Ring.Get" ||
+            calleeName == "Viper.Collections.Ring.Peek" ||
+            calleeName == "Viper.Collections.Ring.Pop" ||
+            calleeName == "Viper.Collections.Heap.Peek" ||
+            calleeName == "Viper.Collections.Heap.Pop" ||
+            calleeName == "Viper.Collections.Heap.TryPeek" ||
+            calleeName == "Viper.Collections.Heap.TryPop" ||
             calleeName == "Viper.Collections.Deque.Get" ||
-            calleeName == "Viper.Collections.Deque.First" ||
-            calleeName == "Viper.Collections.Deque.Last") {
-            return firstArg && firstArg->kind == TypeKindSem::List && firstArg->elementType()
-                       ? normalizeRuntimeSurfaceType(firstArg->elementType())
+            calleeName == "Viper.Collections.Deque.PeekFront" ||
+            calleeName == "Viper.Collections.Deque.PeekBack" ||
+            calleeName == "Viper.Collections.Deque.PopFront" ||
+            calleeName == "Viper.Collections.Deque.PopBack" ||
+            calleeName == "Viper.Collections.Deque.TryPopFront" ||
+            calleeName == "Viper.Collections.Deque.TryPopBack") {
+            return elementReceiver && elementReceiver->elementType()
+                       ? normalizeRuntimeSurfaceType(elementReceiver->elementType())
                        : fallback;
         }
 
         if (calleeName == "Viper.Collections.Map.Get" ||
-            calleeName == "Viper.Collections.Map.GetOr") {
-            return firstArg && firstArg->kind == TypeKindSem::Map && firstArg->valueType()
-                       ? normalizeRuntimeSurfaceType(firstArg->valueType())
+            calleeName == "Viper.Collections.Map.GetOr" ||
+            calleeName == "Viper.Collections.OrderedMap.Get" ||
+            calleeName == "Viper.Collections.TreeMap.Get" ||
+            calleeName == "Viper.Collections.Trie.Get" ||
+            calleeName == "Viper.Collections.FrozenMap.Get" ||
+            calleeName == "Viper.Collections.FrozenMap.GetOr" ||
+            calleeName == "Viper.Collections.DefaultMap.Get" ||
+            calleeName == "Viper.Collections.WeakMap.Get" ||
+            calleeName == "Viper.Collections.LruCache.Get" ||
+            calleeName == "Viper.Collections.LruCache.Peek" ||
+            calleeName == "Viper.Collections.MultiMap.Get" ||
+            calleeName == "Viper.Collections.MultiMap.GetFirst") {
+            return mapReceiver && mapReceiver->valueType()
+                       ? normalizeRuntimeSurfaceType(mapReceiver->valueType())
                        : fallback;
         }
 
-        if (calleeName == "Viper.Collections.Map.Keys") {
-            return firstArg && firstArg->kind == TypeKindSem::Map && firstArg->keyType()
-                       ? asSeq(firstArg->keyType())
+        if (calleeName == "Viper.Collections.Map.Keys" ||
+            calleeName == "Viper.Collections.OrderedMap.Keys" ||
+            calleeName == "Viper.Collections.TreeMap.Keys" ||
+            calleeName == "Viper.Collections.Trie.Keys" ||
+            calleeName == "Viper.Collections.FrozenMap.Keys" ||
+            calleeName == "Viper.Collections.DefaultMap.Keys" ||
+            calleeName == "Viper.Collections.WeakMap.Keys" ||
+            calleeName == "Viper.Collections.LruCache.Keys" ||
+            calleeName == "Viper.Collections.MultiMap.Keys") {
+            return mapReceiver && mapReceiver->keyType()
+                       ? asSeq(mapReceiver->keyType())
                        : fallback;
         }
 
-        if (calleeName == "Viper.Collections.Map.Values") {
-            return firstArg && firstArg->kind == TypeKindSem::Map && firstArg->valueType()
-                       ? asSeq(firstArg->valueType())
+        if (calleeName == "Viper.Collections.Map.Values" ||
+            calleeName == "Viper.Collections.OrderedMap.Values" ||
+            calleeName == "Viper.Collections.TreeMap.Values" ||
+            calleeName == "Viper.Collections.FrozenMap.Values" ||
+            calleeName == "Viper.Collections.LruCache.Values") {
+            return mapReceiver && mapReceiver->valueType()
+                       ? asSeq(mapReceiver->valueType())
                        : fallback;
         }
 
         if (calleeName == "Viper.Collections.Set.Items") {
-            return firstArg && firstArg->kind == TypeKindSem::Set && firstArg->elementType()
-                       ? asSeq(firstArg->elementType())
+            return setReceiver && setReceiver->kind == TypeKindSem::Set && setReceiver->elementType()
+                       ? asSeq(setReceiver->elementType())
                        : fallback;
         }
 
@@ -705,8 +775,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
             calleeName == "Viper.Collections.Queue.Items" ||
             calleeName == "Viper.Collections.Stack.Items" ||
             calleeName == "Viper.Collections.Deque.Items") {
-            return firstArg && firstArg->kind == TypeKindSem::List && firstArg->elementType()
-                       ? asSeq(firstArg->elementType())
+            return elementReceiver && elementReceiver->elementType()
+                       ? asSeq(elementReceiver->elementType())
                        : fallback;
         }
 
@@ -1374,6 +1444,12 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
 
             std::string fullMethodName = className + "." + fieldExpr->field;
             Symbol *sym = lookupSymbol(fullMethodName);
+            if (!sym) {
+                std::string fallbackMethodName = className + "." + capitalizedRuntimeMember(fieldExpr->field);
+                sym = lookupSymbol(fallbackMethodName);
+                if (sym && sym->kind == Symbol::Kind::Function)
+                    fullMethodName = fallbackMethodName;
+            }
             if (sym && sym->kind == Symbol::Kind::Function) {
                 analyzeArgs();
                 if (!bindExternCall(fullMethodName, sym, 1))
@@ -1456,26 +1532,44 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
 
             Symbol *sym = nullptr;
             const auto &registry = il::runtime::RuntimeRegistry::instance();
-            if (auto method =
-                    registry.findMethod(baseType->name, fieldExpr->field, expr->args.size());
-                method && method->target && *method->target) {
-                sym = lookupSymbol(method->target);
-                if (sym && sym->kind == Symbol::Kind::Function)
-                    fullMethodName = method->target;
+            std::vector<std::string> methodNames = {fieldExpr->field};
+            std::string capitalized = capitalizedRuntimeMember(fieldExpr->field);
+            if (capitalized != fieldExpr->field)
+                methodNames.push_back(std::move(capitalized));
+            for (const auto &methodName : methodNames) {
+                if (auto method = registry.findMethod(baseType->name, methodName, expr->args.size());
+                    method && method->target && *method->target) {
+                    sym = lookupSymbol(method->target);
+                    if (sym && sym->kind == Symbol::Kind::Function) {
+                        fullMethodName = method->target;
+                        break;
+                    }
+                }
             }
 
             // Fall back to direct qualified name lookup
-            if (!sym)
-                sym = lookupSymbol(fullMethodName);
+            if (!sym) {
+                for (const auto &methodName : methodNames) {
+                    std::string candidateName = baseType->name + "." + methodName;
+                    sym = lookupSymbol(candidateName);
+                    if (sym && sym->kind == Symbol::Kind::Function) {
+                        fullMethodName = std::move(candidateName);
+                        break;
+                    }
+                }
+            }
 
             // If not found and this is a GUI widget class, try falling back to Widget base class
             // This handles inherited methods like SetSize, AddChild, SetVisible, etc.
             if (!sym && baseType->name.find("Viper.GUI.") == 0 &&
                 baseType->name != "Viper.GUI.Widget") {
-                std::string widgetMethodName = "Viper.GUI.Widget." + fieldExpr->field;
-                sym = lookupSymbol(widgetMethodName);
-                if (sym && sym->kind == Symbol::Kind::Function) {
-                    fullMethodName = widgetMethodName;
+                for (const auto &methodName : methodNames) {
+                    std::string widgetMethodName = "Viper.GUI.Widget." + methodName;
+                    sym = lookupSymbol(widgetMethodName);
+                    if (sym && sym->kind == Symbol::Kind::Function) {
+                        fullMethodName = std::move(widgetMethodName);
+                        break;
+                    }
                 }
             }
 

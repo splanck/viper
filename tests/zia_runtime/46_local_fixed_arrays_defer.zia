@@ -1,0 +1,63 @@
+module RuntimeTest46;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+struct Pair {
+    expose Integer a;
+    expose Integer b;
+}
+
+var log: String = "";
+
+func append(part: String) {
+    log = log + part;
+}
+
+func earlyReturnWithDefer() {
+    defer append("R");
+    return;
+}
+
+func testDefer() {
+    {
+        defer append("B");
+        append("A");
+    }
+    earlyReturnWithDefer();
+    assertEqStr(log, "ABR", "defer_scope_and_return_order");
+}
+
+func testLocalIntegerArray() {
+    var values: Integer[4];
+    values[0] = 3;
+    values[1] = 4;
+    values[2] = values[0] + values[1];
+    values[3] = values[2] + 1;
+
+    assertEqInt(values[0], 3, "local_fixed_array_first");
+    assertEqInt(values[3], 8, "local_fixed_array_last");
+
+    var copy: Integer[4] = values;
+    values[0] = 99;
+    assertEqInt(copy[0], 3, "local_fixed_array_copy_is_independent");
+}
+
+func testLocalStructArray() {
+    var pairs: Pair[2];
+    pairs[0] = Pair { a = 1, b = 2 };
+    pairs[1] = Pair { a = 3, b = 4 };
+
+    var first = pairs[0];
+    var second = pairs[1];
+    assertEqInt(first.a + first.b, 3, "local_struct_array_first");
+    assertEqInt(second.a + second.b, 7, "local_struct_array_second");
+}
+
+func start() {
+    testDefer();
+    testLocalIntegerArray();
+    testLocalStructArray();
+    report();
+}

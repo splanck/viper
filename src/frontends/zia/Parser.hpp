@@ -523,6 +523,10 @@ class Parser {
     /// @details Handles optional return value.
     StmtPtr parseReturnStmt();
 
+    /// @brief Parse a defer statement: defer stmt; or defer { ... }.
+    /// @return The parsed DeferStmt.
+    StmtPtr parseDeferStmt();
+
     /// @brief Parse a guard statement: guard (cond) else { }
     /// @return The parsed GuardStmt.
     ///

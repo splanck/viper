@@ -1601,7 +1601,7 @@ DIM legacy AS OBJECT = legacyApi.GetJson("/api/v1/data")
 - **JSON helpers:** Automatic serialization/deserialization for JSON APIs
 - **Last request tracking:** `LastResponse()` returns the most recent response object; it is replaced on every new request. `LastStatus()` returns the HTTP status code; `LastOk()` returns true for 2xx responses.
 
-> **Lifecycle note:** The RestClient owns its headers map and last response. Resources are released automatically when the client object is garbage-collected. `LastResponse()` is only valid until the next request is made — do not cache the pointer across requests.
+> **Lifecycle note:** The RestClient owns its headers map and last response. Resources are released automatically when the client object is garbage-collected. `LastResponse()` is only valid until the next request is made; keep only the data you need from the response object across requests.
 
 ### RestClient vs HttpReq
 

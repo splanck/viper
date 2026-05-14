@@ -357,6 +357,11 @@ enum class TokenKind {
     /// Syntax: `continue;`
     KwContinue,
 
+    /// @brief Scope cleanup keyword.
+    /// @details Registers a cleanup action that runs at scope exit.
+    /// Syntax: `defer cleanup();` or `defer { cleanup(); }`
+    KwDefer,
+
     /// @brief Try block keyword.
     /// @details Begins an exception handling block.
     /// Syntax: `try { ... } catch(e) { ... } finally { ... }`

@@ -836,6 +836,22 @@ void Lowerer::emitInlineValueZero(TypeRef valueType, Value destPtr) {
     }
 }
 
+Lowerer::Value Lowerer::emitInlineValueAlloc(TypeRef valueType) {
+    const size_t storageSize = std::max<size_t>(1, getSemanticTypeSize(valueType));
+    unsigned allocaId = nextTempId();
+    il::core::Instr allocaInstr;
+    allocaInstr.result = allocaId;
+    allocaInstr.op = Opcode::Alloca;
+    allocaInstr.type = Type(Type::Kind::Ptr);
+    allocaInstr.operands = {Value::constInt(static_cast<int64_t>(storageSize))};
+    allocaInstr.loc = curLoc_;
+    blockMgr_.currentBlock()->instructions.push_back(std::move(allocaInstr));
+
+    Value destPtr = Value::temp(allocaId);
+    emitInlineValueZero(valueType, destPtr);
+    return destPtr;
+}
+
 Lowerer::Value Lowerer::emitStructTypeCopy(const StructTypeInfo &info, Value sourcePtr) {
     // Allocate stack space for the copy
     unsigned allocaId = nextTempId();

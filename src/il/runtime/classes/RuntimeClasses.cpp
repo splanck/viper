@@ -256,6 +256,13 @@ const RuntimeClass *findRuntimeClassByQName(std::string_view qname) {
 /// @return The corresponding ILScalarType, or Unknown if not recognized.
 ///
 ILScalarType mapILToken(std::string_view tok) {
+    while (!tok.empty() && std::isspace(static_cast<unsigned char>(tok.front())))
+        tok.remove_prefix(1);
+    while (!tok.empty() && std::isspace(static_cast<unsigned char>(tok.back())))
+        tok.remove_suffix(1);
+    if (!tok.empty() && tok.back() == '?')
+        tok.remove_suffix(1);
+
     // Direct string comparisons are fast for these short tokens.
     // Using a switch on the first character would add complexity
     // without meaningful performance benefit.
@@ -271,7 +278,9 @@ ILScalarType mapILToken(std::string_view tok) {
         return ILScalarType::String;
     if (tok == "void")
         return ILScalarType::Void;
-    if (tok == "obj" || tok == "ptr")
+    if (tok == "obj" || tok == "ptr" || tok.rfind("obj<", 0) == 0 ||
+        tok.rfind("ptr<", 0) == 0 || tok == "seq" || tok.rfind("seq<", 0) == 0 ||
+        tok == "list" || tok.rfind("list<", 0) == 0)
         return ILScalarType::Object;
     return ILScalarType::Unknown;
 }

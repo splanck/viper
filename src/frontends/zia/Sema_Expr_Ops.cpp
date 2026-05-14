@@ -486,11 +486,11 @@ TypeRef Sema::analyzeUnary(UnaryExpr *expr) {
             return types::integer();
 
         case UnaryOp::AddressOf: {
-            // Address-of operator for function references: &funcName
+            // Function-reference operator for managed callbacks: &funcName
             // The operand must be an identifier referring to a function
             auto *ident = dynamic_cast<IdentExpr *>(expr->operand.get());
             if (!ident) {
-                error(expr->loc, "Address-of operator requires a function name");
+                error(expr->loc, "Function reference operator '&' requires a function name");
                 return types::unknown();
             }
 
@@ -501,7 +501,7 @@ TypeRef Sema::analyzeUnary(UnaryExpr *expr) {
             }
 
             if (sym->kind != Symbol::Kind::Function && sym->kind != Symbol::Kind::Method) {
-                error(expr->loc, "Address-of operator requires a function name");
+                error(expr->loc, "Function reference operator '&' requires a function name");
                 return types::unknown();
             }
 
