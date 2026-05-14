@@ -37,14 +37,24 @@ namespace viper::codegen::aarch64::binenc {
 // Register Encoding
 // =============================================================================
 
-/// Map a GPR PhysReg to its 5-bit hardware encoding (0-31).
+/// @brief Map a GPR `PhysReg` to its 5-bit hardware encoding (0-31).
+/// @details GPR PhysReg values are defined to coincide with the architectural
+///          register number, so the mapping is a direct cast after the kind check.
+/// @param r Physical register expected to be one of `X0..X30`/`SP`/`XZR`.
+/// @return 5-bit hardware encoding suitable for the `Rd`/`Rn`/`Rm`/`Rt` field.
+/// @throws std::invalid_argument if @p r is not a GPR.
 inline uint32_t hwGPR(PhysReg r) {
     if (!isGPR(r))
         throw std::invalid_argument("AArch64 binary encoder: expected a GPR register");
     return static_cast<uint32_t>(r);
 }
 
-/// Map an FPR PhysReg (V0-V31) to its 5-bit hardware encoding (0-31).
+/// @brief Map an FPR `PhysReg` (V0-V31) to its 5-bit hardware encoding (0-31).
+/// @details The PhysReg enum lays GPRs (0-31) before FPRs (V0=32 onward), so the
+///          hardware encoding for an FPR is its enum value minus `V0`.
+/// @param r Physical register expected to be one of `V0..V31`.
+/// @return 5-bit hardware encoding for the FPR.
+/// @throws std::invalid_argument if @p r is not an FPR.
 inline uint32_t hwFPR(PhysReg r) {
     if (!isFPR(r))
         throw std::invalid_argument("AArch64 binary encoder: expected an FPR register");
@@ -55,7 +65,14 @@ inline uint32_t hwFPR(PhysReg r) {
 // Condition Code Encoding
 // =============================================================================
 
-/// Map a condition code string ("eq", "ne", "lt", etc.) to its 4-bit ARM value.
+/// @brief Map a condition code mnemonic to its 4-bit AArch64 encoding.
+/// @details Accepts the two-character condition mnemonics defined by the
+///          ARM ARM (`eq`, `ne`, `hs`/`cs`, `lo`/`cc`, `mi`, `pl`, `vs`,
+///          `vc`, `hi`, `ls`, `ge`, `lt`, `gt`, `le`, `al`, `nv`). The
+///          aliases `hs`/`cs` and `lo`/`cc` encode identically.
+/// @param cond Two-character condition mnemonic (NUL-terminated).
+/// @return 4-bit condition encoding suitable for `B.cond` / `CSEL` / `CSET`.
+/// @throws std::invalid_argument if @p cond is null or not a recognised mnemonic.
 inline uint32_t condCode(const char *cond) {
     if (!cond)
         throw std::invalid_argument("AArch64 binary encoder: missing condition code");
@@ -92,7 +109,12 @@ inline uint32_t condCode(const char *cond) {
     throw std::invalid_argument("AArch64 binary encoder: invalid condition code");
 }
 
-/// Invert a 4-bit condition code (flip LSB).
+/// @brief Invert an AArch64 4-bit condition code.
+/// @details ARM defines the inverse of every condition as `cc XOR 1`, e.g.
+///          `EQ` (0x0) inverts to `NE` (0x1), `LT` (0xB) inverts to `GE` (0xA).
+///          Used by `CSET` (CSINC) which encodes the *inverted* condition.
+/// @param cc 4-bit condition code returned by @ref condCode.
+/// @return 4-bit inverse condition code.
 constexpr uint32_t invertCond(uint32_t cc) {
     return cc ^ 1;
 }
@@ -261,31 +283,71 @@ inline constexpr uint32_t kAdrp = 0x90000000; // adrp Xd, label
 // Encoding Helpers
 // =============================================================================
 
-/// Build a 3-register instruction: template | (Rm << 16) | (Rn << 5) | Rd
+/// @brief Build a 3-register instruction word.
+/// @details Lays out the destination, first source, and second source operand
+///          fields into a base template: `tmpl | (Rm << 16) | (Rn << 5) | Rd`.
+///          Used for shift-register and data-processing-register encodings.
+/// @param tmpl Base instruction template carrying opcode and option bits.
+/// @param rd   5-bit destination register field.
+/// @param rn   5-bit first source register field.
+/// @param rm   5-bit second source register field.
+/// @return Fully-encoded 32-bit instruction word.
 constexpr uint32_t encode3Reg(uint32_t tmpl, uint32_t rd, uint32_t rn, uint32_t rm) {
     return tmpl | (rm << 16) | (rn << 5) | rd;
 }
 
-/// Build a 4-register instruction (madd/msub): template | (Rm << 16) | (Ra << 10) | (Rn << 5) | Rd
+/// @brief Build a 4-register instruction word (MADD / MSUB / etc.).
+/// @details Lays out the destination, two multiplicands, and the accumulator
+///          into a base template: `tmpl | (Rm << 16) | (Ra << 10) | (Rn << 5) | Rd`.
+/// @param tmpl Base instruction template (e.g. `kMAddRRRR`, `kMSubRRRR`).
+/// @param rd   5-bit destination register field.
+/// @param rn   5-bit multiplicand register field.
+/// @param rm   5-bit multiplier register field.
+/// @param ra   5-bit accumulator register field.
+/// @return Fully-encoded 32-bit instruction word.
 constexpr uint32_t encode4Reg(uint32_t tmpl, uint32_t rd, uint32_t rn, uint32_t rm, uint32_t ra) {
     return tmpl | (rm << 16) | (ra << 10) | (rn << 5) | rd;
 }
 
-/// Build an add/sub immediate instruction: template | (imm12 << 10) | (Rn << 5) | Rd
+/// @brief Build an ADD/SUB-immediate instruction word.
+/// @details Lays the 12-bit immediate into bits 10..21 of the template:
+///          `tmpl | (imm12 << 10) | (Rn << 5) | Rd`. The template selects ADD
+///          vs SUB and the sf bit (32/64).
+/// @param tmpl  Base instruction template (e.g. `kAddRI`, `kSubRI`).
+/// @param rd    5-bit destination register field.
+/// @param rn    5-bit source register field.
+/// @param imm12 Unsigned 12-bit immediate; values >0xFFF are rejected.
+/// @return Fully-encoded 32-bit instruction word.
+/// @throws std::out_of_range if @p imm12 exceeds 12 bits.
 inline uint32_t encodeAddSubImm(uint32_t tmpl, uint32_t rd, uint32_t rn, uint32_t imm12) {
     if (imm12 > 0xFFF)
         throw std::out_of_range("encodeAddSubImm: immediate exceeds 12-bit range");
     return tmpl | ((imm12 & 0xFFF) << 10) | (rn << 5) | rd;
 }
 
-/// Build an add/sub immediate with shift: bit 22 selects lsl #12.
+/// @brief Build an ADD/SUB-immediate instruction word with `LSL #12` applied.
+/// @details Sets bit 22 (`sh`) to enable the architectural left-shift-12 of the
+///          12-bit immediate; the effective operand is `imm12 << 12`.
+/// @param tmpl  Base instruction template (e.g. `kAddRI`, `kSubRI`).
+/// @param rd    5-bit destination register field.
+/// @param rn    5-bit source register field.
+/// @param imm12 Unsigned 12-bit immediate; effective value is `imm12 * 4096`.
+/// @return Fully-encoded 32-bit instruction word.
+/// @throws std::out_of_range if @p imm12 exceeds 12 bits.
 inline uint32_t encodeAddSubImmShift(uint32_t tmpl, uint32_t rd, uint32_t rn, uint32_t imm12) {
     if (imm12 > 0xFFF)
         throw std::out_of_range("encodeAddSubImmShift: immediate exceeds 12-bit range");
     return tmpl | (1U << 22) | ((imm12 & 0xFFF) << 10) | (rn << 5) | rd;
 }
 
-/// Build a 2-register instruction: template | (Rn << 5) | Rd
+/// @brief Build a 2-register instruction word.
+/// @details Lays the destination and source fields into the template:
+///          `tmpl | (Rn << 5) | Rd`. Used by single-source forms such as
+///          `MOV (register)`, `NEG`, `MVN`, conversion instructions.
+/// @param tmpl Base instruction template carrying opcode and option bits.
+/// @param rd   5-bit destination register field.
+/// @param rn   5-bit source register field.
+/// @return Fully-encoded 32-bit instruction word.
 constexpr uint32_t encode2Reg(uint32_t tmpl, uint32_t rd, uint32_t rn) {
     return tmpl | (rn << 5) | rd;
 }
@@ -341,7 +403,15 @@ inline int32_t encodeLogicalImmediate(uint64_t val) {
     return -1;
 }
 
-/// Build a logical immediate instruction: template | (N:immr:imms << 10) | (Rn << 5) | Rd
+/// @brief Build an AND/ORR/EOR-immediate instruction word.
+/// @details Lays the encoded `N:immr:imms` 13-bit bitmask immediate into bits
+///          10..22 of the template: `tmpl | (nimms << 10) | (Rn << 5) | Rd`.
+///          The caller must pre-compute @p nimms via @ref encodeLogicalImmediate.
+/// @param tmpl  Base instruction template (`kAndImm`, `kOrrImm`, `kEorImm`).
+/// @param rd    5-bit destination register field.
+/// @param rn    5-bit source register field.
+/// @param nimms 13-bit packed `N:immr:imms` immediate.
+/// @return Fully-encoded 32-bit instruction word.
 inline uint32_t encodeLogImm(uint32_t tmpl, uint32_t rd, uint32_t rn, int32_t nimms) {
     // nimms = N:immr:imms (13 bits)
     return tmpl | (static_cast<uint32_t>(nimms) << 10) | (rn << 5) | rd;
@@ -389,7 +459,18 @@ inline int32_t encodeFP8Immediate(double val) {
     return static_cast<int32_t>((sign << 7) | (b << 6) | (cd << 4) | frac4);
 }
 
-/// Build a load/store pair: template | ((imm7 & 0x7F) << 15) | (Rt2 << 10) | (Rn << 5) | Rt
+/// @brief Build a load/store-pair instruction word.
+/// @details Lays the two transfer registers, base register, and scaled signed
+///          7-bit immediate into the template:
+///          `tmpl | ((imm7 & 0x7F) << 15) | (Rt2 << 10) | (Rn << 5) | Rt`.
+///          The immediate is the architectural scaled value (already divided
+///          by the access size, e.g. 8 bytes for GPR-pair forms).
+/// @param tmpl Base template (`kStpGpr`, `kLdpGpr`, pre/post-index variants...).
+/// @param rt   5-bit first transfer register field.
+/// @param rt2  5-bit second transfer register field.
+/// @param rn   5-bit base register field.
+/// @param imm7 Signed 7-bit scaled offset (only low 7 bits are encoded).
+/// @return Fully-encoded 32-bit instruction word.
 constexpr uint32_t encodePair(uint32_t tmpl, uint32_t rt, uint32_t rt2, uint32_t rn, int32_t imm7) {
     return tmpl | ((static_cast<uint32_t>(imm7) & 0x7F) << 15) | (rt2 << 10) | (rn << 5) | rt;
 }

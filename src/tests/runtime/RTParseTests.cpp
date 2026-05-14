@@ -103,6 +103,9 @@ static void test_try_num_valid() {
     assert(rt_parse_try_num(make_str("  .5  "), &result) == 1);
     assert(fabs(result - 0.5) < 0.001);
 
+    assert(rt_parse_try_num(make_str("1e-4000"), &result) == 1);
+    assert(result == 0.0);
+
     printf("test_try_num_valid: PASSED\n");
 }
 
@@ -137,6 +140,8 @@ static void test_double_nonfinite_roundtrip() {
     assert(std::isinf(result) && result > 0.0);
     assert(rt_parse_double("-Inf", &result) == (int32_t)Err_None);
     assert(std::isinf(result) && result < 0.0);
+    assert(rt_parse_double("1e-4000", &result) == (int32_t)Err_None);
+    assert(result == 0.0);
 
     result = 0.0;
     assert(rt_parse_try_num(make_str("nan"), &result) == 1);
@@ -418,6 +423,8 @@ static void test_int_radix() {
 
     // Hexadecimal
     assert(rt_parse_int_radix(make_str("FF"), 16, -1) == 255);
+    assert(rt_parse_int_radix(make_str("+FF"), 16, -1) == 255);
+    assert(rt_parse_int_radix(make_str("-FF"), 16, -1) == -1);
     assert(rt_parse_int_radix(make_str("ff"), 16, -1) == 255);
     assert(rt_parse_int_radix(make_str("DEADBEEF"), 16, -1) == 0xDEADBEEF);
 
@@ -434,7 +441,6 @@ static void test_int_radix() {
     assert(rt_parse_int_radix(make_str("GG"), 16, -1) == -1);
     assert(rt_parse_int_radix(make_str(""), 10, -1) == -1);
     assert(rt_parse_int_radix(make_str("0x10"), 16, -1) == -1);
-    assert(rt_parse_int_radix(make_str("+FF"), 16, -1) == -1);
     assert(rt_parse_int_radix(make_str("-2a"), 16, -1) == -1);
     assert(rt_parse_int_radix(make_str("9223372036854775808"), 10, -1) == -1);
 

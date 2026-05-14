@@ -104,6 +104,12 @@ static uint32_t getCondCode(const MOperand &op) {
     return cc;
 }
 
+/// @brief Throw if @p mi has a different operand count than @p expected.
+/// @details Operand-count mismatches indicate a lowering bug; throw a descriptive
+///          `std::runtime_error` rather than silently emitting garbage bytes.
+/// @param mi       Instruction whose operand vector is being checked.
+/// @param expected Required operand count.
+/// @throws std::runtime_error if the operand count does not match.
 static void requireOperandCount(const MInstr &mi, size_t expected) {
     if (mi.ops.size() != expected) {
         throw std::runtime_error("AArch64 binary encoder: opcode '" +
@@ -113,6 +119,12 @@ static void requireOperandCount(const MInstr &mi, size_t expected) {
     }
 }
 
+/// @brief Validate that @p mi has the operand count its opcode requires.
+/// @details Dispatches on `mi.opc` to look up the architectural operand count and
+///          delegates to @ref requireOperandCount. Called from `encodeInstruction`
+///          as a defence-in-depth check before any field encoding runs.
+/// @param mi Machine instruction whose opcode determines the required count.
+/// @throws std::runtime_error if the operand count does not match the opcode's contract.
 static void validateOperandCount(const MInstr &mi) {
     switch (mi.opc) {
         case MOpcode::Ret:
@@ -208,6 +220,15 @@ static void validateOperandCount(const MInstr &mi) {
     }
 }
 
+/// @brief Convert a signed `int64_t` magnitude to `uint32_t` with bounds-check.
+/// @details Returns `|value|` clipped against the 32-bit unsigned range. Used by
+///          immediate-encoding paths that fold sign elsewhere and need the magnitude
+///          as the architectural unsigned field. Throws rather than truncating so
+///          a caller bug surfaces as a real error instead of garbage bits.
+/// @param value   Signed 64-bit immediate.
+/// @param context Short human-readable description of the field for the error message.
+/// @return Unsigned 32-bit magnitude of @p value.
+/// @throws std::out_of_range if `|value|` exceeds `UINT32_MAX`.
 static uint32_t checkedU32Magnitude(int64_t value, const char *context) {
     const uint64_t magnitude = absImmUnsigned(value);
     if (magnitude > std::numeric_limits<uint32_t>::max())
@@ -216,6 +237,12 @@ static uint32_t checkedU32Magnitude(int64_t value, const char *context) {
     return static_cast<uint32_t>(magnitude);
 }
 
+/// @brief Convert a signed `int64_t` non-negative value to `uint32_t` with bounds-check.
+/// @details Used where a field must be a non-negative value and must fit `uint32_t`.
+/// @param value   Signed 64-bit value (must be `>= 0`).
+/// @param context Short human-readable description of the field for the error message.
+/// @return Unsigned 32-bit value of @p value.
+/// @throws std::out_of_range if @p value is negative or exceeds `UINT32_MAX`.
 static uint32_t checkedU32NonNegative(int64_t value, const char *context) {
     if (value < 0 || value > std::numeric_limits<uint32_t>::max())
         throw std::out_of_range(std::string("AArch64 binary encoder: ") + context +
@@ -223,6 +250,14 @@ static uint32_t checkedU32NonNegative(int64_t value, const char *context) {
     return static_cast<uint32_t>(value);
 }
 
+/// @brief Convert a `size_t` function length to `uint32_t` with bounds-check.
+/// @details Mach-O compact-unwind records and similar metadata store function lengths
+///          as 32-bit values. Throws with the function name on overflow so very large
+///          synthesized functions are flagged at emission time.
+/// @param value        Function byte length.
+/// @param functionName Symbol name for the error message.
+/// @return @p value narrowed to `uint32_t`.
+/// @throws std::out_of_range if @p value exceeds `UINT32_MAX`.
 static uint32_t checkedFunctionLength(size_t value, const std::string &functionName) {
     if (value > std::numeric_limits<uint32_t>::max()) {
         throw std::out_of_range("AArch64 binary encoder: function '" + functionName +
@@ -231,6 +266,13 @@ static uint32_t checkedFunctionLength(size_t value, const std::string &functionN
     return static_cast<uint32_t>(value);
 }
 
+/// @brief Add two `size_t` values, throwing on overflow.
+/// @details Used when computing offsets / sizes that combine multiple contributions.
+/// @param a       First addend.
+/// @param b       Second addend.
+/// @param context Short description for the error message on overflow.
+/// @return `a + b`.
+/// @throws std::length_error if `a + b` would overflow `size_t`.
 static size_t checkedAddSize(size_t a, size_t b, const char *context) {
     if (a > std::numeric_limits<size_t>::max() - b)
         throw std::length_error(std::string("AArch64 binary encoder: ") + context +
@@ -238,6 +280,14 @@ static size_t checkedAddSize(size_t a, size_t b, const char *context) {
     return a + b;
 }
 
+/// @brief Validate and narrow a shift amount to its architectural 6-bit field.
+/// @details AArch64 shift instructions encode the amount in 6 bits; values outside
+///          `[0, 63]` are architecturally undefined. Throws on out-of-range so a
+///          lowering bug doesn't quietly produce a corrupt encoding.
+/// @param value  Shift amount from the MIR immediate operand.
+/// @param opcode Mnemonic for the error message.
+/// @return @p value cast to `uint32_t`.
+/// @throws std::out_of_range if @p value is outside `[0, 63]`.
 static uint32_t checkedShiftAmount(long long value, const char *opcode) {
     if (!isValidShiftAmount(value))
         throw std::out_of_range(std::string("AArch64 ") + opcode +
@@ -245,6 +295,14 @@ static uint32_t checkedShiftAmount(long long value, const char *opcode) {
     return static_cast<uint32_t>(value);
 }
 
+/// @brief Sanity-check an `MFunction`'s frame metadata before emission.
+/// @details Rejects negative or non-16-byte-aligned frame sizes and any
+///          saved-register list that includes registers outside the architectural
+///          callee-saved range (`X19`-`X28` for GPRs, similarly bounded for FPRs)
+///          or has duplicate entries. Failures here would corrupt the prologue
+///          and epilogue stack layout, so they're surfaced before any byte emission.
+/// @param fn Machine function whose metadata is being validated.
+/// @throws std::out_of_range on any invariant violation.
 static void validateFunctionMetadata(const MFunction &fn) {
     if (fn.localFrameSize < 0)
         throw std::out_of_range("AArch64 binary encoder: negative local frame size");
@@ -268,7 +326,12 @@ static void validateFunctionMetadata(const MFunction &fn) {
     }
 }
 
-/// Check if offset fits in signed 9-bit range for ldur/stur.
+/// @brief Test whether @p offset fits the signed 9-bit unscaled `LDUR`/`STUR` immediate.
+/// @details The unscaled immediate is `simm9` with a range of `[-256, 255]`. Callers
+///          use this to choose between the unscaled form (for negative or unaligned
+///          offsets) and the scaled `LDR`/`STR` form.
+/// @param offset Byte offset to test.
+/// @return True if @p offset is encodable as `simm9`.
 static bool isInSignedImmRange(long long offset) {
     return offset >= -256 && offset <= 255;
 }

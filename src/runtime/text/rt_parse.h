@@ -37,6 +37,9 @@ extern "C" {
 int8_t rt_parse_try_int(rt_string s, int64_t *out_value);
 
 /// @brief Try to parse a number from string, storing result at out_value.
+/// @details Accepts finite decimal values plus explicit NaN/Inf spellings.
+///          Decimal overflow and non-finite decimal results fail; finite
+///          underflow to zero/subnormal values is accepted.
 /// @param s Input string to parse.
 /// @param out_value Pointer to store parsed double (must not be NULL).
 /// @return 1 if parsing succeeded, 0 otherwise.
@@ -77,10 +80,10 @@ int8_t rt_parse_is_int(rt_string s);
 int8_t rt_parse_is_num(rt_string s);
 
 /// @brief Parse an integer with specified radix, returning default on failure.
-/// @details Radix 10 accepts a leading '+' or '-' for signed decimal values. Other
-///          radices parse unsigned 64-bit bit patterns so Fmt.Hex/Fmt.Bin
-///          negative outputs round-trip when cast back to int64_t. Prefixes
-///          such as 0x and leading signs are rejected for non-decimal radices.
+/// @details A leading '+' is accepted for every radix; '-' is accepted only for
+///          signed decimal values. Non-decimal radices parse unsigned 64-bit bit
+///          patterns so Fmt.Hex/Fmt.Bin negative outputs round-trip when cast
+///          back to int64_t. Prefixes such as 0x are rejected.
 /// @param s Input string to parse.
 /// @param radix Base for parsing (2-36).
 /// @param default_value Value to return if parsing fails or radix is invalid.

@@ -32,7 +32,12 @@
 namespace viper::codegen::aarch64::ra {
 
 /// @brief Determine the use/def roles of operand @p idx in instruction @p ins.
-/// @return {isUse, isDef} pair.
+/// @details Routes through the opcode-class predicates in `OpcodeClassify.hpp`
+///          to classify each operand of every supported `MOpcode`. Used by the
+///          register allocator's liveness pass to build gen/kill sets per block.
+/// @param ins Machine instruction whose operand is being classified.
+/// @param idx Zero-based index into `ins.ops`.
+/// @return `{isUse, isDef}` pair indicating whether the operand is read, written, or both.
 std::pair<bool, bool> operandRoles(const MInstr &ins, std::size_t idx);
 
 } // namespace viper::codegen::aarch64::ra

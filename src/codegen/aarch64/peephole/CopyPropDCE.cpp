@@ -265,6 +265,12 @@ struct RegSet {
     }
 };
 
+/// @brief Seed @p regs with the registers that are live at every function exit.
+/// @details The set includes the ABI return register (int and FP), the stack
+///          pointer, and every callee-saved register. Live-out at exit ensures
+///          DCE does not delete the final write to any of these.
+/// @param target Target ABI providing return + callee-saved register sets.
+/// @param regs   Set to which the live-at-exit register keys are added.
 void addTargetExitLive(const TargetInfo &target, std::unordered_set<uint32_t> &regs) {
     regs.insert(physRegKey(target.intReturnReg));
     regs.insert(physRegKey(target.f64ReturnReg));
@@ -275,6 +281,9 @@ void addTargetExitLive(const TargetInfo &target, std::unordered_set<uint32_t> &r
         regs.insert(physRegKey(reg));
 }
 
+/// @brief `RegSet` overload of @ref addTargetExitLive for the bitset live-set path.
+/// @param target Target ABI providing return + callee-saved register sets.
+/// @param regs   RegSet to which the live-at-exit register keys are added.
 void addTargetExitLive(const TargetInfo &target, RegSet &regs) {
     regs.insertKey(physRegKey(target.intReturnReg));
     regs.insertKey(physRegKey(target.f64ReturnReg));
@@ -285,6 +294,12 @@ void addTargetExitLive(const TargetInfo &target, RegSet &regs) {
         regs.insertKey(physRegKey(reg));
 }
 
+/// @brief Add the implicit-use register set of a call site to @p uses.
+/// @details A call implicitly uses every register that holds an argument
+///          (the architectural arg-passing GPRs and FPRs) plus the stack
+///          pointer (since outgoing stack args live above SP).
+/// @param target Target ABI providing the arg-register order.
+/// @param uses   Set to which the implicit-use register keys are added.
 void addCallImplicitUses(const TargetInfo &target, std::unordered_set<uint32_t> &uses) {
     for (PhysReg reg : target.intArgOrder)
         uses.insert(physRegKey(reg));
@@ -293,6 +308,12 @@ void addCallImplicitUses(const TargetInfo &target, std::unordered_set<uint32_t> 
     uses.insert(physRegKey(PhysReg::SP));
 }
 
+/// @brief Add the implicit-clobber register set of a call site to @p defs.
+/// @details A call clobbers every caller-saved register (the callee may
+///          freely overwrite them). Liveness uses this to invalidate any
+///          values held in caller-saved registers across the call boundary.
+/// @param target Target ABI providing the caller-saved sets.
+/// @param defs   Set to which the clobbered register keys are added.
 void addCallClobbers(const TargetInfo &target, std::unordered_set<uint32_t> &defs) {
     for (PhysReg reg : target.callerSavedGPR)
         defs.insert(physRegKey(reg));
@@ -300,6 +321,9 @@ void addCallClobbers(const TargetInfo &target, std::unordered_set<uint32_t> &def
         defs.insert(physRegKey(reg));
 }
 
+/// @brief `RegSet` overload of @ref addCallImplicitUses.
+/// @param target Target ABI providing the arg-register order.
+/// @param uses   RegSet to which the implicit-use register keys are added.
 void addCallImplicitUses(const TargetInfo &target, RegSet &uses) {
     for (PhysReg reg : target.intArgOrder)
         uses.insertKey(physRegKey(reg));
@@ -308,6 +332,9 @@ void addCallImplicitUses(const TargetInfo &target, RegSet &uses) {
     uses.insertKey(physRegKey(PhysReg::SP));
 }
 
+/// @brief `RegSet` overload of @ref addCallClobbers.
+/// @param target Target ABI providing the caller-saved sets.
+/// @param defs   RegSet to which the clobbered register keys are added.
 void addCallClobbers(const TargetInfo &target, RegSet &defs) {
     for (PhysReg reg : target.callerSavedGPR)
         defs.insertKey(physRegKey(reg));
@@ -315,6 +342,15 @@ void addCallClobbers(const TargetInfo &target, RegSet &defs) {
         defs.insertKey(physRegKey(reg));
 }
 
+/// @brief Compute the use and def register sets for a single MIR instruction.
+/// @details Walks @p instr's operands and consults `classifyOperand` to
+///          classify each as a use, def, or both. Call instructions
+///          (`Bl`/`Blr`) additionally pick up the call-implicit-uses and
+///          call-clobbers from the ABI metadata.
+/// @param instr  Machine instruction whose live-set contribution is computed.
+/// @param target Target ABI for call-implicit handling.
+/// @param uses   Set receiving the use register keys.
+/// @param defs   Set receiving the def register keys.
 void collectUsesDefs(const MInstr &instr,
                      const TargetInfo &target,
                      std::unordered_set<uint32_t> &uses,
@@ -337,6 +373,11 @@ void collectUsesDefs(const MInstr &instr,
     }
 }
 
+/// @brief `RegSet` overload of @ref collectUsesDefs for the bitset live-set path.
+/// @param instr  Machine instruction whose live-set contribution is computed.
+/// @param target Target ABI for call-implicit handling.
+/// @param uses   RegSet receiving the use register keys.
+/// @param defs   RegSet receiving the def register keys.
 void collectUsesDefs(const MInstr &instr, const TargetInfo &target, RegSet &uses, RegSet &defs) {
     for (std::size_t idx = 0; idx < instr.ops.size(); ++idx) {
         const auto [isUse, isDef] = classifyOperand(instr, idx);
@@ -356,6 +397,13 @@ void collectUsesDefs(const MInstr &instr, const TargetInfo &target, RegSet &uses
     }
 }
 
+/// @brief Append the block index for @p label to @p succs if not already present.
+/// @details Looks @p label up in the label-to-index map and appends the
+///          corresponding block index; duplicates are skipped. Used while
+///          building per-block successor lists for the liveness CFG walk.
+/// @param succs        Successor list being built (modified in place).
+/// @param labelToIndex Pre-built map from block name to block index.
+/// @param label        Branch target label to add as a successor.
 void addUniqueSucc(std::vector<std::size_t> &succs,
                    const std::unordered_map<std::string, std::size_t> &labelToIndex,
                    const std::string &label) {
@@ -366,10 +414,20 @@ void addUniqueSucc(std::vector<std::size_t> &succs,
         succs.push_back(it->second);
 }
 
+/// @brief Test whether @p instr is a conditional branch (`B.cond`/`CBZ`/`CBNZ`).
+/// @param instr Machine instruction to classify.
+/// @return True if @p instr's opcode is one of the conditional-branch forms.
 [[nodiscard]] bool isConditionalBranch(const MInstr &instr) noexcept {
     return instr.opc == MOpcode::BCond || instr.opc == MOpcode::Cbz || instr.opc == MOpcode::Cbnz;
 }
 
+/// @brief Test whether @p opcode writes the NZCV flags.
+/// @details Used by DCE to refuse to delete instructions whose only observable
+///          side effect is the flag write that a downstream conditional branch
+///          will consume. Covers the comparison family and the flag-setting
+///          arithmetic variants (`ADDS`/`SUBS`/`ANDS`).
+/// @param opcode Opcode to classify.
+/// @return True if @p opcode sets the NZCV flags.
 [[nodiscard]] bool setsFlagsForDCE(MOpcode opcode) noexcept {
     switch (opcode) {
         case MOpcode::CmpRR:

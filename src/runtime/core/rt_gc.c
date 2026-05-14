@@ -98,8 +98,6 @@ struct rt_weakref {
     struct rt_weakref *next_for_target; ///< Chain of weak refs to same target.
 };
 
-#define RT_WEAKREF_CLASS_ID INT64_C(-0x57524546)
-
 /// Weak ref registry entry (per-target chain).
 typedef struct weak_chain {
     void *target;
@@ -465,7 +463,22 @@ static int gc_weak_target_is_valid(void *target) {
     if (rt_string_is_handle(target))
         return 1;
     rt_heap_hdr_t *hdr = NULL;
-    return rt_heap_try_get_header(target, &hdr) && hdr ? 1 : 0;
+    if (!rt_heap_try_get_header(target, &hdr) || !hdr)
+        return 0;
+    return (rt_heap_kind_t)hdr->kind != RT_HEAP_STRING ? 1 : 0;
+}
+
+/// @brief Detach a weak-reference object from the registry during generic object release.
+static void weakref_finalizer(void *obj) {
+    rt_weakref *ref = (rt_weakref *)obj;
+    if (!ref)
+        return;
+    gc_lock();
+    if (ref->target)
+        unregister_weak_ref(ref->target, ref);
+    ref->target = NULL;
+    ref->next_for_target = NULL;
+    gc_unlock();
 }
 
 //=============================================================================
@@ -485,6 +498,7 @@ rt_weakref *rt_weakref_new(void *target) {
         return NULL;
     }
     memset(ref, 0, sizeof(rt_weakref));
+    rt_obj_set_finalizer(ref, weakref_finalizer);
 
     gc_lock();
     ref->target = target;
@@ -615,6 +629,7 @@ void rt_weakref_free(rt_weakref *ref) {
     gc_lock();
     if (!gc_is_weakref_handle_unlocked(ref)) {
         gc_unlock();
+        rt_trap("gc: invalid or freed weak reference");
         return;
     }
     if (ref->target)
@@ -723,13 +738,16 @@ static void trial_decrement(void *child, void *ctx) {
 typedef struct {
     void *obj;
     rt_gc_traverse_fn traverse;
+    int8_t retained;
 } gc_snap_entry;
 
 typedef struct {
     gc_snap_entry entry;
     size_t saved_refs;
+    rt_heap_finalizer_t saved_finalizer;
     int snapshot_released;
     int finalized;
+    int finalizer_cleared;
     int resurrected;
     int reclaimed;
 } gc_garbage_state;
@@ -828,6 +846,15 @@ static int gc_garbage_contains(const gc_garbage_state *items, int64_t count, voi
     return 0;
 }
 
+static void gc_release_snapshot_entry(gc_snap_entry *entry) {
+    if (!entry || !entry->retained || !entry->obj || !rt_heap_is_payload(entry->obj))
+        return;
+    void *obj = entry->obj;
+    entry->retained = 0;
+    if (rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 typedef struct {
     const gc_garbage_state *garbage;
     int64_t garbage_count;
@@ -874,6 +901,8 @@ static void gc_finalize_unreachable(gc_garbage_state *state) {
     if ((rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT) {
         if (hdr->finalizer) {
             rt_heap_finalizer_t fin = hdr->finalizer;
+            state->saved_finalizer = fin;
+            state->finalizer_cleared = 1;
             hdr->finalizer = NULL;
             fin(obj);
         }
@@ -886,7 +915,9 @@ static void gc_finalize_unreachable(gc_garbage_state *state) {
 }
 
 /// @brief Restore garbage members after finalizer resurrection or trap recovery.
-static void gc_restore_garbage_state(gc_garbage_state *garbage, int64_t garbage_count) {
+static void gc_restore_garbage_state(gc_garbage_state *garbage,
+                                     int64_t garbage_count,
+                                     int restore_finalizers) {
     if (!garbage)
         return;
     for (int64_t i = 0; i < garbage_count; ++i) {
@@ -908,6 +939,10 @@ static void gc_restore_garbage_state(gc_garbage_state *garbage, int64_t garbage_
             }
             __atomic_store_n(&hdr->refcnt, restored, __ATOMIC_RELEASE);
         }
+        if (restore_finalizers && state->finalizer_cleared && state->finalized &&
+            !state->resurrected &&
+            (rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT && !hdr->finalizer)
+            hdr->finalizer = state->saved_finalizer;
         if (state->entry.traverse)
             rt_gc_track(obj, state->entry.traverse);
     }
@@ -978,6 +1013,13 @@ int64_t rt_gc_collect(void) {
        entries for safe traversal outside the lock.  Promoted objects are
        included in the snapshot but marked black (skipped) unless this is
        a full scan pass. */
+    if (g_gc.count < 0 || (uint64_t)g_gc.count > (uint64_t)SIZE_MAX / sizeof(gc_snap_entry)) {
+        g_gc.collecting = 0;
+        gc_unlock();
+        rt_trap("gc: snapshot size overflow");
+        return 0;
+    }
+
     snapshot = (gc_snap_entry *)malloc((size_t)g_gc.count * sizeof(gc_snap_entry));
     if (!snapshot) {
         g_gc.collecting = 0;
@@ -994,28 +1036,41 @@ int64_t rt_gc_collect(void) {
         if (!rt_heap_try_get_header(g_gc.entries[i].obj, &hdr) || !hdr) {
             g_gc.collecting = 0;
             gc_unlock();
-            for (int64_t j = 0; j < snap_count; j++) {
-                if (snapshot[j].obj && rt_heap_is_payload(snapshot[j].obj)) {
-                    if (rt_obj_release_check0(snapshot[j].obj))
-                        rt_obj_free(snapshot[j].obj);
-                }
-            }
+            for (int64_t j = 0; j < snap_count; j++)
+                gc_release_snapshot_entry(&snapshot[j]);
             free(snapshot);
             rt_trap("gc: tracked object is not a live heap payload");
             return 0;
         }
-        g_gc.entries[i].trial_rc = (int64_t)__atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE);
+        size_t refcnt = __atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE);
+        g_gc.entries[i].trial_rc =
+            refcnt > (size_t)INT64_MAX ? INT64_MAX : (int64_t)refcnt;
 
         /* Skip promoted objects in non-full-scan passes: mark them black
            so they are treated as reachable without trial-deletion. */
-        if (!full_scan && g_gc.entries[i].survived >= GC_PROMOTION_THRESHOLD)
+        if (refcnt >= RT_HEAP_IMMORTAL_REFCNT)
+            g_gc.entries[i].color = 2; /* black = immortal/static */
+        else if (!full_scan && g_gc.entries[i].survived >= GC_PROMOTION_THRESHOLD)
             g_gc.entries[i].color = 2; /* black = skip */
         else
             g_gc.entries[i].color = 0; /* white = candidate */
 
-        snapshot[snap_count].obj = g_gc.entries[i].obj;
+        void *snapshot_obj = g_gc.entries[i].obj;
+        int32_t retained = rt_heap_try_retain_live(snapshot_obj);
+        if (retained <= 0) {
+            g_gc.collecting = 0;
+            gc_unlock();
+            for (int64_t j = 0; j < snap_count; j++)
+                gc_release_snapshot_entry(&snapshot[j]);
+            free(snapshot);
+            rt_trap(retained < 0 ? "gc: snapshot retain refcount overflow"
+                                  : "gc: tracked object is not live");
+            return 0;
+        }
+
+        snapshot[snap_count].obj = snapshot_obj;
         snapshot[snap_count].traverse = g_gc.entries[i].traverse;
-        rt_obj_retain_maybe(g_gc.entries[i].obj);
+        snapshot[snap_count].retained = retained == 1;
         snap_count++;
     }
 
@@ -1032,7 +1087,7 @@ int64_t rt_gc_collect(void) {
         rt_trap_clear_recovery();
         free(trial_edges.items);
         free(work.items);
-        gc_restore_garbage_state(garbage, garbage_count);
+        gc_restore_garbage_state(garbage, garbage_count, 0);
         for (int64_t i = 0; i < snap_count; i++) {
             if (garbage && gc_garbage_contains(garbage, garbage_count, snapshot[i].obj)) {
                 int snapshot_released = 0;
@@ -1047,14 +1102,10 @@ int64_t rt_gc_collect(void) {
             }
             if (garbage && gc_garbage_contains(garbage, garbage_count, snapshot[i].obj) &&
                 rt_heap_is_payload(snapshot[i].obj)) {
-                if (rt_obj_release_check0(snapshot[i].obj))
-                    rt_obj_free(snapshot[i].obj);
+                gc_release_snapshot_entry(&snapshot[i]);
                 continue;
             }
-            if (snapshot[i].obj && rt_heap_is_payload(snapshot[i].obj)) {
-                if (rt_obj_release_check0(snapshot[i].obj))
-                    rt_obj_free(snapshot[i].obj);
-            }
+            gc_release_snapshot_entry(&snapshot[i]);
         }
         free(garbage);
         free(snapshot);
@@ -1187,7 +1238,7 @@ int64_t rt_gc_collect(void) {
                 resurrected = 1;
         }
         if (resurrected) {
-            gc_restore_garbage_state(garbage, garbage_count);
+            gc_restore_garbage_state(garbage, garbage_count, 1);
         } else {
             for (int64_t i = 0; i < garbage_count; i++) {
                 if (gc_free_finalized_unreachable(&garbage[i], &release_ctx))
@@ -1199,8 +1250,7 @@ int64_t rt_gc_collect(void) {
     for (int64_t i = 0; i < snap_count; i++) {
         if (garbage && gc_garbage_contains(garbage, garbage_count, snapshot[i].obj))
             continue;
-        if (rt_obj_release_check0(snapshot[i].obj))
-            rt_obj_free(snapshot[i].obj);
+        gc_release_snapshot_entry(&snapshot[i]);
     }
 
     free(garbage);
@@ -1388,6 +1438,7 @@ void rt_gc_run_all_finalizers(void) {
         if (snapshot[i].retained && obj && rt_heap_is_payload(obj)) {
             if (rt_obj_release_check0(obj))
                 rt_obj_free(obj);
+            snapshot[i].retained = 0;
         }
         cleanup_from = i + 1;
     }

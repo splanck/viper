@@ -127,6 +127,17 @@ TEST(RuntimeMethodIndexBasic, ObjectMethodsTargets) {
     ASSERT_TRUE(re.has_value());
     EXPECT_EQ(re->target, std::string("Viper.Core.Object.RefEquals"));
     EXPECT_EQ(re->ret, BasicType::Bool);
+    EXPECT_FALSE(re->hasReceiver);
+
+    auto isNullInstance = runtimeMethodIndex().find("Viper.Core.Object", "IsNull", 0);
+    ASSERT_TRUE(isNullInstance.has_value());
+    EXPECT_EQ(isNullInstance->target, std::string("Viper.Core.Object.IsNull"));
+    EXPECT_TRUE(isNullInstance->hasReceiver);
+
+    auto isNullStatic = runtimeMethodIndex().find("Viper.Core.Object", "IsNull", 1);
+    ASSERT_TRUE(isNullStatic.has_value());
+    EXPECT_EQ(isNullStatic->target, std::string("Viper.Core.Object.IsNull"));
+    EXPECT_FALSE(isNullStatic->hasReceiver);
 }
 
 TEST(RuntimeMethodIndexBasic, MemoryAndParseSurfaceMethods) {
@@ -152,6 +163,42 @@ TEST(RuntimeMethodIndexBasic, MemoryAndParseSurfaceMethods) {
     EXPECT_EQ(intOpt->target, std::string("Viper.Core.Parse.Int64Option"));
     EXPECT_EQ(intOpt->ret, BasicType::Object);
     EXPECT_EQ(intOpt->returnClassQName, std::string("Viper.Option"));
+
+    auto weakNew = runtimeMethodIndex().find("Viper.Memory.WeakRef", "New", 1);
+    ASSERT_TRUE(weakNew.has_value());
+    EXPECT_EQ(weakNew->target, std::string("Viper.Memory.WeakRef.New"));
+    EXPECT_EQ(weakNew->ret, BasicType::Object);
+    EXPECT_EQ(weakNew->returnClassQName, std::string("Viper.Memory.WeakRef"));
+
+    auto weakGet = runtimeMethodIndex().find("Viper.Memory.WeakRef", "Get", 1);
+    ASSERT_TRUE(weakGet.has_value());
+    EXPECT_EQ(weakGet->target, std::string("Viper.Memory.WeakRef.Get"));
+    EXPECT_FALSE(weakGet->hasReceiver);
+
+    auto weakGetInstance = runtimeMethodIndex().find("Viper.Memory.WeakRef", "Get", 0);
+    ASSERT_TRUE(weakGetInstance.has_value());
+    EXPECT_EQ(weakGetInstance->target, std::string("Viper.Memory.WeakRef.Get"));
+    EXPECT_TRUE(weakGetInstance->hasReceiver);
+
+    auto weakResetInstance = runtimeMethodIndex().find("Viper.Memory.WeakRef", "Reset", 1);
+    ASSERT_TRUE(weakResetInstance.has_value());
+    EXPECT_EQ(weakResetInstance->target, std::string("Viper.Memory.WeakRef.Reset"));
+    EXPECT_TRUE(weakResetInstance->hasReceiver);
+
+    auto msgCallback = runtimeMethodIndex().find("Viper.Core.MessageBus", "Callback", 1);
+    ASSERT_TRUE(msgCallback.has_value());
+    EXPECT_EQ(msgCallback->target, std::string("Viper.Core.MessageBus.Callback"));
+    EXPECT_FALSE(msgCallback->hasReceiver);
+
+    auto msgSubscribe = runtimeMethodIndex().find("Viper.Core.MessageBus", "Subscribe", 2);
+    ASSERT_TRUE(msgSubscribe.has_value());
+    EXPECT_EQ(msgSubscribe->target, std::string("Viper.Core.MessageBus.Subscribe"));
+    EXPECT_TRUE(msgSubscribe->hasReceiver);
+
+    auto addField = runtimeMethodIndex().find("Viper.Core.ValueType", "AddField", 3);
+    ASSERT_TRUE(addField.has_value());
+    EXPECT_EQ(addField->target, std::string("Viper.Core.Box.ValueTypeAddField"));
+    EXPECT_EQ(addField->ret, BasicType::Void);
 }
 
 TEST(RuntimeMethodIndexBasic, CollectionReturningMethodsPreserveConcreteClass) {

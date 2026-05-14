@@ -11,6 +11,7 @@
 
 #include "rt.hpp"
 #include "rt_box.h"
+#include "rt_gc.h"
 #include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_msgbus.h"
@@ -142,6 +143,12 @@ int main() {
     assert(strcmp(rt_string_cstr(value_string), "Viper.Core.ValueType") == 0);
     rt_string_unref(value_string);
 
+    rt_weakref *weak_ref = rt_weakref_new(value_type);
+    assert(rt_obj_type_id(weak_ref) == RT_WEAKREF_CLASS_ID);
+    rt_string weak_name = rt_obj_type_name(weak_ref);
+    assert(strcmp(rt_string_cstr(weak_name), "Viper.Memory.WeakRef") == 0);
+    rt_string_unref(weak_name);
+
     void *bus = rt_msgbus_new();
     assert(rt_obj_type_id(bus) == RT_MSGBUS_CLASS_ID);
     rt_string bus_name = rt_obj_type_name(bus);
@@ -179,6 +186,7 @@ int main() {
     rt_obj_free(opt);
     rt_obj_release_check0(value_type);
     rt_obj_free(value_type);
+    rt_weakref_free(weak_ref);
     rt_obj_release_check0(callback);
     rt_obj_free(callback);
     rt_obj_release_check0(bus);

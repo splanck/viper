@@ -341,8 +341,18 @@ Weak targets must be live runtime handles: `NULL`, heap objects, arrays, or
 runtime strings. Raw foreign pointers are rejected so the weak-reference
 registry never tracks memory it cannot zero safely.
 
-When a target object is freed, `rt_gc_clear_weak_refs(target)` automatically
-nullifies all weak references pointing to it. This is called from `rt_obj_free()`
+The public runtime surface is `Viper.Memory.WeakRef`. `New(target)` returns an
+owned weak-reference object. Static-style calls (`Get(ref)`, `Alive(ref)`,
+`Reset(ref, target)`, `Free(ref)`) and instance-style calls (`ref.Get()`,
+`ref.Alive()`, `ref.Reset(target)`, `ref.Free()`) are both supported. `Get`
+returns an owned strong reference to the current target or `NULL`; `Free`
+consumes only the weak-reference object and never retains or releases the target.
+Generic `Viper.Memory.Release(ref)` is also safe: weak-reference objects detach
+from the registry in their finalizer before their storage is freed.
+
+When a target object, array, or runtime string is freed,
+`rt_gc_clear_weak_refs(target)` automatically nullifies all weak references
+pointing to it. This is called from object, array, and string final-release paths
 and from the GC collector after the object's finalizer has run and did not
 resurrect the object. Weak references remain valid when resurrection succeeds.
 Clearing a target also detaches the weak-reference chain links, so a cleared weak
@@ -375,7 +385,9 @@ rt_obj_set_finalizer(obj, fn);  // Install callback (one per object, replaces pr
   are skipped.
 - If any finalizer in an unreachable cycle resurrects an object, the whole
   garbage set is restored and re-tracked to avoid dangling references between
-  surviving and collected cycle members.
+  surviving and collected cycle members. Non-resurrecting members whose
+  finalizers ran during the aborted reclaim keep their finalizers installed so
+  they still release resources when they are actually freed later.
 - Finalizer traps during collection or shutdown finalizer sweeps re-raise the
   original trap after snapshot retains are balanced.
 - Calling `rt_gc_collect()` from a finalizer is safe but returns 0 while another
@@ -681,7 +693,7 @@ GC-tracked so the finalizer sweep joins worker threads. See §6 above.
 | Retain | `rt_heap_retain(p)`, `rt_memory_retain(p)`, or `rt_string_ref(s)` | Atomic increment; immortal values are unchanged |
 | Release | `rt_heap_release(p)`, `rt_memory_release(p)`, or `rt_string_unref(s)` | Frees at zero; public memory release reports any finalizer resurrection count |
 | Deferred release | `rt_heap_release_deferred(p)` then `rt_heap_free_zero_ref(p)` | Two-step pattern |
-| Set finalizer | `rt_obj_set_finalizer(obj, fn)` | Objects only; one per object |
+| Set finalizer | `rt_obj_set_finalizer(obj, fn)` | Objects only; one per object. ValueType managed-field registration preserves and chains an existing finalizer. |
 | Resurrect | `rt_obj_resurrect(obj)` | Inside finalizer only; 0→1 |
 | Create weak ref | `rt_weakref_new(target)` | Does NOT retain target |
 | Read weak ref | `rt_weakref_get(ref)` | Returns NULL if target freed |

@@ -325,6 +325,10 @@ RT_CLASS_BEGIN("Viper.Core.Box", CoreBox, "obj", none)
     RT_METHOD("ValueTypeAddField", "void(obj,i64,i64,i1)", BoxValueTypeAddField)
 RT_CLASS_END()
 
+RT_CLASS_BEGIN("Viper.Core.ValueType", CoreValueType, "obj", BoxValueType)
+    RT_METHOD("AddField", "void(i64,i64,i1)", BoxValueTypeAddField)
+RT_CLASS_END()
+
 //=============================================================================
 // COLLECTIONS - BYTES
 //=============================================================================
@@ -3595,11 +3599,24 @@ RT_FUNC(TrapGetCode,           rt_trap_get_code,   "Viper.Error.GetTrapCode",   
 RT_FUNC(TrapGetIp,             rt_trap_get_ip,     "Viper.Error.GetTrapIp",         "i64()")
 RT_FUNC(TrapGetLine,           rt_trap_get_line,   "Viper.Error.GetTrapLine",       "i64()")
 
-RT_FUNC(WeakRefNew,            rt_weakref_new,     "Viper.Memory.WeakRef.New",      "obj(obj)")
+RT_FUNC(WeakRefNew,            rt_weakref_new,     "Viper.Memory.WeakRef.New",      "obj<Viper.Memory.WeakRef>(obj)")
 RT_FUNC(WeakRefGet,            rt_weakref_get,     "Viper.Memory.WeakRef.Get",      "obj(obj)")
 RT_FUNC(WeakRefAlive,          rt_weakref_alive,   "Viper.Memory.WeakRef.Alive",    "i1(obj)")
 RT_FUNC(WeakRefFree,           rt_weakref_free,    "Viper.Memory.WeakRef.Free",     "void(obj)")
 RT_FUNC(WeakRefReset,          rt_weakref_reset,   "Viper.Memory.WeakRef.Reset",    "void(obj,obj)")
+
+RT_CLASS_BEGIN("Viper.Memory.WeakRef", MemoryWeakRef, "obj", WeakRefNew)
+    RT_METHOD("New",   "obj<Viper.Memory.WeakRef>(obj)", WeakRefNew)
+    RT_METHOD("Get",   "obj()",       WeakRefGet)
+    RT_METHOD("Alive", "i1()",        WeakRefAlive)
+    RT_METHOD("Free",  "void()",      WeakRefFree)
+    RT_METHOD("Reset", "void(obj)",   WeakRefReset)
+    RT_METHOD("Get",   "obj(obj)",      WeakRefGet)
+    RT_METHOD("Alive", "i1(obj)",       WeakRefAlive)
+    RT_METHOD("Free",  "void(obj)",     WeakRefFree)
+    RT_METHOD("Reset", "void(obj,obj)", WeakRefReset)
+RT_CLASS_END()
+
 RT_FUNC(StringsJoin,           rt_str_join,  "Viper.String.Join",              "str(str,obj)", always)
 RT_FUNC(StrCapitalize,         rt_str_capitalize,     "Viper.String.Capitalize",     "str(str)")
 RT_FUNC(StrTitle,              rt_str_title,          "Viper.String.Title",          "str(str)")
@@ -10011,6 +10028,7 @@ RT_CLASS_BEGIN("Viper.Core.Object", Object, "obj", none)
     RT_METHOD("TypeName", "str()", ObjTypeName)
     RT_METHOD("TypeId", "i64()", ObjTypeId)
     RT_METHOD("IsNull", "i1()", ObjIsNull)
+    RT_METHOD("IsNull", "i1(obj)", ObjIsNull)
 RT_CLASS_END()
 
 // Viper.Random - RNG class with independent per-instance state

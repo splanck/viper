@@ -236,8 +236,9 @@ int8_t rt_parse_try_int(rt_string s, int64_t *out_value) {
 
 /// @brief Parse a string as a double-precision float. **Locale-isolated:** temporarily switches
 /// the LC_NUMERIC locale to "C" so the decimal separator is always `.` regardless of the user's
-/// system locale (avoids the classic French/German `1,5` parse failure). Rejects NaN/Inf via
-/// `isfinite`. On Win32 uses `_strtod_l` (per-call locale); on POSIX uses `uselocale` thread-local.
+/// system locale (avoids the classic French/German `1,5` parse failure). Accepts explicit
+/// NaN/Inf spellings, while decimal overflow and non-finite decimal results fail. On Win32 uses
+/// `_strtod_l` (per-call locale); on POSIX uses `uselocale` thread-local.
 int8_t rt_parse_try_num(rt_string s, double *out_value) {
     if (!out_value)
         return 0;
@@ -290,7 +291,7 @@ int8_t rt_parse_try_num(rt_string s, double *out_value) {
     freelocale(c_locale);
 #endif
 
-    if (errno == ERANGE || !isfinite(value))
+    if (!isfinite(value))
         return 0;
     if (!endptr || endptr == cursor)
         return 0;
@@ -412,8 +413,6 @@ int64_t rt_parse_int_radix(rt_string s, int64_t radix, int64_t default_value) {
         negative = 1;
         ++cursor;
     } else if (*cursor == '+') {
-        if (radix != 10)
-            return default_value;
         ++cursor;
     }
 

@@ -19,8 +19,13 @@
 #include "rt_string.h"
 
 #include <assert.h>
+#include <csetjmp>
 #include <stdint.h>
 #include <string>
+
+extern "C" void rt_trap_set_recovery(jmp_buf *buf);
+extern "C" void rt_trap_clear_recovery(void);
+extern "C" const char *rt_trap_get_error(void);
 
 namespace {
 
@@ -125,6 +130,49 @@ void expect_trap(void (*fn)(), const char *message) {
     auto result = viper::tests::runIsolated(fn);
     assert(result.trapped());
     assert(result.stderrText.find(message) != std::string::npos);
+}
+
+void test_memory_release_array_validation_preserves_refcount() {
+    void *bad_kind = rt_heap_alloc(RT_HEAP_ARRAY, RT_ELEM_U8, 1, 1, 1);
+    assert(bad_kind != nullptr);
+    rt_heap_hdr_t *bad_kind_hdr = rt_heap_hdr(bad_kind);
+    bad_kind_hdr->elem_kind = 999;
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        rt_memory_release(bad_kind);
+        rt_trap_clear_recovery();
+        assert(false && "unsupported array element kind should trap");
+    } else {
+        std::string message = rt_trap_get_error();
+        rt_trap_clear_recovery();
+        assert(message.find("unsupported array element kind") != std::string::npos);
+    }
+    assert(bad_kind_hdr->refcnt == 1);
+    bad_kind_hdr->elem_kind = RT_ELEM_U8;
+    assert(rt_memory_release(bad_kind) == 0);
+
+    void *bad_len = rt_heap_alloc(RT_HEAP_ARRAY, RT_ELEM_U8, 1, 1, 1);
+    assert(bad_len != nullptr);
+    rt_heap_hdr_t *bad_len_hdr = rt_heap_hdr(bad_len);
+    bad_len_hdr->len = 2;
+    bad_len_hdr->cap = 1;
+
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        rt_memory_release(bad_len);
+        rt_trap_clear_recovery();
+        assert(false && "array length past capacity should trap");
+    } else {
+        std::string message = rt_trap_get_error();
+        rt_trap_clear_recovery();
+        assert(message.find("array length exceeds capacity") != std::string::npos);
+    }
+    assert(bad_len_hdr->refcnt == 1);
+    bad_len_hdr->len = 1;
+    bad_len_hdr->cap = 1;
+    assert(rt_memory_release(bad_len) == 0);
 }
 
 void test_memory_release_runs_finalizer() {
@@ -253,13 +301,14 @@ int main(int argc, char *argv[]) {
     test_memory_release_reports_string_refcount();
     test_memory_release_reports_resurrection_refcount();
     test_memory_release_array_drops_elements();
+    test_memory_release_array_validation_preserves_refcount();
     test_object_array_uses_object_element_kind();
     test_memory_release_array_drops_box_elements();
     test_heap_mark_disposed_return_contract();
     expect_trap(call_memory_retain_invalid, "Viper.Memory.Retain");
     expect_trap(call_memory_release_invalid, "Viper.Memory.Release");
     expect_trap(call_memory_retain_str_object, "Viper.Memory.RetainStr");
-    expect_trap(call_memory_release_str_object, "Viper.Memory.Release");
+    expect_trap(call_memory_release_str_object, "Viper.Memory.ReleaseStr");
     expect_trap(call_object_negative_size, "negative object size");
     expect_trap(call_heap_double_release_deferred, "double release");
     expect_trap(call_heap_retain_overflow, "refcount overflow");

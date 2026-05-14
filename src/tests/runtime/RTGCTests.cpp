@@ -19,6 +19,7 @@ extern "C" {
 #include "rt_object.h"
 #include "rt_array_obj.h"
 #include "rt_seq.h"
+#include "rt_string.h"
 
 /// @brief Vm_trap.
 void vm_trap(const char *msg) {
@@ -114,6 +115,12 @@ static void assert_weak_load(void **slot, void *expected, const char *message) {
     void *got = rt_weak_load(slot);
     ASSERT(got == expected, message);
     release_obj(got);
+}
+
+static void assert_weak_load_string(void **slot, rt_string expected, const char *message) {
+    void *got = rt_weak_load(slot);
+    ASSERT(got == expected, message);
+    rt_str_release_maybe((rt_string)got);
 }
 
 static void count_cycle_finalizer(void *obj) {
@@ -290,6 +297,63 @@ static void test_weakref_free_unregisters() {
         rt_obj_free(obj);
 }
 
+static void test_weakref_generic_release_unregisters() {
+    void *obj = make_node();
+    rt_weakref *ref = rt_weakref_new(obj);
+    ASSERT(ref != NULL, "weakref created for generic release");
+
+    ASSERT(rt_memory_release(ref) == 0, "generic release frees weakref");
+    rt_gc_clear_weak_refs(obj);
+    ASSERT(1, "clear after generic weakref release no crash");
+
+    release_obj(obj);
+}
+
+static void test_weakref_double_free_traps() {
+    rt_weakref *ref = rt_weakref_new(NULL);
+    rt_weakref_free(ref);
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        rt_weakref_free(ref);
+        rt_trap_clear_recovery();
+        ASSERT(0, "double weakref free should trap");
+    } else {
+        std::string message = rt_trap_get_error();
+        rt_trap_clear_recovery();
+        ASSERT(message.find("weak reference") != std::string::npos,
+               "double weakref free trap mentions weak reference");
+    }
+}
+
+static void test_weakref_string_target_cleared_on_release() {
+    rt_string text = rt_string_from_bytes("weak string target", 18);
+    rt_weakref *ref = rt_weakref_new(text);
+    ASSERT(ref != NULL, "weakref accepts runtime string target");
+    void *got = rt_weakref_get(ref);
+    ASSERT(got == text, "weakref get returns string target");
+    rt_str_release_maybe((rt_string)got);
+
+    rt_string_unref(text);
+    ASSERT(rt_weakref_alive(ref) == 0, "weakref string target dead after final release");
+    assert_weakref_get(ref, NULL, "weakref string target cleared after final release");
+    rt_weakref_free(ref);
+}
+
+static void test_weak_store_string_target_zeroes() {
+    rt_string text = rt_string_from_bytes("weak field string target", 24);
+    void *slot = NULL;
+    rt_weak_store(&slot, text);
+    ASSERT(rt_weakref_is_handle(slot) == 1, "weak store wraps string target");
+    assert_weak_load_string(&slot, text, "weak load returns live string target");
+
+    rt_string_unref(text);
+    assert_weak_load_string(&slot, NULL, "weak string field clears after release");
+    rt_weak_store(&slot, NULL);
+    ASSERT(slot == NULL, "weak store null frees string weak handle");
+}
+
 static void test_weakref_reset_after_clear() {
     void *old_target = make_node();
     void *new_target = make_node();
@@ -346,6 +410,31 @@ static void test_weakref_rejects_raw_target() {
         ASSERT(message.find("weak reference target") != std::string::npos,
                "weakref raw target trap mentions target");
     }
+}
+
+static void test_collect_snapshot_retain_overflow_recovers() {
+    void *obj = make_node();
+    rt_gc_track(obj, test_node_traverse);
+    rt_heap_hdr_t *hdr = rt_heap_hdr(obj);
+    hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_gc_collect();
+        rt_trap_clear_recovery();
+        ASSERT(0, "gc snapshot retain overflow should trap");
+    } else {
+        std::string message = rt_trap_get_error();
+        rt_trap_clear_recovery();
+        ASSERT(message.find("snapshot retain") != std::string::npos,
+               "gc snapshot retain overflow trap mentions snapshot retain");
+    }
+
+    hdr->refcnt = 1;
+    rt_gc_untrack(obj);
+    release_obj(obj);
+    ASSERT(rt_gc_collect() >= 0, "gc collecting flag recovers after snapshot retain trap");
 }
 
 //=============================================================================
@@ -616,9 +705,11 @@ static void test_collect_reclaims_cycle_storage_and_finalizers() {
 
 static void test_collect_restores_cycle_after_finalizer_resurrection() {
     g_resurrected_object = NULL;
+    g_cycle_finalizer_count = 0;
     void *a = make_node();
     void *b = make_node();
     rt_obj_set_finalizer(a, resurrecting_finalizer);
+    rt_obj_set_finalizer(b, count_cycle_finalizer);
     set_child_retained(a, b);
     set_child_retained(b, a);
 
@@ -633,6 +724,7 @@ static void test_collect_restores_cycle_after_finalizer_resurrection() {
     int64_t freed = rt_gc_collect();
     ASSERT(freed == 0, "resurrected cycle collection aborts reclaim");
     ASSERT(g_resurrected_object == a, "cycle finalizer resurrected a");
+    ASSERT(g_cycle_finalizer_count == 1, "cycle peer finalizer ran before resurrection restore");
     ASSERT(rt_heap_is_payload(a) == 1, "resurrected a remains live");
     ASSERT(rt_heap_is_payload(b) == 1, "cycle peer remains live");
     ASSERT(rt_gc_is_tracked(a) == 1, "resurrected a re-tracked");
@@ -647,6 +739,7 @@ static void test_collect_restores_cycle_after_finalizer_resurrection() {
     na->child = NULL;
     nb->child = NULL;
     release_obj(b); // drop a -> b edge
+    ASSERT(g_cycle_finalizer_count == 2, "cycle peer finalizer restored after aborted reclaim");
     release_obj(a); // drop b -> a edge
     release_obj(a); // drop resurrection reference
     assert_weakref_get(ref_a, NULL, "weak ref a cleared after final release");
@@ -798,9 +891,14 @@ int main() {
     test_weakref_null_ref();
     test_weakref_clear_on_free();
     test_weakref_free_unregisters();
+    test_weakref_generic_release_unregisters();
+    test_weakref_double_free_traps();
+    test_weakref_string_target_cleared_on_release();
+    test_weak_store_string_target_zeroes();
     test_weakref_reset_after_clear();
     test_weakref_survives_finalizer_resurrection();
     test_weakref_rejects_raw_target();
+    test_collect_snapshot_retain_overflow_recovers();
 
     // Cycle collection
     test_collect_empty();

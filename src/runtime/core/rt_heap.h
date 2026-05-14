@@ -119,6 +119,13 @@ void *rt_heap_alloc(rt_heap_kind_t kind,
 /// @post refcnt is increased by 1 when payload != NULL.
 void rt_heap_retain(void *payload);
 
+/// @brief Try to retain a live heap payload without trapping.
+/// @details Returns 1 when @p payload was retained, 2 when it is live but
+///          immortal and therefore was not retained, 0 when the pointer is
+///          invalid/freed or its refcount is already zero, and -1 when
+///          retaining would overflow the mortal refcount range.
+int32_t rt_heap_try_retain_live(void *payload);
+
 /// @brief Decrement the reference count, freeing the object when it reaches zero.
 /// @details Releases ownership of a heap object. When the reference count drops
 ///          to zero, the header and payload memory are freed.

@@ -865,11 +865,13 @@ Type parsing (with explicit error handling):
 - `Viper.Parse.BoolOr(str, i1)->i1` — Parse boolean or return default
 - `Viper.Parse.IsInt(str)->i1` — Validate integer text
 - `Viper.Parse.IsNum(str)->i1` — Validate numeric text
-- `Viper.Parse.IntRadix(str, i64, i64)->i64` — Parse radix 2-36 integer or return default; decimal accepts `+`/`-`, non-decimal rejects signs and prefixes
+- `Viper.Parse.IntRadix(str, i64, i64)->i64` — Parse radix 2-36 integer or return default; `+` is accepted for every radix, `-` only for decimal, prefixes are rejected
 - `Viper.Parse.Int64(str)->obj<Viper.Option>` — Parse int64 to `Viper.Option`
 - `Viper.Parse.Double(str)->obj<Viper.Option>` — Parse double to `Viper.Option`
 - `Viper.Parse.Int64Option(str)->obj<Viper.Option>` — Parse int64 to `Viper.Option`
 - `Viper.Parse.DoubleOption(str)->obj<Viper.Option>` — Parse double to `Viper.Option`
+
+Numeric parsing accepts explicit `NaN`, `Inf`, `+Inf`, and `-Inf` spellings.
 
 #### Viper.Diagnostics
 

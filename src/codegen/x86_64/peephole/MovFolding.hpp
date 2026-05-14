@@ -29,8 +29,16 @@
 
 namespace viper::codegen::x64::peephole {
 
-/// @brief Try to fold consecutive moves: mov r1, r2; mov r3, r1 -> mov r3, r2.
-/// @return true if a fold was performed.
+/// @brief Try to fold `mov r2, r1; mov r3, r2` into `mov r3, r1` at @p idx.
+/// @details The fold is safe only when the intermediate register `r2` is dead
+///          after the second move (no use before redefinition) and when neither
+///          move is an argument-register write near an upcoming call (those
+///          would violate the ABI handoff). On success the first move becomes
+///          an identity kill that the next identity-elimination pass removes.
+/// @param instrs Instruction list being scanned (mutated in place).
+/// @param idx    Index of the first move in the candidate pair.
+/// @param stats  Peephole statistics counter (incremented on success).
+/// @return True if the fold was applied at @p idx.
 [[nodiscard]] bool tryFoldConsecutiveMoves(std::vector<MInstr> &instrs,
                                            std::size_t idx,
                                            PeepholeStats &stats);

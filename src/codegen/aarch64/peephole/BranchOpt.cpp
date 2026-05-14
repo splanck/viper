@@ -90,6 +90,10 @@ const char *invertCondition(const char *cond) noexcept {
     return nullptr;
 }
 
+/// @brief Test whether @p instr is an unconditional `B label` to @p label.
+/// @param instr Machine instruction to classify.
+/// @param label Target block name to compare against.
+/// @return True if @p instr is `B` and its label operand equals @p label.
 bool isBranchTo(const MInstr &instr, const std::string &label) noexcept {
     if (instr.opc != MOpcode::Br)
         return false;
@@ -98,6 +102,16 @@ bool isBranchTo(const MInstr &instr, const std::string &label) noexcept {
     return instr.ops[0].label == label;
 }
 
+/// @brief Fuse `CMP Xn, #0` / `TST Xn, Xn` followed by `B.eq` / `B.ne` into `CBZ` / `CBNZ`.
+/// @details The shorter `CBZ`/`CBNZ` form encodes both the compare-with-zero and the
+///          branch in a single instruction, freeing the flag pipeline. Fusion requires:
+///          (1) the compare must be against zero (either `CMP` with imm 0 or a `TST`
+///          of a register against itself); (2) the operand must be a GPR; (3) the
+///          following branch must be `B.eq` (→ `CBZ`) or `B.ne` (→ `CBNZ`).
+/// @param instrs Instruction list being scanned (mutated in place).
+/// @param idx    Index of the compare-against-zero candidate.
+/// @param stats  Peephole statistics counter (incremented on success).
+/// @return True if the fusion was applied at @p idx.
 bool tryCbzCbnzFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats) {
     if (idx + 1 >= instrs.size())
         return false;
@@ -151,6 +165,16 @@ bool tryCbzCbnzFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStat
     return true;
 }
 
+/// @brief Fold `CSET Xd, cond` + `CBZ Xd, label` (or `CBNZ`) into `B.cond label`.
+/// @details `CSET` materialises a 0/1 boolean into a GPR, and a subsequent compare-to-zero
+///          branch on that boolean is equivalent to branching on the original condition
+///          (inverted for `CBZ`). Fusion requires that `Xd` is dead after the branch
+///          (no later use before redefinition). On success the two-instruction sequence
+///          becomes a single `B.cond` with the appropriate condition code.
+/// @param instrs Instruction list being scanned (mutated in place).
+/// @param idx    Index of the `CSET` to consider.
+/// @param stats  Peephole statistics counter (incremented on success).
+/// @return True if the fusion was applied at @p idx.
 bool tryCsetBranchFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats) {
     if (idx >= instrs.size())
         return false;

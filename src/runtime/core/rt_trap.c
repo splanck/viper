@@ -60,6 +60,10 @@ static void append_escaped_string(char *dst, size_t dst_cap, rt_string s) {
     }
 
     const char *bytes = s ? rt_string_cstr(s) : "";
+    if (s && !bytes) {
+        snprintf(dst + pos, dst_cap - pos, "<invalid string>");
+        return;
+    }
     size_t len = s ? (size_t)rt_str_len(s) : 0;
     size_t shown = len < 64 ? len : 64;
     for (size_t i = 0; i < shown && pos + 5 < dst_cap; ++i) {
@@ -85,13 +89,14 @@ static void append_escaped_string(char *dst, size_t dst_cap, rt_string s) {
 }
 
 /// @brief Return 1 if @p message is a live, non-empty runtime string handle.
-/// @details Defensive check used by `format_message`: NULL, invalid handle, or empty
-///          string all return 0 so the caller falls back to a fixed diagnostic. Reads
-///          the underlying `->data` pointer only after `rt_string_is_handle` confirmed
-///          the handle is live.
+/// @details NULL and empty strings return 0 so the caller falls back to a fixed
+///          diagnostic. Invalid non-NULL handles trap at the diagnostic boundary
+///          instead of being silently replaced by the fallback text.
 static int message_has_bytes(rt_string message) {
-    if (message && !rt_string_is_handle((const void *)message))
+    if (message && !rt_string_is_handle((const void *)message)) {
+        rt_trap("Viper.Core.Diagnostics: invalid message string handle");
         return 0;
+    }
     if (!message || !message->data)
         return 0;
     return rt_str_len(message) > 0 ? 1 : 0;

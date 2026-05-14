@@ -100,6 +100,8 @@ static const char *rt_obj_builtin_class_name(int64_t class_id) {
             return "Viper.Core.MessageBus";
         case RT_MSGBUS_CALLBACK_CLASS_ID:
             return "Viper.Core.MessageBus.Callback";
+        case RT_WEAKREF_CLASS_ID:
+            return "Viper.Memory.WeakRef";
         default:
             return NULL;
     }
@@ -314,12 +316,21 @@ int32_t rt_obj_release_known_check0(void *p) {
 }
 
 /// @brief Convert a size_t reference count to int64_t, trapping on overflow.
-static int64_t rt_memory_refcount_to_i64(size_t refcount) {
+static int64_t rt_memory_refcount_to_i64_named(size_t refcount, const char *api_name) {
     if (refcount > (size_t)INT64_MAX) {
-        rt_trap("Viper.Memory.Release: refcount exceeds Integer range");
+        char buf[128];
+        snprintf(buf,
+                 sizeof(buf),
+                 "%s: refcount exceeds Integer range",
+                 api_name ? api_name : "Viper.Memory.Release");
+        rt_trap(buf);
         return INT64_MAX;
     }
     return (int64_t)refcount;
+}
+
+static int64_t rt_memory_refcount_to_i64(size_t refcount) {
+    return rt_memory_refcount_to_i64_named(refcount, "Viper.Memory.Release");
 }
 
 /// @brief Validate and release a runtime string, returning the post-release refcount.
@@ -328,18 +339,46 @@ static int64_t rt_memory_refcount_to_i64(size_t refcount) {
 ///          traps); decrements the refcount via `rt_string_unref_count`. Saturates the
 ///          immortal sentinel (`SIZE_MAX`) at `INT64_MAX` so callers can publish the
 ///          observed refcount via the typed Zia API without surprising overflow traps.
-static int64_t rt_memory_release_string(rt_string s) {
+static int64_t rt_memory_release_string(rt_string s, const char *api_name) {
     if (!s)
         return 0;
     if (!rt_string_is_handle(s)) {
-        rt_trap("Viper.Memory.Release: invalid string handle");
+        char buf[128];
+        snprintf(buf,
+                 sizeof(buf),
+                 "%s: invalid string handle",
+                 api_name ? api_name : "Viper.Memory.Release");
+        rt_trap(buf);
         return 0;
     }
 
     size_t next = rt_string_unref_count(s);
     if (next == SIZE_MAX)
         return INT64_MAX;
-    return rt_memory_refcount_to_i64(next);
+    return rt_memory_refcount_to_i64_named(next, api_name);
+}
+
+static int rt_memory_array_payload_is_releasable(rt_heap_hdr_t *hdr) {
+    if (!hdr)
+        return 0;
+    if (hdr->len > hdr->cap) {
+        rt_trap("Viper.Memory.Release: array length exceeds capacity");
+        return 0;
+    }
+    switch ((rt_elem_kind_t)hdr->elem_kind) {
+        case RT_ELEM_STR:
+        case RT_ELEM_NONE:
+        case RT_ELEM_I32:
+        case RT_ELEM_I64:
+        case RT_ELEM_F64:
+        case RT_ELEM_U8:
+        case RT_ELEM_BOX:
+        case RT_ELEM_OBJ:
+            return 1;
+        default:
+            rt_trap("Viper.Memory.Release: unsupported array element kind");
+            return 0;
+    }
 }
 
 /// @brief Drop element references owned by a heap array before its backing buffer is freed.
@@ -450,7 +489,7 @@ int64_t rt_memory_release(void *p) {
     if (!p)
         return 0;
     if (rt_string_is_handle(p)) {
-        return rt_memory_release_string((rt_string)p);
+        return rt_memory_release_string((rt_string)p, "Viper.Memory.Release");
     }
     rt_heap_hdr_t *hdr = NULL;
     if (!rt_heap_try_get_header(p, &hdr) || !hdr) {
@@ -469,6 +508,8 @@ int64_t rt_memory_release(void *p) {
     }
 
     if ((rt_heap_kind_t)hdr->kind == RT_HEAP_ARRAY) {
+        if (!rt_memory_array_payload_is_releasable(hdr))
+            return 0;
         size_t next = rt_heap_release_deferred(p);
         if (next == 0) {
             rt_memory_release_array_payload(p, hdr);
@@ -490,7 +531,7 @@ int64_t rt_memory_release(void *p) {
 int64_t rt_memory_release_str(rt_string s) {
     if (!s)
         return 0;
-    return rt_memory_release_string(s);
+    return rt_memory_release_string(s, "Viper.Memory.ReleaseStr");
 }
 
 /// @brief Compatibility shim matching the string free entry point.
@@ -745,11 +786,16 @@ int64_t rt_obj_is_null(void *self) {
 // Weak Reference Support
 // ============================================================================
 
+static int rt_weak_value_is_managed(void *value) {
+    return value && (rt_string_is_handle(value) || rt_heap_is_payload(value));
+}
+
 /// @brief Store a weak reference without incrementing reference count.
 ///
 /// Used for weak reference fields to break reference cycles. The stored
-/// pointer does not keep the target object alive - if the target's reference
-/// count reaches zero through other paths, it will be freed.
+/// pointer does not keep the managed target alive - if the target's reference
+/// count reaches zero through other paths, it will be freed and the weak handle
+/// will be zeroed.
 ///
 /// **Usage example:**
 /// ```
@@ -760,17 +806,14 @@ int64_t rt_obj_is_null(void *self) {
 /// ```
 ///
 /// @param addr Address of the field to store to.
-/// @param value Object pointer to store (may be NULL).
-///
-/// @note The caller is responsible for ensuring the target remains valid
-///       while the weak reference is in use.
-/// @note Future versions may track weak references for automatic zeroing.
+/// @param value Managed object, array, or string handle to store (may be NULL).
+///              Non-runtime raw pointers are stored borrowed for compatibility.
 void rt_weak_store(void **addr, void *value) {
     if (!addr)
         return;
     void *current = *addr;
     if (rt_weakref_is_handle(current)) {
-        if (value && rt_heap_is_payload(value) && !rt_string_is_handle(value)) {
+        if (rt_weak_value_is_managed(value)) {
             rt_weakref_reset((rt_weakref *)current, value);
             return;
         }
@@ -778,7 +821,7 @@ void rt_weak_store(void **addr, void *value) {
         current = NULL;
     }
 
-    if (value && rt_heap_is_payload(value) && !rt_string_is_handle(value)) {
+    if (rt_weak_value_is_managed(value)) {
         *addr = rt_weakref_new(value);
         return;
     }

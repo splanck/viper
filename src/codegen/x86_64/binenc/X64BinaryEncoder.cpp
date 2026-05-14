@@ -51,6 +51,15 @@ static std::string mapRuntimeSymbol(const std::string &name) {
 
 // === Helper: extract PhysReg from an OpReg operand ===
 
+/// @brief Convert an `OpReg` to a validated `PhysReg`.
+/// @details Rejects virtual registers, out-of-range physical register ids, and
+///          register-class mismatches (GPR id with XMM class or vice versa).
+///          Throws `std::runtime_error` with a descriptive message on any
+///          failure so a lowering bug surfaces immediately rather than emitting
+///          garbage bytes.
+/// @param reg Operand register descriptor produced by the lowerer.
+/// @return The validated physical register.
+/// @throws std::runtime_error if @p reg is virtual, out of range, or class-mismatched.
 static PhysReg toPhys(const OpReg &reg) {
     if (!reg.isPhys)
         throw std::runtime_error("x86-64 binary encoder cannot encode virtual register v" +
@@ -68,10 +77,19 @@ static PhysReg toPhys(const OpReg &reg) {
     return phys;
 }
 
+/// @brief Extract a validated `PhysReg` from a register-variant `Operand`.
+/// @param op Operand expected to be of `OpReg` variant.
+/// @return Validated physical register from the operand.
+/// @throws std::runtime_error if the operand fails @ref toPhys validation.
 static PhysReg regFromOperand(const Operand &op) {
     return toPhys(std::get<OpReg>(op));
 }
 
+/// @brief Extract a GPR `PhysReg` from @p op or throw if it's an XMM.
+/// @param op      Operand expected to be a register operand.
+/// @param context Short description for the error message on a class mismatch.
+/// @return Validated GPR physical register.
+/// @throws std::runtime_error if @p op is not a GPR.
 static PhysReg gprFromOperand(const Operand &op, const char *context) {
     const PhysReg reg = regFromOperand(op);
     if (!isGPR(reg))
@@ -79,6 +97,11 @@ static PhysReg gprFromOperand(const Operand &op, const char *context) {
     return reg;
 }
 
+/// @brief Extract an XMM `PhysReg` from @p op or throw if it's a GPR.
+/// @param op      Operand expected to be a register operand.
+/// @param context Short description for the error message on a class mismatch.
+/// @return Validated XMM physical register.
+/// @throws std::runtime_error if @p op is not an XMM.
 static PhysReg xmmFromOperand(const Operand &op, const char *context) {
     const PhysReg reg = regFromOperand(op);
     if (!isXMM(reg))
@@ -86,22 +109,43 @@ static PhysReg xmmFromOperand(const Operand &op, const char *context) {
     return reg;
 }
 
+/// @brief Extract the memory-operand variant from @p op (throws if not memory).
+/// @param op Operand expected to be of `OpMem` variant.
+/// @return Reference to the underlying `OpMem`.
 static const OpMem &memFromOperand(const Operand &op) {
     return std::get<OpMem>(op);
 }
 
+/// @brief Extract the integer immediate value from @p op.
+/// @param op Operand expected to be of `OpImm` variant.
+/// @return The 64-bit immediate value carried by @p op.
 static int64_t immFromOperand(const Operand &op) {
     return std::get<OpImm>(op).val;
 }
 
+/// @brief Extract the label-operand variant from @p op (throws if not a label).
+/// @param op Operand expected to be of `OpLabel` variant.
+/// @return Reference to the underlying `OpLabel`.
 static const OpLabel &labelFromOperand(const Operand &op) {
     return std::get<OpLabel>(op);
 }
 
+/// @brief Extract the RIP-relative-label variant from @p op.
+/// @param op Operand expected to be of `OpRipLabel` variant.
+/// @return Reference to the underlying `OpRipLabel`.
 static const OpRipLabel &ripFromOperand(const Operand &op) {
     return std::get<OpRipLabel>(op);
 }
 
+/// @brief Narrow a 64-bit displacement to a 32-bit rel32 with bounds-check.
+/// @details x86-64 PC-relative branches and RIP-relative addressing modes
+///          encode the displacement as a signed 32-bit field. Throws on
+///          overflow rather than truncating so a far-away branch surfaces as
+///          a real error rather than corrupted bytes.
+/// @param disp    Signed 64-bit displacement.
+/// @param context Short description for the error message.
+/// @return Narrowed signed 32-bit displacement.
+/// @throws std::runtime_error if @p disp does not fit in `int32_t`.
 static int32_t checkedRel32(int64_t disp, const char *context) {
     if (disp < std::numeric_limits<int32_t>::min() || disp > std::numeric_limits<int32_t>::max()) {
         throw std::runtime_error(std::string(context) + " rel32 displacement out of range");
@@ -109,10 +153,20 @@ static int32_t checkedRel32(int64_t disp, const char *context) {
     return static_cast<int32_t>(disp);
 }
 
+/// @brief Test whether @p op is an internal-branch opcode (`JMP` or `JCC`).
+/// @param op MIR opcode to classify.
+/// @return True when @p op is an intra-function branch that may need patching.
 static bool isInternalBranchOpcode(MOpcode op) {
     return op == MOpcode::JMP || op == MOpcode::JCC;
 }
 
+/// @brief Validate a memory operand prior to encoding.
+/// @details Ensures the base register is a real GPR, and (when an index is
+///          present) the index is also a GPR and is not `RSP` — the SIB
+///          encoding cannot represent `RSP` as an index register.
+/// @param mem     Memory operand under validation.
+/// @param context Short description for the error message.
+/// @throws std::runtime_error if any of the architectural constraints is violated.
 static void validateEncodedMemOperand(const OpMem &mem, const char *context) {
     (void)toPhys(mem.base);
     if (mem.base.cls != RegClass::GPR) {
@@ -132,6 +186,14 @@ static void validateEncodedMemOperand(const OpMem &mem, const char *context) {
     }
 }
 
+/// @brief Map a `PhysReg` to the 4-bit register number used by Win64 unwind data.
+/// @details Win64 `UNWIND_CODE` records identify the saved register by a 4-bit
+///          number. For GPRs the encoding matches the architectural register
+///          number (`RAX=0`, `RCX=1`, `RDX=2`, …, `R15=15`). For XMM registers
+///          the same 4-bit field carries the XMM index (`XMM0=0`, …, `XMM15=15`);
+///          the kind (GPR vs XMM) is implied by the `UNWIND_CODE_KIND` field.
+/// @param reg Physical register being recorded.
+/// @return 4-bit Win64 register number; returns 0 for unrecognised inputs.
 static uint8_t win64RegNumber(PhysReg reg) {
     switch (reg) {
         case PhysReg::RAX:
@@ -207,11 +269,29 @@ struct EmittedWin64UnwindOp {
     size_t endOffset = 0;
 };
 
+/// @brief Test whether @p operand is a register operand naming @p reg.
+/// @details Returns false for non-register operand variants, for virtual
+///          registers (the encoder runs after register allocation), and for
+///          registers whose id doesn't match @p reg.
+/// @param operand Operand to classify.
+/// @param reg     Expected physical register.
+/// @return True if @p operand is a physical-register operand naming @p reg.
 static bool operandIsPhysReg(const Operand &operand, PhysReg reg) {
     const auto *opReg = std::get_if<OpReg>(&operand);
     return opReg && opReg->isPhys && opReg->idOrPhys == static_cast<uint16_t>(reg);
 }
 
+/// @brief Test whether the emitted @p instr realises a Win64 unwind op @p op.
+/// @details After prologue emission, Win64 requires an `UNWIND_INFO` record that
+///          lists each prologue instruction along with its offset. This helper
+///          recognises the four supported op kinds:
+///            - `PushNonVol`: `PUSH reg`
+///            - `AllocStack`: `SUB RSP, #imm` (encoded as `ADDri RSP, -imm`)
+///            - `SaveNonVol`: `MOV [mem], reg` (general save to stack)
+///            - `SaveXmm128`: `MOVUPS [mem], xmm` (128-bit XMM save)
+/// @param instr Machine instruction being matched.
+/// @param op    Unwind op the encoder expected to emit.
+/// @return True if @p instr is the encoded form of @p op.
 static bool instrMatchesWin64UnwindOp(const MInstr &instr, const Win64UnwindOp &op) {
     switch (op.kind) {
         case Win64UnwindOpKind::PushNonVol:
@@ -234,6 +314,21 @@ static bool instrMatchesWin64UnwindOp(const MInstr &instr, const Win64UnwindOp &
     return false;
 }
 
+/// @brief Emit a Win64 `UNWIND_INFO` record for @p fn into a `.xdata` section.
+/// @details Translates the list of prologue unwind ops gathered during code
+///          emission into the architectural `UNWIND_INFO` + `UNWIND_CODE`
+///          layout described in Microsoft x64 SEH documentation. The encoder
+///          must have already emitted the prologue at @p funcStartOffset; this
+///          helper appends the unwind metadata to the text/xdata section so the
+///          object-file writer can finalise the function's `RUNTIME_FUNCTION`
+///          entry.
+/// @param fn               Function whose prologue was emitted.
+/// @param frame            Frame metadata; the prologue must have been emitted.
+/// @param funcSymIdx       Index of the function symbol in the symbol table.
+/// @param funcStartOffset  Byte offset of the function start in the text section.
+/// @param emittedOps       Prologue ops recorded during emission with their end offsets.
+/// @param text             Output `.text` (or sibling `.xdata`) section to append to.
+/// @throws std::runtime_error if any unwind field exceeds the architectural 255-byte limit.
 static void recordWin64Unwind(const MFunction &fn,
                               const FrameInfo &frame,
                               uint32_t funcSymIdx,

@@ -26,6 +26,12 @@
 
 namespace viper::codegen::aarch64::peephole {
 
+/// @brief Test whether @p instr is a `MOV Xd, Xs` whose destination equals its source.
+/// @details Identity moves are unconditional no-ops and are deleted by the peephole.
+///          Returns false for any other opcode, malformed operand count, or
+///          non-physical operands.
+/// @param instr Machine instruction to classify.
+/// @return True if @p instr is an identity GPR move.
 bool isIdentityMovRR(const MInstr &instr) noexcept {
     if (instr.opc != MOpcode::MovRR)
         return false;
@@ -34,6 +40,10 @@ bool isIdentityMovRR(const MInstr &instr) noexcept {
     return samePhysReg(instr.ops[0], instr.ops[1]);
 }
 
+/// @brief Test whether @p instr is a `FMOV Dd, Ds` whose destination equals its source.
+/// @details The FPR counterpart of @ref isIdentityMovRR; same elimination contract.
+/// @param instr Machine instruction to classify.
+/// @return True if @p instr is an identity FPR move.
 bool isIdentityFMovRR(const MInstr &instr) noexcept {
     if (instr.opc != MOpcode::FMovRR)
         return false;
@@ -42,6 +52,16 @@ bool isIdentityFMovRR(const MInstr &instr) noexcept {
     return samePhysReg(instr.ops[0], instr.ops[1]);
 }
 
+/// @brief Fold `MOV r1, r0` followed by `MOV r2, r1` into `MOV r2, r0` and a kill of r1.
+/// @details The fold is only safe when `r1` is dead after the second move (no subsequent
+///          use before redefinition) and when `r1` is not an ABI arg register whose value
+///          might be implicitly consumed by an upcoming call. On success the two-move
+///          sequence becomes `MOV r2, r0` plus a one-instruction kill (`MOV r1, r1`) that
+///          will be removed by the identity-elimination pass on the next iteration.
+/// @param instrs Instruction list being scanned (mutated in place).
+/// @param idx    Index of the first move to consider.
+/// @param stats  Peephole statistics counter (incremented on success).
+/// @return True if the fold was applied at @p idx.
 bool tryFoldConsecutiveMoves(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats) {
     if (idx + 1 >= instrs.size())
         return false;
@@ -82,6 +102,16 @@ bool tryFoldConsecutiveMoves(std::vector<MInstr> &instrs, std::size_t idx, Peeph
     return true;
 }
 
+/// @brief Fold `MOV r1, #imm` + `MOV r2, r1` into `MOV r2, #imm` + identity-kill on r1.
+/// @details Same safety constraints as @ref tryFoldConsecutiveMoves: `r1` must be dead
+///          after the second move and must not be a live ABI arg register feeding an
+///          upcoming call. After the fold, the first instruction becomes an identity
+///          kill that's eliminated by the next identity pass; the immediate moves to
+///          the user's destination, saving one register live range.
+/// @param instrs Instruction list being scanned (mutated in place).
+/// @param idx    Index of the first move (the `MOVri`) to consider.
+/// @param stats  Peephole statistics counter (incremented on success).
+/// @return True if the fold was applied at @p idx.
 bool tryFoldImmThenMove(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats) {
     if (idx + 1 >= instrs.size())
         return false;

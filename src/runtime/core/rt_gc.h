@@ -80,17 +80,20 @@ int64_t rt_gc_tracked_count(void);
 /// @brief Opaque weak reference handle returned by rt_weakref_new().
 typedef struct rt_weakref rt_weakref;
 
-/// @brief Create a zeroing weak reference to a target object.
+#define RT_WEAKREF_CLASS_ID INT64_C(-0x57524546)
+
+/// @brief Create a zeroing weak reference to a managed target.
 /// @details The target's refcount is NOT incremented. When the target is
-///          freed, the weak reference automatically becomes NULL.
-/// @param target The object to weakly reference.
+///          freed, the weak reference automatically becomes NULL. Targets may
+///          be runtime objects, arrays, or string handles.
+/// @param target The managed target to weakly reference.
 /// @return A new weak reference handle (caller owns; free with
 ///         rt_weakref_free()).
 rt_weakref *rt_weakref_new(void *target);
 
 /// @brief Dereference a weak reference and retain the live target.
 /// @param ref The weak reference handle.
-/// @return The retained target object, or NULL if the target has been freed.
+/// @return The retained target, or NULL if the target has been freed.
 ///         Callers own the returned reference and must release it.
 void *rt_weakref_get(rt_weakref *ref);
 
@@ -110,10 +113,9 @@ int8_t rt_weakref_is_handle(void *candidate);
 void rt_weakref_reset(rt_weakref *ref, void *target);
 
 /// @brief Clear all weak references pointing to a target being freed.
-/// @details Called internally when an object is being freed. Integrated
-///          into rt_obj_free().
-/// @param target The object being freed; all weak references to it are
-///               zeroed.
+/// @details Called internally when a managed object, array, or string handle is
+///          being freed. Integrated into the runtime-managed release paths.
+/// @param target The target being freed; all weak references to it are zeroed.
 void rt_gc_clear_weak_refs(void *target);
 
 //=============================================================================

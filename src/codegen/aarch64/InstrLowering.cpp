@@ -1167,7 +1167,12 @@ bool lowerURemChk0(const il::core::Instr &ins,
 // Index Bounds Check (idx.chk)
 //===----------------------------------------------------------------------===//
 
-/// @brief Return the bit-width of an integer IL type (I1→1, I16→16, I32→32, else 64).
+/// @brief Return the bit-width of an integer IL type.
+/// @details Maps `I1`→1, `I16`→16, `I32`→32, and any other kind (including `I64`,
+///          pointers, and non-integer types) to 64. Used by sign- and zero-extension
+///          paths that need to know how many bits to shift through.
+/// @param kind IL type kind whose bit width is queried.
+/// @return Bit width in `[1, 64]`.
 static int integerTypeBits(il::core::Type::Kind kind) {
     switch (kind) {
         case il::core::Type::Kind::I1:

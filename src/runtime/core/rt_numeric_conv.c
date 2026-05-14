@@ -435,8 +435,9 @@ int32_t rt_parse_int64_str(rt_string text, int64_t *out_value) {
 /// @brief Implementation helper that parses a double using the C locale.
 /// @details Establishes a temporary C locale so decimal points use '.',
 ///          delegates to the appropriate `strtod` flavour depending on the
-///          platform, validates complete consumption, and checks for range
-///          errors.  Errors are reported via BASIC error codes.
+///          platform, validates complete consumption, and rejects decimal
+///          overflow/non-finite results. Finite underflow to zero/subnormal
+///          values is accepted. Errors are reported via BASIC error codes.
 /// @param text Null-terminated string containing the number.
 /// @param out_value Output pointer receiving the parsed double.
 /// @return BASIC error code (`Err_None` on success).
@@ -489,7 +490,7 @@ static int32_t rt_parse_double_impl(const char *text, double *out_value) {
     if (endptr == (const char *)cursor)
         return (int32_t)Err_InvalidCast;
 
-    if (errno == ERANGE || !isfinite(value))
+    if (!isfinite(value))
         return (int32_t)Err_Overflow;
 
     const unsigned char *rest = rt_skip_ascii_space((const unsigned char *)endptr);

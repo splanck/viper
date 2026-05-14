@@ -214,20 +214,21 @@ namespace detail {
     if (name == "rt_obj_new_i64" || name == "rt_box_i64" || name == "rt_box_f64" ||
         name == "rt_box_i1" || name == "rt_box_i1_bool" || name == "rt_box_value_type" ||
         name == "Viper.Core.Box.I64" || name == "Viper.Core.Box.F64" ||
-        name == "Viper.Core.Box.I1" || name == "Viper.Core.Box.ValueType") {
+        name == "Viper.Core.Box.I1" || name == "Viper.Core.Box.ValueType" ||
+        name == "Viper.Box.I64" || name == "Viper.Box.F64" || name == "Viper.Box.I1") {
         effects.returnsOwned = true;
         effects.mayAllocate = true;
         return effects;
     }
 
-    if (name == "rt_box_str" || name == "Viper.Core.Box.Str") {
+    if (name == "rt_box_str" || name == "Viper.Core.Box.Str" || name == "Viper.Box.Str") {
         effects.retainedArgMask = 0b1;
         effects.returnsOwned = true;
         effects.mayAllocate = true;
         return effects;
     }
 
-    if (name == "rt_box_try_to_str" || name == "Viper.Core.Box.TryToStr") {
+    if (name == "rt_box_try_to_str") {
         effects.ownedOutArgMask = 0b10;
         return effects;
     }
@@ -289,13 +290,49 @@ namespace detail {
         return effects;
     }
 
+    if (name == "rt_weakref_new" || name == "Viper.Memory.WeakRef.New") {
+        effects.returnsOwned = true;
+        effects.mayAllocate = true;
+        return effects;
+    }
+
+    if (name == "rt_weakref_get" || name == "Viper.Memory.WeakRef.Get") {
+        effects.returnsOwned = true;
+        return effects;
+    }
+
+    if (name == "rt_weakref_free" || name == "Viper.Memory.WeakRef.Free") {
+        effects.consumedArgMask = 0b1;
+        return effects;
+    }
+
+    if (name == "rt_weakref_reset" || name == "Viper.Memory.WeakRef.Reset") {
+        effects.mayAllocate = true;
+        return effects;
+    }
+
     if (name == "rt_unbox_str" || name == "Viper.Core.Box.ToStr" ||
+        name == "Viper.Box.ToStr" ||
+        name == "rt_box_to_i64_option" || name == "rt_box_to_f64_option" ||
+        name == "rt_box_to_i1_option" || name == "rt_box_to_str_option" ||
+        name == "Viper.Core.Box.TryToI64" || name == "Viper.Core.Box.TryToF64" ||
+        name == "Viper.Core.Box.TryToI1" || name == "Viper.Core.Box.TryToStr" ||
+        name == "Viper.Core.Box.ToI64Option" || name == "Viper.Core.Box.ToF64Option" ||
+        name == "Viper.Core.Box.ToI1Option" || name == "Viper.Core.Box.ToStrOption" ||
+        name == "Viper.Box.ToI64Option" || name == "Viper.Box.ToF64Option" ||
+        name == "Viper.Box.ToI1Option" || name == "Viper.Box.ToStrOption" ||
         name == "rt_obj_to_string" || name == "Viper.Core.Object.ToString" ||
         name == "rt_obj_type_name" || name == "Viper.Core.Object.TypeName" ||
         name == "Viper.Core.Object.get_TypeName" || name == "rt_parse_double_option" ||
-        name == "rt_parse_int64_option" || name == "Viper.Core.Parse.DoubleOption" ||
-        name == "Viper.Core.Parse.Int64Option" || name == "Viper.Parse.DoubleOption" ||
-        name == "Viper.Parse.Int64Option" || name == "Viper.Core.Convert.ToString_Int" ||
+        name == "rt_parse_int64_option" || name == "rt_parse_bool_option" ||
+        name == "Viper.Core.Parse.Double" || name == "Viper.Core.Parse.Int64" ||
+        name == "Viper.Core.Parse.DoubleOption" || name == "Viper.Core.Parse.Int64Option" ||
+        name == "Viper.Core.Parse.TryInt" || name == "Viper.Core.Parse.TryNum" ||
+        name == "Viper.Core.Parse.TryBool" || name == "Viper.Parse.Double" ||
+        name == "Viper.Parse.Int64" || name == "Viper.Parse.DoubleOption" ||
+        name == "Viper.Parse.Int64Option" || name == "Viper.Parse.TryInt" ||
+        name == "Viper.Parse.TryNum" || name == "Viper.Parse.TryBool" ||
+        name == "Viper.Core.Convert.ToString_Int" ||
         name == "Viper.Core.Convert.ToString_Double" || name == "Viper.Convert.ToString_Int" ||
         name == "Viper.Convert.ToString_Double") {
         effects.returnsOwned = true;

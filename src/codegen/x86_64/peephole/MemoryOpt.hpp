@@ -29,10 +29,23 @@
 namespace viper::codegen::x64::peephole {
 
 /// @brief Remove frame stores whose value is never loaded before being overwritten.
+/// @details Scans @p instrs forward looking for two consecutive `STORE`s to the
+///          same frame slot with no intervening load. The first store is dead
+///          and can be eliminated. Only frame-relative addresses (`RSP`/`RBP`
+///          base + immediate offset) are considered; aliasing with arbitrary
+///          base registers is conservative and disables the rewrite.
+/// @param instrs Instruction list being scanned (mutated in place).
+/// @param stats  Peephole statistics counter (incremented per removal).
 /// @return Number of stores eliminated.
 std::size_t eliminateDeadFrameStores(std::vector<MInstr> &instrs, PeepholeStats &stats);
 
 /// @brief Forward frame stores to subsequent loads, eliminating the load.
+/// @details After `STORE [frame_slot], r1` followed by `r2 = LOAD [frame_slot]`,
+///          the load can be replaced with `r2 = MOV r1` when `r1` is still live
+///          at the load's position. Eliminates the round-trip through memory
+///          when no aliased write intervenes.
+/// @param instrs Instruction list being scanned (mutated in place).
+/// @param stats  Peephole statistics counter (incremented per removal).
 /// @return Number of load instructions eliminated.
 std::size_t forwardFrameStoreLoads(std::vector<MInstr> &instrs, PeepholeStats &stats);
 

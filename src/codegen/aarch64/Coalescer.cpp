@@ -123,12 +123,27 @@ static std::unordered_map<uint16_t, LiveInterval> computeLiveIntervals(
     return intervals;
 }
 
-/// @brief Check if two live intervals overlap.
+/// @brief Test whether two live intervals overlap.
+/// @details Uses the standard half-open interval interference test: `[a.start, a.end)`
+///          overlaps `[b.start, b.end)` iff `a.start < b.end && b.start < a.end`.
+///          Touching endpoints (`a.end == b.start`) do *not* interfere, which is
+///          the property that allows a back-to-back def-then-use move to be coalesced.
+/// @param a First live interval.
+/// @param b Second live interval.
+/// @return True if @p a and @p b have any overlap.
 static bool interferes(const LiveInterval &a, const LiveInterval &b) {
     return a.start < b.end && b.start < a.end;
 }
 
-/// @brief Rewrite all references to oldVReg as newVReg throughout the function.
+/// @brief Rewrite every reference to @p oldVReg as @p newVReg throughout @p fn.
+/// @details Walks every operand of every instruction in every block. Filters
+///          on register class so a GPR rewrite cannot accidentally rename an
+///          FPR that happens to share the same numeric id. Used after a coalesce
+///          decision to merge the two virtual registers into one.
+/// @param fn       Machine function to mutate.
+/// @param cls      Register class whose ids are being merged (GPR or FPR).
+/// @param oldVReg  Virtual register id being replaced.
+/// @param newVReg  Virtual register id to use in place of @p oldVReg.
 static void rewriteVReg(MFunction &fn, RegClass cls, uint16_t oldVReg, uint16_t newVReg) {
     for (auto &bb : fn.blocks) {
         for (auto &mi : bb.instrs) {

@@ -496,6 +496,8 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_LocListFormat,
     RTCLS_LocTextDirection,
     RTCLS_LocCollator,
+    RTCLS_CoreValueType,
+    RTCLS_MemoryWeakRef,
 };
 
 /// @brief Describes a property on a runtime class.

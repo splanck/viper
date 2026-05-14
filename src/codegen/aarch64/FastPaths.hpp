@@ -32,7 +32,21 @@
 namespace viper::codegen::aarch64 {
 
 /// @brief Try fast-path lowering for simple function patterns.
-/// @returns The lowered MFunction if a fast-path matched, nullopt otherwise.
+/// @details Recognises a small set of trivially-lowerable IL function shapes
+///          (e.g. single-block returns of a constant, identity passthrough,
+///          simple register-to-register copies) and produces a complete MIR
+///          function in one pass — skipping the general per-instruction
+///          dispatcher. Returns @c nullopt for any function that does not match,
+///          leaving the caller to fall back to the generic lowering pipeline.
+/// @param fn  Source IL function under consideration.
+/// @param ti  Target description (used for ABI, scratch-register choices).
+/// @param fb  Frame builder; supplies stack-slot allocation and frame-size accounting.
+/// @param mf  Pre-allocated MIR function that the fast-path writes into.
+/// @param stringLiteralByteLengths Optional map from string-literal label to byte length;
+///        used by patterns that lower constant-string passthrough.
+/// @param knownVarArgNamedArgCounts Optional map of vararg function names to their
+///        non-variadic prefix arity; allows fast-path matching of calls into varargs.
+/// @returns The lowered MFunction if a fast-path matched, @c nullopt otherwise.
 std::optional<MFunction> tryFastPaths(const il::core::Function &fn,
                                       const TargetInfo &ti,
                                       FrameBuilder &fb,

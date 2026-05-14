@@ -87,7 +87,21 @@ class A64BinaryEncoder {
     /// Measure the fixed BTI/prologue prefix emitted before the first block label.
     size_t measurePreludeSize(const MFunction &fn);
 
-    /// Measure the encoded byte size of one MIR instruction at a specific byte offset.
+    /// @brief Measure the encoded byte size of one MIR instruction at a specific byte offset.
+    /// @details Used during the size-estimation pass that runs before final emission.
+    ///          Conditional branches may need either a 4-byte short form or a 12-byte
+    ///          long form depending on the displacement to their target, so the size
+    ///          can depend on the offsets of labels resolved during this same pass.
+    /// @param mi The MIR instruction to measure.
+    /// @param currentOffset Byte offset of @p mi within the function being measured.
+    /// @param knownLabelOffsets Map of already-resolved label offsets within the function.
+    /// @param instructionOrdinal Sequential index of @p mi within the function.
+    /// @param assumedLongConditionalBranches Set of ordinals that the current iteration
+    ///        is committed to emitting in their long form (input).
+    /// @param discoveredLongConditionalBranches Optional output: when non-null, ordinals
+    ///        whose displacement no longer fits the short form are inserted so the
+    ///        next iteration can re-measure with them promoted.
+    /// @return Encoded byte size of @p mi assuming the current short/long branch choices.
     size_t measureInstructionSize(const MInstr &mi,
                                   size_t currentOffset,
                                   const LabelOffsetMap &knownLabelOffsets,
@@ -133,7 +147,17 @@ class A64BinaryEncoder {
     /// Emit add sp, sp, #bytes (chunked if >4080).
     void encodeAddSp(int64_t bytes, objfile::CodeSection &cs);
 
-    /// Emit a large-offset load/store sequence using a reserved scratch register.
+    /// @brief Emit a large-offset load/store sequence using a reserved scratch register.
+    /// @details When the offset overflows the architectural immediate range for
+    ///          `LDR`/`STR`, materialises the effective address into a reserved
+    ///          scratch GPR via `MOV` + `ADD` and then issues the access with a
+    ///          zero immediate offset.
+    /// @param rt     5-bit transfer register hardware encoding.
+    /// @param base   5-bit base register hardware encoding.
+    /// @param offset Byte offset from @p base (may be negative).
+    /// @param isLoad True to emit `LDR`, false to emit `STR`.
+    /// @param isFPR  True if @p rt names an FPR (selects `Dt` view); false for GPR.
+    /// @param cs     Code section to append the emitted bytes to.
     void encodeLargeOffsetLdSt(uint32_t rt,
                                uint32_t base,
                                int64_t offset,
@@ -141,8 +165,14 @@ class A64BinaryEncoder {
                                bool isFPR,
                                objfile::CodeSection &cs);
 
-    /// Emit a stack-argument store using SP-relative addressing or a scratch base for
-    /// oversized offsets.
+    /// @brief Emit an outgoing-stack-arg store using SP-relative addressing.
+    /// @details For offsets that fit the scaled-unsigned-immediate form, emits a
+    ///          single `STR Rt, [SP, #imm]`. For larger offsets, materialises the
+    ///          effective address into a scratch base and stores via that base.
+    /// @param rt     5-bit transfer register hardware encoding.
+    /// @param offset Byte offset from `SP` of the destination slot.
+    /// @param isFPR  True if @p rt names an FPR; false for GPR.
+    /// @param cs     Code section to append the emitted bytes to.
     void encodeSpOffsetStore(uint32_t rt, int64_t offset, bool isFPR, objfile::CodeSection &cs);
 
     /// Emit a single 32-bit instruction word.

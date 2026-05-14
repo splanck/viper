@@ -747,13 +747,14 @@ Type parsing with explicit error codes:
 - `Viper.Core.Parse.BoolOr(str,i1)->i1` — Parse boolean or default
 - `Viper.Core.Parse.IsInt(str)->i1` — Validate integer text
 - `Viper.Core.Parse.IsNum(str)->i1` — Validate numeric text
-- `Viper.Core.Parse.IntRadix(str,i64,i64)->i64` — Parse radix 2-36 integer or default; decimal accepts `+`/`-`, non-decimal rejects signs and prefixes
+- `Viper.Core.Parse.IntRadix(str,i64,i64)->i64` — Parse radix 2-36 integer or default; `+` is accepted for every radix, `-` only for decimal, prefixes are rejected
 - `Viper.Core.Parse.Double(str)->obj<Viper.Option>` — Parse double to `Viper.Option`
 - `Viper.Core.Parse.Int64(str)->obj<Viper.Option>` — Parse int64 to `Viper.Option`
 - `Viper.Core.Parse.DoubleOption(str)->obj<Viper.Option>` — Parse double to `Viper.Option`
 - `Viper.Core.Parse.Int64Option(str)->obj<Viper.Option>` — Parse int64 to `Viper.Option`
 
-`Viper.Parse` is a public alias for the same methods.
+`Viper.Parse` is a public alias for the same methods. Numeric parsing accepts
+explicit `NaN`, `Inf`, `+Inf`, and `-Inf` spellings.
 
 #### Viper.Core.Diagnostics
 
@@ -773,6 +774,7 @@ first‑class and tested:
         - `Equals(OBJECT other) -> BOOL` — reference equality by default
         - `HashCode() -> I64` — process‑consistent hash derived from the object pointer
         - `IsNull() -> BOOL` — returns true if the object reference is null
+        - `IsNull(obj) -> BOOL` — static null-safe test for any object reference
         - `ToString() -> STRING` — default returns the class qualified name
         - `TypeId() -> I64` — returns the compile-time type identifier
         - `TypeName() -> STRING` — returns the fully-qualified class name

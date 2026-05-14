@@ -42,6 +42,7 @@
 #include "rt_platform.h"
 #include "rt_string.h"
 
+#include <math.h>
 #include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -82,6 +83,7 @@ typedef struct value_type_field_desc {
 typedef struct value_type_layout {
     void *obj;
     value_type_field *fields;
+    rt_heap_finalizer_t previous_finalizer;
     struct value_type_layout *next;
 } value_type_layout;
 
@@ -196,8 +198,32 @@ static int box_tag_is_valid(int64_t tag) {
 }
 
 static void value_type_finalizer(void *obj) {
+    rt_heap_finalizer_t previous = NULL;
     value_type_lock();
-    value_type_layout *layout = value_type_detach_locked(obj);
+    value_type_layout *layout = value_type_find_locked(obj);
+    previous = layout ? layout->previous_finalizer : NULL;
+    value_type_unlock();
+
+    if (!layout)
+        return;
+    if (previous && previous != value_type_finalizer)
+        previous(obj);
+
+    rt_heap_hdr_t *hdr = NULL;
+    if (rt_heap_try_get_header(obj, &hdr) && hdr &&
+        __atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE) != 0) {
+        rt_heap_finalizer_t reinstalled = hdr->finalizer;
+        value_type_lock();
+        value_type_layout *live_layout = value_type_find_locked(obj);
+        if (live_layout && reinstalled != value_type_finalizer)
+            live_layout->previous_finalizer = reinstalled;
+        value_type_unlock();
+        rt_obj_set_finalizer(obj, value_type_finalizer);
+        return;
+    }
+
+    value_type_lock();
+    layout = value_type_detach_locked(obj);
     value_type_unlock();
     if (!layout)
         return;
@@ -389,6 +415,10 @@ static void box_str_finalizer(void *obj) {
 /// which handles both heap and literal-pool strings) and registering `box_str_finalizer` to
 /// release it on collection. Stores NULL string as-is.
 void *rt_box_str(rt_string val) {
+    if (val && !rt_string_is_handle(val)) {
+        rt_trap("rt_box_str: invalid string handle");
+        return NULL;
+    }
     rt_box_t *box = (rt_box_t *)alloc_box();
     if (!box)
         return NULL;
@@ -489,8 +519,9 @@ int8_t rt_box_try_to_i1(void *box, int8_t *out) {
 
 /// @brief Try to extract a runtime string from @p box, never trapping. Returns 1 on success.
 /// @details On success writes a *retained* string handle to @p out — caller owns the new
-///          reference and must release it (this is what the IL ownership metadata's
-///          `ownedOutArgMask` for `Box.TryToStr` describes). Failure paths NULL out @p out.
+///          reference and must release it. This raw C helper is runtime-internal; the public
+///          `Viper.Core.Box.TryToStr` surface returns an owned `Option<String>`.
+///          Failure paths NULL out @p out.
 int8_t rt_box_try_to_str(void *box, rt_string *out) {
     if (out)
         *out = NULL;
@@ -564,6 +595,10 @@ int64_t rt_box_eq_f64(void *box, double val) {
 /// @brief Compare a box to a raw rt_string. Delegates to `rt_str_eq` so encoding is handled
 /// canonically; returns 0 if `box` isn't a string box.
 int64_t rt_box_eq_str(void *box, rt_string val) {
+    if (val && !rt_string_is_handle(val)) {
+        rt_trap("rt_box_eq_str: invalid string handle");
+        return 0;
+    }
     rt_box_t *b = box_maybe(box);
     if (!b)
         return 0;
@@ -628,6 +663,23 @@ void rt_box_value_type_add_field(void *obj, int64_t offset, int64_t kind, int8_t
         return;
     }
 
+    size_t field_offset = (size_t)offset;
+    value_type_lock();
+    value_type_layout *existing_layout = value_type_find_locked(obj);
+    if (existing_layout) {
+        for (value_type_field *existing = existing_layout->fields; existing; existing = existing->next) {
+            if (existing->offset == field_offset) {
+                int same_kind = existing->kind == kind;
+                value_type_unlock();
+                if (same_kind)
+                    return;
+                rt_trap("rt_box_value_type_add_field: field offset already registered");
+                return;
+            }
+        }
+    }
+    value_type_unlock();
+
     value_type_field *field = (value_type_field *)calloc(1, sizeof(value_type_field));
     value_type_layout *new_layout = (value_type_layout *)calloc(1, sizeof(value_type_layout));
     if (!field || !new_layout) {
@@ -636,9 +688,9 @@ void rt_box_value_type_add_field(void *obj, int64_t offset, int64_t kind, int8_t
         rt_trap("rt_box_value_type_add_field: memory allocation failed");
         return;
     }
-    field->offset = (size_t)offset;
+    field->offset = field_offset;
     field->kind = kind;
-    value_type_field retain_field = {field->offset, field->kind, NULL};
+    value_type_field retain_field = {field_offset, kind, NULL};
     int retained_slot = 0;
     if (retain_now) {
         if (!value_type_slot_is_valid(obj, &retain_field)) {
@@ -657,6 +709,7 @@ void rt_box_value_type_add_field(void *obj, int64_t offset, int64_t kind, int8_t
     value_type_layout *layout = value_type_find_locked(obj);
     if (!layout) {
         new_layout->obj = obj;
+        new_layout->previous_finalizer = hdr->finalizer;
         new_layout->next = g_value_type_layouts;
         g_value_type_layouts = new_layout;
         layout = new_layout;
@@ -707,10 +760,11 @@ void rt_box_value_type_add_field(void *obj, int64_t offset, int64_t kind, int8_t
             value_type_lock();
             value_type_layout *removed = value_type_detach_locked(obj);
             value_type_unlock();
+            rt_heap_finalizer_t previous = removed ? removed->previous_finalizer : NULL;
             if (retained_slot)
                 value_type_release_retained_slot(obj, &retain_field);
             value_type_free_layout(removed);
-            rt_obj_set_finalizer(obj, NULL);
+            rt_obj_set_finalizer(obj, previous);
             rt_trap(saved_error);
             return;
         }
@@ -746,6 +800,10 @@ size_t rt_box_hash(void *elem) {
             case RT_BOX_F64:
             {
                 double value = box->data.f64_val;
+                if (isnan(value)) {
+                    uint64_t canonical_nan = UINT64_C(0x7ff8000000000000);
+                    return (size_t)rt_fnv1a(&canonical_nan, sizeof(canonical_nan));
+                }
                 if (value == 0.0)
                     value = 0.0;
                 return (size_t)rt_fnv1a(&value, sizeof(double));

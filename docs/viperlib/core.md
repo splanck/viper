@@ -34,6 +34,7 @@ Base class for all Viper reference types. Provides fundamental object operations
 | `Equals(other)` | `Boolean(Object)` | Compares this object with another for equality |
 | `HashCode()`    | `Integer()`       | Returns a hash code for the object             |
 | `IsNull()`      | `Boolean()`       | Returns true if this reference is null         |
+| `IsNull(obj)`   | `Boolean(Object)` | Static null test that is safe for null inputs  |
 | `ToString()`    | `String()`        | Returns a string representation of the object  |
 | `TypeId()`      | `Integer()`       | Returns a numeric type identifier for the object's runtime type |
 | `TypeName()`    | `String()`        | Returns the runtime type name of the object    |
@@ -69,6 +70,7 @@ PRINT obj1.HashCode()
 PRINT obj1.TypeName()   ' Runtime type name
 PRINT obj1.TypeId()     ' Numeric type ID
 PRINT obj1.IsNull()     ' True if null reference
+PRINT Viper.Core.Object.IsNull(obj1)  ' Static null-safe form
 
 ' Static function call - check if same instance
 IF Viper.Core.Object.RefEquals(obj1, obj2) THEN
@@ -112,11 +114,12 @@ Boxing helpers for storing primitive values in generic collections. Boxed values
 - Type tags: 0 = integer, 1 = double, 2 = boolean, 3 = string.
 - Unboxing with the wrong type traps with a runtime diagnostic.
 - `ToStr` returns an owned/retained string; generated code releases it like other string-returning runtime calls.
+- String box helpers validate non-null string handles and trap invalid foreign pointers instead of retaining or comparing arbitrary memory.
 - The `TryTo*` forms do not trap for type mismatch and return managed `Option` values. They are aliases of the `To*Option` surface, so Zia and BASIC never need output pointers.
 - Boxed values report `Viper.Core.Box` through `Viper.Core.Object.TypeName` and use value equality/hash semantics for `Object.Equals` and collection lookup.
-- Floating-point box hashes canonicalize `+0.0` and `-0.0` so values that compare equal hash equally.
+- Floating-point box hashes canonicalize `+0.0`/`-0.0` and all NaN payloads. NaN boxes still compare unequal by value, matching IEEE equality.
 - `ValueType(size)` is used by the compiler when boxing structs. Size `0` is valid and creates a managed empty value-type object; negative sizes trap.
-- The compiler copies the inline payload into heap storage, then registers managed object/string fields with `ValueTypeAddField` so boxed structs retain referenced values, participate in GC traversal, and release fields when finalized. Registering the same offset with the same field kind is idempotent; registering the same offset with a different kind traps. When `retainNow` is true, the current slot value is validated before it is retained. User code normally does not call `ValueTypeAddField` directly.
+- `Viper.Core.ValueType` is the catalog/introspection class for boxed value-type payloads. The compiler copies the inline payload into heap storage, then registers managed object/string fields with `ValueTypeAddField`/`ValueType.AddField` so boxed structs retain referenced values, participate in GC traversal, and release fields when finalized. Registering the same offset with the same field kind is idempotent and does not touch the current slot's reference count; registering the same offset with a different kind traps. When `retainNow` is true, the current slot value is validated before it is retained. If the value-type object already has a finalizer, managed-field cleanup chains it instead of replacing it. User code normally does not call `ValueTypeAddField` directly.
 
 ### Zia Example
 
@@ -263,8 +266,9 @@ Safe string parsing utilities. Methods return `Option`, validation booleans, or 
 
 - `TryInt`, `TryNum`, `TryBool`, `Double`, and `Int64` return managed `Option` values. The lower-level C output-pointer helpers remain runtime-internal.
 - Null input is treated as parse failure: `Try*` and `*Option` return `None`, `Is*` returns false, and `*Or`/`IntRadix` returns the supplied default.
-- `IntRadix` supports bases 2 through 36 (e.g., 16 for hex, 2 for binary). A leading `+` is accepted; a leading `-` is accepted for radix 10 only.
+- `IntRadix` supports bases 2 through 36 (e.g., 16 for hex, 2 for binary). A leading `+` is accepted for every radix; a leading `-` is accepted for radix 10 only.
 - Leading/trailing ASCII whitespace is accepted; non-whitespace trailing characters and embedded NUL bytes are rejected.
+- Numeric parsing accepts explicit `NaN`, `Inf`, `+Inf`, and `-Inf` spellings. Decimal overflow and non-finite decimal results are rejected; finite underflow to zero or a subnormal value is accepted.
 - `DoubleOption` and `Int64Option` are stable aliases for the same optional-return behavior. Use any `Option` parse form when invalid input is expected and should be handled gracefully rather than terminating the program.
 
 ### Parse.DoubleOption and Parse.Int64Option Example

@@ -175,7 +175,15 @@ struct SingleBlockFastPathSetup {
     return SingleBlockFastPathSetup{bb, ctx.bbOut(0)};
 }
 
-/// @brief Check if a basic block has side effects that prevent fast-path.
+/// @brief Test whether @p bb contains any instruction that prevents fast-path lowering.
+/// @details Control-flow terminators (`ret`/`br`/`cbr`) are exempted because every
+///          basic block must end in one. For everything else the predicate consults
+///          `OpcodeInfo::hasSideEffects` and `memoryEffects` and reports true if
+///          either marks the instruction as side-effecting. A side-effecting block
+///          can't be reproduced by a fast-path because the generic lowering is the
+///          only path that emits the necessary safepoint/trap handling.
+/// @param bb Basic block to inspect.
+/// @return True if @p bb contains any side-effecting non-terminator instruction.
 [[nodiscard]] inline bool hasSideEffects(const il::core::BasicBlock &bb) {
     for (const auto &instr : bb.instructions) {
         switch (instr.op) {

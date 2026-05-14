@@ -408,6 +408,34 @@ static void test_rejects_raw_pointer_callback() {
     destroy_obj(bus);
 }
 
+static void test_subscribe_retain_trap_releases_bus() {
+    void *bus = rt_msgbus_new();
+    const char long_topic[] = "topic-name-longer-than-sso-for-overflow-test";
+    rt_string topic = rt_string_from_bytes(long_topic, sizeof(long_topic) - 1);
+    void *callback = rt_msgbus_callback_new(cb_first);
+    rt_heap_hdr_t *topic_hdr = rt_heap_hdr(topic->data);
+    topic_hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_msgbus_subscribe(bus, topic, callback);
+        rt_trap_clear_recovery();
+        assert(false && "topic retain overflow should trap");
+    } else {
+        std::string message = rt_trap_get_error();
+        rt_trap_clear_recovery();
+        assert(message.find("refcount overflow") != std::string::npos);
+    }
+
+    topic_hdr->refcnt = 1;
+    assert(rt_msgbus_total_subscriptions(bus) == 0);
+    destroy_obj(callback);
+    rt_string_unref(topic);
+    destroy_obj(bus);
+    assert(rt_heap_is_payload(bus) == 0);
+}
+
 static void test_publish_trap_releases_snapshot_callbacks() {
     void *bus = rt_msgbus_new();
     rt_string topic = make_str("trap_cleanup");
@@ -533,6 +561,7 @@ int main() {
     test_topics();
     test_rejects_plain_heap_callback();
     test_rejects_raw_pointer_callback();
+    test_subscribe_retain_trap_releases_bus();
     test_publish_trap_releases_snapshot_callbacks();
     test_clear_topic();
     test_clear();

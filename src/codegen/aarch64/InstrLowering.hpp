@@ -85,14 +85,32 @@ inline bool materializeValueToVReg(const il::core::Value &v,
                                   ctx.stringLiteralByteLengths);
 }
 
-/// @brief Materialize an IL string global into a runtime string handle in x0.
+/// @brief Materialize an IL string global into a runtime string handle in `x0`.
+/// @details Emits `ADRP` + `ADD` to compute the address of @p sym in `.rodata`,
+///          then calls `rt_str_from_const_with_len(addr, len)` to produce a
+///          managed runtime string. The result is left in `x0`. Used when a
+///          string literal must be passed directly as a call argument.
+/// @param sym                       Symbol name of the string literal in `.rodata`.
+/// @param stringLiteralByteLengths  Optional map of literal labels to byte lengths
+///                                  (passed as the second argument to the runtime).
+/// @param out                       Output MIR basic block receiving the sequence.
+/// @param nextVRegId                Counter for fresh vreg id allocation (incremented).
 void emitConstStrGlobalToX0(const std::string &sym,
                             const std::unordered_map<std::string, std::size_t>
                                 *stringLiteralByteLengths,
                             MBasicBlock &out,
                             uint16_t &nextVRegId);
 
-/// @brief Materialize an IL string global into a runtime string handle vreg.
+/// @brief Materialize an IL string global into a runtime string handle in a fresh vreg.
+/// @details Same lowering as @ref emitConstStrGlobalToX0 but leaves the runtime
+///          string handle in a freshly-allocated virtual register rather than
+///          `x0`. Used when the string value feeds into a subsequent operation
+///          (e.g. a store, a phi, a comparison) rather than a call.
+/// @param sym                       Symbol name of the string literal in `.rodata`.
+/// @param stringLiteralByteLengths  Optional map of literal labels to byte lengths.
+/// @param out                       Output MIR basic block receiving the sequence.
+/// @param nextVRegId                Counter for fresh vreg id allocation (incremented).
+/// @return Virtual register id holding the runtime string handle.
 uint16_t emitConstStrGlobalToVReg(
     const std::string &sym,
     const std::unordered_map<std::string, std::size_t> *stringLiteralByteLengths,

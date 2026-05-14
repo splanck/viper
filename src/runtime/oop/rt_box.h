@@ -168,6 +168,8 @@ void *rt_box_value_type(int64_t size);
 /// @param offset Byte offset of the pointer-sized field.
 /// @param kind RT_VALUE_FIELD_OBJ or RT_VALUE_FIELD_STR.
 /// @param retain_now Retain the current field value immediately when non-zero.
+/// @note Re-registering the same offset with the same kind is a no-op and does not retain or
+/// release the current slot value.
 /// @note Re-registering the same offset with a different kind traps.
 void rt_box_value_type_add_field(void *obj, int64_t offset, int64_t kind, int8_t retain_now);
 

@@ -94,6 +94,13 @@ static std::string mapRuntimeSymbol(const std::string &name) {
     return name;
 }
 
+/// @brief Test whether @p name is a Darwin assembler-local symbol.
+/// @details Darwin treats any symbol whose first character is `.` or whose
+///          prefix is one of `L.`, `Ltmp`, or `LBB` as a private assembler
+///          label that is not visible to the linker. Such labels must not
+///          receive the underscore mangling that exported C symbols get.
+/// @param name Candidate symbol name to classify.
+/// @return True if the name follows the Darwin assembler-local convention.
 static bool isDarwinLocalSymbolName(std::string_view name) {
     return !name.empty() &&
            (name.front() == '.' || name.rfind("L.", 0) == 0 || name.rfind("Ltmp", 0) == 0 ||

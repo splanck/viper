@@ -30,8 +30,20 @@
 
 namespace viper::codegen::x64::peephole {
 
-/// @brief Run dead code elimination on a basic block.
-/// @return Number of instructions eliminated.
+/// @brief Run dead-code elimination on a single basic block.
+/// @details Backward walk over @p instrs that tracks each operand's live set
+///          and removes instructions whose only outputs are unused (or are
+///          identity moves). Side-effecting instructions (calls, stores, traps,
+///          flag-using branches, RSP modifications) are never removed. When
+///          @p preservePhysRegsAtExit is true, physical registers live across
+///          the block exit (e.g. return / call values that fall through to
+///          the next block) are pinned and survive DCE.
+/// @param instrs                Instruction list being scanned (mutated in place).
+/// @param stats                 Peephole statistics counter (incremented per removal).
+/// @param target                Target ABI metadata for identifying call-clobber
+///                              and callee-saved registers.
+/// @param preservePhysRegsAtExit Pin block-exit-live physical registers when true.
+/// @return Number of instructions removed.
 std::size_t runBlockDCE(std::vector<MInstr> &instrs,
                         PeepholeStats &stats,
                         const TargetInfo &target,

@@ -211,30 +211,21 @@ static void mb_release_bus(rt_msgbus_impl *mb) {
         rt_obj_free(mb);
 }
 
-/// @brief Retain a heap payload without trapping while the bus lock is held.
-/// @return 1 retained/immortal, 0 invalid/dead, -1 overflow.
-static int mb_retain_heap_payload_locked(void *payload) {
-    rt_heap_hdr_t *hdr = NULL;
-    if (!payload || !rt_heap_try_get_header(payload, &hdr) || !hdr)
-        return 0;
-    size_t old = __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED);
-    for (;;) {
-        if (old == 0)
-            return 0;
-        if (old >= RT_HEAP_IMMORTAL_REFCNT)
-            return 1;
-        if (old >= RT_HEAP_MAX_MORTAL_REFCNT)
-            return -1;
-        size_t next = old + 1;
-        if (__atomic_compare_exchange_n(&hdr->refcnt,
-                                        &old,
-                                        next,
-                                        /*weak=*/0,
-                                        __ATOMIC_RELAXED,
-                                        __ATOMIC_RELAXED)) {
-            return 1;
-        }
-    }
+static void mb_release_snapshot_callback(void **callbacks,
+                                         unsigned char *retained,
+                                         int64_t index) {
+    if (!callbacks || index < 0)
+        return;
+    void *callback = callbacks[index];
+    if (!callback)
+        return;
+    callbacks[index] = NULL;
+    if (retained && !retained[index])
+        return;
+    if (retained)
+        retained[index] = 0;
+    if (rt_obj_release_check0(callback))
+        rt_obj_free(callback);
 }
 
 /// @brief Test whether @p callback is a live `MessageBus.Callback` heap object.
@@ -304,15 +295,19 @@ static void mb_free_sub(mb_sub *s) {
     if (!s)
         return;
     rt_string topic = s->topic;
-    void *callback = s->callback;
-    s->topic = NULL;
-    s->callback = NULL;
     s->next = NULL;
-    free(s);
-    if (topic)
+    if (topic) {
         rt_string_unref(topic);
-    if (rt_obj_release_check0(callback))
-        rt_obj_free(callback);
+        s->topic = NULL;
+    }
+    void *callback = s->callback;
+    if (callback) {
+        int should_free = rt_obj_release_check0(callback);
+        s->callback = NULL;
+        if (should_free)
+            rt_obj_free(callback);
+    }
+    free(s);
 }
 
 /// @brief Free a single topic node — releases the topic name and the allocation itself.
@@ -324,20 +319,22 @@ static void mb_free_topic_node(mb_topic *t) {
         return;
     rt_string name = t->name;
     char *key_bytes = t->key_bytes;
-    t->name = NULL;
     t->key_bytes = NULL;
     t->key_len = 0;
     t->key_hash = 0;
     t->subs = NULL;
     t->next = NULL;
-    free(t);
     free(key_bytes);
-    if (name)
+    if (name) {
         rt_string_unref(name);
+        t->name = NULL;
+    }
+    free(t);
 }
 
 static void mb_free_sub_chain(mb_sub *s) {
     mb_sub * volatile cursor = s;
+    mb_sub * volatile active_sub = NULL;
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) != 0) {
@@ -348,6 +345,11 @@ static void mb_free_sub_chain(mb_sub *s) {
                  "%s",
                  err && err[0] ? err : "rt_msgbus: trap while freeing subscribers");
         rt_trap_clear_recovery();
+        if (active_sub) {
+            mb_sub *current = active_sub;
+            active_sub = NULL;
+            mb_free_sub(current);
+        }
         while (cursor) {
             mb_sub *current = cursor;
             cursor = current->next;
@@ -362,7 +364,9 @@ static void mb_free_sub_chain(mb_sub *s) {
         mb_sub *current = cursor;
         cursor = current->next;
         current->next = NULL;
+        active_sub = current;
         mb_free_sub(current);
+        active_sub = NULL;
     }
     rt_trap_clear_recovery();
 }
@@ -475,8 +479,17 @@ static void mb_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
         return;
     }
     void **callbacks = (void **)rt_alloc((int64_t)((size_t)count * sizeof(void *)));
-    if (!callbacks)
+    if (!callbacks) {
+        rt_trap("rt_msgbus: traversal allocation failed");
         return;
+    }
+    unsigned char *callback_retained = (unsigned char *)rt_alloc(count);
+    if (!callback_retained) {
+        rt_free(callbacks);
+        rt_trap("rt_msgbus: traversal allocation failed");
+        return;
+    }
+    memset(callback_retained, 0, (size_t)count);
 
     int64_t copied = 0;
     int retain_error = 0;
@@ -486,13 +499,15 @@ static void mb_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
         while (t && copied < count) {
             for (mb_sub *s = t->subs; s && copied < count; s = s->next) {
                 if (s->callback && rt_heap_is_payload(s->callback)) {
-                    int retained = mb_retain_heap_payload_locked(s->callback);
+                    int retained = rt_heap_try_retain_live(s->callback);
                     if (retained < 0) {
                         retain_error = 1;
                         break;
                     }
-                    if (retained > 0)
+                    if (retained > 0) {
+                        callback_retained[copied] = retained == 1;
                         callbacks[copied++] = s->callback;
+                    }
                 }
             }
             if (retain_error)
@@ -504,10 +519,9 @@ static void mb_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     }
     mb_unlock(mb);
     if (retain_error) {
-        for (int64_t i = 0; i < copied; ++i) {
-            if (rt_obj_release_check0(callbacks[i]))
-                rt_obj_free(callbacks[i]);
-        }
+        for (int64_t i = 0; i < copied; ++i)
+            mb_release_snapshot_callback(callbacks, callback_retained, i);
+        rt_free(callback_retained);
         rt_free(callbacks);
         rt_trap("rt_msgbus: traversal callback refcount overflow");
         return;
@@ -515,10 +529,9 @@ static void mb_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
 
     for (int64_t i = 0; i < copied; ++i)
         visitor(callbacks[i], ctx);
-    for (int64_t i = 0; i < copied; ++i) {
-        if (rt_obj_release_check0(callbacks[i]))
-            rt_obj_free(callbacks[i]);
-    }
+    for (int64_t i = 0; i < copied; ++i)
+        mb_release_snapshot_callback(callbacks, callback_retained, i);
+    rt_free(callback_retained);
     rt_free(callbacks);
 }
 
@@ -552,21 +565,26 @@ static mb_topic *mb_find_topic_view_locked(rt_msgbus_impl *mb,
 ///          string, and inserts at the head of its bucket's chain.
 ///          Subscribers list starts empty — the caller appends.
 static mb_topic *mb_prepare_topic(rt_string topic, const char *topic_bytes, size_t topic_len) {
+    rt_string retained_topic = rt_string_ref(topic);
     mb_topic *t = (mb_topic *)calloc(1, sizeof(mb_topic));
-    if (!t)
+    if (!t) {
+        rt_string_unref(retained_topic);
         return NULL;
+    }
     if (topic_len > (size_t)INT64_MAX) {
+        rt_string_unref(retained_topic);
         free(t);
         return NULL;
     }
     char *key = (char *)malloc(topic_len ? topic_len : 1);
     if (!key) {
+        rt_string_unref(retained_topic);
         free(t);
         return NULL;
     }
     if (topic_len)
         memcpy(key, topic_bytes, topic_len);
-    t->name = rt_string_ref(topic);
+    t->name = retained_topic;
     t->key_bytes = key;
     t->key_len = topic_len;
     t->key_hash = mb_hash_bytes(topic_bytes, topic_len);
@@ -578,9 +596,9 @@ static mb_topic *mb_prepare_topic(rt_string topic, const char *topic_bytes, size
 ///          (via `mb_prepare_topic`) before entering the lock, so the locked region never
 ///          itself calls `malloc`. If the topic already exists, returns it and the spare
 ///          is left untouched (caller frees it). On install, the function consumes the
-///          spare (sets `*spare = NULL`), retains the topic name string, and links the
-///          new node at the head of its bucket. Returns NULL when the bus is invalid or
-///          when the spare pointer is missing.
+///          spare (sets `*spare = NULL`) and links the already-retained topic node at the
+///          head of its bucket. Returns NULL when the bus is invalid or when the spare
+///          pointer is missing.
 static mb_topic *mb_ensure_topic_locked(rt_msgbus_impl *mb,
                                         rt_string topic,
                                         const char *topic_bytes,
@@ -624,18 +642,35 @@ void *rt_msgbus_new(void) {
         return NULL;
     }
 
-    rt_msgbus_impl *mb =
-        (rt_msgbus_impl *)rt_obj_new_i64(RT_MSGBUS_CLASS_ID, (int64_t)sizeof(rt_msgbus_impl));
-    if (!mb) {
-        free(buckets);
+    rt_msgbus_impl *mb = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        const char *err = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 err && err[0] ? err : "rt_msgbus_new: allocation or GC track failed");
+        rt_trap_clear_recovery();
+        if (mb) {
+            if (rt_obj_release_check0(mb))
+                rt_obj_free(mb);
+        } else {
+            free(buckets);
+        }
+        rt_trap(saved_error);
         return NULL;
     }
+
+    mb = (rt_msgbus_impl *)rt_obj_new_i64(RT_MSGBUS_CLASS_ID, (int64_t)sizeof(rt_msgbus_impl));
     mb->bucket_count = 32;
     mb->buckets = buckets;
     mb->next_id = 1;
     mb->total_subs = 0;
     rt_obj_set_finalizer(mb, mb_finalizer);
     rt_gc_track(mb, mb_traverse);
+    rt_trap_clear_recovery();
     return (void *)mb;
 }
 
@@ -676,51 +711,64 @@ int64_t rt_msgbus_subscribe(void *obj, rt_string topic, void *callback) {
         return -1;
     }
 
-    mb_topic *spare_topic = mb_prepare_topic(topic, topic_bytes, topic_len);
-    if (!spare_topic) {
+    mb_topic *spare_topic = NULL;
+    rt_string retained_topic = NULL;
+    void *retained_callback = NULL;
+    mb_sub *s = NULL;
+    volatile int locked = 0;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        const char *err = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 err && err[0] ? err : "rt_msgbus_subscribe: trap during subscribe");
+        rt_trap_clear_recovery();
+        if (locked)
+            mb_unlock(mb);
+        free(s);
+        mb_free_topic_node(spare_topic);
+        if (retained_topic)
+            rt_string_unref(retained_topic);
+        if (retained_callback && rt_obj_release_check0(retained_callback))
+            rt_obj_free(retained_callback);
         mb_release_bus(mb);
+        rt_trap(saved_error);
+        return -1;
+    }
+
+    spare_topic = mb_prepare_topic(topic, topic_bytes, topic_len);
+    if (!spare_topic) {
         rt_trap("rt_msgbus: memory allocation failed");
         return -1;
     }
-    rt_string retained_topic = rt_string_ref(topic);
-    void *retained_callback = callback;
-    rt_obj_retain_maybe(retained_callback);
+    retained_topic = rt_string_ref(topic);
+    rt_obj_retain_maybe(callback);
+    retained_callback = callback;
     if (!mb_callback_is_native(retained_callback)) {
-        mb_free_topic_node(spare_topic);
-        rt_string_unref(retained_topic);
-        if (rt_obj_release_check0(retained_callback))
-            rt_obj_free(retained_callback);
-        mb_release_bus(mb);
         rt_trap("rt_msgbus_subscribe: callback must be a live MessageBus callback object");
         return -1;
     }
 
-    mb_sub *s = (mb_sub *)calloc(1, sizeof(mb_sub));
+    s = (mb_sub *)calloc(1, sizeof(mb_sub));
     if (!s) {
-        mb_free_topic_node(spare_topic);
-        rt_string_unref(retained_topic);
-        if (rt_obj_release_check0(retained_callback))
-            rt_obj_free(retained_callback);
-        mb_release_bus(mb);
         rt_trap("rt_msgbus: memory allocation failed");
         return -1;
     }
 
     mb_lock(mb);
+    locked = 1;
     if (mb->next_id <= 0) {
-        mb_unlock(mb);
-        free(s);
-        mb_free_topic_node(spare_topic);
-        rt_string_unref(retained_topic);
-        if (rt_obj_release_check0(retained_callback))
-            rt_obj_free(retained_callback);
-        mb_release_bus(mb);
         rt_trap("rt_msgbus_subscribe: subscription id overflow");
         return -1;
     }
     mb_topic *t = mb_ensure_topic_locked(mb, topic, topic_bytes, topic_len, &spare_topic);
     if (!t) {
+        locked = 0;
         mb_unlock(mb);
+        rt_trap_clear_recovery();
         free(s);
         mb_free_topic_node(spare_topic);
         rt_string_unref(retained_topic);
@@ -746,7 +794,13 @@ int64_t rt_msgbus_subscribe(void *obj, rt_string topic, void *callback) {
     t->count++;
     mb->total_subs++;
     int64_t id = s->id;
+
+    s = NULL;
+    retained_topic = NULL;
+    retained_callback = NULL;
+    locked = 0;
     mb_unlock(mb);
+    rt_trap_clear_recovery();
     mb_free_topic_node(spare_topic);
     mb_release_bus(mb);
     return id;
@@ -802,6 +856,7 @@ int8_t rt_msgbus_unsubscribe(void *obj, int64_t sub_id) {
                                  err && err[0] ? err
                                                : "rt_msgbus_unsubscribe: trap while freeing subscription");
                         rt_trap_clear_recovery();
+                        mb_free_sub(victim);
                         mb_free_topic_node(empty_topic);
                         mb_release_bus(mb);
                         rt_trap(saved_error);
@@ -868,25 +923,34 @@ int64_t rt_msgbus_publish(void *obj, rt_string topic, void *data) {
         rt_trap("rt_msgbus: memory allocation failed");
         return 0;
     }
+    unsigned char *callback_retained = (unsigned char *)calloc((size_t)t->count, sizeof(unsigned char));
+    if (!callback_retained) {
+        mb_unlock(mb);
+        free(callbacks);
+        mb_release_bus(mb);
+        rt_trap("rt_msgbus: memory allocation failed");
+        return 0;
+    }
 
     int64_t count = 0;
     int64_t snapshot_cap = t->count;
     int retain_error = 0;
     for (mb_sub *s = t->subs; s && count < snapshot_cap; s = s->next) {
-        int retained = mb_retain_heap_payload_locked(s->callback);
+        int retained = rt_heap_try_retain_live(s->callback);
         if (retained < 0) {
             retain_error = 1;
             break;
         }
-        if (retained > 0)
+        if (retained > 0) {
+            callback_retained[count] = retained == 1;
             callbacks[count++] = s->callback;
+        }
     }
     mb_unlock(mb);
     if (retain_error) {
-        for (int64_t i = 0; i < count; ++i) {
-            if (rt_obj_release_check0(callbacks[i]))
-                rt_obj_free(callbacks[i]);
-        }
+        for (int64_t i = 0; i < count; ++i)
+            mb_release_snapshot_callback(callbacks, callback_retained, i);
+        free(callback_retained);
         free(callbacks);
         mb_release_bus(mb);
         rt_trap("rt_msgbus_publish: callback refcount overflow");
@@ -905,16 +969,11 @@ int64_t rt_msgbus_publish(void *obj, rt_string topic, void *data) {
                  "%s",
                  err && err[0] ? err : "rt_msgbus_publish: subscriber trap");
         rt_trap_clear_recovery();
-        for (int64_t i = (int64_t)release_from; i < count; ++i) {
-            void *callback = callbacks[i];
-            if (!callback)
-                continue;
-            callbacks[i] = NULL;
-            if (rt_obj_release_check0(callback))
-                rt_obj_free(callback);
-        }
+        for (int64_t i = (int64_t)release_from; i < count; ++i)
+            mb_release_snapshot_callback(callbacks, callback_retained, i);
         if (data_retained)
             (void)rt_memory_release(data);
+        free(callback_retained);
         free(callbacks);
         mb_release_bus(mb);
         rt_trap(saved_error);
@@ -924,16 +983,14 @@ int64_t rt_msgbus_publish(void *obj, rt_string topic, void *data) {
     for (int64_t i = 0; i < count; ++i) {
         release_from = i;
         mb_invoke_callback(callbacks[i], data);
-        void *callback = callbacks[i];
-        callbacks[i] = NULL;
-        if (rt_obj_release_check0(callback))
-            rt_obj_free(callback);
+        mb_release_snapshot_callback(callbacks, callback_retained, i);
         release_from = i + 1;
     }
 
     if (data_retained)
         (void)rt_memory_release(data);
     rt_trap_clear_recovery();
+    free(callback_retained);
     free(callbacks);
     mb_release_bus(mb);
     return count;
@@ -991,15 +1048,44 @@ int64_t rt_msgbus_total_subscriptions(void *obj) {
 /// @param obj MessageBus object pointer; returns an empty Seq if NULL.
 /// @return Seq of rt_string topic names (caller-owned via GC).
 void *rt_msgbus_topics(void *obj) {
-    void *seq = rt_seq_new();
-    if (!seq)
+    rt_msgbus_impl *mb = NULL;
+    void *seq = NULL;
+    jmp_buf setup_recovery;
+    rt_trap_set_recovery(&setup_recovery);
+    if (setjmp(setup_recovery) != 0) {
+        char saved_error[512];
+        const char *err = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 err && err[0] ? err : "rt_msgbus_topics: trap during setup");
+        rt_trap_clear_recovery();
+        if (seq && rt_obj_release_check0(seq))
+            rt_obj_free(seq);
+        mb_release_bus(mb);
+        rt_trap(saved_error);
         return NULL;
+    }
+
+    if (obj) {
+        mb = mb_require_retained(obj, "rt_msgbus_topics");
+        if (!mb) {
+            rt_trap_clear_recovery();
+            return NULL;
+        }
+    }
+
+    seq = rt_seq_new();
+    if (!seq) {
+        rt_trap_clear_recovery();
+        mb_release_bus(mb);
+        return NULL;
+    }
     rt_seq_set_owns_elements(seq, 1);
-    if (!obj)
+    if (!mb) {
+        rt_trap_clear_recovery();
         return seq;
-    rt_msgbus_impl *mb = mb_require_retained(obj, "rt_msgbus_topics");
-    if (!mb)
-        return seq;
+    }
 
     int64_t count = 0;
     mb_lock(mb);
@@ -1014,12 +1100,14 @@ void *rt_msgbus_topics(void *obj) {
     mb_unlock(mb);
 
     if (count <= 0) {
+        rt_trap_clear_recovery();
         mb_release_bus(mb);
         return seq;
     }
 
     mb_topic_copy *topics = (mb_topic_copy *)calloc((size_t)count, sizeof(mb_topic_copy));
     if (!topics) {
+        rt_trap_clear_recovery();
         mb_release_bus(mb);
         if (rt_obj_release_check0(seq))
             rt_obj_free(seq);
@@ -1052,6 +1140,8 @@ void *rt_msgbus_topics(void *obj) {
     }
     mb_unlock(mb);
     mb_release_bus(mb);
+    mb = NULL;
+    rt_trap_clear_recovery();
 
     if (oom) {
         for (int64_t i = 0; i < copied; ++i)

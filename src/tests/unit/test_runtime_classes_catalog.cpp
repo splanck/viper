@@ -20,18 +20,34 @@
 #include <cstddef>
 #include <string_view>
 
+namespace {
+
+const il::runtime::RuntimeClass *findClass(std::string_view qname) {
+    for (const auto &cls : il::runtime::runtimeClassCatalog()) {
+        if (std::string_view(cls.qname) == qname)
+            return &cls;
+    }
+    return nullptr;
+}
+
+bool hasMethod(const il::runtime::RuntimeClass &cls,
+               std::string_view name,
+               std::string_view signature) {
+    for (const auto &method : cls.methods) {
+        if (std::string_view(method.name) == name && std::string_view(method.signature) == signature)
+            return true;
+    }
+    return false;
+}
+
+} // namespace
+
 int main() {
     const auto &cat = il::runtime::runtimeClassCatalog();
     assert(cat.size() >= 1);
 
     // Find Viper.String in the catalog (order-independent)
-    const il::runtime::RuntimeClass *stringCls = nullptr;
-    for (const auto &cls : cat) {
-        if (std::string_view(cls.qname) == std::string_view("Viper.String")) {
-            stringCls = &cls;
-            break;
-        }
-    }
+    const il::runtime::RuntimeClass *stringCls = findClass("Viper.String");
 
     assert(stringCls != nullptr && "Viper.String not found in catalog");
     assert(stringCls->properties.size() >= 2);
@@ -46,6 +62,17 @@ int main() {
     }
     assert(hasLength && "Viper.String should have Length property");
     assert(hasIsEmpty && "Viper.String should have IsEmpty property");
+
+    const il::runtime::RuntimeClass *weakRefCls = findClass("Viper.Memory.WeakRef");
+    assert(weakRefCls != nullptr && "Viper.Memory.WeakRef not found in catalog");
+    assert(hasMethod(*weakRefCls, "New", "obj<Viper.Memory.WeakRef>(obj)"));
+    assert(hasMethod(*weakRefCls, "Get", "obj(obj)"));
+    assert(hasMethod(*weakRefCls, "Free", "void(obj)"));
+    assert(hasMethod(*weakRefCls, "Reset", "void(obj,obj)"));
+
+    const il::runtime::RuntimeClass *valueTypeCls = findClass("Viper.Core.ValueType");
+    assert(valueTypeCls != nullptr && "Viper.Core.ValueType not found in catalog");
+    assert(hasMethod(*valueTypeCls, "AddField", "void(i64,i64,i1)"));
 
     constexpr std::array<std::string_view, 43> graphics2DClasses = {
         "Viper.Graphics.RenderTarget2D", "Viper.Graphics.Surface2D",

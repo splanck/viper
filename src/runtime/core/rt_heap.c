@@ -557,6 +557,34 @@ void rt_heap_retain(void *payload) {
 #endif
 }
 
+/// @brief Non-trapping retain for code that already has its own recovery/cleanup path.
+/// @return 1 when retained, 2 when live immortal and not retained, 0 when not
+///         live/managed, and -1 on mortal refcount overflow.
+int32_t rt_heap_try_retain_live(void *payload) {
+    rt_heap_hdr_t *hdr = NULL;
+    if (!payload || !rt_heap_try_get_header(payload, &hdr) || !hdr)
+        return 0;
+
+    size_t old = __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED);
+    for (;;) {
+        if (old == 0)
+            return 0;
+        if (old >= RT_HEAP_IMMORTAL_REFCNT)
+            return 2;
+        if (old >= RT_HEAP_MAX_MORTAL_REFCNT)
+            return -1;
+        size_t next = old + 1;
+        if (__atomic_compare_exchange_n(&hdr->refcnt,
+                                        &old,
+                                        next,
+                                        /*weak=*/0,
+                                        __ATOMIC_RELAXED,
+                                        __ATOMIC_RELAXED)) {
+            return 1;
+        }
+    }
+}
+
 /// @brief Release bookkeeping for a heap header with optional deallocation.
 /// @details Shared helper that decrements the reference count and, when
 ///          @p free_when_zero is true, clears and frees the header once the

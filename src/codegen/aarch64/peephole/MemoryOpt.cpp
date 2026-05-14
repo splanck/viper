@@ -27,6 +27,17 @@
 
 namespace viper::codegen::aarch64::peephole {
 
+/// @brief Merge two adjacent `LDR`/`STR` instructions into a single `LDP`/`STP`.
+/// @details Recognises four candidate pairs: GPR FP-relative load, GPR FP-relative store,
+///          FPR FP-relative load, FPR FP-relative store. To be mergeable, the two accesses
+///          must use the same base register and an 8-byte-adjacent offset; the second
+///          access's transfer register must not alias the first's base; and (for loads)
+///          the two transfer registers must differ. Successful merges replace the pair
+///          with a single `LDP`/`STP` and advance @p stats.
+/// @param instrs Instruction list being scanned (mutated in place).
+/// @param idx    Index of the first instruction in the candidate pair.
+/// @param stats  Peephole statistics counter (incremented on success).
+/// @return True if the merge was applied at @p idx.
 bool tryLdpStpMerge(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats) {
     if (idx + 1 >= instrs.size())
         return false;
@@ -144,6 +155,16 @@ std::size_t forwardStoreLoads(std::vector<MInstr> &instrs, PeepholeStats &stats)
     return forwarded;
 }
 
+/// @brief Fuse `MUL Xd, Xn, Xm` + `ADD Xacc, Xacc, Xd` into a single `MADD Xacc, Xn, Xm, Xacc`.
+/// @details `MADD Xd, Xn, Xm, Xa` computes `Xd = Xa + (Xn * Xm)` in a single cycle on most
+///          AArch64 implementations. Fusion requires that the `MUL`'s destination is dead
+///          after the `ADD` (its only use is the `ADD`) and that neither input has been
+///          overwritten between the two instructions. The reverse direction (`Xacc + Xd`)
+///          is also recognised.
+/// @param instrs Instruction list being scanned (mutated in place).
+/// @param idx    Index of the `MUL` to consider as the multiply half of the fusion.
+/// @param stats  Peephole statistics counter (incremented on success).
+/// @return True if the fusion was applied.
 bool tryMaddFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats) {
     if (idx + 1 >= instrs.size())
         return false;

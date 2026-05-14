@@ -20,6 +20,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <limits>
 #include <string>
 
 extern "C" void rt_trap_set_recovery(jmp_buf *buf);
@@ -37,10 +38,16 @@ struct managed_value_payload {
 };
 
 static int g_managed_value_child_finalized = 0;
+static int g_value_type_previous_finalized = 0;
 
 static void managed_value_child_finalizer(void *obj) {
     (void)obj;
     g_managed_value_child_finalized++;
+}
+
+static void value_type_previous_finalizer(void *obj) {
+    (void)obj;
+    g_value_type_previous_finalized++;
 }
 
 static void release_object(void *obj) {
@@ -225,6 +232,48 @@ static void test_null_string_boxes_compare_equal() {
     printf("\n");
 }
 
+static void test_boxed_nan_hash_is_canonical() {
+    printf("Testing Box.F64 NaN hash canonicalization:\n");
+
+    void *nan_a = rt_box_f64(std::numeric_limits<double>::quiet_NaN());
+    union {
+        std::uint64_t bits;
+        double value;
+    } payload_nan{};
+    payload_nan.bits = UINT64_C(0x7ff8000000000001);
+    void *nan_b = rt_box_f64(payload_nan.value);
+
+    test_result("Distinct NaN boxes are not value-equal", rt_box_equal(nan_a, nan_b) == 0);
+    test_result("NaN box hashes are canonical", rt_box_hash(nan_a) == rt_box_hash(nan_b));
+
+    release_object(nan_a);
+    release_object(nan_b);
+    printf("\n");
+}
+
+static void call_box_str_invalid_string() {
+    int local = 42;
+    (void)rt_box_str((rt_string)&local);
+}
+
+static void *g_box_eq_invalid_string_box = nullptr;
+
+static void call_box_eq_str_invalid_string() {
+    int local = 42;
+    (void)rt_box_eq_str(g_box_eq_invalid_string_box, (rt_string)&local);
+}
+
+static void test_box_string_helpers_validate_string_handles() {
+    printf("Testing Box string helper string-handle validation:\n");
+
+    expect_trap(call_box_str_invalid_string, "invalid string handle");
+    g_box_eq_invalid_string_box = rt_box_str(rt_const_cstr("valid"));
+    expect_trap(call_box_eq_str_invalid_string, "invalid string handle");
+    release_object(g_box_eq_invalid_string_box);
+    g_box_eq_invalid_string_box = nullptr;
+    printf("\n");
+}
+
 static void test_value_type_managed_fields() {
     printf("Testing Box.ValueType managed field registration:\n");
 
@@ -249,6 +298,27 @@ static void test_value_type_managed_fields() {
 
     release_object(boxed);
     test_result("ValueType finalizer releases object field", g_managed_value_child_finalized == 1);
+    printf("\n");
+}
+
+static void test_value_type_chains_existing_finalizer() {
+    printf("Testing Box.ValueType finalizer chaining:\n");
+
+    g_managed_value_child_finalized = 0;
+    g_value_type_previous_finalized = 0;
+    void *child = rt_obj_new_i64(0xB0C, 8);
+    rt_obj_set_finalizer(child, managed_value_child_finalizer);
+    managed_value_payload *boxed =
+        (managed_value_payload *)rt_box_value_type((int64_t)sizeof(managed_value_payload));
+    rt_obj_set_finalizer(boxed, value_type_previous_finalizer);
+    boxed->obj = child;
+    rt_box_value_type_add_field(
+        boxed, (int64_t)offsetof(managed_value_payload, obj), RT_VALUE_FIELD_OBJ, 1);
+
+    release_object(child);
+    release_object(boxed);
+    test_result("Existing ValueType finalizer still runs", g_value_type_previous_finalized == 1);
+    test_result("Chained ValueType finalizer releases object field", g_managed_value_child_finalized == 1);
     printf("\n");
 }
 
@@ -289,6 +359,21 @@ static void test_value_type_zero_size_and_duplicate_fields() {
     g_conflict_value = nullptr;
     release_object(boxed);
 
+    g_managed_value_child_finalized = 0;
+    void *child = rt_obj_new_i64(0xD0B, 8);
+    rt_obj_set_finalizer(child, managed_value_child_finalizer);
+    managed_value_payload *duplicate_retained =
+        (managed_value_payload *)rt_box_value_type((int64_t)sizeof(managed_value_payload));
+    duplicate_retained->obj = child;
+    rt_box_value_type_add_field(
+        duplicate_retained, (int64_t)offsetof(managed_value_payload, obj), RT_VALUE_FIELD_OBJ, 1);
+    rt_box_value_type_add_field(
+        duplicate_retained, (int64_t)offsetof(managed_value_payload, obj), RT_VALUE_FIELD_OBJ, 1);
+    release_object(child);
+    test_result("Duplicate same-kind field does not retain twice", g_managed_value_child_finalized == 0);
+    release_object(duplicate_retained);
+    test_result("Duplicate same-kind field releases once", g_managed_value_child_finalized == 1);
+
     managed_value_payload *invalid =
         (managed_value_payload *)rt_box_value_type((int64_t)sizeof(managed_value_payload));
     invalid->str = (rt_string)(uintptr_t)0x1234;
@@ -319,7 +404,10 @@ int main() {
     test_seq_pointer_identity();
     test_box_type_rejects_box_element_arrays();
     test_null_string_boxes_compare_equal();
+    test_boxed_nan_hash_is_canonical();
+    test_box_string_helpers_validate_string_handles();
     test_value_type_managed_fields();
+    test_value_type_chains_existing_finalizer();
     test_value_type_zero_size_and_duplicate_fields();
 
     printf("All Seq box equality tests passed!\n");

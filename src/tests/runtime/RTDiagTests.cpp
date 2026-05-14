@@ -53,6 +53,11 @@ static void call_assert_fail_invalid_message() {
     rt_diag_assert_fail((rt_string)&local);
 }
 
+static void call_assert_invalid_message() {
+    int local = 42;
+    rt_diag_assert(0, (rt_string)&local);
+}
+
 static void call_trap_string_escapes_controls() {
     const char bytes[] = {'l', 'i', 'n', 'e', '\n', '"', '\\'};
     rt_string msg = rt_string_from_bytes(bytes, sizeof(bytes));
@@ -258,7 +263,8 @@ int main() {
     test_assert_lte_passing();
 
     expect_trap(call_assert_eq_str_embedded_nul_failure, "\\x00");
-    expect_trap(call_assert_fail_invalid_message, "AssertFail called");
+    expect_trap(call_assert_fail_invalid_message, "invalid message string handle");
+    expect_trap(call_assert_invalid_message, "invalid message string handle");
     expect_trap(call_trap_string_escapes_controls, "line\\x0A\\\"\\\\");
 
     printf("\nAll RTDiagTests passed!\n");
