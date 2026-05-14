@@ -647,7 +647,7 @@ void rt_weakref_free(rt_weakref *ref) {
 int8_t rt_weakref_is_handle(void *candidate) {
     int8_t is_handle = 0;
     gc_lock();
-    is_handle = gc_is_weakref_handle_unlocked(candidate);
+    is_handle = (int8_t)gc_is_weakref_handle_unlocked(candidate);
     gc_unlock();
     return is_handle;
 }
@@ -915,6 +915,7 @@ static void gc_finalize_unreachable(gc_garbage_state *state) {
     __atomic_store_n(&hdr->refcnt, 0, __ATOMIC_RELEASE);
 
     if ((rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT) {
+        state->finalized = 1;
         if (hdr->finalizer) {
             rt_heap_finalizer_t fin = hdr->finalizer;
             state->saved_finalizer = fin;
@@ -922,7 +923,6 @@ static void gc_finalize_unreachable(gc_garbage_state *state) {
             hdr->finalizer = NULL;
             fin(obj);
         }
-        state->finalized = 1;
         if (__atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE) != 0) {
             state->resurrected = 1;
             return;
@@ -1103,7 +1103,7 @@ int64_t rt_gc_collect(void) {
         rt_trap_clear_recovery();
         free(trial_edges.items);
         free(work.items);
-        gc_restore_garbage_state(garbage, garbage_count, 0);
+        gc_restore_garbage_state(garbage, garbage_count, 1);
         for (int64_t i = 0; i < snap_count; i++) {
             if (garbage && gc_garbage_contains(garbage, garbage_count, snapshot[i].obj)) {
                 int snapshot_released = 0;
@@ -1395,8 +1395,8 @@ void rt_gc_run_all_finalizers(void) {
 
             size_t refcnt = __atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE);
             if (refcnt > 0 && refcnt < RT_HEAP_IMMORTAL_REFCNT) {
-                rt_obj_retain_maybe(obj);
-                snapshot[snap_count].retained = 1;
+                int retained = rt_heap_try_retain_live(obj);
+                snapshot[snap_count].retained = retained == 1 ? 1 : 0;
             }
             snap_count++;
         }

@@ -114,7 +114,7 @@ rt_string rt_str_concat(rt_string a, rt_string b);
 /// @return Substring or shared empty string when @p len == 0.
 rt_string rt_str_substr(rt_string s, int64_t start, int64_t len);
 
-/// @brief Identity constructor for strings; used by Viper.Strings.FromStr.
+/// @brief Retaining constructor for strings; used by Viper.String.FromStr.
 rt_string rt_str_clone(rt_string s);
 
 /// @brief Return leftmost @p n characters of @p s.

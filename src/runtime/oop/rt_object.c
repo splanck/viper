@@ -47,12 +47,17 @@
 #include "rt_string.h"
 #include "rt_threads.h"
 
+#include <setjmp.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "rt_trap.h"
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
 
 // Internal weak-handle helpers used to implement zeroing weak fields. These
 // are intentionally kept out of the public runtime surface.
@@ -398,46 +403,93 @@ static void rt_memory_release_array_payload(void *p, rt_heap_hdr_t *hdr) {
         rt_trap("Viper.Memory.Release: array length exceeds capacity");
         return;
     }
-    size_t n = hdr->len;
-    switch ((rt_elem_kind_t)hdr->elem_kind) {
-        case RT_ELEM_STR: {
-            rt_string *items = (rt_string *)p;
-            for (size_t i = 0; i < n; ++i) {
-                rt_str_release_maybe(items[i]);
-                items[i] = NULL;
+
+    volatile size_t next_index = 0;
+    volatile int trapped = 0;
+    char saved_error[512] = {0};
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+
+    for (;;) {
+        if (setjmp(recovery) != 0) {
+            if (!trapped) {
+                const char *err = rt_trap_get_error();
+                snprintf(saved_error,
+                         sizeof(saved_error),
+                         "%s",
+                         err && err[0] ? err : "Viper.Memory.Release: array element cleanup trap");
             }
-            break;
+            trapped = 1;
         }
-        case RT_ELEM_NONE:
-        case RT_ELEM_I32:
-        case RT_ELEM_I64:
-        case RT_ELEM_F64:
-        case RT_ELEM_U8:
+
+        if (next_index >= hdr->len)
             break;
-        case RT_ELEM_BOX: {
-            void **items = (void **)p;
-            for (size_t i = 0; i < n; ++i) {
-                void *item = items[i];
-                if (item && rt_obj_release_check0(item))
-                    rt_obj_free(item);
-                items[i] = NULL;
+
+        size_t n = hdr->len;
+        switch ((rt_elem_kind_t)hdr->elem_kind) {
+            case RT_ELEM_STR: {
+                rt_string *items = (rt_string *)p;
+                for (size_t i = (size_t)next_index; i < n; ++i) {
+                    rt_string item = items[i];
+                    items[i] = NULL;
+                    next_index = i + 1;
+                    rt_str_release_maybe(item);
+                }
+                break;
             }
-            break;
-        }
-        case RT_ELEM_OBJ: {
-            void **items = (void **)p;
-            for (size_t i = 0; i < n; ++i) {
-                void *item = items[i];
-                if (item && rt_obj_release_check0(item))
-                    rt_obj_free(item);
-                items[i] = NULL;
+            case RT_ELEM_NONE:
+            case RT_ELEM_I32:
+            case RT_ELEM_I64:
+            case RT_ELEM_F64:
+            case RT_ELEM_U8:
+                next_index = n;
+                break;
+            case RT_ELEM_BOX:
+            case RT_ELEM_OBJ: {
+                void **items = (void **)p;
+                for (size_t i = (size_t)next_index; i < n; ++i) {
+                    void *item = items[i];
+                    items[i] = NULL;
+                    next_index = i + 1;
+                    if (item && rt_obj_release_check0(item))
+                        rt_obj_free(item);
+                }
+                break;
             }
-            break;
+            default:
+                next_index = hdr->len;
+                rt_trap("Viper.Memory.Release: unsupported array element kind");
+                break;
         }
-        default:
-            rt_trap("Viper.Memory.Release: unsupported array element kind");
-            break;
+        break;
     }
+
+    rt_trap_clear_recovery();
+    if (trapped)
+        rt_trap(saved_error);
+}
+
+static void rt_memory_free_zero_ref_array(void *p, rt_heap_hdr_t *hdr) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        const char *err = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 err && err[0] ? err : "Viper.Memory.Release: array cleanup trap");
+        rt_trap_clear_recovery();
+        rt_gc_clear_weak_refs(p);
+        rt_heap_free_zero_ref(p);
+        rt_trap(saved_error);
+        return;
+    }
+
+    rt_memory_release_array_payload(p, hdr);
+    rt_trap_clear_recovery();
+    rt_gc_clear_weak_refs(p);
+    rt_heap_free_zero_ref(p);
 }
 
 /// @brief Common finalize-and-free helper for managed object payloads at refcount zero.
@@ -467,7 +519,34 @@ static int32_t rt_obj_free_zero_ref_object(void *p, int64_t *post_refcount) {
     if (hdr->finalizer) {
         rt_heap_finalizer_t fin = hdr->finalizer;
         hdr->finalizer = NULL;
+        jmp_buf recovery;
+        rt_trap_set_recovery(&recovery);
+        if (setjmp(recovery) != 0) {
+            char saved_error[512];
+            const char *err = rt_trap_get_error();
+            snprintf(saved_error,
+                     sizeof(saved_error),
+                     "%s",
+                     err && err[0] ? err : "rt_obj_free: finalizer trap");
+            rt_trap_clear_recovery();
+
+            size_t after_trap = __atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE);
+            if (after_trap != 0) {
+                if (post_refcount)
+                    *post_refcount = rt_memory_refcount_to_i64(after_trap);
+                rt_trap(saved_error);
+                return 0;
+            }
+
+            rt_gc_clear_weak_refs(p);
+            rt_gc_untrack(p);
+            rt_monitor_forget(p);
+            rt_heap_free_zero_ref(p);
+            rt_trap(saved_error);
+            return 1;
+        }
         fin(p);
+        rt_trap_clear_recovery();
     }
 
     size_t after_finalizer = __atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE);
@@ -512,9 +591,7 @@ int64_t rt_memory_release(void *p) {
             return 0;
         size_t next = rt_heap_release_deferred(p);
         if (next == 0) {
-            rt_memory_release_array_payload(p, hdr);
-            rt_gc_clear_weak_refs(p);
-            rt_heap_free_zero_ref(p);
+            rt_memory_free_zero_ref_array(p, hdr);
         }
         return rt_memory_refcount_to_i64(next);
     }
@@ -560,9 +637,9 @@ void rt_obj_free(void *p) {
         return;
     }
     if ((rt_heap_kind_t)hdr->kind == RT_HEAP_ARRAY) {
-        rt_memory_release_array_payload(p, hdr);
-        rt_gc_clear_weak_refs(p);
-        rt_heap_free_zero_ref(p);
+        if (!rt_memory_array_payload_is_releasable(hdr))
+            return;
+        rt_memory_free_zero_ref_array(p, hdr);
         return;
     }
     rt_trap("rt_obj_free: unsupported heap payload kind");

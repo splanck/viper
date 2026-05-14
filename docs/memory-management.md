@@ -390,6 +390,12 @@ rt_obj_set_finalizer(obj, fn);  // Install callback (one per object, replaces pr
   they still release resources when they are actually freed later.
 - Finalizer traps during collection or shutdown finalizer sweeps re-raise the
   original trap after snapshot retains are balanced.
+- Finalizer traps during direct `Viper.Memory.Release()` / `rt_obj_free()` also
+  re-raise the original trap. If the object did not resurrect, the zero-ref
+  payload is still untracked, weak refs are cleared, and heap storage is freed.
+- Managed array cleanup clears each slot before releasing it. If an element
+  finalizer traps, cleanup continues with later elements, frees the zero-ref
+  array, and then re-raises the first trap.
 - Calling `rt_gc_collect()` from a finalizer is safe but returns 0 while another
   collection pass is already active.
 

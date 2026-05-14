@@ -810,11 +810,24 @@ static void test_collecting_flag_cleared_after_finalizer_trap() {
                "GC finalizer trap is propagated");
     }
 
+    rt_gc_untrack(a);
+
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        release_obj(a);
+        rt_trap_clear_recovery();
+        ASSERT(0, "restored finalizer should trap on later release");
+    } else {
+        std::string message = rt_trap_get_error();
+        rt_trap_clear_recovery();
+        ASSERT(message.find("gc finalizer boom") != std::string::npos,
+               "GC restores finalizer after failed collection");
+    }
+    ASSERT(rt_heap_is_payload(a) == 0, "release after restored finalizer frees object");
+
     int64_t passes = rt_gc_pass_count();
     (void)rt_gc_collect();
     ASSERT(rt_gc_pass_count() > passes, "collecting flag cleared after trap");
-    if (rt_heap_is_payload(a))
-        rt_heap_free_zero_ref(a);
 }
 
 static void test_run_all_finalizers_releases_snapshot_after_trap() {

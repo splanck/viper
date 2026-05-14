@@ -1179,6 +1179,7 @@ void *rt_msgbus_topics(void *obj) {
         return NULL;
     }
 
+    volatile rt_string active_topic_name = NULL;
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) != 0) {
@@ -1189,6 +1190,8 @@ void *rt_msgbus_topics(void *obj) {
                  "%s",
                  err && err[0] ? err : "rt_msgbus_topics: trap while building topic sequence");
         rt_trap_clear_recovery();
+        rt_str_release_maybe((rt_string)active_topic_name);
+        active_topic_name = NULL;
         for (int64_t i = 0; i < copied; ++i) {
             free(topics[i].bytes);
         }
@@ -1201,8 +1204,10 @@ void *rt_msgbus_topics(void *obj) {
 
     for (int64_t i = 0; i < copied; ++i) {
         rt_string topic_name = rt_string_from_bytes(topics[i].bytes, topics[i].len);
+        active_topic_name = topic_name;
         rt_seq_push(seq, topic_name);
         rt_string_unref(topic_name);
+        active_topic_name = NULL;
         free(topics[i].bytes);
         topics[i].bytes = NULL;
     }
