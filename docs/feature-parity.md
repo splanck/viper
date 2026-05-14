@@ -190,7 +190,7 @@ This document is a comprehensive feature parity audit between the two Viper fron
 
 | Feature | Zia | BASIC | Notes |
 |---------|-----|-------|-------|
-| Arithmetic (`+`,`-`,`*`,`/`) | **Full** | **Full** | **Both do integer `/` on int operands** |
+| Arithmetic (`+`,`-`,`*`,`/`) | **Full** | **Full** | BASIC `/` promotes to floating division; Zia integer `/` remains integer division |
 | Integer division | Via `/` (same as regular div) | **Full** (`\`) | BASIC has explicit integer div |
 | Modulo | **Full** (`%`) | **Full** (`MOD`) | Both use signed remainder (SRemChk0) |
 | Exponentiation | None (use `Math.Pow()`) | **Full** (`^`) | **`^` = bitwise XOR in Zia** |
@@ -267,9 +267,9 @@ Ranked by potential for **silent incorrect behavior** (no compile error, just wr
 - **Impact**: Zia catches this with warning W007 + type error, so not silent. But confusing.
 
 ### MEDIUM: Integer division with `/`
-- **BASIC**: Has separate operators: `/` (float) and `\` (integer). But the lowerer actually emits integer division for integer `/` too (semantic type says Float but IL is SDiv).
+- **BASIC**: Has separate operators: `/` (float) and `\` (integer). BASIC `/` promotes integer operands and lowers to floating division, so `7 / 2` produces `3.5`.
 - **Zia**: `/` on two integers = integer result (SDiv). No float promotion.
-- **Impact**: Both silently truncate `7 / 2` to `3`. BASIC users expecting `3.5` won't get it from either language.
+- **Impact**: BASIC users porting code to Zia must replace `/` with an explicit floating conversion when a fractional result matters.
 
 ### LOW: Scope rules
 - **BASIC**: Flat procedure scope — all variables visible throughout the procedure.

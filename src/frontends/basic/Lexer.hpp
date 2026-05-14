@@ -84,6 +84,13 @@ class Lexer : public il::frontends::common::lexer_base::LexerCursor<Lexer> {
     /// @brief Skip spaces, tabs, and BASIC comments starting with `'` or REM.
     void skipWhitespaceAndComments();
 
+    /// @brief Lex a based integer literal (`&H`, `&B`, `0x`, or `0b`).
+    /// @details Consumes the radix prefix, radix-appropriate digits, and an
+    ///          optional integer suffix (`%` or `&`). The returned lexeme is
+    ///          uppercased for case-insensitive BASIC parsing.
+    /// @return Token of kind Number with the full lexeme captured.
+    Token lexBasedNumber();
+
     /// @brief Lex a numeric literal including optional decimal point and exponent.
     /// @details Consumes digit sequences, optional decimal fraction, optional
     ///          exponent (E/e followed by optional +/- and digits), and optional

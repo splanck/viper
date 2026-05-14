@@ -222,6 +222,41 @@ TokenKind lookupKeyword(std::string_view lexeme) {
     return result.value_or(TokenKind::Identifier);
 }
 
+/// @brief Check whether a character is valid in a hexadecimal literal.
+/// @param c Character to classify.
+/// @return True for ASCII decimal digits or A-F/a-f.
+bool isHexDigit(char c) {
+    const char upper = toUpper(c);
+    return isDigit(c) || (upper >= 'A' && upper <= 'F');
+}
+
+/// @brief Check whether a character is valid in a binary literal.
+/// @param c Character to classify.
+/// @return True for `0` or `1`.
+bool isBinaryDigit(char c) {
+    return c == '0' || c == '1';
+}
+
+/// @brief Detect the radix prefixes accepted by the BASIC numeric grammar.
+/// @details BASIC accepts both classic `&H`/`&B` prefixes and C-style
+///          `0x`/`0b` spellings. The check is intentionally prefix-only; the
+///          dedicated lexer validates that at least one digit follows.
+/// @param src Full source buffer.
+/// @param pos Current cursor position.
+/// @return True when @p pos starts a based integer literal prefix.
+bool startsBasedLiteral(std::string_view src, size_t pos) {
+    if (pos + 1 >= src.size())
+        return false;
+
+    const char first = src[pos];
+    const char second = toUpper(src[pos + 1]);
+    if (first == '&')
+        return second == 'H' || second == 'B';
+    if (first == '0')
+        return second == 'X' || second == 'B';
+    return false;
+}
+
 } // namespace
 
 /// @brief Construct a lexer over the given source buffer.
@@ -346,6 +381,53 @@ Token Lexer::lexNumber() {
     return {TokenKind::Number, s, loc};
 }
 
+/// @brief Lex a hexadecimal or binary integer literal.
+///
+/// @details Handles the four accepted radix prefixes:
+///          - `&H` / `&h` for classic BASIC hexadecimal
+///          - `&B` / `&b` for classic BASIC binary
+///          - `0x` / `0X` for C-style hexadecimal
+///          - `0b` / `0B` for C-style binary
+///
+///          The lexeme is canonicalized to uppercase while preserving the
+///          leading `&` or `0`. Only integer suffixes are consumed because
+///          based literals denote exact integers rather than decimal floating
+///          values. A prefix with no following digit is returned as Unknown so
+///          malformed input does not silently become zero during parsing.
+/// @return Token of kind Number for valid based literals, Unknown otherwise.
+Token Lexer::lexBasedNumber() {
+    il::support::SourceLoc loc{fileId_, line_, column_};
+    std::string s;
+    constexpr size_t kMaxNumLen = 1024;
+
+    const char first = get();
+    const char marker = toUpper(get());
+    s.push_back(first);
+    s.push_back(marker);
+
+    const bool binary = marker == 'B';
+    bool sawDigit = false;
+    while (!eof() && s.size() < kMaxNumLen &&
+           (binary ? isBinaryDigit(peek()) : isHexDigit(peek()))) {
+        sawDigit = true;
+        s.push_back(binary ? get() : toUpper(get()));
+    }
+
+    if (s.size() >= kMaxNumLen) {
+        while (!eof() && (binary ? isBinaryDigit(peek()) : isHexDigit(peek())))
+            get();
+        return sawDigit ? Token{TokenKind::Number, s, loc} : Token{TokenKind::Unknown, s, loc};
+    }
+
+    if (!sawDigit)
+        return {TokenKind::Unknown, s, loc};
+
+    if (peek() == '%' || peek() == '&')
+        s.push_back(get());
+
+    return {TokenKind::Number, s, loc};
+}
+
 /// @brief Lex an identifier or reserved keyword.
 ///
 /// @details Characters are uppercased while they are consumed so keyword lookup
@@ -435,6 +517,8 @@ Token Lexer::next() {
             return {TokenKind::EndOfLine, "\n", loc};
         }
 
+        if (startsBasedLiteral(src_, pos_))
+            return lexBasedNumber();
         if (isDigit(c) || (c == '.' && pos_ + 1 < src_.size() && isDigit(src_[pos_ + 1])))
             return lexNumber();
         if (isLetter(c))

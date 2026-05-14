@@ -653,6 +653,12 @@ CLOSE #1
 
 ## Expressions & operators
 
+Numeric literals may be decimal, hexadecimal, or binary. Hexadecimal integers
+accept classic BASIC `&H2A` and C-style `0x2A` prefixes; binary integers accept
+`&B101010` and `0b101010`. Hex and binary literals are integer literals and may
+use the `%` or `&` integer suffixes. Floating literals use decimal notation with
+optional exponent and `!` or `#` suffixes.
+
 - Arithmetic: `+ - * / \` (integer division), `MOD`
 - Comparison: `= <> < <= > >=`
 - Logical words: `NOT`, `AND`, `OR`

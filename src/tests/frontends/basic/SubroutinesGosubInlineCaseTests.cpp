@@ -21,7 +21,6 @@
 #include "frontends/basic/ast/StmtDecl.hpp"
 #include "frontends/basic/ast/StmtExpr.hpp"
 #include "support/source_manager.hpp"
-#include "tests/common/PlatformSkip.h"
 
 #include <cassert>
 #include <filesystem>
@@ -106,10 +105,6 @@ void findSelectCase(const Stmt &stmt, const SelectCaseStmt *&select) {
 } // namespace
 
 int main() {
-#ifdef _WIN32
-    // Skip on Windows: __FILE__ path resolution differs, causing fixture lookup issues
-    VIPER_PLATFORM_SKIP("Path handling differs on Windows");
-#endif
     const auto basPath = fixturePath();
     const std::string basPathStr = basPath.string();
     const std::string source = readFile(basPath);
