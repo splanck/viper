@@ -68,6 +68,15 @@ void rt_renderer2d_set_alpha(void *renderer, int64_t alpha);
 void rt_renderer2d_set_blend_mode(void *renderer, int64_t blend_mode);
 void rt_renderer2d_draw_pixels(void *renderer, void *pixels, int64_t x, int64_t y);
 void rt_renderer2d_draw_texture(void *renderer, void *texture, int64_t x, int64_t y);
+void rt_renderer2d_draw_texture_rotated(
+    void *renderer, void *texture, int64_t x, int64_t y, double angle_deg);
+void rt_renderer2d_draw_texture_rotated_at(void *renderer,
+                                           void *texture,
+                                           int64_t x,
+                                           int64_t y,
+                                           int64_t pivot_x,
+                                           int64_t pivot_y,
+                                           double angle_deg);
 void rt_renderer2d_draw_texture_scaled(
     void *renderer, void *texture, int64_t x, int64_t y, int64_t width, int64_t height);
 void rt_renderer2d_draw_texture_region(void *renderer,

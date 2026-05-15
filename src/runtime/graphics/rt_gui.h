@@ -943,6 +943,18 @@ int64_t rt_clipboard_has_text(void);
 /// @brief Clear all clipboard contents.
 void rt_clipboard_clear(void);
 
+/// @brief Set text to the system clipboard through Viper.System.Clipboard.
+/// @param text Text to copy to clipboard.
+void rt_system_clipboard_set(rt_string text);
+
+/// @brief Get text from the system clipboard through Viper.System.Clipboard.
+/// @return Text from clipboard, or empty string if not available.
+rt_string rt_system_clipboard_get(void);
+
+/// @brief Check if clipboard contains text through Viper.System.Clipboard.
+/// @return 1 if text is available, 0 otherwise.
+int64_t rt_system_clipboard_has_text(void);
+
 //=========================================================================
 // Keyboard Shortcuts (Phase 1)
 //=========================================================================

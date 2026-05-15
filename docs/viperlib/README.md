@@ -34,7 +34,7 @@ implemented in C and exposed through the IL runtime system.
 | [Input/Output](io/README.md)           | `Archive`, `BinaryBuffer`, `BinFile`, `Compress`, `Dir`, `File`, `Glob`, `LineReader`, `LineWriter`, `MemStream`, `Path`, `Stream`, `TempFile`, `Watcher` |
 | [Mathematics](math.md)          | `BigInt`, `Bits`, `Easing`, `Mat3`, `Mat4`, `Math`, `PerlinNoise`, `Quaternion`, `Random`, `Spline`, `Vec2`, `Vec3` |
 | [Network](network.md)           | `Dns`, `Http`, `HttpReq`, `HttpRes`, `RateLimiter`, `RestClient`, `RetryPolicy`, `Tcp`, `TcpServer`, `Udp`, `Url`, `WebSocket` |
-| [System](system.md)             | `Environment`, `Exec`, `Machine`, `Terminal`; `Viper.Memory`, `Viper.Memory.GC` |
+| [System](system.md)             | `Environment`, `Clipboard`, `Exec`, `Machine`, `Terminal`; `Viper.Memory`, `Viper.Memory.GC` |
 | [Text & Data](text/README.md)          | `Codec`, `CompiledPattern`, `Csv`, `Diff`, `Html`, `Ini`, `Json`, `JsonPath`, `JsonStream`, `Markdown`, `NumberFormat`, `Pattern`, `Pluralize`, `Scanner`, `StringBuilder`, `Template`, `TextWrapper`, `Toml`, `Uuid`, `Version`; `Viper.Data`: `Serialize`, `Xml`, `Yaml` |
 | [Threads](threads.md)           | `Async`, `Barrier`, `CancelToken`, `Channel`, `ConcurrentMap`, `Debouncer`, `Future`, `Gate`, `Monitor`, `Parallel`, `Pool`, `Promise`, `RwLock`, `SafeI64`, `Scheduler`, `Thread`, `Throttler` |
 | [Time & Timing](time.md)        | `Clock`, `Countdown`, `DateOnly`, `DateRange`, `DateTime`, `Duration`, `RelativeTime`, `Stopwatch` |
@@ -60,6 +60,7 @@ implemented in C and exposed through the IL runtime system.
 | [`Lazy`](functional.md#viperlazy)            | Static   | Lazy evaluation wrapper                       |
 | [`Log`](utilities.md#viperlog)               | Static   | Logging utilities                             |
 | [`Machine`](system.md#vipermachine)          | Static   | System information queries                    |
+| [`System.Clipboard`](system.md#vipersystemclipboard) | Static   | UTF-8 desktop clipboard access                 |
 | [`Mat3`](math.md#vipermathmat3)              | Static   | 3×3 matrix for 2D affine transforms           |
 | [`Mat4`](math.md#vipermathmat4)              | Static   | 4×4 matrix for 3D transforms and projection   |
 | [`Math`](math.md#vipermath)                  | Static   | Mathematical functions (trig, pow, abs, etc.) |

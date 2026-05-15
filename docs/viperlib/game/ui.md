@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-04
+last-verified: 2026-05-15
 ---
 
 # Game UI Widgets
@@ -17,6 +17,12 @@ last-verified: 2026-05-04
 - [Viper.Game.UI.Panel](#vipergameuipanel)
 - [Viper.Game.UI.NineSlice](#vipergameuinineslice)
 - [Viper.Game.UI.MenuList](#vipergameuimenulist)
+- [Viper.Game.UI.TextInput](#vipergameuitextinput)
+- [Viper.Game.UI.Table](#vipergameuitable)
+- [Viper.Game.UI.Modal](#vipergameuimodal)
+- [Viper.Game.UI.Slider](#vipergameuislider)
+- [Viper.Game.UI.Dropdown](#vipergameuidropdown)
+- [Viper.Game.UI.Tooltip](#vipergameuitooltip)
 - [Viper.Game.UI.GameButton](#vipergameuigamebutton)
 - [Viper.Game.UI.Dialogue](#vipergameuidialogue)
 - [Usage Example](#usage-example)
@@ -174,6 +180,167 @@ Vertical menu with selection highlight and keyboard-friendly wrap-around navigat
 - If both `up` and `down` are true in `HandleInput`, selection does not move; `confirm` is still honored
 - Item text is copied into fixed buffers and truncated on UTF-8 codepoint boundaries
 - The assigned `Font` must be `null` or a `BitmapFont`; it is retained and released when replaced or when the menu is freed
+
+---
+
+## Viper.Game.UI.TextInput
+
+Editable single-line text field with UTF-8-safe cursoring, selection, placeholder text, and optional password display.
+
+**Type:** Instance (obj)
+**Constructor:** `TextInput.New(x, y, width, height)`
+
+### Properties
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `Text` | String | Read/Write | Current text, truncated to the internal 511-byte buffer on codepoint boundaries |
+| `Visible` | Boolean | Read/Write | Visibility toggle |
+| `Enabled` | Boolean | Read/Write | Input enable toggle |
+| `Focused` | Boolean | Read/Write | Keyboard focus |
+| `TextColor` | Integer | Read/Write | Text color |
+| `BackgroundColor` | Integer | Read/Write | Fill color |
+| `Font` | BitmapFont | Write | Optional retained font |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `SetText(text)` / `GetText()` | `Void(String)` / `String()` | Set or read text |
+| `TextLength()` | `Integer()` | Return codepoint count |
+| `GetCursor()` / `SetCursor(pos)` | `Integer()` / `Void(Integer)` | Read or move the cursor by codepoint index |
+| `SelectAll()` / `ClearSelection()` | `Void()` | Manage selection |
+| `HasSelection()` / `GetSelectedText()` | `Boolean()` / `String()` | Query selected text |
+| `DeleteSelection()` | `Void()` | Delete selected text |
+| `HandleKey(key, shift)` | `Integer(Integer, Boolean)` | Handle arrows, home/end, backspace/delete, and select-all key code 1 |
+| `HandleText(text)` | `Integer(String)` | Insert typed text when enabled and focused; returns 1 on change |
+| `HandleMouseClick(x, y, shift)` / `HandleMouseDrag(x, y)` | `Void(...)` | Focus and update cursor/selection from mouse input |
+| `SetCursorColor(color)` | `Void(Integer)` | Set caret color |
+| `SetSelectionColor(color)` | `Void(Integer)` | Set selection highlight color |
+| `SetBorderColor(color)` / `SetBorderColorFocused(color)` | `Void(Integer)` | Set border colors |
+| `SetPasswordMode(enabled)` | `Void(Boolean)` | Draw masked characters while preserving real text |
+| `SetPlaceholder(text)` | `Void(String)` | Draw placeholder when empty |
+| `SetMaxCodepoints(count)` | `Void(Integer)` | Limit text length; `0` disables the limit |
+| `Update(deltaMs)` / `Draw(canvas)` | `Void(...)` | Advance caret blink and render |
+
+---
+
+## Viper.Game.UI.Table
+
+Sortable table widget for compact scoreboards, inventories, debug panels, and settings lists.
+
+**Type:** Instance (obj)
+**Constructor:** `Table.New(x, y, width, height)`
+
+### Properties
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `ColumnCount` | Integer | Read | Number of columns |
+| `RowCount` | Integer | Read | Number of rows |
+| `SortColumn` | Integer | Read | Current sort column, or -1 |
+| `SortDescending` | Boolean | Read | Current sort direction |
+| `Scroll` | Integer | Read/Write | First visible row |
+| `SelectedRow` | Integer | Read/Write | Selected row, or -1 |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `AddColumn(title, width, align)` | `Integer(String, Integer, Integer)` | Add a column; `align` is 0 left, 1 center, 2 right |
+| `SetColumnSortable(col, sortable, numeric)` | `Void(Integer, Boolean, Boolean)` | Enable string or numeric sorting |
+| `AddRow()` / `RemoveRow(row)` / `ClearRows()` | `Integer()` / `Void(...)` | Manage rows |
+| `SetCell(row, col, text)` / `GetCell(row, col)` | `Void(...)` / `String(...)` | Manage cell text |
+| `SortBy(col, descending)` | `Void(Integer, Boolean)` | Stable sort by a sortable column |
+| `HandleClick(x, y)` | `Integer(Integer, Integer)` | Select a row, return -2 for header clicks, -1 for no hit |
+| `LastHeaderClick()` | `Integer()` | Last clicked header column |
+| `HandleScroll(delta)` / `HandleKey(key)` | `Void(Integer)` | Update scroll/selection |
+| `Draw(canvas)` | `Void(Canvas)` | Render the table |
+
+---
+
+## Viper.Game.UI.Modal
+
+Modal dialog with title, content text, buttons, and optional child widgets.
+
+**Type:** Instance (obj)
+**Constructor:** `Modal.New(width, height)` or `Modal.NewAt(x, y, width, height)`
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `IsOpen` | Boolean | Read | True while dialog is open |
+| `Result` | Integer | Read | Return value from the last triggered button, or -1 |
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `SetTitle(text)` / `SetContent(text)` | `Void(String)` | Set dialog strings |
+| `AddButton(text, value)` | `Integer(String, Integer)` | Add a button and return its index |
+| `SetDefaultButton(index)` / `SetCancelButton(index)` | `Void(Integer)` | Configure enter/escape behavior |
+| `AddChild(widget)` | `Void(Object)` | Retain and draw a child widget |
+| `Open()` / `Close()` | `Void()` | Show or hide the dialog |
+| `HandleKey(key, shift)` | `Integer(Integer, Boolean)` | Handle tab, enter, escape, and child text input |
+| `HandleClick(x, y)` | `Integer(Integer, Integer)` | Trigger button clicks and child focus |
+| `Draw(canvas)` | `Void(Canvas)` | Render overlay, content, children, and buttons |
+
+---
+
+## Viper.Game.UI.Slider
+
+Integer slider with keyboard and mouse-drag handling.
+
+**Type:** Instance (obj)
+**Constructor:** `Slider.New(x, y, width, height, min, max)`
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `Value` | Integer | Read/Write | Current value, clamped to `[min, max]` and snapped to `Step` |
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `SetStep(step)` | `Void(Integer)` | Set positive step size; invalid values become 1 |
+| `SetLabel(text)` | `Void(String)` | Optional label drawn next to the value |
+| `HandleKey(key)` | `Boolean(Integer)` | Arrow/home/end key handling |
+| `HandleMouseDown(x, y)` / `HandleMouseDrag(x)` / `HandleMouseUp()` | `Boolean(...)` | Pointer interaction |
+| `Draw(canvas)` | `Void(Canvas)` | Render the control |
+
+---
+
+## Viper.Game.UI.Dropdown
+
+Selectable option list with keyboard and pointer handling.
+
+**Type:** Instance (obj)
+**Constructor:** `Dropdown.New(x, y, width, height)`
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `Selected` | Integer | Read/Write | Selected option index, or -1 |
+| `IsOpen` | Boolean | Read | True while option list is open |
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `AddOption(text)` | `Void(String)` | Append an option |
+| `ClearOptions()` | `Void()` | Remove options and reset selection |
+| `GetSelectedText()` | `String()` | Return selected option text or empty string |
+| `Open()` / `Close()` | `Void()` | Toggle list state |
+| `HandleClick(x, y)` / `HandleKey(key)` | `Boolean(...)` | Input handling |
+| `Draw(canvas)` | `Void(Canvas)` | Render closed control and open options |
+
+---
+
+## Viper.Game.UI.Tooltip
+
+Hover-delayed tooltip bubble.
+
+**Type:** Instance (obj)
+**Constructor:** `Tooltip.New()`
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `SetText(text)` | `Void(String)` | Set tooltip text |
+| `SetHoverDelayMs(ms)` | `Void(Integer)` | Delay before display; negative values clamp to 0 |
+| `Update(x, y, hovering, deltaMs)` | `Void(Integer, Integer, Boolean, Integer)` | Track hover state and anchor point |
+| `Draw(canvas)` | `Void(Canvas)` | Draw when delay has elapsed |
 
 ---
 

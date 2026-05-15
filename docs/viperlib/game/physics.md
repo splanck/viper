@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-04
+last-verified: 2026-05-15
 ---
 
 # Physics & Collision
@@ -297,7 +297,7 @@ Simple 2D physics engine with rigid body dynamics, gravity, AABB/circle collisio
 shape-aware swept collision checks, and basic joints. Uses fixed-timestep Euler integration
 and impulse-based collision resolution.
 
-**Type:** Compound — `Physics2D.World`, `Physics2D.Body`, `Physics2D.CircleBody`, and joint classes
+**Type:** Compound — `Physics2D.World`, `Physics2D.Body`, `Physics2D.CircleBody`, `Physics2D.Projectile2D`, and joint classes
 
 ### World Constructor
 
@@ -376,6 +376,27 @@ and impulse-based collision resolution.
 | `HingeJoint.New(a, b, anchorX, anchorY)` | `HingeJoint(Body,Body,Double,Double)` | Pins the bodies at a shared anchor while preserving each body's local anchor offset |
 
 Joints retain their body handles. Add both bodies to the same world before calling `World.AddJoint`; otherwise the runtime traps instead of accepting a dangling or cross-world joint. Passing an object that is not a `Body`, `World`, or `Joint` to the matching Physics2D API also traps.
+
+### Projectile2D
+
+Analytic projectile helper for preview arcs, lobbed attacks, and trajectory tests. It does not add a rigid body to a `World`; it evaluates position and velocity directly from initial position, initial velocity, gravity, optional linear drag, and optional ground height.
+
+**Constructor:** `Physics2D.Projectile2D.New(x, y, vx, vy, gx, gy)`
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `HasLanded` | Boolean | Read | True after `Advance` reaches or passes `GroundY` |
+| `TotalTime` | Double | Read | Simulated time accumulated by `Advance` |
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `SetDrag(drag)` | `Void(Double)` | Set non-negative linear drag coefficient |
+| `SetGroundY(y)` | `Void(Double)` | Set landing threshold on the Y axis |
+| `Reset()` | `Void()` | Reset elapsed time and landing state |
+| `Advance(dt)` | `Void(Double)` | Advance elapsed time by `dt` seconds |
+| `XAt(t)` / `YAt(t)` | `Double(Double)` | Position at time `t` |
+| `VXAt(t)` / `VYAt(t)` | `Double(Double)` | Velocity at time `t` |
+| `TimeToGround()` | `Double()` | Estimated first time where `YAt(t) >= GroundY`, or `-1` if unreachable |
 
 ### Notes
 

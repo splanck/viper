@@ -1105,3 +1105,22 @@ void rt_widget_reset_cursor(void *widget) {
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */
+
+//=============================================================================
+// Viper.System.Clipboard compatibility surface
+//=============================================================================
+
+/// @brief Copy text to the system clipboard via the canonical GUI clipboard backend.
+void rt_system_clipboard_set(rt_string text) {
+    rt_clipboard_set_text(text);
+}
+
+/// @brief Read UTF-8 text from the system clipboard via the canonical GUI clipboard backend.
+rt_string rt_system_clipboard_get(void) {
+    return rt_clipboard_get_text();
+}
+
+/// @brief Check whether the system clipboard currently exposes text.
+int64_t rt_system_clipboard_has_text(void) {
+    return rt_clipboard_has_text() ? 1 : 0;
+}

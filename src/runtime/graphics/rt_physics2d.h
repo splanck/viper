@@ -165,6 +165,23 @@ int64_t rt_physics2d_body_collision_mask(void *body);
 /// @brief Set collision mask bitmask.
 void rt_physics2d_body_set_collision_mask(void *body, int64_t mask);
 
+//=========================================================================
+// Projectile2D
+//=========================================================================
+
+void *rt_projectile2d_new(double p0x, double p0y, double v0x, double v0y, double gx, double gy);
+void rt_projectile2d_set_drag(void *p, double drag);
+void rt_projectile2d_set_ground_y(void *p, double y);
+void rt_projectile2d_reset(void *p);
+void rt_projectile2d_advance(void *p, double dt);
+double rt_projectile2d_x_at(void *p, double t);
+double rt_projectile2d_y_at(void *p, double t);
+double rt_projectile2d_vx_at(void *p, double t);
+double rt_projectile2d_vy_at(void *p, double t);
+int8_t rt_projectile2d_has_landed(void *p);
+double rt_projectile2d_total_time(void *p);
+double rt_projectile2d_time_to_ground(void *p);
+
 #ifdef __cplusplus
 }
 #endif

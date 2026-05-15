@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-07
+last-verified: 2026-05-15
 ---
 
 # Audio
@@ -719,6 +719,7 @@ Independent volume control for music vs sound effects. Players expect to adjust 
 |----------|-------|-------------|
 | `MUSIC` | 0 | Music tracks (Music, Playlist) |
 | `SFX` | 1 | Sound effects (Sound) |
+| named groups | 100+ | Runtime-registered groups for custom categories |
 
 ### Audio Methods (Mix Groups)
 
@@ -726,6 +727,11 @@ Independent volume control for music vs sound effects. Players expect to adjust 
 |--------|-----------|-------------|
 | `Audio.SetGroupVolume(group, vol)` | `void(Integer, Integer)` | Set group volume (0-100, clamped) |
 | `Audio.GetGroupVolume(group)` | `Integer(Integer)` | Get group volume (100 if invalid group) |
+| `Audio.RegisterGroup(name)` | `Integer(String)` | Register or find a named group. Built-ins `music` and `sfx` return 0 and 1 |
+| `Audio.FindGroup(name)` | `Integer(String)` | Return a named group id, or -1 |
+| `Audio.SetGroupVolumeNamed(name, vol)` | `Void(String, Integer)` | Register if needed, then set volume |
+| `Audio.GetGroupVolumeNamed(name)` | `Integer(String)` | Get a named group volume, or 100 if missing |
+| `Audio.GroupName(group)` | `String(Integer)` | Return a registered group name, or empty string |
 
 ### Sound Methods (Group-Aware)
 
@@ -740,6 +746,11 @@ Group-specific play methods apply the requested group volume exactly once. Effec
 volume = `voice_volume × group_volume / 100`; master volume is applied on top by the
 audio system. Group volume setters/getters are safe to call concurrently with playback,
 including audio-disabled builds where they remain pure settings state.
+
+Named groups are useful for settings such as UI, ambience, dialogue, and cutscene sound
+without overloading the two built-ins. Registered named groups receive stable ids within
+the current process and can be passed to `PlayGroup`, `PlayExGroup`, and
+`PlayLoopGroup`.
 
 ---
 

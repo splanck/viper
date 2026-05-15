@@ -686,6 +686,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_audio_mixing PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
     viper_add_ctest(test_rt_audio_mixing test_rt_audio_mixing)
 
+    viper_add_test(test_rt_runtime_additions ${VIPER_TESTS_DIR}/unit/test_rt_runtime_additions.cpp)
+    target_link_libraries(test_rt_runtime_additions PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_runtime_additions test_rt_runtime_additions)
+
     viper_add_test(test_rt_tilemap_layers ${VIPER_TESTS_DIR}/unit/test_rt_tilemap_layers.cpp)
     target_link_libraries(test_rt_tilemap_layers PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_tilemap_layers test_rt_tilemap_layers)

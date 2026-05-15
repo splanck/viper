@@ -1544,3 +1544,175 @@ void rt_physics2d_body_set_collision_mask(void *obj, int64_t mask) {
     if (b)
         b->collision_mask = mask;
 }
+
+//=============================================================================
+// Projectile2D
+//=============================================================================
+
+typedef struct {
+    void *vptr;
+    double p0x, p0y;
+    double v0x, v0y;
+    double gx, gy;
+    double drag;
+    double total_time;
+    int8_t landed;
+    double ground_y;
+} rt_projectile2d_impl;
+
+static rt_projectile2d_impl *checked_projectile(void *obj, const char *api) {
+    if (!obj)
+        return NULL;
+    if (rt_obj_class_id(obj) != RT_PHYSICS2D_PROJECTILE_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
+    return (rt_projectile2d_impl *)obj;
+}
+
+static double projectile_finite_or(double value, double fallback) {
+    return isfinite(value) ? value : fallback;
+}
+
+void *rt_projectile2d_new(double p0x, double p0y, double v0x, double v0y, double gx, double gy) {
+    rt_projectile2d_impl *p = (rt_projectile2d_impl *)rt_obj_new_i64(
+        RT_PHYSICS2D_PROJECTILE_CLASS_ID, (int64_t)sizeof(rt_projectile2d_impl));
+    if (!p)
+        return NULL;
+    memset(p, 0, sizeof(*p));
+    p->p0x = projectile_finite_or(p0x, 0.0);
+    p->p0y = projectile_finite_or(p0y, 0.0);
+    p->v0x = projectile_finite_or(v0x, 0.0);
+    p->v0y = projectile_finite_or(v0y, 0.0);
+    p->gx = projectile_finite_or(gx, 0.0);
+    p->gy = projectile_finite_or(gy, 0.0);
+    p->ground_y = INFINITY;
+    return p;
+}
+
+void rt_projectile2d_set_drag(void *obj, double drag) {
+    rt_projectile2d_impl *p = checked_projectile(obj, "Projectile2D.SetDrag: expected Projectile2D");
+    if (!p)
+        return;
+    p->drag = isfinite(drag) && drag > 0.0 ? drag : 0.0;
+}
+
+void rt_projectile2d_set_ground_y(void *obj, double y) {
+    rt_projectile2d_impl *p =
+        checked_projectile(obj, "Projectile2D.SetGroundY: expected Projectile2D");
+    if (p)
+        p->ground_y = isfinite(y) ? y : INFINITY;
+}
+
+void rt_projectile2d_reset(void *obj) {
+    rt_projectile2d_impl *p = checked_projectile(obj, "Projectile2D.Reset: expected Projectile2D");
+    if (!p)
+        return;
+    p->total_time = 0.0;
+    p->landed = 0;
+}
+
+static double projectile_pos_at(double p0, double v0, double g, double drag, double t) {
+    if (!isfinite(t) || t <= 0.0)
+        return p0;
+    if (drag <= 0.0)
+        return p0 + v0 * t + 0.5 * g * t * t;
+    double e = exp(-drag * t);
+    return p0 + (v0 / drag) * (1.0 - e) + (g / drag) * t -
+           (g / (drag * drag)) * (1.0 - e);
+}
+
+static double projectile_vel_at(double v0, double g, double drag, double t) {
+    if (!isfinite(t) || t <= 0.0)
+        return v0;
+    if (drag <= 0.0)
+        return v0 + g * t;
+    double e = exp(-drag * t);
+    return v0 * e + (g / drag) * (1.0 - e);
+}
+
+void rt_projectile2d_advance(void *obj, double dt) {
+    rt_projectile2d_impl *p =
+        checked_projectile(obj, "Projectile2D.Advance: expected Projectile2D");
+    if (!p || !isfinite(dt) || dt <= 0.0 || p->landed)
+        return;
+    p->total_time += dt;
+    if (rt_projectile2d_y_at(obj, p->total_time) >= p->ground_y)
+        p->landed = 1;
+}
+
+double rt_projectile2d_x_at(void *obj, double t) {
+    rt_projectile2d_impl *p = checked_projectile(obj, "Projectile2D.XAt: expected Projectile2D");
+    return p ? projectile_pos_at(p->p0x, p->v0x, p->gx, p->drag, t) : 0.0;
+}
+
+double rt_projectile2d_y_at(void *obj, double t) {
+    rt_projectile2d_impl *p = checked_projectile(obj, "Projectile2D.YAt: expected Projectile2D");
+    return p ? projectile_pos_at(p->p0y, p->v0y, p->gy, p->drag, t) : 0.0;
+}
+
+double rt_projectile2d_vx_at(void *obj, double t) {
+    rt_projectile2d_impl *p = checked_projectile(obj, "Projectile2D.VXAt: expected Projectile2D");
+    return p ? projectile_vel_at(p->v0x, p->gx, p->drag, t) : 0.0;
+}
+
+double rt_projectile2d_vy_at(void *obj, double t) {
+    rt_projectile2d_impl *p = checked_projectile(obj, "Projectile2D.VYAt: expected Projectile2D");
+    return p ? projectile_vel_at(p->v0y, p->gy, p->drag, t) : 0.0;
+}
+
+int8_t rt_projectile2d_has_landed(void *obj) {
+    rt_projectile2d_impl *p =
+        checked_projectile(obj, "Projectile2D.HasLanded: expected Projectile2D");
+    return p ? p->landed : 0;
+}
+
+double rt_projectile2d_total_time(void *obj) {
+    rt_projectile2d_impl *p =
+        checked_projectile(obj, "Projectile2D.TotalTime: expected Projectile2D");
+    return p ? p->total_time : 0.0;
+}
+
+double rt_projectile2d_time_to_ground(void *obj) {
+    rt_projectile2d_impl *p =
+        checked_projectile(obj, "Projectile2D.TimeToGround: expected Projectile2D");
+    if (!p || !isfinite(p->ground_y))
+        return INFINITY;
+    if (p->drag > 0.0) {
+        double lo = 0.0;
+        double hi = 1.0;
+        for (int i = 0; i < 64 && rt_projectile2d_y_at(obj, hi) < p->ground_y; i++)
+            hi *= 2.0;
+        if (!isfinite(hi) || rt_projectile2d_y_at(obj, hi) < p->ground_y)
+            return INFINITY;
+        for (int i = 0; i < 64; i++) {
+            double mid = (lo + hi) * 0.5;
+            if (rt_projectile2d_y_at(obj, mid) >= p->ground_y)
+                hi = mid;
+            else
+                lo = mid;
+        }
+        return hi;
+    }
+    double a = 0.5 * p->gy;
+    double b = p->v0y;
+    double c = p->p0y - p->ground_y;
+    if (fabs(a) < 1e-12) {
+        if (fabs(b) < 1e-12)
+            return c >= 0.0 ? 0.0 : INFINITY;
+        double t = -c / b;
+        return t >= 0.0 ? t : INFINITY;
+    }
+    double disc = b * b - 4.0 * a * c;
+    if (disc < 0.0 || !isfinite(disc))
+        return INFINITY;
+    double root = sqrt(disc);
+    double t1 = (-b - root) / (2.0 * a);
+    double t2 = (-b + root) / (2.0 * a);
+    double best = INFINITY;
+    if (t1 >= 0.0)
+        best = t1;
+    if (t2 >= 0.0 && t2 < best)
+        best = t2;
+    return best;
+}

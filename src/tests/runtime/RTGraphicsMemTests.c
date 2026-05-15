@@ -343,6 +343,42 @@ static void test_scene_node_hierarchy(void) {
     assert(rt_scene_node_get_parent(parent) == NULL);
 }
 
+/// @brief Reparenting detaches from the old parent and publishes the new link consistently.
+static void test_scene_node_reparent_consistent(void) {
+    void *parent_a = rt_scene_node_new();
+    void *parent_b = rt_scene_node_new();
+    void *child = rt_scene_node_new();
+    assert(parent_a != NULL);
+    assert(parent_b != NULL);
+    assert(child != NULL);
+
+    rt_scene_node_add_child(parent_a, child);
+    assert(rt_scene_node_child_count(parent_a) == 1);
+    assert(rt_scene_node_get_parent(child) == parent_a);
+
+    rt_scene_node_add_child(parent_b, child);
+    assert(rt_scene_node_child_count(parent_a) == 0);
+    assert(rt_scene_node_child_count(parent_b) == 1);
+    assert(rt_scene_node_get_parent(child) == parent_b);
+}
+
+/// @brief Non-positive local scales are normalized before world-scale composition.
+static void test_scene_node_scale_clamps_positive(void) {
+    void *node = rt_scene_node_new();
+    assert(node != NULL);
+
+    rt_scene_node_set_scale_x(node, 0);
+    rt_scene_node_set_scale_y(node, -50);
+    assert(rt_scene_node_get_scale_x(node) == 1);
+    assert(rt_scene_node_get_scale_y(node) == 1);
+    assert(rt_scene_node_get_world_scale_x(node) == 1);
+    assert(rt_scene_node_get_world_scale_y(node) == 1);
+
+    rt_scene_node_set_scale(node, -100);
+    assert(rt_scene_node_get_scale_x(node) == 1);
+    assert(rt_scene_node_get_scale_y(node) == 1);
+}
+
 /// @brief Detaching a child clears its parent pointer.
 static void test_scene_node_detach(void) {
     void *parent = rt_scene_node_new();
@@ -441,6 +477,8 @@ int main(void) {
     test_scene_clear();
     test_scene_find_by_name();
     test_scene_node_hierarchy();
+    test_scene_node_reparent_consistent();
+    test_scene_node_scale_clamps_positive();
     test_scene_node_detach();
     test_scene_node_count_no_leak();
     test_scene_node_world_transform();

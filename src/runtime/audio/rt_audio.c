@@ -55,8 +55,11 @@
 // Mix Group State (shared between real and stub implementations)
 //===----------------------------------------------------------------------===//
 
-/// @brief Per-group volume (0-100). Defaults to 100.
-static int64_t g_group_volume[RT_MIXGROUP_COUNT] = {100, 100};
+/// @brief Per-group volume (0-100). Defaults to 100 for built-ins and named groups.
+static int64_t g_group_volume[RT_MIXGROUP_MAX_GROUPS] = {100, 100};
+static char g_group_names[RT_MIXGROUP_MAX_GROUPS][32] = {{0}};
+static int8_t g_group_in_use[RT_MIXGROUP_MAX_GROUPS] = {0};
+static int8_t g_group_names_initialized = 0;
 /// @brief Logical master volume (0-100). Kept even before lazy backend init.
 static int64_t g_master_volume = 100;
 
@@ -72,6 +75,81 @@ static int64_t clamp_volume_100(int64_t volume) {
     if (volume > 100)
         return 100;
     return volume;
+}
+
+static void audio_groups_init_unlocked(void) {
+    if (g_group_names_initialized)
+        return;
+    memset(g_group_names, 0, sizeof(g_group_names));
+    memset(g_group_in_use, 0, sizeof(g_group_in_use));
+    strncpy(g_group_names[RT_MIXGROUP_MUSIC], "music", sizeof(g_group_names[0]) - 1);
+    strncpy(g_group_names[RT_MIXGROUP_SFX], "sfx", sizeof(g_group_names[0]) - 1);
+    g_group_volume[RT_MIXGROUP_MUSIC] = clamp_volume_100(g_group_volume[RT_MIXGROUP_MUSIC]);
+    g_group_volume[RT_MIXGROUP_SFX] = clamp_volume_100(g_group_volume[RT_MIXGROUP_SFX]);
+    g_group_in_use[RT_MIXGROUP_MUSIC] = 1;
+    g_group_in_use[RT_MIXGROUP_SFX] = 1;
+    for (int64_t i = RT_MIXGROUP_COUNT; i < RT_MIXGROUP_MAX_GROUPS; i++) {
+        if (g_group_volume[i] < 0 || g_group_volume[i] > 100)
+            g_group_volume[i] = 100;
+    }
+    g_group_names_initialized = 1;
+}
+
+static void audio_group_copy_name(char *dst, size_t cap, rt_string name) {
+    if (!dst || cap == 0)
+        return;
+    dst[0] = '\0';
+    if (!name)
+        return;
+    const char *s = rt_string_cstr(name);
+    int64_t len = rt_str_len(name);
+    if (len < 0)
+        len = 0;
+    while (len > 0 && (*s == ' ' || *s == '\t')) {
+        s++;
+        len--;
+    }
+    while (len > 0 && (s[len - 1] == ' ' || s[len - 1] == '\t'))
+        len--;
+    if ((size_t)len >= cap)
+        len = (int64_t)cap - 1;
+    memcpy(dst, s, (size_t)len);
+    dst[len] = '\0';
+}
+
+static int64_t audio_find_group_unlocked(const char *name) {
+    audio_groups_init_unlocked();
+    if (!name || name[0] == '\0')
+        return -1;
+    for (int64_t i = 0; i < RT_MIXGROUP_MAX_GROUPS; i++) {
+        if (g_group_in_use[i] && strcmp(g_group_names[i], name) == 0)
+            return i;
+    }
+    return -1;
+}
+
+static int64_t audio_register_group_unlocked(const char *name) {
+    audio_groups_init_unlocked();
+    int64_t existing = audio_find_group_unlocked(name);
+    if (existing >= 0)
+        return existing;
+    if (!name || name[0] == '\0')
+        return -1;
+    for (int64_t i = RT_MIXGROUP_NAMED_BASE; i < RT_MIXGROUP_MAX_GROUPS; i++) {
+        if (g_group_in_use[i])
+            continue;
+        strncpy(g_group_names[i], name, sizeof(g_group_names[i]) - 1);
+        g_group_names[i][sizeof(g_group_names[i]) - 1] = '\0';
+        g_group_volume[i] = 100;
+        g_group_in_use[i] = 1;
+        return i;
+    }
+    return -1;
+}
+
+static int8_t audio_group_id_valid_unlocked(int64_t group) {
+    audio_groups_init_unlocked();
+    return group >= 0 && group < RT_MIXGROUP_MAX_GROUPS && g_group_in_use[group];
 }
 
 static int64_t seconds_to_ms_i64(float seconds) {
@@ -434,7 +512,7 @@ static int ensure_audio_init(void) {
 ///          index silently maps to `SFX` so a caller-mistyped index can't index
 ///          out of `g_group_volume`.
 static int64_t apply_group_volume(int64_t volume, int64_t group) {
-    if (group < 0 || group >= RT_MIXGROUP_COUNT)
+    if (!audio_group_id_valid_unlocked(group))
         group = RT_MIXGROUP_SFX;
     return clamp_volume_100(volume) * g_group_volume[group] / 100;
 }
@@ -478,7 +556,7 @@ static int32_t tracked_voice_find(int64_t voice_id) {
 static void tracked_voice_set(int64_t voice_id, int64_t group, int64_t base_volume) {
     if (voice_id < 0)
         return;
-    if (group < 0 || group >= RT_MIXGROUP_COUNT)
+    if (!audio_group_id_valid_unlocked(group))
         group = RT_MIXGROUP_SFX;
     int32_t index = tracked_voice_find(voice_id);
     if (index < 0) {
@@ -1548,10 +1626,9 @@ static int64_t rt_sound_play_internal(
         pan = -100;
     if (pan > 100)
         pan = 100;
-    if (group < 0 || group >= RT_MIXGROUP_COUNT)
-        group = RT_MIXGROUP_SFX;
-
     audio_state_lock();
+    if (!audio_group_id_valid_unlocked(group))
+        group = RT_MIXGROUP_SFX;
     rt_sound *snd = rt_sound_from_handle_locked(sound);
     if (!snd || !snd->sound || !g_audio_ctx || !vaud_sound_is_attached(snd->sound)) {
         audio_state_unlock();
@@ -2131,10 +2208,11 @@ void rt_music_set_crossfade_pair_volume(void *music, int64_t volume) {
 
 /// @brief Set the volume for a mix group (0–100). Sounds in this group are scaled by this.
 void rt_audio_set_group_volume(int64_t group, int64_t volume) {
-    if (group < 0 || group >= RT_MIXGROUP_COUNT)
-        return;
-
     audio_state_lock();
+    if (!audio_group_id_valid_unlocked(group)) {
+        audio_state_unlock();
+        return;
+    }
     g_group_volume[group] = clamp_volume_100(volume);
     if (group == RT_MIXGROUP_MUSIC)
         rt_audio_refresh_music_group_volumes_locked();
@@ -2145,12 +2223,62 @@ void rt_audio_set_group_volume(int64_t group, int64_t volume) {
 
 /// @brief Get the volume of a mix group (0–100).
 int64_t rt_audio_get_group_volume(int64_t group) {
-    if (group < 0 || group >= RT_MIXGROUP_COUNT)
-        return 100;
     audio_state_lock();
-    int64_t volume = g_group_volume[group];
+    int64_t volume = audio_group_id_valid_unlocked(group) ? g_group_volume[group] : 100;
     audio_state_unlock();
     return volume;
+}
+
+int64_t rt_audio_register_group(rt_string group_name) {
+    char name[32];
+    audio_group_copy_name(name, sizeof(name), group_name);
+    audio_state_lock();
+    int64_t id = audio_register_group_unlocked(name);
+    audio_state_unlock();
+    return id;
+}
+
+int64_t rt_audio_find_group(rt_string group_name) {
+    char name[32];
+    audio_group_copy_name(name, sizeof(name), group_name);
+    audio_state_lock();
+    int64_t id = audio_find_group_unlocked(name);
+    audio_state_unlock();
+    return id;
+}
+
+void rt_audio_set_group_volume_named(rt_string group_name, int64_t volume) {
+    char name[32];
+    audio_group_copy_name(name, sizeof(name), group_name);
+    audio_state_lock();
+    int64_t id = audio_register_group_unlocked(name);
+    if (id >= 0) {
+        g_group_volume[id] = clamp_volume_100(volume);
+        if (id == RT_MIXGROUP_MUSIC)
+            rt_audio_refresh_music_group_volumes_locked();
+        else
+            rt_audio_refresh_voice_group_volumes(id);
+    }
+    audio_state_unlock();
+}
+
+int64_t rt_audio_get_group_volume_named(rt_string group_name) {
+    char name[32];
+    audio_group_copy_name(name, sizeof(name), group_name);
+    audio_state_lock();
+    int64_t id = audio_find_group_unlocked(name);
+    int64_t volume = id >= 0 ? g_group_volume[id] : 100;
+    audio_state_unlock();
+    return volume;
+}
+
+rt_string rt_audio_group_name(int64_t group_id) {
+    audio_state_lock();
+    const char *name =
+        audio_group_id_valid_unlocked(group_id) ? g_group_names[group_id] : "";
+    rt_string result = rt_const_cstr(name);
+    audio_state_unlock();
+    return result;
 }
 
 //===----------------------------------------------------------------------===//
@@ -2758,7 +2886,8 @@ void rt_music_set_crossfade_pair_volume(void *music, int64_t volume) {
 /// @param group  Mix group index in `0..RT_MIXGROUP_COUNT-1`.
 /// @param volume Volume `0..100`.
 void rt_audio_set_group_volume(int64_t group, int64_t volume) {
-    if (group < 0 || group >= RT_MIXGROUP_COUNT)
+    audio_groups_init_unlocked();
+    if (!audio_group_id_valid_unlocked(group))
         return;
     if (volume < 0)
         volume = 0;
@@ -2780,13 +2909,43 @@ void rt_audio_set_group_volume(int64_t group, int64_t volume) {
 /// @param group Mix group index.
 /// @return Stored volume `0..100`, or `100` for out-of-range / unset.
 int64_t rt_audio_get_group_volume(int64_t group) {
-    if (group < 0 || group >= RT_MIXGROUP_COUNT)
+    audio_groups_init_unlocked();
+    if (!audio_group_id_valid_unlocked(group))
         return 100;
 #if RT_COMPILER_MSVC
     return rt_atomic_load_i64(&g_group_volume[group], __ATOMIC_ACQUIRE);
 #else
     return __atomic_load_n(&g_group_volume[group], __ATOMIC_ACQUIRE);
 #endif
+}
+
+int64_t rt_audio_register_group(rt_string group_name) {
+    char name[32];
+    audio_group_copy_name(name, sizeof(name), group_name);
+    return audio_register_group_unlocked(name);
+}
+
+int64_t rt_audio_find_group(rt_string group_name) {
+    char name[32];
+    audio_group_copy_name(name, sizeof(name), group_name);
+    return audio_find_group_unlocked(name);
+}
+
+void rt_audio_set_group_volume_named(rt_string group_name, int64_t volume) {
+    int64_t id = rt_audio_register_group(group_name);
+    if (id >= 0)
+        rt_audio_set_group_volume(id, volume);
+}
+
+int64_t rt_audio_get_group_volume_named(rt_string group_name) {
+    int64_t id = rt_audio_find_group(group_name);
+    return id >= 0 ? rt_audio_get_group_volume(id) : 100;
+}
+
+rt_string rt_audio_group_name(int64_t group_id) {
+    audio_groups_init_unlocked();
+    return audio_group_id_valid_unlocked(group_id) ? rt_const_cstr(g_group_names[group_id])
+                                                   : rt_str_empty();
 }
 
 /// @brief Audio-disabled stub for `Music.CrossfadeTo`. No-ops when both

@@ -37,6 +37,7 @@
 #define RT_PHYSICS2D_WORLD_CLASS_ID INT64_C(-0x500201)
 #define RT_PHYSICS2D_BODY_CLASS_ID INT64_C(-0x500202)
 #define RT_PHYSICS2D_JOINT_CLASS_ID INT64_C(-0x500203)
+#define RT_PHYSICS2D_PROJECTILE_CLASS_ID INT64_C(-0x500204)
 
 /// @brief Internal representation of a single rigid body (AABB or circle).
 typedef struct {

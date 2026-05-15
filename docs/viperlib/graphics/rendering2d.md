@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-03
+last-verified: 2026-05-15
 ---
 
 # 2D Rendering and Effects
@@ -39,6 +39,8 @@ These classes sit directly on top of `Pixels` and `Canvas`. They cover rendering
 - Blend modes use `0 = alpha`, `1 = opaque`, `2 = additive`. Alpha mode uses straight-alpha source-over, matching `Pixels.BlendPixel` and `Canvas.BlitAlpha`; additive mode scales source RGB by source alpha, adds it to the destination, and clamps each channel.
 - `Texture2D.Filter` uses `0 = nearest`, `1 = linear`. Linear sampling interpolates RGB in premultiplied-alpha space so transparent edge texels do not bleed black into partially transparent results.
 - `Texture2D.Wrap` uses `0 = clamp`, `1 = repeat`.
+- `Texture2D.New` requires a `Pixels` object and retains it for the texture lifetime. `Renderer2D` also retains queued sources before publishing commands, so queued draw calls keep their source objects alive until `Begin`, `End`, `FlushToTarget`, or object cleanup clears the queue.
+- `RenderTarget2D.DrawRegion` supports drawing from its own `Pixels` buffer. Overlapping self-copies use a source snapshot so pixels are copied from the original region rather than from already-written output.
 
 ## Render Targets, Textures, And Renderer
 
@@ -52,12 +54,13 @@ renderer.Begin()
 renderer.SetAlpha(255)
 renderer.DrawTexture(texture, 32, 48)
 renderer.DrawTextureScaled(texture, 96, 48, 64, 64)
+renderer.DrawTextureRotatedAt(texture, 160, 48, 16, 16, 45.0)
 renderer.FlushToTarget(target)
 
 canvas.BlitAlpha(0, 0, target.Pixels)
 ```
 
-`Renderer2D` keeps retained references to queued sources, so textures and pixels can be queued safely during a frame. Calling `Begin` clears the previous command list. `FlushToTarget(target)` draws to an offscreen target without ending the batch; `End(canvas)` draws to a Canvas with the queued blend modes, clears queued commands, and makes repeated `End` calls a no-op until the next `Begin`. `DrawTextureScaled(texture, x, y, width, height)` uses the texture's nearest or linear filter. `DrawTextureRegion(texture, x, y, sx, sy, width, height)` samples out-of-bounds source texels through the texture's clamp or repeat wrap mode. Additive `End(canvas)` clips correctly when a queued source is partially off-screen.
+`Renderer2D` keeps retained references to queued sources, so textures and pixels can be queued safely during a frame. Calling `Begin` clears the previous command list. `FlushToTarget(target)` draws to an offscreen target without ending the batch; `End(canvas)` draws to a Canvas with the queued blend modes, clears queued commands, and makes repeated `End` calls a no-op until the next `Begin`. `DrawTextureScaled(texture, x, y, width, height)` uses the texture's nearest or linear filter. `DrawTextureRegion(texture, x, y, sx, sy, width, height)` samples out-of-bounds source texels through the texture's clamp or repeat wrap mode. `DrawTextureRotated(texture, x, y, angleDegrees)` rotates around the texture center; `DrawTextureRotatedAt(texture, x, y, pivotX, pivotY, angleDegrees)` rotates around a source-local pivot. Additive `End(canvas)` clips correctly when a queued source is partially off-screen.
 
 `SpriteRenderer2D` snapshots `Sampler2D` state when queuing a texture draw. It does not mutate the `Texture2D`; call `Sampler2D.ApplyToTexture(texture)` only when you explicitly want to change the texture's stored filter and wrap properties. Material and blend overrides are scoped to that draw call, so later direct `Renderer2D` draws keep the renderer state you set.
 

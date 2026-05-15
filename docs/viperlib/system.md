@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-07
+last-verified: 2026-05-15
 ---
 
 # System
@@ -13,6 +13,7 @@ last-verified: 2026-05-07
 ## Contents
 
 - [Viper.Environment](#viperenvironment)
+- [Viper.System.Clipboard](#vipersystemclipboard)
 - [Viper.Exec](#viperexec)
 - [Viper.Machine](#vipermachine)
 - [Viper.Memory](#vipermemory)
@@ -103,6 +104,44 @@ PRINT Viper.Environment.GetVariable("VIPER_UTF8_SAMPLE")
 ' Process exit
 ' Viper.Environment.EndProgram(7)
 ```
+
+---
+
+## Viper.System.Clipboard
+
+UTF-8 text clipboard access backed by the active desktop clipboard backend.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method      | Signature      | Description                                      |
+|-------------|----------------|--------------------------------------------------|
+| `Get()`     | `String()`     | Returns clipboard text, or `""` when unavailable |
+| `HasText()` | `Boolean()`    | Returns `TRUE` when text is available            |
+| `Set(text)` | `Void(String)` | Copies UTF-8 text to the system clipboard        |
+
+### Zia Example
+
+```rust
+bind Viper.System.Clipboard as Clipboard;
+
+Clipboard.Set("Copied from Viper")
+if Clipboard.HasText() {
+    var text = Clipboard.Get()
+}
+```
+
+### BASIC Example
+
+```basic
+Viper.System.Clipboard.Set("Copied from Viper")
+IF Viper.System.Clipboard.HasText() THEN
+    PRINT Viper.System.Clipboard.Get()
+END IF
+```
+
+The clipboard helpers are available on desktop graphics backends. In headless or graphics-disabled builds, `Get()` returns an empty string, `HasText()` returns `FALSE`, and `Set()` is a no-op.
 
 ---
 

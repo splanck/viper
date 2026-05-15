@@ -69,6 +69,11 @@ static void test_graphics2d_handles_have_unique_classes_and_reject_wrong_types()
     assert(texture_class != sprite_class);
 
     assert(rt_texture2d_new(sprite) == nullptr);
+    assert(rt_tileset2d_new(sprite, 1, 1) == nullptr);
+    assert(rt_nineslice2d_new(sprite, 0, 0, 0, 0) == nullptr);
+    assert(rt_animatedsprite2d_new(nullptr) == nullptr);
+    assert(rt_animatedsprite2d_new(pixels) == nullptr);
+    assert(rt_camerarig2d_new(pixels) == nullptr);
     assert(rt_rendertarget2d_get_pixels(sprite) == nullptr);
     assert(rt_texture2d_get_pixels(sprite) == nullptr);
     assert(rt_color_get_a(rt_color_rgb(1, 2, 3)) == 255);
@@ -103,6 +108,26 @@ static void test_render_target_alpha_blend() {
     assert(blue_of(over_transparent) == 0);
     assert((over_transparent & 255) >= 127 && (over_transparent & 255) <= 128);
     printf("test_render_target_alpha_blend: PASSED\n");
+}
+
+static void test_render_target_self_overlap_region_uses_snapshot() {
+    void *target = rt_rendertarget2d_new(4, 1);
+    assert(target != nullptr);
+    void *pixels = rt_rendertarget2d_get_pixels(target);
+    assert(pixels != nullptr);
+
+    rt_pixels_set(pixels, 0, 0, 0xFF0000FF);
+    rt_pixels_set(pixels, 1, 0, 0x00FF00FF);
+    rt_pixels_set(pixels, 2, 0, 0x0000FFFF);
+    rt_pixels_set(pixels, 3, 0, 0xFFFFFFFF);
+
+    rt_rendertarget2d_draw_region(target, 1, 0, pixels, 0, 0, 3, 1);
+
+    assert(rt_pixels_get(pixels, 0, 0) == 0xFF0000FF);
+    assert(rt_pixels_get(pixels, 1, 0) == 0xFF0000FF);
+    assert(rt_pixels_get(pixels, 2, 0) == 0x00FF00FF);
+    assert(rt_pixels_get(pixels, 3, 0) == 0x0000FFFF);
+    printf("test_render_target_self_overlap_region_uses_snapshot: PASSED\n");
 }
 
 static void test_texture_renderer_material_and_effects() {
@@ -507,6 +532,14 @@ static void test_animation_collision_palette_gradient_and_rig() {
     rt_camerarig2d_add_shake(rig, INT64_MAX, INT64_MIN);
     assert(rt_camerarig2d_get_render_x(rig) == INT64_MAX);
     assert(rt_camerarig2d_get_render_y(rig) <= rt_camera_get_y(camera));
+    rt_camerarig2d_clear_shake(rig);
+    rt_camera_set_x(camera, 42);
+    rt_camerarig2d_set_camera(rig, alpha_pixels);
+    assert(rt_camerarig2d_get_render_x(rig) == 42);
+    rt_camerarig2d_set_camera(rig, nullptr);
+    assert(rt_camerarig2d_get_render_x(rig) == 0);
+    rt_camerarig2d_set_camera(rig, camera);
+    assert(rt_camerarig2d_get_render_x(rig) == 42);
     assert(rt_material2d_get_alpha(alpha_pixels) == 255);
     assert(rt_sampler2d_get_wrap(alpha_pixels) == RT_GRAPHICS2D_WRAP_CLAMP);
     assert(rt_palette2d_apply(alpha_pixels, indexed) == nullptr);
@@ -613,6 +646,7 @@ static void test_layout_rendergraph_tile_helpers_and_importers() {
 int main() {
     test_graphics2d_handles_have_unique_classes_and_reject_wrong_types();
     test_render_target_alpha_blend();
+    test_render_target_self_overlap_region_uses_snapshot();
     test_texture_renderer_material_and_effects();
     test_viewport_tiles_and_objects();
     test_paths_shapes_text_nineslice_and_debugdraw();

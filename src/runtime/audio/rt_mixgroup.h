@@ -37,6 +37,8 @@ extern "C" {
 #define RT_MIXGROUP_MUSIC 0
 #define RT_MIXGROUP_SFX 1
 #define RT_MIXGROUP_COUNT 2
+#define RT_MIXGROUP_NAMED_BASE 100
+#define RT_MIXGROUP_MAX_GROUPS 256
 
 //=========================================================================
 // Mix Group Volume
@@ -48,6 +50,21 @@ void rt_audio_set_group_volume(int64_t group, int64_t volume);
 /// @brief Get the volume for a mix group.
 /// @return Volume 0-100, or 100 if invalid group.
 int64_t rt_audio_get_group_volume(int64_t group);
+
+/// @brief Register a named mix group. Built-ins "music" and "sfx" return 0 and 1.
+int64_t rt_audio_register_group(rt_string group_name);
+
+/// @brief Find a registered named mix group, or -1 when missing.
+int64_t rt_audio_find_group(rt_string group_name);
+
+/// @brief Set a named group's volume (0-100, clamped). Missing groups are registered.
+void rt_audio_set_group_volume_named(rt_string group_name, int64_t volume);
+
+/// @brief Get a named group's volume, or 100 when missing.
+int64_t rt_audio_get_group_volume_named(rt_string group_name);
+
+/// @brief Return a group's registered name, or an empty string when invalid.
+rt_string rt_audio_group_name(int64_t group_id);
 
 //=========================================================================
 // Music Crossfade

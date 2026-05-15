@@ -74,6 +74,18 @@ int main() {
     assert(valueTypeCls != nullptr && "Viper.Core.ValueType not found in catalog");
     assert(hasMethod(*valueTypeCls, "AddField", "void(i64,i64,i1)"));
 
+    const il::runtime::RuntimeClass *systemClipboardCls =
+        findClass("Viper.System.Clipboard");
+    assert(systemClipboardCls != nullptr && "Viper.System.Clipboard not found in catalog");
+    assert(hasMethod(*systemClipboardCls, "Get", "str()"));
+    assert(hasMethod(*systemClipboardCls, "Set", "void(str)"));
+    assert(hasMethod(*systemClipboardCls, "HasText", "i1()"));
+
+    const il::runtime::RuntimeClass *cameraCls = findClass("Viper.Graphics.Camera");
+    assert(cameraCls != nullptr && "Viper.Graphics.Camera not found in catalog");
+    assert(hasMethod(*cameraCls, "SmoothFollow", "void(i64,i64,i64)"));
+    assert(hasMethod(*cameraCls, "SetDeadzone", "void(i64,i64)"));
+
     constexpr std::array<std::string_view, 43> graphics2DClasses = {
         "Viper.Graphics.RenderTarget2D", "Viper.Graphics.Surface2D",
         "Viper.Graphics.Texture2D",      "Viper.Graphics.GpuTexture2D",

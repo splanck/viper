@@ -497,7 +497,7 @@ Sprite sheet/atlas for named region extraction from a single texture. Defines na
 |-------------------------------------|------------------------------------|--------------------------------------------------------|
 | `GetRegion(name)`                   | `Pixels(String)`                   | Extract region as a new Pixels buffer; NULL if missing |
 | `HasRegion(name)`                   | `Boolean(String)`                  | Check if a region name exists                          |
-| `RegionNames()`                     | `Seq()`                            | Return all region names as a Seq of strings            |
+| `RegionNames()`                     | `Seq()`                            | Return all region names as an owning Seq of string snapshots |
 | `RemoveRegion(name)`                | `Boolean(String)`                  | Remove a named region; returns false if not found      |
 | `SetRegion(name, x, y, w, h)`       | `Void(String, Int, Int, Int, Int)` | Define a named rectangular region within the atlas     |
 
@@ -507,6 +507,7 @@ Sprite sheet/atlas for named region extraction from a single texture. Defines na
 - `GetRegion()` returns a new Pixels object on each call — cache results for repeated use
 - Region coordinates are in pixels, relative to the atlas top-left corner
 - `SetRegion()` rejects regions with negative coordinates, non-positive width or height, or bounds outside the atlas; rejected updates leave any existing region unchanged
+- `RegionNames()` returns a snapshot; the strings remain valid even if the sheet later changes or is released
 - All regions share the underlying atlas Pixels object
 
 ### Zia Example

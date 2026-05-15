@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-04
+last-verified: 2026-05-15
 ---
 
 # Scene Graph
@@ -39,6 +39,8 @@ Camera methods validate their receiver as a real `Camera` object; invalid handle
 | `Follow(x, y)`                   | `Void(Integer, Integer)`               | Center camera on world position                  |
 | `Move(dx, dy)`                   | `Void(Integer, Integer)`               | Move camera by delta amounts                     |
 | `SetBounds(minX, minY, maxX, maxY)` | `Void(Integer, Integer, Integer, Integer)` | Limit camera movement range; immediately clamps the current view if needed |
+| `SetDeadzone(width, height)`     | `Void(Integer, Integer)`               | Configure the no-move rectangle used by `SmoothFollow`; non-positive values disable it |
+| `SmoothFollow(x, y, lerp)`       | `Void(Integer, Integer, Integer)`      | Move toward a target center using 0..1000 interpolation, then clamp to bounds |
 | `ToScreenX(worldX)`              | `Integer(Integer)`                     | Convert world X to screen X                      |
 | `ToScreenY(worldY)`              | `Integer(Integer)`                     | Convert world Y to screen Y                      |
 | `ToWorldX(screenX)`              | `Integer(Integer)`                     | Convert screen X to world X                      |
@@ -73,6 +75,8 @@ func start() {
     // Movement and bounds
     cam.Move(10, 20);
     cam.SetBounds(0, 0, 2000, 1500);
+    cam.SetDeadzone(96, 64);
+    cam.SmoothFollow(560, 440, 200);
     cam.ClearBounds();
 }
 ```
@@ -170,6 +174,7 @@ Hierarchical scene node for building scene graphs with transform inheritance.
 
 Creates a scene node. Scene nodes support parent-child hierarchies where child transforms are relative to their parent.
 Scene nodes validate their receiver and child arguments before mutating hierarchy state. Local/world transform composition uses saturating integer arithmetic, so extreme coordinates clamp instead of wrapping.
+Local scale values are normalized to at least `1` before being stored; use `100` for normal size. Reparenting a child temporarily retains it while moving between parents, so `AddChild` keeps parent pointers and child ownership consistent.
 
 ### Static Methods
 
@@ -183,8 +188,8 @@ Scene nodes validate their receiver and child arguments before mutating hierarch
 |-----------------|---------|--------|------------------------------------------------|
 | `X`             | Integer | R/W    | Local X position (relative to parent)          |
 | `Y`             | Integer | R/W    | Local Y position (relative to parent)          |
-| `ScaleX`        | Integer | R/W    | Local X scale (100 = 100%)                     |
-| `ScaleY`        | Integer | R/W    | Local Y scale (100 = 100%)                     |
+| `ScaleX`        | Integer | R/W    | Local X scale, minimum 1 (100 = 100%)          |
+| `ScaleY`        | Integer | R/W    | Local Y scale, minimum 1 (100 = 100%)          |
 | `Rotation`      | Integer | R/W    | Local rotation in degrees                      |
 | `Visible`       | Integer | R/W    | Visibility (1=visible, 0=hidden)               |
 | `Depth`         | Integer | R/W    | Z-order for depth sorting (higher = on top)    |
@@ -646,6 +651,8 @@ Named-region sprite sheet atlas. Maps string names to rectangular sub-regions of
 backing Pixels buffer, enabling content pipelines where frames are referenced by name
 instead of raw pixel coordinates. Added regions must stay inside the backing `Pixels`
 bounds.
+`TextureAtlas` retains its backing `Pixels`; `LoadGrid` publishes each generated
+region only after the region metadata and lookup entry are consistent.
 
 **Type:** Instance (obj)
 **Constructor:** `NEW Viper.Graphics.TextureAtlas(pixels)` or `TextureAtlas.LoadGrid(pixels, frameW, frameH)`

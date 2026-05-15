@@ -1,11 +1,11 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-04
+last-verified: 2026-05-15
 ---
 
 # Animation & Movement
-> Tween, SpriteAnimation, AnimStateMachine, SpriteSheet, PathFollower, ButtonGroup
+> Tween, SpriteAnimation, AnimStateMachine, AnimTimeline, SpriteSheet, PathFollower, ButtonGroup
 
 **Part of [Viper Runtime Library](../README.md) › [Game Utilities](README.md)**
 
@@ -296,6 +296,7 @@ Eliminates the boilerplate of manually wiring StateMachine and SpriteAnimation t
 | `Progress`       | Integer | Read   | Animation progress 0-100 within the current clip  |
 | `StateName`      | String  | Read   | Name of the current named state, or empty string  |
 | `EventFired`     | Boolean | Read   | True once when the configured event frame is reached |
+| `EventsFiredCount` | Integer | Read | Number of multi-events fired during the most recent `Update()` |
 
 ### Methods
 
@@ -309,6 +310,9 @@ Eliminates the boilerplate of manually wiring StateMachine and SpriteAnimation t
 | `AddNamed(name, start, end, dur, loop)` | `Void(String, Integer, Integer, Integer, Boolean)` | Register a named state |
 | `Play(name)` | `Void(String)` | Transition to a named state |
 | `SetEventFrame(frame)` | `Void(Integer)` | Configure a frame event |
+| `AddEvent(stateId, frame, eventId)` | `Boolean(Integer, Integer, Integer)` | Add a frame-keyed event to a specific state |
+| `ClearEvents(stateId)` | `Void(Integer)` | Remove all multi-events from a state |
+| `EventFiredId(index)` | `Integer(Integer)` | Get an event id from the most recent update, or 0 when invalid |
 
 ### Zia Example
 
@@ -358,8 +362,45 @@ func start() {
 ### Notes
 
 - `Update()` does nothing until an initial state has been set.
+- `SetEventFrame` is the legacy single-event flag. Use `AddEvent` when a state needs more than one frame event or explicit event IDs.
+- Multi-events fire once per clip playback when the current frame crosses the registered frame. They are cleared and can fire again after a transition or timeline reset.
 - Transitioning to the current state returns true without relatching `JustEntered` / `JustExited`.
 - Frame events fire once when playback reaches the configured frame and do not retrigger while the frame remains unchanged.
+
+---
+
+## Viper.Game.AnimTimeline
+
+Frame-based timeline for sequencing animation tracks, integer tweens, and marker events. It is useful for cutscenes, scripted UI motion, and coordinating game animation without tying the sequence to one sprite.
+
+**Type:** Instance (obj)
+**Constructor:** `AnimTimeline.New(totalDurationFrames)`
+
+### Properties
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `IsPlaying` | Boolean | Read | True while playback is active |
+| `IsFinished` | Boolean | Read | True after a non-looping timeline reaches the end |
+| `CurrentFrame` | Integer | Read | Current timeline frame |
+| `Looping` | Boolean | Write | Enable wrap-around playback |
+| `EventsFiredCount` | Integer | Read | Marker count fired by the most recent `Advance` |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `AddAnimTrack(name, start, duration, stateId)` | `Integer(String, Integer, Integer, Integer)` | Add an animation track payload |
+| `AddTweenTrack(name, start, duration, from, to)` | `Integer(String, Integer, Integer, Integer, Integer)` | Add an integer tween payload |
+| `AddMarker(frame, eventId)` | `Integer(Integer, Integer)` | Add a marker event |
+| `Play()` / `Pause()` / `Stop()` | `Void()` | Control playback |
+| `Advance(deltaFrames)` | `Void(Integer)` | Move forward and record marker events crossed |
+| `EventFiredId(index)` | `Integer(Integer)` | Read marker event IDs from the latest advance |
+| `TrackIsActive(index)` | `Boolean(Integer)` | True if current frame is inside a track range |
+| `TrackProgress(index)` | `Double(Integer)` | Track progress from 0.0 to 1.0 |
+| `TrackPayloadA/B/C(index)` | `Integer(Integer)` | Read track payload values |
+
+`Stop()` rewinds to frame 0 and clears fired marker state. In looping mode, markers are reset when playback wraps so they can fire on later loops.
 
 ---
 

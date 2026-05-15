@@ -232,6 +232,7 @@
 #include "rt_water3d.h"
 // New network classes
 #include "rt_animstate.h"
+#include "rt_animtimeline.h"
 #include "rt_async_socket.h"
 #include "rt_connpool.h"
 #include "rt_http_client.h"

@@ -586,9 +586,16 @@ TEST(RTSprite, RegionNames) {
     void *names = rt_spritesheet_region_names(sheet);
     ASSERT(names != NULL, "region_names returns non-null");
     ASSERT(rt_seq_len(names) == 2, "names seq has 2 entries");
+    ASSERT(std::strcmp(rt_string_cstr((rt_string)rt_seq_get(names, 0)), "alpha") == 0,
+           "first region name is alpha");
+    ASSERT(std::strcmp(rt_string_cstr((rt_string)rt_seq_get(names, 1)), "beta") == 0,
+           "second region name is beta");
+
+    release_object(sheet);
+    ASSERT(std::strcmp(rt_string_cstr((rt_string)rt_seq_get(names, 0)), "alpha") == 0,
+           "region name snapshot survives sheet release");
 
     release_object(names);
-    release_object(sheet);
     release_object(atlas);
 }
 

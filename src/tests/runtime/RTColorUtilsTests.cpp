@@ -112,6 +112,11 @@ static void test_from_hsl_primary_red() {
     assert(rt_color_from_hsl(0, 100, 50) == rgb(255, 0, 0));
 }
 
+static void test_from_hsl_wraps_large_hue() {
+    assert(rt_color_from_hsl(720, 100, 50) == rgb(255, 0, 0));
+    assert(rt_color_from_hsl(-720, 100, 50) == rgb(255, 0, 0));
+}
+
 static void test_get_hsl_components() {
     int64_t red = rgb(255, 0, 0);
     assert(rt_color_get_h(red) == 0);
@@ -244,6 +249,7 @@ int main() {
     test_from_hex_invalid_returns_zero();
     test_from_hex_embedded_nul_rejected();
     test_from_hsl_primary_red();
+    test_from_hsl_wraps_large_hue();
     test_get_hsl_components();
     test_lerp_midpoint();
     test_color_transforms_preserve_explicit_alpha();

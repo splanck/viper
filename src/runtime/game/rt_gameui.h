@@ -45,6 +45,12 @@ extern "C" {
 #define RT_UININESLICE_CLASS_ID INT64_C(-0x510104)
 #define RT_UIMENULIST_CLASS_ID INT64_C(-0x510105)
 #define RT_GAMEBUTTON_CLASS_ID INT64_C(-0x510106)
+#define RT_UITEXTINPUT_CLASS_ID INT64_C(-0x510107)
+#define RT_UITABLE_CLASS_ID INT64_C(-0x510108)
+#define RT_UIMODAL_CLASS_ID INT64_C(-0x510109)
+#define RT_UISLIDER_CLASS_ID INT64_C(-0x51010A)
+#define RT_UIDROPDOWN_CLASS_ID INT64_C(-0x51010B)
+#define RT_UITOOLTIP_CLASS_ID INT64_C(-0x51010C)
 
 //=========================================================================
 // UILabel — Positioned text with optional BitmapFont
@@ -207,6 +213,135 @@ int8_t rt_gamebutton_get_visible(void *btn);
 void rt_gamebutton_set_text_scale(void *btn, int64_t scale);
 /// @brief Get the button text scale.
 int64_t rt_gamebutton_get_text_scale(void *btn);
+
+//=========================================================================
+// TextInput
+//=========================================================================
+
+void *rt_uitextinput_new(int64_t x, int64_t y, int64_t w, int64_t h);
+void rt_uitextinput_set_text(void *ti, rt_string text);
+rt_string rt_uitextinput_get_text(void *ti);
+int64_t rt_uitextinput_text_length(void *ti);
+int64_t rt_uitextinput_get_cursor(void *ti);
+void rt_uitextinput_set_cursor(void *ti, int64_t pos);
+void rt_uitextinput_select_all(void *ti);
+void rt_uitextinput_clear_selection(void *ti);
+int8_t rt_uitextinput_has_selection(void *ti);
+rt_string rt_uitextinput_get_selected_text(void *ti);
+void rt_uitextinput_delete_selection(void *ti);
+int64_t rt_uitextinput_handle_key(void *ti, int64_t key_code, int8_t shift_held);
+int64_t rt_uitextinput_handle_text(void *ti, rt_string typed_text);
+void rt_uitextinput_handle_mouse_click(void *ti, int64_t mx, int64_t my, int8_t shift_held);
+void rt_uitextinput_handle_mouse_drag(void *ti, int64_t mx, int64_t my);
+void rt_uitextinput_update(void *ti, int64_t delta_ms);
+void rt_uitextinput_draw(void *ti, void *canvas);
+void rt_uitextinput_set_text_color(void *ti, int64_t color);
+int64_t rt_uitextinput_get_text_color(void *ti);
+void rt_uitextinput_set_bg_color(void *ti, int64_t color);
+int64_t rt_uitextinput_get_bg_color(void *ti);
+void rt_uitextinput_set_cursor_color(void *ti, int64_t color);
+void rt_uitextinput_set_selection_color(void *ti, int64_t color);
+void rt_uitextinput_set_border_color(void *ti, int64_t color);
+void rt_uitextinput_set_border_color_focused(void *ti, int64_t color);
+void rt_uitextinput_set_font(void *ti, void *font);
+void rt_uitextinput_set_visible(void *ti, int8_t visible);
+int8_t rt_uitextinput_get_visible(void *ti);
+void rt_uitextinput_set_enabled(void *ti, int8_t enabled);
+int8_t rt_uitextinput_get_enabled(void *ti);
+void rt_uitextinput_set_focused(void *ti, int8_t focused);
+int8_t rt_uitextinput_get_focused(void *ti);
+void rt_uitextinput_set_password_mode(void *ti, int8_t password);
+void rt_uitextinput_set_placeholder(void *ti, rt_string placeholder);
+void rt_uitextinput_set_max_codepoints(void *ti, int64_t max_cps);
+
+//=========================================================================
+// Table
+//=========================================================================
+
+void *rt_uitable_new(int64_t x, int64_t y, int64_t w, int64_t h);
+int64_t rt_uitable_add_column(void *table, rt_string title, int64_t width, int64_t align);
+void rt_uitable_set_column_sortable(void *table, int64_t col, int8_t sortable, int8_t numeric);
+int64_t rt_uitable_column_count(void *table);
+int64_t rt_uitable_add_row(void *table);
+void rt_uitable_set_cell(void *table, int64_t row, int64_t col, rt_string text);
+rt_string rt_uitable_get_cell(void *table, int64_t row, int64_t col);
+void rt_uitable_remove_row(void *table, int64_t row);
+void rt_uitable_clear_rows(void *table);
+int64_t rt_uitable_row_count(void *table);
+void rt_uitable_sort_by(void *table, int64_t col, int8_t descending);
+int64_t rt_uitable_get_sort_column(void *table);
+int8_t rt_uitable_get_sort_descending(void *table);
+void rt_uitable_set_scroll(void *table, int64_t row);
+int64_t rt_uitable_get_scroll(void *table);
+void rt_uitable_set_selected_row(void *table, int64_t row);
+int64_t rt_uitable_get_selected_row(void *table);
+int64_t rt_uitable_handle_click(void *table, int64_t mx, int64_t my);
+int64_t rt_uitable_last_header_click(void *table);
+void rt_uitable_handle_scroll(void *table, int64_t delta);
+void rt_uitable_handle_key(void *table, int64_t key_code);
+void rt_uitable_draw(void *table, void *canvas);
+
+//=========================================================================
+// Modal
+//=========================================================================
+
+void *rt_uimodal_new(int64_t w, int64_t h);
+void *rt_uimodal_new_at(int64_t x, int64_t y, int64_t w, int64_t h);
+void rt_uimodal_set_title(void *modal, rt_string title);
+void rt_uimodal_set_content(void *modal, rt_string text);
+int64_t rt_uimodal_add_button(void *modal, rt_string text, int64_t return_value);
+void rt_uimodal_set_default_button(void *modal, int64_t index);
+void rt_uimodal_set_cancel_button(void *modal, int64_t index);
+void rt_uimodal_add_child(void *modal, void *child_widget);
+void rt_uimodal_open(void *modal);
+void rt_uimodal_close(void *modal);
+int8_t rt_uimodal_is_open(void *modal);
+int64_t rt_uimodal_get_result(void *modal);
+int64_t rt_uimodal_handle_key(void *modal, int64_t key_code, int8_t shift_held);
+int64_t rt_uimodal_handle_click(void *modal, int64_t mx, int64_t my);
+void rt_uimodal_draw(void *modal, void *canvas);
+
+//=========================================================================
+// Slider
+//=========================================================================
+
+void *rt_uislider_new(int64_t x, int64_t y, int64_t w, int64_t h, int64_t min_v, int64_t max_v);
+void rt_uislider_set_value(void *s, int64_t v);
+int64_t rt_uislider_get_value(void *s);
+void rt_uislider_set_step(void *s, int64_t step);
+void rt_uislider_set_label(void *s, rt_string label);
+int8_t rt_uislider_handle_key(void *s, int64_t key_code);
+int8_t rt_uislider_handle_mouse_down(void *s, int64_t mx, int64_t my);
+int8_t rt_uislider_handle_mouse_drag(void *s, int64_t mx);
+int8_t rt_uislider_handle_mouse_up(void *s);
+void rt_uislider_draw(void *s, void *canvas);
+
+//=========================================================================
+// Dropdown
+//=========================================================================
+
+void *rt_uidropdown_new(int64_t x, int64_t y, int64_t w, int64_t h);
+void rt_uidropdown_add_option(void *dd, rt_string text);
+void rt_uidropdown_clear_options(void *dd);
+int64_t rt_uidropdown_get_selected(void *dd);
+void rt_uidropdown_set_selected(void *dd, int64_t index);
+rt_string rt_uidropdown_get_selected_text(void *dd);
+int8_t rt_uidropdown_is_open(void *dd);
+void rt_uidropdown_open(void *dd);
+void rt_uidropdown_close(void *dd);
+int8_t rt_uidropdown_handle_click(void *dd, int64_t mx, int64_t my);
+int8_t rt_uidropdown_handle_key(void *dd, int64_t key_code);
+void rt_uidropdown_draw(void *dd, void *canvas);
+
+//=========================================================================
+// Tooltip
+//=========================================================================
+
+void *rt_uitooltip_new(void);
+void rt_uitooltip_set_text(void *t, rt_string text);
+void rt_uitooltip_set_hover_delay_ms(void *t, int64_t ms);
+void rt_uitooltip_update(void *t, int64_t mx, int64_t my, int8_t hovered_target, int64_t delta_ms);
+void rt_uitooltip_draw(void *t, void *canvas);
 
 #ifdef __cplusplus
 }

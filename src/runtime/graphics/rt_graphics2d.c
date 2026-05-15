@@ -122,6 +122,10 @@ typedef struct {
     int64_t blend_mode;
     int64_t sampler_filter;
     int64_t sampler_wrap;
+    double angle_deg;
+    int64_t pivot_x;
+    int64_t pivot_y;
+    int8_t has_rotation;
 } rt_renderer2d_cmd;
 
 typedef struct {
@@ -621,16 +625,30 @@ static void blit_pixels(void *dst,
         !blit_clip_axis(&dy, &sy, &height, dst_height, src_height))
         return;
 
+    void *snapshot = NULL;
+    void *read_src = src;
+    void *read_dst = dst;
+    if (dst == src && !(dx + width <= sx || sx + width <= dx || dy + height <= sy ||
+                        sy + height <= dy)) {
+        snapshot = rt_pixels_clone(src);
+        if (!snapshot)
+            return;
+        read_src = snapshot;
+        read_dst = snapshot;
+    }
+
     for (int64_t y = 0; y < height; y++) {
         for (int64_t x = 0; x < width; x++) {
-            uint32_t source = (uint32_t)rt_pixels_get(src, sx + x, sy + y);
+            uint32_t source = (uint32_t)rt_pixels_get(read_src, sx + x, sy + y);
             source = apply_tint_alpha(source, tint, alpha);
             if ((source & 255u) == 0)
                 continue;
-            uint32_t dest = (uint32_t)rt_pixels_get(dst, dx + x, dy + y);
+            uint32_t dest = (uint32_t)rt_pixels_get(read_dst, dx + x, dy + y);
             rt_pixels_set(dst, dx + x, dy + y, (int64_t)blend_pixel(dest, source, blend_mode));
         }
     }
+
+    release_ref_slot(&snapshot);
 }
 
 /// @brief Wrap or clamp a 1D source-pixel coordinate per the requested wrap mode.
@@ -903,6 +921,107 @@ static void blit_pixels_sampled_scaled(void *dst,
     }
 }
 
+/// @brief Blit a full source image rotated around a pivot inside the source rect.
+/// @details The destination anchor `(dx,dy)` is the unrotated top-left; `pivot_x/y`
+///          are source-local coordinates. Rotation is clockwise in screen space.
+static void blit_pixels_rotated(void *dst,
+                                int64_t dx,
+                                int64_t dy,
+                                void *src,
+                                int64_t pivot_x,
+                                int64_t pivot_y,
+                                double angle_deg,
+                                int64_t tint,
+                                int64_t alpha,
+                                int64_t blend_mode,
+                                int64_t filter,
+                                int64_t wrap) {
+    if (!dst || !src || !isfinite(angle_deg))
+        return;
+    int64_t sw = rt_pixels_width(src);
+    int64_t sh = rt_pixels_height(src);
+    int64_t dw = rt_pixels_width(dst);
+    int64_t dh = rt_pixels_height(dst);
+    if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0)
+        return;
+
+    double radians = angle_deg * (double)RT2D_PI / 180.0;
+    double cos_a = cos(radians);
+    double sin_a = sin(radians);
+    double corners[4][2] = {{-(double)pivot_x, -(double)pivot_y},
+                            {(double)sw - (double)pivot_x, -(double)pivot_y},
+                            {(double)sw - (double)pivot_x, (double)sh - (double)pivot_y},
+                            {-(double)pivot_x, (double)sh - (double)pivot_y}};
+    double min_x = 1.0e30;
+    double min_y = 1.0e30;
+    double max_x = -1.0e30;
+    double max_y = -1.0e30;
+    for (int i = 0; i < 4; i++) {
+        double rx = corners[i][0] * cos_a - corners[i][1] * sin_a;
+        double ry = corners[i][0] * sin_a + corners[i][1] * cos_a;
+        if (rx < min_x)
+            min_x = rx;
+        if (rx > max_x)
+            max_x = rx;
+        if (ry < min_y)
+            min_y = ry;
+        if (ry > max_y)
+            max_y = ry;
+    }
+
+    int64_t x0 = (int64_t)floor(min_x);
+    int64_t x1 = (int64_t)ceil(max_x);
+    int64_t y0 = (int64_t)floor(min_y);
+    int64_t y1 = (int64_t)ceil(max_y);
+    wrap = wrap == RT_GRAPHICS2D_WRAP_REPEAT ? RT_GRAPHICS2D_WRAP_REPEAT : RT_GRAPHICS2D_WRAP_CLAMP;
+    filter = filter == RT_GRAPHICS2D_FILTER_LINEAR ? RT_GRAPHICS2D_FILTER_LINEAR
+                                                   : RT_GRAPHICS2D_FILTER_NEAREST;
+
+    for (int64_t oy = y0; oy < y1; oy++) {
+        int64_t out_y = dy + pivot_y + oy;
+        if (out_y < 0 || out_y >= dh)
+            continue;
+        for (int64_t ox = x0; ox < x1; ox++) {
+            int64_t out_x = dx + pivot_x + ox;
+            if (out_x < 0 || out_x >= dw)
+                continue;
+            double sx = (double)ox * cos_a + (double)oy * sin_a + (double)pivot_x;
+            double sy = -(double)ox * sin_a + (double)oy * cos_a + (double)pivot_y;
+            if (wrap != RT_GRAPHICS2D_WRAP_REPEAT && (sx < 0.0 || sy < 0.0 || sx >= (double)sw ||
+                                                       sy >= (double)sh))
+                continue;
+            uint32_t source;
+            if (filter == RT_GRAPHICS2D_FILTER_LINEAR) {
+                int64_t base_x = (int64_t)floor(sx);
+                int64_t base_y = (int64_t)floor(sy);
+                long double tx = (long double)sx - (long double)base_x;
+                long double ty = (long double)sy - (long double)base_y;
+                int64_t ix0 = sampler_coord_i64(base_x, sw, wrap);
+                int64_t ix1 = sampler_coord_i64(base_x + 1, sw, wrap);
+                int64_t iy0 = sampler_coord_i64(base_y, sh, wrap);
+                int64_t iy1 = sampler_coord_i64(base_y + 1, sh, wrap);
+                source = bilerp_premul_rgba((uint32_t)rt_pixels_get(src, ix0, iy0),
+                                            (uint32_t)rt_pixels_get(src, ix1, iy0),
+                                            (uint32_t)rt_pixels_get(src, ix0, iy1),
+                                            (uint32_t)rt_pixels_get(src, ix1, iy1),
+                                            tx,
+                                            ty);
+            } else {
+                int64_t ix = (int64_t)floor(sx);
+                int64_t iy = (int64_t)floor(sy);
+                ix = sampler_coord_i64(ix, sw, wrap);
+                iy = sampler_coord_i64(iy, sh, wrap);
+                source = (uint32_t)rt_pixels_get(src, ix, iy);
+            }
+            source = apply_tint_alpha(source, tint, alpha);
+            if ((source & 255u) == 0)
+                continue;
+            uint32_t dest = (uint32_t)rt_pixels_get(dst, out_x, out_y);
+            rt_pixels_set(dst, out_x, out_y, (int64_t)blend_pixel(dest, source, blend_mode));
+        }
+    }
+}
+
 /// @brief Tint + alpha-scale every pixel in a buffer in place (no blend, no clipping).
 /// @details Used by `Material2D.Apply` and similar "pre-process this Pixels buffer"
 ///          entry points where the caller wants the tinted copy as a standalone
@@ -1161,16 +1280,19 @@ void *rt_texture2d_new(void *pixels) {
         return NULL;
     if (rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID)
         return NULL;
+    retain_ref(pixels);
     rt_texture2d_impl *texture =
         (rt_texture2d_impl *)rt_obj_new_i64(RT2D_TEXTURE_CLASS_ID,
                                             (int64_t)sizeof(rt_texture2d_impl));
-    if (!texture)
+    if (!texture) {
+        void *owned_pixels = pixels;
+        release_ref_slot(&owned_pixels);
         return NULL;
+    }
     texture->magic = RT2D_TEXTURE_MAGIC;
     texture->pixels = pixels;
     texture->filter = RT_GRAPHICS2D_FILTER_NEAREST;
     texture->wrap = RT_GRAPHICS2D_WRAP_CLAMP;
-    retain_ref(pixels);
     rt_obj_set_finalizer(texture, texture2d_finalize);
     return texture;
 }
@@ -1403,7 +1525,8 @@ static void renderer2d_queue(rt_renderer2d_impl *renderer,
         rt_trap("Renderer2D: command capacity overflow");
         return;
     }
-    rt_renderer2d_cmd *cmd = &renderer->cmds[renderer->count++];
+    retain_ref(source);
+    rt_renderer2d_cmd *cmd = &renderer->cmds[renderer->count];
     cmd->source = source;
     cmd->source_kind = source_kind;
     cmd->x = x;
@@ -1419,7 +1542,11 @@ static void renderer2d_queue(rt_renderer2d_impl *renderer,
     cmd->blend_mode = renderer->blend_mode;
     cmd->sampler_filter = sampler_filter;
     cmd->sampler_wrap = sampler_wrap;
-    retain_ref(source);
+    cmd->angle_deg = 0.0;
+    cmd->pivot_x = 0;
+    cmd->pivot_y = 0;
+    cmd->has_rotation = 0;
+    renderer->count++;
 }
 
 /// @brief Queue a draw command to blit the full @p pixels buffer at `(x, y)` with current render state.
@@ -1459,6 +1586,75 @@ void rt_renderer2d_draw_texture(void *renderer, void *texture, int64_t x, int64_
                      rt_texture2d_height(texture),
                      rt_texture2d_get_filter(texture),
                      rt_texture2d_get_wrap(texture));
+}
+
+void rt_renderer2d_draw_texture_rotated(
+    void *renderer, void *texture, int64_t x, int64_t y, double angle_deg) {
+    if (!texture || !texture2d_checked(texture))
+        return;
+    rt_renderer2d_impl *impl = renderer2d_checked(renderer);
+    if (!impl)
+        return;
+    int64_t width = rt_texture2d_width(texture);
+    int64_t height = rt_texture2d_height(texture);
+    int64_t before = impl->count;
+    renderer2d_queue(impl,
+                     1,
+                     texture,
+                     x,
+                     y,
+                     0,
+                     0,
+                     width,
+                     height,
+                     width,
+                     height,
+                     rt_texture2d_get_filter(texture),
+                     rt_texture2d_get_wrap(texture));
+    if (impl->count > before) {
+        rt_renderer2d_cmd *cmd = &impl->cmds[impl->count - 1];
+        cmd->has_rotation = 1;
+        cmd->pivot_x = width / 2;
+        cmd->pivot_y = height / 2;
+        cmd->angle_deg = angle_deg;
+    }
+}
+
+void rt_renderer2d_draw_texture_rotated_at(void *renderer,
+                                           void *texture,
+                                           int64_t x,
+                                           int64_t y,
+                                           int64_t pivot_x,
+                                           int64_t pivot_y,
+                                           double angle_deg) {
+    if (!texture || !texture2d_checked(texture))
+        return;
+    rt_renderer2d_impl *impl = renderer2d_checked(renderer);
+    if (!impl)
+        return;
+    int64_t width = rt_texture2d_width(texture);
+    int64_t height = rt_texture2d_height(texture);
+    int64_t before = impl->count;
+    renderer2d_queue(impl,
+                     1,
+                     texture,
+                     x,
+                     y,
+                     0,
+                     0,
+                     width,
+                     height,
+                     width,
+                     height,
+                     rt_texture2d_get_filter(texture),
+                     rt_texture2d_get_wrap(texture));
+    if (impl->count > before) {
+        rt_renderer2d_cmd *cmd = &impl->cmds[impl->count - 1];
+        cmd->has_rotation = 1;
+        cmd->pivot_x = pivot_x;
+        cmd->pivot_y = pivot_y;
+        cmd->angle_deg = angle_deg;
+    }
 }
 
 /// @brief Queue a scaled full-texture draw, using the texture's filter and wrap state.
@@ -1544,6 +1740,21 @@ static void renderer2d_flush_cmd_to_target(rt_renderer2d_cmd *cmd, void *target_
     void *pixels = cmd->source_kind == 1 ? rt_texture2d_get_pixels(cmd->source) : cmd->source;
     if (!pixels)
         return;
+    if (cmd->has_rotation) {
+        blit_pixels_rotated(target_pixels,
+                            cmd->x,
+                            cmd->y,
+                            pixels,
+                            cmd->pivot_x,
+                            cmd->pivot_y,
+                            cmd->angle_deg,
+                            cmd->tint,
+                            cmd->alpha,
+                            cmd->blend_mode,
+                            cmd->sampler_filter,
+                            cmd->sampler_wrap);
+        return;
+    }
     if (cmd->source_kind == 1) {
         blit_pixels_sampled_scaled(target_pixels,
                                    cmd->x,
@@ -1683,7 +1894,62 @@ void rt_renderer2d_end(void *renderer, void *canvas) {
             void *draw_pixels = pixels;
             int64_t blit_x = cmd->x;
             int64_t blit_y = cmd->y;
-            if (cmd->source_kind == 1 &&
+            if (cmd->has_rotation) {
+                int64_t sw = rt_pixels_width(pixels);
+                int64_t sh = rt_pixels_height(pixels);
+                double radians = cmd->angle_deg * (double)RT2D_PI / 180.0;
+                double cos_a = cos(radians);
+                double sin_a = sin(radians);
+                double corners[4][2] = {{-(double)cmd->pivot_x, -(double)cmd->pivot_y},
+                                        {(double)sw - (double)cmd->pivot_x,
+                                         -(double)cmd->pivot_y},
+                                        {(double)sw - (double)cmd->pivot_x,
+                                         (double)sh - (double)cmd->pivot_y},
+                                        {-(double)cmd->pivot_x,
+                                         (double)sh - (double)cmd->pivot_y}};
+                double min_x = 1.0e30;
+                double min_y = 1.0e30;
+                double max_x = -1.0e30;
+                double max_y = -1.0e30;
+                for (int j = 0; j < 4; j++) {
+                    double rx = corners[j][0] * cos_a - corners[j][1] * sin_a;
+                    double ry = corners[j][0] * sin_a + corners[j][1] * cos_a;
+                    if (rx < min_x)
+                        min_x = rx;
+                    if (rx > max_x)
+                        max_x = rx;
+                    if (ry < min_y)
+                        min_y = ry;
+                    if (ry > max_y)
+                        max_y = ry;
+                }
+                int64_t x0 = (int64_t)floor(min_x);
+                int64_t x1 = (int64_t)ceil(max_x);
+                int64_t y0 = (int64_t)floor(min_y);
+                int64_t y1 = (int64_t)ceil(max_y);
+                int64_t rw = x1 - x0;
+                int64_t rh = y1 - y0;
+                if (rw <= 0 || rh <= 0 || !checked_count(rw, rh, 4, NULL))
+                    continue;
+                region = rt_pixels_new(rw, rh);
+                if (!region)
+                    continue;
+                blit_pixels_rotated(region,
+                                    -x0 - cmd->pivot_x,
+                                    -y0 - cmd->pivot_y,
+                                    pixels,
+                                    cmd->pivot_x,
+                                    cmd->pivot_y,
+                                    cmd->angle_deg,
+                                    cmd->tint,
+                                    cmd->alpha,
+                                    RT_GRAPHICS2D_BLEND_ALPHA,
+                                    cmd->sampler_filter,
+                                    cmd->sampler_wrap);
+                draw_pixels = region;
+                blit_x = cmd->x + cmd->pivot_x + x0;
+                blit_y = cmd->y + cmd->pivot_y + y0;
+            } else if (cmd->source_kind == 1 &&
                 (cmd->sx != 0 || cmd->sy != 0 || cmd->width != rt_pixels_width(pixels) ||
                  cmd->height != rt_pixels_height(pixels) || cmd->dst_width != cmd->width ||
                  cmd->dst_height != cmd->height || cmd->sampler_wrap == RT_GRAPHICS2D_WRAP_REPEAT ||
@@ -1720,7 +1986,8 @@ void rt_renderer2d_end(void *renderer, void *canvas) {
                 region = copy_region_pixels(pixels, sx, sy, width, height);
                 draw_pixels = region;
             }
-            void *processed = processed_pixels_or_null(draw_pixels, cmd->tint, cmd->alpha);
+            void *processed = processed_pixels_or_null(
+                draw_pixels, cmd->has_rotation ? -1 : cmd->tint, cmd->has_rotation ? 255 : cmd->alpha);
             if (processed)
                 draw_pixels = processed;
             if (draw_pixels)
@@ -2108,17 +2375,24 @@ static void tileset2d_finalize(void *obj) {
 void *rt_tileset2d_new(void *pixels, int64_t tile_width, int64_t tile_height) {
     if (!pixels || tile_width <= 0 || tile_height <= 0)
         return NULL;
-    if (rt_pixels_width(pixels) < tile_width || rt_pixels_height(pixels) < tile_height)
+    if (rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID)
         return NULL;
+    int64_t pixels_width = rt_pixels_width(pixels);
+    int64_t pixels_height = rt_pixels_height(pixels);
+    if (pixels_width < tile_width || pixels_height < tile_height)
+        return NULL;
+    retain_ref(pixels);
     rt_tileset2d_impl *tileset =
         (rt_tileset2d_impl *)rt_obj_new_i64(RT2D_TILESET_CLASS_ID,
                                             (int64_t)sizeof(rt_tileset2d_impl));
-    if (!tileset)
+    if (!tileset) {
+        void *owned_pixels = pixels;
+        release_ref_slot(&owned_pixels);
         return NULL;
+    }
     tileset->pixels = pixels;
     tileset->tile_width = tile_width;
     tileset->tile_height = tile_height;
-    retain_ref(pixels);
     rt_obj_set_finalizer(tileset, tileset2d_finalize);
     return tileset;
 }
@@ -2805,14 +3079,17 @@ static void sdffont_finalize(void *obj) {
 void *rt_sdffont_new(void *bitmap_font, int64_t spread) {
     if (bitmap_font && rt_obj_class_id(bitmap_font) != RT_BITMAPFONT_CLASS_ID)
         return NULL;
+    retain_ref(bitmap_font);
     rt_sdffont_impl *font =
         (rt_sdffont_impl *)rt_obj_new_i64(RT2D_SDFFONT_CLASS_ID,
                                           (int64_t)sizeof(rt_sdffont_impl));
-    if (!font)
+    if (!font) {
+        void *owned_font = bitmap_font;
+        release_ref_slot(&owned_font);
         return NULL;
+    }
     font->bitmap_font = bitmap_font;
     font->spread = clamp_i64(spread, 1, 64);
-    retain_ref(bitmap_font);
     rt_obj_set_finalizer(font, sdffont_finalize);
     return font;
 }
@@ -2853,17 +3130,24 @@ static void nineslice2d_finalize(void *obj) {
 void *rt_nineslice2d_new(void *pixels, int64_t left, int64_t top, int64_t right, int64_t bottom) {
     if (!pixels)
         return NULL;
+    if (rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID)
+        return NULL;
+    int64_t pixels_width = rt_pixels_width(pixels);
+    int64_t pixels_height = rt_pixels_height(pixels);
+    retain_ref(pixels);
     rt_nineslice2d_impl *slice =
         (rt_nineslice2d_impl *)rt_obj_new_i64(RT2D_NINESLICE_CLASS_ID,
                                               (int64_t)sizeof(rt_nineslice2d_impl));
-    if (!slice)
+    if (!slice) {
+        void *owned_pixels = pixels;
+        release_ref_slot(&owned_pixels);
         return NULL;
+    }
     slice->pixels = pixels;
-    slice->left = clamp_i64(left, 0, rt_pixels_width(pixels));
-    slice->top = clamp_i64(top, 0, rt_pixels_height(pixels));
-    slice->right = clamp_i64(right, 0, rt_pixels_width(pixels));
-    slice->bottom = clamp_i64(bottom, 0, rt_pixels_height(pixels));
-    retain_ref(pixels);
+    slice->left = clamp_i64(left, 0, pixels_width);
+    slice->top = clamp_i64(top, 0, pixels_height);
+    slice->right = clamp_i64(right, 0, pixels_width);
+    slice->bottom = clamp_i64(bottom, 0, pixels_height);
     rt_obj_set_finalizer(slice, nineslice2d_finalize);
     return slice;
 }
@@ -3885,13 +4169,21 @@ static void animatedsprite2d_finalize(void *obj) {
 /// @details Retains a reference to `sprite`. Starts with `playing = 1` so the
 ///          first `Update` call after `SetClip` immediately begins advancing frames.
 void *rt_animatedsprite2d_new(void *sprite) {
+    if (!sprite || rt_obj_class_id(sprite) != RT_SPRITE_CLASS_ID)
+        return NULL;
+    retain_ref(sprite);
     rt_animatedsprite2d_impl *impl =
         (rt_animatedsprite2d_impl *)rt_obj_new_i64(RT2D_ANIMATEDSPRITE_CLASS_ID,
                                                    (int64_t)sizeof(rt_animatedsprite2d_impl));
-    if (!impl)
+    if (!impl) {
+        void *owned_sprite = sprite;
+        release_ref_slot(&owned_sprite);
         return NULL;
-    retain_ref(sprite);
+    }
     impl->sprite = sprite;
+    impl->clip = NULL;
+    impl->elapsed_ms = 0;
+    impl->frame = 0;
     impl->playing = 1;
     rt_obj_set_finalizer(impl, animatedsprite2d_finalize);
     return impl;
@@ -4260,12 +4552,20 @@ void *rt_renderpass2d_new(void *source, void *target) {
                                                (int64_t)sizeof(rt_renderpass2d_impl));
     if (!impl)
         return NULL;
-    retain_ref(source);
-    retain_ref(target);
-    impl->source = source;
-    impl->target = target;
-    impl->enabled = 1;
+    impl->source = NULL;
+    impl->target = NULL;
+    impl->shader = NULL;
+    impl->enabled = 0;
     rt_obj_set_finalizer(impl, renderpass2d_finalize);
+    if (source) {
+        retain_ref(source);
+        impl->source = source;
+    }
+    if (target) {
+        retain_ref(target);
+        impl->target = target;
+    }
+    impl->enabled = 1;
     return impl;
 }
 
@@ -4832,21 +5132,31 @@ static void camerarig2d_finalize(void *obj) {
 /// @details `smoothing` of 1000 means instant snapping (camera jumps straight to target);
 ///          lower values produce lag-based smooth follow. Shake starts zeroed.
 void *rt_camerarig2d_new(void *camera) {
+    if (camera && rt_obj_class_id(camera) != RT_CAMERA_CLASS_ID)
+        return NULL;
+    retain_ref(camera);
     rt_camerarig2d_impl *impl =
         (rt_camerarig2d_impl *)rt_obj_new_i64(RT2D_CAMERARIG_CLASS_ID,
                                               (int64_t)sizeof(rt_camerarig2d_impl));
-    if (!impl)
+    if (!impl) {
+        void *owned_camera = camera;
+        release_ref_slot(&owned_camera);
         return NULL;
-    retain_ref(camera);
+    }
     impl->camera = camera;
+    impl->target_x = 0;
+    impl->target_y = 0;
     impl->smoothing = 1000;
+    impl->shake_x = 0;
+    impl->shake_y = 0;
     rt_obj_set_finalizer(impl, camerarig2d_finalize);
     return impl;
 }
 
 /// @brief Replace the Camera2D, retaining a reference to the new one.
 void rt_camerarig2d_set_camera(void *rig, void *camera) {
-    if (rt2d_has_class(rig, RT2D_CAMERARIG_CLASS_ID))
+    if (rt2d_has_class(rig, RT2D_CAMERARIG_CLASS_ID) &&
+        (!camera || rt_obj_class_id(camera) == RT_CAMERA_CLASS_ID))
         spriterenderer2d_set_ref(&((rt_camerarig2d_impl *)rig)->camera, camera);
 }
 
@@ -4934,16 +5244,16 @@ void *rt_texturepackeratlas_new(void *pixels) {
         rt_trap("TexturePackerAtlas.New: null pixels");
         return NULL;
     }
+    void *atlas = rt_texatlas_new(pixels);
+    if (!atlas)
+        return NULL;
     rt_texturepackeratlas_impl *impl = (rt_texturepackeratlas_impl *)rt_obj_new_i64(
         RT2D_TEXTUREPACKERATLAS_CLASS_ID, (int64_t)sizeof(rt_texturepackeratlas_impl));
-    if (!impl)
-        return NULL;
-    impl->atlas = rt_texatlas_new(pixels);
-    if (!impl->atlas) {
-        if (rt_obj_release_check0(impl))
-            rt_obj_free(impl);
+    if (!impl) {
+        release_ref_slot(&atlas);
         return NULL;
     }
+    impl->atlas = atlas;
     rt_obj_set_finalizer(impl, texturepackeratlas_finalize);
     return impl;
 }

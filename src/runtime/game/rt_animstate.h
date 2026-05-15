@@ -125,6 +125,18 @@ void rt_animstate_set_event_frame(void *asm_, int64_t frame);
 /// @brief Check and clear the event flag. Returns 1 if event fired since last check.
 int8_t rt_animstate_event_fired(void *asm_);
 
+/// @brief Add a frame-keyed event to a state. Returns 1 on success, 0 if the state is missing or full.
+int8_t rt_animstate_add_event(void *asm_, int64_t state_id, int64_t frame, int64_t event_id);
+
+/// @brief Remove all frame-keyed events from a state.
+void rt_animstate_clear_events(void *asm_, int64_t state_id);
+
+/// @brief Return how many multi-events fired during the most recent Update().
+int64_t rt_animstate_events_fired_count(void *asm_);
+
+/// @brief Return the event id at index from the most recent Update(), or 0 if invalid.
+int64_t rt_animstate_event_fired_id(void *asm_, int64_t index);
+
 #ifdef __cplusplus
 }
 #endif

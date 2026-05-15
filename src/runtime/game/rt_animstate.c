@@ -40,6 +40,8 @@
 //=============================================================================
 
 #define ANIMSTATE_MAX_CLIPS 32
+#define ANIMSTATE_MAX_EVENTS_PER_STATE 8
+#define ANIMSTATE_MAX_FIRED_EVENTS 8
 
 typedef struct {
     int64_t state_id;
@@ -49,6 +51,10 @@ typedef struct {
     int8_t loop;
     int8_t valid;
     char name[32]; // String name for named state lookup (null-terminated)
+    int64_t event_frames[ANIMSTATE_MAX_EVENTS_PER_STATE];
+    int64_t event_ids[ANIMSTATE_MAX_EVENTS_PER_STATE];
+    int8_t event_count;
+    uint16_t event_fired_mask;
 } anim_clip_t;
 
 typedef struct {
@@ -75,6 +81,8 @@ typedef struct {
     int64_t event_frame;      // Frame to trigger on (-1 = disabled)
     int64_t last_event_frame; // Last frame that fired, prevents same-frame repeats.
     int8_t event_triggered;   // Set to 1 when event_frame is reached
+    int64_t events_fired_ids[ANIMSTATE_MAX_FIRED_EVENTS];
+    int64_t events_fired_count;
 } animstate_impl;
 
 //=============================================================================
@@ -116,6 +124,26 @@ static void apply_clip(animstate_impl *a, int clip_idx) {
     a->playing = 1;
     a->event_triggered = 0;
     a->last_event_frame = -1;
+    a->events_fired_count = 0;
+    memset(a->events_fired_ids, 0, sizeof(a->events_fired_ids));
+    c->event_fired_mask = 0;
+}
+
+static int8_t animstate_crossed_frame(int64_t start,
+                                      int64_t end,
+                                      int8_t loop,
+                                      int64_t prev_frame,
+                                      int64_t current_frame,
+                                      int64_t event_frame) {
+    if (current_frame == event_frame && prev_frame != current_frame)
+        return 1;
+    if (!loop)
+        return 0;
+    if (start <= end && current_frame < prev_frame)
+        return event_frame >= start && event_frame <= current_frame;
+    if (start > end && current_frame > prev_frame)
+        return event_frame <= start && event_frame >= current_frame;
+    return 0;
 }
 
 static void animstate_maybe_fire_event(animstate_impl *a, int64_t prev_frame) {
@@ -129,6 +157,28 @@ static void animstate_maybe_fire_event(animstate_impl *a, int64_t prev_frame) {
         return;
     a->event_triggered = 1;
     a->last_event_frame = a->current_frame;
+}
+
+static void animstate_maybe_fire_events(animstate_impl *a, anim_clip_t *c, int64_t prev_frame) {
+    if (!a || !c)
+        return;
+    a->events_fired_count = 0;
+    memset(a->events_fired_ids, 0, sizeof(a->events_fired_ids));
+    if ((c->start_frame <= c->end_frame && a->current_frame < prev_frame) ||
+        (c->start_frame > c->end_frame && a->current_frame > prev_frame))
+        c->event_fired_mask = 0;
+
+    for (int8_t i = 0; i < c->event_count && a->events_fired_count < ANIMSTATE_MAX_FIRED_EVENTS;
+         i++) {
+        uint16_t mask = (uint16_t)(1u << (uint8_t)i);
+        if ((c->event_fired_mask & mask) != 0)
+            continue;
+        if (!animstate_crossed_frame(
+                c->start_frame, c->end_frame, c->loop, prev_frame, a->current_frame, c->event_frames[i]))
+            continue;
+        c->event_fired_mask |= mask;
+        a->events_fired_ids[a->events_fired_count++] = c->event_ids[i];
+    }
 }
 
 static int64_t animstate_percent_i64(int64_t value, int64_t total) {
@@ -193,6 +243,10 @@ void rt_animstate_add_state(void *asm_,
     c->frame_duration = frame_duration > 0 ? frame_duration : 1;
     c->loop = loop;
     c->valid = 1;
+    c->event_count = 0;
+    c->event_fired_mask = 0;
+    memset(c->event_frames, 0, sizeof(c->event_frames));
+    memset(c->event_ids, 0, sizeof(c->event_ids));
 }
 
 /// @brief Set the starting state and reset all transition flags to initial values.
@@ -252,6 +306,9 @@ void rt_animstate_update(void *asm_) {
         return;
     if (a->current_state < 0)
         return;
+    a->event_triggered = 0;
+    a->events_fired_count = 0;
+    memset(a->events_fired_ids, 0, sizeof(a->events_fired_ids));
 
     // Advance state frame counter
     if (a->frames_in_state < INT64_MAX)
@@ -289,6 +346,7 @@ void rt_animstate_update(void *asm_) {
     }
 
     animstate_maybe_fire_event(a, prev_frame);
+    animstate_maybe_fire_events(a, c, prev_frame);
 }
 
 /// @brief Reset the just_entered and just_exited one-shot flags (call once per frame after
@@ -444,4 +502,55 @@ int8_t rt_animstate_event_fired(void *asm_) {
         return 1;
     }
     return 0;
+}
+
+int8_t rt_animstate_add_event(void *asm_, int64_t state_id, int64_t frame, int64_t event_id) {
+    animstate_impl *a = checked_animstate(
+        asm_, "AnimStateMachine.AddEvent: expected Viper.Game.AnimStateMachine");
+    if (!a)
+        return 0;
+    int idx = find_clip(a, state_id);
+    if (idx < 0)
+        return 0;
+    anim_clip_t *c = &a->clips[idx];
+    if (c->event_count >= ANIMSTATE_MAX_EVENTS_PER_STATE)
+        return 0;
+    int8_t slot = c->event_count++;
+    c->event_frames[slot] = frame;
+    c->event_ids[slot] = event_id;
+    c->event_fired_mask &= (uint16_t)~(1u << (uint8_t)slot);
+    return 1;
+}
+
+void rt_animstate_clear_events(void *asm_, int64_t state_id) {
+    animstate_impl *a = checked_animstate(
+        asm_, "AnimStateMachine.ClearEvents: expected Viper.Game.AnimStateMachine");
+    if (!a)
+        return;
+    int idx = find_clip(a, state_id);
+    if (idx < 0)
+        return;
+    anim_clip_t *c = &a->clips[idx];
+    c->event_count = 0;
+    c->event_fired_mask = 0;
+    memset(c->event_frames, 0, sizeof(c->event_frames));
+    memset(c->event_ids, 0, sizeof(c->event_ids));
+    if (a->active_clip_idx == idx) {
+        a->events_fired_count = 0;
+        memset(a->events_fired_ids, 0, sizeof(a->events_fired_ids));
+    }
+}
+
+int64_t rt_animstate_events_fired_count(void *asm_) {
+    animstate_impl *a = checked_animstate(
+        asm_, "AnimStateMachine.EventsFiredCount: expected Viper.Game.AnimStateMachine");
+    return a ? a->events_fired_count : 0;
+}
+
+int64_t rt_animstate_event_fired_id(void *asm_, int64_t index) {
+    animstate_impl *a = checked_animstate(
+        asm_, "AnimStateMachine.EventFiredId: expected Viper.Game.AnimStateMachine");
+    if (!a || index < 0 || index >= a->events_fired_count)
+        return 0;
+    return a->events_fired_ids[index];
 }

@@ -217,10 +217,9 @@ static inline void rtg_rgb_to_hsl(
 
 /// @brief Hue to RGB conversion helper for HSL.
 static inline int64_t rtg_hue_to_rgb_helper(int64_t p, int64_t q, int64_t t) {
+    t %= 360;
     if (t < 0)
         t += 360;
-    if (t > 360)
-        t -= 360;
     if (t < 60)
         return p + (q - p) * t / 60;
     if (t < 180)

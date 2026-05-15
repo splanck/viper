@@ -876,7 +876,7 @@ first‑class and tested:
         - `SetCursorVisible(I64 visible) -> VOID` — Show/hide cursor (0=hide, 1=show)
         - `SetPosition(I64 row, I64 col) -> VOID` — Move cursor position
 
-**Note:** Legacy `Viper.System.*` aliases have been removed. Use the canonical `Viper.*` names.
+**Note:** Legacy `Viper.System.*` aliases for core namespaces have been removed. Use the canonical `Viper.*` names, except for dedicated System services such as `Viper.System.Clipboard`.
 
 ### Legacy Aliases
 

@@ -111,6 +111,7 @@ set(RT_GAME_SOURCES
         game/rt_timer.c
         game/rt_statemachine.c
         game/rt_animstate.c
+        game/rt_animtimeline.c
         game/rt_tween.c
         game/rt_buttongroup.c
         game/rt_smoothvalue.c
@@ -486,6 +487,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_timer.h
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_statemachine.h
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_animstate.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_animtimeline.h
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_tween.h
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_buttongroup.h
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_smoothvalue.h

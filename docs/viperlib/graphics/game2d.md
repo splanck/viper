@@ -50,8 +50,9 @@ rig.Update()
 ```
 
 `CollisionMask2D.FromPixels` marks pixels solid when alpha is greater than or equal to the threshold. A threshold of `0` means "any non-zero alpha", so fully transparent pixels remain empty.
+`AnimatedSprite2D.New` requires a valid `Sprite`; invalid or null handles return `null` instead of creating a player that would fail during `Update`.
 `AnimatedSprite2D.Play()` restarts a finished non-looping clip from its first effective frame, which lets one-shot clips be replayed without resetting the clip object.
-`CameraRig2D` shake offsets and render coordinates use saturating integer arithmetic at the int64 limits.
+`CameraRig2D.New` accepts a `Camera` or `null`, and `SetCamera` ignores invalid non-camera handles. Shake offsets and render coordinates use saturating integer arithmetic at the int64 limits.
 
 ## Notes
 

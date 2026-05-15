@@ -160,15 +160,16 @@ void *rt_texatlas_new(void *pixels) {
         return NULL;
     }
 
+    rt_heap_retain(pixels);
     texatlas_impl *impl =
         (texatlas_impl *)rt_obj_new_i64(RT_TEXATLAS_CLASS_ID, (int64_t)sizeof(texatlas_impl));
-    if (!impl)
+    if (!impl) {
+        rt_heap_release(pixels);
         return NULL;
+    }
 
     memset(impl, 0, sizeof(texatlas_impl));
     impl->pixels = pixels;
-    if (pixels)
-        rt_heap_retain(pixels);
     rt_obj_set_finalizer(impl, texatlas_finalize);
     return impl;
 }
@@ -203,11 +204,11 @@ void *rt_texatlas_load_grid(void *pixels, int64_t frame_w, int64_t frame_h) {
             r->y = row * frame_h;
             r->w = frame_w;
             r->h = frame_h;
+            impl->region_count = idx + 1;
             bind_region_slot(impl, idx);
             idx++;
         }
     }
-    impl->region_count = idx;
     return atlas;
 }
 

@@ -135,6 +135,11 @@ static int64_t scene_mul_div_saturating(int64_t value, int64_t mul, int64_t div)
     return scene_ld_to_i64_sat(((long double)value * (long double)mul) / (long double)div);
 }
 
+/// @brief Keep local node scale positive so draw-time scale normalization is explicit.
+static int64_t scene_normalize_scale(int64_t scale) {
+    return scale < 1 ? 1 : scale;
+}
+
 /// @brief Subtract @p b from @p a in long double, saturating to int64 on overflow.
 /// @details Used by world-to-local transform inversion where the difference
 ///          can exceed int64 range mid-calculation.
@@ -434,7 +439,7 @@ void rt_scene_node_set_scale_x(void *node_ptr, int64_t scale) {
     scene_node_impl *node = scene_node_checked_or_null(node_ptr);
     if (!node)
         return;
-    node->scale_x = scale;
+    node->scale_x = scene_normalize_scale(scale);
     mark_transform_dirty(node);
 }
 
@@ -451,7 +456,7 @@ void rt_scene_node_set_scale_y(void *node_ptr, int64_t scale) {
     scene_node_impl *node = scene_node_checked_or_null(node_ptr);
     if (!node)
         return;
-    node->scale_y = scale;
+    node->scale_y = scene_normalize_scale(scale);
     mark_transform_dirty(node);
 }
 
@@ -625,14 +630,21 @@ void rt_scene_node_add_child(void *node_ptr, void *child_ptr) {
             return; // Would create a cycle — silently reject
     }
 
-    // Detach from previous parent if any
+    rt_obj_retain_maybe(child);
+
+    // Detach from previous parent if any. The temporary retain above keeps a
+    // borrowed child pointer alive even if the previous parent owned the only
+    // strong reference.
     if (child->parent) {
         rt_scene_node_remove_child(child->parent, child);
     }
 
-    child->parent = node;
     rt_seq_push(node->children, child);
+    child->parent = node;
     mark_transform_dirty(child);
+
+    if (rt_obj_release_check0(child))
+        rt_obj_free(child);
 }
 
 /// @brief Detach @p child_ptr from @p node_ptr and release the node's reference to it.
@@ -850,6 +862,7 @@ void rt_scene_node_set_scale(void *node_ptr, int64_t scale) {
     scene_node_impl *node = scene_node_checked_or_null(node_ptr);
     if (!node)
         return;
+    scale = scene_normalize_scale(scale);
     node->scale_x = scale;
     node->scale_y = scale;
     mark_transform_dirty(node);

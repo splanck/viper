@@ -385,14 +385,15 @@ void *rt_spritesheet_region_names(void *obj) {
     void *seq;
     int64_t i;
     if (!obj)
-        return rt_seq_new();
+        return rt_seq_new_owned();
     ss = spritesheet_checked_or_null(obj);
     if (!ss)
-        return rt_seq_new();
-    seq = rt_seq_new();
+        return rt_seq_new_owned();
+    seq = rt_seq_new_owned();
     for (i = 0; i < ss->count; i++) {
         rt_string s = rt_const_cstr(ss->names[i]);
         rt_seq_push(seq, (void *)s);
+        rt_str_release_maybe(s);
     }
     return seq;
 }
@@ -421,5 +422,7 @@ int8_t rt_spritesheet_remove_region(void *obj, rt_string name) {
         ss->regions[j] = ss->regions[j + 1];
     }
     ss->count--;
+    ss->names[ss->count] = NULL;
+    memset(&ss->regions[ss->count], 0, sizeof(ss->regions[ss->count]));
     return 1;
 }

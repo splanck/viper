@@ -448,7 +448,7 @@ Color utility functions for graphics operations.
 | `Darken(color, amount)`  | `Integer(Integer, Integer)`                   | Darkens a color by the given amount (0-100)                                     |
 | `Desaturate(color, amount)` | `Integer(Integer, Integer)`               | Decreases saturation of a color (0-100)                                         |
 | `FromHex(hex)`           | `Integer(String)`                             | Parses `#RRGGBB` or `#RRGGBBAA`; invalid input returns `0`                      |
-| `FromHSL(h, s, l)`       | `Integer(Integer, Integer, Integer)`          | Creates a color from hue (0-360), saturation (0-100), lightness (0-100)         |
+| `FromHSL(h, s, l)`       | `Integer(Integer, Integer, Integer)`          | Creates a color from hue, saturation (0-100), lightness (0-100); hue wraps modulo 360 |
 | `GetA(color)`            | `Integer(Integer)`                            | Extracts alpha component (0-255) from a packed color                            |
 | `GetB(color)`            | `Integer(Integer)`                            | Extracts blue component (0-255) from a packed color                             |
 | `GetG(color)`            | `Integer(Integer)`                            | Extracts green component (0-255) from a packed color                            |

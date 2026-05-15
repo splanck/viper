@@ -51,13 +51,23 @@
 #include <string.h>
 
 /// @brief Process-wide monotonic counter handed out as cache_identity for new Pixels objects.
-/// @details Each Pixels allocation receives a unique 63-bit identity value
+/// @details Each Pixels allocation receives a non-zero identity value
 ///          here so downstream caches (e.g. canvas-side texture caches) can
 ///          tell two same-dimensions Pixels apart without comparing pointers
 ///          (which can repeat after GC). Volatile because it's read across
 ///          allocations on potentially different threads; updates use
 ///          atomic increment in rt_pixels_new (not shown).
-static volatile int64_t g_next_pixels_cache_identity = 1;
+static volatile uint64_t g_next_pixels_cache_identity = 1;
+
+/// @brief Allocate the next non-zero cache identity without signed overflow.
+static uint64_t pixels_next_cache_identity(void) {
+    uint64_t id;
+    do {
+        id = __atomic_fetch_add(
+            &g_next_pixels_cache_identity, UINT64_C(1), __ATOMIC_RELAXED);
+    } while (id == 0);
+    return id;
+}
 
 /// @brief Raise a runtime trap with a Pixels-specific error message.
 /// @details Centralized so every guard in this file (NULL handles, wrong
@@ -157,11 +167,7 @@ rt_pixels_impl *pixels_alloc(int64_t width, int64_t height) {
     pixels->data =
         pixel_count > 0 ? (uint32_t *)((uint8_t *)pixels + sizeof(rt_pixels_impl)) : NULL;
     pixels->generation = 0;
-    pixels->cache_identity =
-        (uint64_t)__atomic_fetch_add(&g_next_pixels_cache_identity, (int64_t)1, __ATOMIC_RELAXED);
-    if (pixels->cache_identity == 0)
-        pixels->cache_identity = (uint64_t)__atomic_fetch_add(
-            &g_next_pixels_cache_identity, (int64_t)1, __ATOMIC_RELAXED);
+    pixels->cache_identity = pixels_next_cache_identity();
 
     // Zero-fill (transparent black)
     if (pixels->data && data_size > 0)

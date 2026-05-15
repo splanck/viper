@@ -28,6 +28,7 @@ These classes draw into `Pixels` or onto `Canvas` and are grouped by what they r
 
 - Shape, path, and debug draw colors accept Canvas-style `0x00RRGGBB`, raw pixel `0xRRGGBBAA`, and `Color.RGBA(...)` values; alpha is ignored by these RGB-only CPU drawing primitives.
 - `NineSlice2D` alpha-composites over the destination `Pixels`, making it suitable for UI panels generated from sprite assets.
+- `NineSlice2D.New` requires a `Pixels` source image and retains it. Border widths are clamped to the source dimensions.
 
 ## Text And UI
 
@@ -39,4 +40,4 @@ These classes draw into `Pixels` or onto `Canvas` and are grouped by what they r
 
 ## Notes
 
-- `SdfFont` is an SDF-ready API surface, not a full signed-distance-field rasterizer yet.
+- `SdfFont` is an SDF-ready API surface, not a full signed-distance-field rasterizer yet. It accepts either a `BitmapFont` or `null` as its bitmap backing font.
