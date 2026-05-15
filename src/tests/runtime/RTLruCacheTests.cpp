@@ -34,6 +34,17 @@ extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_trap_expected = true;                                                                    \
+        g_last_trap = nullptr;                                                                     \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
+            (void)(expr);                                                                          \
+            assert(false && "Expected trap did not occur");                                        \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
+    } while (0)
+
 static void rt_release_obj(void *p) {
     if (p && rt_obj_release_check0(p))
         rt_obj_free(p);
@@ -462,6 +473,39 @@ static void test_capacity_one() {
     rt_release_obj(cache);
 }
 
+static void test_capacity_zero_is_unbounded() {
+    void *cache = rt_lrucache_new(0);
+    rt_string k1 = make_key("a");
+    rt_string k2 = make_key("b");
+    rt_string k3 = make_key("c");
+    void *v1 = new_obj();
+    void *v2 = new_obj();
+    void *v3 = new_obj();
+
+    assert(rt_lrucache_cap(cache) == 0);
+    rt_lrucache_put(cache, k1, v1);
+    rt_lrucache_put(cache, k2, v2);
+    rt_lrucache_put(cache, k3, v3);
+
+    assert(rt_lrucache_len(cache) == 3);
+    assert(rt_lrucache_has(cache, k1) == 1);
+    assert(rt_lrucache_has(cache, k2) == 1);
+    assert(rt_lrucache_has(cache, k3) == 1);
+
+    rt_string_unref(k1);
+    rt_string_unref(k2);
+    rt_string_unref(k3);
+    rt_release_obj(v1);
+    rt_release_obj(v2);
+    rt_release_obj(v3);
+    rt_release_obj(cache);
+}
+
+static void test_negative_capacity_traps() {
+    EXPECT_TRAP(rt_lrucache_new(-1));
+    assert(g_last_trap && strstr(g_last_trap, "LRUCache") != nullptr);
+}
+
 static void test_remove_oldest_on_empty() {
     void *cache = rt_lrucache_new(5);
     assert(rt_lrucache_remove_oldest(cache) == 0);
@@ -484,6 +528,8 @@ int main() {
     test_finalizer_on_cache_free();
     test_null_safety();
     test_capacity_one();
+    test_capacity_zero_is_unbounded();
+    test_negative_capacity_traps();
     test_remove_oldest_on_empty();
     return 0;
 }

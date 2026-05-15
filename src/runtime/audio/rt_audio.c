@@ -59,6 +59,12 @@ static int64_t g_group_volume[RT_MIXGROUP_COUNT] = {100, 100};
 /// @brief Logical master volume (0-100). Kept even before lazy backend init.
 static int64_t g_master_volume = 100;
 
+/// @brief Clamp @p volume into the public `[0, 100]` range.
+/// @details Every public-API volume argument flows through this helper so
+///          callers don't have to validate themselves and the runtime never
+///          sees a negative or > 100 value internally.
+/// @param volume Caller-supplied volume value.
+/// @return Same value clipped to `[0, 100]`.
 static int64_t clamp_volume_100(int64_t volume) {
     if (volume < 0)
         return 0;
@@ -109,6 +115,14 @@ static volatile int g_audio_init_lock = 0;
 #include <sched.h>
 #endif
 
+/// @brief Acquire the audio state's spinlock with acquire ordering.
+/// @details Wraps `__atomic_test_and_set` (or MSVC's `_InterlockedExchange8`)
+///          so concurrent callers serialise around the global audio state
+///          (registries, crossfade table, voice tracker). Yields on
+///          contention via `SwitchToThread`/`sched_yield` so a contended
+///          lock doesn't burn an entire CPU core. The lock is retained as
+///          a spinlock rather than promoted to a `pthread_mutex` because
+///          `pthread_once` (CONC-008) can't retry on failure.
 static void audio_state_lock(void) {
 #if RT_COMPILER_MSVC
     while (_InterlockedExchange8((volatile char *)&g_audio_init_lock, 1))
@@ -124,6 +138,9 @@ static void audio_state_lock(void) {
     }
 }
 
+/// @brief Release the audio state's spinlock with release ordering.
+/// @details Pairs with @ref audio_state_lock. No-op on an unlocked lock
+///          (the atomic clear simply writes zero again).
 static void audio_state_unlock(void) {
 #if RT_COMPILER_MSVC
     _InterlockedExchange8((volatile char *)&g_audio_init_lock, 0);
@@ -162,6 +179,12 @@ typedef struct rt_sound {
 
 static rt_sound *g_sound_wrappers = NULL;
 
+/// @brief Insert @p snd at the head of the global sound registry list.
+/// @details The registry tracks every live `rt_sound` wrapper so the audio
+///          system can sweep them on `rt_audio_shutdown()` and validate
+///          handles in `rt_sound_is_handle()`. Must be called under
+///          @ref audio_state_lock.
+/// @param snd Wrapper to register (NULL is a no-op).
 static void sound_registry_add(rt_sound *snd) {
     if (!snd)
         return;
@@ -172,6 +195,11 @@ static void sound_registry_add(rt_sound *snd) {
     g_sound_wrappers = snd;
 }
 
+/// @brief Unlink @p snd from the global sound registry list.
+/// @details Patches the previous/next links and clears @p snd's own links
+///          so it can't be doubly-removed. Must be called under
+///          @ref audio_state_lock.
+/// @param snd Wrapper to unregister (NULL is a no-op).
 static void sound_registry_remove(rt_sound *snd) {
     if (!snd)
         return;
@@ -185,6 +213,14 @@ static void sound_registry_remove(rt_sound *snd) {
     snd->next = NULL;
 }
 
+/// @brief Look up an `rt_sound` wrapper by handle pointer, returning NULL when
+///        the handle is not currently registered.
+/// @details Validates both the pointer-equality (against entries in the
+///          registry) and the magic discriminator so a stale handle from a
+///          freed wrapper can't pass as a live one. Must be called under
+///          @ref audio_state_lock.
+/// @param sound Caller-supplied handle.
+/// @return Matching wrapper pointer, or NULL when the handle is not live.
 static rt_sound *rt_sound_from_handle_locked(void *sound) {
     if (!sound)
         return NULL;
@@ -231,6 +267,10 @@ typedef struct rt_music {
 
 static rt_music *g_music_wrappers = NULL;
 
+/// @brief Insert @p mus at the head of the global music registry list.
+/// @details Music counterpart of @ref sound_registry_add. Must be called under
+///          @ref audio_state_lock.
+/// @param mus Wrapper to register (NULL is a no-op).
 static void music_registry_add(rt_music *mus) {
     if (!mus)
         return;
@@ -241,6 +281,10 @@ static void music_registry_add(rt_music *mus) {
     g_music_wrappers = mus;
 }
 
+/// @brief Unlink @p mus from the global music registry list.
+/// @details Music counterpart of @ref sound_registry_remove. Must be called
+///          under @ref audio_state_lock.
+/// @param mus Wrapper to unregister (NULL is a no-op).
 static void music_registry_remove(rt_music *mus) {
     if (!mus)
         return;
@@ -254,6 +298,12 @@ static void music_registry_remove(rt_music *mus) {
     mus->next = NULL;
 }
 
+/// @brief Look up an `rt_music` wrapper by handle pointer.
+/// @details Music counterpart of @ref rt_sound_from_handle_locked. Validates
+///          pointer-equality against the registry and the magic discriminator.
+///          Must be called under @ref audio_state_lock.
+/// @param music Caller-supplied handle.
+/// @return Matching wrapper pointer, or NULL when the handle is not live.
 static rt_music *rt_music_from_handle_locked(void *music) {
     if (!music)
         return NULL;
@@ -379,6 +429,12 @@ static int64_t apply_group_volume(int64_t volume, int64_t group) {
     return clamp_volume_100(volume) * g_group_volume[group] / 100;
 }
 
+/// @brief Remove the tracked-voice entry at @p index by sliding later entries down.
+/// @details The tracked-voice table is a flat array indexed by voice slot;
+///          deletion preserves the slot ordering required by callers that
+///          walk it linearly (e.g. `rt_audio_refresh_voice_group_volumes`).
+///          Bounds-checked: out-of-range @p index is silently ignored.
+/// @param index Position in `g_tracked_voices` to remove.
 static void tracked_voice_remove_at(int32_t index) {
     if (index < 0 || index >= g_tracked_voice_count)
         return;
@@ -387,6 +443,12 @@ static void tracked_voice_remove_at(int32_t index) {
     g_tracked_voice_count--;
 }
 
+/// @brief Linear-search the tracked-voice table for a given backend voice id.
+/// @details The table is small (`VAUD_MAX_VOICES`) and accessed only on
+///          play/stop transitions, so a linear scan is faster than the
+///          bookkeeping a hash would require.
+/// @param voice_id Backend voice id to look up.
+/// @return Index in `g_tracked_voices`, or `-1` if not present.
 static int32_t tracked_voice_find(int64_t voice_id) {
     for (int32_t i = 0; i < g_tracked_voice_count; i++) {
         if (g_tracked_voices[i].voice_id == voice_id)
@@ -395,6 +457,14 @@ static int32_t tracked_voice_find(int64_t voice_id) {
     return -1;
 }
 
+/// @brief Insert or update the tracked-voice entry for @p voice_id.
+/// @details If an entry already exists, overwrites the group/volume; if not,
+///          appends. When the table is full, evicts the oldest entry first
+///          (FIFO eviction policy). Negative @p voice_id is silently ignored;
+///          out-of-range @p group is normalised to `SFX`.
+/// @param voice_id    Backend voice id (must be non-negative).
+/// @param group       Mix-group enum value; out-of-range → `SFX`.
+/// @param base_volume Pre-group volume (`[0, 100]`).
 static void tracked_voice_set(int64_t voice_id, int64_t group, int64_t base_volume) {
     if (voice_id < 0)
         return;
@@ -411,6 +481,10 @@ static void tracked_voice_set(int64_t voice_id, int64_t group, int64_t base_volu
     g_tracked_voices[index].base_volume = clamp_volume_100(base_volume);
 }
 
+/// @brief Remove the tracking entry for @p voice_id if it exists.
+/// @details Called when a voice stops or is explicitly released so the
+///          mix-group volume refresher doesn't keep poking a dead voice.
+/// @param voice_id Backend voice id to forget.
 static void tracked_voice_remove(int64_t voice_id) {
     int32_t index = tracked_voice_find(voice_id);
     if (index >= 0)
@@ -436,6 +510,13 @@ static void tracked_voice_prune_locked(void) {
     }
 }
 
+/// @brief Find the active crossfade slot containing @p music, if any.
+/// @details Linear scan over the small fixed-size crossfade table.
+///          Used by pause/resume/stop entry points to discover whether a
+///          music handle is currently participating in a crossfade so they
+///          can apply paired behaviour. Must be called under @ref audio_state_lock.
+/// @param music Music handle to look for.
+/// @return Index into `g_crossfades`, or `-1` if not currently crossfading.
 static int32_t rt_audio_find_crossfade_by_music_locked(const void *music) {
     if (!music)
         return -1;
@@ -448,6 +529,18 @@ static int32_t rt_audio_find_crossfade_by_music_locked(const void *music) {
     return -1;
 }
 
+/// @brief Defer freeing @p obj until after the audio lock is dropped.
+/// @details Calling `rt_obj_free` may run user-supplied finalizers, which
+///          must not run with the audio spinlock held (they may try to
+///          acquire it themselves or otherwise deadlock). Collect the
+///          objects to free into a small fixed-size list that the caller
+///          drains via @ref rt_audio_drain_releases after unlocking.
+///          When @p releases is NULL, falls back to immediate free (caller
+///          guarantees no lock is held). Drops releases on overflow rather
+///          than reallocating — the small static cap is large enough for
+///          any realistic single-operation batch.
+/// @param releases Deferred-release list (may be NULL).
+/// @param obj      Object to queue (NULL is a no-op).
 static void rt_audio_queue_release(rt_deferred_release_list *releases, void *obj) {
     if (!obj)
         return;
@@ -459,6 +552,10 @@ static void rt_audio_queue_release(rt_deferred_release_list *releases, void *obj
         releases->objs[releases->count++] = obj;
 }
 
+/// @brief Free every object queued by @ref rt_audio_queue_release.
+/// @details Must be called outside the audio lock so finalizers can run
+///          safely. Resets the count to 0 so the list is reusable.
+/// @param releases Deferred-release list (may be NULL).
 static void rt_audio_drain_releases(rt_deferred_release_list *releases) {
     if (!releases)
         return;
@@ -469,6 +566,13 @@ static void rt_audio_drain_releases(rt_deferred_release_list *releases) {
     releases->count = 0;
 }
 
+/// @brief Apply a logical volume to @p mus's backend voice, composing with mix-group.
+/// @details The public Audio API uses a `[0, 100]` integer volume scale;
+///          the backend expects a `[0.0, 1.0]` float. This helper composes
+///          the user-facing logical volume with the music mix-group volume
+///          (per @ref apply_group_volume) and converts to the backend scale.
+/// @param mus            Music wrapper (may be NULL, treated as no-op).
+/// @param logical_volume Logical `[0, 100]` volume to apply.
 static void rt_audio_apply_music_volume_value(rt_music *mus, int64_t logical_volume) {
     if (!mus || !mus->music)
         return;
@@ -476,10 +580,25 @@ static void rt_audio_apply_music_volume_value(rt_music *mus, int64_t logical_vol
     vaud_music_set_volume(mus->music, (float)effective / 100.0f);
 }
 
+/// @brief Re-apply @p mus's stored logical volume to its backend voice.
+/// @details Convenience wrapper that uses the wrapper's `logical_volume`
+///          field, used after mix-group volume changes or crossfade
+///          transitions that need to re-sync the backend gain.
+/// @param mus Music wrapper.
 static void rt_audio_apply_music_volume(rt_music *mus) {
     rt_audio_apply_music_volume_value(mus, mus ? mus->logical_volume : 0);
 }
 
+/// @brief Release the two music references stored in a crossfade slot.
+/// @details Both the fade-out and fade-in tracks are retained while the
+///          crossfade is active (so the runtime doesn't free a track that's
+///          still being mixed). On crossfade completion or cancellation
+///          this helper drops those retains, restores the `paused` flag to
+///          0 on each track (the crossfade overrode it), and resets the
+///          slot to inactive. The actual `rt_obj_free` is deferred via
+///          @p releases since this function runs under the audio lock.
+/// @param xf       Crossfade slot to clear.
+/// @param releases Deferred-release list to queue freed objects into.
 static void rt_audio_release_crossfade_refs_locked(rt_music_crossfade_state *xf,
                                                    rt_deferred_release_list *releases) {
     if (!xf)
@@ -564,6 +683,12 @@ static void rt_audio_reapply_crossfade_locked(rt_music_crossfade_state *xf) {
     }
 }
 
+/// @brief Re-apply the music mix-group volume to every live music wrapper.
+/// @details Called when the music group volume changes (master, group, or
+///          mute toggle). Skips wrappers currently participating in a
+///          crossfade — those re-derive their volume from the crossfade's
+///          fade curve via @ref rt_audio_reapply_crossfade_locked.
+///          `_locked` suffix: caller must hold the audio mutex.
 static void rt_audio_refresh_music_group_volumes_locked(void) {
     for (rt_music *mus = g_music_wrappers; mus; mus = mus->next) {
         if (mus->music && rt_audio_find_crossfade_by_music_locked(mus) < 0)
@@ -575,6 +700,12 @@ static void rt_audio_refresh_music_group_volumes_locked(void) {
     }
 }
 
+/// @brief Re-apply group volume scaling to every tracked voice in @p group.
+/// @details Walks the tracked-voice array, prunes any dead entries, then
+///          rewrites the backend voice volume for the survivors that match
+///          the changed group. Used by the SFX-group volume entry point so
+///          a running batch of sound effects responds to a volume change.
+/// @param group Mix-group whose voices need refresh.
 static void rt_audio_refresh_voice_group_volumes(int64_t group) {
     tracked_voice_prune_locked();
     for (int32_t i = g_tracked_voice_count - 1; i >= 0; i--) {
@@ -586,6 +717,13 @@ static void rt_audio_refresh_voice_group_volumes(int64_t group) {
     }
 }
 
+/// @brief Detach every wrapper from its backend handle on audio-system shutdown.
+/// @details Called during `rt_audio_shutdown()` so user code that still
+///          holds Sound/Music handles after shutdown sees them go inert
+///          (handles remain valid as objects, but playback fails because
+///          the underlying ViperAUD context is gone). The wrappers
+///          themselves stay alive until the GC frees them; only the
+///          backend pointers are nulled.
 static void rt_audio_invalidate_wrappers_for_shutdown(void) {
     for (rt_sound *snd = g_sound_wrappers; snd; snd = snd->next) {
         if (snd->sound)
@@ -600,6 +738,23 @@ static void rt_audio_invalidate_wrappers_for_shutdown(void) {
     g_tracked_voice_count = 0;
 }
 
+/// @brief Cancel a single crossfade slot with configurable side effects.
+/// @details Used by every crossfade-cancellation path. Behaviour:
+///            - `stop_fade_out`: when 1, hard-stops the fade-out track via
+///              `vaud_music_stop`; otherwise the track keeps playing at its
+///              current pre-fade volume.
+///            - `stop_fade_in`: same, for the fade-in track.
+///            - `restore_volumes`: when 1 and the corresponding `stop_*`
+///              flag is 0, resets each non-stopped track to its stored
+///              logical volume / loop, undoing the crossfade's overrides.
+///          The crossfade slot is released via
+///          @ref rt_audio_release_crossfade_refs_locked. `_locked` suffix:
+///          caller holds the audio mutex.
+/// @param xf              Crossfade slot to cancel.
+/// @param stop_fade_out   Stop the fade-out track when non-zero.
+/// @param stop_fade_in    Stop the fade-in track when non-zero.
+/// @param restore_volumes Restore logical volumes on non-stopped tracks.
+/// @param releases        Deferred-release list for the slot's retains.
 static void rt_audio_crossfade_cancel_entry_locked(rt_music_crossfade_state *xf,
                                                    int stop_fade_out,
                                                    int stop_fade_in,
@@ -637,6 +792,14 @@ static void rt_audio_crossfade_cancel_entry_locked(rt_music_crossfade_state *xf,
     rt_audio_release_crossfade_refs_locked(xf, releases);
 }
 
+/// @brief Cancel every active crossfade slot.
+/// @details Sweep helper used by `rt_audio_shutdown()` and by full-stop
+///          entry points that need to wipe the crossfade state without
+///          restoring per-track volumes (the tracks are being stopped or
+///          torn down anyway). `_locked` suffix.
+/// @param stop_fade_out Pass-through to @ref rt_audio_crossfade_cancel_entry_locked.
+/// @param stop_fade_in  Pass-through to @ref rt_audio_crossfade_cancel_entry_locked.
+/// @param releases      Deferred-release list.
 static void rt_audio_crossfade_cancel_all_locked(int stop_fade_out,
                                                  int stop_fade_in,
                                                  rt_deferred_release_list *releases) {
@@ -645,6 +808,15 @@ static void rt_audio_crossfade_cancel_all_locked(int stop_fade_out,
             &g_crossfades[i], stop_fade_out, stop_fade_in, 0, releases);
 }
 
+/// @brief Stop every crossfade that does not reference @p keep_a or @p keep_b.
+/// @details Used when promoting a music track to the foreground: any
+///          unrelated crossfade gets fully cancelled (both sides stopped)
+///          so the new foreground track plays alone. Paused crossfades are
+///          left alone — they aren't competing for foreground at the
+///          moment and resuming them later should still work.
+/// @param keep_a   Music handle to preserve (may be NULL).
+/// @param keep_b   Music handle to preserve (may be NULL).
+/// @param releases Deferred-release list.
 static void rt_audio_stop_unrelated_music_locked(void *keep_a,
                                                  void *keep_b,
                                                  rt_deferred_release_list *releases) {
@@ -670,6 +842,17 @@ static void rt_audio_stop_unrelated_music_locked(void *keep_a,
     }
 }
 
+/// @brief Clear competing music state so @p music can become the foreground track.
+/// @details Walks every crossfade slot and applies one of three actions:
+///          (1) if the slot already involves @p music as one of its sides,
+///          cancel just the *other* side and keep @p music's logical
+///          volume/loop intact; (2) leave paused slots alone; (3) cancel
+///          every other active slot in full. After the crossfade sweep,
+///          stops every non-paused music wrapper that is not @p music so
+///          the new foreground track plays alone. `_locked` suffix —
+///          must hold the audio state lock.
+/// @param music    Music wrapper that will be promoted to foreground.
+/// @param releases Deferred-release list for retains dropped by cancellation.
 static void rt_audio_prepare_music_for_foreground_locked(void *music,
                                                          rt_deferred_release_list *releases) {
     for (int32_t i = 0; i < VAUD_MAX_MUSIC; i++) {
@@ -699,6 +882,15 @@ static void rt_audio_prepare_music_for_foreground_locked(void *music,
     }
 }
 
+/// @brief Advance one crossfade slot by @p dt_ms milliseconds.
+/// @details Adds @p dt_ms to the slot's `elapsed`, calls
+///          @ref rt_audio_reapply_crossfade_locked to re-derive both
+///          tracks' volumes, and finalises the slot when `elapsed`
+///          reaches `duration` (stops the fade-out, leaves the fade-in
+///          at its target volume, releases retains). `_locked` suffix.
+/// @param xf       Slot to advance.
+/// @param dt_ms    Elapsed time delta (milliseconds).
+/// @param releases Deferred-release list.
 static void rt_audio_update_crossfade_entry_locked(rt_music_crossfade_state *xf,
                                                    int64_t dt_ms,
                                                    rt_deferred_release_list *releases);
@@ -867,6 +1059,21 @@ static int detect_audio_format(const char *filepath) {
     return detect_audio_format_mem(hdr, n);
 }
 
+/// @brief Pack decoded PCM samples into a self-contained WAV byte buffer.
+/// @details Builds a 44-byte RIFF/WAVE header followed by the PCM data so
+///          the result can be fed back to the WAV-based ViperAUD loader.
+///          Used by the OGG/MP3 paths to convert decoded streams into WAV
+///          form for a single uniform sound-loading code path. Validates
+///          channels (1 or 2 only) and sample rate (`> 0` and
+///          `≤ RT_AUDIO_MAX_SAMPLE_RATE`) up front. The returned buffer is
+///          `malloc`-allocated and ownership transfers to the caller.
+/// @param pcm         Interleaved 16-bit signed PCM samples.
+/// @param frames      Number of frames (samples per channel).
+/// @param channels    Channel count (1 = mono, 2 = stereo).
+/// @param sample_rate Sample rate in Hz.
+/// @param out_data    Receives the newly-allocated WAV buffer.
+/// @param out_len     Receives the buffer length in bytes.
+/// @return 0 on success, -1 on validation or allocation failure.
 static int build_wav_from_pcm(const int16_t *pcm,
                               size_t frames,
                               int channels,
@@ -937,6 +1144,20 @@ static int build_wav_from_pcm(const int16_t *pcm,
     return 0;
 }
 
+/// @brief Decode an Ogg/Vorbis stream end-to-end and re-emit as WAV bytes.
+/// @details Drives @p reader packet-by-packet: locates the Vorbis bitstream
+///          (first BOS packet whose payload starts with `\x01vorbis`),
+///          feeds the three Vorbis setup headers to the decoder, then
+///          decodes every audio packet, growing a single int16 PCM buffer
+///          (doubling capacity with overflow guards against
+///          `RT_AUDIO_MAX_DECODED_SOUND_BYTES`). Once the stream ends the
+///          buffer is wrapped into WAV form via @ref build_wav_from_pcm.
+///          Common entry point for both file-backed and memory-backed
+///          OGG loaders.
+/// @param reader   Ogg packet reader positioned at the start of the stream.
+/// @param out_data Receives the malloc'd WAV buffer on success.
+/// @param out_len  Receives the WAV buffer length on success.
+/// @return 0 on success, -1 on malformed stream, decode error, oversize, or OOM.
 static int ogg_decode_reader_to_wav(ogg_reader_t *reader, uint8_t **out_data, size_t *out_len) {
     if (!reader || !out_data || !out_len)
         return -1;
@@ -1048,6 +1269,13 @@ static int ogg_decode_reader_to_wav(ogg_reader_t *reader, uint8_t **out_data, si
     return rc;
 }
 
+/// @brief Open @p filepath as an Ogg stream and decode it to a WAV buffer.
+/// @details Thin wrapper around @ref ogg_decode_reader_to_wav that owns
+///          the @ref ogg_reader_t lifetime for the file-backed case.
+/// @param filepath Path to an `.ogg` container.
+/// @param out_data Receives the malloc'd WAV buffer on success.
+/// @param out_len  Receives the WAV buffer length on success.
+/// @return 0 on success, -1 on open/decode failure.
 static int ogg_file_to_wav(const char *filepath, uint8_t **out_data, size_t *out_len) {
     ogg_reader_t *reader = ogg_reader_open_file(filepath);
     if (!reader)
@@ -1057,6 +1285,15 @@ static int ogg_file_to_wav(const char *filepath, uint8_t **out_data, size_t *out
     return rc;
 }
 
+/// @brief Decode an in-memory Ogg buffer to a WAV byte buffer.
+/// @details Thin wrapper around @ref ogg_decode_reader_to_wav for the
+///          memory-backed case. Used by @ref rt_sound_load_mem and the
+///          asset-loader fast path.
+/// @param data     Bytes of an Ogg container.
+/// @param size     Length of @p data in bytes.
+/// @param out_data Receives the malloc'd WAV buffer on success.
+/// @param out_len  Receives the WAV buffer length on success.
+/// @return 0 on success, -1 on open/decode failure.
 static int ogg_mem_to_wav(const void *data, size_t size, uint8_t **out_data, size_t *out_len) {
     ogg_reader_t *reader = ogg_reader_open_mem((const uint8_t *)data, size);
     if (!reader)
@@ -1066,6 +1303,18 @@ static int ogg_mem_to_wav(const void *data, size_t size, uint8_t **out_data, siz
     return rc;
 }
 
+/// @brief Decode an in-memory MP3 frame stream to a WAV byte buffer.
+/// @details Spins up an @ref mp3_decoder_t, runs `mp3_decode_file` over
+///          the byte range (which streams every frame and concatenates
+///          PCM), and then hands the resulting int16 PCM to
+///          @ref build_wav_from_pcm. Validates returned channel count
+///          (1 or 2) and sample rate (`> 0`, `≤ RT_AUDIO_MAX_SAMPLE_RATE`)
+///          before wrapping.
+/// @param data     MP3 byte stream (may start with an ID3 tag).
+/// @param size     Length of @p data in bytes.
+/// @param out_data Receives the malloc'd WAV buffer on success.
+/// @param out_len  Receives the WAV buffer length on success.
+/// @return 0 on success, -1 on decode error, validation failure, or OOM.
 static int mp3_data_to_wav(const uint8_t *data, size_t size, uint8_t **out_data, size_t *out_len) {
     if (!data || size == 0)
         return -1;
@@ -1121,6 +1370,17 @@ static int mp3_file_to_wav(const char *filepath, uint8_t **out_data, size_t *out
     return rc;
 }
 
+/// @brief Wrap a freshly-loaded ViperAUD sound in an `rt_sound` heap object.
+/// @details Allocates an `rt_sound` via `rt_obj_new_i64`, stamps the
+///          discriminator magic (`RT_SOUND_MAGIC`), installs the finalizer
+///          (@ref rt_sound_finalize) so the underlying `vaud_sound_t` is
+///          released when the wrapper's refcount drops to zero, and
+///          inserts the wrapper into the global sound registry. On
+///          allocation failure the raw `vaud_sound_t` is freed so the
+///          caller does not need to. `_locked` suffix — caller must hold
+///          the audio state lock.
+/// @param snd Ownership-transferring ViperAUD sound handle (may be NULL).
+/// @return New `rt_sound` wrapper, or NULL on allocation failure / NULL input.
 static void *rt_sound_wrap_loaded_locked(vaud_sound_t snd) {
     if (!snd)
         return NULL;
@@ -1259,6 +1519,21 @@ void rt_sound_destroy(void *sound) {
         rt_obj_free(sound);
 }
 
+/// @brief Shared implementation for every sound-effect playback entry point.
+/// @details Clamps @p volume to 0..100 and @p pan to -100..100, normalises
+///          out-of-range @p group to `RT_MIXGROUP_SFX`, then dispatches to
+///          `vaud_play_loop` or `vaud_play_ex` against the wrapped
+///          ViperAUD sound. The voice id is stamped into the tracked-voice
+///          table (after pruning stale slots) so subsequent group-volume
+///          changes and `rt_voice_*` queries can address it. Returns -1
+///          on NULL input or when the wrapper is no longer valid (e.g.
+///          shut down during a play).
+/// @param sound  `rt_sound` handle (must pass @ref rt_sound_is_handle).
+/// @param volume Logical volume 0–100 *before* mix-group scaling.
+/// @param pan    Stereo pan -100..100 (negative = left).
+/// @param loop   Non-zero to loop continuously.
+/// @param group  Target mix group; out-of-range falls back to SFX.
+/// @return Voice id on success, -1 on failure.
 static int64_t rt_sound_play_internal(
     void *sound, int64_t volume, int64_t pan, int loop, int64_t group) {
     if (!sound)
@@ -1465,6 +1740,12 @@ void rt_music_destroy(void *music) {
         rt_obj_free(music);
 }
 
+/// @brief Validate that @p music points to a live `rt_music` wrapper.
+/// @details Acquires the audio lock and performs a magic-tagged registry
+///          lookup via @ref rt_music_from_handle_locked. Used externally
+///          to reject ABI mismatches before forwarding into the rest of
+///          the music API.
+/// @return 1 if @p music is a valid handle, 0 otherwise.
 int64_t rt_music_is_handle(void *music) {
     if (!music)
         return 0;
@@ -1513,6 +1794,14 @@ void rt_music_resume(void *music) {
     rt_music_resume_related(music);
 }
 
+/// @brief Set the loop flag on a music track.
+/// @details Updates the wrapper's `logical_loop`. If the track is the
+///          fading-out side of an active crossfade, the underlying
+///          stream's loop flag is forced to 0 (so the dying track ends
+///          when the file ends, even if the user requested looping);
+///          otherwise the logical loop value is mirrored to ViperAUD.
+/// @param music Music wrapper handle.
+/// @param loop  Non-zero to enable continuous looping.
 void rt_music_set_loop(void *music, int64_t loop) {
     if (!music)
         return;
@@ -1665,6 +1954,15 @@ int64_t rt_music_get_duration(void *music) {
     return (int64_t)(seconds * 1000.0f + 0.5f);
 }
 
+/// @brief Pause a music track plus anything tied to it by an active crossfade.
+/// @details If @p music is currently part of a crossfade slot, pauses
+///          *both* sides (fade-out and fade-in), marks the slot as paused,
+///          and snapshots the wall-clock so @ref rt_audio_update can resume
+///          time-keeping without skipping forward when the user calls
+///          @ref rt_music_resume_related. Outside of a crossfade,
+///          delegates to the underlying `vaud_music_pause` and updates
+///          the wrapper's `paused` flag.
+/// @param music Music wrapper handle.
 void rt_music_pause_related(void *music) {
     if (!music)
         return;
@@ -1698,6 +1996,15 @@ void rt_music_pause_related(void *music) {
     audio_state_unlock();
 }
 
+/// @brief Resume a music track plus the crossfade slot, if any, that includes it.
+/// @details Inverse of @ref rt_music_pause_related. When the track is the
+///          subject of a paused crossfade, every other unrelated music
+///          track is stopped first (so the crossfade resumes alone),
+///          both sides of the slot are resumed, and the tick reference
+///          is rebased to the current wall-clock so elapsed time does
+///          not jump forward by the pause duration. Outside a crossfade
+///          the wrapper's `paused` flag drives `vaud_music_resume`.
+/// @param music Music wrapper handle.
 void rt_music_resume_related(void *music) {
     if (!music)
         return;
@@ -1738,6 +2045,13 @@ void rt_music_resume_related(void *music) {
     rt_audio_drain_releases(&releases);
 }
 
+/// @brief Stop a music track, cancelling its crossfade slot if it has one.
+/// @details If @p music is one side of an active crossfade, that side's
+///          stream is stopped while volumes on the other side are
+///          restored to their logical value (so the surviving track
+///          continues normally). Outside a crossfade, simply stops the
+///          underlying stream and clears the wrapper's `paused` flag.
+/// @param music Music wrapper handle.
 void rt_music_stop_related(void *music) {
     if (!music)
         return;
@@ -1766,6 +2080,15 @@ void rt_music_stop_related(void *music) {
     rt_audio_drain_releases(&releases);
 }
 
+/// @brief Apply a uniform logical volume to both sides of a music crossfade.
+/// @details When @p music is part of an active crossfade slot, sets the
+///          logical volume on both sides (so the curve interpolates
+///          against the same anchor) and re-derives the per-side gains
+///          via @ref rt_audio_reapply_crossfade_locked. Outside a
+///          crossfade behaves like @ref rt_music_set_volume on a single
+///          track.
+/// @param music  Music wrapper handle.
+/// @param volume Logical volume 0–100; clamped before use.
 void rt_music_set_crossfade_pair_volume(void *music, int64_t volume) {
     if (!music)
         return;

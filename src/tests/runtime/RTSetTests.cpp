@@ -272,6 +272,10 @@ static void test_set_subset_superset() {
     test_result("large is superset of small", rt_set_is_superset(large, small) == 1);
     test_result("small is not superset of large", rt_set_is_superset(small, large) == 0);
 
+    void *empty = rt_set_new();
+    test_result("empty set is subset of NULL set", rt_set_is_subset(empty, NULL) == 1);
+    test_result("non-empty set is not subset of NULL set", rt_set_is_subset(small, NULL) == 0);
+
     printf("\n");
 }
 

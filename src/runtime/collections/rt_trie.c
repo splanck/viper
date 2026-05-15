@@ -317,7 +317,7 @@ static void rt_trie_finalize(void *obj) {
 void *rt_trie_new(void) {
     rt_trie_impl *trie = (rt_trie_impl *)rt_obj_new_i64(RT_TRIE_CLASS_ID, (int64_t)sizeof(rt_trie_impl));
     if (!trie)
-        return NULL;
+        rt_trap("rt_trie: memory allocation failed");
     trie->vptr = NULL;
     trie->root = NULL;
     trie->count = 0;
@@ -575,7 +575,7 @@ void *rt_trie_keys(void *obj) {
     size_t buf_cap = 4096;
     char *buf = (char *)malloc(buf_cap);
     if (!buf)
-        return result;
+        rt_trap("rt_trie: memory allocation failed");
     collect_keys(trie->root, &buf, &buf_cap, 0, result);
     free(buf);
     return result;

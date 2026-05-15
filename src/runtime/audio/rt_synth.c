@@ -81,11 +81,13 @@ static double synth_sin(double phase) {
 // WAV Header Construction
 //===----------------------------------------------------------------------===//
 
+/// @brief Write a 16-bit little-endian integer into the WAV header buffer.
 static void write_le16(uint8_t *p, uint16_t v) {
     p[0] = (uint8_t)(v & 0xFFu);
     p[1] = (uint8_t)((v >> 8) & 0xFFu);
 }
 
+/// @brief Write a 32-bit little-endian integer into the WAV header buffer.
 static void write_le32(uint8_t *p, uint32_t v) {
     p[0] = (uint8_t)(v & 0xFFu);
     p[1] = (uint8_t)((v >> 8) & 0xFFu);
@@ -187,6 +189,7 @@ static void *samples_to_sound(const int16_t *samples, int32_t num_samples) {
 // Clamp Helpers
 //===----------------------------------------------------------------------===//
 
+/// @brief Clamp @p v into the inclusive range `[lo, hi]`.
 static int64_t clamp_i64(int64_t v, int64_t lo, int64_t hi) {
     if (v < lo)
         return lo;
@@ -195,6 +198,16 @@ static int64_t clamp_i64(int64_t v, int64_t lo, int64_t hi) {
     return v;
 }
 
+/// @brief Compute the per-sample amplitude envelope for click-free playback.
+/// @details Linear fade-in for the first @p fade_samples samples and a
+///          mirror linear fade-out for the last @p fade_samples. Returns
+///          1.0 in the steady-state middle and clamps to non-negative
+///          values. Centralised here so tone/sweep/noise all share the
+///          same envelope curve.
+/// @param sample_index Current sample (0-indexed).
+/// @param num_samples  Total samples in the rendered buffer.
+/// @param fade_samples Length of each fade region in samples.
+/// @return Amplitude scale in [0.0, 1.0].
 static double synth_edge_envelope(int32_t sample_index, int32_t num_samples, int32_t fade_samples) {
     if (num_samples <= 1)
         return 0.0;
@@ -399,6 +412,10 @@ static void *sfx_laser(void) {
     return rt_synth_sweep(1500, 200, 120, RT_WAVE_SAWTOOTH);
 }
 
+/// @brief Public SFX dispatcher — pick the preset generator for @p sfx_type.
+/// @details Thin switch that maps @ref rt_sfx_preset_t to the
+///          corresponding `sfx_*` helper. Returns NULL for unknown
+///          types so callers can detect bad input.
 void *rt_synth_sfx(int64_t sfx_type) {
     switch (sfx_type) {
         case RT_SFX_JUMP:

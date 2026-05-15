@@ -74,6 +74,12 @@ typedef struct {
     fs_slot *slots;
 } rt_frozenset_impl;
 
+static rt_frozenset_impl *as_frozenset(void *obj, const char *what) {
+    if (!obj || rt_obj_class_id(obj) != RT_FROZENSET_CLASS_ID)
+        rt_trap(what);
+    return (rt_frozenset_impl *)obj;
+}
+
 // --- FNV-1a hash ---
 
 static uint64_t fs_hash(const char *data, int64_t len) {
@@ -121,7 +127,9 @@ static int8_t fs_key_equals(rt_string key, const char *data, int64_t len) {
 }
 
 static void fs_finalizer(void *obj) {
-    rt_frozenset_impl *fs = (rt_frozenset_impl *)obj;
+    if (!obj)
+        return;
+    rt_frozenset_impl *fs = as_frozenset(obj, "FrozenSet: invalid FrozenSet object");
     if (fs->slots) {
         for (int64_t i = 0; i < fs->capacity; i++) {
             if (fs->slots[i].key)
@@ -130,6 +138,8 @@ static void fs_finalizer(void *obj) {
         free(fs->slots);
         fs->slots = NULL;
     }
+    fs->capacity = 0;
+    fs->count = 0;
 }
 
 static int64_t fs_next_pow2(int64_t n) {
@@ -155,6 +165,7 @@ static rt_frozenset_impl *fs_alloc(int64_t count) {
         (rt_frozenset_impl *)rt_obj_new_i64(RT_FROZENSET_CLASS_ID, sizeof(rt_frozenset_impl));
     if (!fs)
         rt_trap("FrozenSet: memory allocation failed");
+    fs->vptr = NULL;
     fs->count = 0;
     fs->capacity = cap;
     if ((uint64_t)cap > SIZE_MAX / sizeof(fs_slot))
@@ -240,7 +251,7 @@ void *rt_frozenset_empty(void) {
 int64_t rt_frozenset_len(void *obj) {
     if (!obj)
         return 0;
-    return ((rt_frozenset_impl *)obj)->count;
+    return as_frozenset(obj, "FrozenSet.Len: invalid FrozenSet object")->count;
 }
 
 /// @brief Check whether the frozen set has no elements.
@@ -251,9 +262,12 @@ int8_t rt_frozenset_is_empty(void *obj) {
 /// @brief Check whether an element exists in the frozen set.
 /// @details Uses hash-based lookup on the immutable backing array.
 int8_t rt_frozenset_has(void *obj, rt_string elem) {
-    if (!obj || !elem)
+    if (!obj)
         return 0;
-    return fs_contains((rt_frozenset_impl *)obj, elem);
+    rt_frozenset_impl *fs = as_frozenset(obj, "FrozenSet.Has: invalid FrozenSet object");
+    if (!elem)
+        return 0;
+    return fs_contains(fs, elem);
 }
 
 /// @brief Return a Seq of every element in the set (slot-iteration order, not insertion order).
@@ -263,7 +277,7 @@ void *rt_frozenset_items(void *obj) {
     if (!obj)
         return seq;
 
-    rt_frozenset_impl *fs = (rt_frozenset_impl *)obj;
+    rt_frozenset_impl *fs = as_frozenset(obj, "FrozenSet.Items: invalid FrozenSet object");
     for (int64_t i = 0; i < fs->capacity; i++) {
         if (fs->slots[i].key)
             rt_seq_push(seq, fs->slots[i].key);
@@ -278,14 +292,14 @@ void *rt_frozenset_union(void *obj, void *other) {
     void *seq = rt_seq_new();
 
     if (obj) {
-        rt_frozenset_impl *a = (rt_frozenset_impl *)obj;
+        rt_frozenset_impl *a = as_frozenset(obj, "FrozenSet.Union: invalid FrozenSet object");
         for (int64_t i = 0; i < a->capacity; i++) {
             if (a->slots[i].key)
                 rt_seq_push(seq, a->slots[i].key);
         }
     }
     if (other) {
-        rt_frozenset_impl *b = (rt_frozenset_impl *)other;
+        rt_frozenset_impl *b = as_frozenset(other, "FrozenSet.Union: invalid FrozenSet object");
         for (int64_t i = 0; i < b->capacity; i++) {
             if (b->slots[i].key)
                 rt_seq_push(seq, b->slots[i].key);
@@ -302,15 +316,15 @@ void *rt_frozenset_union(void *obj, void *other) {
 /// Returns an empty set if either operand is NULL.
 void *rt_frozenset_intersect(void *obj, void *other) {
     void *seq = rt_seq_new();
-    if (!obj || !other) {
+    rt_frozenset_impl *a = obj ? as_frozenset(obj, "FrozenSet.Intersect: invalid FrozenSet object") : NULL;
+    rt_frozenset_impl *b =
+        other ? as_frozenset(other, "FrozenSet.Intersect: invalid FrozenSet object") : NULL;
+    if (!a || !b) {
         void *result = rt_frozenset_from_seq(seq);
         if (rt_obj_release_check0(seq))
             rt_obj_free(seq);
         return result;
     }
-
-    rt_frozenset_impl *a = (rt_frozenset_impl *)obj;
-    rt_frozenset_impl *b = (rt_frozenset_impl *)other;
 
     for (int64_t i = 0; i < a->capacity; i++) {
         if (a->slots[i].key && fs_contains(b, a->slots[i].key))
@@ -334,11 +348,12 @@ void *rt_frozenset_diff(void *obj, void *other) {
         return result;
     }
 
-    rt_frozenset_impl *a = (rt_frozenset_impl *)obj;
+    rt_frozenset_impl *a = as_frozenset(obj, "FrozenSet.Diff: invalid FrozenSet object");
+    rt_frozenset_impl *b = other ? as_frozenset(other, "FrozenSet.Diff: invalid FrozenSet object") : NULL;
 
     for (int64_t i = 0; i < a->capacity; i++) {
         if (a->slots[i].key) {
-            if (!other || !fs_contains((rt_frozenset_impl *)other, a->slots[i].key))
+            if (!b || !fs_contains(b, a->slots[i].key))
                 rt_seq_push(seq, a->slots[i].key);
         }
     }
@@ -354,11 +369,10 @@ void *rt_frozenset_diff(void *obj, void *other) {
 int8_t rt_frozenset_is_subset(void *obj, void *other) {
     if (!obj)
         return 1; // empty set is subset of everything
+    rt_frozenset_impl *a = as_frozenset(obj, "FrozenSet.IsSubset: invalid FrozenSet object");
     if (!other)
-        return ((rt_frozenset_impl *)obj)->count == 0 ? 1 : 0;
-
-    rt_frozenset_impl *a = (rt_frozenset_impl *)obj;
-    rt_frozenset_impl *b = (rt_frozenset_impl *)other;
+        return a->count == 0 ? 1 : 0;
+    rt_frozenset_impl *b = as_frozenset(other, "FrozenSet.IsSubset: invalid FrozenSet object");
 
     for (int64_t i = 0; i < a->capacity; i++) {
         if (a->slots[i].key && !fs_contains(b, a->slots[i].key))

@@ -67,6 +67,12 @@ typedef struct rt_intmap_impl {
     size_t count;              ///< Number of key-value pairs currently in the IntMap.
 } rt_intmap_impl;
 
+static rt_intmap_impl *as_intmap(void *obj, const char *what) {
+    if (!obj || rt_obj_class_id(obj) != RT_INTMAP_CLASS_ID)
+        rt_trap(what);
+    return (rt_intmap_impl *)obj;
+}
+
 /// @brief Find an entry matching the given key in a collision chain.
 /// @param head Head of the collision chain.
 /// @param key Integer key to search for.
@@ -92,7 +98,7 @@ static void free_entry(rt_intmap_entry *entry) {
 static void rt_intmap_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
-    rt_intmap_impl *map = (rt_intmap_impl *)obj;
+    rt_intmap_impl *map = as_intmap(obj, "IntMap: invalid IntMap object");
     if (!map->buckets || map->capacity == 0)
         return;
     for (size_t i = 0; i < map->capacity; ++i) {
@@ -106,7 +112,7 @@ static void rt_intmap_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
 static void rt_intmap_finalize(void *obj) {
     if (!obj)
         return;
-    rt_intmap_impl *map = (rt_intmap_impl *)obj;
+    rt_intmap_impl *map = as_intmap(obj, "IntMap: invalid IntMap object");
     if (!map->buckets || map->capacity == 0)
         return;
     rt_intmap_clear(map);
@@ -125,7 +131,7 @@ static void map_resize(rt_intmap_impl *map, size_t new_capacity) {
     rt_intmap_entry **new_buckets =
         (rt_intmap_entry **)calloc(new_capacity, sizeof(rt_intmap_entry *));
     if (!new_buckets)
-        return; // Keep old buckets on allocation failure
+        rt_trap("IntMap: memory allocation failed");
 
     // Rehash all entries
     for (size_t i = 0; i < map->capacity; ++i) {
@@ -163,7 +169,7 @@ void *rt_intmap_new(void) {
     rt_intmap_impl *map =
         (rt_intmap_impl *)rt_obj_new_i64(RT_INTMAP_CLASS_ID, (int64_t)sizeof(rt_intmap_impl));
     if (!map)
-        return NULL;
+        rt_trap("IntMap: memory allocation failed");
 
     map->vptr = NULL;
     map->buckets = (rt_intmap_entry **)calloc(MAP_INITIAL_CAPACITY, sizeof(rt_intmap_entry *));
@@ -185,7 +191,7 @@ void *rt_intmap_new(void) {
 int64_t rt_intmap_len(void *obj) {
     if (!obj)
         return 0;
-    return (int64_t)((rt_intmap_impl *)obj)->count;
+    return (int64_t)as_intmap(obj, "IntMap.Len: invalid IntMap object")->count;
 }
 
 /// @brief Check whether the IntMap is empty.
@@ -203,7 +209,7 @@ void rt_intmap_set(void *obj, int64_t key, void *value) {
     if (!obj)
         return;
 
-    rt_intmap_impl *map = (rt_intmap_impl *)obj;
+    rt_intmap_impl *map = as_intmap(obj, "IntMap.Set: invalid IntMap object");
     if (map->capacity == 0)
         return; // Bucket allocation failed
 
@@ -225,7 +231,7 @@ void rt_intmap_set(void *obj, int64_t key, void *value) {
     // Create new entry
     rt_intmap_entry *entry = (rt_intmap_entry *)malloc(sizeof(rt_intmap_entry));
     if (!entry)
-        return;
+        rt_trap("IntMap: memory allocation failed");
 
     entry->key = key;
     rt_obj_retain_maybe(value);
@@ -247,7 +253,7 @@ void *rt_intmap_get(void *obj, int64_t key) {
     if (!obj)
         return NULL;
 
-    rt_intmap_impl *map = (rt_intmap_impl *)obj;
+    rt_intmap_impl *map = as_intmap(obj, "IntMap.Get: invalid IntMap object");
     if (map->capacity == 0)
         return NULL;
 
@@ -267,7 +273,7 @@ void *rt_intmap_get_or(void *obj, int64_t key, void *default_value) {
     if (!obj)
         return default_value;
 
-    rt_intmap_impl *map = (rt_intmap_impl *)obj;
+    rt_intmap_impl *map = as_intmap(obj, "IntMap.GetOr: invalid IntMap object");
     if (map->capacity == 0)
         return default_value;
 
@@ -286,7 +292,7 @@ int8_t rt_intmap_has(void *obj, int64_t key) {
     if (!obj)
         return 0;
 
-    rt_intmap_impl *map = (rt_intmap_impl *)obj;
+    rt_intmap_impl *map = as_intmap(obj, "IntMap.Has: invalid IntMap object");
     if (map->capacity == 0)
         return 0;
 
@@ -304,7 +310,7 @@ int8_t rt_intmap_remove(void *obj, int64_t key) {
     if (!obj)
         return 0;
 
-    rt_intmap_impl *map = (rt_intmap_impl *)obj;
+    rt_intmap_impl *map = as_intmap(obj, "IntMap.Remove: invalid IntMap object");
     if (map->capacity == 0)
         return 0;
 
@@ -334,7 +340,7 @@ void rt_intmap_clear(void *obj) {
     if (!obj)
         return;
 
-    rt_intmap_impl *map = (rt_intmap_impl *)obj;
+    rt_intmap_impl *map = as_intmap(obj, "IntMap.Clear: invalid IntMap object");
     for (size_t i = 0; i < map->capacity; ++i) {
         rt_intmap_entry *entry = map->buckets[i];
         while (entry) {
@@ -356,7 +362,7 @@ void *rt_intmap_keys(void *obj) {
     if (!obj)
         return result;
 
-    rt_intmap_impl *map = (rt_intmap_impl *)obj;
+    rt_intmap_impl *map = as_intmap(obj, "IntMap.Keys: invalid IntMap object");
 
     // Iterate through all buckets and entries
     for (size_t i = 0; i < map->capacity; ++i) {
@@ -382,7 +388,7 @@ void *rt_intmap_values(void *obj) {
     if (!obj)
         return result;
 
-    rt_intmap_impl *map = (rt_intmap_impl *)obj;
+    rt_intmap_impl *map = as_intmap(obj, "IntMap.Values: invalid IntMap object");
 
     // Iterate through all buckets and entries
     for (size_t i = 0; i < map->capacity; ++i) {

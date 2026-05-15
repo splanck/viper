@@ -55,6 +55,10 @@ static void release_temp_obj(void *obj) {
         rt_obj_free(obj);
 }
 
+static void *new_owned_seq(void) {
+    return rt_seq_new_owned();
+}
+
 //=============================================================================
 // Seq Conversions
 //=============================================================================
@@ -152,10 +156,9 @@ void *rt_seq_to_bag(void *seq) {
 
 /// @brief List to seq.
 void *rt_list_to_seq(void *list) {
-    void *seq = rt_seq_new();
+    void *seq = new_owned_seq();
     if (!list || !seq)
         return seq;
-    rt_seq_set_owns_elements(seq, 1);
 
     int64_t len = rt_list_len(list);
     for (int64_t i = 0; i < len; i++) {
@@ -220,7 +223,7 @@ void *rt_list_to_queue(void *list) {
 /// @brief Set to seq.
 void *rt_set_to_seq(void *set) {
     if (!set)
-        return rt_seq_new();
+        return new_owned_seq();
     // rt_set_items already returns a Seq
     return rt_set_items(set);
 }
@@ -240,10 +243,9 @@ void *rt_set_to_list(void *set) {
 
 /// @brief Stack to seq.
 void *rt_stack_to_seq(void *stack) {
-    void *seq = rt_seq_new();
+    void *seq = new_owned_seq();
     if (!stack || !seq)
         return seq;
-    rt_seq_set_owns_elements(seq, 1);
 
     int64_t len = rt_stack_len(stack);
     if (len <= 0)
@@ -290,10 +292,9 @@ void *rt_stack_to_list(void *stack) {
 
 /// @brief Queue to seq.
 void *rt_queue_to_seq(void *queue) {
-    void *seq = rt_seq_new();
+    void *seq = new_owned_seq();
     if (!queue || !seq)
         return seq;
-    rt_seq_set_owns_elements(seq, 1);
 
     int64_t len = rt_queue_len(queue);
     if (len <= 0)
@@ -337,10 +338,9 @@ void *rt_queue_to_list(void *queue) {
 
 /// @brief Deque to seq.
 void *rt_deque_to_seq(void *deque) {
-    void *seq = rt_seq_new();
+    void *seq = new_owned_seq();
     if (!deque || !seq)
         return seq;
-    rt_seq_set_owns_elements(seq, 1);
 
     int64_t len = rt_deque_len(deque);
     for (int64_t i = 0; i < len; i++) {
@@ -367,7 +367,7 @@ void *rt_deque_to_list(void *deque) {
 /// @brief Map keys to seq.
 void *rt_map_keys_to_seq(void *map) {
     if (!map)
-        return rt_seq_new();
+        return new_owned_seq();
     // rt_map_keys already returns a Seq
     return rt_map_keys(map);
 }
@@ -375,7 +375,7 @@ void *rt_map_keys_to_seq(void *map) {
 /// @brief Map values to seq.
 void *rt_map_values_to_seq(void *map) {
     if (!map)
-        return rt_seq_new();
+        return new_owned_seq();
     // rt_map_values already returns a Seq
     return rt_map_values(map);
 }
@@ -387,7 +387,7 @@ void *rt_map_values_to_seq(void *map) {
 /// @brief Bag to seq.
 void *rt_bag_to_seq(void *bag) {
     if (!bag)
-        return rt_seq_new();
+        return new_owned_seq();
     // Bag stores unique strings, rt_bag_items already returns a Seq
     return rt_bag_items(bag);
 }
@@ -420,10 +420,9 @@ void *rt_bag_to_set(void *bag) {
 
 /// @brief Ring to seq.
 void *rt_ring_to_seq(void *ring) {
-    void *seq = rt_seq_new();
+    void *seq = new_owned_seq();
     if (!ring || !seq)
         return seq;
-    rt_seq_set_owns_elements(seq, 1);
 
     int64_t len = rt_ring_len(ring);
     for (int64_t i = 0; i < len; i++) {

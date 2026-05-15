@@ -76,6 +76,12 @@ typedef struct rt_bimap_impl {
 // Inverse lookup chain node
 typedef struct rt_bm_inv_link rt_bm_inv_link;
 
+static rt_bimap_impl *as_bimap(void *obj, const char *what) {
+    if (!obj || rt_obj_class_id(obj) != RT_BIMAP_CLASS_ID)
+        rt_trap(what);
+    return (rt_bimap_impl *)obj;
+}
+
 static const char *get_str_data(rt_string s, size_t *out_len) {
     int64_t len = rt_str_len(s);
     if (len <= 0) {
@@ -139,31 +145,40 @@ static void free_entry(rt_bm_entry *entry) {
 }
 
 static void bimap_finalizer(void *obj) {
-    rt_bimap_impl *bm = (rt_bimap_impl *)obj;
-    if (!bm)
+    if (!obj)
         return;
+    rt_bimap_impl *bm = as_bimap(obj, "BiMap: invalid BiMap object");
 
     // Free forward entries
-    for (size_t i = 0; i < bm->fwd_capacity; ++i) {
-        rt_bm_entry *e = bm->fwd_buckets[i];
-        while (e) {
-            rt_bm_entry *next = e->next;
-            free_entry(e);
-            e = next;
+    if (bm->fwd_buckets) {
+        for (size_t i = 0; i < bm->fwd_capacity; ++i) {
+            rt_bm_entry *e = bm->fwd_buckets[i];
+            while (e) {
+                rt_bm_entry *next = e->next;
+                free_entry(e);
+                e = next;
+            }
         }
     }
     free(bm->fwd_buckets);
 
     // Free inverse chains
-    for (size_t i = 0; i < bm->inv_capacity; ++i) {
-        rt_bm_inv_link *l = bm->inv_chains[i];
-        while (l) {
-            rt_bm_inv_link *next = l->next;
-            free(l);
-            l = next;
+    if (bm->inv_chains) {
+        for (size_t i = 0; i < bm->inv_capacity; ++i) {
+            rt_bm_inv_link *l = bm->inv_chains[i];
+            while (l) {
+                rt_bm_inv_link *next = l->next;
+                free(l);
+                l = next;
+            }
         }
     }
     free(bm->inv_chains);
+    bm->fwd_buckets = NULL;
+    bm->inv_chains = NULL;
+    bm->fwd_capacity = 0;
+    bm->inv_capacity = 0;
+    bm->count = 0;
 }
 
 static void resize_fwd(rt_bimap_impl *bm) {
@@ -174,7 +189,7 @@ static void resize_fwd(rt_bimap_impl *bm) {
         rt_trap("BiMap: allocation size overflow");
     rt_bm_entry **new_buckets = (rt_bm_entry **)calloc(new_cap, sizeof(rt_bm_entry *));
     if (!new_buckets)
-        return;
+        rt_trap("BiMap: memory allocation failed");
 
     for (size_t i = 0; i < bm->fwd_capacity; ++i) {
         rt_bm_entry *e = bm->fwd_buckets[i];
@@ -201,7 +216,7 @@ static void resize_inv(rt_bimap_impl *bm) {
         rt_trap("BiMap: allocation size overflow");
     rt_bm_inv_link **new_chains = (rt_bm_inv_link **)calloc(new_cap, sizeof(rt_bm_inv_link *));
     if (!new_chains)
-        return;
+        rt_trap("BiMap: memory allocation failed");
 
     for (size_t i = 0; i < bm->inv_capacity; ++i) {
         rt_bm_inv_link *l = bm->inv_chains[i];
@@ -228,6 +243,7 @@ void *rt_bimap_new(void) {
     if (!bm)
         rt_trap("BiMap: memory allocation failed");
 
+    bm->vptr = NULL;
     bm->fwd_capacity = BM_INITIAL_CAPACITY;
     bm->inv_capacity = BM_INITIAL_CAPACITY;
     bm->count = 0;
@@ -249,7 +265,7 @@ void *rt_bimap_new(void) {
 int64_t rt_bimap_len(void *obj) {
     if (!obj)
         return 0;
-    return (int64_t)((rt_bimap_impl *)obj)->count;
+    return (int64_t)as_bimap(obj, "BiMap.Len: invalid BiMap object")->count;
 }
 
 /// @brief Check whether the bidirectional map is empty.
@@ -264,7 +280,7 @@ int8_t rt_bimap_is_empty(void *obj) {
 void rt_bimap_put(void *obj, rt_string key, rt_string value) {
     if (!obj)
         return;
-    rt_bimap_impl *bm = (rt_bimap_impl *)obj;
+    rt_bimap_impl *bm = as_bimap(obj, "BiMap.Put: invalid BiMap object");
 
     size_t klen, vlen;
     const char *kdata = get_str_data(key, &klen);
@@ -331,7 +347,7 @@ void rt_bimap_put(void *obj, rt_string key, rt_string value) {
 rt_string rt_bimap_get_by_key(void *obj, rt_string key) {
     if (!obj)
         return rt_string_from_bytes("", 0);
-    rt_bimap_impl *bm = (rt_bimap_impl *)obj;
+    rt_bimap_impl *bm = as_bimap(obj, "BiMap.GetByKey: invalid BiMap object");
 
     size_t klen;
     const char *kdata = get_str_data(key, &klen);
@@ -350,7 +366,7 @@ rt_string rt_bimap_get_by_key(void *obj, rt_string key) {
 rt_string rt_bimap_get_by_value(void *obj, rt_string value) {
     if (!obj)
         return rt_string_from_bytes("", 0);
-    rt_bimap_impl *bm = (rt_bimap_impl *)obj;
+    rt_bimap_impl *bm = as_bimap(obj, "BiMap.GetByValue: invalid BiMap object");
 
     size_t vlen;
     const char *vdata = get_str_data(value, &vlen);
@@ -368,7 +384,7 @@ rt_string rt_bimap_get_by_value(void *obj, rt_string value) {
 int8_t rt_bimap_has_key(void *obj, rt_string key) {
     if (!obj)
         return 0;
-    rt_bimap_impl *bm = (rt_bimap_impl *)obj;
+    rt_bimap_impl *bm = as_bimap(obj, "BiMap.HasKey: invalid BiMap object");
 
     size_t klen;
     const char *kdata = get_str_data(key, &klen);
@@ -382,7 +398,7 @@ int8_t rt_bimap_has_key(void *obj, rt_string key) {
 int8_t rt_bimap_has_value(void *obj, rt_string value) {
     if (!obj)
         return 0;
-    rt_bimap_impl *bm = (rt_bimap_impl *)obj;
+    rt_bimap_impl *bm = as_bimap(obj, "BiMap.HasValue: invalid BiMap object");
 
     size_t vlen;
     const char *vdata = get_str_data(value, &vlen);
@@ -397,7 +413,7 @@ int8_t rt_bimap_has_value(void *obj, rt_string value) {
 int8_t rt_bimap_remove_by_key(void *obj, rt_string key) {
     if (!obj)
         return 0;
-    rt_bimap_impl *bm = (rt_bimap_impl *)obj;
+    rt_bimap_impl *bm = as_bimap(obj, "BiMap.RemoveByKey: invalid BiMap object");
 
     size_t klen;
     const char *kdata = get_str_data(key, &klen);
@@ -427,7 +443,7 @@ int8_t rt_bimap_remove_by_key(void *obj, rt_string key) {
 int8_t rt_bimap_remove_by_value(void *obj, rt_string value) {
     if (!obj)
         return 0;
-    rt_bimap_impl *bm = (rt_bimap_impl *)obj;
+    rt_bimap_impl *bm = as_bimap(obj, "BiMap.RemoveByValue: invalid BiMap object");
 
     size_t vlen;
     const char *vdata = get_str_data(value, &vlen);
@@ -466,7 +482,7 @@ void *rt_bimap_keys(void *obj) {
     rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
-    rt_bimap_impl *bm = (rt_bimap_impl *)obj;
+    rt_bimap_impl *bm = as_bimap(obj, "BiMap.Keys: invalid BiMap object");
 
     for (size_t i = 0; i < bm->fwd_capacity; ++i) {
         for (rt_bm_entry *e = bm->fwd_buckets[i]; e; e = e->next) {
@@ -484,7 +500,7 @@ void *rt_bimap_values(void *obj) {
     rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
-    rt_bimap_impl *bm = (rt_bimap_impl *)obj;
+    rt_bimap_impl *bm = as_bimap(obj, "BiMap.Values: invalid BiMap object");
 
     for (size_t i = 0; i < bm->fwd_capacity; ++i) {
         for (rt_bm_entry *e = bm->fwd_buckets[i]; e; e = e->next) {
@@ -501,7 +517,7 @@ void *rt_bimap_values(void *obj) {
 void rt_bimap_clear(void *obj) {
     if (!obj)
         return;
-    rt_bimap_impl *bm = (rt_bimap_impl *)obj;
+    rt_bimap_impl *bm = as_bimap(obj, "BiMap.Clear: invalid BiMap object");
 
     for (size_t i = 0; i < bm->fwd_capacity; ++i) {
         rt_bm_entry *e = bm->fwd_buckets[i];

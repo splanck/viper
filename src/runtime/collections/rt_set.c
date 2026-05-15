@@ -364,10 +364,12 @@ void *rt_set_diff(void *obj, void *other) {
 int8_t rt_set_is_subset(void *obj, void *other) {
     if (!obj)
         return 1; // Empty set is subset of everything
-    if (!other)
-        return 0; // Non-empty set can't be subset of empty
 
     rt_set_impl *set = as_set(obj, "Set.IsSubset: invalid Set object");
+    if (set->count == 0)
+        return 1;
+    if (!other)
+        return 0; // Non-empty set can't be subset of empty
     as_set(other, "Set.IsSubset: invalid Set object");
     for (size_t i = 0; i < set->capacity; ++i) {
         for (rt_set_entry *e = set->buckets[i]; e; e = e->next) {

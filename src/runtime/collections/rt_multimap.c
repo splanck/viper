@@ -67,6 +67,12 @@ typedef struct rt_multimap_impl {
     size_t total_count;
 } rt_multimap_impl;
 
+static rt_multimap_impl *as_multimap(void *obj, const char *what) {
+    if (!obj || rt_obj_class_id(obj) != RT_MULTIMAP_CLASS_ID)
+        rt_trap(what);
+    return (rt_multimap_impl *)obj;
+}
+
 static const char *get_key_data(rt_string key, size_t *out_len) {
     if (!key) {
         *out_len = 0;
@@ -108,7 +114,7 @@ static void mm_resize(rt_multimap_impl *mm, size_t new_cap) {
         rt_trap("MultiMap: allocation size overflow");
     rt_mm_entry **new_buckets = (rt_mm_entry **)calloc(new_cap, sizeof(rt_mm_entry *));
     if (!new_buckets)
-        return;
+        rt_trap("MultiMap: memory allocation failed");
     for (size_t i = 0; i < mm->capacity; ++i) {
         rt_mm_entry *e = mm->buckets[i];
         while (e) {
@@ -137,7 +143,7 @@ static void maybe_resize(rt_multimap_impl *mm) {
 static void rt_multimap_finalize(void *obj) {
     if (!obj)
         return;
-    rt_multimap_impl *mm = (rt_multimap_impl *)obj;
+    rt_multimap_impl *mm = as_multimap(obj, "MultiMap: invalid MultiMap object");
     if (!mm->buckets)
         return;
     rt_multimap_clear(mm);
@@ -149,7 +155,7 @@ static void rt_multimap_finalize(void *obj) {
 static void rt_multimap_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
-    rt_multimap_impl *mm = (rt_multimap_impl *)obj;
+    rt_multimap_impl *mm = as_multimap(obj, "MultiMap: invalid MultiMap object");
     if (!mm->buckets || mm->capacity == 0)
         return;
     for (size_t i = 0; i < mm->capacity; ++i) {
@@ -185,7 +191,7 @@ void *rt_multimap_new(void) {
 int64_t rt_multimap_len(void *obj) {
     if (!obj)
         return 0;
-    return (int64_t)((rt_multimap_impl *)obj)->total_count;
+    return (int64_t)as_multimap(obj, "MultiMap.Len: invalid MultiMap object")->total_count;
 }
 
 /// @brief Return the number of distinct keys in the multimap.
@@ -194,7 +200,7 @@ int64_t rt_multimap_len(void *obj) {
 int64_t rt_multimap_key_count(void *obj) {
     if (!obj)
         return 0;
-    return (int64_t)((rt_multimap_impl *)obj)->key_count;
+    return (int64_t)as_multimap(obj, "MultiMap.KeyCount: invalid MultiMap object")->key_count;
 }
 
 /// @brief Check whether the multimap has no entries.
@@ -208,9 +214,9 @@ int8_t rt_multimap_is_empty(void *obj) {
 void rt_multimap_put(void *obj, rt_string key, void *value) {
     if (!obj)
         return;
-    rt_multimap_impl *mm = (rt_multimap_impl *)obj;
+    rt_multimap_impl *mm = as_multimap(obj, "MultiMap.Put: invalid MultiMap object");
     if (mm->capacity == 0)
-        return;
+        rt_trap("MultiMap: finalized MultiMap object");
 
     size_t key_len;
     const char *key_data = get_key_data(key, &key_len);
@@ -231,7 +237,7 @@ void rt_multimap_put(void *obj, rt_string key, void *value) {
         rt_trap("MultiMap: length overflow");
     rt_mm_entry *entry = (rt_mm_entry *)malloc(sizeof(rt_mm_entry));
     if (!entry)
-        return;
+        rt_trap("MultiMap: memory allocation failed");
     if (key_len == SIZE_MAX) {
         free(entry);
         rt_trap("MultiMap: key allocation overflow");
@@ -239,15 +245,14 @@ void rt_multimap_put(void *obj, rt_string key, void *value) {
     entry->key = (char *)malloc(key_len + 1);
     if (!entry->key) {
         free(entry);
-        return;
+        rt_trap("MultiMap: key allocation failed");
     }
     memcpy(entry->key, key_data, key_len);
     entry->key[key_len] = '\0';
     entry->key_len = key_len;
 
-    entry->values = rt_seq_new();
-    rt_seq_set_owns_elements(entry->values, 1);
-    // rt_seq_new() already returns refcount=1 — do not retain again
+    entry->values = rt_seq_new_owned();
+    // The Seq object itself starts with refcount=1; do not retain it again.
     rt_seq_push(entry->values, value);
 
     entry->next = mm->buckets[idx];
@@ -261,10 +266,10 @@ void rt_multimap_put(void *obj, rt_string key, void *value) {
 /// Seq if key is absent. Useful when caller may mutate the returned list independently.
 void *rt_multimap_get(void *obj, rt_string key) {
     if (!obj)
-        return rt_seq_new();
-    rt_multimap_impl *mm = (rt_multimap_impl *)obj;
+        return rt_seq_new_owned();
+    rt_multimap_impl *mm = as_multimap(obj, "MultiMap.Get: invalid MultiMap object");
     if (mm->capacity == 0)
-        return rt_seq_new();
+        return rt_seq_new_owned();
 
     size_t key_len;
     const char *key_data = get_key_data(key, &key_len);
@@ -273,11 +278,10 @@ void *rt_multimap_get(void *obj, rt_string key) {
 
     rt_mm_entry *entry = find_entry(mm->buckets[idx], key_data, key_len);
     if (!entry)
-        return rt_seq_new();
+        return rt_seq_new_owned();
 
     // Return a copy of the values Seq
-    void *result = rt_seq_new();
-    rt_seq_set_owns_elements(result, 1);
+    void *result = rt_seq_new_owned();
     int64_t len = rt_seq_len(entry->values);
     for (int64_t i = 0; i < len; ++i) {
         void *value = rt_seq_get(entry->values, i);
@@ -291,7 +295,7 @@ void *rt_multimap_get(void *obj, rt_string key) {
 void *rt_multimap_get_first(void *obj, rt_string key) {
     if (!obj)
         return NULL;
-    rt_multimap_impl *mm = (rt_multimap_impl *)obj;
+    rt_multimap_impl *mm = as_multimap(obj, "MultiMap.GetFirst: invalid MultiMap object");
     if (mm->capacity == 0)
         return NULL;
 
@@ -312,7 +316,7 @@ void *rt_multimap_get_first(void *obj, rt_string key) {
 int8_t rt_multimap_has(void *obj, rt_string key) {
     if (!obj)
         return 0;
-    rt_multimap_impl *mm = (rt_multimap_impl *)obj;
+    rt_multimap_impl *mm = as_multimap(obj, "MultiMap.Has: invalid MultiMap object");
     if (mm->capacity == 0)
         return 0;
 
@@ -330,7 +334,7 @@ int8_t rt_multimap_has(void *obj, rt_string key) {
 int64_t rt_multimap_count_for(void *obj, rt_string key) {
     if (!obj)
         return 0;
-    rt_multimap_impl *mm = (rt_multimap_impl *)obj;
+    rt_multimap_impl *mm = as_multimap(obj, "MultiMap.CountFor: invalid MultiMap object");
     if (mm->capacity == 0)
         return 0;
 
@@ -351,7 +355,7 @@ int64_t rt_multimap_count_for(void *obj, rt_string key) {
 int8_t rt_multimap_remove_all(void *obj, rt_string key) {
     if (!obj)
         return 0;
-    rt_multimap_impl *mm = (rt_multimap_impl *)obj;
+    rt_multimap_impl *mm = as_multimap(obj, "MultiMap.RemoveAll: invalid MultiMap object");
     if (mm->capacity == 0)
         return 0;
 
@@ -380,7 +384,7 @@ int8_t rt_multimap_remove_all(void *obj, rt_string key) {
 void rt_multimap_clear(void *obj) {
     if (!obj)
         return;
-    rt_multimap_impl *mm = (rt_multimap_impl *)obj;
+    rt_multimap_impl *mm = as_multimap(obj, "MultiMap.Clear: invalid MultiMap object");
     for (size_t i = 0; i < mm->capacity; ++i) {
         rt_mm_entry *entry = mm->buckets[i];
         while (entry) {
@@ -400,7 +404,7 @@ void *rt_multimap_keys(void *obj) {
     rt_seq_set_owns_elements(result, 1);
     if (!obj)
         return result;
-    rt_multimap_impl *mm = (rt_multimap_impl *)obj;
+    rt_multimap_impl *mm = as_multimap(obj, "MultiMap.Keys: invalid MultiMap object");
     for (size_t i = 0; i < mm->capacity; ++i) {
         for (rt_mm_entry *e = mm->buckets[i]; e; e = e->next) {
             rt_string ks = rt_string_from_bytes(e->key, e->key_len);

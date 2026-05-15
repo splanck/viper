@@ -339,8 +339,11 @@ void rt_pqueue_clear(void *obj) {
         return;
 
     rt_pqueue_impl *h = as_pqueue(obj, "Heap: invalid Heap object");
-    for (int64_t i = 0; i < h->len; i++)
+    for (int64_t i = 0; i < h->len; i++) {
         heap_release_value(h->items[i].value);
+        h->items[i].value = NULL;
+        h->items[i].priority = 0;
+    }
     h->len = 0;
 }
 

@@ -66,6 +66,12 @@ typedef struct {
     void *default_value;
 } rt_defaultmap_impl;
 
+static rt_defaultmap_impl *as_defaultmap(void *obj, const char *what) {
+    if (!obj || rt_obj_class_id(obj) != RT_DEFAULTMAP_CLASS_ID)
+        rt_trap(what);
+    return (rt_defaultmap_impl *)obj;
+}
+
 // ---------------------------------------------------------------------------
 // Hash helper
 // ---------------------------------------------------------------------------
@@ -115,7 +121,7 @@ static void dm_resize(rt_defaultmap_impl *m) {
         rt_trap("DefaultMap: allocation size overflow");
     rt_dm_entry **new_buckets = (rt_dm_entry **)calloc((size_t)new_cap, sizeof(rt_dm_entry *));
     if (!new_buckets)
-        return;
+        rt_trap("DefaultMap: memory allocation failed");
 
     for (int64_t i = 0; i < m->capacity; i++) {
         rt_dm_entry *e = m->buckets[i];
@@ -144,7 +150,7 @@ static int dm_should_resize(rt_defaultmap_impl *m) {
 static void defaultmap_finalizer(void *obj) {
     if (!obj)
         return;
-    rt_defaultmap_impl *m = (rt_defaultmap_impl *)obj;
+    rt_defaultmap_impl *m = as_defaultmap(obj, "DefaultMap: invalid DefaultMap object");
     if (!m->buckets)
         return;
     for (int64_t i = 0; i < m->capacity; i++) {
@@ -168,7 +174,7 @@ static void defaultmap_finalizer(void *obj) {
 static void defaultmap_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
-    rt_defaultmap_impl *m = (rt_defaultmap_impl *)obj;
+    rt_defaultmap_impl *m = as_defaultmap(obj, "DefaultMap: invalid DefaultMap object");
     visitor(m->default_value, ctx);
     if (!m->buckets)
         return;
@@ -212,7 +218,7 @@ void *rt_defaultmap_new(void *default_value) {
 int64_t rt_defaultmap_len(void *map) {
     if (!map)
         return 0;
-    return ((rt_defaultmap_impl *)map)->count;
+    return as_defaultmap(map, "DefaultMap.Len: invalid DefaultMap object")->count;
 }
 
 // ---------------------------------------------------------------------------
@@ -222,7 +228,7 @@ int64_t rt_defaultmap_len(void *map) {
 void *rt_defaultmap_get(void *map, rt_string key) {
     if (!map)
         return NULL;
-    rt_defaultmap_impl *m = (rt_defaultmap_impl *)map;
+    rt_defaultmap_impl *m = as_defaultmap(map, "DefaultMap.Get: invalid DefaultMap object");
 
     size_t klen;
     const char *kstr = dm_key_data(key, &klen);
@@ -247,7 +253,7 @@ void *rt_defaultmap_get(void *map, rt_string key) {
 void rt_defaultmap_set(void *map, rt_string key, void *value) {
     if (!map)
         return;
-    rt_defaultmap_impl *m = (rt_defaultmap_impl *)map;
+    rt_defaultmap_impl *m = as_defaultmap(map, "DefaultMap.Set: invalid DefaultMap object");
 
     size_t klen;
     const char *kstr = dm_key_data(key, &klen);
@@ -306,7 +312,7 @@ void rt_defaultmap_set(void *map, rt_string key, void *value) {
 int64_t rt_defaultmap_has(void *map, rt_string key) {
     if (!map)
         return 0;
-    rt_defaultmap_impl *m = (rt_defaultmap_impl *)map;
+    rt_defaultmap_impl *m = as_defaultmap(map, "DefaultMap.Has: invalid DefaultMap object");
 
     size_t klen;
     const char *kstr = dm_key_data(key, &klen);
@@ -328,7 +334,7 @@ int64_t rt_defaultmap_has(void *map, rt_string key) {
 int8_t rt_defaultmap_remove(void *map, rt_string key) {
     if (!map)
         return 0;
-    rt_defaultmap_impl *m = (rt_defaultmap_impl *)map;
+    rt_defaultmap_impl *m = as_defaultmap(map, "DefaultMap.Remove: invalid DefaultMap object");
 
     size_t klen;
     const char *kstr = dm_key_data(key, &klen);
@@ -359,7 +365,7 @@ void *rt_defaultmap_keys(void *map) {
     rt_seq_set_owns_elements(seq, 1);
     if (!map)
         return seq;
-    rt_defaultmap_impl *m = (rt_defaultmap_impl *)map;
+    rt_defaultmap_impl *m = as_defaultmap(map, "DefaultMap.Keys: invalid DefaultMap object");
 
     for (int64_t i = 0; i < m->capacity; i++) {
         rt_dm_entry *e = m->buckets[i];
@@ -380,7 +386,7 @@ void *rt_defaultmap_keys(void *map) {
 void *rt_defaultmap_get_default(void *map) {
     if (!map)
         return NULL;
-    return ((rt_defaultmap_impl *)map)->default_value;
+    return as_defaultmap(map, "DefaultMap.GetDefault: invalid DefaultMap object")->default_value;
 }
 
 /// @brief Remove all entries from the default map.
@@ -390,7 +396,7 @@ void *rt_defaultmap_get_default(void *map) {
 void rt_defaultmap_clear(void *map) {
     if (!map)
         return;
-    rt_defaultmap_impl *m = (rt_defaultmap_impl *)map;
+    rt_defaultmap_impl *m = as_defaultmap(map, "DefaultMap.Clear: invalid DefaultMap object");
 
     for (int64_t i = 0; i < m->capacity; i++) {
         rt_dm_entry *e = m->buckets[i];
@@ -411,5 +417,5 @@ void rt_defaultmap_clear(void *map) {
 int8_t rt_defaultmap_is_empty(void *map) {
     if (!map)
         return 1;
-    return ((rt_defaultmap_impl *)map)->count == 0 ? 1 : 0;
+    return as_defaultmap(map, "DefaultMap.IsEmpty: invalid DefaultMap object")->count == 0 ? 1 : 0;
 }

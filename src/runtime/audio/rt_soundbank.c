@@ -85,6 +85,10 @@ static void release_entry(bank_entry_t *entry) {
 // Finalizer
 //===----------------------------------------------------------------------===//
 
+/// @brief GC finalizer: release every in-use entry's name + sound reference.
+/// @details Installed by @ref rt_soundbank_new so when the SoundBank's
+///          refcount hits zero, every named sound it owns is properly
+///          released and not leaked.
 static void rt_soundbank_finalize(void *obj) {
     if (!obj)
         return;

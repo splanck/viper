@@ -427,8 +427,8 @@ void *rt_stack_peek(void *obj) {
 /// @note O(1) time complexity - just resets the length counter.
 /// @note The Stack does NOT free the elements - they must be managed
 ///       separately by the caller if needed.
-/// @note The internal array is not zeroed - old pointers remain but are
-///       inaccessible through the public API.
+/// @note Active slots are cleared so released handles do not remain in
+///       reusable storage.
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_stack_finalize For complete cleanup (including the array)
@@ -438,8 +438,13 @@ void rt_stack_clear(void *obj) {
         return;
     rt_stack_impl *stack = as_stack(obj, "Stack: invalid Stack object");
     if (stack->owns_elements) {
-        for (int64_t i = 0; i < stack->len; i++)
+        for (int64_t i = 0; i < stack->len; i++) {
             stack_release_value(stack->items[i]);
+            stack->items[i] = NULL;
+        }
+    } else {
+        for (int64_t i = 0; i < stack->len; i++)
+            stack->items[i] = NULL;
     }
     stack->len = 0;
 }

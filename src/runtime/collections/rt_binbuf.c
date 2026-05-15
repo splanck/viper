@@ -176,7 +176,8 @@ void *rt_binbuf_new_cap(int64_t capacity) {
     buf->vptr = NULL;
     buf->data = (uint8_t *)calloc((size_t)capacity, 1);
     if (!buf->data) {
-        rt_obj_free(buf);
+        if (rt_obj_release_check0(buf))
+            rt_obj_free(buf);
         rt_trap("BinaryBuffer: memory allocation failed");
     }
     buf->len = 0;
@@ -204,7 +205,8 @@ void *rt_binbuf_from_bytes(void *bytes_obj) {
     buf->vptr = NULL;
     buf->data = (uint8_t *)calloc((size_t)cap, 1);
     if (!buf->data) {
-        rt_obj_free(buf);
+        if (rt_obj_release_check0(buf))
+            rt_obj_free(buf);
         rt_trap("BinaryBuffer: memory allocation failed");
     }
     buf->capacity = cap;

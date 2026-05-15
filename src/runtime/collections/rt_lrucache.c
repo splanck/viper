@@ -76,6 +76,12 @@ typedef struct rt_lrucache_impl {
     rt_lru_node *tail;     ///< Least recently used node (doubly-linked list tail).
 } rt_lrucache_impl;
 
+static rt_lrucache_impl *as_lrucache(void *obj, const char *what) {
+    if (!obj || rt_obj_class_id(obj) != RT_LRUCACHE_CLASS_ID)
+        rt_trap(what);
+    return (rt_lrucache_impl *)obj;
+}
+
 static const char *get_key_data(rt_string key, size_t *out_len) {
     if (!key) {
         *out_len = 0;
@@ -189,7 +195,7 @@ static void maybe_resize(rt_lrucache_impl *cache) {
         rt_trap("LRUCache: allocation size overflow");
     rt_lru_node **new_buckets = (rt_lru_node **)calloc(new_bucket_count, sizeof(rt_lru_node *));
     if (!new_buckets)
-        return; // Keep old buckets on failure
+        rt_trap("LRUCache: memory allocation failed");
 
     // Rehash all nodes
     for (size_t i = 0; i < cache->bucket_count; ++i) {
@@ -242,7 +248,7 @@ static void evict_lru(rt_lrucache_impl *cache) {
 static void rt_lrucache_finalize(void *obj) {
     if (!obj)
         return;
-    rt_lrucache_impl *cache = (rt_lrucache_impl *)obj;
+    rt_lrucache_impl *cache = as_lrucache(obj, "LRUCache: invalid LRUCache object");
 
     // Free all nodes via the linked list (faster than iterating buckets)
     rt_lru_node *node = cache->head;
@@ -263,7 +269,7 @@ static void rt_lrucache_finalize(void *obj) {
 static void rt_lrucache_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
-    rt_lrucache_impl *cache = (rt_lrucache_impl *)obj;
+    rt_lrucache_impl *cache = as_lrucache(obj, "LRUCache: invalid LRUCache object");
     for (rt_lru_node *node = cache->head; node; node = node->next)
         visitor(node->value, ctx);
 }
@@ -273,8 +279,8 @@ static void rt_lrucache_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) 
 // ---------------------------------------------------------------------------
 
 void *rt_lrucache_new(int64_t capacity) {
-    if (capacity <= 0)
-        capacity = 1; // Minimum capacity of 1
+    if (capacity < 0)
+        rt_trap("LRUCache: negative capacity");
 
     rt_lrucache_impl *cache =
         (rt_lrucache_impl *)rt_obj_new_i64(RT_LRUCACHE_CLASS_ID, (int64_t)sizeof(rt_lrucache_impl));
@@ -315,14 +321,14 @@ void *rt_lrucache_new(int64_t capacity) {
 int64_t rt_lrucache_len(void *obj) {
     if (!obj)
         return 0;
-    return (int64_t)((rt_lrucache_impl *)obj)->count;
+    return (int64_t)as_lrucache(obj, "LRUCache.Len: invalid LRUCache object")->count;
 }
 
 /// @brief Maximum capacity (set on construction). When `len() == cap()`, a `_put` evicts.
 int64_t rt_lrucache_cap(void *obj) {
     if (!obj)
         return 0;
-    return (int64_t)((rt_lrucache_impl *)obj)->max_cap;
+    return (int64_t)as_lrucache(obj, "LRUCache.Cap: invalid LRUCache object")->max_cap;
 }
 
 /// @brief Returns 1 if the cache holds zero entries.
@@ -337,7 +343,7 @@ void rt_lrucache_put(void *obj, rt_string key, void *value) {
     if (!obj)
         return;
 
-    rt_lrucache_impl *cache = (rt_lrucache_impl *)obj;
+    rt_lrucache_impl *cache = as_lrucache(obj, "LRUCache.Put: invalid LRUCache object");
     if (cache->bucket_count == 0)
         return;
 
@@ -360,22 +366,22 @@ void rt_lrucache_put(void *obj, rt_string key, void *value) {
     }
 
     // Evict LRU entry if at capacity
-    if (cache->count >= cache->max_cap)
+    if (cache->max_cap != 0 && cache->count >= cache->max_cap)
         evict_lru(cache);
 
     // Create new node
     rt_lru_node *node = (rt_lru_node *)malloc(sizeof(rt_lru_node));
     if (!node)
-        return;
+        rt_trap("LRUCache: memory allocation failed");
 
     if (key_len == SIZE_MAX) {
         free(node);
-        return;
+        rt_trap("LRUCache: key allocation overflow");
     }
     node->key = (char *)malloc(key_len + 1);
     if (!node->key) {
         free(node);
-        return;
+        rt_trap("LRUCache: key allocation failed");
     }
     memcpy(node->key, key_data, key_len);
     node->key[key_len] = '\0';
@@ -401,7 +407,7 @@ void *rt_lrucache_get(void *obj, rt_string key) {
     if (!obj)
         return NULL;
 
-    rt_lrucache_impl *cache = (rt_lrucache_impl *)obj;
+    rt_lrucache_impl *cache = as_lrucache(obj, "LRUCache.Get: invalid LRUCache object");
     if (cache->bucket_count == 0)
         return NULL;
 
@@ -426,7 +432,7 @@ void *rt_lrucache_peek(void *obj, rt_string key) {
     if (!obj)
         return NULL;
 
-    rt_lrucache_impl *cache = (rt_lrucache_impl *)obj;
+    rt_lrucache_impl *cache = as_lrucache(obj, "LRUCache.Peek: invalid LRUCache object");
     if (cache->bucket_count == 0)
         return NULL;
 
@@ -444,7 +450,7 @@ int8_t rt_lrucache_has(void *obj, rt_string key) {
     if (!obj)
         return 0;
 
-    rt_lrucache_impl *cache = (rt_lrucache_impl *)obj;
+    rt_lrucache_impl *cache = as_lrucache(obj, "LRUCache.Has: invalid LRUCache object");
     if (cache->bucket_count == 0)
         return 0;
 
@@ -462,7 +468,7 @@ int8_t rt_lrucache_remove(void *obj, rt_string key) {
     if (!obj)
         return 0;
 
-    rt_lrucache_impl *cache = (rt_lrucache_impl *)obj;
+    rt_lrucache_impl *cache = as_lrucache(obj, "LRUCache.Remove: invalid LRUCache object");
     if (cache->bucket_count == 0)
         return 0;
 
@@ -488,7 +494,7 @@ int8_t rt_lrucache_remove_oldest(void *obj) {
     if (!obj)
         return 0;
 
-    rt_lrucache_impl *cache = (rt_lrucache_impl *)obj;
+    rt_lrucache_impl *cache = as_lrucache(obj, "LRUCache.RemoveOldest: invalid LRUCache object");
     if (!cache->tail)
         return 0;
 
@@ -502,7 +508,7 @@ void rt_lrucache_clear(void *obj) {
     if (!obj)
         return;
 
-    rt_lrucache_impl *cache = (rt_lrucache_impl *)obj;
+    rt_lrucache_impl *cache = as_lrucache(obj, "LRUCache.Clear: invalid LRUCache object");
 
     // Free all nodes via the linked list
     rt_lru_node *node = cache->head;
@@ -528,7 +534,7 @@ void *rt_lrucache_keys(void *obj) {
     if (!obj)
         return result;
 
-    rt_lrucache_impl *cache = (rt_lrucache_impl *)obj;
+    rt_lrucache_impl *cache = as_lrucache(obj, "LRUCache.Keys: invalid LRUCache object");
 
     // Walk from head (MRU) to tail (LRU)
     for (rt_lru_node *node = cache->head; node; node = node->next) {
@@ -548,7 +554,7 @@ void *rt_lrucache_values(void *obj) {
     if (!obj)
         return result;
 
-    rt_lrucache_impl *cache = (rt_lrucache_impl *)obj;
+    rt_lrucache_impl *cache = as_lrucache(obj, "LRUCache.Values: invalid LRUCache object");
 
     // Walk from head (MRU) to tail (LRU)
     for (rt_lru_node *node = cache->head; node; node = node->next) {

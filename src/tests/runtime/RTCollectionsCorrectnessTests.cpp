@@ -47,19 +47,28 @@
 #include "rt_weakmap.h"
 
 #include <cassert>
+#include <csetjmp>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <limits>
 
+namespace {
+
+static jmp_buf g_trap_jmp;
+static bool g_trap_expected = false;
+static int g_finalizer_calls = 0;
+
+} // namespace
+
 extern "C" void vm_trap(const char *msg) {
+    if (g_trap_expected)
+        longjmp(g_trap_jmp, 1);
     fprintf(stderr, "TRAP: %s\n", msg);
     rt_abort(msg);
 }
 
 namespace {
-
-static int g_finalizer_calls = 0;
 
 static void count_finalizer(void *) {
     ++g_finalizer_calls;
@@ -85,6 +94,16 @@ static void assert_class_id(void *obj, int64_t expected) {
     assert(rt_obj_class_id(obj) == expected);
     release_obj(obj);
 }
+
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_trap_expected = true;                                                                    \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
+            (void)(expr);                                                                          \
+            assert(false && "Expected trap did not occur");                                        \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
+    } while (0)
 
 static void test_collection_class_ids_are_specific() {
     assert_class_id(rt_seq_new(), RT_SEQ_CLASS_ID);
@@ -158,6 +177,23 @@ static void test_runtime_class_ids_are_unique() {
         for (size_t j = i + 1; j < sizeof(ids) / sizeof(ids[0]); j++)
             assert(ids[i] != ids[j]);
     }
+}
+
+static void test_specialized_collections_reject_wrong_runtime_class() {
+    void *wrong = rt_seq_new();
+
+    EXPECT_TRAP(rt_countmap_len(wrong));
+    EXPECT_TRAP(rt_multimap_len(wrong));
+    EXPECT_TRAP(rt_intmap_len(wrong));
+    EXPECT_TRAP(rt_sparse_len(wrong));
+    EXPECT_TRAP(rt_defaultmap_len(wrong));
+    EXPECT_TRAP(rt_orderedmap_len(wrong));
+    EXPECT_TRAP(rt_bimap_len(wrong));
+    EXPECT_TRAP(rt_lrucache_len(wrong));
+    EXPECT_TRAP(rt_frozenset_len(wrong));
+    EXPECT_TRAP(rt_weakmap_len(wrong));
+
+    release_obj(wrong);
 }
 
 static void test_list_get_returns_owned_reference() {
@@ -574,11 +610,81 @@ static void test_intmap_values_snapshot_retains_values() {
     release_obj(map);
 }
 
+static void test_empty_seq_results_keep_owned_mode() {
+    void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
+
+    void *empty_slice = rt_seq_slice(seq, 0, 0);
+    void *empty_take = rt_seq_take(seq, 0);
+    void *empty_drop = rt_seq_drop(seq, 10);
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_seq_push(empty_slice, value);
+    rt_seq_push(empty_take, value);
+    rt_seq_push(empty_drop, value);
+    release_obj(value);
+    assert(g_finalizer_calls == 0);
+
+    rt_seq_clear(empty_slice);
+    assert(g_finalizer_calls == 0);
+    rt_seq_clear(empty_take);
+    assert(g_finalizer_calls == 0);
+    rt_seq_clear(empty_drop);
+    assert(g_finalizer_calls == 1);
+
+    release_obj(empty_drop);
+    release_obj(empty_take);
+    release_obj(empty_slice);
+    release_obj(seq);
+}
+
+static void test_multimap_missing_get_returns_owned_seq() {
+    void *mm = rt_multimap_new();
+    rt_string missing = make_str("missing");
+    void *values = rt_multimap_get(mm, missing);
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_seq_push(values, value);
+    release_obj(value);
+    assert(g_finalizer_calls == 0);
+
+    rt_seq_clear(values);
+    assert(g_finalizer_calls == 1);
+
+    rt_string_unref(missing);
+    release_obj(values);
+    release_obj(mm);
+}
+
+static void test_iterator_null_to_seq_returns_owned_seq() {
+    void *seq = rt_iter_to_seq(nullptr);
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_seq_push(seq, value);
+    release_obj(value);
+    assert(g_finalizer_calls == 0);
+
+    rt_seq_clear(seq);
+    assert(g_finalizer_calls == 1);
+
+    release_obj(seq);
+}
+
 } // namespace
 
 int main() {
     test_collection_class_ids_are_specific();
     test_runtime_class_ids_are_unique();
+    test_specialized_collections_reject_wrong_runtime_class();
     test_list_get_returns_owned_reference();
     test_deque_peek_and_get_return_owned_references();
     test_owned_seq_pop_and_remove_transfer_reference();
@@ -599,5 +705,8 @@ int main() {
     test_map_values_snapshot_retains_values();
     test_frozenmap_values_snapshot_retains_values();
     test_intmap_values_snapshot_retains_values();
+    test_empty_seq_results_keep_owned_mode();
+    test_multimap_missing_get_returns_owned_seq();
+    test_iterator_null_to_seq_returns_owned_seq();
     return 0;
 }

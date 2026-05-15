@@ -42,6 +42,10 @@ struct ogg_packet_node_t {
 static uint32_t ogg_crc_table[256];
 static int ogg_crc_table_init = 0;
 
+/// @brief Lazily build the 256-entry Ogg CRC-32 lookup table.
+/// @details Ogg uses the IEEE 802.3 polynomial 0x04C11DB7 with the
+///          shift direction reversed from the standard zlib CRC. The
+///          table is computed once and reused for every page.
 static void ogg_crc_init(void) {
     if (ogg_crc_table_init)
         return;
@@ -62,6 +66,15 @@ static void ogg_crc_init(void) {
 // Low-level I/O
 //===----------------------------------------------------------------------===//
 
+/// @brief Read @p count bytes from the reader (file-backed or memory-backed).
+/// @details Unified read primitive — every other parser routine calls
+///          through here so the file vs memory backend is invisible to
+///          the rest of the OGG state machine. Memory mode bounds-checks
+///          against the buffer length and returns a short read at EOF.
+/// @param r     Reader instance.
+/// @param buf   Destination buffer.
+/// @param count Number of bytes to read.
+/// @return Bytes actually read (may be less than @p count at EOF).
 static size_t ogg_read(ogg_reader_t *r, void *buf, size_t count) {
     if (r->file) {
         return fread(buf, 1, count, r->file);
@@ -75,14 +88,17 @@ static size_t ogg_read(ogg_reader_t *r, void *buf, size_t count) {
     return count;
 }
 
+/// @brief Read a single byte from the reader. Returns 1 on success, 0 at EOF.
 static int ogg_read_byte(ogg_reader_t *r, uint8_t *out) {
     return ogg_read(r, out, 1) == 1;
 }
 
+/// @brief Decode a 32-bit little-endian unsigned integer from @p p.
 static uint32_t read_u32_le(const uint8_t *p) {
     return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
+/// @brief Decode a 64-bit little-endian signed integer from @p p (used for granule positions).
 static int64_t read_i64_le(const uint8_t *p) {
     uint64_t v = 0;
     for (int i = 0; i < 8; i++)
@@ -177,6 +193,15 @@ static int ogg_read_page(ogg_reader_t *r, uint8_t **body_out, size_t *body_len_o
 // Packet assembly
 //===----------------------------------------------------------------------===//
 
+/// @brief Append @p len bytes to a partial-packet buffer, growing it as needed.
+/// @details Capacity doubles on growth (starting at 4096) with overflow
+///          guards so a truncated/malicious stream cannot wrap `size_t`.
+///          Returns 0 if any size math overflows or `realloc` fails;
+///          callers treat that as a fatal packet-assembly error.
+/// @param pkt   Target packet (must be zero-initialised on first use).
+/// @param data  Bytes to append (NULL allowed only when `len == 0`).
+/// @param len   Number of bytes to append.
+/// @return 1 on success, 0 on failure.
 static int packet_append(ogg_packet_t *pkt, const uint8_t *data, size_t len) {
     if (!pkt || (!data && len > 0))
         return 0;
@@ -208,6 +233,9 @@ static int packet_append(ogg_packet_t *pkt, const uint8_t *data, size_t len) {
     return 1;
 }
 
+/// @brief Reset packet length and completion flag without releasing the buffer.
+/// @details Called once a packet has been queued so the same `cap`-sized
+///          buffer can collect the next packet's data without re-allocation.
 static void packet_reset(ogg_packet_t *pkt) {
     if (!pkt)
         return;
@@ -215,6 +243,10 @@ static void packet_reset(ogg_packet_t *pkt) {
     pkt->complete = 0;
 }
 
+/// @brief Locate the per-stream state by serial number, returning NULL if unknown.
+/// @details Logical OGG bitstreams are multiplexed by serial number;
+///          each one keeps its own partial-packet buffer so concurrent
+///          streams don't corrupt each other.
 static ogg_stream_state_t *find_stream_state(ogg_reader_t *r, uint32_t serial_number) {
     ogg_stream_state_t *cur = r->streams;
     while (cur) {
@@ -225,6 +257,10 @@ static ogg_stream_state_t *find_stream_state(ogg_reader_t *r, uint32_t serial_nu
     return NULL;
 }
 
+/// @brief Find-or-create the per-stream state for @p serial_number.
+/// @details Inserts a freshly-zeroed entry at the head of the reader's
+///          singly-linked stream list when no match exists, so subsequent
+///          pages for that serial number can accumulate packets.
 static ogg_stream_state_t *get_stream_state(ogg_reader_t *r, uint32_t serial_number) {
     ogg_stream_state_t *state = find_stream_state(r, serial_number);
     if (state)
@@ -238,6 +274,7 @@ static ogg_stream_state_t *get_stream_state(ogg_reader_t *r, uint32_t serial_num
     return state;
 }
 
+/// @brief Walk the stream-state list, free every partial-packet buffer, and NULL the head.
 static void free_stream_states(ogg_reader_t *r) {
     ogg_stream_state_t *cur = r->streams;
     while (cur) {
@@ -249,6 +286,9 @@ static void free_stream_states(ogg_reader_t *r) {
     r->streams = NULL;
 }
 
+/// @brief Drain and free every queued (already-completed) packet node.
+/// @details Called by @ref ogg_reader_rewind and @ref ogg_reader_free
+///          since the queued packets are owned by the reader.
 static void clear_ready_packets(ogg_reader_t *r) {
     ogg_packet_node_t *node = r->ready_head;
     while (node) {
@@ -261,6 +301,18 @@ static void clear_ready_packets(ogg_reader_t *r) {
     r->ready_tail = NULL;
 }
 
+/// @brief Snapshot a freshly-completed packet onto the reader's ready queue.
+/// @details Copies the assembled bytes out of @p state's partial buffer
+///          into a newly-allocated packet node (annotated with stream
+///          serial, granule, BOS/EOS flags), appends it to the FIFO that
+///          @ref ogg_reader_next_packet pops from, then resets the
+///          partial buffer for the next packet.
+/// @param r                Reader.
+/// @param state            Stream whose partial buffer is now complete.
+/// @param granule_position Page-level granule, or -1 for non-terminal segments.
+/// @param bos              Beginning-of-stream flag.
+/// @param eos              End-of-stream flag.
+/// @return 1 on success, 0 on allocation failure or empty partial.
 static int queue_completed_packet(ogg_reader_t *r,
                                   ogg_stream_state_t *state,
                                   int64_t granule_position,
@@ -296,6 +348,19 @@ static int queue_completed_packet(ogg_reader_t *r,
     return 1;
 }
 
+/// @brief Slice a page's body into packets according to the segment table.
+/// @details Each segment of length 255 continues the current packet; any
+///          segment `< 255` terminates it. A page whose `header_type`
+///          continuation flag is set but whose state has no partial
+///          buffer is treated as resync junk and that one packet is
+///          discarded (preventing corrupted-stream pollution). Completed
+///          packets land on the ready queue via
+///          @ref queue_completed_packet, carrying the page-level granule
+///          on the *last* terminating segment of the page.
+/// @param r        Reader.
+/// @param body     Page body bytes (sum of all segment lengths).
+/// @param body_len Length of @p body.
+/// @return 1 on success, 0 on assembly/allocation failure.
 static int process_page_packets(ogg_reader_t *r, const uint8_t *body, size_t body_len) {
     ogg_stream_state_t *state = get_stream_state(r, r->page.serial_number);
     if (!state)

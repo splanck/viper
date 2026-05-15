@@ -626,7 +626,9 @@ A fixed-capacity cache that evicts the least recently used (LRU) entry when full
 eviction operations. Values are accessed by string keys.
 
 **Type:** Instance (obj)
-**Constructor:** `Viper.Collections.LruCache.New(capacity)` - creates a cache with the given maximum capacity
+**Constructor:** `Viper.Collections.LruCache.New(capacity)` - creates a cache with the given maximum capacity.
+Use `capacity = 0` for an unbounded cache that keeps LRU ordering but does not evict automatically.
+Negative capacities trap.
 
 ### Properties
 
@@ -654,6 +656,7 @@ eviction operations. Values are accessed by string keys.
 
 - `Get` promotes the accessed entry to most recently used; `Peek` does not
 - When `Put` is called at capacity, the least recently used entry is automatically evicted
+- A capacity of `0` disables automatic eviction; entries remain until removed or cleared
 - Updating an existing key with `Put` promotes it to most recently used without eviction
 - String keys are compared by full byte length; embedded NUL bytes are part of the key
 - Cached values are retained while stored and released on overwrite, eviction, remove, clear, or finalization

@@ -208,6 +208,13 @@ void *rt_seq_new_owned(void) {
     return seq;
 }
 
+static void *seq_new_empty_like(rt_seq_impl *source) {
+    void *seq = rt_seq_new();
+    if (!source || source->owns_elements)
+        rt_seq_set_owns_elements(seq, 1);
+    return seq;
+}
+
 /// @brief Creates a public Seq with a fixed initial length.
 void *rt_seq_new_sized(int64_t len) {
     if (len < 0)
@@ -939,6 +946,7 @@ void *rt_seq_remove(void *obj, int64_t idx) {
             &seq->items[idx], &seq->items[idx + 1], (size_t)(seq->len - idx - 1) * sizeof(void *));
     }
 
+    seq->items[seq->len - 1] = NULL;
     seq->len--;
     return val;
 }
@@ -970,8 +978,8 @@ void *rt_seq_remove(void *obj, int64_t idx) {
 ///
 /// @note O(1) time complexity - just resets the length counter.
 /// @note The Seq does NOT free the elements - they must be managed separately.
-/// @note The internal array is not zeroed - old pointers remain but are
-///       inaccessible through the public API.
+/// @note The active portion of the internal array is cleared so released
+///       handles do not remain in reusable storage.
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_seq_finalize For complete cleanup (including the array)
@@ -981,8 +989,13 @@ void rt_seq_clear(void *obj) {
         return;
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
     if (seq->owns_elements && seq->items) {
-        for (int64_t i = 0; i < seq->len; i++)
+        for (int64_t i = 0; i < seq->len; i++) {
             seq_release_element(seq->items[i]);
+            seq->items[i] = NULL;
+        }
+    } else if (seq->items) {
+        for (int64_t i = 0; i < seq->len; i++)
+            seq->items[i] = NULL;
     }
     seq->len = 0;
 }
@@ -1210,7 +1223,7 @@ void rt_seq_shuffle(void *obj) {
 /// @see rt_seq_clone For copying the entire Seq
 void *rt_seq_slice(void *obj, int64_t start, int64_t end) {
     if (!obj)
-        return rt_seq_new();
+        return seq_new_empty_like(NULL);
 
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
 
@@ -1220,7 +1233,7 @@ void *rt_seq_slice(void *obj, int64_t start, int64_t end) {
     if (end > seq->len)
         end = seq->len;
     if (start >= end) {
-        return rt_seq_new();
+        return seq_new_empty_like(seq);
     }
 
     int64_t new_len = end - start;
@@ -1276,7 +1289,7 @@ void *rt_seq_slice(void *obj, int64_t start, int64_t end) {
 /// @see rt_seq_slice For copying a subset
 void *rt_seq_clone(void *obj) {
     if (!obj)
-        return rt_seq_new();
+        return seq_new_empty_like(NULL);
 
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
     return rt_seq_slice(obj, 0, seq->len);

@@ -582,7 +582,7 @@ int8_t rt_map_has(void *obj, rt_string key) {
 /// @param value The value to store if the key is missing.
 ///
 /// @return 1 if the key was missing and the value was inserted, 0 if the key
-///         already existed or an error occurred.
+///         already existed.
 ///
 /// @note O(1) average-case time complexity.
 /// @note Thread safety: Not thread-safe.
@@ -607,16 +607,16 @@ int8_t rt_map_set_if_missing(void *obj, rt_string key, void *value) {
 
     rt_map_entry *entry = (rt_map_entry *)malloc(sizeof(rt_map_entry));
     if (!entry)
-        return 0;
+        rt_trap("Map.SetIfMissing: memory allocation failed");
 
     if (key_len == SIZE_MAX) {
         free(entry);
-        return 0;
+        rt_trap("Map.SetIfMissing: key allocation overflow");
     }
     entry->key = (char *)malloc(key_len + 1);
     if (!entry->key) {
         free(entry);
-        return 0;
+        rt_trap("Map.SetIfMissing: key allocation failed");
     }
 
     memcpy(entry->key, key_data, key_len);

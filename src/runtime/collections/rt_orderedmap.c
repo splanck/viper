@@ -67,6 +67,12 @@ typedef struct {
     rt_om_entry *tail; // Last inserted
 } rt_orderedmap_impl;
 
+static rt_orderedmap_impl *as_orderedmap(void *obj, const char *what) {
+    if (!obj || rt_obj_class_id(obj) != RT_ORDEREDMAP_CLASS_ID)
+        rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR, Err_RuntimeError, -1, what);
+    return (rt_orderedmap_impl *)obj;
+}
+
 // ---------------------------------------------------------------------------
 // Hash helpers
 // ---------------------------------------------------------------------------
@@ -157,7 +163,9 @@ static void om_resize(rt_orderedmap_impl *m) {
 // ---------------------------------------------------------------------------
 
 static void orderedmap_finalizer(void *obj) {
-    rt_orderedmap_impl *m = (rt_orderedmap_impl *)obj;
+    if (!obj)
+        return;
+    rt_orderedmap_impl *m = as_orderedmap(obj, "OrderedMap: invalid OrderedMap object");
     rt_om_entry *e = m->head;
     while (e) {
         rt_om_entry *next = e->next;
@@ -169,12 +177,14 @@ static void orderedmap_finalizer(void *obj) {
     free(m->buckets);
     m->buckets = NULL;
     m->head = m->tail = NULL;
+    m->capacity = 0;
+    m->count = 0;
 }
 
 static void orderedmap_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
-    rt_orderedmap_impl *m = (rt_orderedmap_impl *)obj;
+    rt_orderedmap_impl *m = as_orderedmap(obj, "OrderedMap: invalid OrderedMap object");
     for (rt_om_entry *e = m->head; e; e = e->next)
         visitor(e->value, ctx);
 }
@@ -214,14 +224,14 @@ void *rt_orderedmap_new(void) {
 int64_t rt_orderedmap_len(void *map) {
     if (!map)
         return 0;
-    return ((rt_orderedmap_impl *)map)->count;
+    return as_orderedmap(map, "OrderedMap.Len: invalid OrderedMap object")->count;
 }
 
 /// @brief Check whether the ordered map has no entries.
 int64_t rt_orderedmap_is_empty(void *map) {
     if (!map)
         return 1;
-    return ((rt_orderedmap_impl *)map)->count == 0 ? 1 : 0;
+    return as_orderedmap(map, "OrderedMap.IsEmpty: invalid OrderedMap object")->count == 0 ? 1 : 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -234,7 +244,7 @@ int64_t rt_orderedmap_is_empty(void *map) {
 void rt_orderedmap_set(void *map, rt_string key, void *value) {
     if (!map)
         return;
-    rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
+    rt_orderedmap_impl *m = as_orderedmap(map, "OrderedMap.Set: invalid OrderedMap object");
 
     size_t klen;
     const char *kstr = om_key_data(key, &klen);
@@ -303,7 +313,7 @@ void rt_orderedmap_set(void *map, rt_string key, void *value) {
 void *rt_orderedmap_get(void *map, rt_string key) {
     if (!map)
         return NULL;
-    rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
+    rt_orderedmap_impl *m = as_orderedmap(map, "OrderedMap.Get: invalid OrderedMap object");
 
     size_t klen;
     const char *kstr = om_key_data(key, &klen);
@@ -316,7 +326,7 @@ void *rt_orderedmap_get(void *map, rt_string key) {
 int64_t rt_orderedmap_has(void *map, rt_string key) {
     if (!map)
         return 0;
-    rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
+    rt_orderedmap_impl *m = as_orderedmap(map, "OrderedMap.Has: invalid OrderedMap object");
 
     size_t klen;
     const char *kstr = om_key_data(key, &klen);
@@ -334,7 +344,7 @@ int64_t rt_orderedmap_has(void *map, rt_string key) {
 int8_t rt_orderedmap_remove(void *map, rt_string key) {
     if (!map)
         return 0;
-    rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
+    rt_orderedmap_impl *m = as_orderedmap(map, "OrderedMap.Remove: invalid OrderedMap object");
 
     size_t klen;
     const char *kstr = om_key_data(key, &klen);
@@ -378,7 +388,7 @@ void *rt_orderedmap_keys(void *map) {
     rt_seq_set_owns_elements(seq, 1);
     if (!map)
         return seq;
-    rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
+    rt_orderedmap_impl *m = as_orderedmap(map, "OrderedMap.Keys: invalid OrderedMap object");
 
     rt_om_entry *e = m->head;
     while (e) {
@@ -395,7 +405,7 @@ void *rt_orderedmap_values(void *map) {
     rt_seq_set_owns_elements(seq, 1);
     if (!map)
         return seq;
-    rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
+    rt_orderedmap_impl *m = as_orderedmap(map, "OrderedMap.Values: invalid OrderedMap object");
 
     rt_om_entry *e = m->head;
     while (e) {
@@ -416,7 +426,7 @@ void *rt_orderedmap_values(void *map) {
 rt_string rt_orderedmap_key_at(void *map, int64_t index) {
     if (!map)
         return NULL;
-    rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
+    rt_orderedmap_impl *m = as_orderedmap(map, "OrderedMap.KeyAt: invalid OrderedMap object");
 
     if (index < 0 || index >= m->count)
         return NULL;
@@ -438,7 +448,7 @@ rt_string rt_orderedmap_key_at(void *map, int64_t index) {
 void rt_orderedmap_clear(void *map) {
     if (!map)
         return;
-    rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
+    rt_orderedmap_impl *m = as_orderedmap(map, "OrderedMap.Clear: invalid OrderedMap object");
 
     rt_om_entry *e = m->head;
     while (e) {

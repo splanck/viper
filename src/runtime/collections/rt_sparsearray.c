@@ -61,6 +61,12 @@ typedef struct {
     sa_slot *slots;
 } rt_sparse_impl;
 
+static rt_sparse_impl *as_sparse(void *obj, const char *what) {
+    if (!obj || rt_obj_class_id(obj) != RT_SPARSEARRAY_CLASS_ID)
+        rt_trap(what);
+    return (rt_sparse_impl *)obj;
+}
+
 // --- Hash function for int64 ---
 
 static uint64_t sa_hash(int64_t key) {
@@ -81,7 +87,9 @@ static void sa_release_value(void *value) {
 }
 
 static void sa_finalizer(void *obj) {
-    rt_sparse_impl *sa = (rt_sparse_impl *)obj;
+    if (!obj)
+        return;
+    rt_sparse_impl *sa = as_sparse(obj, "SparseArray: invalid SparseArray object");
     if (sa->slots) {
         for (int64_t i = 0; i < sa->capacity; i++) {
             if (sa->slots[i].occupied)
@@ -90,12 +98,14 @@ static void sa_finalizer(void *obj) {
         free(sa->slots);
         sa->slots = NULL;
     }
+    sa->capacity = 0;
+    sa->count = 0;
 }
 
 static void sa_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
-    rt_sparse_impl *sa = (rt_sparse_impl *)obj;
+    rt_sparse_impl *sa = as_sparse(obj, "SparseArray: invalid SparseArray object");
     if (!sa->slots)
         return;
     for (int64_t i = 0; i < sa->capacity; i++) {
@@ -215,14 +225,14 @@ void *rt_sparse_new(void) {
 int64_t rt_sparse_len(void *obj) {
     if (!obj)
         return 0;
-    return ((rt_sparse_impl *)obj)->count;
+    return as_sparse(obj, "SparseArray.Len: invalid SparseArray object")->count;
 }
 
 /// @brief Read the value stored at `index`, or NULL if absent.
 void *rt_sparse_get(void *obj, int64_t index) {
     if (!obj)
         return NULL;
-    sa_slot *s = sa_find((rt_sparse_impl *)obj, index);
+    sa_slot *s = sa_find(as_sparse(obj, "SparseArray.Get: invalid SparseArray object"), index);
     return s ? s->value : NULL;
 }
 
@@ -235,7 +245,7 @@ void *rt_sparse_get(void *obj, int64_t index) {
 void rt_sparse_set(void *obj, int64_t index, void *value) {
     if (!obj)
         return;
-    rt_sparse_impl *sa = (rt_sparse_impl *)obj;
+    rt_sparse_impl *sa = as_sparse(obj, "SparseArray.Set: invalid SparseArray object");
 
     // Check load factor (> 70%)
     if ((long double)sa->count * 10.0L >= (long double)sa->capacity * 7.0L)
@@ -255,7 +265,9 @@ void rt_sparse_set(void *obj, int64_t index, void *value) {
 int8_t rt_sparse_has(void *obj, int64_t index) {
     if (!obj)
         return 0;
-    return sa_find((rt_sparse_impl *)obj, index) != NULL ? 1 : 0;
+    return sa_find(as_sparse(obj, "SparseArray.Has: invalid SparseArray object"), index) != NULL
+               ? 1
+               : 0;
 }
 
 /// @brief Remove the value at a sparse index, rehashing displaced neighbors.
@@ -268,7 +280,7 @@ int8_t rt_sparse_has(void *obj, int64_t index) {
 int8_t rt_sparse_remove(void *obj, int64_t index) {
     if (!obj)
         return 0;
-    rt_sparse_impl *sa = (rt_sparse_impl *)obj;
+    rt_sparse_impl *sa = as_sparse(obj, "SparseArray.Remove: invalid SparseArray object");
     sa_slot *s = sa_find(sa, index);
     if (!s)
         return 0;
@@ -311,7 +323,7 @@ void *rt_sparse_indices(void *obj) {
     rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
-    rt_sparse_impl *sa = (rt_sparse_impl *)obj;
+    rt_sparse_impl *sa = as_sparse(obj, "SparseArray.Indices: invalid SparseArray object");
     for (int64_t i = 0; i < sa->capacity; i++) {
         if (sa->slots[i].occupied) {
             void *boxed = rt_box_i64(sa->slots[i].key);
@@ -328,7 +340,7 @@ void *rt_sparse_values(void *obj) {
     rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
-    rt_sparse_impl *sa = (rt_sparse_impl *)obj;
+    rt_sparse_impl *sa = as_sparse(obj, "SparseArray.Values: invalid SparseArray object");
     for (int64_t i = 0; i < sa->capacity; i++) {
         if (sa->slots[i].occupied)
             rt_seq_push(seq, sa->slots[i].value);
@@ -342,7 +354,7 @@ void *rt_sparse_values(void *obj) {
 void rt_sparse_clear(void *obj) {
     if (!obj)
         return;
-    rt_sparse_impl *sa = (rt_sparse_impl *)obj;
+    rt_sparse_impl *sa = as_sparse(obj, "SparseArray.Clear: invalid SparseArray object");
     for (int64_t i = 0; i < sa->capacity; i++) {
         if (sa->slots[i].occupied) {
             sa_release_value(sa->slots[i].value);

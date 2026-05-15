@@ -436,7 +436,7 @@ without `malloc`/`free` overhead.
 | **Files** | Stack (`RtFile`) | Caller-owned | POSIX fd | Manual close or finalizer-based cleanup |
 | **Network** | malloc | Refcounted | N/A | Manual `close()` available |
 | **GUI Widgets** | malloc | Refcounted (vgfx) | Widget tree | Managed by GUI framework |
-| **LRU Cache** | malloc | Refcounted | Values are **weak** (non-retained) | Finalizer frees internal nodes and bucket array |
+| **LRU Cache** | malloc | Refcounted | Values are retained while cached | Finalizer frees internal nodes and bucket array |
 | **WeakMap** | malloc | Refcounted | Keys retained, values **weak** | Values may be collected independently |
 
 ### Strings
@@ -483,7 +483,9 @@ without `malloc`/`free` overhead.
 ### Mixed Ownership in Caches
 
 - **LRU Cache**: GC object containing a `malloc`'d bucket array and node chain.
-  Values are weak (non-retained). Finalizer frees all internal allocations.
+  Values are retained while cached and released on overwrite, eviction, removal,
+  clear, or finalization. A capacity of `0` means unbounded cache growth; it
+  disables automatic LRU eviction.
 - **WeakMap**: GC object with `malloc`'d hash table. Keys are retained; values
   are weak runtime-managed objects or strings. `Get` promotes a live weak value
   to a retained reference and returns `NULL` after the value has been collected.

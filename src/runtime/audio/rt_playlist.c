@@ -63,6 +63,14 @@ typedef struct {
 // Helper Functions
 //=============================================================================
 
+/// @brief Build a fresh Fisher-Yates shuffle order for the current track list.
+/// @details Reuses the global runtime RNG so callers can pre-seed for
+///          deterministic playback. Releases any previously-built order
+///          before producing a new one and traps on OOM (allocating the
+///          temporary indices array or `rt_seq_new()` failing). The
+///          shuffle sequence stores `actual_index` values that
+///          @ref get_track_index translates into track positions.
+/// @param pl Playlist instance (not NULL).
 static void generate_shuffle_order(playlist_impl *pl) {
     if (pl->shuffle_order) {
         if (rt_obj_release_check0(pl->shuffle_order))
@@ -102,6 +110,16 @@ static void generate_shuffle_order(playlist_impl *pl) {
     free(indices);
 }
 
+/// @brief Translate a playback position into an "actual" track index.
+/// @details When shuffle is on, @p position is an index into the
+///          shuffle sequence which holds the randomised track order;
+///          when off, @p position is the track index directly. Used
+///          by every load/skip/jump path so the caller never needs to
+///          branch on shuffle state.
+/// @param pl       Playlist instance.
+/// @param position Playback position (current or skip-target).
+/// @return Track-list index, or @p position when shuffle is inactive
+///         or @p position is out of range.
 static int64_t get_track_index(playlist_impl *pl, int64_t position) {
     if (pl->shuffle && pl->shuffle_order) {
         int64_t count = rt_seq_len(pl->shuffle_order);
@@ -112,6 +130,10 @@ static int64_t get_track_index(playlist_impl *pl, int64_t position) {
     return position;
 }
 
+/// @brief Stop the currently-loaded music handle and release the wrapper.
+/// @details Combines @ref rt_music_stop_related (which also clears any
+///          related crossfade slot) with @ref rt_music_destroy. Used on
+///          every track transition, clear, finalize, and stop.
 static void playlist_release_music(playlist_impl *pl) {
     if (pl->music) {
         rt_music_stop_related(pl->music);
@@ -120,12 +142,23 @@ static void playlist_release_music(playlist_impl *pl) {
     }
 }
 
+/// @brief Resolve the current playback position to its track-list index.
+/// @details Returns -1 for empty playlists or when the current cursor is
+///          unset; used to compare the active track across add/remove
+///          operations so position can be preserved when its underlying
+///          entry shifts.
 static int64_t playlist_current_actual_index(playlist_impl *pl) {
     if (!pl || pl->current < 0)
         return -1;
     return get_track_index(pl, pl->current);
 }
 
+/// @brief Find which shuffle slot currently holds @p actual_index.
+/// @details Linear scan over the shuffle sequence. Used when an
+///          operation alters the underlying track list (insert/remove)
+///          so the playback cursor can stay anchored to the same song
+///          even after shuffle indices shift.
+/// @return Shuffle position on success, -1 when not found.
 static int64_t playlist_find_shuffle_position(playlist_impl *pl, int64_t actual_index) {
     if (!pl || !pl->shuffle_order || actual_index < 0)
         return -1;
@@ -137,6 +170,12 @@ static int64_t playlist_find_shuffle_position(playlist_impl *pl, int64_t actual_
     return -1;
 }
 
+/// @brief Set the playback cursor so it points at @p actual_index.
+/// @details Bridges between the user-visible track index and the
+///          shuffle-aware `current` cursor. In shuffle mode, looks up
+///          where @p actual_index lives in the shuffle order (falling
+///          back to 0 if missing); otherwise the cursor *is* the track
+///          index. Out-of-range inputs clear the cursor to -1.
 static void playlist_set_current_from_actual(playlist_impl *pl, int64_t actual_index) {
     if (!pl) {
         return;
@@ -153,6 +192,10 @@ static void playlist_set_current_from_actual(playlist_impl *pl, int64_t actual_i
     pl->current = actual_index;
 }
 
+/// @brief Load the music track at the current cursor and apply the playlist volume.
+/// @details Returns NULL when the cursor is out of range, the path slot
+///          is empty, or `rt_music_load` rejects the file. The caller
+///          assumes ownership of the new music wrapper.
 static void *playlist_load_current_music(playlist_impl *pl) {
     if (!pl)
         return NULL;
@@ -171,6 +214,19 @@ static void *playlist_load_current_music(playlist_impl *pl) {
     return music;
 }
 
+/// @brief Swap in a freshly-loaded music wrapper, with optional crossfade.
+/// @details When @p play_now is true and a crossfade window is
+///          configured (`pl->crossfade_ms > 0`) plus the playlist is
+///          already playing, the old and new tracks share a
+///          @ref rt_music_crossfade_to slot. Otherwise the old track
+///          is stopped immediately and the new one starts at the front
+///          of the foreground. Updates `playing`/`paused` flags to
+///          reflect ViperAUD's actual state.
+/// @param pl        Playlist instance.
+/// @param new_music Newly-loaded music wrapper (NULL means "track ended,
+///                  no replacement yet").
+/// @param play_now  Non-zero to start the new track; zero to swap but
+///                  remain paused/stopped.
 static void playlist_replace_music(playlist_impl *pl, void *new_music, int8_t play_now) {
     void *old_music = pl->music;
     int loop = (pl->repeat == RT_REPEAT_ONE) ? 1 : 0;
@@ -199,6 +255,17 @@ static void playlist_replace_music(playlist_impl *pl, void *new_music, int8_t pl
         rt_music_destroy(old_music);
 }
 
+/// @brief Move the playback cursor to @p new_position with the desired play state.
+/// @details Shared by next/prev/jump/play paths. The combination of
+///          @p resume_playing and @p preserve_paused selects between
+///          three behaviours: (1) "stopped" — release the music, clear
+///          flags; (2) "play now" — load the new track and start it,
+///          honouring crossfade; (3) "load but stay paused" — load and
+///          mark paused so a later resume starts at the right track.
+/// @param pl              Playlist instance.
+/// @param new_position    Target cursor (shuffle position or actual index).
+/// @param resume_playing  Non-zero to start playback after the swap.
+/// @param preserve_paused Non-zero to load and keep paused state.
 static void playlist_select_position(playlist_impl *pl,
                                      int64_t new_position,
                                      int8_t resume_playing,
@@ -233,7 +300,11 @@ static void playlist_select_position(playlist_impl *pl,
 // Creation
 //=============================================================================
 
-// C-1: Finalizer — releases all GC-tracked resources when a Playlist is collected.
+/// @brief GC finalizer for a Playlist object.
+/// @details Releases the active music wrapper, drops a reference on the
+///          shuffle-order sequence and the track-list sequence, and
+///          NULLs the slots. Called by the runtime once the playlist's
+///          refcount hits zero (C-1 incident-marker in the source).
 static void playlist_finalize(void *obj) {
     playlist_impl *pl = (playlist_impl *)obj;
 

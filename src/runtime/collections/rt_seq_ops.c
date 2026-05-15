@@ -46,6 +46,13 @@ static rt_seq_impl *as_seq(void *obj, const char *what) {
     return (rt_seq_impl *)obj;
 }
 
+static void *seq_new_empty_like(rt_seq_impl *source) {
+    void *seq = rt_seq_new();
+    if (!source || source->owns_elements)
+        rt_seq_set_owns_elements(seq, 1);
+    return seq;
+}
+
 //=============================================================================
 // Sorting Implementation
 //=============================================================================
@@ -308,7 +315,7 @@ void rt_seq_sort_desc(void *obj) {
 /// @see rt_seq_reject For the inverse operation
 void *rt_seq_keep(void *obj, int8_t (*pred)(void *)) {
     if (!obj)
-        return rt_seq_new();
+        return seq_new_empty_like(NULL);
 
     if (!pred)
         return rt_seq_clone(obj);
@@ -358,7 +365,7 @@ void *rt_seq_keep(void *obj, int8_t (*pred)(void *)) {
 /// @see rt_seq_keep For the inverse operation
 void *rt_seq_reject(void *obj, int8_t (*pred)(void *)) {
     if (!obj)
-        return rt_seq_new();
+        return seq_new_empty_like(NULL);
 
     if (!pred)
         return rt_seq_clone(obj);
@@ -406,7 +413,7 @@ void *rt_seq_reject(void *obj, int8_t (*pred)(void *)) {
 /// @note Thread safety: Not thread-safe.
 void *rt_seq_apply(void *obj, void *(*fn)(void *)) {
     if (!obj)
-        return rt_seq_new();
+        return seq_new_empty_like(NULL);
 
     if (!fn)
         return rt_seq_clone(obj);
@@ -654,10 +661,12 @@ void *rt_seq_find_where(void *obj, int8_t (*pred)(void *)) {
 /// @see rt_seq_drop For skipping elements
 /// @see rt_seq_slice For arbitrary ranges
 void *rt_seq_take(void *obj, int64_t n) {
-    if (!obj || n <= 0)
-        return rt_seq_new();
+    if (!obj)
+        return seq_new_empty_like(NULL);
 
     rt_seq_impl *seq = as_seq(obj, "Seq.Take: invalid Seq object");
+    if (n <= 0)
+        return seq_new_empty_like(seq);
 
     if (n >= seq->len)
         return rt_seq_clone(obj);
@@ -689,7 +698,7 @@ void *rt_seq_take(void *obj, int64_t n) {
 /// @see rt_seq_slice For arbitrary ranges
 void *rt_seq_drop(void *obj, int64_t n) {
     if (!obj)
-        return rt_seq_new();
+        return seq_new_empty_like(NULL);
 
     rt_seq_impl *seq = as_seq(obj, "Seq.Drop: invalid Seq object");
 
@@ -697,7 +706,7 @@ void *rt_seq_drop(void *obj, int64_t n) {
         return rt_seq_clone(obj);
 
     if (n >= seq->len)
-        return rt_seq_new();
+        return seq_new_empty_like(seq);
 
     return rt_seq_slice(obj, n, seq->len);
 }
@@ -733,7 +742,7 @@ void *rt_seq_drop(void *obj, int64_t n) {
 /// @see rt_seq_drop_while For the inverse operation
 void *rt_seq_take_while(void *obj, int8_t (*pred)(void *)) {
     if (!obj)
-        return rt_seq_new();
+        return seq_new_empty_like(NULL);
 
     if (!pred)
         return rt_seq_clone(obj);
@@ -784,12 +793,11 @@ void *rt_seq_take_while(void *obj, int8_t (*pred)(void *)) {
 /// @see rt_seq_take_while For the inverse operation
 void *rt_seq_drop_while(void *obj, int8_t (*pred)(void *)) {
     if (!obj)
-        return rt_seq_new();
-
-    if (!pred)
-        return rt_seq_new();
+        return seq_new_empty_like(NULL);
 
     rt_seq_impl *seq = as_seq(obj, "Seq.DropWhile: invalid Seq object");
+    if (!pred)
+        return seq_new_empty_like(seq);
 
     // Find the first non-matching element
     int64_t start = 0;

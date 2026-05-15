@@ -118,11 +118,29 @@ static int64_t mg_clamp(int64_t v, int64_t lo, int64_t hi) {
     return v;
 }
 
+/// @brief Compute the maximum song length in centbeats for a given tempo.
+/// @details Derived from `MG_MAX_DURATION_S` (the hard cap on rendered
+///          audio length): `frames = beats × samples_per_beat`, so the
+///          centbeat ceiling is `MG_MAX_DURATION_S × bpm × 100 / 60`.
+///          Used by `rt_musicgen_set_length` and `rt_musicgen_add_note`
+///          so notes/lengths past this threshold are clipped.
+/// @param bpm Beats-per-minute (clamped to 20..300 to match builder limits).
+/// @return Maximum legal centbeat position for that tempo.
 static int64_t mg_max_centbeats_for_bpm(int64_t bpm) {
     bpm = mg_clamp(bpm, 20, 300);
     return ((int64_t)MG_MAX_DURATION_S * bpm * 100) / 60;
 }
 
+/// @brief Convert a centbeat position to a sample-frame count.
+/// @details Multiplies by `samples_per_beat / 100`, but does the
+///          multiply in int64 and rejects overflow so the result fits.
+///          Negative centbeats clamp to zero (used pervasively in
+///          render-time loops where negative timing would walk off the
+///          PCM buffer).
+/// @param centbeats        Beat position (100 = 1 beat).
+/// @param samples_per_beat Frames per beat (`SAMPLE_RATE × 60 / bpm`).
+/// @param out_frames       Receives the converted frame count on success.
+/// @return 1 on success, 0 on bad inputs or multiplication overflow.
 static int mg_centbeats_to_frames(int64_t centbeats,
                                   int32_t samples_per_beat,
                                   int64_t *out_frames) {
@@ -440,6 +458,17 @@ static double mg_adsr_note_level_at(const mg_envelope_t *env, double t_s) {
     return sus;
 }
 
+/// @brief Sample the full ADSR envelope including the release tail.
+/// @details Composition of the attack/decay/sustain segments from
+///          @ref mg_adsr_note_level_at with a linear release that
+///          interpolates from `note_dur_s`'s instantaneous level down
+///          to zero over `env->release_ms`. Beyond `note_dur_s +
+///          release_s` the function returns 0.0 so the per-channel
+///          accumulator stops adding silence.
+/// @param env              Envelope parameters.
+/// @param sample_offset    Frames since note-on.
+/// @param note_dur_samples Note duration (sustain length) in frames.
+/// @return Amplitude multiplier in [0.0, 1.0].
 static double mg_adsr(const mg_envelope_t *env, int32_t sample_offset, int32_t note_dur_samples) {
     double t_s = (double)sample_offset / (double)MG_SAMPLE_RATE;
     double rel_s = (double)env->release_ms / 1000.0;
@@ -522,11 +551,13 @@ static int mg_note_compare(const void *a, const void *b) {
 // WAV Header (stereo variant)
 //===----------------------------------------------------------------------===//
 
+/// @brief Write a 16-bit little-endian integer to a byte buffer.
 static void mg_write_le16(uint8_t *p, uint16_t v) {
     p[0] = (uint8_t)(v & 0xFFu);
     p[1] = (uint8_t)((v >> 8) & 0xFFu);
 }
 
+/// @brief Write a 32-bit little-endian integer to a byte buffer.
 static void mg_write_le32(uint8_t *p, uint32_t v) {
     p[0] = (uint8_t)(v & 0xFFu);
     p[1] = (uint8_t)((v >> 8) & 0xFFu);
@@ -568,6 +599,12 @@ typedef struct {
     int64_t prev_beat_pos;
 } mg_render_state_t;
 
+/// @brief Add @p value to `*dst` with int32 saturation (no wrap).
+/// @details Performed in int64 to avoid the standard
+///          implementation-defined behaviour of signed int32 overflow.
+///          Used per-sample so an arrangement that piles up many
+///          loud channels degrades gracefully into clipping rather
+///          than into wrap-around glitches.
 static void mg_accum_add_saturated(int32_t *dst, int32_t value) {
     int64_t sum = (int64_t)*dst + (int64_t)value;
     if (sum > INT32_MAX)

@@ -288,6 +288,12 @@ void mp3_decoder_free(mp3_decoder_t *dec) {
     free(dec);
 }
 
+/// @brief Wipe per-frame decoder state without freeing the allocation.
+/// @details Zeroes the overlap-add buffer, polyphase synthesis ring,
+///          ring-offsets, and the main-data reservoir. Called before
+///          each batch decode and on stream rewind so previous frames
+///          don't bleed audio into the new playback position.
+/// @param dec Decoder instance; NULL is a no-op.
 static void mp3_decoder_reset(mp3_decoder_t *dec) {
     if (!dec)
         return;
@@ -348,6 +354,15 @@ static const mp3_huff_node_t *mp3_get_huff_tree(int table_idx, int *out_size) {
     }
 }
 
+/// @brief Probe whether table @p table_idx has a baked tree or a known fallback.
+/// @details This decoder only ships explicit Huffman trees for a small
+///          subset of the 32 ISO tables (1, 2/3, 5/6); table 0 is the
+///          empty/"zero" table. Returns 1 for those indices and 0 for
+///          unsupported ones so the caller can fall back to the
+///          bit-width approximation in @ref mp3_huff_decode_pair without
+///          attempting an out-of-range tree walk.
+/// @param table_idx Huffman table index from the side-info `table_select`.
+/// @return 1 if supported, 0 otherwise.
 static int mp3_huff_table_supported(int table_idx) {
     switch (table_idx) {
         case 0:
@@ -515,6 +530,21 @@ static size_t mp3_find_sync(const uint8_t *data, size_t len, size_t start) {
     return len; // not found
 }
 
+/// @brief Pre-walk an MP3 stream to extract channel/rate and total-sample counts.
+/// @details Skips an optional ID3v2 prefix and an optional ID3v1 suffix
+///          (trailing `"TAG"` 128-byte block), locates the first valid
+///          frame sync, and then walks every subsequent header to sum
+///          decoded sample counts (1152 per frame for MPEG-1, 576 for
+///          MPEG-2/2.5). Lets the streaming API report duration without
+///          performing the full IMDCT/synthesis decode.
+/// @param data              Byte buffer holding the entire MP3 file.
+/// @param len               Length of @p data.
+/// @param out_first_pos     Receives the offset of the first valid frame.
+/// @param out_effective_len Receives the byte length excluding trailing ID3v1.
+/// @param out_channels      Receives channel count from the first frame.
+/// @param out_sample_rate   Receives sample rate from the first frame.
+/// @param out_total_samples Receives total decoded samples per channel.
+/// @return 0 on success, -1 if no valid frames or any required output arg is NULL.
 static int mp3_scan_stream_metadata(const uint8_t *data,
                                     size_t len,
                                     size_t *out_first_pos,
@@ -565,6 +595,27 @@ static int mp3_scan_stream_metadata(const uint8_t *data,
     return 0;
 }
 
+/// @brief Decode one MP3 frame at the cursor into @p pcm_out.
+/// @details Locates the next sync starting at `*io_pos`, parses the
+///          header + side info, splices the bit-reservoir front-data
+///          (@c main_data_begin bytes from the previous frame) into the
+///          frame's main data, decodes Huffman pairs / scalefactors per
+///          granule and channel, runs the IMDCT (long, short, mixed) and
+///          polyphase synthesis filter to emit interleaved 16-bit PCM,
+///          and advances `*io_pos`. Returns -2 when the frame uses an
+///          unsupported Huffman table so the caller can abort the
+///          stream cleanly.
+/// @param dec             Decoder state (carries overlap-add + reservoir).
+/// @param data            Full MP3 byte buffer.
+/// @param effective_len   Byte length to scan (excludes trailing tags).
+/// @param io_pos          In/out cursor; updated past the consumed frame.
+/// @param pcm_out         Buffer sized for `samples_per_frame * channels`.
+/// @param out_frames      Receives decoded sample count per channel.
+/// @param out_channels    Receives the frame's channel count.
+/// @param out_sample_rate Receives the frame's sample rate.
+/// @return 0 on success / EOF (with `*out_frames == 0`), -1 on parse
+///         error (cursor advanced past the bad header), -2 on
+///         unsupported Huffman table.
 static int mp3_decode_frame_internal(mp3_decoder_t *dec,
                                      const uint8_t *data,
                                      size_t effective_len,

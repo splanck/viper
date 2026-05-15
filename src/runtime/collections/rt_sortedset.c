@@ -249,6 +249,7 @@ int8_t rt_sortedset_remove(void *obj, rt_string str) {
         set->data[i] = set->data[i + 1];
     }
 
+    set->data[set->len - 1] = NULL;
     set->len--;
     return 1;
 }
@@ -275,6 +276,7 @@ void rt_sortedset_clear(void *obj) {
 
     for (int64_t i = 0; i < set->len; i++) {
         rt_str_release_maybe(set->data[i]);
+        set->data[i] = NULL;
     }
     set->len = 0;
 }

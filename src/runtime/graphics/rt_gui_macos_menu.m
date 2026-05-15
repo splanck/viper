@@ -6,7 +6,31 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_gui_macos_menu.m
-// Purpose: Native macOS menu-bar bridge for Viper GUI menubars.
+// Purpose: Native macOS menu-bar bridge. Mirrors a `vg_menubar_t` into a
+//          real `NSMenu` tree so Viper applications get a proper system
+//          menu bar instead of an in-canvas-drawn menu strip.
+//
+// Key invariants:
+//   - At most one Viper menubar is "active" on the native menu at a time,
+//     tracked by `g_main_menubar`. Registering a second menubar replaces
+//     the first.
+//   - Special items (About, Preferences, Quit) are diverted to Apple-managed
+//     positions in the application menu and removed from their original
+//     menu so they don't appear twice.
+//   - Cocoa-level resources (NSMenu*, NSMenuItem*) are autoreleased; the
+//     bridge does not retain them itself.
+//   - Each `NSMenuItem` carries a `representedObject` that is a wrapped
+//     `vg_menu_item_t *`; the dispatcher uses that to invoke the
+//     widget-level callback when the user picks the item.
+//
+// Ownership/Lifetime:
+//   - The Viper menubar is the source of truth; the native menu is rebuilt
+//     from scratch on every change via `rt_gui_macos_rebuild_main_menu`.
+//   - The Viper menubar must outlive its registration window; unregister
+//     before destroying it.
+//
+// Links: src/runtime/graphics/rt_gui_internal.h (vg_menubar_t / vg_menu_t),
+//        src/lib/gui/src/widgets/vg_menubar.c (Viper menubar widget).
 //
 //===----------------------------------------------------------------------===//
 
@@ -31,6 +55,13 @@ typedef struct {
 
 static vg_menubar_t *g_main_menubar = NULL;
 
+/// @brief Return the user-visible app name for the application menu title.
+/// @details Consults three sources in order of preference: the current
+///          Viper `s_current_app` title (set by `App.New(title, ...)`),
+///          the bundle's `CFBundleName` (when running from an `.app`
+///          bundle), and the process name. Falls back to `"Viper"` so the
+///          menu always has a non-empty title.
+/// @return Autoreleased `NSString` (non-null).
 static NSString *rt_gui_macos_app_name(void) {
     if (s_current_app && s_current_app->title && s_current_app->title[0] != '\0') {
         return [NSString stringWithUTF8String:s_current_app->title];
@@ -45,20 +76,41 @@ static NSString *rt_gui_macos_app_name(void) {
     return process_name.length > 0 ? process_name : @ "Viper";
 }
 
+/// @brief Test whether @p item is the canonical "About" menu entry.
+/// @details Matches case-insensitive on the `"About"` prefix (`"About"`,
+///          `"About Viper"`, `"about my app"`). Used to divert the item
+///          into Apple's application-menu About slot.
 static BOOL rt_gui_macos_item_is_about(const vg_menu_item_t *item) {
     return item && item->text && strncasecmp(item->text, "About", 5) == 0;
 }
 
+/// @brief Test whether @p item is the canonical "Preferences" menu entry.
+/// @details Matches case-insensitive on the `"Preferences"` prefix so it
+///          can be relocated to Apple's standard `⌘,` slot in the
+///          application menu.
 static BOOL rt_gui_macos_item_is_preferences(const vg_menu_item_t *item) {
     return item && item->text && strncasecmp(item->text, "Preferences", 11) == 0;
 }
 
+/// @brief Test whether @p item is a quit-style menu entry.
+/// @details Accepts `"Quit"`, `"Exit"`, or any `"Quit "`-prefixed string
+///          (case-insensitive) so the bridge can route the item to the
+///          standard Cocoa `terminate:` action in the application menu.
 static BOOL rt_gui_macos_item_is_quit(const vg_menu_item_t *item) {
     return item && item->text &&
            (strcasecmp(item->text, "Quit") == 0 || strcasecmp(item->text, "Exit") == 0 ||
             strncasecmp(item->text, "Quit ", 5) == 0);
 }
 
+/// @brief Walk a Viper menu tree and identify About / Preferences / Quit items.
+/// @details Used to relocate those entries to Apple-managed positions in the
+///          application menu so they appear in their expected positions
+///          regardless of where the Viper-side menubar declares them.
+///          Recurses into submenus so a "Quit" buried under "File" / "Exit"
+///          still gets caught.
+/// @param menu     Viper menu tree to scan (may be NULL).
+/// @param specials Output struct; fields are filled in only when the matching
+///                 item is found and not already set.
 static void rt_gui_macos_find_special_items(vg_menu_t *menu,
                                             rt_gui_macos_special_items_t *specials) {
     if (!menu || !specials) {
@@ -82,6 +134,13 @@ static void rt_gui_macos_find_special_items(vg_menu_t *menu,
     }
 }
 
+/// @brief Test whether @p item should be omitted from the regular menu build pass.
+/// @details Special items (About/Preferences/Quit) are emitted into the
+///          application menu instead; they must not appear twice in the
+///          regular menu structure.
+/// @param item     Item under consideration.
+/// @param specials Previously-collected special-item pointers.
+/// @return `YES` when @p item is one of the special items; `NO` otherwise.
 static BOOL rt_gui_macos_should_skip_regular_item(const vg_menu_item_t *item,
                                                   const rt_gui_macos_special_items_t *specials) {
     return item && specials &&
@@ -89,6 +148,16 @@ static BOOL rt_gui_macos_should_skip_regular_item(const vg_menu_item_t *item,
             item == specials->quit_item);
 }
 
+/// @brief Map a Viper key code to the Cocoa `keyEquivalent` string.
+/// @details Translates `VG_KEY_*` codes into the single-character key
+///          equivalent that `NSMenuItem` expects. Letters use lowercase;
+///          punctuation maps to its ASCII character; navigation keys
+///          (arrows, function keys) map to the architectural Unicode
+///          private-use code points Apple defines for them. Unrecognised
+///          keys return an empty string so the menu item is left without
+///          a key equivalent.
+/// @param key Viper `VG_KEY_*` enum value.
+/// @return Autoreleased `NSString` (possibly empty).
 static NSString *rt_gui_macos_key_equivalent_for_key(int key) {
     if (key >= VG_KEY_A && key <= VG_KEY_Z) {
         unichar ch = (unichar)('a' + (key - VG_KEY_A));
@@ -176,6 +245,16 @@ static NSString *rt_gui_macos_key_equivalent_for_key(int key) {
     }
 }
 
+/// @brief Parse a Viper shortcut string and apply it to a Cocoa menu item.
+/// @details Accepts shortcut strings of the form `"Ctrl+S"`, `"Cmd+Shift+P"`,
+///          `"Ctrl+Alt+F4"`, etc. Splits on `+`, recognises modifier tokens
+///          (`Ctrl` → `NSEventModifierFlagCommand` on macOS for the natural
+///          mapping, `Cmd` → command, `Alt` → option, `Shift` → shift), and
+///          maps the final token to a key equivalent via
+///          @ref rt_gui_macos_key_equivalent_for_key.
+/// @param native_item Cocoa menu item to configure.
+/// @param shortcut    Viper shortcut string (may be NULL).
+/// @return `YES` if the shortcut was recognised and applied; `NO` otherwise.
 static BOOL rt_gui_macos_apply_shortcut(NSMenuItem *native_item, const char *shortcut) {
     if (!native_item || !shortcut || shortcut[0] == '\0' || strchr(shortcut, ' ') != NULL) {
         return NO;
@@ -207,6 +286,14 @@ static BOOL rt_gui_macos_apply_shortcut(NSMenuItem *native_item, const char *sho
     return YES;
 }
 
+/// @brief Convert a Viper shortcut string into its user-visible display form.
+/// @details Used for menu entries whose shortcut should appear in the menu
+///          even when the Cocoa key-equivalent path doesn't apply (e.g. an
+///          item that fires the shortcut via a separate handler). Returns
+///          the original string normalised to the Cocoa display convention
+///          (`⌃`, `⌥`, `⇧`, `⌘`) when modifiers are present.
+/// @param shortcut Viper shortcut string (may be NULL).
+/// @return Autoreleased display `NSString` or `nil` for unrecognised input.
 static NSString *rt_gui_macos_display_shortcut(const char *shortcut) {
     if (!shortcut || shortcut[0] == '\0') {
         return nil;
@@ -228,6 +315,16 @@ static NSString *rt_gui_macos_display_shortcut(const char *shortcut) {
     return display;
 }
 
+/// @brief Build an `NSMenuItem` bound to a Viper menu-item callback.
+/// @details Constructs the Cocoa item with @p title_override (falling back
+///          to the Viper item's `text` when nil), routes its action to the
+///          shared `RTGuiMacMenuDispatcher`, stores the Viper item pointer in
+///          `representedObject`, applies the shortcut via
+///          @ref rt_gui_macos_apply_shortcut, and reflects the item's
+///          `enabled` flag.
+/// @param item           Viper menu item to mirror.
+/// @param title_override Optional title to use in place of `item->text`.
+/// @return Autoreleased `NSMenuItem *` bound to the dispatcher.
 static NSMenuItem *rt_gui_macos_make_bound_item(vg_menu_item_t *item, NSString *title_override) {
     NSString *title = title_override;
     if (!title) {
@@ -261,6 +358,15 @@ static NSMenuItem *rt_gui_macos_make_bound_item(vg_menu_item_t *item, NSString *
 static NSMenu *rt_gui_macos_build_regular_menu(vg_menu_t *menu,
                                                const rt_gui_macos_special_items_t *specials);
 
+/// @brief Recursively build a single `NSMenuItem` (or submenu) for a regular Viper item.
+/// @details Skips items diverted to the application menu. Separator items
+///          become `[NSMenuItem separatorItem]`. Submenu items get their
+///          children built first; if the resulting submenu is empty after
+///          filtering, the item is dropped to avoid an empty submenu in the
+///          UI. Action items are bound via @ref rt_gui_macos_make_bound_item.
+/// @param item     Viper menu item to mirror.
+/// @param specials Special-items registry (used to skip diverted entries).
+/// @return Autoreleased `NSMenuItem *`, or nil when the item should be dropped.
 static NSMenuItem *rt_gui_macos_build_regular_item(vg_menu_item_t *item,
                                                    const rt_gui_macos_special_items_t *specials) {
     if (!item || rt_gui_macos_should_skip_regular_item(item, specials)) {
@@ -285,6 +391,15 @@ static NSMenuItem *rt_gui_macos_build_regular_item(vg_menu_item_t *item,
     return native_item;
 }
 
+/// @brief Build the `NSMenu` for a regular Viper menu, skipping special items.
+/// @details Walks the Viper menu's item chain, calls
+///          @ref rt_gui_macos_build_regular_item for each, and appends the
+///          result. Trailing separators are stripped so menus don't end in a
+///          dangling divider when their last action item is one of the
+///          relocated specials.
+/// @param menu     Viper menu to mirror (may be NULL — produces an empty menu).
+/// @param specials Special-items registry passed down to per-item builds.
+/// @return Autoreleased `NSMenu *` (always non-nil).
 static NSMenu *rt_gui_macos_build_regular_menu(vg_menu_t *menu,
                                                const rt_gui_macos_special_items_t *specials) {
     NSString *title = menu && menu->title ? [NSString stringWithUTF8String:menu->title] : @ "";
@@ -310,6 +425,13 @@ static NSMenu *rt_gui_macos_build_regular_menu(vg_menu_t *menu,
     return native_menu;
 }
 
+/// @brief Build the Preferences item for the application menu, if Viper supplied one.
+/// @details Wraps the user-supplied preferences item in a bound `NSMenuItem`.
+///          If the Viper item didn't declare its own shortcut, applies the
+///          Apple-standard `⌘,` key equivalent so users get the expected
+///          binding for free.
+/// @param specials Special-items registry.
+/// @return Autoreleased `NSMenuItem *`, or nil when no Preferences item exists.
 static NSMenuItem *rt_gui_macos_build_preferences_item(
     const rt_gui_macos_special_items_t *specials) {
     if (!specials->preferences_item) {
@@ -324,6 +446,16 @@ static NSMenuItem *rt_gui_macos_build_preferences_item(
     return item;
 }
 
+/// @brief Build the Quit item for the application menu.
+/// @details When the Viper menubar declared a Quit item, that callback is
+///          wrapped in a bound `NSMenuItem` titled `"Quit <AppName>"` with
+///          the standard `⌘Q` key equivalent. Otherwise, fabricates a
+///          default Quit item that calls the dispatcher's
+///          `quitApplication:` method, so applications without a custom
+///          quit handler still get the expected menu entry.
+/// @param specials  Special-items registry (provides the user callback if any).
+/// @param app_name  App-display name used in the menu label.
+/// @return Autoreleased `NSMenuItem *` (always non-nil).
 static NSMenuItem *rt_gui_macos_build_quit_item(const rt_gui_macos_special_items_t *specials,
                                                 NSString *app_name) {
     if (specials->quit_item) {
@@ -343,6 +475,18 @@ static NSMenuItem *rt_gui_macos_build_quit_item(const rt_gui_macos_special_items
     return item;
 }
 
+/// @brief Build the standard macOS application menu.
+/// @details The application menu is the first menu in every Mac app's menu
+///          bar (bold, named after the app) and contains the Apple-managed
+///          About / Preferences / Services / Hide / Quit family. This
+///          function constructs that menu from scratch on every rebuild,
+///          inserting the user-supplied Viper About/Preferences/Quit
+///          items where they belong and providing sensible defaults
+///          (`orderFrontStandardAboutPanel:`, `quitApplication:`) when
+///          they are not supplied.
+/// @param specials Special-items registry built by
+///                 @ref rt_gui_macos_find_special_items.
+/// @return Autoreleased fully-populated `NSMenu *`.
 static NSMenu *rt_gui_macos_build_app_menu(const rt_gui_macos_special_items_t *specials) {
     NSString *app_name = rt_gui_macos_app_name();
     NSMenu *app_menu = [[NSMenu alloc] initWithTitle:app_name];
@@ -407,6 +551,16 @@ static NSMenu *rt_gui_macos_build_app_menu(const rt_gui_macos_special_items_t *s
     return app_menu;
 }
 
+/// @brief Build the top-level `NSMenu` reflecting the currently-registered Viper menubar.
+/// @details Pre-walks every Viper menu to collect special items, then
+///          assembles the menu bar: first the application menu (always
+///          present), followed by each Viper-supplied top-level menu in
+///          declaration order. Menus titled `"Help"` and `"Window"` are
+///          also passed to `NSApp` so Cocoa hooks them up as the OS-managed
+///          Help and Windows menus. Empty submenus are dropped to avoid
+///          dangling titles in the menu bar.
+/// @return Autoreleased top-level `NSMenu *` (always non-nil, always has
+///         at least the application menu).
 static NSMenu *rt_gui_macos_build_main_menu(void) {
     rt_gui_macos_special_items_t specials = {0};
     if (g_main_menubar && g_main_menubar->native_main_menu && g_main_menubar->base.visible) {
@@ -454,6 +608,13 @@ static NSMenu *rt_gui_macos_build_main_menu(void) {
     return main_menu;
 }
 
+/// @brief Replace the current `NSApp.mainMenu` with a freshly-built menu tree.
+/// @details Called from every menu-mutation entry point (registration,
+///          unregistration, item add/remove/enable/etc.) so the OS sees an
+///          up-to-date menu structure. Calls `[NSApplication sharedApplication]`
+///          first to ensure `NSApp` exists for headless or pre-init paths,
+///          then sets the new main menu. The previous menu is released
+///          by Cocoa's autorelease pool.
 static void rt_gui_macos_rebuild_main_menu(void) {
     [NSApplication sharedApplication];
     if (!(g_main_menubar && g_main_menubar->native_main_menu && g_main_menubar->base.visible)) {
@@ -515,6 +676,15 @@ static void rt_gui_macos_rebuild_main_menu(void) {
 
 @end
 
+/// @brief Register @p menubar as the active source for the native menu.
+/// @details Only one Viper menubar at a time can drive the native menu bar.
+///          Calling this with a different menubar while one is already
+///          registered fails (returns false); callers must unregister the
+///          existing menubar first. Idempotent for the already-registered
+///          menubar.
+/// @param menubar Viper menubar instance.
+/// @return `true` if @p menubar is now the active menubar; `false` if
+///         another menubar is already registered.
 bool rt_gui_macos_menu_register_menubar(vg_menubar_t *menubar) {
     if (!menubar) {
         return false;
@@ -528,6 +698,12 @@ bool rt_gui_macos_menu_register_menubar(vg_menubar_t *menubar) {
     return g_main_menubar == menubar;
 }
 
+/// @brief Unregister @p menubar and revert to the default Viper menu.
+/// @details No-op if @p menubar is not the current active menubar
+///          (defensive against double-unregister or stale pointers).
+///          After clearing the global, rebuilds the native menu so the
+///          OS sees the change immediately.
+/// @param menubar Menubar to unregister (must match the currently-active one).
 void rt_gui_macos_menu_unregister_menubar(vg_menubar_t *menubar) {
     if (!menubar || g_main_menubar != menubar) {
         return;
@@ -537,6 +713,12 @@ void rt_gui_macos_menu_unregister_menubar(vg_menubar_t *menubar) {
     rt_gui_macos_rebuild_main_menu();
 }
 
+/// @brief Rebuild the native menu after a Viper menubar mutation.
+/// @details Called whenever the user code adds, removes, renames, enables,
+///          or disables a menu item. No-op when @p menubar is not the
+///          active one — only the active menubar's structure is reflected
+///          on the OS menu bar.
+/// @param menubar Menubar whose state changed.
 void rt_gui_macos_menu_sync_for_menubar(vg_menubar_t *menubar) {
     if (!menubar || menubar != g_main_menubar) {
         return;

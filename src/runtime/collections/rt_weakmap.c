@@ -56,6 +56,12 @@ typedef struct {
     int64_t count;
 } rt_weakmap_data;
 
+static rt_weakmap_data *as_weakmap(void *obj, const char *what) {
+    if (!obj || rt_obj_class_id(obj) != RT_WEAKMAP_CLASS_ID)
+        rt_trap(what);
+    return (rt_weakmap_data *)obj;
+}
+
 static const char *wm_key_data(rt_string key, size_t *out_len) {
     if (!key) {
         *out_len = 0;
@@ -164,8 +170,10 @@ static void wm_grow(rt_weakmap_data *data) {
 }
 
 static void weakmap_finalizer(void *obj) {
-    rt_weakmap_data *data = (rt_weakmap_data *)obj;
-    if (!data || !data->entries)
+    if (!obj)
+        return;
+    rt_weakmap_data *data = as_weakmap(obj, "WeakMap: invalid WeakMap object");
+    if (!data->entries)
         return;
     for (int64_t i = 0; i < data->capacity; i++)
         wm_release_entry(&data->entries[i]);
@@ -177,6 +185,8 @@ static void weakmap_finalizer(void *obj) {
 
 void *rt_weakmap_new(void) {
     void *obj = rt_obj_new_i64(RT_WEAKMAP_CLASS_ID, sizeof(rt_weakmap_data));
+    if (!obj)
+        rt_trap("WeakMap: memory allocation failed");
     rt_weakmap_data *data = (rt_weakmap_data *)obj;
     data->entries = wm_alloc_entries(WM_INITIAL_CAP);
     data->capacity = WM_INITIAL_CAP;
@@ -188,7 +198,7 @@ void *rt_weakmap_new(void) {
 int64_t rt_weakmap_len(void *map) {
     if (!map)
         return 0;
-    rt_weakmap_data *data = (rt_weakmap_data *)map;
+    rt_weakmap_data *data = as_weakmap(map, "WeakMap.Len: invalid WeakMap object");
     int64_t live = 0;
     for (int64_t i = 0; i < data->capacity; i++) {
         if (wm_entry_alive(&data->entries[i]))
@@ -204,7 +214,7 @@ int8_t rt_weakmap_is_empty(void *map) {
 void rt_weakmap_set(void *map, rt_string key, void *value) {
     if (!map)
         return;
-    rt_weakmap_data *data = (rt_weakmap_data *)map;
+    rt_weakmap_data *data = as_weakmap(map, "WeakMap.Set: invalid WeakMap object");
 
     if ((long double)data->count * 10.0L >= (long double)data->capacity * 7.0L)
         wm_grow(data);
@@ -216,8 +226,10 @@ void rt_weakmap_set(void *map, rt_string key, void *value) {
         rt_trap("WeakMap: insertion failed");
 
     if (data->entries[slot].occupied) {
-        rt_weakref_free(data->entries[slot].value_ref);
-        data->entries[slot].value_ref = rt_weakref_new(value);
+        rt_weakref *new_ref = rt_weakref_new(value);
+        rt_weakref *old_ref = data->entries[slot].value_ref;
+        data->entries[slot].value_ref = new_ref;
+        rt_weakref_free(old_ref);
         return;
     }
 
@@ -232,7 +244,7 @@ void rt_weakmap_set(void *map, rt_string key, void *value) {
 void *rt_weakmap_get(void *map, rt_string key) {
     if (!map)
         return NULL;
-    rt_weakmap_data *data = (rt_weakmap_data *)map;
+    rt_weakmap_data *data = as_weakmap(map, "WeakMap.Get: invalid WeakMap object");
     size_t key_len = 0;
     const char *key_data = wm_key_data(key, &key_len);
     int64_t slot = wm_find_slot(data, key_data, key_len);
@@ -244,7 +256,7 @@ void *rt_weakmap_get(void *map, rt_string key) {
 int8_t rt_weakmap_has(void *map, rt_string key) {
     if (!map)
         return 0;
-    rt_weakmap_data *data = (rt_weakmap_data *)map;
+    rt_weakmap_data *data = as_weakmap(map, "WeakMap.Has: invalid WeakMap object");
     size_t key_len = 0;
     const char *key_data = wm_key_data(key, &key_len);
     int64_t slot = wm_find_slot(data, key_data, key_len);
@@ -254,7 +266,7 @@ int8_t rt_weakmap_has(void *map, rt_string key) {
 int8_t rt_weakmap_remove(void *map, rt_string key) {
     if (!map)
         return 0;
-    rt_weakmap_data *data = (rt_weakmap_data *)map;
+    rt_weakmap_data *data = as_weakmap(map, "WeakMap.Remove: invalid WeakMap object");
     size_t key_len = 0;
     const char *key_data = wm_key_data(key, &key_len);
     int64_t slot = wm_find_slot(data, key_data, key_len);
@@ -283,7 +295,7 @@ void *rt_weakmap_keys(void *map) {
     rt_seq_set_owns_elements(seq, 1);
     if (!map)
         return seq;
-    rt_weakmap_data *data = (rt_weakmap_data *)map;
+    rt_weakmap_data *data = as_weakmap(map, "WeakMap.Keys: invalid WeakMap object");
     for (int64_t i = 0; i < data->capacity; i++) {
         if (wm_entry_alive(&data->entries[i]))
             rt_seq_push(seq, data->entries[i].key);
@@ -294,7 +306,7 @@ void *rt_weakmap_keys(void *map) {
 void rt_weakmap_clear(void *map) {
     if (!map)
         return;
-    rt_weakmap_data *data = (rt_weakmap_data *)map;
+    rt_weakmap_data *data = as_weakmap(map, "WeakMap.Clear: invalid WeakMap object");
     for (int64_t i = 0; i < data->capacity; i++)
         wm_release_entry(&data->entries[i]);
     data->count = 0;
@@ -303,7 +315,7 @@ void rt_weakmap_clear(void *map) {
 int64_t rt_weakmap_compact(void *map) {
     if (!map)
         return 0;
-    rt_weakmap_data *data = (rt_weakmap_data *)map;
+    rt_weakmap_data *data = as_weakmap(map, "WeakMap.Compact: invalid WeakMap object");
 
     int64_t removed = 0;
     for (int64_t i = 0; i < data->capacity; i++) {

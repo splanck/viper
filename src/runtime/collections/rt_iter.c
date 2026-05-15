@@ -346,8 +346,11 @@ int64_t rt_iter_count(void *iter) {
 void *rt_iter_to_seq(void *iter) {
     rt_iter_impl *it;
     void *seq;
-    if (!iter)
-        return rt_seq_new();
+    if (!iter) {
+        seq = rt_seq_new();
+        rt_seq_set_owns_elements(seq, 1);
+        return seq;
+    }
     it = as_iter(iter, "Iterator.ToSeq: invalid Iterator object");
     seq = rt_seq_new();
     rt_seq_set_owns_elements(seq, 1);

@@ -72,6 +72,11 @@ static size_t hash_key(uint64_t key, size_t bucket_count) {
 // Cache Creation/Destruction
 //=============================================================================
 
+/// @brief Allocate an empty glyph cache.
+/// @details Initializes a hash table with `VG_CACHE_INITIAL_SIZE` buckets;
+///          entries are added lazily on first cache miss for a given
+///          `(size, codepoint)` pair.
+/// @return Newly-allocated cache, or NULL on allocation failure.
 vg_glyph_cache_t *vg_cache_create(void) {
     vg_glyph_cache_t *cache = calloc(1, sizeof(vg_glyph_cache_t));
     if (!cache)
@@ -95,6 +100,10 @@ static void free_entry(vg_cache_entry_t *entry) {
     free(entry);
 }
 
+/// @brief Free a glyph cache and every entry it owns.
+/// @details Walks every bucket chain, releases each entry's bitmap, then
+///          frees the bucket array and the cache itself. Safe on NULL.
+/// @param cache Cache produced by @ref vg_cache_create (may be NULL).
 void vg_cache_destroy(vg_glyph_cache_t *cache) {
     if (!cache)
         return;
@@ -117,6 +126,12 @@ void vg_cache_destroy(vg_glyph_cache_t *cache) {
 // Cache Clear
 //=============================================================================
 
+/// @brief Drop every entry without releasing the cache itself.
+/// @details Walks every bucket and frees each entry's bitmap. Resets the
+///          entry / memory counters to zero so the cache is ready to grow
+///          again on the next put. Bucket array is preserved at its
+///          current capacity. Safe on NULL.
+/// @param cache Cache to clear (may be NULL).
 void vg_cache_clear(vg_glyph_cache_t *cache) {
     if (!cache)
         return;
@@ -256,6 +271,18 @@ const vg_glyph_t *vg_cache_get(vg_glyph_cache_t *cache, float size, uint32_t cod
 // Cache Put
 //=============================================================================
 
+/// @brief Insert a rasterised glyph into the cache.
+/// @details No-op when the entry already exists. Enforces the per-glyph
+///          and per-cache memory caps: oversize bitmaps are rejected;
+///          when adding @p glyph would push total memory over
+///          `VG_CACHE_MAX_MEMORY`, the LRU evictor runs first. Resizes
+///          the bucket array when the load factor exceeds 0.75. The
+///          bitmap is copied into a freshly-allocated buffer so the
+///          caller's @p glyph buffer can be freed safely after the call.
+/// @param cache     Destination cache.
+/// @param size      Font size in points.
+/// @param codepoint Unicode code point.
+/// @param glyph     Rasterised glyph to cache (caller retains ownership of @p glyph itself).
 void vg_cache_put(vg_glyph_cache_t *cache,
                   float size,
                   uint32_t codepoint,
