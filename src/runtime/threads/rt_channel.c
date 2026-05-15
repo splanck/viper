@@ -656,6 +656,8 @@ void *rt_channel_recv(void *channel) {
 
 /// @brief Try to receive an item without blocking. Returns 1 and sets *out if available.
 int8_t rt_channel_try_recv(void *channel, void **out) {
+    if (out)
+        *out = NULL;
     channel_impl *ch = channel_require(channel, NULL, 0);
     if (!ch)
         return 0;
@@ -723,6 +725,8 @@ void *rt_channel_try_recv_val(void *channel) {
 
 /// @brief Receive with a timeout. Returns 1 and sets *out if received, 0 on timeout/close.
 int8_t rt_channel_recv_for(void *channel, void **out, int64_t ms) {
+    if (out)
+        *out = NULL;
     channel_impl *ch = channel_require(channel, NULL, 0);
     if (!ch)
         return 0;
@@ -742,7 +746,8 @@ int8_t rt_channel_recv_for(void *channel, void **out, int64_t ms) {
 
         while (ch->count == 0 && !ch->closed) {
             int64_t remaining = channel_remaining_ms(deadline);
-            if (remaining <= 0 || !rt_monitor_wait_for(ch->monitor, remaining)) {
+            int8_t signaled = remaining > 0 ? rt_monitor_wait_for(ch->monitor, remaining) : 0;
+            if (!signaled && ch->count == 0 && !ch->closed) {
                 ch->waiting_receivers--;
                 rt_monitor_exit(ch->monitor);
                 channel_release_object(channel);

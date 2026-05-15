@@ -96,7 +96,8 @@ static void test_try_send_recv() {
 
 static void test_try_recv_empty() {
     void *ch = rt_channel_new(5);
-    void *out = NULL;
+    void *sentinel = make_obj();
+    void *out = sentinel;
     assert(rt_channel_try_recv(ch, &out) == 0);
     assert(out == NULL);
     rt_channel_close(ch);
@@ -177,7 +178,9 @@ static void test_close_allows_drain() {
     assert(out == a);
 
     // Empty now
+    out = a;
     assert(rt_channel_try_recv(ch, &out) == 0);
+    assert(out == NULL);
 }
 
 static void test_double_close() {
@@ -194,11 +197,22 @@ static void test_double_close() {
 
 static void test_recv_for_timeout() {
     void *ch = rt_channel_new(5);
-    void *out = NULL;
+    void *sentinel = make_obj();
+    void *out = sentinel;
     // Should timeout quickly on empty channel
     assert(rt_channel_recv_for(ch, &out, 10) == 0);
     assert(out == NULL);
     rt_channel_close(ch);
+}
+
+static void test_recv_for_closed_clears_out() {
+    void *ch = rt_channel_new(5);
+    void *sentinel = make_obj();
+    void *out = sentinel;
+    rt_channel_close(ch);
+
+    assert(rt_channel_recv_for(ch, &out, 10) == 0);
+    assert(out == NULL);
 }
 
 static void test_recv_for_immediate() {
@@ -261,8 +275,12 @@ static void test_null_safety() {
     assert(rt_channel_try_send(NULL, make_obj()) == 0);
 
     void *out = NULL;
+    out = make_obj();
     assert(rt_channel_try_recv(NULL, &out) == 0);
+    assert(out == NULL);
+    out = make_obj();
     assert(rt_channel_recv_for(NULL, &out, 10) == 0);
+    assert(out == NULL);
     assert(rt_channel_send_for(NULL, make_obj(), 10) == 0);
 
     /// @brief Rt_channel_close.
@@ -475,6 +493,7 @@ int main() {
     test_close_allows_drain();
     test_double_close();
     test_recv_for_timeout();
+    test_recv_for_closed_clears_out();
     test_recv_for_immediate();
     test_managed_value_wrappers();
     test_send_for_timeout();

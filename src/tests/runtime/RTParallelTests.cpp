@@ -13,6 +13,7 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
+#include "rt_seq_internal.h"
 #include "rt_string.h"
 #include "rt_threadpool.h"
 
@@ -119,6 +120,17 @@ static void call_foreach_trapping_task() {
     rt_seq_push(seq, (void *)1);
     void *pool = rt_threadpool_new(1);
     rt_parallel_foreach_pool(seq, (void *)foreach_trap, pool);
+}
+
+static void corrupt_seq_len(void *seq, int64_t len) {
+    ((rt_seq_impl *)seq)->len = len;
+}
+
+static void call_foreach_huge_seq_len() {
+    void *seq = rt_seq_new();
+    corrupt_seq_len(seq, INT64_MAX);
+    void *pool = rt_threadpool_new(1);
+    rt_parallel_foreach_pool(seq, (void *)foreach_increment, pool);
 }
 
 //=============================================================================
@@ -279,6 +291,13 @@ static void test_nested_parallel_same_pool_runs_inline() {
     rt_threadpool_shutdown(pool);
 }
 
+static void call_map_huge_seq_len() {
+    void *seq = rt_seq_new();
+    corrupt_seq_len(seq, INT64_MAX);
+    void *pool = rt_threadpool_new(1);
+    (void)rt_parallel_map_pool(seq, (void *)map_double, pool);
+}
+
 //=============================================================================
 // Parallel For Tests
 //=============================================================================
@@ -315,6 +334,25 @@ static void test_for_single() {
 
 static void call_for_range_too_large() {
     rt_parallel_for(INT64_MIN, INT64_MAX, (void *)for_accumulate);
+}
+
+static void call_invoke_huge_seq_len() {
+    void *funcs = rt_seq_new();
+    corrupt_seq_len(funcs, INT64_MAX);
+    void *pool = rt_threadpool_new(1);
+    rt_parallel_invoke_pool(funcs, pool);
+}
+
+static void *reduce_passthrough(void *accum, void *item) {
+    (void)item;
+    return accum;
+}
+
+static void call_reduce_huge_seq_len() {
+    void *seq = rt_seq_new();
+    corrupt_seq_len(seq, INT64_MAX);
+    void *pool = rt_threadpool_new(1);
+    (void)rt_parallel_reduce_pool(seq, (void *)reduce_passthrough, NULL, pool);
 }
 
 //=============================================================================
@@ -369,7 +407,11 @@ static void test_invoke_empty() {
 int main(int argc, char *argv[]) {
     viper::tests::registerChildFunction(call_foreach_shutdown_pool);
     viper::tests::registerChildFunction(call_foreach_trapping_task);
+    viper::tests::registerChildFunction(call_foreach_huge_seq_len);
+    viper::tests::registerChildFunction(call_map_huge_seq_len);
     viper::tests::registerChildFunction(call_for_range_too_large);
+    viper::tests::registerChildFunction(call_invoke_huge_seq_len);
+    viper::tests::registerChildFunction(call_reduce_huge_seq_len);
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 
@@ -382,9 +424,25 @@ int main(int argc, char *argv[]) {
     result = viper::tests::runIsolated(call_foreach_trapping_task);
     test_result(result.stderrText.find("parallel foreach trap") != std::string::npos,
                 "foreach_task_trap: should preserve worker trap message");
+    result = viper::tests::runIsolated(call_foreach_huge_seq_len);
+    test_result(result.stderrText.find("Parallel.ForEach: allocation size overflow") !=
+                    std::string::npos,
+                "foreach_huge_seq: should trap before overflowing allocation");
+    result = viper::tests::runIsolated(call_map_huge_seq_len);
+    test_result(result.stderrText.find("Parallel.Map: allocation size overflow") !=
+                    std::string::npos,
+                "map_huge_seq: should trap before overflowing allocation");
     result = viper::tests::runIsolated(call_for_range_too_large);
     test_result(result.stderrText.find("Parallel.For: range too large") != std::string::npos,
                 "for_range_too_large: should trap instead of overflowing");
+    result = viper::tests::runIsolated(call_invoke_huge_seq_len);
+    test_result(result.stderrText.find("Parallel.Invoke: allocation size overflow") !=
+                    std::string::npos,
+                "invoke_huge_seq: should trap before overflowing allocation");
+    result = viper::tests::runIsolated(call_reduce_huge_seq_len);
+    test_result(result.stderrText.find("Parallel.Reduce: allocation size overflow") !=
+                    std::string::npos,
+                "reduce_huge_seq: should trap before overflowing allocation");
 
     // Default workers/pool tests
     test_default_workers();

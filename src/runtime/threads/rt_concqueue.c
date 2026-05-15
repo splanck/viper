@@ -514,9 +514,17 @@ void *rt_concqueue_dequeue_timeout(void *obj, int64_t timeout_ms) {
         }
         if (!SleepConditionVariableCS(&cq->cond, &cq->mutex, remaining)) {
             DWORD err = GetLastError();
+            if (err == ERROR_TIMEOUT) {
+                if (!cq->head && !cq->closed) {
+                    CQ_UNLOCK(cq);
+                    concqueue_release_object(obj);
+                    return NULL;
+                }
+                continue;
+            }
             CQ_UNLOCK(cq);
             concqueue_release_object(obj);
-            if (err && err != ERROR_TIMEOUT)
+            if (err)
                 rt_trap("ConcurrentQueue.DequeueTimeout: condition wait failed");
             return NULL;
         }
@@ -529,9 +537,12 @@ void *rt_concqueue_dequeue_timeout(void *obj, int64_t timeout_ms) {
         int rc =
             cq_cond_timedwait_deadline(&cq->cond, &cq->mutex, deadline, cq->cond_uses_monotonic);
         if (rc == ETIMEDOUT) {
-            CQ_UNLOCK(cq);
-            concqueue_release_object(obj);
-            return NULL;
+            if (!cq->head && !cq->closed) {
+                CQ_UNLOCK(cq);
+                concqueue_release_object(obj);
+                return NULL;
+            }
+            continue;
         } else if (rc != 0) {
             CQ_UNLOCK(cq);
             concqueue_release_object(obj);

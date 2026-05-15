@@ -51,6 +51,7 @@
 #include "rt_seq.h"
 #include "rt_threadpool.h"
 
+#include <stdint.h>
 #include <setjmp.h>
 #include <stdlib.h>
 #include <string.h>
@@ -387,7 +388,7 @@ static int64_t parallel_choose_task_count(void *pool, int64_t count) {
     if (task_count > count)
         task_count = count;
 
-    int64_t capped_by_chunk = (count + min_chunk - 1) / min_chunk;
+    int64_t capped_by_chunk = count / min_chunk + (count % min_chunk != 0 ? 1 : 0);
     if (capped_by_chunk < 1)
         capped_by_chunk = 1;
     if (task_count > capped_by_chunk)
@@ -433,6 +434,10 @@ static void parallel_copy_error(char *dst, size_t dst_size, const char *fallback
 ///          completed. Picks the captured message if present, otherwise the generic fallback.
 static void parallel_trap_error(const char *fallback, const char *captured) {
     rt_trap((captured && captured[0]) ? captured : fallback);
+}
+
+static int parallel_count_fits_array(int64_t count, size_t elem_size) {
+    return count >= 0 && elem_size > 0 && (uint64_t)count <= (uint64_t)SIZE_MAX / elem_size;
 }
 
 /// @brief Check whether a Map-callback result is one of the input pointers.
@@ -757,6 +762,8 @@ void rt_parallel_foreach_pool(void *seq, void *func, void *pool) {
         return;
 
     int64_t count = rt_seq_len(seq);
+    if (count < 0)
+        rt_trap("Parallel.ForEach: negative sequence length");
     if (count == 0)
         return;
 
@@ -781,6 +788,10 @@ void rt_parallel_foreach_pool(void *seq, void *func, void *pool) {
         return;
     }
 
+    if (!parallel_count_fits_array(count, sizeof(void *))) {
+        parallel_release_default_pool(pool, actual_pool);
+        rt_trap("Parallel.ForEach: allocation size overflow");
+    }
     void **items = (void **)malloc((size_t)count * sizeof(void *));
     if (!items) {
         parallel_release_default_pool(pool, actual_pool);
@@ -808,6 +819,17 @@ void rt_parallel_foreach_pool(void *seq, void *func, void *pool) {
     task_error[0] = '\0';
 
     // Allocate task array
+    if (!parallel_count_fits_array(task_count, sizeof(foreach_task))) {
+#ifdef _WIN32
+        CloseHandle(event);
+        DeleteCriticalSection(&error_lock);
+#else
+        parallel_sync_destroy(sync);
+#endif
+        free(items);
+        parallel_release_default_pool(pool, actual_pool);
+        rt_trap("Parallel.ForEach: allocation size overflow");
+    }
     foreach_task *tasks = (foreach_task *)malloc((size_t)task_count * sizeof(foreach_task));
     if (!tasks) {
 #ifdef _WIN32
@@ -886,6 +908,8 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool) {
         return rt_seq_new();
 
     int64_t count = rt_seq_len(seq);
+    if (count < 0)
+        rt_trap("Parallel.Map: negative sequence length");
     if (count == 0)
         return rt_seq_new();
 
@@ -917,6 +941,10 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool) {
         return result;
     }
 
+    if (!parallel_count_fits_array(count, sizeof(void *))) {
+        parallel_release_default_pool(pool, actual_pool);
+        rt_trap("Parallel.Map: allocation size overflow");
+    }
     void **items = (void **)malloc((size_t)count * sizeof(void *));
     void **results = (void **)calloc((size_t)count, sizeof(void *));
     if (!items || !results) {
@@ -948,6 +976,18 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool) {
     task_error[0] = '\0';
 
     // Allocate task array
+    if (!parallel_count_fits_array(task_count, sizeof(map_task))) {
+#ifdef _WIN32
+        CloseHandle(event);
+        DeleteCriticalSection(&error_lock);
+#else
+        parallel_sync_destroy(sync);
+#endif
+        free(items);
+        free(results);
+        parallel_release_default_pool(pool, actual_pool);
+        rt_trap("Parallel.Map: allocation size overflow");
+    }
     map_task *tasks = (map_task *)malloc((size_t)task_count * sizeof(map_task));
     if (!tasks) {
 #ifdef _WIN32
@@ -1044,6 +1084,8 @@ void rt_parallel_invoke_pool(void *funcs, void *pool) {
         return;
 
     int64_t count = rt_seq_len(funcs);
+    if (count < 0)
+        rt_trap("Parallel.Invoke: negative sequence length");
     if (count == 0)
         return;
 
@@ -1086,7 +1128,17 @@ void rt_parallel_invoke_pool(void *funcs, void *pool) {
     task_error[0] = '\0';
 
     // Allocate task array
-    invoke_task *tasks = (invoke_task *)malloc(count * sizeof(invoke_task));
+    if (!parallel_count_fits_array(count, sizeof(invoke_task))) {
+#ifdef _WIN32
+        CloseHandle(event);
+        DeleteCriticalSection(&error_lock);
+#else
+        parallel_sync_destroy(sync);
+#endif
+        parallel_release_default_pool(pool, actual_pool);
+        rt_trap("Parallel.Invoke: allocation size overflow");
+    }
+    invoke_task *tasks = (invoke_task *)malloc((size_t)count * sizeof(invoke_task));
     if (!tasks) {
 #ifdef _WIN32
         CloseHandle(event);
@@ -1160,6 +1212,8 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
         return identity;
 
     int64_t count = rt_seq_len(seq);
+    if (count < 0)
+        rt_trap("Parallel.Reduce: negative sequence length");
     if (count == 0)
         return identity;
 
@@ -1198,6 +1252,10 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
         nworkers = count;
 
     /* Extract items array for chunk access. */
+    if (!parallel_count_fits_array(count, sizeof(void *))) {
+        parallel_release_default_pool(pool, actual_pool);
+        rt_trap("Parallel.Reduce: allocation size overflow");
+    }
     void **items = (void **)malloc((size_t)count * sizeof(void *));
     if (!items) {
         parallel_release_default_pool(pool, actual_pool);
@@ -1225,6 +1283,17 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
     char task_error[512];
     task_error[0] = '\0';
 
+    if (!parallel_count_fits_array(nworkers, sizeof(reduce_task))) {
+#ifdef _WIN32
+        CloseHandle(event);
+        DeleteCriticalSection(&error_lock);
+#else
+        parallel_sync_destroy(sync);
+#endif
+        free(items);
+        parallel_release_default_pool(pool, actual_pool);
+        rt_trap("Parallel.Reduce: allocation size overflow");
+    }
     reduce_task *tasks = (reduce_task *)malloc((size_t)nworkers * sizeof(reduce_task));
     if (!tasks) {
 #ifdef _WIN32
@@ -1373,6 +1442,16 @@ void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool) {
     task_error[0] = '\0';
 
     // Allocate task array
+    if (!parallel_count_fits_array(task_count, sizeof(for_task))) {
+#ifdef _WIN32
+        CloseHandle(event);
+        DeleteCriticalSection(&error_lock);
+#else
+        parallel_sync_destroy(sync);
+#endif
+        parallel_release_default_pool(pool, actual_pool);
+        rt_trap("Parallel.For: allocation size overflow");
+    }
     for_task *tasks = (for_task *)malloc((size_t)task_count * sizeof(for_task));
     if (!tasks) {
 #ifdef _WIN32

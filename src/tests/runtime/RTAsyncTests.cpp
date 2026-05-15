@@ -20,6 +20,7 @@ extern "C" {
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
+#include "rt_seq_internal.h"
 #include "rt_string.h"
 #include "rt_threads.h"
 
@@ -158,6 +159,10 @@ static bool wait_for_started_count(int expected, int timeout_ms) {
         rt_thread_sleep(1);
     }
     return g_concurrent_started.load(std::memory_order_acquire) >= expected;
+}
+
+static void corrupt_seq_len(void *seq, int64_t len) {
+    ((rt_seq_impl *)seq)->len = len;
 }
 
 //=============================================================================
@@ -350,6 +355,20 @@ static void test_async_all_null() {
     assert(rt_seq_len(results) == 0);
 }
 
+static void test_async_all_rejects_huge_count() {
+    void *futures = rt_seq_new();
+    corrupt_seq_len(futures, INT64_MAX);
+
+    void *all_future = rt_async_all(futures);
+    assert(all_future != NULL);
+    assert(rt_future_is_done(all_future) == 1);
+    assert(rt_future_is_error(all_future) == 1);
+
+    rt_string err = rt_future_get_error(all_future);
+    assert(std::strstr(rt_string_cstr(err), "Async.All: futures count too large") != NULL);
+    rt_string_unref(err);
+}
+
 static void test_async_all_short_circuits_on_error() {
     void *pending_promise = rt_promise_new();
     void *pending_future = rt_promise_get_future(pending_promise);
@@ -508,6 +527,20 @@ static void test_async_any_empty() {
     // Should resolve with error
     rt_future_wait(any_future);
     assert(rt_future_is_error(any_future) == 1);
+}
+
+static void test_async_any_rejects_huge_count() {
+    void *futures = rt_seq_new();
+    corrupt_seq_len(futures, INT64_MAX);
+
+    void *any_future = rt_async_any(futures);
+    assert(any_future != NULL);
+    assert(rt_future_is_done(any_future) == 1);
+    assert(rt_future_is_error(any_future) == 1);
+
+    rt_string err = rt_future_get_error(any_future);
+    assert(std::strstr(rt_string_cstr(err), "Async.Any: futures count too large") != NULL);
+    rt_string_unref(err);
 }
 
 static void test_async_any_handles_already_complete_winner() {
@@ -741,12 +774,14 @@ int main() {
     test_async_all_basic();
     test_async_all_empty();
     test_async_all_null();
+    test_async_all_rejects_huge_count();
     test_async_all_short_circuits_on_error();
     test_async_all_result_owns_values();
     test_async_all_handles_already_complete_inputs();
     test_async_all_already_complete_error_short_circuits();
     test_async_any_basic();
     test_async_any_empty();
+    test_async_any_rejects_huge_count();
     test_async_any_handles_already_complete_winner();
     test_async_map_basic();
     test_async_map_chained();

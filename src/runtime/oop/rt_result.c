@@ -32,10 +32,16 @@
 #include "rt_error.h"
 #include "rt_object.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
+#include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
 
 //=============================================================================
 // Internal Structure
@@ -81,30 +87,77 @@ static void result_finalizer(void *obj) {
 // Result Creation
 //=============================================================================
 
+static void result_release_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static Result *result_alloc_trap_safe(const char *what) {
+    Result *r = (Result *)rt_obj_new_i64(0, (int64_t)sizeof(Result));
+    if (!r) {
+        char buf[128];
+        snprintf(buf, sizeof(buf), "%s: allocation failed", what ? what : "Result");
+        rt_trap(buf);
+    }
+    return r;
+}
+
 /// @brief Construct `Ok(ptr)` over a generic pointer payload. Retains `value` via the heap path.
 void *rt_result_ok(void *value) {
-    Result *r = (Result *)rt_obj_new_i64(0, (int64_t)sizeof(Result));
+    Result *r = result_alloc_trap_safe("Result.Ok");
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *err = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 err && err[0] ? err : "Result.Ok: retain failed");
+        rt_trap_clear_recovery();
+        result_release_object(r);
+        rt_trap(saved_error);
+        return NULL;
+    }
+    rt_obj_retain_maybe(value);
+    rt_trap_clear_recovery();
     r->variant = RESULT_OK;
     r->value_type = VALUE_PTR;
     r->value.ptr = value;
-    rt_obj_retain_maybe(value);
     rt_obj_set_finalizer(r, result_finalizer);
     return r;
 }
 
 /// @brief Construct `Ok(string)` — retains the string (heap or literal) via `rt_string_ref`.
 void *rt_result_ok_str(rt_string value) {
-    Result *r = (Result *)rt_obj_new_i64(0, (int64_t)sizeof(Result));
+    Result *r = result_alloc_trap_safe("Result.OkStr");
+    rt_string retained = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *err = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 err && err[0] ? err : "Result.OkStr: retain failed");
+        rt_trap_clear_recovery();
+        result_release_object(r);
+        rt_trap(saved_error);
+        return NULL;
+    }
+    retained = value ? rt_string_ref(value) : NULL;
+    rt_trap_clear_recovery();
     r->variant = RESULT_OK;
     r->value_type = VALUE_STR;
-    r->value.str = value ? rt_string_ref(value) : NULL;
+    r->value.str = retained;
     rt_obj_set_finalizer(r, result_finalizer);
     return r;
 }
 
 /// @brief Construct `Ok(i64)` with the value stored inline (no heap allocation for payload).
 void *rt_result_ok_i64(int64_t value) {
-    Result *r = (Result *)rt_obj_new_i64(0, (int64_t)sizeof(Result));
+    Result *r = result_alloc_trap_safe("Result.OkI64");
     r->variant = RESULT_OK;
     r->value_type = VALUE_I64;
     r->value.i64 = value;
@@ -114,7 +167,7 @@ void *rt_result_ok_i64(int64_t value) {
 
 /// @brief Construct `Ok(f64)` with the value stored inline.
 void *rt_result_ok_f64(double value) {
-    Result *r = (Result *)rt_obj_new_i64(0, (int64_t)sizeof(Result));
+    Result *r = result_alloc_trap_safe("Result.OkF64");
     r->variant = RESULT_OK;
     r->value_type = VALUE_F64;
     r->value.f64 = value;
@@ -125,11 +178,26 @@ void *rt_result_ok_f64(double value) {
 /// @brief Construct `Err(ptr)` carrying an arbitrary heap-managed error value (e.g. an exception
 /// object). Retains the error so it survives until the Result is finalized.
 void *rt_result_err(void *error) {
-    Result *r = (Result *)rt_obj_new_i64(0, (int64_t)sizeof(Result));
+    Result *r = result_alloc_trap_safe("Result.Err");
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *err = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 err && err[0] ? err : "Result.Err: retain failed");
+        rt_trap_clear_recovery();
+        result_release_object(r);
+        rt_trap(saved_error);
+        return NULL;
+    }
+    rt_obj_retain_maybe(error);
+    rt_trap_clear_recovery();
     r->variant = RESULT_ERR;
     r->value_type = VALUE_PTR;
     r->value.ptr = error;
-    rt_obj_retain_maybe(error);
     rt_obj_set_finalizer(r, result_finalizer);
     return r;
 }
@@ -137,10 +205,27 @@ void *rt_result_err(void *error) {
 /// @brief Construct `Err(message)` with a string error description. The most common Err shape —
 /// caller-friendly diagnostic that doesn't require allocating a separate error class.
 void *rt_result_err_str(rt_string message) {
-    Result *r = (Result *)rt_obj_new_i64(0, (int64_t)sizeof(Result));
+    Result *r = result_alloc_trap_safe("Result.ErrStr");
+    rt_string retained = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *err = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 err && err[0] ? err : "Result.ErrStr: retain failed");
+        rt_trap_clear_recovery();
+        result_release_object(r);
+        rt_trap(saved_error);
+        return NULL;
+    }
+    retained = message ? rt_string_ref(message) : NULL;
+    rt_trap_clear_recovery();
     r->variant = RESULT_ERR;
     r->value_type = VALUE_STR;
-    r->value.str = message ? rt_string_ref(message) : NULL;
+    r->value.str = retained;
     rt_obj_set_finalizer(r, result_finalizer);
     return r;
 }
@@ -168,8 +253,6 @@ int8_t rt_result_is_err(void *obj) {
 //=============================================================================
 // Value Extraction
 //=============================================================================
-
-#include "rt_trap.h"
 
 /// @brief Convenience wrapper around `rt_trap` so unwrap helpers stay readable.
 static void trap_with_message(const char *msg) {

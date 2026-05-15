@@ -18,6 +18,7 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_option.h"
+#include "rt_result.h"
 #include "rt_string.h"
 #include "rt_trap.h"
 
@@ -189,6 +190,44 @@ void call_option_some_str_retain_overflow() {
     rt_heap_hdr_t *hdr = rt_heap_hdr(payload);
     hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
     (void)rt_option_some_str(text);
+}
+
+void call_result_ok_retain_overflow() {
+    void *obj = rt_obj_new_i64(17, 8);
+    assert(obj != nullptr);
+    rt_heap_hdr_t *hdr = rt_heap_hdr(obj);
+    hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+    (void)rt_result_ok(obj);
+}
+
+void call_result_err_retain_overflow() {
+    void *obj = rt_obj_new_i64(18, 8);
+    assert(obj != nullptr);
+    rt_heap_hdr_t *hdr = rt_heap_hdr(obj);
+    hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+    (void)rt_result_err(obj);
+}
+
+void call_result_ok_str_retain_overflow() {
+    const char *raw = "heap-backed result ok string retain overflow";
+    rt_string text = rt_string_from_bytes(raw, std::strlen(raw));
+    assert(text != nullptr);
+    void *payload = (void *)rt_string_cstr(text);
+    assert(rt_heap_is_payload(payload) == 1);
+    rt_heap_hdr_t *hdr = rt_heap_hdr(payload);
+    hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+    (void)rt_result_ok_str(text);
+}
+
+void call_result_err_str_retain_overflow() {
+    const char *raw = "heap-backed result err string retain overflow";
+    rt_string text = rt_string_from_bytes(raw, std::strlen(raw));
+    assert(text != nullptr);
+    void *payload = (void *)rt_string_cstr(text);
+    assert(rt_heap_is_payload(payload) == 1);
+    rt_heap_hdr_t *hdr = rt_heap_hdr(payload);
+    hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+    (void)rt_result_err_str(text);
 }
 
 void call_resurrect_live_object() {
@@ -466,6 +505,10 @@ int main(int argc, char *argv[]) {
     viper::tests::registerChildFunction(call_value_type_add_field_retain_overflow);
     viper::tests::registerChildFunction(call_option_some_retain_overflow);
     viper::tests::registerChildFunction(call_option_some_str_retain_overflow);
+    viper::tests::registerChildFunction(call_result_ok_retain_overflow);
+    viper::tests::registerChildFunction(call_result_err_retain_overflow);
+    viper::tests::registerChildFunction(call_result_ok_str_retain_overflow);
+    viper::tests::registerChildFunction(call_result_err_str_retain_overflow);
     viper::tests::registerChildFunction(call_resurrect_live_object);
     viper::tests::registerChildFunction(call_obj_free_live_object);
     if (viper::tests::dispatchChild(argc, argv))
@@ -500,6 +543,10 @@ int main(int argc, char *argv[]) {
     expect_trap(call_value_type_add_field_retain_overflow, "refcount overflow");
     expect_trap(call_option_some_retain_overflow, "refcount overflow");
     expect_trap(call_option_some_str_retain_overflow, "refcount overflow");
+    expect_trap(call_result_ok_retain_overflow, "refcount overflow");
+    expect_trap(call_result_err_retain_overflow, "refcount overflow");
+    expect_trap(call_result_ok_str_retain_overflow, "refcount overflow");
+    expect_trap(call_result_err_str_retain_overflow, "refcount overflow");
     expect_trap(call_resurrect_live_object, "refcount is not zero");
     expect_trap(call_obj_free_live_object, "refcount is not zero");
     return 0;

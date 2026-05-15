@@ -39,6 +39,7 @@
 #include "rt_string.h"
 #include "rt_threads.h"
 
+#include <stdint.h>
 #include <setjmp.h>
 #include <stdlib.h>
 #include <string.h>
@@ -60,6 +61,10 @@ static void async_release_ref(void **slot) {
     if (rt_obj_release_check0(*slot))
         rt_obj_free(*slot);
     *slot = NULL;
+}
+
+static int async_count_fits_array(int64_t count, size_t elem_size) {
+    return count >= 0 && elem_size > 0 && (uint64_t)count <= (uint64_t)SIZE_MAX / elem_size;
 }
 
 static void async_release_source_array(void **sources, int64_t count) {
@@ -648,6 +653,12 @@ void *rt_async_any(void *futures) {
             rt_obj_free(promise);
         return future;
     }
+    if (!async_count_fits_array(count, sizeof(void *))) {
+        async_promise_error_cstr(promise, "Async.Any: futures count too large");
+        if (rt_obj_release_check0(promise))
+            rt_obj_free(promise);
+        return future;
+    }
 
     async_any_state *state = (async_any_state *)rt_obj_new_i64(0, (int64_t)sizeof(async_any_state));
     if (!state) {
@@ -843,6 +854,13 @@ void *rt_async_all(void *futures) {
         rt_promise_set_owned(promise, results);
         if (rt_obj_release_check0(results))
             rt_obj_free(results);
+        if (rt_obj_release_check0(promise))
+            rt_obj_free(promise);
+        return future;
+    }
+    if (!async_count_fits_array(count, sizeof(void *)) ||
+        !async_count_fits_array(count, sizeof(async_all_listener_ctx *))) {
+        async_promise_error_cstr(promise, "Async.All: futures count too large");
         if (rt_obj_release_check0(promise))
             rt_obj_free(promise);
         return future;
