@@ -65,7 +65,7 @@ static uint64_t achievement_mask_for_capacity(const struct rt_achievement_impl *
 ///          and provides slide-in notification display when achievements unlock.
 rt_achievement rt_achievement_new(int64_t max_achievements) {
     struct rt_achievement_impl *ach = (struct rt_achievement_impl *)rt_obj_new_i64(
-        0, (int64_t)sizeof(struct rt_achievement_impl));
+        RT_ACHIEVEMENT_CLASS_ID, (int64_t)sizeof(struct rt_achievement_impl));
     if (!ach)
         return NULL;
 
@@ -200,16 +200,20 @@ void rt_achievement_set_stat(rt_achievement ach, int64_t stat_id, int64_t value)
 
 /// @brief Update the notification slide-in animation and auto-dismiss timer.
 void rt_achievement_update(rt_achievement ach, int64_t dt) {
-    if (!ach || ach->notify_id < 0)
+    if (!ach || ach->notify_id < 0 || dt <= 0)
         return;
 
-    ach->notify_timer -= dt;
+    if (dt >= ach->notify_timer)
+        ach->notify_timer = 0;
+    else
+        ach->notify_timer -= dt;
 
     // Slide-in animation (first 300ms)
     if (ach->slide_offset > 0) {
-        ach->slide_offset -= dt * 300 / 300; // 300ms slide-in
-        if (ach->slide_offset < 0)
+        if (dt >= ach->slide_offset)
             ach->slide_offset = 0;
+        else
+            ach->slide_offset -= dt;
     }
 
     if (ach->notify_timer <= 0) {

@@ -129,6 +129,21 @@ TEST(query_rect) {
     rt_quadtree_destroy(tree);
 }
 
+TEST(invalid_query_rect_clears_previous_results) {
+    rt_quadtree tree = rt_quadtree_new(0, 0, 1000, 1000);
+
+    ASSERT(rt_quadtree_insert(tree, 7, 100, 100, 20, 20) == 1);
+    ASSERT(rt_quadtree_query_rect(tree, 0, 0, 200, 200) == 1);
+    ASSERT(rt_quadtree_result_count(tree) == 1);
+
+    ASSERT(rt_quadtree_query_rect(tree, 0, 0, 0, 200) == 0);
+    ASSERT(rt_quadtree_result_count(tree) == 0);
+    ASSERT(rt_quadtree_get_result(tree, 0) == -1);
+    ASSERT(rt_quadtree_query_was_truncated(tree) == 0);
+
+    rt_quadtree_destroy(tree);
+}
+
 TEST(query_point) {
     rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000);
 
@@ -139,6 +154,22 @@ TEST(query_point) {
     int64_t count = rt_quadtree_query_point(tree, 100000, 100000, 50000);
     ASSERT(count == 1);
     ASSERT(rt_quadtree_get_result(tree, 0) == 1);
+
+    rt_quadtree_destroy(tree);
+}
+
+TEST(query_point_zero_radius_matches_containing_item) {
+    rt_quadtree tree = rt_quadtree_new(0, 0, 1000, 1000);
+
+    ASSERT(rt_quadtree_insert(tree, 1, 100, 100, 20, 20) == 1);
+
+    int64_t count = rt_quadtree_query_point(tree, 100, 100, 0);
+    ASSERT(count == 1);
+    ASSERT(rt_quadtree_get_result(tree, 0) == 1);
+
+    count = rt_quadtree_query_point(tree, 200, 200, 0);
+    ASSERT(count == 0);
+    ASSERT(rt_quadtree_result_count(tree) == 0);
 
     rt_quadtree_destroy(tree);
 }
@@ -344,7 +375,9 @@ int main() {
     RUN_TEST(overflow_edge_geometry_remains_queryable);
     RUN_TEST(remove);
     RUN_TEST(query_rect);
+    RUN_TEST(invalid_query_rect_clears_previous_results);
     RUN_TEST(query_point);
+    RUN_TEST(query_point_zero_radius_matches_containing_item);
     RUN_TEST(query_point_excludes_corner_false_positive);
     RUN_TEST(update);
     RUN_TEST(update_out_of_bounds_is_transactional);

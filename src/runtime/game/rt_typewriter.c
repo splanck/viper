@@ -127,6 +127,10 @@ void rt_typewriter_say(void *tw, const char *text, int64_t rate_ms) {
     t->accum = 0;
     t->active = 1;
     t->complete = 0;
+    if (t->total_len == 0) {
+        t->active = 0;
+        t->complete = 1;
+    }
 }
 
 /// @brief Advance the typewriter by dt milliseconds. Returns 1 if it just completed.

@@ -22,6 +22,7 @@ struct FakeCanvas {
 
 int g_box_calls = 0;
 int g_text_calls = 0;
+int64_t g_last_class_id = 0;
 const char *g_last_text = nullptr;
 
 void reset_draw_counters() {
@@ -32,7 +33,8 @@ void reset_draw_counters() {
 
 } // namespace
 
-extern "C" void *rt_obj_new_i64(int64_t, int64_t byte_size) {
+extern "C" void *rt_obj_new_i64(int64_t class_id, int64_t byte_size) {
+    g_last_class_id = class_id;
     return std::calloc(1, static_cast<size_t>(byte_size));
 }
 
@@ -87,6 +89,15 @@ static void test_capacity_is_honored() {
     rt_achievement_destroy(ach);
 }
 
+static void test_class_id_is_tagged() {
+    g_last_class_id = 0;
+    rt_achievement ach = rt_achievement_new(1);
+    assert(ach != nullptr);
+    assert(g_last_class_id == RT_ACHIEVEMENT_CLASS_ID);
+
+    rt_achievement_destroy(ach);
+}
+
 static void test_unlock_requires_defined_entry() {
     rt_achievement ach = rt_achievement_new(4);
     assert(ach != nullptr);
@@ -100,6 +111,36 @@ static void test_unlock_requires_defined_entry() {
     assert(rt_achievement_is_unlocked(ach, 0) == 1);
     assert(rt_achievement_unlocked_count(ach) == 1);
     assert(rt_achievement_has_notification(ach) == 1);
+
+    rt_achievement_destroy(ach);
+}
+
+static void test_negative_notification_delta_is_noop() {
+    rt_achievement ach = rt_achievement_new(1);
+    assert(ach != nullptr);
+
+    rt_achievement_add(ach, 0, rt_const_cstr("Unlocked"), rt_const_cstr("Done"));
+    rt_achievement_set_notify_duration(ach, 100);
+    assert(rt_achievement_unlock(ach, 0) == 1);
+
+    rt_achievement_update(ach, -1000);
+    assert(rt_achievement_has_notification(ach) == 1);
+    rt_achievement_update(ach, 100);
+    assert(rt_achievement_has_notification(ach) == 0);
+
+    rt_achievement_destroy(ach);
+}
+
+static void test_large_notification_delta_dismisses() {
+    rt_achievement ach = rt_achievement_new(1);
+    assert(ach != nullptr);
+
+    rt_achievement_add(ach, 0, rt_const_cstr("Unlocked"), rt_const_cstr("Done"));
+    rt_achievement_set_notify_duration(ach, 100);
+    assert(rt_achievement_unlock(ach, 0) == 1);
+
+    rt_achievement_update(ach, INT64_MAX);
+    assert(rt_achievement_has_notification(ach) == 0);
 
     rt_achievement_destroy(ach);
 }
@@ -173,11 +214,14 @@ static void test_highest_bit_unlock_is_supported() {
 }
 
 int main() {
+    test_class_id_is_tagged();
     test_capacity_is_honored();
     test_unlock_requires_defined_entry();
     test_mask_round_trip_clamps_to_capacity();
     test_stat_tracking();
     test_notification_lifetime_and_draw();
+    test_negative_notification_delta_is_noop();
+    test_large_notification_delta_dismisses();
     test_highest_bit_unlock_is_supported();
     std::printf("RTAchievementTests passed.\n");
     return 0;

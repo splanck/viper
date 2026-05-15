@@ -28,6 +28,8 @@
 extern "C" {
 #endif
 
+#define RT_ACHIEVEMENT_CLASS_ID INT64_C(-0x51021A)
+
 typedef struct rt_achievement_impl *rt_achievement;
 
 /// @brief Create an achievement tracker sized for at most @p max_achievements (max 64).

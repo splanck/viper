@@ -84,10 +84,23 @@ static int64_t spriteanim_percent_i64(int64_t value, int64_t total) {
 }
 
 static int8_t rt_spriteanim_advance_one_frame(rt_spriteanim anim) {
-    anim->current_frame += anim->direction;
+    int8_t crossed_end = 0;
+    int8_t crossed_start = 0;
+
+    if (anim->direction > 0) {
+        if (anim->current_frame >= anim->end_frame)
+            crossed_end = 1;
+        else
+            anim->current_frame++;
+    } else {
+        if (anim->current_frame <= anim->start_frame)
+            crossed_start = 1;
+        else
+            anim->current_frame--;
+    }
 
     if (anim->pingpong) {
-        if (anim->direction == 1 && anim->current_frame > anim->end_frame) {
+        if (anim->direction == 1 && crossed_end) {
             anim->direction = -1;
             anim->current_frame = anim->end_frame - 1;
             if (anim->current_frame < anim->start_frame) {
@@ -99,7 +112,7 @@ static int8_t rt_spriteanim_advance_one_frame(rt_spriteanim anim) {
                 }
                 anim->current_frame = anim->start_frame;
             }
-        } else if (anim->direction == -1 && anim->current_frame < anim->start_frame) {
+        } else if (anim->direction == -1 && crossed_start) {
             if (anim->loop) {
                 anim->direction = 1;
                 anim->current_frame = anim->start_frame + 1;
@@ -112,7 +125,7 @@ static int8_t rt_spriteanim_advance_one_frame(rt_spriteanim anim) {
                 return 1;
             }
         }
-    } else if (anim->current_frame > anim->end_frame) {
+    } else if (crossed_end) {
         if (anim->loop) {
             anim->current_frame = anim->start_frame;
         } else {
@@ -156,7 +169,8 @@ rt_spriteanim rt_spriteanim_new(void) {
 /// @brief Release resources and destroy the spriteanim.
 void rt_spriteanim_destroy(rt_spriteanim anim) {
     anim = checked_spriteanim(anim, "SpriteAnimation.Destroy: expected Viper.Game.SpriteAnimation");
-    (void)anim;
+    if (anim && rt_obj_release_check0(anim))
+        rt_obj_free(anim);
 }
 
 void rt_spriteanim_setup(rt_spriteanim anim,

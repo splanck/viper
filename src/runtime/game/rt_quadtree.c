@@ -554,8 +554,8 @@ rt_quadtree rt_quadtree_new(int64_t x, int64_t y, int64_t width, int64_t height)
 /// @brief Release resources and destroy the quadtree.
 void rt_quadtree_destroy(rt_quadtree tree) {
     tree = checked_quadtree(tree, "Quadtree.Destroy: expected Viper.Game.Quadtree");
-    // Object is GC-managed; finalizer frees internal nodes.
-    (void)tree;
+    if (tree && rt_obj_release_check0(tree))
+        rt_obj_free(tree);
 }
 
 /// @brief Remove all entries from the quadtree.
@@ -707,11 +707,12 @@ int64_t rt_quadtree_query_rect(
     tree = checked_quadtree(tree, "Quadtree.QueryRect: expected Viper.Game.Quadtree");
     if (!tree)
         return 0;
-    if (width <= 0 || height <= 0)
-        return 0;
 
     tree->result_count = 0;
     tree->query_truncated = 0;
+    if (width <= 0 || height <= 0)
+        return 0;
+
     query_node(tree, tree->root, x, y, width, height);
     return tree->result_count;
 }
@@ -730,11 +731,9 @@ int64_t rt_quadtree_query_point(rt_quadtree tree, int64_t x, int64_t y, int64_t 
     if (radius < 0)
         radius = 0;
 
-    rt_quadtree_query_rect(tree,
-                           qt_saturating_sub(x, radius),
-                           qt_saturating_sub(y, radius),
-                           qt_saturating_mul(radius, 2),
-                           qt_saturating_mul(radius, 2));
+    int64_t diameter = radius == 0 ? 1 : qt_saturating_mul(radius, 2);
+    rt_quadtree_query_rect(
+        tree, qt_saturating_sub(x, radius), qt_saturating_sub(y, radius), diameter, diameter);
 
     int64_t filtered_count = 0;
     for (int64_t i = 0; i < tree->result_count; i++) {

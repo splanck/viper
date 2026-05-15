@@ -298,7 +298,8 @@ void rt_tween_pause(rt_tween tween) {
     tween = checked_tween(tween, "Tween.Pause: expected Viper.Game.Tween");
     if (!tween)
         return;
-    tween->paused = 1;
+    if (tween->running && !tween->complete)
+        tween->paused = 1;
 }
 
 /// @brief Resume a paused tween from where it left off.

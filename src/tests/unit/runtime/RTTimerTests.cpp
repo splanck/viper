@@ -26,6 +26,7 @@ static void test_create_and_destroy() {
     assert(rt_timer_elapsed(timer) == 0);
     assert(rt_timer_remaining(timer) == 0);
     assert(rt_timer_duration(timer) == 0);
+    assert(rt_timer_is_expired(timer) == 0);
 
     rt_timer_destroy(timer);
 }
@@ -127,6 +128,7 @@ static void test_stop() {
 
     assert(rt_timer_is_running(timer) == 0);
     assert(rt_timer_elapsed(timer) == 2); // Preserved
+    assert(rt_timer_is_expired(timer) == 0);
 
     // Updates should do nothing when stopped
     rt_timer_update(timer);
@@ -153,6 +155,7 @@ static void test_reset() {
     assert(rt_timer_elapsed(timer) == 0);
     assert(rt_timer_is_running(timer) == 1); // Still running
     assert(rt_timer_remaining(timer) == 100);
+    assert(rt_timer_is_expired(timer) == 0);
 
     rt_timer_destroy(timer);
 }
@@ -176,6 +179,7 @@ static void test_repeating_timer() {
     // Should still be running and elapsed reset to 0
     assert(rt_timer_is_running(timer) == 1);
     assert(rt_timer_elapsed(timer) == 0);
+    assert(rt_timer_is_expired(timer) == 0);
 
     // Second cycle
     assert(rt_timer_update(timer) == 0); // 1
@@ -185,6 +189,25 @@ static void test_repeating_timer() {
     assert(rt_timer_update(timer) == 1); // 5 - fires again
 
     assert(rt_timer_is_running(timer) == 1);
+    assert(rt_timer_is_expired(timer) == 0);
+
+    rt_timer_destroy(timer);
+}
+
+static void test_restart_clears_expired() {
+    printf("  test_restart_clears_expired...\n");
+
+    rt_timer timer = rt_timer_new();
+    assert(timer != nullptr);
+
+    rt_timer_start(timer, 1);
+    assert(rt_timer_update(timer) == 1);
+    assert(rt_timer_is_expired(timer) == 1);
+
+    rt_timer_start(timer, 3);
+    assert(rt_timer_is_expired(timer) == 0);
+    assert(rt_timer_is_running(timer) == 1);
+    assert(rt_timer_remaining(timer) == 3);
 
     rt_timer_destroy(timer);
 }
@@ -301,6 +324,7 @@ static void test_repeating_ms_preserves_large_overshoot() {
     assert(rt_timer_update_ms(timer, 450) == 1);
     assert(rt_timer_elapsed_ms(timer) == 50);
     assert(rt_timer_remaining_ms(timer) == 50);
+    assert(rt_timer_is_expired(timer) == 0);
 
     rt_timer_destroy(timer);
 }
@@ -315,6 +339,7 @@ int main() {
     test_stop();
     test_reset();
     test_repeating_timer();
+    test_restart_clears_expired();
     test_non_repeating_timer();
     test_set_duration();
     test_animation_use_case();

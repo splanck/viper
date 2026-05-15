@@ -92,6 +92,26 @@ TEST(pause_resume) {
     rt_tween_destroy(tw);
 }
 
+TEST(pause_only_marks_active_tween) {
+    rt_tween tw = rt_tween_new();
+    ASSERT(tw != NULL);
+
+    rt_tween_pause(tw);
+    ASSERT(rt_tween_is_paused(tw) == 0);
+
+    rt_tween_start(tw, 0.0, 1.0, 1, RT_EASE_LINEAR);
+    ASSERT(rt_tween_update(tw) == 1);
+    ASSERT(rt_tween_is_complete(tw) == 1);
+    rt_tween_pause(tw);
+    ASSERT(rt_tween_is_paused(tw) == 0);
+
+    rt_tween_start(tw, 0.0, 1.0, 2, RT_EASE_LINEAR);
+    rt_tween_pause(tw);
+    ASSERT(rt_tween_is_paused(tw) == 1);
+
+    rt_tween_destroy(tw);
+}
+
 TEST(stop_reset) {
     rt_tween tw = rt_tween_new();
     rt_tween_start(tw, 0.0, 100.0, 10, RT_EASE_LINEAR);
@@ -144,6 +164,7 @@ int main() {
     RUN_TEST(start_linear);
     RUN_TEST(start_i64);
     RUN_TEST(pause_resume);
+    RUN_TEST(pause_only_marks_active_tween);
     RUN_TEST(stop_reset);
     RUN_TEST(ease_functions);
     RUN_TEST(lerp_i64);

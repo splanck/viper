@@ -49,6 +49,7 @@ struct rt_timer_impl {
     int8_t running;   // 1 if timer is running
     int8_t repeating; // 1 if timer auto-restarts
     int8_t ms_mode;   // 1 if using millisecond-based timing
+    int8_t expired;   // 1 if a one-shot timer completed
 };
 
 static rt_timer checked_timer(rt_timer timer, const char *api) {
@@ -90,6 +91,7 @@ rt_timer rt_timer_new(void) {
     timer->running = 0;
     timer->repeating = 0;
     timer->ms_mode = 0;
+    timer->expired = 0;
 
     return timer;
 }
@@ -111,6 +113,8 @@ void rt_timer_start(rt_timer timer, int64_t frames) {
     timer->elapsed = 0;
     timer->running = 1;
     timer->repeating = 0;
+    timer->ms_mode = 0;
+    timer->expired = 0;
 }
 
 /// @brief Start a repeating timer that auto-restarts when it expires.
@@ -123,6 +127,8 @@ void rt_timer_start_repeating(rt_timer timer, int64_t frames) {
     timer->elapsed = 0;
     timer->running = 1;
     timer->repeating = 1;
+    timer->ms_mode = 0;
+    timer->expired = 0;
 }
 
 /// @brief Stop the timer (elapsed value is preserved for queries).
@@ -131,6 +137,7 @@ void rt_timer_stop(rt_timer timer) {
     if (!timer)
         return;
     timer->running = 0;
+    timer->expired = 0;
 }
 
 /// @brief Reset the elapsed counter to zero without changing running/repeating state.
@@ -139,6 +146,7 @@ void rt_timer_reset(rt_timer timer) {
     if (!timer)
         return;
     timer->elapsed = 0;
+    timer->expired = 0;
 }
 
 /// @brief Advance the timer by one tick. Returns 1 if the timer expired this tick.
@@ -156,6 +164,7 @@ int8_t rt_timer_update(rt_timer timer) {
             timer->elapsed = 0;
         } else {
             timer->running = 0;
+            timer->expired = 1;
         }
         return 1; // Timer expired this frame
     }
@@ -174,7 +183,7 @@ int8_t rt_timer_is_expired(rt_timer timer) {
     timer = checked_timer(timer, "Timer.IsExpired: expected Viper.Game.Timer");
     if (!timer)
         return 0;
-    return (!timer->running && timer->elapsed >= timer->duration) ? 1 : 0;
+    return timer->expired ? 1 : 0;
 }
 
 /// @brief Get the number of ticks elapsed since the timer was started.
@@ -222,6 +231,8 @@ void rt_timer_set_duration(rt_timer timer, int64_t frames) {
     if (!timer || frames <= 0)
         return;
     timer->duration = frames;
+    if (timer->elapsed < timer->duration)
+        timer->expired = 0;
 }
 
 // =========================================================================
@@ -239,6 +250,7 @@ void rt_timer_start_ms(rt_timer timer, int64_t duration_ms) {
     timer->running = 1;
     timer->repeating = 0;
     timer->ms_mode = 1;
+    timer->expired = 0;
 }
 
 /// @brief Start a repeating millisecond-based timer that fires every @p interval_ms.
@@ -251,6 +263,7 @@ void rt_timer_start_repeating_ms(rt_timer timer, int64_t interval_ms) {
     timer->running = 1;
     timer->repeating = 1;
     timer->ms_mode = 1;
+    timer->expired = 0;
 }
 
 /// @brief Advance an ms-mode timer by @p dt milliseconds. Returns 1 on the tick it expires.
@@ -271,6 +284,7 @@ int8_t rt_timer_update_ms(rt_timer timer, int64_t dt) {
         } else {
             timer->elapsed = timer->duration;
             timer->running = 0;
+            timer->expired = 1;
         }
         return 1; // Timer expired this update
     }

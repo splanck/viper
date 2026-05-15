@@ -5,6 +5,7 @@
 
 #include "rt_collision.h"
 #include <cassert>
+#include <cfloat>
 #include <cmath>
 #include <cstdio>
 
@@ -78,6 +79,16 @@ TEST(rect_move) {
     rt_collision_rect_move(r, 10.0, -5.0);
     ASSERT_NEAR(rt_collision_rect_x(r), 60.0, 0.001);
     ASSERT_NEAR(rt_collision_rect_y(r), 45.0, 0.001);
+    rt_collision_rect_destroy(r);
+}
+
+TEST(rect_move_rejects_overflowed_position) {
+    rt_collision_rect r = rt_collision_rect_new(DBL_MAX, DBL_MAX, 10.0, 10.0);
+
+    rt_collision_rect_move(r, DBL_MAX, 0.0);
+    ASSERT(rt_collision_rect_x(r) == DBL_MAX);
+    ASSERT(rt_collision_rect_y(r) == DBL_MAX);
+
     rt_collision_rect_destroy(r);
 }
 
@@ -174,6 +185,12 @@ TEST(distance) {
     ASSERT_NEAR(rt_collision_distance(0, 0, 0, 0), 0.0, 0.001);
 }
 
+TEST(distance_handles_large_finite_points) {
+    double d = rt_collision_distance(DBL_MAX / 2.0, 0.0, 0.0, 0.0);
+    ASSERT(std::isfinite(d));
+    ASSERT(d > DBL_MAX / 3.0);
+}
+
 TEST(distance_squared) {
     ASSERT_NEAR(rt_collision_distance_squared(0, 0, 3, 4), 25.0, 0.001);
 }
@@ -189,6 +206,7 @@ int main() {
     RUN_TEST(rect_set_position);
     RUN_TEST(rect_set_center);
     RUN_TEST(rect_move);
+    RUN_TEST(rect_move_rejects_overflowed_position);
     RUN_TEST(rect_contains_point);
     RUN_TEST(rect_overlaps);
     RUN_TEST(rect_overlap_depth);
@@ -202,6 +220,7 @@ int main() {
     RUN_TEST(point_in_circle);
     RUN_TEST(circle_rect);
     RUN_TEST(distance);
+    RUN_TEST(distance_handles_large_finite_points);
     RUN_TEST(distance_squared);
 
     printf("\n%d tests passed, %d tests failed\n", tests_passed, tests_failed);

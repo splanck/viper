@@ -42,6 +42,22 @@ TEST(Typewriter, LargeDeltaCompletesAndClampsProgress) {
     rt_typewriter_destroy(tw);
 }
 
+TEST(Typewriter, EmptyTextCompletesImmediately) {
+    rt_typewriter tw = rt_typewriter_new();
+    rt_typewriter_say(tw, "", 10);
+
+    EXPECT_FALSE(rt_typewriter_is_active(tw));
+    EXPECT_TRUE(rt_typewriter_is_complete(tw));
+    EXPECT_EQ(rt_typewriter_char_count(tw), 0);
+    EXPECT_EQ(rt_typewriter_total_chars(tw), 0);
+    EXPECT_FALSE(rt_typewriter_update(tw, 10));
+
+    rt_string visible = rt_typewriter_get_visible_text(tw);
+    EXPECT_EQ(std::strcmp(rt_string_cstr(visible), ""), 0);
+
+    rt_typewriter_destroy(tw);
+}
+
 int main() {
     return viper_test::run_all_tests();
 }

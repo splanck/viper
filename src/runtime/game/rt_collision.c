@@ -190,8 +190,12 @@ void rt_collision_rect_move(rt_collision_rect rect, double dx, double dy) {
     rect = checked_collision_rect(rect, "CollisionRect.Move: expected Viper.Game.CollisionRect");
     if (!rect || !isfinite(dx) || !isfinite(dy))
         return;
-    rect->x += dx;
-    rect->y += dy;
+    double x = rect->x + dx;
+    double y = rect->y + dy;
+    if (!isfinite(x) || !isfinite(y))
+        return;
+    rect->x = x;
+    rect->y = y;
 }
 
 /// @brief Test whether a point (px, py) lies inside the collision rectangle.
@@ -403,7 +407,7 @@ double rt_collision_distance(double x1, double y1, double x2, double y2) {
         return 0.0;
     double dx = x2 - x1;
     double dy = y2 - y1;
-    return sqrt(dx * dx + dy * dy);
+    return hypot(dx, dy);
 }
 
 /// @brief Compute the squared Euclidean distance between two points.

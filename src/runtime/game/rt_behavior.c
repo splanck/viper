@@ -33,6 +33,20 @@
 #define BHV_SINE_FLOAT (1u << 6)
 #define BHV_ANIM_LOOP (1u << 7)
 
+static int8_t behavior_target_in_chase_range(int64_t entity_x,
+                                             int64_t entity_y,
+                                             int64_t target_x,
+                                             int64_t target_y,
+                                             int64_t range) {
+    if (range <= 0)
+        return 0;
+    long double dx = (long double)target_x - (long double)entity_x;
+    long double dy = (long double)target_y - (long double)entity_y;
+    long double dist2 = dx * dx + dy * dy;
+    long double range2 = (long double)range * (long double)range;
+    return (dist2 <= range2 && dist2 > 0.0L) ? 1 : 0;
+}
+
 typedef struct {
     uint32_t flags;
 
@@ -190,12 +204,8 @@ void rt_behavior_update(
     if (f & BHV_CHASE) {
         int64_t ex = rt_entity_get_x(entity) / 100; // Convert to pixels
         int64_t ey = rt_entity_get_y(entity) / 100;
-        int64_t dx = target_x - ex;
-        int64_t dy = target_y - ey;
-        int64_t dist2 = dx * dx + dy * dy;
-        int64_t range2 = b->chase_range * b->chase_range;
-        if (dist2 <= range2 && dist2 > 0) {
-            if (dx > 0) {
+        if (behavior_target_in_chase_range(ex, ey, target_x, target_y, b->chase_range)) {
+            if (target_x > ex) {
                 rt_entity_set_vx(entity, b->chase_speed);
                 rt_entity_set_dir(entity, 1);
             } else {

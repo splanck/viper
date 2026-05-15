@@ -4,7 +4,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_spriteanim.h"
+#include "rt_particle.h"
 #include <cassert>
+#include <cstdint>
 #include <cmath>
 #include <cstdio>
 
@@ -35,6 +37,10 @@ TEST(create_destroy) {
     ASSERT(rt_spriteanim_is_playing(sa) == 0);
     ASSERT(rt_spriteanim_frame(sa) == 0);
     rt_spriteanim_destroy(sa);
+}
+
+TEST(class_id_does_not_alias_particle_snapshot) {
+    ASSERT(RT_SPRITEANIM_CLASS_ID != RT_PARTICLE_SNAPSHOT_CLASS_ID);
 }
 
 TEST(setup) {
@@ -106,6 +112,23 @@ TEST(one_shot) {
     ASSERT(rt_spriteanim_update(sa) == 1); // Finished
     ASSERT(rt_spriteanim_is_finished(sa) == 1);
     ASSERT(rt_spriteanim_frame(sa) == 1); // Stay at last frame
+    rt_spriteanim_destroy(sa);
+}
+
+TEST(one_shot_handles_int64_max_end_frame) {
+    rt_spriteanim sa = rt_spriteanim_new();
+    rt_spriteanim_setup(sa, INT64_MAX - 1, INT64_MAX, 1);
+    rt_spriteanim_set_loop(sa, 0);
+    rt_spriteanim_play(sa);
+
+    ASSERT(rt_spriteanim_update(sa) == 0);
+    ASSERT(rt_spriteanim_frame(sa) == INT64_MAX);
+    ASSERT(rt_spriteanim_is_finished(sa) == 0);
+
+    ASSERT(rt_spriteanim_update(sa) == 1);
+    ASSERT(rt_spriteanim_frame(sa) == INT64_MAX);
+    ASSERT(rt_spriteanim_is_finished(sa) == 1);
+
     rt_spriteanim_destroy(sa);
 }
 
@@ -249,11 +272,13 @@ TEST(nonfinite_speed_is_clamped_to_zero) {
 int main() {
     printf("RTSpriteAnimTests:\n");
     RUN_TEST(create_destroy);
+    RUN_TEST(class_id_does_not_alias_particle_snapshot);
     RUN_TEST(setup);
     RUN_TEST(play_stop);
     RUN_TEST(update_frames);
     RUN_TEST(loop);
     RUN_TEST(one_shot);
+    RUN_TEST(one_shot_handles_int64_max_end_frame);
     RUN_TEST(pingpong);
     RUN_TEST(pause_resume);
     RUN_TEST(speed);

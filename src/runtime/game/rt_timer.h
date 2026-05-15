@@ -5,12 +5,14 @@
 //
 // File: src/runtime/game/rt_timer.h
 // Purpose: Frame-based countdown timer using frame counts rather than wall-clock time, with
-// expiration as a one-shot edge flag and progress as an integer percentage.
+// update-time expiration edges, completion state, and progress as an integer percentage.
 //
 // Key invariants:
 //   - Duration is measured in frames; must be >= 1.
 //   - rt_timer_update must be called once per frame.
-//   - Expiration is a one-shot edge: returns 1 only on the expiring frame.
+//   - Update returns a one-shot expiration edge on the expiring frame.
+//   - IsExpired is a completion latch for one-shot timers, cleared by restart,
+//     reset, or stop.
 //   - Progress is reported as an integer percentage in [0, 100].
 //
 // Ownership/Lifetime:
@@ -88,11 +90,10 @@ int8_t rt_timer_update(rt_timer timer);
 ///   0 if stopped.
 int8_t rt_timer_is_running(rt_timer timer);
 
-/// @brief Queries whether the timer has reached its expiration point.
+/// @brief Queries whether the timer completed a one-shot countdown.
 /// @param timer The timer to query.
-/// @return 1 if the timer has expired (elapsed >= duration), 0 otherwise.
-///   For repeating timers, this may only be briefly true before the timer
-///   auto-restarts.
+/// @return 1 only after a one-shot timer ran to completion. Timers that were
+///   never started, stopped early, reset, restarted, or repeating return 0.
 int8_t rt_timer_is_expired(rt_timer timer);
 
 /// @brief Retrieves the number of frames elapsed since the timer was

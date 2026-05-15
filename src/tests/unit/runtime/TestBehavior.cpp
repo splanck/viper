@@ -4,6 +4,8 @@
 
 #include "tests/TestHarness.hpp"
 
+#include <cstdint>
+
 extern "C" {
 #include "rt_behavior.h"
 #include "rt_entity.h"
@@ -72,6 +74,16 @@ TEST(Behavior, NegativeDeltaIsNoOp) {
     rt_behavior_update(b, e, nullptr, 0, 0, -16);
     EXPECT_EQ(rt_entity_get_x(e), 10000);
     EXPECT_EQ(rt_entity_get_vx(e), 0);
+}
+
+TEST(Behavior, ChaseIgnoresOverflowDistance) {
+    void *e = rt_entity_new(0, 0, 16, 16);
+    void *b = rt_behavior_new();
+    rt_behavior_add_chase(b, 500, 100);
+
+    rt_behavior_update(b, e, nullptr, INT64_MAX, 0, 16);
+    EXPECT_EQ(rt_entity_get_vx(e), 0);
+    EXPECT_EQ(rt_entity_get_x(e), 0);
 }
 
 TEST(Behavior, CombinedPatrolGravity) {

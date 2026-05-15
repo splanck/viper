@@ -29,7 +29,7 @@
 extern "C" {
 #endif
 
-#define RT_SPRITEANIM_CLASS_ID INT64_C(-0x510205)
+#define RT_SPRITEANIM_CLASS_ID INT64_C(-0x510219)
 
 /// Opaque handle to a SpriteAnimation instance.
 typedef struct rt_spriteanim_impl *rt_spriteanim;
