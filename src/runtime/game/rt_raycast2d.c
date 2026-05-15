@@ -29,6 +29,9 @@
 /// @brief Test whether a line segment intersects an axis-aligned rectangle (Liang-Barsky).
 int8_t rt_collision_line_rect(
     double x1, double y1, double x2, double y2, double rx, double ry, double rw, double rh) {
+    if (!isfinite(x1) || !isfinite(y1) || !isfinite(x2) || !isfinite(y2) || !isfinite(rx) ||
+        !isfinite(ry) || !isfinite(rw) || !isfinite(rh) || rw < 0.0 || rh < 0.0)
+        return 0;
     double dx = x2 - x1;
     double dy = y2 - y1;
     double p[4] = {-dx, dx, -dy, dy};
@@ -123,6 +126,48 @@ static int8_t clip_axis(long double p, long double q, long double *t0, long doub
     return 1;
 }
 
+static int8_t raycast_check_tile(void *tilemap,
+                                 int64_t tile_x,
+                                 int64_t tile_y,
+                                 int64_t mw_tiles,
+                                 int64_t mh_tiles,
+                                 int64_t tw,
+                                 int64_t th,
+                                 int64_t x1,
+                                 int64_t y1,
+                                 long double full_dx,
+                                 long double full_dy,
+                                 long double current_t,
+                                 int64_t *hit_x,
+                                 int64_t *hit_y) {
+    if (tile_x < 0 || tile_x >= mw_tiles || tile_y < 0 || tile_y >= mh_tiles)
+        return 0;
+    int64_t sample_x = tile_x * tw;
+    int64_t sample_y = tile_y * th;
+    if (!rt_tilemap_is_solid_at(tilemap, sample_x, sample_y))
+        return 0;
+
+    int64_t hx = clamp_ld_to_i64((long double)x1 + full_dx * current_t);
+    int64_t hy = clamp_ld_to_i64((long double)y1 + full_dy * current_t);
+    int64_t min_x = tile_x * tw;
+    int64_t min_y = tile_y * th;
+    int64_t max_x = min_x + tw - 1;
+    int64_t max_y = min_y + th - 1;
+    if (hx < min_x)
+        hx = min_x;
+    if (hx > max_x)
+        hx = max_x;
+    if (hy < min_y)
+        hy = min_y;
+    if (hy > max_y)
+        hy = max_y;
+    if (hit_x)
+        *hit_x = hx;
+    if (hit_y)
+        *hit_y = hy;
+    return 1;
+}
+
 /// @brief Cast a ray through a tilemap and return the first solid tile hit.
 /// @details Clips the segment to the finite map bounds, then uses tile DDA so
 ///          long rays traverse touched tiles rather than a capped pixel sample.
@@ -206,32 +251,64 @@ int8_t rt_raycast_tilemap(
 
     long double current_t = t0;
     while (tile_x >= 0 && tile_x < mw_tiles && tile_y >= 0 && tile_y < mh_tiles) {
-        int64_t sample_x = tile_x * tw;
-        int64_t sample_y = tile_y * th;
-        if (rt_tilemap_is_solid_at(tilemap, sample_x, sample_y)) {
-            int64_t hx = clamp_ld_to_i64((long double)x1 + full_dx * current_t);
-            int64_t hy = clamp_ld_to_i64((long double)y1 + full_dy * current_t);
-            int64_t min_x = tile_x * tw;
-            int64_t min_y = tile_y * th;
-            int64_t max_x = min_x + tw - 1;
-            int64_t max_y = min_y + th - 1;
-            if (hx < min_x)
-                hx = min_x;
-            if (hx > max_x)
-                hx = max_x;
-            if (hy < min_y)
-                hy = min_y;
-            if (hy > max_y)
-                hy = max_y;
-            if (hit_x)
-                *hit_x = hx;
-            if (hit_y)
-                *hit_y = hy;
+        if (raycast_check_tile(tilemap,
+                               tile_x,
+                               tile_y,
+                               mw_tiles,
+                               mh_tiles,
+                               tw,
+                               th,
+                               x1,
+                               y1,
+                               full_dx,
+                               full_dy,
+                               current_t,
+                               hit_x,
+                               hit_y)) {
             return 1;
         }
         if (tile_x == end_tx && tile_y == end_ty)
             break;
-        if (t_max_x < t_max_y) {
+        if (step_x != 0 && step_y != 0 && fabsl(t_max_x - t_max_y) <= 1e-18L) {
+            long double corner_t = t_max_x;
+            if (corner_t > t1 + 1e-12L)
+                break;
+            if (raycast_check_tile(tilemap,
+                                   tile_x + step_x,
+                                   tile_y,
+                                   mw_tiles,
+                                   mh_tiles,
+                                   tw,
+                                   th,
+                                   x1,
+                                   y1,
+                                   full_dx,
+                                   full_dy,
+                                   corner_t,
+                                   hit_x,
+                                   hit_y) ||
+                raycast_check_tile(tilemap,
+                                   tile_x,
+                                   tile_y + step_y,
+                                   mw_tiles,
+                                   mh_tiles,
+                                   tw,
+                                   th,
+                                   x1,
+                                   y1,
+                                   full_dx,
+                                   full_dy,
+                                   corner_t,
+                                   hit_x,
+                                   hit_y)) {
+                return 1;
+            }
+            tile_x += step_x;
+            tile_y += step_y;
+            current_t = corner_t;
+            t_max_x += t_delta_x;
+            t_max_y += t_delta_y;
+        } else if (t_max_x < t_max_y) {
             tile_x += step_x;
             current_t = t_max_x;
             t_max_x += t_delta_x;
