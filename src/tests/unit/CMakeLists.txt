@@ -1507,6 +1507,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_threadpool PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
     viper_add_ctest(test_rt_threadpool test_rt_threadpool)
 
+    viper_add_test(test_rt_handle_validation ${VIPER_TESTS_DIR}/runtime/RTHandleValidationTests.cpp)
+    target_link_libraries(test_rt_handle_validation PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
+    viper_add_ctest(test_rt_handle_validation test_rt_handle_validation)
+
     viper_add_test(test_rt_concurrency ${VIPER_TESTS_DIR}/runtime/RTConcurrencyTests.cpp)
     target_link_libraries(test_rt_concurrency PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
     viper_add_ctest(test_rt_concurrency test_rt_concurrency)

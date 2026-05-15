@@ -119,7 +119,7 @@ static void cancellation_release_object(void *obj) {
 static rt_cancellation_data *cancellation_require(void *token) {
     if (!token)
         return NULL;
-    if (rt_obj_class_id(token) != RT_CANCELLATION_CLASS_ID) {
+    if (!rt_obj_is_instance(token, RT_CANCELLATION_CLASS_ID, sizeof(rt_cancellation_data))) {
         rt_trap("CancelToken: invalid object");
         return NULL;
     }

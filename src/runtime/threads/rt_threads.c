@@ -100,7 +100,7 @@ static uint32_t thread_handle_magic(void *obj) {
 ///          stale, wrong-class, or freed-and-reused handles before
 ///          dereferencing. Returns 0 for any of those conditions.
 static int is_safe_thread_handle(void *obj) {
-    return rt_obj_class_id(obj) == RT_SAFE_THREAD_CLASS_ID &&
+    return rt_obj_is_instance(obj, RT_SAFE_THREAD_CLASS_ID, sizeof(SafeThreadCtx)) &&
            thread_handle_magic(obj) == RT_SAFE_THREAD_MAGIC;
 }
 
@@ -108,10 +108,7 @@ static int is_safe_thread_handle(void *obj) {
 /// @details Companion to is_safe_thread_handle for the standard
 ///          (non-trap-isolating) Thread class. Same NULL / stale /
 ///          wrong-class rejection semantics.
-static int is_regular_thread_handle(void *obj) {
-    return rt_obj_class_id(obj) == RT_THREAD_CLASS_ID &&
-           thread_handle_magic(obj) == RT_THREAD_MAGIC;
-}
+static int is_regular_thread_handle(void *obj);
 
 /// @brief Release a retained Thread/SafeThread object and free it on last release.
 static void thread_release_object(void *obj) {
@@ -160,6 +157,11 @@ typedef struct RtThread {
     void *arg;                ///< Argument to entry function.
     int8_t owns_arg;          ///< 1 when arg is a retained runtime object.
 } RtThread;
+
+static int is_regular_thread_handle(void *obj) {
+    return rt_obj_is_instance(obj, RT_THREAD_CLASS_ID, sizeof(RtThread)) &&
+           thread_handle_magic(obj) == RT_THREAD_MAGIC;
+}
 
 /// @brief Global counter for assigning unique thread IDs.
 static volatile LONG64 g_next_thread_id_win = 1;
@@ -535,6 +537,11 @@ typedef struct RtThread {
     int8_t owns_arg;            ///< 1 when arg is a retained runtime object.
     int8_t cond_uses_monotonic; ///< 1 when cv uses monotonic timed waits.
 } RtThread;
+
+static int is_regular_thread_handle(void *obj) {
+    return rt_obj_is_instance(obj, RT_THREAD_CLASS_ID, sizeof(RtThread)) &&
+           thread_handle_magic(obj) == RT_THREAD_MAGIC;
+}
 
 /// @brief Global counter for assigning unique thread IDs.
 ///

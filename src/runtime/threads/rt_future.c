@@ -94,6 +94,32 @@ typedef struct future_listener {
     struct future_listener *next;
 } future_listener;
 
+static promise_impl *promise_require(void *obj, int8_t trap_on_null) {
+    if (!obj) {
+        if (trap_on_null)
+            rt_trap("Promise: null object");
+        return NULL;
+    }
+    if (!rt_obj_is_instance(obj, RT_PROMISE_CLASS_ID, sizeof(promise_impl))) {
+        rt_trap("Promise: invalid object");
+        return NULL;
+    }
+    return (promise_impl *)obj;
+}
+
+static future_impl *future_require(void *obj, int8_t trap_on_null) {
+    if (!obj) {
+        if (trap_on_null)
+            rt_trap("Future: null object");
+        return NULL;
+    }
+    if (!rt_obj_is_instance(obj, RT_FUTURE_CLASS_ID, sizeof(future_impl))) {
+        rt_trap("Future: invalid object");
+        return NULL;
+    }
+    return (future_impl *)obj;
+}
+
 /// @brief Release a retained Future / Promise / value reference; free when refcount hits zero.
 /// @details Common ownership-discipline helper used by paths that take a
 ///          temporary ref for the duration of an async wait. NULL @p obj
@@ -383,13 +409,10 @@ void *rt_promise_new(void) {
 
 /// @brief Get the Future associated with this Promise (the read-side of the async result).
 void *rt_promise_get_future(void *obj) {
-    if (!obj)
-        rt_trap("Promise: null object");
-    if (rt_obj_class_id(obj) != RT_PROMISE_CLASS_ID)
-        rt_trap("Promise: invalid object");
+    promise_impl *p = promise_require(obj, 1);
+    if (!p)
+        return NULL;
     rt_obj_retain_maybe(obj);
-
-    promise_impl *p = (promise_impl *)obj;
 
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
@@ -459,13 +482,10 @@ static void future_finalizer(void *obj) {
 
 /// @brief Set a value in the promise, retaining runtime-managed values until consumed/finalized.
 void rt_promise_set(void *obj, void *value) {
-    if (!obj)
-        rt_trap("Promise: null object");
-    if (rt_obj_class_id(obj) != RT_PROMISE_CLASS_ID)
-        rt_trap("Promise: invalid object");
+    promise_impl *p = promise_require(obj, 1);
+    if (!p)
+        return;
     rt_obj_retain_maybe(obj);
-
-    promise_impl *p = (promise_impl *)obj;
 
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
@@ -507,13 +527,10 @@ void rt_promise_set(void *obj, void *value) {
 /// @brief Resolve the promise with a value the runtime should retain. Kept as an explicit alias for
 /// callers that want to document ownership; `rt_promise_set` now has the same retain semantics.
 void rt_promise_set_owned(void *obj, void *value) {
-    if (!obj)
-        rt_trap("Promise: null object");
-    if (rt_obj_class_id(obj) != RT_PROMISE_CLASS_ID)
-        rt_trap("Promise: invalid object");
+    promise_impl *p = promise_require(obj, 1);
+    if (!p)
+        return;
     rt_obj_retain_maybe(obj);
-
-    promise_impl *p = (promise_impl *)obj;
 
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
@@ -557,13 +574,10 @@ void rt_promise_set_owned(void *obj, void *value) {
 ///          It is intended for async callback results where the callback's
 ///          returned reference is handed directly to the Future.
 void rt_promise_set_transferred(void *obj, void *value) {
-    if (!obj)
-        rt_trap("Promise: null object");
-    if (rt_obj_class_id(obj) != RT_PROMISE_CLASS_ID)
-        rt_trap("Promise: invalid object");
+    promise_impl *p = promise_require(obj, 1);
+    if (!p)
+        return;
     rt_obj_retain_maybe(obj);
-
-    promise_impl *p = (promise_impl *)obj;
 
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
@@ -602,12 +616,9 @@ void rt_promise_set_transferred(void *obj, void *value) {
 
 /// @brief Complete the promise with an error; wakes all waiting futures.
 void rt_promise_set_error(void *obj, rt_string error) {
-    if (!obj)
-        rt_trap("Promise: null object");
-    if (rt_obj_class_id(obj) != RT_PROMISE_CLASS_ID)
-        rt_trap("Promise: invalid object");
-
-    promise_impl *p = (promise_impl *)obj;
+    promise_impl *p = promise_require(obj, 1);
+    if (!p)
+        return;
     rt_string stored_error = NULL;
     if (error) {
         const char *err_str = rt_string_cstr(error);
@@ -657,13 +668,10 @@ void rt_promise_set_error(void *obj, rt_string error) {
 
 /// @brief Check whether the promise has been completed (either Ok or Error).
 int8_t rt_promise_is_done(void *obj) {
-    if (!obj)
+    promise_impl *p = promise_require(obj, 0);
+    if (!p)
         return 0;
-    if (rt_obj_class_id(obj) != RT_PROMISE_CLASS_ID)
-        rt_trap("Promise: invalid object");
     rt_obj_retain_maybe(obj);
-
-    promise_impl *p = (promise_impl *)obj;
 
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
@@ -685,13 +693,11 @@ int8_t rt_promise_is_done(void *obj) {
 
 /// @brief Block until the Future has a value and return it (traps if the Future resolved to error).
 void *rt_future_get(void *obj) {
-    if (!obj)
-        rt_trap("Future: null object");
-    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
-        rt_trap("Future: invalid object");
+    future_impl *f = future_require(obj, 1);
+    if (!f)
+        return NULL;
     rt_obj_retain_maybe(obj);
 
-    future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
     void *result = NULL;
     rt_string error = NULL;
@@ -759,11 +765,11 @@ int8_t rt_future_get_for(void *obj, int64_t ms, void **out) {
         return 0;
     if (ms <= 0)
         return rt_future_try_get(obj, out);
-    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
-        rt_trap("Future: invalid object");
+    future_impl *f = future_require(obj, 0);
+    if (!f)
+        return 0;
     rt_obj_retain_maybe(obj);
 
-    future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
 
 #ifdef _WIN32
@@ -806,13 +812,11 @@ int8_t rt_future_get_for(void *obj, int64_t ms, void **out) {
 
 /// @brief Check whether the future's underlying promise has been completed.
 int8_t rt_future_is_done(void *obj) {
-    if (!obj)
+    future_impl *f = future_require(obj, 0);
+    if (!f)
         return 0;
-    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
-        rt_trap("Future: invalid object");
     rt_obj_retain_maybe(obj);
 
-    future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
 
 #ifdef _WIN32
@@ -831,13 +835,11 @@ int8_t rt_future_is_done(void *obj) {
 
 /// @brief Check whether the future completed with an error.
 int8_t rt_future_is_error(void *obj) {
-    if (!obj)
+    future_impl *f = future_require(obj, 0);
+    if (!f)
         return 0;
-    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
-        rt_trap("Future: invalid object");
     rt_obj_retain_maybe(obj);
 
-    future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
 
 #ifdef _WIN32
@@ -856,13 +858,11 @@ int8_t rt_future_is_error(void *obj) {
 
 /// @brief Return the error message if the future failed, or empty string otherwise.
 rt_string rt_future_get_error(void *obj) {
-    if (!obj)
+    future_impl *f = future_require(obj, 0);
+    if (!f)
         return rt_const_cstr("");
-    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
-        rt_trap("Future: invalid object");
     rt_obj_retain_maybe(obj);
 
-    future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
 
 #ifdef _WIN32
@@ -887,13 +887,11 @@ rt_string rt_future_get_error(void *obj) {
 int8_t rt_future_try_get(void *obj, void **out) {
     if (out)
         *out = NULL;
-    if (!obj)
+    future_impl *f = future_require(obj, 0);
+    if (!f)
         return 0;
-    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
-        rt_trap("Future: invalid object");
     rt_obj_retain_maybe(obj);
 
-    future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
 
 #ifdef _WIN32
@@ -920,13 +918,11 @@ int8_t rt_future_try_get(void *obj, void **out) {
 /// successfully; NULL if pending or errored. Convenient form of `try_get` for callers that don't
 /// need to distinguish "not yet" from "errored" (use `is_error` separately if you do).
 void *rt_future_try_get_val(void *obj) {
-    if (!obj)
+    future_impl *f = future_require(obj, 0);
+    if (!f)
         return NULL;
-    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
-        rt_trap("Future: invalid object");
     rt_obj_retain_maybe(obj);
 
-    future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
     void *result = NULL;
 
@@ -954,11 +950,11 @@ void *rt_future_get_for_val(void *obj, int64_t ms) {
         return NULL;
     if (ms <= 0)
         return rt_future_try_get_val(obj);
-    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
-        rt_trap("Future: invalid object");
+    future_impl *f = future_require(obj, 0);
+    if (!f)
+        return NULL;
     rt_obj_retain_maybe(obj);
 
-    future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
     void *result = NULL;
 
@@ -998,13 +994,11 @@ void *rt_future_get_for_val(void *obj, int64_t ms) {
 
 /// @brief Wait the future.
 void rt_future_wait(void *obj) {
-    if (!obj)
+    future_impl *f = future_require(obj, 0);
+    if (!f)
         return;
-    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
-        rt_trap("Future: invalid object");
     rt_obj_retain_maybe(obj);
 
-    future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
 
 #ifdef _WIN32
@@ -1031,11 +1025,11 @@ int8_t rt_future_wait_for(void *obj, int64_t ms) {
         return 0;
     if (ms <= 0)
         return rt_future_is_done(obj);
-    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
-        rt_trap("Future: invalid object");
+    future_impl *f = future_require(obj, 0);
+    if (!f)
+        return 0;
     rt_obj_retain_maybe(obj);
 
-    future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
 
 #ifdef _WIN32
@@ -1082,11 +1076,11 @@ int8_t rt_future_on_complete_ex(void *obj,
                                 void (*cancel)(void *ctx)) {
     if (!obj || !callback)
         return 0;
-    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
-        rt_trap("Future: invalid object");
+    future_impl *f = future_require(obj, 0);
+    if (!f)
+        return 0;
     rt_obj_retain_maybe(obj);
 
-    future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
 
     future_listener *listener = (future_listener *)calloc(1, sizeof(future_listener));
@@ -1145,11 +1139,11 @@ int8_t rt_future_on_complete(void *obj, void (*callback)(void *future, void *ctx
 int8_t rt_future_cancel_listener(void *obj, void (*callback)(void *future, void *ctx), void *ctx) {
     if (!obj || !callback)
         return 0;
-    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
-        rt_trap("Future: invalid object");
+    future_impl *f = future_require(obj, 0);
+    if (!f)
+        return 0;
     rt_obj_retain_maybe(obj);
 
-    future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
     future_listener *removed = NULL;
 
@@ -1200,13 +1194,11 @@ int8_t rt_future_cancel_listener(void *obj, void (*callback)(void *future, void 
 /// Returns NULL if pending or errored. Callers that receive a runtime object must
 /// release it when done or transfer it to another owner.
 void *rt_future_peek_value(void *obj) {
-    if (!obj)
+    future_impl *f = future_require(obj, 0);
+    if (!f)
         return NULL;
-    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
-        rt_trap("Future: invalid object");
     rt_obj_retain_maybe(obj);
 
-    future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
     void *result = NULL;
 
@@ -1234,13 +1226,11 @@ void *rt_future_peek_value(void *obj) {
 /// holds a refcounted reference). Used by combinators like `rt_async` to decide whether to
 /// re-retain when forwarding a value to a chained future.
 int8_t rt_future_value_is_owned(void *obj) {
-    if (!obj)
+    future_impl *f = future_require(obj, 0);
+    if (!f)
         return 0;
-    if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)
-        rt_trap("Future: invalid object");
     rt_obj_retain_maybe(obj);
 
-    future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
     int8_t owned = 0;
 

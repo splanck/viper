@@ -64,7 +64,7 @@ static RtSafeI64Win *require_safe_win(void *obj, const char *what) {
         rt_trap(what ? what : "SafeI64: null object");
         return NULL;
     }
-    if (rt_obj_class_id(obj) != RT_SAFE_I64_CLASS_ID) {
+    if (!rt_obj_is_instance(obj, RT_SAFE_I64_CLASS_ID, sizeof(RtSafeI64Win))) {
         rt_trap("SafeI64: invalid object");
         return NULL;
     }
@@ -153,7 +153,7 @@ static RtSafeI64 *require_safe(void *obj, const char *what) {
         rt_trap(what ? what : "SafeI64: null object");
         return NULL;
     }
-    if (rt_obj_class_id(obj) != RT_SAFE_I64_CLASS_ID) {
+    if (!rt_obj_is_instance(obj, RT_SAFE_I64_CLASS_ID, sizeof(RtSafeI64))) {
         rt_trap("SafeI64: invalid object");
         return NULL;
     }

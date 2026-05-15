@@ -169,6 +169,22 @@ int64_t rt_obj_class_id(void *p) {
     return hdr ? hdr->class_id : 0;
 }
 
+/// @brief Validate a runtime-managed object handle before implementation-specific casts.
+int8_t rt_obj_is_instance(void *p, int64_t class_id, size_t min_payload_bytes) {
+    if (!p)
+        return 0;
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header(p, &hdr) || !hdr)
+        return 0;
+    if ((rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT)
+        return 0;
+    if (hdr->class_id != class_id)
+        return 0;
+    if (hdr->cap < min_payload_bytes)
+        return 0;
+    return 1;
+}
+
 /// @brief Resurrect an object from inside its finalizer to return it to a pool.
 ///
 /// Sets the reference count from 0 to 1.  Must be called only from within a

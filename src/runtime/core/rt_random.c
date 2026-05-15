@@ -68,7 +68,7 @@ static RtContext *rt_random_context(void) {
 /// @param self Caller-supplied handle expected to be a `Random` object.
 /// @return Validated typed pointer; traps on mismatch.
 static rt_random_impl *as_random(void *self) {
-    if (!self || rt_obj_class_id(self) != RT_RANDOM_CLASS_ID)
+    if (!rt_obj_is_instance(self, RT_RANDOM_CLASS_ID, sizeof(rt_random_impl)))
         rt_trap("Random: invalid Random object");
     return (rt_random_impl *)self;
 }

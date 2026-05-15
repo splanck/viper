@@ -196,7 +196,7 @@ static int mb_topic_view(rt_string topic, const char **bytes, size_t *len) {
 static rt_msgbus_impl *mb_require(void *obj, const char *fn_name) {
     if (!obj)
         return NULL;
-    if (rt_obj_class_id(obj) != RT_MSGBUS_CLASS_ID) {
+    if (!rt_obj_is_instance(obj, RT_MSGBUS_CLASS_ID, sizeof(rt_msgbus_impl))) {
         char buf[128];
         snprintf(buf, sizeof(buf), "%s: invalid MessageBus object", fn_name);
         rt_trap(buf);

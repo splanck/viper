@@ -24,6 +24,7 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -45,6 +46,16 @@ void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 /// @param p Pointer to a runtime-managed object (may be NULL).
 /// @return The class ID, or 0 if p is NULL or not a valid object.
 int64_t rt_obj_class_id(void *p);
+
+/// @brief Check that @p p is a live object instance with the requested class and payload size.
+/// @details This is for runtime-owned opaque handle validation before casting a payload to an
+///          implementation struct. It rejects NULL, non-heap pointers, non-object heap payloads,
+///          wrong class IDs, and allocations smaller than @p min_payload_bytes.
+/// @param p Candidate object payload pointer.
+/// @param class_id Expected runtime class identifier.
+/// @param min_payload_bytes Minimum payload size required by the target implementation struct.
+/// @return 1 when the object matches, otherwise 0.
+int8_t rt_obj_is_instance(void *p, int64_t class_id, size_t min_payload_bytes);
 
 /// @brief Increment the reference count for a runtime-managed object if the pointer is
 /// non-null.

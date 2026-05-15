@@ -131,7 +131,7 @@ static T *requireObject(void *obj, int64_t classId, const char *typeName, const 
         }
         return nullptr;
     }
-    if (classId != 0 && rt_obj_class_id(obj) != classId) {
+    if (classId != 0 && !rt_obj_is_instance(obj, classId, sizeof(T))) {
         static thread_local char msg[128];
         std::snprintf(msg, sizeof(msg), "%s: invalid object", typeName ? typeName : "Object");
         rt_trap(msg);

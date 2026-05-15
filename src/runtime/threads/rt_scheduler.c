@@ -179,7 +179,7 @@ static rt_scheduler_data *scheduler_require(void *sched, int8_t trap_on_null) {
             rt_trap("Scheduler: null object");
         return NULL;
     }
-    if (rt_obj_class_id(sched) != RT_SCHEDULER_CLASS_ID) {
+    if (!rt_obj_is_instance(sched, RT_SCHEDULER_CLASS_ID, sizeof(rt_scheduler_data))) {
         rt_trap("Scheduler: invalid object");
         return NULL;
     }

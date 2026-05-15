@@ -142,7 +142,7 @@ static pool_impl *pool_require(void *pool_obj, const char *what, int8_t trap_on_
             rt_trap(what ? what : "Pool: null object");
         return NULL;
     }
-    if (rt_obj_class_id(pool_obj) != RT_THREADPOOL_CLASS_ID) {
+    if (!rt_obj_is_instance(pool_obj, RT_THREADPOOL_CLASS_ID, sizeof(pool_impl))) {
         rt_trap("Pool: invalid object");
         return NULL;
     }

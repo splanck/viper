@@ -130,7 +130,7 @@ static rt_debounce_data *debounce_require(void *debouncer, int8_t trap_on_null) 
             rt_trap("Debouncer: null object");
         return NULL;
     }
-    if (rt_obj_class_id(debouncer) != RT_DEBOUNCER_CLASS_ID) {
+    if (!rt_obj_is_instance(debouncer, RT_DEBOUNCER_CLASS_ID, sizeof(rt_debounce_data))) {
         rt_trap("Debouncer: invalid object");
         return NULL;
     }
@@ -294,7 +294,7 @@ static rt_throttle_data *throttle_require(void *throttler, int8_t trap_on_null) 
             rt_trap("Throttler: null object");
         return NULL;
     }
-    if (rt_obj_class_id(throttler) != RT_THROTTLER_CLASS_ID) {
+    if (!rt_obj_is_instance(throttler, RT_THROTTLER_CLASS_ID, sizeof(rt_throttle_data))) {
         rt_trap("Throttler: invalid object");
         return NULL;
     }

@@ -234,7 +234,7 @@ static channel_impl *channel_require(void *channel, const char *null_msg, int8_t
             rt_trap(null_msg ? null_msg : "Channel: nil channel");
         return NULL;
     }
-    if (rt_obj_class_id(channel) != RT_CHANNEL_CLASS_ID) {
+    if (!rt_obj_is_instance(channel, RT_CHANNEL_CLASS_ID, sizeof(channel_impl))) {
         rt_trap("Channel: invalid object");
         return NULL;
     }

@@ -249,7 +249,7 @@ static rt_concqueue_impl *concqueue_require(void *obj, int8_t trap_on_null) {
             rt_trap("ConcurrentQueue: null object");
         return NULL;
     }
-    if (rt_obj_class_id(obj) != RT_CONCQUEUE_CLASS_ID) {
+    if (!rt_obj_is_instance(obj, RT_CONCQUEUE_CLASS_ID, sizeof(rt_concqueue_impl))) {
         rt_trap("ConcurrentQueue: invalid object");
         return NULL;
     }
