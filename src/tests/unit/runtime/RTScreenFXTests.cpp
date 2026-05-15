@@ -5,6 +5,7 @@
 
 #include "rt_screenfx.h"
 #include <cassert>
+#include <cstdint>
 #include <cstdio>
 
 static int tests_passed = 0;
@@ -179,6 +180,18 @@ TEST(shake_quadratic_decay) {
     rt_screenfx_destroy(fx);
 }
 
+TEST(huge_shake_parameters_do_not_overflow) {
+    rt_screenfx fx = rt_screenfx_new();
+    rt_screenfx_shake(fx, INT64_MAX, 100, 1000);
+    rt_screenfx_update(fx, 50);
+    ASSERT(rt_screenfx_is_type_active(fx, RT_SCREENFX_SHAKE) == 1);
+    (void)rt_screenfx_get_shake_x(fx);
+    (void)rt_screenfx_get_shake_y(fx);
+    rt_screenfx_update(fx, 50);
+    ASSERT(rt_screenfx_is_type_active(fx, RT_SCREENFX_SHAKE) == 0);
+    rt_screenfx_destroy(fx);
+}
+
 TEST(multiple_effects) {
     rt_screenfx fx = rt_screenfx_new();
 
@@ -207,6 +220,7 @@ int main() {
     RUN_TEST(cancel_all);
     RUN_TEST(cancel_type);
     RUN_TEST(shake_quadratic_decay);
+    RUN_TEST(huge_shake_parameters_do_not_overflow);
     RUN_TEST(multiple_effects);
 
     printf("\n%d tests passed, %d tests failed\n", tests_passed, tests_failed);

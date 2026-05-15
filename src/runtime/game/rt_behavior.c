@@ -48,6 +48,49 @@ static int8_t behavior_target_in_chase_range(int64_t entity_x,
     return (dist2 <= range2 && dist2 > 0.0L) ? 1 : 0;
 }
 
+static int64_t behavior_neg_sat_i64(int64_t value) {
+    return value == INT64_MIN ? INT64_MAX : -value;
+}
+
+static int64_t behavior_sub_to_zero_i64(int64_t value, int64_t amount) {
+    if (amount <= 0)
+        return value;
+    return amount >= value ? 0 : value - amount;
+}
+
+static int64_t behavior_phase_delta(int64_t speed, int64_t dt) {
+    long double value = ((long double)speed * (long double)dt) / 16.0L;
+    if (!isfinite(value))
+        return 0;
+    value = fmodl(value, 36000.0L);
+    if (value > (long double)INT64_MAX)
+        return INT64_MAX;
+    if (value < (long double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)value;
+}
+
+static int64_t behavior_wrap_phase(int64_t phase) {
+    phase %= 36000;
+    if (phase < 0)
+        phase += 36000;
+    return phase;
+}
+
+static int64_t behavior_mod_add_i64(int64_t a, int64_t b, int64_t mod) {
+    if (mod <= 0)
+        return 0;
+    int64_t lhs = a % mod;
+    int64_t rhs = b % mod;
+    if (lhs < 0)
+        lhs += mod;
+    if (rhs < 0)
+        rhs += mod;
+    if (lhs >= mod - rhs)
+        return lhs - (mod - rhs);
+    return lhs + rhs;
+}
+
 typedef struct {
     uint32_t flags;
 
@@ -129,7 +172,7 @@ void rt_behavior_add_gravity(void *bhv, int64_t gravity, int64_t max_fall) {
         return;
     b->flags |= BHV_GRAVITY;
     b->gravity = gravity;
-    b->max_fall = max_fall;
+    b->max_fall = max_fall > 0 ? max_fall : 0;
 }
 
 /// @brief Add edge-reverse behavior (entity turns around at platform edges).
@@ -198,7 +241,8 @@ void rt_behavior_update(
     // 2. Patrol: set vx based on direction
     if (f & BHV_PATROL) {
         int64_t dir = rt_entity_get_dir(entity);
-        rt_entity_set_vx(entity, dir > 0 ? b->patrol_speed : -b->patrol_speed);
+        rt_entity_set_vx(entity,
+                         dir > 0 ? b->patrol_speed : behavior_neg_sat_i64(b->patrol_speed));
     }
 
     // 3. Chase: override vx if target is in range
@@ -210,7 +254,7 @@ void rt_behavior_update(
                 rt_entity_set_vx(entity, b->chase_speed);
                 rt_entity_set_dir(entity, 1);
             } else {
-                rt_entity_set_vx(entity, -b->chase_speed);
+                rt_entity_set_vx(entity, behavior_neg_sat_i64(b->chase_speed));
                 rt_entity_set_dir(entity, -1);
             }
         }
@@ -218,7 +262,8 @@ void rt_behavior_update(
 
     // 4. Sine float: add vertical oscillation
     if (f & BHV_SINE_FLOAT) {
-        b->float_phase += b->float_speed * dt / 16;
+        b->float_phase = behavior_wrap_phase(
+            behavior_mod_add_i64(b->float_phase, behavior_phase_delta(b->float_speed, dt), 36000));
         double rad = (double)b->float_phase * 3.14159265 / 18000.0;
         int64_t offset = (int64_t)(sin(rad) * (double)b->float_amplitude);
         rt_entity_set_vy(entity, offset);
@@ -237,13 +282,13 @@ void rt_behavior_update(
             int64_t dir = rt_entity_get_dir(entity);
             rt_entity_set_dir(entity, -dir);
             int64_t spd = b->patrol_speed > 0 ? b->patrol_speed : b->chase_speed;
-            rt_entity_set_vx(entity, -dir > 0 ? spd : -spd);
+            rt_entity_set_vx(entity, -dir > 0 ? spd : behavior_neg_sat_i64(spd));
         }
     }
 
     // 8. Shoot cooldown
     if (f & BHV_SHOOT) {
-        b->shoot_timer -= dt;
+        b->shoot_timer = behavior_sub_to_zero_i64(b->shoot_timer, dt);
         if (b->shoot_timer <= 0) {
             b->shoot_ready = 1;
             b->shoot_timer = b->shoot_cooldown_ms;
@@ -260,8 +305,7 @@ void rt_behavior_update(
         int64_t steps = b->anim_timer / b->anim_ms;
         if (steps > 0) {
             b->anim_timer %= b->anim_ms;
-            b->anim_frame =
-                (b->anim_frame + (steps % b->anim_frames)) % b->anim_frames;
+            b->anim_frame = behavior_mod_add_i64(b->anim_frame, steps, b->anim_frames);
         }
     }
 }

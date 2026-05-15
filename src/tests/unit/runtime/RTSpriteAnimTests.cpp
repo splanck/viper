@@ -132,6 +132,13 @@ TEST(one_shot_handles_int64_max_end_frame) {
     rt_spriteanim_destroy(sa);
 }
 
+TEST(frame_count_near_int64_max_does_not_over_saturate) {
+    rt_spriteanim sa = rt_spriteanim_new();
+    rt_spriteanim_setup(sa, 2, INT64_MAX, 1);
+    ASSERT(rt_spriteanim_frame_count(sa) == INT64_MAX - 1);
+    rt_spriteanim_destroy(sa);
+}
+
 TEST(pingpong) {
     rt_spriteanim sa = rt_spriteanim_new();
     /// @brief Rt_spriteanim_setup.
@@ -279,6 +286,7 @@ int main() {
     RUN_TEST(loop);
     RUN_TEST(one_shot);
     RUN_TEST(one_shot_handles_int64_max_end_frame);
+    RUN_TEST(frame_count_near_int64_max_does_not_over_saturate);
     RUN_TEST(pingpong);
     RUN_TEST(pause_resume);
     RUN_TEST(speed);

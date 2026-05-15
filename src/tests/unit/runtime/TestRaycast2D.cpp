@@ -4,6 +4,8 @@
 
 #include "tests/TestHarness.hpp"
 
+#include <limits>
+
 extern "C" {
 #include "rt_tilemap.h"
 int8_t rt_collision_line_rect(
@@ -35,6 +37,13 @@ TEST(Raycast, LineRectEdge) {
     EXPECT_TRUE(rt_collision_line_rect(0, 0, 10, 0, 0, 0, 10, 10));
 }
 
+TEST(Raycast, LineRectRejectsInvalidInput) {
+    EXPECT_FALSE(rt_collision_line_rect(
+        std::numeric_limits<double>::infinity(), 0, 10, 10, 0, 0, 10, 10));
+    EXPECT_FALSE(rt_collision_line_rect(0, 0, 10, 10, 0, 0, -1, 10));
+    EXPECT_FALSE(rt_collision_line_rect(0, 0, 10, 10, 0, 0, 10, -1));
+}
+
 TEST(Raycast, LineCircleTangent) {
     // Line passes at distance exactly r — should be tangent (borderline)
     EXPECT_TRUE(rt_collision_line_circle(0, 3, 10, 3, 5, 0, 3));
@@ -55,6 +64,18 @@ TEST(Raycast, TilemapLongRayFindsDistantTile) {
     EXPECT_TRUE(rt_raycast_tilemap(tm, 0, 8, 5000, 8, &hit_x, &hit_y));
     EXPECT_TRUE(hit_x >= 250 * 16);
     EXPECT_TRUE(hit_y == 8);
+}
+
+TEST(Raycast, TilemapDiagonalCornerChecksSideTouchedTile) {
+    void *tm = rt_tilemap_new(2, 2, 10, 10);
+    rt_tilemap_set_tile(tm, 1, 0, 7);
+    rt_tilemap_set_collision(tm, 7, RT_TILE_COLLISION_SOLID);
+
+    int64_t hit_x = -1;
+    int64_t hit_y = -1;
+    EXPECT_TRUE(rt_raycast_tilemap(tm, 0, 0, 20, 20, &hit_x, &hit_y));
+    EXPECT_TRUE(hit_x >= 10 && hit_x <= 19);
+    EXPECT_TRUE(hit_y >= 0 && hit_y <= 9);
 }
 
 int main() {

@@ -367,9 +367,10 @@ int64_t rt_spriteanim_frame_count(rt_spriteanim anim) {
         checked_spriteanim(anim, "SpriteAnimation.FrameCount: expected Viper.Game.SpriteAnimation");
     if (!anim)
         return 0;
-    if (anim->end_frame >= INT64_MAX - anim->start_frame)
+    int64_t diff = anim->end_frame - anim->start_frame;
+    if (diff == INT64_MAX)
         return INT64_MAX;
-    return anim->end_frame - anim->start_frame + 1;
+    return diff + 1;
 }
 
 /// @brief Check whether the animation is currently playing (not paused or stopped).

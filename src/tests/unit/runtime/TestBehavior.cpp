@@ -77,6 +77,38 @@ TEST(Behavior, InvalidAnimLoopConfigDoesNotDivideByZero) {
     EXPECT_EQ(rt_behavior_anim_frame(b), 0);
 }
 
+TEST(Behavior, NegativeMaxFallDoesNotInvertGravity) {
+    void *e = rt_entity_new(10000, 10000, 16, 16);
+    void *b = rt_behavior_new();
+    rt_behavior_add_gravity(b, 78, -1);
+
+    rt_behavior_update(b, e, nullptr, 0, 0, 16);
+    EXPECT_EQ(rt_entity_get_vy(e), 0);
+}
+
+TEST(Behavior, HugeShootDeltaDoesNotUnderflowTimer) {
+    void *e = rt_entity_new(10000, 10000, 16, 16);
+    void *b = rt_behavior_new();
+    rt_behavior_add_shoot(b, INT64_MAX);
+
+    rt_behavior_update(b, e, nullptr, 0, 0, INT64_MAX);
+    EXPECT_TRUE(rt_behavior_shoot_ready(b));
+    EXPECT_FALSE(rt_behavior_shoot_ready(b));
+
+    rt_behavior_update(b, e, nullptr, 0, 0, INT64_MAX);
+    EXPECT_TRUE(rt_behavior_shoot_ready(b));
+}
+
+TEST(Behavior, HugeSineDeltaKeepsVelocityBounded) {
+    void *e = rt_entity_new(10000, 10000, 16, 16);
+    void *b = rt_behavior_new();
+    rt_behavior_add_sine_float(b, 1000, INT64_MAX);
+
+    rt_behavior_update(b, e, nullptr, 0, 0, INT64_MAX);
+    EXPECT_TRUE(rt_entity_get_vy(e) >= -1000);
+    EXPECT_TRUE(rt_entity_get_vy(e) <= 1000);
+}
+
 TEST(Behavior, NegativeDeltaIsNoOp) {
     void *e = rt_entity_new(10000, 10000, 16, 16);
     rt_entity_set_dir(e, 1);

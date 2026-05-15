@@ -66,6 +66,20 @@ static int64_t clamp_frame(int64_t frame) {
     return frame < 0 ? 0 : frame;
 }
 
+static int64_t timeline_add_sat_i64(int64_t a, int64_t b) {
+    if (b > 0 && a > INT64_MAX - b)
+        return INT64_MAX;
+    if (b < 0 && a < INT64_MIN - b)
+        return INT64_MIN;
+    return a + b;
+}
+
+static int64_t timeline_track_end_frame(const rt_animtimeline_track_t *track) {
+    if (!track)
+        return 0;
+    return timeline_add_sat_i64(track->start_frame, track->duration_frames);
+}
+
 static void timeline_copy_name(char *dst, size_t cap, rt_string name) {
     if (!dst || cap == 0)
         return;
@@ -223,11 +237,13 @@ void rt_animtimeline_advance(void *ptr, int64_t delta_frames) {
         return;
 
     int64_t before = tl->current_frame;
-    int64_t after = before + delta_frames;
+    int64_t after_unwrapped = timeline_add_sat_i64(before, delta_frames);
+    int64_t after = after_unwrapped;
     int8_t wrapped = 0;
-    if (after >= tl->total_duration_frames) {
+    int8_t spanned_full_cycle = delta_frames >= tl->total_duration_frames;
+    if (after_unwrapped >= tl->total_duration_frames) {
         if (tl->looping) {
-            after %= tl->total_duration_frames;
+            after = after_unwrapped % tl->total_duration_frames;
             wrapped = 1;
             for (int64_t i = 0; i < tl->event_count; i++)
                 tl->events[i].fired = 0;
@@ -243,7 +259,8 @@ void rt_animtimeline_advance(void *ptr, int64_t delta_frames) {
         int8_t fire = 0;
         if (!tl->events[i].fired && timeline_crossed(before, after, tl->events[i].frame))
             fire = 1;
-        if (wrapped && timeline_crossed(-1, after, tl->events[i].frame))
+        if (wrapped &&
+            (spanned_full_cycle || tl->events[i].frame > before || tl->events[i].frame <= after))
             fire = 1;
         if (!fire)
             continue;
@@ -280,7 +297,7 @@ int8_t rt_animtimeline_track_is_active(void *ptr, int64_t track_index) {
     if (!track)
         return 0;
     return tl->current_frame >= track->start_frame &&
-           tl->current_frame < track->start_frame + track->duration_frames;
+           tl->current_frame < timeline_track_end_frame(track);
 }
 
 double rt_animtimeline_track_progress(void *ptr, int64_t track_index) {
@@ -291,7 +308,7 @@ double rt_animtimeline_track_progress(void *ptr, int64_t track_index) {
         return 0.0;
     if (tl->current_frame <= track->start_frame)
         return 0.0;
-    int64_t end = track->start_frame + track->duration_frames;
+    int64_t end = timeline_track_end_frame(track);
     if (tl->current_frame >= end)
         return 1.0;
     return (double)(tl->current_frame - track->start_frame) / (double)track->duration_frames;

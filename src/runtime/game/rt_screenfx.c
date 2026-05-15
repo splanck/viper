@@ -47,7 +47,10 @@
 #include "rt_object.h"
 #include "rt_trap.h"
 
+#include <float.h>
 #include <limits.h>
+#include <math.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -55,9 +58,9 @@
 /// Uses the classic `glibc` parameters (1103515245, 12345) and discards the low 16 bits to
 /// improve distribution. State is owned by each ScreenFX instance, so concurrent instances on
 /// different threads produce independent sequences without locks.
-static int64_t screenfx_rand(int64_t *state) {
-    *state = (*state) * 1103515245 + 12345;
-    return ((*state) >> 16) & 0x7FFF;
+static int64_t screenfx_rand(uint64_t *state) {
+    *state = (*state) * UINT64_C(1103515245) + UINT64_C(12345);
+    return (int64_t)((*state >> 16) & UINT64_C(0x7FFF));
 }
 
 /// Internal effect structure.
@@ -78,7 +81,7 @@ struct rt_screenfx_impl {
     int64_t shake_y;       ///< Current shake offset Y.
     int64_t overlay_color; ///< Current overlay color (RGB).
     int64_t overlay_alpha; ///< Current overlay alpha (0-255).
-    int64_t rand_state;    ///< Per-instance LCG state for shake RNG (thread-safe).
+    uint64_t rand_state;   ///< Per-instance LCG state for shake RNG (thread-safe).
 };
 
 static rt_screenfx checked_screenfx(rt_screenfx fx, const char *api) {
@@ -95,6 +98,38 @@ static int64_t add_sat_nonnegative_i64(int64_t a, int64_t b) {
     if (b <= 0)
         return a;
     return a > INT64_MAX - b ? INT64_MAX : a + b;
+}
+
+static int64_t add_sat_i64(int64_t a, int64_t b) {
+    if (b > 0 && a > INT64_MAX - b)
+        return INT64_MAX;
+    if (b < 0 && a < INT64_MIN - b)
+        return INT64_MIN;
+    return a + b;
+}
+
+static int64_t ld_to_i64_sat(long double value) {
+    if (!isfinite(value))
+        return value < 0.0L ? INT64_MIN : INT64_MAX;
+#if LDBL_MANT_DIG < 64
+    if (value >= (long double)(INT64_MAX - INT64_C(4096)))
+        return INT64_MAX;
+    if (value <= (long double)(INT64_MIN + INT64_C(4096)))
+        return INT64_MIN;
+#else
+    if (value > (long double)INT64_MAX)
+        return INT64_MAX;
+    if (value < (long double)INT64_MIN)
+        return INT64_MIN;
+#endif
+    return (int64_t)value;
+}
+
+static int64_t mul_div_sat_i64(int64_t a, int64_t b, int64_t divisor) {
+    if (divisor == 0)
+        return 0;
+    long double value = ((long double)a * (long double)b) / (long double)divisor;
+    return ld_to_i64_sat(value);
 }
 
 static int64_t effect_progress_per_mille(const struct screenfx_effect *e) {
@@ -119,7 +154,7 @@ rt_screenfx rt_screenfx_new(void) {
         return NULL;
 
     memset(fx, 0, sizeof(struct rt_screenfx_impl));
-    fx->rand_state = (int64_t)(uintptr_t)fx ^ 0xDEADBEEF; // per-instance seed
+    fx->rand_state = (uint64_t)(uintptr_t)fx ^ UINT64_C(0xDEADBEEF); // per-instance seed
     return fx;
 }
 
@@ -170,7 +205,6 @@ void rt_screenfx_update(rt_screenfx fx, int64_t dt) {
     fx->overlay_alpha = 0;
     fx->overlay_color = 0;
 
-    int64_t max_shake_intensity = 0;
     int64_t max_overlay_alpha = 0;
 
     for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++) {
@@ -209,17 +243,16 @@ void rt_screenfx_update(rt_screenfx fx, int64_t dt) {
                     int64_t decay_factor = remaining; // always at least one factor
                     if (e->decay >= 1500)             // >= 1.5 exponent → apply twice
                         decay_factor = (remaining * remaining) / 1000;
-                    current_intensity = (e->intensity * decay_factor) / 1000;
+                    current_intensity = mul_div_sat_i64(e->intensity, decay_factor, 1000);
                 }
-
-                if (current_intensity > max_shake_intensity)
-                    max_shake_intensity = current_intensity;
 
                 // Random offset based on intensity (per-instance state)
                 int64_t rx = (screenfx_rand(&fx->rand_state) % 2001) - 1000;
                 int64_t ry = (screenfx_rand(&fx->rand_state) % 2001) - 1000;
-                fx->shake_x += (current_intensity * rx) / 1000;
-                fx->shake_y += (current_intensity * ry) / 1000;
+                fx->shake_x =
+                    add_sat_i64(fx->shake_x, mul_div_sat_i64(current_intensity, rx, 1000));
+                fx->shake_y =
+                    add_sat_i64(fx->shake_y, mul_div_sat_i64(current_intensity, ry, 1000));
                 break;
             }
 

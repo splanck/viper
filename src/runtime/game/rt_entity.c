@@ -81,6 +81,10 @@ static int64_t entity_saturating_add(int64_t a, int64_t b) {
     return a + b;
 }
 
+static int64_t entity_saturating_neg(int64_t value) {
+    return value == INT64_MIN ? INT64_MAX : -value;
+}
+
 static int64_t entity_saturating_mul(int64_t a, int64_t b) {
 #if defined(__SIZEOF_INT128__)
     __int128 result = (__int128)a * (__int128)b;
@@ -353,12 +357,12 @@ static void entity_sweep_x(
     if (delta_cp > 0) {
         int64_t old_right = entity_saturating_add(old_left, e->width - 1);
         int64_t new_right = entity_saturating_add(new_left, e->width - 1);
-        int64_t first_col = entity_floor_div(old_right, tw) + 1;
+        int64_t first_col = entity_saturating_add(entity_floor_div(old_right, tw), 1);
         int64_t last_col = entity_floor_div(new_right, tw);
         for (int64_t col = first_col; col <= last_col; ++col) {
             int64_t edge_px = entity_saturating_mul(col, tw);
             if (entity_vertical_edge_hits(tilemap, edge_px, top_px, bottom_px, th)) {
-                e->x = entity_saturating_mul(edge_px - e->width, 100);
+                e->x = entity_saturating_mul(entity_saturating_add(edge_px, -e->width), 100);
                 e->vx = 0;
                 e->hit_right = 1;
                 return;
@@ -367,10 +371,11 @@ static void entity_sweep_x(
     } else {
         int64_t old_col = entity_floor_div(old_left, tw);
         int64_t new_col = entity_floor_div(new_left, tw);
-        for (int64_t col = old_col - 1; col >= new_col; --col) {
-            int64_t edge_px = entity_saturating_add(entity_saturating_mul(col + 1, tw), -1);
+        for (int64_t col = entity_saturating_add(old_col, -1); col >= new_col; --col) {
+            int64_t next_col = entity_saturating_add(col, 1);
+            int64_t edge_px = entity_saturating_add(entity_saturating_mul(next_col, tw), -1);
             if (entity_vertical_edge_hits(tilemap, edge_px, top_px, bottom_px, th)) {
-                e->x = entity_saturating_mul(entity_saturating_mul(col + 1, tw), 100);
+                e->x = entity_saturating_mul(entity_saturating_mul(next_col, tw), 100);
                 e->vx = 0;
                 e->hit_left = 1;
                 return;
@@ -399,12 +404,12 @@ static void entity_sweep_y(
     if (delta_cp > 0) {
         int64_t old_bottom = entity_saturating_add(old_top, e->height - 1);
         int64_t new_bottom = entity_saturating_add(new_top, e->height - 1);
-        int64_t first_row = entity_floor_div(old_bottom, th) + 1;
+        int64_t first_row = entity_saturating_add(entity_floor_div(old_bottom, th), 1);
         int64_t last_row = entity_floor_div(new_bottom, th);
         for (int64_t row = first_row; row <= last_row; ++row) {
             int64_t edge_px = entity_saturating_mul(row, th);
             if (entity_horizontal_edge_hits(tilemap, left_px, right_px, edge_px, tw)) {
-                e->y = entity_saturating_mul(edge_px - e->height, 100);
+                e->y = entity_saturating_mul(entity_saturating_add(edge_px, -e->height), 100);
                 e->vy = 0;
                 e->on_ground = 1;
                 return;
@@ -413,10 +418,11 @@ static void entity_sweep_y(
     } else {
         int64_t old_row = entity_floor_div(old_top, th);
         int64_t new_row = entity_floor_div(new_top, th);
-        for (int64_t row = old_row - 1; row >= new_row; --row) {
-            int64_t edge_px = entity_saturating_add(entity_saturating_mul(row + 1, th), -1);
+        for (int64_t row = entity_saturating_add(old_row, -1); row >= new_row; --row) {
+            int64_t next_row = entity_saturating_add(row, 1);
+            int64_t edge_px = entity_saturating_add(entity_saturating_mul(next_row, th), -1);
             if (entity_horizontal_edge_hits(tilemap, left_px, right_px, edge_px, tw)) {
-                e->y = entity_saturating_mul(entity_saturating_mul(row + 1, th), 100);
+                e->y = entity_saturating_mul(entity_saturating_mul(next_row, th), 100);
                 e->vy = 0;
                 e->hit_ceiling = 1;
                 return;
@@ -434,6 +440,8 @@ void rt_entity_apply_gravity(void *ent, int64_t gravity, int64_t max_fall, int64
     entity_impl *e = checked_entity(ent, "Entity.ApplyGravity: expected Viper.Game.Entity");
     if (!e || dt <= 0)
         return;
+    if (max_fall < 0)
+        max_fall = 0;
     e->vy = entity_saturating_add(e->vy, entity_scaled_delta(gravity, dt));
     if (e->vy > max_fall)
         e->vy = max_fall;
@@ -516,7 +524,7 @@ void rt_entity_patrol_reverse(void *ent, int64_t speed) {
         e->dir = 1;
     }
     if (e->hit_right) {
-        e->vx = -speed;
+        e->vx = entity_saturating_neg(speed);
         e->dir = -1;
     }
 }

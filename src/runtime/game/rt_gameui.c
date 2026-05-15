@@ -38,6 +38,7 @@
 #include "rt_object.h"
 #include "rt_pixels.h"
 
+#include <float.h>
 #include <limits.h>
 #include <math.h>
 #include <stdint.h>
@@ -58,6 +59,47 @@ static int64_t ui_clamp_scale(int64_t scale) {
     if (scale > 16)
         return 16;
     return scale;
+}
+
+static int64_t ui_add_sat_i64(int64_t a, int64_t b) {
+    if (b > 0 && a > INT64_MAX - b)
+        return INT64_MAX;
+    if (b < 0 && a < INT64_MIN - b)
+        return INT64_MIN;
+    return a + b;
+}
+
+static int64_t ui_ld_to_i64_sat(long double value) {
+    if (!isfinite(value))
+        return 0;
+#if LDBL_MANT_DIG < 64
+    if (value >= (long double)(INT64_MAX - INT64_C(4096)))
+        return INT64_MAX;
+    if (value <= (long double)(INT64_MIN + INT64_C(4096)))
+        return INT64_MIN;
+#else
+    if (value > (long double)INT64_MAX)
+        return INT64_MAX;
+    if (value < (long double)INT64_MIN)
+        return INT64_MIN;
+#endif
+    return (int64_t)value;
+}
+
+static int8_t ui_coord_inside(int64_t start, int64_t extent, int64_t point) {
+    if (extent <= 0 || point < start)
+        return 0;
+    uint64_t offset = (uint64_t)point - (uint64_t)start;
+    return offset < (uint64_t)extent;
+}
+
+static int64_t ui_coord_offset_clamped(int64_t start, int64_t extent, int64_t point) {
+    if (extent <= 0 || point <= start)
+        return 0;
+    uint64_t offset = (uint64_t)point - (uint64_t)start;
+    if (offset >= (uint64_t)extent)
+        return extent;
+    return (int64_t)offset;
 }
 
 static int8_t ui_is_bitmapfont(void *obj) {
@@ -1578,7 +1620,7 @@ static int8_t ui_point_inside(int64_t x,
                               int64_t h,
                               int64_t px,
                               int64_t py) {
-    return px >= x && py >= y && px < x + w && py < y + h;
+    return ui_coord_inside(x, w, px) && ui_coord_inside(y, h, py);
 }
 
 //=============================================================================
@@ -1710,7 +1752,7 @@ static int8_t textinput_insert_bytes(rt_uitextinput_impl *ti, const char *src, s
         size_t cp_len = ui_utf8_cp_len(src, src_len, accepted);
         if (accepted + cp_len > src_len)
             break;
-        if (ti->text_bytes + (int64_t)cp_len >= RT_UITEXTINPUT_MAX_BYTES)
+        if ((int64_t)cp_len > (RT_UITEXTINPUT_MAX_BYTES - 1) - ti->text_bytes)
             break;
         if (!ti->multiline && (src[accepted] == '\n' || src[accepted] == '\r')) {
             accepted += cp_len;
@@ -2230,6 +2272,12 @@ static void table_clamp_scroll(rt_uitable_impl *table) {
         table->selected_row = -1;
 }
 
+static int64_t table_column_next_x(int64_t x, int64_t width) {
+    if (width <= 0)
+        return x;
+    return ui_add_sat_i64(x, width);
+}
+
 void *rt_uitable_new(int64_t x, int64_t y, int64_t w, int64_t h) {
     rt_uitable_impl *table =
         (rt_uitable_impl *)rt_obj_new_i64(RT_UITABLE_CLASS_ID, (int64_t)sizeof(*table));
@@ -2272,7 +2320,7 @@ int64_t rt_uitable_add_column(void *ptr, rt_string title, int64_t width, int64_t
     int64_t idx = table->column_count++;
     ui_copy_text(table->columns[idx].title, sizeof(table->columns[idx].title), title);
     table->columns[idx].width = width > 0 ? width : 80;
-    table->columns[idx].align = align < 0 || align > 2 ? 0 : align;
+    table->columns[idx].align = (int8_t)(align < 0 || align > 2 ? 0 : align);
     table->columns[idx].sortable = 0;
     table->columns[idx].sort_numeric = 0;
     return idx;
@@ -2437,14 +2485,14 @@ int64_t rt_uitable_handle_click(void *ptr, int64_t mx, int64_t my) {
         int64_t cx = table->x;
         for (int64_t c = 0; c < table->column_count; c++) {
             int64_t cw = table->columns[c].width;
-            if (mx >= cx && mx < cx + cw) {
+            if (ui_coord_inside(cx, cw, mx)) {
                 table->last_header_click = c;
                 if (table->columns[c].sortable)
                     rt_uitable_sort_by(ptr, c,
                                        table->sort_column == c ? !table->sort_descending : 0);
                 return -2;
             }
-            cx += cw;
+            cx = table_column_next_x(cx, cw);
         }
         return -1;
     }
@@ -2467,7 +2515,7 @@ void rt_uitable_handle_scroll(void *ptr, int64_t delta) {
         checked_table(ptr, "UITable.HandleScroll: expected Viper.Game.UI.Table");
     if (!table)
         return;
-    table->scroll_offset += delta;
+    table->scroll_offset = ui_add_sat_i64(table->scroll_offset, delta);
     table_clamp_scroll(table);
 }
 
@@ -2575,11 +2623,16 @@ static int64_t slider_clamp_value(rt_uislider_impl *s, int64_t value) {
     if (value > s->max_value)
         value = s->max_value;
     if (s->step > 1) {
-        int64_t offset = value - s->min_value;
-        int64_t steps = (offset + s->step / 2) / s->step;
-        value = s->min_value + steps * s->step;
+        long double offset = (long double)value - (long double)s->min_value;
+        if (offset < 0.0L)
+            offset = 0.0L;
+        long double steps =
+            floorl((offset + (long double)s->step / 2.0L) / (long double)s->step);
+        value = ui_ld_to_i64_sat((long double)s->min_value + steps * (long double)s->step);
         if (value > s->max_value)
             value = s->max_value;
+        if (value < s->min_value)
+            value = s->min_value;
     }
     return value;
 }
@@ -2587,9 +2640,10 @@ static int64_t slider_clamp_value(rt_uislider_impl *s, int64_t value) {
 static int8_t slider_set_from_mouse(rt_uislider_impl *s, int64_t mx) {
     if (!s || s->w <= 1)
         return 0;
-    int64_t clamped_x = mx < s->x ? s->x : (mx > s->x + s->w ? s->x + s->w : mx);
-    long double t = (long double)(clamped_x - s->x) / (long double)s->w;
-    int64_t value = s->min_value + (int64_t)((long double)(s->max_value - s->min_value) * t + 0.5L);
+    int64_t offset = ui_coord_offset_clamped(s->x, s->w, mx);
+    long double t = (long double)offset / (long double)s->w;
+    long double range = (long double)s->max_value - (long double)s->min_value;
+    int64_t value = ui_ld_to_i64_sat((long double)s->min_value + range * t + 0.5L);
     value = slider_clamp_value(s, value);
     if (value == s->current_value)
         return 0;
@@ -2660,9 +2714,9 @@ int8_t rt_uislider_handle_key(void *ptr, int64_t key_code) {
         return 0;
     int64_t before = s->current_value;
     if (key_code == UI_KEY_LEFT || key_code == UI_KEY_DOWN)
-        s->current_value = slider_clamp_value(s, s->current_value - s->step);
+        s->current_value = slider_clamp_value(s, ui_add_sat_i64(s->current_value, -s->step));
     else if (key_code == UI_KEY_RIGHT || key_code == UI_KEY_UP)
-        s->current_value = slider_clamp_value(s, s->current_value + s->step);
+        s->current_value = slider_clamp_value(s, ui_add_sat_i64(s->current_value, s->step));
     else if (key_code == UI_KEY_HOME)
         s->current_value = s->min_value;
     else if (key_code == UI_KEY_END)
@@ -2994,7 +3048,7 @@ void rt_uitooltip_update(void *ptr, int64_t mx, int64_t my, int8_t hovered_targe
     }
     t->hovered = 1;
     if (delta_ms > 0)
-        t->hover_elapsed_ms += delta_ms;
+        t->hover_elapsed_ms = ui_add_sat_i64(t->hover_elapsed_ms, delta_ms);
     t->visible = t->hover_elapsed_ms >= t->hover_delay_ms;
 }
 

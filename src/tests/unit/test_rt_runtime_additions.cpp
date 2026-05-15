@@ -24,6 +24,7 @@
 #include "rt_physics2d.h"
 #include "rt_pixels.h"
 #include "rt_string.h"
+#include "rt_tls.h"
 
 #include <cassert>
 #include <cmath>
@@ -55,6 +56,7 @@ enum {
     KEY_ENTER = 257,
     KEY_BACKSPACE = 259,
     KEY_RIGHT = 262,
+    KEY_LEFT = 263,
     KEY_DOWN = 264,
     KEY_HOME = 268,
     KEY_END = 269,
@@ -97,6 +99,17 @@ static void test_textinput_unicode_selection_and_limits() {
     rt_uitextinput_select_all(input);
     rt_uitextinput_delete_selection(input);
     assert(str_eq(rt_uitextinput_get_text(input), ""));
+
+    rt_uitextinput_set_max_codepoints(input, 0);
+    char full[512];
+    memset(full, 'x', 511);
+    full[511] = '\0';
+    rt_string full_text = rt_string_from_bytes(full, 511);
+    assert(rt_uitextinput_handle_text(input, full_text) == 1);
+    assert(rt_uitextinput_text_length(input) == 511);
+    rt_str_release_maybe(full_text);
+    assert(rt_uitextinput_handle_text(input, rt_const_cstr("y")) == 0);
+    assert(rt_uitextinput_text_length(input) == 511);
 
     release_obj(input);
     PASS();
@@ -202,6 +215,65 @@ static void test_slider_dropdown_modal_and_tooltip() {
     PASS();
 }
 
+static void test_gameui_boundary_arithmetic() {
+    TEST("Game UI hit testing and range math stay safe near int64 bounds");
+
+    void *edge_slider = rt_uislider_new(INT64_MAX - 20, 10, 16, 10, 0, 100);
+    assert(edge_slider != nullptr);
+    assert(rt_uislider_handle_mouse_down(edge_slider, INT64_MAX - 12, 15) == 1);
+    assert(rt_uislider_get_value(edge_slider) > 0);
+    assert(rt_uislider_handle_mouse_up(edge_slider) == 1);
+
+    void *wide_slider = rt_uislider_new(0, 0, 100, 20, INT64_MIN, INT64_MAX);
+    assert(wide_slider != nullptr);
+    rt_uislider_set_step(wide_slider, 2);
+    rt_uislider_set_value(wide_slider, 0);
+    assert(rt_uislider_get_value(wide_slider) == 0);
+    rt_uislider_set_value(wide_slider, INT64_MAX);
+    rt_uislider_handle_key(wide_slider, KEY_RIGHT);
+    assert(rt_uislider_get_value(wide_slider) == INT64_MAX);
+    rt_uislider_set_value(wide_slider, INT64_MIN);
+    rt_uislider_handle_key(wide_slider, KEY_LEFT);
+    assert(rt_uislider_get_value(wide_slider) == INT64_MIN);
+
+    void *dropdown = rt_uidropdown_new(INT64_MAX - 20, 0, 16, 10);
+    assert(dropdown != nullptr);
+    rt_uidropdown_add_option(dropdown, rt_const_cstr("Edge"));
+    assert(rt_uidropdown_handle_click(dropdown, INT64_MAX - 12, 5) == 1);
+    assert(rt_uidropdown_is_open(dropdown) == 1);
+
+    void *header_table = rt_uitable_new(INT64_MAX - 20, 0, 16, 60);
+    assert(header_table != nullptr);
+    assert(rt_uitable_add_column(header_table, rt_const_cstr("Wide"), 12, 0) == 0);
+    assert(rt_uitable_handle_click(header_table, INT64_MAX - 12, 4) == -2);
+    assert(rt_uitable_last_header_click(header_table) == 0);
+
+    void *scroll_table = rt_uitable_new(0, 0, 100, 42);
+    assert(scroll_table != nullptr);
+    assert(rt_uitable_add_column(scroll_table, rt_const_cstr("A"), 80, 0) == 0);
+    for (int i = 0; i < 5; i++)
+        assert(rt_uitable_add_row(scroll_table) == i);
+    rt_uitable_set_scroll(scroll_table, 1);
+    rt_uitable_handle_scroll(scroll_table, INT64_MAX);
+    assert(rt_uitable_get_scroll(scroll_table) == 4);
+    rt_uitable_handle_scroll(scroll_table, INT64_MIN);
+    assert(rt_uitable_get_scroll(scroll_table) == 0);
+
+    void *tooltip = rt_uitooltip_new();
+    assert(tooltip != nullptr);
+    rt_uitooltip_set_hover_delay_ms(tooltip, INT64_MAX);
+    rt_uitooltip_update(tooltip, 1, 2, 1, INT64_MAX - 1);
+    rt_uitooltip_update(tooltip, 1, 2, 1, 100);
+
+    release_obj(tooltip);
+    release_obj(scroll_table);
+    release_obj(header_table);
+    release_obj(dropdown);
+    release_obj(wide_slider);
+    release_obj(edge_slider);
+    PASS();
+}
+
 static void test_renderer2d_rotated_texture_paths() {
     TEST("Renderer2D rotated texture draws zero-degree and pivoted rotations");
     void *src = rt_pixels_new(2, 2);
@@ -252,6 +324,8 @@ static void test_renderer2d_rotated_texture_paths() {
 
 static void test_animstate_events_and_timeline() {
     TEST("AnimState events and AnimTimeline markers fire deterministically");
+    assert(RT_ANIMTIMELINE_CLASS_ID != RT_TLS_CLASS_ID);
+
     void *state = rt_animstate_new();
     assert(state != nullptr);
     rt_animstate_add_state(state, 1, 0, 3, 1, 0);
@@ -278,6 +352,7 @@ static void test_animstate_events_and_timeline() {
     assert(anim_track == 0);
     assert(tween_track == 1);
     assert(rt_animtimeline_add_marker(timeline, 3, 77) == 0);
+    assert(rt_animtimeline_add_marker(timeline, 8, 88) == 1);
     assert(rt_animtimeline_track_payload_a(timeline, anim_track) == 33);
     assert(rt_animtimeline_track_payload_a(timeline, tween_track) == 5);
     assert(rt_animtimeline_track_payload_b(timeline, tween_track) == 15);
@@ -292,11 +367,32 @@ static void test_animstate_events_and_timeline() {
     rt_animtimeline_set_looping(timeline, 1);
     rt_animtimeline_advance(timeline, 7);
     assert(rt_animtimeline_get_current_frame(timeline) == 0);
+    assert(rt_animtimeline_events_fired_count(timeline) == 1);
+    assert(rt_animtimeline_event_fired_id(timeline, 0) == 88);
     rt_animtimeline_advance(timeline, 3);
     assert(rt_animtimeline_events_fired_count(timeline) == 1);
     assert(rt_animtimeline_event_fired_id(timeline, 0) == 77);
+    rt_animtimeline_advance(timeline, 10);
+    assert(rt_animtimeline_get_current_frame(timeline) == 3);
+    assert(rt_animtimeline_events_fired_count(timeline) == 2);
+    assert(rt_animtimeline_event_fired_id(timeline, 0) == 77);
+    assert(rt_animtimeline_event_fired_id(timeline, 1) == 88);
 
     release_obj(timeline);
+
+    void *long_timeline = rt_animtimeline_new(INT64_MAX);
+    assert(long_timeline != nullptr);
+    int64_t long_track = rt_animtimeline_add_tween_track(
+        long_timeline, rt_const_cstr("long"), INT64_MAX - 4, 10, 0, 1);
+    assert(long_track == 0);
+    rt_animtimeline_play(long_timeline);
+    rt_animtimeline_advance(long_timeline, INT64_MAX - 2);
+    assert(rt_animtimeline_track_is_active(long_timeline, long_track) == 1);
+    assert(rt_animtimeline_track_progress(long_timeline, long_track) > 0.0);
+    rt_animtimeline_advance(long_timeline, INT64_MAX);
+    assert(rt_animtimeline_is_finished(long_timeline) == 1);
+    release_obj(long_timeline);
+
     release_obj(state);
     PASS();
 }
@@ -388,6 +484,7 @@ int main() {
     test_textinput_unicode_selection_and_limits();
     test_table_sorting_selection_and_header_clicks();
     test_slider_dropdown_modal_and_tooltip();
+    test_gameui_boundary_arithmetic();
     test_renderer2d_rotated_texture_paths();
     test_animstate_events_and_timeline();
     test_projectile2d_and_named_audio_groups();

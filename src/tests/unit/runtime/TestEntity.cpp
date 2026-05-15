@@ -54,6 +54,14 @@ TEST(Entity, ApplyGravityNegativeDeltaIsNoOp) {
     EXPECT_EQ(rt_entity_get_vy(e), 100);
 }
 
+TEST(Entity, ApplyGravityNegativeMaxFallClampsToZero) {
+    void *e = rt_entity_new(0, 0, 10, 10);
+
+    rt_entity_apply_gravity(e, 78, -1, 16);
+
+    EXPECT_EQ(rt_entity_get_vy(e), 0);
+}
+
 TEST(Entity, MoveWithoutTilemap) {
     void *e = rt_entity_new(10000, 20000, 16, 16); // (100, 200) in pixels
     rt_entity_set_vx(e, 500);                      // 5 px/frame in centipixels

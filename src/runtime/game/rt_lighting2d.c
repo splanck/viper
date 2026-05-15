@@ -26,6 +26,7 @@
 #include "rt_graphics.h"
 #include "rt_object.h"
 #include "rt_trap.h"
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -69,6 +70,31 @@ static int64_t clamp_i64(int64_t value, int64_t lo, int64_t hi) {
     if (value > hi)
         return hi;
     return value;
+}
+
+static int64_t lighting_add_sat_i64(int64_t a, int64_t b) {
+    if (b > 0 && a > INT64_MAX - b)
+        return INT64_MAX;
+    if (b < 0 && a < INT64_MIN - b)
+        return INT64_MIN;
+    return a + b;
+}
+
+static int64_t lighting_sub_sat_i64(int64_t a, int64_t b) {
+    if (b == INT64_MIN)
+        return INT64_MAX;
+    return lighting_add_sat_i64(a, -b);
+}
+
+static int64_t lighting_mul_div_sat_i64(int64_t a, int64_t b, int64_t divisor) {
+    if (divisor == 0)
+        return 0;
+    long double value = ((long double)a * (long double)b) / (long double)divisor;
+    if (value > (long double)INT64_MAX)
+        return INT64_MAX;
+    if (value < (long double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)value;
 }
 
 /// @brief Construct a Lighting2D system with `max_lights` dynamic-light slots (capped at MAX_DYN_LIGHTS_CAP=128).
@@ -257,12 +283,13 @@ void rt_lighting2d_draw(rt_lighting2d lit,
         pulse = lit->player_pulse / 6;
     else
         pulse = (120 - lit->player_pulse) / 6;
-    int64_t radius = lit->player_radius + pulse;
+    int64_t radius = lighting_add_sat_i64(lit->player_radius, pulse);
     if (radius < 0)
         radius = 0;
 
     // Outer glow
-    rt_canvas_disc_alpha(canvas, player_sx, player_sy, radius + 40, lit->player_color, 30);
+    rt_canvas_disc_alpha(
+        canvas, player_sx, player_sy, lighting_add_sat_i64(radius, 40), lit->player_color, 30);
     // Main light rings
     for (int ring = 0; ring < 6; ring++) {
         int64_t r = radius - ring * (radius / 6);
@@ -279,8 +306,8 @@ void rt_lighting2d_draw(rt_lighting2d lit,
         if (!lit->lights[i].active)
             continue;
 
-        int64_t lx = lit->lights[i].x - cam_x;
-        int64_t ly = lit->lights[i].y - cam_y;
+        int64_t lx = lighting_sub_sat_i64(lit->lights[i].x, cam_x);
+        int64_t ly = lighting_sub_sat_i64(lit->lights[i].y, cam_y);
         int64_t lr = lit->lights[i].radius;
         int64_t lc = lit->lights[i].color;
         if (lr <= 0)
@@ -289,7 +316,8 @@ void rt_lighting2d_draw(rt_lighting2d lit,
         // Fade based on remaining life
         int64_t fade_alpha = dark;
         if (lit->lights[i].max_life > 0)
-            fade_alpha = dark * lit->lights[i].life / lit->lights[i].max_life;
+            fade_alpha =
+                lighting_mul_div_sat_i64(dark, lit->lights[i].life, lit->lights[i].max_life);
 
         if (fade_alpha > 0) {
             rt_canvas_disc_alpha(canvas, lx, ly, lr, lc, fade_alpha / 2);
