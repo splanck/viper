@@ -38,6 +38,10 @@ struct FakeWindow {
 
 static float g_initial_scale = 1.0f;
 static int64_t g_clock_us = 0;
+static int g_pump_events_result = 1;
+static int g_poll_event_calls = 0;
+static int g_mouse_pos_calls = 0;
+static int g_destroyed_windows = 0;
 static void *g_object_payloads[16];
 static int64_t g_object_class_ids[16];
 static size_t g_object_count = 0;
@@ -105,6 +109,27 @@ static void test_flip_rounds_positive_submillisecond_delta_up_to_one_ms() {
     assert(rt_canvas_get_delta_time(canvas) == 1);
 }
 
+static void test_poll_tears_down_window_when_event_pump_fails() {
+    g_initial_scale = 1.0f;
+    g_pump_events_result = 0;
+    g_poll_event_calls = 0;
+    g_mouse_pos_calls = 0;
+    g_destroyed_windows = 0;
+
+    rt_canvas *canvas = new_canvas();
+    assert(canvas != nullptr);
+
+    int64_t event_type = rt_canvas_poll(canvas);
+    assert(event_type == 0);
+    assert(rt_canvas_should_close(canvas) == 1);
+    assert(canvas->gfx_win == nullptr);
+    assert(g_poll_event_calls == 0);
+    assert(g_mouse_pos_calls == 0);
+    assert(g_destroyed_windows == 1);
+
+    g_pump_events_result = 1;
+}
+
 } // namespace
 
 extern "C" void *rt_obj_new_i64(int64_t class_id, int64_t byte_size) {
@@ -124,6 +149,10 @@ extern "C" int64_t rt_obj_class_id(void *obj) {
             return g_object_class_ids[i];
     }
     return 0;
+}
+
+extern "C" int8_t rt_obj_is_instance(void *obj, int64_t class_id, size_t) {
+    return obj && rt_obj_class_id(obj) == class_id;
 }
 
 extern "C" void rt_obj_set_finalizer(void *, void (*)(void *)) {}
@@ -216,6 +245,7 @@ extern "C" vgfx_window_t vgfx_create_window(const vgfx_window_params_t *params) 
 }
 
 extern "C" void vgfx_destroy_window(vgfx_window_t window) {
+    g_destroyed_windows++;
     std::free(window_from(window));
 }
 
@@ -260,14 +290,16 @@ extern "C" void vgfx_clear_clip(vgfx_window_t window) {
 }
 
 extern "C" int32_t vgfx_pump_events(vgfx_window_t) {
-    return 1;
+    return g_pump_events_result;
 }
 
 extern "C" int32_t vgfx_poll_event(vgfx_window_t, vgfx_event_t *) {
+    g_poll_event_calls++;
     return 0;
 }
 
 extern "C" int32_t vgfx_mouse_pos(vgfx_window_t window, int32_t *x, int32_t *y) {
+    g_mouse_pos_calls++;
     auto *fake = window_from(window);
     if (!fake)
         return 0;
@@ -343,5 +375,6 @@ int main() {
     test_width_resyncs_coord_scale_after_display_move();
     test_poll_reapplies_clip_after_scale_change();
     test_flip_rounds_positive_submillisecond_delta_up_to_one_ms();
+    test_poll_tears_down_window_when_event_pump_fails();
     return 0;
 }

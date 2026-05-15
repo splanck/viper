@@ -47,17 +47,23 @@ static void test_graphics2d_handles_have_unique_classes_and_reject_wrong_types()
     void *texture = rt_texture2d_new(pixels);
     void *renderer = rt_renderer2d_new(1);
     void *sprite = rt_sprite_new(pixels);
+    void *shader = rt_shader2d_new(RT_GRAPHICS2D_EFFECT_NONE);
+    void *post = rt_postprocess2d_new();
 
     assert(target != nullptr);
     assert(texture != nullptr);
     assert(renderer != nullptr);
     assert(sprite != nullptr);
+    assert(shader != nullptr);
+    assert(post != nullptr);
 
     int64_t target_class = rt_obj_class_id(target);
     int64_t texture_class = rt_obj_class_id(texture);
     int64_t renderer_class = rt_obj_class_id(renderer);
     int64_t pixels_class = rt_obj_class_id(pixels);
     int64_t sprite_class = rt_obj_class_id(sprite);
+    int64_t shader_class = rt_obj_class_id(shader);
+    int64_t post_class = rt_obj_class_id(post);
 
     assert(target_class != 0);
     assert(texture_class != 0);
@@ -67,15 +73,26 @@ static void test_graphics2d_handles_have_unique_classes_and_reject_wrong_types()
     assert(texture_class != renderer_class);
     assert(texture_class != pixels_class);
     assert(texture_class != sprite_class);
+    assert(shader_class != post_class);
+    assert(post_class != texture_class);
 
     assert(rt_texture2d_new(sprite) == nullptr);
     assert(rt_tileset2d_new(sprite, 1, 1) == nullptr);
+    assert(rt_tileset2d_columns(sprite) == 0);
+    assert(rt_tileset2d_get_tile_pixels(sprite, 0) == nullptr);
     assert(rt_nineslice2d_new(sprite, 0, 0, 0, 0) == nullptr);
     assert(rt_animatedsprite2d_new(nullptr) == nullptr);
     assert(rt_animatedsprite2d_new(pixels) == nullptr);
     assert(rt_camerarig2d_new(pixels) == nullptr);
     assert(rt_rendertarget2d_get_pixels(sprite) == nullptr);
     assert(rt_texture2d_get_pixels(sprite) == nullptr);
+    assert(rt_tilelayer2d_width(sprite) == 0);
+    assert(rt_tilelayer2d_get(sprite, 0, 0) == -1);
+    rt_tilelayer2d_set(sprite, 0, 0, 1);
+    assert(rt_viewport2d_get_scale(sprite) == 1000);
+    assert(rt_viewport2d_world_to_screen_x(sprite, 123) == 123);
+    assert(rt_shader2d_apply(post, pixels) == nullptr);
+    assert(rt_postprocess2d_apply(shader, pixels) == nullptr);
     assert(rt_color_get_a(rt_color_rgb(1, 2, 3)) == 255);
     assert(rt_color_get_a(rt_color_rgba(1, 2, 3, 0)) == 0);
     printf("test_graphics2d_handles_have_unique_classes_and_reject_wrong_types: PASSED\n");

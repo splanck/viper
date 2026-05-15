@@ -46,6 +46,7 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
+#include "rt_pixels_internal.h"
 
 #include <limits.h>
 #include <math.h>
@@ -90,7 +91,7 @@ typedef struct rt_camera_impl {
 ///          stale handles fall through to no-ops rather than crashing in the
 ///          middle of the per-frame draw loop.
 static rt_camera_impl *camera_checked_or_null(void *camera_ptr) {
-    if (!camera_ptr || rt_obj_class_id(camera_ptr) != RT_CAMERA_CLASS_ID)
+    if (!camera_ptr || !rt_obj_is_instance(camera_ptr, RT_CAMERA_CLASS_ID, sizeof(rt_camera_impl)))
         return NULL;
     return (rt_camera_impl *)camera_ptr;
 }
@@ -120,6 +121,14 @@ static int64_t camera_add_saturating(int64_t a, int64_t b) {
     if (b < 0 && a < INT64_MIN - b)
         return INT64_MIN;
     return a + b;
+}
+
+static int64_t camera_clamp_i64(int64_t value, int64_t min_value, int64_t max_value) {
+    if (value < min_value)
+        return min_value;
+    if (value > max_value)
+        return max_value;
+    return value;
 }
 
 /// @brief Subtract two int64 values with saturation at INT64_MIN/MAX (delegates through long double).
@@ -485,7 +494,7 @@ void *rt_camera_new(int64_t width, int64_t height) {
 // Camera Properties
 //=============================================================================
 
-/// @brief Read the camera's world-space X coordinate (the point centered on screen). Traps on null.
+/// @brief Read the camera viewport's world-space left edge. Traps on null.
 int64_t rt_camera_get_x(void *camera_ptr) {
     rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
     if (!camera) {
@@ -495,7 +504,7 @@ int64_t rt_camera_get_x(void *camera_ptr) {
     return camera->x;
 }
 
-/// @brief Set the camera's world-space X (clamped to active bounds, if any). Marks the
+/// @brief Set the camera viewport's world-space left edge (clamped to active bounds, if any). Marks the
 /// view-transform dirty so the next render recomputes derived state.
 void rt_camera_set_x(void *camera_ptr, int64_t x) {
     rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
@@ -508,7 +517,7 @@ void rt_camera_set_x(void *camera_ptr, int64_t x) {
     camera_clamp_bounds(camera);
 }
 
-/// @brief Read the camera's world-space Y coordinate. Traps on null.
+/// @brief Read the camera viewport's world-space top edge. Traps on null.
 int64_t rt_camera_get_y(void *camera_ptr) {
     rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
     if (!camera) {
@@ -518,7 +527,7 @@ int64_t rt_camera_get_y(void *camera_ptr) {
     return camera->y;
 }
 
-/// @brief Set the camera's world-space Y (clamped to active bounds, if any).
+/// @brief Set the camera viewport's world-space top edge (clamped to active bounds, if any).
 void rt_camera_set_y(void *camera_ptr, int64_t y) {
     rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
     if (!camera) {
@@ -597,6 +606,42 @@ int64_t rt_camera_get_height(void *camera_ptr) {
     return camera->height;
 }
 
+/// @brief Read the world-space X coordinate at the center of the viewport.
+int64_t rt_camera_get_center_x(void *camera_ptr) {
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera) {
+        rt_trap("Camera.CenterX: null camera");
+        return 0;
+    }
+    return camera_add_saturating(camera->x, camera_world_width(camera) / 2);
+}
+
+/// @brief Read the world-space Y coordinate at the center of the viewport.
+int64_t rt_camera_get_center_y(void *camera_ptr) {
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera) {
+        rt_trap("Camera.CenterY: null camera");
+        return 0;
+    }
+    return camera_add_saturating(camera->y, camera_world_height(camera) / 2);
+}
+
+/// @brief Place the viewport so the supplied world point is centered on screen.
+void rt_camera_set_center(void *camera_ptr, int64_t x, int64_t y) {
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera) {
+        rt_trap("Camera.SetCenter: null camera");
+        return;
+    }
+    int64_t old_x = camera->x;
+    int64_t old_y = camera->y;
+    camera->x = camera_sub_saturating(x, camera_world_width(camera) / 2);
+    camera->y = camera_sub_saturating(y, camera_world_height(camera) / 2);
+    camera_clamp_bounds(camera);
+    if (camera->x != old_x || camera->y != old_y)
+        camera->dirty = 1;
+}
+
 //=============================================================================
 // Camera Methods
 //=============================================================================
@@ -644,6 +689,9 @@ void rt_camera_smooth_follow(void *camera_ptr,
             return;
     }
 
+    int64_t old_x = camera->x;
+    int64_t old_y = camera->y;
+
     // Lerp toward desired position. lerp_pct: 0-1000 (1000 = instant)
     if (lerp_pct >= 1000) {
         camera->x = desired_x;
@@ -657,8 +705,9 @@ void rt_camera_smooth_follow(void *camera_ptr,
             camera_mul_div_saturating(camera_sub_saturating(desired_y, camera->y), lerp_pct, 1000));
     }
 
-    camera->dirty = 1;
     camera_clamp_bounds(camera);
+    if (camera->x != old_x || camera->y != old_y)
+        camera->dirty = 1;
 }
 
 /// @brief Set the rectangular deadzone (centered on current position) in which `_smooth_follow`
@@ -885,7 +934,7 @@ int64_t rt_camera_add_parallax(void *camera_ptr,
     rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
     if (!camera)
         return -1;
-    if (rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID)
+    if (!rt_obj_is_instance(pixels, RT_PIXELS_CLASS_ID, sizeof(rt_pixels_impl)))
         return -1;
     if (camera->parallax_count >= RT_CAMERA_MAX_PARALLAX)
         return -1;
@@ -894,8 +943,8 @@ int64_t rt_camera_add_parallax(void *camera_ptr,
         if (!camera->parallax[i].active) {
             rt_obj_retain_maybe(pixels);
             camera->parallax[i].pixels = pixels;
-            camera->parallax[i].scroll_factor_x = scroll_x_pct;
-            camera->parallax[i].scroll_factor_y = scroll_y_pct;
+            camera->parallax[i].scroll_factor_x = camera_clamp_i64(scroll_x_pct, 0, 100);
+            camera->parallax[i].scroll_factor_y = camera_clamp_i64(scroll_y_pct, 0, 100);
             camera->parallax[i].offset_y = 0;
             camera->parallax[i].active = 1;
             camera->parallax_count++;

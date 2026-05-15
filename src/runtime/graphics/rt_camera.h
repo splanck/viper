@@ -45,16 +45,16 @@ void *rt_camera_new(int64_t width, int64_t height);
 // Camera Properties
 //=========================================================================
 
-/// @brief Get camera X position (world coordinates).
+/// @brief Get camera viewport left edge (world coordinates).
 int64_t rt_camera_get_x(void *camera);
 
-/// @brief Set camera X position (world coordinates).
+/// @brief Set camera viewport left edge (world coordinates).
 void rt_camera_set_x(void *camera, int64_t x);
 
-/// @brief Get camera Y position (world coordinates).
+/// @brief Get camera viewport top edge (world coordinates).
 int64_t rt_camera_get_y(void *camera);
 
-/// @brief Set camera Y position (world coordinates).
+/// @brief Set camera viewport top edge (world coordinates).
 void rt_camera_set_y(void *camera, int64_t y);
 
 /// @brief Get camera zoom level (100 = 100%).
@@ -74,6 +74,15 @@ int64_t rt_camera_get_width(void *camera);
 
 /// @brief Get viewport height.
 int64_t rt_camera_get_height(void *camera);
+
+/// @brief Get camera viewport center X (world coordinates).
+int64_t rt_camera_get_center_x(void *camera);
+
+/// @brief Get camera viewport center Y (world coordinates).
+int64_t rt_camera_get_center_y(void *camera);
+
+/// @brief Set camera viewport center (world coordinates).
+void rt_camera_set_center(void *camera, int64_t x, int64_t y);
 
 //=========================================================================
 // Camera Methods

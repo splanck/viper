@@ -93,6 +93,7 @@
 #define RT2D_ASEPRITEIMPORTER_CLASS_ID INT64_C(-0x620120)
 #define RT2D_TILEDMAPLOADER_CLASS_ID INT64_C(-0x620121)
 #define RT2D_TEXTUREPACKERATLAS_CLASS_ID INT64_C(-0x620122)
+#define RT2D_POSTPROCESS_CLASS_ID INT64_C(-0x620123)
 
 typedef struct {
     int64_t magic;
@@ -292,7 +293,7 @@ static int64_t saturating_mul_i64(int64_t a, int64_t b) {
 static rt_rendertarget2d_impl *rendertarget2d_checked(void *target) {
     if (!target)
         return NULL;
-    if (rt_obj_class_id(target) != RT2D_RENDERTARGET_CLASS_ID)
+    if (!rt_obj_is_instance(target, RT2D_RENDERTARGET_CLASS_ID, sizeof(rt_rendertarget2d_impl)))
         return NULL;
     rt_rendertarget2d_impl *impl = (rt_rendertarget2d_impl *)target;
     return impl->magic == RT2D_RENDERTARGET_MAGIC ? impl : NULL;
@@ -302,7 +303,7 @@ static rt_rendertarget2d_impl *rendertarget2d_checked(void *target) {
 static rt_texture2d_impl *texture2d_checked(void *texture) {
     if (!texture)
         return NULL;
-    if (rt_obj_class_id(texture) != RT2D_TEXTURE_CLASS_ID)
+    if (!rt_obj_is_instance(texture, RT2D_TEXTURE_CLASS_ID, sizeof(rt_texture2d_impl)))
         return NULL;
     rt_texture2d_impl *impl = (rt_texture2d_impl *)texture;
     return impl->magic == RT2D_TEXTURE_MAGIC ? impl : NULL;
@@ -312,7 +313,7 @@ static rt_texture2d_impl *texture2d_checked(void *texture) {
 static rt_renderer2d_impl *renderer2d_checked(void *renderer) {
     if (!renderer)
         return NULL;
-    if (rt_obj_class_id(renderer) != RT2D_RENDERER_CLASS_ID)
+    if (!rt_obj_is_instance(renderer, RT2D_RENDERER_CLASS_ID, sizeof(rt_renderer2d_impl)))
         return NULL;
     rt_renderer2d_impl *impl = (rt_renderer2d_impl *)renderer;
     return impl->magic == RT2D_RENDERER_MAGIC ? impl : NULL;
@@ -323,7 +324,45 @@ static rt_renderer2d_impl *renderer2d_checked(void *renderer) {
 ///          point as a one-line type guard before downcasting an opaque
 ///          handle to its concrete impl pointer.
 static int32_t rt2d_has_class(void *obj, int64_t class_id) {
-    return obj && rt_obj_class_id(obj) == class_id;
+    return obj && rt_obj_is_instance(obj, class_id, 0);
+}
+
+static int32_t rt2d_has_class_min(void *obj, int64_t class_id, size_t min_size) {
+    return obj && rt_obj_is_instance(obj, class_id, min_size);
+}
+
+static rt_shader2d_impl *shader2d_checked(void *shader) {
+    return rt2d_has_class_min(shader, RT2D_SHADER_CLASS_ID, sizeof(rt_shader2d_impl))
+               ? (rt_shader2d_impl *)shader
+               : NULL;
+}
+
+static rt_postprocess2d_impl *postprocess2d_checked(void *postprocess) {
+    return rt2d_has_class_min(postprocess, RT2D_POSTPROCESS_CLASS_ID, sizeof(rt_postprocess2d_impl))
+               ? (rt_postprocess2d_impl *)postprocess
+               : NULL;
+}
+
+static int32_t rt2d_is_shader_like(void *shader) {
+    return shader2d_checked(shader) || postprocess2d_checked(shader);
+}
+
+static rt_viewport2d_impl *viewport2d_checked(void *viewport) {
+    return rt2d_has_class_min(viewport, RT2D_VIEWPORT_CLASS_ID, sizeof(rt_viewport2d_impl))
+               ? (rt_viewport2d_impl *)viewport
+               : NULL;
+}
+
+static rt_tileset2d_impl *tileset2d_checked(void *tileset) {
+    return rt2d_has_class_min(tileset, RT2D_TILESET_CLASS_ID, sizeof(rt_tileset2d_impl))
+               ? (rt_tileset2d_impl *)tileset
+               : NULL;
+}
+
+static rt_tilelayer2d_impl *tilelayer2d_checked(void *layer) {
+    return rt2d_has_class_min(layer, RT2D_TILELAYER_CLASS_ID, sizeof(rt_tilelayer2d_impl))
+               ? (rt_tilelayer2d_impl *)layer
+               : NULL;
 }
 
 /// @brief Test whether @p value falls in the half-open interval `[start, start+length)`.
@@ -1278,7 +1317,7 @@ static void texture2d_finalize(void *obj) {
 void *rt_texture2d_new(void *pixels) {
     if (!pixels)
         return NULL;
-    if (rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID)
+    if (!rt_obj_is_instance(pixels, RT_PIXELS_CLASS_ID, sizeof(rt_pixels_impl)))
         return NULL;
     retain_ref(pixels);
     rt_texture2d_impl *texture =
@@ -2099,37 +2138,41 @@ void *rt_shader2d_new(int64_t effect) {
 
 /// @brief Set the shader effect index clamped to `[0, 4]` (NONE/INVERT/GRAYSCALE/TINT/BLUR).
 void rt_shader2d_set_effect(void *shader, int64_t effect) {
-    if (rt2d_has_class(shader, RT2D_SHADER_CLASS_ID))
-        ((rt_shader2d_impl *)shader)->effect = clamp_i64(effect, 0, 4);
+    rt_shader2d_impl *impl = shader2d_checked(shader);
+    if (impl)
+        impl->effect = clamp_i64(effect, 0, 4);
 }
 
 /// @brief Get the current effect index, defaulting to NONE for invalid handles.
 int64_t rt_shader2d_get_effect(void *shader) {
-    return rt2d_has_class(shader, RT2D_SHADER_CLASS_ID) ? ((rt_shader2d_impl *)shader)->effect
-                                                        : RT_GRAPHICS2D_EFFECT_NONE;
+    rt_shader2d_impl *impl = shader2d_checked(shader);
+    return impl ? impl->effect : RT_GRAPHICS2D_EFFECT_NONE;
 }
 
 /// @brief Set the effect amount (e.g. blur radius) clamped to `[0, 10]`.
 void rt_shader2d_set_amount(void *shader, int64_t amount) {
-    if (rt2d_has_class(shader, RT2D_SHADER_CLASS_ID))
-        ((rt_shader2d_impl *)shader)->amount = clamp_i64(amount, 0, 10);
+    rt_shader2d_impl *impl = shader2d_checked(shader);
+    if (impl)
+        impl->amount = clamp_i64(amount, 0, 10);
 }
 
 /// @brief Get the current effect amount, or 0 for invalid handles.
 int64_t rt_shader2d_get_amount(void *shader) {
-    return rt2d_has_class(shader, RT2D_SHADER_CLASS_ID) ? ((rt_shader2d_impl *)shader)->amount : 0;
+    rt_shader2d_impl *impl = shader2d_checked(shader);
+    return impl ? impl->amount : 0;
 }
 
 /// @brief Set the effect color (`0x00RRGGBB`), used for the TINT effect.
 void rt_shader2d_set_color(void *shader, int64_t rgb) {
-    if (rt2d_has_class(shader, RT2D_SHADER_CLASS_ID))
-        ((rt_shader2d_impl *)shader)->color = rgb & 0x00FFFFFF;
+    rt_shader2d_impl *impl = shader2d_checked(shader);
+    if (impl)
+        impl->color = rgb & 0x00FFFFFF;
 }
 
 /// @brief Get the current effect color, defaulting to white (0x00FFFFFF) for invalid handles.
 int64_t rt_shader2d_get_color(void *shader) {
-    return rt2d_has_class(shader, RT2D_SHADER_CLASS_ID) ? ((rt_shader2d_impl *)shader)->color
-                                                        : 0x00FFFFFF;
+    rt_shader2d_impl *impl = shader2d_checked(shader);
+    return impl ? impl->color : 0x00FFFFFF;
 }
 
 /// @brief Dispatch to the correct pixel-effect function for the given effect index.
@@ -2158,7 +2201,7 @@ static void *apply_effect(int64_t effect, int64_t amount, int64_t color, void *p
 void *rt_shader2d_apply(void *shader, void *pixels) {
     if (!shader)
         return pixels ? rt_pixels_clone(pixels) : NULL;
-    if (!rt2d_has_class(shader, RT2D_SHADER_CLASS_ID))
+    if (!shader2d_checked(shader))
         return NULL;
     rt_shader2d_impl *impl = (rt_shader2d_impl *)shader;
     return apply_effect(impl->effect, impl->amount, impl->color, pixels);
@@ -2166,27 +2209,46 @@ void *rt_shader2d_apply(void *shader, void *pixels) {
 
 /// @brief Allocate a PostProcess2D (a Shader2D starting with EFFECT_NONE).
 void *rt_postprocess2d_new(void) {
-    return rt_shader2d_new(RT_GRAPHICS2D_EFFECT_NONE);
+    rt_postprocess2d_impl *postprocess =
+        (rt_postprocess2d_impl *)rt_obj_new_i64(RT2D_POSTPROCESS_CLASS_ID,
+                                                (int64_t)sizeof(rt_postprocess2d_impl));
+    if (!postprocess)
+        return NULL;
+    postprocess->effect = RT_GRAPHICS2D_EFFECT_NONE;
+    postprocess->amount = 1;
+    postprocess->color = 0x00FFFFFF;
+    return postprocess;
 }
 
 /// @brief Set the post-process effect index (forwarded to Shader2D).
 void rt_postprocess2d_set_effect(void *postprocess, int64_t effect) {
-    rt_shader2d_set_effect(postprocess, effect);
+    rt_postprocess2d_impl *impl = postprocess2d_checked(postprocess);
+    if (impl)
+        impl->effect = clamp_i64(effect, 0, 4);
 }
 
 /// @brief Set the post-process effect amount (forwarded to Shader2D).
 void rt_postprocess2d_set_amount(void *postprocess, int64_t amount) {
-    rt_shader2d_set_amount(postprocess, amount);
+    rt_postprocess2d_impl *impl = postprocess2d_checked(postprocess);
+    if (impl)
+        impl->amount = clamp_i64(amount, 0, 10);
 }
 
 /// @brief Set the post-process effect color (forwarded to Shader2D).
 void rt_postprocess2d_set_color(void *postprocess, int64_t rgb) {
-    rt_shader2d_set_color(postprocess, rgb);
+    rt_postprocess2d_impl *impl = postprocess2d_checked(postprocess);
+    if (impl)
+        impl->color = rgb & 0x00FFFFFF;
 }
 
 /// @brief Apply the post-process effect and return a new Pixels buffer (forwarded to Shader2D).
 void *rt_postprocess2d_apply(void *postprocess, void *pixels) {
-    return rt_shader2d_apply(postprocess, pixels);
+    if (!postprocess)
+        return pixels ? rt_pixels_clone(pixels) : NULL;
+    rt_postprocess2d_impl *impl = postprocess2d_checked(postprocess);
+    if (!impl)
+        return NULL;
+    return apply_effect(impl->effect, impl->amount, impl->color, pixels);
 }
 
 //=============================================================================
@@ -2267,9 +2329,9 @@ void *rt_viewport2d_new(int64_t virtual_width,
 
 /// @brief Update the virtual (design) canvas size and recalculate scale/offsets.
 void rt_viewport2d_set_virtual_size(void *viewport, int64_t width, int64_t height) {
-    if (!viewport)
+    rt_viewport2d_impl *impl = viewport2d_checked(viewport);
+    if (!impl)
         return;
-    rt_viewport2d_impl *impl = (rt_viewport2d_impl *)viewport;
     impl->virtual_width = normalized_dim(width);
     impl->virtual_height = normalized_dim(height);
     viewport2d_recalculate(impl);
@@ -2277,9 +2339,9 @@ void rt_viewport2d_set_virtual_size(void *viewport, int64_t width, int64_t heigh
 
 /// @brief Update the physical screen size and recalculate scale/offsets.
 void rt_viewport2d_set_screen_size(void *viewport, int64_t width, int64_t height) {
-    if (!viewport)
+    rt_viewport2d_impl *impl = viewport2d_checked(viewport);
+    if (!impl)
         return;
-    rt_viewport2d_impl *impl = (rt_viewport2d_impl *)viewport;
     impl->screen_width = normalized_dim(width);
     impl->screen_height = normalized_dim(height);
     viewport2d_recalculate(impl);
@@ -2287,35 +2349,38 @@ void rt_viewport2d_set_screen_size(void *viewport, int64_t width, int64_t height
 
 /// @brief Enable or disable integer-only scaling (whole-number scale factors only).
 void rt_viewport2d_set_integer_scaling(void *viewport, int64_t enabled) {
-    if (!viewport)
+    rt_viewport2d_impl *impl = viewport2d_checked(viewport);
+    if (!impl)
         return;
-    rt_viewport2d_impl *impl = (rt_viewport2d_impl *)viewport;
     impl->integer_scaling = enabled != 0;
     viewport2d_recalculate(impl);
 }
 
 /// @brief Return the current scale factor as a fixed-point integer (1000 = 1.0x).
 int64_t rt_viewport2d_get_scale(void *viewport) {
-    return viewport ? ((rt_viewport2d_impl *)viewport)->scale : 1000;
+    rt_viewport2d_impl *impl = viewport2d_checked(viewport);
+    return impl ? impl->scale : 1000;
 }
 
 /// @brief Return the horizontal letterbox/pillarbox offset in screen pixels.
 int64_t rt_viewport2d_get_offset_x(void *viewport) {
-    return viewport ? ((rt_viewport2d_impl *)viewport)->offset_x : 0;
+    rt_viewport2d_impl *impl = viewport2d_checked(viewport);
+    return impl ? impl->offset_x : 0;
 }
 
 /// @brief Return the vertical letterbox/pillarbox offset in screen pixels.
 int64_t rt_viewport2d_get_offset_y(void *viewport) {
-    return viewport ? ((rt_viewport2d_impl *)viewport)->offset_y : 0;
+    rt_viewport2d_impl *impl = viewport2d_checked(viewport);
+    return impl ? impl->offset_y : 0;
 }
 
 /// @brief Convert a virtual-space X coordinate to a screen-space X pixel position.
 /// @details Applies `screen_x = offset_x + (virtual_x * scale / 1000)` using `long double`
 ///   to preserve sub-pixel accuracy before rounding to the nearest integer.
 int64_t rt_viewport2d_world_to_screen_x(void *viewport, int64_t x) {
-    if (!viewport)
+    rt_viewport2d_impl *impl = viewport2d_checked(viewport);
+    if (!impl)
         return x;
-    rt_viewport2d_impl *impl = (rt_viewport2d_impl *)viewport;
     long double mapped =
         (long double)impl->offset_x + ((long double)x * (long double)impl->scale) / 1000.0L;
     return round_long_double_to_i64(mapped);
@@ -2323,9 +2388,9 @@ int64_t rt_viewport2d_world_to_screen_x(void *viewport, int64_t x) {
 
 /// @brief Convert a virtual-space Y coordinate to a screen-space Y pixel position.
 int64_t rt_viewport2d_world_to_screen_y(void *viewport, int64_t y) {
-    if (!viewport)
+    rt_viewport2d_impl *impl = viewport2d_checked(viewport);
+    if (!impl)
         return y;
-    rt_viewport2d_impl *impl = (rt_viewport2d_impl *)viewport;
     long double mapped =
         (long double)impl->offset_y + ((long double)y * (long double)impl->scale) / 1000.0L;
     return round_long_double_to_i64(mapped);
@@ -2334,9 +2399,9 @@ int64_t rt_viewport2d_world_to_screen_y(void *viewport, int64_t y) {
 /// @brief Convert a screen-space X pixel position back to a virtual-space X coordinate.
 /// @details Inverse of `world_to_screen_x`: `virtual_x = (screen_x - offset_x) * 1000 / scale`.
 int64_t rt_viewport2d_screen_to_world_x(void *viewport, int64_t x) {
-    if (!viewport)
+    rt_viewport2d_impl *impl = viewport2d_checked(viewport);
+    if (!impl)
         return x;
-    rt_viewport2d_impl *impl = (rt_viewport2d_impl *)viewport;
     long double mapped =
         ((long double)x - (long double)impl->offset_x) * 1000.0L / (long double)impl->scale;
     return round_long_double_to_i64(mapped);
@@ -2344,9 +2409,9 @@ int64_t rt_viewport2d_screen_to_world_x(void *viewport, int64_t x) {
 
 /// @brief Convert a screen-space Y pixel position back to a virtual-space Y coordinate.
 int64_t rt_viewport2d_screen_to_world_y(void *viewport, int64_t y) {
-    if (!viewport)
+    rt_viewport2d_impl *impl = viewport2d_checked(viewport);
+    if (!impl)
         return y;
-    rt_viewport2d_impl *impl = (rt_viewport2d_impl *)viewport;
     long double mapped =
         ((long double)y - (long double)impl->offset_y) * 1000.0L / (long double)impl->scale;
     return round_long_double_to_i64(mapped);
@@ -2361,7 +2426,9 @@ int64_t rt_viewport2d_screen_to_world_y(void *viewport, int64_t y) {
 
 /// @brief GC finalizer — releases the retained backing Pixels.
 static void tileset2d_finalize(void *obj) {
-    rt_tileset2d_impl *tileset = (rt_tileset2d_impl *)obj;
+    rt_tileset2d_impl *tileset = tileset2d_checked(obj);
+    if (!tileset)
+        return;
     release_ref_slot(&tileset->pixels);
 }
 
@@ -2375,7 +2442,7 @@ static void tileset2d_finalize(void *obj) {
 void *rt_tileset2d_new(void *pixels, int64_t tile_width, int64_t tile_height) {
     if (!pixels || tile_width <= 0 || tile_height <= 0)
         return NULL;
-    if (rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID)
+    if (!rt_obj_is_instance(pixels, RT_PIXELS_CLASS_ID, sizeof(rt_pixels_impl)))
         return NULL;
     int64_t pixels_width = rt_pixels_width(pixels);
     int64_t pixels_height = rt_pixels_height(pixels);
@@ -2399,17 +2466,17 @@ void *rt_tileset2d_new(void *pixels, int64_t tile_width, int64_t tile_height) {
 
 /// @brief Return the number of whole tile columns in the tileset image.
 int64_t rt_tileset2d_columns(void *tileset) {
-    if (!tileset)
+    rt_tileset2d_impl *impl = tileset2d_checked(tileset);
+    if (!impl || impl->tile_width <= 0)
         return 0;
-    rt_tileset2d_impl *impl = (rt_tileset2d_impl *)tileset;
     return rt_pixels_width(impl->pixels) / impl->tile_width;
 }
 
 /// @brief Return the number of whole tile rows in the tileset image.
 int64_t rt_tileset2d_rows(void *tileset) {
-    if (!tileset)
+    rt_tileset2d_impl *impl = tileset2d_checked(tileset);
+    if (!impl || impl->tile_height <= 0)
         return 0;
-    rt_tileset2d_impl *impl = (rt_tileset2d_impl *)tileset;
     return rt_pixels_height(impl->pixels) / impl->tile_height;
 }
 
@@ -2424,8 +2491,12 @@ int64_t rt_tileset2d_tile_count(void *tileset) {
 void *rt_tileset2d_get_tile_pixels(void *tileset, int64_t tile_index) {
     if (!tileset || tile_index < 0 || tile_index >= rt_tileset2d_tile_count(tileset))
         return NULL;
-    rt_tileset2d_impl *impl = (rt_tileset2d_impl *)tileset;
+    rt_tileset2d_impl *impl = tileset2d_checked(tileset);
+    if (!impl)
+        return NULL;
     int64_t columns = rt_tileset2d_columns(tileset);
+    if (columns <= 0)
+        return NULL;
     int64_t sx = (tile_index % columns) * impl->tile_width;
     int64_t sy = (tile_index / columns) * impl->tile_height;
     return copy_region_pixels(impl->pixels, sx, sy, impl->tile_width, impl->tile_height);
@@ -2441,7 +2512,9 @@ void *rt_tileset2d_get_tile_pixels(void *tileset, int64_t tile_index) {
 
 /// @brief GC finalizer — frees the `tiles` buffer.
 static void tilelayer2d_finalize(void *obj) {
-    rt_tilelayer2d_impl *layer = (rt_tilelayer2d_impl *)obj;
+    rt_tilelayer2d_impl *layer = tilelayer2d_checked(obj);
+    if (!layer)
+        return;
     free(layer->tiles);
 }
 
@@ -2479,12 +2552,14 @@ void *rt_tilelayer2d_new(int64_t width, int64_t height) {
 
 /// @brief Return the width (in tiles) of the layer.
 int64_t rt_tilelayer2d_width(void *layer) {
-    return layer ? ((rt_tilelayer2d_impl *)layer)->width : 0;
+    rt_tilelayer2d_impl *impl = tilelayer2d_checked(layer);
+    return impl ? impl->width : 0;
 }
 
 /// @brief Return the height (in tiles) of the layer.
 int64_t rt_tilelayer2d_height(void *layer) {
-    return layer ? ((rt_tilelayer2d_impl *)layer)->height : 0;
+    rt_tilelayer2d_impl *impl = tilelayer2d_checked(layer);
+    return impl ? impl->height : 0;
 }
 
 /// @brief Return non-zero if tile cell (x, y) is within the layer's bounds.
@@ -2496,7 +2571,7 @@ static int32_t tilelayer2d_in_bounds(rt_tilelayer2d_impl *layer, int64_t x, int6
 /// @details Bounds are checked via `tilelayer2d_in_bounds`; out-of-range writes
 ///          are silently dropped. Tile ID 0 conventionally means "empty".
 void rt_tilelayer2d_set(void *layer, int64_t x, int64_t y, int64_t tile) {
-    rt_tilelayer2d_impl *impl = (rt_tilelayer2d_impl *)layer;
+    rt_tilelayer2d_impl *impl = tilelayer2d_checked(layer);
     if (!tilelayer2d_in_bounds(impl, x, y))
         return;
     impl->tiles[y * impl->width + x] = tile;
@@ -2504,7 +2579,7 @@ void rt_tilelayer2d_set(void *layer, int64_t x, int64_t y, int64_t tile) {
 
 /// @brief Read the tile ID at `(x, y)`, returning -1 for out-of-range coords.
 int64_t rt_tilelayer2d_get(void *layer, int64_t x, int64_t y) {
-    rt_tilelayer2d_impl *impl = (rt_tilelayer2d_impl *)layer;
+    rt_tilelayer2d_impl *impl = tilelayer2d_checked(layer);
     if (!tilelayer2d_in_bounds(impl, x, y))
         return -1;
     return impl->tiles[y * impl->width + x];
@@ -2512,7 +2587,7 @@ int64_t rt_tilelayer2d_get(void *layer, int64_t x, int64_t y) {
 
 /// @brief Fill every cell in the layer with the same tile ID.
 void rt_tilelayer2d_fill(void *layer, int64_t tile) {
-    rt_tilelayer2d_impl *impl = (rt_tilelayer2d_impl *)layer;
+    rt_tilelayer2d_impl *impl = tilelayer2d_checked(layer);
     if (!impl)
         return;
     int64_t count = impl->width * impl->height;
@@ -2527,24 +2602,28 @@ void rt_tilelayer2d_clear(void *layer) {
 
 /// @brief Set whether the layer is included in tilemap renders.
 void rt_tilelayer2d_set_visible(void *layer, int64_t visible) {
-    if (layer)
-        ((rt_tilelayer2d_impl *)layer)->visible = visible != 0;
+    rt_tilelayer2d_impl *impl = tilelayer2d_checked(layer);
+    if (impl)
+        impl->visible = visible != 0;
 }
 
 /// @brief Return non-zero if the layer is currently marked visible.
 int64_t rt_tilelayer2d_is_visible(void *layer) {
-    return layer ? ((rt_tilelayer2d_impl *)layer)->visible : 0;
+    rt_tilelayer2d_impl *impl = tilelayer2d_checked(layer);
+    return impl ? impl->visible : 0;
 }
 
 /// @brief Set the layer opacity in [0, 255]; values are clamped.
 void rt_tilelayer2d_set_opacity(void *layer, int64_t opacity) {
-    if (layer)
-        ((rt_tilelayer2d_impl *)layer)->opacity = clamp_u8_i64(opacity);
+    rt_tilelayer2d_impl *impl = tilelayer2d_checked(layer);
+    if (impl)
+        impl->opacity = clamp_u8_i64(opacity);
 }
 
 /// @brief Return the current layer opacity in [0, 255].
 int64_t rt_tilelayer2d_get_opacity(void *layer) {
-    return layer ? ((rt_tilelayer2d_impl *)layer)->opacity : 0;
+    rt_tilelayer2d_impl *impl = tilelayer2d_checked(layer);
+    return impl ? impl->opacity : 0;
 }
 
 //=============================================================================
@@ -2999,7 +3078,7 @@ void *rt_textrenderer2d_new(void) {
 ///          Pass NULL to revert to the built-in Canvas font.
 void rt_textrenderer2d_set_font(void *renderer, void *font) {
     if (!rt2d_has_class(renderer, RT2D_TEXTRENDERER_CLASS_ID) ||
-        (font && rt_obj_class_id(font) != RT_BITMAPFONT_CLASS_ID))
+        (font && !rt_obj_is_instance(font, RT_BITMAPFONT_CLASS_ID, 0)))
         return;
     rt_textrenderer2d_impl *impl = (rt_textrenderer2d_impl *)renderer;
     retain_ref(font);
@@ -3077,7 +3156,7 @@ static void sdffont_finalize(void *obj) {
 ///          rendering will use `spread` directly; the current bitmap-backed
 ///          implementation records it but ignores it at draw time.
 void *rt_sdffont_new(void *bitmap_font, int64_t spread) {
-    if (bitmap_font && rt_obj_class_id(bitmap_font) != RT_BITMAPFONT_CLASS_ID)
+    if (bitmap_font && !rt_obj_is_instance(bitmap_font, RT_BITMAPFONT_CLASS_ID, 0))
         return NULL;
     retain_ref(bitmap_font);
     rt_sdffont_impl *font =
@@ -3130,7 +3209,7 @@ static void nineslice2d_finalize(void *obj) {
 void *rt_nineslice2d_new(void *pixels, int64_t left, int64_t top, int64_t right, int64_t bottom) {
     if (!pixels)
         return NULL;
-    if (rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID)
+    if (!rt_obj_is_instance(pixels, RT_PIXELS_CLASS_ID, sizeof(rt_pixels_impl)))
         return NULL;
     int64_t pixels_width = rt_pixels_width(pixels);
     int64_t pixels_height = rt_pixels_height(pixels);
@@ -4169,7 +4248,7 @@ static void animatedsprite2d_finalize(void *obj) {
 /// @details Retains a reference to `sprite`. Starts with `playing = 1` so the
 ///          first `Update` call after `SetClip` immediately begins advancing frames.
 void *rt_animatedsprite2d_new(void *sprite) {
-    if (!sprite || rt_obj_class_id(sprite) != RT_SPRITE_CLASS_ID)
+    if (!sprite || !rt_obj_is_instance(sprite, RT_SPRITE_CLASS_ID, 0))
         return NULL;
     retain_ref(sprite);
     rt_animatedsprite2d_impl *impl =
@@ -4348,7 +4427,7 @@ void *rt_textlayout2d_new(void) {
 /// @brief Bind a BitmapFont, retaining a reference.
 void rt_textlayout2d_set_font(void *layout, void *font) {
     if (rt2d_has_class(layout, RT2D_TEXTLAYOUT_CLASS_ID) &&
-        (!font || rt_obj_class_id(font) == RT_BITMAPFONT_CLASS_ID))
+        (!font || rt_obj_is_instance(font, RT_BITMAPFONT_CLASS_ID, 0)))
         spriterenderer2d_set_ref(&((rt_textlayout2d_impl *)layout)->font, font);
 }
 
@@ -4586,7 +4665,7 @@ void rt_renderpass2d_set_target(void *pass, void *target) {
 /// @brief Bind a Shader2D for this pass, retaining a reference.
 void rt_renderpass2d_set_shader(void *pass, void *shader) {
     if (rt2d_has_class(pass, RT2D_RENDERPASS_CLASS_ID) &&
-        (!shader || rt2d_has_class(shader, RT2D_SHADER_CLASS_ID)))
+        (!shader || rt2d_is_shader_like(shader)))
         spriterenderer2d_set_ref(&((rt_renderpass2d_impl *)pass)->shader, shader);
 }
 
@@ -4615,13 +4694,20 @@ void rt_renderpass2d_execute(void *pass) {
     if (!rt2d_has_class(impl->source, RT2D_RENDERTARGET_CLASS_ID) ||
         !rt2d_has_class(impl->target, RT2D_RENDERTARGET_CLASS_ID))
         return;
-    if (impl->shader && !rt2d_has_class(impl->shader, RT2D_SHADER_CLASS_ID))
+    if (impl->shader && !rt2d_is_shader_like(impl->shader))
         return;
     void *source_pixels = rt_rendertarget2d_get_pixels(impl->source);
     if (!source_pixels)
         return;
-    void *processed = impl->shader ? rt_shader2d_apply(impl->shader, source_pixels)
-                                   : rt_pixels_clone(source_pixels);
+    void *processed = NULL;
+    if (impl->shader) {
+        if (shader2d_checked(impl->shader))
+            processed = rt_shader2d_apply(impl->shader, source_pixels);
+        else
+            processed = rt_postprocess2d_apply(impl->shader, source_pixels);
+    } else {
+        processed = rt_pixels_clone(source_pixels);
+    }
     if (!processed)
         return;
     rt_rendertarget2d_clear(impl->target, 0);
@@ -5132,7 +5218,7 @@ static void camerarig2d_finalize(void *obj) {
 /// @details `smoothing` of 1000 means instant snapping (camera jumps straight to target);
 ///          lower values produce lag-based smooth follow. Shake starts zeroed.
 void *rt_camerarig2d_new(void *camera) {
-    if (camera && rt_obj_class_id(camera) != RT_CAMERA_CLASS_ID)
+    if (camera && !rt_obj_is_instance(camera, RT_CAMERA_CLASS_ID, 0))
         return NULL;
     retain_ref(camera);
     rt_camerarig2d_impl *impl =
@@ -5156,7 +5242,7 @@ void *rt_camerarig2d_new(void *camera) {
 /// @brief Replace the Camera2D, retaining a reference to the new one.
 void rt_camerarig2d_set_camera(void *rig, void *camera) {
     if (rt2d_has_class(rig, RT2D_CAMERARIG_CLASS_ID) &&
-        (!camera || rt_obj_class_id(camera) == RT_CAMERA_CLASS_ID))
+        (!camera || rt_obj_is_instance(camera, RT_CAMERA_CLASS_ID, 0)))
         spriterenderer2d_set_ref(&((rt_camerarig2d_impl *)rig)->camera, camera);
 }
 

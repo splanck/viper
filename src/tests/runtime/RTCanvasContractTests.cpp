@@ -172,6 +172,15 @@ static void test_gradient_v_preserves_full_gradient_when_clipped() {
     assert(framebuffer_pixel(canvas, 0, 3) == 0);
 }
 
+static void test_gradient_preserves_explicit_alpha_in_framebuffer() {
+    rt_canvas *canvas = make_canvas(2, 1, 1.0f);
+
+    rt_canvas_gradient_h(canvas, 0, 0, 2, 1, rt_color_rgba(255, 0, 0, 128), rt_color_rgba(0, 0, 255, 64));
+
+    assert(framebuffer_pixel(canvas, 0, 0) == 0xFF000080u);
+    assert(framebuffer_pixel(canvas, 1, 0) == 0x0000FF40u);
+}
+
 static void test_canvas_handle_validation_rejects_non_heap_canvas() {
     rt_canvas stack_canvas{};
     stack_canvas.magic = RT_CANVAS_MAGIC;
@@ -343,6 +352,10 @@ extern "C" int64_t rt_obj_class_id(void *obj) {
     return 0;
 }
 
+extern "C" int8_t rt_obj_is_instance(void *obj, int64_t class_id, size_t) {
+    return obj && rt_obj_class_id(obj) == class_id;
+}
+
 extern "C" void rt_obj_free(void *obj) {
     for (size_t i = 0; i < g_object_count; i++) {
         if (g_object_payloads[i] == obj) {
@@ -429,6 +442,7 @@ int main() {
     test_gradient_h_stays_inside_clip_rect();
     test_gradient_h_preserves_full_gradient_when_clipped();
     test_gradient_v_preserves_full_gradient_when_clipped();
+    test_gradient_preserves_explicit_alpha_in_framebuffer();
     test_canvas_handle_validation_rejects_non_heap_canvas();
     test_polyline_requires_sized_i64_heap_array();
     std::printf("RTCanvasContractTests passed.\n");

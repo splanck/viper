@@ -43,6 +43,8 @@ static int g_tint_call_count = 0;
 static int64_t g_last_tint = -2;
 static bool g_clone_returns_null = false;
 static bool g_gif_decode_zero_success = false;
+static int g_retain_call_count = 0;
+static void *g_last_retained = nullptr;
 static void *g_objects[128];
 static int64_t g_object_class_ids[128];
 static int g_object_count = 0;
@@ -136,12 +138,19 @@ static void test_extreme_collision_bounds_do_not_wrap() {
     assert(rt_sprite_get_x(a) == INT64_MAX);
 }
 
-static void test_sprite_new_fails_when_initial_clone_fails() {
+static void test_sprite_new_retains_initial_frame_without_cloning() {
     StubPixels source{4, 4, 60};
+    g_retain_call_count = 0;
+    g_last_retained = nullptr;
     g_clone_returns_null = true;
     void *sprite = rt_sprite_new(&source);
     g_clone_returns_null = false;
-    assert(sprite == nullptr);
+    assert(sprite != nullptr);
+    assert(g_retain_call_count == 1);
+    assert(g_last_retained == &source);
+    reset_draw_state();
+    rt_sprite_draw(sprite, reinterpret_cast<void *>(1));
+    assert(g_last_blit_pixels_id == 60);
 }
 
 static void test_sprite_from_file_rejects_zero_frame_gif_success() {
@@ -245,6 +254,10 @@ extern "C" int64_t rt_obj_class_id(void *obj) {
     return RT_PIXELS_CLASS_ID;
 }
 
+extern "C" int8_t rt_obj_is_instance(void *obj, int64_t class_id, size_t) {
+    return obj && rt_obj_class_id(obj) == class_id;
+}
+
 extern "C" void rt_obj_set_finalizer(void *obj, void (*finalizer)(void *)) {
     if (!obj)
         return;
@@ -271,6 +284,11 @@ extern "C" void rt_obj_free(void *obj) {
     if (!found)
         return;
     std::free(header_from_payload(obj));
+}
+
+extern "C" void rt_obj_retain_maybe(void *obj) {
+    g_retain_call_count++;
+    g_last_retained = obj;
 }
 
 extern "C" void rt_trap(const char *) {
@@ -393,7 +411,7 @@ int main() {
     test_scale_setters_clamp_to_positive_values();
     test_tiny_positive_scale_still_has_nonzero_collision_bounds();
     test_extreme_collision_bounds_do_not_wrap();
-    test_sprite_new_fails_when_initial_clone_fails();
+    test_sprite_new_retains_initial_frame_without_cloning();
     test_sprite_from_file_rejects_zero_frame_gif_success();
     test_transformed_tint_zero_is_black_and_negative_is_no_tint();
     test_transformed_tint_preserves_tagged_alpha();

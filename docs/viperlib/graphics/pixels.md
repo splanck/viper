@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-04
+last-verified: 2026-05-15
 ---
 
 # Images & Sprites
@@ -46,13 +46,14 @@ Creates a new pixel buffer initialized to transparent black (0x00000000). Negati
 | `Get(x, y)`                       | `Integer(Integer, Integer)`                                          | Get pixel color at (x, y) as packed RGBA (0xRRGGBBAA). Returns 0 if out of bounds |
 | `Grayscale()`                     | `Pixels()`                                                           | Return a grayscale copy of the image                                              |
 | `Invert()`                        | `Pixels()`                                                           | Return a copy with all colors inverted (255 minus each channel)                   |
-| `Resize(width, height)`           | `Pixels(Integer, Integer)`                                           | Return an endpoint-preserving scaled copy using alpha-aware bilinear interpolation |
+| `Resize(width, height)`           | `Pixels(Integer, Integer)`                                           | Return an endpoint-preserving scaled copy using alpha-aware bilinear interpolation; target dimensions must be positive |
+| `Rotate(angle)`                   | `Pixels(Double)`                                                     | Return a copy rotated around its pixel center by degrees (positive = clockwise)   |
 | `Rotate180()`                     | `Pixels()`                                                           | Return a 180-degree rotated copy                                                  |
 | `RotateCCW()`                     | `Pixels()`                                                           | Return a 90-degree counter-clockwise rotated copy (swaps dimensions)              |
 | `RotateCW()`                      | `Pixels()`                                                           | Return a 90-degree clockwise rotated copy (swaps dimensions)                      |
 | `SaveBmp(path)`                   | `Integer(String)`                                                    | Save to a BMP file. Returns 1 on success, 0 on failure                            |
 | `SavePng(path)`                   | `Integer(String)`                                                    | Save to a PNG file. Returns 1 on success, 0 on failure                            |
-| `Scale(width, height)`            | `Pixels(Integer, Integer)`                                           | Return an endpoint-preserving scaled copy using nearest-neighbor interpolation    |
+| `Scale(width, height)`            | `Pixels(Integer, Integer)`                                           | Return an endpoint-preserving scaled copy using nearest-neighbor interpolation; target dimensions must be positive |
 | `Set(x, y, color)`                | `Void(Integer, Integer, Integer)`                                    | Set raw `0xRRGGBBAA` at (x, y). Silently ignores out of bounds                    |
 | `SetRGBA(x, y, color)`            | `Void(Integer, Integer, Integer)`                                    | Explicit raw `0xRRGGBBAA` set alias                                               |
 | `SetColor(x, y, color)`           | `Void(Integer, Integer, Integer)`                                    | Set from `Color.RGB()`, Canvas `0x00RRGGBB`, or `Color.RGBA()`                    |
@@ -276,8 +277,11 @@ pixels.SavePng("output.png")
 - `ToBytes` returns 4 bytes per pixel (width × height × 4 total bytes)
 - BMP support is limited to 24-bit uncompressed format (most common)
 - When loading BMP files, alpha is set to 255 (opaque) for all pixels
-- All transform operations (flip, rotate, scale) return new Pixels objects
+- All transform operations (flip, rotate, scale, resize) return new Pixels objects
+- `Scale` and `Resize` return `NULL` for non-positive target dimensions instead of silently resizing to `1x1`
+- `FlipH`, `FlipV`, and `Rotate180` preserve zero-width or zero-height buffers without reading outside storage
 - RotateCW and RotateCCW swap width and height dimensions
+- `Rotate(angle)` rotates around the image's pixel center and expands the output just enough to contain the rotated pixel centers
 - Scale uses endpoint-preserving nearest-neighbor interpolation (fast, no blending)
 - Resize uses endpoint-preserving, alpha-aware bilinear interpolation (smoother, better for non-integer scale factors)
 - Image processing methods (Invert, Grayscale, Tint, Blur) return new Pixels objects
@@ -333,8 +337,9 @@ pixels.SavePng("output.png")
 Scaled sprite bounds used for `Contains()` and `Overlaps()` never collapse below `1x1`, even when
 very small scale values are provided. Movement, hit tests, and overlap checks saturate at the int64 coordinate limits instead of wrapping, so sprites at the extreme edge of the coordinate range keep consistent 1-pixel-inclusive bounds.
 Sprite drawing fails closed if an intermediate transform allocation fails, rather than drawing a partially transformed frame.
-Setting `Frame` wraps into the available frame range, including negative frame indexes. `AddFrame`
-requires a real `Pixels` object.
+Setting `Frame` wraps into the available frame range, including negative frame indexes. `Sprite.New`
+and `AddFrame` require real `Pixels` objects and retain the supplied frame buffers. Call
+`Pixels.Clone()` first when you need the sprite to keep an independent snapshot.
 
 ### Zia Example
 
@@ -628,15 +633,15 @@ Efficient tile-based 2D map rendering for platformers, RPGs, and strategy games.
 | `IsSolidAt(pixelX, pixelY)`                    | `Integer(Integer, Integer)`                  | Check if a pixel position is on a solid tile          |
 | `SetCollision(tileId, collType)`               | `Void(Integer, Integer)`                     | Set collision type for a tile ID (0=none, 1=solid, 2=one_way_up); tile `0` remains empty |
 | `SetTile(x, y, index)`                         | `Void(Integer, Integer, Integer)`            | Set tile at position (0 = empty)                      |
-| `SetTileset(pixels)`                           | `Void(Pixels)`                               | Set the tileset image (tiles arranged in grid)        |
+| `SetTileset(pixels)`                           | `Void(Pixels)`                               | Set the tileset image (tiles arranged in grid); invalid non-Pixels handles are ignored |
 | `ToPixelX(tileX)`                              | `Integer(Integer)`                           | Convert tile X to pixel X                             |
 | `ToPixelY(tileY)`                              | `Integer(Integer)`                           | Convert tile Y to pixel Y                             |
 | `ToTileX(pixelX)`                              | `Integer(Integer)`                           | Convert pixel X to tile X                             |
 | `ToTileY(pixelY)`                              | `Integer(Integer)`                           | Convert pixel Y to tile Y                             |
 
-Advanced runtime support also includes multi-layer tilemaps, per-layer tilesets, JSON save/load, auto-tiling rules, per-tile properties, and tile animation state. Layer names are limited to the fixed runtime name slot (31 bytes); overlong names are rejected without adding a layer. `SaveToFile` / `LoadFromFile` preserve layer visibility, collision-layer selection, collision types, tile properties, auto-tile rules, and animation progress. JSON loading ignores layers beyond the runtime layer cap, normalizes negative saved animation frames, clamps CSV tile values that exceed the int64 range, and applies duplicate animation records to the matching base tile instead of the last parsed animation.
+Advanced runtime support also includes multi-layer tilemaps, per-layer tilesets, JSON save/load, auto-tiling rules, per-tile properties, and tile animation state. Layer names are limited to the fixed runtime name slot (31 bytes); overlong names are rejected without adding a layer. Tileset assignment requires real `Pixels` handles for both map-level and per-layer tilesets. `SaveToFile` / `LoadFromFile` preserve layer visibility, collision-layer selection, collision types, tile properties, auto-tile rules, and animation progress. Saves report failure on write or close errors. JSON loading ignores layers beyond the runtime layer cap, normalizes negative saved animation frames, rejects overlong CSV rows instead of truncating them, clamps CSV tile values that exceed the int64 range, and applies duplicate animation records to the matching base tile instead of the last parsed animation.
 
-Animated tiles keep collision from the base tile ID stored in the map. Changing the visual animation frame does not change solidity or one-way behavior unless you also change the base tile's collision type. Tile ID `0` is reserved for empty space and stays non-solid even if `SetCollision(0, ...)` is called. Registering an animation for an existing base tile replaces the old animation. Autotile variants omitted from a partial rule resolve to the rule's base tile. Invalid collision types are ignored. Negative animation deltas are ignored; very large deltas advance in one modulo step instead of looping once per elapsed frame. Default sequential animation frame IDs saturate at the int64 limit instead of wrapping. `FillRect`, tile drawing, file offsets, and tile-to-pixel conversion clip or saturate extreme coordinates rather than wrapping.
+Animated tiles keep collision from the base tile ID stored in the map. Changing the visual animation frame does not change solidity or one-way behavior unless you also change the base tile's collision type. Tile ID `0` is reserved for empty space and stays non-solid even if `SetCollision(0, ...)` is called. Registering an animation for an existing base tile replaces the old animation. Autotile variants omitted from a partial rule resolve to the rule's base tile. Invalid collision types are ignored. Negative animation deltas are ignored; very large deltas advance in one modulo step instead of looping once per elapsed frame. Default sequential animation frame IDs saturate at the int64 limit instead of wrapping. `FillRect`, tile drawing, file offsets, and tile-to-pixel conversion clip or saturate extreme coordinates rather than wrapping. Tilemap drawing derives the exact visible tile span from the canvas size and scroll offset, including positive offsets and partially visible edge tiles.
 
 ### Zia Example
 

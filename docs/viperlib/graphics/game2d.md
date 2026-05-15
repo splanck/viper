@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-03
+last-verified: 2026-05-15
 ---
 
 # 2D Animation, Collision, And Camera
@@ -31,6 +31,7 @@ This page covers helpers that are usually attached to game objects or cameras ra
 
 - `Viewport2D.Scale` is fixed-point with `1000` representing `1.0x`. For example, `4000` means `4.0x`.
 - Integer scaling snaps only scales of `1.0x` and above to whole multiples, so very small screens keep the largest fitting fractional scale instead of overflowing the viewport.
+- Viewport APIs validate that their receiver is a `Viewport2D`; invalid handles return safe defaults or no-op instead of reading unrelated graphics objects.
 
 ## Animation, Collision, And Camera
 

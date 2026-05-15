@@ -42,6 +42,7 @@
 #include "rt_heap.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
+#include "rt_pixels_internal.h"
 #include "rt_sprite.h"
 
 #include <limits.h>
@@ -100,9 +101,14 @@ typedef struct {
 ///          so that wrong-class handles silently no-op rather than crashing
 ///          mid-frame during a draw burst.
 static spritebatch_impl *spritebatch_checked_or_null(void *batch_ptr) {
-    if (!batch_ptr || rt_obj_class_id(batch_ptr) != RT_SPRITEBATCH_CLASS_ID)
+    if (!batch_ptr ||
+        !rt_obj_is_instance(batch_ptr, RT_SPRITEBATCH_CLASS_ID, sizeof(spritebatch_impl)))
         return NULL;
     return (spritebatch_impl *)batch_ptr;
+}
+
+static int8_t spritebatch_pixels_checked(void *pixels) {
+    return pixels && rt_obj_is_instance(pixels, RT_PIXELS_CLASS_ID, sizeof(rt_pixels_impl));
 }
 
 /// @brief Clamp a scale percentage to a minimum of 1 — prevents division by zero in
@@ -574,7 +580,7 @@ void rt_spritebatch_draw_ex(void *batch_ptr,
                             int64_t scale_x,
                             int64_t scale_y,
                             int64_t rotation) {
-    if (!batch_ptr || !sprite)
+    if (!batch_ptr || !sprite || !rt_obj_is_instance(sprite, RT_SPRITE_CLASS_ID, 0))
         return;
 
     spritebatch_impl *batch = spritebatch_checked_or_null(batch_ptr);
@@ -598,7 +604,7 @@ void rt_spritebatch_draw_ex(void *batch_ptr,
 
 /// @brief Draw the pixels of the spritebatch.
 void rt_spritebatch_draw_pixels(void *batch_ptr, void *pixels, int64_t x, int64_t y) {
-    if (!batch_ptr || !pixels)
+    if (!batch_ptr || !spritebatch_pixels_checked(pixels))
         return;
 
     spritebatch_impl *batch = spritebatch_checked_or_null(batch_ptr);
@@ -648,7 +654,7 @@ void rt_spritebatch_draw_region_ex(void *batch_ptr,
                                    int64_t scale_y,
                                    int64_t rotation,
                                    int64_t depth) {
-    if (!batch_ptr || !pixels)
+    if (!batch_ptr || !spritebatch_pixels_checked(pixels))
         return;
 
     spritebatch_impl *batch = spritebatch_checked_or_null(batch_ptr);

@@ -1087,6 +1087,38 @@ static void test_rotate_positive_90_is_clockwise() {
     printf("test_rotate_positive_90_is_clockwise: PASSED\n");
 }
 
+static void test_rotate_single_pixel_keeps_centered_extent() {
+    void *p = rt_pixels_new(1, 1);
+    rt_pixels_set(p, 0, 0, 0xABCDEF80);
+
+    void *rotated = rt_pixels_rotate(p, 45.0);
+    assert(rotated != nullptr);
+    assert(rt_pixels_width(rotated) == 1);
+    assert(rt_pixels_height(rotated) == 1);
+    assert(rt_pixels_get(rotated, 0, 0) == 0xABCDEF80);
+    printf("test_rotate_single_pixel_keeps_centered_extent: PASSED\n");
+}
+
+static void test_zero_dimension_flip_v_returns_zero_dimension_copy() {
+    void *p = rt_pixels_new(0, 0);
+    assert(p != nullptr);
+    void *flipped = rt_pixels_flip_v(p);
+    assert(flipped != nullptr);
+    assert(rt_pixels_width(flipped) == 0);
+    assert(rt_pixels_height(flipped) == 0);
+    printf("test_zero_dimension_flip_v_returns_zero_dimension_copy: PASSED\n");
+}
+
+static void test_scale_and_resize_reject_nonpositive_target_dimensions() {
+    void *p = rt_pixels_new(2, 2);
+    assert(p != nullptr);
+    assert(rt_pixels_scale(p, 0, 2) == nullptr);
+    assert(rt_pixels_scale(p, 2, -1) == nullptr);
+    assert(rt_pixels_resize(p, 0, 2) == nullptr);
+    assert(rt_pixels_resize(p, 2, -1) == nullptr);
+    printf("test_scale_and_resize_reject_nonpositive_target_dimensions: PASSED\n");
+}
+
 static void test_scale_up() {
     // Create a 2x2 image and scale to 4x4
     void *p = rt_pixels_new(2, 2);
@@ -1521,10 +1553,13 @@ int main() {
     test_rotate_ccw();
     test_rotate_180();
     test_rotate_positive_90_is_clockwise();
+    test_rotate_single_pixel_keeps_centered_extent();
     test_rotate_nonfinite_returns_clone();
+    test_zero_dimension_flip_v_returns_zero_dimension_copy();
     test_scale_up();
     test_scale_down();
     test_scale_preserves_source_endpoints();
+    test_scale_and_resize_reject_nonpositive_target_dimensions();
     test_tint_multiplies_tagged_alpha();
     test_blur_zero_returns_exact_copy();
     test_blur_empty_image_returns_empty_pixels();

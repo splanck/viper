@@ -24,12 +24,14 @@ Camera methods validate their receiver as a real `Camera` object; invalid handle
 
 | Property   | Type    | Access | Description                         |
 |------------|---------|--------|-------------------------------------|
-| `X`        | Integer | R/W    | Camera X position (world coords)    |
-| `Y`        | Integer | R/W    | Camera Y position (world coords)    |
+| `X`        | Integer | R/W    | Viewport left edge in world coordinates |
+| `Y`        | Integer | R/W    | Viewport top edge in world coordinates |
 | `Zoom`     | Integer | R/W    | Zoom level (100 = 100%)             |
 | `Rotation` | Integer | R/W    | Rotation in degrees                 |
 | `Width`    | Integer | Read   | Viewport width                      |
 | `Height`   | Integer | Read   | Viewport height                     |
+| `CenterX`  | Integer | Read   | Viewport center X in world coordinates |
+| `CenterY`  | Integer | Read   | Viewport center Y in world coordinates |
 
 ### Methods
 
@@ -38,6 +40,7 @@ Camera methods validate their receiver as a real `Camera` object; invalid handle
 | `ClearBounds()`                  | `Void()`                               | Remove camera bounds                             |
 | `Follow(x, y)`                   | `Void(Integer, Integer)`               | Center camera on world position                  |
 | `Move(dx, dy)`                   | `Void(Integer, Integer)`               | Move camera by delta amounts                     |
+| `SetCenter(x, y)`                | `Void(Integer, Integer)`               | Position the viewport so its center is at the world coordinate |
 | `SetBounds(minX, minY, maxX, maxY)` | `Void(Integer, Integer, Integer, Integer)` | Limit camera movement range; immediately clamps the current view if needed |
 | `SetDeadzone(width, height)`     | `Void(Integer, Integer)`               | Configure the no-move rectangle used by `SmoothFollow`; non-positive values disable it |
 | `SmoothFollow(x, y, lerp)`       | `Void(Integer, Integer, Integer)`      | Move toward a target center using 0..1000 interpolation, then clamp to bounds |
@@ -47,6 +50,8 @@ Camera methods validate their receiver as a real `Camera` object; invalid handle
 | `ToWorldY(screenY)`              | `Integer(Integer)`                     | Convert screen Y to world Y                      |
 | `IsDirty()`                      | `Integer()`                            | Returns 1 if position/zoom/rotation changed since last `ClearDirty` |
 | `ClearDirty()`                   | `Void()`                               | Reset the dirty flag (call after re-rendering)   |
+
+`X` and `Y` are the viewport origin, not the followed target. Use `CenterX`/`CenterY` when you need the world coordinate currently centered in the view. `Follow` and `SetCenter` center the viewport on the provided world position. `SmoothFollow` leaves the dirty flag clear when interpolation and bounds clamping do not change the camera.
 
 ### Zia Example
 
@@ -109,8 +114,8 @@ DO WHILE NOT canvas.ShouldClose
     ' Camera follows player
     camera.Follow(playerX, playerY)
 
-    ' Draw tilemap using camera offset
-    map.Draw(canvas, -camera.X + camera.Width / 2, -camera.Y + camera.Height / 2)
+    ' Draw tilemap using camera viewport origin
+    map.Draw(canvas, -camera.X, -camera.Y)
 
     ' Draw player at screen position
     DIM screenX AS INTEGER = camera.ToScreenX(playerX)
@@ -148,8 +153,8 @@ SUB Render()
     ' 1. Clear screen
     canvas.Clear(0)
 
-    ' 2. Draw tilemap with camera offset
-    map.Draw(canvas, -camera.X + 400, -camera.Y + 300)
+    ' 2. Draw tilemap with camera viewport origin
+    map.Draw(canvas, -camera.X, -camera.Y)
 
     ' 3. Draw sprites at screen positions
     player.X = camera.ToScreenX(playerWorldX)
@@ -174,7 +179,7 @@ Hierarchical scene node for building scene graphs with transform inheritance.
 
 Creates a scene node. Scene nodes support parent-child hierarchies where child transforms are relative to their parent.
 Scene nodes validate their receiver and child arguments before mutating hierarchy state. Local/world transform composition uses saturating integer arithmetic, so extreme coordinates clamp instead of wrapping.
-Local scale values are normalized to at least `1` before being stored; use `100` for normal size. Reparenting a child temporarily retains it while moving between parents, so `AddChild` keeps parent pointers and child ownership consistent.
+Local scale values are normalized to at least `1` before being stored; use `100` for normal size. Reparenting a child temporarily retains it while moving between parents, so `AddChild` keeps parent pointers and child ownership consistent. The `Sprite` property accepts real `Sprite` handles; invalid non-sprite handles are ignored.
 
 ### Static Methods
 
@@ -474,7 +479,7 @@ Batched sprite rendering for improved performance when drawing many sprites.
 **Constructor:** `NEW Viper.Graphics.SpriteBatch(capacity)`
 
 Creates a sprite batch with the given initial capacity (use 0 for default). SpriteBatch records draw calls, optionally sorts them by depth, applies shared tint/alpha state, and flushes them during `End(canvas)`. `End(canvas)` also clears the recorded batch so the same instance can be reused next frame. Use `Draw`/`DrawEx` for `Sprite` objects and `DrawPixels`/`DrawRegion` for raw `Pixels` buffers. `DrawPixels` preserves per-pixel alpha, so transparent sprites and overlays blend like `Canvas.BlitAlpha`. `DrawRegion` draws its extracted region at the requested destination top-left; any temporary transform or color copy does not recenter the final blit. When depth sorting is enabled, items with the same depth still preserve their original submission order. Scale values below `1` clamp to `1` for both sprite and raw-pixels batch entries. `Color.RGBA` tint values preserve their explicit alpha channel.
-SpriteBatch methods validate the batch receiver before recording or flushing; invalid handles are treated as empty/inactive batches or no-ops.
+SpriteBatch methods validate the batch receiver before recording or flushing; invalid handles are treated as empty/inactive batches or no-ops. Draw calls also validate their source objects: sprite draw methods require a real `Sprite`, and raw-pixels methods require a real `Pixels` buffer.
 
 ### Properties
 
@@ -651,8 +656,10 @@ Named-region sprite sheet atlas. Maps string names to rectangular sub-regions of
 backing Pixels buffer, enabling content pipelines where frames are referenced by name
 instead of raw pixel coordinates. Added regions must stay inside the backing `Pixels`
 bounds.
-`TextureAtlas` retains its backing `Pixels`; `LoadGrid` publishes each generated
-region only after the region metadata and lookup entry are consistent.
+`TextureAtlas` retains its backing `Pixels`; constructors require a real `Pixels`
+object. `LoadGrid` publishes each generated region only after the region metadata
+and lookup entry are consistent. Drawing a missing region, null name, or invalid
+atlas through `SpriteBatch` is a no-op.
 
 **Type:** Instance (obj)
 **Constructor:** `NEW Viper.Graphics.TextureAtlas(pixels)` or `TextureAtlas.LoadGrid(pixels, frameW, frameH)`

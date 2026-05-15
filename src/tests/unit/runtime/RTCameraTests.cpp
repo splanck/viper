@@ -168,6 +168,31 @@ TEST(dirty_flag) {
     ASSERT(rt_camera_is_dirty(cam) == 1);
 }
 
+TEST(center_accessors_and_set_center) {
+    void *cam = rt_camera_new(800, 600);
+    ASSERT(cam != NULL);
+    ASSERT(rt_camera_get_center_x(cam) == 400);
+    ASSERT(rt_camera_get_center_y(cam) == 300);
+
+    rt_camera_clear_dirty(cam);
+    rt_camera_set_center(cam, 1000, 900);
+    ASSERT(rt_camera_get_x(cam) == 600);
+    ASSERT(rt_camera_get_y(cam) == 600);
+    ASSERT(rt_camera_get_center_x(cam) == 1000);
+    ASSERT(rt_camera_get_center_y(cam) == 900);
+    ASSERT(rt_camera_is_dirty(cam) == 1);
+}
+
+TEST(smooth_follow_noop_keeps_dirty_clear) {
+    void *cam = rt_camera_new(800, 600);
+    ASSERT(cam != NULL);
+    rt_camera_clear_dirty(cam);
+    rt_camera_smooth_follow(cam, 400, 300, 0);
+    ASSERT(rt_camera_get_x(cam) == 0);
+    ASSERT(rt_camera_get_y(cam) == 0);
+    ASSERT(rt_camera_is_dirty(cam) == 0);
+}
+
 TEST(set_bounds_clamp_marks_dirty) {
     void *cam = rt_camera_new(800, 600);
     ASSERT(cam != NULL);
@@ -314,6 +339,8 @@ int main() {
     RUN_TEST(world_screen_roundtrip_with_rotation_and_zoom);
     RUN_TEST(follow_and_bounds_respect_zoom);
     RUN_TEST(dirty_flag);
+    RUN_TEST(center_accessors_and_set_center);
+    RUN_TEST(smooth_follow_noop_keeps_dirty_clear);
     RUN_TEST(set_bounds_clamp_marks_dirty);
     RUN_TEST(parallax_add_remove);
     RUN_TEST(parallax_max_layers);

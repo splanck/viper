@@ -22,11 +22,11 @@ These classes sit directly on top of `Pixels` and `Canvas`. They cover rendering
 | `Renderer2D` | Retained draw command stream for pixels/textures with tint, alpha, blend mode, and render target flushing. |
 | `Material2D` | Tint, alpha, and blend-mode state that can produce processed pixel copies. |
 | `Shader2D` | CPU image effect wrapper: none, invert, grayscale, tint, and blur. |
-| `PostProcess2D` | Effect pass wrapper for applying `Shader2D`-style operations to a `Pixels` buffer. |
+| `PostProcess2D` | Distinct effect pass wrapper for applying `Shader2D`-style operations to a `Pixels` buffer. |
 | `Sampler2D` | Reusable texture sampler state for `Filter` and `Wrap`. |
 | `BlendState2D` | Reusable renderer blend state for blend mode, tint, and alpha. |
 | `SpriteRenderer2D` | Draw helper that applies `Material2D`, `Sampler2D`, and `BlendState2D` before queueing pixels or textures. |
-| `RenderPass2D` | Source-target postprocess pass using an optional `Shader2D`. |
+| `RenderPass2D` | Source-target postprocess pass using an optional `Shader2D` or `PostProcess2D`. |
 | `RenderGraph2D` | Ordered collection of `RenderPass2D` objects for simple pass chains. |
 | `Palette2D` | 256-entry palette that can recolor indexed `Pixels` buffers. |
 | `Gradient2D` | RGBA gradient sampling and horizontal/vertical fills for `Pixels`. |
@@ -41,6 +41,7 @@ These classes sit directly on top of `Pixels` and `Canvas`. They cover rendering
 - `Texture2D.Wrap` uses `0 = clamp`, `1 = repeat`.
 - `Texture2D.New` requires a `Pixels` object and retains it for the texture lifetime. `Renderer2D` also retains queued sources before publishing commands, so queued draw calls keep their source objects alive until `Begin`, `End`, `FlushToTarget`, or object cleanup clears the queue.
 - `RenderTarget2D.DrawRegion` supports drawing from its own `Pixels` buffer. Overlapping self-copies use a source snapshot so pixels are copied from the original region rather than from already-written output.
+- Graphics2D handle validators check the runtime class and minimum object size. Passing the wrong object type to `Texture2D`, `TileSet2D`, `TileLayer2D`, `Viewport2D`, `Shader2D`, or `PostProcess2D` APIs returns safe defaults or no-ops instead of interpreting unrelated memory as that type.
 
 ## Render Targets, Textures, And Renderer
 
@@ -141,5 +142,6 @@ canvas.Blit(0, 0, video.Frame)
 ## Notes
 
 - `GpuTexture2D` is a compatibility alias today. It intentionally exposes the same behavior as `Texture2D` until a GPU-backed renderer is available.
-- `RenderPass2D` requires `RenderTarget2D` source and target objects. Invalid source or target handles make the pass a no-op instead of interpreting the handle as a render target.
+- `PostProcess2D` has its own runtime class. It is accepted wherever a render pass expects an effect, but it is not treated as a `Shader2D` by direct shader APIs.
+- `RenderPass2D` requires `RenderTarget2D` source and target objects. Invalid source or target handles make the pass a no-op instead of interpreting the handle as a render target. `SetShader` accepts either a `Shader2D` or `PostProcess2D`; other handles clear the pass effect.
 - `VideoPlayer` decodes in software on the calling thread. For best results call `Update` once per frame with the actual elapsed seconds rather than a fixed timestep.

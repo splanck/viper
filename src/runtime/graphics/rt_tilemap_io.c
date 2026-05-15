@@ -55,7 +55,7 @@
 /// @brief Validate-and-return a Tilemap pointer; NULL for NULL or wrong class.
 /// @details Soft check used by every public Tilemap I/O entry point.
 static rt_tilemap_impl *tilemap_io_checked(void *tm) {
-    if (!tm || rt_obj_class_id(tm) != RT_TILEMAP_CLASS_ID)
+    if (!tm || !rt_obj_is_instance(tm, RT_TILEMAP_CLASS_ID, sizeof(rt_tilemap_impl)))
         return NULL;
     return (rt_tilemap_impl *)tm;
 }
@@ -675,9 +675,10 @@ int8_t rt_tilemap_save_to_file(void *tm, rt_string path) {
         goto cleanup;
     size_t len = strlen(json_cstr);
     size_t written = fwrite(json_cstr, 1, len, f);
-    fclose(f);
+    int write_error = ferror(f) != 0;
+    int close_error = fclose(f) != 0;
 
-    result = written == len ? 1 : 0;
+    result = (written == len && !write_error && !close_error) ? 1 : 0;
 
 cleanup:
     tilemap_io_release_ref((void **)&json);
@@ -957,7 +958,7 @@ cleanup:
 
 /// @brief Load a tilemap from a CSV file (`,`-separated tile indices, one row per line). Two-pass
 /// reader: first scans for max columns and row count, then allocates a single-layer tilemap of
-/// that size and parses values. Empty lines are skipped; lines longer than 16 KiB are truncated.
+/// that size and parses values. Empty lines are skipped; lines longer than 16 KiB fail cleanly.
 /// Returns NULL on missing path / empty file / allocation failure.
 void *rt_tilemap_load_csv(rt_string path, int64_t tile_w, int64_t tile_h) {
     if (!path)
@@ -973,9 +974,14 @@ void *rt_tilemap_load_csv(rt_string path, int64_t tile_w, int64_t tile_h) {
     // First pass: count rows and max columns
     int64_t max_cols = 0;
     int64_t rows = 0;
-    char line_buf[16384]; /* max CSV line length — rows wider than this are truncated */
+    char line_buf[16384]; /* max CSV line length */
 
     while (fgets(line_buf, sizeof(line_buf), f)) {
+        size_t len = strlen(line_buf);
+        if (len == sizeof(line_buf) - 1 && line_buf[len - 1] != '\n' && !feof(f)) {
+            fclose(f);
+            return NULL;
+        }
         // Count commas + 1 for column count
         int64_t cols = 1;
         for (char *p = line_buf; *p; p++) {
@@ -983,7 +989,6 @@ void *rt_tilemap_load_csv(rt_string path, int64_t tile_w, int64_t tile_h) {
                 cols++;
         }
         // Skip empty lines
-        size_t len = strlen(line_buf);
         if (len > 0 && line_buf[len - 1] == '\n')
             len--;
         if (len == 0)
@@ -1011,6 +1016,11 @@ void *rt_tilemap_load_csv(rt_string path, int64_t tile_w, int64_t tile_h) {
 
     while (fgets(line_buf, sizeof(line_buf), f) && y < rows) {
         size_t len = strlen(line_buf);
+        if (len == sizeof(line_buf) - 1 && line_buf[len - 1] != '\n' && !feof(f)) {
+            tilemap_io_release_ref(&tm);
+            fclose(f);
+            return NULL;
+        }
         if (len > 0 && line_buf[len - 1] == '\n')
             line_buf[--len] = '\0';
         if (len == 0)

@@ -51,6 +51,7 @@ struct FakeWindow {
 
 static void *g_object_payloads[16];
 static int64_t g_object_class_ids[16];
+static size_t g_object_byte_sizes[16];
 static size_t g_object_count = 0;
 
 static rt_string S(const char *s) {
@@ -156,6 +157,7 @@ extern "C" void *rt_obj_new_i64(int64_t class_id, int64_t byte_size) {
     assert(obj != nullptr);
     g_object_payloads[g_object_count] = obj;
     g_object_class_ids[g_object_count] = class_id;
+    g_object_byte_sizes[g_object_count] = static_cast<size_t>(byte_size);
     g_object_count++;
     return obj;
 }
@@ -164,6 +166,14 @@ extern "C" int64_t rt_obj_class_id(void *obj) {
     for (size_t i = 0; i < g_object_count; i++) {
         if (g_object_payloads[i] == obj)
             return g_object_class_ids[i];
+    }
+    return 0;
+}
+
+extern "C" int8_t rt_obj_is_instance(void *obj, int64_t class_id, size_t min_size) {
+    for (size_t i = 0; i < g_object_count; i++) {
+        if (g_object_payloads[i] == obj)
+            return g_object_class_ids[i] == class_id && g_object_byte_sizes[i] >= min_size;
     }
     return 0;
 }
@@ -179,6 +189,7 @@ extern "C" void rt_obj_free(void *obj) {
         if (g_object_payloads[i] == obj) {
             g_object_payloads[i] = g_object_payloads[g_object_count - 1];
             g_object_class_ids[i] = g_object_class_ids[g_object_count - 1];
+            g_object_byte_sizes[i] = g_object_byte_sizes[g_object_count - 1];
             g_object_count--;
             break;
         }

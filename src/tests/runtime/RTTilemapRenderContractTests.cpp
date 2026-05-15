@@ -15,6 +15,10 @@ extern "C" {
 #include <cstdlib>
 #include <cstring>
 
+#ifndef RT_PIXELS_CLASS_ID
+#define RT_PIXELS_CLASS_ID INT64_C(-0x600201)
+#endif
+
 namespace {
 
 struct ObjHeader {
@@ -38,6 +42,7 @@ struct StubCanvas {
 struct StubBody {
     double x;
     double y;
+    double prev_y;
     double w;
     double h;
     double vx;
@@ -96,6 +101,14 @@ extern "C" void *rt_obj_new_i64(int64_t class_id, int64_t byte_size) {
 
 extern "C" int64_t rt_obj_class_id(void *obj) {
     return obj ? header_from_payload(obj)->class_id : 0;
+}
+
+extern "C" int8_t rt_obj_is_instance(void *obj, int64_t class_id, size_t) {
+    if (!obj)
+        return 0;
+    if (class_id == RT_PIXELS_CLASS_ID)
+        return 1;
+    return rt_obj_class_id(obj) == class_id;
 }
 
 extern "C" void rt_obj_set_finalizer(void *obj, void (*finalizer)(void *)) {
@@ -200,7 +213,7 @@ extern "C" double rt_physics2d_body_vy(void *body) {
 }
 
 extern "C" double rt_physics2d_body_prev_y(void *body) {
-    return body ? static_cast<StubBody *>(body)->y : 0.0;
+    return body ? static_cast<StubBody *>(body)->prev_y : 0.0;
 }
 
 extern "C" void rt_physics2d_body_set_pos(void *body, double x, double y) {
@@ -287,6 +300,37 @@ static void test_layer_tileset_clone_keeps_single_owned_reference() {
     assert(g_clones[0]->refcount == 1);
 }
 
+static void test_positive_offset_culls_to_visible_tiles() {
+    reset_pixels_tracking();
+    StubPixels base_tileset{64, 16, 550, 0, false};
+    StubCanvas canvas{32, 16};
+
+    void *tm = rt_tilemap_new(4, 1, 16, 16);
+    assert(tm != nullptr);
+    rt_tilemap_set_tileset(tm, &base_tileset);
+    for (int64_t x = 0; x < 4; x++)
+        rt_tilemap_set_tile(tm, x, 0, 1);
+
+    reset_blits();
+    rt_tilemap_draw(tm, &canvas, 8, 0);
+
+    assert(g_blit_count == 2);
+    assert(g_blits[0].dx == 8);
+    assert(g_blits[1].dx == 24);
+}
+
+static void test_one_way_platform_tolerance_rejects_starting_inside_surface() {
+    void *tm = rt_tilemap_new(1, 2, 16, 16);
+    assert(tm != nullptr);
+    rt_tilemap_set_tile(tm, 0, 1, 1);
+    rt_tilemap_set_collision(tm, 1, RT_TILE_COLLISION_ONE_WAY_UP);
+
+    StubBody body{0.0, 13.0, 12.5, 8.0, 4.0, 0.0, 1.0};
+    assert(rt_tilemap_collide_body(tm, &body) == 0);
+    assert(body.y == 13.0);
+    assert(body.vy == 1.0);
+}
+
 static void test_finalizer_releases_owned_tilesets() {
     reset_pixels_tracking();
     StubPixels base_tileset{32, 16, 600, 0, false};
@@ -311,6 +355,8 @@ int main() {
     test_draw_region_can_render_layer_only_tilesets();
     test_tileset_clone_keeps_single_owned_reference();
     test_layer_tileset_clone_keeps_single_owned_reference();
+    test_positive_offset_culls_to_visible_tiles();
+    test_one_way_platform_tolerance_rejects_starting_inside_surface();
     test_finalizer_releases_owned_tilesets();
     std::printf("RTTilemapRenderContractTests passed.\n");
     return 0;

@@ -89,7 +89,8 @@ typedef struct scene_impl {
 /// @brief Validate-and-return a SceneNode pointer; NULL for NULL or wrong class.
 /// @details Soft check used by every public SceneNode entry point.
 static scene_node_impl *scene_node_checked_or_null(void *node_ptr) {
-    if (!node_ptr || rt_obj_class_id(node_ptr) != RT_SCENE_NODE_CLASS_ID)
+    if (!node_ptr ||
+        !rt_obj_is_instance(node_ptr, RT_SCENE_NODE_CLASS_ID, sizeof(scene_node_impl)))
         return NULL;
     return (scene_node_impl *)node_ptr;
 }
@@ -97,7 +98,7 @@ static scene_node_impl *scene_node_checked_or_null(void *node_ptr) {
 /// @brief Validate-and-return a Scene pointer; NULL for NULL or wrong class.
 /// @details Soft check used by every public Scene entry point.
 static scene_impl *scene_checked_or_null(void *scene_ptr) {
-    if (!scene_ptr || rt_obj_class_id(scene_ptr) != RT_SCENE_CLASS_ID)
+    if (!scene_ptr || !rt_obj_is_instance(scene_ptr, RT_SCENE_CLASS_ID, sizeof(scene_impl)))
         return NULL;
     return (scene_impl *)scene_ptr;
 }
@@ -596,7 +597,7 @@ void rt_scene_node_set_sprite(void *node_ptr, void *sprite) {
     scene_node_impl *node = scene_node_checked_or_null(node_ptr);
     if (!node)
         return;
-    if (sprite && rt_obj_class_id(sprite) != RT_SPRITE_CLASS_ID) {
+    if (sprite && !rt_obj_is_instance(sprite, RT_SPRITE_CLASS_ID, 0)) {
         rt_trap("SceneNode.SetSprite: invalid sprite");
         return;
     }

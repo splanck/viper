@@ -304,7 +304,7 @@ typedef struct {
 static inline rt_canvas *rt_canvas_checked(void *canvas_ptr) {
     if (!canvas_ptr)
         return NULL;
-    if (rt_obj_class_id(canvas_ptr) != RT_CANVAS_CLASS_ID)
+    if (!rt_obj_is_instance(canvas_ptr, RT_CANVAS_CLASS_ID, sizeof(rt_canvas)))
         return NULL;
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     return canvas->magic == RT_CANVAS_MAGIC ? canvas : NULL;

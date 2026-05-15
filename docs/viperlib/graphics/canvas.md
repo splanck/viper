@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-21
+last-verified: 2026-05-15
 ---
 
 # Canvas & Color
@@ -31,8 +31,8 @@ last-verified: 2026-04-21
 
 | Method                                | Signature                             | Description                                                |
 |---------------------------------------|---------------------------------------|------------------------------------------------------------|
-| `Arc(cx, cy, radius, startAngle, endAngle, color)` | `Void(Integer...)`         | Draws a filled arc (pie slice)                             |
-| `ArcFrame(cx, cy, radius, startAngle, endAngle, color)` | `Void(Integer...)`    | Draws an arc outline                                       |
+| `Arc(cx, cy, radius, startAngle, endAngle, color)` | `Void(Integer...)`         | Draws a filled clockwise arc (pie slice)                   |
+| `ArcFrame(cx, cy, radius, startAngle, endAngle, color)` | `Void(Integer...)`    | Draws a clockwise arc outline                             |
 | `BeginFrame()`                         | `Integer()`                           | Call Poll(), return 0 if ShouldClose, else 1. Simplifies game loop |
 | `Bezier(x1, y1, cx, cy, x2, y2, color)` | `Void(Integer...)`                  | Draws a quadratic Bezier curve                             |
 | `Blit(x, y, pixels)`                  | `Void(Integer, Integer, Pixels)`      | Blits a Pixels buffer to the canvas at (x, y); honors the active clip rect |
@@ -66,7 +66,7 @@ last-verified: 2026-04-21
 | `Maximize()`                          | `Void()`                              | Maximizes the window                                       |
 | `Minimize()`                          | `Void()`                              | Minimizes (iconifies) the window                           |
 | `Plot(x, y, color)`                   | `Void(Integer, Integer, Integer)`     | Sets a single pixel                                        |
-| `Poll()`                              | `Integer()`                           | Polls for input events; returns event type (0 = none)      |
+| `Poll()`                              | `Integer()`                           | Polls for input events; returns event type (0 = none); closes the canvas if the backend event pump fails |
 | `PreventClose(prevent)`               | `Void(Integer)`                       | Blocks (1) or allows (0) the window close button           |
 | `Polygon(points, count, color)`       | `Void(Pointer, Integer, Integer)`     | Draws a filled polygon                                     |
 | `PolygonFrame(points, count, color)`  | `Void(Pointer, Integer, Integer)`     | Draws a polygon outline                                    |
@@ -244,8 +244,8 @@ canvas.EllipseFrame(400, 400, 80, 50, 16777215) ' Ellipse outline
 The canvas supports arcs, Bezier curves, and general polygons:
 
 ```basic
-' Draw arcs (pie slices) - angles in degrees, 0 = right, 90 = up
-canvas.Arc(200, 200, 50, 0, 90, 16711680)       ' Filled quarter-circle (top-right)
+' Draw arcs (pie slices) - angles in degrees, 0 = right, 90 = down
+canvas.Arc(200, 200, 50, 0, 90, 16711680)       ' Filled quarter-circle (bottom-right)
 canvas.ArcFrame(300, 200, 50, 45, 135, 65280) ' Arc outline
 
 ' Draw a quadratic Bezier curve (start, control point, end)
@@ -296,6 +296,7 @@ canvas.GradientV(0, 0, 800, 600, 0, 16777215)  ' Black to white (vertical)
 ```
 
 `CopyRect` and `Screenshot` return `NULL` when the canvas is closed or unavailable. `SaveBmp` and `SavePng` snapshot the canvas into a temporary `Pixels` buffer, write the file, release the temporary buffer, and return `0` on invalid canvas handles or write failure.
+`GradientH` and `GradientV` accept `Color.RGBA()` endpoint colors and preserve explicit alpha in the framebuffer.
 
 ### Canvas Clipping
 
@@ -427,6 +428,7 @@ func start() {
 
 **Notes:**
 - `BeginFrame()` calls `Poll()` internally, then returns 0 if `ShouldClose` is set, otherwise 1
+- If the platform event pump fails, `Poll()` marks `ShouldClose`, tears down the backend window, updates input actions, and returns `0` without querying stale mouse or event state.
 - Without `SetDTMax()`, `DeltaTime` is rounded to the nearest millisecond, so very short uncapped frames may report `0` or `1`
 - `SetDTMax(max)` sets the upper clamp for `DeltaTime` in milliseconds; after the first positive frame, rounded values clamp to `[1, max]`
 - A typical max of 50 ms (20 FPS equivalent) prevents large time steps that can break physics or animation

@@ -78,12 +78,13 @@ TEST(RTSprite, SpritebatchBegin) {
 
 TEST(RTSprite, SpritebatchBeginClearsCount) {
     void *batch = rt_spritebatch_new(0);
+    void *pixels = rt_pixels_new(1, 1);
+    ASSERT_TRUE(pixels != nullptr);
 
     // First batch
     rt_spritebatch_begin(batch);
-    /// @brief Rt_spritebatch_draw_pixels.
-    rt_spritebatch_draw_pixels(batch, (void *)1, 0, 0); // Dummy pixels
-    rt_spritebatch_draw_pixels(batch, (void *)2, 10, 10);
+    rt_spritebatch_draw_pixels(batch, pixels, 0, 0);
+    rt_spritebatch_draw_pixels(batch, pixels, 10, 10);
     ASSERT_TRUE(rt_spritebatch_count(batch) == 2);
 
     // Second begin should clear
@@ -117,17 +118,19 @@ TEST(RTSprite, SpritebatchEndNullCanvasDeactivates) {
 
 TEST(RTSprite, SpritebatchDrawIncrementsCount) {
     void *batch = rt_spritebatch_new(0);
+    void *pixels = rt_pixels_new(1, 1);
+    ASSERT_TRUE(pixels != nullptr);
 
     rt_spritebatch_begin(batch);
     ASSERT_TRUE(rt_spritebatch_count(batch) == 0);
 
-    rt_spritebatch_draw_pixels(batch, (void *)1, 0, 0);
+    rt_spritebatch_draw_pixels(batch, pixels, 0, 0);
     ASSERT_TRUE(rt_spritebatch_count(batch) == 1);
 
-    rt_spritebatch_draw_pixels(batch, (void *)2, 10, 10);
+    rt_spritebatch_draw_pixels(batch, pixels, 10, 10);
     ASSERT_TRUE(rt_spritebatch_count(batch) == 2);
 
-    rt_spritebatch_draw_pixels(batch, (void *)3, 20, 20);
+    rt_spritebatch_draw_pixels(batch, pixels, 20, 20);
     ASSERT_TRUE(rt_spritebatch_count(batch) == 3);
 
     printf("test_spritebatch_draw_increments_count: PASSED\n");
@@ -196,12 +199,14 @@ TEST(RTSprite, SpritebatchAlphaClamp) {
 
 TEST(RTSprite, SpritebatchGrow) {
     void *batch = rt_spritebatch_new(4);
+    void *pixels = rt_pixels_new(1, 1);
+    ASSERT_TRUE(pixels != nullptr);
 
     rt_spritebatch_begin(batch);
 
     // Add more than initial capacity
     for (int i = 0; i < 20; i++) {
-        rt_spritebatch_draw_pixels(batch, (void *)(intptr_t)(i + 1), i * 10, i * 10);
+        rt_spritebatch_draw_pixels(batch, pixels, i * 10, i * 10);
     }
 
     ASSERT_TRUE(rt_spritebatch_count(batch) == 20);
@@ -216,9 +221,11 @@ TEST(RTSprite, SpritebatchGrow) {
 
 TEST(RTSprite, SpritebatchDrawRegion) {
     void *batch = rt_spritebatch_new(0);
+    void *pixels = rt_pixels_new(64, 64);
+    ASSERT_TRUE(pixels != nullptr);
 
     rt_spritebatch_begin(batch);
-    rt_spritebatch_draw_region(batch, (void *)1, 0, 0, 10, 10, 32, 32);
+    rt_spritebatch_draw_region(batch, pixels, 0, 0, 10, 10, 32, 32);
     ASSERT_TRUE(rt_spritebatch_count(batch) == 1);
 
     printf("test_spritebatch_draw_region: PASSED\n");

@@ -370,8 +370,12 @@ int64_t rt_canvas_poll(void *canvas_ptr) {
     rt_pad_poll();
 
     // Pump the native event queue before draining translated events.
-    if (!vgfx_pump_events(canvas->gfx_win))
+    if (!vgfx_pump_events(canvas->gfx_win)) {
         canvas->should_close = 1;
+        rt_canvas_destroy_window(canvas);
+        rt_action_update();
+        return VGFX_EVENT_NONE;
+    }
 
     while (vgfx_poll_event(canvas->gfx_win, &canvas->last_event)) {
         if (canvas->last_event.type == VGFX_EVENT_CLOSE)

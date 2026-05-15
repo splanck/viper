@@ -229,6 +229,19 @@ static void test_csv_import_clamps_overflow_values(void) {
     PASS();
 }
 
+static void test_csv_import_rejects_overlong_line(void) {
+    TEST("CSV import rejects overlong line");
+    const char *csv_path = "/tmp/test_tilemap_overlong.csv";
+    FILE *f = fopen(csv_path, "w");
+    assert(f != NULL);
+    for (int i = 0; i < 17000; i++)
+        fputc('1', f);
+    fclose(f);
+
+    assert(rt_tilemap_load_csv(make_str(csv_path), 16, 16) == NULL);
+    PASS();
+}
+
 static void test_json_negative_anim_frame_normalizes(void) {
     TEST("JSON load normalizes negative animation frame");
     const char *path = "/tmp/test_tilemap_negative_frame.json";
@@ -404,6 +417,7 @@ int main() {
     test_json_save_load_preserves_extended_state();
     test_csv_import();
     test_csv_import_clamps_overflow_values();
+    test_csv_import_rejects_overlong_line();
     test_json_negative_anim_frame_normalizes();
     test_json_duplicate_animation_state_applies_to_replaced_base();
     test_tile_anim_sequential_frames_saturate();

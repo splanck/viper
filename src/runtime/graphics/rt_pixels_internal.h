@@ -60,7 +60,7 @@ static inline rt_pixels_impl *rt_pixels_checked_impl(void *pixels, const char *o
         viper_pixels_trap_invalid_handle(op, "Pixels: null pixels");
         return NULL;
     }
-    if (rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID) {
+    if (!rt_obj_is_instance(pixels, RT_PIXELS_CLASS_ID, sizeof(rt_pixels_impl))) {
         viper_pixels_trap_invalid_handle(op, "Pixels: invalid pixels");
         return NULL;
     }
@@ -73,7 +73,7 @@ static inline rt_pixels_impl *rt_pixels_checked_impl_or_null(void *pixels) {
 #ifdef RT_PIXELS_INTERNAL_ASSUME_STRUCT_HANDLE
     return (rt_pixels_impl *)pixels;
 #else
-    if (!pixels || rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID)
+    if (!pixels || !rt_obj_is_instance(pixels, RT_PIXELS_CLASS_ID, sizeof(rt_pixels_impl)))
         return NULL;
     return (rt_pixels_impl *)pixels;
 #endif

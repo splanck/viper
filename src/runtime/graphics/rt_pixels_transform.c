@@ -275,6 +275,8 @@ void *rt_pixels_flip_h(void *pixels) {
     rt_pixels_impl *result = pixels_alloc(p->width, p->height);
     if (!result)
         return NULL;
+    if (p->width <= 0 || p->height <= 0)
+        return result;
 
     for (int64_t y = 0; y < p->height; y++) {
         for (int64_t x = 0; x < p->width; x++) {
@@ -294,6 +296,8 @@ void *rt_pixels_flip_v(void *pixels) {
     rt_pixels_impl *result = pixels_alloc(p->width, p->height);
     if (!result)
         return NULL;
+    if (p->width <= 0 || p->height <= 0)
+        return result;
 
     for (int64_t y = 0; y < p->height; y++) {
         memcpy(&result->data[(p->height - 1 - y) * p->width],
@@ -370,6 +374,8 @@ void *rt_pixels_rotate_180(void *pixels) {
     rt_pixels_impl *result = pixels_alloc(p->width, p->height);
     if (!result)
         return NULL;
+    if (p->width <= 0 || p->height <= 0)
+        return result;
 
     // Rotate 180: src[x,y] -> dst[width-1-x, height-1-y]
     int64_t total = p->width * p->height;
@@ -420,18 +426,22 @@ void *rt_pixels_rotate(void *pixels, double angle_degrees) {
     double cos_a = cos(rad);
     double sin_a = sin(rad);
 
-    // Calculate new bounding box dimensions
-    // The four corners of the original image rotated about center
-    double hw = p->width / 2.0;
-    double hh = p->height / 2.0;
+    double src_cx = ((double)p->width - 1.0) * 0.5;
+    double src_cy = ((double)p->height - 1.0) * 0.5;
 
-    // Rotated corner positions (relative to center)
-    double corners[4][2] = {
-        {-hw * cos_a + hh * sin_a, -hw * sin_a - hh * cos_a}, // top-left
-        {hw * cos_a + hh * sin_a, hw * sin_a - hh * cos_a},   // top-right
-        {hw * cos_a - hh * sin_a, hw * sin_a + hh * cos_a},   // bottom-right
-        {-hw * cos_a - hh * sin_a, -hw * sin_a + hh * cos_a}  // bottom-left
+    double source_corners[4][2] = {
+        {-src_cx, -src_cy},
+        {(double)(p->width - 1) - src_cx, -src_cy},
+        {(double)(p->width - 1) - src_cx, (double)(p->height - 1) - src_cy},
+        {-src_cx, (double)(p->height - 1) - src_cy},
     };
+    double corners[4][2];
+    for (int i = 0; i < 4; i++) {
+        double rx = source_corners[i][0];
+        double ry = source_corners[i][1];
+        corners[i][0] = rx * cos_a - ry * sin_a;
+        corners[i][1] = rx * sin_a + ry * cos_a;
+    }
 
     double min_x = corners[0][0], max_x = corners[0][0];
     double min_y = corners[0][1], max_y = corners[0][1];
@@ -448,9 +458,9 @@ void *rt_pixels_rotate(void *pixels, double angle_degrees) {
 
     int64_t new_width = 0;
     int64_t new_height = 0;
-    if (!pixels_long_double_extent_to_i64((long double)max_x - (long double)min_x,
+    if (!pixels_long_double_extent_to_i64((long double)max_x - (long double)min_x + 1.0L,
                                           &new_width) ||
-        !pixels_long_double_extent_to_i64((long double)max_y - (long double)min_y,
+        !pixels_long_double_extent_to_i64((long double)max_y - (long double)min_y + 1.0L,
                                           &new_height)) {
         rt_trap("Pixels.Rotate: dimensions too large");
         return NULL;
@@ -460,24 +470,23 @@ void *rt_pixels_rotate(void *pixels, double angle_degrees) {
     if (!result)
         return NULL;
 
-    // New center
-    double new_hw = new_width / 2.0;
-    double new_hh = new_height / 2.0;
+    double dst_cx = ((double)new_width - 1.0) * 0.5;
+    double dst_cy = ((double)new_height - 1.0) * 0.5;
 
     // For each destination pixel, find source pixel using inverse rotation
     for (int64_t dy = 0; dy < new_height; dy++) {
         for (int64_t dx = 0; dx < new_width; dx++) {
             // Destination position relative to new center
-            double dx_c = dx - new_hw;
-            double dy_c = dy - new_hh;
+            double dx_c = (double)dx - dst_cx;
+            double dy_c = (double)dy - dst_cy;
 
             // Inverse rotation to find source position
             double sx_c = dx_c * cos_a + dy_c * sin_a;
             double sy_c = -dx_c * sin_a + dy_c * cos_a;
 
             // Source position in original image coordinates
-            double sx = sx_c + hw;
-            double sy = sy_c + hh;
+            double sx = sx_c + src_cx;
+            double sy = sy_c + src_cy;
 
             // Bilinear interpolation
             int64_t x0 = (int64_t)floor(sx);
@@ -520,10 +529,8 @@ void *rt_pixels_scale(void *pixels, int64_t new_width, int64_t new_height) {
     if (!p)
         return NULL;
 
-    if (new_width <= 0)
-        new_width = 1;
-    if (new_height <= 0)
-        new_height = 1;
+    if (new_width <= 0 || new_height <= 0)
+        return NULL;
 
     // Handle empty source
     if (p->width <= 0 || p->height <= 0) {
@@ -753,10 +760,8 @@ void *rt_pixels_resize(void *pixels, int64_t new_width, int64_t new_height) {
     if (!p)
         return NULL;
 
-    if (new_width <= 0)
-        new_width = 1;
-    if (new_height <= 0)
-        new_height = 1;
+    if (new_width <= 0 || new_height <= 0)
+        return NULL;
 
     // Handle empty source
     if (p->width <= 0 || p->height <= 0) {

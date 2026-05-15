@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-03
+last-verified: 2026-05-15
 ---
 
 # 2D Tilemaps and Layers
@@ -41,7 +41,7 @@ auto.SetVariant(5, 42)
 auto.Apply(ground, 10, 12, 5)
 ```
 
-`TileSet2D.New` requires a `Pixels` image whose dimensions are at least one full tile. The tileset retains the image and indexes tiles left-to-right, top-to-bottom from zero. `TileLayer2D.Get` returns `-1` for out-of-bounds coordinates.
+`TileSet2D.New` requires a `Pixels` image whose dimensions are at least one full tile. The tileset retains the image and indexes tiles left-to-right, top-to-bottom from zero. `TileLayer2D.Get` returns `-1` for out-of-bounds coordinates. TileSet and TileLayer APIs validate their handles; invalid non-matching handles return safe defaults or no-op.
 
 `ObjectLayer2D.AddRect` normalizes negative width or height by moving the origin to the rectangle's top-left corner. Zero-size rectangles and dimensions that cannot be represented are rejected.
 

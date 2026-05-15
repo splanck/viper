@@ -15,6 +15,10 @@ extern "C" {
 #include <cstdlib>
 #include <cstring>
 
+#ifndef RT_PIXELS_CLASS_ID
+#define RT_PIXELS_CLASS_ID INT64_C(-0x600201)
+#endif
+
 namespace {
 
 struct ObjHeader {
@@ -65,6 +69,14 @@ extern "C" void *rt_obj_new_i64(int64_t class_id, int64_t byte_size) {
 
 extern "C" int64_t rt_obj_class_id(void *obj) {
     return obj ? header_from_payload(obj)->class_id : 0;
+}
+
+extern "C" int8_t rt_obj_is_instance(void *obj, int64_t class_id, size_t) {
+    if (!obj)
+        return 0;
+    if (class_id == RT_PIXELS_CLASS_ID)
+        return 1;
+    return rt_obj_class_id(obj) == class_id;
 }
 
 extern "C" void rt_obj_set_finalizer(void *, void (*)(void *)) {}

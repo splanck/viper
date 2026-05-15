@@ -42,6 +42,7 @@
 #include "rt_map.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
+#include "rt_pixels_internal.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
@@ -69,7 +70,7 @@ typedef struct {
 /// @details Soft check (no trap) — used by every public SpriteSheet entry
 ///          and the GC finalizer so wrong-class handles silently no-op.
 static rt_spritesheet_impl *spritesheet_checked_or_null(void *obj) {
-    if (!obj || rt_obj_class_id(obj) != RT_SPRITESHEET_CLASS_ID)
+    if (!obj || !rt_obj_is_instance(obj, RT_SPRITESHEET_CLASS_ID, sizeof(rt_spritesheet_impl)))
         return NULL;
     return (rt_spritesheet_impl *)obj;
 }
@@ -78,7 +79,7 @@ static rt_spritesheet_impl *spritesheet_checked_or_null(void *obj) {
 /// @details Used during atlas swap-in / region extraction to reject foreign
 ///          handles before they reach rt_pixels_get / rt_pixels_blit.
 static int8_t spritesheet_is_valid_pixels(void *pixels) {
-    return pixels && rt_obj_class_id(pixels) == RT_PIXELS_CLASS_ID;
+    return pixels && rt_obj_is_instance(pixels, RT_PIXELS_CLASS_ID, sizeof(rt_pixels_impl));
 }
 
 /// @brief GC finalizer for a SpriteSheet — frees the name strings, region/name arrays,

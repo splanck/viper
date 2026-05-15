@@ -525,6 +525,7 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_collider3d_sample_heightfield_raw")
 
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_obj_class_id")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_obj_free")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_obj_is_instance")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_obj_new_i64")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_obj_release_check0")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_obj_release_known_check0")

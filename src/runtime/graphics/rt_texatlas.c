@@ -30,6 +30,7 @@
 #include "rt_heap.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
+#include "rt_pixels_internal.h"
 #include "rt_spritebatch.h"
 #include "rt_string.h"
 
@@ -65,7 +66,7 @@ typedef struct {
 
 /// @brief Cast a generic atlas handle to the concrete `texatlas_impl` pointer.
 static texatlas_impl *get_impl(void *atlas) {
-    if (!atlas || rt_obj_class_id(atlas) != RT_TEXATLAS_CLASS_ID)
+    if (!atlas || !rt_obj_is_instance(atlas, RT_TEXATLAS_CLASS_ID, sizeof(texatlas_impl)))
         return NULL;
     return (texatlas_impl *)atlas;
 }
@@ -155,7 +156,7 @@ void *rt_texatlas_new(void *pixels) {
         rt_trap("TextureAtlas.New: null pixels");
         return NULL;
     }
-    if (rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID) {
+    if (!rt_obj_is_instance(pixels, RT_PIXELS_CLASS_ID, sizeof(rt_pixels_impl))) {
         rt_trap("TextureAtlas.New: invalid pixels");
         return NULL;
     }
@@ -178,7 +179,8 @@ void *rt_texatlas_new(void *pixels) {
 /// frame_h` cells (left-to-right, top-to-bottom, named "0", "1", ... up to 512 regions). Traps
 /// if `pixels` is NULL or either dimension is non-positive. Useful for sprite sheets.
 void *rt_texatlas_load_grid(void *pixels, int64_t frame_w, int64_t frame_h) {
-    if (!pixels || rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID || frame_w <= 0 || frame_h <= 0) {
+    if (!pixels || !rt_obj_is_instance(pixels, RT_PIXELS_CLASS_ID, sizeof(rt_pixels_impl)) ||
+        frame_w <= 0 || frame_h <= 0) {
         rt_trap("TextureAtlas.LoadGrid: invalid arguments");
         return NULL;
     }
@@ -416,6 +418,8 @@ void rt_spritebatch_draw_atlas_ex(void *batch,
     if (!impl)
         return;
     const char *cname = rt_string_cstr(name);
+    if (!cname)
+        return;
     int idx = find_region(impl, cname);
     if (idx < 0)
         return;

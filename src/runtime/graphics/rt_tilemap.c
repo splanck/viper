@@ -50,6 +50,7 @@
 #include "rt_physics2d.h"
 #include "rt_physics2d_internal.h"
 #include "rt_pixels.h"
+#include "rt_pixels_internal.h"
 #include "rt_string.h"
 
 #include <limits.h>
@@ -138,7 +139,7 @@ static rt_tilemap_impl *tilemap_checked(void *tilemap_ptr, const char *trap_mess
             rt_trap(trap_message);
         return NULL;
     }
-    if (rt_obj_class_id(tilemap_ptr) != RT_TILEMAP_CLASS_ID)
+    if (!rt_obj_is_instance(tilemap_ptr, RT_TILEMAP_CLASS_ID, sizeof(rt_tilemap_impl)))
         return NULL;
     return (rt_tilemap_impl *)tilemap_ptr;
 }
@@ -158,12 +159,6 @@ static int64_t tilemap_negate_saturating(int64_t value) {
     return value == INT64_MIN ? INT64_MAX : -value;
 }
 
-/// @brief Add 2 to @p value with saturation — used when computing tile collision bounds
-///        to extend a range by one tile without overflowing near INT64_MAX.
-static int64_t tilemap_add_two_saturating(int64_t value) {
-    return value > INT64_MAX - 2 ? INT64_MAX : value + 2;
-}
-
 /// @brief Add two int64_t values with saturation at INT64_MAX / INT64_MIN.
 /// @details Used for all pixel-coordinate addition in tilemap rendering and collision
 ///   to prevent wrapping when a world coordinate plus offset exceeds the int64_t range.
@@ -173,6 +168,14 @@ static int64_t tilemap_add_saturating(int64_t a, int64_t b) {
     if (b < 0 && a < INT64_MIN - b)
         return INT64_MIN;
     return a + b;
+}
+
+static int64_t tilemap_sub_saturating(int64_t a, int64_t b) {
+    if (b > 0 && a < INT64_MIN + b)
+        return INT64_MIN;
+    if (b < 0 && a > INT64_MAX + b)
+        return INT64_MAX;
+    return a - b;
 }
 
 /// @brief Multiply two int64_t values with saturation at INT64_MAX / INT64_MIN.
@@ -232,6 +235,33 @@ static int32_t tilemap_clip_span_to_bounds(int64_t *start, int64_t *length, int6
     if (*length > remaining)
         *length = remaining;
     return *length > 0;
+}
+
+static int32_t tilemap_visible_span(int64_t canvas_size,
+                                    int64_t offset,
+                                    int64_t tile_size,
+                                    int64_t limit,
+                                    int64_t *first_out,
+                                    int64_t *span_out) {
+    if (!first_out || !span_out || canvas_size <= 0 || tile_size <= 0 || limit <= 0)
+        return 0;
+
+    int64_t raw_first = tilemap_floor_div(tilemap_negate_saturating(offset), tile_size);
+    int64_t raw_last =
+        tilemap_floor_div(tilemap_sub_saturating(canvas_size - 1, offset), tile_size);
+
+    if (raw_last < 0 || raw_first >= limit)
+        return 0;
+    if (raw_first < 0)
+        raw_first = 0;
+    if (raw_last >= limit)
+        raw_last = limit - 1;
+    if (raw_last < raw_first)
+        return 0;
+
+    *first_out = raw_first;
+    *span_out = raw_last - raw_first + 1;
+    return 1;
 }
 
 //=============================================================================
@@ -368,6 +398,10 @@ void rt_tilemap_set_tileset(void *tilemap_ptr, void *pixels) {
         return;
     if (!pixels) {
         rt_trap("Tilemap.SetTileset: null pixels");
+        return;
+    }
+    if (!rt_obj_is_instance(pixels, RT_PIXELS_CLASS_ID, sizeof(rt_pixels_impl))) {
+        rt_trap("Tilemap.SetTileset: invalid pixels");
         return;
     }
 
@@ -537,23 +571,14 @@ void rt_tilemap_draw(void *tilemap_ptr, void *canvas_ptr, int64_t offset_x, int6
     int64_t tw = tilemap->tile_width > 0 ? tilemap->tile_width : 1;
     int64_t th = tilemap->tile_height > 0 ? tilemap->tile_height : 1;
 
-    /* Compute the first tile that is visible (partially or fully) on screen */
-    int64_t first_x = tilemap_floor_div(tilemap_negate_saturating(offset_x), tw);
-    int64_t first_y = tilemap_floor_div(tilemap_negate_saturating(offset_y), th);
-    if (first_x < 0)
-        first_x = 0;
-    if (first_y < 0)
-        first_y = 0;
-
-    /* Compute how many tiles fit in the canvas (plus two for partial edges) */
     int64_t canvas_w = rt_canvas_width(canvas_ptr);
     int64_t canvas_h = rt_canvas_height(canvas_ptr);
-    int64_t vis_w = tilemap_add_two_saturating(canvas_w / tw);
-    int64_t vis_h = tilemap_add_two_saturating(canvas_h / th);
-
-    /* Clamp to tilemap dimensions */
-    if (!tilemap_clip_span_to_bounds(&first_x, &vis_w, tilemap->width) ||
-        !tilemap_clip_span_to_bounds(&first_y, &vis_h, tilemap->height))
+    int64_t first_x = 0;
+    int64_t first_y = 0;
+    int64_t vis_w = 0;
+    int64_t vis_h = 0;
+    if (!tilemap_visible_span(canvas_w, offset_x, tw, tilemap->width, &first_x, &vis_w) ||
+        !tilemap_visible_span(canvas_h, offset_y, th, tilemap->height, &first_y, &vis_h))
         return;
 
     rt_tilemap_draw_region(
@@ -744,97 +769,93 @@ int8_t rt_tilemap_collide_body(void *tilemap_ptr, void *body_ptr) {
     if (!isfinite(prev_by))
         prev_by = by;
 
-    // Determine the range of tiles the body overlaps
-    double right_d = bx + bw - 1.0;
-    double bottom_d = by + bh - 1.0;
-    int64_t bx_i = 0;
-    int64_t by_i = 0;
-    int64_t right_i = 0;
-    int64_t bottom_i = 0;
-    if (bw <= 0.0 || bh <= 0.0 || !tilemap_double_to_i64_sat(bx, &bx_i) ||
-        !tilemap_double_to_i64_sat(by, &by_i) ||
-        !tilemap_double_to_i64_sat(right_d, &right_i) ||
-        !tilemap_double_to_i64_sat(bottom_d, &bottom_i))
+    if (bw <= 0.0 || bh <= 0.0)
         return 0;
 
-    int64_t left = tilemap_floor_div(bx_i, tw);
-    int64_t right = tilemap_floor_div(right_i, tw);
-    int64_t top = tilemap_floor_div(by_i, th);
-    int64_t bottom = tilemap_floor_div(bottom_i, th);
+    for (int pass = 0; pass < 4; pass++) {
+        double right_d = bx + bw - 1.0;
+        double bottom_d = by + bh - 1.0;
+        int64_t bx_i = 0;
+        int64_t by_i = 0;
+        int64_t right_i = 0;
+        int64_t bottom_i = 0;
+        if (!tilemap_double_to_i64_sat(bx, &bx_i) || !tilemap_double_to_i64_sat(by, &by_i) ||
+            !tilemap_double_to_i64_sat(right_d, &right_i) ||
+            !tilemap_double_to_i64_sat(bottom_d, &bottom_i))
+            break;
 
-    // Clamp to tilemap bounds
-    if (left < 0)
-        left = 0;
-    if (top < 0)
-        top = 0;
-    if (right >= tilemap->width)
-        right = tilemap->width - 1;
-    if (bottom >= tilemap->height)
-        bottom = tilemap->height - 1;
+        int64_t left = tilemap_floor_div(bx_i, tw);
+        int64_t right = tilemap_floor_div(right_i, tw);
+        int64_t top = tilemap_floor_div(by_i, th);
+        int64_t bottom = tilemap_floor_div(bottom_i, th);
 
-    // Resolve collisions against each overlapping solid tile
-    for (int64_t ty = top; ty <= bottom; ty++) {
-        for (int64_t tx = left; tx <= right; tx++) {
-            int64_t tile_id = coll_tiles[ty * tilemap->width + tx];
-            if (tile_id < 0 || tile_id >= MAX_TILE_COLLISION_IDS)
-                continue;
-            int8_t ctype = tilemap->collision[tile_id];
-            if (ctype == TILE_COLLISION_NONE)
-                continue;
+        if (left < 0)
+            left = 0;
+        if (top < 0)
+            top = 0;
+        if (right >= tilemap->width)
+            right = tilemap->width - 1;
+        if (bottom >= tilemap->height)
+            bottom = tilemap->height - 1;
+        if (left > right || top > bottom)
+            break;
 
-            // Tile AABB in pixels
-            double tile_x1 = (double)tilemap_mul_saturating(tx, tw);
-            double tile_y1 = (double)tilemap_mul_saturating(ty, th);
-            double tile_x2 = tile_x1 + (double)tw;
-            double tile_y2 = tile_y1 + (double)th;
-
-            // Body AABB
-            double bx1 = bx, by1 = by;
-            double bx2 = bx + bw, by2 = by + bh;
-
-            // Check overlap
-            if (bx2 <= tile_x1 || bx1 >= tile_x2 || by2 <= tile_y1 || by1 >= tile_y2)
-                continue;
-
-            // One-way platforms only resolve when the body's previous bottom edge was above
-            // the platform top and the current frame crossed the surface while moving down.
-            if (ctype == TILE_COLLISION_ONE_WAY) {
-                double prev_bottom = prev_by + bh;
-                if (bvy <= 0.0 || prev_bottom > tile_y1 + 1.0)
+        int8_t pass_collided = 0;
+        for (int64_t ty = top; ty <= bottom; ty++) {
+            for (int64_t tx = left; tx <= right; tx++) {
+                int64_t tile_id = coll_tiles[ty * tilemap->width + tx];
+                if (tile_id < 0 || tile_id >= MAX_TILE_COLLISION_IDS)
                     continue;
-                by = tile_y1 - bh;
-                bvy = 0.0;
+                int8_t ctype = tilemap->collision[tile_id];
+                if (ctype == TILE_COLLISION_NONE)
+                    continue;
+
+                double tile_x1 = (double)tilemap_mul_saturating(tx, tw);
+                double tile_y1 = (double)tilemap_mul_saturating(ty, th);
+                double tile_x2 = tile_x1 + (double)tw;
+                double tile_y2 = tile_y1 + (double)th;
+
+                double bx1 = bx;
+                double by1 = by;
+                double bx2 = bx + bw;
+                double by2 = by + bh;
+
+                if (bx2 <= tile_x1 || bx1 >= tile_x2 || by2 <= tile_y1 || by1 >= tile_y2)
+                    continue;
+
+                if (ctype == TILE_COLLISION_ONE_WAY) {
+                    double prev_bottom = prev_by + bh;
+                    if (bvy <= 0.0 || prev_bottom > tile_y1 + 1e-6)
+                        continue;
+                    by = tile_y1 - bh;
+                    bvy = 0.0;
+                    collided = 1;
+                    pass_collided = 1;
+                    continue;
+                }
+
+                double ox = (bx2 < tile_x2) ? (bx2 - tile_x1) : (tile_x2 - bx1);
+                double oy = (by2 < tile_y2) ? (by2 - tile_y1) : (tile_y2 - by1);
+
+                if (ox < oy) {
+                    if (bx1 + bw * 0.5 < tile_x1 + (double)tw * 0.5)
+                        bx = tile_x1 - bw;
+                    else
+                        bx = tile_x2;
+                    bvx = 0.0;
+                } else {
+                    if (by1 + bh * 0.5 < tile_y1 + (double)th * 0.5)
+                        by = tile_y1 - bh;
+                    else
+                        by = tile_y2;
+                    bvy = 0.0;
+                }
                 collided = 1;
-                continue;
+                pass_collided = 1;
             }
-
-            // Calculate overlap on each axis
-            double ox = (bx2 < tile_x2) ? (bx2 - tile_x1) : (tile_x2 - bx1);
-            double oy = (by2 < tile_y2) ? (by2 - tile_y1) : (tile_y2 - by1);
-
-            // Resolve along minimum overlap axis
-            if (ox < oy) {
-                // Horizontal resolution
-                if (bx1 + bw * 0.5 < tile_x1 + (double)tw * 0.5)
-                    bx = tile_x1 - bw; // Push left
-                else
-                    bx = tile_x2; // Push right
-                bvx = 0.0;
-                // Refresh derived coordinates for subsequent iterations
-                bx1 = bx;
-                bx2 = bx + bw;
-            } else {
-                // Vertical resolution
-                if (by1 + bh * 0.5 < tile_y1 + (double)th * 0.5)
-                    by = tile_y1 - bh; // Push up (landing)
-                else
-                    by = tile_y2; // Push down (hit ceiling)
-                bvy = 0.0;
-                by1 = by;
-                by2 = by + bh;
-            }
-            collided = 1;
         }
+        if (!pass_collided)
+            break;
     }
 
     if (collided) {
@@ -1069,6 +1090,8 @@ void rt_tilemap_set_layer_tileset(void *tilemap_ptr, int64_t layer, void *pixels
         lyr->tile_count = 0;
         return;
     }
+    if (!rt_obj_is_instance(pixels, RT_PIXELS_CLASS_ID, sizeof(rt_pixels_impl)))
+        return;
 
     void *cloned = rt_pixels_clone(pixels);
     if (!cloned)
@@ -1110,21 +1133,14 @@ void rt_tilemap_draw_layer(
     int64_t tw = tilemap->tile_width > 0 ? tilemap->tile_width : 1;
     int64_t th = tilemap->tile_height > 0 ? tilemap->tile_height : 1;
 
-    // Viewport culling
-    int64_t first_x = tilemap_floor_div(tilemap_negate_saturating(cam_x), tw);
-    int64_t first_y = tilemap_floor_div(tilemap_negate_saturating(cam_y), th);
-    if (first_x < 0)
-        first_x = 0;
-    if (first_y < 0)
-        first_y = 0;
-
     int64_t canvas_w = rt_canvas_width(canvas_ptr);
     int64_t canvas_h = rt_canvas_height(canvas_ptr);
-    int64_t vis_w = tilemap_add_two_saturating(canvas_w / tw);
-    int64_t vis_h = tilemap_add_two_saturating(canvas_h / th);
-
-    if (!tilemap_clip_span_to_bounds(&first_x, &vis_w, tilemap->width) ||
-        !tilemap_clip_span_to_bounds(&first_y, &vis_h, tilemap->height))
+    int64_t first_x = 0;
+    int64_t first_y = 0;
+    int64_t vis_w = 0;
+    int64_t vis_h = 0;
+    if (!tilemap_visible_span(canvas_w, cam_x, tw, tilemap->width, &first_x, &vis_w) ||
+        !tilemap_visible_span(canvas_h, cam_y, th, tilemap->height, &first_y, &vis_h))
         return;
 
     rt_tilemap_draw_region_layer_impl(tilemap,

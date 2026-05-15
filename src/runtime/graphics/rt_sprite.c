@@ -87,7 +87,7 @@ static rt_sprite_impl *sprite_checked(void *sprite_ptr, const char *op) {
         rt_trap(op ? op : "Sprite: null sprite");
         return NULL;
     }
-    if (rt_obj_class_id(sprite_ptr) != RT_SPRITE_CLASS_ID) {
+    if (!rt_obj_is_instance(sprite_ptr, RT_SPRITE_CLASS_ID, sizeof(rt_sprite_impl))) {
         rt_trap(op ? op : "Sprite: invalid sprite");
         return NULL;
     }
@@ -99,7 +99,7 @@ static rt_sprite_impl *sprite_checked(void *sprite_ptr, const char *op) {
 ///          Draw() loops where a stale handle is not a programming error
 ///          and should be silently skipped.
 static rt_sprite_impl *sprite_checked_or_null(void *sprite_ptr) {
-    if (!sprite_ptr || rt_obj_class_id(sprite_ptr) != RT_SPRITE_CLASS_ID)
+    if (!sprite_ptr || !rt_obj_is_instance(sprite_ptr, RT_SPRITE_CLASS_ID, sizeof(rt_sprite_impl)))
         return NULL;
     return (rt_sprite_impl *)sprite_ptr;
 }
@@ -504,7 +504,7 @@ void *rt_sprite_new(void *pixels) {
         rt_trap("Sprite.New: null pixels");
         return NULL;
     }
-    if (rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID) {
+    if (!rt_obj_is_instance(pixels, RT_PIXELS_CLASS_ID, sizeof(rt_pixels_impl))) {
         rt_trap("Sprite.New: invalid pixels");
         return NULL;
     }
@@ -513,13 +513,8 @@ void *rt_sprite_new(void *pixels) {
     if (!sprite)
         return NULL;
 
-    // Clone the pixels and store as first frame
-    void *cloned = rt_pixels_clone(pixels);
-    if (!cloned) {
-        sprite_release_object(sprite);
-        return NULL;
-    }
-    sprite->frames[0] = cloned;
+    rt_obj_retain_maybe(pixels);
+    sprite->frames[0] = pixels;
     sprite->frame_count = 1;
 
     return sprite;
@@ -956,7 +951,7 @@ void rt_sprite_add_frame(void *sprite_ptr, void *pixels) {
         rt_trap("Sprite.AddFrame: null argument");
         return;
     }
-    if (rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID) {
+    if (!rt_obj_is_instance(pixels, RT_PIXELS_CLASS_ID, sizeof(rt_pixels_impl))) {
         rt_trap("Sprite.AddFrame: invalid pixels");
         return;
     }
@@ -967,11 +962,9 @@ void rt_sprite_add_frame(void *sprite_ptr, void *pixels) {
     if (sprite->frame_count >= MAX_SPRITE_FRAMES)
         return;
 
-    void *cloned = rt_pixels_clone(pixels);
-    if (cloned) {
-        sprite->frames[sprite->frame_count] = cloned;
-        sprite->frame_count++;
-    }
+    rt_obj_retain_maybe(pixels);
+    sprite->frames[sprite->frame_count] = pixels;
+    sprite->frame_count++;
 }
 
 /// @brief Set the per-frame display duration in milliseconds (used by `rt_sprite_update`).
@@ -1110,7 +1103,8 @@ void rt_sprite_move(void *sprite_ptr, int64_t dx, int64_t dy) {
 /// @details Soft check (no trap) — used by every public SpriteAnimator entry
 ///          point so that wrong-class handles are no-ops rather than crashes.
 static rt_sprite_animator_t *sprite_animator_checked(rt_sprite_animator_t *animator) {
-    if (!animator || rt_obj_class_id(animator) != RT_SPRITE_ANIMATOR_CLASS_ID)
+    if (!animator ||
+        !rt_obj_is_instance(animator, RT_SPRITE_ANIMATOR_CLASS_ID, sizeof(rt_sprite_animator_t)))
         return NULL;
     return animator;
 }
