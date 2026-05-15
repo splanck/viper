@@ -49,6 +49,7 @@
 #define MG_WAV_HEADER 44
 #define MG_MAX_DURATION_S (5 * 60) /* 5 minutes */
 #define MG_CROSSFADE_MS 10         /* loop crossfade duration */
+#define MG_CLASS_ID INT64_C(-0x730103)
 
 #define MG_PI 3.14159265358979323846
 #define MG_2PI 6.28318530717958647692
@@ -152,6 +153,12 @@ static int mg_centbeats_to_frames(int64_t centbeats,
         return 0;
     *out_frames = (centbeats * (int64_t)samples_per_beat) / 100;
     return 1;
+}
+
+static mg_song_t *mg_as_song(void *song_ptr) {
+    if (rt_obj_class_id(song_ptr) != MG_CLASS_ID)
+        return NULL;
+    return (mg_song_t *)song_ptr;
 }
 
 //===----------------------------------------------------------------------===//
@@ -826,7 +833,7 @@ static int16_t mg_soft_clip(int32_t v) {
 ///          arpeggio, portamento), add notes, then call build() to render to a
 ///          playable Sound or Music handle.
 void *rt_musicgen_new(int64_t bpm) {
-    mg_song_t *song = (mg_song_t *)rt_obj_new_i64(0, (int64_t)sizeof(mg_song_t));
+    mg_song_t *song = (mg_song_t *)rt_obj_new_i64(MG_CLASS_ID, (int64_t)sizeof(mg_song_t));
     if (!song)
         return NULL;
 
@@ -866,9 +873,9 @@ void *rt_musicgen_new(int64_t bpm) {
 /// @brief Add a synthesis channel with the given waveform (0=sine, 1=square, 2=saw, 3=triangle,
 /// 4=noise).
 int64_t rt_musicgen_add_channel(void *song_ptr, int64_t waveform) {
-    if (!song_ptr)
+    mg_song_t *song = mg_as_song(song_ptr);
+    if (!song)
         return -1;
-    mg_song_t *song = (mg_song_t *)song_ptr;
 
     if (song->channel_count >= MUSICGEN_MAX_CHANNELS)
         return -1;
@@ -887,9 +894,9 @@ int64_t rt_musicgen_add_channel(void *song_ptr, int64_t waveform) {
 
 /// Helper to validate song + channel index.
 static mg_channel_t *mg_get_channel(void *song_ptr, int64_t ch) {
-    if (!song_ptr)
+    mg_song_t *song = mg_as_song(song_ptr);
+    if (!song)
         return NULL;
-    mg_song_t *song = (mg_song_t *)song_ptr;
     if (ch < 0 || ch >= (int64_t)song->channel_count)
         return NULL;
     return &song->channels[ch];
@@ -1012,7 +1019,9 @@ int64_t rt_musicgen_add_note_vel(void *song_ptr,
     if (c->note_count >= MUSICGEN_MAX_NOTES)
         return 0;
 
-    mg_song_t *song = (mg_song_t *)song_ptr;
+    mg_song_t *song = mg_as_song(song_ptr);
+    if (!song)
+        return 0;
     int64_t max_centbeats = mg_max_centbeats_for_bpm(song->bpm);
     if (beat_pos < 0)
         beat_pos = 0;
@@ -1042,47 +1051,50 @@ int64_t rt_musicgen_add_note_vel(void *song_ptr,
 
 /// @brief Set the total song length in centbeats (100 centbeats = 1 beat).
 void rt_musicgen_set_length(void *song_ptr, int64_t length_centbeats) {
-    if (!song_ptr)
+    mg_song_t *song = mg_as_song(song_ptr);
+    if (!song)
         return;
-    mg_song_t *song = (mg_song_t *)song_ptr;
     song->length_centbeats = mg_clamp(length_centbeats, 0, mg_max_centbeats_for_bpm(song->bpm));
 }
 
 /// @brief Set the swing amount (0–100; offbeat notes shifted later for groove feel).
 void rt_musicgen_set_swing(void *song_ptr, int64_t swing) {
-    if (!song_ptr)
+    mg_song_t *song = mg_as_song(song_ptr);
+    if (!song)
         return;
-    mg_song_t *song = (mg_song_t *)song_ptr;
     song->swing = mg_clamp(swing, 0, 100);
 }
 
 /// @brief Mark the song as loopable (seamless loop point at the end).
 void rt_musicgen_set_loopable(void *song_ptr, int64_t loopable) {
-    if (!song_ptr)
+    mg_song_t *song = mg_as_song(song_ptr);
+    if (!song)
         return;
-    mg_song_t *song = (mg_song_t *)song_ptr;
     song->loopable = (loopable != 0) ? 1 : 0;
 }
 
 /// @brief Get the song's beats-per-minute.
 int64_t rt_musicgen_get_bpm(void *song_ptr) {
-    if (!song_ptr)
+    mg_song_t *song = mg_as_song(song_ptr);
+    if (!song)
         return 0;
-    return ((mg_song_t *)song_ptr)->bpm;
+    return song->bpm;
 }
 
 /// @brief Get the song length in centbeats.
 int64_t rt_musicgen_get_length(void *song_ptr) {
-    if (!song_ptr)
+    mg_song_t *song = mg_as_song(song_ptr);
+    if (!song)
         return 0;
-    return ((mg_song_t *)song_ptr)->length_centbeats;
+    return song->length_centbeats;
 }
 
 /// @brief Get the number of channels added to the song.
 int64_t rt_musicgen_get_channel_count(void *song_ptr) {
-    if (!song_ptr)
+    mg_song_t *song = mg_as_song(song_ptr);
+    if (!song)
         return 0;
-    return (int64_t)((mg_song_t *)song_ptr)->channel_count;
+    return (int64_t)song->channel_count;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1095,12 +1107,11 @@ int64_t rt_musicgen_get_channel_count(void *song_ptr) {
 ///          (vibrato, tremolo, arpeggio, portamento). The result can be played
 ///          with rt_sound_play or loaded as music.
 void *rt_musicgen_build(void *song_ptr) {
-    if (!song_ptr)
+    mg_song_t *song = mg_as_song(song_ptr);
+    if (!song)
         return NULL;
     if (!rt_audio_is_available())
         return NULL;
-
-    mg_song_t *song = (mg_song_t *)song_ptr;
 
     if (song->channel_count <= 0 || song->length_centbeats <= 0)
         return NULL;

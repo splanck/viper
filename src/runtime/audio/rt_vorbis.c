@@ -33,6 +33,9 @@
 #define VORBIS_MAX_RESIDUES 64
 #define VORBIS_MAX_MAPPINGS 64
 #define VORBIS_MAX_MODES 64
+#define VORBIS_MAX_CODEBOOK_ENTRIES 65536
+#define VORBIS_MAX_CODEBOOK_DIMENSIONS 256
+#define VORBIS_MAX_CODEBOOK_VQ_VALUES (1024 * 1024)
 
 //===----------------------------------------------------------------------===//
 // Bitstream reader (LSB-first, per Vorbis spec)
@@ -643,6 +646,9 @@ static int decode_setup(vorbis_decoder_t *dec, const uint8_t *data, size_t len) 
 
         cb->dimensions = (int)bits_read(&bits, 16);
         cb->entries = (int)bits_read(&bits, 24);
+        if (cb->dimensions <= 0 || cb->dimensions > VORBIS_MAX_CODEBOOK_DIMENSIONS ||
+            cb->entries <= 0 || cb->entries > VORBIS_MAX_CODEBOOK_ENTRIES)
+            return -1;
 
         // Read codeword lengths
         cb->lengths = (uint8_t *)calloc((size_t)cb->entries, 1);
@@ -680,6 +686,8 @@ static int decode_setup(vorbis_decoder_t *dec, const uint8_t *data, size_t len) 
 
         // VQ lookup
         cb->lookup_type = (int)bits_read(&bits, 4);
+        if (cb->lookup_type < 0 || cb->lookup_type > 2)
+            return -1;
         if (cb->lookup_type == 1 || cb->lookup_type == 2) {
             cb->minimum_value = float32_unpack(bits_read(&bits, 32));
             cb->delta_value = float32_unpack(bits_read(&bits, 32));
@@ -690,11 +698,16 @@ static int decode_setup(vorbis_decoder_t *dec, const uint8_t *data, size_t len) 
             if (cb->lookup_type == 1) {
                 // floor(entries^(1/dim))
                 lookup_values = (int)floor(pow((double)cb->entries, 1.0 / (double)cb->dimensions));
-                while ((int)pow((double)(lookup_values + 1), (double)cb->dimensions) <= cb->entries)
+                while (pow((double)(lookup_values + 1), (double)cb->dimensions) <=
+                       (double)cb->entries)
                     lookup_values++;
             } else {
+                if (cb->entries > INT32_MAX / cb->dimensions)
+                    return -1;
                 lookup_values = cb->entries * cb->dimensions;
             }
+            if (lookup_values <= 0 || lookup_values > VORBIS_MAX_CODEBOOK_VQ_VALUES)
+                return -1;
 
             uint16_t *multiplicands = (uint16_t *)calloc((size_t)lookup_values, sizeof(uint16_t));
             if (!multiplicands)
@@ -703,16 +716,20 @@ static int decode_setup(vorbis_decoder_t *dec, const uint8_t *data, size_t len) 
                 multiplicands[j] = (uint16_t)bits_read(&bits, value_bits);
 
             // Expand VQ table
+            if ((size_t)cb->entries > (size_t)VORBIS_MAX_CODEBOOK_VQ_VALUES / (size_t)cb->dimensions) {
+                free(multiplicands);
+                return -1;
+            }
             cb->vq_table =
                 (float *)calloc((size_t)cb->entries * (size_t)cb->dimensions, sizeof(float));
             if (cb->vq_table) {
                 for (int j = 0; j < cb->entries; j++) {
                     float last = 0.0f;
-                    int index_divisor = 1;
+                    int64_t index_divisor = 1;
                     for (int k = 0; k < cb->dimensions; k++) {
                         int off;
                         if (cb->lookup_type == 1)
-                            off = (j / index_divisor) % lookup_values;
+                            off = (int)(((int64_t)j / index_divisor) % lookup_values);
                         else
                             off = j * cb->dimensions + k;
                         float val = cb->minimum_value + (float)multiplicands[off] * cb->delta_value;
@@ -720,10 +737,17 @@ static int decode_setup(vorbis_decoder_t *dec, const uint8_t *data, size_t len) 
                             val += last;
                         cb->vq_table[j * cb->dimensions + k] = val;
                         last = val;
-                        if (cb->lookup_type == 1)
-                            index_divisor *= lookup_values;
+                        if (cb->lookup_type == 1) {
+                            if (index_divisor <= INT64_MAX / lookup_values)
+                                index_divisor *= lookup_values;
+                            else
+                                index_divisor = INT64_MAX;
+                        }
                     }
                 }
+            } else {
+                free(multiplicands);
+                return -1;
             }
             free(multiplicands);
         }
@@ -731,8 +755,10 @@ static int decode_setup(vorbis_decoder_t *dec, const uint8_t *data, size_t len) 
 
     // --- Time domain transforms (placeholder, always 0) ---
     int time_count = (int)bits_read(&bits, 6) + 1;
-    for (int i = 0; i < time_count; i++)
-        bits_read(&bits, 16); // always 0
+    for (int i = 0; i < time_count; i++) {
+        if (bits_read(&bits, 16) != 0)
+            return -1;
+    }
 
     // --- Floors ---
     dec->floor_count = (int)bits_read(&bits, 6) + 1;
@@ -757,8 +783,13 @@ static int decode_setup(vorbis_decoder_t *dec, const uint8_t *data, size_t len) 
             fl->class_subclasses[j] = (int)bits_read(&bits, 2);
             if (fl->class_subclasses[j] > 0)
                 fl->class_masterbooks[j] = (int)bits_read(&bits, 8);
+            if (fl->class_subclasses[j] > 0 &&
+                (fl->class_masterbooks[j] < 0 || fl->class_masterbooks[j] >= dec->codebook_count))
+                return -1;
             for (int k = 0; k < (1 << fl->class_subclasses[j]); k++) {
                 fl->subclass_books[j][k] = (int)bits_read(&bits, 8) - 1;
+                if (fl->subclass_books[j][k] >= dec->codebook_count)
+                    return -1;
             }
         }
         fl->multiplier = (int)bits_read(&bits, 2) + 1;
@@ -790,6 +821,8 @@ static int decode_setup(vorbis_decoder_t *dec, const uint8_t *data, size_t len) 
         res->partition_size = (int)bits_read(&bits, 24) + 1;
         res->classifications = (int)bits_read(&bits, 6) + 1;
         res->classbook = (int)bits_read(&bits, 8);
+        if (res->classbook < 0 || res->classbook >= dec->codebook_count)
+            return -1;
 
         for (int j = 0; j < res->classifications; j++) {
             uint8_t low = (uint8_t)bits_read(&bits, 3);
@@ -804,6 +837,8 @@ static int decode_setup(vorbis_decoder_t *dec, const uint8_t *data, size_t len) 
                     res->books[j][k] = (int)bits_read(&bits, 8);
                 else
                     res->books[j][k] = -1;
+                if (res->books[j][k] >= dec->codebook_count)
+                    return -1;
             }
         }
     }
@@ -816,7 +851,8 @@ static int decode_setup(vorbis_decoder_t *dec, const uint8_t *data, size_t len) 
     for (int i = 0; i < dec->mapping_count; i++) {
         vorbis_mapping_t *map = &dec->mappings[i];
         int mapping_type = (int)bits_read(&bits, 16);
-        (void)mapping_type; // always 0
+        if (mapping_type != 0)
+            return -1;
 
         map->submaps = 1;
         if (bits_read1(&bits))
@@ -829,18 +865,29 @@ static int decode_setup(vorbis_decoder_t *dec, const uint8_t *data, size_t len) 
             for (int j = 0; j < map->coupling_steps; j++) {
                 map->coupling_magnitude[j] = (int)bits_read(&bits, ch_bits);
                 map->coupling_angle[j] = (int)bits_read(&bits, ch_bits);
+                if (map->coupling_magnitude[j] >= dec->channels ||
+                    map->coupling_angle[j] >= dec->channels ||
+                    map->coupling_magnitude[j] == map->coupling_angle[j])
+                    return -1;
             }
         }
 
-        bits_read(&bits, 2); // reserved (must be 0)
+        if (bits_read(&bits, 2) != 0)
+            return -1;
         if (map->submaps > 1) {
-            for (int j = 0; j < dec->channels; j++)
+            for (int j = 0; j < dec->channels; j++) {
                 map->mux[j] = (int)bits_read(&bits, 4);
+                if (map->mux[j] >= map->submaps)
+                    return -1;
+            }
         }
         for (int j = 0; j < map->submaps; j++) {
             bits_read(&bits, 8); // unused time configuration
             map->submap_floor[j] = (int)bits_read(&bits, 8);
             map->submap_residue[j] = (int)bits_read(&bits, 8);
+            if (map->submap_floor[j] < 0 || map->submap_floor[j] >= dec->floor_count ||
+                map->submap_residue[j] < 0 || map->submap_residue[j] >= dec->residue_count)
+                return -1;
         }
     }
 
@@ -854,6 +901,9 @@ static int decode_setup(vorbis_decoder_t *dec, const uint8_t *data, size_t len) 
         dec->modes[i].windowtype = (int)bits_read(&bits, 16);
         dec->modes[i].transformtype = (int)bits_read(&bits, 16);
         dec->modes[i].mapping = (int)bits_read(&bits, 8);
+        if (dec->modes[i].windowtype != 0 || dec->modes[i].transformtype != 0 ||
+            dec->modes[i].mapping < 0 || dec->modes[i].mapping >= dec->mapping_count)
+            return -1;
     }
 
     // Framing bit
@@ -957,6 +1007,8 @@ int vorbis_decode_packet(
         return -1;
 
     vorbis_mode_t *mode = &dec->modes[mode_number];
+    if (mode->mapping < 0 || mode->mapping >= dec->mapping_count)
+        return -1;
     int block_flag = mode->block_flag;
     int n = block_flag ? dec->blocksize_1 : dec->blocksize_0;
     int n2 = n / 2;
@@ -983,7 +1035,11 @@ int vorbis_decode_packet(
 
     for (int ch = 0; ch < dec->channels; ch++) {
         int submap_idx = map->submaps > 1 ? map->mux[ch] : 0;
+        if (submap_idx < 0 || submap_idx >= map->submaps)
+            goto floor_decode_error;
         int floor_idx = map->submap_floor[submap_idx];
+        if (floor_idx < 0 || floor_idx >= dec->floor_count)
+            goto floor_decode_error;
         vorbis_floor1_t *fl = &dec->floors[floor_idx];
 
         floor_buf[ch] = (float *)calloc((size_t)n2, sizeof(float));
@@ -1076,6 +1132,16 @@ int vorbis_decode_packet(
                 floor_buf[ch][x] = last_amp;
         }
     }
+    goto floor_decode_done;
+
+floor_decode_error:
+    for (int ch = 0; ch < dec->channels; ch++)
+        free(floor_buf[ch]);
+    free(floor_buf);
+    free(no_residue);
+    return -1;
+
+floor_decode_done:
 
     // --- Residue decode ---
     float **residue_buf = (float **)calloc((size_t)dec->channels, sizeof(float *));

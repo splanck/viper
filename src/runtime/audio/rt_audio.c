@@ -45,6 +45,7 @@
 
 #include <stddef.h>
 #include <float.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -71,6 +72,15 @@ static int64_t clamp_volume_100(int64_t volume) {
     if (volume > 100)
         return 100;
     return volume;
+}
+
+static int64_t seconds_to_ms_i64(float seconds) {
+    if (!isfinite(seconds) || seconds <= 0.0f)
+        return 0;
+    double ms = (double)seconds * 1000.0;
+    if (!isfinite(ms) || ms >= (double)INT64_MAX)
+        return INT64_MAX;
+    return (int64_t)(ms + 0.5);
 }
 
 #ifdef VIPER_ENABLE_AUDIO
@@ -1070,6 +1080,10 @@ static int build_wav_from_pcm(const int16_t *pcm,
     int sample_rate,
     uint8_t **out_data,
     size_t *out_len) {
+    if (out_data)
+        *out_data = NULL;
+    if (out_len)
+        *out_len = 0;
     if (!pcm || !out_data || !out_len || frames == 0 || channels < 1 || channels > 2 ||
         sample_rate <= 0 || sample_rate > RT_AUDIO_MAX_SAMPLE_RATE)
         return -1;
@@ -1185,7 +1199,7 @@ static int ogg_decode_reader_to_wav(ogg_reader_t *reader, uint8_t **out_data, si
         header_num++;
     }
 
-    if (vorbis_serial == 0 || header_num < 3 || !have_audio_packet) {
+    if (!have_vorbis_serial || header_num < 3 || !have_audio_packet) {
         vorbis_decoder_free(dec);
         return -1;
     }
@@ -1923,7 +1937,7 @@ int64_t rt_music_get_position(void *music) {
 
     float seconds = vaud_music_get_position(mus->music);
     audio_state_unlock();
-    return (int64_t)(seconds * 1000.0f + 0.5f);
+    return seconds_to_ms_i64(seconds);
 }
 
 /// @brief Get the total duration of a music track in milliseconds.
@@ -1941,7 +1955,7 @@ int64_t rt_music_get_duration(void *music) {
 
     float seconds = vaud_music_get_duration(mus->music);
     audio_state_unlock();
-    return (int64_t)(seconds * 1000.0f + 0.5f);
+    return seconds_to_ms_i64(seconds);
 }
 
 /// @brief Pause a music track plus anything tied to it by an active crossfade.

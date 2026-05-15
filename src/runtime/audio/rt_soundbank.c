@@ -28,6 +28,7 @@
 #include "rt_string.h"
 
 #include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 
 //===----------------------------------------------------------------------===//
@@ -35,6 +36,7 @@
 //===----------------------------------------------------------------------===//
 
 #define BANK_MAX_ENTRIES 64
+#define RT_SOUNDBANK_CLASS_ID INT64_C(-0x730101)
 typedef struct {
     rt_string name;
     void *sound; /* retained rt_sound wrapper */
@@ -69,6 +71,12 @@ static int find_free(const rt_soundbank_impl *bank) {
     return -1;
 }
 
+static rt_soundbank_impl *as_soundbank(void *bank_ptr) {
+    if (rt_obj_class_id(bank_ptr) != RT_SOUNDBANK_CLASS_ID)
+        return NULL;
+    return (rt_soundbank_impl *)bank_ptr;
+}
+
 /// @brief Release a sound reference in an entry.
 static void release_entry(bank_entry_t *entry) {
     rt_str_release_maybe(entry->name);
@@ -93,7 +101,9 @@ static void rt_soundbank_finalize(void *obj) {
     if (!obj)
         return;
 
-    rt_soundbank_impl *bank = (rt_soundbank_impl *)obj;
+    rt_soundbank_impl *bank = as_soundbank(obj);
+    if (!bank)
+        return;
     for (int i = 0; i < BANK_MAX_ENTRIES; i++) {
         if (bank->entries[i].in_use)
             release_entry(&bank->entries[i]);
@@ -110,7 +120,7 @@ static void rt_soundbank_finalize(void *obj) {
 ///          up to BANK_MAX_ENTRIES sounds.
 void *rt_soundbank_new(void) {
     rt_soundbank_impl *bank =
-        (rt_soundbank_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_soundbank_impl));
+        (rt_soundbank_impl *)rt_obj_new_i64(RT_SOUNDBANK_CLASS_ID, (int64_t)sizeof(rt_soundbank_impl));
     if (!bank)
         return NULL;
 
@@ -124,10 +134,10 @@ void *rt_soundbank_new(void) {
 
 /// @brief Load a sound from a file path and register it under the given name.
 int64_t rt_soundbank_register(void *bank_ptr, rt_string name, rt_string path) {
-    if (!bank_ptr || !name || !path)
+    rt_soundbank_impl *bank = as_soundbank(bank_ptr);
+    if (!bank || !name || !path)
         return 0;
 
-    rt_soundbank_impl *bank = (rt_soundbank_impl *)bank_ptr;
     int replacing;
 
     if (!rt_audio_is_available())
@@ -167,12 +177,12 @@ int64_t rt_soundbank_register(void *bank_ptr, rt_string name, rt_string path) {
 
 /// @brief Register a pre-loaded Sound handle under the given name (retains the sound).
 int64_t rt_soundbank_register_sound(void *bank_ptr, rt_string name, void *sound) {
-    if (!bank_ptr || !name || !sound)
+    rt_soundbank_impl *bank = as_soundbank(bank_ptr);
+    if (!bank || !name || !sound)
         return 0;
     if (!rt_sound_is_handle(sound))
         return 0;
 
-    rt_soundbank_impl *bank = (rt_soundbank_impl *)bank_ptr;
     int replacing;
 
     /* Check if name already exists — replace */
@@ -201,10 +211,10 @@ int64_t rt_soundbank_register_sound(void *bank_ptr, rt_string name, void *sound)
 
 /// @brief Play a sound by name at default volume. Returns a voice ID or -1 if not found.
 int64_t rt_soundbank_play(void *bank_ptr, rt_string name) {
-    if (!bank_ptr || !name)
+    rt_soundbank_impl *bank = as_soundbank(bank_ptr);
+    if (!bank || !name)
         return -1;
 
-    rt_soundbank_impl *bank = (rt_soundbank_impl *)bank_ptr;
     int idx = find_entry(bank, name);
     if (idx < 0)
         return -1;
@@ -214,10 +224,10 @@ int64_t rt_soundbank_play(void *bank_ptr, rt_string name) {
 
 /// @brief Play a sound by name with explicit volume and pan. Returns a voice ID.
 int64_t rt_soundbank_play_ex(void *bank_ptr, rt_string name, int64_t volume, int64_t pan) {
-    if (!bank_ptr || !name)
+    rt_soundbank_impl *bank = as_soundbank(bank_ptr);
+    if (!bank || !name)
         return -1;
 
-    rt_soundbank_impl *bank = (rt_soundbank_impl *)bank_ptr;
     int idx = find_entry(bank, name);
     if (idx < 0)
         return -1;
@@ -227,19 +237,19 @@ int64_t rt_soundbank_play_ex(void *bank_ptr, rt_string name, int64_t volume, int
 
 /// @brief Check whether a sound with the given name exists in the bank.
 int64_t rt_soundbank_has(void *bank_ptr, rt_string name) {
-    if (!bank_ptr || !name)
+    rt_soundbank_impl *bank = as_soundbank(bank_ptr);
+    if (!bank || !name)
         return 0;
 
-    rt_soundbank_impl *bank = (rt_soundbank_impl *)bank_ptr;
     return find_entry(bank, name) >= 0 ? 1 : 0;
 }
 
 /// @brief Get the Sound handle for a name (retained — caller must release). NULL if not found.
 void *rt_soundbank_get(void *bank_ptr, rt_string name) {
-    if (!bank_ptr || !name)
+    rt_soundbank_impl *bank = as_soundbank(bank_ptr);
+    if (!bank || !name)
         return NULL;
 
-    rt_soundbank_impl *bank = (rt_soundbank_impl *)bank_ptr;
     int idx = find_entry(bank, name);
     if (idx < 0)
         return NULL;
@@ -251,10 +261,10 @@ void *rt_soundbank_get(void *bank_ptr, rt_string name) {
 
 /// @brief Remove a sound from the bank by name and release its reference.
 void rt_soundbank_remove(void *bank_ptr, rt_string name) {
-    if (!bank_ptr || !name)
+    rt_soundbank_impl *bank = as_soundbank(bank_ptr);
+    if (!bank || !name)
         return;
 
-    rt_soundbank_impl *bank = (rt_soundbank_impl *)bank_ptr;
     int idx = find_entry(bank, name);
     if (idx < 0)
         return;
@@ -265,10 +275,10 @@ void rt_soundbank_remove(void *bank_ptr, rt_string name) {
 
 /// @brief Remove and release all sounds from the bank.
 void rt_soundbank_clear(void *bank_ptr) {
-    if (!bank_ptr)
+    rt_soundbank_impl *bank = as_soundbank(bank_ptr);
+    if (!bank)
         return;
 
-    rt_soundbank_impl *bank = (rt_soundbank_impl *)bank_ptr;
     for (int i = 0; i < BANK_MAX_ENTRIES; i++) {
         if (bank->entries[i].in_use)
             release_entry(&bank->entries[i]);
@@ -278,8 +288,9 @@ void rt_soundbank_clear(void *bank_ptr) {
 
 /// @brief Get the number of sounds currently registered in the bank.
 int64_t rt_soundbank_count(void *bank_ptr) {
-    if (!bank_ptr)
+    rt_soundbank_impl *bank = as_soundbank(bank_ptr);
+    if (!bank)
         return 0;
 
-    return ((rt_soundbank_impl *)bank_ptr)->count;
+    return bank->count;
 }

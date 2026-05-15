@@ -49,6 +49,11 @@ static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
+static void release_obj(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 //=============================================================================
 // Audio system tests (headless-safe)
 //=============================================================================
@@ -383,6 +388,42 @@ static void test_playlist_null_safety() {
     ASSERT(rt_playlist_get_repeat(NULL) == 0, "null repeat = 0");
     rt_playlist_update(NULL);
     ASSERT(1, "all null operations safe");
+}
+
+static void test_playlist_rejects_non_playlist_handle() {
+    void *fake = rt_obj_new_i64(0, 8);
+    ASSERT(fake != nullptr, "fake object allocated");
+
+    rt_playlist_add(fake, rt_const_cstr("x.wav"));
+    rt_playlist_insert(fake, 0, rt_const_cstr("x.wav"));
+    rt_playlist_remove(fake, 0);
+    rt_playlist_clear(fake);
+    ASSERT(rt_playlist_len(fake) == 0, "fake playlist len = 0");
+
+    rt_string got = rt_playlist_get(fake, 0);
+    ASSERT(got != nullptr && rt_str_len(got) == 0, "fake playlist get returns empty string");
+    rt_str_release_maybe(got);
+
+    rt_playlist_play(fake);
+    rt_playlist_pause(fake);
+    rt_playlist_stop(fake);
+    rt_playlist_next(fake);
+    rt_playlist_prev(fake);
+    rt_playlist_jump(fake, 0);
+    ASSERT(rt_playlist_get_current(fake) == -1, "fake playlist current = -1");
+    ASSERT(rt_playlist_is_playing(fake) == 0, "fake playlist not playing");
+    ASSERT(rt_playlist_is_paused(fake) == 0, "fake playlist not paused");
+    ASSERT(rt_playlist_get_volume(fake) == 0, "fake playlist volume = 0");
+    rt_playlist_set_volume(fake, 50);
+    rt_playlist_set_shuffle(fake, 1);
+    ASSERT(rt_playlist_get_shuffle(fake) == 0, "fake playlist shuffle = 0");
+    rt_playlist_set_repeat(fake, 1);
+    ASSERT(rt_playlist_get_repeat(fake) == 0, "fake playlist repeat = 0");
+    rt_playlist_set_crossfade(fake, 500);
+    ASSERT(rt_playlist_get_crossfade(fake) == 0, "fake playlist crossfade = 0");
+    rt_playlist_update(fake);
+
+    release_obj(fake);
 }
 
 static void test_playlist_bounds() {
@@ -1269,6 +1310,7 @@ int main() {
     test_playlist_stop_preserves_selected_track();
     test_playlist_update_no_crash();
     test_playlist_null_safety();
+    test_playlist_rejects_non_playlist_handle();
     test_playlist_bounds();
 
     // Bug-fix regressions (C-1/C-2/C-3: playlist shuffle_order lifecycle)

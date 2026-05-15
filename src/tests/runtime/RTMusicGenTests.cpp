@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_musicgen.h"
+#include "rt_object.h"
 
 #include <cassert>
 #include <cstdint>
@@ -27,6 +28,11 @@
 
 extern "C" void vm_trap(const char *msg) {
     (void)msg;
+}
+
+static void release_obj(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
 }
 
 // ============================================================================
@@ -58,6 +64,35 @@ static void test_null_safety() {
     rt_musicgen_set_loopable(nullptr, 1);
 
     printf("  test_null_safety: PASSED\n");
+}
+
+static void test_invalid_song_rejected() {
+    void *fake = rt_obj_new_i64(0, 8);
+    assert(fake != nullptr);
+
+    assert(rt_musicgen_add_channel(fake, 0) == -1);
+    assert(rt_musicgen_get_bpm(fake) == 0);
+    assert(rt_musicgen_get_length(fake) == 0);
+    assert(rt_musicgen_get_channel_count(fake) == 0);
+    assert(rt_musicgen_add_note(fake, 0, 0, 60, 100) == 0);
+    assert(rt_musicgen_add_note_vel(fake, 0, 0, 60, 100, 80) == 0);
+    assert(rt_musicgen_build(fake) == nullptr);
+
+    rt_musicgen_set_envelope(fake, 0, 10, 50, 80, 100);
+    rt_musicgen_set_channel_vol(fake, 0, 80);
+    rt_musicgen_set_duty(fake, 0, 50);
+    rt_musicgen_set_pan(fake, 0, 0);
+    rt_musicgen_set_detune(fake, 0, 0);
+    rt_musicgen_set_vibrato(fake, 0, 15, 500);
+    rt_musicgen_set_tremolo(fake, 0, 10, 400);
+    rt_musicgen_set_arpeggio(fake, 0, 4, 7, 1500);
+    rt_musicgen_set_portamento(fake, 0, 60);
+    rt_musicgen_set_length(fake, 400);
+    rt_musicgen_set_swing(fake, 0);
+    rt_musicgen_set_loopable(fake, 1);
+
+    release_obj(fake);
+    printf("  test_invalid_song_rejected: PASSED\n");
 }
 
 // ============================================================================
@@ -480,6 +515,7 @@ int main() {
     printf("RTMusicGenTests:\n");
 
     test_null_safety();
+    test_invalid_song_rejected();
     test_create();
     test_bpm_clamping();
     test_add_channels();

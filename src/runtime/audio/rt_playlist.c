@@ -37,6 +37,7 @@
 #include "rt_random.h"
 #include "rt_seq.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -45,6 +46,8 @@
 //=============================================================================
 // Internal Structure
 //=============================================================================
+
+#define RT_PLAYLIST_CLASS_ID INT64_C(-0x730102)
 
 typedef struct {
     void *tracks;         // Seq of path strings
@@ -62,6 +65,12 @@ typedef struct {
 //=============================================================================
 // Helper Functions
 //=============================================================================
+
+static playlist_impl *as_playlist(void *obj) {
+    if (rt_obj_class_id(obj) != RT_PLAYLIST_CLASS_ID)
+        return NULL;
+    return (playlist_impl *)obj;
+}
 
 /// @brief Build a fresh Fisher-Yates shuffle order for the current track list.
 /// @details Reuses the global runtime RNG so callers can pre-seed for
@@ -306,7 +315,9 @@ static void playlist_select_position(playlist_impl *pl,
 ///          NULLs the slots. Called by the runtime once the playlist's
 ///          refcount hits zero (C-1 incident-marker in the source).
 static void playlist_finalize(void *obj) {
-    playlist_impl *pl = (playlist_impl *)obj;
+    playlist_impl *pl = as_playlist(obj);
+    if (!pl)
+        return;
 
     playlist_release_music(pl);
 
@@ -325,7 +336,8 @@ static void playlist_finalize(void *obj) {
 
 /// @brief Create a new playlist with shuffle, repeat, crossfade, and auto-advance support.
 void *rt_playlist_new(void) {
-    playlist_impl *pl = (playlist_impl *)rt_obj_new_i64(0, (int64_t)sizeof(playlist_impl));
+    playlist_impl *pl =
+        (playlist_impl *)rt_obj_new_i64(RT_PLAYLIST_CLASS_ID, (int64_t)sizeof(playlist_impl));
     if (!pl)
         rt_trap("rt_playlist: memory allocation failed");
     memset(pl, 0, sizeof(playlist_impl));
@@ -361,9 +373,9 @@ void *rt_playlist_new(void) {
 /// @param obj Playlist object pointer; no-op if NULL.
 /// @param path Path to the music file to add.
 void rt_playlist_add(void *obj, rt_string path) {
-    if (!obj)
+    playlist_impl *pl = as_playlist(obj);
+    if (!pl)
         return;
-    playlist_impl *pl = (playlist_impl *)obj;
     int64_t current_actual = playlist_current_actual_index(pl);
 
     rt_seq_push(pl->tracks, (void *)(path ? path : rt_const_cstr("")));
@@ -383,9 +395,9 @@ void rt_playlist_add(void *obj, rt_string path) {
 /// @param index Zero-based insertion position.
 /// @param path Path to the music file to insert.
 void rt_playlist_insert(void *obj, int64_t index, rt_string path) {
-    if (!obj)
+    playlist_impl *pl = as_playlist(obj);
+    if (!pl)
         return;
-    playlist_impl *pl = (playlist_impl *)obj;
     int64_t current_actual = playlist_current_actual_index(pl);
     int64_t count = rt_seq_len(pl->tracks);
 
@@ -414,9 +426,9 @@ void rt_playlist_insert(void *obj, int64_t index, rt_string path) {
 /// @param obj Playlist object pointer; no-op if NULL.
 /// @param index Zero-based index of the track to remove.
 void rt_playlist_remove(void *obj, int64_t index) {
-    if (!obj)
+    playlist_impl *pl = as_playlist(obj);
+    if (!pl)
         return;
-    playlist_impl *pl = (playlist_impl *)obj;
 
     int64_t count = rt_seq_len(pl->tracks);
     if (index < 0 || index >= count)
@@ -475,9 +487,9 @@ void rt_playlist_remove(void *obj, int64_t index) {
 ///          order if one exists.
 /// @param obj Playlist object pointer; no-op if NULL.
 void rt_playlist_clear(void *obj) {
-    if (!obj)
+    playlist_impl *pl = as_playlist(obj);
+    if (!pl)
         return;
-    playlist_impl *pl = (playlist_impl *)obj;
 
     playlist_release_music(pl);
 
@@ -499,9 +511,9 @@ void rt_playlist_clear(void *obj) {
 /// @param obj Playlist object pointer; returns 0 if NULL.
 /// @return Track count.
 int64_t rt_playlist_len(void *obj) {
-    if (!obj)
+    playlist_impl *pl = as_playlist(obj);
+    if (!pl)
         return 0;
-    playlist_impl *pl = (playlist_impl *)obj;
     return rt_seq_len(pl->tracks);
 }
 
@@ -510,9 +522,9 @@ int64_t rt_playlist_len(void *obj) {
 /// @param index Zero-based track index.
 /// @return Track path string, or empty string if index is out of bounds.
 rt_string rt_playlist_get(void *obj, int64_t index) {
-    if (!obj)
+    playlist_impl *pl = as_playlist(obj);
+    if (!pl)
         return rt_const_cstr("");
-    playlist_impl *pl = (playlist_impl *)obj;
 
     if (index < 0 || index >= rt_seq_len(pl->tracks))
         return rt_const_cstr("");
@@ -532,9 +544,9 @@ rt_string rt_playlist_get(void *obj, int64_t index) {
 ///          Repeat-one mode passes the loop flag to the music backend.
 /// @param obj Playlist object pointer; no-op if NULL or empty.
 void rt_playlist_play(void *obj) {
-    if (!obj)
+    playlist_impl *pl = as_playlist(obj);
+    if (!pl)
         return;
-    playlist_impl *pl = (playlist_impl *)obj;
 
     if (rt_seq_len(pl->tracks) == 0)
         return;
@@ -567,9 +579,9 @@ void rt_playlist_play(void *obj) {
 /// @brief Pause the currently playing track without resetting position.
 /// @param obj Playlist object pointer; no-op if NULL or not playing.
 void rt_playlist_pause(void *obj) {
-    if (!obj)
+    playlist_impl *pl = as_playlist(obj);
+    if (!pl)
         return;
-    playlist_impl *pl = (playlist_impl *)obj;
 
     if (pl->music && pl->playing) {
         rt_music_pause_related(pl->music);
@@ -581,9 +593,9 @@ void rt_playlist_pause(void *obj) {
 /// @brief Stop playback and reset the current position to the beginning.
 /// @param obj Playlist object pointer; no-op if NULL.
 void rt_playlist_stop(void *obj) {
-    if (!obj)
+    playlist_impl *pl = as_playlist(obj);
+    if (!pl)
         return;
-    playlist_impl *pl = (playlist_impl *)obj;
 
     if (pl->music) {
         rt_music_stop_related(pl->music);
@@ -599,9 +611,9 @@ void rt_playlist_stop(void *obj) {
 ///          the new track is loaded and started automatically.
 /// @param obj Playlist object pointer; no-op if NULL or empty.
 void rt_playlist_next(void *obj) {
-    if (!obj)
+    playlist_impl *pl = as_playlist(obj);
+    if (!pl)
         return;
-    playlist_impl *pl = (playlist_impl *)obj;
 
     int64_t count = rt_seq_len(pl->tracks);
     if (count == 0)
@@ -631,9 +643,9 @@ void rt_playlist_next(void *obj) {
 ///          Without repeat, the position clamps at track 0.
 /// @param obj Playlist object pointer; no-op if NULL or empty.
 void rt_playlist_prev(void *obj) {
-    if (!obj)
+    playlist_impl *pl = as_playlist(obj);
+    if (!pl)
         return;
-    playlist_impl *pl = (playlist_impl *)obj;
 
     int64_t count = rt_seq_len(pl->tracks);
     if (count == 0)
@@ -658,9 +670,9 @@ void rt_playlist_prev(void *obj) {
 /// @param obj Playlist object pointer; no-op if NULL.
 /// @param index Zero-based track index to jump to; out-of-range is ignored.
 void rt_playlist_jump(void *obj, int64_t index) {
-    if (!obj)
+    playlist_impl *pl = as_playlist(obj);
+    if (!pl)
         return;
-    playlist_impl *pl = (playlist_impl *)obj;
 
     int64_t count = rt_seq_len(pl->tracks);
     if (count == 0 || index < 0 || index >= count)
@@ -688,9 +700,9 @@ void rt_playlist_jump(void *obj, int64_t index) {
 /// @param obj Playlist object pointer; returns -1 if NULL.
 /// @return Zero-based track index, or -1 if no track is loaded.
 int64_t rt_playlist_get_current(void *obj) {
-    if (!obj)
+    playlist_impl *pl = as_playlist(obj);
+    if (!pl)
         return -1;
-    playlist_impl *pl = (playlist_impl *)obj;
 
     if (pl->shuffle && pl->current >= 0) {
         return get_track_index(pl, pl->current);
@@ -702,9 +714,9 @@ int64_t rt_playlist_get_current(void *obj) {
 /// @param obj Playlist object pointer; returns 0 if NULL.
 /// @return 1 if playing, 0 if stopped or paused.
 int8_t rt_playlist_is_playing(void *obj) {
-    if (!obj)
+    playlist_impl *pl = as_playlist(obj);
+    if (!pl)
         return 0;
-    playlist_impl *pl = (playlist_impl *)obj;
     return pl->playing;
 }
 
@@ -712,9 +724,9 @@ int8_t rt_playlist_is_playing(void *obj) {
 /// @param obj Playlist object pointer; returns 0 if NULL.
 /// @return 1 if paused, 0 otherwise.
 int8_t rt_playlist_is_paused(void *obj) {
-    if (!obj)
+    playlist_impl *pl = as_playlist(obj);
+    if (!pl)
         return 0;
-    playlist_impl *pl = (playlist_impl *)obj;
     return pl->paused;
 }
 
@@ -722,9 +734,9 @@ int8_t rt_playlist_is_paused(void *obj) {
 /// @param obj Playlist object pointer; returns 0 if NULL.
 /// @return Volume in range [0, 100].
 int64_t rt_playlist_get_volume(void *obj) {
-    if (!obj)
+    playlist_impl *pl = as_playlist(obj);
+    if (!pl)
         return 0;
-    playlist_impl *pl = (playlist_impl *)obj;
     return pl->volume;
 }
 
@@ -734,9 +746,9 @@ int64_t rt_playlist_get_volume(void *obj) {
 /// @param obj Playlist object pointer; no-op if NULL.
 /// @param volume Desired volume (0-100).
 void rt_playlist_set_volume(void *obj, int64_t volume) {
-    if (!obj)
+    playlist_impl *pl = as_playlist(obj);
+    if (!pl)
         return;
-    playlist_impl *pl = (playlist_impl *)obj;
 
     if (volume < 0)
         volume = 0;
@@ -761,9 +773,9 @@ void rt_playlist_set_volume(void *obj, int64_t volume) {
 /// @param obj Playlist object pointer; no-op if NULL.
 /// @param shuffle 1 to enable shuffle, 0 to disable.
 void rt_playlist_set_shuffle(void *obj, int8_t shuffle) {
-    if (!obj)
+    playlist_impl *pl = as_playlist(obj);
+    if (!pl)
         return;
-    playlist_impl *pl = (playlist_impl *)obj;
 
     int8_t new_shuffle = shuffle ? 1 : 0;
     if (pl->shuffle == new_shuffle)
@@ -791,9 +803,9 @@ void rt_playlist_set_shuffle(void *obj, int8_t shuffle) {
 /// @param obj Playlist object pointer; returns 0 if NULL.
 /// @return 1 if shuffle is enabled, 0 otherwise.
 int8_t rt_playlist_get_shuffle(void *obj) {
-    if (!obj)
+    playlist_impl *pl = as_playlist(obj);
+    if (!pl)
         return 0;
-    playlist_impl *pl = (playlist_impl *)obj;
     return pl->shuffle;
 }
 
@@ -803,9 +815,9 @@ int8_t rt_playlist_get_shuffle(void *obj) {
 /// @param obj Playlist object pointer; no-op if NULL.
 /// @param mode Repeat mode constant.
 void rt_playlist_set_repeat(void *obj, int64_t mode) {
-    if (!obj)
+    playlist_impl *pl = as_playlist(obj);
+    if (!pl)
         return;
-    playlist_impl *pl = (playlist_impl *)obj;
 
     if (mode < RT_REPEAT_NONE)
         mode = RT_REPEAT_NONE;
@@ -820,9 +832,9 @@ void rt_playlist_set_repeat(void *obj, int64_t mode) {
 /// @param obj Playlist object pointer; returns 0 (REPEAT_NONE) if NULL.
 /// @return Repeat mode constant (RT_REPEAT_NONE, RT_REPEAT_ALL, RT_REPEAT_ONE).
 int64_t rt_playlist_get_repeat(void *obj) {
-    if (!obj)
+    playlist_impl *pl = as_playlist(obj);
+    if (!pl)
         return 0;
-    playlist_impl *pl = (playlist_impl *)obj;
     return pl->repeat;
 }
 
@@ -836,9 +848,9 @@ int64_t rt_playlist_get_repeat(void *obj) {
 ///          invoked to advance (which handles repeat-all and repeat-none).
 /// @param obj Playlist object pointer; no-op if NULL or not playing.
 void rt_playlist_update(void *obj) {
-    if (!obj)
+    playlist_impl *pl = as_playlist(obj);
+    if (!pl)
         return;
-    playlist_impl *pl = (playlist_impl *)obj;
 
     rt_audio_update();
 
@@ -871,9 +883,9 @@ void rt_playlist_update(void *obj) {
 /// @param obj Playlist object pointer; no-op if NULL.
 /// @param duration_ms Crossfade duration in milliseconds (0 = disabled).
 void rt_playlist_set_crossfade(void *obj, int64_t duration_ms) {
-    if (!obj)
+    playlist_impl *pl = as_playlist(obj);
+    if (!pl)
         return;
-    playlist_impl *pl = (playlist_impl *)obj;
     pl->crossfade_ms = duration_ms < 0 ? 0 : duration_ms;
 }
 
@@ -881,7 +893,8 @@ void rt_playlist_set_crossfade(void *obj, int64_t duration_ms) {
 /// @param obj Playlist object pointer; returns 0 if NULL.
 /// @return Crossfade duration (0 = disabled).
 int64_t rt_playlist_get_crossfade(void *obj) {
-    if (!obj)
+    playlist_impl *pl = as_playlist(obj);
+    if (!pl)
         return 0;
-    return ((playlist_impl *)obj)->crossfade_ms;
+    return pl->crossfade_ms;
 }

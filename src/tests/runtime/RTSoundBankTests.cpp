@@ -66,6 +66,23 @@ static void test_null_safety() {
     printf("  test_null_safety: PASSED\n");
 }
 
+static void test_invalid_bank_rejected() {
+    void *fake = make_fake_object();
+
+    assert(rt_soundbank_has(fake, S("x")) == 0);
+    assert(rt_soundbank_play(fake, S("x")) == -1);
+    assert(rt_soundbank_play_ex(fake, S("x"), 100, 0) == -1);
+    assert(rt_soundbank_get(fake, S("x")) == nullptr);
+    assert(rt_soundbank_count(fake) == 0);
+    assert(rt_soundbank_register(fake, S("x"), S("missing.wav")) == 0);
+    assert(rt_soundbank_register_sound(fake, S("x"), fake) == 0);
+    rt_soundbank_remove(fake, S("x"));
+    rt_soundbank_clear(fake);
+
+    release_obj(fake);
+    printf("  test_invalid_bank_rejected: PASSED\n");
+}
+
 // ============================================================================
 // Creation and Count
 // ============================================================================
@@ -374,6 +391,7 @@ int main() {
 
     printf("--- Null Safety ---\n");
     test_null_safety();
+    test_invalid_bank_rejected();
 
     printf("\n--- SoundBank CRUD ---\n");
     test_create();
