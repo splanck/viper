@@ -240,6 +240,7 @@ The spinner now behaves as a real interactive widget: the up/down buttons repain
 Typing while the spinner is focused starts inline editing, `Enter` commits the typed number, and `Escape` restores the previous formatted value.
 Programmatic values, ranges, steps, and decimal counts are clamped to finite supported ranges.
 Reversed ranges are normalized, non-finite input is rejected or clamped, and long formatted decimal values resize the internal display buffer instead of truncating at a fixed length.
+Spinners created after `App.SetFont()` inherit the app font and size for their value text.
 
 **Constructor:** `NEW Viper.GUI.Spinner(parent)`
 
@@ -280,6 +281,7 @@ Progress indicator bar.
 
 Styles `0`, `1`, and `2` render as a horizontal bar, a circular ring indicator, and an indeterminate sliding bar respectively. Indeterminate progress bars created through the underlying C GUI layer now advance their animation during the normal app render loop.
 Programmatic values are clamped to the `0.0` through `1.0` range, with non-finite values treated as `0.0`.
+Progress bars created after `App.SetFont()` inherit the app font and size for optional percentage text.
 
 **Constructor:** `NEW Viper.GUI.ProgressBar(parent)`
 

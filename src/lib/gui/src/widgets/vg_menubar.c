@@ -47,6 +47,9 @@
 #include <strings.h>
 #endif
 
+#define VG_MENU_ITEM_MAGIC UINT64_C(0x56474D454E554954)
+#define VG_MENU_ITEM_RETIRED_MAGIC UINT64_C(0x56474D454E555258)
+
 //=============================================================================
 // Forward Declarations
 //=============================================================================
@@ -75,6 +78,8 @@ static vg_widget_vtable_t g_menubar_vtable = {.destroy = menubar_destroy,
 // Helper Functions
 //=============================================================================
 
+static void free_retired_menu_items(vg_menu_t *menu);
+
 /// @brief Recursively free an item's text, shortcut, icon, submenu tree, and the item itself.
 static void free_menu_item(vg_menu_item_t *item) {
     if (!item)
@@ -96,10 +101,81 @@ static void free_menu_item(vg_menu_item_t *item) {
         }
         if (item->submenu->title)
             free(item->submenu->title);
+        free_retired_menu_items(item->submenu);
         free(item->submenu);
     }
 
     free(item);
+}
+
+bool vg_menu_item_is_live(const vg_menu_item_t *item) {
+    return item && item->magic == VG_MENU_ITEM_MAGIC &&
+           (item->parent_menu != NULL || item->owner_contextmenu != NULL);
+}
+
+static void free_retired_menu_items(vg_menu_t *menu) {
+    if (!menu)
+        return;
+    vg_menu_item_t *item = menu->retired_items;
+    while (item) {
+        vg_menu_item_t *next = item->retired_next;
+        item->retired_next = NULL;
+        free_menu_item(item);
+        item = next;
+    }
+    menu->retired_items = NULL;
+}
+
+static void close_menubar_menu(vg_menubar_t *menubar, vg_menu_t *menu) {
+    if (!menubar)
+        return;
+    if (!menu || menubar->open_menu == menu) {
+        if (menubar->open_menu)
+            menubar->open_menu->open = false;
+        menubar->open_menu = NULL;
+        menubar->highlighted = NULL;
+        menubar->menu_active = false;
+        if (vg_widget_get_input_capture() == &menubar->base)
+            vg_widget_release_input_capture();
+        menubar->base.needs_paint = true;
+        return;
+    }
+    if (menubar->highlighted && menubar->highlighted->parent_menu == menu) {
+        menubar->highlighted = NULL;
+        menubar->base.needs_paint = true;
+    }
+}
+
+static void retire_menu_item(vg_menu_t *menu, vg_menu_item_t *item) {
+    if (!menu || !item)
+        return;
+    if (item->submenu) {
+        vg_menu_t *submenu = item->submenu;
+        vg_menu_item_t *sub = submenu->first_item;
+        while (sub) {
+            vg_menu_item_t *next = sub->next;
+            retire_menu_item(menu, sub);
+            sub = next;
+        }
+        free_retired_menu_items(submenu);
+        free(submenu->title);
+        free(submenu);
+        item->submenu = NULL;
+    }
+    free(item->text);
+    item->text = NULL;
+    free(item->shortcut);
+    item->shortcut = NULL;
+    vg_icon_destroy(&item->icon);
+    item->action = NULL;
+    item->action_data = NULL;
+    item->parent_menu = NULL;
+    item->owner_contextmenu = NULL;
+    item->next = NULL;
+    item->prev = NULL;
+    item->magic = VG_MENU_ITEM_RETIRED_MAGIC;
+    item->retired_next = menu->retired_items;
+    menu->retired_items = item;
 }
 
 /// @brief Free all items in a menu list and the menu struct itself.
@@ -116,6 +192,7 @@ static void free_menu(vg_menu_t *menu) {
 
     if (menu->title)
         free(menu->title);
+    free_retired_menu_items(menu);
     free(menu);
 }
 
@@ -872,6 +949,7 @@ vg_menu_item_t *vg_menu_add_item(
         return NULL;
     }
 
+    item->magic = VG_MENU_ITEM_MAGIC;
     item->text = item_text;
     item->shortcut = item_shortcut;
     item->action = action;
@@ -908,6 +986,7 @@ vg_menu_item_t *vg_menu_add_separator(vg_menu_t *menu) {
     if (!item)
         return NULL;
 
+    item->magic = VG_MENU_ITEM_MAGIC;
     item->separator = true;
     item->enabled = false;
     item->parent_menu = menu;
@@ -957,6 +1036,7 @@ vg_menu_t *vg_menu_add_submenu(vg_menu_t *menu, const char *title) {
         return NULL;
     }
     item->submenu->owner_menubar = menu->owner_menubar;
+    item->submenu->retired_items = NULL;
     item->submenu->enabled = true;
 
     return item->submenu;
@@ -967,7 +1047,7 @@ vg_menu_t *vg_menu_add_submenu(vg_menu_t *menu, const char *title) {
 /// @param item    The item to modify; may be NULL.
 /// @param enabled false to grey out and ignore clicks.
 void vg_menu_item_set_enabled(vg_menu_item_t *item, bool enabled) {
-    if (item) {
+    if (vg_menu_item_is_live(item)) {
         item->enabled = enabled;
     }
 }
@@ -977,7 +1057,7 @@ void vg_menu_item_set_enabled(vg_menu_item_t *item, bool enabled) {
 /// @param item    The item to modify; may be NULL.
 /// @param checked true to show a checkmark next to the item label.
 void vg_menu_item_set_checked(vg_menu_item_t *item, bool checked) {
-    if (item) {
+    if (vg_menu_item_is_live(item)) {
         item->checkable = true;
         item->checked = checked;
     }
@@ -991,7 +1071,7 @@ void vg_menu_item_set_checked(vg_menu_item_t *item, bool checked) {
 /// @param menu The menu that owns item; may be NULL (no-op).
 /// @param item The item to remove and free; may be NULL (no-op).
 void vg_menu_remove_item(vg_menu_t *menu, vg_menu_item_t *item) {
-    if (!menu || !item)
+    if (!menu || !vg_menu_item_is_live(item))
         return;
     if (item->parent_menu != menu)
         return;
@@ -1017,7 +1097,9 @@ void vg_menu_remove_item(vg_menu_t *menu, vg_menu_item_t *item) {
         menu->last_item = item->prev;
 
     menu->item_count--;
-    free_menu_item(item);
+    if (menu->owner_menubar && menu->owner_menubar->highlighted == item)
+        close_menubar_menu(menu->owner_menubar, menu);
+    retire_menu_item(menu, item);
 }
 
 /// @brief Remove and free all items from a menu, leaving the menu itself intact.
@@ -1027,15 +1109,23 @@ void vg_menu_clear(vg_menu_t *menu) {
     if (!menu)
         return;
 
+    if (menu->owner_menubar && menu->owner_menubar->open_menu == menu)
+        close_menubar_menu(menu->owner_menubar, menu);
+    else if (menu->owner_menubar && menu->owner_menubar->highlighted &&
+             menu->owner_menubar->highlighted->parent_menu == menu)
+        menu->owner_menubar->highlighted = NULL;
+
     vg_menu_item_t *item = menu->first_item;
     while (item) {
         vg_menu_item_t *next = item->next;
-        free_menu_item(item);
+        retire_menu_item(menu, item);
         item = next;
     }
 
     menu->first_item = menu->last_item = NULL;
     menu->item_count = 0;
+    if (menu->owner_menubar)
+        menu->owner_menubar->base.needs_paint = true;
 }
 
 /// @brief Remove and free a top-level menu from the menu bar.
@@ -1074,7 +1164,9 @@ void vg_menubar_remove_menu(vg_menubar_t *menubar, vg_menu_t *menu) {
     menubar->menu_count--;
 
     if (menubar->open_menu == menu)
-        menubar->open_menu = NULL;
+        close_menubar_menu(menubar, menu);
+    else if (menubar->highlighted && menubar->highlighted->parent_menu == menu)
+        menubar->highlighted = NULL;
 
     free_menu(menu);
     menubar->base.needs_paint = true;
@@ -1268,7 +1360,7 @@ bool vg_parse_accelerator(const char *shortcut, vg_accelerator_t *accel) {
 void vg_menubar_register_accelerator(vg_menubar_t *menubar,
                                      vg_menu_item_t *item,
                                      const char *shortcut) {
-    if (!menubar || !item || !shortcut)
+    if (!menubar || !vg_menu_item_is_live(item) || !shortcut)
         return;
 
     vg_accelerator_t accel;
@@ -1358,7 +1450,7 @@ bool vg_menubar_handle_accelerator(vg_menubar_t *menubar, int key, uint32_t modi
 
         if (entry->accel.key == key && ctrl_match && shift_match && alt_match) {
             vg_menu_item_t *item = entry->item;
-            if (item->enabled && item->action) {
+            if (vg_menu_item_is_live(item) && item->enabled && item->action) {
                 item->action(item->action_data);
                 return true;
             }

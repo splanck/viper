@@ -350,7 +350,11 @@ rt_string rt_filedialog_select_folder(rt_string title, rt_string default_path) {
 }
 
 // Custom FileDialog structure
+#define RT_FILEDIALOG_DATA_MAGIC UINT64_C(0x525446494C45444C)
+
 typedef struct {
+    uint64_t magic;
+    rt_gui_app_t *owner_app;
     vg_filedialog_t *dialog;
     char **selected_paths;
     size_t selected_count;
@@ -359,7 +363,10 @@ typedef struct {
 
 static rt_filedialog_data_t *rt_filedialog_data_checked(void *dialog) {
     rt_filedialog_data_t *data = (rt_filedialog_data_t *)dialog;
-    return data && data->dialog ? data : NULL;
+    return data && data->magic == RT_FILEDIALOG_DATA_MAGIC && data->dialog &&
+                   vg_widget_is_live(&data->dialog->base.base)
+               ? data
+               : NULL;
 }
 
 /// @brief Free the selected-paths array and reset count to zero.
@@ -418,10 +425,16 @@ static void rt_filedialog_dispose(rt_filedialog_data_t *data) {
         return;
     rt_filedialog_clear_selected_paths(data);
     if (data->dialog) {
+        rt_gui_app_t *app = rt_gui_is_app_handle(data->owner_app) ? data->owner_app
+                                                                  : rt_filedialog_app();
+        if (app)
+            rt_gui_remove_dialog(app, &data->dialog->base);
         vg_filedialog_destroy(data->dialog);
         data->dialog = NULL;
     }
+    data->owner_app = NULL;
     data->result = 0;
+    data->magic = 0;
 }
 
 /// @brief GC finalizer — delegates to `rt_filedialog_dispose`.
@@ -459,6 +472,8 @@ void *rt_filedialog_new(int64_t type) {
         vg_filedialog_destroy(dlg);
         return NULL;
     }
+    data->magic = RT_FILEDIALOG_DATA_MAGIC;
+    data->owner_app = rt_filedialog_app();
     data->dialog = dlg;
     data->selected_paths = NULL;
     data->selected_count = 0;
@@ -573,13 +588,15 @@ void rt_filedialog_set_multiple(void *dialog, int64_t multiple) {
 int64_t rt_filedialog_show(void *dialog) {
     if (!dialog)
         return 0;
-    rt_filedialog_data_t *data = (rt_filedialog_data_t *)dialog;
-    if (!data->dialog)
+    rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
+    if (!data)
         return 0;
 
     // Replace any previous selection snapshot with the latest dialog result.
     rt_filedialog_clear_selected_paths(data);
     rt_gui_app_t *app = rt_filedialog_app();
+    if (app)
+        data->owner_app = app;
     if (!rt_filedialog_show_modal(app, data->dialog)) {
         data->result = 0;
         return 0;
@@ -592,9 +609,9 @@ int64_t rt_filedialog_show(void *dialog) {
 
 /// @brief Return the first selected path from the most recent `_show`. Empty if no selection.
 rt_string rt_filedialog_get_path(void *dialog) {
-    if (!dialog)
+    rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
+    if (!data)
         return rt_str_empty();
-    rt_filedialog_data_t *data = (rt_filedialog_data_t *)dialog;
     if (data->selected_paths && data->selected_count > 0) {
         return rt_string_from_bytes(data->selected_paths[0], strlen(data->selected_paths[0]));
     }
@@ -603,18 +620,18 @@ rt_string rt_filedialog_get_path(void *dialog) {
 
 /// @brief Number of paths selected by the most recent `_show` (0 if cancelled or pre-show).
 int64_t rt_filedialog_get_path_count(void *dialog) {
-    if (!dialog)
+    rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
+    if (!data)
         return 0;
-    rt_filedialog_data_t *data = (rt_filedialog_data_t *)dialog;
     return (int64_t)data->selected_count;
 }
 
 /// @brief Return the i-th selected path (0-based) from a multi-select dialog. Empty if `index`
 /// is out of range. Use `_get_path_count` first to bound the iteration.
 rt_string rt_filedialog_get_path_at(void *dialog, int64_t index) {
-    if (!dialog)
+    rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
+    if (!data)
         return rt_str_empty();
-    rt_filedialog_data_t *data = (rt_filedialog_data_t *)dialog;
     if (data->selected_paths && index >= 0 && (size_t)index < data->selected_count) {
         return rt_string_from_bytes(data->selected_paths[index],
                                     strlen(data->selected_paths[index]));

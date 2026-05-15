@@ -892,6 +892,12 @@ void vg_progressbar_set_style(vg_progressbar_t *progress, vg_progress_style_t st
 /// @param show     true to overlay the percentage string on the bar.
 void vg_progressbar_show_percentage(vg_progressbar_t *progress, bool show);
 
+/// @brief Set the font used for the optional percentage label.
+/// @param progress Progress bar widget.
+/// @param font     Font handle.
+/// @param size     Font size in pixels.
+void vg_progressbar_set_font(vg_progressbar_t *progress, vg_font_t *font, float size);
+
 /// @brief Advance indeterminate animation; call each frame with elapsed seconds
 /// @param progress Progress bar widget
 /// @param dt Elapsed time in seconds since last call

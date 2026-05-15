@@ -40,6 +40,7 @@ typedef struct vg_contextmenu {
     vg_menu_item_t **items; ///< Array of items
     size_t item_count;      ///< Number of items
     size_t item_capacity;   ///< Allocated capacity
+    vg_menu_item_t *retired_items; ///< Removed items kept until menu destroy for stale handles
 
     // Positioning
     int anchor_x; ///< Screen X where menu appears
@@ -463,6 +464,7 @@ typedef struct vg_accelerator {
 
 /// @brief Menu item structure (forward declared in vg_ide_widgets_common.h)
 struct vg_menu_item {
+    uint64_t magic;              ///< Live-item sentinel for stale handle detection
     char *text;                  ///< Item text (owned, heap-allocated)
     char *shortcut;              ///< Keyboard shortcut text (owned, heap-allocated)
     vg_accelerator_t accel;      ///< Parsed accelerator
@@ -479,6 +481,7 @@ struct vg_menu_item {
     struct vg_menu *submenu;     ///< Submenu (if any)
     struct vg_menu_item *next;
     struct vg_menu_item *prev;
+    struct vg_menu_item *retired_next; ///< Retired-item list link
 };
 
 /// @brief Menu structure (forward declared in vg_ide_widgets_common.h)
@@ -487,6 +490,7 @@ struct vg_menu {
     struct vg_menubar *owner_menubar; ///< Owning menubar for change propagation.
     vg_menu_item_t *first_item;
     vg_menu_item_t *last_item;
+    vg_menu_item_t *retired_items; ///< Removed items kept until menu destroy for stale handles
     int item_count;
     struct vg_menu *next;
     struct vg_menu *prev;
@@ -619,6 +623,11 @@ void vg_menubar_rebuild_accelerators(vg_menubar_t *menubar);
 /// @param modifiers Active modifier flags (VG_MOD_*).
 /// @return true if an accelerator matched and its action was called.
 bool vg_menubar_handle_accelerator(vg_menubar_t *menubar, int key, uint32_t modifiers);
+
+/// @brief Return true if a menu/context-menu item handle is currently live.
+/// @param item Item handle to test.
+/// @return true when item belongs to a live menu or context menu.
+bool vg_menu_item_is_live(const vg_menu_item_t *item);
 
 #ifdef __cplusplus
 }

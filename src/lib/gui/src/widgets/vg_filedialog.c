@@ -1014,13 +1014,21 @@ static void confirm_selection(vg_filedialog_t *dialog) {
                     continue;
                 if (dialog->mode == VG_FILEDIALOG_OPEN && dialog->entries[idx]->is_directory)
                     continue;
+                char *path = NULL;
 #ifdef _WIN32
-                dialog->selected_files[dialog->selected_file_count++] =
-                    _strdup(dialog->entries[idx]->full_path);
+                path = _strdup(dialog->entries[idx]->full_path);
 #else
-                dialog->selected_files[dialog->selected_file_count++] =
-                    strdup(dialog->entries[idx]->full_path);
+                path = strdup(dialog->entries[idx]->full_path);
 #endif
+                if (!path) {
+                    for (size_t j = 0; j < dialog->selected_file_count; j++)
+                        free(dialog->selected_files[j]);
+                    free(dialog->selected_files);
+                    dialog->selected_files = NULL;
+                    dialog->selected_file_count = 0;
+                    return;
+                }
+                dialog->selected_files[dialog->selected_file_count++] = path;
             }
         }
     } else if (dialog->mode == VG_FILEDIALOG_SELECT_FOLDER) {
@@ -1031,6 +1039,12 @@ static void confirm_selection(vg_filedialog_t *dialog) {
 #else
             dialog->selected_files[0] = strdup(dialog->current_path);
 #endif
+            if (!dialog->selected_files[0]) {
+                free(dialog->selected_files);
+                dialog->selected_files = NULL;
+                dialog->selected_file_count = 0;
+                return;
+            }
             dialog->selected_file_count = 1;
         }
     }
@@ -1101,6 +1115,17 @@ vg_filedialog_t *vg_filedialog_create(vg_filedialog_mode_t mode) {
     // Initialize file dialog fields
     dialog->mode = mode;
     dialog->current_path = get_home_directory();
+    if (!dialog->current_path) {
+#ifdef _WIN32
+        dialog->current_path = _strdup(".");
+#else
+        dialog->current_path = strdup(".");
+#endif
+    }
+    if (!dialog->current_path) {
+        vg_widget_destroy(&dialog->base.base);
+        return NULL;
+    }
     dialog->show_hidden = false;
     dialog->confirm_overwrite = true;
     dialog->multi_select = (mode == VG_FILEDIALOG_OPEN);

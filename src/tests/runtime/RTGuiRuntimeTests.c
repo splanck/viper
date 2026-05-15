@@ -35,6 +35,8 @@ typedef struct {
     int64_t whole_word;
     int64_t regex;
     int64_t replace_mode;
+    const vg_widget_vtable_t *original_vtable;
+    vg_widget_vtable_t vtable;
 } rt_findbar_data_view_t;
 
 typedef struct {
@@ -45,6 +47,26 @@ typedef struct {
     const vg_widget_vtable_t *original_vtable;
     vg_widget_vtable_t vtable;
 } rt_breadcrumb_data_view_t;
+
+typedef struct {
+    uint64_t magic;
+    rt_gui_app_t *owner_app;
+    vg_filedialog_t *dialog;
+    char **selected_paths;
+    size_t selected_count;
+    int64_t result;
+} rt_filedialog_data_view_t;
+
+typedef struct {
+    vg_dialog_t *dialog;
+    int64_t result;
+    int64_t default_button;
+    rt_gui_app_t *owner_app;
+    vg_dialog_button_def_t *custom_buttons;
+    int64_t *custom_button_ids;
+    size_t custom_button_count;
+    size_t custom_button_cap;
+} rt_messagebox_data_view_t;
 
 void vm_trap(const char *msg) {
     (void)msg;
@@ -142,16 +164,23 @@ static void test_file_drop_is_app_scoped(void) {
 
 static void test_statusbar_click_is_edge_triggered(void) {
     rt_gui_app_t app;
-    vg_statusbar_item_t item;
-
     reset_fake_app(&app);
-    memset(&item, 0, sizeof(item));
-    s_current_app = &app;
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
 
-    rt_gui_set_clicked_statusbar_item(&item);
-    assert(rt_statusbaritem_was_clicked(&item) == 1);
-    assert(rt_statusbaritem_was_clicked(&item) == 0);
+    vg_statusbar_t *statusbar = vg_statusbar_create(app.root);
+    assert(statusbar);
+    vg_statusbar_item_t *item =
+        vg_statusbar_add_text(statusbar, VG_STATUSBAR_ZONE_LEFT, "ready");
+    assert(item);
 
+    rt_gui_set_clicked_statusbar_item(item);
+    assert(rt_statusbaritem_was_clicked(item) == 1);
+    assert(rt_statusbaritem_was_clicked(item) == 0);
+
+    cleanup_fake_app(&app);
     printf("test_statusbar_click_is_edge_triggered: PASSED\n");
 }
 
@@ -203,12 +232,18 @@ static void test_default_font_is_applied_to_complex_text_widgets(void) {
     vg_treeview_t *tree = (vg_treeview_t *)rt_treeview_new(app.root);
     vg_tabbar_t *tabbar = (vg_tabbar_t *)rt_tabbar_new(app.root);
     vg_codeeditor_t *editor = (vg_codeeditor_t *)rt_codeeditor_new(app.root);
+    vg_progressbar_t *progress = (vg_progressbar_t *)rt_progressbar_new(app.root);
+    vg_spinner_t *spinner = (vg_spinner_t *)rt_spinner_new(app.root);
 
     assert(tree && tree->font == app.default_font && tree->font_size == app.default_font_size);
     assert(tabbar && tabbar->font == app.default_font &&
            tabbar->font_size == app.default_font_size);
     assert(editor && editor->font == app.default_font &&
            editor->font_size == app.default_font_size);
+    assert(progress && progress->font == app.default_font &&
+           progress->font_size == app.default_font_size);
+    assert(spinner && spinner->font == app.default_font &&
+           spinner->font_size == app.default_font_size);
 
     cleanup_fake_app(&app);
     printf("test_default_font_is_applied_to_complex_text_widgets: PASSED\n");
@@ -1181,6 +1216,38 @@ static void test_findbar_methods_after_destroy_are_inert(void) {
     printf("test_findbar_methods_after_destroy_are_inert: PASSED\n");
 }
 
+static void test_findbar_parent_destroy_disconnects_wrapper(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    vg_widget_t *container = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(container);
+    vg_widget_add_child(app.root, container);
+
+    void *editor = rt_codeeditor_new(app.root);
+    void *bar = rt_findbar_new(container);
+    assert(editor && bar);
+    rt_findbar_bind_editor(bar, editor);
+
+    rt_findbar_data_view_t *view = (rt_findbar_data_view_t *)bar;
+    assert(view->bar != NULL);
+    rt_widget_destroy(container);
+    assert(view->bar == NULL);
+
+    rt_findbar_set_find_text(bar, rt_const_cstr("x"));
+    rt_findbar_set_replace_text(bar, rt_const_cstr("y"));
+    assert(rt_findbar_find_next(bar) == 0);
+    assert(rt_findbar_replace(bar) == 0);
+    assert(rt_findbar_get_match_count(bar) == 0);
+
+    cleanup_fake_app(&app);
+    printf("test_findbar_parent_destroy_disconnects_wrapper: PASSED\n");
+}
+
 static void test_radiogroup_runtime_handle_invalidates_after_destroy(void) {
     rt_gui_app_t app;
     reset_fake_app(&app);
@@ -1218,6 +1285,65 @@ static void test_filedialog_setters_after_destroy_are_inert(void) {
     assert(rt_filedialog_get_path_count(dialog) == 0);
     assert(strcmp(rt_string_cstr(rt_filedialog_get_path(dialog)), "") == 0);
     printf("test_filedialog_setters_after_destroy_are_inert: PASSED\n");
+}
+
+static void test_filedialog_destroy_removes_modal_stack_entry(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    void *dialog = rt_filedialog_new_open();
+    assert(dialog);
+    rt_filedialog_data_view_t *view = (rt_filedialog_data_view_t *)dialog;
+    assert(view->dialog);
+
+    vg_filedialog_show(view->dialog);
+    rt_gui_push_dialog(&app, &view->dialog->base);
+    assert(app.dialog_count == 1);
+    assert(vg_widget_get_modal_root() == &view->dialog->base.base);
+
+    rt_filedialog_destroy(dialog);
+    assert(app.dialog_count == 0);
+    assert(vg_widget_get_modal_root() == NULL);
+
+    cleanup_fake_app(&app);
+    printf("test_filedialog_destroy_removes_modal_stack_entry: PASSED\n");
+}
+
+static void test_messagebox_custom_button_ids_preserve_zero_and_i64(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    void *box = rt_messagebox_new_info(rt_const_cstr("title"), rt_const_cstr("body"));
+    assert(box);
+    int64_t large_id = ((int64_t)1 << 40) + 17;
+    rt_messagebox_add_button(box, rt_const_cstr("Zero"), 0);
+    rt_messagebox_add_button(box, rt_const_cstr("Large"), large_id);
+    rt_messagebox_set_default_button(box, large_id);
+
+    rt_messagebox_data_view_t *view = (rt_messagebox_data_view_t *)box;
+    assert(view->custom_button_count == 2);
+    assert(view->custom_button_ids[0] == 0);
+    assert(view->custom_button_ids[1] == large_id);
+    assert(view->custom_buttons[0].result == (vg_dialog_result_t)1);
+    assert(view->custom_buttons[1].result == (vg_dialog_result_t)2);
+    assert(view->custom_buttons[0].is_default == false);
+    assert(view->custom_buttons[1].is_default == true);
+
+    vg_dialog_set_custom_buttons(view->dialog, view->custom_buttons, view->custom_button_count);
+    assert(view->dialog->custom_buttons[0].result == (vg_dialog_result_t)1);
+    assert(view->dialog->custom_buttons[1].result == (vg_dialog_result_t)2);
+
+    rt_messagebox_destroy(box);
+    cleanup_fake_app(&app);
+    printf("test_messagebox_custom_button_ids_preserve_zero_and_i64: PASSED\n");
 }
 
 static void test_menuitem_checkable_state_is_real_and_invalidates_context(void) {
@@ -1295,6 +1421,67 @@ static void test_toolbar_remove_item_removes_runtime_null_id_items(void) {
     printf("test_toolbar_remove_item_removes_runtime_null_id_items: PASSED\n");
 }
 
+static void test_toolbar_statusbar_remove_clears_runtime_click_caches(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    vg_statusbar_t *statusbar = (vg_statusbar_t *)rt_statusbar_new(app.root);
+    assert(statusbar);
+    vg_statusbar_item_t *status_item =
+        (vg_statusbar_item_t *)rt_statusbar_add_text(statusbar, rt_const_cstr("ready"), 0);
+    assert(status_item);
+    app.last_statusbar_clicked = status_item;
+    rt_statusbar_remove_item(statusbar, status_item);
+    assert(app.last_statusbar_clicked == NULL);
+    assert(!vg_statusbar_item_is_live(status_item));
+    assert(rt_statusbaritem_was_clicked(status_item) == 0);
+
+    vg_toolbar_t *toolbar = (vg_toolbar_t *)rt_toolbar_new(app.root);
+    assert(toolbar);
+    vg_toolbar_item_t *tool_item =
+        (vg_toolbar_item_t *)rt_toolbar_add_button(toolbar,
+                                                   rt_const_cstr(""),
+                                                   rt_const_cstr("tool"));
+    assert(tool_item);
+    app.last_toolbar_clicked = tool_item;
+    rt_toolbar_remove_item(toolbar, tool_item);
+    assert(app.last_toolbar_clicked == NULL);
+    assert(!vg_toolbar_item_is_live(tool_item));
+    assert(rt_toolbaritem_was_clicked(tool_item) == 0);
+
+    cleanup_fake_app(&app);
+    printf("test_toolbar_statusbar_remove_clears_runtime_click_caches: PASSED\n");
+}
+
+static void test_codeeditor_add_highlight_rejects_empty_and_inverted_spans(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    vg_codeeditor_t *editor = (vg_codeeditor_t *)rt_codeeditor_new(app.root);
+    assert(editor);
+    rt_codeeditor_set_text(editor, rt_const_cstr("alpha\nbeta"));
+
+    rt_codeeditor_add_highlight(editor, 0, 2, 0, 2, 0xFFFF0000);
+    rt_codeeditor_add_highlight(editor, 1, 4, 0, 1, 0xFFFF0000);
+    assert(editor->highlight_span_count == 0);
+
+    rt_codeeditor_add_highlight(editor, 0, 0, 0, 5, 0xFF00FF00);
+    assert(editor->highlight_span_count == 1);
+    assert(editor->highlight_spans[0].start_line == 0);
+    assert(editor->highlight_spans[0].end_col == 5);
+
+    cleanup_fake_app(&app);
+    printf("test_codeeditor_add_highlight_rejects_empty_and_inverted_spans: PASSED\n");
+}
+
 int main(void) {
     printf("=== GUI Runtime Regression Tests ===\n\n");
 
@@ -1341,11 +1528,16 @@ int main(void) {
     test_shortcuts_reject_invalid_bindings_atomically();
     test_type_specific_widget_apis_reject_wrong_types();
     test_findbar_methods_after_destroy_are_inert();
+    test_findbar_parent_destroy_disconnects_wrapper();
     test_radiogroup_runtime_handle_invalidates_after_destroy();
     test_filedialog_setters_after_destroy_are_inert();
+    test_filedialog_destroy_removes_modal_stack_entry();
+    test_messagebox_custom_button_ids_preserve_zero_and_i64();
     test_menuitem_checkable_state_is_real_and_invalidates_context();
     test_contextmenu_submenu_ownership_detaches_safely();
     test_toolbar_remove_item_removes_runtime_null_id_items();
+    test_toolbar_statusbar_remove_clears_runtime_click_caches();
+    test_codeeditor_add_highlight_rejects_empty_and_inverted_spans();
 
     printf("\nAll GUI runtime regression tests passed!\n");
     return 0;

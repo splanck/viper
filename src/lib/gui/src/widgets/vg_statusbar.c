@@ -41,6 +41,8 @@
 #define STATUSBAR_DEFAULT_HEIGHT 24
 #define STATUSBAR_ITEM_PADDING 8
 #define STATUSBAR_SEPARATOR_WIDTH 1
+#define VG_STATUSBAR_ITEM_MAGIC UINT64_C(0x5653475354415449)
+#define VG_STATUSBAR_ITEM_RETIRED_MAGIC UINT64_C(0x5653475354524554)
 
 //=============================================================================
 // Forward Declarations
@@ -98,6 +100,38 @@ static void free_item(vg_statusbar_item_t *item) {
     free(item);
 }
 
+bool vg_statusbar_item_is_live(const vg_statusbar_item_t *item) {
+    return item && item->magic == VG_STATUSBAR_ITEM_MAGIC && item->owner != NULL;
+}
+
+static void retire_item(vg_statusbar_t *sb, vg_statusbar_item_t *item) {
+    if (!sb || !item)
+        return;
+    free(item->text);
+    item->text = NULL;
+    free(item->tooltip);
+    item->tooltip = NULL;
+    item->owner = NULL;
+    item->on_click = NULL;
+    item->user_data = NULL;
+    item->magic = VG_STATUSBAR_ITEM_RETIRED_MAGIC;
+    item->retired_next = sb->retired_items;
+    sb->retired_items = item;
+}
+
+static void free_retired_items(vg_statusbar_t *sb) {
+    if (!sb)
+        return;
+    vg_statusbar_item_t *item = sb->retired_items;
+    while (item) {
+        vg_statusbar_item_t *next = item->retired_next;
+        item->retired_next = NULL;
+        free_item(item);
+        item = next;
+    }
+    sb->retired_items = NULL;
+}
+
 /// @brief Allocate and zero-initialise a status bar item of the given type with optional text.
 static vg_statusbar_item_t *create_item(vg_statusbar_item_type_t type, const char *text) {
     vg_statusbar_item_t *item = calloc(1, sizeof(vg_statusbar_item_t));
@@ -105,6 +139,7 @@ static vg_statusbar_item_t *create_item(vg_statusbar_item_type_t type, const cha
         return NULL;
 
     item->type = type;
+    item->magic = VG_STATUSBAR_ITEM_MAGIC;
     item->owner = NULL;
     item->text = text ? strdup(text) : NULL;
     item->tooltip = NULL;
@@ -238,6 +273,7 @@ static void statusbar_destroy(vg_widget_t *widget) {
         free_item(sb->right_items[i]);
     }
     free(sb->right_items);
+    free_retired_items(sb);
 }
 
 /// @brief vtable measure — fills available_width; height is the fixed sb->height field.
@@ -631,7 +667,7 @@ vg_statusbar_item_t *vg_statusbar_add_spacer(vg_statusbar_t *sb, vg_statusbar_zo
 /// @param sb   The status bar; may be NULL (no-op).
 /// @param item The item to remove; may be NULL (no-op).
 void vg_statusbar_remove_item(vg_statusbar_t *sb, vg_statusbar_item_t *item) {
-    if (!sb || !item)
+    if (!sb || !vg_statusbar_item_is_live(item) || item->owner != sb)
         return;
 
     // Search in all zones
@@ -646,7 +682,7 @@ void vg_statusbar_remove_item(vg_statusbar_t *sb, vg_statusbar_item_t *item) {
             if (items[i] == item) {
                 if (sb->hovered_item == item)
                     sb->hovered_item = NULL;
-                free_item(item);
+                retire_item(sb, item);
                 memmove(&items[i], &items[i + 1], (count - i - 1) * sizeof(vg_statusbar_item_t *));
                 (*counts[z])--;
                 sb->base.needs_layout = true;
@@ -688,7 +724,7 @@ void vg_statusbar_clear_zone(vg_statusbar_t *sb, vg_statusbar_zone_t zone) {
     for (size_t i = 0; i < *count; i++) {
         if (sb->hovered_item == (*items)[i])
             sb->hovered_item = NULL;
-        free_item((*items)[i]);
+        retire_item(sb, (*items)[i]);
     }
     *count = 0;
     sb->base.needs_layout = true;
@@ -700,7 +736,7 @@ void vg_statusbar_clear_zone(vg_statusbar_t *sb, vg_statusbar_zone_t zone) {
 /// @param item The item to update; may be NULL.
 /// @param text New display text; copied internally, may be NULL to clear.
 void vg_statusbar_item_set_text(vg_statusbar_item_t *item, const char *text) {
-    if (!item)
+    if (!vg_statusbar_item_is_live(item))
         return;
 
     if (item->text)
@@ -715,7 +751,7 @@ void vg_statusbar_item_set_text(vg_statusbar_item_t *item, const char *text) {
 /// @param item    The item to update; may be NULL.
 /// @param tooltip Tooltip text; copied internally, may be NULL to clear.
 void vg_statusbar_item_set_tooltip(vg_statusbar_item_t *item, const char *tooltip) {
-    if (!item)
+    if (!vg_statusbar_item_is_live(item))
         return;
 
     if (item->tooltip)
@@ -730,7 +766,7 @@ void vg_statusbar_item_set_tooltip(vg_statusbar_item_t *item, const char *toolti
 /// @param item     The progress bar item to update; may be NULL.
 /// @param progress Fill fraction in [0.0, 1.0]; values outside the range are clamped.
 void vg_statusbar_item_set_progress(vg_statusbar_item_t *item, float progress) {
-    if (!item)
+    if (!vg_statusbar_item_is_live(item))
         return;
 
     if (progress < 0.0f)
@@ -747,7 +783,7 @@ void vg_statusbar_item_set_progress(vg_statusbar_item_t *item, float progress) {
 /// @param item    The item to update; may be NULL.
 /// @param visible false to hide the item (its slot collapses to zero width).
 void vg_statusbar_item_set_visible(vg_statusbar_item_t *item, bool visible) {
-    if (!item)
+    if (!vg_statusbar_item_is_live(item))
         return;
     item->visible = visible;
     if (item->owner)

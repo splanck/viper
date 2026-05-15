@@ -605,6 +605,12 @@ void rt_codeeditor_add_highlight(void *editor,
     vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
     if (!ce)
         return;
+    int32_t sl = rt_gui_clamp_i64_to_i32(start_line, 0, INT32_MAX);
+    int32_t sc = rt_gui_clamp_i64_to_i32(start_col, 0, INT32_MAX);
+    int32_t el = rt_gui_clamp_i64_to_i32(end_line, 0, INT32_MAX);
+    int32_t ec = rt_gui_clamp_i64_to_i32(end_col, 0, INT32_MAX);
+    if (el < sl || (el == sl && ec <= sc))
+        return;
     if (ce->highlight_span_count >= ce->highlight_span_cap) {
         if (ce->highlight_span_cap > INT_MAX / 2)
             return;
@@ -616,10 +622,10 @@ void rt_codeeditor_add_highlight(void *editor,
         ce->highlight_span_cap = new_cap;
     }
     struct vg_highlight_span *s = &ce->highlight_spans[ce->highlight_span_count++];
-    s->start_line = rt_gui_clamp_i64_to_i32(start_line, 0, INT32_MAX);
-    s->start_col = rt_gui_clamp_i64_to_i32(start_col, 0, INT32_MAX);
-    s->end_line = rt_gui_clamp_i64_to_i32(end_line, 0, INT32_MAX);
-    s->end_col = rt_gui_clamp_i64_to_i32(end_col, 0, INT32_MAX);
+    s->start_line = sl;
+    s->start_col = sc;
+    s->end_line = el;
+    s->end_col = ec;
     s->color = (uint32_t)color;
     ce->base.needs_paint = true;
 }
@@ -1897,10 +1903,10 @@ void rt_codeeditor_replace_word_at_cursor(void *editor, rt_string new_text) {
     while (end < len && (isalnum((unsigned char)text[end]) || text[end] == '_'))
         ++end;
 
-    /* select the word, then insert the replacement (replaces selection) */
-    vg_codeeditor_set_selection(ce, ce->cursor_line, start, ce->cursor_line, end);
     char *cstr = rt_string_to_cstr(new_text);
     if (cstr) {
+        /* select the word, then insert the replacement (replaces selection) */
+        vg_codeeditor_set_selection(ce, ce->cursor_line, start, ce->cursor_line, end);
         vg_codeeditor_insert_text(ce, cstr);
         free(cstr);
     }

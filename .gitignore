@@ -159,3 +159,6 @@ viper_issues*.txt
 viper_runtime_*.md
 viper_zia_issues.md
 /frogger_highscores.txt
+
+# --- Private project workspace (not for public repo) ---
+/baseball/

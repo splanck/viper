@@ -279,6 +279,8 @@ static int dialog_wrap_text(vg_dialog_t *dlg,
     int cap = 4;
     int count = 0;
     char **lines = out_lines ? (char **)calloc((size_t)cap, sizeof(char *)) : NULL;
+    if (out_lines && !lines)
+        return 0;
     size_t text_len = strlen(text);
     size_t start = 0;
 
@@ -294,15 +296,19 @@ static int dialog_wrap_text(vg_dialog_t *dlg,
                 if (count >= cap) {
                     int new_cap = cap * 2;
                     char **new_lines = (char **)realloc(lines, (size_t)new_cap * sizeof(char *));
-                    if (!new_lines)
-                        break;
+                    if (!new_lines) {
+                        dialog_free_wrapped_lines(lines, count);
+                        return 0;
+                    }
                     memset(new_lines + cap, 0, (size_t)(new_cap - cap) * sizeof(char *));
                     lines = new_lines;
                     cap = new_cap;
                 }
                 lines[count] = strdup("");
-                if (!lines[count])
-                    break;
+                if (!lines[count]) {
+                    dialog_free_wrapped_lines(lines, count);
+                    return 0;
+                }
                 count++;
             } else {
                 count++;
@@ -362,15 +368,19 @@ static int dialog_wrap_text(vg_dialog_t *dlg,
             if (count >= cap) {
                 int new_cap = cap * 2;
                 char **new_lines = (char **)realloc(lines, (size_t)new_cap * sizeof(char *));
-                if (!new_lines)
-                    break;
+                if (!new_lines) {
+                    dialog_free_wrapped_lines(lines, count);
+                    return 0;
+                }
                 memset(new_lines + cap, 0, (size_t)(new_cap - cap) * sizeof(char *));
                 lines = new_lines;
                 cap = new_cap;
             }
             lines[count] = dialog_dup_range(text + start, best_end - start);
-            if (!lines[count])
-                break;
+            if (!lines[count]) {
+                dialog_free_wrapped_lines(lines, count);
+                return 0;
+            }
             count++;
         } else {
             count++;
@@ -394,15 +404,19 @@ static int dialog_wrap_text(vg_dialog_t *dlg,
                 if (count >= cap) {
                     int new_cap = cap * 2;
                     char **new_lines = (char **)realloc(lines, (size_t)new_cap * sizeof(char *));
-                    if (!new_lines)
-                        break;
+                    if (!new_lines) {
+                        dialog_free_wrapped_lines(lines, count);
+                        return 0;
+                    }
                     memset(new_lines + cap, 0, (size_t)(new_cap - cap) * sizeof(char *));
                     lines = new_lines;
                     cap = new_cap;
                 }
                 lines[count] = strdup("");
-                if (!lines[count])
-                    break;
+                if (!lines[count]) {
+                    dialog_free_wrapped_lines(lines, count);
+                    return 0;
+                }
                 count++;
             } else if (text[start] == '\0') {
                 count++;
@@ -974,10 +988,16 @@ static void dialog_paint(vg_widget_t *widget, void *canvas) {
         float text_y = content_y + (float)font_metrics.ascent;
 
         vgfx_set_clip(win, (int32_t)content_x, (int32_t)content_y, (int32_t)body_w, (int32_t)body_h);
-        for (int i = 0; i < line_count; i++) {
-            const char *line = (lines && lines[i]) ? lines[i] : "";
+        if (line_count <= 0 || !lines) {
             vg_font_draw_text(
-                canvas, dlg->font, dlg->font_size, content_x, text_y + (float)i * line_height, line, dlg->text_color);
+                canvas, dlg->font, dlg->font_size, content_x, text_y, dlg->message, dlg->text_color);
+            line_count = 1;
+        } else {
+            for (int i = 0; i < line_count; i++) {
+                const char *line = lines[i] ? lines[i] : "";
+                vg_font_draw_text(
+                    canvas, dlg->font, dlg->font_size, content_x, text_y + (float)i * line_height, line, dlg->text_color);
+            }
         }
         vgfx_clear_clip(win);
         dialog_free_wrapped_lines(lines, line_count);

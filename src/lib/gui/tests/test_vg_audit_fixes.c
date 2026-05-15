@@ -3156,6 +3156,178 @@ TEST(listbox_virtual_keyboard_navigation_handles_large_counts) {
     vg_widget_destroy(&listbox->base);
 }
 
+TEST(tabbar_removed_tab_handles_are_inert) {
+    vg_tabbar_t *tabbar = vg_tabbar_create(NULL);
+    ASSERT_NOT_NULL(tabbar);
+
+    vg_tab_t *first = vg_tabbar_add_tab(tabbar, "first", true);
+    vg_tab_t *second = vg_tabbar_add_tab(tabbar, "second", true);
+    ASSERT_NOT_NULL(first);
+    ASSERT_NOT_NULL(second);
+
+    vg_tabbar_remove_tab(tabbar, second);
+    ASSERT_FALSE(vg_tab_is_live(second));
+    ASSERT_EQ(tabbar->tab_count, 1);
+    ASSERT(tabbar->active_tab == first);
+
+    vg_tab_set_title(second, "stale");
+    vg_tab_set_modified(second, true);
+    vg_tab_set_tooltip(second, "stale");
+    vg_tabbar_set_active(tabbar, second);
+    vg_tabbar_remove_tab(tabbar, second);
+
+    ASSERT_EQ(tabbar->tab_count, 1);
+    ASSERT(tabbar->active_tab == first);
+    ASSERT(strcmp(first->title, "first") == 0);
+
+    vg_widget_destroy(&tabbar->base);
+}
+
+static int g_round8_menu_accel_calls = 0;
+
+static void round8_menu_accel_action(void *data) {
+    (void)data;
+    g_round8_menu_accel_calls++;
+}
+
+TEST(menubar_clear_remove_and_accelerators_drop_stale_items) {
+    vg_menubar_t *menubar = vg_menubar_create(NULL);
+    ASSERT_NOT_NULL(menubar);
+    vg_menu_t *menu = vg_menubar_add_menu(menubar, "File");
+    ASSERT_NOT_NULL(menu);
+    vg_menu_item_t *item = vg_menu_add_item(menu, "New", "Ctrl+N", round8_menu_accel_action, NULL);
+    ASSERT_NOT_NULL(item);
+    vg_menubar_register_accelerator(menubar, item, "Ctrl+N");
+
+    g_round8_menu_accel_calls = 0;
+    menubar->open_menu = menu;
+    menubar->highlighted = item;
+    menubar->menu_active = true;
+    menu->open = true;
+
+    vg_menu_remove_item(menu, item);
+    ASSERT_FALSE(vg_menu_item_is_live(item));
+    ASSERT_NULL(menubar->highlighted);
+    ASSERT_NULL(menubar->open_menu);
+    ASSERT_FALSE(menubar->menu_active);
+    ASSERT_FALSE(menu->open);
+    ASSERT_FALSE(vg_menubar_handle_accelerator(menubar, 'N', VG_MOD_CTRL));
+    ASSERT_EQ(g_round8_menu_accel_calls, 0);
+
+    vg_menu_item_t *clear_item = vg_menu_add_item(menu, "Open", NULL, NULL, NULL);
+    ASSERT_NOT_NULL(clear_item);
+    menubar->open_menu = menu;
+    menubar->highlighted = clear_item;
+    menubar->menu_active = true;
+    menu->open = true;
+
+    vg_menu_clear(menu);
+    ASSERT_FALSE(vg_menu_item_is_live(clear_item));
+    ASSERT_EQ(menu->item_count, 0);
+    ASSERT_NULL(menubar->highlighted);
+    ASSERT_NULL(menubar->open_menu);
+    ASSERT_FALSE(menubar->menu_active);
+    ASSERT_FALSE(menu->open);
+
+    vg_menu_t *second_menu = vg_menubar_add_menu(menubar, "Edit");
+    ASSERT_NOT_NULL(second_menu);
+    vg_menu_item_t *second_item = vg_menu_add_item(second_menu, "Cut", NULL, NULL, NULL);
+    ASSERT_NOT_NULL(second_item);
+    menubar->open_menu = second_menu;
+    menubar->highlighted = second_item;
+    menubar->menu_active = true;
+    second_menu->open = true;
+
+    vg_menubar_remove_menu(menubar, second_menu);
+    ASSERT_NULL(menubar->highlighted);
+    ASSERT_NULL(menubar->open_menu);
+    ASSERT_FALSE(menubar->menu_active);
+
+    vg_widget_destroy(&menubar->base);
+}
+
+TEST(contextmenu_clear_retires_items_and_submenu_state) {
+    vg_contextmenu_t *parent = vg_contextmenu_create();
+    vg_contextmenu_t *child = vg_contextmenu_create();
+    ASSERT_NOT_NULL(parent);
+    ASSERT_NOT_NULL(child);
+
+    vg_menu_item_t *item = vg_contextmenu_add_submenu(parent, "More", child);
+    ASSERT_NOT_NULL(item);
+    ASSERT_TRUE(vg_menu_item_is_live(item));
+
+    parent->is_visible = true;
+    parent->hovered_index = 0;
+    parent->clicked_index = 0;
+    parent->active_submenu = child;
+    child->is_visible = true;
+
+    vg_contextmenu_clear(parent);
+    ASSERT_EQ(parent->item_count, (size_t)0);
+    ASSERT_EQ(parent->hovered_index, -1);
+    ASSERT_EQ(parent->clicked_index, -1);
+    ASSERT_NULL(parent->active_submenu);
+    ASSERT_FALSE(vg_menu_item_is_live(item));
+
+    vg_contextmenu_item_set_enabled(item, false);
+    vg_contextmenu_item_set_checked(item, true);
+    vg_contextmenu_destroy(parent);
+}
+
+TEST(toolbar_removed_item_handles_are_inert) {
+    vg_toolbar_t *toolbar = vg_toolbar_create(NULL, VG_TOOLBAR_HORIZONTAL);
+    ASSERT_NOT_NULL(toolbar);
+    vg_toolbar_item_t *item =
+        vg_toolbar_add_button(toolbar, "open", "Open", vg_icon_from_glyph('O'), NULL, NULL);
+    ASSERT_NOT_NULL(item);
+
+    toolbar->hovered_item = item;
+    toolbar->pressed_item = item;
+    toolbar->focused_index = 0;
+    vg_toolbar_remove_item_ptr(toolbar, item);
+    ASSERT_EQ(toolbar->item_count, (size_t)0);
+    ASSERT_NULL(toolbar->hovered_item);
+    ASSERT_NULL(toolbar->pressed_item);
+    ASSERT_EQ(toolbar->focused_index, -1);
+    ASSERT_FALSE(vg_toolbar_item_is_live(item));
+
+    vg_toolbar_item_set_enabled(item, false);
+    vg_toolbar_item_set_checked(item, true);
+    vg_toolbar_item_set_text(item, "stale");
+    vg_toolbar_item_set_tooltip(item, "stale");
+
+    vg_widget_destroy(&toolbar->base);
+}
+
+TEST(statusbar_removed_item_handles_are_inert) {
+    vg_statusbar_t *statusbar = vg_statusbar_create(NULL);
+    ASSERT_NOT_NULL(statusbar);
+    vg_statusbar_item_t *item =
+        vg_statusbar_add_text(statusbar, VG_STATUSBAR_ZONE_LEFT, "Ready");
+    ASSERT_NOT_NULL(item);
+
+    statusbar->hovered_item = item;
+    vg_statusbar_remove_item(statusbar, item);
+    ASSERT_EQ(statusbar->left_count, (size_t)0);
+    ASSERT_NULL(statusbar->hovered_item);
+    ASSERT_FALSE(vg_statusbar_item_is_live(item));
+
+    vg_statusbar_item_set_text(item, "stale");
+    vg_statusbar_item_set_tooltip(item, "stale");
+    vg_statusbar_item_set_progress(item, 0.5f);
+    vg_statusbar_item_set_visible(item, false);
+
+    vg_widget_destroy(&statusbar->base);
+}
+
+TEST(filedialog_create_always_has_current_path) {
+    vg_filedialog_t *dialog = vg_filedialog_create(VG_FILEDIALOG_OPEN);
+    ASSERT_NOT_NULL(dialog);
+    ASSERT_NOT_NULL(dialog->current_path);
+    ASSERT(dialog->current_path[0] != '\0');
+    vg_filedialog_destroy(dialog);
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -3306,6 +3478,12 @@ int main(void) {
     RUN(event_dispatch_keeps_state_for_more_than_legacy_root_cap);
     RUN(textinput_ignores_command_modified_character_events);
     RUN(listbox_virtual_keyboard_navigation_handles_large_counts);
+    RUN(tabbar_removed_tab_handles_are_inert);
+    RUN(menubar_clear_remove_and_accelerators_drop_stale_items);
+    RUN(contextmenu_clear_retires_items_and_submenu_state);
+    RUN(toolbar_removed_item_handles_are_inert);
+    RUN(statusbar_removed_item_handles_are_inert);
+    RUN(filedialog_create_always_has_current_path);
     RUN(textinput_null_font_preserves_existing_font_and_invalid_tick_is_ignored);
     RUN(findreplace_whole_word_does_not_match_inside_utf8_word);
 

@@ -106,6 +106,8 @@ static void contextmenu_unregister_menu(vg_contextmenu_t *menu) {
 #define ICON_SLOT_WIDTH 22.0f
 #define ICON_TEXT_GAP 8.0f
 #define ICON_DRAW_SIZE 16.0f
+#define VG_MENU_ITEM_MAGIC UINT64_C(0x56474D454E554954)
+#define VG_MENU_ITEM_RETIRED_MAGIC UINT64_C(0x56474D454E555258)
 
 //=============================================================================
 // Helper Functions
@@ -120,6 +122,7 @@ static vg_menu_item_t *create_menu_item(const char *label,
     if (!item)
         return NULL;
 
+    item->magic = VG_MENU_ITEM_MAGIC;
     item->text = label ? strdup(label) : NULL;
     item->shortcut = shortcut ? strdup(shortcut) : NULL;
     item->action = action;
@@ -151,6 +154,35 @@ static void free_menu_item(vg_menu_item_t *item) {
         vg_icon_destroy(&item->icon);
         free(item);
     }
+}
+
+/// @brief Retire a context-menu item without freeing its struct so stale handles become inert.
+static void retire_menu_item(vg_contextmenu_t *menu, vg_menu_item_t *item) {
+    if (!menu || !item)
+        return;
+    if (item->submenu) {
+        vg_contextmenu_t *submenu = (vg_contextmenu_t *)item->submenu;
+        item->submenu = NULL;
+        if (submenu->parent_item == item) {
+            submenu->parent_item = NULL;
+            submenu->parent_menu = NULL;
+        }
+        vg_contextmenu_destroy(submenu);
+    }
+    free((void *)item->text);
+    item->text = NULL;
+    free((void *)item->shortcut);
+    item->shortcut = NULL;
+    vg_icon_destroy(&item->icon);
+    item->action = NULL;
+    item->action_data = NULL;
+    item->owner_contextmenu = NULL;
+    item->parent_menu = NULL;
+    item->next = NULL;
+    item->prev = NULL;
+    item->magic = VG_MENU_ITEM_RETIRED_MAGIC;
+    item->retired_next = menu->retired_items;
+    menu->retired_items = item;
 }
 
 /// @brief Return true if the item occupies the leading icon/check column.
@@ -493,6 +525,14 @@ static void contextmenu_destroy(vg_widget_t *widget) {
         free_menu_item(menu->items[i]);
     }
     free(menu->items);
+    vg_menu_item_t *retired = menu->retired_items;
+    while (retired) {
+        vg_menu_item_t *next = retired->retired_next;
+        retired->retired_next = NULL;
+        free_menu_item(retired);
+        retired = next;
+    }
+    menu->retired_items = NULL;
 }
 
 /// @brief Destroy the context menu and free all items and their strings.
@@ -971,6 +1011,7 @@ vg_menu_item_t *vg_contextmenu_add_separator(vg_contextmenu_t *menu) {
     if (!item)
         return NULL;
 
+    item->magic = VG_MENU_ITEM_MAGIC;
     item->separator = true;
     item->owner_contextmenu = menu;
 
@@ -997,10 +1038,19 @@ void vg_contextmenu_clear(vg_contextmenu_t *menu) {
     if (!menu)
         return;
 
+    if (menu->active_submenu) {
+        vg_contextmenu_dismiss(menu->active_submenu);
+        menu->active_submenu = NULL;
+    }
+    menu->hovered_index = -1;
+    menu->clicked_index = -1;
+
     for (size_t i = 0; i < menu->item_count; i++) {
-        free_menu_item(menu->items[i]);
+        retire_menu_item(menu, menu->items[i]);
     }
     menu->item_count = 0;
+    menu->base.needs_layout = true;
+    menu->base.needs_paint = true;
 }
 
 /// @brief Enable or disable a menu item, triggering a repaint without layout changes.
@@ -1008,7 +1058,7 @@ void vg_contextmenu_clear(vg_contextmenu_t *menu) {
 /// @param item    The item to modify; may be NULL.
 /// @param enabled false to grey out and make non-interactive.
 void vg_contextmenu_item_set_enabled(vg_menu_item_t *item, bool enabled) {
-    if (item) {
+    if (item && item->magic == VG_MENU_ITEM_MAGIC && item->owner_contextmenu) {
         item->enabled = enabled;
         contextmenu_mark_item_changed(item, false);
     }
@@ -1022,7 +1072,7 @@ void vg_contextmenu_item_set_enabled(vg_menu_item_t *item, bool enabled) {
 /// @param item    The item to modify; may be NULL.
 /// @param checked true to display a checkmark (✓) in the leading column.
 void vg_contextmenu_item_set_checked(vg_menu_item_t *item, bool checked) {
-    if (item) {
+    if (item && item->magic == VG_MENU_ITEM_MAGIC && item->owner_contextmenu) {
         item->checkable = true;
         item->checked = checked;
         contextmenu_mark_item_changed(item, true);
@@ -1038,8 +1088,10 @@ void vg_contextmenu_item_set_checked(vg_menu_item_t *item, bool checked) {
 /// @param item The item to modify; may be NULL.
 /// @param icon The new icon value; ownership of pixel data transfers to the item.
 void vg_contextmenu_item_set_icon(vg_menu_item_t *item, vg_icon_t icon) {
-    if (!item)
+    if (!item || item->magic != VG_MENU_ITEM_MAGIC || !item->owner_contextmenu) {
+        vg_icon_destroy(&icon);
         return;
+    }
 
     vg_icon_destroy(&item->icon);
     item->icon = icon;

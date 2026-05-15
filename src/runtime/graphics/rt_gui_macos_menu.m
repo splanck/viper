@@ -55,6 +55,33 @@ typedef struct {
 
 static vg_menubar_t *g_main_menubar = NULL;
 
+static BOOL rt_gui_macos_menu_contains_item(vg_menu_t *menu, const vg_menu_item_t *target) {
+    if (!menu || !target) {
+        return NO;
+    }
+    for (vg_menu_item_t *item = menu->first_item; item; item = item->next) {
+        if (item == target) {
+            return YES;
+        }
+        if (item->submenu && rt_gui_macos_menu_contains_item(item->submenu, target)) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+static BOOL rt_gui_macos_item_is_live(vg_menu_item_t *item) {
+    if (!g_main_menubar || !item) {
+        return NO;
+    }
+    for (vg_menu_t *menu = g_main_menubar->first_menu; menu; menu = menu->next) {
+        if (rt_gui_macos_menu_contains_item(menu, item)) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
 /// @brief Return the user-visible app name for the application menu title.
 /// @details Consults three sources in order of preference: the current
 ///          Viper `s_current_app` title (set by `App.New(title, ...)`),
@@ -643,7 +670,7 @@ static void rt_gui_macos_rebuild_main_menu(void) {
 - (void)invokeMenuItem:(NSMenuItem *)sender {
     NSValue *boxed = [sender representedObject];
     vg_menu_item_t *item = boxed ? (vg_menu_item_t *)[boxed pointerValue] : NULL;
-    if (!item || !item->enabled) {
+    if (!rt_gui_macos_item_is_live(item) || !item->enabled) {
         return;
     }
 

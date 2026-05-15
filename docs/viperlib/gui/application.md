@@ -31,6 +31,7 @@ Dropdown menu (returned by `MenuBar.AddMenu()`).
 
 Disabled top-level menus render in the disabled state and ignore mouse and keyboard open requests.
 Menu and menu-item handles are owner-checked; removing an item through the wrong menu, or a menu through the wrong menubar, is ignored rather than corrupting either list.
+Removed menu-item handles become inert, open/highlighted menu state is cleared when its item disappears, and stale accelerator entries are ignored instead of firing removed actions.
 
 | Method                  | Signature          | Description                    |
 |-------------------------|--------------------|--------------------------------|
@@ -85,6 +86,7 @@ Flexible spacer items now consume the remaining strip width, and dropdown toolba
 Runtime text and icon changes invalidate layout and overflow measurement immediately, so the strip repacks without waiting for an unrelated refresh.
 Toolbar items now render pixel icons directly, keyboard focus is visible, and `Left` / `Right` / `Home` / `End` navigate the strip while `Enter` / `Space` activate the focused item or overflow button.
 Items returned by runtime add methods can be removed by handle even when they do not have an internal string id.
+Removed toolbar item handles become inert until the toolbar is destroyed, and removing a clicked item clears the runtime click cache so `WasClicked()` cannot report a stale click.
 
 **Constructor:** `NEW Viper.GUI.Toolbar(parent)`
 
@@ -131,6 +133,7 @@ if saveBtn.WasClicked() == 1 { /* save */ }
 Application status bar widget.
 
 Text, visibility, progress, and tooltip updates invalidate the owning bar immediately, so layout and paint stay in sync with runtime changes.
+Removed status-bar item handles become inert until the status bar is destroyed, and removing a clicked item clears the runtime click cache.
 
 **Constructor:** `NEW Viper.GUI.StatusBar(parent)`
 
@@ -173,6 +176,7 @@ Right-click context menu.
 
 Context menus now anchor in screen space for nested widgets, capture input while open, clamp to the host window, and reliably dismiss on outside click instead of letting clicks fall through to the underlying UI. Dismissing a submenu restores capture to its parent menu, callback payloads are tracked independently for selection and dismiss handlers, and destroyed menus are removed from the right-click registry.
 Nested context submenus are owned by their parent menu item. Destroying the parent destroys attached submenus, while explicitly destroying a child submenu detaches the parent item so later parent cleanup remains safe.
+`Clear()` dismisses any active submenu, resets hover/click state, and retires removed item handles so later item method calls are ignored safely.
 
 **Constructor:** `NEW Viper.GUI.ContextMenu()`
 
@@ -209,6 +213,7 @@ Find and replace bar for text searching.
 
 `GetFindText()` and `GetReplaceText()` read the live text currently shown in the inputs, `Replace()` returns `0` when there is no active editor or no current match to replace, and pointer input now routes through the standard widget event pipeline so focus, hover, and click behavior match the rest of the toolkit.
 `SetRegex(1)` enables regular-expression search in the bound `CodeEditor`; matches may have variable length and still honor case-sensitive and whole-word options.
+If the parent widget destroys the underlying bar, the runtime wrapper disconnects from it and all later `FindBar` calls become no-ops.
 
 **Constructor:** `NEW Viper.GUI.FindBar(parent)`
 
@@ -386,6 +391,8 @@ Stateful message boxes are safe to destroy explicitly; calling `Show()` on a
 destroyed wrapper returns `-1` instead of trying to reuse the freed dialog.
 Object-style `Show()` also returns `-1` when the dialog closes without a button
 result, such as a window close or unavailable owner app.
+Custom button IDs preserve the exact `Integer` passed to `AddButton()`, including
+`0` and values outside the C dialog result enum range.
 
 | Method                                       | Signature                 | Description                   |
 |----------------------------------------------|---------------------------|-------------------------------|
@@ -415,6 +422,7 @@ Native or in-app file dialog boxes (static methods).
 
 Save dialogs honor the default filename field, append the configured default extension when needed, and keep buttons/bookmarks/file-list hit-testing correct after the window is repositioned.
 Object-style dialogs snapshot their accepted path list on each `Show()`, so repeated `Show()` / `Destroy()` cycles and multi-select accessors stay valid.
+Destroying an object-style dialog removes it from the app's modal stack before freeing it, and destroyed handles are inert for setters, `Show()`, and path accessors.
 On macOS, one-shot static dialogs use native panels, including native multi-select for `OpenMultiple`. On other GUI builds, static and object-style dialogs use the same in-app modal dialog and therefore require an active `Viper.GUI.App` window; they return an empty string or `0` when no active GUI window is available.
 `OpenMultiple()` returns selected paths joined with semicolons. Literal semicolons and backslashes inside paths are escaped as `\;` and `\\` so callers can split the result without ambiguity.
 The in-app dialog implementation now scrolls long file and bookmark lists, keeps the selected row visible during keyboard navigation, clips long path text, and supports caret-aware editing in the save-name field (`Left` / `Right`, `Home`, `End`, `Backspace`, `Delete`).

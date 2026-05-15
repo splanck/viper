@@ -330,6 +330,21 @@ void vg_progressbar_show_percentage(vg_progressbar_t *progress, bool show) {
     progress->base.needs_paint = true;
 }
 
+/// @brief Set the font used to draw the optional percentage label.
+///
+/// @param progress The progress bar to configure.
+/// @param font     Font handle; may be NULL to clear.
+/// @param size     Font size in pixels; values <= 0 keep the theme default.
+void vg_progressbar_set_font(vg_progressbar_t *progress, vg_font_t *font, float size) {
+    if (!progress)
+        return;
+    progress->font = font;
+    progress->font_size =
+        size > 0.0f ? size : vg_theme_get_current()->typography.size_small;
+    progress->base.needs_layout = true;
+    progress->base.needs_paint = true;
+}
+
 /// @brief Advance the indeterminate animation phase; call once per frame.
 ///
 /// @param progress The progress bar to advance.

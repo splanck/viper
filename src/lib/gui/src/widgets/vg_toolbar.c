@@ -46,6 +46,8 @@
 #define ICON_SIZE_SMALL 16
 #define ICON_SIZE_MEDIUM 24
 #define ICON_SIZE_LARGE 32
+#define VG_TOOLBAR_ITEM_MAGIC UINT64_C(0x565447544F4F4C49)
+#define VG_TOOLBAR_ITEM_RETIRED_MAGIC UINT64_C(0x565447544F4C5254)
 
 //=============================================================================
 // Forward Declarations
@@ -240,6 +242,45 @@ static void free_item(vg_toolbar_item_t *item) {
     free(item);
 }
 
+bool vg_toolbar_item_is_live(const vg_toolbar_item_t *item) {
+    return item && item->magic == VG_TOOLBAR_ITEM_MAGIC && item->owner != NULL;
+}
+
+static void retire_item(vg_toolbar_t *tb, vg_toolbar_item_t *item) {
+    if (!tb || !item)
+        return;
+    free(item->id);
+    item->id = NULL;
+    free(item->label);
+    item->label = NULL;
+    free(item->tooltip);
+    item->tooltip = NULL;
+    vg_icon_destroy(&item->icon);
+    item->owner = NULL;
+    item->dropdown_menu = NULL;
+    item->custom_widget = NULL;
+    item->on_click = NULL;
+    item->on_toggle = NULL;
+    item->user_data = NULL;
+    item->was_clicked = false;
+    item->magic = VG_TOOLBAR_ITEM_RETIRED_MAGIC;
+    item->retired_next = tb->retired_items;
+    tb->retired_items = item;
+}
+
+static void free_retired_items(vg_toolbar_t *tb) {
+    if (!tb)
+        return;
+    vg_toolbar_item_t *item = tb->retired_items;
+    while (item) {
+        vg_toolbar_item_t *next = item->retired_next;
+        item->retired_next = NULL;
+        free_item(item);
+        item = next;
+    }
+    tb->retired_items = NULL;
+}
+
 /// @brief Allocate and zero-initialise a toolbar item of the given type, duplicating id.
 static vg_toolbar_item_t *create_item(vg_toolbar_item_type_t type, const char *id) {
     vg_toolbar_item_t *item = calloc(1, sizeof(vg_toolbar_item_t));
@@ -247,6 +288,7 @@ static vg_toolbar_item_t *create_item(vg_toolbar_item_type_t type, const char *i
         return NULL;
 
     item->type = type;
+    item->magic = VG_TOOLBAR_ITEM_MAGIC;
     item->owner = NULL;
     item->id = id ? strdup(id) : NULL;
     item->label = NULL;
@@ -780,7 +822,7 @@ static void toolbar_show_dropdown_popup(vg_toolbar_t *tb, vg_toolbar_item_t *ite
 
 /// @brief Execute item's primary action: click button callback, toggle state, or open dropdown menu.
 static void toolbar_activate_item(vg_toolbar_t *tb, vg_toolbar_item_t *item) {
-    if (!tb || !item || !item->enabled)
+    if (!tb || !vg_toolbar_item_is_live(item) || item->owner != tb || !item->enabled)
         return;
 
     item->was_clicked = true;
@@ -1100,6 +1142,7 @@ static void toolbar_destroy(vg_widget_t *widget) {
         free_item(tb->items[i]);
     }
     free(tb->items);
+    free_retired_items(tb);
 }
 
 /// @brief vtable measure — compute the toolbar's desired size based on item extents and bar thickness.
@@ -1885,9 +1928,10 @@ static void toolbar_remove_item_at(vg_toolbar_t *tb, size_t index) {
         tb->focused_index = -1;
     else if (tb->focused_index > (int)index && !toolbar_focus_is_overflow(tb, tb->focused_index))
         tb->focused_index--;
-    if (tb->dropdown_item == tb->items[index])
+    vg_toolbar_item_t *removed = tb->items[index];
+    if (tb->dropdown_item == removed)
         toolbar_dismiss_dropdown_popup(tb);
-    free_item(tb->items[index]);
+    retire_item(tb, removed);
     memmove(&tb->items[index],
             &tb->items[index + 1],
             (tb->item_count - index - 1) * sizeof(vg_toolbar_item_t *));
@@ -1915,7 +1959,7 @@ void vg_toolbar_remove_item(vg_toolbar_t *tb, const char *id) {
 
 /// @brief Remove and free an exact item pointer, including runtime-created items without IDs.
 void vg_toolbar_remove_item_ptr(vg_toolbar_t *tb, vg_toolbar_item_t *item) {
-    if (!tb || !item)
+    if (!tb || !vg_toolbar_item_is_live(item) || item->owner != tb)
         return;
     for (size_t i = 0; i < tb->item_count; i++) {
         if (tb->items[i] == item) {
@@ -1947,7 +1991,7 @@ vg_toolbar_item_t *vg_toolbar_get_item(vg_toolbar_t *tb, const char *id) {
 /// @param item    Item to modify; may be NULL (no-op).
 /// @param enabled true to enable, false to disable (item paints with disabled colour and ignores input).
 void vg_toolbar_item_set_enabled(vg_toolbar_item_t *item, bool enabled) {
-    if (!item)
+    if (!vg_toolbar_item_is_live(item))
         return;
     item->enabled = enabled;
     if (item->owner) {
@@ -1961,7 +2005,7 @@ void vg_toolbar_item_set_enabled(vg_toolbar_item_t *item, bool enabled) {
 /// @param item    Toggle item to modify; may be NULL (no-op).
 /// @param checked New checked state.
 void vg_toolbar_item_set_checked(vg_toolbar_item_t *item, bool checked) {
-    if (!item)
+    if (!vg_toolbar_item_is_live(item))
         return;
     item->checked = checked;
     if (item->owner) {
@@ -1975,7 +2019,7 @@ void vg_toolbar_item_set_checked(vg_toolbar_item_t *item, bool checked) {
 /// @param item    Item to modify; may be NULL (no-op).
 /// @param tooltip Tooltip string, duplicated internally; may be NULL to clear.
 void vg_toolbar_item_set_tooltip(vg_toolbar_item_t *item, const char *tooltip) {
-    if (!item)
+    if (!vg_toolbar_item_is_live(item))
         return;
     if (item->tooltip)
         free(item->tooltip);
@@ -1991,7 +2035,7 @@ void vg_toolbar_item_set_tooltip(vg_toolbar_item_t *item, const char *tooltip) {
 /// @param item Item to modify; may be NULL (no-op).
 /// @param text New label string, duplicated internally; may be NULL to clear.
 void vg_toolbar_item_set_text(vg_toolbar_item_t *item, const char *text) {
-    if (!item)
+    if (!vg_toolbar_item_is_live(item))
         return;
     if (item->label)
         free(item->label);
@@ -2008,8 +2052,10 @@ void vg_toolbar_item_set_text(vg_toolbar_item_t *item, const char *text) {
 /// @param item Item to modify; may be NULL (no-op).
 /// @param icon New icon descriptor (ownership transfers; use VG_ICON_NONE to clear).
 void vg_toolbar_item_set_icon(vg_toolbar_item_t *item, vg_icon_t icon) {
-    if (!item)
+    if (!vg_toolbar_item_is_live(item)) {
+        vg_icon_destroy(&icon);
         return;
+    }
     vg_icon_destroy(&item->icon);
     item->icon = icon;
     if (item->owner) {

@@ -41,6 +41,8 @@
 #define TABBAR_DEFAULT_MAX_WIDTH 200.0f
 #define TABBAR_CLOSE_GAP 4.0f
 #define TABBAR_DRAG_THRESHOLD 6.0f
+#define VG_TAB_MAGIC UINT64_C(0x56475441424C4956)
+#define VG_TAB_RETIRED_MAGIC UINT64_C(0x5647544142524554)
 
 //=============================================================================
 // Forward Declarations
@@ -56,6 +58,7 @@ static bool tab_close_button_hit(vg_tabbar_t *tabbar, vg_tab_t *tab, float local
 static void tabbar_sync_hover_tooltip(vg_tabbar_t *tabbar);
 static char *make_tab_title(const vg_tab_t *tab);
 static void tabbar_ensure_tab_visible(vg_tabbar_t *tabbar, vg_tab_t *tab);
+static void free_tab(vg_tab_t *tab);
 
 //=============================================================================
 // TabBar VTable
@@ -72,6 +75,47 @@ static vg_widget_vtable_t g_tabbar_vtable = {.destroy = tabbar_destroy,
 //=============================================================================
 // Helper Functions
 //=============================================================================
+
+bool vg_tab_is_live(const vg_tab_t *tab) {
+    return tab && tab->magic == VG_TAB_MAGIC && tab->owner != NULL;
+}
+
+static void free_tab(vg_tab_t *tab) {
+    if (!tab)
+        return;
+    free((void *)tab->title);
+    free((void *)tab->tooltip);
+    free(tab);
+}
+
+static void retire_tab(vg_tabbar_t *tabbar, vg_tab_t *tab) {
+    if (!tabbar || !tab)
+        return;
+    free((void *)tab->title);
+    tab->title = NULL;
+    free((void *)tab->tooltip);
+    tab->tooltip = NULL;
+    tab->owner = NULL;
+    tab->user_data = NULL;
+    tab->next = NULL;
+    tab->prev = NULL;
+    tab->magic = VG_TAB_RETIRED_MAGIC;
+    tab->retired_next = tabbar->retired_tabs;
+    tabbar->retired_tabs = tab;
+}
+
+static void free_retired_tabs(vg_tabbar_t *tabbar) {
+    if (!tabbar)
+        return;
+    vg_tab_t *tab = tabbar->retired_tabs;
+    while (tab) {
+        vg_tab_t *next = tab->retired_next;
+        tab->retired_next = NULL;
+        free_tab(tab);
+        tab = next;
+    }
+    tabbar->retired_tabs = NULL;
+}
 
 /// @brief Returns the pixel width of @p tab's button including title text, padding, and optional close-button gutter; clamped to max_tab_width.
 static float get_tab_width(vg_tabbar_t *tabbar, vg_tab_t *tab) {
@@ -366,6 +410,7 @@ vg_tabbar_t *vg_tabbar_create(vg_widget_t *parent) {
     tabbar->first_tab = NULL;
     tabbar->last_tab = NULL;
     tabbar->active_tab = NULL;
+    tabbar->retired_tabs = NULL;
     tabbar->tab_count = 0;
 
     tabbar->font = theme->typography.font_regular;
@@ -435,13 +480,10 @@ static void tabbar_destroy(vg_widget_t *widget) {
     vg_tab_t *tab = tabbar->first_tab;
     while (tab) {
         vg_tab_t *next = tab->next;
-        if (tab->title)
-            free((void *)tab->title);
-        if (tab->tooltip)
-            free((void *)tab->tooltip);
-        free(tab);
+        free_tab(tab);
         tab = next;
     }
+    free_retired_tabs(tabbar);
     free(tabbar->saved_tooltip_text);
 }
 
@@ -849,6 +891,7 @@ vg_tab_t *vg_tabbar_add_tab(vg_tabbar_t *tabbar, const char *title, bool closabl
     if (!tab)
         return NULL;
 
+    tab->magic = VG_TAB_MAGIC;
     tab->owner = tabbar;
     tab->title = title ? strdup(title) : strdup("Untitled");
     tab->tooltip = tab->title ? strdup(tab->title) : NULL;
@@ -888,7 +931,7 @@ vg_tab_t *vg_tabbar_add_tab(vg_tabbar_t *tabbar, const char *title, bool closabl
 /// @param tabbar The tab bar that owns the tab.
 /// @param tab    The tab to remove and free.
 void vg_tabbar_remove_tab(vg_tabbar_t *tabbar, vg_tab_t *tab) {
-    if (!tabbar || !tab)
+    if (!tabbar || !vg_tab_is_live(tab) || tab->owner != tabbar)
         return;
 
     // Update active tab if needed
@@ -933,12 +976,7 @@ void vg_tabbar_remove_tab(vg_tabbar_t *tabbar, vg_tab_t *tab) {
     }
     tabbar->tab_count--;
 
-    // Free tab
-    if (tab->title)
-        free((void *)tab->title);
-    if (tab->tooltip)
-        free((void *)tab->tooltip);
-    free(tab);
+    retire_tab(tabbar, tab);
 
     if (active_changed) {
         tabbar->active_change_version++;
@@ -957,6 +995,8 @@ void vg_tabbar_remove_tab(vg_tabbar_t *tabbar, vg_tab_t *tab) {
 /// @param tab    The tab to activate; must belong to this tabbar.
 void vg_tabbar_set_active(vg_tabbar_t *tabbar, vg_tab_t *tab) {
     if (!tabbar || tabbar->active_tab == tab)
+        return;
+    if (tab && (!vg_tab_is_live(tab) || tab->owner != tabbar))
         return;
 
     tabbar->active_tab = tab;
@@ -984,7 +1024,7 @@ vg_tab_t *vg_tabbar_get_active(vg_tabbar_t *tabbar) {
 /// @param tab    The tab to look up.
 /// @return Zero-based index, or -1 if the tab is not found or either arg is NULL.
 int vg_tabbar_get_tab_index(vg_tabbar_t *tabbar, vg_tab_t *tab) {
-    if (!tabbar || !tab)
+    if (!tabbar || !vg_tab_is_live(tab) || tab->owner != tabbar)
         return -1;
     int index = 0;
     for (vg_tab_t *t = tabbar->first_tab; t; t = t->next) {
@@ -1021,7 +1061,7 @@ vg_tab_t *vg_tabbar_get_tab_at(vg_tabbar_t *tabbar, int index) {
 /// @param tab   The tab to update.
 /// @param title New null-terminated title string; NULL defaults to "Untitled".
 void vg_tab_set_title(vg_tab_t *tab, const char *title) {
-    if (!tab)
+    if (!vg_tab_is_live(tab))
         return;
 
     bool tooltip_tracks_title = false;
@@ -1057,7 +1097,7 @@ void vg_tab_set_title(vg_tab_t *tab, const char *title) {
 /// @param tab      The tab to update.
 /// @param modified true to show the modified dot; false to hide it.
 void vg_tab_set_modified(vg_tab_t *tab, bool modified) {
-    if (tab) {
+    if (vg_tab_is_live(tab)) {
         tab->modified = modified;
         if (tab->owner) {
             tab->owner->base.needs_layout = true;
@@ -1071,7 +1111,7 @@ void vg_tab_set_modified(vg_tab_t *tab, bool modified) {
 /// @param tab     The tab to update.
 /// @param tooltip Null-terminated tooltip string; NULL clears the tooltip.
 void vg_tab_set_tooltip(vg_tab_t *tab, const char *tooltip) {
-    if (!tab)
+    if (!vg_tab_is_live(tab))
         return;
 
     if (tab->tooltip)
@@ -1089,7 +1129,7 @@ void vg_tab_set_tooltip(vg_tab_t *tab, const char *tooltip) {
 /// @param tab  The tab to update.
 /// @param data Arbitrary pointer stored on the tab; not owned or freed by the tabbar.
 void vg_tab_set_data(vg_tab_t *tab, void *data) {
-    if (tab) {
+    if (vg_tab_is_live(tab)) {
         tab->user_data = data;
     }
 }

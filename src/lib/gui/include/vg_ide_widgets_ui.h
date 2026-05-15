@@ -50,6 +50,7 @@ typedef enum vg_statusbar_zone {
 
 /// @brief StatusBar item structure
 typedef struct vg_statusbar_item {
+    uint64_t magic;               ///< Live-item sentinel for stale handle detection
     vg_statusbar_item_type_t type; ///< Item type
     struct vg_statusbar *owner;    ///< Owning status bar for invalidation
     char *text;                    ///< Item text (owned)
@@ -60,6 +61,7 @@ typedef struct vg_statusbar_item {
     float progress;                ///< Progress value (0-1) for progress items
     void *user_data;               ///< User data
     void (*on_click)(struct vg_statusbar_item *, void *); ///< Click callback for buttons
+    struct vg_statusbar_item *retired_next; ///< Retired-item list link
 } vg_statusbar_item_t;
 
 /// @brief StatusBar widget structure
@@ -78,6 +80,7 @@ typedef struct vg_statusbar {
     vg_statusbar_item_t **right_items;
     size_t right_count;
     size_t right_capacity;
+    vg_statusbar_item_t *retired_items; ///< Removed items kept until status bar destroy
 
     // Styling
     int height;            ///< StatusBar height
@@ -142,6 +145,11 @@ vg_statusbar_item_t *vg_statusbar_add_separator(vg_statusbar_t *sb, vg_statusbar
 /// @param zone Placement zone.
 /// @return New spacer item, or NULL on failure.
 vg_statusbar_item_t *vg_statusbar_add_spacer(vg_statusbar_t *sb, vg_statusbar_zone_t zone);
+
+/// @brief Return true if a status bar item handle is currently live.
+/// @param item Item handle to test.
+/// @return true when item belongs to a live status bar.
+bool vg_statusbar_item_is_live(const vg_statusbar_item_t *item);
 
 /// @brief Remove and free an item from the status bar.
 /// @param sb   Status bar widget.
@@ -214,6 +222,7 @@ typedef enum vg_toolbar_icon_size {
 
 /// @brief Toolbar item structure
 typedef struct vg_toolbar_item {
+    uint64_t magic;             ///< Live-item sentinel for stale handle detection
     vg_toolbar_item_type_t type; ///< Item type
     struct vg_toolbar *owner;    ///< Owning toolbar for invalidation/popup handling
     char *id;                    ///< Unique identifier
@@ -231,6 +240,7 @@ typedef struct vg_toolbar_item {
     void *user_data;                                           ///< User data
     void (*on_click)(struct vg_toolbar_item *, void *);        ///< Click callback
     void (*on_toggle)(struct vg_toolbar_item *, bool, void *); ///< Toggle callback
+    struct vg_toolbar_item *retired_next; ///< Retired-item list link
 } vg_toolbar_item_t;
 
 /// @brief Toolbar widget structure
@@ -240,6 +250,7 @@ typedef struct vg_toolbar {
     vg_toolbar_item_t **items; ///< Array of items
     size_t item_count;         ///< Number of items
     size_t item_capacity;      ///< Allocated capacity
+    vg_toolbar_item_t *retired_items; ///< Removed items kept until toolbar destroy
 
     // Configuration
     vg_toolbar_orientation_t orientation; ///< Orientation
@@ -352,6 +363,11 @@ void vg_toolbar_remove_item_ptr(vg_toolbar_t *tb, vg_toolbar_item_t *item);
 /// @param id Identifier to search for.
 /// @return Matching toolbar item, or NULL if not found.
 vg_toolbar_item_t *vg_toolbar_get_item(vg_toolbar_t *tb, const char *id);
+
+/// @brief Return true if a toolbar item handle is currently live.
+/// @param item Item handle to test.
+/// @return true when item belongs to a live toolbar.
+bool vg_toolbar_item_is_live(const vg_toolbar_item_t *item);
 
 /// @brief Enable or disable a toolbar item.
 /// @param item    Toolbar item.

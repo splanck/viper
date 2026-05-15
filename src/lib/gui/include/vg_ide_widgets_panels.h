@@ -32,6 +32,7 @@ extern "C" {
 
 /// @brief Tab structure
 typedef struct vg_tab {
+    uint64_t magic;      ///< Live-tab sentinel for stale handle detection
     struct vg_tabbar *owner; ///< Owning tab bar for invalidation/reorder
     const char *title;   ///< Tab title (owned)
     const char *tooltip; ///< Tab tooltip (owned)
@@ -40,6 +41,7 @@ typedef struct vg_tab {
     bool modified;       ///< Show modified indicator
     struct vg_tab *next;
     struct vg_tab *prev;
+    struct vg_tab *retired_next; ///< Retired-tab list link
 } vg_tab_t;
 
 /// @brief Tab callbacks
@@ -57,6 +59,7 @@ typedef struct vg_tabbar {
     vg_tab_t *first_tab;  ///< First tab
     vg_tab_t *last_tab;   ///< Last tab
     vg_tab_t *active_tab; ///< Currently active tab
+    vg_tab_t *retired_tabs; ///< Removed tabs kept until tabbar destroy for stale handle checks
     int tab_count;        ///< Number of tabs
 
     vg_font_t *font; ///< Font for rendering
@@ -116,6 +119,11 @@ vg_tabbar_t *vg_tabbar_create(vg_widget_t *parent);
 /// @param closable true if the tab should show a close button.
 /// @return Newly added tab, or NULL on failure.
 vg_tab_t *vg_tabbar_add_tab(vg_tabbar_t *tabbar, const char *title, bool closable);
+
+/// @brief Return true if a tab handle is still live and owned by a tab bar.
+/// @param tab Tab handle to test.
+/// @return true when the handle points at a currently live tab.
+bool vg_tab_is_live(const vg_tab_t *tab);
 
 /// @brief Remove and destroy a tab.
 /// @param tabbar Tab bar widget.

@@ -45,15 +45,26 @@ typedef struct {
     int64_t whole_word;
     int64_t regex;
     int64_t replace_mode;
+    const vg_widget_vtable_t *original_vtable;
+    vg_widget_vtable_t vtable;
 } rt_findbar_data_t;
 
 static rt_findbar_data_t *rt_findbar_checked(void *bar) {
     rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
-    return data && data->bar ? data : NULL;
+    return data && data->bar && vg_widget_is_live(&data->bar->base) ? data : NULL;
 }
 
 static vg_codeeditor_t *rt_findbar_editor_checked(void *editor) {
     return (vg_codeeditor_t *)rt_gui_widget_handle_checked_type(editor, VG_WIDGET_CODEEDITOR);
+}
+
+/// @brief Widget destroy override — clears the runtime wrapper back-pointer before chaining.
+static void rt_findbar_widget_destroy(vg_widget_t *widget) {
+    rt_findbar_data_t *data = widget ? (rt_findbar_data_t *)widget->user_data : NULL;
+    if (data && data->bar == (vg_findreplacebar_t *)widget)
+        data->bar = NULL;
+    if (data && data->original_vtable && data->original_vtable->destroy)
+        data->original_vtable->destroy(widget);
 }
 
 /// @brief Release the find/replace bar widget and free cached text buffers.
@@ -109,6 +120,13 @@ void *rt_findbar_new(void *parent) {
     data->whole_word = 0;
     data->regex = 0;
     data->replace_mode = 0;
+    data->original_vtable = bar->base.vtable;
+    if (data->original_vtable) {
+        data->vtable = *data->original_vtable;
+        data->vtable.destroy = rt_findbar_widget_destroy;
+        bar->base.vtable = &data->vtable;
+        bar->base.user_data = data;
+    }
     rt_obj_set_finalizer(data, rt_findbar_finalize);
     if (parent_widget) {
         vg_widget_add_child(parent_widget, &bar->base);

@@ -491,7 +491,7 @@ void rt_gui_sync_modal_root(rt_gui_app_t *app) {
     int write = 0;
     for (int i = 0; i < app->dialog_count; i++) {
         vg_dialog_t *dlg = app->dialog_stack[i];
-        if (!dlg || !dlg->is_open)
+        if (!dlg || !vg_widget_is_live(&dlg->base) || !dlg->is_open)
             continue;
         app->dialog_stack[write++] = dlg;
         top = dlg;
@@ -739,18 +739,47 @@ static int rt_gui_app_uses_font(rt_gui_app_t *app, vg_font_t *font) {
 int rt_gui_retire_font_if_in_use(vg_font_t *font) {
     if (!font)
         return 0;
+    int used = 0;
     rt_gui_app_t *candidates[2] = {s_active_app, s_current_app};
     for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++) {
         rt_gui_app_t *app = candidates[i];
-        if (app && rt_gui_app_uses_font(app, font))
-            return rt_gui_retire_font(app, font);
+        if (app && rt_gui_app_uses_font(app, font)) {
+            used = 1;
+            rt_gui_retire_font(app, font);
+        }
     }
     for (int i = 0; i < s_registered_app_count; i++) {
         rt_gui_app_t *app = s_registered_apps[i];
-        if (app && rt_gui_app_uses_font(app, font))
-            return rt_gui_retire_font(app, font);
+        if (app && rt_gui_app_uses_font(app, font)) {
+            used = 1;
+            rt_gui_retire_font(app, font);
+        }
     }
-    return 0;
+    return used;
+}
+
+/// @brief Retire a font into every other app that still references it.
+/// @return non-zero when another live app references @p font.
+static int rt_gui_retire_font_in_other_apps(rt_gui_app_t *skip, vg_font_t *font) {
+    if (!font)
+        return 0;
+    int used = 0;
+    rt_gui_app_t *candidates[2] = {s_active_app, s_current_app};
+    for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++) {
+        rt_gui_app_t *app = candidates[i];
+        if (app && app != skip && rt_gui_app_uses_font(app, font)) {
+            used = 1;
+            rt_gui_retire_font(app, font);
+        }
+    }
+    for (int i = 0; i < s_registered_app_count; i++) {
+        rt_gui_app_t *app = s_registered_apps[i];
+        if (app && app != skip && rt_gui_app_uses_font(app, font)) {
+            used = 1;
+            rt_gui_retire_font(app, font);
+        }
+    }
+    return used;
 }
 
 /// @brief Recursively apply a font and size to a widget and all its descendants.
@@ -786,6 +815,9 @@ static void rt_gui_apply_font_to_widget(vg_widget_t *widget, vg_font_t *font, fl
             break;
         case VG_WIDGET_DROPDOWN:
             vg_dropdown_set_font((vg_dropdown_t *)widget, font, size);
+            break;
+        case VG_WIDGET_PROGRESS:
+            vg_progressbar_set_font((vg_progressbar_t *)widget, font, size);
             break;
         case VG_WIDGET_SPINNER:
             vg_spinner_set_font((vg_spinner_t *)widget, font, size);
@@ -971,6 +1003,13 @@ static void rt_gui_inherit_font_to_widget(vg_widget_t *widget, vg_font_t *font, 
             dropdown->font = font;
             dropdown->font_size =
                 size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
+            break;
+        }
+        case VG_WIDGET_PROGRESS: {
+            vg_progressbar_t *progress = (vg_progressbar_t *)widget;
+            progress->font = font;
+            progress->font_size =
+                size > 0 ? size : (theme ? theme->typography.size_small : 12.0f);
             break;
         }
         case VG_WIDGET_SPINNER: {
@@ -1291,12 +1330,15 @@ void rt_gui_app_destroy(void *app_ptr) {
                 break;
             }
         }
-        if (!default_is_retired)
-            vg_font_destroy(app->default_font);
+        if (!default_is_retired) {
+            if (!rt_gui_retire_font_in_other_apps(app, app->default_font))
+                vg_font_destroy(app->default_font);
+        }
         app->default_font = NULL;
     }
     for (int i = 0; i < app->retired_font_count; i++) {
-        if (app->retired_fonts[i])
+        if (app->retired_fonts[i] &&
+            !rt_gui_retire_font_in_other_apps(app, app->retired_fonts[i]))
             vg_font_destroy(app->retired_fonts[i]);
     }
     free(app->retired_fonts);

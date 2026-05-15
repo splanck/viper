@@ -216,7 +216,7 @@ void rt_tabbar_set_active(void *tabbar, void *tab) {
 /// @brief Update the title text of a tab.
 void rt_tab_set_title(void *tab, rt_string title) {
     RT_ASSERT_MAIN_THREAD();
-    if (!tab)
+    if (!vg_tab_is_live((vg_tab_t *)tab))
         return;
     char *ctitle = rt_string_to_cstr(title);
     vg_tab_set_title((vg_tab_t *)tab, ctitle);
@@ -226,7 +226,7 @@ void rt_tab_set_title(void *tab, rt_string title) {
 /// @brief Update the tooltip text of a tab.
 void rt_tab_set_tooltip(void *tab, rt_string tooltip) {
     RT_ASSERT_MAIN_THREAD();
-    if (!tab)
+    if (!vg_tab_is_live((vg_tab_t *)tab))
         return;
     char *ctooltip = rt_string_to_cstr(tooltip);
     vg_tab_set_tooltip((vg_tab_t *)tab, ctooltip);
@@ -236,7 +236,7 @@ void rt_tab_set_tooltip(void *tab, rt_string tooltip) {
 /// @brief Mark a tab as modified (shows an unsaved-changes indicator).
 void rt_tab_set_modified(void *tab, int64_t modified) {
     RT_ASSERT_MAIN_THREAD();
-    if (tab) {
+    if (vg_tab_is_live((vg_tab_t *)tab)) {
         vg_tab_set_modified((vg_tab_t *)tab, modified != 0);
     }
 }
@@ -836,7 +836,10 @@ void rt_slider_set_step(void *slider, double step) {
 /// @brief Create a horizontal progress bar (0.0–1.0 fill range).
 void *rt_progressbar_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
-    return vg_progressbar_create(rt_gui_widget_parent_from_handle(parent));
+    vg_progressbar_t *pb = vg_progressbar_create(rt_gui_widget_parent_from_handle(parent));
+    if (pb)
+        rt_gui_apply_default_font((vg_widget_t *)pb);
+    return pb;
 }
 
 /// @brief Set the value of the progressbar.
@@ -1146,7 +1149,10 @@ void rt_radiobutton_set_selected(void *radio, int64_t selected) {
 /// @brief Create a numeric spinner widget (text field with up/down increment buttons).
 void *rt_spinner_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
-    return vg_spinner_create(rt_gui_widget_parent_from_handle(parent));
+    vg_spinner_t *spinner = vg_spinner_create(rt_gui_widget_parent_from_handle(parent));
+    if (spinner)
+        rt_gui_apply_default_font((vg_widget_t *)spinner);
+    return spinner;
 }
 
 /// @brief Set the value of the spinner.
