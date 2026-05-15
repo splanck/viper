@@ -1142,6 +1142,7 @@ floor_decode_error:
     return -1;
 
 floor_decode_done:
+    ;
 
     // --- Residue decode ---
     float **residue_buf = (float **)calloc((size_t)dec->channels, sizeof(float *));
