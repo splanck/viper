@@ -1710,7 +1710,7 @@ static int8_t textinput_insert_bytes(rt_uitextinput_impl *ti, const char *src, s
         size_t cp_len = ui_utf8_cp_len(src, src_len, accepted);
         if (accepted + cp_len > src_len)
             break;
-        if (ti->text_bytes + (int64_t)cp_len >= RT_UITEXTINPUT_MAX_BYTES)
+        if ((int64_t)cp_len > (RT_UITEXTINPUT_MAX_BYTES - 1) - ti->text_bytes)
             break;
         if (!ti->multiline && (src[accepted] == '\n' || src[accepted] == '\r')) {
             accepted += cp_len;

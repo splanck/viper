@@ -516,6 +516,12 @@ static void *pf_astar(rt_pathfinder_impl *pf,
     if (!pf_in_bounds(pf, sx, sy) || !pf_in_bounds(pf, gx, gy))
         return cost_only ? NULL : rt_list_new();
 
+    // Start or goal not walkable
+    int32_t si = pf_idx(pf, sx, sy);
+    int32_t gi = pf_idx(pf, gx, gy);
+    if (!pf->cells[si].walkable || !pf->cells[gi].walkable)
+        return cost_only ? NULL : rt_list_new();
+
     // Start == goal
     if (sx == gx && sy == gy) {
         pf->last_found = 1;
@@ -541,12 +547,6 @@ static void *pf_astar(rt_pathfinder_impl *pf,
             rt_obj_free(pair);
         return list;
     }
-
-    // Start or goal not walkable
-    int32_t si = pf_idx(pf, sx, sy);
-    int32_t gi = pf_idx(pf, gx, gy);
-    if (!pf->cells[si].walkable || !pf->cells[gi].walkable)
-        return cost_only ? NULL : rt_list_new();
 
     int32_t total = pf->width * pf->height;
     int64_t min_cost = PF_COST_CARDINAL;

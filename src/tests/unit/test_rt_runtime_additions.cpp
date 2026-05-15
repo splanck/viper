@@ -24,6 +24,7 @@
 #include "rt_physics2d.h"
 #include "rt_pixels.h"
 #include "rt_string.h"
+#include "rt_tls.h"
 
 #include <cassert>
 #include <cmath>
@@ -97,6 +98,17 @@ static void test_textinput_unicode_selection_and_limits() {
     rt_uitextinput_select_all(input);
     rt_uitextinput_delete_selection(input);
     assert(str_eq(rt_uitextinput_get_text(input), ""));
+
+    rt_uitextinput_set_max_codepoints(input, 0);
+    char full[512];
+    memset(full, 'x', 511);
+    full[511] = '\0';
+    rt_string full_text = rt_string_from_bytes(full, 511);
+    assert(rt_uitextinput_handle_text(input, full_text) == 1);
+    assert(rt_uitextinput_text_length(input) == 511);
+    rt_str_release_maybe(full_text);
+    assert(rt_uitextinput_handle_text(input, rt_const_cstr("y")) == 0);
+    assert(rt_uitextinput_text_length(input) == 511);
 
     release_obj(input);
     PASS();
@@ -252,6 +264,8 @@ static void test_renderer2d_rotated_texture_paths() {
 
 static void test_animstate_events_and_timeline() {
     TEST("AnimState events and AnimTimeline markers fire deterministically");
+    assert(RT_ANIMTIMELINE_CLASS_ID != RT_TLS_CLASS_ID);
+
     void *state = rt_animstate_new();
     assert(state != nullptr);
     rt_animstate_add_state(state, 1, 0, 3, 1, 0);
@@ -278,6 +292,7 @@ static void test_animstate_events_and_timeline() {
     assert(anim_track == 0);
     assert(tween_track == 1);
     assert(rt_animtimeline_add_marker(timeline, 3, 77) == 0);
+    assert(rt_animtimeline_add_marker(timeline, 8, 88) == 1);
     assert(rt_animtimeline_track_payload_a(timeline, anim_track) == 33);
     assert(rt_animtimeline_track_payload_a(timeline, tween_track) == 5);
     assert(rt_animtimeline_track_payload_b(timeline, tween_track) == 15);
@@ -292,11 +307,32 @@ static void test_animstate_events_and_timeline() {
     rt_animtimeline_set_looping(timeline, 1);
     rt_animtimeline_advance(timeline, 7);
     assert(rt_animtimeline_get_current_frame(timeline) == 0);
+    assert(rt_animtimeline_events_fired_count(timeline) == 1);
+    assert(rt_animtimeline_event_fired_id(timeline, 0) == 88);
     rt_animtimeline_advance(timeline, 3);
     assert(rt_animtimeline_events_fired_count(timeline) == 1);
     assert(rt_animtimeline_event_fired_id(timeline, 0) == 77);
+    rt_animtimeline_advance(timeline, 10);
+    assert(rt_animtimeline_get_current_frame(timeline) == 3);
+    assert(rt_animtimeline_events_fired_count(timeline) == 2);
+    assert(rt_animtimeline_event_fired_id(timeline, 0) == 77);
+    assert(rt_animtimeline_event_fired_id(timeline, 1) == 88);
 
     release_obj(timeline);
+
+    void *long_timeline = rt_animtimeline_new(INT64_MAX);
+    assert(long_timeline != nullptr);
+    int64_t long_track = rt_animtimeline_add_tween_track(
+        long_timeline, rt_const_cstr("long"), INT64_MAX - 4, 10, 0, 1);
+    assert(long_track == 0);
+    rt_animtimeline_play(long_timeline);
+    rt_animtimeline_advance(long_timeline, INT64_MAX - 2);
+    assert(rt_animtimeline_track_is_active(long_timeline, long_track) == 1);
+    assert(rt_animtimeline_track_progress(long_timeline, long_track) > 0.0);
+    rt_animtimeline_advance(long_timeline, INT64_MAX);
+    assert(rt_animtimeline_is_finished(long_timeline) == 1);
+    release_obj(long_timeline);
+
     release_obj(state);
     PASS();
 }

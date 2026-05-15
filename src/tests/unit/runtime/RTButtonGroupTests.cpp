@@ -4,6 +4,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_buttongroup.h"
+#include "rt_object.h"
 #include <cassert>
 #include <csetjmp>
 #include <cstdio>
@@ -11,6 +12,11 @@
 
 static int tests_passed = 0;
 static int tests_failed = 0;
+static int finalizer_calls = 0;
+
+extern "C" void button_group_finalizer(void *) {
+    finalizer_calls++;
+}
 
 //=============================================================================
 // Trap infrastructure — intercepts rt_trap() for EXPECT_TRAP tests
@@ -66,6 +72,15 @@ TEST(create_destroy) {
     ASSERT(rt_buttongroup_selected(bg) == -1);
     ASSERT(rt_buttongroup_has_selection(bg) == 0);
     rt_buttongroup_destroy(bg);
+}
+
+TEST(destroy_releases_object) {
+    finalizer_calls = 0;
+    rt_buttongroup bg = rt_buttongroup_new();
+    ASSERT(bg != NULL);
+    rt_obj_set_finalizer(bg, button_group_finalizer);
+    rt_buttongroup_destroy(bg);
+    ASSERT(finalizer_calls == 1);
 }
 
 TEST(add_buttons) {
@@ -153,6 +168,20 @@ TEST(select_next_prev) {
     rt_buttongroup_destroy(bg);
 }
 
+TEST(single_item_next_prev_does_not_reflag_selection_changed) {
+    rt_buttongroup bg = rt_buttongroup_new();
+    rt_buttongroup_add(bg, 42);
+    ASSERT(rt_buttongroup_select(bg, 42) == 1);
+    rt_buttongroup_clear_changed_flag(bg);
+
+    ASSERT(rt_buttongroup_select_next(bg) == 42);
+    ASSERT(rt_buttongroup_selection_changed(bg) == 0);
+    ASSERT(rt_buttongroup_select_prev(bg) == 42);
+    ASSERT(rt_buttongroup_selection_changed(bg) == 0);
+
+    rt_buttongroup_destroy(bg);
+}
+
 TEST(remove) {
     rt_buttongroup bg = rt_buttongroup_new();
     rt_buttongroup_add(bg, 1);
@@ -195,11 +224,13 @@ TEST(get_at) {
 int main() {
     printf("RTButtonGroupTests:\n");
     RUN_TEST(create_destroy);
+    RUN_TEST(destroy_releases_object);
     RUN_TEST(add_buttons);
     RUN_TEST(select);
     RUN_TEST(select_negative_one_id);
     RUN_TEST(clear_selection);
     RUN_TEST(select_next_prev);
+    RUN_TEST(single_item_next_prev_does_not_reflag_selection_changed);
     RUN_TEST(remove);
     RUN_TEST(get_at);
     RUN_TEST(add_overflow_traps);

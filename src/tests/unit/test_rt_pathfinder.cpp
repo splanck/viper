@@ -115,6 +115,19 @@ static void test_start_equals_goal(void) {
     PASS();
 }
 
+static void test_start_equals_blocked_goal_returns_empty(void) {
+    TEST("Start == blocked goal returns empty");
+    void *pf = rt_pathfinder_new(3, 3);
+    rt_pathfinder_set_walkable(pf, 1, 1, 0);
+    void *path = rt_pathfinder_find_path(pf, 1, 1, 1, 1);
+    assert(path != NULL);
+    assert(rt_list_len(path) == 0);
+    assert(rt_pathfinder_get_last_found(pf) == 0);
+    assert(rt_pathfinder_find_path_length(pf, 1, 1, 1, 1) == -1);
+    assert(rt_pathfinder_get_last_found(pf) == 0);
+    PASS();
+}
+
 static void test_4way_straight_line(void) {
     TEST("4-way straight horizontal path");
     void *pf = rt_pathfinder_new(5, 1);
@@ -371,6 +384,7 @@ int main() {
     test_walkable_default();
     test_set_walkable();
     test_start_equals_goal();
+    test_start_equals_blocked_goal_returns_empty();
     test_4way_straight_line();
     test_4way_manhattan();
     test_8way_diagonal();

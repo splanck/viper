@@ -14,7 +14,7 @@
 extern "C" {
 #endif
 
-#define RT_ANIMTIMELINE_CLASS_ID INT64_C(-0x720101)
+#define RT_ANIMTIMELINE_CLASS_ID INT64_C(-0x51021B)
 
 void *rt_animtimeline_new(int64_t total_duration_frames);
 int64_t rt_animtimeline_add_anim_track(

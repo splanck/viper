@@ -78,7 +78,9 @@ rt_buttongroup rt_buttongroup_new(void) {
 /// @brief Release resources and destroy the buttongroup.
 void rt_buttongroup_destroy(rt_buttongroup group) {
     group = checked_group(group, "ButtonGroup.Destroy: expected Viper.Game.ButtonGroup");
-    (void)group;
+    if (group && rt_obj_release_check0(group)) {
+        rt_obj_free(group);
+    }
 }
 
 /// Find the index of a button in the group.
@@ -243,9 +245,11 @@ int64_t rt_buttongroup_select_next(rt_buttongroup group) {
     int64_t next_index = (current_index + 1) % group->count;
     int64_t next_id = group->buttons[next_index];
 
+    if (!group->has_selection || group->selected != next_id) {
+        group->selection_changed = 1;
+    }
     group->selected = next_id;
     group->has_selection = 1;
-    group->selection_changed = 1;
 
     return next_id;
 }
@@ -266,9 +270,11 @@ int64_t rt_buttongroup_select_prev(rt_buttongroup group) {
     int64_t prev_index = (current_index - 1 + group->count) % group->count;
     int64_t prev_id = group->buttons[prev_index];
 
+    if (!group->has_selection || group->selected != prev_id) {
+        group->selection_changed = 1;
+    }
     group->selected = prev_id;
     group->has_selection = 1;
-    group->selection_changed = 1;
 
     return prev_id;
 }
