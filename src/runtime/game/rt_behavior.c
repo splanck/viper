@@ -20,6 +20,7 @@
 #include "rt_object.h"
 #include "rt_trap.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -251,10 +252,16 @@ void rt_behavior_update(
 
     // 9. Animation loop
     if ((f & BHV_ANIM_LOOP) && b->anim_ms > 0 && b->anim_frames > 0) {
-        b->anim_timer += dt;
-        if (b->anim_timer >= b->anim_ms) {
-            b->anim_timer -= b->anim_ms;
-            b->anim_frame = (b->anim_frame + 1) % b->anim_frames;
+        if (dt > INT64_MAX - b->anim_timer)
+            b->anim_timer = INT64_MAX;
+        else
+            b->anim_timer += dt;
+
+        int64_t steps = b->anim_timer / b->anim_ms;
+        if (steps > 0) {
+            b->anim_timer %= b->anim_ms;
+            b->anim_frame =
+                (b->anim_frame + (steps % b->anim_frames)) % b->anim_frames;
         }
     }
 }

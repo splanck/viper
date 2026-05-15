@@ -612,20 +612,7 @@ void rt_particle_emitter_update(rt_particle_emitter emitter) {
     if (!emitter)
         return;
 
-    // Emit new particles if emitting
-    if (emitter->emitting) {
-        if (!isfinite(emitter->rate_accumulator))
-            emitter->rate_accumulator = 0.0;
-        emitter->rate_accumulator += emitter->rate;
-        if (!isfinite(emitter->rate_accumulator))
-            emitter->rate_accumulator = 0.0;
-        while (emitter->rate_accumulator >= 1.0 && emitter->active_count < emitter->max_particles) {
-            emit_one(emitter);
-            emitter->rate_accumulator -= 1.0;
-        }
-        if (emitter->active_count >= emitter->max_particles)
-            emitter->rate_accumulator = 0.0;
-    }
+    int8_t was_full = emitter->active_count >= emitter->max_particles;
 
     // Update existing particles
     emitter->active_count = 0;
@@ -659,6 +646,24 @@ void rt_particle_emitter_update(rt_particle_emitter emitter) {
             p->active = 0;
         } else {
             emitter->active_count++;
+        }
+    }
+
+    // Emit after aging so newly spawned particles live for a full update tick.
+    if (emitter->emitting) {
+        if (!isfinite(emitter->rate_accumulator) || was_full)
+            emitter->rate_accumulator = 0.0;
+        if (!was_full) {
+            emitter->rate_accumulator += emitter->rate;
+            if (!isfinite(emitter->rate_accumulator))
+                emitter->rate_accumulator = 0.0;
+            while (emitter->rate_accumulator >= 1.0 &&
+                   emitter->active_count < emitter->max_particles) {
+                emit_one(emitter);
+                emitter->rate_accumulator -= 1.0;
+            }
+            if (emitter->active_count >= emitter->max_particles)
+                emitter->rate_accumulator = 0.0;
         }
     }
 }

@@ -28,6 +28,7 @@
 #include "rt_tilemap.h"
 #include "rt_trap.h"
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -70,6 +71,11 @@ static leveldata_impl *checked_leveldata(void *level, const char *api) {
     return (leveldata_impl *)level;
 }
 
+static void leveldata_release_obj(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 static void leveldata_finalizer(void *obj) {
     leveldata_impl *ld = (leveldata_impl *)obj;
     if (!ld || !ld->tilemap)
@@ -88,15 +94,21 @@ void *rt_leveldata_load(void *path) {
     if (!path)
         return NULL;
 
-    // Read file
+    leveldata_impl *ld = NULL;
+    void *root = NULL;
+
     rt_string text = rt_io_file_read_all_text((rt_string)path);
     if (!text)
         return NULL;
-
-    // Parse JSON
-    void *root = rt_json_parse(text);
-    if (!root)
+    if (rt_str_len(text) == 0) {
+        rt_string_unref(text);
         return NULL;
+    }
+
+    root = rt_json_parse(text);
+    rt_string_unref(text);
+    if (!root)
+        goto fail;
 
     // Read dimensions
     int64_t w = rt_jsonpath_get_int(root, rt_const_cstr("width"));
@@ -104,17 +116,16 @@ void *rt_leveldata_load(void *path) {
     int64_t tw = rt_jsonpath_get_int(root, rt_const_cstr("tileWidth"));
     int64_t th = rt_jsonpath_get_int(root, rt_const_cstr("tileHeight"));
     if (w <= 0 || h <= 0)
-        return NULL;
+        goto fail;
     if (tw <= 0)
         tw = 32;
     if (th <= 0)
         th = 32;
 
     // Create level data
-    leveldata_impl *ld =
-        (leveldata_impl *)rt_obj_new_i64(RT_LEVELDATA_CLASS_ID, (int64_t)sizeof(leveldata_impl));
+    ld = (leveldata_impl *)rt_obj_new_i64(RT_LEVELDATA_CLASS_ID, (int64_t)sizeof(leveldata_impl));
     if (!ld)
-        return NULL;
+        goto fail;
     memset(ld, 0, sizeof(leveldata_impl));
     rt_obj_set_finalizer(ld, leveldata_finalizer);
 
@@ -135,6 +146,10 @@ void *rt_leveldata_load(void *path) {
 
     // Create tilemap
     ld->tilemap = rt_tilemap_new(w, h, tw, th);
+    if (!ld->tilemap)
+        goto fail;
+
+    int64_t tile_limit = (w > INT64_MAX / h) ? INT64_MAX : w * h;
 
     // Read tile layers
     void *layers = rt_jsonpath_get(root, rt_const_cstr("layers"));
@@ -155,7 +170,7 @@ void *rt_leveldata_load(void *path) {
             if (!data)
                 continue;
             int64_t dataLen = rt_seq_len(data);
-            for (int64_t i = 0; i < dataLen && i < w * h; i++) {
+            for (int64_t i = 0; i < dataLen && i < tile_limit; i++) {
                 void *val = rt_seq_get(data, i);
                 if (val) {
                     int64_t tile = json_val_to_i64(val);
@@ -199,7 +214,14 @@ void *rt_leveldata_load(void *path) {
         }
     }
 
+    leveldata_release_obj(root);
     return ld;
+
+fail:
+    leveldata_release_obj(root);
+    if (ld)
+        leveldata_release_obj(ld);
+    return NULL;
 }
 
 /// @brief Get the tilemap created from the level's tile layers.

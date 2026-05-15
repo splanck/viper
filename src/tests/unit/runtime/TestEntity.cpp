@@ -45,6 +45,15 @@ TEST(Entity, ApplyGravityCapsMaxFall) {
     EXPECT_EQ(rt_entity_get_vy(e), 1350); // Capped at max_fall
 }
 
+TEST(Entity, ApplyGravityNegativeDeltaIsNoOp) {
+    void *e = rt_entity_new(0, 0, 10, 10);
+    rt_entity_set_vy(e, 100);
+
+    rt_entity_apply_gravity(e, 78, 1350, -16);
+
+    EXPECT_EQ(rt_entity_get_vy(e), 100);
+}
+
 TEST(Entity, MoveWithoutTilemap) {
     void *e = rt_entity_new(10000, 20000, 16, 16); // (100, 200) in pixels
     rt_entity_set_vx(e, 500);                      // 5 px/frame in centipixels
@@ -52,6 +61,19 @@ TEST(Entity, MoveWithoutTilemap) {
     rt_entity_move_and_collide(e, nullptr, 16);    // dt = DT_BASE
     EXPECT_EQ(rt_entity_get_x(e), 10000 + 500);    // moved by vx
     EXPECT_EQ(rt_entity_get_y(e), 20000 - 200);    // moved by vy
+}
+
+TEST(Entity, MoveAndCollideNegativeDeltaIsNoOp) {
+    void *e = rt_entity_new(10000, 20000, 16, 16);
+    rt_entity_set_vx(e, 500);
+    rt_entity_set_vy(e, -200);
+
+    rt_entity_move_and_collide(e, nullptr, -16);
+
+    EXPECT_EQ(rt_entity_get_x(e), 10000);
+    EXPECT_EQ(rt_entity_get_y(e), 20000);
+    EXPECT_EQ(rt_entity_get_vx(e), 500);
+    EXPECT_EQ(rt_entity_get_vy(e), -200);
 }
 
 TEST(Entity, MoveWithTilemapPreservesSubpixelRemainder) {

@@ -55,7 +55,7 @@ Simple particle system for visual effects like explosions, sparks, smoke, and ot
 | `DrawAt(canvas, offsetX, offsetY)`          | `Integer(Canvas,Int,Int)`      | Draw all particles with position offset |
 | `DrawToPixels(pixels, offsetX, offsetY)`    | `Integer(Pixels,Int,Int)`      | Alpha-blend all particles into a Pixels buffer |
 | `Destroy()`                                 | `Void()`                       | Release the emitter handle when finished |
-| `Update()`                                  | `Void()`                       | Update all particles (call per frame)|
+| `Update()`                                  | `Void()`                       | Age particles and emit new particles (call per frame)|
 
 ### Zia Example
 

@@ -28,6 +28,7 @@ JSON-based level loader that parses tilemap data and entity spawn objects from a
 ## API
 
 ### LevelData.Load(path) -> LevelData?
+Loads a JSON level file, returning `null` for empty files, invalid dimensions, or allocation failure.
 ### Properties
 - `Tilemap` — The parsed Tilemap object
 - `ObjectCount` — Number of objects in the level

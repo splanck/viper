@@ -11,6 +11,7 @@
 
 extern "C" {
 #include "rt_config.h"
+#include "rt_object.h"
 #include "rt_string.h"
 }
 
@@ -32,6 +33,11 @@ static void write_file(const std::string &path, const char *contents) {
     if (contents && *contents)
         std::fwrite(contents, 1, std::strlen(contents), f);
     std::fclose(f);
+}
+
+static void release_obj(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
 }
 
 TEST(GameConfig, MissingFileReturnsNull) {
@@ -62,8 +68,24 @@ TEST(GameConfig, ValidFileLoadsAndDefaultsMissingKeys) {
     EXPECT_EQ(rt_config_get_bool(cfg, rt_const_cstr("debug.enabled"), 0), 1);
     EXPECT_EQ(rt_config_get_int(cfg, rt_const_cstr("game.startLevel"), 1), 3);
     EXPECT_EQ(rt_config_get_int(cfg, rt_const_cstr("missing.value"), 42), 42);
+    release_obj(cfg);
 
     std::remove(path.c_str());
+}
+
+TEST(GameConfig, MissingStringReturnsProvidedDefault) {
+    void *cfg = rt_config_from_string(rt_const_cstr("{\"player\":{\"name\":\"Ada\"}}"));
+    ASSERT_TRUE(cfg != nullptr);
+
+    auto fallback = rt_const_cstr("fallback");
+    auto missing =
+        (rt_string)rt_config_get_str(cfg, rt_const_cstr("player.title"), (void *)fallback);
+    auto present =
+        (rt_string)rt_config_get_str(cfg, rt_const_cstr("player.name"), (void *)fallback);
+
+    EXPECT_EQ(std::strcmp(rt_string_cstr(missing), "fallback"), 0);
+    EXPECT_EQ(std::strcmp(rt_string_cstr(present), "Ada"), 0);
+    release_obj(cfg);
 }
 
 int main() {

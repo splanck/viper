@@ -27,6 +27,19 @@ typedef struct {
     void *json_root;
 } config_impl;
 
+static void config_release_obj(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static void config_finalizer(void *obj) {
+    config_impl *cfg = (config_impl *)obj;
+    if (!cfg || !cfg->json_root)
+        return;
+    config_release_obj(cfg->json_root);
+    cfg->json_root = NULL;
+}
+
 static config_impl *checked_config(void *cfg, const char *api) {
     if (!cfg)
         return NULL;
@@ -52,12 +65,20 @@ void *rt_config_load(void *path) {
         return NULL;
 
     void *bytes = rt_file_read_bytes((rt_string)path);
-    if (rt_bytes_len(bytes) == 0)
+    if (!bytes)
         return NULL;
+    if (rt_bytes_len(bytes) == 0) {
+        config_release_obj(bytes);
+        return NULL;
+    }
 
     rt_string text = rt_bytes_to_str(bytes);
-    if (!text || rt_str_len(text) == 0)
+    config_release_obj(bytes);
+    if (!text || rt_str_len(text) == 0) {
+        if (text)
+            rt_string_unref(text);
         return NULL;
+    }
 
     void *root = rt_json_parse((rt_string)text);
     rt_string_unref(text);
@@ -65,9 +86,12 @@ void *rt_config_load(void *path) {
         return NULL;
 
     config_impl *cfg = (config_impl *)rt_obj_new_i64(RT_CONFIG_CLASS_ID, (int64_t)sizeof(config_impl));
-    if (!cfg)
+    if (!cfg) {
+        config_release_obj(root);
         return NULL;
+    }
     memset(cfg, 0, sizeof(config_impl));
+    rt_obj_set_finalizer(cfg, config_finalizer);
     cfg->json_root = root;
     return cfg;
 }
@@ -81,9 +105,12 @@ void *rt_config_from_string(void *json_str) {
         return NULL;
 
     config_impl *cfg = (config_impl *)rt_obj_new_i64(RT_CONFIG_CLASS_ID, (int64_t)sizeof(config_impl));
-    if (!cfg)
+    if (!cfg) {
+        config_release_obj(root);
         return NULL;
+    }
     memset(cfg, 0, sizeof(config_impl));
+    rt_obj_set_finalizer(cfg, config_finalizer);
     cfg->json_root = root;
     return cfg;
 }
@@ -111,6 +138,9 @@ void *rt_config_get_str(void *cfg, void *path, void *default_val) {
     if (!c)
         return default_val;
     if (!c->json_root)
+        return default_val;
+    void *found = rt_jsonpath_get(c->json_root, (rt_string)path);
+    if (!found)
         return default_val;
     void *val = rt_jsonpath_get_str(c->json_root, (rt_string)path);
     if (!val)

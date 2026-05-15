@@ -1781,6 +1781,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_config PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_config test_rt_config)
 
+    viper_add_test(test_rt_leveldata ${VIPER_TESTS_DIR}/unit/runtime/TestLevelData.cpp)
+    target_link_libraries(test_rt_leveldata PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_leveldata test_rt_leveldata)
+
     viper_add_test(test_rt_soundbank ${VIPER_TESTS_DIR}/runtime/RTSoundBankTests.cpp)
     target_link_libraries(test_rt_soundbank PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_soundbank test_rt_soundbank)

@@ -56,6 +56,18 @@ TEST(Behavior, AnimLoopAdvances) {
     EXPECT_EQ(rt_behavior_anim_frame(b), 2);
 }
 
+TEST(Behavior, AnimLoopConsumesLargeDelta) {
+    void *e = rt_entity_new(10000, 10000, 16, 16);
+    void *b = rt_behavior_new();
+    rt_behavior_add_anim_loop(b, 4, 50);
+
+    rt_behavior_update(b, e, nullptr, 0, 0, 175);
+    EXPECT_EQ(rt_behavior_anim_frame(b), 3);
+
+    rt_behavior_update(b, e, nullptr, 0, 0, 25);
+    EXPECT_EQ(rt_behavior_anim_frame(b), 0);
+}
+
 TEST(Behavior, InvalidAnimLoopConfigDoesNotDivideByZero) {
     void *e = rt_entity_new(10000, 10000, 16, 16);
     void *b = rt_behavior_new();

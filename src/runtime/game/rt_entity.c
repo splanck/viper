@@ -432,7 +432,7 @@ static void entity_sweep_y(
 /// @brief Apply downward gravitational acceleration, clamped to max_fall terminal velocity.
 void rt_entity_apply_gravity(void *ent, int64_t gravity, int64_t max_fall, int64_t dt) {
     entity_impl *e = checked_entity(ent, "Entity.ApplyGravity: expected Viper.Game.Entity");
-    if (!e)
+    if (!e || dt <= 0)
         return;
     e->vy = entity_saturating_add(e->vy, entity_scaled_delta(gravity, dt));
     if (e->vy > max_fall)
@@ -450,7 +450,7 @@ void rt_entity_apply_gravity(void *ent, int64_t gravity, int64_t max_fall, int64
 ///          velocity component on collision. Positions are in centipixels (÷100 for px).
 void rt_entity_move_and_collide(void *ent, void *tilemap, int64_t dt) {
     entity_impl *e = checked_entity(ent, "Entity.MoveAndCollide: expected Viper.Game.Entity");
-    if (!e)
+    if (!e || dt <= 0)
         return;
 
     // Reset collision flags

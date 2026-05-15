@@ -135,6 +135,18 @@ TEST(SceneManager, DuplicateSceneNamesAreIgnored) {
     EXPECT_TRUE(rt_scenemanager_is_scene(mgr, (void *)rt_const_cstr("menu")));
 }
 
+TEST(SceneManager, LongSceneNamesCanBeSwitchedByOriginalName) {
+    const char *longName = "gameplay_checkpoint_after_tutorial_wave_three";
+    void *mgr = rt_scenemanager_new();
+    rt_scenemanager_add(mgr, (void *)rt_const_cstr("menu"));
+    rt_scenemanager_add(mgr, (void *)rt_const_cstr(longName));
+
+    rt_scenemanager_switch(mgr, (void *)rt_const_cstr(longName));
+
+    EXPECT_TRUE(rt_scenemanager_is_scene(mgr, (void *)rt_const_cstr(longName)));
+    EXPECT_EQ(std::strcmp(rt_string_cstr((rt_string)rt_scenemanager_current(mgr)), longName), 0);
+}
+
 int main() {
     return viper_test::run_all_tests();
 }

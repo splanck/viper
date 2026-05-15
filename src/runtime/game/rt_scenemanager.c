@@ -18,9 +18,10 @@
 #include <string.h>
 
 #define SM_MAX_SCENES 16
+#define SM_SCENE_NAME_MAX 128
 
 typedef struct {
-    char name[32];
+    char name[SM_SCENE_NAME_MAX];
     int8_t active;
 } sm_scene_t;
 
@@ -49,7 +50,20 @@ static scenemanager_impl *checked_scenemanager(void *mgr, const char *api) {
     return (scenemanager_impl *)mgr;
 }
 
+static int scene_name_from_handle(void *name, char out[SM_SCENE_NAME_MAX]) {
+    if (!name || !out)
+        return 0;
+    const char *cname = rt_string_cstr((rt_string)name);
+    if (!cname)
+        return 0;
+    strncpy(out, cname, SM_SCENE_NAME_MAX - 1);
+    out[SM_SCENE_NAME_MAX - 1] = '\0';
+    return 1;
+}
+
 static int find_scene(scenemanager_impl *sm, const char *name) {
+    if (!sm || !name)
+        return -1;
     for (int32_t i = 0; i < sm->count; i++) {
         if (strcmp(sm->scenes[i].name, name) == 0)
             return i;
@@ -81,14 +95,14 @@ void rt_scenemanager_add(void *mgr, void *name) {
         return;
     if (sm->count >= SM_MAX_SCENES)
         return;
-    const char *cname = rt_string_cstr((rt_string)name);
-    if (!cname)
+    char cname[SM_SCENE_NAME_MAX];
+    if (!scene_name_from_handle(name, cname))
         return;
     if (find_scene(sm, cname) >= 0)
         return;
     sm_scene_t *s = &sm->scenes[sm->count++];
-    strncpy(s->name, cname, 31);
-    s->name[31] = '\0';
+    strncpy(s->name, cname, SM_SCENE_NAME_MAX - 1);
+    s->name[SM_SCENE_NAME_MAX - 1] = '\0';
     s->active = 1;
     // Auto-set first scene as current if none
     if (sm->current < 0) {
@@ -103,7 +117,9 @@ void rt_scenemanager_switch(void *mgr, void *name) {
         checked_scenemanager(mgr, "SceneManager.Switch: expected Viper.Game.SceneManager");
     if (!sm || !name)
         return;
-    const char *cname = rt_string_cstr((rt_string)name);
+    char cname[SM_SCENE_NAME_MAX];
+    if (!scene_name_from_handle(name, cname))
+        return;
     int idx = find_scene(sm, cname);
     if (idx < 0 || idx == sm->current)
         return;
@@ -124,7 +140,9 @@ void rt_scenemanager_switch_transition(void *mgr, void *name, int64_t duration_m
         checked_scenemanager(mgr, "SceneManager.SwitchTransition: expected Viper.Game.SceneManager");
     if (!sm || !name)
         return;
-    const char *cname = rt_string_cstr((rt_string)name);
+    char cname[SM_SCENE_NAME_MAX];
+    if (!scene_name_from_handle(name, cname))
+        return;
     int idx = find_scene(sm, cname);
     if (idx < 0 || idx == sm->current || (sm->transitioning && idx == sm->next_scene))
         return;
@@ -191,7 +209,9 @@ int8_t rt_scenemanager_is_scene(void *mgr, void *name) {
         return 0;
     if (sm->current < 0)
         return 0;
-    const char *cname = rt_string_cstr((rt_string)name);
+    char cname[SM_SCENE_NAME_MAX];
+    if (!scene_name_from_handle(name, cname))
+        return 0;
     return strcmp(sm->scenes[sm->current].name, cname) == 0;
 }
 

@@ -112,6 +112,21 @@ TEST(continuous_emission) {
     rt_particle_emitter_destroy(pe);
 }
 
+TEST(continuous_lifetime_one_survives_spawn_tick) {
+    rt_particle_emitter pe = rt_particle_emitter_new(10);
+    rt_particle_emitter_set_lifetime(pe, 1, 1);
+    rt_particle_emitter_set_velocity(pe, 0.0, 0.0, 0.0, 0.0);
+    rt_particle_emitter_set_rate(pe, 1.0);
+    rt_particle_emitter_start(pe);
+
+    rt_particle_emitter_update(pe);
+    ASSERT(rt_particle_emitter_count(pe) == 1);
+
+    rt_particle_emitter_update(pe);
+    ASSERT(rt_particle_emitter_count(pe) == 1);
+    rt_particle_emitter_destroy(pe);
+}
+
 TEST(max_particles) {
     rt_particle_emitter pe = rt_particle_emitter_new(20); // Max 20
     rt_particle_emitter_set_lifetime(pe, 100, 100);
@@ -297,6 +312,7 @@ int main() {
     RUN_TEST(update_lifetime);
     RUN_TEST(clear);
     RUN_TEST(continuous_emission);
+    RUN_TEST(continuous_lifetime_one_survives_spawn_tick);
     RUN_TEST(max_particles);
     RUN_TEST(draw_null_safety);
     RUN_TEST(draw_to_pixels_null_safety);
