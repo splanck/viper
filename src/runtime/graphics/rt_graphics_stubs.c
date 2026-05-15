@@ -1756,6 +1756,14 @@ int64_t rt_canvas_get_delta_time(void *canvas) {
     RT_GRAPHICS_TRAP_RET("Canvas.DeltaTime: graphics support not compiled in", 0);
 }
 
+/// @brief Get the delta time value in seconds.
+/// @param canvas
+/// @return Result value.
+double rt_canvas_get_delta_time_sec(void *canvas) {
+    (void)canvas;
+    RT_GRAPHICS_TRAP_RET("Canvas.DeltaTimeSec: graphics support not compiled in", 0.0);
+}
+
 /// @brief Set the dt max value.
 /// @param canvas
 /// @param max_ms
@@ -2168,6 +2176,12 @@ int64_t rt_canvas3d_get_fps(void *o) {
 int64_t rt_canvas3d_get_delta_time(void *o) {
     (void)o;
     return 0;
+}
+
+/// @brief Get the delta time of the canvas3d in seconds.
+double rt_canvas3d_get_delta_time_sec(void *o) {
+    (void)o;
+    return 0.0;
 }
 
 /// @brief Stub for `Canvas3D.SetDtMax` — would normally cap the maximum

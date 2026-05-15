@@ -74,6 +74,8 @@ int64_t rt_canvas3d_get_height(void *obj);
 int64_t rt_canvas3d_get_fps(void *obj);
 /// @brief Get the wall-clock milliseconds since the previous Flip (first frame returns 0).
 int64_t rt_canvas3d_get_delta_time(void *obj);
+/// @brief Get the wall-clock seconds since the previous Flip (first frame returns 0.0).
+double rt_canvas3d_get_delta_time_sec(void *obj);
 /// @brief Cap the per-frame delta time (smooths spikes after pause/breakpoint).
 void rt_canvas3d_set_dt_max(void *obj, int64_t max_ms);
 /// @brief Bind or clear a Light3D slot; the canvas retains the assigned light until replaced.

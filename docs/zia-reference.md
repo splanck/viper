@@ -57,7 +57,7 @@ bind "path/to/module";
 
 // Global variable declarations
 var globalVar: Type = value;
-final CONSTANT = value;
+final CONSTANT = value;       // Compile-time constant or runtime-initialized immutable global
 
 // Type declarations (class, struct, interface)
 class MyClass { ... }
@@ -428,6 +428,7 @@ object.method()         // Call method
 ```viper
 object?.field           // Null if object is null, otherwise optional field value
 object?.field?.subfield // Chained optional access
+object?.method(args)    // Calls method only when object is non-null
 value ?? defaultValue   // Returns defaultValue if value is null
 value!                  // Force-unwrap: converts T? to T, traps if null
 ```
@@ -435,7 +436,11 @@ value!                  // Force-unwrap: converts T? to T, traps if null
 Optional chaining uses the same field and property lookup rules as normal member
 access. It supports stored fields, readable computed properties, runtime
 properties, string `Length`, and collection count aliases such as `Count`,
-`Length`, `Len`, `count`, `length`, and `size`.
+`Length`, `Len`, `count`, `length`, and `size`. It also supports method calls
+on optional struct, class, and interface receivers; non-null calls return the
+method result wrapped as an optional unless it is already optional, while null
+receivers skip the call and return null. Optional calls to `Void` methods simply
+no-op when the receiver is null.
 
 The force-unwrap operator `!` asserts that an optional value is non-null and extracts
 the inner value. If the value is null at runtime, the program terminates. Use after
@@ -725,7 +730,7 @@ The `is` expression returns a `Boolean`. It is polymorphic: `obj is Base` return
 var name = value;                   // Type inferred
 var name: Type = value;             // Explicit type
 var name: Type;                     // Default initialized
-final name = value;                 // Immutable
+final name = value;                 // Immutable local
 ```
 
 ### Expression Statement
@@ -1121,7 +1126,8 @@ Aliases are resolved during semantic analysis and have no runtime representation
 
 ```viper
 var globalName: Type = initialValue;
-final CONSTANT = value;
+final CONSTANT = value;             // Scalar constants may be folded at compile time
+final ITEMS: List[String] = ["a"];  // Aggregate/object finals initialize once at startup
 ```
 
 ---

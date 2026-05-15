@@ -344,6 +344,113 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr) {
     return {resultValue, resultIlType};
 }
 
+LowerResult Lowerer::lowerOptionalMethodCall(OptionalChainExpr *callee, CallExpr *expr) {
+    auto base = lowerExpr(callee->base.get());
+    TypeRef baseType = sema_.typeOf(callee->base.get());
+    if (!baseType || baseType->kind != TypeKindSem::Optional || !baseType->innerType()) {
+        return {Value::null(), Type(Type::Kind::Ptr)};
+    }
+
+    MethodDecl *method = sema_.resolvedMethodDecl(expr);
+    TypeRef receiverType = baseType->innerType();
+    std::string ownerType = sema_.resolvedMethodOwnerType(expr);
+    if (ownerType.empty() && receiverType)
+        ownerType = receiverType->name;
+    std::string slotKey = sema_.resolvedMethodSlotKey(expr);
+
+    TypeRef methodType = method ? sema_.getMethodType(ownerType, method) : nullptr;
+    TypeRef methodReturnType = methodType && methodType->kind == TypeKindSem::Function
+                                   ? methodType->returnType()
+                                   : types::voidType();
+    TypeRef resultType = sema_.typeOf(expr);
+    Type resultIlType = resultType ? mapType(resultType) : mapType(methodReturnType);
+    bool returnsVoid = methodReturnType && methodReturnType->kind == TypeKindSem::Void;
+
+    Value resultSlot;
+    if (!returnsVoid) {
+        unsigned resultSlotId = nextTempId();
+        il::core::Instr resultAlloca;
+        resultAlloca.result = resultSlotId;
+        resultAlloca.op = Opcode::Alloca;
+        resultAlloca.type = Type(Type::Kind::Ptr);
+        resultAlloca.operands = {Value::constInt(8)};
+        resultAlloca.loc = curLoc_;
+        blockMgr_.currentBlock()->instructions.push_back(resultAlloca);
+        resultSlot = Value::temp(resultSlotId);
+    }
+
+    unsigned ptrSlotId = nextTempId();
+    il::core::Instr ptrSlotInstr;
+    ptrSlotInstr.result = ptrSlotId;
+    ptrSlotInstr.op = Opcode::Alloca;
+    ptrSlotInstr.type = Type(Type::Kind::Ptr);
+    ptrSlotInstr.operands = {Value::constInt(8)};
+    ptrSlotInstr.loc = curLoc_;
+    blockMgr_.currentBlock()->instructions.push_back(ptrSlotInstr);
+    Value ptrSlot = Value::temp(ptrSlotId);
+
+    emitStore(ptrSlot, base.value, base.type);
+    Value ptrAsI64 = emitLoad(ptrSlot, Type(Type::Kind::I64));
+    Value isNull = emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), ptrAsI64, Value::constInt(0));
+
+    size_t hasValueIdx = createBlock("optmethod_has");
+    size_t isNullIdx = createBlock("optmethod_null");
+    size_t mergeIdx = createBlock("optmethod_merge");
+    emitCBr(isNull, isNullIdx, hasValueIdx);
+
+    setBlock(isNullIdx);
+    if (!returnsVoid) {
+        Type nullStoreType =
+            resultIlType.kind == Type::Kind::Str ? Type(Type::Kind::Ptr) : resultIlType;
+        emitStore(resultSlot, Value::null(), nullStoreType);
+    }
+    emitBr(mergeIdx);
+
+    setBlock(hasValueIdx);
+    Value receiver = base.value;
+    if (receiverType && receiverType->kind == TypeKindSem::Struct)
+        receiver = emitOptionalUnwrap(base.value, receiverType).value;
+
+    LowerResult callResult{Value::constInt(0), Type(Type::Kind::Void)};
+    if (receiverType && receiverType->kind == TypeKindSem::Interface) {
+        auto ifaceIt = interfaceTypes_.find(receiverType->name);
+        if (ifaceIt != interfaceTypes_.end()) {
+            callResult = lowerInterfaceMethodCall(ifaceIt->second,
+                                                  slotKey,
+                                                  ownerType,
+                                                  method,
+                                                  receiver,
+                                                  expr);
+        }
+    } else if (receiverType && receiverType->kind == TypeKindSem::Class && method &&
+               !method->isStatic) {
+        if (const ClassTypeInfo *entityInfo = getOrCreateClassTypeInfo(receiverType->name)) {
+            callResult =
+                lowerVirtualMethodCall(*entityInfo, slotKey, ownerType, method, receiver, expr);
+        }
+    } else {
+        callResult = lowerMethodCall(method, ownerType, receiver, expr);
+    }
+
+    if (!returnsVoid) {
+        Value optionalValue = methodReturnType && methodReturnType->kind == TypeKindSem::Optional
+                                  ? callResult.value
+                                  : emitOptionalWrap(callResult.value, methodReturnType);
+        emitStore(resultSlot, optionalValue, resultIlType);
+        consumeDeferred(optionalValue);
+    }
+    emitBr(mergeIdx);
+
+    setBlock(mergeIdx);
+    if (returnsVoid)
+        return {Value::constInt(0), Type(Type::Kind::Void)};
+
+    Value resultValue = emitLoad(resultSlot, resultIlType);
+    if (needsRelease(resultType))
+        deferRelease(resultValue, isStringType(resultType));
+    return {resultValue, resultIlType};
+}
+
 //=============================================================================
 // Try Expression Lowering
 //=============================================================================

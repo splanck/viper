@@ -1,0 +1,32 @@
+module RuntimeTest49;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+class Holder {
+    expose Integer value;
+
+    expose func init(v: Integer) {
+        value = v;
+    }
+
+    expose func add(n: Integer) -> Integer {
+        return value + n;
+    }
+}
+
+final WORDS: List[String] = ["alpha", "beta"];
+final NUMBERS: List[Integer] = [2, 3, 5];
+final SCORES: Map[String, Integer] = {"home": 4, "away": 2};
+final BOX: Holder = new Holder(10);
+
+func start() {
+    assertEqInt(NUMBERS.count(), 3, "final_list_count");
+    assertEqInt(NUMBERS[0] + NUMBERS[2], 7, "final_list_index");
+    assertEqStr(WORDS[1], "beta", "final_string_list_index");
+    assertEqInt(SCORES.get("home") ?? -1, 4, "final_map_lookup");
+    assertEqInt(BOX.add(5), 15, "final_object_initializer");
+
+    report();
+}

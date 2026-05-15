@@ -376,6 +376,9 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
         std::string ownerType = sema_.resolvedMethodOwnerType(expr);
         std::string slotKey = sema_.resolvedMethodSlotKey(expr);
 
+        if (auto *optionalCallee = dynamic_cast<OptionalChainExpr *>(expr->callee.get()))
+            return lowerOptionalMethodCall(optionalCallee, expr);
+
         if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get())) {
             if (fieldExpr->base->kind == ExprKind::SuperExpr) {
                 Value selfPtr;

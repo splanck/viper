@@ -23,6 +23,8 @@ last-verified: 2026-05-15
 | Property      | Type    | Description                                        |
 |---------------|---------|----------------------------------------------------|
 | `DeltaTime`   | Integer | Milliseconds elapsed between last two `Flip()` calls, rounded to the nearest millisecond (first frame may be `0`) |
+| `DeltaTimeMs` | Integer | Explicit millisecond alias for `DeltaTime` |
+| `DeltaTimeSec` | Number | Seconds elapsed between last two `Flip()` calls, using the same clamp as `DeltaTime` |
 | `Height`      | Integer | Canvas height in pixels                            |
 | `ShouldClose` | Integer | Non-zero if the user requested to close the canvas |
 | `Width`       | Integer | Canvas width in pixels                             |
@@ -79,7 +81,7 @@ last-verified: 2026-05-15
 | `SavePng(path)`                       | `Integer(String)`                     | Saves canvas to PNG file (returns 1 on success)            |
 | `Screenshot()`                        | `Pixels()`                            | Captures entire canvas contents to a Pixels buffer         |
 | `SetClipRect(x, y, w, h)`             | `Void(Integer...)`                    | Sets clipping rectangle; all drawing is constrained to it  |
-| `SetDTMax(max)`                        | `Void(Integer)`                       | Set maximum DeltaTime clamp in ms. After startup, `DeltaTime` auto-clamps to `[1, max]` |
+| `SetDTMax(max)`                        | `Void(Integer)`                       | Set maximum DeltaTime clamp in ms. After startup, `DeltaTime`/`DeltaTimeMs` auto-clamp to `[1, max]`; `DeltaTimeSec` reports the clamped value divided by 1000 |
 | `SetFps(fps)`                         | `Void(Integer)`                       | Set the target frame rate (-1 = unlimited)                 |
 | `SetTitle(title)`                     | `Void(String)`                        | Changes the window title at runtime                        |
 | `Text(x, y, text, color)`             | `Void(Integer, Integer, String, Integer)` | Draws text at (x, y) with the specified color          |
@@ -401,7 +403,8 @@ LOOP
 
 `BeginFrame()` and `SetDTMax()` simplify the standard game loop pattern. Instead of
 manually calling `Poll()` and checking `ShouldClose`, use `BeginFrame()` which combines
-both steps into a single call. `SetDTMax()` clamps the `DeltaTime` property to prevent
+both steps into a single call. `SetDTMax()` clamps the `DeltaTime`, `DeltaTimeMs`,
+and `DeltaTimeSec` properties to prevent
 physics explosions after lag spikes or window drags.
 
 ```rust
@@ -416,7 +419,7 @@ func start() {
     c.SetDTMax(50);
 
     while c.BeginFrame() != 0 {
-        var dt = c.DeltaTime;  // First frame may be 0; with SetDTMax set, later positive frames clamp to [1, 50]
+        var dt = c.DeltaTimeSec;  // First frame may be 0.0; with SetDTMax(50), later positive frames clamp to <= 0.05
 
         // Game logic using dt for frame-independent movement
         c.Clear(Color.RGB(0, 0, 0));
@@ -429,8 +432,9 @@ func start() {
 **Notes:**
 - `BeginFrame()` calls `Poll()` internally, then returns 0 if `ShouldClose` is set, otherwise 1
 - If the platform event pump fails, `Poll()` marks `ShouldClose`, tears down the backend window, updates input actions, and returns `0` without querying stale mouse or event state.
-- Without `SetDTMax()`, `DeltaTime` is rounded to the nearest millisecond, so very short uncapped frames may report `0` or `1`
+- Without `SetDTMax()`, `DeltaTime`/`DeltaTimeMs` are rounded to the nearest millisecond, so very short uncapped frames may report `0` or `1`
 - `SetDTMax(max)` sets the upper clamp for `DeltaTime` in milliseconds; after the first positive frame, rounded values clamp to `[1, max]`
+- Prefer `DeltaTimeSec` for velocity and animation math expressed in units per second
 - A typical max of 50 ms (20 FPS equivalent) prevents large time steps that can break physics or animation
 
 ---

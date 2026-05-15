@@ -1,0 +1,52 @@
+module RuntimeTest48;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+interface Speaker {
+    func speak(prefix: String) -> String;
+    func count() -> Integer;
+}
+
+class Actor implements Speaker {
+    expose String name;
+    expose Integer ticks;
+
+    expose func init(n: String) {
+        name = n;
+        ticks = 0;
+    }
+
+    expose func speak(prefix: String) -> String {
+        return prefix + name;
+    }
+
+    expose func count() -> Integer {
+        return ticks;
+    }
+
+    expose func tick() {
+        ticks = ticks + 1;
+    }
+}
+
+func start() {
+    var real = new Actor("Zia");
+    var actor: Actor? = real;
+    var missing: Actor? = null;
+
+    assertEqStr(actor?.speak("hi ") ?? "none", "hi Zia", "class_optional_method_value");
+    assertEqStr(missing?.speak("hi ") ?? "none", "none", "class_optional_method_null");
+
+    actor?.tick();
+    missing?.tick();
+    assertEqInt(actor?.count() ?? -1, 1, "optional_void_method_calls_value");
+
+    var speaker: Speaker? = real;
+    var noSpeaker: Speaker? = null;
+    assertEqStr(speaker?.speak("yo ") ?? "none", "yo Zia", "interface_optional_method_value");
+    assertEqInt(noSpeaker?.count() ?? -1, -1, "interface_optional_method_null");
+
+    report();
+}

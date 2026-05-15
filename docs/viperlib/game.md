@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-17
+last-verified: 2026-05-15
 ---
 
 # Game
@@ -30,6 +30,7 @@ last-verified: 2026-04-17
 - [Viper.Game.ScreenFX](#vipergamescreenfx)
 - [Viper.Game.DebugOverlay](#vipergamedebugoverlay)
 - [Viper.Game.Collision](#vipergamecollision)
+- [Viper.Game.WorldToScreenProjection](#vipergameworldtoscreenprojection)
 - [Viper.Game.Grid2D](#vipergamegrid2d)
 - [Viper.Game.Lighting2D](#vipergamelighting2d)
 - [Viper.Game.PlatformerController](#vipergameplatformercontroller)
@@ -837,6 +838,33 @@ interval. `Skip()` instantly reveals all remaining text.
 
 `Update(dt)` ignores non-positive `dt` values. Reveal progress is clamped to 0-100 and uses
 saturating arithmetic for long-running reveals.
+
+---
+
+## Viper.Game.WorldToScreenProjection
+
+Stateless helpers for converting world coordinates to screen coordinates. Use these when a game
+keeps simulation units separate from draw pixels and you want one consistent projection formula.
+
+**Type:** Static helper class
+
+| Method | Signature | Description |
+|---|---|---|
+| `LinearX(worldX, cameraX, originX, pixelsPerUnit)` | `Number(Number, Number, Number, Number)` | Linear world X to screen X |
+| `LinearY(worldY, cameraY, originY, pixelsPerUnit, flipY)` | `Number(Number, Number, Number, Number, Boolean)` | Linear world Y to screen Y; `flipY=true` makes positive world Y go upward |
+| `IsometricX(worldX, worldY, originX, tileWidth)` | `Number(Number, Number, Number, Number)` | Diamond isometric X using half tile width |
+| `IsometricY(worldX, worldY, originY, tileHeight)` | `Number(Number, Number, Number, Number)` | Diamond isometric Y using half tile height |
+| `PerspectiveScale(depth, nearDepth, farDepth, nearScale, farScale)` | `Number(Number, Number, Number, Number, Number)` | Clamped depth interpolation for faux-perspective sprite scale |
+| `PerspectiveX(worldX, centerX, depth, focalLength)` | `Number(Number, Number, Number, Number)` | Simple perspective X projection |
+| `PerspectiveY(worldY, centerY, depth, focalLength, flipY)` | `Number(Number, Number, Number, Number, Boolean)` | Simple perspective Y projection |
+
+```rust
+var sx = Viper.Game.WorldToScreenProjection.LinearX(playerX, cameraX, 400.0, 16.0);
+var sy = Viper.Game.WorldToScreenProjection.LinearY(playerY, cameraY, 300.0, 16.0, true);
+
+var isoX = Viper.Game.WorldToScreenProjection.IsometricX(tileX, tileY, 400.0, 64.0);
+var isoY = Viper.Game.WorldToScreenProjection.IsometricY(tileX, tileY, 80.0, 32.0);
+```
 
 ---
 

@@ -163,6 +163,8 @@ The rendering surface. Creates a window and manages the render loop.
 | `Height` | Integer | read | Active output height in pixels (window, or current RenderTarget3D when bound) |
 | `Fps` | Integer | read | Frames per second |
 | `DeltaTime` | Integer | read | Milliseconds since last Flip (first frame = 0, capped to 100ms by default) |
+| `DeltaTimeMs` | Integer | read | Explicit millisecond alias for `DeltaTime` |
+| `DeltaTimeSec` | Number | read | Seconds since last Flip, using the same clamp as `DeltaTime` |
 | `Backend` | String | read | Active renderer: "software", "metal", "d3d11", "opengl" |
 | `BackendCapabilities` | Integer | read | Bitmask of `Canvas3D` backend capabilities |
 | `Wireframe` | Boolean | write | Toggle wireframe rendering (default: off) |

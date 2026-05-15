@@ -118,6 +118,7 @@ set(RT_GAME_SOURCES
         game/rt_particle.c
         game/rt_spriteanim.c
         game/rt_collision.c
+        game/rt_world_projection.c
         game/rt_objpool.c
         game/rt_screenfx.c
         game/rt_pathfollow.c
@@ -494,6 +495,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_particle.h
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_spriteanim.h
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_collision.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_world_projection.h
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_objpool.h
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_screenfx.h
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_pathfollow.h

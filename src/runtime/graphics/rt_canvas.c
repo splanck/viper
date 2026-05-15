@@ -323,6 +323,13 @@ int64_t rt_canvas_get_delta_time(void *canvas_ptr) {
     return dt;
 }
 
+/// @brief Get DeltaTime in seconds for frame-rate-independent simulation code.
+/// @param canvas_ptr Canvas handle. Returns 0.0 if NULL.
+/// @return Delta time in seconds, using the same clamp as DeltaTime/DeltaTimeMs.
+double rt_canvas_get_delta_time_sec(void *canvas_ptr) {
+    return (double)rt_canvas_get_delta_time(canvas_ptr) / 1000.0;
+}
+
 /// @brief Fill the entire canvas with a solid color, erasing all previous drawing.
 /// @details Typically called at the start of each frame before drawing game objects.
 ///   Color format is 0x00RRGGBB (24-bit RGB, no alpha).

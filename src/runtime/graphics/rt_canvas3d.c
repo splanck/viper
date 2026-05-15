@@ -3612,6 +3612,11 @@ int64_t rt_canvas3d_get_delta_time(void *obj) {
     return dt;
 }
 
+/// @brief Get the time elapsed since the last frame in seconds.
+double rt_canvas3d_get_delta_time_sec(void *obj) {
+    return (double)rt_canvas3d_get_delta_time(obj) / 1000.0;
+}
+
 /// @brief Cap the per-frame delta-time at `max_ms` milliseconds (prevents huge jumps after pauses).
 void rt_canvas3d_set_dt_max(void *obj, int64_t max_ms) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);

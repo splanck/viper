@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-05-15
 ---
 
 # Game Utilities
@@ -18,6 +18,7 @@ last-verified: 2026-04-09
 | [Game Loop Framework](gameloop.md) | GameBase, IScene — eliminates game loop boilerplate |
 | [Core Utilities](core.md) | Timer (frame + ms modes), StateMachine, SmoothValue, ObjectPool |
 | [Physics & Collision](physics.md) | Grid2D, CollisionRect, Collision, Physics2D, Quadtree |
+| [World Projection](../game.md#vipergameworldtoscreenprojection) | Linear, isometric, and perspective world-to-screen helpers |
 | [Animation & Movement](animation.md) | Tween, SpriteAnimation, AnimStateMachine, SpriteSheet, PathFollower, ButtonGroup |
 | [Visual Effects](effects.md) | ParticleEmitter, ScreenFX, Lighting2D |
 | [Platformer](../game.md#vipergameplatformercontroller) | PlatformerController — jump buffer, coyote time, acceleration curves |
@@ -41,4 +42,3 @@ last-verified: 2026-04-09
 - [Graphics](../graphics/README.md) - `Canvas`, `Sprite` for rendering
 - [Input](../input.md) - `Keyboard`, `Mouse`, `Pad` for input handling
 - [GUI](../gui/README.md) - `Button`, `RadioButton` for GUI widgets
-

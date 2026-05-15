@@ -718,6 +718,10 @@ void rt_canvas_set_fps(void *canvas, int64_t fps);
 /// preserving an exact 0 ms first frame.
 int64_t rt_canvas_get_delta_time(void *canvas);
 
+/// @brief Get seconds elapsed since the last Flip() call.
+/// Uses the same clamp as rt_canvas_get_delta_time().
+double rt_canvas_get_delta_time_sec(void *canvas);
+
 /// @brief Set the maximum delta time clamp.
 /// When set, DeltaTime is clamped to [1, max] after the first frame. Pass 0 to
 /// disable clamping (default).

@@ -433,6 +433,10 @@ viper_add_test(test_runtime_method_binding
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestMethodBinding.cpp
         LIBS fe_basic)
 
+viper_add_test(test_runtime_wishlist_bindings
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestRuntimeWishlistBindings.cpp
+        LIBS fe_basic)
+
 # TODO: Fix arity check for static methods (no receiver param). 1056 false
 # positives because the test unconditionally adds +1 for receiver on all methods.
 viper_add_test(test_jpeg_decode
@@ -796,6 +800,9 @@ set(ZIA_LANG_TESTS
         45_runtime_api_conformance
         46_local_fixed_arrays_defer
         47_typed_runtime_collections
+        48_optional_method_chain
+        49_aggregate_final_initializers
+        50_world_projection_runtime
 )
 
 foreach (test_name IN LISTS ZIA_LANG_TESTS)

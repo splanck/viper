@@ -230,6 +230,7 @@
 #include "rt_videoplayer.h"
 #include "rt_videowidget.h"
 #include "rt_water3d.h"
+#include "rt_world_projection.h"
 // New network classes
 #include "rt_animstate.h"
 #include "rt_animtimeline.h"

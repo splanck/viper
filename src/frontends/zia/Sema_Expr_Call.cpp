@@ -783,6 +783,76 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
         return fallback;
     };
 
+    if (auto *optionalCallee = dynamic_cast<OptionalChainExpr *>(expr->callee.get())) {
+        TypeRef baseType = analyzeExpr(optionalCallee->base.get());
+        baseType = declaredOptionalSurfaceType(optionalCallee->base.get(), baseType);
+        if (baseType)
+            exprTypes_[optionalCallee->base.get()] = baseType;
+
+        if (!baseType || baseType->kind != TypeKindSem::Optional || !baseType->innerType()) {
+            analyzeArgTypes();
+            error(expr->loc, "Optional method chaining requires an optional receiver");
+            return types::unknown();
+        }
+
+        TypeRef receiverType = baseType->innerType();
+        if (!receiverType ||
+            (receiverType->kind != TypeKindSem::Struct &&
+             receiverType->kind != TypeKindSem::Class &&
+             receiverType->kind != TypeKindSem::Interface)) {
+            analyzeArgTypes();
+            std::string receiverName =
+                receiverType ? receiverType->toDisplayString() : std::string("Unknown");
+            error(expr->loc,
+                  "Type '" + receiverName + "' has no optional method '" + optionalCallee->field +
+                      "'");
+            return types::unknown();
+        }
+
+        analyzeArgTypes();
+
+        std::string resolvedOwner;
+        CallArgBinding binding;
+        MethodDecl *method =
+            resolveMethodCallOverload(receiverType->name,
+                                      optionalCallee->field,
+                                      expr,
+                                      expr->loc,
+                                      &resolvedOwner,
+                                      receiverType->kind != TypeKindSem::Interface,
+                                      &binding);
+        if (!method) {
+            error(expr->loc,
+                  "Type '" + receiverType->toDisplayString() + "' has no method '" +
+                      optionalCallee->field + "'");
+            return types::unknown();
+        }
+
+        bool isInsideType = currentSelfType_ && currentSelfType_->name == resolvedOwner;
+        if (method->visibility == Visibility::Private && !isInsideType) {
+            error(expr->loc,
+                  "Cannot access private member '" + optionalCallee->field + "' of type '" +
+                      resolvedOwner + "'");
+            return types::unknown();
+        }
+
+        resolvedMethodDecls_[expr] = method;
+        resolvedMethodOwnerTypes_[expr] = resolvedOwner;
+        resolvedMethodSlotKeys_[expr] = methodSlotKey(resolvedOwner, method);
+        callArgBindings_[expr] = binding;
+
+        TypeRef methodType = getMethodType(resolvedOwner, method);
+        exprTypes_[expr->callee.get()] = methodType;
+        TypeRef returnType = methodType && methodType->kind == TypeKindSem::Function
+                                 ? normalizeRuntimeSurfaceType(methodType->returnType())
+                                 : types::unknown();
+        if (!returnType || returnType->kind == TypeKindSem::Unknown)
+            return types::unknown();
+        if (returnType->kind == TypeKindSem::Void || returnType->kind == TypeKindSem::Optional)
+            return returnType;
+        return types::optional(returnType);
+    }
+
     if (auto *ident = dynamic_cast<IdentExpr *>(expr->callee.get())) {
         if (ident->name == "Ok" || ident->name == "Err") {
             std::vector<TypeRef> argTypes = analyzeArgTypes();

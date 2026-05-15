@@ -358,18 +358,9 @@ void Lowerer::registerAllFinalConstants(std::vector<DeclPtr> &declarations) {
         }
     }
 
-    for (const auto &entry : pending) {
-        if (globalConstants_.find(entry.qualifiedName) != globalConstants_.end())
-            continue;
-
-        diag_.report({il::support::Severity::Error,
-                      "'final' requires a compile-time constant initializer "
-                      "(literal, arithmetic expression, or string). "
-                      "Use a 'var' field initialized in init() for "
-                      "runtime-computed values.",
-                      entry.decl->loc,
-                      "V3202"});
-    }
+    // Non-foldable finals are valid runtime-initialized immutable globals.
+    // They are registered by lowerGlobalVarDecl() and initialized from
+    // emitGlobalInitializers() alongside mutable globals.
 }
 
 //=============================================================================

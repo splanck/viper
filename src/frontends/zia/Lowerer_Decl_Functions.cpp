@@ -111,14 +111,13 @@ void Lowerer::lowerGlobalVarDecl(GlobalVarDecl &decl) {
             return;
         }
 
-        // BUG-FE-012: Non-constant final initializer. The pre-pass
-        // (registerAllFinalConstants) already reported the diagnostic.
-        // Just return here to avoid creating a broken global variable.
-        return;
+        // Non-constant finals are immutable at the language level, but need
+        // runtime storage so aggregate/object initializers are evaluated once
+        // during module startup.
     }
 
-    // For mutable variables, register for runtime storage
-    if (!decl.isFinal && type) {
+    // Register mutable globals and runtime-initialized finals for storage.
+    if (type) {
         globalVariables_[qualifiedName] = type;
         if (decl.initializer) {
             GlobalInitializer init;

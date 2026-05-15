@@ -507,6 +507,7 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_LocCollator,
     RTCLS_CoreValueType,
     RTCLS_MemoryWeakRef,
+    RTCLS_WorldToScreenProjection,
 };
 
 /// @brief Describes a property on a runtime class.

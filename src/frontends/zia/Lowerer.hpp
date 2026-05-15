@@ -363,17 +363,17 @@ class Lowerer {
     /// Uses unordered_map for O(1) lookup instead of O(log n).
     std::unordered_map<std::string, Value> globalConstants_;
 
-    /// @brief Global mutable variable types: name -> semantic type.
-    /// @details Stores the types of module-level mutable variables
-    /// (e.g., `var running: Boolean;`). Used for generating runtime
-    /// storage access calls.
+    /// @brief Runtime global storage types: name -> semantic type.
+    /// @details Stores the types of module-level mutable variables and
+    /// runtime-initialized finals. Used for generating runtime storage
+    /// access calls.
     /// Uses unordered_map for O(1) lookup instead of O(log n).
     std::unordered_map<std::string, TypeRef> globalVariables_;
 
-    /// @brief Ordered mutable global initializer entries lowered at module startup.
+    /// @brief Ordered runtime global initializer entries lowered at module startup.
     /// @details Preserves declaration order so later global initializers can
-    ///          depend on earlier mutable globals. Each initializer is lowered
-    ///          as a real expression inside `start()`.
+    ///          depend on earlier globals. Each initializer is lowered as a
+    ///          real expression inside `start()`.
     struct GlobalInitializer {
         std::string name;
         TypeRef type;
@@ -812,6 +812,10 @@ class Lowerer {
     /// @brief Lower an optional chain expression.
     /// @return LowerResult with optional result value.
     LowerResult lowerOptionalChain(OptionalChainExpr *expr);
+
+    /// @brief Lower a method call through optional chaining.
+    /// @return Optional-wrapped method result, or void for void methods.
+    LowerResult lowerOptionalMethodCall(OptionalChainExpr *callee, CallExpr *expr);
 
     /// @brief Lower a list literal expression.
     /// @return LowerResult with pointer to new list.
