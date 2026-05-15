@@ -261,15 +261,17 @@ int64_t rt_bits_shl(int64_t val, int64_t count) {
 /// @see rt_bits_ushr For logical right shift (zero-fill)
 /// @see rt_bits_shl For left shift
 int64_t rt_bits_shr(int64_t val, int64_t count) {
-    // Arithmetic shift right (sign-extended)
-    // C guarantees arithmetic shift for signed types on most compilers
     if (count < 0)
         return val;
     if (count >= 64)
         return (val < 0) ? -1 : 0;
-    // Arithmetic right shift (sign-extending). Implementation-defined in C but
-    // guaranteed by GCC, Clang, and MSVC for signed integers.
-    return val >> count;
+    uint64_t u = (uint64_t)val;
+    uint64_t shifted = u >> (unsigned)count;
+    if (val < 0 && count > 0) {
+        uint64_t sign_mask = UINT64_MAX << (64 - (unsigned)count);
+        shifted |= sign_mask;
+    }
+    return (int64_t)shifted;
 }
 
 /// @brief Logical right shift (zero-fill).
@@ -359,7 +361,7 @@ int64_t rt_bits_ushr(int64_t val, int64_t count) {
 int64_t rt_bits_rotl(int64_t val, int64_t count) {
     uint64_t u = (uint64_t)val;
     // Normalize count to 0-63
-    int shift = (int)(count & 63);
+    int shift = (int)((uint64_t)count & 63u);
     if (shift == 0)
         return val;
     return (int64_t)((u << shift) | (u >> (64 - shift)));
@@ -397,7 +399,7 @@ int64_t rt_bits_rotl(int64_t val, int64_t count) {
 int64_t rt_bits_rotr(int64_t val, int64_t count) {
     uint64_t u = (uint64_t)val;
     // Normalize count to 0-63
-    int shift = (int)(count & 63);
+    int shift = (int)((uint64_t)count & 63u);
     if (shift == 0)
         return val;
     return (int64_t)((u >> shift) | (u << (64 - shift)));

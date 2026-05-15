@@ -15,6 +15,7 @@
 #include "rt_array_obj.h"
 #include "rt_box.h"
 #include "rt_heap.h"
+#include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_option.h"
 #include "rt_string.h"
@@ -73,6 +74,13 @@ void call_memory_retain_str_object() {
     rt_memory_retain_str((rt_string)obj);
 }
 
+void call_memory_retain_string_payload() {
+    const char *raw = "heap-backed string payload must not be retained directly";
+    rt_string text = rt_string_from_bytes(raw, std::strlen(raw));
+    assert(text != nullptr);
+    rt_memory_retain((void *)rt_string_cstr(text));
+}
+
 void call_memory_release_str_object() {
     void *obj = rt_obj_new_i64(14, 8);
     rt_memory_release_str((rt_string)obj);
@@ -93,6 +101,13 @@ void call_heap_retain_overflow() {
     rt_heap_hdr_t *hdr = rt_heap_hdr(obj);
     hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
     rt_heap_retain(obj);
+}
+
+void call_sso_string_retain_overflow() {
+    rt_string text = rt_string_from_bytes("sso", 3);
+    assert(text != nullptr);
+    text->literal_refs = RT_HEAP_MAX_MORTAL_REFCNT;
+    (void)rt_string_ref(text);
 }
 
 void call_heap_release_immortal() {
@@ -436,10 +451,12 @@ int main(int argc, char *argv[]) {
     viper::tests::registerChildFunction(call_memory_retain_invalid);
     viper::tests::registerChildFunction(call_memory_release_invalid);
     viper::tests::registerChildFunction(call_memory_retain_str_object);
+    viper::tests::registerChildFunction(call_memory_retain_string_payload);
     viper::tests::registerChildFunction(call_memory_release_str_object);
     viper::tests::registerChildFunction(call_object_negative_size);
     viper::tests::registerChildFunction(call_heap_double_release_deferred);
     viper::tests::registerChildFunction(call_heap_retain_overflow);
+    viper::tests::registerChildFunction(call_sso_string_retain_overflow);
     viper::tests::registerChildFunction(call_heap_release_immortal);
     viper::tests::registerChildFunction(call_heap_set_len_past_capacity);
     viper::tests::registerChildFunction(call_memory_release_unknown_heap_kind);
@@ -468,10 +485,12 @@ int main(int argc, char *argv[]) {
     expect_trap(call_memory_retain_invalid, "Viper.Memory.Retain");
     expect_trap(call_memory_release_invalid, "Viper.Memory.Release");
     expect_trap(call_memory_retain_str_object, "Viper.Memory.RetainStr");
+    expect_trap(call_memory_retain_string_payload, "invalid string payload");
     expect_trap(call_memory_release_str_object, "Viper.Memory.ReleaseStr");
     expect_trap(call_object_negative_size, "negative object size");
     expect_trap(call_heap_double_release_deferred, "double release");
     expect_trap(call_heap_retain_overflow, "refcount overflow");
+    expect_trap(call_sso_string_retain_overflow, "refcount overflow");
     expect_trap(call_heap_release_immortal, "cannot release immortal refcount");
     expect_trap(call_heap_set_len_past_capacity, "length exceeds capacity");
     expect_trap(call_memory_release_unknown_heap_kind, "unsupported heap payload kind");

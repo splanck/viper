@@ -124,7 +124,12 @@ static int rt_string_registry_slot_is_live_(rt_string slot) {
 /// factor stays bounded.
 /// @return 1 on success, 0 on alloc failure / size overflow.
 static int rt_string_registry_grow_locked_(size_t min_capacity) {
-    size_t new_capacity = g_string_registry_.capacity ? g_string_registry_.capacity * 2 : 256;
+    size_t new_capacity = 256;
+    if (g_string_registry_.capacity) {
+        if (g_string_registry_.capacity > SIZE_MAX / 2)
+            return 0;
+        new_capacity = g_string_registry_.capacity * 2;
+    }
     while (new_capacity < min_capacity) {
         if (new_capacity > SIZE_MAX / 2)
             return 0;
@@ -159,9 +164,15 @@ static int rt_string_registry_grow_locked_(size_t min_capacity) {
 static int rt_string_registry_ensure_capacity_locked_(void) {
     if (g_string_registry_.capacity == 0)
         return rt_string_registry_grow_locked_(256);
-    if ((g_string_registry_.count + g_string_registry_.tombstones + 1) * 8 >=
-        g_string_registry_.capacity * 5)
+    if (g_string_registry_.count > SIZE_MAX - g_string_registry_.tombstones - 1)
+        return 0;
+    size_t projected = g_string_registry_.count + g_string_registry_.tombstones + 1;
+    size_t threshold = (g_string_registry_.capacity / 8) * 5;
+    if (projected >= threshold) {
+        if (g_string_registry_.capacity > SIZE_MAX / 2)
+            return 0;
         return rt_string_registry_grow_locked_(g_string_registry_.capacity * 2);
+    }
     return 1;
 }
 
@@ -544,17 +555,30 @@ rt_string rt_string_ref(rt_string s) {
         return NULL;
     rt_heap_hdr_t *hdr = rt_string_header(s);
     if (!hdr) {
-        // Atomic increment for thread-safe reference counting
-        // Skip immortal literals (SIZE_MAX indicates immortal)
-#if RT_COMPILER_MSVC
-        size_t old = rt_atomic_load_size(&s->literal_refs, __ATOMIC_RELAXED);
-        if (old < SIZE_MAX)
-            rt_atomic_fetch_add_size(&s->literal_refs, 1, __ATOMIC_RELAXED);
-#else
+        // Atomic increment for thread-safe reference counting. Do not allow a
+        // mortal SSO/literal string to step into the immortal refcount sentinel.
         size_t old = __atomic_load_n(&s->literal_refs, __ATOMIC_RELAXED);
-        if (old < SIZE_MAX)
-            __atomic_fetch_add(&s->literal_refs, 1, __ATOMIC_RELAXED);
-#endif
+        for (;;) {
+            if (old == 0) {
+                rt_trap("rt_string_ref: retain after release");
+                return NULL;
+            }
+            if (old >= kImmortalRefcnt)
+                return s;
+            if (old >= RT_HEAP_MAX_MORTAL_REFCNT) {
+                rt_trap("refcount overflow");
+                return NULL;
+            }
+            size_t next = old + 1;
+            if (__atomic_compare_exchange_n(&s->literal_refs,
+                                            &old,
+                                            next,
+                                            /*weak=*/0,
+                                            __ATOMIC_RELAXED,
+                                            __ATOMIC_RELAXED)) {
+                break;
+            }
+        }
         return s;
     }
     if (rt_string_is_immortal_hdr(hdr))
@@ -618,9 +642,12 @@ size_t rt_string_unref_count(rt_string s) {
         return SIZE_MAX;
     size_t next = rt_heap_release_deferred(s->data);
     if (next == 0) {
+        char *payload = s->data;
         rt_gc_clear_weak_refs(s);
-        rt_heap_free_zero_ref(s->data);
         rt_string_unregister_handle(s);
+        s->data = NULL;
+        s->heap = NULL;
+        rt_heap_free_zero_ref(payload);
         free(s);
     }
     return next;

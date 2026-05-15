@@ -423,10 +423,11 @@ static void test_int_radix() {
 
     // Hexadecimal
     assert(rt_parse_int_radix(make_str("FF"), 16, -1) == 255);
-    assert(rt_parse_int_radix(make_str("+FF"), 16, -1) == 255);
+    assert(rt_parse_int_radix(make_str("+FF"), 16, -1) == -1);
     assert(rt_parse_int_radix(make_str("-FF"), 16, -1) == -1);
     assert(rt_parse_int_radix(make_str("ff"), 16, -1) == 255);
     assert(rt_parse_int_radix(make_str("DEADBEEF"), 16, -1) == 0xDEADBEEF);
+    assert(rt_parse_int_radix(make_str("+1010"), 2, -1) == -1);
 
     // Base 36
     assert(rt_parse_int_radix(make_str("Z"), 36, -1) == 35);

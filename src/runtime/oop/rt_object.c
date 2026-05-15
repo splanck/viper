@@ -276,6 +276,10 @@ void rt_memory_retain(void *p) {
         rt_trap("Viper.Memory.Retain: invalid or freed heap object");
         return;
     }
+    if ((rt_heap_kind_t)hdr->kind == RT_HEAP_STRING) {
+        rt_trap("Viper.Memory.Retain: invalid string payload; pass the string handle");
+        return;
+    }
     rt_heap_retain(p);
 }
 

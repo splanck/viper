@@ -57,6 +57,8 @@
 #define RT_TLS_MAYBE_UNUSED
 #endif
 
+#define TLS_MAX_INTERMEDIATE_CERTS 16
+
 /// @brief Forward declaration: check whether a certificate's Extended Key Usage allows TLS Web Server Authentication.
 /// @details Real implementation later in the file. Marked MAYBE_UNUSED so
 ///          builds that strip platform-specific verification paths still
@@ -1547,8 +1549,21 @@ int tls_verify_chain(rt_tls_session_t *session) {
                 session->error = "TLS: malformed certificate chain";
                 return RT_TLS_ERROR_HANDSHAKE;
             }
-            if (cert_index++ == 0)
+            if (cert_index == 0) {
+                cert_index++;
                 continue;
+            }
+            if (cert_index > TLS_MAX_INTERMEDIATE_CERTS) {
+                if (chain_engine)
+                    CertFreeCertificateChainEngine(chain_engine);
+                if (root_store)
+                    CertCloseStore(root_store, 0);
+                CertCloseStore(extra_store, 0);
+                CertFreeCertificateContext(cert_ctx);
+                session->error = "TLS: certificate chain has too many intermediates";
+                return RT_TLS_ERROR_HANDSHAKE;
+            }
+            cert_index++;
             if (!CertAddEncodedCertificateToStore(extra_store,
                                                   X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
                                                   cert_der,
@@ -2868,7 +2883,7 @@ int tls_verify_chain(rt_tls_session_t *session) {
         const uint8_t *der;
         size_t len;
         int used;
-    } intermediates[16];
+    } intermediates[TLS_MAX_INTERMEDIATE_CERTS];
     size_t intermediate_count = 0;
     size_t list_pos = 0;
     const uint8_t *current_der = NULL;
@@ -2905,7 +2920,7 @@ int tls_verify_chain(rt_tls_session_t *session) {
             }
             if (cert_index++ == 0)
                 continue;
-            if (intermediate_count >= 16) {
+            if (intermediate_count >= TLS_MAX_INTERMEDIATE_CERTS) {
                 session->error = "TLS: certificate chain has too many intermediates";
                 return RT_TLS_ERROR_HANDSHAKE;
             }

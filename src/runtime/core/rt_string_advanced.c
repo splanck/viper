@@ -60,6 +60,8 @@ rt_string rt_str_replace(rt_string haystack, rt_string needle, rt_string replace
     // Empty needle: return original string
     if (needle_len == 0)
         return rt_string_ref(haystack);
+    if (needle_len > hay_len)
+        return rt_string_ref(haystack);
 
     // Single-pass algorithm using string builder.
     // This eliminates the double-scan (count + build) that was O(2*n*m).
@@ -298,7 +300,7 @@ void *rt_str_split(rt_string str, rt_string delim) {
     size_t delim_len = delim ? rt_string_len_bytes(delim) : 0;
 
     // Empty delimiter: return single element with original string
-    if (delim_len == 0) {
+    if (delim_len == 0 || delim_len > str_len) {
         void *result = rt_seq_with_capacity(1);
         rt_seq_push(result, (void *)rt_string_ref(str));
         return result;

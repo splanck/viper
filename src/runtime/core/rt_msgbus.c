@@ -306,7 +306,16 @@ static int mb_invoke_callback(void *callback, void *data) {
 static int mb_retain_managed_payload(void *data) {
     if (!data)
         return 0;
-    if (rt_string_is_handle(data) || rt_heap_is_payload(data)) {
+    if (rt_string_is_handle(data)) {
+        rt_memory_retain(data);
+        return 1;
+    }
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header(data, &hdr) || !hdr)
+        return 0;
+    if ((rt_heap_kind_t)hdr->kind == RT_HEAP_STRING)
+        return 0;
+    if (rt_heap_is_payload(data)) {
         rt_memory_retain(data);
         return 1;
     }

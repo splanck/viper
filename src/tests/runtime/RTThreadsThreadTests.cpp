@@ -96,6 +96,12 @@ extern "C" void sleep_then_store(void *arg) {
     p->store(1, std::memory_order_release);
 }
 
+extern "C" void long_sleep_then_store(void *arg) {
+    auto *p = static_cast<std::atomic<int> *>(arg);
+    rt_thread_sleep(100);
+    p->store(1, std::memory_order_release);
+}
+
 static std::atomic<int64_t> g_owned_thread_arg_len{0};
 static std::atomic<int> g_safe_thread_flag{0};
 
@@ -119,6 +125,19 @@ static void test_thread_join_for_timeout() {
     assert(done == 0);
 
     rt_thread_join(t);
+    assert(flag.load(std::memory_order_acquire) == 1);
+}
+
+static void test_thread_join_for_timeout_releases_temporary_reference() {
+    std::atomic<int> flag{0};
+    void *t = rt_thread_start((void *)&long_sleep_then_store, &flag);
+    assert(t != nullptr);
+
+    assert(rt_thread_join_for(t, /*ms=*/1) == 0);
+    assert(rt_memory_release(t) == 1);
+
+    for (int waited = 0; waited < 500 && flag.load(std::memory_order_acquire) == 0; ++waited)
+        rt_thread_sleep(1);
     assert(flag.load(std::memory_order_acquire) == 1);
 }
 
@@ -195,6 +214,7 @@ int main(int argc, char *argv[]) {
     assert(result.stderrText.find("Thread: invalid thread handle") != std::string::npos);
 
     test_thread_join_for_timeout();
+    test_thread_join_for_timeout_releases_temporary_reference();
     test_thread_start_owned_keeps_object_arg_alive();
     test_thread_start_safe_owned_keeps_object_arg_alive();
     test_safe_thread_supports_standard_thread_methods();

@@ -413,6 +413,8 @@ int64_t rt_parse_int_radix(rt_string s, int64_t radix, int64_t default_value) {
         negative = 1;
         ++cursor;
     } else if (*cursor == '+') {
+        if (radix != 10)
+            return default_value;
         ++cursor;
     }
 

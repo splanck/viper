@@ -313,7 +313,7 @@ graceful error handling.
     - False: `"false"`, `"no"`, `"0"`, `"off"`
 - `IsInt` and `IsNum` accept optional leading `+` or `-`
 - Null input is treated as parse failure: `Try*` returns `None`, `Is*` returns false, and `*Or`/`IntRadix` returns the supplied default.
-- `IntRadix` supports radix 2-36 (digits 0-9, letters a-z). Radix 10 accepts a leading `-`; other radices parse unsigned 64-bit bit patterns so `Viper.Fmt.Hex(-1)` and `Viper.Fmt.Bin(-1)` round-trip to `-1`. Prefixes such as `0x` and leading `+` are rejected.
+- `IntRadix` supports radix 2-36 (digits 0-9, letters a-z). Radix 10 accepts leading `+` and `-`; other radices parse unsigned 64-bit bit patterns so `Viper.Fmt.Hex(-1)` and `Viper.Fmt.Bin(-1)` round-trip to `-1`. Prefixes such as `0x` and non-decimal signs are rejected.
 - Leading/trailing whitespace is trimmed before parsing
 - Numeric parsing is locale-independent, uses `.` as the decimal separator, and accepts only decimal float syntax. C-style hexadecimal floats such as `0x1p4` are rejected.
 - Embedded NUL bytes are rejected, even when the bytes before the NUL form a valid value.

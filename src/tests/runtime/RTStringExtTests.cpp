@@ -81,6 +81,15 @@ static void test_replace_empty_needle() {
     assert(str_eq(result, "hello")); // Empty needle returns original
 }
 
+static void test_replace_needle_longer_than_haystack() {
+    rt_string hay = make_str("abc");
+    rt_string needle = make_str("abcdef");
+    rt_string repl = make_str("x");
+
+    rt_string result = rt_str_replace(hay, needle, repl);
+    assert(str_eq(result, "abc"));
+}
+
 //===----------------------------------------------------------------------===//
 // StartsWith/EndsWith/Has tests
 //===----------------------------------------------------------------------===//
@@ -207,6 +216,15 @@ static void test_split_no_delim() {
     void *seq = rt_str_split(str, delim);
     assert(rt_seq_len(seq) == 1);
     assert(str_eq((rt_string)rt_seq_get(seq, 0), "hello"));
+}
+
+static void test_split_delim_longer_than_string() {
+    rt_string str = make_str("hi");
+    rt_string delim = make_str("hello");
+
+    void *seq = rt_str_split(str, delim);
+    assert(rt_seq_len(seq) == 1);
+    assert(str_eq((rt_string)rt_seq_get(seq, 0), "hi"));
 }
 
 static void test_split_empty_parts() {
@@ -489,6 +507,7 @@ int main() {
     test_replace_to_empty();
     test_replace_not_found();
     test_replace_empty_needle();
+    test_replace_needle_longer_than_haystack();
 
     // StartsWith/EndsWith/Has tests
     test_starts_with();
@@ -508,6 +527,7 @@ int main() {
     test_split_basic();
     test_split_multichar_delim();
     test_split_no_delim();
+    test_split_delim_longer_than_string();
     test_split_empty_parts();
     test_join_basic();
     test_join_empty_sep();

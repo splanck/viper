@@ -753,6 +753,8 @@ void *rt_future_get(void *obj) {
 /// @details If the future completes within the timeout and is not an error, stores
 ///          the result in *out and returns 1. Returns 0 on timeout or error.
 int8_t rt_future_get_for(void *obj, int64_t ms, void **out) {
+    if (out)
+        *out = NULL;
     if (!obj)
         return 0;
     if (ms <= 0)
@@ -883,6 +885,8 @@ rt_string rt_future_get_error(void *obj) {
 
 /// @brief Get a value from the future.
 int8_t rt_future_try_get(void *obj, void **out) {
+    if (out)
+        *out = NULL;
     if (!obj)
         return 0;
     if (rt_obj_class_id(obj) != RT_FUTURE_CLASS_ID)

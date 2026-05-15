@@ -100,6 +100,20 @@ static void test_future_try_get_empty() {
     int8_t result = rt_future_try_get(future, &out);
 
     test_result(result == 0, "try_get_empty: should return 0 when not done");
+    test_result(out == NULL, "try_get_empty: should clear out on pending future");
+}
+
+static void test_future_try_get_error_clears_out() {
+    void *promise = rt_promise_new();
+    void *future = rt_promise_get_future(promise);
+
+    rt_promise_set_error(promise, rt_const_cstr("try_get error"));
+
+    void *out = (void *)0xDEAD;
+    int8_t result = rt_future_try_get(future, &out);
+
+    test_result(result == 0, "try_get_error: should return 0 on error");
+    test_result(out == NULL, "try_get_error: should clear out on error");
 }
 
 static void test_future_try_get_value() {
@@ -226,6 +240,20 @@ static void test_future_get_for_timeout() {
     int8_t result = rt_future_get_for(future, 30, &out);
 
     test_result(result == 0, "get_for_timeout: should return 0 on timeout");
+    test_result(out == NULL, "get_for_timeout: should clear out on timeout");
+}
+
+static void test_future_get_for_error_clears_out() {
+    void *promise = rt_promise_new();
+    void *future = rt_promise_get_future(promise);
+
+    rt_promise_set_error(promise, rt_const_cstr("get_for error"));
+
+    void *out = (void *)0xDEAD;
+    int8_t result = rt_future_get_for(future, 1000, &out);
+
+    test_result(result == 0, "get_for_error: should return 0 on error");
+    test_result(out == NULL, "get_for_error: should clear out on error");
 }
 
 static void test_future_get_for_success() {
@@ -511,6 +539,7 @@ int main() {
     // Basic future tests
     test_future_is_done_false();
     test_future_try_get_empty();
+    test_future_try_get_error_clears_out();
     test_future_try_get_value();
     test_future_get_immediate();
 
@@ -525,6 +554,7 @@ int main() {
     // Edge cases
     test_null_safety();
     test_future_get_for_timeout();
+    test_future_get_for_error_clears_out();
     test_future_get_for_success();
     test_future_recreate_after_release();
     test_cached_future_retained_for_each_caller();

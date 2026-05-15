@@ -77,7 +77,9 @@ static void test_shr() {
     assert(rt_bits_shr(256, 4) == 16);
     // Negative values should sign-extend
     assert(rt_bits_shr(-16, 2) == -4);
+    assert(rt_bits_shr(-2, 1) == -1);
     assert(rt_bits_shr(-1, 10) == -1);
+    assert(rt_bits_shr((int64_t)(1ULL << 63), 63) == -1);
     // Edge cases
     assert(rt_bits_shr(1, 64) == 0);
     assert(rt_bits_shr(-1, 64) == -1);
@@ -109,6 +111,7 @@ static void test_rotl() {
     assert(rt_bits_rotl(1, 63) == (int64_t)(1ULL << 63));
     assert(rt_bits_rotl(1, 64) == 1);                    // Full rotation
     assert(rt_bits_rotl((int64_t)(1ULL << 63), 1) == 1); // Rotate high bit to low
+    assert(rt_bits_rotl(2, -1) == 1);                    // Negative counts normalize
     printf("test_rotl: PASSED\n");
 }
 
@@ -117,6 +120,7 @@ static void test_rotr() {
     assert(rt_bits_rotr(2, 1) == 1);
     assert(rt_bits_rotr(1, 1) == (int64_t)(1ULL << 63)); // Rotate low bit to high
     assert(rt_bits_rotr(1, 64) == 1);                    // Full rotation
+    assert(rt_bits_rotr(1, -1) == 2);                    // Negative counts normalize
     printf("test_rotr: PASSED\n");
 }
 

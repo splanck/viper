@@ -266,7 +266,7 @@ Safe string parsing utilities. Methods return `Option`, validation booleans, or 
 
 - `TryInt`, `TryNum`, `TryBool`, `Double`, and `Int64` return managed `Option` values. The lower-level C output-pointer helpers remain runtime-internal.
 - Null input is treated as parse failure: `Try*` and `*Option` return `None`, `Is*` returns false, and `*Or`/`IntRadix` returns the supplied default.
-- `IntRadix` supports bases 2 through 36 (e.g., 16 for hex, 2 for binary). A leading `+` is accepted for every radix; a leading `-` is accepted for radix 10 only.
+- `IntRadix` supports bases 2 through 36 (e.g., 16 for hex, 2 for binary). Leading `+` and `-` signs are accepted for radix 10 only; non-decimal radices parse unsigned 64-bit bit patterns so formatted hex/binary values can round-trip.
 - Leading/trailing ASCII whitespace is accepted; non-whitespace trailing characters and embedded NUL bytes are rejected.
 - Numeric parsing accepts explicit `NaN`, `Inf`, `+Inf`, and `-Inf` spellings. Decimal overflow and non-finite decimal results are rejected; finite underflow to zero or a subnormal value is accepted.
 - `DoubleOption` and `Int64Option` are stable aliases for the same optional-return behavior. Use any `Option` parse form when invalid input is expected and should be handled gracefully rather than terminating the program.
@@ -601,7 +601,7 @@ In-process publish/subscribe message bus for decoupled communication between com
 - `Publish` invokes all handlers for the given topic synchronously; returns the number of handlers called
 - Handler functions receive the published data as their argument
 - Publish uses a stable subscriber snapshot; unsubscribes during a handler affect later publishes, not the in-flight one
-- Publish retains managed string/object payloads for the duration of dispatch so one handler cannot free the payload before later handlers run.
+- Publish retains managed string handles and object/array payloads for the duration of dispatch so one handler cannot free the payload before later handlers run. Raw string byte pointers are borrowed.
 - Subscribe accepts a managed callback returned by `Callback(&handler)` in Zia or `Callback(ADDRESSOF Handler)` in BASIC. Native callback pointers stay inside the runtime bridge.
 - Topic matching is byte-length aware; topic names containing embedded NUL bytes remain distinct.
 - `Topics()` returns an owning `Seq` of copied topic strings; the result remains valid after the bus is cleared or destroyed.

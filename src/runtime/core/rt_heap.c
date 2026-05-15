@@ -165,7 +165,12 @@ static int rt_heap_registry_slot_is_live_(void *slot) {
 ///          tombstones along the way. Returns 0 on allocation
 ///          failure (caller leaves the registry untouched).
 static int rt_heap_registry_grow_locked_(size_t min_capacity) {
-    size_t new_capacity = g_heap_registry_.capacity ? g_heap_registry_.capacity * 2 : 256;
+    size_t new_capacity = 256;
+    if (g_heap_registry_.capacity) {
+        if (g_heap_registry_.capacity > SIZE_MAX / 2)
+            return 0;
+        new_capacity = g_heap_registry_.capacity * 2;
+    }
     while (new_capacity < min_capacity) {
         if (new_capacity > SIZE_MAX / 2)
             return 0;
@@ -205,9 +210,15 @@ static int rt_heap_registry_grow_locked_(size_t min_capacity) {
 static int rt_heap_registry_ensure_capacity_locked_(void) {
     if (g_heap_registry_.capacity == 0)
         return rt_heap_registry_grow_locked_(256);
-    if ((g_heap_registry_.count + g_heap_registry_.tombstones + 1) * 8 >=
-        g_heap_registry_.capacity * 5)
+    if (g_heap_registry_.count > SIZE_MAX - g_heap_registry_.tombstones - 1)
+        return 0;
+    size_t projected = g_heap_registry_.count + g_heap_registry_.tombstones + 1;
+    size_t threshold = (g_heap_registry_.capacity / 8) * 5;
+    if (projected >= threshold) {
+        if (g_heap_registry_.capacity > SIZE_MAX / 2)
+            return 0;
         return rt_heap_registry_grow_locked_(g_heap_registry_.capacity * 2);
+    }
     return 1;
 }
 

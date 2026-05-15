@@ -46,6 +46,7 @@ static int64_t subscribe_native(void *bus, rt_string topic, rt_msgbus_callback_f
 static int g_trace_len = 0;
 static int g_trace[8];
 static int g_last_payload = 0;
+static const char *g_last_text_payload = NULL;
 static void *g_current_bus = NULL;
 static int64_t g_victim_sub_id = 0;
 static int g_callback_finalized = 0;
@@ -56,6 +57,7 @@ static void reset_trace() {
     g_trace_len = 0;
     std::memset(g_trace, 0, sizeof(g_trace));
     g_last_payload = 0;
+    g_last_text_payload = NULL;
 }
 
 static void cb_first(void *data) {
@@ -82,6 +84,11 @@ static void cb_release_payload(void *data) {
     g_trace[g_trace_len++] = 4;
     g_last_payload = *(int *)data;
     assert(rt_memory_release(data) == 1);
+}
+
+static void cb_capture_text_payload(void *data) {
+    g_trace[g_trace_len++] = 6;
+    g_last_text_payload = (const char *)data;
 }
 
 static void cb_unsubscribe_other(void *data) {
@@ -287,6 +294,26 @@ static void test_publish_retains_managed_payload_for_dispatch() {
     assert(g_last_payload == 66);
     assert(g_payload_finalized == 1);
 
+    rt_string_unref(topic);
+    destroy_obj(bus);
+}
+
+static void test_publish_borrows_raw_string_payload() {
+    void *bus = rt_msgbus_new();
+    rt_string topic = make_str("raw_string_payload");
+    rt_string text = make_str("borrowed bytes");
+    const char *payload = rt_string_cstr(text);
+
+    subscribe_native(bus, topic, cb_capture_text_payload);
+
+    reset_trace();
+    assert(rt_msgbus_publish(bus, topic, (void *)payload) == 1);
+    assert(g_trace_len == 1);
+    assert(g_trace[0] == 6);
+    assert(std::strcmp(g_last_text_payload, "borrowed bytes") == 0);
+    assert(std::strcmp(rt_string_cstr(text), "borrowed bytes") == 0);
+
+    rt_string_unref(text);
     rt_string_unref(topic);
     destroy_obj(bus);
 }
@@ -556,6 +583,7 @@ int main() {
     test_unsubscribe();
     test_publish_invokes_callbacks_in_order();
     test_publish_retains_managed_payload_for_dispatch();
+    test_publish_borrows_raw_string_payload();
     test_publish_retains_bus_during_callback_release();
     test_unsubscribe_during_publish_uses_snapshot();
     test_topics();

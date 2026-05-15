@@ -111,9 +111,14 @@ static void intern_unlock(void) {
 ///          left at the current (high-load) state; correctness is preserved but
 ///          performance may degrade.
 static void intern_ensure_capacity(void) {
-    // Grow at 5/8 load factor: count*8 >= cap*5.
-    if (g_cap_ > 0 && g_count_ * 8 < g_cap_ * 5)
-        return;
+    // Grow at 5/8 load factor, using division-first arithmetic to avoid
+    // overflow when the table is near the address-space limit.
+    if (g_cap_ > 0) {
+        if (g_count_ < (g_cap_ / 8) * 5)
+            return;
+        if (g_cap_ > SIZE_MAX / 2)
+            return;
+    }
 
     size_t new_cap = g_cap_ ? g_cap_ * 2 : INTERN_INIT_CAP;
     InternSlot *new_slots = (InternSlot *)calloc(new_cap, sizeof(InternSlot));

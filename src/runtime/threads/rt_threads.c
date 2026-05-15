@@ -410,6 +410,7 @@ int8_t rt_thread_join_for(void *thread, int64_t ms) {
         DWORD remaining = (elapsed >= timeout_ms) ? 0 : (DWORD)(timeout_ms - elapsed);
         if (remaining == 0) {
             LeaveCriticalSection(&t->cs);
+            thread_release_object(thread);
             return 0;
         }
 
