@@ -13,6 +13,7 @@
 
 #include "rt.hpp"
 #include "rt_audio.h"
+#include "rt_mixgroup.h"
 #include "rt_musicgen.h"
 #include "rt_soundbank.h"
 #include "rt_synth.h"
@@ -83,6 +84,36 @@ static void test_soundbank_register_returns_failure_without_trapping() {
     assert(rt_soundbank_count(bank) == 0);
 }
 
+static void test_null_handle_apis_do_not_trap() {
+    assert(rt_sound_load(nullptr) == nullptr);
+    assert(rt_sound_load_mem(nullptr, 16) == nullptr);
+    assert(rt_sound_load_mem("RIFF", 0) == nullptr);
+    assert(rt_sound_play(nullptr) == -1);
+    assert(rt_sound_play_ex(nullptr, 50, 0) == -1);
+    assert(rt_sound_play_loop(nullptr, 50, 0) == -1);
+    assert(rt_sound_play_in_group(nullptr, RT_MIXGROUP_SFX) == -1);
+    assert(rt_sound_play_ex_in_group(nullptr, 50, 0, RT_MIXGROUP_SFX) == -1);
+    assert(rt_sound_play_loop_in_group(nullptr, 50, 0, RT_MIXGROUP_SFX) == -1);
+
+    assert(rt_music_load(nullptr) == nullptr);
+    rt_music_play(nullptr, 0);
+    rt_music_stop(nullptr);
+    rt_music_pause(nullptr);
+    rt_music_resume(nullptr);
+    rt_music_set_loop(nullptr, 1);
+    rt_music_set_volume(nullptr, 50);
+    rt_music_seek(nullptr, 100);
+    assert(rt_music_get_volume(nullptr) == 0);
+    assert(rt_music_is_playing(nullptr) == 0);
+    assert(rt_music_get_position(nullptr) == 0);
+    assert(rt_music_get_duration(nullptr) == 0);
+    rt_music_pause_related(nullptr);
+    rt_music_resume_related(nullptr);
+    rt_music_stop_related(nullptr);
+    rt_music_set_crossfade_pair_volume(nullptr, 50);
+    rt_music_crossfade_to(nullptr, nullptr, 250);
+}
+
 } // namespace
 #endif
 
@@ -98,6 +129,7 @@ int main() {
     expect_invalid_operation(trap_music_play, "not compiled in");
     test_builder_apis_return_null_without_trapping();
     test_soundbank_register_returns_failure_without_trapping();
+    test_null_handle_apis_do_not_trap();
     std::printf("All audio-unavailable tests passed.\n");
     return 0;
 #endif

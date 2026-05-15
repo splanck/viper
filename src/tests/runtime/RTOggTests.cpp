@@ -46,14 +46,15 @@ void put_u32_le(std::vector<uint8_t> &buf, size_t off, uint32_t v) {
 
 std::vector<uint8_t> make_single_packet_page(uint32_t serial,
                                              const std::vector<uint8_t> &packet,
-                                             bool corrupt_crc = false) {
+                                             bool corrupt_crc = false,
+                                             uint8_t version = 0) {
     assert(packet.size() < 255);
     std::vector<uint8_t> page(27 + 1 + packet.size(), 0);
     page[0] = 'O';
     page[1] = 'g';
     page[2] = 'g';
     page[3] = 'S';
-    page[4] = 0;    // stream structure version
+    page[4] = version; // stream structure version
     page[5] = 0x02; // BOS
     for (int i = 0; i < 8; i++)
         page[6 + i] = 0xFFu;
@@ -105,10 +106,25 @@ void test_crc_mismatch_rejected() {
     ogg_reader_free(reader);
 }
 
+void test_nonzero_version_rejected() {
+    std::vector<uint8_t> packet = {'v', 'e', 'r'};
+    std::vector<uint8_t> page = make_single_packet_page(321, packet, false, 1);
+
+    ogg_reader_t *reader = ogg_reader_open_mem(page.data(), page.size());
+    assert(reader != nullptr);
+
+    const uint8_t *out = nullptr;
+    size_t out_len = 0;
+    assert(ogg_reader_next_packet(reader, &out, &out_len) == 0);
+
+    ogg_reader_free(reader);
+}
+
 } // namespace
 
 int main() {
     test_resync_and_serial_zero();
     test_crc_mismatch_rejected();
+    test_nonzero_version_rejected();
     return 0;
 }

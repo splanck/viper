@@ -142,6 +142,9 @@ static int ogg_read_page(ogg_reader_t *r, uint8_t **body_out, size_t *body_len_o
     r->page.checksum = read_u32_le(header + 22);
     r->page.num_segments = header[26];
 
+    if (r->page.version != 0)
+        return 0;
+
     // Read segment table
     if (ogg_read(r, r->page.segment_table, r->page.num_segments) != r->page.num_segments)
         return 0;

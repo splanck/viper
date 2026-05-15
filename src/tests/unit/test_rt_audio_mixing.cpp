@@ -160,6 +160,46 @@ static void test_group_volume_threaded_stress(void) {
     PASS();
 }
 
+static void test_master_volume_without_backend_roundtrip(void) {
+    TEST("Master volume round-trips without requiring backend init");
+    rt_audio_shutdown();
+
+    rt_audio_set_master_volume(33);
+    assert(rt_audio_get_master_volume() == 33);
+    rt_audio_set_master_volume(-5);
+    assert(rt_audio_get_master_volume() == 0);
+    rt_audio_set_master_volume(105);
+    assert(rt_audio_get_master_volume() == 100);
+
+    rt_audio_set_master_volume(100);
+    PASS();
+}
+
+static void test_master_volume_threaded_stress(void) {
+    TEST("Master volume set/get is safe under concurrent access");
+
+    auto writer = []() {
+        for (int i = 0; i < 1000; i++)
+            rt_audio_set_master_volume(i % 125 - 10);
+    };
+    auto reader = []() {
+        for (int i = 0; i < 1000; i++) {
+            int64_t volume = rt_audio_get_master_volume();
+            assert(volume >= 0 && volume <= 100);
+        }
+    };
+
+    std::thread t1(writer);
+    std::thread t2(writer);
+    std::thread t3(reader);
+    t1.join();
+    t2.join();
+    t3.join();
+
+    rt_audio_set_master_volume(100);
+    PASS();
+}
+
 //=============================================================================
 // Crossfade State Tests
 //=============================================================================
@@ -256,6 +296,8 @@ int main() {
     test_group_volume_invalid_group();
     test_group_independence();
     test_group_volume_threaded_stress();
+    test_master_volume_without_backend_roundtrip();
+    test_master_volume_threaded_stress();
 
     // Crossfade state
     test_crossfade_initially_inactive();
