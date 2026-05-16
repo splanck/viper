@@ -23,8 +23,12 @@
 #include "common/IntegerHelpers.hpp"
 #include "il/core/Global.hpp"
 #include "il/core/Instr.hpp"
+#include "il/core/Opcode.hpp"
+#include "il/core/Type.hpp"
 
 #include <cassert>
+#include <cstdint>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <unordered_map>
@@ -114,6 +118,139 @@ class ModuleAdapter {
                 reportUnsupported("non-scalar IL type encountered during Phase A lowering");
         }
         reportUnsupported("unknown IL type kind encountered during Phase A lowering");
+    }
+
+    /// @brief Reconstruct an IL integer type from the adapter's stored bit width.
+    static il::core::Type integerTypeFromBits(std::uint8_t bits) noexcept {
+        using Kind = il::core::Type::Kind;
+        switch (bits) {
+            case 16:
+                return il::core::Type(Kind::I16);
+            case 32:
+                return il::core::Type(Kind::I32);
+            default:
+                return il::core::Type(Kind::I64);
+        }
+    }
+
+    /// @brief Return true for opcodes whose omitted textual type has to be inferred.
+    static bool hasImplicitIntegerResultWhenVoid(il::core::Opcode op) noexcept {
+        using il::core::Opcode;
+        switch (op) {
+            case Opcode::IAddOvf:
+            case Opcode::ISubOvf:
+            case Opcode::IMulOvf:
+            case Opcode::SDivChk0:
+            case Opcode::UDivChk0:
+            case Opcode::SRemChk0:
+            case Opcode::URemChk0:
+            case Opcode::IdxChk:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// @brief Return whether @p value fits in a signed integer of @p bits.
+    static bool constantFitsInIntegerBits(std::int64_t value, std::uint8_t bits) noexcept {
+        switch (bits) {
+            case 16:
+                return value >= std::numeric_limits<std::int16_t>::min() &&
+                       value <= std::numeric_limits<std::int16_t>::max();
+            case 32:
+                return value >= std::numeric_limits<std::int32_t>::min() &&
+                       value <= std::numeric_limits<std::int32_t>::max();
+            case 64:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// @brief Pick the verifier's default integer width for an untyped constant.
+    static std::uint8_t smallestIntegerBitsForConstant(std::int64_t value) noexcept {
+        if (constantFitsInIntegerBits(value, 16))
+            return 16;
+        if (constantFitsInIntegerBits(value, 32))
+            return 32;
+        return 64;
+    }
+
+    /// @brief Infer the verifier's result type for an unannotated checked arithmetic op.
+    il::core::Type inferCheckedIntegerResultType(const il::core::Instr &instr) const {
+        using Kind = il::core::Type::Kind;
+
+        std::optional<std::uint8_t> inferredBits;
+        for (const auto &operand : instr.operands) {
+            if (operand.kind != il::core::Value::Kind::Temp)
+                continue;
+
+            const auto kindIt = valueKinds_.find(operand.id);
+            const auto bitsIt = valueBits_.find(operand.id);
+            if (kindIt == valueKinds_.end() || bitsIt == valueBits_.end() ||
+                kindIt->second != ILValue::Kind::I64) {
+                return il::core::Type(Kind::I64);
+            }
+
+            const std::uint8_t bits = bitsIt->second;
+            if (bits != 16 && bits != 32 && bits != 64) {
+                return il::core::Type(Kind::I64);
+            }
+            if (inferredBits && *inferredBits != bits) {
+                return il::core::Type(Kind::I64);
+            }
+            inferredBits = bits;
+        }
+
+        return integerTypeFromBits(inferredBits.value_or(64));
+    }
+
+    /// @brief Infer the verifier's result type for an unannotated idx.chk.
+    il::core::Type inferIdxChkResultType(const il::core::Instr &instr) const {
+        using Kind = il::core::Type::Kind;
+
+        std::optional<std::uint8_t> inferredBits;
+        for (const auto &operand : instr.operands) {
+            std::uint8_t operandBits = 64;
+            if (operand.kind == il::core::Value::Kind::Temp) {
+                const auto kindIt = valueKinds_.find(operand.id);
+                const auto bitsIt = valueBits_.find(operand.id);
+                if (kindIt == valueKinds_.end() || bitsIt == valueBits_.end() ||
+                    kindIt->second != ILValue::Kind::I64) {
+                    return il::core::Type(Kind::I64);
+                }
+
+                operandBits = bitsIt->second;
+                if (operandBits != 16 && operandBits != 32 && operandBits != 64)
+                    return il::core::Type(Kind::I64);
+            } else if (operand.kind == il::core::Value::Kind::ConstInt) {
+                if (inferredBits) {
+                    if (!constantFitsInIntegerBits(operand.i64, *inferredBits))
+                        return il::core::Type(Kind::I64);
+                    continue;
+                }
+                operandBits = smallestIntegerBitsForConstant(operand.i64);
+            } else {
+                return il::core::Type(Kind::I64);
+            }
+
+            if (inferredBits && *inferredBits != operandBits)
+                return il::core::Type(Kind::I64);
+            inferredBits = operandBits;
+        }
+
+        return integerTypeFromBits(inferredBits.value_or(64));
+    }
+
+    /// @brief Return the type x86-64 lowering should use for @p instr.
+    il::core::Type effectiveInstructionType(const il::core::Instr &instr) const {
+        if (instr.type.kind != il::core::Type::Kind::Void)
+            return instr.type;
+        if (!hasImplicitIntegerResultWhenVoid(instr.op))
+            return instr.type;
+        if (instr.op == il::core::Opcode::IdxChk)
+            return inferIdxChkResultType(instr);
+        return inferCheckedIntegerResultType(instr);
     }
 
     /// @brief Map an IL type to its integer bit width.
@@ -363,10 +500,13 @@ class ModuleAdapter {
         // conversion is independent of block layout.
         for (const auto &block : func.blocks) {
             for (const auto &instr : block.instructions) {
-                if (!instr.result || instr.type.kind == il::core::Type::Kind::Void)
+                if (!instr.result)
                     continue;
-                valueKinds_[*instr.result] = typeToKind(instr.type);
-                valueBits_[*instr.result] = typeBitWidth(instr.type);
+                const auto resultType = effectiveInstructionType(instr);
+                if (resultType.kind == il::core::Type::Kind::Void)
+                    continue;
+                valueKinds_[*instr.result] = typeToKind(resultType);
+                valueBits_[*instr.result] = typeBitWidth(resultType);
             }
         }
 
@@ -411,83 +551,87 @@ class ModuleAdapter {
 
     /// @brief Adapt a single instruction and append to block.
     void adaptInstruction(const il::core::Instr &instr, ILBlock &block) {
+        il::core::Instr typedInstr = instr;
+        typedInstr.type = effectiveInstructionType(instr);
+        const il::core::Instr &source = typedInstr;
+
         ILInstr out{};
         out.resultId = -1;
-        out.loc = instr.loc;
+        out.loc = source.loc;
 
-        switch (instr.op) {
+        switch (source.op) {
             // Arithmetic operations
             case il::core::Opcode::Add:
             case il::core::Opcode::FAdd:
-                adaptBinaryArithmetic(instr, out, "add");
+                adaptBinaryArithmetic(source, out, "add");
                 break;
             case il::core::Opcode::IAddOvf:
-                adaptBinaryArithmetic(instr, out, "iadd.ovf");
+                adaptBinaryArithmetic(source, out, "iadd.ovf");
                 break;
             case il::core::Opcode::Sub:
             case il::core::Opcode::FSub:
-                adaptBinaryArithmetic(instr, out, "sub");
+                adaptBinaryArithmetic(source, out, "sub");
                 break;
             case il::core::Opcode::ISubOvf:
-                adaptBinaryArithmetic(instr, out, "isub.ovf");
+                adaptBinaryArithmetic(source, out, "isub.ovf");
                 break;
             case il::core::Opcode::Mul:
             case il::core::Opcode::FMul:
-                adaptBinaryArithmetic(instr, out, "mul");
+                adaptBinaryArithmetic(source, out, "mul");
                 break;
             case il::core::Opcode::IMulOvf:
-                adaptBinaryArithmetic(instr, out, "imul.ovf");
+                adaptBinaryArithmetic(source, out, "imul.ovf");
                 break;
             case il::core::Opcode::FDiv:
-                adaptFDiv(instr, out);
+                adaptFDiv(source, out);
                 break;
 
             // Division and remainder
             case il::core::Opcode::SDiv:
-                adaptIntDiv(instr, out, "sdiv");
+                adaptIntDiv(source, out, "sdiv");
                 break;
             case il::core::Opcode::SDivChk0:
-                adaptIntDiv(instr, out, "sdiv.chk0");
+                adaptIntDiv(source, out, "sdiv.chk0");
                 break;
             case il::core::Opcode::SRem:
-                adaptIntDiv(instr, out, "srem");
+                adaptIntDiv(source, out, "srem");
                 break;
             case il::core::Opcode::SRemChk0:
-                adaptIntDiv(instr, out, "srem.chk0");
+                adaptIntDiv(source, out, "srem.chk0");
                 break;
             case il::core::Opcode::UDiv:
-                adaptIntDiv(instr, out, "udiv");
+                adaptIntDiv(source, out, "udiv");
                 break;
             case il::core::Opcode::UDivChk0:
-                adaptIntDiv(instr, out, "udiv.chk0");
+                adaptIntDiv(source, out, "udiv.chk0");
                 break;
             case il::core::Opcode::URem:
-                adaptIntDiv(instr, out, "urem");
+                adaptIntDiv(source, out, "urem");
                 break;
             case il::core::Opcode::URemChk0:
-                adaptIntDiv(instr, out, "urem.chk0");
+                adaptIntDiv(source, out, "urem.chk0");
                 break;
 
             // Shift operations
             case il::core::Opcode::Shl:
-                adaptShift(instr, out, "shl");
+                adaptShift(source, out, "shl");
                 break;
             case il::core::Opcode::LShr:
-                adaptShift(instr, out, "lshr");
+                adaptShift(source, out, "lshr");
                 break;
             case il::core::Opcode::AShr:
-                adaptShift(instr, out, "ashr");
+                adaptShift(source, out, "ashr");
                 break;
 
             // Bitwise operations
             case il::core::Opcode::And:
-                adaptBitwise(instr, out, "and");
+                adaptBitwise(source, out, "and");
                 break;
             case il::core::Opcode::Or:
-                adaptBitwise(instr, out, "or");
+                adaptBitwise(source, out, "or");
                 break;
             case il::core::Opcode::Xor:
-                adaptBitwise(instr, out, "xor");
+                adaptBitwise(source, out, "xor");
                 break;
 
             // Integer comparisons
@@ -501,46 +645,46 @@ class ModuleAdapter {
             case il::core::Opcode::UCmpGE:
             case il::core::Opcode::UCmpLT:
             case il::core::Opcode::UCmpLE:
-                adaptIntCompare(instr, out);
+                adaptIntCompare(source, out);
                 break;
 
             // Float comparisons — emit as fcmp_{suffix} for Phase B prefix matching
             case il::core::Opcode::FCmpEQ:
-                adaptFloatCompareAs(instr, out, "fcmp_eq");
+                adaptFloatCompareAs(source, out, "fcmp_eq");
                 break;
             case il::core::Opcode::FCmpNE:
-                adaptFloatCompareAs(instr, out, "fcmp_ne");
+                adaptFloatCompareAs(source, out, "fcmp_ne");
                 break;
             case il::core::Opcode::FCmpLT:
-                adaptFloatCompareAs(instr, out, "fcmp_lt");
+                adaptFloatCompareAs(source, out, "fcmp_lt");
                 break;
             case il::core::Opcode::FCmpLE:
-                adaptFloatCompareAs(instr, out, "fcmp_le");
+                adaptFloatCompareAs(source, out, "fcmp_le");
                 break;
             case il::core::Opcode::FCmpGT:
-                adaptFloatCompareAs(instr, out, "fcmp_gt");
+                adaptFloatCompareAs(source, out, "fcmp_gt");
                 break;
             case il::core::Opcode::FCmpGE:
-                adaptFloatCompareAs(instr, out, "fcmp_ge");
+                adaptFloatCompareAs(source, out, "fcmp_ge");
                 break;
             case il::core::Opcode::FCmpOrd:
-                adaptFloatCompareAs(instr, out, "fcmp_ord");
+                adaptFloatCompareAs(source, out, "fcmp_ord");
                 break;
             case il::core::Opcode::FCmpUno:
-                adaptFloatCompareAs(instr, out, "fcmp_uno");
+                adaptFloatCompareAs(source, out, "fcmp_uno");
                 break;
 
             // Call
             case il::core::Opcode::Call:
-                adaptCall(instr, out);
+                adaptCall(source, out);
                 break;
             case il::core::Opcode::CallIndirect:
-                adaptCallIndirect(instr, out);
+                adaptCallIndirect(source, out);
                 break;
 
             // Exception handling
             case il::core::Opcode::EhPush:
-                adaptEhPush(instr, out);
+                adaptEhPush(source, out);
                 break;
             case il::core::Opcode::EhPop:
                 adaptEhPop(out);
@@ -551,131 +695,131 @@ class ModuleAdapter {
 
             // Memory operations
             case il::core::Opcode::Load:
-                adaptLoad(instr, out);
+                adaptLoad(source, out);
                 break;
             case il::core::Opcode::Store:
-                adaptStore(instr, out);
+                adaptStore(source, out);
                 break;
 
             // Cast operations
             case il::core::Opcode::Zext1:
-                adaptZext(instr, out);
+                adaptZext(source, out);
                 break;
             case il::core::Opcode::Trunc1:
-                adaptTrunc(instr, out);
+                adaptTrunc(source, out);
                 break;
             case il::core::Opcode::CastSiToFp:
             case il::core::Opcode::Sitofp:
-                adaptSiToFp(instr, out);
+                adaptSiToFp(source, out);
                 break;
             case il::core::Opcode::CastFpToSiRteChk:
-                adaptFpToSiChecked(instr, out);
+                adaptFpToSiChecked(source, out);
                 break;
             case il::core::Opcode::Fptosi:
-                adaptFpToSi(instr, out);
+                adaptFpToSi(source, out);
                 break;
             case il::core::Opcode::CastFpToUiRteChk:
-                adaptFpToUi(instr, out);
+                adaptFpToUi(source, out);
                 break;
             case il::core::Opcode::CastUiToFp:
-                adaptUiToFp(instr, out);
+                adaptUiToFp(source, out);
                 break;
             case il::core::Opcode::CastSiNarrowChk:
             case il::core::Opcode::CastUiNarrowChk:
-                adaptNarrowCast(instr, out);
+                adaptNarrowCast(source, out);
                 break;
 
             // Control flow
             case il::core::Opcode::Ret:
-                adaptRet(instr, out);
+                adaptRet(source, out);
                 break;
             case il::core::Opcode::Br:
-                adaptBr(instr, out, block);
+                adaptBr(source, out, block);
                 break;
             case il::core::Opcode::CBr:
-                adaptCBr(instr, out, block);
+                adaptCBr(source, out, block);
                 break;
             case il::core::Opcode::Trap:
                 out.opcode = "trap";
-                convertOperands(instr, {std::nullopt}, out);
+                convertOperands(source, {std::nullopt}, out);
                 break;
             case il::core::Opcode::TrapFromErr:
-                adaptRuntimeCall(instr, out, "rt_trap_raise_error", {ILValue::Kind::I64});
+                adaptRuntimeCall(source, out, "rt_trap_raise_error", {ILValue::Kind::I64});
                 break;
 
             // String operations
             case il::core::Opcode::ConstStr:
-                adaptConstStr(instr, out);
+                adaptConstStr(source, out);
                 break;
 
             // Constants and addresses
             case il::core::Opcode::ConstNull:
-                adaptConstNull(instr, out);
+                adaptConstNull(source, out);
                 break;
             case il::core::Opcode::ConstF64:
-                adaptConstF64(instr, out);
+                adaptConstF64(source, out);
                 break;
             case il::core::Opcode::GAddr:
-                adaptGAddr(instr, out);
+                adaptGAddr(source, out);
                 break;
             case il::core::Opcode::AddrOf:
-                adaptAddrOf(instr, out);
+                adaptAddrOf(source, out);
                 break;
 
             // Memory allocation
             case il::core::Opcode::Alloca:
-                adaptAlloca(instr, out);
+                adaptAlloca(source, out);
                 break;
             case il::core::Opcode::GEP:
-                adaptGEP(instr, out);
+                adaptGEP(source, out);
                 break;
 
             // Bounds checking
             case il::core::Opcode::IdxChk:
-                adaptIdxChk(instr, out);
+                adaptIdxChk(source, out);
                 break;
 
             // Switch
             case il::core::Opcode::SwitchI32:
-                adaptSwitchI32(instr, out, block);
+                adaptSwitchI32(source, out, block);
                 break;
 
             // === Structured Error Handling ===
             case il::core::Opcode::TrapKind:
-                adaptRuntimeCall(instr, out, "rt_trap_get_kind");
+                adaptRuntimeCall(source, out, "rt_trap_get_kind");
                 break;
             case il::core::Opcode::TrapErr:
                 adaptRuntimeCall(
-                    instr, out, "rt_trap_error_make", {ILValue::Kind::I64, ILValue::Kind::STR});
+                    source, out, "rt_trap_error_make", {ILValue::Kind::I64, ILValue::Kind::STR});
                 break;
             case il::core::Opcode::ResumeLabel:
                 // resume.label is a branch to an explicit target label.
                 // The resume token operand is ignored in native codegen.
-                adaptBr(instr, out, block);
+                adaptBr(source, out, block);
                 break;
             case il::core::Opcode::ErrGetKind:
-                adaptRuntimeCall(instr, out, "rt_trap_get_kind");
+                adaptRuntimeCall(source, out, "rt_trap_get_kind");
                 break;
             case il::core::Opcode::ErrGetCode:
-                adaptRuntimeCall(instr, out, "rt_trap_get_code");
+                adaptRuntimeCall(source, out, "rt_trap_get_code");
                 break;
             case il::core::Opcode::ErrGetIp:
-                adaptRuntimeCall(instr, out, "rt_trap_get_ip");
+                adaptRuntimeCall(source, out, "rt_trap_get_ip");
                 break;
             case il::core::Opcode::ErrGetLine:
-                adaptRuntimeCall(instr, out, "rt_trap_get_line");
+                adaptRuntimeCall(source, out, "rt_trap_get_line");
                 break;
             case il::core::Opcode::ErrGetMsg:
-                adaptRuntimeCall(instr, out, "rt_throw_msg_get");
+                adaptRuntimeCall(source, out, "rt_throw_msg_get");
                 break;
             case il::core::Opcode::ResumeSame:
             case il::core::Opcode::ResumeNext:
                 reportUnsupported(std::string{"x86-64 lowering received raw "} +
-                                  il::core::toString(instr.op) +
+                                  il::core::toString(source.op) +
                                   " after NativeEHLowering; structured EH rewrite is incomplete.");
 
             default:
-                reportUnsupported(std::string{"IL opcode '"} + il::core::toString(instr.op) +
+                reportUnsupported(std::string{"IL opcode '"} + il::core::toString(source.op) +
                                   "' not supported by x86-64 Phase A");
         }
 

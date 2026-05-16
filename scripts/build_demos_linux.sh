@@ -13,7 +13,7 @@ GAMES_DIR="$ROOT_DIR/examples/games"
 APPS_DIR="$ROOT_DIR/examples/apps"
 
 VIPER="$BUILD_DIR/src/tools/viper/viper"
-CC_CMD="${CC:-cc}"
+LINK_CMD="${CXX:-c++}"
 RUN_TIMEOUT_DEFAULT="${VIPER_DEMO_TIMEOUT:-5}"
 RUN_DEMO_RC=0
 
@@ -80,8 +80,8 @@ if [[ ! -x "$VIPER" ]]; then
     exit 1
 fi
 
-if ! command -v "$CC_CMD" >/dev/null 2>&1; then
-    echo -e "${RED}Error: C compiler '$CC_CMD' not found${NC}"
+if ! command -v "$LINK_CMD" >/dev/null 2>&1; then
+    echo -e "${RED}Error: C++ linker '$LINK_CMD' not found${NC}"
     exit 1
 fi
 
@@ -127,7 +127,7 @@ link_demo() {
     local exe_file="$2"
     local err_file="$3"
 
-    if ! "$CC_CMD" \
+    if ! "$LINK_CMD" \
         "$obj_file" \
         "$RUNTIME_ARCHIVE" \
         "$GUI_LIB" \
@@ -243,7 +243,7 @@ build_demo() {
     fi
     echo -e "${GREEN}OK${NC}"
 
-    echo -n "  Link (system cc)... "
+    echo -n "  Link (system c++)... "
     if ! link_demo "$obj_file" "$exe_file" "$link_err"; then
         echo -e "${RED}FAILED${NC}"
         head -40 "$link_err"
@@ -284,7 +284,7 @@ build_demo() {
 
 echo -e "${CYAN}Building Viper demos on Linux (${TARGET_ARCH})${NC}"
 echo -e "${CYAN}Object generation: Viper native backend${NC}"
-echo -e "${CYAN}Final link: system cc${NC}"
+echo -e "${CYAN}Final link: system c++${NC}"
 if [[ $SKIP_RUN -eq 0 ]]; then
     echo -e "${CYAN}Run validation: launch from ./examples/bin with timeout=${RUN_TIMEOUT_DEFAULT}s${NC}"
 fi
