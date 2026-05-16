@@ -17,6 +17,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_object.h"
 #include "rt_oop.h"
 
 #include <assert.h>
@@ -42,6 +43,18 @@ static const int TYPE_A = 500;
 static const int TYPE_B = 501;
 static const int TYPE_C = 502;
 static const int IFACE_I = 50;
+
+static void *make_test_object(void **vptr) {
+    rt_object *obj = (rt_object *)rt_obj_new_i64(0, (int64_t)sizeof(rt_object));
+    assert(obj != nullptr);
+    obj->vptr = vptr;
+    return obj;
+}
+
+static void release_test_object(void *obj) {
+    if (rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
 
 static void register_test_types() {
     rt_register_class_with_base(TYPE_A, vtable_a, "Thread.A", 0, -1);
@@ -137,20 +150,15 @@ static void test_concurrent_interface_lookup() {
     const int ITERS_PER_THREAD = 5000;
     std::atomic<int> failures{0};
 
-    // Create mock objects with vtables (minimal object layout: vptr at offset 0)
-    struct MockObj {
-        void **vptr;
-    };
-
-    MockObj obj_a = {vtable_a};
-    MockObj obj_b = {vtable_b};
-    MockObj obj_c = {vtable_c};
+    void *obj_a = make_test_object(vtable_a);
+    void *obj_b = make_test_object(vtable_b);
+    void *obj_c = make_test_object(vtable_c);
 
     auto worker = [&]() {
         for (int i = 0; i < ITERS_PER_THREAD; ++i) {
-            void **it_a = rt_itable_lookup(&obj_a, IFACE_I);
-            void **it_b = rt_itable_lookup(&obj_b, IFACE_I);
-            void **it_c = rt_itable_lookup(&obj_c, IFACE_I);
+            void **it_a = rt_itable_lookup(obj_a, IFACE_I);
+            void **it_b = rt_itable_lookup(obj_b, IFACE_I);
+            void **it_c = rt_itable_lookup(obj_c, IFACE_I);
 
             if (it_a != itable_a)
                 failures++;
@@ -166,6 +174,10 @@ static void test_concurrent_interface_lookup() {
         threads.emplace_back(worker);
     for (auto &t : threads)
         t.join();
+
+    release_test_object(obj_a);
+    release_test_object(obj_b);
+    release_test_object(obj_c);
 
     assert(failures.load() == 0);
     printf(" OK (%d threads x %d iterations)\n", NUM_THREADS, ITERS_PER_THREAD);

@@ -9,6 +9,7 @@
 #include "rt_context.h"
 #include "rt_file.h"
 #include "rt_modvar.h"
+#include "rt_object.h"
 #include "rt_oop.h"
 #include "rt_random.h"
 #include "tests/TestHarness.hpp"
@@ -25,6 +26,18 @@ static std::string makeTempPath(const char *tag) {
     auto dir = fs::temp_directory_path();
     auto path = dir / (std::string("viper_multivm_") + tag + ".txt");
     return path.string();
+}
+
+static void *makeTypeRegistryTestObject(void **vptr) {
+    rt_object *obj = (rt_object *)rt_obj_new_i64(0, (int64_t)sizeof(rt_object));
+    ASSERT_NE(obj, nullptr);
+    obj->vptr = vptr;
+    return obj;
+}
+
+static void releaseTypeRegistryTestObject(void *obj) {
+    if (rt_obj_release_check0(obj))
+        rt_obj_free(obj);
 }
 
 TEST(MultiVMIsolation, RNG_IsolatedPerContext) {
@@ -350,9 +363,9 @@ TEST(MultiVMIsolation, TypeRegistry_ItableLookupIsolated) {
     rt_register_interface_direct(IFACE_ID, "Ctx1.IWidget", 1);
     rt_bind_interface(TYPE_CLASS, IFACE_ID, itable_ctx1);
 
-    // Create mock object with ctx1's vtable
-    rt_object obj_ctx1 = {.vptr = vtable_class_a_ctx1};
-    void **itable_from_ctx1 = rt_itable_lookup(&obj_ctx1, IFACE_ID);
+    // Create heap-backed mock object with ctx1's vtable.
+    void *obj_ctx1 = makeTypeRegistryTestObject(vtable_class_a_ctx1);
+    void **itable_from_ctx1 = rt_itable_lookup(obj_ctx1, IFACE_ID);
     ASSERT_EQ(itable_from_ctx1, itable_ctx1);
 
     // In ctx2: register class, interface, and bind with DIFFERENT itable_ctx2
@@ -361,9 +374,9 @@ TEST(MultiVMIsolation, TypeRegistry_ItableLookupIsolated) {
     rt_register_interface_direct(IFACE_ID, "Ctx2.IWidget", 1);
     rt_bind_interface(TYPE_CLASS, IFACE_ID, itable_ctx2);
 
-    // Create mock object with ctx2's vtable
-    rt_object obj_ctx2 = {.vptr = vtable_class_a_ctx2};
-    void **itable_from_ctx2 = rt_itable_lookup(&obj_ctx2, IFACE_ID);
+    // Create heap-backed mock object with ctx2's vtable.
+    void *obj_ctx2 = makeTypeRegistryTestObject(vtable_class_a_ctx2);
+    void **itable_from_ctx2 = rt_itable_lookup(obj_ctx2, IFACE_ID);
     ASSERT_EQ(itable_from_ctx2, itable_ctx2);
 
     // Verify the itables are different (proving isolation)
@@ -371,9 +384,11 @@ TEST(MultiVMIsolation, TypeRegistry_ItableLookupIsolated) {
 
     // Switch back to ctx1 and verify its itable is still correct
     rt_set_current_context(&ctx1);
-    ASSERT_EQ(rt_itable_lookup(&obj_ctx1, IFACE_ID), itable_ctx1);
+    ASSERT_EQ(rt_itable_lookup(obj_ctx1, IFACE_ID), itable_ctx1);
 
     rt_set_current_context(rt_legacy_context());
+    releaseTypeRegistryTestObject(obj_ctx1);
+    releaseTypeRegistryTestObject(obj_ctx2);
     rt_context_cleanup(&ctx1);
     rt_context_cleanup(&ctx2);
 }
