@@ -279,7 +279,7 @@ class Game {
         renderObj = new Renderer(pal);
         phys = new PhysicsHelper();
         sfx = new SoundManager();
-        sfx.setup("examples/games/xenoscape/");
+        sfx.setup(resolveAssetBasePath());
         tuning = new RuntimeTuning(resolveTuningPath());
         debugEnabled = tuning.getBool("debug.enabled", true);
         debugOverlay = Debug.New();
@@ -395,9 +395,25 @@ class Game {
         }
     }
 
-    /// @brief Locate the runtime-tuning JSON file (next to
-    ///        the binary, then ./, then a few fallbacks).
+    /// @brief Locate assets in installed packages or source-tree runs.
+    hide func resolveAssetBasePath() -> String {
+        if File.Exists("sounds/jump.wav") { return ""; }
+
+        var rootPath = "examples/games/xenoscape/sounds/jump.wav";
+        if File.Exists(rootPath) { return "examples/games/xenoscape/"; }
+
+        var binPath = "../games/xenoscape/sounds/jump.wav";
+        if File.Exists(binPath) { return "../games/xenoscape/"; }
+
+        return "";
+    }
+
+    /// @brief Locate the runtime-tuning JSON file (installed
+    ///        next to the binary, then source-tree fallbacks).
     hide func resolveTuningPath() -> String {
+        var localPath = "xenoscape.runtime.json";
+        if File.Exists(localPath) { return localPath; }
+
         var rootPath = "examples/games/xenoscape/xenoscape.runtime.json";
         if File.Exists(rootPath) { return rootPath; }
 
@@ -405,10 +421,7 @@ class Game {
         var binPath = "../games/xenoscape/xenoscape.runtime.json";
         if File.Exists(binPath) { return binPath; }
 
-        var localPath = "xenoscape.runtime.json";
-        if File.Exists(localPath) { return localPath; }
-
-        return rootPath;
+        return localPath;
     }
 
     /// @brief Push current game stats (FPS, position, state)

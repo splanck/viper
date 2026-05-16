@@ -83,6 +83,18 @@ function(viper_add_tools_tests)
                 SKIP_REGULAR_EXPRESSION "Skipping .*Windows user installer smoke")
         viper_add_test_labels(windows_installer_user_smoke installer tools requires_windows slow)
 
+        viper_add_ctest(windows_installer_xenoscape_smoke
+                ${CMAKE_COMMAND}
+                -DVIPER_BIN=$<TARGET_FILE:viper>
+                -DVIPER_REPO_ROOT=${CMAKE_SOURCE_DIR}
+                -DTEST_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/windows_installer_xenoscape_smoke
+                -P ${_VIPER_TOOLS_DIR}/WindowsXenoScapeInstallerSmoke.cmake)
+        set_tests_properties(windows_installer_xenoscape_smoke PROPERTIES
+                RUN_SERIAL TRUE
+                TIMEOUT 540
+                SKIP_REGULAR_EXPRESSION "Skipping .*XenoScape Windows installer smoke")
+        viper_add_test_labels(windows_installer_xenoscape_smoke installer tools zia requires_windows slow)
+
         viper_add_ctest(windows_installer_elevated_smoke
                 ${CMAKE_COMMAND}
                 -DVIPER_BIN=$<TARGET_FILE:viper>

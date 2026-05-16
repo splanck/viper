@@ -10,6 +10,11 @@ package-identifier org.viper-lang.xenoscape
 package-author "Viper Project"
 package-license MIT
 package-icon packaging/icon.png
+min-os-windows 10.0
+windows-install-scope user
+windows-install-dir Xenoscape
+shortcut-desktop on
 
 # === Assets ===
 asset sounds sounds
+asset xenoscape.runtime.json .

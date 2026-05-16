@@ -1972,6 +1972,10 @@ TEST(PackageConfig, DetectsNonDefaultPackageFields) {
     PackageConfig pkg2;
     pkg2.targetArchitectures.push_back("arm64");
     EXPECT_TRUE(pkg2.hasPackageConfig());
+
+    PackageConfig pkg3;
+    pkg3.windowsSignThumbprint = "ABCDEFFE00112233445566778899AABBCCDDEEFF";
+    EXPECT_TRUE(pkg3.hasPackageConfig());
 }
 
 // ============================================================================
@@ -2679,6 +2683,51 @@ TEST(WindowsPackageBuilder, BundlesRecursiveDllsAndSkipsSystemNamedLocals) {
     EXPECT_TRUE(reader.find("app/helper.dll") != nullptr);
     EXPECT_TRUE(reader.find("app/plugin.dll") != nullptr);
     EXPECT_TRUE(reader.find("app/kernel32.dll") == nullptr);
+
+    fs::remove_all(tmpRoot);
+}
+
+TEST(WindowsPackageBuilder, SkipsKnownWindowsGameRuntimeDlls) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot =
+        fs::temp_directory_path() / "viper_packaging_windows_game_system_dll_test";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot);
+
+    writeTestWindowsPe(tmpRoot / "app.exe",
+                       "x64",
+                       {{"xinput1_4.dll", {"XInputGetState"}},
+                        {"iphlpapi.dll", {"GetAdaptersAddresses"}},
+                        {"d3dcompiler_47.dll", {"D3DCompile"}}});
+    writeBytes(tmpRoot / "xinput1_4.dll", {'l', 'o', 'c', 'a', 'l'});
+    writeBytes(tmpRoot / "iphlpapi.dll", {'l', 'o', 'c', 'a', 'l'});
+    writeBytes(tmpRoot / "d3dcompiler_47.dll", {'l', 'o', 'c', 'a', 'l'});
+
+    PackageConfig pkg;
+    pkg.displayName = "Game Runtime App";
+
+    WindowsBuildParams params;
+    params.projectName = "gameruntime";
+    params.version = "1.0.0";
+    params.executablePath = (tmpRoot / "app.exe").string();
+    params.projectRoot = tmpRoot.string();
+    params.pkgConfig = pkg;
+    params.outputPath = (tmpRoot / "game_runtime_setup.exe").string();
+    params.archStr = "x64";
+
+    buildWindowsPackage(params);
+
+    const auto pe = readFile(params.outputPath);
+    std::ostringstream err;
+    EXPECT_TRUE(verifyPEZipOverlayPayload(
+        pe, {"app/gameruntime.exe", "app/uninstall.exe", "meta/manifest.sha256"}, err));
+    const auto overlay = extractFirstZipOverlay(pe);
+    ASSERT_FALSE(overlay.empty());
+    ZipReader reader(overlay.data(), overlay.size());
+    EXPECT_TRUE(reader.find("app/gameruntime.exe") != nullptr);
+    EXPECT_TRUE(reader.find("app/xinput1_4.dll") == nullptr);
+    EXPECT_TRUE(reader.find("app/iphlpapi.dll") == nullptr);
+    EXPECT_TRUE(reader.find("app/d3dcompiler_47.dll") == nullptr);
 
     fs::remove_all(tmpRoot);
 }

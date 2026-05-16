@@ -94,9 +94,10 @@ struct PackageConfig {
                !macosSignIdentity.empty() || !macosEntitlements.empty() ||
                macosHardenedRuntime || !macosNotaryProfile.empty() || macosStaple ||
                !windowsInstallScope.empty() || windowsSignSet || !windowsSignPfx.empty() ||
-               !windowsTimestampUrl.empty() || !windowsSigntoolPath.empty() ||
-               windowsSignNoVerify || !targetArchitectures.empty() || !category.empty() ||
-               !depends.empty() || !postInstallScript.empty() || !preUninstallScript.empty();
+               !windowsSignThumbprint.empty() || !windowsTimestampUrl.empty() ||
+               !windowsSigntoolPath.empty() || windowsSignNoVerify ||
+               !targetArchitectures.empty() || !category.empty() || !depends.empty() ||
+               !postInstallScript.empty() || !preUninstallScript.empty();
     }
 };
 

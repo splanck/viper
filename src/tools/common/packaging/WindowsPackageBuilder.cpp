@@ -381,11 +381,13 @@ bool isKnownWindowsRedistributableDll(const std::string &dll) {
         "advapi32.dll",    "bcrypt.dll",       "cfgmgr32.dll",   "combase.dll",
         "comctl32.dll",    "crypt32.dll",      "d3d11.dll",      "d3d12.dll",
         "dcomp.dll",       "dwmapi.dll",       "dxgi.dll",       "gdi32.dll",
-        "imm32.dll",       "kernel32.dll",     "msvcrt.dll",     "ntdll.dll",
+        "imm32.dll",       "iphlpapi.dll",     "kernel32.dll",   "msvcrt.dll",
+        "ntdll.dll",
         "ole32.dll",       "oleaut32.dll",     "propsys.dll",    "rpcrt4.dll",
         "secur32.dll",     "setupapi.dll",     "shell32.dll",    "shlwapi.dll",
         "user32.dll",      "uxtheme.dll",      "version.dll",    "winmm.dll",
         "winspool.drv",    "ws2_32.dll",       "wtsapi32.dll",   "ucrtbase.dll",
+        "xinput1_4.dll",   "xinput9_1_0.dll",  "d3dcompiler_47.dll",
         "ucrtbased.dll",   "vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll",
         "vcruntime140d.dll", "vcruntime140_1d.dll", "msvcp140d.dll"};
     if (exact.find(dll) != exact.end())

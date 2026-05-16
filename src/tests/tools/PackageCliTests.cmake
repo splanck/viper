@@ -353,6 +353,32 @@ if (NOT _windows_scope_cli_err MATCHES "Windows install scope: machine")
     message(FATAL_ERROR "Windows CLI scope override was not reported\nstdout:\n${_windows_scope_cli_out}\nstderr:\n${_windows_scope_cli_err}")
 endif ()
 
+set(_windows_thumbprint_only_project "${TEST_WORK_DIR}/windows-thumbprint-only-project")
+file(MAKE_DIRECTORY "${_windows_thumbprint_only_project}")
+file(WRITE "${_windows_thumbprint_only_project}/main.zia" "func start() {}\n")
+file(WRITE "${_windows_thumbprint_only_project}/viper.project"
+"project winthumbonly
+version 1.0.0
+lang zia
+entry main.zia
+windows-sign-thumbprint ABCDEFFE00112233445566778899AABBCCDDEEFF
+")
+
+execute_process(
+        COMMAND "${VIPER_BIN}" package "${_windows_thumbprint_only_project}" --target windows --dry-run
+        RESULT_VARIABLE _windows_thumbprint_only_rv
+        OUTPUT_VARIABLE _windows_thumbprint_only_out
+        ERROR_VARIABLE _windows_thumbprint_only_err)
+if (NOT _windows_thumbprint_only_rv EQUAL 0)
+    message(FATAL_ERROR "Windows thumbprint-only dry-run should succeed\nstdout:\n${_windows_thumbprint_only_out}\nstderr:\n${_windows_thumbprint_only_err}")
+endif ()
+if (_windows_thumbprint_only_err MATCHES "no package-\\* directives")
+    message(FATAL_ERROR "Windows thumbprint-only manifest was treated as missing package directives\nstdout:\n${_windows_thumbprint_only_out}\nstderr:\n${_windows_thumbprint_only_err}")
+endif ()
+if (NOT _windows_thumbprint_only_err MATCHES "Windows signing thumbprint: ABCDEFFE00112233445566778899AABBCCDDEEFF")
+    message(FATAL_ERROR "Windows thumbprint-only dry-run did not report signing thumbprint\nstdout:\n${_windows_thumbprint_only_out}\nstderr:\n${_windows_thumbprint_only_err}")
+endif ()
+
 execute_process(
         COMMAND "${VIPER_BIN}" package "${_windows_scope_project}" --target windows --dry-run --windows-sign-thumbprint 1234
         RESULT_VARIABLE _bad_windows_thumb_rv
