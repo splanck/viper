@@ -206,7 +206,7 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module) {
 
         // Skip methods defined in this module (struct type and class type methods)
         bool isLocalMethod = false;
-        auto dotPos = externName.find('.');
+        auto dotPos = externName.rfind('.');
         if (dotPos != std::string::npos) {
             std::string typeName = externName.substr(0, dotPos);
             if (getOrCreateStructTypeInfo(typeName) ||

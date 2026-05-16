@@ -74,6 +74,13 @@ std::string Lowerer::qualifyName(const std::string &name) const {
     return namespacePrefix_ + "." + name;
 }
 
+std::string Lowerer::declarationName(const Decl &decl, const std::string &name) const {
+    auto it = sema_.semanticDeclNames_.find(&decl);
+    if (it != sema_.semanticDeclNames_.end())
+        return it->second;
+    return qualifyName(name);
+}
+
 //=============================================================================
 // Compile-Time Constant Folding Helper
 //=============================================================================
@@ -286,8 +293,9 @@ void Lowerer::registerAllEnumValues(std::vector<DeclPtr> &declarations) {
         if (decl->kind == DeclKind::Enum) {
             auto *enumDecl = static_cast<EnumDecl *>(decl.get());
             int64_t nextValue = 0;
+            std::string enumName = declarationName(*enumDecl, enumDecl->name);
             for (const auto &variant : enumDecl->variants) {
-                std::string key = qualifyName(enumDecl->name) + "." + variant.name;
+                std::string key = enumName + "." + variant.name;
                 if (variant.explicitValue.has_value())
                     nextValue = *variant.explicitValue;
                 enumVariantValues_[key] = nextValue;
@@ -315,31 +323,30 @@ void Lowerer::registerAllFinalConstants(std::vector<DeclPtr> &declarations) {
     };
 
     std::vector<PendingFinal> pending;
-    std::function<void(std::vector<DeclPtr> &)> collectPending =
-        [&](std::vector<DeclPtr> &decls) {
-            for (auto &decl : decls) {
-                if (decl->kind == DeclKind::GlobalVar) {
-                    auto *gvar = static_cast<GlobalVarDecl *>(decl.get());
-                    if (gvar->isFinal && gvar->initializer) {
-                        pending.push_back({gvar, qualifyName(gvar->name)});
-                    }
-                    continue;
+    std::function<void(std::vector<DeclPtr> &)> collectPending = [&](std::vector<DeclPtr> &decls) {
+        for (auto &decl : decls) {
+            if (decl->kind == DeclKind::GlobalVar) {
+                auto *gvar = static_cast<GlobalVarDecl *>(decl.get());
+                if (gvar->isFinal && gvar->initializer) {
+                    pending.push_back({gvar, qualifyName(gvar->name)});
                 }
-
-                if (decl->kind != DeclKind::Namespace)
-                    continue;
-
-                auto *ns = static_cast<NamespaceDecl *>(decl.get());
-                std::string savedPrefix = namespacePrefix_;
-                if (namespacePrefix_.empty())
-                    namespacePrefix_ = ns->name;
-                else
-                    namespacePrefix_ = namespacePrefix_ + "." + ns->name;
-
-                collectPending(ns->declarations);
-                namespacePrefix_ = savedPrefix;
+                continue;
             }
-        };
+
+            if (decl->kind != DeclKind::Namespace)
+                continue;
+
+            auto *ns = static_cast<NamespaceDecl *>(decl.get());
+            std::string savedPrefix = namespacePrefix_;
+            if (namespacePrefix_.empty())
+                namespacePrefix_ = ns->name;
+            else
+                namespacePrefix_ = namespacePrefix_ + "." + ns->name;
+
+            collectPending(ns->declarations);
+            namespacePrefix_ = savedPrefix;
+        }
+    };
 
     collectPending(declarations);
 
@@ -392,8 +399,9 @@ void Lowerer::lowerEnumDecl(EnumDecl &decl) {
     // Enums don't produce IL structures -- each variant is an I64 constant.
     // Just register variant values for later lookup during expression lowering.
     int64_t nextValue = 0;
+    std::string enumName = declarationName(decl, decl.name);
     for (const auto &variant : decl.variants) {
-        std::string key = qualifyName(decl.name) + "." + variant.name;
+        std::string key = enumName + "." + variant.name;
         if (variant.explicitValue.has_value())
             nextValue = *variant.explicitValue;
         enumVariantValues_[key] = nextValue;

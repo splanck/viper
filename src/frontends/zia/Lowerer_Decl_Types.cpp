@@ -59,7 +59,7 @@ void Lowerer::registerClassLayout(ClassDecl &decl) {
     if (!decl.genericParams.empty())
         return;
 
-    std::string qualifiedName = qualifyName(decl.name);
+    std::string qualifiedName = declarationName(decl, decl.name);
 
     // Skip if already registered
     if (classTypes_.find(qualifiedName) != classTypes_.end())
@@ -67,13 +67,17 @@ void Lowerer::registerClassLayout(ClassDecl &decl) {
 
     ClassTypeInfo info;
     info.name = qualifiedName;
-    info.baseClass = decl.baseClass;
+    if (!decl.baseClass.empty()) {
+        TypeRef baseType = sema_.resolveNamedType(decl.baseClass, decl.loc);
+        info.baseClass = baseType ? baseType->name : decl.baseClass;
+    }
     info.totalSize = kClassFieldsOffset;
     info.classId = nextClassId_++;
     info.vtableName = "__vtable_" + qualifiedName;
 
     for (const auto &iface : decl.interfaces) {
-        info.implementedInterfaces.insert(iface);
+        TypeRef ifaceType = sema_.resolveNamedType(iface, decl.loc);
+        info.implementedInterfaces.insert(ifaceType ? ifaceType->name : iface);
     }
 
     // Copy inherited fields from parent class
@@ -113,10 +117,10 @@ void Lowerer::computeClassFieldLayout(ClassDecl &decl,
 
         // Compute size and alignment using semantic inline layout so nested
         // structs, tuples, and fixed-size arrays occupy their full storage.
-        size_t fieldLayoutSize = field->isWeak ? getILTypeSize(Type(Type::Kind::Ptr))
-                                                : getSemanticTypeSize(fieldType);
+        size_t fieldLayoutSize =
+            field->isWeak ? getILTypeSize(Type(Type::Kind::Ptr)) : getSemanticTypeSize(fieldType);
         size_t fieldLayoutAlignment = field->isWeak ? getILTypeAlignment(Type(Type::Kind::Ptr))
-                                                     : getSemanticTypeAlignment(fieldType);
+                                                    : getSemanticTypeAlignment(fieldType);
 
         FieldLayout layout;
         layout.name = field->name;
@@ -186,7 +190,7 @@ void Lowerer::registerStructLayout(StructDecl &decl) {
     if (!decl.genericParams.empty())
         return;
 
-    std::string qualifiedName = qualifyName(decl.name);
+    std::string qualifiedName = declarationName(decl, decl.name);
 
     // Skip if already registered
     if (structTypes_.find(qualifiedName) != structTypes_.end())
@@ -197,7 +201,8 @@ void Lowerer::registerStructLayout(StructDecl &decl) {
     info.totalSize = 0;
     info.classId = nextClassId_++;
     for (const auto &iface : decl.interfaces) {
-        info.implementedInterfaces.insert(iface);
+        TypeRef ifaceType = sema_.resolveNamedType(iface, decl.loc);
+        info.implementedInterfaces.insert(ifaceType ? ifaceType->name : iface);
     }
 
     for (auto &member : decl.members) {
@@ -212,10 +217,9 @@ void Lowerer::registerStructLayout(StructDecl &decl) {
             // Compute size and alignment using semantic inline layout so nested
             // structs, tuples, and fixed-size arrays occupy their full storage.
             size_t fieldLayoutSize = field->isWeak ? getILTypeSize(Type(Type::Kind::Ptr))
-                                                    : getSemanticTypeSize(fieldType);
-            size_t fieldLayoutAlignment =
-                field->isWeak ? getILTypeAlignment(Type(Type::Kind::Ptr))
-                              : getSemanticTypeAlignment(fieldType);
+                                                   : getSemanticTypeSize(fieldType);
+            size_t fieldLayoutAlignment = field->isWeak ? getILTypeAlignment(Type(Type::Kind::Ptr))
+                                                        : getSemanticTypeAlignment(fieldType);
 
             FieldLayout layout;
             layout.name = field->name;
@@ -394,10 +398,8 @@ void Lowerer::emitItableInit() {
         const ClassTypeInfo &classInfo = classIt->second;
 
         const size_t slotCount = classInfo.vtable.size();
-        const int64_t bytes =
-            slotCount > 0 ? static_cast<int64_t>(slotCount * 8ULL) : 8LL;
-        Value vtablePtr =
-            emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(bytes)});
+        const int64_t bytes = slotCount > 0 ? static_cast<int64_t>(slotCount * 8ULL) : 8LL;
+        Value vtablePtr = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(bytes)});
 
         for (size_t s = 0; s < slotCount; ++s) {
             int64_t offset = static_cast<int64_t>(s * 8ULL);
@@ -570,9 +572,8 @@ const StructTypeInfo *Lowerer::getOrCreateStructTypeInfo(const std::string &type
         const std::string suffix = "." + typeName;
         for (const auto &[registeredName, info] : structTypes_) {
             if (registeredName.size() < suffix.size() ||
-                registeredName.compare(registeredName.size() - suffix.size(),
-                                       suffix.size(),
-                                       suffix) != 0)
+                registeredName.compare(
+                    registeredName.size() - suffix.size(), suffix.size(), suffix) != 0)
                 continue;
             if (matched)
                 return nullptr;
@@ -615,10 +616,9 @@ const StructTypeInfo *Lowerer::getOrCreateStructTypeInfo(const std::string &type
             // Compute size and alignment using semantic inline layout so nested
             // structs, tuples, and fixed-size arrays occupy their full storage.
             size_t fieldLayoutSize = field->isWeak ? getILTypeSize(Type(Type::Kind::Ptr))
-                                                    : getSemanticTypeSize(fieldType);
-            size_t fieldLayoutAlignment =
-                field->isWeak ? getILTypeAlignment(Type(Type::Kind::Ptr))
-                              : getSemanticTypeAlignment(fieldType);
+                                                   : getSemanticTypeSize(fieldType);
+            size_t fieldLayoutAlignment = field->isWeak ? getILTypeAlignment(Type(Type::Kind::Ptr))
+                                                        : getSemanticTypeAlignment(fieldType);
 
             FieldLayout layout;
             layout.name = field->name;
@@ -659,9 +659,8 @@ const ClassTypeInfo *Lowerer::getOrCreateClassTypeInfo(const std::string &typeNa
         const std::string suffix = "." + typeName;
         for (const auto &[registeredName, info] : classTypes_) {
             if (registeredName.size() < suffix.size() ||
-                registeredName.compare(registeredName.size() - suffix.size(),
-                                       suffix.size(),
-                                       suffix) != 0)
+                registeredName.compare(
+                    registeredName.size() - suffix.size(), suffix.size(), suffix) != 0)
                 continue;
             if (matched)
                 return nullptr;
@@ -717,10 +716,9 @@ const ClassTypeInfo *Lowerer::getOrCreateClassTypeInfo(const std::string &typeNa
             // Compute size and alignment using semantic inline layout so nested
             // structs, tuples, and fixed-size arrays occupy their full storage.
             size_t fieldLayoutSize = field->isWeak ? getILTypeSize(Type(Type::Kind::Ptr))
-                                                    : getSemanticTypeSize(fieldType);
-            size_t fieldLayoutAlignment =
-                field->isWeak ? getILTypeAlignment(Type(Type::Kind::Ptr))
-                              : getSemanticTypeAlignment(fieldType);
+                                                   : getSemanticTypeSize(fieldType);
+            size_t fieldLayoutAlignment = field->isWeak ? getILTypeAlignment(Type(Type::Kind::Ptr))
+                                                        : getSemanticTypeAlignment(fieldType);
 
             FieldLayout layout;
             layout.name = field->name;

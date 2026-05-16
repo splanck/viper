@@ -585,6 +585,9 @@ class Lowerer {
     /// @return The fully qualified name including namespace prefix.
     std::string qualifyName(const std::string &name) const;
 
+    /// @brief Compute a declaration's lowered owner/type name.
+    std::string declarationName(const Decl &decl, const std::string &name) const;
+
     /// @brief Lower a global variable declaration.
     /// @param decl The global variable declaration.
     /// @details Handles module-level constants by storing their values in

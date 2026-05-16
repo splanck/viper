@@ -622,6 +622,18 @@ class Sema {
     /// @brief Derive the visible module name for a file bind.
     std::string fileBindModuleName(const BindDecl &decl) const;
 
+    /// @brief Prepare module-qualified semantic names for colliding top-level types.
+    void prepareModuleScopedTypeNames(const ModuleDecl &module);
+
+    /// @brief Return the declared module identity for a source file.
+    std::string moduleNameForFile(uint32_t fileId) const;
+
+    /// @brief Return a declaration's semantic name, accounting for scoped collisions.
+    std::string semanticNameForDecl(const Decl &decl, const std::string &name) const;
+
+    /// @brief Resolve a file-local top-level type spelling to its semantic name.
+    std::string fileScopedTypeName(uint32_t fileId, const std::string &name) const;
+
     /// @brief Check whether a symbol may be referenced from the given location.
     bool canAccessSymbol(const Symbol &sym,
                          SourceLoc useLoc,
@@ -1565,6 +1577,15 @@ class Sema {
     /// @brief Map from type names to semantic types.
     /// @details Includes both built-in types and user-defined types.
     std::unordered_map<std::string, TypeRef> typeRegistry_;
+
+    /// @brief Source-file id to declared module identity for imported Zia files.
+    std::unordered_map<uint32_t, std::string> fileModuleNames_;
+
+    /// @brief Semantic names for top-level type declarations whose short names collide.
+    std::unordered_map<const Decl *, std::string> semanticDeclNames_;
+
+    /// @brief File-local short type names to semantic names.
+    std::unordered_map<uint32_t, std::unordered_map<std::string, std::string>> fileScopedTypeNames_;
 
     /// @brief Struct type declarations for pattern analysis.
     std::unordered_map<std::string, StructDecl *> structDecls_;

@@ -211,6 +211,95 @@ func start() {
     EXPECT_TRUE(hasGreet);
 }
 
+TEST(ZiaBinds, DuplicateClassNamesAreModuleScoped) {
+    const fs::path tempRoot = fs::temp_directory_path() / "zia_bind_tests" /
+                              std::to_string(static_cast<unsigned long long>(::getpid()));
+    const fs::path dir = tempRoot / "module_scoped_classes";
+
+    writeFile(dir,
+              "alpha.zia",
+              R"(
+module Alpha;
+
+expose class WishDup {
+    expose Integer value;
+
+    expose func init(v: Integer) {
+        value = v;
+    }
+
+    expose func score() -> Integer {
+        return value;
+    }
+}
+)");
+
+    writeFile(dir,
+              "beta.zia",
+              R"(
+module Beta;
+
+expose class WishDup {
+    expose Integer value;
+
+    expose func init(v: Integer) {
+        value = v;
+    }
+
+    expose func score() -> Integer {
+        return value * 2;
+    }
+}
+)");
+
+    const std::string mainSource = R"(
+module Main;
+bind "./alpha" as A;
+bind "./beta";
+
+func start() {
+    var a: A.WishDup = new A.WishDup(7);
+    var b: Beta.WishDup = new Beta.WishDup(11);
+    Viper.Terminal.SayInt(a.score() + b.score());
+}
+)";
+    const fs::path mainPath = writeFile(dir, "main.zia", mainSource);
+    const std::string mainPathStr = mainPath.string();
+
+    SourceManager sm;
+    CompilerInput input{.source = mainSource, .path = mainPathStr};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+    if (!result.succeeded()) {
+        std::cerr << "Diagnostics for DuplicateClassNamesAreModuleScoped:\n";
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+    EXPECT_TRUE(result.succeeded());
+
+    bool hasAlphaInit = false;
+    bool hasBetaInit = false;
+    bool hasAlphaScore = false;
+    bool hasBetaScore = false;
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "Alpha.WishDup.init")
+            hasAlphaInit = true;
+        if (fn.name == "Beta.WishDup.init")
+            hasBetaInit = true;
+        if (fn.name == "Alpha.WishDup.score")
+            hasAlphaScore = true;
+        if (fn.name == "Beta.WishDup.score")
+            hasBetaScore = true;
+    }
+    EXPECT_TRUE(hasAlphaInit);
+    EXPECT_TRUE(hasBetaInit);
+    EXPECT_TRUE(hasAlphaScore);
+    EXPECT_TRUE(hasBetaScore);
+}
+
 TEST(ZiaBinds, CircularBindAllowed) {
     const fs::path tempRoot = fs::temp_directory_path() / "zia_bind_tests" /
                               std::to_string(static_cast<unsigned long long>(::getpid()));

@@ -65,7 +65,7 @@ void Lowerer::lowerGlobalVarDecl(GlobalVarDecl &decl) {
     ZiaLocationScope locScope(*this, decl.loc);
 
     // Use qualified name for globals inside namespaces
-    std::string qualifiedName = qualifyName(decl.name);
+    std::string qualifiedName = declarationName(decl, decl.name);
 
     // Resolve the type
     TypeRef type = decl.type ? sema_.resolveType(decl.type.get()) : nullptr;
@@ -200,7 +200,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl) {
     }
 
     // Use qualified name for functions inside namespaces
-    std::string qualifiedName = qualifyName(decl.name);
+    std::string qualifiedName = declarationName(decl, decl.name);
     std::string mangledName = sema_.loweredFunctionName(&decl);
     if (mangledName.empty())
         mangledName = mangleFunctionName(qualifiedName);
@@ -586,7 +586,7 @@ void Lowerer::lowerStructDecl(StructDecl &decl) {
     if (!decl.genericParams.empty())
         return;
 
-    std::string qualifiedName = qualifyName(decl.name);
+    std::string qualifiedName = declarationName(decl, decl.name);
 
     // BUG-FE-006 fix: Layout may already be registered by the pre-pass.
     if (structTypes_.find(qualifiedName) == structTypes_.end()) {
@@ -608,7 +608,7 @@ void Lowerer::lowerClassDecl(ClassDecl &decl) {
     if (!decl.genericParams.empty())
         return;
 
-    std::string qualifiedName = qualifyName(decl.name);
+    std::string qualifiedName = declarationName(decl, decl.name);
 
     // BUG-FE-006 fix: Layout may already be registered by the pre-pass.
     // If not registered yet (e.g., in pending generic instantiation), do it now.
@@ -672,7 +672,7 @@ void Lowerer::lowerInterfaceDecl(InterfaceDecl &decl) {
     ZiaLocationScope locScope(*this, decl.loc);
 
     // Use qualified name for interfaces inside namespaces
-    std::string qualifiedName = qualifyName(decl.name);
+    std::string qualifiedName = declarationName(decl, decl.name);
 
     // Store interface information for itable dispatch
     InterfaceTypeInfo info;
@@ -753,6 +753,8 @@ void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, boo
     std::string mangledName = sema_.loweredMethodName(typeName, &decl);
     if (mangledName.empty())
         mangledName = typeName + "." + decl.name;
+
+    definedFunctions_.insert(mangledName);
 
     // Create function
     currentFunc_ = &builder_->startFunction(mangledName, ilReturnType, params);

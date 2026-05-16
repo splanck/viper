@@ -448,6 +448,17 @@ func start() {
 }
 ```
 
+If two bound files export the same top-level type name, qualify that type with
+the bound module name or alias:
+
+```viper
+bind "./alpha"; // module Alpha; expose class WishDup { ... }
+bind "./beta";  // module Beta;  expose class WishDup { ... }
+
+var a: Alpha.WishDup = new Alpha.WishDup();
+var b: Beta.WishDup = new Beta.WishDup();
+```
+
 **Bind path rules:**
 
 - `"./foo"` — Relative path, adds `.zia` extension

@@ -68,6 +68,33 @@ std::string classifySemanticError(const std::string &message) {
     return "V-ZIA-SEMA";
 }
 
+bool isTopLevelTypeDeclKind(DeclKind kind) {
+    switch (kind) {
+        case DeclKind::Struct:
+        case DeclKind::Class:
+        case DeclKind::Interface:
+        case DeclKind::Enum:
+            return true;
+        default:
+            return false;
+    }
+}
+
+std::string topLevelTypeDeclName(const Decl &decl) {
+    switch (decl.kind) {
+        case DeclKind::Struct:
+            return static_cast<const StructDecl &>(decl).name;
+        case DeclKind::Class:
+            return static_cast<const ClassDecl &>(decl).name;
+        case DeclKind::Interface:
+            return static_cast<const InterfaceDecl &>(decl).name;
+        case DeclKind::Enum:
+            return static_cast<const EnumDecl &>(decl).name;
+        default:
+            return "";
+    }
+}
+
 size_t editDistance(std::string_view lhs, std::string_view rhs) {
     std::vector<size_t> previous(rhs.size() + 1);
     std::vector<size_t> current(rhs.size() + 1);
@@ -1258,10 +1285,13 @@ void Sema::addWarningSuppressions(uint32_t fileId, std::string_view source) {
 /// @return True if analysis succeeded without errors, false otherwise.
 bool Sema::analyze(ModuleDecl &module) {
     currentModule_ = &module;
+    fileModuleNames_.clear();
 
     for (auto &bind : module.binds) {
         analyzeBind(bind);
     }
+
+    prepareModuleScopedTypeNames(module);
 
     // First pass: register all top-level declarations
     for (auto &decl : module.declarations) {
@@ -1310,89 +1340,94 @@ bool Sema::analyze(ModuleDecl &module) {
             }
             case DeclKind::Struct: {
                 auto *value = static_cast<StructDecl *>(decl.get());
+                const std::string semanticName = semanticNameForDecl(*value, value->name);
 
                 TypeRef valueType;
                 if (!value->genericParams.empty()) {
                     // Generic type: register for later instantiation
-                    registerGenericType(value->name, value);
+                    registerGenericType(semanticName, value);
                     // Create uninstantiated type placeholder with type parameters
                     std::vector<TypeRef> paramTypes;
                     for (const auto &param : value->genericParams) {
                         paramTypes.push_back(types::typeParam(param));
                     }
                     valueType =
-                        std::make_shared<ViperType>(TypeKindSem::Struct, value->name, paramTypes);
+                        std::make_shared<ViperType>(TypeKindSem::Struct, semanticName, paramTypes);
                 } else {
-                    valueType = types::structType(value->name);
+                    valueType = types::structType(semanticName);
                 }
                 Symbol sym;
                 sym.kind = Symbol::Kind::Type;
-                sym.name = value->name;
+                sym.name = semanticName;
                 sym.type = valueType;
                 sym.decl = value;
                 sym.isExported = value->isExported;
-                if (defineSymbol(value->name, sym)) {
-                    structDecls_[value->name] = value;
-                    typeRegistry_[value->name] = valueType;
+                if (defineSymbol(semanticName, sym)) {
+                    structDecls_[semanticName] = value;
+                    typeRegistry_[semanticName] = valueType;
                 }
                 break;
             }
             case DeclKind::Class: {
                 auto *cls = static_cast<ClassDecl *>(decl.get());
+                const std::string semanticName = semanticNameForDecl(*cls, cls->name);
 
                 TypeRef classT;
                 if (!cls->genericParams.empty()) {
                     // Generic type: register for later instantiation
-                    registerGenericType(cls->name, cls);
+                    registerGenericType(semanticName, cls);
                     // Create uninstantiated type placeholder with type parameters
                     std::vector<TypeRef> paramTypes;
                     for (const auto &param : cls->genericParams) {
                         paramTypes.push_back(types::typeParam(param));
                     }
-                    classT = std::make_shared<ViperType>(TypeKindSem::Class, cls->name, paramTypes);
+                    classT =
+                        std::make_shared<ViperType>(TypeKindSem::Class, semanticName, paramTypes);
                 } else {
-                    classT = types::classType(cls->name);
+                    classT = types::classType(semanticName);
                 }
                 Symbol sym;
                 sym.kind = Symbol::Kind::Type;
-                sym.name = cls->name;
+                sym.name = semanticName;
                 sym.type = classT;
                 sym.decl = cls;
                 sym.isExported = cls->isExported;
-                if (defineSymbol(cls->name, sym)) {
-                    classDecls_[cls->name] = cls;
-                    typeRegistry_[cls->name] = classT;
+                if (defineSymbol(semanticName, sym)) {
+                    classDecls_[semanticName] = cls;
+                    typeRegistry_[semanticName] = classT;
                 }
                 break;
             }
             case DeclKind::Interface: {
                 auto *iface = static_cast<InterfaceDecl *>(decl.get());
-                auto ifaceType = types::interface(iface->name);
+                const std::string semanticName = semanticNameForDecl(*iface, iface->name);
+                auto ifaceType = types::interface(semanticName);
 
                 Symbol sym;
                 sym.kind = Symbol::Kind::Type;
-                sym.name = iface->name;
+                sym.name = semanticName;
                 sym.type = ifaceType;
                 sym.decl = iface;
                 sym.isExported = iface->isExported;
-                if (defineSymbol(iface->name, sym)) {
-                    interfaceDecls_[iface->name] = iface;
-                    typeRegistry_[iface->name] = ifaceType;
+                if (defineSymbol(semanticName, sym)) {
+                    interfaceDecls_[semanticName] = iface;
+                    typeRegistry_[semanticName] = ifaceType;
                 }
                 break;
             }
             case DeclKind::Enum: {
                 auto *enumDecl = static_cast<EnumDecl *>(decl.get());
-                auto enumT = types::enumType(enumDecl->name);
+                const std::string semanticName = semanticNameForDecl(*enumDecl, enumDecl->name);
+                auto enumT = types::enumType(semanticName);
 
                 Symbol sym;
                 sym.kind = Symbol::Kind::Type;
-                sym.name = enumDecl->name;
+                sym.name = semanticName;
                 sym.type = enumT;
                 sym.decl = enumDecl;
                 sym.isExported = enumDecl->isExported;
-                if (defineSymbol(enumDecl->name, sym))
-                    typeRegistry_[enumDecl->name] = enumT;
+                if (defineSymbol(semanticName, sym))
+                    typeRegistry_[semanticName] = enumT;
                 break;
             }
             case DeclKind::GlobalVar: {
@@ -2188,6 +2223,64 @@ void Sema::registerBuiltins() {
 //===----------------------------------------------------------------------===//
 // Namespace Support
 //===----------------------------------------------------------------------===//
+
+void Sema::prepareModuleScopedTypeNames(const ModuleDecl &module) {
+    semanticDeclNames_.clear();
+    fileScopedTypeNames_.clear();
+
+    if (module.loc.file_id != 0)
+        fileModuleNames_[module.loc.file_id] = module.name;
+
+    std::unordered_map<std::string, std::unordered_set<uint32_t>> filesByTypeName;
+    for (const auto &decl : module.declarations) {
+        if (!decl || !isTopLevelTypeDeclKind(decl->kind))
+            continue;
+        filesByTypeName[topLevelTypeDeclName(*decl)].insert(decl->loc.file_id);
+    }
+
+    for (const auto &decl : module.declarations) {
+        if (!decl || !isTopLevelTypeDeclKind(decl->kind))
+            continue;
+
+        const std::string shortName = topLevelTypeDeclName(*decl);
+        std::string semanticName = shortName;
+        auto collisionIt = filesByTypeName.find(shortName);
+        if (collisionIt != filesByTypeName.end() && collisionIt->second.size() > 1) {
+            std::string moduleName = moduleNameForFile(decl->loc.file_id);
+            if (!moduleName.empty())
+                semanticName = moduleName + "." + shortName;
+        }
+
+        semanticDeclNames_[decl.get()] = semanticName;
+        fileScopedTypeNames_[decl->loc.file_id][shortName] = semanticName;
+    }
+}
+
+std::string Sema::moduleNameForFile(uint32_t fileId) const {
+    if (fileId == 0)
+        return "";
+    auto it = fileModuleNames_.find(fileId);
+    if (it != fileModuleNames_.end())
+        return it->second;
+    if (currentModule_ && currentModule_->loc.file_id == fileId)
+        return currentModule_->name;
+    return "";
+}
+
+std::string Sema::semanticNameForDecl(const Decl &decl, const std::string &name) const {
+    auto it = semanticDeclNames_.find(&decl);
+    if (it != semanticDeclNames_.end())
+        return it->second;
+    return qualifyName(name);
+}
+
+std::string Sema::fileScopedTypeName(uint32_t fileId, const std::string &name) const {
+    auto fileIt = fileScopedTypeNames_.find(fileId);
+    if (fileIt == fileScopedTypeNames_.end())
+        return name;
+    auto nameIt = fileIt->second.find(name);
+    return nameIt != fileIt->second.end() ? nameIt->second : name;
+}
 
 /// @brief Qualify a name with the current namespace prefix.
 /// @param name The unqualified name.

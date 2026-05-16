@@ -71,6 +71,10 @@ void Sema::analyzeBind(BindDecl &decl) {
     binds_.insert(bindKey);
 
     std::string moduleName = fileBindModuleName(decl);
+    if (decl.resolvedFileId != 0) {
+        fileModuleNames_[decl.resolvedFileId] =
+            !decl.resolvedModuleName.empty() ? decl.resolvedModuleName : moduleName;
+    }
 
     // File binds are resolved through moduleExports_ during semantic analysis
     // instead of occupying ordinary symbol-table slots. That avoids collisions
@@ -112,20 +116,24 @@ void Sema::collectExportedSymbolsForFile(uint32_t fileId,
                                 static_cast<FunctionDecl *>(decl.get())->name);
                 break;
             case DeclKind::Struct:
-                addLookupSymbol(static_cast<StructDecl *>(decl.get())->name,
-                                static_cast<StructDecl *>(decl.get())->name);
+                addLookupSymbol(
+                    static_cast<StructDecl *>(decl.get())->name,
+                    semanticNameForDecl(*decl, static_cast<StructDecl *>(decl.get())->name));
                 break;
             case DeclKind::Class:
-                addLookupSymbol(static_cast<ClassDecl *>(decl.get())->name,
-                                static_cast<ClassDecl *>(decl.get())->name);
+                addLookupSymbol(
+                    static_cast<ClassDecl *>(decl.get())->name,
+                    semanticNameForDecl(*decl, static_cast<ClassDecl *>(decl.get())->name));
                 break;
             case DeclKind::Interface:
-                addLookupSymbol(static_cast<InterfaceDecl *>(decl.get())->name,
-                                static_cast<InterfaceDecl *>(decl.get())->name);
+                addLookupSymbol(
+                    static_cast<InterfaceDecl *>(decl.get())->name,
+                    semanticNameForDecl(*decl, static_cast<InterfaceDecl *>(decl.get())->name));
                 break;
             case DeclKind::Enum:
-                addLookupSymbol(static_cast<EnumDecl *>(decl.get())->name,
-                                static_cast<EnumDecl *>(decl.get())->name);
+                addLookupSymbol(
+                    static_cast<EnumDecl *>(decl.get())->name,
+                    semanticNameForDecl(*decl, static_cast<EnumDecl *>(decl.get())->name));
                 break;
             case DeclKind::GlobalVar:
                 addLookupSymbol(static_cast<GlobalVarDecl *>(decl.get())->name,
@@ -458,7 +466,13 @@ void Sema::validateInterfaceImplementations(const std::string &typeName,
                                             const SourceLoc &loc,
                                             const std::vector<std::string> &interfaces) {
     for (const auto &ifaceName : interfaces) {
-        auto ifaceIt = interfaceDecls_.find(ifaceName);
+        std::string resolvedIfaceName = ifaceName;
+        if (TypeRef ifaceType = resolveNamedType(ifaceName, loc);
+            ifaceType && ifaceType->kind == TypeKindSem::Interface) {
+            resolvedIfaceName = ifaceType->name;
+        }
+
+        auto ifaceIt = interfaceDecls_.find(resolvedIfaceName);
         if (ifaceIt == interfaceDecls_.end()) {
             error(loc, "Unknown interface: " + ifaceName);
             continue;
@@ -486,8 +500,8 @@ void Sema::validateInterfaceImplementations(const std::string &typeName,
 
             if (!implMethod) {
                 error(loc,
-                      "Type '" + typeName + "' does not implement interface method '" + ifaceName +
-                          "." + ifaceMethod->name + "'");
+                      "Type '" + typeName + "' does not implement interface method '" +
+                          resolvedIfaceName + "." + ifaceMethod->name + "'");
                 ok = false;
                 continue;
             }
@@ -495,13 +509,13 @@ void Sema::validateInterfaceImplementations(const std::string &typeName,
             if (implMethod->visibility != Visibility::Public) {
                 error(loc,
                       "Method '" + typeName + "." + implMethod->name +
-                          "' must be public to satisfy interface '" + ifaceName + "'");
+                          "' must be public to satisfy interface '" + resolvedIfaceName + "'");
                 ok = false;
             }
         }
 
         if (ok)
-            types::registerInterfaceImplementation(typeName, ifaceName);
+            types::registerInterfaceImplementation(typeName, resolvedIfaceName);
     }
 }
 
@@ -512,7 +526,8 @@ void Sema::analyzeStructDecl(StructDecl &decl) {
     if (!decl.genericParams.empty())
         return;
 
-    auto selfType = types::structType(decl.name);
+    const std::string ownerName = semanticNameForDecl(decl, decl.name);
+    auto selfType = types::structType(ownerName);
     currentSelfType_ = selfType;
 
     pushScope(decl.loc);
@@ -534,7 +549,7 @@ void Sema::analyzeStructDecl(StructDecl &decl) {
     }
 
     // Validate interface implementations after members are known
-    validateInterfaceImplementations(decl.name, decl.loc, decl.interfaces);
+    validateInterfaceImplementations(ownerName, decl.loc, decl.interfaces);
 
     popScope(decl.loc);
     currentSelfType_ = nullptr;
@@ -547,6 +562,8 @@ void Sema::analyzeStructDecl(StructDecl &decl) {
 /// @param decl The type declaration whose members should be registered.
 /// @param includeFields If true, register field types; false for interface-only registration.
 template <typename T> void Sema::registerTypeMembers(T &decl, bool includeFields) {
+    const std::string ownerName = semanticNameForDecl(decl, decl.name);
+
     // Register field types (if applicable)
     std::unordered_set<std::string> seenFields;
     std::unordered_set<std::string> seenProperties;
@@ -563,7 +580,7 @@ template <typename T> void Sema::registerTypeMembers(T &decl, bool includeFields
                 }
                 TypeRef fieldType =
                     field->type ? resolveTypeNode(field->type.get()) : types::unknown();
-                std::string fieldKey = decl.name + "." + field->name;
+                std::string fieldKey = ownerName + "." + field->name;
                 fieldTypes_[fieldKey] = fieldType;
                 if (field->isStatic)
                     staticFields_.insert(fieldKey);
@@ -581,17 +598,17 @@ template <typename T> void Sema::registerTypeMembers(T &decl, bool includeFields
 
                 TypeRef propType =
                     prop->type ? resolveTypeNode(prop->type.get()) : types::unknown();
-                memberVisibility_[decl.name + "." + prop->name] = prop->visibility;
+                memberVisibility_[ownerName + "." + prop->name] = prop->visibility;
 
                 if (prop->getterBody) {
-                    std::string getterKey = decl.name + ".get_" + prop->name;
+                    std::string getterKey = ownerName + ".get_" + prop->name;
                     TypeRef getterType = types::function({}, propType);
                     methodTypes_[getterKey] = getterType;
                     memberVisibility_[getterKey] = prop->visibility;
                 }
 
                 if (prop->setterBody) {
-                    std::string setterKey = decl.name + ".set_" + prop->name;
+                    std::string setterKey = ownerName + ".set_" + prop->name;
                     TypeRef setterType = types::function({propType}, types::voidType());
                     methodTypes_[setterKey] = setterType;
                     memberVisibility_[setterKey] = prop->visibility;
@@ -605,10 +622,10 @@ template <typename T> void Sema::registerTypeMembers(T &decl, bool includeFields
         if (member->kind == DeclKind::Method) {
             auto *method = static_cast<MethodDecl *>(member.get());
             TypeRef methodType = methodTypeForDecl(*method);
-            if (!registerMethodOverload(decl.name, method, methodType, method->loc))
+            if (!registerMethodOverload(ownerName, method, methodType, method->loc))
                 continue;
 
-            std::string methodKey = decl.name + "." + method->name;
+            std::string methodKey = ownerName + "." + method->name;
             if (methodTypes_.find(methodKey) == methodTypes_.end())
                 methodTypes_[methodKey] = methodType;
             memberVisibility_[methodKey] = method->visibility;
@@ -654,7 +671,8 @@ void Sema::analyzeClassDecl(ClassDecl &decl) {
     if (!decl.genericParams.empty())
         return;
 
-    auto selfType = types::classType(decl.name);
+    const std::string ownerName = semanticNameForDecl(decl, decl.name);
+    auto selfType = types::classType(ownerName);
     currentSelfType_ = selfType;
 
     pushScope(decl.loc);
@@ -673,13 +691,17 @@ void Sema::analyzeClassDecl(ClassDecl &decl) {
 
     // BUG-VL-006 fix: Handle inheritance - add parent's members to scope
     if (!decl.baseClass.empty()) {
+        if (TypeRef resolvedBase = resolveNamedType(decl.baseClass, decl.loc);
+            resolvedBase && resolvedBase->kind == TypeKindSem::Class) {
+            decl.baseClass = resolvedBase->name;
+        }
+
         auto parentIt = classDecls_.find(decl.baseClass);
         if (parentIt == classDecls_.end()) {
             error(decl.loc, "Unknown base class: " + decl.baseClass);
         } else {
-            ClassDecl *parent = parentIt->second;
             // BUG-VL-007 fix: Register inheritance for polymorphism support
-            types::registerClassInheritance(decl.name, parent->name);
+            types::registerClassInheritance(ownerName, decl.baseClass);
 
             // Add ALL parent's fields to this class's scope (including inherited fields)
             // by scanning fieldTypes_ for entries with parent's name prefix.
@@ -687,7 +709,7 @@ void Sema::analyzeClassDecl(ClassDecl &decl) {
             // NOTE: Collect entries first, then insert — inserting into an
             // unordered_map during iteration can trigger a rehash and
             // invalidate the iterator.
-            std::string parentPrefix = parent->name + ".";
+            std::string parentPrefix = decl.baseClass + ".";
             std::vector<std::pair<std::string, TypeRef>> inheritedFields;
             for (const auto &entry : fieldTypes_) {
                 if (entry.first.rfind(parentPrefix, 0) == 0) {
@@ -706,7 +728,7 @@ void Sema::analyzeClassDecl(ClassDecl &decl) {
                 sym.name = fieldName;
                 sym.type = fieldType;
                 defineSymbol(fieldName, sym);
-                std::string childKey = decl.name + "." + fieldName;
+                std::string childKey = ownerName + "." + fieldName;
                 fieldTypes_[childKey] = fieldType;
                 if (finalFields_.contains(decl.baseClass + "." + fieldName))
                     finalFields_.insert(childKey);
@@ -721,7 +743,7 @@ void Sema::analyzeClassDecl(ClassDecl &decl) {
         auto parentIt = classDecls_.find(decl.baseClass);
         if (parentIt != classDecls_.end()) {
             for (auto *method : declaredMethods) {
-                MethodDecl *parentMethod = findInheritedExactMethod(decl.name, *method);
+                MethodDecl *parentMethod = findInheritedExactMethod(ownerName, *method);
                 if (method->isOverride && !parentMethod) {
                     error(method->loc,
                           "Method '" + method->name +
@@ -739,7 +761,7 @@ void Sema::analyzeClassDecl(ClassDecl &decl) {
 
                 if (parentMethod) {
                     TypeRef parentType = getMethodType(decl.baseClass, parentMethod);
-                    TypeRef childType = getMethodType(decl.name, method);
+                    TypeRef childType = getMethodType(ownerName, method);
                     if (parentType && childType && !parentType->equals(*childType)) {
                         error(method->loc,
                               "Method '" + method->name +
@@ -762,7 +784,7 @@ void Sema::analyzeClassDecl(ClassDecl &decl) {
     for (auto &member : decl.members) {
         if (member->kind == DeclKind::Method) {
             auto *method = static_cast<MethodDecl *>(member.get());
-            TypeRef methodType = getMethodType(decl.name, method);
+            TypeRef methodType = getMethodType(ownerName, method);
             Symbol sym;
             sym.kind = Symbol::Kind::Method;
             sym.name = method->name;
@@ -786,7 +808,7 @@ void Sema::analyzeClassDecl(ClassDecl &decl) {
     }
 
     // Validate interface implementations
-    validateInterfaceImplementations(decl.name, decl.loc, decl.interfaces);
+    validateInterfaceImplementations(ownerName, decl.loc, decl.interfaces);
 
     SourceLoc endLoc = decl.loc;
     if (!decl.members.empty())
@@ -798,7 +820,8 @@ void Sema::analyzeClassDecl(ClassDecl &decl) {
 /// @brief Analyze an interface declaration, registering method signatures.
 /// @param decl The interface declaration to analyze.
 void Sema::analyzeInterfaceDecl(InterfaceDecl &decl) {
-    auto selfType = types::interface(decl.name);
+    const std::string ownerName = semanticNameForDecl(decl, decl.name);
+    auto selfType = types::interface(ownerName);
     currentSelfType_ = selfType;
 
     pushScope(decl.loc);
@@ -807,7 +830,7 @@ void Sema::analyzeInterfaceDecl(InterfaceDecl &decl) {
     for (auto &member : decl.members) {
         if (member->kind == DeclKind::Method) {
             auto *method = static_cast<MethodDecl *>(member.get());
-            TypeRef methodType = getMethodType(decl.name, method);
+            TypeRef methodType = getMethodType(ownerName, method);
             if (!methodType)
                 methodType = methodTypeForDecl(*method);
 
@@ -828,7 +851,7 @@ void Sema::analyzeInterfaceDecl(InterfaceDecl &decl) {
 /// @brief Analyze an enum declaration: validate variants and register them.
 /// @param decl The enum declaration to analyze.
 void Sema::analyzeEnumDecl(EnumDecl &decl) {
-    std::string enumName = qualifyName(decl.name);
+    std::string enumName = semanticNameForDecl(decl, decl.name);
     auto enumT = types::enumType(enumName);
     enumDecls_[enumName] = &decl;
 
@@ -939,11 +962,10 @@ void Sema::analyzeFieldDecl(FieldDecl &decl, TypeRef ownerType) {
             weakTargetType->innerType()) {
             weakTargetType = weakTargetType->innerType();
         }
-        bool weakCompatible =
-            weakTargetType &&
-            (weakTargetType->kind == TypeKindSem::Class ||
-             weakTargetType->kind == TypeKindSem::Interface ||
-             weakTargetType->kind == TypeKindSem::Ptr || weakTargetType->kind == TypeKindSem::Any);
+        bool weakCompatible = weakTargetType && (weakTargetType->kind == TypeKindSem::Class ||
+                                                 weakTargetType->kind == TypeKindSem::Interface ||
+                                                 weakTargetType->kind == TypeKindSem::Ptr ||
+                                                 weakTargetType->kind == TypeKindSem::Any);
         if (!weakCompatible) {
             error(decl.loc,
                   "weak fields require a class, interface, Ptr, Any, or optional reference type");
@@ -965,8 +987,8 @@ void Sema::analyzeFieldDecl(FieldDecl &decl, TypeRef ownerType) {
                   "in a void context");
             initType = types::unknown();
         }
-        initType = contextualizeIntegerLiteralForDeclaredType(
-            fieldType, initType, decl.initializer.get());
+        initType =
+            contextualizeIntegerLiteralForDeclaredType(fieldType, initType, decl.initializer.get());
         if (!fieldType->isAssignableFrom(*initType)) {
             errorTypeMismatch(decl.initializer->loc, fieldType, initType);
         }

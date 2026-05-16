@@ -53,8 +53,7 @@ TypeRef Sema::resolveNamedType(const std::string &name, SourceLoc useLoc) const 
         return types::never();
     if (name == "Ptr" || name == "ptr" || name == "Viper.Unsafe.Ptr") {
         const_cast<Sema *>(this)->error(
-            useLoc,
-            "Ptr is not part of the Zia source surface; use typed runtime classes or Any");
+            useLoc, "Ptr is not part of the Zia source surface; use typed runtime classes or Any");
         return types::unknown();
     }
 
@@ -95,6 +94,19 @@ TypeRef Sema::resolveNamedType(const std::string &name, SourceLoc useLoc) const 
         name == "Viper.Collections.WeakMap" || name == "Viper.Collections.LruCache" ||
         name == "Viper.Collections.MultiMap")
         return types::runtimeClass(name, {types::string(), types::unknown()});
+
+    if (name.find('.') == std::string::npos && useLoc.file_id != 0) {
+        const std::string scopedName = fileScopedTypeName(useLoc.file_id, name);
+        if (scopedName != name) {
+            if (Symbol *sym = const_cast<Sema *>(this)->lookupAccessibleSymbol(scopedName, useLoc);
+                sym && sym->kind == Symbol::Kind::Type) {
+                return sym->type;
+            }
+            auto scopedIt = typeRegistry_.find(scopedName);
+            if (scopedIt != typeRegistry_.end())
+                return scopedIt->second;
+        }
+    }
 
     if (Symbol *sym = const_cast<Sema *>(this)->lookupAccessibleSymbol(name, useLoc);
         sym && sym->kind == Symbol::Kind::Type) {

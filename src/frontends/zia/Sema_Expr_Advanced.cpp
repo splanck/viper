@@ -88,8 +88,7 @@ TypeRef Sema::analyzeIndex(IndexExpr *expr) {
                 static_cast<size_t>(literal->value) >= baseType->elementCount) {
                 error(expr->index->loc,
                       "fixed array index " + std::to_string(literal->value) +
-                          " is out of bounds for length " +
-                          std::to_string(baseType->elementCount));
+                          " is out of bounds for length " + std::to_string(baseType->elementCount));
             }
         }
         return baseType->elementType() ? baseType->elementType() : types::unknown();
@@ -881,9 +880,8 @@ bool Sema::analyzeMatchPattern(const MatchArm::Pattern &pattern,
                               "Ok() pattern requires exactly one subpattern");
                         return false;
                     }
-                    TypeRef success = !scrutineeType->typeArgs.empty()
-                                          ? scrutineeType->typeArgs[0]
-                                          : types::unknown();
+                    TypeRef success = !scrutineeType->typeArgs.empty() ? scrutineeType->typeArgs[0]
+                                                                       : types::unknown();
                     analyzeMatchPattern(pattern.subpatterns[0], success, coverage, bindings);
                     return true;
                 }
@@ -1412,12 +1410,11 @@ TypeRef Sema::analyzeBlockExpr(BlockExpr *expr) {
 /// @return The struct type named by the expression, or unknown on error.
 TypeRef Sema::analyzeStructLiteral(StructLiteralExpr *expr) {
     // Look up the type name and verify it is a struct type.
-    auto typeIt = typeRegistry_.find(expr->typeName);
-    if (typeIt == typeRegistry_.end()) {
+    TypeRef valueType = resolveNamedType(expr->typeName, expr->loc);
+    if (!valueType) {
         error(expr->loc, "Unknown type '" + expr->typeName + "'");
         return types::unknown();
     }
-    TypeRef valueType = typeIt->second;
     if (!valueType || valueType->kind != TypeKindSem::Struct) {
         error(expr->loc,
               "'" + expr->typeName +
@@ -1430,8 +1427,8 @@ TypeRef Sema::analyzeStructLiteral(StructLiteralExpr *expr) {
     for (auto &field : expr->fields) {
         if (!seenFields.insert(field.name).second) {
             error(field.loc,
-                  "Duplicate field '" + field.name + "' in struct literal for '" +
-                      expr->typeName + "'");
+                  "Duplicate field '" + field.name + "' in struct literal for '" + expr->typeName +
+                      "'");
             continue;
         }
 

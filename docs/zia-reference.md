@@ -1565,6 +1565,20 @@ bind Math = Viper.Math;         // Legacy alias-first form
 - `"../bar"` — Resolves to `bar.zia` in parent directory
 - `"name"` — Resolves to `name.zia` in the same directory
 
+**File Module Names:**
+
+Unique exported top-level types remain available by their short name for
+backwards compatibility. If two bound files declare the same top-level type
+name, use the bound module name or bind alias to disambiguate:
+
+```viper
+bind "./alpha"; // module Alpha; expose class WishDup { ... }
+bind "./beta";  // module Beta;  expose class WishDup { ... }
+
+var a: Alpha.WishDup = new Alpha.WishDup();
+var b: Beta.WishDup = new Beta.WishDup();
+```
+
 **Namespace Imports:**
 
 When you bind a runtime namespace like `Viper.Terminal`, all its functions
