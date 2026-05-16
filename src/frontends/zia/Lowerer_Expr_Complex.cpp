@@ -92,8 +92,7 @@ LowerResult Lowerer::lowerField(FieldExpr *expr) {
         TypeRef baseType = sema_.typeOf(expr->base.get());
         std::vector<Value> args;
         const auto *getterDesc = il::runtime::findRuntimeDescriptor(getterName);
-        bool staticRuntimeGetter =
-            getterDesc && getterDesc->signature.paramTypes.empty();
+        bool staticRuntimeGetter = getterDesc && getterDesc->signature.paramTypes.empty();
         if (!staticRuntimeGetter && (!baseType || baseType->kind != TypeKindSem::Module)) {
             auto base = lowerExpr(expr->base.get());
             args.push_back(base.value);
@@ -141,7 +140,9 @@ LowerResult Lowerer::lowerField(FieldExpr *expr) {
     if (baseType->kind == TypeKindSem::Module) {
         // Look up the symbol as a global variable or function. Static fields
         // are stored under their fully qualified Type.field names.
-        std::string qualifiedSymbolName = baseType->name + "." + expr->field;
+        std::string resolvedSymbolName = sema_.resolvedFieldSymbolName(expr);
+        std::string qualifiedSymbolName =
+            resolvedSymbolName.empty() ? baseType->name + "." + expr->field : resolvedSymbolName;
         std::string symbolName = expr->field;
 
         // Check for global constants first (compile-time constants)
@@ -174,11 +175,11 @@ LowerResult Lowerer::lowerField(FieldExpr *expr) {
         if (globalIt == globalVariables_.end())
             globalIt = globalVariables_.find(symbolName);
         if (globalIt != globalVariables_.end()) {
-            const std::string &resolvedSymbolName =
+            const std::string &globalStorageName =
                 globalIt->first == qualifiedSymbolName ? qualifiedSymbolName : symbolName;
             TypeRef varType = globalIt->second;
             Type ilType = mapType(varType);
-            Value addr = getGlobalVarAddr(resolvedSymbolName, varType);
+            Value addr = getGlobalVarAddr(globalStorageName, varType);
             Value loaded = emitLoad(addr, ilType);
             return {loaded, ilType};
         }
@@ -211,8 +212,7 @@ LowerResult Lowerer::lowerField(FieldExpr *expr) {
         }
 
         if (expr->field == "kind" || expr->field == "type") {
-            Value result =
-                emitCallRet(Type(Type::Kind::Str), "Viper.Error.KindName", {errKind});
+            Value result = emitCallRet(Type(Type::Kind::Str), "Viper.Error.KindName", {errKind});
             return {result, Type(Type::Kind::Str)};
         }
         if (expr->field == "message") {

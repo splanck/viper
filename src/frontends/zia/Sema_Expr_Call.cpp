@@ -19,6 +19,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <limits>
+#include <map>
 #include <string_view>
 
 using il::frontends::common::string_utils::iequals;
@@ -674,7 +676,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                     receiverArg = receiverArg->innerType();
             }
         }
-        TypeRef elementReceiver = receiverArg && receiverArg->elementType() ? receiverArg : firstArg;
+        TypeRef elementReceiver =
+            receiverArg && receiverArg->elementType() ? receiverArg : firstArg;
         TypeRef mapReceiver = receiverArg && receiverArg->valueType() ? receiverArg : firstArg;
         TypeRef setReceiver =
             receiverArg && receiverArg->kind == TypeKindSem::Set ? receiverArg : firstArg;
@@ -750,9 +753,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
             calleeName == "Viper.Collections.WeakMap.Keys" ||
             calleeName == "Viper.Collections.LruCache.Keys" ||
             calleeName == "Viper.Collections.MultiMap.Keys") {
-            return mapReceiver && mapReceiver->keyType()
-                       ? asSeq(mapReceiver->keyType())
-                       : fallback;
+            return mapReceiver && mapReceiver->keyType() ? asSeq(mapReceiver->keyType()) : fallback;
         }
 
         if (calleeName == "Viper.Collections.Map.Values" ||
@@ -760,13 +761,13 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
             calleeName == "Viper.Collections.TreeMap.Values" ||
             calleeName == "Viper.Collections.FrozenMap.Values" ||
             calleeName == "Viper.Collections.LruCache.Values") {
-            return mapReceiver && mapReceiver->valueType()
-                       ? asSeq(mapReceiver->valueType())
-                       : fallback;
+            return mapReceiver && mapReceiver->valueType() ? asSeq(mapReceiver->valueType())
+                                                           : fallback;
         }
 
         if (calleeName == "Viper.Collections.Set.Items") {
-            return setReceiver && setReceiver->kind == TypeKindSem::Set && setReceiver->elementType()
+            return setReceiver && setReceiver->kind == TypeKindSem::Set &&
+                           setReceiver->elementType()
                        ? asSeq(setReceiver->elementType())
                        : fallback;
         }
@@ -796,10 +797,9 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
         }
 
         TypeRef receiverType = baseType->innerType();
-        if (!receiverType ||
-            (receiverType->kind != TypeKindSem::Struct &&
-             receiverType->kind != TypeKindSem::Class &&
-             receiverType->kind != TypeKindSem::Interface)) {
+        if (!receiverType || (receiverType->kind != TypeKindSem::Struct &&
+                              receiverType->kind != TypeKindSem::Class &&
+                              receiverType->kind != TypeKindSem::Interface)) {
             analyzeArgTypes();
             std::string receiverName =
                 receiverType ? receiverType->toDisplayString() : std::string("Unknown");
@@ -813,14 +813,13 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
 
         std::string resolvedOwner;
         CallArgBinding binding;
-        MethodDecl *method =
-            resolveMethodCallOverload(receiverType->name,
-                                      optionalCallee->field,
-                                      expr,
-                                      expr->loc,
-                                      &resolvedOwner,
-                                      receiverType->kind != TypeKindSem::Interface,
-                                      &binding);
+        MethodDecl *method = resolveMethodCallOverload(receiverType->name,
+                                                       optionalCallee->field,
+                                                       expr,
+                                                       expr->loc,
+                                                       &resolvedOwner,
+                                                       receiverType->kind != TypeKindSem::Interface,
+                                                       &binding);
         if (!method) {
             error(expr->loc,
                   "Type '" + receiverType->toDisplayString() + "' has no method '" +
@@ -909,6 +908,124 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
         }
     }
 
+    // Handle explicit generic method calls: value.method[Type](args).
+    if (expr->callee->kind == ExprKind::Index) {
+        auto *indexExpr = static_cast<IndexExpr *>(expr->callee.get());
+        if (indexExpr->base->kind == ExprKind::Field) {
+            auto *methodAccess = static_cast<FieldExpr *>(indexExpr->base.get());
+            TypeRef receiverType = analyzeExpr(methodAccess->base.get());
+            if (receiverType && receiverType->kind == TypeKindSem::Optional &&
+                receiverType->innerType())
+                receiverType = receiverType->innerType();
+
+            std::vector<TypePtr> typeArgNodes;
+            collectTypeArgNodes(indexExpr->index.get(), typeArgNodes);
+            if (receiverType &&
+                (receiverType->kind == TypeKindSem::Class ||
+                 receiverType->kind == TypeKindSem::Struct) &&
+                !typeArgNodes.empty()) {
+                std::vector<TypeRef> typeArgs;
+                for (auto &typeNode : typeArgNodes) {
+                    TypeRef typeArg = resolveTypeNode(typeNode.get());
+                    if (!typeArg || typeArg->kind == TypeKindSem::Unknown) {
+                        error(typeNode->loc, "Unknown type argument for generic method call");
+                        return types::unknown();
+                    }
+                    typeArgs.push_back(typeArg);
+                }
+
+                analyzeArgTypes();
+
+                MethodDecl *best = nullptr;
+                std::string bestOwner;
+                TypeRef bestConcreteType;
+                TypeRef bestErasedType;
+                CallArgBinding bestBinding;
+                int bestScore = std::numeric_limits<int>::max();
+                bool ambiguous = false;
+
+                for (auto *candidate :
+                     collectMethodOverloads(receiverType->name, methodAccess->field, true)) {
+                    if (candidate->genericParams.size() != typeArgs.size())
+                        continue;
+
+                    std::map<std::string, TypeRef> substitutions;
+                    for (size_t i = 0; i < candidate->genericParams.size(); ++i)
+                        substitutions[candidate->genericParams[i]] = typeArgs[i];
+
+                    pushTypeParams(substitutions);
+                    std::vector<TypeRef> paramTypes;
+                    for (const auto &param : candidate->params)
+                        paramTypes.push_back(param.type ? resolveTypeNode(param.type.get())
+                                                        : types::unknown());
+                    TypeRef returnType = candidate->returnType
+                                             ? resolveTypeNode(candidate->returnType.get())
+                                             : types::voidType();
+                    popTypeParams();
+
+                    TypeRef concreteType = types::function(paramTypes, returnType);
+                    CallArgBinding binding;
+                    int score = 0;
+                    auto specs = makeParamSpecs(candidate->params, paramTypes);
+                    if (!bindCallArgs(expr->args,
+                                      specs,
+                                      expr->loc,
+                                      receiverType->name + "." + methodAccess->field,
+                                      binding,
+                                      &score,
+                                      false))
+                        continue;
+
+                    std::string owner = receiverType->name;
+                    if (MethodDecl *resolved = resolveMethodCallOverload(receiverType->name,
+                                                                         methodAccess->field,
+                                                                         expr,
+                                                                         expr->loc,
+                                                                         &owner,
+                                                                         true,
+                                                                         nullptr)) {
+                        if (resolved != candidate)
+                            owner = receiverType->name;
+                    }
+
+                    TypeRef erasedType = getMethodType(owner, candidate);
+                    if (!erasedType)
+                        erasedType = methodTypeForDecl(*candidate);
+
+                    if (score < bestScore) {
+                        best = candidate;
+                        bestOwner = owner;
+                        bestConcreteType = concreteType;
+                        bestErasedType = erasedType;
+                        bestBinding = binding;
+                        bestScore = score;
+                        ambiguous = false;
+                    } else if (score == bestScore) {
+                        ambiguous = true;
+                    }
+                }
+
+                if (ambiguous) {
+                    error(expr->loc,
+                          "Ambiguous generic method call to '" + methodAccess->field + "'");
+                    return types::unknown();
+                }
+                if (best) {
+                    resolvedMethodDecls_[expr] = best;
+                    resolvedMethodOwnerTypes_[expr] = bestOwner;
+                    resolvedMethodSlotKeys_[expr] = methodSlotKey(bestOwner, best);
+                    genericMethodConcreteTypes_[expr] = bestConcreteType;
+                    genericMethodErasedTypes_[expr] = bestErasedType;
+                    callArgBindings_[expr] = bestBinding;
+                    exprTypes_[expr->callee.get()] = bestConcreteType;
+                    return bestConcreteType && bestConcreteType->kind == TypeKindSem::Function
+                               ? normalizeRuntimeSurfaceType(bestConcreteType->returnType())
+                               : types::unknown();
+                }
+            }
+        }
+    }
+
     // Handle generic function calls: identity[Integer](100)
     // Parser produces: CallExpr(callee=IndexExpr(base=IdentExpr, index=IdentExpr/expr), args)
     // We need to detect when the "index" is actually a type argument
@@ -916,7 +1033,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
         auto *indexExpr = static_cast<IndexExpr *>(expr->callee.get());
         if (indexExpr->base->kind == ExprKind::Ident) {
             auto *identExpr = static_cast<IdentExpr *>(indexExpr->base.get());
-            if (isGenericFunction(identExpr->name)) {
+            std::string genericName = fileScopedDeclName(identExpr->loc.file_id, identExpr->name);
+            if (isGenericFunction(genericName)) {
                 // This is a generic function call!
                 std::vector<TypeRef> typeArgs;
 
@@ -939,10 +1057,10 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                 }
 
                 // Instantiate the generic function with the type arguments
-                TypeRef funcType = instantiateGenericFunction(identExpr->name, typeArgs, expr->loc);
+                TypeRef funcType = instantiateGenericFunction(genericName, typeArgs, expr->loc);
 
                 // Store the mangled name for the lowerer
-                std::string mangledName = mangleGenericName(identExpr->name, typeArgs);
+                std::string mangledName = mangleGenericName(genericName, typeArgs);
                 genericFunctionCallees_[expr] = mangledName;
 
                 // Store the instantiated function type so the lowerer can access it
@@ -954,11 +1072,11 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                 }
 
                 CallArgBinding binding;
-                FunctionDecl *genericDecl = getGenericFunction(identExpr->name);
+                FunctionDecl *genericDecl = getGenericFunction(genericName);
                 if (genericDecl && funcType && funcType->kind == TypeKindSem::Function) {
                     auto specs = makeParamSpecs(genericDecl->params, funcType->paramTypes());
                     if (!bindCallArgs(
-                            expr->args, specs, expr->loc, identExpr->name, binding, nullptr, true))
+                            expr->args, specs, expr->loc, genericName, binding, nullptr, true))
                         return types::unknown();
                     resolvedFunctionDecls_[expr] = genericDecl;
                     callArgBindings_[expr] = binding;
@@ -980,8 +1098,9 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
     // This must come BEFORE the dotted name lookup to catch simple IdentExpr callees
     if (expr->callee->kind == ExprKind::Ident) {
         auto *identExpr = static_cast<IdentExpr *>(expr->callee.get());
-        if (isGenericFunction(identExpr->name)) {
-            FunctionDecl *genericDecl = getGenericFunction(identExpr->name);
+        std::string genericName = fileScopedDeclName(identExpr->loc.file_id, identExpr->name);
+        if (isGenericFunction(genericName)) {
+            FunctionDecl *genericDecl = getGenericFunction(genericName);
             if (genericDecl && !genericDecl->genericParams.empty() && !expr->args.empty()) {
                 // Analyze all arguments first to get their types
                 std::vector<TypeRef> argTypes;
@@ -1023,10 +1142,10 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                 }
 
                 // Instantiate the generic function with inferred type arguments
-                TypeRef funcType = instantiateGenericFunction(identExpr->name, typeArgs, expr->loc);
+                TypeRef funcType = instantiateGenericFunction(genericName, typeArgs, expr->loc);
 
                 // Store the mangled name for the lowerer
-                std::string mangledName = mangleGenericName(identExpr->name, typeArgs);
+                std::string mangledName = mangleGenericName(genericName, typeArgs);
                 genericFunctionCallees_[expr] = mangledName;
 
                 // Store the instantiated function type
@@ -1036,7 +1155,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                 if (funcType && funcType->kind == TypeKindSem::Function) {
                     auto specs = makeParamSpecs(genericDecl->params, funcType->paramTypes());
                     if (!bindCallArgs(
-                            expr->args, specs, expr->loc, identExpr->name, binding, nullptr, true))
+                            expr->args, specs, expr->loc, genericName, binding, nullptr, true))
                         return types::unknown();
                     resolvedFunctionDecls_[expr] = genericDecl;
                     callArgBindings_[expr] = binding;
@@ -1123,8 +1242,9 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
 
         std::string loweredName;
         CallArgBinding binding;
-        if (FunctionDecl *func = resolveFunctionCallOverload(
-                identExpr->name, expr, expr->loc, &loweredName, &binding)) {
+        std::string callName = fileScopedDeclName(identExpr->loc.file_id, identExpr->name);
+        if (FunctionDecl *func =
+                resolveFunctionCallOverload(callName, expr, expr->loc, &loweredName, &binding)) {
             TypeRef funcType = functionDeclTypes_[func];
             resolvedFunctionCallees_[expr] = loweredName;
             resolvedFunctionDecls_[expr] = func;
@@ -1515,7 +1635,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
             std::string fullMethodName = className + "." + fieldExpr->field;
             Symbol *sym = lookupSymbol(fullMethodName);
             if (!sym) {
-                std::string fallbackMethodName = className + "." + capitalizedRuntimeMember(fieldExpr->field);
+                std::string fallbackMethodName =
+                    className + "." + capitalizedRuntimeMember(fieldExpr->field);
                 sym = lookupSymbol(fallbackMethodName);
                 if (sym && sym->kind == Symbol::Kind::Function)
                     fullMethodName = fallbackMethodName;
@@ -1607,7 +1728,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
             if (capitalized != fieldExpr->field)
                 methodNames.push_back(std::move(capitalized));
             for (const auto &methodName : methodNames) {
-                if (auto method = registry.findMethod(baseType->name, methodName, expr->args.size());
+                if (auto method =
+                        registry.findMethod(baseType->name, methodName, expr->args.size());
                     method && method->target && *method->target) {
                     sym = lookupSymbol(method->target);
                     if (sym && sym->kind == Symbol::Kind::Function) {

@@ -219,6 +219,7 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
                               "' is overloaded and must be called with arguments to resolve it");
                     return types::unknown();
                 }
+                resolvedFieldSymbolNames_[expr] = sym.name;
                 return sym.type;
             }
         }
@@ -229,6 +230,7 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
         // First try to look up the qualified name directly
         Symbol *sym = lookupAccessibleSymbol(fullName, expr->loc, true);
         if (sym) {
+            resolvedFieldSymbolNames_[expr] = sym->name;
             if (sym->kind == Symbol::Kind::Function && sym->isExtern && sym->type &&
                 sym->type->kind == TypeKindSem::Function && sym->type->paramTypes().empty()) {
                 resolvedFieldGetters_[expr] = fullName;
@@ -1432,9 +1434,18 @@ TypeRef Sema::analyzeStructLiteral(StructLiteralExpr *expr) {
             continue;
         }
 
-        TypeRef fieldType = getFieldType(expr->typeName, field.name);
+        const std::string ownerName = valueType->name;
+        TypeRef fieldType = getFieldType(ownerName, field.name);
         if (!fieldType) {
             error(field.loc, "'" + expr->typeName + "' has no field '" + field.name + "'");
+            continue;
+        }
+        auto visIt = memberVisibility_.find(ownerName + "." + field.name);
+        if (visIt != memberVisibility_.end() && visIt->second == Visibility::Private &&
+            (!currentSelfType_ || currentSelfType_->name != ownerName)) {
+            error(field.loc,
+                  "Field '" + ownerName + "." + field.name +
+                      "' is private and cannot be initialized here");
             continue;
         }
         TypeRef valType = analyzeExpr(field.value.get());

@@ -163,11 +163,22 @@ LowerResult Lowerer::coerceValueToType(Value value,
         return {value, valueIlType};
 
     Type targetIlType = mapType(targetType);
+    if (targetType->kind == TypeKindSem::Unit)
+        return {Value::null(), targetIlType};
+
     TypeRef effectiveSource = sourceType;
     bool sourceIsUnknownish = !effectiveSource || effectiveSource->kind == TypeKindSem::Unknown ||
                               effectiveSource->kind == TypeKindSem::Any;
 
     if (targetType->kind == TypeKindSem::Any) {
+        if (valueIlType.kind == Type::Kind::Ptr)
+            return {value, Type(Type::Kind::Ptr)};
+        TypeRef boxType = (!sourceIsUnknownish && effectiveSource) ? effectiveSource
+                                                                   : reverseMapType(valueIlType);
+        return {emitBoxValue(value, valueIlType, boxType), Type(Type::Kind::Ptr)};
+    }
+
+    if (targetType->kind == TypeKindSem::TypeParam) {
         if (valueIlType.kind == Type::Kind::Ptr)
             return {value, Type(Type::Kind::Ptr)};
         TypeRef boxType = (!sourceIsUnknownish && effectiveSource) ? effectiveSource

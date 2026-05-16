@@ -172,12 +172,13 @@ null    // Used with optional types
 #### Unit Literal
 
 ```viper
-()      // Unit literal; valid only where no value is stored
+()      // Unit literal
 ```
 
-Use `null` for optional empty values. `()` is accepted as a standalone statement
-or void return value, but it cannot be stored in variables, collections, maps,
-sets, call arguments, or assignments.
+Use `null` for optional empty values. `()` is accepted as a standalone statement,
+void return value, `Unit` return value, `Unit` argument, and `Result[Unit]`
+payload. It cannot be stored in variables, collections, maps, sets, or ordinary
+assignments.
 
 ---
 
@@ -199,6 +200,10 @@ sets, call arguments, or assignments.
 `Ptr` is not part of the Zia source surface. Runtime handles are exposed as
 typed runtime classes, collections, `Any`, or function references; raw pointer
 details remain inside the runtime and backend.
+
+`Void` is the implicit return type of functions and methods with no `->` clause.
+`Void` and `Never` are not value types: they cannot be used for parameters,
+locals, globals, or fields.
 
 ### Optional Types
 
@@ -543,6 +548,7 @@ struct Point {
 }
 
 var p = Point { x = 10, y = 20 };
+var q = Geometry.Point { x = 30, y = 40 };
 ```
 
 Struct literals are valid in variable, field, global, return, parameter default,
@@ -551,9 +557,11 @@ match-arm expression, and single-expression function or method initializer
 contexts. Struct literals are not parsed in statement conditions such as
 `if value { ... }`, because the following braces are reserved for the statement
 body.
-Each field may be assigned at most once, and literal values must be assignable to
-the declared field type. Omitted fields use their declared initializer when one
-is present; otherwise they use the typed default for the field type.
+The type name may be qualified through a bound module or namespace. Each field
+may be assigned at most once, and literal values must be assignable to the
+declared field type. Omitted fields use their declared initializer when one is
+present; otherwise they use the typed default for the field type. Private
+fields may only be initialized inside the declaring type.
 
 ### Tuple Expressions
 
@@ -1037,10 +1045,26 @@ func findMax[T: Comparable](a: T, b: T) -> T {
 }
 ```
 
-Type parameters are declared in `[...]` after the function name. Constraints (like `T: Comparable`) restrict the type parameter to types implementing the named interface, and constrained interface methods are callable inside instantiated generic functions.
+Type parameters are declared in `[...]` after the function name. Constraints
+(like `T: Comparable` or `T: Contracts.Named`) restrict the type parameter to
+types implementing the named interface.
 Type inference works through generic container parameters such as `List[T]` and
 `Map[String, T]`. Explicit type arguments may be comma-separated and nested:
 `pair[Integer, String](1, "one")` and `identity[List[Integer]]([1])`.
+
+Methods may also declare type parameters. Explicit generic method calls use the
+same bracket syntax after the method name:
+
+```viper
+class Box {
+    expose func id[T](value: T) -> T {
+        return value;
+    }
+}
+
+var box = new Box();
+var answer: Integer = box.id[Integer](42);
+```
 
 ### Async Functions
 
@@ -1184,6 +1208,10 @@ class Node {
 ```viper
 class ChildClass extends ParentClass {
     // Additional fields and methods
+}
+
+class Widget extends UI.Control {
+    // Qualified base class names are valid.
 }
 ```
 
@@ -1383,6 +1411,8 @@ Implementing methods must be marked `expose` (public visibility). Classes dispat
 through their object identity. Struct values are boxed when coerced to an
 interface-typed value, and dispatch then uses adapter thunks for the struct
 methods.
+Implemented interface names may be qualified, such as
+`class Button implements UI.Clickable`.
 
 ### Interface Dispatch
 
@@ -1567,9 +1597,13 @@ bind Math = Viper.Math;         // Legacy alias-first form
 
 **File Module Names:**
 
-Unique exported top-level types remain available by their short name for
-backwards compatibility. If two bound files declare the same top-level type
-name, use the bound module name or bind alias to disambiguate:
+Top-level declarations are exported by default unless marked `hide`; `expose`
+documents that intent explicitly. Unique exported top-level declarations remain
+available by their short name for backwards compatibility. If two bound files
+declare the same top-level function, global, type alias, class, struct,
+interface, or enum name, the compiler scopes each colliding declaration under
+its declaring module name. Use the bound module name or bind alias to
+disambiguate:
 
 ```viper
 bind "./alpha"; // module Alpha; expose class WishDup { ... }
@@ -1577,6 +1611,10 @@ bind "./beta";  // module Beta;  expose class WishDup { ... }
 
 var a: Alpha.WishDup = new Alpha.WishDup();
 var b: Beta.WishDup = new Beta.WishDup();
+
+Alpha.make();
+Beta.make();
+Viper.Terminal.SayInt(Alpha.VALUE + Beta.VALUE);
 ```
 
 **Namespace Imports:**
@@ -1921,14 +1959,14 @@ bind        ::= "bind" STRING ["as" IDENT] ";"
 ```text
 decl        ::= classDecl | structDecl | interfaceDecl | enumDecl | funcDecl | foreignFuncDecl | varDecl | namespaceDecl | typeAlias
 typeAlias   ::= "type" IDENT "=" type ";"
-classDecl   ::= "class" IDENT ["extends" IDENT] ["implements" identList] "{" member* "}"
-structDecl  ::= "struct" IDENT ["implements" identList] "{" member* "}"
-interfaceDecl ::= "interface" IDENT "{" methodSig* "}"
+classDecl   ::= "class" IDENT ["extends" qualifiedName] ["implements" qualifiedNameList] "{" member* "}"
+structDecl  ::= "struct" IDENT ["implements" qualifiedNameList] "{" member* "}"
+interfaceDecl ::= "interface" IDENT ["[" genericParams "]"] "{" methodSig* "}"
 enumDecl    ::= ["expose"] "enum" IDENT "{" enumVariant ("," enumVariant)* [","] "}"
 enumVariant ::= IDENT ["=" ["-"] INTEGER]
 funcDecl    ::= "func" IDENT ["[" genericParams "]"] "(" params ")" ["->" type] (block | "=" expr ";")
 foreignFuncDecl ::= "foreign" "func" IDENT "(" params ")" ["->" type] [";"]
-genericParams ::= IDENT [":" IDENT] ("," IDENT [":" IDENT])*
+genericParams ::= IDENT [":" qualifiedName] ("," IDENT [":" qualifiedName])*
 param       ::= IDENT ":" ["..."] type ["=" expr]
 varDecl     ::= ("var" | "final" | "let") (IDENT [":" type] | tupleBinding) ["=" expr] ";"
 tupleBinding ::= "(" IDENT [":" type] "," IDENT [":" type] ")"

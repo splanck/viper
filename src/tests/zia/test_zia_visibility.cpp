@@ -87,6 +87,66 @@ func start() {    var p: Person = new Person(30);
     EXPECT_TRUE(result.succeeded());
 }
 
+TEST(ZiaVisibility, PrivateClassFieldsAreNotExternalConstructorParameters) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+class SecretBox {
+    Integer secret;
+    expose Integer visible;
+}
+
+func start() {
+    var b = new SecretBox(secret: 42, visible: 7);
+    Viper.Terminal.SayInt(b.visible);
+}
+)";
+    CompilerInput input{.source = source, .path = "private_constructor_field.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_FALSE(result.succeeded());
+
+    bool foundSecretError = false;
+    for (const auto &d : result.diagnostics.diagnostics()) {
+        if (d.severity == Severity::Error && d.message.find("secret") != std::string::npos)
+            foundSecretError = true;
+    }
+    EXPECT_TRUE(foundSecretError);
+}
+
+TEST(ZiaVisibility, PrivateStructFieldsAreNotExternalLiteralFields) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+struct SecretPoint {
+    hide Integer x;
+    expose Integer y;
+}
+
+func start() {
+    var p: SecretPoint = SecretPoint { x = 1, y = 2 };
+    Viper.Terminal.SayInt(p.y);
+}
+)";
+    CompilerInput input{.source = source, .path = "private_struct_literal_field.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_FALSE(result.succeeded());
+
+    bool foundPrivateError = false;
+    for (const auto &d : result.diagnostics.diagnostics()) {
+        if (d.severity == Severity::Error && d.message.find("private") != std::string::npos)
+            foundPrivateError = true;
+    }
+    EXPECT_TRUE(foundPrivateError);
+}
+
 } // namespace
 
 int main() {

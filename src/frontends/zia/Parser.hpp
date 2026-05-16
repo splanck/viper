@@ -647,6 +647,11 @@ class Parser {
     std::vector<std::string> parseGenericParamsWithConstraints(
         std::vector<std::string> &constraints);
 
+    /// @brief Parse a dotted identifier such as A.B.C and return its text.
+    /// @param what Human-readable item name for diagnostics.
+    /// @return Parsed dotted name, or empty on error.
+    std::string parseQualifiedIdentifierString(const char *what);
+
     /// @brief Parse a field declaration within a type.
     /// @return The parsed FieldDecl.
     DeclPtr parseFieldDecl();

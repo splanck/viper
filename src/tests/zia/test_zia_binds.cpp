@@ -300,6 +300,133 @@ func start() {
     EXPECT_TRUE(hasBetaScore);
 }
 
+TEST(ZiaBinds, DuplicateFunctionsAndGlobalsAreModuleScoped) {
+    const fs::path tempRoot = fs::temp_directory_path() / "zia_bind_tests" /
+                              std::to_string(static_cast<unsigned long long>(::getpid()));
+    const fs::path dir = tempRoot / "module_scoped_functions_globals";
+
+    writeFile(dir,
+              "alpha.zia",
+              R"(
+module Alpha;
+
+expose final VALUE = 10;
+
+expose func make() -> Integer {
+    return VALUE;
+}
+)");
+
+    writeFile(dir,
+              "beta.zia",
+              R"(
+module Beta;
+
+expose final VALUE = 20;
+
+expose func make() -> Integer {
+    return VALUE;
+}
+)");
+
+    const std::string mainSource = R"(
+module Main;
+bind "./alpha" as A;
+bind "./beta";
+
+func start() {
+    Viper.Terminal.SayInt(A.make() + Beta.make() + A.VALUE + Beta.VALUE);
+}
+)";
+    const fs::path mainPath = writeFile(dir, "main.zia", mainSource);
+    const std::string mainPathStr = mainPath.string();
+
+    SourceManager sm;
+    CompilerInput input{.source = mainSource, .path = mainPathStr};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+    if (!result.succeeded()) {
+        std::cerr << "Diagnostics for DuplicateFunctionsAndGlobalsAreModuleScoped:\n";
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+    EXPECT_TRUE(result.succeeded());
+
+    bool hasAlphaMake = false;
+    bool hasBetaMake = false;
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "Alpha.make")
+            hasAlphaMake = true;
+        if (fn.name == "Beta.make")
+            hasBetaMake = true;
+    }
+    EXPECT_TRUE(hasAlphaMake);
+    EXPECT_TRUE(hasBetaMake);
+}
+
+TEST(ZiaBinds, QualifiedExtendsImplementsAndStructLiteralCompile) {
+    const fs::path tempRoot = fs::temp_directory_path() / "zia_bind_tests" /
+                              std::to_string(static_cast<unsigned long long>(::getpid()));
+    const fs::path dir = tempRoot / "qualified_type_positions";
+
+    writeFile(dir,
+              "base.zia",
+              R"(
+module Base;
+
+expose interface Named {
+    func name() -> String;
+}
+
+expose class Parent {
+    expose func base() -> Integer {
+        return 3;
+    }
+}
+
+expose struct Point {
+    expose Integer x;
+    expose Integer y;
+}
+)");
+
+    const std::string mainSource = R"(
+module Main;
+bind "./base";
+
+class Child extends Base.Parent implements Base.Named {
+    expose func name() -> String {
+        return "child";
+    }
+}
+
+func start() {
+    var child = new Child();
+    var point: Base.Point = Base.Point { x = 4, y = 5 };
+    Viper.Terminal.SayInt(child.base() + point.x + point.y);
+}
+)";
+    const fs::path mainPath = writeFile(dir, "main.zia", mainSource);
+    const std::string mainPathStr = mainPath.string();
+
+    SourceManager sm;
+    CompilerInput input{.source = mainSource, .path = mainPathStr};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+    if (!result.succeeded()) {
+        std::cerr << "Diagnostics for QualifiedExtendsImplementsAndStructLiteralCompile:\n";
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+    EXPECT_TRUE(result.succeeded());
+}
+
 TEST(ZiaBinds, CircularBindAllowed) {
     const fs::path tempRoot = fs::temp_directory_path() / "zia_bind_tests" /
                               std::to_string(static_cast<unsigned long long>(::getpid()));

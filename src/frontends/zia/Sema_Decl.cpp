@@ -14,6 +14,7 @@
 #include "il/runtime/RuntimeNameMap.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
+#include <map>
 #include <unordered_set>
 
 namespace il::frontends::zia {
@@ -33,6 +34,15 @@ TypeRef contextualizeIntegerLiteralForDeclaredType(TypeRef declaredType,
         return types::byte();
     }
     return initType;
+}
+
+bool isForbiddenValueType(TypeRef type) {
+    return type && (type->kind == TypeKindSem::Void || type->kind == TypeKindSem::Never ||
+                    type->kind == TypeKindSem::Module);
+}
+
+std::string forbiddenValueTypeName(TypeRef type) {
+    return type ? type->toString() : "unknown";
 }
 
 } // namespace
@@ -112,8 +122,9 @@ void Sema::collectExportedSymbolsForFile(uint32_t fileId,
 
         switch (decl->kind) {
             case DeclKind::Function:
-                addLookupSymbol(static_cast<FunctionDecl *>(decl.get())->name,
-                                static_cast<FunctionDecl *>(decl.get())->name);
+                addLookupSymbol(
+                    static_cast<FunctionDecl *>(decl.get())->name,
+                    semanticNameForDecl(*decl, static_cast<FunctionDecl *>(decl.get())->name));
                 break;
             case DeclKind::Struct:
                 addLookupSymbol(
@@ -136,12 +147,14 @@ void Sema::collectExportedSymbolsForFile(uint32_t fileId,
                     semanticNameForDecl(*decl, static_cast<EnumDecl *>(decl.get())->name));
                 break;
             case DeclKind::GlobalVar:
-                addLookupSymbol(static_cast<GlobalVarDecl *>(decl.get())->name,
-                                static_cast<GlobalVarDecl *>(decl.get())->name);
+                addLookupSymbol(
+                    static_cast<GlobalVarDecl *>(decl.get())->name,
+                    semanticNameForDecl(*decl, static_cast<GlobalVarDecl *>(decl.get())->name));
                 break;
             case DeclKind::TypeAlias:
-                addLookupSymbol(static_cast<TypeAliasDecl *>(decl.get())->name,
-                                static_cast<TypeAliasDecl *>(decl.get())->name);
+                addLookupSymbol(
+                    static_cast<TypeAliasDecl *>(decl.get())->name,
+                    semanticNameForDecl(*decl, static_cast<TypeAliasDecl *>(decl.get())->name));
                 break;
             case DeclKind::Namespace: {
                 const auto *ns = static_cast<NamespaceDecl *>(decl.get());
@@ -415,6 +428,14 @@ void Sema::importNamespaceSymbols(const std::string &ns) {
 /// @brief Analyze a global variable declaration, type-checking its initializer.
 /// @param decl The global variable declaration to analyze.
 void Sema::analyzeGlobalVarDecl(GlobalVarDecl &decl) {
+    TypeRef declaredType = decl.type ? resolveTypeNode(decl.type.get()) : nullptr;
+    if (isForbiddenValueType(declaredType)) {
+        error(decl.loc,
+              "Type '" + forbiddenValueTypeName(declaredType) +
+                  "' cannot be used for a global value");
+        declaredType = types::unknown();
+    }
+
     // Analyze initializer if present
     if (decl.initializer) {
         TypeRef initType = analyzeExpr(decl.initializer.get());
@@ -426,7 +447,7 @@ void Sema::analyzeGlobalVarDecl(GlobalVarDecl &decl) {
         }
 
         // If type was inferred, update the symbol
-        Symbol *sym = lookupSymbol(qualifyName(decl.name));
+        Symbol *sym = lookupSymbol(semanticNameForDecl(decl, decl.name));
         if (!sym)
             sym = lookupSymbol(decl.name);
         if (sym && sym->type->isUnknown() && decl.initializer->kind == ExprKind::NullLiteral &&
@@ -446,7 +467,7 @@ void Sema::analyzeGlobalVarDecl(GlobalVarDecl &decl) {
                 errorTypeMismatch(decl.initializer->loc, sym->type, initType);
         }
     } else {
-        Symbol *sym = lookupSymbol(qualifyName(decl.name));
+        Symbol *sym = lookupSymbol(semanticNameForDecl(decl, decl.name));
         if (!sym)
             sym = lookupSymbol(decl.name);
         if (decl.isFinal) {
@@ -658,7 +679,17 @@ void Sema::registerStructMembers(StructDecl &decl) {
 
 /// @brief Register interface member signatures (methods only, no fields).
 void Sema::registerInterfaceMembers(InterfaceDecl &decl) {
+    if (decl.genericParams.empty()) {
+        registerTypeMembers(decl, false);
+        return;
+    }
+
+    std::map<std::string, TypeRef> params;
+    for (const auto &param : decl.genericParams)
+        params[param] = types::typeParam(param);
+    pushTypeParams(params);
     registerTypeMembers(decl, false);
+    popTypeParams();
 }
 
 /// @brief Analyze an class type declaration body.
@@ -883,8 +914,7 @@ void Sema::analyzeEnumDecl(EnumDecl &decl) {
 
         if (nextValue == INT64_MAX) {
             error(variant.loc,
-                  "Enum '" + decl.name +
-                      "' auto-increment would exceed the maximum Integer value");
+                  "Enum '" + decl.name + "' auto-increment would exceed the maximum Integer value");
             continue;
         }
         ++nextValue;
@@ -920,6 +950,12 @@ void Sema::analyzeFunctionDecl(FunctionDecl &decl) {
         TypeRef paramType = param.type ? resolveTypeNode(param.type.get()) : types::unknown();
         if (param.isVariadic)
             paramType = types::list(paramType); // Body sees ...Integer as List[Integer]
+        if (isForbiddenValueType(paramType)) {
+            error(param.loc,
+                  "Type '" + forbiddenValueTypeName(paramType) +
+                      "' cannot be used for a function parameter");
+            paramType = types::unknown();
+        }
 
         Symbol sym;
         sym.kind = Symbol::Kind::Parameter;
@@ -955,6 +991,11 @@ void Sema::analyzeFunctionDecl(FunctionDecl &decl) {
 /// @param ownerType The type that owns this field.
 void Sema::analyzeFieldDecl(FieldDecl &decl, TypeRef ownerType) {
     TypeRef fieldType = decl.type ? resolveTypeNode(decl.type.get()) : types::unknown();
+    if (isForbiddenValueType(fieldType)) {
+        error(decl.loc,
+              "Type '" + forbiddenValueTypeName(fieldType) + "' cannot be used for a field");
+        fieldType = types::unknown();
+    }
 
     if (decl.isWeak) {
         auto weakTargetType = fieldType;
@@ -1186,6 +1227,12 @@ void Sema::analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType) {
                 paramType = paramTypes[i];
         } else if (param.type) {
             paramType = resolveTypeNode(param.type.get());
+        }
+        if (isForbiddenValueType(paramType)) {
+            error(param.loc,
+                  "Type '" + forbiddenValueTypeName(paramType) +
+                      "' cannot be used for a method parameter");
+            paramType = types::unknown();
         }
 
         Symbol sym;

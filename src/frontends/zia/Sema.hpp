@@ -276,6 +276,12 @@ class Sema {
         return it != autoEvalGetters_.end() ? it->second : "";
     }
 
+    /// @brief Get the semantic name resolved for an identifier expression.
+    std::string resolvedIdentifierName(const IdentExpr *expr) const {
+        auto it = resolvedIdentNames_.find(expr);
+        return it != resolvedIdentNames_.end() ? it->second : "";
+    }
+
     /// @brief Get the mangled function name for a generic function call.
     /// @param expr The call expression to look up.
     /// @return The mangled name (e.g., "identity$Integer") or empty string.
@@ -321,6 +327,12 @@ class Sema {
         return it != resolvedFieldGetters_.end() ? it->second : "";
     }
 
+    /// @brief Get the resolved symbol name for a module-qualified field expression.
+    std::string resolvedFieldSymbolName(const FieldExpr *expr) const {
+        auto it = resolvedFieldSymbolNames_.find(expr);
+        return it != resolvedFieldSymbolNames_.end() ? it->second : "";
+    }
+
     /// @brief Get the resolved setter function name for a field assignment.
     std::string resolvedFieldSetter(const FieldExpr *expr) const {
         auto it = resolvedFieldSetters_.find(expr);
@@ -347,6 +359,18 @@ class Sema {
     MethodDecl *resolvedMethodDecl(const CallExpr *expr) const {
         auto it = resolvedMethodDecls_.find(expr);
         return it != resolvedMethodDecls_.end() ? it->second : nullptr;
+    }
+
+    /// @brief Get the concrete function type for a generic method call site.
+    TypeRef genericMethodConcreteType(const CallExpr *expr) const {
+        auto it = genericMethodConcreteTypes_.find(expr);
+        return it != genericMethodConcreteTypes_.end() ? it->second : nullptr;
+    }
+
+    /// @brief Get the erased function type used by the lowered generic method body.
+    TypeRef genericMethodErasedType(const CallExpr *expr) const {
+        auto it = genericMethodErasedTypes_.find(expr);
+        return it != genericMethodErasedTypes_.end() ? it->second : nullptr;
     }
 
     /// @brief Get the owner type of a resolved method call.
@@ -622,7 +646,7 @@ class Sema {
     /// @brief Derive the visible module name for a file bind.
     std::string fileBindModuleName(const BindDecl &decl) const;
 
-    /// @brief Prepare module-qualified semantic names for colliding top-level types.
+    /// @brief Prepare module-qualified semantic names for colliding top-level declarations.
     void prepareModuleScopedTypeNames(const ModuleDecl &module);
 
     /// @brief Return the declared module identity for a source file.
@@ -630,6 +654,9 @@ class Sema {
 
     /// @brief Return a declaration's semantic name, accounting for scoped collisions.
     std::string semanticNameForDecl(const Decl &decl, const std::string &name) const;
+
+    /// @brief Resolve a file-local top-level declaration spelling to its semantic name.
+    std::string fileScopedDeclName(uint32_t fileId, const std::string &name) const;
 
     /// @brief Resolve a file-local top-level type spelling to its semantic name.
     std::string fileScopedTypeName(uint32_t fileId, const std::string &name) const;
@@ -1581,11 +1608,11 @@ class Sema {
     /// @brief Source-file id to declared module identity for imported Zia files.
     std::unordered_map<uint32_t, std::string> fileModuleNames_;
 
-    /// @brief Semantic names for top-level type declarations whose short names collide.
+    /// @brief Semantic names for top-level declarations whose short names collide.
     std::unordered_map<const Decl *, std::string> semanticDeclNames_;
 
-    /// @brief File-local short type names to semantic names.
-    std::unordered_map<uint32_t, std::unordered_map<std::string, std::string>> fileScopedTypeNames_;
+    /// @brief File-local short top-level names to semantic names.
+    std::unordered_map<uint32_t, std::unordered_map<std::string, std::string>> fileScopedDeclNames_;
 
     /// @brief Struct type declarations for pattern analysis.
     std::unordered_map<std::string, StructDecl *> structDecls_;
@@ -1675,6 +1702,9 @@ class Sema {
     /// (e.g., Pi → Viper.Math.get_Pi). Lowerer emits a call instead of a load.
     std::unordered_map<const Expr *, std::string> autoEvalGetters_;
 
+    /// @brief Map from identifier expressions to resolved semantic top-level names.
+    std::unordered_map<const IdentExpr *, std::string> resolvedIdentNames_;
+
     /// @brief Resolved generic function call mangled names.
     /// @details Key: CallExpr pointer, Value: Mangled function name (e.g., "identity$Integer").
     /// Used by the lowerer to determine which instantiated function to call.
@@ -1688,6 +1718,12 @@ class Sema {
 
     /// @brief Resolved method declarations for call sites.
     std::unordered_map<const CallExpr *, MethodDecl *> resolvedMethodDecls_;
+
+    /// @brief Concrete semantic function types for explicit generic method call sites.
+    std::unordered_map<const CallExpr *, TypeRef> genericMethodConcreteTypes_;
+
+    /// @brief Erased lowered function types for explicit generic method call sites.
+    std::unordered_map<const CallExpr *, TypeRef> genericMethodErasedTypes_;
 
     /// @brief Owning type name for resolved method call sites.
     std::unordered_map<const CallExpr *, std::string> resolvedMethodOwnerTypes_;
@@ -1715,6 +1751,9 @@ class Sema {
 
     /// @brief Map from field expressions to their resolved getter names.
     std::unordered_map<const FieldExpr *, std::string> resolvedFieldGetters_;
+
+    /// @brief Map from module-qualified field expressions to resolved symbol names.
+    std::unordered_map<const FieldExpr *, std::string> resolvedFieldSymbolNames_;
 
     /// @brief Map from field-expression assignment targets to their resolved setter names.
     std::unordered_map<const FieldExpr *, std::string> resolvedFieldSetters_;

@@ -31,6 +31,7 @@
 #include <cassert>
 #include <cctype>
 #include <limits>
+#include <map>
 #include <sstream>
 
 namespace il::frontends::zia {
@@ -58,6 +59,7 @@ std::string classifySemanticError(const std::string &message) {
     if (message.find("Index") != std::string::npos || message.find("index") != std::string::npos)
         return "V-ZIA-INDEX";
     if (message.find("duplicate") != std::string::npos ||
+        message.find("Duplicate") != std::string::npos ||
         message.find("already defined") != std::string::npos)
         return "V-ZIA-DUPLICATE";
     if (message.find("optional") != std::string::npos ||
@@ -68,20 +70,25 @@ std::string classifySemanticError(const std::string &message) {
     return "V-ZIA-SEMA";
 }
 
-bool isTopLevelTypeDeclKind(DeclKind kind) {
+bool isTopLevelModuleScopedDeclKind(DeclKind kind) {
     switch (kind) {
+        case DeclKind::Function:
         case DeclKind::Struct:
         case DeclKind::Class:
         case DeclKind::Interface:
         case DeclKind::Enum:
+        case DeclKind::GlobalVar:
+        case DeclKind::TypeAlias:
             return true;
         default:
             return false;
     }
 }
 
-std::string topLevelTypeDeclName(const Decl &decl) {
+std::string topLevelModuleScopedDeclName(const Decl &decl) {
     switch (decl.kind) {
+        case DeclKind::Function:
+            return static_cast<const FunctionDecl &>(decl).name;
         case DeclKind::Struct:
             return static_cast<const StructDecl &>(decl).name;
         case DeclKind::Class:
@@ -90,6 +97,10 @@ std::string topLevelTypeDeclName(const Decl &decl) {
             return static_cast<const InterfaceDecl &>(decl).name;
         case DeclKind::Enum:
             return static_cast<const EnumDecl &>(decl).name;
+        case DeclKind::GlobalVar:
+            return static_cast<const GlobalVarDecl &>(decl).name;
+        case DeclKind::TypeAlias:
+            return static_cast<const TypeAliasDecl &>(decl).name;
         default:
             return "";
     }
@@ -246,12 +257,10 @@ std::string saferRuntimePointerAlternative(std::string_view calleeName) {
         {"Viper.Option.Filter",
          "ordinary Zia optional control flow or a managed function reference"},
         {"Viper.Result.Map", "ordinary Zia result control flow or a managed function reference"},
-        {"Viper.Result.MapErr",
-         "ordinary Zia result control flow or a managed function reference"},
+        {"Viper.Result.MapErr", "ordinary Zia result control flow or a managed function reference"},
         {"Viper.Result.AndThen",
          "ordinary Zia result control flow or a managed function reference"},
-        {"Viper.Result.OrElse",
-         "ordinary Zia result control flow or a managed function reference"},
+        {"Viper.Result.OrElse", "ordinary Zia result control flow or a managed function reference"},
     };
 
     auto it = alternatives.find(calleeName);
@@ -351,11 +360,23 @@ TypeRef Sema::functionTypeForDecl(const FunctionDecl &decl) const {
 }
 
 TypeRef Sema::methodTypeForDecl(const MethodDecl &decl) const {
+    bool pushedParams = false;
+    if (!decl.genericParams.empty()) {
+        std::map<std::string, TypeRef> params;
+        for (const auto &param : decl.genericParams)
+            params[param] = types::typeParam(param);
+        const_cast<Sema *>(this)->pushTypeParams(params);
+        pushedParams = true;
+    }
+
     TypeRef returnType = decl.returnType ? resolveType(decl.returnType.get()) : types::voidType();
     std::vector<TypeRef> paramTypes;
     paramTypes.reserve(decl.params.size());
     for (const auto &param : decl.params)
         paramTypes.push_back(param.type ? resolveType(param.type.get()) : types::unknown());
+
+    if (pushedParams)
+        const_cast<Sema *>(this)->popTypeParams();
     return types::function(paramTypes, returnType);
 }
 
@@ -402,7 +423,10 @@ bool Sema::registerFunctionOverload(const std::string &name,
     functionDeclTypes_[decl] = funcType;
 
     const bool overloaded = family.size() > 1;
-    if (name == "start") {
+    const bool isEntryStart =
+        decl && decl->name == "start" && currentModule_ &&
+        (currentModule_->loc.file_id == 0 || decl->loc.file_id == currentModule_->loc.file_id);
+    if (isEntryStart) {
         loweredFunctionNames_[decl] = "main";
     } else if (overloaded) {
         loweredFunctionNames_[decl] = name + "__ov__" +
@@ -710,9 +734,13 @@ void Sema::appendClassFieldSpecs(const std::string &typeName,
         auto *field = static_cast<FieldDecl *>(member.get());
         if (field->isStatic)
             continue;
+        auto visIt = memberVisibility_.find(typeName + "." + field->name);
+        const bool externallyPrivate = visIt != memberVisibility_.end() &&
+                                       visIt->second == Visibility::Private &&
+                                       (!currentSelfType_ || currentSelfType_->name != typeName);
 
         CallParamSpec spec;
-        spec.name = field->name;
+        spec.name = externallyPrivate ? "" : field->name;
         spec.type = getFieldType(typeName, field->name);
         if (!spec.type && field->type)
             spec.type = resolveType(field->type.get());
@@ -739,9 +767,13 @@ std::vector<Sema::CallParamSpec> Sema::makeStructFieldSpecs(const std::string &t
         auto *field = static_cast<FieldDecl *>(member.get());
         if (field->isStatic)
             continue;
+        auto visIt = memberVisibility_.find(typeName + "." + field->name);
+        const bool externallyPrivate = visIt != memberVisibility_.end() &&
+                                       visIt->second == Visibility::Private &&
+                                       (!currentSelfType_ || currentSelfType_->name != typeName);
 
         CallParamSpec spec;
-        spec.name = field->name;
+        spec.name = externallyPrivate ? "" : field->name;
         spec.type = getFieldType(typeName, field->name);
         if (!spec.type && field->type)
             spec.type = resolveType(field->type.get());
@@ -1298,10 +1330,11 @@ bool Sema::analyze(ModuleDecl &module) {
         switch (decl->kind) {
             case DeclKind::Function: {
                 auto *func = static_cast<FunctionDecl *>(decl.get());
+                const std::string semanticName = semanticNameForDecl(*func, func->name);
 
                 if (!func->genericParams.empty()) {
                     // Generic function: register for later instantiation
-                    registerGenericFunction(func->name, func);
+                    registerGenericFunction(semanticName, func);
 
                     // Create a placeholder type with type parameters as param types
                     // The actual function type will be created when instantiated
@@ -1313,28 +1346,28 @@ bool Sema::analyze(ModuleDecl &module) {
 
                     Symbol sym;
                     sym.kind = Symbol::Kind::Function;
-                    sym.name = func->name;
+                    sym.name = semanticName;
                     sym.type = placeholderType;
                     sym.decl = func;
                     sym.isExported = func->isExported;
-                    if (!currentScope_->lookupLocal(func->name))
-                        defineSymbol(func->name, sym);
+                    if (!currentScope_->lookupLocal(semanticName))
+                        defineSymbol(semanticName, sym);
                 } else {
                     auto funcType = functionTypeForDecl(*func);
 
                     Symbol sym;
                     sym.kind = Symbol::Kind::Function;
-                    sym.name = func->name;
+                    sym.name = semanticName;
                     sym.type = funcType;
                     sym.decl = func;
                     sym.isExported = func->isExported;
-                    Symbol *existing = currentScope_->lookupLocal(func->name);
+                    Symbol *existing = currentScope_->lookupLocal(semanticName);
                     if (!existing) {
-                        defineSymbol(func->name, sym);
+                        defineSymbol(semanticName, sym);
                     } else if (existing->kind != Symbol::Kind::Function) {
-                        reportDuplicateDefinition(func->name, func->loc);
+                        reportDuplicateDefinition(semanticName, func->loc);
                     }
-                    registerFunctionOverload(func->name, func, funcType, func->loc);
+                    registerFunctionOverload(semanticName, func, funcType, func->loc);
                 }
                 break;
             }
@@ -1401,7 +1434,17 @@ bool Sema::analyze(ModuleDecl &module) {
             case DeclKind::Interface: {
                 auto *iface = static_cast<InterfaceDecl *>(decl.get());
                 const std::string semanticName = semanticNameForDecl(*iface, iface->name);
-                auto ifaceType = types::interface(semanticName);
+                TypeRef ifaceType;
+                if (!iface->genericParams.empty()) {
+                    registerGenericType(semanticName, iface);
+                    std::vector<TypeRef> paramTypes;
+                    for (const auto &param : iface->genericParams)
+                        paramTypes.push_back(types::typeParam(param));
+                    ifaceType = std::make_shared<ViperType>(
+                        TypeKindSem::Interface, semanticName, paramTypes);
+                } else {
+                    ifaceType = types::interface(semanticName);
+                }
 
                 Symbol sym;
                 sym.kind = Symbol::Kind::Type;
@@ -1432,6 +1475,7 @@ bool Sema::analyze(ModuleDecl &module) {
             }
             case DeclKind::GlobalVar: {
                 auto *gvar = static_cast<GlobalVarDecl *>(decl.get());
+                const std::string semanticName = semanticNameForDecl(*gvar, gvar->name);
                 // Determine the variable type
                 TypeRef varType;
                 if (gvar->type) {
@@ -1445,15 +1489,15 @@ bool Sema::analyze(ModuleDecl &module) {
 
                 Symbol sym;
                 sym.kind = Symbol::Kind::Variable;
-                sym.name = gvar->name;
+                sym.name = semanticName;
                 sym.type = varType;
                 sym.isFinal = gvar->isFinal;
                 sym.decl = gvar;
                 sym.isExported = gvar->isExported;
-                if (defineSymbol(gvar->name, sym)) {
+                if (defineSymbol(semanticName, sym)) {
                     // Global variables are always considered initialized
                     // (either explicitly or default-initialized)
-                    markInitialized(gvar->name);
+                    markInitialized(semanticName);
                 }
                 break;
             }
@@ -1470,16 +1514,17 @@ bool Sema::analyze(ModuleDecl &module) {
             }
             case DeclKind::TypeAlias: {
                 auto *alias = static_cast<TypeAliasDecl *>(decl.get());
+                const std::string semanticName = semanticNameForDecl(*alias, alias->name);
                 TypeRef resolved = resolveTypeNode(alias->targetType.get());
                 if (resolved) {
                     Symbol sym;
                     sym.kind = Symbol::Kind::Type;
-                    sym.name = alias->name;
+                    sym.name = semanticName;
                     sym.type = resolved;
                     sym.decl = alias;
                     sym.isExported = alias->isExported;
-                    defineSymbol(alias->name, sym);
-                    typeAliases_[alias->name] = resolved;
+                    defineSymbol(semanticName, sym);
+                    typeAliases_[semanticName] = resolved;
                 } else {
                     error(alias->loc, "Cannot resolve type alias target for '" + alias->name + "'");
                 }
@@ -2226,33 +2271,33 @@ void Sema::registerBuiltins() {
 
 void Sema::prepareModuleScopedTypeNames(const ModuleDecl &module) {
     semanticDeclNames_.clear();
-    fileScopedTypeNames_.clear();
+    fileScopedDeclNames_.clear();
 
     if (module.loc.file_id != 0)
         fileModuleNames_[module.loc.file_id] = module.name;
 
-    std::unordered_map<std::string, std::unordered_set<uint32_t>> filesByTypeName;
+    std::unordered_map<std::string, std::unordered_set<uint32_t>> filesByName;
     for (const auto &decl : module.declarations) {
-        if (!decl || !isTopLevelTypeDeclKind(decl->kind))
+        if (!decl || !isTopLevelModuleScopedDeclKind(decl->kind))
             continue;
-        filesByTypeName[topLevelTypeDeclName(*decl)].insert(decl->loc.file_id);
+        filesByName[topLevelModuleScopedDeclName(*decl)].insert(decl->loc.file_id);
     }
 
     for (const auto &decl : module.declarations) {
-        if (!decl || !isTopLevelTypeDeclKind(decl->kind))
+        if (!decl || !isTopLevelModuleScopedDeclKind(decl->kind))
             continue;
 
-        const std::string shortName = topLevelTypeDeclName(*decl);
+        const std::string shortName = topLevelModuleScopedDeclName(*decl);
         std::string semanticName = shortName;
-        auto collisionIt = filesByTypeName.find(shortName);
-        if (collisionIt != filesByTypeName.end() && collisionIt->second.size() > 1) {
+        auto collisionIt = filesByName.find(shortName);
+        if (collisionIt != filesByName.end() && collisionIt->second.size() > 1) {
             std::string moduleName = moduleNameForFile(decl->loc.file_id);
             if (!moduleName.empty())
                 semanticName = moduleName + "." + shortName;
         }
 
         semanticDeclNames_[decl.get()] = semanticName;
-        fileScopedTypeNames_[decl->loc.file_id][shortName] = semanticName;
+        fileScopedDeclNames_[decl->loc.file_id][shortName] = semanticName;
     }
 }
 
@@ -2274,12 +2319,16 @@ std::string Sema::semanticNameForDecl(const Decl &decl, const std::string &name)
     return qualifyName(name);
 }
 
-std::string Sema::fileScopedTypeName(uint32_t fileId, const std::string &name) const {
-    auto fileIt = fileScopedTypeNames_.find(fileId);
-    if (fileIt == fileScopedTypeNames_.end())
+std::string Sema::fileScopedDeclName(uint32_t fileId, const std::string &name) const {
+    auto fileIt = fileScopedDeclNames_.find(fileId);
+    if (fileIt == fileScopedDeclNames_.end())
         return name;
     auto nameIt = fileIt->second.find(name);
     return nameIt != fileIt->second.end() ? nameIt->second : name;
+}
+
+std::string Sema::fileScopedTypeName(uint32_t fileId, const std::string &name) const {
+    return fileScopedDeclName(fileId, name);
 }
 
 /// @brief Qualify a name with the current namespace prefix.
@@ -2327,7 +2376,7 @@ void Sema::registerFinalConstantTypes(std::vector<DeclPtr> &declarations) {
                 continue;
 
             // Look up the symbol — it was registered in Pass 1 with unknown type
-            std::string name = qualifyName(gvar->name);
+            std::string name = semanticNameForDecl(*gvar, gvar->name);
             Symbol *sym = lookupSymbol(name);
             if (!sym || !sym->type->isUnknown())
                 continue;

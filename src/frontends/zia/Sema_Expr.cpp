@@ -281,8 +281,21 @@ TypeRef Sema::analyzeUnitLiteral(UnitLiteralExpr * /*expr*/) {
 /// @details Looks up the identifier in the symbol table and imported symbols.
 ///          For imported runtime classes, returns a module-like type.
 TypeRef Sema::analyzeIdent(IdentExpr *expr) {
-    Symbol *sym = lookupAccessibleSymbol(expr->name, expr->loc);
-    if (sym && sym->kind == Symbol::Kind::Function && hasOverloadedFunctionName(expr->name)) {
+    std::string lookupName = expr->name;
+    Symbol *sym = lookupAccessibleSymbol(lookupName, expr->loc);
+    if (!sym && expr->loc.file_id != 0 && lookupName.find('.') == std::string::npos) {
+        std::string scopedName = fileScopedDeclName(expr->loc.file_id, lookupName);
+        if (scopedName != lookupName) {
+            sym = lookupAccessibleSymbol(scopedName, expr->loc);
+            if (sym)
+                lookupName = std::move(scopedName);
+        }
+    }
+
+    if (sym)
+        resolvedIdentNames_[expr] = lookupName;
+
+    if (sym && sym->kind == Symbol::Kind::Function && hasOverloadedFunctionName(lookupName)) {
         error(expr->loc,
               "Function '" + expr->name +
                   "' is overloaded and must be used in a call expression to resolve a specific "
@@ -290,7 +303,11 @@ TypeRef Sema::analyzeIdent(IdentExpr *expr) {
         return types::unknown();
     }
     if (!sym) {
-        if (hasOverloadedFunctionName(expr->name)) {
+        std::string scopedName = expr->loc.file_id != 0 && expr->name.find('.') == std::string::npos
+                                     ? fileScopedDeclName(expr->loc.file_id, expr->name)
+                                     : expr->name;
+        if (hasOverloadedFunctionName(expr->name) ||
+            (scopedName != expr->name && hasOverloadedFunctionName(scopedName))) {
             error(expr->loc,
                   "Function '" + expr->name +
                       "' is overloaded and must be used in a call expression to resolve a specific "

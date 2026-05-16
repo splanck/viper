@@ -10,7 +10,7 @@ last-verified: 2026-05-13
 
 This document is retained as historical implementation context for Zia generics. It describes the architecture that led to the current implementation and should not be read as the active feature status.
 
-**Current State**: Zia supports generic functions, constrained generics, generic classes/structs, nested type arguments, and collection generics. New work should update the language reference and conformance tests first, then use this plan only for background on the monomorphization design.
+**Current State**: Zia supports generic functions, constrained generics with qualified interface constraints, generic classes/structs/interfaces, explicit generic method calls, nested type arguments, and collection generics. New work should update the language reference and conformance tests first, then use this plan only for background on the monomorphization design.
 
 **Target State**: Full monomorphization-based generics with type inference, supporting user-defined generic types, functions, and methods.
 

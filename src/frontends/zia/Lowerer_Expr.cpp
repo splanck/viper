@@ -138,9 +138,8 @@ LowerResult Lowerer::lowerExpr(Expr *expr) {
         case ExprKind::SetLiteral:
             return lowerSetLiteral(static_cast<SetLiteralExpr *>(expr));
         default:
-            return poisonValue(expr->loc,
-                               "V-ZIA-LOWER-UNKNOWN-EXPR",
-                               "unknown expression kind reached lowering");
+            return poisonValue(
+                expr->loc, "V-ZIA-LOWER-UNKNOWN-EXPR", "unknown expression kind reached lowering");
     }
 }
 
@@ -149,6 +148,10 @@ LowerResult Lowerer::lowerExpr(Expr *expr) {
 //=============================================================================
 
 LowerResult Lowerer::lowerIdent(IdentExpr *expr) {
+    std::string resolvedName = sema_.resolvedIdentifierName(expr);
+    if (resolvedName.empty())
+        resolvedName = expr->name;
+
     auto semaType = sema_.typeOf(expr);
     auto resolveIdentType = [&](TypeRef fallback) -> TypeRef {
         if (semaType && semaType->kind != TypeKindSem::Unknown &&
@@ -213,7 +216,7 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr) {
     }
 
     // Check for global constants (module-level const declarations)
-    auto constIt = globalConstants_.find(expr->name);
+    auto constIt = globalConstants_.find(resolvedName);
     if (constIt != globalConstants_.end()) {
         const Value &val = constIt->second;
         // Determine the type from the value kind
@@ -243,12 +246,12 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr) {
     }
 
     // Check for global mutable variables (module-level var declarations)
-    auto globalIt = globalVariables_.find(expr->name);
+    auto globalIt = globalVariables_.find(resolvedName);
     if (globalIt != globalVariables_.end()) {
         TypeRef storageType = globalIt->second;
         TypeRef useType = resolveIdentType(storageType);
         Type loadType = mapType(storageType ? storageType : useType);
-        Value addr = getGlobalVarAddr(expr->name, storageType);
+        Value addr = getGlobalVarAddr(resolvedName, storageType);
         Value loaded = emitLoad(addr, loadType);
         return lowerStoredValue(loaded, storageType, useType);
     }
@@ -264,17 +267,17 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr) {
 
     // Check if identifier refers to a function - return its address for function pointers
     // This enables passing functions to Thread.Start, callbacks, etc.
-    std::string mangledName = mangleFunctionName(expr->name);
+    std::string mangledName = mangleFunctionName(resolvedName);
     if (definedFunctions_.find(mangledName) != definedFunctions_.end()) {
         // Function is defined in this module - return its address
         return {Value::global(mangledName), Type(Type::Kind::Ptr)};
     }
 
     // Check if it's an extern function (runtime API)
-    Symbol *sym = sema_.findExternFunction(expr->name);
+    Symbol *sym = sema_.findExternFunction(resolvedName);
     if (sym) {
         // External function reference - return its address
-        return {Value::global(expr->name), Type(Type::Kind::Ptr)};
+        return {Value::global(resolvedName), Type(Type::Kind::Ptr)};
     }
 
     diag_.report({il::support::Severity::Error,

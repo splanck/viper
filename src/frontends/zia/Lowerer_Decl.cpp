@@ -120,10 +120,20 @@ std::optional<il::core::Value> Lowerer::tryFoldNumericConstant(Expr *init) {
             return Value::constBool(boolLit->value);
         if (auto *strLit = dynamic_cast<StringLiteralExpr *>(expr))
             return Value::constStr(stringTable_.intern(strLit->value));
-        if (auto *ident = dynamic_cast<IdentExpr *>(expr))
-            return lookupConstant(ident->name);
+        if (auto *ident = dynamic_cast<IdentExpr *>(expr)) {
+            std::string resolvedName = sema_.resolvedIdentifierName(ident);
+            return lookupConstant(resolvedName.empty() ? ident->name : resolvedName);
+        }
 
         if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr)) {
+            std::string resolvedSymbol = sema_.resolvedFieldSymbolName(fieldExpr);
+            if (!resolvedSymbol.empty()) {
+                if (auto constIt = globalConstants_.find(resolvedSymbol);
+                    constIt != globalConstants_.end()) {
+                    return constIt->second;
+                }
+            }
+
             std::function<std::optional<std::string>(Expr *)> buildQualifiedName =
                 [&](Expr *node) -> std::optional<std::string> {
                 if (auto *ident = dynamic_cast<IdentExpr *>(node))
@@ -328,7 +338,7 @@ void Lowerer::registerAllFinalConstants(std::vector<DeclPtr> &declarations) {
             if (decl->kind == DeclKind::GlobalVar) {
                 auto *gvar = static_cast<GlobalVarDecl *>(decl.get());
                 if (gvar->isFinal && gvar->initializer) {
-                    pending.push_back({gvar, qualifyName(gvar->name)});
+                    pending.push_back({gvar, declarationName(*gvar, gvar->name)});
                 }
                 continue;
             }

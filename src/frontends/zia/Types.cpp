@@ -282,13 +282,12 @@ bool ViperType::isAssignableFrom(const ViperType &source) const {
 
     // Ptr compatibility: concrete runtime reference values lower to pointers,
     // so they can be stored in an explicitly type-erased Ptr slot.
-    if (kind == TypeKindSem::Ptr &&
-        (source.kind == TypeKindSem::Ptr || source.kind == TypeKindSem::Function ||
-         source.isReference()))
+    if (kind == TypeKindSem::Ptr && (source.kind == TypeKindSem::Ptr ||
+                                     source.kind == TypeKindSem::Function || source.isReference()))
         return true;
 
-    if (kind == TypeKindSem::Result && source.kind == TypeKindSem::Result &&
-        !typeArgs.empty() && !source.typeArgs.empty()) {
+    if (kind == TypeKindSem::Result && source.kind == TypeKindSem::Result && !typeArgs.empty() &&
+        !source.typeArgs.empty()) {
         if (source.typeArgs[0]->kind == TypeKindSem::Unknown)
             return true;
         return typeArgs[0]->isAssignableFrom(*source.typeArgs[0]);
@@ -608,9 +607,11 @@ il::core::Type::Kind toILType(const ViperType &type) {
         case TypeKindSem::Byte:
             return il::core::Type::Kind::I32; // IL has no i8
 
-        case TypeKindSem::Unit:
         case TypeKindSem::Void:
             return il::core::Type::Kind::Void;
+
+        case TypeKindSem::Unit:
+            return il::core::Type::Kind::Ptr;
 
         case TypeKindSem::Error:
             return il::core::Type::Kind::Error;
@@ -691,9 +692,10 @@ size_t typeSize(const ViperType &type) {
             return 8; // Pointer
         case TypeKindSem::Byte:
             return 4; // i32
-        case TypeKindSem::Unit:
         case TypeKindSem::Void:
             return 0;
+        case TypeKindSem::Unit:
+            return 8;
         case TypeKindSem::Error:
             return 8; // Pointer to error object
         case TypeKindSem::Ptr:
@@ -759,10 +761,10 @@ size_t typeAlignment(const ViperType &type) {
         case TypeKindSem::Optional:
         case TypeKindSem::Result:
         case TypeKindSem::Tuple:
+        case TypeKindSem::Unit:
             return 8;
         case TypeKindSem::Byte:
             return 4;
-        case TypeKindSem::Unit:
         case TypeKindSem::Void:
         case TypeKindSem::Unknown:
         case TypeKindSem::Never:

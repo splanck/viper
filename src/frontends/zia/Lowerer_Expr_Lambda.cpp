@@ -216,16 +216,20 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr) {
         }
     } else {
         if (!blockMgr_.isTerminated()) {
-            Value returnValue = bodyResult.value;
-            if (returnType && returnType->kind == TypeKindSem::Optional) {
-                TypeRef bodyType = sema_.typeOf(expr->body.get());
-                if (!bodyType || bodyType->kind != TypeKindSem::Optional) {
-                    TypeRef innerType = returnType->innerType();
-                    if (innerType)
-                        returnValue = emitOptionalWrap(bodyResult.value, innerType);
+            if (returnType && returnType->kind == TypeKindSem::Unit) {
+                emitRet(Value::null());
+            } else {
+                Value returnValue = bodyResult.value;
+                if (returnType && returnType->kind == TypeKindSem::Optional) {
+                    TypeRef bodyType = sema_.typeOf(expr->body.get());
+                    if (!bodyType || bodyType->kind != TypeKindSem::Optional) {
+                        TypeRef innerType = returnType->innerType();
+                        if (innerType)
+                            returnValue = emitOptionalWrap(bodyResult.value, innerType);
+                    }
                 }
+                emitRet(returnValue);
             }
-            emitRet(returnValue);
         }
     }
 
@@ -296,8 +300,8 @@ LowerResult Lowerer::lowerBlockExpr(BlockExpr *expr) {
         return lowerExpr(expr->value.get());
     }
 
-    // No value expression - return void/unit
-    return {Value::constInt(0), Type(Type::Kind::Void)};
+    // No value expression - return the singleton Unit value.
+    return {Value::null(), Type(Type::Kind::Ptr)};
 }
 
 //=============================================================================

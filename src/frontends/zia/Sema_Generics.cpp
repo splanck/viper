@@ -246,6 +246,33 @@ TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName)
 
             return instantiated;
         }
+        case DeclKind::Interface: {
+            auto *ifaceDecl = static_cast<InterfaceDecl *>(decl);
+            auto instantiated = std::make_shared<ViperType>(TypeKindSem::Interface, mangledName);
+
+            typeRegistry_[mangledName] = instantiated;
+            interfaceDecls_[mangledName] = ifaceDecl;
+
+            for (const auto &member : ifaceDecl->members) {
+                if (member->kind != DeclKind::Method)
+                    continue;
+                auto *method = static_cast<MethodDecl *>(member.get());
+                std::vector<TypeRef> paramTypes;
+                for (const auto &param : method->params)
+                    paramTypes.push_back(resolveTypeNode(param.type.get()));
+                TypeRef returnType = method->returnType ? resolveTypeNode(method->returnType.get())
+                                                        : types::voidType();
+                TypeRef methodType = types::function(paramTypes, returnType);
+                if (!registerMethodOverload(mangledName, method, methodType, method->loc))
+                    continue;
+                std::string key = mangledName + "." + method->name;
+                if (methodTypes_.find(key) == methodTypes_.end())
+                    methodTypes_[key] = methodType;
+                memberVisibility_[key] = method->visibility;
+            }
+
+            return instantiated;
+        }
         default:
             return types::unknown();
     }
@@ -324,11 +351,20 @@ bool Sema::typeImplementsInterface(TypeRef type, const std::string &interfaceNam
     if (!type)
         return false;
 
+    std::string resolvedInterfaceName = interfaceName;
+    if (TypeRef ifaceType = resolveNamedType(interfaceName);
+        ifaceType && ifaceType->kind == TypeKindSem::Interface)
+        resolvedInterfaceName = ifaceType->name;
+
     // Check if the type is an class type
     if (type->kind == TypeKindSem::Class) {
         if (auto *classDecl = lookupClassDeclForType(type->name)) {
             for (const auto &iface : classDecl->interfaces) {
-                if (iface == interfaceName)
+                std::string resolvedIface = iface;
+                if (TypeRef ifaceType = resolveNamedType(iface);
+                    ifaceType && ifaceType->kind == TypeKindSem::Interface)
+                    resolvedIface = ifaceType->name;
+                if (resolvedIface == resolvedInterfaceName)
                     return true;
             }
         }
@@ -337,7 +373,11 @@ bool Sema::typeImplementsInterface(TypeRef type, const std::string &interfaceNam
     else if (type->kind == TypeKindSem::Struct) {
         if (auto *structDecl = lookupStructDeclForType(type->name)) {
             for (const auto &iface : structDecl->interfaces) {
-                if (iface == interfaceName)
+                std::string resolvedIface = iface;
+                if (TypeRef ifaceType = resolveNamedType(iface);
+                    ifaceType && ifaceType->kind == TypeKindSem::Interface)
+                    resolvedIface = ifaceType->name;
+                if (resolvedIface == resolvedInterfaceName)
                     return true;
             }
         }

@@ -223,6 +223,76 @@ func start() {    var g: Game = new Game();
     EXPECT_TRUE(result.succeeded()); // Bug #30: Boolean fields should compile without errors
 }
 
+TEST(ZiaTypes, GenericInterfaceAndMethodDeclarationsResolveTypeParams) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+interface Boxable[T] {
+    func get() -> T;
+}
+
+func acceptIntBox(value: Boxable[Integer]) {}
+
+class IdentityBox {
+    expose func id[T](value: T) -> T {
+        return value;
+    }
+}
+
+func start() {
+    var box = new IdentityBox();
+    var value: Integer = box.id[Integer](42);
+    Viper.Terminal.SayInt(value);
+}
+)";
+    CompilerInput input{.source = source, .path = "generic_type_param_members.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded()) {
+        std::cerr << "Diagnostics for GenericInterfaceAndMethodDeclarationsResolveTypeParams:\n";
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+    EXPECT_TRUE(result.succeeded());
+}
+
+TEST(ZiaTypes, QualifiedGenericConstraintsParse) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+namespace Contracts {
+    interface Named {
+        func name() -> String;
+    }
+}
+
+func identityName[T: Contracts.Named](value: T) -> String {
+    return "";
+}
+
+func start() {}
+)";
+    CompilerInput input{.source = source, .path = "qualified_generic_constraint.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded()) {
+        std::cerr << "Diagnostics for QualifiedGenericConstraintsParse:\n";
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+    EXPECT_TRUE(result.succeeded());
+}
+
 } // namespace
 
 int main() {

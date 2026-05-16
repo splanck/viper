@@ -211,24 +211,34 @@ ExprPtr Parser::parsePrimary() {
     // to avoid ambiguity with for/if/while block bodies.
     if (checkIdentifierLike()) {
         // Struct-literal detection: only when allowStructLiterals_ is set.
-        // Disambiguate: peek(1) == '{' and (peek(2) == '}' or (peek(2) == Ident and peek(3) ==
-        // '='))
+        // Disambiguate: TypeName or Module.TypeName followed by a field-list body.
         if (allowStructLiterals_) {
-            auto nextKind = peek(1).kind;
+            size_t bodyOffset = 1;
+            std::string candidateName = peek().text;
+            while (peek(bodyOffset).kind == TokenKind::Dot &&
+                   peek(bodyOffset + 1).kind == TokenKind::Identifier) {
+                candidateName += ".";
+                candidateName += peek(bodyOffset + 1).text;
+                bodyOffset += 2;
+            }
+
+            auto nextKind = peek(bodyOffset).kind;
             bool isStructLiteral = false;
             if (nextKind == TokenKind::LBrace) {
-                auto k2 = peek(2).kind;
+                auto k2 = peek(bodyOffset + 1).kind;
                 if (k2 == TokenKind::RBrace) {
                     isStructLiteral = true; // empty struct literal: TypeName {}
-                } else if ((k2 == TokenKind::Identifier) && peek(3).kind == TokenKind::Equal) {
+                } else if ((k2 == TokenKind::Identifier) &&
+                           peek(bodyOffset + 2).kind == TokenKind::Equal) {
                     isStructLiteral = true; // TypeName { field = expr }
                 }
             }
 
             if (isStructLiteral) {
-                std::string typeName = peek().text;
-                advance(); // consume TypeName
-                advance(); // consume '{'
+                std::string typeName = std::move(candidateName);
+                for (size_t i = 0; i < bodyOffset; ++i)
+                    advance(); // consume qualified type name
+                advance();     // consume '{'
 
                 std::vector<StructLiteralExpr::Field> fields;
                 while (!check(TokenKind::RBrace) && !check(TokenKind::Eof)) {

@@ -14,6 +14,19 @@
 
 namespace il::frontends::zia {
 
+namespace {
+
+bool isForbiddenValueType(TypeRef type) {
+    return type && (type->kind == TypeKindSem::Void || type->kind == TypeKindSem::Never ||
+                    type->kind == TypeKindSem::Module);
+}
+
+std::string forbiddenValueTypeName(TypeRef type) {
+    return type ? type->toString() : "unknown";
+}
+
+} // namespace
+
 //=============================================================================
 // Statement Analysis
 //=============================================================================
@@ -191,8 +204,7 @@ void Sema::analyzeBlockStmt(BlockStmt *stmt) {
     bool afterTerminator = false;
     bool warnedUnreachable = false;
     int guardNarrowings = 0;
-    auto persistOptionalNullCheckNarrowing = [&](Expr *condition,
-                                                 bool conditionHoldsAfterStmt) {
+    auto persistOptionalNullCheckNarrowing = [&](Expr *condition, bool conditionHoldsAfterStmt) {
         std::string nullCheckVar;
         bool isNotNull = false;
         TypeRef checkedType = nullptr;
@@ -268,7 +280,8 @@ void Sema::analyzeVarStmt(VarStmt *stmt) {
 
         const auto &elements = initType->tupleElementTypes();
         if (elements.size() != 2) {
-            error(stmt->initializer->loc, "Tuple destructuring currently requires exactly two elements");
+            error(stmt->initializer->loc,
+                  "Tuple destructuring currently requires exactly two elements");
             return;
         }
 
@@ -312,6 +325,12 @@ void Sema::analyzeVarStmt(VarStmt *stmt) {
     }
 
     TypeRef declaredType = stmt->type ? resolveTypeNode(stmt->type.get()) : nullptr;
+    if (isForbiddenValueType(declaredType)) {
+        error(stmt->loc,
+              "Type '" + forbiddenValueTypeName(declaredType) +
+                  "' cannot be used for a local value");
+        declaredType = types::unknown();
+    }
     TypeRef initType = stmt->initializer ? analyzeExpr(stmt->initializer.get()) : nullptr;
     if (initType && initType->kind == TypeKindSem::Unit) {
         error(stmt->initializer->loc,
@@ -651,7 +670,8 @@ void Sema::analyzeReturnStmt(ReturnStmt *stmt) {
     if (stmt->value) {
         TypeRef valueType = analyzeExpr(stmt->value.get());
         if (valueType && valueType->kind == TypeKindSem::Unit) {
-            if (expectedReturnType_ && expectedReturnType_->kind == TypeKindSem::Void)
+            if (expectedReturnType_ && (expectedReturnType_->kind == TypeKindSem::Void ||
+                                        expectedReturnType_->kind == TypeKindSem::Unit))
                 return;
             error(stmt->value->loc,
                   "Unit literal cannot be returned from a non-void function; use null for "

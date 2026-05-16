@@ -183,8 +183,7 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
             if (expr->args.size() >= 1) {
                 auto indexResult = lowerExpr(expr->args[0].value.get());
                 Value indexValue = widenIntegralToI64(indexResult.value, indexResult.type);
-                Value boxed =
-                    emitCallRet(Type(Type::Kind::Ptr), kListGet, {baseValue, indexValue});
+                Value boxed = emitCallRet(Type(Type::Kind::Ptr), kListGet, {baseValue, indexValue});
                 TypeRef elemType = baseType ? baseType->elementType() : nullptr;
                 if (!elemType)
                     elemType = sema_.typeOf(expr);
@@ -195,9 +194,8 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
 
         case CollectionMethod::First:
         case CollectionMethod::Last: {
-            const char *callee = method == CollectionMethod::First
-                                     ? "Viper.Collections.List.First"
-                                     : "Viper.Collections.List.Last";
+            const char *callee = method == CollectionMethod::First ? "Viper.Collections.List.First"
+                                                                   : "Viper.Collections.List.Last";
             Value boxed = emitCallRet(Type(Type::Kind::Ptr), callee, {baseValue});
             TypeRef elemType = baseType ? baseType->elementType() : nullptr;
             if (!elemType)
@@ -547,6 +545,10 @@ LowerResult Lowerer::lowerMethodCall(MethodDecl *method,
     TypeRef methodType = sema_.getMethodType(typeName, method);
     if (!methodType)
         methodType = sema_.getMethodType(typeName, method->name);
+    TypeRef concreteGenericType = sema_.genericMethodConcreteType(expr);
+    TypeRef erasedGenericType = sema_.genericMethodErasedType(expr);
+    if (erasedGenericType)
+        methodType = erasedGenericType;
     std::vector<TypeRef> paramTypes;
     TypeRef returnType = types::voidType();
     if (methodType && methodType->kind == TypeKindSem::Function) {
@@ -573,6 +575,14 @@ LowerResult Lowerer::lowerMethodCall(MethodDecl *method,
         return {Value::constInt(0), Type(Type::Kind::Void)};
     } else {
         Value result = emitCallRet(ilReturnType, methodName, args);
+        if (concreteGenericType && concreteGenericType->kind == TypeKindSem::Function) {
+            TypeRef concreteReturn = concreteGenericType->returnType();
+            if (returnType && returnType->kind == TypeKindSem::TypeParam && concreteReturn &&
+                concreteReturn->kind != TypeKindSem::TypeParam) {
+                Type concreteIlReturn = mapType(concreteReturn);
+                return emitUnboxValue(result, concreteIlReturn, concreteReturn);
+            }
+        }
         return materializeCallResult(result, returnType, ilReturnType);
     }
 }
@@ -814,7 +824,9 @@ std::optional<LowerResult> Lowerer::lowerClassTypeConstruction(const std::string
 /// @details Reorders the named fields by declaration order, then delegates to
 /// the same alloca+init logic used by lowerStructTypeConstruction.
 LowerResult Lowerer::lowerStructLiteral(StructLiteralExpr *expr) {
-    const std::string &typeName = expr->typeName;
+    TypeRef literalType = sema_.typeOf(expr);
+    const std::string typeName =
+        literalType && !literalType->name.empty() ? literalType->name : expr->typeName;
     const StructTypeInfo *infoPtr = getOrCreateStructTypeInfo(typeName);
     if (!infoPtr) {
         // Fallback: treat as a zero-initialised value (unreachable after sema checks)
@@ -871,8 +883,7 @@ LowerResult Lowerer::lowerStructLiteral(StructLiteralExpr *expr) {
         } else if (i < fieldDecls.size() && fieldDecls[i]->initializer) {
             auto initValue = lowerExpr(fieldDecls[i]->initializer.get());
             TypeRef initType = sema_.typeOf(fieldDecls[i]->initializer.get());
-            auto coerced =
-                coerceValueToType(initValue.value, initValue.type, initType, field.type);
+            auto coerced = coerceValueToType(initValue.value, initValue.type, initType, field.type);
             argValues.push_back(coerced.value);
         } else {
             argValues.push_back(typedDefaultFor(ilFieldType));

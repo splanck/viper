@@ -2965,7 +2965,8 @@ func start() {}
     CompilerInput finalGlobalInput{.source = finalGlobal, .path = "final_global_no_init.zia"};
     auto finalGlobalResult = compile(finalGlobalInput, opts, sm);
     EXPECT_FALSE(finalGlobalResult.succeeded());
-    EXPECT_TRUE(hasErrorContaining(finalGlobalResult, "'final' declarations require an initializer"));
+    EXPECT_TRUE(
+        hasErrorContaining(finalGlobalResult, "'final' declarations require an initializer"));
 
     SourceManager sm2;
     const std::string finalLocal = R"(
@@ -2978,7 +2979,8 @@ func start() {
     CompilerInput finalLocalInput{.source = finalLocal, .path = "final_local_no_init.zia"};
     auto finalLocalResult = compile(finalLocalInput, opts, sm2);
     EXPECT_FALSE(finalLocalResult.succeeded());
-    EXPECT_TRUE(hasErrorContaining(finalLocalResult, "'final' declarations require an initializer"));
+    EXPECT_TRUE(
+        hasErrorContaining(finalLocalResult, "'final' declarations require an initializer"));
 
     SourceManager sm3;
     const std::string untypedGlobal = R"(
@@ -3066,6 +3068,69 @@ func start() {}
 
     EXPECT_FALSE(result.succeeded());
     EXPECT_TRUE(hasErrorContaining(result, "Duplicate definition of 'value' in type 'Bad'"));
+}
+
+TEST(ZiaBugFixes, ResultUnitAndUnitParametersLowerAsValues) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func done() -> Result[Unit] {
+    return Ok(());
+}
+
+func consume(value: Unit) -> Unit {
+    return value;
+}
+
+func start() {
+    var result = done();
+    consume(());
+}
+)";
+    CompilerInput input{.source = source, .path = "unit_result_value.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded()) {
+        std::cerr << "Diagnostics for ResultUnitAndUnitParametersLowerAsValues:\n";
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+    EXPECT_TRUE(result.succeeded());
+    EXPECT_TRUE(findFunction(result.module, "done") != nullptr);
+    EXPECT_TRUE(findFunction(result.module, "consume") != nullptr);
+}
+
+TEST(ZiaBugFixes, VoidAndNeverAreRejectedBeforeLowering) {
+    SourceManager sm1;
+    const std::string voidParam = R"(
+module Test;
+
+func takesVoid(value: Void) {}
+func start() {}
+)";
+    CompilerInput voidInput{.source = voidParam, .path = "void_parameter.zia"};
+    CompilerOptions opts{};
+    auto voidResult = compile(voidInput, opts, sm1);
+    EXPECT_FALSE(voidResult.succeeded());
+    EXPECT_TRUE(hasErrorContaining(voidResult, "cannot be used for a function parameter"));
+
+    SourceManager sm2;
+    const std::string neverLocal = R"(
+module Test;
+
+func start() {
+    var value: Never;
+}
+)";
+    CompilerInput neverInput{.source = neverLocal, .path = "never_local.zia"};
+    auto neverResult = compile(neverInput, opts, sm2);
+    EXPECT_FALSE(neverResult.succeeded());
+    EXPECT_TRUE(hasErrorContaining(neverResult, "cannot be used for a local value"));
 }
 
 } // namespace

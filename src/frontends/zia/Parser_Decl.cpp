@@ -448,12 +448,10 @@ std::vector<std::string> Parser::parseGenericParamsWithConstraints(
 
         // Check for optional constraint: T: ConstraintName
         if (match(TokenKind::Colon)) {
-            if (!check(TokenKind::Identifier)) {
-                error("expected constraint interface name after ':'");
+            std::string constraint = parseQualifiedIdentifierString("constraint interface name");
+            if (constraint.empty())
                 return {};
-            }
-            Token constraintTok = advance();
-            constraints.push_back(constraintTok.text);
+            constraints.push_back(std::move(constraint));
         } else {
             constraints.push_back(""); // No constraint
         }
@@ -465,6 +463,24 @@ std::vector<std::string> Parser::parseGenericParamsWithConstraints(
     return params;
 }
 
+std::string Parser::parseQualifiedIdentifierString(const char *what) {
+    if (!check(TokenKind::Identifier)) {
+        error(std::string("expected ") + what);
+        return "";
+    }
+
+    std::string name = advance().text;
+    while (match(TokenKind::Dot)) {
+        if (!check(TokenKind::Identifier)) {
+            error(std::string("expected identifier after '.' in ") + what);
+            return "";
+        }
+        name += ".";
+        name += advance().text;
+    }
+    return name;
+}
+
 /// @brief Parse a comma-separated interface list after 'implements'.
 /// @param[out] interfaces Output vector of interface name strings.
 /// @return True on success (or no 'implements' present), false on error.
@@ -473,12 +489,10 @@ bool Parser::parseInterfaceList(std::vector<std::string> &interfaces) {
         return true;
 
     do {
-        if (!check(TokenKind::Identifier)) {
-            error("expected interface name");
+        std::string ifaceName = parseQualifiedIdentifierString("interface name");
+        if (ifaceName.empty())
             return false;
-        }
-        Token ifaceTok = advance();
-        interfaces.push_back(ifaceTok.text);
+        interfaces.push_back(std::move(ifaceName));
     } while (match(TokenKind::Comma));
 
     return true;
@@ -628,12 +642,10 @@ DeclPtr Parser::parseClassDecl() {
 
     // Extends clause
     if (match(TokenKind::KwExtends)) {
-        if (!check(TokenKind::Identifier)) {
-            error("expected base class name");
+        std::string baseName = parseQualifiedIdentifierString("base class name");
+        if (baseName.empty())
             return nullptr;
-        }
-        Token baseTok = advance();
-        decl->baseClass = baseTok.text;
+        decl->baseClass = std::move(baseName);
     }
 
     // Implements clause

@@ -45,7 +45,7 @@ LowerResult Lowerer::lowerNullLiteral(NullLiteralExpr * /*expr*/) {
 }
 
 LowerResult Lowerer::lowerUnitLiteral(UnitLiteralExpr * /*expr*/) {
-    return {Value::constInt(0), Type(Type::Kind::Void)};
+    return {Value::null(), Type(Type::Kind::Ptr)};
 }
 
 bool Lowerer::collectRangeModifierChain(Expr *expr, RangeModifierInfo &out) const {
@@ -139,8 +139,7 @@ LowerResult Lowerer::lowerRangeWithModifiers(RangeExpr *expr, bool reversed, Exp
     Value updateBound = loadFromSlot(endVar, Type(Type::Kind::I64));
     Value updateStep = loadFromSlot(stepVar, Type(Type::Kind::I64));
     Value terminal = expr->inclusive
-                         ? emitBinary(
-                               Opcode::ICmpEq, Type(Type::Kind::I1), updateCur, updateBound)
+                         ? emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), updateCur, updateBound)
                          : Value::constBool(false);
     Value overflowRisk;
     if (reversed) {
@@ -148,15 +147,13 @@ LowerResult Lowerer::lowerRangeWithModifiers(RangeExpr *expr, bool reversed, Exp
                                        Type(Type::Kind::I64),
                                        Value::constInt(std::numeric_limits<int64_t>::min()),
                                        updateStep);
-        overflowRisk =
-            emitBinary(Opcode::SCmpLT, Type(Type::Kind::I1), updateCur, minPlusStep);
+        overflowRisk = emitBinary(Opcode::SCmpLT, Type(Type::Kind::I1), updateCur, minPlusStep);
     } else {
         Value maxMinusStep = emitBinary(Opcode::ISubOvf,
                                         Type(Type::Kind::I64),
                                         Value::constInt(std::numeric_limits<int64_t>::max()),
                                         updateStep);
-        overflowRisk =
-            emitBinary(Opcode::SCmpGT, Type(Type::Kind::I1), updateCur, maxMinusStep);
+        overflowRisk = emitBinary(Opcode::SCmpGT, Type(Type::Kind::I1), updateCur, maxMinusStep);
     }
     Value terminalWide = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), terminal);
     Value overflowWide = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), overflowRisk);
@@ -167,9 +164,8 @@ LowerResult Lowerer::lowerRangeWithModifiers(RangeExpr *expr, bool reversed, Exp
     setBlock(updateDoIdx);
     Value nextCur = loadFromSlot(curVar, Type(Type::Kind::I64));
     Value nextStep = loadFromSlot(stepVar, Type(Type::Kind::I64));
-    Value next = reversed
-                     ? emitBinary(Opcode::ISubOvf, Type(Type::Kind::I64), nextCur, nextStep)
-                     : emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), nextCur, nextStep);
+    Value next = reversed ? emitBinary(Opcode::ISubOvf, Type(Type::Kind::I64), nextCur, nextStep)
+                          : emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), nextCur, nextStep);
     storeToSlot(curVar, next, Type(Type::Kind::I64));
     emitBr(condIdx);
 

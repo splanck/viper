@@ -1284,10 +1284,13 @@ expose func divide(a: Integer, b: Integer) -> Integer { return a / b; }
 - `bind ModuleName;` brings in another module
 - `bind ModuleName { item };` binds specific items
 - `bind ModuleName as Alias;` binds with renaming
-- `expose` marks functions and types as public
+- Top-level Zia declarations are exported by default unless marked `hide`;
+  `expose` marks public API intentionally
 - `export` and `public` are accepted aliases for `expose`
-- Items without a visibility modifier are private (internal only)
-- Modules create namespaces, preventing name collisions
+- Colliding top-level functions, globals, aliases, classes, structs,
+  interfaces, and enums are scoped under their declaring module
+- Members without a visibility modifier follow their type defaults
+  (class fields private, struct fields public)
 - The standard library is organized into modules
 - Dependencies flow one direction — avoid circular bindings
 - Good module design means:

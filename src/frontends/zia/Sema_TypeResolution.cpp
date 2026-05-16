@@ -281,12 +281,15 @@ TypeRef Sema::resolveTypeNode(const TypeNode *node) {
             }
 
             // User-defined generic type - check if registered for instantiation
-            if (genericTypeDecls_.count(generic->name)) {
-                return instantiateGenericType(generic->name, args, node->loc);
+            std::string genericName = generic->name;
+            if (genericName.find('.') == std::string::npos && node->loc.file_id != 0)
+                genericName = fileScopedTypeName(node->loc.file_id, genericName);
+            if (genericTypeDecls_.count(genericName)) {
+                return instantiateGenericType(genericName, args, node->loc);
             }
 
             // Fallback: resolve as named type with type arguments
-            TypeRef baseType = resolveNamedType(generic->name, node->loc);
+            TypeRef baseType = resolveNamedType(genericName, node->loc);
             if (!baseType) {
                 error(node->loc, "Unknown type: " + generic->name);
                 return types::unknown();

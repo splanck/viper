@@ -274,8 +274,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
 
     auto emitExplicitMemoryRelease = [&](Value argValue, TypeRef argType) -> LowerResult {
         if (isStringType(argType)) {
-            Value releaseCount =
-                emitCallRet(Type(Type::Kind::I64), kHeapReleaseStr, {argValue});
+            Value releaseCount = emitCallRet(Type(Type::Kind::I64), kHeapReleaseStr, {argValue});
             return {releaseCount, Type(Type::Kind::I64)};
         }
 
@@ -379,7 +378,12 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
         if (auto *optionalCallee = dynamic_cast<OptionalChainExpr *>(expr->callee.get()))
             return lowerOptionalMethodCall(optionalCallee, expr);
 
-        if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get())) {
+        FieldExpr *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get());
+        if (!fieldExpr) {
+            if (auto *indexExpr = dynamic_cast<IndexExpr *>(expr->callee.get()))
+                fieldExpr = dynamic_cast<FieldExpr *>(indexExpr->base.get());
+        }
+        if (fieldExpr) {
             if (fieldExpr->base->kind == ExprKind::SuperExpr) {
                 Value selfPtr;
                 if (getSelfPtr(selfPtr))
@@ -390,6 +394,13 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
             TypeRef baseType = sema_.typeOf(fieldExpr->base.get());
             if (baseType && baseType->kind == TypeKindSem::Optional && baseType->innerType())
                 baseType = baseType->innerType();
+
+            if (sema_.genericMethodConcreteType(expr))
+                return lowerMethodCall(resolvedMethod,
+                                       ownerType.empty() ? (baseType ? baseType->name : "")
+                                                         : ownerType,
+                                       baseResult.value,
+                                       expr);
 
             if (baseType && baseType->kind == TypeKindSem::Interface) {
                 auto ifaceIt = interfaceTypes_.find(baseType->name);
@@ -448,8 +459,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
         TypeRef returnType = calleeType ? calleeType->returnType() : nullptr;
         Type ilReturnType = returnType ? mapType(returnType) : Type(Type::Kind::Void);
         TypeRef surfaceReturnType = sema_.typeOf(expr);
-        Type surfaceIlReturnType =
-            surfaceReturnType ? mapType(surfaceReturnType) : ilReturnType;
+        Type surfaceIlReturnType = surfaceReturnType ? mapType(surfaceReturnType) : ilReturnType;
 
         std::vector<TypeRef> paramTypes;
         if (calleeType)
@@ -568,8 +578,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
                 if (fieldExpr->field == "unwrapOr") {
                     auto def = lowerExpr(expr->args[0].value.get());
                     TypeRef defType = sema_.typeOf(expr->args[0].value.get());
-                    auto coerced =
-                        coerceValueToType(def.value, def.type, defType, successType);
+                    auto coerced = coerceValueToType(def.value, def.type, defType, successType);
                     Value defaultValue = coerced.value;
                     const char *callee = resultUnwrapOrCallee(successType);
                     Type ilSuccessType = mapType(successType);
@@ -818,16 +827,16 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
                 }
 
                 if (runtimeCallee == kTerminalSay) {
-                    if (argType->kind == TypeKindSem::Integer || argType->kind == TypeKindSem::Byte ||
-                        argType->kind == TypeKindSem::Enum)
+                    if (argType->kind == TypeKindSem::Integer ||
+                        argType->kind == TypeKindSem::Byte || argType->kind == TypeKindSem::Enum)
                         typedCallee = kTerminalSayInt;
                     else if (argType->kind == TypeKindSem::Number)
                         typedCallee = kTerminalSayNum;
                     else if (argType->kind == TypeKindSem::Boolean)
                         typedCallee = kTerminalSayBool;
                 } else if (runtimeCallee == kTerminalPrint) {
-                    if (argType->kind == TypeKindSem::Integer || argType->kind == TypeKindSem::Byte ||
-                        argType->kind == TypeKindSem::Enum)
+                    if (argType->kind == TypeKindSem::Integer ||
+                        argType->kind == TypeKindSem::Byte || argType->kind == TypeKindSem::Enum)
                         typedCallee = kTerminalPrintInt;
                     else if (argType->kind == TypeKindSem::Number)
                         typedCallee = kTerminalPrintNum;
@@ -905,10 +914,10 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
         }
 
         if ((isHttpServerRouteRuntime(runtimeCallee) || isHttpsServerRouteRuntime(runtimeCallee)) &&
-            orderedSources.size() == 2 &&
-            args.size() >= 3) {
+            orderedSources.size() == 2 && args.size() >= 3) {
             size_t tagSourceIndex = static_cast<size_t>(orderedSources[1]);
-            if (auto *tagExpr = dynamic_cast<StringLiteralExpr *>(expr->args[tagSourceIndex].value.get())) {
+            if (auto *tagExpr =
+                    dynamic_cast<StringLiteralExpr *>(expr->args[tagSourceIndex].value.get())) {
                 std::string handlerTarget = httpHandlerTargetName(sema_, tagExpr->value);
                 if (!handlerTarget.empty()) {
                     emitCall(httpServerBindHandlerTarget(runtimeCallee),

@@ -259,11 +259,14 @@ LowerResult Lowerer::lowerAssignment(BinaryExpr *expr) {
         }
 
         // Check for global variable assignment
-        auto globalIt = globalVariables_.find(ident->name);
+        std::string resolvedName = sema_.resolvedIdentifierName(ident);
+        if (resolvedName.empty())
+            resolvedName = ident->name;
+        auto globalIt = globalVariables_.find(resolvedName);
         if (globalIt != globalVariables_.end()) {
             TypeRef globalType = globalIt->second;
             Type ilType = mapType(globalType);
-            Value addr = getGlobalVarAddr(ident->name, globalType);
+            Value addr = getGlobalVarAddr(resolvedName, globalType);
             Value storeValue = assignValue;
             if (globalType && globalType->kind == TypeKindSem::Struct) {
                 storeValue = emitBoxValue(right.value, right.type, globalType);
@@ -297,10 +300,10 @@ LowerResult Lowerer::lowerAssignment(BinaryExpr *expr) {
         if (baseType && baseType->kind == TypeKindSem::FixedArray) {
             TypeRef elemType = baseType->elementType();
             size_t elemSize = getSemanticTypeSize(elemType);
-            Value checkedIndex = emitIndexCheck(
-                widenIntegralToI64(index.value, index.type),
-                Value::constInt(0),
-                Value::constInt(static_cast<int64_t>(baseType->elementCount)));
+            Value checkedIndex =
+                emitIndexCheck(widenIntegralToI64(index.value, index.type),
+                               Value::constInt(0),
+                               Value::constInt(static_cast<int64_t>(baseType->elementCount)));
 
             // Compute byte offset: index * elemSize
             unsigned mulId = nextTempId();
@@ -347,7 +350,9 @@ LowerResult Lowerer::lowerAssignment(BinaryExpr *expr) {
         TypeRef targetType = sema_.typeOf(fieldExpr);
 
         if (baseType && baseType->kind == TypeKindSem::Module) {
-            std::string globalName = baseType->name + "." + fieldExpr->field;
+            std::string resolvedName = sema_.resolvedFieldSymbolName(fieldExpr);
+            std::string globalName =
+                resolvedName.empty() ? baseType->name + "." + fieldExpr->field : resolvedName;
             auto globalIt = globalVariables_.find(globalName);
             if (globalIt != globalVariables_.end()) {
                 TypeRef globalType = globalIt->second;
@@ -509,11 +514,15 @@ LowerResult Lowerer::lowerUnary(UnaryExpr *expr) {
             return {Value::constInt(0), Type(Type::Kind::Ptr)};
         }
 
+        std::string resolvedName = sema_.resolvedIdentifierName(ident);
+        if (resolvedName.empty())
+            resolvedName = ident->name;
+
         std::string mangledName;
-        if (FunctionDecl *decl = sema_.getFunctionDecl(ident->name))
+        if (FunctionDecl *decl = sema_.getFunctionDecl(resolvedName))
             mangledName = sema_.loweredFunctionName(decl);
         if (mangledName.empty())
-            mangledName = mangleFunctionName(ident->name);
+            mangledName = mangleFunctionName(resolvedName);
         return {Value::global(mangledName), Type(Type::Kind::Ptr)};
     }
 
