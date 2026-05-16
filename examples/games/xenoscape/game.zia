@@ -110,6 +110,7 @@ bind Viper.Fmt;
 bind Viper.Game;
 bind Viper.Game.DebugOverlay as Debug;
 bind Viper.IO.File as File;
+bind Viper.IO.Path as Path;
 bind "./config";
 bind "./palette";
 bind "./sprites";
@@ -399,6 +400,10 @@ class Game {
     hide func resolveAssetBasePath() -> String {
         if File.Exists("sounds/jump.wav") { return ""; }
 
+        var exeDir = Path.ExeDir();
+        var exePath = Path.Join(Path.Join(exeDir, "sounds"), "jump.wav");
+        if File.Exists(exePath) { return exeDir + Path.Sep(); }
+
         var rootPath = "examples/games/xenoscape/sounds/jump.wav";
         if File.Exists(rootPath) { return "examples/games/xenoscape/"; }
 
@@ -413,6 +418,9 @@ class Game {
     hide func resolveTuningPath() -> String {
         var localPath = "xenoscape.runtime.json";
         if File.Exists(localPath) { return localPath; }
+
+        var exePath = Path.Join(Path.ExeDir(), "xenoscape.runtime.json");
+        if File.Exists(exePath) { return exePath; }
 
         var rootPath = "examples/games/xenoscape/xenoscape.runtime.json";
         if File.Exists(rootPath) { return rootPath; }

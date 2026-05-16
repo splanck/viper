@@ -35,13 +35,67 @@
 
 module main;
 
+bind Viper.Environment as Env;
+bind Viper.IO.File as File;
+bind Viper.IO.Path as Path;
+bind Viper.Terminal as Terminal;
 bind "./game";
+bind "./tuning";
+
+func hasArg(wanted: String) -> Boolean {
+    var count = Env.GetArgumentCount();
+    var i = 0;
+    while i < count {
+        if Env.GetArgument(i) == wanted { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+func resolvePackageSmokePath(path: String) -> String {
+    if File.Exists(path) { return path; }
+    var exePath = Path.Join(Path.ExeDir(), path);
+    if File.Exists(exePath) { return exePath; }
+    return path;
+}
+
+func runPackageSmoke() {
+    var tuningPath = resolvePackageSmokePath("xenoscape.runtime.json");
+    if !File.Exists(tuningPath) {
+        Terminal.Say("RESULT: missing_runtime_json");
+        Env.EndProgram(2);
+        return;
+    }
+
+    var jumpPath = resolvePackageSmokePath(Path.Join("sounds", "jump.wav"));
+    if !File.Exists(jumpPath) {
+        Terminal.Say("RESULT: missing_jump_wav");
+        Env.EndProgram(3);
+        return;
+    }
+
+    var tuning = new RuntimeTuning(tuningPath);
+    if tuning.getInt("presentation.introSplashMs", -1) != 1200 {
+        Terminal.Say("RESULT: bad_runtime_json");
+        Env.EndProgram(4);
+        return;
+    }
+
+    Terminal.Say("RESULT: package_smoke_ok");
+    Env.EndProgram(0);
+}
 
 /// @brief Program entry point.  Construct a Game and run it.
 ///
 /// `run()` does not return until the player quits — it's the main
 /// loop plus teardown.  Nothing after it would ever execute.
 func start() {
+    if hasArg("--viper-package-smoke") or
+       Env.GetVariable("VIPER_XENOSCAPE_PACKAGE_SMOKE") == "1" {
+        runPackageSmoke();
+        return;
+    }
+
     var g = new Game();
     g.run();
 }

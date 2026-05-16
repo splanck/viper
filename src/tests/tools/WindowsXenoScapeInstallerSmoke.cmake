@@ -73,6 +73,20 @@ if (NOT _runtime_text MATCHES "introSplashMs")
 endif ()
 
 execute_process(
+        COMMAND "${_app_exe}" --viper-package-smoke
+        WORKING_DIRECTORY "${TEST_WORK_DIR}"
+        RESULT_VARIABLE _app_smoke_rv
+        OUTPUT_VARIABLE _app_smoke_out
+        ERROR_VARIABLE _app_smoke_err
+        TIMEOUT 30)
+if (NOT _app_smoke_rv EQUAL 0)
+    message(FATAL_ERROR "Installed XenoScape package smoke failed\nstdout:\n${_app_smoke_out}\nstderr:\n${_app_smoke_err}")
+endif ()
+if (NOT _app_smoke_out MATCHES "RESULT: package_smoke_ok")
+    message(FATAL_ERROR "Installed XenoScape package smoke did not report success\nstdout:\n${_app_smoke_out}\nstderr:\n${_app_smoke_err}")
+endif ()
+
+execute_process(
         COMMAND reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\org.viper-lang.xenoscape"
         RESULT_VARIABLE _reg_rv
         OUTPUT_VARIABLE _reg_out
@@ -107,7 +121,7 @@ if (NOT EXISTS "${_menu_lnk}")
 endif ()
 
 execute_process(
-        COMMAND "${_uninstall_exe}" /quiet /norestart
+        COMMAND "${_uninstall_exe}" /quiet
         RESULT_VARIABLE _uninstall_rv
         OUTPUT_VARIABLE _uninstall_out
         ERROR_VARIABLE _uninstall_err
@@ -133,3 +147,7 @@ execute_process(
 if (_reg_after_rv EQUAL 0)
     message(FATAL_ERROR "XenoScape uninstall registry key remained after uninstall\nstdout:\n${_reg_after_out}\nstderr:\n${_reg_after_err}")
 endif ()
+
+execute_process(
+        COMMAND powershell -NoProfile -ExecutionPolicy Bypass -Command
+        "Remove-Item -LiteralPath (Join-Path $env:LOCALAPPDATA 'Xenoscape') -Recurse -Force -ErrorAction SilentlyContinue; exit 0")

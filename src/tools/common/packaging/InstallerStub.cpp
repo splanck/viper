@@ -2063,7 +2063,7 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
     const uint32_t silentDashOff = gen.embedStringW("-silent");
     const uint32_t noRestartSlashOff = gen.embedStringW("/norestart");
     const uint32_t noRestartDashOff = gen.embedStringW("-norestart");
-    const uint32_t quietUninstallArgsOff = gen.embedStringW(" /quiet /norestart");
+    const uint32_t quietUninstallArgsOff = gen.embedStringW(" /quiet");
 
     const uint32_t regDisplayNameOff = gen.embedStringW("DisplayName");
     const uint32_t regDisplayVersionOff = gen.embedStringW("DisplayVersion");

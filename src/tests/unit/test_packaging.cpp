@@ -2393,6 +2393,8 @@ TEST(InstallerStub, SupportsQuietAutomationFlags) {
     EXPECT_TRUE(containsUtf16LE(installer.stubData, "/quiet"));
     EXPECT_TRUE(containsUtf16LE(installer.stubData, "/silent"));
     EXPECT_TRUE(containsUtf16LE(installer.stubData, "/norestart"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, " /quiet"));
+    EXPECT_FALSE(containsUtf16LE(installer.stubData, " /quiet /norestart"));
     EXPECT_TRUE(containsUtf16LE(uninstaller.stubData, "/quiet"));
     EXPECT_TRUE(containsUtf16LE(uninstaller.stubData, "/silent"));
     EXPECT_TRUE(containsUtf16LE(uninstaller.stubData, "/norestart"));
