@@ -75,15 +75,15 @@
       "patterns": [
         {
           "name": "keyword.declaration.zia",
-          "match": "\\b(module|func|var|final|let|struct|class|interface|property|namespace|bind)\\b"
+          "match": "\\b(module|func|var|final|let|struct|class|interface|enum|type|property|namespace|bind)\\b"
         },
         {
           "name": "keyword.control.zia",
-          "match": "\\b(if|else|while|for|in|return|match|break|continue|guard|try|catch|finally|throw)\\b"
+          "match": "\\b(if|else|while|for|in|return|match|break|continue|guard|defer|try|catch|finally|throw|await)\\b"
         },
         {
           "name": "keyword.modifier.zia",
-          "match": "\\b(expose|extends|implements|override|static|foreign|weak|hide|async|await)\\b"
+          "match": "\\b(expose|public|export|hide|private|extends|implements|override|static|foreign|weak|async)\\b"
         },
         {
           "name": "keyword.operator.logical.zia",
@@ -99,7 +99,7 @@
       "patterns": [
         {
           "name": "support.type.builtin.zia",
-          "match": "\\b(Integer|Boolean|String|Float|Void|Byte|Bytes|List|Map|Optional|Any)\\b"
+          "match": "\\b(Integer|Int|Number|Float|Double|Boolean|Bool|String|Void|Unit|Never|Error|Byte|Bytes|List|Map|Set|Result|Queue|Stack|Deque|Seq|Any)\\b"
         },
         {
           "name": "entity.name.type.zia",
@@ -131,7 +131,7 @@
       "patterns": [
         {
           "name": "keyword.operator.zia",
-          "match": "[+\\-*/%=<>!&|^~?:]|\\.\\.|\\.\\?|->|=>"
+          "match": "<<=|>>=|\\.\\.\\.|\\.\\.=|\\.\\.|\\.\\?|\\?\\?|->|=>|\\+=|-=|\\*=|/=|%=|&=|\\|=|\\^=|==|!=|<=|>=|&&|\\|\\||<<|>>|[+\\-*/%=<>!&|^~?:]"
         }
       ]
     }

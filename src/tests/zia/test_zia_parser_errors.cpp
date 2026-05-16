@@ -63,8 +63,7 @@ func start() {    var x = 5
     var y = 10
 }
 )");
-    // Should either fail or gracefully recover
-    // (semicolons are not required in Zia, so this may succeed)
+    EXPECT_FALSE(result.succeeded());
 }
 
 TEST(ZiaParserErrors, MissingClosingBrace) {

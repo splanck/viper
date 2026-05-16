@@ -195,35 +195,39 @@ StmtPtr Parser::parseVarDecl() {
     bool isFinal = kwTok.kind == TokenKind::KwFinal || kwTok.kind == TokenKind::KwLet;
 
     if (match(TokenKind::LParen)) {
-        if (!checkIdentifierLike()) {
-            error("expected variable name in tuple binding");
+        std::vector<std::string> names;
+        std::vector<TypePtr> types;
+
+        if (check(TokenKind::RParen)) {
+            error("tuple binding requires at least two variables");
             return nullptr;
         }
-        Token firstTok = advance();
-        std::string firstName = firstTok.text;
 
-        TypePtr firstType;
-        if (match(TokenKind::Colon)) {
-            firstType = parseType();
-            if (!firstType)
+        while (true) {
+            if (!checkIdentifierLike()) {
+                error("expected variable name in tuple binding");
                 return nullptr;
+            }
+            Token nameTok = advance();
+            names.push_back(nameTok.text);
+
+            TypePtr elemType;
+            if (match(TokenKind::Colon)) {
+                elemType = parseType();
+                if (!elemType)
+                    return nullptr;
+            }
+            types.push_back(std::move(elemType));
+
+            if (!match(TokenKind::Comma))
+                break;
+            if (check(TokenKind::RParen))
+                break;
         }
 
-        if (!expect(TokenKind::Comma, "','"))
+        if (names.size() < 2) {
+            error("tuple binding requires at least two variables");
             return nullptr;
-
-        if (!checkIdentifierLike()) {
-            error("expected variable name in tuple binding");
-            return nullptr;
-        }
-        Token secondTok = advance();
-        std::string secondName = secondTok.text;
-
-        TypePtr secondType;
-        if (match(TokenKind::Colon)) {
-            secondType = parseType();
-            if (!secondType)
-                return nullptr;
         }
 
         if (!expect(TokenKind::RParen, "')'"))
@@ -239,13 +243,8 @@ StmtPtr Parser::parseVarDecl() {
         if (!expect(TokenKind::Semicolon, ";"))
             return nullptr;
 
-        return std::make_unique<VarStmt>(loc,
-                                         std::move(firstName),
-                                         std::move(firstType),
-                                         std::move(secondName),
-                                         std::move(secondType),
-                                         std::move(init),
-                                         isFinal);
+        return std::make_unique<VarStmt>(
+            loc, std::move(names), std::move(types), std::move(init), isFinal);
     }
 
     if (!checkIdentifierLike()) {

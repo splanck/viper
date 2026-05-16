@@ -978,18 +978,8 @@ Token Lexer::lexTripleQuotedString() {
 
         // Handle escape sequences
         if (c == '\\') {
-            tok.text.push_back(getChar()); // consume '\'
-            if (!eof()) {
-                char escaped = peekChar();
-                tok.text.push_back(getChar()); // consume the escape character
-                if (auto escaped_ch = esc::processEscape(escaped)) {
-                    tok.stringValue.push_back(*escaped_ch);
-                } else {
-                    // In triple-quoted, just preserve the backslash
-                    tok.stringValue.push_back('\\');
-                    tok.stringValue.push_back(escaped);
-                }
-            }
+            if (!lexStringEscape(tok))
+                return tok;
             continue;
         }
 

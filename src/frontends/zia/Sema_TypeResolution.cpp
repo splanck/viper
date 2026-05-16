@@ -438,8 +438,14 @@ void Sema::collectCaptures(const Expr *expr,
                 if (var->initializer)
                     collectExpr(var->initializer.get());
                 localScopes.back().insert(var->name);
-                if (var->isTupleDestructure && !var->secondName.empty())
-                    localScopes.back().insert(var->secondName);
+                if (var->isTupleDestructure) {
+                    if (!var->tupleNames.empty()) {
+                        for (const auto &name : var->tupleNames)
+                            localScopes.back().insert(name);
+                    } else if (!var->secondName.empty()) {
+                        localScopes.back().insert(var->secondName);
+                    }
+                }
                 break;
             }
             case StmtKind::If: {

@@ -172,14 +172,18 @@ module Test;
 
 func start() {
     var s: Set[Integer] = {};
+    var explicitSet = set {1, 2, 3};
+    var emptyMap: Map[String, Integer] = map {};
+    var explicitMap = map {"one": 1, "two": 2};
     var match: (Integer) -> Integer = (x: Integer) => x + 1;
-    Viper.Terminal.SayInt(match(2));
+    Viper.Terminal.SayInt(match(2) + explicitSet.Count + emptyMap.Count + explicitMap.Count);
 }
 )",
                                 "empty_set_match_identifier.zia");
 
     EXPECT_TRUE(result.succeeded());
     EXPECT_TRUE(hasCall(result.module, "Viper.Collections.Set.New"));
+    EXPECT_TRUE(hasCall(result.module, "Viper.Collections.Map.New"));
 }
 
 TEST(ZiaLanguageHardening, RuntimeCollectionForInCompiles) {

@@ -180,11 +180,6 @@ bool Parser::parsePatternCore(MatchArm::Pattern &out) {
         if (elements.size() <= 1)
             return false;
 
-        if (elements.size() != 2) {
-            error("tuple patterns must have exactly two elements");
-            return false;
-        }
-
         out.kind = MatchArm::Pattern::Kind::Tuple;
         out.subpatterns = std::move(elements);
         return true;

@@ -111,6 +111,7 @@ identifier  ::= [a-zA-Z_][a-zA-Z0-9_]*
 1_000_000   // Decimal with digit separators
 0xFF        // Hexadecimal
 0xDEAD_BEEF // Hexadecimal with digit separators
+0x8000000000000000 // Hex bit pattern for Integer min
 0b1010      // Binary
 0b1010_0101 // Binary with digit separators
 ```
@@ -125,7 +126,9 @@ identifier  ::= [a-zA-Z_][a-zA-Z0-9_]*
 1.0e+1_0    // Digit separators in exponent digits
 ```
 
-Digit separators (`_`) are allowed only between digits.
+Digit separators (`_`) are allowed only between digits. Decimal literals use the
+signed `Integer` range; hexadecimal literals are accepted as 64-bit bit patterns,
+so values with the high bit set are interpreted as negative `Integer` values.
 
 #### String Literals
 
@@ -223,6 +226,13 @@ Optional values support safe access with `?.`, defaults with `??`, try propagati
 with postfix `?`, and force-unwrap with `!`. `??` requires an optional left-hand
 operand and a fallback value assignable to the optional's inner type.
 Use `null`, not `()`, to create an empty optional value.
+
+Class instances, interfaces, strings, collections, `Any`, and typed runtime
+classes are reference-backed values and can carry a runtime null handle for
+interop. Use `T?` in public APIs and ordinary program logic when absence is part
+of the type contract; bare reference nulls are accepted for runtime-facing code
+and should still be guarded with a null check or force unwrap before member
+access when a null value is possible.
 
 ### Generic Types
 
@@ -421,6 +431,11 @@ func start() {
 | `*=` | Multiply and assign |
 | `/=` | Divide and assign |
 | `%=` | Modulo and assign |
+| `<<=` | Shift left and assign |
+| `>>=` | Shift right and assign |
+| `&=` | Bitwise AND and assign |
+| `|=` | Bitwise OR and assign |
+| `^=` | Bitwise XOR and assign |
 
 Compound assignment operators desugar to `a = a op b` at parse time. The left-hand side must be a mutable variable, field, or indexed expression.
 Targets with side effects, such as a function call inside the indexed receiver or
@@ -469,9 +484,11 @@ method result wrapped as an optional unless it is already optional, while null
 receivers skip the call and return null. Optional calls to `Void` methods simply
 no-op when the receiver is null.
 
-The force-unwrap operator `!` asserts that an optional value is non-null and extracts
-the inner value. If the value is null at runtime, the program terminates. Use after
-a null guard or when you are certain the value is non-null:
+The force-unwrap operator `!` asserts that an optional or reference-backed value
+is non-null and extracts the inner value when the source is `T?`. If the value is
+null at runtime, the program terminates. On a value whose static type has already
+been narrowed to a non-optional reference, `!` is accepted as a redundant runtime
+assertion. Use after a null guard or when you are certain the value is non-null:
 
 ```rust
 if maybePage == null { return null; }
@@ -587,7 +604,7 @@ struct Point {
 }
 
 var p = Point { x = 10, y = 20 };
-var q = Geometry.Point { x = 30, y = 40 };
+var q = Geometry.Point { x: 30, y: 40 };  // ':' is also accepted
 ```
 
 Struct literals are valid in variable, field, global, return, parameter default,
@@ -597,10 +614,11 @@ contexts. Struct literals are not parsed in statement conditions such as
 `if value { ... }`, because the following braces are reserved for the statement
 body.
 The type name may be qualified through a bound module or namespace. Each field
-may be assigned at most once, and literal values must be assignable to the
-declared field type. Omitted fields use their declared initializer when one is
-present; otherwise they use the typed default for the field type. Private
-fields may only be initialized inside the declaring type.
+may be assigned at most once with either `=` or `:`, and literal values must be
+assignable to the declared field type. Struct literals can be nested inside field
+values. Omitted fields use their declared initializer when one is present;
+otherwise they use the typed default for the field type. Private fields may only
+be initialized inside the declaring type.
 
 ### Tuple Expressions
 
@@ -613,15 +631,16 @@ var str = pair.1;           // "hello"
 var (n: Integer, s: String) = pair;
 ```
 
-Tuple destructuring is supported for two-element tuple declarations:
+Tuple destructuring is supported for tuple declarations with matching arity:
 
 ```rust
 var (x, y) = (1, 2);
 final (code: Integer, label: String) = (200, "ok");
+var (r, g, b) = (255, 128, 0);
 ```
 
-The initializer must be a two-element tuple. Optional type annotations are
-checked against the corresponding tuple element.
+The initializer must be a tuple with the same number of elements. Optional type
+annotations are checked against the corresponding tuple element.
 
 ### Collection Literals
 
@@ -631,9 +650,9 @@ var map = {"key": 42, "other": 7}; // Map[String, Integer]
 var set = {1, 2, 3};               // Set[Integer]
 ```
 
-`{}` is the empty map literal by default. In a declared `Set[T]` initializer it
-is an empty set; `set {}` and constructors such as `new Set[Integer]()` are
-unambiguous empty set forms.
+`{}` is the empty map literal by default. `map {}` is an explicit empty map. In a
+declared `Set[T]` initializer `{}` is an empty set; `set {}` and constructors
+such as `new Set[Integer]()` are unambiguous empty set forms.
 Non-empty list, map, and set literals must be homogeneous: all list/set elements
 and all map values must have compatible types.
 List, map, and set literals permit a trailing comma.
@@ -957,7 +976,7 @@ Supported patterns:
 - `_` wildcard
 - Literals (`0`, `"text"`, `true`, `false`, `null`)
 - Binding identifiers (`x`)
-- Tuple patterns with two elements (`(x, y)`)
+- Tuple patterns with matching arity (`(x, y)`, `(r, g, b)`)
 - Constructor patterns (`Point(x, y)`, `Some(value)`, `None`)
 - OR patterns (`pattern1 | pattern2 | pattern3 => ...`) — multiple alternatives for one arm
 - Enum variant patterns (`Color.Red`, `Direction.Left`)
@@ -1579,12 +1598,18 @@ if c != Color.Red {
 }
 ```
 
-Enum variants are not implicitly typed as `Integer` in source code. Compare them to variants of the same enum, or use `match` for branching:
+Enum variants have their declared enum type in source. They can be widened to
+`Integer` or `Number` for runtime interop and bit-level code, but `Integer` values
+are not implicitly assignable back to enum variables. Prefer comparing variants
+of the same enum, or use `match` for branching:
 
 ```rust
 if s == HttpStatus.NOT_FOUND {
     // ...
 }
+
+var statusCode: Integer = HttpStatus.NOT_FOUND; // accepted
+// var bad: HttpStatus = 404;                   // error
 ```
 
 ### Visibility
@@ -2025,10 +2050,13 @@ There are currently no lexer-only reserved keywords documented here. Keywords li
 Boolean     Integer     List        Map
 Number      Byte        Set         String
 Any         Never       Unit        Void
+Result      Queue       Stack       Deque
+Seq         Bytes
 ```
 
-`Bytes` is accepted as a convenience alias for the runtime class
-`Viper.Collections.Bytes`. It is not a reserved word.
+`Queue`, `Stack`, `Deque`, `Seq`, and `Bytes` are convenience aliases for typed
+runtime collection classes under `Viper.Collections.*`. They are not reserved
+words.
 
 ---
 
@@ -2061,7 +2089,7 @@ interfaceMember ::= "func" IDENT ["[" genericParams "]"] "(" params ")" ["->" ty
 genericParams ::= IDENT [":" qualifiedName] ("," IDENT [":" qualifiedName])*
 param       ::= IDENT ":" ["..."] type ["=" expr]
 varDecl     ::= ("var" | "final" | "let") (IDENT [":" type] | tupleBinding) ["=" expr] ";"
-tupleBinding ::= "(" IDENT [":" type] "," IDENT [":" type] ")"
+tupleBinding ::= "(" IDENT [":" type] "," IDENT [":" type] ("," IDENT [":" type])* [","] ")"
 namespaceDecl ::= "namespace" qualifiedName "{" decl* "}"
 qualifiedName ::= IDENT ("." IDENT)*
 member      ::= memberModifier* (fieldDecl | funcDecl | propertyDecl | deinitDecl)
@@ -2103,23 +2131,30 @@ exprStmt    ::= expr ";"
 ```text
 expr        ::= assignment
 assignment  ::= ternary [("=" | "+=" | "-=" | "*=" | "/=" | "%=" | "<<=" | ">>=" | "&=" | "|=" | "^=") assignment]
-ternary     ::= logicalOr ["?" expr ":" ternary]
-logicalOr   ::= logicalAnd ("||" logicalAnd)*
-logicalAnd  ::= equality ("&&" equality)*
+ternary     ::= range ["?" expr ":" ternary]
+range       ::= coalesce ((".." | "..=") coalesce)*
+coalesce    ::= logicalOr ("??" logicalOr)*
+logicalOr   ::= logicalAnd (("||" | "or") logicalAnd)*
+logicalAnd  ::= bitwiseOr (("&&" | "and") bitwiseOr)*
+bitwiseOr   ::= bitwiseXor ("|" bitwiseXor)*
+bitwiseXor  ::= bitwiseAnd ("^" bitwiseAnd)*
+bitwiseAnd  ::= equality ("&" equality)*
 equality    ::= comparison (("==" | "!=") comparison)*
 comparison  ::= additive (("<" | "<=" | ">" | ">=") additive)*
 additive    ::= shift (("+" | "-") shift)*
 shift       ::= multiplicative (("<<" | ">>") multiplicative)*
 multiplicative ::= unary (("*" | "/" | "%") unary)*
-unary       ::= ("-" | "!" | "~" | "&") unary | postfix
+unary       ::= ("-" | "!" | "not" | "~" | "&") unary | postfix
 postfix     ::= primary (call | index | field | optionalChain | "!" | "?" | "as" type | "is" type)*
 primary     ::= literal | IDENT | "(" expr ")" | "(" expr "," exprList ")"
               | "new" type "(" args ")" | type "{" fieldInits "}"
               | "[" exprList "]" | "{" mapEntries "}" | "{" exprList "}"
+              | "set" "{" exprList "}" | "map" "{" mapEntries "}"
               | "if" expr block "else" block | "match" expr "{" matchExprArm* "}"
               | blockExpr
 blockExpr   ::= "{" stmt* [expr] "}"
 matchExprArm ::= pattern ["if" expr] "=>" expr
+fieldInits  ::= IDENT ("=" | ":") expr ("," IDENT ("=" | ":") expr)* [","]
 ```
 
 ### Types

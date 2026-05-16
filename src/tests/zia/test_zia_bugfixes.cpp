@@ -16,8 +16,10 @@
 #include "support/source_manager.hpp"
 #include "tests/TestHarness.hpp"
 #include "tests/common/PosixCompat.h"
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <string>
 
 using namespace il::frontends::zia;
@@ -2408,6 +2410,10 @@ struct Point {
     expose Integer x;
 }
 
+struct Box {
+    expose Point p;
+}
+
 func take(p: Point) -> Integer {
     return p.x;
 }
@@ -2418,13 +2424,39 @@ func start() {
     var callValue = take(Point { x = 3 });
     var points: List[Point] = [Point { x = 4 }, Point { x = 5 }];
     var chosen = true ? Point { x = 6 } : Point { x = 7 };
+    var box = Box { p: Point { x: 9 } };
+    var box2 = Box { p = Point { x = 10 } };
     var matched = match callValue {
         _ => Point { x = 8 };
     };
-    Viper.Terminal.SayInt(p.x + callValue + points.Count + chosen.x + matched.x);
+    Viper.Terminal.SayInt(p.x + callValue + points.Count + chosen.x + matched.x + box.p.x + box2.p.x);
 }
 )";
     CompilerInput input{.source = source, .path = "struct_literal_expr_contexts.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+TEST(ZiaBugFixes, NaryTupleDestructuringAndPatternsCompile) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var triple = (1, "two", 3);
+    var (a: Integer, b: String, c) = triple;
+    final (x, y, z) = (4, 5, 6);
+    var matched = match (a, x, z) {
+        (left, middle, right) => left + middle + right;
+    };
+    Viper.Terminal.Say(b);
+    Viper.Terminal.SayInt(c + y + matched);
+}
+)";
+    CompilerInput input{.source = source, .path = "nary_tuple_destructure.zia"};
     CompilerOptions opts{};
 
     auto result = compile(input, opts, sm);
@@ -2860,6 +2892,43 @@ func start() {
     ASSERT_TRUE(lastFn != nullptr);
     EXPECT_GE(countOpcode(*initFn, il::core::Opcode::IdxChk), static_cast<size_t>(1));
     EXPECT_GE(countOpcode(*lastFn, il::core::Opcode::IdxChk), static_cast<size_t>(1));
+}
+
+TEST(ZiaBugFixes, HexLiteralInt64MinBitPatternCompiles) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var min: Integer = 0x8000000000000000;
+    var negOne: Integer = 0xFFFF_FFFF_FFFF_FFFF;
+    Viper.Terminal.SayInt(min);
+    Viper.Terminal.SayInt(negOne);
+}
+)";
+    CompilerInput input{.source = source, .path = "hex_i64_min.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    bool foundMin = false;
+    bool foundNegOne = false;
+    for (const auto &fn : result.module.functions) {
+        for (const auto &bb : fn.blocks) {
+            for (const auto &instr : bb.instructions) {
+                for (const auto &op : instr.operands) {
+                    if (op.kind == il::core::Value::Kind::ConstInt &&
+                        op.i64 == std::numeric_limits<int64_t>::min())
+                        foundMin = true;
+                    if (op.kind == il::core::Value::Kind::ConstInt && op.i64 == -1)
+                        foundNegOne = true;
+                }
+            }
+        }
+    }
+    EXPECT_TRUE(foundMin);
+    EXPECT_TRUE(foundNegOne);
 }
 
 TEST(ZiaBugFixes, EnumExplicitInt64MinAndAutoIncrementOverflow) {

@@ -165,17 +165,9 @@ bool Parser::isMatchExpressionAhead() {
     Speculation speculation(*this);
     advance(); // consume `match`
 
-    if (match(TokenKind::LParen)) {
-        ExprPtr scrutinee = parseExpression();
-        if (!scrutinee)
-            return false;
-        if (!expect(TokenKind::RParen, ")"))
-            return false;
-    } else {
-        ExprPtr scrutinee = parseExpression();
-        if (!scrutinee)
-            return false;
-    }
+    ExprPtr scrutinee = parseExpression();
+    if (!scrutinee)
+        return false;
 
     return check(TokenKind::LBrace);
 }

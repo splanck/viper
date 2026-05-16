@@ -25,7 +25,7 @@
 - [Source (zip)](https://github.com/splanck/viper/archive/refs/tags/v0.2.5-dev.zip)
 - [Release Notes](https://github.com/splanck/viper/releases/tag/v0.2.5-dev)
 
-**In development:** v0.2.6 (unreleased) — see the [draft release notes](docs/release_notes/Viper_Release_Notes_0_2_6.md) for what's landed on master since v0.2.5.
+**In development:** v0.2.6 (unreleased) — a focused hardening cycle on the v0.2.5 surface: memory/GC lifetime correctness, crypto/TLS and network protocol hardening, codegen and native-toolchain robustness, Zia language stabilization, and VAPS Windows packaging. See the [draft release notes](docs/release_notes/Viper_Release_Notes_0_2_6.md) for the full changelog.
 
 > **Working with the latest code:** The `master` branch is a live snapshot of current
 > development and is ahead of v0.2.5. To work with the most recent code:
@@ -97,6 +97,7 @@ zia> Say(Fmt.Int(2 + 3))
 - **Platform-native** — [Zia](docs/zia-reference.md) compiles to native machine code via [Viper IL](docs/il-guide.md) — no VM required for production
 - **IL-centric** — A readable, typed IR makes semantics explicit and frontends interchangeable
 - **Self-contained** — Built-in [assembler](docs/codegen/native-assembler.md) and [linker](docs/codegen/native-linker.md) with ELF/Mach-O/PE support and dynamic linking — zero external tool dependencies for native compilation
+- **Memory-safe surface** — [Zia](docs/zia-reference.md) and [BASIC](docs/basic-reference.md) expose no raw pointer types or pointer-signature runtime APIs; the typed, lifetime-validated surface is the only surface
 - **Full runtime** — 380 classes covering [graphics](docs/viperlib/graphics/README.md), [3D](docs/graphics3d-guide.md), [networking](docs/viperlib/network.md), [GUI](docs/viperlib/gui/README.md), [threading](docs/viperlib/threads.md), [localization](docs/viperlib/localization/README.md), and more
 
 ---
@@ -107,7 +108,7 @@ Viper is in **early development**. All components are functional but evolving:
 
 | Component | Notes |
 |-----------|-------|
-| [Zia Frontend](docs/zia-reference.md) | Classes, structs, generics, enums, lambdas, pattern matching, try/catch, modules |
+| [Zia Frontend](docs/zia-reference.md) | Classes, structs, generics with constraints, enums, lambdas, pattern matching, default interface methods, `Result`/`Unit`, structured try/catch/finally + defer, declaration-order independence, modules |
 | [BASIC Frontend](docs/basic-reference.md) | Core language with OOP, enums, select-case, namespaces |
 | [Viper IL](docs/il-guide.md) | Stable core; module linker for cross-language interop |
 | [Optimizer](docs/il-passes.md) | 24-pass pipeline covering SSA, loop, inlining, devirtualization, ownership, and peephole opts |

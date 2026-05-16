@@ -198,17 +198,23 @@ struct VarStmt : Stmt {
     /// @brief The variable name.
     std::string name;
 
-    /// @brief True when this declaration destructures a two-element tuple.
+    /// @brief True when this declaration destructures a tuple.
     bool isTupleDestructure = false;
 
-    /// @brief The second variable name for tuple destructuring.
+    /// @brief The second variable name for legacy two-element tuple destructuring consumers.
     std::string secondName;
+
+    /// @brief Variable names for tuple destructuring, in tuple element order.
+    std::vector<std::string> tupleNames;
 
     /// @brief The declared type (nullptr = inferred from initializer).
     TypePtr type;
 
-    /// @brief The second declared type for tuple destructuring.
+    /// @brief The second declared type for legacy two-element tuple destructuring consumers.
     TypePtr secondType;
+
+    /// @brief Declared types for tuple destructuring, in tuple element order.
+    std::vector<TypePtr> tupleTypes;
 
     /// @brief The initializer expression (nullptr = default value).
     ExprPtr initializer;
@@ -226,6 +232,20 @@ struct VarStmt : Stmt {
         : Stmt(StmtKind::Var, l), name(std::move(n)), type(std::move(t)),
           initializer(std::move(init)), isFinal(final) {}
 
+    /// @brief Construct a tuple destructuring declaration.
+    VarStmt(SourceLoc l,
+            std::vector<std::string> names,
+            std::vector<TypePtr> types,
+            ExprPtr init,
+            bool final)
+        : Stmt(StmtKind::Var, l), isTupleDestructure(true), tupleNames(std::move(names)),
+          tupleTypes(std::move(types)), initializer(std::move(init)), isFinal(final) {
+        if (!tupleNames.empty())
+            name = tupleNames[0];
+        if (tupleNames.size() > 1)
+            secondName = tupleNames[1];
+    }
+
     /// @brief Construct a two-name tuple destructuring declaration.
     VarStmt(SourceLoc l,
             std::string first,
@@ -237,7 +257,10 @@ struct VarStmt : Stmt {
         : Stmt(StmtKind::Var, l), name(std::move(first)), isTupleDestructure(true),
           secondName(std::move(second)), type(std::move(firstType)),
           secondType(std::move(secondTypeAnnotation)), initializer(std::move(init)),
-          isFinal(final) {}
+          isFinal(final) {
+        tupleNames.push_back(name);
+        tupleNames.push_back(secondName);
+    }
 };
 
 /// @brief Conditional if-statement: `if (c) { ... } else { ... }`.

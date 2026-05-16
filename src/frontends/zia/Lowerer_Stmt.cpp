@@ -165,42 +165,45 @@ void Lowerer::lowerVarStmt(VarStmt *stmt) {
 
         auto init = lowerExpr(stmt->initializer.get());
         const auto &elements = initType->tupleElementTypes();
-        if (elements.size() != 2) {
+        std::vector<std::string> names = stmt->tupleNames;
+        if (names.empty()) {
+            names.push_back(stmt->name);
+            if (!stmt->secondName.empty())
+                names.push_back(stmt->secondName);
+        }
+
+        if (elements.size() != names.size()) {
             reportLoweringInvariant(stmt->loc,
                                     "V-ZIA-LOWER-TUPLE-DESTRUCTURE-ARITY",
-                                    "tuple destructuring reached lowering with unsupported arity");
+                                    "tuple destructuring reached lowering with mismatched arity");
             return;
         }
 
-        TypeRef firstType = stmt->type ? sema_.resolveType(stmt->type.get()) : elements[0];
-        TypeRef secondType =
-            stmt->secondType ? sema_.resolveType(stmt->secondType.get()) : elements[1];
-
         PatternValue tupleValue{init.value, initType};
-        PatternValue first = emitTupleElement(tupleValue, 0, elements[0]);
-        PatternValue second = emitTupleElement(tupleValue, 1, elements[1]);
+        for (size_t i = 0; i < elements.size(); ++i) {
+            TypeNode *annotation = nullptr;
+            if (!stmt->tupleTypes.empty() && i < stmt->tupleTypes.size()) {
+                annotation = stmt->tupleTypes[i].get();
+            } else if (i == 0) {
+                annotation = stmt->type.get();
+            } else if (i == 1) {
+                annotation = stmt->secondType.get();
+            }
 
-        auto firstCoerced = coerceValueToType(first.value, mapType(elements[0]), elements[0], firstType);
-        auto secondCoerced =
-            coerceValueToType(second.value, mapType(elements[1]), elements[1], secondType);
+            TypeRef bindingType = annotation ? sema_.resolveType(annotation) : elements[i];
+            PatternValue element = emitTupleElement(tupleValue, i, elements[i]);
+            auto coerced =
+                coerceValueToType(element.value, mapType(elements[i]), elements[i], bindingType);
 
-        if (!stmt->isFinal) {
-            createSlot(stmt->name, mapType(firstType));
-            storeToSlot(stmt->name, firstCoerced.value, mapType(firstType));
-            consumeDeferred(firstCoerced.value);
-
-            createSlot(stmt->secondName, mapType(secondType));
-            storeToSlot(stmt->secondName, secondCoerced.value, mapType(secondType));
-            consumeDeferred(secondCoerced.value);
-        } else {
-            defineLocal(stmt->name, firstCoerced.value);
-            consumeDeferred(firstCoerced.value);
-            defineLocal(stmt->secondName, secondCoerced.value);
-            consumeDeferred(secondCoerced.value);
+            if (!stmt->isFinal) {
+                createSlot(names[i], mapType(bindingType));
+                storeToSlot(names[i], coerced.value, mapType(bindingType));
+            } else {
+                defineLocal(names[i], coerced.value);
+            }
+            consumeDeferred(coerced.value);
+            localTypes_[names[i]] = bindingType;
         }
-
-        localTypes_[stmt->name] = firstType;
-        localTypes_[stmt->secondName] = secondType;
         return;
     }
 

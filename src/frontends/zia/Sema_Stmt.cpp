@@ -283,6 +283,13 @@ void Sema::analyzeVarStmt(VarStmt *stmt) {
             return;
         }
 
+        std::vector<std::string> names = stmt->tupleNames;
+        if (names.empty()) {
+            names.push_back(stmt->name);
+            if (!stmt->secondName.empty())
+                names.push_back(stmt->secondName);
+        }
+
         TypeRef initType = analyzeExpr(stmt->initializer.get());
         if (!initType || initType->kind != TypeKindSem::Tuple) {
             error(stmt->initializer->loc, "Tuple destructuring requires a tuple initializer");
@@ -290,20 +297,28 @@ void Sema::analyzeVarStmt(VarStmt *stmt) {
         }
 
         const auto &elements = initType->tupleElementTypes();
-        if (elements.size() != 2) {
-            error(stmt->initializer->loc,
-                  "Tuple destructuring currently requires exactly two elements");
+        if (elements.size() != names.size()) {
+            error(stmt->initializer->loc, "Tuple destructuring arity mismatch");
             return;
         }
 
-        TypeRef firstType = stmt->type ? resolveTypeNode(stmt->type.get()) : elements[0];
-        TypeRef secondType =
-            stmt->secondType ? resolveTypeNode(stmt->secondType.get()) : elements[1];
+        std::vector<TypeRef> bindingTypes;
+        bindingTypes.reserve(elements.size());
+        for (size_t i = 0; i < elements.size(); ++i) {
+            TypeNode *annotation = nullptr;
+            if (!stmt->tupleTypes.empty() && i < stmt->tupleTypes.size()) {
+                annotation = stmt->tupleTypes[i].get();
+            } else if (i == 0) {
+                annotation = stmt->type.get();
+            } else if (i == 1) {
+                annotation = stmt->secondType.get();
+            }
 
-        if (firstType && elements[0] && !firstType->isAssignableFrom(*elements[0]))
-            errorTypeMismatch(stmt->loc, firstType, elements[0]);
-        if (secondType && elements[1] && !secondType->isAssignableFrom(*elements[1]))
-            errorTypeMismatch(stmt->loc, secondType, elements[1]);
+            TypeRef bindingType = annotation ? resolveTypeNode(annotation) : elements[i];
+            if (bindingType && elements[i] && !bindingType->isAssignableFrom(*elements[i]))
+                errorTypeMismatch(stmt->loc, bindingType, elements[i]);
+            bindingTypes.push_back(bindingType ? bindingType : types::unknown());
+        }
 
         auto defineTupleBinding = [&](const std::string &name, TypeRef type) {
             if (currentScope_ && currentScope_->parent()) {
@@ -325,8 +340,8 @@ void Sema::analyzeVarStmt(VarStmt *stmt) {
             markInitialized(name);
         };
 
-        defineTupleBinding(stmt->name, firstType);
-        defineTupleBinding(stmt->secondName, secondType);
+        for (size_t i = 0; i < names.size(); ++i)
+            defineTupleBinding(names[i], bindingTypes[i]);
         return;
     }
 

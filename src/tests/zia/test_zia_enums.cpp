@@ -10,7 +10,7 @@
 // Key invariants:
 //   - Enum declarations parse, analyze, and lower correctly
 //   - Enum variants are distinct named integer constants
-//   - Type safety: enums and integers are not interchangeable
+//   - Type safety: integers are not implicitly assignable back to enum variables
 //   - Variant access via dot notation (Color.Red)
 // Ownership/Lifetime:
 //   - Test-only file
@@ -215,6 +215,27 @@ enum Color {
 func start() {}
 )";
     CompilerInput input{.source = source, .path = "enum_dup.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+    EXPECT_FALSE(result.succeeded());
+}
+
+TEST(ZiaEnums, IntegerDoesNotImplicitlyAssignToEnum) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+enum Color {
+    Red,
+    Green,
+}
+
+func start() {
+    var c: Color = 1;
+}
+)";
+    CompilerInput input{.source = source, .path = "enum_from_integer.zia"};
     CompilerOptions opts{};
 
     auto result = compile(input, opts, sm);

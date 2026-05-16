@@ -359,6 +359,13 @@ TEST(ZiaLexer, TripleQuotedWithSingleQuote) {
     EXPECT_EQ(tokens[0].stringValue, "a \"b\" c");
 }
 
+TEST(ZiaLexer, TripleQuotedHonorsHexAndUnicodeEscapes) {
+    auto tokens = tokenize("\"\"\"A\\x41\\u0042\\n\"\"\"");
+    ASSERT_EQ(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].kind, TokenKind::StringLiteral);
+    EXPECT_EQ(tokens[0].stringValue, "AAB\n");
+}
+
 TEST(ZiaLexer, UnterminatedTripleQuoted) {
     DiagnosticEngine diag;
     auto tokens = tokenizeWithDiags("\"\"\"hello", diag);

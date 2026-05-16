@@ -878,10 +878,29 @@ static void printStmt(const Stmt &stmt, Printer &p) {
         case StmtKind::Var: {
             const auto &s = static_cast<const VarStmt &>(stmt);
             std::string header = (s.isFinal ? "FinalStmt" : "VarStmt");
-            header += " \"" + s.name + "\" " + locStr(s.loc);
+            if (s.isTupleDestructure && !s.tupleNames.empty()) {
+                header += " (";
+                for (size_t i = 0; i < s.tupleNames.size(); ++i) {
+                    if (i)
+                        header += ", ";
+                    header += s.tupleNames[i];
+                }
+                header += ") " + locStr(s.loc);
+            } else {
+                header += " \"" + s.name + "\" " + locStr(s.loc);
+            }
             p.line(header);
             p.push();
-            if (s.type) {
+            if (s.isTupleDestructure && !s.tupleTypes.empty()) {
+                for (size_t i = 0; i < s.tupleTypes.size(); ++i) {
+                    if (!s.tupleTypes[i])
+                        continue;
+                    p.line("Type " + std::to_string(i) + ":");
+                    p.push();
+                    printType(*s.tupleTypes[i], p);
+                    p.pop();
+                }
+            } else if (s.type) {
                 p.line("Type:");
                 p.push();
                 printType(*s.type, p);

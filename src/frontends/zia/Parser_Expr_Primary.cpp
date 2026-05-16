@@ -202,7 +202,7 @@ ExprPtr Parser::parsePrimary() {
         return std::make_unique<MapLiteralExpr>(mapLoc, std::move(entries));
     }
 
-    // Identifier or struct-literal: `TypeName { field = expr, ... }`
+    // Identifier or struct-literal: `TypeName { field = expr, ... }` or `TypeName { field: expr, ... }`
     // Struct literals are only attempted when explicitly enabled (initializer/return context)
     // to avoid ambiguity with for/if/while block bodies.
     if (checkIdentifierLike()) {
@@ -225,8 +225,9 @@ ExprPtr Parser::parsePrimary() {
                 if (k2 == TokenKind::RBrace) {
                     isStructLiteral = true; // empty struct literal: TypeName {}
                 } else if ((k2 == TokenKind::Identifier) &&
-                           peek(bodyOffset + 2).kind == TokenKind::Equal) {
-                    isStructLiteral = true; // TypeName { field = expr }
+                           (peek(bodyOffset + 2).kind == TokenKind::Equal ||
+                            peek(bodyOffset + 2).kind == TokenKind::Colon)) {
+                    isStructLiteral = true; // TypeName { field = expr } / TypeName { field: expr }
                 }
             }
 
@@ -251,9 +252,11 @@ ExprPtr Parser::parsePrimary() {
                     }
                     std::string fieldName = peek().text;
                     advance();
-                    if (!expect(TokenKind::Equal, "="))
+                    if (!match(TokenKind::Equal) && !match(TokenKind::Colon)) {
+                        error("Expected '=' or ':' after field name in struct literal");
                         return nullptr;
-                    ExprPtr fieldVal = parseExpression();
+                    }
+                    ExprPtr fieldVal = parseExpressionAllowingStructLiterals();
                     if (!fieldVal)
                         return nullptr;
                     fields.push_back(
@@ -397,18 +400,9 @@ ExprPtr Parser::parsePrimary() {
 }
 
 ExprPtr Parser::parseMatchExpression(SourceLoc loc) {
-    ExprPtr scrutinee;
-    if (match(TokenKind::LParen)) {
-        scrutinee = parseExpression();
-        if (!scrutinee)
-            return nullptr;
-        if (!expect(TokenKind::RParen, ")"))
-            return nullptr;
-    } else {
-        scrutinee = parseExpression();
-        if (!scrutinee)
-            return nullptr;
-    }
+    ExprPtr scrutinee = parseExpression();
+    if (!scrutinee)
+        return nullptr;
 
     if (!expect(TokenKind::LBrace, "{"))
         return nullptr;
