@@ -659,7 +659,8 @@ int8_t rt_threadpool_wait_for(void *pool_obj, int64_t ms) {
     while (pool->pending_count > 0 || pool->active_count > 0) {
 #if defined(_WIN32)
         ULONGLONG now = GetTickCount64();
-        int64_t remaining = now >= deadline ? 0 : (int64_t)(deadline - now);
+        ULONGLONG delta = now >= deadline ? 0 : deadline - now;
+        int64_t remaining = delta > (ULONGLONG)INT64_MAX ? INT64_MAX : (int64_t)delta;
 #else
         struct timespec now;
         clock_gettime(CLOCK_MONOTONIC, &now);
@@ -669,7 +670,13 @@ int8_t rt_threadpool_wait_for(void *pool_obj, int64_t ms) {
             sec--;
             ns += 1000000000L;
         }
-        int64_t elapsed_ms = sec > INT64_MAX / 1000 ? INT64_MAX : sec * 1000 + ns / 1000000L;
+        int64_t elapsed_ms = INT64_MAX;
+        if (sec <= INT64_MAX / 1000) {
+            elapsed_ms = sec * 1000;
+            int64_t frac_ms = ns / 1000000L;
+            if (elapsed_ms <= INT64_MAX - frac_ms)
+                elapsed_ms += frac_ms;
+        }
         int64_t remaining = ms - elapsed_ms;
 #endif
         if (remaining <= 0 || !rt_monitor_wait_for(pool->monitor, remaining)) {

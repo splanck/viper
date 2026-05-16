@@ -113,7 +113,7 @@ typedef struct rt_heap_hdr {
 | `rt_heap_release(payload)` | CAS-based atomic decrement. Frees (pool or system) when count reaches zero; double release and attempts to release immortal payloads trap without underflow. |
 | `rt_heap_release_deferred(payload)` | Decrement without freeing at zero. Caller must later call `rt_heap_free_zero_ref`. |
 | `rt_heap_free_zero_ref(payload)` | Free only if refcount is already zero. No-op otherwise. |
-| `rt_memory_retain(payload)` | Public `Viper.Memory.Retain` wrapper; validates live runtime handles before retaining. |
+| `rt_memory_retain(payload)` | Public `Viper.Memory.Retain` wrapper; validates live object, array, or string handles before retaining and traps on raw string payloads or unsupported heap kinds. |
 | `rt_memory_release(payload)` | Public `Viper.Memory.Release` wrapper; releases through managed object/string/array paths and runs finalizers or element cleanup at zero. |
 | `rt_memory_retain_str(str)` | Public `Viper.Memory.RetainStr` wrapper; validates and retains a runtime string. |
 | `rt_memory_release_str(str)` | Public `Viper.Memory.ReleaseStr` wrapper; validates and releases a runtime string. |

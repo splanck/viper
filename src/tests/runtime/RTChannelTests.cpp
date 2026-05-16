@@ -226,6 +226,18 @@ static void test_recv_for_immediate() {
     rt_channel_close(ch);
 }
 
+static void test_huge_timeout_immediate_paths() {
+    void *ch = rt_channel_new(1);
+    void *a = make_obj();
+
+    assert(rt_channel_send_for(ch, a, INT64_MAX) == 1);
+
+    void *out = NULL;
+    assert(rt_channel_recv_for(ch, &out, INT64_MAX) == 1);
+    assert(out == a);
+    rt_channel_close(ch);
+}
+
 static void test_managed_value_wrappers() {
     void *ch = rt_channel_new(2);
     void *a = make_obj();
@@ -495,6 +507,7 @@ int main() {
     test_recv_for_timeout();
     test_recv_for_closed_clears_out();
     test_recv_for_immediate();
+    test_huge_timeout_immediate_paths();
     test_managed_value_wrappers();
     test_send_for_timeout();
     test_send_for_zero_ms();

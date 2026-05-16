@@ -36,6 +36,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_context.h"
+#include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_oop.h"
 
@@ -358,6 +359,22 @@ static int tr_cstr_eq(const char *a, const char *b) {
     return strcmp(a, b) == 0;
 }
 
+/// @brief Return an object's vtable only after validating a real runtime heap object.
+/// @details Cast/type/interface helpers are public C ABI entry points and may receive raw,
+///          stale, or stack pointers. The generated runtime only passes heap objects, so reject
+///          anything else before reading the first payload word.
+static void **tr_object_vptr_or_null(void *obj) {
+    if (!obj)
+        return NULL;
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header(obj, &hdr) || !hdr)
+        return NULL;
+    if ((rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT || hdr->cap < sizeof(rt_object))
+        return NULL;
+    rt_object *o = (rt_object *)obj;
+    return o->vptr;
+}
+
 /// @brief Selectively free the parts of a class-info record that the registry owns.
 /// @details The registry sometimes accepts caller-owned `rt_class_info` records and
 ///          sometimes allocates its own. The two ownership flags let cleanup skip the
@@ -585,14 +602,14 @@ void rt_bind_interface(int type_id, int iface_id, void **itable_slots) {
 int rt_typeid_of(void *obj) {
     if (!obj)
         return 0;
-    rt_object *o = (rt_object *)obj;
-    if (!o->vptr)
+    void **vptr = tr_object_vptr_or_null(obj);
+    if (!vptr)
         return -1;
     RtTypeRegistryState *st = rt_tr_state();
     int locked = 0;
     if (st)
         locked = tr_rdlock(st);
-    const class_entry *ce = find_class_by_vptr(o->vptr);
+    const class_entry *ce = find_class_by_vptr(vptr);
     int result = ce ? ce->type_id : -1;
     if (st)
         tr_rdunlock(st, locked);
@@ -659,8 +676,8 @@ int8_t rt_type_implements(int type_id, int iface_id) {
 void *rt_cast_as_iface(void *obj, int iface_id) {
     if (!obj || iface_id < 0)
         return NULL;
-    rt_object *o = (rt_object *)obj;
-    if (!o->vptr)
+    void **vptr = tr_object_vptr_or_null(obj);
+    if (!vptr)
         return NULL;
 
     RtTypeRegistryState *st = rt_tr_state();
@@ -669,7 +686,7 @@ void *rt_cast_as_iface(void *obj, int iface_id) {
         locked = tr_rdlock(st);
 
     void *result = NULL;
-    const class_entry *ce = find_class_by_vptr(o->vptr);
+    const class_entry *ce = find_class_by_vptr(vptr);
     if (ce) {
         int tid = ce->type_id;
         if (find_binding(tid, iface_id) != NULL) {
@@ -696,8 +713,8 @@ void *rt_cast_as_iface(void *obj, int iface_id) {
 void *rt_cast_as(void *obj, int target_type_id) {
     if (!obj || target_type_id < 0)
         return NULL;
-    rt_object *o = (rt_object *)obj;
-    if (!o->vptr)
+    void **vptr = tr_object_vptr_or_null(obj);
+    if (!vptr)
         return NULL;
 
     RtTypeRegistryState *st = rt_tr_state();
@@ -706,7 +723,7 @@ void *rt_cast_as(void *obj, int target_type_id) {
         locked = tr_rdlock(st);
 
     void *result = NULL;
-    const class_entry *ce = find_class_by_vptr(o->vptr);
+    const class_entry *ce = find_class_by_vptr(vptr);
     if (ce) {
         int tid = ce->type_id;
         if (tid == target_type_id) {
@@ -735,8 +752,8 @@ void *rt_cast_as(void *obj, int target_type_id) {
 void **rt_itable_lookup(void *obj, int iface_id) {
     if (!obj || iface_id < 0)
         return NULL;
-    rt_object *o = (rt_object *)obj;
-    if (!o->vptr)
+    void **vptr = tr_object_vptr_or_null(obj);
+    if (!vptr)
         return NULL;
 
     RtTypeRegistryState *st = rt_tr_state();
@@ -745,7 +762,7 @@ void **rt_itable_lookup(void *obj, int iface_id) {
         locked = tr_rdlock(st);
 
     void **result = NULL;
-    const class_entry *ce = find_class_by_vptr(o->vptr);
+    const class_entry *ce = find_class_by_vptr(vptr);
     if (ce) {
         int tid = ce->type_id;
         result = find_binding(tid, iface_id);
@@ -961,6 +978,10 @@ void rt_register_class_with_base_rs(
 /// @param iface_id  Interface id.
 /// @param itable    Interface method table.
 void rt_register_interface_impl(int64_t type_id, int64_t iface_id, void **itable) {
+    if (type_id < 0 || type_id > INT_MAX || iface_id < 0 || iface_id > INT_MAX) {
+        rt_trap("rt_type_registry: interface binding metadata out of range");
+        return;
+    }
     rt_bind_interface((int)type_id, (int)iface_id, itable);
 }
 
@@ -969,6 +990,8 @@ void rt_register_interface_impl(int64_t type_id, int64_t iface_id, void **itable
 /// @param iface_id Interface id.
 /// @return Interface method table or NULL.
 void **rt_get_interface_impl(int64_t type_id, int64_t iface_id) {
+    if (type_id < 0 || type_id > INT_MAX || iface_id < 0 || iface_id > INT_MAX)
+        return NULL;
     int tid = (int)type_id;
     int iid = (int)iface_id;
 

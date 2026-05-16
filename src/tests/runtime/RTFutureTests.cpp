@@ -17,6 +17,7 @@
 
 #include <cassert>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <setjmp.h>
@@ -168,6 +169,24 @@ static void test_future_wait_for_resolved() {
 
     int8_t result = rt_future_wait_for(future, 1000); // Should return immediately
     test_result(result == 1, "wait_for_resolved: should return 1 when already resolved");
+}
+
+static void test_future_huge_timeout_resolved() {
+    void *promise = rt_promise_new();
+    void *future = rt_promise_get_future(promise);
+
+    int value = 790;
+    rt_promise_set(promise, &value);
+
+    test_result(rt_future_wait_for(future, INT64_MAX) == 1,
+                "huge_timeout_resolved: wait_for should accept saturated timeout");
+
+    void *out = NULL;
+    test_result(rt_future_get_for(future, INT64_MAX, &out) == 1,
+                "huge_timeout_resolved: get_for should accept saturated timeout");
+    test_result(out == &value, "huge_timeout_resolved: get_for should return value");
+    test_result(rt_future_get_for_val(future, INT64_MAX) == &value,
+                "huge_timeout_resolved: get_for_val should return value");
 }
 
 //=============================================================================
@@ -546,6 +565,7 @@ int main() {
     // Wait tests
     test_future_wait_for_timeout();
     test_future_wait_for_resolved();
+    test_future_huge_timeout_resolved();
 
     // Threading tests
     test_async_resolution();

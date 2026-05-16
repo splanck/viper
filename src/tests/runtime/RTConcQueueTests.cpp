@@ -11,6 +11,7 @@
 #include "rt_threads.h"
 
 #include <cassert>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <thread>
@@ -76,6 +77,14 @@ static void test_timeout_empty() {
     assert(result == NULL);
 }
 
+static void test_huge_timeout_immediate_dequeue() {
+    void *q = rt_concqueue_new();
+    rt_string v = make_str("ready");
+    rt_concqueue_enqueue(q, v);
+
+    assert(rt_concqueue_dequeue_timeout(q, INT64_MAX) == v);
+}
+
 static void test_close_wakes_blocked_dequeue() {
     void *q = rt_concqueue_new();
     assert(rt_concqueue_get_is_closed(q) == 0);
@@ -134,6 +143,7 @@ int main() {
     test_peek();
     test_clear();
     test_timeout_empty();
+    test_huge_timeout_immediate_dequeue();
     test_close_wakes_blocked_dequeue();
     test_concurrent_produce_consume();
     test_null_safety();

@@ -16,8 +16,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_oop.h"
+#include "rt_object.h"
 #include <assert.h>
 #include <csetjmp>
+#include <limits>
 #include <stddef.h>
 #include <stdint.h>
 #include <string>
@@ -73,6 +75,22 @@ static void bind_duplicate_conflict() {
     rt_bind_interface(100, 1, itable_conflict);
 }
 
+static void register_interface_impl_type_overflow() {
+    rt_register_interface_impl(std::numeric_limits<int64_t>::max(), 1, itable_base);
+}
+
+static void *make_test_object(void **vptr) {
+    rt_object *obj = (rt_object *)rt_obj_new_i64(0, (int64_t)sizeof(rt_object));
+    assert(obj != nullptr);
+    obj->vptr = vptr;
+    return obj;
+}
+
+static void release_test_object(void *obj) {
+    if (rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 int main() {
     // Type IDs for our test classes
     const int TYPE_BASE = 100;
@@ -109,11 +127,18 @@ int main() {
     assert(rt_cast_as(nullptr, -1) == nullptr);
     assert(rt_cast_as_iface(nullptr, -1) == nullptr);
     assert(rt_get_class_vtable(-1) == nullptr);
+    int raw_stack_value = 0;
+    assert(rt_typeid_of(&raw_stack_value) == -1);
+    assert(rt_cast_as(&raw_stack_value, TYPE_BASE) == nullptr);
+    assert(rt_cast_as_iface(&raw_stack_value, IFACE_TESTABLE) == nullptr);
+    assert(rt_itable_lookup(&raw_stack_value, IFACE_TESTABLE) == nullptr);
+    assert(rt_get_interface_impl(std::numeric_limits<int64_t>::max(), IFACE_TESTABLE) == nullptr);
     expect_trap(register_duplicate_class_conflict, "duplicate class type id");
     expect_trap(register_missing_base, "base class is not registered");
     expect_trap(bind_unknown_class, "unknown class");
     expect_trap(bind_unknown_interface, "unknown interface");
     expect_trap(bind_duplicate_conflict, "duplicate interface binding");
+    expect_trap(register_interface_impl_type_overflow, "out of range");
 
     // =====================================================================
     // Test 1: rt_type_is_a for same type
@@ -163,54 +188,59 @@ int main() {
     // =====================================================================
     // Test 8: rt_itable_lookup through inheritance
     // =====================================================================
-    // Create mock objects with the vtables
-    rt_object obj_base = {.vptr = vtable_base};
-    rt_object obj_derived = {.vptr = vtable_derived};
-    rt_object obj_leaf = {.vptr = vtable_leaf};
-    rt_object obj_unrelated = {.vptr = vtable_unrelated};
+    // Create heap-backed mock objects with the vtables.
+    void *obj_base = make_test_object(vtable_base);
+    void *obj_derived = make_test_object(vtable_derived);
+    void *obj_leaf = make_test_object(vtable_leaf);
+    void *obj_unrelated = make_test_object(vtable_unrelated);
 
     // Base should return its own itable
-    void **itable_from_base = rt_itable_lookup(&obj_base, IFACE_TESTABLE);
+    void **itable_from_base = rt_itable_lookup(obj_base, IFACE_TESTABLE);
     assert(itable_from_base == itable_base);
 
     // Derived should find the interface through Base
-    void **itable_from_derived = rt_itable_lookup(&obj_derived, IFACE_TESTABLE);
+    void **itable_from_derived = rt_itable_lookup(obj_derived, IFACE_TESTABLE);
     assert(itable_from_derived == itable_base);
 
     // Leaf should find the interface through Derived -> Base
-    void **itable_from_leaf = rt_itable_lookup(&obj_leaf, IFACE_TESTABLE);
+    void **itable_from_leaf = rt_itable_lookup(obj_leaf, IFACE_TESTABLE);
     assert(itable_from_leaf == itable_base);
 
     // Unrelated should return NULL
-    void **itable_from_unrelated = rt_itable_lookup(&obj_unrelated, IFACE_TESTABLE);
+    void **itable_from_unrelated = rt_itable_lookup(obj_unrelated, IFACE_TESTABLE);
     assert(itable_from_unrelated == NULL);
 
     // =====================================================================
     // Test 9: rt_cast_as with inheritance
     // =====================================================================
-    void *cast_derived_to_base = rt_cast_as(&obj_derived, TYPE_BASE);
-    assert(cast_derived_to_base == &obj_derived);
+    void *cast_derived_to_base = rt_cast_as(obj_derived, TYPE_BASE);
+    assert(cast_derived_to_base == obj_derived);
 
-    void *cast_leaf_to_base = rt_cast_as(&obj_leaf, TYPE_BASE);
-    assert(cast_leaf_to_base == &obj_leaf);
+    void *cast_leaf_to_base = rt_cast_as(obj_leaf, TYPE_BASE);
+    assert(cast_leaf_to_base == obj_leaf);
 
-    void *cast_base_to_derived = rt_cast_as(&obj_base, TYPE_DERIVED);
+    void *cast_base_to_derived = rt_cast_as(obj_base, TYPE_DERIVED);
     assert(cast_base_to_derived == NULL); // Base is not Derived
 
     // =====================================================================
     // Test 10: rt_cast_as_iface with inherited interface
     // =====================================================================
-    void *iface_cast_base = rt_cast_as_iface(&obj_base, IFACE_TESTABLE);
-    assert(iface_cast_base == &obj_base);
+    void *iface_cast_base = rt_cast_as_iface(obj_base, IFACE_TESTABLE);
+    assert(iface_cast_base == obj_base);
 
-    void *iface_cast_derived = rt_cast_as_iface(&obj_derived, IFACE_TESTABLE);
-    assert(iface_cast_derived == &obj_derived);
+    void *iface_cast_derived = rt_cast_as_iface(obj_derived, IFACE_TESTABLE);
+    assert(iface_cast_derived == obj_derived);
 
-    void *iface_cast_leaf = rt_cast_as_iface(&obj_leaf, IFACE_TESTABLE);
-    assert(iface_cast_leaf == &obj_leaf);
+    void *iface_cast_leaf = rt_cast_as_iface(obj_leaf, IFACE_TESTABLE);
+    assert(iface_cast_leaf == obj_leaf);
 
-    void *iface_cast_unrelated = rt_cast_as_iface(&obj_unrelated, IFACE_TESTABLE);
+    void *iface_cast_unrelated = rt_cast_as_iface(obj_unrelated, IFACE_TESTABLE);
     assert(iface_cast_unrelated == NULL);
+
+    release_test_object(obj_base);
+    release_test_object(obj_derived);
+    release_test_object(obj_leaf);
+    release_test_object(obj_unrelated);
 
     return 0;
 }

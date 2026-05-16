@@ -99,7 +99,10 @@ static channel_deadline channel_deadline_from_now(int64_t ms) {
 ///          fits a signed return without overflow.
 static int64_t channel_remaining_ms(channel_deadline d) {
     ULONGLONG now = GetTickCount64();
-    return now >= d.deadline ? 0 : (int64_t)(d.deadline - now);
+    if (now >= d.deadline)
+        return 0;
+    ULONGLONG delta = d.deadline - now;
+    return delta > (ULONGLONG)INT64_MAX ? INT64_MAX : (int64_t)delta;
 }
 #else
 typedef struct {
@@ -120,7 +123,9 @@ static channel_deadline channel_deadline_from_now(int64_t ms) {
     if (ms > 0) {
         int64_t add_sec = ms / 1000;
         long add_nsec = (long)((ms % 1000) * 1000000L);
-        if (add_sec > (int64_t)LONG_MAX - (int64_t)d.deadline.tv_sec) {
+        int64_t sec_room = (int64_t)LONG_MAX - (int64_t)d.deadline.tv_sec;
+        if (add_sec > sec_room ||
+            (add_sec == sec_room && d.deadline.tv_nsec > 999999999L - add_nsec)) {
             d.deadline.tv_sec = (time_t)LONG_MAX;
             d.deadline.tv_nsec = 999999999L;
             return d;

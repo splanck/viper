@@ -170,6 +170,18 @@ static void test_wait_for_immediate_check() {
     rt_threadpool_shutdown(pool);
 }
 
+static void test_wait_for_huge_timeout_pending_task() {
+    init_counter();
+    void *pool = rt_threadpool_new(1);
+    rt_threadpool_submit(pool, (void *)slow_task, NULL);
+
+    int8_t done = rt_threadpool_wait_for(pool, INT64_MAX);
+    assert(done == 1);
+    assert(g_counter.load() == 1);
+
+    rt_threadpool_shutdown(pool);
+}
+
 static void test_wait_for_timeout_budget() {
     init_counter();
     void *pool = rt_threadpool_new(1);
@@ -370,6 +382,7 @@ int main() {
     test_submit_null_callback();
     test_wait_for_success();
     test_wait_for_immediate_check();
+    test_wait_for_huge_timeout_pending_task();
     test_wait_for_timeout_budget();
     test_task_trap_does_not_hang_wait();
     test_task_trap_error_is_reported_once();

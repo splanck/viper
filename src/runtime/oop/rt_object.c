@@ -296,6 +296,11 @@ void rt_memory_retain(void *p) {
         rt_trap("Viper.Memory.Retain: invalid string payload; pass the string handle");
         return;
     }
+    if ((rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT &&
+        (rt_heap_kind_t)hdr->kind != RT_HEAP_ARRAY) {
+        rt_trap("Viper.Memory.Retain: unsupported heap payload kind");
+        return;
+    }
     rt_heap_retain(p);
 }
 

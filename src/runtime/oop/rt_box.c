@@ -267,7 +267,7 @@ static void value_type_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
         return;
     }
 
-    if ((uint64_t)count > (uint64_t)SIZE_MAX / sizeof(void *)) {
+    if ((uint64_t)count > (uint64_t)SIZE_MAX / sizeof(value_type_field_desc)) {
         value_type_unlock();
         rt_trap("rt_box_value_type: traversal allocation too large");
         return;

@@ -362,7 +362,7 @@ Low-level retain/release hooks for deterministic ownership handoff. Most program
 
 | Method            | Signature        | Description                                                            |
 |-------------------|------------------|------------------------------------------------------------------------|
-| `Retain(handle)`  | `Void(Object)`   | Increment a live runtime object or string handle's reference count      |
+| `Retain(handle)`  | `Void(Object)`   | Increment a live runtime object, array, or string handle's reference count |
 | `Release(handle)` | `Integer(Object)`| Decrement a live runtime handle; returns remaining references           |
 | `RetainStr(text)` | `Void(String)`   | String-typed retain wrapper for callers that cannot pass `String` as `Object` |
 | `ReleaseStr(text)`| `Integer(String)`| String-typed release wrapper; returns the remaining string references   |
@@ -373,7 +373,7 @@ Low-level retain/release hooks for deterministic ownership handoff. Most program
 - If a finalizer resurrects an object, `Release()` returns the live post-finalizer refcount instead of the transient zero count.
 - `ReleaseStr()` returns the actual post-release string refcount for both heap-backed and small-string handles; immortal strings return the maximum `Integer` value.
 - Arrays released through `Release()` run element cleanup for object, string, and boxed-value arrays before freeing the array storage.
-- Passing `Nothing` is a no-op. Passing a non-runtime or already-freed pointer traps.
+- Passing `Nothing` is a no-op. Passing a non-runtime, already-freed, raw string payload, or unsupported heap payload traps.
 - Reference counts are checked for overflow and underflow in release builds.
 
 ---
