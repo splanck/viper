@@ -125,6 +125,24 @@ func start() {    var x = ()
     // Empty parens could be valid (unit/void) or error depending on grammar
 }
 
+TEST(ZiaParserErrors, InvalidMemberModifiersAreRejected) {
+    auto result = compileSource(R"(
+module Test;
+
+class C {
+    weak func f() {}
+    override Integer x;
+    static deinit {}
+}
+
+func start() {}
+)");
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasDiagContaining(result.diagnostics, "'weak' can only be used on fields"));
+    EXPECT_TRUE(hasDiagContaining(result.diagnostics, "'override' can only be used on methods"));
+    EXPECT_TRUE(hasDiagContaining(result.diagnostics, "'deinit' declarations cannot use"));
+}
+
 TEST(ZiaParserErrors, InvalidAssignmentTarget) {
     auto result = compileSource(R"(
 module Test;

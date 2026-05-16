@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-05-16
 ---
 
 # Zia — Getting Started
@@ -34,7 +34,7 @@ Learn Zia by example. For a complete reference, see **[Zia Reference](zia-refere
 
 Create a file named `hello.zia`:
 
-```viper
+```rust
 module Hello;
 
 bind Viper.Terminal;
@@ -93,12 +93,14 @@ Type `.help` for available commands and `.quit` to exit. See the **[REPL Guide](
 
 ### Variable Declaration
 
-Use `var` for mutable variables and `final` for constants:
+Use `var` for mutable variables and `final` for constants. `let` is accepted as
+a compatibility alias for `final`:
 
-```viper
+```rust
 var x = 42;              // Type inferred as Integer
 var name: String = "Alice";  // Explicit type
 final PI = 3.14159;      // Immutable constant
+let answer = 42;         // Also immutable
 ```
 
 ### Built-in Types
@@ -112,6 +114,10 @@ final PI = 3.14159;      // Immutable constant
 | `String` | UTF-8 string | `"hello"`, `"line\n"` |
 | `Any` | Managed top type for boxed values, objects, strings, and function references | `42`, `"text"`, `&handler` |
 | `Never` | Bottom type for code paths that do not produce a value | — |
+| `Unit` | Explicit no-value marker for `Result[Unit]` and `()` | `()` |
+
+Common lowercase aliases are accepted, such as `int`, `bool`, `double`, and
+`string`. `Bytes` names the runtime class `Viper.Collections.Bytes`.
 
 Zia code does not use raw pointers. Runtime handles are represented by typed
 Viper runtime classes, collections, `Any`, and callback bridges.
@@ -120,7 +126,7 @@ Viper runtime classes, collections, `Any`, and callback bridges.
 
 Embed expressions in strings with `${...}`:
 
-```viper
+```rust
 bind Viper.Terminal;
 
 var name = "Alice";
@@ -134,7 +140,7 @@ Say("${name} is ${age} years old");
 
 ### If Statements
 
-```viper
+```rust
 bind Viper.Terminal;
 
 if score > 100 {
@@ -150,7 +156,7 @@ Note: Parentheses around conditions are optional.
 
 ### While Loops
 
-```viper
+```rust
 bind Viper.Terminal;
 
 var i = 0;
@@ -164,7 +170,7 @@ while i < 10 {
 
 C-style for loops:
 
-```viper
+```rust
 bind Viper.Terminal;
 
 for (var i = 0; i < 10; i = i + 1) {
@@ -174,7 +180,7 @@ for (var i = 0; i < 10; i = i + 1) {
 
 ### For-In Loops (Ranges)
 
-```viper
+```rust
 bind Viper.Terminal;
 
 // Exclusive range: 0 to 9
@@ -201,7 +207,7 @@ compile time; dynamic non-positive steps trap before iteration starts.
 
 ### Basic Functions
 
-```viper
+```rust
 bind Viper.Terminal;
 
 func greet(name: String) {
@@ -230,9 +236,13 @@ func start() {
 Use `expose` before `func` to make a function visible to other modules in a
 mixed-language project:
 
-```viper
+```rust
 expose func calculateScore(x: Integer, y: Integer) -> Integer {
     return x * y + 10;
+}
+
+expose async func fetchScore() -> Integer {
+    return 10;
 }
 ```
 
@@ -241,10 +251,10 @@ expose func calculateScore(x: Integer, y: Integer) -> Integer {
 Use `foreign func` to declare a function defined in another module (e.g., a
 BASIC library). Foreign declarations have no body:
 
-```viper
+```rust
 bind Viper.Terminal;
 
-foreign func Factorial(n: Integer) -> Integer;
+expose foreign func Factorial(n: Integer) -> Integer;
 
 func start() {
     var result = Factorial(10);
@@ -263,7 +273,7 @@ Classes are reference types with identity, inheritance, and methods.
 
 ### Defining a Class
 
-```viper
+```rust
 class Player {
     String name;
     Integer health;
@@ -301,7 +311,7 @@ class Player {
 
 ### Using Classes
 
-```viper
+```rust
 bind Viper.Terminal;
 
 func start() {
@@ -330,7 +340,7 @@ func start() {
 
 Struct types have copy semantics — assignments create copies.
 
-```viper
+```rust
 bind Viper.Math;
 
 struct Point {
@@ -358,7 +368,7 @@ and `Set[T]`. These are distinct from the object-style runtime classes under
 
 ### Lists
 
-```viper
+```rust
 bind Viper.Terminal;
 
 // Create a list of integers
@@ -383,7 +393,7 @@ while i < numbers.count() {
 
 ### Maps
 
-```viper
+```rust
 bind Viper.Terminal;
 
 // Empty map literal: {}. Map literals also support {key: value, ...}.
@@ -404,7 +414,7 @@ if scores.has("Alice") {
 
 ### Class Instance Lists
 
-```viper
+```rust
 // List of class instances
 var players: List[Player] = [];
 
@@ -427,7 +437,7 @@ When you need the object-based runtime collection classes instead, bind
 
 Every file starts with a module declaration:
 
-```viper
+```rust
 module MyGame;
 ```
 
@@ -435,7 +445,7 @@ module MyGame;
 
 Bind other `.zia` files to use their types and functions:
 
-```viper
+```rust
 module Game;
 
 bind "./entities";    // binds entities.zia from same directory
@@ -451,7 +461,7 @@ func start() {
 If two bound files export the same top-level type name, qualify that type with
 the bound module name or alias:
 
-```viper
+```rust
 bind "./alpha"; // module Alpha; expose class WishDup { ... }
 bind "./beta";  // module Beta;  expose class WishDup { ... }
 
@@ -469,7 +479,7 @@ var b: Beta.WishDup = new Beta.WishDup();
 
 Bind Viper runtime namespaces to use their functions without qualification:
 
-```viper
+```rust
 module Game;
 
 bind Viper.Terminal;     // Import terminal functions
@@ -498,7 +508,7 @@ with `bind` or use fully qualified names; the exposed surface is generated from
 
 ### Terminal I/O
 
-```viper
+```rust
 bind Viper.Terminal;
 
 // Output
@@ -538,14 +548,14 @@ SetCursorVisible(0);    // Hide cursor
 
 ### Time Functions
 
-```viper
+```rust
 // SleepMs is available as Viper.Time.SleepMs (use fully qualified name or bind)
 Viper.Time.SleepMs(500);        // Sleep for 500 milliseconds
 ```
 
 ### Math Functions
 
-```viper
+```rust
 bind Viper.Math;
 
 var abs = AbsInt(-42);                       // 42
@@ -559,7 +569,7 @@ var rand = Viper.Math.Random.NextInt(100);   // Random 0-99
 
 Here's a complete mini-game demonstrating Zia features:
 
-```viper
+```rust
 module GuessGame;
 
 bind Viper.Terminal;
@@ -639,7 +649,7 @@ For more complete examples, see the `examples/games/` directory:
 
 ### Program Structure
 
-```viper
+```rust
 module ModuleName;
 
 bind "./other";

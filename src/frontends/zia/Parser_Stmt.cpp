@@ -370,7 +370,7 @@ StmtPtr Parser::parseForStmt() {
 
         StmtPtr init;
         if (!check(TokenKind::Semicolon)) {
-            if (check(TokenKind::KwVar) || check(TokenKind::KwFinal)) {
+            if (check(TokenKind::KwVar) || check(TokenKind::KwFinal) || check(TokenKind::KwLet)) {
                 init = parseVarDecl();
                 if (!init)
                     return nullptr;

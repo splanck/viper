@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-13
+last-verified: 2026-05-16
 ---
 
 # Zia — Reference
@@ -15,9 +15,9 @@ Complete language reference for Zia. This document describes **syntax**, **types
 - **Static typing**: All variables have compile-time types with inference
 - **Class types**: Reference semantics with identity, methods, inheritance, properties, static members, and destructors
 - **Struct types**: Copy semantics with stack allocation
-- **Interfaces**: Contracts with full runtime itable dispatch
+- **Interfaces**: Contracts with full runtime itable dispatch and optional default method bodies
 - **Enums**: Named sets of integer constants with exhaustiveness checking in match
-- **Generics**: Parameterized types and functions with optional constraints (`List[T]`, `func max[T: Comparable]`)
+- **Generics**: Parameterized types, methods, and functions with optional interface constraints (`List[T]`, `class Box[T: Named]`, `func max[T: Comparable]`)
 - **Exception handling**: `try`/`catch`/`finally` with structured error propagation
 - **Modules**: File-based modules with bind system
 - **C-like syntax**: Familiar braces, semicolons, and operators
@@ -49,7 +49,7 @@ Complete language reference for Zia. This document describes **syntax**, **types
 
 A Zia source file has the following structure:
 
-```viper
+```rust
 module ModuleName;
 
 // Bind declarations (bring other modules into scope)
@@ -75,7 +75,7 @@ func start() { ... }
 
 The `start()` function is the program entry point. It takes no parameters and returns void:
 
-```viper
+```rust
 func start() {
     // Program execution begins here
 }
@@ -87,7 +87,7 @@ func start() {
 
 ### Comments
 
-```viper
+```rust
 // Single-line comment
 
 /* Multi-line
@@ -106,7 +106,7 @@ identifier  ::= [a-zA-Z_][a-zA-Z0-9_]*
 
 #### Integer Literals
 
-```viper
+```rust
 42          // Decimal
 1_000_000   // Decimal with digit separators
 0xFF        // Hexadecimal
@@ -117,7 +117,7 @@ identifier  ::= [a-zA-Z_][a-zA-Z0-9_]*
 
 #### Floating-Point Literals
 
-```viper
+```rust
 3.14159     // Decimal
 1_024.5     // Decimal with digit separators
 1e10        // Scientific notation
@@ -129,7 +129,7 @@ Digit separators (`_`) are allowed only between digits.
 
 #### String Literals
 
-```viper
+```rust
 "Hello, World!"           // Basic string
 "Line 1\nLine 2"          // With escape sequences
 "Value: ${expression}"    // String interpolation
@@ -158,20 +158,20 @@ plain string literal.
 
 #### Boolean Literals
 
-```viper
+```rust
 true
 false
 ```
 
 #### Null Literal
 
-```viper
+```rust
 null    // Used with optional types
 ```
 
 #### Unit Literal
 
-```viper
+```rust
 ()      // Unit literal
 ```
 
@@ -197,6 +197,11 @@ assignments.
 | `Never` | Bottom type for code paths that do not produce a value | — |
 | `Unit` | Explicit no-value marker for `Result[Unit]` and `()` | `()` |
 
+The canonical type spellings are PascalCase. Compatibility aliases are accepted
+for common scalar types: `int`/`Int`/`integer`, `double`/`Double`/`float`/`Float`
+for `Number`, `bool`/`Bool`/`boolean`, plus lowercase `string`, `byte`, `unit`,
+`void`, `error`, `any`, and `never`.
+
 `Ptr` is not part of the Zia source surface. Runtime handles are exposed as
 typed runtime classes, collections, `Any`, or function references; raw pointer
 details remain inside the runtime and backend.
@@ -209,7 +214,7 @@ locals, globals, or fields.
 
 Optional types can hold a value or `null`:
 
-```viper
+```rust
 var name: String? = null;   // Optional string
 var count: Integer? = 42;   // Optional with value
 ```
@@ -223,7 +228,7 @@ Use `null`, not `()`, to create an empty optional value.
 
 Parameterized types with type arguments:
 
-```viper
+```rust
 List[Integer]           // List of integers
 List[Player]            // List of class instances
 Map[String, Integer]    // Map from strings to integers
@@ -236,11 +241,25 @@ Map keys are restricted to `String`.
 `Result[T]` values are constructed with `Ok(value)` and `Err(message)`. The
 success type is `T`; the error payload is a `String`.
 
+Generic declarations may constrain type parameters to interfaces. Constraints
+are supported on functions, methods, classes, structs, and interfaces, and are
+checked when a generic is instantiated:
+
+```rust
+interface Named {
+    func name() -> String;
+}
+
+class Box[T: Named] {
+    T value;
+}
+```
+
 ### Class Types
 
 Reference types defined with the `class` keyword:
 
-```viper
+```rust
 var player: Player = new Player();
 ```
 
@@ -248,7 +267,7 @@ var player: Player = new Player();
 
 Copy-semantics types defined with the `struct` keyword:
 
-```viper
+```rust
 var point: Point;
 ```
 
@@ -256,7 +275,7 @@ var point: Point;
 
 Tuple types group multiple values into a single type:
 
-```viper
+```rust
 var pair: (Integer, String) = (42, "hello");
 var x = pair.0;     // Access by index
 ```
@@ -265,7 +284,7 @@ var x = pair.0;     // Access by index
 
 Arrays with a compile-time size:
 
-```viper
+```rust
 var grid: Integer[100];     // Fixed array of 100 integers
 ```
 
@@ -278,7 +297,7 @@ fields, and assignable values; assignment copies the inline elements.
 
 Sets hold unique values. Created with set literals or the `Set` constructor:
 
-```viper
+```rust
 var s: Set[Integer] = {1, 2, 3};
 ```
 
@@ -286,7 +305,7 @@ var s: Set[Integer] = {1, 2, 3};
 
 Function signatures as types:
 
-```viper
+```rust
 (Integer, Integer) -> Integer   // Function taking two ints, returning int
 () -> void                      // Function taking nothing, returning void
 ```
@@ -297,7 +316,7 @@ Function signatures as types:
 
 ### Literals
 
-```viper
+```rust
 42                  // Integer literal
 3.14                // Number literal
 "hello"             // String literal
@@ -307,7 +326,7 @@ null                // Null literal
 
 ### Identifiers
 
-```viper
+```rust
 variableName        // Variable reference
 ```
 
@@ -326,7 +345,7 @@ The `&` operator obtains a typed function reference. It can be inferred into a
 variable, passed through `Any`, or passed directly to runtime APIs that expose a
 safe callback bridge:
 
-```viper
+```rust
 bind Viper.Threads;
 
 func handler(arg: Any) {
@@ -407,13 +426,13 @@ to evaluate the target twice.
 
 ### Ternary Operator
 
-```viper
+```rust
 condition ? thenValue : elseValue
 ```
 
 ### Match Expression
 
-```viper
+```rust
 var result = match value {
     0 => "zero";
     n if n > 0 => "positive";
@@ -423,14 +442,14 @@ var result = match value {
 
 ### Field Access
 
-```viper
+```rust
 object.field            // Access field
 object.method()         // Call method
 ```
 
 ### Optional Chaining and Unwrapping
 
-```viper
+```rust
 object?.field           // Null if object is null, otherwise optional field value
 object?.field?.subfield // Chained optional access
 object?.method(args)    // Calls method only when object is non-null
@@ -451,14 +470,14 @@ The force-unwrap operator `!` asserts that an optional value is non-null and ext
 the inner value. If the value is null at runtime, the program terminates. Use after
 a null guard or when you are certain the value is non-null:
 
-```viper
+```rust
 if maybePage == null { return null; }
 var page = maybePage!;              // Safe: null was handled above
 ```
 
 ### Indexing
 
-```viper
+```rust
 list[index]             // Access list element
 map["key"]              // Access map value (keys are String)
 string[index]           // Read one-character String
@@ -472,7 +491,7 @@ mutable. String indexes are read-only.
 
 A block can produce a value when the last statement is an expression without a trailing semicolon:
 
-```viper
+```rust
 var x = {
     var a = 10;
     var b = 20;
@@ -484,7 +503,7 @@ var x = {
 
 `if`/`else` can be used as value-producing expressions:
 
-```viper
+```rust
 var sign = if x > 0 { "positive" } else { "non-positive" };
 ```
 
@@ -492,30 +511,43 @@ Both branches must be present and produce the same type.
 
 ### Try Expression
 
-The postfix `?` operator propagates a null optional from an expression. If the
-operand is null, the enclosing function returns `null` immediately; otherwise,
-the inner value is unwrapped. The enclosing function must return an optional type,
-and the unwrapped operand value must be assignable to that optional's inner type.
+The postfix `?` operator propagates optional absence or `Result` errors out of
+the enclosing function.
 
-```viper
+For an optional operand, `?` returns `null` immediately when the operand is null;
+otherwise it unwraps the inner value. The enclosing function must return an
+optional type, and the unwrapped operand value must be assignable to that
+optional's inner type.
+
+```rust
 func findUser(id: Integer) -> User? {
     var record = database.lookup(id)?;  // Returns null if lookup returns null
     return record.toUser();              // toUser is a user-defined method on User
 }
 ```
 
-> **Note:** The postfix `?` (try expression, propagates null out of the function) is distinct from `?.` (optional chaining, returns null if the receiver is null without unwinding). They can be combined: `obj?.field?` chains optional access with null propagation.
+For a `Result[T]` operand, `?` returns the `Err` immediately from an enclosing
+function that also returns `Result[...]`; otherwise it unwraps the `Ok` payload:
+
+```rust
+func readScore(path: String) -> Result[Integer] {
+    var text: String = readFile(path)?;
+    return Ok(parseScore(text));
+}
+```
+
+> **Note:** The postfix `?` (try expression, propagates null or `Err` out of the function) is distinct from `?.` (optional chaining, returns null if the receiver is null without unwinding). They can be combined: `obj?.field?` chains optional access with null propagation.
 
 ### Function/Method Calls
 
-```viper
+```rust
 functionName(arg1, arg2)
 object.methodName(arg1)
 ```
 
 Strings also support instance-style calls for common `Viper.String` operations:
 
-```viper
+```rust
 var name = "  viper  ".Trim().ToUpper();
 var part = "abcdef".Substring(1, 3);   // "bcd"
 ```
@@ -524,7 +556,7 @@ var part = "abcdef".Substring(1, 3);   // "bcd"
 
 Arguments can be passed by name using `name: value` syntax. Named arguments are supported for user-defined functions, methods, and constructors that have declared parameter names. Runtime APIs (`Viper.*` methods, including `String.Substring`) require positional arguments — they don't carry parameter names through the IL, so use the positional form for those.
 
-```viper
+```rust
 func createRect(x: Integer, y: Integer, w: Integer, h: Integer) -> Rect { ... }
 
 var r = createRect(x: 10, y: 20, w: 100, h: 50);    // OK: user-defined function
@@ -533,7 +565,7 @@ var part = "abcdef".Substring(1, 3);                 // Runtime API: positional 
 
 ### Object Creation
 
-```viper
+```rust
 new ClassName(args)     // Create a class or struct value
 ```
 
@@ -541,7 +573,7 @@ new ClassName(args)     // Create a class or struct value
 
 Struct types can be initialized with field assignments:
 
-```viper
+```rust
 struct Point {
     Integer x;
     Integer y;
@@ -567,7 +599,7 @@ fields may only be initialized inside the declaring type.
 
 Tuples group multiple values. Access elements with `.0`, `.1`, etc.:
 
-```viper
+```rust
 var pair = (42, "hello");
 var num = pair.0;           // 42
 var str = pair.1;           // "hello"
@@ -576,7 +608,7 @@ var (n: Integer, s: String) = pair;
 
 Tuple destructuring is supported for two-element tuple declarations:
 
-```viper
+```rust
 var (x, y) = (1, 2);
 final (code: Integer, label: String) = (200, "ok");
 ```
@@ -586,7 +618,7 @@ checked against the corresponding tuple element.
 
 ### Collection Literals
 
-```viper
+```rust
 var list = [1, 2, 3];              // List[Integer]
 var map = {"key": 42, "other": 7}; // Map[String, Integer]
 var set = {1, 2, 3};               // Set[Integer]
@@ -600,7 +632,7 @@ List, map, and set literals permit a trailing comma.
 
 ### Generic Collection Operations
 
-```viper
+```rust
 var nums: List[Integer] = [];
 nums.add(10);
 nums.set(0, 20);
@@ -638,7 +670,7 @@ sub-width integral values such as `Byte` are accepted for `get`, `set`,
 
 ### Range Expressions
 
-```viper
+```rust
 start..end              // Exclusive range [start, end)
 start..=end             // Inclusive range [start, end]
 ```
@@ -646,7 +678,7 @@ start..=end             // Inclusive range [start, end]
 Ranges can be used directly as list-producing expressions or as `for ... in`
 sources. Range-only modifiers are available before iteration:
 
-```viper
+```rust
 var values = (0..=10).rev().step(2);  // List[Integer]
 for (i in (0..10).rev()) { ... }
 for (i in (0..10).step(2)) { ... }
@@ -664,14 +696,14 @@ element.
 
 ### Type Operations
 
-```viper
+```rust
 value is Type           // Type check (returns Boolean)
 value as Type           // Type cast
 ```
 
 ### Lambda Expressions
 
-```viper
+```rust
 (x: Integer) => x + 1             // Single parameter
 (a: Integer, b: Integer) => a + b // Multiple parameters
 () => 42                          // No parameters
@@ -683,7 +715,7 @@ Lambda parameters must include explicit type annotations.
 
 `Result[T]` represents either `Ok(T)` or `Err(String)`:
 
-```viper
+```rust
 var ok: Result[Integer] = Ok(7);
 var err: Result[Integer] = Err("bad");
 
@@ -697,7 +729,7 @@ var message = err.unwrapErr();
 
 Result patterns are supported in `match` statements and expressions:
 
-```viper
+```rust
 match ok {
     Ok(value) => SayInt(value);
     Err(message) => Say(message);
@@ -706,12 +738,14 @@ match ok {
 
 `unwrap()` traps when called on `Err`, and `unwrapErr()` traps when called on
 `Ok`. `unwrapOr(default)` returns the success value or the provided default.
+Postfix `?` unwraps `Ok` and propagates `Err` from functions that return
+`Result[...]`.
 
 ### `is` Type Check
 
 The `is` operator checks whether a value's runtime type matches a target type, including subclass relationships:
 
-```viper
+```rust
 class Animal { }
 class Dog extends Animal { }
 class Cat extends Animal { }
@@ -734,18 +768,19 @@ The `is` expression returns a `Boolean`. It is polymorphic: `obj is Base` return
 
 ### Variable Declaration
 
-```viper
+```rust
 var name = value;                   // Type inferred
 var name: Type = value;             // Explicit type
 var name: Type;                     // Default initialized
 final name = value;                 // Immutable local
+let name = value;                   // Compatibility alias for final
 ```
 
 ### Expression Statement
 
 Any expression can be used as a statement:
 
-```viper
+```rust
 functionCall();
 object.method();
 x = x + 1;
@@ -753,7 +788,7 @@ x = x + 1;
 
 ### Block Statement
 
-```viper
+```rust
 {
     statement1;
     statement2;
@@ -762,7 +797,7 @@ x = x + 1;
 
 ### If Statement
 
-```viper
+```rust
 if condition {
     // then branch
 }
@@ -782,11 +817,17 @@ if condition1 {
 }
 ```
 
-Note: Parentheses around conditions are optional.
+Parentheses around conditions are optional. Braced blocks are preferred, but a
+single statement body is accepted for compact control flow:
+
+```rust
+if ready startWork();
+while pending tick();
+```
 
 ### While Statement
 
-```viper
+```rust
 while condition {
     // body
 }
@@ -794,7 +835,7 @@ while condition {
 
 ### For Statement (C-style)
 
-```viper
+```rust
 for (init; condition; update) {
     // body
 }
@@ -805,9 +846,13 @@ for (var i = 0; i < 10; i = i + 1) {
 }
 ```
 
+The initializer may be a variable declaration or expression statement. `let` is
+accepted as an alias for `final` here too, so a `let` loop binding cannot be
+assigned in the update expression.
+
 ### For-In Statement
 
-```viper
+```rust
 for variable in iterable {
     // body
 }
@@ -852,26 +897,26 @@ for i in 0..=10 {       // 0 to 10
 
 ### Return Statement
 
-```viper
+```rust
 return;                 // Return void
 return expression;      // Return value
 ```
 
 ### Break Statement
 
-```viper
+```rust
 break;                  // Exit innermost loop
 ```
 
 ### Continue Statement
 
-```viper
+```rust
 continue;               // Skip to next iteration
 ```
 
 ### Guard Statement
 
-```viper
+```rust
 guard condition else {
     return;             // Must exit scope
 }
@@ -880,7 +925,7 @@ guard condition else {
 
 ### Match Statement
 
-```viper
+```rust
 match value {
     pattern1 => { /* body */ }
     pattern2 => { /* body */ }
@@ -901,7 +946,7 @@ Supported patterns:
 
 OR pattern example:
 
-```viper
+```rust
 match x {
     1 | 2 | 3 => Say("small");
     10 | 20 => Say("round");
@@ -911,7 +956,7 @@ match x {
 
 Statement arms may use a single statement directly after `=>`:
 
-```viper
+```rust
 func classify(x: Integer) -> Integer {
     match x {
         1 => return 10;
@@ -925,7 +970,7 @@ func classify(x: Integer) -> Integer {
 
 Structured exception handling for runtime errors:
 
-```viper
+```rust
 try {
     riskyOperation();
 } catch(e) {
@@ -966,7 +1011,7 @@ try {
 when the block exits normally and before `return`, `break`, or `continue` leaves
 the scope.
 
-```viper
+```rust
 func writeLine(path: String, text: String) {
     var file = openFile(path);
     defer file.close();
@@ -988,7 +1033,7 @@ lifetimes, and `deinit`.
 
 Raises a `RuntimeError`:
 
-```viper
+```rust
 throw someErrorValue;
 ```
 
@@ -1000,7 +1045,7 @@ Inside a catch clause, `throw;` rethrows the active error.
 
 ### Function Declaration
 
-```viper
+```rust
 func functionName(param1: Type1, param2: Type2) -> ReturnType {
     // body
     return value;
@@ -1016,7 +1061,7 @@ func noReturn(param: Type) {
 
 Parameters may have default values. When a call omits trailing arguments, the default expressions are used:
 
-```viper
+```rust
 func greet(name: String, greeting: String = "Hello") -> String {
     return greeting + ", " + name;
 }
@@ -1032,9 +1077,9 @@ Parameter and argument lists permit a trailing comma.
 
 ### Generic Function Declaration
 
-Functions can be parameterized over types with optional constraints:
+Functions can be parameterized over types with optional interface constraints:
 
-```viper
+```rust
 func identity[T](x: T) -> T {
     return x;
 }
@@ -1052,26 +1097,30 @@ Type inference works through generic container parameters such as `List[T]` and
 `Map[String, T]`. Explicit type arguments may be comma-separated and nested:
 `pair[Integer, String](1, "one")` and `identity[List[Integer]]([1])`.
 
-Methods may also declare type parameters. Explicit generic method calls use the
-same bracket syntax after the method name:
+Methods may also declare type parameters and constraints. Explicit generic
+method calls use the same bracket syntax after the method name:
 
-```viper
+```rust
 class Box {
-    expose func id[T](value: T) -> T {
+    expose func id[T: Named](value: T) -> T {
         return value;
     }
 }
 
 var box = new Box();
-var answer: Integer = box.id[Integer](42);
+var user: User = box.id[User](currentUser);
 ```
 
 ### Async Functions
 
 Use `async func` to return a `Viper.Threads.Future`, and `await` to unwrap the completed payload:
 
-```viper
+```rust
 async func fetchName() -> String {
+    return "viper";
+}
+
+expose async func fetchPublicName() -> String {
     return "viper";
 }
 
@@ -1086,7 +1135,7 @@ func start() {
 
 The last parameter of a function may be variadic, accepting zero or more arguments that are collected into a `List`:
 
-```viper
+```rust
 func sum(nums: ...Integer) -> Integer {
     var total = 0;
     for i in 0..nums.count() {
@@ -1107,7 +1156,7 @@ Only the last parameter may be variadic. Inside the function body, the variadic 
 
 Functions whose body is a single expression can use `=` shorthand:
 
-```viper
+```rust
 func double(x: Integer) -> Integer = x * 2;
 func greet(name: String) -> String = "Hello, " + name;
 ```
@@ -1118,21 +1167,21 @@ This desugars to a `return` statement wrapping the expression. Works for both to
 
 `foreign func` declares a function whose body is provided by another module — typically the BASIC frontend or another linked translation unit. Foreign declarations have a signature but no body; the linker resolves the implementation at build time.
 
-```viper
+```rust
 foreign func Factorial(n: Integer) -> Integer;
-foreign func Render(canvas: Canvas, frame: Integer);
+expose foreign func Render(canvas: Canvas, frame: Integer);
 ```
 
 The semicolon terminator shown above is the documented form. A legacy spelling
 without the semicolon is still accepted for compatibility.
 
-Use a foreign declaration when the function is implemented in BASIC and called from Zia, or when binding to a runtime entry that isn't already exposed through `Viper.*`. Calling a foreign function uses the same syntax as any other function call.
+Use a foreign declaration when the function is implemented in BASIC and called from Zia, or when binding to a runtime entry that isn't already exposed through `Viper.*`. Calling a foreign function uses the same syntax as any other function call. `expose` and `hide` may prefix ordinary, async, and foreign functions.
 
 ### Type Alias Declarations
 
 Create compile-time type aliases with `type`:
 
-```viper
+```rust
 type Name = String;
 type Score = Integer;
 
@@ -1148,7 +1197,7 @@ Aliases are resolved during semantic analysis and have no runtime representation
 
 ### Global Variable Declaration
 
-```viper
+```rust
 var globalName: Type = initialValue;
 final CONSTANT = value;             // Scalar constants may be folded at compile time
 final ITEMS: List[String] = ["a"];  // Aggregate/object finals initialize once at startup
@@ -1162,13 +1211,13 @@ Classes are reference types with identity, stored on the heap.
 
 ### Class Declaration
 
-```viper
-class ClassName {
+```rust
+class ClassName[T: InterfaceName] {
     // Fields
-    Type fieldName;
+    T fieldName;
 
     // Initializer method
-    func init(params) {
+    func init(value: T) {
         fieldName = value;
     }
 
@@ -1183,7 +1232,7 @@ class ClassName {
 
 Fields and methods can be marked with visibility:
 
-```viper
+```rust
 class Player {
     Integer health;         // Default visibility
     hide Integer secret;    // Private field
@@ -1197,15 +1246,23 @@ Class fields may use familiar `var name: Type;` syntax or the original
 interface, `Any`, or optional reference type. Weak fields cannot be `static`,
 and are loaded like ordinary fields:
 
-```viper
+```rust
 class Node {
     expose weak var parent: Node?;
 }
 ```
 
+Member modifiers are checked for the declaration they modify:
+
+- `weak` is valid only on fields.
+- `override` is valid only on instance methods; `static override` is invalid.
+- `static` is valid on fields and methods.
+- `property` supports `expose`/`hide` but not `weak`, `override`, or `static`.
+- `deinit` does not take visibility, `override`, `static`, or `weak`.
+
 ### Class Inheritance
 
-```viper
+```rust
 class ChildClass extends ParentClass {
     // Additional fields and methods
 }
@@ -1219,7 +1276,7 @@ class Widget extends UI.Control {
 
 Within a child class, `super` refers to the parent class's implementation. Use it to call the parent's methods:
 
-```viper
+```rust
 class Child extends Parent {
     override func greet() -> String {
         return super.greet() + " (child)";
@@ -1231,7 +1288,7 @@ class Child extends Parent {
 
 Methods that override a parent's method must be marked with `override`:
 
-```viper
+```rust
 class Base {
     func describe() -> String { return "Base"; }
 }
@@ -1247,7 +1304,7 @@ when the parent initializer must run.
 
 ### Creating Instances
 
-```viper
+```rust
 var obj = new ClassName(args);
 ```
 
@@ -1258,7 +1315,7 @@ classes without `init`, arguments are matched in field declaration order.
 
 Within methods, fields can be accessed directly or with `self`:
 
-```viper
+```rust
 class Counter {
     Integer count;
 
@@ -1273,7 +1330,7 @@ class Counter {
 
 Properties provide computed get/set accessors for class fields:
 
-```viper
+```rust
 class Temperature {
     Number celsius;
 
@@ -1296,7 +1353,7 @@ class Temperature {
 
 Fields and methods marked `static` belong to the class type, not to instances:
 
-```viper
+```rust
 class Counter {
     expose static Integer instanceCount;
 
@@ -1320,7 +1377,7 @@ class Counter {
 
 The `deinit` block defines cleanup logic that runs when an object is destroyed:
 
-```viper
+```rust
 class FileHandle {
     Integer fd;
 
@@ -1346,10 +1403,10 @@ Struct types have copy semantics — assignments copy the entire struct.
 
 ### Struct Declaration
 
-```viper
-struct StructName {
+```rust
+struct StructName[T: InterfaceName] {
     // Fields
-    Type fieldName;
+    T fieldName;
 
     // Methods
     func methodName(params) -> ReturnType {
@@ -1360,7 +1417,7 @@ struct StructName {
 
 ### Using Struct Types
 
-```viper
+```rust
 struct Point {
     Integer x;
     Integer y;
@@ -1385,15 +1442,24 @@ Interfaces define contracts that classes and structs can implement.
 
 ### Interface Declaration
 
-```viper
+```rust
 interface InterfaceName {
     func methodSignature(params) -> ReturnType;
+
+    func defaultMethod() -> String {
+        return "default";
+    }
 }
 ```
 
+Interface methods may be abstract signatures ending in `;` or default method
+bodies. Implementors may override a default method, but they are not required to
+redeclare it. Default methods are bound into the interface table when a class or
+struct does not provide its own implementation.
+
 ### Implementing Interfaces
 
-```viper
+```rust
 class MyClass implements InterfaceName {
     expose func methodSignature(params) -> ReturnType {
         // Implementation
@@ -1418,7 +1484,7 @@ Implemented interface names may be qualified, such as
 
 Interface-typed variables use runtime itable dispatch. Calling a method on an interface variable performs a lookup through the interface table (itable) to find the correct implementation:
 
-```viper
+```rust
 interface IShape {
     func area() -> Number;
 }
@@ -1444,7 +1510,7 @@ Enums define a type with a fixed set of named integer constants. Each variant is
 
 ### Declaration
 
-```viper
+```rust
 enum Color {
     Red,
     Green,
@@ -1458,7 +1524,7 @@ Variants are automatically numbered starting from 0. A trailing comma after the 
 
 Variants may specify explicit integer values. Unspecified variants auto-increment from the previous value.
 
-```viper
+```rust
 enum HttpStatus {
     OK = 200,
     NOT_FOUND = 404,
@@ -1468,7 +1534,7 @@ enum HttpStatus {
 
 Mixed auto-increment and explicit values:
 
-```viper
+```rust
 enum Priority {
     Low,          // 0
     Medium = 5,   // 5
@@ -1481,14 +1547,14 @@ enum Priority {
 
 Access variants with dot notation:
 
-```viper
+```rust
 var c: Color = Color.Red;
 var s = HttpStatus.NOT_FOUND;
 ```
 
 Enum values can be compared with `==` and `!=`:
 
-```viper
+```rust
 if c != Color.Red {
     // ...
 }
@@ -1496,7 +1562,7 @@ if c != Color.Red {
 
 Enum variants are not implicitly typed as `Integer` in source code. Compare them to variants of the same enum, or use `match` for branching:
 
-```viper
+```rust
 if s == HttpStatus.NOT_FOUND {
     // ...
 }
@@ -1506,7 +1572,7 @@ if s == HttpStatus.NOT_FOUND {
 
 Use `expose` to make an enum accessible from other modules:
 
-```viper
+```rust
 expose enum Direction {
     North,
     South,
@@ -1519,7 +1585,7 @@ expose enum Direction {
 
 When matching on an enum, the compiler verifies that all variants are covered:
 
-```viper
+```rust
 // Error: Non-exhaustive patterns: missing variants Direction.East, Direction.West
 match dir {
     Direction.North => handleNorth();
@@ -1529,7 +1595,7 @@ match dir {
 
 Use the wildcard `_` to cover remaining variants:
 
-```viper
+```rust
 match dir {
     Direction.North => handleNorth();
     _ => handleOther();
@@ -1540,7 +1606,7 @@ match dir {
 
 Enums can be used as parameter types, return types, and variable types:
 
-```viper
+```rust
 func describeColor(c: Color) -> String {
     return match c {
         Color.Red => "red",
@@ -1553,7 +1619,7 @@ func describeColor(c: Color) -> String {
 ### Grammar
 
 ```text
-enumDecl    ::= ["expose"] "enum" IDENT "{" enumVariant ("," enumVariant)* [","] "}"
+enumDecl    ::= "enum" IDENT "{" enumVariant ("," enumVariant)* [","] "}"
 enumVariant ::= IDENT ["=" ["-"] INTEGER]
 ```
 
@@ -1565,7 +1631,7 @@ enumVariant ::= IDENT ["=" ["-"] INTEGER]
 
 Every source file begins with a module declaration:
 
-```viper
+```rust
 module ModuleName;
 ```
 
@@ -1573,7 +1639,7 @@ module ModuleName;
 
 Bind modules or runtime namespaces to use their types and functions:
 
-```viper
+```rust
 // File binds - import Zia source files
 bind "path/to/module";          // Relative or simple path
 bind "./sibling";               // Same directory
@@ -1605,7 +1671,7 @@ interface, or enum name, the compiler scopes each colliding declaration under
 its declaring module name. Use the bound module name or bind alias to
 disambiguate:
 
-```viper
+```rust
 bind "./alpha"; // module Alpha; expose class WishDup { ... }
 bind "./beta";  // module Beta;  expose class WishDup { ... }
 
@@ -1622,7 +1688,7 @@ Viper.Terminal.SayInt(Alpha.VALUE + Beta.VALUE);
 When you bind a runtime namespace like `Viper.Terminal`, all its functions
 become available without qualification:
 
-```viper
+```rust
 bind Viper.Terminal;
 
 Say("Hello!");           // Instead of Viper.Terminal.Say("Hello!")
@@ -1631,7 +1697,7 @@ var name = ReadLine();   // Instead of Viper.Terminal.ReadLine()
 
 You can also use an alias to avoid conflicts:
 
-```viper
+```rust
 bind Viper.Terminal as T;
 
 T.Say("Hello!");
@@ -1639,7 +1705,7 @@ T.Say("Hello!");
 
 Or import only specific items:
 
-```viper
+```rust
 bind Viper.Terminal { Say, ReadLine };
 
 Say("Hello!");      // Works
@@ -1658,7 +1724,7 @@ Namespaces organize declarations under qualified names to prevent name collision
 
 ### Basic Namespace
 
-```viper
+```rust
 namespace MyLib {
     func helper() -> Integer {
         return 42;
@@ -1676,7 +1742,7 @@ namespace MyLib {
 
 Access namespaced members using dot notation:
 
-```viper
+```rust
 var result = MyLib.helper();
 var p = new MyLib.Parser();
 var version = Config.VERSION;
@@ -1687,7 +1753,7 @@ Config.debug = true;
 
 Namespaces can use dotted names for nested organization:
 
-```viper
+```rust
 namespace MyLib.Internal {
     func secret() -> String {
         return "hidden";
@@ -1702,7 +1768,7 @@ var s = MyLib.Internal.secret();
 
 Namespaces can be nested within other namespaces:
 
-```viper
+```rust
 namespace Outer {
     namespace Inner {
         func nested() -> Integer {
@@ -1725,7 +1791,7 @@ Namespaces can contain:
 - Global variables (final or var)
 - Other namespaces
 
-```viper
+```rust
 namespace Config {
     final VERSION = 42;
     var debug = false;
@@ -1759,7 +1825,7 @@ Zia programs have access to the registered Viper runtime APIs through the `Viper
 
 #### Terminal I/O
 
-```viper
+```rust
 bind Viper.Terminal;
 
 // Output with newline
@@ -1798,7 +1864,7 @@ Flush();             // Flush output buffer
 
 #### Time
 
-```viper
+```rust
 // SleepMs is available under Viper.Time (RT_ALIAS from ClockSleep)
 Viper.Time.SleepMs(ms);         // Sleep for milliseconds
 Viper.Time.GetTickCount();      // Monotonic milliseconds (CLOCK_MONOTONIC, not Unix epoch)
@@ -1806,7 +1872,7 @@ Viper.Time.GetTickCount();      // Monotonic milliseconds (CLOCK_MONOTONIC, not 
 
 #### Math
 
-```viper
+```rust
 bind Viper.Math;
 
 Abs(x);                  // Absolute value (f64)
@@ -1824,7 +1890,7 @@ Ceil(x);                 // Ceiling
 
 #### Random
 
-```viper
+```rust
 // Use the fully qualified name, or bind Viper.Math and use Viper.Math.Random.NextInt
 Viper.Math.Random.NextInt(max);   // Random integer [0, max)
 
@@ -1836,7 +1902,7 @@ rng.NextInt(10, 20);              // Random integer [10, 20]
 
 #### Generic Collections
 
-```viper
+```rust
 // Language-level generic collections
 var list: List[Integer] = [];
 list.add(value);                    // Add element
@@ -1939,7 +2005,8 @@ Number      Byte        Set         String
 Any         Never       Unit        Void
 ```
 
-`Bytes` is a runtime class (`Viper.Collections.Bytes`) rather than a language-level type name and is accessed via the runtime library, not the type-name reserved set above.
+`Bytes` is accepted as a convenience alias for the runtime class
+`Viper.Collections.Bytes`. It is not a reserved word.
 
 ---
 
@@ -1957,15 +2024,18 @@ bind        ::= "bind" STRING ["as" IDENT] ";"
 ### Declarations
 
 ```text
-decl        ::= classDecl | structDecl | interfaceDecl | enumDecl | funcDecl | foreignFuncDecl | varDecl | namespaceDecl | typeAlias
+decl        ::= [visibility] (classDecl | structDecl | interfaceDecl | enumDecl | funcDecl | asyncFuncDecl | foreignFuncDecl | varDecl | namespaceDecl | typeAlias)
+visibility  ::= "expose" | "hide" | "public" | "export"
 typeAlias   ::= "type" IDENT "=" type ";"
-classDecl   ::= "class" IDENT ["extends" qualifiedName] ["implements" qualifiedNameList] "{" member* "}"
-structDecl  ::= "struct" IDENT ["implements" qualifiedNameList] "{" member* "}"
-interfaceDecl ::= "interface" IDENT ["[" genericParams "]"] "{" methodSig* "}"
-enumDecl    ::= ["expose"] "enum" IDENT "{" enumVariant ("," enumVariant)* [","] "}"
+classDecl   ::= "class" IDENT ["[" genericParams "]"] ["extends" qualifiedName] ["implements" qualifiedNameList] "{" member* "}"
+structDecl  ::= "struct" IDENT ["[" genericParams "]"] ["implements" qualifiedNameList] "{" member* "}"
+interfaceDecl ::= "interface" IDENT ["[" genericParams "]"] "{" interfaceMember* "}"
+enumDecl    ::= "enum" IDENT "{" enumVariant ("," enumVariant)* [","] "}"
 enumVariant ::= IDENT ["=" ["-"] INTEGER]
 funcDecl    ::= "func" IDENT ["[" genericParams "]"] "(" params ")" ["->" type] (block | "=" expr ";")
+asyncFuncDecl ::= "async" funcDecl
 foreignFuncDecl ::= "foreign" "func" IDENT "(" params ")" ["->" type] [";"]
+interfaceMember ::= "func" IDENT ["[" genericParams "]"] "(" params ")" ["->" type] (";" | block)
 genericParams ::= IDENT [":" qualifiedName] ("," IDENT [":" qualifiedName])*
 param       ::= IDENT ":" ["..."] type ["=" expr]
 varDecl     ::= ("var" | "final" | "let") (IDENT [":" type] | tupleBinding) ["=" expr] ";"
@@ -1986,11 +2056,12 @@ stmt        ::= block | varStmt | ifStmt | whileStmt | forStmt | forInStmt
               | returnStmt | breakStmt | continueStmt | deferStmt | guardStmt | matchStmt
               | tryStmt | throwStmt | exprStmt
 block       ::= "{" stmt* "}"
-ifStmt      ::= "if" expr block ["else" (ifStmt | block)]
-whileStmt   ::= "while" expr block
-forStmt     ::= "for" "(" [varStmt | exprStmt] expr ";" expr ")" block
-forInStmt   ::= "for" forBinding "in" expr block
-              | "for" "(" forBinding "in" expr ")" block
+body        ::= block | stmt
+ifStmt      ::= "if" expr body ["else" (ifStmt | body)]
+whileStmt   ::= "while" expr body
+forStmt     ::= "for" "(" [varDecl | expr ";"] [expr] ";" [expr] ")" body
+forInStmt   ::= "for" forBinding "in" expr body
+              | "for" "(" forBinding "in" expr ")" body
 forBinding  ::= IDENT [":" type] ["," IDENT [":" type]]
 returnStmt  ::= "return" [expr] ";"
 breakStmt   ::= "break" ";"

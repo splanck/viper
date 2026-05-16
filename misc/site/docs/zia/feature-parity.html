@@ -102,9 +102,9 @@
 </tr>
 <tr>
 <td>Ptr (opaque)</td>
-<td>**Full**</td>
-<td>**Full** (`Object`)</td>
-<td>Both use IL `ptr`</td>
+<td>None</td>
+<td>None</td>
+<td>Raw runtime pointers are internal; Zia uses typed runtime classes/`Any`, BASIC uses `Object`</td>
 </tr>
 <tr>
 <td>Any (top type)</td>
@@ -123,6 +123,12 @@
 <td>None</td>
 <td>**Full**</td>
 <td>BASIC only</td>
+</tr>
+<tr>
+<td>Compatibility type aliases</td>
+<td>**Full** (`int`, `bool`, `double`, `Bytes`)</td>
+<td>**Full** (`I64`, `Bool`, `F64`, `Object`)</td>
+<td>Different spellings; Zia aliases resolve during semantic analysis</td>
 </tr>
 <tr>
 <td>Type inference</td>
@@ -214,7 +220,7 @@
 <td>C-style for</td>
 <td>**Full** (`for (;;)`)</td>
 <td>None</td>
-<td>Zia only</td>
+<td>Zia only; initializer accepts `var`, `final`, or `let`</td>
 </tr>
 <tr>
 <td>Counted for</td>
@@ -303,6 +309,18 @@
 <td></td>
 </tr>
 <tr>
+<td>Async function declaration</td>
+<td>**Full** (`async func`, `expose async func`)</td>
+<td>None</td>
+<td>Zia only; returns `Viper.Threads.Future`</td>
+</tr>
+<tr>
+<td>Foreign function declaration</td>
+<td>**Full** (`foreign func`, `expose foreign func`)</td>
+<td>**Full interop target**</td>
+<td>Zia can declare linked functions implemented elsewhere</td>
+</tr>
+<tr>
 <td>Void procedure</td>
 <td>**Full** (returns `Void`)</td>
 <td>**Full** (`SUB/END SUB`)</td>
@@ -316,9 +334,9 @@
 </tr>
 <tr>
 <td>Named arguments</td>
-<td>**Parsed**</td>
+<td>**Full**</td>
 <td>None</td>
-<td>Zia parses but unclear if fully used</td>
+<td>Reordering and defaulted trailing parameters are supported</td>
 </tr>
 <tr>
 <td>Default parameters</td>
@@ -346,9 +364,9 @@
 </tr>
 <tr>
 <td>Variadic parameters</td>
+<td>**Full** (`func sum(nums: ...Integer)`)</td>
 <td>None</td>
-<td>None</td>
-<td>Neither</td>
+<td>Zia packs extra args into `List[T]`</td>
 </tr>
 <tr>
 <td>Function overloading</td>
@@ -366,7 +384,7 @@
 <td>Constrained generics</td>
 <td>**Full** (`[T: Interface]`)</td>
 <td>None</td>
-<td>Zia only</td>
+<td>Zia only; supported on functions, methods, classes, structs, and interfaces</td>
 </tr>
 <tr>
 <td>Function references</td>
@@ -396,7 +414,7 @@
 </tr>
 <tr>
 <td>Value type (copy)</td>
-<td>**Full** (`value`)</td>
+<td>**Full** (`struct`)</td>
 <td>**Full** (`TYPE`)</td>
 <td>BASIC TYPE is fields-only (no methods)</td>
 </tr>
@@ -435,6 +453,12 @@
 <td>**Full** (itable dispatch)</td>
 <td>**Full** (itable dispatch)</td>
 <td>Both use runtime itable binding</td>
+</tr>
+<tr>
+<td>Default interface methods</td>
+<td>**Full**</td>
+<td>None</td>
+<td>Zia fills missing itable slots from interface method bodies</td>
 </tr>
 <tr>
 <td>Virtual methods</td>
@@ -522,9 +546,9 @@
 </tr>
 <tr>
 <td>Weak references</td>
-<td>**Parsed**</td>
+<td>**Full**</td>
 <td>None</td>
-<td>Zia parses `weak` but doesn&#x27;t lower</td>
+<td>Zia supports `weak` fields for non-owning references</td>
 </tr>
 </tbody></table>
 <h3 id="1-5-collections">1.5 Collections</h3>
@@ -740,7 +764,7 @@
 <td>Try propagation (?)</td>
 <td>**Full**</td>
 <td>None</td>
-<td>Zia only — early return on null</td>
+<td>Zia only — early return on null optional or `Err` result</td>
 </tr>
 <tr>
 <td>Force unwrap (!)</td>
@@ -750,9 +774,9 @@
 </tr>
 <tr>
 <td>Result type</td>
-<td>**Typed** (exists in type system)</td>
+<td>**Full** (`Ok(value)`, `Err(message)`)</td>
 <td>None</td>
-<td>Zia has the type but no construction/destructure</td>
+<td>Zia supports construction, helpers, pattern matching, and `?` propagation</td>
 </tr>
 </tbody></table>
 <p><strong>Analysis</strong>: Both frontends now have structured exception handling. Zia additionally uses null-safe optional types for expected failures. BASIC also has unstructured EH (ON ERROR GOTO) which Zia does not support.</p>
@@ -877,9 +901,7 @@
 </tr>
 <tr>
 <td>Logical OR (short-circuit)</td>
-<td>**Full** (`\</td>
-<td>\</td>
-<td>` or `or`)</td>
+<td>**Full** (`||` or `or`)</td>
 <td>**Full** (`ORELSE`)</td>
 <td></td>
 </tr>
@@ -903,8 +925,7 @@
 </tr>
 <tr>
 <td>Bitwise OR</td>
-<td>**Full** (`\</td>
-<td>`)</td>
+<td>**Full** (`|`)</td>
 <td>None</td>
 <td>Zia only</td>
 </tr>
@@ -1127,16 +1148,6 @@
 <th>Status in Zia</th>
 </tr></thead><tbody>
 <tr>
-<td>Result type</td>
-<td>Type exists in type system</td>
-<td>**No construction or destructuring**</td>
-</tr>
-<tr>
-<td>Weak references</td>
-<td>`weak` keyword parsed</td>
-<td>**No lowering or runtime support**</td>
-</tr>
-<tr>
 <td>Abstract/Final modifiers</td>
 <td>Could validate in sema</td>
 <td>**No syntax**</td>
@@ -1207,6 +1218,21 @@
 <td>Operator confusion warnings</td>
 <td>**Full**</td>
 <td>W017 (`^` XOR) and W018 (`&amp;` AND) default-enabled</td>
+</tr>
+<tr>
+<td>Result construction, patterns, and propagation</td>
+<td>**Full**</td>
+<td>`Ok`, `Err`, helpers, `match`, and postfix `?`</td>
+</tr>
+<tr>
+<td>Weak fields</td>
+<td>**Full**</td>
+<td>Non-owning class/interface/Any optional reference fields</td>
+</tr>
+<tr>
+<td>Default interface methods</td>
+<td>**Full**</td>
+<td>Interface body methods can fill missing itable slots</td>
 </tr>
 </tbody></table>
 <h3 id="basic-hasn-t-wired-up">BASIC hasn&#x27;t wired up:</h3>

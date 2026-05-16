@@ -1253,7 +1253,7 @@ static void printDecl(const Decl &decl, Printer &p) {
             const auto &d = static_cast<const StructDecl &>(decl);
             p.line("StructDecl \"" + d.name + "\" " + locStr(d.loc));
             p.push();
-            printGenericParams(d.genericParams, p);
+            printGenericParamsWithConstraints(d.genericParams, d.genericParamConstraints, p);
             printInterfaces(d.interfaces, p);
             printMembers(d.members, p);
             p.pop();
@@ -1267,7 +1267,7 @@ static void printDecl(const Decl &decl, Printer &p) {
             header += " " + locStr(d.loc);
             p.line(header);
             p.push();
-            printGenericParams(d.genericParams, p);
+            printGenericParamsWithConstraints(d.genericParams, d.genericParamConstraints, p);
             printInterfaces(d.interfaces, p);
             printMembers(d.members, p);
             p.pop();
@@ -1277,7 +1277,7 @@ static void printDecl(const Decl &decl, Printer &p) {
             const auto &d = static_cast<const InterfaceDecl &>(decl);
             p.line("InterfaceDecl \"" + d.name + "\" " + locStr(d.loc));
             p.push();
-            printGenericParams(d.genericParams, p);
+            printGenericParamsWithConstraints(d.genericParams, d.genericParamConstraints, p);
             printMembers(d.members, p);
             p.pop();
             break;
@@ -1335,7 +1335,7 @@ static void printDecl(const Decl &decl, Printer &p) {
             p.line(header);
             p.push();
             printVisibility(d.visibility, p);
-            printGenericParams(d.genericParams, p);
+            printGenericParamsWithConstraints(d.genericParams, d.genericParamConstraints, p);
             printParams(d.params, p);
             printReturnType(d.returnType, p);
             printBody(d.body, p);

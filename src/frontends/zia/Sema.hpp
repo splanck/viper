@@ -1296,6 +1296,18 @@ class Sema {
     /// @return Vector of type parameter names.
     static std::vector<std::string> getGenericParams(const Decl *decl);
 
+    /// @brief Get generic parameter constraints from a declaration.
+    /// @param decl The declaration (StructDecl, ClassDecl, InterfaceDecl, or FunctionDecl).
+    /// @return Vector of constraint names parallel to getGenericParams().
+    static std::vector<std::string> getGenericParamConstraints(const Decl *decl);
+
+    /// @brief Validate concrete type arguments against generic constraints.
+    bool validateGenericConstraints(const std::vector<std::string> &params,
+                                    const std::vector<std::string> &constraints,
+                                    const std::vector<TypeRef> &args,
+                                    SourceLoc loc,
+                                    const std::string &subjectName);
+
     /// @brief Analyze a generic type body with current substitutions.
     /// @param decl The generic type declaration.
     /// @param mangledName The mangled name for the instantiation.

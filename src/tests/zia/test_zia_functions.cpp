@@ -535,6 +535,82 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
+TEST(ZiaFunctions, ConstrainedGenericTypesAndMethods) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+interface Named {
+    func name() -> String;
+}
+
+class User implements Named {
+    expose func name() -> String {
+        return "user";
+    }
+}
+
+class Box[T: Named] {
+    expose T item;
+}
+
+class Helper {
+    expose func accept[T: Named](value: T) -> Integer {
+        return 1;
+    }
+}
+
+func start() {
+    var user = new User();
+    var box = new Box[User](user);
+    var helper = new Helper();
+    var ok = helper.accept[User](user);
+    Viper.Terminal.SayInt(ok);
+}
+)";
+    CompilerInput input{.source = source, .path = "generic_type_method_constraints.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+TEST(ZiaFunctions, GenericConstraintViolationFails) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+interface Named {
+    func name() -> String;
+}
+
+class Plain {
+}
+
+class Box[T: Named] {
+    expose T item;
+}
+
+func start() {
+    var plain = new Plain();
+    var box = new Box[Plain](plain);
+}
+)";
+    CompilerInput input{.source = source, .path = "generic_constraint_violation.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_FALSE(result.succeeded());
+    bool foundConstraintError = false;
+    for (const auto &d : result.diagnostics.diagnostics()) {
+        if (d.message.find("does not implement interface 'Named'") != std::string::npos)
+            foundConstraintError = true;
+    }
+    EXPECT_TRUE(foundConstraintError);
+}
+
 } // namespace
 
 int main() {

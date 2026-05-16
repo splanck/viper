@@ -188,6 +188,28 @@ DeclPtr Parser::parseDeclaration() {
             return decl;
         };
 
+        if (check(TokenKind::KwAsync)) {
+            advance(); // consume 'async'
+            if (!check(TokenKind::KwFunc)) {
+                error("expected 'func' after 'async'");
+                return nullptr;
+            }
+            auto decl = parseFunctionDecl();
+            if (decl)
+                static_cast<FunctionDecl *>(decl.get())->isAsync = true;
+            return applyTopLevelVisibility(std::move(decl));
+        }
+        if (check(TokenKind::KwForeign)) {
+            advance(); // consume 'foreign'
+            if (!check(TokenKind::KwFunc)) {
+                error("expected 'func' after 'foreign'");
+                return nullptr;
+            }
+            auto decl = parseFunctionDecl(/*isForeign=*/true);
+            if (decl)
+                static_cast<FunctionDecl *>(decl.get())->isForeign = true;
+            return applyTopLevelVisibility(std::move(decl));
+        }
         if (check(TokenKind::KwFunc))
             return applyTopLevelVisibility(parseFunctionDecl());
         if (check(TokenKind::KwEnum))
@@ -508,6 +530,7 @@ bool Parser::parseMemberBlock(std::vector<DeclPtr> &members,
                               bool allowOverride) {
     while (!check(TokenKind::RBrace) && !check(TokenKind::Eof)) {
         Visibility visibility = defaultVisibility;
+        bool visibilityExplicit = false;
         bool isOverride = false;
         bool isStatic = false;
         bool isWeak = false;
@@ -516,11 +539,13 @@ bool Parser::parseMemberBlock(std::vector<DeclPtr> &members,
         while (check(TokenKind::KwExpose) || check(TokenKind::KwHide) ||
                (allowOverride && check(TokenKind::KwOverride)) || check(TokenKind::KwStatic) ||
                check(TokenKind::KwWeak)) {
-            if (match(TokenKind::KwExpose))
+            if (match(TokenKind::KwExpose)) {
                 visibility = Visibility::Public;
-            else if (match(TokenKind::KwHide))
+                visibilityExplicit = true;
+            } else if (match(TokenKind::KwHide)) {
                 visibility = Visibility::Private;
-            else if (allowOverride && match(TokenKind::KwOverride))
+                visibilityExplicit = true;
+            } else if (allowOverride && match(TokenKind::KwOverride))
                 isOverride = true;
             else if (match(TokenKind::KwStatic))
                 isStatic = true;
@@ -529,6 +554,10 @@ bool Parser::parseMemberBlock(std::vector<DeclPtr> &members,
         }
 
         if (check(TokenKind::KwFunc)) {
+            if (isWeak)
+                error("'weak' can only be used on fields");
+            if (isStatic && isOverride)
+                error("'static' methods cannot be marked 'override'");
             auto method = parseMethodDecl();
             if (method) {
                 auto *m = static_cast<MethodDecl *>(method.get());
@@ -538,6 +567,10 @@ bool Parser::parseMemberBlock(std::vector<DeclPtr> &members,
                 members.push_back(std::move(method));
             }
         } else if (check(TokenKind::KwProperty)) {
+            if (isWeak)
+                error("'weak' can only be used on fields");
+            if (isOverride)
+                error("'override' can only be used on methods");
             auto prop = parsePropertyDecl();
             if (prop) {
                 auto *p = static_cast<PropertyDecl *>(prop.get());
@@ -546,6 +579,8 @@ bool Parser::parseMemberBlock(std::vector<DeclPtr> &members,
                 members.push_back(std::move(prop));
             }
         } else if (check(TokenKind::KwDeinit)) {
+            if (visibilityExplicit || isOverride || isStatic || isWeak)
+                error("'deinit' declarations cannot use expose, hide, override, static, or weak");
             Token deinitTok = advance(); // consume 'deinit'
             auto dtor = std::make_unique<DestructorDecl>(deinitTok.loc);
 
@@ -571,6 +606,8 @@ bool Parser::parseMemberBlock(std::vector<DeclPtr> &members,
                     advance();
             }
         } else if (check(TokenKind::Identifier) || check(TokenKind::KwVar)) {
+            if (isOverride)
+                error("'override' can only be used on methods");
             auto field = parseFieldDecl();
             if (field) {
                 auto *f = static_cast<FieldDecl *>(field.get());
@@ -604,7 +641,7 @@ DeclPtr Parser::parseStructDecl() {
     auto decl = std::make_unique<StructDecl>(loc, std::move(name));
 
     // Generic parameters
-    decl->genericParams = parseGenericParams();
+    decl->genericParams = parseGenericParamsWithConstraints(decl->genericParamConstraints);
 
     // Implements clause
     if (!parseInterfaceList(decl->interfaces))
@@ -638,7 +675,7 @@ DeclPtr Parser::parseClassDecl() {
     auto decl = std::make_unique<ClassDecl>(loc, std::move(name));
 
     // Generic parameters
-    decl->genericParams = parseGenericParams();
+    decl->genericParams = parseGenericParamsWithConstraints(decl->genericParamConstraints);
 
     // Extends clause
     if (match(TokenKind::KwExtends)) {
@@ -680,7 +717,7 @@ DeclPtr Parser::parseInterfaceDecl() {
     auto iface = std::make_unique<InterfaceDecl>(loc, std::move(name));
 
     // Generic parameters
-    iface->genericParams = parseGenericParams();
+    iface->genericParams = parseGenericParamsWithConstraints(iface->genericParamConstraints);
 
     // Body
     if (!expect(TokenKind::LBrace, "{"))
@@ -894,7 +931,7 @@ DeclPtr Parser::parseMethodDecl() {
     auto method = std::make_unique<MethodDecl>(loc, std::move(name));
 
     // Generic parameters
-    method->genericParams = parseGenericParams();
+    method->genericParams = parseGenericParamsWithConstraints(method->genericParamConstraints);
 
     // Parameters
     if (!expect(TokenKind::LParen, "("))

@@ -261,6 +261,28 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
+TEST(ZiaTypes, CompatibilityTypeAliasesAndBytes) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var count: int = 1;
+    var ok: bool = true;
+    var ratio: double = 1.5;
+    var bytes: Bytes;
+    Viper.Terminal.SayInt(count);
+    Viper.Terminal.SayBool(ok);
+}
+)";
+    CompilerInput input{.source = source, .path = "type_aliases_bytes.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
 TEST(ZiaTypes, QualifiedGenericConstraintsParse) {
     SourceManager sm;
     const std::string source = R"(

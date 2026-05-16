@@ -344,7 +344,36 @@ func start() {
     auto result = compile(input, opts, sm);
 
     EXPECT_FALSE(result.succeeded());
-    EXPECT_TRUE(hasErrorContaining(result, "requires an optional operand"));
+    EXPECT_TRUE(hasErrorContaining(result, "requires an optional or Result operand"));
+}
+
+TEST(ZiaTryCatch, TryExpressionPropagatesResultErr) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func maybeInt(flag: Boolean) -> Result[Integer] {
+    if flag {
+        return Ok(4);
+    }
+    return Err("bad");
+}
+
+func pass(flag: Boolean) -> Result[Integer] {
+    var value: Integer = maybeInt(flag)?;
+    return Ok(value + 1);
+}
+
+func start() {
+    var result: Result[Integer] = pass(true);
+}
+)";
+
+    CompilerInput input{.source = source, .path = "test_try_expr_result.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
 }
 
 TEST(ZiaTryCatch, TryExpressionRequiresOptionalReturn) {

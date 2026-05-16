@@ -105,6 +105,45 @@ func start() {    final PI = 314159;
     EXPECT_TRUE(result.succeeded());
 }
 
+TEST(ZiaStatements, LetAliasInCStyleForInitializer) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var done = false;
+    for (let i = 0; !done; done = true) {
+        Viper.Terminal.SayInt(i);
+    }
+}
+)";
+    CompilerInput input{.source = source, .path = "for_let_alias.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+TEST(ZiaStatements, SingleStatementIfAndWhileBodiesCompile) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var x = 0;
+    if true x = x + 1;
+    while x < 2 x = x + 1;
+}
+)";
+    CompilerInput input{.source = source, .path = "single_statement_bodies.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
 //===----------------------------------------------------------------------===//
 // If Statements
 //===----------------------------------------------------------------------===//

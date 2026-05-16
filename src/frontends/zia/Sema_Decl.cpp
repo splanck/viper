@@ -519,7 +519,7 @@ void Sema::validateInterfaceImplementations(const std::string &typeName,
                 }
             }
 
-            if (!implMethod) {
+            if (!implMethod && !ifaceMethod->body) {
                 error(loc,
                       "Type '" + typeName + "' does not implement interface method '" +
                           resolvedIfaceName + "." + ifaceMethod->name + "'");
@@ -527,7 +527,7 @@ void Sema::validateInterfaceImplementations(const std::string &typeName,
                 continue;
             }
 
-            if (implMethod->visibility != Visibility::Public) {
+            if (implMethod && implMethod->visibility != Visibility::Public) {
                 error(loc,
                       "Method '" + typeName + "." + implMethod->name +
                           "' must be public to satisfy interface '" + resolvedIfaceName + "'");
@@ -857,7 +857,7 @@ void Sema::analyzeInterfaceDecl(InterfaceDecl &decl) {
 
     pushScope(decl.loc);
 
-    // Analyze method signatures
+    // Analyze method signatures and default bodies.
     for (auto &member : decl.members) {
         if (member->kind == DeclKind::Method) {
             auto *method = static_cast<MethodDecl *>(member.get());
@@ -873,6 +873,14 @@ void Sema::analyzeInterfaceDecl(InterfaceDecl &decl) {
             if (!currentScope_->lookupLocal(method->name))
                 defineSymbol(method->name, sym);
         }
+    }
+
+    for (auto &member : decl.members) {
+        if (member->kind != DeclKind::Method)
+            continue;
+        auto *method = static_cast<MethodDecl *>(member.get());
+        if (method->body)
+            analyzeMethodDecl(*method, selfType);
     }
 
     popScope(decl.loc);

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-09
+last-verified: 2026-05-16
 ---
 
 # Zia vs Viper BASIC: Feature Parity Matrix
@@ -36,6 +36,7 @@ This document is a comprehensive feature parity audit between the two Viper fron
 | Any (managed top type) | **Full** | None | Zia only; boxes primitives and carries objects/function refs |
 | Never (bottom type) | **Partial** | None | Name resolves; useful for type analysis, but no storable value |
 | Type suffixes (`$`, `%`, `#`) | None | **Full** | BASIC only |
+| Compatibility type aliases | **Full** (`int`, `bool`, `double`, `Bytes`) | **Full** (`I64`, `Bool`, `F64`, `Object`) | Different spellings; Zia aliases resolve during semantic analysis |
 | Type inference | **Full** | **Partial** (from context) | Zia infers from initializer; BASIC from suffix or AS |
 | Mutable variable | **Full** (`var`) | **Full** (`DIM`) | |
 | Immutable binding | **Full** (`final`) | **Full** (`CONST`) | BASIC CONST is compile-time only |
@@ -54,7 +55,7 @@ This document is a comprehensive feature parity audit between the two Viper fron
 | Ternary operator | **Full** (`a ? b : c`) | None | Zia only |
 | while loop | **Full** (`while`) | **Full** (`WHILE/WEND`) | |
 | do-while / do-until | None | **Full** (`DO/LOOP WHILE/UNTIL`) | BASIC only — pre-test and post-test |
-| C-style for | **Full** (`for (;;)`) | None | Zia only |
+| C-style for | **Full** (`for (;;)`) | None | Zia only; initializer accepts `var`, `final`, or `let` |
 | Counted for | None | **Full** (`FOR i = a TO b STEP s`) | BASIC only |
 | for-in (range) | **Full** (`for (i in 0..10)`) | None | Zia only |
 | for-in (collection) | **Full** | **Full** (`FOR EACH`) | Both iterate collections |
@@ -73,6 +74,8 @@ This document is a comprehensive feature parity audit between the two Viper fron
 | Feature | Zia | BASIC | Notes |
 |---------|-----|-------|-------|
 | Function declaration | **Full** (`func`) | **Full** (`FUNCTION/END FUNCTION`) | |
+| Async function declaration | **Full** (`async func`, `expose async func`) | None | Zia only; returns `Viper.Threads.Future` |
+| Foreign function declaration | **Full** (`foreign func`, `expose foreign func`) | **Full interop target** | Zia can declare linked functions implemented elsewhere |
 | Void procedure | **Full** (returns `Void`) | **Full** (`SUB/END SUB`) | |
 | Return type annotation | **Full** (`-> Type`) | **Full** (`AS Type`) | |
 | Named arguments | **Full** (`name: value`) | None | Reordering and defaulted trailing parameters are supported |
@@ -83,7 +86,7 @@ This document is a comprehensive feature parity audit between the two Viper fron
 | Variadic parameters | **Full** (`func sum(nums: ...Integer)`) | None | Zia packs extra args into `List[T]` |
 | Function overloading | **Full** | None | Zia supports overloads by compatible signature/arity |
 | Generic functions | **Full** (`func f[T](x: T)`) | None | Zia only |
-| Constrained generics | **Full** (`[T: Interface]`) | None | Zia only |
+| Constrained generics | **Full** (`[T: Interface]`) | None | Zia only; supported on functions, methods, classes, structs, and interfaces |
 | Function references | **Full** (`&funcName`) | **Full** (`ADDRESSOF`) | Both produce managed callback/function references |
 | Lambda / closure | **Full** (`(x: Integer) => x + 1`) | None | **Major gap** — Zia only |
 
@@ -99,6 +102,7 @@ This document is a comprehensive feature parity audit between the two Viper fron
 | Single inheritance | **Full** (`extends`) | **Full** (`:` syntax) | |
 | Interface declaration | **Full** (`interface`) | **Full** (`INTERFACE`) | |
 | Interface implementation | **Full** (itable dispatch) | **Full** (itable dispatch) | Both use runtime itable binding |
+| Default interface methods | **Full** | None | Zia fills missing itable slots from interface method bodies |
 | Virtual methods | Implicit (all virtual) | **Full** (`VIRTUAL` modifier) | BASIC has explicit vtable dispatch |
 | Override methods | **Full** (`override`) | **Full** (`OVERRIDE`) | |
 | Abstract methods | None | **Full** (`ABSTRACT`) | BASIC only |
@@ -160,9 +164,9 @@ This document is a comprehensive feature parity audit between the two Viper fron
 | Optional type (T?) | **Full** | None | Zia only — null-safe type system |
 | Null coalescing (??) | **Full** | None | Zia only |
 | Optional chaining (?.) | **Full** | None | Zia only |
-| Try propagation (?) | **Full** | None | Zia only — early return on null |
+| Try propagation (?) | **Full** | None | Zia only — early return on null optional or `Err` result |
 | Force unwrap (!) | **Full** | None | Zia only — trap on null |
-| Result type | **Full** (`Ok(value)`, `Err(message)`) | None | Zia supports construction, helpers, and pattern matching |
+| Result type | **Full** (`Ok(value)`, `Err(message)`) | None | Zia supports construction, helpers, pattern matching, and `?` propagation |
 
 **Analysis**: Both frontends now have structured exception handling. Zia additionally uses null-safe optional types for expected failures. BASIC also has unstructured EH (ON ERROR GOTO) which Zia does not support.
 

@@ -62,6 +62,31 @@ func resultText(r: Result[Integer]) -> String {
     return "none";
 }
 
+interface RuntimeNamed {
+    func name() -> String;
+    func label() -> String {
+        return "name: " + self.name();
+    }
+}
+
+class RuntimeThing implements RuntimeNamed {
+    expose func name() -> String {
+        return "thing";
+    }
+}
+
+func promisedResult(flag: Boolean) -> Result[Integer] {
+    if flag {
+        return Ok(41);
+    }
+    return Err("nope");
+}
+
+func propagateResult(flag: Boolean) -> Result[Integer] {
+    var value: Integer = promisedResult(flag)?;
+    return Ok(value + 1);
+}
+
 func testTupleDestructuring() {
     var pair = (41, "answer");
     var (n: Integer, label: String) = pair;
@@ -80,6 +105,14 @@ func testResultConstructorsAndPatterns() {
     assertEqStr(err.unwrapErr(), "bad", "result_err_unwrap_err");
     assertEqStr(resultText(ok), "ok 7", "result_match_ok");
     assertEqStr(resultText(err), "err bad", "result_match_err");
+    assertEqInt(propagateResult(true).unwrap(), 42, "result_try_ok");
+    assertEqStr(propagateResult(false).unwrapErr(), "nope", "result_try_err");
+}
+
+func testDefaultInterfaceMethod() {
+    var thing = new RuntimeThing();
+    var named: RuntimeNamed = thing;
+    assertEqStr(named.label(), "name: thing", "default_interface_method");
 }
 
 func testFunctionReferences() {
@@ -124,6 +157,7 @@ func start() {
 
     testTupleDestructuring();
     testResultConstructorsAndPatterns();
+    testDefaultInterfaceMethod();
     testFunctionReferences();
     testInitOverrideInference();
     testWeakFields();

@@ -648,23 +648,36 @@ TypeRef Sema::analyzeTry(TryExpr *expr) {
     if (!operandType || operandType->kind == TypeKindSem::Unknown)
         return types::unknown();
 
-    if (operandType->kind != TypeKindSem::Optional) {
+    if (operandType->kind != TypeKindSem::Optional && operandType->kind != TypeKindSem::Result) {
         error(expr->loc,
-              "Try expression '?' requires an optional operand, got " +
+              "Try expression '?' requires an optional or Result operand, got " +
                   operandType->toDisplayString());
         return operandType;
     }
 
-    TypeRef innerType = operandType->innerType() ? operandType->innerType() : types::unknown();
+    TypeRef innerType = operandType->kind == TypeKindSem::Optional
+                            ? (operandType->innerType() ? operandType->innerType()
+                                                         : types::unknown())
+                            : (!operandType->typeArgs.empty() ? operandType->typeArgs[0]
+                                                               : types::unknown());
 
     if (!expectedReturnType_) {
         error(expr->loc, "Try expression '?' can only be used inside a function");
         return innerType;
     }
 
+    if (operandType->kind == TypeKindSem::Result) {
+        if (expectedReturnType_->kind != TypeKindSem::Result) {
+            error(expr->loc,
+                  "Try expression '?' can only propagate a Result from a function returning Result");
+        }
+        return innerType;
+    }
+
     if (expectedReturnType_->kind != TypeKindSem::Optional) {
         error(expr->loc,
-              "Try expression '?' can only propagate from a function returning an optional type");
+              "Try expression '?' can only propagate an optional from a function returning an "
+              "optional type");
         return innerType;
     }
 

@@ -302,6 +302,11 @@ struct MethodDecl : Decl {
     /// @brief Generic type parameter names.
     std::vector<std::string> genericParams;
 
+    /// @brief Optional constraints for generic type parameters.
+    /// @details Parallel array to genericParams. If genericParamConstraints[i] is non-empty,
+    /// it specifies the interface that genericParams[i] must implement.
+    std::vector<std::string> genericParamConstraints;
+
     /// @brief Method parameters (does not include implicit `self`).
     std::vector<Param> params;
 
@@ -464,6 +469,9 @@ struct StructDecl : Decl {
     /// @brief Generic type parameter names.
     std::vector<std::string> genericParams;
 
+    /// @brief Optional constraints for generic type parameters.
+    std::vector<std::string> genericParamConstraints;
+
     /// @brief Implemented interface names.
     std::vector<std::string> interfaces;
 
@@ -500,6 +508,9 @@ struct ClassDecl : Decl {
     /// @brief Generic type parameter names.
     std::vector<std::string> genericParams;
 
+    /// @brief Optional constraints for generic type parameters.
+    std::vector<std::string> genericParamConstraints;
+
     /// @brief Parent class name (empty = no inheritance).
     std::string baseClass;
 
@@ -533,7 +544,10 @@ struct InterfaceDecl : Decl {
     /// @brief Generic type parameter names.
     std::vector<std::string> genericParams;
 
-    /// @brief Method signature declarations (body must be nullptr).
+    /// @brief Optional constraints for generic type parameters.
+    std::vector<std::string> genericParamConstraints;
+
+    /// @brief Method signature declarations. Methods may include default bodies.
     std::vector<DeclPtr> members;
 
     /// @brief Construct an interface declaration.

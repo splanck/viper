@@ -10,6 +10,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/Compiler.hpp"
+#include "il/core/Linkage.hpp"
 #include "il/core/Opcode.hpp"
 #include "support/source_manager.hpp"
 #include "tests/TestHarness.hpp"
@@ -145,6 +146,40 @@ func start() {
             foundPrivateError = true;
     }
     EXPECT_TRUE(foundPrivateError);
+}
+
+TEST(ZiaVisibility, ExposedAsyncAndForeignDeclarations) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+expose async func fetch() -> Integer {
+    return 7;
+}
+
+expose foreign func hostValue() -> Integer;
+
+func start() {
+    var future = fetch();
+}
+)";
+    CompilerInput input{.source = source, .path = "expose_async_foreign.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+
+    bool sawFetchExport = false;
+    bool sawHostImport = false;
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "fetch" && fn.linkage == il::core::Linkage::Export)
+            sawFetchExport = true;
+        if (fn.name == "hostValue" && fn.linkage == il::core::Linkage::Import)
+            sawHostImport = true;
+    }
+    EXPECT_TRUE(sawFetchExport);
+    EXPECT_TRUE(sawHostImport);
 }
 
 } // namespace

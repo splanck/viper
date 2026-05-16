@@ -226,6 +226,46 @@ func start() {    var r = new Rect();
     EXPECT_TRUE(hasCall(result.module, "computePerimeter", "rt_get_interface_impl"));
 }
 
+TEST(ZiaIfaceDispatch, DefaultInterfaceMethodFillsMissingSlot) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+interface INamed {
+    func name() -> String;
+    func label() -> String {
+        return "name: " + self.name();
+    }
+}
+
+class Thing implements INamed {
+    expose func name() -> String {
+        return "thing";
+    }
+}
+
+func render(item: INamed) -> String {
+    return item.label();
+}
+
+func start() {
+    var t = new Thing();
+    var item: INamed = t;
+    Viper.Terminal.Say(render(item));
+}
+)";
+    CompilerInput input{.source = source, .path = "iface_default.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+    if (!result.succeeded())
+        dumpDiags(result);
+    EXPECT_TRUE(result.succeeded());
+
+    EXPECT_TRUE(hasFunction(result.module, "INamed.label"));
+    EXPECT_TRUE(hasCall(result.module, "INamed.label", "rt_get_interface_impl"));
+    EXPECT_TRUE(hasCall(result.module, "__zia_iface_init", "rt_bind_interface"));
+}
+
 /// @brief No interfaces defined — no __zia_iface_init emitted.
 TEST(ZiaIfaceDispatch, NoInterfacesNoInit) {
     SourceManager sm;

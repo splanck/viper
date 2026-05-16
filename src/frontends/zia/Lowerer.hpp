@@ -556,6 +556,9 @@ class Lowerer {
     /// @param decl The interface declaration.
     void lowerInterfaceDecl(InterfaceDecl &decl);
 
+    /// @brief Lower an interface default method body.
+    void lowerInterfaceDefaultMethodDecl(MethodDecl &decl, const std::string &interfaceName);
+
     /// @brief Lower an enum declaration: register variant values.
     /// @param decl The enum declaration.
     void lowerEnumDecl(EnumDecl &decl);

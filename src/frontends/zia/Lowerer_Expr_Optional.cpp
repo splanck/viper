@@ -456,10 +456,48 @@ LowerResult Lowerer::lowerOptionalMethodCall(OptionalChainExpr *callee, CallExpr
 //=============================================================================
 
 LowerResult Lowerer::lowerTry(TryExpr *expr) {
-    // The ? operator propagates null/error by returning early from the function
-    // For now, we implement this for optional types (null propagation)
-
     auto operand = lowerExpr(expr->operand.get());
+    TypeRef operandType = sema_.typeOf(expr->operand.get());
+
+    if (operandType && operandType->kind == TypeKindSem::Result) {
+        TypeRef successType =
+            !operandType->typeArgs.empty() ? operandType->typeArgs[0] : types::unknown();
+
+        auto resultUnwrapCallee = [](TypeRef type) -> const char * {
+            if (!type)
+                return "Viper.Result.Unwrap";
+            switch (type->kind) {
+                case TypeKindSem::String:
+                    return "Viper.Result.UnwrapStr";
+                case TypeKindSem::Integer:
+                case TypeKindSem::Enum:
+                    return "Viper.Result.UnwrapI64";
+                case TypeKindSem::Number:
+                    return "Viper.Result.UnwrapF64";
+                default:
+                    return "Viper.Result.Unwrap";
+            }
+        };
+
+        size_t okIdx = createBlock("try.result_ok");
+        size_t errIdx = createBlock("try.result_err");
+        Value isOk =
+            emitCallRet(Type(Type::Kind::I1), "Viper.Result.get_IsOk", {operand.value});
+        emitCBr(isOk, okIdx, errIdx);
+
+        setBlock(errIdx);
+        emitRet(operand.value);
+
+        setBlock(okIdx);
+        Type ilSuccessType = mapType(successType);
+        const char *callee = resultUnwrapCallee(successType);
+        Type runtimeReturn = std::string(callee) == "Viper.Result.Unwrap" ? Type(Type::Kind::Ptr)
+                                                                          : ilSuccessType;
+        Value raw = emitCallRet(runtimeReturn, callee, {operand.value});
+        if (runtimeReturn.kind == ilSuccessType.kind)
+            return {raw, ilSuccessType};
+        return emitUnboxValue(raw, ilSuccessType, successType);
+    }
 
     // Create blocks for the null check
     size_t hasValueIdx = createBlock("try.hasvalue");
@@ -513,7 +551,6 @@ LowerResult Lowerer::lowerTry(TryExpr *expr) {
     setBlock(hasValueIdx);
 
     // Return the operand value (unwrap optionals when needed)
-    TypeRef operandType = sema_.typeOf(expr->operand.get());
     if (operandType && operandType->kind == TypeKindSem::Optional) {
         TypeRef innerTypeRef = operandType->innerType();
         if (innerTypeRef)

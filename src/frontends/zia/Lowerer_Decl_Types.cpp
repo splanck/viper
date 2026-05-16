@@ -271,6 +271,16 @@ void Lowerer::emitItableInit() {
 
     std::unordered_map<std::string, std::string> structIfaceAdapters;
 
+    auto defaultInterfaceMethodName = [&](const InterfaceTypeInfo &ifaceInfo,
+                                          MethodDecl *ifaceMethod) -> std::string {
+        if (!ifaceMethod || !ifaceMethod->body)
+            return "";
+        std::string lowered = sema_.loweredMethodName(ifaceInfo.name, ifaceMethod);
+        if (!lowered.empty())
+            return lowered;
+        return ifaceInfo.name + "." + ifaceMethod->name;
+    };
+
     auto emitStructInterfaceAdapter = [&](const StructTypeInfo &structInfo,
                                           const InterfaceTypeInfo &ifaceInfo,
                                           MethodDecl *ifaceMethod,
@@ -494,10 +504,12 @@ void Lowerer::emitItableInit() {
                 }
 
                 if (implName.empty()) {
-                    // No implementation found -- store null
+                    implName = defaultInterfaceMethodName(ifaceInfo, ifaceInfo.methods[s]);
+                }
+
+                if (implName.empty()) {
                     emitStore(slotPtr, Value::null(), Type(Type::Kind::Ptr));
                 } else {
-                    // Store function pointer
                     emitStore(slotPtr, Value::global(implName), Type(Type::Kind::Ptr));
                 }
             }
@@ -534,10 +546,15 @@ void Lowerer::emitItableInit() {
 
                 std::string key = adapterKey(structName, ifaceName, ifaceMethod->name);
                 auto adapterIt = structIfaceAdapters.find(key);
-                if (adapterIt == structIfaceAdapters.end())
-                    emitStore(slotPtr, Value::null(), Type(Type::Kind::Ptr));
-                else
+                if (adapterIt == structIfaceAdapters.end()) {
+                    std::string defaultImpl = defaultInterfaceMethodName(ifaceInfo, ifaceMethod);
+                    if (defaultImpl.empty())
+                        emitStore(slotPtr, Value::null(), Type(Type::Kind::Ptr));
+                    else
+                        emitStore(slotPtr, Value::global(defaultImpl), Type(Type::Kind::Ptr));
+                } else {
                     emitStore(slotPtr, Value::global(adapterIt->second), Type(Type::Kind::Ptr));
+                }
             }
 
             emitCall("rt_bind_interface",

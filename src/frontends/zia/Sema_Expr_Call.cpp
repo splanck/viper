@@ -1011,6 +1011,12 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                     return types::unknown();
                 }
                 if (best) {
+                    if (!validateGenericConstraints(best->genericParams,
+                                                    best->genericParamConstraints,
+                                                    typeArgs,
+                                                    expr->loc,
+                                                    receiverType->name + "." + methodAccess->field))
+                        return types::unknown();
                     resolvedMethodDecls_[expr] = best;
                     resolvedMethodOwnerTypes_[expr] = bestOwner;
                     resolvedMethodSlotKeys_[expr] = methodSlotKey(bestOwner, best);
@@ -1215,7 +1221,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
         analyzeArgTypes();
 
         if (currentSelfType_ && (currentSelfType_->kind == TypeKindSem::Class ||
-                                 currentSelfType_->kind == TypeKindSem::Struct)) {
+                                 currentSelfType_->kind == TypeKindSem::Struct ||
+                                 currentSelfType_->kind == TypeKindSem::Interface)) {
             Symbol *local = currentScope_->lookupLocal(identExpr->name);
             if (!local || local->kind == Symbol::Kind::Method) {
                 std::string resolvedOwner;

@@ -158,6 +158,46 @@ std::vector<std::string> Sema::getGenericParams(const Decl *decl) {
     }
 }
 
+std::vector<std::string> Sema::getGenericParamConstraints(const Decl *decl) {
+    switch (decl->kind) {
+        case DeclKind::Struct:
+            return static_cast<const StructDecl *>(decl)->genericParamConstraints;
+        case DeclKind::Class:
+            return static_cast<const ClassDecl *>(decl)->genericParamConstraints;
+        case DeclKind::Interface:
+            return static_cast<const InterfaceDecl *>(decl)->genericParamConstraints;
+        case DeclKind::Function:
+            return static_cast<const FunctionDecl *>(decl)->genericParamConstraints;
+        case DeclKind::Method:
+            return static_cast<const MethodDecl *>(decl)->genericParamConstraints;
+        default:
+            return {};
+    }
+}
+
+bool Sema::validateGenericConstraints(const std::vector<std::string> &params,
+                                      const std::vector<std::string> &constraints,
+                                      const std::vector<TypeRef> &args,
+                                      SourceLoc loc,
+                                      const std::string &subjectName) {
+    for (size_t i = 0; i < args.size(); ++i) {
+        if (i >= constraints.size() || constraints[i].empty())
+            continue;
+
+        TypeRef argType = args[i];
+        if (!typeImplementsInterface(argType, constraints[i])) {
+            error(loc,
+                  "Type '" + (argType ? argType->toDisplayString() : "unknown") +
+                      "' does not implement interface '" + constraints[i] +
+                      "' required by type parameter '" +
+                      (i < params.size() ? params[i] : std::to_string(i)) + "' of '" +
+                      subjectName + "'");
+            return false;
+        }
+    }
+    return true;
+}
+
 TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName) {
     // Create the instantiated type based on declaration kind
     switch (decl->kind) {
@@ -305,6 +345,10 @@ TypeRef Sema::instantiateGenericType(const std::string &name,
         return types::unknown();
     }
 
+    const auto constraints = getGenericParamConstraints(declIt->second);
+    if (!validateGenericConstraints(genericParams, constraints, args, loc, name))
+        return types::unknown();
+
     // Build substitution map
     std::map<std::string, TypeRef> substitutions;
     for (size_t i = 0; i < genericParams.size(); ++i) {
@@ -355,6 +399,9 @@ bool Sema::typeImplementsInterface(TypeRef type, const std::string &interfaceNam
     if (TypeRef ifaceType = resolveNamedType(interfaceName);
         ifaceType && ifaceType->kind == TypeKindSem::Interface)
         resolvedInterfaceName = ifaceType->name;
+
+    if (type->kind == TypeKindSem::Interface)
+        return type->name == resolvedInterfaceName;
 
     // Check if the type is an class type
     if (type->kind == TypeKindSem::Class) {
@@ -414,24 +461,12 @@ TypeRef Sema::instantiateGenericFunction(const std::string &name,
         return types::unknown();
     }
 
-    // Validate constraints
-    for (size_t i = 0; i < args.size(); ++i) {
-        // Check if this type parameter has a constraint
-        if (i < funcDecl->genericParamConstraints.size() &&
-            !funcDecl->genericParamConstraints[i].empty()) {
-            const std::string &constraintName = funcDecl->genericParamConstraints[i];
-            TypeRef argType = args[i];
-
-            // Check if the type implements the required interface
-            if (!typeImplementsInterface(argType, constraintName)) {
-                error(loc,
-                      "Type '" + (argType ? argType->name : "unknown") +
-                          "' does not implement interface '" + constraintName +
-                          "' required by type parameter '" + funcDecl->genericParams[i] + "'");
-                return types::unknown();
-            }
-        }
-    }
+    if (!validateGenericConstraints(funcDecl->genericParams,
+                                    funcDecl->genericParamConstraints,
+                                    args,
+                                    loc,
+                                    name))
+        return types::unknown();
 
     // Build substitution map
     std::map<std::string, TypeRef> substitutions;

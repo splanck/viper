@@ -97,6 +97,11 @@ TEST(ZiaDocs, NoKnownStaleSyntaxOrApiPatterns) {
              "func handler(arg: Ptr)",
              "function pointer at the correct slot",
              "Viper.Memory.Release(handle)",
+             "```viper",
+         }},
+        {"docs/zia-getting-started.md",
+         {
+             "```viper",
          }},
         {"docs/feature-parity.md",
          {

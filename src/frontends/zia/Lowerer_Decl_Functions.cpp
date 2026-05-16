@@ -691,8 +691,104 @@ void Lowerer::lowerInterfaceDecl(InterfaceDecl &decl) {
 
     interfaceTypes_[qualifiedName] = std::move(info);
 
-    // Note: Interface methods are not lowered directly since they're abstract.
-    // The implementing class's methods are called at runtime.
+    // Methods with bodies are default implementations. Abstract signatures are
+    // satisfied by implementing classes/structs through the itable.
+    for (auto &member : decl.members) {
+        if (member->kind != DeclKind::Method)
+            continue;
+        auto *method = static_cast<MethodDecl *>(member.get());
+        if (method->body)
+            lowerInterfaceDefaultMethodDecl(*method, qualifiedName);
+    }
+}
+
+void Lowerer::lowerInterfaceDefaultMethodDecl(MethodDecl &decl, const std::string &interfaceName) {
+    ZiaLocationScope locScope(*this, decl.loc);
+
+    TypeRef methodType = sema_.getMethodType(interfaceName, &decl);
+    if (!methodType)
+        methodType = sema_.getMethodType(interfaceName, decl.name);
+
+    std::vector<TypeRef> cachedParamTypes;
+    TypeRef returnType = types::voidType();
+    if (methodType && methodType->kind == TypeKindSem::Function) {
+        cachedParamTypes = methodType->paramTypes();
+        returnType = methodType->returnType();
+    } else {
+        returnType = decl.returnType ? sema_.resolveType(decl.returnType.get()) : types::voidType();
+        for (const auto &param : decl.params)
+            cachedParamTypes.push_back(param.type ? sema_.resolveType(param.type.get())
+                                                  : types::unknown());
+    }
+
+    Type ilReturnType = mapType(returnType);
+
+    std::vector<il::core::Param> params;
+    params.reserve(decl.params.size() + 1);
+    params.push_back({"self", Type(Type::Kind::Ptr)});
+    for (size_t i = 0; i < decl.params.size(); ++i) {
+        TypeRef paramType = i < cachedParamTypes.size() ? cachedParamTypes[i] : types::unknown();
+        params.push_back({decl.params[i].name, mapType(paramType)});
+    }
+
+    std::string loweredName = sema_.loweredMethodName(interfaceName, &decl);
+    if (loweredName.empty())
+        loweredName = interfaceName + "." + decl.name;
+
+    definedFunctions_.insert(loweredName);
+    currentFunc_ = &builder_->startFunction(loweredName, ilReturnType, params);
+    currentReturnType_ = returnType;
+    blockMgr_.bind(builder_.get(), currentFunc_);
+    locals_.clear();
+    slots_.clear();
+    localTypes_.clear();
+    deferredTemps_.clear();
+    currentClassType_ = nullptr;
+    currentStructType_ = nullptr;
+
+    builder_->createBlock(*currentFunc_, "entry_0", currentFunc_->params);
+    size_t entryIdx = currentFunc_->blocks.size() - 1;
+    setBlock(entryIdx);
+
+    const auto &blockParams = currentFunc_->blocks[entryIdx].params;
+    if (!blockParams.empty()) {
+        createSlot("self", Type(Type::Kind::Ptr));
+        storeToSlot("self", Value::temp(blockParams[0].id), Type(Type::Kind::Ptr));
+        localTypes_["self"] = types::interface(interfaceName);
+    }
+
+    for (size_t i = 0; i < decl.params.size(); ++i) {
+        if (i + 1 >= blockParams.size())
+            continue;
+        TypeRef paramType = i < cachedParamTypes.size() ? cachedParamTypes[i] : types::unknown();
+        Type ilParamType = mapType(paramType);
+        createSlot(decl.params[i].name, ilParamType);
+        storeToSlot(decl.params[i].name, Value::temp(blockParams[i + 1].id), ilParamType);
+        localTypes_[decl.params[i].name] = paramType;
+    }
+
+    lowerStmt(decl.body.get());
+
+    if (!isTerminated()) {
+        if (ilReturnType.kind == Type::Kind::Void) {
+            emitRetVoid();
+        } else {
+            Value defaultValue = ilReturnType.kind == Type::Kind::F64
+                                     ? Value::constFloat(0.0)
+                                     : (ilReturnType.kind == Type::Kind::I1
+                                            ? Value::constBool(false)
+                                            : (ilReturnType.kind == Type::Kind::Ptr ||
+                                                       ilReturnType.kind == Type::Kind::Str
+                                                   ? Value::null()
+                                                   : Value::constInt(0)));
+            emitRet(defaultValue);
+        }
+    }
+
+    currentFunc_ = nullptr;
+    currentReturnType_ = nullptr;
+    currentStructType_ = nullptr;
+    currentClassType_ = nullptr;
 }
 
 //=============================================================================
