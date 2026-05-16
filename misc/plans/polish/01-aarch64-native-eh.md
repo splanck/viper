@@ -154,7 +154,6 @@ This requires adding `rt_trap_get_recovery()` to the runtime API.
 ## Documentation Updates
 - `docs/release_notes/Viper_Release_Notes_0_2_4.md` — Add native EH to release notes
 - `docs/codegen/aarch64.md` — Document EH implementation strategy
-- `misc/plans/zia_bugs_20260329.md` — Cross-ref with catch(e) VM fix
 
 ## Verification
 

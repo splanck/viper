@@ -729,7 +729,7 @@ Say(Fmt.Bool(tags.has("urgent")));   // true
 tags.remove("urgent");
 ```
 
-Non-empty set literals like `{"a", "b"}` are supported. The empty literal `{}` is reserved for maps, so an empty `Set[T]` still needs `Set.New()`.
+Non-empty set literals like `{"a", "b"}` are supported. The empty literal `{}` is a map by default, but it is accepted as an empty set in a declared `Set[T]` initializer. `set {}` and `Set.New()` are also unambiguous empty-set forms.
 
 ### Specialized Runtime Collections
 

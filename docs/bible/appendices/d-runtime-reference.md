@@ -1573,7 +1573,7 @@ for word, count in countWords("the quick brown fox the fox") {
 
 ### Generic Set
 
-Use `Set[T]` for unique membership. Non-empty set literals are supported, but the empty literal `{}` is reserved for maps, so empty sets still need `Set.New()`.
+Use `Set[T]` for unique membership. Non-empty set literals are supported. The empty literal `{}` is a map by default, but it is accepted as an empty set in a declared `Set[T]` initializer. `set {}` and `Set.New()` are also unambiguous empty-set forms.
 
 ```rust
 bind Viper.Collections;

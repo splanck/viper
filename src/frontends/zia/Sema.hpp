@@ -100,6 +100,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace il::frontends::zia {
@@ -648,6 +649,19 @@ class Sema {
 
     /// @brief Prepare module-qualified semantic names for colliding top-level declarations.
     void prepareModuleScopedTypeNames(const ModuleDecl &module);
+
+    /// @brief Pre-register a type declaration under a semantic name.
+    bool registerTypeDeclarationSymbol(Decl &decl, const std::string &semanticName);
+
+    /// @brief Register an unresolved type alias placeholder for later fixed-point resolution.
+    void registerTypeAliasPlaceholder(TypeAliasDecl &decl, const std::string &semanticName);
+
+    /// @brief Resolve type aliases after all names in the declaration group are registered.
+    void resolvePendingTypeAliases(
+        const std::vector<std::pair<TypeAliasDecl *, std::string>> &aliases);
+
+    /// @brief Register declared class inheritance and interface implementation relationships.
+    void registerNominalTypeRelationships(std::vector<DeclPtr> &declarations);
 
     /// @brief Return the declared module identity for a source file.
     std::string moduleNameForFile(uint32_t fileId) const;

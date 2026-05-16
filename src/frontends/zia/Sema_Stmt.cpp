@@ -25,6 +25,17 @@ std::string forbiddenValueTypeName(TypeRef type) {
     return type ? type->toString() : "unknown";
 }
 
+bool isTypedRuntimeSequence(TypeRef type) {
+    return type && type->kind == TypeKindSem::Ptr && type->elementType() &&
+           (type->name == "Viper.Collections.Seq" ||
+            type->name == "Viper.Collections.Queue" ||
+            type->name == "Viper.Collections.Stack" ||
+            type->name == "Viper.Collections.Deque" ||
+            type->name == "Viper.Collections.List" ||
+            type->name == "Viper.Collections.Ring" ||
+            type->name == "Viper.Collections.Heap");
+}
+
 } // namespace
 
 //=============================================================================
@@ -332,6 +343,14 @@ void Sema::analyzeVarStmt(VarStmt *stmt) {
         declaredType = types::unknown();
     }
     TypeRef initType = stmt->initializer ? analyzeExpr(stmt->initializer.get()) : nullptr;
+    if (declaredType && declaredType->kind == TypeKindSem::Set && stmt->initializer &&
+        stmt->initializer->kind == ExprKind::MapLiteral) {
+        auto *mapLiteral = static_cast<MapLiteralExpr *>(stmt->initializer.get());
+        if (mapLiteral->entries.empty()) {
+            exprTypes_[stmt->initializer.get()] = declaredType;
+            initType = declaredType;
+        }
+    }
     if (initType && initType->kind == TypeKindSem::Unit) {
         error(stmt->initializer->loc,
               "Unit literal cannot be stored; use null for optional values or omit the value in a "
@@ -592,6 +611,8 @@ void Sema::analyzeForInStmt(ForInStmt *stmt) {
                iterableType->name == "Viper.Collections.Seq" && !iterableType->typeArgs.empty()) {
         // Typed seq (e.g. from Str.Split, Dir.FilesSeq) — element type is typeArgs[0]
         elementType = iterableType->typeArgs[0];
+    } else if (isTypedRuntimeSequence(iterableType)) {
+        elementType = iterableType->elementType();
     } else {
         error(stmt->iterable->loc, "Expression is not iterable");
     }
@@ -600,7 +621,8 @@ void Sema::analyzeForInStmt(ForInStmt *stmt) {
         if (iterableType->kind == TypeKindSem::Map) {
             // Map iteration binds (key, value)
         } else if (iterableType->kind == TypeKindSem::List ||
-                   iterableType->kind == TypeKindSem::Set) {
+                   iterableType->kind == TypeKindSem::Set ||
+                   isTypedRuntimeSequence(iterableType)) {
             // List/Set iteration with tuple binding: (index, element)
             secondType = elementType;       // Element goes to second variable
             elementType = types::integer(); // Index goes to first variable

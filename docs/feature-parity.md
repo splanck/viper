@@ -51,7 +51,7 @@ This document is a comprehensive feature parity audit between the two Viper fron
 | Feature | Zia | BASIC | Notes |
 |---------|-----|-------|-------|
 | if/else | **Full** (`if/else`) | **Full** (`IF/THEN/ELSE/END IF`) | |
-| if expression (ternary) | **Full** (`if (c) a else b`) | None | Zia only |
+| if expression (ternary) | **Full** (`if c { a } else { b }`) | None | Zia only |
 | Ternary operator | **Full** (`a ? b : c`) | None | Zia only |
 | while loop | **Full** (`while`) | **Full** (`WHILE/WEND`) | |
 | do-while / do-until | None | **Full** (`DO/LOOP WHILE/UNTIL`) | BASIC only — pre-test and post-test |
@@ -87,7 +87,7 @@ This document is a comprehensive feature parity audit between the two Viper fron
 | Function overloading | **Full** | None | Zia supports overloads by compatible signature/arity |
 | Generic functions | **Full** (`func f[T](x: T)`) | None | Zia only |
 | Constrained generics | **Full** (`[T: Interface]`) | None | Zia only; supported on functions, methods, classes, structs, and interfaces |
-| Function references | **Full** (`&funcName`) | **Full** (`ADDRESSOF`) | Both produce managed callback/function references |
+| Function references | **Full** (`funcName` or `&funcName` in callback context) | **Full** (`ADDRESSOF`) | Both produce managed callback references |
 | Lambda / closure | **Full** (`(x: Integer) => x + 1`) | None | **Major gap** — Zia only |
 
 ### 1.4 Classes & OOP

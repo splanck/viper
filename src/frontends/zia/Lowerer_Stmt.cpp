@@ -26,6 +26,24 @@ bool isInlineAggregateType(TypeRef type) {
                     type->kind == TypeKindSem::Tuple);
 }
 
+const char *runtimeCollectionToSeqCallee(TypeRef type) {
+    if (!type || type->kind != TypeKindSem::Ptr || !type->elementType())
+        return nullptr;
+    if (type->name == "Viper.Collections.Queue")
+        return "Viper.Collections.Queue.ToSeq";
+    if (type->name == "Viper.Collections.Stack")
+        return "Viper.Collections.Stack.ToSeq";
+    if (type->name == "Viper.Collections.Deque")
+        return "Viper.Collections.Deque.ToSeq";
+    if (type->name == "Viper.Collections.List")
+        return "Viper.Collections.List.ToSeq";
+    if (type->name == "Viper.Collections.Ring")
+        return "Viper.Collections.Ring.ToSeq";
+    if (type->name == "Viper.Collections.Heap")
+        return "Viper.Collections.Heap.ToSeq";
+    return nullptr;
+}
+
 } // namespace
 
 //=============================================================================
@@ -782,21 +800,25 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt) {
         return;
     }
 
-    // Seq iteration: typed rt_seq result from seq<T>-annotated runtime functions.
-    // Uses kSeqLen / kSeqGet (not kListCount / kListGet) since rt_seq and rt_list
-    // have incompatible internal layouts.
-    if (iterableType->kind == TypeKindSem::Ptr && iterableType->name == "Viper.Collections.Seq" &&
-        !iterableType->typeArgs.empty()) {
-        TypeRef elemType = iterableType->typeArgs[0];
+    auto lowerSeqForIn = [&](LowerResult seqValue,
+                             TypeRef elemType,
+                             bool rawStringElements,
+                             const std::string &labelPrefix) {
         if (stmt->variableType)
             elemType = sema_.resolveType(stmt->variableType.get());
 
         Type elemIlType = mapType(elemType);
+        bool hasTupleBinding = stmt->isTuple && !stmt->secondVariable.empty();
 
-        createSlot(stmt->variable, elemIlType);
-        localTypes_[stmt->variable] = elemType;
-
-        auto seqValue = lowerExpr(stmt->iterable.get());
+        if (hasTupleBinding) {
+            createSlot(stmt->variable, Type(Type::Kind::I64));
+            localTypes_[stmt->variable] = types::integer();
+            createSlot(stmt->secondVariable, elemIlType);
+            localTypes_[stmt->secondVariable] = elemType;
+        } else {
+            createSlot(stmt->variable, elemIlType);
+            localTypes_[stmt->variable] = elemType;
+        }
 
         std::string indexVar = "__forin_idx_" + std::to_string(nextTempId());
         std::string lenVar = "__forin_len_" + std::to_string(nextTempId());
@@ -810,10 +832,10 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt) {
         Value lenVal = emitCallRet(Type(Type::Kind::I64), kSeqLen, {seqValue.value});
         storeToSlot(lenVar, lenVal, Type(Type::Kind::I64));
 
-        size_t condIdx = createBlock("forin_seq_cond");
-        size_t bodyIdx = createBlock("forin_seq_body");
-        size_t updateIdx = createBlock("forin_seq_update");
-        size_t endIdx = createBlock("forin_seq_end");
+        size_t condIdx = createBlock(labelPrefix + "_cond");
+        size_t bodyIdx = createBlock(labelPrefix + "_body");
+        size_t updateIdx = createBlock(labelPrefix + "_update");
+        size_t endIdx = createBlock(labelPrefix + "_end");
 
         loopStack_.push(endIdx, updateIdx);
         emitBr(condIdx);
@@ -827,16 +849,21 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt) {
         setBlock(bodyIdx);
         Value seqLoaded = loadFromSlot(seqVar, Type(Type::Kind::Ptr));
         Value idxInBody = loadFromSlot(indexVar, Type(Type::Kind::I64));
-        // seq<str> sequences store raw rt_string pointers directly (not boxed).
-        // Use kSeqGetStr which reinterprets void* as rt_string, avoiding rt_unbox_str.
-        // For non-string element types, kSeqGet returns a boxed Ptr that needs unboxing.
-        if (elemIlType.kind == Type::Kind::Str) {
+
+        if (hasTupleBinding)
+            storeToSlot(stmt->variable, idxInBody, Type(Type::Kind::I64));
+
+        if (rawStringElements && elemIlType.kind == Type::Kind::Str) {
             Value elem = emitCallRet(Type(Type::Kind::Str), kSeqGetStr, {seqLoaded, idxInBody});
-            storeToSlot(stmt->variable, elem, Type(Type::Kind::Str));
+            storeToSlot(hasTupleBinding ? stmt->secondVariable : stmt->variable,
+                        elem,
+                        Type(Type::Kind::Str));
         } else {
             Value boxed = emitCallRet(Type(Type::Kind::Ptr), kSeqGet, {seqLoaded, idxInBody});
-            auto elemValue = emitUnbox(boxed, elemIlType);
-            storeToSlot(stmt->variable, elemValue.value, elemIlType);
+            auto elemValue = emitUnboxValue(boxed, elemIlType, elemType);
+            storeToSlot(hasTupleBinding ? stmt->secondVariable : stmt->variable,
+                        elemValue.value,
+                        elemIlType);
         }
 
         lowerStmt(stmt->body.get());
@@ -855,10 +882,35 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt) {
         setBlock(endIdx);
 
         removeSlot(stmt->variable);
+        if (hasTupleBinding)
+            removeSlot(stmt->secondVariable);
         removeSlot(indexVar);
         removeSlot(lenVar);
         removeSlot(seqVar);
+    };
 
+    // Seq iteration: typed rt_seq result from seq<T>-annotated runtime functions.
+    // Uses kSeqLen / kSeqGet (not kListCount / kListGet) since rt_seq and rt_list
+    // have incompatible internal layouts.
+    if (iterableType->kind == TypeKindSem::Ptr && iterableType->name == "Viper.Collections.Seq" &&
+        !iterableType->typeArgs.empty()) {
+        lowerSeqForIn(lowerExpr(stmt->iterable.get()),
+                      iterableType->typeArgs[0],
+                      true,
+                      "forin_seq");
+        locals_ = std::move(localsBackup);
+        slots_ = std::move(slotsBackup);
+        localTypes_ = std::move(localTypesBackup);
+        return;
+    }
+
+    if (const char *toSeqCallee = runtimeCollectionToSeqCallee(iterableType)) {
+        auto collectionValue = lowerExpr(stmt->iterable.get());
+        Value seqValue = emitCallRet(Type(Type::Kind::Ptr), toSeqCallee, {collectionValue.value});
+        lowerSeqForIn({seqValue, Type(Type::Kind::Ptr)},
+                      iterableType->elementType(),
+                      false,
+                      "forin_runtime_seq");
         locals_ = std::move(localsBackup);
         slots_ = std::move(slotsBackup);
         localTypes_ = std::move(localTypesBackup);
@@ -1091,10 +1143,7 @@ void Lowerer::lowerMatchStmt(MatchStmt *stmt) {
         if (arm.body) {
             // Check if it's a block expression
             if (auto *blockExpr = dynamic_cast<BlockExpr *>(arm.body.get())) {
-                // Lower each statement in the block
-                for (auto &blockStmt : blockExpr->statements) {
-                    lowerStmt(blockStmt.get());
-                }
+                lowerBlockExpr(blockExpr);
             } else {
                 // It's a regular expression - just evaluate it
                 lowerExpr(arm.body.get());

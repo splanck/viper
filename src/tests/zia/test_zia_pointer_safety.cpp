@@ -132,7 +132,7 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-TEST(ZiaPointerSafety, RuntimeCallbackBridgeRequiresAddressOf) {
+TEST(ZiaPointerSafety, RuntimeCallbackBridgeAcceptsBareFunctionReference) {
     auto result = compileSource(R"(
 module Test;
 
@@ -144,7 +144,7 @@ func start() {
 }
 )");
 
-    EXPECT_TRUE(!result.succeeded());
+    EXPECT_TRUE(result.succeeded());
 }
 
 TEST(ZiaPointerSafety, FunctionReferenceRejectsNonFunctions) {

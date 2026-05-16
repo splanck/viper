@@ -158,6 +158,100 @@ bool Parser::isExpressionStart(TokenKind kind) const {
     }
 }
 
+bool Parser::isMatchExpressionAhead() {
+    if (!check(TokenKind::KwMatch))
+        return false;
+
+    Speculation speculation(*this);
+    advance(); // consume `match`
+
+    if (match(TokenKind::LParen)) {
+        ExprPtr scrutinee = parseExpression();
+        if (!scrutinee)
+            return false;
+        if (!expect(TokenKind::RParen, ")"))
+            return false;
+    } else {
+        ExprPtr scrutinee = parseExpression();
+        if (!scrutinee)
+            return false;
+    }
+
+    return check(TokenKind::LBrace);
+}
+
+bool Parser::looksLikeBlockExpression() {
+    if (!check(TokenKind::LBrace))
+        return false;
+
+    switch (peek(1).kind) {
+        case TokenKind::KwVar:
+        case TokenKind::KwFinal:
+        case TokenKind::KwLet:
+        case TokenKind::KwReturn:
+        case TokenKind::KwBreak:
+        case TokenKind::KwContinue:
+        case TokenKind::KwDefer:
+        case TokenKind::KwThrow:
+        case TokenKind::KwGuard:
+        case TokenKind::KwWhile:
+        case TokenKind::KwFor:
+        case TokenKind::KwTry:
+            return true;
+        case TokenKind::KwMatch: {
+            Speculation speculation(*this);
+            advance(); // consume the outer `{` so the `match` token is current
+            return isMatchExpressionAhead();
+        }
+        default:
+            break;
+    }
+
+    int nestedParen = 0;
+    int nestedBracket = 0;
+    int nestedBrace = 0;
+    for (size_t offset = 1;; ++offset) {
+        TokenKind kind = peek(offset).kind;
+        if (kind == TokenKind::Eof)
+            return false;
+
+        if (nestedParen == 0 && nestedBracket == 0 && nestedBrace == 0) {
+            if (kind == TokenKind::Semicolon)
+                return true;
+            if (kind == TokenKind::RBrace || kind == TokenKind::Comma ||
+                kind == TokenKind::Colon || kind == TokenKind::FatArrow) {
+                return false;
+            }
+        }
+
+        switch (kind) {
+            case TokenKind::LParen:
+                ++nestedParen;
+                break;
+            case TokenKind::RParen:
+                if (nestedParen > 0)
+                    --nestedParen;
+                break;
+            case TokenKind::LBracket:
+                ++nestedBracket;
+                break;
+            case TokenKind::RBracket:
+                if (nestedBracket > 0)
+                    --nestedBracket;
+                break;
+            case TokenKind::LBrace:
+                ++nestedBrace;
+                break;
+            case TokenKind::RBrace:
+                if (nestedBrace > 0)
+                    --nestedBrace;
+                break;
+            default:
+                break;
+        }
+    }
+}
+
 bool Parser::match(TokenKind kind, Token *out) {
     if (check(kind)) {
         Token tok = advance();

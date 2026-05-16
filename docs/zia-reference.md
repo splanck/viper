@@ -299,6 +299,7 @@ Sets hold unique values. Created with set literals or the `Set` constructor:
 
 ```rust
 var s: Set[Integer] = {1, 2, 3};
+var empty: Set[Integer] = {};
 ```
 
 ### Function Types
@@ -341,9 +342,9 @@ variableName        // Variable reference
 
 ### Function References
 
-The `&` operator obtains a typed function reference. It can be inferred into a
-variable, passed through `Any`, or passed directly to runtime APIs that expose a
-safe callback bridge:
+The `&` operator explicitly obtains a typed function reference. A bare function
+name is also accepted where the expected type is a function reference, or where
+a runtime API exposes a safe callback bridge:
 
 ```rust
 bind Viper.Threads;
@@ -359,15 +360,17 @@ func takeCallback(callback: Any) {
 func start() {
     var h = &handler;           // Inferred function-reference type
     takeCallback(&handler);     // Pass through Any
+    takeCallback(handler);      // Also accepted in callback context
 
     // With Thread.Start
     var thread = Thread.Start(&handler, 0);
+    var thread2 = Thread.Start(handler, 0);
 }
 ```
 
 **Notes:**
 - The `&` operator can only be applied to function names, not variables or expressions
-- Function references lower to runtime function handles; source code should not use `Ptr`
+- Function names are still ordinary call expressions when followed by `(...)`
 - Use with `Viper.Threads.Thread.Start()` to spawn threads with custom entry points
 
 ### Binary Operators
@@ -499,6 +502,10 @@ var x = {
 };
 ```
 
+A bare `{expr}` remains a set literal. Use statement-bearing blocks, or block
+bodies in lambda, `if`, and `match` contexts, when you want block-expression
+semantics.
+
 ### If Expressions
 
 `if`/`else` can be used as value-producing expressions:
@@ -624,8 +631,9 @@ var map = {"key": 42, "other": 7}; // Map[String, Integer]
 var set = {1, 2, 3};               // Set[Integer]
 ```
 
-`{}` is the empty map literal. To create an empty set, use an explicit type or
-constructor such as `new Set[Integer]()`.
+`{}` is the empty map literal by default. In a declared `Set[T]` initializer it
+is an empty set; `set {}` and constructors such as `new Set[Integer]()` are
+unambiguous empty set forms.
 Non-empty list, map, and set literals must be homogeneous: all list/set elements
 and all map values must have compatible types.
 List, map, and set literals permit a trailing comma.
@@ -743,7 +751,8 @@ Postfix `?` unwraps `Ok` and propagates `Err` from functions that return
 
 ### `is` Type Check
 
-The `is` operator checks whether a value's runtime type matches a target type, including subclass relationships:
+The `is` operator returns `Boolean`. For classes it checks runtime type identity
+with subclass relationships; for interfaces it checks implemented interfaces:
 
 ```rust
 class Animal { }
@@ -760,7 +769,9 @@ func check(a: Animal) {
 }
 ```
 
-The `is` expression returns a `Boolean`. It is polymorphic: `obj is Base` returns `true` when `obj`'s runtime type is `Base` or any subclass of `Base`.
+Primitive checks are exact-type checks known at compile time after the operand is
+evaluated. Optional values can be checked against their inner type; the result is
+`false` when the optional is null.
 
 ---
 
@@ -878,6 +889,14 @@ for index, item in list {
 }
 for index, item in set {
     // index is Integer, item is element type
+}
+
+// Runtime collection iteration
+for item in queue {
+    // Queue[T], Stack[T], Deque[T], List[T], Ring[T], and Heap[T] iterate as T
+}
+for index, item in stack {
+    // tuple binding is also supported for runtime collections
 }
 
 // Parenthesized tuple form
@@ -1969,7 +1988,9 @@ From highest to lowest:
 
 ## Reserved Words
 
-The following words are reserved and cannot be used as identifiers:
+The lexer recognizes the following words as keywords. Most are reserved;
+`match` and `struct` are contextual and may be used as ordinary identifiers
+where the grammar is unambiguous:
 
 ### Keywords
 
@@ -1981,9 +2002,9 @@ final       finally     for         func        guard
 hide        if          implements  in          interface
 is          match       module      namespace   new
 not         null        or          override    property
-public      return      self        static      struct      super
+private     public      return      self        static      struct      super
 defer       throw       true        try         type        var
-while       export      let
+while       export      foreign     let         weak
 ```
 
 `async func` returns `Viper.Threads.Future`. `await` is only valid on `Viper.Threads.Future` values and unwraps the payload produced by an async call.
@@ -1991,6 +2012,7 @@ while       export      let
 Compatibility aliases:
 
 - `export` and `public` are accepted aliases for `expose`
+- `private` is an accepted alias for `hide`
 - `let` is an accepted alias for `final`
 
 ### Reserved for Future Use
@@ -2025,7 +2047,7 @@ bind        ::= "bind" STRING ["as" IDENT] ";"
 
 ```text
 decl        ::= [visibility] (classDecl | structDecl | interfaceDecl | enumDecl | funcDecl | asyncFuncDecl | foreignFuncDecl | varDecl | namespaceDecl | typeAlias)
-visibility  ::= "expose" | "hide" | "public" | "export"
+visibility  ::= "expose" | "hide" | "public" | "export" | "private"
 typeAlias   ::= "type" IDENT "=" type ";"
 classDecl   ::= "class" IDENT ["[" genericParams "]"] ["extends" qualifiedName] ["implements" qualifiedNameList] "{" member* "}"
 structDecl  ::= "struct" IDENT ["[" genericParams "]"] ["implements" qualifiedNameList] "{" member* "}"
@@ -2094,7 +2116,10 @@ postfix     ::= primary (call | index | field | optionalChain | "!" | "?" | "as"
 primary     ::= literal | IDENT | "(" expr ")" | "(" expr "," exprList ")"
               | "new" type "(" args ")" | type "{" fieldInits "}"
               | "[" exprList "]" | "{" mapEntries "}" | "{" exprList "}"
-              | "if" expr block "else" block | block
+              | "if" expr block "else" block | "match" expr "{" matchExprArm* "}"
+              | blockExpr
+blockExpr   ::= "{" stmt* [expr] "}"
+matchExprArm ::= pattern ["if" expr] "=>" expr
 ```
 
 ### Types

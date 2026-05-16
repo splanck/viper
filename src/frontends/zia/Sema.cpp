@@ -178,17 +178,6 @@ bool canRuntimeObjectCoerce(TypeRef argType) {
     }
 }
 
-bool isFunctionPointerArg(const CallArg &arg) {
-    if (!arg.value)
-        return false;
-
-    if (auto *unary = dynamic_cast<const UnaryExpr *>(arg.value.get())) {
-        return unary->op == UnaryOp::AddressOf;
-    }
-
-    return false;
-}
-
 bool allowsFunctionPointerParam(std::string_view name) {
     std::string lower;
     lower.reserve(name.size());
@@ -884,14 +873,7 @@ bool Sema::bindCallArgs(const std::vector<CallArg> &args,
         int cost = conversionCost(paramType, argType, allowRuntimeObjectCoercion);
         if (allowRuntimeObjectCoercion && paramType && paramType->kind == TypeKindSem::Ptr &&
             argType && argType->kind == TypeKindSem::Function &&
-            allowsFunctionPointerParam(params[i].name) &&
-            !isFunctionPointerArg(args[static_cast<size_t>(sourceIndex)])) {
-            cost = 1000;
-        }
-        if (cost >= 1000 && allowRuntimeObjectCoercion && paramType &&
-            paramType->kind == TypeKindSem::Ptr && argType &&
-            argType->kind == TypeKindSem::Function && allowsFunctionPointerParam(params[i].name) &&
-            isFunctionPointerArg(args[static_cast<size_t>(sourceIndex)])) {
+            allowsFunctionPointerParam(params[i].name)) {
             cost = 2;
         }
         if (cost >= 1000) {
@@ -915,15 +897,7 @@ bool Sema::bindCallArgs(const std::vector<CallArg> &args,
             int cost = conversionCost(elemType, argType, allowRuntimeObjectCoercion);
             if (allowRuntimeObjectCoercion && elemType && elemType->kind == TypeKindSem::Ptr &&
                 argType && argType->kind == TypeKindSem::Function &&
-                allowsFunctionPointerParam(params.back().name) &&
-                !isFunctionPointerArg(args[static_cast<size_t>(sourceIndex)])) {
-                cost = 1000;
-            }
-            if (cost >= 1000 && allowRuntimeObjectCoercion && elemType &&
-                elemType->kind == TypeKindSem::Ptr && argType &&
-                argType->kind == TypeKindSem::Function &&
-                allowsFunctionPointerParam(params.back().name) &&
-                isFunctionPointerArg(args[static_cast<size_t>(sourceIndex)])) {
+                allowsFunctionPointerParam(params.back().name)) {
                 cost = 2;
             }
             if (cost >= 1000) {
@@ -1025,8 +999,7 @@ bool Sema::checkRuntimePointerSafety(const std::string &calleeName,
                                                              : "parameter '" + params[i].name + "'";
 
         if (bridgeRole == RuntimePointerBridgeRole::Callback) {
-            if (sourceArg && isFunctionPointerArg(*sourceArg) && argType &&
-                argType->kind == TypeKindSem::Function) {
+            if (sourceArg && argType && argType->kind == TypeKindSem::Function) {
                 safeFunctionBridge[i] = true;
                 continue;
             }
@@ -1034,7 +1007,7 @@ bool Sema::checkRuntimePointerSafety(const std::string &calleeName,
             const_cast<Sema *>(this)->error(
                 errLoc,
                 "Runtime API '" + calleeName + "' callback " + paramName +
-                    " requires a function reference such as '&handler'");
+                    " requires a function reference such as 'handler' or '&handler'");
             return false;
         }
 
@@ -1308,6 +1281,181 @@ void Sema::addWarningSuppressions(uint32_t fileId, std::string_view source) {
     suppressions_.scan(fileId, source);
 }
 
+bool Sema::registerTypeDeclarationSymbol(Decl &decl, const std::string &semanticName) {
+    TypeRef type;
+    Symbol sym;
+    sym.kind = Symbol::Kind::Type;
+    sym.name = semanticName;
+    sym.decl = &decl;
+    sym.isExported = decl.isExported;
+
+    auto makeGenericArgs = [](const std::vector<std::string> &params) {
+        std::vector<TypeRef> args;
+        args.reserve(params.size());
+        for (const auto &param : params)
+            args.push_back(types::typeParam(param));
+        return args;
+    };
+
+    switch (decl.kind) {
+        case DeclKind::Struct: {
+            auto &value = static_cast<StructDecl &>(decl);
+            if (!value.genericParams.empty()) {
+                registerGenericType(semanticName, &value);
+                type = std::make_shared<ViperType>(
+                    TypeKindSem::Struct, semanticName, makeGenericArgs(value.genericParams));
+            } else {
+                type = types::structType(semanticName);
+            }
+            structDecls_[semanticName] = &value;
+            break;
+        }
+        case DeclKind::Class: {
+            auto &cls = static_cast<ClassDecl &>(decl);
+            if (!cls.genericParams.empty()) {
+                registerGenericType(semanticName, &cls);
+                type = std::make_shared<ViperType>(
+                    TypeKindSem::Class, semanticName, makeGenericArgs(cls.genericParams));
+            } else {
+                type = types::classType(semanticName);
+            }
+            classDecls_[semanticName] = &cls;
+            break;
+        }
+        case DeclKind::Interface: {
+            auto &iface = static_cast<InterfaceDecl &>(decl);
+            if (!iface.genericParams.empty()) {
+                registerGenericType(semanticName, &iface);
+                type = std::make_shared<ViperType>(
+                    TypeKindSem::Interface, semanticName, makeGenericArgs(iface.genericParams));
+            } else {
+                type = types::interface(semanticName);
+            }
+            interfaceDecls_[semanticName] = &iface;
+            break;
+        }
+        case DeclKind::Enum: {
+            auto &enumDecl = static_cast<EnumDecl &>(decl);
+            type = types::enumType(semanticName);
+            enumDecls_[semanticName] = &enumDecl;
+            break;
+        }
+        default:
+            return false;
+    }
+
+    sym.type = type;
+    if (Symbol *existing = currentScope_->lookupLocal(semanticName)) {
+        if (existing->kind == Symbol::Kind::Type && existing->decl == &decl) {
+            existing->type = type;
+            typeRegistry_[semanticName] = type;
+            return true;
+        }
+        return defineSymbol(semanticName, sym);
+    }
+
+    if (defineSymbol(semanticName, sym)) {
+        typeRegistry_[semanticName] = type;
+        return true;
+    }
+    return false;
+}
+
+void Sema::registerTypeAliasPlaceholder(TypeAliasDecl &decl, const std::string &semanticName) {
+    Symbol sym;
+    sym.kind = Symbol::Kind::Type;
+    sym.name = semanticName;
+    sym.type = types::unknown();
+    sym.decl = &decl;
+    sym.isExported = decl.isExported;
+
+    if (Symbol *existing = currentScope_->lookupLocal(semanticName)) {
+        if (existing->kind == Symbol::Kind::Type && existing->decl == &decl) {
+            existing->type = types::unknown();
+        } else {
+            defineSymbol(semanticName, sym);
+        }
+    } else {
+        defineSymbol(semanticName, sym);
+    }
+    typeAliases_[semanticName] = types::unknown();
+}
+
+void Sema::resolvePendingTypeAliases(
+    const std::vector<std::pair<TypeAliasDecl *, std::string>> &aliases) {
+    for (size_t pass = 0; pass <= aliases.size(); ++pass) {
+        bool changed = false;
+        for (const auto &[alias, semanticName] : aliases) {
+            auto currentIt = typeAliases_.find(semanticName);
+            if (currentIt != typeAliases_.end() && currentIt->second &&
+                currentIt->second->kind != TypeKindSem::Unknown) {
+                continue;
+            }
+
+            TypeRef resolved = resolveTypeNode(alias->targetType.get());
+            if (!resolved || resolved->kind == TypeKindSem::Unknown)
+                continue;
+
+            typeAliases_[semanticName] = resolved;
+            if (Symbol *sym = currentScope_->lookupLocal(semanticName))
+                sym->type = resolved;
+            changed = true;
+        }
+        if (!changed)
+            break;
+    }
+
+    for (const auto &[alias, semanticName] : aliases) {
+        auto it = typeAliases_.find(semanticName);
+        if (it == typeAliases_.end() || !it->second || it->second->kind == TypeKindSem::Unknown) {
+            error(alias->loc, "Cannot resolve type alias target for '" + alias->name + "'");
+        }
+    }
+}
+
+void Sema::registerNominalTypeRelationships(std::vector<DeclPtr> &declarations) {
+    auto registerInterfaces = [this](const std::string &ownerName,
+                                     const SourceLoc &loc,
+                                     const std::vector<std::string> &interfaces) {
+        for (const auto &ifaceName : interfaces) {
+            TypeRef ifaceType = resolveNamedType(ifaceName, loc);
+            if (ifaceType && ifaceType->kind == TypeKindSem::Interface)
+                types::registerInterfaceImplementation(ownerName, ifaceType->name);
+        }
+    };
+
+    for (auto &decl : declarations) {
+        switch (decl->kind) {
+            case DeclKind::Struct: {
+                auto *value = static_cast<StructDecl *>(decl.get());
+                if (value->genericParams.empty()) {
+                    const std::string ownerName = semanticNameForDecl(*value, value->name);
+                    registerInterfaces(ownerName, value->loc, value->interfaces);
+                }
+                break;
+            }
+            case DeclKind::Class: {
+                auto *cls = static_cast<ClassDecl *>(decl.get());
+                if (!cls->genericParams.empty())
+                    break;
+
+                const std::string ownerName = semanticNameForDecl(*cls, cls->name);
+                if (!cls->baseClass.empty()) {
+                    TypeRef baseType = resolveNamedType(cls->baseClass, cls->loc);
+                    if (baseType && baseType->kind == TypeKindSem::Class) {
+                        cls->baseClass = baseType->name;
+                        types::registerClassInheritance(ownerName, cls->baseClass);
+                    }
+                }
+                registerInterfaces(ownerName, cls->loc, cls->interfaces);
+                break;
+            }
+            default:
+                break;
+        }
+    }
+}
+
 /// @brief Run multi-pass semantic analysis on a module.
 /// @details Pass 1: Register all top-level declarations (types, functions, globals).
 ///          Pass 1b: Process namespace declarations (recursive multi-pass).
@@ -1324,6 +1472,46 @@ bool Sema::analyze(ModuleDecl &module) {
     }
 
     prepareModuleScopedTypeNames(module);
+
+    std::vector<std::pair<TypeAliasDecl *, std::string>> pendingTypeAliases;
+
+    for (auto &decl : module.declarations) {
+        switch (decl->kind) {
+            case DeclKind::Struct: {
+                auto *value = static_cast<StructDecl *>(decl.get());
+                registerTypeDeclarationSymbol(*value, semanticNameForDecl(*value, value->name));
+                break;
+            }
+            case DeclKind::Class: {
+                auto *cls = static_cast<ClassDecl *>(decl.get());
+                registerTypeDeclarationSymbol(*cls, semanticNameForDecl(*cls, cls->name));
+                break;
+            }
+            case DeclKind::Interface: {
+                auto *iface = static_cast<InterfaceDecl *>(decl.get());
+                registerTypeDeclarationSymbol(*iface, semanticNameForDecl(*iface, iface->name));
+                break;
+            }
+            case DeclKind::Enum: {
+                auto *enumDecl = static_cast<EnumDecl *>(decl.get());
+                registerTypeDeclarationSymbol(
+                    *enumDecl, semanticNameForDecl(*enumDecl, enumDecl->name));
+                break;
+            }
+            case DeclKind::TypeAlias: {
+                auto *alias = static_cast<TypeAliasDecl *>(decl.get());
+                const std::string semanticName = semanticNameForDecl(*alias, alias->name);
+                registerTypeAliasPlaceholder(*alias, semanticName);
+                pendingTypeAliases.emplace_back(alias, semanticName);
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    resolvePendingTypeAliases(pendingTypeAliases);
+    registerNominalTypeRelationships(module.declarations);
 
     // First pass: register all top-level declarations
     for (auto &decl : module.declarations) {
@@ -1373,104 +1561,23 @@ bool Sema::analyze(ModuleDecl &module) {
             }
             case DeclKind::Struct: {
                 auto *value = static_cast<StructDecl *>(decl.get());
-                const std::string semanticName = semanticNameForDecl(*value, value->name);
-
-                TypeRef valueType;
-                if (!value->genericParams.empty()) {
-                    // Generic type: register for later instantiation
-                    registerGenericType(semanticName, value);
-                    // Create uninstantiated type placeholder with type parameters
-                    std::vector<TypeRef> paramTypes;
-                    for (const auto &param : value->genericParams) {
-                        paramTypes.push_back(types::typeParam(param));
-                    }
-                    valueType =
-                        std::make_shared<ViperType>(TypeKindSem::Struct, semanticName, paramTypes);
-                } else {
-                    valueType = types::structType(semanticName);
-                }
-                Symbol sym;
-                sym.kind = Symbol::Kind::Type;
-                sym.name = semanticName;
-                sym.type = valueType;
-                sym.decl = value;
-                sym.isExported = value->isExported;
-                if (defineSymbol(semanticName, sym)) {
-                    structDecls_[semanticName] = value;
-                    typeRegistry_[semanticName] = valueType;
-                }
+                registerTypeDeclarationSymbol(*value, semanticNameForDecl(*value, value->name));
                 break;
             }
             case DeclKind::Class: {
                 auto *cls = static_cast<ClassDecl *>(decl.get());
-                const std::string semanticName = semanticNameForDecl(*cls, cls->name);
-
-                TypeRef classT;
-                if (!cls->genericParams.empty()) {
-                    // Generic type: register for later instantiation
-                    registerGenericType(semanticName, cls);
-                    // Create uninstantiated type placeholder with type parameters
-                    std::vector<TypeRef> paramTypes;
-                    for (const auto &param : cls->genericParams) {
-                        paramTypes.push_back(types::typeParam(param));
-                    }
-                    classT =
-                        std::make_shared<ViperType>(TypeKindSem::Class, semanticName, paramTypes);
-                } else {
-                    classT = types::classType(semanticName);
-                }
-                Symbol sym;
-                sym.kind = Symbol::Kind::Type;
-                sym.name = semanticName;
-                sym.type = classT;
-                sym.decl = cls;
-                sym.isExported = cls->isExported;
-                if (defineSymbol(semanticName, sym)) {
-                    classDecls_[semanticName] = cls;
-                    typeRegistry_[semanticName] = classT;
-                }
+                registerTypeDeclarationSymbol(*cls, semanticNameForDecl(*cls, cls->name));
                 break;
             }
             case DeclKind::Interface: {
                 auto *iface = static_cast<InterfaceDecl *>(decl.get());
-                const std::string semanticName = semanticNameForDecl(*iface, iface->name);
-                TypeRef ifaceType;
-                if (!iface->genericParams.empty()) {
-                    registerGenericType(semanticName, iface);
-                    std::vector<TypeRef> paramTypes;
-                    for (const auto &param : iface->genericParams)
-                        paramTypes.push_back(types::typeParam(param));
-                    ifaceType = std::make_shared<ViperType>(
-                        TypeKindSem::Interface, semanticName, paramTypes);
-                } else {
-                    ifaceType = types::interface(semanticName);
-                }
-
-                Symbol sym;
-                sym.kind = Symbol::Kind::Type;
-                sym.name = semanticName;
-                sym.type = ifaceType;
-                sym.decl = iface;
-                sym.isExported = iface->isExported;
-                if (defineSymbol(semanticName, sym)) {
-                    interfaceDecls_[semanticName] = iface;
-                    typeRegistry_[semanticName] = ifaceType;
-                }
+                registerTypeDeclarationSymbol(*iface, semanticNameForDecl(*iface, iface->name));
                 break;
             }
             case DeclKind::Enum: {
                 auto *enumDecl = static_cast<EnumDecl *>(decl.get());
-                const std::string semanticName = semanticNameForDecl(*enumDecl, enumDecl->name);
-                auto enumT = types::enumType(semanticName);
-
-                Symbol sym;
-                sym.kind = Symbol::Kind::Type;
-                sym.name = semanticName;
-                sym.type = enumT;
-                sym.decl = enumDecl;
-                sym.isExported = enumDecl->isExported;
-                if (defineSymbol(semanticName, sym))
-                    typeRegistry_[semanticName] = enumT;
+                registerTypeDeclarationSymbol(
+                    *enumDecl, semanticNameForDecl(*enumDecl, enumDecl->name));
                 break;
             }
             case DeclKind::GlobalVar: {
@@ -1513,21 +1620,6 @@ bool Sema::analyze(ModuleDecl &module) {
                 break;
             }
             case DeclKind::TypeAlias: {
-                auto *alias = static_cast<TypeAliasDecl *>(decl.get());
-                const std::string semanticName = semanticNameForDecl(*alias, alias->name);
-                TypeRef resolved = resolveTypeNode(alias->targetType.get());
-                if (resolved) {
-                    Symbol sym;
-                    sym.kind = Symbol::Kind::Type;
-                    sym.name = semanticName;
-                    sym.type = resolved;
-                    sym.decl = alias;
-                    sym.isExported = alias->isExported;
-                    defineSymbol(semanticName, sym);
-                    typeAliases_[semanticName] = resolved;
-                } else {
-                    error(alias->loc, "Cannot resolve type alias target for '" + alias->name + "'");
-                }
                 break;
             }
             default:
@@ -2461,6 +2553,45 @@ void Sema::analyzeNamespaceDecl(NamespaceDecl &decl) {
     else
         namespacePrefix_ = namespacePrefix_ + "." + decl.name;
 
+    std::vector<std::pair<TypeAliasDecl *, std::string>> pendingTypeAliases;
+
+    for (auto &innerDecl : decl.declarations) {
+        switch (innerDecl->kind) {
+            case DeclKind::Struct: {
+                auto *value = static_cast<StructDecl *>(innerDecl.get());
+                registerTypeDeclarationSymbol(*value, qualifyName(value->name));
+                break;
+            }
+            case DeclKind::Class: {
+                auto *cls = static_cast<ClassDecl *>(innerDecl.get());
+                registerTypeDeclarationSymbol(*cls, qualifyName(cls->name));
+                break;
+            }
+            case DeclKind::Interface: {
+                auto *iface = static_cast<InterfaceDecl *>(innerDecl.get());
+                registerTypeDeclarationSymbol(*iface, qualifyName(iface->name));
+                break;
+            }
+            case DeclKind::Enum: {
+                auto *enumDecl = static_cast<EnumDecl *>(innerDecl.get());
+                registerTypeDeclarationSymbol(*enumDecl, qualifyName(enumDecl->name));
+                break;
+            }
+            case DeclKind::TypeAlias: {
+                auto *alias = static_cast<TypeAliasDecl *>(innerDecl.get());
+                std::string qualifiedName = qualifyName(alias->name);
+                registerTypeAliasPlaceholder(*alias, qualifiedName);
+                pendingTypeAliases.emplace_back(alias, qualifiedName);
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    resolvePendingTypeAliases(pendingTypeAliases);
+    registerNominalTypeRelationships(decl.declarations);
+
     // Process declarations inside this namespace
     // First pass: register declarations
     for (auto &innerDecl : decl.declarations) {
@@ -2488,69 +2619,25 @@ void Sema::analyzeNamespaceDecl(NamespaceDecl &decl) {
             case DeclKind::Struct: {
                 auto *value = static_cast<StructDecl *>(innerDecl.get());
                 std::string qualifiedName = qualifyName(value->name);
-                auto valueType = types::structType(qualifiedName);
-
-                Symbol sym;
-                sym.kind = Symbol::Kind::Type;
-                sym.name = qualifiedName;
-                sym.type = valueType;
-                sym.decl = value;
-                sym.isExported = value->isExported;
-                if (defineSymbol(qualifiedName, sym)) {
-                    structDecls_[qualifiedName] = value;
-                    typeRegistry_[qualifiedName] = valueType;
-                }
+                registerTypeDeclarationSymbol(*value, qualifiedName);
                 break;
             }
             case DeclKind::Class: {
                 auto *cls = static_cast<ClassDecl *>(innerDecl.get());
                 std::string qualifiedName = qualifyName(cls->name);
-                auto classT = types::classType(qualifiedName);
-
-                Symbol sym;
-                sym.kind = Symbol::Kind::Type;
-                sym.name = qualifiedName;
-                sym.type = classT;
-                sym.decl = cls;
-                sym.isExported = cls->isExported;
-                if (defineSymbol(qualifiedName, sym)) {
-                    classDecls_[qualifiedName] = cls;
-                    typeRegistry_[qualifiedName] = classT;
-                }
+                registerTypeDeclarationSymbol(*cls, qualifiedName);
                 break;
             }
             case DeclKind::Interface: {
                 auto *iface = static_cast<InterfaceDecl *>(innerDecl.get());
                 std::string qualifiedName = qualifyName(iface->name);
-                auto ifaceType = types::interface(qualifiedName);
-
-                Symbol sym;
-                sym.kind = Symbol::Kind::Type;
-                sym.name = qualifiedName;
-                sym.type = ifaceType;
-                sym.decl = iface;
-                sym.isExported = iface->isExported;
-                if (defineSymbol(qualifiedName, sym)) {
-                    interfaceDecls_[qualifiedName] = iface;
-                    typeRegistry_[qualifiedName] = ifaceType;
-                }
+                registerTypeDeclarationSymbol(*iface, qualifiedName);
                 break;
             }
             case DeclKind::Enum: {
                 auto *enumDecl = static_cast<EnumDecl *>(innerDecl.get());
                 std::string qualifiedName = qualifyName(enumDecl->name);
-                auto enumType = types::enumType(qualifiedName);
-
-                Symbol sym;
-                sym.kind = Symbol::Kind::Type;
-                sym.name = qualifiedName;
-                sym.type = enumType;
-                sym.decl = enumDecl;
-                sym.isExported = enumDecl->isExported;
-                if (defineSymbol(qualifiedName, sym)) {
-                    enumDecls_[qualifiedName] = enumDecl;
-                    typeRegistry_[qualifiedName] = enumType;
-                }
+                registerTypeDeclarationSymbol(*enumDecl, qualifiedName);
                 break;
             }
             case DeclKind::GlobalVar: {
@@ -2574,23 +2661,6 @@ void Sema::analyzeNamespaceDecl(NamespaceDecl &decl) {
                 break;
             }
             case DeclKind::TypeAlias: {
-                auto *alias = static_cast<TypeAliasDecl *>(innerDecl.get());
-                std::string qualifiedName = qualifyName(alias->name);
-                TypeRef resolved = resolveTypeNode(alias->targetType.get());
-
-                if (resolved) {
-                    Symbol sym;
-                    sym.kind = Symbol::Kind::Type;
-                    sym.name = qualifiedName;
-                    sym.type = resolved;
-                    sym.decl = alias;
-                    sym.isExported = alias->isExported;
-                    defineSymbol(qualifiedName, sym);
-                    typeAliases_[qualifiedName] = resolved;
-                } else {
-                    error(alias->loc,
-                          "Cannot resolve type alias target for '" + qualifiedName + "'");
-                }
                 break;
             }
             case DeclKind::Namespace: {

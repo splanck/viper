@@ -217,6 +217,12 @@ class Parser {
     /// @brief Check whether a token can begin an expression.
     bool isExpressionStart(TokenKind kind) const;
 
+    /// @brief Check whether the current `match` token starts a match expression/statement.
+    bool isMatchExpressionAhead();
+
+    /// @brief Check whether the current `{` is likely a block expression.
+    bool looksLikeBlockExpression();
+
     /// @brief Consume current token if it matches the given kind.
     /// @param kind The token kind to match.
     /// @param out Optional pointer to receive the consumed token.
@@ -345,6 +351,9 @@ class Parser {
     /// @param loc The source location of the match keyword.
     /// @return The parsed match expression.
     ExprPtr parseMatchExpression(SourceLoc loc);
+
+    /// @brief Parse a value-producing block expression: `{ stmts; expr }`.
+    ExprPtr parseBlockExpression();
 
     /// @brief Parse postfix operators (call, index, field access).
     /// @return The parsed expression with postfix operators applied.

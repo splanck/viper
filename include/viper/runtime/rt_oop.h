@@ -80,6 +80,12 @@ extern "C"
     /// @return @p obj if its dynamic type is-a @p target_type_id; NULL otherwise.
     void *rt_cast_as(void *obj, int target_type_id);
 
+    /// @brief Safe interface cast: returns @p obj when interface binding exists, NULL on failure.
+    /// @param obj      Pointer to the object instance; may be NULL.
+    /// @param iface_id Desired interface identifier.
+    /// @return @p obj if its dynamic type implements @p iface_id; NULL otherwise.
+    void *rt_cast_as_iface(void *obj, int iface_id);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

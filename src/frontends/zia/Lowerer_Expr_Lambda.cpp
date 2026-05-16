@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <string_view>
 
 namespace il::frontends::zia {
 
@@ -290,18 +291,29 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr) {
 //=============================================================================
 
 LowerResult Lowerer::lowerBlockExpr(BlockExpr *expr) {
-    // Lower each statement in the block
+    auto localsBackup = locals_;
+    auto slotsBackup = slots_;
+    auto localTypesBackup = localTypes_;
+    const size_t cleanupStart = cleanupStack_.size();
+
     for (auto &stmt : expr->statements) {
+        if (isTerminated())
+            break;
         lowerStmt(stmt.get());
     }
 
-    // If there's a trailing value expression, lower it and return
-    if (expr->value) {
-        return lowerExpr(expr->value.get());
-    }
+    LowerResult result{Value::null(), Type(Type::Kind::Ptr)};
+    if (!isTerminated() && expr->value)
+        result = lowerExpr(expr->value.get());
 
-    // No value expression - return the singleton Unit value.
-    return {Value::null(), Type(Type::Kind::Ptr)};
+    if (!isTerminated())
+        emitCleanupsFrom(cleanupStart);
+    cleanupStack_.resize(cleanupStart);
+
+    locals_ = std::move(localsBackup);
+    slots_ = std::move(slotsBackup);
+    localTypes_ = std::move(localTypesBackup);
+    return result;
 }
 
 //=============================================================================
@@ -316,6 +328,60 @@ LowerResult Lowerer::lowerAs(AsExpr *expr) {
     TypeRef targetType = sema_.resolveType(expr->type.get());
     Type ilTargetType = mapType(targetType);
     TypeRef sourceType = sema_.typeOf(expr->value.get());
+
+    auto emitTrapIfNull = [&](Value ptr, Type ptrType, std::string_view labelPrefix) {
+        unsigned ptrSlotId = nextTempId();
+        il::core::Instr ptrSlotInstr;
+        ptrSlotInstr.result = ptrSlotId;
+        ptrSlotInstr.op = Opcode::Alloca;
+        ptrSlotInstr.type = Type(Type::Kind::Ptr);
+        ptrSlotInstr.operands = {Value::constInt(8)};
+        ptrSlotInstr.loc = curLoc_;
+        blockMgr_.currentBlock()->instructions.push_back(ptrSlotInstr);
+        Value ptrSlot = Value::temp(ptrSlotId);
+
+        il::core::Instr storePtrInstr;
+        storePtrInstr.op = Opcode::Store;
+        storePtrInstr.type = ptrType;
+        storePtrInstr.operands = {ptrSlot, ptr};
+        storePtrInstr.loc = curLoc_;
+        blockMgr_.currentBlock()->instructions.push_back(storePtrInstr);
+
+        unsigned ptrAsI64Id = nextTempId();
+        il::core::Instr loadAsI64Instr;
+        loadAsI64Instr.result = ptrAsI64Id;
+        loadAsI64Instr.op = Opcode::Load;
+        loadAsI64Instr.type = Type(Type::Kind::I64);
+        loadAsI64Instr.operands = {ptrSlot};
+        loadAsI64Instr.loc = curLoc_;
+        blockMgr_.currentBlock()->instructions.push_back(loadAsI64Instr);
+
+        Value ptrAsI64 = Value::temp(ptrAsI64Id);
+        Value isNotNull =
+            emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), ptrAsI64, Value::constInt(0));
+
+        size_t okIdx = createBlock(std::string(labelPrefix) + ".ok");
+        size_t failIdx = createBlock(std::string(labelPrefix) + ".fail");
+        emitCBr(isNotNull, okIdx, failIdx);
+
+        setBlock(failIdx);
+        il::core::Instr trapInstr;
+        trapInstr.op = Opcode::Trap;
+        trapInstr.type = Type(Type::Kind::Void);
+        trapInstr.loc = curLoc_;
+        blockMgr_.currentBlock()->instructions.push_back(trapInstr);
+        blockMgr_.currentBlock()->terminated = true;
+
+        setBlock(okIdx);
+    };
+
+    if (sourceType && sourceType->kind == TypeKindSem::Optional && sourceType->innerType()) {
+        TypeRef innerType = sourceType->innerType();
+        emitTrapIfNull(source.value, source.type, "as.unwrap");
+        auto unwrapped = emitOptionalUnwrap(source.value, innerType);
+        source = unwrapped;
+        sourceType = innerType;
+    }
 
     // Numeric conversions require actual IL conversion instructions to avoid
     // raw bit reinterpretation (e.g., f64 bits read as i64 -> garbage).
@@ -363,10 +429,38 @@ LowerResult Lowerer::lowerAs(AsExpr *expr) {
         }
     }
 
-    // For class/object types, the cast is a no-op at the IL level since all
-    // objects are represented as pointers. The semantic analysis already
-    // validated the cast is valid.
-    return {source.value, ilTargetType};
+    if (sourceType && targetType && targetType->isAssignableFrom(*sourceType))
+        return coerceValueToType(source.value, source.type, sourceType, targetType);
+
+    if (sourceType && targetType &&
+        (sourceType->kind == TypeKindSem::Class || sourceType->kind == TypeKindSem::Interface) &&
+        targetType->kind == TypeKindSem::Class) {
+        if (const ClassTypeInfo *targetInfo = getOrCreateClassTypeInfo(targetType->name)) {
+            Value casted = emitCallRet(Type(Type::Kind::Ptr),
+                                       "rt_cast_as",
+                                       {source.value,
+                                        Value::constInt(static_cast<int64_t>(targetInfo->classId))});
+            emitTrapIfNull(casted, Type(Type::Kind::Ptr), "as.cast");
+            return {casted, ilTargetType};
+        }
+    }
+
+    if (sourceType && targetType &&
+        (sourceType->kind == TypeKindSem::Class || sourceType->kind == TypeKindSem::Interface) &&
+        targetType->kind == TypeKindSem::Interface) {
+        auto ifaceIt = interfaceTypes_.find(targetType->name);
+        if (ifaceIt != interfaceTypes_.end()) {
+            Value casted =
+                emitCallRet(Type(Type::Kind::Ptr),
+                            "rt_cast_as_iface",
+                            {source.value,
+                             Value::constInt(static_cast<int64_t>(ifaceIt->second.ifaceId))});
+            emitTrapIfNull(casted, Type(Type::Kind::Ptr), "as.iface");
+            return {casted, ilTargetType};
+        }
+    }
+
+    return coerceValueToType(source.value, source.type, sourceType, targetType);
 }
 
 //=============================================================================
@@ -380,20 +474,61 @@ LowerResult Lowerer::lowerIsExpr(IsExpr *expr) {
     // Resolve the target type name
     TypeRef targetType = sema_.resolveType(expr->type.get());
     if (!targetType) {
-        return {Value::constInt(0), Type(Type::Kind::I64)};
+        return {Value::constBool(false), Type(Type::Kind::I1)};
+    }
+
+    TypeRef sourceType = sema_.typeOf(expr->value.get());
+    if (sourceType && sourceType->kind == TypeKindSem::Optional && sourceType->innerType()) {
+        TypeRef innerType = sourceType->innerType();
+        if (targetType->equals(*innerType)) {
+            unsigned ptrSlotId = nextTempId();
+            il::core::Instr ptrSlotInstr;
+            ptrSlotInstr.result = ptrSlotId;
+            ptrSlotInstr.op = Opcode::Alloca;
+            ptrSlotInstr.type = Type(Type::Kind::Ptr);
+            ptrSlotInstr.operands = {Value::constInt(8)};
+            ptrSlotInstr.loc = curLoc_;
+            blockMgr_.currentBlock()->instructions.push_back(ptrSlotInstr);
+            Value ptrSlot = Value::temp(ptrSlotId);
+
+            il::core::Instr storePtrInstr;
+            storePtrInstr.op = Opcode::Store;
+            storePtrInstr.type = source.type;
+            storePtrInstr.operands = {ptrSlot, source.value};
+            storePtrInstr.loc = curLoc_;
+            blockMgr_.currentBlock()->instructions.push_back(storePtrInstr);
+
+            Value ptrAsI64 = emitLoad(ptrSlot, Type(Type::Kind::I64));
+            Value isNotNull =
+                emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), ptrAsI64, Value::constInt(0));
+            return {isNotNull, Type(Type::Kind::I1)};
+        }
+    }
+
+    if (targetType->kind != TypeKindSem::Class && targetType->kind != TypeKindSem::Interface) {
+        bool matches = sourceType && sourceType->equals(*targetType);
+        return {Value::constBool(matches), Type(Type::Kind::I1)};
+    }
+
+    if (targetType->kind == TypeKindSem::Interface) {
+        auto ifaceIt = interfaceTypes_.find(targetType->name);
+        if (ifaceIt == interfaceTypes_.end())
+            return {Value::constBool(false), Type(Type::Kind::I1)};
+        Value typeId = emitCallRet(Type(Type::Kind::I64), "rt_typeid_of", {source.value});
+        Value implements =
+            emitCallRet(Type(Type::Kind::I64),
+                        "rt_type_implements",
+                        {typeId, Value::constInt(static_cast<int64_t>(ifaceIt->second.ifaceId))});
+        Value result =
+            emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), implements, Value::constInt(0));
+        return {result, Type(Type::Kind::I1)};
     }
 
     // Look up the class type info for the target type
     std::string targetName = targetType->name;
     auto it = classTypes_.find(targetName);
     if (it == classTypes_.end()) {
-        // Not a class type -- fall back to false
-        diag_.report(
-            {il::support::Severity::Warning,
-             "'is' check against non-class type '" + targetName + "' always evaluates to false",
-             expr->loc,
-             "W019"});
-        return {Value::constInt(0), Type(Type::Kind::I64)};
+        return {Value::constBool(false), Type(Type::Kind::I1)};
     }
 
     // Collect the target class ID and all descendant class IDs.

@@ -461,14 +461,22 @@ LowerResult Lowerer::lowerMatchExpr(MatchExpr *expr) {
     // Determine the result type from the first arm body
     TypeRef resultType = sema_.typeOf(expr);
     Type ilResultType = mapType(resultType);
-    bool expectsOptional = resultType && resultType->kind == TypeKindSem::Optional;
-    TypeRef optionalInner = expectsOptional ? resultType->innerType() : nullptr;
 
     // Create a result slot to store the match result
     std::string resultSlot = "__match_result";
     bool hasResult = ilResultType.kind != Type::Kind::Void;
     if (hasResult)
         createSlot(resultSlot, ilResultType);
+
+    auto coerceArmResult = [&](LowerResult bodyResult, Expr *bodyExpr) -> Value {
+        if (!resultType || resultType->kind == TypeKindSem::Unknown ||
+            resultType->kind == TypeKindSem::Error) {
+            return bodyResult.value;
+        }
+        TypeRef bodyType = bodyExpr ? sema_.typeOf(bodyExpr) : types::unknown();
+        auto coerced = coerceValueToType(bodyResult.value, bodyResult.type, bodyType, resultType);
+        return coerced.value;
+    };
 
     // ---- SwitchI32 fast path for integer-only match ----
     // When the scrutinee is Integer and every arm is either an integer literal
@@ -562,14 +570,7 @@ LowerResult Lowerer::lowerMatchExpr(MatchExpr *expr) {
                 if (arm.body) {
                     auto bodyResult = lowerExpr(arm.body.get());
                     if (hasResult) {
-                        Value bodyValue = bodyResult.value;
-                        if (expectsOptional) {
-                            TypeRef bodyType = sema_.typeOf(arm.body.get());
-                            if (!bodyType || bodyType->kind != TypeKindSem::Optional) {
-                                if (optionalInner)
-                                    bodyValue = emitOptionalWrap(bodyResult.value, optionalInner);
-                            }
-                        }
+                        Value bodyValue = coerceArmResult(bodyResult, arm.body.get());
                         storeToSlot(resultSlot, bodyValue, ilResultType);
                         consumeDeferred(bodyValue);
                     }
@@ -665,14 +666,7 @@ LowerResult Lowerer::lowerMatchExpr(MatchExpr *expr) {
         if (arm.body) {
             auto bodyResult = lowerExpr(arm.body.get());
             if (hasResult) {
-                Value bodyValue = bodyResult.value;
-                if (expectsOptional) {
-                    TypeRef bodyType = sema_.typeOf(arm.body.get());
-                    if (!bodyType || bodyType->kind != TypeKindSem::Optional) {
-                        if (optionalInner)
-                            bodyValue = emitOptionalWrap(bodyResult.value, optionalInner);
-                    }
-                }
+                Value bodyValue = coerceArmResult(bodyResult, arm.body.get());
                 storeToSlot(resultSlot, bodyValue, ilResultType);
                 consumeDeferred(bodyValue);
             }

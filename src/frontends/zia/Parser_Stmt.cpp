@@ -90,8 +90,7 @@ StmtPtr Parser::parseStatement() {
 
     // Match statement (only when followed by a scrutinee, not when used as identifier)
     if (check(TokenKind::KwMatch)) {
-        bool isMatchStmt = isExpressionStart(peek(1).kind);
-        if (isMatchStmt) {
+        if (isMatchExpressionAhead()) {
             result = parseMatchStmt();
             --stmtDepth_;
             return result;
@@ -616,24 +615,9 @@ StmtPtr Parser::parseMatchStmt() {
 
         // Parse arm body (statement, expression, or block)
         if (check(TokenKind::LBrace)) {
-            // Block body - parse as block expression
-            Token lbraceTok = advance(); // consume '{'
-            SourceLoc blockLoc = lbraceTok.loc;
-
-            std::vector<StmtPtr> statements;
-            while (!check(TokenKind::RBrace) && !check(TokenKind::Eof)) {
-                StmtPtr stmt = parseStatement();
-                if (!stmt) {
-                    resyncAfterError();
-                    continue;
-                }
-                statements.push_back(std::move(stmt));
-            }
-
-            if (!expect(TokenKind::RBrace, "}"))
+            arm.body = parseBlockExpression();
+            if (!arm.body)
                 return nullptr;
-
-            arm.body = std::make_unique<BlockExpr>(blockLoc, std::move(statements), nullptr);
         } else if (startsStatementArm()) {
             StmtPtr stmt = parseStatement();
             if (!stmt)

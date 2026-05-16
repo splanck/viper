@@ -222,6 +222,11 @@ function(viper_add_zia_tests)
     target_link_libraries(test_zia_is_and_sets PRIVATE ${VIPER_ZIA_LIBS})
     viper_add_ctest(test_zia_is_and_sets test_zia_is_and_sets)
 
+    # Language hardening regression tests for audited semantics gaps
+    viper_add_test(test_zia_language_hardening ${_VIPER_ZIA_DIR}/test_zia_language_hardening.cpp)
+    target_link_libraries(test_zia_language_hardening PRIVATE ${VIPER_ZIA_LIBS})
+    viper_add_ctest(test_zia_language_hardening test_zia_language_hardening)
+
     # Default parameter value tests
     viper_add_test(test_zia_defaults ${_VIPER_ZIA_DIR}/test_zia_defaults.cpp)
     target_link_libraries(test_zia_defaults PRIVATE ${VIPER_ZIA_LIBS})

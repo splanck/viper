@@ -9,6 +9,12 @@ func testQueue() {
     q.push("first");
     q.push("second");
 
+    var joined = "";
+    for item in q {
+        joined = joined + item;
+    }
+    assertEqStr(joined, "firstsecond", "typed_queue_forin");
+
     assertEqStr(q.peek(), "first", "typed_queue_peek");
     assertEqStr(q.pop(), "first", "typed_queue_pop");
     assertEqStr(q.pop(), "second", "typed_queue_second");
@@ -19,6 +25,12 @@ func testStack() {
     s.push(10);
     s.push(20);
 
+    var stackTotal = 0;
+    for value in s {
+        stackTotal = stackTotal + value;
+    }
+    assertEqInt(stackTotal, 30, "typed_stack_forin");
+
     assertEqInt(s.peek(), 20, "typed_stack_peek");
     assertEqInt(s.pop(), 20, "typed_stack_pop");
     assertEqInt(s.pop(), 10, "typed_stack_second");
@@ -28,6 +40,12 @@ func testDeque() {
     var d: Deque[String] = new Deque[String]();
     d.pushBack("back");
     d.pushFront("front");
+
+    var dequeText = "";
+    for item in d {
+        dequeText = dequeText + item;
+    }
+    assertEqStr(dequeText, "frontback", "typed_deque_forin");
 
     assertEqStr(d.get(0), "front", "typed_deque_get_front");
     assertEqStr(d.popFront(), "front", "typed_deque_pop_front");

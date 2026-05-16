@@ -133,11 +133,7 @@ ExprPtr Parser::parsePrimary() {
 
     // Match expression or 'match' used as identifier
     if (check(TokenKind::KwMatch)) {
-        // Look ahead: 'match' is a keyword (match expression) only when followed by
-        // something that starts a scrutinee expression.
-        // When followed by ';', ')', ',', '.', operators, etc., treat it as a variable name.
-        bool isMatchExpr = isExpressionStart(peek(1).kind);
-        if (isMatchExpr) {
+        if (isMatchExpressionAhead()) {
             advance(); // consume 'match'
             return parseMatchExpression(loc);
         }
@@ -391,6 +387,8 @@ ExprPtr Parser::parsePrimary() {
 
     // Map or Set literal
     if (check(TokenKind::LBrace)) {
+        if (looksLikeBlockExpression())
+            return parseBlockExpression();
         return parseMapOrSetLiteral();
     }
 
@@ -433,23 +431,9 @@ ExprPtr Parser::parseMatchExpression(SourceLoc loc) {
 
         // Parse arm body (expression or block expression)
         if (check(TokenKind::LBrace)) {
-            Token lbraceTok = advance(); // consume '{'
-            SourceLoc blockLoc = lbraceTok.loc;
-            std::vector<StmtPtr> statements;
-
-            while (!check(TokenKind::RBrace) && !check(TokenKind::Eof)) {
-                StmtPtr stmt = parseStatement();
-                if (!stmt) {
-                    resyncAfterError();
-                    continue;
-                }
-                statements.push_back(std::move(stmt));
-            }
-
-            if (!expect(TokenKind::RBrace, "}"))
+            arm.body = parseBlockExpression();
+            if (!arm.body)
                 return nullptr;
-
-            arm.body = std::make_unique<BlockExpr>(blockLoc, std::move(statements), nullptr);
         } else {
             arm.body = parseExpressionAllowingStructLiterals();
             if (!arm.body)
@@ -502,29 +486,46 @@ ExprPtr Parser::parseLambdaBody(SourceLoc loc, std::vector<LambdaParam> params) 
     ExprPtr body;
     // Check for block body: => { ... }
     if (check(TokenKind::LBrace)) {
-        SourceLoc blockLoc = peek().loc;
-        advance(); // consume '{'
-
-        std::vector<StmtPtr> statements;
-        while (!check(TokenKind::RBrace) && !check(TokenKind::Eof)) {
-            StmtPtr stmt = parseStatement();
-            if (!stmt) {
-                resyncAfterError();
-                continue;
-            }
-            statements.push_back(std::move(stmt));
-        }
-
-        if (!expect(TokenKind::RBrace, "}"))
-            return nullptr;
-
-        body = std::make_unique<BlockExpr>(blockLoc, std::move(statements), nullptr);
+        body = parseBlockExpression();
     } else {
         body = parseExpressionAllowingStructLiterals();
     }
     if (!body)
         return nullptr;
     return std::make_unique<LambdaExpr>(loc, std::move(params), nullptr, std::move(body));
+}
+
+ExprPtr Parser::parseBlockExpression() {
+    SourceLoc loc = peek().loc;
+    if (!expect(TokenKind::LBrace, "{"))
+        return nullptr;
+
+    std::vector<StmtPtr> statements;
+    ExprPtr value;
+
+    while (!check(TokenKind::RBrace) && !check(TokenKind::Eof)) {
+        {
+            Speculation speculation(*this);
+            ExprPtr candidate = parseExpressionAllowingStructLiterals();
+            if (candidate && check(TokenKind::RBrace)) {
+                speculation.commit();
+                value = std::move(candidate);
+                break;
+            }
+        }
+
+        StmtPtr stmt = parseStatement();
+        if (!stmt) {
+            resyncAfterError();
+            continue;
+        }
+        statements.push_back(std::move(stmt));
+    }
+
+    if (!expect(TokenKind::RBrace, "}"))
+        return nullptr;
+
+    return std::make_unique<BlockExpr>(loc, std::move(statements), std::move(value));
 }
 
 /// @brief Parse an interpolated string ("text${expr}text").

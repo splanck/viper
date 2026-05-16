@@ -64,5 +64,4 @@ Phase 5 — Runtime Gaps:
 Each plan should update the following docs when implemented:
 - `/docs/release_notes/Viper_Release_Notes_0_2_4.md` — Add to release notes
 - `/docs/codemap.md` — Update if new files added
-- `/misc/plans/zia_bugs_20260329.md` — Cross-reference resolved items
 - `/docs/zia-reference.md` — Update if language behavior changes

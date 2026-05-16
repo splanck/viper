@@ -44,6 +44,12 @@ LowerResult CollectionLowerer::lowerSetLiteral(SetLiteralExpr *expr) {
 }
 
 LowerResult CollectionLowerer::lowerMapLiteral(MapLiteralExpr *expr) {
+    TypeRef literalType = lowerer_.sema_.typeOf(expr);
+    if (literalType && literalType->kind == TypeKindSem::Set && expr->entries.empty()) {
+        Value set = lowerer_.emitCallRet(Type(Type::Kind::Ptr), kSetNew, {});
+        return {set, Type(Type::Kind::Ptr)};
+    }
+
     Value map = lowerer_.emitCallRet(Type(Type::Kind::Ptr), kMapNew, {});
 
     for (auto &entry : expr->entries) {

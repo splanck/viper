@@ -673,23 +673,7 @@ void Lowerer::lowerInterfaceDecl(InterfaceDecl &decl) {
 
     // Use qualified name for interfaces inside namespaces
     std::string qualifiedName = declarationName(decl, decl.name);
-
-    // Store interface information for itable dispatch
-    InterfaceTypeInfo info;
-    info.name = qualifiedName;
-    info.ifaceId = nextIfaceId_++;
-
-    size_t slotIdx = 0;
-    for (auto &member : decl.members) {
-        if (member->kind == DeclKind::Method) {
-            auto *method = static_cast<MethodDecl *>(member.get());
-            info.methodMap[method->name] = method;
-            info.methods.push_back(method);
-            info.slotIndex[sema_.methodSlotKey(qualifiedName, method)] = slotIdx++;
-        }
-    }
-
-    interfaceTypes_[qualifiedName] = std::move(info);
+    registerInterfaceLayout(decl);
 
     // Methods with bodies are default implementations. Abstract signatures are
     // satisfied by implementing classes/structs through the itable.

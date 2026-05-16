@@ -383,10 +383,18 @@ void registerInterfaceImplementation(const std::string &typeName,
 }
 
 bool implementsInterface(const std::string &typeName, const std::string &interfaceName) {
-    auto it = g_interface_impls.find(typeName);
-    if (it == g_interface_impls.end())
-        return false;
-    return it->second.find(interfaceName) != it->second.end();
+    std::string current = typeName;
+    while (!current.empty()) {
+        auto it = g_interface_impls.find(current);
+        if (it != g_interface_impls.end() && it->second.find(interfaceName) != it->second.end())
+            return true;
+
+        auto parentIt = g_class_parents.find(current);
+        if (parentIt == g_class_parents.end())
+            break;
+        current = parentIt->second;
+    }
+    return false;
 }
 
 // BUG-VL-007 fix: Class inheritance tracking

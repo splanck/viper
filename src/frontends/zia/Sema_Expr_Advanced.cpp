@@ -697,7 +697,12 @@ TypeRef Sema::analyzeTry(TryExpr *expr) {
 /// @return Boolean type (result of type check).
 TypeRef Sema::analyzeIs(IsExpr *expr) {
     analyzeExpr(expr->value.get());
-    resolveTypeNode(expr->type.get());
+    TypeRef targetType = resolveTypeNode(expr->type.get());
+    if (targetType && (targetType->kind == TypeKindSem::Void ||
+                       targetType->kind == TypeKindSem::Never ||
+                       targetType->kind == TypeKindSem::Module)) {
+        error(expr->loc, "Cannot use '" + targetType->toDisplayString() + "' in an `is` check");
+    }
     return types::boolean();
 }
 
@@ -717,9 +722,21 @@ TypeRef Sema::analyzeAs(AsExpr *expr) {
     if (sourceType->isConvertibleTo(*targetType))
         return targetType;
 
+    TypeRef effectiveSource = sourceType;
+    if (sourceType->kind == TypeKindSem::Optional && sourceType->innerType())
+        effectiveSource = sourceType->innerType();
+
     // Allow class-to-class casts (downcasts and cross-casts for runtime checking)
-    if (sourceType->kind == TypeKindSem::Class && targetType->kind == TypeKindSem::Class)
+    if (effectiveSource && effectiveSource->kind == TypeKindSem::Class &&
+        targetType->kind == TypeKindSem::Class)
         return targetType;
+
+    // Allow casts between object and interface references for runtime checking.
+    if (effectiveSource &&
+        (effectiveSource->kind == TypeKindSem::Class || effectiveSource->kind == TypeKindSem::Interface) &&
+        (targetType->kind == TypeKindSem::Class || targetType->kind == TypeKindSem::Interface)) {
+        return targetType;
+    }
 
     // Allow Ptr <-> Entity/Value interop (both are pointers at IL level)
     if ((sourceType->kind == TypeKindSem::Ptr &&
@@ -994,6 +1011,8 @@ TypeRef Sema::analyzeMatchExpr(MatchExpr *expr) {
 
     MatchCoverage coverage;
     TypeRef resultType = nullptr;
+    bool hasResultType = false;
+    bool incompatibleResultType = false;
 
     for (auto &arm : expr->arms) {
         std::unordered_map<std::string, TypeRef> bindings;
@@ -1021,7 +1040,28 @@ TypeRef Sema::analyzeMatchExpr(MatchExpr *expr) {
         }
 
         TypeRef bodyType = analyzeExpr(arm.body.get());
-        resultType = commonType(resultType, bodyType);
+        if (!hasResultType) {
+            resultType = bodyType;
+            hasResultType = true;
+        } else if (!incompatibleResultType) {
+            TypeRef combined = commonType(resultType, bodyType);
+            const bool knownPrior =
+                resultType && resultType->kind != TypeKindSem::Unknown &&
+                resultType->kind != TypeKindSem::Error;
+            const bool knownBody = bodyType && bodyType->kind != TypeKindSem::Unknown &&
+                                   bodyType->kind != TypeKindSem::Error;
+            if (knownPrior && knownBody &&
+                (!combined || combined->kind == TypeKindSem::Unknown ||
+                 combined->kind == TypeKindSem::Error)) {
+                error(arm.body ? arm.body->loc : expr->loc,
+                      "Incompatible match arm type " + bodyType->toDisplayString() +
+                          " with prior arm type " + resultType->toDisplayString());
+                resultType = types::unknown();
+                incompatibleResultType = true;
+            } else {
+                resultType = combined;
+            }
+        }
 
         popScope(arm.body ? arm.body->loc : expr->loc);
         for (const auto &[name, wasInitialized] : bindingWasInitialized) {

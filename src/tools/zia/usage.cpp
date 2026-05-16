@@ -42,7 +42,7 @@ void printUsage() {
               << "  zia hello.zia -- arg1 arg2              Pass args to program\n"
               << "  zia hello.zia --stdin-from input.txt    Redirect input\n"
               << "\n"
-              << "Documentation: docs/zia-guide.md\n";
+              << "Documentation: docs/zia-reference.md\n";
 }
 
 } // namespace zia

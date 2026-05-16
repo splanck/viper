@@ -439,6 +439,14 @@ void Sema::analyzeGlobalVarDecl(GlobalVarDecl &decl) {
     // Analyze initializer if present
     if (decl.initializer) {
         TypeRef initType = analyzeExpr(decl.initializer.get());
+        if (declaredType && declaredType->kind == TypeKindSem::Set &&
+            decl.initializer->kind == ExprKind::MapLiteral) {
+            auto *mapLiteral = static_cast<MapLiteralExpr *>(decl.initializer.get());
+            if (mapLiteral->entries.empty()) {
+                exprTypes_[decl.initializer.get()] = declaredType;
+                initType = declaredType;
+            }
+        }
         if (initType && initType->kind == TypeKindSem::Unit) {
             error(decl.initializer->loc,
                   "Unit literal cannot be stored; use null for optional values or omit the value "

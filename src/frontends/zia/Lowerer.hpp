@@ -543,6 +543,10 @@ class Lowerer {
     /// @param decl The value declaration.
     void registerStructLayout(StructDecl &decl);
 
+    /// @brief Register a single interface's dispatch metadata without lowering default methods.
+    /// @param decl The interface declaration.
+    void registerInterfaceLayout(InterfaceDecl &decl);
+
     /// @brief Try to evaluate an initializer expression to a compile-time constant.
     /// @param init The expression to fold.
     /// @return The folded constant value, or nullopt if not foldable.

@@ -39,6 +39,8 @@ void Lowerer::registerAllTypeLayouts(std::vector<DeclPtr> &declarations) {
             registerClassLayout(*static_cast<ClassDecl *>(decl.get()));
         } else if (decl->kind == DeclKind::Struct) {
             registerStructLayout(*static_cast<StructDecl *>(decl.get()));
+        } else if (decl->kind == DeclKind::Interface) {
+            registerInterfaceLayout(*static_cast<InterfaceDecl *>(decl.get()));
         } else if (decl->kind == DeclKind::Namespace) {
             auto *ns = static_cast<NamespaceDecl *>(decl.get());
             std::string savedPrefix = namespacePrefix_;
@@ -70,6 +72,8 @@ void Lowerer::registerClassLayout(ClassDecl &decl) {
     if (!decl.baseClass.empty()) {
         TypeRef baseType = sema_.resolveNamedType(decl.baseClass, decl.loc);
         info.baseClass = baseType ? baseType->name : decl.baseClass;
+        if (ClassDecl *baseDecl = sema_.lookupClassDeclForType(info.baseClass))
+            registerClassLayout(*baseDecl);
     }
     info.totalSize = kClassFieldsOffset;
     info.classId = nextClassId_++;
@@ -81,8 +85,8 @@ void Lowerer::registerClassLayout(ClassDecl &decl) {
     }
 
     // Copy inherited fields from parent class
-    if (!decl.baseClass.empty()) {
-        auto parentIt = classTypes_.find(decl.baseClass);
+    if (!info.baseClass.empty()) {
+        auto parentIt = classTypes_.find(info.baseClass);
         if (parentIt != classTypes_.end()) {
             inheritClassMembers(info, parentIt->second);
         }
@@ -93,6 +97,28 @@ void Lowerer::registerClassLayout(ClassDecl &decl) {
     buildClassVtable(decl, info, qualifiedName);
 
     classTypes_[qualifiedName] = std::move(info);
+}
+
+void Lowerer::registerInterfaceLayout(InterfaceDecl &decl) {
+    std::string qualifiedName = declarationName(decl, decl.name);
+    if (interfaceTypes_.find(qualifiedName) != interfaceTypes_.end())
+        return;
+
+    InterfaceTypeInfo info;
+    info.name = qualifiedName;
+    info.ifaceId = nextIfaceId_++;
+
+    size_t slotIdx = 0;
+    for (auto &member : decl.members) {
+        if (member->kind != DeclKind::Method)
+            continue;
+        auto *method = static_cast<MethodDecl *>(member.get());
+        info.methodMap[method->name] = method;
+        info.methods.push_back(method);
+        info.slotIndex[sema_.methodSlotKey(qualifiedName, method)] = slotIdx++;
+    }
+
+    interfaceTypes_[qualifiedName] = std::move(info);
 }
 
 void Lowerer::computeClassFieldLayout(ClassDecl &decl,
