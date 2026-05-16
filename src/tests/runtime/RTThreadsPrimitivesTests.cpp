@@ -244,15 +244,15 @@ static void test_rwlock_write_exit_non_owner_traps() {
     void *lock = rt_rwlock_new();
     rt_rwlock_write_enter(lock);
 
-    std::atomic<const char *> trap_msg = nullptr;
+    std::string trap_msg;
     std::thread t([&] {
         EXPECT_TRAP(rt_rwlock_write_exit(lock));
-        trap_msg.store(g_last_trap, std::memory_order_release);
+        if (g_last_trap)
+            trap_msg = g_last_trap;
     });
     t.join();
 
-    const char *msg = trap_msg.load(std::memory_order_acquire);
-    assert(msg && std::string(msg).find("RwLock.WriteExit: not owner") != std::string::npos);
+    assert(trap_msg.find("RwLock.WriteExit: not owner") != std::string::npos);
 
     rt_rwlock_write_exit(lock);
 }
@@ -261,17 +261,15 @@ static void test_rwlock_read_exit_non_owner_traps() {
     void *lock = rt_rwlock_new();
     rt_rwlock_read_enter(lock);
 
-    std::atomic<const char *> trap_msg = nullptr;
+    std::string trap_msg;
     std::thread t([&] {
         EXPECT_TRAP(rt_rwlock_read_exit(lock));
-        trap_msg.store(g_last_trap, std::memory_order_release);
+        if (g_last_trap)
+            trap_msg = g_last_trap;
     });
     t.join();
 
-    const char *msg = trap_msg.load(std::memory_order_acquire);
-    assert(msg &&
-           std::string(msg).find("RwLock.ReadExit: exit without matching enter") !=
-               std::string::npos);
+    assert(trap_msg.find("RwLock.ReadExit: exit without matching enter") != std::string::npos);
 
     rt_rwlock_read_exit(lock);
 }
