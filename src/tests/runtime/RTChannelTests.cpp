@@ -7,6 +7,7 @@
 
 #include <atomic>
 #include <cassert>
+#include <csetjmp>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -16,8 +17,13 @@
 
 extern "C" {
 #include "rt_channel.h"
+#include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_trap.h"
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
 
 /// @brief Vm_trap.
 void vm_trap(const char *msg) {
@@ -28,6 +34,28 @@ void vm_trap(const char *msg) {
 
 static void *make_obj() {
     return rt_obj_new_i64(0, 8);
+}
+
+template <typename Fn> static bool expect_trap(Fn fn) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        fn();
+        rt_trap_clear_recovery();
+        return false;
+    }
+    rt_trap_clear_recovery();
+    return true;
+}
+
+static std::atomic<int> g_discard_finalizer_count{0};
+static void *g_discard_finalizer_channel = NULL;
+
+static void reentrant_channel_discard_finalizer(void *obj) {
+    (void)obj;
+    g_discard_finalizer_count.fetch_add(1, std::memory_order_acq_rel);
+    if (g_discard_finalizer_channel)
+        (void)rt_channel_get_len(g_discard_finalizer_channel);
 }
 
 //=============================================================================
@@ -132,7 +160,10 @@ static void test_try_send_full() {
     assert(rt_channel_try_send(ch, a) == 1);
     assert(rt_channel_try_send(ch, b) == 1);
     assert(rt_channel_get_is_full(ch) == 1);
+    rt_heap_hdr_t *c_hdr = rt_heap_hdr(c);
+    c_hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
     assert(rt_channel_try_send(ch, c) == 0); // Full
+    c_hdr->refcnt = 1;
 
     rt_channel_close(ch);
 }
@@ -163,7 +194,11 @@ static void test_close_prevents_send() {
     rt_channel_close(ch);
 
     assert(rt_channel_get_is_closed(ch) == 1);
-    assert(rt_channel_try_send(ch, make_obj()) == 0);
+    void *item = make_obj();
+    rt_heap_hdr_t *hdr = rt_heap_hdr(item);
+    hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+    assert(rt_channel_try_send(ch, item) == 0);
+    hdr->refcnt = 1;
 }
 
 static void test_close_allows_drain() {
@@ -271,6 +306,70 @@ static void test_send_for_zero_ms() {
     // ms <= 0 degrades to try_send
     assert(rt_channel_send_for(ch, a, 0) == 1);
     assert(rt_channel_send_for(ch, make_obj(), 0) == 0); // Full
+    rt_channel_close(ch);
+}
+
+static void test_send_retain_overflow_does_not_lock_channel() {
+    void *ch = rt_channel_new(1);
+    void *item = make_obj();
+    rt_heap_hdr_t *hdr = rt_heap_hdr(item);
+    hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+
+    assert(expect_trap([&]() { rt_channel_send(ch, item); }));
+    assert(rt_channel_get_len(ch) == 0);
+    hdr->refcnt = 1;
+
+    rt_channel_close(ch);
+}
+
+static void test_try_send_retain_overflow_does_not_lock_channel() {
+    void *ch = rt_channel_new(1);
+    void *item = make_obj();
+    rt_heap_hdr_t *hdr = rt_heap_hdr(item);
+    hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+
+    assert(expect_trap([&]() { (void)rt_channel_try_send(ch, item); }));
+    assert(rt_channel_get_len(ch) == 0);
+    hdr->refcnt = 1;
+
+    assert(rt_channel_try_send(ch, NULL) == 1);
+    assert(rt_channel_get_len(ch) == 1);
+    void *out = (void *)0x1;
+    assert(rt_channel_try_recv(ch, &out) == 1);
+    assert(out == NULL);
+
+    rt_channel_close(ch);
+}
+
+static void test_send_for_retain_overflow_does_not_lock_channel() {
+    void *ch = rt_channel_new(1);
+    void *item = make_obj();
+    rt_heap_hdr_t *hdr = rt_heap_hdr(item);
+    hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+
+    assert(expect_trap([&]() { (void)rt_channel_send_for(ch, item, 10); }));
+    assert(rt_channel_get_len(ch) == 0);
+    hdr->refcnt = 1;
+
+    rt_channel_close(ch);
+}
+
+static void test_recv_for_discard_releases_after_unlock() {
+    void *ch = rt_channel_new(1);
+    void *item = make_obj();
+    rt_obj_set_finalizer(item, reentrant_channel_discard_finalizer);
+
+    g_discard_finalizer_count.store(0, std::memory_order_release);
+    g_discard_finalizer_channel = ch;
+
+    assert(rt_channel_try_send(ch, item) == 1);
+    if (rt_obj_release_check0(item))
+        rt_obj_free(item);
+
+    assert(rt_channel_recv_for(ch, NULL, 100) == 1);
+    assert(g_discard_finalizer_count.load(std::memory_order_acquire) == 1);
+
+    g_discard_finalizer_channel = NULL;
     rt_channel_close(ch);
 }
 
@@ -511,6 +610,10 @@ int main() {
     test_managed_value_wrappers();
     test_send_for_timeout();
     test_send_for_zero_ms();
+    test_send_retain_overflow_does_not_lock_channel();
+    test_try_send_retain_overflow_does_not_lock_channel();
+    test_send_for_retain_overflow_does_not_lock_channel();
+    test_recv_for_discard_releases_after_unlock();
     test_null_safety();
     test_producer_consumer();
     test_close_wakes_receiver();

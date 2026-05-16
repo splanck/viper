@@ -6,15 +6,22 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_concqueue.h"
+#include "rt_heap.h"
 #include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_string.h"
 #include "rt_threads.h"
+#include "rt_trap.h"
 
 #include <cassert>
+#include <csetjmp>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <thread>
+
+extern "C" void rt_trap_set_recovery(jmp_buf *buf);
+extern "C" void rt_trap_clear_recovery(void);
 
 extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
@@ -22,6 +29,24 @@ extern "C" void vm_trap(const char *msg) {
 
 static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
+}
+
+static void *make_obj() {
+    void *p = rt_obj_new_i64(0, 8);
+    assert(p != nullptr);
+    return p;
+}
+
+template <typename Fn> static bool expect_trap(Fn fn) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        fn();
+        rt_trap_clear_recovery();
+        return false;
+    }
+    rt_trap_clear_recovery();
+    return true;
 }
 
 static void test_new() {
@@ -57,6 +82,34 @@ static void test_peek() {
 
     assert(rt_concqueue_peek(q) == v);
     assert(rt_concqueue_len(q) == 1); // Still there
+}
+
+static void test_enqueue_retain_overflow_cleans_up() {
+    void *q = rt_concqueue_new();
+    rt_heap_hdr_t *queue_hdr = rt_heap_hdr(q);
+    void *item = make_obj();
+    rt_heap_hdr_t *item_hdr = rt_heap_hdr(item);
+    item_hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+
+    assert(expect_trap([&]() { rt_concqueue_enqueue(q, item); }));
+    assert(queue_hdr->refcnt == 1);
+    assert(rt_concqueue_len(q) == 0);
+
+    item_hdr->refcnt = 1;
+}
+
+static void test_peek_retain_overflow_unlocks_queue() {
+    void *q = rt_concqueue_new();
+    void *item = make_obj();
+    rt_concqueue_enqueue(q, item);
+
+    rt_heap_hdr_t *item_hdr = rt_heap_hdr(item);
+    item_hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+    assert(expect_trap([&]() { (void)rt_concqueue_peek(q); }));
+    assert(rt_concqueue_len(q) == 1);
+
+    item_hdr->refcnt = 2;
+    assert(rt_concqueue_try_dequeue(q) == item);
 }
 
 static void test_clear() {
@@ -141,6 +194,8 @@ int main() {
     test_enqueue_dequeue();
     test_try_dequeue_empty();
     test_peek();
+    test_enqueue_retain_overflow_cleans_up();
+    test_peek_retain_overflow_unlocks_queue();
     test_clear();
     test_timeout_empty();
     test_huge_timeout_immediate_dequeue();

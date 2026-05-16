@@ -35,7 +35,9 @@
 #include "rt_object.h"
 #include "rt_threads.h"
 
+#include <setjmp.h>
 #include <limits.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #if defined(_WIN32)
@@ -71,6 +73,10 @@ typedef struct channel_impl {
 static void channel_finalizer(void *obj);
 
 #include "rt_trap.h"
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
 
 #if defined(_WIN32)
 typedef struct {
@@ -228,6 +234,38 @@ static void channel_release_item(void *item) {
         rt_obj_free(item);
 }
 
+static void channel_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
+    const char *err = rt_trap_get_error();
+    snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
+}
+
+static int8_t channel_retain_item_locked(channel_impl *ch,
+                                         void *channel,
+                                         void *item,
+                                         int64_t *waiting_counter,
+                                         const char *fallback) {
+    if (!item)
+        return 1;
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        channel_save_trap_error(saved_error, sizeof(saved_error), fallback);
+        rt_trap_clear_recovery();
+        if (waiting_counter)
+            (*waiting_counter)--;
+        rt_monitor_exit(ch->monitor);
+        channel_release_object(channel);
+        rt_trap(saved_error);
+        return 0;
+    }
+
+    rt_obj_retain_maybe(item);
+    rt_trap_clear_recovery();
+    return 1;
+}
+
 /// @brief Validate-and-cast an opaque channel pointer to its impl, with optional NULL-trap.
 /// @details Every public Channel entry point dispatches through this guard.
 ///          NULL @p channel triggers a trap with @p null_msg iff
@@ -330,8 +368,9 @@ void rt_channel_send(void *channel, void *item) {
             return;
         }
 
-        if (item)
-            rt_obj_retain_maybe(item);
+        if (!channel_retain_item_locked(
+                ch, channel, item, &ch->waiting_senders, "Channel.Send: item retain failed"))
+            return;
         int64_t my_epoch = ++ch->sync_epoch;
         ch->buffer[0] = item;
         ch->count = 1;
@@ -344,16 +383,17 @@ void rt_channel_send(void *channel, void *item) {
                 break;
         }
         if (ch->sync_acked_epoch < my_epoch) {
+            void *discard_item = NULL;
             if (ch->sync_epoch == my_epoch && ch->count != 0) {
-                void *unsent = ch->buffer[0];
+                discard_item = ch->buffer[0];
                 ch->buffer[0] = NULL;
                 ch->count = 0;
-                channel_release_item(unsent);
                 rt_monitor_pause_all(ch->monitor);
             }
             ch->waiting_senders--;
             rt_monitor_exit(ch->monitor);
             channel_release_object(channel);
+            channel_release_item(discard_item);
             rt_trap("Channel.Send: send on closed channel");
             return;
         }
@@ -378,8 +418,9 @@ void rt_channel_send(void *channel, void *item) {
     }
 
     // Retain the item and enqueue
-    if (item)
-        rt_obj_retain_maybe(item);
+    if (!channel_retain_item_locked(
+            ch, channel, item, &ch->waiting_senders, "Channel.Send: item retain failed"))
+        return;
     ch->buffer[ch->tail] = item;
     ch->tail = (ch->tail + 1) % ch->capacity;
     ch->count++;
@@ -432,15 +473,17 @@ int8_t rt_channel_try_send(void *channel, void *item) {
     // Synchronous TrySend is non-blocking: if a receiver is already waiting,
     // publish one handoff and return immediately. The receiver owns completion.
     if (ch->capacity == 0) {
-        if (item)
-            rt_obj_retain_maybe(item);
+        if (!channel_retain_item_locked(
+                ch, channel, item, NULL, "Channel.TrySend: item retain failed"))
+            return 0;
         ++ch->sync_epoch;
         ch->buffer[0] = item;
         ch->count = 1;
         rt_monitor_pause_all(ch->monitor);
     } else {
-        if (item)
-            rt_obj_retain_maybe(item);
+        if (!channel_retain_item_locked(
+                ch, channel, item, NULL, "Channel.TrySend: item retain failed"))
+            return 0;
         ch->buffer[ch->tail] = item;
         ch->tail = (ch->tail + 1) % ch->capacity;
         ch->count++;
@@ -501,8 +544,9 @@ int8_t rt_channel_send_for(void *channel, void *item, int64_t ms) {
             return 0;
         }
 
-        if (item)
-            rt_obj_retain_maybe(item);
+        if (!channel_retain_item_locked(
+                ch, channel, item, &ch->waiting_senders, "Channel.SendFor: item retain failed"))
+            return 0;
         int64_t my_epoch = ++ch->sync_epoch;
         ch->buffer[0] = item;
         ch->count = 1;
@@ -513,30 +557,32 @@ int8_t rt_channel_send_for(void *channel, void *item, int64_t ms) {
             if (remaining <= 0 || !rt_monitor_wait_for(ch->monitor, remaining)) {
                 if (ch->sync_acked_epoch >= my_epoch)
                     break;
+                void *discard_item = NULL;
                 if (ch->sync_epoch == my_epoch && ch->count != 0) {
-                    void *unsent = ch->buffer[0];
+                    discard_item = ch->buffer[0];
                     ch->buffer[0] = NULL;
                     ch->count = 0;
-                    channel_release_item(unsent);
                     rt_monitor_pause_all(ch->monitor);
                 }
                 ch->waiting_senders--;
                 rt_monitor_exit(ch->monitor);
                 channel_release_object(channel);
+                channel_release_item(discard_item);
                 return 0;
             }
         }
         if (ch->sync_acked_epoch < my_epoch) {
+            void *discard_item = NULL;
             if (ch->sync_epoch == my_epoch && ch->count != 0) {
-                void *unsent = ch->buffer[0];
+                discard_item = ch->buffer[0];
                 ch->buffer[0] = NULL;
                 ch->count = 0;
-                channel_release_item(unsent);
                 rt_monitor_pause_all(ch->monitor);
             }
             ch->waiting_senders--;
             rt_monitor_exit(ch->monitor);
             channel_release_object(channel);
+            channel_release_item(discard_item);
             return 0;
         }
         ch->waiting_senders--;
@@ -565,8 +611,9 @@ int8_t rt_channel_send_for(void *channel, void *item, int64_t ms) {
         return 0;
     }
 
-    if (item)
-        rt_obj_retain_maybe(item);
+    if (!channel_retain_item_locked(
+            ch, channel, item, &ch->waiting_senders, "Channel.SendFor: item retain failed"))
+        return 0;
     ch->buffer[ch->tail] = item;
     ch->tail = (ch->tail + 1) % ch->capacity;
     ch->count++;
@@ -774,14 +821,16 @@ int8_t rt_channel_recv_for(void *channel, void **out, int64_t ms) {
         if (ch->waiting_senders > 0)
             rt_monitor_pause_all(ch->monitor);
 
+        void *discard_item = NULL;
         if (out)
             *out = item;
-        else if (item && rt_obj_release_check0(item))
-            rt_obj_free(item);
+        else
+            discard_item = item;
 
         ch->waiting_receivers--;
         rt_monitor_exit(ch->monitor);
         channel_release_object(channel);
+        channel_release_item(discard_item);
         return 1;
     }
 
@@ -812,14 +861,16 @@ int8_t rt_channel_recv_for(void *channel, void **out, int64_t ms) {
     if (ch->waiting_senders > 0)
         rt_monitor_pause(ch->monitor);
 
+    void *discard_item = NULL;
     if (out)
         *out = item;
-    else if (item && rt_obj_release_check0(item))
-        rt_obj_free(item);
+    else
+        discard_item = item;
 
     ch->waiting_receivers--;
     rt_monitor_exit(ch->monitor);
     channel_release_object(channel);
+    channel_release_item(discard_item);
     return 1;
 }
 

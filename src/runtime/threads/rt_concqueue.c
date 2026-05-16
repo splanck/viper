@@ -35,10 +35,17 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_threads.h"
+#include "rt_trap.h"
 
 #include <limits.h>
+#include <setjmp.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -263,6 +270,11 @@ static void concqueue_release_object(void *obj) {
         rt_obj_free(obj);
 }
 
+static void concqueue_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
+    const char *err = rt_trap_get_error();
+    snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
+}
+
 /// @brief Walk a linked list of queue nodes, releasing each retained value and freeing each node.
 /// @details Used by Clear and the GC finalizer to drain any remaining
 ///          items. Decrements each value's refcount and frees the value
@@ -398,7 +410,22 @@ void rt_concqueue_enqueue(void *obj, void *item) {
         return;
     }
     node->value = item;
+    cq_node *volatile node_for_cleanup = node;
+    void *volatile obj_for_cleanup = obj;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        concqueue_save_trap_error(
+            saved_error, sizeof(saved_error), "ConcurrentQueue.Enqueue: item retain failed");
+        rt_trap_clear_recovery();
+        free((void *)node_for_cleanup);
+        concqueue_release_object((void *)obj_for_cleanup);
+        rt_trap(saved_error);
+        return;
+    }
     rt_obj_retain_maybe(item);
+    rt_trap_clear_recovery();
     node->next = NULL;
 
     CQ_LOCK(cq);
@@ -586,8 +613,24 @@ void *rt_concqueue_peek(void *obj) {
 
     CQ_LOCK(cq);
     void *value = cq->head ? cq->head->value : NULL;
-    if (value)
+    if (value) {
+        rt_concqueue_impl *volatile locked_cq = cq;
+        void *volatile obj_for_cleanup = obj;
+        jmp_buf recovery;
+        rt_trap_set_recovery(&recovery);
+        if (setjmp(recovery) != 0) {
+            char saved_error[256];
+            concqueue_save_trap_error(
+                saved_error, sizeof(saved_error), "ConcurrentQueue.Peek: item retain failed");
+            rt_trap_clear_recovery();
+            CQ_UNLOCK((rt_concqueue_impl *)locked_cq);
+            concqueue_release_object((void *)obj_for_cleanup);
+            rt_trap(saved_error);
+            return NULL;
+        }
         rt_obj_retain_maybe(value);
+        rt_trap_clear_recovery();
+    }
     CQ_UNLOCK(cq);
     concqueue_release_object(obj);
     return value;

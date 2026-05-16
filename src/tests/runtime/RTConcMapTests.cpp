@@ -11,18 +11,24 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_concmap.h"
+#include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
 #include <cassert>
 #include <atomic>
+#include <csetjmp>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <thread>
 #include <vector>
+
+extern "C" void rt_trap_set_recovery(jmp_buf *buf);
+extern "C" void rt_trap_clear_recovery(void);
 
 extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
@@ -36,6 +42,18 @@ static void *new_obj() {
     void *p = rt_obj_new_i64(0, 8);
     assert(p != nullptr);
     return p;
+}
+
+template <typename Fn> static bool expect_trap(Fn fn) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        fn();
+        rt_trap_clear_recovery();
+        return false;
+    }
+    rt_trap_clear_recovery();
+    return true;
 }
 
 static std::atomic<int> g_reentrant_value_finalized{0};
@@ -74,6 +92,21 @@ static void test_set_get() {
     printf("test_set_get: PASSED\n");
 }
 
+static void test_set_retain_overflow_cleans_up() {
+    void *m = rt_concmap_new();
+    rt_heap_hdr_t *map_hdr = rt_heap_hdr(m);
+    void *val = new_obj();
+    rt_heap_hdr_t *val_hdr = rt_heap_hdr(val);
+    val_hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+
+    assert(expect_trap([&]() { rt_concmap_set(m, make_str("overflow"), val); }));
+    assert(map_hdr->refcnt == 1);
+    assert(rt_concmap_len(m) == 0);
+
+    val_hdr->refcnt = 1;
+    printf("test_set_retain_overflow_cleans_up: PASSED\n");
+}
+
 static void test_get_missing() {
     void *m = rt_concmap_new();
     void *result = rt_concmap_get(m, make_str("missing"));
@@ -94,6 +127,35 @@ static void test_get_or() {
     assert(result == val);
 
     printf("test_get_or: PASSED\n");
+}
+
+static void test_get_retain_overflow_unlocks_map() {
+    void *m = rt_concmap_new();
+    void *val = new_obj();
+    rt_concmap_set(m, make_str("key"), val);
+
+    rt_heap_hdr_t *val_hdr = rt_heap_hdr(val);
+    val_hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+    assert(expect_trap([&]() { (void)rt_concmap_get(m, make_str("key")); }));
+    assert(rt_concmap_len(m) == 1);
+
+    val_hdr->refcnt = 2;
+    printf("test_get_retain_overflow_unlocks_map: PASSED\n");
+}
+
+static void test_get_or_retain_overflow_unlocks_map() {
+    void *m = rt_concmap_new();
+    void *val = new_obj();
+    void *def = new_obj();
+    rt_concmap_set(m, make_str("key"), val);
+
+    rt_heap_hdr_t *val_hdr = rt_heap_hdr(val);
+    val_hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+    assert(expect_trap([&]() { (void)rt_concmap_get_or(m, make_str("key"), def); }));
+    assert(rt_concmap_len(m) == 1);
+
+    val_hdr->refcnt = 2;
+    printf("test_get_or_retain_overflow_unlocks_map: PASSED\n");
 }
 
 static void test_has() {
@@ -203,6 +265,21 @@ static void test_set_if_missing() {
     printf("test_set_if_missing: PASSED\n");
 }
 
+static void test_set_if_missing_retain_overflow_cleans_up() {
+    void *m = rt_concmap_new();
+    rt_heap_hdr_t *map_hdr = rt_heap_hdr(m);
+    void *val = new_obj();
+    rt_heap_hdr_t *val_hdr = rt_heap_hdr(val);
+    val_hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+
+    assert(expect_trap([&]() { (void)rt_concmap_set_if_missing(m, make_str("key"), val); }));
+    assert(map_hdr->refcnt == 1);
+    assert(rt_concmap_len(m) == 0);
+
+    val_hdr->refcnt = 1;
+    printf("test_set_if_missing_retain_overflow_cleans_up: PASSED\n");
+}
+
 static void test_embedded_nul_keys_are_distinct() {
     void *m = rt_concmap_new();
     const char key1_bytes[3] = {'a', '\0', '1'};
@@ -241,6 +318,20 @@ static void test_keys_values() {
     assert(rt_seq_len(values) == 2);
 
     printf("test_keys_values: PASSED\n");
+}
+
+static void test_values_retain_overflow_unlocks_map() {
+    void *m = rt_concmap_new();
+    void *val = new_obj();
+    rt_concmap_set(m, make_str("key"), val);
+
+    rt_heap_hdr_t *val_hdr = rt_heap_hdr(val);
+    val_hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+    assert(expect_trap([&]() { (void)rt_concmap_values(m); }));
+    assert(rt_concmap_len(m) == 1);
+
+    val_hdr->refcnt = 2;
+    printf("test_values_retain_overflow_unlocks_map: PASSED\n");
 }
 
 static void test_snapshot_values_survive_clear() {
@@ -399,8 +490,11 @@ int main() {
     /* Basic operations */
     test_new();
     test_set_get();
+    test_set_retain_overflow_cleans_up();
     test_get_missing();
     test_get_or();
+    test_get_retain_overflow_unlocks_map();
+    test_get_or_retain_overflow_unlocks_map();
     test_has();
     test_update();
     test_remove();
@@ -408,8 +502,10 @@ int main() {
     test_clear();
     test_clear_releases_values_after_unlock();
     test_set_if_missing();
+    test_set_if_missing_retain_overflow_cleans_up();
     test_embedded_nul_keys_are_distinct();
     test_keys_values();
+    test_values_retain_overflow_unlocks_map();
     test_snapshot_values_survive_clear();
     test_get_survives_remove();
     test_many_entries();

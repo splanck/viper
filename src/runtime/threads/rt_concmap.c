@@ -38,7 +38,10 @@
 #include "rt_string.h"
 #include "rt_string_internal.h"
 #include "rt_threads.h"
+#include "rt_trap.h"
 
+#include <setjmp.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -54,6 +57,10 @@
 #define CM_INITIAL_CAPACITY 16
 #define CM_LOAD_FACTOR_NUM 3
 #define CM_LOAD_FACTOR_DEN 4
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
 
 //=============================================================================
 // Internal types
@@ -150,6 +157,23 @@ static void concmap_release_object(void *obj) {
         rt_obj_free(obj);
 }
 
+static void concmap_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
+    const char *err = rt_trap_get_error();
+    snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
+}
+
+static void release_retained_value(void *value) {
+    if (value && rt_obj_release_check0(value))
+        rt_obj_free(value);
+}
+
+static void free_entry_storage(cm_entry *e) {
+    if (e) {
+        free(e->key);
+        free(e);
+    }
+}
+
 /// @brief Free a single entry — its key copy, its retained value (refcount-aware), and the entry itself.
 /// @details Used by Delete and bucket clear paths. The key is a freshly
 ///          malloc'd copy so we own it; the value carries a runtime ref
@@ -157,10 +181,31 @@ static void concmap_release_object(void *obj) {
 static void free_entry(cm_entry *e) {
     if (e) {
         free(e->key);
-        if (rt_obj_release_check0(e->value))
-            rt_obj_free(e->value);
+        release_retained_value(e->value);
         free(e);
     }
+}
+
+static int8_t retain_value_or_free_entry(void *obj,
+                                         cm_entry *entry,
+                                         void *value,
+                                         const char *fallback) {
+    jmp_buf recovery;
+    cm_entry *volatile entry_for_cleanup = entry;
+    void *volatile obj_for_cleanup = obj;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        concmap_save_trap_error(saved_error, sizeof(saved_error), fallback);
+        rt_trap_clear_recovery();
+        free_entry_storage((cm_entry *)entry_for_cleanup);
+        concmap_release_object((void *)obj_for_cleanup);
+        rt_trap(saved_error);
+        return 0;
+    }
+    rt_obj_retain_maybe(value);
+    rt_trap_clear_recovery();
+    return 1;
 }
 
 /// @brief Double the bucket array and redistribute every entry to the new modulus.
@@ -349,7 +394,9 @@ void rt_concmap_set(void *obj, rt_string key, void *value) {
     new_entry->key_len = key_len;
     new_entry->value = value;
     new_entry->next = NULL;
-    rt_obj_retain_maybe(value);
+    if (!retain_value_or_free_entry(
+            obj, new_entry, value, "ConcurrentMap.Set: value retain failed"))
+        return;
 
     void *old_value = NULL;
     CM_LOCK(cm);
@@ -364,9 +411,8 @@ void rt_concmap_set(void *obj, rt_string key, void *value) {
         CM_UNLOCK(cm);
         free(new_entry->key);
         free(new_entry);
-        if (rt_obj_release_check0(old_value))
-            rt_obj_free(old_value);
         concmap_release_object(obj);
+        release_retained_value(old_value);
         return;
     }
 
@@ -398,8 +444,24 @@ void *rt_concmap_get(void *obj, rt_string key) {
     size_t idx = (size_t)(h % cm->capacity);
     cm_entry *e = find_entry(cm->buckets[idx], key_data, key_len);
     void *result = e ? e->value : NULL;
-    if (result)
+    if (result) {
+        rt_concmap_impl *volatile locked_cm = cm;
+        void *volatile obj_for_cleanup = obj;
+        jmp_buf recovery;
+        rt_trap_set_recovery(&recovery);
+        if (setjmp(recovery) != 0) {
+            char saved_error[256];
+            concmap_save_trap_error(
+                saved_error, sizeof(saved_error), "ConcurrentMap.Get: value retain failed");
+            rt_trap_clear_recovery();
+            CM_UNLOCK((rt_concmap_impl *)locked_cm);
+            concmap_release_object((void *)obj_for_cleanup);
+            rt_trap(saved_error);
+            return NULL;
+        }
         rt_obj_retain_maybe(result);
+        rt_trap_clear_recovery();
+    }
     CM_UNLOCK(cm);
     concmap_release_object(obj);
     return result;
@@ -422,8 +484,24 @@ void *rt_concmap_get_or(void *obj, rt_string key, void *default_value) {
     size_t idx = (size_t)(h % cm->capacity);
     cm_entry *e = find_entry(cm->buckets[idx], key_data, key_len);
     void *result = e ? e->value : default_value;
-    if (e && result)
+    if (e && result) {
+        rt_concmap_impl *volatile locked_cm = cm;
+        void *volatile obj_for_cleanup = obj;
+        jmp_buf recovery;
+        rt_trap_set_recovery(&recovery);
+        if (setjmp(recovery) != 0) {
+            char saved_error[256];
+            concmap_save_trap_error(
+                saved_error, sizeof(saved_error), "ConcurrentMap.GetOr: value retain failed");
+            rt_trap_clear_recovery();
+            CM_UNLOCK((rt_concmap_impl *)locked_cm);
+            concmap_release_object((void *)obj_for_cleanup);
+            rt_trap(saved_error);
+            return NULL;
+        }
         rt_obj_retain_maybe(result);
+        rt_trap_clear_recovery();
+    }
     CM_UNLOCK(cm);
     concmap_release_object(obj);
     return result;
@@ -480,7 +558,9 @@ int8_t rt_concmap_set_if_missing(void *obj, rt_string key, void *value) {
     e->key_len = key_len;
     e->value = value;
     e->next = NULL;
-    rt_obj_retain_maybe(value);
+    if (!retain_value_or_free_entry(
+            obj, e, value, "ConcurrentMap.SetIfMissing: value retain failed"))
+        return 0;
 
     CM_LOCK(cm);
 
@@ -490,9 +570,8 @@ int8_t rt_concmap_set_if_missing(void *obj, rt_string key, void *value) {
         CM_UNLOCK(cm);
         free(e->key);
         free(e);
-        if (rt_obj_release_check0(value))
-            rt_obj_free(value);
         concmap_release_object(obj);
+        release_retained_value(value);
         return 0;
     }
 
@@ -660,7 +739,7 @@ void *rt_concmap_values(void *obj) {
     rt_obj_retain_maybe(obj);
 
     size_t snapshot_count = 0;
-    void **values = NULL;
+    void **volatile values = NULL;
     CM_LOCK(cm);
     snapshot_count = cm->count;
 
@@ -685,7 +764,24 @@ void *rt_concmap_values(void *obj) {
         return seq;
     }
 
-    size_t copied = 0;
+    size_t volatile copied = 0;
+    rt_concmap_impl *volatile locked_cm = cm;
+    void *volatile obj_for_cleanup = obj;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        concmap_save_trap_error(
+            saved_error, sizeof(saved_error), "ConcurrentMap.Values: value retain failed");
+        rt_trap_clear_recovery();
+        CM_UNLOCK((rt_concmap_impl *)locked_cm);
+        for (size_t i = 0; i < copied; i++)
+            release_retained_value(values[i]);
+        free((void **)values);
+        concmap_release_object((void *)obj_for_cleanup);
+        rt_trap(saved_error);
+        return seq;
+    }
     for (size_t i = 0; i < cm->capacity && copied < snapshot_count; i++) {
         cm_entry *e = cm->buckets[i];
         while (e && copied < snapshot_count) {
@@ -696,6 +792,7 @@ void *rt_concmap_values(void *obj) {
             e = e->next;
         }
     }
+    rt_trap_clear_recovery();
     CM_UNLOCK(cm);
     concmap_release_object(obj);
 

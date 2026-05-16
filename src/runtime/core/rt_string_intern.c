@@ -39,7 +39,10 @@
 
 #include "rt_internal.h" // struct rt_string_impl (data, literal_len fields)
 #include "rt_string.h"   // rt_string_ref, rt_string_unref, rt_str_len
+#include "rt_trap.h"
 
+#include <setjmp.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -53,9 +56,18 @@
 
 #include "../text/rt_hash_util.h"
 
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
+
 /// @brief Hash a byte sequence using FNV-1a.
 static uint64_t hash_bytes(const char *data, size_t len) {
     return rt_fnv1a(data, len);
+}
+
+static void intern_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
+    const char *err = rt_trap_get_error();
+    snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
 }
 
 // ============================================================================
@@ -176,11 +188,28 @@ rt_string rt_string_intern(rt_string s) {
 
         if (!e->str) {
             // Empty slot: insert s as the canonical copy.
-            e->hash = h;
-            e->str = rt_string_ref(s); // table holds one reference
-            g_count_++;
+            rt_string volatile table_ref = NULL;
+            rt_string result = NULL;
+            jmp_buf recovery;
+            rt_trap_set_recovery(&recovery);
+            if (setjmp(recovery) != 0) {
+                char saved_error[256];
+                intern_save_trap_error(
+                    saved_error, sizeof(saved_error), "rt_string_intern: retain failed");
+                rt_trap_clear_recovery();
+                intern_unlock();
+                if (table_ref)
+                    rt_string_unref((rt_string)table_ref);
+                rt_trap(saved_error);
+                return NULL;
+            }
+            table_ref = rt_string_ref(s); // table holds one reference
+            result = rt_string_ref(s);    // caller's reference
+            rt_trap_clear_recovery();
 
-            rt_string result = rt_string_ref(s); // caller's reference
+            e->hash = h;
+            e->str = (rt_string)table_ref;
+            g_count_++;
             intern_unlock();
             return result;
         }
@@ -189,7 +218,20 @@ rt_string rt_string_intern(rt_string s) {
             size_t entry_len = (size_t)rt_str_len(e->str);
             if (entry_len == len && memcmp(e->str->data, data, len) == 0) {
                 // Hit: return a retained reference to the canonical string.
-                rt_string result = rt_string_ref(e->str);
+                rt_string result = NULL;
+                jmp_buf recovery;
+                rt_trap_set_recovery(&recovery);
+                if (setjmp(recovery) != 0) {
+                    char saved_error[256];
+                    intern_save_trap_error(
+                        saved_error, sizeof(saved_error), "rt_string_intern: retain failed");
+                    rt_trap_clear_recovery();
+                    intern_unlock();
+                    rt_trap(saved_error);
+                    return NULL;
+                }
+                result = rt_string_ref(e->str);
+                rt_trap_clear_recovery();
                 intern_unlock();
                 return result;
             }

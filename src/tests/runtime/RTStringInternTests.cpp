@@ -20,16 +20,22 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_internal.h"
+#include "rt_heap.h"
 #include "rt_string.h"
 #include "rt_string_intern.h"
+#include "rt_trap.h"
 
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
 #include <cassert>
+#include <csetjmp>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+
+extern "C" void rt_trap_set_recovery(jmp_buf *buf);
+extern "C" void rt_trap_clear_recovery(void);
 
 extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
@@ -41,6 +47,18 @@ extern "C" void vm_trap(const char *msg) {
 
 static rt_string make_str(const char *cstr) {
     return rt_string_from_bytes(cstr, strlen(cstr));
+}
+
+template <typename Fn> static bool expect_trap(Fn fn) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        fn();
+        rt_trap_clear_recovery();
+        return false;
+    }
+    rt_trap_clear_recovery();
+    return true;
 }
 
 // ============================================================================
@@ -217,6 +235,27 @@ static void test_drain_and_reintern(void) {
     printf("test_drain_and_reintern: PASSED\n");
 }
 
+static void test_retain_overflow_does_not_leave_table_locked(void) {
+    rt_string_intern_drain();
+
+    rt_string s = make_str("sso");
+    assert(s != nullptr);
+    s->literal_refs = RT_HEAP_MAX_MORTAL_REFCNT;
+    assert(expect_trap([&]() { (void)rt_string_intern(s); }));
+
+    s->literal_refs = 1;
+    rt_string ok = make_str("after_overflow");
+    rt_string interned = rt_string_intern(ok);
+    assert(interned != nullptr);
+    assert(rt_str_len(interned) == (int64_t)strlen("after_overflow"));
+
+    rt_string_unref(interned);
+    rt_string_unref(ok);
+    rt_string_unref(s);
+    rt_string_intern_drain();
+    printf("test_retain_overflow_does_not_leave_table_locked: PASSED\n");
+}
+
 // ============================================================================
 // Entry point
 // ============================================================================
@@ -231,6 +270,7 @@ int main(void) {
     test_intern_empty_string();
     test_intern_many_strings();
     test_drain_and_reintern();
+    test_retain_overflow_does_not_leave_table_locked();
 
     printf("\nAll rt_string_intern tests passed!\n");
     return 0;
