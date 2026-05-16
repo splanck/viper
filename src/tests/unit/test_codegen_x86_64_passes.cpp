@@ -124,6 +124,56 @@ il::core::Module makeStoreF64ImmediateModule() {
     return module;
 }
 
+il::core::Module makeStoreFunctionAddressModule() {
+    il::core::Module module{};
+
+    il::core::Function callee;
+    callee.name = "callee";
+    callee.retType = il::core::Type(il::core::Type::Kind::Void);
+
+    il::core::BasicBlock calleeEntry;
+    calleeEntry.label = "entry";
+    calleeEntry.terminated = true;
+
+    il::core::Instr calleeRet;
+    calleeRet.op = il::core::Opcode::Ret;
+    calleeRet.type = il::core::Type(il::core::Type::Kind::Void);
+    calleeEntry.instructions.push_back(calleeRet);
+    callee.blocks.push_back(calleeEntry);
+    module.functions.push_back(callee);
+
+    il::core::Function main;
+    main.name = "main";
+    main.retType = il::core::Type(il::core::Type::Kind::Void);
+
+    il::core::BasicBlock entry;
+    entry.label = "entry";
+    entry.terminated = true;
+
+    il::core::Instr alloca;
+    alloca.op = il::core::Opcode::Alloca;
+    alloca.type = il::core::Type(il::core::Type::Kind::Ptr);
+    alloca.result = 1;
+    alloca.operands.push_back(il::core::Value::constInt(8));
+    entry.instructions.push_back(alloca);
+
+    il::core::Instr store;
+    store.op = il::core::Opcode::Store;
+    store.type = il::core::Type(il::core::Type::Kind::Ptr);
+    store.operands.push_back(il::core::Value::temp(1));
+    store.operands.push_back(il::core::Value::global("callee"));
+    entry.instructions.push_back(store);
+
+    il::core::Instr ret;
+    ret.op = il::core::Opcode::Ret;
+    ret.type = il::core::Type(il::core::Type::Kind::Void);
+    entry.instructions.push_back(ret);
+
+    main.blocks.push_back(entry);
+    module.functions.push_back(main);
+    return module;
+}
+
 il::core::Module makeErrGetMsgModule() {
     il::core::Module module{};
 
@@ -495,6 +545,29 @@ TEST(LoweringPass, PreservesF64ImmediateStoreOperandKind) {
     EXPECT_EQ(it->ops[1].kind, viper::codegen::x64::ILValue::Kind::F64);
     EXPECT_EQ(it->ops[1].id, -1);
     EXPECT_NEAR(it->ops[1].f64, 50.0, 1e-12);
+}
+
+TEST(LoweringPass, PreservesFunctionAddressStoreOperandKind) {
+    Module module{};
+    module.il = makeStoreFunctionAddressModule();
+
+    Diagnostics diags{};
+    LoweringPass pass{};
+    ASSERT_TRUE(pass.run(module, diags));
+    ASSERT_FALSE(diags.hasErrors());
+    ASSERT_TRUE(module.lowered.has_value());
+    ASSERT_EQ(module.lowered->funcs.size(), 2U);
+    ASSERT_EQ(module.lowered->funcs[1].blocks.size(), 1U);
+
+    const auto &instrs = module.lowered->funcs[1].blocks[0].instrs;
+    const auto it = std::find_if(instrs.begin(), instrs.end(), [](const auto &instr) {
+        return instr.opcode == "store";
+    });
+    ASSERT_TRUE(it != instrs.end());
+    ASSERT_GE(it->ops.size(), 2U);
+    EXPECT_EQ(it->ops[0].kind, viper::codegen::x64::ILValue::Kind::PTR);
+    EXPECT_EQ(it->ops[1].kind, viper::codegen::x64::ILValue::Kind::LABEL);
+    EXPECT_EQ(it->ops[1].label, "callee");
 }
 
 TEST(LoweringPass, LowersErrGetMsgToRuntimeStringCall) {

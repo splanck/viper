@@ -163,6 +163,7 @@ typedef struct http_conn {
     void *pool;             // Owning connection pool, if this lease came from / returns to one
     int pool_slot;          // Slot reserved inside @p pool while the lease is checked out
     int tls_verify;         // Verification mode used to establish this connection
+    int reused_from_pool;   // 1 when this request is reusing an already-open pooled connection
     char pool_key[320];     // Stable host/port/TLS key for reuse
 } http_conn_t;
 
@@ -479,6 +480,7 @@ static int http_conn_pool_acquire(void *obj,
         entry->conn.pool_slot = -1;
         out_conn->pool = pool;
         out_conn->pool_slot = i;
+        out_conn->reused_from_pool = 1;
         snprintf(out_conn->pool_key, sizeof(out_conn->pool_key), "%s", key);
         HTTP_POOL_MUTEX_UNLOCK(&pool->lock);
         return 1;
@@ -616,6 +618,12 @@ static int http_request_wants_pool(const rt_http_req_t *req) {
     return req && req->keep_alive && req->connection_pool;
 }
 
+static int http_method_retryable_on_stale_reuse(const char *method) {
+    return method &&
+           (strcmp(method, "GET") == 0 || strcmp(method, "HEAD") == 0 ||
+            strcmp(method, "OPTIONS") == 0 || strcmp(method, "DELETE") == 0);
+}
+
 static int http_open_connection(rt_http_req_t *req, http_conn_t *conn, int *err_out) {
     if (!req || !conn) {
         if (err_out)
@@ -629,6 +637,7 @@ static int http_open_connection(rt_http_req_t *req, http_conn_t *conn, int *err_
     conn->socket_fd = INVALID_SOCK;
     conn->pool_slot = -1;
     conn->tls_verify = req->tls_verify ? 1 : 0;
+    conn->reused_from_pool = 0;
     http_make_pool_key(req->url.host,
                        req->url.port,
                        req->url.use_tls,
@@ -2670,6 +2679,10 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
 
     http_conn_t conn;
     int open_err = Err_NetworkError;
+    int request_retry_attempted = 0;
+
+open_connection:
+    open_err = Err_NetworkError;
     if (!http_open_connection(req, &conn, &open_err)) {
         if (req->url.use_tls && open_err == Err_TlsError)
             http_trap_tls_error("HTTPS: connection failed", g_http_tls_open_error);
@@ -2721,6 +2734,13 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
     free(request_str);
 
     if (http_conn_send(&conn, request_buf, request_len) < 0) {
+        if (!request_retry_attempted && conn.reused_from_pool && !conn.http2 &&
+            http_method_retryable_on_stale_reuse(req->method)) {
+            free(request_buf);
+            http_conn_pool_release(&conn, 0);
+            request_retry_attempted = 1;
+            goto open_connection;
+        }
         free(request_buf);
         http_conn_pool_release(&conn, 0);
         rt_trap_net("HTTP: send failed", Err_NetworkError);
@@ -2735,6 +2755,12 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
     char *redirect_location = NULL;
     if (!read_response_head(
             &conn, &status, &http_minor, &status_text, &headers_map, &redirect_location)) {
+        if (!request_retry_attempted && conn.reused_from_pool && !conn.http2 &&
+            http_method_retryable_on_stale_reuse(req->method)) {
+            http_conn_pool_release(&conn, 0);
+            request_retry_attempted = 1;
+            goto open_connection;
+        }
         http_conn_pool_release(&conn, 0);
         rt_trap_net("HTTP: invalid response", Err_ProtocolError);
         return NULL;

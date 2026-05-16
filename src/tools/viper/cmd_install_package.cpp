@@ -820,6 +820,11 @@ fs::path ensureStageDir(const InstallPackageArgs &args) {
     }
     AutoStageCleanup cleanup(stageDir, !args.keepStageDir);
 
+    {
+        std::error_code ec;
+        fs::remove(args.buildDir / "install_manifest.txt", ec);
+    }
+
     std::vector<std::string> installCmd = {
         "cmake", "--install", args.buildDir.string(), "--prefix", stageDir.string()};
     if (!args.buildConfig.empty()) {

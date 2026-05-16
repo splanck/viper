@@ -1277,12 +1277,21 @@ void X64BinaryEncoder::encodeLEARip(PhysReg dst,
     (void)isDarwin;
     std::string symName = rip.name;
     const uint32_t rodataSymIdx = rodata.symbols().find(symName);
-    const uint32_t symIdx = text.findOrDeclareSymbol(symName);
-    const auto targetSection = (rodataSymIdx != 0) ? objfile::SymbolSection::Rodata
-                                                   : objfile::SymbolSection::Undefined;
     size_t dispOffset = text.currentOffset();
     text.emit32LE(0); // Placeholder.
-    text.addRelocationAt(dispOffset, objfile::RelocKind::PCRel32, symIdx, -4, targetSection);
+    if (rodataSymIdx != 0) {
+        const auto &rodataSym = rodata.symbols().at(rodataSymIdx);
+        text.addSectionOffsetRelocationAt(dispOffset,
+                                          objfile::RelocKind::PCRel32,
+                                          rodata,
+                                          objfile::SymbolSection::Rodata,
+                                          rodataSym.offset,
+                                          -4);
+        return;
+    }
+
+    const uint32_t symIdx = text.findOrDeclareSymbol(symName);
+    text.addRelocationAt(dispOffset, objfile::RelocKind::PCRel32, symIdx, -4);
 }
 
 void X64BinaryEncoder::encodeSseRipLoad(PhysReg dst,
@@ -1309,12 +1318,21 @@ void X64BinaryEncoder::encodeSseRipLoad(PhysReg dst,
     (void)isDarwin;
     std::string symName = rip.name;
     const uint32_t rodataSymIdx = rodata.symbols().find(symName);
-    const uint32_t symIdx = text.findOrDeclareSymbol(symName);
-    const auto targetSection = (rodataSymIdx != 0) ? objfile::SymbolSection::Rodata
-                                                   : objfile::SymbolSection::Undefined;
     size_t dispOffset = text.currentOffset();
     text.emit32LE(0); // Placeholder.
-    text.addRelocationAt(dispOffset, objfile::RelocKind::PCRel32, symIdx, -4, targetSection);
+    if (rodataSymIdx != 0) {
+        const auto &rodataSym = rodata.symbols().at(rodataSymIdx);
+        text.addSectionOffsetRelocationAt(dispOffset,
+                                          objfile::RelocKind::PCRel32,
+                                          rodata,
+                                          objfile::SymbolSection::Rodata,
+                                          rodataSym.offset,
+                                          -4);
+        return;
+    }
+
+    const uint32_t symIdx = text.findOrDeclareSymbol(symName);
+    text.addRelocationAt(dispOffset, objfile::RelocKind::PCRel32, symIdx, -4);
 }
 
 // === SSE reg-reg ===

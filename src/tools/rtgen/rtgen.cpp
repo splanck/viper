@@ -935,8 +935,8 @@ static std::unordered_map<std::string, RuntimePrototype> loadRuntimeHeaderDeclar
             std::string funcName = (*it)[2].str();
             std::string argsStr = (*it)[3].str();
 
-            if (result.find(funcName) != result.end())
-                continue;
+            auto existing = result.find(funcName);
+            bool haveExisting = existing != result.end();
 
             // Strip storage-class specifiers and attributes from the return
             // type.  The regex can capture these when scanning .c files that
@@ -960,9 +960,16 @@ static std::unordered_map<std::string, RuntimePrototype> loadRuntimeHeaderDeclar
                 proto.paramNames.push_back(extractParamName(arg));
             }
 
+            if (sig.returnType.empty())
+                continue;
+
             proto.signature = std::move(sig);
             proto.headerPath = relativePathString(path, repoRoot);
-            result.emplace(funcName, std::move(proto));
+            if (!haveExisting) {
+                result.emplace(funcName, std::move(proto));
+            } else if (existing->second.signature.returnType.empty()) {
+                existing->second = std::move(proto);
+            }
         }
     }
 

@@ -120,11 +120,11 @@ static int module_os_entropy(uint8_t *buf, size_t len) {
     }
     return 0;
 #else
+    size_t got = 0;
 #if defined(__APPLE__)
     arc4random_buf(buf, len);
     return 0;
 #elif defined(__linux__)
-    size_t got = 0;
     while (got < len) {
         ssize_t n = getrandom(buf + got, len - got, 0);
         if (n < 0) {
@@ -140,6 +140,7 @@ static int module_os_entropy(uint8_t *buf, size_t len) {
     }
     if (got == len)
         return 0;
+    got = 0;
 #endif
 #ifdef O_CLOEXEC
     int fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
@@ -148,7 +149,6 @@ static int module_os_entropy(uint8_t *buf, size_t len) {
 #endif
     if (fd < 0)
         return -1;
-    size_t got = 0;
     while (got < len) {
         ssize_t n = read(fd, buf + got, len - got);
         if (n < 0) {

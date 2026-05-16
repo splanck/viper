@@ -107,6 +107,7 @@ typedef unsigned int GLbitfield;
 #define GL_TEXTURE_MIN_FILTER 0x2801
 #define GL_TEXTURE_MAG_FILTER 0x2800
 #define GL_REPEAT 0x2901
+#define GL_MIRRORED_REPEAT 0x8370
 #define GL_LINEAR 0x2601
 #define GL_LINEAR_MIPMAP_LINEAR 0x2703
 #define GL_NEAREST 0x2600
@@ -994,7 +995,7 @@ static const char *const glsl_fragment_src[] = {
     "vec3 envSample(vec3 dir, float roughness) {\n"
     "    float lod = clamp(roughness, 0.0, 1.0) * max(uEnvMaxLod, 0.0);\n"
     "    return textureLod(uEnvMap, normalize(dir), lod).rgb;\n"
-    "}\n"
+    "}\n",
     "int textureUvSetAt(int slot) {\n"
     "    return slot < 4 ? uTextureUvSets0[slot] : uTextureUvSets1[slot - 4];\n"
     "}\n"
@@ -1004,7 +1005,7 @@ static const char *const glsl_fragment_src[] = {
     "    vec4 t = uTextureUvTransform1[slot];\n"
     "    return vec2(uv.x * m.x + uv.y * m.y + t.x,\n"
     "                uv.x * m.z + uv.y * m.w + t.y);\n"
-    "}\n"
+    "}\n",
     "float sampleShadowMap(int shadowIndex, vec3 worldPos) {\n"
     "    if (shadowIndex < 0 || shadowIndex >= uShadowCount) return 1.0;\n"
     "    mat4 shadowVP = (shadowIndex == 0) ? uShadowVP[0] : uShadowVP[1];\n"

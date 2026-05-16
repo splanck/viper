@@ -37,6 +37,7 @@
 #include "rt_output.h"
 
 #include "rt_atomic_compat.h"
+#include "rt_platform.h"
 
 #if RT_PLATFORM_WINDOWS
 #ifndef WIN32_LEAN_AND_MEAN
@@ -46,6 +47,7 @@
 #endif
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /// @brief Size of the stdout buffer.
@@ -64,6 +66,30 @@ static int g_output_init_state = 0;
 /// @brief Reference count for nested batch mode calls (atomic).
 /// @details Allows nested begin/end batch calls to work correctly across threads.
 static int g_batch_mode_depth = 0;
+
+/// @brief Whether an exit-time stdout flush has been registered.
+static int g_output_exit_handler_registered = 0;
+
+static void rt_output_flush_at_exit_(void) {
+    rt_output_flush();
+}
+
+#if RT_PLATFORM_LINUX
+extern int __cxa_atexit(void (*func)(void *), void *arg, void *dso_handle);
+
+static void rt_output_flush_at_exit_adapter_(void *arg) {
+    (void)arg;
+    rt_output_flush_at_exit_();
+}
+
+static int rt_output_register_exit_handler_(void) {
+    return __cxa_atexit(rt_output_flush_at_exit_adapter_, NULL, NULL);
+}
+#else
+static int rt_output_register_exit_handler_(void) {
+    return atexit(rt_output_flush_at_exit_);
+}
+#endif
 
 /// @brief Write @p len raw bytes to the platform's standard-output stream.
 /// @details Two implementations live behind the `RT_PLATFORM_WINDOWS` macro: Win32 uses
@@ -110,6 +136,8 @@ void rt_output_init(void) {
         // _IOFBF = full buffering: output is written when buffer is full or fflush() is called.
         // This is the key change that reduces system calls.
         setvbuf(stdout, g_output_buffer, _IOFBF, RT_OUTPUT_BUFFER_SIZE);
+        if (!g_output_exit_handler_registered && rt_output_register_exit_handler_() == 0)
+            g_output_exit_handler_registered = 1;
 #endif
         __atomic_store_n(&g_output_init_state, 2, __ATOMIC_RELEASE);
         return;
@@ -125,6 +153,7 @@ void rt_output_init(void) {
 void rt_output_str(const char *s) {
     if (!s)
         return;
+    rt_output_init();
 #if RT_PLATFORM_WINDOWS
     rt_output_write_bytes(s, strlen(s));
 #else
@@ -136,6 +165,7 @@ void rt_output_str(const char *s) {
 void rt_output_strn(const char *s, size_t len) {
     if (!s || len == 0)
         return;
+    rt_output_init();
 #if RT_PLATFORM_WINDOWS
     rt_output_write_bytes(s, len);
 #else

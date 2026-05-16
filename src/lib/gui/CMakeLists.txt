@@ -181,6 +181,19 @@ if (VIPER_BUILD_TESTING)
     )
     add_test(NAME test_vg_font_bounds COMMAND test_vg_font_bounds)
     set_tests_properties(test_vg_font_bounds PROPERTIES LABELS "gui" TIMEOUT 15)
+
+    if (UNIX AND NOT APPLE)
+        foreach(vg_gui_test_target
+                test_vg_font
+                test_vg_widgets_new
+                test_vg_tier1_fixes
+                test_vg_tier2_fixes
+                test_vg_tier3_fixes
+                test_vg_audit_fixes
+                test_vg_font_bounds)
+            target_compile_definitions(${vg_gui_test_target} PRIVATE _GNU_SOURCE)
+        endforeach ()
+    endif ()
 endif ()
 
 # Demo applications

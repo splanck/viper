@@ -266,7 +266,8 @@ class ModuleAdapter {
                 break;
         }
 
-        if (hint && value.kind != il::core::Value::Kind::Temp) {
+        if (hint && value.kind != il::core::Value::Kind::Temp &&
+            value.kind != il::core::Value::Kind::GlobalAddr) {
             converted.kind = *hint;
             converted.bits = *hint == ILValue::Kind::I1 ? 1 : 64;
         }

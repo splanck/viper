@@ -406,7 +406,9 @@ rt_gui_app_t *rt_gui_get_active_app(void) {
 /// @param app App to activate. May be NULL to deactivate.
 void rt_gui_activate_app(rt_gui_app_t *app) {
     RT_ASSERT_MAIN_THREAD();
+#ifdef __APPLE__
     rt_gui_app_t *previous_active = s_active_app;
+#endif
     if (app == s_active_app) {
         s_current_app = app;
         rt_gui_refresh_theme(app);

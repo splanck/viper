@@ -35,6 +35,8 @@ enum class LinuxNeededLib : uint8_t {
     LibM,
     LibDL,
     LibPthread,
+    LibStdCpp,
+    LibGccS,
     LibX11,
     LibASound,
 };
@@ -49,6 +51,10 @@ const char *linuxNeededLibName(LinuxNeededLib lib) {
             return "libdl.so.2";
         case LinuxNeededLib::LibPthread:
             return "libpthread.so.0";
+        case LinuxNeededLib::LibStdCpp:
+            return "libstdc++.so.6";
+        case LinuxNeededLib::LibGccS:
+            return "libgcc_s.so.1";
         case LinuxNeededLib::LibX11:
             return "libX11.so.6";
         case LinuxNeededLib::LibASound:
@@ -64,14 +70,49 @@ bool isLinuxMathSymbol(const std::string &name) {
         "cosh",  "exp",
         "expf",  "fabs",   "fabsf",     "floor",      "floorf", "fmax",  "fmaxf",  "fmin",
         "fminf", "fmod",   "fmodf",     "hypot",      "ldexp",  "log",   "log10",  "log2",
-        "logf",  "nan",    "pow",       "powf",       "round",  "roundf","sin",    "sinf",
-        "sinh",  "sqrt",   "sqrtf",     "tan",        "tanf",   "tanh",  "trunc",  "truncf",
+        "logf",  "nan",    "pow",       "powf",       "rint",   "round", "roundf", "sin",
+        "sinf",  "sinh",   "sqrt",      "sqrtf",      "tan",    "tanf",  "tanh",   "trunc",
+        "truncf",
+        "atan2l","ceill",  "cosl",      "floorl",     "fmaxl",  "fminl", "fmodl",  "sinl",
+        "sqrtl",
     };
     return kMath.count(name) != 0;
 }
 
 bool isLinuxDlSymbol(const std::string &name) {
     return name == "dlopen" || name == "dlsym" || name == "dlclose" || name == "dlerror";
+}
+
+bool isLinuxCppRuntimeSymbol(const std::string &name) {
+    static const std::unordered_set<std::string> kExact = {
+        "__cxa_begin_catch",
+        "__cxa_end_catch",
+        "__cxa_rethrow",
+        "__gxx_personality_v0",
+    };
+    if (kExact.count(name) != 0)
+        return true;
+
+    static const char *const kPrefixes[] = {
+        "_ZNSt",
+        "_ZNKSt",
+        "_ZTINSt",
+        "_ZTSNSt",
+        "_ZTVNSt",
+        "_ZSt",
+        "_ZTISt",
+        "_ZTSSt",
+        "_ZTVSt",
+        "_Zda",
+        "_Zdl",
+        "_Zna",
+        "_Znw",
+    };
+    for (const char *prefix : kPrefixes) {
+        if (name.rfind(prefix, 0) == 0)
+            return true;
+    }
+    return false;
 }
 
 LinuxNeededLib classifyLinuxImportLibrary(const std::string &name) {
@@ -83,6 +124,10 @@ LinuxNeededLib classifyLinuxImportLibrary(const std::string &name) {
         return LinuxNeededLib::LibDL;
     if (name.rfind("pthread_", 0) == 0)
         return LinuxNeededLib::LibPthread;
+    if (name.rfind("_Unwind_", 0) == 0)
+        return LinuxNeededLib::LibGccS;
+    if (isLinuxCppRuntimeSymbol(name))
+        return LinuxNeededLib::LibStdCpp;
     if (isLinuxMathSymbol(name))
         return LinuxNeededLib::LibM;
     return LinuxNeededLib::LibC;
@@ -102,6 +147,8 @@ bool planLinuxImports(const std::unordered_set<std::string> &dynamicSyms,
         LinuxNeededLib::LibM,
         LinuxNeededLib::LibDL,
         LinuxNeededLib::LibPthread,
+        LinuxNeededLib::LibStdCpp,
+        LinuxNeededLib::LibGccS,
         LinuxNeededLib::LibX11,
         LinuxNeededLib::LibASound,
     };

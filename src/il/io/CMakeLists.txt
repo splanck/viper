@@ -20,7 +20,13 @@ add_library(viper_il_io STATIC
         ../../parse/Cursor.cpp
 )
 
-target_link_libraries(viper_il_io PRIVATE viper_il_core viper_common_opts)
+target_link_libraries(viper_il_io
+        PUBLIC
+        viper_il_core
+        il_runtime
+        PRIVATE
+        viper_common_opts
+)
 
 target_include_directories(viper_il_io PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>

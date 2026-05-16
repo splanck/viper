@@ -112,6 +112,11 @@ if (MSVC)
     target_compile_options(viperaud PRIVATE /utf-8 /FS)
 endif ()
 
+# POSIX feature test macros for Linux (nanosleep, pthread APIs, etc.)
+if (NOT WIN32 AND NOT APPLE)
+    target_compile_definitions(viperaud PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE)
+endif ()
+
 # Link platform-specific libraries
 target_link_libraries(viperaud PRIVATE ${VAUD_PLATFORM_LIBS})
 

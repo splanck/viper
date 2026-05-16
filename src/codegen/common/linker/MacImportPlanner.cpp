@@ -226,7 +226,7 @@ bool planMacImports(const std::unordered_set<std::string> &dynamicSyms,
             continue;
         }
 
-        if (isKnownMacLibcxxDynamicSymbol(sym)) {
+        if (isKnownCppRuntimeDynamicSymbol(sym)) {
             const uint32_t ordinal = ensureMacDylibOrdinal(kLibcxxPath, plan, pathToOrdinal);
             plan.symOrdinals[sym] = ordinal;
             continue;

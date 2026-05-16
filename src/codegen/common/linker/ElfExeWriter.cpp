@@ -978,6 +978,34 @@ bool writeElfExe(const std::string &path,
         load.p_align = pageSize;
         phdrs.push_back(load);
     }
+    if (dynInfo.enabled) {
+        for (auto &phdr : phdrs) {
+            if (phdr.p_type != PT_LOAD)
+                continue;
+            if (phdr.p_offset == 0)
+                break;
+
+            const size_t headerSlack = static_cast<size_t>(phdr.p_offset);
+            if (phdr.p_vaddr < headerSlack || phdr.p_paddr < headerSlack) {
+                err << "error: ELF header-mapping adjustment underflows segment base\n";
+                return false;
+            }
+            size_t filesz = 0;
+            size_t memsz = 0;
+            if (!checkedAddSize(
+                    headerSlack, static_cast<size_t>(phdr.p_filesz), "header-mapped PT_LOAD file size", err, filesz) ||
+                !checkedAddSize(
+                    headerSlack, static_cast<size_t>(phdr.p_memsz), "header-mapped PT_LOAD memory size", err, memsz))
+                return false;
+
+            phdr.p_offset = 0;
+            phdr.p_vaddr -= headerSlack;
+            phdr.p_paddr -= headerSlack;
+            phdr.p_filesz = filesz;
+            phdr.p_memsz = memsz;
+            break;
+        }
+    }
     {
         Elf64_Phdr phdr{};
         phdr.p_type = PT_GNU_STACK;

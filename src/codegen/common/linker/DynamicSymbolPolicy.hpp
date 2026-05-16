@@ -64,12 +64,15 @@ inline bool dynamicSymbolHasPrefix(const std::string &name, const char *const *p
     return false;
 }
 
-/// @brief Recognise an Itanium-mangled libc++ symbol (`std::*`, type-info, etc.).
-/// @details libc++ symbols are not present in Viper's runtime archives but are
-///          satisfied by `/usr/lib/libc++.dylib` at load time on macOS.
-inline bool isKnownMacLibcxxDynamicSymbol(const std::string &name) {
-    static const char *const kMacLibcxxPrefixes[] = {
+/// @brief Recognise Itanium-mangled C++ runtime/library symbols (`std::*`, RTTI, etc.).
+/// @details These symbols are supplied by the platform C++ runtime rather than
+///          Viper's own archives. The matcher stays narrow to known `std::*`,
+///          RTTI/vtable, operator new/delete, and exception-runtime prefixes so
+///          arbitrary user-defined C++ mangled names are not treated as system imports.
+inline bool isKnownCppRuntimeDynamicSymbol(const std::string &name) {
+    static const char *const kCppRuntimePrefixes[] = {
         "ZNSt",
+        "ZNKSt",
         "ZTINSt",
         "ZTSNSt",
         "ZTVNSt",
@@ -85,7 +88,7 @@ inline bool isKnownMacLibcxxDynamicSymbol(const std::string &name) {
         "gxx_personality_",
         nullptr,
     };
-    return dynamicSymbolHasPrefix(name, kMacLibcxxPrefixes);
+    return dynamicSymbolHasPrefix(name, kCppRuntimePrefixes);
 }
 
 /// Known system/dynamic library symbols that won't be present in runtime
@@ -98,6 +101,7 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "fprintf",
         "sprintf",
         "snprintf",
+        "vsnprintf",
         "puts",
         "fputs",
         "fopen",
@@ -288,6 +292,7 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "signal",
         "sigaction",
         "sigaltstack",
+        "sigemptyset",
         "raise",
         "setjmp",
         "longjmp",
@@ -365,6 +370,9 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "gethostname",
         "sched_yield",
         "clock_gettime",
+        "readlink",
+        "strtof",
+        "rint",
         "sin",
         "cos",
         "sinh",
@@ -375,6 +383,7 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "acos",
         "atan",
         "atan2",
+        "atan2l",
         "sinf",
         "cosf",
         "tanf",
@@ -385,6 +394,7 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "cbrt",
         "cbrtf",
         "sqrt",
+        "sqrtl",
         "sqrtf",
         "pow",
         "powf",
@@ -397,19 +407,25 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "log2",
         "log10",
         "ceil",
+        "ceill",
         "ceilf",
         "floor",
+        "floorl",
         "floorf",
         "round",
         "roundf",
         "fmod",
+        "fmodl",
         "fmodf",
         "fabs",
         "fabsf",
         "fmin",
         "fminf",
         "fmax",
+        "fmaxl",
         "fmaxf",
+        "cosl",
+        "sinl",
         "copysign",
         "copysignf",
         "trunc",
@@ -472,6 +488,15 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "stdout",
         "stderr",
         "__errno_location",
+        "__assert_fail",
+        "__ctype_b_loc",
+        "__isoc23_strtol",
+        "__isoc23_strtoll",
+        "__isoc99_sscanf",
+        "fopen64",
+        "fseeko64",
+        "ftello64",
+        "getrandom",
         "getpwuid",
         "nan",
         "sel_registerName",
@@ -549,6 +574,7 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "rand_s",
         "strcpy_s",
         "strcat_s",
+        "sysinfo",
         "_wcsnicmp",
         "_wchmod",
         "_wsplitpath_s",
@@ -600,7 +626,12 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "AudioDevice",
     };
     static const char *const kLinuxDynPrefixes[] = {
+        "Unwind_",
         "X",
+        "__isoc23_",
+        "__isoc99_",
+        "inotify_",
+        "pthread_",
         "snd_",
     };
     static const char *const kWindowsDynPrefixes[] = {
@@ -652,7 +683,8 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         }
     }
 
-    if (platform == LinkPlatform::macOS && isKnownMacLibcxxDynamicSymbol(name))
+    if ((platform == LinkPlatform::macOS || platform == LinkPlatform::Linux) &&
+        isKnownCppRuntimeDynamicSymbol(name))
         return true;
 
     if (platform == LinkPlatform::Windows) {

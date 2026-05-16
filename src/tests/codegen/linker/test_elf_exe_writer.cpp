@@ -625,14 +625,19 @@ static void testDynamicImports() {
 
     bool foundInterp = false;
     bool foundDynamic = false;
+    bool foundHeaderLoad = false;
     for (const auto &phdr : phdrs) {
         if (phdr.p_type == PT_INTERP)
             foundInterp = true;
         if (phdr.p_type == PT_DYNAMIC)
             foundDynamic = true;
+        if (phdr.p_type == PT_LOAD && phdr.p_offset == 0 &&
+            phdr.p_filesz >= sizeof(Elf64_Ehdr) + ehdr.e_phnum * sizeof(Elf64_Phdr))
+            foundHeaderLoad = true;
     }
     CHECK(foundInterp);
     CHECK(foundDynamic);
+    CHECK(foundHeaderLoad);
 
     Elf64_Shdr interpShdr{};
     Elf64_Shdr dynstrShdr{};

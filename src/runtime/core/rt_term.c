@@ -107,6 +107,24 @@ static void term_atexit_handler(void) {
     rt_term_disable_raw_mode();
 }
 
+#if defined(__linux__)
+extern int __cxa_atexit(void (*func)(void *), void *arg, void *dso_handle);
+
+static void term_atexit_handler_adapter(void *arg) {
+    (void)arg;
+    term_atexit_handler();
+}
+
+static int register_term_atexit_handler(void) {
+    // glibc exports __cxa_atexit() but not a late-bindable atexit() symbol.
+    return __cxa_atexit(term_atexit_handler_adapter, NULL, NULL);
+}
+#else
+static int register_term_atexit_handler(void) {
+    return atexit(term_atexit_handler);
+}
+#endif
+
 /// @brief Initialize terminal state caching.
 /// @details Called lazily on first use. Saves original terminal settings.
 static void init_term_cache(void) {
@@ -135,8 +153,8 @@ void rt_term_enable_raw_mode(void) {
 
     // Register atexit handler to ensure terminal is restored on exit
     if (!g_atexit_registered) {
-        atexit(term_atexit_handler);
-        g_atexit_registered = 1;
+        if (register_term_atexit_handler() == 0)
+            g_atexit_registered = 1;
     }
 
     if (tcsetattr(g_stdin_fd, TCSANOW, &g_raw_termios) == 0)

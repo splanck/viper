@@ -23,6 +23,14 @@
 /// @file
 /// @brief Core implementation of the ViperAUD API.
 
+#if !defined(VAUD_PLATFORM_WINDOWS) && !defined(_POSIX_C_SOURCE)
+#define _POSIX_C_SOURCE 200809L
+#endif
+
+#if !defined(VAUD_PLATFORM_WINDOWS) && !defined(_DEFAULT_SOURCE)
+#define _DEFAULT_SOURCE
+#endif
+
 #include "vaud_internal.h"
 
 #include <math.h>

@@ -257,6 +257,12 @@ struct OutputLocation {
 
 using LocationMap = std::unordered_map<InputSectionKey, OutputLocation, InputSectionKeyHash>;
 
+struct TlsImageInfo {
+    bool present = false;
+    uint64_t startVA = 0;
+    uint64_t endVA = 0;
+};
+
 /// Build the reverse-index map from the link layout.
 static LocationMap buildLocationMap(const LinkLayout &layout) {
     LocationMap map;
@@ -282,6 +288,31 @@ static bool findOutputLocation(const LocationMap &locMap,
     outOffset = it->second.outputOffset;
     if (inputSize)
         *inputSize = it->second.inputSize;
+    return true;
+}
+
+static bool computeTlsImageInfo(const LinkLayout &layout, TlsImageInfo &info, std::ostream &err) {
+    for (const auto &sec : layout.sections) {
+        if (!sec.alloc || !sec.tls)
+            continue;
+
+        uint64_t secEnd = 0;
+        if (!checkedAddU64(sec.virtualAddr, static_cast<uint64_t>(sec.data.size()), secEnd)) {
+            err << "error: TLS section '" << sec.name << "' exceeds 64-bit address range\n";
+            return false;
+        }
+
+        if (!info.present) {
+            info.present = true;
+            info.startVA = sec.virtualAddr;
+            info.endVA = secEnd;
+            continue;
+        }
+
+        info.startVA = std::min(info.startVA, sec.virtualAddr);
+        info.endVA = std::max(info.endVA, secEnd);
+    }
+
     return true;
 }
 
@@ -370,6 +401,9 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
     // Build reverse-index map once: (objIdx, secIdx) → (outSecIdx, outputOffset).
     // This replaces the previous O(S×C) linear scan per lookup with O(1) amortized.
     const LocationMap locMap = buildLocationMap(layout);
+    TlsImageInfo tlsImage;
+    if (!computeTlsImageInfo(layout, tlsImage, err))
+        return false;
 
     // First pass: resolve all symbol addresses.
     for (auto &[name, entry] : layout.globalSyms) {
@@ -860,6 +894,69 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                             return false;
                         }
                         writeLE32(patch, static_cast<uint32_t>(target));
+                        break;
+                    }
+                    case RelocAction::TlsOffset32: {
+                        if (!requirePatchBytes(4, "TLS local-exec"))
+                            return false;
+                        if (!tlsImage.present) {
+                            err << "error: " << obj.name
+                                << ": TLS local-exec relocation requires a TLS image";
+                            if (!symName.empty())
+                                err << " for '" << symName << "'";
+                            err << "\n";
+                            return false;
+                        }
+                        if (!requireTargetOutputSection("TLS local-exec"))
+                            return false;
+                        if (!layout.sections[symOutSecIdx].tls) {
+                            err << "error: " << obj.name << ": TLS local-exec target '"
+                                << targetDisplay << "' is not in a TLS section\n";
+                            return false;
+                        }
+                        uint64_t target = 0;
+                        int64_t tpoff = 0;
+                        if (!checkedRelocTarget(S, A, obj, symName, "TLS local-exec", err, target) ||
+                            !checkedRelocDelta(
+                                target, tlsImage.endVA, obj, symName, "TLS local-exec", err, tpoff))
+                            return false;
+                        if (!writeCheckedRel32(patch, tpoff, obj, symName, "TLS local-exec", err))
+                            return false;
+                        break;
+                    }
+                    case RelocAction::GotPCRel32: {
+                        if (!requirePatchBytes(4, "GOT PC-relative"))
+                            return false;
+
+                        uint64_t base = S;
+                        auto git = symName.empty() ? layout.globalSyms.end()
+                                                   : layout.globalSyms.find("__got_" + symName);
+                        if (git != layout.globalSyms.end()) {
+                            base = git->second.resolvedAddr;
+                        } else if (rel.type == elf_x64::kGotPcRelX ||
+                                   rel.type == elf_x64::kRexGotPcRelX) {
+                            if (patchOff < 2 || patch[-2] != 0x8B) {
+                                err << "error: " << obj.name
+                                    << ": local GOTPCRELX relaxation requires MOV r*, disp32(%rip)";
+                                if (!symName.empty())
+                                    err << " for '" << symName << "'";
+                                err << "\n";
+                                return false;
+                            }
+                            patch[-2] = 0x8D; // Relax mov foo@GOTPCRELX(%rip), %reg -> lea foo(%rip), %reg
+                        } else {
+                            err << "error: " << obj.name << ": missing GOT entry for '" << targetDisplay
+                                << "'\n";
+                            return false;
+                        }
+
+                        uint64_t target = 0;
+                        int64_t delta = 0;
+                        if (!checkedRelocTarget(base, A, obj, symName, "GOT PC-relative", err, target) ||
+                            !checkedRelocDelta(target, P, obj, symName, "GOT PC-relative", err, delta))
+                            return false;
+                        if (!writeCheckedRel32(patch, delta, obj, symName, "GOT PC-relative", err))
+                            return false;
                         break;
                     }
                     case RelocAction::Branch26: {

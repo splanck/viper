@@ -13,6 +13,7 @@ set(_build_dir "${_tmp_root}/build")
 
 file(REMOVE_RECURSE "${_tmp_root}")
 file(MAKE_DIRECTORY "${_src_dir}")
+file(REMOVE "${VIPER_BUILD_DIR}/install_manifest.txt")
 
 set(_install_cmd "${CMAKE_BIN}" --install "${VIPER_BUILD_DIR}" --prefix "${_stage_dir}")
 if (DEFINED VIPER_CONFIG AND NOT "${VIPER_CONFIG}" STREQUAL "")

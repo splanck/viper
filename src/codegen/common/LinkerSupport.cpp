@@ -79,6 +79,24 @@ bool dirHasArchiveProbe(const std::filesystem::path &dir) {
     return fileExists(dir / archiveFileName("viper_rt_base"));
 }
 
+std::optional<std::filesystem::path> configuredInstalledLibDir() {
+    if (const char *env = std::getenv("VIPER_LIB_PATH")) {
+        std::filesystem::path candidate(env);
+        if (fileExists(candidate) && !std::filesystem::is_directory(candidate))
+            candidate = candidate.parent_path();
+        if (!candidate.empty() && dirHasArchiveProbe(candidate))
+            return candidate;
+    }
+    return std::nullopt;
+}
+
+std::optional<std::filesystem::path> installedLibraryPathInDir(
+    const std::optional<std::filesystem::path> &dir, std::string_view libBaseName) {
+    if (!dir)
+        return std::nullopt;
+    return *dir / archiveFileName(libBaseName);
+}
+
 /// @brief Resolve the installed-layout path for a runtime/support library, if any.
 /// @return std::nullopt when no installed lib directory has been discovered.
 std::optional<std::filesystem::path> installedLibraryPath(std::string_view libBaseName) {
@@ -423,28 +441,33 @@ std::optional<std::filesystem::path> currentExecutablePath() {
 #endif
 }
 
-std::optional<std::filesystem::path> findInstalledLibDir() {
-    if (const char *env = std::getenv("VIPER_LIB_PATH")) {
-        std::filesystem::path candidate(env);
-        if (fileExists(candidate) && !std::filesystem::is_directory(candidate))
-            candidate = candidate.parent_path();
-        if (!candidate.empty() && dirHasArchiveProbe(candidate))
-            return candidate;
-    }
-
+std::optional<std::filesystem::path> executableInstalledLibDir() {
     if (const auto exePath = currentExecutablePath()) {
         std::error_code ec;
         std::filesystem::path exeDir = exePath->parent_path();
-        std::filesystem::path candidate = std::filesystem::weakly_canonical(exeDir / ".." / "lib", ec);
+        std::filesystem::path candidate =
+            std::filesystem::weakly_canonical(exeDir / ".." / "lib", ec);
         if (!ec && dirHasArchiveProbe(candidate))
             return candidate;
     }
+    return std::nullopt;
+}
 
+std::optional<std::filesystem::path> systemInstalledLibDir() {
     for (const auto &candidate : standardInstalledLibDirs()) {
         if (dirHasArchiveProbe(candidate))
             return candidate;
     }
+    return std::nullopt;
+}
 
+std::optional<std::filesystem::path> findInstalledLibDir() {
+    if (const auto configured = configuredInstalledLibDir())
+        return configured;
+    if (const auto adjacent = executableInstalledLibDir())
+        return adjacent;
+    if (const auto system = systemInstalledLibDir())
+        return system;
     return std::nullopt;
 }
 
@@ -520,10 +543,13 @@ std::unordered_set<std::string> parseRuntimeSymbols(std::string_view text) {
 std::filesystem::path runtimeArchivePath(const std::filesystem::path &buildDir,
                                          std::string_view libBaseName) {
     const std::string libName = archiveFileName(libBaseName);
-    if (const auto installedPath = installedLibraryPath(libBaseName); installedPath &&
-                                                               fileExists(*installedPath)) {
-        return *installedPath;
-    }
+    const auto configuredPath = installedLibraryPathInDir(configuredInstalledLibDir(), libBaseName);
+    const auto adjacentPath = installedLibraryPathInDir(executableInstalledLibDir(), libBaseName);
+    const auto systemPath = installedLibraryPathInDir(systemInstalledLibDir(), libBaseName);
+    if (configuredPath && fileExists(*configuredPath))
+        return *configuredPath;
+    if (adjacentPath && fileExists(*adjacentPath))
+        return *adjacentPath;
 #ifdef _WIN32
     const std::string objLibName = std::string(libBaseName) + "_obj.lib";
 
@@ -559,27 +585,52 @@ std::filesystem::path runtimeArchivePath(const std::filesystem::path &buildDir,
 #endif
     }
 #else
+    if (!buildDir.empty()) {
+        const auto buildTreePath = buildDir / "src/runtime" / libName;
+        if (fileExists(buildTreePath))
+            return buildTreePath;
+    }
+#endif
+    if (systemPath && fileExists(*systemPath))
+        return *systemPath;
+    if (configuredPath)
+        return *configuredPath;
+    if (adjacentPath)
+        return *adjacentPath;
+    if (systemPath)
+        return *systemPath;
     if (!buildDir.empty())
         return buildDir / "src/runtime" / libName;
-#endif
-    if (const auto installedPath = installedLibraryPath(libBaseName))
-        return *installedPath;
     return std::filesystem::path("src/runtime") / libName;
 }
 
 std::filesystem::path supportLibraryPath(const std::filesystem::path &buildDir,
                                          std::string_view libBaseName) {
-    if (const auto installedPath = installedLibraryPath(libBaseName); installedPath &&
-                                                               fileExists(*installedPath)) {
-        return *installedPath;
+    const auto configuredPath = installedLibraryPathInDir(configuredInstalledLibDir(), libBaseName);
+    const auto adjacentPath = installedLibraryPathInDir(executableInstalledLibDir(), libBaseName);
+    const auto systemPath = installedLibraryPathInDir(systemInstalledLibDir(), libBaseName);
+    if (configuredPath && fileExists(*configuredPath))
+        return *configuredPath;
+    if (adjacentPath && fileExists(*adjacentPath))
+        return *adjacentPath;
+    if (!buildDir.empty()) {
+        const auto path = buildTreeSupportLibraryPath(buildDir, libBaseName);
+        if (!path.empty() && fileExists(path))
+            return path;
     }
+    if (systemPath && fileExists(*systemPath))
+        return *systemPath;
     if (!buildDir.empty()) {
         const auto path = buildTreeSupportLibraryPath(buildDir, libBaseName);
         if (!path.empty())
             return path;
     }
-    if (const auto installedPath = installedLibraryPath(libBaseName))
-        return *installedPath;
+    if (configuredPath)
+        return *configuredPath;
+    if (adjacentPath)
+        return *adjacentPath;
+    if (systemPath)
+        return *systemPath;
     return fallbackSupportLibraryPath(libBaseName);
 }
 

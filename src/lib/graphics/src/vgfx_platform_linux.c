@@ -103,6 +103,16 @@ static struct vgfx_window *g_vgfx_cursor_window = NULL;
 static struct vgfx_window *g_vgfx_clipboard_window = NULL;
 static struct vgfx_window *g_vgfx_x11_windows = NULL;
 
+enum {
+    /*
+     * X11/X.h standardizes Button1..Button5 only. Many servers report
+     * horizontal wheel motion as raw button codes 6 and 7, so keep those
+     * values local instead of relying on non-portable macros.
+     */
+    VGFX_X11_BUTTON_SCROLL_LEFT = 6,
+    VGFX_X11_BUTTON_SCROLL_RIGHT = 7,
+};
+
 static int hex_value(unsigned char c) {
     if (c >= '0' && c <= '9')
         return (int)(c - '0');
@@ -1251,14 +1261,15 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                 } else if (event.xbutton.button == Button3) {
                     button = VGFX_MOUSE_RIGHT;
                 } else if (event.xbutton.button == Button4 || event.xbutton.button == Button5 ||
-                           event.xbutton.button == Button6 || event.xbutton.button == Button7) {
+                           event.xbutton.button == VGFX_X11_BUTTON_SCROLL_LEFT ||
+                           event.xbutton.button == VGFX_X11_BUTTON_SCROLL_RIGHT) {
                     float dx = 0.0f;
                     float dy = 0.0f;
                     if (event.xbutton.button == Button4)
                         dy = -1.0f;
                     else if (event.xbutton.button == Button5)
                         dy = 1.0f;
-                    else if (event.xbutton.button == Button6)
+                    else if (event.xbutton.button == VGFX_X11_BUTTON_SCROLL_LEFT)
                         dx = -1.0f;
                     else
                         dx = 1.0f;

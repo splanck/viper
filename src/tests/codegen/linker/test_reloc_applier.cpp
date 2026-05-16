@@ -800,6 +800,188 @@ int main() {
             CHECK(layout.bindEntries[0].symbolName == "imported_data");
     }
 
+    // --- ELF x86_64 TPOFF32 uses the end of the merged TLS image as the TP base ---
+    {
+        ObjFile obj;
+        obj.name = "test_tpoff32.o";
+        obj.format = ObjFileFormat::ELF;
+        obj.sections.push_back({});
+
+        ObjSection text;
+        text.name = ".text";
+        text.data.resize(8, 0);
+        text.executable = true;
+        text.alloc = true;
+        text.alignment = 4;
+        ObjReloc rel;
+        rel.offset = 0;
+        rel.type = elf_x64::kTpoff32;
+        rel.symIndex = 1;
+        text.relocs.push_back(rel);
+        obj.sections.push_back(text);
+
+        ObjSection tdata;
+        tdata.name = ".tdata";
+        tdata.data.resize(8, 0xAA);
+        tdata.writable = true;
+        tdata.alloc = true;
+        tdata.tls = true;
+        tdata.alignment = 8;
+        obj.sections.push_back(tdata);
+
+        ObjSection tbss;
+        tbss.name = ".tbss";
+        tbss.data.resize(16, 0);
+        tbss.writable = true;
+        tbss.alloc = true;
+        tbss.tls = true;
+        tbss.zeroFill = true;
+        tbss.alignment = 8;
+        obj.sections.push_back(tbss);
+
+        obj.symbols.push_back({});
+        ObjSymbol tlsSym;
+        tlsSym.name = "tls_var";
+        tlsSym.binding = ObjSymbol::Local;
+        tlsSym.sectionIndex = 3;
+        tlsSym.offset = 0;
+        obj.symbols.push_back(tlsSym);
+
+        std::vector<ObjFile> objs = {obj};
+
+        LinkLayout layout;
+        layout.pageSize = 0x1000;
+
+        OutputSection outText;
+        outText.name = ".text";
+        outText.executable = true;
+        outText.virtualAddr = 0x401000;
+        outText.data = text.data;
+        outText.chunks.push_back({0, 1, 0, text.data.size()});
+        layout.sections.push_back(outText);
+
+        OutputSection outTdata;
+        outTdata.name = ".tdata";
+        outTdata.writable = true;
+        outTdata.tls = true;
+        outTdata.virtualAddr = 0x402000;
+        outTdata.data = tdata.data;
+        outTdata.chunks.push_back({0, 2, 0, tdata.data.size()});
+        layout.sections.push_back(outTdata);
+
+        OutputSection outTbss;
+        outTbss.name = ".tbss";
+        outTbss.writable = true;
+        outTbss.tls = true;
+        outTbss.zeroFill = true;
+        outTbss.virtualAddr = 0x403000;
+        outTbss.data = tbss.data;
+        outTbss.chunks.push_back({0, 3, 0, tbss.data.size()});
+        layout.sections.push_back(outTbss);
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err));
+        CHECK(static_cast<int32_t>(readLE32(layout.sections[0].data.data())) == -16);
+    }
+
+    // --- ELF x86_64 GOTPCRELX uses synthesized GOT slots for dynamic imports ---
+    {
+        std::vector<uint8_t> code = {0x48, 0x8B, 0x05, 0x00, 0x00, 0x00, 0x00};
+        auto obj = makeObj("test_gotpcrelx.o",
+                           ObjFileFormat::ELF,
+                           code,
+                           "stderr",
+                           elf_x64::kRexGotPcRelX,
+                           /*relocOff=*/3,
+                           /*addend=*/-4);
+
+        std::vector<ObjFile> objs = {obj};
+        auto layout = makeLayout(objs, 0x401000);
+
+        GlobalSymEntry dynEntry;
+        dynEntry.name = "stderr";
+        dynEntry.binding = GlobalSymEntry::Dynamic;
+        dynEntry.resolvedAddr = 0x700000;
+        layout.globalSyms["stderr"] = dynEntry;
+
+        GlobalSymEntry gotEntry;
+        gotEntry.name = "__got_stderr";
+        gotEntry.binding = GlobalSymEntry::Global;
+        gotEntry.resolvedAddr = 0x402000;
+        layout.globalSyms["__got_stderr"] = gotEntry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms = {"stderr"};
+        CHECK(applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err));
+        CHECK(layout.sections[0].data[1] == 0x8B);
+        CHECK(readLE32(layout.sections[0].data.data() + 3) == 0x00000FF9);
+    }
+
+    // --- ELF x86_64 GOTPCRELX relaxes local MOV loads into LEA ---
+    {
+        ObjFile obj;
+        obj.name = "test_local_gotpcrelx.o";
+        obj.format = ObjFileFormat::ELF;
+        obj.sections.push_back({});
+
+        ObjSection text;
+        text.name = ".text";
+        text.data = {0x48, 0x8B, 0x05, 0x00, 0x00, 0x00, 0x00};
+        text.executable = true;
+        text.alloc = true;
+        text.alignment = 4;
+        ObjReloc rel;
+        rel.offset = 3;
+        rel.type = elf_x64::kRexGotPcRelX;
+        rel.symIndex = 1;
+        rel.addend = -4;
+        text.relocs.push_back(rel);
+        obj.sections.push_back(text);
+
+        ObjSection data;
+        data.name = ".data";
+        data.data.resize(8, 0xAA);
+        data.writable = true;
+        data.alloc = true;
+        data.alignment = 8;
+        obj.sections.push_back(data);
+
+        obj.symbols.push_back({});
+        ObjSymbol local;
+        local.name = "local_data";
+        local.binding = ObjSymbol::Local;
+        local.sectionIndex = 2;
+        local.offset = 0;
+        obj.symbols.push_back(local);
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        layout.pageSize = 0x1000;
+
+        OutputSection outText;
+        outText.name = ".text";
+        outText.executable = true;
+        outText.virtualAddr = 0x401000;
+        outText.data = text.data;
+        outText.chunks.push_back({0, 1, 0, text.data.size()});
+        layout.sections.push_back(outText);
+
+        OutputSection outData;
+        outData.name = ".data";
+        outData.writable = true;
+        outData.virtualAddr = 0x402000;
+        outData.data = data.data;
+        outData.chunks.push_back({0, 2, 0, data.data.size()});
+        layout.sections.push_back(outData);
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err));
+        CHECK(layout.sections[0].data[1] == 0x8D);
+        CHECK(readLE32(layout.sections[0].data.data() + 3) == 0x00000FF9);
+    }
+
     // --- COFF AArch64 BRANCH26 patches BL/B using the Windows relocation kind ---
     {
         std::vector<uint8_t> code(4, 0);

@@ -94,6 +94,25 @@ static void rt_global_shutdown(void) {
     rt_pool_shutdown();
 }
 
+#if RT_PLATFORM_LINUX
+extern int __cxa_atexit(void (*func)(void *), void *arg, void *dso_handle);
+
+static void rt_global_shutdown_atexit_(void *arg) {
+    (void)arg;
+    rt_global_shutdown();
+}
+
+static int rt_register_shutdown_handler_(void) {
+    // glibc does not export atexit() for late-bound native executables, but
+    // __cxa_atexit() is available from libc and feeds the same exit handler list.
+    return __cxa_atexit(rt_global_shutdown_atexit_, NULL, NULL);
+}
+#else
+static int rt_register_shutdown_handler_(void) {
+    return atexit(rt_global_shutdown);
+}
+#endif
+
 //=============================================================================
 // Live Payload Registry
 //=============================================================================
@@ -504,7 +523,9 @@ void *rt_heap_alloc(rt_heap_kind_t kind,
                                         /*weak=*/0,
                                         __ATOMIC_ACQ_REL,
                                         __ATOMIC_ACQUIRE)) {
-            atexit(rt_global_shutdown);
+            if (rt_register_shutdown_handler_() != 0) {
+                __atomic_store_n(&g_shutdown_registered, 0, __ATOMIC_RELEASE);
+            }
         }
     }
 

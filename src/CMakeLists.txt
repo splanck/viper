@@ -147,7 +147,14 @@ add_library(viper_il_verify STATIC
         il/verify/ControlFlowChecker.cpp
         il/verify/VerifierTable.cpp
         il/verify/TypeInference.cpp)
-target_link_libraries(viper_il_verify PRIVATE viper_il_core il_runtime viper_common_opts)
+target_link_libraries(viper_il_verify
+        PUBLIC
+        viper_il_core
+        il_runtime
+        viper_il_io
+        PRIVATE
+        viper_common_opts
+)
 target_include_directories(viper_il_verify PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
@@ -374,7 +381,7 @@ target_include_directories(viper_bytecode PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>)
 target_link_libraries(viper_bytecode
-        PUBLIC viper_il_core
+        PUBLIC viper_il_core viper_il_verify
         PRIVATE viper_support il_vm viper_common_opts)
 
 add_library(il_codegen_x86_64 STATIC
@@ -456,8 +463,6 @@ set(VIPER_CLI_LINK_LIBS
         il_vm
         il_transform
         il_link
-        fe_basic
-        fe_zia
         il_api
         il_tools_common
         viper_native_compiler
@@ -498,7 +503,6 @@ target_link_libraries(vbasic
         viper::il_full
         il_vm
         il_transform
-        fe_basic
         il_api
         il_tools_common
         viper_native_compiler
@@ -526,7 +530,6 @@ target_link_libraries(zia
         viper::il_full
         il_vm
         il_transform
-        fe_zia
         il_api
         il_tools_common
         viper_native_compiler
@@ -535,6 +538,9 @@ target_link_libraries(zia
         viper_cmd_arm64
         viper_common
         viper_bytecode)
+if (APPLE OR WIN32)
+    target_link_libraries(zia PRIVATE fe_zia)
+endif ()
 # Force-load fe_zia so its strong-symbol implementations of rt_zia_complete /
 # rt_zia_check / rt_zia_hover / rt_zia_symbols win over the weak fallbacks in
 # viper_runtime/core/rt_zia_completion_stub.c. Without force-loading, the static
@@ -545,7 +551,8 @@ if (APPLE)
     target_link_options(zia PRIVATE LINKER:-force_load,$<TARGET_FILE:fe_zia>)
 elseif (UNIX)
     target_link_libraries(zia PRIVATE
-            -Wl,--whole-archive $<TARGET_FILE:fe_zia> -Wl,--no-whole-archive)
+            -Wl,--whole-archive $<TARGET_FILE:fe_zia> -Wl,--no-whole-archive
+            il_build)
 endif ()
 if (MSVC)
     target_link_options(zia PRIVATE /STACK:8388608)

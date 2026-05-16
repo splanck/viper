@@ -31,6 +31,8 @@ enum class RelocAction {
     PCRel32,      // S + A - P (32-bit)
     Abs64,        // S + A (64-bit)
     Abs32,        // S + A (32-bit)
+    TlsOffset32,  // ELF x86_64 local-exec TLS: S + A - TP
+    GotPCRel32,   // ELF x86_64 GOT slot address relative to RIP
     Branch26,     // AArch64: ((S+A-P)>>2) & 0x3FFFFFF
     Page21,       // AArch64: ADRP page delta
     PageOff12,    // AArch64: ADD page offset
@@ -59,8 +61,14 @@ inline RelocAction elfX64Action(uint32_t type) {
             return RelocAction::PCRel32;
         case elf_x64::kPLT32:
             return RelocAction::PCRel32;
+        case elf_x64::kGotPcRel:
+        case elf_x64::kGotPcRelX:
+        case elf_x64::kRexGotPcRelX:
+            return RelocAction::GotPCRel32;
         case elf_x64::kAbs32:
             return RelocAction::Abs32;
+        case elf_x64::kTpoff32:
+            return RelocAction::TlsOffset32;
         default:
             return RelocAction::Unknown;
     }

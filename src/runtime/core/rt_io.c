@@ -213,14 +213,24 @@ static uintptr_t rt_capture_return_address(void) {
 ///             user-replaceable `vm_trap` (which by default aborts).
 static void rt_trap_dispatch(
     const char *msg, int32_t kind, int32_t code, int32_t line, uintptr_t return_address) {
+    const char *stable_msg = msg;
+
     if (kind < RT_TRAP_KIND_DIVIDE_BY_ZERO || kind > RT_TRAP_KIND_NETWORK_ERROR)
         kind = RT_TRAP_KIND_RUNTIME_ERROR;
     rt_trap_set_ip((uint64_t)return_address);
     rt_trap_fields_set(kind, code, line);
     if (kind != RT_TRAP_KIND_NETWORK_ERROR)
         rt_trap_net_code_ = 0;
+    if (msg) {
+        snprintf(rt_trap_error_, sizeof(rt_trap_error_), "%s", msg);
+        stable_msg = rt_trap_error_;
+    } else if (rt_trap_recovery_top_) {
+        snprintf(rt_trap_error_, sizeof(rt_trap_error_), "%s", "Unknown trap");
+        stable_msg = rt_trap_error_;
+    } else {
+        rt_trap_error_[0] = '\0';
+    }
     if (rt_trap_recovery_top_) {
-        snprintf(rt_trap_error_, sizeof(rt_trap_error_), "%s", msg ? msg : "Unknown trap");
         if (rt_trap_recovery_top_->kind == RT_TRAP_RECOVERY_NATIVE) {
             rt_native_eh_frame_t *frame =
                 (rt_native_eh_frame_t *)((char *)rt_trap_recovery_top_ -
@@ -229,7 +239,7 @@ static void rt_trap_dispatch(
         }
         longjmp(*((rt_trap_legacy_recovery_t *)rt_trap_recovery_top_)->buf, 1);
     }
-    vm_trap(msg);
+    vm_trap(stable_msg);
 }
 
 /// @brief Raise a trap with explicit kind/code/line classification.
@@ -369,6 +379,7 @@ void rt_print_str(rt_string s) {
         return;
 
     rt_output_strn(s->data, len);
+    rt_output_flush_if_not_batch();
 }
 
 /// @brief Print a signed 64-bit integer to stdout in decimal form.
@@ -386,6 +397,7 @@ void rt_print_i64(int64_t v) {
 
     if (sb.len > 0)
         rt_output_strn(sb.data, sb.len);
+    rt_output_flush_if_not_batch();
     rt_sb_free(&sb);
 }
 
@@ -398,6 +410,7 @@ void rt_print_f64(double v) {
     char buf[64];
     rt_format_f64(v, buf, sizeof(buf));
     rt_output_str(buf);
+    rt_output_flush_if_not_batch();
 }
 
 /// @brief Grow an input buffer used by @ref rt_input_line.

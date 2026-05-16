@@ -28,7 +28,11 @@ namespace elf_x64 {
 constexpr uint32_t kAbs64 = 1;  // R_X86_64_64
 constexpr uint32_t kPC32 = 2;   // R_X86_64_PC32
 constexpr uint32_t kPLT32 = 4;  // R_X86_64_PLT32
+constexpr uint32_t kGotPcRel = 9; // R_X86_64_GOTPCREL
 constexpr uint32_t kAbs32 = 10; // R_X86_64_32
+constexpr uint32_t kTpoff32 = 23; // R_X86_64_TPOFF32
+constexpr uint32_t kGotPcRelX = 41; // R_X86_64_GOTPCRELX
+constexpr uint32_t kRexGotPcRelX = 42; // R_X86_64_REX_GOTPCRELX
 } // namespace elf_x64
 
 // ── ELF AArch64 Relocation Types (ELF for ARM 64-bit Architecture) ──────
