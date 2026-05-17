@@ -326,6 +326,69 @@ static void validateFunctionMetadata(const MFunction &fn) {
     }
 }
 
+static uint8_t windowsArm64GprSaveIndex(PhysReg reg) {
+    if (reg < PhysReg::X19 || reg > PhysReg::X28)
+        throw std::out_of_range("AArch64 Windows unwind: GPR save must be X19-X28");
+    return static_cast<uint8_t>(static_cast<int>(reg) - static_cast<int>(PhysReg::X19));
+}
+
+static uint8_t windowsArm64FprSaveIndex(PhysReg reg) {
+    if (reg < PhysReg::V8 || reg > PhysReg::V15)
+        throw std::out_of_range("AArch64 Windows unwind: FPR save must be V8-V15");
+    return static_cast<uint8_t>(static_cast<int>(reg) - static_cast<int>(PhysReg::V8));
+}
+
+static void appendWindowsArm64AllocCode(std::vector<uint8_t> &codes, uint32_t bytes) {
+    if (bytes == 0)
+        return;
+    if ((bytes % 16) != 0)
+        throw std::out_of_range("AArch64 Windows unwind: stack allocation must be 16-byte aligned");
+    const uint32_t units = bytes / 16;
+    if (bytes < 512) {
+        codes.push_back(static_cast<uint8_t>(units));
+        return;
+    }
+    if (bytes < 32768) {
+        codes.push_back(static_cast<uint8_t>(0xC0u | ((units >> 8) & 0x7u)));
+        codes.push_back(static_cast<uint8_t>(units & 0xFFu));
+        return;
+    }
+    if (units > 0x00FFFFFFu)
+        throw std::out_of_range("AArch64 Windows unwind: stack allocation exceeds xdata range");
+    codes.push_back(0xE0u);
+    codes.push_back(static_cast<uint8_t>(units & 0xFFu));
+    codes.push_back(static_cast<uint8_t>((units >> 8) & 0xFFu));
+    codes.push_back(static_cast<uint8_t>((units >> 16) & 0xFFu));
+}
+
+static void appendWindowsArm64SaveGprPairX(std::vector<uint8_t> &codes, PhysReg first) {
+    const uint8_t x = windowsArm64GprSaveIndex(first);
+    constexpr uint8_t zForPredec16 = 1;
+    codes.push_back(static_cast<uint8_t>(0xCCu | ((x >> 2) & 0x3u)));
+    codes.push_back(static_cast<uint8_t>(((x & 0x3u) << 6) | zForPredec16));
+}
+
+static void appendWindowsArm64SaveGprX(std::vector<uint8_t> &codes, PhysReg reg) {
+    const uint8_t x = windowsArm64GprSaveIndex(reg);
+    constexpr uint8_t zForPredec16 = 1;
+    codes.push_back(static_cast<uint8_t>(0xD4u | ((x >> 3) & 0x1u)));
+    codes.push_back(static_cast<uint8_t>(((x & 0x7u) << 5) | zForPredec16));
+}
+
+static void appendWindowsArm64SaveFprPairX(std::vector<uint8_t> &codes, PhysReg first) {
+    const uint8_t x = windowsArm64FprSaveIndex(first);
+    constexpr uint8_t zForPredec16 = 1;
+    codes.push_back(static_cast<uint8_t>(0xDAu | ((x >> 2) & 0x1u)));
+    codes.push_back(static_cast<uint8_t>(((x & 0x3u) << 6) | zForPredec16));
+}
+
+static void appendWindowsArm64SaveFprX(std::vector<uint8_t> &codes, PhysReg reg) {
+    const uint8_t x = windowsArm64FprSaveIndex(reg);
+    constexpr uint8_t zForPredec16 = 1;
+    codes.push_back(0xDEu);
+    codes.push_back(static_cast<uint8_t>(((x & 0x7u) << 5) | zForPredec16));
+}
+
 /// @brief Test whether @p offset fits the signed 9-bit unscaled `LDUR`/`STUR` immediate.
 /// @details The unscaled immediate is `simm9` with a range of `[-256, 255]`. Callers
 ///          use this to choose between the unscaled form (for negative or unaligned
@@ -869,6 +932,10 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
                 entry.encoding = 0x02000000u; // UNWIND_ARM64_MODE_FRAMELESS, stack size 0
                 text.addUnwindEntry(entry);
             }
+        } else if (abi == ABIFormat::Windows && !skipFrame_) {
+            const uint32_t funcLen =
+                checkedFunctionLength(text.currentOffset() - funcStartOffset, fn.name);
+            recordWindowsArm64UnwindEntry(fn, funcSymIdx, funcLen, text);
         }
 
         currentFn_ = nullptr;
@@ -972,6 +1039,97 @@ void A64BinaryEncoder::encodeEpilogue(const MFunction &fn, objfile::CodeSection 
 
     // ret
     emit32(kRet, cs);
+}
+
+void A64BinaryEncoder::recordWindowsArm64UnwindEntry(const MFunction &fn,
+                                                     uint32_t funcSymIdx,
+                                                     uint32_t functionLength,
+                                                     objfile::CodeSection &cs) const {
+    std::vector<std::vector<uint8_t>> forwardOps;
+    forwardOps.reserve(16);
+
+    const auto oneOp = [](auto emit) {
+        std::vector<uint8_t> op;
+        emit(op);
+        return op;
+    };
+
+    const auto appendAllocOp = [&](uint32_t bytes) {
+        forwardOps.push_back(oneOp([&](std::vector<uint8_t> &op) {
+            appendWindowsArm64AllocCode(op, bytes);
+        }));
+    };
+
+    const auto appendAllocOpsForAddSubSmart = [&](uint32_t bytes) {
+        if (bytes <= 4095) {
+            appendAllocOp(bytes);
+        } else if ((bytes & 0xFFFu) == 0 && (bytes >> 12) <= 4095) {
+            appendAllocOp(bytes);
+        } else {
+            uint32_t hi = bytes >> 12;
+            uint32_t lo = bytes & 0xFFFu;
+            if (hi > 0 && hi <= 4095) {
+                appendAllocOp(hi << 12);
+                if (lo > 0)
+                    appendAllocOp(lo);
+            } else {
+                while (bytes > 4095) {
+                    appendAllocOp(4080);
+                    bytes -= 4080;
+                }
+                if (bytes > 0)
+                    appendAllocOp(bytes);
+            }
+        }
+    };
+
+    // stp x29, x30, [sp, #-16]!
+    forwardOps.push_back({0x81u}); // save_fplr_x, pre-indexed -16
+    forwardOps.push_back({0xE3u}); // nop for mov x29, sp
+
+    if (fn.localFrameSize > 0)
+        appendAllocOpsForAddSubSmart(checkedU32NonNegative(fn.localFrameSize, "local frame size"));
+
+    forEachSaveReg(
+        fn.savedGPRs,
+        [&](PhysReg r0, PhysReg) {
+            forwardOps.push_back(oneOp(
+                [&](std::vector<uint8_t> &op) { appendWindowsArm64SaveGprPairX(op, r0); }));
+        },
+        [&](PhysReg r0) {
+            forwardOps.push_back(oneOp(
+                [&](std::vector<uint8_t> &op) { appendWindowsArm64SaveGprX(op, r0); }));
+        });
+
+    forEachSaveReg(
+        fn.savedFPRs,
+        [&](PhysReg r0, PhysReg) {
+            forwardOps.push_back(oneOp(
+                [&](std::vector<uint8_t> &op) { appendWindowsArm64SaveFprPairX(op, r0); }));
+        },
+        [&](PhysReg r0) {
+            forwardOps.push_back(oneOp(
+                [&](std::vector<uint8_t> &op) { appendWindowsArm64SaveFprX(op, r0); }));
+        });
+
+    size_t unwindCodeSize = 1; // trailing end opcode
+    for (const auto &op : forwardOps)
+        unwindCodeSize += op.size();
+    std::vector<uint8_t> unwindCodes;
+    unwindCodes.reserve(unwindCodeSize);
+    for (auto it = forwardOps.rbegin(); it != forwardOps.rend(); ++it)
+        unwindCodes.insert(unwindCodes.end(), it->begin(), it->end());
+    unwindCodes.push_back(0xE4u); // end
+
+    objfile::WinArm64UnwindEntry entry{};
+    entry.symbolIndex = funcSymIdx;
+    entry.functionLength = functionLength;
+    entry.prologueSize = static_cast<uint8_t>(
+        std::min<size_t>(prologueSize(fn), std::numeric_limits<uint8_t>::max()));
+    entry.unwindCodes = std::move(unwindCodes);
+    entry.packedEpilogInHeader = true;
+    entry.epilogCodeIndex = 0;
+    cs.addWinArm64UnwindEntry(std::move(entry));
 }
 
 // =============================================================================
@@ -1242,12 +1400,7 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
             const uint32_t rd = hwGPR(getReg(mi.ops[0]));
             const uint32_t rn = hwGPR(getReg(mi.ops[1]));
             const long long immValue = getImm(mi.ops[2]);
-            if (immValue < 0) {
-                throw std::runtime_error(
-                    "AArch64 binary encoder: " + std::string(opcodeName(mi.opc)) +
-                    " immediate reached encoder without sign normalization");
-            }
-            const uint64_t imm = static_cast<uint64_t>(immValue);
+            const uint64_t imm = absImmUnsigned(immValue);
             const auto enc = classifyAddSubImmEncoding(imm);
             if (!enc.has_value()) {
                 throw std::runtime_error(
@@ -1255,12 +1408,22 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
                     " immediate reached encoder without legalization");
             }
             uint32_t tmpl = kAddRI;
-            if (mi.opc == MOpcode::SubRI)
-                tmpl = kSubRI;
-            else if (mi.opc == MOpcode::AddsRI)
-                tmpl = kAddsRI;
-            else if (mi.opc == MOpcode::SubsRI)
-                tmpl = kSubsRI;
+            switch (mi.opc) {
+                case MOpcode::AddRI:
+                    tmpl = immValue < 0 ? kSubRI : kAddRI;
+                    break;
+                case MOpcode::SubRI:
+                    tmpl = immValue < 0 ? kAddRI : kSubRI;
+                    break;
+                case MOpcode::AddsRI:
+                    tmpl = immValue < 0 ? kSubsRI : kAddsRI;
+                    break;
+                case MOpcode::SubsRI:
+                    tmpl = immValue < 0 ? kAddsRI : kSubsRI;
+                    break;
+                default:
+                    break;
+            }
             emit32(enc->shift12 ? encodeAddSubImmShift(tmpl, rd, rn, enc->imm12)
                                 : encodeAddSubImm(tmpl, rd, rn, enc->imm12),
                    cs);
@@ -1865,26 +2028,38 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
         // ─── Address Materialization ───
         case MOpcode::AdrPage: {
             uint32_t rd = hwGPR(getReg(mi.ops[0]));
-            std::string sym = getLabel(mi.ops[1]);
-            uint32_t symIdx = cs.findOrDeclareSymbol(sym);
-            const auto targetSection = (currentRodata_ != nullptr &&
-                                        currentRodata_->symbols().find(sym) != 0)
-                                           ? objfile::SymbolSection::Rodata
-                                           : objfile::SymbolSection::Undefined;
-            cs.addRelocation(objfile::RelocKind::A64AdrpPage21, symIdx, 0, targetSection);
+            std::string sym = mapRuntimeSymbol(getLabel(mi.ops[1]));
+            const uint32_t rodataSymIdx =
+                currentRodata_ != nullptr ? currentRodata_->symbols().find(sym) : 0;
+            if (rodataSymIdx != 0) {
+                const auto &rodataSym = currentRodata_->symbols().at(rodataSymIdx);
+                cs.addSectionOffsetRelocation(objfile::RelocKind::A64AdrpPage21,
+                                              *currentRodata_,
+                                              objfile::SymbolSection::Rodata,
+                                              rodataSym.offset);
+            } else {
+                uint32_t symIdx = cs.findOrDeclareSymbol(sym);
+                cs.addRelocation(objfile::RelocKind::A64AdrpPage21, symIdx, 0);
+            }
             emit32(kAdrp | rd, cs); // immediate filled by linker
             return;
         }
         case MOpcode::AddPageOff: {
             uint32_t rd = hwGPR(getReg(mi.ops[0]));
             uint32_t rn = hwGPR(getReg(mi.ops[1]));
-            std::string sym = getLabel(mi.ops[2]);
-            uint32_t symIdx = cs.findOrDeclareSymbol(sym);
-            const auto targetSection = (currentRodata_ != nullptr &&
-                                        currentRodata_->symbols().find(sym) != 0)
-                                           ? objfile::SymbolSection::Rodata
-                                           : objfile::SymbolSection::Undefined;
-            cs.addRelocation(objfile::RelocKind::A64AddPageOff12, symIdx, 0, targetSection);
+            std::string sym = mapRuntimeSymbol(getLabel(mi.ops[2]));
+            const uint32_t rodataSymIdx =
+                currentRodata_ != nullptr ? currentRodata_->symbols().find(sym) : 0;
+            if (rodataSymIdx != 0) {
+                const auto &rodataSym = currentRodata_->symbols().at(rodataSymIdx);
+                cs.addSectionOffsetRelocation(objfile::RelocKind::A64AddPageOff12,
+                                              *currentRodata_,
+                                              objfile::SymbolSection::Rodata,
+                                              rodataSym.offset);
+            } else {
+                uint32_t symIdx = cs.findOrDeclareSymbol(sym);
+                cs.addRelocation(objfile::RelocKind::A64AddPageOff12, symIdx, 0);
+            }
             emit32(encodeAddSubImm(kAddRI, rd, rn, 0), cs); // imm12 filled by linker
             return;
         }

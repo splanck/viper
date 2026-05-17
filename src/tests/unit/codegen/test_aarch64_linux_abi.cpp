@@ -33,9 +33,11 @@
 #include "tests/TestHarness.hpp"
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "codegen/aarch64/MachineIR.hpp"
+#include "codegen/aarch64/AsmEmitter.hpp"
 #include "codegen/aarch64/CodegenPipeline.hpp"
 #include "codegen/aarch64/TargetAArch64.hpp"
 #include "codegen/aarch64/binenc/A64BinaryEncoder.hpp"
@@ -151,6 +153,28 @@ MFunction makeNonLeafFunc(const std::string &name) {
     return fn;
 }
 
+static std::string emitAddressMaterializationAsm(const TargetInfo &ti) {
+    MFunction fn{};
+    fn.name = "addr_user";
+    fn.isLeaf = true;
+
+    MBasicBlock entry{};
+    entry.name = "entry";
+    entry.instrs.push_back(
+        MInstr{MOpcode::AdrPage, {MOperand::regOp(PhysReg::X0), MOperand::labelOp("global_obj")}});
+    entry.instrs.push_back(MInstr{MOpcode::AddPageOff,
+                                  {MOperand::regOp(PhysReg::X0),
+                                   MOperand::regOp(PhysReg::X0),
+                                   MOperand::labelOp("global_obj")}});
+    entry.instrs.push_back(MInstr{MOpcode::Ret, {}});
+    fn.blocks.push_back(std::move(entry));
+
+    std::ostringstream os;
+    AsmEmitter emitter(ti);
+    emitter.emitFunction(os, fn);
+    return os.str();
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -187,6 +211,20 @@ TEST(AArch64LinuxABI, LinuxTypeDirective) {
                   << asm_ << "\n";
     }
     EXPECT_TRUE(hasType);
+}
+
+TEST(AArch64LinuxABI, LinuxAddressMaterializationUsesElfRelocationSyntax) {
+    const std::string asm_ = emitAddressMaterializationAsm(linuxTarget());
+    EXPECT_NE(asm_.find("adrp x0, global_obj"), std::string::npos);
+    EXPECT_NE(asm_.find(":lo12:global_obj"), std::string::npos);
+    EXPECT_EQ(asm_.find("@PAGE"), std::string::npos);
+    EXPECT_EQ(asm_.find("@PAGEOFF"), std::string::npos);
+}
+
+TEST(AArch64LinuxABI, DarwinAddressMaterializationKeepsMachORelocationSyntax) {
+    const std::string asm_ = emitAddressMaterializationAsm(darwinTarget());
+    EXPECT_NE(asm_.find("_global_obj@PAGE"), std::string::npos);
+    EXPECT_NE(asm_.find("_global_obj@PAGEOFF"), std::string::npos);
 }
 
 // ---------------------------------------------------------------------------

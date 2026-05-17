@@ -105,6 +105,32 @@ bool tryLdpStpMerge(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats 
     return true;
 }
 
+static bool fpStoreRange(const MInstr &ins, int64_t &start, int64_t &end) {
+    int64_t width = 0;
+    switch (ins.opc) {
+        case MOpcode::StrRegFpImm:
+        case MOpcode::StrFprFpImm:
+            width = 8;
+            break;
+        case MOpcode::StpRegFpImm:
+        case MOpcode::StpFprFpImm:
+            width = 16;
+            break;
+        default:
+            return false;
+    }
+    const std::size_t offIndex = width == 8 ? 1u : 2u;
+    if (ins.ops.size() <= offIndex || ins.ops[offIndex].kind != MOperand::Kind::Imm)
+        return false;
+    start = ins.ops[offIndex].imm;
+    end = start + width;
+    return true;
+}
+
+static bool rangesOverlap(int64_t lhsStart, int64_t lhsEnd, int64_t rhsStart, int64_t rhsEnd) {
+    return lhsStart < rhsEnd && rhsStart < lhsEnd;
+}
+
 std::size_t forwardStoreLoads(std::vector<MInstr> &instrs, PeepholeStats &stats) {
     std::size_t forwarded = 0;
     for (std::size_t i = 0; i < instrs.size(); ++i) {
@@ -120,6 +146,7 @@ std::size_t forwardStoreLoads(std::vector<MInstr> &instrs, PeepholeStats &stats)
             continue;
 
         const int64_t storeOff = instrs[i].ops[1].imm;
+        const int64_t storeEnd = storeOff + 8;
         const MOperand storeReg = instrs[i].ops[0];
         const MOpcode matchLoad = isGPR ? MOpcode::LdrRegFpImm : MOpcode::LdrFprFpImm;
         const MOpcode matchStore = isGPR ? MOpcode::StrRegFpImm : MOpcode::StrFprFpImm;
@@ -127,6 +154,12 @@ std::size_t forwardStoreLoads(std::vector<MInstr> &instrs, PeepholeStats &stats)
 
         for (std::size_t j = i + 1; j < instrs.size(); ++j) {
             const auto &next = instrs[j];
+
+            int64_t nextStoreStart = 0;
+            int64_t nextStoreEnd = 0;
+            if (fpStoreRange(next, nextStoreStart, nextStoreEnd) &&
+                rangesOverlap(storeOff, storeEnd, nextStoreStart, nextStoreEnd))
+                break;
 
             if (next.opc == matchStore && next.ops.size() >= 2 &&
                 next.ops[1].kind == MOperand::Kind::Imm && next.ops[1].imm == storeOff)

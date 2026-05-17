@@ -11,9 +11,11 @@
 //
 //===----------------------------------------------------------------------===//
 #include "codegen/aarch64/TargetAArch64.hpp"
+#include "codegen/aarch64/ra/RegPools.hpp"
 #include "tests/TestHarness.hpp"
 
 #include <algorithm>
+#include <stdexcept>
 
 using namespace viper::codegen::aarch64;
 
@@ -136,6 +138,18 @@ TEST(CodegenReviewFix, GPRSetsAreDisjoint) {
 TEST(CodegenReviewFix, StackAlignment16) {
     const auto &ti = darwinTarget();
     EXPECT_EQ(ti.stackAlignment, 16U);
+}
+
+TEST(CodegenReviewFix, FPRPoolCanPreferCalleeSavedAndRejectDuplicateRelease) {
+    const auto &ti = darwinTarget();
+    ra::RegPools pools;
+    pools.build(ti);
+
+    const PhysReg first = pools.takeFPRPreferCalleeSaved(ti);
+    EXPECT_EQ(first, PhysReg::V8);
+
+    pools.releaseFPR(first, ti);
+    EXPECT_THROWS(pools.releaseFPR(first, ti), std::runtime_error);
 }
 
 int main(int argc, char **argv) {

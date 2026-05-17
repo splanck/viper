@@ -24,11 +24,19 @@
 using K = MOpcode;
 auto reg = [](const MOperand &op)
 {
-    assert(op.kind == MOperand::Kind::Reg && "expected reg operand");
-    assert(op.reg.isPhys && "unallocated vreg reached emitter");
+    if (op.kind != MOperand::Kind::Reg)
+        VIPER_ICE("expected register operand in AArch64 generated emitter");
+    if (!op.reg.isPhys)
+        VIPER_ICE("virtual register v" + std::to_string(op.reg.idOrPhys) +
+                  " reached AArch64 generated emitter (register allocation bug)");
     return static_cast<PhysReg>(op.reg.idOrPhys);
 };
-auto imm = [](const MOperand &op) { return op.imm; };
+auto imm = [](const MOperand &op)
+{
+    if (op.kind != MOperand::Kind::Imm)
+        VIPER_ICE("expected immediate operand in AArch64 generated emitter");
+    return op.imm;
+};
 
 switch (mi.opc)
 {
@@ -165,11 +173,10 @@ switch (mi.opc)
         os << "  bl " << mangleCallTarget(mi.ops[0].label) << "\n";
         break;
     case K::AdrPage:
-        os << "  adrp " << rn(reg(mi.ops[0])) << ", " << mangleSymbol(mi.ops[1].label) << "@PAGE\n";
+        emitAdrPage(reg(mi.ops[0]), mi.ops[1].label);
         break;
     case K::AddPageOff:
-        os << "  add " << rn(reg(mi.ops[0])) << ", " << rn(reg(mi.ops[1])) << ", "
-           << mangleSymbol(mi.ops[2].label) << "@PAGEOFF\n";
+        emitAddPageOff(reg(mi.ops[0]), reg(mi.ops[1]), mi.ops[2].label);
         break;
     default:
         throw std::runtime_error(std::string("AArch64 text emitter: unknown opcode ") + opcodeName(mi.opc));

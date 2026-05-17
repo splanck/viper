@@ -27,6 +27,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "TerminatorLowering.hpp"
+#include "FpCompareLowering.hpp"
 #include "InstrLowering.hpp"
 #include "OpcodeMappings.hpp"
 
@@ -453,9 +454,13 @@ void lowerTerminators(const il::core::Function &fn,
                                                 MOpcode::FCmpRR,
                                                 {MOperand::vregOp(RegClass::FPR, lhs),
                                                  MOperand::vregOp(RegClass::FPR, rhs)}});
+                                            (void)cc;
+                                            const uint16_t cmpResult = allocateNextVReg(nextVRegId);
+                                            emitFpCompareResult(
+                                                outBB, cmpI.op, cmpResult, nextVRegId);
                                             outBB.instrs.push_back(
-                                                MInstr{MOpcode::BCond,
-                                                       {MOperand::condOp(cc),
+                                                MInstr{MOpcode::Cbnz,
+                                                       {MOperand::vregOp(RegClass::GPR, cmpResult),
                                                         MOperand::labelOp(trueEdgeLbl)}});
                                             outBB.instrs.push_back(
                                                 MInstr{MOpcode::Br,

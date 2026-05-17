@@ -24,6 +24,8 @@
 #include <utility>
 #include <vector>
 
+#include "codegen/aarch64/TargetAArch64.hpp"
+
 namespace il::core {
 struct Module;
 }
@@ -58,7 +60,7 @@ class RodataPool {
     /// @details Writes platform-appropriate section directives followed by labeled
     ///          `.asciz` entries for each unique string in insertion order.
     /// @param os The output stream to write assembly text to.
-    void emit(std::ostream &os) const;
+    void emit(std::ostream &os, const TargetInfo &target) const;
 
   private:
     /// @brief Map from string content to its deduplicated assembly label.

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-05-01
+last-verified: 2026-05-16
 ---
 
 # AArch64 (arm64) Backend — Status and Plan
@@ -11,7 +11,7 @@ programs, and the development roadmap. It is kept developer-focused with concret
 
 ## Executive Summary
 
-### Current Status (April 2026)
+### Current Status (May 2026)
 
 - **End-to-end validated on Apple Silicon**: All demo games compile and run natively
 - **Core pipeline mature**: MIR layer, instruction selection, register allocation (with coalescer and protected-use eviction), frame lowering, peephole optimization (6 sub-passes), post-RA scheduler, linker integration
@@ -26,16 +26,17 @@ programs, and the development roadmap. It is kept developer-focused with concret
 - **Emergency spill reloads**: Reserved scratch registers cover no-free-register reload cases instead of letting `takeGPR` / `takeFPR` abort mid-instruction.
 - **Cross-target output plumbing**: `--target-darwin`, `--target-linux`, and `--target-windows` now drive the native object format, linker platform, and system-assembler target instead of silently falling back to the host
 - **Trap ABI fixes**: plain `trap` still marshals `x0 = NULL`, `idx.chk` raises structured bounds errors through `rt_trap_raise_error`, checked div/rem and overflow traps call `rt_trap_div0` / `rt_trap_ovf`, and `trap.from_err` marshals its code into `x0` before calling `rt_trap_raise_error`
-- **Checked FP casts**: `cast.fp_to_si.rte.chk` and `cast.fp_to_ui.rte.chk` now lower as `FRintN` plus explicit NaN/range checks before `FCvtZS` / `FCvtZU`, reporting `InvalidCast` for NaN/invalid unsigned inputs and `Overflow` for range failures. The bounds honor `i16`, `i32`, and `i64` result widths.
-- **FP compare NaN semantics**: `fcmp_eq`, `fcmp_ne`, and `fcmp_le` correct AArch64 unordered flag behavior with ordered/unordered guard materialization so IL IEEE semantics match VM/x86.
+- **Checked FP casts**: `cast.fp_to_si.rte.chk`, `cast.fp_to_ui.rte.chk`, and `fptosi` now lower with explicit NaN/range checks before `FCvtZS` / `FCvtZU`, reporting `InvalidCast` for NaN/invalid unsigned inputs and `Overflow` for range failures. The bounds honor `i1`, `i16`, `i32`, and `i64` result widths where applicable.
+- **FP compare NaN semantics**: all ordered `fcmp_*` predicates mask primitive AArch64 `FCMP` conditions with `vc`; `fcmp_ne` is unordered-true via `ne || vs`; `fcmp_ord` / `fcmp_uno` materialize `vc` / `vs` directly. Conditional branches over FP compares use the same materialized boolean path.
 - **Memory addressing**: general `load` / `store` now preserve optional immediate displacements instead of dropping them for base-register addressing.
 - **Type-safe phi edges**: phi-edge copies reject GPR/FPR class mismatches instead of silently inserting numeric conversions.
 - **Strict address lowering**: unsupported `addr_of` operands now fall through as unsupported instead of reporting success without defining the result.
 - **Width-sensitive checks**: annotated sub-width checked arithmetic and `idx.chk` sign-extend operands to the annotated width before checking. Checked narrowing compares the widened result and traps on overflow.
 - **Runtime error access**: `ErrGetMsg` lowers to `rt_throw_msg_get`, matching the VM/native EH contract.
 - **Control-flow correctness**: `switch.i32` edge arguments travel through phi spill slots via dedicated edge blocks, and larger switches lower as balanced decision trees instead of pure compare chains
-- **Call ABI hardening**: direct calls to module-defined variadic callees (`...`) now honor the variadic stack-tail ABI, and malformed direct-call IL is diagnosed instead of being silently dropped
-- **Emitter parity**: text assembly and the binary encoder now gate BTI / PACIASP / AUTIASP on target policy; branch-target identification and return-address signing are emitted by default on Darwin and skipped for Linux/Windows objects. Text emission keeps internal branch targets assembler-local under Darwin `.subsections_via_symbols` so conditional trap branches assemble with Apple `as`.
+- **Call ABI hardening**: direct calls to module-defined variadic callees (`...`) honor target-specific variadic placement: Darwin spills anonymous variadic args to the stack, while Linux and Windows continue through the normal register banks. Malformed direct-call IL is diagnosed instead of being silently dropped.
+- **Emitter parity**: text assembly and the binary encoder now gate BTI / PACIASP / AUTIASP on target policy; branch-target identification and return-address signing are emitted by default on Darwin and skipped for Linux/Windows objects. Text emission keeps internal branch targets assembler-local under Darwin `.subsections_via_symbols` so conditional trap branches assemble with Apple `as`. `AdrPage` / `AddPageOff` render Mach-O `@PAGE` / `@PAGEOFF` on Darwin and ELF/COFF `:lo12:` syntax on Linux/Windows.
+- **Object metadata**: binary rodata references use exact section-offset relocations, rodata assembly sections are target-specific (`__TEXT,__const`, `.rodata`, `.rdata`), string escapes use fixed-width octal for nonprintable bytes, and Windows ARM64 COFF emission records `.pdata` / `.xdata` unwind metadata for framed functions.
 - **Strength reduction**: signed and unsigned division by arbitrary constants now lower through magic-multiply sequences; `UmulhRRR` is part of the MIR and binary encoder surface
 - **Peephole hardening**: optimized builds now run block layout before peephole cleanup, then schedule, then run a
   final peephole cleanup. The peephole pass validates that no virtual registers remain, branch targets still name MIR
@@ -56,7 +57,7 @@ programs, and the development roadmap. It is kept developer-focused with concret
   addresses. Heap/object/list accesses through base registers are conservatively treated as may-alias, including
   pointers loaded from different frame slots, so object updates cannot be reordered ahead of later reads through an
   aliased register.
-- **117 codegen test files**
+- **117+ codegen test files**
 
 ## Source File Map
 
@@ -71,6 +72,7 @@ programs, and the development roadmap. It is kept developer-focused with concret
 - `darwinTarget()`, `linuxTarget()`, and `windowsTarget()` return `const TargetInfo &` singletons with:
     - Caller/callee-saved sets (AAPCS64), arg register orders (X0–X7, V0–V7), return regs (X0, V0), stack alignment (16)
 - `TargetInfo::abiFormat` drives symbol mangling and assembler/object-file dialect (Mach-O, ELF, COFF)
+- `TargetInfo::usesStackVariadicTail()` is true for Darwin and false for Linux/Windows, matching platform vararg ABIs.
 - `isGPR`, `isFPR` classify physical registers
 - `regName` renders canonical string names (e.g., `"x0"`, `"v15"`)
 

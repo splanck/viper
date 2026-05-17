@@ -48,6 +48,8 @@ struct RegPools {
     /// Pre-computed set of callee-saved GPRs for O(1) lookup in takeGPRPreferCalleeSaved().
     /// Stored as a dense bool array (indexed by PhysReg ID) for cache efficiency.
     std::array<bool, 64> calleeSavedGPRSet{};
+    /// Pre-computed set of callee-saved FPRs for O(1) lookup in takeFPRPreferCalleeSaved().
+    std::array<bool, 64> calleeSavedFPRSet{};
 
     /// @brief Initialize free lists from target info.
     void build(const TargetInfo &ti);
@@ -63,6 +65,9 @@ struct RegPools {
 
     /// @brief Take any available FPR from the free pool.
     PhysReg takeFPR();
+
+    /// @brief Take an FPR, preferring callee-saved registers.
+    PhysReg takeFPRPreferCalleeSaved(const TargetInfo &ti);
 
     /// @brief Release an FPR back to the free pool.
     void releaseFPR(PhysReg r, const TargetInfo &ti);

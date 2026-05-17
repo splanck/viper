@@ -136,6 +136,13 @@ class A64BinaryEncoder {
     /// Emit function epilogue: restore callee-saved, deallocate frame, restore FP/LR, ret.
     void encodeEpilogue(const MFunction &fn, objfile::CodeSection &cs);
 
+    /// Record Windows ARM64 `.pdata/.xdata` unwind metadata for the canonical
+    /// prologue emitted by encodePrologue().
+    void recordWindowsArm64UnwindEntry(const MFunction &fn,
+                                       uint32_t funcSymIdx,
+                                       uint32_t functionLength,
+                                       objfile::CodeSection &cs) const;
+
     // === Multi-instruction sequences ===
 
     /// Emit movz + movk sequence for a 64-bit immediate.

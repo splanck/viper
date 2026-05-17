@@ -50,7 +50,7 @@ bool EmitPass::run(AArch64Module &module, Diagnostics &diags) {
     // ValueKey.cpp).  Residual duplicate adrp+add pairs may still appear if
     // SCCP constant-propagates const_str values after CSE has already run.
     // Monitor whether pass ordering changes eliminate the remaining cases.
-    module.rodataPool.emit(os);
+    module.rodataPool.emit(os, *module.ti);
 
     AsmEmitter emitter{*module.ti};
     for (const auto &fn : module.mir) {

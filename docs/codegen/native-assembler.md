@@ -254,7 +254,7 @@ The AArch64 encoder synthesizes function prologues and epilogues at emit time:
 - `al` and `nv` are accepted by the low-level condition parser for completeness, but MIR conditional instructions
   reject them because they do not represent normal comparison predicates for `B.cond`, `CSET`, or `CSEL`.
 - External branches (function calls) generate `A64Call26` relocations
-- Cross-section references (rodata access) generate `A64AdrpPage21` + `A64AddPageOff12` relocation pairs
+- Cross-section references (rodata access) generate `A64AdrpPage21` + `A64AddPageOff12` relocation pairs. Binary AArch64 emission records exact rodata section offsets, so duplicate local labels are not resolved by name.
 
 ---
 
@@ -279,6 +279,7 @@ The native assembler validates object metadata before serialization:
   addend cannot fit in `ARM64_RELOC_ADDEND`'s signed 24-bit payload.
 - Standard COFF output is rejected before section indexes exceed the signed 16-bit section-number range used in
   symbol table entries. BigObj emission is not currently implemented.
+- COFF emits unwind sections for both supported Windows ABIs: x86-64 uses Win64 `.pdata` records with begin/end/xdata relocations, while AArch64 emits ARM64 `.pdata` begin/xdata records plus packed `.xdata` unwind opcodes.
 
 When DWARF line tables are emitted for ELF/COFF, the pipeline writes the merged text section so encoded line-table
 addresses match the emitted section layout. Mach-O already merges per-function text atoms before writing.

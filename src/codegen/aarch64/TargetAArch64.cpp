@@ -115,6 +115,7 @@ static TargetInfo makeLinuxTarget() {
     info.abiFormat = ABIFormat::Linux;
     info.emitBranchTargetIdentification = false;
     info.emitReturnAddressSigning = false;
+    info.variadicTailOnStack = false;
     return info;
 }
 
@@ -126,6 +127,7 @@ static TargetInfo makeWindowsTarget() {
     info.abiFormat = ABIFormat::Windows;
     info.emitBranchTargetIdentification = false;
     info.emitReturnAddressSigning = false;
+    info.variadicTailOnStack = false;
     return info;
 }
 

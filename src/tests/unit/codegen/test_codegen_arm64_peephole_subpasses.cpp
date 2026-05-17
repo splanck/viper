@@ -27,6 +27,7 @@
 
 #include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/aarch64/Peephole.hpp"
+#include "codegen/aarch64/peephole/MemoryOpt.hpp"
 
 using namespace viper::codegen::aarch64;
 
@@ -145,6 +146,40 @@ TEST(AArch64PeepholeSubpasses, ImmThenMoveFolding) {
     auto stats = runPeephole(fn);
     // The fold should fire (x10 is dead after the mov)
     EXPECT_GT(stats.consecutiveMovsFolded, 0);
+}
+
+TEST(AArch64PeepholeSubpasses, StoreLoadForwardingStopsAtOverlappingFprStore) {
+    std::vector<MInstr> instrs;
+    instrs.push_back(
+        MInstr{MOpcode::StrRegFpImm, {MOperand::regOp(PhysReg::X1), MOperand::immOp(-16)}});
+    instrs.push_back(
+        MInstr{MOpcode::StrFprFpImm, {MOperand::regOp(PhysReg::V0), MOperand::immOp(-16)}});
+    instrs.push_back(
+        MInstr{MOpcode::LdrRegFpImm, {MOperand::regOp(PhysReg::X2), MOperand::immOp(-16)}});
+
+    PeepholeStats stats{};
+    const std::size_t forwarded = peephole::forwardStoreLoads(instrs, stats);
+    EXPECT_EQ(forwarded, 0u);
+    ASSERT_EQ(instrs.size(), 3u);
+    EXPECT_EQ(instrs[2].opc, MOpcode::LdrRegFpImm);
+}
+
+TEST(AArch64PeepholeSubpasses, StoreLoadForwardingStopsAtOverlappingPairStore) {
+    std::vector<MInstr> instrs;
+    instrs.push_back(
+        MInstr{MOpcode::StrRegFpImm, {MOperand::regOp(PhysReg::X1), MOperand::immOp(-8)}});
+    instrs.push_back(MInstr{MOpcode::StpRegFpImm,
+                            {MOperand::regOp(PhysReg::X3),
+                             MOperand::regOp(PhysReg::X4),
+                             MOperand::immOp(-16)}});
+    instrs.push_back(
+        MInstr{MOpcode::LdrRegFpImm, {MOperand::regOp(PhysReg::X2), MOperand::immOp(-8)}});
+
+    PeepholeStats stats{};
+    const std::size_t forwarded = peephole::forwardStoreLoads(instrs, stats);
+    EXPECT_EQ(forwarded, 0u);
+    ASSERT_EQ(instrs.size(), 3u);
+    EXPECT_EQ(instrs[2].opc, MOpcode::LdrRegFpImm);
 }
 
 // ─── Multiple sub-passes interact correctly ─────────────────────────────────

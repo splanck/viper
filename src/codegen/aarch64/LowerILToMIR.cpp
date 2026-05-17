@@ -382,7 +382,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
                     .maxGPRArgs = ti_->intArgOrder.size(),
                     .maxFPRArgs = ti_->f64ArgOrder.size(),
                     .slotModel = viper::codegen::common::CallSlotModel::IndependentRegisterBanks,
-                    .variadicTailOnStack = fn.isVarArg,
+                    .variadicTailOnStack = fn.isVarArg && ti_->usesStackVariadicTail(),
                     .numNamedArgs = paramClasses.size()});
 
             for (std::size_t pi = 0; pi < bbIn.params.size(); ++pi) {

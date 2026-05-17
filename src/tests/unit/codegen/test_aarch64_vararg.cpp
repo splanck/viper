@@ -6,13 +6,14 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/codegen/test_aarch64_vararg.cpp
-// Purpose: Verify that AArch64 variadic call lowering places anonymous
-//          (variadic) arguments on the stack per AAPCS64, while named
-//          arguments still go in registers.
+// Purpose: Verify AArch64 variadic call lowering: Darwin places anonymous
+//          variadic arguments on the stack, while Linux/Windows keep using
+//          normal AAPCS64 register banks.
 //
 // Key invariants:
 //   - Named args use X0-X7 (GPR) and D0-D7 (FPR) per AAPCS64
-//   - Variadic args (past named param count) always go on stack
+//   - Darwin variadic args past named param count go on stack
+//   - Linux/Windows variadic args keep using normal register banks
 //   - Stack space is 16-byte aligned
 //
 // Ownership/Lifetime:
@@ -68,6 +69,29 @@ size_t countStackStores(const std::vector<uint8_t> &bytes) {
     return count;
 }
 
+bool sawVarargStackTail(const MFunction &mir) {
+    if (mir.blocks.empty())
+        return false;
+    bool sawStackAlloc = false;
+    bool sawStackStore = false;
+    bool sawStackFree = false;
+    for (const auto &mi : mir.blocks.front().instrs) {
+        if (mi.opc == MOpcode::SubSpImm && !mi.ops.empty() &&
+            mi.ops[0].kind == MOperand::Kind::Imm && mi.ops[0].imm == 16) {
+            sawStackAlloc = true;
+        }
+        if (mi.opc == MOpcode::StrRegSpImm && mi.ops.size() >= 2 &&
+            mi.ops[1].kind == MOperand::Kind::Imm && mi.ops[1].imm == 0) {
+            sawStackStore = true;
+        }
+        if (mi.opc == MOpcode::AddSpImm && !mi.ops.empty() &&
+            mi.ops[0].kind == MOperand::Kind::Imm && mi.ops[0].imm == 16) {
+            sawStackFree = true;
+        }
+    }
+    return sawStackAlloc && sawStackStore && sawStackFree;
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -100,7 +124,41 @@ TEST(AArch64Vararg, RuntimeSigNamedParamCount) {
     // in the hardcoded vararg list only).
 }
 
-TEST(AArch64Vararg, SmallVarArgCallStillSpillsAnonymousArgsToStack) {
+TEST(AArch64Vararg, DarwinSmallVarArgCallSpillsAnonymousArgsToStack) {
+    using namespace il::core;
+
+    Function fn;
+    fn.name = "caller";
+    fn.retType = Type(Type::Kind::I64);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    entry.terminated = true;
+    entry.params = {Param{.name = "sink", .type = Type(Type::Kind::Ptr), .id = 0}};
+
+    Instr call;
+    call.result = 1;
+    call.op = Opcode::Call;
+    call.callee = "rt_sb_printf";
+    call.type = Type(Type::Kind::I64);
+    call.operands = {Value::temp(0), Value::constInt(7)};
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands = {Value::temp(1)};
+
+    entry.instructions = {call, ret};
+    fn.blocks = {entry};
+
+    LowerILToMIR lowering{darwinTarget()};
+    const MFunction mir = lowering.lowerFunction(fn);
+    ASSERT_FALSE(mir.blocks.empty());
+
+    EXPECT_TRUE(sawVarargStackTail(mir));
+}
+
+TEST(AArch64Vararg, LinuxSmallVarArgCallKeepsAnonymousArgsInRegisters) {
     using namespace il::core;
 
     Function fn;
@@ -131,30 +189,10 @@ TEST(AArch64Vararg, SmallVarArgCallStillSpillsAnonymousArgsToStack) {
     const MFunction mir = lowering.lowerFunction(fn);
     ASSERT_FALSE(mir.blocks.empty());
 
-    bool sawStackAlloc = false;
-    bool sawStackStore = false;
-    bool sawStackFree = false;
-    for (const auto &mi : mir.blocks.front().instrs) {
-        if (mi.opc == MOpcode::SubSpImm && !mi.ops.empty() &&
-            mi.ops[0].kind == MOperand::Kind::Imm && mi.ops[0].imm == 16) {
-            sawStackAlloc = true;
-        }
-        if (mi.opc == MOpcode::StrRegSpImm && mi.ops.size() >= 2 &&
-            mi.ops[1].kind == MOperand::Kind::Imm && mi.ops[1].imm == 0) {
-            sawStackStore = true;
-        }
-        if (mi.opc == MOpcode::AddSpImm && !mi.ops.empty() &&
-            mi.ops[0].kind == MOperand::Kind::Imm && mi.ops[0].imm == 16) {
-            sawStackFree = true;
-        }
-    }
-
-    EXPECT_TRUE(sawStackAlloc);
-    EXPECT_TRUE(sawStackStore);
-    EXPECT_TRUE(sawStackFree);
+    EXPECT_FALSE(sawVarargStackTail(mir));
 }
 
-TEST(AArch64Vararg, UserDefinedVarArgDirectCallUsesVariadicTailOnStack) {
+TEST(AArch64Vararg, DarwinUserDefinedVarArgDirectCallUsesVariadicTailOnStack) {
     using namespace il::core;
 
     Function fn;
@@ -181,26 +219,48 @@ TEST(AArch64Vararg, UserDefinedVarArgDirectCallUsesVariadicTailOnStack) {
     entry.instructions = {call, ret};
     fn.blocks = {entry};
 
-    LowerILToMIR lowering{linuxTarget()};
+    LowerILToMIR lowering{darwinTarget()};
     lowering.setKnownVarArgCallees({{"user_printf", 1}});
     const MFunction mir = lowering.lowerFunction(fn);
     ASSERT_FALSE(mir.blocks.empty());
 
-    bool sawStackAlloc = false;
-    bool sawStackStore = false;
-    for (const auto &mi : mir.blocks.front().instrs) {
-        if (mi.opc == MOpcode::SubSpImm && !mi.ops.empty() &&
-            mi.ops[0].kind == MOperand::Kind::Imm && mi.ops[0].imm == 16) {
-            sawStackAlloc = true;
-        }
-        if (mi.opc == MOpcode::StrRegSpImm && mi.ops.size() >= 2 &&
-            mi.ops[1].kind == MOperand::Kind::Imm && mi.ops[1].imm == 0) {
-            sawStackStore = true;
-        }
-    }
+    EXPECT_TRUE(sawVarargStackTail(mir));
+}
 
-    EXPECT_TRUE(sawStackAlloc);
-    EXPECT_TRUE(sawStackStore);
+TEST(AArch64Vararg, LinuxAndWindowsUserDefinedVarArgDirectCallUseRegisterTail) {
+    using namespace il::core;
+
+    Function fn;
+    fn.name = "caller";
+    fn.retType = Type(Type::Kind::I64);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    entry.terminated = true;
+    entry.params = {Param{.name = "fmt", .type = Type(Type::Kind::Ptr), .id = 0}};
+
+    Instr call;
+    call.result = 1;
+    call.op = Opcode::Call;
+    call.callee = "user_printf";
+    call.type = Type(Type::Kind::I64);
+    call.operands = {Value::temp(0), Value::constInt(99)};
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands = {Value::temp(1)};
+
+    entry.instructions = {call, ret};
+    fn.blocks = {entry};
+
+    LowerILToMIR linuxLowering{linuxTarget()};
+    linuxLowering.setKnownVarArgCallees({{"user_printf", 1}});
+    EXPECT_FALSE(sawVarargStackTail(linuxLowering.lowerFunction(fn)));
+
+    LowerILToMIR windowsLowering{windowsTarget()};
+    windowsLowering.setKnownVarArgCallees({{"user_printf", 1}});
+    EXPECT_FALSE(sawVarargStackTail(windowsLowering.lowerFunction(fn)));
 }
 
 TEST(AArch64Vararg, MalformedDirectCallIsDiagnosed) {

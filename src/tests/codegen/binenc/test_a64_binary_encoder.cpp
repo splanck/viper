@@ -899,6 +899,8 @@ static void testAdrpAddPageOff() {
     fn.blocks.push_back(std::move(bb));
 
     CodeSection text, rodata;
+    rodata.emit8(0xAA);
+    const size_t rodataOffset = rodata.currentOffset();
     rodata.defineSymbol("my_global", SymbolBinding::Local, SymbolSection::Rodata);
     rodata.emit8(0);
     A64BinaryEncoder enc;
@@ -914,10 +916,18 @@ static void testAdrpAddPageOff() {
         if (r.kind == RelocKind::A64AdrpPage21) {
             hasAdrp = true;
             CHECK(r.targetSection == SymbolSection::Rodata);
+            CHECK(r.targetOffsetValid);
+            CHECK(r.targetOffset == rodataOffset);
+            CHECK(r.targetSectionIdentityValid);
+            CHECK(r.targetSectionIdentity == rodata.sectionIdentity());
         }
         if (r.kind == RelocKind::A64AddPageOff12) {
             hasAdd = true;
             CHECK(r.targetSection == SymbolSection::Rodata);
+            CHECK(r.targetOffsetValid);
+            CHECK(r.targetOffset == rodataOffset);
+            CHECK(r.targetSectionIdentityValid);
+            CHECK(r.targetSectionIdentity == rodata.sectionIdentity());
         }
     }
     CHECK(hasAdrp);
@@ -1104,26 +1114,47 @@ static void testStrRegSpImm_largeOffsetAvoidsX16Source() {
     CHECK(((store >> 5) & 31u) != 16u);   // Rn uses a non-conflicting scratch.
 }
 
-static void testAddRI_rejectsNegativeImmediate() {
+static void testAddSubRI_acceptsNegativeImmediateByFlippingOpcode() {
+    uint32_t word =
+        encodeSingleInstr({MInstr{MOpcode::AddRI, {gpr(PhysReg::X0), gpr(PhysReg::X1), imm(-1)}}});
+    CHECK(word == encodeAddSubImm(kSubRI, hwGPR(PhysReg::X0), hwGPR(PhysReg::X1), 1));
+
+    word = encodeSingleInstr(
+        {MInstr{MOpcode::SubRI, {gpr(PhysReg::X0), gpr(PhysReg::X1), imm(-4096)}}});
+    CHECK(word == encodeAddSubImmShift(kAddRI, hwGPR(PhysReg::X0), hwGPR(PhysReg::X1), 1));
+
+    word = encodeSingleInstr(
+        {MInstr{MOpcode::AddsRI, {gpr(PhysReg::X0), gpr(PhysReg::X1), imm(-7)}}});
+    CHECK(word == encodeAddSubImm(kSubsRI, hwGPR(PhysReg::X0), hwGPR(PhysReg::X1), 7));
+
+    word = encodeSingleInstr(
+        {MInstr{MOpcode::SubsRI, {gpr(PhysReg::X0), gpr(PhysReg::X1), imm(-7)}}});
+    CHECK(word == encodeAddSubImm(kAddsRI, hwGPR(PhysReg::X0), hwGPR(PhysReg::X1), 7));
+}
+
+static void testWindowsArm64UnwindEntryRecorded() {
     MFunction fn;
-    fn.name = "bad_add_imm";
-    fn.isLeaf = true;
+    fn.name = "win_unwind";
+    fn.isLeaf = false;
+    fn.savedGPRs = {PhysReg::X19};
+    fn.savedFPRs = {PhysReg::V8};
+    fn.localFrameSize = 32;
 
     MBasicBlock bb;
     bb.name = "entry";
-    bb.instrs.push_back(MInstr{MOpcode::AddRI, {gpr(PhysReg::X0), gpr(PhysReg::X1), imm(-1)}});
+    bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
     fn.blocks.push_back(std::move(bb));
 
     CodeSection text, rodata;
     A64BinaryEncoder enc;
+    enc.encodeFunction(fn, text, rodata, ABIFormat::Windows);
 
-    bool threw = false;
-    try {
-        enc.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
-    } catch (const std::runtime_error &ex) {
-        threw = std::string(ex.what()).find("without sign normalization") != std::string::npos;
-    }
-    CHECK(threw);
+    CHECK(text.winArm64UnwindEntries().size() == 1);
+    const auto &entry = text.winArm64UnwindEntries().front();
+    CHECK(entry.symbolIndex != 0);
+    CHECK(entry.functionLength == text.bytes().size());
+    CHECK(!entry.unwindCodes.empty());
+    CHECK(entry.unwindCodes.back() == 0xE4);
 }
 
 static void testBranchRejectsMissingTarget() {
@@ -1276,7 +1307,8 @@ int main() {
     testAddRI_shift12();
     testStrRegSpImm_largeOffsetFallback();
     testStrRegSpImm_largeOffsetAvoidsX16Source();
-    testAddRI_rejectsNegativeImmediate();
+    testAddSubRI_acceptsNegativeImmediateByFlippingOpcode();
+    testWindowsArm64UnwindEntryRecorded();
     testBranchRejectsMissingTarget();
     testFunctionMetadataValidation();
     testAddSubImmediateHelpersRejectWideImmediates();

@@ -864,7 +864,7 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const {
     // These lambdas shadow the free-function names within this scope.
     const bool kDarwin_ = !target_->isLinux() && !target_->isWindows();
     [[maybe_unused]] auto mangleSymbol = [kDarwin_](const std::string &n) -> std::string {
-        return mangleSymbolImpl(n, kDarwin_);
+        return mangleSymbolImpl(mapRuntimeSymbol(n), kDarwin_);
     };
     [[maybe_unused]] auto mangleCallTarget = [kDarwin_](const std::string &n) -> std::string {
         return mangleCallTargetImpl(n, kDarwin_);
@@ -894,8 +894,23 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const {
         return static_cast<PhysReg>(op.reg.idOrPhys);
     };
     auto getImm = [](const MOperand &op) -> long long {
-        assert(op.kind == MOperand::Kind::Imm && "expected imm operand");
+        if (op.kind != MOperand::Kind::Imm)
+            VIPER_ICE("expected immediate operand in AArch64 asm emitter");
         return op.imm;
+    };
+    const auto emitAdrPage = [&](PhysReg dst, const std::string &label) {
+        const std::string sym = mangleSymbol(label);
+        if (target_->isLinux() || target_->isWindows())
+            os << "  adrp " << rn(dst) << ", " << sym << "\n";
+        else
+            os << "  adrp " << rn(dst) << ", " << sym << "@PAGE\n";
+    };
+    const auto emitAddPageOff = [&](PhysReg dst, PhysReg base, const std::string &label) {
+        const std::string sym = mangleSymbol(label);
+        if (target_->isLinux() || target_->isWindows())
+            os << "  add " << rn(dst) << ", " << rn(base) << ", :lo12:" << sym << "\n";
+        else
+            os << "  add " << rn(dst) << ", " << rn(base) << ", " << sym << "@PAGEOFF\n";
     };
     switch (mi.opc) {
         case MOpcode::SDivRRR:
@@ -933,6 +948,12 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const {
             return;
         case MOpcode::Blr:
             os << "  blr " << rn(getReg(mi.ops[0])) << "\n";
+            return;
+        case MOpcode::AdrPage:
+            emitAdrPage(getReg(mi.ops[0]), mi.ops[1].label);
+            return;
+        case MOpcode::AddPageOff:
+            emitAddPageOff(getReg(mi.ops[0]), getReg(mi.ops[1]), mi.ops[2].label);
             return;
         case MOpcode::Cbz:
             os << "  cbz " << rn(getReg(mi.ops[0])) << ", " << sanitizeLabel(mi.ops[1].label)

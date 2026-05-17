@@ -12,7 +12,7 @@
 // Key invariants:
 //   - Strings are deduplicated by content; identical bytes share one label.
 //   - Labels are emitted in first-seen insertion order for determinism.
-//   - Section directive is platform-gated (__TEXT,__const on macOS, .rodata elsewhere).
+//   - Section directive is selected from the requested target ABI, not host OS.
 //
 // Ownership/Lifetime:
 //   - See RodataPool.hpp.
@@ -53,10 +53,10 @@ std::string RodataPool::escapeAsciz(std::string_view bytes) {
                 if (c >= 32 && c < 127) {
                     s.push_back(static_cast<char>(c));
                 } else {
-                    static const char hex[] = "0123456789ABCDEF";
-                    s += "\\x";
-                    s.push_back(hex[c >> 4]);
-                    s.push_back(hex[c & 0xF]);
+                    s.push_back('\\');
+                    s.push_back(static_cast<char>('0' + ((c >> 6) & 0x7)));
+                    s.push_back(static_cast<char>('0' + ((c >> 3) & 0x7)));
+                    s.push_back(static_cast<char>('0' + (c & 0x7)));
                 }
         }
     }
@@ -82,14 +82,15 @@ void RodataPool::buildFromModule(const il::core::Module &mod) {
     }
 }
 
-void RodataPool::emit(std::ostream &os) const {
+void RodataPool::emit(std::ostream &os, const TargetInfo &target) const {
     if (ordered_.empty())
         return;
-#if defined(__APPLE__)
-    os << ".section __TEXT,__const\n";
-#else
-    os << ".section .rodata\n";
-#endif
+    if (target.isLinux())
+        os << ".section .rodata\n";
+    else if (target.isWindows())
+        os << ".section .rdata,\"dr\"\n";
+    else
+        os << ".section __TEXT,__const\n";
     for (const auto &pair : ordered_) {
         const std::string &label = pair.first;
         const std::string &bytes = pair.second;

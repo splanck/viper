@@ -74,6 +74,7 @@ static constexpr uint16_t kImageRelAMD64_Addr32Nb = 3;
 static constexpr uint16_t kImageRelAMD64_Rel32 = 4;
 
 static constexpr uint16_t kImageRelARM64_Addr64 = 14;
+static constexpr uint16_t kImageRelARM64_Addr32Nb = 2;
 static constexpr uint16_t kImageRelARM64_Branch26 = 3;
 static constexpr uint16_t kImageRelARM64_PagebaseRel21 = 4;
 static constexpr uint16_t kImageRelARM64_Pageoffset12A = 6;
@@ -667,6 +668,85 @@ static bool buildWin64UnwindSections(const CodeSection &text,
     return true;
 }
 
+static bool buildWinArm64UnwindSections(const CodeSection &text,
+                                        uint32_t xdataNameBase,
+                                        std::vector<uint8_t> &xdataBytes,
+                                        std::vector<PendingCoffSymbol> &xdataSymbols,
+                                        std::vector<uint8_t> &pdataBytes,
+                                        std::vector<PendingCoffReloc> &pdataRelocs,
+                                        std::ostream &err) {
+    const auto &entries = text.winArm64UnwindEntries();
+    for (size_t i = 0; i < entries.size(); ++i) {
+        const auto &entry = entries[i];
+        if (entry.symbolIndex >= text.symbols().count()) {
+            err << "CoffWriter: Windows ARM64 unwind entry references unknown symbol index "
+                << entry.symbolIndex << "\n";
+            return false;
+        }
+        const auto &funcSym = text.symbols().at(entry.symbolIndex);
+        if (funcSym.binding == SymbolBinding::External ||
+            funcSym.section == SymbolSection::Undefined) {
+            err << "CoffWriter: Windows ARM64 unwind entry references undefined symbol '"
+                << funcSym.name << "'\n";
+            return false;
+        }
+        if ((entry.functionLength & 0x3u) != 0) {
+            err << "CoffWriter: Windows ARM64 function length must be instruction aligned\n";
+            return false;
+        }
+        const uint32_t functionWords = entry.functionLength / 4;
+        if (functionWords > 0x3FFFFu) {
+            err << "CoffWriter: Windows ARM64 function length exceeds xdata header range\n";
+            return false;
+        }
+        const size_t codeWordsSize = alignUp(entry.unwindCodes.size(), 4) / 4;
+        if (codeWordsSize > 31) {
+            err << "CoffWriter: Windows ARM64 unwind code word count exceeds 31\n";
+            return false;
+        }
+        if (entry.packedEpilogInHeader && entry.epilogCodeIndex > 31) {
+            err << "CoffWriter: Windows ARM64 epilog code index exceeds header range\n";
+            return false;
+        }
+
+        uint32_t xdataOffset = 0;
+        if (!checkedU32(xdataBytes.size(), ".xdata offset", err, xdataOffset))
+            return false;
+        uint32_t xdataOrdinal = 0;
+        uint32_t entryOrdinal = 0;
+        if (!checkedU32(i, ".xdata symbol ordinal", err, entryOrdinal) ||
+            !addU32Checked(xdataNameBase, entryOrdinal, ".xdata symbol ordinal", err, xdataOrdinal))
+            return false;
+        const std::string xdataName = "$xdata$" + std::to_string(xdataOrdinal);
+        xdataSymbols.push_back({xdataName, xdataOffset, 0, kImageSymClassStatic});
+
+        const uint32_t epilogField =
+            entry.packedEpilogInHeader ? entry.epilogCodeIndex : 0u;
+        const uint32_t header = functionWords |
+                                (0u << 18) | // version
+                                (0u << 20) | // no exception data
+                                ((entry.packedEpilogInHeader ? 1u : 0u) << 21) |
+                                ((epilogField & 0x1Fu) << 22) |
+                                (static_cast<uint32_t>(codeWordsSize) << 27);
+        appendLE32(xdataBytes, header);
+        xdataBytes.insert(xdataBytes.end(), entry.unwindCodes.begin(), entry.unwindCodes.end());
+        padTo(xdataBytes, alignUp(xdataBytes.size(), 4));
+
+        uint32_t pdataOffset = 0;
+        if (!checkedU32(pdataBytes.size(), ".pdata offset", err, pdataOffset))
+            return false;
+        appendLE32(pdataBytes, 0);
+        appendLE32(pdataBytes, 0);
+
+        uint32_t pdataUnwindOffset = 0;
+        if (!addU32Checked(pdataOffset, 4, ".pdata xdata relocation offset", err, pdataUnwindOffset))
+            return false;
+        pdataRelocs.push_back({pdataOffset, funcSym.name, kImageRelARM64_Addr32Nb});
+        pdataRelocs.push_back({pdataUnwindOffset, xdataName, kImageRelARM64_Addr32Nb});
+    }
+    return true;
+}
+
 bool CoffWriter::write(const std::string &path,
                        const CodeSection &text,
                        const CodeSection &rodata,
@@ -678,6 +758,10 @@ bool CoffWriter::write(const std::string &path,
     std::vector<PendingCoffReloc> pdataRelocs;
     if (arch_ == ObjArch::X86_64 && !text.win64UnwindEntries().empty()) {
         if (!buildWin64UnwindSections(
+                text, 0, xdataBytes, xdataSymbols, pdataBytes, pdataRelocs, err))
+            return false;
+    } else if (arch_ == ObjArch::AArch64 && !text.winArm64UnwindEntries().empty()) {
+        if (!buildWinArm64UnwindSections(
                 text, 0, xdataBytes, xdataSymbols, pdataBytes, pdataRelocs, err))
             return false;
     }
@@ -1326,6 +1410,23 @@ bool CoffWriter::write(const std::string &path,
                     return false;
                 uint32_t entryCount = 0;
                 if (!checkedU32(text.win64UnwindEntries().size(),
+                                ".xdata symbol count",
+                                err,
+                                entryCount) ||
+                    !addU32Checked(
+                        xdataNameBase, entryCount, ".xdata symbol count", err, xdataNameBase))
+                    return false;
+            }
+        }
+    } else if (arch_ == ObjArch::AArch64) {
+        uint32_t xdataNameBase = 0;
+        for (const auto &text : textSections) {
+            if (!text.winArm64UnwindEntries().empty()) {
+                if (!buildWinArm64UnwindSections(
+                        text, xdataNameBase, xdataBytes, xdataSymbols, pdataBytes, pdataRelocs, err))
+                    return false;
+                uint32_t entryCount = 0;
+                if (!checkedU32(text.winArm64UnwindEntries().size(),
                                 ".xdata symbol count",
                                 err,
                                 entryCount) ||

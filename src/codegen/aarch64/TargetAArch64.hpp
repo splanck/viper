@@ -220,6 +220,11 @@ struct TargetInfo : viper::codegen::common::TargetInfoBase<PhysReg, kMaxGPRArgs,
     ABIFormat abiFormat = ABIFormat::Darwin;
     bool emitBranchTargetIdentification{true};
     bool emitReturnAddressSigning{true};
+    /// True when anonymous variadic arguments are passed on the stack instead of
+    /// continuing through the normal AAPCS64 register banks. This is the Darwin
+    /// AArch64 C ABI rule; Linux and Windows keep using their regular argument
+    /// locations for variadic calls.
+    bool variadicTailOnStack{true};
 
     /// @brief Returns true when emitting Linux ELF assembly.
     [[nodiscard]] bool isLinux() const noexcept {
@@ -229,6 +234,10 @@ struct TargetInfo : viper::codegen::common::TargetInfoBase<PhysReg, kMaxGPRArgs,
     /// @brief Returns true when emitting Windows ARM64 PE/COFF assembly.
     [[nodiscard]] bool isWindows() const noexcept {
         return abiFormat == ABIFormat::Windows;
+    }
+
+    [[nodiscard]] bool usesStackVariadicTail() const noexcept {
+        return variadicTailOnStack;
     }
 
     /// @brief Returns true when BTI (Branch Target Identification) instructions

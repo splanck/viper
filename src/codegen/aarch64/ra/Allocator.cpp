@@ -30,6 +30,7 @@
 #include "InstrBuilders.hpp"
 #include "OpcodeClassify.hpp"
 #include "OperandRoles.hpp"
+#include "il/runtime/RuntimeNameMap.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -152,6 +153,8 @@ void LinearAllocator::restoreFromPredecessor(std::size_t bi) {
         auto &st = gprStates_[vid];
         st.hasPhys = true;
         st.phys = phys;
+        st.spilled = false;
+        st.dirty = false;
     }
 
     for (const auto &kv : es.fpr) {
@@ -166,6 +169,8 @@ void LinearAllocator::restoreFromPredecessor(std::size_t bi) {
         auto &st = fprStates_[vid];
         st.hasPhys = true;
         st.phys = phys;
+        st.spilled = false;
+        st.dirty = false;
     }
 }
 
@@ -439,7 +444,10 @@ void LinearAllocator::handleSpilledOperand(MReg &r,
 void LinearAllocator::assignNewPhysReg(VState &st, uint16_t vregId, bool isFPR) {
     PhysReg phys;
     if (isFPR) {
-        phys = pools_.takeFPR();
+        if (!fn_.isLeaf && nextUseAfterCall(vregId, RegClass::FPR))
+            phys = pools_.takeFPRPreferCalleeSaved(ti_);
+        else
+            phys = pools_.takeFPR();
     } else {
         if (!fn_.isLeaf && nextUseAfterCall(vregId, RegClass::GPR))
             phys = pools_.takeGPRPreferCalleeSaved(ti_);
@@ -468,6 +476,11 @@ void LinearAllocator::trackCalleeSavedPhys(PhysReg pr) {
         if (std::find(ti_.calleeSavedGPR.begin(), ti_.calleeSavedGPR.end(), pr) !=
             ti_.calleeSavedGPR.end()) {
             pools_.calleeUsed[static_cast<std::size_t>(pr)] = true;
+        }
+    } else if (isFPR(pr)) {
+        if (std::find(ti_.calleeSavedFPR.begin(), ti_.calleeSavedFPR.end(), pr) !=
+            ti_.calleeSavedFPR.end()) {
+            pools_.calleeUsedFPR[static_cast<std::size_t>(pr)] = true;
         }
     }
 }
@@ -580,7 +593,10 @@ void LinearAllocator::allocateBlock(MBasicBlock &bb) {
 void LinearAllocator::handleCall(MInstr &ins, std::vector<MInstr> &rewritten) {
     bool isArrayObjGet = false;
     if (!ins.ops.empty() && ins.ops[0].kind == MOperand::Kind::Label) {
-        if (ins.ops[0].label == "rt_arr_obj_get")
+        std::string label = ins.ops[0].label;
+        if (auto mapped = il::runtime::mapCanonicalRuntimeName(label))
+            label = std::string(*mapped);
+        if (label == "rt_arr_obj_get")
             isArrayObjGet = true;
     }
 

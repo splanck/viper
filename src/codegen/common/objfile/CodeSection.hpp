@@ -70,6 +70,19 @@ struct Win64UnwindEntry {
     std::vector<Win64UnwindCode> codes{};
 };
 
+/// Per-function Windows ARM64 unwind metadata for COFF `.xdata/.pdata`.
+///
+/// The unwind byte stream is stored in Windows' ARM64 xdata opcode format and
+/// serialized by the COFF writer behind an ARM64 pdata entry.
+struct WinArm64UnwindEntry {
+    uint32_t symbolIndex{0};    ///< Symbol index of the function start.
+    uint32_t functionLength{0}; ///< Length of the function in bytes.
+    uint8_t prologueSize{0};    ///< Prologue size in bytes, for validation/debugging.
+    std::vector<uint8_t> unwindCodes{};
+    bool packedEpilogInHeader{true};
+    uint8_t epilogCodeIndex{0};
+};
+
 /// A growable byte buffer with relocation and symbol tracking.
 ///
 /// Used by binary encoders to accumulate machine code (.text) or read-only
@@ -455,6 +468,15 @@ class CodeSection {
             rebased.symbolIndex = symbolRemap[entry.symbolIndex];
             win64UnwindEntries_.push_back(std::move(rebased));
         }
+
+        for (const auto &entry : other.winArm64UnwindEntries()) {
+            if (entry.symbolIndex >= symbolRemap.size())
+                throw std::out_of_range(
+                    "CodeSection append Windows ARM64 unwind symbol index is out of range");
+            WinArm64UnwindEntry rebased = entry;
+            rebased.symbolIndex = symbolRemap[entry.symbolIndex];
+            winArm64UnwindEntries_.push_back(std::move(rebased));
+        }
     }
 
     /// Whether this section has any content.
@@ -486,6 +508,16 @@ class CodeSection {
         return win64UnwindEntries_;
     }
 
+    /// Record a Windows ARM64 unwind entry for a function.
+    void addWinArm64UnwindEntry(WinArm64UnwindEntry entry) {
+        winArm64UnwindEntries_.push_back(std::move(entry));
+    }
+
+    /// All recorded Windows ARM64 unwind entries.
+    const std::vector<WinArm64UnwindEntry> &winArm64UnwindEntries() const {
+        return winArm64UnwindEntries_;
+    }
+
   private:
     static uint64_t allocateSectionIdentity() {
         const uint64_t id = nextSectionIdentity_.fetch_add(1, std::memory_order_relaxed);
@@ -499,6 +531,7 @@ class CodeSection {
     SymbolTable symbols_;
     std::vector<CompactUnwindEntry> unwindEntries_;
     std::vector<Win64UnwindEntry> win64UnwindEntries_;
+    std::vector<WinArm64UnwindEntry> winArm64UnwindEntries_;
     size_t offsetBias_ = 0;
     uint64_t sectionIdentity_ = 0;
     inline static std::atomic<uint64_t> nextSectionIdentity_{1};

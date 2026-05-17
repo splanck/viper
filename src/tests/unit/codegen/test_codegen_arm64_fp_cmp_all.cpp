@@ -47,13 +47,14 @@ TEST(Arm64FPCmpAll, AllComparisons) {
     struct Case {
         const char *op;
         const char *desc;
+        const char *cond;
     } cases[] = {
-        {"fcmp_eq", "equal"},
-        {"fcmp_ne", "not equal"},
-        {"fcmp_lt", "less than"},
-        {"fcmp_le", "less or equal"},
-        {"fcmp_gt", "greater than"},
-        {"fcmp_ge", "greater or equal"},
+        {"fcmp_eq", "equal", "eq"},
+        {"fcmp_ne", "not equal", "ne"},
+        {"fcmp_lt", "less than", "mi"},
+        {"fcmp_le", "less or equal", "ls"},
+        {"fcmp_gt", "greater than", "gt"},
+        {"fcmp_ge", "greater or equal", "ge"},
     };
 
     for (const auto &c : cases) {
@@ -78,16 +79,12 @@ TEST(Arm64FPCmpAll, AllComparisons) {
         EXPECT_NE(asmText.find("fcmp d"), std::string::npos);
         // Expect cset for the result
         EXPECT_NE(asmText.find("cset x"), std::string::npos);
-        if (std::string(c.op) == "fcmp_eq") {
-            EXPECT_NE(asmText.find(", eq"), std::string::npos);
-            EXPECT_NE(asmText.find(", vc"), std::string::npos);
-            EXPECT_NE(asmText.find("and x"), std::string::npos);
-        } else if (std::string(c.op) == "fcmp_ne") {
+        if (std::string(c.op) == "fcmp_ne") {
             EXPECT_NE(asmText.find(", ne"), std::string::npos);
             EXPECT_NE(asmText.find(", vs"), std::string::npos);
             EXPECT_NE(asmText.find("orr x"), std::string::npos);
-        } else if (std::string(c.op) == "fcmp_le") {
-            EXPECT_NE(asmText.find(", ls"), std::string::npos);
+        } else {
+            EXPECT_NE(asmText.find(std::string(", ") + c.cond), std::string::npos);
             EXPECT_NE(asmText.find(", vc"), std::string::npos);
             EXPECT_NE(asmText.find("and x"), std::string::npos);
         }
@@ -152,12 +149,15 @@ TEST(Arm64FPCmpAll, CmpBranch) {
     const std::string asmText = readFile(out);
     // Should have fcmp
     EXPECT_NE(asmText.find("fcmp d"), std::string::npos);
-    // Should have conditional branch (b.cond or cbnz/cbz after peephole fusion)
+    EXPECT_NE(asmText.find(", gt"), std::string::npos);
+    EXPECT_NE(asmText.find(", vc"), std::string::npos);
+    EXPECT_NE(asmText.find("and x"), std::string::npos);
+    // Should have conditional branch over the materialized ordered comparison result.
     const bool hasBCond = asmText.find("b.") != std::string::npos;
     const bool hasCbz = asmText.find("cbz ") != std::string::npos;
     const bool hasCbnz = asmText.find("cbnz ") != std::string::npos;
     EXPECT_TRUE(hasBCond || hasCbz || hasCbnz);
-    EXPECT_EQ(asmText.find("cset x"), std::string::npos);
+    EXPECT_NE(asmText.find("cset x"), std::string::npos);
 }
 
 // Test: Chained FP comparisons

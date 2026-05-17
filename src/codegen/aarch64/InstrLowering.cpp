@@ -26,6 +26,7 @@
 
 #include "InstrLowering.hpp"
 #include "A64ImmediateUtils.hpp"
+#include "FpCompareLowering.hpp"
 #include "FrameBuilder.hpp"
 #include "OpcodeMappings.hpp"
 #include "codegen/common/CallArgLayout.hpp"
@@ -34,6 +35,7 @@
 #include "il/runtime/RuntimeSignatures.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <limits>
 #include <optional>
@@ -103,95 +105,35 @@ static bool resolveFrameAddress(const il::core::Value &value,
     }
 }
 
-/// @brief Return the AArch64 condition-code string for a floating-point comparison opcode.
-/// @details The FCMP instruction on AArch64 sets the NZCV flags differently from integer CMP:
-///          unordered comparisons (NaN inputs) set the V flag, which the "vs"/"vc" conditions test.
-///          FCmpEQ and FCmpNE need special AND/OR sequences (handled by emitOrderedFpCompareResult).
-static const char *fpCondCode(il::core::Opcode op) {
-    switch (op) {
-        case il::core::Opcode::FCmpEQ:
-            return "eq";
-        case il::core::Opcode::FCmpNE:
-            return "ne";
-        case il::core::Opcode::FCmpLT:
-            return "mi"; // mi = negative, used for ordered <
-        case il::core::Opcode::FCmpLE:
-            return "ls"; // ls = lower or same
-        case il::core::Opcode::FCmpGT:
-            return "gt";
-        case il::core::Opcode::FCmpGE:
-            return "ge";
-        case il::core::Opcode::FCmpOrd:
-            return "vc"; // vc = overflow clear (V flag clear if neither NaN)
-        case il::core::Opcode::FCmpUno:
-            return "vs"; // vs = overflow set (V flag set if either NaN)
-        default:
-            return "eq";
-    }
-}
-
-/// @brief Emit the CSET sequence that materializes an ordered FP comparison result into @p dst.
-/// @details FCmpEQ requires AND(eq, vc) to filter out NaN; FCmpNE requires OR(ne, vs).
-///          Other ordered comparisons (LT, LE, GT, GE, Ord, Uno) use a single CSET.
-///          FCMP must have already been emitted before this call.
-/// @param out        Output MIR block; new CSET/AND/OR instructions are appended.
-/// @param op         The IL FCmp opcode determining which condition to materialize.
-/// @param dst        Vreg that will hold the boolean 0/1 result.
-/// @param nextVRegId Vreg ID counter; incremented for any temporaries created.
-static void emitOrderedFpCompareResult(MBasicBlock &out,
-                                       il::core::Opcode op,
-                                       uint16_t dst,
-                                       uint16_t &nextVRegId) {
-    const auto csetInto = [&](const char *cond) {
-        const uint16_t tmp = allocateNextVReg(nextVRegId);
-        out.instrs.push_back(
-            MInstr{MOpcode::Cset,
-                   {MOperand::vregOp(RegClass::GPR, tmp), MOperand::condOp(cond)}});
-        return tmp;
-    };
-
-    switch (op) {
-        case il::core::Opcode::FCmpEQ: {
-            const uint16_t eq = csetInto("eq");
-            const uint16_t ord = csetInto("vc");
-            out.instrs.push_back(MInstr{MOpcode::AndRRR,
-                                        {MOperand::vregOp(RegClass::GPR, dst),
-                                         MOperand::vregOp(RegClass::GPR, eq),
-                                         MOperand::vregOp(RegClass::GPR, ord)}});
-            return;
-        }
-        case il::core::Opcode::FCmpNE: {
-            const uint16_t ne = csetInto("ne");
-            const uint16_t uno = csetInto("vs");
-            out.instrs.push_back(MInstr{MOpcode::OrrRRR,
-                                        {MOperand::vregOp(RegClass::GPR, dst),
-                                         MOperand::vregOp(RegClass::GPR, ne),
-                                         MOperand::vregOp(RegClass::GPR, uno)}});
-            return;
-        }
-        case il::core::Opcode::FCmpLE: {
-            const uint16_t le = csetInto("ls");
-            const uint16_t ord = csetInto("vc");
-            out.instrs.push_back(MInstr{MOpcode::AndRRR,
-                                        {MOperand::vregOp(RegClass::GPR, dst),
-                                         MOperand::vregOp(RegClass::GPR, le),
-                                         MOperand::vregOp(RegClass::GPR, ord)}});
-            return;
-        }
-        default:
-            out.instrs.push_back(
-                MInstr{MOpcode::Cset,
-                       {MOperand::vregOp(RegClass::GPR, dst), MOperand::condOp(fpCondCode(op))}});
-            return;
-    }
-}
-
 namespace {
 
 struct MaterializedCallArg {
     uint16_t vreg{0};
     viper::codegen::common::CallArgClass cls{viper::codegen::common::CallArgClass::GPR};
 };
+
+/// @brief Map canonical runtime names to the concrete linker symbol, preserving user symbols.
+std::string mapExternalSymbol(std::string_view name) {
+    if (auto mapped = il::runtime::mapCanonicalRuntimeName(name))
+        return std::string(*mapped);
+    return std::string(name);
+}
+
+/// @brief Return the direct callee name from either modern or legacy call encoding.
+std::string directCalleeName(const il::core::Instr &ins) {
+    if (!ins.callee.empty())
+        return ins.callee;
+    if (!ins.operands.empty() && ins.operands[0].kind == il::core::Value::Kind::GlobalAddr)
+        return ins.operands[0].str;
+    return {};
+}
+
+bool isDirectCallee(const il::core::Instr &ins, std::string_view runtimeName) {
+    const std::string callee = directCalleeName(ins);
+    if (callee.empty())
+        return false;
+    return mapExternalSymbol(callee) == runtimeName;
+}
 
 /// @brief Emit AND-with-1 to mask an i1 value into its canonical 0-or-1 form.
 /// @return New vreg holding `srcVReg & 1`.
@@ -244,6 +186,12 @@ void emitF64BitsToVReg(MBasicBlock &out, uint16_t dstVReg, uint64_t bits, uint16
     out.instrs.push_back(MInstr{MOpcode::FMovGR,
                                 {MOperand::vregOp(RegClass::FPR, dstVReg),
                                  MOperand::vregOp(RegClass::GPR, bitsGpr)}});
+}
+
+uint64_t f64Bits(double value) {
+    uint64_t bits = 0;
+    std::memcpy(&bits, &value, sizeof(bits));
+    return bits;
 }
 
 /// @brief Place each materialised call argument in its ABI-required home.
@@ -486,7 +434,7 @@ bool materializeValueToVReg(const il::core::Value &v,
         // Materialize via PC-relative AdrPage + AddPageOff
         outVReg = allocateNextVReg(nextVRegId);
         outCls = RegClass::GPR;
-        const std::string &sym = v.str;
+        const std::string sym = mapExternalSymbol(v.str);
         out.instrs.push_back(MInstr{
             MOpcode::AdrPage, {MOperand::vregOp(RegClass::GPR, outVReg), MOperand::labelOp(sym)}});
         out.instrs.push_back(MInstr{MOpcode::AddPageOff,
@@ -725,7 +673,7 @@ bool materializeValueToVReg(const il::core::Value &v,
                     prod.operands[0].kind == il::core::Value::Kind::GlobalAddr) {
                     outVReg = allocateNextVReg(nextVRegId);
                     outCls = RegClass::GPR;
-                    const std::string &sym = prod.operands[0].str;
+                    const std::string sym = mapExternalSymbol(prod.operands[0].str);
                     out.instrs.push_back(
                         MInstr{MOpcode::AdrPage,
                                {MOperand::vregOp(RegClass::GPR, outVReg), MOperand::labelOp(sym)}});
@@ -859,9 +807,13 @@ bool materializeValueToVReg(const il::core::Value &v,
                         }
                         outVReg = allocateNextVReg(nextVRegId);
                         outCls = RegClass::GPR;
-                        out.instrs.push_back(MInstr{MOpcode::Cset,
-                                                    {MOperand::vregOp(RegClass::GPR, outVReg),
-                                                     MOperand::condOp(condForOpcode(prod.op))}});
+                        if (isFloatingPointCompareOp(prod.op)) {
+                            emitFpCompareResult(out, prod.op, outVReg, nextVRegId);
+                        } else {
+                            out.instrs.push_back(MInstr{MOpcode::Cset,
+                                                        {MOperand::vregOp(RegClass::GPR, outVReg),
+                                                         MOperand::condOp(condForOpcode(prod.op))}});
+                        }
                         // Cache result to prevent re-materialization with different vreg
                         tempVReg[v.id] = outVReg;
                         return true;
@@ -931,7 +883,8 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
 
     seq.call = MInstr{MOpcode::Bl, {MOperand::labelOp(mappedCallee)}};
 
-    // Detect variadic callee — AAPCS64 requires anonymous (variadic) args on stack.
+    // Detect variadic callees. Darwin AArch64 spills anonymous variadic args
+    // to stack; Linux and Windows continue to use their normal register banks.
     const bool isVarArg =
         il::runtime::isVarArgCallee(mappedCallee) || il::runtime::isVarArgCallee(callee) ||
         isKnownVarArgCallee(mappedCallee, knownVarArgNamedArgCounts) ||
@@ -939,7 +892,7 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
     std::size_t namedArgCount = SIZE_MAX; // default: all args are "named"
     if (isVarArg) {
         // Look up the function's signature to determine the named parameter count.
-        // Variadic args (beyond namedArgCount) must go on stack per AAPCS64.
+        // The target flag decides whether the variadic tail spills to stack.
         if (const auto *sig = il::runtime::findRuntimeSignature(mappedCallee))
             namedArgCount = sig->paramTypes.size();
         else if (const auto *sig2 = il::runtime::findRuntimeSignature(callee))
@@ -979,7 +932,7 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
     for (const auto &arg : args)
         materialized.push_back({arg.vreg, arg.cls});
 
-    return marshalCallArgs(materialized, namedArgCount, isVarArg, ti, seq);
+    return marshalCallArgs(materialized, namedArgCount, isVarArg && ti.usesStackVariadicTail(), ti, seq);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1183,6 +1136,30 @@ static int integerTypeBits(il::core::Type::Kind kind) {
             return 32;
         default:
             return 64;
+    }
+}
+
+static double signedLowerBoundForBits(int bits) {
+    switch (bits) {
+        case 1:
+        case 16:
+        case 32:
+        case 64:
+            return -std::ldexp(1.0, bits - 1);
+        default:
+            throw std::runtime_error("AArch64 lowering: unsupported signed fp cast width");
+    }
+}
+
+static double signedUpperExclusiveForBits(int bits) {
+    switch (bits) {
+        case 1:
+        case 16:
+        case 32:
+        case 64:
+            return std::ldexp(1.0, bits - 1);
+        default:
+            throw std::runtime_error("AArch64 lowering: unsupported signed fp cast width");
     }
 }
 
@@ -1575,12 +1552,11 @@ bool lowerFpCompare(const il::core::Instr &ins,
         MInstr{MOpcode::FCmpRR,
                {MOperand::vregOp(RegClass::FPR, lhs), MOperand::vregOp(RegClass::FPR, rhs)}});
 
-    // Emit cset with appropriate condition. AArch64 reports unordered FCMP as
-    // Z=1,C=1,V=1, so eq/ne/le need explicit ordered/unordered correction.
+    // Emit cset/logic with appropriate NaN handling for ordered predicates.
     const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
     ctx.tempVReg[*ins.result] = dst;
     ctx.tempRegClass[*ins.result] = RegClass::GPR;
-    emitOrderedFpCompareResult(out, ins.op, dst, ctx.nextVRegId);
+    emitFpCompareResult(out, ins.op, dst, ctx.nextVRegId);
 
     return true;
 }
@@ -1662,10 +1638,13 @@ bool lowerFptosi(const il::core::Instr &ins,
     out.instrs.push_back(
         MInstr{MOpcode::BCond, {MOperand::condOp("vs"), MOperand::labelOp(invalidLabel)}});
 
+    const int resultBits = integerTypeBits(ins.type.kind);
     const uint16_t lowerBound = allocateNextVReg(ctx.nextVRegId);
-    emitF64BitsToVReg(out, lowerBound, 0xC3E0000000000000ULL, ctx.nextVRegId);
+    emitF64BitsToVReg(
+        out, lowerBound, f64Bits(signedLowerBoundForBits(resultBits)), ctx.nextVRegId);
     const uint16_t upperBound = allocateNextVReg(ctx.nextVRegId);
-    emitF64BitsToVReg(out, upperBound, 0x43E0000000000000ULL, ctx.nextVRegId);
+    emitF64BitsToVReg(
+        out, upperBound, f64Bits(signedUpperExclusiveForBits(resultBits)), ctx.nextVRegId);
 
     out.instrs.push_back(MInstr{
         MOpcode::FCmpRR,
@@ -2031,7 +2010,7 @@ bool lowerCall(const il::core::Instr &ins,
         if (ins.result) {
             const uint16_t dst =
                 captureCallResult(ins, ctx.ti, out, ctx.tempVReg, ctx.tempRegClass, ctx.nextVRegId);
-            if (ins.callee == "rt_arr_obj_get") {
+            if (isDirectCallee(ins, "rt_arr_obj_get")) {
                 const int off = ctx.fb.ensureSpill(dst);
                 out.instrs.push_back(
                     MInstr{MOpcode::StrRegFpImm,

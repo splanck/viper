@@ -29,9 +29,11 @@
 #include "OpcodeMappings.hpp"
 
 #include "il/core/Opcode.hpp"
+#include "il/runtime/RuntimeNameMap.hpp"
 
 #include <cstring>
 #include <stdexcept>
+#include <string_view>
 
 namespace viper::codegen::aarch64 {
 
@@ -78,6 +80,12 @@ static uint64_t f64Bits(double value) {
     uint64_t bits = 0;
     std::memcpy(&bits, &value, sizeof(bits));
     return bits;
+}
+
+static std::string mapExternalSymbol(std::string_view name) {
+    if (auto mapped = il::runtime::mapCanonicalRuntimeName(name))
+        return std::string(*mapped);
+    return std::string(name);
 }
 
 /// @brief Load a 64-bit FP constant into a fresh FPR vreg using movz+fmov.
@@ -175,7 +183,7 @@ bool lowerInstruction(const il::core::Instr &ins,
         case Opcode::Zext1:
         case Opcode::Trunc1: {
             if (!ins.result || ins.operands.empty())
-                return true; // Handled (as no-op for invalid input)
+                return false;
             uint16_t sv = 0;
             RegClass scls = RegClass::GPR;
             if (!materializeValueToVReg(ins.operands[0],
@@ -203,7 +211,7 @@ bool lowerInstruction(const il::core::Instr &ins,
         case Opcode::CastSiNarrowChk:
         case Opcode::CastUiNarrowChk: {
             if (!ins.result || ins.operands.empty())
-                return true;
+                return false;
             int bits = 64;
             if (ins.type.kind == il::core::Type::Kind::I16)
                 bits = 16;
@@ -222,7 +230,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                                         ctx.nextVRegId,
                                         sv,
                                         scls))
-                return true;
+                return false;
             const uint16_t vt = allocateNextVReg(ctx.nextVRegId);
             if (sh > 0) {
                 bbOut().instrs.push_back(MInstr{
@@ -272,7 +280,7 @@ bool lowerInstruction(const il::core::Instr &ins,
         case Opcode::CastFpToSiRteChk:
         case Opcode::CastFpToUiRteChk: {
             if (!ins.result || ins.operands.empty())
-                return true;
+                return false;
             uint16_t fv = 0;
             RegClass fcls = RegClass::FPR;
             if (!materializeValueToVReg(ins.operands[0],
@@ -285,7 +293,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                                         ctx.nextVRegId,
                                         fv,
                                         fcls))
-                return true;
+                return false;
             if (fcls != RegClass::FPR)
                 return false;
 
@@ -361,7 +369,7 @@ bool lowerInstruction(const il::core::Instr &ins,
         case Opcode::CastSiToFp:
         case Opcode::CastUiToFp: {
             if (!ins.result || ins.operands.empty())
-                return true;
+                return false;
             uint16_t sv = 0;
             RegClass scls = RegClass::GPR;
             if (!materializeValueToVReg(ins.operands[0],
@@ -374,7 +382,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                                         ctx.nextVRegId,
                                         sv,
                                         scls))
-                return true;
+                return false;
             const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
             ctx.tempVReg[*ins.result] = dst;
             ctx.tempRegClass[*ins.result] = RegClass::FPR;
@@ -428,7 +436,7 @@ bool lowerInstruction(const il::core::Instr &ins,
             // parsed from the integer bit-pattern encoding used by the IL
             // serializer for programmatically-constructed modules).
             if (!ins.result || ins.operands.empty())
-                return true;
+                return false;
 
             const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
             ctx.tempVReg[*ins.result] = dst;
@@ -457,7 +465,7 @@ bool lowerInstruction(const il::core::Instr &ins,
         case Opcode::ConstNull: {
             // const_null produces a null pointer (0)
             if (!ins.result)
-                return true;
+                return false;
             const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
             ctx.tempVReg[*ins.result] = dst;
             ctx.tempRegClass[*ins.result] = RegClass::GPR;
@@ -468,10 +476,10 @@ bool lowerInstruction(const il::core::Instr &ins,
         case Opcode::GAddr: {
             // gaddr @symbol produces the address of a global variable
             if (!ins.result || ins.operands.empty())
-                return true;
+                return false;
             if (ins.operands[0].kind != il::core::Value::Kind::GlobalAddr)
-                return true;
-            const std::string &sym = ins.operands[0].str;
+                return false;
+            const std::string sym = mapExternalSymbol(ins.operands[0].str);
             // Materialize address of global symbol using adrp+add
             const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
             ctx.tempVReg[*ins.result] = dst;
@@ -489,9 +497,9 @@ bool lowerInstruction(const il::core::Instr &ins,
             // This must be lowered proactively (not demand-lowered) when the result
             // is a cross-block temp that will be spilled.
             if (!ins.result || ins.operands.empty())
-                return true;
+                return false;
             if (ins.operands[0].kind != il::core::Value::Kind::GlobalAddr)
-                return true;
+                return false;
             const std::string &sym = ins.operands[0].str;
             const uint16_t dst =
                 emitConstStrGlobalToVReg(sym, ctx.stringLiteralByteLengths, bbOut(), ctx.nextVRegId);
@@ -501,10 +509,10 @@ bool lowerInstruction(const il::core::Instr &ins,
         }
         case Opcode::AddrOf: {
             if (!ins.result || ins.operands.empty())
-                return true;
+                return false;
 
             if (ins.operands[0].kind == il::core::Value::Kind::GlobalAddr) {
-                const std::string &sym = ins.operands[0].str;
+                const std::string sym = mapExternalSymbol(ins.operands[0].str);
                 const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
                 ctx.tempVReg[*ins.result] = dst;
                 ctx.tempRegClass[*ins.result] = RegClass::GPR;

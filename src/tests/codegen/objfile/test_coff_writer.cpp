@@ -174,6 +174,57 @@ int main() {
     }
 
     {
+        CodeSection armText;
+        CodeSection armRodata;
+        const uint32_t funcIdx =
+            armText.defineSymbol("win_arm64_func", SymbolBinding::Global, SymbolSection::Text);
+        armText.emit32LE(0xA9BF7BFD); // stp x29, x30, [sp, #-16]!
+        armText.emit32LE(0x910003FD); // mov x29, sp
+        armText.emit32LE(0xD65F03C0); // ret
+
+        WinArm64UnwindEntry armUnwind{};
+        armUnwind.symbolIndex = funcIdx;
+        armUnwind.functionLength = 12;
+        armUnwind.prologueSize = 8;
+        armUnwind.unwindCodes = {0xE3, 0x81, 0xE4};
+        armUnwind.packedEpilogInHeader = true;
+        armUnwind.epilogCodeIndex = 0;
+        armText.addWinArm64UnwindEntry(std::move(armUnwind));
+
+        std::ostringstream armErr;
+        CoffWriter armWriter(ObjArch::AArch64);
+        const std::string armPath = "build/test-out/coff_arm64_unwind.obj";
+        ASSERT(armWriter.write(armPath, armText, armRodata, armErr));
+
+        ObjFile armObj;
+        ASSERT(readObjFile(armPath, armObj, armErr));
+        const ObjSection *armXdataSec = findSection(armObj, ".xdata");
+        const ObjSection *armPdataSec = findSection(armObj, ".pdata");
+        ASSERT(armXdataSec != nullptr);
+        ASSERT(armPdataSec != nullptr);
+
+        CHECK(armXdataSec->data.size() == 8);
+        const uint32_t header = readLE32(armXdataSec->data, 0);
+        CHECK((header & 0x3FFFFu) == 3u);
+        CHECK(((header >> 21) & 1u) == 1u);
+        CHECK(((header >> 27) & 0x1Fu) == 1u);
+        CHECK(armXdataSec->data[4] == 0xE3);
+        CHECK(armXdataSec->data[5] == 0x81);
+        CHECK(armXdataSec->data[6] == 0xE4);
+
+        CHECK(armPdataSec->data.size() == 8);
+        CHECK(armPdataSec->relocs.size() == 2);
+        CHECK(armPdataSec->relocs[0].type == 2);
+        CHECK(armPdataSec->relocs[1].type == 2);
+        const uint32_t funcSym = findSymbolIndex(armObj, "win_arm64_func");
+        const uint32_t xdataSym = findSymbolIndex(armObj, "$xdata$0");
+        CHECK(funcSym != 0);
+        CHECK(xdataSym != 0);
+        CHECK(armPdataSec->relocs[0].symIndex == funcSym);
+        CHECK(armPdataSec->relocs[1].symIndex == xdataSym);
+    }
+
+    {
         CodeSection relocText;
         CodeSection relocRodata;
         relocText.defineSymbol("target_func", SymbolBinding::Local, SymbolSection::Text);
