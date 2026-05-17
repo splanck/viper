@@ -35,7 +35,11 @@ void ArWriter::addMember(
     const std::string &name, const uint8_t *data, size_t size, uint32_t mtime, uint32_t mode) {
     Member m;
     m.name = name;
-    m.data.assign(data, data + size);
+    if (size != 0) {
+        if (!data)
+            throw std::runtime_error("ArWriter: null data pointer for non-empty member: " + name);
+        m.data.assign(data, data + size);
+    }
     m.mtime = mtime;
     m.mode = mode;
     members_.push_back(std::move(m));

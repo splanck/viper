@@ -6,10 +6,28 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/aarch64/OpcodeMappings.hpp
-// Purpose: Declarative mappings between IL opcodes and AArch64 MIR opcodes
-// Key invariants: Tables are immutable and used for pattern-based lowering
-// Ownership/Lifetime: Static data, no dynamic allocation
-// Links: docs/architecture.md
+// Purpose: Declarative IL-opcode -> AArch64-MIR-opcode lookup tables and the
+//          O(1) switch-based accessors that drive instruction selection during
+//          IL->MIR lowering (binary integer/FP arithmetic, integer/FP compare
+//          condition codes, and opcode-category predicates).
+// Key invariants:
+//   - The kBinaryIntOps/kBinaryFpOps/kCompareOps arrays are documentation/
+//     iteration mirrors only; lookupBinaryOp()/lookupCondition() are the
+//     authoritative selectors and must stay in sync with those tables.
+//   - Overflow opcodes (IAddOvf/ISubOvf/IMulOvf) map to dedicated *Ovf MIR
+//     opcodes; division has no immediate form on AArch64 (supportsImmediate
+//     is false for SDiv/UDiv and all FP ops).
+//   - FP compare condition codes follow the FCMP NaN/unordered convention
+//     (ordered preds need vc-masking; see FpCompareLowering.hpp) — keep this
+//     table consistent with that helper and il/core/Opcode.hpp.
+//   - All returned pointers/strings reference static storage with program
+//     lifetime; callers may retain them freely.
+// Ownership/Lifetime:
+//   - Header-only constexpr/static data and stateless inline functions; no
+//     dynamic allocation and no retained mutable state.
+// Links: codegen/aarch64/MachineIR.hpp,
+//        codegen/aarch64/FpCompareLowering.hpp,
+//        il/core/Opcode.hpp, docs/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -35,11 +35,15 @@ namespace {
 
 constexpr int64_t kErrBounds = 7;
 
+/// @brief True if @p kind is integer-like (I64/I1/PTR) — GPR-eligible.
 [[nodiscard]] bool isIntegerLikeKind(ILValue::Kind kind) noexcept {
     return kind == ILValue::Kind::I64 || kind == ILValue::Kind::I1 ||
            kind == ILValue::Kind::PTR;
 }
 
+/// @brief Extract the integer value of an immediate ILValue.
+/// @details Normalizes I1 to a canonical 0/1; all other integer kinds pass
+///          their raw @c i64 through. Used to build switch-case keys.
 [[nodiscard]] int64_t integerImmediateValue(const ILValue &value) noexcept {
     return value.kind == ILValue::Kind::I1 ? (value.i64 != 0 ? 1 : 0) : value.i64;
 }

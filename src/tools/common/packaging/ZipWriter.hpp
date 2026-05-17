@@ -124,8 +124,9 @@ class ZipWriter {
     void ensureOpen() const;
     /// @brief Sanitize an entry path: reject control characters, absolute paths, and ".." segments.
     std::string normalizeEntryName(const std::string &name) const;
-    /// @brief Validate that a symlink target remains relative inside the archive root.
-    void validateSymlinkTarget(const std::string &entryName, const std::string &target) const;
+    /// @brief Normalize and validate that a symlink target remains relative inside the archive root.
+    std::string normalizeSymlinkTarget(const std::string &entryName,
+                                       const std::string &target) const;
     /// @brief Throw if value > maxValue; prevents central-directory integer overflow on large archives.
     void validateArchiveLimit(size_t value, size_t maxValue, const char *what) const;
     /// @brief Append len bytes of data to buffer_.

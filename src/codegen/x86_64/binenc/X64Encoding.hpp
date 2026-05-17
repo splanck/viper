@@ -255,6 +255,10 @@ struct SseOp {
     bool needsRexW; ///< True if REX.W is needed (CVTSI2SD, CVTTSD2SI, MOVQrx, MOVQxr).
 };
 
+/// @brief Return the SSE2 encoding descriptor for a scalar-double MIR opcode.
+/// @details Maps FADD/FSUB/FMUL/FDIV, the FP compares, and the int<->double
+///          conversions/moves to their (prefix, 0F-opcode, operand-direction,
+///          REX.W) tuple. Opcodes with no SSE form fall through to the default.
 inline constexpr SseOp sseOpcode(MOpcode op) {
     switch (op) {
         case MOpcode::FADD:

@@ -84,6 +84,9 @@ static uint64_t f64Bits(double value) {
     return bits;
 }
 
+/// @brief Map a canonical runtime name to its concrete linker symbol, preserving user symbols.
+/// @details Returns the mapped runtime symbol when @p name is a known canonical
+///          runtime alias, otherwise returns @p name unchanged.
 static std::string mapExternalSymbol(std::string_view name) {
     if (auto mapped = il::runtime::mapCanonicalRuntimeName(name))
         return std::string(*mapped);

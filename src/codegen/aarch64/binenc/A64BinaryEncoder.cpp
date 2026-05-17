@@ -338,18 +338,34 @@ static void validateFunctionMetadata(const MFunction &fn) {
     }
 }
 
+/// @brief Encode a callee-saved GPR as its Windows ARM64 unwind save index.
+/// @details The `.xdata` save_regp/save_reg unwind codes index callee-saved
+///          GPRs as 0..9 for X19..X28 (per the MS ARM64 exception-handling
+///          ABI). Only X19-X28 are valid here.
+/// @return Zero-based index in [0,9].
 static uint8_t windowsArm64GprSaveIndex(PhysReg reg) {
     if (reg < PhysReg::X19 || reg > PhysReg::X28)
         throw std::out_of_range("AArch64 Windows unwind: GPR save must be X19-X28");
     return static_cast<uint8_t>(static_cast<int>(reg) - static_cast<int>(PhysReg::X19));
 }
 
+/// @brief Encode a callee-saved FPR as its Windows ARM64 unwind save index.
+/// @details Mirror of windowsArm64GprSaveIndex() for the D8..D15 callee-saved
+///          FP range, indexed 0..7 in the save_fregp/save_freg unwind codes.
+/// @return Zero-based index in [0,7].
 static uint8_t windowsArm64FprSaveIndex(PhysReg reg) {
     if (reg < PhysReg::V8 || reg > PhysReg::V15)
         throw std::out_of_range("AArch64 Windows unwind: FPR save must be V8-V15");
     return static_cast<uint8_t>(static_cast<int>(reg) - static_cast<int>(PhysReg::V8));
 }
 
+/// @brief Append the Windows ARM64 stack-allocation unwind code for @p bytes.
+/// @details Emits one of the three `alloc_s` / `alloc_m` / `alloc_l` SEH
+///          unwind-code forms depending on size (16-byte units): the 1-byte
+///          small form (<512), the 2-byte medium form (<32768), or the 4-byte
+///          large form. @p bytes must be 16-byte aligned per the ABI.
+/// @param codes Unwind-code byte vector to append to (big-endian opcode order).
+/// @param bytes Prologue stack-allocation size in bytes (0 = no code emitted).
 static void appendWindowsArm64AllocCode(std::vector<uint8_t> &codes, uint32_t bytes) {
     if (bytes == 0)
         return;
@@ -373,6 +389,10 @@ static void appendWindowsArm64AllocCode(std::vector<uint8_t> &codes, uint32_t by
     codes.push_back(static_cast<uint8_t>((units >> 16) & 0xFFu));
 }
 
+/// @brief Append a `save_regp_x` unwind code for a callee-saved GPR pair with
+///        16-byte pre-decrement (the STP Xn,Xn+1,[sp,#-16]! prologue form).
+/// @param codes Unwind-code byte vector to append to.
+/// @param first First (lower-numbered) register of the saved X-pair.
 static void appendWindowsArm64SaveGprPairX(std::vector<uint8_t> &codes, PhysReg first) {
     const uint8_t x = windowsArm64GprSaveIndex(first);
     constexpr uint8_t zForPredec16 = 1;
@@ -380,6 +400,10 @@ static void appendWindowsArm64SaveGprPairX(std::vector<uint8_t> &codes, PhysReg 
     codes.push_back(static_cast<uint8_t>(((x & 0x3u) << 6) | zForPredec16));
 }
 
+/// @brief Append a `save_reg_x` unwind code for a single callee-saved GPR with
+///        16-byte pre-decrement (the STR Xn,[sp,#-16]! prologue form).
+/// @param codes Unwind-code byte vector to append to.
+/// @param reg   The callee-saved X register being saved.
 static void appendWindowsArm64SaveGprX(std::vector<uint8_t> &codes, PhysReg reg) {
     const uint8_t x = windowsArm64GprSaveIndex(reg);
     constexpr uint8_t zForPredec16 = 1;
@@ -387,6 +411,10 @@ static void appendWindowsArm64SaveGprX(std::vector<uint8_t> &codes, PhysReg reg)
     codes.push_back(static_cast<uint8_t>(((x & 0x7u) << 5) | zForPredec16));
 }
 
+/// @brief Append a `save_fregp_x` unwind code for a callee-saved FPR pair with
+///        16-byte pre-decrement (the STP Dn,Dn+1,[sp,#-16]! prologue form).
+/// @param codes Unwind-code byte vector to append to.
+/// @param first First (lower-numbered) register of the saved D-pair.
 static void appendWindowsArm64SaveFprPairX(std::vector<uint8_t> &codes, PhysReg first) {
     const uint8_t x = windowsArm64FprSaveIndex(first);
     constexpr uint8_t zForPredec16 = 1;
@@ -394,6 +422,10 @@ static void appendWindowsArm64SaveFprPairX(std::vector<uint8_t> &codes, PhysReg 
     codes.push_back(static_cast<uint8_t>(((x & 0x3u) << 6) | zForPredec16));
 }
 
+/// @brief Append a `save_freg_x` unwind code for a single callee-saved FPR with
+///        16-byte pre-decrement (the STR Dn,[sp,#-16]! prologue form).
+/// @param codes Unwind-code byte vector to append to.
+/// @param reg   The callee-saved D register being saved.
 static void appendWindowsArm64SaveFprX(std::vector<uint8_t> &codes, PhysReg reg) {
     const uint8_t x = windowsArm64FprSaveIndex(reg);
     constexpr uint8_t zForPredec16 = 1;
@@ -417,6 +449,11 @@ static bool isLegalScaledUImm64(long long offset) {
     return offset >= 0 && (offset % 8) == 0 && (offset / 8) <= 4095;
 }
 
+/// @brief Width-generic form of isLegalScaledUImm64(): true if @p offset is a
+///        legal scaled unsigned-12 immediate for an @p accessBytes-wide LDR/STR.
+/// @details The scaled form encodes `offset / accessBytes` in a 12-bit field, so
+///          @p offset must be non-negative, a multiple of @p accessBytes, and
+///          `offset / accessBytes <= 4095`.
 static bool isLegalScaledUImm(long long offset, unsigned accessBytes) {
     if (accessBytes == 0)
         return false;
@@ -424,10 +461,18 @@ static bool isLegalScaledUImm(long long offset, unsigned accessBytes) {
            (offset / static_cast<long long>(accessBytes)) <= 4095;
 }
 
+/// @brief Encoded size of a scalar LDR/STR at @p offset, or 0 if it needs the
+///        large-offset (scratch-address) sequence instead.
+/// @details Returns 4 when @p offset fits either the unscaled simm9 or the
+///          scaled-uimm12 form (a single 4-byte instruction); 0 signals the
+///          caller to fall back to a multi-instruction address materialization.
 static size_t scalarLdStSizeForOffset(int64_t offset, unsigned accessBytes) {
     return (isInSignedImmRange(offset) || isLegalScaledUImm(offset, accessBytes)) ? 4 : 0;
 }
 
+/// @brief True if @p offset fits the signed scaled 7-bit immediate of LDP/STP.
+/// @details Pair load/store encodes `offset / 8` as a signed 7-bit field, so
+///          @p offset must be a multiple of 8 within `[-512, 504]`.
 static bool isPairImm7Offset(int64_t offset) {
     if ((offset % 8) != 0)
         return false;
@@ -435,6 +480,11 @@ static bool isPairImm7Offset(int64_t offset) {
     return scaled >= -64 && scaled <= 63;
 }
 
+/// @brief Base instruction word for a scaled unsigned-offset GPR load/store.
+/// @param isLoad     True selects the LDR family, false the STR family.
+/// @param accessBytes Access width (1/2/4/8) selecting the byte/half/word/dword form.
+/// @return The 32-bit template to OR register/immediate fields into.
+/// @throws std::runtime_error for an unsupported width.
 static uint32_t scaledGprLdStTemplate(bool isLoad, unsigned accessBytes) {
     switch (accessBytes) {
         case 1:
@@ -450,6 +500,13 @@ static uint32_t scaledGprLdStTemplate(bool isLoad, unsigned accessBytes) {
     }
 }
 
+/// @brief Base instruction word for an unscaled (LDUR/STUR) GPR load/store.
+/// @details Counterpart of scaledGprLdStTemplate() used for negative or
+///          unaligned offsets that fit the signed simm9 field.
+/// @param isLoad      True selects the LDUR family, false the STUR family.
+/// @param accessBytes Access width (1/2/4/8).
+/// @return The 32-bit template to OR register/immediate fields into.
+/// @throws std::runtime_error for an unsupported width.
 static uint32_t unscaledGprLdStTemplate(bool isLoad, unsigned accessBytes) {
     switch (accessBytes) {
         case 1:

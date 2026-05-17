@@ -247,7 +247,15 @@ const OpFmt *getFmt(MOpcode opc) noexcept {
     return result;
 }
 
-/// @brief Emits operand.
+/// @brief Format one MIR operand as AT&T-syntax assembly text into @p out.
+/// @details Dispatches on the operand variant (register, immediate, memory,
+///          label) via std::visit, delegating register naming to asmfmt and
+///          RIP-relative/displacement formatting to the memory-address helper.
+/// @tparam Out     Output sink type (e.g. std::ostream or a string builder).
+/// @param operand  The MIR operand to render.
+/// @param out      Destination text sink.
+/// @param target   Target info (reserved; register naming is target-uniform here).
+/// @param format   Object-file format, affecting symbol/relocation syntax.
 template <typename Out>
 void emitOperand(const Operand &operand,
                  Out &out,
@@ -341,6 +349,12 @@ void emitRoDataPool(std::span<const std::string> stringLiterals,
     }
 }
 
+/// @brief Pack an OpReg into the signed integer code used by the asmfmt layer.
+/// @details Physical registers map to their non-negative @c idOrPhys value;
+///          virtual registers map to @c -(idOrPhys+1) so the sign bit alone
+///          distinguishes the two namespaces (and vreg 0 stays distinct from
+///          physical reg 0).
+/// @return Non-negative for physical regs, negative for virtual regs.
 [[nodiscard]] int encodeRegister(const OpReg &reg) noexcept {
     if (reg.isPhys) {
         return static_cast<int>(reg.idOrPhys);

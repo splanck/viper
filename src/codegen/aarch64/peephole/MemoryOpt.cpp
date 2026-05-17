@@ -105,6 +105,14 @@ bool tryLdpStpMerge(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats 
     return true;
 }
 
+/// @brief Compute the FP-relative byte range written by an FP-relative store.
+/// @details Recognizes single (Str*FpImm, 8 bytes) and pair (Stp*FpImm, 16
+///          bytes) GPR/FPR stores. Used by store→load forwarding and dead-store
+///          elimination to detect aliasing between memory accesses.
+/// @param ins   Candidate store instruction.
+/// @param start Out: inclusive start offset (the store's FP-relative immediate).
+/// @param end   Out: exclusive end offset (start + access width).
+/// @return True if @p ins is a recognized FP-relative store; false otherwise.
 static bool fpStoreRange(const MInstr &ins, int64_t &start, int64_t &end) {
     int64_t width = 0;
     switch (ins.opc) {
@@ -127,6 +135,8 @@ static bool fpStoreRange(const MInstr &ins, int64_t &start, int64_t &end) {
     return true;
 }
 
+/// @brief Half-open interval overlap test: true iff [lhsStart,lhsEnd) and
+///        [rhsStart,rhsEnd) intersect. Used to decide store/load aliasing.
 static bool rangesOverlap(int64_t lhsStart, int64_t lhsEnd, int64_t rhsStart, int64_t rhsEnd) {
     return lhsStart < rhsEnd && rhsStart < lhsEnd;
 }

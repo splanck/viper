@@ -1178,13 +1178,10 @@ inline void safeDirectoryIterateResolved(
 
     std::function<void(const fs::path &, const fs::path &)> walk =
         [&](const fs::path &physicalDir, const fs::path &logicalDir) {
-            auto it =
-                fs::directory_iterator(physicalDir, fs::directory_options::skip_permission_denied, ec);
+            auto it = fs::directory_iterator(physicalDir, ec);
             if (ec) {
-                std::cerr << "warning: cannot access '" << logicalDir.string()
-                          << "', skipping: " << ec.message() << "\n";
-                ec.clear();
-                return;
+                throw std::runtime_error("cannot access package asset directory '" +
+                                         logicalDir.string() + "': " + ec.message());
             }
             const auto end = fs::directory_iterator();
             while (it != end) {
@@ -1199,13 +1196,12 @@ inline void safeDirectoryIterateResolved(
                 if (fs::is_symlink(fs::symlink_status(entryPath, entryEc))) {
                     fs::path resolved = fs::canonical(entryPath, entryEc);
                     if (entryEc) {
-                        std::cerr << "warning: cannot resolve symlink '" << entryPath.string()
-                                  << "', skipping\n";
-                        skipEntry = true;
+                        throw std::runtime_error("cannot resolve package asset symlink '" +
+                                                 entryPath.string() + "': " +
+                                                 entryEc.message());
                     } else if (!isPathWithin(canonicalRoot, resolved)) {
-                        std::cerr << "warning: symlink '" << entryPath.string()
-                                  << "' escapes project root, skipping\n";
-                        skipEntry = true;
+                        throw std::runtime_error("package asset symlink escapes the project root: '" +
+                                                 entryPath.string() + "'");
                     } else {
                         resolvedSymlink = resolved;
                         hasResolvedSymlink = true;
@@ -1222,9 +1218,8 @@ inline void safeDirectoryIterateResolved(
                     }
                 }
                 if (entryEc) {
-                    std::cerr << "warning: cannot stat directory entry '" << entryPath.string()
-                              << "', skipping: " << entryEc.message() << "\n";
-                    skipEntry = true;
+                    throw std::runtime_error("cannot stat package asset entry '" +
+                                             entryPath.string() + "': " + entryEc.message());
                 }
 
                 if (!skipEntry)
@@ -1235,8 +1230,9 @@ inline void safeDirectoryIterateResolved(
                     fs::path resolvedDir =
                         hasResolvedSymlink ? resolvedSymlink : fs::canonical(entryPath, entryEc);
                     if (entryEc) {
-                        std::cerr << "warning: cannot resolve directory '" << entryPath.string()
-                                  << "', skipping recursion\n";
+                        throw std::runtime_error("cannot resolve package asset directory '" +
+                                                 entryPath.string() + "': " +
+                                                 entryEc.message());
                     } else if (visitedDirectories.insert(resolvedDir).second) {
                         walk(resolvedDir, entryPath);
                     }
@@ -1244,9 +1240,8 @@ inline void safeDirectoryIterateResolved(
 
                 it.increment(ec);
                 if (ec) {
-                    std::cerr << "warning: cannot advance directory iterator from '"
-                              << entryPath.string() << "': " << ec.message() << "\n";
-                    ec.clear();
+                    throw std::runtime_error("cannot advance package asset directory iterator from '" +
+                                             entryPath.string() + "': " + ec.message());
                 }
             }
         };

@@ -57,6 +57,10 @@ namespace {
 
 using TargetPlatform = CodegenOptions::TargetPlatform;
 
+/// @brief Resolve the concrete target platform from pipeline options.
+/// @details Honors an explicit non-Host @c target_platform; otherwise infers
+///          it from the ABI (Win64 → Windows) or the detected host linker
+///          platform. Falls back to Linux if detection is inconclusive.
 [[nodiscard]] TargetPlatform effectiveTargetPlatform(const CodegenPipeline::Options &opts) {
     if (opts.target_platform != TargetPlatform::Host)
         return opts.target_platform;
@@ -73,6 +77,8 @@ using TargetPlatform = CodegenOptions::TargetPlatform;
     return TargetPlatform::Linux;
 }
 
+/// @brief Map a target platform to its native object-file format
+///        (Darwin→Mach-O, Linux→ELF, Windows→COFF; Host→detected).
 [[nodiscard]] objfile::ObjFormat targetObjectFormat(TargetPlatform platform) {
     switch (platform) {
         case TargetPlatform::Darwin:
@@ -87,6 +93,8 @@ using TargetPlatform = CodegenOptions::TargetPlatform;
     return objfile::detectHostFormat();
 }
 
+/// @brief Map a target platform to the linker's LinkPlatform enum
+///        (Host resolves via the detected host linker platform).
 [[nodiscard]] linker::LinkPlatform targetLinkPlatform(TargetPlatform platform) {
     switch (platform) {
         case TargetPlatform::Darwin:
@@ -101,6 +109,9 @@ using TargetPlatform = CodegenOptions::TargetPlatform;
     return linker::detectLinkPlatform();
 }
 
+/// @brief Build the system assembler command prefix for @p platform.
+/// @details On a native Darwin host uses `cc`; cross-targets use `clang`
+///          with the matching `--target=` x86-64 triple for the target OS.
 [[nodiscard]] std::vector<std::string> systemAssemblerArgs(TargetPlatform platform) {
     switch (platform) {
         case TargetPlatform::Darwin:

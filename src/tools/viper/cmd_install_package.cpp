@@ -285,6 +285,19 @@ std::string binaryBaseName(std::string filename) {
     return filename;
 }
 
+std::string portableArchiveVersionComponent(const std::string &version) {
+    std::string out;
+    out.reserve(version.size());
+    for (char c : version) {
+        const unsigned char uc = static_cast<unsigned char>(c);
+        if (std::isalnum(uc) || c == '.' || c == '+' || c == '~' || c == '-')
+            out.push_back(c);
+        else
+            out.push_back('_');
+    }
+    return out.empty() ? "0.0.0" : out;
+}
+
 std::optional<NativeExecutableInfo> detectNativeExecutableInfo(const fs::path &path) {
     const auto data = viper::pkg::readFile(path.string());
     if (data.size() < 20)
@@ -327,14 +340,15 @@ std::optional<NativeExecutableInfo> detectNativeExecutableInfo(const fs::path &p
             return NativeExecutableInfo{"macos", "arm64"};
         return std::nullopt;
     }
-    if (magicBE == 0xCAFEBABEu && data.size() >= 8) {
+    if ((magicBE == 0xCAFEBABEu || magicBE == 0xCAFEBABFu) && data.size() >= 8) {
         const uint32_t count = readBE32(data, 4);
-        if (count == 0 || count > 64 || data.size() < 8 + static_cast<size_t>(count) * 20)
+        const size_t archSize = magicBE == 0xCAFEBABFu ? 32u : 20u;
+        if (count == 0 || count > 64 || data.size() < 8 + static_cast<size_t>(count) * archSize)
             return std::nullopt;
         bool hasX64 = false;
         bool hasArm64 = false;
         for (uint32_t i = 0; i < count; ++i) {
-            const size_t off = 8 + static_cast<size_t>(i) * 20;
+            const size_t off = 8 + static_cast<size_t>(i) * archSize;
             const uint32_t cputype = readBE32(data, off);
             hasX64 = hasX64 || cputype == 0x01000007u;
             hasArm64 = hasArm64 || cputype == 0x0100000Cu;
@@ -539,8 +553,10 @@ std::vector<std::string> requiredPayloadPaths(
             const std::string version = manifest.version.empty() ? "0.0.0" : manifest.version;
             const std::string packageName = "viper";
             const std::string topDir =
-                viper::pkg::sanitizePackageRelativePath(packageName + "-" + version + "-" +
-                                                            manifest.platform + "-" + manifest.arch,
+                viper::pkg::sanitizePackageRelativePath(packageName + "-" +
+                                                            portableArchiveVersionComponent(version) +
+                                                            "-" + manifest.platform + "-" +
+                                                            manifest.arch,
                                                         "toolchain tarball top-level directory");
             for (const auto &file : manifest.files) {
                 paths.push_back(topDir + "/" +

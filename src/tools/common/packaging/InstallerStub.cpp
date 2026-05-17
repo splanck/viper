@@ -640,13 +640,18 @@ void emitMessageBoxUnlessQuiet(InstallerStubGen &gen,
     gen.bindLabel(lblSkip);
 }
 
-/// @brief Detect automation flags using case-insensitive substring checks.
-/// This is intentionally small enough to keep the stub dependency-free; full option
-/// parsing stays in the host tools that generate and validate installers.
+struct FlagModeSpec {
+    uint32_t stringOff;
+    uint32_t utf16ByteLen;
+};
+
+/// @brief Detect automation flags using case-insensitive token-boundary checks.
+/// The stub stays dependency-free but avoids matching flag text inside the executable
+/// path or inside longer arguments.
 void emitDetectFlagMode(InstallerStubGen &gen,
                         uint32_t getCommandLineSlot,
                         uint32_t strstrSlot,
-                        const std::vector<uint32_t> &flagOffsets,
+                        const std::vector<FlagModeSpec> &flags,
                         int32_t destModeOff) {
     const auto lblDone = gen.newLabel();
     const auto lblFound = gen.newLabel();
@@ -659,12 +664,58 @@ void emitDetectFlagMode(InstallerStubGen &gen,
     gen.jz(lblDone);
     gen.movMemReg(X64Reg::RBP, kCommandLineOff, X64Reg::RAX);
 
-    for (uint32_t flagOff : flagOffsets) {
-        gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kCommandLineOff);
-        gen.leaRipData(X64Reg::RDX, flagOff);
+    for (const auto &flag : flags) {
+        const auto lblFindNext = gen.newLabel();
+        const auto lblCheckEnd = gen.newLabel();
+        const auto lblStartOk = gen.newLabel();
+        const auto lblInvalidMatch = gen.newLabel();
+        const auto lblNextFlag = gen.newLabel();
+        gen.movRegMem(X64Reg::RAX, X64Reg::RBP, kCommandLineOff);
+        gen.movMemReg(X64Reg::RBP, kBytesReadOff, X64Reg::RAX);
+
+        gen.bindLabel(lblFindNext);
+        gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kBytesReadOff);
+        gen.leaRipData(X64Reg::RDX, flag.stringOff);
         gen.callIATSlot(strstrSlot);
         gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
-        gen.jnz(lblFound);
+        gen.jz(lblNextFlag);
+        gen.movMemReg(X64Reg::RBP, kBytesWrittenOff, X64Reg::RAX);
+
+        gen.movRegMem(X64Reg::R10, X64Reg::RBP, kCommandLineOff);
+        gen.cmpRegReg(X64Reg::RAX, X64Reg::R10);
+        gen.jz(lblCheckEnd);
+        gen.movRegReg(X64Reg::R10, X64Reg::RAX);
+        gen.subRegImm32(X64Reg::R10, 2);
+        gen.xorRegReg(X64Reg::RAX, X64Reg::RAX);
+        gen.movzxRegMemIndex16(X64Reg::R11, X64Reg::R10, X64Reg::RAX, 0, 0);
+        gen.cmpRegImm32(X64Reg::R11, ' ');
+        gen.jz(lblStartOk);
+        gen.cmpRegImm32(X64Reg::R11, '\t');
+        gen.jz(lblStartOk);
+        gen.cmpRegImm32(X64Reg::R11, '"');
+        gen.jnz(lblInvalidMatch);
+
+        gen.bindLabel(lblStartOk);
+        gen.bindLabel(lblCheckEnd);
+        gen.movRegMem(X64Reg::RAX, X64Reg::RBP, kBytesWrittenOff);
+        gen.addRegImm32(X64Reg::RAX, flag.utf16ByteLen);
+        gen.xorRegReg(X64Reg::R10, X64Reg::R10);
+        gen.movzxRegMemIndex16(X64Reg::R11, X64Reg::RAX, X64Reg::R10, 0, 0);
+        gen.testRegReg(X64Reg::R11, X64Reg::R11);
+        gen.jz(lblFound);
+        gen.cmpRegImm32(X64Reg::R11, ' ');
+        gen.jz(lblFound);
+        gen.cmpRegImm32(X64Reg::R11, '\t');
+        gen.jz(lblFound);
+        gen.cmpRegImm32(X64Reg::R11, '"');
+        gen.jz(lblFound);
+
+        gen.bindLabel(lblInvalidMatch);
+        gen.movRegMem(X64Reg::RAX, X64Reg::RBP, kBytesWrittenOff);
+        gen.addRegImm32(X64Reg::RAX, 2);
+        gen.movMemReg(X64Reg::RBP, kBytesReadOff, X64Reg::RAX);
+        gen.jmp(lblFindNext);
+        gen.bindLabel(lblNextFlag);
     }
     gen.jmp(lblDone);
 
@@ -678,8 +729,8 @@ void emitDetectFlagMode(InstallerStubGen &gen,
 void emitDetectQuietMode(InstallerStubGen &gen,
                          uint32_t getCommandLineSlot,
                          uint32_t strstrSlot,
-                         const std::vector<uint32_t> &flagOffsets) {
-    emitDetectFlagMode(gen, getCommandLineSlot, strstrSlot, flagOffsets, kQuietModeOff);
+                         const std::vector<FlagModeSpec> &flags) {
+    emitDetectFlagMode(gen, getCommandLineSlot, strstrSlot, flags, kQuietModeOff);
 }
 
 /// @brief Show a cancellable setup welcome prompt in interactive mode.
@@ -906,7 +957,9 @@ void emitRegQueryStackString(InstallerStubGen &gen,
                              int32_t stackBufOff,
                              uint32_t bufferBytes,
                              uint32_t missingLabel) {
+    const auto lblTypeOk = gen.newLabel();
     gen.movMemImm32(X64Reg::RBP, stackBufOff, 0);
+    gen.movMemImm32(X64Reg::RBP, stackBufOff + static_cast<int32_t>(bufferBytes) - 4, 0);
     zeroLocalQword(gen, kBytesReadOff);
     zeroLocalQword(gen, kBytesWrittenOff);
     gen.movMemImm32(X64Reg::RBP, kBytesReadOff, bufferBytes);
@@ -921,6 +974,13 @@ void emitRegQueryStackString(InstallerStubGen &gen,
     gen.callIATSlot(querySlot);
     gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
     gen.jnz(missingLabel);
+    gen.movRegMem(X64Reg::RAX, X64Reg::RBP, kBytesWrittenOff);
+    gen.cmpRegImm32(X64Reg::RAX, kRegSz);
+    gen.jz(lblTypeOk);
+    gen.cmpRegImm32(X64Reg::RAX, kRegExpandSz);
+    gen.jnz(missingLabel);
+    gen.bindLabel(lblTypeOk);
+    gen.movMemImm32(X64Reg::RBP, stackBufOff + static_cast<int32_t>(bufferBytes) - 4, 0);
 }
 
 /// @brief Emit code to append the separator string to [RBP+destOff] only when the buffer is non-empty.
@@ -1527,6 +1587,8 @@ void emitInstallPathUpdate(InstallerStubGen &gen,
     const auto lblDoAppend = gen.newLabel();
     const auto lblPathMissing = gen.newLabel();
     const auto lblCheckCurrentPath = gen.newLabel();
+    const auto lblUseCleanedPath = gen.newLabel();
+    const auto lblWritePath = gen.newLabel();
     const auto lblSkipUpdateClose = gen.newLabel();
     const auto lblSkipUpdate = gen.newLabel();
 
@@ -1571,9 +1633,16 @@ void emitInstallPathUpdate(InstallerStubGen &gen,
     gen.leaRegMem(X64Reg::RDX, X64Reg::RBP, kPathOriginalOff);
     gen.callIATSlot(strcmpSlot);
     gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
-    gen.jnz(lblSkipUpdateClose);
+    gen.jnz(lblUseCleanedPath);
     emitRegCloseIfSet(gen, kRegKeyOff, closeSlot);
     gen.jmp(lblDoAppend);
+
+    gen.bindLabel(lblUseCleanedPath);
+    gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kTempPathOff);
+    gen.leaRegMem(X64Reg::RDX, X64Reg::RBP, kPathExpectedOff);
+    gen.callIATSlot(copySlot);
+    emitRegCloseIfSet(gen, kRegKeyOff, closeSlot);
+    gen.jmp(lblWritePath);
 
     gen.bindLabel(lblDoAppend);
     emitRegCloseIfSet(gen, kRegKeyOff, closeSlot);
@@ -1586,6 +1655,7 @@ void emitInstallPathUpdate(InstallerStubGen &gen,
     gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kTempPathOff);
     gen.leaRegMem(X64Reg::RDX, X64Reg::RBP, kPathOriginalOff);
     gen.callIATSlot(copySlot);
+    gen.bindLabel(lblWritePath);
     emitAppendSeparatorIfNonEmpty(
         gen, kTempPathOff, semicolonOff, catSlot, strlenSlot, errorLabel);
     emitCheckedCatStack(
@@ -2152,11 +2222,14 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
     emitDetectQuietMode(gen,
                         kI_GetCommandLineW,
                         kI_StrStrIW,
-                        {quietSlashOff, silentSlashOff, quietDashOff, silentDashOff});
+                        {{quietSlashOff, 12},
+                         {silentSlashOff, 14},
+                         {quietDashOff, 12},
+                         {silentDashOff, 14}});
     emitDetectFlagMode(gen,
                        kI_GetCommandLineW,
                        kI_StrStrIW,
-                       {noRestartSlashOff, noRestartDashOff},
+                       {{noRestartSlashOff, 20}, {noRestartDashOff, 20}},
                        kNoRestartModeOff);
 
     emitInstallerWelcomePrompt(
@@ -2445,7 +2518,8 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
                                      kI_RegCloseKey,
                                      kI_lstrlenW,
                                      kI_SendMessageTimeoutW);
-    for (const auto &file : layout.uninstallFiles)
+    for (const auto &file : layout.uninstallFiles) {
+        const auto lblNextRollbackDelete = gen.newLabel();
         emitDeleteFile(
             gen,
             file,
@@ -2455,17 +2529,25 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
             kI_lstrlenW,
             kI_DeleteFileW,
             kI_GetLastError,
-            lblExitError);
-    emitDeleteFile(gen,
-                   WindowsPackageFileEntry{WindowsInstallRoot::InstallDir, "uninstall.exe", 0, 0},
-                   slashOff,
-                   kI_lstrcpyW,
-                   kI_lstrcatW,
-                   kI_lstrlenW,
-                   kI_DeleteFileW,
-                   kI_GetLastError,
-                   lblExitError);
-    for (const auto &dir : layout.uninstallDirectories)
+            lblNextRollbackDelete);
+        gen.bindLabel(lblNextRollbackDelete);
+    }
+    {
+        const auto lblNextRollbackDelete = gen.newLabel();
+        emitDeleteFile(
+            gen,
+            WindowsPackageFileEntry{WindowsInstallRoot::InstallDir, "uninstall.exe", 0, 0},
+            slashOff,
+            kI_lstrcpyW,
+            kI_lstrcatW,
+            kI_lstrlenW,
+            kI_DeleteFileW,
+            kI_GetLastError,
+            lblNextRollbackDelete);
+        gen.bindLabel(lblNextRollbackDelete);
+    }
+    for (const auto &dir : layout.uninstallDirectories) {
+        const auto lblNextRollbackRemoveDir = gen.newLabel();
         emitRemoveDirectory(gen,
                             dir,
                             slashOff,
@@ -2474,7 +2556,9 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
                             kI_lstrlenW,
                             kI_RemoveDirectoryW,
                             kI_GetLastError,
-                            lblExitError);
+                            lblNextRollbackRemoveDir);
+        gen.bindLabel(lblNextRollbackRemoveDir);
+    }
     if (needsMenuPath(layout)) {
         gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kMenuPathOff);
         gen.callIATSlot(kI_RemoveDirectoryW);
@@ -2566,11 +2650,14 @@ StubResult buildUninstallerStub(const WindowsPackageLayout &layout, const std::s
     emitDetectQuietMode(gen,
                         kU_GetCommandLineW,
                         kU_StrStrIW,
-                        {quietSlashOff, silentSlashOff, quietDashOff, silentDashOff});
+                        {{quietSlashOff, 12},
+                         {silentSlashOff, 14},
+                         {quietDashOff, 12},
+                         {silentDashOff, 14}});
     emitDetectFlagMode(gen,
                        kU_GetCommandLineW,
                        kU_StrStrIW,
-                       {noRestartSlashOff, noRestartDashOff},
+                       {{noRestartSlashOff, 20}, {noRestartDashOff, 20}},
                        kNoRestartModeOff);
 
     emitInstallerWelcomePrompt(

@@ -69,8 +69,10 @@ points remain available through \fB-run\fR, \fBfront zia\fR, and \fBfront basic\
 \fBpackage\fR builds native app artifacts. Manifest paths are project-relative,
 while \fB--executable\fR paths are resolved from the current working directory
 when relative. Default output filenames are sanitized so project metadata cannot
-create nested or parent-directory paths. Windows app installers overwrite
-packaged files without deleting unrelated files in an existing install root.
+create nested or parent-directory paths. Asset traversal fails on unreadable
+entries and symlinks that resolve outside the project root. Windows app
+installers overwrite packaged files without deleting unrelated files in an
+existing install root.
 .PP
 \fBinstall-package\fR packages the Viper toolchain itself from a staged
 \fCcmake --install\fR tree. It can stage from a build tree automatically,
@@ -79,7 +81,7 @@ verify an existing installer file.
 .PP
 For staged toolchain packaging, \fBinstall-package\fR requires a detected Viper
 version, detects platform and architecture from the staged \fCviper\fR binary
-when possible, including \fCuniversal\fR for macOS fat Mach-O payloads, and
+when possible, including \fCuniversal\fR for macOS fat32 and fat64 Mach-O payloads, and
 rejects native package targets that do not match that staged platform.
 \fB--target all\fR emits only the staged platform's native package type plus a
 portable tarball, with RPM included only when \fCrpmbuild\fR is available. Use

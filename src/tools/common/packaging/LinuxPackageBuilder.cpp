@@ -523,6 +523,9 @@ void buildDebPackage(const LinuxBuildParams &params) {
 
     // Assets
     for (const auto &asset : pkg.assets) {
+        const std::string sourceRel =
+            sanitizePackageRelativePath(asset.sourcePath, "asset source path");
+        const std::string sourceLeaf = fs::path(sourceRel).filename().generic_string();
         fs::path srcPath = resolvePackageSourcePath(params.projectRoot, asset.sourcePath, "asset source path");
         std::string targetDir = sanitizePackageRelativePath(asset.targetPath, "asset target path");
 
@@ -551,7 +554,7 @@ void buildDebPackage(const LinuxBuildParams &params) {
         } else if (fs::is_regular_file(srcPath)) {
             auto fileData = readFile(srcPath.string());
             dataFiles.emplace_back(joinPackageRelativePath(sharePrefix,
-                                                           srcPath.filename().generic_string(),
+                                                           sourceLeaf,
                                                            "asset path"),
                                    std::move(fileData),
                                    permissionBitsForFilesystemPath(srcPath));
@@ -817,6 +820,9 @@ void buildTarball(const LinuxBuildParams &params) {
 
     // Assets
     for (const auto &asset : pkg.assets) {
+        const std::string sourceRel =
+            sanitizePackageRelativePath(asset.sourcePath, "asset source path");
+        const std::string sourceLeaf = fs::path(sourceRel).filename().generic_string();
         fs::path srcPath = resolvePackageSourcePath(params.projectRoot, asset.sourcePath, "asset source path");
         std::string targetDir = sanitizePackageRelativePath(asset.targetPath, "asset target path");
 
@@ -850,7 +856,7 @@ void buildTarball(const LinuxBuildParams &params) {
         } else if (fs::is_regular_file(srcPath)) {
             auto fileData = readFile(srcPath.string());
             tar.addFile(
-                joinPackageRelativePath(prefix, srcPath.filename().generic_string(), "asset path"),
+                joinPackageRelativePath(prefix, sourceLeaf, "asset path"),
                 fileData.data(),
                 fileData.size(),
                 permissionBitsForFilesystemPath(srcPath));
@@ -869,6 +875,8 @@ void buildTarball(const LinuxBuildParams &params) {
         throw std::runtime_error("cannot write tarball: " + params.outputPath);
     f.write(reinterpret_cast<const char *>(tarGz.data()),
             static_cast<std::streamsize>(tarGz.size()));
+    if (!f)
+        throw std::runtime_error("failed to write tarball: " + params.outputPath);
 }
 
 /// @brief Build a Debian .deb toolchain package from a staged install manifest.
@@ -998,8 +1006,8 @@ void buildToolchainTarball(const LinuxToolchainBuildParams &params) {
         validateToolchainArchitecture(manifest.arch, "toolchain package architecture");
     }
     const std::string topDir =
-        sanitizePackageRelativePath(packageName + "-" + version + "-" + platform + "-" +
-                                        manifest.arch,
+        sanitizePackageRelativePath(packageName + "-" + portableArchiveVersionComponent(version) +
+                                        "-" + platform + "-" + manifest.arch,
                                     "toolchain tarball top-level directory") +
         "/";
 
@@ -1038,6 +1046,8 @@ void buildToolchainTarball(const LinuxToolchainBuildParams &params) {
         throw std::runtime_error("cannot write toolchain tarball: " + params.outputPath);
     out.write(reinterpret_cast<const char *>(tarGz.data()),
               static_cast<std::streamsize>(tarGz.size()));
+    if (!out)
+        throw std::runtime_error("failed to write toolchain tarball: " + params.outputPath);
 }
 
 /// @brief Build an RPM toolchain package from a staged install manifest using rpmbuild.
@@ -1099,6 +1109,8 @@ void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params) {
             throw std::runtime_error("cannot write rpm source tarball: " + sourceTar.string());
         out.write(reinterpret_cast<const char *>(tarGz.data()),
                   static_cast<std::streamsize>(tarGz.size()));
+        if (!out)
+            throw std::runtime_error("failed to write rpm source tarball: " + sourceTar.string());
     }
 
     std::ostringstream spec;
@@ -1167,7 +1179,11 @@ void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params) {
     }
 
     const fs::path rpmPath = findGeneratedRpm(tmpRoot, packageName, version, arch);
-    fs::copy_file(rpmPath, params.outputPath, fs::copy_options::overwrite_existing);
+    std::error_code copyEc;
+    fs::copy_file(rpmPath, params.outputPath, fs::copy_options::overwrite_existing, copyEc);
+    if (copyEc)
+        throw std::runtime_error("cannot copy generated rpm to " + params.outputPath + ": " +
+                                 copyEc.message());
 }
 
 } // namespace viper::pkg

@@ -29,6 +29,12 @@ using il::core::Opcode;
 
 namespace {
 
+/// @brief Select the GPR load MIR opcode for an IL type width.
+/// @details Picks the width-correct Ldr{8,16,32,}* opcode; @p frameRelative
+///          chooses the FP-relative (FpImm) vs base-register (BaseImm) form.
+/// @param kind          IL element type (I1/I16/I32 narrow; else full 64-bit).
+/// @param frameRelative True for an x29-relative slot, false for a base reg.
+/// @return The matching MOpcode load variant.
 MOpcode gprLoadOpcodeForType(il::core::Type::Kind kind, bool frameRelative) {
     switch (kind) {
         case il::core::Type::Kind::I1:
@@ -42,6 +48,12 @@ MOpcode gprLoadOpcodeForType(il::core::Type::Kind kind, bool frameRelative) {
     }
 }
 
+/// @brief Select the GPR store MIR opcode for an IL type width.
+/// @details Mirror of gprLoadOpcodeForType() for the Str{8,16,32,}* family;
+///          @p frameRelative selects the FP-relative vs base-register form.
+/// @param kind          IL element type (I1/I16/I32 narrow; else full 64-bit).
+/// @param frameRelative True for an x29-relative slot, false for a base reg.
+/// @return The matching MOpcode store variant.
 MOpcode gprStoreOpcodeForType(il::core::Type::Kind kind, bool frameRelative) {
     switch (kind) {
         case il::core::Type::Kind::I1:

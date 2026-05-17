@@ -107,9 +107,13 @@ static bool resolveFrameAddress(const il::core::Value &value,
 
 namespace {
 
+/// @brief A call argument after materialization: the vreg holding its value and
+///        the ABI class (GPR vs FP/SIMD) that selects which register bank and
+///        stack-slot rules apply when it is marshalled into the call sequence.
 struct MaterializedCallArg {
-    uint16_t vreg{0};
-    viper::codegen::common::CallArgClass cls{viper::codegen::common::CallArgClass::GPR};
+    uint16_t vreg{0}; ///< Virtual register holding the materialized argument value.
+    viper::codegen::common::CallArgClass cls{
+        viper::codegen::common::CallArgClass::GPR}; ///< ABI register class of the argument.
 };
 
 /// @brief Map canonical runtime names to the concrete linker symbol, preserving user symbols.
@@ -128,6 +132,13 @@ std::string directCalleeName(const il::core::Instr &ins) {
     return {};
 }
 
+/// @brief Test whether @p ins is a direct call whose callee maps to @p runtimeName.
+/// @details Resolves the callee via directCalleeName(), then normalizes it through
+///          mapExternalSymbol() so canonical runtime aliases match. Indirect calls
+///          (no static callee) always return false.
+/// @param ins         The IL call instruction to inspect.
+/// @param runtimeName The concrete linker symbol to compare against.
+/// @return True if @p ins directly calls @p runtimeName, false otherwise.
 bool isDirectCallee(const il::core::Instr &ins, std::string_view runtimeName) {
     const std::string callee = directCalleeName(ins);
     if (callee.empty())
@@ -1255,6 +1266,13 @@ static int integerTypeBits(il::core::Type::Kind kind) {
     }
 }
 
+/// @brief Inclusive minimum representable value of a @p bits-wide signed integer,
+///        as an exact double.
+/// @details Returns -2^(bits-1) (e.g. -2147483648.0 for 32). Used by the
+///          float→signed-int narrowing path to clamp/range-check before fcvtzs.
+/// @param bits Signed integer width; must be 1, 16, 32, or 64.
+/// @return The lower bound as a double.
+/// @throws std::runtime_error if @p bits is not a supported width.
 static double signedLowerBoundForBits(int bits) {
     switch (bits) {
         case 1:
@@ -1267,6 +1285,12 @@ static double signedLowerBoundForBits(int bits) {
     }
 }
 
+/// @brief Exclusive upper bound of a @p bits-wide signed integer, as an exact double.
+/// @details Returns +2^(bits-1) (e.g. 2147483648.0 for 32) — the first value
+///          that does NOT fit. The narrowing path rejects inputs >= this bound.
+/// @param bits Signed integer width; must be 1, 16, 32, or 64.
+/// @return The exclusive upper bound as a double.
+/// @throws std::runtime_error if @p bits is not a supported width.
 static double signedUpperExclusiveForBits(int bits) {
     switch (bits) {
         case 1:

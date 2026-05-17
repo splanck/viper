@@ -29,11 +29,15 @@
 namespace viper::codegen::x64::lowering {
 namespace {
 
+/// @brief True if @p kind is integer-like (I64/I1/PTR) and thus GPR-eligible.
 [[nodiscard]] bool isIntegerLikeKind(ILValue::Kind kind) noexcept {
     return kind == ILValue::Kind::I64 || kind == ILValue::Kind::I1 ||
            kind == ILValue::Kind::PTR;
 }
 
+/// @brief Assert a bitwise op's result is integer-like and maps to a GPR.
+/// @details Bitwise opcodes only have GPR encodings; a non-integer or
+///          non-GPR result raises phaseAUnsupported(@p context).
 void requireBitwiseResult(const ILInstr &instr, MIRBuilder &builder, const char *context) {
     if (!isIntegerLikeKind(instr.resultKind) ||
         builder.regClassFor(instr.resultKind) != RegClass::GPR) {

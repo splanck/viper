@@ -652,7 +652,7 @@ bool parsePackageArgs(int argc, char **argv, PackageArgs &args) {
             packageUsage();
             args.help = true;
             return true;
-        } else if (arg[0] == '-') {
+        } else if (!arg.empty() && arg[0] == '-') {
             std::cerr << "error: unknown option '" << arg << "'\n";
             packageUsage();
             return false;
@@ -1139,6 +1139,9 @@ int cmdPackage(int argc, char **argv) {
     }
 
     try {
+        const fs::path outputParent = fs::path(args.outputPath).parent_path();
+        if (!outputParent.empty())
+            fs::create_directories(outputParent);
         switch (args.platformTarget) {
             case PackageTarget::MacOS: {
                 viper::pkg::MacOSBuildParams params;
@@ -1246,8 +1249,8 @@ int cmdPackage(int argc, char **argv) {
                 verifyErr);
             break;
         case PackageTarget::Tarball: {
-            const std::string version = proj.version.empty() ? "0.0.0" : proj.version;
-            const std::string topDir = viper::pkg::normalizeDebName(proj.name) + "-" + version;
+            const std::string topDir = viper::pkg::normalizeDebName(proj.name) + "-" +
+                                       portableArchiveVersionComponent(resolvedVersion);
             valid = viper::pkg::verifyTarGzPayload(
                 pkgData, {topDir + "/" + execName}, verifyErr);
             break;

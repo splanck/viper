@@ -128,8 +128,8 @@ std::string ZipWriter::normalizeEntryName(const std::string &name) const {
     return normalized;
 }
 
-void ZipWriter::validateSymlinkTarget(const std::string &entryName,
-                                      const std::string &target) const {
+std::string ZipWriter::normalizeSymlinkTarget(const std::string &entryName,
+                                              const std::string &target) const {
     if (target.empty())
         throw std::runtime_error("ZipWriter: symlink target must not be empty");
     validateSingleLineField(target, "zip symlink target");
@@ -154,6 +154,7 @@ void ZipWriter::validateSymlinkTarget(const std::string &entryName,
         resolvedText.rfind("../", 0) == 0) {
         throw std::runtime_error("ZipWriter: symlink target escapes archive root: " + target);
     }
+    return normalizedTarget;
 }
 
 /// @brief Append len raw bytes to the internal archive buffer.
@@ -347,6 +348,8 @@ void ZipWriter::addDirectory(const std::string &name, uint32_t unixMode) {
     if (dirName.empty() || dirName.back() != '/')
         dirName += '/';
     dirName = normalizeEntryName(dirName);
+    if (dirName.empty())
+        return;
     const std::string key =
         (!dirName.empty() && dirName.back() == '/') ? dirName.substr(0, dirName.size() - 1)
                                                     : dirName;
@@ -402,13 +405,13 @@ void ZipWriter::addSymlink(const std::string &name, const std::string &target) {
     const std::string entryName = normalizeEntryName(name);
     if (!seenNames_.insert(entryName).second)
         throw std::runtime_error("ZipWriter: duplicate entry name: " + entryName);
-    validateSymlinkTarget(entryName, target);
+    const std::string normalizedTarget = normalizeSymlinkTarget(entryName, target);
     validateArchiveLimit(entries_.size() + 1, 0xFFFFu, "more than 65535 entries");
     validateArchiveLimit(buffer_.size(), 0xFFFFFFFFu, "archives larger than 4 GiB");
 
     // Symlinks store the target path as file data
-    auto *data = reinterpret_cast<const uint8_t *>(target.data());
-    size_t len = target.size();
+    auto *data = reinterpret_cast<const uint8_t *>(normalizedTarget.data());
+    size_t len = normalizedTarget.size();
     uint32_t crc = crc32Bytes(data, len);
 
     Entry e;

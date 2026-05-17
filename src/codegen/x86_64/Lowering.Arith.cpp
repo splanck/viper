@@ -97,15 +97,20 @@ uint64_t unsignedUpperExclusiveF64Bits(std::uint8_t widthBits) {
     }
 }
 
+/// @brief True if @p kind is integer-like (I64/I1/PTR) — GPR-eligible.
 [[nodiscard]] bool isIntegerLikeKind(ILValue::Kind kind) noexcept {
     return kind == ILValue::Kind::I64 || kind == ILValue::Kind::I1 ||
            kind == ILValue::Kind::PTR;
 }
 
+/// @brief True if @p kind is a scalar integer (I64/I1) — excludes PTR.
 [[nodiscard]] bool isIntegerScalarKind(ILValue::Kind kind) noexcept {
     return kind == ILValue::Kind::I64 || kind == ILValue::Kind::I1;
 }
 
+/// @brief Assert @p instr is a well-formed integer→F64 conversion.
+/// @details Requires a result, at least one operand, an F64 result kind, and an
+///          integer-scalar source; otherwise raises phaseAUnsupported(@p context).
 void requireIntToFpShape(const ILInstr &instr, const char *context) {
     if (instr.resultId < 0 || instr.ops.empty()) {
         phaseAUnsupported(context);
@@ -118,6 +123,9 @@ void requireIntToFpShape(const ILInstr &instr, const char *context) {
     }
 }
 
+/// @brief Assert @p instr is a well-formed F64→integer conversion.
+/// @details Mirror of requireIntToFpShape(): requires an F64 source operand and
+///          an integer-scalar result; otherwise raises phaseAUnsupported(@p context).
 void requireFpToIntShape(const ILInstr &instr, const char *context) {
     if (instr.resultId < 0 || instr.ops.empty()) {
         phaseAUnsupported(context);
@@ -130,6 +138,9 @@ void requireFpToIntShape(const ILInstr &instr, const char *context) {
     }
 }
 
+/// @brief Assert @p instr is a well-formed integer→integer narrowing cast.
+/// @details Requires a result, at least one operand, and integer-scalar kinds on
+///          both source and result; otherwise raises phaseAUnsupported(@p context).
 void requireNarrowCastShape(const ILInstr &instr, const char *context) {
     if (instr.resultId < 0 || instr.ops.empty()) {
         phaseAUnsupported(context);
@@ -140,6 +151,9 @@ void requireNarrowCastShape(const ILInstr &instr, const char *context) {
     }
 }
 
+/// @brief Clamp a declared integer width to a supported value.
+/// @details I1 collapses to 1 bit; 0 or >64 normalizes to 64. Used so mask
+///          width math has a well-defined bit count for every IL integer.
 [[nodiscard]] std::uint8_t normalizedIntegerBits(std::uint8_t bits, ILValue::Kind kind) noexcept {
     if (kind == ILValue::Kind::I1) {
         return 1;
@@ -150,6 +164,7 @@ void requireNarrowCastShape(const ILInstr &instr, const char *context) {
     return bits;
 }
 
+/// @brief Bitmask with the low @p bits set (all-ones for @p bits >= 64).
 [[nodiscard]] uint64_t lowBitsMask(std::uint8_t bits) noexcept {
     if (bits >= 64) {
         return ~uint64_t{0};
@@ -157,6 +172,15 @@ void requireNarrowCastShape(const ILInstr &instr, const char *context) {
     return (uint64_t{1} << bits) - uint64_t{1};
 }
 
+/// @brief Mask @p dest down to its low @p widthBits bits in place.
+/// @details No-op for widths >= 64. Emits an `AND dest, imm` using the imm32
+///          form when the mask fits, otherwise materializes the 64-bit mask
+///          into a register first. Used to keep narrow integer results
+///          canonically zero-extended after wider arithmetic.
+/// @param builder   MIR builder receiving the emitted instruction(s).
+/// @param emit      EmitCommon façade (operand cloning / materialization).
+/// @param dest      Destination operand to mask in place.
+/// @param widthBits Target width in bits (<64 to have any effect).
 void emitMaskToWidth(MIRBuilder &builder,
                      EmitCommon &emit,
                      const Operand &dest,

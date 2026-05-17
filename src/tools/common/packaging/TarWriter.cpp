@@ -57,7 +57,7 @@ std::string normalizeTarEntryPath(const std::string &path,
 /// @brief Validate that a tar symlink target is safe to include in the archive.
 /// Rejects empty targets, absolute paths, Windows drive paths, and targets that
 /// resolve outside the archive root when combined with the symlink's directory.
-void validateTarSymlinkTarget(const std::string &linkPath, const std::string &target) {
+std::string normalizeTarSymlinkTarget(const std::string &linkPath, const std::string &target) {
     if (target.empty())
         throw std::runtime_error("tar symlink target must not be empty");
     validateSingleLineField(target, "tar symlink target");
@@ -81,6 +81,7 @@ void validateTarSymlinkTarget(const std::string &linkPath, const std::string &ta
         resolvedText == "..") {
         throw std::runtime_error("tar symlink target escapes archive root: " + target);
     }
+    return normalizedTarget;
 }
 
 } // namespace
@@ -152,10 +153,10 @@ void TarWriter::addSymlink(const std::string &path, const std::string &target, u
         throw std::runtime_error("tar symlink path must not be empty");
     if (!seenPaths_.insert(cleanPath).second)
         throw std::runtime_error("duplicate tar entry path: " + cleanPath);
-    validateTarSymlinkTarget(cleanPath, target);
+    const std::string normalizedTarget = normalizeTarSymlinkTarget(cleanPath, target);
     Entry e;
     e.path = cleanPath;
-    e.linkTarget = target;
+    e.linkTarget = normalizedTarget;
     e.mode = 0777;
     e.mtime = mtime;
     e.typeflag = '2';

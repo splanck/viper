@@ -7,10 +7,22 @@
 //
 // File: codegen/aarch64/LowerOvf.hpp
 // Purpose: Expand overflow-checked arithmetic pseudo-opcodes for AArch64.
-//
-// Overflow pseudo-opcodes (AddOvfRRR, SubOvfRRR, etc.) are replaced with
-// flag-setting instructions (ADDS/SUBS) followed by a conditional branch
-// to a shared trap block on signed overflow (b.vs).
+//          AddOvfRRR/SubOvfRRR/AddOvfRI/SubOvfRI/MulOvfRRR are replaced with
+//          flag-setting real instructions (ADDS/SUBS, or MUL+SMULH for
+//          multiply) followed by a conditional branch to a shared trap block
+//          on signed overflow.
+// Key invariants:
+//   - Runs on MIR before register allocation; expansion is in-place per block.
+//   - At most one shared trap block is created per function and reused by
+//     every overflow site; it tail-calls rt_trap and never returns.
+//   - Add/Sub overflow is detected via the V flag (b.vs); multiply overflow
+//     via the smulh-vs-asr#63 sign-extension mismatch (b.ne).
+// Ownership/Lifetime:
+//   - Stateless free function; mutates the caller-owned MFunction and retains
+//     no state across calls.
+// Links: codegen/aarch64/LowerOvf.cpp,
+//        codegen/aarch64/MachineIR.hpp,
+//        codegen/aarch64/Noreturn.hpp (trap-call classification)
 //
 //===----------------------------------------------------------------------===//
 

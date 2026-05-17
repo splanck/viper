@@ -236,6 +236,9 @@ struct TargetInfo : viper::codegen::common::TargetInfoBase<PhysReg, kMaxGPRArgs,
         return abiFormat == ABIFormat::Windows;
     }
 
+    /// @brief Returns true when anonymous variadic arguments are passed on the
+    ///        stack rather than continuing through the AAPCS64 register banks
+    ///        (the Darwin AArch64 C ABI rule; false on Linux/Windows).
     [[nodiscard]] bool usesStackVariadicTail() const noexcept {
         return variadicTailOnStack;
     }

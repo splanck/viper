@@ -116,6 +116,8 @@ void copyPackageAssetToResources(const fs::path &srcPath,
                                  const std::string &targetDir,
                                  const std::string &sourceText) {
     const fs::path targetRoot = resourcesDir / fs::path(targetDir);
+    const std::string sourceRel = sanitizePackageRelativePath(sourceText, "asset source path");
+    const fs::path sourceLeaf = fs::path(sourceRel).filename();
     if (!fs::exists(srcPath))
         throw std::runtime_error("asset not found: " + sourceText);
 
@@ -137,7 +139,7 @@ void copyPackageAssetToResources(const fs::path &srcPath,
                 }
             });
     } else if (fs::is_regular_file(srcPath)) {
-        writeFileBytes(targetRoot / srcPath.filename(),
+        writeFileBytes(targetRoot / sourceLeaf,
                        readFile(srcPath.string()),
                        fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read |
                            fs::perms::others_read);

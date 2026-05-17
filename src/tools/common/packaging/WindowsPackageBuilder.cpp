@@ -40,6 +40,7 @@
 #include <set>
 #include <sstream>
 #include <stdexcept>
+#include <string_view>
 
 namespace fs = std::filesystem;
 
@@ -306,13 +307,17 @@ void validateWindowsPayloadExecutable(const fs::path &path, const std::string &a
 }
 
 std::optional<size_t> peRvaToFileOffset(const std::vector<PeSectionInfo> &sections,
-                                        uint32_t rva) {
+                                        uint32_t rva,
+                                        size_t fileSize) {
     for (const auto &sec : sections) {
-        const uint32_t extent = std::max(sec.virtualSize, sec.rawSize);
-        if (extent == 0)
+        if (sec.rawSize == 0)
             continue;
-        if (rva >= sec.rva && rva - sec.rva < extent)
-            return static_cast<size_t>(sec.rawOffset) + static_cast<size_t>(rva - sec.rva);
+        if (rva >= sec.rva && rva - sec.rva < sec.rawSize) {
+            const size_t off = static_cast<size_t>(sec.rawOffset) +
+                               static_cast<size_t>(rva - sec.rva);
+            if (off < fileSize)
+                return off;
+        }
     }
     return std::nullopt;
 }
@@ -325,7 +330,7 @@ std::string readPeAsciiZ(const std::vector<uint8_t> &data, size_t off) {
             return {};
         out.push_back(static_cast<char>(ch));
     }
-    return out;
+    return off < data.size() ? out : std::string{};
 }
 
 std::vector<std::string> importedDllNamesFromPe(const std::vector<uint8_t> &data) {
@@ -360,24 +365,33 @@ std::vector<std::string> importedDllNamesFromPe(const std::vector<uint8_t> &data
                             rd32(data, cur + 16)});
     }
 
-    const auto importOff = peRvaToFileOffset(sections, importRva);
+    const auto importOff = peRvaToFileOffset(sections, importRva, data.size());
     if (!importOff)
         return {};
+    const uint64_t importEnd64 = static_cast<uint64_t>(*importOff) + importSize;
+    if (importSize < 20 || importEnd64 > data.size())
+        return {};
+    const size_t importEnd = static_cast<size_t>(importEnd64);
 
     std::vector<std::string> names;
-    for (size_t desc = *importOff; hasBytes(data, desc, 20); desc += 20) {
+    bool sawTerminator = false;
+    for (size_t desc = *importOff; desc <= importEnd - 20; desc += 20) {
         const uint32_t originalThunk = rd32(data, desc);
         const uint32_t nameRva = rd32(data, desc + 12);
         const uint32_t firstThunk = rd32(data, desc + 16);
-        if (originalThunk == 0 && nameRva == 0 && firstThunk == 0)
+        if (originalThunk == 0 && nameRva == 0 && firstThunk == 0) {
+            sawTerminator = true;
             break;
-        const auto nameOff = peRvaToFileOffset(sections, nameRva);
+        }
+        const auto nameOff = peRvaToFileOffset(sections, nameRva, data.size());
         if (!nameOff)
             return {};
         std::string dll = lowerAscii(readPeAsciiZ(data, *nameOff));
         if (!dll.empty())
             names.push_back(std::move(dll));
     }
+    if (!sawTerminator)
+        return {};
     return names;
 }
 
@@ -402,10 +416,30 @@ bool isKnownWindowsRedistributableDll(const std::string &dll) {
         "winspool.drv",    "ws2_32.dll",       "wtsapi32.dll",   "ucrtbase.dll",
         "xinput1_4.dll",   "xinput9_1_0.dll",  "d3dcompiler_47.dll",
         "vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll"};
+    auto hasNumericSuffix = [](std::string_view text) {
+        if (text.empty())
+            return false;
+        bool sawDigit = false;
+        for (char c : text) {
+            if (c == '_')
+                continue;
+            if (!std::isdigit(static_cast<unsigned char>(c)))
+                return false;
+            sawDigit = true;
+        }
+        return sawDigit;
+    };
     if (exact.find(dll) != exact.end())
         return true;
-    return dll.rfind("api-ms-win-", 0) == 0 || dll.rfind("ext-ms-win-", 0) == 0 ||
-           dll.rfind("vcruntime", 0) == 0 || dll.rfind("msvcp", 0) == 0;
+    static constexpr std::string_view vcruntimePrefix = "vcruntime";
+    static constexpr std::string_view msvcpPrefix = "msvcp";
+    if (stem.rfind("vcruntime", 0) == 0 &&
+        hasNumericSuffix(std::string_view(stem).substr(vcruntimePrefix.size())))
+        return true;
+    if (stem.rfind("msvcp", 0) == 0 &&
+        hasNumericSuffix(std::string_view(stem).substr(msvcpPrefix.size())))
+        return true;
+    return dll.rfind("api-ms-win-", 0) == 0 || dll.rfind("ext-ms-win-", 0) == 0;
 }
 
 std::optional<fs::path> findAdjacentFileCaseInsensitive(const fs::path &dir,
@@ -772,6 +806,9 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     layout.displayIconRelativePath = !icoData.empty() ? exec + ".ico" : exec + ".exe";
 
     for (const auto &asset : pkg.assets) {
+        const std::string sourceRel =
+            sanitizePackageRelativePath(asset.sourcePath, "asset source path");
+        const std::string sourceLeaf = fs::path(sourceRel).filename().generic_string();
         fs::path srcPath = resolvePackageSourcePath(params.projectRoot, asset.sourcePath, "asset source path");
         const std::string targetDir =
             sanitizePackageRelativePath(asset.targetPath, "asset target path");
@@ -824,7 +861,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
                 });
         } else if (fs::is_regular_file(srcPath)) {
             const std::string relInstall = joinPackageRelativePath(
-                targetDir, srcPath.filename().generic_string(), "asset path");
+                targetDir, sourceLeaf, "asset path");
             addParentDirs(layout.installDirectories,
                           installDirSet,
                           WindowsInstallRoot::InstallDir,

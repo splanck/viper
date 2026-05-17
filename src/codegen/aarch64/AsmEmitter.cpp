@@ -525,6 +525,10 @@ static bool isPairImm7Offset(long long offset) {
     return scaled >= -64 && scaled <= 63;
 }
 
+/// @brief GAS mnemonic for an unscaled narrow load of @p bytes (1/2/4).
+/// @details Returns ldurb/ldurh/ldur. The unscaled (ldur*) forms are used so any
+///          signed 9-bit FP-relative offset works without scaling constraints.
+/// @throws std::runtime_error if @p bytes is not 1, 2, or 4.
 static const char *narrowLoadMnemonic(unsigned bytes) {
     switch (bytes) {
         case 1:
@@ -538,6 +542,10 @@ static const char *narrowLoadMnemonic(unsigned bytes) {
     }
 }
 
+/// @brief GAS mnemonic for an unscaled narrow store of @p bytes (1/2/4).
+/// @details Returns sturb/sturh/stur — the unscaled counterparts of
+///          narrowLoadMnemonic(), chosen for the same offset-flexibility reason.
+/// @throws std::runtime_error if @p bytes is not 1, 2, or 4.
 static const char *narrowStoreMnemonic(unsigned bytes) {
     switch (bytes) {
         case 1:
@@ -551,6 +559,15 @@ static const char *narrowStoreMnemonic(unsigned bytes) {
     }
 }
 
+/// @brief Emit a narrow GPR load/store using the 32-bit W-register view.
+/// @details Writes `  <mnemonic> w<rt>, [<base>, #<offset>]`. The W view is
+///          used because sub-word accesses operate on the low 32 bits; the
+///          caller selects @p mnemonic via narrow{Load,Store}Mnemonic().
+/// @param os       Output assembly stream.
+/// @param mnemonic Pre-selected ldur*/stur* mnemonic.
+/// @param rt       Transfer register (printed as its W alias).
+/// @param base     Base address register.
+/// @param offset   Signed byte offset from @p base.
 static void emitNarrowGprAccess(std::ostream &os,
                                 const char *mnemonic,
                                 PhysReg rt,

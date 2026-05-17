@@ -379,11 +379,35 @@ std::vector<uint8_t> buildVersionInfoResource(const PEVersionInfo &info) {
 void parseIcoToResources(const std::vector<uint8_t> &ico, std::vector<ResItem> &items) {
     if (ico.size() < 6)
         return;
+    if (ico[0] != 0 || ico[1] != 0 || ico[2] != 1 || ico[3] != 0)
+        return;
 
     // ICONDIR: reserved(2) + type(2) + count(2)
     uint16_t count = static_cast<uint16_t>(ico[4] | (ico[5] << 8));
     if (count == 0 || ico.size() < 6u + count * 16u)
         return;
+
+    struct IconImage {
+        size_t entryOff;
+        uint32_t size;
+        uint32_t offset;
+        uint16_t id;
+    };
+    std::vector<IconImage> images;
+    images.reserve(count);
+    for (uint16_t i = 0; i < count; i++) {
+        const size_t entryOff = 6 + static_cast<size_t>(i) * 16u;
+        const uint32_t imgSize =
+            static_cast<uint32_t>(ico[entryOff + 8] | (ico[entryOff + 9] << 8) |
+                                  (ico[entryOff + 10] << 16) | (ico[entryOff + 11] << 24));
+        const uint32_t imgOffset =
+            static_cast<uint32_t>(ico[entryOff + 12] | (ico[entryOff + 13] << 8) |
+                                  (ico[entryOff + 14] << 16) | (ico[entryOff + 15] << 24));
+        const uint64_t end = static_cast<uint64_t>(imgOffset) + imgSize;
+        if (imgSize == 0 || imgOffset > ico.size() || end > ico.size())
+            return;
+        images.push_back(IconImage{entryOff, imgSize, imgOffset, static_cast<uint16_t>(i + 1)});
+    }
 
     // Build GRPICONDIR: same as ICONDIR but entries use nID instead of dwImageOffset
     // GRPICONDIR = ICONDIR(6) + GRPICONDIRENTRY[count](14 each)
@@ -391,32 +415,23 @@ void parseIcoToResources(const std::vector<uint8_t> &ico, std::vector<ResItem> &
     // Copy ICONDIR header (6 bytes)
     grpIcon.insert(grpIcon.end(), ico.begin(), ico.begin() + 6);
 
-    for (uint16_t i = 0; i < count; i++) {
-        size_t entryOff = 6 + i * 16;
+    for (const auto &image : images) {
+        size_t entryOff = image.entryOff;
         // ICONDIRENTRY: w(1) h(1) colorCount(1) reserved(1) planes(2) bitCount(2)
         //               sizeInBytes(4) fileOffset(4) = 16 bytes
-        uint32_t imgSize =
-            static_cast<uint32_t>(ico[entryOff + 8] | (ico[entryOff + 9] << 8) |
-                                  (ico[entryOff + 10] << 16) | (ico[entryOff + 11] << 24));
-        uint32_t imgOffset =
-            static_cast<uint32_t>(ico[entryOff + 12] | (ico[entryOff + 13] << 8) |
-                                  (ico[entryOff + 14] << 16) | (ico[entryOff + 15] << 24));
-
         // GRPICONDIRENTRY: same first 12 bytes, but last 2 bytes = nID (uint16)
         // instead of last 4 bytes = dwImageOffset
         grpIcon.insert(grpIcon.end(), ico.begin() + entryOff, ico.begin() + entryOff + 12);
-        uint16_t iconId = static_cast<uint16_t>(i + 1);
+        uint16_t iconId = image.id;
         grpIcon.push_back(static_cast<uint8_t>(iconId & 0xFF));
         grpIcon.push_back(static_cast<uint8_t>((iconId >> 8) & 0xFF));
 
         // Extract the actual icon image data
-        if (imgOffset + imgSize <= ico.size()) {
-            ResItem icon;
-            icon.typeId = 3; // RT_ICON
-            icon.nameId = iconId;
-            icon.data.assign(ico.begin() + imgOffset, ico.begin() + imgOffset + imgSize);
-            items.push_back(std::move(icon));
-        }
+        ResItem icon;
+        icon.typeId = 3; // RT_ICON
+        icon.nameId = iconId;
+        icon.data.assign(ico.begin() + image.offset, ico.begin() + image.offset + image.size);
+        items.push_back(std::move(icon));
     }
 
     // Add RT_GROUP_ICON resource
@@ -648,6 +663,10 @@ std::vector<uint8_t> buildRelocSection() {
 /// An optional raw overlay (e.g. a ZIP payload) is appended after all sections.
 std::vector<uint8_t> buildPE(const PEBuildParams &params) {
     // ─── Section planning ──────────────────────────────────────────────
+    if (params.textSection.empty())
+        throw std::runtime_error("PEBuilder: .text section must not be empty");
+    if (params.entryPointOffset >= params.textSection.size())
+        throw std::runtime_error("PEBuilder: entry point offset is outside the .text section");
 
     // Count sections: .text is required; .rdata if imports; .rsrc if manifest
     uint32_t numSections = 1; // .text

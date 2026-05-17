@@ -80,23 +80,33 @@ void emitRetainStringVReg(MIRBuilder &builder, const VReg &valueVReg) {
     return value.kind == ILValue::Kind::I1 ? (value.i64 != 0 ? 1 : 0) : value.i64;
 }
 
+/// @brief True if @p kind is integer-like (I64/I1/PTR) — GPR-eligible.
 [[nodiscard]] bool isIntegerLikeKind(ILValue::Kind kind) noexcept {
     return kind == ILValue::Kind::I64 || kind == ILValue::Kind::I1 ||
            kind == ILValue::Kind::PTR;
 }
 
+/// @brief Assert @p value has an integer-like IL kind (I64/I1/PTR).
+/// @details Raises phaseAUnsupported(@p context) when the kind is not
+///          integer-like, halting lowering of a shape the backend can't emit.
 void requireIntegerLike(const ILValue &value, const char *context) {
     if (!isIntegerLikeKind(value.kind)) {
         phaseAUnsupported(context);
     }
 }
 
+/// @brief Assert @p value is an IL label operand.
+/// @details Raises phaseAUnsupported(@p context) for any non-LABEL kind;
+///          used by control-flow emitters that require a branch target.
 void requireLabel(const ILValue &value, const char *context) {
     if (value.kind != ILValue::Kind::LABEL) {
         phaseAUnsupported(context);
     }
 }
 
+/// @brief Assert @p operand is a register of @p cls, or (for GPR) an immediate.
+/// @details A register operand must match @p cls; an immediate is accepted only
+///          when @p cls is GPR. Anything else raises phaseAUnsupported(@p context).
 void requireRegOrImmForClass(const Operand &operand, RegClass cls, const char *context) {
     if (const auto *reg = std::get_if<OpReg>(&operand)) {
         if (reg->cls != cls) {
@@ -110,6 +120,9 @@ void requireRegOrImmForClass(const Operand &operand, RegClass cls, const char *c
     phaseAUnsupported(context);
 }
 
+/// @brief Assert @p operand is a register of exactly @p cls (no immediate form).
+/// @details Stricter than requireRegOrImmForClass(); raises
+///          phaseAUnsupported(@p context) for immediates or class mismatch.
 void requireRegisterForClass(const Operand &operand, RegClass cls, const char *context) {
     const auto *reg = std::get_if<OpReg>(&operand);
     if (!reg || reg->cls != cls) {

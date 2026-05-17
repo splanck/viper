@@ -329,6 +329,38 @@ static bool tarEntryData(const std::vector<uint8_t> &tarBytes,
     return false;
 }
 
+static bool tarEntryLinkTarget(const std::vector<uint8_t> &tarBytes,
+                               const std::string &entryName,
+                               std::string &targetOut) {
+    for (size_t off = 0; off + 512 <= tarBytes.size();) {
+        bool allZero = true;
+        for (size_t i = 0; i < 512; ++i) {
+            if (tarBytes[off + i] != 0) {
+                allZero = false;
+                break;
+            }
+        }
+        if (allZero)
+            return false;
+
+        const char *name = reinterpret_cast<const char *>(tarBytes.data() + off);
+        size_t nameLen = 0;
+        while (nameLen < 100 && name[nameLen] != '\0')
+            ++nameLen;
+        const uint64_t size = parseTarOctal(tarBytes.data() + off + 124, 12);
+        if (std::string(name, name + nameLen) == entryName && tarBytes[off + 156] == '2') {
+            const char *link = reinterpret_cast<const char *>(tarBytes.data() + off + 157);
+            size_t linkLen = 0;
+            while (linkLen < 100 && link[linkLen] != '\0')
+                ++linkLen;
+            targetOut.assign(link, link + linkLen);
+            return true;
+        }
+        off += 512 + static_cast<size_t>(((size + 511) / 512) * 512);
+    }
+    return false;
+}
+
 static bool arMemberData(const std::vector<uint8_t> &arBytes,
                          const std::string &memberName,
                          std::vector<uint8_t> &dataOut) {
@@ -645,6 +677,15 @@ TEST(Zip, DirectoryEntry) {
     EXPECT_EQ(readLE32(data.data() + 22), static_cast<uint32_t>(0)); // uncompressed
 }
 
+TEST(Zip, RootDirectoryEntryIsNoop) {
+    ZipWriter zip;
+    zip.addDirectory("./");
+    auto data = zip.finishToVector();
+
+    ZipReader reader(data.data(), data.size());
+    EXPECT_EQ(reader.entries().size(), static_cast<size_t>(0));
+}
+
 TEST(Zip, CentralDirectoryPresent) {
     ZipWriter zip;
     zip.addFileString("a.txt", "alpha");
@@ -758,6 +799,21 @@ TEST(Zip, AllowsInternalSymlinkTargets) {
 
     ZipReader reader(data.data(), data.size());
     EXPECT_TRUE(reader.find("bin/tool") != nullptr);
+}
+
+TEST(Zip, StoresNormalizedSymlinkTarget) {
+    ZipWriter zip;
+    zip.addDirectory("bin");
+    zip.addDirectory("lib");
+    zip.addFileString("lib/tool-real", "x");
+    zip.addSymlink("bin/tool", "..\\lib\\tool-real");
+    auto data = zip.finishToVector();
+
+    ZipReader reader(data.data(), data.size());
+    const ZipEntry *entry = reader.find("bin/tool");
+    ASSERT_TRUE(entry != nullptr);
+    const auto target = reader.extract(*entry);
+    EXPECT_EQ(std::string(target.begin(), target.end()), std::string("../lib/tool-real"));
 }
 
 // ============================================================================
@@ -881,6 +937,19 @@ TEST(Tar, AllowsInternalRelativeSymlinkTarget) {
     EXPECT_TRUE(verifyTarGz(gz, err));
 }
 
+TEST(Tar, StoresNormalizedSymlinkTarget) {
+    TarWriter tar;
+    tar.addDirectory("./bin", 0755);
+    tar.addDirectory("./lib", 0755);
+    tar.addFileString("./lib/tool-real", "x", 0755);
+    tar.addSymlink("./bin/tool", "..\\lib\\tool-real");
+    auto data = tar.finish();
+
+    std::string target;
+    ASSERT_TRUE(tarEntryLinkTarget(data, "bin/tool", target));
+    EXPECT_EQ(target, std::string("../lib/tool-real"));
+}
+
 TEST(Tar, RejectsEscapingSymlinkTarget) {
     TarWriter tar;
     EXPECT_THROWS(tar.addSymlink("./bin/tool", "../../outside"), std::runtime_error);
@@ -949,6 +1018,21 @@ TEST(Ar, RejectsTooLongMemberName) {
     EXPECT_THROWS(ar.finish(), std::runtime_error);
 }
 
+TEST(Ar, SupportsZeroByteNullDataMember) {
+    ArWriter ar;
+    ar.addMember("empty", nullptr, 0);
+    auto data = ar.finish();
+
+    std::vector<uint8_t> member;
+    ASSERT_TRUE(arMemberData(data, "empty", member));
+    EXPECT_EQ(member.size(), static_cast<size_t>(0));
+}
+
+TEST(Ar, RejectsNonEmptyNullDataMember) {
+    ArWriter ar;
+    EXPECT_THROWS(ar.addMember("bad", nullptr, 1), std::runtime_error);
+}
+
 // ============================================================================
 // PE Tests
 // ============================================================================
@@ -997,6 +1081,18 @@ TEST(PE, MachineARM64) {
     // COFF Machine at offset 0x84: 0xAA64 = ARM64
     uint16_t machine = readLE16(pe.data() + 0x84);
     EXPECT_EQ(machine, static_cast<uint16_t>(0xAA64));
+}
+
+TEST(PE, RejectsEmptyTextSection) {
+    PEBuildParams params;
+    EXPECT_THROWS(buildPE(params), std::runtime_error);
+}
+
+TEST(PE, RejectsEntryPointOutsideTextSection) {
+    PEBuildParams params;
+    params.textSection = {0x90, 0xC3};
+    params.entryPointOffset = 2;
+    EXPECT_THROWS(buildPE(params), std::runtime_error);
 }
 
 TEST(PE, OptionalHeaderMagic) {
@@ -1998,6 +2094,25 @@ TEST(PackageUtils, SafeDirectoryIterateResolvedReportsValidatedReadPath) {
     EXPECT_TRUE(sawResolvedSymlink);
     fs::remove_all(tmpRoot);
 }
+
+TEST(PackageUtils, SafeDirectoryIterateRejectsEscapingSymlink) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_safe_iter_escape_symlink";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot / "project" / "assets");
+    {
+        std::ofstream out(tmpRoot / "outside.txt");
+        out << "outside";
+    }
+    fs::create_symlink(tmpRoot / "outside.txt", tmpRoot / "project" / "assets" / "escape.txt");
+
+    EXPECT_THROWS(safeDirectoryIterateResolved(
+                      tmpRoot / "project" / "assets",
+                      tmpRoot / "project",
+                      [](const SafeDirectoryEntry &) {}),
+                  std::runtime_error);
+    fs::remove_all(tmpRoot);
+}
 #endif
 
 TEST(PackageUtils, ValidatesPackageUrls) {
@@ -2864,6 +2979,31 @@ TEST(WindowsPackageBuilder, RejectsMissingDebugRuntimeDllDependency) {
     fs::remove_all(tmpRoot);
 }
 
+TEST(WindowsPackageBuilder, RejectsMissingCustomDllWithMsvcPrefix) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot =
+        fs::temp_directory_path() / "viper_packaging_windows_msvc_prefix_custom_dll_test";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot);
+
+    writeTestWindowsPe(tmpRoot / "app.exe", "x64", {{"msvcp_plugin.dll", {"plugin_entry"}}});
+
+    PackageConfig pkg;
+    pkg.displayName = "Custom Prefix DLL App";
+
+    WindowsBuildParams params;
+    params.projectName = "customprefixdll";
+    params.version = "1.0.0";
+    params.executablePath = (tmpRoot / "app.exe").string();
+    params.projectRoot = tmpRoot.string();
+    params.pkgConfig = pkg;
+    params.outputPath = (tmpRoot / "custom_prefix_setup.exe").string();
+    params.archStr = "x64";
+
+    EXPECT_THROWS(buildWindowsPackage(params), std::runtime_error);
+    fs::remove_all(tmpRoot);
+}
+
 TEST(WindowsPackageBuilder, RejectsMissingAdjacentDllDependency) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_windows_missing_dll_test";
@@ -3081,6 +3221,46 @@ TEST(LinuxPackageBuilder, TarballNormalizesDebianEpochVersionInTopDirectory) {
     EXPECT_TRUE(verifyTarGzPayload(tarGz, {"portableapp-2_1.0~beta+1/portableapp"}, err));
     fs::remove_all(tmpRoot);
 }
+
+#if !defined(_WIN32)
+TEST(LinuxPackageBuilder, TarballSingleFileSymlinkAssetKeepsLogicalName) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_tarball_symlink_asset";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot / "assets");
+    {
+        std::ofstream exe(tmpRoot / "app", std::ios::binary);
+        exe << "stub";
+    }
+    {
+        std::ofstream real(tmpRoot / "assets" / "real.txt");
+        real << "payload";
+    }
+    fs::create_symlink("real.txt", tmpRoot / "assets" / "link.txt");
+
+    PackageConfig pkg;
+    pkg.displayName = "Portable App";
+    pkg.assets.push_back({"assets/link.txt", "data"});
+
+    LinuxBuildParams params;
+    params.projectName = "portableapp";
+    params.version = "1.0.0";
+    params.executablePath = (tmpRoot / "app").string();
+    params.projectRoot = tmpRoot.string();
+    params.pkgConfig = pkg;
+    params.outputPath = (tmpRoot / "portableapp.tar.gz").string();
+    params.archStr = "x64";
+
+    buildTarball(params);
+    const auto tarBytes = inflateGzipPayload(readFile(params.outputPath));
+    std::vector<uint8_t> data;
+    EXPECT_TRUE(tarEntryData(tarBytes, "portableapp-1.0.0/data/link.txt", data));
+    EXPECT_EQ(std::string(data.begin(), data.end()), std::string("payload"));
+    std::vector<uint8_t> unexpected;
+    EXPECT_FALSE(tarEntryData(tarBytes, "portableapp-1.0.0/data/real.txt", unexpected));
+    fs::remove_all(tmpRoot);
+}
+#endif
 
 TEST(LinuxPackageBuilder, TarballRejectsDuplicateAssetOutputPath) {
     namespace fs = std::filesystem;
@@ -3490,6 +3670,30 @@ TEST(ToolchainLinuxPackageBuilder, BuildsTarballFromManifest) {
     uint32_t helperMode = 0;
     EXPECT_TRUE(tarEntryMode(tarBytes, topDir + "share/doc/viper/helper.sh", helperMode));
     EXPECT_EQ(helperMode, static_cast<uint32_t>(0750));
+    fs::remove_all(tmpRoot);
+}
+
+TEST(ToolchainLinuxPackageBuilder, TarballNormalizesDebianEpochVersionInTopDirectory) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_tar_epoch_stage";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    auto manifest = gatherToolchainInstallManifest(stage);
+    manifest.platform = "linux";
+    manifest.version = "2:9.8.7";
+
+    LinuxToolchainBuildParams params;
+    params.manifest = manifest;
+    params.outputPath = (tmpRoot / "viper-epoch.tar.gz").string();
+    buildToolchainTarball(params);
+
+    const auto tarGz = readFile(params.outputPath);
+    const auto tarBytes = inflateGzipPayload(tarGz);
+    const std::string topDir =
+        std::string("viper-2_9.8.7-") + manifest.platform + "-" + manifest.arch + "/";
+    EXPECT_EQ(tarFirstEntryName(tarBytes), topDir);
+    std::ostringstream err;
+    EXPECT_TRUE(verifyTarGzPayload(tarGz, {topDir + "bin/viper"}, err));
     fs::remove_all(tmpRoot);
 }
 
