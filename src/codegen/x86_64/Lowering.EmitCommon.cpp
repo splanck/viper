@@ -422,10 +422,18 @@ void EmitCommon::emitShift(const ILInstr &instr, MOpcode opcImm, MOpcode opcReg)
     if (instr.resultId < 0 || instr.ops.size() < 2) {
         phaseAUnsupported("shift: missing operands");
     }
+    if (!isIntegerLikeKind(instr.resultKind) || !isIntegerLikeKind(instr.ops[0].kind) ||
+        !isIntegerLikeKind(instr.ops[1].kind)) {
+        phaseAUnsupported("shift: expected integer-like operands");
+    }
 
     const VReg destReg = builder().ensureVReg(instr.resultId, instr.resultKind);
+    if (destReg.cls != RegClass::GPR) {
+        phaseAUnsupported("shift: destination must be a GPR");
+    }
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
-    const Operand lhs = builder().makeOperandForValue(instr.ops[0], destReg.cls);
+    const Operand lhs = builder().makeOperandForValue(instr.ops[0], RegClass::GPR);
+    requireRegOrImmForClass(lhs, RegClass::GPR, "shift lhs register class mismatch");
 
     if (std::holds_alternative<OpImm>(lhs)) {
         builder().append(MInstr::make(MOpcode::MOVri, std::vector<Operand>{clone(dest), lhs}));
@@ -433,7 +441,8 @@ void EmitCommon::emitShift(const ILInstr &instr, MOpcode opcImm, MOpcode opcReg)
         builder().append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{clone(dest), lhs}));
     }
 
-    Operand rhs = builder().makeOperandForValue(instr.ops[1], destReg.cls);
+    Operand rhs = builder().makeOperandForValue(instr.ops[1], RegClass::GPR);
+    requireRegOrImmForClass(rhs, RegClass::GPR, "shift rhs register class mismatch");
     if (auto *imm = std::get_if<OpImm>(&rhs)) {
         const auto masked = static_cast<int64_t>(static_cast<std::uint64_t>(imm->val) & 63ULL);
         builder().append(
@@ -822,6 +831,10 @@ void EmitCommon::emitCast(const ILInstr &instr, MOpcode opc, RegClass dstCls, Re
 
     const Operand src = builder().makeOperandForValue(instr.ops[0], srcCls);
     const VReg destReg = builder().ensureVReg(instr.resultId, instr.resultKind);
+    if (destReg.cls != dstCls) {
+        phaseAUnsupported("cast: destination register class mismatch");
+    }
+    requireRegOrImmForClass(src, srcCls, "cast source register class mismatch");
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
 
     if (std::holds_alternative<OpImm>(src)) {
@@ -841,7 +854,6 @@ void EmitCommon::emitCast(const ILInstr &instr, MOpcode opc, RegClass dstCls, Re
         builder().append(MInstr::make(opc, std::vector<Operand>{clone(dest), src}));
     }
 
-    (void)dstCls;
 }
 
 /// @brief Emit a division or remainder pseudo instruction.

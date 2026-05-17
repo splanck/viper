@@ -143,6 +143,23 @@ BinaryEmitResult compileBinary(const ILFunction &fn, const CodegenOptions &optio
     return emitModuleToBinary(module, options);
 }
 
+void expectCompileRejects(std::string name,
+                          std::vector<ILInstr> instrs,
+                          std::vector<int> paramIds = {},
+                          std::vector<ILValue::Kind> paramKinds = {}) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = std::move(paramIds);
+    entry.paramKinds = std::move(paramKinds);
+    entry.instrs = std::move(instrs);
+
+    ILFunction fn{};
+    fn.name = std::move(name);
+    fn.blocks = {std::move(entry)};
+
+    EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
 CodegenResult emitRawAssembly(const MFunction &fn) {
     AsmEmitter::RoDataPool roData{};
     return emitMIRToAssembly({fn}, roData, sysvTarget(), {});
@@ -2616,6 +2633,93 @@ TEST(X86BackendRegressions, FpAddRejectsGprOperand) {
     fn.blocks = {entry};
 
     EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, BitwiseAndRejectsF64Result) {
+    expectCompileRejects("and_f64_result",
+                         {op("and", {val(ILValue::Kind::F64, 0), immF64(1.0)}, 1,
+                             ILValue::Kind::F64),
+                          op("ret", {})},
+                         {0},
+                         {ILValue::Kind::F64});
+}
+
+TEST(X86BackendRegressions, BitwiseOrRejectsF64Result) {
+    expectCompileRejects("or_f64_result",
+                         {op("or", {val(ILValue::Kind::F64, 0), immF64(1.0)}, 1,
+                             ILValue::Kind::F64),
+                          op("ret", {})},
+                         {0},
+                         {ILValue::Kind::F64});
+}
+
+TEST(X86BackendRegressions, BitwiseXorRejectsF64Result) {
+    expectCompileRejects("xor_f64_result",
+                         {op("xor", {val(ILValue::Kind::F64, 0), immF64(1.0)}, 1,
+                             ILValue::Kind::F64),
+                          op("ret", {})},
+                         {0},
+                         {ILValue::Kind::F64});
+}
+
+TEST(X86BackendRegressions, ShiftRejectsF64Result) {
+    expectCompileRejects("shl_f64_result",
+                         {op("shl", {val(ILValue::Kind::F64, 0), imm(1)}, 1,
+                             ILValue::Kind::F64),
+                          op("ret", {})},
+                         {0},
+                         {ILValue::Kind::F64});
+}
+
+TEST(X86BackendRegressions, ShiftRejectsF64Count) {
+    expectCompileRejects("shl_f64_count",
+                         {op("shl", {val(ILValue::Kind::I64, 0), val(ILValue::Kind::F64, 1)},
+                             2,
+                             ILValue::Kind::I64),
+                          op("ret", {val(ILValue::Kind::I64, 2)})},
+                         {0, 1},
+                         {ILValue::Kind::I64, ILValue::Kind::F64});
+}
+
+TEST(X86BackendRegressions, ConstNullRejectsNonPointerResult) {
+    expectCompileRejects("const_null_f64_result",
+                         {op("const_null", {}, 0, ILValue::Kind::F64), op("ret", {})});
+}
+
+TEST(X86BackendRegressions, FPToSIRejectsNonF64Source) {
+    expectCompileRejects("fptosi_i64_source",
+                         {op("fptosi", {imm(1)}, 0, ILValue::Kind::I64),
+                          op("ret", {val(ILValue::Kind::I64, 0)})});
+}
+
+TEST(X86BackendRegressions, FPToSIRejectsNonIntegerResult) {
+    expectCompileRejects("fptosi_f64_result",
+                         {op("fptosi", {immF64(1.0)}, 0, ILValue::Kind::F64),
+                          op("ret", {})});
+}
+
+TEST(X86BackendRegressions, FPToUIRejectsNonIntegerResult) {
+    expectCompileRejects("fptoui_f64_result",
+                         {op("fptoui", {immF64(1.0)}, 0, ILValue::Kind::F64),
+                          op("ret", {})});
+}
+
+TEST(X86BackendRegressions, SIToFPRejectsNonF64Result) {
+    expectCompileRejects("sitofp_i64_result",
+                         {op("sitofp", {imm(1)}, 0, ILValue::Kind::I64),
+                          op("ret", {val(ILValue::Kind::I64, 0)})});
+}
+
+TEST(X86BackendRegressions, UIToFPRejectsNonF64Result) {
+    expectCompileRejects("uitofp_i64_result",
+                         {op("uitofp", {imm(1)}, 0, ILValue::Kind::I64),
+                          op("ret", {val(ILValue::Kind::I64, 0)})});
+}
+
+TEST(X86BackendRegressions, NarrowCastRejectsNonIntegerResult) {
+    expectCompileRejects("narrow_ptr_result",
+                         {opBits("si_narrow_chk", {imm(1)}, 0, ILValue::Kind::PTR, 16),
+                          op("ret", {})});
 }
 
 TEST(X86BackendRegressions, UnknownIntegerCompareOpcodeIsRejected) {

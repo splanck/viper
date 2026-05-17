@@ -102,6 +102,44 @@ uint64_t unsignedUpperExclusiveF64Bits(std::uint8_t widthBits) {
            kind == ILValue::Kind::PTR;
 }
 
+[[nodiscard]] bool isIntegerScalarKind(ILValue::Kind kind) noexcept {
+    return kind == ILValue::Kind::I64 || kind == ILValue::Kind::I1;
+}
+
+void requireIntToFpShape(const ILInstr &instr, const char *context) {
+    if (instr.resultId < 0 || instr.ops.empty()) {
+        phaseAUnsupported(context);
+    }
+    if (instr.resultKind != ILValue::Kind::F64) {
+        phaseAUnsupported(context);
+    }
+    if (!isIntegerScalarKind(instr.ops.front().kind)) {
+        phaseAUnsupported(context);
+    }
+}
+
+void requireFpToIntShape(const ILInstr &instr, const char *context) {
+    if (instr.resultId < 0 || instr.ops.empty()) {
+        phaseAUnsupported(context);
+    }
+    if (instr.ops.front().kind != ILValue::Kind::F64) {
+        phaseAUnsupported(context);
+    }
+    if (!isIntegerScalarKind(instr.resultKind)) {
+        phaseAUnsupported(context);
+    }
+}
+
+void requireNarrowCastShape(const ILInstr &instr, const char *context) {
+    if (instr.resultId < 0 || instr.ops.empty()) {
+        phaseAUnsupported(context);
+    }
+    if (!isIntegerScalarKind(instr.ops.front().kind) ||
+        !isIntegerScalarKind(instr.resultKind)) {
+        phaseAUnsupported(context);
+    }
+}
+
 [[nodiscard]] std::uint8_t normalizedIntegerBits(std::uint8_t bits, ILValue::Kind kind) noexcept {
     if (kind == ILValue::Kind::I1) {
         return 1;
@@ -556,6 +594,7 @@ void emitZSTrunc(const ILInstr &instr, MIRBuilder &builder) {
 /// @param instr IL sitofp instruction.
 /// @param builder Active MIR builder.
 void emitSIToFP(const ILInstr &instr, MIRBuilder &builder) {
+    requireIntToFpShape(instr, "sitofp: expected integer source and f64 result");
     EmitCommon(builder).emitCast(instr, MOpcode::CVTSI2SD, RegClass::XMM, RegClass::GPR);
 }
 
@@ -568,14 +607,15 @@ void emitSIToFP(const ILInstr &instr, MIRBuilder &builder) {
 /// @param instr IL fptosi instruction.
 /// @param builder Active MIR builder.
 void emitFPToSI(const ILInstr &instr, MIRBuilder &builder) {
-    if (instr.resultId < 0 || instr.ops.empty()) {
-        return;
-    }
+    requireFpToIntShape(instr, "fptosi: expected f64 source and integer result");
 
     EmitCommon emit(builder);
     const Operand src =
         emit.materialise(builder.makeOperandForValue(instr.ops[0], RegClass::XMM), RegClass::XMM);
     const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
+    if (destReg.cls != RegClass::GPR) {
+        phaseAUnsupported("fptosi: destination must be a GPR");
+    }
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
 
     const uint32_t labelId = builder.lower().nextLocalLabelId();
@@ -619,14 +659,16 @@ void emitFPToSI(const ILInstr &instr, MIRBuilder &builder) {
 /// @param instr IL fptosi.chk instruction.
 /// @param builder Active MIR builder.
 void emitFPToSIChecked(const ILInstr &instr, MIRBuilder &builder) {
-    if (instr.resultId < 0 || instr.ops.empty())
-        return;
+    requireFpToIntShape(instr, "fptosi_chk: expected f64 source and integer result");
 
     EmitCommon emit(builder);
     const Operand src =
         emit.materialise(builder.makeOperandForValue(instr.ops[0], RegClass::XMM), RegClass::XMM);
     const Operand rounded = emitRoundEvenCall(builder, src);
     const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
+    if (destReg.cls != RegClass::GPR) {
+        phaseAUnsupported("fptosi_chk: destination must be a GPR");
+    }
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
 
     const uint32_t labelId = builder.lower().nextLocalLabelId();
@@ -672,15 +714,16 @@ void emitFPToSIChecked(const ILInstr &instr, MIRBuilder &builder) {
 /// @param instr IL fptoui.chk instruction.
 /// @param builder Active MIR builder.
 void emitFpToUi(const ILInstr &instr, MIRBuilder &builder) {
-    if (instr.resultId < 0 || instr.ops.empty()) {
-        return;
-    }
+    requireFpToIntShape(instr, "fptoui: expected f64 source and integer result");
 
     EmitCommon emit(builder);
     const Operand src =
         emit.materialise(builder.makeOperandForValue(instr.ops[0], RegClass::XMM), RegClass::XMM);
     const Operand rounded = emitRoundEvenCall(builder, src);
     const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
+    if (destReg.cls != RegClass::GPR) {
+        phaseAUnsupported("fptoui: destination must be a GPR");
+    }
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
 
     const uint32_t labelId = builder.lower().nextLocalLabelId();
@@ -751,9 +794,8 @@ void emitFpToUi(const ILInstr &instr, MIRBuilder &builder) {
 /// @param builder Active MIR builder.
 /// @param isSigned True for `s.narrow.chk`, false for `u.narrow.chk`.
 void emitNarrowCastChecked(const ILInstr &instr, MIRBuilder &builder, bool isSigned) {
-    if (instr.resultId < 0 || instr.ops.empty()) {
-        return;
-    }
+    requireNarrowCastShape(instr, isSigned ? "si_narrow_chk: expected integer operands"
+                                           : "ui_narrow_chk: expected integer operands");
 
     EmitCommon emit(builder);
     const Operand src =
@@ -762,6 +804,9 @@ void emitNarrowCastChecked(const ILInstr &instr, MIRBuilder &builder, bool isSig
                                  ? emitSignExtendedToWidth(builder, emit, emit.clone(src), instr.resultBits)
                                  : emitZeroExtendedToWidth(builder, emit, emit.clone(src), instr.resultBits);
     const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
+    if (destReg.cls != RegClass::GPR) {
+        phaseAUnsupported("narrow_chk: destination must be a GPR");
+    }
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
 
     const uint32_t labelId = builder.lower().nextLocalLabelId();
@@ -813,14 +858,15 @@ void emitUiNarrowChecked(const ILInstr &instr, MIRBuilder &builder) {
 ///            addsd  %dst, %dst      ; double back
 ///          .Ldone:
 void emitUiToFp(const ILInstr &instr, MIRBuilder &builder) {
-    if (instr.resultId < 0 || instr.ops.empty()) {
-        return;
-    }
+    requireIntToFpShape(instr, "uitofp: expected integer source and f64 result");
 
     EmitCommon emit(builder);
     const Operand src =
         emit.materialiseGpr(builder.makeOperandForValue(instr.ops[0], RegClass::GPR));
     const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
+    if (destReg.cls != RegClass::XMM) {
+        phaseAUnsupported("uitofp: destination must be an XMM register");
+    }
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
 
     const uint32_t labelId = builder.lower().nextLocalLabelId();

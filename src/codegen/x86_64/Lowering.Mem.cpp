@@ -453,7 +453,10 @@ void emitGEP(const ILInstr &instr, MIRBuilder &builder) {
 /// @details Produces a zero-valued pointer by moving immediate 0 into the result register.
 void emitConstNull(const ILInstr &instr, MIRBuilder &builder) {
     if (instr.resultId < 0) {
-        return;
+        phaseAUnsupported("const_null: missing result");
+    }
+    if (instr.resultKind != ILValue::Kind::PTR) {
+        phaseAUnsupported("const_null: result must be a pointer");
     }
 
     const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);

@@ -24,8 +24,24 @@
 
 #include "LowerILToMIR.hpp"
 #include "Lowering.EmitCommon.hpp"
+#include "Unsupported.hpp"
 
 namespace viper::codegen::x64::lowering {
+namespace {
+
+[[nodiscard]] bool isIntegerLikeKind(ILValue::Kind kind) noexcept {
+    return kind == ILValue::Kind::I64 || kind == ILValue::Kind::I1 ||
+           kind == ILValue::Kind::PTR;
+}
+
+void requireBitwiseResult(const ILInstr &instr, MIRBuilder &builder, const char *context) {
+    if (!isIntegerLikeKind(instr.resultKind) ||
+        builder.regClassFor(instr.resultKind) != RegClass::GPR) {
+        phaseAUnsupported(context);
+    }
+}
+
+} // namespace
 
 /// @brief Lower a bitwise AND IL instruction.
 /// @details Emits an `AND` binary instruction when the IL result type maps to a
@@ -34,10 +50,8 @@ namespace viper::codegen::x64::lowering {
 /// @param instr IL bitwise AND instruction.
 /// @param builder Machine IR builder receiving the lowered sequence.
 void emitAnd(const ILInstr &instr, MIRBuilder &builder) {
-    const RegClass cls = builder.regClassFor(instr.resultKind);
-    if (cls == RegClass::GPR) {
-        EmitCommon(builder).emitBinary(instr, MOpcode::ANDrr, MOpcode::ANDri, cls, true);
-    }
+    requireBitwiseResult(instr, builder, "bitwise and: expected integer-like result");
+    EmitCommon(builder).emitBinary(instr, MOpcode::ANDrr, MOpcode::ANDri, RegClass::GPR, true);
 }
 
 /// @brief Lower a bitwise OR IL instruction.
@@ -47,10 +61,8 @@ void emitAnd(const ILInstr &instr, MIRBuilder &builder) {
 /// @param instr IL bitwise OR instruction.
 /// @param builder Machine IR builder receiving the lowered sequence.
 void emitOr(const ILInstr &instr, MIRBuilder &builder) {
-    const RegClass cls = builder.regClassFor(instr.resultKind);
-    if (cls == RegClass::GPR) {
-        EmitCommon(builder).emitBinary(instr, MOpcode::ORrr, MOpcode::ORri, cls, true);
-    }
+    requireBitwiseResult(instr, builder, "bitwise or: expected integer-like result");
+    EmitCommon(builder).emitBinary(instr, MOpcode::ORrr, MOpcode::ORri, RegClass::GPR, true);
 }
 
 /// @brief Lower a bitwise XOR IL instruction.
@@ -60,10 +72,8 @@ void emitOr(const ILInstr &instr, MIRBuilder &builder) {
 /// @param instr IL bitwise XOR instruction.
 /// @param builder Machine IR builder receiving the lowered sequence.
 void emitXor(const ILInstr &instr, MIRBuilder &builder) {
-    const RegClass cls = builder.regClassFor(instr.resultKind);
-    if (cls == RegClass::GPR) {
-        EmitCommon(builder).emitBinary(instr, MOpcode::XORrr, MOpcode::XORri, cls, true);
-    }
+    requireBitwiseResult(instr, builder, "bitwise xor: expected integer-like result");
+    EmitCommon(builder).emitBinary(instr, MOpcode::XORrr, MOpcode::XORri, RegClass::GPR, true);
 }
 
 /// @brief Lower a shift-left IL instruction.
