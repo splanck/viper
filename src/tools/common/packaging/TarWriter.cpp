@@ -25,6 +25,7 @@
 #include "TarWriter.hpp"
 #include "PkgUtils.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <cstring>
 #include <filesystem>
@@ -95,7 +96,12 @@ void TarWriter::addFile(
         throw std::runtime_error("duplicate tar entry path: " + cleanPath);
     Entry e;
     e.path = cleanPath;
-    e.data.assign(data, data + size);
+    if (size > 0) {
+        if (data == nullptr)
+            throw std::runtime_error("tar file data pointer is null for non-empty file: " +
+                                     cleanPath);
+        e.data.assign(data, data + size);
+    }
     e.mode = mode;
     e.mtime = mtime;
     e.typeflag = '0';
@@ -210,6 +216,39 @@ uint32_t computeChecksum(const uint8_t header[512]) {
     return sum;
 }
 
+/// @brief Split a normalized path into USTAR prefix/name fields.
+/// The name field must be non-empty even for directory entries that end in '/'.
+void splitUstarPath(const std::string &path, std::string &prefix, std::string &name) {
+    name = path;
+    prefix.clear();
+    if (name.size() <= 100)
+        return;
+
+    size_t searchFrom = name.size() - 1;
+    if (name.back() == '/')
+        --searchFrom;
+    searchFrom = std::min<size_t>(searchFrom, 155);
+
+    size_t splitAt = name.rfind('/', searchFrom);
+    while (splitAt != std::string::npos) {
+        if (splitAt > 0 && splitAt + 1 < name.size()) {
+            const std::string candidatePrefix = name.substr(0, splitAt);
+            const std::string candidateName = name.substr(splitAt + 1);
+            if (!candidateName.empty() && candidateName.size() <= 100 &&
+                candidatePrefix.size() <= 155) {
+                prefix = candidatePrefix;
+                name = candidateName;
+                return;
+            }
+        }
+        if (splitAt == 0)
+            break;
+        splitAt = name.rfind('/', splitAt - 1);
+    }
+
+    throw std::runtime_error("tar path too long: " + path);
+}
+
 } // namespace
 
 /// @brief Serialize all accumulated entries into a USTAR tar byte stream.
@@ -233,19 +272,9 @@ std::vector<uint8_t> TarWriter::finish() const {
         uint8_t hdr[512];
         std::memset(hdr, 0, 512);
 
-        // Split path into prefix + name if > 100 chars
         std::string name = e.path;
         std::string prefix;
-        if (name.size() > 100) {
-            // Try to split at last '/' within first 155 chars
-            size_t splitAt = name.rfind('/', 154);
-            if (splitAt != std::string::npos && splitAt > 0) {
-                prefix = name.substr(0, splitAt);
-                name = name.substr(splitAt + 1);
-            }
-            if (name.size() > 100 || prefix.size() > 155)
-                throw std::runtime_error("tar path too long: " + e.path);
-        }
+        splitUstarPath(e.path, prefix, name);
 
         // name[100]
         writeString(hdr + 0, 100, name);

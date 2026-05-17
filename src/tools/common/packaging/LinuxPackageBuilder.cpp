@@ -41,6 +41,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <set>
 #include <sstream>
 #include <utility>
@@ -109,6 +110,33 @@ uint32_t permissionBitsFor(const ToolchainFileEntry &file) {
     if (bits != 0)
         return bits;
     return file.executable ? 0755u : 0644u;
+}
+
+uint32_t permissionBitsForFilesystemPath(const fs::path &path) {
+    std::error_code ec;
+    const fs::perms perms = fs::status(path, ec).permissions();
+    if (ec)
+        return 0644u;
+    const bool executable =
+        (perms & (fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec)) !=
+        fs::perms::none;
+    return executable ? 0755u : 0644u;
+}
+
+std::string portableArchiveVersionComponent(const std::string &version) {
+    validateDebVersion(version, "package version");
+    std::string out;
+    out.reserve(version.size());
+    for (char c : version) {
+        const unsigned char uc = static_cast<unsigned char>(c);
+        if (std::isalnum(uc) || c == '.' || c == '+' || c == '~' || c == '-')
+            out.push_back(c);
+        else
+            out.push_back('_');
+    }
+    if (out.empty() || out == "." || out == "..")
+        throw std::runtime_error("package version does not form a portable archive path");
+    return out;
 }
 
 /// @brief Append a hidden terminal-type .desktop file to `dataFiles` for the given file associations.
@@ -491,7 +519,7 @@ void buildDebPackage(const LinuxBuildParams &params) {
 
     // The executable
     auto execData = readFile(params.executablePath);
-    dataFiles.push_back({"usr/bin/" + exeName, execData});
+    dataFiles.emplace_back("usr/bin/" + exeName, std::move(execData), 0755);
 
     // Assets
     for (const auto &asset : pkg.assets) {
@@ -505,26 +533,28 @@ void buildDebPackage(const LinuxBuildParams &params) {
 
         if (fs::is_directory(srcPath)) {
             dataFiles.push_back(DataFile::dir(sharePrefix));
-            safeDirectoryIterate(
-                srcPath, params.projectRoot, [&](const fs::directory_entry &entry) {
+            safeDirectoryIterateResolved(
+                srcPath, params.projectRoot, [&](const SafeDirectoryEntry &entry) {
                     auto relPath = sanitizePackageRelativePath(
-                        entry.path().lexically_relative(srcPath).generic_string(), "asset path");
-                    if (fs::is_directory(entry.path())) {
+                        entry.logicalPath.lexically_relative(srcPath).generic_string(), "asset path");
+                    if (entry.directory) {
                         dataFiles.push_back(DataFile::dir(
                             joinPackageRelativePath(sharePrefix, relPath, "asset path")));
-                    } else if (fs::is_regular_file(entry.path())) {
-                        auto fileData = readFile(entry.path().string());
-                        dataFiles.push_back(
-                            {joinPackageRelativePath(sharePrefix, relPath, "asset path"),
-                             fileData});
+                    } else if (entry.regularFile) {
+                        auto fileData = readFile(entry.resolvedPath.string());
+                        dataFiles.emplace_back(
+                            joinPackageRelativePath(sharePrefix, relPath, "asset path"),
+                            std::move(fileData),
+                            permissionBitsForFilesystemPath(entry.resolvedPath));
                     }
                 });
         } else if (fs::is_regular_file(srcPath)) {
             auto fileData = readFile(srcPath.string());
-            dataFiles.push_back({joinPackageRelativePath(sharePrefix,
-                                                         srcPath.filename().generic_string(),
-                                                         "asset path"),
-                                 fileData});
+            dataFiles.emplace_back(joinPackageRelativePath(sharePrefix,
+                                                           srcPath.filename().generic_string(),
+                                                           "asset path"),
+                                   std::move(fileData),
+                                   permissionBitsForFilesystemPath(srcPath));
         } else {
             throw std::runtime_error("asset is not a regular file or directory: " +
                                      asset.sourcePath);
@@ -615,13 +645,9 @@ void buildDebPackage(const LinuxBuildParams &params) {
 
     // Add files
     for (const auto &df : dataFiles) {
-        uint32_t mode = 0644;
-        // Executables get 0755
         if (df.directory)
             continue;
-        if (df.installPath.find("usr/bin/") == 0)
-            mode = 0755;
-        dataTar.addFile("./" + df.installPath, df.data.data(), df.data.size(), mode);
+        dataTar.addFile("./" + df.installPath, df.data.data(), df.data.size(), df.mode);
     }
 
     auto dataTarBytes = dataTar.finish();
@@ -643,9 +669,12 @@ void buildDebPackage(const LinuxBuildParams &params) {
         ctl << "Maintainer: " << debMaintainerFor(pkg, displayName) << "\n";
 
         // Installed-Size in KiB
-        size_t totalBytes = 0;
-        for (const auto &df : dataFiles)
-            totalBytes += df.data.size();
+        uint64_t totalBytes = 0;
+        for (const auto &df : dataFiles) {
+            if (df.data.size() > std::numeric_limits<uint64_t>::max() - totalBytes)
+                throw std::runtime_error("Debian package installed size overflow");
+            totalBytes += static_cast<uint64_t>(df.data.size());
+        }
         ctl << "Installed-Size: " << ((totalBytes + 1023) / 1024) << "\n";
 
         // Dependencies
@@ -774,8 +803,10 @@ void buildTarball(const LinuxBuildParams &params) {
                                  params.executablePath);
 
     // Top-level directory in the tarball
-    std::string topDir =
-        sanitizePackageRelativePath(pkgName + "-" + version, "tarball top-level directory") + "/";
+    std::string topDir = sanitizePackageRelativePath(
+                             pkgName + "-" + portableArchiveVersionComponent(version),
+                             "tarball top-level directory") +
+                         "/";
 
     TarWriter tar;
     tar.addDirectory(topDir, 0755);
@@ -797,21 +828,23 @@ void buildTarball(const LinuxBuildParams &params) {
         if (fs::is_directory(srcPath)) {
             if (!targetDir.empty())
                 tar.addDirectory(prefix, 0755);
-            safeDirectoryIterate(
-                srcPath, params.projectRoot, [&](const fs::directory_entry &entry) {
-                    if (fs::is_directory(entry.path())) {
+            safeDirectoryIterateResolved(
+                srcPath, params.projectRoot, [&](const SafeDirectoryEntry &entry) {
+                    if (entry.directory) {
                         auto relPath = sanitizePackageRelativePath(
-                            entry.path().lexically_relative(srcPath).generic_string(), "asset path");
+                            entry.logicalPath.lexically_relative(srcPath).generic_string(),
+                            "asset path");
                         tar.addDirectory(joinPackageRelativePath(prefix, relPath, "asset path"),
                                          0755);
-                    } else if (fs::is_regular_file(entry.path())) {
+                    } else if (entry.regularFile) {
                         auto relPath = sanitizePackageRelativePath(
-                            entry.path().lexically_relative(srcPath).generic_string(), "asset path");
-                        auto fileData = readFile(entry.path().string());
+                            entry.logicalPath.lexically_relative(srcPath).generic_string(),
+                            "asset path");
+                        auto fileData = readFile(entry.resolvedPath.string());
                         tar.addFile(joinPackageRelativePath(prefix, relPath, "asset path"),
                                     fileData.data(),
                                     fileData.size(),
-                                    0644);
+                                    permissionBitsForFilesystemPath(entry.resolvedPath));
                     }
                 });
         } else if (fs::is_regular_file(srcPath)) {
@@ -820,7 +853,7 @@ void buildTarball(const LinuxBuildParams &params) {
                 joinPackageRelativePath(prefix, srcPath.filename().generic_string(), "asset path"),
                 fileData.data(),
                 fileData.size(),
-                0644);
+                permissionBitsForFilesystemPath(srcPath));
         } else {
             throw std::runtime_error("asset is not a regular file or directory: " +
                                      asset.sourcePath);
@@ -882,9 +915,12 @@ void buildToolchainDebPackage(const LinuxToolchainBuildParams &params) {
         ctl << "Architecture: " << archStr << "\n";
         ctl << "Maintainer: Viper Project <noreply@example.invalid>\n";
         ctl << "Depends: " << toolchainDebDepends() << "\n";
-        size_t totalBytes = 0;
-        for (const auto &df : dataFiles)
-            totalBytes += df.data.size();
+        uint64_t totalBytes = 0;
+        for (const auto &df : dataFiles) {
+            if (df.data.size() > std::numeric_limits<uint64_t>::max() - totalBytes)
+                throw std::runtime_error("Debian toolchain package installed size overflow");
+            totalBytes += static_cast<uint64_t>(df.data.size());
+        }
         ctl << "Installed-Size: " << ((totalBytes + 1023) / 1024) << "\n";
         ctl << "Description: Viper compiler toolchain\n";
         controlTar.addFileString("./control", ctl.str(), 0644);

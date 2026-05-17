@@ -55,6 +55,7 @@
 #include <fstream>
 #include <initializer_list>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <utility>
 
@@ -388,6 +389,13 @@ static std::string debControlEntryText(const std::vector<uint8_t> &debBytes,
     return std::string(data.begin(), data.end());
 }
 
+static std::vector<uint8_t> debDataTar(const std::vector<uint8_t> &debBytes) {
+    std::vector<uint8_t> dataGz;
+    if (!arMemberData(debBytes, "data.tar.gz", dataGz))
+        return {};
+    return inflateGzipPayload(dataGz);
+}
+
 static uint64_t peOptionalHeaderField64(const std::vector<uint8_t> &pe, uint32_t fieldOff) {
     if (pe.size() < 0x40)
         return 0;
@@ -511,6 +519,12 @@ TEST(Deflate, RoundTripEmpty) {
     std::vector<uint8_t> input;
     auto compressed = deflate(input.data(), input.size());
     auto decompressed = inflate(compressed.data(), compressed.size());
+    EXPECT_EQ(decompressed.size(), static_cast<size_t>(0));
+}
+
+TEST(Gzip, RoundTripEmptyNullInput) {
+    auto compressed = gzip(nullptr, 0);
+    auto decompressed = gunzip(compressed.data(), compressed.size());
     EXPECT_EQ(decompressed.size(), static_cast<size_t>(0));
 }
 
@@ -705,6 +719,47 @@ TEST(Zip, WriterRejectsDuplicateEntryNamesAfterNormalization) {
     EXPECT_THROWS(zip.addFileString("assets\\config.txt", "y"), std::runtime_error);
 }
 
+TEST(Zip, SupportsZeroByteNullDataFile) {
+    ZipWriter zip;
+    zip.addFile("empty.bin", nullptr, 0);
+    auto data = zip.finishToVector();
+
+    ZipReader reader(data.data(), data.size());
+    const auto *entry = reader.find("empty.bin");
+    ASSERT_TRUE(entry != nullptr);
+    auto extracted = reader.extract(*entry);
+    EXPECT_EQ(extracted.size(), static_cast<size_t>(0));
+}
+
+TEST(Zip, RejectsUseAfterFinish) {
+    ZipWriter zip;
+    zip.addFileString("a.txt", "a");
+    (void)zip.finishToVector();
+    EXPECT_THROWS(zip.addFileString("b.txt", "b"), std::runtime_error);
+    EXPECT_THROWS(zip.finishToVector(), std::runtime_error);
+}
+
+TEST(Zip, RejectsEscapingSymlinkTargets) {
+    ZipWriter zip;
+    zip.addDirectory("bin");
+    EXPECT_THROWS(zip.addSymlink("bin/tool", "../../outside"), std::runtime_error);
+
+    ZipWriter absolute;
+    EXPECT_THROWS(absolute.addSymlink("bin/tool", "/usr/bin/tool"), std::runtime_error);
+}
+
+TEST(Zip, AllowsInternalSymlinkTargets) {
+    ZipWriter zip;
+    zip.addDirectory("bin");
+    zip.addDirectory("lib");
+    zip.addFileString("lib/tool-real", "x");
+    zip.addSymlink("bin/tool", "../lib/tool-real");
+    auto data = zip.finishToVector();
+
+    ZipReader reader(data.data(), data.size());
+    EXPECT_TRUE(reader.find("bin/tool") != nullptr);
+}
+
 // ============================================================================
 // Tar Tests
 // ============================================================================
@@ -789,6 +844,28 @@ TEST(Tar, RejectsDuplicateEntryPath) {
     TarWriter tar;
     tar.addFileString("./dup.txt", "one");
     EXPECT_THROWS(tar.addFileString("dup.txt", "two"), std::runtime_error);
+}
+
+TEST(Tar, SupportsZeroByteNullDataFile) {
+    TarWriter tar;
+    tar.addFile("./empty", nullptr, 0);
+    auto data = tar.finish();
+    std::vector<uint8_t> extracted;
+    EXPECT_TRUE(tarEntryData(data, "empty", extracted));
+    EXPECT_EQ(extracted.size(), static_cast<size_t>(0));
+}
+
+TEST(Tar, SplitsLongDirectoryPathWithoutEmptyName) {
+    TarWriter tar;
+    const std::string longDir = "root/" + std::string(95, 'a') + "/leaf";
+    tar.addDirectory(longDir);
+    auto data = tar.finish();
+
+    const char *name = reinterpret_cast<const char *>(data.data());
+    size_t nameLen = 0;
+    while (nameLen < 100 && name[nameLen] != '\0')
+        ++nameLen;
+    EXPECT_EQ(std::string(name, name + nameLen), std::string("leaf/"));
 }
 
 TEST(Tar, AllowsInternalRelativeSymlinkTarget) {
@@ -1893,6 +1970,34 @@ TEST(PackageUtils, SafeDirectoryIterateFollowsInternalSymlinkDirectories) {
     EXPECT_TRUE(sawLinkedFile);
     fs::remove_all(tmpRoot);
 }
+
+TEST(PackageUtils, SafeDirectoryIterateResolvedReportsValidatedReadPath) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_safe_iter_resolved_path";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot / "project" / "assets");
+    fs::create_directories(tmpRoot / "project" / "shared");
+    {
+        std::ofstream out(tmpRoot / "project" / "shared" / "data.txt");
+        out << "data";
+    }
+    fs::create_symlink("../shared/data.txt", tmpRoot / "project" / "assets" / "link.txt");
+
+    bool sawResolvedSymlink = false;
+    safeDirectoryIterateResolved(
+        tmpRoot / "project" / "assets",
+        tmpRoot / "project",
+        [&](const SafeDirectoryEntry &entry) {
+            if (entry.logicalPath.filename() == "link.txt") {
+                sawResolvedSymlink = entry.symlink && entry.regularFile &&
+                                     fs::equivalent(entry.resolvedPath,
+                                                    tmpRoot / "project" / "shared" /
+                                                        "data.txt");
+            }
+        });
+    EXPECT_TRUE(sawResolvedSymlink);
+    fs::remove_all(tmpRoot);
+}
 #endif
 
 TEST(PackageUtils, ValidatesPackageUrls) {
@@ -2734,6 +2839,31 @@ TEST(WindowsPackageBuilder, SkipsKnownWindowsGameRuntimeDlls) {
     fs::remove_all(tmpRoot);
 }
 
+TEST(WindowsPackageBuilder, RejectsMissingDebugRuntimeDllDependency) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot =
+        fs::temp_directory_path() / "viper_packaging_windows_debug_runtime_test";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot);
+
+    writeTestWindowsPe(tmpRoot / "app.exe", "x64", {{"vcruntime140d.dll", {"debug_entry"}}});
+
+    PackageConfig pkg;
+    pkg.displayName = "Debug Runtime App";
+
+    WindowsBuildParams params;
+    params.projectName = "debugruntime";
+    params.version = "1.0.0";
+    params.executablePath = (tmpRoot / "app.exe").string();
+    params.projectRoot = tmpRoot.string();
+    params.pkgConfig = pkg;
+    params.outputPath = (tmpRoot / "debug_runtime_setup.exe").string();
+    params.archStr = "x64";
+
+    EXPECT_THROWS(buildWindowsPackage(params), std::runtime_error);
+    fs::remove_all(tmpRoot);
+}
+
 TEST(WindowsPackageBuilder, RejectsMissingAdjacentDllDependency) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_windows_missing_dll_test";
@@ -2926,6 +3056,32 @@ TEST(LinuxPackageBuilder, TarballDoesNotValidateDebianOnlyMetadata) {
     fs::remove_all(tmpRoot);
 }
 
+TEST(LinuxPackageBuilder, TarballNormalizesDebianEpochVersionInTopDirectory) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_tarball_epoch_version";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot);
+    {
+        std::ofstream exe(tmpRoot / "app", std::ios::binary);
+        exe << "stub";
+    }
+
+    LinuxBuildParams params;
+    params.projectName = "portableapp";
+    params.version = "2:1.0~beta+1";
+    params.executablePath = (tmpRoot / "app").string();
+    params.projectRoot = tmpRoot.string();
+    params.pkgConfig.displayName = "Portable App";
+    params.outputPath = (tmpRoot / "portableapp.tar.gz").string();
+    params.archStr = "x64";
+
+    buildTarball(params);
+    const auto tarGz = readFile(params.outputPath);
+    std::ostringstream err;
+    EXPECT_TRUE(verifyTarGzPayload(tarGz, {"portableapp-2_1.0~beta+1/portableapp"}, err));
+    fs::remove_all(tmpRoot);
+}
+
 TEST(LinuxPackageBuilder, TarballRejectsDuplicateAssetOutputPath) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_tarball_dup_asset_test";
@@ -3001,6 +3157,43 @@ TEST(LinuxPackageBuilder, DebPreservesHiddenMimeDesktopEntryAndEmptyAssetDir) {
     fs::remove_all(tmpRoot);
 }
 
+TEST(LinuxPackageBuilder, DebPreservesExecutableAssetMode) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_deb_asset_mode";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot / "scripts");
+    {
+        std::ofstream exe(tmpRoot / "app", std::ios::binary);
+        exe << "stub";
+    }
+    {
+        std::ofstream script(tmpRoot / "scripts" / "helper.sh");
+        script << "#!/bin/sh\n";
+    }
+    fs::permissions(tmpRoot / "scripts" / "helper.sh",
+                    fs::perms::owner_read | fs::perms::owner_write | fs::perms::owner_exec |
+                        fs::perms::group_read | fs::perms::group_exec | fs::perms::others_read |
+                        fs::perms::others_exec,
+                    fs::perm_options::replace);
+
+    LinuxBuildParams params;
+    params.projectName = "assetmode";
+    params.version = "1.0.0";
+    params.executablePath = (tmpRoot / "app").string();
+    params.projectRoot = tmpRoot.string();
+    params.pkgConfig.displayName = "Asset Mode";
+    params.pkgConfig.assets.push_back({"scripts", "tools"});
+    params.outputPath = (tmpRoot / "assetmode.deb").string();
+    params.archStr = "amd64";
+
+    buildDebPackage(params);
+    const auto dataTar = debDataTar(readFile(params.outputPath));
+    uint32_t mode = 0;
+    EXPECT_TRUE(tarEntryMode(dataTar, "usr/share/assetmode/tools/helper.sh", mode));
+    EXPECT_EQ(mode, static_cast<uint32_t>(0755));
+    fs::remove_all(tmpRoot);
+}
+
 TEST(ToolchainInstallManifest, GatherAndValidateMockStage) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_manifest_stage";
@@ -3065,6 +3258,38 @@ TEST(ToolchainInstallManifest, InstallPathMappingPreservesRelativeLayout) {
               std::string("/usr/lib/cmake/Viper/ViperConfig.cmake"));
     EXPECT_EQ(mapInstallPath(file, InstallPathPolicy::WindowsProgramFilesRoot),
               std::string("C:\\Program Files\\Viper\\lib\\cmake\\Viper\\ViperConfig.cmake"));
+
+    ToolchainFileEntry doc;
+    doc.kind = ToolchainFileKind::Doc;
+    doc.stagedRelativePath = "LICENSE";
+    EXPECT_EQ(mapInstallPath(doc, InstallPathPolicy::LinuxUsrRoot),
+              std::string("/usr/share/doc/viper/LICENSE"));
+}
+
+TEST(ToolchainInstallManifest, ValidationAcceptsCaseVariantCMakeConfigPath) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_manifest_cmake_case";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    auto manifest = gatherToolchainInstallManifest(stage);
+    for (auto &entry : manifest.files) {
+        if (entry.stagedRelativePath == "lib/cmake/Viper/ViperConfig.cmake")
+            entry.stagedRelativePath = "lib/cmake/viper/ViperConfig.cmake";
+        else if (entry.stagedRelativePath == "lib/cmake/Viper/ViperTargets.cmake")
+            entry.stagedRelativePath = "lib/cmake/viper/ViperTargets.cmake";
+    }
+    EXPECT_NO_THROW(validateToolchainInstallManifest(manifest));
+    fs::remove_all(tmpRoot);
+}
+
+TEST(ToolchainInstallManifest, TotalSizeDetectsOverflow) {
+    ToolchainInstallManifest manifest;
+    ToolchainFileEntry a;
+    a.sizeBytes = std::numeric_limits<uint64_t>::max();
+    ToolchainFileEntry b;
+    b.sizeBytes = 1;
+    manifest.files = {a, b};
+    EXPECT_THROWS(manifest.totalSizeBytes(), std::overflow_error);
 }
 
 TEST(ToolchainInstallManifest, RejectsInvalidArchitecture) {

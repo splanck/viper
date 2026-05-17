@@ -8,30 +8,29 @@
 
 ### What this release is about
 
-A focused hardening cycle on the v0.2.5 surface. No new public namespaces; every change closes a correctness hole, attack surface, or lifetime invariant under code that already shipped.
+An alpha-quality hardening cycle, not a feature release. No new public namespaces; the Zia frontend reached alpha quality, raw pointers were removed from both source languages, and a broad runtime correctness/ownership pass landed under code that already shipped.
 
-- **Memory, GC, object identity, MessageBus & Threads.** Validated `Viper.Memory.Retain`/`Release` wrappers — now rejecting unsupported or corrupt heap-payload kinds so public retain matches the release-side trap policy — plus weak-ref CAS retain inside the GC lock, lock-free traversal, trap-safe finalizers, splitmix pointer hashing, and a `{obj, retained}` shutdown-sweep snapshot. The shared `rt_heap_try_retain_live` unifies non-trapping retain across `rt_msgbus`/`rt_gc`, and the type registry now heap-validates object pointers before reading vtables. MessageBus and Threads got a three-round pass: class-ID validation, retain-during-call, reentrancy-safe unsubscribe, monitor finalize-while-waiting safety, async/Parallel retained-result ownership, idempotent pool shutdown, and saturated Win32/POSIX wait deadlines.
-- **Crypto, TLS, IO & archive security.** `Viper.Text.*` → `Viper.Crypto.*` (back-compat aliases) with scrypt-SHA256, AES-256-GCM+AAD, P-256 ECDH, HMAC-SHA384/512, an approved-mode `Viper.Crypto.Module`, an RSA 1024-bit floor, fixed-schedule ECDSA P-256, and point-on-curve validation. TLS enforces Key Usage / Basic Constraints / EKU and tightens DER and DNS-name handling; IO adds random-nonce temp files, `openat`-based recursive removal, `O_CLOEXEC`/`O_NOFOLLOW` everywhere, ZIP64 rejection with local-vs-central cross-check, exact GZIP boundary detection, and 64-bit VPA seeks.
-- **Network protocol correctness.** Independent HTTP/2 HPACK encode/decode tables with `pthread_once` Huffman init, strict RFC 7230 `Transfer-Encoding` parsing, WebSocket non-minimal-frame rejection + RFC 6455 close-code validation, URL out-of-range port trap, TLS `ServerHello` `key_share` exact length, and UDP recv-truncation detection.
-- **Collections & numeric round-trip.** All 26 collection types carry stable class IDs, register typed GC traversal, and follow a uniform retain-on-return contract; `Queue`/`Stack` gain `Seq`-style `owns_elements`; `Map.Values`/`IntMap.Values`/`FrozenMap.Values`/`MultiMap.Get` return owning Seqs; `Bytes.ReadI16/I32` now sign-extend. `Convert.ToString_Double` emits the shortest exact-reparse form, and `Parse`/`Convert` accept the formatter's `NaN`/`Inf` spellings while BASIC's 15-digit `PRINT` form stays unchanged.
-- **2D/3D graphics & D3D11.** Sprite/Scene/Camera/Pixels class-ID validation, premultiplied-alpha bilinear sampler, tagged `Color.RGBA(...,0)`, `BlitAlpha` source-over, Canvas3D HUD/skinned/morphed/blended draws, Mesh3D skeleton+morph retain, atomic Scene3D reparent, glTF JOINTS round-trip, and a new `Viper.Graphics3D.GLTF` + `Scene3D.Load`. D3D11 target/overlay/shadow/postfx lifetimes are corrected with focused SRV unbinds, full pre-bind resource validation, bounded cbuffer/float-SRV uploads, and weight-normalising skinning.
-- **x86-64 / AArch64 backends & native toolchain.** The AArch64 protection set now covers def operands; x86-64 gains cross-block fold liveness, compare/branch fold safety, fixed-physical-register spill-before-clobber, label/frame/cast/overflow lowering repairs, and AT&T-emitter operand-class validation. The in-tree assembler/linker get bounds-checked readers/writers, alignment-UB elimination, a typed `InputSectionKey`, COMMON coalescing, `PT_TLS`, Mach-O subsections-via-symbols, AArch64 scaled-offset relocs, and PE32+ overflow guards.
-- **Windows, HiDPI & VAPS packaging.** Win32 HiDPI normalised to physical pixels via `AdjustWindowRectExForDpi`; waitable-timer frame pacing replaces `Sleep` quantization; MSVC embedded debug info; expanded import policy. The VAPS Windows installer validates PE32+ payloads, discovers adjacent DLLs, writes proper Add/Remove metadata (`SHGetKnownFolderPath`/VERSIONINFO/`InstallDate`, `/quiet` uninstall), supports `windows-install-scope`, and ships a non-elevated user-scope smoke plus a headless XenoScape package-smoke ctest.
-- **Zia language — stability & surface.** Declaration-order independence (forward type/alias pre-registration), contextual `match`/`struct` keywords, statement-bearing block expressions, runtime-checked `is`/`as` lowering, default interface methods, generic-constraint propagation and validation, `Result[T]` `?` propagation, qualified names in constraints/`extends`/`implements`, module-scoped collision disambiguation (including file-bound duplicate types), explicit generic method calls `recv.method[T](...)`, `Unit` as a real singleton, rejection of `Void`/`Never`/`Module` in value positions, private-field construction visibility, empty `Set[T]` literals, and typed runtime-collection `for-in`. `try`/`catch`/`finally` + LIFO `defer` match the reference across native, bytecode, and interpreted paths. Zia and BASIC no longer expose raw `Ptr` types or pointer-signature runtime APIs — the typed surface is the only surface.
-- **Tooling, GUI & ViperIDE.** ViperIDE IntelliSense linkage repaired (`fe_zia` force-load, live keyword highlighting); GUI widget handles route through centralised typed wrappers that reject stale owner/liveness combinations; code-editor block-comment depth derives from a buffer scan.
-- **Runtime API conformance.** Documented-but-missing surface wired through: `Keys`/`Values`/`Indices` accessors across the map family, `Map` bool helpers and `Clone`, public `Seq` constructors, `Viper.Crypto.Rand.Bytes`, `Viper.Machine` introspection, and typed alternatives to raw-pointer ABIs (`Box.To*Option`, `Canvas` `Path2D` paths, `Viper.IO` bytes/lines, `Game.ParticleSnapshot`). Sema owner-return inference keeps borrowed accessors from over-retaining.
+- **Zia frontend → alpha quality.** `defer`; typed `Queue`/`Stack`/`Deque` + collection generics; structured `try`/`catch`/`finally`, multi-catch, bare rethrow, tuple destructuring; `Result[T]` with `?` propagation; weak fields, function references, constrained generics, default interface methods; declaration-order independence; module-scoped and file-bound name-collision disambiguation.
+- **Pointer-safety gate (the biggest user-visible change).** Zia and BASIC source reject raw `Ptr` types and pointer-signature runtime APIs; the `--unsafe-pointers` escape hatch was added then removed — the typed surface is now the only surface.
+- **Memory, GC & threads ownership.** Validated `Retain`/`Release` wrappers; weak-ref CAS retain inside the GC lock; trap-safe finalizers; MessageBus/Threads class-ID validation, reentrancy-safe unsubscribe, and saturated wait deadlines.
+- **Collections & numeric round-trip.** All 26 collection types carry stable class IDs, register typed GC traversal, and follow a uniform retain-on-return contract; `Convert.ToString_Double` emits the shortest exact-reparse form while BASIC's 15-digit `PRINT` form is unchanged.
+- **Crypto, TLS & IO security.** `Viper.Crypto.*` canonicalized (scrypt-SHA256, AES-GCM+AAD, approved-mode module, RSA 1024-bit floor, fixed-schedule ECDSA P-256); TLS enforces Key Usage / Basic Constraints / EKU and DNS-name limits; hardened temp-file, archive, and ZIP64 paths.
+- **Network protocol correctness.** Independent HPACK encode/decode tables, strict RFC 7230 `Transfer-Encoding` parsing (closes a request-smuggling avenue), WebSocket frame/close-code validation.
+- **Backends & native toolchain.** x86-64 cross-block fold liveness + AT&T operand-class validation; AArch64 sub-word transfers, terminator/CFG, and def-operand fixes; bounds-checked object readers/writers with new reloc kinds.
+- **Windows & HiDPI.** Physical-pixel sizing via `AdjustWindowRectExForDpi`; waitable-timer frame pacing replaces `Sleep` quantization; hardened VAPS Windows installer.
+- **Runtime API conformance.** Documented-but-missing surface wired through (`Keys`/`Values`/`Indices`, `Map` bool helpers, `Seq` constructors, `Crypto.Rand.Bytes`, `Viper.Machine`) plus typed alternatives to every raw-pointer ABI.
 
 ### By the Numbers
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 117 | +117 |
-| Source files | 2,996 | 3,019 | +23 |
-| Production SLOC | 552K | 588K | +36K |
-| Test SLOC | 228K | 248K | +20K |
+| Commits | — | 125 | +125 |
+| Source files | 2,996 | 3,021 | +25 |
+| Production SLOC | 552K | 590K | +38K |
+| Test SLOC | 228K | 250K | +22K |
 | Demo SLOC | 188K | 189K | +1K |
 
-Counts via `scripts/count_sloc.sh` (production 587,573 / test 248,045 / demo 189,185 / source files 3,019).
+Counts via `scripts/count_sloc.sh` (production 589,875 / test 249,589 / demo 189,187 / source files 3,021).
 
 ---
 
@@ -61,7 +60,7 @@ Counts via `scripts/count_sloc.sh` (production 587,573 / test 248,045 / demo 189
 
 - Temp-file creation uses a 64-bit `/dev/urandom` / `rand_s`+`QueryPerformanceCounter` nonce; assets decode into a private `mkdtemp` directory; `asset_name_is_safe()` rejects absolute paths, drive letters, dots, and embedded NULs. Recursive directory removal uses `openat` / `fstatat` / `unlinkat` with `AT_SYMLINK_NOFOLLOW`. `O_CLOEXEC` + `_O_NOINHERIT` at every open. SaveData paths resolve absolute before first use.
 - ZIP extra-field parser rejects ZIP64 headers; central directory rejects `version_needed >= 45`, encryption flags, and ZIP64 sentinels; local-file headers cross-checked against central-directory values. `inflate_data_limited_ex()` exposes `consumed_bytes` for exact multi-member GZIP framing. VPA seeks use 64-bit `_fseeki64` / `fseeko` with `lstat` + `O_NOFOLLOW` opens.
-- Windows VAPS installer pipeline: PE32+ payload validation against the selected x64/arm64 target; recursive adjacent-DLL discovery with Windows/UCRT/VC redistributable classification including XInput and other game-runtime system DLLs; `SHGetKnownFolderPath` + `CoTaskMemFree` + `RegDeleteTreeW` replace legacy CSIDL paths; embedded VERSIONINFO + `InstallDate`; `windows-install-scope machine|user` + `windows-install-dir`; `windows-sign-thumbprint` parity across `viper package` and `viper install-package`; `meta/manifest.sha256` coverage with duplicate / uncovered-entry rejection (shared `verifyZipSha256Manifest` helper); non-elevated `windows_installer_user_smoke` and XenoScape installer smoke ctests. XenoScape gained a headless `--viper-package-smoke` mode (also via `VIPER_XENOSCAPE_PACKAGE_SMOKE`) that validates the installed runtime JSON, packaged sound, and tuning values without entering the game loop, executable-directory asset probing so installed shortcuts resolve payloads independently of the launch directory, and `QuietUninstallString` emitting `/quiet` only (`/norestart` now an explicit opt-in); the installer smoke launches the installed `xenoscape.exe` from a non-install working directory.
+- Windows VAPS installer: PE32+ payload validation against the x64/arm64 target, recursive adjacent-DLL discovery with redistributable classification, proper Add/Remove metadata (`SHGetKnownFolderPath`/VERSIONINFO/`InstallDate`, `/quiet` uninstall), `windows-install-scope machine|user`, `windows-sign-thumbprint` parity across `package`/`install-package`, and a `meta/manifest.sha256` integrity check with duplicate/uncovered-entry rejection. A non-elevated user-scope installer smoke and a headless XenoScape package-smoke ctest gate it.
 
 ### Threads
 
@@ -140,6 +139,6 @@ Demos and docs were updated to track the runtime work above; stale Windows debug
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 117-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 125-commit history since v0.2.5.
 
 <!-- END DRAFT -->

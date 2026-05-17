@@ -166,7 +166,13 @@ bool signWindowsInstallerArtifact(const InstallPackageArgs &args,
                                    ? getenvOrEmpty("VIPER_WINDOWS_TIMESTAMP_URL")
                                    : args.windowsTimestampUrl;
     if (timestampUrl.empty())
-        timestampUrl = "http://timestamp.digicert.com";
+        timestampUrl = "https://timestamp.digicert.com";
+    try {
+        viper::pkg::validatePackageUrl(timestampUrl, "Windows timestamp URL");
+    } catch (const std::exception &ex) {
+        err << "error: " << ex.what() << "\n";
+        return false;
+    }
 
     signCmd = {signtool, "sign", "/fd", "SHA256", "/tr", timestampUrl, "/td", "SHA256"};
     if (!thumbprint.empty()) {
@@ -819,11 +825,6 @@ fs::path ensureStageDir(const InstallPackageArgs &args) {
                                      args.buildDir.string());
     }
     AutoStageCleanup cleanup(stageDir, !args.keepStageDir);
-
-    {
-        std::error_code ec;
-        fs::remove(args.buildDir / "install_manifest.txt", ec);
-    }
 
     std::vector<std::string> installCmd = {
         "cmake", "--install", args.buildDir.string(), "--prefix", stageDir.string()};

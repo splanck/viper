@@ -130,6 +130,11 @@ void validateWindowsLayoutFitsStub(const WindowsPackageLayout &layout) {
         validateStubPathFits(rootProbe + "\\" + layout.fileAssociationExecutableRelativePath,
                              "Windows file association executable path");
     }
+    if (!layout.displayIconRelativePath.empty()) {
+        validateWindowsRelativePath(layout.displayIconRelativePath, "Windows display icon path");
+        validateStubPathFits(rootProbe + "\\" + layout.displayIconRelativePath,
+                             "Windows display icon path");
+    }
     for (const auto &file : layout.uninstallFiles)
         validateWindowsRelativePath(file.relativePath, "Windows uninstall file path");
     for (const auto &assoc : layout.fileAssociations) {
@@ -377,6 +382,14 @@ std::vector<std::string> importedDllNamesFromPe(const std::vector<uint8_t> &data
 }
 
 bool isKnownWindowsRedistributableDll(const std::string &dll) {
+    const std::string stem = dll.size() > 4 && dll.substr(dll.size() - 4) == ".dll"
+                                 ? dll.substr(0, dll.size() - 4)
+                                 : dll;
+    if (stem == "ucrtbased" ||
+        (stem.rfind("vcruntime", 0) == 0 && !stem.empty() && stem.back() == 'd') ||
+        (stem.rfind("msvcp", 0) == 0 && !stem.empty() && stem.back() == 'd')) {
+        return false;
+    }
     static const std::set<std::string> exact = {
         "advapi32.dll",    "bcrypt.dll",       "cfgmgr32.dll",   "combase.dll",
         "comctl32.dll",    "crypt32.dll",      "d3d11.dll",      "d3d12.dll",
@@ -388,8 +401,7 @@ bool isKnownWindowsRedistributableDll(const std::string &dll) {
         "user32.dll",      "uxtheme.dll",      "version.dll",    "winmm.dll",
         "winspool.drv",    "ws2_32.dll",       "wtsapi32.dll",   "ucrtbase.dll",
         "xinput1_4.dll",   "xinput9_1_0.dll",  "d3dcompiler_47.dll",
-        "ucrtbased.dll",   "vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll",
-        "vcruntime140d.dll", "vcruntime140_1d.dll", "msvcp140d.dll"};
+        "vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll"};
     if (exact.find(dll) != exact.end())
         return true;
     return dll.rfind("api-ms-win-", 0) == 0 || dll.rfind("ext-ms-win-", 0) == 0 ||
@@ -618,6 +630,11 @@ void addOverlayFile(ZipWriter &zip,
                     std::ostringstream *payloadManifest = nullptr) {
     zip.addFile(overlayName, data, len, unixMode);
     const auto &entry = zip.layoutEntries().back();
+    if (entry.method != 0 || entry.compressedSize != entry.uncompressedSize) {
+        throw std::runtime_error("Windows installer overlay entries must be stored without "
+                                 "compression: " +
+                                 overlayName);
+    }
     layout.installFiles.push_back(WindowsPackageFileEntry{
         root, installRelativePath, entry.localDataOffset, entry.uncompressedSize, entry.crc32});
     appendPayloadManifestEntry(payloadManifest, overlayName, data, len);
@@ -685,7 +702,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     layout.installDate = currentInstallDate();
     layout.createDesktopShortcut = pkg.shortcutDesktop;
     layout.createStartMenuShortcut = pkg.shortcutMenu;
-    layout.cleanInstallRootBeforeInstall = true;
+    layout.cleanInstallRootBeforeInstall = false;
     for (const auto &assoc : pkg.fileAssociations) {
         layout.fileAssociations.push_back(
             {assoc.extension,
@@ -770,11 +787,12 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
                              WindowsInstallRoot::InstallDir,
                              targetDir);
             }
-            safeDirectoryIterate(
-                srcPath, params.projectRoot, [&](const fs::directory_entry &entry) {
+            safeDirectoryIterateResolved(
+                srcPath, params.projectRoot, [&](const SafeDirectoryEntry &entry) {
                     const auto relPath = sanitizePackageRelativePath(
-                        entry.path().lexically_relative(srcPath).generic_string(), "asset path");
-                    if (fs::is_directory(entry.path())) {
+                        entry.logicalPath.lexically_relative(srcPath).generic_string(),
+                        "asset path");
+                    if (entry.directory) {
                         const std::string relInstall =
                             joinPackageRelativePath(targetDir, relPath, "asset path");
                         addUniqueDir(layout.installDirectories,
@@ -783,7 +801,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
                                      relInstall);
                         return;
                     }
-                    if (!fs::is_regular_file(entry.path()))
+                    if (!entry.regularFile)
                         return;
 
                     const std::string relInstall =
@@ -792,7 +810,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
                                   installDirSet,
                                   WindowsInstallRoot::InstallDir,
                                   relInstall);
-                    const auto data = readFile(entry.path().string());
+                    const auto data = readFile(entry.resolvedPath.string());
                     addOverlayFile(zip,
                                    "app/" + relInstall,
                                    data.data(),

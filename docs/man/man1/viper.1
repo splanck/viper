@@ -66,6 +66,12 @@ it builds a native executable.
 \fBrun\fR builds and runs a Zia or BASIC target. Legacy IL, Zia, and BASIC entry
 points remain available through \fB-run\fR, \fBfront zia\fR, and \fBfront basic\fR.
 .PP
+\fBpackage\fR builds native app artifacts. Manifest paths are project-relative,
+while \fB--executable\fR paths are resolved from the current working directory
+when relative. Default output filenames are sanitized so project metadata cannot
+create nested or parent-directory paths. Windows app installers overwrite
+packaged files without deleting unrelated files in an existing install root.
+.PP
 \fBinstall-package\fR packages the Viper toolchain itself from a staged
 \fCcmake --install\fR tree. It can stage from a build tree automatically,
 validate the staged install, emit native installer artifacts, or structurally

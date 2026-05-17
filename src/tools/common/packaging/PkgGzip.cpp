@@ -37,7 +37,7 @@ namespace viper::pkg {
 
 namespace {
 
-static constexpr size_t kGzipMaxOutput = 2u * 1024u * 1024u * 1024u;
+static constexpr size_t kGzipMaxOutput = 0xFFFFFFFFull;
 
 /// @brief Read a little-endian uint16_t from a possibly-unaligned byte pointer.
 uint16_t rdLE16(const uint8_t *p) {
@@ -50,16 +50,23 @@ uint32_t rdLE32(const uint8_t *p) {
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
 
+uint32_t crc32Bytes(const uint8_t *data, size_t len) {
+    static constexpr uint8_t kEmpty = 0;
+    return rt_crc32_compute(len == 0 ? &kEmpty : data, len);
+}
+
 } // namespace
 
 /// @brief Wrap raw DEFLATE output in a GZIP container (RFC 1952).
 /// Header: method=8, flags=0, mtime=0, OS=0xFF. Trailer: CRC-32 + original size (little-endian).
 std::vector<uint8_t> gzip(const uint8_t *data, size_t len, int level) {
+    if (len > 0 && data == nullptr)
+        throw std::runtime_error("gzip: null data pointer for non-empty input");
     // Compress with raw DEFLATE
     auto deflated = deflate(data, len, level);
 
     // CRC-32 of original data
-    uint32_t crc = rt_crc32_compute(data, len);
+    uint32_t crc = crc32Bytes(data, len);
 
     // Assemble: 10-byte header + deflated + 8-byte trailer
     size_t totalLen = 10 + deflated.size() + 8;
@@ -142,11 +149,11 @@ std::vector<uint8_t> gunzip(const uint8_t *data, size_t len) {
     const uint32_t expectedCrc = rdLE32(data + len - 8);
     const uint32_t expectedSize = rdLE32(data + len - 4);
     if (expectedSize > kGzipMaxOutput)
-        throw std::runtime_error("gzip: uncompressed size exceeds 2 GiB limit");
+        throw std::runtime_error("gzip: uncompressed size exceeds 4 GiB limit");
 
     const size_t deflateLen = len - pos - 8;
     auto out = inflate(data + pos, deflateLen, expectedSize);
-    const uint32_t actualCrc = rt_crc32_compute(out.data(), out.size());
+    const uint32_t actualCrc = crc32Bytes(out.data(), out.size());
     if (actualCrc != expectedCrc)
         throw std::runtime_error("gzip: CRC-32 mismatch");
     if (static_cast<uint32_t>(out.size()) != expectedSize)

@@ -190,6 +190,10 @@ struct BitWriter {
     /// @brief Copy `srcLen` raw bytes directly to the output buffer, bypassing bit-packing.
     /// Used for stored-block payload bytes that do not need bit-packing.
     void writeBytes(const uint8_t *src, size_t srcLen) {
+        if (srcLen == 0)
+            return;
+        if (src == nullptr)
+            throw std::runtime_error("deflate: null data pointer for non-empty stored block");
         ensure(srcLen);
         std::memcpy(data + len, src, srcLen);
         len += srcLen;

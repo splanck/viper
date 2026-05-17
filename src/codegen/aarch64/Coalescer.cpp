@@ -57,8 +57,11 @@ static bool isMoveRR(MOpcode opc) {
 /// Walks all blocks in layout order, assigning sequential indices. This
 /// produces a linearized view of the function for live interval computation.
 ///
-/// @param fn The machine function.
-/// @return Map from (blockIdx, instrIdx) encoded as a single key to global index.
+/// @param fn         The machine function.
+/// @param instrIndex Out-param: resized to fn.blocks and filled so that
+///                   instrIndex[blockIdx][instrIdx] is the global index of
+///                   that instruction. Any prior contents are cleared.
+/// @return Total number of instructions assigned (the global index count).
 static unsigned linearizeFunction(const MFunction &fn,
                                   std::vector<std::vector<unsigned>> &instrIndex) {
     instrIndex.clear();

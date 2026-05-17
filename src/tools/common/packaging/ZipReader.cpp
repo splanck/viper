@@ -220,7 +220,9 @@ std::vector<uint8_t> ZipReader::extract(const ZipEntry &entry) const {
         throw ZipReadError("ZIP: uncompressed size mismatch for '" + entry.name + "'");
 
     // Verify CRC-32 for every entry, including zero-length files/directories.
-    uint32_t actualCrc = rt_crc32_compute(result.data(), result.size());
+    static constexpr uint8_t kEmpty = 0;
+    uint32_t actualCrc =
+        rt_crc32_compute(result.empty() ? &kEmpty : result.data(), result.size());
     if (actualCrc != entry.crc32)
         throw ZipReadError("ZIP: CRC-32 mismatch for '" + entry.name + "'");
 

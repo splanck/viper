@@ -60,6 +60,8 @@ inline std::vector<uint8_t> readFile(const std::string &path) {
     if (!f)
         throw std::runtime_error("cannot seek file: " + path);
     std::vector<uint8_t> data(static_cast<size_t>(size64));
+    if (data.empty())
+        return data;
     f.read(reinterpret_cast<char *>(data.data()), static_cast<std::streamsize>(data.size()));
     if (!f || f.gcount() != static_cast<std::streamsize>(data.size()))
         throw std::runtime_error("incomplete read of: " + path);
@@ -1136,20 +1138,30 @@ inline std::vector<uint8_t> utf8ToUtf16LEBytes(const std::string &text, bool nul
     return bytes;
 }
 
+/// @brief A package-directory entry after resolving any symlink used to reach it.
+///
+/// logicalPath is the path that determines the archive/install-relative name.
+/// resolvedPath is the filesystem path that was validated against projectRoot
+/// and must be used for stat/read/copy operations to avoid post-validation
+/// symlink swaps changing the packaged payload.
+struct SafeDirectoryEntry {
+    std::filesystem::path logicalPath;
+    std::filesystem::path resolvedPath;
+    bool directory{false};
+    bool regularFile{false};
+    bool symlink{false};
+};
+
 /// @brief Safely iterate a directory tree, following only symlinks that remain
 ///        inside the project root and handling permission errors gracefully.
 ///
-/// The callback receives each directory_entry that is either a regular file
-/// or a directory (symlinks are resolved and checked).
-///
-/// @param root       The directory to recurse into.
-/// @param projectRoot  The project root boundary — symlinks resolving outside
-///                     this path are skipped with a warning.
-/// @param callback   Called for each safe entry.
-inline void safeDirectoryIterate(
+/// The callback receives both the logical archive path and the resolved path to
+/// use for filesystem reads. Callers should read/stat resolvedPath, not
+/// logicalPath, to preserve the validation decision.
+inline void safeDirectoryIterateResolved(
     const std::filesystem::path &root,
     const std::filesystem::path &projectRoot,
-    const std::function<void(const std::filesystem::directory_entry &)> &callback) {
+    const std::function<void(const SafeDirectoryEntry &)> &callback) {
     namespace fs = std::filesystem;
     std::error_code ec;
     fs::path canonicalRoot = fs::canonical(projectRoot, ec);
@@ -1177,14 +1189,14 @@ inline void safeDirectoryIterate(
             const auto end = fs::directory_iterator();
             while (it != end) {
                 const fs::path entryPath = logicalDir / it->path().filename();
-                const fs::directory_entry entry(entryPath);
                 bool skipEntry = false;
                 bool isDirectory = false;
+                bool isRegularFile = false;
                 bool hasResolvedSymlink = false;
                 fs::path resolvedSymlink;
 
                 std::error_code entryEc;
-                if (entry.is_symlink(entryEc)) {
+                if (fs::is_symlink(fs::symlink_status(entryPath, entryEc))) {
                     fs::path resolved = fs::canonical(entryPath, entryEc);
                     if (entryEc) {
                         std::cerr << "warning: cannot resolve symlink '" << entryPath.string()
@@ -1201,9 +1213,13 @@ inline void safeDirectoryIterate(
                 }
 
                 entryEc.clear();
+                const fs::path resolvedPath = hasResolvedSymlink ? resolvedSymlink : entryPath;
                 if (!skipEntry) {
-                    isDirectory = hasResolvedSymlink ? fs::is_directory(resolvedSymlink, entryEc)
-                                                     : fs::is_directory(entryPath, entryEc);
+                    const fs::file_status status = fs::status(resolvedPath, entryEc);
+                    if (!entryEc) {
+                        isDirectory = fs::is_directory(status);
+                        isRegularFile = fs::is_regular_file(status);
+                    }
                 }
                 if (entryEc) {
                     std::cerr << "warning: cannot stat directory entry '" << entryPath.string()
@@ -1212,7 +1228,8 @@ inline void safeDirectoryIterate(
                 }
 
                 if (!skipEntry)
-                    callback(entry);
+                    callback(SafeDirectoryEntry{
+                        entryPath, resolvedPath, isDirectory, isRegularFile, hasResolvedSymlink});
 
                 if (!skipEntry && isDirectory) {
                     fs::path resolvedDir =
@@ -1234,6 +1251,16 @@ inline void safeDirectoryIterate(
             }
         };
     walk(canonicalIterRoot, root);
+}
+
+/// @brief Compatibility wrapper for callers that only need the logical entry.
+inline void safeDirectoryIterate(
+    const std::filesystem::path &root,
+    const std::filesystem::path &projectRoot,
+    const std::function<void(const std::filesystem::directory_entry &)> &callback) {
+    safeDirectoryIterateResolved(root, projectRoot, [&](const SafeDirectoryEntry &entry) {
+        callback(std::filesystem::directory_entry(entry.logicalPath));
+    });
 }
 
 } // namespace viper::pkg

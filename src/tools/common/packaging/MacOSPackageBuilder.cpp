@@ -122,16 +122,16 @@ void copyPackageAssetToResources(const fs::path &srcPath,
     if (fs::is_directory(srcPath)) {
         if (!targetDir.empty())
             fs::create_directories(targetRoot);
-        safeDirectoryIterate(
-            srcPath, projectRoot, [&](const fs::directory_entry &entry) {
+        safeDirectoryIterateResolved(
+            srcPath, projectRoot, [&](const SafeDirectoryEntry &entry) {
                 const auto relPath = sanitizePackageRelativePath(
-                    entry.path().lexically_relative(srcPath).generic_string(), "asset path");
+                    entry.logicalPath.lexically_relative(srcPath).generic_string(), "asset path");
                 const fs::path dst = targetRoot / fs::path(relPath);
-                if (fs::is_directory(entry.path())) {
+                if (entry.directory) {
                     fs::create_directories(dst);
-                } else if (fs::is_regular_file(entry.path())) {
+                } else if (entry.regularFile) {
                     writeFileBytes(dst,
-                                   readFile(entry.path().string()),
+                                   readFile(entry.resolvedPath.string()),
                                    fs::perms::owner_read | fs::perms::owner_write |
                                        fs::perms::group_read | fs::perms::others_read);
                 }
@@ -177,15 +177,46 @@ void addStagedAppToZip(const fs::path &stageRoot,
     const std::string appEntry = fs::relative(appPath, stageRoot).generic_string();
     zip.addDirectory(appEntry);
 
-    for (const auto &entry : fs::recursive_directory_iterator(appPath)) {
-        const std::string rel = fs::relative(entry.path(), stageRoot).generic_string();
-        if (entry.is_directory()) {
+    std::error_code ec;
+    auto it = fs::recursive_directory_iterator(
+        appPath, fs::directory_options::skip_permission_denied, ec);
+    if (ec)
+        throw std::runtime_error("cannot iterate staged macOS app bundle: " + ec.message());
+    const auto end = fs::recursive_directory_iterator();
+    while (it != end) {
+        const fs::path entryPath = it->path();
+        const std::string rel = fs::relative(entryPath, stageRoot, ec).generic_string();
+        if (ec)
+            throw std::runtime_error("cannot compute macOS app ZIP path: " + ec.message());
+        ec.clear();
+        const fs::file_status symlinkStatus = it->symlink_status(ec);
+        if (ec)
+            throw std::runtime_error("cannot stat staged macOS app entry: " + ec.message());
+        if (fs::is_symlink(symlinkStatus)) {
+            const fs::path target = fs::read_symlink(entryPath, ec);
+            if (ec)
+                throw std::runtime_error("cannot read staged macOS app symlink: " +
+                                         ec.message());
+            zip.addSymlink(rel, target.generic_string());
+        } else if (it->is_directory(ec)) {
+            if (ec)
+                throw std::runtime_error("cannot stat staged macOS app directory: " +
+                                         ec.message());
             zip.addDirectory(rel);
-        } else if (entry.is_regular_file()) {
-            const auto data = readFile(entry.path().string());
-            const uint32_t mode = fs::equivalent(entry.path(), execPath) ? 0100755 : 0100644;
+        } else if (it->is_regular_file(ec)) {
+            if (ec)
+                throw std::runtime_error("cannot stat staged macOS app file: " + ec.message());
+            const auto data = readFile(entryPath.string());
+            const bool isExec = fs::equivalent(entryPath, execPath, ec);
+            if (ec)
+                throw std::runtime_error("cannot compare staged macOS executable path: " +
+                                         ec.message());
+            const uint32_t mode = isExec ? 0100755 : 0100644;
             zip.addFile(rel, data.data(), data.size(), mode);
         }
+        it.increment(ec);
+        if (ec)
+            throw std::runtime_error("cannot advance staged macOS app iterator: " + ec.message());
     }
     zip.finish(outputPath);
 }
@@ -400,6 +431,11 @@ void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
                                 fs::perms::owner_exec | fs::perms::group_read |
                                 fs::perms::group_exec | fs::perms::others_read |
                                 fs::perms::others_exec,
+                            fs::perm_options::replace);
+        } else {
+            fs::permissions(dst,
+                            fs::perms::owner_read | fs::perms::owner_write |
+                                fs::perms::group_read | fs::perms::others_read,
                             fs::perm_options::replace);
         }
     }

@@ -6,7 +6,25 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/aarch64/Noreturn.hpp
-// Purpose: Shared classification of direct runtime calls that do not return.
+// Purpose: Shared predicates that classify a direct call to a runtime helper
+//          that traps or terminates (never returns to its caller). Passes use
+//          this to model such calls as no-return CFG exits so they can prune
+//          dead instruction tails and avoid emitting unreachable epilogues.
+// Key invariants:
+//   - Only DIRECT calls are recognized: the instruction must be MOpcode::Bl
+//     with a Label first operand. Indirect/register branches are never
+//     classified as no-return here.
+//   - The label is resolved through il::runtime::mapCanonicalRuntimeName
+//     first, so platform-mangled or aliased names match the canonical set.
+//   - The recognized set (rt_trap*, rt_arr_oob_panic, rt_trap_div0/ovf, ...)
+//     must stay in sync with the runtime helpers that genuinely do not
+//     return; adding a returning symbol here would prune live code.
+// Ownership/Lifetime:
+//   - Stateless inline predicates; no allocation, no retained state. The
+//     MInstr / MBasicBlock arguments are caller-owned and read-only.
+// Links: codegen/aarch64/MachineIR.hpp,
+//        il/runtime/RuntimeNameMap.hpp,
+//        codegen/aarch64/passes/LegalizePass.cpp (dead-tail pruning caller)
 //
 //===----------------------------------------------------------------------===//
 

@@ -6,7 +6,25 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/aarch64/FpCompareLowering.hpp
-// Purpose: Shared AArch64 FCMP result materialization helpers.
+// Purpose: Shared AArch64 FCMP result-materialization helpers. Maps each IL
+//          floating-point compare opcode to an AArch64 condition code and
+//          emits the instruction sequence that lands a 0/1 boolean in a GPR,
+//          applying the NaN/unordered masking the ISA requires.
+// Key invariants:
+//   - AArch64 FCMP reports unordered (NaN) operands as Z=1, C=1, V=1. Ordered
+//     predicates must therefore be AND-masked with `vc` (no-overflow ==
+//     ordered); FCmpNE is intentionally unordered-true (OR with `vs`) to
+//     match the existing IL FCmpNE / FCmpOrd / FCmpUno semantics.
+//   - Helpers are pure with respect to control flow: they only append MInstrs
+//     to the supplied MBasicBlock; they never remove or reorder instructions.
+//   - Temporary booleans are allocated through the caller-owned vreg counter
+//     (nextVRegId) so ids stay unique within the function being lowered.
+// Ownership/Lifetime:
+//   - Stateless inline free functions; no heap allocation and no retained
+//     state. The MBasicBlock and vreg counter are caller-owned.
+// Links: codegen/aarch64/LoweringContext.hpp (allocateNextVReg),
+//        codegen/aarch64/MachineIR.hpp, il/core/Opcode.hpp,
+//        codegen/aarch64/InstrLowering.cpp (primary caller)
 //
 //===----------------------------------------------------------------------===//
 

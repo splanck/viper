@@ -28,9 +28,14 @@
 #include "PkgDeflate.hpp"
 #include "PkgUtils.hpp"
 
+#include <cerrno>
+#include <cctype>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <filesystem>
 #include <fstream>
+#include <limits>
 #include <stdexcept>
 
 extern "C" {
@@ -88,6 +93,11 @@ ZipWriter::ZipWriter() {
 
 ZipWriter::~ZipWriter() = default;
 
+void ZipWriter::ensureOpen() const {
+    if (finalized_)
+        throw std::runtime_error("ZipWriter: archive has already been finalized");
+}
+
 /// @brief Enforce ZIP32 limits: entry count ≤ 65535, archive size ≤ 4 GiB, name length ≤ 65535.
 /// All three limits arise from the 16- or 32-bit integer fields in the PKWARE spec.
 void ZipWriter::validateArchiveLimit(size_t value, size_t maxValue, const char *what) const {
@@ -118,8 +128,40 @@ std::string ZipWriter::normalizeEntryName(const std::string &name) const {
     return normalized;
 }
 
+void ZipWriter::validateSymlinkTarget(const std::string &entryName,
+                                      const std::string &target) const {
+    if (target.empty())
+        throw std::runtime_error("ZipWriter: symlink target must not be empty");
+    validateSingleLineField(target, "zip symlink target");
+    validateArchiveLimit(target.size(), 0xFFFFFFFFu, "symlinks larger than 4 GiB");
+
+    std::string normalizedTarget = target;
+    for (char &c : normalizedTarget) {
+        if (c == '\\')
+            c = '/';
+    }
+    if (normalizedTarget.front() == '/' ||
+        (normalizedTarget.size() >= 2 &&
+         std::isalpha(static_cast<unsigned char>(normalizedTarget[0])) &&
+         normalizedTarget[1] == ':')) {
+        throw std::runtime_error("ZipWriter: symlink target must be relative: " + target);
+    }
+
+    const std::filesystem::path resolved =
+        (std::filesystem::path(entryName).parent_path() / normalizedTarget).lexically_normal();
+    const std::string resolvedText = resolved.generic_string();
+    if (resolvedText.empty() || resolvedText == "." || resolvedText == ".." ||
+        resolvedText.rfind("../", 0) == 0) {
+        throw std::runtime_error("ZipWriter: symlink target escapes archive root: " + target);
+    }
+}
+
 /// @brief Append len raw bytes to the internal archive buffer.
 void ZipWriter::writeBytes(const uint8_t *data, size_t len) {
+    if (len == 0)
+        return;
+    if (data == nullptr)
+        throw std::runtime_error("ZipWriter: null data pointer for non-empty write");
     buffer_.insert(buffer_.end(), data, data + len);
 }
 
@@ -137,19 +179,79 @@ void ZipWriter::writeU32(uint32_t v) {
     writeBytes(buf, 4);
 }
 
-/// @brief Populate time and date with the current wall-clock time encoded in DOS
-/// format: time = (sec/2) | (min<<5) | (hour<<11), date = day | (mon<<5) | ((year-1980)<<9).
-/// Falls back to 1980-01-01 00:00:00 if localtime() returns null.
+namespace {
+
+uint32_t crc32Bytes(const uint8_t *data, size_t len) {
+    static constexpr uint8_t kEmpty = 0;
+    return rt_crc32_compute(len == 0 ? &kEmpty : data, len);
+}
+
+bool portableLocalTime(std::time_t timestamp, std::tm &out) {
+#if defined(_WIN32)
+    return localtime_s(&out, &timestamp) == 0;
+#else
+    return localtime_r(&timestamp, &out) != nullptr;
+#endif
+}
+
+bool portableGmTime(std::time_t timestamp, std::tm &out) {
+#if defined(_WIN32)
+    return gmtime_s(&out, &timestamp) == 0;
+#else
+    return gmtime_r(&timestamp, &out) != nullptr;
+#endif
+}
+
+bool sourceDateEpoch(std::time_t &timestamp) {
+    const char *env = std::getenv("SOURCE_DATE_EPOCH");
+    if (env == nullptr || *env == '\0')
+        return false;
+    errno = 0;
+    char *end = nullptr;
+    const unsigned long long parsed = std::strtoull(env, &end, 10);
+    if (errno != 0 || end == env || *end != '\0')
+        throw std::runtime_error("ZipWriter: invalid SOURCE_DATE_EPOCH");
+    if (parsed > static_cast<unsigned long long>(std::numeric_limits<std::time_t>::max()))
+        throw std::runtime_error("ZipWriter: SOURCE_DATE_EPOCH is too large for this host");
+    timestamp = static_cast<std::time_t>(parsed);
+    return true;
+}
+
+void clampDosTime(std::tm &t) {
+    const int year = t.tm_year + 1900;
+    if (year < 1980) {
+        t = {};
+        t.tm_year = 80;
+        t.tm_mon = 0;
+        t.tm_mday = 1;
+    } else if (year > 2107) {
+        t = {};
+        t.tm_year = 207;
+        t.tm_mon = 11;
+        t.tm_mday = 31;
+        t.tm_hour = 23;
+        t.tm_min = 59;
+        t.tm_sec = 58;
+    }
+}
+
+} // namespace
+
+/// @brief Populate time and date with a DOS timestamp. Uses SOURCE_DATE_EPOCH
+/// in UTC when set; otherwise uses the current wall-clock local time.
 void ZipWriter::getDosTime(uint16_t &time, uint16_t &date) {
     std::time_t now = std::time(nullptr);
-    struct tm *t = std::localtime(&now);
-    if (!t) {
+    std::tm t{};
+    const bool deterministic = sourceDateEpoch(now);
+    const bool converted = deterministic ? portableGmTime(now, t) : portableLocalTime(now, t);
+    if (!converted) {
         time = 0;
         date = 0x0021; // 1980-01-01
         return;
     }
-    time = static_cast<uint16_t>((t->tm_sec / 2) | (t->tm_min << 5) | (t->tm_hour << 11));
-    date = static_cast<uint16_t>(t->tm_mday | ((t->tm_mon + 1) << 5) | ((t->tm_year - 80) << 9));
+    clampDosTime(t);
+    time = static_cast<uint16_t>((t.tm_sec / 2) | (t.tm_min << 5) | (t.tm_hour << 11));
+    date = static_cast<uint16_t>(t.tm_mday | ((t.tm_mon + 1) << 5) | ((t.tm_year - 80) << 9));
 }
 
 /// @brief Add a regular file entry. Computes CRC-32, optionally DEFLATE-compresses the
@@ -159,6 +261,7 @@ void ZipWriter::addFile(const std::string &name,
                         const uint8_t *data,
                         size_t len,
                         uint32_t unixMode) {
+    ensureOpen();
     const std::string entryName = normalizeEntryName(name);
     if (!seenNames_.insert(entryName).second)
         throw std::runtime_error("ZipWriter: duplicate entry name: " + entryName);
@@ -166,7 +269,9 @@ void ZipWriter::addFile(const std::string &name,
     validateArchiveLimit(entries_.size() + 1, 0xFFFFu, "more than 65535 entries");
     validateArchiveLimit(buffer_.size(), 0xFFFFFFFFu, "archives larger than 4 GiB");
 
-    uint32_t crc = rt_crc32_compute(data, len);
+    if (len > 0 && data == nullptr)
+        throw std::runtime_error("ZipWriter: null data pointer for non-empty file: " + entryName);
+    uint32_t crc = crc32Bytes(data, len);
 
     // Decide compression
     uint16_t method = kMethodStored;
@@ -237,6 +342,7 @@ void ZipWriter::addFileString(const std::string &name,
 /// directory attribute bit (0x10) is set in the lower half of externalAttrs so
 /// Windows extractors create the directory even without reading Unix mode bits.
 void ZipWriter::addDirectory(const std::string &name, uint32_t unixMode) {
+    ensureOpen();
     std::string dirName = name;
     if (dirName.empty() || dirName.back() != '/')
         dirName += '/';
@@ -292,18 +398,18 @@ void ZipWriter::addDirectory(const std::string &name, uint32_t unixMode) {
 /// data. Unix mode 0120777 in the upper 16 bits of externalAttrs tells Info-ZIP
 /// compatible extractors (including macOS Archive Utility) that this is a symlink.
 void ZipWriter::addSymlink(const std::string &name, const std::string &target) {
+    ensureOpen();
     const std::string entryName = normalizeEntryName(name);
     if (!seenNames_.insert(entryName).second)
         throw std::runtime_error("ZipWriter: duplicate entry name: " + entryName);
-    validateSingleLineField(target, "zip symlink target");
-    validateArchiveLimit(target.size(), 0xFFFFFFFFu, "symlinks larger than 4 GiB");
+    validateSymlinkTarget(entryName, target);
     validateArchiveLimit(entries_.size() + 1, 0xFFFFu, "more than 65535 entries");
     validateArchiveLimit(buffer_.size(), 0xFFFFFFFFu, "archives larger than 4 GiB");
 
     // Symlinks store the target path as file data
     auto *data = reinterpret_cast<const uint8_t *>(target.data());
     size_t len = target.size();
-    uint32_t crc = rt_crc32_compute(data, len);
+    uint32_t crc = crc32Bytes(data, len);
 
     Entry e;
     e.name = entryName;
@@ -350,6 +456,7 @@ void ZipWriter::addSymlink(const std::string &name, const std::string &target) {
 /// been added. The central directory echoes each local header's metadata plus
 /// version_made_by (Unix) and externalAttrs (Unix mode) fields.
 void ZipWriter::writeCentralDirectory() {
+    ensureOpen();
     validateArchiveLimit(entries_.size(), 0xFFFFu, "more than 65535 entries");
     validateArchiveLimit(buffer_.size(), 0xFFFFFFFFu, "archives larger than 4 GiB");
 
@@ -395,6 +502,7 @@ void ZipWriter::writeCentralDirectory() {
     putU16(eocd + 20, 0); // Comment length
 
     writeBytes(eocd, kEndRecordSize);
+    finalized_ = true;
 }
 
 /// @brief Finalize the archive and write it to disk at path. Appends the central

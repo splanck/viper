@@ -229,6 +229,45 @@ std::string platformExtension(PackageTarget t) {
     }
 }
 
+std::string sanitizeOutputFileComponent(const std::string &text, const std::string &fallback) {
+    std::string out;
+    out.reserve(text.size());
+    for (char c : text) {
+        const unsigned char uc = static_cast<unsigned char>(c);
+        if (std::isalnum(uc) || c == '.' || c == '_' || c == '-' || c == '+' || c == '~')
+            out.push_back(c);
+        else
+            out.push_back('_');
+    }
+    while (!out.empty() && (out.front() == '.' || out.front() == '-'))
+        out.erase(out.begin());
+    if (out.empty() || out == "." || out == "..")
+        return fallback;
+    return out;
+}
+
+std::string defaultPackageOutputPath(const ProjectConfig &proj,
+                                     const std::string &version,
+                                     PackageTarget target,
+                                     const std::string &archStr) {
+    return sanitizeOutputFileComponent(proj.name, "package") + "-" +
+           sanitizeOutputFileComponent(version, "0.0.0") + "-" + platformName(target) + "-" +
+           sanitizeOutputFileComponent(archStr, "native") + platformExtension(target);
+}
+
+std::string portableArchiveVersionComponent(const std::string &version) {
+    std::string out;
+    out.reserve(version.size());
+    for (char c : version) {
+        const unsigned char uc = static_cast<unsigned char>(c);
+        if (std::isalnum(uc) || c == '.' || c == '+' || c == '~' || c == '-')
+            out.push_back(c);
+        else
+            out.push_back('_');
+    }
+    return out;
+}
+
 uint16_t readLE16(const std::vector<uint8_t> &data, size_t off) {
     return static_cast<uint16_t>(data[off] | (data[off + 1] << 8));
 }
@@ -324,14 +363,15 @@ ExecutableInfo inspectExecutable(const std::string &path) {
         throw std::runtime_error("Mach-O executable has unsupported CPU type: " +
                                  std::to_string(cputype));
     }
-    if (magicBE == 0xCAFEBABEu && data.size() >= 8) {
+    if ((magicBE == 0xCAFEBABEu || magicBE == 0xCAFEBABFu) && data.size() >= 8) {
         const uint32_t count = readBE32(data, 4);
-        if (count == 0 || count > 64 || data.size() < 8 + static_cast<size_t>(count) * 20)
+        const size_t archSize = magicBE == 0xCAFEBABFu ? 32u : 20u;
+        if (count == 0 || count > 64 || data.size() < 8 + static_cast<size_t>(count) * archSize)
             throw std::runtime_error("Mach-O universal binary has an invalid fat header: " + path);
         bool hasX64 = false;
         bool hasArm64 = false;
         for (uint32_t i = 0; i < count; ++i) {
-            const size_t off = 8 + static_cast<size_t>(i) * 20;
+            const size_t off = 8 + static_cast<size_t>(i) * archSize;
             const uint32_t cputype = readBE32(data, off);
             if (cputype == 0x01000007u)
                 hasX64 = true;
@@ -433,7 +473,13 @@ bool signWindowsInstallerArtifact(const ProjectConfig &proj,
     if (timestampUrl.empty())
         timestampUrl = getenvOrEmpty("VIPER_WINDOWS_TIMESTAMP_URL");
     if (timestampUrl.empty())
-        timestampUrl = "http://timestamp.digicert.com";
+        timestampUrl = "https://timestamp.digicert.com";
+    try {
+        viper::pkg::validatePackageUrl(timestampUrl, "Windows timestamp URL");
+    } catch (const std::exception &ex) {
+        err << "error: " << ex.what() << "\n";
+        return false;
+    }
 
     std::string signtool = pkg.windowsSigntoolPath;
     if (signtool.empty())
@@ -745,7 +791,8 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
             case PackageTarget::Tarball:
                 viper::pkg::validateDebVersion(version, "package version");
                 (void)viper::pkg::sanitizePackageRelativePath(
-                    viper::pkg::normalizeDebName(proj.name) + "-" + version,
+                    viper::pkg::normalizeDebName(proj.name) + "-" +
+                        portableArchiveVersionComponent(version),
                     "tarball top-level directory");
                 (void)viper::pkg::normalizeExecName(proj.name);
                 break;
@@ -871,9 +918,8 @@ int cmdPackage(int argc, char **argv) {
     }
 
     if (args.outputPath.empty()) {
-        args.outputPath = proj.name + "-" + resolvedVersion + "-" +
-                          platformName(args.platformTarget) + "-" + archStr +
-                          platformExtension(args.platformTarget);
+        args.outputPath =
+            defaultPackageOutputPath(proj, resolvedVersion, args.platformTarget, archStr);
     }
 
     if (!validatePackageConfigForTarget(proj, args.platformTarget, archStr, std::cerr))
@@ -953,9 +999,9 @@ int cmdPackage(int argc, char **argv) {
                 std::cerr << " [NOT FOUND]";
             else if (!assetPath.empty() && fs::is_directory(assetPath)) {
                 size_t count = 0;
-                viper::pkg::safeDirectoryIterate(
-                    assetPath, proj.rootDir, [&](const fs::directory_entry &e) {
-                        if (fs::is_regular_file(e.path()))
+                viper::pkg::safeDirectoryIterateResolved(
+                    assetPath, proj.rootDir, [&](const viper::pkg::SafeDirectoryEntry &e) {
+                        if (e.regularFile)
                             ++count;
                     });
                 std::cerr << " (" << count << " files)";
@@ -994,8 +1040,10 @@ int cmdPackage(int argc, char **argv) {
     if (!args.executablePath.empty()) {
         fs::path exePath(args.executablePath);
         if (!exePath.is_absolute())
-            exePath = fs::path(proj.rootDir) / exePath;
-        packageBinaryPath = exePath.lexically_normal().string();
+            exePath = fs::current_path() / exePath;
+        std::error_code exeEc;
+        const fs::path canonicalExe = fs::weakly_canonical(exePath, exeEc);
+        packageBinaryPath = (exeEc ? exePath.lexically_normal() : canonicalExe).string();
         if (!fs::exists(packageBinaryPath)) {
             std::cerr << "error: prebuilt executable not found at " << packageBinaryPath << "\n";
             return 1;

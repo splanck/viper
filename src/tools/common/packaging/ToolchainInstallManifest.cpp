@@ -32,6 +32,7 @@
 #include <algorithm>
 #include <cctype>
 #include <fstream>
+#include <limits>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -412,8 +413,9 @@ ToolchainFileEntry makeEntry(const fs::path &stagePrefix, const fs::path &filePa
 /// relPath. Used by validateToolchainInstallManifest to check for specific
 /// required files like ViperConfig.cmake and ViperTargets.cmake.
 bool manifestHasRelativePath(const ToolchainInstallManifest &manifest, std::string_view relPath) {
+    const std::string needle = lowerCopy(std::string(relPath));
     return std::any_of(manifest.files.begin(), manifest.files.end(), [&](const ToolchainFileEntry &entry) {
-        return entry.stagedRelativePath == relPath;
+        return lowerCopy(entry.stagedRelativePath) == needle;
     });
 }
 
@@ -458,8 +460,11 @@ bool stagedCMakeMetadataMentions(const ToolchainInstallManifest &manifest, std::
 /// estimate required disk space in installer UI dialogs.
 uint64_t ToolchainInstallManifest::totalSizeBytes() const {
     uint64_t total = 0;
-    for (const auto &file : files)
+    for (const auto &file : files) {
+        if (file.sizeBytes > std::numeric_limits<uint64_t>::max() - total)
+            throw std::overflow_error("toolchain manifest total size overflow");
         total += file.sizeBytes;
+    }
     return total;
 }
 
@@ -590,6 +595,10 @@ std::string mapInstallPath(const ToolchainFileEntry &file, InstallPathPolicy pol
         case InstallPathPolicy::MacOSUsrLocalViperRoot:
             return rel.empty() ? "/usr/local/viper" : "/usr/local/viper/" + rel;
         case InstallPathPolicy::LinuxUsrRoot:
+            if (file.kind == ToolchainFileKind::Doc && rel.rfind("share/doc/", 0) != 0) {
+                const std::string name = fs::path(rel).filename().generic_string();
+                return name.empty() ? "/usr/share/doc/viper" : "/usr/share/doc/viper/" + name;
+            }
             return rel.empty() ? "/usr" : "/usr/" + rel;
         case InstallPathPolicy::PortableArchive:
         default:
