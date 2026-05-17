@@ -104,6 +104,21 @@ TEST(negative_update_is_noop) {
     rt_screenfx_destroy(fx);
 }
 
+TEST(zero_update_is_noop) {
+    rt_screenfx fx = rt_screenfx_new();
+    rt_screenfx_flash(fx, 0xFF0000FF, 100);
+    rt_screenfx_update(fx, 10);
+    int64_t alpha = rt_screenfx_get_overlay_alpha(fx);
+    int64_t color = rt_screenfx_get_overlay_color(fx);
+
+    rt_screenfx_update(fx, 0);
+    ASSERT(rt_screenfx_is_type_active(fx, RT_SCREENFX_FLASH) == 1);
+    ASSERT(rt_screenfx_get_overlay_alpha(fx) == alpha);
+    ASSERT(rt_screenfx_get_overlay_color(fx) == color);
+
+    rt_screenfx_destroy(fx);
+}
+
 TEST(fade_in) {
     rt_screenfx fx = rt_screenfx_new();
     /// @brief Rt_screenfx_fade_in.
@@ -215,6 +230,7 @@ int main() {
     RUN_TEST(shake_decay);
     RUN_TEST(flash);
     RUN_TEST(negative_update_is_noop);
+    RUN_TEST(zero_update_is_noop);
     RUN_TEST(fade_in);
     RUN_TEST(fade_out);
     RUN_TEST(cancel_all);

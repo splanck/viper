@@ -120,11 +120,12 @@ void rt_collision_rect_set_center(rt_collision_rect rect, double cx, double cy);
 /// @param dy Vertical displacement (positive = downward).
 void rt_collision_rect_move(rt_collision_rect rect, double dx, double dy);
 
-/// @brief Tests whether a point lies inside the rectangle (inclusive edges).
+/// @brief Tests whether a point lies inside the rectangle.
+/// @details Inclusive on the left/top edges and exclusive on right/bottom.
 /// @param rect The collision rectangle to test against.
 /// @param px X coordinate of the test point.
 /// @param py Y coordinate of the test point.
-/// @return 1 if the point is inside or on the edge, 0 otherwise.
+/// @return 1 if the point is inside, including left/top edges, 0 otherwise.
 int8_t rt_collision_rect_contains_point(rt_collision_rect rect, double px, double py);
 
 /// @brief Tests whether this rectangle overlaps with another CollisionRect.
@@ -193,13 +194,14 @@ int8_t rt_collision_rects_overlap(
     double x1, double y1, double w1, double h1, double x2, double y2, double w2, double h2);
 
 /// @brief Tests whether a point lies inside an axis-aligned rectangle.
+/// @details Inclusive on the left/top edges and exclusive on right/bottom.
 /// @param px X coordinate of the test point.
 /// @param py Y coordinate of the test point.
 /// @param rx Left edge of the rectangle.
 /// @param ry Top edge of the rectangle.
 /// @param rw Width of the rectangle.
 /// @param rh Height of the rectangle.
-/// @return 1 if the point is inside or on the edge, 0 otherwise.
+/// @return 1 if the point is inside, including left/top edges, 0 otherwise.
 int8_t rt_collision_point_in_rect(double px, double py, double rx, double ry, double rw, double rh);
 
 /// @brief Tests whether two circles overlap.

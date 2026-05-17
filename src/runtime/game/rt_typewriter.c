@@ -10,8 +10,8 @@
 //
 // Key invariants:
 //   - Full text is strdup'd; visible buffer is a separate copy.
-//   - char_index tracks how many characters are revealed (0 to strlen).
-//   - Update() returns 1 on the exact frame char_index reaches strlen.
+//   - char_index tracks revealed bytes; visible_chars tracks revealed UTF-8 codepoints.
+//   - Update() returns 1 on the exact frame the byte index reaches strlen.
 //   - After completion, is_complete=1 and further Update() calls are no-ops.
 //
 // Ownership/Lifetime:
@@ -33,6 +33,8 @@ struct rt_typewriter_impl {
     char *visible_buf;
     int64_t total_len;
     int64_t char_index;
+    int64_t total_chars;
+    int64_t visible_chars;
     int64_t rate_ms;
     int64_t accum;
     int8_t active;
@@ -59,6 +61,45 @@ static void typewriter_finalizer(void *obj) {
     t->visible_buf = NULL;
 }
 
+static int8_t typewriter_is_utf8_continuation(unsigned char c) {
+    return (c & 0xC0u) == 0x80u;
+}
+
+static int64_t typewriter_utf8_codepoint_len(const char *text, int64_t index, int64_t len) {
+    if (!text || index < 0 || index >= len)
+        return 0;
+
+    const unsigned char c0 = (unsigned char)text[index];
+    if (c0 < 0x80u)
+        return 1;
+    if ((c0 & 0xE0u) == 0xC0u && index + 1 < len &&
+        typewriter_is_utf8_continuation((unsigned char)text[index + 1]))
+        return 2;
+    if ((c0 & 0xF0u) == 0xE0u && index + 2 < len &&
+        typewriter_is_utf8_continuation((unsigned char)text[index + 1]) &&
+        typewriter_is_utf8_continuation((unsigned char)text[index + 2]))
+        return 3;
+    if ((c0 & 0xF8u) == 0xF0u && index + 3 < len &&
+        typewriter_is_utf8_continuation((unsigned char)text[index + 1]) &&
+        typewriter_is_utf8_continuation((unsigned char)text[index + 2]) &&
+        typewriter_is_utf8_continuation((unsigned char)text[index + 3]))
+        return 4;
+
+    return 1;
+}
+
+static int64_t typewriter_utf8_char_count(const char *text, int64_t len) {
+    int64_t count = 0;
+    for (int64_t i = 0; i < len;) {
+        int64_t char_len = typewriter_utf8_codepoint_len(text, i, len);
+        if (char_len <= 0)
+            break;
+        i += char_len;
+        count++;
+    }
+    return count;
+}
+
 /// @brief Create a new typewriter text-reveal effect.
 /// @details Reveals text one character at a time at a configurable rate, producing
 ///          the classic RPG dialogue effect. Use say() to load text, update() each
@@ -74,6 +115,8 @@ rt_typewriter rt_typewriter_new(void) {
     t->visible_buf = NULL;
     t->total_len = 0;
     t->char_index = 0;
+    t->total_chars = 0;
+    t->visible_chars = 0;
     t->rate_ms = 30;
     t->accum = 0;
     t->active = 0;
@@ -121,8 +164,10 @@ void rt_typewriter_say(void *tw, const char *text, int64_t rate_ms) {
     free(t->visible_buf);
     t->full_text = full;
     t->total_len = (int64_t)len;
+    t->total_chars = typewriter_utf8_char_count(full, t->total_len);
     t->visible_buf = visible;
     t->char_index = 0;
+    t->visible_chars = 0;
     t->rate_ms = (rate_ms > 0) ? rate_ms : 30;
     t->accum = 0;
     t->active = 1;
@@ -150,8 +195,12 @@ int8_t rt_typewriter_update(void *tw, int64_t dt) {
     int8_t just_completed = 0;
     while (t->accum >= t->rate_ms && t->char_index < t->total_len) {
         t->accum -= t->rate_ms;
-        t->visible_buf[t->char_index] = t->full_text[t->char_index];
-        t->char_index++;
+        int64_t char_len = typewriter_utf8_codepoint_len(t->full_text, t->char_index, t->total_len);
+        if (char_len <= 0)
+            break;
+        memcpy(t->visible_buf + t->char_index, t->full_text + t->char_index, (size_t)char_len);
+        t->char_index += char_len;
+        t->visible_chars++;
         t->visible_buf[t->char_index] = '\0';
 
         if (t->char_index >= t->total_len) {
@@ -176,6 +225,7 @@ void rt_typewriter_skip(void *tw) {
         t->visible_buf[t->total_len] = '\0';
     }
     t->char_index = t->total_len;
+    t->visible_chars = t->total_chars;
     t->complete = 1;
     t->active = 0;
 }
@@ -192,6 +242,8 @@ void rt_typewriter_reset(void *tw) {
     t->visible_buf = NULL;
     t->total_len = 0;
     t->char_index = 0;
+    t->total_chars = 0;
+    t->visible_chars = 0;
     t->accum = 0;
     t->active = 0;
     t->complete = 0;
@@ -233,9 +285,11 @@ int8_t rt_typewriter_is_complete(void *tw) {
 int64_t rt_typewriter_progress(void *tw) {
     struct rt_typewriter_impl *t =
         checked_typewriter(tw, "Typewriter.Progress: expected Viper.Game.Typewriter");
-    if (!t || t->total_len == 0)
+    if (!t)
         return 0;
-    long double pct = ((long double)t->char_index * 100.0L) / (long double)t->total_len;
+    if (t->total_chars == 0)
+        return t->complete ? 100 : 0;
+    long double pct = ((long double)t->visible_chars * 100.0L) / (long double)t->total_chars;
     if (pct >= 100.0L)
         return 100;
     return pct <= 0.0L ? 0 : (int64_t)pct;
@@ -245,12 +299,12 @@ int64_t rt_typewriter_progress(void *tw) {
 int64_t rt_typewriter_char_count(void *tw) {
     struct rt_typewriter_impl *t =
         checked_typewriter(tw, "Typewriter.CharCount: expected Viper.Game.Typewriter");
-    return t ? t->char_index : 0;
+    return t ? t->visible_chars : 0;
 }
 
 /// @brief Get the total number of characters in the loaded text.
 int64_t rt_typewriter_total_chars(void *tw) {
     struct rt_typewriter_impl *t =
         checked_typewriter(tw, "Typewriter.TotalChars: expected Viper.Game.Typewriter");
-    return t ? t->total_len : 0;
+    return t ? t->total_chars : 0;
 }

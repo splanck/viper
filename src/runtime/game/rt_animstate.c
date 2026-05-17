@@ -221,6 +221,8 @@ void rt_animstate_add_state(void *asm_,
         checked_animstate(asm_, "AnimStateMachine.AddState: expected Viper.Game.AnimStateMachine");
     if (!a)
         return;
+    if (state_id < 0)
+        return;
     if (start_frame < 0)
         start_frame = 0;
     if (end_frame < 0)
@@ -255,6 +257,8 @@ int8_t rt_animstate_set_initial(void *asm_, int64_t state_id) {
         asm_, "AnimStateMachine.SetInitial: expected Viper.Game.AnimStateMachine");
     if (!a)
         return 0;
+    if (state_id < 0)
+        return 0;
     int idx = find_clip(a, state_id);
     if (idx < 0)
         return 0;
@@ -279,6 +283,8 @@ int8_t rt_animstate_transition(void *asm_, int64_t state_id) {
     animstate_impl *a = checked_animstate(
         asm_, "AnimStateMachine.Transition: expected Viper.Game.AnimStateMachine");
     if (!a)
+        return 0;
+    if (state_id < 0)
         return 0;
 
     // No-op if already in this state
@@ -509,6 +515,8 @@ int8_t rt_animstate_add_event(void *asm_, int64_t state_id, int64_t frame, int64
         asm_, "AnimStateMachine.AddEvent: expected Viper.Game.AnimStateMachine");
     if (!a)
         return 0;
+    if (state_id < 0)
+        return 0;
     int idx = find_clip(a, state_id);
     if (idx < 0)
         return 0;
@@ -526,6 +534,8 @@ void rt_animstate_clear_events(void *asm_, int64_t state_id) {
     animstate_impl *a = checked_animstate(
         asm_, "AnimStateMachine.ClearEvents: expected Viper.Game.AnimStateMachine");
     if (!a)
+        return;
+    if (state_id < 0)
         return;
     int idx = find_clip(a, state_id);
     if (idx < 0)

@@ -196,7 +196,7 @@ static int find_effect_of_type(rt_screenfx fx, rt_screenfx_type_t type) {
 /// Effects whose elapsed time exceeds duration are reclaimed (slot type → NONE).
 void rt_screenfx_update(rt_screenfx fx, int64_t dt) {
     fx = checked_screenfx(fx, "ScreenFX.Update: expected Viper.Game.ScreenFX");
-    if (!fx || dt < 0)
+    if (!fx || dt <= 0)
         return;
 
     // Reset accumulators

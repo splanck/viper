@@ -570,6 +570,7 @@ void rt_quadtree_clear(rt_quadtree tree) {
     }
     tree->item_count = 0;
     tree->result_count = 0;
+    tree->query_truncated = 0;
     tree->pair_count = 0;
 
     // Clear tree structure

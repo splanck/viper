@@ -809,7 +809,7 @@ a single Integer suitable for save/load via SaveData.
 ## Viper.Game.Typewriter
 
 Character-by-character text reveal effect for dialogue, lore terminals, tutorials, and
-narrative sequences. Accumulates milliseconds and reveals one character per configured
+narrative sequences. Accumulates milliseconds and reveals one UTF-8 character per configured
 interval. `Skip()` instantly reveals all remaining text.
 
 **Type:** Instance (obj)

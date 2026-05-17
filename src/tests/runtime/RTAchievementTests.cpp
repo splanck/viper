@@ -20,10 +20,20 @@ struct FakeCanvas {
     int64_t width;
 };
 
+struct FakeObjectHeader {
+    int64_t class_id;
+    void (*finalizer)(void *);
+};
+
 int g_box_calls = 0;
 int g_text_calls = 0;
 int64_t g_last_class_id = 0;
+int g_string_unref_calls = 0;
 const char *g_last_text = nullptr;
+
+FakeObjectHeader *fake_header(void *obj) {
+    return reinterpret_cast<FakeObjectHeader *>(obj) - 1;
+}
 
 void reset_draw_counters() {
     g_box_calls = 0;
@@ -35,7 +45,16 @@ void reset_draw_counters() {
 
 extern "C" void *rt_obj_new_i64(int64_t class_id, int64_t byte_size) {
     g_last_class_id = class_id;
-    return std::calloc(1, static_cast<size_t>(byte_size));
+    auto *header = static_cast<FakeObjectHeader *>(
+        std::calloc(1, sizeof(FakeObjectHeader) + static_cast<size_t>(byte_size)));
+    if (!header)
+        return nullptr;
+    header->class_id = class_id;
+    return header + 1;
+}
+
+extern "C" int64_t rt_obj_class_id(void *obj) {
+    return obj ? fake_header(obj)->class_id : 0;
 }
 
 extern "C" int rt_obj_release_check0(void *) {
@@ -43,7 +62,25 @@ extern "C" int rt_obj_release_check0(void *) {
 }
 
 extern "C" void rt_obj_free(void *obj) {
-    std::free(obj);
+    if (!obj)
+        return;
+    FakeObjectHeader *header = fake_header(obj);
+    if (header->finalizer) {
+        void (*finalizer)(void *) = header->finalizer;
+        header->finalizer = nullptr;
+        finalizer(obj);
+    }
+    std::free(header);
+}
+
+extern "C" void rt_obj_set_finalizer(void *obj, void (*finalizer)(void *)) {
+    if (obj)
+        fake_header(obj)->finalizer = finalizer;
+}
+
+extern "C" void rt_trap(const char *message) {
+    std::fprintf(stderr, "rt_trap: %s\n", message ? message : "");
+    std::abort();
 }
 
 extern "C" rt_string rt_const_cstr(const char *str) {
@@ -58,7 +95,9 @@ extern "C" rt_string rt_string_ref(rt_string s) {
     return s;
 }
 
-extern "C" void rt_string_unref(rt_string) {}
+extern "C" void rt_string_unref(rt_string) {
+    g_string_unref_calls++;
+}
 
 extern "C" void rt_canvas_box_alpha(void *, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t) {
     g_box_calls++;
@@ -172,6 +211,33 @@ static void test_stat_tracking() {
     rt_achievement_destroy(ach);
 }
 
+static void test_stat_increment_saturates() {
+    rt_achievement ach = rt_achievement_new(1);
+    assert(ach != nullptr);
+
+    rt_achievement_set_stat(ach, 0, INT64_MAX - 1);
+    rt_achievement_inc_stat(ach, 0, 10);
+    assert(rt_achievement_get_stat(ach, 0) == INT64_MAX);
+
+    rt_achievement_set_stat(ach, 1, INT64_MIN + 1);
+    rt_achievement_inc_stat(ach, 1, -10);
+    assert(rt_achievement_get_stat(ach, 1) == INT64_MIN);
+
+    rt_achievement_destroy(ach);
+}
+
+static void test_destroy_runs_finalizer_for_retained_strings() {
+    rt_achievement ach = rt_achievement_new(2);
+    assert(ach != nullptr);
+
+    g_string_unref_calls = 0;
+    rt_achievement_add(ach, 0, rt_const_cstr("First"), rt_const_cstr("One"));
+    rt_achievement_add(ach, 1, rt_const_cstr("Second"), rt_const_cstr("Two"));
+    rt_achievement_destroy(ach);
+
+    assert(g_string_unref_calls == 4);
+}
+
 static void test_notification_lifetime_and_draw() {
     rt_achievement ach = rt_achievement_new(2);
     FakeCanvas canvas{640};
@@ -219,6 +285,8 @@ int main() {
     test_unlock_requires_defined_entry();
     test_mask_round_trip_clamps_to_capacity();
     test_stat_tracking();
+    test_stat_increment_saturates();
+    test_destroy_runs_finalizer_for_retained_strings();
     test_notification_lifetime_and_draw();
     test_negative_notification_delta_is_noop();
     test_large_notification_delta_dismisses();

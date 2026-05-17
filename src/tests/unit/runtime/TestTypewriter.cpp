@@ -50,10 +50,37 @@ TEST(Typewriter, EmptyTextCompletesImmediately) {
     EXPECT_TRUE(rt_typewriter_is_complete(tw));
     EXPECT_EQ(rt_typewriter_char_count(tw), 0);
     EXPECT_EQ(rt_typewriter_total_chars(tw), 0);
+    EXPECT_EQ(rt_typewriter_progress(tw), 100);
     EXPECT_FALSE(rt_typewriter_update(tw, 10));
 
     rt_string visible = rt_typewriter_get_visible_text(tw);
     EXPECT_EQ(std::strcmp(rt_string_cstr(visible), ""), 0);
+
+    rt_typewriter_destroy(tw);
+}
+
+TEST(Typewriter, RevealsUtf8CodepointsAtomically) {
+    const char text[] = {'A', static_cast<char>(0xC3), static_cast<char>(0xA9), 'B', '\0'};
+    const char expected_second[] = {
+        'A', static_cast<char>(0xC3), static_cast<char>(0xA9), '\0'};
+
+    rt_typewriter tw = rt_typewriter_new();
+    rt_typewriter_say(tw, text, 10);
+
+    EXPECT_EQ(rt_typewriter_total_chars(tw), 3);
+    EXPECT_FALSE(rt_typewriter_update(tw, 10));
+    EXPECT_EQ(rt_typewriter_char_count(tw), 1);
+    rt_string visible = rt_typewriter_get_visible_text(tw);
+    EXPECT_EQ(std::strcmp(rt_string_cstr(visible), "A"), 0);
+
+    EXPECT_FALSE(rt_typewriter_update(tw, 10));
+    EXPECT_EQ(rt_typewriter_char_count(tw), 2);
+    visible = rt_typewriter_get_visible_text(tw);
+    EXPECT_EQ(std::strcmp(rt_string_cstr(visible), expected_second), 0);
+
+    EXPECT_TRUE(rt_typewriter_update(tw, 10));
+    EXPECT_EQ(rt_typewriter_char_count(tw), 3);
+    EXPECT_EQ(rt_typewriter_progress(tw), 100);
 
     rt_typewriter_destroy(tw);
 }

@@ -22,9 +22,9 @@
 //   - rt_collision_rect_vs_rect: SAT test on both axes, returns 1 if any area
 //     overlaps (not just touches). Two rects sharing only an edge return 0.
 //   - rt_collision_circle_vs_circle: distance-squared comparison to avoid
-//     sqrt; returns 1 when distance < sum_of_radii.
-//   - rt_collision_point_in_rect / _circle: point containment, inclusive of
-//     the boundary.
+//     sqrt; returns 1 when distance <= sum_of_radii.
+//   - rt_collision_point_in_rect is inclusive on left/top and exclusive on
+//     right/bottom; point_in_circle is inclusive of the boundary.
 //   - Standalone functions (not methods on rect/circle objects) are also
 //     provided for callers that store geometry inline rather than in objects.
 //
@@ -362,7 +362,7 @@ int8_t rt_collision_circles_overlap(
     double dy = y2 - y1;
     double dist_sq = dx * dx + dy * dy;
     double radii = r1 + r2;
-    return dist_sq < radii * radii;
+    return dist_sq <= radii * radii;
 }
 
 /// @brief Standalone function: test if point (px, py) is inside a circle.

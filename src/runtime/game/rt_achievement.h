@@ -14,7 +14,7 @@
 //   - Unlock mask is get/settable for save/load integration.
 //
 // Ownership/Lifetime:
-//   - GC-managed via rt_obj_new_i64.
+//   - GC-managed via rt_obj_new_i64 with a finalizer for retained strings.
 //
 // Links: src/runtime/game/rt_achievement.c
 //

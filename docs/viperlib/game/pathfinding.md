@@ -54,6 +54,7 @@ A* pathfinding on uniform-cost 2D grids. Supports 4-way (cardinal) and 8-way (ca
 | `IsWalkable(x, y)` | `Boolean(Integer, Integer)` | Check if cell is walkable |
 | `SetCost(x, y, cost)` | `void(Integer, Integer, Integer)` | Set movement cost (100 = normal) |
 | `GetCost(x, y)` | `Integer(Integer, Integer)` | Get movement cost |
+| `Destroy()` | `void()` | Release the pathfinder handle and its internal grid storage |
 | `FindPath(sx, sy, gx, gy)` | `List[Seq[Integer]](Integer×4)` | Find path; each waypoint is `[x, y]` |
 | `FindPathLength(sx, sy, gx, gy)` | `Integer(Integer×4)` | Get cell-to-cell step count (-1 if no path) |
 | `FindNearest(sx, sy, value)` | `List[Seq[Integer]](Integer×3)` | Find path to nearest reachable cell with the stored tile/grid value |

@@ -331,6 +331,10 @@ TEST(query_truncation_detected) {
     ASSERT(count == RT_QUADTREE_MAX_RESULTS);
     ASSERT(rt_quadtree_query_was_truncated(tree) == 1);
 
+    rt_quadtree_clear(tree);
+    ASSERT(rt_quadtree_result_count(tree) == 0);
+    ASSERT(rt_quadtree_query_was_truncated(tree) == 0);
+
     rt_quadtree_destroy(tree);
 }
 

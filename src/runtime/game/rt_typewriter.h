@@ -8,7 +8,7 @@
 //   tutorials, and narrative text.
 //
 // Key invariants:
-//   - Reveal rate is configurable in ms per character.
+//   - Reveal rate is configurable in ms per UTF-8 codepoint.
 //   - Skip() instantly reveals all remaining text.
 //   - GetVisibleText() returns the currently revealed portion.
 //   - Update() returns 1 on the frame the full text is revealed.
@@ -39,7 +39,7 @@ rt_typewriter rt_typewriter_new(void);
 /// @brief Free the typewriter and any owned text (also reclaimed by GC).
 void rt_typewriter_destroy(void *tw);
 
-/// @brief Begin revealing @p text one character at a time, one char every @p rate_ms milliseconds.
+/// @brief Begin revealing @p text one UTF-8 codepoint at a time, every @p rate_ms milliseconds.
 void rt_typewriter_say(void *tw, const char *text, int64_t rate_ms);
 
 /// @brief Advance by @p dt milliseconds. Returns 1 on the frame the full text is revealed.

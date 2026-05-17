@@ -150,8 +150,9 @@ TEST(point_in_rect) {
 }
 
 TEST(circles_overlap) {
-    ASSERT(rt_collision_circles_overlap(0, 0, 50, 75, 0, 50) == 1);  // Touching
-    ASSERT(rt_collision_circles_overlap(0, 0, 50, 200, 0, 50) == 0); // Far apart
+    ASSERT(rt_collision_circles_overlap(0, 0, 50, 75, 0, 50) == 1);   // Overlapping
+    ASSERT(rt_collision_circles_overlap(0, 0, 50, 100, 0, 50) == 1);  // Tangent
+    ASSERT(rt_collision_circles_overlap(0, 0, 50, 200, 0, 50) == 0);  // Far apart
 }
 
 TEST(point_in_circle) {

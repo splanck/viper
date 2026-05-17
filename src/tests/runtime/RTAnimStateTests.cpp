@@ -83,6 +83,16 @@ TEST(AnimState, UpdateWithoutInitialStateDoesNotAdvanceFrames) {
     EXPECT_EQ(rt_animstate_current_state(a), -1);
 }
 
+TEST(AnimState, NegativeStateIdsAreRejected) {
+    void *a = rt_animstate_new();
+    rt_animstate_add_state(a, -1, 0, 3, 1, 1);
+
+    EXPECT_EQ(rt_animstate_set_initial(a, -1), 0);
+    EXPECT_EQ(rt_animstate_transition(a, -1), 0);
+    EXPECT_EQ(rt_animstate_current_state(a), -1);
+    EXPECT_EQ(rt_animstate_frames_in_state(a), 0);
+}
+
 TEST(AnimState, UpdateAdvancesFrame) {
     void *a = rt_animstate_new();
     // Single frame duration = 2 (advance every 2 updates)

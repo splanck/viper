@@ -5726,6 +5726,7 @@ RT_FUNC(TypewriterTotalChars,   rt_typewriter_total_chars,       "Viper.Game.Typ
 RT_FUNC(PathfinderNew,          rt_pathfinder_new,            "Viper.Game.Pathfinder.New",            "obj(i64,i64)")
 RT_FUNC(PathfinderFromTilemap,  rt_pathfinder_from_tilemap,   "Viper.Game.Pathfinder.FromTilemap",    "obj(obj)")
 RT_FUNC(PathfinderFromGrid2D,   rt_pathfinder_from_grid2d,    "Viper.Game.Pathfinder.FromGrid2D",     "obj(obj)")
+RT_FUNC(PathfinderDestroy,      rt_pathfinder_destroy,        "Viper.Game.Pathfinder.Destroy",        "void(obj)")
 RT_FUNC(PathfinderSetWalkable,  rt_pathfinder_set_walkable,   "Viper.Game.Pathfinder.SetWalkable",    "void(obj,i64,i64,i1)")
 RT_FUNC(PathfinderIsWalkable,   rt_pathfinder_is_walkable,    "Viper.Game.Pathfinder.IsWalkable",     "i1(obj,i64,i64)")
 RT_FUNC(PathfinderSetCost,      rt_pathfinder_set_cost,       "Viper.Game.Pathfinder.SetCost",        "void(obj,i64,i64,i64)")
@@ -11464,6 +11465,7 @@ RT_CLASS_BEGIN("Viper.Game.Pathfinder", Pathfinder, "obj", PathfinderNew)
     RT_METHOD("FindPath", "obj(i64,i64,i64,i64)", PathfinderFindPath)
     RT_METHOD("FindPathLength", "i64(i64,i64,i64,i64)", PathfinderFindPathLen)
     RT_METHOD("FindNearest", "obj(i64,i64,i64)", PathfinderFindNearest)
+    RT_METHOD("Destroy", "void()", PathfinderDestroy)
 RT_CLASS_END()
 
 // Viper.PathFollower - Path following along waypoints

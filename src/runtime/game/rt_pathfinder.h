@@ -54,6 +54,9 @@ void *rt_pathfinder_from_tilemap(void *tilemap);
 /// Non-zero cells are marked non-walkable.
 void *rt_pathfinder_from_grid2d(void *grid);
 
+/// @brief Release a pathfinder handle and its internal cell array.
+void rt_pathfinder_destroy(void *pf);
+
 //=========================================================================
 // Configuration
 //=========================================================================

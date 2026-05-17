@@ -85,6 +85,14 @@ static void test_creation(void) {
     PASS();
 }
 
+static void test_destroy(void) {
+    TEST("Pathfinder destroy");
+    void *pf = rt_pathfinder_new(2, 2);
+    assert(pf != NULL);
+    rt_pathfinder_destroy(pf);
+    PASS();
+}
+
 static void test_walkable_default(void) {
     TEST("All cells walkable by default");
     void *pf = rt_pathfinder_new(5, 5);
@@ -381,6 +389,7 @@ int main() {
     printf("test_rt_pathfinder:\n");
 
     test_creation();
+    test_destroy();
     test_walkable_default();
     test_set_walkable();
     test_start_equals_goal();

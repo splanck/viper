@@ -158,6 +158,14 @@ void *rt_pathfinder_new(int64_t width, int64_t height) {
     return pf_alloc((int32_t)width, (int32_t)height);
 }
 
+/// @brief Release the pathfinder and free its internal cell array when the last reference drops.
+void rt_pathfinder_destroy(void *ptr) {
+    rt_pathfinder_impl *pf =
+        checked_pathfinder(ptr, "Pathfinder.Destroy: expected Viper.Game.Pathfinder");
+    if (pf && rt_obj_release_check0(pf))
+        rt_obj_free(pf);
+}
+
 /// @brief Build a pathfinder from a Tilemap — cells with collision != 0 are non-walkable.
 /// One-shot snapshot of the tilemap; later tilemap changes don't update the pathfinder.
 void *rt_pathfinder_from_tilemap(void *tilemap) {
