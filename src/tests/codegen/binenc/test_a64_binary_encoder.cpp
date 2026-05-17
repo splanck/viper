@@ -827,20 +827,36 @@ static void testLdpStpRegFpImm() {
                  (29u << 5) | 0u));
 }
 
-static void testPairOffsetValidation() {
-    bool threw = false;
-    try {
-        MInstr bad{MOpcode::LdpRegFpImm, {gpr(PhysReg::X0), gpr(PhysReg::X1), imm(12)}};
-        (void)encodeInstrBytes({bad});
-    } catch (const std::out_of_range &ex) {
-        threw = std::string(ex.what()).find("ldp") != std::string::npos;
-    }
-    CHECK(threw);
+static void testPairOffsetFallback() {
+    MInstr unaligned{MOpcode::LdpRegFpImm, {gpr(PhysReg::X0), gpr(PhysReg::X1), imm(12)}};
+    CHECK(countWords({unaligned}) == 2);
+
+    auto bytes = encodeInstrBytes({unaligned});
+    const uint32_t first = readWord(bytes, 4);
+    const uint32_t second = readWord(bytes, 8);
+    CHECK(first == (kLdurGpr | (12u << 12) | (29u << 5) | 0u));
+    CHECK(second == (kLdurGpr | (20u << 12) | (29u << 5) | 1u));
+
+    MInstr outOfRange{MOpcode::StpRegFpImm, {gpr(PhysReg::X2), gpr(PhysReg::X3), imm(512)}};
+    CHECK(countWords({outOfRange}) == 2);
+}
+
+static void testNarrowIntegerMemoryEncoding() {
+    MInstr ldr8{MOpcode::Ldr8RegBaseImm,
+                {gpr(PhysReg::X0), gpr(PhysReg::X1), imm(3)}};
+    CHECK(encodeSingleInstr({ldr8}) == (kLdur8Gpr | (3u << 12) | (1u << 5) | 0u));
+
+    MInstr str16{MOpcode::Str16RegFpImm, {gpr(PhysReg::X2), imm(-4)}};
+    CHECK(encodeSingleInstr({str16}) ==
+          (kStur16Gpr | ((static_cast<uint32_t>(-4) & 0x1FFu) << 12) | (29u << 5) | 2u));
+
+    MInstr ldr32{MOpcode::Ldr32RegFpImm, {gpr(PhysReg::X3), imm(12)}};
+    CHECK(encodeSingleInstr({ldr32}) == (kLdur32Gpr | (12u << 12) | (29u << 5) | 3u));
 }
 
 static void testLargeStoreAvoidsSourceAndBaseScratch() {
     MInstr mi{
-        MOpcode::StrRegBaseImm, {gpr(PhysReg::X9), gpr(PhysReg::X16), imm(512)}};
+        MOpcode::StrRegBaseImm, {gpr(PhysReg::X9), gpr(PhysReg::X16), imm(32768)}};
     auto bytes = encodeInstrBytes({mi});
 
     // BTI + mov scratch + add scratch,base,scratch + str source,[scratch] + ret.
@@ -1284,7 +1300,8 @@ int main() {
     testBlr();
     testAddsSubsRRR();
     testLdpStpRegFpImm();
-    testPairOffsetValidation();
+    testPairOffsetFallback();
+    testNarrowIntegerMemoryEncoding();
     testLargeStoreAvoidsSourceAndBaseScratch();
     testVariableShift();
     testHighRegisters();
@@ -1421,6 +1438,12 @@ int main() {
                 // FP-relative load/store
                 case MOpcode::LdrRegFpImm:
                 case MOpcode::StrRegFpImm:
+                case MOpcode::Ldr8RegFpImm:
+                case MOpcode::Str8RegFpImm:
+                case MOpcode::Ldr16RegFpImm:
+                case MOpcode::Str16RegFpImm:
+                case MOpcode::Ldr32RegFpImm:
+                case MOpcode::Str32RegFpImm:
                 case MOpcode::PhiStoreGPR:
                     return MInstr{opc, {x0, imm(0)}};
                 case MOpcode::LdrFprFpImm:
@@ -1431,6 +1454,12 @@ int main() {
                 // Base-register load/store
                 case MOpcode::LdrRegBaseImm:
                 case MOpcode::StrRegBaseImm:
+                case MOpcode::Ldr8RegBaseImm:
+                case MOpcode::Str8RegBaseImm:
+                case MOpcode::Ldr16RegBaseImm:
+                case MOpcode::Str16RegBaseImm:
+                case MOpcode::Ldr32RegBaseImm:
+                case MOpcode::Str32RegBaseImm:
                     return MInstr{opc, {x0, x1, imm(0)}};
                 case MOpcode::LdrFprBaseImm:
                 case MOpcode::StrFprBaseImm:
@@ -1541,10 +1570,10 @@ int main() {
 
         // Verify we covered the expected counts.
         CHECK(pseudoCount == 5);   // 5 pseudo-opcodes
-        CHECK(encodedCount == 75); // 80 total - 5 pseudo = 75 real opcodes
+        CHECK(encodedCount == 87); // 92 total - 5 pseudo = 87 real opcodes
 
-        if (encodedCount == 75 && pseudoCount == 5)
-            std::cout << "  Encoding coverage: " << encodedCount << "/75 opcodes OK, "
+        if (encodedCount == 87 && pseudoCount == 5)
+            std::cout << "  Encoding coverage: " << encodedCount << "/87 opcodes OK, "
                       << pseudoCount << " pseudo-opcodes skipped.\n";
     }
 

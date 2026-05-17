@@ -27,6 +27,36 @@ namespace viper::codegen::aarch64::fastpaths {
 
 using il::core::Opcode;
 
+namespace {
+
+MOpcode gprLoadOpcodeForType(il::core::Type::Kind kind, bool frameRelative) {
+    switch (kind) {
+        case il::core::Type::Kind::I1:
+            return frameRelative ? MOpcode::Ldr8RegFpImm : MOpcode::Ldr8RegBaseImm;
+        case il::core::Type::Kind::I16:
+            return frameRelative ? MOpcode::Ldr16RegFpImm : MOpcode::Ldr16RegBaseImm;
+        case il::core::Type::Kind::I32:
+            return frameRelative ? MOpcode::Ldr32RegFpImm : MOpcode::Ldr32RegBaseImm;
+        default:
+            return frameRelative ? MOpcode::LdrRegFpImm : MOpcode::LdrRegBaseImm;
+    }
+}
+
+MOpcode gprStoreOpcodeForType(il::core::Type::Kind kind, bool frameRelative) {
+    switch (kind) {
+        case il::core::Type::Kind::I1:
+            return frameRelative ? MOpcode::Str8RegFpImm : MOpcode::Str8RegBaseImm;
+        case il::core::Type::Kind::I16:
+            return frameRelative ? MOpcode::Str16RegFpImm : MOpcode::Str16RegBaseImm;
+        case il::core::Type::Kind::I32:
+            return frameRelative ? MOpcode::Str32RegFpImm : MOpcode::Str32RegBaseImm;
+        default:
+            return frameRelative ? MOpcode::StrRegFpImm : MOpcode::StrRegBaseImm;
+    }
+}
+
+} // namespace
+
 std::optional<MFunction> tryMemoryFastPaths(FastPathContext &ctx) {
     if (ctx.fn.blocks.empty())
         return std::nullopt;
@@ -68,14 +98,23 @@ std::optional<MFunction> tryMemoryFastPaths(FastPathContext &ctx) {
                     // Get register holding the value to store
                     auto srcReg = ctx.getValueReg(bb, storeVal);
                     if (srcReg) {
-                        // str srcReg, [x29, #offset]
+                        const bool isF64 = loadI->type.kind == il::core::Type::Kind::F64 ||
+                                           storeI->type.kind == il::core::Type::Kind::F64 ||
+                                           ctx.fn.retType.kind == il::core::Type::Kind::F64;
+                        const MOpcode storeOpc =
+                            isF64 ? MOpcode::StrFprFpImm
+                                  : gprStoreOpcodeForType(storeI->type.kind,
+                                                          /*frameRelative=*/true);
+                        const MOpcode loadOpc =
+                            isF64 ? MOpcode::LdrFprFpImm
+                                  : gprLoadOpcodeForType(loadI->type.kind,
+                                                         /*frameRelative=*/true);
                         bbMir.instrs.push_back(
-                            MInstr{MOpcode::StrRegFpImm,
+                            MInstr{storeOpc,
                                    {MOperand::regOp(*srcReg), MOperand::immOp(offset)}});
-                        // ldr x0, [x29, #offset]
+                        const PhysReg retReg = isF64 ? PhysReg::V0 : PhysReg::X0;
                         bbMir.instrs.push_back(
-                            MInstr{MOpcode::LdrRegFpImm,
-                                   {MOperand::regOp(PhysReg::X0), MOperand::immOp(offset)}});
+                            MInstr{loadOpc, {MOperand::regOp(retReg), MOperand::immOp(offset)}});
                         // ret
                         bbMir.instrs.push_back(MInstr{MOpcode::Ret, {}});
                         ctx.fb.finalize();
@@ -117,8 +156,9 @@ std::optional<MFunction> tryMemoryFastPaths(FastPathContext &ctx) {
                                                        MOperand::regOp(ptrReg),
                                                        MOperand::immOp(0)}});
                     } else {
-                        // ldr x0, [ptrReg]
-                        bbMir.instrs.push_back(MInstr{MOpcode::LdrRegBaseImm,
+                        const MOpcode loadOpc =
+                            gprLoadOpcodeForType(loadI.type.kind, /*frameRelative=*/false);
+                        bbMir.instrs.push_back(MInstr{loadOpc,
                                                       {MOperand::regOp(PhysReg::X0),
                                                        MOperand::regOp(ptrReg),
                                                        MOperand::immOp(0)}});
@@ -169,8 +209,9 @@ std::optional<MFunction> tryMemoryFastPaths(FastPathContext &ctx) {
                                                        MOperand::regOp(baseReg),
                                                        MOperand::immOp(offset)}});
                     } else {
-                        // ldr x0, [baseReg, #offset]
-                        bbMir.instrs.push_back(MInstr{MOpcode::LdrRegBaseImm,
+                        const MOpcode loadOpc =
+                            gprLoadOpcodeForType(loadI.type.kind, /*frameRelative=*/false);
+                        bbMir.instrs.push_back(MInstr{loadOpc,
                                                       {MOperand::regOp(PhysReg::X0),
                                                        MOperand::regOp(baseReg),
                                                        MOperand::immOp(offset)}});

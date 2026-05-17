@@ -120,6 +120,9 @@ std::size_t hoistLoopConstants(MFunction &fn) {
 
     auto isNonDefOpc = [](MOpcode opc) -> bool {
         return opc == MOpcode::StrRegFpImm || opc == MOpcode::StrRegBaseImm ||
+               opc == MOpcode::Str8RegFpImm || opc == MOpcode::Str8RegBaseImm ||
+               opc == MOpcode::Str16RegFpImm || opc == MOpcode::Str16RegBaseImm ||
+               opc == MOpcode::Str32RegFpImm || opc == MOpcode::Str32RegBaseImm ||
                opc == MOpcode::StrRegSpImm || opc == MOpcode::StrFprFpImm ||
                opc == MOpcode::StrFprBaseImm || opc == MOpcode::StrFprSpImm ||
                opc == MOpcode::StpRegFpImm || opc == MOpcode::StpFprFpImm ||

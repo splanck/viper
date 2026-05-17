@@ -11,11 +11,15 @@
 //
 //===----------------------------------------------------------------------===//
 #include "codegen/aarch64/TargetAArch64.hpp"
+#include "codegen/aarch64/MachineIR.hpp"
+#include "codegen/aarch64/ra/Liveness.hpp"
+#include "codegen/aarch64/ra/OpcodeClassify.hpp"
 #include "codegen/aarch64/ra/RegPools.hpp"
 #include "tests/TestHarness.hpp"
 
 #include <algorithm>
 #include <stdexcept>
+#include <utility>
 
 using namespace viper::codegen::aarch64;
 
@@ -129,6 +133,42 @@ TEST(CodegenReviewFix, GPRSetsAreDisjoint) {
             ti.callerSavedGPR.end();
         EXPECT_FALSE(foundInCallerSaved);
     }
+}
+
+TEST(CodegenReviewFix, FramePointerNotAllocatorCalleeSaved) {
+    const auto &ti = darwinTarget();
+    EXPECT_TRUE(std::find(ti.calleeSavedGPR.begin(), ti.calleeSavedGPR.end(), PhysReg::X29) ==
+                ti.calleeSavedGPR.end());
+}
+
+TEST(CodegenReviewFix, CbzCbnzAreTerminatorsButStillAllocateOperands) {
+    EXPECT_TRUE(ra::isTerminator(MOpcode::Cbz));
+    EXPECT_TRUE(ra::isTerminator(MOpcode::Cbnz));
+    EXPECT_FALSE(ra::isBranch(MOpcode::Cbz));
+    EXPECT_FALSE(ra::isBranch(MOpcode::Cbnz));
+}
+
+TEST(CodegenReviewFix, NoreturnTrapCallDoesNotCreateFallthroughLiveness) {
+    MFunction fn;
+    fn.name = "noreturn_liveness";
+
+    MBasicBlock entry;
+    entry.name = "entry";
+    entry.instrs.push_back(
+        MInstr{MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, 1), MOperand::immOp(42)}});
+    entry.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_ovf")}});
+    fn.blocks.push_back(std::move(entry));
+
+    MBasicBlock next;
+    next.name = "next";
+    next.instrs.push_back(
+        MInstr{MOpcode::CmpRI, {MOperand::vregOp(RegClass::GPR, 1), MOperand::immOp(0)}});
+    next.instrs.push_back(MInstr{MOpcode::Ret, {}});
+    fn.blocks.push_back(std::move(next));
+
+    ra::LivenessAnalysis liveness;
+    liveness.run(fn);
+    EXPECT_FALSE(liveness.liveOutGPR(0).contains(1));
 }
 
 // ---------------------------------------------------------------------------

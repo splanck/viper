@@ -23,6 +23,7 @@
 
 #include "CopyPropDCE.hpp"
 
+#include "codegen/aarch64/Noreturn.hpp"
 #include "PeepholeCommon.hpp"
 
 #include <algorithm>
@@ -462,27 +463,17 @@ void addUniqueSucc(std::vector<std::size_t> &succs,
             continue;
         }
 
+        for (const auto &instr : instrs) {
+            if (isConditionalBranch(instr) && instr.ops.size() >= 2 &&
+                instr.ops[1].kind == MOperand::Kind::Label)
+                addUniqueSucc(succs[bi], labelToIndex, instr.ops[1].label);
+        }
+
         const auto &last = instrs.back();
         if (last.opc == MOpcode::Br && !last.ops.empty() &&
-            last.ops[0].kind == MOperand::Kind::Label) {
-            if (instrs.size() >= 2) {
-                const auto &prev = instrs[instrs.size() - 2];
-                if (isConditionalBranch(prev) && prev.ops.size() >= 2 &&
-                    prev.ops[1].kind == MOperand::Kind::Label)
-                    addUniqueSucc(succs[bi], labelToIndex, prev.ops[1].label);
-            }
+            last.ops[0].kind == MOperand::Kind::Label)
             addUniqueSucc(succs[bi], labelToIndex, last.ops[0].label);
-            continue;
-        }
-
-        if (isConditionalBranch(last) && last.ops.size() >= 2 &&
-            last.ops[1].kind == MOperand::Kind::Label) {
-            addUniqueSucc(succs[bi], labelToIndex, last.ops[1].label);
-            addFallthrough();
-            continue;
-        }
-
-        if (last.opc != MOpcode::Ret)
+        else if (last.opc != MOpcode::Ret && !isNoReturnCall(last))
             addFallthrough();
     }
     return succs;
@@ -728,12 +719,7 @@ std::size_t foldComputeIntoTarget(std::vector<MInstr> &instrs, PeepholeStats &st
 
         const MOperand aluDst = instrs[i].ops[0];
 
-        std::size_t movIdx = i + 1;
-        while (movIdx < instrs.size() && instrs[movIdx].opc == MOpcode::BCond)
-            ++movIdx;
-
-        if (movIdx >= instrs.size())
-            continue;
+        const std::size_t movIdx = i + 1;
         if (instrs[movIdx].opc != MOpcode::MovRR)
             continue;
         if (instrs[movIdx].ops.size() != 2)

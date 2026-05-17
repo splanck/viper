@@ -418,7 +418,9 @@ void LinearAllocator::handleSpilledOperand(MReg &r,
     } catch (const std::runtime_error &) {
         tmp = chooseEmergencyScratch(isFPR, isDef && !isUse, scratch);
     }
-    const int off = fb_.ensureSpill(r.idOrPhys);
+    auto &st = isFPR ? fprStates_[r.idOrPhys] : gprStates_[r.idOrPhys];
+    const int off = st.fpOffset != 0 ? st.fpOffset : fb_.ensureSpill(r.idOrPhys);
+    st.fpOffset = off;
 
     if (isUse) {
         if (isFPR)
@@ -740,12 +742,22 @@ void LinearAllocator::releaseBlockState() {
         if (kv.second.hasPhys) {
             pools_.releaseGPR(kv.second.phys, ti_);
             kv.second.hasPhys = false;
+            if (kv.second.dirty) {
+                kv.second.spilled = false;
+            } else if (kv.second.fpOffset != 0) {
+                kv.second.spilled = true;
+            }
         }
     }
     for (auto &kv : fprStates_) {
         if (kv.second.hasPhys) {
             pools_.releaseFPR(kv.second.phys, ti_);
             kv.second.hasPhys = false;
+            if (kv.second.dirty) {
+                kv.second.spilled = false;
+            } else if (kv.second.fpOffset != 0) {
+                kv.second.spilled = true;
+            }
         }
     }
 }

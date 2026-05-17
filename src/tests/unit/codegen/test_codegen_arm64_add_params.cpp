@@ -59,10 +59,10 @@ TEST(Arm64CLI, AddTwoParams) {
     const int rc = cmd_codegen_arm64(3, const_cast<char **>(argv));
     ASSERT_EQ(rc, 0);
     const std::string asmText = readFile(outP);
-    // Expect checked-add lowering that computes the sum into x0.
-    // The second operand may be x1 directly or a copy (e.g., x9).
-    bool hasAdd = asmText.find("adds x0, x0, x1") != std::string::npos ||
-                  asmText.find("adds x0, x0, x") != std::string::npos;
+    // Expect checked-add lowering. Regalloc may compute into any physical GPR
+    // and then move the result into x0 for the ABI return value.
+    bool hasAdd = asmText.find("adds x") != std::string::npos &&
+                  asmText.find(", x0, x1") != std::string::npos;
     EXPECT_TRUE(hasAdd);
 }
 

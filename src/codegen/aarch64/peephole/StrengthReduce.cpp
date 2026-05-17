@@ -533,21 +533,25 @@ bool trySDivStrengthReduction(std::vector<MInstr> &instrs,
         //   add  tmp, x, tmp       ; bias: add (2^k-1) to round toward zero
         //   asr  dst, tmp, #k      ; arithmetic shift to divide
         //
-        // We use rhsReg as tmp since the divisor constant is no longer needed.
+        const PhysReg rhsPhys = static_cast<PhysReg>(rhsReg.reg.idOrPhys);
+        const auto tmpReg = pickTempReg({kScratchGPR, kScratchGPR2, rhsPhys}, {dst, lhs});
+        if (!tmpReg.has_value())
+            return false;
 
         std::vector<MInstr> expansion;
 
         // asr tmp, lhs, #63
-        expansion.push_back(MInstr{MOpcode::AsrRI, {rhsReg, lhs, MOperand::immOp(63)}});
+        expansion.push_back(MInstr{MOpcode::AsrRI, {*tmpReg, lhs, MOperand::immOp(63)}});
 
         // lsr tmp, tmp, #(64-k)
-        expansion.push_back(MInstr{MOpcode::LsrRI, {rhsReg, rhsReg, MOperand::immOp(64 - log)}});
+        expansion.push_back(
+            MInstr{MOpcode::LsrRI, {*tmpReg, *tmpReg, MOperand::immOp(64 - log)}});
 
         // add tmp, lhs, tmp
-        expansion.push_back(MInstr{MOpcode::AddRRR, {rhsReg, lhs, rhsReg}});
+        expansion.push_back(MInstr{MOpcode::AddRRR, {*tmpReg, lhs, *tmpReg}});
 
         // asr dst, tmp, #k
-        expansion.push_back(MInstr{MOpcode::AsrRI, {dst, rhsReg, MOperand::immOp(log)}});
+        expansion.push_back(MInstr{MOpcode::AsrRI, {dst, *tmpReg, MOperand::immOp(log)}});
 
         // Replace the SDivRRR with the expansion
         instrs.erase(instrs.begin() + static_cast<std::ptrdiff_t>(idx));

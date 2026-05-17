@@ -29,6 +29,7 @@
 #include "TerminatorLowering.hpp"
 #include "FpCompareLowering.hpp"
 #include "InstrLowering.hpp"
+#include "Noreturn.hpp"
 #include "OpcodeMappings.hpp"
 
 #include <algorithm>
@@ -312,15 +313,9 @@ void lowerTerminators(const il::core::Function &fn,
                 // like rt_arr_oob_panic (which will abort and never return).
                 bool hasNoreturnCall = false;
                 for (const auto &mi : outBB.instrs) {
-                    if (mi.opc == MOpcode::Bl && !mi.ops.empty() &&
-                        mi.ops[0].kind == MOperand::Kind::Label) {
-                        const std::string &callee = mi.ops[0].label;
-                        if (callee == "rt_arr_oob_panic" || callee == "rt_trap" ||
-                            callee == "rt_trap_string" || callee == "rt_trap_div0" ||
-                            callee == "rt_trap_ovf") {
-                            hasNoreturnCall = true;
-                            break;
-                        }
+                    if (isNoReturnCall(mi)) {
+                        hasNoreturnCall = true;
+                        break;
                     }
                 }
                 if (!hasNoreturnCall) {
@@ -517,16 +512,20 @@ void lowerTerminators(const il::core::Function &fn,
                         // Use the block's tempVReg snapshot to get correct vreg mappings
                         uint16_t cv = 0;
                         RegClass cc = RegClass::GPR;
-                        materializeValueToVReg(cond,
-                                               inBB,
-                                               ti,
-                                               fb,
-                                               outBB,
-                                               blockTempVReg,
-                                               tempRegClass,
-                                               nextVRegId,
-                                               cv,
-                                               cc);
+                        if (!materializeValueToVReg(cond,
+                                                    inBB,
+                                                    ti,
+                                                    fb,
+                                                    outBB,
+                                                    blockTempVReg,
+                                                    tempRegClass,
+                                                    nextVRegId,
+                                                    cv,
+                                                    cc) ||
+                            cc != RegClass::GPR) {
+                            throw std::runtime_error(
+                                "AArch64 terminator lowering: failed to materialize cbr condition");
+                        }
                         outBB.instrs.push_back(
                             MInstr{MOpcode::CmpRI,
                                    {MOperand::vregOp(RegClass::GPR, cv), MOperand::immOp(0)}});

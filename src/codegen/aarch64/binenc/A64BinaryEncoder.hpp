@@ -170,7 +170,17 @@ class A64BinaryEncoder {
                                int64_t offset,
                                bool isLoad,
                                bool isFPR,
+                               unsigned accessBytes,
                                objfile::CodeSection &cs);
+
+    /// @brief Emit one scalar load/store, choosing scaled, unscaled, or large-offset forms.
+    void encodeScalarLdSt(uint32_t rt,
+                          uint32_t base,
+                          int64_t offset,
+                          bool isLoad,
+                          bool isFPR,
+                          unsigned accessBytes,
+                          objfile::CodeSection &cs);
 
     /// @brief Emit an outgoing-stack-arg store using SP-relative addressing.
     /// @details For offsets that fit the scaled-unsigned-immediate form, emits a

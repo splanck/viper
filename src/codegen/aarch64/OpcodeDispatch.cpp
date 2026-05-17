@@ -26,11 +26,13 @@
 
 #include "OpcodeDispatch.hpp"
 #include "InstrLowering.hpp"
+#include "Noreturn.hpp"
 #include "OpcodeMappings.hpp"
 
 #include "il/core/Opcode.hpp"
 #include "il/runtime/RuntimeNameMap.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include <stdexcept>
 #include <string_view>
@@ -575,6 +577,8 @@ bool lowerInstruction(const il::core::Instr &ins,
             return true;
 
         case Opcode::Trap:
+            if (std::any_of(bbOut().instrs.begin(), bbOut().instrs.end(), isNoReturnCall))
+                return true;
             if (ins.operands.empty()) {
                 bbOut().instrs.push_back(
                     MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});

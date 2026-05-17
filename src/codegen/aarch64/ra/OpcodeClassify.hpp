@@ -89,7 +89,7 @@ inline bool isSpAdj(MOpcode opc) {
 /// @brief Check if an opcode is an unconditional or conditional branch.
 /// @param opc The machine opcode to check.
 /// @return True for Br or BCond opcodes.
-/// @note Cbz is not included since it has a register operand needing allocation.
+/// @note Cbz/Cbnz are not included since they have register operands needing allocation.
 inline bool isBranch(MOpcode opc) {
     return opc == MOpcode::Br || opc == MOpcode::BCond;
 }
@@ -133,7 +133,7 @@ inline bool isRet(MOpcode opc) {
 /// @param opc The machine opcode to check.
 /// @return True for branches and returns.
 inline bool isTerminator(MOpcode opc) {
-    return isBranch(opc) || isRet(opc);
+    return isBranch(opc) || opc == MOpcode::Cbz || opc == MOpcode::Cbnz || isRet(opc);
 }
 
 /// @brief Check if an opcode is a memory load instruction.
@@ -141,6 +141,9 @@ inline bool isTerminator(MOpcode opc) {
 /// @return True for GPR/FPR FP-relative and base-relative loads.
 inline bool isMemLd(MOpcode opc) {
     return opc == MOpcode::LdrRegFpImm || opc == MOpcode::LdrRegBaseImm ||
+           opc == MOpcode::Ldr8RegFpImm || opc == MOpcode::Ldr8RegBaseImm ||
+           opc == MOpcode::Ldr16RegFpImm || opc == MOpcode::Ldr16RegBaseImm ||
+           opc == MOpcode::Ldr32RegFpImm || opc == MOpcode::Ldr32RegBaseImm ||
            opc == MOpcode::LdrFprFpImm || opc == MOpcode::LdrFprBaseImm;
 }
 
@@ -149,6 +152,9 @@ inline bool isMemLd(MOpcode opc) {
 /// @return True for GPR/FPR FP-relative, base-relative, or SP-relative stores.
 inline bool isMemSt(MOpcode opc) {
     return opc == MOpcode::StrRegFpImm || opc == MOpcode::StrRegBaseImm ||
+           opc == MOpcode::Str8RegFpImm || opc == MOpcode::Str8RegBaseImm ||
+           opc == MOpcode::Str16RegFpImm || opc == MOpcode::Str16RegBaseImm ||
+           opc == MOpcode::Str32RegFpImm || opc == MOpcode::Str32RegBaseImm ||
            opc == MOpcode::StrRegSpImm || opc == MOpcode::StrFprFpImm ||
            opc == MOpcode::StrFprBaseImm || opc == MOpcode::StrFprSpImm;
 }

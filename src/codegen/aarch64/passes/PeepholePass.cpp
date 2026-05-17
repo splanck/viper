@@ -23,6 +23,7 @@
 
 #include "codegen/aarch64/passes/PeepholePass.hpp"
 
+#include "codegen/aarch64/Noreturn.hpp"
 #include "codegen/aarch64/Peephole.hpp"
 
 #include <cstddef>
@@ -72,6 +73,9 @@ struct MirStats {
 /// @brief Return true if @p opcode is any load instruction (LDR/LDP variants).
 [[nodiscard]] bool isLoadOpcode(MOpcode opcode) noexcept {
     return opcode == MOpcode::LdrRegFpImm || opcode == MOpcode::LdrRegBaseImm ||
+           opcode == MOpcode::Ldr8RegFpImm || opcode == MOpcode::Ldr8RegBaseImm ||
+           opcode == MOpcode::Ldr16RegFpImm || opcode == MOpcode::Ldr16RegBaseImm ||
+           opcode == MOpcode::Ldr32RegFpImm || opcode == MOpcode::Ldr32RegBaseImm ||
            opcode == MOpcode::LdrFprFpImm || opcode == MOpcode::LdrFprBaseImm ||
            opcode == MOpcode::LdpRegFpImm || opcode == MOpcode::LdpFprFpImm;
 }
@@ -79,6 +83,9 @@ struct MirStats {
 /// @brief Return true if @p opcode is any store instruction (STR/STP/Phi-store variants).
 [[nodiscard]] bool isStoreOpcode(MOpcode opcode) noexcept {
     return opcode == MOpcode::StrRegFpImm || opcode == MOpcode::StrRegBaseImm ||
+           opcode == MOpcode::Str8RegFpImm || opcode == MOpcode::Str8RegBaseImm ||
+           opcode == MOpcode::Str16RegFpImm || opcode == MOpcode::Str16RegBaseImm ||
+           opcode == MOpcode::Str32RegFpImm || opcode == MOpcode::Str32RegBaseImm ||
            opcode == MOpcode::StrRegSpImm || opcode == MOpcode::StrFprFpImm ||
            opcode == MOpcode::StrFprBaseImm || opcode == MOpcode::StrFprSpImm ||
            opcode == MOpcode::StpRegFpImm || opcode == MOpcode::StpFprFpImm ||
@@ -109,6 +116,23 @@ void accumulateStats(const MFunction &fn, MirStats &stats) {
     return opcode == MOpcode::Br || opcode == MOpcode::Ret;
 }
 
+/// @brief Drop unreachable instructions after a known no-return runtime call.
+std::size_t pruneAfterNoReturnCalls(MFunction &fn) {
+    std::size_t removed = 0;
+    for (auto &block : fn.blocks) {
+        for (std::size_t ii = 0; ii < block.instrs.size(); ++ii) {
+            if (!isNoReturnCall(block.instrs[ii]))
+                continue;
+            const std::size_t keep = ii + 1;
+            removed += block.instrs.size() - keep;
+            block.instrs.erase(block.instrs.begin() + static_cast<std::ptrdiff_t>(keep),
+                               block.instrs.end());
+            break;
+        }
+    }
+    return removed;
+}
+
 /// @brief Validate that @p fn has no virtual regs, no code after terminators,
 ///        and that all branch targets exist within the function.
 /// @return True if valid; false and emits diagnostics on the first violation.
@@ -129,7 +153,7 @@ void accumulateStats(const MFunction &fn, MirStats &stats) {
                 diags.error(msg.str());
                 return false;
             }
-            if (isHardTerminator(instr.opc))
+            if (isHardTerminator(instr.opc) || isNoReturnCall(instr))
                 seenTerminator = true;
 
             for (const auto &op : instr.ops) {
@@ -181,6 +205,7 @@ bool PeepholePass::run(AArch64Module &module, Diagnostics &diags) {
             mode_ == Mode::Full ? runPeephole(fn, module.ti)
                                 : runPostSchedulePeephole(fn, module.ti);
         total += peepholeStats.total();
+        total += static_cast<int>(pruneAfterNoReturnCalls(fn));
         pruneUnusedCalleeSaved(fn);
         if (!validateFunction(fn, diags))
             return false;

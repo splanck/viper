@@ -20,6 +20,7 @@
 
 #include "Peephole.hpp"
 
+#include "Noreturn.hpp"
 #include "peephole/BranchOpt.hpp"
 #include "peephole/CopyPropDCE.hpp"
 #include "peephole/IdentityElim.hpp"
@@ -81,8 +82,9 @@ static bool blockFallsThroughTo(const MFunction &fn, std::size_t blockIndex, con
     if (instrs.empty())
         return true;
     const auto &last = instrs.back();
-    return last.opc != MOpcode::Br && last.opc != MOpcode::BCond && last.opc != MOpcode::Cbz &&
-           last.opc != MOpcode::Cbnz && last.opc != MOpcode::Ret;
+    if (isNoReturnCall(last))
+        return false;
+    return last.opc != MOpcode::Br && last.opc != MOpcode::Ret;
 }
 
 /// @brief Build a map from block name to the list of predecessor block indices.
@@ -92,7 +94,9 @@ static std::unordered_map<std::string, std::vector<std::size_t>> buildPredecesso
     for (std::size_t bi = 0; bi < fn.blocks.size(); ++bi) {
         const auto &block = fn.blocks[bi];
         const auto addPred = [&](const std::string &label) {
-            preds[label].push_back(bi);
+            auto &list = preds[label];
+            if (std::find(list.begin(), list.end(), bi) == list.end())
+                list.push_back(bi);
         };
         const auto addFallthrough = [&]() {
             if (bi + 1 < fn.blocks.size())
@@ -107,27 +111,17 @@ static std::unordered_map<std::string, std::vector<std::size_t>> buildPredecesso
             continue;
         }
 
+        for (const auto &instr : block.instrs) {
+            if (isConditionalBranch(instr) && instr.ops.size() >= 2 &&
+                instr.ops[1].kind == MOperand::Kind::Label)
+                addPred(instr.ops[1].label);
+        }
+
         const auto &last = block.instrs.back();
         if (last.opc == MOpcode::Br && !last.ops.empty() &&
-            last.ops[0].kind == MOperand::Kind::Label) {
-            if (block.instrs.size() >= 2) {
-                const auto &prev = block.instrs[block.instrs.size() - 2];
-                if (isConditionalBranch(prev) && prev.ops.size() >= 2 &&
-                    prev.ops[1].kind == MOperand::Kind::Label)
-                    addPred(prev.ops[1].label);
-            }
+            last.ops[0].kind == MOperand::Kind::Label)
             addPred(last.ops[0].label);
-            continue;
-        }
-
-        if (isConditionalBranch(last) && last.ops.size() >= 2 &&
-            last.ops[1].kind == MOperand::Kind::Label) {
-            addPred(last.ops[1].label);
-            addFallthrough();
-            continue;
-        }
-
-        if (last.opc != MOpcode::Ret)
+        else if (last.opc != MOpcode::Ret && !isNoReturnCall(last))
             addFallthrough();
     }
     return preds;
@@ -156,8 +150,7 @@ static bool canInsertJoinCopiesOnPredEdge(const MFunction &fn,
     const auto &last = instrs.back();
     if (last.opc == MOpcode::Br && !last.ops.empty() && last.ops[0].kind == MOperand::Kind::Label)
         return last.ops[0].label == succName;
-    if (last.opc == MOpcode::BCond || last.opc == MOpcode::Cbz || last.opc == MOpcode::Cbnz ||
-        last.opc == MOpcode::Ret)
+    if (last.opc == MOpcode::Ret || isNoReturnCall(last))
         return false;
     return blockFallsThroughTo(fn, predIndex, succName);
 }
@@ -333,6 +326,57 @@ static bool orderJoinCopies(const std::vector<JoinCopy> &copies, std::vector<Joi
     }
 
     return true;
+}
+
+/// @brief Remove selected join-prefix loads, splitting LDP into LDR when only one half remains.
+static void removeForwardedJoinLoads(MBasicBlock &block,
+                                     const std::vector<JoinLoad> &loads,
+                                     const std::unordered_set<std::size_t> &forwardedLoads) {
+    std::unordered_map<std::size_t, std::vector<std::size_t>> loadsByInstr;
+    for (std::size_t loadIndex = 0; loadIndex < loads.size(); ++loadIndex)
+        loadsByInstr[loads[loadIndex].instrIndex].push_back(loadIndex);
+
+    std::vector<MInstr> rewritten;
+    rewritten.reserve(block.instrs.size());
+    for (std::size_t instrIndex = 0; instrIndex < block.instrs.size(); ++instrIndex) {
+        const auto loadIt = loadsByInstr.find(instrIndex);
+        if (loadIt == loadsByInstr.end()) {
+            rewritten.push_back(block.instrs[instrIndex]);
+            continue;
+        }
+
+        const auto &instr = block.instrs[instrIndex];
+        const auto &indices = loadIt->second;
+        if (instr.opc == MOpcode::LdrRegFpImm || instr.opc == MOpcode::LdrFprFpImm) {
+            if (indices.empty() || forwardedLoads.count(indices.front()) == 0)
+                rewritten.push_back(instr);
+            continue;
+        }
+
+        if ((instr.opc == MOpcode::LdpRegFpImm || instr.opc == MOpcode::LdpFprFpImm) &&
+            indices.size() == 2 && instr.ops.size() >= 3 && instr.ops[2].kind == MOperand::Kind::Imm) {
+            const bool firstForwarded = forwardedLoads.count(indices[0]) != 0;
+            const bool secondForwarded = forwardedLoads.count(indices[1]) != 0;
+            if (firstForwarded && secondForwarded)
+                continue;
+            if (!firstForwarded && !secondForwarded) {
+                rewritten.push_back(instr);
+                continue;
+            }
+
+            const bool keepSecond = firstForwarded;
+            const MOpcode loadOpcode =
+                instr.opc == MOpcode::LdpFprFpImm ? MOpcode::LdrFprFpImm : MOpcode::LdrRegFpImm;
+            const MOperand dst = instr.ops[keepSecond ? 1 : 0];
+            const int64_t offset = instr.ops[2].imm + (keepSecond ? 8 : 0);
+            rewritten.push_back(
+                MInstr{loadOpcode, {dst, MOperand::immOp(static_cast<long long>(offset))}});
+            continue;
+        }
+
+        rewritten.push_back(instr);
+    }
+    block.instrs.swap(rewritten);
 }
 
 /// @brief Add all registers defined (clobbered) by @p instr to @p clobbered.
@@ -599,8 +643,13 @@ static bool coalesceJoinPhiLoads(MFunction &fn, PeepholeStats &stats) {
         if (unsafeLoopHeader)
             continue;
 
-        std::vector<std::vector<JoinCopy>> predCopies;
-        predCopies.reserve(predIt->second.size());
+        struct PredStorePlan {
+            std::size_t predIndex;
+            std::unordered_map<int64_t, JoinStore> stores;
+        };
+
+        std::vector<PredStorePlan> predStorePlans;
+        predStorePlans.reserve(predIt->second.size());
         bool allPredsConvertible = true;
         for (std::size_t predIndex : predIt->second) {
             if (!canInsertJoinCopiesOnPredEdge(fn, predIndex, block.name)) {
@@ -614,33 +663,65 @@ static bool coalesceJoinPhiLoads(MFunction &fn, PeepholeStats &stats) {
                 allPredsConvertible = false;
                 break;
             }
-
-            std::vector<JoinCopy> copies;
-            copies.reserve(loads.size());
-            for (const auto &load : loads) {
-                auto storeIt = stores.find(load.offset);
-                if (storeIt == stores.end() || storeIt->second.cls != load.cls) {
-                    allPredsConvertible = false;
-                    break;
-                }
-                copies.push_back({storeIt->second.srcReg, load.dstReg, load.cls});
-            }
-            if (!allPredsConvertible)
-                break;
-
-            std::vector<JoinCopy> ordered;
-            if (!orderJoinCopies(copies, ordered)) {
-                allPredsConvertible = false;
-                break;
-            }
-            predCopies.push_back(std::move(ordered));
+            predStorePlans.push_back({predIndex, std::move(stores)});
         }
 
-        if (!allPredsConvertible || predCopies.empty())
+        if (!allPredsConvertible || predStorePlans.empty())
             continue;
 
-        for (std::size_t pi = 0; pi < predIt->second.size(); ++pi) {
-            auto &predBlock = fn.blocks[predIt->second[pi]];
+        std::vector<std::size_t> selectedLoads;
+        selectedLoads.reserve(loads.size());
+        for (std::size_t loadIndex = 0; loadIndex < loads.size(); ++loadIndex) {
+            const auto &load = loads[loadIndex];
+            bool availableOnEveryPred = true;
+            for (const auto &plan : predStorePlans) {
+                const auto storeIt = plan.stores.find(load.offset);
+                if (storeIt == plan.stores.end() || storeIt->second.cls != load.cls) {
+                    availableOnEveryPred = false;
+                    break;
+                }
+            }
+            if (availableOnEveryPred)
+                selectedLoads.push_back(loadIndex);
+        }
+
+        if (selectedLoads.empty())
+            continue;
+
+        std::vector<std::vector<JoinCopy>> predCopies;
+        predCopies.reserve(predStorePlans.size());
+        const auto buildPredCopies = [&](const std::vector<std::size_t> &loadIndices) {
+            predCopies.clear();
+            predCopies.reserve(predStorePlans.size());
+            if (loadIndices.empty())
+                return false;
+            for (const auto &plan : predStorePlans) {
+                std::vector<JoinCopy> copies;
+                copies.reserve(loadIndices.size());
+                for (std::size_t loadIndex : loadIndices) {
+                    const auto &load = loads[loadIndex];
+                    auto storeIt = plan.stores.find(load.offset);
+                    if (storeIt == plan.stores.end() || storeIt->second.cls != load.cls)
+                        return false;
+                    copies.push_back({storeIt->second.srcReg, load.dstReg, load.cls});
+                }
+
+                std::vector<JoinCopy> ordered;
+                if (!orderJoinCopies(copies, ordered))
+                    return false;
+                predCopies.push_back(std::move(ordered));
+            }
+            return true;
+        };
+
+        while (!selectedLoads.empty() && !buildPredCopies(selectedLoads))
+            selectedLoads.pop_back();
+
+        if (selectedLoads.empty() || predCopies.empty())
+            continue;
+
+        for (std::size_t pi = 0; pi < predStorePlans.size(); ++pi) {
+            auto &predBlock = fn.blocks[predStorePlans[pi].predIndex];
             const bool branchesDirectly = !predBlock.instrs.empty() &&
                                           predBlock.instrs.back().opc == MOpcode::Br &&
                                           predBlock.instrs.back().ops.size() == 1 &&
@@ -672,20 +753,10 @@ static bool coalesceJoinPhiLoads(MFunction &fn, PeepholeStats &stats) {
             predBlock.instrs.swap(rewritten);
         }
 
-        std::vector<bool> removeLoadInstr(block.instrs.size(), false);
-        for (const auto &load : loads)
-            removeLoadInstr[load.instrIndex] = true;
-
-        std::vector<MInstr> rewritten;
-        rewritten.reserve(block.instrs.size());
-        for (std::size_t ii = 0; ii < block.instrs.size(); ++ii) {
-            if (removeLoadInstr[ii])
-                continue;
-            rewritten.push_back(block.instrs[ii]);
-        }
-        block.instrs.swap(rewritten);
-        stats.deadInstructionsRemoved +=
-            static_cast<int>(std::count(removeLoadInstr.begin(), removeLoadInstr.end(), true));
+        const std::unordered_set<std::size_t> forwardedLoadSet(selectedLoads.begin(),
+                                                               selectedLoads.end());
+        removeForwardedJoinLoads(block, loads, forwardedLoadSet);
+        stats.deadInstructionsRemoved += static_cast<int>(forwardedLoadSet.size());
         changed = true;
     }
 

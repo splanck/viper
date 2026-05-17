@@ -28,6 +28,7 @@
 #include "LowerILToMIR.hpp"
 
 #include "FastPaths.hpp"
+#include "FpCompareLowering.hpp"
 #include "FrameBuilder.hpp"
 #include "InstrLowering.hpp"
 #include "LivenessAnalysis.hpp"
@@ -41,6 +42,7 @@
 #include "il/core/Opcode.hpp"
 #include "il/core/Type.hpp"
 
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <unordered_map>
@@ -246,7 +248,12 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
         for (const auto &instr : bb.instructions) {
             if (instr.op == il::core::Opcode::Alloca && instr.result && !instr.operands.empty()) {
                 if (instr.operands[0].kind == il::core::Value::Kind::ConstInt) {
-                    const int size = static_cast<int>(instr.operands[0].i64);
+                    const long long rawSize = instr.operands[0].i64;
+                    if (rawSize <= 0 || rawSize > std::numeric_limits<int>::max()) {
+                        throw std::out_of_range("AArch64 codegen: alloca size must be in range "
+                                                "1..INT_MAX bytes");
+                    }
+                    const int size = static_cast<int>(rawSize);
                     fb.addLocal(*instr.result, size, kSlotSizeBytes);
                     allocaTemps.insert(*instr.result);
                 }
@@ -642,9 +649,34 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
                                                        nextVRegId,
                                                        rhs,
                                                        rcls)) {
-                                // Use FPR register class for floating-point operations
-                                const RegClass rc =
-                                    isFloatingPointOp(ins.op) ? RegClass::FPR : RegClass::GPR;
+                                const bool fpBinary = binOp && isFloatingPointOp(ins.op);
+                                const bool fpCompare =
+                                    !binOp && isFloatingPointCompareOp(ins.op);
+                                if (fpBinary || fpCompare) {
+                                    if (lcls != RegClass::FPR) {
+                                        const uint16_t converted = allocateNextVReg(nextVRegId);
+                                        bbOutFn().instrs.push_back(
+                                            MInstr{MOpcode::SCvtF,
+                                                   {MOperand::vregOp(RegClass::FPR, converted),
+                                                    MOperand::vregOp(RegClass::GPR, lhs)}});
+                                        lhs = converted;
+                                        lcls = RegClass::FPR;
+                                    }
+                                    if (rcls != RegClass::FPR) {
+                                        const uint16_t converted = allocateNextVReg(nextVRegId);
+                                        bbOutFn().instrs.push_back(
+                                            MInstr{MOpcode::SCvtF,
+                                                   {MOperand::vregOp(RegClass::FPR, converted),
+                                                    MOperand::vregOp(RegClass::GPR, rhs)}});
+                                        rhs = converted;
+                                        rcls = RegClass::FPR;
+                                    }
+                                } else if (lcls != RegClass::GPR || rcls != RegClass::GPR) {
+                                    throw std::runtime_error("AArch64 codegen: register class "
+                                                             "mismatch in binary lowering");
+                                }
+
+                                const RegClass rc = fpBinary ? RegClass::FPR : RegClass::GPR;
                                 const uint16_t dst = allocateNextVReg(nextVRegId);
                                 tempVReg[*ins.result] = dst;
                                 tempRegClass[*ins.result] = rc;
@@ -703,6 +735,14 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
                                     }
                                 } else {
                                     // Emit comparison (cmp + cset)
+                                    if (fpCompare) {
+                                        bbOutFn().instrs.push_back(
+                                            MInstr{MOpcode::FCmpRR,
+                                                   {MOperand::vregOp(RegClass::FPR, lhs),
+                                                    MOperand::vregOp(RegClass::FPR, rhs)}});
+                                        emitFpCompareResult(bbOutFn(), ins.op, dst, nextVRegId);
+                                        break;
+                                    }
                                     // Check if RHS is a small constant for CmpRI form
                                     const bool rhsIsSmallConst =
                                         ins.operands[1].kind == il::core::Value::Kind::ConstInt &&

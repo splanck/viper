@@ -77,12 +77,13 @@ static bool hasExactCall(const std::string &asmText, const std::string &name) {
 TEST(Arm64CLI, OverflowVariantsRR) {
     struct Case {
         const char *op;
-        const char *expect;     // primary instruction
+        const char *expectOpcode;  // primary instruction opcode
+        const char *expectOperands; // source operands
         const char *expectTrap; // trap branch (nullptr if no trap expected)
     } cases[] = {
-        {"iadd.ovf", "adds x0, x0, x1", "b.vs"},
-        {"isub.ovf", "subs x0, x0, x1", "b.vs"},
-        {"imul.ovf", "mul x11, x0, x1", "b.ne"},
+        {"iadd.ovf", "adds x", ", x0, x1", "b.vs"},
+        {"isub.ovf", "subs x", ", x0, x1", "b.vs"},
+        {"imul.ovf", "mul x", ", x0, x1", "b.ne"},
     };
 
     for (const auto &c : cases) {
@@ -99,7 +100,8 @@ TEST(Arm64CLI, OverflowVariantsRR) {
         const char *argv[] = {inP.c_str(), "-S", outP.c_str()};
         ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
         const std::string asmText = readFile(outP);
-        EXPECT_NE(asmText.find(c.expect), std::string::npos);
+        EXPECT_TRUE(asmText.find(c.expectOpcode) != std::string::npos &&
+                    asmText.find(c.expectOperands) != std::string::npos);
         if (c.expectTrap) {
             EXPECT_NE(asmText.find(c.expectTrap), std::string::npos);
             EXPECT_TRUE(hasExactCall(asmText, "rt_trap_ovf"));

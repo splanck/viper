@@ -83,8 +83,14 @@ struct UseSite {
         case MOpcode::FCvtZU:
         case MOpcode::FRintN:
         case MOpcode::LdrRegFpImm:
+        case MOpcode::Ldr8RegFpImm:
+        case MOpcode::Ldr16RegFpImm:
+        case MOpcode::Ldr32RegFpImm:
         case MOpcode::LdrFprFpImm:
         case MOpcode::LdrRegBaseImm:
+        case MOpcode::Ldr8RegBaseImm:
+        case MOpcode::Ldr16RegBaseImm:
+        case MOpcode::Ldr32RegBaseImm:
         case MOpcode::LdrFprBaseImm:
         case MOpcode::AddFpImm:
         case MOpcode::AddRRR:

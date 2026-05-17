@@ -54,6 +54,12 @@ static unsigned instrLatency(MOpcode opc) noexcept {
         // Loads: L1 hit ~4 cycles on Apple M-series.
         case MOpcode::LdrRegFpImm:
         case MOpcode::LdrRegBaseImm:
+        case MOpcode::Ldr8RegFpImm:
+        case MOpcode::Ldr8RegBaseImm:
+        case MOpcode::Ldr16RegFpImm:
+        case MOpcode::Ldr16RegBaseImm:
+        case MOpcode::Ldr32RegFpImm:
+        case MOpcode::Ldr32RegBaseImm:
         case MOpcode::LdrFprFpImm:
         case MOpcode::LdrFprBaseImm:
         case MOpcode::LdpRegFpImm:
@@ -106,6 +112,12 @@ static bool isLoad(MOpcode opc) noexcept {
     switch (opc) {
         case MOpcode::LdrRegFpImm:
         case MOpcode::LdrRegBaseImm:
+        case MOpcode::Ldr8RegFpImm:
+        case MOpcode::Ldr8RegBaseImm:
+        case MOpcode::Ldr16RegFpImm:
+        case MOpcode::Ldr16RegBaseImm:
+        case MOpcode::Ldr32RegFpImm:
+        case MOpcode::Ldr32RegBaseImm:
         case MOpcode::LdrFprFpImm:
         case MOpcode::LdrFprBaseImm:
         case MOpcode::LdpRegFpImm:
@@ -121,6 +133,12 @@ static bool isStore(MOpcode opc) noexcept {
     switch (opc) {
         case MOpcode::StrRegFpImm:
         case MOpcode::StrRegBaseImm:
+        case MOpcode::Str8RegFpImm:
+        case MOpcode::Str8RegBaseImm:
+        case MOpcode::Str16RegFpImm:
+        case MOpcode::Str16RegBaseImm:
+        case MOpcode::Str32RegFpImm:
+        case MOpcode::Str32RegBaseImm:
         case MOpcode::StrRegSpImm:
         case MOpcode::StrFprFpImm:
         case MOpcode::StrFprBaseImm:
@@ -210,6 +228,21 @@ classifyMemoryAccess(const MInstr &mi,
             if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Imm)
                 return MemoryAccessClass{MemBaseKind::FramePointer, 0, mi.ops[1].imm, 8};
             return std::nullopt;
+        case MOpcode::Ldr8RegFpImm:
+        case MOpcode::Str8RegFpImm:
+            if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Imm)
+                return MemoryAccessClass{MemBaseKind::FramePointer, 0, mi.ops[1].imm, 1};
+            return std::nullopt;
+        case MOpcode::Ldr16RegFpImm:
+        case MOpcode::Str16RegFpImm:
+            if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Imm)
+                return MemoryAccessClass{MemBaseKind::FramePointer, 0, mi.ops[1].imm, 2};
+            return std::nullopt;
+        case MOpcode::Ldr32RegFpImm:
+        case MOpcode::Str32RegFpImm:
+            if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Imm)
+                return MemoryAccessClass{MemBaseKind::FramePointer, 0, mi.ops[1].imm, 4};
+            return std::nullopt;
         case MOpcode::LdpRegFpImm:
         case MOpcode::StpRegFpImm:
         case MOpcode::LdpFprFpImm:
@@ -235,6 +268,28 @@ classifyMemoryAccess(const MInstr &mi,
                 // Unknown base-register accesses are heap/object accesses for
                 // aliasing purposes. Physical register identity is not a
                 // provenance guarantee: two registers may hold the same object.
+                return std::nullopt;
+            }
+            return std::nullopt;
+        case MOpcode::Ldr8RegBaseImm:
+        case MOpcode::Str8RegBaseImm:
+        case MOpcode::Ldr16RegBaseImm:
+        case MOpcode::Str16RegBaseImm:
+        case MOpcode::Ldr32RegBaseImm:
+        case MOpcode::Str32RegBaseImm:
+            if (mi.ops.size() >= 3 && mi.ops[1].kind == MOperand::Kind::Reg &&
+                mi.ops[1].reg.isPhys && mi.ops[2].kind == MOperand::Kind::Imm) {
+                const unsigned size = (mi.opc == MOpcode::Ldr8RegBaseImm ||
+                                       mi.opc == MOpcode::Str8RegBaseImm)
+                                          ? 1
+                                      : (mi.opc == MOpcode::Ldr16RegBaseImm ||
+                                         mi.opc == MOpcode::Str16RegBaseImm)
+                                          ? 2
+                                          : 4;
+                if (const auto tracked =
+                        getTrackedAddressValue(trackedAddrs, mi.ops[1].reg.idOrPhys)) {
+                    return makeResolvedAccessClass(*tracked, mi.ops[2].imm, size);
+                }
                 return std::nullopt;
             }
             return std::nullopt;

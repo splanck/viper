@@ -45,6 +45,17 @@ inline void printDReg(std::ostream &os, PhysReg r) {
     os << (name[0] == 'v' ? 'd' : name[0]) << (name + 1);
 }
 
+/// Print a GPR through its 32-bit W-register view.
+inline void printWReg(std::ostream &os, PhysReg r) {
+    const char *name = regName(r);
+    if (name[0] == 'x')
+        os << 'w' << (name + 1);
+    else if (name[0] == 's' && name[1] == 'p' && name[2] == '\0')
+        os << "wsp";
+    else
+        os << name;
+}
+
 /// Emit a 3-register GPR instruction: "  mnem xd, xn, xm\n"
 inline void emit3R(std::ostream &os, const char *mnem, PhysReg d, PhysReg a, PhysReg b) {
     os << "  " << mnem << " " << regName(d) << ", " << regName(a) << ", " << regName(b) << "\n";
@@ -506,6 +517,50 @@ static bool isInSignedImmRange(long long offset) {
     return offset >= -256 && offset <= 255;
 }
 
+/// @brief Check if offset fits the signed scaled pair form used by LDP/STP.
+static bool isPairImm7Offset(long long offset) {
+    if ((offset % 8) != 0)
+        return false;
+    const long long scaled = offset / 8;
+    return scaled >= -64 && scaled <= 63;
+}
+
+static const char *narrowLoadMnemonic(unsigned bytes) {
+    switch (bytes) {
+        case 1:
+            return "ldurb";
+        case 2:
+            return "ldurh";
+        case 4:
+            return "ldur";
+        default:
+            throw std::runtime_error("AArch64 asm emitter: unsupported narrow load width");
+    }
+}
+
+static const char *narrowStoreMnemonic(unsigned bytes) {
+    switch (bytes) {
+        case 1:
+            return "sturb";
+        case 2:
+            return "sturh";
+        case 4:
+            return "stur";
+        default:
+            throw std::runtime_error("AArch64 asm emitter: unsupported narrow store width");
+    }
+}
+
+static void emitNarrowGprAccess(std::ostream &os,
+                                const char *mnemonic,
+                                PhysReg rt,
+                                PhysReg base,
+                                long long offset) {
+    os << "  " << mnemonic << " ";
+    printWReg(os, rt);
+    os << ", [" << regName(base) << ", #" << offset << "]\n";
+}
+
 void AsmEmitter::emitLdrFromFp(std::ostream &os, PhysReg dst, long long offset) const {
     if (isInSignedImmRange(offset)) {
         os << "  ldr " << rn(dst) << ", [x29, #" << offset << "]\n";
@@ -526,6 +581,42 @@ void AsmEmitter::emitStrToFp(std::ostream &os, PhysReg src, long long offset) co
         os << "  add " << rn(scratch) << ", x29, " << rn(scratch) << "\n";
         os << "  str " << rn(src) << ", [" << rn(scratch) << "]\n";
     }
+}
+
+void AsmEmitter::emitLdr8FromFp(std::ostream &os, PhysReg dst, long long offset) const {
+    long long resolved;
+    PhysReg base = resolveBaseOffset(os, PhysReg::X29, offset, resolved);
+    emitNarrowGprAccess(os, narrowLoadMnemonic(1), dst, base, resolved);
+}
+
+void AsmEmitter::emitStr8ToFp(std::ostream &os, PhysReg src, long long offset) const {
+    long long resolved;
+    PhysReg base = resolveBaseOffset(os, PhysReg::X29, offset, resolved, src);
+    emitNarrowGprAccess(os, narrowStoreMnemonic(1), src, base, resolved);
+}
+
+void AsmEmitter::emitLdr16FromFp(std::ostream &os, PhysReg dst, long long offset) const {
+    long long resolved;
+    PhysReg base = resolveBaseOffset(os, PhysReg::X29, offset, resolved);
+    emitNarrowGprAccess(os, narrowLoadMnemonic(2), dst, base, resolved);
+}
+
+void AsmEmitter::emitStr16ToFp(std::ostream &os, PhysReg src, long long offset) const {
+    long long resolved;
+    PhysReg base = resolveBaseOffset(os, PhysReg::X29, offset, resolved, src);
+    emitNarrowGprAccess(os, narrowStoreMnemonic(2), src, base, resolved);
+}
+
+void AsmEmitter::emitLdr32FromFp(std::ostream &os, PhysReg dst, long long offset) const {
+    long long resolved;
+    PhysReg base = resolveBaseOffset(os, PhysReg::X29, offset, resolved);
+    emitNarrowGprAccess(os, narrowLoadMnemonic(4), dst, base, resolved);
+}
+
+void AsmEmitter::emitStr32ToFp(std::ostream &os, PhysReg src, long long offset) const {
+    long long resolved;
+    PhysReg base = resolveBaseOffset(os, PhysReg::X29, offset, resolved, src);
+    emitNarrowGprAccess(os, narrowStoreMnemonic(4), src, base, resolved);
 }
 
 void AsmEmitter::emitLdrFprFromFp(std::ostream &os, PhysReg dst, long long offset) const {
@@ -630,6 +721,60 @@ void AsmEmitter::emitStrToBase(std::ostream &os,
     long long resolved;
     PhysReg b = resolveBaseOffset(os, base, offset, resolved, src);
     os << "  str " << rn(src) << ", [" << rn(b) << ", #" << resolved << "]\n";
+}
+
+void AsmEmitter::emitLdr8FromBase(std::ostream &os,
+                                  PhysReg dst,
+                                  PhysReg base,
+                                  long long offset) const {
+    long long resolved;
+    PhysReg b = resolveBaseOffset(os, base, offset, resolved);
+    emitNarrowGprAccess(os, narrowLoadMnemonic(1), dst, b, resolved);
+}
+
+void AsmEmitter::emitStr8ToBase(std::ostream &os,
+                                PhysReg src,
+                                PhysReg base,
+                                long long offset) const {
+    long long resolved;
+    PhysReg b = resolveBaseOffset(os, base, offset, resolved, src);
+    emitNarrowGprAccess(os, narrowStoreMnemonic(1), src, b, resolved);
+}
+
+void AsmEmitter::emitLdr16FromBase(std::ostream &os,
+                                   PhysReg dst,
+                                   PhysReg base,
+                                   long long offset) const {
+    long long resolved;
+    PhysReg b = resolveBaseOffset(os, base, offset, resolved);
+    emitNarrowGprAccess(os, narrowLoadMnemonic(2), dst, b, resolved);
+}
+
+void AsmEmitter::emitStr16ToBase(std::ostream &os,
+                                 PhysReg src,
+                                 PhysReg base,
+                                 long long offset) const {
+    long long resolved;
+    PhysReg b = resolveBaseOffset(os, base, offset, resolved, src);
+    emitNarrowGprAccess(os, narrowStoreMnemonic(2), src, b, resolved);
+}
+
+void AsmEmitter::emitLdr32FromBase(std::ostream &os,
+                                   PhysReg dst,
+                                   PhysReg base,
+                                   long long offset) const {
+    long long resolved;
+    PhysReg b = resolveBaseOffset(os, base, offset, resolved);
+    emitNarrowGprAccess(os, narrowLoadMnemonic(4), dst, b, resolved);
+}
+
+void AsmEmitter::emitStr32ToBase(std::ostream &os,
+                                 PhysReg src,
+                                 PhysReg base,
+                                 long long offset) const {
+    long long resolved;
+    PhysReg b = resolveBaseOffset(os, base, offset, resolved, src);
+    emitNarrowGprAccess(os, narrowStoreMnemonic(4), src, b, resolved);
 }
 
 /// @brief Load an FPR from [base + offset], using a scratch register for large offsets.
@@ -932,6 +1077,42 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const {
         case MOpcode::AddFpImm:
             emitAddFpImm(os, getReg(mi.ops[0]), getImm(mi.ops[1]));
             return;
+        case MOpcode::Ldr8RegFpImm:
+            emitLdr8FromFp(os, getReg(mi.ops[0]), getImm(mi.ops[1]));
+            return;
+        case MOpcode::Str8RegFpImm:
+            emitStr8ToFp(os, getReg(mi.ops[0]), getImm(mi.ops[1]));
+            return;
+        case MOpcode::Ldr16RegFpImm:
+            emitLdr16FromFp(os, getReg(mi.ops[0]), getImm(mi.ops[1]));
+            return;
+        case MOpcode::Str16RegFpImm:
+            emitStr16ToFp(os, getReg(mi.ops[0]), getImm(mi.ops[1]));
+            return;
+        case MOpcode::Ldr32RegFpImm:
+            emitLdr32FromFp(os, getReg(mi.ops[0]), getImm(mi.ops[1]));
+            return;
+        case MOpcode::Str32RegFpImm:
+            emitStr32ToFp(os, getReg(mi.ops[0]), getImm(mi.ops[1]));
+            return;
+        case MOpcode::Ldr8RegBaseImm:
+            emitLdr8FromBase(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getImm(mi.ops[2]));
+            return;
+        case MOpcode::Str8RegBaseImm:
+            emitStr8ToBase(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getImm(mi.ops[2]));
+            return;
+        case MOpcode::Ldr16RegBaseImm:
+            emitLdr16FromBase(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getImm(mi.ops[2]));
+            return;
+        case MOpcode::Str16RegBaseImm:
+            emitStr16ToBase(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getImm(mi.ops[2]));
+            return;
+        case MOpcode::Ldr32RegBaseImm:
+            emitLdr32FromBase(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getImm(mi.ops[2]));
+            return;
+        case MOpcode::Str32RegBaseImm:
+            emitStr32ToBase(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getImm(mi.ops[2]));
+            return;
         case MOpcode::LdrFprBaseImm:
             emitLdrFprFromBase(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getImm(mi.ops[2]));
             return;
@@ -1031,14 +1212,29 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const {
                << rn(getReg(mi.ops[2])) << ", " << mi.ops[3].cond << "\n";
             return;
         case MOpcode::LdpRegFpImm:
+            if (!isPairImm7Offset(getImm(mi.ops[2]))) {
+                emitLdrFromFp(os, getReg(mi.ops[0]), getImm(mi.ops[2]));
+                emitLdrFromFp(os, getReg(mi.ops[1]), getImm(mi.ops[2]) + 8);
+                return;
+            }
             os << "  ldp " << rn(getReg(mi.ops[0])) << ", " << rn(getReg(mi.ops[1])) << ", [x29, #"
                << getImm(mi.ops[2]) << "]\n";
             return;
         case MOpcode::StpRegFpImm:
+            if (!isPairImm7Offset(getImm(mi.ops[2]))) {
+                emitStrToFp(os, getReg(mi.ops[0]), getImm(mi.ops[2]));
+                emitStrToFp(os, getReg(mi.ops[1]), getImm(mi.ops[2]) + 8);
+                return;
+            }
             os << "  stp " << rn(getReg(mi.ops[0])) << ", " << rn(getReg(mi.ops[1])) << ", [x29, #"
                << getImm(mi.ops[2]) << "]\n";
             return;
         case MOpcode::LdpFprFpImm: {
+            if (!isPairImm7Offset(getImm(mi.ops[2]))) {
+                emitLdrFprFromFp(os, getReg(mi.ops[0]), getImm(mi.ops[2]));
+                emitLdrFprFromFp(os, getReg(mi.ops[1]), getImm(mi.ops[2]) + 8);
+                return;
+            }
             os << "  ldp ";
             printD(os, getReg(mi.ops[0]));
             os << ", ";
@@ -1047,6 +1243,11 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const {
             return;
         }
         case MOpcode::StpFprFpImm: {
+            if (!isPairImm7Offset(getImm(mi.ops[2]))) {
+                emitStrFprToFp(os, getReg(mi.ops[0]), getImm(mi.ops[2]));
+                emitStrFprToFp(os, getReg(mi.ops[1]), getImm(mi.ops[2]) + 8);
+                return;
+            }
             os << "  stp ";
             printD(os, getReg(mi.ops[0]));
             os << ", ";

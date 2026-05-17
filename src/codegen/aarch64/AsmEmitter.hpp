@@ -478,6 +478,14 @@ class AsmEmitter {
     /// @param offset Byte offset from frame pointer (negative for locals).
     void emitStrToFp(std::ostream &os, PhysReg src, long long offset) const;
 
+    /// @brief Load/store narrow integer values from frame pointer offsets.
+    void emitLdr8FromFp(std::ostream &os, PhysReg dst, long long offset) const;
+    void emitStr8ToFp(std::ostream &os, PhysReg src, long long offset) const;
+    void emitLdr16FromFp(std::ostream &os, PhysReg dst, long long offset) const;
+    void emitStr16ToFp(std::ostream &os, PhysReg src, long long offset) const;
+    void emitLdr32FromFp(std::ostream &os, PhysReg dst, long long offset) const;
+    void emitStr32ToFp(std::ostream &os, PhysReg src, long long offset) const;
+
     /// @brief Load FPR from frame pointer offset: `ldr dst, [fp, #offset]`.
     /// @param os Output stream to write assembly text.
     /// @param dst Destination FPR.
@@ -514,6 +522,14 @@ class AsmEmitter {
     /// @param base Base address GPR.
     /// @param offset Byte offset from base.
     void emitStrToBase(std::ostream &os, PhysReg src, PhysReg base, long long offset) const;
+
+    /// @brief Load/store narrow integer values from arbitrary base-register offsets.
+    void emitLdr8FromBase(std::ostream &os, PhysReg dst, PhysReg base, long long offset) const;
+    void emitStr8ToBase(std::ostream &os, PhysReg src, PhysReg base, long long offset) const;
+    void emitLdr16FromBase(std::ostream &os, PhysReg dst, PhysReg base, long long offset) const;
+    void emitStr16ToBase(std::ostream &os, PhysReg src, PhysReg base, long long offset) const;
+    void emitLdr32FromBase(std::ostream &os, PhysReg dst, PhysReg base, long long offset) const;
+    void emitStr32ToBase(std::ostream &os, PhysReg src, PhysReg base, long long offset) const;
 
     /// @brief Load FPR from base register offset: `ldr dst, [base, #offset]`.
     /// @param os Output stream to write assembly text.

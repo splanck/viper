@@ -63,8 +63,8 @@ TargetInfo makeDarwinTarget() {
         PhysReg::X26,
         PhysReg::X27,
         PhysReg::X28,
-        PhysReg::X29, // FP
-        // X30 (LR) not generally callee-saved as it's saved/restored via prologue/epilogue.
+        // X29 (FP) and X30 (LR) are saved/restored by the frame prologue/epilogue,
+        // not tracked as allocator-managed callee-saved registers.
     };
     info.callerSavedFPR = {
         // v0-v7 used for args/returns (caller-saved); v8-v15 are callee-saved per AAPCS64;

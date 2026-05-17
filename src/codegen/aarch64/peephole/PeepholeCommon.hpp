@@ -129,8 +129,14 @@ using viper::codegen::common::removeMarkedInstructions;
         case MOpcode::AsrvRRR:
         // --- Loads (dest = ops[0]) ---
         case MOpcode::LdrRegFpImm:
+        case MOpcode::Ldr8RegFpImm:
+        case MOpcode::Ldr16RegFpImm:
+        case MOpcode::Ldr32RegFpImm:
         case MOpcode::LdrFprFpImm:
         case MOpcode::LdrRegBaseImm:
+        case MOpcode::Ldr8RegBaseImm:
+        case MOpcode::Ldr16RegBaseImm:
+        case MOpcode::Ldr32RegBaseImm:
         case MOpcode::LdrFprBaseImm:
         // --- Address computation (dest = ops[0]) ---
         case MOpcode::AddFpImm:
@@ -188,8 +194,14 @@ using viper::codegen::common::removeMarkedInstructions;
         case MOpcode::Cbz:
         case MOpcode::Cbnz:
         case MOpcode::StrRegFpImm:
+        case MOpcode::Str8RegFpImm:
+        case MOpcode::Str16RegFpImm:
+        case MOpcode::Str32RegFpImm:
         case MOpcode::StrFprFpImm:
         case MOpcode::StrRegBaseImm:
+        case MOpcode::Str8RegBaseImm:
+        case MOpcode::Str16RegBaseImm:
+        case MOpcode::Str32RegBaseImm:
         case MOpcode::StrFprBaseImm:
         case MOpcode::StrRegSpImm:
         case MOpcode::StrFprSpImm:
@@ -274,12 +286,18 @@ using viper::codegen::common::removeMarkedInstructions;
             break;
 
         case MOpcode::StrRegFpImm:
+        case MOpcode::Str8RegFpImm:
+        case MOpcode::Str16RegFpImm:
+        case MOpcode::Str32RegFpImm:
         case MOpcode::StrFprFpImm:
             if (instr.ops.size() >= 1 && samePhysReg(instr.ops[0], reg))
                 return true;
             break;
 
         case MOpcode::StrRegBaseImm:
+        case MOpcode::Str8RegBaseImm:
+        case MOpcode::Str16RegBaseImm:
+        case MOpcode::Str32RegBaseImm:
         case MOpcode::StrFprBaseImm:
             if (instr.ops.size() >= 1 && samePhysReg(instr.ops[0], reg))
                 return true;
@@ -288,6 +306,9 @@ using viper::codegen::common::removeMarkedInstructions;
             break;
 
         case MOpcode::LdrRegBaseImm:
+        case MOpcode::Ldr8RegBaseImm:
+        case MOpcode::Ldr16RegBaseImm:
+        case MOpcode::Ldr32RegBaseImm:
         case MOpcode::LdrFprBaseImm:
             if (instr.ops.size() >= 2 && samePhysReg(instr.ops[1], reg))
                 return true;
@@ -410,10 +431,16 @@ using viper::codegen::common::removeMarkedInstructions;
             return idx == 0 ? std::make_pair(false, true) : std::make_pair(false, false);
 
         case MOpcode::LdrRegFpImm:
+        case MOpcode::Ldr8RegFpImm:
+        case MOpcode::Ldr16RegFpImm:
+        case MOpcode::Ldr32RegFpImm:
         case MOpcode::LdrFprFpImm:
             return idx == 0 ? std::make_pair(false, true) : std::make_pair(false, false);
 
         case MOpcode::LdrRegBaseImm:
+        case MOpcode::Ldr8RegBaseImm:
+        case MOpcode::Ldr16RegBaseImm:
+        case MOpcode::Ldr32RegBaseImm:
         case MOpcode::LdrFprBaseImm:
             if (idx == 0)
                 return {false, true};
@@ -422,12 +449,18 @@ using viper::codegen::common::removeMarkedInstructions;
             return {false, false};
 
         case MOpcode::StrRegFpImm:
+        case MOpcode::Str8RegFpImm:
+        case MOpcode::Str16RegFpImm:
+        case MOpcode::Str32RegFpImm:
         case MOpcode::StrFprFpImm:
         case MOpcode::StrRegSpImm:
         case MOpcode::StrFprSpImm:
             return idx == 0 ? std::make_pair(true, false) : std::make_pair(false, false);
 
         case MOpcode::StrRegBaseImm:
+        case MOpcode::Str8RegBaseImm:
+        case MOpcode::Str16RegBaseImm:
+        case MOpcode::Str32RegBaseImm:
         case MOpcode::StrFprBaseImm:
             if (idx == 0)
                 return {true, false};
@@ -534,7 +567,13 @@ inline void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts) {
         case MOpcode::AsrvRRR:
         case MOpcode::Cset:
         case MOpcode::LdrRegFpImm:
+        case MOpcode::Ldr8RegFpImm:
+        case MOpcode::Ldr16RegFpImm:
+        case MOpcode::Ldr32RegFpImm:
         case MOpcode::LdrRegBaseImm:
+        case MOpcode::Ldr8RegBaseImm:
+        case MOpcode::Ldr16RegBaseImm:
+        case MOpcode::Ldr32RegBaseImm:
         case MOpcode::AddFpImm:
         case MOpcode::AdrPage:
         case MOpcode::AddPageOff:
@@ -578,8 +617,14 @@ inline void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts) {
 [[nodiscard]] inline bool hasSideEffects(const MInstr &instr) noexcept {
     switch (instr.opc) {
         case MOpcode::StrRegFpImm:
+        case MOpcode::Str8RegFpImm:
+        case MOpcode::Str16RegFpImm:
+        case MOpcode::Str32RegFpImm:
         case MOpcode::StrFprFpImm:
         case MOpcode::StrRegBaseImm:
+        case MOpcode::Str8RegBaseImm:
+        case MOpcode::Str16RegBaseImm:
+        case MOpcode::Str32RegBaseImm:
         case MOpcode::StrFprBaseImm:
         case MOpcode::StrRegSpImm:
         case MOpcode::StrFprSpImm:
@@ -599,8 +644,14 @@ inline void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts) {
         case MOpcode::TstRR:
         case MOpcode::FCmpRR:
         case MOpcode::LdrRegFpImm:
+        case MOpcode::Ldr8RegFpImm:
+        case MOpcode::Ldr16RegFpImm:
+        case MOpcode::Ldr32RegFpImm:
         case MOpcode::LdrFprFpImm:
         case MOpcode::LdrRegBaseImm:
+        case MOpcode::Ldr8RegBaseImm:
+        case MOpcode::Ldr16RegBaseImm:
+        case MOpcode::Ldr32RegBaseImm:
         case MOpcode::LdrFprBaseImm:
         case MOpcode::LdpRegFpImm:
         case MOpcode::LdpFprFpImm:
@@ -660,8 +711,14 @@ inline void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts) {
         case MOpcode::AsrRI:
         case MOpcode::Cset:
         case MOpcode::LdrRegFpImm:
+        case MOpcode::Ldr8RegFpImm:
+        case MOpcode::Ldr16RegFpImm:
+        case MOpcode::Ldr32RegFpImm:
         case MOpcode::LdrFprFpImm:
         case MOpcode::LdrRegBaseImm:
+        case MOpcode::Ldr8RegBaseImm:
+        case MOpcode::Ldr16RegBaseImm:
+        case MOpcode::Ldr32RegBaseImm:
         case MOpcode::LdrFprBaseImm:
         case MOpcode::AddFpImm:
         case MOpcode::AdrPage:
