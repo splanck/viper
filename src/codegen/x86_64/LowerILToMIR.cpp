@@ -376,6 +376,9 @@ Operand LowerILToMIR::makeLabelOperand(const ILValue &value) const {
 /// @return Machine operand representing the value.
 Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &value, RegClass cls) {
     if (value.kind == ILValue::Kind::LABEL) {
+        if (cls != RegClass::GPR) {
+            phaseAUnsupported("label operand requested in an XMM context");
+        }
         return makeLabelOperand(value);
     }
 
@@ -567,6 +570,10 @@ std::string LowerILToMIR::buildEdgeCopyBlock(MFunction &func,
             }
         }
 
+        if (const auto *srcReg = asReg(srcOp); srcReg && srcReg->cls != params[idx].cls) {
+            phaseAUnsupported("block parameter edge register class mismatch");
+        }
+
         px.operands.push_back(makeVRegOperand(params[idx].cls, params[idx].id));
         px.operands.push_back(std::move(srcOp));
     }
@@ -605,9 +612,10 @@ MFunction LowerILToMIR::lower(const ILFunction &func) {
         block.label = ".L_" + func.name + "_" + ilBlock.name;
 
         info.paramVRegs.reserve(ilBlock.paramIds.size());
-        for (std::size_t p = 0; p < ilBlock.paramIds.size() && p < ilBlock.paramKinds.size(); ++p) {
+        for (std::size_t p = 0; p < ilBlock.paramIds.size(); ++p) {
             const int paramId = ilBlock.paramIds[p];
-            const auto kind = ilBlock.paramKinds[p];
+            const auto kind =
+                p < ilBlock.paramKinds.size() ? ilBlock.paramKinds[p] : ILValue::Kind::I64;
             if (paramId >= 0) {
                 info.paramVRegs.push_back(ensureVReg(paramId, kind));
             }

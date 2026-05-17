@@ -2280,6 +2280,57 @@ TEST(X86BackendRegressions, BlockParameterEdgesRejectF64ForGprParam) {
     EXPECT_THROWS(lowering.lower(fn), std::runtime_error);
 }
 
+TEST(X86BackendRegressions, BlockParameterEdgesRejectCrossClassSsaValue) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(sysvTarget(), roData);
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::F64};
+    entry.instrs = {op("br", {label("target")})};
+    entry.terminatorEdges = {ILBlock::EdgeArg{.to = "target", .argIds = {0}}};
+
+    ILBlock target{};
+    target.name = "target";
+    target.paramIds = {1};
+    target.paramKinds = {ILValue::Kind::I64};
+    target.instrs = {op("ret", {val(ILValue::Kind::I64, 1)})};
+
+    ILFunction fn{};
+    fn.name = "edge_xmm_to_gpr_ssa";
+    fn.blocks = {entry, target};
+
+    EXPECT_THROWS(lowering.lower(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, BlockParameterEdgesDefaultMissingParamKindsToI64) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(sysvTarget(), roData);
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {op("br", {label("target")})};
+    entry.terminatorEdges = {
+        ILBlock::EdgeArg{.to = "target", .argIds = {-1}, .argValues = {imm(42)}}};
+
+    ILBlock target{};
+    target.name = "target";
+    target.paramIds = {0};
+    target.instrs = {op("ret", {val(ILValue::Kind::I64, 0)})};
+
+    ILFunction fn{};
+    fn.name = "edge_missing_param_kind";
+    fn.blocks = {entry, target};
+
+    const MFunction lowered = lowering.lower(fn);
+    bool foundEdgeCopy = false;
+    for (const auto &block : lowered.blocks) {
+        foundEdgeCopy = foundEdgeCopy || blockContainsOpcode(block, MOpcode::PX_COPY);
+    }
+    EXPECT_TRUE(foundEdgeCopy);
+}
+
 TEST(X86BackendRegressions, HugeStringLiteralLengthIsRejectedBeforeResize) {
     ILBlock entry{};
     entry.name = "entry";
@@ -2338,6 +2389,18 @@ TEST(X86BackendRegressions, AllocaRejectsF64Size) {
     EXPECT_THROWS(compile(fn), std::runtime_error);
 }
 
+TEST(X86BackendRegressions, AllocaRejectsNonPointerResult) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {op("alloca", {imm(8)}, 0, ILValue::Kind::F64), op("ret", {})};
+
+    ILFunction fn{};
+    fn.name = "alloca_f64_result";
+    fn.blocks = {entry};
+
+    EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
 TEST(X86BackendRegressions, GepRejectsF64ImmediateOffset) {
     ILBlock entry{};
     entry.name = "entry";
@@ -2348,6 +2411,87 @@ TEST(X86BackendRegressions, GepRejectsF64ImmediateOffset) {
 
     ILFunction fn{};
     fn.name = "gep_f64_offset";
+    fn.blocks = {entry};
+
+    EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, GepRejectsNonPointerResult) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::PTR};
+    entry.instrs = {op("gep", {val(ILValue::Kind::PTR, 0), imm(8)}, 1, ILValue::Kind::F64),
+                    op("ret", {})};
+
+    ILFunction fn{};
+    fn.name = "gep_f64_result";
+    fn.blocks = {entry};
+
+    EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, GepRejectsNonPointerBase) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::I64};
+    entry.instrs = {op("gep", {val(ILValue::Kind::I64, 0), imm(8)}, 1, ILValue::Kind::PTR),
+                    op("ret", {})};
+
+    ILFunction fn{};
+    fn.name = "gep_i64_base";
+    fn.blocks = {entry};
+
+    EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, ConstStrRejectsNonStringOperand) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {op("const_str", {imm(1)}, 0, ILValue::Kind::STR), op("ret", {})};
+
+    ILFunction fn{};
+    fn.name = "const_str_i64_operand";
+    fn.blocks = {entry};
+
+    EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, ConstF64RejectsNonF64Operand) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {op("const_f64", {imm(1)}, 0, ILValue::Kind::F64), op("ret", {})};
+
+    ILFunction fn{};
+    fn.name = "const_f64_i64_operand";
+    fn.blocks = {entry};
+
+    EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, GAddrRejectsNonLabelOperand) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {op("gaddr", {imm(1)}, 0, ILValue::Kind::PTR), op("ret", {})};
+
+    ILFunction fn{};
+    fn.name = "gaddr_i64_operand";
+    fn.blocks = {entry};
+
+    EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, AddrOfRejectsNonPointerOperand) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::I64};
+    entry.instrs = {op("addr_of", {val(ILValue::Kind::I64, 0)}, 1, ILValue::Kind::PTR),
+                    op("ret", {})};
+
+    ILFunction fn{};
+    fn.name = "addr_of_i64_operand";
     fn.blocks = {entry};
 
     EXPECT_THROWS(compile(fn), std::runtime_error);
@@ -2428,6 +2572,23 @@ TEST(X86BackendRegressions, SelectRejectsF64Condition) {
     EXPECT_THROWS(compile(fn), std::runtime_error);
 }
 
+TEST(X86BackendRegressions, XmmSelectRejectsLabelArm) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::I1};
+    entry.instrs = {
+        op("select", {val(ILValue::Kind::I1, 0), label("not_f64"), immF64(0.0)}, 1,
+           ILValue::Kind::F64),
+        op("ret", {val(ILValue::Kind::F64, 1)}, -1, ILValue::Kind::F64)};
+
+    ILFunction fn{};
+    fn.name = "select_label_xmm_arm";
+    fn.blocks = {entry};
+
+    EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
 TEST(X86BackendRegressions, IndirectCallRejectsF64TargetRegister) {
     ILBlock entry{};
     entry.name = "entry";
@@ -2452,6 +2613,38 @@ TEST(X86BackendRegressions, FpAddRejectsGprOperand) {
 
     ILFunction fn{};
     fn.name = "fp_add_gpr_operand";
+    fn.blocks = {entry};
+
+    EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, UnknownIntegerCompareOpcodeIsRejected) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::I64};
+    entry.instrs = {op("icmp_unknown", {val(ILValue::Kind::I64, 0), imm(1)}, 1,
+                       ILValue::Kind::I1),
+                    op("ret", {val(ILValue::Kind::I1, 1)})};
+
+    ILFunction fn{};
+    fn.name = "icmp_unknown_suffix";
+    fn.blocks = {entry};
+
+    EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, UnknownFloatingCompareOpcodeIsRejected) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::F64};
+    entry.instrs = {op("fcmp_unknown", {val(ILValue::Kind::F64, 0), immF64(1.0)}, 1,
+                       ILValue::Kind::I1),
+                    op("ret", {val(ILValue::Kind::I1, 1)})};
+
+    ILFunction fn{};
+    fn.name = "fcmp_unknown_suffix";
     fn.blocks = {entry};
 
     EXPECT_THROWS(compile(fn), std::runtime_error);

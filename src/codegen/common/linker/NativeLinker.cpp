@@ -364,6 +364,35 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
             addAbs64DataRef("__imp_" + name, 8, targetSymIdx);
     };
 
+    auto addJmpFn = [&](const std::string &name, const std::string &target) {
+        const size_t off = textSec.data.size();
+        textSec.data.insert(textSec.data.end(), {0xE9, 0x00, 0x00, 0x00, 0x00});
+
+        ObjSymbol sym;
+        sym.name = name;
+        sym.binding = ObjSymbol::Global;
+        sym.sectionIndex = 1;
+        sym.offset = off;
+        obj.symbols.push_back(std::move(sym));
+        const uint32_t idx = static_cast<uint32_t>(obj.symbols.size() - 1);
+
+        ObjSymbol targetSym;
+        targetSym.name = target;
+        targetSym.binding = ObjSymbol::Undefined;
+        const uint32_t targetIdx = static_cast<uint32_t>(obj.symbols.size());
+        obj.symbols.push_back(std::move(targetSym));
+
+        ObjReloc reloc;
+        reloc.offset = off + 1;
+        reloc.type = coff_x64::kRel32;
+        reloc.symIndex = targetIdx;
+        reloc.addend = 0;
+        textSec.relocs.push_back(reloc);
+
+        addImportAlias(name, idx);
+        return idx;
+    };
+
     if (needsHelper("_fltused")) {
         const uint32_t idx = addData("_fltused", {1, 0, 0, 0}, 4);
         addImportAlias("_fltused", idx);
@@ -408,6 +437,30 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
     if (needsHelper("__GSHandlerCheck")) {
         const uint32_t idx = addRetFn("__GSHandlerCheck", {0xC3});
         addImportAlias("__GSHandlerCheck", idx);
+    }
+    if (needsHelper("__GSHandlerCheck_EH4")) {
+        const uint32_t idx = addRetFn("__GSHandlerCheck_EH4", {0xC3});
+        addImportAlias("__GSHandlerCheck_EH4", idx);
+    }
+    if (needsHelper("__CxxFrameHandler4")) {
+        const uint32_t idx = addRetFn("__CxxFrameHandler4", {0xC3});
+        addImportAlias("__CxxFrameHandler4", idx);
+    }
+    if (needsHelper("??_7type_info@@6B@")) {
+        const uint32_t idx = addData("??_7type_info@@6B@", {0, 0, 0, 0, 0, 0, 0, 0}, 8);
+        addImportAlias("??_7type_info@@6B@", idx);
+    }
+    if (needsHelper("??2@YAPEAX_K@Z")) {
+        addJmpFn("??2@YAPEAX_K@Z", "malloc");
+    }
+    if (needsHelper("??2@YAPEAX_KAEBUnothrow_t@std@@@Z")) {
+        addJmpFn("??2@YAPEAX_KAEBUnothrow_t@std@@@Z", "malloc");
+    }
+    if (needsHelper("??3@YAXPEAX@Z")) {
+        addJmpFn("??3@YAXPEAX@Z", "free");
+    }
+    if (needsHelper("??3@YAXPEAX_K@Z")) {
+        addJmpFn("??3@YAXPEAX_K@Z", "free");
     }
     if (needsHelper("_RTC_CheckStackVars")) {
         const uint32_t idx = addRetFn("_RTC_CheckStackVars", {0xC3});
@@ -690,6 +743,10 @@ ObjFile generateWindowsArm64Helpers(const std::unordered_set<std::string> &dynam
     if (needsHelper("__GSHandlerCheck")) {
         const uint32_t idx = addRetFn("__GSHandlerCheck");
         addImportAlias("__GSHandlerCheck", idx);
+    }
+    if (needsHelper("__GSHandlerCheck_EH4")) {
+        const uint32_t idx = addRetFn("__GSHandlerCheck_EH4");
+        addImportAlias("__GSHandlerCheck_EH4", idx);
     }
     if (needsHelper("_RTC_CheckStackVars")) {
         const uint32_t idx = addRetFn("_RTC_CheckStackVars");
@@ -998,9 +1055,23 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
                     obj.sections.begin(), obj.sections.end(), [](const ObjSection &sec) {
                         return sec.alloc && sec.tls && !sec.data.empty();
                     });
-            });
+        });
 
         if (opts.arch == LinkArch::X86_64 || opts.arch == LinkArch::AArch64) {
+            auto needsDynamicSym = [&](const std::string &name) {
+                return dynamicSyms.count(name) || dynamicSyms.count("__imp_" + name);
+            };
+            if (opts.arch == LinkArch::X86_64 &&
+                (needsDynamicSym("??2@YAPEAX_K@Z") ||
+                 needsDynamicSym("??2@YAPEAX_KAEBUnothrow_t@std@@@Z"))) {
+                dynamicSyms.insert("malloc");
+            }
+            if (opts.arch == LinkArch::X86_64 &&
+                (needsDynamicSym("??3@YAXPEAX@Z") ||
+                 needsDynamicSym("??3@YAXPEAX_K@Z"))) {
+                dynamicSyms.insert("free");
+            }
+
             ObjFile helperObj =
                 (opts.arch == LinkArch::AArch64)
                     ? generateWindowsArm64Helpers(dynamicSyms, haveVmTrapDefault, needTlsIndex)

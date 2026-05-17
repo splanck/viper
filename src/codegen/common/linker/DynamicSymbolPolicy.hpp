@@ -537,6 +537,7 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "__security_pop_cookie",
         "__security_push_cookie",
         "__GSHandlerCheck",
+        "__GSHandlerCheck_EH4",
         "__chkstk",
         "__RTC_memset",
         "_setjmpex",

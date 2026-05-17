@@ -323,9 +323,15 @@ void emitConstStr(const ILInstr &instr, MIRBuilder &builder) {
     if (instr.ops.empty() || instr.resultId < 0) {
         phaseAUnsupported("const_str: missing operands");
     }
+    if (instr.resultKind != ILValue::Kind::STR) {
+        phaseAUnsupported("const_str: result must be a string");
+    }
 
     // The operand contains the string literal data
     const auto &strVal = instr.ops.front();
+    if (strVal.kind != ILValue::Kind::STR) {
+        phaseAUnsupported("const_str: operand must be a string literal");
+    }
 
     // Reserve the result vreg
     const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
@@ -347,6 +353,9 @@ void emitConstStr(const ILInstr &instr, MIRBuilder &builder) {
 void emitAlloca(const ILInstr &instr, MIRBuilder &builder) {
     if (instr.resultId < 0) {
         return;
+    }
+    if (instr.resultKind != ILValue::Kind::PTR) {
+        phaseAUnsupported("alloca: result must be a pointer");
     }
     if (instr.ops.empty() || !isIntegerLikeImmediate(builder, instr.ops[0])) {
         phaseAUnsupported("alloca: size must be a positive integer immediate");
@@ -377,6 +386,12 @@ void emitAlloca(const ILInstr &instr, MIRBuilder &builder) {
 void emitGEP(const ILInstr &instr, MIRBuilder &builder) {
     if (instr.resultId < 0 || instr.ops.size() < 2) {
         phaseAUnsupported("gep: missing operands");
+    }
+    if (instr.resultKind != ILValue::Kind::PTR) {
+        phaseAUnsupported("gep: result must be a pointer");
+    }
+    if (instr.ops[0].kind != ILValue::Kind::PTR) {
+        phaseAUnsupported("gep: base must be a pointer");
     }
 
     // Reserve the result vreg for the pointer
@@ -453,6 +468,9 @@ void emitConstF64(const ILInstr &instr, MIRBuilder &builder) {
     if (instr.resultId < 0 || instr.ops.empty()) {
         return;
     }
+    if (instr.resultKind != ILValue::Kind::F64 || instr.ops.front().kind != ILValue::Kind::F64) {
+        phaseAUnsupported("const_f64: expected f64 result and operand");
+    }
 
     const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
@@ -468,6 +486,9 @@ void emitConstF64(const ILInstr &instr, MIRBuilder &builder) {
 void emitGAddr(const ILInstr &instr, MIRBuilder &builder) {
     if (instr.resultId < 0 || instr.ops.empty()) {
         return;
+    }
+    if (instr.resultKind != ILValue::Kind::PTR || instr.ops.front().kind != ILValue::Kind::LABEL) {
+        phaseAUnsupported("gaddr: expected pointer result and label operand");
     }
 
     const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
@@ -485,6 +506,9 @@ void emitGAddr(const ILInstr &instr, MIRBuilder &builder) {
 void emitAddrOf(const ILInstr &instr, MIRBuilder &builder) {
     if (instr.resultId < 0 || instr.ops.empty()) {
         return;
+    }
+    if (instr.resultKind != ILValue::Kind::PTR || instr.ops.front().kind != ILValue::Kind::PTR) {
+        phaseAUnsupported("addr_of: expected pointer result and operand");
     }
 
     const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);

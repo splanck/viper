@@ -151,7 +151,7 @@ inline bool isWindowsLinkerHelperSymbol(const std::string &name) {
     return name == "_fltused" || name == "__ImageBase" ||
            name == "__security_cookie" || name == "__security_check_cookie" ||
            name == "__security_init_cookie" || name == "__GSHandlerCheck" ||
-           name == "_RTC_InitBase" || name == "_RTC_Shutdown" ||
+           name == "__GSHandlerCheck_EH4" || name == "_RTC_InitBase" || name == "_RTC_Shutdown" ||
            name == "_RTC_CheckStackVars" || name == "_RTC_UninitUse" ||
            name == "__report_rangecheckfailure" || name == "__chkstk" || name == "_tls_index" ||
            name == "__security_cookie_complement" || name == "__guard_dispatch_icall_fptr" ||
@@ -162,6 +162,10 @@ inline bool isWindowsLinkerHelperSymbol(const std::string &name) {
            name == "__acrt_thread_detach" || name == "__acrt_uninitialize" ||
            name == "__acrt_uninitialize_critical" || name == "__isa_available_init" ||
            name == "__scrt_exe_initialize_mta" ||
+           name == "__CxxFrameHandler4" || name == "??_7type_info@@6B@" ||
+           name == "??2@YAPEAX_K@Z" ||
+           name == "??2@YAPEAX_KAEBUnothrow_t@std@@@Z" ||
+           name == "??3@YAXPEAX@Z" || name == "??3@YAXPEAX_K@Z" ||
            name == "IID_ID3D11Texture2D" ||
            isWindowsStdioOptionsStorageSymbol(name) || name == "vm_trap" ||
            name == "rt_audio_shutdown";

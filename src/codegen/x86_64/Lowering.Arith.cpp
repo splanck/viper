@@ -28,6 +28,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <string>
 
 namespace viper::codegen::x64::lowering {
 namespace {
@@ -371,7 +372,9 @@ void emitFDiv(const ILInstr &instr, MIRBuilder &builder) {
 void emitICmp(const ILInstr &instr, MIRBuilder &builder) {
     if (const auto cond = EmitCommon::icmpConditionCode(instr.opcode)) {
         EmitCommon(builder).emitCmp(instr, RegClass::GPR, *cond);
+        return;
     }
+    phaseAUnsupported(("unknown integer compare opcode: " + instr.opcode).c_str());
 }
 
 /// @brief Lower a floating-point compare IL instruction.
@@ -398,7 +401,9 @@ void emitFCmp(const ILInstr &instr, MIRBuilder &builder) {
     // gt/ge/ord/uno are already NaN-correct with a single SETcc.
     if (const auto cond = EmitCommon::fcmpConditionCode(instr.opcode)) {
         EmitCommon(builder).emitCmp(instr, RegClass::XMM, *cond);
+        return;
     }
+    phaseAUnsupported(("unknown floating-point compare opcode: " + instr.opcode).c_str());
 }
 
 /// @brief Lower an explicit compare IL instruction that encodes the result type.

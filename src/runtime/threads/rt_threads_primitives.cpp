@@ -46,10 +46,21 @@
 #include "rt.hpp"
 #include "rt_object.h"
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
 #include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
+#include <cstdlib>
 #include <cstdint>
 #include <deque>
 #include <limits>
@@ -57,6 +68,7 @@
 #include <new>
 #include <thread>
 #include <unordered_map>
+#include <utility>
 
 namespace {
 
@@ -90,6 +102,22 @@ struct GateState {
 struct RtGate {
     GateState *state = nullptr;
 };
+
+template <typename T, typename... Args>
+static T *allocateState(Args &&...args) {
+    void *mem = std::malloc(sizeof(T));
+    if (!mem)
+        return nullptr;
+    return ::new (mem) T(std::forward<Args>(args)...);
+}
+
+template <typename T>
+static void destroyState(T *state) {
+    if (!state)
+        return;
+    state->~T();
+    std::free(state);
+}
 
 //===----------------------------------------------------------------------===//
 // Shared Validation Helper
@@ -159,6 +187,34 @@ static std::chrono::steady_clock::time_point steadyDeadlineFromNow(int64_t ms) {
     return now + std::chrono::milliseconds(ms);
 }
 
+/// @brief Wait for a gate waiter without importing unavailable MSVC debug CRT timed-wait APIs.
+/// @details Some MSVC 14.50 debug CRT installations ship an import library that references
+///          `_Cnd_timedwait_for_unchecked` while the matching debug DLL does not export it.
+///          On Windows, avoid `std::condition_variable::wait_until` so native demo binaries
+///          that use Gate.TryEnterFor can still load under the installed debug runtime.
+static bool waitGateUntil(GateState &state,
+                          GateWaiter &waiter,
+                          std::unique_lock<std::mutex> &lock,
+                          std::chrono::steady_clock::time_point deadline) {
+#ifdef _WIN32
+    while (!waiter.granted && !waiter.cancelled && !state.closing) {
+        const auto now = std::chrono::steady_clock::now();
+        if (now >= deadline)
+            return false;
+        const int64_t remaining_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count();
+        const DWORD pause_ms =
+            static_cast<DWORD>(remaining_ms <= 0 ? 1 : std::min<int64_t>(remaining_ms, 10));
+        lock.unlock();
+        ::Sleep(pause_ms);
+        lock.lock();
+    }
+    return true;
+#else
+    return waiter.cv.wait_until(lock, deadline) != std::cv_status::timeout || waiter.granted;
+#endif
+}
+
 /// @brief Validate a gate object pointer and return its typed wrapper.
 /// @param gate Opaque gate pointer passed from the runtime.
 /// @param what Error string to use when trapping on NULL.
@@ -189,7 +245,7 @@ static void gate_finalizer(void *obj) {
 
     gate->state = nullptr;
     if (can_delete)
-        delete state;
+        destroyState(state);
 }
 
 // ============================================================================
@@ -244,7 +300,7 @@ static void barrier_finalizer(void *obj) {
 
     barrier->state = nullptr;
     if (can_delete)
-        delete state;
+        destroyState(state);
 }
 
 // ============================================================================
@@ -314,7 +370,7 @@ static void rwlock_finalizer(void *obj) {
 
     rw->state = nullptr;
     if (can_delete)
-        delete state;
+        destroyState(state);
 }
 
 } // namespace
@@ -342,7 +398,7 @@ void *rt_gate_new(int64_t permits) {
         return nullptr; // Unreachable, but silences compiler warnings
     }
 
-    auto *state = new (std::nothrow) GateState(permits);
+    auto *state = allocateState<GateState>(permits);
     if (!state) {
         if (rt_obj_release_check0(gate))
             rt_obj_free(gate);
@@ -458,8 +514,7 @@ int8_t rt_gate_try_enter_for(void *gate, int64_t ms) {
             const auto deadline = steadyDeadlineFromNow(ms);
 
             while (!waiter.granted && !waiter.cancelled && !state.closing) {
-                if (waiter.cv.wait_until(lock, deadline) == std::cv_status::timeout &&
-                    !waiter.granted) {
+                if (!waitGateUntil(state, waiter, lock, deadline) && !waiter.granted) {
                     auto it = std::find(state.waiters.begin(), state.waiters.end(), &waiter);
                     if (it != state.waiters.end())
                         state.waiters.erase(it);
@@ -586,7 +641,7 @@ void *rt_barrier_new(int64_t parties) {
         return nullptr; // Unreachable, but silences compiler warnings
     }
 
-    auto *state = new (std::nothrow) BarrierState(parties);
+    auto *state = allocateState<BarrierState>(parties);
     if (!state) {
         if (rt_obj_release_check0(barrier))
             rt_obj_free(barrier);
@@ -741,7 +796,7 @@ void *rt_rwlock_new(void) {
         return nullptr; // Unreachable, but silences compiler warnings
     }
 
-    auto *state = new (std::nothrow) RwLockState();
+    auto *state = allocateState<RwLockState>();
     if (!state) {
         if (rt_obj_release_check0(lock))
             rt_obj_free(lock);

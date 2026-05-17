@@ -219,7 +219,8 @@ static bool preferArchiveDefinition(const std::string &name, LinkPlatform platfo
         name == "fstat" || name == "_fstat64i32" || name == "stat" || name == "_stat64i32" ||
         name == "mainCRTStartup" || name == "WinMainCRTStartup" || name == "wmainCRTStartup" ||
         name == "wWinMainCRTStartup" || name == "__security_check_cookie" ||
-        name == "__security_init_cookie" || name == "__GSHandlerCheck" || name == "__chkstk")
+        name == "__security_init_cookie" || name == "__GSHandlerCheck" ||
+        name == "__GSHandlerCheck_EH4" || name == "__chkstk")
         return true;
 
     return name.find("__scrt_") != std::string::npos ||

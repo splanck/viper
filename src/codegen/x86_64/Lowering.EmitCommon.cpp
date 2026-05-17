@@ -178,6 +178,9 @@ Operand EmitCommon::materialise(Operand operand, RegClass cls) {
                 MInstr::make(MOpcode::MOVri, std::vector<Operand>{clone(tmpOp), clone(operand)}));
         }
     } else if (const auto *label = std::get_if<OpLabel>(&operand)) {
+        if (cls != RegClass::GPR) {
+            phaseAUnsupported("label operand requested in an XMM context");
+        }
         builder().append(MInstr::make(
             MOpcode::LEA, std::vector<Operand>{clone(tmpOp), makeRipLabelOperand(label->name)}));
     } else if (const auto *rip = std::get_if<OpRipLabel>(&operand)) {
