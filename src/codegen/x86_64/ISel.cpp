@@ -75,7 +75,9 @@ void ensureMovzxAfterSetcc(MBasicBlock &block, std::size_t index) {
 
     if (index + 1 < block.instructions.size()) {
         auto &next = block.instructions[index + 1];
-        if (next.opcode == MOpcode::MOVZXrr8 && next.operands.size() >= 2 &&
+        const bool alreadyZeroExtends =
+            next.opcode == MOpcode::MOVZXrr8 || next.opcode == MOpcode::MOVZXrr32;
+        if (alreadyZeroExtends && next.operands.size() >= 2 &&
             sameRegister(next.operands[0], *destOperand) &&
             sameRegister(next.operands[1], *destOperand)) {
             return;
@@ -682,6 +684,76 @@ bool virtualRegisterUsedOutsideBlock(const MFunction &func,
     return false;
 }
 
+/// @brief Compare two register descriptors for exact register identity.
+bool sameMachineRegister(const OpReg &lhs, const OpReg &rhs) noexcept {
+    return lhs.isPhys == rhs.isPhys && lhs.cls == rhs.cls && lhs.idOrPhys == rhs.idOrPhys;
+}
+
+/// @brief Determine whether @p instr defines @p needle.
+/// @details Fold legalizers use this to reject stale definitions. The scan is
+///          role-aware so destructive two-operand instructions count as defs,
+///          while memory operands only contribute address uses. A call is
+///          conservatively treated as clobbering any physical register.
+bool instructionDefinesRegister(const MInstr &instr, const OpReg &needle) {
+    if (needle.isPhys && instr.opcode == MOpcode::CALL) {
+        return true;
+    }
+
+    for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
+        const auto [isUse, isDef] = operandRoles(instr, idx);
+        (void)isUse;
+        if (!isDef) {
+            continue;
+        }
+
+        const auto *reg = asReg(instr.operands[idx]);
+        if (reg && sameMachineRegister(*reg, needle)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/// @brief Check whether @p reg is redefined in [@p begin, @p end).
+bool registerRedefinedInRange(const MBasicBlock &block,
+                              const OpReg &reg,
+                              std::size_t begin,
+                              std::size_t end) {
+    const std::size_t limit = std::min(end, block.instructions.size());
+    for (std::size_t idx = begin; idx < limit; ++idx) {
+        if (instructionDefinesRegister(block.instructions[idx], reg)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/// @brief Check whether virtual GPR @p vreg is redefined in [@p begin, @p end).
+bool virtualRegisterRedefinedInRange(const MBasicBlock &block,
+                                     uint16_t vreg,
+                                     std::size_t begin,
+                                     std::size_t end) {
+    OpReg reg{};
+    reg.isPhys = false;
+    reg.cls = RegClass::GPR;
+    reg.idOrPhys = vreg;
+    return registerRedefinedInRange(block, reg, begin, end);
+}
+
+/// @brief Check whether an address expression's base or index changes before use.
+bool addressInputsRedefinedInRange(const OpMem &mem,
+                                   const MBasicBlock &block,
+                                   std::size_t begin,
+                                   std::size_t end) {
+    if (registerRedefinedInRange(block, mem.base, begin, end)) {
+        return true;
+    }
+    if (mem.hasIndex && registerRedefinedInRange(block, mem.index, begin, end)) {
+        return true;
+    }
+    return false;
+}
+
 /// @brief Check whether a register has uses outside the local fold window.
 /// @details The compare/branch fold may only remove boolean materialisation
 ///          when the materialized value feeds the local test and nothing else.
@@ -767,7 +839,8 @@ bool foldCompareBranch(const MFunction &func, MBasicBlock &block, std::size_t in
     }
 
     std::size_t testIndex = index + 2;
-    if (block.instructions[testIndex].opcode == MOpcode::MOVZXrr8) {
+    if (block.instructions[testIndex].opcode == MOpcode::MOVZXrr8 ||
+        block.instructions[testIndex].opcode == MOpcode::MOVZXrr32) {
         const auto &movzxInstr = block.instructions[testIndex];
         if (movzxInstr.operands.size() < 2 ||
             !sameRegister(movzxInstr.operands[0], setccInstr.operands[1]) ||
@@ -1086,6 +1159,11 @@ void ISel::foldSibAddressing(MFunction &func) const {
                 if (shlInfo.defIdx >= addInfo.defIdx || addInfo.defIdx >= idx) {
                     continue;
                 }
+                if (virtualRegisterRedefinedInRange(
+                        block, addInfo.shiftedVreg, shlInfo.defIdx + 1, addInfo.defIdx) ||
+                    virtualRegisterRedefinedInRange(block, baseId, addInfo.defIdx + 1, idx)) {
+                    continue;
+                }
 
                 // Check that the ADD result and SHL result are single-use after
                 // their definitions. The destructive source reads of SHL/ADD
@@ -1107,6 +1185,11 @@ void ISel::foldSibAddressing(MFunction &func) const {
                 auto movIt = movDefs.find(shlInfo.srcVreg);
                 if (movIt != movDefs.end() && !movIt->second.srcIsPhys &&
                     movIt->second.defIdx < shlInfo.defIdx &&
+                    !virtualRegisterRedefinedInRange(block, shlInfo.srcVreg,
+                                                     movIt->second.defIdx + 1,
+                                                     shlInfo.defIdx) &&
+                    !virtualRegisterRedefinedInRange(block, movIt->second.srcVreg,
+                                                     movIt->second.defIdx + 1, idx) &&
                     countVirtualRegisterUsesInRange(block, shlInfo.srcVreg,
                                                     movIt->second.defIdx + 1,
                                                     shlInfo.defIdx + 1) == 1 &&
@@ -1119,18 +1202,19 @@ void ISel::foldSibAddressing(MFunction &func) const {
                 uint16_t realBaseVreg = addInfo.baseVreg;
                 auto baseMovIt = movDefs.find(addInfo.baseVreg);
                 if (baseMovIt != movDefs.end() && baseMovIt->second.defIdx < addInfo.defIdx &&
+                    !virtualRegisterRedefinedInRange(block, addInfo.baseVreg,
+                                                     baseMovIt->second.defIdx + 1,
+                                                     addInfo.defIdx) &&
                     countVirtualRegisterUsesInRange(block, addInfo.baseVreg,
                                                     baseMovIt->second.defIdx + 1,
                                                     addInfo.defIdx + 1) == 1 &&
                     !virtualRegisterUsedOutsideBlock(func, block, addInfo.baseVreg)) {
-                    if (!baseMovIt->second.srcIsPhys) {
+                    if (!baseMovIt->second.srcIsPhys &&
+                        !virtualRegisterRedefinedInRange(block, baseMovIt->second.srcVreg,
+                                                         baseMovIt->second.defIdx + 1, idx)) {
                         realBaseVreg = baseMovIt->second.srcVreg;
-                    } else {
-                        // Base is a physical register - use it directly
-                        mem->base.isPhys = true;
-                        mem->base.idOrPhys = baseMovIt->second.srcVreg;
+                        toErase.push_back(baseMovIt->second.defIdx);
                     }
-                    toErase.push_back(baseMovIt->second.defIdx);
                 }
 
                 // Update memory operand with SIB addressing
@@ -1347,6 +1431,10 @@ void ISel::foldLeaIntoMem(MFunction &func) const {
                             continue;
                         }
 
+                        if (virtualRegisterRedefinedInRange(block, v, defIndex + 1, idx)) {
+                            continue;
+                        }
+
                         if (countVirtualRegisterUsesInFunction(func, v) != 1) {
                             continue;
                         }
@@ -1354,6 +1442,10 @@ void ISel::foldLeaIntoMem(MFunction &func) const {
                         const auto &defInstr = block.instructions[defIndex];
                         if (defInstr.opcode == MOpcode::LEA && defInstr.operands.size() >= 2) {
                             if (const auto *srcMem = std::get_if<OpMem>(&defInstr.operands[1])) {
+                                if (addressInputsRedefinedInRange(*srcMem, block, defIndex + 1,
+                                                                  idx)) {
+                                    continue;
+                                }
                                 if (auto combined = combineLeaMemUse(*srcMem, *mem)) {
                                     *mem = *combined;
                                     toErase.push_back(defIndex);

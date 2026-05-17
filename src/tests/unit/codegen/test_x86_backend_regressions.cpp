@@ -175,6 +175,13 @@ bool blockContainsOpcode(const MBasicBlock &block, MOpcode opcode) {
                        [&](const MInstr &instr) { return instr.opcode == opcode; });
 }
 
+std::size_t countOpcode(const MBasicBlock &block, MOpcode opcode) {
+    return static_cast<std::size_t>(
+        std::count_if(block.instructions.begin(),
+                      block.instructions.end(),
+                      [&](const MInstr &instr) { return instr.opcode == opcode; }));
+}
+
 MFunction rawFunction(std::string name, std::vector<MInstr> instructions) {
     MFunction fn{};
     fn.name = std::move(name);
@@ -624,6 +631,55 @@ TEST(X86BackendRegressions, CompareBranchUsesFlagsDirectly) {
     EXPECT_TRUE(result.asmText.find("setne ") == std::string::npos);
     EXPECT_TRUE(result.asmText.find("movzbq ") == std::string::npos);
     EXPECT_TRUE(result.asmText.find("testq ") == std::string::npos);
+}
+
+TEST(X86BackendRegressions, CompareBranchFoldAcceptsExistingMovzx32) {
+    MFunction fn{};
+    fn.name = "cmp_branch_movzx32";
+
+    MBasicBlock entry{};
+    entry.label = ".L_cmp_branch_movzx32_entry";
+    const Operand lhs = makeVRegOperand(RegClass::GPR, 1);
+    const Operand rhs = makeVRegOperand(RegClass::GPR, 2);
+    const Operand flag = makeVRegOperand(RegClass::GPR, 3);
+    entry.instructions = {MInstr::make(MOpcode::CMPrr, {lhs, rhs}),
+                          MInstr::make(MOpcode::SETcc, {makeImmOperand(1), flag}),
+                          MInstr::make(MOpcode::MOVZXrr32, {flag, flag}),
+                          MInstr::make(MOpcode::TESTrr, {flag, flag}),
+                          MInstr::make(MOpcode::JCC,
+                                       {makeImmOperand(1), makeLabelOperand(".L_yes")})};
+    fn.blocks.push_back(std::move(entry));
+
+    ISel isel(sysvTarget());
+    isel.lowerCompareAndBranch(fn);
+
+    const auto &block = fn.blocks.front();
+    ASSERT_EQ(block.instructions.size(), 2u);
+    EXPECT_EQ(block.instructions[0].opcode, MOpcode::CMPrr);
+    EXPECT_EQ(block.instructions[1].opcode, MOpcode::JCC);
+    EXPECT_FALSE(blockContainsOpcode(block, MOpcode::SETcc));
+    EXPECT_FALSE(blockContainsOpcode(block, MOpcode::MOVZXrr32));
+    EXPECT_FALSE(blockContainsOpcode(block, MOpcode::TESTrr));
+}
+
+TEST(X86BackendRegressions, SetccWithExistingMovzx32DoesNotInsertMovzx8) {
+    MFunction fn{};
+    fn.name = "setcc_existing_movzx32";
+
+    MBasicBlock entry{};
+    entry.label = ".L_setcc_existing_movzx32_entry";
+    const Operand flag = makeVRegOperand(RegClass::GPR, 1);
+    entry.instructions = {MInstr::make(MOpcode::SETcc, {makeImmOperand(1), flag}),
+                          MInstr::make(MOpcode::MOVZXrr32, {flag, flag})};
+    fn.blocks.push_back(std::move(entry));
+
+    ISel isel(sysvTarget());
+    isel.lowerCompareAndBranch(fn);
+
+    const auto &block = fn.blocks.front();
+    ASSERT_EQ(block.instructions.size(), 2u);
+    EXPECT_EQ(countOpcode(block, MOpcode::MOVZXrr8), 0u);
+    EXPECT_EQ(countOpcode(block, MOpcode::MOVZXrr32), 1u);
 }
 
 TEST(X86BackendRegressions, ConditionalBlockArgsUseDedicatedEdgeBlocks) {
@@ -1683,6 +1739,233 @@ TEST(X86BackendRegressions, SibFoldUsesPostDefReadCounts) {
     EXPECT_EQ(mem->index.idOrPhys, 2u);
 }
 
+TEST(X86BackendRegressions, SibFoldKeepsIndexCopyWhenOriginalIndexIsRedefined) {
+    MFunction fn{};
+    fn.name = "sib_index_source_redef";
+    MBasicBlock entry{};
+    entry.label = ".L_sib_index_source_redef_entry";
+    const Operand base = makeVRegOperand(RegClass::GPR, 1);
+    const Operand index = makeVRegOperand(RegClass::GPR, 2);
+    const Operand replacement = makeVRegOperand(RegClass::GPR, 6);
+    const Operand scaled = makeVRegOperand(RegClass::GPR, 3);
+    const Operand addr = makeVRegOperand(RegClass::GPR, 4);
+    const Operand loaded = makeVRegOperand(RegClass::GPR, 5);
+    entry.instructions = {MInstr::make(MOpcode::MOVrr, {scaled, index}),
+                          MInstr::make(MOpcode::SHLri, {scaled, makeImmOperand(3)}),
+                          MInstr::make(MOpcode::MOVrr, {index, replacement}),
+                          MInstr::make(MOpcode::MOVrr, {addr, base}),
+                          MInstr::make(MOpcode::ADDrr, {addr, scaled}),
+                          MInstr::make(MOpcode::MOVmr, {loaded, Operand{baseMem(addr)}})};
+    fn.blocks.push_back(std::move(entry));
+
+    ISel isel(sysvTarget());
+    isel.lowerArithmetic(fn);
+
+    const auto &block = fn.blocks.front();
+    EXPECT_FALSE(blockContainsOpcode(block, MOpcode::SHLri));
+    EXPECT_FALSE(blockContainsOpcode(block, MOpcode::ADDrr));
+    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::MOVrr));
+    const OpMem *mem = firstMemOperand(block.instructions.back());
+    ASSERT_TRUE(mem != nullptr);
+    EXPECT_TRUE(mem->hasIndex);
+    EXPECT_EQ(mem->scale, 8u);
+    EXPECT_EQ(mem->base.idOrPhys, 1u);
+    EXPECT_EQ(mem->index.idOrPhys, 3u);
+}
+
+TEST(X86BackendRegressions, SibFoldKeepsBaseCopyWhenOriginalBaseIsRedefined) {
+    MFunction fn{};
+    fn.name = "sib_base_source_redef";
+    MBasicBlock entry{};
+    entry.label = ".L_sib_base_source_redef_entry";
+    const Operand base = makeVRegOperand(RegClass::GPR, 1);
+    const Operand index = makeVRegOperand(RegClass::GPR, 2);
+    const Operand replacement = makeVRegOperand(RegClass::GPR, 6);
+    const Operand scaled = makeVRegOperand(RegClass::GPR, 3);
+    const Operand addr = makeVRegOperand(RegClass::GPR, 4);
+    const Operand loaded = makeVRegOperand(RegClass::GPR, 5);
+    entry.instructions = {MInstr::make(MOpcode::MOVrr, {scaled, index}),
+                          MInstr::make(MOpcode::SHLri, {scaled, makeImmOperand(3)}),
+                          MInstr::make(MOpcode::MOVrr, {addr, base}),
+                          MInstr::make(MOpcode::MOVrr, {base, replacement}),
+                          MInstr::make(MOpcode::ADDrr, {addr, scaled}),
+                          MInstr::make(MOpcode::MOVmr, {loaded, Operand{baseMem(addr)}})};
+    fn.blocks.push_back(std::move(entry));
+
+    ISel isel(sysvTarget());
+    isel.lowerArithmetic(fn);
+
+    const auto &block = fn.blocks.front();
+    EXPECT_FALSE(blockContainsOpcode(block, MOpcode::SHLri));
+    EXPECT_FALSE(blockContainsOpcode(block, MOpcode::ADDrr));
+    const OpMem *mem = firstMemOperand(block.instructions.back());
+    ASSERT_TRUE(mem != nullptr);
+    EXPECT_TRUE(mem->hasIndex);
+    EXPECT_EQ(mem->scale, 8u);
+    EXPECT_EQ(mem->base.idOrPhys, 4u);
+    EXPECT_EQ(mem->index.idOrPhys, 2u);
+}
+
+TEST(X86BackendRegressions, SibFoldKeepsPhysicalBaseCopyWhenSourceIsClobbered) {
+    MFunction fn{};
+    fn.name = "sib_phys_base_source_clobber";
+    MBasicBlock entry{};
+    entry.label = ".L_sib_phys_base_source_clobber_entry";
+    const Operand rcx = makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RCX));
+    const Operand rdx = makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RDX));
+    const Operand index = makeVRegOperand(RegClass::GPR, 2);
+    const Operand scaled = makeVRegOperand(RegClass::GPR, 3);
+    const Operand addr = makeVRegOperand(RegClass::GPR, 4);
+    const Operand loaded = makeVRegOperand(RegClass::GPR, 5);
+    entry.instructions = {MInstr::make(MOpcode::MOVrr, {scaled, index}),
+                          MInstr::make(MOpcode::SHLri, {scaled, makeImmOperand(3)}),
+                          MInstr::make(MOpcode::MOVrr, {addr, rcx}),
+                          MInstr::make(MOpcode::MOVrr, {rcx, rdx}),
+                          MInstr::make(MOpcode::ADDrr, {addr, scaled}),
+                          MInstr::make(MOpcode::MOVmr, {loaded, Operand{baseMem(addr)}})};
+    fn.blocks.push_back(std::move(entry));
+
+    ISel isel(sysvTarget());
+    isel.lowerArithmetic(fn);
+
+    const auto &block = fn.blocks.front();
+    EXPECT_FALSE(blockContainsOpcode(block, MOpcode::SHLri));
+    EXPECT_FALSE(blockContainsOpcode(block, MOpcode::ADDrr));
+    const OpMem *mem = firstMemOperand(block.instructions.back());
+    ASSERT_TRUE(mem != nullptr);
+    EXPECT_TRUE(mem->hasIndex);
+    EXPECT_FALSE(mem->base.isPhys);
+    EXPECT_EQ(mem->base.idOrPhys, 4u);
+    EXPECT_EQ(mem->index.idOrPhys, 2u);
+}
+
+TEST(X86BackendRegressions, SibFoldUsesLatestIndexCopyDefinitionBeforeShift) {
+    MFunction fn{};
+    fn.name = "sib_index_copy_redef";
+    MBasicBlock entry{};
+    entry.label = ".L_sib_index_copy_redef_entry";
+    const Operand base = makeVRegOperand(RegClass::GPR, 1);
+    const Operand oldIndex = makeVRegOperand(RegClass::GPR, 2);
+    const Operand newIndex = makeVRegOperand(RegClass::GPR, 6);
+    const Operand scaled = makeVRegOperand(RegClass::GPR, 3);
+    const Operand addr = makeVRegOperand(RegClass::GPR, 4);
+    const Operand loaded = makeVRegOperand(RegClass::GPR, 5);
+    entry.instructions = {MInstr::make(MOpcode::MOVrr, {scaled, oldIndex}),
+                          MInstr::make(MOpcode::MOVrr, {scaled, newIndex}),
+                          MInstr::make(MOpcode::SHLri, {scaled, makeImmOperand(2)}),
+                          MInstr::make(MOpcode::MOVrr, {addr, base}),
+                          MInstr::make(MOpcode::ADDrr, {addr, scaled}),
+                          MInstr::make(MOpcode::MOVmr, {loaded, Operand{baseMem(addr)}})};
+    fn.blocks.push_back(std::move(entry));
+
+    ISel isel(sysvTarget());
+    isel.lowerArithmetic(fn);
+
+    const auto &block = fn.blocks.front();
+    EXPECT_FALSE(blockContainsOpcode(block, MOpcode::SHLri));
+    EXPECT_FALSE(blockContainsOpcode(block, MOpcode::ADDrr));
+    const OpMem *mem = firstMemOperand(block.instructions.back());
+    ASSERT_TRUE(mem != nullptr);
+    EXPECT_TRUE(mem->hasIndex);
+    EXPECT_EQ(mem->scale, 4u);
+    EXPECT_EQ(mem->base.idOrPhys, 1u);
+    EXPECT_EQ(mem->index.idOrPhys, 6u);
+}
+
+TEST(X86BackendRegressions, SibFoldUsesLatestBaseCopyDefinitionBeforeAdd) {
+    MFunction fn{};
+    fn.name = "sib_base_copy_redef";
+    MBasicBlock entry{};
+    entry.label = ".L_sib_base_copy_redef_entry";
+    const Operand oldBase = makeVRegOperand(RegClass::GPR, 1);
+    const Operand index = makeVRegOperand(RegClass::GPR, 2);
+    const Operand scaled = makeVRegOperand(RegClass::GPR, 3);
+    const Operand addr = makeVRegOperand(RegClass::GPR, 4);
+    const Operand loaded = makeVRegOperand(RegClass::GPR, 5);
+    const Operand newBase = makeVRegOperand(RegClass::GPR, 6);
+    entry.instructions = {MInstr::make(MOpcode::MOVrr, {scaled, index}),
+                          MInstr::make(MOpcode::SHLri, {scaled, makeImmOperand(1)}),
+                          MInstr::make(MOpcode::MOVrr, {addr, oldBase}),
+                          MInstr::make(MOpcode::MOVrr, {addr, newBase}),
+                          MInstr::make(MOpcode::ADDrr, {addr, scaled}),
+                          MInstr::make(MOpcode::MOVmr, {loaded, Operand{baseMem(addr)}})};
+    fn.blocks.push_back(std::move(entry));
+
+    ISel isel(sysvTarget());
+    isel.lowerArithmetic(fn);
+
+    const auto &block = fn.blocks.front();
+    EXPECT_FALSE(blockContainsOpcode(block, MOpcode::SHLri));
+    EXPECT_FALSE(blockContainsOpcode(block, MOpcode::ADDrr));
+    const OpMem *mem = firstMemOperand(block.instructions.back());
+    ASSERT_TRUE(mem != nullptr);
+    EXPECT_TRUE(mem->hasIndex);
+    EXPECT_EQ(mem->scale, 2u);
+    EXPECT_EQ(mem->base.idOrPhys, 6u);
+    EXPECT_EQ(mem->index.idOrPhys, 2u);
+}
+
+TEST(X86BackendRegressions, SibFoldRejectsRedefinedShiftResultBeforeAdd) {
+    MFunction fn{};
+    fn.name = "sib_shift_result_redef";
+    MBasicBlock entry{};
+    entry.label = ".L_sib_shift_result_redef_entry";
+    const Operand base = makeVRegOperand(RegClass::GPR, 1);
+    const Operand index = makeVRegOperand(RegClass::GPR, 2);
+    const Operand scaled = makeVRegOperand(RegClass::GPR, 3);
+    const Operand addr = makeVRegOperand(RegClass::GPR, 4);
+    const Operand loaded = makeVRegOperand(RegClass::GPR, 5);
+    entry.instructions = {MInstr::make(MOpcode::MOVrr, {scaled, index}),
+                          MInstr::make(MOpcode::SHLri, {scaled, makeImmOperand(3)}),
+                          MInstr::make(MOpcode::MOVri, {scaled, makeImmOperand(7)}),
+                          MInstr::make(MOpcode::MOVrr, {addr, base}),
+                          MInstr::make(MOpcode::ADDrr, {addr, scaled}),
+                          MInstr::make(MOpcode::MOVmr, {loaded, Operand{baseMem(addr)}})};
+    fn.blocks.push_back(std::move(entry));
+
+    ISel isel(sysvTarget());
+    isel.lowerArithmetic(fn);
+
+    const auto &block = fn.blocks.front();
+    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::SHLri));
+    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::ADDrr));
+    const OpMem *mem = firstMemOperand(block.instructions.back());
+    ASSERT_TRUE(mem != nullptr);
+    EXPECT_FALSE(mem->hasIndex);
+    EXPECT_EQ(mem->base.idOrPhys, 4u);
+}
+
+TEST(X86BackendRegressions, SibFoldRejectsRedefinedAddResultBeforeMemoryUse) {
+    MFunction fn{};
+    fn.name = "sib_add_result_redef";
+    MBasicBlock entry{};
+    entry.label = ".L_sib_add_result_redef_entry";
+    const Operand base = makeVRegOperand(RegClass::GPR, 1);
+    const Operand index = makeVRegOperand(RegClass::GPR, 2);
+    const Operand scaled = makeVRegOperand(RegClass::GPR, 3);
+    const Operand addr = makeVRegOperand(RegClass::GPR, 4);
+    const Operand loaded = makeVRegOperand(RegClass::GPR, 5);
+    const Operand replacement = makeVRegOperand(RegClass::GPR, 6);
+    entry.instructions = {MInstr::make(MOpcode::MOVrr, {scaled, index}),
+                          MInstr::make(MOpcode::SHLri, {scaled, makeImmOperand(3)}),
+                          MInstr::make(MOpcode::MOVrr, {addr, base}),
+                          MInstr::make(MOpcode::ADDrr, {addr, scaled}),
+                          MInstr::make(MOpcode::MOVrr, {addr, replacement}),
+                          MInstr::make(MOpcode::MOVmr, {loaded, Operand{baseMem(addr)}})};
+    fn.blocks.push_back(std::move(entry));
+
+    ISel isel(sysvTarget());
+    isel.lowerArithmetic(fn);
+
+    const auto &block = fn.blocks.front();
+    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::SHLri));
+    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::ADDrr));
+    const OpMem *mem = firstMemOperand(block.instructions.back());
+    ASSERT_TRUE(mem != nullptr);
+    EXPECT_FALSE(mem->hasIndex);
+    EXPECT_EQ(mem->base.idOrPhys, 4u);
+}
+
 TEST(X86BackendRegressions, SibFoldDoesNotEraseAddResultUsedInLaterBlock) {
     MFunction fn{};
     fn.name = "sib_add_cross_block";
@@ -1924,6 +2207,116 @@ TEST(X86BackendRegressions, LeaFoldPreservesOuterIndex) {
     EXPECT_TRUE(mem->hasIndex);
     EXPECT_EQ(mem->disp, 12);
     EXPECT_EQ(mem->scale, 2u);
+    EXPECT_EQ(mem->base.idOrPhys, 1u);
+    EXPECT_EQ(mem->index.idOrPhys, 2u);
+}
+
+TEST(X86BackendRegressions, LeaFoldRejectsRedefinedLeaResultBeforeMemoryUse) {
+    MFunction fn{};
+    fn.name = "lea_result_redef";
+
+    MBasicBlock entry{};
+    entry.label = ".L_lea_result_redef_entry";
+    const Operand base = makeVRegOperand(RegClass::GPR, 1);
+    const Operand replacement = makeVRegOperand(RegClass::GPR, 2);
+    const Operand addr = makeVRegOperand(RegClass::GPR, 3);
+    const Operand loaded = makeVRegOperand(RegClass::GPR, 4);
+    entry.instructions = {MInstr::make(MOpcode::LEA, {addr, Operand{baseMem(base, 8)}}),
+                          MInstr::make(MOpcode::MOVrr, {addr, replacement}),
+                          MInstr::make(MOpcode::MOVmr, {loaded, Operand{baseMem(addr)}})};
+    fn.blocks.push_back(std::move(entry));
+
+    ISel isel(sysvTarget());
+    isel.lowerArithmetic(fn);
+
+    const auto &block = fn.blocks.front();
+    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::LEA));
+    const OpMem *mem = firstMemOperand(block.instructions.back());
+    ASSERT_TRUE(mem != nullptr);
+    EXPECT_FALSE(mem->hasIndex);
+    EXPECT_EQ(mem->base.idOrPhys, 3u);
+}
+
+TEST(X86BackendRegressions, LeaFoldRejectsRedefinedBaseInputBeforeMemoryUse) {
+    MFunction fn{};
+    fn.name = "lea_base_input_redef";
+
+    MBasicBlock entry{};
+    entry.label = ".L_lea_base_input_redef_entry";
+    const Operand base = makeVRegOperand(RegClass::GPR, 1);
+    const Operand replacement = makeVRegOperand(RegClass::GPR, 2);
+    const Operand addr = makeVRegOperand(RegClass::GPR, 3);
+    const Operand loaded = makeVRegOperand(RegClass::GPR, 4);
+    entry.instructions = {MInstr::make(MOpcode::LEA, {addr, Operand{baseMem(base, 8)}}),
+                          MInstr::make(MOpcode::MOVrr, {base, replacement}),
+                          MInstr::make(MOpcode::MOVmr, {loaded, Operand{baseMem(addr)}})};
+    fn.blocks.push_back(std::move(entry));
+
+    ISel isel(sysvTarget());
+    isel.lowerArithmetic(fn);
+
+    const auto &block = fn.blocks.front();
+    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::LEA));
+    const OpMem *mem = firstMemOperand(block.instructions.back());
+    ASSERT_TRUE(mem != nullptr);
+    EXPECT_FALSE(mem->hasIndex);
+    EXPECT_EQ(mem->base.idOrPhys, 3u);
+}
+
+TEST(X86BackendRegressions, LeaFoldRejectsRedefinedIndexInputBeforeMemoryUse) {
+    MFunction fn{};
+    fn.name = "lea_index_input_redef";
+
+    MBasicBlock entry{};
+    entry.label = ".L_lea_index_input_redef_entry";
+    const Operand base = makeVRegOperand(RegClass::GPR, 1);
+    const Operand index = makeVRegOperand(RegClass::GPR, 2);
+    const Operand addr = makeVRegOperand(RegClass::GPR, 3);
+    const Operand loaded = makeVRegOperand(RegClass::GPR, 4);
+    const Operand replacement = makeVRegOperand(RegClass::GPR, 5);
+    entry.instructions = {MInstr::make(MOpcode::LEA, {addr, Operand{indexedMem(base, index, 4)}}),
+                          MInstr::make(MOpcode::MOVrr, {index, replacement}),
+                          MInstr::make(MOpcode::MOVmr, {loaded, Operand{baseMem(addr)}})};
+    fn.blocks.push_back(std::move(entry));
+
+    ISel isel(sysvTarget());
+    isel.lowerArithmetic(fn);
+
+    const auto &block = fn.blocks.front();
+    EXPECT_TRUE(blockContainsOpcode(block, MOpcode::LEA));
+    const OpMem *mem = firstMemOperand(block.instructions.back());
+    ASSERT_TRUE(mem != nullptr);
+    EXPECT_FALSE(mem->hasIndex);
+    EXPECT_EQ(mem->base.idOrPhys, 3u);
+}
+
+TEST(X86BackendRegressions, LeaFoldStillCombinesStableInputsAfterInterveningInstruction) {
+    MFunction fn{};
+    fn.name = "lea_stable_inputs_fold";
+
+    MBasicBlock entry{};
+    entry.label = ".L_lea_stable_inputs_fold_entry";
+    const Operand base = makeVRegOperand(RegClass::GPR, 1);
+    const Operand index = makeVRegOperand(RegClass::GPR, 2);
+    const Operand addr = makeVRegOperand(RegClass::GPR, 3);
+    const Operand loaded = makeVRegOperand(RegClass::GPR, 4);
+    const Operand scratch = makeVRegOperand(RegClass::GPR, 5);
+    entry.instructions = {MInstr::make(MOpcode::LEA, {addr, Operand{indexedMem(base, index, 4, 8)}}),
+                          MInstr::make(MOpcode::MOVri, {scratch, makeImmOperand(99)}),
+                          MInstr::make(MOpcode::MOVmr, {loaded, Operand{baseMem(addr, 16)}})};
+    fn.blocks.push_back(std::move(entry));
+
+    ISel isel(sysvTarget());
+    isel.lowerArithmetic(fn);
+
+    const auto &block = fn.blocks.front();
+    EXPECT_FALSE(blockContainsOpcode(block, MOpcode::LEA));
+    ASSERT_EQ(block.instructions.size(), 2u);
+    const OpMem *mem = firstMemOperand(block.instructions.back());
+    ASSERT_TRUE(mem != nullptr);
+    EXPECT_TRUE(mem->hasIndex);
+    EXPECT_EQ(mem->scale, 4u);
+    EXPECT_EQ(mem->disp, 24);
     EXPECT_EQ(mem->base.idOrPhys, 1u);
     EXPECT_EQ(mem->index.idOrPhys, 2u);
 }
