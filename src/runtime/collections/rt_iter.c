@@ -68,17 +68,21 @@ typedef struct {
     int64_t len; ///< Cached length at creation time
 } rt_iter_impl;
 
+/// @brief Checked cast of an opaque handle to the Iterator implementation.
+/// @details Traps with @p what if @p obj is NULL or not an Iterator.
 static rt_iter_impl *as_iter(void *obj, const char *what) {
     if (!obj || rt_obj_class_id(obj) != RT_ITERATOR_CLASS_ID)
         rt_trap(what);
     return (rt_iter_impl *)obj;
 }
 
+/// @brief Drop one GC reference to a transient @p obj and free it at zero.
 static void release_temp_obj(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
+/// @brief GC finalizer: release the iterator's retained source collection.
 static void iter_finalizer(void *obj) {
     rt_iter_impl *it = obj ? as_iter(obj, "Iterator: invalid Iterator object") : NULL;
     if (it && it->source) {
@@ -264,6 +268,8 @@ void *rt_iter_from_stack(void *stack) {
 // Core iteration
 //=============================================================================
 
+/// @brief Fetch element @p idx from the iterator's source, dispatching on
+///        its backing collection kind (seq/list/ring/…).
 static void *get_element(rt_iter_impl *it, int64_t idx) {
     switch (it->kind) {
         case ITER_SEQ:

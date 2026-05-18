@@ -34,8 +34,11 @@
 extern "C" {
 #endif
 
+/// @brief Create a list formatter bound to the process's current locale.
 void *rt_list_format_new(void);
+/// @brief Create a list formatter bound to the given @p locale handle.
 void *rt_list_format_for_locale(void *locale);
+/// @brief Return the Locale handle this formatter was built with (borrowed).
 void *rt_list_format_get_locale(void *self);
 
 /// @brief Join with conjunction ("A, B, and C" style).

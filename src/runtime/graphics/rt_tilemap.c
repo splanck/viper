@@ -570,6 +570,39 @@ static void rt_tilemap_draw_region_layer_impl(rt_tilemap_impl *tilemap,
     }
 }
 
+/// @brief Count non-empty tiles one layer would draw over a clipped tile region.
+static int64_t rt_tilemap_count_drawn_region_layer_impl(rt_tilemap_impl *tilemap,
+                                                        void *tilemap_ptr,
+                                                        tm_layer *layer,
+                                                        int64_t view_x,
+                                                        int64_t view_y,
+                                                        int64_t view_w,
+                                                        int64_t view_h) {
+    if (!tilemap || !layer || !layer->visible || !layer->tiles)
+        return 0;
+
+    void *tileset = layer->tileset ? layer->tileset : tilemap->tileset;
+    int64_t tileset_cols = layer->tileset ? layer->tileset_cols : tilemap->tileset_cols;
+    int64_t tile_count = layer->tileset ? layer->tile_count : tilemap->tile_count;
+    if (!tileset || tile_count <= 0 || tileset_cols <= 0)
+        return 0;
+
+    int64_t count = 0;
+    int64_t end_y = view_y + view_h;
+    int64_t end_x = view_x + view_w;
+    for (int64_t ty = view_y; ty < end_y; ty++) {
+        for (int64_t tx = view_x; tx < end_x; tx++) {
+            int64_t tile_index =
+                rt_tilemap_resolve_anim_tile(tilemap_ptr, layer->tiles[ty * tilemap->width + tx]);
+            if (tile_index <= 0 || tile_index > tile_count)
+                continue;
+            if (count < INT64_MAX)
+                count++;
+        }
+    }
+    return count;
+}
+
 /// @brief Render the entire tilemap (every visible layer) onto a canvas at `(offset_x, offset_y)`.
 ///
 /// Walks layers in order; layer 0 (base) draws first, followed by
@@ -635,6 +668,56 @@ void rt_tilemap_draw_region(void *tilemap_ptr,
                                           view_w,
                                           view_h);
     }
+}
+
+/// @brief Count non-empty, drawable tiles in a tile-coordinate sub-region.
+int64_t rt_tilemap_count_drawn_region(void *tilemap_ptr,
+                                      int64_t view_x,
+                                      int64_t view_y,
+                                      int64_t view_w,
+                                      int64_t view_h) {
+    rt_tilemap_impl *tilemap = tilemap_checked(tilemap_ptr, NULL);
+    if (!tilemap)
+        return 0;
+
+    if (!tilemap_clip_span_to_bounds(&view_x, &view_w, tilemap->width) ||
+        !tilemap_clip_span_to_bounds(&view_y, &view_h, tilemap->height))
+        return 0;
+
+    int64_t total = 0;
+    for (int32_t layer = 0; layer < tilemap->layer_count; layer++) {
+        int64_t count = rt_tilemap_count_drawn_region_layer_impl(
+            tilemap, tilemap_ptr, &tilemap->layers[layer], view_x, view_y, view_w, view_h);
+        if (count > INT64_MAX - total)
+            total = INT64_MAX;
+        else
+            total += count;
+    }
+    return total;
+}
+
+/// @brief Count non-empty, drawable tiles visible in a canvas-sized viewport.
+int64_t rt_tilemap_count_drawn_visible(
+    void *tilemap_ptr, void *canvas_ptr, int64_t offset_x, int64_t offset_y) {
+    if (!tilemap_ptr || !canvas_ptr)
+        return 0;
+
+    rt_tilemap_impl *tilemap = tilemap_checked(tilemap_ptr, NULL);
+    if (!tilemap)
+        return 0;
+
+    int64_t tw = tilemap->tile_width > 0 ? tilemap->tile_width : 1;
+    int64_t th = tilemap->tile_height > 0 ? tilemap->tile_height : 1;
+    int64_t canvas_w = rt_canvas_width(canvas_ptr);
+    int64_t canvas_h = rt_canvas_height(canvas_ptr);
+    int64_t first_x = 0;
+    int64_t first_y = 0;
+    int64_t vis_w = 0;
+    int64_t vis_h = 0;
+    if (!tilemap_visible_span(canvas_w, offset_x, tw, tilemap->width, &first_x, &vis_w) ||
+        !tilemap_visible_span(canvas_h, offset_y, th, tilemap->height, &first_y, &vis_h))
+        return 0;
+    return rt_tilemap_count_drawn_region(tilemap_ptr, first_x, first_y, vis_w, vis_h);
 }
 
 //=============================================================================

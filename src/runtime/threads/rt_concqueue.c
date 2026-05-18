@@ -265,11 +265,14 @@ static rt_concqueue_impl *concqueue_require(void *obj, int8_t trap_on_null) {
     return (rt_concqueue_impl *)obj;
 }
 
+/// @brief Drop one GC reference to @p obj and free it if the count hit zero.
 static void concqueue_release_object(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
+/// @brief Snapshot the current trap error message into @p buffer (or
+///        @p fallback if none) so it survives lock cleanup before re-raise.
 static void concqueue_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
     const char *err = rt_trap_get_error();
     snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);

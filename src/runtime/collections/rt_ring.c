@@ -52,12 +52,15 @@ typedef struct rt_ring_impl {
     int8_t owns_elements;  ///< Whether stored elements are retained/released.
 } rt_ring_impl;
 
+/// @brief Checked cast of an opaque handle to the RingBuffer implementation;
+///        traps with @p what if @p obj is NULL or not a RingBuffer.
 static rt_ring_impl *as_ring(void *obj, const char *what) {
     if (!obj || rt_obj_class_id(obj) != RT_RING_CLASS_ID)
         rt_trap(what);
     return (rt_ring_impl *)obj;
 }
 
+/// @brief Drop one GC reference to a stored element and free it at zero.
 static void ring_release_value(void *value) {
     if (value && rt_obj_release_check0(value))
         rt_obj_free(value);

@@ -186,6 +186,7 @@ static rt_scheduler_data *scheduler_require(void *sched, int8_t trap_on_null) {
     return (rt_scheduler_data *)sched;
 }
 
+/// @brief Drop one GC reference to @p sched and free it if the count hit zero.
 static void scheduler_release_object(void *sched) {
     if (sched && rt_obj_release_check0(sched))
         rt_obj_free(sched);

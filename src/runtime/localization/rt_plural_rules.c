@@ -61,11 +61,13 @@ typedef struct rt_plural_rules_inst {
     const rt_locale_data_t  *data;    ///< non-owning
 } rt_plural_rules_inst_t;
 
+/// @brief Drop one GC reference to @p obj and free it if the count hit zero.
 static void plural_release_handle(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
+/// @brief GC finalizer: release the rules' locale data and locale handle.
 static void plural_finalizer(void *obj) {
     rt_plural_rules_inst_t *self = (rt_plural_rules_inst_t *)obj;
     if (!self)
@@ -76,6 +78,9 @@ static void plural_finalizer(void *obj) {
     self->data = NULL;
 }
 
+/// @brief snprintf forced through the "C" LC_NUMERIC locale so the operand
+///        digits ("%.Nf" of the value) are always '.'-separated regardless of
+///        the ambient locale — the CLDR plural operands must be locale-neutral.
 static int plural_snprintf_c(char *out, size_t cap, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -246,10 +251,14 @@ static double eval_expr(const rt_plural_rule_node_t *node, const plural_operands
     }
 }
 
+/// @brief True iff @p x is finite and has no fractional part.
 static int plural_is_integral(double x) {
     return isfinite(x) && floor(x) == x;
 }
 
+/// @brief Evaluate a CLDR range predicate (`n in/within a..b, c..d`).
+/// @param allow_fraction 0 for "in" (integers only), 1 for "within".
+/// @return 1 if the operand expression's value lands in any listed range.
 static int eval_range_pred(const rt_plural_rule_node_t *node,
                            const plural_operands_t *op,
                            int allow_fraction) {
@@ -295,6 +304,8 @@ static int eval_pred(const rt_plural_rule_node_t *node, const plural_operands_t 
     }
 }
 
+/// @brief Return the first rule entry whose predicate matches @p op,
+///        defaulting to RT_PLURAL_OTHER when none do (CLDR fallback).
 static rt_plural_category_t walk_chain(const rt_plural_rule_entry_t *entries,
                                        size_t count, const plural_operands_t *op) {
     if (!entries || count == 0)
@@ -348,6 +359,8 @@ const char *rt_plural_rules_category_name(rt_plural_category_t cat) {
 // Public class API
 //===----------------------------------------------------------------------===//
 
+/// @brief Wrap a plural category's canonical CLDR keyword
+///        ("zero"/"one"/"two"/"few"/"many"/"other") as a runtime string.
 static rt_string category_to_string(rt_plural_category_t cat) {
     const char *s = rt_plural_rules_category_name(cat);
     return rt_string_from_bytes(s, strlen(s));

@@ -46,17 +46,26 @@ extern "C" {
 // Constructors / properties
 //===----------------------------------------------------------------------===//
 
+/// @brief Create a collator bound to the process's current locale.
 void *rt_collator_new(void);
+/// @brief Create a collator bound to the given @p locale handle.
 void *rt_collator_for_locale(void *locale);
+/// @brief Return the Locale handle this collator was built with (borrowed).
 void *rt_collator_get_locale(void *self);
 
+/// @brief Get the comparison strength (1=primary, 2=+accent, 3=+case).
 int64_t rt_collator_get_strength(void *self);
+/// @brief Set the comparison strength; values >3 warn and clamp to 3.
 void    rt_collator_set_strength(void *self, int64_t value);
 
+/// @brief Get whether case differences are ignored (0/1).
 int8_t rt_collator_get_ignore_case(void *self);
+/// @brief Set whether case differences are ignored.
 void   rt_collator_set_ignore_case(void *self, int8_t value);
 
+/// @brief Get whether accent/diacritic differences are ignored (0/1).
 int8_t rt_collator_get_ignore_accents(void *self);
+/// @brief Set whether accent/diacritic differences are ignored.
 void   rt_collator_set_ignore_accents(void *self, int8_t value);
 
 //===----------------------------------------------------------------------===//
@@ -66,6 +75,7 @@ void   rt_collator_set_ignore_accents(void *self, int8_t value);
 /// @brief Returns -1 / 0 / +1 per locale-aware comparison.
 int64_t rt_collator_compare(void *self, rt_string a, rt_string b);
 
+/// @brief Convenience: 1 if @p a and @p b compare equal under this collator.
 int8_t rt_collator_equals(void *self, rt_string a, rt_string b);
 
 /// @brief Generate a deterministic byte sequence whose binary comparison

@@ -28,6 +28,7 @@
 #include "rt_bitmapfont.h"
 #include "rt_error.h"
 #include "rt_object.h"
+#include "rt_pixels_internal.h"
 #include "rt_string.h"
 
 #include <stdint.h>
@@ -61,6 +62,12 @@ typedef struct {
     int8_t monospace;               ///< 1 if all loaded glyphs have same advance.
     int64_t glyph_count;            ///< Number of valid (non-NULL bitmap) glyphs.
 } rt_bitmapfont_impl;
+
+static rt_bitmapfont_impl *bitmapfont_checked(void *font_ptr) {
+    return rt_obj_is_instance(font_ptr, RT_BITMAPFONT_CLASS_ID, sizeof(rt_bitmapfont_impl))
+               ? (rt_bitmapfont_impl *)font_ptr
+               : NULL;
+}
 
 //=============================================================================
 // Fallback Glyph
@@ -743,10 +750,9 @@ void *rt_bitmapfont_load_psf(rt_string path) {
 /// @brief GC finalizer that frees every per-glyph bitmap allocation.
 /// The font struct itself is GC-managed.
 void rt_bitmapfont_destroy(void *font_ptr) {
-    if (!font_ptr)
+    rt_bitmapfont_impl *font = bitmapfont_checked(font_ptr);
+    if (!font)
         return;
-
-    rt_bitmapfont_impl *font = (rt_bitmapfont_impl *)font_ptr;
     for (int i = 0; i < BF_MAX_GLYPHS; i++) {
         free(font->glyphs[i].bitmap);
         font->glyphs[i].bitmap = NULL;
@@ -759,31 +765,28 @@ void rt_bitmapfont_destroy(void *font_ptr) {
 
 /// @brief Glyph width for monospace fonts (returns 0 for proportional fonts).
 int64_t rt_bitmapfont_char_width(void *font_ptr) {
-    if (!font_ptr)
+    rt_bitmapfont_impl *font = bitmapfont_checked(font_ptr);
+    if (!font)
         return 0;
-    rt_bitmapfont_impl *font = (rt_bitmapfont_impl *)font_ptr;
     return font->monospace ? font->max_width : 0;
 }
 
 /// @brief Line height in pixels (ascent + descent).
 int64_t rt_bitmapfont_char_height(void *font_ptr) {
-    if (!font_ptr)
-        return 0;
-    return ((rt_bitmapfont_impl *)font_ptr)->line_height;
+    rt_bitmapfont_impl *font = bitmapfont_checked(font_ptr);
+    return font ? font->line_height : 0;
 }
 
 /// @brief Number of valid (non-empty) glyphs loaded.
 int64_t rt_bitmapfont_glyph_count(void *font_ptr) {
-    if (!font_ptr)
-        return 0;
-    return ((rt_bitmapfont_impl *)font_ptr)->glyph_count;
+    rt_bitmapfont_impl *font = bitmapfont_checked(font_ptr);
+    return font ? font->glyph_count : 0;
 }
 
 /// @brief Returns 1 if every glyph has the same advance width, 0 otherwise.
 int8_t rt_bitmapfont_is_monospace(void *font_ptr) {
-    if (!font_ptr)
-        return 0;
-    return ((rt_bitmapfont_impl *)font_ptr)->monospace;
+    rt_bitmapfont_impl *font = bitmapfont_checked(font_ptr);
+    return font ? font->monospace : 0;
 }
 
 //=============================================================================
@@ -793,10 +796,10 @@ int8_t rt_bitmapfont_is_monospace(void *font_ptr) {
 /// @brief Compute the rendered width of @p text in pixels for this font.
 /// Accounts for per-glyph advance widths plus left/right overhangs.
 int64_t rt_bitmapfont_text_width(void *font_ptr, rt_string text) {
-    if (!font_ptr || !text)
+    rt_bitmapfont_impl *font = bitmapfont_checked(font_ptr);
+    if (!font || !text)
         return 0;
 
-    rt_bitmapfont_impl *font = (rt_bitmapfont_impl *)font_ptr;
     int64_t min_x = 0;
     int64_t max_x = 0;
     int8_t has_bounds = 0;
@@ -808,9 +811,8 @@ int64_t rt_bitmapfont_text_width(void *font_ptr, rt_string text) {
 
 /// @brief Single-line text height (same as line_height; multi-line callers must accumulate).
 int64_t rt_bitmapfont_text_height(void *font_ptr) {
-    if (!font_ptr)
-        return 0;
-    return ((rt_bitmapfont_impl *)font_ptr)->line_height;
+    rt_bitmapfont_impl *font = bitmapfont_checked(font_ptr);
+    return font ? font->line_height : 0;
 }
 
 //=============================================================================
@@ -820,6 +822,10 @@ int64_t rt_bitmapfont_text_height(void *font_ptr) {
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #include "rt_graphics_internal.h"
+
+static vgfx_color_t bitmapfont_color_to_vgfx_rgb(int64_t color) {
+    return (vgfx_color_t)((rt_pixels_color_to_rgba(color) >> 8) & 0x00FFFFFFu);
+}
 
 /// @brief Draw a single glyph at `(px, py)` using `vgfx_pset` per lit pixel.
 /// @details Resolves the destination as `(px + x_offset, py + (ascent -
@@ -955,7 +961,8 @@ static void bf_draw_glyph_bg(vgfx_window_t win,
 /// Color is the canvas color format (typically 0x00RRGGBB).
 void rt_canvas_text_font(
     void *canvas_ptr, int64_t x, int64_t y, rt_string text, void *font_ptr, int64_t color) {
-    if (!canvas_ptr || !font_ptr || !text)
+    rt_bitmapfont_impl *font = bitmapfont_checked(font_ptr);
+    if (!canvas_ptr || !font || !text)
         return;
 
     rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
@@ -963,12 +970,11 @@ void rt_canvas_text_font(
         return;
     rt_canvas_resync_window_state(canvas);
 
-    rt_bitmapfont_impl *font = (rt_bitmapfont_impl *)font_ptr;
     const char *str = rt_string_cstr(text);
     if (!str)
         return;
 
-    vgfx_color_t col = (vgfx_color_t)color;
+    vgfx_color_t col = bitmapfont_color_to_vgfx_rgb(color);
     int64_t cx = x;
     size_t len = rt_str_len(text);
     size_t index = 0;
@@ -994,7 +1000,8 @@ void rt_canvas_text_font_bg(void *canvas_ptr,
                             void *font_ptr,
                             int64_t fg_color,
                             int64_t bg_color) {
-    if (!canvas_ptr || !font_ptr || !text)
+    rt_bitmapfont_impl *font = bitmapfont_checked(font_ptr);
+    if (!canvas_ptr || !font || !text)
         return;
 
     rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
@@ -1002,13 +1009,12 @@ void rt_canvas_text_font_bg(void *canvas_ptr,
         return;
     rt_canvas_resync_window_state(canvas);
 
-    rt_bitmapfont_impl *font = (rt_bitmapfont_impl *)font_ptr;
     const char *str = rt_string_cstr(text);
     if (!str)
         return;
 
-    vgfx_color_t fg = (vgfx_color_t)fg_color;
-    vgfx_color_t bg = (vgfx_color_t)bg_color;
+    vgfx_color_t fg = bitmapfont_color_to_vgfx_rgb(fg_color);
+    vgfx_color_t bg = bitmapfont_color_to_vgfx_rgb(bg_color);
     int64_t cx = x;
     size_t len = rt_str_len(text);
     size_t index = 0;
@@ -1040,7 +1046,8 @@ void rt_canvas_text_font_scaled(void *canvas_ptr,
                                 void *font_ptr,
                                 int64_t scale,
                                 int64_t color) {
-    if (!canvas_ptr || !font_ptr || !text || scale < 1)
+    rt_bitmapfont_impl *font = bitmapfont_checked(font_ptr);
+    if (!canvas_ptr || !font || !text || scale < 1)
         return;
 
     rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
@@ -1048,12 +1055,11 @@ void rt_canvas_text_font_scaled(void *canvas_ptr,
         return;
     rt_canvas_resync_window_state(canvas);
 
-    rt_bitmapfont_impl *font = (rt_bitmapfont_impl *)font_ptr;
     const char *str = rt_string_cstr(text);
     if (!str)
         return;
 
-    vgfx_color_t col = (vgfx_color_t)color;
+    vgfx_color_t col = bitmapfont_color_to_vgfx_rgb(color);
     int64_t cx = x;
     size_t len = rt_str_len(text);
     size_t index = 0;
@@ -1074,7 +1080,8 @@ void rt_canvas_text_font_scaled(void *canvas_ptr,
 /// Width is derived from the canvas size; uses `_text_font` underneath.
 void rt_canvas_text_font_centered(
     void *canvas_ptr, int64_t y, rt_string text, void *font_ptr, int64_t color) {
-    if (!canvas_ptr || !font_ptr || !text)
+    rt_bitmapfont_impl *font = bitmapfont_checked(font_ptr);
+    if (!canvas_ptr || !font || !text)
         return;
 
     rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
@@ -1087,7 +1094,7 @@ void rt_canvas_text_font_centered(
     int64_t min_x = 0;
     int64_t max_x = 0;
     int8_t has_bounds = 0;
-    bf_text_bounds((rt_bitmapfont_impl *)font_ptr, text, &min_x, &max_x, &has_bounds);
+    bf_text_bounds(font, text, &min_x, &max_x, &has_bounds);
     int64_t tw = has_bounds ? (max_x - min_x) : 0;
     int64_t cx = (win_w - tw) / 2 - min_x;
 
@@ -1097,7 +1104,8 @@ void rt_canvas_text_font_centered(
 /// @brief Render text right-aligned with @p margin pixels of padding from the canvas right edge.
 void rt_canvas_text_font_right(
     void *canvas_ptr, int64_t margin, int64_t y, rt_string text, void *font_ptr, int64_t color) {
-    if (!canvas_ptr || !font_ptr || !text)
+    rt_bitmapfont_impl *font = bitmapfont_checked(font_ptr);
+    if (!canvas_ptr || !font || !text)
         return;
 
     rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
@@ -1110,7 +1118,7 @@ void rt_canvas_text_font_right(
     int64_t min_x = 0;
     int64_t max_x = 0;
     int8_t has_bounds = 0;
-    bf_text_bounds((rt_bitmapfont_impl *)font_ptr, text, &min_x, &max_x, &has_bounds);
+    bf_text_bounds(font, text, &min_x, &max_x, &has_bounds);
     int64_t cx = has_bounds ? (win_w - margin - max_x) : (win_w - margin);
 
     rt_canvas_text_font(canvas_ptr, cx, y, text, font_ptr, color);

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-15
+last-verified: 2026-05-17
 ---
 
 # 2D Animation, Collision, And Camera
@@ -16,7 +16,7 @@ This page covers helpers that are usually attached to game objects or cameras ra
 | Class | Purpose |
 |-------|---------|
 | `Viewport2D` | Fixed-point screen scaler with virtual size, screen size, offsets, and world/screen transforms. |
-| `ScreenScaler` | Alias for `Viewport2D`. |
+| `ScreenScaler` | Viewport-compatible scaler with its own runtime type identity. |
 | `Transform2D` | Integer 2D transform with position, percent scale, rotation, origin, and point transforms. |
 | `AnimationClip2D` | Frame range, frame delay, and loop metadata for 2D sprite animation. |
 | `AnimatedSprite2D` | Runtime clip player that advances a `Sprite` frame from elapsed milliseconds. |
@@ -46,14 +46,14 @@ var hurt = Hitbox2D.New(4, 4, 8, 8)
 
 var rig = CameraRig2D.New(camera)
 rig.SetTarget(playerX, playerY)
-rig.SetSmoothing(160)
+rig.SetSmoothing(50)
 rig.Update()
 ```
 
-`CollisionMask2D.FromPixels` marks pixels solid when alpha is greater than or equal to the threshold. A threshold of `0` means "any non-zero alpha", so fully transparent pixels remain empty.
+`CollisionMask2D.FromPixels` requires a valid `Pixels` object and marks pixels solid when alpha is greater than or equal to the threshold. A threshold of `0` means "any non-zero alpha", so fully transparent pixels remain empty.
 `AnimatedSprite2D.New` requires a valid `Sprite`; invalid or null handles return `null` instead of creating a player that would fail during `Update`.
-`AnimatedSprite2D.Play()` restarts a finished non-looping clip from its first effective frame, which lets one-shot clips be replayed without resetting the clip object.
-`CameraRig2D.New` accepts a `Camera` or `null`, and `SetCamera` ignores invalid non-camera handles. Shake offsets and render coordinates use saturating integer arithmetic at the int64 limits.
+`AnimatedSprite2D` starts stopped until a valid clip is set. `Play()` only starts when a valid sprite and clip are available, and restarts a finished non-looping clip from its first effective frame. `Stop()` stops playback and resets the sprite to the clip's first frame.
+`CameraRig2D.New` accepts a `Camera` or `null`, and `SetCamera` ignores invalid non-camera handles. `SetSmoothing` is a percent value clamped to `0..100`; internally it is converted to the lower-level camera smooth-follow scale. Shake offsets and render coordinates use saturating integer arithmetic at the int64 limits.
 
 ## Notes
 

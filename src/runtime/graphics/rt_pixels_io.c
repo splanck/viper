@@ -257,10 +257,9 @@ bmp_cleanup:
 
 /// @brief Save a Pixels object as a 24-bit uncompressed BMP file.
 ///
-/// Always writes top-down (negative height) so consumers don't
-/// need to handle the row-order quirk. Refuses oversized images
-/// where the resulting file would overflow the 32-bit
-/// `bfSize` field. Pads each row to a 4-byte multiple.
+/// Writes a standard bottom-up BMP (positive height). Refuses
+/// oversized images where the resulting file would overflow the
+/// 32-bit `bfSize` field. Pads each row to a 4-byte multiple.
 /// @return 1 on success, 0 on any failure (open, oversized, write).
 int64_t rt_pixels_save_bmp(void *pixels, void *path) {
     if (!pixels || !path)

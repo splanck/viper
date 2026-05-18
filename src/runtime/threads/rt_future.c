@@ -94,6 +94,10 @@ typedef struct future_listener {
     struct future_listener *next;
 } future_listener;
 
+/// @brief Validate-and-cast a handle to promise_impl.
+/// @details Wrong-type handles always trap; a NULL handle traps only when
+///          @p trap_on_null is set (callers that tolerate NULL pass 0).
+/// @return The promise, or NULL.
 static promise_impl *promise_require(void *obj, int8_t trap_on_null) {
     if (!obj) {
         if (trap_on_null)
@@ -107,6 +111,9 @@ static promise_impl *promise_require(void *obj, int8_t trap_on_null) {
     return (promise_impl *)obj;
 }
 
+/// @brief Validate-and-cast a handle to future_impl (mirror of
+///        promise_require). NULL traps only when @p trap_on_null is set.
+/// @return The future, or NULL.
 static future_impl *future_require(void *obj, int8_t trap_on_null) {
     if (!obj) {
         if (trap_on_null)
@@ -292,6 +299,8 @@ static void future_invoke_listener(future_listener *listener) {
     }
 }
 
+/// @brief Invoke every queued continuation in a future's listener chain (in
+///        order) when the future settles, freeing each node as it runs.
 static void future_notify_listeners(future_listener *listeners) {
     while (listeners) {
         future_listener *next = listeners->next;

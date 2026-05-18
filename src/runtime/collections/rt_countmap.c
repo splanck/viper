@@ -65,12 +65,15 @@ typedef struct rt_countmap_impl {
     int64_t total; // sum of all counts
 } rt_countmap_impl;
 
+/// @brief Checked cast of an opaque handle to the CountMap implementation.
+/// @details Traps with @p what if @p obj is NULL or not a CountMap.
 static rt_countmap_impl *as_countmap(void *obj, const char *what) {
     if (!obj || rt_obj_class_id(obj) != RT_COUNTMAP_CLASS_ID)
         rt_trap(what);
     return (rt_countmap_impl *)obj;
 }
 
+/// @brief Borrow the byte buffer + length of an rt_string (empty "" if null).
 static const char *get_str_data(rt_string s, size_t *out_len) {
     if (!s) {
         *out_len = 0;
@@ -90,6 +93,7 @@ static const char *get_str_data(rt_string s, size_t *out_len) {
     return cstr;
 }
 
+/// @brief Linear scan of a bucket chain for an exact key match (NULL if none).
 static rt_cm_entry *find_entry(rt_cm_entry *head, const char *key, size_t key_len) {
     for (rt_cm_entry *e = head; e; e = e->next) {
         if (e->key_len == key_len && memcmp(e->key, key, key_len) == 0)
@@ -98,6 +102,7 @@ static rt_cm_entry *find_entry(rt_cm_entry *head, const char *key, size_t key_le
     return NULL;
 }
 
+/// @brief Free a chain entry and its owned key buffer (NULL-safe).
 static void free_entry(rt_cm_entry *entry) {
     if (!entry)
         return;
@@ -105,6 +110,7 @@ static void free_entry(rt_cm_entry *entry) {
     free(entry);
 }
 
+/// @brief GC finalizer: free every chain entry, the bucket array, and reset.
 static void countmap_finalizer(void *obj) {
     if (!obj)
         return;
@@ -127,6 +133,8 @@ static void countmap_finalizer(void *obj) {
     cm->total = 0;
 }
 
+/// @brief Double the bucket array and rehash all entries into it.
+/// @details No-op past the SIZE_MAX/2 cap; traps on allocation overflow/OOM.
 static void resize(rt_countmap_impl *cm) {
     if (cm->capacity > SIZE_MAX / 2)
         return;
@@ -154,6 +162,8 @@ static void resize(rt_countmap_impl *cm) {
     cm->capacity = new_cap;
 }
 
+/// @brief True when the load factor (count/capacity) reaches the grow
+///        threshold CM_LOAD_FACTOR_NUM/CM_LOAD_FACTOR_DEN.
 static int should_resize(rt_countmap_impl *cm) {
     return (long double)cm->count * (long double)CM_LOAD_FACTOR_DEN >=
            (long double)cm->capacity * (long double)CM_LOAD_FACTOR_NUM;
@@ -440,7 +450,8 @@ void *rt_countmap_keys(void *obj) {
     return seq;
 }
 
-// Comparison for sorting entries by count descending
+/// @brief qsort comparator ordering entry pointers by count, descending
+///        (used by the "most common" / ranked-tally accessors).
 static int cmp_entries_desc(const void *a, const void *b) {
     const rt_cm_entry *ea = *(const rt_cm_entry *const *)a;
     const rt_cm_entry *eb = *(const rt_cm_entry *const *)b;

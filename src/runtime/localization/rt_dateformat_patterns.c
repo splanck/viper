@@ -50,6 +50,8 @@ typedef struct digit_spans {
     int valid;
 } digit_spans_t;
 
+/// @brief Byte length of the leading UTF-8 codepoint in @p s (0 if empty/NULL,
+///        1 on a malformed lead byte so callers always make forward progress).
 static size_t utf8_cp_len(const char *s) {
     if (!s || !*s) return 0;
     unsigned char c = (unsigned char)s[0];
@@ -60,6 +62,10 @@ static size_t utf8_cp_len(const char *s) {
     return 1;
 }
 
+/// @brief Slice the locale's 10 numbering-system digit glyphs into a span table.
+/// @details Walks the (possibly multi-byte) @c numbers.digits string; falls back
+///          to ASCII "0123456789". @c ds.valid is set only when exactly ten
+///          codepoints were consumed, so emitters can safely index ds.ptr/len.
 static digit_spans_t digit_spans_from_locale(const rt_locale_data_t *data) {
     digit_spans_t ds;
     memset(&ds, 0, sizeof(ds));
@@ -79,6 +85,8 @@ static digit_spans_t digit_spans_from_locale(const rt_locale_data_t *data) {
     return ds;
 }
 
+/// @brief Append @p len bytes, transliterating ASCII '0'-'9' to the locale's
+///        native digit glyphs; non-digit bytes are passed through verbatim.
 static void emit_ascii_digits(rt_string_builder *sb, const rt_locale_data_t *data,
                               const char *bytes, size_t len) {
     digit_spans_t ds = digit_spans_from_locale(data);
@@ -159,6 +167,8 @@ typedef struct {
     int64_t dow;     // 0=Sunday..6=Saturday
 } dt_components_t;
 
+/// @brief Emit the year for a CLDR 'y' run: count==2 → 2-digit (year % 100),
+///        count>=4 → zero-padded to @p count, else the full year unclamped.
 static void emit_year(rt_string_builder *sb, const dt_components_t *c,
                       int count, const rt_locale_data_t *data) {
     if (count == 2) {
@@ -170,6 +180,9 @@ static void emit_year(rt_string_builder *sb, const dt_components_t *c,
     }
 }
 
+/// @brief Emit the month for a CLDR 'M' run: 1=numeric, 2=zero-padded,
+///        3=abbreviated name, 4=wide name, 5+=narrow (first glyph of wide).
+/// @details Traps if the component month is outside 1-12.
 static void emit_month(rt_string_builder *sb, const dt_components_t *c,
                        int count, const rt_locale_data_t *data) {
     int idx = (int)(c->month - 1);
@@ -192,6 +205,8 @@ static void emit_month(rt_string_builder *sb, const dt_components_t *c,
     }
 }
 
+/// @brief Emit the day-of-month for a CLDR 'd' run: count>=2 → zero-padded to
+///        two digits, otherwise the bare number.
 static void emit_day(rt_string_builder *sb, const dt_components_t *c,
                      int count, const rt_locale_data_t *data) {
     if (count >= 2)
@@ -200,6 +215,9 @@ static void emit_day(rt_string_builder *sb, const dt_components_t *c,
         emit_int(sb, data, c->day);
 }
 
+/// @brief Emit the weekday name for a CLDR 'E' run: count<=3 → abbreviated,
+///        4 → wide, 5+ → narrow (first glyph of wide).
+/// @details Traps if the component day-of-week is outside 0-6 (Sun..Sat).
 static void emit_dow(rt_string_builder *sb, const dt_components_t *c,
                      int count, const rt_locale_data_t *data) {
     int idx = (int)c->dow;
@@ -217,6 +235,7 @@ static void emit_dow(rt_string_builder *sb, const dt_components_t *c,
     }
 }
 
+/// @brief Emit the hour on a 24-hour clock (CLDR 'H'); count>=2 → zero-padded.
 static void emit_hour24(rt_string_builder *sb, const dt_components_t *c,
                         int count, const rt_locale_data_t *data) {
     if (count >= 2)
@@ -225,6 +244,8 @@ static void emit_hour24(rt_string_builder *sb, const dt_components_t *c,
         emit_int(sb, data, c->hour);
 }
 
+/// @brief Emit the hour on a 12-hour clock (CLDR 'h'); 0 maps to 12,
+///        count>=2 → zero-padded.
 static void emit_hour12(rt_string_builder *sb, const dt_components_t *c,
                         int count, const rt_locale_data_t *data) {
     int64_t h = c->hour % 12;
@@ -235,6 +256,7 @@ static void emit_hour12(rt_string_builder *sb, const dt_components_t *c,
         emit_int(sb, data, h);
 }
 
+/// @brief Emit the minute (CLDR 'm'); count>=2 → zero-padded to two digits.
 static void emit_minute(rt_string_builder *sb, const dt_components_t *c,
                         int count, const rt_locale_data_t *data) {
     if (count >= 2)
@@ -243,6 +265,7 @@ static void emit_minute(rt_string_builder *sb, const dt_components_t *c,
         emit_int(sb, data, c->minute);
 }
 
+/// @brief Emit the second (CLDR 's'); count>=2 → zero-padded to two digits.
 static void emit_second(rt_string_builder *sb, const dt_components_t *c,
                         int count, const rt_locale_data_t *data) {
     if (count >= 2)
@@ -251,6 +274,8 @@ static void emit_second(rt_string_builder *sb, const dt_components_t *c,
         emit_int(sb, data, c->second);
 }
 
+/// @brief Emit the AM/PM marker (CLDR 'a') using the locale's tokens,
+///        falling back to literal "AM"/"PM" when the locale omits them.
 static void emit_ampm(rt_string_builder *sb, const dt_components_t *c,
                       const rt_locale_data_t *data) {
     const char *token = c->hour < 12 ? data->dates.am : data->dates.pm;

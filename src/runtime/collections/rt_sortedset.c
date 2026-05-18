@@ -54,6 +54,8 @@ typedef struct rt_sortedset_impl *rt_sortedset;
 // Internal helpers
 //=============================================================================
 
+/// @brief Checked cast of an opaque handle to the SortedSet implementation;
+///        traps with @p what if @p obj is NULL or not a SortedSet.
 static rt_sortedset as_sortedset(void *obj, const char *what) {
     if (!obj || rt_obj_class_id(obj) != RT_SORTEDSET_CLASS_ID)
         rt_trap(what);
@@ -71,6 +73,8 @@ static rt_string copy_string(rt_string s) {
     return rt_string_from_bytes(cstr, (size_t)len);
 }
 
+/// @brief Add one reference to @p s and return it (empty const for NULL);
+///        used when handing a stored string back to the caller.
 static rt_string retain_result_string(rt_string s) {
     if (!s)
         return rt_const_cstr("");
@@ -78,12 +82,16 @@ static rt_string retain_result_string(rt_string s) {
     return s;
 }
 
+/// @brief Push an independent copy of @p s onto @p seq (balances the copy's
+///        reference so the seq holds the only owning ref).
 static void seq_push_string_copy(void *seq, rt_string s) {
     rt_string copy = copy_string(s);
     rt_seq_push(seq, copy);
     rt_str_release_maybe(copy);
 }
 
+/// @brief Lexicographic byte comparison of two strings (NULL treated as "");
+///        returns <0, 0, >0 — the SortedSet ordering primitive.
 static int compare_strings(rt_string a, rt_string b) {
     const char *sa = a ? rt_string_cstr(a) : "";
     const char *sb = b ? rt_string_cstr(b) : "";
@@ -134,6 +142,8 @@ static int64_t binary_search(rt_sortedset set, rt_string str, int8_t *found) {
     return lo;
 }
 
+/// @brief Grow the sorted-element array to hold at least @p needed entries
+///        (geometric growth; traps on overflow/OOM).
 static void ensure_capacity(rt_sortedset set, int64_t needed) {
     if (set->cap >= needed)
         return;
@@ -158,6 +168,7 @@ static void ensure_capacity(rt_sortedset set, int64_t needed) {
 // Creation and Lifecycle
 //=============================================================================
 
+/// @brief GC finalizer: release every stored string and free the element array.
 static void sortedset_finalizer(void *obj) {
     if (!obj)
         return;

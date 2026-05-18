@@ -18,7 +18,8 @@
 //   - Coordinates are 0-based from the top-left; out-of-range tile/region access
 //     is clipped or returns a zero/identity value rather than trapping.
 //   - Percent-style parameters (lerp_pct, t_pct, opacity, alpha) are integers in
-//     0..100 unless a wider range is documented on the specific function.
+//     0..100 unless a wider range is documented on the specific function; byte
+//     alpha parameters document 0..255.
 //
 // Ownership/Lifetime:
 //   - `*_new` constructors return owned handles; the caller manages lifetime.
@@ -73,6 +74,8 @@ enum {
 
 /// @brief Create a new offscreen render target of the given pixel size.
 void *rt_rendertarget2d_new(int64_t width, int64_t height);
+/// @brief Create a Surface2D with distinct runtime type identity and render-target behavior.
+void *rt_surface2d_new(int64_t width, int64_t height);
 /// @brief Get the render target width in pixels.
 int64_t rt_rendertarget2d_width(void *target);
 /// @brief Get the render target height in pixels.
@@ -101,8 +104,12 @@ void rt_rendertarget2d_draw_region(void *target,
 
 /// @brief Create a texture from an existing Pixels image.
 void *rt_texture2d_new(void *pixels);
+/// @brief Create a GpuTexture2D with distinct runtime type identity and texture behavior.
+void *rt_gputexture2d_new(void *pixels);
 /// @brief Load a texture from an image file on disk.
 void *rt_texture2d_from_file(rt_string path);
+/// @brief Load a GpuTexture2D from an image file on disk.
+void *rt_gputexture2d_from_file(rt_string path);
 /// @brief Get the texture width in pixels.
 int64_t rt_texture2d_width(void *texture);
 /// @brief Get the texture height in pixels.
@@ -245,6 +252,11 @@ void *rt_viewport2d_new(int64_t virtual_width,
                         int64_t virtual_height,
                         int64_t screen_width,
                         int64_t screen_height);
+/// @brief Create a ScreenScaler with distinct runtime type identity and viewport behavior.
+void *rt_screenscaler_new(int64_t virtual_width,
+                          int64_t virtual_height,
+                          int64_t screen_width,
+                          int64_t screen_height);
 /// @brief Set the virtual (logical) resolution.
 void rt_viewport2d_set_virtual_size(void *viewport, int64_t width, int64_t height);
 /// @brief Set the physical screen size the viewport maps onto.

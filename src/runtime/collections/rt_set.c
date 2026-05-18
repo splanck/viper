@@ -66,6 +66,8 @@ typedef struct rt_set_impl {
     size_t count;           ///< Number of elements currently in the Set.
 } rt_set_impl;
 
+/// @brief Checked cast of an opaque handle to the Set implementation;
+///        traps with @p what if @p obj is NULL or not a Set.
 static rt_set_impl *as_set(void *obj, const char *what) {
     if (!obj || rt_obj_class_id(obj) != RT_SET_CLASS_ID)
         rt_trap(what);
@@ -81,6 +83,7 @@ static rt_set_entry *find_entry(rt_set_entry *head, void *elem) {
     return NULL;
 }
 
+/// @brief GC traversal: visit every stored element across all bucket chains.
 static void rt_set_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;

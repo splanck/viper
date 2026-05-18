@@ -14,7 +14,8 @@
 //   - Glyph bitmaps are heap-allocated; freed in the GC finalizer.
 //   - Glyph tables cover BMP codepoints. UTF-8 text is decoded to codepoints
 //     during measurement/rendering, and missing glyphs use the fallback glyph.
-//   - All Canvas drawing functions are no-ops when canvas or font is NULL.
+//   - All Canvas drawing functions are no-ops when canvas or font is NULL or
+//     the font handle is not a BitmapFont.
 //
 // Ownership/Lifetime:
 //   - BitmapFont handles are GC-managed; no manual free needed.

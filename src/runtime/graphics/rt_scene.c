@@ -165,12 +165,16 @@ typedef struct scene_node_stack {
     int64_t capacity;
 } scene_node_stack;
 
+/// @brief Initialize an explicit traversal stack backed by its inline buffer
+///        (no heap until it grows) — used for non-recursive scene-graph walks.
 static void scene_node_stack_init(scene_node_stack *stack) {
     stack->items = stack->inline_items;
     stack->count = 0;
     stack->capacity = (int64_t)(sizeof(stack->inline_items) / sizeof(stack->inline_items[0]));
 }
 
+/// @brief Free any heap-grown storage and reset the stack back to its inline
+///        buffer (safe to call whether or not it ever grew).
 static void scene_node_stack_destroy(scene_node_stack *stack) {
     if (stack->items != stack->inline_items)
         free(stack->items);
@@ -179,6 +183,9 @@ static void scene_node_stack_destroy(scene_node_stack *stack) {
     stack->capacity = (int64_t)(sizeof(stack->inline_items) / sizeof(stack->inline_items[0]));
 }
 
+/// @brief Push @p node, growing (inline -> heap, then doubling) as needed.
+/// @details NULL @p node is a no-op success. @return 1 on success, 0 only on
+///          allocation failure or capacity overflow.
 static int8_t scene_node_stack_push(scene_node_stack *stack, scene_node_impl *node) {
     if (!node)
         return 1;
@@ -205,12 +212,16 @@ static int8_t scene_node_stack_push(scene_node_stack *stack, scene_node_impl *no
     return 1;
 }
 
+/// @brief Pop the top node, or NULL if the stack is empty/NULL.
 static scene_node_impl *scene_node_stack_pop(scene_node_stack *stack) {
     if (!stack || stack->count <= 0)
         return NULL;
     return stack->items[--stack->count];
 }
 
+/// @brief Push @p node's children in reverse order so a subsequent pop loop
+///        visits them left-to-right (depth-first pre-order traversal).
+/// @return 1 on success, 0 if a push failed (allocation/overflow).
 static int8_t scene_node_stack_push_children_reverse(scene_node_stack *stack,
                                                      scene_node_impl *node) {
     if (!node || !node->children)

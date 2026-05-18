@@ -43,28 +43,39 @@ extern "C" {
 // Constructors
 //===----------------------------------------------------------------------===//
 
+/// @brief Create a date formatter bound to the process's current locale.
 void *rt_dateformat_new(void);
+/// @brief Create a date formatter bound to the given @p locale handle.
 void *rt_dateformat_for_locale(void *locale);
 
 //===----------------------------------------------------------------------===//
 // Properties
 //===----------------------------------------------------------------------===//
 
+/// @brief Return the Locale handle this formatter was built with (borrowed).
 void *rt_dateformat_get_locale(void *self);
 
 //===----------------------------------------------------------------------===//
 // Canonical style methods (take a Unix timestamp i64)
 //===----------------------------------------------------------------------===//
 
+/// @brief Format the date of @p timestamp in the locale's short style.
 rt_string rt_dateformat_short(void *self, int64_t timestamp);
+/// @brief Format the date of @p timestamp in the locale's medium style.
 rt_string rt_dateformat_medium(void *self, int64_t timestamp);
+/// @brief Format the date of @p timestamp in the locale's long style.
 rt_string rt_dateformat_long(void *self, int64_t timestamp);
+/// @brief Format the date of @p timestamp in the locale's full style.
 rt_string rt_dateformat_full(void *self, int64_t timestamp);
 
+/// @brief Format the time-of-day of @p timestamp in the short style.
 rt_string rt_dateformat_time_short(void *self, int64_t timestamp);
+/// @brief Format the time-of-day of @p timestamp in the medium style.
 rt_string rt_dateformat_time_medium(void *self, int64_t timestamp);
 
+/// @brief Format both date and time of @p timestamp in the short style.
 rt_string rt_dateformat_datetime_short(void *self, int64_t timestamp);
+/// @brief Format both date and time of @p timestamp in the medium style.
 rt_string rt_dateformat_datetime_medium(void *self, int64_t timestamp);
 
 /// @brief Format @p timestamp using a custom CLDR pattern.

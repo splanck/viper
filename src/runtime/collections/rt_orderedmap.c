@@ -67,6 +67,9 @@ typedef struct {
     rt_om_entry *tail; // Last inserted
 } rt_orderedmap_impl;
 
+/// @brief Checked cast of an opaque handle to the OrderedMap implementation.
+/// @details Raises a runtime-error trap with @p what if @p obj is NULL or
+///          not an OrderedMap.
 static rt_orderedmap_impl *as_orderedmap(void *obj, const char *what) {
     if (!obj || rt_obj_class_id(obj) != RT_ORDEREDMAP_CLASS_ID)
         rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR, Err_RuntimeError, -1, what);
@@ -77,6 +80,7 @@ static rt_orderedmap_impl *as_orderedmap(void *obj, const char *what) {
 // Hash helpers
 // ---------------------------------------------------------------------------
 
+/// @brief FNV-1a 64-bit hash of @p len bytes of @p key.
 static uint64_t om_hash(const char *key, size_t len) {
     uint64_t h = 0xcbf29ce484222325ULL;
     for (size_t i = 0; i < len; i++) {
@@ -86,6 +90,7 @@ static uint64_t om_hash(const char *key, size_t len) {
     return h;
 }
 
+/// @brief Borrow the byte buffer + length of a key string (empty "" if null).
 static const char *om_key_data(rt_string key, size_t *out_len) {
     if (!key) {
         *out_len = 0;
@@ -105,11 +110,13 @@ static const char *om_key_data(rt_string key, size_t *out_len) {
     return cstr;
 }
 
+/// @brief Drop one GC reference to a stored value and free it at zero.
 static void om_release_value(void *value) {
     if (value && rt_obj_release_check0(value))
         rt_obj_free(value);
 }
 
+/// @brief Hash-bucket lookup of @p key via the hash_next chain (NULL if absent).
 static rt_om_entry *om_find(rt_orderedmap_impl *m, const char *key, size_t len) {
     uint64_t idx = om_hash(key, len) % (uint64_t)m->capacity;
     rt_om_entry *e = m->buckets[idx];
@@ -125,6 +132,8 @@ static rt_om_entry *om_find(rt_orderedmap_impl *m, const char *key, size_t len) 
 // Resize
 // ---------------------------------------------------------------------------
 
+/// @brief Double the bucket array and rehash entries, preserving insertion
+///        order by re-linking via the head→next list. Traps on overflow/OOM.
 static void om_resize(rt_orderedmap_impl *m) {
     // Guard against integer overflow before doubling.
     if (m->capacity > INT64_MAX / 2)
@@ -162,6 +171,8 @@ static void om_resize(rt_orderedmap_impl *m) {
 // Finalizer
 // ---------------------------------------------------------------------------
 
+/// @brief GC finalizer: walk the insertion-order list freeing each entry
+///        (key + released value), then free the bucket array.
 static void orderedmap_finalizer(void *obj) {
     if (!obj)
         return;
@@ -181,6 +192,7 @@ static void orderedmap_finalizer(void *obj) {
     m->count = 0;
 }
 
+/// @brief GC traversal: visit every stored value in insertion order.
 static void orderedmap_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;

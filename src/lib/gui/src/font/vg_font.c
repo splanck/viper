@@ -38,10 +38,12 @@
 // Font Loading
 //=============================================================================
 
+/// @brief True if @p size is a finite, positive, sanely-bounded font size.
 static bool vg_font_valid_size(float size) {
     return isfinite(size) && size > 0.0f && size <= 1000000.0f;
 }
 
+/// @brief Clamp-convert a font metric to int (NaN→0, saturates at INT_MIN/MAX).
 static int vg_font_metric_to_int(double value) {
     if (!isfinite(value))
         return 0;

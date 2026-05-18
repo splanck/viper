@@ -82,6 +82,8 @@ typedef struct {
     size_t count;           ///< Number of entries currently stored.
 } treemap_impl;
 
+/// @brief Checked cast of an opaque handle to the TreeMap implementation;
+///        traps with @p what if @p obj is NULL or not a TreeMap.
 static treemap_impl *as_treemap(void *obj, const char *what) {
     if (!obj || rt_obj_class_id(obj) != RT_TREEMAP_CLASS_ID)
         rt_trap(what);
@@ -248,6 +250,8 @@ static void free_entry_contents(treemap_entry *e) {
 /// @see rt_treemap_set For adding key-value pairs
 /// @see rt_treemap_keys For retrieving keys in sorted order
 
+/// @brief GC finalizer: free each entry's contents (key + released value),
+///        then free the sorted entries array.
 static void treemap_finalizer(void *obj) {
     if (!obj)
         return;
@@ -262,6 +266,7 @@ static void treemap_finalizer(void *obj) {
     tm->capacity = 0;
 }
 
+/// @brief GC traversal: visit every stored value in sorted-key order.
 static void treemap_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;

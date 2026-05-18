@@ -59,21 +59,28 @@ typedef struct {
 
 #include "rt_trap.h"
 
+/// @brief Thin wrapper that raises a runtime trap with @p msg.
 static void trap_with_message(const char *msg) {
     rt_trap(msg);
 }
 
+/// @brief Checked cast of an opaque handle to the Deque struct;
+///        traps with @p what if @p obj is NULL or not a Deque.
 static Deque *as_deque(void *obj, const char *what) {
     if (!obj || rt_obj_class_id(obj) != RT_DEQUE_CLASS_ID)
         trap_with_message(what);
     return (Deque *)obj;
 }
 
+/// @brief Drop one GC reference to a stored element and free it at zero.
 static void deque_release_value(void *value) {
     if (value && rt_obj_release_check0(value))
         rt_obj_free(value);
 }
 
+/// @brief Grow the ring buffer to hold at least @p required elements.
+/// @details Doubles capacity (or jumps to @p required), then linearizes the
+///          wrapped contents so @c front becomes 0. Traps on overflow/OOM.
 static void ensure_capacity(Deque *d, int64_t required) {
     if (required <= d->cap)
         return;
@@ -110,6 +117,7 @@ void *rt_deque_new(void) {
     return rt_deque_with_capacity(DEFAULT_CAPACITY);
 }
 
+/// @brief GC finalizer: release every live element and free the ring buffer.
 static void deque_finalize(void *obj) {
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
     if (d && d->data) {
@@ -126,6 +134,7 @@ static void deque_finalize(void *obj) {
     }
 }
 
+/// @brief GC traversal: visit every live element in logical (front→back) order.
 static void deque_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;

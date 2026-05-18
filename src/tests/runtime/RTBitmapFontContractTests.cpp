@@ -75,8 +75,10 @@ static rt_canvas *make_canvas(int32_t width, int32_t height) {
 }
 
 static TestBitmapFont *make_font() {
-    auto *font = static_cast<TestBitmapFont *>(std::calloc(1, sizeof(TestBitmapFont)));
+    auto *font = static_cast<TestBitmapFont *>(
+        rt_obj_new_i64(RT_BITMAPFONT_CLASS_ID, sizeof(TestBitmapFont)));
     assert(font != nullptr);
+    std::memset(font, 0, sizeof(TestBitmapFont));
     font->line_height = 1;
     font->max_width = 5;
     font->ascent = 1;

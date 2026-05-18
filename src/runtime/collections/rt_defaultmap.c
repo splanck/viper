@@ -66,6 +66,8 @@ typedef struct {
     void *default_value;
 } rt_defaultmap_impl;
 
+/// @brief Checked cast of an opaque handle to the DefaultMap implementation.
+/// @details Traps with @p what if @p obj is NULL or not a DefaultMap.
 static rt_defaultmap_impl *as_defaultmap(void *obj, const char *what) {
     if (!obj || rt_obj_class_id(obj) != RT_DEFAULTMAP_CLASS_ID)
         rt_trap(what);
@@ -76,6 +78,7 @@ static rt_defaultmap_impl *as_defaultmap(void *obj, const char *what) {
 // Hash helper
 // ---------------------------------------------------------------------------
 
+/// @brief FNV-1a 64-bit hash of @p len bytes of @p key.
 static uint64_t dm_hash(const char *key, size_t len) {
     uint64_t h = 0xcbf29ce484222325ULL;
     for (size_t i = 0; i < len; i++) {
@@ -85,6 +88,7 @@ static uint64_t dm_hash(const char *key, size_t len) {
     return h;
 }
 
+/// @brief Borrow the byte buffer + length of a key string (empty "" if null).
 static const char *dm_key_data(rt_string key, size_t *out_len) {
     if (!key) {
         *out_len = 0;
@@ -104,6 +108,7 @@ static const char *dm_key_data(rt_string key, size_t *out_len) {
     return cstr;
 }
 
+/// @brief Drop one GC reference to a stored value and free it at zero.
 static void dm_release_value(void *value) {
     if (value && rt_obj_release_check0(value))
         rt_obj_free(value);
@@ -113,6 +118,8 @@ static void dm_release_value(void *value) {
 // Resize
 // ---------------------------------------------------------------------------
 
+/// @brief Double the bucket array and rehash all entries into it.
+/// @details No-op past the INT64_MAX/2 cap; traps on alloc overflow/OOM.
 static void dm_resize(rt_defaultmap_impl *m) {
     if (m->capacity > INT64_MAX / 2)
         return;
@@ -139,6 +146,7 @@ static void dm_resize(rt_defaultmap_impl *m) {
     m->capacity = new_cap;
 }
 
+/// @brief True when the load factor reaches 3/4 (count*4 >= capacity*3).
 static int dm_should_resize(rt_defaultmap_impl *m) {
     return (long double)m->count * 4.0L >= (long double)m->capacity * 3.0L;
 }
@@ -147,6 +155,8 @@ static int dm_should_resize(rt_defaultmap_impl *m) {
 // Finalizer
 // ---------------------------------------------------------------------------
 
+/// @brief GC finalizer: free every entry (key + released value), the bucket
+///        array, and release the stored default value.
 static void defaultmap_finalizer(void *obj) {
     if (!obj)
         return;
@@ -171,6 +181,8 @@ static void defaultmap_finalizer(void *obj) {
     m->default_value = NULL;
 }
 
+/// @brief GC traversal: visit the default value and every stored value so
+///        the collector can trace reachable objects.
 static void defaultmap_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;

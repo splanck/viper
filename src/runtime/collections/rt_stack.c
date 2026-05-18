@@ -72,12 +72,15 @@ typedef struct rt_stack_impl {
     int8_t owns_elements;
 } rt_stack_impl;
 
+/// @brief Checked cast of an opaque handle to the Stack implementation;
+///        traps with @p what if @p obj is NULL or not a Stack.
 static rt_stack_impl *as_stack(void *obj, const char *what) {
     if (!obj || rt_obj_class_id(obj) != RT_STACK_CLASS_ID)
         rt_trap(what);
     return (rt_stack_impl *)obj;
 }
 
+/// @brief Drop one GC reference to a stored element and free it at zero.
 static void stack_release_value(void *value) {
     if (value && rt_obj_release_check0(value))
         rt_obj_free(value);
@@ -111,6 +114,8 @@ static void rt_stack_finalize(void *obj) {
     stack->cap = 0;
 }
 
+/// @brief GC traversal: visit every live element (only when the stack owns
+///        its elements).
 static void rt_stack_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;

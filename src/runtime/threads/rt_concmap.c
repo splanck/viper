@@ -152,21 +152,27 @@ static rt_concmap_impl *concmap_require(void *obj, int8_t trap_on_null) {
     return (rt_concmap_impl *)obj;
 }
 
+/// @brief Drop one GC reference to @p obj and free it if the count hit zero.
 static void concmap_release_object(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
+/// @brief Snapshot the current trap error message into @p buffer (or
+///        @p fallback if none) so it survives lock cleanup before re-raise.
 static void concmap_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
     const char *err = rt_trap_get_error();
     snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
 }
 
+/// @brief Release the runtime reference carried by a stored map @p value.
 static void release_retained_value(void *value) {
     if (value && rt_obj_release_check0(value))
         rt_obj_free(value);
 }
 
+/// @brief Free an entry's heap storage (its key copy and the entry struct)
+///        WITHOUT touching its value reference (see free_entry for that).
 static void free_entry_storage(cm_entry *e) {
     if (e) {
         free(e->key);
@@ -186,6 +192,11 @@ static void free_entry(cm_entry *e) {
     }
 }
 
+/// @brief Retain a runtime reference on @p value for storage in @p entry,
+///        trap-recovering on failure: if the retain traps, @p entry is freed
+///        and the saved error (or @p fallback) is re-raised so the map never
+///        keeps a half-constructed entry.
+/// @return non-zero on success; does not return on the trap path.
 static int8_t retain_value_or_free_entry(void *obj,
                                          cm_entry *entry,
                                          void *value,

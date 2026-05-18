@@ -77,6 +77,11 @@ static int64_t clamp_volume_100(int64_t volume) {
     return volume;
 }
 
+/// @brief Lazily initialize the mix-group name/volume/in-use tables on first
+///        use, seeding the built-in "music" and "sfx" groups.
+/// @details Idempotent (guarded by g_group_names_initialized). The
+///          `_unlocked` suffix means the caller must already hold the mix
+///          group lock — this is not internally synchronized.
 static void audio_groups_init_unlocked(void) {
     if (g_group_names_initialized)
         return;
@@ -95,6 +100,9 @@ static void audio_groups_init_unlocked(void) {
     g_group_names_initialized = 1;
 }
 
+/// @brief Copy a runtime string group name into a fixed @p cap buffer,
+///        trimming leading/trailing spaces/tabs and NUL-terminating
+///        (truncated to fit). Empty buffer on NULL @p name.
 static void audio_group_copy_name(char *dst, size_t cap, rt_string name) {
     if (!dst || cap == 0)
         return;
@@ -117,6 +125,8 @@ static void audio_group_copy_name(char *dst, size_t cap, rt_string name) {
     dst[len] = '\0';
 }
 
+/// @brief Find an in-use mix group by name. @return its group id, or -1 if
+///        no such group (empty/NULL name yields -1). Caller holds the lock.
 static int64_t audio_find_group_unlocked(const char *name) {
     audio_groups_init_unlocked();
     if (!name || name[0] == '\0')
@@ -128,6 +138,11 @@ static int64_t audio_find_group_unlocked(const char *name) {
     return -1;
 }
 
+/// @brief Get or create a named mix group. @details Returns the existing id
+///        if @p name is already registered; otherwise claims the first free
+///        slot at/after RT_MIXGROUP_NAMED_BASE (volume defaulted to 100).
+/// @return The group id, or -1 if the name is empty or all slots are in use.
+///         Caller holds the mix-group lock.
 static int64_t audio_register_group_unlocked(const char *name) {
     audio_groups_init_unlocked();
     int64_t existing = audio_find_group_unlocked(name);
@@ -147,11 +162,15 @@ static int64_t audio_register_group_unlocked(const char *name) {
     return -1;
 }
 
+/// @brief True if @p group is a valid, currently in-use mix-group id.
+///        Caller holds the mix-group lock.
 static int8_t audio_group_id_valid_unlocked(int64_t group) {
     audio_groups_init_unlocked();
     return group >= 0 && group < RT_MIXGROUP_MAX_GROUPS && g_group_in_use[group];
 }
 
+/// @brief Convert a fade/duration in seconds to whole milliseconds, saturating
+///        at INT64_MAX; non-finite or non-positive input yields 0.
 static int64_t seconds_to_ms_i64(float seconds) {
     if (!isfinite(seconds) || seconds <= 0.0f)
         return 0;

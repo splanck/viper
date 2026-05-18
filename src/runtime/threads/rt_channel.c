@@ -234,11 +234,16 @@ static void channel_release_item(void *item) {
         rt_obj_free(item);
 }
 
+/// @brief Snapshot the current trap error message into @p buffer (or
+///        @p fallback if none) so it survives lock cleanup before re-raise.
 static void channel_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
     const char *err = rt_trap_get_error();
     snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
 }
 
+/// @brief Retain a runtime reference on @p item while the channel lock is held,
+///        trap-recovering (with @p fallback message) on a retain failure.
+/// @return non-zero on success; 0 if the retain trapped (item not enqueued).
 static int8_t channel_retain_item_locked(channel_impl *ch,
                                          void *channel,
                                          void *item,

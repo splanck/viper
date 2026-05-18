@@ -99,6 +99,8 @@ typedef struct rt_map_impl {
     size_t count;           ///< Number of key-value pairs currently in the Map.
 } rt_map_impl;
 
+/// @brief Checked cast of an opaque handle to the Map implementation.
+/// @details Traps with @p what if @p obj is NULL or not a Map.
 static rt_map_impl *as_map(void *obj, const char *what) {
     if (!obj || rt_obj_class_id(obj) != RT_MAP_CLASS_ID)
         rt_trap(what);
@@ -171,6 +173,7 @@ static void free_entry(rt_map_entry *entry) {
     }
 }
 
+/// @brief GC traversal: visit every stored value across all bucket chains.
 static void rt_map_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;

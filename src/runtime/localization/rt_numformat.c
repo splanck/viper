@@ -77,6 +77,7 @@ typedef enum {
     ROUND_FLOOR,
 } rounding_mode_t;
 
+/// @brief Canonical CLDR-style name for a rounding mode (defaults "halfEven").
 static const char *rounding_mode_name(rounding_mode_t m) {
     switch (m) {
         case ROUND_HALF_UP:   return "halfUp";
@@ -90,6 +91,7 @@ static const char *rounding_mode_name(rounding_mode_t m) {
     }
 }
 
+/// @brief Parse a rounding-mode name; unknown/NULL falls back to halfEven.
 static rounding_mode_t rounding_mode_parse(const char *s) {
     if (!s)
         return ROUND_HALF_EVEN;
@@ -102,6 +104,14 @@ static rounding_mode_t rounding_mode_parse(const char *s) {
     return ROUND_HALF_EVEN;
 }
 
+/// @brief vsnprintf forced through the "C" LC_NUMERIC locale so the decimal
+///        separator is always '.' regardless of the process/thread locale.
+/// @details This is the foundation of deterministic numeric formatting: digits
+///          are produced locale-neutrally here, then localized glyphs/separators
+///          are applied explicitly downstream. Per-platform: Windows uses
+///          @c _vsnprintf_l with a "C" @c _locale_t; POSIX uses @c uselocale
+///          with a "C" @c locale_t. Both degrade to plain @c vsnprintf if the
+///          "C" locale object cannot be created.
 static int loc_vsnprintf_c(char *out, size_t cap, const char *fmt, va_list args) {
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -135,6 +145,7 @@ static int loc_vsnprintf_c(char *out, size_t cap, const char *fmt, va_list args)
     return n;
 }
 
+/// @brief Variadic wrapper over @ref loc_vsnprintf_c (C-locale snprintf).
 static int loc_snprintf_c(char *out, size_t cap, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -143,6 +154,10 @@ static int loc_snprintf_c(char *out, size_t cap, const char *fmt, ...) {
     return n;
 }
 
+/// @brief C-locale sprintf into a heap buffer that grows to fit (cap 4096).
+/// @param out_len Receives the byte length on success (set to 0 otherwise).
+/// @return malloc'd NUL-terminated string the caller frees, or NULL on OOM /
+///         when the formatted result would exceed the 4096-byte safety cap.
 static char *loc_sprintf_alloc_c(size_t *out_len, const char *fmt, ...) {
     if (out_len) *out_len = 0;
     size_t cap = 128;
@@ -168,6 +183,10 @@ static char *loc_sprintf_alloc_c(size_t *out_len, const char *fmt, ...) {
     }
 }
 
+/// @brief strtod forced through the "C" LC_NUMERIC locale (parses '.' as the
+///        decimal point regardless of the ambient locale); the parse inverse
+///        of @ref loc_vsnprintf_c. Degrades to plain @c strtod if the "C"
+///        locale object cannot be created.
 static double loc_strtod_c(const char *input, char **endptr) {
 #if defined(_WIN32)
     _locale_t c_locale = _create_locale(LC_NUMERIC, "C");
@@ -206,15 +225,18 @@ typedef struct rt_numformat {
     rounding_mode_t         rounding;
 } rt_numformat_t;
 
+/// @brief Unchecked cast of an opaque handle to the NumberFormat instance.
 static rt_numformat_t *as_fmt(void *obj) {
     return (rt_numformat_t *)obj;
 }
 
+/// @brief Drop one GC reference to @p obj and free it if the count hit zero.
 static void fmt_release_handle(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
+/// @brief GC finalizer: release the format's locale data and locale handle.
 static void fmt_finalizer(void *obj) {
     rt_numformat_t *fmt = (rt_numformat_t *)obj;
     if (!fmt)
@@ -229,6 +251,10 @@ static void fmt_finalizer(void *obj) {
 // Constructors
 //===----------------------------------------------------------------------===//
 
+/// @brief Allocate and initialize a GC-managed NumberFormat for @p locale.
+/// @details Retains the locale handle + its data, seeds fraction digits /
+///          grouping / rounding from the locale defaults. Traps on allocation
+///          failure; installs @ref fmt_finalizer.
 static rt_numformat_t *fmt_alloc(void *locale) {
     rt_numformat_t *fmt = (rt_numformat_t *)rt_obj_new_i64(
         0, (int64_t)sizeof(rt_numformat_t));
@@ -315,6 +341,11 @@ void rt_numformat_set_rounding(void *self, rt_string mode) {
 // Rounding
 //===----------------------------------------------------------------------===//
 
+/// @brief Round @p value to @p digits fractional places under @p mode.
+/// @details Scales by 10^digits, applies the mode, then unscales. Non-finite
+///          values and inputs that would overflow the scale are returned
+///          unchanged. HALF_EVEN uses @c rint (banker's rounding on common
+///          libcs); the signed-magnitude forms keep ±0 and sign correct.
 static double apply_rounding(double value, int digits, rounding_mode_t mode) {
     if (!isfinite(value))
         return value;
@@ -376,6 +407,8 @@ typedef struct digit_spans {
     int valid;
 } digit_spans_t;
 
+/// @brief Byte length of the leading UTF-8 codepoint in @p s (0 if empty/NULL,
+///        1 on a malformed lead byte so callers always make forward progress).
 static size_t utf8_cp_len(const char *s) {
     if (!s || !*s) return 0;
     unsigned char c = (unsigned char)s[0];
@@ -386,6 +419,10 @@ static size_t utf8_cp_len(const char *s) {
     return 1;
 }
 
+/// @brief Slice the numbering system's 10 digit glyphs into a span table.
+/// @details Walks the (possibly multi-byte) @c nums->digits string; falls back
+///          to ASCII. @c ds.valid is set only when exactly ten codepoints were
+///          consumed, so callers can safely index ds.ptr/len by digit value.
 static digit_spans_t digit_spans_from_locale(const rt_locdata_numbers_t *nums) {
     digit_spans_t ds;
     memset(&ds, 0, sizeof(ds));
@@ -405,6 +442,8 @@ static digit_spans_t digit_spans_from_locale(const rt_locdata_numbers_t *nums) {
     return ds;
 }
 
+/// @brief Append @p len bytes, transliterating ASCII '0'-'9' to the numbering
+///        system's native digit glyphs; non-digit bytes pass through verbatim.
 static void append_localized_bytes(rt_string_builder *sb,
                                    const rt_locdata_numbers_t *nums,
                                    const char *bytes,
@@ -421,6 +460,11 @@ static void append_localized_bytes(rt_string_builder *sb,
     }
 }
 
+/// @brief Insert locale group separators into an ASCII digit run, honoring
+///        distinct primary vs. secondary group sizes (e.g. Indian 12,34,567).
+/// @details When grouping is disabled or no separator is defined the digits
+///          are appended unchanged; equal primary/secondary delegates to
+///          @c rt_numfmt_group_digits, otherwise the split is done here.
 static void append_grouped_ascii_number(rt_string_builder *sb,
                                         const rt_numformat_t *fmt,
                                         const char *digits,
@@ -555,6 +599,10 @@ static void fmt_render_number(rt_string_builder *sb, const rt_numformat_t *fmt,
     free(full);
 }
 
+/// @brief Render a 64-bit integer with locale sign + grouping, no float path.
+/// @details Avoids @c double so every magnitude (incl. INT64_MIN) is exact;
+///          builds digits right-to-left into a stack buffer, negates via the
+///          @c -(v+1)+1 trick so INT64_MIN doesn't overflow, then groups.
 static void fmt_render_integer_exact(rt_string_builder *sb, const rt_numformat_t *fmt,
                                      int64_t value) {
     const rt_locdata_numbers_t *nums = &fmt->data->numbers;
@@ -817,6 +865,9 @@ typedef struct {
     int64_t int_value;      ///< exact integer value when allow_fraction == 0
 } parse_result_t;
 
+/// @brief Match one digit at @p input, ASCII or the locale's native glyphs.
+/// @param consumed Receives the byte length of the matched glyph (0 if none).
+/// @return The digit value 0-9, or -1 if @p input does not start with a digit.
 static int match_locale_digit(const char *input, size_t input_len,
                               const rt_locdata_numbers_t *nums,
                               size_t *consumed) {
@@ -849,11 +900,18 @@ typedef struct {
     rt_string_builder frac;
 } scan_number_t;
 
+/// @brief Free the two string builders owned by a scan_number_t.
 static void scan_number_free(scan_number_t *sn) {
     rt_sb_free(&sn->digits);
     rt_sb_free(&sn->frac);
 }
 
+/// @brief Tokenize @p input into sign / integer-digit / fraction-digit parts.
+/// @details Locale-aware: skips leading space, recognizes the locale minus
+///          sign and (when @p allow_fraction) decimal separator, accepts ASCII
+///          or native digit glyphs, and ignores group separators. Leaves the
+///          collected ASCII digit runs in @c sn->digits / @c sn->frac for a
+///          downstream exact/double parse. @c sn->success reports a clean scan.
 static void scan_number_parts(scan_number_t *sn, const char *input, size_t input_len,
                               const rt_numformat_t *fmt, int allow_fraction) {
     memset(sn, 0, sizeof(*sn));
@@ -1007,6 +1065,11 @@ static parse_result_t parse_decimal(const char *input, size_t input_len,
     return pr;
 }
 
+/// @brief Parse @p input to an exact int64 (no float round-trip).
+/// @details Scans digits via @ref scan_number_parts (fraction disallowed) then
+///          accumulates in @c uint64_t with a per-digit overflow guard against
+///          a sign-aware limit, so INT64_MIN parses and out-of-range fails
+///          cleanly. @c pr.success is 0 on empty/overflow/garbage input.
 static parse_result_t parse_integer_exact(const char *input, size_t input_len,
                                           const rt_numformat_t *fmt) {
     parse_result_t pr = {0};
@@ -1156,6 +1219,10 @@ static void strip_currency_affixes(const rt_numformat_t *fmt,
     *out_len = len;
 }
 
+/// @brief Expand a currency-pattern affix slice into literal text: "{s}" →
+///        @p symbol, other bytes copied as-is.
+/// @return 1 on success; 0 if the "{n}" number placeholder is encountered
+///         (the caller splits the pattern on "{n}", so it must not appear here).
 static int expand_currency_pattern_affix(rt_string_builder *sb, const char *p,
                                          size_t len, const char *symbol) {
     for (size_t i = 0; i < len;) {
@@ -1173,6 +1240,11 @@ static int expand_currency_pattern_affix(rt_string_builder *sb, const char *p,
     return 1;
 }
 
+/// @brief Match @p input against a currency @p pattern split on "{n}".
+/// @details Expands the prefix/suffix affixes (substituting @p symbol), then
+///          checks @p input starts/ends with them; on success returns the
+///          interior number slice via @p out_start / @p out_len.
+/// @return 1 on match, 0 if the pattern lacks "{n}" or the affixes don't match.
 static int match_currency_pattern(const char *pattern, const char *symbol,
                                   const char *input, size_t input_len,
                                   const char **out_start, size_t *out_len) {
@@ -1205,6 +1277,11 @@ static int match_currency_pattern(const char *pattern, const char *symbol,
     return 1;
 }
 
+/// @brief Strip currency framing to expose the bare numeric slice.
+/// @details Trims whitespace, detects accounting-style negatives "(123)" and
+///          reports them via @p out_negative, then removes the locale's
+///          currency symbol/ISO-code affixes. Yields the number text via
+///          @p out_start / @p out_len for a downstream numeric parse.
 static int extract_currency_number(const rt_numformat_t *fmt,
                                    const char *input, size_t input_len,
                                    const char **out_start, size_t *out_len,

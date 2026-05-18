@@ -59,6 +59,8 @@ typedef struct rt_bitset_impl {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/// @brief Checked cast of an opaque handle to the BitSet implementation.
+/// @details Traps with the @p what message if @p obj is NULL or not a BitSet.
 static rt_bitset_impl *as_bitset(void *obj, const char *what) {
     if (!obj || rt_obj_class_id(obj) != RT_BITSET_CLASS_ID)
         rt_trap(what);
@@ -116,6 +118,7 @@ static void bitset_grow(rt_bitset_impl *bs, size_t min_bits) {
 // Finalizer
 // ---------------------------------------------------------------------------
 
+/// @brief GC finalizer: free the BitSet's backing word array.
 static void rt_bitset_finalize(void *obj) {
     if (!obj)
         return;

@@ -48,6 +48,8 @@
 #define SEQ_DEFAULT_CAP 16
 #define SEQ_GROWTH_FACTOR 2
 
+/// @brief Checked cast of an opaque handle to the Seq implementation;
+///        traps with @p what if @p obj is NULL or not a Seq.
 static rt_seq_impl *as_seq(void *obj, const char *what) {
     if (!obj || rt_obj_class_id(obj) != RT_SEQ_CLASS_ID)
         rt_trap(what);
@@ -75,6 +77,8 @@ static void seq_release_element(void *val) {
         rt_obj_free(val);
 }
 
+/// @brief GC traversal: visit every live element (only when the seq owns
+///        its elements).
 static void rt_seq_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
@@ -208,6 +212,8 @@ void *rt_seq_new_owned(void) {
     return seq;
 }
 
+/// @brief Create an empty seq inheriting @p source's element-ownership mode
+///        (defaults to owning when @p source is NULL).
 static void *seq_new_empty_like(rt_seq_impl *source) {
     void *seq = rt_seq_new();
     if (!source || source->owns_elements)

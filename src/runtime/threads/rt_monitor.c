@@ -369,6 +369,11 @@ static void monitor_remove_wait(RtMonitor *m, RtMonitorWaiter *w) {
     }
 }
 
+/// @brief Wake and detach every waiter in a monitor's acquire/wait queue with
+///        a cancellation result (used when the monitor is destroyed or the
+///        queue is torn down) so no thread is left blocked. Walks the whole
+///        chain, freeing each waiter node.
+/// @note Defined once per platform backend branch; both copies are identical.
 static void monitor_cancel_queue(RtMonitorWaiter *w) {
     while (w) {
         RtMonitorWaiter *next = w->next;
@@ -1141,6 +1146,11 @@ static void monitor_remove_wait(RtMonitor *m, RtMonitorWaiter *w) {
     }
 }
 
+/// @brief Wake and detach every waiter in a monitor's acquire/wait queue with
+///        a cancellation result (used when the monitor is destroyed or the
+///        queue is torn down) so no thread is left blocked. Walks the whole
+///        chain, freeing each waiter node.
+/// @note Defined once per platform backend branch; both copies are identical.
 static void monitor_cancel_queue(RtMonitorWaiter *w) {
     while (w) {
         RtMonitorWaiter *next = w->next;

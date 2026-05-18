@@ -86,7 +86,16 @@ int main() {
     assert(hasMethod(*cameraCls, "SmoothFollow", "void(i64,i64,i64)"));
     assert(hasMethod(*cameraCls, "SetDeadzone", "void(i64,i64)"));
 
-    constexpr std::array<std::string_view, 43> graphics2DClasses = {
+    const il::runtime::RuntimeClass *bitmapFontCls = findClass("Viper.Graphics.BitmapFont");
+    assert(bitmapFontCls != nullptr && "Viper.Graphics.BitmapFont not found in catalog");
+    assert(hasMethod(*bitmapFontCls, "LoadBDF", "obj<Viper.Graphics.BitmapFont>(str)"));
+    assert(hasMethod(*bitmapFontCls, "LoadPSF", "obj<Viper.Graphics.BitmapFont>(str)"));
+
+    const il::runtime::RuntimeClass *spriteFontCls = findClass("Viper.Graphics.SpriteFont");
+    assert(spriteFontCls != nullptr && "Viper.Graphics.SpriteFont not found in catalog");
+    assert(hasMethod(*spriteFontCls, "LoadPSF", "obj<Viper.Graphics.BitmapFont>(str)"));
+
+    constexpr std::array<std::string_view, 44> graphics2DClasses = {
         "Viper.Graphics.RenderTarget2D", "Viper.Graphics.Surface2D",
         "Viper.Graphics.Texture2D",      "Viper.Graphics.GpuTexture2D",
         "Viper.Graphics.Renderer2D",     "Viper.Graphics.Material2D",
@@ -95,7 +104,8 @@ int main() {
         "Viper.Graphics.TileSet2D",      "Viper.Graphics.TileLayer2D",
         "Viper.Graphics.ObjectLayer2D",  "Viper.Graphics.AutoTile2D",
         "Viper.Graphics.Path2D",         "Viper.Graphics.ShapeRenderer2D",
-        "Viper.Graphics.TextRenderer2D", "Viper.Graphics.SdfFont",
+        "Viper.Graphics.TextRenderer2D", "Viper.Graphics.BitmapFont",
+        "Viper.Graphics.SdfFont",
         "Viper.Graphics.NineSlice2D",    "Viper.Graphics.ParticleSystem2D",
         "Viper.Graphics.Emitter2D",      "Viper.Graphics.DebugDraw2D",
         "Viper.Graphics.Transform2D",    "Viper.Graphics.Sampler2D",

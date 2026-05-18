@@ -25,6 +25,7 @@ Load variable-size bitmap fonts from BDF (Bitmap Distribution Format) or PSF (PC
 
 Input strings are decoded as UTF-8 for measurement and drawing. The runtime stores glyphs for
 BMP codepoints `0-65535`; missing glyphs fall back to `?` (or space if `?` is unavailable).
+Measurement and Canvas text helpers validate that the supplied handle is a `BitmapFont`; null or unrelated handles return safe defaults or no-op.
 
 **Type:** Static (no instance constructor — use `LoadBDF` or `LoadPSF`)
 

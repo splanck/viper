@@ -70,18 +70,22 @@ typedef struct rt_collator {
     size_t                    patch_count;
 } rt_collator_t;
 
+/// @brief Unchecked cast of an opaque handle to the collator instance.
 static rt_collator_t *as_col(void *obj) { return (rt_collator_t *)obj; }
 
+/// @brief Emit a non-fatal collator warning to stderr (NULL message ignored).
 static void col_warn(const char *message) {
     if (message)
         fprintf(stderr, "warning: %s\n", message);
 }
 
+/// @brief Drop one GC reference to @p obj and free it if the count hit zero.
 static void col_release_handle(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
+/// @brief GC finalizer: release the collator's locale data and locale handle.
 static void col_finalizer(void *obj) {
     rt_collator_t *c = (rt_collator_t *)obj;
     if (!c)
@@ -96,6 +100,12 @@ static void col_finalizer(void *obj) {
 // Constructors
 //===----------------------------------------------------------------------===//
 
+/// @brief Allocate and initialize a GC-managed collator for @p locale.
+/// @details Retains the locale handle + its collation data, clamps strength to
+///          1-3, and binds locale tailoring patches keyed by the *handle's*
+///          tag (not the data record's) so e.g. Swedish ordering still applies
+///          when no JSON locale file was loaded. Traps on allocation failure;
+///          installs @ref col_finalizer.
 static void *col_alloc(void *locale) {
     rt_collator_t *c = (rt_collator_t *)rt_obj_new_i64(
         0, (int64_t)sizeof(rt_collator_t));
@@ -181,6 +191,11 @@ void rt_collator_set_ignore_accents(void *self, int8_t value) {
 // UTF-8 decode
 //===----------------------------------------------------------------------===//
 
+/// @brief Decode one UTF-8 codepoint from @p s starting at @c *pos, advancing
+///        @c *pos past it. Returns 0 at end of input.
+/// @details Strict decoder: rejects overlong forms, surrogates (U+D800–DFFF),
+///          and out-of-range scalars, yielding U+FFFD and advancing one byte
+///          so a malformed stream still makes forward progress.
 static uint32_t col_decode(const char *s, size_t len, size_t *pos) {
     size_t i = *pos;
     if (i >= len) return 0;
@@ -212,6 +227,10 @@ static uint32_t col_decode(const char *s, size_t len, size_t *pos) {
 // Weight extraction (with locale patches)
 //===----------------------------------------------------------------------===//
 
+/// @brief Compute the primary/secondary/tertiary collation weights for @p cp.
+/// @details Locale tailoring patches win over the base classifier; otherwise
+///          weights come from the shared collation table plus the combining-
+///          mark accent weight. Outputs feed the multi-level sort key.
 static void get_weights(rt_collator_t *col, uint32_t cp,
                         uint32_t *pri, uint16_t *sec, uint16_t *ter) {
     // Apply any locale patches first (they override the base classifier).
@@ -234,6 +253,11 @@ typedef struct sort_weight {
     uint16_t ter;
 } sort_weight_t;
 
+/// @brief Secondary collation weight for a combining diacritic codepoint.
+/// @details Gives common accents (grave/acute/circumflex/…) a stable accent
+///          ordering so e.g. "é" sorts after "e" but before "f"; any other
+///          combining mark in U+0300–U+036F gets a generic weight (9), all
+///          else 0 (no secondary contribution).
 static uint16_t combining_secondary(uint32_t cp) {
     switch (cp) {
         case 0x0300: return 1; // grave
@@ -250,6 +274,11 @@ static uint16_t combining_secondary(uint32_t cp) {
     }
 }
 
+/// @brief Build the array of per-character sort weights (primary + secondary
+///        accent + tertiary case) for a UTF-8 string — the raw material of a
+///        collation key. Caller frees the returned array; @p out_count gets
+///        the element count. Traps on the 1 MiB input cap or allocation
+///        failure (returns NULL).
 static sort_weight_t *collect_weights(rt_collator_t *col, const char *s,
                                       size_t len, size_t *out_count) {
     if (len > MAX_INPUT_BYTES) {

@@ -56,12 +56,15 @@ typedef struct {
     int64_t count;
 } rt_weakmap_data;
 
+/// @brief Checked cast of an opaque handle to the WeakMap implementation;
+///        traps with @p what if @p obj is NULL or not a WeakMap.
 static rt_weakmap_data *as_weakmap(void *obj, const char *what) {
     if (!obj || rt_obj_class_id(obj) != RT_WEAKMAP_CLASS_ID)
         rt_trap(what);
     return (rt_weakmap_data *)obj;
 }
 
+/// @brief Borrow the byte buffer + length of a key string (empty "" if null).
 static const char *wm_key_data(rt_string key, size_t *out_len) {
     if (!key) {
         *out_len = 0;
@@ -81,6 +84,7 @@ static const char *wm_key_data(rt_string key, size_t *out_len) {
     return data;
 }
 
+/// @brief FNV-1a 64-bit hash of @p len bytes of @p data.
 static uint64_t wm_hash_bytes(const char *data, size_t len) {
     uint64_t h = 14695981039346656037ULL;
     for (size_t i = 0; i < len; i++) {
@@ -90,6 +94,7 @@ static uint64_t wm_hash_bytes(const char *data, size_t len) {
     return h;
 }
 
+/// @brief True iff an occupied @p entry's key byte-matches @p key/@p key_len.
 static int8_t wm_entry_matches(const wm_entry *entry, const char *key, size_t key_len) {
     if (!entry->occupied)
         return 0;
@@ -98,10 +103,14 @@ static int8_t wm_entry_matches(const wm_entry *entry, const char *key, size_t ke
     return entry_len == key_len && memcmp(entry_key, key, key_len) == 0 ? 1 : 0;
 }
 
+/// @brief True iff @p entry is occupied AND its weak value reference is still
+///        alive (the referent has not been collected).
 static int8_t wm_entry_alive(const wm_entry *entry) {
     return entry->occupied && rt_weakref_alive(entry->value_ref) ? 1 : 0;
 }
 
+/// @brief Release an occupied entry: drop the key string + free the weakref,
+///        then mark the slot empty.
 static void wm_release_entry(wm_entry *entry) {
     if (!entry || !entry->occupied)
         return;
@@ -112,6 +121,8 @@ static void wm_release_entry(wm_entry *entry) {
     entry->occupied = 0;
 }
 
+/// @brief Allocate a zeroed entry table of @p capacity slots; traps on
+///        overflow/OOM.
 static wm_entry *wm_alloc_entries(int64_t capacity) {
     if (capacity <= 0 || (uint64_t)capacity > SIZE_MAX / sizeof(wm_entry))
         rt_trap("WeakMap: allocation size overflow");
@@ -121,6 +132,8 @@ static wm_entry *wm_alloc_entries(int64_t capacity) {
     return entries;
 }
 
+/// @brief Linear-probe for @p key: returns the matching slot or the first
+///        free slot; -1 only if the table is completely full.
 static int64_t wm_find_slot(rt_weakmap_data *data, const char *key, size_t key_len) {
     uint64_t h = wm_hash_bytes(key, key_len);
     int64_t idx = (int64_t)(h % (uint64_t)data->capacity);
@@ -134,6 +147,8 @@ static int64_t wm_find_slot(rt_weakmap_data *data, const char *key, size_t key_l
     return -1;
 }
 
+/// @brief Re-insert a still-live @p entry into @p data during a rehash
+///        (ownership moved as-is, no retain). Traps if no slot is found.
 static void wm_move_live_entry(rt_weakmap_data *data, wm_entry entry) {
     size_t key_len = 0;
     const char *key = wm_key_data(entry.key, &key_len);
@@ -144,6 +159,8 @@ static void wm_move_live_entry(rt_weakmap_data *data, wm_entry entry) {
     data->count++;
 }
 
+/// @brief Double the table; live entries are carried over and dead (collected)
+///        weak entries are dropped during the rehash. Traps on overflow/OOM.
 static void wm_grow(rt_weakmap_data *data) {
     int64_t old_cap = data->capacity;
     wm_entry *old_entries = data->entries;
@@ -169,6 +186,8 @@ static void wm_grow(rt_weakmap_data *data) {
     free(old_entries);
 }
 
+/// @brief GC finalizer: release every occupied entry (key + weakref) and
+///        free the entry table.
 static void weakmap_finalizer(void *obj) {
     if (!obj)
         return;

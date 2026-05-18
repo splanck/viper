@@ -139,6 +139,9 @@ static rt_bytes_impl *rt_bytes_alloc(int64_t len) {
     return bytes;
 }
 
+/// @brief Checked cast of an opaque handle to the Bytes implementation.
+/// @details Returns NULL for a NULL @p obj; traps via
+///          rt_bytes_trap_invalid_operation(@p what) if @p obj is not a Bytes.
 static rt_bytes_impl *rt_bytes_require(void *obj, const char *what) {
     if (!obj)
         return NULL;

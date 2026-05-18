@@ -50,11 +50,13 @@
 #include <stdarg.h>
 #include <stdlib.h>
 
+/// @brief Drop one GC reference to a transient @p obj and free it at zero.
 static void release_temp_obj(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
+/// @brief Allocate an owned (refcounted) seq for conversion results.
 static void *new_owned_seq(void) {
     return rt_seq_new_owned();
 }

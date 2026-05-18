@@ -67,6 +67,8 @@ typedef struct rt_intmap_impl {
     size_t count;              ///< Number of key-value pairs currently in the IntMap.
 } rt_intmap_impl;
 
+/// @brief Checked cast of an opaque handle to the IntMap implementation.
+/// @details Traps with @p what if @p obj is NULL or not an IntMap.
 static rt_intmap_impl *as_intmap(void *obj, const char *what) {
     if (!obj || rt_obj_class_id(obj) != RT_INTMAP_CLASS_ID)
         rt_trap(what);
@@ -95,6 +97,7 @@ static void free_entry(rt_intmap_entry *entry) {
     }
 }
 
+/// @brief GC traversal: visit every stored value across all bucket chains.
 static void rt_intmap_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;

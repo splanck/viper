@@ -63,15 +63,18 @@ typedef struct rt_reltimefmt_inst {
     rtf_style_t             style;
 } rt_reltimefmt_inst_t;
 
+/// @brief Unchecked cast of an opaque handle to the RelativeTimeFormat inst.
 static rt_reltimefmt_inst_t *as_fmt(void *obj) {
     return (rt_reltimefmt_inst_t *)obj;
 }
 
+/// @brief Drop one GC reference to @p obj and free it if the count hit zero.
 static void rtf_release_handle(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
+/// @brief GC finalizer: release the format's locale data and locale handle.
 static void rtf_finalizer(void *obj) {
     rt_reltimefmt_inst_t *fmt = (rt_reltimefmt_inst_t *)obj;
     if (!fmt)
@@ -86,6 +89,9 @@ static void rtf_finalizer(void *obj) {
 // Constructors
 //===----------------------------------------------------------------------===//
 
+/// @brief Allocate and initialize a GC-managed RelativeTimeFormat for @p locale.
+/// @details Retains the locale handle + its data, defaults to the long style.
+///          Traps on allocation failure; installs @ref rtf_finalizer.
 static void *rtf_alloc(void *locale) {
     rt_reltimefmt_inst_t *fmt = (rt_reltimefmt_inst_t *)rt_obj_new_i64(
         0, (int64_t)sizeof(rt_reltimefmt_inst_t));
@@ -150,6 +156,7 @@ typedef enum {
     UNIT_YEAR = 6,
 } rtf_unit_t;
 
+/// @brief CLDR keyword for a time unit ("second".."year"); defaults "second".
 static const char *unit_name(rtf_unit_t u) {
     switch (u) {
         case UNIT_SECOND: return "second";
@@ -163,6 +170,7 @@ static const char *unit_name(rtf_unit_t u) {
     return "second";
 }
 
+/// @brief Parse a unit keyword into @p out; returns 1 on match, 0 if unknown.
 static int unit_from_name(const char *name, rtf_unit_t *out) {
     if (!name) return 0;
     if (strcmp(name, "second") == 0) { *out = UNIT_SECOND; return 1; }
@@ -184,6 +192,9 @@ typedef struct {
     int64_t    count;   // absolute count in the selected unit
 } unit_pick_t;
 
+/// @brief Choose the largest unit whose threshold @p abs_ms reaches and the
+///        integer count in that unit (CLDR-style coarsening; month≈30d,
+///        year≈365d), e.g. 90 min → {hour, 1}.
 static unit_pick_t pick_unit(int64_t abs_ms) {
     unit_pick_t p;
     const int64_t MS_SEC   = 1000LL;
@@ -209,6 +220,8 @@ static unit_pick_t pick_unit(int64_t abs_ms) {
 // Plural category -> unit string lookup
 //===----------------------------------------------------------------------===//
 
+/// @brief Select the unit phrase for plural category @p cat, falling back
+///        through "other" then any non-empty form so output is never empty.
 static const char *unit_plural_form(const rt_locdata_reltime_unit_t *u,
                                     rt_plural_category_t cat) {
     const char *result = NULL;
@@ -236,6 +249,8 @@ typedef struct digit_spans {
     int valid;
 } digit_spans_t;
 
+/// @brief Byte length of the leading UTF-8 codepoint in @p s (0 if empty/NULL,
+///        1 on a malformed lead byte so callers always make forward progress).
 static size_t utf8_cp_len(const char *s) {
     if (!s || !*s) return 0;
     unsigned char c = (unsigned char)s[0];
@@ -246,6 +261,8 @@ static size_t utf8_cp_len(const char *s) {
     return 1;
 }
 
+/// @brief Slice the locale's 10 numbering-system digit glyphs into a span table
+///        (falls back to ASCII; @c ds.valid only when exactly ten consumed).
 static digit_spans_t digit_spans_from_locale(const rt_locale_data_t *data) {
     digit_spans_t ds;
     memset(&ds, 0, sizeof(ds));
@@ -265,6 +282,8 @@ static digit_spans_t digit_spans_from_locale(const rt_locale_data_t *data) {
     return ds;
 }
 
+/// @brief Append @p n as decimal digits, transliterated to the locale's
+///        native digit glyphs (ASCII fallback). No grouping separators.
 static void append_localized_int(rt_string_builder *sb,
                                  const rt_locale_data_t *data,
                                  int64_t n) {
@@ -284,6 +303,8 @@ static void append_localized_int(rt_string_builder *sb,
     }
 }
 
+/// @brief Expand a relative-time template into @p sb, substituting "{n}" with
+///        the localized count and "{unit}" with the resolved unit phrase.
 static void expand_template(rt_string_builder *sb, const char *tmpl,
                             const rt_locale_data_t *data,
                             int64_t n, const char *unit_form) {
@@ -309,6 +330,12 @@ static void expand_template(rt_string_builder *sb, const char *tmpl,
 // Core formatter
 //===----------------------------------------------------------------------===//
 
+/// @brief Render a signed millisecond @p duration as a relative-time phrase.
+/// @details Sub-second magnitudes yield the locale's "now". Otherwise picks the
+///          coarsest unit (@ref pick_unit), resolves the plural form for that
+///          count, selects the past (duration >= 0, "ago") vs. future
+///          (duration < 0, "in") template at the requested @p style, and
+///          expands it. INT64_MIN is clamped to avoid negation overflow.
 static rt_string format_core(rt_reltimefmt_inst_t *fmt, int64_t duration,
                              rtf_style_t style) {
     int is_past = duration >= 0;

@@ -56,6 +56,8 @@ typedef struct {
     int64_t sets;    // Number of disjoint sets
 } rt_unionfind_impl;
 
+/// @brief Checked cast of an opaque handle to the UnionFind implementation;
+///        traps with @p what if @p obj is NULL or not a UnionFind.
 static rt_unionfind_impl *as_unionfind(void *obj, const char *what) {
     if (!obj || rt_obj_class_id(obj) != RT_UNIONFIND_CLASS_ID)
         rt_trap(what);
@@ -66,6 +68,7 @@ static rt_unionfind_impl *as_unionfind(void *obj, const char *what) {
 // Finalizer
 // ---------------------------------------------------------------------------
 
+/// @brief GC finalizer: free the parent and rank arrays.
 static void unionfind_finalizer(void *obj) {
     rt_unionfind_impl *uf = obj ? as_unionfind(obj, "UnionFind: invalid UnionFind object") : NULL;
     if (!uf)

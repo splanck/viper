@@ -53,12 +53,15 @@ typedef struct {
     int64_t item_count; // Items added
 } rt_bloomfilter_impl;
 
+/// @brief Checked cast of an opaque handle to the BloomFilter implementation.
+/// @details Traps with @p what if @p obj is NULL or not a BloomFilter.
 static rt_bloomfilter_impl *as_bloomfilter(void *obj, const char *what) {
     if (!obj || rt_obj_class_id(obj) != RT_BLOOMFILTER_CLASS_ID)
         rt_trap(what);
     return (rt_bloomfilter_impl *)obj;
 }
 
+/// @brief Count set bits in a byte (SWAR popcount; used for cardinality est.).
 static int popcount8(uint8_t x) {
     x = (uint8_t)(x - ((x >> 1) & 0x55u));
     x = (uint8_t)((x & 0x33u) + ((x >> 2) & 0x33u));
@@ -69,6 +72,9 @@ static int popcount8(uint8_t x) {
 // Hash functions (MurmurHash3-style with seed variation)
 // ---------------------------------------------------------------------------
 
+/// @brief Seeded 64-bit hash (MurmurHash3-style mix + fmix finalizer).
+/// @details Varying @p seed yields the k independent hash positions a Bloom
+///          filter needs from a single pass over @p data.
 static uint64_t bloom_hash(const char *data, size_t len, uint64_t seed) {
     uint64_t h = seed ^ (len * 0x9E3779B97F4A7C15ULL);
     for (size_t i = 0; i < len; i++) {
@@ -87,6 +93,7 @@ static uint64_t bloom_hash(const char *data, size_t len, uint64_t seed) {
 // Finalizer
 // ---------------------------------------------------------------------------
 
+/// @brief GC finalizer: free the BloomFilter's bit array.
 static void bloomfilter_finalizer(void *obj) {
     rt_bloomfilter_impl *bf = obj ? as_bloomfilter(obj, "BloomFilter: invalid BloomFilter object") : NULL;
     if (!bf)

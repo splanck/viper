@@ -67,12 +67,15 @@ typedef struct rt_multimap_impl {
     size_t total_count;
 } rt_multimap_impl;
 
+/// @brief Checked cast of an opaque handle to the MultiMap implementation.
+/// @details Traps with @p what if @p obj is NULL or not a MultiMap.
 static rt_multimap_impl *as_multimap(void *obj, const char *what) {
     if (!obj || rt_obj_class_id(obj) != RT_MULTIMAP_CLASS_ID)
         rt_trap(what);
     return (rt_multimap_impl *)obj;
 }
 
+/// @brief Borrow the byte buffer + length of a key string (empty "" if null).
 static const char *get_key_data(rt_string key, size_t *out_len) {
     if (!key) {
         *out_len = 0;
@@ -92,6 +95,7 @@ static const char *get_key_data(rt_string key, size_t *out_len) {
     return cstr;
 }
 
+/// @brief Linear scan of a bucket chain for an exact key match (NULL if none).
 static rt_mm_entry *find_entry(rt_mm_entry *head, const char *key, size_t key_len) {
     for (rt_mm_entry *e = head; e; e = e->next) {
         if (e->key_len == key_len && memcmp(e->key, key, key_len) == 0)
@@ -100,6 +104,7 @@ static rt_mm_entry *find_entry(rt_mm_entry *head, const char *key, size_t key_le
     return NULL;
 }
 
+/// @brief Free a chain entry: its key buffer and its retained values list.
 static void free_entry(rt_mm_entry *entry) {
     if (!entry)
         return;
@@ -109,6 +114,8 @@ static void free_entry(rt_mm_entry *entry) {
     free(entry);
 }
 
+/// @brief Rehash all entries into a fresh @p new_cap bucket array.
+/// @details Traps on allocation overflow/OOM.
 static void mm_resize(rt_multimap_impl *mm, size_t new_cap) {
     if (new_cap > SIZE_MAX / sizeof(rt_mm_entry *))
         rt_trap("MultiMap: allocation size overflow");
@@ -131,6 +138,8 @@ static void mm_resize(rt_multimap_impl *mm, size_t new_cap) {
     mm->capacity = new_cap;
 }
 
+/// @brief Double the bucket array once the key load factor exceeds the
+///        MM_LOAD_FACTOR_NUM/MM_LOAD_FACTOR_DEN threshold (capped).
 static void maybe_resize(rt_multimap_impl *mm) {
     if ((long double)mm->key_count * (long double)MM_LOAD_FACTOR_DEN >
         (long double)mm->capacity * (long double)MM_LOAD_FACTOR_NUM) {
@@ -140,6 +149,8 @@ static void maybe_resize(rt_multimap_impl *mm) {
     }
 }
 
+/// @brief GC finalizer: clear all entries (via rt_multimap_clear) then free
+///        the bucket array.
 static void rt_multimap_finalize(void *obj) {
     if (!obj)
         return;
@@ -152,6 +163,7 @@ static void rt_multimap_finalize(void *obj) {
     mm->capacity = 0;
 }
 
+/// @brief GC traversal: visit each key's values-list across all chains.
 static void rt_multimap_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;

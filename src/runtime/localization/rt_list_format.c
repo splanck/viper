@@ -51,15 +51,18 @@ typedef struct rt_list_format_inst {
     const rt_locale_data_t *data;
 } rt_list_format_inst_t;
 
+/// @brief Unchecked cast of an opaque handle to the ListFormat instance.
 static rt_list_format_inst_t *as_fmt(void *obj) {
     return (rt_list_format_inst_t *)obj;
 }
 
+/// @brief Drop one GC reference to @p obj and free it if the count hit zero.
 static void lf_release_handle(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
+/// @brief GC finalizer: release the formatter's locale data and locale handle.
 static void lf_finalizer(void *obj) {
     rt_list_format_inst_t *f = (rt_list_format_inst_t *)obj;
     if (!f)
@@ -74,6 +77,9 @@ static void lf_finalizer(void *obj) {
 // Constructors / properties
 //===----------------------------------------------------------------------===//
 
+/// @brief Allocate and initialize a GC-managed ListFormat for @p locale.
+/// @details Retains the locale handle + its data. Traps on allocation failure;
+///          installs @ref lf_finalizer.
 static void *lf_alloc(void *locale) {
     rt_list_format_inst_t *f = (rt_list_format_inst_t *)rt_obj_new_i64(
         0, (int64_t)sizeof(rt_list_format_inst_t));
@@ -109,6 +115,8 @@ void *rt_list_format_get_locale(void *self) {
 // Template expansion: {0} and {1} positional placeholders
 //===----------------------------------------------------------------------===//
 
+/// @brief Substitute {0}→@p a and {1}→@p b into @p tmpl (default "{0}, {1}").
+/// @return A new string; NULL operands contribute empty text.
 static rt_string expand_pair(const char *tmpl, rt_string a, rt_string b) {
     if (!tmpl)
         tmpl = "{0}, {1}";
@@ -142,6 +150,10 @@ static rt_string expand_pair(const char *tmpl, rt_string a, rt_string b) {
 // Join algorithm
 //===----------------------------------------------------------------------===//
 
+/// @brief Join @p items per a CLDR list @p style (start/middle/end/pair).
+/// @details 0/1 items are trivial; 2 use the "pair" template; 3+ fold from the
+///          right ("end", then "middle"s, then "start") so nested expansions
+///          place separators exactly as CLDR specifies. Returns a new string.
 static rt_string join_with_style(void *items, const rt_locdata_list_style_t *style) {
     if (!items)
         return rt_string_from_bytes("", 0);

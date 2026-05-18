@@ -26,6 +26,7 @@
 #include "rt.hpp"
 #include "rt_bitmapfont.h"
 #include "rt_internal.h"
+#include "rt_pixels.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -387,6 +388,17 @@ static void test_bdf_null_input(void) {
     assert(rt_bitmapfont_is_monospace(NULL) == 0);
     assert(rt_bitmapfont_text_width(NULL, rt_const_cstr("test")) == 0);
     assert(rt_bitmapfont_text_height(NULL) == 0);
+
+    void *pixels = rt_pixels_new(1, 1);
+    assert(pixels != NULL);
+    assert(rt_bitmapfont_char_width(pixels) == 0);
+    assert(rt_bitmapfont_char_height(pixels) == 0);
+    assert(rt_bitmapfont_glyph_count(pixels) == 0);
+    assert(rt_bitmapfont_is_monospace(pixels) == 0);
+    assert(rt_bitmapfont_text_width(pixels, rt_const_cstr("test")) == 0);
+    assert(rt_bitmapfont_text_height(pixels) == 0);
+    rt_bitmapfont_destroy(pixels);
+    assert(rt_pixels_width(pixels) == 1);
 
     PASS();
 }

@@ -16,9 +16,9 @@ These classes sit directly on top of `Pixels` and `Canvas`. They cover rendering
 | Class | Purpose |
 |-------|---------|
 | `RenderTarget2D` | Offscreen RGBA surface with alpha-aware `DrawPixels` and `DrawRegion`. |
-| `Surface2D` | Alias for `RenderTarget2D`. |
+| `Surface2D` | RenderTarget-compatible surface with its own runtime type identity. |
 | `Texture2D` | Retained `Pixels` texture handle with `Filter`, `Wrap`, `ClonePixels`, and `FromFile`. |
-| `GpuTexture2D` | Alias for `Texture2D`; currently CPU-backed. |
+| `GpuTexture2D` | Texture-compatible handle with its own runtime type identity; currently CPU-backed. |
 | `Renderer2D` | Retained draw command stream for pixels/textures with tint, alpha, blend mode, and render target flushing. |
 | `Material2D` | Tint, alpha, and blend-mode state that can produce processed pixel copies. |
 | `Shader2D` | CPU image effect wrapper: none, invert, grayscale, tint, and blur. |
@@ -28,7 +28,7 @@ These classes sit directly on top of `Pixels` and `Canvas`. They cover rendering
 | `SpriteRenderer2D` | Draw helper that applies `Material2D`, `Sampler2D`, and `BlendState2D` before queueing pixels or textures. |
 | `RenderPass2D` | Source-target postprocess pass using an optional `Shader2D` or `PostProcess2D`. |
 | `RenderGraph2D` | Ordered collection of `RenderPass2D` objects for simple pass chains. |
-| `Palette2D` | 256-entry palette that can recolor indexed `Pixels` buffers. |
+| `Palette2D` | 256-entry palette that can quantize `Pixels` to nearest palette colors or run legacy indexed remaps. |
 | `Gradient2D` | RGBA gradient sampling and horizontal/vertical fills for `Pixels`. |
 
 ## Color And Blend Conventions
@@ -37,11 +37,11 @@ These classes sit directly on top of `Pixels` and `Canvas`. They cover rendering
 - `Palette2D` and `Gradient2D` store raw `0xRRGGBBAA` colors, and also accept tagged `Color.RGBA(...)` values by converting them into raw pixel storage. Public `GetColor` and `Sample` return `Color`-compatible values; use `GetRGBA` and `SampleRGBA` for raw storage integers.
 - Renderer/material/blend-state tint uses `-1` for no tint. A tint value of `0` is black.
 - Blend modes use `0 = alpha`, `1 = opaque`, `2 = additive`. Alpha mode uses straight-alpha source-over, matching `Pixels.BlendPixel` and `Canvas.BlitAlpha`; additive mode scales source RGB by source alpha, adds it to the destination, and clamps each channel.
-- `Texture2D.Filter` uses `0 = nearest`, `1 = linear`. Linear sampling interpolates RGB in premultiplied-alpha space so transparent edge texels do not bleed black into partially transparent results.
+- `Texture2D.Filter` uses `0 = nearest`, `1 = linear`. Linear sampling interpolates RGB in premultiplied-alpha space so transparent edge texels do not bleed black into partially transparent results. Texture-region draws clamp or wrap within the requested region before sampling the backing image, so atlas neighbors do not bleed into bilinear samples.
 - `Texture2D.Wrap` uses `0 = clamp`, `1 = repeat`.
 - `Texture2D.New` requires a `Pixels` object and retains it for the texture lifetime. `Renderer2D` also retains queued sources before publishing commands, so queued draw calls keep their source objects alive until `Begin`, `End`, `FlushToTarget`, or object cleanup clears the queue.
 - `RenderTarget2D.DrawRegion` supports drawing from its own `Pixels` buffer. Overlapping self-copies use a source snapshot so pixels are copied from the original region rather than from already-written output.
-- Graphics2D handle validators check the runtime class and minimum object size. Passing the wrong object type to `Texture2D`, `TileSet2D`, `TileLayer2D`, `Viewport2D`, `Shader2D`, or `PostProcess2D` APIs returns safe defaults or no-ops instead of interpreting unrelated memory as that type.
+- Graphics2D handle validators check the runtime class and minimum object size. Passing the wrong object type to render target, texture, tileset, tile layer, viewport, shader, or post-process APIs returns safe defaults or no-ops instead of interpreting unrelated memory as that type. Surface/texture/scaler compatibility APIs accept both the canonical and alias runtime classes.
 
 ## Render Targets, Textures, And Renderer
 
@@ -71,14 +71,14 @@ canvas.BlitAlpha(0, 0, target.Pixels)
 var palette = Palette2D.New()
 palette.SetColor(3, 0xFF0000FF)
 palette.SetColor(4, Color.RGBA(0, 0, 255, 128))
-var recolored = palette.Apply(indexedPixels)
+var recolored = palette.Apply(sourcePixels)
 var legacyRecolored = palette.ApplyLegacy(oldAlphaByteIndexedPixels)
 
 var gradient = Gradient2D.New(0x000000FF, Color.RGBA(255, 255, 255, 192), 16)
 gradient.FillHorizontal(pixels)
 ```
 
-`Palette2D.Apply` treats the source pixel red byte as the palette index and writes `0xRRGGBBAA` colors to a new buffer. Only palette entries set with `SetColor` are remapped; unset entries and out-of-range indices are copied unchanged. `ApplyLegacy` keeps the older `0x000000II` alpha-byte index convention for assets that used fully transparent pixels as palette indices.
+`Palette2D.Apply` maps each source pixel to the nearest defined palette color in RGBA space and writes a new `Pixels` buffer. Empty palettes copy source pixels unchanged. `ApplyLegacy` keeps the older indexed behavior: the source red byte is the palette index, and `0x000000II` alpha-byte indices are also accepted for assets that used fully transparent pixels as palette indices.
 
 `Palette2D.GetColor(index)` and `Gradient2D.Sample(t)` return values that work with `Color.GetR/G/B/A`, preserving alpha from raw pixel storage. `Palette2D.GetRGBA(index)` and `Gradient2D.SampleRGBA(t)` return raw `0xRRGGBBAA`.
 
@@ -143,7 +143,7 @@ canvas.Blit(0, 0, video.Frame)
 
 ## Notes
 
-- `GpuTexture2D` is a compatibility alias today. It intentionally exposes the same behavior as `Texture2D` until a GPU-backed renderer is available.
+- `Surface2D`, `GpuTexture2D`, and `ScreenScaler` expose compatibility behavior while retaining distinct runtime class IDs for code that needs exact type identity.
 - `PostProcess2D` has its own runtime class. It is accepted wherever a render pass expects an effect, but it is not treated as a `Shader2D` by direct shader APIs.
-- `RenderPass2D` requires `RenderTarget2D` source and target objects. Invalid source or target handles make the pass a no-op instead of interpreting the handle as a render target. `SetShader` accepts either a `Shader2D` or `PostProcess2D`; other handles clear the pass effect.
+- `RenderPass2D.New` requires valid `RenderTarget2D` or `Surface2D` source and target objects; invalid handles return `null`. `SetSource` and `SetTarget` accept valid render targets or `null`, and ignore unrelated handles. `SetShader` accepts either a `Shader2D`, a `PostProcess2D`, or `null`; unrelated handles are ignored.
 - `VideoPlayer` decodes in software on the calling thread. For best results call `Update` once per frame with the actual elapsed seconds rather than a fixed timestep.

@@ -76,12 +76,15 @@ typedef struct rt_lrucache_impl {
     rt_lru_node *tail;     ///< Least recently used node (doubly-linked list tail).
 } rt_lrucache_impl;
 
+/// @brief Checked cast of an opaque handle to the LruCache implementation.
+/// @details Traps with @p what if @p obj is NULL or not an LruCache.
 static rt_lrucache_impl *as_lrucache(void *obj, const char *what) {
     if (!obj || rt_obj_class_id(obj) != RT_LRUCACHE_CLASS_ID)
         rt_trap(what);
     return (rt_lrucache_impl *)obj;
 }
 
+/// @brief Borrow the byte buffer + length of a key string (empty "" if null).
 static const char *get_key_data(rt_string key, size_t *out_len) {
     if (!key) {
         *out_len = 0;
@@ -245,6 +248,8 @@ static void evict_lru(rt_lrucache_impl *cache) {
 // Finalizer
 // ---------------------------------------------------------------------------
 
+/// @brief GC finalizer: free every node by walking the LRU list, then free
+///        the bucket array.
 static void rt_lrucache_finalize(void *obj) {
     if (!obj)
         return;
@@ -266,6 +271,7 @@ static void rt_lrucache_finalize(void *obj) {
     cache->bucket_count = 0;
 }
 
+/// @brief GC traversal: visit every cached value across the node list.
 static void rt_lrucache_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;

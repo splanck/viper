@@ -58,6 +58,8 @@ typedef struct rt_binbuf_impl {
     int64_t position; ///< Read/write cursor position.
 } rt_binbuf_impl;
 
+/// @brief Checked cast of an opaque handle to the BinaryBuffer impl;
+///        traps if @p obj is NULL or not a BinaryBuffer.
 static rt_binbuf_impl *binbuf_require(void *obj) {
     if (!obj || rt_obj_class_id(obj) != RT_BINBUF_CLASS_ID)
         rt_trap("BinaryBuffer: invalid buffer");
@@ -132,21 +134,25 @@ static void binbuf_check_read(rt_binbuf_impl *buf, int64_t count) {
         rt_trap("BinaryBuffer: read past end");
 }
 
+/// @brief Trap if @p value does not fit a signed 16-bit integer.
 static void binbuf_require_i16(int64_t value) {
     if (value < INT16_MIN || value > INT16_MAX)
         rt_trap("BinaryBuffer: i16 value out of range");
 }
 
+/// @brief Trap if @p value does not fit an unsigned 16-bit integer.
 static void binbuf_require_u16(int64_t value) {
     if (value < 0 || value > UINT16_MAX)
         rt_trap("BinaryBuffer: u16 value out of range");
 }
 
+/// @brief Trap if @p value does not fit a signed 32-bit integer.
 static void binbuf_require_i32(int64_t value) {
     if (value < INT32_MIN || value > INT32_MAX)
         rt_trap("BinaryBuffer: i32 value out of range");
 }
 
+/// @brief Trap if @p value does not fit an unsigned 32-bit integer.
 static void binbuf_require_u32(int64_t value) {
     if (value < 0 || value > UINT32_MAX)
         rt_trap("BinaryBuffer: u32 value out of range");

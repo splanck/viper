@@ -255,12 +255,17 @@ static int8_t pixels_draw_line_raw(
     return wrote;
 }
 
+/// @brief Squared distance between two points in long double (no sqrt, no
+///        overflow) — used only to compare relative edge lengths.
 static long double pixels_dist2_ld(int64_t x1, int64_t y1, int64_t x2, int64_t y2) {
     long double dx = (long double)x2 - (long double)x1;
     long double dy = (long double)y2 - (long double)y1;
     return dx * dx + dy * dy;
 }
 
+/// @brief Degenerate-triangle fallback: when the three vertices are collinear
+///        (zero area), rasterize just the longest of the three edges so the
+///        triangle still renders as the line it visually is.
 static void pixels_draw_degenerate_triangle_line(void *pixels,
                                                  int64_t x1,
                                                  int64_t y1,

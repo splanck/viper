@@ -104,6 +104,7 @@ static void rt_list_finalize(void *obj) {
     }
 }
 
+/// @brief GC traversal: visit every live element in the backing array.
 static void rt_list_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
@@ -165,6 +166,7 @@ static inline rt_list_impl *as_list(void *p) {
     return (rt_list_impl *)p;
 }
 
+/// @brief Drop one GC reference to a transient @p obj and free it at zero.
 static void release_temp_obj(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);

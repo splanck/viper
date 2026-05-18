@@ -157,6 +157,9 @@ typedef struct {
     cp_dir_t first_strong;  ///< DIR_NEUTRAL if the string has no strong chars
 } scan_result_t;
 
+/// @brief Single pass over a UTF-8 string tallying strong LTR/RTL codepoints
+///        and recording the first strong direction (the UAX#9 P2/P3 input).
+/// @return Counts plus @c first_strong (DIR_NEUTRAL if no strong char appears).
 static scan_result_t scan(const char *s, size_t len) {
     scan_result_t r = { 0, 0, DIR_NEUTRAL };
     if (!s || len == 0)

@@ -363,6 +363,9 @@ static int64_t parallel_pool_size(void *pool) {
     return size > 0 ? size : 1;
 }
 
+/// @brief Multiply two non-negative int64s, saturating at INT64_MAX on
+///        overflow; returns 0 if either operand is <= 0. Used to size work
+///        partitions without UB on extreme range/chunk counts.
 static int64_t parallel_saturating_mul_i64(int64_t lhs, int64_t rhs) {
     if (lhs <= 0 || rhs <= 0)
         return 0;
@@ -445,10 +448,14 @@ static void parallel_trap_error(const char *fallback, const char *captured) {
     rt_trap((captured && captured[0]) ? captured : fallback);
 }
 
+/// @brief True if a @p count-element array of @p elem_size bytes can be
+///        allocated without size_t overflow (rejects negative counts).
 static int parallel_count_fits_array(int64_t count, size_t elem_size) {
     return count >= 0 && elem_size > 0 && (uint64_t)count <= (uint64_t)SIZE_MAX / elem_size;
 }
 
+/// @brief True if @p count fits a non-negative int wait-counter (the
+///        cross-thread completion counter is an int; reject overflow).
 static int parallel_count_fits_wait_counter(int64_t count) {
     return count >= 0 && count <= INT_MAX;
 }

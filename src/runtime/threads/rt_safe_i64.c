@@ -37,6 +37,10 @@
 #include <stdint.h>
 #include <string.h>
 
+/// @brief Reinterpret a uint64 bit pattern as int64 without UB.
+/// @details Uses memcpy (well-defined type punning) rather than a signed cast,
+///          whose result would be implementation-defined for values above
+///          INT64_MAX — important since this backs atomic load results.
 static int64_t safe_i64_from_u64(uint64_t value) {
     int64_t out;
     memcpy(&out, &value, sizeof(out));

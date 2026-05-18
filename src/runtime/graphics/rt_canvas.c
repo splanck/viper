@@ -67,7 +67,7 @@ static void rt_canvas_destroy_window(rt_canvas *canvas) {
     canvas->gfx_win = NULL;
 }
 
-/// @brief GC finalizer: free cached title, destroy window, and clear the magic number.
+/// @brief GC finalizer: destroy window, free cached title, and clear the magic number.
 /// @details Invoked by the runtime when the canvas refcount drops to zero.
 ///          Wiping `magic` lets `rt_canvas_checked` reject use-after-free
 ///          (caller dereferences a stale handle) by detecting the zeroed
@@ -78,11 +78,11 @@ static void rt_canvas_finalize(void *obj) {
 
     rt_canvas *canvas = (rt_canvas *)obj;
     canvas->magic = 0;
+    rt_canvas_destroy_window(canvas);
     if (canvas->title) {
         free(canvas->title);
         canvas->title = NULL;
     }
-    rt_canvas_destroy_window(canvas);
 }
 
 /// @brief Convert a physical pixel position from a vgfx event into logical mouse coords.
@@ -143,23 +143,24 @@ void *rt_canvas_new(rt_string title, int64_t width, int64_t height) {
     vgfx_window_params_t params = vgfx_window_params_default();
     params.width = win_width;
     params.height = win_height;
-    char *ctitle = NULL;
     if (title) {
         size_t title_len = (size_t)rt_str_len(title);
-        ctitle = (char *)malloc(title_len + 1);
-        if (!ctitle) {
+        const char *cstr = rt_string_cstr(title);
+        canvas->title = (char *)malloc(title_len + 1);
+        if (!canvas->title || !cstr) {
+            free(canvas->title);
+            canvas->title = NULL;
             if (rt_obj_release_check0(canvas))
                 rt_obj_free(canvas);
             rt_trap("Canvas.New: failed to allocate title buffer");
             return NULL;
         }
-        memcpy(ctitle, rt_string_cstr(title), title_len);
-        ctitle[title_len] = '\0';
-        params.title = ctitle;
+        memcpy(canvas->title, cstr, title_len);
+        canvas->title[title_len] = '\0';
+        params.title = canvas->title;
     }
 
     canvas->gfx_win = vgfx_create_window(&params);
-    free(ctitle);
     if (!canvas->gfx_win) {
         if (rt_obj_release_check0(canvas))
             rt_obj_free(canvas);
@@ -170,12 +171,6 @@ void *rt_canvas_new(rt_string title, int64_t width, int64_t height) {
     // Enable HiDPI coordinate scaling so Canvas apps draw in logical pixels
     // while the framebuffer is at physical resolution.
     vgfx_set_coord_scale(canvas->gfx_win, vgfx_window_get_scale(canvas->gfx_win));
-
-    // Cache the title for GetTitle
-    if (title) {
-        const char *cstr = rt_string_cstr(title);
-        canvas->title = cstr ? strdup(cstr) : NULL;
-    }
 
     // Initialize keyboard input for this canvas
     rt_keyboard_set_canvas(canvas->gfx_win);
@@ -509,10 +504,12 @@ void rt_canvas_set_title(void *canvas_ptr, rt_string title) {
     rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
     if (canvas && canvas->gfx_win && title) {
         const char *cstr = rt_string_cstr(title);
-        char *new_title = cstr ? strdup(cstr) : NULL;
-        if (cstr && !new_title)
+        if (!cstr)
             return;
-        vgfx_set_title(canvas->gfx_win, cstr);
+        char *new_title = strdup(cstr);
+        if (!new_title)
+            return;
+        vgfx_set_title(canvas->gfx_win, new_title);
         free(canvas->title);
         canvas->title = new_title;
     }

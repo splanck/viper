@@ -79,17 +79,21 @@ typedef struct rt_pqueue_impl {
     heap_entry *items; ///< Array of (priority, value) entries
 } rt_pqueue_impl;
 
+/// @brief Checked cast of an opaque handle to the priority-queue impl;
+///        traps with @p what if @p obj is NULL or not a PriorityQueue/Heap.
 static rt_pqueue_impl *as_pqueue(void *obj, const char *what) {
     if (!obj || rt_obj_class_id(obj) != RT_PQUEUE_CLASS_ID)
         rt_trap(what);
     return (rt_pqueue_impl *)obj;
 }
 
+/// @brief Drop one GC reference to a heap element and free it at zero.
 static void heap_release_value(void *value) {
     if (value && rt_obj_release_check0(value))
         rt_obj_free(value);
 }
 
+/// @brief GC traversal: visit every value currently stored in the heap array.
 static void rt_pqueue_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;

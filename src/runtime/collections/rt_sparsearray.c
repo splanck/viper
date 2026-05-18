@@ -61,6 +61,8 @@ typedef struct {
     sa_slot *slots;
 } rt_sparse_impl;
 
+/// @brief Checked cast of an opaque handle to the SparseArray implementation;
+///        traps with @p what if @p obj is NULL or not a SparseArray.
 static rt_sparse_impl *as_sparse(void *obj, const char *what) {
     if (!obj || rt_obj_class_id(obj) != RT_SPARSEARRAY_CLASS_ID)
         rt_trap(what);
@@ -69,6 +71,7 @@ static rt_sparse_impl *as_sparse(void *obj, const char *what) {
 
 // --- Hash function for int64 ---
 
+/// @brief 64-bit integer mix hash (Murmur3 fmix64) for sparse-array keys.
 static uint64_t sa_hash(int64_t key) {
     uint64_t k = (uint64_t)key;
     k ^= k >> 33;
@@ -81,11 +84,13 @@ static uint64_t sa_hash(int64_t key) {
 
 // --- Internal helpers ---
 
+/// @brief Drop one GC reference to a stored value and free it at zero.
 static void sa_release_value(void *value) {
     if (value && rt_obj_release_check0(value))
         rt_obj_free(value);
 }
 
+/// @brief GC finalizer: release every occupied slot's value, free the slots.
 static void sa_finalizer(void *obj) {
     if (!obj)
         return;
@@ -102,6 +107,7 @@ static void sa_finalizer(void *obj) {
     sa->count = 0;
 }
 
+/// @brief GC traversal: visit the value of every occupied slot.
 static void sa_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
@@ -116,6 +122,8 @@ static void sa_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
 
 static void sa_grow(rt_sparse_impl *sa);
 
+/// @brief Open-addressed (linear-probe) insert/update of @p key→@p value;
+///        retains the value, releasing a replaced one. Assumes spare capacity.
 static void sa_insert_internal(rt_sparse_impl *sa, int64_t key, void *value) {
     uint64_t h = sa_hash(key);
     int64_t mask = sa->capacity - 1;
@@ -141,6 +149,8 @@ static void sa_insert_internal(rt_sparse_impl *sa, int64_t key, void *value) {
     }
 }
 
+/// @brief Double the slot table and re-insert occupied entries (ownership
+///        transferred, no extra retain). Traps on overflow/OOM.
 static void sa_grow(rt_sparse_impl *sa) {
     int64_t old_cap = sa->capacity;
     sa_slot *old_slots = sa->slots;
@@ -179,6 +189,7 @@ static void sa_grow(rt_sparse_impl *sa) {
     free(old_slots);
 }
 
+/// @brief Linear-probe lookup of @p key; returns its slot or NULL if absent.
 static sa_slot *sa_find(rt_sparse_impl *sa, int64_t key) {
     if (!sa || sa->count == 0)
         return NULL;

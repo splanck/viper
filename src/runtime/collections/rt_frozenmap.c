@@ -50,6 +50,9 @@
 
 // --- Helper: extract string from seq element (may be boxed) ---
 
+/// @brief Coerce a seq element to an rt_string, unboxing if necessary.
+/// @param owned Set to 1 if the result is a fresh unboxed string the caller
+///              must release; 0 if @p elem was already a borrowed handle.
 static rt_string fm_extract_str(void *elem, int *owned) {
     if (owned)
         *owned = 0;
@@ -77,6 +80,8 @@ typedef struct {
     fm_slot *slots;
 } rt_frozenmap_impl;
 
+/// @brief Checked cast of an opaque handle to the FrozenMap implementation.
+/// @details Traps with @p what if @p obj is NULL or not a FrozenMap.
 static rt_frozenmap_impl *as_frozenmap(void *obj, const char *what) {
     if (!obj || rt_obj_class_id(obj) != RT_FROZENMAP_CLASS_ID)
         rt_trap(what);
@@ -85,6 +90,7 @@ static rt_frozenmap_impl *as_frozenmap(void *obj, const char *what) {
 
 // --- FNV-1a hash ---
 
+/// @brief FNV-1a 64-bit hash of @p len bytes of @p data.
 static uint64_t fm_hash(const char *data, int64_t len) {
     uint64_t h = 14695981039346656037ULL;
     for (int64_t i = 0; i < len; i++) {
@@ -94,6 +100,7 @@ static uint64_t fm_hash(const char *data, int64_t len) {
     return h;
 }
 
+/// @brief FNV-1a hash of an rt_string's bytes (empty string for NULL).
 static uint64_t fm_str_hash(rt_string s) {
     if (!s)
         return fm_hash("", 0);
@@ -104,6 +111,7 @@ static uint64_t fm_str_hash(rt_string s) {
 
 // --- Internal helpers ---
 
+/// @brief Borrow the byte buffer + length of a key string (empty "" if null).
 static const char *fm_key_data(rt_string key, int64_t *out_len) {
     if (!key) {
         *out_len = 0;
@@ -123,17 +131,21 @@ static const char *fm_key_data(rt_string key, int64_t *out_len) {
     return data;
 }
 
+/// @brief Byte-exact equality test between stored @p key and @p data/@p len.
 static int8_t fm_key_equals(rt_string key, const char *data, int64_t len) {
     int64_t key_len = 0;
     const char *key_data = fm_key_data(key, &key_len);
     return key_len == len && memcmp(key_data, data, (size_t)len) == 0 ? 1 : 0;
 }
 
+/// @brief Drop one GC reference to a stored value and free it at zero.
 static void fm_release_value(void *value) {
     if (value && rt_obj_release_check0(value))
         rt_obj_free(value);
 }
 
+/// @brief GC finalizer: unref every occupied slot's key, release its value,
+///        and free the slot array.
 static void fm_finalizer(void *obj) {
     if (!obj)
         return;
@@ -150,6 +162,7 @@ static void fm_finalizer(void *obj) {
     }
 }
 
+/// @brief GC traversal: visit the value of every occupied slot.
 static void fm_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
@@ -162,6 +175,9 @@ static void fm_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     }
 }
 
+/// @brief Smallest power of two >= @p n, floor 16 (table capacities are
+///        powers of two so hashing can mask instead of modulo). Traps on
+///        overflow.
 static int64_t fm_next_pow2(int64_t n) {
     int64_t p = 16;
     while (p < n) {
@@ -172,6 +188,9 @@ static int64_t fm_next_pow2(int64_t n) {
     return p;
 }
 
+/// @brief Allocate a FrozenMap sized for @p count entries (~2x load headroom,
+///        power-of-two capacity). Installs finalizer + GC traversal; traps
+///        on overflow/OOM.
 static rt_frozenmap_impl *fm_alloc(int64_t count) {
     int64_t needed = 8;
     if (count >= 4) {
@@ -199,7 +218,8 @@ static rt_frozenmap_impl *fm_alloc(int64_t count) {
     return fm;
 }
 
-// Insert or update. Returns 1 if new entry, 0 if updated.
+/// @brief Linear-probe insert/update during construction (last writer wins).
+/// @return 1 if a new entry was added, 0 if an existing key was updated.
 static int8_t fm_insert(rt_frozenmap_impl *fm, rt_string key, void *value) {
     uint64_t h = fm_str_hash(key);
     int64_t mask = fm->capacity - 1;
@@ -228,6 +248,7 @@ static int8_t fm_insert(rt_frozenmap_impl *fm, rt_string key, void *value) {
     return 0;
 }
 
+/// @brief Linear-probe lookup of @p key; returns its slot or NULL if absent.
 static fm_slot *fm_find(rt_frozenmap_impl *fm, rt_string key) {
     if (!fm || fm->count == 0)
         return NULL;
@@ -375,6 +396,7 @@ void *rt_frozenmap_merge(void *obj, void *other) {
     return (void *)fm;
 }
 
+/// @brief Value equality: pointer-identical or boxed-value equal.
 static int8_t fm_value_equals(void *a, void *b) {
     return a == b || rt_box_equal(a, b);
 }

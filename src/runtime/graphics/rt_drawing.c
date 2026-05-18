@@ -874,7 +874,8 @@ void rt_canvas_disc_alpha(
             x1 = clip_x1;
         for (int64_t px = x0; px <= x1; px++) {
             if (alpha >= 255)
-                vgfx_pset(canvas->gfx_win, (int32_t)px, (int32_t)py, (vgfx_color_t)color);
+                vgfx_pset(
+                    canvas->gfx_win, (int32_t)px, (int32_t)py, rt_canvas_color_to_vgfx_rgb(color));
             else
                 vgfx_pset_alpha(canvas->gfx_win, (int32_t)px, (int32_t)py, argb);
         }
@@ -1269,8 +1270,9 @@ void *rt_canvas_copy_rect(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int
     // O(w*h) vgfx_point() calls (each involves clipping + bounds checking).
     vgfx_framebuffer_t fb;
     if (!vgfx_get_framebuffer(canvas->gfx_win, &fb)) {
-        // Framebuffer unavailable (mock/headless); fall back to empty buffer.
-        return pixels;
+        if (rt_obj_release_check0(pixels))
+            rt_obj_free(pixels);
+        return NULL;
     }
 
     // Sample the physical pixel at the logical pixel's scaled top-left corner.

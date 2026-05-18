@@ -116,10 +116,15 @@ static void *sprite_get_current_frame_ptr(rt_sprite_impl *sprite) {
     return sprite->frames[sprite->current_frame];
 }
 
+/// @brief Clamp a per-frame delay to a minimum of 1 ms (a 0/negative delay
+///        would make the animation never advance / divide by zero).
 static int64_t sprite_normalize_delay(int64_t ms) {
     return ms < 1 ? 1 : ms;
 }
 
+/// @brief Grow the parallel frames[] / frame_delays_ms[] arrays to hold at
+///        least @p needed frames (doubling, overflow-checked); new slots get
+///        the sprite's default delay. @return 1 on success, 0 on failure.
 static int8_t sprite_ensure_frame_capacity(rt_sprite_impl *sprite, int64_t needed) {
     if (!sprite || needed <= 0)
         return 0;
@@ -158,6 +163,9 @@ static int8_t sprite_ensure_frame_capacity(rt_sprite_impl *sprite, int64_t neede
     return 1;
 }
 
+/// @brief Normalized display delay (ms) for a given @p frame, falling back to
+///        the sprite-wide default for out-of-range frames or missing per-frame
+///        delay data.
 static int64_t sprite_frame_delay_at(rt_sprite_impl *sprite, int64_t frame) {
     if (!sprite || frame < 0 || frame >= sprite->frame_count || !sprite->frame_delays_ms)
         return sprite ? sprite_normalize_delay(sprite->frame_delay_ms)
@@ -165,6 +173,8 @@ static int64_t sprite_frame_delay_at(rt_sprite_impl *sprite, int64_t frame) {
     return sprite_normalize_delay(sprite->frame_delays_ms[frame]);
 }
 
+/// @brief Total duration (ms) of one full animation cycle — the sum of every
+///        frame's normalized delay (0 if the sprite has no frames).
 static int64_t sprite_cycle_delay(rt_sprite_impl *sprite) {
     if (!sprite || sprite->frame_count <= 0)
         return 0;

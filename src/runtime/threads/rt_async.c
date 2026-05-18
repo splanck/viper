@@ -63,10 +63,14 @@ static void async_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief True if a @p count-element array of @p elem_size bytes can be
+///        allocated without size_t overflow (rejects negative counts).
 static int async_count_fits_array(int64_t count, size_t elem_size) {
     return count >= 0 && elem_size > 0 && (uint64_t)count <= (uint64_t)SIZE_MAX / elem_size;
 }
 
+/// @brief Release the GC reference held by each of @p count source slots
+///        (used when tearing down a combined/awaited source array).
 static void async_release_source_array(void **sources, int64_t count) {
     if (!sources)
         return;

@@ -137,6 +137,7 @@ static rt_debounce_data *debounce_require(void *debouncer, int8_t trap_on_null) 
     return (rt_debounce_data *)debouncer;
 }
 
+/// @brief Drop one GC reference to @p obj and free it if the count hit zero.
 static void debounce_release_object(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);

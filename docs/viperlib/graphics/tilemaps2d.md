@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-15
+last-verified: 2026-05-17
 ---
 
 # 2D Tilemaps and Layers
@@ -16,7 +16,7 @@ Use this page for tile-oriented map data and editor/import helpers. The core `Ti
 | Class | Purpose |
 |-------|---------|
 | `TileSet2D` | Uniform grid tileset over a `Pixels` image. |
-| `TileLayer2D` | Dense tile ID layer with visibility and opacity. |
+| `TileLayer2D` | Dense tile ID layer with visibility and percent opacity. |
 | `ObjectLayer2D` | Rect object layer for collision, triggers, spawn points, and editor metadata. |
 | `AutoTile2D` | 16-mask autotile resolver that can apply resolved tile IDs to a `TileLayer2D`. |
 | `TilemapRenderer2D` | Tilemap draw facade with draw-count tracking and optional chunk-cache association. |
@@ -41,13 +41,15 @@ auto.SetVariant(5, 42)
 auto.Apply(ground, 10, 12, 5)
 ```
 
-`TileSet2D.New` requires a `Pixels` image whose dimensions are at least one full tile. The tileset retains the image and indexes tiles left-to-right, top-to-bottom from zero. `TileLayer2D.Get` returns `-1` for out-of-bounds coordinates. TileSet and TileLayer APIs validate their handles; invalid non-matching handles return safe defaults or no-op.
+`TileSet2D.New` requires a `Pixels` image whose dimensions are at least one full tile. The tileset retains the image and indexes tiles left-to-right, top-to-bottom from zero. `TileLayer2D.Get` returns `-1` for out-of-bounds coordinates, and `TileLayer2D.Opacity` is clamped to `0..100`. TileSet and TileLayer APIs validate their handles; invalid non-matching handles return safe defaults or no-op.
 
 `ObjectLayer2D.AddRect` normalizes negative width or height by moving the origin to the rectangle's top-left corner. Zero-size rectangles and dimensions that cannot be represented are rejected.
 
 ## Notes
 
 - `TexturePackerAtlas`, `AsepriteImporter`, and `TiledMapLoader` are runtime-side helpers for common 2D asset layouts.
+- `TilemapRenderer2D.DrawCount` reports the number of non-empty, valid tiles drawn by the last `Draw` or `DrawRegion` call, not the number of renderer method calls.
+- `Tilemap.CountDrawnRegion(x, y, width, height)` and `Tilemap.CountDrawnVisible(canvas, offsetX, offsetY)` expose the same drawable-tile counting logic for tests, debug overlays, and editor diagnostics.
 - Import helpers currently provide atlas/tilemap construction primitives rather than full external JSON or `.aseprite` file parsing.
 - Atlas regions are validated against their backing `Pixels` buffer before registration.
 - `AsepriteImporter.SetGrid(width, height)` treats non-positive dimensions as an unset grid. `ToAtlas(pixels)` returns `null` until both frame dimensions are positive.

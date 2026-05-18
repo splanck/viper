@@ -48,6 +48,9 @@
 
 // --- Helper: extract string from seq element (may be boxed) ---
 
+/// @brief Coerce a seq element to an rt_string, unboxing if necessary.
+/// @param owned Set to 1 if the result is a fresh unboxed string the caller
+///              must release; 0 if @p elem was already a borrowed handle.
 static rt_string fs_extract_str(void *elem, int *owned) {
     if (owned)
         *owned = 0;
@@ -74,6 +77,8 @@ typedef struct {
     fs_slot *slots;
 } rt_frozenset_impl;
 
+/// @brief Checked cast of an opaque handle to the FrozenSet implementation.
+/// @details Traps with @p what if @p obj is NULL or not a FrozenSet.
 static rt_frozenset_impl *as_frozenset(void *obj, const char *what) {
     if (!obj || rt_obj_class_id(obj) != RT_FROZENSET_CLASS_ID)
         rt_trap(what);
@@ -82,6 +87,7 @@ static rt_frozenset_impl *as_frozenset(void *obj, const char *what) {
 
 // --- FNV-1a hash ---
 
+/// @brief FNV-1a 64-bit hash of @p len bytes of @p data.
 static uint64_t fs_hash(const char *data, int64_t len) {
     uint64_t h = 14695981039346656037ULL;
     for (int64_t i = 0; i < len; i++) {
@@ -91,6 +97,7 @@ static uint64_t fs_hash(const char *data, int64_t len) {
     return h;
 }
 
+/// @brief FNV-1a hash of an rt_string's bytes (empty string for NULL).
 static uint64_t fs_str_hash(rt_string s) {
     if (!s)
         return fs_hash("", 0);
@@ -101,6 +108,7 @@ static uint64_t fs_str_hash(rt_string s) {
 
 // --- Internal helpers ---
 
+/// @brief Borrow the byte buffer + length of a key string (empty "" if null).
 static const char *fs_key_data(rt_string key, int64_t *out_len) {
     if (!key) {
         *out_len = 0;
@@ -120,12 +128,14 @@ static const char *fs_key_data(rt_string key, int64_t *out_len) {
     return data;
 }
 
+/// @brief Byte-exact equality test between stored @p key and @p data/@p len.
 static int8_t fs_key_equals(rt_string key, const char *data, int64_t len) {
     int64_t key_len = 0;
     const char *key_data = fs_key_data(key, &key_len);
     return key_len == len && memcmp(key_data, data, (size_t)len) == 0 ? 1 : 0;
 }
 
+/// @brief GC finalizer: unref every occupied slot's key and free the slots.
 static void fs_finalizer(void *obj) {
     if (!obj)
         return;
@@ -142,6 +152,8 @@ static void fs_finalizer(void *obj) {
     fs->count = 0;
 }
 
+/// @brief Smallest power of two >= @p n, floor 16 (capacity is a power of
+///        two so probing can mask instead of modulo). Traps on overflow.
 static int64_t fs_next_pow2(int64_t n) {
     int64_t p = 16;
     while (p < n) {
@@ -152,6 +164,9 @@ static int64_t fs_next_pow2(int64_t n) {
     return p;
 }
 
+/// @brief Allocate a FrozenSet sized for @p count entries (~50% load factor,
+///        power-of-two capacity). Installs the finalizer; traps on
+///        overflow/OOM.
 static rt_frozenset_impl *fs_alloc(int64_t count) {
     // Use ~50% load factor for good probe performance
     int64_t needed = 8;
@@ -180,6 +195,8 @@ static rt_frozenset_impl *fs_alloc(int64_t count) {
     return fs;
 }
 
+/// @brief Linear-probe insert during construction; ignores duplicates.
+/// @return 1 if @p key was newly added, 0 if it was already present.
 static int8_t fs_insert(rt_frozenset_impl *fs, rt_string key) {
     uint64_t h = fs_str_hash(key);
     int64_t mask = fs->capacity - 1;
@@ -201,6 +218,7 @@ static int8_t fs_insert(rt_frozenset_impl *fs, rt_string key) {
     return 0;
 }
 
+/// @brief Linear-probe membership test for @p key (0 if set is empty/absent).
 static int8_t fs_contains(rt_frozenset_impl *fs, rt_string key) {
     if (!fs || fs->count == 0)
         return 0;

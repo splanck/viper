@@ -45,6 +45,9 @@ static void test_graphics2d_handles_have_unique_classes_and_reject_wrong_types()
     void *target = rt_rendertarget2d_new(1, 1);
     void *pixels = rt_pixels_new(1, 1);
     void *texture = rt_texture2d_new(pixels);
+    void *surface = rt_surface2d_new(1, 1);
+    void *gpu_texture = rt_gputexture2d_new(pixels);
+    void *screen_scaler = rt_screenscaler_new(320, 180, 640, 360);
     void *renderer = rt_renderer2d_new(1);
     void *sprite = rt_sprite_new(pixels);
     void *shader = rt_shader2d_new(RT_GRAPHICS2D_EFFECT_NONE);
@@ -52,6 +55,9 @@ static void test_graphics2d_handles_have_unique_classes_and_reject_wrong_types()
 
     assert(target != nullptr);
     assert(texture != nullptr);
+    assert(surface != nullptr);
+    assert(gpu_texture != nullptr);
+    assert(screen_scaler != nullptr);
     assert(renderer != nullptr);
     assert(sprite != nullptr);
     assert(shader != nullptr);
@@ -59,6 +65,9 @@ static void test_graphics2d_handles_have_unique_classes_and_reject_wrong_types()
 
     int64_t target_class = rt_obj_class_id(target);
     int64_t texture_class = rt_obj_class_id(texture);
+    int64_t surface_class = rt_obj_class_id(surface);
+    int64_t gpu_texture_class = rt_obj_class_id(gpu_texture);
+    int64_t screen_scaler_class = rt_obj_class_id(screen_scaler);
     int64_t renderer_class = rt_obj_class_id(renderer);
     int64_t pixels_class = rt_obj_class_id(pixels);
     int64_t sprite_class = rt_obj_class_id(sprite);
@@ -73,10 +82,17 @@ static void test_graphics2d_handles_have_unique_classes_and_reject_wrong_types()
     assert(texture_class != renderer_class);
     assert(texture_class != pixels_class);
     assert(texture_class != sprite_class);
+    assert(surface_class != target_class);
+    assert(gpu_texture_class != texture_class);
+    assert(screen_scaler_class != 0);
     assert(shader_class != post_class);
     assert(post_class != texture_class);
+    assert(rt_rendertarget2d_width(surface) == 1);
+    assert(rt_texture2d_width(gpu_texture) == 1);
+    assert(rt_viewport2d_get_scale(screen_scaler) == 2000);
 
     assert(rt_texture2d_new(sprite) == nullptr);
+    assert(rt_gputexture2d_new(sprite) == nullptr);
     assert(rt_tileset2d_new(sprite, 1, 1) == nullptr);
     assert(rt_tileset2d_columns(sprite) == 0);
     assert(rt_tileset2d_get_tile_pixels(sprite, 0) == nullptr);
@@ -239,6 +255,22 @@ static void test_texture_renderer_material_and_effects() {
     assert((alpha_middle & 255) >= 126 && (alpha_middle & 255) <= 129);
     rt_renderer2d_end(renderer, nullptr);
 
+    void *atlas_src = rt_pixels_new(3, 1);
+    rt_pixels_set(atlas_src, 0, 0, 0xFF0000FF);
+    rt_pixels_set(atlas_src, 1, 0, 0x00FF00FF);
+    rt_pixels_set(atlas_src, 2, 0, 0x0000FFFF);
+    void *atlas_texture = rt_texture2d_new(atlas_src);
+    rt_texture2d_set_filter(atlas_texture, RT_GRAPHICS2D_FILTER_LINEAR);
+    rt_texture2d_set_wrap(atlas_texture, RT_GRAPHICS2D_WRAP_CLAMP);
+    rt_rendertarget2d_resize(target, 1, 1);
+    rt_rendertarget2d_clear(target, 0x00000000);
+    rt_renderer2d_begin(renderer);
+    rt_renderer2d_draw_texture_region(renderer, atlas_texture, 0, 0, 1, 0, 1, 1);
+    rt_renderer2d_flush_to_target(renderer, target);
+    target_pixels = rt_rendertarget2d_get_pixels(target);
+    assert(rt_pixels_get(target_pixels, 0, 0) == 0x00FF00FF);
+    rt_renderer2d_end(renderer, nullptr);
+
     rt_rendertarget2d_clear(target, 0x101010FF);
     void *add_src = rt_pixels_new(1, 1);
     rt_pixels_set(add_src, 0, 0, 0x202000FF);
@@ -283,7 +315,9 @@ static void test_viewport_tiles_and_objects() {
     rt_tilelayer2d_set(layer, 1, 1, 7);
     assert(rt_tilelayer2d_get(layer, 1, 1) == 7);
     rt_tilelayer2d_set_opacity(layer, 300);
-    assert(rt_tilelayer2d_get_opacity(layer) == 255);
+    assert(rt_tilelayer2d_get_opacity(layer) == 100);
+    rt_tilelayer2d_set_opacity(layer, -20);
+    assert(rt_tilelayer2d_get_opacity(layer) == 0);
 
     void *objects = rt_objectlayer2d_new(1);
     int64_t index = rt_objectlayer2d_add_rect(objects, 10, 20, 30, 40, 5);
@@ -454,10 +488,22 @@ static void test_animation_collision_palette_gradient_and_rig() {
 
     void *clip = rt_animationclip2d_new(0, 2, 50, 1);
     void *animated = rt_animatedsprite2d_new(sprite);
+    assert(rt_animatedsprite2d_is_playing(animated) == 0);
+    rt_animatedsprite2d_play(animated);
+    assert(rt_animatedsprite2d_is_playing(animated) == 0);
     rt_animatedsprite2d_set_clip(animated, clip);
+    assert(rt_animatedsprite2d_is_playing(animated) == 1);
     rt_animatedsprite2d_update(animated, 50);
     assert(rt_animatedsprite2d_get_frame(animated) == 1);
     assert(rt_sprite_get_frame(sprite) == 1);
+    rt_animatedsprite2d_stop(animated);
+    assert(rt_animatedsprite2d_is_playing(animated) == 0);
+    assert(rt_animatedsprite2d_get_frame(animated) == 0);
+    assert(rt_sprite_get_frame(sprite) == 0);
+    rt_animatedsprite2d_play(animated);
+    assert(rt_animatedsprite2d_is_playing(animated) == 1);
+    rt_animatedsprite2d_update(animated, 50);
+    assert(rt_animatedsprite2d_get_frame(animated) == 1);
     rt_animatedsprite2d_update(animated, INT64_MAX);
     assert(rt_sprite_get_frame(sprite) >= 0);
     assert(rt_sprite_get_frame(sprite) < rt_sprite_get_frame_count(sprite));
@@ -491,6 +537,7 @@ static void test_animation_collision_palette_gradient_and_rig() {
     void *alpha_mask = rt_collisionmask2d_from_pixels(alpha_pixels, 0);
     assert(rt_collisionmask2d_get(alpha_mask, 0, 0) == 1);
     assert(rt_collisionmask2d_get(alpha_mask, 1, 0) == 0);
+    assert(rt_collisionmask2d_from_pixels(sprite, 0) == nullptr);
 
     void *hit_a = rt_hitbox2d_new(0, 0, 10, 10);
     void *hit_b = rt_hitbox2d_new(5, 5, 2, 2);
@@ -513,21 +560,20 @@ static void test_animation_collision_palette_gradient_and_rig() {
     assert(rt_color_get_a(palette_color) == 128);
     void *indexed = rt_pixels_new(1, 1);
     rt_pixels_set(indexed, 0, 0, 0x00000003);
-    void *mapped = rt_palette2d_apply(palette, indexed);
-    assert(rt_pixels_get(mapped, 0, 0) == 0x00000003);
     void *mapped_legacy = rt_palette2d_apply_legacy(palette, indexed);
     assert(rt_pixels_get(mapped_legacy, 0, 0) == 0xFF0000FF);
     rt_pixels_set(indexed, 0, 0, 0x00000004);
     void *mapped_tagged = rt_palette2d_apply_legacy(palette, indexed);
     assert(rt_pixels_get(mapped_tagged, 0, 0) == 0x0000FF80);
-    rt_pixels_set(indexed, 0, 0, 0x030000FF);
-    void *mapped_red_channel = rt_palette2d_apply(palette, indexed);
-    assert(rt_pixels_get(mapped_red_channel, 0, 0) == 0xFF0000FF);
     rt_pixels_set(indexed, 0, 0, 0x00000080);
-    void *mapped_strict_alpha = rt_palette2d_apply(palette, indexed);
-    assert(rt_pixels_get(mapped_strict_alpha, 0, 0) == 0x00000080);
     void *mapped_legacy_alpha = rt_palette2d_apply_legacy(palette, indexed);
     assert(rt_pixels_get(mapped_legacy_alpha, 0, 0) == 0x123456FF);
+    void *nearest_src = rt_pixels_new(2, 1);
+    rt_pixels_set(nearest_src, 0, 0, 0xF01010FF);
+    rt_pixels_set(nearest_src, 1, 0, 0x0010F080);
+    void *mapped = rt_palette2d_apply(palette, nearest_src);
+    assert(rt_pixels_get(mapped, 0, 0) == 0xFF0000FF);
+    assert(rt_pixels_get(mapped, 1, 0) == 0x0000FF80);
 
     void *gradient = rt_gradient2d_new(0x000000FF, 0xFFFFFFFF, 2);
     assert(rt_gradient2d_sample(gradient, 100) == 0xFFFFFFFF);
@@ -552,8 +598,14 @@ static void test_animation_collision_palette_gradient_and_rig() {
 
     void *camera = rt_camera_new(100, 100);
     void *rig = rt_camerarig2d_new(camera);
-    rt_camerarig2d_set_target(rig, 50, 50);
+    rt_camerarig2d_set_smoothing(rig, 50);
+    rt_camerarig2d_set_target(rig, 150, 50);
     rt_camerarig2d_update(rig);
+    assert(rt_camera_get_x(camera) == 50);
+    rt_camerarig2d_set_smoothing(rig, 200);
+    rt_camerarig2d_set_target(rig, 250, 50);
+    rt_camerarig2d_update(rig);
+    assert(rt_camera_get_x(camera) == 200);
     rt_camerarig2d_add_shake(rig, 3, -2);
     assert(rt_camerarig2d_get_render_x(rig) == rt_camera_get_x(camera) + 3);
     assert(rt_camerarig2d_get_render_y(rig) == rt_camera_get_y(camera) - 2);
@@ -624,9 +676,13 @@ static void test_layout_rendergraph_tile_helpers_and_importers() {
     assert(rt_pixels_get(rt_rendertarget2d_get_pixels(dst), 0, 0) == 0xEEDDCCFF);
 
     void *wrong_source_pass = rt_renderpass2d_new(rt_rendertarget2d_get_pixels(src), dst);
-    rt_rendertarget2d_clear(dst, 0x010203FF);
-    rt_renderpass2d_execute(wrong_source_pass);
-    assert(rt_pixels_get(rt_rendertarget2d_get_pixels(dst), 0, 0) == 0x010203FF);
+    assert(wrong_source_pass == nullptr);
+    assert(rt_renderpass2d_new(src, rt_rendertarget2d_get_pixels(dst)) == nullptr);
+    void *surface_dst = rt_surface2d_new(1, 1);
+    void *surface_pass = rt_renderpass2d_new(src, surface_dst);
+    assert(surface_pass != nullptr);
+    rt_renderpass2d_execute(surface_pass);
+    assert(rt_pixels_get(rt_rendertarget2d_get_pixels(surface_dst), 0, 0) == 0x112233FF);
     assert(rt_rendertarget2d_get_pixels(rt_rendertarget2d_get_pixels(src)) == nullptr);
     rt_renderpass2d_execute(rt_rendertarget2d_get_pixels(src));
 
@@ -641,6 +697,19 @@ static void test_layout_rendergraph_tile_helpers_and_importers() {
     void *tile_renderer = rt_tilemaprenderer2d_new();
     rt_tilemaprenderer2d_set_chunk_cache(tile_renderer, cache);
     assert(rt_tilemaprenderer2d_get_draw_count(tile_renderer) == 0);
+
+    void *count_tileset = rt_pixels_new(1, 1);
+    rt_pixels_set(count_tileset, 0, 0, 0xFFFFFFFF);
+    void *count_tilemap = rt_tilemap_new(3, 2, 1, 1);
+    rt_tilemap_set_tileset(count_tilemap, count_tileset);
+    rt_tilemap_set_tile(count_tilemap, 0, 0, 1);
+    rt_tilemap_set_tile(count_tilemap, 1, 0, 2);
+    rt_tilemap_set_tile(count_tilemap, 2, 0, 0);
+    int64_t overlay = rt_tilemap_add_layer(count_tilemap, rt_str_from_lit("overlay", 7));
+    rt_tilemap_set_tile_layer(count_tilemap, overlay, 0, 1, 1);
+    assert(rt_tilemap_count_drawn_region(count_tilemap, 0, 0, 3, 2) == 2);
+    rt_tilemap_set_layer_visible(count_tilemap, overlay, 0);
+    assert(rt_tilemap_count_drawn_region(count_tilemap, -1, 0, 3, 2) == 1);
 
     void *atlas_pixels = rt_pixels_new(4, 4);
     void *packer = rt_texturepackeratlas_new(atlas_pixels);

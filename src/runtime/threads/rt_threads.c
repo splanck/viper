@@ -158,6 +158,10 @@ typedef struct RtThread {
     int8_t owns_arg;          ///< 1 when arg is a retained runtime object.
 } RtThread;
 
+/// @brief True if @p obj is a live regular Thread handle (correct class id,
+///        size, and RT_THREAD_MAGIC guard) — distinguishes it from SafeThread
+///        and stale/foreign pointers before any RtThread deref.
+/// @note Defined once per platform backend branch; both copies are identical.
 static int is_regular_thread_handle(void *obj) {
     return rt_obj_is_instance(obj, RT_THREAD_CLASS_ID, sizeof(RtThread)) &&
            thread_handle_magic(obj) == RT_THREAD_MAGIC;
@@ -538,6 +542,10 @@ typedef struct RtThread {
     int8_t cond_uses_monotonic; ///< 1 when cv uses monotonic timed waits.
 } RtThread;
 
+/// @brief True if @p obj is a live regular Thread handle (correct class id,
+///        size, and RT_THREAD_MAGIC guard) — distinguishes it from SafeThread
+///        and stale/foreign pointers before any RtThread deref.
+/// @note Defined once per platform backend branch; both copies are identical.
 static int is_regular_thread_handle(void *obj) {
     return rt_obj_is_instance(obj, RT_THREAD_CLASS_ID, sizeof(RtThread)) &&
            thread_handle_magic(obj) == RT_THREAD_MAGIC;
@@ -1228,6 +1236,11 @@ static void safe_thread_finalize(void *obj) {
     }
 }
 
+/// @brief Atomically take a retained snapshot of a SafeThread's inner Thread.
+/// @details Reads ctx->thread under the SafeThread monitor and retains it
+///          before releasing the lock, so the caller holds a stable reference
+///          even if another thread concurrently swaps/clears the inner thread.
+/// @return The retained inner thread (caller releases), or NULL.
 static void *safe_thread_copy_inner_thread(SafeThreadCtx *ctx) {
     if (!ctx)
         return NULL;

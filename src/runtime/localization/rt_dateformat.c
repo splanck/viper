@@ -60,15 +60,18 @@ typedef struct rt_dateformat_inst {
     const rt_locale_data_t *data;
 } rt_dateformat_inst_t;
 
+/// @brief Unchecked cast of an opaque handle to the DateFormat instance.
 static rt_dateformat_inst_t *as_fmt(void *obj) {
     return (rt_dateformat_inst_t *)obj;
 }
 
+/// @brief Drop one GC reference to @p obj and free it if the count hit zero.
 static void df_release_handle(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
+/// @brief GC finalizer: release the format's locale data and locale handle.
 static void df_finalizer(void *obj) {
     rt_dateformat_inst_t *fmt = (rt_dateformat_inst_t *)obj;
     if (!fmt)
@@ -83,6 +86,9 @@ static void df_finalizer(void *obj) {
 // Constructors
 //===----------------------------------------------------------------------===//
 
+/// @brief Allocate and initialize a GC-managed DateFormat for @p locale.
+/// @details Retains the locale handle + its data. Traps on allocation failure;
+///          installs @ref df_finalizer.
 static void *df_alloc(void *locale) {
     rt_dateformat_inst_t *fmt = (rt_dateformat_inst_t *)rt_obj_new_i64(
         0, (int64_t)sizeof(rt_dateformat_inst_t));
@@ -118,6 +124,9 @@ void *rt_dateformat_get_locale(void *self) {
 // Shared style renderer
 //===----------------------------------------------------------------------===//
 
+/// @brief Render @p timestamp through a CLDR @p pattern using the format's
+///        locale data. Shared backend for the named-style entry points.
+/// @return A new string ("" when @p self or @p pattern is NULL).
 static rt_string render_with_pattern(void *self, int64_t timestamp, const char *pattern) {
     if (!self || !pattern)
         return rt_string_from_bytes("", 0);

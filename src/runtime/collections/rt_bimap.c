@@ -76,12 +76,15 @@ typedef struct rt_bimap_impl {
 // Inverse lookup chain node
 typedef struct rt_bm_inv_link rt_bm_inv_link;
 
+/// @brief Checked cast of an opaque handle to the BiMap implementation.
+/// @details Traps with the @p what message if @p obj is NULL or not a BiMap.
 static rt_bimap_impl *as_bimap(void *obj, const char *what) {
     if (!obj || rt_obj_class_id(obj) != RT_BIMAP_CLASS_ID)
         rt_trap(what);
     return (rt_bimap_impl *)obj;
 }
 
+/// @brief Borrow the byte buffer + length of an rt_string (empty "" if null).
 static const char *get_str_data(rt_string s, size_t *out_len) {
     int64_t len = rt_str_len(s);
     if (len <= 0) {
@@ -97,6 +100,7 @@ static const char *get_str_data(rt_string s, size_t *out_len) {
     return data;
 }
 
+/// @brief Linear scan of a forward bucket chain for an exact key match.
 static rt_bm_entry *find_fwd(rt_bm_entry *head, const char *key, size_t key_len) {
     for (rt_bm_entry *e = head; e; e = e->next) {
         if (e->key_len == key_len && memcmp(e->key, key, key_len) == 0)
@@ -105,6 +109,7 @@ static rt_bm_entry *find_fwd(rt_bm_entry *head, const char *key, size_t key_len)
     return NULL;
 }
 
+/// @brief Linear scan of an inverse chain for the link whose entry has @p val.
 static rt_bm_inv_link *find_inv(rt_bm_inv_link *head, const char *val, size_t val_len) {
     for (rt_bm_inv_link *l = head; l; l = l->next) {
         if (l->entry->value_len == val_len && memcmp(l->entry->value, val, val_len) == 0)
@@ -113,6 +118,7 @@ static rt_bm_inv_link *find_inv(rt_bm_inv_link *head, const char *val, size_t va
     return NULL;
 }
 
+/// @brief Unlink and free the inverse-chain node for value @p val (if present).
 static void remove_inv_link(rt_bimap_impl *bm, const char *val, size_t val_len) {
     uint64_t h = rt_fnv1a(val, val_len);
     size_t idx = (size_t)(h % bm->inv_capacity);
@@ -128,6 +134,7 @@ static void remove_inv_link(rt_bimap_impl *bm, const char *val, size_t val_len) 
     }
 }
 
+/// @brief Push @p link onto the inverse chain bucket for its entry's value.
 static void insert_inv_link(rt_bimap_impl *bm, rt_bm_inv_link *link) {
     rt_bm_entry *entry = link->entry;
     uint64_t h = rt_fnv1a(entry->value, entry->value_len);
@@ -136,6 +143,7 @@ static void insert_inv_link(rt_bimap_impl *bm, rt_bm_inv_link *link) {
     bm->inv_chains[idx] = link;
 }
 
+/// @brief Free a forward entry and its owned key/value buffers (NULL-safe).
 static void free_entry(rt_bm_entry *entry) {
     if (!entry)
         return;
@@ -144,6 +152,8 @@ static void free_entry(rt_bm_entry *entry) {
     free(entry);
 }
 
+/// @brief GC finalizer: free all forward entries, inverse links, and the
+///        bucket/chain arrays, then zero the struct fields.
 static void bimap_finalizer(void *obj) {
     if (!obj)
         return;
@@ -181,6 +191,8 @@ static void bimap_finalizer(void *obj) {
     bm->count = 0;
 }
 
+/// @brief Double the forward bucket array and rehash all entries into it.
+/// @details No-op past the SIZE_MAX/2 cap; traps on allocation overflow/OOM.
 static void resize_fwd(rt_bimap_impl *bm) {
     if (bm->fwd_capacity > SIZE_MAX / 2)
         return;
@@ -208,6 +220,8 @@ static void resize_fwd(rt_bimap_impl *bm) {
     bm->fwd_capacity = new_cap;
 }
 
+/// @brief Double the inverse chain array and rehash all links into it.
+/// @details No-op past the SIZE_MAX/2 cap; traps on allocation overflow/OOM.
 static void resize_inv(rt_bimap_impl *bm) {
     if (bm->inv_capacity > SIZE_MAX / 2)
         return;

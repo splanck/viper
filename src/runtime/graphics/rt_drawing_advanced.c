@@ -116,12 +116,17 @@ static vgfx_color_t rt_canvas_adv_color_to_vgfx_rgb(int64_t color) {
     return (vgfx_color_t)((rt_pixels_color_to_rgba(color) >> 8) & 0x00FFFFFFu);
 }
 
+/// @brief Squared distance between two points in long double (no sqrt, no
+///        overflow) — used only to compare relative edge lengths.
 static long double rt_canvas_adv_dist2_ld(int64_t x1, int64_t y1, int64_t x2, int64_t y2) {
     long double dx = (long double)x2 - (long double)x1;
     long double dy = (long double)y2 - (long double)y1;
     return dx * dx + dy * dy;
 }
 
+/// @brief Degenerate-triangle fallback: when the three vertices are collinear
+///        (zero area), draw just the longest of the three edges so the shape
+///        still renders as the line it visually is.
 static void rt_canvas_adv_degenerate_triangle_line(void *canvas_ptr,
                                                    int64_t x1,
                                                    int64_t y1,

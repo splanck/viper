@@ -60,7 +60,9 @@ void *rt_message_bundle_from_map(void *locale, void *map);
 // Property accessors
 //===----------------------------------------------------------------------===//
 
+/// @brief Return the Locale handle this bundle was built with (borrowed).
 void *rt_message_bundle_get_locale(void *self);
+/// @brief Number of entries in this bundle's own map (excludes fallbacks).
 int64_t rt_message_bundle_get_count(void *self);
 
 //===----------------------------------------------------------------------===//

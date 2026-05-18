@@ -81,12 +81,15 @@ typedef struct {
     rt_trie_node *dst;
 } trie_clone_pair;
 
+/// @brief Checked cast of an opaque handle to the Trie implementation;
+///        traps with @p what if @p obj is NULL or not a Trie.
 static rt_trie_impl *as_trie(void *obj, const char *what) {
     if (!obj || rt_obj_class_id(obj) != RT_TRIE_CLASS_ID)
         rt_trap(what);
     return (rt_trie_impl *)obj;
 }
 
+/// @brief Allocate a zero-initialized trie node (traps on OOM).
 static rt_trie_node *new_node(void) {
     rt_trie_node *n = (rt_trie_node *)calloc(1, sizeof(rt_trie_node));
     if (!n)
@@ -94,6 +97,7 @@ static rt_trie_node *new_node(void) {
     return n;
 }
 
+/// @brief Borrow the byte buffer + length of an rt_string (empty "" if null).
 static const char *trie_string_data(rt_string s, size_t *out_len) {
     int64_t len = rt_str_len(s);
     if (len <= 0) {
@@ -111,6 +115,8 @@ static const char *trie_string_data(rt_string s, size_t *out_len) {
     return data;
 }
 
+/// @brief Compute the next traversal-stack capacity (double, or 64 from
+///        empty); traps on size overflow. Shared by the explicit-stack walks.
 static size_t grow_stack_capacity(size_t cap, size_t elem_size) {
     size_t new_cap = cap ? cap * 2 : 64;
     if (cap && cap > SIZE_MAX / 2)
@@ -120,6 +126,8 @@ static size_t grow_stack_capacity(size_t cap, size_t elem_size) {
     return new_cap;
 }
 
+/// @brief Push a node onto the explicit DFS walk stack, growing it if full
+///        (NULL node ignored). Traps on OOM.
 static void push_walk_frame(trie_walk_frame **stack,
                             size_t *len,
                             size_t *cap,
@@ -137,6 +145,8 @@ static void push_walk_frame(trie_walk_frame **stack,
     (*stack)[(*len)++] = (trie_walk_frame){node, 0};
 }
 
+/// @brief Push a node (with key depth) onto the key-collection stack,
+///        growing it if full. Traps on OOM.
 static void push_collect_frame(trie_collect_frame **stack,
                                size_t *len,
                                size_t *cap,
@@ -156,6 +166,8 @@ static void push_collect_frame(trie_collect_frame **stack,
     (*stack)[(*len)++] = (trie_collect_frame){node, 0, depth, 0};
 }
 
+/// @brief Push a (src,dst) node pair onto the deep-clone stack, growing it
+///        if full (ignored unless both nodes are non-NULL). Traps on OOM.
 static void push_clone_pair(trie_clone_pair **stack,
                             size_t *len,
                             size_t *cap,
@@ -174,6 +186,8 @@ static void push_clone_pair(trie_clone_pair **stack,
     (*stack)[(*len)++] = (trie_clone_pair){src, dst};
 }
 
+/// @brief Grow the reusable key-reconstruction buffer to >= @p needed bytes
+///        (doubling). Traps on overflow/OOM.
 static void ensure_key_buf(char **buf, size_t *buf_cap, size_t needed) {
     if (needed <= *buf_cap)
         return;
@@ -190,6 +204,8 @@ static void ensure_key_buf(char **buf, size_t *buf_cap, size_t needed) {
     *buf_cap = new_cap;
 }
 
+/// @brief Free a subtree iteratively (explicit stack, no recursion) and
+///        release each terminal node's stored value.
 static void free_node(rt_trie_node *node) {
     if (!node)
         return;
@@ -214,6 +230,8 @@ static void free_node(rt_trie_node *node) {
     free(stack);
 }
 
+/// @brief Iteratively visit every terminal node's value under @p node
+///        (explicit-stack DFS, GC tracing helper).
 static void traverse_node(rt_trie_node *node, rt_gc_visitor_t visitor, void *ctx) {
     if (!node || !visitor)
         return;
@@ -236,6 +254,7 @@ static void traverse_node(rt_trie_node *node, rt_gc_visitor_t visitor, void *ctx
     free(stack);
 }
 
+/// @brief GC traversal entry point: visit every stored value in the trie.
 static void rt_trie_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
@@ -303,6 +322,7 @@ static int has_any_key(rt_trie_node *node) {
     return 0;
 }
 
+/// @brief GC finalizer: free the entire node tree and reset the trie.
 static void rt_trie_finalize(void *obj) {
     if (!obj)
         return;

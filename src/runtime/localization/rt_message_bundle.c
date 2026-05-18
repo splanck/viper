@@ -72,19 +72,23 @@ typedef struct rt_message_bundle {
     void *fallback;  ///< optional bundle to consult on miss
 } rt_message_bundle_t;
 
+/// @brief Unchecked cast of an opaque handle to the message-bundle struct.
 static rt_message_bundle_t *as_bundle(void *obj) {
     return (rt_message_bundle_t *)obj;
 }
 
+/// @brief Drop one GC reference to @p obj and free it if the count hit zero.
 static void release_object(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
+/// @brief True iff @p obj is a runtime Map handle.
 static int is_map_object(void *obj) {
     return obj && rt_obj_class_id(obj) == RT_MAP_CLASS_ID;
 }
 
+/// @brief True iff @p obj is a runtime List handle (and not a string).
 static int is_list_like_object(void *obj) {
     if (!obj)
         return 0;
@@ -94,6 +98,8 @@ static int is_list_like_object(void *obj) {
     return cid == RT_LIST_CLASS_ID;
 }
 
+/// @brief GC finalizer: release the bundle's locale data, locale handle,
+///        entries map, and optional fallback bundle, then NULL the fields.
 static void bundle_finalizer(void *obj) {
     rt_message_bundle_t *bundle = (rt_message_bundle_t *)obj;
     if (!bundle)
@@ -108,6 +114,8 @@ static void bundle_finalizer(void *obj) {
     bundle->fallback = NULL;
 }
 
+/// @brief Validate that every value in @p map is a string handle.
+/// @return 1 if all values are strings (or the map is empty), 0 otherwise.
 static int validate_message_map(void *map) {
     if (!map)
         return 0;
@@ -126,6 +134,8 @@ static int validate_message_map(void *map) {
     return ok;
 }
 
+/// @brief Validate that every element of @p list is a string handle.
+/// @return 1 if all elements are strings (or the list is NULL/empty), else 0.
 static int validate_string_list(void *list) {
     if (!list)
         return 1;
@@ -144,6 +154,12 @@ static int validate_string_list(void *list) {
 // Constructors
 //===----------------------------------------------------------------------===//
 
+/// @brief Allocate and initialize a GC-managed message bundle.
+/// @param locale   Locale handle (retained); supplies the plural data.
+/// @param map      Backing entries map, or NULL to create a fresh empty map.
+/// @param take_map Non-zero transfers ownership of @p map (no extra retain);
+///                 zero retains it so the caller keeps its own reference.
+/// @details Traps on allocation failure. Installs @ref bundle_finalizer.
 static void *bundle_alloc(void *locale, void *map, int take_map) {
     rt_message_bundle_t *bundle = (rt_message_bundle_t *)rt_obj_new_i64(
         0, (int64_t)sizeof(rt_message_bundle_t));
@@ -268,6 +284,10 @@ static rt_string bundle_lookup_direct(rt_message_bundle_t *self, rt_string key) 
     return v;
 }
 
+/// @brief Look up @p key prefixed by each locale fallback tag ("tag:key").
+/// @details Tries every entry of the locale's fallback chain in order, building
+///          the qualified key on the stack (heap only for >255-byte keys).
+/// @return A retained string the caller owns, or NULL if no qualified key hit.
 static rt_string bundle_lookup_locale_qualified(rt_message_bundle_t *self,
                                                 rt_string key) {
     if (!self || !self->locale || !key)
@@ -315,6 +335,10 @@ static rt_string bundle_lookup_locale_qualified(rt_message_bundle_t *self,
     return NULL;
 }
 
+/// @brief Resolve @p key: direct hit, then locale-qualified, then recurse into
+///        the fallback bundle (bounded by RT_MSG_BUNDLE_MAX_DEPTH to stop
+///        cyclic fallback chains from recursing without limit).
+/// @return A retained string the caller owns, or NULL if unresolved.
 static rt_string bundle_lookup(rt_message_bundle_t *self, rt_string key, int depth) {
     if (!self || depth >= RT_MSG_BUNDLE_MAX_DEPTH)
         return NULL;
