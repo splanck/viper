@@ -41,6 +41,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <setjmp.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -94,6 +95,22 @@ typedef struct future_listener {
     struct future_listener *next;
 } future_listener;
 
+static void promise_lock(promise_impl *p) {
+#ifdef _WIN32
+    EnterCriticalSection(&p->mutex);
+#else
+    pthread_mutex_lock(&p->mutex);
+#endif
+}
+
+static void promise_unlock(promise_impl *p) {
+#ifdef _WIN32
+    LeaveCriticalSection(&p->mutex);
+#else
+    pthread_mutex_unlock(&p->mutex);
+#endif
+}
+
 /// @brief Validate-and-cast a handle to promise_impl.
 /// @details Wrong-type handles always trap; a NULL handle traps only when
 ///          @p trap_on_null is set (callers that tolerate NULL pass 0).
@@ -134,6 +151,76 @@ static future_impl *future_require(void *obj, int8_t trap_on_null) {
 static void future_release_object(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
+}
+
+static void future_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
+    const char *err = rt_trap_get_error();
+    snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
+}
+
+static void future_retain_object_or_cleanup(void *value, void *cleanup_obj, const char *fallback) {
+    if (!value)
+        return;
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        future_save_trap_error(saved_error, sizeof(saved_error), fallback);
+        rt_trap_clear_recovery();
+        future_release_object(cleanup_obj);
+        rt_trap(saved_error);
+        return;
+    }
+
+    rt_obj_retain_maybe(value);
+    rt_trap_clear_recovery();
+}
+
+static rt_string future_ref_string_or_cleanup(rt_string value,
+                                              void *cleanup_obj,
+                                              const char *fallback) {
+    if (!value)
+        return NULL;
+
+    rt_string retained = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        future_save_trap_error(saved_error, sizeof(saved_error), fallback);
+        rt_trap_clear_recovery();
+        future_release_object(cleanup_obj);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
+    retained = rt_string_ref(value);
+    rt_trap_clear_recovery();
+    return retained;
+}
+
+static void future_retain_cached_future_locked(promise_impl *p,
+                                               void *future_obj,
+                                               void *cleanup_obj) {
+    if (!future_obj)
+        return;
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        future_save_trap_error(
+            saved_error, sizeof(saved_error), "Future: cached future retain failed");
+        rt_trap_clear_recovery();
+        promise_unlock(p);
+        future_release_object(cleanup_obj);
+        rt_trap(saved_error);
+        return;
+    }
+
+    rt_obj_retain_maybe(future_obj);
+    rt_trap_clear_recovery();
 }
 
 #ifdef _WIN32
@@ -313,18 +400,6 @@ static void future_notify_listeners(future_listener *listeners) {
     }
 }
 
-/// @brief Retrieve the resolved value, retaining it for the consumer if `owns_value` is set.
-/// Caller must already hold the promise mutex (the "_locked" suffix). Without retain, the caller
-/// would race with finalizer release; with retain, the caller takes a fresh reference.
-static void *future_export_value_locked(promise_impl *p) {
-    if (!p)
-        return NULL;
-    void *value = p->value;
-    if (value && p->owns_value)
-        rt_obj_retain_maybe(value);
-    return value;
-}
-
 //=============================================================================
 // Promise Implementation
 //=============================================================================
@@ -425,44 +500,52 @@ void *rt_promise_get_future(void *obj) {
         return NULL;
     rt_obj_retain_maybe(obj);
 
-#ifdef _WIN32
-    EnterCriticalSection(&p->mutex);
-#else
-    pthread_mutex_lock(&p->mutex);
-#endif
-
-    int8_t created = 0;
-    if (!p->future) {
-        future_impl *f =
-            (future_impl *)rt_obj_new_i64(RT_FUTURE_CLASS_ID, (int64_t)sizeof(future_impl));
-        if (!f) {
-#ifdef _WIN32
-            LeaveCriticalSection(&p->mutex);
-#else
-            pthread_mutex_unlock(&p->mutex);
-#endif
+    for (;;) {
+        promise_lock(p);
+        void *cached = p->future;
+        if (cached) {
+            future_retain_cached_future_locked(p, cached, obj);
+            promise_unlock(p);
             future_release_object(obj);
-            rt_trap("Future: memory allocation failed");
+            return cached;
         }
-        f->promise = p;
+        promise_unlock(p);
+
+        future_impl *candidate = NULL;
+        jmp_buf recovery;
+        rt_trap_set_recovery(&recovery);
+        if (setjmp(recovery) != 0) {
+            char saved_error[256];
+            future_save_trap_error(saved_error, sizeof(saved_error), "Future: allocation failed");
+            rt_trap_clear_recovery();
+            if (candidate && rt_obj_release_check0(candidate))
+                rt_obj_free(candidate);
+            future_release_object(obj);
+            rt_trap(saved_error);
+            return NULL;
+        }
+
+        candidate =
+            (future_impl *)rt_obj_new_i64(RT_FUTURE_CLASS_ID, (int64_t)sizeof(future_impl));
+        if (!candidate)
+            rt_trap("Future: memory allocation failed");
+        candidate->promise = p;
         rt_obj_retain_maybe(p); // Future holds a reference to prevent premature GC of promise
-        rt_obj_set_finalizer(f, future_finalizer);
-        p->future = f;
-        created = 1;
+        rt_obj_set_finalizer(candidate, future_finalizer);
+        rt_trap_clear_recovery();
+
+        promise_lock(p);
+        if (!p->future) {
+            p->future = candidate;
+            promise_unlock(p);
+            future_release_object(obj);
+            return candidate;
+        }
+        promise_unlock(p);
+
+        if (rt_obj_release_check0(candidate))
+            rt_obj_free(candidate);
     }
-
-    void *result = p->future;
-    if (!created && result)
-        rt_obj_retain_maybe(result);
-
-#ifdef _WIN32
-    LeaveCriticalSection(&p->mutex);
-#else
-    pthread_mutex_unlock(&p->mutex);
-#endif
-
-    future_release_object(obj);
-    return result;
 }
 
 /// @brief Future-side GC finalizer: clear the back-pointer in the promise (so `get_future()`
@@ -497,25 +580,19 @@ void rt_promise_set(void *obj, void *value) {
     if (!p)
         return;
     rt_obj_retain_maybe(obj);
+    if (value)
+        future_retain_object_or_cleanup(value, obj, "Promise.Set: value retain failed");
 
-#ifdef _WIN32
-    EnterCriticalSection(&p->mutex);
-#else
-    pthread_mutex_lock(&p->mutex);
-#endif
+    promise_lock(p);
 
     if (p->done) {
-#ifdef _WIN32
-        LeaveCriticalSection(&p->mutex);
-#else
-        pthread_mutex_unlock(&p->mutex);
-#endif
+        promise_unlock(p);
+        if (value && rt_obj_release_check0(value))
+            rt_obj_free(value);
         future_release_object(obj);
         rt_trap("Promise: already completed");
     }
 
-    if (value)
-        rt_obj_retain_maybe(value);
     p->value = value;
     p->done = 1;
     p->is_error = 0;
@@ -525,11 +602,10 @@ void rt_promise_set(void *obj, void *value) {
 
 #ifdef _WIN32
     WakeAllConditionVariable(&p->cond);
-    LeaveCriticalSection(&p->mutex);
 #else
     pthread_cond_broadcast(&p->cond);
-    pthread_mutex_unlock(&p->mutex);
 #endif
+    promise_unlock(p);
 
     future_notify_listeners(listeners);
     future_release_object(obj);
@@ -542,25 +618,19 @@ void rt_promise_set_owned(void *obj, void *value) {
     if (!p)
         return;
     rt_obj_retain_maybe(obj);
+    if (value)
+        future_retain_object_or_cleanup(value, obj, "Promise.SetOwned: value retain failed");
 
-#ifdef _WIN32
-    EnterCriticalSection(&p->mutex);
-#else
-    pthread_mutex_lock(&p->mutex);
-#endif
+    promise_lock(p);
 
     if (p->done) {
-#ifdef _WIN32
-        LeaveCriticalSection(&p->mutex);
-#else
-        pthread_mutex_unlock(&p->mutex);
-#endif
+        promise_unlock(p);
+        if (value && rt_obj_release_check0(value))
+            rt_obj_free(value);
         future_release_object(obj);
         rt_trap("Promise: already completed");
     }
 
-    if (value)
-        rt_obj_retain_maybe(value);
     p->value = value;
     p->done = 1;
     p->is_error = 0;
@@ -570,11 +640,10 @@ void rt_promise_set_owned(void *obj, void *value) {
 
 #ifdef _WIN32
     WakeAllConditionVariable(&p->cond);
-    LeaveCriticalSection(&p->mutex);
 #else
     pthread_cond_broadcast(&p->cond);
-    pthread_mutex_unlock(&p->mutex);
 #endif
+    promise_unlock(p);
 
     future_notify_listeners(listeners);
     future_release_object(obj);
@@ -590,18 +659,10 @@ void rt_promise_set_transferred(void *obj, void *value) {
         return;
     rt_obj_retain_maybe(obj);
 
-#ifdef _WIN32
-    EnterCriticalSection(&p->mutex);
-#else
-    pthread_mutex_lock(&p->mutex);
-#endif
+    promise_lock(p);
 
     if (p->done) {
-#ifdef _WIN32
-        LeaveCriticalSection(&p->mutex);
-#else
-        pthread_mutex_unlock(&p->mutex);
-#endif
+        promise_unlock(p);
         future_release_object(obj);
         rt_trap("Promise: already completed");
     }
@@ -615,11 +676,10 @@ void rt_promise_set_transferred(void *obj, void *value) {
 
 #ifdef _WIN32
     WakeAllConditionVariable(&p->cond);
-    LeaveCriticalSection(&p->mutex);
 #else
     pthread_cond_broadcast(&p->cond);
-    pthread_mutex_unlock(&p->mutex);
 #endif
+    promise_unlock(p);
 
     future_notify_listeners(listeners);
     future_release_object(obj);
@@ -631,6 +691,20 @@ void rt_promise_set_error(void *obj, rt_string error) {
     if (!p)
         return;
     rt_string stored_error = NULL;
+
+    jmp_buf setup_recovery;
+    rt_trap_set_recovery(&setup_recovery);
+    if (setjmp(setup_recovery) != 0) {
+        char saved_error[256];
+        future_save_trap_error(
+            saved_error, sizeof(saved_error), "Promise.SetError: error retain failed");
+        rt_trap_clear_recovery();
+        if (stored_error)
+            rt_str_release_maybe(stored_error);
+        rt_trap(saved_error);
+        return;
+    }
+
     if (error) {
         const char *err_str = rt_string_cstr(error);
         stored_error = err_str ? rt_string_from_bytes(err_str, rt_string_len_bytes(error))
@@ -639,19 +713,12 @@ void rt_promise_set_error(void *obj, rt_string error) {
         stored_error = rt_const_cstr("Unknown error");
     }
     rt_obj_retain_maybe(obj);
+    rt_trap_clear_recovery();
 
-#ifdef _WIN32
-    EnterCriticalSection(&p->mutex);
-#else
-    pthread_mutex_lock(&p->mutex);
-#endif
+    promise_lock(p);
 
     if (p->done) {
-#ifdef _WIN32
-        LeaveCriticalSection(&p->mutex);
-#else
-        pthread_mutex_unlock(&p->mutex);
-#endif
+        promise_unlock(p);
         if (stored_error)
             rt_str_release_maybe(stored_error);
         future_release_object(obj);
@@ -667,11 +734,10 @@ void rt_promise_set_error(void *obj, rt_string error) {
 
 #ifdef _WIN32
     WakeAllConditionVariable(&p->cond);
-    LeaveCriticalSection(&p->mutex);
 #else
     pthread_cond_broadcast(&p->cond);
-    pthread_mutex_unlock(&p->mutex);
 #endif
+    promise_unlock(p);
 
     future_notify_listeners(listeners);
     future_release_object(obj);
@@ -713,6 +779,7 @@ void *rt_future_get(void *obj) {
     void *result = NULL;
     rt_string error = NULL;
     int8_t is_error = 0;
+    int8_t owns_value = 0;
 
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
@@ -721,10 +788,10 @@ void *rt_future_get(void *obj) {
     }
     if (p->is_error) {
         is_error = 1;
-        if (p->error)
-            error = rt_string_ref(p->error);
+        error = p->error;
     } else {
-        result = future_export_value_locked(p);
+        result = p->value;
+        owns_value = p->owns_value;
     }
     LeaveCriticalSection(&p->mutex);
 #else
@@ -734,13 +801,18 @@ void *rt_future_get(void *obj) {
     }
     if (p->is_error) {
         is_error = 1;
-        if (p->error)
-            error = rt_string_ref(p->error);
+        error = p->error;
     } else {
-        result = future_export_value_locked(p);
+        result = p->value;
+        owns_value = p->owns_value;
     }
     pthread_mutex_unlock(&p->mutex);
 #endif
+
+    if (is_error && error)
+        error = future_ref_string_or_cleanup(error, obj, "Future.Get: error retain failed");
+    if (!is_error && result && owns_value)
+        future_retain_object_or_cleanup(result, obj, "Future.Get: value retain failed");
 
     if (is_error) {
         char error_msg[512];
@@ -782,6 +854,8 @@ int8_t rt_future_get_for(void *obj, int64_t ms, void **out) {
     rt_obj_retain_maybe(obj);
 
     promise_impl *p = f->promise;
+    void *result = NULL;
+    int8_t owns_value = 0;
 
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
@@ -798,7 +872,8 @@ int8_t rt_future_get_for(void *obj, int64_t ms, void **out) {
     }
     int8_t success = p->done && !p->is_error;
     if (success && out) {
-        *out = future_export_value_locked(p);
+        result = p->value;
+        owns_value = p->owns_value;
     }
     LeaveCriticalSection(&p->mutex);
 #else
@@ -812,11 +887,17 @@ int8_t rt_future_get_for(void *obj, int64_t ms, void **out) {
     }
     int8_t success = p->done && !p->is_error;
     if (success && out) {
-        *out = future_export_value_locked(p);
+        result = p->value;
+        owns_value = p->owns_value;
     }
     pthread_mutex_unlock(&p->mutex);
 #endif
 
+    if (success && out) {
+        if (result && owns_value)
+            future_retain_object_or_cleanup(result, obj, "Future.GetFor: value retain failed");
+        *out = result;
+    }
     future_release_object(obj);
     return success;
 }
@@ -875,23 +956,30 @@ rt_string rt_future_get_error(void *obj) {
     rt_obj_retain_maybe(obj);
 
     promise_impl *p = f->promise;
+    rt_string error = NULL;
+    int8_t has_error = 0;
 
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
-    rt_string result = rt_const_cstr("");
-    if (p->done && p->is_error && p->error)
-        result = rt_string_ref(p->error);
+    if (p->done && p->is_error && p->error) {
+        error = p->error;
+        has_error = 1;
+    }
     LeaveCriticalSection(&p->mutex);
 #else
     pthread_mutex_lock(&p->mutex);
-    rt_string result = rt_const_cstr("");
-    if (p->done && p->is_error && p->error)
-        result = rt_string_ref(p->error);
+    if (p->done && p->is_error && p->error) {
+        error = p->error;
+        has_error = 1;
+    }
     pthread_mutex_unlock(&p->mutex);
 #endif
 
+    rt_string result = NULL;
+    if (has_error)
+        result = future_ref_string_or_cleanup(error, obj, "Future.GetError: error retain failed");
     future_release_object(obj);
-    return result;
+    return result ? result : rt_const_cstr("");
 }
 
 /// @brief Get a value from the future.
@@ -904,23 +992,32 @@ int8_t rt_future_try_get(void *obj, void **out) {
     rt_obj_retain_maybe(obj);
 
     promise_impl *p = f->promise;
+    void *result = NULL;
+    int8_t owns_value = 0;
 
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
     int8_t success = p->done && !p->is_error;
     if (success && out) {
-        *out = future_export_value_locked(p);
+        result = p->value;
+        owns_value = p->owns_value;
     }
     LeaveCriticalSection(&p->mutex);
 #else
     pthread_mutex_lock(&p->mutex);
     int8_t success = p->done && !p->is_error;
     if (success && out) {
-        *out = future_export_value_locked(p);
+        result = p->value;
+        owns_value = p->owns_value;
     }
     pthread_mutex_unlock(&p->mutex);
 #endif
 
+    if (success && out) {
+        if (result && owns_value)
+            future_retain_object_or_cleanup(result, obj, "Future.TryGet: value retain failed");
+        *out = result;
+    }
     future_release_object(obj);
     return success;
 }
@@ -936,19 +1033,26 @@ void *rt_future_try_get_val(void *obj) {
 
     promise_impl *p = f->promise;
     void *result = NULL;
+    int8_t owns_value = 0;
 
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
-    if (p->done && !p->is_error)
-        result = future_export_value_locked(p);
+    if (p->done && !p->is_error) {
+        result = p->value;
+        owns_value = p->owns_value;
+    }
     LeaveCriticalSection(&p->mutex);
 #else
     pthread_mutex_lock(&p->mutex);
-    if (p->done && !p->is_error)
-        result = future_export_value_locked(p);
+    if (p->done && !p->is_error) {
+        result = p->value;
+        owns_value = p->owns_value;
+    }
     pthread_mutex_unlock(&p->mutex);
 #endif
 
+    if (result && owns_value)
+        future_retain_object_or_cleanup(result, obj, "Future.TryGetVal: value retain failed");
     future_release_object(obj);
     return result;
 }
@@ -968,6 +1072,7 @@ void *rt_future_get_for_val(void *obj, int64_t ms) {
 
     promise_impl *p = f->promise;
     void *result = NULL;
+    int8_t owns_value = 0;
 
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
@@ -982,8 +1087,10 @@ void *rt_future_get_for_val(void *obj, int64_t ms) {
             break;
         }
     }
-    if (p->done && !p->is_error)
-        result = future_export_value_locked(p);
+    if (p->done && !p->is_error) {
+        result = p->value;
+        owns_value = p->owns_value;
+    }
     LeaveCriticalSection(&p->mutex);
 #else
     pthread_mutex_lock(&p->mutex);
@@ -994,11 +1101,15 @@ void *rt_future_get_for_val(void *obj, int64_t ms) {
         if (rc == ETIMEDOUT && !p->done)
             break;
     }
-    if (p->done && !p->is_error)
-        result = future_export_value_locked(p);
+    if (p->done && !p->is_error) {
+        result = p->value;
+        owns_value = p->owns_value;
+    }
     pthread_mutex_unlock(&p->mutex);
 #endif
 
+    if (result && owns_value)
+        future_retain_object_or_cleanup(result, obj, "Future.GetForVal: value retain failed");
     future_release_object(obj);
     return result;
 }
@@ -1212,23 +1323,26 @@ void *rt_future_peek_value(void *obj) {
 
     promise_impl *p = f->promise;
     void *result = NULL;
+    int8_t owns_value = 0;
 
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
-    if (p->done && !p->is_error)
+    if (p->done && !p->is_error) {
         result = p->value;
-    if (result && p->owns_value)
-        rt_obj_retain_maybe(result);
+        owns_value = p->owns_value;
+    }
     LeaveCriticalSection(&p->mutex);
 #else
     pthread_mutex_lock(&p->mutex);
-    if (p->done && !p->is_error)
+    if (p->done && !p->is_error) {
         result = p->value;
-    if (result && p->owns_value)
-        rt_obj_retain_maybe(result);
+        owns_value = p->owns_value;
+    }
     pthread_mutex_unlock(&p->mutex);
 #endif
 
+    if (result && owns_value)
+        future_retain_object_or_cleanup(result, obj, "Future.PeekValue: value retain failed");
     future_release_object(obj);
     return result;
 }

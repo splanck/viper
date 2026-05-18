@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_future.h"
+#include "rt_heap.h"
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
@@ -32,6 +33,18 @@ static void test_result(bool cond, const char *name) {
         fprintf(stderr, "FAIL: %s\n", name);
         assert(false);
     }
+}
+
+template <typename Fn> static bool expect_trap(Fn fn) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        fn();
+        rt_trap_clear_recovery();
+        return false;
+    }
+    rt_trap_clear_recovery();
+    return true;
 }
 
 //=============================================================================
@@ -443,6 +456,159 @@ static void test_set_value_survives_producer_release() {
         rt_obj_free(got);
 }
 
+static void release_runtime_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static void test_promise_set_retain_overflow_does_not_lock_promise() {
+    void *promise = rt_promise_new();
+    void *value = rt_seq_new();
+    rt_heap_hdr_t *value_hdr = rt_heap_hdr(value);
+    value_hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+
+    test_result(expect_trap([&]() { rt_promise_set(promise, value); }),
+                "promise_set_overflow: should trap");
+    test_result(!rt_promise_is_done(promise), "promise_set_overflow: promise remains usable");
+
+    value_hdr->refcnt = 1;
+    int fallback = 1;
+    rt_promise_set(promise, &fallback);
+    test_result(rt_promise_is_done(promise), "promise_set_overflow: promise can complete later");
+
+    release_runtime_object(value);
+    release_runtime_object(promise);
+}
+
+static void test_promise_set_owned_retain_overflow_does_not_lock_promise() {
+    void *promise = rt_promise_new();
+    void *value = rt_seq_new();
+    rt_heap_hdr_t *value_hdr = rt_heap_hdr(value);
+    value_hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+
+    test_result(expect_trap([&]() { rt_promise_set_owned(promise, value); }),
+                "promise_set_owned_overflow: should trap");
+    test_result(!rt_promise_is_done(promise),
+                "promise_set_owned_overflow: promise remains usable");
+
+    value_hdr->refcnt = 1;
+    int fallback = 2;
+    rt_promise_set(promise, &fallback);
+    test_result(rt_promise_is_done(promise),
+                "promise_set_owned_overflow: promise can complete later");
+
+    release_runtime_object(value);
+    release_runtime_object(promise);
+}
+
+static void test_get_future_cached_retain_overflow_does_not_lock_promise() {
+    void *promise = rt_promise_new();
+    void *future = rt_promise_get_future(promise);
+    rt_heap_hdr_t *future_hdr = rt_heap_hdr(future);
+    future_hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+
+    test_result(expect_trap([&]() { (void)rt_promise_get_future(promise); }),
+                "get_future_cached_overflow: should trap");
+
+    future_hdr->refcnt = 1;
+    void *future2 = rt_promise_get_future(promise);
+    test_result(future2 == future, "get_future_cached_overflow: cached future remains usable");
+
+    release_runtime_object(future2);
+    release_runtime_object(future);
+    release_runtime_object(promise);
+}
+
+struct PoisonedFuture {
+    void *promise;
+    void *future;
+    void *value;
+    rt_heap_hdr_t *value_hdr;
+};
+
+static PoisonedFuture make_poisoned_owned_future() {
+    PoisonedFuture pf{};
+    pf.promise = rt_promise_new();
+    pf.future = rt_promise_get_future(pf.promise);
+    pf.value = rt_seq_new();
+    rt_promise_set_transferred(pf.promise, pf.value);
+    pf.value_hdr = rt_heap_hdr(pf.value);
+    pf.value_hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+    return pf;
+}
+
+static void cleanup_poisoned_owned_future(PoisonedFuture &pf) {
+    pf.value_hdr->refcnt = 1;
+    release_runtime_object(pf.future);
+    release_runtime_object(pf.promise);
+    pf = {};
+}
+
+static void test_future_get_retain_overflow_does_not_lock_future() {
+    PoisonedFuture pf = make_poisoned_owned_future();
+
+    test_result(expect_trap([&]() { (void)rt_future_get(pf.future); }),
+                "future_get_overflow: should trap");
+    test_result(rt_future_is_done(pf.future), "future_get_overflow: future remains usable");
+
+    cleanup_poisoned_owned_future(pf);
+}
+
+static void test_future_get_for_retain_overflow_does_not_lock_future() {
+    PoisonedFuture pf = make_poisoned_owned_future();
+    void *out = (void *)0x1;
+
+    test_result(expect_trap([&]() { (void)rt_future_get_for(pf.future, 1000, &out); }),
+                "future_get_for_overflow: should trap");
+    test_result(rt_future_is_done(pf.future), "future_get_for_overflow: future remains usable");
+
+    cleanup_poisoned_owned_future(pf);
+}
+
+static void test_future_try_get_retain_overflow_does_not_lock_future() {
+    PoisonedFuture pf = make_poisoned_owned_future();
+    void *out = (void *)0x1;
+
+    test_result(expect_trap([&]() { (void)rt_future_try_get(pf.future, &out); }),
+                "future_try_get_overflow: should trap");
+    test_result(rt_future_is_done(pf.future), "future_try_get_overflow: future remains usable");
+
+    cleanup_poisoned_owned_future(pf);
+}
+
+static void test_future_try_get_val_retain_overflow_does_not_lock_future() {
+    PoisonedFuture pf = make_poisoned_owned_future();
+
+    test_result(expect_trap([&]() { (void)rt_future_try_get_val(pf.future); }),
+                "future_try_get_val_overflow: should trap");
+    test_result(rt_future_is_done(pf.future),
+                "future_try_get_val_overflow: future remains usable");
+
+    cleanup_poisoned_owned_future(pf);
+}
+
+static void test_future_get_for_val_retain_overflow_does_not_lock_future() {
+    PoisonedFuture pf = make_poisoned_owned_future();
+
+    test_result(expect_trap([&]() { (void)rt_future_get_for_val(pf.future, 1000); }),
+                "future_get_for_val_overflow: should trap");
+    test_result(rt_future_is_done(pf.future),
+                "future_get_for_val_overflow: future remains usable");
+
+    cleanup_poisoned_owned_future(pf);
+}
+
+static void test_future_peek_value_retain_overflow_does_not_lock_future() {
+    PoisonedFuture pf = make_poisoned_owned_future();
+
+    test_result(expect_trap([&]() { (void)rt_future_peek_value(pf.future); }),
+                "future_peek_value_overflow: should trap");
+    test_result(rt_future_is_done(pf.future),
+                "future_peek_value_overflow: future remains usable");
+
+    cleanup_poisoned_owned_future(pf);
+}
+
 static int g_listener_trap_count = 0;
 static int g_listener_ok_count = 0;
 static int g_cancel_hook_count = 0;
@@ -583,6 +749,15 @@ int main() {
     test_owned_get_for_val_survives_future_release();
     test_transferred_value_survives_future_release();
     test_set_value_survives_producer_release();
+    test_promise_set_retain_overflow_does_not_lock_promise();
+    test_promise_set_owned_retain_overflow_does_not_lock_promise();
+    test_get_future_cached_retain_overflow_does_not_lock_promise();
+    test_future_get_retain_overflow_does_not_lock_future();
+    test_future_get_for_retain_overflow_does_not_lock_future();
+    test_future_try_get_retain_overflow_does_not_lock_future();
+    test_future_try_get_val_retain_overflow_does_not_lock_future();
+    test_future_get_for_val_retain_overflow_does_not_lock_future();
+    test_future_peek_value_retain_overflow_does_not_lock_future();
     test_listener_trap_isolated_after_cleanup();
     test_completed_future_listener_trap_isolated();
     test_cancel_listener_trap_isolated_after_cleanup();

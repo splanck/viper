@@ -198,7 +198,9 @@ int64_t rt_obj_class_id(void *p) {
     rt_heap_hdr_t *hdr = NULL;
     if (!rt_heap_try_get_header(p, &hdr))
         return 0;
-    return hdr ? hdr->class_id : 0;
+    if (!hdr || (rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT)
+        return 0;
+    return hdr->class_id;
 }
 
 /// @brief Validate a runtime-managed object handle before implementation-specific casts.

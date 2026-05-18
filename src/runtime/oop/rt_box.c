@@ -137,9 +137,9 @@ static void value_type_release_slot(void *obj, const value_type_field *field) {
         *slot = NULL;
     } else if (field->kind == RT_VALUE_FIELD_OBJ) {
         void *child = *slot;
+        *slot = NULL;
         if (rt_obj_release_check0(child))
             rt_obj_free(child);
-        *slot = NULL;
     }
 }
 
@@ -193,6 +193,41 @@ static void value_type_free_layout(value_type_layout *layout) {
     free(layout);
 }
 
+static int value_type_release_layout_slots(void *obj,
+                                           value_type_layout *layout,
+                                           char *error,
+                                           size_t error_size) {
+    if (!obj || !layout)
+        return 0;
+
+    int trapped = 0;
+    value_type_field * volatile cursor = layout->fields;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+
+    for (;;) {
+        if (setjmp(recovery) != 0) {
+            if (!trapped && error && error_size > 0) {
+                const char *err = rt_trap_get_error();
+                snprintf(error,
+                         error_size,
+                         "%s",
+                         err && err[0] ? err : "rt_box_value_type: field cleanup trap");
+            }
+            trapped = 1;
+        }
+
+        if (!cursor)
+            break;
+        value_type_field *field = cursor;
+        cursor = cursor->next;
+        value_type_release_slot(obj, field);
+    }
+
+    rt_trap_clear_recovery();
+    return trapped;
+}
+
 static int box_tag_is_valid(int64_t tag) {
     return tag == RT_BOX_I64 || tag == RT_BOX_F64 || tag == RT_BOX_I1 || tag == RT_BOX_STR;
 }
@@ -244,11 +279,14 @@ static void value_type_finalizer(void *obj) {
     value_type_unlock();
     if (!layout)
         return;
-    for (value_type_field *field = layout->fields; field; field = field->next)
-        value_type_release_slot(obj, field);
+    char field_error[512] = {0};
+    int field_trapped =
+        value_type_release_layout_slots(obj, layout, field_error, sizeof(field_error));
     value_type_free_layout(layout);
     if (previous_trapped)
         rt_trap(previous_error);
+    if (field_trapped)
+        rt_trap(field_error[0] ? field_error : "rt_box_value_type: field cleanup trap");
 }
 
 static void value_type_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
@@ -272,7 +310,7 @@ static void value_type_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
         rt_trap("rt_box_value_type: traversal allocation too large");
         return;
     }
-    value_type_field_desc *fields =
+    value_type_field_desc * volatile fields =
         (value_type_field_desc *)calloc((size_t)count, sizeof(value_type_field_desc));
     if (!fields) {
         value_type_unlock();
@@ -283,36 +321,63 @@ static void value_type_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     int64_t copied = 0;
     for (value_type_field *field = layout ? layout->fields : NULL; field; field = field->next) {
         if (field->kind == RT_VALUE_FIELD_OBJ) {
-            fields[copied].offset = field->offset;
-            fields[copied].kind = field->kind;
+            ((value_type_field_desc *)fields)[copied].offset = field->offset;
+            ((value_type_field_desc *)fields)[copied].kind = field->kind;
             copied++;
         }
     }
     value_type_unlock();
 
-    void **children = (void **)calloc((size_t)copied, sizeof(void *));
+    void ** volatile children = (void **)calloc((size_t)copied, sizeof(void *));
     if (!children) {
-        free(fields);
+        free((void *)fields);
         rt_trap("rt_box_value_type: traversal allocation failed");
         return;
     }
 
-    for (int64_t i = 0; i < copied; ++i) {
-        void *child = *(void **)((unsigned char *)obj + fields[i].offset);
-        if (child)
-            rt_obj_retain_maybe(child);
-        children[i] = child;
+    int64_t volatile retained_count = 0;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *err = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 err && err[0] ? err : "rt_box_value_type: traversal trap");
+        rt_trap_clear_recovery();
+        for (int64_t i = 0; i < retained_count; ++i) {
+            void *child = ((void **)children)[i];
+            ((void **)children)[i] = NULL;
+            if (rt_obj_release_check0(child))
+                rt_obj_free(child);
+        }
+        free((void *)fields);
+        free((void *)children);
+        rt_trap(saved_error);
+        return;
     }
-    free(fields);
 
     for (int64_t i = 0; i < copied; ++i) {
-        void *child = children[i];
+        void *child =
+            *(void **)((unsigned char *)obj + ((value_type_field_desc *)fields)[i].offset);
+        if (child)
+            rt_obj_retain_maybe(child);
+        ((void **)children)[retained_count++] = child;
+    }
+    free((void *)fields);
+    fields = NULL;
+
+    for (int64_t i = 0; i < copied; ++i) {
+        void *child = ((void **)children)[i];
         if (child)
             visitor(child, ctx);
+        ((void **)children)[i] = NULL;
         if (rt_obj_release_check0(child))
             rt_obj_free(child);
     }
-    free(children);
+    rt_trap_clear_recovery();
+    free((void *)children);
 }
 
 /// @brief Allocate a fresh boxed-value object via the heap (refcount=1, tagged RT_ELEM_BOX so

@@ -450,6 +450,46 @@ void test_value_type_trapping_previous_finalizer_releases_fields() {
     assert(rt_heap_is_payload(value_type) == 0);
 }
 
+void test_value_type_field_trap_drains_remaining_fields() {
+    g_trapping_finalizer_count = 0;
+    g_second_finalizer_count = 0;
+
+    void *first = rt_obj_new_i64(0xC01, 8);
+    void *second = rt_obj_new_i64(0xC02, 8);
+    assert(first != nullptr);
+    assert(second != nullptr);
+    rt_obj_set_finalizer(first, trapping_finalizer);
+    rt_obj_set_finalizer(second, second_count_finalizer);
+
+    void *value_type = rt_box_value_type((int64_t)(sizeof(void *) * 2));
+    assert(value_type != nullptr);
+    void **slots = (void **)value_type;
+    slots[0] = first;
+    slots[1] = second;
+    rt_box_value_type_add_field(value_type, 0, RT_VALUE_FIELD_OBJ, 1);
+    rt_box_value_type_add_field(value_type, (int64_t)sizeof(void *), RT_VALUE_FIELD_OBJ, 1);
+    assert(rt_obj_release_check0(first) == 0);
+    assert(rt_obj_release_check0(second) == 0);
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_memory_release(value_type);
+        rt_trap_clear_recovery();
+        assert(false && "trapping value-type field finalizer should re-trap");
+    } else {
+        std::string message = rt_trap_get_error();
+        rt_trap_clear_recovery();
+        assert(message.find("finalizer boom") != std::string::npos);
+    }
+
+    assert(g_trapping_finalizer_count == 1);
+    assert(g_second_finalizer_count == 1);
+    assert(rt_heap_is_payload(first) == 0);
+    assert(rt_heap_is_payload(second) == 0);
+    assert(rt_heap_is_payload(value_type) == 0);
+}
+
 void test_object_array_uses_object_element_kind() {
     g_finalizer_count = 0;
     void *obj = rt_obj_new_i64(0x0B1, 8);
@@ -529,6 +569,7 @@ int main(int argc, char *argv[]) {
     test_memory_release_trapping_finalizer_frees_object();
     test_memory_release_array_trap_drains_and_frees();
     test_value_type_trapping_previous_finalizer_releases_fields();
+    test_value_type_field_trap_drains_remaining_fields();
     test_memory_release_array_validation_preserves_refcount();
     test_object_array_uses_object_element_kind();
     test_memory_release_array_drops_box_elements();

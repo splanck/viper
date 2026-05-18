@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_object.h"
+#include "rt_heap.h"
 #include "rt_option.h"
 #include "rt_result.h"
 #include "rt_string.h"
@@ -61,6 +62,18 @@ static void test_foreign_pointers_are_borrowed(void) {
     void *res = rt_result_err(&local);
     assert(res != nullptr);
     release_object(res);
+}
+
+static void test_non_object_heap_payloads_have_no_type_id(void) {
+    void *payload = rt_heap_alloc(RT_HEAP_ARRAY, RT_ELEM_U8, 1, 1, 1);
+    assert(payload != nullptr);
+    rt_heap_hdr_t *hdr = rt_heap_hdr(payload);
+    hdr->class_id = 0x1234;
+
+    assert(rt_obj_class_id(payload) == 0);
+    assert(rt_obj_type_id(payload) == 0);
+
+    assert(rt_memory_release(payload) == 0);
 }
 
 static void test_option_retains_runtime_objects(void) {
@@ -230,6 +243,7 @@ static void test_runtime_metadata_matches_core_contracts(void) {
 int main() {
     test_const_cstr_copies_transient_input();
     test_foreign_pointers_are_borrowed();
+    test_non_object_heap_payloads_have_no_type_id();
     test_option_retains_runtime_objects();
     test_result_retains_runtime_objects();
     test_runtime_metadata_matches_core_contracts();
