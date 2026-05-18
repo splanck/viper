@@ -24,6 +24,7 @@
 
 #include "codegen/x86_64/passes/PassManager.hpp"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -67,6 +68,7 @@ class CodegenPipeline {
         LinkMode link_mode = LinkMode::Native;
         std::string asset_blob_path; ///< Path to VPA asset blob for .rodata embedding (optional).
         std::vector<std::string> extra_objects; ///< Extra object files linked into the final image.
+        std::optional<bool> windows_debug_runtime; ///< Override Windows CRT import flavor.
         CodegenOptions::TargetABI target_abi = CodegenOptions::TargetABI::Host;
         CodegenOptions::TargetPlatform target_platform = CodegenOptions::TargetPlatform::Host;
     };

@@ -16,11 +16,14 @@
 #include <cassert>
 #include <chrono>
 #include <condition_variable>
+#include <cmath>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <mutex>
 #include <string>
 #include <utility>
+#include <vector>
 
 using namespace il::core;
 using namespace il::build;
@@ -688,6 +691,201 @@ static void test_global_address_storage() {
         }
         assert(vm.state() == VMState::Halted);
         assert(result.i64 == 42);
+    }
+
+    std::cout << "PASSED\n";
+}
+
+static void addDirectBytecodeMain(BytecodeModule &module,
+                                  std::vector<uint32_t> code,
+                                  uint32_t numLocals = 0,
+                                  uint32_t maxStack = 4,
+                                  bool hasReturn = true) {
+    BytecodeFunction fn;
+    fn.name = "main";
+    fn.numParams = 0;
+    fn.numLocals = numLocals;
+    fn.maxStack = maxStack;
+    fn.hasReturn = hasReturn;
+    fn.code = std::move(code);
+    module.addFunction(std::move(fn));
+}
+
+static BytecodeModule createDirectBytecodeModule(std::vector<uint32_t> code,
+                                                 uint32_t numLocals = 0,
+                                                 uint32_t maxStack = 4,
+                                                 bool hasReturn = true) {
+    BytecodeModule module;
+    addDirectBytecodeMain(module, std::move(code), numLocals, maxStack, hasReturn);
+    return module;
+}
+
+static uint16_t addI64(BytecodeModule &module, int64_t value) {
+    return static_cast<uint16_t>(module.addI64(value));
+}
+
+static uint16_t addF64(BytecodeModule &module, double value) {
+    return static_cast<uint16_t>(module.addF64(value));
+}
+
+static BCSlot runMain(BytecodeModule &module, bool threaded) {
+    BytecodeVM vm;
+    vm.setThreadedDispatch(threaded);
+    vm.load(&module);
+    BCSlot result = vm.exec("main", {});
+    if (vm.state() != VMState::Halted) {
+        std::cerr << "direct bytecode case trapped (threaded=" << threaded
+                  << "): " << vm.trapMessage() << "\n";
+    }
+    assert(vm.state() == VMState::Halted);
+    return result;
+}
+
+static void expectMainTrap(BytecodeModule &module, bool threaded, TrapKind expected) {
+    BytecodeVM vm;
+    vm.setThreadedDispatch(threaded);
+    vm.load(&module);
+    (void)vm.exec("main", {});
+    assert(vm.state() == VMState::Trapped);
+    assert(vm.trapKind() == expected);
+}
+
+static void test_vm_numeric_edge_regressions() {
+    std::cout << "  test_vm_numeric_edge_regressions: ";
+
+    auto binaryI64 = [](BCOpcode op, int64_t lhs, int64_t rhs) {
+        BytecodeModule module;
+        const uint16_t lhsIdx = addI64(module, lhs);
+        const uint16_t rhsIdx = addI64(module, rhs);
+        addDirectBytecodeMain(module,
+                              {encodeOp16(BCOpcode::LOAD_I64, lhsIdx),
+                               encodeOp16(BCOpcode::LOAD_I64, rhsIdx),
+                               encodeOp(op),
+                               encodeOp(BCOpcode::RETURN)});
+        return module;
+    };
+
+    const int64_t i64Min = std::numeric_limits<int64_t>::min();
+    const int64_t i64Max = std::numeric_limits<int64_t>::max();
+
+    for (bool threaded : {false, true}) {
+        {
+            BytecodeModule module = binaryI64(BCOpcode::ADD_I64, i64Max, 1);
+            assert(runMain(module, threaded).i64 == i64Min);
+        }
+        {
+            BytecodeModule module = binaryI64(BCOpcode::SUB_I64, i64Min, 1);
+            assert(runMain(module, threaded).i64 == i64Max);
+        }
+        {
+            BytecodeModule module = binaryI64(BCOpcode::MUL_I64, 1LL << 62, 4);
+            assert(runMain(module, threaded).i64 == 0);
+        }
+        {
+            BytecodeModule module = binaryI64(BCOpcode::SHL_I64, -1, 1);
+            assert(runMain(module, threaded).i64 == -2);
+        }
+        {
+            BytecodeModule module = binaryI64(BCOpcode::ASHR_I64, -8, 1);
+            assert(runMain(module, threaded).i64 == -4);
+        }
+        {
+            BytecodeModule module;
+            const uint16_t valueIdx = addI64(module, i64Max);
+            addDirectBytecodeMain(module,
+                                  {encodeOp16(BCOpcode::LOAD_I64, valueIdx),
+                                   encodeOp8(BCOpcode::STORE_LOCAL, 0),
+                                   encodeOp8(BCOpcode::INC_LOCAL, 0),
+                                   encodeOp8(BCOpcode::LOAD_LOCAL, 0),
+                                   encodeOp(BCOpcode::RETURN)},
+                                  1,
+                                  1);
+            assert(runMain(module, threaded).i64 == i64Min);
+        }
+        {
+            BytecodeModule module;
+            const uint16_t valueIdx = addI64(module, i64Min);
+            addDirectBytecodeMain(module,
+                                  {encodeOp16(BCOpcode::LOAD_I64, valueIdx),
+                                   encodeOp8(BCOpcode::STORE_LOCAL, 0),
+                                   encodeOp8(BCOpcode::DEC_LOCAL, 0),
+                                   encodeOp8(BCOpcode::LOAD_LOCAL, 0),
+                                   encodeOp(BCOpcode::RETURN)},
+                                  1,
+                                  1);
+            assert(runMain(module, threaded).i64 == i64Max);
+        }
+        {
+            BytecodeModule module = binaryI64(BCOpcode::SREM_I64_CHK, i64Min, -1);
+            assert(runMain(module, threaded).i64 == 0);
+        }
+    }
+
+    std::cout << "PASSED\n";
+}
+
+static void test_vm_safety_trap_regressions() {
+    std::cout << "  test_vm_safety_trap_regressions: ";
+
+    auto f64TrapModule = [](double value, BCOpcode op) {
+        BytecodeModule module;
+        const uint16_t valueIdx = addF64(module, value);
+        addDirectBytecodeMain(module,
+                              {encodeOp16(BCOpcode::LOAD_F64, valueIdx),
+                               encodeOp(op),
+                               encodeOp(BCOpcode::RETURN)},
+                              0,
+                              1);
+        return module;
+    };
+
+    for (bool threaded : {false, true}) {
+        {
+            BytecodeModule module =
+                f64TrapModule(std::numeric_limits<double>::quiet_NaN(), BCOpcode::F64_TO_I64);
+            expectMainTrap(module, threaded, TrapKind::InvalidCast);
+        }
+        {
+            BytecodeModule module = f64TrapModule(std::ldexp(1.0, 63), BCOpcode::F64_TO_I64_CHK);
+            expectMainTrap(module, threaded, TrapKind::Overflow);
+        }
+        {
+            BytecodeModule module = f64TrapModule(std::ldexp(1.0, 64), BCOpcode::F64_TO_U64_CHK);
+            expectMainTrap(module, threaded, TrapKind::Overflow);
+        }
+        {
+            BytecodeModule module = createDirectBytecodeModule({encodeOpI8(BCOpcode::LOAD_I8, -1),
+                                                                encodeOp(BCOpcode::ALLOCA),
+                                                                encodeOp(BCOpcode::RETURN)},
+                                                               0,
+                                                               1);
+            expectMainTrap(module, threaded, TrapKind::DomainError);
+        }
+        {
+            BytecodeModule module = createDirectBytecodeModule({encodeOp8(BCOpcode::LOAD_LOCAL, 3),
+                                                                encodeOp(BCOpcode::RETURN)},
+                                                               1,
+                                                               1);
+            expectMainTrap(module, threaded, TrapKind::InvalidOpcode);
+        }
+        {
+            BytecodeModule module = createDirectBytecodeModule({encodeOp(BCOpcode::LOAD_NULL),
+                                                                encodeOp(BCOpcode::LOAD_I8_MEM),
+                                                                encodeOp(BCOpcode::RETURN)},
+                                                               0,
+                                                               1);
+            expectMainTrap(module, threaded, TrapKind::NullPointer);
+        }
+        {
+            BytecodeModule module = createDirectBytecodeModule({encodeOp(BCOpcode::LOAD_NULL),
+                                                                encodeOp(BCOpcode::STR_RETAIN),
+                                                                encodeOp(BCOpcode::STR_RELEASE),
+                                                                encodeOp(BCOpcode::LOAD_ONE),
+                                                                encodeOp(BCOpcode::RETURN)},
+                                                               0,
+                                                               1);
+            assert(runMain(module, threaded).i64 == 1);
+        }
     }
 
     std::cout << "PASSED\n";
@@ -2272,6 +2470,8 @@ int main() {
     test_string_memory_lifetime();
     test_string_release_call_lifetime();
     test_global_address_storage();
+    test_vm_numeric_edge_regressions();
+    test_vm_safety_trap_regressions();
     test_native_multi_args();
     test_native_wide_index();
     test_exception_handling();

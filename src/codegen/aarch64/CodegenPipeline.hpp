@@ -30,6 +30,7 @@
 
 #include <cstddef>
 #include <iosfwd>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -100,6 +101,7 @@ class CodegenPipeline {
         bool fast_link = false;        ///< Skip non-essential size-reduction passes in the linker.
         std::string asset_blob_path{};             ///< Path to VPA asset blob for .rodata embedding.
         std::vector<std::string> extra_objects{};  ///< Extra .o files to pass to the linker.
+        std::optional<bool> windows_debug_runtime{}; ///< Override Windows CRT import flavor.
     };
 
     /// @brief Construct a pipeline with the given options.

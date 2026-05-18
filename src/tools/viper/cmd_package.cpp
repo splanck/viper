@@ -1094,6 +1094,8 @@ int cmdPackage(int argc, char **argv) {
             // Construct argv for cmdBuild: <target> -o <tempBinaryPath>
             std::vector<std::string> buildStorage = {
                 args.target, "-o", tempBinaryPath, "--arch", archStr};
+            if (args.platformTarget == PackageTarget::Windows)
+                buildStorage.push_back("--windows-release-runtime");
             std::vector<char *> buildArgv;
             buildArgv.reserve(buildStorage.size());
             for (auto &arg : buildStorage)

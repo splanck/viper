@@ -133,7 +133,7 @@ The implemented bytecode VM (see `src/bytecode/`):
 | Opcode | Mnemonic | Semantics | Trap? |
 |--------|----------|-----------|-------|
 | Sitofp | `sitofp` | signed int → float | No |
-| Fptosi | `fptosi` | float → signed int | No |
+| Fptosi | `fptosi` | float → signed int; traps on NaN/range | Yes |
 | CastFpToSiRteChk | `cast.fp_to_si.rte.chk` | float → int (checked) | Yes |
 | CastFpToUiRteChk | `cast.fp_to_ui.rte.chk` | float → uint (checked) | Yes |
 | CastSiNarrowChk | `cast.si_narrow.chk` | i64 → i32 (checked) | Yes |
@@ -146,9 +146,9 @@ The implemented bytecode VM (see `src/bytecode/`):
 #### Memory Operations (6 opcodes)
 | Opcode | Mnemonic | Semantics | Trap? |
 |--------|----------|-----------|-------|
-| Alloca | `alloca` | Stack allocate n bytes | Yes |
-| GEP | `gep` | ptr + offset | No |
-| Load | `load` | *ptr | No |
+| Alloca | `alloca` | Stack allocate n bytes; negative sizes trap | Yes |
+| GEP | `gep` | ptr + offset; null+nonzero traps | Yes |
+| Load | `load` | *ptr; null/invalid pointers trap | Yes |
 | Store | `store` | *ptr = val | Yes |
 | AddrOf | `addr_of` | &val | No |
 | GAddr | `gaddr` | &global | No at IL level; bytecode lowers known globals to bytecode global storage addresses |
@@ -319,9 +319,9 @@ String values are carried as `void*` (pointer to the runtime string object).
 
 | Code | Mnemonic | Stack | Description |
 |------|----------|-------|-------------|
-| 0x30 | ADD_I64 | [a,b] → [a+b] | Integer add |
-| 0x31 | SUB_I64 | [a,b] → [a-b] | Integer subtract |
-| 0x32 | MUL_I64 | [a,b] → [a*b] | Integer multiply |
+| 0x30 | ADD_I64 | [a,b] → [a+b] | Integer add (two's-complement wrap) |
+| 0x31 | SUB_I64 | [a,b] → [a-b] | Integer subtract (two's-complement wrap) |
+| 0x32 | MUL_I64 | [a,b] → [a*b] | Integer multiply (two's-complement wrap) |
 | 0x33 | SDIV_I64 | [a,b] → [a/b] | Signed divide |
 | 0x34 | UDIV_I64 | [a,b] → [a/b] | Unsigned divide |
 | 0x35 | SREM_I64 | [a,b] → [a%b] | Signed remainder |
@@ -332,7 +332,7 @@ String values are carried as `void*` (pointer to the runtime string object).
 | 0x3A | MUL_I64_OVF | [a,b] → [a*b] | Mul with overflow trap |
 | 0x3B | SDIV_I64_CHK | [a,b] → [a/b] | Div with zero-check |
 | 0x3C | UDIV_I64_CHK | [a,b] → [a/b] | Div with zero-check |
-| 0x3D | SREM_I64_CHK | [a,b] → [a%b] | Rem with zero-check |
+| 0x3D | SREM_I64_CHK | [a,b] → [a%b] | Rem with zero-check; MIN%-1 returns 0 |
 | 0x3E | UREM_I64_CHK | [a,b] → [a%b] | Rem with zero-check |
 | 0x3F | IDX_CHK | [idx,lo,hi] → [idx] | Bounds check trap |
 
@@ -354,7 +354,7 @@ String values are carried as `void*` (pointer to the runtime string object).
 | 0x61 | OR_I64 | [a,b] → [a\|b] | Bitwise OR |
 | 0x62 | XOR_I64 | [a,b] → [a^b] | Bitwise XOR |
 | 0x63 | NOT_I64 | [a] → [~a] | Bitwise NOT |
-| 0x64 | SHL_I64 | [a,b] → [a<<b] | Shift left |
+| 0x64 | SHL_I64 | [a,b] → [a<<b] | Shift left (two's-complement wrap, b&63) |
 | 0x65 | LSHR_I64 | [a,b] → [a>>>b] | Logical shift right |
 | 0x66 | ASHR_I64 | [a,b] → [a>>b] | Arithmetic shift right |
 
@@ -385,9 +385,9 @@ String values are carried as `void*` (pointer to the runtime string object).
 |------|----------|-------|-------------|
 | 0x90 | I64_TO_F64 | [i] → [f] | Signed int to float |
 | 0x91 | U64_TO_F64 | [i] → [f] | Unsigned int to float |
-| 0x92 | F64_TO_I64 | [f] → [i] | Float to signed int |
-| 0x93 | F64_TO_I64_CHK | [f] → [i] | Float to int (checked) |
-| 0x94 | F64_TO_U64_CHK | [f] → [i] | Float to uint (checked) |
+| 0x92 | F64_TO_I64 | [f] → [i] | Float to signed int; truncates, InvalidCast on NaN, Overflow on range |
+| 0x93 | F64_TO_I64_CHK | [f] → [i] | Float to int; round-to-even, InvalidCast on NaN, Overflow on range |
+| 0x94 | F64_TO_U64_CHK | [f] → [i] | Float to uint bits; round-to-even, InvalidCast on NaN/negative, Overflow on range |
 | 0x95 | I64_NARROW_CHK | [i] → [i] | Signed narrow (checked) |
 | 0x96 | U64_NARROW_CHK | [i] → [i] | Unsigned narrow (checked) |
 | 0x97 | BOOL_TO_I64 | [b] → [i] | Boolean to i64 |
@@ -397,8 +397,8 @@ String values are carried as `void*` (pointer to the runtime string object).
 
 | Code | Mnemonic | Args | Stack | Description |
 |------|----------|------|-------|-------------|
-| 0xA0 | ALLOCA | - | [n] → [ptr] | Allocate n bytes |
-| 0xA1 | GEP | - | [ptr,off] → [ptr+off] | Pointer arithmetic |
+| 0xA0 | ALLOCA | - | [n] → [ptr] | Allocate n bytes; negative sizes trap |
+| 0xA1 | GEP | - | [ptr,off] → [ptr+off] | Pointer arithmetic; null+nonzero traps |
 | 0xA2 | LOAD_I8 | - | [ptr] → [v] | Load 8-bit signed |
 | 0xA3 | LOAD_I16 | - | [ptr] → [v] | Load 16-bit signed |
 | 0xA4 | LOAD_I32 | - | [ptr] → [v] | Load 32-bit signed |
@@ -413,6 +413,10 @@ String values are carried as `void*` (pointer to the runtime string object).
 | 0xAD | STORE_F64_MEM | - | [ptr,v] → [] | Store float |
 | 0xAE | STORE_PTR | - | [ptr,v] → [] | Store pointer |
 | 0xAF | STORE_STR_MEM | - | [ptr,v] → [] | Store string |
+
+All bytecode memory loads and stores trap on null or clearly invalid pointer
+addresses before touching host memory. String loads/stores also validate string
+handles and preserve reference ownership.
 
 ### 4.10 Control Flow (0xB0-0xBF)
 

@@ -104,6 +104,10 @@ void *rt_daterange_new(int64_t start, int64_t end) {
     int64_t e = start <= end ? end : start;
 
     rt_daterange_impl *r = (rt_daterange_impl *)rt_obj_new_i64(0, sizeof(rt_daterange_impl));
+    if (!r) {
+        rt_trap("DateRange.New: memory allocation failed");
+        return NULL;
+    }
     r->start = s;
     r->end = e;
     return r;

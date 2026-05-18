@@ -82,6 +82,7 @@ struct RunBuildConfig {
     std::optional<std::string> buildProfileOverride;
     std::optional<viper::tools::TargetArch> archOverride;
     std::optional<bool> fastLinkOverride;
+    std::optional<bool> windowsDebugRuntimeOverride;
 };
 
 struct CompiledProjectModule {
@@ -182,6 +183,10 @@ il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, 
             config.fastLinkOverride = true;
         } else if (arg == "--no-fast-link") {
             config.fastLinkOverride = false;
+        } else if (arg == "--windows-debug-runtime") {
+            config.windowsDebugRuntimeOverride = true;
+        } else if (arg == "--windows-release-runtime") {
+            config.windowsDebugRuntimeOverride = false;
         } else if (arg == "--no-runtime-namespaces") {
             config.noRuntimeNamespaces = true;
         } else if (arg == "--arch") {
@@ -670,7 +675,8 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
                                                      true,
                                                      moduleVerified,
                                                      config.shared.timeCompile,
-                                                     fastLink);
+                                                     fastLink,
+                                                     config.windowsDebugRuntimeOverride);
         printCompileTime(config.shared, "native-codegen-link", nativeStart);
         std::error_code ec;
         if (!assetBlobPath.empty())

@@ -257,6 +257,10 @@ long long rt_rand_chance(double probability) {
 void *rt_random_new(long long seed) {
     rt_random_impl *rng =
         (rt_random_impl *)rt_obj_new_i64(RT_RANDOM_CLASS_ID, (int64_t)sizeof(rt_random_impl));
+    if (!rng) {
+        rt_trap("Random.New: memory allocation failed");
+        return NULL;
+    }
     rng->state = (uint64_t)seed;
     return rng;
 }

@@ -40,6 +40,7 @@
 #include "rt_string.h"
 
 #include <assert.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -73,20 +74,37 @@ static uint64_t mv_hash_key(const char *key, mv_kind_t kind) {
 ///          entry) when needed. Capacity stays a power of two so the modulo can use
 ///          `& mask` instead of division. Traps on `SIZE_MAX/2` overflow or a `calloc`
 ///          failure during rehash.
-static void mv_ensure_index_capacity(RtContext *ctx, size_t entry_count) {
-    if (ctx->modvar_index_capacity != 0 && (entry_count + 1) * 10 < ctx->modvar_index_capacity * 7)
-        return;
+static int mv_index_needs_grow(size_t existing_count, size_t capacity) {
+    if (capacity == 0)
+        return 1;
+    if (existing_count == SIZE_MAX)
+        return 1;
+
+    size_t projected = existing_count + 1;
+    size_t threshold = (capacity / 10) * 7 + (((capacity % 10) * 7 + 9) / 10);
+    if (threshold == 0)
+        threshold = 1;
+    return projected >= threshold;
+}
+
+static int mv_ensure_index_capacity(RtContext *ctx, size_t existing_count) {
+    if (!mv_index_needs_grow(existing_count, ctx->modvar_index_capacity))
+        return 1;
 
     size_t new_cap = ctx->modvar_index_capacity ? ctx->modvar_index_capacity * 2 : 32;
-    while ((entry_count + 1) * 10 >= new_cap * 7) {
-        if (new_cap > SIZE_MAX / 2)
+    while (mv_index_needs_grow(existing_count, new_cap)) {
+        if (new_cap > SIZE_MAX / 2) {
             rt_trap("rt_modvar: index capacity overflow");
+            return 0;
+        }
         new_cap *= 2;
     }
 
     size_t *new_slots = (size_t *)calloc(new_cap, sizeof(size_t));
-    if (!new_slots)
+    if (!new_slots) {
         rt_trap("rt_modvar: index alloc failed");
+        return 0;
+    }
 
     size_t mask = new_cap - 1;
     for (size_t i = 0; i < ctx->modvar_count; ++i) {
@@ -100,6 +118,7 @@ static void mv_ensure_index_capacity(RtContext *ctx, size_t entry_count) {
     free(ctx->modvar_index_slots);
     ctx->modvar_index_slots = new_slots;
     ctx->modvar_index_capacity = new_cap;
+    return 1;
 }
 
 /// @brief Linear-probing lookup for an existing module-variable entry.
@@ -150,9 +169,15 @@ static void mv_insert_index(RtContext *ctx, size_t entry_index) {
 /// @param size Size in bytes of the requested storage.
 /// @return Pointer to zeroed storage; never NULL (traps on failure).
 static void *mv_alloc(size_t size) {
+    if (size > (size_t)INT64_MAX) {
+        rt_trap("rt_modvar: storage size overflow");
+        return NULL;
+    }
     void *p = rt_alloc((int64_t)size);
-    if (!p)
+    if (!p) {
         rt_trap("rt_modvar: alloc failed");
+        return NULL;
+    }
     memset(p, 0, size); // Defensive: ensure all fields zeroed regardless of rt_alloc behavior
     return p;
 }
@@ -180,15 +205,21 @@ static RtModvarEntry *mv_find_or_create(RtContext *ctx,
 
     if (ctx->modvar_count == ctx->modvar_capacity) {
         size_t oldCap = ctx->modvar_capacity;
-        if (oldCap > (SIZE_MAX / 2))
+        if (oldCap > (SIZE_MAX / 2)) {
             rt_trap("rt_modvar: table capacity overflow");
+            return NULL;
+        }
         size_t newCap = oldCap ? oldCap * 2 : 16;
-        if (newCap > (SIZE_MAX / sizeof(RtModvarEntry)))
+        if (newCap > (SIZE_MAX / sizeof(RtModvarEntry))) {
             rt_trap("rt_modvar: table size overflow");
+            return NULL;
+        }
         RtModvarEntry *np =
             (RtModvarEntry *)realloc(ctx->modvar_entries, newCap * sizeof(RtModvarEntry));
-        if (!np)
+        if (!np) {
             rt_trap("rt_modvar: table alloc failed");
+            return NULL;
+        }
         if (newCap > oldCap) {
             memset(np + oldCap, 0, (newCap - oldCap) * sizeof(RtModvarEntry));
         }
@@ -196,18 +227,37 @@ static RtModvarEntry *mv_find_or_create(RtContext *ctx,
         ctx->modvar_capacity = newCap;
     }
 
-    mv_ensure_index_capacity(ctx, ctx->modvar_count + 1);
-
-    RtModvarEntry *e = &ctx->modvar_entries[ctx->modvar_count++];
     size_t nlen = strlen(key);
-    e->name = (char *)rt_alloc((int64_t)(nlen + 1));
-    if (!e->name)
+    if (nlen > (size_t)INT64_MAX - 1) {
+        rt_trap("rt_modvar: name size overflow");
+        return NULL;
+    }
+
+    void *addr = mv_alloc(size);
+    if (!addr)
+        return NULL;
+
+    char *name_copy = (char *)rt_alloc((int64_t)(nlen + 1));
+    if (!name_copy) {
+        free(addr);
         rt_trap("rt_modvar: name alloc failed");
-    memcpy(e->name, key, nlen + 1);
+        return NULL;
+    }
+    memcpy(name_copy, key, nlen + 1);
+
+    if (!mv_ensure_index_capacity(ctx, ctx->modvar_count)) {
+        free(name_copy);
+        free(addr);
+        return NULL;
+    }
+
+    RtModvarEntry *e = &ctx->modvar_entries[ctx->modvar_count];
+    e->name = name_copy;
     e->kind = kind;
     e->size = size;
     e->hash = hash;
-    e->addr = mv_alloc(size);
+    e->addr = addr;
+    ctx->modvar_count++;
     mv_insert_index(ctx, ctx->modvar_count - 1);
     return e;
 }
@@ -226,12 +276,27 @@ static void *mv_addr(rt_string name, mv_kind_t kind, size_t size) {
     if (!ctx)
         ctx = rt_legacy_context();
 
-    const char *c = rt_string_cstr(name);
-    if (!c)
+    if (!name) {
         rt_trap("rt_modvar: null name");
-    if (size == 0)
+        return NULL;
+    }
+    if (!rt_string_is_handle(name)) {
+        rt_trap("rt_modvar: invalid name");
+        return NULL;
+    }
+
+    const char *c = rt_string_cstr(name);
+    if (!c) {
+        rt_trap("rt_modvar: null name");
+        return NULL;
+    }
+    if (size == 0) {
         rt_trap("rt_modvar: zero-sized storage");
+        return NULL;
+    }
     RtModvarEntry *e = mv_find_or_create(ctx, c, kind, size);
+    if (!e)
+        return NULL;
     return e->addr;
 }
 
@@ -263,7 +328,9 @@ void *rt_modvar_addr_str(rt_string name) {
 /// @brief Address of a module variable block with arbitrary size.
 /// @details Used for arrays and records that need more than 8 bytes.
 void *rt_modvar_addr_block(rt_string name, int64_t size) {
-    if (size < 0)
+    if (size < 0) {
         rt_trap("rt_modvar: negative block size");
+        return NULL;
+    }
     return mv_addr(name, MV_BLOCK, (size_t)size);
 }

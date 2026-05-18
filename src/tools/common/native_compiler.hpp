@@ -18,6 +18,7 @@
 #include "il/core/Module.hpp"
 
 #include <filesystem>
+#include <optional>
 #include <string>
 
 namespace viper::tools {
@@ -61,7 +62,8 @@ int compileToNative(const std::string &ilPath,
                     int backendOptimizeLevel = 1,
                     bool skipIlOptimization = true,
                     bool timePasses = false,
-                    bool fastLink = false);
+                    bool fastLink = false,
+                    std::optional<bool> windowsDebugRuntime = std::nullopt);
 
 /// @brief Compile an already-built IL module to a native binary without reparsing IL text.
 int compileModuleToNative(il::core::Module module,
@@ -74,7 +76,8 @@ int compileModuleToNative(il::core::Module module,
                           bool skipIlOptimization = true,
                           bool moduleAlreadyVerified = true,
                           bool timePasses = false,
-                          bool fastLink = false);
+                          bool fastLink = false,
+                          std::optional<bool> windowsDebugRuntime = std::nullopt);
 
 /// @brief Generate a unique temporary file path for IL serialization.
 /// @return A path in the system temp directory with a .il extension.

@@ -71,7 +71,8 @@ int compileToNative(const std::string &ilPath,
                     int backendOptimizeLevel,
                     bool skipIlOptimization,
                     bool timePasses,
-                    bool fastLink) {
+                    bool fastLink,
+                    std::optional<bool> windowsDebugRuntime) {
     if (arch == TargetArch::ARM64) {
         viper::codegen::aarch64::CodegenPipeline::Options opts;
         opts.input_il_path = ilPath;
@@ -81,6 +82,7 @@ int compileToNative(const std::string &ilPath,
         opts.asset_blob_path = assetBlobPath;
         opts.time_passes = timePasses;
         opts.fast_link = fastLink;
+        opts.windows_debug_runtime = windowsDebugRuntime;
         if (!assetObjPath.empty())
             opts.extra_objects.push_back(assetObjPath);
 
@@ -102,6 +104,7 @@ int compileToNative(const std::string &ilPath,
     opts.asset_blob_path = assetBlobPath;
     opts.time_passes = timePasses;
     opts.fast_link = fastLink;
+    opts.windows_debug_runtime = windowsDebugRuntime;
 #if defined(_WIN32)
     opts.target_abi = viper::codegen::x64::CodegenOptions::TargetABI::Win64;
     opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Windows;
@@ -142,7 +145,8 @@ int compileModuleToNative(il::core::Module module,
                           bool skipIlOptimization,
                           bool moduleAlreadyVerified,
                           bool timePasses,
-                          bool fastLink) {
+                          bool fastLink,
+                          std::optional<bool> windowsDebugRuntime) {
     const std::string syntheticInputPath = generateTempIlPath();
 
     if (arch == TargetArch::ARM64) {
@@ -154,6 +158,7 @@ int compileModuleToNative(il::core::Module module,
         opts.asset_blob_path = assetBlobPath;
         opts.time_passes = timePasses;
         opts.fast_link = fastLink;
+        opts.windows_debug_runtime = windowsDebugRuntime;
         if (!assetObjPath.empty())
             opts.extra_objects.push_back(assetObjPath);
 
@@ -175,6 +180,7 @@ int compileModuleToNative(il::core::Module module,
     opts.asset_blob_path = assetBlobPath;
     opts.time_passes = timePasses;
     opts.fast_link = fastLink;
+    opts.windows_debug_runtime = windowsDebugRuntime;
 #if defined(_WIN32)
     opts.target_abi = viper::codegen::x64::CodegenOptions::TargetABI::Win64;
     opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Windows;

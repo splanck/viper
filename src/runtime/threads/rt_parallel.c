@@ -51,6 +51,7 @@
 #include "rt_seq.h"
 #include "rt_threadpool.h"
 
+#include <limits.h>
 #include <stdint.h>
 #include <setjmp.h>
 #include <stdlib.h>
@@ -362,6 +363,14 @@ static int64_t parallel_pool_size(void *pool) {
     return size > 0 ? size : 1;
 }
 
+static int64_t parallel_saturating_mul_i64(int64_t lhs, int64_t rhs) {
+    if (lhs <= 0 || rhs <= 0)
+        return 0;
+    if (lhs > INT64_MAX / rhs)
+        return INT64_MAX;
+    return lhs * rhs;
+}
+
 /// @brief Decide how many tasks to split a `count`-element workload into.
 /// @details Heuristic with three regimes:
 ///            - **Tiny / small (`count <= 8 * workers`):** one task per element so we don't
@@ -378,11 +387,11 @@ static int64_t parallel_choose_task_count(void *pool, int64_t count) {
         return count;
 
     int64_t workers = parallel_pool_size(pool);
-    if (count <= workers * 8)
+    if (count <= parallel_saturating_mul_i64(workers, 8))
         return count;
 
     const int64_t min_chunk = 16;
-    int64_t task_count = workers * 4;
+    int64_t task_count = parallel_saturating_mul_i64(workers, 4);
     if (task_count < 1)
         task_count = 1;
     if (task_count > count)
@@ -438,6 +447,10 @@ static void parallel_trap_error(const char *fallback, const char *captured) {
 
 static int parallel_count_fits_array(int64_t count, size_t elem_size) {
     return count >= 0 && elem_size > 0 && (uint64_t)count <= (uint64_t)SIZE_MAX / elem_size;
+}
+
+static int parallel_count_fits_wait_counter(int64_t count) {
+    return count >= 0 && count <= INT_MAX;
 }
 
 /// @brief Check whether a Map-callback result is one of the input pointers.
@@ -800,6 +813,13 @@ void rt_parallel_foreach_pool(void *seq, void *func, void *pool) {
     for (int64_t i = 0; i < count; i++)
         items[i] = rt_seq_get(seq, i);
 
+    if (!parallel_count_fits_wait_counter(task_count)) {
+        free(items);
+        parallel_release_default_pool(pool, actual_pool);
+        rt_trap("Parallel.ForEach: allocation size overflow");
+        return;
+    }
+
 #ifdef _WIN32
     LONG remaining = (LONG)task_count;
     LONG task_failed = 0;
@@ -956,6 +976,14 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool) {
     for (int64_t i = 0; i < count; i++)
         items[i] = rt_seq_get(seq, i);
 
+    if (!parallel_count_fits_wait_counter(task_count)) {
+        free(items);
+        free(results);
+        parallel_release_default_pool(pool, actual_pool);
+        rt_trap("Parallel.Map: allocation size overflow");
+        return NULL;
+    }
+
 #ifdef _WIN32
     LONG remaining = (LONG)task_count;
     LONG task_failed = 0;
@@ -1110,6 +1138,12 @@ void rt_parallel_invoke_pool(void *funcs, void *pool) {
         return;
     }
 
+    if (!parallel_count_fits_wait_counter(count)) {
+        parallel_release_default_pool(pool, actual_pool);
+        rt_trap("Parallel.Invoke: allocation size overflow");
+        return;
+    }
+
 #ifdef _WIN32
     LONG remaining = (LONG)count;
     LONG task_failed = 0;
@@ -1250,6 +1284,11 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
     int64_t nworkers = parallel_pool_size(actual_pool);
     if (nworkers > count)
         nworkers = count;
+    if (!parallel_count_fits_wait_counter(nworkers)) {
+        parallel_release_default_pool(pool, actual_pool);
+        rt_trap("Parallel.Reduce: allocation size overflow");
+        return identity;
+    }
 
     /* Extract items array for chunk access. */
     if (!parallel_count_fits_array(count, sizeof(void *))) {
@@ -1421,6 +1460,12 @@ void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool) {
         parallel_release_default_pool(pool, actual_pool);
         if (task_error[0])
             parallel_trap_error("Parallel.For: task trapped", task_error);
+        return;
+    }
+
+    if (!parallel_count_fits_wait_counter(task_count)) {
+        parallel_release_default_pool(pool, actual_pool);
+        rt_trap("Parallel.For: allocation size overflow");
         return;
     }
 

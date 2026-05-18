@@ -137,6 +137,7 @@ static int linkObjToExe(const std::string &objPath,
                         std::size_t stackSize,
                         const std::vector<std::string> &extraObjects,
                         bool fastLink,
+                        std::optional<bool> windowsDebugRuntime,
                         bool preserveDebugSections,
                         std::ostream &out,
                         std::ostream &err);
@@ -148,6 +149,7 @@ static int linkToExe(const std::string &asmPath,
                      TargetPlatform targetPlatform,
                      std::size_t stackSize,
                      const std::vector<std::string> &extraObjects,
+                     std::optional<bool> windowsDebugRuntime,
                      bool preserveDebugSections,
                      std::ostream &out,
                      std::ostream &err) {
@@ -172,6 +174,7 @@ static int linkToExe(const std::string &asmPath,
         stackSize,
         extraObjects,
         false,
+        windowsDebugRuntime,
         preserveDebugSections,
         out,
         err);
@@ -248,6 +251,7 @@ static int linkObjToExe(const std::string &objPath,
                         std::size_t stackSize,
                         const std::vector<std::string> &extraObjects,
                         bool fastLink,
+                        std::optional<bool> windowsDebugRuntime,
                         bool preserveDebugSections,
                         std::ostream &out,
                         std::ostream &err) {
@@ -264,6 +268,7 @@ static int linkObjToExe(const std::string &objPath,
     linkOpts.stackSize = stackSize;
     linkOpts.fastLink = fastLink;
     linkOpts.preserveDebugSections = preserveDebugSections;
+    linkOpts.windowsDebugRuntime = windowsDebugRuntime;
     linkOpts.extraObjPaths = extraObjects;
     collectNativeLinkArchives(ctx, linkOpts.archivePaths);
 
@@ -656,6 +661,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
                          opts_.stack_size,
                          opts_.extra_objects,
                          opts_.fast_link,
+                         opts_.windows_debug_runtime,
                          opts_.emit_debug_lines,
                          out,
                          err);
@@ -707,6 +713,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
                                   opts_.target_platform,
                                   opts_.stack_size,
                                   opts_.extra_objects,
+                                  opts_.windows_debug_runtime,
                                   opts_.emit_debug_lines,
                                   out,
                                   err);
@@ -732,6 +739,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
                   opts_.target_platform,
                   opts_.stack_size,
                   opts_.extra_objects,
+                  opts_.windows_debug_runtime,
                   opts_.emit_debug_lines,
                   out,
                   err) != 0) {

@@ -36,178 +36,163 @@ namespace bytecode {
 #if defined(__GNUC__) || defined(__clang__)
 
 void BytecodeVM::runThreaded() {
-    // Dispatch table for computed goto
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wc99-designator"
-#endif
-    static void *dispatchTable[256] = {
-        // Stack Operations (0x00-0x0F)
-        [0x00] = &&L_NOP,
-        [0x01] = &&L_DUP,
-        [0x02] = &&L_DUP2,
-        [0x03] = &&L_POP,
-        [0x04] = &&L_POP2,
-        [0x05] = &&L_SWAP,
-        [0x06] = &&L_ROT3,
-        // 0x07-0x0F -> default
+    // Dispatch table for computed goto. Keep it local: GCC C++ rejects label
+    // addresses in designated initializers, and static post-init mutation races.
+    void *dispatchTable[256] = {};
 
-        // Local Variable Operations (0x10-0x1F)
-        [0x10] = &&L_LOAD_LOCAL,
-        [0x11] = &&L_STORE_LOCAL,
-        [0x12] = &&L_LOAD_LOCAL_W,
-        [0x13] = &&L_STORE_LOCAL_W,
-        [0x14] = &&L_INC_LOCAL,
-        [0x15] = &&L_DEC_LOCAL,
-        // 0x16-0x1F -> default
+    // Stack Operations (0x00-0x0F)
+    dispatchTable[0x00] = &&L_NOP;
+    dispatchTable[0x01] = &&L_DUP;
+    dispatchTable[0x02] = &&L_DUP2;
+    dispatchTable[0x03] = &&L_POP;
+    dispatchTable[0x04] = &&L_POP2;
+    dispatchTable[0x05] = &&L_SWAP;
+    dispatchTable[0x06] = &&L_ROT3;
 
-        // Constant Loading (0x20-0x2F)
-        [0x20] = &&L_LOAD_I8,
-        [0x21] = &&L_LOAD_I16,
-        [0x22] = &&L_LOAD_I32,
-        [0x23] = &&L_LOAD_I64,
-        [0x24] = &&L_LOAD_F64,
-        [0x25] = &&L_LOAD_STR,
-        [0x26] = &&L_LOAD_NULL,
-        [0x27] = &&L_LOAD_ZERO,
-        [0x28] = &&L_LOAD_ONE,
-        [0x29] = &&L_LOAD_GLOBAL,
-        [0x2A] = &&L_STORE_GLOBAL,
-        [0x2B] = &&L_LOAD_GLOBAL_ADDR,
+    // Local Variable Operations (0x10-0x1F)
+    dispatchTable[0x10] = &&L_LOAD_LOCAL;
+    dispatchTable[0x11] = &&L_STORE_LOCAL;
+    dispatchTable[0x12] = &&L_LOAD_LOCAL_W;
+    dispatchTable[0x13] = &&L_STORE_LOCAL_W;
+    dispatchTable[0x14] = &&L_INC_LOCAL;
+    dispatchTable[0x15] = &&L_DEC_LOCAL;
 
-        // Integer Arithmetic (0x30-0x3F)
-        [0x30] = &&L_ADD_I64,
-        [0x31] = &&L_SUB_I64,
-        [0x32] = &&L_MUL_I64,
-        [0x33] = &&L_SDIV_I64,
-        [0x34] = &&L_UDIV_I64,
-        [0x35] = &&L_SREM_I64,
-        [0x36] = &&L_UREM_I64,
-        [0x37] = &&L_NEG_I64,
-        [0x38] = &&L_ADD_I64_OVF,
-        [0x39] = &&L_SUB_I64_OVF,
-        [0x3A] = &&L_MUL_I64_OVF,
-        [0x3B] = &&L_SDIV_I64_CHK,
-        [0x3C] = &&L_UDIV_I64_CHK,
-        [0x3D] = &&L_SREM_I64_CHK,
-        [0x3E] = &&L_UREM_I64_CHK,
-        [0x3F] = &&L_IDX_CHK,
+    // Constant Loading (0x20-0x2F)
+    dispatchTable[0x20] = &&L_LOAD_I8;
+    dispatchTable[0x21] = &&L_LOAD_I16;
+    dispatchTable[0x22] = &&L_LOAD_I32;
+    dispatchTable[0x23] = &&L_LOAD_I64;
+    dispatchTable[0x24] = &&L_LOAD_F64;
+    dispatchTable[0x25] = &&L_LOAD_STR;
+    dispatchTable[0x26] = &&L_LOAD_NULL;
+    dispatchTable[0x27] = &&L_LOAD_ZERO;
+    dispatchTable[0x28] = &&L_LOAD_ONE;
+    dispatchTable[0x29] = &&L_LOAD_GLOBAL;
+    dispatchTable[0x2A] = &&L_STORE_GLOBAL;
+    dispatchTable[0x2B] = &&L_LOAD_GLOBAL_ADDR;
 
-        // Float Arithmetic (0x50-0x5F)
-        [0x50] = &&L_ADD_F64,
-        [0x51] = &&L_SUB_F64,
-        [0x52] = &&L_MUL_F64,
-        [0x53] = &&L_DIV_F64,
-        [0x54] = &&L_NEG_F64,
+    // Integer Arithmetic (0x30-0x3F)
+    dispatchTable[0x30] = &&L_ADD_I64;
+    dispatchTable[0x31] = &&L_SUB_I64;
+    dispatchTable[0x32] = &&L_MUL_I64;
+    dispatchTable[0x33] = &&L_SDIV_I64;
+    dispatchTable[0x34] = &&L_UDIV_I64;
+    dispatchTable[0x35] = &&L_SREM_I64;
+    dispatchTable[0x36] = &&L_UREM_I64;
+    dispatchTable[0x37] = &&L_NEG_I64;
+    dispatchTable[0x38] = &&L_ADD_I64_OVF;
+    dispatchTable[0x39] = &&L_SUB_I64_OVF;
+    dispatchTable[0x3A] = &&L_MUL_I64_OVF;
+    dispatchTable[0x3B] = &&L_SDIV_I64_CHK;
+    dispatchTable[0x3C] = &&L_UDIV_I64_CHK;
+    dispatchTable[0x3D] = &&L_SREM_I64_CHK;
+    dispatchTable[0x3E] = &&L_UREM_I64_CHK;
+    dispatchTable[0x3F] = &&L_IDX_CHK;
 
-        // Bitwise Operations (0x60-0x6F)
-        [0x60] = &&L_AND_I64,
-        [0x61] = &&L_OR_I64,
-        [0x62] = &&L_XOR_I64,
-        [0x63] = &&L_NOT_I64,
-        [0x64] = &&L_SHL_I64,
-        [0x65] = &&L_LSHR_I64,
-        [0x66] = &&L_ASHR_I64,
+    // Float Arithmetic (0x50-0x5F)
+    dispatchTable[0x50] = &&L_ADD_F64;
+    dispatchTable[0x51] = &&L_SUB_F64;
+    dispatchTable[0x52] = &&L_MUL_F64;
+    dispatchTable[0x53] = &&L_DIV_F64;
+    dispatchTable[0x54] = &&L_NEG_F64;
 
-        // Integer Comparisons (0x70-0x7F)
-        [0x70] = &&L_CMP_EQ_I64,
-        [0x71] = &&L_CMP_NE_I64,
-        [0x72] = &&L_CMP_SLT_I64,
-        [0x73] = &&L_CMP_SLE_I64,
-        [0x74] = &&L_CMP_SGT_I64,
-        [0x75] = &&L_CMP_SGE_I64,
-        [0x76] = &&L_CMP_ULT_I64,
-        [0x77] = &&L_CMP_ULE_I64,
-        [0x78] = &&L_CMP_UGT_I64,
-        [0x79] = &&L_CMP_UGE_I64,
+    // Bitwise Operations (0x60-0x6F)
+    dispatchTable[0x60] = &&L_AND_I64;
+    dispatchTable[0x61] = &&L_OR_I64;
+    dispatchTable[0x62] = &&L_XOR_I64;
+    dispatchTable[0x63] = &&L_NOT_I64;
+    dispatchTable[0x64] = &&L_SHL_I64;
+    dispatchTable[0x65] = &&L_LSHR_I64;
+    dispatchTable[0x66] = &&L_ASHR_I64;
 
-        // Float Comparisons (0x80-0x8F)
-        [0x80] = &&L_CMP_EQ_F64,
-        [0x81] = &&L_CMP_NE_F64,
-        [0x82] = &&L_CMP_LT_F64,
-        [0x83] = &&L_CMP_LE_F64,
-        [0x84] = &&L_CMP_GT_F64,
-        [0x85] = &&L_CMP_GE_F64,
+    // Integer Comparisons (0x70-0x7F)
+    dispatchTable[0x70] = &&L_CMP_EQ_I64;
+    dispatchTable[0x71] = &&L_CMP_NE_I64;
+    dispatchTable[0x72] = &&L_CMP_SLT_I64;
+    dispatchTable[0x73] = &&L_CMP_SLE_I64;
+    dispatchTable[0x74] = &&L_CMP_SGT_I64;
+    dispatchTable[0x75] = &&L_CMP_SGE_I64;
+    dispatchTable[0x76] = &&L_CMP_ULT_I64;
+    dispatchTable[0x77] = &&L_CMP_ULE_I64;
+    dispatchTable[0x78] = &&L_CMP_UGT_I64;
+    dispatchTable[0x79] = &&L_CMP_UGE_I64;
 
-        // Type Conversions (0x90-0x9F)
-        [0x90] = &&L_I64_TO_F64,
-        [0x91] = &&L_U64_TO_F64,
-        [0x92] = &&L_F64_TO_I64,
-        [0x93] = &&L_F64_TO_I64_CHK,
-        [0x94] = &&L_F64_TO_U64_CHK,
-        [0x95] = &&L_I64_NARROW_CHK,
-        [0x96] = &&L_U64_NARROW_CHK,
-        [0x97] = &&L_BOOL_TO_I64,
-        [0x98] = &&L_I64_TO_BOOL,
+    // Float Comparisons (0x80-0x8F)
+    dispatchTable[0x80] = &&L_CMP_EQ_F64;
+    dispatchTable[0x81] = &&L_CMP_NE_F64;
+    dispatchTable[0x82] = &&L_CMP_LT_F64;
+    dispatchTable[0x83] = &&L_CMP_LE_F64;
+    dispatchTable[0x84] = &&L_CMP_GT_F64;
+    dispatchTable[0x85] = &&L_CMP_GE_F64;
 
-        // Memory Operations (0xA0-0xAF)
-        [0xA0] = &&L_ALLOCA,
-        [0xA1] = &&L_GEP,
-        [0xA2] = &&L_LOAD_I8_MEM,
-        [0xA3] = &&L_LOAD_I16_MEM,
-        [0xA4] = &&L_LOAD_I32_MEM,
-        [0xA5] = &&L_LOAD_I64_MEM,
-        [0xA6] = &&L_LOAD_F64_MEM,
-        [0xA7] = &&L_LOAD_PTR_MEM,
-        [0xA8] = &&L_LOAD_STR_MEM,
-        [0xA9] = &&L_STORE_I8_MEM,
-        [0xAA] = &&L_STORE_I16_MEM,
-        [0xAB] = &&L_STORE_I32_MEM,
-        [0xAC] = &&L_STORE_I64_MEM,
-        [0xAD] = &&L_STORE_F64_MEM,
-        [0xAE] = &&L_STORE_PTR_MEM,
-        [0xAF] = &&L_STORE_STR_MEM,
+    // Type Conversions (0x90-0x9F)
+    dispatchTable[0x90] = &&L_I64_TO_F64;
+    dispatchTable[0x91] = &&L_U64_TO_F64;
+    dispatchTable[0x92] = &&L_F64_TO_I64;
+    dispatchTable[0x93] = &&L_F64_TO_I64_CHK;
+    dispatchTable[0x94] = &&L_F64_TO_U64_CHK;
+    dispatchTable[0x95] = &&L_I64_NARROW_CHK;
+    dispatchTable[0x96] = &&L_U64_NARROW_CHK;
+    dispatchTable[0x97] = &&L_BOOL_TO_I64;
+    dispatchTable[0x98] = &&L_I64_TO_BOOL;
 
-        // Control Flow (0xB0-0xBF)
-        [0xB0] = &&L_JUMP,
-        [0xB1] = &&L_JUMP_IF_TRUE,
-        [0xB2] = &&L_JUMP_IF_FALSE,
-        [0xB3] = &&L_JUMP_LONG,
-        [0xB4] = &&L_SWITCH,
-        [0xB5] = &&L_CALL,
-        [0xB6] = &&L_CALL_NATIVE,
-        [0xB7] = &&L_CALL_INDIRECT,
-        [0xB8] = &&L_RETURN,
-        [0xB9] = &&L_RETURN_VOID,
-        [0xBA] = &&L_DEFAULT, // TAIL_CALL
+    // Memory Operations (0xA0-0xAF)
+    dispatchTable[0xA0] = &&L_ALLOCA;
+    dispatchTable[0xA1] = &&L_GEP;
+    dispatchTable[0xA2] = &&L_LOAD_I8_MEM;
+    dispatchTable[0xA3] = &&L_LOAD_I16_MEM;
+    dispatchTable[0xA4] = &&L_LOAD_I32_MEM;
+    dispatchTable[0xA5] = &&L_LOAD_I64_MEM;
+    dispatchTable[0xA6] = &&L_LOAD_F64_MEM;
+    dispatchTable[0xA7] = &&L_LOAD_PTR_MEM;
+    dispatchTable[0xA8] = &&L_LOAD_STR_MEM;
+    dispatchTable[0xA9] = &&L_STORE_I8_MEM;
+    dispatchTable[0xAA] = &&L_STORE_I16_MEM;
+    dispatchTable[0xAB] = &&L_STORE_I32_MEM;
+    dispatchTable[0xAC] = &&L_STORE_I64_MEM;
+    dispatchTable[0xAD] = &&L_STORE_F64_MEM;
+    dispatchTable[0xAE] = &&L_STORE_PTR_MEM;
+    dispatchTable[0xAF] = &&L_STORE_STR_MEM;
 
-        // Exception Handling (0xC0-0xCF)
-        [0xC0] = &&L_EH_PUSH,
-        [0xC1] = &&L_EH_POP,
-        [0xC2] = &&L_EH_ENTRY,
-        [0xC3] = &&L_TRAP,
-        [0xC4] = &&L_TRAP_FROM_ERR,
-        [0xC6] = &&L_ERR_GET_KIND,
-        [0xC7] = &&L_ERR_GET_CODE,
-        [0xC8] = &&L_ERR_GET_IP,
-        [0xC9] = &&L_ERR_GET_LINE,
-        [0xCA] = &&L_RESUME_SAME,
-        [0xCB] = &&L_RESUME_NEXT,
-        [0xCC] = &&L_RESUME_LABEL,
-        [0xCD] = &&L_TRAP_KIND,
+    // Control Flow (0xB0-0xBF)
+    dispatchTable[0xB0] = &&L_JUMP;
+    dispatchTable[0xB1] = &&L_JUMP_IF_TRUE;
+    dispatchTable[0xB2] = &&L_JUMP_IF_FALSE;
+    dispatchTable[0xB3] = &&L_JUMP_LONG;
+    dispatchTable[0xB4] = &&L_SWITCH;
+    dispatchTable[0xB5] = &&L_CALL;
+    dispatchTable[0xB6] = &&L_CALL_NATIVE;
+    dispatchTable[0xB7] = &&L_CALL_INDIRECT;
+    dispatchTable[0xB8] = &&L_RETURN;
+    dispatchTable[0xB9] = &&L_RETURN_VOID;
+    dispatchTable[0xBA] = &&L_DEFAULT; // TAIL_CALL
 
-        // Runtime Fast-Path Operations (0xD8-0xDF)
-        [0xD8] = &&L_ARR_I32_GET_FAST,
-        [0xD9] = &&L_ARR_I32_SET_FAST,
-        [0xDA] = &&L_ARR_I64_GET_FAST,
-        [0xDB] = &&L_ARR_I64_SET_FAST,
-        [0xDC] = &&L_ARR_F64_GET_FAST,
-        [0xDD] = &&L_ARR_F64_SET_FAST,
-    };
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#endif
+    // Exception Handling (0xC0-0xCF)
+    dispatchTable[0xC0] = &&L_EH_PUSH;
+    dispatchTable[0xC1] = &&L_EH_POP;
+    dispatchTable[0xC2] = &&L_EH_ENTRY;
+    dispatchTable[0xC3] = &&L_TRAP;
+    dispatchTable[0xC4] = &&L_TRAP_FROM_ERR;
+    dispatchTable[0xC6] = &&L_ERR_GET_KIND;
+    dispatchTable[0xC7] = &&L_ERR_GET_CODE;
+    dispatchTable[0xC8] = &&L_ERR_GET_IP;
+    dispatchTable[0xC9] = &&L_ERR_GET_LINE;
+    dispatchTable[0xCA] = &&L_RESUME_SAME;
+    dispatchTable[0xCB] = &&L_RESUME_NEXT;
+    dispatchTable[0xCC] = &&L_RESUME_LABEL;
+    dispatchTable[0xCD] = &&L_TRAP_KIND;
 
-    // Fill uninitialized entries with default handler (once only)
-    static bool tableInitialized = false;
-    if (!tableInitialized) {
-        for (int i = 0; i < 256; i++) {
-            if (dispatchTable[i] == nullptr) {
-                dispatchTable[i] = &&L_DEFAULT;
-            }
-        }
-        tableInitialized = true;
-    }
+    // Runtime Fast-Path Operations (0xD8-0xDF)
+    dispatchTable[0xD8] = &&L_ARR_I32_GET_FAST;
+    dispatchTable[0xD9] = &&L_ARR_I32_SET_FAST;
+    dispatchTable[0xDA] = &&L_ARR_I64_GET_FAST;
+    dispatchTable[0xDB] = &&L_ARR_I64_SET_FAST;
+    dispatchTable[0xDC] = &&L_ARR_F64_GET_FAST;
+    dispatchTable[0xDD] = &&L_ARR_F64_SET_FAST;
+
+    // String Operations (0xE0-0xEF)
+    dispatchTable[0xE0] = &&L_STR_RETAIN;
+    dispatchTable[0xE1] = &&L_STR_RELEASE;
 
     state_ = VMState::Running;
 
@@ -241,7 +226,7 @@ void BytecodeVM::runThreaded() {
         }                                                                                          \
         ++pc;                                                                                      \
         ++instrCount_;                                                                             \
-        goto *dispatchTable[instr & 0xFF];                                                         \
+        goto *(dispatchTable[instr & 0xFF] ? dispatchTable[instr & 0xFF] : &&L_DEFAULT);           \
     } while (0)
 
 #define SYNC_STATE()                                                                               \
@@ -256,6 +241,23 @@ void BytecodeVM::runThreaded() {
         pc = fp_->pc;                                                                              \
         sp = sp_;                                                                                  \
         locals = fp_->locals;                                                                      \
+    } while (0)
+
+#define RETURN_OR_DISPATCH_TRAP()                                                                  \
+    do {                                                                                           \
+        if (state_ == VMState::Running) {                                                          \
+            RELOAD_STATE();                                                                        \
+            DISPATCH();                                                                            \
+        }                                                                                          \
+        return;                                                                                    \
+    } while (0)
+
+#define THREAD_TRAP_OR_DISPATCH(kind, message)                                                     \
+    do {                                                                                           \
+        SYNC_STATE();                                                                              \
+        sp_ = sp;                                                                                  \
+        trapOrDispatch((kind), (message));                                                         \
+        RETURN_OR_DISPATCH_TRAP();                                                                 \
     } while (0)
 
     DISPATCH();
@@ -329,6 +331,10 @@ L_ROT3: {
     // Local Variable Operations
 L_LOAD_LOCAL: {
     uint8_t slot = decodeArg8_0(instr);
+    SYNC_STATE();
+    sp_ = sp;
+    if (!ensureLocalIndex(slot, "BytecodeVM::LOAD_LOCAL(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
     *sp = locals[slot];
     if (localIsString(*fp_, slot) && sp->ptr) {
         if (!validateStringHandle(sp->ptr, "BytecodeVM::pushLocal(threaded)")) {
@@ -346,6 +352,10 @@ L_LOAD_LOCAL: {
 
 L_STORE_LOCAL: {
     uint8_t slot = decodeArg8_0(instr);
+    SYNC_STATE();
+    sp_ = sp;
+    if (!ensureLocalIndex(slot, "BytecodeVM::STORE_LOCAL(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
     --sp;
     BCSlot *src = sp;
     BCSlot *dst = locals + slot;
@@ -376,8 +386,14 @@ L_STORE_LOCAL: {
 }
 
 L_LOAD_LOCAL_W:
-    *sp = locals[decodeArg16(instr)];
-    if (localIsString(*fp_, decodeArg16(instr)) && sp->ptr) {
+    {
+    uint16_t slot = decodeArg16(instr);
+    SYNC_STATE();
+    sp_ = sp;
+    if (!ensureLocalIndex(slot, "BytecodeVM::LOAD_LOCAL_W(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
+    *sp = locals[slot];
+    if (localIsString(*fp_, slot) && sp->ptr) {
         if (!validateStringHandle(sp->ptr, "BytecodeVM::pushLocalW(threaded)")) {
             SYNC_STATE();
             return;
@@ -389,11 +405,16 @@ L_LOAD_LOCAL_W:
     }
     sp++;
     DISPATCH();
+    }
 
 L_STORE_LOCAL_W:
     --sp;
     {
         uint16_t slot = decodeArg16(instr);
+        SYNC_STATE();
+        sp_ = sp;
+        if (!ensureLocalIndex(slot, "BytecodeVM::STORE_LOCAL_W(threaded)"))
+            RETURN_OR_DISPATCH_TRAP();
         BCSlot *src = sp;
         BCSlot *dst = locals + slot;
         const bool srcOwns = slotOwnsString(src);
@@ -423,12 +444,26 @@ L_STORE_LOCAL_W:
     DISPATCH();
 
 L_INC_LOCAL:
-    locals[decodeArg8_0(instr)].i64++;
+    {
+    uint8_t slot = decodeArg8_0(instr);
+    SYNC_STATE();
+    sp_ = sp;
+    if (!ensureLocalIndex(slot, "BytecodeVM::INC_LOCAL(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
+    locals[slot].i64 = wrappingAdd(locals[slot].i64, 1);
     DISPATCH();
+    }
 
 L_DEC_LOCAL:
-    locals[decodeArg8_0(instr)].i64--;
+    {
+    uint8_t slot = decodeArg8_0(instr);
+    SYNC_STATE();
+    sp_ = sp;
+    if (!ensureLocalIndex(slot, "BytecodeVM::DEC_LOCAL(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
+    locals[slot].i64 = wrappingSub(locals[slot].i64, 1);
     DISPATCH();
+    }
 
     // Constant Loading
 L_LOAD_I8:
@@ -573,17 +608,17 @@ L_LOAD_GLOBAL_ADDR: {
 
     // Integer Arithmetic
 L_ADD_I64:
-    sp[-2].i64 += sp[-1].i64;
+    sp[-2].i64 = wrappingAdd(sp[-2].i64, sp[-1].i64);
     sp--;
     DISPATCH();
 
 L_SUB_I64:
-    sp[-2].i64 -= sp[-1].i64;
+    sp[-2].i64 = wrappingSub(sp[-2].i64, sp[-1].i64);
     sp--;
     DISPATCH();
 
 L_MUL_I64:
-    sp[-2].i64 *= sp[-1].i64;
+    sp[-2].i64 = wrappingMul(sp[-2].i64, sp[-1].i64);
     sp--;
     DISPATCH();
 
@@ -703,9 +738,7 @@ L_ADD_I64_OVF: {
             break;
     }
     if (overflow) {
-        SYNC_STATE();
-        trap(TrapKind::Overflow, "Overflow: integer overflow in add");
-        return;
+        THREAD_TRAP_OR_DISPATCH(TrapKind::Overflow, "Overflow: integer overflow in add");
     }
     sp[-2].i64 = result;
     sp--;
@@ -730,9 +763,7 @@ L_SUB_I64_OVF: {
             break;
     }
     if (overflow) {
-        SYNC_STATE();
-        trap(TrapKind::Overflow, "Overflow: integer overflow in sub");
-        return;
+        THREAD_TRAP_OR_DISPATCH(TrapKind::Overflow, "Overflow: integer overflow in sub");
     }
     sp[-2].i64 = result;
     sp--;
@@ -757,9 +788,7 @@ L_MUL_I64_OVF: {
             break;
     }
     if (overflow) {
-        SYNC_STATE();
-        trap(TrapKind::Overflow, "Overflow: integer overflow in mul");
-        return;
+        THREAD_TRAP_OR_DISPATCH(TrapKind::Overflow, "Overflow: integer overflow in mul");
     }
     sp[-2].i64 = result;
     sp--;
@@ -851,9 +880,7 @@ L_IDX_CHK: {
     int64_t lo = sp[-2].i64;
     int64_t idx = sp[-3].i64;
     if (idx < lo || idx >= hi) {
-        SYNC_STATE();
-        trap(TrapKind::Bounds, "index out of bounds");
-        return;
+        THREAD_TRAP_OR_DISPATCH(TrapKind::Bounds, "index out of bounds");
     }
     sp -= 2;
     DISPATCH();
@@ -905,7 +932,7 @@ L_NOT_I64:
     DISPATCH();
 
 L_SHL_I64:
-    sp[-2].i64 <<= (sp[-1].i64 & 63);
+    sp[-2].i64 = wrappingShl(sp[-2].i64, sp[-1].i64);
     sp--;
     DISPATCH();
 
@@ -915,7 +942,7 @@ L_LSHR_I64:
     DISPATCH();
 
 L_ASHR_I64:
-    sp[-2].i64 >>= (sp[-1].i64 & 63);
+    sp[-2].i64 = arithmeticShr(sp[-2].i64, sp[-1].i64);
     sp--;
     DISPATCH();
 
@@ -1010,9 +1037,17 @@ L_U64_TO_F64:
     sp[-1].f64 = static_cast<double>(static_cast<uint64_t>(sp[-1].i64));
     DISPATCH();
 
-L_F64_TO_I64:
-    sp[-1].i64 = static_cast<int64_t>(sp[-1].f64);
+L_F64_TO_I64: {
+    int64_t converted = 0;
+    TrapKind fault = TrapKind::None;
+    if (!truncF64ToI64(sp[-1].f64, converted, fault))
+        THREAD_TRAP_OR_DISPATCH(fault,
+                                fault == TrapKind::InvalidCast
+                                    ? "InvalidCast: invalid float to int conversion"
+                                    : "Overflow: float to int conversion overflow");
+    sp[-1].i64 = converted;
     DISPATCH();
+}
 
 L_BOOL_TO_I64:
     DISPATCH(); // No-op, already i64
@@ -1041,9 +1076,7 @@ L_I64_NARROW_CHK: {
             break;
     }
     if (!inRange) {
-        SYNC_STATE();
-        trap(TrapKind::Overflow, "Overflow: signed narrow conversion overflow");
-        return;
+        THREAD_TRAP_OR_DISPATCH(TrapKind::Overflow, "Overflow: signed narrow conversion overflow");
     }
     // Value stays the same (already narrowed semantically)
     DISPATCH();
@@ -1069,9 +1102,7 @@ L_U64_NARROW_CHK: {
             break;
     }
     if (!inRange) {
-        SYNC_STATE();
-        trap(TrapKind::Overflow, "Overflow: unsigned narrow conversion overflow");
-        return;
+        THREAD_TRAP_OR_DISPATCH(TrapKind::Overflow, "Overflow: unsigned narrow conversion overflow");
     }
     // Value stays the same (already narrowed semantically)
     DISPATCH();
@@ -1079,70 +1110,39 @@ L_U64_NARROW_CHK: {
 
 L_F64_TO_I64_CHK: {
     // Float to signed int64 with overflow check and round-to-even
-    double val = sp[-1].f64;
-    // Check for NaN
-    if (val != val) {
-        SYNC_STATE();
-        trap(TrapKind::InvalidCast, "InvalidCast: float to int conversion of NaN");
-        return;
-    }
-    // Round to nearest, ties to even (banker's rounding)
-    double rounded = std::rint(val);
-    // Check for out of range (INT64_MIN to INT64_MAX)
-    // Note: comparing doubles, so we use slightly wider bounds
-    constexpr double maxI64 = 9223372036854775807.0;  // INT64_MAX as double
-    constexpr double minI64 = -9223372036854775808.0; // INT64_MIN as double
-    if (rounded > maxI64 || rounded < minI64) {
-        SYNC_STATE();
-        trap(TrapKind::InvalidCast, "InvalidCast: float to int conversion overflow");
-        return;
-    }
-    sp[-1].i64 = static_cast<int64_t>(rounded);
+    int64_t converted = 0;
+    TrapKind fault = TrapKind::None;
+    if (!roundF64ToI64(sp[-1].f64, converted, fault))
+        THREAD_TRAP_OR_DISPATCH(fault,
+                                fault == TrapKind::InvalidCast
+                                    ? "InvalidCast: invalid float to int conversion"
+                                    : "Overflow: float to int conversion overflow");
+    sp[-1].i64 = converted;
     DISPATCH();
 }
 
 L_F64_TO_U64_CHK: {
     // Float to unsigned int64 with overflow check and round-to-even
-    double val = sp[-1].f64;
-    // Check for NaN
-    if (val != val) {
-        SYNC_STATE();
-        trap(TrapKind::InvalidCast, "InvalidCast: float to uint conversion of NaN");
-        return;
-    }
-    // Round to nearest, ties to even (banker's rounding)
-    double rounded = std::rint(val);
-    // Check for out of range (0 to UINT64_MAX)
-    constexpr double maxU64 = 18446744073709551615.0; // UINT64_MAX as double
-    if (rounded < 0.0 || rounded > maxU64) {
-        SYNC_STATE();
-        trap(TrapKind::InvalidCast, "InvalidCast: float to uint conversion overflow");
-        return;
-    }
-    sp[-1].i64 = static_cast<int64_t>(static_cast<uint64_t>(rounded));
+    int64_t converted = 0;
+    TrapKind fault = TrapKind::None;
+    if (!roundF64ToU64Bits(sp[-1].f64, converted, fault))
+        THREAD_TRAP_OR_DISPATCH(fault,
+                                fault == TrapKind::InvalidCast
+                                    ? "InvalidCast: invalid float to uint conversion"
+                                    : "Overflow: float to uint conversion overflow");
+    sp[-1].i64 = converted;
     DISPATCH();
 }
 
     // Memory Operations
 L_ALLOCA: {
     // Allocate from the separate alloca buffer (not operand stack)
-    int64_t size = (--sp)->i64;
-    // Align to 8 bytes
-    size = (size + 7) & ~7;
-
-    // Check for alloca overflow
-    if (allocaTop_ + static_cast<size_t>(size) > allocaBuffer_.size()) {
-        size_t newSize = allocaBuffer_.size() * 2;
-        if (newSize > 16 * 1024 * 1024 || allocaTop_ + static_cast<size_t>(size) > newSize) {
-            trap(TrapKind::StackOverflow, "alloca stack overflow");
-            return;
-        }
-        allocaBuffer_.resize(newSize);
-    }
-
-    void *ptr = allocaBuffer_.data() + allocaTop_;
-    std::memset(ptr, 0, static_cast<size_t>(size));
-    allocaTop_ += static_cast<size_t>(size);
+    const int64_t size = (--sp)->i64;
+    void *ptr = nullptr;
+    SYNC_STATE();
+    sp_ = sp;
+    if (!allocateAlloca(size, ptr, "BytecodeVM::ALLOCA(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
     sp->ptr = ptr;
     setSlotOwnsString(sp, false);
     sp++;
@@ -1174,60 +1174,55 @@ L_GEP: {
                     frame.pc);
         }
         fflush(stderr);
-        trapKind_ = TrapKind::NullPointer;
-        state_ = VMState::Trapped;
-        return;
+        trapOrDispatch(TrapKind::NullPointer, "GEP on null pointer");
+        RETURN_OR_DISPATCH_TRAP();
     }
-    sp[-1].ptr = ptr + offset;
+    sp[-1].ptr = ptr ? ptr + offset : nullptr;
     DISPATCH();
 }
 
 L_LOAD_I8_MEM: {
+    void *ptr = sp[-1].ptr;
+    SYNC_STATE();
+    sp_ = sp;
+    if (!ensureMemoryAddress(ptr, "BytecodeVM::LOAD_I8_MEM(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
     int8_t val;
-    std::memcpy(&val, sp[-1].ptr, sizeof(val));
+    std::memcpy(&val, ptr, sizeof(val));
     sp[-1].i64 = val;
     DISPATCH();
 }
 
 L_LOAD_I16_MEM: {
+    void *ptr = sp[-1].ptr;
+    SYNC_STATE();
+    sp_ = sp;
+    if (!ensureMemoryAddress(ptr, "BytecodeVM::LOAD_I16_MEM(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
     int16_t val;
-    std::memcpy(&val, sp[-1].ptr, sizeof(val));
+    std::memcpy(&val, ptr, sizeof(val));
     sp[-1].i64 = val;
     DISPATCH();
 }
 
 L_LOAD_I32_MEM: {
+    void *ptr = sp[-1].ptr;
+    SYNC_STATE();
+    sp_ = sp;
+    if (!ensureMemoryAddress(ptr, "BytecodeVM::LOAD_I32_MEM(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
     int32_t val;
-    std::memcpy(&val, sp[-1].ptr, sizeof(val));
+    std::memcpy(&val, ptr, sizeof(val));
     sp[-1].i64 = val;
     DISPATCH();
 }
 
 L_LOAD_I64_MEM: {
     void *addr = sp[-1].ptr;
-    // Null/invalid pointer check for debugging
-    if (addr == nullptr || reinterpret_cast<uintptr_t>(addr) < 4096) {
-        SYNC_STATE();
-        fprintf(stderr, "*** NULL POINTER READ (i64) ***\n");
-        fprintf(stderr, "Attempting to read from address %p\n", addr);
-        fprintf(stderr,
-                "PC: %u, Function: %s\n",
-                pc - 1,
-                fp_->func->name.empty() ? "<unknown>" : fp_->func->name.c_str());
-        // Print call stack
-        fprintf(stderr, "Call stack:\n");
-        for (size_t i = 0; i < callStack_.size(); i++) {
-            const auto &frame = callStack_[i];
-            fprintf(stderr,
-                    "  [%zu] %s (PC: %u)\n",
-                    i,
-                    frame.func->name.empty() ? "<unknown>" : frame.func->name.c_str(),
-                    frame.pc);
-        }
-        trapKind_ = TrapKind::NullPointer;
-        state_ = VMState::Trapped;
-        return;
-    }
+    SYNC_STATE();
+    sp_ = sp;
+    if (!ensureMemoryAddress(addr, "BytecodeVM::LOAD_I64_MEM(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
     int64_t val;
     std::memcpy(&val, addr, sizeof(val));
     sp[-1].i64 = val;
@@ -1235,37 +1230,23 @@ L_LOAD_I64_MEM: {
 }
 
 L_LOAD_F64_MEM: {
+    void *ptr = sp[-1].ptr;
+    SYNC_STATE();
+    sp_ = sp;
+    if (!ensureMemoryAddress(ptr, "BytecodeVM::LOAD_F64_MEM(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
     double val;
-    std::memcpy(&val, sp[-1].ptr, sizeof(val));
+    std::memcpy(&val, ptr, sizeof(val));
     sp[-1].f64 = val;
     DISPATCH();
 }
 
 L_LOAD_PTR_MEM: {
     void *addr = sp[-1].ptr;
-    // Null/invalid pointer check for debugging
-    if (addr == nullptr || reinterpret_cast<uintptr_t>(addr) < 4096) {
-        SYNC_STATE();
-        fprintf(stderr, "*** NULL POINTER READ (ptr) ***\n");
-        fprintf(stderr, "Attempting to read from address %p\n", addr);
-        fprintf(stderr,
-                "PC: %u, Function: %s\n",
-                pc - 1,
-                fp_->func->name.empty() ? "<unknown>" : fp_->func->name.c_str());
-        // Print call stack
-        fprintf(stderr, "Call stack:\n");
-        for (size_t i = 0; i < callStack_.size(); i++) {
-            const auto &frame = callStack_[i];
-            fprintf(stderr,
-                    "  [%zu] %s (PC: %u)\n",
-                    i,
-                    frame.func->name.empty() ? "<unknown>" : frame.func->name.c_str(),
-                    frame.pc);
-        }
-        trapKind_ = TrapKind::NullPointer;
-        state_ = VMState::Trapped;
-        return;
-    }
+    SYNC_STATE();
+    sp_ = sp;
+    if (!ensureMemoryAddress(addr, "BytecodeVM::LOAD_PTR_MEM(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
     void *val;
     std::memcpy(&val, addr, sizeof(val));
     sp[-1].ptr = val;
@@ -1276,6 +1257,10 @@ L_LOAD_PTR_MEM: {
 L_STORE_I8_MEM: {
     int8_t val = static_cast<int8_t>((--sp)->i64);
     void *ptr = (--sp)->ptr;
+    SYNC_STATE();
+    sp_ = sp;
+    if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_I8_MEM(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
     clearGlobalStringOwnershipForRawStore(ptr);
     std::memcpy(ptr, &val, sizeof(val));
     DISPATCH();
@@ -1284,6 +1269,10 @@ L_STORE_I8_MEM: {
 L_STORE_I16_MEM: {
     int16_t val = static_cast<int16_t>((--sp)->i64);
     void *ptr = (--sp)->ptr;
+    SYNC_STATE();
+    sp_ = sp;
+    if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_I16_MEM(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
     clearGlobalStringOwnershipForRawStore(ptr);
     std::memcpy(ptr, &val, sizeof(val));
     DISPATCH();
@@ -1292,6 +1281,10 @@ L_STORE_I16_MEM: {
 L_STORE_I32_MEM: {
     int32_t val = static_cast<int32_t>((--sp)->i64);
     void *ptr = (--sp)->ptr;
+    SYNC_STATE();
+    sp_ = sp;
+    if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_I32_MEM(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
     clearGlobalStringOwnershipForRawStore(ptr);
     std::memcpy(ptr, &val, sizeof(val));
     DISPATCH();
@@ -1300,6 +1293,10 @@ L_STORE_I32_MEM: {
 L_STORE_I64_MEM: {
     int64_t val = (--sp)->i64;
     void *ptr = (--sp)->ptr;
+    SYNC_STATE();
+    sp_ = sp;
+    if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_I64_MEM(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
     clearGlobalStringOwnershipForRawStore(ptr);
     std::memcpy(ptr, &val, sizeof(val));
     DISPATCH();
@@ -1308,6 +1305,10 @@ L_STORE_I64_MEM: {
 L_STORE_F64_MEM: {
     double val = (--sp)->f64;
     void *ptr = (--sp)->ptr;
+    SYNC_STATE();
+    sp_ = sp;
+    if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_F64_MEM(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
     clearGlobalStringOwnershipForRawStore(ptr);
     std::memcpy(ptr, &val, sizeof(val));
     DISPATCH();
@@ -1316,6 +1317,10 @@ L_STORE_F64_MEM: {
 L_STORE_PTR_MEM: {
     void *val = (--sp)->ptr;
     void *ptr = (--sp)->ptr;
+    SYNC_STATE();
+    sp_ = sp;
+    if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_PTR_MEM(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
     clearGlobalStringOwnershipForRawStore(ptr);
     std::memcpy(ptr, &val, sizeof(val));
     setSlotOwnsString(sp, false);
@@ -1325,7 +1330,12 @@ L_STORE_PTR_MEM: {
 
 L_LOAD_STR_MEM: {
     rt_string val = nullptr;
-    std::memcpy(&val, sp[-1].ptr, sizeof(val));
+    void *ptr = sp[-1].ptr;
+    SYNC_STATE();
+    sp_ = sp;
+    if (!ensureMemoryAddress(ptr, "BytecodeVM::LOAD_STR_MEM(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
+    std::memcpy(&val, ptr, sizeof(val));
     sp[-1].ptr = val;
     if (val) {
         if (!validateStringHandle(val, "BytecodeVM::LOAD_STR_MEM(threaded)")) {
@@ -1345,6 +1355,10 @@ L_STORE_STR_MEM: {
     rt_string incoming = static_cast<rt_string>(valueSlot->ptr);
     const bool incomingOwns = slotOwnsString(valueSlot);
     void *ptr = (--sp)->ptr;
+    SYNC_STATE();
+    sp_ = sp;
+    if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_STR_MEM(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
     rt_string current = nullptr;
     std::memcpy(&current, ptr, sizeof(current));
     if (current && !validateStringHandle(current, "BytecodeVM::STORE_STR_MEM(current, threaded)")) {
@@ -1470,6 +1484,8 @@ L_CALL: {
     sp_ = sp;
     fp_->pc = pc;
     call(&module_->functions[funcIdx]);
+    if (state_ != VMState::Running || !fp_)
+        return;
     RELOAD_STATE();
     DISPATCH();
 }
@@ -1634,6 +1650,8 @@ L_CALL_INDIRECT: {
         sp_ = sp;
         fp_->pc = pc;
         call(&module_->functions[funcIdx]);
+        if (state_ != VMState::Running || !fp_)
+            return;
         RELOAD_STATE();
     } else if (calleeVal == 0) {
         // Null function pointer
@@ -1679,6 +1697,22 @@ L_RETURN_VOID: {
     RELOAD_STATE();
     DISPATCH();
 }
+
+L_STR_RETAIN:
+    if (sp[-1].ptr) {
+        if (!validateStringHandle(sp[-1].ptr, "BytecodeVM::STR_RETAIN(threaded)")) {
+            SYNC_STATE();
+            return;
+        }
+        rt_str_retain_maybe(static_cast<rt_string>(sp[-1].ptr));
+        setSlotOwnsString(sp - 1, true);
+    }
+    DISPATCH();
+
+L_STR_RELEASE:
+    releaseOwnedString(sp - 1);
+    sp--;
+    DISPATCH();
 
     //==========================================================================
     // Exception Handling
@@ -1832,6 +1866,8 @@ L_DEFAULT:
 #undef DISPATCH
 #undef SYNC_STATE
 #undef RELOAD_STATE
+#undef RETURN_OR_DISPATCH_TRAP
+#undef THREAD_TRAP_OR_DISPATCH
 }
 
 #endif // __GNUC__ || __clang__

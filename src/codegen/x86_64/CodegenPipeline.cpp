@@ -313,6 +313,7 @@ int linkObjectWithNativeLinker(const std::filesystem::path &objPath,
                                std::size_t stackSize,
                                bool fastLink,
                                bool preserveDebugSections,
+                               std::optional<bool> windowsDebugRuntime,
                                std::ostream &out,
                                std::ostream &err) {
     linker::NativeLinkerOptions linkOpts;
@@ -324,6 +325,7 @@ int linkObjectWithNativeLinker(const std::filesystem::path &objPath,
     linkOpts.stackSize = stackSize;
     linkOpts.fastLink = fastLink;
     linkOpts.preserveDebugSections = preserveDebugSections;
+    linkOpts.windowsDebugRuntime = windowsDebugRuntime;
     collectNativeLinkArchives(ctx, linkOpts.archivePaths);
     linkOpts.extraObjPaths = extraObjects;
     return linker::nativeLink(linkOpts, out, err);
@@ -611,6 +613,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
                                        opts_.stack_size,
                                        opts_.fast_link,
                                        opts_.emit_debug_lines,
+                                       opts_.windows_debug_runtime,
                                        out,
                                        err);
         if (linkExit != 0) {
@@ -744,6 +747,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
                                    opts_.stack_size,
                                    opts_.fast_link,
                                    opts_.emit_debug_lines,
+                                   opts_.windows_debug_runtime,
                                    out,
                                    err);
 

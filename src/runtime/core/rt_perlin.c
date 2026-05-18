@@ -35,9 +35,12 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+
+#define RT_PERLIN_MAX_OCTAVES 16
 
 typedef struct rt_perlin_impl {
     void **vptr;
@@ -88,8 +91,31 @@ static double grad2(int hash, double x, double y) {
     return 0;
 }
 
-/// @brief GC finalizer for Perlin generators — no-op since the permutation table is
-///        allocated inline with the runtime object.
+/// @brief Convert a coordinate to a safe Perlin cell index and fractional offset.
+static int perlin_cell(double value, int *index_out, double *fraction_out) {
+    if (!isfinite(value))
+        return 0;
+    double cell = floor(value);
+    if (cell < (double)INT_MIN || cell > (double)INT_MAX)
+        return 0;
+    *index_out = ((int)cell) & 255;
+    *fraction_out = value - cell;
+    return 1;
+}
+
+static int64_t perlin_clamp_octaves(int64_t octaves) {
+    if (octaves <= 0)
+        return 0;
+    return octaves > RT_PERLIN_MAX_OCTAVES ? RT_PERLIN_MAX_OCTAVES : octaves;
+}
+
+static double perlin_finish_octaves(double total, double max_value) {
+    if (!isfinite(total) || !isfinite(max_value) || max_value == 0.0)
+        return 0.0;
+    return total / max_value;
+}
+
+/// @brief GC finalizer for Perlin generators; no dynamic allocations to release.
 static void rt_perlin_finalize(void *obj) {
     // No dynamic allocations beyond the object itself
     (void)obj;
@@ -140,10 +166,12 @@ double rt_perlin_noise2d(void *obj, double x, double y) {
         return 0.0;
     rt_perlin_impl *p = (rt_perlin_impl *)obj;
 
-    int xi = (int)floor(x) & 255;
-    int yi = (int)floor(y) & 255;
-    double xf = x - floor(x);
-    double yf = y - floor(y);
+    int xi = 0;
+    int yi = 0;
+    double xf = 0.0;
+    double yf = 0.0;
+    if (!perlin_cell(x, &xi, &xf) || !perlin_cell(y, &yi, &yf))
+        return 0.0;
 
     double u = fade(xf);
     double v = fade(yf);
@@ -171,12 +199,15 @@ double rt_perlin_noise3d(void *obj, double x, double y, double z) {
         return 0.0;
     rt_perlin_impl *p = (rt_perlin_impl *)obj;
 
-    int xi = (int)floor(x) & 255;
-    int yi = (int)floor(y) & 255;
-    int zi = (int)floor(z) & 255;
-    double xf = x - floor(x);
-    double yf = y - floor(y);
-    double zf = z - floor(z);
+    int xi = 0;
+    int yi = 0;
+    int zi = 0;
+    double xf = 0.0;
+    double yf = 0.0;
+    double zf = 0.0;
+    if (!perlin_cell(x, &xi, &xf) || !perlin_cell(y, &yi, &yf) ||
+        !perlin_cell(z, &zi, &zf))
+        return 0.0;
 
     double u = fade(xf);
     double v = fade(yf);
@@ -215,7 +246,8 @@ double rt_perlin_noise3d(void *obj, double x, double y, double z) {
 /// @param persistence Amplitude multiplier per octave (0.5 = halve each layer).
 /// @return Summed noise value (range depends on octaves and persistence).
 double rt_perlin_octave2d(void *obj, double x, double y, int64_t octaves, double persistence) {
-    if (!obj || octaves <= 0)
+    octaves = perlin_clamp_octaves(octaves);
+    if (!obj || octaves <= 0 || !isfinite(persistence))
         return 0.0;
 
     double total = 0.0;
@@ -230,12 +262,13 @@ double rt_perlin_octave2d(void *obj, double x, double y, int64_t octaves, double
         frequency *= 2.0;
     }
 
-    return total / max_value;
+    return perlin_finish_octaves(total, max_value);
 }
 
 double rt_perlin_octave3d(
     void *obj, double x, double y, double z, int64_t octaves, double persistence) {
-    if (!obj || octaves <= 0)
+    octaves = perlin_clamp_octaves(octaves);
+    if (!obj || octaves <= 0 || !isfinite(persistence))
         return 0.0;
 
     double total = 0.0;
@@ -250,5 +283,5 @@ double rt_perlin_octave3d(
         frequency *= 2.0;
     }
 
-    return total / max_value;
+    return perlin_finish_octaves(total, max_value);
 }

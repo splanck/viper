@@ -17,6 +17,7 @@
 #include <cassert>
 #include <cmath>
 #include <csetjmp>
+#include <limits>
 
 namespace {
 static jmp_buf g_trap_jmp;
@@ -159,6 +160,38 @@ static void test_octave_zero_returns_zero() {
     rt_release_obj(p);
 }
 
+static void test_invalid_coordinates_return_zero() {
+    void *p = rt_perlin_new(42);
+    assert(p != nullptr);
+    double inf = std::numeric_limits<double>::infinity();
+    double nan = std::numeric_limits<double>::quiet_NaN();
+    double too_large = (double)std::numeric_limits<int>::max() + 1024.0;
+
+    assert(rt_perlin_noise2d(p, inf, 0.0) == 0.0);
+    assert(rt_perlin_noise2d(p, nan, 0.0) == 0.0);
+    assert(rt_perlin_noise3d(p, 0.0, -inf, 0.0) == 0.0);
+    assert(rt_perlin_noise3d(p, too_large, 0.0, 0.0) == 0.0);
+    rt_release_obj(p);
+}
+
+static void test_octave_edge_cases_are_finite() {
+    void *p = rt_perlin_new(42);
+    assert(p != nullptr);
+
+    double cancel2d = rt_perlin_octave2d(p, 0.25, 0.5, 2, -1.0);
+    double cancel3d = rt_perlin_octave3d(p, 0.25, 0.5, 0.75, 2, -1.0);
+    double many2d = rt_perlin_octave2d(p, 0.25, 0.5, 1000000, 0.5);
+    double many3d = rt_perlin_octave3d(p, 0.25, 0.5, 0.75, 1000000, 0.5);
+    double nonfinite = rt_perlin_octave2d(p, 0.25, 0.5, 4, std::numeric_limits<double>::infinity());
+
+    assert(cancel2d == 0.0);
+    assert(cancel3d == 0.0);
+    assert(std::isfinite(many2d));
+    assert(std::isfinite(many3d));
+    assert(nonfinite == 0.0);
+    rt_release_obj(p);
+}
+
 static void test_integer_coordinates() {
     void *p = rt_perlin_new(42);
     // At integer coordinates, gradient contributions cancel -> should be 0 or near 0
@@ -180,6 +213,8 @@ int main() {
     test_octave_single_equals_noise();
     test_null_safety();
     test_octave_zero_returns_zero();
+    test_invalid_coordinates_return_zero();
+    test_octave_edge_cases_are_finite();
     test_integer_coordinates();
 
     return 0;

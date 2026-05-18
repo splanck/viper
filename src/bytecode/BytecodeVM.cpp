@@ -1014,37 +1014,49 @@ void BytecodeVM::run() {
             //==================================================================
             case BCOpcode::LOAD_LOCAL: {
                 uint8_t idx = decodeArg8_0(instr);
+                if (!ensureLocalIndex(idx, "BytecodeVM::LOAD_LOCAL"))
+                    break;
                 pushLocal(idx);
                 break;
             }
 
             case BCOpcode::STORE_LOCAL: {
                 uint8_t idx = decodeArg8_0(instr);
+                if (!ensureLocalIndex(idx, "BytecodeVM::STORE_LOCAL"))
+                    break;
                 storeLocal(idx);
                 break;
             }
 
             case BCOpcode::LOAD_LOCAL_W: {
                 uint16_t idx = decodeArg16(instr);
+                if (!ensureLocalIndex(idx, "BytecodeVM::LOAD_LOCAL_W"))
+                    break;
                 pushLocal(idx);
                 break;
             }
 
             case BCOpcode::STORE_LOCAL_W: {
                 uint16_t idx = decodeArg16(instr);
+                if (!ensureLocalIndex(idx, "BytecodeVM::STORE_LOCAL_W"))
+                    break;
                 storeLocal(idx);
                 break;
             }
 
             case BCOpcode::INC_LOCAL: {
                 uint8_t idx = decodeArg8_0(instr);
-                fp_->locals[idx].i64++;
+                if (!ensureLocalIndex(idx, "BytecodeVM::INC_LOCAL"))
+                    break;
+                fp_->locals[idx].i64 = wrappingAdd(fp_->locals[idx].i64, 1);
                 break;
             }
 
             case BCOpcode::DEC_LOCAL: {
                 uint8_t idx = decodeArg8_0(instr);
-                fp_->locals[idx].i64--;
+                if (!ensureLocalIndex(idx, "BytecodeVM::DEC_LOCAL"))
+                    break;
+                fp_->locals[idx].i64 = wrappingSub(fp_->locals[idx].i64, 1);
                 break;
             }
 
@@ -1123,17 +1135,17 @@ void BytecodeVM::run() {
             // Integer Arithmetic
             //==================================================================
             case BCOpcode::ADD_I64:
-                sp_[-2].i64 = sp_[-2].i64 + sp_[-1].i64;
+                sp_[-2].i64 = wrappingAdd(sp_[-2].i64, sp_[-1].i64);
                 sp_--;
                 break;
 
             case BCOpcode::SUB_I64:
-                sp_[-2].i64 = sp_[-2].i64 - sp_[-1].i64;
+                sp_[-2].i64 = wrappingSub(sp_[-2].i64, sp_[-1].i64);
                 sp_--;
                 break;
 
             case BCOpcode::MUL_I64:
-                sp_[-2].i64 = sp_[-2].i64 * sp_[-1].i64;
+                sp_[-2].i64 = wrappingMul(sp_[-2].i64, sp_[-1].i64);
                 sp_--;
                 break;
 
@@ -1425,7 +1437,7 @@ void BytecodeVM::run() {
                 break;
 
             case BCOpcode::SHL_I64:
-                sp_[-2].i64 = sp_[-2].i64 << (sp_[-1].i64 & 63);
+                sp_[-2].i64 = wrappingShl(sp_[-2].i64, sp_[-1].i64);
                 sp_--;
                 break;
 
@@ -1436,7 +1448,7 @@ void BytecodeVM::run() {
                 break;
 
             case BCOpcode::ASHR_I64:
-                sp_[-2].i64 = sp_[-2].i64 >> (sp_[-1].i64 & 63);
+                sp_[-2].i64 = arithmeticShr(sp_[-2].i64, sp_[-1].i64);
                 sp_--;
                 break;
 
@@ -1546,57 +1558,47 @@ void BytecodeVM::run() {
                 break;
 
             case BCOpcode::F64_TO_I64:
-                sp_[-1].i64 = static_cast<int64_t>(sp_[-1].f64);
+                {
+                    int64_t converted = 0;
+                    TrapKind fault = TrapKind::None;
+                    if (!truncF64ToI64(sp_[-1].f64, converted, fault)) {
+                        trapOrDispatch(fault,
+                                       fault == TrapKind::InvalidCast
+                                           ? "InvalidCast: invalid float to int conversion"
+                                           : "Overflow: float to int conversion overflow");
+                        break;
+                    }
+                    sp_[-1].i64 = converted;
+                }
                 break;
 
             case BCOpcode::F64_TO_I64_CHK: {
                 // Float to signed int64 with overflow check and round-to-even
-                double val = sp_[-1].f64;
-                // Check for NaN
-                if (val != val) {
-                    if (!dispatchTrap(TrapKind::InvalidCast)) {
-                        trap(TrapKind::InvalidCast, "InvalidCast: float to int conversion of NaN");
-                    }
+                int64_t converted = 0;
+                TrapKind fault = TrapKind::None;
+                if (!roundF64ToI64(sp_[-1].f64, converted, fault)) {
+                    trapOrDispatch(fault,
+                                   fault == TrapKind::InvalidCast
+                                       ? "InvalidCast: invalid float to int conversion"
+                                       : "Overflow: float to int conversion overflow");
                     break;
                 }
-                // Round to nearest, ties to even (banker's rounding)
-                double rounded = std::rint(val);
-                // Check for out of range (INT64_MIN to INT64_MAX)
-                constexpr double maxI64 = 9223372036854775807.0;
-                constexpr double minI64 = -9223372036854775808.0;
-                if (rounded > maxI64 || rounded < minI64) {
-                    if (!dispatchTrap(TrapKind::InvalidCast)) {
-                        trap(TrapKind::InvalidCast,
-                             "InvalidCast: float to int conversion overflow");
-                    }
-                    break;
-                }
-                sp_[-1].i64 = static_cast<int64_t>(rounded);
+                sp_[-1].i64 = converted;
                 break;
             }
 
             case BCOpcode::F64_TO_U64_CHK: {
                 // Float to unsigned int64 with overflow check and round-to-even
-                double val = sp_[-1].f64;
-                // Check for NaN
-                if (val != val) {
-                    if (!dispatchTrap(TrapKind::InvalidCast)) {
-                        trap(TrapKind::InvalidCast, "InvalidCast: float to uint conversion of NaN");
-                    }
+                int64_t converted = 0;
+                TrapKind fault = TrapKind::None;
+                if (!roundF64ToU64Bits(sp_[-1].f64, converted, fault)) {
+                    trapOrDispatch(fault,
+                                   fault == TrapKind::InvalidCast
+                                       ? "InvalidCast: invalid float to uint conversion"
+                                       : "Overflow: float to uint conversion overflow");
                     break;
                 }
-                // Round to nearest, ties to even (banker's rounding)
-                double rounded = std::rint(val);
-                // Check for out of range (0 to UINT64_MAX)
-                constexpr double maxU64 = 18446744073709551615.0;
-                if (rounded < 0.0 || rounded > maxU64) {
-                    if (!dispatchTrap(TrapKind::InvalidCast)) {
-                        trap(TrapKind::InvalidCast,
-                             "InvalidCast: float to uint conversion overflow");
-                    }
-                    break;
-                }
-                sp_[-1].i64 = static_cast<int64_t>(static_cast<uint64_t>(rounded));
+                sp_[-1].i64 = converted;
                 break;
             }
 
@@ -1962,26 +1964,10 @@ void BytecodeVM::run() {
             case BCOpcode::ALLOCA: {
                 // Allocate from the separate alloca buffer (not operand stack)
                 // This ensures alloca'd memory survives across function calls
-                int64_t size = (--sp_)->i64;
-                // Align to 8 bytes
-                size = (size + 7) & ~7;
-
-                // Check for alloca overflow
-                if (allocaTop_ + static_cast<size_t>(size) > allocaBuffer_.size()) {
-                    // Grow buffer if needed (up to 16MB limit)
-                    size_t newSize = allocaBuffer_.size() * 2;
-                    if (newSize > 16 * 1024 * 1024 ||
-                        allocaTop_ + static_cast<size_t>(size) > newSize) {
-                        trap(TrapKind::StackOverflow, "alloca stack overflow");
-                        break;
-                    }
-                    allocaBuffer_.resize(newSize);
-                }
-
-                // Return pointer to allocated memory
-                void *ptr = allocaBuffer_.data() + allocaTop_;
-                std::memset(ptr, 0, static_cast<size_t>(size));
-                allocaTop_ += static_cast<size_t>(size);
+                const int64_t size = (--sp_)->i64;
+                void *ptr = nullptr;
+                if (!allocateAlloca(size, ptr, "BytecodeVM::ALLOCA"))
+                    break;
                 sp_->ptr = ptr;
                 setSlotOwnsString(sp_, false);
                 sp_++;
@@ -1991,12 +1977,20 @@ void BytecodeVM::run() {
             case BCOpcode::GEP: {
                 int64_t offset = (--sp_)->i64;
                 uint8_t *ptr = static_cast<uint8_t *>(sp_[-1].ptr);
+                if (!ptr) {
+                    if (offset != 0)
+                        trapOrDispatch(TrapKind::NullPointer, "GEP on null pointer");
+                    sp_[-1].ptr = nullptr;
+                    break;
+                }
                 sp_[-1].ptr = ptr + offset;
                 break;
             }
 
             case BCOpcode::LOAD_I64_MEM: {
                 void *ptr = sp_[-1].ptr;
+                if (!ensureMemoryAddress(ptr, "BytecodeVM::LOAD_I64_MEM"))
+                    break;
                 int64_t val;
                 std::memcpy(&val, ptr, sizeof(val));
                 sp_[-1].i64 = val;
@@ -2006,6 +2000,8 @@ void BytecodeVM::run() {
             case BCOpcode::STORE_I64_MEM: {
                 int64_t val = (--sp_)->i64;
                 void *ptr = (--sp_)->ptr;
+                if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_I64_MEM"))
+                    break;
                 clearGlobalStringOwnershipForRawStore(ptr);
                 std::memcpy(ptr, &val, sizeof(val));
                 break;
@@ -2013,6 +2009,8 @@ void BytecodeVM::run() {
 
             case BCOpcode::LOAD_I8_MEM: {
                 void *ptr = sp_[-1].ptr;
+                if (!ensureMemoryAddress(ptr, "BytecodeVM::LOAD_I8_MEM"))
+                    break;
                 int8_t val;
                 std::memcpy(&val, ptr, sizeof(val));
                 sp_[-1].i64 = val; // Sign extend
@@ -2021,6 +2019,8 @@ void BytecodeVM::run() {
 
             case BCOpcode::LOAD_I16_MEM: {
                 void *ptr = sp_[-1].ptr;
+                if (!ensureMemoryAddress(ptr, "BytecodeVM::LOAD_I16_MEM"))
+                    break;
                 int16_t val;
                 std::memcpy(&val, ptr, sizeof(val));
                 sp_[-1].i64 = val; // Sign extend
@@ -2029,6 +2029,8 @@ void BytecodeVM::run() {
 
             case BCOpcode::LOAD_I32_MEM: {
                 void *ptr = sp_[-1].ptr;
+                if (!ensureMemoryAddress(ptr, "BytecodeVM::LOAD_I32_MEM"))
+                    break;
                 int32_t val;
                 std::memcpy(&val, ptr, sizeof(val));
                 sp_[-1].i64 = val; // Sign extend
@@ -2037,6 +2039,8 @@ void BytecodeVM::run() {
 
             case BCOpcode::LOAD_F64_MEM: {
                 void *ptr = sp_[-1].ptr;
+                if (!ensureMemoryAddress(ptr, "BytecodeVM::LOAD_F64_MEM"))
+                    break;
                 double val;
                 std::memcpy(&val, ptr, sizeof(val));
                 sp_[-1].f64 = val;
@@ -2045,6 +2049,8 @@ void BytecodeVM::run() {
 
             case BCOpcode::LOAD_PTR_MEM: {
                 void *val;
+                if (!ensureMemoryAddress(sp_[-1].ptr, "BytecodeVM::LOAD_PTR_MEM"))
+                    break;
                 std::memcpy(&val, sp_[-1].ptr, sizeof(val));
                 sp_[-1].ptr = val;
                 setSlotOwnsString(sp_ - 1, false);
@@ -2053,6 +2059,8 @@ void BytecodeVM::run() {
 
             case BCOpcode::LOAD_STR_MEM: {
                 rt_string val = nullptr;
+                if (!ensureMemoryAddress(sp_[-1].ptr, "BytecodeVM::LOAD_STR_MEM"))
+                    break;
                 std::memcpy(&val, sp_[-1].ptr, sizeof(val));
                 sp_[-1].ptr = val;
                 if (val) {
@@ -2069,6 +2077,8 @@ void BytecodeVM::run() {
             case BCOpcode::STORE_I8_MEM: {
                 int8_t val = static_cast<int8_t>((--sp_)->i64);
                 void *ptr = (--sp_)->ptr;
+                if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_I8_MEM"))
+                    break;
                 clearGlobalStringOwnershipForRawStore(ptr);
                 std::memcpy(ptr, &val, sizeof(val));
                 break;
@@ -2077,6 +2087,8 @@ void BytecodeVM::run() {
             case BCOpcode::STORE_I16_MEM: {
                 int16_t val = static_cast<int16_t>((--sp_)->i64);
                 void *ptr = (--sp_)->ptr;
+                if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_I16_MEM"))
+                    break;
                 clearGlobalStringOwnershipForRawStore(ptr);
                 std::memcpy(ptr, &val, sizeof(val));
                 break;
@@ -2085,6 +2097,8 @@ void BytecodeVM::run() {
             case BCOpcode::STORE_I32_MEM: {
                 int32_t val = static_cast<int32_t>((--sp_)->i64);
                 void *ptr = (--sp_)->ptr;
+                if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_I32_MEM"))
+                    break;
                 clearGlobalStringOwnershipForRawStore(ptr);
                 std::memcpy(ptr, &val, sizeof(val));
                 break;
@@ -2093,6 +2107,8 @@ void BytecodeVM::run() {
             case BCOpcode::STORE_F64_MEM: {
                 double val = (--sp_)->f64;
                 void *ptr = (--sp_)->ptr;
+                if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_F64_MEM"))
+                    break;
                 clearGlobalStringOwnershipForRawStore(ptr);
                 std::memcpy(ptr, &val, sizeof(val));
                 break;
@@ -2101,6 +2117,8 @@ void BytecodeVM::run() {
             case BCOpcode::STORE_PTR_MEM: {
                 void *val = (--sp_)->ptr;
                 void *ptr = (--sp_)->ptr;
+                if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_PTR_MEM"))
+                    break;
                 clearGlobalStringOwnershipForRawStore(ptr);
                 std::memcpy(ptr, &val, sizeof(val));
                 setSlotOwnsString(sp_, false);
@@ -2113,6 +2131,8 @@ void BytecodeVM::run() {
                 rt_string incoming = static_cast<rt_string>(valueSlot->ptr);
                 const bool incomingOwns = slotOwnsString(valueSlot);
                 void *ptr = (--sp_)->ptr;
+                if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_STR_MEM"))
+                    break;
                 rt_string current = nullptr;
                 std::memcpy(&current, ptr, sizeof(current));
                 if (current && !validateStringHandle(current, "BytecodeVM::STORE_STR_MEM(current)"))
@@ -2534,8 +2554,8 @@ bool BytecodeVM::safeSignedRem(int64_t a,
         return false;
     }
     if (a == std::numeric_limits<int64_t>::min() && b == -1) {
-        fault = TrapKind::Overflow;
-        return false;
+        result = 0;
+        return true;
     }
     result = a % b;
     return true;
@@ -2559,6 +2579,165 @@ bool BytecodeVM::safeNegate(int64_t value, int64_t &result, TrapKind &fault) con
         return false;
     }
     result = -value;
+    return true;
+}
+
+int64_t BytecodeVM::wrappingAdd(int64_t a, int64_t b) noexcept {
+    const uint64_t result = static_cast<uint64_t>(a) + static_cast<uint64_t>(b);
+    int64_t out = 0;
+    std::memcpy(&out, &result, sizeof(out));
+    return out;
+}
+
+int64_t BytecodeVM::wrappingSub(int64_t a, int64_t b) noexcept {
+    const uint64_t result = static_cast<uint64_t>(a) - static_cast<uint64_t>(b);
+    int64_t out = 0;
+    std::memcpy(&out, &result, sizeof(out));
+    return out;
+}
+
+int64_t BytecodeVM::wrappingMul(int64_t a, int64_t b) noexcept {
+    const uint64_t result = static_cast<uint64_t>(a) * static_cast<uint64_t>(b);
+    int64_t out = 0;
+    std::memcpy(&out, &result, sizeof(out));
+    return out;
+}
+
+int64_t BytecodeVM::wrappingShl(int64_t value, int64_t shift) noexcept {
+    const uint64_t result = static_cast<uint64_t>(value) << (static_cast<uint64_t>(shift) & 63u);
+    int64_t out = 0;
+    std::memcpy(&out, &result, sizeof(out));
+    return out;
+}
+
+int64_t BytecodeVM::arithmeticShr(int64_t value, int64_t shift) noexcept {
+    const uint32_t amount = static_cast<uint32_t>(static_cast<uint64_t>(shift) & 63u);
+    if (amount == 0)
+        return value;
+    uint64_t bits = static_cast<uint64_t>(value);
+    if (value < 0)
+        bits = (bits >> amount) | (~uint64_t{0} << (64u - amount));
+    else
+        bits >>= amount;
+    int64_t out = 0;
+    std::memcpy(&out, &bits, sizeof(out));
+    return out;
+}
+
+bool BytecodeVM::truncF64ToI64(double value, int64_t &result, TrapKind &fault) noexcept {
+    fault = TrapKind::None;
+    if (!std::isfinite(value)) {
+        fault = TrapKind::InvalidCast;
+        return false;
+    }
+    const double lower = -std::ldexp(1.0, 63);
+    const double upper = std::ldexp(1.0, 63);
+    if (value < lower || value >= upper) {
+        fault = TrapKind::Overflow;
+        return false;
+    }
+    result = static_cast<int64_t>(value);
+    return true;
+}
+
+bool BytecodeVM::roundF64ToI64(double value, int64_t &result, TrapKind &fault) noexcept {
+    fault = TrapKind::None;
+    if (!std::isfinite(value)) {
+        fault = TrapKind::InvalidCast;
+        return false;
+    }
+    const double rounded = std::rint(value);
+    const double lower = -std::ldexp(1.0, 63);
+    const double upper = std::ldexp(1.0, 63);
+    if (rounded < lower || rounded >= upper) {
+        fault = TrapKind::Overflow;
+        return false;
+    }
+    result = static_cast<int64_t>(rounded);
+    return true;
+}
+
+bool BytecodeVM::roundF64ToU64Bits(double value, int64_t &result, TrapKind &fault) noexcept {
+    fault = TrapKind::None;
+    if (!std::isfinite(value)) {
+        fault = TrapKind::InvalidCast;
+        return false;
+    }
+    const double rounded = std::rint(value);
+    const double upper = std::ldexp(1.0, 64);
+    if (rounded < 0.0) {
+        fault = TrapKind::InvalidCast;
+        return false;
+    }
+    if (rounded >= upper) {
+        fault = TrapKind::Overflow;
+        return false;
+    }
+    const uint64_t unsignedResult = static_cast<uint64_t>(rounded);
+    std::memcpy(&result, &unsignedResult, sizeof(result));
+    return true;
+}
+
+bool BytecodeVM::trapOrDispatch(TrapKind kind, const char *message, int32_t errorCode) {
+    if (dispatchTrap(kind, errorCode, message))
+        return true;
+    trap(kind, message);
+    return false;
+}
+
+bool BytecodeVM::ensureLocalIndex(uint32_t idx, const char *site) {
+    if (fp_ && fp_->func && idx < fp_->func->numLocals)
+        return true;
+    trapOrDispatch(TrapKind::InvalidOpcode,
+                   (std::string(site) + ": local index out of range").c_str());
+    return false;
+}
+
+bool BytecodeVM::ensureMemoryAddress(const void *ptr, const char *site) {
+    if (ptr && reinterpret_cast<uintptr_t>(ptr) >= 4096)
+        return true;
+    trapOrDispatch(TrapKind::NullPointer,
+                   (std::string(site) + ": null or invalid memory address").c_str());
+    return false;
+}
+
+bool BytecodeVM::allocateAlloca(int64_t requestedSize, void *&ptr, const char *site) {
+    ptr = nullptr;
+    if (requestedSize < 0) {
+        trapOrDispatch(TrapKind::DomainError,
+                       (std::string(site) + ": negative alloca size").c_str());
+        return false;
+    }
+
+    constexpr size_t kMaxAllocaBytes = 16u * 1024u * 1024u;
+    const uint64_t rawSize = static_cast<uint64_t>(requestedSize);
+    if (rawSize > static_cast<uint64_t>(std::numeric_limits<size_t>::max() - 7u)) {
+        trapOrDispatch(TrapKind::StackOverflow,
+                       (std::string(site) + ": alloca size overflow").c_str());
+        return false;
+    }
+
+    const size_t alignedSize = (static_cast<size_t>(rawSize) + 7u) & ~size_t{7u};
+    if (alignedSize > kMaxAllocaBytes || allocaTop_ > kMaxAllocaBytes - alignedSize) {
+        trapOrDispatch(TrapKind::StackOverflow, "alloca stack overflow");
+        return false;
+    }
+
+    const size_t needed = allocaTop_ + alignedSize;
+    if (needed > allocaBuffer_.size()) {
+        size_t newSize = allocaBuffer_.empty() ? 64u * 1024u : allocaBuffer_.size();
+        while (newSize < needed && newSize < kMaxAllocaBytes)
+            newSize = std::min(newSize * 2u, kMaxAllocaBytes);
+        if (newSize < needed) {
+            trapOrDispatch(TrapKind::StackOverflow, "alloca stack overflow");
+            return false;
+        }
+        allocaBuffer_.resize(newSize);
+    }
+
+    ptr = allocaBuffer_.data() + allocaTop_;
+    std::memset(ptr, 0, alignedSize);
+    allocaTop_ = needed;
     return true;
 }
 

@@ -631,6 +631,28 @@ class BytecodeVM {
     /// @brief Execute signed negation without invoking host-language UB.
     bool safeNegate(int64_t value, int64_t &result, TrapKind &fault) const;
 
+    /// @brief Execute two's-complement wrapping arithmetic without C++ signed-overflow UB.
+    static int64_t wrappingAdd(int64_t a, int64_t b) noexcept;
+    static int64_t wrappingSub(int64_t a, int64_t b) noexcept;
+    static int64_t wrappingMul(int64_t a, int64_t b) noexcept;
+    static int64_t wrappingShl(int64_t value, int64_t shift) noexcept;
+    static int64_t arithmeticShr(int64_t value, int64_t shift) noexcept;
+
+    /// @brief Convert f64 to i64 with truncation and defined range checks.
+    static bool truncF64ToI64(double value, int64_t &result, TrapKind &fault) noexcept;
+
+    /// @brief Convert f64 to i64/u64 using round-to-even and defined range checks.
+    static bool roundF64ToI64(double value, int64_t &result, TrapKind &fault) noexcept;
+    static bool roundF64ToU64Bits(double value, int64_t &result, TrapKind &fault) noexcept;
+
+    /// @brief Dispatch a resumable trap, or make it terminal when no handler exists.
+    bool trapOrDispatch(TrapKind kind, const char *message, int32_t errorCode = -1);
+
+    /// @brief Validate bytecode metadata and unsafe operands before touching host memory.
+    bool ensureLocalIndex(uint32_t idx, const char *site);
+    bool ensureMemoryAddress(const void *ptr, const char *site);
+    bool allocateAlloca(int64_t requestedSize, void *&ptr, const char *site);
+
     /// @brief Push an exception handler onto the handler stack.
     /// @param handlerPc The PC of the handler entry point.
     void pushExceptionHandler(uint32_t handlerPc);
