@@ -516,6 +516,47 @@ std::string windowsInstallEnvPath(const std::string &installDir,
     return path;
 }
 
+std::string windowsQuotedPath(const std::string &path) {
+    if (path.find('"') != std::string::npos)
+        throw std::runtime_error("Windows shortcut path must not contain quotes: " + path);
+    return "\"" + path + "\"";
+}
+
+std::string toolchainDeveloperPromptScript() {
+    std::ostringstream os;
+    os << "@echo off\r\n"
+       << "set \"VIPER_HOME=%~dp0..\"\r\n"
+       << "set \"PATH=%VIPER_HOME%\\bin;%PATH%\"\r\n"
+       << "if not exist \"%USERPROFILE%\" goto prompt\r\n"
+       << "cd /d \"%USERPROFILE%\"\r\n"
+       << ":prompt\r\n"
+       << "echo Viper developer environment\r\n"
+       << "echo VIPER_HOME=%VIPER_HOME%\r\n"
+       << "viper --version\r\n";
+    return os.str();
+}
+
+std::string toolchainVSCodeInstallScript() {
+    return "@echo off\r\n"
+           "setlocal\r\n"
+           "set \"VIPER_HOME=%~dp0..\"\r\n"
+           "set \"VSIX_DIR=%VIPER_HOME%\\share\\viper\\vscode\"\r\n"
+           "set \"VSIX=\"\r\n"
+           "for %%F in (\"%VSIX_DIR%\\*.vsix\") do set \"VSIX=%%~fF\"\r\n"
+           "if not defined VSIX (\r\n"
+           "  echo No packaged VS Code extension was found under \"%VSIX_DIR%\".\r\n"
+           "  echo Build misc\\editors\\vscode\\zia\\zia-language-*.vsix before packaging to install it here.\r\n"
+           "  exit /b 2\r\n"
+           ")\r\n"
+           "where code.cmd >nul 2>nul\r\n"
+           "if errorlevel 1 where code.exe >nul 2>nul\r\n"
+           "if errorlevel 1 (\r\n"
+           "  echo Visual Studio Code command-line launcher was not found on PATH.\r\n"
+           "  exit /b 3\r\n"
+           ")\r\n"
+           "code --install-extension \"%VSIX%\" --force\r\n";
+}
+
 /// @brief Return a YYYYMMDD date for Add/Remove Programs InstallDate metadata.
 std::string currentInstallDate() {
     const std::time_t now = std::time(nullptr);
@@ -990,9 +1031,8 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
 }
 
 /// @brief Build a Windows toolchain installer from a pre-validated staged manifest.
-/// Unlike buildWindowsPackage, all files come from the manifest (no asset globs, no
-/// PNG icon conversion, no desktop/Start Menu shortcuts). PATH registration and file
-/// associations for .zia/.bas/.il are always enabled. Symlinks are dereferenced.
+/// Staged files are installed as-is, while generated developer helper scripts and
+/// Start Menu shortcuts are added by the packager. Symlinks are dereferenced.
 void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     validateToolchainInstallManifest(params.manifest);
     if (params.manifest.platform != "windows") {
@@ -1003,36 +1043,43 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     validateWindowsFileName(params.displayName, "Windows display name");
     validateWindowsProgIdBase(params.identifier, "Windows package identifier");
     validateSingleLineField(params.publisher, "Windows package publisher");
+    validateWindowsFileName(params.installDirName, "Windows install directory");
+    validatePackageUrl(params.homepage, "Windows package homepage");
+    if (params.installScope != "user" && params.installScope != "machine") {
+        throw std::runtime_error("Windows toolchain install scope must be 'user' or 'machine'");
+    }
     if (params.manifest.version.empty())
         throw std::runtime_error("toolchain package version is required");
     validateSingleLineField(params.manifest.version, "Windows package version");
     WindowsPackageLayout layout;
     layout.displayName = params.displayName;
-    layout.installDirName = "Viper";
+    layout.installDirName = params.installDirName;
     layout.version = params.manifest.version;
     layout.identifier = params.identifier;
     layout.publisher = params.publisher;
     layout.executableName = "viper.exe";
-    layout.homepage = "https://github.com/viper-org/viper";
+    layout.homepage = params.homepage;
     layout.displayIconRelativePath = "bin\\viper.exe";
     layout.installDate = currentInstallDate();
     layout.createDesktopShortcut = false;
-    layout.createStartMenuShortcut = false;
-    layout.addToPath = true;
-    layout.cleanInstallRootBeforeInstall = true;
+    layout.createStartMenuShortcut = params.createStartMenuShortcuts;
+    layout.addToPath = params.addToPath;
+    layout.cleanInstallRootBeforeInstall = false;
     layout.pathRelativePath = "bin";
     layout.fileAssociationExecutableRelativePath = "bin\\viper.exe";
-    for (const auto &assoc : params.manifest.fileAssociations) {
-        layout.fileAssociations.push_back(
-            {assoc.extension,
-             assoc.description,
-             assoc.mimeType,
-             toolchainProgIdFor(params.identifier, assoc),
-             toolchainOpenCommandArgsFor(assoc)});
+    layout.perUserInstall = params.installScope == "user";
+    if (params.registerFileAssociations) {
+        for (const auto &assoc : params.manifest.fileAssociations) {
+            layout.fileAssociations.push_back(
+                {assoc.extension,
+                 assoc.description,
+                 assoc.mimeType,
+                 toolchainProgIdFor(params.identifier, assoc),
+                 toolchainOpenCommandArgsFor(assoc)});
+        }
     }
 
     std::set<std::string> installDirSet;
-
     ZipWriter zip;
     zip.setCompressionEnabled(false);
     zip.addDirectory("app/");
@@ -1073,6 +1120,83 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
         }
     }
 
+    addUniqueDir(layout.installDirectories,
+                 installDirSet,
+                 WindowsInstallRoot::InstallDir,
+                 "bin");
+    {
+        const std::string script = toolchainDeveloperPromptScript();
+        addOverlayFile(zip,
+                       "app/bin/viper-dev.cmd",
+                       reinterpret_cast<const uint8_t *>(script.data()),
+                       script.size(),
+                       0100644,
+                       layout,
+                       WindowsInstallRoot::InstallDir,
+                       "bin/viper-dev.cmd",
+                       true,
+                       &payloadManifest);
+    }
+    {
+        const std::string script = toolchainVSCodeInstallScript();
+        addOverlayFile(zip,
+                       "app/bin/viper-install-vscode-extension.cmd",
+                       reinterpret_cast<const uint8_t *>(script.data()),
+                       script.size(),
+                       0100644,
+                       layout,
+                       WindowsInstallRoot::InstallDir,
+                       "bin/viper-install-vscode-extension.cmd",
+                       true,
+                       &payloadManifest);
+    }
+
+    if (params.createStartMenuShortcuts) {
+        LnkParams promptLnk;
+        promptLnk.targetPath = "%SystemRoot%\\System32\\cmd.exe";
+        promptLnk.workingDir = "%USERPROFILE%";
+        promptLnk.arguments =
+            "/k " + windowsQuotedPath(windowsInstallEnvPath(params.installDirName,
+                                                            layout.perUserInstall,
+                                                            "bin\\viper-dev.cmd"));
+        promptLnk.description = params.displayName + " Developer Prompt";
+        promptLnk.iconPath =
+            windowsInstallEnvPath(params.installDirName, layout.perUserInstall, "bin\\viper.exe");
+        const auto promptData = generateLnk(promptLnk);
+        addOverlayFile(zip,
+                       "meta/viper_developer_prompt.lnk",
+                       promptData.data(),
+                       promptData.size(),
+                       0100644,
+                       layout,
+                       WindowsInstallRoot::StartMenuDir,
+                       "Viper Developer Prompt.lnk",
+                       true,
+                       &payloadManifest);
+
+        LnkParams vscodeLnk;
+        vscodeLnk.targetPath = "%SystemRoot%\\System32\\cmd.exe";
+        vscodeLnk.workingDir = "%USERPROFILE%";
+        vscodeLnk.arguments =
+            "/c " + windowsQuotedPath(windowsInstallEnvPath(params.installDirName,
+                                                            layout.perUserInstall,
+                                                            "bin\\viper-install-vscode-extension.cmd"));
+        vscodeLnk.description = "Install " + params.displayName + " VS Code extension";
+        vscodeLnk.iconPath =
+            windowsInstallEnvPath(params.installDirName, layout.perUserInstall, "bin\\viper.exe");
+        const auto vscodeData = generateLnk(vscodeLnk);
+        addOverlayFile(zip,
+                       "meta/viper_vscode_extension.lnk",
+                       vscodeData.data(),
+                       vscodeData.size(),
+                       0100644,
+                       layout,
+                       WindowsInstallRoot::StartMenuDir,
+                       "Install VS Code Extension.lnk",
+                       true,
+                       &payloadManifest);
+    }
+
     finalizeUninstallDirs(layout);
     validateWindowsLayoutFitsStub(layout);
 
@@ -1082,7 +1206,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     uninstPe.textSection = uninstStub.textSection;
     uninstPe.rdataSection = uninstStub.stubData;
     uninstPe.imports = uninstStub.imports;
-    uninstPe.manifest = generateUacManifest();
+    uninstPe.manifest = windowsManifestForLayout(layout, {});
     uninstPe.versionInfo = windowsVersionInfoForLayout(layout, "uninstall.exe", "Uninstaller");
     configureInstallerStack(uninstPe);
     const auto uninstBytes = buildPE(uninstPe);
@@ -1112,7 +1236,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     provisionalPe.textSection = provisionalStub.textSection;
     provisionalPe.rdataSection = provisionalStub.stubData;
     provisionalPe.imports = provisionalStub.imports;
-    provisionalPe.manifest = generateUacManifest();
+    provisionalPe.manifest = windowsManifestForLayout(layout, {});
     provisionalPe.overlay = zipPayload;
     provisionalPe.versionInfo = windowsVersionInfoForLayout(
         layout, fs::path(params.outputPath).filename().generic_string(), "Setup");
@@ -1126,7 +1250,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     pe.textSection = instStub.textSection;
     pe.rdataSection = instStub.stubData;
     pe.imports = instStub.imports;
-    pe.manifest = generateUacManifest();
+    pe.manifest = windowsManifestForLayout(layout, {});
     pe.overlay = zipPayload;
     pe.versionInfo = windowsVersionInfoForLayout(
         layout, fs::path(params.outputPath).filename().generic_string(), "Setup");

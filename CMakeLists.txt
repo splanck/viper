@@ -88,6 +88,7 @@ endfunction()
 
 option(VIPER_INSTALL_TUI "Install TUI apps/libraries" OFF)
 option(VIPER_BUILD_TESTING "Enable CTest-based tests" ON)
+option(VIPER_ENABLE_WINDOWS_INSTALLER_E2E "Run the generated Windows toolchain installer end-to-end smoke test" OFF)
 option(VIPER_VM_THREADED "Enable threaded VM dispatch (faster on GCC/Clang)" ON)
 option(VIPER_VM_TAILCALL "Enable tailcall" ON)
 option(VIPER_VM_OPCOUNTS "Enable op counters" ON)
@@ -637,6 +638,12 @@ if(EXISTS ${CMAKE_SOURCE_DIR}/misc/editors/vscode/zia/zia-language-0.1.0.vsix)
     ${CMAKE_SOURCE_DIR}/misc/editors/vscode/zia/zia-language-0.1.0.vsix
     DESTINATION ${CMAKE_INSTALL_DATADIR}/viper/vscode
   )
+endif()
+if(EXISTS ${CMAKE_SOURCE_DIR}/misc/editors/vscode/zia/package.json)
+  install(DIRECTORY ${CMAKE_SOURCE_DIR}/misc/editors/vscode/zia/
+          DESTINATION ${CMAKE_INSTALL_DATADIR}/viper/vscode/zia
+          PATTERN "node_modules" EXCLUDE
+          PATTERN "*.vsix" EXCLUDE)
 endif()
 
 # Uninstall convenience target (uses install_manifest.txt)

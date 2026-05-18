@@ -113,7 +113,8 @@ void appendFixedUtf16Path(std::vector<uint8_t> &buf, const std::string &str) {
 
 /// @brief Generate a Windows .lnk shortcut file conforming to [MS-SHLLINK].
 /// Emits ShellLinkHeader, LinkInfo (VolumeID + LocalBasePath for reliable resolution),
-/// StringData entries (NAME_STRING, RELATIVE_PATH, optional WORKING_DIR and ICON_LOCATION),
+/// StringData entries (NAME_STRING, RELATIVE_PATH, optional WORKING_DIR,
+/// COMMAND_LINE_ARGUMENTS, and ICON_LOCATION),
 /// and an optional EnvironmentVariableDataBlock when the target contains `%VAR%` references.
 std::vector<uint8_t> generateLnk(const LnkParams &params) {
     std::vector<uint8_t> buf;
@@ -146,11 +147,14 @@ std::vector<uint8_t> generateLnk(const LnkParams &params) {
     linkFlags |= 0x00000080; // IsUnicode
 
     bool hasWorkDir = !params.workingDir.empty();
+    bool hasArguments = !params.arguments.empty();
     bool hasIcon = !params.iconPath.empty();
     const bool hasEnvTarget = containsEnvironmentVariableReference(params.targetPath);
 
     if (hasWorkDir)
         linkFlags |= 0x00000010; // HasWorkingDir
+    if (hasArguments)
+        linkFlags |= 0x00000020; // HasArguments
     if (hasIcon)
         linkFlags |= 0x00000040; // HasIconLocation
     if (hasEnvTarget)
@@ -273,7 +277,8 @@ std::vector<uint8_t> generateLnk(const LnkParams &params) {
     }
 
     // ─── StringData ────────────────────────────────────────────────────
-    // Order (when present): NAME_STRING, RELATIVE_PATH, WORKING_DIR, ICON_LOCATION
+    // Order (when present): NAME_STRING, RELATIVE_PATH, WORKING_DIR,
+    // COMMAND_LINE_ARGUMENTS, ICON_LOCATION
 
     // NAME_STRING (description)
     std::string name = params.description.empty() ? params.targetPath : params.description;
@@ -285,6 +290,10 @@ std::vector<uint8_t> generateLnk(const LnkParams &params) {
     // WORKING_DIR
     if (hasWorkDir)
         appendStringData(buf, params.workingDir);
+
+    // COMMAND_LINE_ARGUMENTS
+    if (hasArguments)
+        appendStringData(buf, params.arguments);
 
     // ICON_LOCATION
     if (hasIcon)

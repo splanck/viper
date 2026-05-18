@@ -283,4 +283,16 @@ function(viper_add_tools_tests)
             -DVIPER_RUN_NATIVE_CODEGEN=${_VIPER_INSTALLED_NATIVE_SMOKE}
             -P ${_VIPER_TOOLS_DIR}/InstalledViperConfigSmoke.cmake)
     viper_add_test_labels(installer_installed_config_smoke installer tools slow)
+
+    if (WIN32 AND VIPER_ENABLE_WINDOWS_INSTALLER_E2E)
+        viper_add_ctest(installer_windows_toolchain_e2e
+                ${CMAKE_COMMAND}
+                -DCMAKE_BIN=${CMAKE_COMMAND}
+                -DVIPER_BIN=$<TARGET_FILE:viper>
+                -DVIPER_BUILD_DIR=${CMAKE_BINARY_DIR}
+                -DVIPER_CONFIG=$<CONFIG>
+                -P ${_VIPER_TOOLS_DIR}/WindowsToolchainInstallerE2E.cmake)
+        set_tests_properties(installer_windows_toolchain_e2e PROPERTIES RUN_SERIAL TRUE TIMEOUT 900)
+        viper_add_test_labels(installer_windows_toolchain_e2e installer tools slow e2e)
+    endif ()
 endfunction()

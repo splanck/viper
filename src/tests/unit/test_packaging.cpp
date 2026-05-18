@@ -3742,17 +3742,27 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
     const auto pe = readFile(params.outputPath);
     std::ostringstream err;
     EXPECT_TRUE(verifyPEZipOverlay(pe, err));
+    std::ostringstream payloadErr;
+    EXPECT_TRUE(verifyPEZipOverlayPayload(
+        pe,
+        {"app/bin/viper.exe",
+         "app/bin/viper-dev.cmd",
+         "app/bin/viper-install-vscode-extension.cmd",
+         "meta/viper_developer_prompt.lnk",
+         "meta/viper_vscode_extension.lnk",
+         "app/uninstall.exe",
+         "meta/manifest.sha256"},
+        payloadErr));
     EXPECT_GE(peOptionalHeaderField64(pe, 72), static_cast<uint64_t>(0x200000));
     EXPECT_GE(peOptionalHeaderField64(pe, 80), static_cast<uint64_t>(0x100000));
-    EXPECT_TRUE(containsUtf16LE(
-        pe, "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment"));
+    EXPECT_TRUE(containsUtf16LE(pe, "Environment"));
+    EXPECT_TRUE(containsUtf16LEStringData(pe, "%LocalAppData%\\Viper\\bin\\viper.exe"));
+    EXPECT_TRUE(containsAscii(pe, "asInvoker"));
     EXPECT_TRUE(containsUtf16LE(pe, "VAPSOriginalPath"));
     EXPECT_TRUE(containsUtf16LE(pe, "VAPSPathEntry"));
     EXPECT_TRUE(containsUtf16LE(pe, "bin\\viper.exe"));
-    EXPECT_TRUE(containsUtf16LE(pe, " run"));
-    EXPECT_TRUE(containsUtf16LE(pe, " -run"));
-    EXPECT_TRUE(containsUtf16LE(pe, "Software\\Classes\\.zia"));
-    EXPECT_TRUE(containsUtf16LE(pe, "org.viper.toolchain.zia"));
+    EXPECT_TRUE(containsUtf16LEStringData(pe, "Viper Developer Prompt"));
+    EXPECT_FALSE(containsUtf16LE(pe, "Software\\Classes\\.zia"));
     const std::string sendMessageImport = "SendMessageTimeoutW";
     EXPECT_TRUE(std::search(pe.begin(),
                             pe.end(),
@@ -3763,6 +3773,42 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
                             pe.end(),
                             shellFileOperationImport.begin(),
                             shellFileOperationImport.end()) != pe.end());
+    fs::remove_all(tmpRoot);
+}
+
+TEST(ToolchainWindowsPackageBuilder, HonorsMachineScopeAndFileAssociations) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_windows_machine_stage";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+#if !defined(_WIN32)
+    fs::copy_file(stage / "bin" / "viper", stage / "bin" / "viper.exe");
+    fs::remove(stage / "bin" / "viper");
+#endif
+    auto manifest = gatherToolchainInstallManifest(stage);
+    manifest.arch = "x64";
+    manifest.platform = "windows";
+
+    WindowsToolchainBuildParams params;
+    params.manifest = manifest;
+    params.outputPath = (tmpRoot / "viper-toolchain-machine-setup.exe").string();
+    params.archStr = "x64";
+    params.installScope = "machine";
+    params.registerFileAssociations = true;
+    params.createStartMenuShortcuts = false;
+    buildWindowsToolchainInstaller(params);
+
+    const auto pe = readFile(params.outputPath);
+    std::ostringstream err;
+    EXPECT_TRUE(verifyPEZipOverlay(pe, err));
+    EXPECT_TRUE(containsUtf16LE(
+        pe, "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment"));
+    EXPECT_TRUE(containsAscii(pe, "requireAdministrator"));
+    EXPECT_TRUE(containsUtf16LE(pe, "Software\\Classes\\.zia"));
+    EXPECT_TRUE(containsUtf16LE(pe, "org.viper.toolchain.zia"));
+    EXPECT_TRUE(containsUtf16LE(pe, " run"));
+    EXPECT_TRUE(containsUtf16LE(pe, " -run"));
+    EXPECT_FALSE(containsUtf16LE(pe, "Viper Developer Prompt"));
     fs::remove_all(tmpRoot);
 }
 

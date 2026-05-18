@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-05-18
 ---
 
 # Getting Started on Windows
@@ -85,7 +85,7 @@ Open a **Developer PowerShell for VS** (this ensures the compiler and CMake are 
 ```powershell
 git clone https://github.com/splanck/viper.git
 cd viper
-.\scripts\build_viper.cmd
+.\scripts\build_viper_win.cmd
 ```
 
 The build script will:
@@ -103,13 +103,44 @@ Build succeeded.
 100% tests passed, 0 tests failed
 ```
 
-> **Note:** Unlike macOS and Linux, the Windows build script does **not** install binaries system-wide. The built executables remain in the `build\` directory.
+The build script leaves Debug binaries in the build tree for local development.
+Use the installer script below when you want a reusable developer toolchain on
+the machine.
+
+---
+
+## Build and Run the Developer Installer
+
+The Windows installer must be built from a Release or RelWithDebInfo payload.
+Debug payloads reference the MSVC debug runtime and are intentionally rejected
+unless you pass `--allow-debug-toolchain` for local diagnostics.
+
+From a Developer PowerShell:
+
+```powershell
+.\scripts\build_installer.cmd
+```
+
+By default this configures/builds Release, stages the full CMake install payload,
+and emits a per-user installer under `build\installers`. Run the generated
+`viper-*-win-*.exe`; it installs to `%LocalAppData%\Viper`, adds `bin` to the
+user `PATH`, and creates Start Menu developer shortcuts. Open a new terminal
+after installation so Windows reloads the updated environment.
+
+Useful installer options:
+
+```powershell
+.\scripts\build_installer.cmd --windows-install-scope machine
+.\scripts\build_installer.cmd --windows-file-associations on
+.\scripts\build_installer.cmd --windows-no-path
+.\scripts\build_installer.cmd --windows-shortcuts off
+```
 
 ---
 
 ## Verify the Installation
 
-After building, run the Viper binary directly from the build directory:
+After a local Debug build, run the Viper binary directly from the build directory:
 
 ```powershell
 .\build\src\tools\viper\Debug\viper.exe --version
@@ -117,20 +148,11 @@ After building, run the Viper binary directly from the build directory:
 
 You should see the version string (e.g., `viper 0.2.5-dev`).
 
-To make `viper` available from any directory in your current session, add it to your `PATH`:
+After running the developer installer, open a new PowerShell and verify:
 
 ```powershell
-$env:PATH += ";$PWD\build\src\tools\viper\Debug"
 viper --version
 ```
-
-To make this permanent, add the full path to your system `PATH` via **Settings > System > About > Advanced system settings > Environment Variables**, or run:
-
-```powershell
-[Environment]::SetEnvironmentVariable("PATH", $env:PATH + ";C:\path\to\viper\build\src\tools\viper\Debug", "User")
-```
-
-Replace `C:\path\to\viper` with your actual clone location.
 
 ---
 

@@ -949,15 +949,19 @@ void emitRegSetDefaultStackString(InstallerStubGen &gen,
 }
 
 /// @brief Emit RegQueryValueExW to read a named value from kRegKeyOff into a stack buffer.
-/// `bufferBytes` is the buffer's capacity in bytes. Jumps to missingLabel on any
-/// failure, including ERROR_MORE_DATA (buffer too small).
+/// `bufferBytes` is the buffer's capacity in bytes. Only missing-value errors jump
+/// to missingLabel when a distinct errorLabel is supplied; malformed, oversized, or
+/// unreadable values jump to errorLabel so PATH updates cannot overwrite unknown data.
 void emitRegQueryStackString(InstallerStubGen &gen,
                              uint32_t querySlot,
                              uint32_t valueNameOff,
                              int32_t stackBufOff,
                              uint32_t bufferBytes,
-                             uint32_t missingLabel) {
+                             uint32_t missingLabel,
+                             uint32_t errorLabel = UINT32_MAX) {
     const auto lblTypeOk = gen.newLabel();
+    const auto lblQueryOk = gen.newLabel();
+    const uint32_t fatalLabel = errorLabel == UINT32_MAX ? missingLabel : errorLabel;
     gen.movMemImm32(X64Reg::RBP, stackBufOff, 0);
     gen.movMemImm32(X64Reg::RBP, stackBufOff + static_cast<int32_t>(bufferBytes) - 4, 0);
     zeroLocalQword(gen, kBytesReadOff);
@@ -973,12 +977,22 @@ void emitRegQueryStackString(InstallerStubGen &gen,
     gen.movMemReg(X64Reg::RSP, 0x28, X64Reg::RAX);
     gen.callIATSlot(querySlot);
     gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
-    gen.jnz(missingLabel);
+    gen.jz(lblQueryOk);
+    if (fatalLabel == missingLabel) {
+        gen.jmp(missingLabel);
+    } else {
+        gen.cmpRegImm32(X64Reg::RAX, kErrorFileNotFound);
+        gen.jz(missingLabel);
+        gen.cmpRegImm32(X64Reg::RAX, kErrorPathNotFound);
+        gen.jz(missingLabel);
+        gen.jmp(fatalLabel);
+    }
+    gen.bindLabel(lblQueryOk);
     gen.movRegMem(X64Reg::RAX, X64Reg::RBP, kBytesWrittenOff);
     gen.cmpRegImm32(X64Reg::RAX, kRegSz);
     gen.jz(lblTypeOk);
     gen.cmpRegImm32(X64Reg::RAX, kRegExpandSz);
-    gen.jnz(missingLabel);
+    gen.jnz(fatalLabel);
     gen.bindLabel(lblTypeOk);
     gen.movMemImm32(X64Reg::RBP, stackBufOff + static_cast<int32_t>(bufferBytes) - 4, 0);
 }
@@ -1602,6 +1616,7 @@ void emitInstallPathUpdate(InstallerStubGen &gen,
                             regPathEntryOff,
                             kTempPathOff,
                             kMaxPathChars * 2u,
+                            lblCheckCurrentPath,
                             lblCheckCurrentPath);
     gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kTempPathOff);
     gen.leaRegMem(X64Reg::RDX, X64Reg::RBP, kUninstallPathOff);
@@ -1615,7 +1630,13 @@ void emitInstallPathUpdate(InstallerStubGen &gen,
     emitRegCloseIfSet(gen, kRegKeyOff, closeSlot);
     emitRegOpenConstKeyIfExists(gen, openSlot, closeSlot, envKeyOff, lblDoAppend, rootHkey);
     emitRegQueryStackString(
-        gen, querySlot, regPathValueOff, kPathOriginalOff, kMaxPathChars * 2u, lblDoAppend);
+        gen,
+        querySlot,
+        regPathValueOff,
+        kPathOriginalOff,
+        kMaxPathChars * 2u,
+        lblDoAppend,
+        lblSkipUpdateClose);
     gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kTempPathOff);
     gen.leaRegMem(X64Reg::RDX, X64Reg::RBP, kPathOriginalOff);
     gen.callIATSlot(copySlot);
@@ -1649,7 +1670,13 @@ void emitInstallPathUpdate(InstallerStubGen &gen,
     emitRegCreateConstKey(gen, createSlot, envKeyOff, errorLabel, rootHkey);
     gen.movMemImm32(X64Reg::RBP, kPathOriginalOff, 0);
     emitRegQueryStackString(
-        gen, querySlot, regPathValueOff, kPathOriginalOff, kMaxPathChars * 2u, lblPathMissing);
+        gen,
+        querySlot,
+        regPathValueOff,
+        kPathOriginalOff,
+        kMaxPathChars * 2u,
+        lblPathMissing,
+        lblSkipUpdateClose);
     gen.bindLabel(lblPathMissing);
 
     gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kTempPathOff);
@@ -1836,6 +1863,7 @@ void emitRestorePathFromUninstallKey(InstallerStubGen &gen,
                             regPathEntryOff,
                             kUninstallPathOff,
                             kMaxPathChars * 2u,
+                            lblEntryMissing,
                             lblEntryMissing);
     emitRegCloseIfSet(gen, kRegKeyOff, closeSlot);
 
@@ -1847,7 +1875,13 @@ void emitRestorePathFromUninstallKey(InstallerStubGen &gen,
     gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
     gen.jnz(lblEnvMissing);
     emitRegQueryStackString(
-        gen, querySlot, regPathValueOff, kTempPathOff, kMaxPathChars * 2u, lblEnvMissing);
+        gen,
+        querySlot,
+        regPathValueOff,
+        kTempPathOff,
+        kMaxPathChars * 2u,
+        lblEnvMissing,
+        lblEnvMissing);
     emitRemovePathEntryTokens(gen,
                               kTempPathOff,
                               kUninstallPathOff,

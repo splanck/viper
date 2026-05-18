@@ -325,20 +325,25 @@ std::vector<fs::path> gatherFromInstallManifest(const fs::path &stagePrefix,
 }
 
 /// @brief Fallback when no install manifest is provided: recursively enumerate all
-/// regular files and symlinks under stagePrefix. Permission-denied subtrees are
-/// skipped rather than fatal so partial staging directories still produce a manifest.
+/// regular files and symlinks under stagePrefix. Traversal errors are fatal so
+/// packaging cannot silently omit unreadable files from a release installer.
 std::vector<fs::path> gatherFromStageWalk(const fs::path &stagePrefix) {
     std::vector<fs::path> files;
     std::set<std::string> seen;
     std::error_code ec;
     const fs::path normalizedStage = fs::weakly_canonical(stagePrefix);
-    for (fs::recursive_directory_iterator it(stagePrefix, fs::directory_options::skip_permission_denied, ec);
+    for (fs::recursive_directory_iterator it(stagePrefix, ec);
          it != fs::recursive_directory_iterator(); it.increment(ec)) {
-        if (ec) {
-            ec.clear();
-            continue;
-        }
-        if (!it->is_regular_file() && !it->is_symlink())
+        if (ec)
+            throw std::runtime_error("cannot enumerate staged install tree: " + ec.message());
+        std::error_code typeEc;
+        const bool regular = it->is_regular_file(typeEc);
+        if (typeEc)
+            throw std::runtime_error("cannot inspect staged path: " + it->path().string());
+        const bool symlink = it->is_symlink(typeEc);
+        if (typeEc)
+            throw std::runtime_error("cannot inspect staged path: " + it->path().string());
+        if (!regular && !symlink)
             continue;
         validateStagedPathDoesNotEscape(normalizedStage, it->path());
         fs::path rel;
@@ -352,6 +357,8 @@ std::vector<fs::path> gatherFromStageWalk(const fs::path &stagePrefix) {
         if (seen.insert(relKey).second)
             files.push_back(it->path());
     }
+    if (ec)
+        throw std::runtime_error("cannot enumerate staged install tree: " + ec.message());
     return files;
 }
 

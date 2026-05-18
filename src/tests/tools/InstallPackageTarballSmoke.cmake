@@ -12,6 +12,7 @@ set(_artifact "${_tmp_root}/viper-toolchain.tar.gz")
 set(_install_package_cmd
         "${VIPER_BIN}" install-package
         --build-dir "${VIPER_BUILD_DIR}"
+        --skip-build
         --target tarball
         --no-verify
         -o "${_artifact}")

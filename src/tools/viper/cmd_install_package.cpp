@@ -16,6 +16,7 @@
 #include "tools/common/packaging/ToolchainInstallManifest.hpp"
 #include "tools/common/packaging/WindowsPackageBuilder.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cctype>
 #include <cstdint>
@@ -57,7 +58,14 @@ struct InstallPackageArgs {
     std::string windowsTimestampUrl;
     std::string windowsSigntoolPath;
     bool windowsSignNoVerify{false};
+    std::string windowsInstallScope{"user"};
+    std::string windowsInstallDir{"Viper"};
+    bool windowsAddToPath{true};
+    bool windowsFileAssociations{false};
+    bool windowsShortcuts{true};
+    bool allowDebugToolchain{false};
     bool noVerify{false};
+    bool skipBuild{false};
     bool verbose{false};
     bool keepStageDir{false};
     bool stageOnly{false};
@@ -78,7 +86,7 @@ void installPackageUsage() {
         << "  --target <fmt>        windows | macos | linux-deb | linux-rpm | tarball | all\n"
         << "  --arch <arch>         x64 | arm64 (default: manifest/host)\n"
         << "  --stage-dir <dir>     Existing staged install tree\n"
-        << "  --build-dir <dir>     Build tree; runs cmake --install into a staging dir\n"
+        << "  --build-dir <dir>     Build tree; runs cmake --build then cmake --install\n"
         << "  --config <cfg>        Build configuration for cmake --install from a build tree\n"
         << "  --verify-only <path>  Verify an existing artifact and exit\n"
         << "  --macos-pkg-version <v> Dotted numeric pkgbuild version override\n"
@@ -88,7 +96,14 @@ void installPackageUsage() {
         << "  --windows-timestamp-url <url> RFC3161 timestamp URL for Windows signing\n"
         << "  --windows-signtool <path> signtool.exe path override\n"
         << "  --windows-sign-no-verify Skip signtool verify after signing\n"
+        << "  --windows-install-scope <scope> user | machine (default: user)\n"
+        << "  --windows-install-dir <name> Directory name under install root (default: Viper)\n"
+        << "  --windows-no-path    Do not add bin/ to PATH\n"
+        << "  --windows-file-associations on|off Register .zia/.bas/.il (default: off)\n"
+        << "  --windows-shortcuts on|off Create Start Menu developer shortcuts (default: on)\n"
+        << "  --allow-debug-toolchain Allow Windows packages that reference MSVC debug CRTs\n"
         << "  --stage-only          Validate/gather the staged install tree and stop\n"
+        << "  --skip-build          With --build-dir, run cmake --install without rebuilding first\n"
         << "  --keep-stage-dir      Preserve auto-generated stage directories\n"
         << "  -o <path>             Output file or directory\n"
         << "  --no-verify           Skip post-build verification\n"
@@ -375,6 +390,47 @@ std::optional<NativeExecutableInfo> detectManifestToolchainExecutableInfo(
     return std::nullopt;
 }
 
+bool bytesContainAsciiCaseInsensitive(const std::vector<uint8_t> &data,
+                                      std::string needleLower) {
+    if (needleLower.empty() || data.size() < needleLower.size())
+        return false;
+    for (char &ch : needleLower)
+        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    for (size_t i = 0; i <= data.size() - needleLower.size(); ++i) {
+        bool match = true;
+        for (size_t j = 0; j < needleLower.size(); ++j) {
+            const char got =
+                static_cast<char>(std::tolower(static_cast<unsigned char>(data[i + j])));
+            if (got != needleLower[j]) {
+                match = false;
+                break;
+            }
+        }
+        if (match)
+            return true;
+    }
+    return false;
+}
+
+std::optional<std::string> firstWindowsDebugRuntimeReference(
+    const viper::pkg::ToolchainInstallManifest &manifest) {
+    static const char *debugDlls[] = {
+        "ucrtbased.dll", "vcruntime140d.dll", "vcruntime140_1d.dll", "msvcp140d.dll"};
+    for (const auto &file : manifest.files) {
+        if (file.symlink)
+            continue;
+        const std::string ext = lowerAscii(file.stagedAbsolutePath.extension().string());
+        if (ext != ".exe" && ext != ".dll")
+            continue;
+        const auto data = viper::pkg::readFile(file.stagedAbsolutePath.string());
+        for (const char *dll : debugDlls) {
+            if (bytesContainAsciiCaseInsensitive(data, dll))
+                return file.stagedRelativePath + " imports " + dll;
+        }
+    }
+    return std::nullopt;
+}
+
 bool parseTarget(const std::string &text, InstallPackageTarget &out) {
     if (text == "windows")
         out = InstallPackageTarget::Windows;
@@ -391,6 +447,18 @@ bool parseTarget(const std::string &text, InstallPackageTarget &out) {
     else
         return false;
     return true;
+}
+
+bool parseOnOff(const std::string &text, bool &out) {
+    if (text == "on" || text == "true" || text == "1" || text == "yes") {
+        out = true;
+        return true;
+    }
+    if (text == "off" || text == "false" || text == "0" || text == "no") {
+        out = false;
+        return true;
+    }
+    return false;
 }
 
 bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
@@ -440,10 +508,34 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
             args.windowsSigntoolPath = argv[++i];
         } else if (arg == "--windows-sign-no-verify") {
             args.windowsSignNoVerify = true;
+        } else if (arg == "--windows-install-scope" && i + 1 < argc) {
+            args.windowsInstallScope = argv[++i];
+            if (args.windowsInstallScope != "user" && args.windowsInstallScope != "machine") {
+                std::cerr << "error: --windows-install-scope expects user or machine\n";
+                return false;
+            }
+        } else if (arg == "--windows-install-dir" && i + 1 < argc) {
+            args.windowsInstallDir = argv[++i];
+        } else if (arg == "--windows-no-path") {
+            args.windowsAddToPath = false;
+        } else if (arg == "--windows-file-associations" && i + 1 < argc) {
+            if (!parseOnOff(lowerAscii(argv[++i]), args.windowsFileAssociations)) {
+                std::cerr << "error: --windows-file-associations expects on or off\n";
+                return false;
+            }
+        } else if (arg == "--windows-shortcuts" && i + 1 < argc) {
+            if (!parseOnOff(lowerAscii(argv[++i]), args.windowsShortcuts)) {
+                std::cerr << "error: --windows-shortcuts expects on or off\n";
+                return false;
+            }
+        } else if (arg == "--allow-debug-toolchain") {
+            args.allowDebugToolchain = true;
         } else if (arg == "-o" && i + 1 < argc) {
             args.outputPath = argv[++i];
         } else if (arg == "--no-verify") {
             args.noVerify = true;
+        } else if (arg == "--skip-build") {
+            args.skipBuild = true;
         } else if (arg == "--verbose" || arg == "-v") {
             args.verbose = true;
         } else if (arg == "--keep-stage-dir") {
@@ -467,10 +559,14 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
         std::cerr << "error: require exactly one of --stage-dir, --build-dir, or --verify-only\n";
         return false;
     }
+    if (!args.buildDir.empty() && args.buildConfig.empty() && hostPlatformName() == "windows")
+        args.buildConfig = "Release";
     try {
         viper::pkg::validatePackageUrl(args.windowsTimestampUrl, "Windows timestamp URL");
         viper::pkg::validateSingleLineField(args.windowsSigntoolPath,
                                             "Windows signtool path");
+        viper::pkg::validateWindowsFileName(args.windowsInstallDir,
+                                            "Windows install directory");
         viper::pkg::validateWindowsCertificateThumbprint(
             args.windowsSignThumbprint, "Windows signing thumbprint");
     } catch (const std::exception &ex) {
@@ -842,6 +938,19 @@ fs::path ensureStageDir(const InstallPackageArgs &args) {
     }
     AutoStageCleanup cleanup(stageDir, !args.keepStageDir);
 
+    if (!args.skipBuild) {
+        std::vector<std::string> buildCmd = {"cmake", "--build", args.buildDir.string()};
+        if (!args.buildConfig.empty()) {
+            buildCmd.push_back("--config");
+            buildCmd.push_back(args.buildConfig);
+        }
+        const RunResult buildResult = run_process(buildCmd);
+        if (buildResult.exit_code != 0) {
+            throw std::runtime_error("cmake --build failed while preparing toolchain payload:\n" +
+                                     buildResult.out + buildResult.err);
+        }
+    }
+
     std::vector<std::string> installCmd = {
         "cmake", "--install", args.buildDir.string(), "--prefix", stageDir.string()};
     if (!args.buildConfig.empty()) {
@@ -929,8 +1038,11 @@ int cmdInstallPackage(int argc, char **argv) {
 
     fs::path stageDir = ensureStageDir(args);
     AutoStageCleanup stageCleanup(stageDir, args.stageDir.empty() && !args.keepStageDir);
+    std::optional<fs::path> installManifestPath;
+    if (!args.buildDir.empty())
+        installManifestPath = args.buildDir / "install_manifest.txt";
     viper::pkg::ToolchainInstallManifest manifest =
-        viper::pkg::gatherToolchainInstallManifest(stageDir);
+        viper::pkg::gatherToolchainInstallManifest(stageDir, installManifestPath);
     const auto detectedInfo = detectManifestToolchainExecutableInfo(manifest);
     if (detectedInfo) {
         manifest.platform = detectedInfo->platform;
@@ -974,6 +1086,18 @@ int cmdInstallPackage(int argc, char **argv) {
     if (outIsDirectoryLike)
         fs::create_directories(outBase);
 
+    const bool buildsWindows =
+        std::find(targets.begin(), targets.end(), InstallPackageTarget::Windows) != targets.end();
+    if (buildsWindows && manifest.platform == "windows" && !args.allowDebugToolchain) {
+        if (const auto debugRuntime = firstWindowsDebugRuntimeReference(manifest)) {
+            std::cerr << "error: refusing to build a Windows installer from a Debug CRT payload: "
+                      << *debugRuntime << "\n"
+                      << "       rebuild with --config Release or RelWithDebInfo, or pass "
+                         "--allow-debug-toolchain for local-only diagnostics\n";
+            return 1;
+        }
+    }
+
     for (InstallPackageTarget target : targets) {
         if (!targetMatchesStagedPlatform(target, manifest.platform)) {
             std::cerr << "error: target does not match staged viper binary platform "
@@ -996,6 +1120,11 @@ int cmdInstallPackage(int argc, char **argv) {
                 params.manifest = manifest;
                 params.outputPath = artifactPath.string();
                 params.archStr = manifest.arch;
+                params.installScope = args.windowsInstallScope;
+                params.installDirName = args.windowsInstallDir;
+                params.addToPath = args.windowsAddToPath;
+                params.registerFileAssociations = args.windowsFileAssociations;
+                params.createStartMenuShortcuts = args.windowsShortcuts;
                 viper::pkg::buildWindowsToolchainInstaller(params);
                 break;
             }

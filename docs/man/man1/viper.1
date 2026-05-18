@@ -87,10 +87,16 @@ rejects native package targets that do not match that staged platform.
 portable tarball, with RPM included only when \fCrpmbuild\fR is available. Use
 \fB--macos-pkg-version\fR when the Viper version has suffixes that cannot be
 passed to \fCpkgbuild\fR without lossy truncation. Generated Windows toolchain
-installers add the installed \fCbin\fR directory to the system \fCPath\fR, avoid
-duplicate Viper-owned PATH entries on reinstall, remove only that PATH token on
-uninstall, and register source/IL file associations with the appropriate
-\fBviper run\fR or \fBviper -run\fR command. Linux toolchain packages include
+installers default to a per-user install under \fC%LocalAppData%\\Viper\fR,
+add the installed \fCbin\fR directory to the user \fCPath\fR, avoid duplicate
+Viper-owned PATH entries on reinstall, remove only that PATH token on uninstall,
+and create Start Menu developer shortcuts. Use \fB--windows-install-scope
+machine\fR for a \fC%ProgramFiles%\\Viper\fR install, \fB--windows-no-path\fR
+to leave PATH untouched, \fB--windows-shortcuts off\fR to omit shortcuts, and
+\fB--windows-file-associations on\fR to register source/IL file associations
+with the appropriate \fBviper run\fR or \fBviper -run\fR command. Windows
+installer generation rejects MSVC Debug CRT payloads unless
+\fB--allow-debug-toolchain\fR is supplied. Linux toolchain packages include
 desktop/MIME association metadata and preserve staged Unix modes.
 .SH BUILD AND RUN OPTIONS
 These options apply to \fBviper run\fR and \fBviper build\fR when relevant, and
