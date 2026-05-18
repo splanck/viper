@@ -6,8 +6,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/tools/common/packaging/MacOSPackageBuilder.cpp
-// Purpose: Assemble a macOS .app bundle inside a ZIP with proper Unix
-//          permissions for executable binaries.
+// Purpose: Assemble macOS .app ZIPs and native flat .pkg toolchain installers
+//          with proper Unix permissions and package metadata.
 //
 // Key invariants:
 //   - .app/Contents/MacOS/<name> has mode 0100755.
@@ -24,14 +24,20 @@
 //===----------------------------------------------------------------------===//
 
 #include "MacOSPackageBuilder.hpp"
+#include "CpioWriter.hpp"
 #include "IconGenerator.hpp"
+#include "PkgGzip.hpp"
 #include "PkgUtils.hpp"
 #include "PlistGenerator.hpp"
+#include "XarWriter.hpp"
 #include "ZipWriter.hpp"
 #include "common/RunProcess.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <set>
+#include <sstream>
 #include <string_view>
 #include <chrono>
 
@@ -156,7 +162,7 @@ void runChecked(const std::vector<std::string> &args, const std::string &what) {
         throw std::runtime_error(what + " failed:\n" + rr.out + rr.err);
 }
 
-/// @brief Resolve the pkgbuild version string for a macOS toolchain package.
+/// @brief Resolve the version string for a macOS toolchain package.
 /// Returns the validated override if non-empty; otherwise validates and returns the manifest version.
 std::string resolveMacOSToolchainPackageVersion(const std::string &manifestVersion,
                                                 const std::string &packageVersionOverride) {
@@ -167,6 +173,427 @@ std::string resolveMacOSToolchainPackageVersion(const std::string &manifestVersi
     }
     validateDottedNumericVersion(manifestVersion, "macOS toolchain package version");
     return manifestVersion;
+}
+
+/// @brief Return a shell-safe single-quoted string for generated package scripts.
+std::string shQuote(const std::string &value) {
+    std::string out = "'";
+    for (char ch : value) {
+        if (ch == '\'')
+            out += "'\\''";
+        else
+            out.push_back(ch);
+    }
+    out.push_back('\'');
+    return out;
+}
+
+std::string xmlEscape(const std::string &text) {
+    std::string out;
+    out.reserve(text.size());
+    for (char ch : text) {
+        switch (ch) {
+            case '&':
+                out += "&amp;";
+                break;
+            case '<':
+                out += "&lt;";
+                break;
+            case '>':
+                out += "&gt;";
+                break;
+            case '"':
+                out += "&quot;";
+                break;
+            case '\'':
+                out += "&apos;";
+                break;
+            default:
+                out.push_back(ch);
+                break;
+        }
+    }
+    return out;
+}
+
+/// @brief Convert filesystem permissions to low POSIX permission bits.
+uint32_t modeBitsForPath(const fs::path &path, bool executableFallback) {
+    std::error_code ec;
+    const auto status = fs::status(path, ec);
+    if (ec)
+        return executableFallback ? 0755u : 0644u;
+    uint32_t mode = 0;
+    const auto perms = status.permissions();
+    using p = fs::perms;
+    if ((perms & p::owner_read) != p::none)
+        mode |= 0400u;
+    if ((perms & p::owner_write) != p::none)
+        mode |= 0200u;
+    if ((perms & p::owner_exec) != p::none)
+        mode |= 0100u;
+    if ((perms & p::group_read) != p::none)
+        mode |= 0040u;
+    if ((perms & p::group_write) != p::none)
+        mode |= 0020u;
+    if ((perms & p::group_exec) != p::none)
+        mode |= 0010u;
+    if ((perms & p::others_read) != p::none)
+        mode |= 0004u;
+    if ((perms & p::others_write) != p::none)
+        mode |= 0002u;
+    if ((perms & p::others_exec) != p::none)
+        mode |= 0001u;
+    return mode == 0 ? (executableFallback ? 0755u : 0644u) : mode;
+}
+
+/// @brief Return a sorted list of paths under root, including root itself.
+std::vector<fs::path> sortedTreeEntries(const fs::path &root) {
+    std::vector<fs::path> entries;
+    entries.push_back(root);
+    std::error_code ec;
+    for (fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec);
+         it != fs::recursive_directory_iterator(); it.increment(ec)) {
+        if (ec) {
+            ec.clear();
+            continue;
+        }
+        entries.push_back(it->path());
+    }
+    std::sort(entries.begin(), entries.end(), [](const fs::path &a, const fs::path &b) {
+        return a.generic_string() < b.generic_string();
+    });
+    return entries;
+}
+
+/// @brief Add a staged filesystem tree to a portable ASCII CPIO archive with root-owned metadata.
+void addFilesystemTreeToCpio(CpioWriter &cpio, const fs::path &root) {
+    std::set<std::string> emittedPaths;
+    for (const fs::path &entryPath : sortedTreeEntries(root)) {
+        std::error_code ec;
+        const fs::path relPath = entryPath.lexically_relative(root);
+        if (relPath.empty()) {
+            throw std::runtime_error("cannot compute macOS package payload path for: " +
+                                     entryPath.string());
+        }
+        auto relIt = relPath.begin();
+        if (relIt != relPath.end() && *relIt == fs::path("..")) {
+            throw std::runtime_error("macOS package payload entry escapes staging root: " +
+                                     entryPath.string());
+        }
+        const std::string archivePath = relPath.empty() || relPath == fs::path(".")
+                                            ? "."
+                                            : relPath.generic_string();
+        if (!emittedPaths.insert(archivePath).second)
+            continue;
+        const auto symlinkStatus = fs::symlink_status(entryPath, ec);
+        if (ec)
+            throw std::runtime_error("cannot stat macOS package payload entry: " + ec.message());
+        if (fs::is_symlink(symlinkStatus)) {
+            const fs::path target = fs::read_symlink(entryPath, ec);
+            if (ec)
+                throw std::runtime_error("cannot read macOS package symlink: " + ec.message());
+            try {
+                cpio.addSymlink(archivePath, target.generic_string());
+            } catch (const std::exception &ex) {
+                throw std::runtime_error("cannot add macOS CPIO symlink '" +
+                                         entryPath.string() + "' as '" + archivePath + "': " +
+                                         ex.what());
+            }
+        } else if (fs::is_directory(symlinkStatus)) {
+            try {
+                cpio.addDirectory(archivePath, modeBitsForPath(entryPath, true));
+            } catch (const std::exception &ex) {
+                throw std::runtime_error("cannot add macOS CPIO directory '" +
+                                         entryPath.string() + "' as '" + archivePath + "': " +
+                                         ex.what());
+            }
+        } else if (fs::is_regular_file(symlinkStatus)) {
+            const auto data = readFile(entryPath.string());
+            try {
+                cpio.addFileVec(archivePath, data, modeBitsForPath(entryPath, false));
+            } catch (const std::exception &ex) {
+                throw std::runtime_error("cannot add macOS CPIO file '" + entryPath.string() +
+                                         "' as '" + archivePath + "': " + ex.what());
+            }
+        }
+    }
+}
+
+/// @brief Create or replace a symlink, making parent directories first.
+void createPackageSymlink(const fs::path &linkPath, const fs::path &target) {
+    fs::create_directories(linkPath.parent_path());
+    std::error_code ec;
+    fs::remove(linkPath, ec);
+    ec.clear();
+    fs::create_symlink(target, linkPath, ec);
+    if (ec) {
+        throw std::runtime_error("cannot create package symlink '" + linkPath.string() + "' -> '" +
+                                 target.generic_string() + "': " + ec.message());
+    }
+}
+
+/// @brief Write text file and mark it executable.
+void writeExecutableScript(const fs::path &path, const std::string &text) {
+    writeFileString(path,
+                    text,
+                    fs::perms::owner_read | fs::perms::owner_write | fs::perms::owner_exec |
+                        fs::perms::group_read | fs::perms::group_exec | fs::perms::others_read |
+                        fs::perms::others_exec);
+}
+
+std::vector<std::string> macOSToolNames(const ToolchainInstallManifest &manifest) {
+    std::vector<std::string> names;
+    for (const auto &file : manifest.files) {
+        const std::string rel =
+            sanitizePackageRelativePath(file.stagedRelativePath, "macOS tool path");
+        if (file.kind != ToolchainFileKind::Binary && rel.rfind("bin/", 0) != 0)
+            continue;
+        names.push_back(fs::path(rel).filename().generic_string());
+    }
+    std::sort(names.begin(), names.end());
+    names.erase(std::unique(names.begin(), names.end()), names.end());
+    return names;
+}
+
+std::vector<std::string> macOSManPagePaths(const ToolchainInstallManifest &manifest) {
+    static constexpr std::string_view kManPrefix = "share/man/";
+    std::vector<std::string> paths;
+    for (const auto &file : manifest.files) {
+        const std::string rel =
+            sanitizePackageRelativePath(file.stagedRelativePath, "macOS manpage path");
+        if (file.kind != ToolchainFileKind::ManPage && rel.rfind(kManPrefix, 0) != 0)
+            continue;
+        if (rel.rfind(kManPrefix, 0) != 0)
+            continue;
+        paths.push_back(rel.substr(kManPrefix.size()));
+    }
+    std::sort(paths.begin(), paths.end());
+    paths.erase(std::unique(paths.begin(), paths.end()), paths.end());
+    return paths;
+}
+
+void appendLeafNamesFromDirectory(std::vector<std::string> &names, const fs::path &dir) {
+    std::error_code ec;
+    if (!fs::is_directory(dir, ec))
+        return;
+    for (fs::directory_iterator it(dir, fs::directory_options::skip_permission_denied, ec);
+         it != fs::directory_iterator(); it.increment(ec)) {
+        if (ec) {
+            ec.clear();
+            continue;
+        }
+        const auto status = it->symlink_status(ec);
+        if (ec) {
+            ec.clear();
+            continue;
+        }
+        if (!fs::is_regular_file(status) && !fs::is_symlink(status))
+            continue;
+        names.push_back(it->path().filename().generic_string());
+    }
+    std::sort(names.begin(), names.end());
+    names.erase(std::unique(names.begin(), names.end()), names.end());
+}
+
+void appendRelativeFilePathsFromDirectory(std::vector<std::string> &paths, const fs::path &dir) {
+    std::error_code ec;
+    if (!fs::is_directory(dir, ec))
+        return;
+    for (fs::recursive_directory_iterator it(dir, fs::directory_options::skip_permission_denied, ec);
+         it != fs::recursive_directory_iterator(); it.increment(ec)) {
+        if (ec) {
+            ec.clear();
+            continue;
+        }
+        const auto status = it->symlink_status(ec);
+        if (ec) {
+            ec.clear();
+            continue;
+        }
+        if (!fs::is_regular_file(status) && !fs::is_symlink(status))
+            continue;
+        const fs::path rel = it->path().lexically_relative(dir);
+        paths.push_back(sanitizePackageRelativePath(rel.generic_string(), "macOS manpage path"));
+    }
+    std::sort(paths.begin(), paths.end());
+    paths.erase(std::unique(paths.begin(), paths.end()), paths.end());
+}
+
+fs::path macOSManSymlinkTarget(const std::string &manRelPath) {
+    const fs::path relPath = fs::path(manRelPath);
+    const fs::path parentPath = relPath.parent_path();
+    size_t upLevels = 2; // share/man
+    for (auto it = parentPath.begin(); it != parentPath.end(); ++it)
+        ++upLevels;
+    fs::path target;
+    for (size_t i = 0; i < upLevels; ++i)
+        target /= "..";
+    target /= "viper";
+    target /= "share";
+    target /= "man";
+    target /= relPath;
+    return target;
+}
+
+std::string macOSInstallManifestText(const ToolchainInstallManifest &manifest) {
+    std::vector<std::string> paths;
+    paths.reserve(manifest.files.size() + 1);
+    for (const auto &file : manifest.files)
+        paths.push_back(sanitizePackageRelativePath(file.stagedRelativePath, "macOS manifest path"));
+    paths.push_back("share/viper/install_manifest.txt");
+    std::sort(paths.begin(), paths.end());
+    paths.erase(std::unique(paths.begin(), paths.end()), paths.end());
+    std::ostringstream out;
+    for (const auto &path : paths)
+        out << path << "\n";
+    return out.str();
+}
+
+std::string generateMacOSPreinstallScript(const std::vector<std::string> &toolNames) {
+    std::ostringstream sh;
+    sh << "#!/bin/sh\n";
+    sh << "set -eu\n";
+    sh << "ROOT=/usr/local/viper\n";
+    sh << "OLD=\"$ROOT/share/viper/install_manifest.txt\"\n";
+    sh << "SCRIPT_DIR=$(cd \"$(dirname \"$0\")\" && pwd)\n";
+    sh << "NEW=\"$SCRIPT_DIR/install_manifest.txt\"\n";
+    sh << "if [ -f \"$OLD\" ] && [ -f \"$NEW\" ]; then\n";
+    sh << "  while IFS= read -r rel; do\n";
+    sh << "    [ -n \"$rel\" ] || continue\n";
+    sh << "    case \"$rel\" in /*|*..*) continue ;; esac\n";
+    sh << "    if ! grep -F -x -- \"$rel\" \"$NEW\" >/dev/null 2>&1; then\n";
+    sh << "      case \"$rel\" in\n";
+    sh << "        bin/*)\n";
+    sh << "          link=\"/usr/local/bin/${rel#bin/}\"\n";
+    sh << "          if [ -L \"$link\" ]; then\n";
+    sh << "            target=$(readlink \"$link\" || true)\n";
+    sh << "            case \"$target\" in ../viper/bin/*|/usr/local/viper/bin/*) rm -f \"$link\" ;; esac\n";
+    sh << "          fi\n";
+    sh << "          ;;\n";
+    sh << "        share/man/*)\n";
+    sh << "          link=\"/usr/local/share/man/${rel#share/man/}\"\n";
+    sh << "          if [ -L \"$link\" ]; then\n";
+    sh << "            target=$(readlink \"$link\" || true)\n";
+    sh << "            case \"$target\" in *../viper/share/man/*|/usr/local/viper/share/man/*) rm -f \"$link\" ;; esac\n";
+    sh << "          fi\n";
+    sh << "          ;;\n";
+    sh << "      esac\n";
+    sh << "      rm -f \"$ROOT/$rel\"\n";
+    sh << "    fi\n";
+    sh << "  done < \"$OLD\"\n";
+    sh << "fi\n";
+    for (const auto &name : toolNames) {
+        sh << "link=/usr/local/bin/" << shQuote(name) << "\n";
+        sh << "if [ -L \"$link\" ]; then\n";
+        sh << "  target=$(readlink \"$link\" || true)\n";
+        sh << "  case \"$target\" in ../viper/bin/*|/usr/local/viper/bin/*) rm -f \"$link\" ;; esac\n";
+        sh << "fi\n";
+    }
+    sh << "if [ -L /usr/local/lib/cmake/Viper ]; then rm -f /usr/local/lib/cmake/Viper; fi\n";
+    sh << "exit 0\n";
+    return sh.str();
+}
+
+std::string generateMacOSPostinstallScript(const std::vector<std::string> &toolNames,
+                                           const std::vector<std::string> &manPagePaths) {
+    std::ostringstream sh;
+    sh << "#!/bin/sh\n";
+    sh << "set -eu\n";
+    sh << "mkdir -p /usr/local/bin /usr/local/lib/cmake/Viper /usr/local/share/man\n";
+    for (const auto &name : toolNames) {
+        sh << "if [ -e /usr/local/viper/bin/" << shQuote(name) << " ]; then\n";
+        sh << "  link=/usr/local/bin/" << shQuote(name) << "\n";
+        sh << "  if [ ! -e \"$link\" ] || [ -L \"$link\" ]; then\n";
+        sh << "    ln -sfn ../viper/bin/" << shQuote(name) << " \"$link\"\n";
+        sh << "  fi\n";
+        sh << "fi\n";
+    }
+    for (const auto &page : manPagePaths) {
+        const std::string source = "/usr/local/viper/share/man/" + page;
+        const std::string link = "/usr/local/share/man/" + page;
+        const std::string parent = fs::path(link).parent_path().generic_string();
+        sh << "if [ -e " << shQuote(source) << " ]; then\n";
+        sh << "  mkdir -p " << shQuote(parent) << "\n";
+        sh << "  if [ ! -e " << shQuote(link) << " ] || [ -L " << shQuote(link)
+           << " ]; then\n";
+        sh << "    ln -sfn " << shQuote(macOSManSymlinkTarget(page).generic_string()) << " "
+           << shQuote(link) << "\n";
+        sh << "  fi\n";
+        sh << "fi\n";
+    }
+    sh << "if command -v mandb >/dev/null 2>&1; then mandb -q /usr/local/share/man >/dev/null 2>&1 || true; fi\n";
+    sh << "if command -v makewhatis >/dev/null 2>&1; then makewhatis /usr/local/share/man >/dev/null 2>&1 || true; fi\n";
+    sh << "find /usr/local/viper -type d -empty -delete 2>/dev/null || true\n";
+    sh << "exit 0\n";
+    return sh.str();
+}
+
+std::string generateMacOSToolchainPackageInfo(const MacOSToolchainBuildParams &params,
+                                              const std::string &pkgVersion,
+                                              size_t payloadEntryCount) {
+    std::ostringstream xml;
+    const uint64_t kbytes = (params.manifest.totalSizeBytes() + 1023u) / 1024u;
+    xml << "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
+    xml << "<pkg-info overwrite-permissions=\"true\" relocatable=\"false\" identifier=\""
+        << xmlEscape(params.identifier) << "\" postinstall-action=\"none\" version=\""
+        << xmlEscape(pkgVersion) << "\" format-version=\"2\" auth=\"root\" install-location=\"/\">\n";
+    xml << "    <payload numberOfFiles=\"" << payloadEntryCount << "\" installKBytes=\"" << kbytes
+        << "\"/>\n";
+    xml << "    <bundle-version/>\n";
+    xml << "    <upgrade-bundle/>\n";
+    xml << "    <update-bundle/>\n";
+    xml << "    <atomic-update-bundle/>\n";
+    xml << "    <strict-identifier/>\n";
+    xml << "    <relocate/>\n";
+    xml << "    <scripts>\n";
+    xml << "        <preinstall file=\"./preinstall\" timeout=\"600\"/>\n";
+    xml << "        <postinstall file=\"./postinstall\" timeout=\"600\"/>\n";
+    xml << "    </scripts>\n";
+    xml << "</pkg-info>\n";
+    return xml.str();
+}
+
+std::string macOSHostArchitectures(const std::string &arch) {
+    if (arch == "arm64")
+        return "arm64";
+    if (arch == "x64" || arch == "x86_64")
+        return "x86_64";
+    return "x86_64,arm64";
+}
+
+std::string generateMacOSToolchainDistribution(const MacOSToolchainBuildParams &params,
+                                               const std::string &pkgVersion,
+                                               uint64_t installKBytes) {
+    std::ostringstream xml;
+    const std::string escapedId = xmlEscape(params.identifier);
+    const std::string escapedProductId = xmlEscape(params.identifier + ".product");
+    const std::string escapedName = xmlEscape(params.displayName);
+    const std::string escapedVersion = xmlEscape(pkgVersion);
+    xml << "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
+    xml << "<installer-gui-script minSpecVersion=\"1\">\n";
+    xml << "  <title>" << escapedName << "</title>\n";
+    xml << "  <pkg-ref id=\"" << escapedId << "\">\n";
+    xml << "    <bundle-version/>\n";
+    xml << "  </pkg-ref>\n";
+    xml << "  <options customize=\"never\" require-scripts=\"false\" hostArchitectures=\""
+        << xmlEscape(macOSHostArchitectures(params.manifest.arch)) << "\"/>\n";
+    xml << "  <choices-outline>\n";
+    xml << "    <line choice=\"default\">\n";
+    xml << "      <line choice=\"" << escapedId << "\"/>\n";
+    xml << "    </line>\n";
+    xml << "  </choices-outline>\n";
+    xml << "  <choice id=\"default\" title=\"" << escapedName << "\"/>\n";
+    xml << "  <choice id=\"" << escapedId << "\" title=\"" << escapedName
+        << "\" visible=\"false\">\n";
+    xml << "    <pkg-ref id=\"" << escapedId << "\"/>\n";
+    xml << "  </choice>\n";
+    xml << "  <pkg-ref id=\"" << escapedId << "\" version=\"" << escapedVersion
+        << "\" onConclusion=\"none\" installKBytes=\"" << installKBytes
+        << "\" updateKBytes=\"0\" auth=\"Root\">#ViperToolchain.pkg</pkg-ref>\n";
+    xml << "  <product id=\"" << escapedProductId << "\" version=\"" << escapedVersion
+        << "\"/>\n";
+    xml << "</installer-gui-script>\n";
+    return xml.str();
 }
 
 /// @brief Walk the staged .app bundle and write all entries to a ZIP at `outputPath`.
@@ -387,9 +814,10 @@ void buildMacOSPackage(const MacOSBuildParams &params) {
     addStagedAppToZip(stageRoot, appPath, stagedExec, params.outputPath);
 }
 
-/// @brief Build a macOS `.pkg` installer for the staged toolchain using `pkgbuild`.
-/// Stages files under `/usr/local/viper/`, creates symlinks in `/usr/local/bin/`,
-/// then invokes `pkgbuild` to produce the final installer package.
+/// @brief Build a macOS `.pkg` installer for the staged toolchain.
+/// Stages files under `/usr/local/viper/`, creates receipt-owned command and
+/// manpage symlinks, emits native CPIO/XAR archives, and wraps the component in
+/// a product distribution package.
 void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
     namespace fs = std::filesystem;
     validateToolchainInstallManifest(params.manifest);
@@ -409,10 +837,12 @@ void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
     const fs::path tmpRoot = uniqueTempPackagingDir("viper-macos-toolchain-" + version);
     TempDirGuard cleanup(tmpRoot);
     fs::remove_all(tmpRoot);
-    fs::create_directories(tmpRoot / "root" / "usr" / "local" / "viper");
-    fs::create_directories(tmpRoot / "root" / "usr" / "local" / "bin");
 
-    const fs::path installRoot = tmpRoot / "root" / "usr" / "local" / "viper";
+    const fs::path payloadRoot = tmpRoot / "root";
+    const fs::path installRoot = payloadRoot / "usr" / "local" / "viper";
+    fs::create_directories(installRoot);
+    fs::create_directories(payloadRoot / "usr" / "local" / "bin");
+
     for (const auto &file : params.manifest.files) {
         const fs::path dst = installRoot / fs::path(file.stagedRelativePath);
         fs::create_directories(dst.parent_path());
@@ -442,34 +872,77 @@ void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
         }
     }
 
-    for (const auto &file : params.manifest.files) {
-        if (file.kind != ToolchainFileKind::Binary)
-            continue;
-        const std::string name = fs::path(file.stagedRelativePath).filename().string();
-        const fs::path linkPath = tmpRoot / "root" / "usr" / "local" / "bin" / name;
-        std::error_code ec;
-        fs::remove(linkPath, ec);
-        ec.clear();
-        fs::create_symlink(fs::path("../viper/bin") / name, linkPath, ec);
-        if (ec) {
-            throw std::runtime_error("cannot create package symlink '" + linkPath.string() +
-                                     "': " + ec.message());
-        }
-    }
+    std::vector<std::string> toolNames = macOSToolNames(params.manifest);
+    appendLeafNamesFromDirectory(toolNames, installRoot / "bin");
+    for (const auto &name : toolNames)
+        createPackageSymlink(payloadRoot / "usr" / "local" / "bin" / name,
+                             fs::path("../viper/bin") / name);
 
-    const RunResult rr = run_process(
-        {"pkgbuild",
-         "--root",
-         (tmpRoot / "root").string(),
-         "--identifier",
-         params.identifier,
-         "--version",
-         pkgVersion,
-         params.outputPath});
-    if (rr.exit_code != 0) {
-        throw std::runtime_error("pkgbuild failed while generating macOS toolchain package:\n" +
-                                 rr.out + rr.err);
-    }
+    writeFileString(payloadRoot / "usr" / "local" / "lib" / "cmake" / "Viper" /
+                        "ViperConfig.cmake",
+                    "include(\"/usr/local/viper/lib/cmake/Viper/ViperConfig.cmake\")\n",
+                    fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read |
+                        fs::perms::others_read);
+    writeFileString(payloadRoot / "usr" / "local" / "lib" / "cmake" / "Viper" /
+                        "ViperConfigVersion.cmake",
+                    "include(\"/usr/local/viper/lib/cmake/Viper/ViperConfigVersion.cmake\")\n",
+                    fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read |
+                        fs::perms::others_read);
+
+    std::vector<std::string> manPagePaths = macOSManPagePaths(params.manifest);
+    appendRelativeFilePathsFromDirectory(manPagePaths, installRoot / "share" / "man");
+    for (const auto &page : manPagePaths)
+        createPackageSymlink(payloadRoot / "usr" / "local" / "share" / "man" / page,
+                             macOSManSymlinkTarget(page));
+
+    const std::string installManifest = macOSInstallManifestText(params.manifest);
+    writeFileString(installRoot / "share" / "viper" / "install_manifest.txt",
+                    installManifest,
+                    fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read |
+                        fs::perms::others_read);
+
+    const fs::path scriptsRoot = tmpRoot / "scripts";
+    fs::create_directories(scriptsRoot);
+    writeExecutableScript(scriptsRoot / "preinstall", generateMacOSPreinstallScript(toolNames));
+    writeExecutableScript(scriptsRoot / "postinstall",
+                          generateMacOSPostinstallScript(toolNames, manPagePaths));
+    writeFileString(scriptsRoot / "install_manifest.txt",
+                    installManifest,
+                    fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read |
+                        fs::perms::others_read);
+
+    const fs::path bomPath = tmpRoot / "Bom";
+    runChecked({"mkbom", "-s", payloadRoot.string(), bomPath.string()},
+               "macOS bill-of-materials generation");
+
+    CpioWriter payloadCpio;
+    addFilesystemTreeToCpio(payloadCpio, payloadRoot);
+    const auto payloadArchive = payloadCpio.finish();
+    const auto payloadGzip = gzip(payloadArchive.data(), payloadArchive.size());
+
+    CpioWriter scriptsCpio;
+    addFilesystemTreeToCpio(scriptsCpio, scriptsRoot);
+    const auto scriptsArchive = scriptsCpio.finish();
+    const auto scriptsGzip = gzip(scriptsArchive.data(), scriptsArchive.size());
+
+    const size_t payloadEntryCount = sortedTreeEntries(payloadRoot).size();
+    const uint64_t installKBytes = (params.manifest.totalSizeBytes() + 1023u) / 1024u;
+    const std::string packageInfo =
+        generateMacOSToolchainPackageInfo(params, pkgVersion, payloadEntryCount);
+    const std::string distribution =
+        generateMacOSToolchainDistribution(params, pkgVersion, installKBytes);
+
+    const fs::path output = fs::path(params.outputPath);
+    if (!output.parent_path().empty())
+        fs::create_directories(output.parent_path());
+    XarWriter product;
+    product.addDirectory("ViperToolchain.pkg", 0700);
+    product.addFileVec("ViperToolchain.pkg/Bom", readFile(bomPath.string()), false);
+    product.addFileVec("ViperToolchain.pkg/Payload", payloadGzip, false);
+    product.addFileVec("ViperToolchain.pkg/Scripts", scriptsGzip, false);
+    product.addFileString("ViperToolchain.pkg/PackageInfo", packageInfo, true);
+    product.addFileString("Distribution", distribution, true);
+    product.finishToFile(params.outputPath);
 }
 
 } // namespace viper::pkg

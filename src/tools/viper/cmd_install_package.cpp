@@ -10,7 +10,6 @@
 #include "common/RunProcess.hpp"
 #include "tools/common/packaging/LinuxPackageBuilder.hpp"
 #include "tools/common/packaging/MacOSPackageBuilder.hpp"
-#include "tools/common/packaging/PkgDeflate.hpp"
 #include "tools/common/packaging/PkgUtils.hpp"
 #include "tools/common/packaging/PkgVerify.hpp"
 #include "tools/common/packaging/ToolchainInstallManifest.hpp"
@@ -52,6 +51,9 @@ struct InstallPackageArgs {
     fs::path outputPath;
     fs::path verifyOnlyPath;
     std::string macosPackageVersion;
+    std::string macosSignIdentity;
+    std::string macosNotaryProfile;
+    bool macosStaple{false};
     bool windowsSign{false};
     std::string windowsSignPfx;
     std::string windowsSignThumbprint;
@@ -89,7 +91,10 @@ void installPackageUsage() {
         << "  --build-dir <dir>     Build tree; runs cmake --build then cmake --install\n"
         << "  --config <cfg>        Build configuration for cmake --install from a build tree\n"
         << "  --verify-only <path>  Verify an existing artifact and exit\n"
-        << "  --macos-pkg-version <v> Dotted numeric pkgbuild version override\n"
+        << "  --macos-pkg-version <v> Dotted numeric package version override\n"
+        << "  --macos-sign-identity <id> Developer ID Installer identity for macOS .pkg signing\n"
+        << "  --macos-notary-profile <profile> notarytool keychain profile for macOS .pkg notarization\n"
+        << "  --macos-staple       Staple the notarization ticket after successful submission\n"
         << "  --windows-sign        Authenticode-sign generated Windows installer\n"
         << "  --windows-sign-pfx <path> PFX certificate for Windows signing\n"
         << "  --windows-sign-thumbprint <sha1> Certificate store SHA-1 thumbprint\n"
@@ -144,6 +149,11 @@ std::string getenvOrEmpty(const char *name) {
 bool windowsSigningRequested(const InstallPackageArgs &args) {
     return args.windowsSign || !args.windowsSignPfx.empty() ||
            !args.windowsSignThumbprint.empty();
+}
+
+bool macOSPackageSigningRequested(const InstallPackageArgs &args) {
+    return !args.macosSignIdentity.empty() || !args.macosNotaryProfile.empty() ||
+           args.macosStaple;
 }
 
 bool signWindowsInstallerArtifact(const InstallPackageArgs &args,
@@ -228,6 +238,96 @@ bool signWindowsInstallerArtifact(const InstallPackageArgs &args,
     return true;
 }
 
+bool signMacOSPackageArtifact(const InstallPackageArgs &args,
+                              const fs::path &artifactPath,
+                              std::ostream &err) {
+    if (!macOSPackageSigningRequested(args))
+        return true;
+
+    std::string identity = args.macosSignIdentity.empty()
+                               ? getenvOrEmpty("VIPER_MACOS_SIGN_IDENTITY")
+                               : args.macosSignIdentity;
+    std::string notaryProfile = args.macosNotaryProfile.empty()
+                                    ? getenvOrEmpty("VIPER_MACOS_NOTARY_PROFILE")
+                                    : args.macosNotaryProfile;
+    try {
+        viper::pkg::validateSingleLineField(identity, "macOS package signing identity");
+        viper::pkg::validateSingleLineField(notaryProfile, "macOS notary profile");
+    } catch (const std::exception &ex) {
+        err << "error: " << ex.what() << "\n";
+        return false;
+    }
+    if (identity.empty()) {
+        err << "error: macOS package signing requested but no Developer ID Installer identity "
+               "was provided\n";
+        return false;
+    }
+    if (args.macosStaple && notaryProfile.empty()) {
+        err << "error: --macos-staple requires --macos-notary-profile or "
+               "VIPER_MACOS_NOTARY_PROFILE\n";
+        return false;
+    }
+
+#if !defined(__APPLE__)
+    err << "error: macOS package signing requires running on macOS\n";
+    (void)artifactPath;
+    return false;
+#else
+    const fs::path signedPath = artifactPath.string() + ".signed.tmp";
+    std::error_code ec;
+    fs::remove(signedPath, ec);
+    const RunResult signResult =
+        run_process({"productsign", "--sign", identity, artifactPath.string(), signedPath.string()});
+    if (signResult.exit_code != 0) {
+        err << "error: productsign failed with exit code " << signResult.exit_code << "\n"
+            << signResult.out << signResult.err;
+        fs::remove(signedPath, ec);
+        return false;
+    }
+    fs::rename(signedPath, artifactPath, ec);
+    if (ec) {
+        err << "error: cannot replace unsigned macOS package with signed artifact: "
+            << ec.message() << "\n";
+        fs::remove(signedPath, ec);
+        return false;
+    }
+
+    const RunResult verifyResult =
+        run_process({"pkgutil", "--check-signature", artifactPath.string()});
+    if (verifyResult.exit_code != 0) {
+        err << "error: pkgutil --check-signature failed for signed macOS package\n"
+            << verifyResult.out << verifyResult.err;
+        return false;
+    }
+
+    if (!notaryProfile.empty()) {
+        const RunResult notaryResult = run_process({"xcrun",
+                                                    "notarytool",
+                                                    "submit",
+                                                    artifactPath.string(),
+                                                    "--keychain-profile",
+                                                    notaryProfile,
+                                                    "--wait"});
+        if (notaryResult.exit_code != 0) {
+            err << "error: notarytool submit failed with exit code " << notaryResult.exit_code
+                << "\n"
+                << notaryResult.out << notaryResult.err;
+            return false;
+        }
+        if (args.macosStaple) {
+            const RunResult stapleResult =
+                run_process({"xcrun", "stapler", "staple", artifactPath.string()});
+            if (stapleResult.exit_code != 0) {
+                err << "error: stapler failed with exit code " << stapleResult.exit_code << "\n"
+                    << stapleResult.out << stapleResult.err;
+                return false;
+            }
+        }
+    }
+    return true;
+#endif
+}
+
 uint16_t readBE16(const std::vector<uint8_t> &data, size_t off) {
     return static_cast<uint16_t>((data[off] << 8) | data[off + 1]);
 }
@@ -246,45 +346,6 @@ uint32_t readBE32(const std::vector<uint8_t> &data, size_t off) {
     return (static_cast<uint32_t>(data[off]) << 24) |
            (static_cast<uint32_t>(data[off + 1]) << 16) |
            (static_cast<uint32_t>(data[off + 2]) << 8) | static_cast<uint32_t>(data[off + 3]);
-}
-
-uint64_t readBE64(const std::vector<uint8_t> &data, size_t off) {
-    return (static_cast<uint64_t>(readBE32(data, off)) << 32) | readBE32(data, off + 4);
-}
-
-uint32_t readBE32Ptr(const uint8_t *data) {
-    return (static_cast<uint32_t>(data[0]) << 24) | (static_cast<uint32_t>(data[1]) << 16) |
-           (static_cast<uint32_t>(data[2]) << 8) | static_cast<uint32_t>(data[3]);
-}
-
-uint32_t adler32(const uint8_t *data, size_t len) {
-    uint32_t a = 1;
-    uint32_t b = 0;
-    for (size_t i = 0; i < len; ++i) {
-        a = (a + data[i]) % 65521u;
-        b = (b + a) % 65521u;
-    }
-    return (b << 16) | a;
-}
-
-std::vector<uint8_t> inflateZlibPayload(const uint8_t *data, size_t len, size_t expectedSize) {
-    if (len < 6)
-        throw std::runtime_error("zlib stream is too small");
-    const uint8_t cmf = data[0];
-    const uint8_t flg = data[1];
-    if ((cmf & 0x0Fu) != 8u || ((static_cast<uint16_t>(cmf) << 8) + flg) % 31u != 0)
-        throw std::runtime_error("zlib header is invalid");
-    if ((flg & 0x20u) != 0)
-        throw std::runtime_error("zlib preset dictionaries are not supported");
-    const size_t deflateLen = len - 6;
-    auto out = viper::pkg::inflate(data + 2, deflateLen, expectedSize);
-    const uint32_t expectedAdler = readBE32Ptr(data + len - 4);
-    const uint32_t actualAdler = adler32(out.data(), out.size());
-    if (expectedAdler != actualAdler)
-        throw std::runtime_error("zlib Adler-32 mismatch");
-    if (out.size() != expectedSize)
-        throw std::runtime_error("zlib uncompressed size mismatch");
-    return out;
 }
 
 std::string lowerAscii(std::string text) {
@@ -496,6 +557,12 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
                 std::cerr << "error: " << ex.what() << "\n";
                 return false;
             }
+        } else if (arg == "--macos-sign-identity" && i + 1 < argc) {
+            args.macosSignIdentity = argv[++i];
+        } else if (arg == "--macos-notary-profile" && i + 1 < argc) {
+            args.macosNotaryProfile = argv[++i];
+        } else if (arg == "--macos-staple") {
+            args.macosStaple = true;
         } else if (arg == "--windows-sign") {
             args.windowsSign = true;
         } else if (arg == "--windows-sign-pfx" && i + 1 < argc) {
@@ -569,6 +636,10 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
                                             "Windows install directory");
         viper::pkg::validateWindowsCertificateThumbprint(
             args.windowsSignThumbprint, "Windows signing thumbprint");
+        viper::pkg::validateSingleLineField(args.macosSignIdentity,
+                                            "macOS package signing identity");
+        viper::pkg::validateSingleLineField(args.macosNotaryProfile,
+                                            "macOS notary profile");
     } catch (const std::exception &ex) {
         std::cerr << "error: " << ex.what() << "\n";
         return false;
@@ -659,20 +730,37 @@ std::vector<std::string> requiredPayloadPaths(
                                 viper::pkg::mapInstallPath(
                                     file, viper::pkg::InstallPathPolicy::PortableArchive));
             }
-            if (manifest.platform == "linux")
+            if (manifest.platform == "linux") {
                 appendLinuxAssociationMetadata(topDir + "/", true);
+                paths.push_back(topDir + "/share/viper/install_manifest.txt");
+                paths.push_back(topDir + "/install.sh");
+                paths.push_back(topDir + "/uninstall.sh");
+                paths.push_back(topDir + "/README.install");
+            }
             break;
         }
         case InstallPackageTarget::MacOS:
             for (const auto &file : manifest.files) {
+                const std::string rel = viper::pkg::sanitizePackageRelativePath(
+                    file.stagedRelativePath, "macOS toolchain path");
                 paths.push_back("usr/local/viper/" +
-                                viper::pkg::sanitizePackageRelativePath(
-                                    file.stagedRelativePath, "macOS toolchain path"));
-                if (file.kind == viper::pkg::ToolchainFileKind::Binary) {
+                                rel);
+                if (file.kind == viper::pkg::ToolchainFileKind::Binary ||
+                    rel.rfind("bin/", 0) == 0) {
                     paths.push_back("usr/local/bin/" +
-                                    fs::path(file.stagedRelativePath).filename().generic_string());
+                                    fs::path(rel).filename().generic_string());
+                } else if (file.kind == viper::pkg::ToolchainFileKind::ManPage ||
+                           rel.rfind("share/man/", 0) == 0) {
+                    static constexpr std::string_view kManPrefix = "share/man/";
+                    if (rel.rfind(kManPrefix, 0) == 0) {
+                        paths.push_back("usr/local/share/man/" +
+                                        rel.substr(kManPrefix.size()));
+                    }
                 }
             }
+            paths.push_back("usr/local/viper/share/viper/install_manifest.txt");
+            paths.push_back("usr/local/lib/cmake/Viper/ViperConfig.cmake");
+            paths.push_back("usr/local/lib/cmake/Viper/ViperConfigVersion.cmake");
             break;
         case InstallPackageTarget::All:
             break;
@@ -738,64 +826,10 @@ bool verifyArtifact(const fs::path &artifact,
             }
             return viper::pkg::verifyTarGz(data, err);
         case InstallPackageTarget::MacOS:
-            if (data.size() < 28 || data[0] != 'x' || data[1] != 'a' || data[2] != 'r' ||
-                data[3] != '!') {
-                err << "macos: pkg does not begin with xar header\n";
-                return false;
-            }
-            {
-                const uint16_t headerSize = readBE16(data, 4);
-                const uint16_t version = readBE16(data, 6);
-                const uint64_t tocCompressed = readBE64(data, 8);
-                const uint64_t tocUncompressed = readBE64(data, 16);
-                if (headerSize < 28 || headerSize > data.size()) {
-                    err << "macos: pkg has invalid xar header size\n";
-                    return false;
-                }
-                if (version != 1) {
-                    err << "macos: unsupported xar version " << version << "\n";
-                    return false;
-                }
-                if (tocCompressed == 0 || tocUncompressed == 0 ||
-                    tocCompressed > data.size() - headerSize) {
-                    err << "macos: xar TOC length is invalid\n";
-                    return false;
-                }
-                if (tocUncompressed > 64ull * 1024ull * 1024ull) {
-                    err << "macos: xar TOC is unreasonably large\n";
-                    return false;
-                }
-                try {
-                    const auto toc = inflateZlibPayload(data.data() + headerSize,
-                                                        static_cast<size_t>(tocCompressed),
-                                                        static_cast<size_t>(tocUncompressed));
-                    const std::string tocText(toc.begin(), toc.end());
-                    if (tocText.find("<xar") == std::string::npos ||
-                        tocText.find("</xar>") == std::string::npos ||
-                        tocText.find("<name>Payload</name>") == std::string::npos ||
-                        tocText.find("<name>PackageInfo</name>") == std::string::npos ||
-                        tocText.find("<name>Bom</name>") == std::string::npos) {
-                        err << "macos: xar TOC does not describe a package payload\n";
-                        return false;
-                    }
-                } catch (const std::exception &ex) {
-                    err << "macos: cannot inflate xar TOC: " << ex.what() << "\n";
-                    return false;
-                }
-            }
-            if (manifest) {
-                const RunResult rr = run_process({"pkgutil", "--payload-files", artifact.string()});
-                if (rr.exit_code != 0) {
-                    err << "macos: pkgutil could not list package payload:\n" << rr.out
-                        << rr.err;
-                    return false;
-                }
-                return requireListedPayloadPaths(parsePayloadListing(rr.out),
-                                                 requiredPayloadPaths(target, *manifest),
-                                                 "macos",
-                                                 err);
-            }
-            return true;
+            if (manifest)
+                return viper::pkg::verifyMacOSPkgPayload(
+                    data, requiredPayloadPaths(target, *manifest), err);
+            return viper::pkg::verifyMacOSPkg(data, err);
         case InstallPackageTarget::LinuxRpm:
             if (data.size() < 112 || data[0] != 0xED || data[1] != 0xAB || data[2] != 0xEE ||
                 data[3] != 0xDB) {
@@ -1163,6 +1197,12 @@ int cmdInstallPackage(int argc, char **argv) {
 
         if (target == InstallPackageTarget::Windows &&
             !signWindowsInstallerArtifact(args, artifactPath, std::cerr)) {
+            std::error_code removeEc;
+            fs::remove(artifactPath, removeEc);
+            return 1;
+        }
+        if (target == InstallPackageTarget::MacOS &&
+            !signMacOSPackageArtifact(args, artifactPath, std::cerr)) {
             std::error_code removeEc;
             fs::remove(artifactPath, removeEc);
             return 1;

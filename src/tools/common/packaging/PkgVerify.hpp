@@ -80,6 +80,25 @@ bool verifyTarGzPayload(const std::vector<uint8_t> &data,
                         const std::vector<std::string> &requiredPaths,
                         std::ostream &err);
 
+/// @brief Verify structural correctness of a portable ASCII or newc CPIO archive.
+bool verifyCpioNewc(const std::vector<uint8_t> &data, std::ostream &err);
+
+/// @brief Verify a CPIO archive and assert required payload paths.
+bool verifyCpioNewcPayload(const std::vector<uint8_t> &data,
+                           const std::vector<std::string> &requiredPaths,
+                           std::ostream &err);
+
+/// @brief Verify structural correctness of a XAR archive.
+bool verifyXar(const std::vector<uint8_t> &data, std::ostream &err);
+
+/// @brief Verify a macOS flat `.pkg` archive.
+bool verifyMacOSPkg(const std::vector<uint8_t> &data, std::ostream &err);
+
+/// @brief Verify a macOS flat `.pkg` archive and assert payload paths.
+bool verifyMacOSPkgPayload(const std::vector<uint8_t> &data,
+                           const std::vector<std::string> &requiredPaths,
+                           std::ostream &err);
+
 /// @brief Verify structural correctness of a PE32+ executable.
 ///
 /// Checks:

@@ -30,7 +30,7 @@ Important correction to the draft:
 ## What Is Actually New
 
 Viper does not currently have native writers for:
-- `cpio` newc
+- portable ASCII `cpio`
 - `xar`
 - zlib framing for xar TOC/data
 - SHA-1 needed by xar
@@ -63,7 +63,7 @@ This avoids creating `PkgSHA1` in one phase and `PkgSHA256` in another with dupl
 - `src/tools/common/packaging/XarWriter.hpp/cpp`
 - `src/tools/common/packaging/PkgZlib.hpp/cpp`
 - `src/tools/common/packaging/PkgHash.hpp/cpp`
-- `src/tools/common/packaging/MacOSToolchainPkgBuilder.hpp/cpp`
+- `src/tools/common/packaging/MacOSPackageBuilder.hpp/cpp` (toolchain `.pkg` builder lives beside the existing macOS app packaging entry points)
 
 ## Builder responsibilities
 
@@ -77,7 +77,7 @@ Output:
 
 Responsibilities:
 1. map manifest entries to `/usr/local/viper/<stagedRelativePath>`
-2. build `Payload` as `gzip(cpio(newc))`
+2. build `Payload` as `gzip(cpio(portable ASCII))`
 3. build `Scripts` archive with:
    - `postinstall` for `/usr/local/bin` symlinks
    - optional `preinstall` cleanup for stale symlinks
@@ -154,9 +154,22 @@ Existing CPack `productbuild` support should be used as a comparison oracle duri
 - run installed `viper --version`
 - compile a tiny native executable using the installed toolchain
 
+## Implementation Status
+
+Implemented in the main macOS package builder:
+- native `CpioWriter`, `XarWriter`, `PkgZlib`, and `PkgHash`
+- component package `Payload` / `Scripts` / `PackageInfo` / `Bom`
+- product package `Distribution` plus nested component package
+- `/usr/local/viper` install root, command symlinks, manpage symlinks, CMake wrapper configs, and manifest-based upgrade cleanup scripts
+- native `.pkg` verification that parses XAR, gzip, and CPIO without `pkgutil`
+- optional Developer ID Installer signing, notarization, and stapling from `viper install-package`
+- opt-in privileged CTest smoke for installing into `/usr/local`
+
+The builder still relies on `/usr/bin/mkbom` on macOS hosts for the component bill of materials; `pkgbuild` and `productbuild` are no longer part of the production generation path.
+
 ## Exit Criteria
 
 This phase is done when:
-- Viper can generate a structurally valid flat `.pkg` without `pkgbuild` or `productbuild`
-- verification is native first, with `pkgutil` only as an oracle
-- installed Viper works from the installed prefix without a build tree
+- [x] Viper can generate a structurally valid flat `.pkg` without `pkgbuild` or `productbuild`
+- [x] verification is native first, with `pkgutil` only as an oracle
+- [x] installed Viper works from the installed prefix without a build tree in the opt-in privileged smoke path

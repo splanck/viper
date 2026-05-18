@@ -1,0 +1,201 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/tools/common/packaging/CpioWriter.cpp
+// Purpose: Native portable ASCII CPIO writer for macOS flat package payloads.
+//
+//===----------------------------------------------------------------------===//
+
+#include "CpioWriter.hpp"
+
+#include "PkgUtils.hpp"
+
+#include <algorithm>
+#include <cctype>
+#include <cstdio>
+#include <cstring>
+#include <filesystem>
+#include <stdexcept>
+
+namespace viper::pkg {
+namespace {
+
+std::string normalizeCpioPath(std::string path, bool directory) {
+    for (char &ch : path) {
+        if (ch == '\\')
+            ch = '/';
+    }
+    while (path.size() > 1 && path.back() == '/')
+        path.pop_back();
+    if (path == "." || path == "./")
+        return ".";
+    if (path.rfind("./", 0) == 0)
+        path.erase(0, 2);
+    path = sanitizePackageRelativePath(path, directory ? "cpio directory path" : "cpio entry path");
+    return path.empty() ? "." : "./" + path;
+}
+
+std::string normalizeCpioSymlinkTarget(const std::string &linkPath, std::string target) {
+    if (target.empty())
+        throw std::runtime_error("cpio symlink target must not be empty");
+    validateSingleLineField(target, "cpio symlink target");
+    for (char &ch : target) {
+        if (ch == '\\')
+            ch = '/';
+    }
+    if (target.front() == '/' ||
+        (target.size() >= 2 && std::isalpha(static_cast<unsigned char>(target[0])) &&
+         target[1] == ':')) {
+        throw std::runtime_error("cpio symlink target must be relative: " + target);
+    }
+    const std::filesystem::path resolved =
+        (std::filesystem::path(linkPath).parent_path() / target).lexically_normal();
+    const std::string text = resolved.generic_string();
+    if (text.empty() || text == "." || text == ".." || text.rfind("../", 0) == 0)
+        throw std::runtime_error("cpio symlink target escapes archive root: " + target);
+    return target;
+}
+
+void appendOctalField(std::vector<uint8_t> &out,
+                      uint64_t value,
+                      size_t width,
+                      const std::string &path) {
+    char field[16];
+    if (width >= sizeof(field))
+        throw std::runtime_error("cpio octal field width is too large");
+    std::snprintf(field, sizeof(field), "%0*llo", static_cast<int>(width),
+                  static_cast<unsigned long long>(value));
+    if (std::strlen(field) != width)
+        throw std::runtime_error("cpio field value out of range for entry: " + path);
+    out.insert(out.end(), field, field + width);
+}
+
+void appendEntry(std::vector<uint8_t> &out,
+                 const std::string &path,
+                 uint32_t mode,
+                 uint32_t nlink,
+                 uint32_t mtime,
+                 const uint8_t *data,
+                 size_t dataSize) {
+    if (dataSize > 077777777777ull)
+        throw std::runtime_error("cpio entry too large: " + path);
+    if (path.size() + 1 > 077777ull)
+        throw std::runtime_error("cpio path too long: " + path);
+
+    const char *magic = "070707";
+    out.insert(out.end(), magic, magic + 6);
+    appendOctalField(out, 0, 6, path); // dev
+    appendOctalField(out, 0, 6, path); // ino
+    appendOctalField(out, mode, 6, path);
+    appendOctalField(out, 0, 6, path); // uid
+    appendOctalField(out, 0, 6, path); // gid
+    appendOctalField(out, nlink, 6, path);
+    appendOctalField(out, 0, 6, path); // rdev
+    appendOctalField(out, mtime, 11, path);
+    appendOctalField(out, path.size() + 1, 6, path);
+    appendOctalField(out, dataSize, 11, path);
+    out.insert(out.end(), path.begin(), path.end());
+    out.push_back(0);
+    if (dataSize != 0) {
+        if (data == nullptr)
+            throw std::runtime_error("cpio file data pointer is null: " + path);
+        out.insert(out.end(), data, data + dataSize);
+    }
+}
+
+} // namespace
+
+void CpioWriter::addDirectory(const std::string &path, uint32_t mode, uint32_t mtime) {
+    const std::string clean = normalizeCpioPath(path, true);
+    if (!seenPaths_.insert(clean).second)
+        return;
+    Entry entry;
+    entry.kind = EntryKind::Directory;
+    entry.path = clean;
+    entry.mode = 0040000u | (mode & 07777u);
+    entry.mtime = mtime;
+    entries_.push_back(std::move(entry));
+}
+
+void CpioWriter::addFile(
+    const std::string &path, const uint8_t *data, size_t size, uint32_t mode, uint32_t mtime) {
+    const std::string clean = normalizeCpioPath(path, false);
+    if (clean == ".")
+        throw std::runtime_error("cpio file path must not be archive root");
+    if (!seenPaths_.insert(clean).second)
+        throw std::runtime_error("duplicate cpio entry path: " + clean);
+    Entry entry;
+    entry.kind = EntryKind::File;
+    entry.path = clean;
+    if (size != 0) {
+        if (data == nullptr)
+            throw std::runtime_error("cpio file data pointer is null: " + clean);
+        entry.data.assign(data, data + size);
+    }
+    entry.mode = 0100000u | (mode & 07777u);
+    entry.mtime = mtime;
+    entries_.push_back(std::move(entry));
+}
+
+void CpioWriter::addFileVec(const std::string &path,
+                            const std::vector<uint8_t> &data,
+                            uint32_t mode,
+                            uint32_t mtime) {
+    addFile(path, data.data(), data.size(), mode, mtime);
+}
+
+void CpioWriter::addFileString(const std::string &path,
+                               const std::string &content,
+                               uint32_t mode,
+                               uint32_t mtime) {
+    addFile(path, reinterpret_cast<const uint8_t *>(content.data()), content.size(), mode, mtime);
+}
+
+void CpioWriter::addSymlink(const std::string &path, const std::string &target, uint32_t mtime) {
+    const std::string clean = normalizeCpioPath(path, false);
+    if (clean == ".")
+        throw std::runtime_error("cpio symlink path must not be archive root");
+    if (!seenPaths_.insert(clean).second)
+        throw std::runtime_error("duplicate cpio entry path: " + clean);
+    Entry entry;
+    entry.kind = EntryKind::Symlink;
+    entry.path = clean;
+    entry.symlinkTarget = normalizeCpioSymlinkTarget(clean, target);
+    entry.mode = 0120000u | 0777u;
+    entry.mtime = mtime;
+    entries_.push_back(std::move(entry));
+}
+
+std::vector<uint8_t> CpioWriter::finish() const {
+    std::vector<uint8_t> out;
+    out.reserve(entries_.size() * 128u);
+    for (const Entry &entry : entries_) {
+        if (entry.kind == EntryKind::Symlink) {
+            appendEntry(out,
+                        entry.path,
+                        entry.mode,
+                        1,
+                        entry.mtime,
+                        reinterpret_cast<const uint8_t *>(entry.symlinkTarget.data()),
+                        entry.symlinkTarget.size());
+        } else {
+            appendEntry(out,
+                        entry.path,
+                        entry.mode,
+                        entry.kind == EntryKind::Directory ? 2u : 1u,
+                        entry.mtime,
+                        entry.data.data(),
+                        entry.data.size());
+        }
+    }
+    appendEntry(out, "TRAILER!!!", 0, 1, 0, nullptr, 0);
+    while ((out.size() % 512u) != 0)
+        out.push_back(0);
+    return out;
+}
+
+} // namespace viper::pkg

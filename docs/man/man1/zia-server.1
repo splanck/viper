@@ -1,0 +1,38 @@
+.TH zia-server 1 "Viper" "zia-server" "User Commands"
+.SH NAME
+zia-server \- Zia language server for LSP and MCP clients
+.SH SYNOPSIS
+.B zia-server
+[\fB--mcp\fR|\fB--lsp\fR] [\fB--help\fR] [\fB--version\fR]
+.SH DESCRIPTION
+\fBzia-server\fR exposes Zia compiler services over the Language Server Protocol
+for editors and the Model Context Protocol for AI assistants.
+.PP
+When no protocol flag is supplied, the server auto-detects the protocol from
+the first message on standard input.
+.SH OPTIONS
+.TP
+\fB--mcp\fR
+Run using newline-delimited MCP JSON-RPC transport.
+.TP
+\fB--lsp\fR
+Run using Content-Length-framed LSP JSON-RPC transport.
+.TP
+\fB-h\fR, \fB--help\fR
+Show command help and exit.
+.TP
+\fB--version\fR
+Show version information and exit.
+.SH EXAMPLES
+.TP
+Start MCP mode
+.nf
+zia-server --mcp
+.fi
+.TP
+Start LSP mode
+.nf
+zia-server --lsp
+.fi
+.SH SEE ALSO
+\fBviper\fR(1), \fBzia\fR(1), \fBvbasic-server\fR(1)

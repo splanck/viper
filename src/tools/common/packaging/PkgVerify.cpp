@@ -21,7 +21,9 @@
 
 #include "PkgVerify.hpp"
 #include "PkgGzip.hpp"
+#include "PkgHash.hpp"
 #include "PkgUtils.hpp"
+#include "PkgZlib.hpp"
 #include "ZipReader.hpp"
 
 #include <algorithm>
@@ -30,6 +32,8 @@
 #include <cstring>
 #include <filesystem>
 #include <iomanip>
+#include <limits>
+#include <map>
 #include <set>
 #include <sstream>
 
@@ -46,6 +50,20 @@ uint16_t rdLE16(const uint8_t *p) {
 uint32_t rdLE32(const uint8_t *p) {
     return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
+}
+
+uint16_t rdBE16(const uint8_t *p) {
+    return static_cast<uint16_t>((static_cast<uint16_t>(p[0]) << 8) |
+                                 static_cast<uint16_t>(p[1]));
+}
+
+uint32_t rdBE32(const uint8_t *p) {
+    return (static_cast<uint32_t>(p[0]) << 24) | (static_cast<uint32_t>(p[1]) << 16) |
+           (static_cast<uint32_t>(p[2]) << 8) | static_cast<uint32_t>(p[3]);
+}
+
+uint64_t rdBE64(const uint8_t *p) {
+    return (static_cast<uint64_t>(rdBE32(p)) << 32) | rdBE32(p + 4);
 }
 
 /// @brief Return true if the byte range [offset, offset+length) is entirely within [0, size).
@@ -361,6 +379,663 @@ bool verifyTarBytes(const std::vector<uint8_t> &data,
     if (!sawEnd) {
         err << "TAR: missing end-of-archive marker\n";
         return false;
+    }
+    return true;
+}
+
+bool parseHex32Field(const uint8_t *field, uint32_t &out) {
+    out = 0;
+    for (size_t i = 0; i < 8; ++i) {
+        const unsigned char ch = field[i];
+        uint32_t digit = 0;
+        if (ch >= '0' && ch <= '9')
+            digit = ch - '0';
+        else if (ch >= 'a' && ch <= 'f')
+            digit = 10u + ch - 'a';
+        else if (ch >= 'A' && ch <= 'F')
+            digit = 10u + ch - 'A';
+        else
+            return false;
+        out = (out << 4u) | digit;
+    }
+    return true;
+}
+
+bool parseFixedOctalField(const uint8_t *field, size_t width, uint64_t &out) {
+    out = 0;
+    for (size_t i = 0; i < width; ++i) {
+        const unsigned char ch = field[i];
+        if (ch < '0' || ch > '7')
+            return false;
+        if (out > (std::numeric_limits<uint64_t>::max() - static_cast<uint64_t>(ch - '0')) /
+                      8u)
+            return false;
+        out = (out << 3u) + static_cast<uint64_t>(ch - '0');
+    }
+    return true;
+}
+
+size_t align4(size_t value) {
+    return (value + 3u) & ~static_cast<size_t>(3u);
+}
+
+bool hasAppleDoubleComponent(const std::string &path) {
+    size_t pos = 0;
+    while (pos <= path.size()) {
+        const size_t next = path.find('/', pos);
+        const std::string_view component =
+            next == std::string::npos ? std::string_view(path).substr(pos)
+                                      : std::string_view(path).substr(pos, next - pos);
+        if (component.size() >= 2 && component[0] == '.' && component[1] == '_')
+            return true;
+        if (next == std::string::npos)
+            break;
+        pos = next + 1;
+    }
+    return false;
+}
+
+bool validateRelativeSymlinkTarget(const std::string &entryName,
+                                   std::string target,
+                                   const char *kind,
+                                   std::ostream &err) {
+    if (target.empty()) {
+        err << kind << ": empty symlink target for '" << entryName << "'\n";
+        return false;
+    }
+    try {
+        validateSingleLineField(target, kind);
+    } catch (const std::exception &ex) {
+        err << kind << ": invalid symlink target for '" << entryName << "': " << ex.what()
+            << "\n";
+        return false;
+    }
+    for (char &ch : target) {
+        if (ch == '\\')
+            ch = '/';
+    }
+    if (target.front() == '/' ||
+        (target.size() >= 2 && std::isalpha(static_cast<unsigned char>(target[0])) &&
+         target[1] == ':')) {
+        err << kind << ": absolute symlink target for '" << entryName << "'\n";
+        return false;
+    }
+    const std::filesystem::path resolved =
+        (std::filesystem::path(entryName).parent_path() / target).lexically_normal();
+    const std::string resolvedText = resolved.generic_string();
+    if (resolvedText.empty() || resolvedText == "." || resolvedText == ".." ||
+        resolvedText.rfind("../", 0) == 0) {
+        err << kind << ": symlink target escapes archive root for '" << entryName << "'\n";
+        return false;
+    }
+    return true;
+}
+
+bool recordCpioPath(const std::string &name,
+                    uint32_t mode,
+                    std::ostream &err,
+                    std::set<std::string> &seen,
+                    std::set<std::string> *outNames,
+                    std::string &cleanOut) {
+    std::string normalized = name;
+    if (normalized.rfind("./", 0) == 0)
+        normalized.erase(0, 2);
+    const uint32_t type = mode & 0170000u;
+    const bool isDir = type == 0040000u;
+    const bool isFile = type == 0100000u;
+    const bool isSymlink = type == 0120000u;
+    if (!isDir && !isFile && !isSymlink) {
+        err << "CPIO: unsupported entry type for '" << normalized << "'\n";
+        return false;
+    }
+    try {
+        cleanOut =
+            sanitizePackageRelativePath(normalized, isDir ? "cpio directory path" : "cpio path");
+    } catch (const std::exception &ex) {
+        err << "CPIO: unsafe path '" << normalized << "': " << ex.what() << "\n";
+        return false;
+    }
+    if (!cleanOut.empty()) {
+        if (hasAppleDoubleComponent(cleanOut)) {
+            err << "CPIO: AppleDouble sidecar path is not allowed: '" << cleanOut << "'\n";
+            return false;
+        }
+        if (!seen.insert(cleanOut).second) {
+            err << "CPIO: duplicate entry '" << cleanOut << "'\n";
+            return false;
+        }
+        if (outNames)
+            outNames->insert(cleanOut);
+    }
+    return true;
+}
+
+bool verifyCpioOdcBytes(const std::vector<uint8_t> &data,
+                        std::ostream &err,
+                        std::set<std::string> *outNames = nullptr) {
+    size_t pos = 0;
+    bool sawTrailer = false;
+    std::set<std::string> seen;
+    while (pos < data.size()) {
+        if (pos + 76 > data.size()) {
+            err << "CPIO: truncated odc entry header at offset " << pos << "\n";
+            return false;
+        }
+        if (std::memcmp(data.data() + pos, "070707", 6) != 0) {
+            for (size_t i = pos; i < data.size(); ++i) {
+                if (data[i] != 0) {
+                    err << "CPIO: missing odc magic at offset " << pos << "\n";
+                    return false;
+                }
+            }
+            break;
+        }
+        uint64_t mode64 = 0;
+        uint64_t nameSize64 = 0;
+        uint64_t fileSize64 = 0;
+        if (!parseFixedOctalField(data.data() + pos + 18, 6, mode64) ||
+            !parseFixedOctalField(data.data() + pos + 59, 6, nameSize64) ||
+            !parseFixedOctalField(data.data() + pos + 65, 11, fileSize64)) {
+            err << "CPIO: invalid odc octal field at offset " << pos << "\n";
+            return false;
+        }
+        if (nameSize64 == 0 || nameSize64 > data.size() - pos - 76) {
+            err << "CPIO: invalid odc name size at offset " << pos << "\n";
+            return false;
+        }
+        if (fileSize64 > data.size() - pos - 76 - static_cast<size_t>(nameSize64)) {
+            err << "CPIO: odc entry data extends past end of archive\n";
+            return false;
+        }
+        const size_t nameSize = static_cast<size_t>(nameSize64);
+        const size_t fileSize = static_cast<size_t>(fileSize64);
+        const size_t nameOff = pos + 76;
+        if (data[nameOff + nameSize - 1] != 0) {
+            err << "CPIO: odc entry name is not NUL-terminated at offset " << pos << "\n";
+            return false;
+        }
+        const std::string name(reinterpret_cast<const char *>(data.data() + nameOff),
+                               nameSize - 1);
+        const size_t dataOff = nameOff + nameSize;
+        if (name == "TRAILER!!!") {
+            if (fileSize != 0) {
+                err << "CPIO: trailer entry carries data\n";
+                return false;
+            }
+            sawTrailer = true;
+            for (size_t i = dataOff; i < data.size(); ++i) {
+                if (data[i] != 0) {
+                    err << "CPIO: non-zero bytes after trailer\n";
+                    return false;
+                }
+            }
+            break;
+        }
+
+        const uint32_t mode = static_cast<uint32_t>(mode64);
+        const uint32_t type = mode & 0170000u;
+        const bool isDir = type == 0040000u;
+        const bool isSymlink = type == 0120000u;
+        if (isDir && fileSize != 0) {
+            err << "CPIO: directory entry carries data for '" << name << "'\n";
+            return false;
+        }
+        std::string clean;
+        if (!recordCpioPath(name, mode, err, seen, outNames, clean))
+            return false;
+        if (isSymlink) {
+            const std::string target(reinterpret_cast<const char *>(data.data() + dataOff),
+                                     fileSize);
+            if (!validateRelativeSymlinkTarget(clean, target, "CPIO", err))
+                return false;
+        }
+        pos = dataOff + fileSize;
+    }
+    if (!sawTrailer) {
+        err << "CPIO: missing TRAILER!!! entry\n";
+        return false;
+    }
+    return true;
+}
+
+bool verifyCpioNewcBytes(const std::vector<uint8_t> &data,
+                         std::ostream &err,
+                         std::set<std::string> *outNames = nullptr) {
+    if (data.size() >= 6 && std::memcmp(data.data(), "070707", 6) == 0)
+        return verifyCpioOdcBytes(data, err, outNames);
+
+    size_t pos = 0;
+    bool sawTrailer = false;
+    std::set<std::string> seen;
+    while (pos < data.size()) {
+        if (!hasRange(pos, 110, data.size())) {
+            err << "CPIO: truncated entry header at offset " << pos << "\n";
+            return false;
+        }
+        if (std::memcmp(data.data() + pos, "070701", 6) != 0 &&
+            std::memcmp(data.data() + pos, "070702", 6) != 0) {
+            err << "CPIO: missing newc magic at offset " << pos << "\n";
+            return false;
+        }
+
+        uint32_t fields[13] = {};
+        for (size_t i = 0; i < 13; ++i) {
+            if (!parseHex32Field(data.data() + pos + 6 + i * 8, fields[i])) {
+                err << "CPIO: invalid hex field at offset " << pos << "\n";
+                return false;
+            }
+        }
+        const uint32_t mode = fields[1];
+        const uint32_t fileSize = fields[6];
+        const uint32_t nameSize = fields[11];
+        if (nameSize == 0) {
+            err << "CPIO: entry has zero name size at offset " << pos << "\n";
+            return false;
+        }
+        const size_t nameOff = pos + 110;
+        if (!hasRange(nameOff, nameSize, data.size())) {
+            err << "CPIO: truncated entry name at offset " << pos << "\n";
+            return false;
+        }
+        if (data[nameOff + nameSize - 1] != 0) {
+            err << "CPIO: entry name is not NUL-terminated at offset " << pos << "\n";
+            return false;
+        }
+        std::string name(reinterpret_cast<const char *>(data.data() + nameOff), nameSize - 1);
+        const size_t dataOff = align4(nameOff + nameSize);
+        if (!hasRange(dataOff, fileSize, data.size())) {
+            err << "CPIO: entry data extends past end of archive for '" << name << "'\n";
+            return false;
+        }
+
+        if (name == "TRAILER!!!") {
+            if (fileSize != 0) {
+                err << "CPIO: trailer entry carries data\n";
+                return false;
+            }
+            sawTrailer = true;
+            const size_t end = align4(dataOff);
+            for (size_t i = end; i < data.size(); ++i) {
+                if (data[i] != 0) {
+                    err << "CPIO: non-zero bytes after trailer\n";
+                    return false;
+                }
+            }
+            break;
+        }
+
+        const uint32_t type = mode & 0170000u;
+        const bool isDir = type == 0040000u;
+        const bool isFile = type == 0100000u;
+        const bool isSymlink = type == 0120000u;
+        if (!isDir && !isFile && !isSymlink) {
+            err << "CPIO: unsupported entry type for '" << name << "'\n";
+            return false;
+        }
+        if ((isDir || isSymlink) && fileSize != 0 && !isSymlink) {
+            err << "CPIO: directory entry carries data for '" << name << "'\n";
+            return false;
+        }
+
+        std::string clean;
+        if (!recordCpioPath(name, mode, err, seen, outNames, clean))
+            return false;
+
+        if (isSymlink) {
+            const std::string target(reinterpret_cast<const char *>(data.data() + dataOff),
+                                     fileSize);
+            if (!validateRelativeSymlinkTarget(clean, target, "CPIO", err))
+                return false;
+        }
+        pos = align4(dataOff + fileSize);
+    }
+
+    if (!sawTrailer) {
+        err << "CPIO: missing TRAILER!!! entry\n";
+        return false;
+    }
+    return true;
+}
+
+std::string extractXmlTagText(const std::string &text,
+                              const std::string &openTag,
+                              const std::string &closeTag) {
+    const size_t begin = text.find(openTag);
+    if (begin == std::string::npos)
+        return {};
+    const size_t content = begin + openTag.size();
+    const size_t end = text.find(closeTag, content);
+    if (end == std::string::npos)
+        return {};
+    return text.substr(content, end - content);
+}
+
+bool parseUnsignedDecimalText(const std::string &text, uint64_t &out) {
+    if (text.empty())
+        return false;
+    out = 0;
+    for (unsigned char ch : text) {
+        if (!std::isdigit(ch))
+            return false;
+        const uint64_t digit = static_cast<uint64_t>(ch - '0');
+        if (out > (std::numeric_limits<uint64_t>::max() - digit) / 10u)
+            return false;
+        out = out * 10u + digit;
+    }
+    return true;
+}
+
+bool extractXarFileChecksum(const std::string &block,
+                            const std::string &tag,
+                            std::string &out) {
+    const std::string open = "<" + tag;
+    const size_t openPos = block.find(open);
+    if (openPos == std::string::npos)
+        return false;
+    const size_t content = block.find('>', openPos);
+    if (content == std::string::npos)
+        return false;
+    const std::string close = "</" + tag + ">";
+    const size_t closePos = block.find(close, content + 1);
+    if (closePos == std::string::npos)
+        return false;
+    out = block.substr(content + 1, closePos - content - 1);
+    return true;
+}
+
+struct XarFileData {
+    std::string tocText;
+    std::map<std::string, std::vector<uint8_t>> files;
+};
+
+size_t findMatchingXarFileEnd(const std::string &text, size_t openPos, size_t limit) {
+    size_t pos = openPos;
+    int depth = 0;
+    while (pos < limit) {
+        const size_t nextOpen = text.find("<file", pos);
+        const size_t nextClose = text.find("</file>", pos);
+        if (nextClose == std::string::npos || nextClose >= limit)
+            return std::string::npos;
+        if (nextOpen != std::string::npos && nextOpen < nextClose && nextOpen < limit) {
+            ++depth;
+            pos = nextOpen + 5;
+        } else {
+            --depth;
+            pos = nextClose + 7;
+            if (depth == 0)
+                return pos;
+            if (depth < 0)
+                return std::string::npos;
+        }
+    }
+    return std::string::npos;
+}
+
+bool extractXarFilePayload(const std::string &block,
+                           const std::string &name,
+                           const std::vector<uint8_t> &data,
+                           size_t heapBase,
+                           std::ostream &err,
+                           XarFileData &out) {
+    uint64_t offset = 0;
+    uint64_t length = 0;
+    uint64_t size = 0;
+    if (!parseUnsignedDecimalText(extractXmlTagText(block, "<offset>", "</offset>"), offset) ||
+        !parseUnsignedDecimalText(extractXmlTagText(block, "<length>", "</length>"), length) ||
+        !parseUnsignedDecimalText(extractXmlTagText(block, "<size>", "</size>"), size)) {
+        err << "XAR: file element has invalid data bounds for '" << name << "'\n";
+        return false;
+    }
+    if (offset > static_cast<uint64_t>(data.size() - heapBase) ||
+        length > static_cast<uint64_t>(data.size() - heapBase) - offset) {
+        err << "XAR: heap data for '" << name << "' extends past end of archive\n";
+        return false;
+    }
+    if (size > static_cast<uint64_t>(std::vector<uint8_t>().max_size())) {
+        err << "XAR: extracted data for '" << name << "' is too large\n";
+        return false;
+    }
+    const size_t dataOff = heapBase + static_cast<size_t>(offset);
+    const size_t dataLen = static_cast<size_t>(length);
+    std::vector<uint8_t> archived(data.begin() + dataOff, data.begin() + dataOff + dataLen);
+    std::vector<uint8_t> extracted;
+    const bool compressed = block.find("encoding style=\"application/x-gzip\"") !=
+                            std::string::npos;
+    try {
+        if (compressed) {
+            extracted = zlibDecompress(archived.data(), archived.size(), static_cast<size_t>(size));
+        } else {
+            if (length != size) {
+                err << "XAR: uncompressed length/size mismatch for '" << name << "'\n";
+                return false;
+            }
+            extracted = archived;
+        }
+    } catch (const std::exception &ex) {
+        err << "XAR: cannot extract '" << name << "': " << ex.what() << "\n";
+        return false;
+    }
+
+    std::string archivedSha1;
+    if (extractXarFileChecksum(block, "archived-checksum", archivedSha1) &&
+        archivedSha1 != sha1Hex(archived.data(), archived.size())) {
+        err << "XAR: archived SHA-1 mismatch for '" << name << "'\n";
+        return false;
+    }
+    std::string extractedSha1;
+    if (extractXarFileChecksum(block, "extracted-checksum", extractedSha1) &&
+        extractedSha1 != sha1Hex(extracted.data(), extracted.size())) {
+        err << "XAR: extracted SHA-1 mismatch for '" << name << "'\n";
+        return false;
+    }
+    if (!out.files.emplace(name, std::move(extracted)).second) {
+        err << "XAR: duplicate file entry '" << name << "'\n";
+        return false;
+    }
+    return true;
+}
+
+bool extractXarFileElements(const std::string &tocText,
+                            size_t begin,
+                            size_t end,
+                            const std::string &prefix,
+                            const std::vector<uint8_t> &data,
+                            size_t heapBase,
+                            std::ostream &err,
+                            XarFileData &out) {
+    size_t filePos = begin;
+    while ((filePos = tocText.find("<file", filePos)) != std::string::npos && filePos < end) {
+        const size_t fileEnd = findMatchingXarFileEnd(tocText, filePos, end);
+        if (fileEnd == std::string::npos) {
+            err << "XAR: unterminated file element\n";
+            return false;
+        }
+        const std::string block = tocText.substr(filePos, fileEnd - filePos);
+        const std::string leaf = extractXmlTagText(block, "<name>", "</name>");
+        if (leaf.empty()) {
+            err << "XAR: file element is missing a name\n";
+            return false;
+        }
+        std::string name = prefix.empty() ? leaf : prefix + "/" + leaf;
+        try {
+            name = sanitizePackageRelativePath(name, "xar file path");
+        } catch (const std::exception &ex) {
+            err << "XAR: unsafe file path '" << name << "': " << ex.what() << "\n";
+            return false;
+        }
+        if (hasAppleDoubleComponent(name)) {
+            err << "XAR: AppleDouble sidecar path is not allowed: '" << name << "'\n";
+            return false;
+        }
+
+        const std::string type = extractXmlTagText(block, "<type>", "</type>");
+        if (type == "directory") {
+            const size_t contentBegin = tocText.find('>', filePos);
+            if (contentBegin == std::string::npos || contentBegin + 1 > fileEnd) {
+                err << "XAR: malformed directory element for '" << name << "'\n";
+                return false;
+            }
+            if (!extractXarFileElements(tocText,
+                                        contentBegin + 1,
+                                        fileEnd - 7,
+                                        name,
+                                        data,
+                                        heapBase,
+                                        err,
+                                        out))
+                return false;
+        } else if (type == "file") {
+            if (!extractXarFilePayload(block, name, data, heapBase, err, out))
+                return false;
+        } else {
+            err << "XAR: unsupported file element type for '" << name << "'\n";
+            return false;
+        }
+        filePos = fileEnd;
+    }
+    return true;
+}
+
+bool extractXarFiles(const std::vector<uint8_t> &data,
+                     std::ostream &err,
+                     XarFileData &out) {
+    if (data.size() < 28 || std::memcmp(data.data(), "xar!", 4) != 0) {
+        err << "XAR: missing xar header\n";
+        return false;
+    }
+    const uint16_t headerSize = rdBE16(data.data() + 4);
+    const uint16_t version = rdBE16(data.data() + 6);
+    const uint64_t tocCompressed = rdBE64(data.data() + 8);
+    const uint64_t tocUncompressed = rdBE64(data.data() + 16);
+    const uint32_t checksumAlg = rdBE32(data.data() + 24);
+    if (headerSize < 28 || headerSize > data.size()) {
+        err << "XAR: invalid header size\n";
+        return false;
+    }
+    if (version != 1) {
+        err << "XAR: unsupported version " << version << "\n";
+        return false;
+    }
+    if (checksumAlg != 1) {
+        err << "XAR: unsupported TOC checksum algorithm " << checksumAlg << "\n";
+        return false;
+    }
+    if (tocCompressed == 0 || tocUncompressed == 0 ||
+        tocCompressed > static_cast<uint64_t>(data.size() - headerSize)) {
+        err << "XAR: invalid TOC length\n";
+        return false;
+    }
+    if (tocUncompressed > 64ull * 1024ull * 1024ull) {
+        err << "XAR: TOC is unreasonably large\n";
+        return false;
+    }
+
+    std::vector<uint8_t> toc;
+    try {
+        toc = zlibDecompress(data.data() + headerSize,
+                             static_cast<size_t>(tocCompressed),
+                             static_cast<size_t>(tocUncompressed));
+    } catch (const std::exception &ex) {
+        err << "XAR: cannot inflate TOC: " << ex.what() << "\n";
+        return false;
+    }
+    out.tocText.assign(toc.begin(), toc.end());
+    if (out.tocText.find("<xar") == std::string::npos ||
+        out.tocText.find("</xar>") == std::string::npos) {
+        err << "XAR: TOC is not a xar document\n";
+        return false;
+    }
+
+    const size_t heapBase = headerSize + static_cast<size_t>(tocCompressed);
+    if (!hasRange(heapBase, 20, data.size())) {
+        err << "XAR: missing TOC checksum heap bytes\n";
+        return false;
+    }
+    const auto tocSha1 = sha1Bytes(data.data() + headerSize, static_cast<size_t>(tocCompressed));
+    if (!std::equal(tocSha1.begin(), tocSha1.end(), data.begin() + heapBase)) {
+        err << "XAR: TOC SHA-1 checksum mismatch\n";
+        return false;
+    }
+
+    if (!extractXarFileElements(out.tocText, 0, out.tocText.size(), "", data, heapBase, err, out))
+        return false;
+
+    if (out.files.empty()) {
+        err << "XAR: archive contains no file entries\n";
+        return false;
+    }
+    return true;
+}
+
+bool verifyMacOSPkgInternal(const std::vector<uint8_t> &data,
+                            std::ostream &err,
+                            std::set<std::string> *outPayloadNames) {
+    XarFileData xar;
+    if (!extractXarFiles(data, err, xar))
+        return false;
+
+    std::string componentPrefix;
+    auto payloadIt = xar.files.find("Payload");
+    if (payloadIt == xar.files.end()) {
+        const auto distributionIt = xar.files.find("Distribution");
+        if (distributionIt == xar.files.end()) {
+            err << "macOS pkg: expected either component Payload or product Distribution with "
+                   "ViperToolchain.pkg\n";
+            return false;
+        }
+        const std::string distribution(distributionIt->second.begin(),
+                                       distributionIt->second.end());
+        if (distribution.find("#ViperToolchain.pkg") == std::string::npos ||
+            distribution.find("installKBytes=\"") == std::string::npos ||
+            distribution.find("updateKBytes=\"") == std::string::npos ||
+            distribution.find("<product ") == std::string::npos) {
+            err << "macOS pkg: Distribution is missing installable component metadata\n";
+            return false;
+        }
+        componentPrefix = "ViperToolchain.pkg/";
+        payloadIt = xar.files.find(componentPrefix + "Payload");
+        if (payloadIt == xar.files.end()) {
+            const auto nestedComponentIt = xar.files.find("ViperToolchain.pkg");
+            if (nestedComponentIt != xar.files.end())
+                return verifyMacOSPkgInternal(nestedComponentIt->second, err, outPayloadNames);
+            err << "macOS pkg: product is missing ViperToolchain.pkg/Payload\n";
+            return false;
+        }
+    }
+
+    for (const char *requiredRoot : {"Bom", "PackageInfo", "Scripts"}) {
+        if (xar.files.find(componentPrefix + requiredRoot) == xar.files.end()) {
+            err << "macOS pkg: missing root file " << requiredRoot << "\n";
+            return false;
+        }
+    }
+
+    std::vector<uint8_t> payloadCpio;
+    try {
+        payloadCpio = gunzip(payloadIt->second.data(), payloadIt->second.size());
+    } catch (const std::exception &ex) {
+        err << "macOS pkg: cannot inflate Payload: " << ex.what() << "\n";
+        return false;
+    }
+    if (!verifyCpioNewcBytes(payloadCpio, err, outPayloadNames))
+        return false;
+
+    std::vector<uint8_t> scriptsCpio;
+    try {
+        const auto scriptsIt = xar.files.find(componentPrefix + "Scripts");
+        scriptsCpio = gunzip(scriptsIt->second.data(), scriptsIt->second.size());
+    } catch (const std::exception &ex) {
+        err << "macOS pkg: cannot inflate Scripts: " << ex.what() << "\n";
+        return false;
+    }
+    std::set<std::string> scriptNames;
+    if (!verifyCpioNewcBytes(scriptsCpio, err, &scriptNames))
+        return false;
+    for (const char *script : {"preinstall", "postinstall"}) {
+        if (scriptNames.find(script) == scriptNames.end()) {
+            err << "macOS pkg scripts: missing required payload path '" << script << "'\n";
+            return false;
+        }
     }
     return true;
 }
@@ -802,6 +1477,37 @@ bool verifyTarGzPayload(const std::vector<uint8_t> &data,
         err << "TAR.GZ: " << ex.what() << "\n";
         return false;
     }
+}
+
+bool verifyCpioNewc(const std::vector<uint8_t> &data, std::ostream &err) {
+    return verifyCpioNewcBytes(data, err);
+}
+
+bool verifyCpioNewcPayload(const std::vector<uint8_t> &data,
+                           const std::vector<std::string> &requiredPaths,
+                           std::ostream &err) {
+    std::set<std::string> names;
+    if (!verifyCpioNewcBytes(data, err, &names))
+        return false;
+    return requireArchivePaths(names, requiredPaths, "CPIO", err);
+}
+
+bool verifyXar(const std::vector<uint8_t> &data, std::ostream &err) {
+    XarFileData files;
+    return extractXarFiles(data, err, files);
+}
+
+bool verifyMacOSPkg(const std::vector<uint8_t> &data, std::ostream &err) {
+    return verifyMacOSPkgInternal(data, err, nullptr);
+}
+
+bool verifyMacOSPkgPayload(const std::vector<uint8_t> &data,
+                           const std::vector<std::string> &requiredPaths,
+                           std::ostream &err) {
+    std::set<std::string> payloadNames;
+    if (!verifyMacOSPkgInternal(data, err, &payloadNames))
+        return false;
+    return requireArchivePaths(payloadNames, requiredPaths, "macOS pkg", err);
 }
 
 // ============================================================================

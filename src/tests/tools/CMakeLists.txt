@@ -69,6 +69,45 @@ function(viper_add_tools_tests)
                 -DTEST_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/package_crackman_macos_signed
                 -P ${_VIPER_TOOLS_DIR}/MacOSPackageSmokeTests.cmake)
         viper_add_test_labels(package_crackman_macos_signed tools installer zia slow)
+
+        viper_add_ctest(macos_toolchain_installer_smoke
+                ${CMAKE_COMMAND}
+                -DCMAKE_BIN=${CMAKE_COMMAND}
+                -DVIPER_BIN=$<TARGET_FILE:viper>
+                -DVIPER_BUILD_DIR=${CMAKE_BINARY_DIR}
+                -DVIPER_CONFIG=$<CONFIG>
+                -P ${_VIPER_TOOLS_DIR}/MacOSToolchainInstallerSmoke.cmake)
+        set_tests_properties(macos_toolchain_installer_smoke PROPERTIES
+                RUN_SERIAL TRUE
+                TIMEOUT 420
+                SKIP_REGULAR_EXPRESSION "Skipping macOS installer smoke")
+        viper_add_test_labels(macos_toolchain_installer_smoke installer tools requires_macos requires_privileged_install slow)
+    endif ()
+
+    if (UNIX AND NOT APPLE)
+        viper_add_ctest(linux_toolchain_deb_installer_smoke
+                ${CMAKE_COMMAND}
+                -DVIPER_BIN=$<TARGET_FILE:viper>
+                -DVIPER_BUILD_DIR=${CMAKE_BINARY_DIR}
+                -DVIPER_CONFIG=$<CONFIG>
+                -P ${_VIPER_TOOLS_DIR}/LinuxToolchainDebInstallerSmoke.cmake)
+        set_tests_properties(linux_toolchain_deb_installer_smoke PROPERTIES
+                RUN_SERIAL TRUE
+                TIMEOUT 420
+                SKIP_REGULAR_EXPRESSION "Skipping Linux installer smoke")
+        viper_add_test_labels(linux_toolchain_deb_installer_smoke installer tools requires_linux requires_linux_deb requires_privileged_install slow)
+
+        viper_add_ctest(linux_toolchain_rpm_installer_smoke
+                ${CMAKE_COMMAND}
+                -DVIPER_BIN=$<TARGET_FILE:viper>
+                -DVIPER_BUILD_DIR=${CMAKE_BINARY_DIR}
+                -DVIPER_CONFIG=$<CONFIG>
+                -P ${_VIPER_TOOLS_DIR}/LinuxToolchainRpmInstallerSmoke.cmake)
+        set_tests_properties(linux_toolchain_rpm_installer_smoke PROPERTIES
+                RUN_SERIAL TRUE
+                TIMEOUT 540
+                SKIP_REGULAR_EXPRESSION "Skipping Linux installer smoke")
+        viper_add_test_labels(linux_toolchain_rpm_installer_smoke installer tools requires_linux requires_linux_rpm requires_privileged_install slow)
     endif ()
 
     if (WIN32)

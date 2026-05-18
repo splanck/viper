@@ -25,6 +25,7 @@
 #include "tests/TestHarness.hpp"
 
 #include "ArWriter.hpp"
+#include "CpioWriter.hpp"
 #include "DesktopEntryGenerator.hpp"
 #include "IconGenerator.hpp"
 #include "InstallerStub.hpp"
@@ -36,13 +37,16 @@
 #include "PackageConfig.hpp"
 #include "PkgDeflate.hpp"
 #include "PkgGzip.hpp"
+#include "PkgHash.hpp"
 #include "PkgPNG.hpp"
 #include "PkgUtils.hpp"
 #include "PkgVerify.hpp"
+#include "PkgZlib.hpp"
 #include "PlistGenerator.hpp"
 #include "TarWriter.hpp"
 #include "ToolchainInstallManifest.hpp"
 #include "WindowsPackageBuilder.hpp"
+#include "XarWriter.hpp"
 #include "ZipReader.hpp"
 #include "ZipWriter.hpp"
 #include "viper/platform/Capabilities.hpp"
@@ -109,6 +113,15 @@ static void writeTestWindowsPe(const std::filesystem::path &path,
 static uint32_t readBE32(const uint8_t *p) {
     return (static_cast<uint32_t>(p[0]) << 24) | (static_cast<uint32_t>(p[1]) << 16) |
            (static_cast<uint32_t>(p[2]) << 8) | static_cast<uint32_t>(p[3]);
+}
+
+static uint16_t readBE16(const uint8_t *p) {
+    return static_cast<uint16_t>((static_cast<uint16_t>(p[0]) << 8) |
+                                 static_cast<uint16_t>(p[1]));
+}
+
+static uint64_t readBE64(const uint8_t *p) {
+    return (static_cast<uint64_t>(readBE32(p)) << 32) | readBE32(p + 4);
 }
 
 static void appendBE32(std::vector<uint8_t> &buf, uint32_t v) {
@@ -454,6 +467,7 @@ static std::filesystem::path createMockToolchainStage(const std::filesystem::pat
     fs::create_directories(stage / "lib" / "cmake" / "Viper");
     fs::create_directories(stage / "include" / "viper");
     fs::create_directories(stage / "share" / "man" / "man1");
+    fs::create_directories(stage / "share" / "man" / "man7");
     fs::create_directories(stage / "share" / "doc" / "viper");
 
 #if defined(_WIN32)
@@ -509,6 +523,10 @@ static std::filesystem::path createMockToolchainStage(const std::filesystem::pat
         out << ".TH viper 1\n";
     }
     {
+        std::ofstream out(stage / "share" / "man" / "man7" / "viper.7");
+        out << ".TH viper 7\n";
+    }
+    {
         std::ofstream out(stage / "share" / "doc" / "viper" / "README.md");
         out << "Viper\n";
     }
@@ -558,6 +576,75 @@ TEST(Gzip, RoundTripEmptyNullInput) {
     auto compressed = gzip(nullptr, 0);
     auto decompressed = gunzip(compressed.data(), compressed.size());
     EXPECT_EQ(decompressed.size(), static_cast<size_t>(0));
+}
+
+TEST(PkgHash, KnownAnswers) {
+    const char *abc = "abc";
+    EXPECT_EQ(sha1Hex(nullptr, 0),
+              "da39a3ee5e6b4b0d3255bfef95601890afd80709");
+    EXPECT_EQ(sha1Hex(reinterpret_cast<const uint8_t *>(abc), 3),
+              "a9993e364706816aba3e25717850c26c9cd0d89d");
+    EXPECT_EQ(sha256Hex(nullptr, 0),
+              "e3b0c44298fc1c149afbf4c8996fb924"
+              "27ae41e4649b934ca495991b7852b855");
+    EXPECT_EQ(sha256Hex(reinterpret_cast<const uint8_t *>(abc), 3),
+              "ba7816bf8f01cfea414140de5dae2223"
+              "b00361a396177a9cb410ff61f20015ad");
+}
+
+TEST(Zlib, RoundTripAndRejectsChecksumMismatch) {
+    const char *msg = "zlib framing around native deflate";
+    auto compressed =
+        zlibCompress(reinterpret_cast<const uint8_t *>(msg), std::strlen(msg));
+    auto decompressed = zlibDecompress(compressed.data(), compressed.size(), std::strlen(msg));
+    EXPECT_EQ(std::string(decompressed.begin(), decompressed.end()), std::string(msg));
+    compressed.back() ^= 0x1u;
+    EXPECT_THROWS(zlibDecompress(compressed.data(), compressed.size(), std::strlen(msg)),
+                  std::runtime_error);
+}
+
+TEST(CpioWriter, EmitsPortableAsciiPayloadWithSymlinksAndTrailer) {
+    CpioWriter cpio;
+    cpio.addDirectory(".");
+    cpio.addDirectory("usr/local/bin");
+    cpio.addDirectory("usr/local/viper/bin");
+    cpio.addFileString("usr/local/viper/bin/viper", "stub", 0755);
+    cpio.addSymlink("usr/local/bin/viper", "../viper/bin/viper");
+    const auto bytes = cpio.finish();
+    ASSERT_GE(bytes.size(), static_cast<size_t>(110));
+    EXPECT_TRUE(std::memcmp(bytes.data(), "070707", 6) == 0);
+    const std::string text(bytes.begin(), bytes.end());
+    EXPECT_TRUE(text.find("./usr/local/viper/bin/viper") != std::string::npos);
+    EXPECT_TRUE(text.find("TRAILER!!!") != std::string::npos);
+    std::ostringstream err;
+    EXPECT_TRUE(verifyCpioNewcPayload(bytes,
+                                      {"usr/local/viper/bin/viper", "usr/local/bin/viper"},
+                                      err));
+}
+
+TEST(XarWriter, EmitsVerifiableSha1ZlibArchive) {
+    XarWriter xar;
+    xar.addFileString("Distribution", "<installer-gui-script/>", true);
+    xar.addFileString("ViperToolchain.pkg", "component", false);
+    const auto bytes = xar.finish();
+    ASSERT_GE(bytes.size(), static_cast<size_t>(28));
+    EXPECT_EQ(bytes[0], static_cast<uint8_t>('x'));
+    EXPECT_EQ(bytes[1], static_cast<uint8_t>('a'));
+    EXPECT_EQ(bytes[2], static_cast<uint8_t>('r'));
+    EXPECT_EQ(bytes[3], static_cast<uint8_t>('!'));
+    const uint16_t headerSize = readBE16(bytes.data() + 4);
+    EXPECT_EQ(headerSize, static_cast<uint16_t>(28));
+    const uint64_t tocCompressed = readBE64(bytes.data() + 8);
+    const uint64_t tocUncompressed = readBE64(bytes.data() + 16);
+    const auto toc =
+        zlibDecompress(bytes.data() + headerSize,
+                       static_cast<size_t>(tocCompressed),
+                       static_cast<size_t>(tocUncompressed));
+    const std::string tocText(toc.begin(), toc.end());
+    EXPECT_TRUE(tocText.find("<name>Distribution</name>") != std::string::npos);
+    EXPECT_TRUE(tocText.find("<checksum style=\"sha1\">") != std::string::npos);
+    std::ostringstream err;
+    EXPECT_TRUE(verifyXar(bytes, err));
 }
 
 TEST(Deflate, RoundTripSmall) {
@@ -3612,7 +3699,14 @@ TEST(ToolchainLinuxPackageBuilder, BuildsDebFromManifest) {
                                   "usr/share/mime/packages/viper.xml"},
                                  payloadErr));
     const std::string control = debControlText(debBytes);
-    EXPECT_CONTAINS(control, "Depends: libc6, libstdc++6 | libc++1");
+    EXPECT_CONTAINS(control, "Depends: libc6, libstdc++6 | libc++1, libgcc-s1");
+    EXPECT_CONTAINS(control, "Recommends: cmake, g++ | clang++");
+#if VIPER_BUILD_HAS_GRAPHICS || VIPER_BUILD_HAS_GUI
+    EXPECT_CONTAINS(control, "libx11-6");
+#endif
+#if VIPER_BUILD_HAS_AUDIO
+    EXPECT_CONTAINS(control, "libasound2 | libasound2t64");
+#endif
     const std::string postrm = debControlEntryText(debBytes, "postrm");
     EXPECT_CONTAINS(postrm, "mandb");
     EXPECT_CONTAINS(postrm, "update-mime-database");
@@ -3656,8 +3750,33 @@ TEST(ToolchainLinuxPackageBuilder, BuildsTarballFromManifest) {
                                    {topDir + "bin/viper",
                                     topDir + "share/applications/viper-source.desktop",
                                     topDir + "share/applications/viper-il.desktop",
-                                    topDir + "share/mime/packages/viper.xml"},
+                                    topDir + "share/mime/packages/viper.xml",
+                                    topDir + "share/viper/install_manifest.txt",
+                                    topDir + "install.sh",
+                                    topDir + "uninstall.sh",
+                                    topDir + "README.install"},
                                    payloadErr));
+    std::vector<uint8_t> installScript;
+    ASSERT_TRUE(tarEntryData(tarBytes, topDir + "install.sh", installScript));
+    EXPECT_CONTAINS(std::string(installScript.begin(), installScript.end()),
+                    "DESTDIR");
+    uint32_t installMode = 0;
+    EXPECT_TRUE(tarEntryMode(tarBytes, topDir + "install.sh", installMode));
+    EXPECT_EQ(installMode, static_cast<uint32_t>(0755));
+    std::vector<uint8_t> uninstallScript;
+    ASSERT_TRUE(tarEntryData(tarBytes, topDir + "uninstall.sh", uninstallScript));
+    EXPECT_CONTAINS(std::string(uninstallScript.begin(), uninstallScript.end()),
+                    "install_manifest.txt");
+    uint32_t uninstallMode = 0;
+    EXPECT_TRUE(tarEntryMode(tarBytes, topDir + "uninstall.sh", uninstallMode));
+    EXPECT_EQ(uninstallMode, static_cast<uint32_t>(0755));
+    std::vector<uint8_t> installManifest;
+    ASSERT_TRUE(tarEntryData(tarBytes,
+                             topDir + "share/viper/install_manifest.txt",
+                             installManifest));
+    const std::string installManifestText(installManifest.begin(), installManifest.end());
+    EXPECT_CONTAINS(installManifestText, "bin/viper\n");
+    EXPECT_CONTAINS(installManifestText, "share/viper/install_manifest.txt\n");
     std::vector<uint8_t> sourceDesktop;
     ASSERT_TRUE(tarEntryData(
         tarBytes, topDir + "share/applications/viper-source.desktop", sourceDesktop));
@@ -3854,6 +3973,22 @@ TEST(ToolchainMacOSPackageBuilder, BuildsPkgFromManifest) {
     EXPECT_EQ(pkgBytes[1], static_cast<uint8_t>('a'));
     EXPECT_EQ(pkgBytes[2], static_cast<uint8_t>('r'));
     EXPECT_EQ(pkgBytes[3], static_cast<uint8_t>('!'));
+    std::ostringstream err;
+    const bool verified =
+        verifyMacOSPkgPayload(pkgBytes,
+                              {"usr/local/viper/bin/viper",
+                               "usr/local/bin/viper",
+                               "usr/local/viper/share/man/man1/viper.1",
+                               "usr/local/share/man/man1/viper.1",
+                               "usr/local/viper/share/man/man7/viper.7",
+                               "usr/local/share/man/man7/viper.7",
+                               "usr/local/viper/share/viper/install_manifest.txt",
+                               "usr/local/lib/cmake/Viper/ViperConfig.cmake",
+                               "usr/local/lib/cmake/Viper/ViperConfigVersion.cmake"},
+                              err);
+    if (!verified)
+        std::cerr << err.str();
+    EXPECT_TRUE(verified);
     fs::remove_all(tmpRoot);
 }
 #endif
