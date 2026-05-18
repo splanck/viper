@@ -100,7 +100,9 @@ typedef struct vg_tabbar {
 
     // Per-frame tracking for Zia runtime
     vg_tab_t *prev_active_tab; ///< Previous active tab (for change detection)
-    int close_clicked_index;   ///< Index whose close button was clicked (cleared on read, -1 = none)
+    int close_clicked_index;   ///< Last close-click index (cleared on index read, -1 = none)
+    uint64_t close_click_version;          ///< Monotonic counter for close-click events
+    uint64_t reported_close_click_version; ///< Last close-click version observed by runtime
     bool auto_close;           ///< Auto-remove tab on close click (default true)
     uint64_t active_change_version;          ///< Monotonic counter for active-tab changes
     uint64_t reported_active_change_version; ///< Last active-change version observed by runtime

@@ -479,6 +479,7 @@ typedef struct vg_listbox_item {
     uint64_t magic;      ///< Live-item sentinel for stale handle detection
     struct vg_listbox *owner; ///< Owning listbox while the item is live
     char *text;          ///< Item text (owned)
+    size_t text_len;     ///< Item text length in bytes
     void *user_data;     ///< User data
     bool owns_user_data; ///< Free user_data when the item is destroyed
     bool selected;       ///< Is item selected
@@ -545,8 +546,9 @@ typedef struct vg_listbox {
     size_t cache_capacity;                   ///< Cache capacity
 
     // Virtual mode selection (bitmap for large lists)
-    bool *selection_bitmap;       ///< Selection state for virtual mode
-    size_t selection_bitmap_size; ///< Bitmap size
+    bool *selection_bitmap;           ///< Selection state for virtual mode
+    size_t selection_bitmap_size;     ///< Logical bitmap size
+    size_t selection_bitmap_capacity; ///< Allocated bitmap capacity
     size_t selected_index;        ///< Currently selected index (virtual mode)
     size_t prev_selected_index;   ///< Previous selected index (virtual mode change detection)
     size_t anchor_selected_index; ///< Range-selection anchor (virtual mode)

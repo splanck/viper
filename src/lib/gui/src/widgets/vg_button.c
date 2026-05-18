@@ -481,6 +481,8 @@ void vg_button_set_style(vg_button_t *button, vg_button_style_t style) {
     if (!button)
         return;
 
+    if (style < VG_BUTTON_STYLE_DEFAULT || style > VG_BUTTON_STYLE_ICON)
+        style = VG_BUTTON_STYLE_DEFAULT;
     button->style = style;
     vg_theme_t *theme = vg_theme_get_current();
 
@@ -558,6 +560,6 @@ void vg_button_set_icon_position(vg_button_t *button, int pos) {
     if (!button)
         return;
 
-    button->icon_pos = pos;
+    button->icon_pos = pos == 1 ? 1 : 0;
     button->base.needs_paint = true;
 }

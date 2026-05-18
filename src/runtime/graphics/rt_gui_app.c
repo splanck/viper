@@ -1560,6 +1560,9 @@ static void rt_gui_update_drag_over_target(rt_gui_app_t *app, vg_widget_t *event
     app->drag_over_widget = next;
 }
 
+/// @brief Clear the pending drag candidate and its recorded start position.
+/// @details Called when a press is released without crossing the drag
+///          threshold, or when the candidate widget is no longer live.
 static void rt_gui_cancel_drag_candidate(rt_gui_app_t *app) {
     if (!app)
         return;
@@ -1568,6 +1571,12 @@ static void rt_gui_cancel_drag_candidate(rt_gui_app_t *app) {
     app->drag_start_y = 0;
 }
 
+/// @brief Promote a pending press to an active drag once the pointer moves far
+///        enough from the press point.
+/// @details Uses a squared-distance dead-zone (`dx*dx + dy*dy < 16`, i.e. a
+///          4-pixel radius) so small jitters during a click do not start a
+///          drag. If the candidate widget died meanwhile the candidate is
+///          cancelled instead.
 static void rt_gui_maybe_start_drag(rt_gui_app_t *app, vg_widget_t *event_root) {
     if (!app || app->drag_source || !app->drag_candidate)
         return;
@@ -1585,6 +1594,10 @@ static void rt_gui_maybe_start_drag(rt_gui_app_t *app, vg_widget_t *event_root) 
     rt_gui_update_drag_over_target(app, event_root);
 }
 
+/// @brief Finish an in-progress drag: hit-test the drop target and deliver it.
+/// @details Always clears the drag candidate first. If a drag was active, the
+///          widget under the pointer is hit-tested and, when it accepts the
+///          source's drag type and is not the source itself, receives the drop.
 static void rt_gui_complete_drag_drop(rt_gui_app_t *app, vg_widget_t *event_root) {
     if (!app)
         return;
@@ -1711,6 +1724,8 @@ void rt_gui_app_poll(void *app_ptr) {
         // Convert platform event to GUI event and dispatch to widget tree
         if (app->root) {
             vg_event_t gui_event = vg_event_from_platform(&event);
+            if (gui_event.type == VG_EVENT_NONE)
+                continue;
             vg_commandpalette_t *top_palette = rt_gui_top_visible_command_palette(app);
             vg_widget_t *event_root = rt_gui_hit_root(app);
             int32_t win_w = 0, win_h = 0;

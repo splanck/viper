@@ -475,7 +475,7 @@ vg_event_t vg_event_key(vg_event_type_t type,
 
 /// @brief Translates a VGFX platform key code to vg_key_t; passes printable ASCII through directly and maps special keys via a switch table.
 vg_key_t vg_key_from_vgfx_key(int32_t vgfx_key) {
-    if (vgfx_key < 0)
+    if (vgfx_key <= 0)
         return VG_KEY_UNKNOWN;
 
     // Printable ASCII keys are the same
@@ -538,6 +538,7 @@ static uint32_t translate_vgfx_modifiers(int vgfx_modifiers) {
 vg_event_t vg_event_from_platform(void *platform_event) {
     vg_event_t event;
     memset(&event, 0, sizeof(event));
+    event.type = VG_EVENT_NONE;
 
     if (!platform_event)
         return event;
@@ -572,6 +573,7 @@ vg_event_t vg_event_from_platform(void *platform_event) {
             event.mouse.y = (float)pe->data.mouse_move.y;
             event.mouse.screen_x = (float)pe->data.mouse_move.x;
             event.mouse.screen_y = (float)pe->data.mouse_move.y;
+            event.modifiers = translate_vgfx_modifiers(pe->data.mouse_move.modifiers);
             break;
 
         case VGFX_EVENT_MOUSE_DOWN:
@@ -581,6 +583,7 @@ vg_event_t vg_event_from_platform(void *platform_event) {
             event.mouse.screen_x = (float)pe->data.mouse_button.x;
             event.mouse.screen_y = (float)pe->data.mouse_button.y;
             event.mouse.button = (vg_mouse_button_t)pe->data.mouse_button.button;
+            event.modifiers = translate_vgfx_modifiers(pe->data.mouse_button.modifiers);
             break;
 
         case VGFX_EVENT_MOUSE_UP:
@@ -590,6 +593,7 @@ vg_event_t vg_event_from_platform(void *platform_event) {
             event.mouse.screen_x = (float)pe->data.mouse_button.x;
             event.mouse.screen_y = (float)pe->data.mouse_button.y;
             event.mouse.button = (vg_mouse_button_t)pe->data.mouse_button.button;
+            event.modifiers = translate_vgfx_modifiers(pe->data.mouse_button.modifiers);
             break;
 
         case VGFX_EVENT_SCROLL:
@@ -598,6 +602,7 @@ vg_event_t vg_event_from_platform(void *platform_event) {
             event.wheel.delta_y = pe->data.scroll.delta_y;
             event.wheel.screen_x = (float)pe->data.scroll.x;
             event.wheel.screen_y = (float)pe->data.scroll.y;
+            event.modifiers = translate_vgfx_modifiers(pe->data.scroll.modifiers);
             break;
 
         case VGFX_EVENT_RESIZE:
@@ -612,8 +617,16 @@ vg_event_t vg_event_from_platform(void *platform_event) {
             event.type = VG_EVENT_CLOSE;
             break;
 
+        case VGFX_EVENT_FOCUS_GAINED:
+            event.type = VG_EVENT_FOCUS_IN;
+            break;
+
+        case VGFX_EVENT_FOCUS_LOST:
+            event.type = VG_EVENT_FOCUS_OUT;
+            break;
+
         default:
-            // Unknown event type
+            event.type = VG_EVENT_NONE;
             break;
     }
 
@@ -627,6 +640,8 @@ vg_event_t vg_event_from_platform(void *platform_event) {
 /// @brief Routes an event from @p root to its target, applying hit-testing, input capture, modal restriction, hover updates, and keyboard focus routing.
 bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
     if (!root || !event)
+        return false;
+    if (event->type == VG_EVENT_NONE)
         return false;
     if (!vg_widget_is_live(root))
         return false;
@@ -777,6 +792,8 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
 bool vg_event_send(vg_widget_t *widget, vg_event_t *event) {
     if (!widget || !event)
         return false;
+    if (event->type == VG_EVENT_NONE)
+        return false;
     if (!vg_widget_is_live(widget))
         return false;
 
@@ -848,6 +865,9 @@ bool vg_event_send(vg_widget_t *widget, vg_event_t *event) {
         }
         current = vg_widget_is_live(next) ? next : NULL;
     }
+
+    if (event->handled)
+        synthesize_click = false;
 
     if (synthesize_click && vg_widget_is_live(widget)) {
         vg_event_t click_event = click_source;

@@ -56,6 +56,7 @@ static bool tabbar_can_focus(vg_widget_t *widget);
 static float get_tab_width(vg_tabbar_t *tabbar, vg_tab_t *tab);
 static bool tab_close_button_hit(vg_tabbar_t *tabbar, vg_tab_t *tab, float local_x, float local_y);
 static void tabbar_sync_hover_tooltip(vg_tabbar_t *tabbar);
+static void tabbar_record_close_clicked(vg_tabbar_t *tabbar, int index);
 static char *make_tab_title(const vg_tab_t *tab);
 static void tabbar_ensure_tab_visible(vg_tabbar_t *tabbar, vg_tab_t *tab);
 static void free_tab(vg_tab_t *tab);
@@ -360,6 +361,16 @@ static void tabbar_sync_hover_tooltip(vg_tabbar_t *tabbar) {
     }
 }
 
+/// @brief Record a close-click as a versioned runtime-visible event.
+static void tabbar_record_close_clicked(vg_tabbar_t *tabbar, int index) {
+    if (!tabbar || index < 0)
+        return;
+    tabbar->close_clicked_index = index;
+    tabbar->close_click_version++;
+    if (tabbar->close_click_version == 0)
+        tabbar->close_click_version = 1;
+}
+
 /// @brief VTable can_focus: returns true when the widget is both enabled and visible.
 static bool tabbar_can_focus(vg_widget_t *widget) {
     return widget && widget->enabled && widget->visible;
@@ -458,6 +469,8 @@ vg_tabbar_t *vg_tabbar_create(vg_widget_t *parent) {
     // Per-frame tracking
     tabbar->prev_active_tab = NULL;
     tabbar->close_clicked_index = -1;
+    tabbar->close_click_version = 0;
+    tabbar->reported_close_click_version = 0;
     tabbar->auto_close = true;
     tabbar->active_change_version = 0;
     tabbar->reported_active_change_version = 0;
@@ -756,7 +769,7 @@ static bool tabbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 if (!close_hit)
                     return false;
 
-                tabbar->close_clicked_index = vg_tabbar_get_tab_index(tabbar, close_tab);
+                tabbar_record_close_clicked(tabbar, vg_tabbar_get_tab_index(tabbar, close_tab));
                 bool allow_close = true;
                 if (tabbar->on_close)
                     allow_close = tabbar->on_close(widget, close_tab, tabbar->on_close_data);
@@ -825,7 +838,7 @@ static bool tabbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
             if ((has_ctrl && event->key.key == VG_KEY_W) || event->key.key == VG_KEY_DELETE) {
                 if (active->closable) {
                     bool allow_close = true;
-                    tabbar->close_clicked_index = current;
+                    tabbar_record_close_clicked(tabbar, current);
                     if (tabbar->on_close)
                         allow_close = tabbar->on_close(widget, active, tabbar->on_close_data);
                     if (allow_close && tabbar->auto_close)
@@ -898,10 +911,22 @@ vg_tab_t *vg_tabbar_add_tab(vg_tabbar_t *tabbar, const char *title, bool closabl
     if (!tab)
         return NULL;
 
+    char *title_copy = title ? strdup(title) : strdup("Untitled");
+    if (!title_copy) {
+        free(tab);
+        return NULL;
+    }
+    char *tooltip_copy = strdup(title_copy);
+    if (!tooltip_copy) {
+        free(title_copy);
+        free(tab);
+        return NULL;
+    }
+
     tab->magic = VG_TAB_MAGIC;
     tab->owner = tabbar;
-    tab->title = title ? strdup(title) : strdup("Untitled");
-    tab->tooltip = tab->title ? strdup(tab->title) : NULL;
+    tab->title = title_copy;
+    tab->tooltip = tooltip_copy;
     tab->user_data = NULL;
     tab->closable = closable;
     tab->modified = false;
@@ -1080,16 +1105,27 @@ void vg_tab_set_title(vg_tab_t *tab, const char *title) {
         tooltip_tracks_title = true;
     }
 
-    if (tab->title) {
-        free((void *)tab->title);
+    char *new_title = title ? strdup(title) : strdup("Untitled");
+    if (!new_title)
+        return;
+
+    char *new_tooltip = NULL;
+    if (tooltip_tracks_title) {
+        new_tooltip = strdup(new_title);
+        if (!new_tooltip) {
+            free(new_title);
+            return;
+        }
     }
-    tab->title = title ? strdup(title) : strdup("Untitled");
+
+    if (tab->title)
+        free((void *)tab->title);
+    tab->title = new_title;
 
     if (tooltip_tracks_title) {
-        if (tab->tooltip) {
+        if (tab->tooltip)
             free((void *)tab->tooltip);
-        }
-        tab->tooltip = tab->title ? strdup(tab->title) : NULL;
+        tab->tooltip = new_tooltip;
     }
     if (tab->owner) {
         if (tab->owner->hovered_tab == tab)
@@ -1121,9 +1157,12 @@ void vg_tab_set_tooltip(vg_tab_t *tab, const char *tooltip) {
     if (!vg_tab_is_live(tab))
         return;
 
+    char *copy = tooltip ? strdup(tooltip) : NULL;
+    if (tooltip && !copy)
+        return;
     if (tab->tooltip)
         free((void *)tab->tooltip);
-    tab->tooltip = tooltip ? strdup(tooltip) : NULL;
+    tab->tooltip = copy;
     if (tab->owner) {
         if (tab->owner->hovered_tab == tab)
             tabbar_sync_hover_tooltip(tab->owner);

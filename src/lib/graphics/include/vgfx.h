@@ -251,8 +251,9 @@ typedef struct {
 
         /// @brief Mouse movement event data (MOUSE_MOVE).
         struct {
-            int32_t x; ///< Mouse X coordinate (pixels from left edge)
-            int32_t y; ///< Mouse Y coordinate (pixels from top edge)
+            int32_t x;     ///< Mouse X coordinate (pixels from left edge)
+            int32_t y;     ///< Mouse Y coordinate (pixels from top edge)
+            int modifiers; ///< Modifier flags active during the move
         } mouse_move;
 
         /// @brief Mouse button event data (MOUSE_DOWN, MOUSE_UP).
@@ -260,6 +261,7 @@ typedef struct {
             int32_t x;                  ///< Mouse X at time of click
             int32_t y;                  ///< Mouse Y at time of click
             vgfx_mouse_button_t button; ///< Which button was pressed/released
+            int modifiers;              ///< Modifier flags active during the button event
         } mouse_button;
 
         /// @brief Resize event data (RESIZE).
@@ -282,6 +284,7 @@ typedef struct {
             float delta_y; ///< Vertical scroll delta (positive = down)
             int32_t x;     ///< Cursor X at time of scroll (physical pixels)
             int32_t y;     ///< Cursor Y at time of scroll (physical pixels)
+            int modifiers; ///< Modifier flags active during the scroll event
         } scroll;
 
         /// @brief File drop event data (FILE_DROP).

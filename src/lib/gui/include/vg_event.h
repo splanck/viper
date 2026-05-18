@@ -43,6 +43,8 @@ typedef struct vg_widget vg_widget_t;
 /// @details Grouped into mouse events, keyboard events, focus events,
 ///          widget-specific value-change events, and window-level events.
 typedef enum vg_event_type {
+    VG_EVENT_NONE = -1, ///< No GUI event was produced.
+
     // Mouse events
     VG_EVENT_MOUSE_MOVE,   ///< Mouse cursor moved (no button state change).
     VG_EVENT_MOUSE_DOWN,   ///< A mouse button was pressed.

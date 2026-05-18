@@ -300,8 +300,8 @@ static inline double rt_gui_sanitize_font_size(double size, double fallback) {
 
 /// @brief Allocate an owned, magic-tagged copy of a runtime string's bytes.
 /// @details Used to give widgets a stable NUL-terminated C buffer they own.
-///          The leading magic lets rt_gui_string_data_is_owned distinguish
-///          these blocks from borrowed plain C strings.
+///          The leading magic is an internal validation guard for fields whose
+///          owns_user_data flag already says they contain this wrapper type.
 /// @return New rt_gui_string_data_t (caller frees via free_if_owned), or NULL.
 static inline rt_gui_string_data_t *rt_gui_string_data_new(rt_string value) {
     int64_t len64 = rt_str_len(value);
@@ -326,8 +326,10 @@ static inline rt_gui_string_data_t *rt_gui_string_data_new(rt_string value) {
     return data;
 }
 
-/// @brief True if @p ptr is an rt_gui_string_data_t block (magic matches),
-///        i.e. owned by the GUI layer rather than a borrowed C string.
+/// @brief True if @p ptr is an rt_gui_string_data_t block (magic matches).
+/// @details Only call this for pointers that an out-of-band ownership flag says
+///          may be an rt_gui_string_data_t. It is not a safe generic borrowed
+///          C-string discriminator.
 static inline int rt_gui_string_data_is_owned(const void *ptr) {
     if (!ptr)
         return 0;
@@ -335,16 +337,17 @@ static inline int rt_gui_string_data_is_owned(const void *ptr) {
     return data->magic == RT_GUI_STRING_DATA_MAGIC;
 }
 
-/// @brief free() @p ptr only if it is a GUI-owned string-data block (safe to
-///        call on borrowed C strings — it becomes a no-op).
+/// @brief free() @p ptr only if it is a GUI-owned string-data block.
+/// @details Only use this when an ownership flag says @p ptr may hold runtime
+///          string data; plain borrowed strings are not self-describing.
 static inline void rt_gui_string_data_free_if_owned(void *ptr) {
     if (rt_gui_string_data_is_owned(ptr))
         free(ptr);
 }
 
 /// @brief Convert a GUI string handle back to a runtime string.
-/// @details Handles both owned string-data blocks (uses stored length) and
-///          borrowed C strings (uses strlen). NULL yields the empty string.
+/// @details Handles owned string-data blocks using their stored byte length.
+///          NULL or an unexpected block yields the empty string.
 static inline rt_string rt_gui_string_data_to_rt_string(const void *ptr) {
     if (!ptr)
         return rt_str_empty();
@@ -352,8 +355,7 @@ static inline rt_string rt_gui_string_data_to_rt_string(const void *ptr) {
         const rt_gui_string_data_t *data = (const rt_gui_string_data_t *)ptr;
         return rt_string_from_bytes(data->bytes, data->len);
     }
-    const char *cstr = (const char *)ptr;
-    return rt_string_from_bytes(cstr, strlen(cstr));
+    return rt_str_empty();
 }
 
 //=============================================================================
@@ -384,6 +386,52 @@ static inline char *rt_string_to_cstr(rt_string str) {
     if (len)
         memcpy(result, bytes, len);
     result[len] = '\0';
+    return result;
+}
+
+/// @brief Convert a runtime string to GUI-visible UTF-8 text.
+/// @details GUI widgets store and render NUL-terminated text, so embedded NUL
+///          bytes are replaced with U+FFFD instead of truncating the suffix.
+///          NULL runtime strings become an allocated empty string.
+static inline char *rt_string_to_gui_cstr(rt_string str) {
+    if (!str) {
+        char *empty = malloc(1);
+        if (empty)
+            empty[0] = '\0';
+        return empty;
+    }
+
+    int64_t len64 = rt_str_len(str);
+    if (len64 < 0)
+        return NULL;
+    size_t len = (size_t)len64;
+    const char *bytes = len ? rt_string_cstr(str) : "";
+    if (len && !bytes)
+        return NULL;
+
+    size_t nul_count = 0;
+    for (size_t i = 0; i < len; i++) {
+        if (bytes[i] == '\0')
+            nul_count++;
+    }
+    if (len > SIZE_MAX - 1 || nul_count > (SIZE_MAX - len - 1) / 2)
+        return NULL;
+
+    char *result = malloc(len + nul_count * 2 + 1);
+    if (!result)
+        return NULL;
+
+    char *out = result;
+    for (size_t i = 0; i < len; i++) {
+        if (bytes[i] == '\0') {
+            *out++ = (char)0xEF;
+            *out++ = (char)0xBF;
+            *out++ = (char)0xBD;
+        } else {
+            *out++ = bytes[i];
+        }
+    }
+    *out = '\0';
     return result;
 }
 

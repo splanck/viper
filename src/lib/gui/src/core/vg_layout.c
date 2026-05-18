@@ -942,8 +942,10 @@ static void flex_arrange(vg_widget_t *self, float x, float y, float width, float
         return;
     }
 
-    // Calculate total fixed and flex
-    float total_fixed = 0;
+    // Calculate total flex-basis and flex grow. The basis includes every visible
+    // child's measured main size and margins; flex grow distributes only the
+    // remaining space so flex children keep their preferred size.
+    float total_basis = 0;
     float total_flex = 0;
     int visible_count = 0;
 
@@ -953,18 +955,17 @@ static void flex_arrange(vg_widget_t *self, float x, float y, float width, float
                 ? child->measured_width + child->layout.margin_left + child->layout.margin_right
                 : child->measured_height + child->layout.margin_top + child->layout.margin_bottom;
 
+        total_basis += child_main;
         if (child->layout.flex > 0) {
             total_flex += child->layout.flex;
-        } else {
-            total_fixed += child_main;
         }
         visible_count++;
     }
 
     float gap_total = (visible_count > 1) ? layout->gap * (visible_count - 1) : 0;
-    float available = main_size - total_fixed - gap_total;
+    float available = main_size - total_basis - gap_total;
     float flex_unit = (total_flex > 0 && available > 0) ? available / total_flex : 0;
-    float used_main = total_fixed + gap_total + (flex_unit * total_flex);
+    float used_main = total_basis + gap_total + (flex_unit * total_flex);
     float extra_space = main_size - used_main;
     float justify_offset = 0.0f;
     float justify_gap_add = 0.0f;
@@ -979,10 +980,12 @@ static void flex_arrange(vg_widget_t *self, float x, float y, float width, float
     VG_FOREACH_VISIBLE_CHILD(self, child) {
         float child_main_size;
         if (child->layout.flex > 0) {
-            child_main_size = flex_unit * child->layout.flex;
+            child_main_size = (is_row ? child->measured_width : child->measured_height) +
+                              flex_unit * child->layout.flex;
         } else {
             child_main_size = is_row ? child->measured_width : child->measured_height;
         }
+        child_main_size = layout_nonnegative(child_main_size);
 
         float child_cross_size;
         if (layout->align_items == VG_ALIGN_STRETCH) {

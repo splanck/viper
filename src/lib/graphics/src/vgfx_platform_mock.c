@@ -382,9 +382,9 @@ void vgfx_mock_inject_key_event(vgfx_window_t window, vgfx_key_t key, int down) 
     /* Enqueue event with current mock time */
     vgfx_event_t event = {.type = down ? VGFX_EVENT_KEY_DOWN : VGFX_EVENT_KEY_UP,
                           .time_ms = g_mock_time_ms,
-                          .data.key = {
-                              .key = key, .is_repeat = 0 /* Mock backend never generates repeats */
-                          }};
+                          .data.key = {.key = key,
+                                       .is_repeat = 0, /* Mock backend never generates repeats */
+                                       .modifiers = 0}};
     mock_pending_enqueue(platform, &event);
 }
 
@@ -416,7 +416,7 @@ void vgfx_mock_inject_mouse_move(vgfx_window_t window, int32_t x, int32_t y) {
     /* Enqueue event with current mock time */
     vgfx_event_t event = {.type = VGFX_EVENT_MOUSE_MOVE,
                           .time_ms = g_mock_time_ms,
-                          .data.mouse_move = {.x = x, .y = y}};
+                          .data.mouse_move = {.x = x, .y = y, .modifiers = 0}};
     mock_pending_enqueue(platform, &event);
 }
 
@@ -447,7 +447,7 @@ void vgfx_mock_inject_mouse_button(vgfx_window_t window, vgfx_mouse_button_t btn
     vgfx_event_t event = {
         .type = down ? VGFX_EVENT_MOUSE_DOWN : VGFX_EVENT_MOUSE_UP,
         .time_ms = g_mock_time_ms,
-        .data.mouse_button = {.x = win->mouse_x, .y = win->mouse_y, .button = btn}};
+        .data.mouse_button = {.x = win->mouse_x, .y = win->mouse_y, .button = btn, .modifiers = 0}};
     mock_pending_enqueue(platform, &event);
 }
 
@@ -557,7 +557,7 @@ void vgfx_mock_inject_scroll(vgfx_window_t window, float dx, float dy, int32_t x
 
     vgfx_event_t event = {.type = VGFX_EVENT_SCROLL,
                           .time_ms = g_mock_time_ms,
-                          .data.scroll = {.delta_x = dx, .delta_y = dy, .x = x, .y = y}};
+                          .data.scroll = {.delta_x = dx, .delta_y = dy, .x = x, .y = y, .modifiers = 0}};
     mock_pending_enqueue(platform, &event);
 }
 

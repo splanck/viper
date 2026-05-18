@@ -333,6 +333,17 @@ static bool widget_is_ancestor(const vg_widget_t *ancestor, const vg_widget_t *w
     return false;
 }
 
+/// @brief Returns true when @p widget and every ancestor are live, visible, and enabled.
+static bool widget_chain_accepts_focus(const vg_widget_t *widget) {
+    for (const vg_widget_t *current = widget; current; current = current->parent) {
+        if (!vg_widget_is_live(current))
+            return false;
+        if (!current->visible || !current->enabled)
+            return false;
+    }
+    return true;
+}
+
 /// @brief Clears transient visual/interactive state (hover, pressed, focused, drag flags) on @p widget and all descendants.
 static void clear_interactive_state_recursive(vg_widget_t *widget) {
     if (!widget)
@@ -1424,9 +1435,7 @@ void vg_widget_set_focus(vg_widget_t *widget) {
         }
         return;
     }
-    if (!vg_widget_is_live(widget))
-        return;
-    if (!widget->enabled || !widget->visible)
+    if (!widget_chain_accepts_focus(widget))
         return;
     if (widget->vtable && widget->vtable->can_focus && !widget->vtable->can_focus(widget)) {
         return;

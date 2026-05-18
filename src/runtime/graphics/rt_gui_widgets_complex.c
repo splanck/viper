@@ -60,6 +60,139 @@ static vg_codeeditor_t *rt_codeeditor_checked(void *handle) {
     return (vg_codeeditor_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_CODEEDITOR);
 }
 
+static void rt_codeeditor_normalize_range(int *start_line,
+                                          int *start_col,
+                                          int *end_line,
+                                          int *end_col) {
+    if (*start_line > *end_line ||
+        (*start_line == *end_line && *start_col > *end_col)) {
+        int tmp = *start_line;
+        *start_line = *end_line;
+        *end_line = tmp;
+        tmp = *start_col;
+        *start_col = *end_col;
+        *end_col = tmp;
+    }
+}
+
+static int rt_codeeditor_clamp_line_index(const vg_codeeditor_t *ce, int line) {
+    if (!ce || ce->line_count <= 0)
+        return 0;
+    if (line < 0)
+        return 0;
+    if (line >= ce->line_count)
+        return ce->line_count - 1;
+    return line;
+}
+
+static size_t rt_codeeditor_clamp_col_index(const vg_codeeditor_t *ce, int line, int col) {
+    if (!ce || line < 0 || line >= ce->line_count)
+        return 0;
+    if (col <= 0)
+        return 0;
+    size_t len = ce->lines[line].length;
+    return (size_t)col > len ? len : (size_t)col;
+}
+
+static rt_string rt_codeeditor_range_to_rt_string(vg_codeeditor_t *ce,
+                                                  int start_line,
+                                                  int start_col,
+                                                  int end_line,
+                                                  int end_col) {
+    if (!ce || ce->line_count <= 0)
+        return rt_str_empty();
+
+    rt_codeeditor_normalize_range(&start_line, &start_col, &end_line, &end_col);
+    start_line = rt_codeeditor_clamp_line_index(ce, start_line);
+    end_line = rt_codeeditor_clamp_line_index(ce, end_line);
+    rt_codeeditor_normalize_range(&start_line, &start_col, &end_line, &end_col);
+
+    size_t total = 0;
+    for (int line = start_line; line <= end_line; line++) {
+        size_t from = (line == start_line) ? rt_codeeditor_clamp_col_index(ce, line, start_col) : 0;
+        size_t to = (line == end_line) ? rt_codeeditor_clamp_col_index(ce, line, end_col)
+                                       : ce->lines[line].length;
+        if (to < from)
+            to = from;
+        size_t chunk = to - from;
+        if (chunk > SIZE_MAX - total)
+            return rt_str_empty();
+        total += chunk;
+        if (line < end_line) {
+            if (total == SIZE_MAX)
+                return rt_str_empty();
+            total++;
+        }
+    }
+
+    if (total == 0)
+        return rt_str_empty();
+
+    char *buffer = (char *)malloc(total);
+    if (!buffer)
+        return rt_str_empty();
+
+    char *out = buffer;
+    for (int line = start_line; line <= end_line; line++) {
+        size_t from = (line == start_line) ? rt_codeeditor_clamp_col_index(ce, line, start_col) : 0;
+        size_t to = (line == end_line) ? rt_codeeditor_clamp_col_index(ce, line, end_col)
+                                       : ce->lines[line].length;
+        if (to < from)
+            to = from;
+        size_t chunk = to - from;
+        if (chunk) {
+            memcpy(out, ce->lines[line].text + from, chunk);
+            out += chunk;
+        }
+        if (line < end_line)
+            *out++ = '\n';
+    }
+
+    rt_string result = rt_string_from_bytes(buffer, total);
+    free(buffer);
+    return result;
+}
+
+static rt_string rt_codeeditor_all_text_to_rt_string(vg_codeeditor_t *ce) {
+    if (!ce || ce->line_count <= 0)
+        return rt_str_empty();
+
+    size_t total = 0;
+    for (int line = 0; line < ce->line_count; line++) {
+        size_t len = ce->lines[line].length;
+        if (len > SIZE_MAX - total)
+            return rt_str_empty();
+        total += len;
+        if (line < ce->line_count - 1) {
+            if (total == SIZE_MAX)
+                return rt_str_empty();
+            total++;
+        }
+    }
+
+    if (total == 0)
+        return rt_str_empty();
+
+    char *buffer = (char *)malloc(total);
+    if (!buffer)
+        return rt_str_empty();
+
+    char *out = buffer;
+    for (int line = 0; line < ce->line_count; line++) {
+        size_t len = ce->lines[line].length;
+        if (len) {
+            memcpy(out, ce->lines[line].text, len);
+            out += len;
+        }
+        if (line < ce->line_count - 1)
+            *out++ = '\n';
+    }
+
+    rt_string result = rt_string_from_bytes(buffer, total);
+    free(buffer);
+    return result;
+}
+
 /// @brief Safe-cast a handle to a live Dropdown widget, or NULL.
 static vg_dropdown_t *rt_dropdown_checked(void *handle) {
     return (vg_dropdown_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_DROPDOWN);
@@ -211,7 +344,7 @@ void *rt_tabbar_add_tab(void *tabbar, rt_string title, int64_t closable) {
     vg_tabbar_t *tb = rt_tabbar_checked(tabbar);
     if (!tb)
         return NULL;
-    char *ctitle = rt_string_to_cstr(title);
+    char *ctitle = rt_string_to_gui_cstr(title);
     vg_tab_t *tab = vg_tabbar_add_tab(tb, ctitle, closable != 0);
     free(ctitle);
     return tab;
@@ -240,7 +373,7 @@ void rt_tab_set_title(void *tab, rt_string title) {
     RT_ASSERT_MAIN_THREAD();
     if (!vg_tab_is_live((vg_tab_t *)tab))
         return;
-    char *ctitle = rt_string_to_cstr(title);
+    char *ctitle = rt_string_to_gui_cstr(title);
     vg_tab_set_title((vg_tab_t *)tab, ctitle);
     free(ctitle);
 }
@@ -250,7 +383,7 @@ void rt_tab_set_tooltip(void *tab, rt_string tooltip) {
     RT_ASSERT_MAIN_THREAD();
     if (!vg_tab_is_live((vg_tab_t *)tab))
         return;
-    char *ctooltip = rt_string_to_cstr(tooltip);
+    char *ctooltip = rt_string_to_gui_cstr(tooltip);
     vg_tab_set_tooltip((vg_tab_t *)tab, ctooltip);
     free(ctooltip);
 }
@@ -305,7 +438,11 @@ int64_t rt_tabbar_was_close_clicked(void *tabbar) {
     vg_tabbar_t *tb = rt_tabbar_checked(tabbar);
     if (!tb)
         return 0;
-    return tb->close_clicked_index >= 0 ? 1 : 0;
+    if (tb->reported_close_click_version != tb->close_click_version) {
+        tb->reported_close_click_version = tb->close_click_version;
+        return 1;
+    }
+    return 0;
 }
 
 /// @brief Get the index of the tab whose close button was clicked (clears after read).
@@ -318,6 +455,7 @@ int64_t rt_tabbar_get_close_clicked_index(void *tabbar) {
         return -1;
     int index = tb->close_clicked_index;
     tb->close_clicked_index = -1;
+    tb->reported_close_click_version = tb->close_click_version;
     return index;
 }
 
@@ -423,7 +561,7 @@ void rt_codeeditor_set_text(void *editor, rt_string text) {
     vg_codeeditor_t *ce = rt_codeeditor_checked(editor);
     if (!ce)
         return;
-    char *ctext = rt_string_to_cstr(text);
+    char *ctext = rt_string_to_gui_cstr(text);
     vg_codeeditor_set_text(ce, ctext);
     free(ctext);
 }
@@ -434,26 +572,20 @@ rt_string rt_codeeditor_get_text(void *editor) {
     vg_codeeditor_t *ce = rt_codeeditor_checked(editor);
     if (!ce)
         return rt_str_empty();
-    char *text = vg_codeeditor_get_text(ce);
-    if (!text)
-        return rt_str_empty();
-    rt_string result = rt_string_from_bytes(text, strlen(text));
-    free(text);
-    return result;
+    return rt_codeeditor_all_text_to_rt_string(ce);
 }
 
 /// @brief Retrieve the currently selected text in a code editor.
 rt_string rt_codeeditor_get_selected_text(void *editor) {
     RT_ASSERT_MAIN_THREAD();
     vg_codeeditor_t *ce = rt_codeeditor_checked(editor);
-    if (!ce)
+    if (!ce || !ce->has_selection)
         return rt_str_empty();
-    char *text = vg_codeeditor_get_selection(ce);
-    if (!text)
-        return rt_str_empty();
-    rt_string result = rt_string_from_bytes(text, strlen(text));
-    free(text);
-    return result;
+    return rt_codeeditor_range_to_rt_string(ce,
+                                            ce->selection.start_line,
+                                            ce->selection.start_col,
+                                            ce->selection.end_line,
+                                            ce->selection.end_col);
 }
 
 /// @brief Move the cursor to a specific line and column in the code editor.
@@ -727,7 +859,7 @@ int64_t rt_dropdown_add_item(void *dropdown, rt_string text) {
     vg_dropdown_t *dd = rt_dropdown_checked(dropdown);
     if (!dd)
         return -1;
-    char *ctext = rt_string_to_cstr(text);
+    char *ctext = rt_string_to_gui_cstr(text);
     int64_t index = vg_dropdown_add_item(dd, ctext);
     free(ctext);
     return index;
@@ -789,7 +921,7 @@ void rt_dropdown_set_placeholder(void *dropdown, rt_string placeholder) {
     vg_dropdown_t *dd = rt_dropdown_checked(dropdown);
     if (!dd)
         return;
-    char *ctext = rt_string_to_cstr(placeholder);
+    char *ctext = rt_string_to_gui_cstr(placeholder);
     vg_dropdown_set_placeholder(dd, ctext);
     free(ctext);
 }
@@ -932,7 +1064,7 @@ void *rt_listbox_add_item(void *listbox, rt_string text) {
     vg_listbox_t *lb = rt_listbox_checked(listbox);
     if (!lb)
         return NULL;
-    char *ctext = rt_string_to_cstr(text);
+    char *ctext = rt_string_to_gui_cstr(text);
     vg_listbox_item_t *item = vg_listbox_add_item(lb, ctext, NULL);
     free(ctext);
     return item;
@@ -992,6 +1124,8 @@ int64_t rt_listbox_get_selected_index(void *listbox) {
     size_t idx = vg_listbox_get_selected_index(lb);
     if (idx == (size_t)-1)
         return -1;
+    if (idx > (size_t)INT64_MAX)
+        return -1;
     return (int64_t)idx;
 }
 
@@ -1035,7 +1169,7 @@ rt_string rt_listbox_item_get_text(void *item) {
     if (!vg_listbox_item_is_live(it))
         return rt_str_empty();
     if (it->text)
-        return rt_string_from_bytes(it->text, strlen(it->text));
+        return rt_string_from_bytes(it->text, it->text_len);
     return rt_str_empty();
 }
 
@@ -1047,11 +1181,12 @@ void rt_listbox_item_set_text(void *item, rt_string text) {
     vg_listbox_item_t *it = (vg_listbox_item_t *)item;
     if (!vg_listbox_item_is_live(it))
         return;
-    char *ctext = rt_string_to_cstr(text);
+    char *ctext = rt_string_to_gui_cstr(text);
     if (!ctext)
         return;
     free(it->text);
     it->text = ctext; // Takes ownership
+    it->text_len = strlen(ctext);
     if (it->owner) {
         it->owner->base.needs_layout = true;
         it->owner->base.needs_paint = true;
@@ -1144,7 +1279,7 @@ void *rt_radiobutton_new(void *parent, rt_string text, void *group) {
         if (!group_data)
             return NULL;
     }
-    char *ctext = rt_string_to_cstr(text);
+    char *ctext = rt_string_to_gui_cstr(text);
     vg_radiobutton_t *radio =
         vg_radiobutton_create(parent_widget, ctext, group_data ? group_data->group : NULL);
     free(ctext);
@@ -1400,6 +1535,7 @@ void *rt_floatingpanel_new(void *root) {
     return vg_floatingpanel_create(rt_gui_widget_parent_from_handle(root));
 }
 
+/// @brief Validate a handle as a live FloatingPanel (NULL if not).
 static vg_floatingpanel_t *rt_floatingpanel_checked(void *panel) {
     vg_floatingpanel_t *fp = (vg_floatingpanel_t *)panel;
     return vg_floatingpanel_is_live(fp) ? fp : NULL;

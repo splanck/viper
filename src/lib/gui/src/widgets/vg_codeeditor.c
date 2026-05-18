@@ -2997,7 +2997,7 @@ void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text) {
         new_count = 1;
     } else {
         const char *start = text;
-        while (*start) {
+        for (;;) {
             const char *end = strchr(start, '\n');
             size_t len = end ? (size_t)(end - start) : strlen(start);
 

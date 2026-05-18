@@ -1857,7 +1857,7 @@ void rt_codeeditor_insert_at_cursor(void *editor, rt_string text) {
     vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
     if (!ce || !text)
         return;
-    char *cstr = rt_string_to_cstr(text);
+    char *cstr = rt_string_to_gui_cstr(text);
     if (!cstr)
         return;
     vg_codeeditor_insert_text(ce, cstr);
@@ -1910,7 +1910,7 @@ void rt_codeeditor_replace_word_at_cursor(void *editor, rt_string new_text) {
     while (end < len && (isalnum((unsigned char)text[end]) || text[end] == '_'))
         ++end;
 
-    char *cstr = rt_string_to_cstr(new_text);
+    char *cstr = rt_string_to_gui_cstr(new_text);
     if (cstr) {
         /* select the word, then insert the replacement (replaces selection) */
         vg_codeeditor_set_selection(ce, ce->cursor_line, start, ce->cursor_line, end);

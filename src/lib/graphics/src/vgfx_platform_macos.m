@@ -1143,9 +1143,11 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     win->mouse_x = x; /* Update input state */
                     win->mouse_y = y;
 
-                    vgfx_event_t vgfx_event = {.type = VGFX_EVENT_MOUSE_MOVE,
-                                               .time_ms = timestamp,
-                                               .data.mouse_move = {.x = x, .y = y}};
+                    vgfx_event_t vgfx_event = {
+                        .type = VGFX_EVENT_MOUSE_MOVE,
+                        .time_ms = timestamp,
+                        .data.mouse_move = {
+                            .x = x, .y = y, .modifiers = macos_modifiers([event modifierFlags])}};
                     vgfx_internal_enqueue_event(win, &vgfx_event);
                     break;
                 }
@@ -1176,7 +1178,11 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     vgfx_event_t vgfx_event = {
                         .type = VGFX_EVENT_MOUSE_DOWN,
                         .time_ms = timestamp,
-                        .data.mouse_button = {.x = x, .y = y, .button = button}};
+                        .data.mouse_button = {
+                            .x = x,
+                            .y = y,
+                            .button = button,
+                            .modifiers = macos_modifiers([event modifierFlags])}};
                     vgfx_internal_enqueue_event(win, &vgfx_event);
                     break;
                 }
@@ -1207,7 +1213,11 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     vgfx_event_t vgfx_event = {
                         .type = VGFX_EVENT_MOUSE_UP,
                         .time_ms = timestamp,
-                        .data.mouse_button = {.x = x, .y = y, .button = button}};
+                        .data.mouse_button = {
+                            .x = x,
+                            .y = y,
+                            .button = button,
+                            .modifiers = macos_modifiers([event modifierFlags])}};
                     vgfx_internal_enqueue_event(win, &vgfx_event);
                     break;
                 }
@@ -1235,7 +1245,12 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     vgfx_event_t vgfx_event = {
                         .type = VGFX_EVENT_SCROLL,
                         .time_ms = timestamp,
-                        .data.scroll = {.delta_x = dx, .delta_y = dy, .x = x, .y = y}};
+                        .data.scroll = {
+                            .delta_x = dx,
+                            .delta_y = dy,
+                            .x = x,
+                            .y = y,
+                            .modifiers = macos_modifiers([event modifierFlags])}};
                     vgfx_internal_enqueue_event(win, &vgfx_event);
                     break;
                 }

@@ -66,6 +66,7 @@ typedef struct {
     int64_t was_selected;
 } rt_commandpalette_data_t;
 
+/// @brief Authenticate a CommandPalette handle via its magic tag (NULL if not).
 static rt_commandpalette_data_t *rt_commandpalette_checked(void *palette) {
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
     return data && data->magic == RT_COMMANDPALETTE_DATA_MAGIC ? data : NULL;
@@ -509,6 +510,7 @@ typedef struct rt_toast_data {
     char *action_label; ///< Optional action button label (owned, may be NULL)
 } rt_toast_data_t;
 
+/// @brief Authenticate a Toast handle via its magic tag (NULL if not).
 static rt_toast_data_t *rt_toast_checked(void *toast) {
     rt_toast_data_t *data = (rt_toast_data_t *)toast;
     return data && data->magic == RT_TOAST_DATA_MAGIC ? data : NULL;
@@ -862,6 +864,7 @@ typedef struct rt_breadcrumb_data {
     vg_widget_vtable_t vtable;
 } rt_breadcrumb_data_t;
 
+/// @brief Authenticate a Breadcrumb handle via its magic tag (NULL if not).
 static rt_breadcrumb_data_t *rt_breadcrumb_checked(void *crumb) {
     rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
     return data && data->magic == RT_BREADCRUMB_DATA_MAGIC ? data : NULL;
@@ -1206,6 +1209,7 @@ typedef struct rt_minimap_data {
     vg_widget_vtable_t vtable;
 } rt_minimap_data_t;
 
+/// @brief Authenticate a Minimap handle via its magic tag (NULL if not).
 static rt_minimap_data_t *rt_minimap_checked(void *minimap) {
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
     return data && data->magic == RT_MINIMAP_DATA_MAGIC ? data : NULL;

@@ -128,6 +128,7 @@ static void listbox_free_item_payload(vg_listbox_item_t *item) {
         return;
     free(item->text);
     item->text = NULL;
+    item->text_len = 0;
     if (item->owns_user_data)
         free(item->user_data);
     item->user_data = NULL;
@@ -443,6 +444,7 @@ static void listbox_destroy(vg_widget_t *widget) {
     free(lb->selection_bitmap);
     lb->selection_bitmap = NULL;
     lb->selection_bitmap_size = 0;
+    lb->selection_bitmap_capacity = 0;
     listbox_free_retired_items(lb);
 }
 
@@ -885,6 +887,7 @@ vg_listbox_item_t *vg_listbox_add_item(vg_listbox_t *listbox, const char *text, 
         free(item);
         return NULL;
     }
+    item->text_len = strlen(item->text);
     item->magic = VG_LISTBOX_ITEM_MAGIC;
     item->owner = listbox;
     item->user_data = user_data;
@@ -1066,6 +1069,7 @@ void vg_listbox_set_virtual_mode(vg_listbox_t *listbox,
         free(listbox->selection_bitmap);
         listbox->selection_bitmap = new_selection;
         listbox->selection_bitmap_size = total_count;
+        listbox->selection_bitmap_capacity = total_count;
         listbox->selected_index = SIZE_MAX; // None selected
         listbox->prev_selected_index = SIZE_MAX;
         listbox->anchor_selected_index = SIZE_MAX;
@@ -1083,6 +1087,7 @@ void vg_listbox_set_virtual_mode(vg_listbox_t *listbox,
         free(listbox->selection_bitmap);
         listbox->selection_bitmap = NULL;
         listbox->selection_bitmap_size = 0;
+        listbox->selection_bitmap_capacity = 0;
         listbox->selected_index = SIZE_MAX;
         listbox->prev_selected_index = SIZE_MAX;
         listbox->anchor_selected_index = SIZE_MAX;
@@ -1124,27 +1129,29 @@ void vg_listbox_set_total_count(vg_listbox_t *listbox, size_t count) {
     if (count > SIZE_MAX / sizeof(bool))
         return;
 
-    // Resize selection bitmap if needed
-    if (count > listbox->selection_bitmap_size) {
+    // Resize selection bitmap if needed. Capacity stays separate from logical
+    // size so shrinking cannot leave stale selected rows addressable.
+    if (count > listbox->selection_bitmap_capacity) {
         bool *new_bitmap = realloc(listbox->selection_bitmap, count * sizeof(bool));
         if (!new_bitmap)
             return;
         // Zero out new entries
-        memset(new_bitmap + listbox->selection_bitmap_size,
+        memset(new_bitmap + listbox->selection_bitmap_capacity,
                0,
-               (count - listbox->selection_bitmap_size) * sizeof(bool));
+               (count - listbox->selection_bitmap_capacity) * sizeof(bool));
         listbox->selection_bitmap = new_bitmap;
-        listbox->selection_bitmap_size = count;
+        listbox->selection_bitmap_capacity = count;
     } else if (count == 0) {
         free(listbox->selection_bitmap);
         listbox->selection_bitmap = NULL;
-        listbox->selection_bitmap_size = 0;
+        listbox->selection_bitmap_capacity = 0;
     } else if (count < listbox->selection_bitmap_size) {
         memset(listbox->selection_bitmap + count,
                0,
                (listbox->selection_bitmap_size - count) * sizeof(bool));
     }
 
+    listbox->selection_bitmap_size = count;
     listbox->total_item_count = count;
 
     // Reset selection if out of bounds

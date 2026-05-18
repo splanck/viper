@@ -435,7 +435,7 @@ double rt_widget_get_flex(void *widget) {
 void *rt_label_new(void *parent, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
-    char *ctext = rt_string_to_cstr(text);
+    char *ctext = rt_string_to_gui_cstr(text);
     vg_label_t *label = vg_label_create(parent_widget, ctext ? ctext : "");
     free(ctext);
     rt_gui_apply_default_font((vg_widget_t *)label);
@@ -452,7 +452,7 @@ void rt_label_set_text(void *label, rt_string text) {
     vg_label_t *lbl = (vg_label_t *)rt_gui_widget_handle_checked_type(label, VG_WIDGET_LABEL);
     if (!lbl)
         return;
-    char *ctext = rt_string_to_cstr(text);
+    char *ctext = rt_string_to_gui_cstr(text);
     vg_label_set_text(lbl, ctext);
     free(ctext);
 }
@@ -496,7 +496,7 @@ void rt_label_set_color(void *label, int64_t color) {
 void *rt_button_new(void *parent, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
-    char *ctext = rt_string_to_cstr(text);
+    char *ctext = rt_string_to_gui_cstr(text);
     vg_button_t *button = vg_button_create(parent_widget, ctext);
     free(ctext);
     rt_gui_apply_default_font((vg_widget_t *)button);
@@ -509,7 +509,7 @@ void rt_button_set_text(void *button, rt_string text) {
     vg_button_t *btn = (vg_button_t *)rt_gui_widget_handle_checked_type(button, VG_WIDGET_BUTTON);
     if (!btn)
         return;
-    char *ctext = rt_string_to_cstr(text);
+    char *ctext = rt_string_to_gui_cstr(text);
     vg_button_set_text(btn, ctext);
     free(ctext);
 }
@@ -534,8 +534,11 @@ void rt_button_set_font(void *button, void *font, double size) {
 void rt_button_set_style(void *button, int64_t style) {
     RT_ASSERT_MAIN_THREAD();
     vg_button_t *btn = (vg_button_t *)rt_gui_widget_handle_checked_type(button, VG_WIDGET_BUTTON);
-    if (btn)
+    if (btn) {
+        if (style < (int64_t)VG_BUTTON_STYLE_DEFAULT || style > (int64_t)VG_BUTTON_STYLE_ICON)
+            style = (int64_t)VG_BUTTON_STYLE_DEFAULT;
         vg_button_set_style(btn, (vg_button_style_t)style);
+    }
 }
 
 /// @brief Set a text/glyph icon to display alongside the button label.
@@ -550,7 +553,7 @@ void rt_button_set_icon(void *button, rt_string icon) {
     vg_button_t *btn = (vg_button_t *)rt_gui_widget_handle_checked_type(button, VG_WIDGET_BUTTON);
     if (!btn)
         return;
-    char *cicon = rt_string_to_cstr(icon);
+    char *cicon = rt_string_to_gui_cstr(icon);
     vg_button_set_icon(btn, cicon);
     free(cicon);
 }
@@ -562,7 +565,7 @@ void rt_button_set_icon_pos(void *button, int64_t pos) {
     RT_ASSERT_MAIN_THREAD();
     vg_button_t *btn = (vg_button_t *)rt_gui_widget_handle_checked_type(button, VG_WIDGET_BUTTON);
     if (btn)
-        vg_button_set_icon_position(btn, (int)pos);
+        vg_button_set_icon_position(btn, pos == 1 ? 1 : 0);
 }
 
 //=============================================================================
@@ -596,7 +599,7 @@ void rt_textinput_set_text(void *input, rt_string text) {
         (vg_textinput_t *)rt_gui_widget_handle_checked_type(input, VG_WIDGET_TEXTINPUT);
     if (!ti)
         return;
-    char *ctext = rt_string_to_cstr(text);
+    char *ctext = rt_string_to_gui_cstr(text);
     vg_textinput_set_text(ti, ctext);
     free(ctext);
 }
@@ -615,7 +618,7 @@ rt_string rt_textinput_get_text(void *input) {
     const char *text = vg_textinput_get_text(ti);
     if (!text)
         return rt_str_empty();
-    return rt_string_from_bytes(text, strlen(text));
+    return rt_string_from_bytes(text, ti->text_len);
 }
 
 /// @brief Set the placeholder text shown when the input is empty.
@@ -627,7 +630,7 @@ void rt_textinput_set_placeholder(void *input, rt_string placeholder) {
         (vg_textinput_t *)rt_gui_widget_handle_checked_type(input, VG_WIDGET_TEXTINPUT);
     if (!ti)
         return;
-    char *ctext = rt_string_to_cstr(placeholder);
+    char *ctext = rt_string_to_gui_cstr(placeholder);
     vg_textinput_set_placeholder(ti, ctext);
     free(ctext);
 }
@@ -656,7 +659,7 @@ void rt_textinput_set_font(void *input, void *font, double size) {
 void *rt_checkbox_new(void *parent, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
-    char *ctext = rt_string_to_cstr(text);
+    char *ctext = rt_string_to_gui_cstr(text);
     vg_checkbox_t *checkbox = vg_checkbox_create(parent_widget, ctext);
     free(ctext);
     rt_gui_apply_default_font((vg_widget_t *)checkbox);
@@ -695,7 +698,7 @@ void rt_checkbox_set_text(void *checkbox, rt_string text) {
         (vg_checkbox_t *)rt_gui_widget_handle_checked_type(checkbox, VG_WIDGET_CHECKBOX);
     if (!cb)
         return;
-    char *ctext = rt_string_to_cstr(text);
+    char *ctext = rt_string_to_gui_cstr(text);
     vg_checkbox_set_text(cb, ctext);
     free(ctext);
 }
@@ -840,7 +843,7 @@ void *rt_treeview_add_node(void *tree, void *parent_node, rt_string text) {
         return NULL;
     if (parent_node && !vg_tree_node_is_live((vg_tree_node_t *)parent_node))
         return NULL;
-    char *ctext = rt_string_to_cstr(text);
+    char *ctext = rt_string_to_gui_cstr(text);
     vg_tree_node_t *node = vg_treeview_add_node(tv, (vg_tree_node_t *)parent_node, ctext);
     free(ctext);
     return node;
@@ -941,7 +944,7 @@ rt_string rt_treeview_node_get_text(void *node) {
         return rt_str_empty();
     if (!n->text)
         return rt_str_empty();
-    return rt_string_from_bytes(n->text, strlen(n->text));
+    return rt_string_from_bytes(n->text, n->text_len);
 }
 
 /// @brief Attach arbitrary string data to a tree node (replaces any previous data).

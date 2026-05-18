@@ -201,6 +201,7 @@ typedef struct vg_tree_node {
     uint64_t magic;               ///< Live-node sentinel for stale handle detection
     struct vg_treeview *owner;    ///< Owning tree while node is live
     const char *text;            ///< Node text (owned)
+    size_t text_len;             ///< Node text length in bytes
     void *user_data;             ///< User data associated with node
     bool owns_user_data;         ///< True when user_data is owned and should be freed
     bool expanded;               ///< Is node expanded

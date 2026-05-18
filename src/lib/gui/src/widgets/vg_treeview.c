@@ -126,6 +126,7 @@ static void mark_node_subtree_retired(vg_tree_node_t *node) {
         free((void *)node->text);
         node->text = NULL;
     }
+    node->text_len = 0;
     if (node->owns_user_data && node->user_data) {
         free(node->user_data);
         node->user_data = NULL;
@@ -993,6 +994,7 @@ vg_tree_node_t *vg_treeview_add_node(vg_treeview_t *tree,
         free(node);
         return NULL;
     }
+    node->text_len = strlen(node->text);
     node->magic = VG_TREE_NODE_MAGIC;
     node->owner = tree;
     node->expanded = false;

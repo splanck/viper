@@ -24,6 +24,7 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -767,7 +768,11 @@ int vg_dropdown_add_item(vg_dropdown_t *dropdown, const char *text) {
 
     // Grow array if needed
     if (dropdown->item_count >= dropdown->item_capacity) {
+        if (dropdown->item_capacity <= 0 || dropdown->item_capacity > INT_MAX / 2)
+            return -1;
         int new_cap = dropdown->item_capacity * 2;
+        if ((size_t)new_cap > SIZE_MAX / sizeof(char *))
+            return -1;
         char **new_items = realloc(dropdown->items, new_cap * sizeof(char *));
         if (!new_items)
             return -1;

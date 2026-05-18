@@ -599,7 +599,7 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 
             vgfx_event_t event = {.type = VGFX_EVENT_MOUSE_MOVE,
                                   .time_ms = timestamp,
-                                  .data.mouse_move = {.x = x, .y = y}};
+                                  .data.mouse_move = {.x = x, .y = y, .modifiers = win32_modifiers()}};
             vgfx_internal_enqueue_event(win, &event);
             return 0;
         }
@@ -614,9 +614,11 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             win->mouse_x = x;
             win->mouse_y = y;
 
-            vgfx_event_t event = {.type = VGFX_EVENT_MOUSE_DOWN,
-                                  .time_ms = timestamp,
-                                  .data.mouse_button = {.x = x, .y = y, .button = VGFX_MOUSE_LEFT}};
+            vgfx_event_t event = {
+                .type = VGFX_EVENT_MOUSE_DOWN,
+                .time_ms = timestamp,
+                .data.mouse_button = {
+                    .x = x, .y = y, .button = VGFX_MOUSE_LEFT, .modifiers = win32_modifiers()}};
             vgfx_internal_enqueue_event(win, &event);
             return 0;
         }
@@ -631,9 +633,11 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             win->mouse_x = x;
             win->mouse_y = y;
 
-            vgfx_event_t event = {.type = VGFX_EVENT_MOUSE_UP,
-                                  .time_ms = timestamp,
-                                  .data.mouse_button = {.x = x, .y = y, .button = VGFX_MOUSE_LEFT}};
+            vgfx_event_t event = {
+                .type = VGFX_EVENT_MOUSE_UP,
+                .time_ms = timestamp,
+                .data.mouse_button = {
+                    .x = x, .y = y, .button = VGFX_MOUSE_LEFT, .modifiers = win32_modifiers()}};
             vgfx_internal_enqueue_event(win, &event);
             return 0;
         }
@@ -651,7 +655,8 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             vgfx_event_t event = {
                 .type = VGFX_EVENT_MOUSE_DOWN,
                 .time_ms = timestamp,
-                .data.mouse_button = {.x = x, .y = y, .button = VGFX_MOUSE_RIGHT}};
+                .data.mouse_button = {
+                    .x = x, .y = y, .button = VGFX_MOUSE_RIGHT, .modifiers = win32_modifiers()}};
             vgfx_internal_enqueue_event(win, &event);
             return 0;
         }
@@ -669,7 +674,8 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             vgfx_event_t event = {
                 .type = VGFX_EVENT_MOUSE_UP,
                 .time_ms = timestamp,
-                .data.mouse_button = {.x = x, .y = y, .button = VGFX_MOUSE_RIGHT}};
+                .data.mouse_button = {
+                    .x = x, .y = y, .button = VGFX_MOUSE_RIGHT, .modifiers = win32_modifiers()}};
             vgfx_internal_enqueue_event(win, &event);
             return 0;
         }
@@ -687,7 +693,8 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             vgfx_event_t event = {
                 .type = VGFX_EVENT_MOUSE_DOWN,
                 .time_ms = timestamp,
-                .data.mouse_button = {.x = x, .y = y, .button = VGFX_MOUSE_MIDDLE}};
+                .data.mouse_button = {
+                    .x = x, .y = y, .button = VGFX_MOUSE_MIDDLE, .modifiers = win32_modifiers()}};
             vgfx_internal_enqueue_event(win, &event);
             return 0;
         }
@@ -705,7 +712,8 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             vgfx_event_t event = {
                 .type = VGFX_EVENT_MOUSE_UP,
                 .time_ms = timestamp,
-                .data.mouse_button = {.x = x, .y = y, .button = VGFX_MOUSE_MIDDLE}};
+                .data.mouse_button = {
+                    .x = x, .y = y, .button = VGFX_MOUSE_MIDDLE, .modifiers = win32_modifiers()}};
             vgfx_internal_enqueue_event(win, &event);
             return 0;
         }
@@ -724,7 +732,11 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             vgfx_event_t event = {
                 .type = VGFX_EVENT_SCROLL,
                 .time_ms = timestamp,
-                .data.scroll = {.delta_x = 0.0f, .delta_y = 0.0f, .x = x, .y = y}};
+                .data.scroll = {.delta_x = 0.0f,
+                                .delta_y = 0.0f,
+                                .x = x,
+                                .y = y,
+                                .modifiers = win32_modifiers()}};
             if (msg == WM_MOUSEWHEEL)
                 event.data.scroll.delta_y = -delta;
             else

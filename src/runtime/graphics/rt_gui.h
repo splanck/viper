@@ -149,7 +149,9 @@ void rt_widget_set_max_size(void *widget, double width, double height);
 /// @param flex Flex factor (0 = fixed size, >0 = expand proportionally).
 void rt_widget_set_flex(void *widget, double flex);
 
-// API-005: SetMargin
+/// @brief Set a uniform outer margin around a widget.
+/// @param widget Widget handle.
+/// @param margin Margin in pixels applied equally on all four sides.
 void rt_widget_set_margin(void *widget, int64_t margin);
 
 /// @brief Set the tab-stop index for keyboard focus navigation.
@@ -356,8 +358,14 @@ void rt_scrollview_set_scroll(void *scroll, double x, double y);
 /// @param height Content height (0 = auto).
 void rt_scrollview_set_content_size(void *scroll, double width, double height);
 
-// BINDING-004: ScrollView scroll position query
+/// @brief Get the current horizontal scroll offset.
+/// @param scroll ScrollView widget handle.
+/// @return Horizontal scroll position in pixels (0 at the left edge).
 double rt_scrollview_get_scroll_x(void *scroll);
+
+/// @brief Get the current vertical scroll offset.
+/// @param scroll ScrollView widget handle.
+/// @return Vertical scroll position in pixels (0 at the top edge).
 double rt_scrollview_get_scroll_y(void *scroll);
 
 //=========================================================================
@@ -449,7 +457,7 @@ void *rt_tabbar_new(void *parent);
 
 /// @brief Add a tab to the tab bar.
 /// @param tabbar TabBar widget handle.
-/// @param title Tab title.
+/// @param title Tab title. Embedded NUL bytes are rendered as U+FFFD.
 /// @param closable 1 if tab can be closed, 0 otherwise.
 /// @return Tab handle.
 void *rt_tabbar_add_tab(void *tabbar, rt_string title, int64_t closable);
@@ -466,12 +474,12 @@ void rt_tabbar_set_active(void *tabbar, void *tab);
 
 /// @brief Set tab title.
 /// @param tab Tab handle.
-/// @param title New title.
+/// @param title New title. Embedded NUL bytes are rendered as U+FFFD.
 void rt_tab_set_title(void *tab, rt_string title);
 
 /// @brief Set tab tooltip.
 /// @param tab Tab handle.
-/// @param tooltip New tooltip text.
+/// @param tooltip New tooltip text. Embedded NUL bytes are rendered as U+FFFD.
 void rt_tab_set_tooltip(void *tab, rt_string tooltip);
 
 /// @brief Set tab modified state.
@@ -499,9 +507,9 @@ int64_t rt_tabbar_was_changed(void *tabbar);
 /// @return Number of tabs.
 int64_t rt_tabbar_get_tab_count(void *tabbar);
 
-/// @brief Check if a tab close button was clicked.
+/// @brief Check if a tab close button was clicked since the last close check.
 /// @param tabbar TabBar widget handle.
-/// @return 1 if close was clicked, 0 otherwise.
+/// @return 1 if a new close event occurred, 0 otherwise. Consumes the edge flag.
 int64_t rt_tabbar_was_close_clicked(void *tabbar);
 
 /// @brief Get the index of the tab whose close button was clicked.
@@ -535,7 +543,9 @@ void *rt_splitpane_new(void *parent, int64_t horizontal);
 /// @param position Split position (0.0 to 1.0).
 void rt_splitpane_set_position(void *split, double position);
 
-// BINDING-006: SplitPane position query
+/// @brief Get the current divider position of a split pane.
+/// @param split SplitPane widget handle.
+/// @return Split position as a fraction in the range 0.0 to 1.0.
 double rt_splitpane_get_position(void *split);
 
 /// @brief Get the first pane.
@@ -559,12 +569,13 @@ void *rt_codeeditor_new(void *parent);
 
 /// @brief Set code editor text content.
 /// @param editor CodeEditor widget handle.
-/// @param text New text content.
+/// @param text New text content. Trailing newlines are preserved; embedded NUL
+///             bytes are rendered as U+FFFD.
 void rt_codeeditor_set_text(void *editor, rt_string text);
 
 /// @brief Get code editor text content.
 /// @param editor CodeEditor widget handle.
-/// @return Text content as runtime string.
+/// @return Text content as runtime string, including trailing newlines.
 rt_string rt_codeeditor_get_text(void *editor);
 
 /// @brief Get the currently selected text.
@@ -620,8 +631,8 @@ void *rt_dropdown_new(void *parent);
 
 /// @brief Add an item to the dropdown.
 /// @param dropdown Dropdown widget handle.
-/// @param text Item text.
-/// @return Index of the added item.
+/// @param text Item text. Embedded NUL bytes are rendered as U+FFFD.
+/// @return Index of the added item, or -1 on allocation/capacity failure.
 int64_t rt_dropdown_add_item(void *dropdown, rt_string text);
 
 /// @brief Remove an item from the dropdown.
@@ -650,7 +661,7 @@ rt_string rt_dropdown_get_selected_text(void *dropdown);
 
 /// @brief Set dropdown placeholder text.
 /// @param dropdown Dropdown widget handle.
-/// @param placeholder Placeholder text.
+/// @param placeholder Placeholder text. Embedded NUL bytes are rendered as U+FFFD.
 void rt_dropdown_set_placeholder(void *dropdown, rt_string placeholder);
 
 //=========================================================================
@@ -720,7 +731,7 @@ void *rt_listbox_new(void *parent);
 
 /// @brief Add an item to the list box.
 /// @param listbox ListBox widget handle.
-/// @param text Item text.
+/// @param text Item text. Embedded NUL bytes are rendered as U+FFFD.
 /// @return Item handle.
 void *rt_listbox_add_item(void *listbox, rt_string text);
 
@@ -765,12 +776,12 @@ int64_t rt_listbox_was_selection_changed(void *listbox);
 
 /// @brief Get the text of a list box item.
 /// @param item ListBox item handle.
-/// @return Item text as runtime string.
+/// @return Item text as runtime string using the stored GUI text length.
 rt_string rt_listbox_item_get_text(void *item);
 
 /// @brief Set the text of a list box item.
 /// @param item ListBox item handle.
-/// @param text New text.
+/// @param text New text. Embedded NUL bytes are rendered as U+FFFD.
 void rt_listbox_item_set_text(void *item, rt_string text);
 
 /// @brief Store user data in a list box item.

@@ -28,6 +28,7 @@
 #include "vg_widget.h"
 #include "vg_widgets.h"
 #include "vgfx.h"
+#include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -3329,6 +3330,224 @@ TEST(filedialog_create_always_has_current_path) {
 }
 
 //=============================================================================
+// Round 9 - Viper.GUI class correctness audit fixes
+//=============================================================================
+
+TEST(platform_event_translation_preserves_focus_unknown_and_modifiers) {
+    ASSERT_EQ(vg_key_from_vgfx_key(VGFX_KEY_UNKNOWN), VG_KEY_UNKNOWN);
+    ASSERT_EQ(vg_key_from_vgfx_key(-17), VG_KEY_UNKNOWN);
+
+    vgfx_event_t pe;
+    memset(&pe, 0, sizeof(pe));
+    pe.type = VGFX_EVENT_FOCUS_GAINED;
+    vg_event_t ev = vg_event_from_platform(&pe);
+    ASSERT_EQ(ev.type, VG_EVENT_FOCUS_IN);
+
+    pe.type = VGFX_EVENT_FOCUS_LOST;
+    ev = vg_event_from_platform(&pe);
+    ASSERT_EQ(ev.type, VG_EVENT_FOCUS_OUT);
+
+    memset(&pe, 0, sizeof(pe));
+    pe.type = VGFX_EVENT_MOUSE_DOWN;
+    pe.data.mouse_button.x = 12;
+    pe.data.mouse_button.y = 34;
+    pe.data.mouse_button.button = VGFX_MOUSE_LEFT;
+    pe.data.mouse_button.modifiers = VGFX_MOD_SHIFT | VGFX_MOD_CTRL | VGFX_MOD_CMD;
+    ev = vg_event_from_platform(&pe);
+    ASSERT_EQ(ev.type, VG_EVENT_MOUSE_DOWN);
+    ASSERT_EQ(ev.modifiers, (uint32_t)(VG_MOD_SHIFT | VG_MOD_CTRL | VG_MOD_SUPER));
+
+    pe.type = (vgfx_event_type_t)9999;
+    ev = vg_event_from_platform(&pe);
+    ASSERT_EQ(ev.type, VG_EVENT_NONE);
+
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+    ASSERT_FALSE(vg_event_dispatch(root, &ev));
+    ASSERT_FALSE(vg_event_send(root, &ev));
+    vg_widget_destroy(root);
+}
+
+TEST(focus_rejects_hidden_or_disabled_ancestors) {
+    vg_widget_set_focus(NULL);
+
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *panel = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+    ASSERT_NOT_NULL(panel);
+    vg_widget_add_child(root, panel);
+
+    vg_textinput_t *input = vg_textinput_create(panel);
+    ASSERT_NOT_NULL(input);
+
+    vg_widget_set_visible(panel, false);
+    vg_widget_set_focus(&input->base);
+    ASSERT_NULL(vg_widget_get_focused(root));
+
+    vg_widget_set_visible(panel, true);
+    vg_widget_set_enabled(root, false);
+    vg_widget_set_focus(&input->base);
+    ASSERT_NULL(vg_widget_get_focused(root));
+
+    vg_widget_set_enabled(root, true);
+    vg_widget_set_focus(&input->base);
+    ASSERT(vg_widget_get_focused(root) == &input->base);
+    vg_widget_set_focus(NULL);
+
+    vg_widget_destroy(root);
+}
+
+TEST(flex_grow_keeps_unequal_measured_basis) {
+    vg_widget_t *flex = vg_flex_create();
+    ASSERT_NOT_NULL(flex);
+    vg_flex_set_direction(flex, VG_DIRECTION_ROW);
+    vg_flex_set_align_items(flex, VG_ALIGN_START);
+    vg_flex_set_gap(flex, 0.0f);
+
+    vg_widget_t *small = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *large = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(small);
+    ASSERT_NOT_NULL(large);
+    vg_widget_set_preferred_size(small, 50.0f, 20.0f);
+    vg_widget_set_preferred_size(large, 100.0f, 20.0f);
+    vg_widget_set_flex(small, 1.0f);
+    vg_widget_set_flex(large, 1.0f);
+    vg_widget_add_child(flex, small);
+    vg_widget_add_child(flex, large);
+
+    vg_widget_measure(flex, 300.0f, 40.0f);
+    vg_widget_arrange(flex, 0.0f, 0.0f, 300.0f, 40.0f);
+
+    ASSERT_NEAR(small->width, 125.0f, 0.001f);
+    ASSERT_NEAR(large->width, 175.0f, 0.001f);
+
+    vg_widget_destroy(flex);
+}
+
+static int g_handled_mouseup_clicks = 0;
+
+static bool handled_mouseup_suppresses_click_handler(vg_widget_t *widget, vg_event_t *event) {
+    (void)widget;
+    if (event->type == VG_EVENT_MOUSE_UP)
+        return true;
+    if (event->type == VG_EVENT_CLICK)
+        g_handled_mouseup_clicks++;
+    return false;
+}
+
+static vg_widget_vtable_t g_handled_mouseup_vtable = {
+    .handle_event = handled_mouseup_suppresses_click_handler,
+};
+
+TEST(handled_mouseup_does_not_synthesize_click) {
+    vg_widget_t *widget = vg_widget_create(VG_WIDGET_CUSTOM);
+    ASSERT_NOT_NULL(widget);
+    widget->vtable = &g_handled_mouseup_vtable;
+    vg_widget_arrange(widget, 0.0f, 0.0f, 80.0f, 30.0f);
+
+    g_handled_mouseup_clicks = 0;
+    vg_event_t down = vg_event_mouse(VG_EVENT_MOUSE_DOWN, 10.0f, 10.0f, VG_MOUSE_LEFT, 0);
+    (void)vg_event_send(widget, &down);
+    vg_event_t up = vg_event_mouse(VG_EVENT_MOUSE_UP, 10.0f, 10.0f, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(vg_event_send(widget, &up));
+    ASSERT_EQ(g_handled_mouseup_clicks, 0);
+
+    vg_widget_destroy(widget);
+}
+
+TEST(codeeditor_set_text_preserves_trailing_newlines) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    ASSERT_NOT_NULL(editor);
+
+    vg_codeeditor_set_text(editor, "alpha\n");
+    char *text = vg_codeeditor_get_text(editor);
+    ASSERT_NOT_NULL(text);
+    ASSERT(strcmp(text, "alpha\n") == 0);
+    free(text);
+
+    vg_codeeditor_set_text(editor, "alpha\n\n");
+    text = vg_codeeditor_get_text(editor);
+    ASSERT_NOT_NULL(text);
+    ASSERT(strcmp(text, "alpha\n\n") == 0);
+    free(text);
+
+    vg_widget_destroy(&editor->base);
+}
+
+TEST(listbox_virtual_shrink_updates_logical_selection_bitmap_size) {
+    vg_listbox_t *listbox = vg_listbox_create(NULL);
+    ASSERT_NOT_NULL(listbox);
+    vg_listbox_set_virtual_mode(listbox, true, 10, 20.0f);
+    ASSERT_TRUE(listbox->virtual_mode);
+    ASSERT_EQ(listbox->selection_bitmap_size, (size_t)10);
+    ASSERT_EQ(listbox->selection_bitmap_capacity, (size_t)10);
+
+    vg_listbox_select_index(listbox, 8);
+    ASSERT_EQ(vg_listbox_get_selected_index(listbox), (size_t)8);
+
+    vg_listbox_set_total_count(listbox, 3);
+    ASSERT_EQ(listbox->selection_bitmap_size, (size_t)3);
+    ASSERT(listbox->selection_bitmap_capacity >= (size_t)3);
+    ASSERT_EQ(vg_listbox_get_selected_index(listbox), SIZE_MAX);
+
+    vg_widget_destroy(&listbox->base);
+}
+
+TEST(tabbar_close_click_uses_monotonic_version) {
+    vg_tabbar_t *tabbar = vg_tabbar_create(NULL);
+    ASSERT_NOT_NULL(tabbar);
+    tabbar->auto_close = false;
+    vg_tab_t *tab = vg_tabbar_add_tab(tabbar, "one", true);
+    ASSERT_NOT_NULL(tab);
+
+    vg_event_t close = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_W, 0, VG_MOD_CTRL);
+    ASSERT_TRUE(vg_event_send(&tabbar->base, &close));
+    ASSERT_EQ(tabbar->close_clicked_index, 0);
+    ASSERT_EQ(tabbar->close_click_version, (uint64_t)1);
+
+    tabbar->reported_close_click_version = tabbar->close_click_version;
+    ASSERT_TRUE(vg_event_send(&tabbar->base, &close));
+    ASSERT_EQ(tabbar->close_clicked_index, 0);
+    ASSERT_EQ(tabbar->close_click_version, (uint64_t)2);
+
+    vg_widget_destroy(&tabbar->base);
+}
+
+TEST(button_invalid_style_and_icon_position_are_clamped) {
+    vg_button_t *button = vg_button_create(NULL, "Action");
+    ASSERT_NOT_NULL(button);
+
+    vg_button_set_style(button, (vg_button_style_t)999);
+    ASSERT_EQ(button->style, VG_BUTTON_STYLE_DEFAULT);
+    vg_button_set_style(button, (vg_button_style_t)-99);
+    ASSERT_EQ(button->style, VG_BUTTON_STYLE_DEFAULT);
+
+    vg_button_set_icon_position(button, 1);
+    ASSERT_EQ(button->icon_pos, 1);
+    vg_button_set_icon_position(button, 99);
+    ASSERT_EQ(button->icon_pos, 0);
+    vg_button_set_icon_position(button, -4);
+    ASSERT_EQ(button->icon_pos, 0);
+
+    vg_widget_destroy(&button->base);
+}
+
+TEST(dropdown_rejects_capacity_growth_overflow) {
+    vg_dropdown_t *dropdown = vg_dropdown_create(NULL);
+    ASSERT_NOT_NULL(dropdown);
+    int old_count = dropdown->item_count;
+    int old_capacity = dropdown->item_capacity;
+
+    dropdown->item_count = INT_MAX / 2 + 1;
+    dropdown->item_capacity = INT_MAX / 2 + 1;
+    ASSERT_EQ(vg_dropdown_add_item(dropdown, "overflow"), -1);
+
+    dropdown->item_count = old_count;
+    dropdown->item_capacity = old_capacity;
+    vg_widget_destroy(&dropdown->base);
+}
+
+//=============================================================================
 // Main
 //=============================================================================
 
@@ -3486,6 +3705,17 @@ int main(void) {
     RUN(filedialog_create_always_has_current_path);
     RUN(textinput_null_font_preserves_existing_font_and_invalid_tick_is_ignored);
     RUN(findreplace_whole_word_does_not_match_inside_utf8_word);
+
+    printf("\nRound 9 - Viper.GUI class correctness audit fixes\n");
+    RUN(platform_event_translation_preserves_focus_unknown_and_modifiers);
+    RUN(focus_rejects_hidden_or_disabled_ancestors);
+    RUN(flex_grow_keeps_unequal_measured_basis);
+    RUN(handled_mouseup_does_not_synthesize_click);
+    RUN(codeeditor_set_text_preserves_trailing_newlines);
+    RUN(listbox_virtual_shrink_updates_logical_selection_bitmap_size);
+    RUN(tabbar_close_click_uses_monotonic_version);
+    RUN(button_invalid_style_and_icon_position_are_clamped);
+    RUN(dropdown_rejects_capacity_growth_overflow);
 
     printf("\n=== Results: %d passed, %d failed ===\n", g_passed, g_failed);
     return g_failed > 0 ? 1 : 0;

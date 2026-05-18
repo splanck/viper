@@ -278,6 +278,7 @@ typedef struct {
     size_t custom_button_cap;
 } rt_messagebox_data_t;
 
+/// @brief Authenticate a MessageBox handle via its magic tag (NULL if not).
 static rt_messagebox_data_t *rt_messagebox_checked(void *box) {
     rt_messagebox_data_t *data = (rt_messagebox_data_t *)box;
     return data && data->magic == RT_MESSAGEBOX_DATA_MAGIC ? data : NULL;

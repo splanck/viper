@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-18
+last-verified: 2026-05-18
 ---
 
 # GUI Widgets
@@ -21,7 +21,7 @@ last-verified: 2026-04-18
 | [Containers & Advanced](containers.md) | ScrollView, SplitPane, TabBar, TreeView, CodeEditor, Minimap |
 | [Application Components](application.md) | MenuBar, Toolbar, StatusBar, Dialogs, Notifications, Utilities, Themes |
 
-Recent runtime updates include reliable `Tab` / `Shift+Tab` focus traversal, better popup/input-capture behavior for menus and palettes, scroll-safe dialog/list rendering, clipped floating-panel text rendering, and stricter TrueType bounds validation so malformed or truncated font tables fail cleanly instead of being rasterized.
+Recent runtime updates include reliable `Tab` / `Shift+Tab` focus traversal, focus rejection through hidden/disabled ancestors, edge-triggered tab close events, trailing-newline preservation in `CodeEditor`, safer list/dropdown capacity handling, and GUI text conversion that renders embedded NUL bytes as U+FFFD instead of truncating visible labels.
 
 ## Complete Example (Zia)
 

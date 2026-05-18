@@ -65,28 +65,41 @@ static void rt_gui_menu_sync_menubar(vg_menubar_t *menubar) {
     rt_gui_macos_menu_sync_for_menubar(menubar);
 }
 
+/// @brief Validate a handle as a live MenuBar widget (NULL if not).
 static vg_menubar_t *rt_menubar_checked(void *menubar) {
     return (vg_menubar_t *)rt_gui_widget_handle_checked_type(menubar, VG_WIDGET_MENUBAR);
 }
 
+/// @brief Validate a Menu handle.
+/// @details A vg_menu_t is NOT a vg_widget_t subtype, so this uses
+///          vg_menu_is_live rather than the widget handle-check path.
 static vg_menu_t *rt_menu_checked(void *menu) {
     vg_menu_t *m = (vg_menu_t *)menu;
     return vg_menu_is_live(m) ? m : NULL;
 }
 
+/// @brief Validate a ContextMenu handle.
+/// @details Like @ref rt_menu_checked, a context menu is not a widget; it uses
+///          its own liveness check rather than the widget handle path.
 static vg_contextmenu_t *rt_contextmenu_checked(void *menu) {
     vg_contextmenu_t *cm = (vg_contextmenu_t *)menu;
     return vg_contextmenu_is_live(cm) ? cm : NULL;
 }
 
+/// @brief Validate a handle as a live StatusBar widget (NULL if not).
 static vg_statusbar_t *rt_statusbar_checked(void *bar) {
     return (vg_statusbar_t *)rt_gui_widget_handle_checked_type(bar, VG_WIDGET_STATUSBAR);
 }
 
+/// @brief Validate a handle as a live ToolBar widget (NULL if not).
 static vg_toolbar_t *rt_toolbar_checked(void *toolbar) {
     return (vg_toolbar_t *)rt_gui_widget_handle_checked_type(toolbar, VG_WIDGET_TOOLBAR);
 }
 
+/// @brief Range-check a status-bar zone index and narrow it to the enum.
+/// @param zone Caller-supplied zone index (LEFT..RIGHT).
+/// @param out_zone Receives the validated enum value when in range.
+/// @return 1 if @p zone is a valid zone, 0 otherwise.
 static int rt_statusbar_zone_checked(int64_t zone, vg_statusbar_zone_t *out_zone) {
     if (zone < (int64_t)VG_STATUSBAR_ZONE_LEFT || zone > (int64_t)VG_STATUSBAR_ZONE_RIGHT)
         return 0;
