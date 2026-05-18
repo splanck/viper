@@ -1487,6 +1487,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_threads_primitives PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
     viper_add_ctest(test_rt_threads_primitives test_rt_threads_primitives)
 
+    viper_add_test(test_rt_threads_type_names ${VIPER_TESTS_DIR}/runtime/RTThreadsTypeNameTests.cpp)
+    target_link_libraries(test_rt_threads_type_names PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
+    viper_add_ctest(test_rt_threads_type_names test_rt_threads_type_names)
+
     viper_add_test(test_rt_future ${VIPER_TESTS_DIR}/runtime/RTFutureTests.cpp)
     target_link_libraries(test_rt_future PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
     viper_add_ctest(test_rt_future test_rt_future)

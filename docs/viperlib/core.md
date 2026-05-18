@@ -369,8 +369,8 @@ String manipulation class. In Viper, strings are immutable sequences of characte
 | `TrimEnd()`                  | `String()`                 | Removes trailing whitespace                                                   |
 | `ToUpper()`                  | `String()`                 | Converts all characters to uppercase                                          |
 | `ToLower()`                  | `String()`                 | Converts all characters to lowercase                                          |
-| `IndexOf(search)`            | `Integer(String)`          | Returns the position of `search` within the string, or -1 if not found        |
-| `IndexOfFrom(start, search)` | `Integer(Integer, String)` | Searches for `search` starting at position `start`                            |
+| `IndexOf(search)`            | `Integer(String)`          | Returns the 1-based position of `search`, or 0 if not found                   |
+| `IndexOfFrom(start, search)` | `Integer(Integer, String)` | Searches from 1-based position `start`; returns 0 if not found                |
 | `Chr(code)`                  | `String(Integer)`          | Returns a single-character string from an ASCII/Unicode code point            |
 | `Asc()`                      | `Integer()`                | Returns the ASCII/Unicode code of the first character                         |
 

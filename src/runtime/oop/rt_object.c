@@ -90,7 +90,8 @@ static rt_string rt_obj_make_cstr(const char *text) {
 
 /// @brief Map a built-in runtime class id to its qualified Viper class name.
 /// @details Used by `rt_obj_type_name` for objects whose class id is one of the runtime's
-///          fixed-known constants (Box / ValueType / Option / MessageBus / Callback) rather
+///          fixed-known constants (Box / ValueType / Option / MessageBus / Callback / Threads
+///          runtime handles) rather
 ///          than a user-defined class registered in the type registry. Returns NULL for any
 ///          id that isn't built-in so the caller can fall back to the registry lookup.
 static const char *rt_obj_builtin_class_name(int64_t class_id) {
@@ -107,6 +108,37 @@ static const char *rt_obj_builtin_class_name(int64_t class_id) {
             return "Viper.Core.MessageBus.Callback";
         case RT_WEAKREF_CLASS_ID:
             return "Viper.Memory.WeakRef";
+        case RT_THREAD_CLASS_ID:
+        case RT_SAFE_THREAD_CLASS_ID:
+            return "Viper.Threads.Thread";
+        case RT_SAFE_I64_CLASS_ID:
+            return "Viper.Threads.SafeI64";
+        case RT_GATE_CLASS_ID:
+            return "Viper.Threads.Gate";
+        case RT_BARRIER_CLASS_ID:
+            return "Viper.Threads.Barrier";
+        case RT_RWLOCK_CLASS_ID:
+            return "Viper.Threads.RwLock";
+        case RT_CHANNEL_CLASS_ID:
+            return "Viper.Threads.Channel";
+        case RT_CANCELLATION_CLASS_ID:
+            return "Viper.Threads.CancelToken";
+        case RT_PROMISE_CLASS_ID:
+            return "Viper.Threads.Promise";
+        case RT_FUTURE_CLASS_ID:
+            return "Viper.Threads.Future";
+        case RT_THREADPOOL_CLASS_ID:
+            return "Viper.Threads.Pool";
+        case RT_CONCQUEUE_CLASS_ID:
+            return "Viper.Threads.ConcurrentQueue";
+        case RT_CONCMAP_CLASS_ID:
+            return "Viper.Threads.ConcurrentMap";
+        case RT_SCHEDULER_CLASS_ID:
+            return "Viper.Threads.Scheduler";
+        case RT_DEBOUNCER_CLASS_ID:
+            return "Viper.Threads.Debouncer";
+        case RT_THROTTLER_CLASS_ID:
+            return "Viper.Threads.Throttler";
         default:
             return NULL;
     }

@@ -926,8 +926,15 @@ rt_string rt_str_mid_len(rt_string s, int64_t start, int64_t len) {
     size_t byte_start = utf8_char_to_byte_offset(data, byte_len, start);
     if (byte_start >= byte_len)
         return rt_empty_string();
-    // Find the byte offset of (start + len) to compute the byte length
-    size_t byte_end = utf8_char_to_byte_offset(data, byte_len, start + len);
+    // Find the byte offset of (start + len) to compute the byte length. Saturate
+    // the end position so very large lengths clamp to the source end without
+    // signed-overflow UB.
+    int64_t end_pos = INT64_MAX;
+    if (len <= INT64_MAX - start)
+        end_pos = start + len;
+    size_t byte_end = utf8_char_to_byte_offset(data, byte_len, end_pos);
+    if (byte_end < byte_start)
+        byte_end = byte_start;
     size_t byte_count = byte_end - byte_start;
     if (byte_start == 0 && byte_end >= byte_len)
         return rt_string_ref(s);

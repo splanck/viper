@@ -24,6 +24,7 @@ extern "C" {
 #include "rt_concqueue.h"
 #include "rt_debounce.h"
 #include "rt_future.h"
+#include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_msgbus.h"
 #include "rt_object.h"
@@ -135,6 +136,18 @@ static void call_scheduler_pending(void *obj) {
     (void)rt_scheduler_pending(obj);
 }
 
+static void call_weakref_get(void *obj) {
+    (void)rt_weakref_get((rt_weakref *)obj);
+}
+
+static void call_weakref_alive(void *obj) {
+    (void)rt_weakref_alive((rt_weakref *)obj);
+}
+
+static void call_weakref_reset(void *obj) {
+    rt_weakref_reset((rt_weakref *)obj, nullptr);
+}
+
 static void call_msgbus_total_subscriptions(void *obj) {
     (void)rt_msgbus_total_subscriptions(obj);
 }
@@ -178,6 +191,12 @@ int main() {
                           1,
                           "Throttler: invalid object");
     expect_invalid_handle(call_scheduler_pending, RT_SCHEDULER_CLASS_ID, 1, "Scheduler: invalid object");
+    expect_invalid_handle(
+        call_weakref_get, RT_WEAKREF_CLASS_ID, 1, "invalid or freed weak reference");
+    expect_invalid_handle(
+        call_weakref_alive, RT_WEAKREF_CLASS_ID, 1, "invalid or freed weak reference");
+    expect_invalid_handle(
+        call_weakref_reset, RT_WEAKREF_CLASS_ID, 1, "invalid or freed weak reference");
     expect_invalid_handle(call_msgbus_total_subscriptions,
                           RT_MSGBUS_CLASS_ID,
                           1,

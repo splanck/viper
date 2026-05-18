@@ -524,6 +524,7 @@ void *rt_weakref_get(rt_weakref *ref) {
     gc_lock();
     if (!gc_is_weakref_handle_unlocked(ref)) {
         gc_unlock();
+        rt_trap("gc: invalid or freed weak reference");
         return NULL;
     }
     void *t = ref->target;
@@ -598,6 +599,7 @@ int8_t rt_weakref_alive(rt_weakref *ref) {
     gc_lock();
     if (!gc_is_weakref_handle_unlocked(ref)) {
         gc_unlock();
+        rt_trap("gc: invalid or freed weak reference");
         return 0;
     }
     int8_t alive = 0;
@@ -665,6 +667,7 @@ void rt_weakref_reset(rt_weakref *ref, void *target) {
     gc_lock();
     if (!gc_is_weakref_handle_unlocked(ref)) {
         gc_unlock();
+        rt_trap("gc: invalid or freed weak reference");
         return;
     }
     if (ref->target)

@@ -117,28 +117,28 @@ rt_string rt_str_substr(rt_string s, int64_t start, int64_t len);
 /// @brief Retaining constructor for strings; used by Viper.String.FromStr.
 rt_string rt_str_clone(rt_string s);
 
-/// @brief Return leftmost @p n characters of @p s.
+/// @brief Return leftmost @p n bytes of @p s.
 /// @param s Source string; traps if NULL.
-/// @param n Count of characters to copy.
+/// @param n Count of bytes to copy.
 /// @return Prefix view or shared empty string if @p n == 0.
 rt_string rt_str_left(rt_string s, int64_t n);
 
-/// @brief Return rightmost @p n characters of @p s.
+/// @brief Return rightmost @p n bytes of @p s.
 /// @param s Source string; traps if NULL.
-/// @param n Count of characters to copy.
+/// @param n Count of bytes to copy.
 /// @return Suffix view or shared empty string if @p n == 0.
 rt_string rt_str_right(rt_string s, int64_t n);
 
 /// @brief Return substring starting at @p start to the end of @p s.
 /// @param s Source string; traps if NULL.
-/// @param start Zero-based offset where slicing begins.
+/// @param start One-based UTF-8 codepoint offset where slicing begins.
 /// @return Trailing slice or shared empty string if @p start >= len.
 rt_string rt_str_mid(rt_string s, int64_t start);
 
 /// @brief Return substring starting at @p start with length @p len.
 /// @param s Source string; traps if NULL.
-/// @param start Zero-based offset where slicing begins.
-/// @param len Number of characters to copy.
+/// @param start One-based UTF-8 codepoint offset where slicing begins.
+/// @param len Number of UTF-8 codepoints to copy.
 /// @return Substring respecting bounds; may share storage.
 rt_string rt_str_mid_len(rt_string s, int64_t start, int64_t len);
 

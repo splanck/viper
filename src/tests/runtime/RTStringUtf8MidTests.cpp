@@ -20,7 +20,9 @@
 
 #include <cassert>
 #include <cstdio>
+#include <cstdint>
 #include <cstring>
+#include <limits>
 
 /// @brief Helper to print test result.
 static void test_result(const char *name, bool passed) {
@@ -114,6 +116,13 @@ static void test_midlen_boundary() {
 
     rt_string r2 = rt_str_mid(s, 10);
     test_result("Mid past end returns empty", rt_str_len(r2) == 0);
+
+    rt_string r3 = rt_str_mid_len(s, 1, std::numeric_limits<int64_t>::max());
+    test_result("MidLen huge length clamps to end", strcmp(rt_string_cstr(r3), "abc") == 0);
+
+    rt_string r4 = rt_str_mid_len(s, 2, std::numeric_limits<int64_t>::max());
+    test_result("MidLen huge length from middle clamps to end",
+                strcmp(rt_string_cstr(r4), "bc") == 0);
 
     printf("\n");
 }

@@ -1238,7 +1238,7 @@ Conventions and semantics:
       sb.ToString() → call @Viper.Text.StringBuilder.ToString(sb)
 - Object base method calls use `Viper.Core.Object.*`; the legacy `Viper.Object.*` spelling is not emitted.
 - STRING alias: The BASIC type STRING is the same nominal runtime class as Viper.String.
-- Index base: Substring uses the same convention as MID$ — start is 0-based; length is a count.
+- Index base: Substring uses a 0-based byte offset; Mid/MidLen use a 1-based UTF-8 codepoint offset.
 - Null receivers trap: Accessing a property or method on a null object raises a runtime trap that can be caught with
   TRY/CATCH.
 - Procedural equivalence: For every object member there is a procedural helper under Viper.String.* or Viper.Text.*

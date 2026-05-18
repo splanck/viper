@@ -1144,8 +1144,8 @@ available to both the VM and native backends. For the complete list see the [Run
 | `@rt_str_substr`    | `str, i64, i64 -> str` | Extract substring (0-based start, length)            |
 | `@rt_str_left`      | `str, i64 -> str`      | Leftmost n characters                                |
 | `@rt_str_right`     | `str, i64 -> str`      | Rightmost n characters                               |
-| `@rt_str_mid`       | `str, i64 -> str`      | Substring from start (0-based) to end                |
-| `@rt_str_mid_len`   | `str, i64, i64 -> str` | Substring from start (0-based) with length           |
+| `@rt_str_mid`       | `str, i64 -> str`      | Substring from 1-based UTF-8 codepoint start to end  |
+| `@rt_str_mid_len`   | `str, i64, i64 -> str` | Substring from 1-based UTF-8 codepoint start with length |
 | `@rt_str_index_of`  | `str, str -> i64`      | Find needle; returns 1-based index or 0              |
 | `@rt_str_trim`      | `str -> str`           | Remove leading and trailing whitespace               |
 | `@rt_str_ucase`     | `str -> str`           | Convert ASCII to uppercase                           |
