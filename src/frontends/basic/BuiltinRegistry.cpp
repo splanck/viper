@@ -56,6 +56,8 @@ constexpr std::size_t idx(B b) noexcept {
     return static_cast<std::size_t>(b);
 }
 
+/// @brief Heterogeneous hash enabling string_view/`const char*` lookups into a
+///        std::string-keyed map without constructing a temporary std::string.
 struct TransparentStringHash {
     using is_transparent = void;
 
@@ -72,6 +74,7 @@ struct TransparentStringHash {
     }
 };
 
+/// @brief Heterogeneous equality companion to @ref TransparentStringHash.
 struct TransparentStringEqual {
     using is_transparent = void;
 
@@ -112,17 +115,21 @@ constexpr TypeMask operator|(TypeMask lhs, TypeMask rhs) noexcept {
     return static_cast<TypeMask>(static_cast<std::uint8_t>(lhs) | static_cast<std::uint8_t>(rhs));
 }
 
+/// @brief Inclusive argument-count bounds for a builtin.
 struct Arity {
-    std::uint8_t minArgs;
-    std::uint8_t maxArgs;
+    std::uint8_t minArgs; ///< Minimum required arguments.
+    std::uint8_t maxArgs; ///< Maximum accepted arguments.
 };
 
+/// @brief Single compile-time row of the densely indexed builtin table.
+/// @details One entry exists per @ref BuiltinCallExpr::Builtin enumerator, in
+///          declaration order, so the enumerator value doubles as the index.
 struct BuiltinDescriptor {
-    const char *name;
-    B builtin;
-    Arity arity;
-    TypeMask typeMask;
-    SemanticAnalyzer::BuiltinAnalyzer analyze;
+    const char *name;                          ///< Canonical uppercase BASIC spelling.
+    B builtin;                                 ///< Enumerator this row describes.
+    Arity arity;                               ///< Accepted argument-count range.
+    TypeMask typeMask;                         ///< Possible result categories (see @ref TypeMask).
+    SemanticAnalyzer::BuiltinAnalyzer analyze; ///< Optional semantic-analysis hook.
 };
 
 /// @brief Build the compile-time descriptor table for each builtin.
@@ -294,6 +301,12 @@ BuiltinHandler find_builtin(std::string_view name) {
     return nullptr;
 }
 
+/// @brief Collapse a result-category mask to a single fixed result kind.
+/// @details A builtin has a *fixed* result kind only when exactly one category
+///          bit is set; masks with zero or multiple bits (result depends on
+///          arguments) deliberately yield @ref BuiltinResultKind::Unknown.
+/// @param m Result-category mask from the builtin descriptor.
+/// @return The sole category as a @ref BuiltinResultKind, else Unknown.
 static il::frontends::basic::BuiltinResultKind resultKindFromMask(TypeMask m) {
     using RK = il::frontends::basic::BuiltinResultKind;
     const bool i = (static_cast<std::uint8_t>(m) & static_cast<std::uint8_t>(TypeMask::I64)) != 0;

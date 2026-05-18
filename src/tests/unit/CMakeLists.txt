@@ -1251,7 +1251,9 @@ function(viper_add_runtime_tests)
     viper_add_isolated_runtime_test(test_rt_videowidget_contract
             ${VIPER_TESTS_DIR}/runtime/RTVideoWidgetContractTests.cpp
             ${CMAKE_SOURCE_DIR}/src/runtime/graphics/rt_videowidget.c)
-    target_compile_definitions(test_rt_videowidget_contract PRIVATE VIPER_ENABLE_GRAPHICS=1)
+    target_compile_definitions(test_rt_videowidget_contract PRIVATE
+            VIPER_ENABLE_GRAPHICS=1
+            RT_NO_MAIN_THREAD_ASSERT=1)
 
     viper_add_isolated_runtime_test(test_rt_particles3d_contract
             ${VIPER_TESTS_DIR}/runtime/RTParticles3DContractTests.cpp

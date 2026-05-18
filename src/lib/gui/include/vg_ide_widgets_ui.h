@@ -890,6 +890,8 @@ void vg_floatingpanel_set_visible(vg_floatingpanel_t *panel, int visible);
 /// @param panel Floating panel.
 /// @param child Widget to reparent under the panel (ownership transfers).
 void vg_floatingpanel_add_child(vg_floatingpanel_t *panel, vg_widget_t *child);
+/// @brief Returns true when @p panel is a live floating-panel widget.
+bool vg_floatingpanel_is_live(const vg_floatingpanel_t *panel);
 
 #ifdef __cplusplus
 }

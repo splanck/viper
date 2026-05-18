@@ -327,6 +327,8 @@ void *rt_tabbar_get_tab_at(void *tabbar, int64_t index) {
     vg_tabbar_t *tb = rt_tabbar_checked(tabbar);
     if (!tb)
         return NULL;
+    if (index < 0 || index > INT_MAX || index >= (int64_t)tb->tab_count)
+        return NULL;
     return vg_tabbar_get_tab_at(tb, (int)index);
 }
 
@@ -612,18 +614,20 @@ void *rt_hbox_new(void) {
 /// @brief Set the spacing of the container.
 void rt_container_set_spacing(void *container, double spacing) {
     RT_ASSERT_MAIN_THREAD();
-    if (!container)
+    vg_widget_t *widget = rt_gui_widget_handle_checked(container);
+    if (!widget)
         return;
-    vg_container_set_spacing((vg_widget_t *)container,
+    vg_container_set_spacing(widget,
                              rt_gui_sanitize_nonnegative_float(spacing, RT_GUI_MAX_LAYOUT_VALUE));
 }
 
 /// @brief Set the padding of the container.
 void rt_container_set_padding(void *container, double padding) {
     RT_ASSERT_MAIN_THREAD();
-    if (container) {
+    vg_widget_t *widget = rt_gui_widget_handle_checked(container);
+    if (widget) {
         vg_widget_set_padding(
-            (vg_widget_t *)container,
+            widget,
             rt_gui_sanitize_nonnegative_float(padding, RT_GUI_MAX_LAYOUT_VALUE));
     }
 }
@@ -1062,10 +1066,13 @@ void rt_listbox_item_set_data(void *item, rt_string data) {
     vg_listbox_item_t *it = (vg_listbox_item_t *)item;
     if (!vg_listbox_item_is_live(it))
         return;
+    rt_gui_string_data_t *new_data = data ? rt_gui_string_data_new(data) : NULL;
+    if (data && !new_data)
+        return;
     if (it->owns_user_data && it->user_data)
         free(it->user_data);
-    it->user_data = rt_gui_string_data_new(data);
-    it->owns_user_data = it->user_data != NULL;
+    it->user_data = new_data;
+    it->owns_user_data = new_data != NULL;
 }
 
 /// @brief Retrieve the string data previously attached to a listbox item.
@@ -1248,7 +1255,7 @@ void *rt_image_new(void *parent) {
 }
 
 /// @brief Convert a Viper Pixels object to byte-order RGBA and upload to an image widget.
-/// @details Viper stores pixels as packed 0xAARRGGBB 32-bit integers; vg_image_set_pixels
+/// @details Viper stores pixels as packed 0xRRGGBBAA 32-bit integers; vg_image_set_pixels
 ///          expects interleaved [R, G, B, A] bytes. This function allocates a temporary
 ///          RGBA buffer, shuffles channels per-pixel, calls vg_image_set_pixels, then
 ///          frees the buffer. width/height 0 defaults to the Pixels object dimensions.
@@ -1393,12 +1400,18 @@ void *rt_floatingpanel_new(void *root) {
     return vg_floatingpanel_create(rt_gui_widget_parent_from_handle(root));
 }
 
+static vg_floatingpanel_t *rt_floatingpanel_checked(void *panel) {
+    vg_floatingpanel_t *fp = (vg_floatingpanel_t *)panel;
+    return vg_floatingpanel_is_live(fp) ? fp : NULL;
+}
+
 /// @brief Set the position of the floatingpanel.
 void rt_floatingpanel_set_position(void *panel, double x, double y) {
     RT_ASSERT_MAIN_THREAD();
-    if (panel)
+    vg_floatingpanel_t *fp = rt_floatingpanel_checked(panel);
+    if (fp)
         vg_floatingpanel_set_position(
-            (vg_floatingpanel_t *)panel,
+            fp,
             rt_gui_sanitize_signed_float(x, RT_GUI_MAX_LAYOUT_VALUE),
             rt_gui_sanitize_signed_float(y, RT_GUI_MAX_LAYOUT_VALUE));
 }
@@ -1406,9 +1419,10 @@ void rt_floatingpanel_set_position(void *panel, double x, double y) {
 /// @brief Set the width and height of a floating panel.
 void rt_floatingpanel_set_size(void *panel, double w, double h) {
     RT_ASSERT_MAIN_THREAD();
-    if (panel)
+    vg_floatingpanel_t *fp = rt_floatingpanel_checked(panel);
+    if (fp)
         vg_floatingpanel_set_size(
-            (vg_floatingpanel_t *)panel,
+            fp,
             rt_gui_sanitize_nonnegative_float(w, RT_GUI_MAX_LAYOUT_VALUE),
             rt_gui_sanitize_nonnegative_float(h, RT_GUI_MAX_LAYOUT_VALUE));
 }
@@ -1416,15 +1430,18 @@ void rt_floatingpanel_set_size(void *panel, double w, double h) {
 /// @brief Show or hide a floating panel overlay.
 void rt_floatingpanel_set_visible(void *panel, int64_t visible) {
     RT_ASSERT_MAIN_THREAD();
-    if (panel)
-        vg_floatingpanel_set_visible((vg_floatingpanel_t *)panel, (int)visible);
+    vg_floatingpanel_t *fp = rt_floatingpanel_checked(panel);
+    if (fp)
+        vg_floatingpanel_set_visible(fp, visible != 0);
 }
 
 /// @brief Add a child widget to a floating panel's content area.
 void rt_floatingpanel_add_child(void *panel, void *child) {
     RT_ASSERT_MAIN_THREAD();
-    if (panel && child)
-        vg_floatingpanel_add_child((vg_floatingpanel_t *)panel, (vg_widget_t *)child);
+    vg_floatingpanel_t *fp = rt_floatingpanel_checked(panel);
+    vg_widget_t *child_widget = rt_gui_widget_handle_checked(child);
+    if (fp && child_widget)
+        vg_floatingpanel_add_child(fp, child_widget);
 }
 
 #else /* !VIPER_ENABLE_GRAPHICS */

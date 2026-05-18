@@ -7,8 +7,10 @@
 //
 // File: frontends/basic/builtins/StringBuiltins.hpp
 // Purpose: Declares registry and lowering helpers for BASIC string built-ins.
-// Key invariants: Registry lookups return immutable metadata describing name,
-// Ownership/Lifetime: Functions operate on the lowering context supplied by
+// Key invariants: Registry lookups return immutable metadata describing the
+//                 builtin's name, arity bounds, and lowering entry point.
+// Ownership/Lifetime: Functions operate on the lowering context supplied by the
+//                     caller; LowerCtx borrows the Lowerer and call AST node.
 // Links: docs/codemap.md
 //
 //===----------------------------------------------------------------------===//
@@ -127,16 +129,18 @@ class LowerCtx {
                       il::support::SourceLoc loc);
 
   private:
+    /// @brief Lazily lower argument @p idx, caching the result for reuse.
     Lowerer::RVal &ensureLowered(std::size_t idx);
+    /// @brief Refresh @ref argValues_ entry @p idx from the cached lowered RVal.
     void syncValue(std::size_t idx) noexcept;
 
-    Lowerer &lowerer_;
-    const BuiltinCallExpr &call_;
-    std::vector<std::optional<Lowerer::RVal>> loweredArgs_;
-    std::vector<Value> argValues_;
-    std::vector<il::support::SourceLoc> argLocs_;
-    std::vector<bool> hasArg_;
-    Type resultType_{Type(Type::Kind::I64)};
+    Lowerer &lowerer_;                ///< Borrowed lowering driver.
+    const BuiltinCallExpr &call_;     ///< Borrowed builtin call being lowered.
+    std::vector<std::optional<Lowerer::RVal>> loweredArgs_; ///< Per-arg lazily lowered values.
+    std::vector<Value> argValues_;    ///< Materialized IL values mirroring loweredArgs_.
+    std::vector<il::support::SourceLoc> argLocs_; ///< Per-argument source locations.
+    std::vector<bool> hasArg_;        ///< Presence flag per argument slot.
+    Type resultType_{Type(Type::Kind::I64)}; ///< Handler-selected result type (default i64).
 };
 
 } // namespace il::frontends::basic::builtins

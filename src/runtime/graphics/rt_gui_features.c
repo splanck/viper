@@ -22,7 +22,7 @@
 //     reduced scale; the pixel buffer is owned by the vg_minimap_t widget.
 //   - Drag & Drop uses VGFX drag events; drag data is stored as C strings
 //     allocated by the platform and freed after the drop handler returns.
-//   - All widget constructors accept a parent void* and cast it to vg_widget_t*.
+//   - Widget constructors accept parent handles through rt_gui_widget_parent_from_handle.
 //
 // Ownership/Lifetime:
 //   - Wrapper state structs (e.g. rt_commandpalette_data_t) are allocated via
@@ -57,12 +57,19 @@ static uint64_t rt_gui_feature_now_ms(rt_gui_app_t *app) {
 //=============================================================================
 
 // CommandPalette state tracking
+#define RT_COMMANDPALETTE_DATA_MAGIC UINT64_C(0x5254434D4450414C)
 typedef struct {
+    uint64_t magic;
     rt_gui_app_t *app;
     vg_commandpalette_t *palette;
     char *selected_command;
     int64_t was_selected;
 } rt_commandpalette_data_t;
+
+static rt_commandpalette_data_t *rt_commandpalette_checked(void *palette) {
+    rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
+    return data && data->magic == RT_COMMANDPALETTE_DATA_MAGIC ? data : NULL;
+}
 
 /// @brief Release the command palette widget, unregister it from the app, and zero all fields.
 static void rt_commandpalette_dispose(rt_commandpalette_data_t *data) {
@@ -79,6 +86,7 @@ static void rt_commandpalette_dispose(rt_commandpalette_data_t *data) {
     data->selected_command = NULL;
     data->was_selected = 0;
     data->app = NULL;
+    data->magic = 0;
 }
 
 /// @brief GC finalizer — delegates to `rt_commandpalette_dispose`.
@@ -96,7 +104,7 @@ static void rt_commandpalette_on_execute(vg_commandpalette_t *palette,
                                          vg_command_t *cmd,
                                          void *user_data) {
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)user_data;
-    if (data && cmd && cmd->id) {
+    if (data && data->magic == RT_COMMANDPALETTE_DATA_MAGIC && cmd && cmd->id) {
         if (data->selected_command)
             free(data->selected_command);
         data->selected_command = strdup(cmd->id);
@@ -129,6 +137,7 @@ void *rt_commandpalette_new(void *parent) {
         return NULL;
     }
     data->app = app;
+    data->magic = RT_COMMANDPALETTE_DATA_MAGIC;
     data->palette = palette;
     data->selected_command = NULL;
     data->was_selected = 0;
@@ -148,7 +157,9 @@ void rt_commandpalette_destroy(void *palette) {
     RT_ASSERT_MAIN_THREAD();
     if (!palette)
         return;
-    rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
+    rt_commandpalette_data_t *data = rt_commandpalette_checked(palette);
+    if (!data)
+        return;
     rt_commandpalette_dispose(data);
 }
 
@@ -160,8 +171,8 @@ void rt_commandpalette_add_command(void *palette,
     RT_ASSERT_MAIN_THREAD();
     if (!palette)
         return;
-    rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
-    if (!data->palette)
+    rt_commandpalette_data_t *data = rt_commandpalette_checked(palette);
+    if (!data || !data->palette)
         return;
     char *cid = rt_string_to_cstr(id);
     char *clabel = rt_string_to_cstr(label);
@@ -198,8 +209,8 @@ void rt_commandpalette_add_command_with_shortcut(
     RT_ASSERT_MAIN_THREAD();
     if (!palette)
         return;
-    rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
-    if (!data->palette)
+    rt_commandpalette_data_t *data = rt_commandpalette_checked(palette);
+    if (!data || !data->palette)
         return;
     char *cid = rt_string_to_cstr(id);
     char *clabel = rt_string_to_cstr(label);
@@ -232,8 +243,8 @@ void rt_commandpalette_remove_command(void *palette, rt_string id) {
     RT_ASSERT_MAIN_THREAD();
     if (!palette)
         return;
-    rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
-    if (!data->palette)
+    rt_commandpalette_data_t *data = rt_commandpalette_checked(palette);
+    if (!data || !data->palette)
         return;
     char *cid = rt_string_to_cstr(id);
     vg_commandpalette_remove_command(data->palette, cid);
@@ -246,8 +257,8 @@ void rt_commandpalette_clear(void *palette) {
     RT_ASSERT_MAIN_THREAD();
     if (!palette)
         return;
-    rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
-    if (!data->palette)
+    rt_commandpalette_data_t *data = rt_commandpalette_checked(palette);
+    if (!data || !data->palette)
         return;
     vg_commandpalette_clear(data->palette);
 }
@@ -257,8 +268,8 @@ void rt_commandpalette_show(void *palette) {
     RT_ASSERT_MAIN_THREAD();
     if (!palette)
         return;
-    rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
-    if (!data->palette)
+    rt_commandpalette_data_t *data = rt_commandpalette_checked(palette);
+    if (!data || !data->palette)
         return;
     data->was_selected = 0; // Reset selection state when showing
     vg_commandpalette_show(data->palette);
@@ -269,8 +280,8 @@ void rt_commandpalette_hide(void *palette) {
     RT_ASSERT_MAIN_THREAD();
     if (!palette)
         return;
-    rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
-    if (!data->palette)
+    rt_commandpalette_data_t *data = rt_commandpalette_checked(palette);
+    if (!data || !data->palette)
         return;
     vg_commandpalette_hide(data->palette);
 }
@@ -280,8 +291,8 @@ int64_t rt_commandpalette_is_visible(void *palette) {
     RT_ASSERT_MAIN_THREAD();
     if (!palette)
         return 0;
-    rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
-    if (!data->palette)
+    rt_commandpalette_data_t *data = rt_commandpalette_checked(palette);
+    if (!data || !data->palette)
         return 0;
     return data->palette->base.visible ? 1 : 0;
 }
@@ -291,8 +302,8 @@ void rt_commandpalette_set_placeholder(void *palette, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     if (!palette)
         return;
-    rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
-    if (!data->palette)
+    rt_commandpalette_data_t *data = rt_commandpalette_checked(palette);
+    if (!data || !data->palette)
         return;
     char *ctext = rt_string_to_cstr(text);
     if (data->palette)
@@ -306,8 +317,8 @@ rt_string rt_commandpalette_get_selected_command(void *palette) {
     RT_ASSERT_MAIN_THREAD();
     if (!palette)
         return rt_str_empty();
-    rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
-    if (data->selected_command) {
+    rt_commandpalette_data_t *data = rt_commandpalette_checked(palette);
+    if (data && data->selected_command) {
         return rt_string_from_bytes(data->selected_command, strlen(data->selected_command));
     }
     return rt_str_empty();
@@ -318,7 +329,9 @@ int64_t rt_commandpalette_was_command_selected(void *palette) {
     RT_ASSERT_MAIN_THREAD();
     if (!palette)
         return 0;
-    rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
+    rt_commandpalette_data_t *data = rt_commandpalette_checked(palette);
+    if (!data)
+        return 0;
     int64_t result = data->was_selected;
     data->was_selected = 0; // Reset after checking
     return result;
@@ -486,7 +499,9 @@ void rt_widget_clear_tooltip(void *widget) {
 //=============================================================================
 
 // Wrapper to track toast state
+#define RT_TOAST_DATA_MAGIC UINT64_C(0x5254544F41535431)
 typedef struct rt_toast_data {
+    uint64_t magic;
     rt_gui_app_t *app;
     uint32_t id;
     int64_t was_action_clicked;
@@ -494,10 +509,15 @@ typedef struct rt_toast_data {
     char *action_label; ///< Optional action button label (owned, may be NULL)
 } rt_toast_data_t;
 
+static rt_toast_data_t *rt_toast_checked(void *toast) {
+    rt_toast_data_t *data = (rt_toast_data_t *)toast;
+    return data && data->magic == RT_TOAST_DATA_MAGIC ? data : NULL;
+}
+
 /// @brief Toast action-button callback — flips an edge-trigger when the user clicks "Undo" / "Retry" etc.
 static void rt_toast_on_action(uint32_t id, void *user_data) {
     rt_toast_data_t *data = (rt_toast_data_t *)user_data;
-    if (!data || data->id != id)
+    if (!data || data->magic != RT_TOAST_DATA_MAGIC || data->id != id)
         return;
     data->was_action_clicked = 1;
 }
@@ -525,6 +545,7 @@ static void rt_toast_dispose(rt_toast_data_t *data) {
     free(data->action_label);
     data->action_label = NULL;
     data->app = NULL;
+    data->magic = 0;
 }
 
 /// @brief GC finalizer for toast handles.
@@ -689,6 +710,7 @@ void *rt_toast_new(rt_string message, int64_t type, int64_t duration_ms) {
         return NULL;
     }
     data->app = app;
+    data->magic = RT_TOAST_DATA_MAGIC;
     rt_obj_set_finalizer(data, rt_toast_finalize);
 
     uint32_t clamped_duration = 0;
@@ -714,9 +736,9 @@ void *rt_toast_new(rt_string message, int64_t type, int64_t duration_ms) {
 /// @brief Set the action of the toast.
 void rt_toast_set_action(void *toast, rt_string label) {
     RT_ASSERT_MAIN_THREAD();
-    if (!toast)
+    rt_toast_data_t *data = rt_toast_checked(toast);
+    if (!data)
         return;
-    rt_toast_data_t *data = (rt_toast_data_t *)toast;
     free(data->action_label);
     data->action_label = rt_string_to_cstr(label);
     vg_notification_manager_t *mgr = rt_get_notification_manager(rt_toast_live_app(data));
@@ -738,9 +760,9 @@ void rt_toast_set_action(void *toast, rt_string label) {
 /// @brief Check if the toast's action button was clicked (edge-triggered).
 int64_t rt_toast_was_action_clicked(void *toast) {
     RT_ASSERT_MAIN_THREAD();
-    if (!toast)
+    rt_toast_data_t *data = rt_toast_checked(toast);
+    if (!data)
         return 0;
-    rt_toast_data_t *data = (rt_toast_data_t *)toast;
     int64_t result = data->was_action_clicked;
     data->was_action_clicked = 0;
     return result;
@@ -749,9 +771,9 @@ int64_t rt_toast_was_action_clicked(void *toast) {
 /// @brief Check if the toast was dismissed (expired or manually closed).
 int64_t rt_toast_was_dismissed(void *toast) {
     RT_ASSERT_MAIN_THREAD();
-    if (!toast)
+    rt_toast_data_t *data = rt_toast_checked(toast);
+    if (!data)
         return 0;
-    rt_toast_data_t *data = (rt_toast_data_t *)toast;
 
     // Return cached result if already known dismissed
     if (data->was_dismissed)
@@ -783,9 +805,9 @@ int64_t rt_toast_was_dismissed(void *toast) {
 /// @brief Dismiss the toast.
 void rt_toast_dismiss(void *toast) {
     RT_ASSERT_MAIN_THREAD();
-    if (!toast)
+    rt_toast_data_t *data = rt_toast_checked(toast);
+    if (!data)
         return;
-    rt_toast_data_t *data = (rt_toast_data_t *)toast;
     vg_notification_manager_t *mgr = rt_get_notification_manager(rt_toast_live_app(data));
     if (mgr) {
         vg_notification_dismiss(mgr, data->id);
@@ -829,7 +851,9 @@ void rt_toast_dismiss_all(void) {
 //=============================================================================
 
 // Wrapper to track breadcrumb state
+#define RT_BREADCRUMB_DATA_MAGIC UINT64_C(0x5254425245414443)
 typedef struct rt_breadcrumb_data {
+    uint64_t magic;
     vg_breadcrumb_t *breadcrumb;
     int64_t clicked_index;
     char *clicked_data;
@@ -837,6 +861,11 @@ typedef struct rt_breadcrumb_data {
     const vg_widget_vtable_t *original_vtable;
     vg_widget_vtable_t vtable;
 } rt_breadcrumb_data_t;
+
+static rt_breadcrumb_data_t *rt_breadcrumb_checked(void *crumb) {
+    rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
+    return data && data->magic == RT_BREADCRUMB_DATA_MAGIC ? data : NULL;
+}
 
 /// @brief Widget vtable `destroy` override — clears the back-pointer before calling the
 ///        original vtable's destroy so dangling pointer re-use in the teardown is safe.
@@ -860,6 +889,7 @@ static void rt_breadcrumb_dispose(rt_breadcrumb_data_t *data) {
     data->clicked_data = NULL;
     data->clicked_index = -1;
     data->was_clicked = 0;
+    data->magic = 0;
 }
 
 /// @brief GC finalizer — delegates to `rt_breadcrumb_dispose`.
@@ -875,7 +905,7 @@ static void rt_breadcrumb_finalize(void *crumb) {
 /// `rt_breadcrumb_get_clicked_data` without lifetime concerns.
 static void rt_breadcrumb_on_click(vg_breadcrumb_t *bc, int index, void *user_data) {
     rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)user_data;
-    if (!data)
+    if (!data || data->magic != RT_BREADCRUMB_DATA_MAGIC)
         return;
 
     data->clicked_index = index;
@@ -943,6 +973,7 @@ void *rt_breadcrumb_new(void *parent) {
         return NULL;
     }
     data->breadcrumb = bc;
+    data->magic = RT_BREADCRUMB_DATA_MAGIC;
     data->clicked_index = -1;
     data->clicked_data = NULL;
     data->was_clicked = 0;
@@ -972,19 +1003,17 @@ void *rt_breadcrumb_new(void *parent) {
 /// @brief Release resources and destroy the breadcrumb.
 void rt_breadcrumb_destroy(void *crumb) {
     RT_ASSERT_MAIN_THREAD();
-    if (!crumb)
+    rt_breadcrumb_data_t *data = rt_breadcrumb_checked(crumb);
+    if (!data)
         return;
-    rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
     rt_breadcrumb_dispose(data);
 }
 
 /// @brief Set the path of the breadcrumb.
 void rt_breadcrumb_set_path(void *crumb, rt_string path, rt_string separator) {
     RT_ASSERT_MAIN_THREAD();
-    if (!crumb)
-        return;
-    rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
-    if (!data->breadcrumb)
+    rt_breadcrumb_data_t *data = rt_breadcrumb_checked(crumb);
+    if (!data || !data->breadcrumb)
         return;
 
     char *cpath = rt_string_to_cstr(path);
@@ -1017,10 +1046,8 @@ void rt_breadcrumb_set_path(void *crumb, rt_string path, rt_string separator) {
 /// @brief Set the items of the breadcrumb.
 void rt_breadcrumb_set_items(void *crumb, rt_string items) {
     RT_ASSERT_MAIN_THREAD();
-    if (!crumb)
-        return;
-    rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
-    if (!data->breadcrumb)
+    rt_breadcrumb_data_t *data = rt_breadcrumb_checked(crumb);
+    if (!data || !data->breadcrumb)
         return;
 
     char *citems = rt_string_to_cstr(items);
@@ -1059,10 +1086,8 @@ void rt_breadcrumb_set_items(void *crumb, rt_string items) {
 /// @brief Add a path segment to a breadcrumb navigation widget.
 void rt_breadcrumb_add_item(void *crumb, rt_string text, rt_string item_data) {
     RT_ASSERT_MAIN_THREAD();
-    if (!crumb)
-        return;
-    rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
-    if (!data->breadcrumb)
+    rt_breadcrumb_data_t *data = rt_breadcrumb_checked(crumb);
+    if (!data || !data->breadcrumb)
         return;
 
     char *ctext = rt_string_to_cstr(text);
@@ -1088,10 +1113,8 @@ void rt_breadcrumb_add_item(void *crumb, rt_string text, rt_string item_data) {
 /// @brief Remove all entries from the breadcrumb.
 void rt_breadcrumb_clear(void *crumb) {
     RT_ASSERT_MAIN_THREAD();
-    if (!crumb)
-        return;
-    rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
-    if (!data->breadcrumb)
+    rt_breadcrumb_data_t *data = rt_breadcrumb_checked(crumb);
+    if (!data || !data->breadcrumb)
         return;
     vg_breadcrumb_clear(data->breadcrumb);
 }
@@ -1099,9 +1122,9 @@ void rt_breadcrumb_clear(void *crumb) {
 /// @brief Check if a breadcrumb segment was clicked this frame (edge-triggered).
 int64_t rt_breadcrumb_was_item_clicked(void *crumb) {
     RT_ASSERT_MAIN_THREAD();
-    if (!crumb)
+    rt_breadcrumb_data_t *data = rt_breadcrumb_checked(crumb);
+    if (!data)
         return 0;
-    rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
     int64_t result = data->was_clicked;
     data->was_clicked = 0; // Reset after checking
     return result;
@@ -1110,18 +1133,18 @@ int64_t rt_breadcrumb_was_item_clicked(void *crumb) {
 /// @brief Get the clicked index of the breadcrumb.
 int64_t rt_breadcrumb_get_clicked_index(void *crumb) {
     RT_ASSERT_MAIN_THREAD();
-    if (!crumb)
+    rt_breadcrumb_data_t *data = rt_breadcrumb_checked(crumb);
+    if (!data)
         return -1;
-    rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
     return data->clicked_index;
 }
 
 /// @brief Get the clicked data of the breadcrumb.
 rt_string rt_breadcrumb_get_clicked_data(void *crumb) {
     RT_ASSERT_MAIN_THREAD();
-    if (!crumb)
+    rt_breadcrumb_data_t *data = rt_breadcrumb_checked(crumb);
+    if (!data)
         return rt_str_empty();
-    rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
     if (data->clicked_data) {
         return rt_string_from_bytes(data->clicked_data, strlen(data->clicked_data));
     }
@@ -1131,10 +1154,8 @@ rt_string rt_breadcrumb_get_clicked_data(void *crumb) {
 /// @brief Set the separator of the breadcrumb.
 void rt_breadcrumb_set_separator(void *crumb, rt_string sep) {
     RT_ASSERT_MAIN_THREAD();
-    if (!crumb)
-        return;
-    rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
-    if (!data->breadcrumb)
+    rt_breadcrumb_data_t *data = rt_breadcrumb_checked(crumb);
+    if (!data || !data->breadcrumb)
         return;
     char *csep = rt_string_to_cstr(sep);
     if (csep) {
@@ -1146,10 +1167,8 @@ void rt_breadcrumb_set_separator(void *crumb, rt_string sep) {
 /// @brief Set the max items of the breadcrumb.
 void rt_breadcrumb_set_max_items(void *crumb, int64_t max) {
     RT_ASSERT_MAIN_THREAD();
-    if (!crumb)
-        return;
-    rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
-    if (!data->breadcrumb)
+    rt_breadcrumb_data_t *data = rt_breadcrumb_checked(crumb);
+    if (!data || !data->breadcrumb)
         return;
     vg_breadcrumb_set_max_items(data->breadcrumb,
                                 rt_gui_clamp_i64_to_i32(max, 0, INT32_MAX));
@@ -1158,10 +1177,8 @@ void rt_breadcrumb_set_max_items(void *crumb, int64_t max) {
 /// @brief Show or hide the breadcrumb widget.
 void rt_breadcrumb_set_visible(void *crumb, int64_t visible) {
     RT_ASSERT_MAIN_THREAD();
-    if (!crumb)
-        return;
-    rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
-    if (!data->breadcrumb)
+    rt_breadcrumb_data_t *data = rt_breadcrumb_checked(crumb);
+    if (!data || !data->breadcrumb)
         return;
     vg_widget_set_visible(&data->breadcrumb->base, visible != 0);
 }
@@ -1169,10 +1186,8 @@ void rt_breadcrumb_set_visible(void *crumb, int64_t visible) {
 /// @brief Check whether the breadcrumb widget is visible.
 int64_t rt_breadcrumb_is_visible(void *crumb) {
     RT_ASSERT_MAIN_THREAD();
-    if (!crumb)
-        return 0;
-    rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
-    if (!data->breadcrumb)
+    rt_breadcrumb_data_t *data = rt_breadcrumb_checked(crumb);
+    if (!data || !data->breadcrumb)
         return 0;
     return data->breadcrumb->base.visible ? 1 : 0;
 }
@@ -1182,12 +1197,19 @@ int64_t rt_breadcrumb_is_visible(void *crumb) {
 //=============================================================================
 
 // Wrapper to track minimap state
+#define RT_MINIMAP_DATA_MAGIC UINT64_C(0x52544D494E494D50)
 typedef struct rt_minimap_data {
+    uint64_t magic;
     vg_minimap_t *minimap;
     int64_t width;
     const vg_widget_vtable_t *original_vtable;
     vg_widget_vtable_t vtable;
 } rt_minimap_data_t;
+
+static rt_minimap_data_t *rt_minimap_checked(void *minimap) {
+    rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
+    return data && data->magic == RT_MINIMAP_DATA_MAGIC ? data : NULL;
+}
 
 /// @brief Widget vtable `destroy` override — clears back-pointer before chaining to the
 ///        original vtable's destroy, matching the breadcrumb pattern.
@@ -1207,6 +1229,7 @@ static void rt_minimap_dispose(rt_minimap_data_t *data) {
         vg_minimap_destroy(data->minimap);
         data->minimap = NULL;
     }
+    data->magic = 0;
 }
 
 /// @brief GC finalizer — delegates to `rt_minimap_dispose`.
@@ -1233,6 +1256,7 @@ void *rt_minimap_new(void *parent) {
         return NULL;
     }
     data->minimap = minimap;
+    data->magic = RT_MINIMAP_DATA_MAGIC;
     data->width = 100;
     data->original_vtable = minimap->base.vtable;
     if (data->original_vtable) {
@@ -1254,19 +1278,19 @@ void *rt_minimap_new(void *parent) {
 /// @brief Release resources and destroy the minimap.
 void rt_minimap_destroy(void *minimap) {
     RT_ASSERT_MAIN_THREAD();
-    if (!minimap)
+    rt_minimap_data_t *data = rt_minimap_checked(minimap);
+    if (!data)
         return;
-    rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
     rt_minimap_dispose(data);
 }
 
 /// @brief Bind the editor of the minimap.
 void rt_minimap_bind_editor(void *minimap, void *editor) {
     RT_ASSERT_MAIN_THREAD();
-    if (!minimap || !editor)
+    if (!editor)
         return;
-    rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
-    if (!data->minimap)
+    rt_minimap_data_t *data = rt_minimap_checked(minimap);
+    if (!data || !data->minimap)
         return;
     vg_codeeditor_t *target =
         (vg_codeeditor_t *)rt_gui_widget_handle_checked_type(editor, VG_WIDGET_CODEEDITOR);
@@ -1279,10 +1303,8 @@ void rt_minimap_bind_editor(void *minimap, void *editor) {
 /// @brief Unbind the editor of the minimap.
 void rt_minimap_unbind_editor(void *minimap) {
     RT_ASSERT_MAIN_THREAD();
-    if (!minimap)
-        return;
-    rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
-    if (!data->minimap)
+    rt_minimap_data_t *data = rt_minimap_checked(minimap);
+    if (!data || !data->minimap)
         return;
     vg_minimap_set_editor(data->minimap, NULL);
     vg_widget_invalidate(&data->minimap->base);
@@ -1291,10 +1313,8 @@ void rt_minimap_unbind_editor(void *minimap) {
 /// @brief Set the width of the minimap.
 void rt_minimap_set_width(void *minimap, int64_t width) {
     RT_ASSERT_MAIN_THREAD();
-    if (!minimap)
-        return;
-    rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
-    if (!data->minimap)
+    rt_minimap_data_t *data = rt_minimap_checked(minimap);
+    if (!data || !data->minimap)
         return;
     int32_t clamped_width =
         rt_gui_clamp_i64_to_i32(width, 64, (int32_t)RT_GUI_MAX_LAYOUT_VALUE);
@@ -1309,10 +1329,8 @@ void rt_minimap_set_width(void *minimap, int64_t width) {
 /// @brief Show or hide the minimap widget.
 void rt_minimap_set_visible(void *minimap, int64_t visible) {
     RT_ASSERT_MAIN_THREAD();
-    if (!minimap)
-        return;
-    rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
-    if (!data->minimap)
+    rt_minimap_data_t *data = rt_minimap_checked(minimap);
+    if (!data || !data->minimap)
         return;
     vg_widget_set_visible(&data->minimap->base, visible != 0);
     vg_widget_invalidate_layout(&data->minimap->base);
@@ -1322,10 +1340,8 @@ void rt_minimap_set_visible(void *minimap, int64_t visible) {
 /// @brief Check whether the minimap widget is visible.
 int64_t rt_minimap_is_visible(void *minimap) {
     RT_ASSERT_MAIN_THREAD();
-    if (!minimap)
-        return 0;
-    rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
-    if (!data->minimap)
+    rt_minimap_data_t *data = rt_minimap_checked(minimap);
+    if (!data || !data->minimap)
         return 0;
     return data->minimap->base.visible ? 1 : 0;
 }
@@ -1333,10 +1349,8 @@ int64_t rt_minimap_is_visible(void *minimap) {
 /// @brief Get the width of the minimap.
 int64_t rt_minimap_get_width(void *minimap) {
     RT_ASSERT_MAIN_THREAD();
-    if (!minimap)
-        return 0;
-    rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
-    if (!data->minimap)
+    rt_minimap_data_t *data = rt_minimap_checked(minimap);
+    if (!data || !data->minimap)
         return 0;
     return data->width;
 }
@@ -1344,10 +1358,8 @@ int64_t rt_minimap_get_width(void *minimap) {
 /// @brief Set the scale of the minimap.
 void rt_minimap_set_scale(void *minimap, double scale) {
     RT_ASSERT_MAIN_THREAD();
-    if (!minimap)
-        return;
-    rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
-    if (!data->minimap)
+    rt_minimap_data_t *data = rt_minimap_checked(minimap);
+    if (!data || !data->minimap)
         return;
     double sanitized = rt_gui_double_is_finite(scale) ? scale : 0.1;
     vg_minimap_set_scale(data->minimap, (float)rt_gui_clamp_f64(sanitized, 0.05, 0.5));
@@ -1357,10 +1369,8 @@ void rt_minimap_set_scale(void *minimap, double scale) {
 /// @brief Set the show slider of the minimap.
 void rt_minimap_set_show_slider(void *minimap, int64_t show) {
     RT_ASSERT_MAIN_THREAD();
-    if (!minimap)
-        return;
-    rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
-    if (!data->minimap)
+    rt_minimap_data_t *data = rt_minimap_checked(minimap);
+    if (!data || !data->minimap)
         return;
     vg_minimap_set_show_viewport(data->minimap, show != 0);
     vg_widget_invalidate(&data->minimap->base);
@@ -1369,10 +1379,8 @@ void rt_minimap_set_show_slider(void *minimap, int64_t show) {
 /// @brief Add a highlighted marker region to the minimap.
 void rt_minimap_add_marker(void *minimap, int64_t line, int64_t color, int64_t type) {
     RT_ASSERT_MAIN_THREAD();
-    if (!minimap)
-        return;
-    rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
-    if (!data->minimap)
+    rt_minimap_data_t *data = rt_minimap_checked(minimap);
+    if (!data || !data->minimap)
         return;
     vg_minimap_t *mm = data->minimap;
 
@@ -1396,10 +1404,8 @@ void rt_minimap_add_marker(void *minimap, int64_t line, int64_t color, int64_t t
 /// @brief Clear all markers from the minimap.
 void rt_minimap_remove_markers(void *minimap, int64_t line) {
     RT_ASSERT_MAIN_THREAD();
-    if (!minimap)
-        return;
-    rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
-    if (!data->minimap)
+    rt_minimap_data_t *data = rt_minimap_checked(minimap);
+    if (!data || !data->minimap)
         return;
     vg_minimap_t *mm = data->minimap;
     int32_t clamped_line = rt_gui_clamp_i64_to_i32(line, INT32_MIN, INT32_MAX);
@@ -1417,10 +1423,8 @@ void rt_minimap_remove_markers(void *minimap, int64_t line) {
 /// @brief Clear the markers of the minimap.
 void rt_minimap_clear_markers(void *minimap) {
     RT_ASSERT_MAIN_THREAD();
-    if (!minimap)
-        return;
-    rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
-    if (!data->minimap)
+    rt_minimap_data_t *data = rt_minimap_checked(minimap);
+    if (!data || !data->minimap)
         return;
     vg_minimap_t *mm = data->minimap;
     free(mm->markers);

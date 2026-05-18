@@ -52,6 +52,9 @@ rt_string rt_zia_check_for_file(rt_string source, rt_string file_path);
 rt_string rt_zia_hover_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
 rt_string rt_zia_symbols_for_file(rt_string source, rt_string file_path);
 
+/// @brief Runtime entry point: code completion at (@p line, @p col) in
+///        @p source. Returns the serialized completion item list as an
+///        rt_string (the editor/LSP bridge consumes this).
 rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col) {
     std::string sourceStr = toStdString(source);
 
@@ -61,6 +64,8 @@ rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col) {
     return rt_string_from_bytes(result.c_str(), result.size());
 }
 
+/// @brief As @ref rt_zia_complete but with an explicit @p file_path so
+///        cross-file/module-aware completions resolve correctly.
 rt_string rt_zia_complete_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col) {
     std::string sourceStr = toStdString(source);
     std::string pathStr = editorPathOrDefault(file_path);
@@ -71,6 +76,8 @@ rt_string rt_zia_complete_for_file(rt_string source, rt_string file_path, int64_
     return rt_string_from_bytes(result.c_str(), result.size());
 }
 
+/// @brief Runtime entry point: drop the completion engine's cached analysis
+///        (call after the project/files change materially).
 void rt_zia_completion_clear_cache(void) {
     s_engine.clearCache();
 }
@@ -80,10 +87,15 @@ void rt_zia_completion_clear_cache(void) {
 // Format: severity\tline\tcol\tcode\tmessage\n  (one per diagnostic)
 // severity: 0=error, 1=warning, 2=note
 // =========================================================================
+/// @brief Runtime entry point: check @p source with no file context
+///        (delegates to @ref rt_zia_check_for_file).
 rt_string rt_zia_check(rt_string source) {
     return rt_zia_check_for_file(source, nullptr);
 }
 
+/// @brief Runtime entry point: run lex/parse/sema on @p source (named
+///        @p file_path) and return serialized diagnostics, one per line as
+///        `severity\tline\tcol\tcode\tmessage` (0=error,1=warning,2=note).
 rt_string rt_zia_check_for_file(rt_string source, rt_string file_path) {
     std::string sourceStr = toStdString(source);
     std::string pathStr = editorPathOrDefault(file_path);
@@ -115,10 +127,15 @@ rt_string rt_zia_check_for_file(rt_string source, rt_string file_path) {
 // Returns empty string if nothing found; otherwise returns a human-readable
 // string with the symbol kind and type.
 // =========================================================================
+/// @brief Runtime entry point: hover info at (@p line, @p col) with no file
+///        context (delegates to @ref rt_zia_hover_for_file).
 rt_string rt_zia_hover(rt_string source, int64_t line, int64_t col) {
     return rt_zia_hover_for_file(source, nullptr, line, col);
 }
 
+/// @brief Runtime entry point: return a human-readable type/signature string
+///        for the symbol at (@p line, @p col) in @p source / @p file_path,
+///        or the empty string if nothing resolves there.
 rt_string rt_zia_hover_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col) {
     std::string sourceStr = toStdString(source);
     std::string pathStr = editorPathOrDefault(file_path);
@@ -209,10 +226,14 @@ rt_string rt_zia_hover_for_file(rt_string source, rt_string file_path, int64_t l
 // Symbols — return all top-level symbols in the source.
 // Format: name\tkind\ttype\tline\n  (one per symbol)
 // =========================================================================
+/// @brief Runtime entry point: list symbols in @p source with no file context
+///        (delegates to @ref rt_zia_symbols_for_file).
 rt_string rt_zia_symbols(rt_string source) {
     return rt_zia_symbols_for_file(source, nullptr);
 }
 
+/// @brief Runtime entry point: return all top-level symbols of @p source /
+///        @p file_path, serialized one per line as `name\tkind\ttype\tline`.
 rt_string rt_zia_symbols_for_file(rt_string source, rt_string file_path) {
     std::string sourceStr = toStdString(source);
     std::string pathStr = editorPathOrDefault(file_path);

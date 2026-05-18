@@ -65,8 +65,38 @@ static void rt_gui_menu_sync_menubar(vg_menubar_t *menubar) {
     rt_gui_macos_menu_sync_for_menubar(menubar);
 }
 
-/// @brief Convert a runtime Pixels object (ARGB) into a `vg_icon_t` (RGBA).
-/// @details Repacks the pixels' ARGB-as-uint32 buffer into the byte-order
+static vg_menubar_t *rt_menubar_checked(void *menubar) {
+    return (vg_menubar_t *)rt_gui_widget_handle_checked_type(menubar, VG_WIDGET_MENUBAR);
+}
+
+static vg_menu_t *rt_menu_checked(void *menu) {
+    vg_menu_t *m = (vg_menu_t *)menu;
+    return vg_menu_is_live(m) ? m : NULL;
+}
+
+static vg_contextmenu_t *rt_contextmenu_checked(void *menu) {
+    vg_contextmenu_t *cm = (vg_contextmenu_t *)menu;
+    return vg_contextmenu_is_live(cm) ? cm : NULL;
+}
+
+static vg_statusbar_t *rt_statusbar_checked(void *bar) {
+    return (vg_statusbar_t *)rt_gui_widget_handle_checked_type(bar, VG_WIDGET_STATUSBAR);
+}
+
+static vg_toolbar_t *rt_toolbar_checked(void *toolbar) {
+    return (vg_toolbar_t *)rt_gui_widget_handle_checked_type(toolbar, VG_WIDGET_TOOLBAR);
+}
+
+static int rt_statusbar_zone_checked(int64_t zone, vg_statusbar_zone_t *out_zone) {
+    if (zone < (int64_t)VG_STATUSBAR_ZONE_LEFT || zone > (int64_t)VG_STATUSBAR_ZONE_RIGHT)
+        return 0;
+    if (out_zone)
+        *out_zone = (vg_statusbar_zone_t)zone;
+    return 1;
+}
+
+/// @brief Convert a runtime Pixels object (0xRRGGBBAA) into a `vg_icon_t` (RGBA).
+/// @details Repacks the pixels' 0xRRGGBBAA uint32 buffer into the byte-order
 ///          RGBA layout that the GUI library's icon API expects (one byte
 ///          each, R-G-B-A in memory). Validates `width * height` for
 ///          integer overflow before allocating — guards against a
@@ -171,10 +201,11 @@ void *rt_menubar_new(void *parent) {
 /// @brief Release resources and destroy the menubar.
 void rt_menubar_destroy(void *menubar) {
     RT_ASSERT_MAIN_THREAD();
-    if (!menubar)
+    vg_menubar_t *mb = rt_menubar_checked(menubar);
+    if (!mb)
         return;
-    rt_gui_macos_menu_unregister_menubar((vg_menubar_t *)menubar);
-    rt_widget_destroy(menubar);
+    rt_gui_macos_menu_unregister_menubar(mb);
+    rt_widget_destroy(mb);
 }
 
 /// @brief Add a top-level menu (e.g., "File", "Edit") to the menu bar.
@@ -185,30 +216,32 @@ void rt_menubar_destroy(void *menubar) {
 /// @return Opaque menu handle, or NULL on failure.
 void *rt_menubar_add_menu(void *menubar, rt_string title) {
     RT_ASSERT_MAIN_THREAD();
-    if (!menubar)
+    vg_menubar_t *mb = rt_menubar_checked(menubar);
+    if (!mb)
         return NULL;
     char *ctitle = rt_string_to_cstr(title);
-    vg_menu_t *menu = vg_menubar_add_menu((vg_menubar_t *)menubar, ctitle);
+    vg_menu_t *menu = vg_menubar_add_menu(mb, ctitle);
     free(ctitle);
-    rt_gui_menu_sync_menubar((vg_menubar_t *)menubar);
+    rt_gui_menu_sync_menubar(mb);
     return menu;
 }
 
 /// @brief Remove a menu from the menu bar.
 void rt_menubar_remove_menu(void *menubar, void *menu) {
     RT_ASSERT_MAIN_THREAD();
-    if (!menubar || !menu)
+    vg_menubar_t *mb = rt_menubar_checked(menubar);
+    vg_menu_t *m = rt_menu_checked(menu);
+    if (!mb || !m || m->owner_menubar != mb)
         return;
-    vg_menubar_remove_menu((vg_menubar_t *)menubar, (vg_menu_t *)menu);
-    rt_gui_menu_sync_menubar((vg_menubar_t *)menubar);
+    vg_menubar_remove_menu(mb, m);
+    rt_gui_menu_sync_menubar(mb);
 }
 
 /// @brief Get the number of menus in the menu bar.
 int64_t rt_menubar_get_menu_count(void *menubar) {
     RT_ASSERT_MAIN_THREAD();
-    if (!menubar)
-        return 0;
-    return ((vg_menubar_t *)menubar)->menu_count;
+    vg_menubar_t *mb = rt_menubar_checked(menubar);
+    return mb ? mb->menu_count : 0;
 }
 
 /// @brief Return the `index`-th top-level menu in `menubar`, or NULL if out of range.
@@ -217,9 +250,9 @@ int64_t rt_menubar_get_menu_count(void *menubar) {
 /// the typical menubar has under 10 entries (File/Edit/View/Help/…).
 void *rt_menubar_get_menu(void *menubar, int64_t index) {
     RT_ASSERT_MAIN_THREAD();
-    if (!menubar)
+    vg_menubar_t *mb = rt_menubar_checked(menubar);
+    if (!mb)
         return NULL;
-    vg_menubar_t *mb = (vg_menubar_t *)menubar;
     if (index < 0 || index >= mb->menu_count)
         return NULL;
 
@@ -233,18 +266,18 @@ void *rt_menubar_get_menu(void *menubar, int64_t index) {
 /// @brief Show or hide the menu bar widget.
 void rt_menubar_set_visible(void *menubar, int64_t visible) {
     RT_ASSERT_MAIN_THREAD();
-    if (!menubar)
+    vg_menubar_t *mb = rt_menubar_checked(menubar);
+    if (!mb)
         return;
-    vg_widget_set_visible(&((vg_menubar_t *)menubar)->base, visible != 0);
-    rt_gui_menu_sync_menubar((vg_menubar_t *)menubar);
+    vg_widget_set_visible(&mb->base, visible != 0);
+    rt_gui_menu_sync_menubar(mb);
 }
 
 /// @brief Check whether the menu bar is currently visible.
 int64_t rt_menubar_is_visible(void *menubar) {
     RT_ASSERT_MAIN_THREAD();
-    if (!menubar)
-        return 0;
-    return ((vg_menubar_t *)menubar)->base.visible ? 1 : 0;
+    vg_menubar_t *mb = rt_menubar_checked(menubar);
+    return mb && mb->base.visible ? 1 : 0;
 }
 
 //=============================================================================
@@ -260,12 +293,13 @@ int64_t rt_menubar_is_visible(void *menubar) {
 /// @return Opaque menu item handle, or NULL on failure.
 void *rt_menu_add_item(void *menu, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
-    if (!menu)
+    vg_menu_t *m = rt_menu_checked(menu);
+    if (!m)
         return NULL;
     char *ctext = rt_string_to_cstr(text);
-    vg_menu_item_t *item = vg_menu_add_item((vg_menu_t *)menu, ctext, NULL, NULL, NULL);
+    vg_menu_item_t *item = vg_menu_add_item(m, ctext, NULL, NULL, NULL);
     free(ctext);
-    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu((vg_menu_t *)menu));
+    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu(m));
     return item;
 }
 
@@ -273,63 +307,68 @@ void *rt_menu_add_item(void *menu, rt_string text) {
 /// The shortcut string is parsed by the platform layer at sync time.
 void *rt_menu_add_item_with_shortcut(void *menu, rt_string text, rt_string shortcut) {
     RT_ASSERT_MAIN_THREAD();
-    if (!menu)
+    vg_menu_t *m = rt_menu_checked(menu);
+    if (!m)
         return NULL;
     char *ctext = rt_string_to_cstr(text);
     char *cshortcut = rt_string_to_cstr(shortcut);
-    vg_menu_item_t *item = vg_menu_add_item((vg_menu_t *)menu, ctext, cshortcut, NULL, NULL);
+    vg_menu_item_t *item = vg_menu_add_item(m, ctext, cshortcut, NULL, NULL);
     free(ctext);
     free(cshortcut);
-    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu((vg_menu_t *)menu));
+    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu(m));
     return item;
 }
 
 /// @brief Append a horizontal separator line between menu items.
 void *rt_menu_add_separator(void *menu) {
     RT_ASSERT_MAIN_THREAD();
-    if (!menu)
+    vg_menu_t *m = rt_menu_checked(menu);
+    if (!m)
         return NULL;
-    void *item = vg_menu_add_separator((vg_menu_t *)menu);
-    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu((vg_menu_t *)menu));
+    void *item = vg_menu_add_separator(m);
+    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu(m));
     return item;
 }
 
 /// @brief Add a nested submenu with the given title; returns the new submenu handle.
 void *rt_menu_add_submenu(void *menu, rt_string title) {
     RT_ASSERT_MAIN_THREAD();
-    if (!menu)
+    vg_menu_t *m = rt_menu_checked(menu);
+    if (!m)
         return NULL;
     char *ctitle = rt_string_to_cstr(title);
-    vg_menu_t *submenu = vg_menu_add_submenu((vg_menu_t *)menu, ctitle);
+    vg_menu_t *submenu = vg_menu_add_submenu(m, ctitle);
     free(ctitle);
-    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu((vg_menu_t *)menu));
+    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu(m));
     return submenu;
 }
 
 /// @brief Remove a menu item and free its resources.
 void rt_menu_remove_item(void *menu, void *item) {
     RT_ASSERT_MAIN_THREAD();
-    if (!menu || !item)
+    vg_menu_t *m = rt_menu_checked(menu);
+    if (!m || !vg_menu_item_is_live((vg_menu_item_t *)item))
         return;
-    vg_menu_remove_item((vg_menu_t *)menu, (vg_menu_item_t *)item);
-    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu((vg_menu_t *)menu));
+    vg_menu_remove_item(m, (vg_menu_item_t *)item);
+    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu(m));
 }
 
 /// @brief Remove all items from a menu, leaving it empty.
 void rt_menu_clear(void *menu) {
     RT_ASSERT_MAIN_THREAD();
-    if (!menu)
+    vg_menu_t *m = rt_menu_checked(menu);
+    if (!m)
         return;
-    vg_menu_clear((vg_menu_t *)menu);
-    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu((vg_menu_t *)menu));
+    vg_menu_clear(m);
+    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu(m));
 }
 
 /// @brief Set the title of the menu.
 void rt_menu_set_title(void *menu, rt_string title) {
     RT_ASSERT_MAIN_THREAD();
-    if (!menu)
+    vg_menu_t *m = rt_menu_checked(menu);
+    if (!m)
         return;
-    vg_menu_t *m = (vg_menu_t *)menu;
     char *new_title = title ? rt_string_to_cstr(title) : NULL;
     if (title && !new_title)
         return;
@@ -341,9 +380,10 @@ void rt_menu_set_title(void *menu, rt_string title) {
 /// @brief Get the title of the menu.
 rt_string rt_menu_get_title(void *menu) {
     RT_ASSERT_MAIN_THREAD();
-    if (!menu)
+    vg_menu_t *m = rt_menu_checked(menu);
+    if (!m)
         return rt_str_empty();
-    const char *title = ((vg_menu_t *)menu)->title;
+    const char *title = m->title;
     if (!title)
         return rt_str_empty();
     return rt_string_from_bytes(title, strlen(title));
@@ -352,17 +392,16 @@ rt_string rt_menu_get_title(void *menu) {
 /// @brief Get the number of items in a menu.
 int64_t rt_menu_get_item_count(void *menu) {
     RT_ASSERT_MAIN_THREAD();
-    if (!menu)
-        return 0;
-    return ((vg_menu_t *)menu)->item_count;
+    vg_menu_t *m = rt_menu_checked(menu);
+    return m ? m->item_count : 0;
 }
 
 /// @brief Return the `index`-th item in `menu` (linear walk; safe on out-of-range).
 void *rt_menu_get_item(void *menu, int64_t index) {
     RT_ASSERT_MAIN_THREAD();
-    if (!menu)
+    vg_menu_t *m = rt_menu_checked(menu);
+    if (!m)
         return NULL;
-    vg_menu_t *m = (vg_menu_t *)menu;
     if (index < 0 || index >= m->item_count)
         return NULL;
 
@@ -376,18 +415,18 @@ void *rt_menu_get_item(void *menu, int64_t index) {
 /// @brief Enable or disable an entire menu (greys out all items when disabled).
 void rt_menu_set_enabled(void *menu, int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
-    if (!menu)
+    vg_menu_t *m = rt_menu_checked(menu);
+    if (!m)
         return;
-    ((vg_menu_t *)menu)->enabled = enabled != 0;
-    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu((vg_menu_t *)menu));
+    m->enabled = enabled != 0;
+    rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu(m));
 }
 
 /// @brief Check whether a menu is currently enabled.
 int64_t rt_menu_is_enabled(void *menu) {
     RT_ASSERT_MAIN_THREAD();
-    if (!menu)
-        return 0;
-    return ((vg_menu_t *)menu)->enabled ? 1 : 0;
+    vg_menu_t *m = rt_menu_checked(menu);
+    return m && m->enabled ? 1 : 0;
 }
 
 //=============================================================================
@@ -578,19 +617,20 @@ void *rt_contextmenu_new(void) {
 /// @brief Release resources and destroy the contextmenu.
 void rt_contextmenu_destroy(void *menu) {
     RT_ASSERT_MAIN_THREAD();
-    if (menu) {
-        vg_contextmenu_destroy((vg_contextmenu_t *)menu);
+    vg_contextmenu_t *cm = rt_contextmenu_checked(menu);
+    if (cm) {
+        vg_contextmenu_destroy(cm);
     }
 }
 
 /// @brief Add a clickable item to a context (right-click) popup menu.
 void *rt_contextmenu_add_item(void *menu, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
-    if (!menu)
+    vg_contextmenu_t *cm = rt_contextmenu_checked(menu);
+    if (!cm)
         return NULL;
     char *ctext = rt_string_to_cstr(text);
-    vg_menu_item_t *item =
-        vg_contextmenu_add_item((vg_contextmenu_t *)menu, ctext, NULL, NULL, NULL);
+    vg_menu_item_t *item = vg_contextmenu_add_item(cm, ctext, NULL, NULL, NULL);
     free(ctext);
     return item;
 }
@@ -598,12 +638,12 @@ void *rt_contextmenu_add_item(void *menu, rt_string text) {
 /// @brief Add a context-menu item with an associated keyboard shortcut.
 void *rt_contextmenu_add_item_with_shortcut(void *menu, rt_string text, rt_string shortcut) {
     RT_ASSERT_MAIN_THREAD();
-    if (!menu)
+    vg_contextmenu_t *cm = rt_contextmenu_checked(menu);
+    if (!cm)
         return NULL;
     char *ctext = rt_string_to_cstr(text);
     char *cshortcut = rt_string_to_cstr(shortcut);
-    vg_menu_item_t *item =
-        vg_contextmenu_add_item((vg_contextmenu_t *)menu, ctext, cshortcut, NULL, NULL);
+    vg_menu_item_t *item = vg_contextmenu_add_item(cm, ctext, cshortcut, NULL, NULL);
     free(ctext);
     free(cshortcut);
     return item;
@@ -614,15 +654,15 @@ void *rt_contextmenu_add_item_with_shortcut(void *menu, rt_string text, rt_strin
 /// with other menu item handles.
 void *rt_contextmenu_add_separator(void *menu) {
     RT_ASSERT_MAIN_THREAD();
-    if (!menu)
-        return NULL;
-    return vg_contextmenu_add_separator((vg_contextmenu_t *)menu);
+    vg_contextmenu_t *cm = rt_contextmenu_checked(menu);
+    return cm ? vg_contextmenu_add_separator(cm) : NULL;
 }
 
 /// @brief Add a nested submenu to a context menu; returns the new submenu handle.
 void *rt_contextmenu_add_submenu(void *menu, rt_string title) {
     RT_ASSERT_MAIN_THREAD();
-    if (!menu)
+    vg_contextmenu_t *cm = rt_contextmenu_checked(menu);
+    if (!cm)
         return NULL;
     char *ctitle = rt_string_to_cstr(title);
 
@@ -632,7 +672,7 @@ void *rt_contextmenu_add_submenu(void *menu, rt_string title) {
         free(ctitle);
         return NULL;
     }
-    vg_contextmenu_add_submenu((vg_contextmenu_t *)menu, ctitle, submenu);
+    vg_contextmenu_add_submenu(cm, ctitle, submenu);
     free(ctitle);
     return submenu;
 }
@@ -640,16 +680,17 @@ void *rt_contextmenu_add_submenu(void *menu, rt_string title) {
 /// @brief Remove all items from a context menu.
 void rt_contextmenu_clear(void *menu) {
     RT_ASSERT_MAIN_THREAD();
-    if (menu) {
-        vg_contextmenu_clear((vg_contextmenu_t *)menu);
-    }
+    vg_contextmenu_t *cm = rt_contextmenu_checked(menu);
+    if (cm)
+        vg_contextmenu_clear(cm);
 }
 
 /// @brief Show the contextmenu.
 void rt_contextmenu_show(void *menu, int64_t x, int64_t y) {
     RT_ASSERT_MAIN_THREAD();
-    if (menu) {
-        vg_contextmenu_show_at((vg_contextmenu_t *)menu,
+    vg_contextmenu_t *cm = rt_contextmenu_checked(menu);
+    if (cm) {
+        vg_contextmenu_show_at(cm,
                                rt_gui_clamp_i64_to_i32(x, INT32_MIN, INT32_MAX),
                                rt_gui_clamp_i64_to_i32(y, INT32_MIN, INT32_MAX));
     }
@@ -658,17 +699,16 @@ void rt_contextmenu_show(void *menu, int64_t x, int64_t y) {
 /// @brief Hide the contextmenu.
 void rt_contextmenu_hide(void *menu) {
     RT_ASSERT_MAIN_THREAD();
-    if (menu) {
-        vg_contextmenu_dismiss((vg_contextmenu_t *)menu);
-    }
+    vg_contextmenu_t *cm = rt_contextmenu_checked(menu);
+    if (cm)
+        vg_contextmenu_dismiss(cm);
 }
 
 /// @brief Check whether a context menu is currently visible on screen.
 int64_t rt_contextmenu_is_visible(void *menu) {
     RT_ASSERT_MAIN_THREAD();
-    if (!menu)
-        return 0;
-    return ((vg_contextmenu_t *)menu)->is_visible ? 1 : 0;
+    vg_contextmenu_t *cm = rt_contextmenu_checked(menu);
+    return cm && cm->is_visible ? 1 : 0;
 }
 
 /// @brief Return (and consume) the most recently clicked context-menu item.
@@ -678,9 +718,9 @@ int64_t rt_contextmenu_is_visible(void *menu) {
 /// pattern is `if (item := get_clicked()) handle(item);` once per frame.
 void *rt_contextmenu_get_clicked_item(void *menu) {
     RT_ASSERT_MAIN_THREAD();
-    if (!menu)
+    vg_contextmenu_t *cm = rt_contextmenu_checked(menu);
+    if (!cm)
         return NULL;
-    vg_contextmenu_t *cm = (vg_contextmenu_t *)menu;
     if (cm->clicked_index >= 0 && cm->clicked_index < (int)cm->item_count) {
         vg_menu_item_t *item = cm->items[cm->clicked_index];
         cm->clicked_index = -1; // Edge-triggered: clear after read
@@ -717,9 +757,9 @@ void *rt_statusbar_new(void *parent) {
 /// @brief Release resources and destroy the statusbar.
 void rt_statusbar_destroy(void *bar) {
     RT_ASSERT_MAIN_THREAD();
-    if (bar) {
-        rt_widget_destroy(bar);
-    }
+    vg_statusbar_t *sb = rt_statusbar_checked(bar);
+    if (sb)
+        rt_widget_destroy(sb);
 }
 
 /// @brief Return the first text-type item in the given status-bar zone (or NULL).
@@ -756,9 +796,9 @@ static vg_statusbar_item_t *get_zone_text_item(vg_statusbar_t *sb, vg_statusbar_
 /// @brief Set the left text of the statusbar.
 void rt_statusbar_set_left_text(void *bar, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
-    if (!bar)
+    vg_statusbar_t *sb = rt_statusbar_checked(bar);
+    if (!sb)
         return;
-    vg_statusbar_t *sb = (vg_statusbar_t *)bar;
     vg_statusbar_item_t *item = get_zone_text_item(sb, VG_STATUSBAR_ZONE_LEFT);
     if (item) {
         char *ctext = rt_string_to_cstr(text);
@@ -775,9 +815,9 @@ void rt_statusbar_set_left_text(void *bar, rt_string text) {
 /// @brief Set the center text of the statusbar.
 void rt_statusbar_set_center_text(void *bar, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
-    if (!bar)
+    vg_statusbar_t *sb = rt_statusbar_checked(bar);
+    if (!sb)
         return;
-    vg_statusbar_t *sb = (vg_statusbar_t *)bar;
     vg_statusbar_item_t *item = get_zone_text_item(sb, VG_STATUSBAR_ZONE_CENTER);
     if (item) {
         char *ctext = rt_string_to_cstr(text);
@@ -793,9 +833,9 @@ void rt_statusbar_set_center_text(void *bar, rt_string text) {
 /// @brief Set the right text of the statusbar.
 void rt_statusbar_set_right_text(void *bar, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
-    if (!bar)
+    vg_statusbar_t *sb = rt_statusbar_checked(bar);
+    if (!sb)
         return;
-    vg_statusbar_t *sb = (vg_statusbar_t *)bar;
     vg_statusbar_item_t *item = get_zone_text_item(sb, VG_STATUSBAR_ZONE_RIGHT);
     if (item) {
         char *ctext = rt_string_to_cstr(text);
@@ -811,9 +851,10 @@ void rt_statusbar_set_right_text(void *bar, rt_string text) {
 /// @brief Get the left text of the statusbar.
 rt_string rt_statusbar_get_left_text(void *bar) {
     RT_ASSERT_MAIN_THREAD();
-    if (!bar)
+    vg_statusbar_t *sb = rt_statusbar_checked(bar);
+    if (!sb)
         return rt_str_empty();
-    vg_statusbar_item_t *item = get_zone_text_item((vg_statusbar_t *)bar, VG_STATUSBAR_ZONE_LEFT);
+    vg_statusbar_item_t *item = get_zone_text_item(sb, VG_STATUSBAR_ZONE_LEFT);
     if (item && item->text) {
         return rt_string_from_bytes(item->text, strlen(item->text));
     }
@@ -823,9 +864,10 @@ rt_string rt_statusbar_get_left_text(void *bar) {
 /// @brief Get the center text of the statusbar.
 rt_string rt_statusbar_get_center_text(void *bar) {
     RT_ASSERT_MAIN_THREAD();
-    if (!bar)
+    vg_statusbar_t *sb = rt_statusbar_checked(bar);
+    if (!sb)
         return rt_str_empty();
-    vg_statusbar_item_t *item = get_zone_text_item((vg_statusbar_t *)bar, VG_STATUSBAR_ZONE_CENTER);
+    vg_statusbar_item_t *item = get_zone_text_item(sb, VG_STATUSBAR_ZONE_CENTER);
     if (item && item->text) {
         return rt_string_from_bytes(item->text, strlen(item->text));
     }
@@ -835,9 +877,10 @@ rt_string rt_statusbar_get_center_text(void *bar) {
 /// @brief Get the right text of the statusbar.
 rt_string rt_statusbar_get_right_text(void *bar) {
     RT_ASSERT_MAIN_THREAD();
-    if (!bar)
+    vg_statusbar_t *sb = rt_statusbar_checked(bar);
+    if (!sb)
         return rt_str_empty();
-    vg_statusbar_item_t *item = get_zone_text_item((vg_statusbar_t *)bar, VG_STATUSBAR_ZONE_RIGHT);
+    vg_statusbar_item_t *item = get_zone_text_item(sb, VG_STATUSBAR_ZONE_RIGHT);
     if (item && item->text) {
         return rt_string_from_bytes(item->text, strlen(item->text));
     }
@@ -854,11 +897,12 @@ rt_string rt_statusbar_get_right_text(void *bar) {
 /// @brief Append a text label to the given status-bar zone.
 void *rt_statusbar_add_text(void *bar, rt_string text, int64_t zone) {
     RT_ASSERT_MAIN_THREAD();
-    if (!bar)
+    vg_statusbar_t *sb = rt_statusbar_checked(bar);
+    vg_statusbar_zone_t checked_zone = VG_STATUSBAR_ZONE_LEFT;
+    if (!sb || !rt_statusbar_zone_checked(zone, &checked_zone))
         return NULL;
     char *ctext = rt_string_to_cstr(text);
-    vg_statusbar_item_t *item =
-        vg_statusbar_add_text((vg_statusbar_t *)bar, (vg_statusbar_zone_t)zone, ctext);
+    vg_statusbar_item_t *item = vg_statusbar_add_text(sb, checked_zone, ctext);
     free(ctext);
     return item;
 }
@@ -866,11 +910,12 @@ void *rt_statusbar_add_text(void *bar, rt_string text, int64_t zone) {
 /// @brief Append a clickable button to a status-bar zone.
 void *rt_statusbar_add_button(void *bar, rt_string text, int64_t zone) {
     RT_ASSERT_MAIN_THREAD();
-    if (!bar)
+    vg_statusbar_t *sb = rt_statusbar_checked(bar);
+    vg_statusbar_zone_t checked_zone = VG_STATUSBAR_ZONE_LEFT;
+    if (!sb || !rt_statusbar_zone_checked(zone, &checked_zone))
         return NULL;
     char *ctext = rt_string_to_cstr(text);
-    vg_statusbar_item_t *item = vg_statusbar_add_button(
-        (vg_statusbar_t *)bar, (vg_statusbar_zone_t)zone, ctext, NULL, NULL);
+    vg_statusbar_item_t *item = vg_statusbar_add_button(sb, checked_zone, ctext, NULL, NULL);
     free(ctext);
     return item;
 }
@@ -878,25 +923,31 @@ void *rt_statusbar_add_button(void *bar, rt_string text, int64_t zone) {
 /// @brief Append a progress bar to a status-bar zone (drive via `rt_statusbaritem_set_progress`).
 void *rt_statusbar_add_progress(void *bar, int64_t zone) {
     RT_ASSERT_MAIN_THREAD();
-    if (!bar)
-        return NULL;
-    return vg_statusbar_add_progress((vg_statusbar_t *)bar, (vg_statusbar_zone_t)zone);
+    vg_statusbar_t *sb = rt_statusbar_checked(bar);
+    vg_statusbar_zone_t checked_zone = VG_STATUSBAR_ZONE_LEFT;
+    return sb && rt_statusbar_zone_checked(zone, &checked_zone)
+               ? vg_statusbar_add_progress(sb, checked_zone)
+               : NULL;
 }
 
 /// @brief Append a vertical separator line to a status-bar zone.
 void *rt_statusbar_add_separator(void *bar, int64_t zone) {
     RT_ASSERT_MAIN_THREAD();
-    if (!bar)
-        return NULL;
-    return vg_statusbar_add_separator((vg_statusbar_t *)bar, (vg_statusbar_zone_t)zone);
+    vg_statusbar_t *sb = rt_statusbar_checked(bar);
+    vg_statusbar_zone_t checked_zone = VG_STATUSBAR_ZONE_LEFT;
+    return sb && rt_statusbar_zone_checked(zone, &checked_zone)
+               ? vg_statusbar_add_separator(sb, checked_zone)
+               : NULL;
 }
 
 /// @brief Append a flexible spacer (consumes free space within the zone).
 void *rt_statusbar_add_spacer(void *bar, int64_t zone) {
     RT_ASSERT_MAIN_THREAD();
-    if (!bar)
-        return NULL;
-    return vg_statusbar_add_spacer((vg_statusbar_t *)bar, (vg_statusbar_zone_t)zone);
+    vg_statusbar_t *sb = rt_statusbar_checked(bar);
+    vg_statusbar_zone_t checked_zone = VG_STATUSBAR_ZONE_LEFT;
+    return sb && rt_statusbar_zone_checked(zone, &checked_zone)
+               ? vg_statusbar_add_spacer(sb, checked_zone)
+               : NULL;
 }
 
 /// @brief Remove an item from the status bar.
@@ -904,8 +955,7 @@ void rt_statusbar_remove_item(void *bar, void *item) {
     RT_ASSERT_MAIN_THREAD();
     if (!bar || !item)
         return;
-    vg_statusbar_t *sb =
-        (vg_statusbar_t *)rt_gui_widget_handle_checked_type(bar, VG_WIDGET_STATUSBAR);
+    vg_statusbar_t *sb = rt_statusbar_checked(bar);
     if (!sb || !vg_statusbar_item_is_live((vg_statusbar_item_t *)item) ||
         ((vg_statusbar_item_t *)item)->owner != sb)
         return;
@@ -918,10 +968,7 @@ void rt_statusbar_remove_item(void *bar, void *item) {
 /// @brief Remove all items from all status bar zones.
 void rt_statusbar_clear(void *bar) {
     RT_ASSERT_MAIN_THREAD();
-    if (!bar)
-        return;
-    vg_statusbar_t *sb =
-        (vg_statusbar_t *)rt_gui_widget_handle_checked_type(bar, VG_WIDGET_STATUSBAR);
+    vg_statusbar_t *sb = rt_statusbar_checked(bar);
     if (!sb)
         return;
     rt_gui_app_t *app = rt_gui_app_from_widget(&sb->base);
@@ -935,17 +982,17 @@ void rt_statusbar_clear(void *bar) {
 /// @brief Show or hide the status bar.
 void rt_statusbar_set_visible(void *bar, int64_t visible) {
     RT_ASSERT_MAIN_THREAD();
-    if (!bar)
+    vg_statusbar_t *sb = rt_statusbar_checked(bar);
+    if (!sb)
         return;
-    vg_widget_set_visible(&((vg_statusbar_t *)bar)->base, visible != 0);
+    vg_widget_set_visible(&sb->base, visible != 0);
 }
 
 /// @brief Check whether the status bar is currently visible.
 int64_t rt_statusbar_is_visible(void *bar) {
     RT_ASSERT_MAIN_THREAD();
-    if (!bar)
-        return 0;
-    return ((vg_statusbar_t *)bar)->base.visible ? 1 : 0;
+    vg_statusbar_t *sb = rt_statusbar_checked(bar);
+    return sb && sb->base.visible ? 1 : 0;
 }
 
 //=============================================================================
@@ -1082,9 +1129,9 @@ void *rt_toolbar_new_vertical(void *parent) {
 /// @brief Release resources and destroy the toolbar.
 void rt_toolbar_destroy(void *toolbar) {
     RT_ASSERT_MAIN_THREAD();
-    if (toolbar) {
-        rt_widget_destroy(toolbar);
-    }
+    vg_toolbar_t *tb = rt_toolbar_checked(toolbar);
+    if (tb)
+        rt_widget_destroy(tb);
 }
 
 /// @brief Append an icon-only toolbar button.
@@ -1092,7 +1139,8 @@ void rt_toolbar_destroy(void *toolbar) {
 /// Loads the icon from `icon_path` and uses `tooltip` for hover text.
 void *rt_toolbar_add_button(void *toolbar, rt_string icon_path, rt_string tooltip) {
     RT_ASSERT_MAIN_THREAD();
-    if (!toolbar)
+    vg_toolbar_t *tb = rt_toolbar_checked(toolbar);
+    if (!tb)
         return NULL;
     char *cicon = rt_string_to_cstr(icon_path);
     char *ctooltip = rt_string_to_cstr(tooltip);
@@ -1101,8 +1149,7 @@ void *rt_toolbar_add_button(void *toolbar, rt_string icon_path, rt_string toolti
     free(cicon);
     cicon = NULL;
 
-    vg_toolbar_item_t *item =
-        vg_toolbar_add_button((vg_toolbar_t *)toolbar, NULL, NULL, icon, NULL, NULL);
+    vg_toolbar_item_t *item = vg_toolbar_add_button(tb, NULL, NULL, icon, NULL, NULL);
     if (item) {
         vg_toolbar_item_set_tooltip(item, ctooltip);
     }
@@ -1121,7 +1168,8 @@ void *rt_toolbar_add_button_with_text(void *toolbar,
                                       rt_string text,
                                       rt_string tooltip) {
     RT_ASSERT_MAIN_THREAD();
-    if (!toolbar)
+    vg_toolbar_t *tb = rt_toolbar_checked(toolbar);
+    if (!tb)
         return NULL;
     char *cicon = rt_string_to_cstr(icon_path);
     char *ctext = rt_string_to_cstr(text);
@@ -1131,8 +1179,7 @@ void *rt_toolbar_add_button_with_text(void *toolbar,
     free(cicon);
     cicon = NULL;
 
-    vg_toolbar_item_t *item =
-        vg_toolbar_add_button((vg_toolbar_t *)toolbar, NULL, ctext, icon, NULL, NULL);
+    vg_toolbar_item_t *item = vg_toolbar_add_button(tb, NULL, ctext, icon, NULL, NULL);
     if (item) {
         // Force label visible — tb->show_labels defaults to false, so items
         // created via AddButtonWithText would otherwise never show their label.
@@ -1148,7 +1195,8 @@ void *rt_toolbar_add_button_with_text(void *toolbar,
 /// @brief Append a sticky toggle button (radio/checkbox-style press state).
 void *rt_toolbar_add_toggle(void *toolbar, rt_string icon_path, rt_string tooltip) {
     RT_ASSERT_MAIN_THREAD();
-    if (!toolbar)
+    vg_toolbar_t *tb = rt_toolbar_checked(toolbar);
+    if (!tb)
         return NULL;
     char *cicon = rt_string_to_cstr(icon_path);
     char *ctooltip = rt_string_to_cstr(tooltip);
@@ -1157,8 +1205,7 @@ void *rt_toolbar_add_toggle(void *toolbar, rt_string icon_path, rt_string toolti
     free(cicon);
     cicon = NULL;
 
-    vg_toolbar_item_t *item =
-        vg_toolbar_add_toggle((vg_toolbar_t *)toolbar, NULL, NULL, icon, false, NULL, NULL);
+    vg_toolbar_item_t *item = vg_toolbar_add_toggle(tb, NULL, NULL, icon, false, NULL, NULL);
     if (item) {
         vg_toolbar_item_set_tooltip(item, ctooltip);
     }
@@ -1170,31 +1217,29 @@ void *rt_toolbar_add_toggle(void *toolbar, rt_string icon_path, rt_string toolti
 /// @brief Append a vertical (or horizontal, for vertical toolbars) separator line.
 void *rt_toolbar_add_separator(void *toolbar) {
     RT_ASSERT_MAIN_THREAD();
-    if (!toolbar)
-        return NULL;
-    return vg_toolbar_add_separator((vg_toolbar_t *)toolbar);
+    vg_toolbar_t *tb = rt_toolbar_checked(toolbar);
+    return tb ? vg_toolbar_add_separator(tb) : NULL;
 }
 
 /// @brief Append a flexible spacer (consumes free space, useful for right-aligning items).
 void *rt_toolbar_add_spacer(void *toolbar) {
     RT_ASSERT_MAIN_THREAD();
-    if (!toolbar)
-        return NULL;
-    return vg_toolbar_add_spacer((vg_toolbar_t *)toolbar);
+    vg_toolbar_t *tb = rt_toolbar_checked(toolbar);
+    return tb ? vg_toolbar_add_spacer(tb) : NULL;
 }
 
 /// @brief Append a dropdown button — clicking opens an attached menu of choices.
 void *rt_toolbar_add_dropdown(void *toolbar, rt_string tooltip) {
     RT_ASSERT_MAIN_THREAD();
-    if (!toolbar)
+    vg_toolbar_t *tb = rt_toolbar_checked(toolbar);
+    if (!tb)
         return NULL;
     char *ctooltip = rt_string_to_cstr(tooltip);
 
     vg_icon_t icon = {0};
     icon.type = VG_ICON_NONE;
 
-    vg_toolbar_item_t *item =
-        vg_toolbar_add_dropdown((vg_toolbar_t *)toolbar, NULL, NULL, icon, NULL);
+    vg_toolbar_item_t *item = vg_toolbar_add_dropdown(tb, NULL, NULL, icon, NULL);
     if (item) {
         vg_toolbar_item_set_tooltip(item, ctooltip);
     }
@@ -1208,8 +1253,7 @@ void rt_toolbar_remove_item(void *toolbar, void *item) {
     RT_ASSERT_MAIN_THREAD();
     if (!toolbar || !item)
         return;
-    vg_toolbar_t *tb =
-        (vg_toolbar_t *)rt_gui_widget_handle_checked_type(toolbar, VG_WIDGET_TOOLBAR);
+    vg_toolbar_t *tb = rt_toolbar_checked(toolbar);
     if (!tb)
         return;
     vg_toolbar_item_t *ti = (vg_toolbar_item_t *)item;
@@ -1224,42 +1268,42 @@ void rt_toolbar_remove_item(void *toolbar, void *item) {
 /// @brief Get a size property of the toolbar (button width or height).
 void rt_toolbar_set_icon_size(void *toolbar, int64_t size) {
     RT_ASSERT_MAIN_THREAD();
-    if (!toolbar)
+    vg_toolbar_t *tb = rt_toolbar_checked(toolbar);
+    if (!tb)
         return;
-    vg_toolbar_set_icon_size((vg_toolbar_t *)toolbar,
+    vg_toolbar_set_icon_size(tb,
                              (vg_toolbar_icon_size_t)rt_gui_clamp_i64_to_i32(size, 0, 2));
 }
 
 /// @brief Get a size property of the toolbar (button width or height).
 int64_t rt_toolbar_get_icon_size(void *toolbar) {
     RT_ASSERT_MAIN_THREAD();
-    if (!toolbar)
-        return RT_TOOLBAR_ICON_MEDIUM;
-    return ((vg_toolbar_t *)toolbar)->icon_size;
+    vg_toolbar_t *tb = rt_toolbar_checked(toolbar);
+    return tb ? tb->icon_size : RT_TOOLBAR_ICON_MEDIUM;
 }
 
 /// @brief Set the style of the toolbar.
 void rt_toolbar_set_style(void *toolbar, int64_t style) {
     RT_ASSERT_MAIN_THREAD();
-    if (!toolbar)
+    vg_toolbar_t *tb = rt_toolbar_checked(toolbar);
+    if (!tb)
         return;
-    vg_toolbar_set_show_labels((vg_toolbar_t *)toolbar, style != RT_TOOLBAR_STYLE_ICON_ONLY);
+    vg_toolbar_set_show_labels(tb, style != RT_TOOLBAR_STYLE_ICON_ONLY);
 }
 
 /// @brief Get the number of items in the toolbar.
 int64_t rt_toolbar_get_item_count(void *toolbar) {
     RT_ASSERT_MAIN_THREAD();
-    if (!toolbar)
-        return 0;
-    return ((vg_toolbar_t *)toolbar)->item_count;
+    vg_toolbar_t *tb = rt_toolbar_checked(toolbar);
+    return tb ? (int64_t)tb->item_count : 0;
 }
 
 /// @brief Return the `index`-th item in the toolbar (NULL on out-of-range).
 void *rt_toolbar_get_item(void *toolbar, int64_t index) {
     RT_ASSERT_MAIN_THREAD();
-    if (!toolbar)
+    vg_toolbar_t *tb = rt_toolbar_checked(toolbar);
+    if (!tb)
         return NULL;
-    vg_toolbar_t *tb = (vg_toolbar_t *)toolbar;
     if (index < 0 || index >= (int64_t)tb->item_count)
         return NULL;
     return tb->items[index];
@@ -1268,17 +1312,17 @@ void *rt_toolbar_get_item(void *toolbar, int64_t index) {
 /// @brief Show or hide the toolbar.
 void rt_toolbar_set_visible(void *toolbar, int64_t visible) {
     RT_ASSERT_MAIN_THREAD();
-    if (!toolbar)
+    vg_toolbar_t *tb = rt_toolbar_checked(toolbar);
+    if (!tb)
         return;
-    ((vg_toolbar_t *)toolbar)->base.visible = visible != 0;
+    vg_widget_set_visible(&tb->base, visible != 0);
 }
 
 /// @brief Check whether the toolbar is currently visible.
 int64_t rt_toolbar_is_visible(void *toolbar) {
     RT_ASSERT_MAIN_THREAD();
-    if (!toolbar)
-        return 0;
-    return ((vg_toolbar_t *)toolbar)->base.visible ? 1 : 0;
+    vg_toolbar_t *tb = rt_toolbar_checked(toolbar);
+    return tb && tb->base.visible ? 1 : 0;
 }
 
 //=============================================================================

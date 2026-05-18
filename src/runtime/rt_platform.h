@@ -659,7 +659,7 @@ void rt_assert_main_thread_(const char *file, int line);
 /// @def RT_ASSERT_MAIN_THREAD()
 /// Traps with a diagnostic if called from a non-main thread.
 /// On ViperDOS (no threading), compiles to nothing.
-#if RT_PLATFORM_VIPERDOS
+#if RT_PLATFORM_VIPERDOS || defined(RT_NO_MAIN_THREAD_ASSERT)
 #define RT_ASSERT_MAIN_THREAD() ((void)0)
 #else
 #define RT_ASSERT_MAIN_THREAD() rt_assert_main_thread_(__FILE__, __LINE__)

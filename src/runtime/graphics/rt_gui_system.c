@@ -103,14 +103,16 @@ static void rt_shortcuts_ensure_capacity(rt_gui_app_t *app) {
 /// @brief Parse a `+`-separated shortcut string (e.g. `"Ctrl+Shift+S"`) into modifier flags + key code.
 ///
 /// Recognises `Ctrl`/`Control`, `Shift`, `Alt`, `Cmd`/`Command`
-/// (mapped to Ctrl on non-macOS for cross-platform consistency),
+/// (`Cmd` is distinct on macOS and maps to Ctrl/Super-compatible shortcuts elsewhere),
 /// `F1`-`F12`, named keys (`Enter`, `Escape`, arrows, etc.), and
 /// any single character. Case-insensitive.
-/// @return 1 on success, 0 on alloc failure.
-static int parse_shortcut_keys(const char *keys, int *ctrl, int *shift, int *alt, int *key) {
+/// @return 1 on success, 0 on invalid syntax or alloc failure.
+static int parse_shortcut_keys(
+    const char *keys, int *ctrl, int *shift, int *alt, int *super, int *key) {
     *ctrl = 0;
     *shift = 0;
     *alt = 0;
+    *super = 0;
     *key = 0;
 
     if (!keys)
@@ -123,6 +125,7 @@ static int parse_shortcut_keys(const char *keys, int *ctrl, int *shift, int *alt
     char *saveptr = NULL;
     char *token = rt_strtok_r(copy, "+", &saveptr);
     while (token) {
+        int recognized = 0;
         // Trim whitespace
         while (*token == ' ')
             token++;
@@ -130,51 +133,145 @@ static int parse_shortcut_keys(const char *keys, int *ctrl, int *shift, int *alt
         while (end > token && end[-1] == ' ')
             *--end = '\0';
 
+        if (*token == '\0') {
+            free(copy);
+            return 0;
+        }
+
         if (strcasecmp(token, "Ctrl") == 0 || strcasecmp(token, "Control") == 0) {
             *ctrl = 1;
+            recognized = 1;
         } else if (strcasecmp(token, "Shift") == 0) {
             *shift = 1;
+            recognized = 1;
         } else if (strcasecmp(token, "Alt") == 0) {
             *alt = 1;
+            recognized = 1;
         } else if (strcasecmp(token, "Cmd") == 0 || strcasecmp(token, "Command") == 0) {
-            *ctrl = 1; // Map Cmd to Ctrl for cross-platform
+            *super = 1;
+            recognized = 1;
         } else if (strlen(token) == 1) {
+            if (*key != 0) {
+                free(copy);
+                return 0;
+            }
             // Single character key
             *key = toupper((unsigned char)token[0]);
+            recognized = 1;
         } else if (token[0] == 'F' && strlen(token) <= 3) {
             // Function key (F1-F12)
             int fnum = atoi(token + 1);
             if (fnum >= 1 && fnum <= 12) {
+                if (*key != 0) {
+                    free(copy);
+                    return 0;
+                }
                 *key = VG_KEY_F1 + (fnum - 1);
+                recognized = 1;
             }
-        } else if (strcasecmp(token, "Enter") == 0 || strcasecmp(token, "Return") == 0)
+        } else if (strcasecmp(token, "Enter") == 0 || strcasecmp(token, "Return") == 0) {
+            if (*key != 0) {
+                free(copy);
+                return 0;
+            }
             *key = VG_KEY_ENTER;
-        else if (strcasecmp(token, "Escape") == 0 || strcasecmp(token, "Esc") == 0)
+            recognized = 1;
+        } else if (strcasecmp(token, "Escape") == 0 || strcasecmp(token, "Esc") == 0) {
+            if (*key != 0) {
+                free(copy);
+                return 0;
+            }
             *key = VG_KEY_ESCAPE;
-        else if (strcasecmp(token, "Space") == 0)
+            recognized = 1;
+        } else if (strcasecmp(token, "Space") == 0) {
+            if (*key != 0) {
+                free(copy);
+                return 0;
+            }
             *key = VG_KEY_SPACE;
-        else if (strcasecmp(token, "Tab") == 0)
+            recognized = 1;
+        } else if (strcasecmp(token, "Tab") == 0) {
+            if (*key != 0) {
+                free(copy);
+                return 0;
+            }
             *key = VG_KEY_TAB;
-        else if (strcasecmp(token, "Backspace") == 0)
+            recognized = 1;
+        } else if (strcasecmp(token, "Backspace") == 0) {
+            if (*key != 0) {
+                free(copy);
+                return 0;
+            }
             *key = VG_KEY_BACKSPACE;
-        else if (strcasecmp(token, "Delete") == 0 || strcasecmp(token, "Del") == 0)
+            recognized = 1;
+        } else if (strcasecmp(token, "Delete") == 0 || strcasecmp(token, "Del") == 0) {
+            if (*key != 0) {
+                free(copy);
+                return 0;
+            }
             *key = VG_KEY_DELETE;
-        else if (strcasecmp(token, "Home") == 0)
+            recognized = 1;
+        } else if (strcasecmp(token, "Home") == 0) {
+            if (*key != 0) {
+                free(copy);
+                return 0;
+            }
             *key = VG_KEY_HOME;
-        else if (strcasecmp(token, "End") == 0)
+            recognized = 1;
+        } else if (strcasecmp(token, "End") == 0) {
+            if (*key != 0) {
+                free(copy);
+                return 0;
+            }
             *key = VG_KEY_END;
-        else if (strcasecmp(token, "PageUp") == 0 || strcasecmp(token, "PgUp") == 0)
+            recognized = 1;
+        } else if (strcasecmp(token, "PageUp") == 0 || strcasecmp(token, "PgUp") == 0) {
+            if (*key != 0) {
+                free(copy);
+                return 0;
+            }
             *key = VG_KEY_PAGE_UP;
-        else if (strcasecmp(token, "PageDown") == 0 || strcasecmp(token, "PgDn") == 0)
+            recognized = 1;
+        } else if (strcasecmp(token, "PageDown") == 0 || strcasecmp(token, "PgDn") == 0) {
+            if (*key != 0) {
+                free(copy);
+                return 0;
+            }
             *key = VG_KEY_PAGE_DOWN;
-        else if (strcasecmp(token, "Left") == 0)
+            recognized = 1;
+        } else if (strcasecmp(token, "Left") == 0) {
+            if (*key != 0) {
+                free(copy);
+                return 0;
+            }
             *key = VG_KEY_LEFT;
-        else if (strcasecmp(token, "Right") == 0)
+            recognized = 1;
+        } else if (strcasecmp(token, "Right") == 0) {
+            if (*key != 0) {
+                free(copy);
+                return 0;
+            }
             *key = VG_KEY_RIGHT;
-        else if (strcasecmp(token, "Up") == 0)
+            recognized = 1;
+        } else if (strcasecmp(token, "Up") == 0) {
+            if (*key != 0) {
+                free(copy);
+                return 0;
+            }
             *key = VG_KEY_UP;
-        else if (strcasecmp(token, "Down") == 0)
+            recognized = 1;
+        } else if (strcasecmp(token, "Down") == 0) {
+            if (*key != 0) {
+                free(copy);
+                return 0;
+            }
             *key = VG_KEY_DOWN;
+            recognized = 1;
+        }
+        if (!recognized) {
+            free(copy);
+            return 0;
+        }
         token = rt_strtok_r(NULL, "+", &saveptr);
     }
 
@@ -212,8 +309,10 @@ void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description) 
     int parsed_ctrl = 0;
     int parsed_shift = 0;
     int parsed_alt = 0;
+    int parsed_super = 0;
     int parsed_key = 0;
-    if (!parse_shortcut_keys(ckeys, &parsed_ctrl, &parsed_shift, &parsed_alt, &parsed_key)) {
+    if (!parse_shortcut_keys(
+            ckeys, &parsed_ctrl, &parsed_shift, &parsed_alt, &parsed_super, &parsed_key)) {
         free(cid);
         free(ckeys);
         free(cdesc);
@@ -230,6 +329,7 @@ void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description) 
             app->shortcuts[i].parsed_ctrl = parsed_ctrl;
             app->shortcuts[i].parsed_shift = parsed_shift;
             app->shortcuts[i].parsed_alt = parsed_alt;
+            app->shortcuts[i].parsed_super = parsed_super;
             app->shortcuts[i].parsed_key = parsed_key;
             free(cid);
             return;
@@ -253,6 +353,7 @@ void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description) 
     sc->parsed_ctrl = parsed_ctrl;
     sc->parsed_shift = parsed_shift;
     sc->parsed_alt = parsed_alt;
+    sc->parsed_super = parsed_super;
     sc->parsed_key = parsed_key;
     app->shortcut_count++;
 }
@@ -349,9 +450,9 @@ void rt_shortcuts_clear_triggered(rt_gui_app_t *app) {
 /// @details Walks the shortcut table and returns 1 if any enabled shortcut's
 ///          (ctrl, shift, alt, key) tuple matches the incoming event. Several
 ///          normalisations apply before comparison:
-///          - **Cmd → Ctrl on macOS.** Both `VG_MOD_CTRL` and `VG_MOD_SUPER`
-///            map to `has_ctrl`, so a shortcut registered as `Ctrl+S` fires for
-///            `Cmd+S` on macOS without callers needing platform-specific logic.
+///          - **Cmd/Ctrl intent.** `Cmd` registrations match Super on macOS,
+///            while non-Apple platforms keep `Cmd` usable by mapping it to the
+///            same Ctrl/Super-compatible event bucket as `Ctrl`.
 ///          - **Modifier requirement.** Plain keys (no Ctrl, no Alt) are
 ///            rejected up front *unless* they're function keys F1–F12, which
 ///            are valid shortcuts on their own. This prevents typing `S` in a
@@ -373,14 +474,20 @@ int8_t rt_shortcuts_check_key(rt_gui_app_t *app, int key, int mods) {
     if (!app || !app->shortcuts_global_enabled)
         return 0;
 
-    // On macOS, Cmd is used instead of Ctrl for shortcuts.
-    // Treat VG_MOD_SUPER as Ctrl for cross-platform compatibility.
-    int has_ctrl = (mods & VG_MOD_CTRL) || (mods & VG_MOD_SUPER);
+    int has_ctrl = (mods & VG_MOD_CTRL) ? 1 : 0;
+    int has_super = (mods & VG_MOD_SUPER) ? 1 : 0;
     int has_shift = (mods & VG_MOD_SHIFT) ? 1 : 0;
     int has_alt = (mods & VG_MOD_ALT) ? 1 : 0;
+#ifdef __APPLE__
+    int event_ctrl = has_ctrl;
+    int event_super = has_super;
+#else
+    int event_ctrl = has_ctrl || has_super;
+    int event_super = 0;
+#endif
 
     // Only check if at least one modifier is held (plain keys aren't shortcuts)
-    if (!has_ctrl && !has_alt && !(key >= VG_KEY_F1 && key <= VG_KEY_F12))
+    if (!event_ctrl && !event_super && !has_alt && !(key >= VG_KEY_F1 && key <= VG_KEY_F12))
         return 0;
 
     int upper_key = (key >= 'a' && key <= 'z') ? key - ('a' - 'A') : key;
@@ -389,7 +496,14 @@ int8_t rt_shortcuts_check_key(rt_gui_app_t *app, int key, int mods) {
         if (!app->shortcuts[i].enabled || !app->shortcuts[i].parsed_key)
             continue;
 
-        if (app->shortcuts[i].parsed_ctrl == has_ctrl &&
+        int expected_ctrl = app->shortcuts[i].parsed_ctrl;
+        int expected_super = app->shortcuts[i].parsed_super;
+#ifndef __APPLE__
+        expected_ctrl = expected_ctrl || expected_super;
+        expected_super = 0;
+#endif
+
+        if (expected_ctrl == event_ctrl && expected_super == event_super &&
             app->shortcuts[i].parsed_shift == has_shift &&
             app->shortcuts[i].parsed_alt == has_alt && app->shortcuts[i].parsed_key == upper_key) {
             app->shortcuts[i].triggered = 1;
@@ -813,6 +927,7 @@ void rt_app_set_font_size(void *app, double size) {
     // Store physical pixels — multiply logical pt size by HiDPI scale.
     float _s = rt_app_window_scale(gui_app);
     gui_app->default_font_size = (float)size * _s;
+    rt_gui_reapply_default_font(gui_app);
 }
 
 //=============================================================================

@@ -34,6 +34,8 @@
 // Phase 5: MessageBox Dialog
 //=============================================================================
 
+#define RT_MESSAGEBOX_DATA_MAGIC UINT64_C(0x52544D5347424F58)
+
 /// @brief Return the active GUI app for message box hosting (falls back to `s_current_app`).
 static rt_gui_app_t *rt_messagebox_app(void) {
     rt_gui_app_t *app = rt_gui_get_active_app();
@@ -78,6 +80,7 @@ static vg_dialog_result_t rt_messagebox_run_modal(rt_gui_app_t *app, vg_dialog_t
 /// @brief One-shot informational message box (single OK button, info icon). Blocks until user
 /// dismisses. Returns 0 (no meaningful selection — the OK is the only choice).
 int64_t rt_messagebox_info(rt_string title, rt_string message) {
+    RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_messagebox_app();
     char *ctitle = rt_string_to_cstr(title);
     char *cmsg = rt_string_to_cstr(message);
@@ -97,6 +100,7 @@ int64_t rt_messagebox_info(rt_string title, rt_string message) {
 /// @brief One-shot warning message box (single OK button, warning/exclamation icon). Always
 /// returns 0; for accept/decline use `_confirm` or `_question`.
 int64_t rt_messagebox_warning(rt_string title, rt_string message) {
+    RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_messagebox_app();
     char *ctitle = rt_string_to_cstr(title);
     char *cmsg = rt_string_to_cstr(message);
@@ -116,6 +120,7 @@ int64_t rt_messagebox_warning(rt_string title, rt_string message) {
 
 /// @brief One-shot error message box (single OK, red/error icon). Returns 0 always.
 int64_t rt_messagebox_error(rt_string title, rt_string message) {
+    RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_messagebox_app();
     char *ctitle = rt_string_to_cstr(title);
     char *cmsg = rt_string_to_cstr(message);
@@ -135,6 +140,7 @@ int64_t rt_messagebox_error(rt_string title, rt_string message) {
 /// @brief Yes/No question box (question icon). Returns 1 if user chose Yes, 0 for No or any
 /// other dismissal (Esc, window close).
 int64_t rt_messagebox_question(rt_string title, rt_string message) {
+    RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_messagebox_app();
     char *ctitle = rt_string_to_cstr(title);
     char *cmsg = rt_string_to_cstr(message);
@@ -154,6 +160,7 @@ int64_t rt_messagebox_question(rt_string title, rt_string message) {
 
 /// @brief OK/Cancel confirmation box (question icon). Returns 1 for OK, 0 for Cancel.
 int64_t rt_messagebox_confirm(rt_string title, rt_string message) {
+    RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_messagebox_app();
     char *ctitle = rt_string_to_cstr(title);
     char *cmsg = rt_string_to_cstr(message);
@@ -173,6 +180,7 @@ int64_t rt_messagebox_confirm(rt_string title, rt_string message) {
 
 // Prompt commit callback data
 typedef struct {
+    uint64_t magic;
     vg_dialog_t *dialog;
 } rt_prompt_commit_data_t;
 
@@ -189,6 +197,7 @@ static void prompt_on_commit(vg_widget_t *w, const char *text, void *user_data) 
 /// Pressing Enter inside the input dismisses as OK. Returns the entered text on OK, or empty
 /// on Cancel/empty submission. The text input receives focus immediately for fast typing.
 rt_string rt_messagebox_prompt(rt_string title, rt_string message) {
+    RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_messagebox_app();
     if (!app)
         return rt_str_empty();
@@ -257,6 +266,7 @@ rt_string rt_messagebox_prompt(rt_string title, rt_string message) {
 
 // Custom MessageBox structure for tracking state
 typedef struct {
+    uint64_t magic;
     vg_dialog_t *dialog;
     int64_t result;
     int64_t default_button;
@@ -267,6 +277,11 @@ typedef struct {
     size_t custom_button_count;
     size_t custom_button_cap;
 } rt_messagebox_data_t;
+
+static rt_messagebox_data_t *rt_messagebox_checked(void *box) {
+    rt_messagebox_data_t *data = (rt_messagebox_data_t *)box;
+    return data && data->magic == RT_MESSAGEBOX_DATA_MAGIC ? data : NULL;
+}
 
 /// @brief Release all resources: free custom button labels, destroy the VG dialog,
 ///        and remove it from the app's dialog stack.
@@ -289,6 +304,7 @@ static void rt_messagebox_dispose(rt_messagebox_data_t *data) {
         data->dialog = NULL;
     }
     data->result = -1;
+    data->magic = 0;
 }
 
 /// @brief GC finalizer — delegates to `rt_messagebox_dispose` to free custom button labels
@@ -301,6 +317,7 @@ static void rt_messagebox_finalize(void *box) {
 /// start empty — call `_add_button` to register them, then `_show` to display modally. Returns
 /// the GC-managed handle, or NULL on failure.
 void *rt_messagebox_new(rt_string title, rt_string message, int64_t type) {
+    RT_ASSERT_MAIN_THREAD();
     char *ctitle = rt_string_to_cstr(title);
     vg_dialog_t *dlg = vg_dialog_create(ctitle);
     if (ctitle)
@@ -338,6 +355,7 @@ void *rt_messagebox_new(rt_string title, rt_string message, int64_t type) {
         return NULL;
     }
     data->dialog = dlg;
+    data->magic = RT_MESSAGEBOX_DATA_MAGIC;
     data->result = -1;
     data->default_button = 0;
     data->owner_app = rt_messagebox_app();
@@ -352,30 +370,35 @@ void *rt_messagebox_new(rt_string title, rt_string message, int64_t type) {
 
 /// @brief Convenience: stateful MessageBox with INFO icon.
 void *rt_messagebox_new_info(rt_string title, rt_string message) {
+    RT_ASSERT_MAIN_THREAD();
     return rt_messagebox_new(title, message, RT_MESSAGEBOX_INFO);
 }
 
 /// @brief Convenience: stateful MessageBox with WARNING icon.
 void *rt_messagebox_new_warning(rt_string title, rt_string message) {
+    RT_ASSERT_MAIN_THREAD();
     return rt_messagebox_new(title, message, RT_MESSAGEBOX_WARNING);
 }
 
 /// @brief Convenience: stateful MessageBox with ERROR icon.
 void *rt_messagebox_new_error(rt_string title, rt_string message) {
+    RT_ASSERT_MAIN_THREAD();
     return rt_messagebox_new(title, message, RT_MESSAGEBOX_ERROR);
 }
 
 /// @brief Convenience: stateful MessageBox with QUESTION icon.
 void *rt_messagebox_new_question(rt_string title, rt_string message) {
+    RT_ASSERT_MAIN_THREAD();
     return rt_messagebox_new(title, message, RT_MESSAGEBOX_QUESTION);
 }
 
 /// @brief Append a custom button (`text` label, `id` returned on click). Multiple calls extend
 /// the button row; auto-detects "Cancel"/"Close"/"No" labels for Esc-binding behavior.
 void rt_messagebox_add_button(void *box, rt_string text, int64_t id) {
-    if (!box)
+    RT_ASSERT_MAIN_THREAD();
+    rt_messagebox_data_t *data = rt_messagebox_checked(box);
+    if (!data)
         return;
-    rt_messagebox_data_t *data = (rt_messagebox_data_t *)box;
     if (!data->dialog)
         return;
 
@@ -427,9 +450,10 @@ void rt_messagebox_add_button(void *box, rt_string text, int64_t id) {
 /// @brief Mark the button with `id` as the default (Enter-key activated). Updates any matching
 /// button in the buttons-list. Stored separately so it works even if added later.
 void rt_messagebox_set_default_button(void *box, int64_t id) {
-    if (!box)
+    RT_ASSERT_MAIN_THREAD();
+    rt_messagebox_data_t *data = rt_messagebox_checked(box);
+    if (!data)
         return;
-    rt_messagebox_data_t *data = (rt_messagebox_data_t *)box;
     if (!data->dialog)
         return;
     data->default_button = id;
@@ -443,9 +467,10 @@ void rt_messagebox_set_default_button(void *box, int64_t id) {
 /// constructed, or the user closed the window without picking. Custom buttons (added via
 /// `_add_button`) take precedence over preset mappings.
 int64_t rt_messagebox_show(void *box) {
-    if (!box)
+    RT_ASSERT_MAIN_THREAD();
+    rt_messagebox_data_t *data = rt_messagebox_checked(box);
+    if (!data)
         return -1;
-    rt_messagebox_data_t *data = (rt_messagebox_data_t *)box;
     rt_gui_app_t *app = rt_gui_is_app_handle(data->owner_app) ? data->owner_app
                                                               : rt_messagebox_app();
     if (!app || !data->dialog)
@@ -487,9 +512,11 @@ int64_t rt_messagebox_show(void *box) {
 /// @brief Manually free dialog resources (custom buttons, backend handle). The GC finalizer
 /// also calls this — explicit destruction is optional but useful for early cleanup.
 void rt_messagebox_destroy(void *box) {
-    if (!box)
+    RT_ASSERT_MAIN_THREAD();
+    rt_messagebox_data_t *data = rt_messagebox_checked(box);
+    if (!data)
         return;
-    rt_messagebox_dispose((rt_messagebox_data_t *)box);
+    rt_messagebox_dispose(data);
 }
 
 #else /* !VIPER_ENABLE_GRAPHICS */

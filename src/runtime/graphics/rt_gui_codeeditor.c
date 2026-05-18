@@ -308,7 +308,7 @@ static void rt_zia_syntax_cb(
         if (text[i] == '"') {
             size_t start = i++;
             while (i < len && text[i] != '"') {
-                if (text[i] == '\\')
+                if (text[i] == '\\' && i + 1 < len)
                     i++; // skip escaped character
                 i++;
             }

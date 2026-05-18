@@ -75,7 +75,7 @@ static contextmenu_registry_entry_t s_registry[CONTEXTMENU_REGISTRY_MAX];
 static int s_registry_count = 0;
 
 /// @brief Return true if menu is non-NULL and its base widget is still alive.
-static bool contextmenu_is_live(vg_contextmenu_t *menu) {
+bool vg_contextmenu_is_live(const vg_contextmenu_t *menu) {
     return menu && vg_widget_is_live(&menu->base);
 }
 
@@ -1182,7 +1182,7 @@ void vg_contextmenu_dismiss(vg_contextmenu_t *menu) {
     menu->base.visible = false;
 
     if (vg_widget_get_input_capture() == &menu->base) {
-        if (parent && parent->is_visible && contextmenu_is_live(parent)) {
+        if (parent && parent->is_visible && vg_contextmenu_is_live(parent)) {
             vg_widget_set_input_capture(&parent->base);
         } else {
             vg_widget_release_input_capture();
@@ -1238,12 +1238,13 @@ void vg_contextmenu_set_on_dismiss(vg_contextmenu_t *menu,
 /// @param widget The widget to attach the menu to; must be live (non-NULL).
 /// @param menu   The context menu to open on right-click; must be live (non-NULL).
 void vg_contextmenu_register_for_widget(vg_widget_t *widget, vg_contextmenu_t *menu) {
-    if (!vg_widget_is_live(widget) || !contextmenu_is_live(menu))
+    if (!vg_widget_is_live(widget) || !vg_contextmenu_is_live(menu))
         return;
 
     // Update existing entry if widget already registered
     for (int i = 0; i < s_registry_count;) {
-        if (!vg_widget_is_live(s_registry[i].widget) || !contextmenu_is_live(s_registry[i].menu)) {
+        if (!vg_widget_is_live(s_registry[i].widget) ||
+            !vg_contextmenu_is_live(s_registry[i].menu)) {
             s_registry[i] = s_registry[--s_registry_count];
             continue;
         }
@@ -1271,7 +1272,7 @@ void vg_contextmenu_unregister_for_widget(vg_widget_t *widget) {
 
     for (int i = 0; i < s_registry_count;) {
         if (s_registry[i].widget == widget || !vg_widget_is_live(s_registry[i].widget) ||
-            !contextmenu_is_live(s_registry[i].menu)) {
+            !vg_contextmenu_is_live(s_registry[i].menu)) {
             // Swap with last entry and shrink
             s_registry[i] = s_registry[--s_registry_count];
             continue;
@@ -1297,7 +1298,8 @@ bool vg_contextmenu_process_event(vg_widget_t *widget, vg_event_t *event) {
         return false;
 
     for (int i = 0; i < s_registry_count;) {
-        if (!vg_widget_is_live(s_registry[i].widget) || !contextmenu_is_live(s_registry[i].menu)) {
+        if (!vg_widget_is_live(s_registry[i].widget) ||
+            !vg_contextmenu_is_live(s_registry[i].menu)) {
             s_registry[i] = s_registry[--s_registry_count];
             continue;
         }

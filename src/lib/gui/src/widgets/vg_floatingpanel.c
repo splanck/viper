@@ -186,6 +186,10 @@ vg_floatingpanel_t *vg_floatingpanel_create(vg_widget_t *root) {
     return panel;
 }
 
+bool vg_floatingpanel_is_live(const vg_floatingpanel_t *panel) {
+    return panel && vg_widget_is_live(&panel->base) && panel->base.vtable == &g_floatingpanel_vtable;
+}
+
 /// @brief vtable destroy — release input capture if this panel held it.
 static void floatingpanel_destroy(vg_widget_t *widget) {
     if (vg_widget_get_input_capture() == widget)

@@ -49,6 +49,8 @@
 
 #define VG_MENU_ITEM_MAGIC UINT64_C(0x56474D454E554954)
 #define VG_MENU_ITEM_RETIRED_MAGIC UINT64_C(0x56474D454E555258)
+#define VG_MENU_MAGIC UINT64_C(0x56474D454E554D4E)
+#define VG_MENU_RETIRED_MAGIC UINT64_C(0x56474D454E55524D)
 
 //=============================================================================
 // Forward Declarations
@@ -79,6 +81,8 @@ static vg_widget_vtable_t g_menubar_vtable = {.destroy = menubar_destroy,
 //=============================================================================
 
 static void free_retired_menu_items(vg_menu_t *menu);
+static bool menubar_contains_menu(const vg_menubar_t *menubar, const vg_menu_t *target);
+static void retire_menu(vg_menubar_t *menubar, vg_menu_t *menu);
 
 /// @brief Recursively free an item's text, shortcut, icon, submenu tree, and the item itself.
 static void free_menu_item(vg_menu_item_t *item) {
@@ -113,6 +117,14 @@ bool vg_menu_item_is_live(const vg_menu_item_t *item) {
            (item->parent_menu != NULL || item->owner_contextmenu != NULL);
 }
 
+bool vg_menu_is_live(const vg_menu_t *menu) {
+    if (!menu || menu->magic != VG_MENU_MAGIC || !menu->owner_menubar)
+        return false;
+    if (!vg_widget_is_live(&menu->owner_menubar->base))
+        return false;
+    return menubar_contains_menu(menu->owner_menubar, menu);
+}
+
 /// @brief Free every menu item parked on @p menu's deferred-deletion list.
 /// @details Items are "retired" (not freed immediately) while a menu may
 ///          still be referenced mid-event; this drains that list safely.
@@ -127,6 +139,30 @@ static void free_retired_menu_items(vg_menu_t *menu) {
         item = next;
     }
     menu->retired_items = NULL;
+}
+
+/// @brief Return true if @p target is reachable from @p menu, including nested submenus.
+static bool menu_tree_contains(const vg_menu_t *menu, const vg_menu_t *target) {
+    if (!menu || !target)
+        return false;
+    if (menu == target)
+        return true;
+    for (vg_menu_item_t *item = menu->first_item; item; item = item->next) {
+        if (item->submenu && menu_tree_contains(item->submenu, target))
+            return true;
+    }
+    return false;
+}
+
+/// @brief Return true if @p target is part of @p menubar's live menu tree.
+static bool menubar_contains_menu(const vg_menubar_t *menubar, const vg_menu_t *target) {
+    if (!menubar || !target)
+        return false;
+    for (vg_menu_t *menu = menubar->first_menu; menu; menu = menu->next) {
+        if (menu_tree_contains(menu, target))
+            return true;
+    }
+    return false;
 }
 
 /// @brief Close @p menu (or the currently open menu if @p menu is NULL):
@@ -160,15 +196,19 @@ static void retire_menu_item(vg_menu_t *menu, vg_menu_item_t *item) {
         return;
     if (item->submenu) {
         vg_menu_t *submenu = item->submenu;
-        vg_menu_item_t *sub = submenu->first_item;
-        while (sub) {
-            vg_menu_item_t *next = sub->next;
-            retire_menu_item(menu, sub);
-            sub = next;
+        if (submenu->owner_menubar && vg_widget_is_live(&submenu->owner_menubar->base)) {
+            retire_menu(submenu->owner_menubar, submenu);
+        } else {
+            vg_menu_item_t *sub = submenu->first_item;
+            while (sub) {
+                vg_menu_item_t *next = sub->next;
+                retire_menu_item(menu, sub);
+                sub = next;
+            }
+            free_retired_menu_items(submenu);
+            free(submenu->title);
+            free(submenu);
         }
-        free_retired_menu_items(submenu);
-        free(submenu->title);
-        free(submenu);
         item->submenu = NULL;
     }
     free(item->text);
@@ -203,6 +243,34 @@ static void free_menu(vg_menu_t *menu) {
         free(menu->title);
     free_retired_menu_items(menu);
     free(menu);
+}
+
+/// @brief Move a removed menu onto the menubar retired list so stale runtime
+///        menu handles become inert until the menubar itself is destroyed.
+static void retire_menu(vg_menubar_t *menubar, vg_menu_t *menu) {
+    if (!menubar || !menu)
+        return;
+
+    vg_menu_item_t *item = menu->first_item;
+    while (item) {
+        vg_menu_item_t *next = item->next;
+        retire_menu_item(menu, item);
+        item = next;
+    }
+
+    menu->first_item = NULL;
+    menu->last_item = NULL;
+    menu->item_count = 0;
+    free(menu->title);
+    menu->title = NULL;
+    menu->owner_menubar = menubar;
+    menu->next = NULL;
+    menu->prev = NULL;
+    menu->open = false;
+    menu->enabled = false;
+    menu->magic = VG_MENU_RETIRED_MAGIC;
+    menu->retired_next = menubar->retired_menus;
+    menubar->retired_menus = menu;
 }
 
 /// @brief Compute the screen bounds and per-item height for the currently open drop-down.
@@ -326,6 +394,7 @@ vg_menubar_t *vg_menubar_create(vg_widget_t *parent) {
     // State
     menubar->menu_active = false;
     menubar->native_main_menu = false;
+    menubar->retired_menus = NULL;
 
     // Set size
     menubar->base.constraints.min_height = menubar->height;
@@ -353,6 +422,14 @@ static void menubar_destroy(vg_widget_t *widget) {
         free_menu(menu);
         menu = next;
     }
+    menu = menubar->retired_menus;
+    while (menu) {
+        vg_menu_t *next = menu->retired_next;
+        menu->retired_next = NULL;
+        free_menu(menu);
+        menu = next;
+    }
+    menubar->retired_menus = NULL;
 
     vg_accel_entry_t *entry = menubar->accel_table;
     while (entry) {
@@ -898,6 +975,7 @@ vg_menu_t *vg_menubar_add_menu(vg_menubar_t *menubar, const char *title) {
     if (!menu)
         return NULL;
 
+    menu->magic = VG_MENU_MAGIC;
     menu->title = title ? strdup(title) : strdup("Menu");
     if (!menu->title) {
         free(menu);
@@ -1046,6 +1124,7 @@ vg_menu_t *vg_menu_add_submenu(vg_menu_t *menu, const char *title) {
     }
     item->submenu->owner_menubar = menu->owner_menubar;
     item->submenu->retired_items = NULL;
+    item->submenu->magic = VG_MENU_MAGIC;
     item->submenu->enabled = true;
 
     return item->submenu;
@@ -1177,7 +1256,7 @@ void vg_menubar_remove_menu(vg_menubar_t *menubar, vg_menu_t *menu) {
     else if (menubar->highlighted && menubar->highlighted->parent_menu == menu)
         menubar->highlighted = NULL;
 
-    free_menu(menu);
+    retire_menu(menubar, menu);
     menubar->base.needs_paint = true;
 }
 

@@ -92,52 +92,73 @@ class OopIndexBuilder {
     void build(const Program &program);
 
   private:
-    OopIndex &index_;
-    DiagnosticEmitter *emitter_;
+    OopIndex &index_;          ///< Index being populated (borrowed).
+    DiagnosticEmitter *emitter_; ///< Diagnostics sink (may be null).
 
-    // Namespace stack for qualified name construction
+    /// Namespace path of the declaration currently being scanned.
     std::vector<std::string> nsStack_;
 
-    // Track raw base names by class for later resolution
+    /// Unresolved raw base-class names per class, with the site for diagnostics.
     std::unordered_map<std::string, std::pair<std::string, il::support::SourceLoc>> rawBases_;
 
-    // USING directive context
+    /// @brief Active USING imports/aliases used to resolve unqualified names.
     struct UsingContext {
-        std::unordered_set<std::string> imports;
-        std::unordered_map<std::string, std::string> aliases;
+        std::unordered_set<std::string> imports;             ///< Imported namespace prefixes.
+        std::unordered_map<std::string, std::string> aliases; ///< alias -> qualified target.
     } usingCtx_;
 
     // Helper methods
+
+    /// @brief Join @ref nsStack_ into a dot-qualified namespace prefix.
     [[nodiscard]] std::string joinNamespace() const;
 
-    // Phase methods
+    // Phase methods (run in this declared order by build()).
+
+    /// @brief Phase 1: register every class/interface/enum declaration.
     void scanDeclarations(const std::vector<StmtPtr> &stmts);
+    /// @brief Phase 2: collect USING directives into @ref usingCtx_.
     void collectUsingDirectives(const std::vector<StmtPtr> &stmts);
+    /// @brief Phase 3: resolve raw base/implements names to qualified types.
     void resolveBasesAndImplements();
+    /// @brief Phase 4: report classes that inherit in a cycle.
     void detectInheritanceCycles();
+    /// @brief Phase 5: lay out vtables once inheritance is resolved.
     void buildVtables();
+    /// @brief Phase 6: verify each class implements its interfaces' members.
     void checkInterfaceConformance();
 
-    // Declaration processing
+    // Declaration processing (invoked from scanDeclarations).
+
+    /// @brief Register a class, its fields, and members into the index.
     void processClassDecl(const ClassDecl &classDecl);
+    /// @brief Register an interface and its abstract member set.
     void processInterfaceDecl(const InterfaceDecl &interfaceDecl);
+    /// @brief Register an enum and its constant variants.
     void processEnumDecl(const EnumDecl &enumDecl);
+    /// @brief Add a property's accessor methods to @p info.
     void processPropertyDecl(const PropertyDecl &prop, ClassInfo &info);
+    /// @brief Register a constructor, checking field-shadowing locals.
     void processConstructorDecl(const ConstructorDecl &ctor,
                                 ClassInfo &info,
                                 const ClassDecl &classDecl,
                                 const std::unordered_set<std::string> &fieldNames);
+    /// @brief Register a method, checking returns and field shadowing.
     void processMethodDecl(const MethodDecl &method,
                            ClassInfo &info,
                            const ClassDecl &classDecl,
                            const std::unordered_set<std::string> &fieldNames);
+    /// @brief Diagnose names used as both a field and a method on a class.
     void checkFieldMethodCollisions(ClassInfo &info,
                                     const ClassDecl &classDecl,
                                     const std::unordered_set<std::string> &fieldNames);
 
     // Resolution helpers
+
+    /// @brief Resolve a raw base name relative to @p classQ's scope/USINGs.
     [[nodiscard]] std::string resolveBase(const std::string &classQ, const std::string &raw) const;
+    /// @brief Expand a leading alias segment of @p q to its qualified target.
     [[nodiscard]] std::string expandAlias(const std::string &q) const;
+    /// @brief Resolve a raw interface name relative to @p classQ's scope.
     [[nodiscard]] std::string resolveInterface(const std::string &classQ,
                                                const std::string &raw) const;
 };

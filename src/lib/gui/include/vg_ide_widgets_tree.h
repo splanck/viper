@@ -486,6 +486,7 @@ struct vg_menu_item {
 
 /// @brief Menu structure (forward declared in vg_ide_widgets_common.h)
 struct vg_menu {
+    uint64_t magic;                    ///< Live-menu sentinel for stale handle detection
     char *title;                      ///< Menu title (owned, heap-allocated)
     struct vg_menubar *owner_menubar; ///< Owning menubar for change propagation.
     vg_menu_item_t *first_item;
@@ -494,6 +495,7 @@ struct vg_menu {
     int item_count;
     struct vg_menu *next;
     struct vg_menu *prev;
+    struct vg_menu *retired_next; ///< Retired-menu list link
     bool open;    ///< Is menu currently open
     bool enabled; ///< Is menu enabled (default true)
 };
@@ -511,6 +513,7 @@ typedef struct vg_menubar {
 
     vg_menu_t *first_menu;       ///< First menu
     vg_menu_t *last_menu;        ///< Last menu
+    vg_menu_t *retired_menus;    ///< Removed menus kept until menubar destroy for stale handles
     int menu_count;              ///< Number of menus
     vg_menu_t *open_menu;        ///< Currently open menu
     vg_menu_item_t *highlighted; ///< Currently highlighted item
@@ -628,6 +631,10 @@ bool vg_menubar_handle_accelerator(vg_menubar_t *menubar, int key, uint32_t modi
 /// @param item Item handle to test.
 /// @return true when item belongs to a live menu or context menu.
 bool vg_menu_item_is_live(const vg_menu_item_t *item);
+/// @brief Returns true when @p menu is still part of a live menubar menu tree.
+bool vg_menu_is_live(const vg_menu_t *menu);
+/// @brief Returns true when @p menu is still a live context menu.
+bool vg_contextmenu_is_live(const vg_contextmenu_t *menu);
 
 #ifdef __cplusplus
 }

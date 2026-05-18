@@ -154,10 +154,18 @@ static void rt_widget_forget_runtime_refs(rt_gui_app_t *app, vg_widget_t *widget
         return;
     if (rt_widget_tree_contains(widget, app->last_clicked))
         app->last_clicked = NULL;
-    if (rt_widget_tree_contains(widget, app->drag_source))
+    if (rt_widget_tree_contains(widget, app->drag_candidate))
+        app->drag_candidate = NULL;
+    if (rt_widget_tree_contains(widget, app->drag_source)) {
+        if (app->drag_source)
+            app->drag_source->_is_being_dragged = false;
         app->drag_source = NULL;
-    if (rt_widget_tree_contains(widget, app->drag_over_widget))
+    }
+    if (rt_widget_tree_contains(widget, app->drag_over_widget)) {
+        if (app->drag_over_widget)
+            app->drag_over_widget->_is_drag_over = false;
         app->drag_over_widget = NULL;
+    }
     if (rt_widget_tree_contains_statusbar_item(widget, app->last_statusbar_clicked))
         app->last_statusbar_clicked = NULL;
     if (rt_widget_tree_contains_toolbar_item(widget, app->last_toolbar_clicked))
@@ -295,8 +303,15 @@ void rt_widget_add_child(void *parent, void *child) {
     if (parent && child) {
         vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
         vg_widget_t *child_widget = rt_gui_widget_handle_checked(child);
-        if (parent_widget && child_widget)
+        if (parent_widget && child_widget) {
+            rt_gui_app_t *old_app = rt_gui_app_from_widget(child_widget);
+            rt_gui_app_t *new_app = rt_gui_app_from_widget(parent_widget);
+            if (old_app && old_app != new_app)
+                rt_widget_forget_runtime_refs(old_app, child_widget);
             vg_widget_add_child(parent_widget, child_widget);
+            if (new_app && old_app != new_app)
+                rt_gui_apply_default_font(child_widget);
+        }
     }
 }
 
@@ -937,12 +952,15 @@ void rt_treeview_node_set_data(void *node, rt_string data) {
     vg_tree_node_t *n = (vg_tree_node_t *)node;
     if (!vg_tree_node_is_live(n))
         return;
+    rt_gui_string_data_t *new_data = data ? rt_gui_string_data_new(data) : NULL;
+    if (data && !new_data)
+        return;
     // Free old data if it exists and is owned by the runtime string wrapper.
     if (n->owns_user_data && n->user_data)
         free(n->user_data);
     // Store length-tagged data so embedded NUL bytes round-trip correctly.
-    n->user_data = rt_gui_string_data_new(data);
-    n->owns_user_data = n->user_data != NULL;
+    n->user_data = new_data;
+    n->owns_user_data = new_data != NULL;
 }
 
 /// @brief Retrieve the string data previously attached to a tree node.

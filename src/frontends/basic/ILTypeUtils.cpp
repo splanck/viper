@@ -26,6 +26,12 @@
 namespace il::frontends::basic::type_conv {
 namespace {
 
+/// @brief Trim a runtime type token and drop a trailing optional marker.
+/// @details Removes surrounding ASCII whitespace and, if present, a single
+///          trailing `?` so an optional type (`obj?`) classifies the same as
+///          its non-optional form.
+/// @param token Raw runtime type token from a catalog signature.
+/// @return The trimmed, optional-stripped view (aliases @p token's storage).
 std::string_view normalizeRuntimeToken(std::string_view token) noexcept {
     while (!token.empty() &&
            (token.front() == ' ' || token.front() == '\t' || token.front() == '\n' ||
@@ -40,6 +46,12 @@ std::string_view normalizeRuntimeToken(std::string_view token) noexcept {
     return token;
 }
 
+/// @brief Test whether a runtime token denotes a reference/pointer-backed type.
+/// @details Recognises `obj`, `ptr`, `seq`, `list` and their generic
+///          `obj<...>`/`ptr<...>`/`seq<...>`/`list<...>` spellings, all of which
+///          lower to an IL pointer. The token is normalized first.
+/// @param token Runtime type token to classify.
+/// @return True when @p token is an object/pointer-category type.
 bool isRuntimeObjectToken(std::string_view token) noexcept {
     token = normalizeRuntimeToken(token);
     return token == "obj" || token == "ptr" || token.rfind("obj<", 0) == 0 ||

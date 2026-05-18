@@ -22,6 +22,7 @@
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #include "rt_videowidget.h"
+#include "rt_platform.h"
 #include "rt_string.h"
 #include "rt_videoplayer.h"
 
@@ -78,6 +79,7 @@ typedef struct {
 } px_view;
 
 typedef struct {
+    uint64_t magic;
     void *vptr;
     /* Owned components */
     void *player;          /* rt_videoplayer */
@@ -99,6 +101,13 @@ typedef struct {
 } rt_videowidget;
 
 static void videowidget_dispose(rt_videowidget *w, int destroy_widget_tree);
+
+#define RT_VIDEOWIDGET_MAGIC UINT64_C(0x5254564944454F57)
+
+static rt_videowidget *videowidget_checked(void *obj) {
+    rt_videowidget *w = (rt_videowidget *)obj;
+    return w && w->magic == RT_VIDEOWIDGET_MAGIC ? w : NULL;
+}
 
 /// @brief GC finalizer for a VideoWidget — disposes resources without destroying the
 ///        widget tree, since the GUI tree has its own ownership chain.
@@ -122,7 +131,7 @@ static void release_gc_object(void *obj) {
 ///   subtree — used during explicit `VideoWidget.Destroy` calls. GC-driven cleanup
 ///   uses `destroy_widget_tree = 0` since the tree is already gone.
 static void videowidget_dispose(rt_videowidget *w, int destroy_widget_tree) {
-    if (!w)
+    if (!w || w->magic != RT_VIDEOWIDGET_MAGIC)
         return;
 
     if (destroy_widget_tree && w->root_widget) {
@@ -141,6 +150,7 @@ static void videowidget_dispose(rt_videowidget *w, int destroy_widget_tree) {
         release_gc_object(w->player);
         w->player = NULL;
     }
+    w->magic = 0;
 }
 
 /// @brief Clamp a volume value to [0.0, 1.0] before passing it to the video player.
@@ -158,6 +168,7 @@ static double clamp_volume(double vol) {
 /// builds a vbox containing an Image widget (for frames) plus an hbox of Play/Pause/Stop buttons
 /// and a position-slider. Returns NULL if the file can't be opened or the video has zero dimensions.
 void *rt_videowidget_new(void *parent, void *path) {
+    RT_ASSERT_MAIN_THREAD();
     if (!parent || !path)
         return NULL;
 
@@ -180,6 +191,7 @@ void *rt_videowidget_new(void *parent, void *path) {
         return NULL;
     }
     memset(w, 0, sizeof(*w));
+    w->magic = RT_VIDEOWIDGET_MAGIC;
     w->player = player;
     w->video_width = vw;
     w->video_height = vh;
@@ -236,16 +248,19 @@ void *rt_videowidget_new(void *parent, void *path) {
 
 /// @brief Destroy the video widget subtree and release the owned VideoPlayer.
 void rt_videowidget_destroy(void *obj) {
-    if (!obj)
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    if (!w)
         return;
-    videowidget_dispose((rt_videowidget *)obj, 1);
+    videowidget_dispose(w, 1);
 }
 
 /// @brief Begin or resume video playback. Forwards to the underlying VideoPlayer.
 void rt_videowidget_play(void *obj) {
-    if (!obj)
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    if (!w)
         return;
-    rt_videowidget *w = (rt_videowidget *)obj;
     if (!w->player)
         return;
     rt_videoplayer_play(w->player);
@@ -253,9 +268,10 @@ void rt_videowidget_play(void *obj) {
 
 /// @brief Pause playback (preserves position). Resume with `_play`.
 void rt_videowidget_pause(void *obj) {
-    if (!obj)
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    if (!w)
         return;
-    rt_videowidget *w = (rt_videowidget *)obj;
     if (!w->player)
         return;
     rt_videoplayer_pause(w->player);
@@ -263,9 +279,10 @@ void rt_videowidget_pause(void *obj) {
 
 /// @brief Stop playback and rewind to position 0.
 void rt_videowidget_stop(void *obj) {
-    if (!obj)
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    if (!w)
         return;
-    rt_videowidget *w = (rt_videowidget *)obj;
     if (!w->player)
         return;
     rt_videoplayer_stop(w->player);
@@ -277,9 +294,10 @@ void rt_videowidget_stop(void *obj) {
 /// Slider drags cause seeks; playback time updates the slider position. Caller invokes once per
 /// frame from the GUI loop.
 void rt_videowidget_update(void *obj, double dt) {
-    if (!obj)
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    if (!w)
         return;
-    rt_videowidget *w = (rt_videowidget *)obj;
     if (!w->player)
         return;
 
@@ -335,9 +353,10 @@ void rt_videowidget_update(void *obj, double dt) {
 
 /// @brief Toggle visibility of the play/pause/stop/slider strip (image widget always visible).
 void rt_videowidget_set_show_controls(void *obj, int8_t show) {
-    if (!obj)
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    if (!w)
         return;
-    rt_videowidget *w = (rt_videowidget *)obj;
     w->show_controls = show;
     if (w->controls_widget)
         rt_widget_set_visible(w->controls_widget, show != 0);
@@ -345,16 +364,19 @@ void rt_videowidget_set_show_controls(void *obj, int8_t show) {
 
 /// @brief Enable auto-loop. When enabled, the widget restarts playback on natural end-of-video.
 void rt_videowidget_set_loop(void *obj, int8_t loop) {
-    if (!obj)
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    if (!w)
         return;
-    ((rt_videowidget *)obj)->looping = loop;
+    w->looping = loop;
 }
 
 /// @brief Set audio output level [0.0, 1.0]. Clamped via `clamp_volume`. Forwarded to player.
 void rt_videowidget_set_volume(void *obj, double vol) {
-    if (!obj)
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    if (!w)
         return;
-    rt_videowidget *w = (rt_videowidget *)obj;
     vol = clamp_volume(vol);
     w->volume = vol;
     if (w->player)
@@ -363,25 +385,28 @@ void rt_videowidget_set_volume(void *obj, double vol) {
 
 /// @brief Return 1 if the underlying VideoPlayer is currently playing, else 0.
 int64_t rt_videowidget_get_is_playing(void *obj) {
-    if (!obj)
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    if (!w)
         return 0;
-    rt_videowidget *w = (rt_videowidget *)obj;
     return w->player ? rt_videoplayer_get_is_playing(w->player) : 0;
 }
 
 /// @brief Current playback position in seconds (forwarded from the underlying VideoPlayer).
 double rt_videowidget_get_position(void *obj) {
-    if (!obj)
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    if (!w)
         return 0.0;
-    rt_videowidget *w = (rt_videowidget *)obj;
     return w->player ? rt_videoplayer_get_position(w->player) : 0.0;
 }
 
 /// @brief Total video duration in seconds (forwarded from the underlying VideoPlayer).
 double rt_videowidget_get_duration(void *obj) {
-    if (!obj)
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    if (!w)
         return 0.0;
-    rt_videowidget *w = (rt_videowidget *)obj;
     return w->player ? rt_videoplayer_get_duration(w->player) : 0.0;
 }
 

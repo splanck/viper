@@ -6,12 +6,25 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/diag/BasicDiag.cpp
-// Purpose: Implements functionality for this subsystem.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
+// Purpose: Backing catalog for the BASIC frontend's structured diagnostics:
+//          maps each BasicDiag enumerator to its stable id, code, severity, and
+//          message format string, and renders messages by substituting
+//          {placeholder} tokens.
+// Key invariants: kDiagTable is indexed positionally by the BasicDiag enum, so
+//                 its entry order must stay in lockstep with that enum; ids and
+//                 codes are stable identifiers consumed by tooling and goldens.
+// Ownership/Lifetime: kDiagTable has static storage duration; accessors return
+//                     views/copies into it and never transfer ownership.
 // Links: docs/architecture.md
 //
 //===----------------------------------------------------------------------===//
+//
+/// @file
+/// @brief Stable diagnostic catalog and message formatter for BASIC.
+/// @details Each BasicDiag enumerator resolves through @ref kDiagTable to a
+///          @ref BasicDiagInfo record; @ref formatMessage expands `{key}`
+///          placeholders in the format string using caller-supplied
+///          replacements. Accessors are thin lookups over the static table.
 
 #include "viper/diag/BasicDiag.hpp"
 

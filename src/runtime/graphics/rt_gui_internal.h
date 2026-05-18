@@ -74,6 +74,7 @@ typedef struct {
     int parsed_ctrl;
     int parsed_shift;
     int parsed_alt;
+    int parsed_super;
     int parsed_key;
 } rt_gui_shortcut_t;
 
@@ -116,6 +117,9 @@ typedef struct {
     vg_dialog_t **dialog_stack;
     int dialog_count;
     int dialog_cap;
+    vg_widget_t *drag_candidate;
+    int32_t drag_start_x;
+    int32_t drag_start_y;
     vg_widget_t *drag_source;
     vg_widget_t *drag_over_widget;
     rt_gui_shortcut_t *shortcuts;
@@ -155,6 +159,8 @@ void rt_gui_set_theme_kind(rt_gui_app_t *app, rt_gui_theme_kind_t kind);
 void rt_gui_sync_modal_root(rt_gui_app_t *app);
 /// @brief Assign the app's default font to @p widget if it has none.
 void rt_gui_apply_default_font(vg_widget_t *widget);
+/// @brief Re-apply @p app's current default font/size to all app-owned GUI surfaces.
+void rt_gui_reapply_default_font(rt_gui_app_t *app);
 /// @brief Register a command palette so @p app routes its shortcut to it.
 void rt_gui_register_command_palette(rt_gui_app_t *app, vg_commandpalette_t *palette);
 /// @brief Unregister a previously registered command palette.

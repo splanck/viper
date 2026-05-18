@@ -56,6 +56,7 @@ struct StubPlayer {
 };
 
 struct rt_videowidget_view {
+    uint64_t magic;
     void *vptr;
     void *player;
     void *root_widget;
@@ -76,6 +77,7 @@ struct rt_videowidget_view {
 bool g_open_should_fail = false;
 int64_t g_open_width = 64;
 int64_t g_open_height = 32;
+constexpr uint64_t kVideoWidgetMagic = 0x5254564944454F57ull;
 int g_release_count = 0;
 int g_widget_destroy_count = 0;
 
@@ -301,6 +303,7 @@ static void test_successful_construction_sets_up_widgets() {
     auto *widget = static_cast<rt_videowidget_view *>(
         rt_videowidget_new(&parent, reinterpret_cast<void *>(1)));
     assert(widget != nullptr);
+    assert(widget->magic == kVideoWidgetMagic);
     assert(parent.child_count == 1);
     assert(widget->root_widget != nullptr);
     assert(widget->image_widget != nullptr);

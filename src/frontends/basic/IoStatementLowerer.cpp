@@ -32,8 +32,17 @@ using namespace il::frontends::basic::runtime;
 #include <string>
 
 namespace {
+/// Width of a BASIC PRINT comma "zone": a `,` advances output to the next
+/// multiple of this many columns (classic BASIC tab-stop spacing).
 constexpr std::size_t kPrintZoneWidth = 14;
 
+/// @brief Estimate the printed character width of a literal PRINT operand.
+/// @details Used only to track the current output column so comma zone padding
+///          can be computed at compile time. Returns @c std::nullopt for
+///          non-literal expressions (width unknown until runtime), which makes
+///          the caller fall back to a full zone advance.
+/// @param expr Operand expression of a PRINT item.
+/// @return Estimated rendered width, or nullopt when not statically known.
 std::optional<std::size_t> estimatePrintWidth(const il::frontends::basic::Expr &expr) {
     using namespace il::frontends::basic;
 

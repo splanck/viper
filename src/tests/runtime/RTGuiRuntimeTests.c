@@ -27,6 +27,7 @@
 extern void rt_gui_set_clicked_statusbar_item(void *item);
 
 typedef struct {
+    uint64_t magic;
     vg_findreplacebar_t *bar;
     void *bound_editor;
     char *find_text;
@@ -40,6 +41,7 @@ typedef struct {
 } rt_findbar_data_view_t;
 
 typedef struct {
+    uint64_t magic;
     vg_breadcrumb_t *breadcrumb;
     int64_t clicked_index;
     char *clicked_data;
@@ -58,6 +60,7 @@ typedef struct {
 } rt_filedialog_data_view_t;
 
 typedef struct {
+    uint64_t magic;
     vg_dialog_t *dialog;
     int64_t result;
     int64_t default_button;
@@ -530,6 +533,25 @@ static void test_zia_block_comment_highlighting_is_render_order_independent(void
 
     vg_widget_destroy(&editor->base);
     printf("test_zia_block_comment_highlighting_is_render_order_independent: PASSED\n");
+}
+
+static void test_zia_string_highlighting_trailing_escape_stays_in_bounds(void) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    assert(editor);
+    rt_codeeditor_set_text(editor, rt_const_cstr("\"abc\\"));
+    rt_codeeditor_set_language(editor, rt_const_cstr("zia"));
+    rt_codeeditor_set_token_color(editor, 3, 0xFF123456);
+
+    uint32_t colors[6] = {0};
+    colors[5] = 0xDEADBEEF;
+    editor->syntax_highlighter(
+        &editor->base, 0, editor->lines[0].text, colors, editor->syntax_data);
+    assert(colors[5] == 0xDEADBEEF);
+    for (size_t i = 0; i < editor->lines[0].length; i++)
+        assert(colors[i] == 0xFF123456);
+
+    vg_widget_destroy(&editor->base);
+    printf("test_zia_string_highlighting_trailing_escape_stays_in_bounds: PASSED\n");
 }
 
 static void test_findbar_runtime_reads_live_text_and_reports_noop_replace(void) {
@@ -1074,6 +1096,35 @@ static void test_detached_widgets_do_not_inherit_current_app_font(void) {
     printf("test_detached_widgets_do_not_inherit_current_app_font: PASSED\n");
 }
 
+static void test_app_font_size_and_late_attach_reapply_default_font(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    app.default_font = (vg_font_t *)0x1;
+    app.default_font_size = 12.0f;
+    rt_gui_activate_app(&app);
+
+    vg_label_t *attached = (vg_label_t *)rt_label_new(app.root, rt_const_cstr("attached"));
+    assert(attached);
+    assert(attached->font == app.default_font);
+    assert(attached->font_size == 12.0f);
+    rt_app_set_font_size(&app, 21.0);
+    assert(attached->font == app.default_font);
+    assert(attached->font_size == 21.0f);
+
+    vg_label_t *detached = (vg_label_t *)rt_label_new(NULL, rt_const_cstr("detached"));
+    assert(detached);
+    assert(detached->font != app.default_font);
+    rt_widget_add_child(app.root, detached);
+    assert(detached->font == app.default_font);
+    assert(detached->font_size == 21.0f);
+
+    cleanup_fake_app(&app);
+    printf("test_app_font_size_and_late_attach_reapply_default_font: PASSED\n");
+}
+
 static void test_messagebox_show_after_destroy_returns_minus_one(void) {
     rt_gui_app_t app;
     reset_fake_app(&app);
@@ -1144,6 +1195,8 @@ static void test_shortcuts_reject_invalid_bindings_atomically(void) {
 
     rt_shortcuts_register(rt_const_cstr("bad"), rt_const_cstr("Ctrl+NotAKey"), rt_const_cstr(""));
     assert(app.shortcut_count == 0);
+    rt_shortcuts_register(rt_const_cstr("bad2"), rt_const_cstr("Ctrl+Bogus+S"), rt_const_cstr(""));
+    assert(app.shortcut_count == 0);
 
     rt_shortcuts_register(rt_const_cstr("save"), rt_const_cstr("Ctrl+S"), rt_const_cstr("save"));
     assert(app.shortcut_count == 1);
@@ -1157,6 +1210,113 @@ static void test_shortcuts_reject_invalid_bindings_atomically(void) {
     rt_shortcuts_clear();
     s_current_app = NULL;
     printf("test_shortcuts_reject_invalid_bindings_atomically: PASSED\n");
+}
+
+static void test_menu_context_toolbar_statusbar_handles_are_type_checked(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    assert(rt_menubar_add_menu(&app, rt_const_cstr("Bad")) == NULL);
+    vg_menubar_t *menubar = (vg_menubar_t *)rt_menubar_new(app.root);
+    assert(menubar);
+    vg_menu_t *menu = (vg_menu_t *)rt_menubar_add_menu(menubar, rt_const_cstr("File"));
+    vg_menu_t *submenu = (vg_menu_t *)rt_menu_add_submenu(menu, rt_const_cstr("Recent"));
+    assert(menu && submenu);
+    rt_menubar_remove_menu(menubar, menu);
+    assert(rt_menu_add_item(menu, rt_const_cstr("Open")) == NULL);
+    assert(rt_menu_add_item(submenu, rt_const_cstr("Stale")) == NULL);
+    assert(rt_menu_get_item_count(menu) == 0);
+
+    assert(rt_contextmenu_add_item(&app, rt_const_cstr("Bad")) == NULL);
+    void *context = rt_contextmenu_new();
+    assert(context);
+    rt_contextmenu_destroy(context);
+    assert(rt_contextmenu_add_item(context, rt_const_cstr("Stale")) == NULL);
+
+    vg_statusbar_t *statusbar = (vg_statusbar_t *)rt_statusbar_new(app.root);
+    assert(statusbar);
+    assert(rt_statusbar_add_text(&app, rt_const_cstr("bad"), 0) == NULL);
+    assert(rt_statusbar_add_text(statusbar, rt_const_cstr("bad"), 99) == NULL);
+    assert(statusbar->left_count == 0 && statusbar->center_count == 0 &&
+           statusbar->right_count == 0);
+
+    vg_toolbar_t *toolbar = (vg_toolbar_t *)rt_toolbar_new(app.root);
+    assert(toolbar);
+    assert(rt_toolbar_add_button(&app, rt_const_cstr(""), rt_const_cstr("")) == NULL);
+    app.root->needs_layout = false;
+    rt_toolbar_set_visible(toolbar, 0);
+    assert(toolbar->base.visible == false);
+    assert(app.root->needs_layout == true);
+
+    uint64_t magic_before = app.magic;
+    rt_container_set_spacing(&app, 4.0);
+    rt_container_set_padding(&app, 4.0);
+    assert(app.magic == magic_before);
+
+    cleanup_fake_app(&app);
+    printf("test_menu_context_toolbar_statusbar_handles_are_type_checked: PASSED\n");
+}
+
+static void test_floatingpanel_and_tabbar_reject_wrong_or_out_of_range_handles(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    vg_floatingpanel_t *panel = (vg_floatingpanel_t *)rt_floatingpanel_new(&app);
+    assert(panel);
+    vg_label_t *label = (vg_label_t *)rt_label_new(NULL, rt_const_cstr("child"));
+    assert(label);
+    rt_floatingpanel_add_child(&app, label);
+    assert(label->base.parent == NULL);
+    rt_floatingpanel_add_child(panel, label);
+    assert(label->base.parent == &panel->base);
+
+    vg_tabbar_t *tabbar = (vg_tabbar_t *)rt_tabbar_new(app.root);
+    assert(tabbar);
+    rt_tabbar_add_tab(tabbar, rt_const_cstr("One"), 0);
+    assert(rt_tabbar_get_tab_at(tabbar, -1) == NULL);
+    assert(rt_tabbar_get_tab_at(tabbar, (int64_t)INT_MAX + 1) == NULL);
+    assert(rt_tabbar_get_tab_at(tabbar, 1) == NULL);
+    assert(rt_tabbar_get_tab_at(tabbar, 0) != NULL);
+
+    cleanup_fake_app(&app);
+    printf("test_floatingpanel_and_tabbar_reject_wrong_or_out_of_range_handles: PASSED\n");
+}
+
+static void test_breadcrumb_minimap_methods_after_destroy_are_inert(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    void *crumb = rt_breadcrumb_new(app.root);
+    assert(crumb);
+    rt_breadcrumb_destroy(crumb);
+    rt_breadcrumb_set_path(crumb, rt_const_cstr("a/b"), rt_const_cstr("/"));
+    rt_breadcrumb_set_visible(crumb, 1);
+    assert(rt_breadcrumb_is_visible(crumb) == 0);
+    assert(rt_breadcrumb_get_clicked_index(crumb) == -1);
+
+    void *minimap = rt_minimap_new(app.root);
+    assert(minimap);
+    rt_minimap_destroy(minimap);
+    rt_minimap_set_width(minimap, 200);
+    rt_minimap_set_visible(minimap, 1);
+    rt_minimap_add_marker(minimap, 1, 0xFF0000FF, 0);
+    assert(rt_minimap_get_width(minimap) == 0);
+    assert(rt_minimap_is_visible(minimap) == 0);
+
+    cleanup_fake_app(&app);
+    printf("test_breadcrumb_minimap_methods_after_destroy_are_inert: PASSED\n");
 }
 
 static void test_type_specific_widget_apis_reject_wrong_types(void) {
@@ -1502,6 +1662,7 @@ int main(void) {
     test_codeeditor_runtime_fold_helpers_skip_hidden_lines();
     test_codeeditor_line_number_width_override_tracks_character_width();
     test_zia_block_comment_highlighting_is_render_order_independent();
+    test_zia_string_highlighting_trailing_escape_stays_in_bounds();
     test_splitpane_runtime_boolean_matches_horizontal_semantics();
     test_tabbar_was_changed_tracks_real_active_tab_transitions();
     test_widget_set_position_marks_widget_dirty();
@@ -1522,10 +1683,14 @@ int main(void) {
     test_numeric_setters_sanitize_invalid_values();
     test_font_destroy_defers_live_app_font();
     test_detached_widgets_do_not_inherit_current_app_font();
+    test_app_font_size_and_late_attach_reapply_default_font();
     test_messagebox_show_after_destroy_returns_minus_one();
     test_toast_duration_is_clamped();
     test_breadcrumb_set_path_uses_literal_separator();
     test_shortcuts_reject_invalid_bindings_atomically();
+    test_menu_context_toolbar_statusbar_handles_are_type_checked();
+    test_floatingpanel_and_tabbar_reject_wrong_or_out_of_range_handles();
+    test_breadcrumb_minimap_methods_after_destroy_are_inert();
     test_type_specific_widget_apis_reject_wrong_types();
     test_findbar_methods_after_destroy_are_inert();
     test_findbar_parent_destroy_disconnects_wrapper();

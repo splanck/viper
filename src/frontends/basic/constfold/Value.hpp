@@ -35,13 +35,27 @@ namespace il::frontends::basic::constfold {
 
 namespace detail {
 
+/// @brief Outcome of parsing a numeric literal string.
 struct ParsedNumber {
-    bool ok = false;
-    bool isFloat = false;
-    long long i = 0;
-    double d = 0.0;
+    bool ok = false;      ///< True when @p sv parsed as a complete number.
+    bool isFloat = false; ///< True when the literal is floating-point.
+    long long i = 0;      ///< Integer value (clamped view when isFloat).
+    double d = 0.0;       ///< Floating value (defined when isFloat).
 };
 
+/// @brief Parse a BASIC numeric literal, honoring type suffixes and exponents.
+/// @details Recognises BASIC's trailing type-suffix markers and lets them force
+///          the representation: `!`/`#` force float, `%`/`&` force integer. A
+///          Fortran-style `D`/`d` exponent is normalised to `e` so `strtod`
+///          accepts double-precision literals. Whether float or integer parsing
+///          is attempted first is decided by the forced suffix or, absent one,
+///          by the presence of float markers (`.eEpP`); the other form is tried
+///          as a fallback. Float magnitudes outside the `long long` range are
+///          clamped into @ref ParsedNumber::i so callers always get a usable
+///          integer view. Surrounding whitespace is trimmed; an unparsable or
+///          out-of-range input yields `ok == false`.
+/// @param sv Raw literal text (may include a suffix and surrounding spaces).
+/// @return Parsed result; check @ref ParsedNumber::ok before use.
 inline ParsedNumber parseNumericLiteral(std::string_view sv) noexcept {
     ParsedNumber result{};
 

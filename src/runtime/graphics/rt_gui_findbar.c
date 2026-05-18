@@ -36,7 +36,9 @@
 //=============================================================================
 
 // FindBar state tracking
+#define RT_FINDBAR_DATA_MAGIC UINT64_C(0x525446494E444241)
 typedef struct {
+    uint64_t magic;
     vg_findreplacebar_t *bar;
     void *bound_editor;
     char *find_text;
@@ -53,7 +55,10 @@ typedef struct {
 ///        backing widget is still live. Returns NULL otherwise.
 static rt_findbar_data_t *rt_findbar_checked(void *bar) {
     rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
-    return data && data->bar && vg_widget_is_live(&data->bar->base) ? data : NULL;
+    return data && data->magic == RT_FINDBAR_DATA_MAGIC && data->bar &&
+                   vg_widget_is_live(&data->bar->base)
+               ? data
+               : NULL;
 }
 
 /// @brief Safe-cast an opaque handle to the code editor the find-bar targets.
@@ -88,6 +93,7 @@ static void rt_findbar_dispose(rt_findbar_data_t *data) {
         data->replace_text = NULL;
     }
     data->bound_editor = NULL;
+    data->magic = 0;
 }
 
 /// @brief GC finalizer — delegates to `rt_findbar_dispose`.
@@ -117,6 +123,7 @@ void *rt_findbar_new(void *parent) {
         return NULL;
     }
     data->bar = bar;
+    data->magic = RT_FINDBAR_DATA_MAGIC;
     data->bound_editor = NULL;
     data->find_text = NULL;
     data->replace_text = NULL;
@@ -144,9 +151,10 @@ void *rt_findbar_new(void *parent) {
 /// @brief Destroy the find bar, freeing the vg widget and cached text.
 /// @param bar Find bar handle (safe to pass NULL).
 void rt_findbar_destroy(void *bar) {
-    if (!bar)
+    rt_findbar_data_t *data = rt_findbar_checked(bar);
+    if (!data)
         return;
-    rt_findbar_dispose((rt_findbar_data_t *)bar);
+    rt_findbar_dispose(data);
 }
 
 /// @brief Bind the find bar to a code editor for search/replace operations.
@@ -188,7 +196,7 @@ void rt_findbar_set_replace_mode(void *bar, int64_t replace) {
 
 /// @brief Check whether the find bar is in replace mode.
 int64_t rt_findbar_is_replace_mode(void *bar) {
-    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
+    rt_findbar_data_t *data = rt_findbar_checked(bar);
     if (!data)
         return 0;
     return data->replace_mode;
@@ -210,7 +218,7 @@ void rt_findbar_set_find_text(void *bar, rt_string text) {
 
 /// @brief Get the current search text.
 rt_string rt_findbar_get_find_text(void *bar) {
-    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
+    rt_findbar_data_t *data = rt_findbar_checked(bar);
     if (!data)
         return rt_str_empty();
     if (data->bar && data->bar->find_input) {
@@ -243,7 +251,7 @@ void rt_findbar_set_replace_text(void *bar, rt_string text) {
 
 /// @brief Get the current replacement text.
 rt_string rt_findbar_get_replace_text(void *bar) {
-    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
+    rt_findbar_data_t *data = rt_findbar_checked(bar);
     if (!data)
         return rt_str_empty();
     if (data->bar && data->bar->replace_input) {
@@ -281,7 +289,7 @@ void rt_findbar_set_case_sensitive(void *bar, int64_t sensitive) {
 
 /// @brief Check whether case-sensitive matching is enabled.
 int64_t rt_findbar_is_case_sensitive(void *bar) {
-    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
+    rt_findbar_data_t *data = rt_findbar_checked(bar);
     if (!data)
         return 0;
     return data->case_sensitive;
@@ -298,7 +306,7 @@ void rt_findbar_set_whole_word(void *bar, int64_t whole) {
 
 /// @brief Check whether whole-word matching is enabled.
 int64_t rt_findbar_is_whole_word(void *bar) {
-    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
+    rt_findbar_data_t *data = rt_findbar_checked(bar);
     if (!data)
         return 0;
     return data->whole_word;
@@ -315,7 +323,7 @@ void rt_findbar_set_regex(void *bar, int64_t regex) {
 
 /// @brief Check whether regex matching is enabled.
 int64_t rt_findbar_is_regex(void *bar) {
-    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
+    rt_findbar_data_t *data = rt_findbar_checked(bar);
     if (!data)
         return 0;
     return data->regex;

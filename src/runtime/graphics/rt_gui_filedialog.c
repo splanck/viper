@@ -142,6 +142,7 @@ static int rt_filedialog_show_modal(rt_gui_app_t *app, vg_filedialog_t *dialog) 
 /// cancels when an active GUI app/window exists. Returns the absolute path on selection, or an
 /// empty string on cancel or when no modal GUI window is active.
 rt_string rt_filedialog_open(rt_string title, rt_string default_path, rt_string filter) {
+    RT_ASSERT_MAIN_THREAD();
     char *ctitle = rt_string_to_cstr(title);
     char *cfilter = rt_string_to_cstr(filter);
     char *cpath = rt_string_to_cstr(default_path);
@@ -186,6 +187,7 @@ rt_string rt_filedialog_open(rt_string title, rt_string default_path, rt_string 
 /// @brief Open dialog with multi-select. Returns paths as a single semicolon-separated string
 /// (caller can split on ';'), or empty on cancel/no active GUI window.
 rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, rt_string filter) {
+    RT_ASSERT_MAIN_THREAD();
     char *ctitle = rt_string_to_cstr(title);
     char *cpath = rt_string_to_cstr(default_path);
     char *cfilter = rt_string_to_cstr(filter);
@@ -265,6 +267,7 @@ rt_string rt_filedialog_save(rt_string title,
                              rt_string default_path,
                              rt_string filter,
                              rt_string default_name) {
+    RT_ASSERT_MAIN_THREAD();
     char *ctitle = rt_string_to_cstr(title);
     char *cfilter = rt_string_to_cstr(filter);
     char *cname = rt_string_to_cstr(default_name);
@@ -313,6 +316,7 @@ rt_string rt_filedialog_save(rt_string title,
 
 /// @brief One-shot folder-picker dialog. Returns the absolute folder path or empty on cancel.
 rt_string rt_filedialog_select_folder(rt_string title, rt_string default_path) {
+    RT_ASSERT_MAIN_THREAD();
     char *ctitle = rt_string_to_cstr(title);
     char *cpath = rt_string_to_cstr(default_path);
 
@@ -449,6 +453,7 @@ static void rt_filedialog_finalize(void *dialog) {
 /// Use the setters (`_set_title`, `_set_path`, `_add_filter`, ...) to configure, then `_show`
 /// to display modally. Returns NULL on backend or allocation failure.
 void *rt_filedialog_new(int64_t type) {
+    RT_ASSERT_MAIN_THREAD();
     vg_filedialog_mode_t mode;
     switch (type) {
         case RT_FILEDIALOG_OPEN:
@@ -488,21 +493,25 @@ void *rt_filedialog_new(int64_t type) {
 
 /// @brief Convenience constructor for an Open-file dialog.
 void *rt_filedialog_new_open(void) {
+    RT_ASSERT_MAIN_THREAD();
     return rt_filedialog_new(RT_FILEDIALOG_OPEN);
 }
 
 /// @brief Convenience constructor for a Save-file dialog.
 void *rt_filedialog_new_save(void) {
+    RT_ASSERT_MAIN_THREAD();
     return rt_filedialog_new(RT_FILEDIALOG_SAVE);
 }
 
 /// @brief Convenience constructor for a Select-folder dialog.
 void *rt_filedialog_new_folder(void) {
+    RT_ASSERT_MAIN_THREAD();
     return rt_filedialog_new(RT_FILEDIALOG_FOLDER);
 }
 
 /// @brief Set the dialog's titlebar text. No-op if `dialog` is NULL.
 void rt_filedialog_set_title(void *dialog, rt_string title) {
+    RT_ASSERT_MAIN_THREAD();
     rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
     if (!data)
         return;
@@ -515,6 +524,7 @@ void rt_filedialog_set_title(void *dialog, rt_string title) {
 /// @brief Set the directory the dialog opens in. Subsequent navigation may move elsewhere; the
 /// returned selection is always an absolute path.
 void rt_filedialog_set_path(void *dialog, rt_string path) {
+    RT_ASSERT_MAIN_THREAD();
     rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
     if (!data)
         return;
@@ -527,6 +537,7 @@ void rt_filedialog_set_path(void *dialog, rt_string path) {
 /// @brief Replace all filename filters with a single (`name`, `pattern`) entry. `name` is the
 /// human label shown in the dialog (e.g., "Image files"), `pattern` is the glob (e.g., "*.png").
 void rt_filedialog_set_filter(void *dialog, rt_string name, rt_string pattern) {
+    RT_ASSERT_MAIN_THREAD();
     rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
     if (!data)
         return;
@@ -548,6 +559,7 @@ void rt_filedialog_set_filter(void *dialog, rt_string name, rt_string pattern) {
 /// @brief Append an additional (`name`, `pattern`) filter without clearing existing ones. The
 /// dialog typically shows them in a dropdown; users can switch between filters at picking time.
 void rt_filedialog_add_filter(void *dialog, rt_string name, rt_string pattern) {
+    RT_ASSERT_MAIN_THREAD();
     rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
     if (!data)
         return;
@@ -567,6 +579,7 @@ void rt_filedialog_add_filter(void *dialog, rt_string name, rt_string pattern) {
 
 /// @brief Pre-fill the filename field (Save dialogs primarily). User can edit before confirming.
 void rt_filedialog_set_default_name(void *dialog, rt_string name) {
+    RT_ASSERT_MAIN_THREAD();
     rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
     if (!data)
         return;
@@ -579,6 +592,7 @@ void rt_filedialog_set_default_name(void *dialog, rt_string name) {
 /// @brief Toggle multi-select. After `_show`, retrieve count via `_get_path_count` and individual
 /// paths via `_get_path_at(i)`. Has no effect on Save/Folder dialogs.
 void rt_filedialog_set_multiple(void *dialog, int64_t multiple) {
+    RT_ASSERT_MAIN_THREAD();
     rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
     if (!data)
         return;
@@ -589,6 +603,7 @@ void rt_filedialog_set_multiple(void *dialog, int64_t multiple) {
 /// the user confirmed at least one selection, 0 if cancelled or if no active GUI window exists.
 /// Replaces any prior selection snapshot (calling `_show` twice on the same handle is allowed).
 int64_t rt_filedialog_show(void *dialog) {
+    RT_ASSERT_MAIN_THREAD();
     if (!dialog)
         return 0;
     rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
@@ -604,7 +619,10 @@ int64_t rt_filedialog_show(void *dialog) {
         data->result = 0;
         return 0;
     }
-    rt_filedialog_copy_selected_paths(data);
+    if (!rt_filedialog_copy_selected_paths(data)) {
+        data->result = 0;
+        return 0;
+    }
     data->result = (data->selected_count > 0) ? 1 : 0;
 
     return data->result;
@@ -612,6 +630,7 @@ int64_t rt_filedialog_show(void *dialog) {
 
 /// @brief Return the first selected path from the most recent `_show`. Empty if no selection.
 rt_string rt_filedialog_get_path(void *dialog) {
+    RT_ASSERT_MAIN_THREAD();
     rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
     if (!data)
         return rt_str_empty();
@@ -623,6 +642,7 @@ rt_string rt_filedialog_get_path(void *dialog) {
 
 /// @brief Number of paths selected by the most recent `_show` (0 if cancelled or pre-show).
 int64_t rt_filedialog_get_path_count(void *dialog) {
+    RT_ASSERT_MAIN_THREAD();
     rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
     if (!data)
         return 0;
@@ -632,6 +652,7 @@ int64_t rt_filedialog_get_path_count(void *dialog) {
 /// @brief Return the i-th selected path (0-based) from a multi-select dialog. Empty if `index`
 /// is out of range. Use `_get_path_count` first to bound the iteration.
 rt_string rt_filedialog_get_path_at(void *dialog, int64_t index) {
+    RT_ASSERT_MAIN_THREAD();
     rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
     if (!data)
         return rt_str_empty();
@@ -645,9 +666,11 @@ rt_string rt_filedialog_get_path_at(void *dialog, int64_t index) {
 /// @brief Manually free dialog resources (paths, backend handle). The GC finalizer also calls
 /// this, so explicit destruction is optional — useful for early cleanup before GC catches up.
 void rt_filedialog_destroy(void *dialog) {
-    if (!dialog)
+    RT_ASSERT_MAIN_THREAD();
+    rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
+    if (!data)
         return;
-    rt_filedialog_dispose((rt_filedialog_data_t *)dialog);
+    rt_filedialog_dispose(data);
 }
 
 #else /* !VIPER_ENABLE_GRAPHICS */
