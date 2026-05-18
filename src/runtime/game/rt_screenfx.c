@@ -84,6 +84,8 @@ struct rt_screenfx_impl {
     uint64_t rand_state;   ///< Per-instance LCG state for shake RNG (thread-safe).
 };
 
+/// @brief Safe-cast a handle to the ScreenFX impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p fx is NULL.
 static rt_screenfx checked_screenfx(rt_screenfx fx, const char *api) {
     if (!fx)
         return NULL;
@@ -94,12 +96,15 @@ static rt_screenfx checked_screenfx(rt_screenfx fx, const char *api) {
     return fx;
 }
 
+/// @brief Add a non-negative @p b to @p a, saturating at INT64_MAX
+///        (negative @p b is treated as 0).
 static int64_t add_sat_nonnegative_i64(int64_t a, int64_t b) {
     if (b <= 0)
         return a;
     return a > INT64_MAX - b ? INT64_MAX : a + b;
 }
 
+/// @brief Saturating int64 addition (clamps to INT64_MIN/MAX on overflow).
 static int64_t add_sat_i64(int64_t a, int64_t b) {
     if (b > 0 && a > INT64_MAX - b)
         return INT64_MAX;
@@ -108,6 +113,10 @@ static int64_t add_sat_i64(int64_t a, int64_t b) {
     return a + b;
 }
 
+/// @brief Convert a long double to int64, saturating to the int64 range.
+/// @details Non-finite -> INT64_MIN/MAX by sign. The platforms whose long
+///          double has < 64-bit mantissa back the bound off by 4096 so the
+///          comparison itself can't round past the representable limit.
 static int64_t ld_to_i64_sat(long double value) {
     if (!isfinite(value))
         return value < 0.0L ? INT64_MIN : INT64_MAX;
@@ -125,6 +134,8 @@ static int64_t ld_to_i64_sat(long double value) {
     return (int64_t)value;
 }
 
+/// @brief Compute (a*b)/divisor in long double, saturating to int64; 0 when
+///        @p divisor is 0.
 static int64_t mul_div_sat_i64(int64_t a, int64_t b, int64_t divisor) {
     if (divisor == 0)
         return 0;
@@ -132,6 +143,8 @@ static int64_t mul_div_sat_i64(int64_t a, int64_t b, int64_t divisor) {
     return ld_to_i64_sat(value);
 }
 
+/// @brief Effect progress as per-mille (0..1000) of elapsed/duration; returns
+///        1000 (complete) for a zero/negative duration or NULL effect.
 static int64_t effect_progress_per_mille(const struct screenfx_effect *e) {
     if (!e || e->duration <= 0)
         return 1000;

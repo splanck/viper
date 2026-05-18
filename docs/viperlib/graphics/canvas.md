@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-15
+last-verified: 2026-05-17
 ---
 
 # Canvas & Color
@@ -44,14 +44,14 @@ last-verified: 2026-05-15
 | `BoxAlpha(x, y, w, h, color, alpha)`  | `Void(Integer...)`                    | Draws a source-over alpha-blended rectangle                |
 | `Clear(color)`                        | `Void(Integer)`                       | Clears the canvas with a solid color                       |
 | `ClearClipRect()`                     | `Void()`                              | Clears clipping rectangle; restores full canvas drawing    |
-| `CopyRect(x, y, w, h)`                | `Pixels(Integer...)`                  | Copies canvas region to a Pixels buffer                    |
+| `CopyRect(x, y, w, h)`                | `Pixels(Integer...)`                  | Copies canvas region to a Pixels buffer; returns null for invalid or excessively large rectangles |
 | `Disc(cx, cy, r, color)`              | `Void(Integer...)`                    | Draws a filled circle                                      |
 | `DiscAlpha(cx, cy, r, color, alpha)`  | `Void(Integer...)`                    | Draws a source-over alpha-blended filled circle            |
 | `Ellipse(cx, cy, rx, ry, color)`      | `Void(Integer...)`                    | Draws a filled ellipse                                     |
 | `EllipseAlpha(cx, cy, rx, ry, color, alpha)` | `Void(Integer...)`              | Draws a source-over alpha-blended filled ellipse           |
 | `EllipseFrame(cx, cy, rx, ry, color)` | `Void(Integer...)`                    | Draws an ellipse outline                                   |
 | `Flip()`                              | `Void()`                              | Presents the back buffer and displays drawn content        |
-| `FloodFill(x, y, color)`              | `Void(Integer, Integer, Integer)`     | Flood fills connected area starting at (x, y), constrained by the active clip rect |
+| `FloodFill(x, y, color)`              | `Void(Integer, Integer, Integer)`     | Flood fills connected RGBA-matching area starting at (x, y), constrained by the active clip rect |
 | `Focus()`                             | `Void()`                              | Brings the window to the front and gives it focus          |
 | `Frame(x, y, w, h, color)`            | `Void(Integer...)`                    | Draws a rectangle outline                                  |
 | `Fullscreen()`                        | `Void()`                              | Enters fullscreen mode                                     |
@@ -68,7 +68,7 @@ last-verified: 2026-05-15
 | `Maximize()`                          | `Void()`                              | Maximizes the window                                       |
 | `Minimize()`                          | `Void()`                              | Minimizes (iconifies) the window                           |
 | `Plot(x, y, color)`                   | `Void(Integer, Integer, Integer)`     | Sets a single pixel                                        |
-| `Poll()`                              | `Integer()`                           | Polls for input events; returns event type (0 = none); closes the canvas if the backend event pump fails |
+| `Poll()`                              | `Integer()`                           | Polls for input events; returns event type (0 = none); destroys the window and sets `ShouldClose` when a close event arrives or the backend event pump fails |
 | `PreventClose(prevent)`               | `Void(Integer)`                       | Blocks (1) or allows (0) the window close button           |
 | `Polygon(points, count, color)`       | `Void(Pointer, Integer, Integer)`     | Draws a filled polygon                                     |
 | `PolygonFrame(points, count, color)`  | `Void(Pointer, Integer, Integer)`     | Draws a polygon outline                                    |
@@ -92,13 +92,13 @@ last-verified: 2026-05-15
 | `TextRight(margin, y, text, color)`    | `Void(Integer, Integer, String, Integer)` | Draw text right-aligned with margin from right edge    |
 | `TextWidth(text)`                     | `Integer(String)`                     | Returns the width of rendered text in pixels (8 per decoded codepoint) |
 | `ThickLine(x1, y1, x2, y2, thickness, color)` | `Void(Integer...)`            | Draws a line with specified thickness (parallelogram body + rounded endcap circles) |
-| `Triangle(x1, y1, x2, y2, x3, y3, color)` | `Void(Integer...)`                 | Draws a filled triangle                                    |
+| `Triangle(x1, y1, x2, y2, x3, y3, color)` | `Void(Integer...)`                 | Draws a filled triangle; collinear vertices draw the longest edge |
 | `TriangleFrame(x1, y1, x2, y2, x3, y3, color)` | `Void(Integer...)`            | Draws a triangle outline                                   |
 | `Windowed()`                          | `Void()`                              | Exits fullscreen mode (returns to windowed)                |
 
 ### Color Format
 
-Colors are specified as 32-bit integers in `0x00RRGGBB` format:
+Colors are specified as 32-bit integers in `0x00RRGGBB` format or with `Viper.Graphics.Color.RGB/RGBA`:
 
 - Red: `0x00FF0000`
 - Green: `0x0000FF00`
@@ -106,7 +106,7 @@ Colors are specified as 32-bit integers in `0x00RRGGBB` format:
 - White: `0x00FFFFFF`
 - Black: `0x00000000`
 
-Use `Viper.Graphics.Color.RGB()` or `Viper.Graphics.Color.RGBA()` to create colors from components. RGB-only drawing calls use the RGB channels. Alpha-aware calls such as `BoxAlpha`, `DiscAlpha`, `EllipseAlpha`, and `BlitAlpha` use straight-alpha source-over compositing. `Color.RGBA()` values carry an internal explicit-alpha tag; use `Color.Get*` or `Color.ToHex()` instead of raw integer equality for RGBA colors.
+Use `Viper.Graphics.Color.RGB()` or `Viper.Graphics.Color.RGBA()` to create colors from components. RGB-only drawing calls use the RGB channels from either form. Alpha-aware calls such as `BoxAlpha`, `DiscAlpha`, `EllipseAlpha`, and `BlitAlpha` use straight-alpha source-over compositing; the explicit alpha parameter controls shape opacity. `FloodFill` compares and writes alpha as part of the filled region when given a tagged RGBA color. `Color.RGBA()` values carry an internal explicit-alpha tag; use `Color.Get*` or `Color.ToHex()` instead of raw integer equality for RGBA colors.
 
 ### Zia Example
 
@@ -231,6 +231,9 @@ canvas.RoundFrame(50, 150, 150, 80, 15, 255) ' Outline only
 
 ' Flood fill an area (like paint bucket tool)
 canvas.FloodFill(100, 100, 16776960)
+
+' Flood fill can also preserve alpha from Color.RGBA
+canvas.FloodFill(120, 100, Viper.Graphics.Color.RGBA(255, 255, 0, 128))
 
 ' Draw triangles
 canvas.Triangle(100, 50, 50, 150, 150, 150, 16711935)      ' Filled triangle

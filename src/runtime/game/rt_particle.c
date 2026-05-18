@@ -108,6 +108,8 @@ struct rt_particle_snapshot_impl {
     int64_t color;
 };
 
+/// @brief Safe-cast a handle to the ParticleEmitter impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p emitter is NULL.
 static struct rt_particle_emitter_impl *checked_emitter(rt_particle_emitter emitter,
                                                         const char *api) {
     if (!emitter)
@@ -119,6 +121,8 @@ static struct rt_particle_emitter_impl *checked_emitter(rt_particle_emitter emit
     return emitter;
 }
 
+/// @brief Safe-cast a handle to the ParticleSnapshot impl, trapping @p api on
+///        a class-id mismatch. @return The impl, or NULL if @p snapshot is NULL.
 static struct rt_particle_snapshot_impl *checked_snapshot(rt_particle_snapshot snapshot,
                                                           const char *api) {
     if (!snapshot)
@@ -163,10 +167,12 @@ int64_t rt_particle_snapshot_color(rt_particle_snapshot snapshot) {
     return snapshot ? snapshot->color : 0;
 }
 
+/// @brief Return @p value if finite, else @p fallback (NaN/Inf sanitizer).
 static double particle_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+/// @brief Saturating int64 addition (clamps to INT64_MIN/MAX on overflow).
 static int64_t particle_saturating_add(int64_t a, int64_t b) {
     if (b > 0 && a > INT64_MAX - b)
         return INT64_MAX;
@@ -175,6 +181,8 @@ static int64_t particle_saturating_add(int64_t a, int64_t b) {
     return a + b;
 }
 
+/// @brief Convert @p value to int64 via @p out. @return 1 on success, 0 if
+///        non-finite or outside the int64 range (out left unchanged).
 static int8_t particle_double_to_i64(double value, int64_t *out) {
     if (!out || !isfinite(value))
         return 0;
@@ -184,6 +192,8 @@ static int8_t particle_double_to_i64(double value, int64_t *out) {
     return 1;
 }
 
+/// @brief Pixel radius for a particle of the given @p size (size/2, clamped to
+///        [1, 1e6]); non-finite size yields 1.
 static int64_t particle_radius_from_size(double size) {
     if (!isfinite(size))
         return 1;
@@ -225,6 +235,9 @@ static int64_t rand_range_i64(struct rt_particle_emitter_impl *e, int64_t min, i
     return min + (int64_t)offset;
 }
 
+/// @brief Resolve a particle's draw color, applying legacy-opaque handling for
+///        0x00RRGGBB colors and life-ratio alpha fade when fade_out is set.
+/// @return Packed 0xAARRGGBB color with the effective alpha in the high byte.
 static int64_t particle_effective_color(const struct rt_particle_emitter_impl *emitter,
                                         const struct particle *p) {
     int64_t color = p->color;
@@ -239,6 +252,7 @@ static int64_t particle_effective_color(const struct rt_particle_emitter_impl *e
     return (argb & 0x00FFFFFF) | (alpha << 24);
 }
 
+/// @brief Convert a packed 0xAARRGGBB color to 0xRRGGBBAA (Pixels byte order).
 static uint32_t particle_argb_to_rgba(int64_t color) {
     uint32_t argb = (uint32_t)(color & 0xFFFFFFFFu);
     uint32_t a = (argb >> 24) & 0xFFu;
@@ -248,6 +262,10 @@ static uint32_t particle_argb_to_rgba(int64_t color) {
     return (r << 24) | (g << 16) | (b << 8) | a;
 }
 
+/// @brief Porter-Duff "source over destination" alpha compositing of two
+///        0xRRGGBBAA colors, with rounded straight-alpha output.
+/// @details Fast paths for fully transparent/opaque source; otherwise blends
+///          in premultiplied space and un-premultiplies the result.
 static uint32_t particle_alpha_over_rgba(uint32_t dst, uint32_t src) {
     uint32_t sr = (src >> 24) & 0xFFu;
     uint32_t sg = (src >> 16) & 0xFFu;
@@ -283,6 +301,9 @@ static uint32_t particle_alpha_over_rgba(uint32_t dst, uint32_t src) {
     return (r << 24) | (g << 16) | (b << 8) | oa;
 }
 
+/// @brief Draw a filled, alpha-blended disc of @p radius at (cx, cy) into a
+///        Pixels buffer, compositing each covered pixel via
+///        particle_alpha_over_rgba (clipped to the buffer bounds).
 static void rt_particle_draw_disc_blended(
     void *pixels, int64_t cx, int64_t cy, int64_t radius, int64_t color) {
     int64_t alpha = (color >> 24) & 0xFF;
@@ -321,6 +342,7 @@ static void rt_particle_draw_disc_blended(
     }
 }
 
+/// @brief GC finalizer: free the emitter's particle pool and any references.
 static void particle_emitter_finalizer(void *obj) {
     struct rt_particle_emitter_impl *e = (struct rt_particle_emitter_impl *)obj;
     if (e && e->particles) {

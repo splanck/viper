@@ -64,6 +64,8 @@ static int8_t shape_overlap(rt_body_impl *a, rt_body_impl *b, double *nx, double
 static int8_t swept_bounds_pair(rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *entry);
 static void resolve_collision(rt_body_impl *a, rt_body_impl *b, double nx, double ny, double pen);
 
+/// @brief Clear the world's per-step contact list (called at the start of
+///        each physics step before broad/narrow-phase regenerates contacts).
 static void world_clear_contacts(rt_world_impl *w) {
     if (!w)
         return;
@@ -597,6 +599,10 @@ static int8_t swept_circle_circle_pair(
     return 1;
 }
 
+/// @brief Swept (continuous) collision of a moving point against a static AABB.
+/// @details Returns the entry time t in [0,1] and contact normal if the point's
+///          motion this step crosses the box; used so fast bodies don't tunnel.
+/// @return Non-zero on a hit (out params written), 0 otherwise.
 static int8_t swept_point_aabb(double px,
                                double py,
                                double vx,
@@ -627,6 +633,9 @@ static int8_t swept_point_aabb(double px,
     return 1;
 }
 
+/// @brief Swept collision of a moving circle against a (possibly moving) AABB,
+///        reduced to a point-vs-expanded-AABB test on the relative motion.
+/// @return Non-zero on a hit (entry time/normal written), 0 otherwise.
 static int8_t swept_circle_aabb_pair(
     rt_body_impl *circle, rt_body_impl *rect, double *nx, double *ny, double *entry_out) {
     double cdx = circle->x - circle->prev_x;
@@ -718,6 +727,8 @@ static int8_t swept_circle_aabb_pair(
     return 1;
 }
 
+/// @brief Swept collision between two AABBs using their relative velocity
+///        (Minkowski-expanded point sweep). @return non-zero on a hit.
 static int8_t swept_aabb_pair(rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *entry_out) {
     if (!a || !b || !nx || !ny || !entry_out)
         return 0;
@@ -776,6 +787,9 @@ static int8_t swept_aabb_pair(rt_body_impl *a, rt_body_impl *b, double *nx, doub
     return 1;
 }
 
+/// @brief Swept test between two bodies, dispatching to the circle/AABB sweep
+///        appropriate to their shapes; writes contact normal and entry time.
+/// @return Non-zero if the bodies collide during this step, 0 otherwise.
 static int8_t swept_bounds_pair(rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *entry_out) {
     if (!a || !b || !nx || !ny || !entry_out)
         return 0;
@@ -1560,6 +1574,8 @@ typedef struct {
     double ground_y;
 } rt_projectile2d_impl;
 
+/// @brief Safe-cast a handle to the Projectile2D impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p obj is NULL.
 static rt_projectile2d_impl *checked_projectile(void *obj, const char *api) {
     if (!obj)
         return NULL;
@@ -1570,6 +1586,8 @@ static rt_projectile2d_impl *checked_projectile(void *obj, const char *api) {
     return (rt_projectile2d_impl *)obj;
 }
 
+/// @brief Return @p value if finite, else @p fallback (sanitizes user-supplied
+///        projectile parameters against NaN/Inf).
 static double projectile_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
@@ -1612,6 +1630,8 @@ void rt_projectile2d_reset(void *obj) {
     p->landed = 0;
 }
 
+/// @brief Position of one axis at time @p t under constant gravity @p g and
+///        linear @p drag (closed-form; reduces to p0+v0·t+½g·t² when drag==0).
 static double projectile_pos_at(double p0, double v0, double g, double drag, double t) {
     if (!isfinite(t) || t <= 0.0)
         return p0;
@@ -1622,6 +1642,8 @@ static double projectile_pos_at(double p0, double v0, double g, double drag, dou
            (g / (drag * drag)) * (1.0 - e);
 }
 
+/// @brief Velocity of one axis at time @p t under gravity @p g and linear
+///        @p drag (closed-form; reduces to v0+g·t when drag==0).
 static double projectile_vel_at(double v0, double g, double drag, double t) {
     if (!isfinite(t) || t <= 0.0)
         return v0;

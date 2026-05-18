@@ -61,20 +61,30 @@ void rt_pathfinder_destroy(void *pf);
 // Configuration
 //=========================================================================
 
+/// @brief Mark grid cell (x, y) as walkable (1) or blocked (0).
 void rt_pathfinder_set_walkable(void *pf, int64_t x, int64_t y, int8_t walkable);
+/// @brief Query whether grid cell (x, y) is walkable (0 if out of bounds).
 int8_t rt_pathfinder_is_walkable(void *pf, int64_t x, int64_t y);
+/// @brief Set the movement cost of entering cell (x, y) (>= 1).
 void rt_pathfinder_set_cost(void *pf, int64_t x, int64_t y, int64_t cost);
+/// @brief Get the movement cost of cell (x, y).
 int64_t rt_pathfinder_get_cost(void *pf, int64_t x, int64_t y);
+/// @brief Allow (1) or forbid (0) diagonal movement during pathfinding.
 void rt_pathfinder_set_diagonal(void *pf, int8_t allow);
+/// @brief Cap the number of node expansions per search (0 = unlimited).
 void rt_pathfinder_set_max_steps(void *pf, int64_t max);
 
 //=========================================================================
 // Properties
 //=========================================================================
 
+/// @brief Grid width in cells.
 int64_t rt_pathfinder_get_width(void *pf);
+/// @brief Grid height in cells.
 int64_t rt_pathfinder_get_height(void *pf);
+/// @brief Number of node expansions performed by the most recent search.
 int64_t rt_pathfinder_get_last_steps(void *pf);
+/// @brief Whether the most recent search found a path (1) or not (0).
 int8_t rt_pathfinder_get_last_found(void *pf);
 
 //=========================================================================

@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_scene.h"
 #include "rt_object.h"
+#include "rt_scene.h"
 #include "rt_string.h"
 #include "tests/common/PosixCompat.h"
 
@@ -231,6 +231,28 @@ static void test_scene_node_find() {
     printf("test_scene_node_find: PASSED\n");
 }
 
+static void test_scene_deep_hierarchy_iterative_traversal() {
+    constexpr int64_t depth = 4096;
+    void *root = rt_scene_node_new();
+    void *cur = root;
+
+    for (int64_t i = 0; i < depth; i++) {
+        void *child = rt_scene_node_new();
+        rt_scene_node_set_x(child, 1);
+        if (i == depth - 1)
+            rt_scene_node_set_name(child, rt_const_cstr("deep_leaf"));
+        rt_scene_node_add_child(cur, child);
+        cur = child;
+    }
+
+    rt_scene_node_set_x(root, 5);
+    assert(rt_scene_node_find(root, rt_const_cstr("deep_leaf")) == cur);
+    assert(rt_scene_node_get_world_x(cur) == 5 + depth);
+    rt_scene_node_update(root);
+
+    printf("test_scene_deep_hierarchy_iterative_traversal: PASSED\n");
+}
+
 // ============================================================================
 // SceneNode Methods Tests
 // ============================================================================
@@ -413,6 +435,7 @@ int main() {
     // SceneNode name/find
     test_scene_node_name();
     test_scene_node_find();
+    test_scene_deep_hierarchy_iterative_traversal();
 
     // SceneNode methods
     test_scene_node_move();

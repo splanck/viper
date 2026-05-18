@@ -66,6 +66,8 @@ struct rt_tween_impl {
     int8_t paused;     ///< 1 if tween is paused.
 };
 
+/// @brief Safe-cast a handle to the Tween impl, trapping @p api on a class-id
+///        mismatch. @return The tween, or NULL if @p tween is NULL.
 static rt_tween checked_tween(rt_tween tween, const char *api) {
     if (!tween)
         return NULL;
@@ -76,10 +78,12 @@ static rt_tween checked_tween(rt_tween tween, const char *api) {
     return tween;
 }
 
+/// @brief Return @p value if finite, else @p fallback (NaN/Inf sanitizer).
 static double tween_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+/// @brief Round-half-away-from-zero to int64, saturating; 0 for non-finite.
 static int64_t tween_round_to_i64(double value) {
     if (!isfinite(value))
         return 0;
@@ -90,6 +94,8 @@ static int64_t tween_round_to_i64(double value) {
     return (int64_t)(value + (value >= 0 ? 0.5 : -0.5));
 }
 
+/// @brief Integer percentage value*100/total, clamped to [0, 100]; 0 for
+///        non-positive inputs.
 static int64_t tween_percent_i64(int64_t value, int64_t total) {
     if (value <= 0 || total <= 0)
         return 0;
@@ -394,35 +400,47 @@ double rt_tween_ease(double t, int64_t ease_type) {
 
 //=============================================================================
 // Internal easing function implementations
+//
+// Each takes a normalized progress t in [0, 1] and returns the eased value
+// (also ~[0, 1], though "back"/"bounce" curves overshoot). Naming follows the
+// Penner convention: "in" accelerates from rest, "out" decelerates to rest,
+// "in_out" does both around the midpoint.
 //=============================================================================
 
+/// @brief Linear (identity) easing: returns @p t unchanged.
 static double ease_linear(double t) {
     return t;
 }
 
+/// @brief Quadratic ease-in (t^2).
 static double ease_in_quad(double t) {
     return t * t;
 }
 
+/// @brief Quadratic ease-out.
 static double ease_out_quad(double t) {
     return t * (2.0 - t);
 }
 
+/// @brief Quadratic ease-in-out.
 static double ease_in_out_quad(double t) {
     if (t < 0.5)
         return 2.0 * t * t;
     return -1.0 + (4.0 - 2.0 * t) * t;
 }
 
+/// @brief Cubic ease-in (t^3).
 static double ease_in_cubic(double t) {
     return t * t * t;
 }
 
+/// @brief Cubic ease-out.
 static double ease_out_cubic(double t) {
     double t1 = t - 1.0;
     return t1 * t1 * t1 + 1.0;
 }
 
+/// @brief Cubic ease-in-out.
 static double ease_in_out_cubic(double t) {
     if (t < 0.5)
         return 4.0 * t * t * t;
@@ -430,30 +448,36 @@ static double ease_in_out_cubic(double t) {
     return 0.5 * t1 * t1 * t1 + 1.0;
 }
 
+/// @brief Sinusoidal ease-in (1 - cos).
 static double ease_in_sine(double t) {
     return 1.0 - cos(t * M_PI / 2.0);
 }
 
+/// @brief Sinusoidal ease-out (sin).
 static double ease_out_sine(double t) {
     return sin(t * M_PI / 2.0);
 }
 
+/// @brief Sinusoidal ease-in-out.
 static double ease_in_out_sine(double t) {
     return 0.5 * (1.0 - cos(M_PI * t));
 }
 
+/// @brief Exponential ease-in (2^(10(t-1))).
 static double ease_in_expo(double t) {
     if (t == 0.0)
         return 0.0;
     return pow(2.0, 10.0 * (t - 1.0));
 }
 
+/// @brief Exponential ease-out.
 static double ease_out_expo(double t) {
     if (t == 1.0)
         return 1.0;
     return 1.0 - pow(2.0, -10.0 * t);
 }
 
+/// @brief Exponential ease-in-out.
 static double ease_in_out_expo(double t) {
     if (t == 0.0)
         return 0.0;
@@ -464,12 +488,14 @@ static double ease_in_out_expo(double t) {
     return 1.0 - 0.5 * pow(2.0, -20.0 * t + 10.0);
 }
 
+/// @brief "Back" ease-in: slight anticipation (undershoot) before advancing.
 static double ease_in_back(double t) {
     const double c1 = 1.70158;
     const double c3 = c1 + 1.0;
     return c3 * t * t * t - c1 * t * t;
 }
 
+/// @brief "Back" ease-out: overshoots the target then settles back.
 static double ease_out_back(double t) {
     const double c1 = 1.70158;
     const double c3 = c1 + 1.0;
@@ -477,6 +503,7 @@ static double ease_out_back(double t) {
     return 1.0 + c3 * t1 * t1 * t1 + c1 * t1 * t1;
 }
 
+/// @brief "Back" ease-in-out: anticipation at the start, overshoot at the end.
 static double ease_in_out_back(double t) {
     const double c1 = 1.70158;
     const double c2 = c1 * 1.525;
@@ -488,6 +515,7 @@ static double ease_in_out_back(double t) {
     return 0.5 * (t2 * t2 * ((c2 + 1.0) * t2 + c2) + 2.0);
 }
 
+/// @brief "Bounce" ease-out: decaying piecewise-parabolic bounces to the end.
 static double ease_out_bounce(double t) {
     const double n1 = 7.5625;
     const double d1 = 2.75;
@@ -506,10 +534,12 @@ static double ease_out_bounce(double t) {
     }
 }
 
+/// @brief "Bounce" ease-in: time-reversed ease_out_bounce.
 static double ease_in_bounce(double t) {
     return 1.0 - ease_out_bounce(1.0 - t);
 }
 
+/// @brief "Bounce" ease-in-out: bounce-in for the first half, bounce-out the second.
 static double ease_in_out_bounce(double t) {
     if (t < 0.5)
         return 0.5 * (1.0 - ease_out_bounce(1.0 - 2.0 * t));

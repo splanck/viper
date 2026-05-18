@@ -49,30 +49,34 @@
 #include "rt_time.h"
 
 #include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define MAX_SPRITE_FRAMES 64
+#define SPRITE_INITIAL_FRAME_CAPACITY 4
+#define SPRITE_DEFAULT_FRAME_DELAY_MS 100
 
 /// @brief Sprite implementation structure.
 typedef struct rt_sprite_impl {
-    int64_t x;                       ///< X position
-    int64_t y;                       ///< Y position
-    int64_t scale_x;                 ///< Horizontal scale (100 = 100%)
-    int64_t scale_y;                 ///< Vertical scale (100 = 100%)
-    int64_t rotation;                ///< Rotation in degrees
-    int64_t depth;                   ///< Depth used by SpriteBatch sorting
-    int64_t visible;                 ///< Visibility flag
-    int64_t origin_x;                ///< Origin X for rotation/scaling
-    int64_t origin_y;                ///< Origin Y for rotation/scaling
-    int64_t current_frame;           ///< Current animation frame
-    int64_t frame_count;             ///< Number of frames
-    int64_t frame_delay_ms;          ///< Delay between frames
-    int64_t last_frame_time;         ///< Last frame update time
-    int64_t flip_x;                  ///< Horizontal flip flag
-    int64_t flip_y;                  ///< Vertical flip flag
-    void *frames[MAX_SPRITE_FRAMES]; ///< Frame pixel buffers
+    int64_t x;                ///< X position
+    int64_t y;                ///< Y position
+    int64_t scale_x;          ///< Horizontal scale (100 = 100%)
+    int64_t scale_y;          ///< Vertical scale (100 = 100%)
+    int64_t rotation;         ///< Rotation in degrees
+    int64_t depth;            ///< Depth used by SpriteBatch sorting
+    int64_t visible;          ///< Visibility flag
+    int64_t origin_x;         ///< Origin X for rotation/scaling
+    int64_t origin_y;         ///< Origin Y for rotation/scaling
+    int64_t current_frame;    ///< Current animation frame
+    int64_t frame_count;      ///< Number of frames
+    int64_t frame_capacity;   ///< Allocated frame slots
+    int64_t frame_delay_ms;   ///< Delay between frames
+    int64_t last_frame_time;  ///< Last frame update time
+    int64_t flip_x;           ///< Horizontal flip flag
+    int64_t flip_y;           ///< Vertical flip flag
+    void **frames;            ///< Frame pixel buffers
+    int64_t *frame_delays_ms; ///< Per-frame delays
 } rt_sprite_impl;
 
 /// @brief Validate-and-cast an opaque sprite pointer to its impl, trapping on failure.
@@ -107,9 +111,71 @@ static rt_sprite_impl *sprite_checked_or_null(void *sprite_ptr) {
 /// @brief Return the active frame's Pixels object, or NULL if none / out-of-range.
 static void *sprite_get_current_frame_ptr(rt_sprite_impl *sprite) {
     if (!sprite || sprite->frame_count <= 0 || sprite->current_frame < 0 ||
-        sprite->current_frame >= sprite->frame_count)
+        sprite->current_frame >= sprite->frame_count || !sprite->frames)
         return NULL;
     return sprite->frames[sprite->current_frame];
+}
+
+static int64_t sprite_normalize_delay(int64_t ms) {
+    return ms < 1 ? 1 : ms;
+}
+
+static int8_t sprite_ensure_frame_capacity(rt_sprite_impl *sprite, int64_t needed) {
+    if (!sprite || needed <= 0)
+        return 0;
+    if (needed <= sprite->frame_capacity)
+        return 1;
+    int64_t new_cap =
+        sprite->frame_capacity > 0 ? sprite->frame_capacity : SPRITE_INITIAL_FRAME_CAPACITY;
+    while (new_cap < needed) {
+        if (new_cap > INT64_MAX / 2) {
+            new_cap = needed;
+            break;
+        }
+        new_cap *= 2;
+    }
+    if ((uint64_t)new_cap > (uint64_t)SIZE_MAX / sizeof(void *) ||
+        (uint64_t)new_cap > (uint64_t)SIZE_MAX / sizeof(int64_t))
+        return 0;
+
+    void **new_frames = (void **)realloc(sprite->frames, (size_t)new_cap * sizeof(void *));
+    if (!new_frames)
+        return 0;
+    sprite->frames = new_frames;
+
+    int64_t *new_delays =
+        (int64_t *)realloc(sprite->frame_delays_ms, (size_t)new_cap * sizeof(int64_t));
+    if (!new_delays)
+        return 0;
+    sprite->frame_delays_ms = new_delays;
+
+    for (int64_t i = sprite->frame_capacity; i < new_cap; i++) {
+        sprite->frames[i] = NULL;
+        sprite->frame_delays_ms[i] =
+            sprite->frame_delay_ms > 0 ? sprite->frame_delay_ms : SPRITE_DEFAULT_FRAME_DELAY_MS;
+    }
+    sprite->frame_capacity = new_cap;
+    return 1;
+}
+
+static int64_t sprite_frame_delay_at(rt_sprite_impl *sprite, int64_t frame) {
+    if (!sprite || frame < 0 || frame >= sprite->frame_count || !sprite->frame_delays_ms)
+        return sprite ? sprite_normalize_delay(sprite->frame_delay_ms)
+                      : SPRITE_DEFAULT_FRAME_DELAY_MS;
+    return sprite_normalize_delay(sprite->frame_delays_ms[frame]);
+}
+
+static int64_t sprite_cycle_delay(rt_sprite_impl *sprite) {
+    if (!sprite || sprite->frame_count <= 0)
+        return 0;
+    int64_t total = 0;
+    for (int64_t i = 0; i < sprite->frame_count; i++) {
+        int64_t delay = sprite_frame_delay_at(sprite, i);
+        if (total > INT64_MAX - delay)
+            return INT64_MAX;
+        total += delay;
+    }
+    return total;
 }
 
 /// @brief Multiply the alpha channel of every pixel in `pixels` by `alpha/255`.
@@ -454,10 +520,16 @@ static void sprite_finalize(void *obj) {
     rt_sprite_impl *sprite = sprite_checked_or_null(obj);
     if (!sprite)
         return;
-    for (int i = 0; i < MAX_SPRITE_FRAMES; i++) {
-        if (sprite->frames[i])
+    for (int64_t i = 0; i < sprite->frame_count; i++) {
+        if (sprite->frames && sprite->frames[i])
             rt_heap_release(sprite->frames[i]);
     }
+    free(sprite->frames);
+    free(sprite->frame_delays_ms);
+    sprite->frames = NULL;
+    sprite->frame_delays_ms = NULL;
+    sprite->frame_capacity = 0;
+    sprite->frame_count = 0;
 }
 
 /// @brief Allocate a new sprite.
@@ -478,13 +550,13 @@ static rt_sprite_impl *sprite_alloc(void) {
     sprite->origin_y = 0;
     sprite->current_frame = 0;
     sprite->frame_count = 0;
-    sprite->frame_delay_ms = 100;
+    sprite->frame_capacity = 0;
+    sprite->frame_delay_ms = SPRITE_DEFAULT_FRAME_DELAY_MS;
     sprite->last_frame_time = 0;
     sprite->flip_x = 0;
     sprite->flip_y = 0;
-
-    for (int i = 0; i < MAX_SPRITE_FRAMES; i++)
-        sprite->frames[i] = NULL;
+    sprite->frames = NULL;
+    sprite->frame_delays_ms = NULL;
 
     rt_obj_set_finalizer(sprite, sprite_finalize);
     return sprite;
@@ -512,9 +584,15 @@ void *rt_sprite_new(void *pixels) {
     rt_sprite_impl *sprite = sprite_alloc();
     if (!sprite)
         return NULL;
+    if (!sprite_ensure_frame_capacity(sprite, 1)) {
+        if (rt_obj_release_check0(sprite))
+            rt_obj_free(sprite);
+        return NULL;
+    }
 
     rt_obj_retain_maybe(pixels);
     sprite->frames[0] = pixels;
+    sprite->frame_delays_ms[0] = sprite->frame_delay_ms;
     sprite->frame_count = 1;
 
     return sprite;
@@ -571,8 +649,14 @@ void *rt_sprite_from_file(void *path) {
             sprite_release_gif_frames(gif_frames, gif_count);
             return NULL;
         }
-        int n = gif_count < MAX_SPRITE_FRAMES ? gif_count : MAX_SPRITE_FRAMES;
+        int n = gif_count;
         if (n <= 0) {
+            sprite_release_gif_frames(gif_frames, gif_count);
+            if (rt_obj_release_check0(sprite))
+                rt_obj_free(sprite);
+            return NULL;
+        }
+        if (!sprite_ensure_frame_capacity(sprite, n)) {
             sprite_release_gif_frames(gif_frames, gif_count);
             if (rt_obj_release_check0(sprite))
                 rt_obj_free(sprite);
@@ -588,6 +672,8 @@ void *rt_sprite_from_file(void *path) {
         }
         for (int i = 0; i < n; i++) {
             sprite->frames[i] = gif_frames[i].pixels;
+            sprite->frame_delays_ms[i] =
+                gif_frames[i].delay_ms > 0 ? gif_frames[i].delay_ms : sprite->frame_delay_ms;
             gif_frames[i].pixels = NULL; // Transfer ownership from the decoder result array.
         }
         sprite->frame_count = n;
@@ -620,8 +706,15 @@ void *rt_sprite_from_file(void *path) {
         sprite_release_object(pixels);
         return NULL;
     }
+    if (!sprite_ensure_frame_capacity(sprite, 1)) {
+        sprite_release_object(pixels);
+        if (rt_obj_release_check0(sprite))
+            rt_obj_free(sprite);
+        return NULL;
+    }
 
     sprite->frames[0] = pixels;
+    sprite->frame_delays_ms[0] = sprite->frame_delay_ms;
     sprite->frame_count = 1;
 
     return sprite;
@@ -943,9 +1036,8 @@ void rt_sprite_set_origin(void *sprite_ptr, int64_t x, int64_t y) {
 
 /// @brief Append `pixels` as the next animation frame.
 ///
-/// Bumps the Pixels refcount. Capped at `MAX_SPRITE_FRAMES`;
-/// frames beyond the cap are silently dropped. Frame indices are
-/// assigned in append order starting at 0.
+/// Bumps the Pixels refcount and grows the frame table as needed.
+/// Frame indices are assigned in append order starting at 0.
 void rt_sprite_add_frame(void *sprite_ptr, void *pixels) {
     if (!sprite_ptr || !pixels) {
         rt_trap("Sprite.AddFrame: null argument");
@@ -959,11 +1051,14 @@ void rt_sprite_add_frame(void *sprite_ptr, void *pixels) {
     rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.AddFrame: invalid sprite");
     if (!sprite)
         return;
-    if (sprite->frame_count >= MAX_SPRITE_FRAMES)
+    if (!sprite_ensure_frame_capacity(sprite, sprite->frame_count + 1)) {
+        rt_trap("Sprite.AddFrame: too many frames");
         return;
+    }
 
     rt_obj_retain_maybe(pixels);
     sprite->frames[sprite->frame_count] = pixels;
+    sprite->frame_delays_ms[sprite->frame_count] = sprite->frame_delay_ms;
     sprite->frame_count++;
 }
 
@@ -972,9 +1067,40 @@ void rt_sprite_set_frame_delay(void *sprite_ptr, int64_t ms) {
     rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.SetFrameDelay: invalid sprite");
     if (!sprite)
         return;
-    if (ms < 1)
-        ms = 1;
+    ms = sprite_normalize_delay(ms);
     sprite->frame_delay_ms = ms;
+    if (sprite->frame_delays_ms) {
+        for (int64_t i = 0; i < sprite->frame_count; i++)
+            sprite->frame_delays_ms[i] = ms;
+    }
+}
+
+/// @brief Get one frame's display duration in milliseconds.
+int64_t rt_sprite_get_frame_delay_at(void *sprite_ptr, int64_t frame) {
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.GetFrameDelayAt: invalid sprite");
+    if (!sprite || sprite->frame_count <= 0)
+        return 0;
+    if (frame < 0 || frame >= sprite->frame_count) {
+        rt_trap("Sprite.GetFrameDelayAt: frame out of range");
+        return 0;
+    }
+    return sprite_frame_delay_at(sprite, frame);
+}
+
+/// @brief Set one frame's display duration in milliseconds.
+void rt_sprite_set_frame_delay_at(void *sprite_ptr, int64_t frame, int64_t ms) {
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.SetFrameDelayAt: invalid sprite");
+    if (!sprite)
+        return;
+    if (frame < 0 || frame >= sprite->frame_count) {
+        rt_trap("Sprite.SetFrameDelayAt: frame out of range");
+        return;
+    }
+    if (!sprite_ensure_frame_capacity(sprite, sprite->frame_count)) {
+        rt_trap("Sprite.SetFrameDelayAt: frame delay storage unavailable");
+        return;
+    }
+    sprite->frame_delays_ms[frame] = sprite_normalize_delay(ms);
 }
 
 /// @brief Tick the sprite's animation: advance to the next frame if the delay elapsed.
@@ -1001,16 +1127,26 @@ void rt_sprite_update(void *sprite_ptr) {
         sprite->last_frame_time = now;
         elapsed = 0;
     }
-    if (elapsed >= sprite->frame_delay_ms) {
-        int64_t steps = elapsed / sprite->frame_delay_ms;
-        if (steps < 1)
-            steps = 1;
-        int64_t frame_advance = steps % sprite->frame_count;
-        sprite->current_frame = (sprite->current_frame + frame_advance) % sprite->frame_count;
-        int64_t consumed =
-            steps > INT64_MAX / sprite->frame_delay_ms ? INT64_MAX : steps * sprite->frame_delay_ms;
+    int64_t cycle_delay = sprite_cycle_delay(sprite);
+    if (cycle_delay > 0 && cycle_delay < INT64_MAX && elapsed >= cycle_delay) {
+        int64_t cycles = elapsed / cycle_delay;
+        int64_t consumed = cycles > INT64_MAX / cycle_delay ? INT64_MAX : cycles * cycle_delay;
+        elapsed = consumed > elapsed ? 0 : elapsed - consumed;
+        sprite->last_frame_time = sprite->last_frame_time > INT64_MAX - consumed
+                                      ? now
+                                      : sprite->last_frame_time + consumed;
+    }
+
+    int64_t guard = 0;
+    while (guard < sprite->frame_count) {
+        int64_t delay = sprite_frame_delay_at(sprite, sprite->current_frame);
+        if (elapsed < delay)
+            break;
+        elapsed -= delay;
         sprite->last_frame_time =
-            sprite->last_frame_time > INT64_MAX - consumed ? now : sprite->last_frame_time + consumed;
+            sprite->last_frame_time > INT64_MAX - delay ? now : sprite->last_frame_time + delay;
+        sprite->current_frame = (sprite->current_frame + 1) % sprite->frame_count;
+        guard++;
     }
 }
 
@@ -1247,8 +1383,8 @@ void rt_sprite_animator_update(rt_sprite_animator_t *animator, void *sprite_ptr)
     if (animator->clip_frame < 0)
         animator->clip_frame = 0;
     if (animator->clip_frame >= effective_count)
-        animator->clip_frame = clip->loop ? animator->clip_frame % effective_count
-                                          : effective_count - 1;
+        animator->clip_frame =
+            clip->loop ? animator->clip_frame % effective_count : effective_count - 1;
 
     int64_t now = rt_timer_ms();
 
@@ -1265,8 +1401,9 @@ void rt_sprite_animator_update(rt_sprite_animator_t *animator, void *sprite_ptr)
         int64_t steps = elapsed / clip->frame_delay_ms;
         int64_t consumed =
             steps > INT64_MAX / clip->frame_delay_ms ? INT64_MAX : steps * clip->frame_delay_ms;
-        animator->last_update_ms =
-            animator->last_update_ms > INT64_MAX - consumed ? now : animator->last_update_ms + consumed;
+        animator->last_update_ms = animator->last_update_ms > INT64_MAX - consumed
+                                       ? now
+                                       : animator->last_update_ms + consumed;
 
         if (clip->loop) {
             steps %= effective_count;

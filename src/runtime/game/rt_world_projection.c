@@ -12,6 +12,7 @@
 
 #include <math.h>
 
+/// @brief Clamp @p value to [0.0, 1.0]; non-finite input yields 0.0.
 static double projection_clamp01(double value) {
     if (!isfinite(value))
         return 0.0;
@@ -22,6 +23,8 @@ static double projection_clamp01(double value) {
     return value;
 }
 
+/// @brief Clamp a projection depth away from zero (to ±1e-6, preserving sign)
+///        so perspective division never divides by ~0; non-finite -> 1.0.
 static double projection_safe_depth(double depth) {
     if (!isfinite(depth))
         return 1.0;

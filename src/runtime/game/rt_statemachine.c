@@ -56,6 +56,8 @@ struct rt_statemachine_impl {
     int64_t state_count;         ///< Number of registered states.
 };
 
+/// @brief Safe-cast a handle to the StateMachine impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p sm is NULL.
 static rt_statemachine checked_statemachine(rt_statemachine sm, const char *api) {
     if (!sm)
         return NULL;

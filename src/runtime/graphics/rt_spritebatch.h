@@ -187,7 +187,14 @@ void rt_spritebatch_draw_atlas_ex(void *batch,
                                   int64_t depth);
 
 //=========================================================================
-// TextureAtlas (see rt_texatlas.h for full API)
+// TextureAtlas
+//
+/// @brief Convenience re-declarations of the named-region TextureAtlas API so
+///        SpriteBatch users can build atlases without a separate include.
+/// @details These are the same `rt_texatlas_*` entry points implemented and
+///          canonically documented in rt_texatlas.h — see that header for the
+///          authoritative per-function contracts (kept here only as a
+///          forward-declaration convenience; do not let the two diverge).
 //=========================================================================
 
 void *rt_texatlas_new(void *pixels);

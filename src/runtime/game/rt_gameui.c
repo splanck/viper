@@ -47,12 +47,14 @@
 
 #define UI_MAX_DIM INT64_C(16384)
 
+/// @brief Clamp a widget dimension to [1, UI_MAX_DIM] (rejects non-positive).
 static int64_t ui_clamp_dim(int64_t value) {
     if (value <= 0)
         return 1;
     return value > UI_MAX_DIM ? UI_MAX_DIM : value;
 }
 
+/// @brief Clamp an integer UI scale factor to [1, 16].
 static int64_t ui_clamp_scale(int64_t scale) {
     if (scale < 1)
         return 1;
@@ -61,6 +63,7 @@ static int64_t ui_clamp_scale(int64_t scale) {
     return scale;
 }
 
+/// @brief Saturating int64 addition (clamps to INT64_MIN/MAX on overflow).
 static int64_t ui_add_sat_i64(int64_t a, int64_t b) {
     if (b > 0 && a > INT64_MAX - b)
         return INT64_MAX;
@@ -69,6 +72,8 @@ static int64_t ui_add_sat_i64(int64_t a, int64_t b) {
     return a + b;
 }
 
+/// @brief Convert a long double to int64, saturating to the int64 range
+///        (non-finite -> 0; backs the bound off on short-mantissa platforms).
 static int64_t ui_ld_to_i64_sat(long double value) {
     if (!isfinite(value))
         return 0;
@@ -86,6 +91,8 @@ static int64_t ui_ld_to_i64_sat(long double value) {
     return (int64_t)value;
 }
 
+/// @brief True if @p point lies in the half-open span [start, start+extent)
+///        (overflow-safe via unsigned offset).
 static int8_t ui_coord_inside(int64_t start, int64_t extent, int64_t point) {
     if (extent <= 0 || point < start)
         return 0;
@@ -93,6 +100,8 @@ static int8_t ui_coord_inside(int64_t start, int64_t extent, int64_t point) {
     return offset < (uint64_t)extent;
 }
 
+/// @brief Offset of @p point from @p start, clamped to [0, extent]
+///        (for mapping a click coordinate into a widget-local position).
 static int64_t ui_coord_offset_clamped(int64_t start, int64_t extent, int64_t point) {
     if (extent <= 0 || point <= start)
         return 0;
@@ -102,14 +111,18 @@ static int64_t ui_coord_offset_clamped(int64_t start, int64_t extent, int64_t po
     return (int64_t)offset;
 }
 
+/// @brief True if @p obj is a BitmapFont instance.
 static int8_t ui_is_bitmapfont(void *obj) {
     return obj && rt_obj_class_id(obj) == RT_BITMAPFONT_CLASS_ID;
 }
 
+/// @brief True if @p obj is a Pixels instance.
 static int8_t ui_is_pixels(void *obj) {
     return obj && rt_obj_class_id(obj) == RT_PIXELS_CLASS_ID;
 }
 
+/// @brief Validate an optional BitmapFont argument: NULL is allowed (returns
+///        1); a wrong-type handle traps @p api. @return 1 if usable, 0 if trapped.
 static int8_t ui_validate_bitmapfont(void *font, const char *api) {
     if (!font)
         return 1;
@@ -120,6 +133,8 @@ static int8_t ui_validate_bitmapfont(void *font, const char *api) {
     return 1;
 }
 
+/// @brief Validate a required Pixels argument; traps @p api on a wrong-type
+///        handle. @return 1 if a valid Pixels, 0 if NULL or trapped.
 static int8_t ui_validate_pixels(void *pixels, const char *api) {
     if (!pixels)
         return 0;
@@ -130,6 +145,8 @@ static int8_t ui_validate_pixels(void *pixels, const char *api) {
     return 1;
 }
 
+/// @brief Validate a required Canvas argument; traps @p api on a non-Canvas
+///        handle. @return 1 if a valid Canvas, 0 if NULL or trapped.
 static int8_t ui_validate_canvas(void *canvas, const char *api) {
     if (!canvas)
         return 0;
@@ -140,6 +157,7 @@ static int8_t ui_validate_canvas(void *canvas, const char *api) {
     return 1;
 }
 
+/// @brief Length of @p s up to the first NUL or @p max_len bytes.
 static size_t ui_visible_len(const char *s, size_t max_len) {
     size_t len = 0;
     if (!s)
@@ -149,10 +167,15 @@ static size_t ui_visible_len(const char *s, size_t max_len) {
     return len;
 }
 
+/// @brief True if @p c is a UTF-8 continuation byte (10xxxxxx).
 static int ui_is_continuation(unsigned char c) {
     return (c & 0xC0u) == 0x80u;
 }
 
+/// @brief Byte length (1–4) of the well-formed UTF-8 codepoint at @p pos.
+/// @details Validates continuation bytes and rejects overlong/surrogate/
+///          out-of-range sequences (returns 1 for any malformed lead byte so
+///          callers always make forward progress).
 static size_t ui_utf8_cp_len(const char *s, size_t len, size_t pos) {
     unsigned char c = (unsigned char)s[pos];
     if (c < 0x80u)
@@ -183,6 +206,8 @@ static size_t ui_utf8_cp_len(const char *s, size_t len, size_t pos) {
     return 1;
 }
 
+/// @brief Largest byte length <= @p max_bytes that ends on a UTF-8 character
+///        boundary (so truncation never splits a multibyte codepoint).
 static size_t ui_utf8_trunc_len(const char *s, size_t len, size_t max_bytes) {
     size_t pos = 0;
     size_t last = 0;
@@ -196,6 +221,7 @@ static size_t ui_utf8_trunc_len(const char *s, size_t len, size_t max_bytes) {
     return last;
 }
 
+/// @brief Byte length of the first @p max_codepoints UTF-8 characters of @p s.
 static size_t ui_utf8_trunc_codepoints(const char *s, size_t len, size_t max_codepoints) {
     size_t pos = 0;
     size_t count = 0;
@@ -211,6 +237,8 @@ static size_t ui_utf8_trunc_codepoints(const char *s, size_t len, size_t max_cod
     return pos;
 }
 
+/// @brief Copy a runtime string into a fixed @p cap buffer, NUL-terminated and
+///        truncated on a UTF-8 character boundary. Empty on NULL @p text.
 static void ui_copy_text(char *dst, size_t cap, rt_string text) {
     if (!dst || cap == 0)
         return;
@@ -227,11 +255,14 @@ static void ui_copy_text(char *dst, size_t cap, rt_string text) {
     dst[copy_len] = '\0';
 }
 
+/// @brief Drop one GC reference to @p obj and free it if the count hit zero.
 static void ui_release_obj(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
+/// @brief Retain @p value, release the old occupant of @p *slot, and store
+///        @p value (a GC-safe reference-replacing setter; no-op if unchanged).
 static void ui_replace_ref(void **slot, void *value) {
     if (!slot || *slot == value)
         return;
@@ -241,6 +272,8 @@ static void ui_replace_ref(void **slot, void *value) {
     *slot = value;
 }
 
+/// @brief Draw a rounded-rect with alpha: opaque fast-path delegates to
+///        rt_canvas_round_box; otherwise alpha-composites the rounded fill.
 static void ui_round_box_alpha(void *canvas,
                                int64_t x,
                                int64_t y,
@@ -308,6 +341,8 @@ typedef struct {
     int8_t visible;
 } rt_uilabel_impl;
 
+/// @brief Safe-cast a handle to the UILabel impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p ptr is NULL.
 static rt_uilabel_impl *checked_label(void *ptr, const char *api) {
     if (!ptr)
         return NULL;
@@ -318,6 +353,7 @@ static rt_uilabel_impl *checked_label(void *ptr, const char *api) {
     return (rt_uilabel_impl *)ptr;
 }
 
+/// @brief GC finalizer: release the label's referenced font.
 static void uilabel_finalizer(void *obj) {
     rt_uilabel_impl *label = (rt_uilabel_impl *)obj;
     if (!label)
@@ -454,6 +490,8 @@ typedef struct {
     int8_t visible;
 } rt_uibar_impl;
 
+/// @brief Safe-cast a handle to the UIBar impl, trapping @p api on a class-id
+///        mismatch. @return The impl, or NULL if @p ptr is NULL.
 static rt_uibar_impl *checked_bar(void *ptr, const char *api) {
     if (!ptr)
         return NULL;
@@ -566,6 +604,8 @@ int64_t rt_uibar_get_max(void *ptr) {
     return bar ? bar->max_value : 0;
 }
 
+/// @brief Map @p value in [0, max_value] proportionally onto a pixel @p extent
+///        (e.g. progress-bar fill width), clamped to [0, extent].
 static int64_t ui_scaled_fill(int64_t value, int64_t extent, int64_t max_value) {
     if (value <= 0 || extent <= 0 || max_value <= 0)
         return 0;
@@ -636,6 +676,8 @@ typedef struct {
     int8_t visible;
 } rt_uipanel_impl;
 
+/// @brief Safe-cast a handle to the UIPanel impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p ptr is NULL.
 static rt_uipanel_impl *checked_panel(void *ptr, const char *api) {
     if (!ptr)
         return NULL;
@@ -816,6 +858,8 @@ typedef struct {
     int64_t tint;   ///< Tint color (0 = no tint)
 } rt_uinineslice_impl;
 
+/// @brief Safe-cast a handle to the UINineSlice impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p ptr is NULL.
 static rt_uinineslice_impl *checked_nineslice(void *ptr, const char *api) {
     if (!ptr)
         return NULL;
@@ -826,6 +870,7 @@ static rt_uinineslice_impl *checked_nineslice(void *ptr, const char *api) {
     return (rt_uinineslice_impl *)ptr;
 }
 
+/// @brief GC finalizer: release the nine-slice's referenced source image.
 static void uinineslice_finalizer(void *obj) {
     rt_uinineslice_impl *ns = (rt_uinineslice_impl *)obj;
     if (!ns)
@@ -897,6 +942,8 @@ void rt_uinineslice_set_tint(void *ptr, int64_t color) {
     ns->tinted_color = 0;
 }
 
+/// @brief Resolve the Pixels image a nine-slice should draw from (its
+///        explicit source, or a sensible fallback). @return Pixels handle or NULL.
 static void *uinineslice_draw_source(rt_uinineslice_impl *ns) {
     if (!ns || !ns->pixels || ns->tint == 0)
         return ns ? ns->pixels : NULL;
@@ -1038,6 +1085,8 @@ typedef struct {
     int8_t visible;
 } rt_uimenulist_impl;
 
+/// @brief Safe-cast a handle to the UIMenuList impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p ptr is NULL.
 static rt_uimenulist_impl *checked_menulist(void *ptr, const char *api) {
     if (!ptr)
         return NULL;
@@ -1048,6 +1097,7 @@ static rt_uimenulist_impl *checked_menulist(void *ptr, const char *api) {
     return (rt_uimenulist_impl *)ptr;
 }
 
+/// @brief GC finalizer: free the menu list's item strings/array.
 static void uimenulist_finalizer(void *obj) {
     rt_uimenulist_impl *menu = (rt_uimenulist_impl *)obj;
     if (!menu)
@@ -1276,6 +1326,8 @@ typedef struct {
     int8_t visible;
 } rt_gamebutton_impl;
 
+/// @brief Safe-cast a handle to the GameButton impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p ptr is NULL.
 static rt_gamebutton_impl *checked_gamebutton(void *ptr, const char *api) {
     if (!ptr)
         return NULL;
@@ -1509,6 +1561,7 @@ void rt_gamebutton_draw(void *ptr, void *canvas, int8_t is_selected) {
 #define UI_KEY_HOME 268
 #define UI_KEY_END 269
 
+/// @brief Number of UTF-8 codepoints in the first @p bytes of @p text.
 static int64_t ui_codepoint_count_bytes(const char *text, int64_t bytes) {
     if (!text || bytes <= 0)
         return 0;
@@ -1524,6 +1577,7 @@ static int64_t ui_codepoint_count_bytes(const char *text, int64_t bytes) {
     return count;
 }
 
+/// @brief Byte offset of the @p cp_index-th codepoint (clamped to @p bytes).
 static int64_t ui_byte_for_codepoint(const char *text, int64_t bytes, int64_t cp_index) {
     if (!text || bytes <= 0 || cp_index <= 0)
         return 0;
@@ -1539,6 +1593,8 @@ static int64_t ui_byte_for_codepoint(const char *text, int64_t bytes, int64_t cp
     return (int64_t)pos;
 }
 
+/// @brief Codepoint index containing/preceding byte offset @p byte_index
+///        (inverse of ui_byte_for_codepoint).
 static int64_t ui_codepoint_for_byte(const char *text, int64_t bytes, int64_t byte_index) {
     if (!text || bytes <= 0 || byte_index <= 0)
         return 0;
@@ -1556,6 +1612,8 @@ static int64_t ui_codepoint_for_byte(const char *text, int64_t bytes, int64_t by
     return count;
 }
 
+/// @brief Byte offset of the codepoint immediately before @p byte_index
+///        (for left-arrow / backspace caret movement).
 static int64_t ui_prev_codepoint_byte(const char *text, int64_t bytes, int64_t byte_index) {
     if (!text || bytes <= 0 || byte_index <= 0)
         return 0;
@@ -1573,6 +1631,8 @@ static int64_t ui_prev_codepoint_byte(const char *text, int64_t bytes, int64_t b
     return prev;
 }
 
+/// @brief Byte offset of the codepoint immediately after @p byte_index
+///        (for right-arrow / delete caret movement).
 static int64_t ui_next_codepoint_byte(const char *text, int64_t bytes, int64_t byte_index) {
     if (!text || bytes <= 0 || byte_index >= bytes)
         return bytes > 0 ? bytes : 0;
@@ -1583,6 +1643,8 @@ static int64_t ui_next_codepoint_byte(const char *text, int64_t bytes, int64_t b
     return next > bytes ? bytes : next;
 }
 
+/// @brief Rendered pixel width of the first @p bytes of @p text in @p font at
+///        @p scale (used to position the caret/selection).
 static int64_t ui_text_prefix_width(const char *text, int64_t bytes, void *font, int64_t scale) {
     if (!text || bytes <= 0)
         return 0;
@@ -1596,6 +1658,8 @@ static int64_t ui_text_prefix_width(const char *text, int64_t bytes, void *font,
     return width * ui_clamp_scale(scale);
 }
 
+/// @brief Draw a text run at (x, y) using an optional bitmap font and scale,
+///        falling back to the canvas default font when none is set.
 static void ui_draw_text_basic(
     void *canvas, int64_t x, int64_t y, const char *text, void *font, int64_t scale, int64_t color) {
     if (!canvas || !text || text[0] == '\0')
@@ -1614,6 +1678,8 @@ static void ui_draw_text_basic(
     }
 }
 
+/// @brief True if point lies within the axis-aligned widget rect (used for
+///        hit-testing clicks/hovers).
 static int8_t ui_point_inside(int64_t x,
                               int64_t y,
                               int64_t w,
@@ -1656,6 +1722,8 @@ typedef struct {
     char placeholder[RT_UITEXTINPUT_MAX_BYTES];
 } rt_uitextinput_impl;
 
+/// @brief Safe-cast a handle to the UITextInput impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p ptr is NULL.
 static rt_uitextinput_impl *checked_textinput(void *ptr, const char *api) {
     if (!ptr)
         return NULL;
@@ -1666,6 +1734,7 @@ static rt_uitextinput_impl *checked_textinput(void *ptr, const char *api) {
     return (rt_uitextinput_impl *)ptr;
 }
 
+/// @brief GC finalizer: free the text buffer and release the field's font.
 static void uitextinput_finalizer(void *obj) {
     rt_uitextinput_impl *ti = (rt_uitextinput_impl *)obj;
     if (!ti)
@@ -1674,6 +1743,8 @@ static void uitextinput_finalizer(void *obj) {
     ti->font = NULL;
 }
 
+/// @brief Replace the field's buffer with @p len bytes of @p text, resetting
+///        caret/selection (respects the max-codepoints cap).
 static void textinput_set_bytes(rt_uitextinput_impl *ti, const char *text, size_t len) {
     if (!ti)
         return;
@@ -1691,6 +1762,8 @@ static void textinput_set_bytes(rt_uitextinput_impl *ti, const char *text, size_
     ti->scroll_byte = 0;
 }
 
+/// @brief Get the normalized selection byte range (start <= end) via out
+///        params. @return non-zero if a non-empty selection exists.
 static int8_t textinput_selection_range(rt_uitextinput_impl *ti, int64_t *start, int64_t *end) {
     if (!ti || ti->selection_anchor < 0 || ti->selection_anchor == ti->cursor_byte)
         return 0;
@@ -1714,6 +1787,8 @@ static int8_t textinput_selection_range(rt_uitextinput_impl *ti, int64_t *start,
     return 1;
 }
 
+/// @brief Delete bytes [start, end) from the field and fix up the caret.
+/// @return non-zero if anything was removed.
 static int8_t textinput_delete_range(rt_uitextinput_impl *ti, int64_t start, int64_t end) {
     if (!ti || start < 0 || end <= start || start >= ti->text_bytes)
         return 0;
@@ -1728,12 +1803,15 @@ static int8_t textinput_delete_range(rt_uitextinput_impl *ti, int64_t start, int
     return 1;
 }
 
+/// @brief Delete the active selection (if any). @return non-zero if removed.
 static int8_t textinput_delete_selection(rt_uitextinput_impl *ti) {
     int64_t start = 0;
     int64_t end = 0;
     return textinput_selection_range(ti, &start, &end) ? textinput_delete_range(ti, start, end) : 0;
 }
 
+/// @brief Insert @p src_len bytes at the caret, replacing any selection first
+///        and enforcing the max-codepoints cap. @return non-zero if inserted.
 static int8_t textinput_insert_bytes(rt_uitextinput_impl *ti, const char *src, size_t src_len) {
     if (!ti || !src || src_len == 0)
         return 0;
@@ -1772,6 +1850,8 @@ static int8_t textinput_insert_bytes(rt_uitextinput_impl *ti, const char *src, s
     return changed;
 }
 
+/// @brief Move the caret to byte offset @p byte_pos; @p shift_held extends the
+///        selection, otherwise the selection is collapsed.
 static void textinput_move_cursor(rt_uitextinput_impl *ti, int64_t byte_pos, int8_t shift_held) {
     if (!ti)
         return;
@@ -1789,6 +1869,8 @@ static void textinput_move_cursor(rt_uitextinput_impl *ti, int64_t byte_pos, int
     ti->cursor_blink_elapsed = 0;
 }
 
+/// @brief Map a mouse x-coordinate to the nearest caret byte offset
+///        (accounting for scroll, font metrics, and codepoint boundaries).
 static int64_t textinput_byte_from_mouse(rt_uitextinput_impl *ti, int64_t mx) {
     if (!ti || ti->text_bytes <= 0)
         return 0;
@@ -2230,6 +2312,8 @@ typedef struct {
     int8_t show_borders;
 } rt_uitable_impl;
 
+/// @brief Safe-cast a handle to the UITable impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p ptr is NULL.
 static rt_uitable_impl *checked_table(void *ptr, const char *api) {
     if (!ptr)
         return NULL;
@@ -2240,6 +2324,7 @@ static rt_uitable_impl *checked_table(void *ptr, const char *api) {
     return (rt_uitable_impl *)ptr;
 }
 
+/// @brief GC finalizer: free the table's column/row/cell storage.
 static void uitable_finalizer(void *obj) {
     rt_uitable_impl *table = (rt_uitable_impl *)obj;
     if (!table)
@@ -2248,6 +2333,8 @@ static void uitable_finalizer(void *obj) {
     table->font = NULL;
 }
 
+/// @brief Number of data rows that fit in the table's body area (height
+///        minus the header row, divided by row height).
 static int64_t table_visible_rows(rt_uitable_impl *table) {
     if (!table || table->row_height <= 0)
         return 0;
@@ -2257,6 +2344,8 @@ static int64_t table_visible_rows(rt_uitable_impl *table) {
     return usable / table->row_height;
 }
 
+/// @brief Clamp the scroll offset so the view never scrolls past the last
+///        page of rows (called after row add/remove or resize).
 static void table_clamp_scroll(rt_uitable_impl *table) {
     if (!table)
         return;
@@ -2272,6 +2361,8 @@ static void table_clamp_scroll(rt_uitable_impl *table) {
         table->selected_row = -1;
 }
 
+/// @brief Advance an x cursor by a column @p width with saturation
+///        (next column's left edge during header/cell layout).
 static int64_t table_column_next_x(int64_t x, int64_t width) {
     if (width <= 0)
         return x;
@@ -2399,6 +2490,9 @@ int64_t rt_uitable_row_count(void *ptr) {
     return table ? table->row_count : 0;
 }
 
+/// @brief Comparator for sorting two rows by the table's active sort column
+///        (numeric or lexicographic per the column's flag).
+/// @return <0, 0, >0 like strcmp (caller applies the descending flip).
 static int table_compare_rows(rt_uitable_impl *table, const rt_uitable_row_t *a, const rt_uitable_row_t *b) {
     int64_t col = table->sort_column;
     if (col < 0 || col >= table->column_count)
@@ -2605,6 +2699,8 @@ typedef struct {
     int8_t visible, enabled, dragging;
 } rt_uislider_impl;
 
+/// @brief Safe-cast a handle to the UISlider impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p ptr is NULL.
 static rt_uislider_impl *checked_slider(void *ptr, const char *api) {
     if (!ptr)
         return NULL;
@@ -2615,6 +2711,8 @@ static rt_uislider_impl *checked_slider(void *ptr, const char *api) {
     return (rt_uislider_impl *)ptr;
 }
 
+/// @brief Clamp @p value to the slider's [min, max] range and snap it to the
+///        nearest step boundary.
 static int64_t slider_clamp_value(rt_uislider_impl *s, int64_t value) {
     if (!s)
         return 0;
@@ -2637,6 +2735,8 @@ static int64_t slider_clamp_value(rt_uislider_impl *s, int64_t value) {
     return value;
 }
 
+/// @brief Set the slider value from a mouse x-coordinate along the track.
+/// @return non-zero if the value changed.
 static int8_t slider_set_from_mouse(rt_uislider_impl *s, int64_t mx) {
     if (!s || s->w <= 1)
         return 0;
@@ -2788,6 +2888,8 @@ typedef struct {
     int8_t visible, enabled;
 } rt_uidropdown_impl;
 
+/// @brief Safe-cast a handle to the UIDropdown impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p ptr is NULL.
 static rt_uidropdown_impl *checked_dropdown(void *ptr, const char *api) {
     if (!ptr)
         return NULL;
@@ -2798,6 +2900,7 @@ static rt_uidropdown_impl *checked_dropdown(void *ptr, const char *api) {
     return (rt_uidropdown_impl *)ptr;
 }
 
+/// @brief GC finalizer: free the dropdown's option strings/array.
 static void uidropdown_finalizer(void *obj) {
     rt_uidropdown_impl *dd = (rt_uidropdown_impl *)obj;
     if (!dd)
@@ -2984,6 +3087,8 @@ typedef struct {
     int8_t hovered;
 } rt_uitooltip_impl;
 
+/// @brief Safe-cast a handle to the UITooltip impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p ptr is NULL.
 static rt_uitooltip_impl *checked_tooltip(void *ptr, const char *api) {
     if (!ptr)
         return NULL;
@@ -2994,6 +3099,7 @@ static rt_uitooltip_impl *checked_tooltip(void *ptr, const char *api) {
     return (rt_uitooltip_impl *)ptr;
 }
 
+/// @brief GC finalizer: free the tooltip's text buffer.
 static void uitooltip_finalizer(void *obj) {
     rt_uitooltip_impl *t = (rt_uitooltip_impl *)obj;
     if (!t)
@@ -3114,6 +3220,8 @@ typedef struct {
     void *font;
 } rt_uimodal_impl;
 
+/// @brief Safe-cast a handle to the UIModal impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p ptr is NULL.
 static rt_uimodal_impl *checked_modal(void *ptr, const char *api) {
     if (!ptr)
         return NULL;
@@ -3124,6 +3232,7 @@ static rt_uimodal_impl *checked_modal(void *ptr, const char *api) {
     return (rt_uimodal_impl *)ptr;
 }
 
+/// @brief GC finalizer: free the modal's buttons/strings and release children.
 static void uimodal_finalizer(void *obj) {
     rt_uimodal_impl *m = (rt_uimodal_impl *)obj;
     if (!m)
@@ -3135,6 +3244,8 @@ static void uimodal_finalizer(void *obj) {
     m->child_count = 0;
 }
 
+/// @brief Initialize a freshly allocated modal's geometry and default state
+///        (shared by rt_uimodal_new and rt_uimodal_new_at).
 static void modal_init(rt_uimodal_impl *m, int64_t x, int64_t y, int64_t w, int64_t h) {
     memset(m, 0, sizeof(*m));
     m->x = x;
@@ -3253,6 +3364,8 @@ int64_t rt_uimodal_get_result(void *ptr) {
     return m ? m->result : -1;
 }
 
+/// @brief Activate button @p index: record its return value, close the modal.
+/// @return the button's return value (or a sentinel if @p index is invalid).
 static int64_t modal_trigger_button(rt_uimodal_impl *m, int64_t index) {
     if (!m || index < 0 || index >= m->button_count)
         return -1;

@@ -50,6 +50,8 @@ void *rt_terrain3d_get_normal_at(void *terrain, double x, double z);
 void rt_terrain3d_set_lod_distances(void *terrain, double near_dist, double far_dist);
 /// @brief Set the depth of skirts dropped from chunk edges (hides cracks between LOD seams).
 void rt_terrain3d_set_skirt_depth(void *terrain, double depth);
+/// @brief Render @p terrain (LOD-selected, frustum-culled chunks) onto the
+///        3D canvas.
 void rt_canvas3d_draw_terrain(void *canvas, void *terrain);
 
 #ifdef __cplusplus

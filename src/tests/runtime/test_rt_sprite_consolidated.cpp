@@ -343,6 +343,36 @@ TEST(RTSprite, SpriteOverlapsUsesScaledOrigin) {
     ASSERT_TRUE(rt_sprite_overlaps(scaled, probe) == 1);
 }
 
+TEST(RTSprite, SpriteFramesGrowPastLegacyCapAndTrackDelays) {
+    void *pixels = rt_pixels_new(1, 1);
+    ASSERT_TRUE(pixels != nullptr);
+
+    void *sprite = rt_sprite_new(pixels);
+    ASSERT_TRUE(sprite != nullptr);
+    rt_sprite_set_frame_delay(sprite, 50);
+
+    for (int i = 1; i < 80; i++)
+        rt_sprite_add_frame(sprite, pixels);
+
+    ASSERT_TRUE(rt_sprite_get_frame_count(sprite) == 80);
+    ASSERT_TRUE(rt_sprite_get_frame_delay_at(sprite, 0) == 50);
+    ASSERT_TRUE(rt_sprite_get_frame_delay_at(sprite, 79) == 50);
+
+    rt_sprite_set_frame_delay_at(sprite, 70, 17);
+    ASSERT_TRUE(rt_sprite_get_frame_delay_at(sprite, 70) == 17);
+    ASSERT_TRUE(rt_sprite_get_frame_delay_at(sprite, 69) == 50);
+
+    rt_sprite_set_frame_delay_at(sprite, 70, 0);
+    ASSERT_TRUE(rt_sprite_get_frame_delay_at(sprite, 70) == 1);
+
+    rt_sprite_set_frame_delay(sprite, 33);
+    ASSERT_TRUE(rt_sprite_get_frame_delay_at(sprite, 0) == 33);
+    ASSERT_TRUE(rt_sprite_get_frame_delay_at(sprite, 70) == 33);
+
+    release_object(sprite);
+    release_object(pixels);
+}
+
 // ============================================================================
 // Main
 // ============================================================================

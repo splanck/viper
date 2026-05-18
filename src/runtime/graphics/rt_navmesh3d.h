@@ -28,15 +28,26 @@
 extern "C" {
 #endif
 
+/// @brief Bake a navigation mesh from a source @p mesh for an agent of the
+///        given radius/height. @return a navmesh handle, or NULL.
 void *rt_navmesh3d_build(void *mesh, double agent_radius, double agent_height);
+/// @brief Find a path between Vec3 @p from and @p to. @return a path handle
+///        (point list), or NULL if unreachable.
 void *rt_navmesh3d_find_path(void *navmesh, void *from, void *to);
+/// @brief Snap a Vec3 @p point onto the nearest walkable navmesh location.
 void *rt_navmesh3d_sample_position(void *navmesh, void *point);
+/// @brief Whether a Vec3 @p point lies on a walkable navmesh polygon.
 int8_t rt_navmesh3d_is_walkable(void *navmesh, void *point);
+/// @brief Number of triangles in the baked navmesh.
 int64_t rt_navmesh3d_get_triangle_count(void *navmesh);
+/// @brief Set the maximum walkable slope (degrees) used when baking.
 void rt_navmesh3d_set_max_slope(void *navmesh, double degrees);
+/// @brief Draw the navmesh polygons as a debug overlay onto @p canvas.
 void rt_navmesh3d_debug_draw(void *navmesh, void *canvas);
 
 /* Runtime integration helper used by NavAgent3D. Returns malloc'd xyz triples. */
+/// @brief Compute a path from @p from to @p to and copy it into a freshly
+///        malloc'd flat xyz array. @return point count (caller frees the array).
 int64_t rt_navmesh3d_copy_path_points(void *navmesh, void *from, void *to, double **out_points_xyz);
 
 #ifdef __cplusplus

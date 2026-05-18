@@ -72,6 +72,8 @@ static uint32_t syn_color(vg_codeeditor_t *ce, int token_type, uint32_t fallback
     return fallback;
 }
 
+/// @brief Safe-cast an opaque handle to a live CodeEditor widget.
+/// @return The code editor, or NULL if @p editor is not a live one.
 static vg_codeeditor_t *rt_codeeditor_handle_checked(void *editor) {
     return (vg_codeeditor_t *)rt_gui_widget_handle_checked_type(editor, VG_WIDGET_CODEEDITOR);
 }
@@ -171,6 +173,11 @@ static const char *const zia_types[] = {"Integer",
                                         "Queue",
                                         NULL};
 
+/// @brief Compute the open Zia block-comment nesting depth at the start of
+///        @p line_num.
+/// @details Scans all lines before @p line_num counting `/* ... */` nesting so
+///          the syntax highlighter knows whether a line begins inside a
+///          (possibly nested) block comment. Returns 0 for invalid input.
 static int rt_zia_comment_depth_before_line(vg_codeeditor_t *ce, int line_num) {
     if (!ce || line_num <= 0 || !ce->lines)
         return 0;

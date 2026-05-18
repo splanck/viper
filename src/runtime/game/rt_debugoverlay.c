@@ -61,6 +61,8 @@ struct rt_debugoverlay_impl {
     int64_t watch_count;
 };
 
+/// @brief Safe-cast a handle to the DebugOverlay impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p dbg is NULL.
 static rt_debugoverlay checked_debugoverlay(rt_debugoverlay dbg, const char *api) {
     if (!dbg)
         return NULL;

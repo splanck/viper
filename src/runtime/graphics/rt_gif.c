@@ -23,6 +23,7 @@
 
 #include "rt_pixels_internal.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -115,8 +116,17 @@ static uint8_t *gif_read_sub_blocks(gif_reader_t *r, size_t *out_len) {
         int block_size = gif_read_u8(r);
         if (block_size <= 0)
             break;
+        if ((size_t)block_size > SIZE_MAX - len) {
+            free(buf);
+            return NULL;
+        }
         if (len + (size_t)block_size > cap) {
-            cap = (len + (size_t)block_size) * 2;
+            size_t needed = len + (size_t)block_size;
+            if (needed > SIZE_MAX / 2) {
+                free(buf);
+                return NULL;
+            }
+            cap = needed * 2;
             uint8_t *new_buf = (uint8_t *)realloc(buf, cap);
             if (!new_buf) {
                 free(buf);
@@ -210,6 +220,8 @@ static uint8_t *lzw_decompress(int min_code_size,
                                size_t expected_pixels,
                                size_t *out_len) {
     if (min_code_size < 2 || min_code_size > 11)
+        return NULL;
+    if (expected_pixels == 0 || expected_pixels > SIZE_MAX - 256)
         return NULL;
 
     lzw_state_t state;
@@ -447,12 +459,11 @@ int gif_decode_file(const char *filepath,
             int img_w = gif_read_u16_le(r);
             int img_h = gif_read_u16_le(r);
             int img_packed = gif_read_u8(r);
+            if (img_left < 0 || img_top < 0 || img_w < 0 || img_h < 0 || img_packed < 0)
+                break;
             int has_lct = (img_packed >> 7) & 1;
             int interlaced = (img_packed >> 6) & 1;
             int lct_size_field = img_packed & 0x07;
-
-            if (img_w <= 0 || img_h <= 0)
-                goto next_frame;
 
             // Local color table (overrides GCT for this frame)
             uint8_t lct[256 * 3];
@@ -471,6 +482,9 @@ int gif_decode_file(const char *filepath,
             int min_code_size = gif_read_u8(r);
             if (min_code_size < 2 || min_code_size > 11)
                 goto skip_image_data;
+            if (img_w <= 0 || img_h <= 0 || img_left > screen_w - img_w ||
+                img_top > screen_h - img_h)
+                goto skip_image_data;
 
             // Read LZW sub-blocks
             size_t lzw_data_len = 0;
@@ -479,6 +493,10 @@ int gif_decode_file(const char *filepath,
                 continue;
 
             // Decompress LZW
+            if ((size_t)img_w > SIZE_MAX / (size_t)img_h) {
+                free(lzw_data);
+                continue;
+            }
             size_t pixel_count = (size_t)img_w * (size_t)img_h;
             size_t index_len = 0;
             uint8_t *indices =
@@ -551,8 +569,11 @@ int gif_decode_file(const char *filepath,
                     frame_cap *= 2;
                     gif_frame_t *new_frames =
                         (gif_frame_t *)realloc(frames, (size_t)frame_cap * sizeof(gif_frame_t));
-                    if (!new_frames)
+                    if (!new_frames) {
+                        if (rt_obj_release_check0(px))
+                            rt_obj_free(px);
                         break;
+                    }
                     frames = new_frames;
                 }
 
@@ -591,7 +612,6 @@ int gif_decode_file(const char *filepath,
 
         skip_image_data:
             gif_skip_sub_blocks(r);
-        next_frame:
             gce_valid = 0;
             continue;
         }

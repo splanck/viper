@@ -505,6 +505,12 @@ static void test_animation_collision_palette_gradient_and_rig() {
     rt_palette2d_set_color(palette, 3, 0xFF0000FF);
     rt_palette2d_set_color(palette, 4, rt_color_rgba(0, 0, 255, 128));
     rt_palette2d_set_color(palette, 128, 0x123456FF);
+    assert(rt_palette2d_get_color(palette, 4) == 0x0000FF80);
+    int64_t palette_color = rt_palette2d_get_color_value(palette, 4);
+    assert(rt_color_get_r(palette_color) == 0);
+    assert(rt_color_get_g(palette_color) == 0);
+    assert(rt_color_get_b(palette_color) == 255);
+    assert(rt_color_get_a(palette_color) == 128);
     void *indexed = rt_pixels_new(1, 1);
     rt_pixels_set(indexed, 0, 0, 0x00000003);
     void *mapped = rt_palette2d_apply(palette, indexed);
@@ -534,6 +540,11 @@ static void test_animation_collision_palette_gradient_and_rig() {
     void *tagged_gradient =
         rt_gradient2d_new(rt_color_rgba(0, 255, 0, 128), rt_color_rgba(255, 0, 0, 255), 2);
     assert(rt_gradient2d_sample(tagged_gradient, 0) == 0x00FF0080);
+    int64_t gradient_color = rt_gradient2d_sample_color(tagged_gradient, 0);
+    assert(rt_color_get_r(gradient_color) == 0);
+    assert(rt_color_get_g(gradient_color) == 255);
+    assert(rt_color_get_b(gradient_color) == 0);
+    assert(rt_color_get_a(gradient_color) == 128);
     void *grad_pixels = rt_pixels_new(2, 1);
     rt_gradient2d_fill_horizontal(gradient, grad_pixels);
     assert(rt_pixels_get(grad_pixels, 0, 0) == 0x000000FF);

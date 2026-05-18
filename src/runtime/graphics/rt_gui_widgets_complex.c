@@ -45,42 +45,52 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+/// @brief Safe-cast a handle to a live TabBar widget, or NULL.
 static vg_tabbar_t *rt_tabbar_checked(void *handle) {
     return (vg_tabbar_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_TABBAR);
 }
 
+/// @brief Safe-cast a handle to a live SplitPane widget, or NULL.
 static vg_splitpane_t *rt_splitpane_checked(void *handle) {
     return (vg_splitpane_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_SPLITPANE);
 }
 
+/// @brief Safe-cast a handle to a live CodeEditor widget, or NULL.
 static vg_codeeditor_t *rt_codeeditor_checked(void *handle) {
     return (vg_codeeditor_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_CODEEDITOR);
 }
 
+/// @brief Safe-cast a handle to a live Dropdown widget, or NULL.
 static vg_dropdown_t *rt_dropdown_checked(void *handle) {
     return (vg_dropdown_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_DROPDOWN);
 }
 
+/// @brief Safe-cast a handle to a live Slider widget, or NULL.
 static vg_slider_t *rt_slider_checked(void *handle) {
     return (vg_slider_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_SLIDER);
 }
 
+/// @brief Safe-cast a handle to a live ProgressBar widget, or NULL.
 static vg_progressbar_t *rt_progressbar_checked(void *handle) {
     return (vg_progressbar_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_PROGRESS);
 }
 
+/// @brief Safe-cast a handle to a live ListBox widget, or NULL.
 static vg_listbox_t *rt_listbox_checked(void *handle) {
     return (vg_listbox_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_LISTBOX);
 }
 
+/// @brief Safe-cast a handle to a live RadioButton widget, or NULL.
 static vg_radiobutton_t *rt_radiobutton_checked(void *handle) {
     return (vg_radiobutton_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_RADIO);
 }
 
+/// @brief Safe-cast a handle to a live Spinner widget, or NULL.
 static vg_spinner_t *rt_spinner_checked(void *handle) {
     return (vg_spinner_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_SPINNER);
 }
 
+/// @brief Safe-cast a handle to a live Image widget, or NULL.
 static vg_image_t *rt_image_checked(void *handle) {
     return (vg_image_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_IMAGE);
 }
@@ -97,6 +107,11 @@ static rt_radiogroup_data_t **s_radiogroup_handles = NULL;
 static size_t s_radiogroup_handle_count = 0;
 static size_t s_radiogroup_handle_cap = 0;
 
+/// @brief Track a radio-group handle in the process-wide registry.
+/// @details The registry lets rt_radiogroup_handle_checked validate opaque
+///          handles (radio groups aren't widgets, so the generic widget
+///          liveness check doesn't apply). Grows the backing array as needed.
+/// @return 1 on success, 0 on allocation failure or NULL input.
 static int rt_radiogroup_registry_add(rt_radiogroup_data_t *data) {
     if (!data)
         return 0;
@@ -118,6 +133,7 @@ static int rt_radiogroup_registry_add(rt_radiogroup_data_t *data) {
     return 1;
 }
 
+/// @brief Remove a radio-group handle from the registry (swap-with-last).
 static void rt_radiogroup_registry_remove(rt_radiogroup_data_t *data) {
     if (!data)
         return;
@@ -129,6 +145,9 @@ static void rt_radiogroup_registry_remove(rt_radiogroup_data_t *data) {
     }
 }
 
+/// @brief Safe-cast an opaque handle to a live radio-group wrapper.
+/// @details Verifies the handle is registered AND its magic tag is intact and
+///          its backing vg_radiogroup is non-NULL; returns NULL otherwise.
 static rt_radiogroup_data_t *rt_radiogroup_handle_checked(void *handle) {
     if (!handle)
         return NULL;
@@ -141,6 +160,8 @@ static rt_radiogroup_data_t *rt_radiogroup_handle_checked(void *handle) {
     return NULL;
 }
 
+/// @brief Destroy a radio group: unregister, free the vg_radiogroup, and
+///        stamp the destroyed-magic so stale handles fail validation.
 static void rt_radiogroup_dispose(rt_radiogroup_data_t *data) {
     data = rt_radiogroup_handle_checked(data);
     if (!data)
@@ -153,6 +174,7 @@ static void rt_radiogroup_dispose(rt_radiogroup_data_t *data) {
     data->magic = RT_RADIOGROUP_DESTROYED_MAGIC;
 }
 
+/// @brief GC finalizer trampoline → rt_radiogroup_dispose.
 static void rt_radiogroup_finalize(void *handle) {
     rt_radiogroup_dispose((rt_radiogroup_data_t *)handle);
 }

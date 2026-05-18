@@ -6,7 +6,21 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_graphics3d_ids.h
-// Purpose: Stable runtime class identifiers for Viper.Graphics3D objects.
+// Purpose: Stable runtime class identifiers for Viper.Graphics3D objects, plus
+//   small inline helpers that validate/cast opaque object handles against
+//   those ids before the 3D runtime modules dereference them.
+//
+// Key invariants:
+//   - Class id constants are permanent ABI; never renumber an existing id.
+//   - Ids are negative sentinels distinct from user/runtime object class ids.
+//   - With RT_G3D_INTERNAL_ASSUME_STRUCT_HANDLE the checks degrade to a
+//     non-NULL test (fast path for trusted internal call sites).
+//
+// Ownership/Lifetime:
+//   - Header-only; no allocation. Helpers never take ownership of @p obj.
+//
+// Links: src/runtime/graphics/rt_heap.h (heap header introspection),
+//        src/runtime/graphics/rt_canvas3d.c and sibling rt_*3d.c consumers
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -16,6 +30,7 @@
 
 #include "rt_heap.h"
 
+/// @brief Return the runtime class id of an object (0 if none/plain value).
 extern int64_t rt_obj_class_id(void *p);
 
 #define RT_G3D_CUBEMAP3D_CLASS_ID INT64_C(-0x603001)
@@ -66,6 +81,9 @@ extern int64_t rt_obj_class_id(void *p);
 #define RT_G3D_VEGETATION3D_CLASS_ID INT64_C(-0x60302E)
 #define RT_G3D_TEXTUREATLAS3D_CLASS_ID INT64_C(-0x60302F)
 
+/// @brief True if @p obj is a live object of runtime class @p class_id.
+/// @details Under RT_G3D_INTERNAL_ASSUME_STRUCT_HANDLE this only checks for
+///          non-NULL (trusted-handle fast path).
 static inline int32_t rt_g3d_has_class(void *obj, int64_t class_id) {
 #ifdef RT_G3D_INTERNAL_ASSUME_STRUCT_HANDLE
     (void)class_id;
@@ -75,10 +93,13 @@ static inline int32_t rt_g3d_has_class(void *obj, int64_t class_id) {
 #endif
 }
 
+/// @brief Return @p obj if it is class @p class_id, else NULL (safe cast).
 static inline void *rt_g3d_checked_or_null(void *obj, int64_t class_id) {
     return rt_g3d_has_class(obj, class_id) ? obj : NULL;
 }
 
+/// @brief True if @p obj is a plain (class-less) heap value of exactly
+///        @p payload_bytes — used to recognize boxed Vec3/Quat passed as void*.
 static inline int32_t rt_g3d_is_plain_value_object(void *obj, size_t payload_bytes) {
     if (!obj)
         return 0;
@@ -89,10 +110,12 @@ static inline int32_t rt_g3d_is_plain_value_object(void *obj, size_t payload_byt
            hdr->len == payload_bytes && hdr->cap == payload_bytes;
 }
 
+/// @brief True if @p obj is a boxed Vec3 (3 doubles, class-less heap value).
 static inline int32_t rt_g3d_is_vec3(void *obj) {
     return rt_g3d_is_plain_value_object(obj, sizeof(double) * 3u);
 }
 
+/// @brief True if @p obj is a boxed Quat (4 doubles, class-less heap value).
 static inline int32_t rt_g3d_is_quat(void *obj) {
     return rt_g3d_is_plain_value_object(obj, sizeof(double) * 4u);
 }

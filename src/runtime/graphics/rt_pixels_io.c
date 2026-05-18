@@ -997,12 +997,12 @@ cleanup:
         pixels = NULL;
     }
     if (raw_bytes) {
-        rt_obj_release_check0(raw_bytes);
-        rt_obj_free(raw_bytes);
+        if (rt_obj_release_check0(raw_bytes))
+            rt_obj_free(raw_bytes);
     }
     if (comp_bytes) {
-        rt_obj_release_check0(comp_bytes);
-        rt_obj_free(comp_bytes);
+        if (rt_obj_release_check0(comp_bytes))
+            rt_obj_free(comp_bytes);
     }
     return pixels;
 }
@@ -1024,8 +1024,8 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path) {
     if (!p)
         return 0;
     const char *filepath = rt_string_cstr((rt_string)path);
-    if (!filepath || p->width <= 0 || p->height <= 0 ||
-        p->width > UINT32_MAX || p->height > UINT32_MAX)
+    if (!filepath || p->width <= 0 || p->height <= 0 || p->width > UINT32_MAX ||
+        p->height > UINT32_MAX)
         return 0;
 
     uint32_t w = (uint32_t)p->width;
@@ -1223,12 +1223,12 @@ save_cleanup:
             remove(filepath);
     }
     if (comp_bytes) {
-        rt_obj_release_check0(comp_bytes);
-        rt_obj_free(comp_bytes);
+        if (rt_obj_release_check0(comp_bytes))
+            rt_obj_free(comp_bytes);
     }
     if (raw_bytes) {
-        rt_obj_release_check0(raw_bytes);
-        rt_obj_free(raw_bytes);
+        if (rt_obj_release_check0(raw_bytes))
+            rt_obj_free(raw_bytes);
     }
     return result;
 }
@@ -1691,7 +1691,7 @@ void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len) {
                         goto jpeg_fail;
                     int precision = (info >> 4) & 0x0F; // 0=8bit, 1=16bit
                     int table_id = info & 0x0F;
-                    if (table_id > 3)
+                    if (precision > 1 || table_id > 3)
                         goto jpeg_fail;
                     for (int i = 0; i < 64; i++) {
                         if (precision == 0) {
@@ -1718,7 +1718,7 @@ void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len) {
                         goto jpeg_fail;
                     int table_class = (info >> 4) & 0x0F; // 0=DC, 1=AC
                     int table_id = info & 0x0F;
-                    if (table_id > 1)
+                    if (table_class > 1 || table_id > 1)
                         goto jpeg_fail;
                     int idx = table_class * 2 + table_id; // DC0, DC1, AC0, AC1
                     jpeg_huff_t *ht = &ctx.huff[idx];
@@ -1760,11 +1760,18 @@ void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len) {
                     goto jpeg_fail;
                 ctx.num_components = (uint8_t)nf;
                 for (int i = 0; i < nf; i++) {
-                    ctx.comp_id[i] = (uint8_t)jpeg_read_u8(&ctx);
+                    int comp_id = jpeg_read_u8(&ctx);
                     int samp = jpeg_read_u8(&ctx);
+                    int qt = jpeg_read_u8(&ctx);
+                    if (comp_id < 0 || samp < 0 || qt < 0)
+                        goto jpeg_fail;
                     ctx.comp_h_samp[i] = (uint8_t)((samp >> 4) & 0x0F);
                     ctx.comp_v_samp[i] = (uint8_t)(samp & 0x0F);
-                    ctx.comp_qt[i] = (uint8_t)jpeg_read_u8(&ctx);
+                    if (ctx.comp_h_samp[i] < 1 || ctx.comp_h_samp[i] > 4 ||
+                        ctx.comp_v_samp[i] < 1 || ctx.comp_v_samp[i] > 4 || qt > 3)
+                        goto jpeg_fail;
+                    ctx.comp_id[i] = (uint8_t)comp_id;
+                    ctx.comp_qt[i] = (uint8_t)qt;
                 }
                 break;
             }
@@ -1796,13 +1803,19 @@ void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len) {
                     if (ci < 0)
                         goto jpeg_fail;
                     ctx.scan_comp_idx[i] = (uint8_t)ci;
-                    ctx.scan_dc_table[i] = (uint8_t)((td_ta >> 4) & 0x0F);
-                    ctx.scan_ac_table[i] = (uint8_t)(td_ta & 0x0F);
+                    int dc_table = (td_ta >> 4) & 0x0F;
+                    int ac_table = td_ta & 0x0F;
+                    if (dc_table > 1 || ac_table > 1)
+                        goto jpeg_fail;
+                    ctx.scan_dc_table[i] = (uint8_t)dc_table;
+                    ctx.scan_ac_table[i] = (uint8_t)ac_table;
                 }
                 // Skip Ss, Se, Ah/Al (spectral selection — always 0,63,0 for baseline)
-                jpeg_read_u8(&ctx);
-                jpeg_read_u8(&ctx);
-                jpeg_read_u8(&ctx);
+                int ss = jpeg_read_u8(&ctx);
+                int se = jpeg_read_u8(&ctx);
+                int ah_al = jpeg_read_u8(&ctx);
+                if (ss < 0 || se < 0 || ah_al < 0)
+                    goto jpeg_fail;
 
                 // Now at the start of entropy-coded data
                 ctx.bitbuf = 0;
@@ -1831,6 +1844,8 @@ void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len) {
                 for (int i = 0; i < ctx.num_components; i++) {
                     int cw = mcus_x * ctx.comp_h_samp[i] * 8;
                     int ch = mcus_y * ctx.comp_v_samp[i] * 8;
+                    if (cw <= 0 || ch <= 0 || (size_t)cw > SIZE_MAX / (size_t)ch)
+                        goto jpeg_fail;
                     comp_data[i] = (uint8_t *)calloc((size_t)cw * (size_t)ch, 1);
                     if (!comp_data[i])
                         goto jpeg_fail;
@@ -1863,8 +1878,9 @@ void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len) {
                             int dc_idx = ctx.scan_dc_table[si];
                             int ac_idx = ctx.scan_ac_table[si] + 2;
 
-                            if (!ctx.qt_valid[qt_idx] || !ctx.huff_valid[dc_idx] ||
-                                !ctx.huff_valid[ac_idx])
+                            if (qt_idx < 0 || qt_idx >= 4 || dc_idx < 0 || dc_idx >= 2 ||
+                                ac_idx < 2 || ac_idx >= 4 || !ctx.qt_valid[qt_idx] ||
+                                !ctx.huff_valid[dc_idx] || !ctx.huff_valid[ac_idx])
                                 goto jpeg_fail;
 
                             // Decode each block in this component's MCU contribution
@@ -1917,16 +1933,25 @@ void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len) {
                     int y_stride = mcus_x * ctx.comp_h_samp[0] * 8;
                     int cb_stride = mcus_x * ctx.comp_h_samp[1] * 8;
                     int cr_stride = mcus_x * ctx.comp_h_samp[2] * 8;
+                    if (ctx.comp_h_samp[1] <= 0 || ctx.comp_v_samp[1] <= 0 ||
+                        ctx.comp_h_samp[2] <= 0 || ctx.comp_v_samp[2] <= 0 ||
+                        max_h % ctx.comp_h_samp[1] != 0 || max_v % ctx.comp_v_samp[1] != 0 ||
+                        max_h % ctx.comp_h_samp[2] != 0 || max_v % ctx.comp_v_samp[2] != 0)
+                        goto jpeg_fail;
                     int h_ratio = max_h / ctx.comp_h_samp[1]; // chroma upsample factor
                     int v_ratio = max_v / ctx.comp_v_samp[1];
+                    int cr_h_ratio = max_h / ctx.comp_h_samp[2];
+                    int cr_v_ratio = max_v / ctx.comp_v_samp[2];
 
                     for (int y = 0; y < ctx.height; y++) {
                         for (int x = 0; x < ctx.width; x++) {
                             int yy_val = comp_data[0][y * y_stride + x];
                             int cb_x = x / h_ratio;
                             int cb_y = y / v_ratio;
+                            int cr_x = x / cr_h_ratio;
+                            int cr_y = y / cr_v_ratio;
                             int cb_val = comp_data[1][cb_y * cb_stride + cb_x] - 128;
-                            int cr_val = comp_data[2][cb_y * cr_stride + cb_x] - 128;
+                            int cr_val = comp_data[2][cr_y * cr_stride + cr_x] - 128;
 
                             // YCbCr -> RGB (ITU-R BT.601)
                             int r = yy_val + ((cr_val * 359) >> 8);
@@ -2001,8 +2026,8 @@ void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len) {
                 void *t = rt_pixels_rotate_cw(pixels);
                 if (t) {
                     rotated = (rt_pixels_impl *)rt_pixels_flip_h(t);
-                    rt_obj_release_check0(t);
-                    rt_obj_free(t);
+                    if (rt_obj_release_check0(t))
+                        rt_obj_free(t);
                 }
                 break;
             }
@@ -2013,8 +2038,8 @@ void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len) {
                 void *t = rt_pixels_rotate_ccw(pixels);
                 if (t) {
                     rotated = (rt_pixels_impl *)rt_pixels_flip_h(t);
-                    rt_obj_release_check0(t);
-                    rt_obj_free(t);
+                    if (rt_obj_release_check0(t))
+                        rt_obj_free(t);
                 }
                 break;
             }
@@ -2025,7 +2050,8 @@ void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len) {
                 break;
         }
         if (rotated) {
-            // Original pixels will be GC'd; return the rotated version
+            if (rt_obj_release_check0(pixels))
+                rt_obj_free(pixels);
             pixels = rotated;
         }
     }
@@ -2039,6 +2065,10 @@ void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len) {
     return pixels;
 
 jpeg_fail:
+    if (pixels) {
+        if (rt_obj_release_check0(pixels))
+            rt_obj_free(pixels);
+    }
     if (comp_data) {
         for (int i = 0; i < ctx.num_components; i++)
             free(comp_data[i]);

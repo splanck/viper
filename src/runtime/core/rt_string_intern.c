@@ -65,6 +65,8 @@ static uint64_t hash_bytes(const char *data, size_t len) {
     return rt_fnv1a(data, len);
 }
 
+/// @brief Snapshot the current trap error message into @p buffer (or
+///        @p fallback if none) so it survives lock cleanup before re-raise.
 static void intern_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
     const char *err = rt_trap_get_error();
     snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
@@ -90,6 +92,8 @@ static size_t g_count_ = 0;
 static INIT_ONCE g_lock_once_ = INIT_ONCE_STATIC_INIT;
 static CRITICAL_SECTION g_lock_;
 
+/// @brief One-time initializer (InitOnceExecuteOnce callback) that creates the
+///        Windows critical section guarding the intern table.
 static BOOL CALLBACK intern_lock_init_callback(PINIT_ONCE InitOnce, PVOID Param, PVOID *Ctx) {
     (void)InitOnce;
     (void)Param;
@@ -98,21 +102,26 @@ static BOOL CALLBACK intern_lock_init_callback(PINIT_ONCE InitOnce, PVOID Param,
     return TRUE;
 }
 
+/// @brief Acquire the global intern-table lock (lazily initializing it on the
+///        Windows path; the POSIX path uses a static-initialized mutex).
 static void intern_lock(void) {
     InitOnceExecuteOnce(&g_lock_once_, intern_lock_init_callback, NULL, NULL);
     EnterCriticalSection(&g_lock_);
 }
 
+/// @brief Release the global intern-table lock.
 static void intern_unlock(void) {
     LeaveCriticalSection(&g_lock_);
 }
 #else
 static pthread_mutex_t g_lock_ = PTHREAD_MUTEX_INITIALIZER;
 
+/// @brief Acquire the global intern-table lock (POSIX mutex variant).
 static void intern_lock(void) {
     pthread_mutex_lock(&g_lock_);
 }
 
+/// @brief Release the global intern-table lock (POSIX mutex variant).
 static void intern_unlock(void) {
     pthread_mutex_unlock(&g_lock_);
 }

@@ -50,6 +50,8 @@ struct rt_buttongroup_impl {
     int8_t selection_changed;            ///< Flag: selection just changed.
 };
 
+/// @brief Safe-cast a handle to the ButtonGroup impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p group is NULL.
 static struct rt_buttongroup_impl *checked_group(rt_buttongroup group, const char *api) {
     if (!group)
         return NULL;

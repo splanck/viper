@@ -50,18 +50,24 @@ struct rt_achievement_impl {
     int64_t slide_offset;    // Slide-in animation offset
 };
 
+/// @brief Clamp a requested achievement count to [1, MAX_ACH] (0/invalid ->
+///        MAX_ACH).
 static int64_t achievement_capacity(int64_t requested) {
     if (requested < 1 || requested > MAX_ACH)
         return MAX_ACH;
     return requested;
 }
 
+/// @brief Bitmask of valid achievement-index bits for the object's capacity
+///        (all-ones once capacity reaches the 64-slot ceiling).
 static uint64_t achievement_mask_for_capacity(const struct rt_achievement_impl *ach) {
     if (!ach || ach->capacity >= MAX_ACH)
         return UINT64_MAX;
     return ((uint64_t)1 << ach->capacity) - 1u;
 }
 
+/// @brief Safe-cast a handle to the Achievement impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p ach is NULL.
 static struct rt_achievement_impl *checked_achievement(rt_achievement ach, const char *api) {
     if (!ach)
         return NULL;
@@ -72,6 +78,7 @@ static struct rt_achievement_impl *checked_achievement(rt_achievement ach, const
     return ach;
 }
 
+/// @brief Release all entry name/description strings and reset entry state.
 static void achievement_release_entries(struct rt_achievement_impl *ach) {
     if (!ach)
         return;
@@ -87,10 +94,12 @@ static void achievement_release_entries(struct rt_achievement_impl *ach) {
     ach->total_defined = 0;
 }
 
+/// @brief GC finalizer: release entry strings when the Achievement is freed.
 static void achievement_finalizer(void *obj) {
     achievement_release_entries((struct rt_achievement_impl *)obj);
 }
 
+/// @brief Saturating int64 addition (clamps to INT64_MIN/MAX on overflow).
 static int64_t achievement_saturating_add_i64(int64_t a, int64_t b) {
     if (b > 0 && a > INT64_MAX - b)
         return INT64_MAX;

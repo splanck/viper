@@ -3,6 +3,24 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
+// File: src/runtime/game/rt_animtimeline.h
+// Purpose: Runtime bridge for Viper.Game.AnimTimeline — a frame-based timeline
+//   that sequences animation-state and tween tracks plus discrete markers,
+//   with play/pause/stop, looping, and per-frame event reporting.
+//
+// Key invariants:
+//   - Timelines are heap-allocated opaque `void *` handles.
+//   - All time is measured in integer frames; track indices are 0-based and
+//     returned by the add_* functions in insertion order.
+//   - advance() drives playback; events_fired_count/event_fired_id report
+//     markers crossed during the most recent advance().
+//
+// Ownership/Lifetime:
+//   - rt_animtimeline_new returns an owned handle reclaimed by the GC.
+//   - Track name strings are retained by the timeline.
+//
+// Links: src/runtime/game/rt_animtimeline.c (implementation)
+//
 //===----------------------------------------------------------------------===//
 #pragma once
 
@@ -16,30 +34,52 @@ extern "C" {
 
 #define RT_ANIMTIMELINE_CLASS_ID INT64_C(-0x51021B)
 
+/// @brief Create a timeline spanning @p total_duration_frames frames.
 void *rt_animtimeline_new(int64_t total_duration_frames);
+/// @brief Add a track that activates an animation state for a frame span.
+/// @return The new track's 0-based index.
 int64_t rt_animtimeline_add_anim_track(
     void *tl, rt_string name, int64_t start_frame, int64_t duration_frames, int64_t anim_state_id);
+/// @brief Add a track that tweens an integer value @p from -> @p to over a span.
+/// @return The new track's 0-based index.
 int64_t rt_animtimeline_add_tween_track(void *tl,
                                         rt_string name,
                                         int64_t start_frame,
                                         int64_t duration_frames,
                                         int64_t from,
                                         int64_t to);
+/// @brief Add a discrete marker that fires @p marker_id when @p frame is reached.
+/// @return The marker's 0-based index.
 int64_t rt_animtimeline_add_marker(void *tl, int64_t frame, int64_t marker_id);
+/// @brief Begin/resume playback.
 void rt_animtimeline_play(void *tl);
+/// @brief Pause playback, keeping the current frame.
 void rt_animtimeline_pause(void *tl);
+/// @brief Stop playback and reset to the first frame.
 void rt_animtimeline_stop(void *tl);
+/// @brief True while the timeline is actively playing.
 int8_t rt_animtimeline_is_playing(void *tl);
+/// @brief True once a non-looping timeline has reached its end.
 int8_t rt_animtimeline_is_finished(void *tl);
+/// @brief Current playhead frame.
 int64_t rt_animtimeline_get_current_frame(void *tl);
+/// @brief Enable/disable looping at the end of the timeline.
 void rt_animtimeline_set_looping(void *tl, int8_t loop);
+/// @brief Advance the playhead by @p delta_frames, firing crossed markers.
 void rt_animtimeline_advance(void *tl, int64_t delta_frames);
+/// @brief Number of markers fired during the most recent advance().
 int64_t rt_animtimeline_events_fired_count(void *tl);
+/// @brief Marker id of the @p index-th event fired during the last advance().
 int64_t rt_animtimeline_event_fired_id(void *tl, int64_t index);
+/// @brief True if the track at @p track_index is active at the current frame.
 int8_t rt_animtimeline_track_is_active(void *tl, int64_t track_index);
+/// @brief Normalized [0,1] progress of the track at @p track_index.
 double rt_animtimeline_track_progress(void *tl, int64_t track_index);
+/// @brief Track payload slot A (anim track: state id; tween track: from value).
 int64_t rt_animtimeline_track_payload_a(void *tl, int64_t track_index);
+/// @brief Track payload slot B (tween track: to value).
 int64_t rt_animtimeline_track_payload_b(void *tl, int64_t track_index);
+/// @brief Track payload slot C (tween track: current interpolated value).
 int64_t rt_animtimeline_track_payload_c(void *tl, int64_t track_index);
 
 #ifdef __cplusplus

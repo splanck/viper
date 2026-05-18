@@ -43,6 +43,7 @@ static int g_tint_call_count = 0;
 static int64_t g_last_tint = -2;
 static bool g_clone_returns_null = false;
 static bool g_gif_decode_zero_success = false;
+static bool g_gif_decode_many_success = false;
 static int g_retain_call_count = 0;
 static void *g_last_retained = nullptr;
 static void *g_objects[128];
@@ -168,6 +169,24 @@ static void test_sprite_from_file_rejects_zero_frame_gif_success() {
     std::remove(path);
 }
 
+static void test_sprite_from_file_loads_all_gif_frames_and_delays() {
+    const char *path = "/tmp/viper_sprite_zero_frame.gif";
+    std::FILE *f = std::fopen(path, "wb");
+    assert(f != nullptr);
+    const unsigned char header[6] = {'G', 'I', 'F', '8', '9', 'a'};
+    assert(std::fwrite(header, 1, sizeof(header), f) == sizeof(header));
+    std::fclose(f);
+
+    g_gif_decode_many_success = true;
+    void *sprite = rt_sprite_from_file(reinterpret_cast<void *>(1));
+    g_gif_decode_many_success = false;
+    assert(sprite != nullptr);
+    assert(rt_sprite_get_frame_count(sprite) == 70);
+    assert(rt_sprite_get_frame_delay_at(sprite, 0) == 10);
+    assert(rt_sprite_get_frame_delay_at(sprite, 69) == 79);
+    std::remove(path);
+}
+
 static void test_animator_get_current_rejects_corrupt_clip_index() {
     rt_sprite_animator_t *anim = rt_sprite_animator_new();
     assert(anim != nullptr);
@@ -232,8 +251,8 @@ static void test_animator_rejects_overlong_clip_name() {
 } // namespace
 
 extern "C" void *rt_obj_new_i64(int64_t class_id, int64_t byte_size) {
-    auto *header =
-        static_cast<ObjHeader *>(std::calloc(1, sizeof(ObjHeader) + static_cast<size_t>(byte_size)));
+    auto *header = static_cast<ObjHeader *>(
+        std::calloc(1, sizeof(ObjHeader) + static_cast<size_t>(byte_size)));
     assert(header != nullptr);
     header->class_id = class_id;
     void *payload = header + 1;
@@ -317,6 +336,25 @@ extern "C" rt_string rt_str_empty(void) {
 
 extern "C" int gif_decode_file(
     const char *, gif_frame_t **out_frames, int *out_frame_count, int *out_width, int *out_height) {
+    if (g_gif_decode_many_success) {
+        const int frame_count = 70;
+        gif_frame_t *frames = static_cast<gif_frame_t *>(std::calloc(frame_count, sizeof(*frames)));
+        assert(frames != nullptr);
+        for (int i = 0; i < frame_count; i++) {
+            frames[i].pixels = make_pixels(1, 1, 2000 + i);
+            frames[i].delay_ms = 10 + i;
+            frames[i].dispose_method = 0;
+        }
+        if (out_frames)
+            *out_frames = frames;
+        if (out_frame_count)
+            *out_frame_count = frame_count;
+        if (out_width)
+            *out_width = 1;
+        if (out_height)
+            *out_height = 1;
+        return frame_count;
+    }
     if (out_frames)
         *out_frames = nullptr;
     if (out_frame_count)
@@ -413,6 +451,7 @@ int main() {
     test_extreme_collision_bounds_do_not_wrap();
     test_sprite_new_retains_initial_frame_without_cloning();
     test_sprite_from_file_rejects_zero_frame_gif_success();
+    test_sprite_from_file_loads_all_gif_frames_and_delays();
     test_transformed_tint_zero_is_black_and_negative_is_no_tint();
     test_transformed_tint_preserves_tagged_alpha();
     test_set_frame_wraps_out_of_range_indices();

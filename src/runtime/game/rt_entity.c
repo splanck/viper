@@ -49,10 +49,13 @@ typedef struct {
     int8_t hit_left, hit_right, hit_ceiling;
 } entity_impl;
 
+/// @brief Unchecked cast of an opaque handle to entity_impl.
 static entity_impl *get(void *ent) {
     return (entity_impl *)ent;
 }
 
+/// @brief Safe-cast a handle to the Entity impl, trapping @p api on a class-id
+///        mismatch. @return The impl, or NULL if @p ent is NULL.
 static entity_impl *checked_entity(void *ent, const char *api) {
     if (!ent)
         return NULL;
@@ -63,6 +66,7 @@ static entity_impl *checked_entity(void *ent, const char *api) {
     return get(ent);
 }
 
+/// @brief Floor division (rounds toward negative infinity); 0 on divide-by-0.
 static int64_t entity_floor_div(int64_t value, int64_t divisor) {
     if (divisor == 0)
         return 0;
@@ -73,6 +77,7 @@ static int64_t entity_floor_div(int64_t value, int64_t divisor) {
     return quot;
 }
 
+/// @brief Saturating int64 addition (clamps to INT64_MIN/MAX on overflow).
 static int64_t entity_saturating_add(int64_t a, int64_t b) {
     if (b > 0 && a > INT64_MAX - b)
         return INT64_MAX;
@@ -81,10 +86,12 @@ static int64_t entity_saturating_add(int64_t a, int64_t b) {
     return a + b;
 }
 
+/// @brief Saturating negation (INT64_MIN -> INT64_MAX).
 static int64_t entity_saturating_neg(int64_t value) {
     return value == INT64_MIN ? INT64_MAX : -value;
 }
 
+/// @brief Saturating int64 multiply (128-bit or long-double widened; clamps).
 static int64_t entity_saturating_mul(int64_t a, int64_t b) {
 #if defined(__SIZEOF_INT128__)
     __int128 result = (__int128)a * (__int128)b;
@@ -103,6 +110,8 @@ static int64_t entity_saturating_mul(int64_t a, int64_t b) {
 #endif
 }
 
+/// @brief Position delta for a velocity over @p dt: (velocity*dt)/DT_BASE (>>4),
+///        symmetric for negatives, saturating to the int64 range.
 static int64_t entity_scaled_delta(int64_t velocity, int64_t dt) {
 #if defined(__SIZEOF_INT128__)
     __int128 result = (__int128)velocity * (__int128)dt;
@@ -120,10 +129,12 @@ static int64_t entity_scaled_delta(int64_t velocity, int64_t dt) {
 #endif
 }
 
+/// @brief Convert centipixels (1/100 px fixed-point) to whole pixels (floor).
 static int64_t entity_cp_to_px(int64_t cp) {
     return entity_floor_div(cp, 100);
 }
 
+/// @brief True if half-open intervals [a0,a1) and [b0,b1) overlap.
 static int8_t entity_range_overlaps(int64_t a0, int64_t a1, int64_t b0, int64_t b1) {
     return a0 < b1 && a1 > b0;
 }
@@ -330,6 +341,8 @@ static int8_t entity_vertical_edge_hits(
     return 0;
 }
 
+/// @brief True if any solid tile spans the horizontal edge at @p edge_px
+///        between columns covering [left_px, right_px].
 static int8_t entity_horizontal_edge_hits(
     void *tilemap, int64_t left_px, int64_t right_px, int64_t edge_px, int64_t tile_w) {
     int64_t left_col = entity_floor_div(left_px, tile_w);
@@ -341,6 +354,9 @@ static int8_t entity_horizontal_edge_hits(
     return 0;
 }
 
+/// @brief Move the entity horizontally by @p delta_cp centipixels against the
+///        tilemap, stopping flush at the first solid tile and zeroing x-velocity
+///        on contact (swept AABB collision).
 static void entity_sweep_x(
     entity_impl *e, void *tilemap, int64_t delta_cp, int64_t tw, int64_t th) {
     if (delta_cp == 0)
@@ -388,6 +404,9 @@ static void entity_sweep_x(
     e->x = target_x;
 }
 
+/// @brief Move the entity vertically by @p delta_cp centipixels against the
+///        tilemap, stopping flush at the first solid tile; sets the grounded
+///        flag and zeroes y-velocity on a downward landing (swept AABB).
 static void entity_sweep_y(
     entity_impl *e, void *tilemap, int64_t delta_cp, int64_t tw, int64_t th) {
     if (delta_cp == 0)

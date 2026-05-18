@@ -223,7 +223,8 @@ static int64_t pixels_map_index(int64_t dst, int64_t src_size, int64_t dst_size)
 }
 
 /// @brief Map a destination pixel index to a 8.8 fixed-point source position for bilinear resize.
-/// @details Returns dst * (src_size - 1) * 256 / (dst_size - 1), i.e. the source coordinate expressed in
+/// @details Returns dst * (src_size - 1) * 256 / (dst_size - 1), i.e. the source coordinate
+/// expressed in
 ///   units of 1/256 of a pixel.  The caller shifts right by 8 to get the integer part and masks
 ///   with 0xFF to get the fractional weight for pixels_bilerp_rgba_premul_fixed.
 /// @param dst       Destination pixel coordinate (0-based).
@@ -233,8 +234,8 @@ static int64_t pixels_map_index(int64_t dst, int64_t src_size, int64_t dst_size)
 static int64_t pixels_map_fixed_256(int64_t dst, int64_t src_size, int64_t dst_size) {
     if (src_size <= 1 || dst_size <= 1)
         return 0;
-    long double mapped = ((long double)dst * (long double)(src_size - 1) * 256.0L) /
-                         (long double)(dst_size - 1);
+    long double mapped =
+        ((long double)dst * (long double)(src_size - 1) * 256.0L) / (long double)(dst_size - 1);
     if (mapped >= (long double)INT64_MAX)
         return INT64_MAX;
     if (mapped <= 0.0L)
@@ -397,8 +398,10 @@ void *rt_pixels_rotate(void *pixels, double angle_degrees) {
     if (p->width <= 0 || p->height <= 0)
         return pixels_alloc(0, 0);
 
-    if (!isfinite(angle_degrees))
-        return rt_pixels_clone(pixels);
+    if (!isfinite(angle_degrees)) {
+        rt_trap("Pixels.Rotate: non-finite angle");
+        return NULL;
+    }
 
     // Normalize angle to [0, 360) without unbounded loops for huge inputs.
     angle_degrees = fmod(angle_degrees, 360.0);
@@ -522,8 +525,8 @@ void *rt_pixels_rotate(void *pixels, double angle_degrees) {
     return result;
 }
 
-/// @brief Resize via nearest-neighbor sampling to (`new_width`, `new_height`). Returns a NEW Pixels.
-/// Use `_resize` for bilinear filtering.
+/// @brief Resize via nearest-neighbor sampling to (`new_width`, `new_height`). Returns a NEW
+/// Pixels. Use `_resize` for bilinear filtering.
 void *rt_pixels_scale(void *pixels, int64_t new_width, int64_t new_height) {
     rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.Scale: null pixels");
     if (!p)

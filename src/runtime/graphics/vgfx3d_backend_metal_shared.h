@@ -1,3 +1,24 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+// File: src/runtime/graphics/vgfx3d_backend_metal_shared.h
+// Purpose: Shared declarations/constants for the Metal vgfx3d backend —
+//   bone-palette limits and shared uniform layouts used by the Objective-C
+//   Metal backend and its C shared support unit.
+//
+// Key invariants:
+//   - Layouts here must match the Metal shaders and stay consistent with the
+//     D3D11/OpenGL shared layouts (same bone/light limits).
+//   - Internal to the Metal backend; not part of the public Viper API.
+//
+// Ownership/Lifetime:
+//   - Declarations only; no allocation or ownership semantics here.
+//
+// Links: src/runtime/graphics/vgfx3d_backend_metal_shared.c
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include "vgfx3d_backend.h"

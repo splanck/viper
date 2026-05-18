@@ -53,6 +53,8 @@ struct rt_collision_rect_impl {
     double height; ///< Height.
 };
 
+/// @brief Safe-cast a handle to a CollisionRect, trapping @p api on a class-id
+///        mismatch. @return The rect, or NULL if @p rect is NULL.
 static rt_collision_rect checked_collision_rect(rt_collision_rect rect, const char *api) {
     if (!rect)
         return NULL;
@@ -63,10 +65,12 @@ static rt_collision_rect checked_collision_rect(rt_collision_rect rect, const ch
     return rect;
 }
 
+/// @brief Return @p value if finite, else 0.0 (sanitizes NaN/Inf inputs).
 static double finite_or_zero(double value) {
     return isfinite(value) ? value : 0.0;
 }
 
+/// @brief Return @p value if finite and positive, else 0.0 (for widths/sizes).
 static double finite_nonnegative_or_zero(double value) {
     return (isfinite(value) && value > 0.0) ? value : 0.0;
 }

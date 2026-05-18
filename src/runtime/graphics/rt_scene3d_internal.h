@@ -108,7 +108,11 @@ typedef struct {
 extern "C" {
 #endif
 
+/// @brief Create a named node-animation clip of the given duration (seconds).
 void *rt_node_animation3d_new(rt_string name, double duration);
+/// @brief Add a keyframe channel targeting @p target_name's @p path property.
+/// @details @p interpolation selects step/linear; keys are @p key_count tuples
+///          of @p value_width floats sampled at @p times. @return channel index.
 int64_t rt_node_animation3d_add_channel(void *obj,
                                         rt_string target_name,
                                         int64_t path,
@@ -117,6 +121,8 @@ int64_t rt_node_animation3d_add_channel(void *obj,
                                         int64_t value_width,
                                         const double *times,
                                         const float *values);
+/// @brief Add a cubic-spline keyframe channel (with in/out tangents) to a clip.
+/// @return The new channel's index within the animation.
 int64_t rt_node_animation3d_add_cubic_channel(void *obj,
                                               rt_string target_name,
                                               int64_t path,
@@ -126,9 +132,13 @@ int64_t rt_node_animation3d_add_cubic_channel(void *obj,
                                               const float *values,
                                               const float *in_tangents,
                                               const float *out_tangents);
+/// @brief Build a node animator that blends/sequences the given clips.
 void *rt_node_animator3d_new_from_clips(void **clips, int64_t clip_count);
+/// @brief Attach a node animator to a scene node so it drives its transform.
 void rt_scene_node3d_bind_node_animator(void *obj, void *animator);
+/// @brief Attach a Light3D to a scene node.
 void rt_scene_node3d_set_light(void *obj, void *light);
+/// @brief Get the Light3D attached to a scene node (NULL if none).
 void *rt_scene_node3d_get_light(void *obj);
 
 #ifdef __cplusplus

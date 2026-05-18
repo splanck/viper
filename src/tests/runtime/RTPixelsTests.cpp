@@ -20,18 +20,35 @@
 #include "tests/common/PosixCompat.h"
 #include <cassert>
 #include <cmath>
+#include <csetjmp>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <vector>
 
+namespace {
+static jmp_buf g_trap_jmp;
+static bool g_trap_expected = false;
+} // namespace
+
 extern "C" void vm_trap(const char *msg) {
+    if (g_trap_expected)
+        longjmp(g_trap_jmp, 1);
     rt_abort(msg);
 }
 
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_trap_expected = true;                                                                    \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
+            expr;                                                                                  \
+            assert(false && "Expected trap did not occur");                                        \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
+    } while (0)
+
 static uint32_t test_png_read_u32(const uint8_t *p) {
-    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) |
-           (uint32_t)p[3];
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | (uint32_t)p[3];
 }
 
 static void test_png_write_u32(std::vector<uint8_t> &out, uint32_t value) {
@@ -61,8 +78,10 @@ static uint32_t test_png_adler32(const uint8_t *data, size_t len) {
     return (b << 16) | a;
 }
 
-static void test_png_append_chunk(
-    std::vector<uint8_t> &out, const char type[4], const uint8_t *payload, size_t len) {
+static void test_png_append_chunk(std::vector<uint8_t> &out,
+                                  const char type[4],
+                                  const uint8_t *payload,
+                                  size_t len) {
     test_png_write_u32(out, (uint32_t)len);
     size_t type_offset = out.size();
     out.insert(out.end(), type, type + 4);
@@ -164,6 +183,28 @@ static void test_color_aware_setters_preserve_raw_rgba() {
     assert(rt_pixels_get(p, 1, 1) == 0x00000080);
 
     printf("test_color_aware_setters_preserve_raw_rgba: PASSED\n");
+}
+
+static void test_color_getter_returns_color_compatible_value() {
+    void *p = rt_pixels_new(2, 1);
+
+    rt_pixels_set_rgba(p, 0, 0, 0x11223344);
+    assert(rt_pixels_get(p, 0, 0) == 0x11223344);
+    assert(rt_pixels_get_rgba(p, 0, 0) == 0x11223344);
+
+    int64_t color = rt_pixels_get_color(p, 0, 0);
+    assert(rt_color_get_r(color) == 0x11);
+    assert(rt_color_get_g(color) == 0x22);
+    assert(rt_color_get_b(color) == 0x33);
+    assert(rt_color_get_a(color) == 0x44);
+
+    int64_t transparent = rt_pixels_get_color(p, 1, 0);
+    assert(rt_color_get_r(transparent) == 0);
+    assert(rt_color_get_g(transparent) == 0);
+    assert(rt_color_get_b(transparent) == 0);
+    assert(rt_color_get_a(transparent) == 0);
+
+    printf("test_color_getter_returns_color_compatible_value: PASSED\n");
 }
 
 static void test_get_out_of_bounds() {
@@ -422,10 +463,22 @@ static void test_to_bytes() {
     void *bytes = rt_pixels_to_bytes(p);
     assert(bytes != nullptr);
     assert(rt_bytes_len(bytes) == 16); // 2x2 * 4 bytes per pixel
-    const uint8_t expected[16] = {0x11, 0x22, 0x33, 0x44,
-                                  0x55, 0x66, 0x77, 0x88,
-                                  0x99, 0xAA, 0xBB, 0xCC,
-                                  0xDD, 0xEE, 0xFF, 0x00};
+    const uint8_t expected[16] = {0x11,
+                                  0x22,
+                                  0x33,
+                                  0x44,
+                                  0x55,
+                                  0x66,
+                                  0x77,
+                                  0x88,
+                                  0x99,
+                                  0xAA,
+                                  0xBB,
+                                  0xCC,
+                                  0xDD,
+                                  0xEE,
+                                  0xFF,
+                                  0x00};
     for (int64_t i = 0; i < 16; ++i)
         assert(rt_bytes_get(bytes, i) == expected[i]);
 
@@ -1370,15 +1423,11 @@ static void test_blur_empty_image_returns_empty_pixels() {
     printf("test_blur_empty_image_returns_empty_pixels: PASSED\n");
 }
 
-static void test_rotate_nonfinite_returns_clone() {
+static void test_rotate_nonfinite_traps() {
     void *p = rt_pixels_new(1, 1);
     rt_pixels_set(p, 0, 0, 0x12345678);
-    void *rotated = rt_pixels_rotate(p, INFINITY);
-    assert(rotated != nullptr);
-    assert(rt_pixels_width(rotated) == 1);
-    assert(rt_pixels_height(rotated) == 1);
-    assert(rt_pixels_get(rotated, 0, 0) == 0x12345678);
-    printf("test_rotate_nonfinite_returns_clone: PASSED\n");
+    EXPECT_TRAP(rt_pixels_rotate(p, INFINITY));
+    printf("test_rotate_nonfinite_traps: PASSED\n");
 }
 
 static void test_resize_rgba_channel_order() {
@@ -1445,6 +1494,13 @@ static void test_blend_fully_opaque() {
     printf("test_blend_fully_opaque: PASSED\n");
 }
 
+static void test_blend_opaque_normalizes_tagged_color_rgb() {
+    void *p = rt_pixels_new(1, 1);
+    rt_pixels_blend_pixel(p, 0, 0, rt_color_rgba(0x12, 0x34, 0x56, 0), 255);
+    assert(rt_pixels_get(p, 0, 0) == 0x123456FF);
+    printf("test_blend_opaque_normalizes_tagged_color_rgb: PASSED\n");
+}
+
 static void test_blend_transparent() {
     void *p = rt_pixels_new(4, 4);
     rt_pixels_fill(p, (int64_t)0xFF000000); // red opaque background
@@ -1507,6 +1563,7 @@ int main() {
     // Pixel access
     test_get_set();
     test_color_aware_setters_preserve_raw_rgba();
+    test_color_getter_returns_color_compatible_value();
     test_get_out_of_bounds();
     test_set_out_of_bounds();
     test_corners();
@@ -1554,7 +1611,7 @@ int main() {
     test_rotate_180();
     test_rotate_positive_90_is_clockwise();
     test_rotate_single_pixel_keeps_centered_extent();
-    test_rotate_nonfinite_returns_clone();
+    test_rotate_nonfinite_traps();
     test_zero_dimension_flip_v_returns_zero_dimension_copy();
     test_scale_up();
     test_scale_down();
@@ -1571,6 +1628,7 @@ int main() {
 
     // BlendPixel
     test_blend_fully_opaque();
+    test_blend_opaque_normalizes_tagged_color_rgb();
     test_blend_transparent();
     test_blend_50_percent();
     test_blend_50_percent_over_transparent_keeps_source_color();

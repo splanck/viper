@@ -156,6 +156,18 @@ void rt_sprite_add_frame(void *sprite, void *pixels);
 /// @param ms Delay between frames in milliseconds.
 void rt_sprite_set_frame_delay(void *sprite, int64_t ms);
 
+/// @brief Get one animation frame's delay in milliseconds.
+/// @param sprite Sprite object.
+/// @param frame Frame index.
+/// @return Frame delay in milliseconds.
+int64_t rt_sprite_get_frame_delay_at(void *sprite, int64_t frame);
+
+/// @brief Set one animation frame's delay in milliseconds.
+/// @param sprite Sprite object.
+/// @param frame Frame index.
+/// @param ms Delay in milliseconds.
+void rt_sprite_set_frame_delay_at(void *sprite, int64_t frame, int64_t ms);
+
 /// @brief Update animation (advances frame if delay has passed).
 /// @param sprite Sprite object.
 void rt_sprite_update(void *sprite);

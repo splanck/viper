@@ -361,6 +361,9 @@ typedef struct {
     int64_t result;
 } rt_filedialog_data_t;
 
+/// @brief Safe-cast an opaque handle to the file-dialog wrapper.
+/// @details Validates the magic tag and that the backing dialog widget is
+///          still live; returns NULL on any mismatch.
 static rt_filedialog_data_t *rt_filedialog_data_checked(void *dialog) {
     rt_filedialog_data_t *data = (rt_filedialog_data_t *)dialog;
     return data && data->magic == RT_FILEDIALOG_DATA_MAGIC && data->dialog &&

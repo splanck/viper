@@ -93,6 +93,8 @@ static animstate_impl *get(void *asm_) {
     return (animstate_impl *)asm_;
 }
 
+/// @brief Safe-cast a handle to the AnimStateMachine impl, trapping @p api on
+///        a class-id mismatch. @return The impl, or NULL if @p asm_ is NULL.
 static animstate_impl *checked_animstate(void *asm_, const char *api) {
     if (!asm_)
         return NULL;
@@ -103,6 +105,7 @@ static animstate_impl *checked_animstate(void *asm_, const char *api) {
     return get(asm_);
 }
 
+/// @brief Find the index of the valid clip bound to @p state_id, or -1.
 static int find_clip(animstate_impl *a, int64_t state_id) {
     for (int i = 0; i < a->clip_count; i++) {
         if (a->clips[i].valid && a->clips[i].state_id == state_id)
@@ -111,6 +114,8 @@ static int find_clip(animstate_impl *a, int64_t state_id) {
     return -1;
 }
 
+/// @brief Make @p clip_idx the active clip, resetting frame/event playback
+///        state. A negative index stops playback.
 static void apply_clip(animstate_impl *a, int clip_idx) {
     a->active_clip_idx = clip_idx;
     if (clip_idx < 0) {
@@ -129,6 +134,10 @@ static void apply_clip(animstate_impl *a, int clip_idx) {
     c->event_fired_mask = 0;
 }
 
+/// @brief Test whether playback crossed @p event_frame between @p prev_frame
+///        and @p current_frame this step.
+/// @details Handles exact landing, plus loop wrap-around for both
+///          forward (start<=end) and reverse (start>end) clips.
 static int8_t animstate_crossed_frame(int64_t start,
                                       int64_t end,
                                       int8_t loop,
@@ -146,6 +155,8 @@ static int8_t animstate_crossed_frame(int64_t start,
     return 0;
 }
 
+/// @brief Legacy single-event check: set event_triggered when the current
+///        frame first lands on the clip's event_frame (debounced).
 static void animstate_maybe_fire_event(animstate_impl *a, int64_t prev_frame) {
     if (a->event_frame < 0)
         return;
@@ -159,6 +170,10 @@ static void animstate_maybe_fire_event(animstate_impl *a, int64_t prev_frame) {
     a->last_event_frame = a->current_frame;
 }
 
+/// @brief Multi-event check: collect all of clip @p c's event ids whose frames
+///        were crossed this step into a->events_fired_ids.
+/// @details Per-clip event_fired_mask debounces repeats; the mask resets on
+///          loop wrap so events fire again each cycle.
 static void animstate_maybe_fire_events(animstate_impl *a, anim_clip_t *c, int64_t prev_frame) {
     if (!a || !c)
         return;
@@ -181,6 +196,8 @@ static void animstate_maybe_fire_events(animstate_impl *a, anim_clip_t *c, int64
     }
 }
 
+/// @brief Integer percentage (value*100/total) clamped to [0, INT64_MAX];
+///        returns 0 for non-positive inputs.
 static int64_t animstate_percent_i64(int64_t value, int64_t total) {
     if (value <= 0 || total <= 0)
         return 0;

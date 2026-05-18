@@ -98,6 +98,8 @@ static int64_t floor_div_i64(int64_t n, int64_t d) {
     return q;
 }
 
+/// @brief Convert a long double to int64, saturating to the int64 range;
+///        non-finite input yields 0.
 static int64_t clamp_ld_to_i64(long double value) {
     if (!isfinite((double)value))
         return 0;
@@ -108,6 +110,9 @@ static int64_t clamp_ld_to_i64(long double value) {
     return (int64_t)value;
 }
 
+/// @brief Liang–Barsky per-boundary clip test: narrows the parametric ray
+///        interval [t0, t1] for one axis/edge. @return 0 if the segment is
+///        wholly outside that boundary, 1 otherwise (with t0/t1 tightened).
 static int8_t clip_axis(long double p, long double q, long double *t0, long double *t1) {
     if (fabsl(p) < 1e-18L)
         return q >= 0.0L;
@@ -126,6 +131,8 @@ static int8_t clip_axis(long double p, long double q, long double *t0, long doub
     return 1;
 }
 
+/// @brief Test one tile cell along a ray for a solid hit and, if so, record
+///        the entry point/normal. @return 1 on hit (out params set), else 0.
 static int8_t raycast_check_tile(void *tilemap,
                                  int64_t tile_x,
                                  int64_t tile_y,

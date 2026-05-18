@@ -123,6 +123,7 @@ static int64_t camera_add_saturating(int64_t a, int64_t b) {
     return a + b;
 }
 
+/// @brief Clamp @p value to the inclusive [min_value, max_value] range.
 static int64_t camera_clamp_i64(int64_t value, int64_t min_value, int64_t max_value) {
     if (value < min_value)
         return min_value;

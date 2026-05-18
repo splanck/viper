@@ -89,6 +89,16 @@ TEST(TilemapAnim, TileZeroCollisionIsAlwaysEmpty) {
     EXPECT_EQ(rt_tilemap_is_solid_at(tm, 8, 8), 0);
 }
 
+TEST(TilemapAnim, TileZeroCannotBeAnimated) {
+    void *tm = rt_tilemap_new(1, 1, 16, 16);
+    rt_tilemap_set_tile_anim(tm, 0, 2, 100);
+    rt_tilemap_set_tile_anim_frame(tm, 0, 1, 99);
+    rt_tilemap_update_anims(tm, 100);
+
+    EXPECT_EQ(rt_tilemap_resolve_anim_tile(tm, 0), 0);
+    EXPECT_EQ(rt_tilemap_resolve_anim_tile(tm, -1), -1);
+}
+
 int main() {
     return viper_test::run_all_tests();
 }

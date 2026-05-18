@@ -101,6 +101,9 @@ typedef struct rt_anim_blend3d {
     int8_t has_prev_motion_palette;
 } rt_anim_blend3d;
 
+/// @brief Draw a skinned mesh using an explicit model matrix and a caller-
+///        supplied keyed bone palette (internal fast path used by the
+///        animation player to avoid recomputing the pose per draw).
 void rt_canvas3d_draw_mesh_matrix_skinned_keyed(void *canvas,
                                                 void *mesh,
                                                 const double *model_matrix,

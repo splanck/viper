@@ -63,8 +63,7 @@ static volatile uint64_t g_next_pixels_cache_identity = 1;
 static uint64_t pixels_next_cache_identity(void) {
     uint64_t id;
     do {
-        id = __atomic_fetch_add(
-            &g_next_pixels_cache_identity, UINT64_C(1), __ATOMIC_RELAXED);
+        id = __atomic_fetch_add(&g_next_pixels_cache_identity, UINT64_C(1), __ATOMIC_RELAXED);
     } while (id == 0);
     return id;
 }
@@ -235,6 +234,22 @@ int64_t rt_pixels_get(void *pixels, int64_t x, int64_t y) {
     return (int64_t)p->data[idx];
 }
 
+/// @brief Explicit raw-RGBA read alias for scripts that need storage-format pixels.
+int64_t rt_pixels_get_rgba(void *pixels, int64_t x, int64_t y) {
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.GetRGBA: invalid pixels");
+    if (!p)
+        return 0;
+    if (x < 0 || x >= p->width || y < 0 || y >= p->height)
+        return 0;
+    return (int64_t)p->data[y * p->width + x];
+}
+
+/// @brief Read a pixel as a Viper.Graphics.Color-compatible value.
+int64_t rt_pixels_get_color(void *pixels, int64_t x, int64_t y) {
+    uint32_t rgba = (uint32_t)rt_pixels_get_rgba(pixels, x, y);
+    return rt_pixels_rgba_to_color(rgba);
+}
+
 /// @brief Write a raw uint32_t color value to (x, y) in a Pixels buffer.
 /// @details Shared implementation for rt_pixels_set, rt_pixels_set_rgba, and
 ///   rt_pixels_set_color.  Traps on NULL with the caller-supplied @p trap_op message.
@@ -245,11 +260,8 @@ int64_t rt_pixels_get(void *pixels, int64_t x, int64_t y) {
 /// @param y        Row coordinate (0 = top); silently ignored if out of bounds.
 /// @param color    Raw 0xRRGGBBAA pixel value to write.
 /// @param trap_op  Trap message used when @p pixels is NULL.
-static void rt_pixels_set_raw_internal(void *pixels,
-                                       int64_t x,
-                                       int64_t y,
-                                       uint32_t color,
-                                       const char *trap_op) {
+static void rt_pixels_set_raw_internal(
+    void *pixels, int64_t x, int64_t y, uint32_t color, const char *trap_op) {
     rt_pixels_impl *p = rt_pixels_checked_impl(pixels, trap_op);
     if (!p)
         return;
@@ -265,8 +277,7 @@ static void rt_pixels_set_raw_internal(void *pixels,
 
 /// @brief Write raw `color` (0xRRGGBBAA) at (x, y). Out-of-bounds is a silent no-op.
 void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color) {
-    rt_pixels_set_raw_internal(
-        pixels, x, y, rt_pixels_raw_rgba(color), "Pixels.Set: null pixels");
+    rt_pixels_set_raw_internal(pixels, x, y, rt_pixels_raw_rgba(color), "Pixels.Set: null pixels");
 }
 
 /// @brief Explicit raw-RGBA alias for scripts that distinguish raw storage from color values.
@@ -470,10 +481,8 @@ void *rt_pixels_from_bytes(int64_t width, int64_t height, void *bytes) {
         const uint8_t *src = rt_bytes_data_const(bytes);
         int64_t count = width * height;
         for (int64_t i = 0; i < count; ++i) {
-            p->data[i] = ((uint32_t)src[i * 4 + 0] << 24) |
-                         ((uint32_t)src[i * 4 + 1] << 16) |
-                         ((uint32_t)src[i * 4 + 2] << 8) |
-                         (uint32_t)src[i * 4 + 3];
+            p->data[i] = ((uint32_t)src[i * 4 + 0] << 24) | ((uint32_t)src[i * 4 + 1] << 16) |
+                         ((uint32_t)src[i * 4 + 2] << 8) | (uint32_t)src[i * 4 + 3];
         }
         pixels_touch(p);
     }

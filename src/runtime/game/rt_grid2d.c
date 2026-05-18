@@ -49,6 +49,8 @@ struct rt_grid2d_impl {
     int64_t *data; // Row-major storage: data[y * width + x]
 };
 
+/// @brief Safe-cast a handle to the Grid2D impl, trapping @p api on a class-id
+///        mismatch. @return The impl, or NULL if @p grid is NULL.
 static struct rt_grid2d_impl *checked_grid(rt_grid2d grid, const char *api) {
     if (!grid)
         return NULL;
@@ -59,6 +61,7 @@ static struct rt_grid2d_impl *checked_grid(rt_grid2d grid, const char *api) {
     return grid;
 }
 
+/// @brief GC finalizer: free the grid's backing cell array.
 static void grid2d_finalizer(void *obj) {
     struct rt_grid2d_impl *grid = (struct rt_grid2d_impl *)obj;
     free(grid->data);

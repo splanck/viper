@@ -4007,6 +4007,8 @@ void *rt_world3d_sweep_capsule(void *obj,
     return found ? physics_hit3d_new(&best_hit) : NULL;
 }
 
+/// @brief Populate a ray-hit result record (body, distance, world point, and
+///        normal) from a confirmed intersection at @p distance along the ray.
 static void ray_fill_hit(rt_body3d *body,
                          double distance,
                          double max_distance,
@@ -4033,6 +4035,8 @@ static void ray_fill_hit(rt_body3d *body,
         vec3_negate(dir, out_hit->normal);
 }
 
+/// @brief Ray vs sphere intersection (analytic quadratic solve).
+/// @return Non-zero on a hit with the entry distance written, 0 otherwise.
 static int raycast_sphere_raw(const double *origin,
                               const double *dir,
                               const double *center,
@@ -4074,6 +4078,8 @@ static int raycast_sphere_raw(const double *origin,
     return 1;
 }
 
+/// @brief Ray vs axis-aligned box intersection (slab method).
+/// @return Non-zero on a hit with the entry distance written, 0 otherwise.
 static int raycast_aabb_raw(const double *origin,
                             const double *dir,
                             const double *mn,
@@ -4134,6 +4140,8 @@ static int raycast_aabb_raw(const double *origin,
     return 1;
 }
 
+/// @brief Ray vs capsule intersection (cylinder body plus hemisphere caps).
+/// @return Non-zero on a hit with the entry distance written, 0 otherwise.
 static int raycast_capsule_raw(const double *origin,
                                const double *dir,
                                const double *a,
@@ -4219,6 +4227,9 @@ static int raycast_capsule_raw(const double *origin,
     return 1;
 }
 
+/// @brief Ray vs a physics body: transforms the ray into body space and
+///        dispatches to the sphere/AABB/capsule test for the body's shape.
+/// @return Non-zero on a hit (nearest distance written), 0 otherwise.
 static int raycast_body(rt_body3d *body,
                         const double *origin,
                         const double *dir,

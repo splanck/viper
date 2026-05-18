@@ -65,6 +65,8 @@ struct rt_spriteanim_impl {
     int8_t frame_changed; ///< 1 if frame changed this update.
 };
 
+/// @brief Safe-cast a handle to the SpriteAnim impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p anim is NULL.
 static rt_spriteanim checked_spriteanim(rt_spriteanim anim, const char *api) {
     if (!anim)
         return NULL;
@@ -75,6 +77,8 @@ static rt_spriteanim checked_spriteanim(rt_spriteanim anim, const char *api) {
     return anim;
 }
 
+/// @brief Integer percentage value*100/total, clamped to [0, 100]; 0 for
+///        non-positive inputs.
 static int64_t spriteanim_percent_i64(int64_t value, int64_t total) {
     if (value <= 0 || total <= 0)
         return 0;
@@ -83,6 +87,9 @@ static int64_t spriteanim_percent_i64(int64_t value, int64_t total) {
     return pct > 100 ? 100 : pct;
 }
 
+/// @brief Step the animation one frame in its current direction, applying
+///        loop/ping-pong/one-shot end behavior.
+/// @return Non-zero if a clip boundary (start or end) was crossed this step.
 static int8_t rt_spriteanim_advance_one_frame(rt_spriteanim anim) {
     int8_t crossed_end = 0;
     int8_t crossed_start = 0;

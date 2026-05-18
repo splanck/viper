@@ -1072,9 +1072,15 @@ The Graphics namespace provides 2D rendering, image manipulation, and game devel
     - `Width -> I64` (read-only) — Image width in pixels
     - `Height -> I64` (read-only) — Image height in pixels
 - Methods:
-    - `Get(I64 x, I64 y) -> I64` — Get pixel color at position
-    - `Set(I64 x, I64 y, I64 color) -> VOID` — Set pixel color
-    - `Fill(I64 color) -> VOID` — Fill entire image with color
+    - `Get(I64 x, I64 y) -> I64` — Get raw `0xRRGGBBAA` pixel storage
+    - `GetRGBA(I64 x, I64 y) -> I64` — Get raw `0xRRGGBBAA` pixel storage
+    - `GetColor(I64 x, I64 y) -> I64` — Get pixel as a `Color`-compatible value
+    - `Set(I64 x, I64 y, I64 color) -> VOID` — Set raw `0xRRGGBBAA` pixel storage
+    - `SetRGBA(I64 x, I64 y, I64 color) -> VOID` — Set raw `0xRRGGBBAA` pixel storage
+    - `SetColor(I64 x, I64 y, I64 color) -> VOID` — Set pixel from `Color.RGB/RGBA` or Canvas RGB
+    - `Fill(I64 color) -> VOID` — Fill image with raw `0xRRGGBBAA`
+    - `FillRGBA(I64 color) -> VOID` — Fill image with raw `0xRRGGBBAA`
+    - `FillColor(I64 color) -> VOID` — Fill image from `Color.RGB/RGBA` or Canvas RGB
     - `Clear() -> VOID` — Clear to transparent black
     - `Copy(I64 dx, I64 dy, PIXELS src, I64 sx, I64 sy, I64 sw, I64 sh) -> VOID` — Copy region
     - `Clone() -> PIXELS` — Create copy of image
@@ -1110,6 +1116,8 @@ The Graphics namespace provides 2D rendering, image manipulation, and game devel
     - `SetOrigin(I64 x, I64 y) -> VOID` — Set rotation/scale origin
     - `AddFrame(PIXELS pixels) -> VOID` — Add animation frame
     - `SetFrameDelay(I64 ms) -> VOID` — Set animation delay
+    - `GetFrameDelayAt(I64 frame) -> I64` — Get one frame's delay
+    - `SetFrameDelayAt(I64 frame, I64 ms) -> VOID` — Set one frame's delay
     - `Update() -> VOID` — Advance animation based on time
     - `Overlaps(SPRITE other) -> I64` — AABB collision check
     - `Contains(I64 px, I64 py) -> I64` — Point-in-sprite test
@@ -1171,7 +1179,7 @@ blue = Viper.Graphics.Color.RGB(0, 0, 255)
 ' Create and configure a sprite
 DIM spriteImg AS Viper.Graphics.Pixels
 spriteImg = NEW Viper.Graphics.Pixels(32, 32)
-spriteImg.Fill(red)
+spriteImg.FillColor(red)
 
 DIM player AS Viper.Graphics.Sprite
 player = NEW Viper.Graphics.Sprite(spriteImg)

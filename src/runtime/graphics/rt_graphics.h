@@ -496,7 +496,10 @@ int64_t rt_canvas_save_png(void *canvas, rt_string path);
 //=========================================================================
 
 /// @brief Construct a color from RGB components.
-// Color constants — packed 0x00RRGGBB
+/// @brief Named color-constant getters: each returns a packed 0x00RRGGBB
+///        value for the color in its name (red/green/blue/white/black/yellow/
+///        cyan/magenta/gray/orange), for front-ends that call functions
+///        rather than use color literals.
 int64_t rt_color_red(void);
 int64_t rt_color_green(void);
 int64_t rt_color_blue(void);

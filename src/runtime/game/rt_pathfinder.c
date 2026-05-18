@@ -81,10 +81,13 @@ static inline int8_t pf_in_bounds(const rt_pathfinder_impl *pf, int32_t x, int32
     return x >= 0 && x < pf->width && y >= 0 && y < pf->height;
 }
 
+/// @brief True if grid cell (x, y) lies within the pathfinder's bounds.
 static inline int8_t pf_in_bounds_i64(const rt_pathfinder_impl *pf, int64_t x, int64_t y) {
     return x >= 0 && y >= 0 && x < pf->width && y < pf->height;
 }
 
+/// @brief Safe-cast a handle to the Pathfinder impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p ptr is NULL.
 static rt_pathfinder_impl *checked_pathfinder(void *ptr, const char *api) {
     if (!ptr)
         return NULL;
@@ -356,6 +359,8 @@ typedef struct {
     pf_node *nodes;    ///< Reference to node array (for f-cost comparison).
 } pf_heap;
 
+/// @brief Swap heap slots @p a and @p b, keeping the node->slot position
+///        index consistent (the open-set is an indexed binary min-heap).
 static void heap_swap(pf_heap *h, int32_t a, int32_t b) {
     int32_t tmp = h->data[a];
     h->data[a] = h->data[b];
@@ -364,6 +369,8 @@ static void heap_swap(pf_heap *h, int32_t a, int32_t b) {
     h->position[h->data[b]] = b;
 }
 
+/// @brief Restore the min-heap invariant upward from slot @p i after a
+///        decrease-key or insertion (orders by node f-score).
 static void heap_sift_up(pf_heap *h, int32_t i) {
     while (i > 0) {
         int32_t parent = (i - 1) / 2;
@@ -375,6 +382,8 @@ static void heap_sift_up(pf_heap *h, int32_t i) {
     }
 }
 
+/// @brief Restore the min-heap invariant downward from slot @p i after a
+///        pop (root replaced by the last element).
 static void heap_sift_down(pf_heap *h, int32_t i) {
     while (1) {
         int32_t left = 2 * i + 1;
@@ -394,6 +403,8 @@ static void heap_sift_down(pf_heap *h, int32_t i) {
     }
 }
 
+/// @brief Insert @p node_idx into the open set, or decrease-key it if already
+///        present (re-sifts from its current slot). No-op at capacity.
 static void heap_push(pf_heap *h, int32_t node_idx) {
     if (node_idx < 0)
         return;
@@ -409,6 +420,8 @@ static void heap_push(pf_heap *h, int32_t node_idx) {
     h->count++;
 }
 
+/// @brief Remove and return the lowest-f node index, or -1 if the open set is
+///        empty (re-heapifies the remaining elements).
 static int32_t heap_pop(pf_heap *h) {
     if (h->count == 0)
         return -1;
@@ -440,6 +453,8 @@ static int64_t pf_heuristic(int32_t ax, int32_t ay, int32_t bx, int32_t by, int8
     }
 }
 
+/// @brief Heuristic scaled by the grid's minimum per-cell cost so it stays
+///        admissible (never overestimates) when tiles have custom costs.
 static int64_t pf_scaled_heuristic(
     int32_t ax, int32_t ay, int32_t bx, int32_t by, int8_t diagonal, int64_t min_cost) {
     if (min_cost < 1)

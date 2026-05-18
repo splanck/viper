@@ -103,6 +103,12 @@ static inline int8_t rtg_i64_fits_i32(int64_t value) {
     return value >= INT32_MIN && value <= INT32_MAX;
 }
 
+/// @brief Number of leading elements to skip when a span starts at a negative
+///        coordinate.
+/// @details If @p start >= 0 or @p len <= 0 nothing is skipped. Otherwise the
+///          skip is min(-start, len), saturating the INT64_MIN edge case so the
+///          caller can clip a copy span to the non-negative region.
+/// @return Count in [0, len] of elements to drop from the front of the span.
 static inline int64_t rtg_negative_skip(int64_t start, int64_t len) {
     if (start >= 0 || len <= 0)
         return 0;
@@ -112,6 +118,18 @@ static inline int64_t rtg_negative_skip(int64_t start, int64_t len) {
     return skip >= len ? len : skip;
 }
 
+/// @brief Clip a 1-D copy span against both source and destination bounds.
+/// @details Adjusts @p dst, @p src and @p len in place so that the resulting
+///          span lies fully within [0, dst_limit) on the destination and
+///          [0, src_limit) on the source, accounting for negative start
+///          coordinates on either side (via rtg_negative_skip). On any
+///          degenerate input @p len is set to 0.
+/// @param dst_limit Destination extent (must be > 0 to copy).
+/// @param src_limit Source extent (must be > 0 to copy).
+/// @param dst In/out destination start coordinate.
+/// @param src In/out source start coordinate.
+/// @param len In/out span length.
+/// @return Non-zero if a non-empty clipped span remains, 0 otherwise.
 static inline int8_t rtg_clip_copy_axis(
     int64_t dst_limit, int64_t src_limit, int64_t *dst, int64_t *src, int64_t *len) {
     if (!dst || !src || !len || *len <= 0 || dst_limit <= 0 || src_limit <= 0) {
@@ -275,7 +293,11 @@ static inline void rtg_hsl_to_rgb(
 #include "vgfx.h"
 
 /* Internal input teardown helpers used by canvas lifecycle code. */
+/// @brief Drop any keyboard-input state bound to @p canvas if it is the
+///        currently-tracked canvas (called when a Canvas is destroyed).
 void rt_keyboard_clear_canvas_if_matches(void *canvas);
+/// @brief Drop any mouse-input state bound to @p canvas if it is the
+///        currently-tracked canvas (called when a Canvas is destroyed).
 void rt_mouse_clear_canvas_if_matches(void *canvas);
 
 /// @brief Magic value used to reject accidental calls with non-Canvas objects.
@@ -301,6 +323,10 @@ typedef struct {
     int64_t clip_h;          ///< Logical clip height
 } rt_canvas;
 
+/// @brief Safely down-cast an opaque pointer to rt_canvas.
+/// @details Validates the object is a live Canvas instance (correct class id,
+///          size, and RT_CANVAS_MAGIC guard) before returning it.
+/// @return The rt_canvas pointer, or NULL if @p canvas_ptr is not a Canvas.
 static inline rt_canvas *rt_canvas_checked(void *canvas_ptr) {
     if (!canvas_ptr)
         return NULL;
@@ -312,10 +338,15 @@ static inline rt_canvas *rt_canvas_checked(void *canvas_ptr) {
 
 #define RT_COLOR_EXPLICIT_ALPHA_FLAG ((int64_t)1 << 56)
 
+/// @brief Clamp a HiDPI scale factor to a sane minimum of 1.0.
+/// @details Guards against zero/negative/NaN-ish scales reported by a window
+///          backend, which would otherwise blow up logical<->physical math.
 static inline float rtg_sanitize_scale(float scale) {
     return scale >= 1.0f ? scale : 1.0f;
 }
 
+/// @brief Round a double to the nearest int64 (half away from zero), saturating
+///        at the int64 range to avoid UB on overflow.
 static inline int64_t rtg_round_scaled(double value) {
     if (value >= (double)INT64_MAX)
         return INT64_MAX;
@@ -324,14 +355,23 @@ static inline int64_t rtg_round_scaled(double value) {
     return (int64_t)(value >= 0.0 ? value + 0.5 : value - 0.5);
 }
 
+/// @brief Convert a logical (DPI-independent) coordinate to a physical pixel
+///        coordinate by multiplying by the sanitized HiDPI scale.
 static inline int64_t rtg_scale_up_i64(int64_t logical, float scale) {
     return rtg_round_scaled((double)logical * (double)rtg_sanitize_scale(scale));
 }
 
+/// @brief Convert a physical pixel coordinate back to a logical coordinate by
+///        dividing by the sanitized HiDPI scale (inverse of rtg_scale_up_i64).
 static inline int64_t rtg_scale_down_i64(int64_t physical, float scale) {
     return rtg_round_scaled((double)physical / (double)rtg_sanitize_scale(scale));
 }
 
+/// @brief Push the canvas's logical coordinate scale and clip rect into the
+///        underlying ViperGFX window.
+/// @details Re-reads the window HiDPI scale, applies it as the coord scale, and
+///          either sets or clears the GFX clip rectangle to mirror the canvas's
+///          logical clip state. No-op when the canvas has no window.
 static inline void rt_canvas_resync_window_state(rt_canvas *canvas) {
     if (!canvas || !canvas->gfx_win)
         return;
@@ -349,6 +389,11 @@ static inline void rt_canvas_resync_window_state(rt_canvas *canvas) {
     }
 }
 
+/// @brief Compute the effective logical clip rectangle for a canvas.
+/// @details Resyncs window state, then intersects the canvas's logical clip
+///          (or the full window if clipping is disabled) with the window
+///          bounds. Outputs are written to @p x/@p y/@p w/@p h.
+/// @return Non-zero if a non-empty clip region results, 0 if fully clipped out.
 static inline int8_t rt_canvas_get_logical_clip_bounds(
     rt_canvas *canvas, int64_t *x, int64_t *y, int64_t *w, int64_t *h) {
     if (!canvas || !canvas->gfx_win || !x || !y || !w || !h)
@@ -390,6 +435,11 @@ static inline int8_t rt_canvas_get_logical_clip_bounds(
     return 1;
 }
 
+/// @brief Intersect a caller-supplied logical rect with the canvas clip region.
+/// @details Clamps the in/out rect (@p x, @p y, @p w, @p h) to the effective
+///          logical clip bounds from rt_canvas_get_logical_clip_bounds(). On
+///          empty input or no overlap, the size outputs are zeroed.
+/// @return Non-zero if a non-empty intersection remains, 0 otherwise.
 static inline int8_t rt_canvas_clip_intersect_logical(
     rt_canvas *canvas, int64_t *x, int64_t *y, int64_t *w, int64_t *h) {
     if (!x || !y || !w || !h || *w <= 0 || *h <= 0)

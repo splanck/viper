@@ -54,6 +54,8 @@ struct rt_lighting2d_impl {
     struct rt_dyn_light tile_lights[MAX_DYN_LIGHTS_CAP];
 };
 
+/// @brief Safe-cast a handle to the Lighting2D impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p lit is NULL.
 static struct rt_lighting2d_impl *checked_lighting2d(rt_lighting2d lit, const char *api) {
     if (!lit)
         return NULL;
@@ -64,6 +66,7 @@ static struct rt_lighting2d_impl *checked_lighting2d(rt_lighting2d lit, const ch
     return lit;
 }
 
+/// @brief Clamp @p value to the inclusive [lo, hi] range.
 static int64_t clamp_i64(int64_t value, int64_t lo, int64_t hi) {
     if (value < lo)
         return lo;
@@ -72,6 +75,7 @@ static int64_t clamp_i64(int64_t value, int64_t lo, int64_t hi) {
     return value;
 }
 
+/// @brief Saturating int64 addition (clamps to INT64_MIN/MAX on overflow).
 static int64_t lighting_add_sat_i64(int64_t a, int64_t b) {
     if (b > 0 && a > INT64_MAX - b)
         return INT64_MAX;
@@ -80,12 +84,15 @@ static int64_t lighting_add_sat_i64(int64_t a, int64_t b) {
     return a + b;
 }
 
+/// @brief Saturating int64 subtraction (a - b), clamped to the int64 range.
 static int64_t lighting_sub_sat_i64(int64_t a, int64_t b) {
     if (b == INT64_MIN)
         return INT64_MAX;
     return lighting_add_sat_i64(a, -b);
 }
 
+/// @brief Compute (a*b)/divisor in long double and saturate to the int64
+///        range; returns 0 when @p divisor is 0.
 static int64_t lighting_mul_div_sat_i64(int64_t a, int64_t b, int64_t divisor) {
     if (divisor == 0)
         return 0;

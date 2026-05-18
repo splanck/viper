@@ -103,9 +103,14 @@ void rt_rand_shuffle(void *seq);
 void *rt_random_new(long long seed);
 
 // Instance methods operate on the receiver's independent RNG state.
+/// @brief Instance variant of rt_rnd(): next double in [0, 1) for @p self.
 double rt_rnd_method(void *self);
+/// @brief Instance variant of rt_rand_int(): random integer in [0, @p max).
 long long rt_rand_int_method(void *self, long long max);
+/// @brief Instance variant of rt_rand_range(): random integer in
+///        [@p min, @p max] (bounds swapped if inverted).
 long long rt_rand_range_method(void *self, long long min, long long max);
+/// @brief Re-seed @p self's independent RNG state with @p seed.
 void rt_randomize_i64_method(void *self, long long seed);
 
 #ifdef __cplusplus

@@ -52,6 +52,8 @@ struct rt_timer_impl {
     int8_t expired;   // 1 if a one-shot timer completed
 };
 
+/// @brief Safe-cast a handle to the Timer impl, trapping @p api on a class-id
+///        mismatch. @return The timer, or NULL if @p timer is NULL.
 static rt_timer checked_timer(rt_timer timer, const char *api) {
     if (!timer)
         return NULL;
@@ -62,6 +64,7 @@ static rt_timer checked_timer(rt_timer timer, const char *api) {
     return timer;
 }
 
+/// @brief Saturating int64 addition (clamps to INT64_MIN/MAX on overflow).
 static int64_t timer_add_sat_i64(int64_t a, int64_t b) {
     if (b > 0 && a > INT64_MAX - b)
         return INT64_MAX;
@@ -70,6 +73,8 @@ static int64_t timer_add_sat_i64(int64_t a, int64_t b) {
     return a + b;
 }
 
+/// @brief Integer percentage value*100/total, clamped to [0, 100]; 0 for
+///        non-positive inputs.
 static int64_t timer_percent_i64(int64_t value, int64_t total) {
     if (value <= 0 || total <= 0)
         return 0;

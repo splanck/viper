@@ -218,129 +218,231 @@ int64_t rt_gamebutton_get_text_scale(void *btn);
 // TextInput
 //=========================================================================
 
+/// @brief Create a single-line text-input widget at (x, y) sized w x h.
 void *rt_uitextinput_new(int64_t x, int64_t y, int64_t w, int64_t h);
+/// @brief Replace the field's contents with @p text.
 void rt_uitextinput_set_text(void *ti, rt_string text);
+/// @brief Get the current field contents.
 rt_string rt_uitextinput_get_text(void *ti);
+/// @brief Number of codepoints currently in the field.
 int64_t rt_uitextinput_text_length(void *ti);
+/// @brief Get the caret position (codepoint index).
 int64_t rt_uitextinput_get_cursor(void *ti);
+/// @brief Move the caret to codepoint index @p pos (clamped).
 void rt_uitextinput_set_cursor(void *ti, int64_t pos);
+/// @brief Select the entire field contents.
 void rt_uitextinput_select_all(void *ti);
+/// @brief Clear any active text selection.
 void rt_uitextinput_clear_selection(void *ti);
+/// @brief Whether a non-empty selection exists.
 int8_t rt_uitextinput_has_selection(void *ti);
+/// @brief Get the currently selected substring (empty if none).
 rt_string rt_uitextinput_get_selected_text(void *ti);
+/// @brief Delete the current selection, if any.
 void rt_uitextinput_delete_selection(void *ti);
+/// @brief Process a key press (arrows/editing/shortcuts); @p shift_held
+///        extends the selection. @return non-zero if the key was consumed.
 int64_t rt_uitextinput_handle_key(void *ti, int64_t key_code, int8_t shift_held);
+/// @brief Insert typed text at the caret (respects max-codepoints).
 int64_t rt_uitextinput_handle_text(void *ti, rt_string typed_text);
+/// @brief Place the caret/selection from a mouse click at (mx, my).
 void rt_uitextinput_handle_mouse_click(void *ti, int64_t mx, int64_t my, int8_t shift_held);
+/// @brief Extend the selection by dragging to (mx, my).
 void rt_uitextinput_handle_mouse_drag(void *ti, int64_t mx, int64_t my);
+/// @brief Advance time-based state (caret blink) by @p delta_ms.
 void rt_uitextinput_update(void *ti, int64_t delta_ms);
+/// @brief Render the field onto @p canvas.
 void rt_uitextinput_draw(void *ti, void *canvas);
+/// @brief Set the text color (packed RGB).
 void rt_uitextinput_set_text_color(void *ti, int64_t color);
+/// @brief Get the text color.
 int64_t rt_uitextinput_get_text_color(void *ti);
+/// @brief Set the background color.
 void rt_uitextinput_set_bg_color(void *ti, int64_t color);
+/// @brief Get the background color.
 int64_t rt_uitextinput_get_bg_color(void *ti);
+/// @brief Set the caret color.
 void rt_uitextinput_set_cursor_color(void *ti, int64_t color);
+/// @brief Set the selection-highlight color.
 void rt_uitextinput_set_selection_color(void *ti, int64_t color);
+/// @brief Set the border color (unfocused).
 void rt_uitextinput_set_border_color(void *ti, int64_t color);
+/// @brief Set the border color used while the field is focused.
 void rt_uitextinput_set_border_color_focused(void *ti, int64_t color);
+/// @brief Set the font used to render the text.
 void rt_uitextinput_set_font(void *ti, void *font);
+/// @brief Show/hide the widget.
 void rt_uitextinput_set_visible(void *ti, int8_t visible);
+/// @brief Query visibility.
 int8_t rt_uitextinput_get_visible(void *ti);
+/// @brief Enable/disable input handling.
 void rt_uitextinput_set_enabled(void *ti, int8_t enabled);
+/// @brief Query enabled state.
 int8_t rt_uitextinput_get_enabled(void *ti);
+/// @brief Set keyboard focus on/off.
 void rt_uitextinput_set_focused(void *ti, int8_t focused);
+/// @brief Query focus state.
 int8_t rt_uitextinput_get_focused(void *ti);
+/// @brief Toggle password masking of the displayed text.
 void rt_uitextinput_set_password_mode(void *ti, int8_t password);
+/// @brief Set the placeholder shown when the field is empty.
 void rt_uitextinput_set_placeholder(void *ti, rt_string placeholder);
+/// @brief Cap the maximum number of codepoints accepted.
 void rt_uitextinput_set_max_codepoints(void *ti, int64_t max_cps);
 
 //=========================================================================
 // Table
 //=========================================================================
 
+/// @brief Create a scrollable, sortable data table at (x, y) sized w x h.
 void *rt_uitable_new(int64_t x, int64_t y, int64_t w, int64_t h);
+/// @brief Add a column with @p title, pixel @p width and @p align; returns its index.
 int64_t rt_uitable_add_column(void *table, rt_string title, int64_t width, int64_t align);
+/// @brief Mark column @p col sortable, and whether it sorts numerically.
 void rt_uitable_set_column_sortable(void *table, int64_t col, int8_t sortable, int8_t numeric);
+/// @brief Number of columns.
 int64_t rt_uitable_column_count(void *table);
+/// @brief Append an empty row; returns its index.
 int64_t rt_uitable_add_row(void *table);
+/// @brief Set the text of cell (row, col).
 void rt_uitable_set_cell(void *table, int64_t row, int64_t col, rt_string text);
+/// @brief Get the text of cell (row, col).
 rt_string rt_uitable_get_cell(void *table, int64_t row, int64_t col);
+/// @brief Remove the row at @p row.
 void rt_uitable_remove_row(void *table, int64_t row);
+/// @brief Remove all rows (columns are kept).
 void rt_uitable_clear_rows(void *table);
+/// @brief Number of rows.
 int64_t rt_uitable_row_count(void *table);
+/// @brief Sort rows by column @p col, ascending or @p descending.
 void rt_uitable_sort_by(void *table, int64_t col, int8_t descending);
+/// @brief Column the table is currently sorted by (-1 if none).
 int64_t rt_uitable_get_sort_column(void *table);
+/// @brief Whether the current sort is descending.
 int8_t rt_uitable_get_sort_descending(void *table);
+/// @brief Scroll so that @p row is the first visible row.
 void rt_uitable_set_scroll(void *table, int64_t row);
+/// @brief First visible row index.
 int64_t rt_uitable_get_scroll(void *table);
+/// @brief Set the highlighted/selected row.
 void rt_uitable_set_selected_row(void *table, int64_t row);
+/// @brief Get the selected row index (-1 if none).
 int64_t rt_uitable_get_selected_row(void *table);
+/// @brief Process a click at (mx, my); @return the clicked row index or -1.
 int64_t rt_uitable_handle_click(void *table, int64_t mx, int64_t my);
+/// @brief Index of the column header last clicked (for sort toggling), or -1.
 int64_t rt_uitable_last_header_click(void *table);
+/// @brief Scroll the view by @p delta rows.
 void rt_uitable_handle_scroll(void *table, int64_t delta);
+/// @brief Process a key press (row navigation).
 void rt_uitable_handle_key(void *table, int64_t key_code);
+/// @brief Render the table onto @p canvas.
 void rt_uitable_draw(void *table, void *canvas);
 
 //=========================================================================
 // Modal
 //=========================================================================
 
+/// @brief Create a centered modal dialog sized w x h.
 void *rt_uimodal_new(int64_t w, int64_t h);
+/// @brief Create a modal dialog at an explicit (x, y) position.
 void *rt_uimodal_new_at(int64_t x, int64_t y, int64_t w, int64_t h);
+/// @brief Set the modal's title-bar text.
 void rt_uimodal_set_title(void *modal, rt_string title);
+/// @brief Set the modal's body content text.
 void rt_uimodal_set_content(void *modal, rt_string text);
+/// @brief Add a button labeled @p text that closes with @p return_value;
+///        returns the button index.
 int64_t rt_uimodal_add_button(void *modal, rt_string text, int64_t return_value);
+/// @brief Designate the default button (activated by Enter).
 void rt_uimodal_set_default_button(void *modal, int64_t index);
+/// @brief Designate the cancel button (activated by Escape).
 void rt_uimodal_set_cancel_button(void *modal, int64_t index);
+/// @brief Embed a child widget in the modal's content area.
 void rt_uimodal_add_child(void *modal, void *child_widget);
+/// @brief Open (show) the modal.
 void rt_uimodal_open(void *modal);
+/// @brief Close (hide) the modal.
 void rt_uimodal_close(void *modal);
+/// @brief Whether the modal is currently open.
 int8_t rt_uimodal_is_open(void *modal);
+/// @brief The return value of the button that closed the modal (-1 if open).
 int64_t rt_uimodal_get_result(void *modal);
+/// @brief Process a key press (Enter/Escape/Tab). @return non-zero if consumed.
 int64_t rt_uimodal_handle_key(void *modal, int64_t key_code, int8_t shift_held);
+/// @brief Process a click at (mx, my). @return non-zero if consumed.
 int64_t rt_uimodal_handle_click(void *modal, int64_t mx, int64_t my);
+/// @brief Render the modal (and its dimmed backdrop) onto @p canvas.
 void rt_uimodal_draw(void *modal, void *canvas);
 
 //=========================================================================
 // Slider
 //=========================================================================
 
+/// @brief Create a horizontal slider over [min_v, max_v] at (x, y) sized w x h.
 void *rt_uislider_new(int64_t x, int64_t y, int64_t w, int64_t h, int64_t min_v, int64_t max_v);
+/// @brief Set the slider value (clamped to its range).
 void rt_uislider_set_value(void *s, int64_t v);
+/// @brief Get the current slider value.
 int64_t rt_uislider_get_value(void *s);
+/// @brief Set the increment applied by key/scroll adjustments.
 void rt_uislider_set_step(void *s, int64_t step);
+/// @brief Set the text label drawn alongside the slider.
 void rt_uislider_set_label(void *s, rt_string label);
+/// @brief Process a key press (arrows adjust by step). @return non-zero if consumed.
 int8_t rt_uislider_handle_key(void *s, int64_t key_code);
+/// @brief Begin a drag if (mx, my) hits the handle/track. @return non-zero if grabbed.
 int8_t rt_uislider_handle_mouse_down(void *s, int64_t mx, int64_t my);
+/// @brief Update the value while dragging to x=@p mx. @return non-zero if dragging.
 int8_t rt_uislider_handle_mouse_drag(void *s, int64_t mx);
+/// @brief End an active drag. @return non-zero if a drag was in progress.
 int8_t rt_uislider_handle_mouse_up(void *s);
+/// @brief Render the slider onto @p canvas.
 void rt_uislider_draw(void *s, void *canvas);
 
 //=========================================================================
 // Dropdown
 //=========================================================================
 
+/// @brief Create a dropdown (combo-box) at (x, y) sized w x h.
 void *rt_uidropdown_new(int64_t x, int64_t y, int64_t w, int64_t h);
+/// @brief Append a selectable option labeled @p text.
 void rt_uidropdown_add_option(void *dd, rt_string text);
+/// @brief Remove all options.
 void rt_uidropdown_clear_options(void *dd);
+/// @brief Index of the selected option (-1 if none).
 int64_t rt_uidropdown_get_selected(void *dd);
+/// @brief Select the option at @p index.
 void rt_uidropdown_set_selected(void *dd, int64_t index);
+/// @brief Text of the selected option (empty if none).
 rt_string rt_uidropdown_get_selected_text(void *dd);
+/// @brief Whether the option list is currently expanded.
 int8_t rt_uidropdown_is_open(void *dd);
+/// @brief Expand the option list.
 void rt_uidropdown_open(void *dd);
+/// @brief Collapse the option list.
 void rt_uidropdown_close(void *dd);
+/// @brief Process a click at (mx, my) (toggle/select). @return non-zero if consumed.
 int8_t rt_uidropdown_handle_click(void *dd, int64_t mx, int64_t my);
+/// @brief Process a key press (open/navigate/select). @return non-zero if consumed.
 int8_t rt_uidropdown_handle_key(void *dd, int64_t key_code);
+/// @brief Render the dropdown (and expanded list) onto @p canvas.
 void rt_uidropdown_draw(void *dd, void *canvas);
 
 //=========================================================================
 // Tooltip
 //=========================================================================
 
+/// @brief Create a hover tooltip widget.
 void *rt_uitooltip_new(void);
+/// @brief Set the tooltip text.
 void rt_uitooltip_set_text(void *t, rt_string text);
+/// @brief Set the hover dwell time (ms) before the tooltip appears.
 void rt_uitooltip_set_hover_delay_ms(void *t, int64_t ms);
+/// @brief Update tooltip timing/position from the cursor and whether its
+///        target is hovered; advances the dwell timer by @p delta_ms.
 void rt_uitooltip_update(void *t, int64_t mx, int64_t my, int8_t hovered_target, int64_t delta_ms);
+/// @brief Render the tooltip onto @p canvas if currently shown.
 void rt_uitooltip_draw(void *t, void *canvas);
 
 #ifdef __cplusplus

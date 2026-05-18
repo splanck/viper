@@ -93,6 +93,10 @@ static mat4_impl *mat4_alloc(void) {
     return mat;
 }
 
+/// @brief Safe-cast an opaque handle to mat4_impl.
+/// @details With RT_MAT4_INTERNAL_ASSUME_STRUCT_HANDLE the pointer is trusted
+///          directly (fast path); otherwise the object's class id is validated
+///          against RT_MAT4_CLASS_ID, returning NULL on mismatch or NULL input.
 static mat4_impl *mat4_checked(void *m) {
 #ifdef RT_MAT4_INTERNAL_ASSUME_STRUCT_HANDLE
     return (mat4_impl *)m;

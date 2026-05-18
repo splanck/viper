@@ -82,6 +82,8 @@ typedef struct {
     int8_t finished;
 } rt_dialogue_impl;
 
+/// @brief Safe-cast a handle to the Dialogue impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p dlg is NULL.
 static rt_dialogue_impl *checked_dialogue(void *dlg, const char *api) {
     if (!dlg)
         return NULL;
@@ -92,6 +94,7 @@ static rt_dialogue_impl *checked_dialogue(void *dlg, const char *api) {
     return (rt_dialogue_impl *)dlg;
 }
 
+/// @brief Clamp an int64 to the int32 range.
 static int32_t clamp_i64_to_i32(int64_t value) {
     if (value < INT32_MIN)
         return INT32_MIN;
@@ -100,6 +103,7 @@ static int32_t clamp_i64_to_i32(int64_t value) {
     return (int32_t)value;
 }
 
+/// @brief Clamp a positive int64 to int32; non-positive yields @p fallback.
 static int32_t clamp_positive_i64_to_i32(int64_t value, int32_t fallback) {
     if (value <= 0)
         return fallback;
@@ -108,6 +112,7 @@ static int32_t clamp_positive_i64_to_i32(int64_t value, int32_t fallback) {
     return (int32_t)value;
 }
 
+/// @brief Clamp an int64 to a valid 0..255 alpha byte.
 static int32_t clamp_alpha_i64(int64_t value) {
     if (value < 0)
         return 0;
@@ -116,6 +121,7 @@ static int32_t clamp_alpha_i64(int64_t value) {
     return (int32_t)value;
 }
 
+/// @brief GC finalizer: release the dialogue's referenced font.
 static void rt_dialogue_finalizer(void *obj) {
     rt_dialogue_impl *d = (rt_dialogue_impl *)obj;
     if (!d || !d->font)
@@ -125,6 +131,8 @@ static void rt_dialogue_finalizer(void *obj) {
     d->font = NULL;
 }
 
+/// @brief Byte length (1–4) of the UTF-8 codepoint starting with lead byte
+///        @p c, clamped so it never exceeds @p remaining bytes.
 static size_t dlg_utf8_char_len(unsigned char c, size_t remaining) {
     size_t len = 1;
     if ((c & 0x80) == 0)
@@ -140,6 +148,8 @@ static size_t dlg_utf8_char_len(unsigned char c, size_t remaining) {
     return len;
 }
 
+/// @brief Count UTF-8 codepoints in the first @p byte_len bytes of @p text
+///        (used so the typewriter reveal advances per character).
 static int32_t dlg_utf8_count_codepoints(const char *text, size_t byte_len) {
     int32_t count = 0;
     size_t index = 0;
@@ -150,6 +160,8 @@ static int32_t dlg_utf8_count_codepoints(const char *text, size_t byte_len) {
     return count;
 }
 
+/// @brief Byte length of the first @p codepoints UTF-8 characters of @p text
+///        (so a partially-revealed line cuts on a character boundary).
 static size_t dlg_utf8_prefix_bytes(const char *text, size_t byte_len, int32_t codepoints) {
     size_t index = 0;
     int32_t count = 0;
@@ -160,6 +172,9 @@ static size_t dlg_utf8_prefix_bytes(const char *text, size_t byte_len, int32_t c
     return index;
 }
 
+/// @brief Copy @p src into @p dst (cap @p dst_cap), truncating on a UTF-8
+///        character boundary so no partial multibyte sequence is left.
+/// @return Number of bytes written (excluding the NUL terminator).
 static int32_t dlg_copy_utf8(char *dst, size_t dst_cap, const char *src) {
     if (!dst || dst_cap == 0) {
         return 0;
@@ -196,16 +211,20 @@ static int32_t dlg_copy_utf8(char *dst, size_t dst_cap, const char *src) {
     return (int32_t)src_len;
 }
 
+/// @brief Rendered text height in pixels for the dialogue's font and scale.
 static int32_t dlg_text_height_px(const rt_dialogue_impl *d) {
     int32_t base_height = d->font ? (int32_t)rt_bitmapfont_text_height(d->font)
                                   : (int32_t)rt_canvas_text_height();
     return base_height * d->text_scale;
 }
 
+/// @brief Vertical advance between text lines (text height + scaled line gap).
 static int32_t dlg_line_advance_px(const rt_dialogue_impl *d) {
     return dlg_text_height_px(d) + DLG_DEFAULT_LINE_GAP * d->text_scale;
 }
 
+/// @brief Rendered pixel width of a byte run, scaled by the dialogue's text
+///        scale (0 for empty input).
 static int32_t dlg_measure_bytes(const rt_dialogue_impl *d, const char *text, size_t byte_len) {
     if (!text || byte_len == 0)
         return 0;
@@ -219,6 +238,8 @@ static int32_t dlg_measure_bytes(const rt_dialogue_impl *d, const char *text, si
     return (int32_t)(width * d->text_scale);
 }
 
+/// @brief Draw a byte run of text at (x, y) on @p canvas using the dialogue's
+///        font/scale (falls back to the canvas default font when none set).
 static void dlg_draw_bytes(
     const rt_dialogue_impl *d, void *canvas, int32_t x, int32_t y, const char *text, size_t byte_len, int32_t color) {
     if (!canvas || !text || byte_len == 0)
@@ -243,10 +264,14 @@ static void dlg_draw_bytes(
     rt_str_release_maybe(drawn);
 }
 
+/// @brief True if @p c is an inline whitespace separator (space or tab).
 static int8_t dlg_is_space(unsigned char c) {
     return c == ' ' || c == '\t';
 }
 
+/// @brief Draw one word-wrapped line, revealing only the first
+///        d->revealed_chars codepoints (typewriter effect), clipped to the
+///        (max_x, max_y) bounds.
 static void dlg_draw_wrapped_revealed(
     const rt_dialogue_impl *d, void *canvas, const dlg_line *line, int32_t text_x, int32_t text_y, int32_t max_x, int32_t max_y) {
     if (!line || line->text_len_bytes <= 0)

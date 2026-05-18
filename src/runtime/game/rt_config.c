@@ -27,11 +27,13 @@ typedef struct {
     void *json_root;
 } config_impl;
 
+/// @brief Drop one GC reference to @p obj and free it if the count hit zero.
 static void config_release_obj(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
+/// @brief GC finalizer: release the parsed JSON root when the Config is freed.
 static void config_finalizer(void *obj) {
     config_impl *cfg = (config_impl *)obj;
     if (!cfg || !cfg->json_root)
@@ -40,6 +42,8 @@ static void config_finalizer(void *obj) {
     cfg->json_root = NULL;
 }
 
+/// @brief Safe-cast a handle to the Config impl, trapping @p api on a class-id
+///        mismatch. @return The impl, or NULL if @p cfg is NULL.
 static config_impl *checked_config(void *cfg, const char *api) {
     if (!cfg)
         return NULL;

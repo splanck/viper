@@ -102,6 +102,8 @@ struct rt_quadtree_impl {
     int64_t pair_count;
 };
 
+/// @brief Safe-cast a handle to the QuadTree impl, trapping @p api on a
+///        class-id mismatch. @return The tree, or NULL if @p tree is NULL.
 static rt_quadtree checked_quadtree(rt_quadtree tree, const char *api) {
     if (!tree)
         return NULL;
@@ -112,6 +114,7 @@ static rt_quadtree checked_quadtree(rt_quadtree tree, const char *api) {
     return tree;
 }
 
+/// @brief Saturating int64 addition (clamps to INT64_MIN/MAX on overflow).
 static int64_t qt_saturating_add(int64_t a, int64_t b) {
     if (b > 0 && a > INT64_MAX - b)
         return INT64_MAX;
@@ -120,12 +123,14 @@ static int64_t qt_saturating_add(int64_t a, int64_t b) {
     return a + b;
 }
 
+/// @brief Saturating int64 subtraction (a - b), clamped to the int64 range.
 static int64_t qt_saturating_sub(int64_t a, int64_t b) {
     if (b == INT64_MIN)
         return INT64_MAX;
     return qt_saturating_add(a, -b);
 }
 
+/// @brief Saturating int64 multiply (128-bit or long-double widened; clamps).
 static int64_t qt_saturating_mul(int64_t a, int64_t b) {
 #if defined(__SIZEOF_INT128__)
     __int128 result = (__int128)a * (__int128)b;
@@ -201,6 +206,8 @@ static void clear_node(struct qt_node *node) {
     node->is_split = 0;
 }
 
+/// @brief Grow a quadtree node's item array to hold at least @p needed entries.
+/// @return 1 on success, 0 on allocation failure.
 static int8_t ensure_node_capacity(struct qt_node *node, int64_t needed) {
     if (!node || needed <= node->item_capacity)
         return 1;
@@ -219,6 +226,8 @@ static int8_t ensure_node_capacity(struct qt_node *node, int64_t needed) {
 }
 
 /// Check if a rectangle intersects a node's bounds.
+/// @brief True if rect (x,y,w,h) overlaps @p node's bounds (saturating AABB
+///        test) — used to decide which quadrants a query/insert touches.
 static int8_t intersects(struct qt_node *node, int64_t x, int64_t y, int64_t w, int64_t h) {
     int64_t node_right = qt_saturating_add(node->x, node->width);
     int64_t node_bottom = qt_saturating_add(node->y, node->height);

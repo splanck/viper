@@ -133,12 +133,19 @@ void *rt_vec3_lerp(void *a, void *b, double t);
 void *rt_vec3_neg(void *v);
 
 /* Game math helpers */
+/// @brief Reflect @p v about a surface @p normal (normal assumed unit length).
 void *rt_vec3_reflect(void *v, void *normal);
+/// @brief Vector projection of @p v onto @p onto.
 void *rt_vec3_project(void *v, void *onto);
+/// @brief Return @p v scaled down so its length does not exceed @p max_len.
 void *rt_vec3_clamp_len(void *v, double max_len);
+/// @brief Step from @p current toward @p target by at most @p max_delta units.
 void *rt_vec3_move_towards(void *current, void *target, double max_delta);
+/// @brief Unsigned angle (radians) between vectors @p a and @p b.
 double rt_vec3_angle(void *a, void *b);
+/// @brief Component-wise minimum of @p a and @p b.
 void *rt_vec3_min(void *a, void *b);
+/// @brief Component-wise maximum of @p a and @p b.
 void *rt_vec3_max(void *a, void *b);
 
 #ifdef __cplusplus

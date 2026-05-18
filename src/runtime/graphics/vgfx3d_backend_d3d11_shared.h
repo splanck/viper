@@ -1,3 +1,25 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+// File: src/runtime/graphics/vgfx3d_backend_d3d11_shared.h
+// Purpose: Shared declarations/constants for the Direct3D 11 vgfx3d backend —
+//   bone-palette limits, shared constant-buffer layouts, and helper routines
+//   used by both the main D3D11 backend and its shared support unit.
+//
+// Key invariants:
+//   - Layouts here must stay in lock-step with the HLSL shaders and the
+//     equivalent Metal/OpenGL shared layouts (same bone/light limits).
+//   - Internal to the D3D11 backend; not part of the public Viper API.
+//
+// Ownership/Lifetime:
+//   - Declarations only; no allocation or ownership semantics here.
+//
+// Links: src/runtime/graphics/vgfx3d_backend_d3d11.c,
+//        src/runtime/graphics/vgfx3d_backend_d3d11_shared.c
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include "vgfx3d_backend.h"

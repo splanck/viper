@@ -80,6 +80,8 @@ rt_string rt_throw_msg_get(void) {
     return rt_str_empty();
 }
 
+/// @brief Map a trap-kind code to its short PascalCase name (e.g. "Overflow").
+/// @return A static string; unknown kinds fall back to "RuntimeError".
 static const char *rt_trap_kind_name_cstr(int32_t kind) {
     switch (kind) {
         case RT_TRAP_KIND_DIVIDE_BY_ZERO:
@@ -111,6 +113,9 @@ static const char *rt_trap_kind_name_cstr(int32_t kind) {
     }
 }
 
+/// @brief Default human-readable message for a trap kind (e.g. "Division by
+///        zero"). @return A static string; unknown kinds fall back to the
+///        generic runtime-error message.
 static const char *rt_trap_kind_default_message_cstr(int32_t kind) {
     switch (kind) {
         case RT_TRAP_KIND_DIVIDE_BY_ZERO:

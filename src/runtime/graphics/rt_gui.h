@@ -158,12 +158,19 @@ void rt_widget_set_margin(void *widget, int64_t margin);
 void rt_widget_set_tab_index(void *widget, int64_t idx);
 
 // BINDING-003: GuiWidget read accessors
+/// @brief Whether the widget is currently visible (1) or hidden (0).
 int64_t rt_widget_is_visible(void *widget);
+/// @brief Whether the widget is currently enabled (1) or disabled (0).
 int64_t rt_widget_is_enabled(void *widget);
+/// @brief The widget's laid-out width in logical pixels.
 int64_t rt_widget_get_width(void *widget);
+/// @brief The widget's laid-out height in logical pixels.
 int64_t rt_widget_get_height(void *widget);
+/// @brief The widget's laid-out X position (logical pixels).
 int64_t rt_widget_get_x(void *widget);
+/// @brief The widget's laid-out Y position (logical pixels).
 int64_t rt_widget_get_y(void *widget);
+/// @brief The widget's flex grow/shrink factor within its parent layout.
 double rt_widget_get_flex(void *widget);
 
 /// @brief Add a child widget to a parent.

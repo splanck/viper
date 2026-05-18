@@ -64,6 +64,8 @@ struct rt_objpool_impl {
     int64_t active_head;     ///< Head of active list (-1 if none). O(1) iteration.
 };
 
+/// @brief Safe-cast a handle to the ObjPool impl, trapping @p api on a class-id
+///        mismatch. @return The pool, or NULL if @p pool is NULL.
 static rt_objpool checked_objpool(rt_objpool pool, const char *api) {
     if (!pool)
         return NULL;
@@ -74,6 +76,7 @@ static rt_objpool checked_objpool(rt_objpool pool, const char *api) {
     return pool;
 }
 
+/// @brief GC finalizer: free the pool's slot array.
 static void objpool_finalizer(void *obj) {
     if (!obj)
         return;

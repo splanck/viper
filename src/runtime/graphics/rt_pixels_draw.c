@@ -204,7 +204,8 @@ static int64_t pixels_rect_last(int64_t start, int64_t length) {
 /// @details Clips the run to the buffer's x extent silently.  Skips the row entirely if
 ///   @p y is out of the buffer's y range or if x1 < x0.  Does NOT call pixels_touch —
 ///   callers must do that before the first span of a primitive.
-static int8_t pixels_fill_span(rt_pixels_impl *p, int64_t y, int64_t x0, int64_t x1, uint32_t rgba) {
+static int8_t pixels_fill_span(
+    rt_pixels_impl *p, int64_t y, int64_t x0, int64_t x1, uint32_t rgba) {
     if (!p || !p->data || y < 0 || y >= p->height || x1 < x0 || x1 < 0 || x0 >= p->width)
         return 0;
     if (x0 < 0)
@@ -254,8 +255,34 @@ static int8_t pixels_draw_line_raw(
     return wrote;
 }
 
+static long double pixels_dist2_ld(int64_t x1, int64_t y1, int64_t x2, int64_t y2) {
+    long double dx = (long double)x2 - (long double)x1;
+    long double dy = (long double)y2 - (long double)y1;
+    return dx * dx + dy * dy;
+}
+
+static void pixels_draw_degenerate_triangle_line(void *pixels,
+                                                 int64_t x1,
+                                                 int64_t y1,
+                                                 int64_t x2,
+                                                 int64_t y2,
+                                                 int64_t x3,
+                                                 int64_t y3,
+                                                 int64_t color) {
+    long double d12 = pixels_dist2_ld(x1, y1, x2, y2);
+    long double d23 = pixels_dist2_ld(x2, y2, x3, y3);
+    long double d31 = pixels_dist2_ld(x3, y3, x1, y1);
+    if (d12 >= d23 && d12 >= d31) {
+        rt_pixels_draw_line(pixels, x1, y1, x2, y2, color);
+    } else if (d23 >= d31) {
+        rt_pixels_draw_line(pixels, x2, y2, x3, y3, color);
+    } else {
+        rt_pixels_draw_line(pixels, x3, y3, x1, y1, color);
+    }
+}
+
 /// @brief Draw a 1-pixel-wide line between (x1,y1) and (x2,y2) using Bresenham.
-/// Color is 0x00RRGGBB. Out-of-bounds pixels along the line are clipped silently.
+/// Color accepts 0x00RRGGBB, raw 0xRRGGBBAA, or tagged Color.RGBA.
 void rt_pixels_draw_line(
     void *pixels, int64_t x1, int64_t y1, int64_t x2, int64_t y2, int64_t color) {
     if (!pixels) {
@@ -265,13 +292,13 @@ void rt_pixels_draw_line(
     rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.DrawLine: invalid pixels");
     if (!p)
         return;
-    uint32_t rgba = rgb_to_rgba(color);
+    uint32_t rgba = rt_pixels_color_to_rgba(color);
 
     if (pixels_draw_line_raw(p, x1, y1, x2, y2, rgba))
         pixels_touch(p);
 }
 
-/// @brief Fill an axis-aligned rectangle with @p color (0x00RRGGBB).
+/// @brief Fill an axis-aligned rectangle with @p color.
 /// Auto-clipped to buffer bounds; rectangles entirely outside are no-ops.
 void rt_pixels_draw_box(void *pixels, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color) {
     if (!pixels) {
@@ -281,7 +308,7 @@ void rt_pixels_draw_box(void *pixels, int64_t x, int64_t y, int64_t w, int64_t h
     rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.DrawBox: invalid pixels");
     if (!p)
         return;
-    uint32_t rgba = rgb_to_rgba(color);
+    uint32_t rgba = rt_pixels_color_to_rgba(color);
 
     if (!rt_pixels_clip_rect_to_bounds(p, &x, &y, &w, &h))
         return;
@@ -311,7 +338,7 @@ void rt_pixels_draw_frame(void *pixels, int64_t x, int64_t y, int64_t w, int64_t
     rt_pixels_draw_line(pixels, x1, y, x1, y1, color);
 }
 
-/// @brief Fill a circle of radius @p r centered at (cx,cy) with @p color (0x00RRGGBB).
+/// @brief Fill a circle of radius @p r centered at (cx,cy) with @p color.
 /// Uses integer square root for span widths — no floating point.
 void rt_pixels_draw_disc(void *pixels, int64_t cx, int64_t cy, int64_t r, int64_t color) {
     if (!pixels) {
@@ -321,7 +348,7 @@ void rt_pixels_draw_disc(void *pixels, int64_t cx, int64_t cy, int64_t r, int64_
     rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.DrawDisc: invalid pixels");
     if (!p)
         return;
-    uint32_t rgba = rgb_to_rgba(color);
+    uint32_t rgba = rt_pixels_color_to_rgba(color);
 
     if (r < 0)
         return;
@@ -352,7 +379,7 @@ void rt_pixels_draw_disc(void *pixels, int64_t cx, int64_t cy, int64_t r, int64_
 }
 
 /// @brief Draw a 1-pixel-wide circle outline (Midpoint algorithm with 8-way symmetry).
-/// Inverse of `_draw_disc`. Color is 0x00RRGGBB.
+/// Inverse of `_draw_disc`.
 void rt_pixels_draw_ring(void *pixels, int64_t cx, int64_t cy, int64_t r, int64_t color) {
     if (!pixels) {
         rt_trap("Pixels.DrawRing: null pixels");
@@ -361,7 +388,7 @@ void rt_pixels_draw_ring(void *pixels, int64_t cx, int64_t cy, int64_t r, int64_
     rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.DrawRing: invalid pixels");
     if (!p)
         return;
-    uint32_t rgba = rgb_to_rgba(color);
+    uint32_t rgba = rt_pixels_color_to_rgba(color);
 
     if (r < 0)
         return;
@@ -418,7 +445,7 @@ void rt_pixels_draw_ellipse(
     rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.DrawEllipse: invalid pixels");
     if (!p)
         return;
-    uint32_t rgba = rgb_to_rgba(color);
+    uint32_t rgba = rt_pixels_color_to_rgba(color);
 
     if (rx <= 0 || ry <= 0) {
         return;
@@ -460,7 +487,7 @@ void rt_pixels_draw_ellipse_frame(
     rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.DrawEllipseFrame: invalid pixels");
     if (!p)
         return;
-    uint32_t rgba = rgb_to_rgba(color);
+    uint32_t rgba = rt_pixels_color_to_rgba(color);
 
     if (rx <= 0 || ry <= 0) {
         return;
@@ -521,7 +548,7 @@ void rt_pixels_flood_fill(void *pixels, int64_t x, int64_t y, int64_t color) {
         return;
 
     uint32_t target = p->data[y * p->width + x];
-    uint32_t fill_c = rgb_to_rgba(color);
+    uint32_t fill_c = rt_pixels_color_to_rgba(color);
 
     if (target == fill_c)
         return;
@@ -663,7 +690,14 @@ void rt_pixels_draw_triangle(void *pixels,
     rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.DrawTriangle: invalid pixels");
     if (!p)
         return;
-    uint32_t rgba = rgb_to_rgba(color);
+    uint32_t rgba = rt_pixels_color_to_rgba(color);
+
+    long double area = ((long double)x2 - (long double)x1) * ((long double)y3 - (long double)y1) -
+                       ((long double)y2 - (long double)y1) * ((long double)x3 - (long double)x1);
+    if (area == 0.0L) {
+        pixels_draw_degenerate_triangle_line(pixels, x1, y1, x2, y2, x3, y3, color);
+        return;
+    }
 
     // Sort vertices by y ascending (bubble sort 3 elements)
     if (y1 > y2) {
@@ -706,9 +740,9 @@ void rt_pixels_draw_triangle(void *pixels,
         long double row = (long double)scan_y - (long double)y1;
         int64_t ax = pixels_trunc_ld_to_i64_sat(
             (long double)x1 + ((long double)x3 - (long double)x1) * row / (long double)total_h);
-        int64_t bx = pixels_trunc_ld_to_i64_sat(
-            (long double)x1 + ((long double)x2 - (long double)x1) * row /
-                                  (long double)(upper_h > 0 ? upper_h : 1));
+        int64_t bx = pixels_trunc_ld_to_i64_sat((long double)x1 +
+                                                ((long double)x2 - (long double)x1) * row /
+                                                    (long double)(upper_h > 0 ? upper_h : 1));
         if (ax > bx) {
             int64_t tmp = ax;
             ax = bx;
@@ -724,12 +758,12 @@ void rt_pixels_draw_triangle(void *pixels,
     for (int64_t scan_y = lower_start; scan_y <= lower_end; scan_y++) {
         long double row = (long double)scan_y - (long double)y2;
         long double total_row = (long double)upper_h + row;
-        int64_t ax = pixels_trunc_ld_to_i64_sat(
-            (long double)x1 + ((long double)x3 - (long double)x1) * total_row /
-                                  (long double)total_h);
-        int64_t bx = pixels_trunc_ld_to_i64_sat(
-            (long double)x2 + ((long double)x3 - (long double)x2) * row /
-                                  (long double)(lower_h > 0 ? lower_h : 1));
+        int64_t ax =
+            pixels_trunc_ld_to_i64_sat((long double)x1 + ((long double)x3 - (long double)x1) *
+                                                             total_row / (long double)total_h);
+        int64_t bx = pixels_trunc_ld_to_i64_sat((long double)x2 +
+                                                ((long double)x3 - (long double)x2) * row /
+                                                    (long double)(lower_h > 0 ? lower_h : 1));
         if (ax > bx) {
             int64_t tmp = ax;
             ax = bx;
@@ -758,7 +792,7 @@ void rt_pixels_draw_bezier(void *pixels,
     rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.DrawBezier: invalid pixels");
     if (!p)
         return;
-    uint32_t rgba = rgb_to_rgba(color);
+    uint32_t rgba = rt_pixels_color_to_rgba(color);
 
     // Adaptive step count: enough steps to avoid gaps
     int64_t adx = rt_pixels_abs_diff_sat64(x2, x1);
@@ -822,13 +856,14 @@ void rt_pixels_blend_pixel(void *pixels, int64_t x, int64_t y, int64_t color, in
 
     // Fully opaque fast path — same as set_rgb
     if (alpha == 255) {
-        p->data[y * p->width + x] = rgb_to_rgba(color);
+        uint32_t rgb = (rt_pixels_color_to_rgba(color) >> 8) & 0x00FFFFFFu;
+        p->data[y * p->width + x] = (rgb << 8) | 0xFFu;
         pixels_touch(p);
         return;
     }
 
-    // Extract source channels from 0x00RRGGBB
-    uint32_t rgb = (uint32_t)((uint64_t)color & 0x00FFFFFFu);
+    // Extract source channels; the explicit alpha argument controls compositing alpha.
+    uint32_t rgb = (rt_pixels_color_to_rgba(color) >> 8) & 0x00FFFFFFu;
     uint32_t sr = (rgb >> 16) & 0xFFu;
     uint32_t sg = (rgb >> 8) & 0xFFu;
     uint32_t sb = rgb & 0xFFu;

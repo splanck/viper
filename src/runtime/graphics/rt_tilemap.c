@@ -86,7 +86,8 @@ static int64_t tilemap_floor_div(int64_t value, int64_t divisor) {
 /// @details Handles NaN/infinity (returns 0) and values at or beyond the int64_t bounds
 ///          (saturates to INT64_MAX / INT64_MIN). Used to convert floating-point camera
 ///          scroll positions to tile coordinates without undefined-behavior casts.
-/// @return 1 on success (finite value in range or saturated); 0 if `out` is NULL or value is non-finite.
+/// @return 1 on success (finite value in range or saturated); 0 if `out` is NULL or value is
+/// non-finite.
 static int8_t tilemap_double_to_i64_sat(double value, int64_t *out) {
     if (!out || !isfinite(value))
         return 0;
@@ -170,6 +171,7 @@ static int64_t tilemap_add_saturating(int64_t a, int64_t b) {
     return a + b;
 }
 
+/// @brief Saturating int64 subtraction (a - b), clamped to the int64 range.
 static int64_t tilemap_sub_saturating(int64_t a, int64_t b) {
     if (b > 0 && a < INT64_MIN + b)
         return INT64_MIN;
@@ -237,6 +239,18 @@ static int32_t tilemap_clip_span_to_bounds(int64_t *start, int64_t *length, int6
     return *length > 0;
 }
 
+/// @brief Compute the visible tile range along one axis for culled drawing.
+/// @details Given the canvas extent, scroll @p offset, @p tile_size and the
+///          map @p limit (tile count), returns the first visible tile index
+///          and how many tiles are visible, clamped to [0, limit). Saturating
+///          arithmetic guards against extreme offsets.
+/// @param canvas_size Canvas extent in pixels along this axis.
+/// @param offset      Scroll offset in pixels (map-space to screen-space).
+/// @param tile_size   Tile size in pixels along this axis.
+/// @param limit       Number of tiles along this axis in the map.
+/// @param first_out   Out: index of the first visible tile.
+/// @param span_out    Out: number of visible tiles.
+/// @return Non-zero if any tiles are visible, 0 if fully off-screen.
 static int32_t tilemap_visible_span(int64_t canvas_size,
                                     int64_t offset,
                                     int64_t tile_size,
@@ -1187,7 +1201,8 @@ void rt_tilemap_set_tile_anim(void *tilemap_ptr,
                               int64_t base_tile_id,
                               int64_t frame_count,
                               int64_t ms_per_frame) {
-    if (!tilemap_ptr || frame_count < 1 || frame_count > TM_MAX_ANIM_FRAMES || ms_per_frame <= 0)
+    if (!tilemap_ptr || base_tile_id <= 0 || frame_count < 1 || frame_count > TM_MAX_ANIM_FRAMES ||
+        ms_per_frame <= 0)
         return;
     rt_tilemap_impl *tm = tilemap_checked(tilemap_ptr, NULL);
     if (!tm)

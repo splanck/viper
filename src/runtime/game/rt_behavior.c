@@ -34,6 +34,8 @@
 #define BHV_SINE_FLOAT (1u << 6)
 #define BHV_ANIM_LOOP (1u << 7)
 
+/// @brief True if the target is within (0, @p range] of the entity (squared
+///        distance compare; coincident points return 0).
 static int8_t behavior_target_in_chase_range(int64_t entity_x,
                                              int64_t entity_y,
                                              int64_t target_x,
@@ -48,16 +50,20 @@ static int8_t behavior_target_in_chase_range(int64_t entity_x,
     return (dist2 <= range2 && dist2 > 0.0L) ? 1 : 0;
 }
 
+/// @brief Saturating negation (INT64_MIN -> INT64_MAX).
 static int64_t behavior_neg_sat_i64(int64_t value) {
     return value == INT64_MIN ? INT64_MAX : -value;
 }
 
+/// @brief Subtract @p amount from @p value, clamping at zero (no underflow).
 static int64_t behavior_sub_to_zero_i64(int64_t value, int64_t amount) {
     if (amount <= 0)
         return value;
     return amount >= value ? 0 : value - amount;
 }
 
+/// @brief Phase increment for an oscillating behavior: (speed*dt)/16 wrapped
+///        into the 0..36000 centidegree phase space. 0 on non-finite input.
 static int64_t behavior_phase_delta(int64_t speed, int64_t dt) {
     long double value = ((long double)speed * (long double)dt) / 16.0L;
     if (!isfinite(value))
@@ -70,6 +76,7 @@ static int64_t behavior_phase_delta(int64_t speed, int64_t dt) {
     return (int64_t)value;
 }
 
+/// @brief Wrap a phase into [0, 36000) centidegrees (360.00° in 0.01° units).
 static int64_t behavior_wrap_phase(int64_t phase) {
     phase %= 36000;
     if (phase < 0)
@@ -77,6 +84,8 @@ static int64_t behavior_wrap_phase(int64_t phase) {
     return phase;
 }
 
+/// @brief Modular addition ((a + b) mod @p mod) with non-negative result and
+///        overflow-safe intermediate reduction. Returns 0 if @p mod <= 0.
 static int64_t behavior_mod_add_i64(int64_t a, int64_t b, int64_t mod) {
     if (mod <= 0)
         return 0;
@@ -122,6 +131,8 @@ typedef struct {
     int64_t anim_frame;
 } behavior_impl;
 
+/// @brief Safe-cast a handle to the Behavior impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p bhv is NULL.
 static behavior_impl *checked_behavior(void *bhv, const char *api) {
     if (!bhv)
         return NULL;

@@ -57,6 +57,8 @@ struct rt_smoothvalue_impl {
     double velocity;  ///< Current rate of change.
 };
 
+/// @brief Safe-cast a handle to the SmoothValue impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p sv is NULL.
 static rt_smoothvalue checked_smoothvalue(rt_smoothvalue sv, const char *api) {
     if (!sv)
         return NULL;
@@ -67,10 +69,14 @@ static rt_smoothvalue checked_smoothvalue(rt_smoothvalue sv, const char *api) {
     return sv;
 }
 
+/// @brief Return @p value if finite, else @p fallback (NaN/Inf sanitizer).
 static double smooth_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+/// @brief Clamp a smoothing factor to [0.0, 0.999] (non-finite -> 0.0).
+/// @details The 0.999 ceiling keeps the exponential smoother from freezing
+///          (a factor of 1.0 would never converge toward the target).
 static double smooth_clamp_smoothing(double smoothing) {
     if (!isfinite(smoothing))
         return 0.0;
@@ -81,6 +87,7 @@ static double smooth_clamp_smoothing(double smoothing) {
     return smoothing;
 }
 
+/// @brief Round-half-away-from-zero to int64, saturating; 0 for non-finite.
 static int64_t smooth_round_to_i64(double value) {
     if (!isfinite(value))
         return 0;

@@ -79,6 +79,7 @@ typedef struct {
     uint32_t geometry_revision; /* increments when CPU geometry changes */
 } rt_mesh3d;
 
+/// @brief Zero a mesh's cached AABB/bounding-sphere and clear the dirty flag.
 static inline void rt_mesh3d_reset_bounds(rt_mesh3d *mesh) {
     if (!mesh)
         return;
@@ -88,11 +89,14 @@ static inline void rt_mesh3d_reset_bounds(rt_mesh3d *mesh) {
     mesh->bounds_dirty = 0;
 }
 
+/// @brief Flag a mesh's cached bounds as stale (recomputed lazily on next use).
 static inline void rt_mesh3d_mark_bounds_dirty(rt_mesh3d *mesh) {
     if (mesh)
         mesh->bounds_dirty = 1;
 }
 
+/// @brief Mark geometry changed: dirties bounds and bumps geometry_revision
+///        (wrapping past UINT32_MAX to 1) so GPU buffers know to re-upload.
 static inline void rt_mesh3d_touch_geometry(rt_mesh3d *mesh) {
     if (!mesh)
         return;
@@ -103,6 +107,10 @@ static inline void rt_mesh3d_touch_geometry(rt_mesh3d *mesh) {
         mesh->geometry_revision++;
 }
 
+/// @brief Recompute a mesh's AABB/bounding sphere if marked dirty.
+/// @details No-op when clean; resets to zero bounds when the mesh has no
+///          vertices; otherwise calls vgfx3d_compute_mesh_aabb over the
+///          vertex buffer and clears the dirty flag.
 static inline void rt_mesh3d_refresh_bounds(rt_mesh3d *mesh) {
     if (!mesh || !mesh->bounds_dirty)
         return;
@@ -148,7 +156,10 @@ typedef struct {
     int8_t is_ortho;   /* 1 = orthographic projection */
     double ortho_size; /* half-extent of ortho view */
 } rt_camera3d;
+/// @brief Update a camera's cached projection for the given viewport aspect.
 void rt_camera3d_sync_render_aspect(void *cam, double aspect);
+/// @brief Compute a camera's 4x4 projection matrix into @p out_projection,
+///        optionally overriding the aspect ratio (<= 0 keeps the camera's).
 void rt_camera3d_get_render_projection(void *cam, double aspect_override, float *out_projection);
 /// @brief Internal: advance camera shake by @p dt seconds and refresh the shaken view.
 void rt_camera3d_update_shake_for_frame(void *cam, double dt);
@@ -274,10 +285,14 @@ struct vgfx3d_rendertarget {
     void *sync_color_userdata;
 };
 
+/// @brief True if the render target uses the HDR (16-bit float) color format.
 static inline int vgfx3d_rendertarget_is_hdr(const vgfx3d_rendertarget_t *target) {
     return target && target->color_format == VGFX3D_RENDERTARGET_COLOR_FORMAT_HDR16F;
 }
 
+/// @brief Lazily allocate the 8-bit LDR color buffer (zero-filled).
+/// @details No-op if already allocated; fails on invalid dims or overflow.
+/// @return 1 if the buffer is available, 0 on failure.
 static inline int vgfx3d_rendertarget_ensure_color(vgfx3d_rendertarget_t *target) {
     size_t bytes;
     if (!target)
@@ -296,6 +311,9 @@ static inline int vgfx3d_rendertarget_ensure_color(vgfx3d_rendertarget_t *target
     return 1;
 }
 
+/// @brief Lazily allocate the RGBA float HDR color buffer (zero-filled).
+/// @details Only valid for HDR-format targets; fails otherwise or on overflow.
+/// @return 1 if the HDR buffer is available, 0 on failure.
 static inline int vgfx3d_rendertarget_ensure_hdr_color(vgfx3d_rendertarget_t *target) {
     size_t pixel_count;
     size_t float_count;
@@ -315,6 +333,8 @@ static inline int vgfx3d_rendertarget_ensure_hdr_color(vgfx3d_rendertarget_t *ta
     return target->hdr_color_buf != NULL;
 }
 
+/// @brief Lazily allocate the float depth buffer, initialized to FLT_MAX.
+/// @return 1 if the depth buffer is available, 0 on failure.
 static inline int vgfx3d_rendertarget_ensure_depth(vgfx3d_rendertarget_t *target) {
     size_t pixel_count;
     if (!target)
@@ -336,6 +356,9 @@ static inline int vgfx3d_rendertarget_ensure_depth(vgfx3d_rendertarget_t *target
     return 1;
 }
 
+/// @brief Pull the latest GPU/backend color into the CPU buffer if dirty.
+/// @details Invokes the registered sync_color callback; clears color_dirty on
+///          success. @return 1 if color is up to date, 0 on failure.
 static inline int vgfx3d_rendertarget_sync_color_if_needed(vgfx3d_rendertarget_t *target) {
     if (!target)
         return 0;
@@ -349,6 +372,8 @@ static inline int vgfx3d_rendertarget_sync_color_if_needed(vgfx3d_rendertarget_t
     return 1;
 }
 
+/// @brief Detach any color-sync callback and clear dirty/HDR-valid flags
+///        (used when a target stops being backed by a live GPU surface).
 static inline void vgfx3d_rendertarget_clear_sync(vgfx3d_rendertarget_t *target) {
     if (!target)
         return;

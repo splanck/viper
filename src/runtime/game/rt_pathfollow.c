@@ -70,6 +70,8 @@ struct rt_pathfollow_impl {
     int64_t *segment_lengths;  ///< Cached segment lengths.
 };
 
+/// @brief Safe-cast a handle to the PathFollow impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p path is NULL.
 static rt_pathfollow checked_pathfollow(rt_pathfollow path, const char *api) {
     if (!path)
         return NULL;
@@ -80,6 +82,7 @@ static rt_pathfollow checked_pathfollow(rt_pathfollow path, const char *api) {
     return path;
 }
 
+/// @brief Saturating int64 addition (clamps to INT64_MIN/MAX on overflow).
 static int64_t pathfollow_saturating_add(int64_t a, int64_t b) {
     if (b > 0 && a > INT64_MAX - b)
         return INT64_MAX;
@@ -88,6 +91,8 @@ static int64_t pathfollow_saturating_add(int64_t a, int64_t b) {
     return a + b;
 }
 
+/// @brief Compute (value*scale)/divisor in long double, saturating to int64;
+///        0 when @p divisor is 0.
 static int64_t pathfollow_scaled(int64_t value, int64_t scale, int64_t divisor) {
     if (divisor == 0)
         return 0;
@@ -99,6 +104,8 @@ static int64_t pathfollow_scaled(int64_t value, int64_t scale, int64_t divisor) 
     return (int64_t)result;
 }
 
+/// @brief Linear interpolation between @p a and @p b by @p per_mille / 1000
+///        (0..1000), saturating to int64.
 static int64_t pathfollow_lerp(int64_t a, int64_t b, int64_t per_mille) {
     long double value =
         (long double)a + ((long double)b - (long double)a) * ((long double)per_mille / 1000.0L);
@@ -121,6 +128,7 @@ static int64_t distance(int64_t x1, int64_t y1, int64_t x2, int64_t y2) {
     return (int64_t)(len + 0.5L);
 }
 
+/// @brief Reset the follower to the first path point (segment 0, forward).
 static void rt_pathfollow_rewind(rt_pathfollow path) {
     if (!path)
         return;
@@ -138,6 +146,8 @@ static void rt_pathfollow_rewind(rt_pathfollow path) {
     }
 }
 
+/// @brief Step to the next/previous path segment when progress reaches an end,
+///        applying loop / ping-pong (reverse) / clamp end behavior.
 static void rt_pathfollow_advance_segment_boundary(rt_pathfollow path) {
     int64_t seg = path->segment;
 

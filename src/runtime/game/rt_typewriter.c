@@ -41,6 +41,8 @@ struct rt_typewriter_impl {
     int8_t complete;
 };
 
+/// @brief Safe-cast a handle to the Typewriter impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p tw is NULL.
 static struct rt_typewriter_impl *checked_typewriter(void *tw, const char *api) {
     if (!tw)
         return NULL;
@@ -51,6 +53,7 @@ static struct rt_typewriter_impl *checked_typewriter(void *tw, const char *api) 
     return (struct rt_typewriter_impl *)tw;
 }
 
+/// @brief GC finalizer: free the full-text and visible-text buffers.
 static void typewriter_finalizer(void *obj) {
     struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)obj;
     if (!t)
@@ -61,10 +64,14 @@ static void typewriter_finalizer(void *obj) {
     t->visible_buf = NULL;
 }
 
+/// @brief True if @p c is a UTF-8 continuation byte (10xxxxxx).
 static int8_t typewriter_is_utf8_continuation(unsigned char c) {
     return (c & 0xC0u) == 0x80u;
 }
 
+/// @brief Byte length (1–4) of the UTF-8 codepoint starting at @p index.
+/// @details Validates continuation bytes; malformed sequences fall back to 1
+///          so the typewriter never stalls. 0 if @p index is out of range.
 static int64_t typewriter_utf8_codepoint_len(const char *text, int64_t index, int64_t len) {
     if (!text || index < 0 || index >= len)
         return 0;
@@ -88,6 +95,8 @@ static int64_t typewriter_utf8_codepoint_len(const char *text, int64_t index, in
     return 1;
 }
 
+/// @brief Count UTF-8 codepoints (not bytes) in the first @p len bytes of
+///        @p text — used so reveal speed is per-character.
 static int64_t typewriter_utf8_char_count(const char *text, int64_t len) {
     int64_t count = 0;
     for (int64_t i = 0; i < len;) {

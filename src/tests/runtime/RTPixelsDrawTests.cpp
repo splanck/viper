@@ -138,6 +138,15 @@ static void test_drawbox_clipped() {
     printf("test_drawbox_clipped: PASSED\n");
 }
 
+static void test_drawbox_accepts_tagged_alpha_color() {
+    void *p = rt_pixels_new(4, 4);
+    rt_pixels_draw_box(p, 1, 1, 2, 2, rt_color_rgba(1, 2, 3, 4));
+    assert(rt_pixels_get(p, 1, 1) == 0x01020304);
+    assert(rt_pixels_get(p, 2, 2) == 0x01020304);
+    assert(rt_pixels_get(p, 0, 0) == 0);
+    printf("test_drawbox_accepts_tagged_alpha_color: PASSED\n");
+}
+
 static void test_drawbox_extreme_endpoint_noop() {
     void *p = rt_pixels_new(4, 4);
     rt_pixels_draw_box(p, INT64_MAX - 1, 0, 8, 1, 0xFFFFFF);
@@ -304,6 +313,20 @@ static void test_floodfill_noop_when_same_color() {
     printf("test_floodfill_noop_when_same_color: PASSED\n");
 }
 
+static void test_floodfill_compares_and_writes_alpha() {
+    void *p = rt_pixels_new(3, 1);
+    rt_pixels_set(p, 0, 0, 0x11223344);
+    rt_pixels_set(p, 1, 0, 0x11223355);
+    rt_pixels_set(p, 2, 0, 0x11223344);
+
+    rt_pixels_flood_fill(p, 0, 0, rt_color_rgba(9, 8, 7, 6));
+
+    assert(rt_pixels_get(p, 0, 0) == 0x09080706);
+    assert(rt_pixels_get(p, 1, 0) == 0x11223355);
+    assert(rt_pixels_get(p, 2, 0) == 0x11223344);
+    printf("test_floodfill_compares_and_writes_alpha: PASSED\n");
+}
+
 // ============================================================================
 // DrawThickLine
 // ============================================================================
@@ -336,6 +359,18 @@ static void test_drawtriangle_interior() {
     // Point outside (bottom-right, past hypotenuse)
     assert(rt_pixels_get_rgb(p, 25, 25) == 0);
     printf("test_drawtriangle_interior: PASSED\n");
+}
+
+static void test_drawtriangle_degenerate_draws_longest_edge() {
+    void *p = rt_pixels_new(8, 3);
+    rt_pixels_draw_triangle(p, 1, 1, 6, 1, 3, 1, rt_color_rgba(0xAA, 0xBB, 0xCC, 0xDD));
+    for (int64_t x = 1; x <= 6; x++)
+        assert(rt_pixels_get(p, x, 1) == 0xAABBCCDD);
+    assert(rt_pixels_get(p, 0, 1) == 0);
+    assert(rt_pixels_get(p, 7, 1) == 0);
+    assert(rt_pixels_get(p, 3, 0) == 0);
+    assert(rt_pixels_get(p, 3, 2) == 0);
+    printf("test_drawtriangle_degenerate_draws_longest_edge: PASSED\n");
 }
 
 // ============================================================================
@@ -383,6 +418,7 @@ int main() {
     // DrawBox
     test_drawbox_fills_all_pixels();
     test_drawbox_clipped();
+    test_drawbox_accepts_tagged_alpha_color();
     test_drawbox_extreme_endpoint_noop();
 
     // DrawFrame
@@ -408,12 +444,14 @@ int main() {
     test_floodfill_fills_region();
     test_floodfill_respects_boundary();
     test_floodfill_noop_when_same_color();
+    test_floodfill_compares_and_writes_alpha();
 
     // DrawThickLine
     test_drawthickline_width();
 
     // DrawTriangle
     test_drawtriangle_interior();
+    test_drawtriangle_degenerate_draws_longest_edge();
 
     // DrawBezier
     test_drawbezier_endpoints();

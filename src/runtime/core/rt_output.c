@@ -70,6 +70,7 @@ static int g_batch_mode_depth = 0;
 /// @brief Whether an exit-time stdout flush has been registered.
 static int g_output_exit_handler_registered = 0;
 
+/// @brief atexit callback: flush buffered stdout at process exit.
 static void rt_output_flush_at_exit_(void) {
     rt_output_flush();
 }
@@ -77,11 +78,17 @@ static void rt_output_flush_at_exit_(void) {
 #if RT_PLATFORM_LINUX
 extern int __cxa_atexit(void (*func)(void *), void *arg, void *dso_handle);
 
+/// @brief __cxa_atexit trampoline wrapping rt_output_flush_at_exit_ to the
+///        void(*)(void*) callback signature (Linux only).
 static void rt_output_flush_at_exit_adapter_(void *arg) {
     (void)arg;
     rt_output_flush_at_exit_();
 }
 
+/// @brief Register the exit-time stdout flush handler.
+/// @details Linux routes through libc's __cxa_atexit() (plain atexit() is not
+///          reliably available for late-bound native executables); other
+///          platforms use atexit(). @return 0 on success.
 static int rt_output_register_exit_handler_(void) {
     return __cxa_atexit(rt_output_flush_at_exit_adapter_, NULL, NULL);
 }

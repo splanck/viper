@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-15
+last-verified: 2026-05-17
 ---
 
 # Scene Graph
@@ -179,7 +179,7 @@ Hierarchical scene node for building scene graphs with transform inheritance.
 
 Creates a scene node. Scene nodes support parent-child hierarchies where child transforms are relative to their parent.
 Scene nodes validate their receiver and child arguments before mutating hierarchy state. Local/world transform composition uses saturating integer arithmetic, so extreme coordinates clamp instead of wrapping.
-Local scale values are normalized to at least `1` before being stored; use `100` for normal size. Reparenting a child temporarily retains it while moving between parents, so `AddChild` keeps parent pointers and child ownership consistent. The `Sprite` property accepts real `Sprite` handles; invalid non-sprite handles are ignored.
+Local scale values are normalized to at least `1` before being stored; use `100` for normal size. Reparenting a child temporarily retains it while moving between parents, so `AddChild` keeps parent pointers and child ownership consistent. The `Sprite` property accepts real `Sprite` handles; invalid non-sprite handles are ignored. Dirty propagation, find, draw, camera draw, and update traversals are iterative, so deep node hierarchies do not consume the C call stack.
 
 ### Static Methods
 
@@ -322,7 +322,7 @@ arm.Detach()
 
 Root container for a scene graph. Manages rendering order and provides scene-level operations.
 Scene draws are depth-sorted, and nodes with equal depth preserve traversal order.
-Scene APIs validate `Scene`, `SceneNode`, and `Camera` handles before traversal or drawing.
+Scene APIs validate `Scene`, `SceneNode`, and `Camera` handles before traversal or drawing. Scene-level collection for depth-sorted rendering also uses iterative traversal and preserves depth-first order for equal-depth nodes.
 
 **Type:** Instance (obj)
 **Constructor:** `NEW Viper.Graphics.Scene()`
@@ -528,7 +528,7 @@ func start() {
 
     // Draw sprites
     var px = Pixels.New(16, 16);
-    px.Fill(Color.RGB(255, 0, 0));
+    px.FillColor(Color.RGB(255, 0, 0));
     batch.DrawPixels(px, 10, 20);
     batch.DrawPixels(px, 30, 40);
     batch.DrawPixels(px, 50, 60);

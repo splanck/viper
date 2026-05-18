@@ -28,18 +28,31 @@
 extern "C" {
 #endif
 
+/// @brief Load a glTF/GLB asset from @p path. @return an asset handle, or NULL.
 void *rt_gltf_load(rt_string path);
+/// @brief Number of meshes in the asset.
 int64_t rt_gltf_mesh_count(void *asset);
+/// @brief Get the mesh at @p index (NULL if out of range).
 void *rt_gltf_get_mesh(void *asset, int64_t index);
+/// @brief Number of materials in the asset.
 int64_t rt_gltf_material_count(void *asset);
+/// @brief Get the material at @p index (NULL if out of range).
 void *rt_gltf_get_material(void *asset, int64_t index);
+/// @brief Number of skeletons (skins) in the asset.
 int64_t rt_gltf_skeleton_count(void *asset);
+/// @brief Get the skeleton at @p index (NULL if out of range).
 void *rt_gltf_get_skeleton(void *asset, int64_t index);
+/// @brief Number of skeletal animation clips.
 int64_t rt_gltf_animation_count(void *asset);
+/// @brief Get the skeletal animation at @p index (NULL if out of range).
 void *rt_gltf_get_animation(void *asset, int64_t index);
+/// @brief Number of node (transform) animation clips.
 int64_t rt_gltf_node_animation_count(void *asset);
+/// @brief Get the node animation at @p index (NULL if out of range).
 void *rt_gltf_get_node_animation(void *asset, int64_t index);
+/// @brief Number of nodes in the asset's scene graph.
 int64_t rt_gltf_node_count(void *asset);
+/// @brief Get the asset's scene-graph root node (NULL if none).
 void *rt_gltf_get_scene_root(void *asset);
 
 #ifdef __cplusplus

@@ -180,19 +180,19 @@ func testPixelsClone() {
 
     var pix = Viper.Graphics.Pixels.New(20, 20);
     var green = Viper.Graphics.Color.RGB(0, 255, 0);
-    Viper.Graphics.Pixels.Set(pix, 10, 10, green);
+    Viper.Graphics.Pixels.SetColor(pix, 10, 10, green);
 
     var clone = Viper.Graphics.Pixels.Clone(pix);
     assertEqInt(Viper.Graphics.Pixels.get_Width(clone), 20, "clone width");
     assertEqInt(Viper.Graphics.Pixels.get_Height(clone), 20, "clone height");
 
     // Verify pixel was cloned
-    var c = Viper.Graphics.Pixels.Get(clone, 10, 10);
+    var c = Viper.Graphics.Pixels.GetColor(clone, 10, 10);
     assertEqInt(Viper.Graphics.Color.GetG(c), 255, "cloned pixel G");
 
     // Modifying clone shouldn't affect original
-    Viper.Graphics.Pixels.Set(clone, 10, 10, Viper.Graphics.Color.RGB(255, 0, 0));
-    var origC = Viper.Graphics.Pixels.Get(pix, 10, 10);
+    Viper.Graphics.Pixels.SetColor(clone, 10, 10, Viper.Graphics.Color.RGB(255, 0, 0));
+    var origC = Viper.Graphics.Pixels.GetColor(pix, 10, 10);
     assertEqInt(Viper.Graphics.Color.GetG(origC), 255, "original unchanged");
 }
 

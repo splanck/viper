@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-15
+last-verified: 2026-05-17
 ---
 
 # 2D Rendering and Effects
@@ -34,7 +34,7 @@ These classes sit directly on top of `Pixels` and `Canvas`. They cover rendering
 ## Color And Blend Conventions
 
 - `Pixels` storage is raw `0xRRGGBBAA`.
-- `Palette2D` and `Gradient2D` store raw `0xRRGGBBAA` colors, and also accept tagged `Color.RGBA(...)` values by converting them into raw pixel storage.
+- `Palette2D` and `Gradient2D` store raw `0xRRGGBBAA` colors, and also accept tagged `Color.RGBA(...)` values by converting them into raw pixel storage. Public `GetColor` and `Sample` return `Color`-compatible values; use `GetRGBA` and `SampleRGBA` for raw storage integers.
 - Renderer/material/blend-state tint uses `-1` for no tint. A tint value of `0` is black.
 - Blend modes use `0 = alpha`, `1 = opaque`, `2 = additive`. Alpha mode uses straight-alpha source-over, matching `Pixels.BlendPixel` and `Canvas.BlitAlpha`; additive mode scales source RGB by source alpha, adds it to the destination, and clamps each channel.
 - `Texture2D.Filter` uses `0 = nearest`, `1 = linear`. Linear sampling interpolates RGB in premultiplied-alpha space so transparent edge texels do not bleed black into partially transparent results.
@@ -80,7 +80,9 @@ gradient.FillHorizontal(pixels)
 
 `Palette2D.Apply` treats the source pixel red byte as the palette index and writes `0xRRGGBBAA` colors to a new buffer. Only palette entries set with `SetColor` are remapped; unset entries and out-of-range indices are copied unchanged. `ApplyLegacy` keeps the older `0x000000II` alpha-byte index convention for assets that used fully transparent pixels as palette indices.
 
-`Gradient2D` uses `Steps <= 2` as smooth interpolation. Larger `Steps` values quantize into that many discrete levels, including both endpoints. For example, a three-step gradient samples start, midpoint, and end colors; horizontal and vertical fills use the same sampling as `Sample`.
+`Palette2D.GetColor(index)` and `Gradient2D.Sample(t)` return values that work with `Color.GetR/G/B/A`, preserving alpha from raw pixel storage. `Palette2D.GetRGBA(index)` and `Gradient2D.SampleRGBA(t)` return raw `0xRRGGBBAA`.
+
+`Gradient2D` uses `Steps <= 2` as smooth interpolation. Larger `Steps` values quantize into that many discrete levels, including both endpoints. For example, a three-step gradient samples start, midpoint, and end colors; horizontal and vertical fills use the same sampling as `SampleRGBA`.
 
 ## Video Playback
 

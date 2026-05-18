@@ -82,6 +82,7 @@ typedef struct {
     double bounds_max[3];
 } rt_collider3d;
 
+/// @brief Safe-cast an opaque handle to rt_collider3d, or NULL if not one.
 static rt_collider3d *collider3d_checked(void *obj) {
     return (rt_collider3d *)rt_g3d_checked_or_null(obj, RT_G3D_COLLIDER3D_CLASS_ID);
 }

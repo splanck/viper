@@ -61,6 +61,8 @@ typedef struct {
     char theme[32];
 } leveldata_impl;
 
+/// @brief Safe-cast a handle to the LevelData impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p level is NULL.
 static leveldata_impl *checked_leveldata(void *level, const char *api) {
     if (!level)
         return NULL;
@@ -71,11 +73,13 @@ static leveldata_impl *checked_leveldata(void *level, const char *api) {
     return (leveldata_impl *)level;
 }
 
+/// @brief Drop one GC reference to @p obj and free it if the count hit zero.
 static void leveldata_release_obj(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
+/// @brief GC finalizer: release the level's referenced tilemap.
 static void leveldata_finalizer(void *obj) {
     leveldata_impl *ld = (leveldata_impl *)obj;
     if (!ld || !ld->tilemap)

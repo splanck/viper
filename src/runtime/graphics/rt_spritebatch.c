@@ -107,6 +107,8 @@ static spritebatch_impl *spritebatch_checked_or_null(void *batch_ptr) {
     return (spritebatch_impl *)batch_ptr;
 }
 
+/// @brief Validate that @p pixels is a live Pixels instance.
+/// @return Non-zero if @p pixels is a valid rt_pixels object, 0 otherwise.
 static int8_t spritebatch_pixels_checked(void *pixels) {
     return pixels && rt_obj_is_instance(pixels, RT_PIXELS_CLASS_ID, sizeof(rt_pixels_impl));
 }

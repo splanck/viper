@@ -49,11 +49,15 @@ typedef struct {
     vg_widget_vtable_t vtable;
 } rt_findbar_data_t;
 
+/// @brief Safe-cast an opaque handle to the find-bar wrapper, validating its
+///        backing widget is still live. Returns NULL otherwise.
 static rt_findbar_data_t *rt_findbar_checked(void *bar) {
     rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
     return data && data->bar && vg_widget_is_live(&data->bar->base) ? data : NULL;
 }
 
+/// @brief Safe-cast an opaque handle to the code editor the find-bar targets.
+/// @return The code editor widget, or NULL if @p editor is not one.
 static vg_codeeditor_t *rt_findbar_editor_checked(void *editor) {
     return (vg_codeeditor_t *)rt_gui_widget_handle_checked_type(editor, VG_WIDGET_CODEEDITOR);
 }

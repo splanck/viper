@@ -28,15 +28,25 @@
 extern "C" {
 #endif
 
+/// @brief Load an FBX asset from @p path. @return an FBX handle, or NULL.
 void *rt_fbx_load(rt_string path);
+/// @brief Number of meshes in the loaded FBX.
 int64_t rt_fbx_mesh_count(void *fbx);
+/// @brief Get the mesh at @p index (NULL if out of range).
 void *rt_fbx_get_mesh(void *fbx, int64_t index);
+/// @brief Get the FBX's skeleton (NULL if it has none).
 void *rt_fbx_get_skeleton(void *fbx);
+/// @brief Number of animation clips in the FBX.
 int64_t rt_fbx_animation_count(void *fbx);
+/// @brief Get the animation clip at @p index (NULL if out of range).
 void *rt_fbx_get_animation(void *fbx, int64_t index);
+/// @brief Name of the animation clip at @p index.
 rt_string rt_fbx_get_animation_name(void *fbx, int64_t index);
+/// @brief Number of materials in the FBX.
 int64_t rt_fbx_material_count(void *fbx);
+/// @brief Get the material at @p index (NULL if out of range).
 void *rt_fbx_get_material(void *fbx, int64_t index);
+/// @brief Get the morph-target set for mesh @p mesh_index (NULL if none).
 void *rt_fbx_get_morph_target(void *fbx, int64_t mesh_index);
 
 #ifdef __cplusplus

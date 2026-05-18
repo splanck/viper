@@ -332,9 +332,9 @@ double rt_canvas_get_delta_time_sec(void *canvas_ptr) {
 
 /// @brief Fill the entire canvas with a solid color, erasing all previous drawing.
 /// @details Typically called at the start of each frame before drawing game objects.
-///   Color format is 0x00RRGGBB (24-bit RGB, no alpha).
+///   Accepts Canvas RGB or tagged Color.RGBA values; clear is opaque, so alpha is ignored.
 /// @param canvas_ptr Canvas handle. NULL-safe (no-op).
-/// @param color Fill color in 0x00RRGGBB format.
+/// @param color Fill color.
 void rt_canvas_clear(void *canvas_ptr, int64_t color) {
     if (!canvas_ptr)
         return;
@@ -342,7 +342,8 @@ void rt_canvas_clear(void *canvas_ptr, int64_t color) {
     rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
     if (canvas && canvas->gfx_win) {
         rt_canvas_resync_window_state(canvas);
-        vgfx_cls(canvas->gfx_win, (vgfx_color_t)color);
+        vgfx_cls(canvas->gfx_win,
+                 (vgfx_color_t)((rt_pixels_color_to_rgba(color) >> 8) & 0x00FFFFFFu));
     }
 }
 
@@ -384,9 +385,10 @@ int64_t rt_canvas_poll(void *canvas_ptr) {
         return VGFX_EVENT_NONE;
     }
 
-    while (vgfx_poll_event(canvas->gfx_win, &canvas->last_event)) {
+    int close_seen = 0;
+    while (canvas->gfx_win && vgfx_poll_event(canvas->gfx_win, &canvas->last_event)) {
         if (canvas->last_event.type == VGFX_EVENT_CLOSE)
-            canvas->should_close = 1;
+            close_seen = 1;
 
         // Forward keyboard events to keyboard module
         if (canvas->last_event.type == VGFX_EVENT_KEY_DOWN)
@@ -418,6 +420,13 @@ int64_t rt_canvas_poll(void *canvas_ptr) {
             rt_mouse_update_wheel((double)canvas->last_event.data.scroll.delta_x,
                                   (double)canvas->last_event.data.scroll.delta_y);
         }
+    }
+
+    if (close_seen) {
+        canvas->should_close = 1;
+        rt_canvas_destroy_window(canvas);
+        rt_action_update();
+        return VGFX_EVENT_CLOSE;
     }
 
     // Finish with the live cursor position so queued historical move events

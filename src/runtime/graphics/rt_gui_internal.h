@@ -139,46 +139,73 @@ typedef struct {
 /// @brief Global pointer to the current app for widget constructors to access the default font.
 extern rt_gui_app_t *s_current_app;
 
+/// @brief The currently active GUI app (the one receiving input/rendering).
 rt_gui_app_t *rt_gui_get_active_app(void);
+/// @brief Make @p app the active GUI app.
 void rt_gui_activate_app(rt_gui_app_t *app);
+/// @brief Resolve the owning GUI app for a widget (NULL if unparented).
 rt_gui_app_t *rt_gui_app_from_widget(vg_widget_t *widget);
+/// @brief Monotonic millisecond clock used for GUI timing/animation.
 uint64_t rt_gui_now_ms(void);
+/// @brief Re-apply the current theme to @p app's widget tree (after a change).
 void rt_gui_refresh_theme(rt_gui_app_t *app);
+/// @brief Switch @p app's theme kind (e.g. light/dark) and refresh.
 void rt_gui_set_theme_kind(rt_gui_app_t *app, rt_gui_theme_kind_t kind);
+/// @brief Resync the modal overlay root after modals open/close.
 void rt_gui_sync_modal_root(rt_gui_app_t *app);
+/// @brief Assign the app's default font to @p widget if it has none.
 void rt_gui_apply_default_font(vg_widget_t *widget);
+/// @brief Register a command palette so @p app routes its shortcut to it.
 void rt_gui_register_command_palette(rt_gui_app_t *app, vg_commandpalette_t *palette);
+/// @brief Unregister a previously registered command palette.
 void rt_gui_unregister_command_palette(rt_gui_app_t *app, vg_commandpalette_t *palette);
+/// @brief Queue a dropped file @p path for @p app's drag-and-drop handlers.
 void rt_gui_file_drop_add(rt_gui_app_t *app, const char *path);
+/// @brief Whether @p handle is a currently-live GUI app handle.
 int rt_gui_is_app_handle_known(const void *handle);
+/// @brief Whether @p handle refers to a destroyed (stale) GUI app handle.
 int rt_gui_is_destroyed_app_handle(const void *handle);
+/// @brief Retire @p font from @p app (drop its reference once unused).
+/// @return non-zero if the font was retired.
 int rt_gui_retire_font(rt_gui_app_t *app, vg_font_t *font);
+/// @brief Retire @p font globally only if no widget still uses it.
+/// @return non-zero if the font was retired.
 int rt_gui_retire_font_if_in_use(vg_font_t *font);
 
+/// @brief True if @p handle is a known (live) GUI App handle.
 static inline int rt_gui_is_app_handle(const void *handle) {
     return rt_gui_is_app_handle_known(handle);
 }
 
+/// @brief True if @p handle is a live widget handle.
 static inline int rt_gui_is_widget_handle(const void *handle) {
     return handle && vg_widget_is_live((const vg_widget_t *)handle);
 }
 
+/// @brief Safe-cast @p handle to a widget, rejecting App/destroyed handles.
+/// @return The widget, or NULL if @p handle is not a live widget handle.
 static inline vg_widget_t *rt_gui_widget_handle_checked(void *handle) {
     if (!handle || rt_gui_is_app_handle(handle) || rt_gui_is_destroyed_app_handle(handle))
         return NULL;
     return rt_gui_is_widget_handle(handle) ? (vg_widget_t *)handle : NULL;
 }
 
+/// @brief Safe-cast @p handle to a widget of a specific @p type.
+/// @return The widget if it is live and matches @p type, else NULL.
 static inline vg_widget_t *rt_gui_widget_handle_checked_type(void *handle,
                                                             vg_widget_type_t type) {
     vg_widget_t *widget = rt_gui_widget_handle_checked(handle);
     return widget && widget->type == type ? widget : NULL;
 }
 
+/// @brief Safe-cast @p handle to an App, or NULL if it is not an App handle.
 static inline rt_gui_app_t *rt_gui_app_handle_checked(void *handle) {
     return rt_gui_is_app_handle(handle) ? (rt_gui_app_t *)handle : NULL;
 }
 
+/// @brief Resolve any handle (NULL/App/widget) to its owning App.
+/// @details NULL yields the active app; an App handle returns itself; a live
+///          widget returns its owning app; a destroyed App handle yields NULL.
 static inline rt_gui_app_t *rt_gui_app_from_handle(void *handle) {
     if (!handle)
         return rt_gui_get_active_app();
@@ -189,6 +216,9 @@ static inline rt_gui_app_t *rt_gui_app_from_handle(void *handle) {
     return rt_gui_is_widget_handle(handle) ? rt_gui_app_from_widget((vg_widget_t *)handle) : NULL;
 }
 
+/// @brief Resolve a handle to the widget that should act as a parent.
+/// @details An App handle resolves to its root widget; a live widget resolves
+///          to itself; NULL or a destroyed App handle yields NULL.
 static inline vg_widget_t *rt_gui_widget_parent_from_handle(void *handle) {
     if (!handle)
         return NULL;
@@ -216,10 +246,12 @@ typedef struct {
     char bytes[RT_GUI_FLEX_ARRAY_SIZE];
 } rt_gui_string_data_t;
 
+/// @brief 1 if @p value is finite (not NaN/Inf), else 0.
 static inline int rt_gui_double_is_finite(double value) {
     return isfinite(value) ? 1 : 0;
 }
 
+/// @brief Clamp @p value to the inclusive [min_value, max_value] range.
 static inline double rt_gui_clamp_f64(double value, double min_value, double max_value) {
     if (value < min_value)
         return min_value;
@@ -228,18 +260,22 @@ static inline double rt_gui_clamp_f64(double value, double min_value, double max
     return value;
 }
 
+/// @brief Clamp a double to [0, max_value] as a float; non-finite -> 0.
 static inline float rt_gui_sanitize_nonnegative_float(double value, double max_value) {
     if (!rt_gui_double_is_finite(value))
         return 0.0f;
     return (float)rt_gui_clamp_f64(value, 0.0, max_value);
 }
 
+/// @brief Clamp a double to [-max_abs_value, max_abs_value] as a float;
+///        non-finite -> 0.
 static inline float rt_gui_sanitize_signed_float(double value, double max_abs_value) {
     if (!rt_gui_double_is_finite(value))
         return 0.0f;
     return (float)rt_gui_clamp_f64(value, -max_abs_value, max_abs_value);
 }
 
+/// @brief Clamp an int64 to the inclusive [min_value, max_value] int32 range.
 static inline int32_t rt_gui_clamp_i64_to_i32(int64_t value, int32_t min_value, int32_t max_value) {
     if (value < (int64_t)min_value)
         return min_value;
@@ -248,12 +284,19 @@ static inline int32_t rt_gui_clamp_i64_to_i32(int64_t value, int32_t min_value, 
     return (int32_t)value;
 }
 
+/// @brief Validate a font size, returning @p fallback for non-finite input and
+///        clamping otherwise to the supported [1, 256] point range.
 static inline double rt_gui_sanitize_font_size(double size, double fallback) {
     if (!rt_gui_double_is_finite(size))
         return fallback;
     return rt_gui_clamp_f64(size, 1.0, 256.0);
 }
 
+/// @brief Allocate an owned, magic-tagged copy of a runtime string's bytes.
+/// @details Used to give widgets a stable NUL-terminated C buffer they own.
+///          The leading magic lets rt_gui_string_data_is_owned distinguish
+///          these blocks from borrowed plain C strings.
+/// @return New rt_gui_string_data_t (caller frees via free_if_owned), or NULL.
 static inline rt_gui_string_data_t *rt_gui_string_data_new(rt_string value) {
     int64_t len64 = rt_str_len(value);
     if (len64 < 0)
@@ -277,6 +320,8 @@ static inline rt_gui_string_data_t *rt_gui_string_data_new(rt_string value) {
     return data;
 }
 
+/// @brief True if @p ptr is an rt_gui_string_data_t block (magic matches),
+///        i.e. owned by the GUI layer rather than a borrowed C string.
 static inline int rt_gui_string_data_is_owned(const void *ptr) {
     if (!ptr)
         return 0;
@@ -284,11 +329,16 @@ static inline int rt_gui_string_data_is_owned(const void *ptr) {
     return data->magic == RT_GUI_STRING_DATA_MAGIC;
 }
 
+/// @brief free() @p ptr only if it is a GUI-owned string-data block (safe to
+///        call on borrowed C strings — it becomes a no-op).
 static inline void rt_gui_string_data_free_if_owned(void *ptr) {
     if (rt_gui_string_data_is_owned(ptr))
         free(ptr);
 }
 
+/// @brief Convert a GUI string handle back to a runtime string.
+/// @details Handles both owned string-data blocks (uses stored length) and
+///          borrowed C strings (uses strlen). NULL yields the empty string.
 static inline rt_string rt_gui_string_data_to_rt_string(const void *ptr) {
     if (!ptr)
         return rt_str_empty();
@@ -343,8 +393,11 @@ void rt_gui_ensure_default_font(void);
 /// @param widget Pointer to the clicked widget (may be NULL to clear).
 void rt_gui_set_last_clicked(void *widget);
 
+/// @brief Push @p dlg onto @p app's modal-dialog stack (it becomes topmost).
 void rt_gui_push_dialog(rt_gui_app_t *app, vg_dialog_t *dlg);
+/// @brief Remove @p dlg from @p app's dialog stack (no-op if not present).
 void rt_gui_remove_dialog(rt_gui_app_t *app, vg_dialog_t *dlg);
+/// @brief The topmost dialog on @p app's stack, or NULL if none is open.
 vg_dialog_t *rt_gui_top_dialog(rt_gui_app_t *app);
 
 /// @brief Free per-app feature resources owned by rt_gui_features.c.
@@ -359,29 +412,42 @@ void rt_theme_apply_hidpi_scale(void);
 //=============================================================================
 
 #ifdef __APPLE__
+/// @brief Register @p menubar as the app's native macOS menubar.
+/// @return true if it became the active native menubar. Defined in
+///         rt_gui_macos_menu.m.
 bool rt_gui_macos_menu_register_menubar(vg_menubar_t *menubar);
+/// @brief Unregister a previously registered native macOS menubar.
 void rt_gui_macos_menu_unregister_menubar(vg_menubar_t *menubar);
+/// @brief Rebuild the native macOS menu from @p menubar's current contents.
 void rt_gui_macos_menu_sync_for_menubar(vg_menubar_t *menubar);
+/// @brief Rebuild the native macOS menu for @p app's current menubar.
 void rt_gui_macos_menu_sync_app(rt_gui_app_t *app);
+/// @brief Tear down native macOS menu state owned by @p app.
 void rt_gui_macos_menu_app_destroy(rt_gui_app_t *app);
 #else
+/// @brief Non-Apple no-op stub for the native macOS menubar bridge.
+/// @return Always false (no native menubar on this platform).
 static inline bool rt_gui_macos_menu_register_menubar(vg_menubar_t *menubar) {
     (void)menubar;
     return false;
 }
 
+/// @brief Non-Apple no-op stub: unregister a native macOS menubar.
 static inline void rt_gui_macos_menu_unregister_menubar(vg_menubar_t *menubar) {
     (void)menubar;
 }
 
+/// @brief Non-Apple no-op stub: sync a menubar to the native macOS menu.
 static inline void rt_gui_macos_menu_sync_for_menubar(vg_menubar_t *menubar) {
     (void)menubar;
 }
 
+/// @brief Non-Apple no-op stub: sync an app's menus to the native macOS menu.
 static inline void rt_gui_macos_menu_sync_app(rt_gui_app_t *app) {
     (void)app;
 }
 
+/// @brief Non-Apple no-op stub: tear down native macOS menus for an app.
 static inline void rt_gui_macos_menu_app_destroy(rt_gui_app_t *app) {
     (void)app;
 }

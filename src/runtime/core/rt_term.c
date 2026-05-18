@@ -110,11 +110,16 @@ static void term_atexit_handler(void) {
 #if defined(__linux__)
 extern int __cxa_atexit(void (*func)(void *), void *arg, void *dso_handle);
 
+/// @brief __cxa_atexit trampoline wrapping term_atexit_handler to the
+///        void(*)(void*) callback signature (Linux only).
 static void term_atexit_handler_adapter(void *arg) {
     (void)arg;
     term_atexit_handler();
 }
 
+/// @brief Register the terminal-restore handler to run at process exit.
+/// @details Linux uses libc's __cxa_atexit() (no late-bindable atexit()
+///          symbol); other platforms use atexit(). @return 0 on success.
 static int register_term_atexit_handler(void) {
     // glibc exports __cxa_atexit() but not a late-bindable atexit() symbol.
     return __cxa_atexit(term_atexit_handler_adapter, NULL, NULL);

@@ -272,6 +272,15 @@ rt_string rt_keyboard_key_name(int64_t key);
 
 //=========================================================================
 // Key Code Constants (Runtime getters)
+//
+/// @brief Runtime accessors returning the stable integer key code for each
+///        named key (the function-call equivalents of the VIPER_KEY_*
+///        macros, for front-ends that bind functions rather than macros).
+/// @details One getter per key; the function name is the key
+///          (`rt_keyboard_key_a` → the 'A' key code, `rt_keyboard_key_f1` →
+///          F1, `rt_keyboard_key_numdot` → numpad '.', etc.). The returned
+///          code is what rt_keyboard_pressed()/rt_keyboard_down() expect.
+///          `rt_keyboard_key_unknown()` is the sentinel for "no/invalid key".
 //=========================================================================
 
 int64_t rt_keyboard_key_unknown(void);
@@ -550,6 +559,11 @@ void rt_mouse_set_pos(int64_t x, int64_t y);
 
 //=========================================================================
 // Button Constant Getters
+//
+/// @brief Runtime accessors returning the integer code for each mouse button
+///        (function-call equivalents of the VIPER_MOUSE_BUTTON_* macros). The
+///        name is the button (`rt_mouse_button_left` → left button, `x1`/`x2`
+///        → the side buttons); the code is what rt_mouse_* queries expect.
 //=========================================================================
 
 int64_t rt_mouse_button_left(void);
@@ -714,6 +728,12 @@ void rt_pad_stop_vibration(int64_t index);
 
 //=========================================================================
 // Button Constant Getters (for runtime.def)
+//
+/// @brief Runtime accessors returning the integer code for each gamepad
+///        button. The name is the button (`rt_pad_button_a`/`b`/`x`/`y` face
+///        buttons, `lb`/`rb` shoulders, `lstick`/`rstick` stick clicks,
+///        `up`/`down`/`left`/`right` d-pad, `back`/`start`/`guide`); the code
+///        is what rt_pad_* queries expect.
 //=========================================================================
 
 int64_t rt_pad_button_a(void);

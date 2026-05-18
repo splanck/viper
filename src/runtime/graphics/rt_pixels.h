@@ -43,12 +43,18 @@ int64_t rt_pixels_width(void *pixels);
 /// @brief Get the height of the Pixels buffer.
 int64_t rt_pixels_height(void *pixels);
 
-/// @brief Get a pixel color at (x, y) as packed RGBA.
+/// @brief Get a pixel color at (x, y) as raw packed RGBA.
 /// @param pixels Pixels object.
 /// @param x X coordinate.
 /// @param y Y coordinate.
 /// @return Pixel color as packed RGBA (0xRRGGBBAA), or 0 if out of bounds.
 int64_t rt_pixels_get(void *pixels, int64_t x, int64_t y);
+
+/// @brief Get a pixel color at (x, y) as raw packed RGBA. Explicit alias for Pixels.GetRGBA.
+int64_t rt_pixels_get_rgba(void *pixels, int64_t x, int64_t y);
+
+/// @brief Get a pixel color at (x, y) as a Viper.Graphics.Color-compatible value.
+int64_t rt_pixels_get_color(void *pixels, int64_t x, int64_t y);
 
 /// @brief Set a raw RGBA pixel at (x, y).
 /// @param pixels Pixels object.
@@ -57,7 +63,7 @@ int64_t rt_pixels_get(void *pixels, int64_t x, int64_t y);
 /// @param color Pixel color as packed RGBA (0xRRGGBBAA).
 void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color);
 
-/// @brief Set a raw RGBA pixel at (x, y). Explicit alias for Pixels.Set.
+/// @brief Set a raw RGBA pixel at (x, y). Explicit alias for Pixels.SetRGBA.
 void rt_pixels_set_rgba(void *pixels, int64_t x, int64_t y, int64_t rgba);
 
 /// @brief Set a pixel from a Canvas RGB or Color.RGBA value, converting to raw RGBA.
@@ -244,11 +250,11 @@ void *rt_pixels_blur(void *pixels, int64_t radius);
 void *rt_pixels_resize(void *pixels, int64_t new_width, int64_t new_height);
 
 //=========================================================================
-// Drawing Primitives  (color format: 0x00RRGGBB — Canvas-compatible)
+// Drawing Primitives
 //=========================================================================
-// All drawing primitives accept colors in the same 0x00RRGGBB format used
-// by Canvas drawing calls and Color.RGB(). Alpha is always 255 (fully
-// opaque). Coordinates outside the buffer are silently clipped.
+// Drawing primitives accept Canvas 0x00RRGGBB, Color.RGB(), and tagged
+// Color.RGBA() values. RGB-only inputs draw with alpha 255; tagged RGBA
+// values preserve alpha. Coordinates outside the buffer are silently clipped.
 
 /// @brief Set a pixel using 0x00RRGGBB color format (alpha = 255).
 void rt_pixels_set_rgb(void *pixels, int64_t x, int64_t y, int64_t color);

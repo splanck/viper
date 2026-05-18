@@ -106,6 +106,11 @@ static inline int8_t rt_physics2d_is_joint_handle(void *obj) {
     return obj && rt_obj_class_id(obj) == RT_PHYSICS2D_JOINT_CLASS_ID;
 }
 
+/// @brief Velocity-solve all rigid (distance/revolute) joints in @p world for
+///        this @p dt step. Defined in rt_physics2d_joint.c.
 void rt_physics2d_solve_joints(void *world, double dt);
+/// @brief Velocity-solve all spring joints in @p world for this @p dt step.
 void rt_physics2d_solve_spring_joints(void *world, double dt);
+/// @brief Positional (Baumgarte/NGS) correction pass for joints after the
+///        velocity solve, to remove residual constraint drift.
 void rt_physics2d_solve_position_joints(void *world, double dt);

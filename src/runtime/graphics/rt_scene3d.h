@@ -143,6 +143,7 @@ void *rt_scene_node3d_get_lod_mesh(void *node, int64_t index);
 /* Scene3D — frustum culling stats */
 /// @brief Number of nodes culled by the frustum during the most recent Draw (perf metric).
 int64_t rt_scene3d_get_culled_count(void *scene);
+/// @brief Total number of nodes in the scene graph.
 int64_t rt_scene3d_get_node_count(void *scene);
 
 #ifdef __cplusplus

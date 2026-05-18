@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-15
+last-verified: 2026-05-17
 ---
 
 # Images & Sprites
@@ -38,23 +38,25 @@ Creates a new pixel buffer initialized to transparent black (0x00000000). Negati
 | `Clear()`                         | `Void()`                                                             | Clear buffer to transparent black (0x00000000)                                    |
 | `Clone()`                         | `Pixels()`                                                           | Create a deep copy of this buffer                                                 |
 | `Copy(dx, dy, src, sx, sy, w, h)` | `Void(Integer, Integer, Pixels, Integer, Integer, Integer, Integer)` | Copy a rectangle from source to this buffer                                       |
-| `Fill(color)`                     | `Void(Integer)`                                                      | Fill entire buffer with raw `0xRRGGBBAA`                                          |
+| `Fill(color)`                     | `Void(Integer)`                                                      | Fill with raw `0xRRGGBBAA` storage                                                |
 | `FillRGBA(color)`                 | `Void(Integer)`                                                      | Explicit raw `0xRRGGBBAA` fill alias                                              |
 | `FillColor(color)`                | `Void(Integer)`                                                      | Fill from `Color.RGB()`, Canvas `0x00RRGGBB`, or `Color.RGBA()`                   |
 | `FlipH()`                         | `Pixels()`                                                           | Return a horizontally mirrored copy (left-right)                                  |
 | `FlipV()`                         | `Pixels()`                                                           | Return a vertically mirrored copy (top-bottom)                                    |
-| `Get(x, y)`                       | `Integer(Integer, Integer)`                                          | Get pixel color at (x, y) as packed RGBA (0xRRGGBBAA). Returns 0 if out of bounds |
+| `Get(x, y)`                       | `Integer(Integer, Integer)`                                          | Get raw `0xRRGGBBAA` storage at (x, y). Returns 0 if out of bounds                |
+| `GetRGBA(x, y)`                   | `Integer(Integer, Integer)`                                          | Get raw `0xRRGGBBAA` storage at (x, y). Returns 0 if out of bounds                |
+| `GetColor(x, y)`                  | `Integer(Integer, Integer)`                                          | Get pixel at (x, y) as a `Color`-compatible value; use `Color.Get*` to read components |
 | `Grayscale()`                     | `Pixels()`                                                           | Return a grayscale copy of the image                                              |
 | `Invert()`                        | `Pixels()`                                                           | Return a copy with all colors inverted (255 minus each channel)                   |
 | `Resize(width, height)`           | `Pixels(Integer, Integer)`                                           | Return an endpoint-preserving scaled copy using alpha-aware bilinear interpolation; target dimensions must be positive |
-| `Rotate(angle)`                   | `Pixels(Double)`                                                     | Return a copy rotated around its pixel center by degrees (positive = clockwise)   |
+| `Rotate(angle)`                   | `Pixels(Double)`                                                     | Return a copy rotated around its pixel center by degrees (positive = clockwise); non-finite angles trap |
 | `Rotate180()`                     | `Pixels()`                                                           | Return a 180-degree rotated copy                                                  |
 | `RotateCCW()`                     | `Pixels()`                                                           | Return a 90-degree counter-clockwise rotated copy (swaps dimensions)              |
 | `RotateCW()`                      | `Pixels()`                                                           | Return a 90-degree clockwise rotated copy (swaps dimensions)                      |
 | `SaveBmp(path)`                   | `Integer(String)`                                                    | Save to a BMP file. Returns 1 on success, 0 on failure                            |
 | `SavePng(path)`                   | `Integer(String)`                                                    | Save to a PNG file. Returns 1 on success, 0 on failure                            |
 | `Scale(width, height)`            | `Pixels(Integer, Integer)`                                           | Return an endpoint-preserving scaled copy using nearest-neighbor interpolation; target dimensions must be positive |
-| `Set(x, y, color)`                | `Void(Integer, Integer, Integer)`                                    | Set raw `0xRRGGBBAA` at (x, y). Silently ignores out of bounds                    |
+| `Set(x, y, color)`                | `Void(Integer, Integer, Integer)`                                    | Set raw `0xRRGGBBAA` storage. Silently ignores out of bounds                      |
 | `SetRGBA(x, y, color)`            | `Void(Integer, Integer, Integer)`                                    | Explicit raw `0xRRGGBBAA` set alias                                               |
 | `SetColor(x, y, color)`           | `Void(Integer, Integer, Integer)`                                    | Set from `Color.RGB()`, Canvas `0x00RRGGBB`, or `Color.RGBA()`                    |
 | `Tint(color)`                     | `Pixels(Integer)`                                                    | Return a copy with a color tint applied; `Color.RGBA` input also scales alpha     |
@@ -73,11 +75,11 @@ Creates a new pixel buffer initialized to transparent black (0x00000000). Negati
 
 `LoadPng` rejects malformed chunk order, invalid IHDR compression/filter/interlace methods, indexed images without a palette, palette transparency entries that exceed the palette size, and PNG files without IEND. Sub-byte grayscale transparency compares the raw sample value from `tRNS`. `LoadBmp` uses checked file offsets when seeking to pixel data.
 `ToBytes()` and `FromBytes()` always use canonical `RR GG BB AA` bytes for each pixel, independent of CPU endianness.
+JPEG loading validates component, quantization, Huffman, scan, and chroma sampling tables before decode, and applies EXIF orientation without leaking the pre-rotated image.
 
 ### Drawing Primitives
 
-Drawing primitives use the `0x00RRGGBB` color format (compatible with `Canvas` and `Color.RGB()`).
-Alpha is always 255 (fully opaque). Coordinates outside the pixel buffer are silently clipped, including extreme coordinates that would otherwise overflow rectangle or line endpoint math.
+Drawing primitives accept `0x00RRGGBB`, `Color.RGB()`, and tagged `Color.RGBA()` values. RGB-only inputs draw with alpha 255; `Color.RGBA()` preserves its alpha in pixel storage. Coordinates outside the pixel buffer are silently clipped, including extreme coordinates that would otherwise overflow rectangle or line endpoint math.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
@@ -92,14 +94,13 @@ Alpha is always 255 (fully opaque). Coordinates outside the pixel buffer are sil
 | `DrawEllipseFrame(cx, cy, rx, ry, color)` | `Void(Integer...)` | Ellipse outline |
 | `FloodFill(x, y, color)` | `Void(Integer...)` | Iterative scanline flood fill (no recursion depth limit) |
 | `DrawThickLine(x1, y1, x2, y2, thickness, color)` | `Void(Integer...)` | Line with thickness (parallelogram body + rounded endcap circles) |
-| `DrawTriangle(x1, y1, x2, y2, x3, y3, color)` | `Void(Integer...)` | Filled triangle |
+| `DrawTriangle(x1, y1, x2, y2, x3, y3, color)` | `Void(Integer...)` | Filled triangle; collinear vertices draw the longest edge |
 | `DrawBezier(x1, y1, cx, cy, x2, y2, color)` | `Void(Integer...)` | Quadratic Bezier curve |
 
-> **Color format note:** `Pixels.Set(x, y, color)`, `Pixels.SetRGBA`, `Pixels.Fill`, and
-> `Pixels.FillRGBA` use raw `0xRRGGBBAA` storage. Drawing primitives and `SetRGB`/`GetRGB` use
-> `0x00RRGGBB` — the same format as `Canvas` drawing calls and `Color.RGB()`. Use `SetColor` and
-> `FillColor` when you want to pass `Color.RGB()`, Canvas `0x00RRGGBB`, or tagged `Color.RGBA()`
-> values and have them converted into pixel storage.
+> **Color format note:** `Pixels.Set`, `Pixels.Fill`, and `Pixels.Get` are raw-storage APIs for
+> `0xRRGGBBAA`; `SetRGBA`, `FillRGBA`, and `GetRGBA` are explicit raw aliases. Drawing primitives
+> and `SetColor`/`FillColor`/`GetColor` accept or return values compatible with `Viper.Graphics.Color`.
+> `SetRGB`/`GetRGB` remain RGB-only convenience methods.
 
 #### Zia Example — Drawing into an off-screen buffer
 
@@ -133,25 +134,28 @@ func start() {
 
 ### Color Format
 
-`Pixels.Set` and `Pixels.Get` use packed 32-bit RGBA in the format `0xRRGGBBAA`:
+Raw pixel storage uses packed 32-bit RGBA in the format `0xRRGGBBAA`:
 
 - `RR` - Red component (0-255)
 - `GG` - Green component (0-255)
 - `BB` - Blue component (0-255)
 - `AA` - Alpha component (0-255, where 255 = opaque)
 
-**Drawing primitives** (`SetRGB`, `GetRGB`, `DrawLine`, `DrawBox`, etc.) use `0x00RRGGBB` — the same
-format as `Canvas` methods and `Color.RGB()`. This makes it straightforward to share color constants
-between on-screen canvas drawing and off-screen pixel buffer operations. `Color.RGBA()` values are
-also accepted for these RGB-only primitives; alpha is ignored.
+`Pixels.Get` and `Pixels.GetRGBA` return the raw `0xRRGGBBAA` integer. `Pixels.Set`, `SetRGBA`,
+`Fill`, and `FillRGBA` write raw `0xRRGGBBAA` storage. `GetColor`, `SetColor`, and `FillColor` are
+the color-compatible forms for `Viper.Graphics.Color` values and Canvas-style `0x00RRGGBB` colors.
 
-Use packed literals like `0xRRGGBBAA` for raw `Set`/`Get`, and `Viper.Graphics.Color.RGB()` for
-drawing primitives. Use `SetColor` or `FillColor` for `Color.RGBA()` values with alpha.
+**Drawing primitives** (`DrawLine`, `DrawBox`, etc.) use the same color inputs as Canvas methods and
+`Color.RGB()`. This makes it straightforward to share color constants between on-screen canvas drawing
+and off-screen pixel buffer operations. `Color.RGBA()` values preserve alpha in the destination pixels.
+
+Use packed literals like `0xRRGGBBAA` with `Set`/`Get`/`Fill` or the explicit `*RGBA` aliases, and
+`Viper.Graphics.Color.RGB()` or `Color.RGBA()` with `SetColor`/`GetColor`/`FillColor` and drawing
+primitives.
 
 > `Viper.Graphics.Color.RGBA()` returns a tagged `0xAARRGGBB` color value so alpha can be preserved
-> even when `a = 0`. It does **not** match the raw `0xRRGGBBAA` layout used by `Pixels.Set` and
-> `Pixels.Get`; pass it to `SetColor`/`FillColor`, or pass an explicit raw `0xRRGGBBAA` value to
-> `Set`/`Fill`.
+> even when `a = 0`. It does **not** match raw `0xRRGGBBAA` storage. Use `SetColor`/`FillColor` for
+> tagged colors, or use `Set`/`Fill`/`SetRGBA`/`FillRGBA` for explicit raw storage.
 
 ### Zia Example
 
@@ -167,14 +171,18 @@ func start() {
     var p = Pixels.New(64, 64);
     Say("Size: " + Fmt.Int(p.get_Width()) + "x" + Fmt.Int(p.get_Height()));
 
-    // Raw Set/Get use 0xRRGGBBAA
-    p.Set(0, 0, 0xFF0000FF);
+    // Color-compatible Set/Get work with Color.RGB/RGBA and Canvas RGB values
+    p.SetColor(0, 0, Color.RGB(255, 0, 0));
     p.SetColor(1, 0, Color.RGBA(0, 0, 255, 128));
-    var c = p.Get(0, 0);
-    Say("Pixel(0,0): " + Fmt.Int(c));
+    var c = p.GetColor(0, 0);
+    Say("Pixel(0,0) red: " + Fmt.Int(Color.GetR(c)));
+
+    // Raw storage is available when needed
+    p.Set(2, 0, 0x10203040);
+    Say("Raw Pixel(2,0): " + Fmt.Int(p.Get(2, 0)));
 
     // Fill and clear
-    p.Fill(0x00FF00FF);
+    p.FillColor(Color.RGBA(0, 255, 0, 192));
     p.Clear();
 
     // Clone
@@ -302,7 +310,7 @@ pixels.SavePng("output.png")
 
 | Method           | Signature         | Description                                          |
 |------------------|-------------------|------------------------------------------------------|
-| `FromFile(path)` | `Sprite(String)`  | Load sprite from BMP, PNG, JPEG, or GIF file. Animated GIFs load all frames. Returns NULL on failure |
+| `FromFile(path)` | `Sprite(String)`  | Load sprite from BMP, PNG, JPEG, or GIF file. Animated GIFs load all frames and preserve per-frame delays. Returns NULL on failure |
 
 ### Properties
 
@@ -328,9 +336,11 @@ pixels.SavePng("output.png")
 | `AddFrame(pixels)`          | `Void(Pixels)`                     | Add an animation frame                                |
 | `Contains(x, y)`            | `Integer(Integer, Integer)`        | Check if point is inside sprite (returns 1 or 0)      |
 | `Draw(canvas)`              | `Void(Canvas)`                     | Draw the sprite to a canvas                           |
+| `GetFrameDelayAt(frame)`    | `Integer(Integer)`                 | Get one frame's delay in milliseconds                 |
 | `Move(dx, dy)`              | `Void(Integer, Integer)`           | Move sprite by delta amounts                          |
 | `Overlaps(other)`           | `Integer(Sprite)`                  | Check bounding box overlap (returns 1 or 0)           |
 | `SetFrameDelay(ms)`         | `Void(Integer)`                    | Set delay between animation frames (milliseconds)     |
+| `SetFrameDelayAt(frame, ms)`| `Void(Integer, Integer)`           | Set one frame's delay in milliseconds                 |
 | `SetOrigin(x, y)`           | `Void(Integer, Integer)`           | Set origin point for rotation/scaling                 |
 | `Update()`                  | `Void()`                           | Advance animation (call each frame)                   |
 
@@ -339,7 +349,10 @@ very small scale values are provided. Movement, hit tests, and overlap checks sa
 Sprite drawing fails closed if an intermediate transform allocation fails, rather than drawing a partially transformed frame.
 Setting `Frame` wraps into the available frame range, including negative frame indexes. `Sprite.New`
 and `AddFrame` require real `Pixels` objects and retain the supplied frame buffers. Call
-`Pixels.Clone()` first when you need the sprite to keep an independent snapshot.
+`Pixels.Clone()` first when you need the sprite to keep an independent snapshot. `AddFrame` grows the
+frame table as needed instead of using a fixed frame cap. `SetFrameDelay(ms)` updates the default and
+all existing frame delays; `SetFrameDelayAt(frame, ms)` customizes a single frame. Delays below 1 ms
+are normalized to 1 ms.
 
 ### Zia Example
 
@@ -641,7 +654,7 @@ Efficient tile-based 2D map rendering for platformers, RPGs, and strategy games.
 
 Advanced runtime support also includes multi-layer tilemaps, per-layer tilesets, JSON save/load, auto-tiling rules, per-tile properties, and tile animation state. Layer names are limited to the fixed runtime name slot (31 bytes); overlong names are rejected without adding a layer. Tileset assignment requires real `Pixels` handles for both map-level and per-layer tilesets. `SaveToFile` / `LoadFromFile` preserve layer visibility, collision-layer selection, collision types, tile properties, auto-tile rules, and animation progress. Saves report failure on write or close errors. JSON loading ignores layers beyond the runtime layer cap, normalizes negative saved animation frames, rejects overlong CSV rows instead of truncating them, clamps CSV tile values that exceed the int64 range, and applies duplicate animation records to the matching base tile instead of the last parsed animation.
 
-Animated tiles keep collision from the base tile ID stored in the map. Changing the visual animation frame does not change solidity or one-way behavior unless you also change the base tile's collision type. Tile ID `0` is reserved for empty space and stays non-solid even if `SetCollision(0, ...)` is called. Registering an animation for an existing base tile replaces the old animation. Autotile variants omitted from a partial rule resolve to the rule's base tile. Invalid collision types are ignored. Negative animation deltas are ignored; very large deltas advance in one modulo step instead of looping once per elapsed frame. Default sequential animation frame IDs saturate at the int64 limit instead of wrapping. `FillRect`, tile drawing, file offsets, and tile-to-pixel conversion clip or saturate extreme coordinates rather than wrapping. Tilemap drawing derives the exact visible tile span from the canvas size and scroll offset, including positive offsets and partially visible edge tiles.
+Animated tiles keep collision from the base tile ID stored in the map. Changing the visual animation frame does not change solidity or one-way behavior unless you also change the base tile's collision type. Tile ID `0` is reserved for empty space and stays non-solid even if `SetCollision(0, ...)` is called; `SetTileAnim(0, ...)` and negative base tile IDs are ignored so empty space cannot animate into a visible tile. Registering an animation for an existing base tile replaces the old animation. Autotile variants omitted from a partial rule resolve to the rule's base tile. Invalid collision types are ignored. Negative animation deltas are ignored; very large deltas advance in one modulo step instead of looping once per elapsed frame. Default sequential animation frame IDs saturate at the int64 limit instead of wrapping. `FillRect`, tile drawing, file offsets, and tile-to-pixel conversion clip or saturate extreme coordinates rather than wrapping. Tilemap drawing derives the exact visible tile span from the canvas size and scroll offset, including positive offsets and partially visible edge tiles.
 
 ### Zia Example
 

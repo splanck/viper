@@ -367,6 +367,10 @@ static void mb_free_topic_node(mb_topic *t) {
     free(t);
 }
 
+/// @brief Free an entire singly-linked subscriber chain.
+/// @details Installs a trap-recovery point so that if freeing one subscriber's
+///          user data traps, the remaining nodes are still released (no leak)
+///          and the original error is preserved and re-raised afterward.
 static void mb_free_sub_chain(mb_sub *s) {
     mb_sub * volatile cursor = s;
     mb_sub * volatile active_sub = NULL;

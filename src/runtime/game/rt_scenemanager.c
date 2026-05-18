@@ -40,6 +40,8 @@ typedef struct {
     int8_t transition_completed;
 } scenemanager_impl;
 
+/// @brief Safe-cast a handle to the SceneManager impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p mgr is NULL.
 static scenemanager_impl *checked_scenemanager(void *mgr, const char *api) {
     if (!mgr)
         return NULL;
@@ -50,6 +52,8 @@ static scenemanager_impl *checked_scenemanager(void *mgr, const char *api) {
     return (scenemanager_impl *)mgr;
 }
 
+/// @brief Copy a runtime-string scene name into a fixed @p out buffer,
+///        NUL-terminated and truncated. @return 1 on success, 0 on bad input.
 static int scene_name_from_handle(void *name, char out[SM_SCENE_NAME_MAX]) {
     if (!name || !out)
         return 0;
@@ -61,6 +65,8 @@ static int scene_name_from_handle(void *name, char out[SM_SCENE_NAME_MAX]) {
     return 1;
 }
 
+/// @brief Linear-search registered scenes by name.
+/// @return The scene's index, or -1 if not found / bad input.
 static int find_scene(scenemanager_impl *sm, const char *name) {
     if (!sm || !name)
         return -1;

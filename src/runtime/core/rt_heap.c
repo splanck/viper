@@ -97,11 +97,17 @@ static void rt_global_shutdown(void) {
 #if RT_PLATFORM_LINUX
 extern int __cxa_atexit(void (*func)(void *), void *arg, void *dso_handle);
 
+/// @brief __cxa_atexit trampoline that runs rt_global_shutdown at process exit
+///        (Linux only; matches the void(*)(void*) callback signature).
 static void rt_global_shutdown_atexit_(void *arg) {
     (void)arg;
     rt_global_shutdown();
 }
 
+/// @brief Register rt_global_shutdown to run at process exit.
+/// @details Linux late-bound native executables don't get a usable atexit(),
+///          so the Linux variant routes through libc's __cxa_atexit(); all
+///          other platforms use plain atexit(). @return 0 on success.
 static int rt_register_shutdown_handler_(void) {
     // glibc does not export atexit() for late-bound native executables, but
     // __cxa_atexit() is available from libc and feeds the same exit handler list.

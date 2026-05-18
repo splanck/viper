@@ -20,8 +20,8 @@
 
 #include "tests/TestHarness.hpp"
 
-#include <cstdio>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
@@ -39,6 +39,14 @@ void *rt_const_cstr(const char *str);
 static void free_pixels(void *p) {
     if (p && rt_obj_release_check0(p))
         rt_obj_free(p);
+}
+
+static void free_gif_frames(gif_frame_t *frames, int count) {
+    if (!frames)
+        return;
+    for (int i = 0; i < count; i++)
+        free_pixels(frames[i].pixels);
+    free(frames);
 }
 
 /// @brief Write bytes to a temp file and return the path.
@@ -147,6 +155,56 @@ TEST(GifDecodeTest, Minimal1x1Gif87a) {
         }
         free(frames);
     }
+    remove(path);
+}
+
+TEST(GifDecodeTest, MultiFramePreservesPerFrameDelays) {
+    uint8_t gif[] = {'G',  'I',  'F',  '8',  '9',  'a',  0x01, 0x00,
+                     0x01, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x00, 0x00, // color 0: red
+                     0x00, 0x00, 0xFF,                               // color 1: blue
+                     0x21, 0xF9, 0x04, 0x00, 0x05, 0x00, 0x00, 0x00, // delay 50ms
+                     0x2C, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01,
+                     0x00, 0x00, 0x02, 0x02, 0x44, 0x01, 0x00,       // one red pixel
+                     0x21, 0xF9, 0x04, 0x00, 0x0C, 0x00, 0x00, 0x00, // delay 120ms
+                     0x2C, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01,
+                     0x00, 0x00, 0x02, 0x02, 0x4C, 0x01, 0x00, // one blue pixel
+                     0x3B};
+
+    const char *path = write_temp("multiframe.gif", gif, sizeof(gif));
+
+    gif_frame_t *frames = nullptr;
+    int count = 0, w = 0, h = 0;
+    int rc = gif_decode_file(path, &frames, &count, &w, &h);
+
+    EXPECT_EQ(rc, 2);
+    EXPECT_EQ(count, 2);
+    EXPECT_EQ(w, 1);
+    EXPECT_EQ(h, 1);
+    ASSERT_TRUE(frames != nullptr);
+    EXPECT_EQ(frames[0].delay_ms, 50);
+    EXPECT_EQ(frames[1].delay_ms, 120);
+    EXPECT_EQ(rt_pixels_get(frames[0].pixels, 0, 0), 0xFF0000FF);
+    EXPECT_EQ(rt_pixels_get(frames[1].pixels, 0, 0), 0x0000FFFF);
+
+    free_gif_frames(frames, count);
+    remove(path);
+}
+
+TEST(GifDecodeTest, RejectsOutOfScreenImageDescriptor) {
+    uint8_t gif[] = {'G',  'I',  'F',  '8',  '9',  'a',  0x01, 0x00,
+                     0x01, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x00, 0x00, // color 0
+                     0x00, 0x00, 0x00,                               // color 1
+                     0x2C, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01,
+                     0x00, 0x00, 0x02, 0x02, 0x44, 0x01, 0x00, 0x3B};
+
+    const char *path = write_temp("out_of_screen.gif", gif, sizeof(gif));
+
+    gif_frame_t *frames = nullptr;
+    int count = 0, w = 0, h = 0;
+    int rc = gif_decode_file(path, &frames, &count, &w, &h);
+    EXPECT_EQ(rc, 0);
+    EXPECT_EQ(count, 0);
+    EXPECT_EQ(frames == nullptr, true);
     remove(path);
 }
 

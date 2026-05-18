@@ -55,26 +55,42 @@ void *rt_collider3d_get_local_bounds_min(void *collider);
 /// @brief Get the local-space AABB maximum corner as a Vec3.
 void *rt_collider3d_get_local_bounds_max(void *collider);
 
-/* Internal physics/runtime helpers. */
+/* Internal physics/runtime helpers — pointer-out variants used by the physics
+   solver to avoid boxing Vec3s on hot paths. */
+/// @brief Write the local-space AABB (min/max xyz) into the caller's buffers.
 void rt_collider3d_get_local_bounds_raw(void *collider, double *min_out, double *max_out);
+/// @brief Compute the world-space AABB for a collider placed at the given
+///        position/rotation/scale; results written to @p min_out / @p max_out.
 void rt_collider3d_compute_world_aabb_raw(void *collider,
                                           const double *position,
                                           const double *rotation,
                                           const double *scale,
                                           double *min_out,
                                           double *max_out);
+/// @brief Whether the collider is flagged static-only (never moves; lets the
+///        broadphase skip dynamic re-insertion).
 int8_t rt_collider3d_is_static_only_raw(void *collider);
+/// @brief Box collider: write its half-extents (xyz) to @p half_extents_out.
 void rt_collider3d_get_box_half_extents_raw(void *collider, double *half_extents_out);
+/// @brief Sphere/capsule collider: its radius.
 double rt_collider3d_get_radius_raw(void *collider);
+/// @brief Capsule/cylinder collider: its height.
 double rt_collider3d_get_height_raw(void *collider);
+/// @brief Mesh collider: the backing triangle-mesh handle (NULL if not a mesh).
 void *rt_collider3d_get_mesh_raw(void *collider);
+/// @brief Compound collider: number of child colliders.
 int64_t rt_collider3d_get_child_count_raw(void *collider);
+/// @brief Compound collider: child collider at @p index (NULL if out of range).
 void *rt_collider3d_get_child_raw(void *collider, int64_t index);
+/// @brief Compound collider: child @p index's local transform, written to the
+///        position/rotation/scale out buffers.
 void rt_collider3d_get_child_transform_raw(void *compound,
                                            int64_t index,
                                            double *position_out,
                                            double *rotation_out,
                                            double *scale_out);
+/// @brief Heightfield collider: sample the height and surface normal at
+///        local (local_x, local_z). @return non-zero if the sample is in range.
 int8_t rt_collider3d_sample_heightfield_raw(void *collider,
                                             double local_x,
                                             double local_z,

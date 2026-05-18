@@ -324,6 +324,11 @@ int8_t rt_action_load_preset(rt_string preset_name);
 
 //=========================================================================
 // Axis Constant Getters (for runtime.def)
+//
+/// @brief Runtime accessors returning the integer code for each analog axis.
+///        The name is the axis (`left_x`/`left_y`/`right_x`/`right_y` sticks,
+///        `left_trigger`/`right_trigger`); the code is what rt_action_axis()
+///        and binding APIs expect.
 //=========================================================================
 
 int64_t rt_action_axis_left_x(void);

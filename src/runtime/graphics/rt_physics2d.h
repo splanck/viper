@@ -141,10 +141,12 @@ void rt_physics2d_body_apply_impulse(void *body, double ix, double iy);
 
 /// @brief Get/set restitution (bounciness, clamped to 0-1).
 double rt_physics2d_body_restitution(void *body);
+/// @brief Set the body's restitution (bounciness), clamped to 0-1.
 void rt_physics2d_body_set_restitution(void *body, double r);
 
 /// @brief Get/set friction (clamped to 0-1).
 double rt_physics2d_body_friction(void *body);
+/// @brief Set the body's friction coefficient, clamped to 0-1.
 void rt_physics2d_body_set_friction(void *body, double f);
 
 /// @brief Check if body is static (mass == 0).
@@ -169,17 +171,30 @@ void rt_physics2d_body_set_collision_mask(void *body, int64_t mask);
 // Projectile2D
 //=========================================================================
 
+/// @brief Create a projectile from initial position (p0), velocity (v0) and
+///        constant gravity (g). @return a Projectile2D handle, or NULL.
 void *rt_projectile2d_new(double p0x, double p0y, double v0x, double v0y, double gx, double gy);
+/// @brief Set linear air-drag (0 = none); affects the closed-form solution.
 void rt_projectile2d_set_drag(void *p, double drag);
+/// @brief Set the ground plane Y used for landing detection (default +inf).
 void rt_projectile2d_set_ground_y(void *p, double y);
+/// @brief Reset elapsed time and landed state back to launch.
 void rt_projectile2d_reset(void *p);
+/// @brief Advance the simulation clock by @p dt seconds (updates landed state).
 void rt_projectile2d_advance(void *p, double dt);
+/// @brief X position at absolute time @p t seconds since launch.
 double rt_projectile2d_x_at(void *p, double t);
+/// @brief Y position at absolute time @p t seconds since launch.
 double rt_projectile2d_y_at(void *p, double t);
+/// @brief X velocity at absolute time @p t seconds since launch.
 double rt_projectile2d_vx_at(void *p, double t);
+/// @brief Y velocity at absolute time @p t seconds since launch.
 double rt_projectile2d_vy_at(void *p, double t);
+/// @brief Whether the projectile has reached the ground plane.
 int8_t rt_projectile2d_has_landed(void *p);
+/// @brief Total elapsed simulated time (seconds) since launch.
 double rt_projectile2d_total_time(void *p);
+/// @brief Predicted time (seconds) until the projectile hits the ground.
 double rt_projectile2d_time_to_ground(void *p);
 
 #ifdef __cplusplus

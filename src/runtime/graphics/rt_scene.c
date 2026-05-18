@@ -45,6 +45,7 @@
 
 #include <limits.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -89,8 +90,7 @@ typedef struct scene_impl {
 /// @brief Validate-and-return a SceneNode pointer; NULL for NULL or wrong class.
 /// @details Soft check used by every public SceneNode entry point.
 static scene_node_impl *scene_node_checked_or_null(void *node_ptr) {
-    if (!node_ptr ||
-        !rt_obj_is_instance(node_ptr, RT_SCENE_NODE_CLASS_ID, sizeof(scene_node_impl)))
+    if (!node_ptr || !rt_obj_is_instance(node_ptr, RT_SCENE_NODE_CLASS_ID, sizeof(scene_node_impl)))
         return NULL;
     return (scene_node_impl *)node_ptr;
 }
@@ -114,7 +114,8 @@ static int64_t scene_add_saturating(int64_t a, int64_t b) {
     return a + b;
 }
 
-/// @brief Round a long double to int64 with banker-style half-away rounding, saturating on overflow.
+/// @brief Round a long double to int64 with banker-style half-away rounding, saturating on
+/// overflow.
 /// @details Used as the final step of every long-double world-transform
 ///          calculation so the result lands cleanly in int64 storage. Out-
 ///          of-range inputs clamp to INT64_MIN/MAX rather than producing UB.
@@ -156,6 +157,71 @@ static int compare_depth(const void *a, const void *b);
 static void release_owned_ref(void **slot);
 static void scene_node_finalize(void *obj);
 static void scene_finalize(void *obj);
+
+typedef struct scene_node_stack {
+    scene_node_impl **items;
+    scene_node_impl *inline_items[64];
+    int64_t count;
+    int64_t capacity;
+} scene_node_stack;
+
+static void scene_node_stack_init(scene_node_stack *stack) {
+    stack->items = stack->inline_items;
+    stack->count = 0;
+    stack->capacity = (int64_t)(sizeof(stack->inline_items) / sizeof(stack->inline_items[0]));
+}
+
+static void scene_node_stack_destroy(scene_node_stack *stack) {
+    if (stack->items != stack->inline_items)
+        free(stack->items);
+    stack->items = stack->inline_items;
+    stack->count = 0;
+    stack->capacity = (int64_t)(sizeof(stack->inline_items) / sizeof(stack->inline_items[0]));
+}
+
+static int8_t scene_node_stack_push(scene_node_stack *stack, scene_node_impl *node) {
+    if (!node)
+        return 1;
+    if (stack->count >= stack->capacity) {
+        if (stack->capacity > INT64_MAX / 2 ||
+            (uint64_t)(stack->capacity * 2) > (uint64_t)SIZE_MAX / sizeof(*stack->items))
+            return 0;
+        int64_t new_capacity = stack->capacity * 2;
+        scene_node_impl **grown = NULL;
+        if (stack->items == stack->inline_items) {
+            grown = (scene_node_impl **)malloc((size_t)new_capacity * sizeof(*grown));
+            if (grown)
+                memcpy(grown, stack->items, (size_t)stack->count * sizeof(*grown));
+        } else {
+            grown =
+                (scene_node_impl **)realloc(stack->items, (size_t)new_capacity * sizeof(*grown));
+        }
+        if (!grown)
+            return 0;
+        stack->items = grown;
+        stack->capacity = new_capacity;
+    }
+    stack->items[stack->count++] = node;
+    return 1;
+}
+
+static scene_node_impl *scene_node_stack_pop(scene_node_stack *stack) {
+    if (!stack || stack->count <= 0)
+        return NULL;
+    return stack->items[--stack->count];
+}
+
+static int8_t scene_node_stack_push_children_reverse(scene_node_stack *stack,
+                                                     scene_node_impl *node) {
+    if (!node || !node->children)
+        return 1;
+    int64_t count = rt_seq_len(node->children);
+    for (int64_t i = count; i > 0; i--) {
+        if (!scene_node_stack_push(stack, (scene_node_impl *)rt_seq_get(node->children, i - 1)))
+            return 0;
+    }
+    return 1;
+}
 
 /// @brief Release a GC reference stored in @p slot and NULL it.
 /// @details If the reference count drops to zero after release, frees the object
@@ -213,8 +279,7 @@ static void scene_finalize(void *obj) {
 /// Scale is stored as a percentage (100 = 1.0x). Children list owns its elements.
 void *rt_scene_node_new(void) {
     scene_node_impl *node =
-        (scene_node_impl *)rt_obj_new_i64(RT_SCENE_NODE_CLASS_ID,
-                                          (int64_t)sizeof(scene_node_impl));
+        (scene_node_impl *)rt_obj_new_i64(RT_SCENE_NODE_CLASS_ID, (int64_t)sizeof(scene_node_impl));
     if (!node) {
         rt_trap("SceneNode: allocation failed");
         return NULL;
@@ -266,17 +331,29 @@ void *rt_scene_node_from_sprite(void *sprite) {
 ///   is called, making repeated local-transform changes O(1) per change rather than
 ///   O(subtree size).  Already-dirty subtrees are short-circuited to avoid redundant work.
 static void mark_transform_dirty(scene_node_impl *node) {
-    if (!node || node->transform_dirty)
+    if (!node)
         return;
 
-    node->transform_dirty = 1;
-
-    // Recursively mark children dirty
-    int64_t count = rt_seq_len(node->children);
-    for (int64_t i = 0; i < count; i++) {
-        scene_node_impl *child = (scene_node_impl *)rt_seq_get(node->children, i);
-        mark_transform_dirty(child);
+    scene_node_stack stack;
+    scene_node_stack_init(&stack);
+    if (!scene_node_stack_push(&stack, node)) {
+        rt_trap("SceneNode: transform stack allocation failed");
+        scene_node_stack_destroy(&stack);
+        return;
     }
+
+    while (stack.count > 0) {
+        scene_node_impl *cur = scene_node_stack_pop(&stack);
+        if (!cur)
+            continue;
+        cur->transform_dirty = 1;
+        if (!scene_node_stack_push_children_reverse(&stack, cur)) {
+            rt_trap("SceneNode: transform stack allocation failed");
+            break;
+        }
+    }
+
+    scene_node_stack_destroy(&stack);
 }
 
 /// @brief Compute and store the world transform for @p node, assuming its parent's world
@@ -287,8 +364,10 @@ static void mark_transform_dirty(scene_node_impl *node) {
 ///          the world transform equals the local transform directly. Clears `transform_dirty`.
 static void apply_node_transform(scene_node_impl *node) {
     if (node->parent) {
-        node->world_scale_x = scene_mul_div_saturating(node->parent->world_scale_x, node->scale_x, 100);
-        node->world_scale_y = scene_mul_div_saturating(node->parent->world_scale_y, node->scale_y, 100);
+        node->world_scale_x =
+            scene_mul_div_saturating(node->parent->world_scale_x, node->scale_x, 100);
+        node->world_scale_y =
+            scene_mul_div_saturating(node->parent->world_scale_y, node->scale_y, 100);
         node->world_rotation = scene_add_saturating(node->parent->world_rotation, node->rotation);
 
         int64_t scaled_x = scene_mul_div_saturating(node->x, node->parent->world_scale_x, 100);
@@ -700,7 +779,7 @@ void *rt_scene_node_get_parent(void *node_ptr) {
     return node->parent;
 }
 
-/// @brief Recursive depth-first search for a node with @p name beneath @p node_ptr.
+/// @brief Iterative depth-first search for a node with @p name beneath @p node_ptr.
 /// Returns the first match (including the start node itself). NULL on no match.
 void *rt_scene_node_find(void *node_ptr, rt_string name) {
     scene_node_impl *node = scene_node_checked_or_null(node_ptr);
@@ -708,20 +787,33 @@ void *rt_scene_node_find(void *node_ptr, rt_string name) {
         return NULL;
 
     const char *search = rt_string_cstr(name);
-    const char *node_name = rt_string_cstr(node->name);
+    if (!search)
+        return NULL;
 
-    // Check this node
-    if (node_name && search && strcmp(node_name, search) == 0)
-        return node;
-
-    // Search children recursively
-    int64_t count = rt_seq_len(node->children);
-    for (int64_t i = 0; i < count; i++) {
-        void *found = rt_scene_node_find(rt_seq_get(node->children, i), name);
-        if (found)
-            return found;
+    scene_node_stack stack;
+    scene_node_stack_init(&stack);
+    if (!scene_node_stack_push(&stack, node)) {
+        rt_trap("SceneNode.Find: stack allocation failed");
+        scene_node_stack_destroy(&stack);
+        return NULL;
     }
 
+    while (stack.count > 0) {
+        scene_node_impl *cur = scene_node_stack_pop(&stack);
+        if (!cur)
+            continue;
+        const char *node_name = rt_string_cstr(cur->name);
+        if (node_name && strcmp(node_name, search) == 0) {
+            scene_node_stack_destroy(&stack);
+            return cur;
+        }
+        if (!scene_node_stack_push_children_reverse(&stack, cur)) {
+            rt_trap("SceneNode.Find: stack allocation failed");
+            break;
+        }
+    }
+
+    scene_node_stack_destroy(&stack);
     return NULL;
 }
 
@@ -741,7 +833,7 @@ void rt_scene_node_detach(void *node_ptr) {
 // Scene Node Methods
 //=============================================================================
 
-/// @brief Recursively draw this node and all its descendants to @p canvas.
+/// @brief Iteratively draw this node and all its descendants to @p canvas.
 /// @details Skips invisible nodes (and their subtrees).  Each visible node with a sprite
 ///   is rendered using its computed world-space transform.  Children are drawn in
 ///   insertion order after their parent, so siblings stack naturally.
@@ -753,27 +845,39 @@ void rt_scene_node_draw(void *node_ptr, void *canvas) {
     if (!node)
         return;
 
-    if (!node->visible)
+    scene_node_stack stack;
+    scene_node_stack_init(&stack);
+    if (!scene_node_stack_push(&stack, node)) {
+        rt_trap("SceneNode.Draw: stack allocation failed");
+        scene_node_stack_destroy(&stack);
         return;
-
-    update_world_transform(node);
-
-    if (node->sprite)
-        rt_sprite_draw_transformed(node->sprite,
-                                   canvas,
-                                   node->world_x,
-                                   node->world_y,
-                                   node->world_scale_x,
-                                   node->world_scale_y,
-                                   node->world_rotation,
-                                   -1,
-                                   255);
-
-    // Draw children in insertion order
-    int64_t count = rt_seq_len(node->children);
-    for (int64_t i = 0; i < count; i++) {
-        rt_scene_node_draw(rt_seq_get(node->children, i), canvas);
     }
+
+    while (stack.count > 0) {
+        scene_node_impl *cur = scene_node_stack_pop(&stack);
+        if (!cur || !cur->visible)
+            continue;
+
+        update_world_transform(cur);
+
+        if (cur->sprite)
+            rt_sprite_draw_transformed(cur->sprite,
+                                       canvas,
+                                       cur->world_x,
+                                       cur->world_y,
+                                       cur->world_scale_x,
+                                       cur->world_scale_y,
+                                       cur->world_rotation,
+                                       -1,
+                                       255);
+
+        if (!scene_node_stack_push_children_reverse(&stack, cur)) {
+            rt_trap("SceneNode.Draw: stack allocation failed");
+            break;
+        }
+    }
+
+    scene_node_stack_destroy(&stack);
 }
 
 /// @brief Recursively draw this node and all its descendants, applying @p camera's view transform.
@@ -787,35 +891,47 @@ void rt_scene_node_draw_with_camera(void *node_ptr, void *canvas, void *camera) 
     if (!node)
         return;
 
-    if (!node->visible)
+    scene_node_stack stack;
+    scene_node_stack_init(&stack);
+    if (!scene_node_stack_push(&stack, node)) {
+        rt_trap("SceneNode.DrawWithCamera: stack allocation failed");
+        scene_node_stack_destroy(&stack);
         return;
+    }
 
-    update_world_transform(node);
+    while (stack.count > 0) {
+        scene_node_impl *cur = scene_node_stack_pop(&stack);
+        if (!cur || !cur->visible)
+            continue;
 
-    if (node->sprite) {
-        int64_t screen_x = node->world_x;
-        int64_t screen_y = node->world_y;
-        int64_t scale_x = node->world_scale_x;
-        int64_t scale_y = node->world_scale_y;
-        int64_t rotation = node->world_rotation;
+        update_world_transform(cur);
 
-        if (camera) {
-            rt_camera_world_to_screen(camera, node->world_x, node->world_y, &screen_x, &screen_y);
-            int64_t zoom = rt_camera_get_zoom(camera);
-            scale_x = scene_mul_div_saturating(node->world_scale_x, zoom, 100);
-            scale_y = scene_mul_div_saturating(node->world_scale_y, zoom, 100);
-            rotation = scene_sub_saturating(rotation, rt_camera_get_rotation(camera));
+        if (cur->sprite) {
+            int64_t screen_x = cur->world_x;
+            int64_t screen_y = cur->world_y;
+            int64_t scale_x = cur->world_scale_x;
+            int64_t scale_y = cur->world_scale_y;
+            int64_t rotation = cur->world_rotation;
+
+            if (camera) {
+                rt_camera_world_to_screen(camera, cur->world_x, cur->world_y, &screen_x, &screen_y);
+                int64_t zoom = rt_camera_get_zoom(camera);
+                scale_x = scene_mul_div_saturating(cur->world_scale_x, zoom, 100);
+                scale_y = scene_mul_div_saturating(cur->world_scale_y, zoom, 100);
+                rotation = scene_sub_saturating(rotation, rt_camera_get_rotation(camera));
+            }
+
+            rt_sprite_draw_transformed(
+                cur->sprite, canvas, screen_x, screen_y, scale_x, scale_y, rotation, -1, 255);
         }
 
-        rt_sprite_draw_transformed(
-            node->sprite, canvas, screen_x, screen_y, scale_x, scale_y, rotation, -1, 255);
+        if (!scene_node_stack_push_children_reverse(&stack, cur)) {
+            rt_trap("SceneNode.DrawWithCamera: stack allocation failed");
+            break;
+        }
     }
 
-    // Draw children
-    int64_t count = rt_seq_len(node->children);
-    for (int64_t i = 0; i < count; i++) {
-        rt_scene_node_draw_with_camera(rt_seq_get(node->children, i), canvas, camera);
-    }
+    scene_node_stack_destroy(&stack);
 }
 
 /// @brief Advance this node's state by one tick and recursively update all children.
@@ -826,16 +942,27 @@ void rt_scene_node_update(void *node_ptr) {
     if (!node)
         return;
 
-    // Update sprite animation if any
-    if (node->sprite) {
-        rt_sprite_update(node->sprite);
+    scene_node_stack stack;
+    scene_node_stack_init(&stack);
+    if (!scene_node_stack_push(&stack, node)) {
+        rt_trap("SceneNode.Update: stack allocation failed");
+        scene_node_stack_destroy(&stack);
+        return;
     }
 
-    // Update children
-    int64_t count = rt_seq_len(node->children);
-    for (int64_t i = 0; i < count; i++) {
-        rt_scene_node_update(rt_seq_get(node->children, i));
+    while (stack.count > 0) {
+        scene_node_impl *cur = scene_node_stack_pop(&stack);
+        if (!cur)
+            continue;
+        if (cur->sprite)
+            rt_sprite_update(cur->sprite);
+        if (!scene_node_stack_push_children_reverse(&stack, cur)) {
+            rt_trap("SceneNode.Update: stack allocation failed");
+            break;
+        }
     }
+
+    scene_node_stack_destroy(&stack);
 }
 
 /// @brief Translate the node by (dx, dy) relative to its current local position.
@@ -953,19 +1080,32 @@ typedef struct {
 ///   Only nodes with a non-NULL sprite field are appended; nodes used purely as
 ///   transform containers are skipped.  Used by rt_scene_draw to build the depth-sort array.
 static void collect_visible_nodes(scene_node_impl *node, void *list) {
-    if (!node || !node->visible)
+    if (!node || !list)
         return;
 
-    // Add this node if it has a sprite
-    if (node->sprite) {
-        rt_seq_push(list, node);
+    scene_node_stack stack;
+    scene_node_stack_init(&stack);
+    if (!scene_node_stack_push(&stack, node)) {
+        rt_trap("Scene.Draw: stack allocation failed");
+        scene_node_stack_destroy(&stack);
+        return;
     }
 
-    // Recursively collect from children
-    int64_t count = rt_seq_len(node->children);
-    for (int64_t i = 0; i < count; i++) {
-        collect_visible_nodes((scene_node_impl *)rt_seq_get(node->children, i), list);
+    while (stack.count > 0) {
+        scene_node_impl *cur = scene_node_stack_pop(&stack);
+        if (!cur || !cur->visible)
+            continue;
+
+        if (cur->sprite)
+            rt_seq_push(list, cur);
+
+        if (!scene_node_stack_push_children_reverse(&stack, cur)) {
+            rt_trap("Scene.Draw: stack allocation failed");
+            break;
+        }
     }
+
+    scene_node_stack_destroy(&stack);
 }
 
 /// @brief qsort comparator for node_sort_entry — sorts by depth ascending, ties by traversal order.

@@ -25,10 +25,16 @@
 extern "C" {
 #endif
 
+/// @brief Create a projected decal at @p position facing @p normal, of world
+///        @p size, textured with @p texture.
 void *rt_decal3d_new(void *position, void *normal, double size, void *texture);
+/// @brief Set the decal's lifetime in seconds (it expires after this long).
 void rt_decal3d_set_lifetime(void *decal, double seconds);
+/// @brief Advance the decal's age by @p dt seconds.
 void rt_decal3d_update(void *decal, double dt);
+/// @brief Whether the decal has exceeded its lifetime and should be removed.
 int8_t rt_decal3d_is_expired(void *decal);
+/// @brief Project and draw @p decal onto the 3D canvas.
 void rt_canvas3d_draw_decal(void *canvas, void *decal);
 
 #ifdef __cplusplus

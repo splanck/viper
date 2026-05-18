@@ -52,6 +52,8 @@ typedef struct {
     int8_t finished;
 } rt_animtimeline_impl;
 
+/// @brief Safe-cast a handle to the AnimTimeline impl, trapping @p api on a
+///        class-id mismatch. @return The impl, or NULL if @p ptr is NULL.
 static rt_animtimeline_impl *checked_timeline(void *ptr, const char *api) {
     if (!ptr)
         return NULL;
@@ -62,10 +64,12 @@ static rt_animtimeline_impl *checked_timeline(void *ptr, const char *api) {
     return (rt_animtimeline_impl *)ptr;
 }
 
+/// @brief Clamp a frame index to be non-negative.
 static int64_t clamp_frame(int64_t frame) {
     return frame < 0 ? 0 : frame;
 }
 
+/// @brief Saturating int64 addition (clamps to INT64_MIN/MAX on overflow).
 static int64_t timeline_add_sat_i64(int64_t a, int64_t b) {
     if (b > 0 && a > INT64_MAX - b)
         return INT64_MAX;
@@ -74,12 +78,15 @@ static int64_t timeline_add_sat_i64(int64_t a, int64_t b) {
     return a + b;
 }
 
+/// @brief End frame of a track (start + duration, saturating). 0 if NULL.
 static int64_t timeline_track_end_frame(const rt_animtimeline_track_t *track) {
     if (!track)
         return 0;
     return timeline_add_sat_i64(track->start_frame, track->duration_frames);
 }
 
+/// @brief Copy a runtime string into a fixed @p cap char buffer, NUL-terminated
+///        and truncated to fit. Empty buffer on NULL @p name.
 static void timeline_copy_name(char *dst, size_t cap, rt_string name) {
     if (!dst || cap == 0)
         return;
@@ -96,6 +103,10 @@ static void timeline_copy_name(char *dst, size_t cap, rt_string name) {
     dst[len] = '\0';
 }
 
+/// @brief Append a track of @p kind with the given span and payloads.
+/// @details Clamps start frame to >= 0 and duration to >= 1; copies @p name
+///          into the track's inline buffer. @return new track index, or -1 if
+///          @p tl is NULL or the per-timeline track cap is reached.
 static int64_t timeline_add_track(rt_animtimeline_impl *tl,
                                   timeline_track_kind_t kind,
                                   rt_string name,
@@ -224,6 +235,8 @@ void rt_animtimeline_set_looping(void *ptr, int8_t loop) {
         tl->looping = loop ? 1 : 0;
 }
 
+/// @brief True if @p frame lies in the half-open span (before, after] — used
+///        to detect markers crossed during an advance step.
 static int8_t timeline_crossed(int64_t before, int64_t after, int64_t frame) {
     return frame > before && frame <= after;
 }
@@ -284,6 +297,7 @@ int64_t rt_animtimeline_event_fired_id(void *ptr, int64_t index) {
     return tl->events_fired_ids[index];
 }
 
+/// @brief Bounds-checked track accessor. @return Track at @p index, or NULL.
 static rt_animtimeline_track_t *timeline_track(rt_animtimeline_impl *tl, int64_t index) {
     if (!tl || index < 0 || index >= tl->track_count)
         return NULL;

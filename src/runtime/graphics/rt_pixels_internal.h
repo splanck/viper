@@ -114,6 +114,16 @@ static inline uint32_t rt_pixels_rgba_or_tagged_color_to_rgba(int64_t color) {
     return rt_pixels_color_to_rgba(color);
 }
 
+/// @brief Convert raw 0xRRGGBBAA storage into a tagged Color.RGBA-compatible value.
+static inline int64_t rt_pixels_rgba_to_color(uint32_t rgba) {
+    uint32_t r = (rgba >> 24) & 0xFFu;
+    uint32_t g = (rgba >> 16) & 0xFFu;
+    uint32_t b = (rgba >> 8) & 0xFFu;
+    uint32_t a = rgba & 0xFFu;
+    uint32_t argb = (a << 24) | (r << 16) | (g << 8) | b;
+    return (int64_t)argb | RT_PIXELS_COLOR_EXPLICIT_ALPHA_FLAG;
+}
+
 /// @brief Write one pixel with bounds check (no null check — caller ensures p is valid).
 /// @return 1 if a pixel was written, 0 if the coordinate was outside the buffer.
 static inline int8_t set_pixel_raw(rt_pixels_impl *p, int64_t x, int64_t y, uint32_t c) {

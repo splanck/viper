@@ -55,6 +55,8 @@ typedef struct {
 
 static vg_menubar_t *g_main_menubar = NULL;
 
+/// @brief Recursively test whether @p target appears anywhere in @p menu
+///        (including submenus). Used to validate item pointers before use.
 static BOOL rt_gui_macos_menu_contains_item(vg_menu_t *menu, const vg_menu_item_t *target) {
     if (!menu || !target) {
         return NO;
@@ -70,6 +72,8 @@ static BOOL rt_gui_macos_menu_contains_item(vg_menu_t *menu, const vg_menu_item_
     return NO;
 }
 
+/// @brief Test whether @p item is still reachable from the registered main
+///        menubar (guards against acting on freed/stale menu items).
 static BOOL rt_gui_macos_item_is_live(vg_menu_item_t *item) {
     if (!g_main_menubar || !item) {
         return NO;
