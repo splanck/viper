@@ -148,6 +148,13 @@ static void test_color_transforms_preserve_explicit_alpha() {
     assert(rt_color_get_a(midpoint) == 127);
 }
 
+static void test_get_alpha_reports_stored_byte() {
+    assert(rt_color_get_a(rgb(1, 2, 3)) == 0);
+    assert(rt_color_get_a(rt_color_rgb(1, 2, 3)) == 0);
+    assert(rt_color_get_a(rt_color_rgba(1, 2, 3, 64)) == 64);
+    assert(rt_color_get_a(rt_color_rgba(1, 2, 3, 0)) == 0);
+}
+
 static void test_brighten_and_darken() {
     int64_t c = rgb(100, 150, 200);
     int64_t brighter = rt_color_brighten(c, 50);
@@ -253,6 +260,7 @@ int main() {
     test_get_hsl_components();
     test_lerp_midpoint();
     test_color_transforms_preserve_explicit_alpha();
+    test_get_alpha_reports_stored_byte();
     test_brighten_and_darken();
     test_complement_red();
     test_grayscale();

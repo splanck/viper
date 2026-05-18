@@ -963,7 +963,7 @@ void rt_canvas_blit(void *canvas_ptr, int64_t x, int64_t y, void *pixels_ptr) {
 
     rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
     rt_pixels_impl *pixels = rt_pixels_checked_impl(pixels_ptr, "Canvas.Blit: invalid pixels");
-    if (!canvas || !canvas->gfx_win || !pixels->data)
+    if (!canvas || !canvas->gfx_win || !pixels || !pixels->data)
         return;
 
     rt_canvas_resync_window_state(canvas);
@@ -1044,7 +1044,7 @@ void rt_canvas_blit_region(void *canvas_ptr,
     rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
     rt_pixels_impl *pixels =
         rt_pixels_checked_impl(pixels_ptr, "Canvas.BlitRegion: invalid pixels");
-    if (!canvas || !canvas->gfx_win || !pixels->data)
+    if (!canvas || !canvas->gfx_win || !pixels || !pixels->data)
         return;
 
     rt_canvas_resync_window_state(canvas);
@@ -1118,7 +1118,7 @@ void rt_canvas_blit_alpha(void *canvas_ptr, int64_t x, int64_t y, void *pixels_p
 
     rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
     rt_pixels_impl *pixels = rt_pixels_checked_impl(pixels_ptr, "Canvas.BlitAlpha: invalid pixels");
-    if (!canvas || !canvas->gfx_win || !pixels->data)
+    if (!canvas || !canvas->gfx_win || !pixels || !pixels->data)
         return;
 
     rt_canvas_resync_window_state(canvas);

@@ -266,6 +266,8 @@ class Parser {
     ///          token position and error state when destroyed.
     class Speculation {
       public:
+        /// @brief Begin a speculative parse: snapshot token position and
+        ///        error state, and suppress diagnostics until committed.
         explicit Speculation(Parser &parser);
         ~Speculation();
 
@@ -483,6 +485,8 @@ class Parser {
     /// - `f(x: 1, y: 2)` - named
     /// - `f(1, y: 2)` - mixed
     bool parseCallArgs(std::vector<CallArg> &args);
+    /// @brief Convenience overload returning the parsed call arguments
+    ///        directly (empty on parse error).
     std::vector<CallArg> parseCallArgs();
 
     /// @}
@@ -644,6 +648,8 @@ class Parser {
     ///
     /// @details Parses parameter list: `(name: Type, name2: Type = default)`
     bool parseParameters(std::vector<Param> &params);
+    /// @brief Convenience overload returning the parsed parameter list
+    ///        directly (empty on parse error).
     std::vector<Param> parseParameters();
 
     /// @brief Parse generic type parameters: [T, U]

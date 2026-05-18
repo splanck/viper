@@ -29,6 +29,9 @@ using namespace runtime;
 
 namespace {
 
+/// @brief Append @p typeName's field declarations (base-class fields first,
+///        then this class's) to @p out — gives the in-memory field order used
+///        when lowering class construction/initialization.
 void appendClassFieldDecls(Sema &sema,
                            const std::string &typeName,
                            std::vector<const FieldDecl *> &out) {

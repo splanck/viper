@@ -17,6 +17,8 @@ namespace il::frontends::zia {
 
 namespace {
 
+/// @brief True if @p expr is a valid assignment LHS (identifier, field
+///        access, or index expression).
 bool isAssignableTarget(const Expr *expr) {
     if (!expr)
         return false;
@@ -31,6 +33,8 @@ bool isAssignableTarget(const Expr *expr) {
     }
 }
 
+/// @brief True if @p field is a read-only built-in property of @p baseType
+///        (e.g. List/Map/Set Length/Count) that may not be assigned to.
 bool isReadOnlyBuiltinProperty(TypeRef baseType, const std::string &field) {
     if (!baseType)
         return false;

@@ -185,8 +185,9 @@ void *rt_pixels_load_bmp(void *path) {
     if (fread(&info_hdr, sizeof(info_hdr), 1, f) != 1)
         goto bmp_cleanup;
 
-    // Only support 24-bit uncompressed
-    if (info_hdr.bit_count != 24 || info_hdr.compression != 0)
+    // Only support BITMAPINFOHEADER, 24-bit, uncompressed BMP.
+    if (info_hdr.header_size != sizeof(bmp_info_header) || info_hdr.bit_count != 24 ||
+        info_hdr.compression != 0)
         goto bmp_cleanup;
 
     int32_t width = info_hdr.width;
@@ -209,6 +210,35 @@ void *rt_pixels_load_bmp(void *path) {
     if (!px_mul_size((size_t)width, 3, &row_payload))
         goto bmp_cleanup;
     size_t row_size = (row_payload + 3u) & ~(size_t)3u;
+    size_t data_size = 0;
+    if (!px_mul_size(row_size, (size_t)height, &data_size))
+        goto bmp_cleanup;
+
+    uint64_t min_data_offset =
+        (uint64_t)sizeof(bmp_file_header) + (uint64_t)info_hdr.header_size;
+    uint64_t data_offset = (uint64_t)file_hdr.data_offset;
+    if (data_offset < min_data_offset || data_offset > (uint64_t)INT64_MAX)
+        goto bmp_cleanup;
+    if (file_hdr.file_size != 0) {
+        uint64_t declared_size = (uint64_t)file_hdr.file_size;
+        if (data_offset > declared_size || (uint64_t)data_size > declared_size - data_offset)
+            goto bmp_cleanup;
+    }
+    int64_t current_pos = px_ftell(f);
+    if (current_pos < 0)
+        goto bmp_cleanup;
+    if (px_fseek(f, 0, SEEK_END) != 0)
+        goto bmp_cleanup;
+    int64_t actual_size = px_ftell(f);
+    if (actual_size < 0)
+        goto bmp_cleanup;
+    if (file_hdr.file_size != 0 && (uint64_t)file_hdr.file_size > (uint64_t)actual_size)
+        goto bmp_cleanup;
+    if (data_offset > (uint64_t)actual_size ||
+        (uint64_t)data_size > (uint64_t)actual_size - data_offset)
+        goto bmp_cleanup;
+    if (px_fseek(f, current_pos, SEEK_SET) != 0)
+        goto bmp_cleanup;
 
     // Allocate row buffer
     row_buf = (uint8_t *)malloc(row_size);
@@ -295,6 +325,8 @@ int64_t rt_pixels_save_bmp(void *pixels, void *path) {
     FILE *f = fopen(filepath, "wb");
     if (!f)
         return 0;
+    uint8_t *row_buf = NULL;
+    int result = 0;
 
     // Write file header
     bmp_file_header file_hdr = {
@@ -304,10 +336,8 @@ int64_t rt_pixels_save_bmp(void *pixels, void *path) {
         .reserved2 = 0,
         .data_offset = 54,
     };
-    if (fwrite(&file_hdr, sizeof(file_hdr), 1, f) != 1) {
-        fclose(f);
-        return 0;
-    }
+    if (fwrite(&file_hdr, sizeof(file_hdr), 1, f) != 1)
+        goto bmp_save_cleanup;
 
     // Write info header
     bmp_info_header info_hdr = {
@@ -323,17 +353,13 @@ int64_t rt_pixels_save_bmp(void *pixels, void *path) {
         .colors_used = 0,
         .colors_important = 0,
     };
-    if (fwrite(&info_hdr, sizeof(info_hdr), 1, f) != 1) {
-        fclose(f);
-        return 0;
-    }
+    if (fwrite(&info_hdr, sizeof(info_hdr), 1, f) != 1)
+        goto bmp_save_cleanup;
 
     // Allocate row buffer
-    uint8_t *row_buf = (uint8_t *)calloc(1, row_size);
-    if (!row_buf) {
-        fclose(f);
-        return 0;
-    }
+    row_buf = (uint8_t *)calloc(1, row_size);
+    if (!row_buf)
+        goto bmp_save_cleanup;
 
     // Write pixel data (bottom-up)
     for (int32_t y = height - 1; y >= 0; y--) {
@@ -353,16 +379,21 @@ int64_t rt_pixels_save_bmp(void *pixels, void *path) {
             row_buf[row_payload + i] = 0;
 
         if (fwrite(row_buf, 1, row_size, f) != row_size) {
-            free(row_buf);
-            fclose(f);
-            return 0;
+            goto bmp_save_cleanup;
         }
     }
 
+    result = 1;
+
+bmp_save_cleanup:
     free(row_buf);
-    fflush(f);
-    fclose(f);
-    return 1;
+    if (fflush(f) != 0)
+        result = 0;
+    if (fclose(f) != 0)
+        result = 0;
+    if (!result)
+        remove(filepath);
+    return result;
 }
 
 //=============================================================================
@@ -1215,8 +1246,10 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path) {
 save_cleanup:
     free(zlib_data);
     if (out) {
-        fflush(out);
-        fclose(out);
+        if (fflush(out) != 0)
+            result = 0;
+        if (fclose(out) != 0)
+            result = 0;
         // Remove corrupt PNG if write failed partway through
         if (!result)
             remove(filepath);

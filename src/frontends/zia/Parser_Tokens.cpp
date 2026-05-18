@@ -19,10 +19,12 @@
 namespace il::frontends::zia {
 namespace {
 
+/// @brief True if @p text begins with @p prefix.
 bool startsWith(std::string_view text, std::string_view prefix) {
     return text.substr(0, prefix.size()) == prefix;
 }
 
+/// @brief True if @p needle occurs anywhere in @p text.
 bool contains(std::string_view text, std::string_view needle) {
     return text.find(needle) != std::string_view::npos;
 }

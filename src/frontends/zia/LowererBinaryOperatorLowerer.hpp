@@ -24,6 +24,9 @@ class BinaryOperatorLowerer final {
   public:
     explicit BinaryOperatorLowerer(Lowerer &lowerer) : lowerer_(lowerer) {}
 
+    /// @brief Lower a binary expression, selecting the integer/float/string/
+    ///        boolean/pointer opcode (and overflow-checked variants) for the
+    ///        operator and operand types.
     LowerResult lowerBinary(BinaryExpr *expr);
 
   private:

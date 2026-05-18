@@ -1697,6 +1697,18 @@ double rt_canvas_get_scale(void *canvas) {
     RT_GRAPHICS_TRAP_RET("Canvas.GetScale: graphics support not compiled in", 1.0);
 }
 
+/// @brief Stub for `Canvas.GetWindowX`.
+int64_t rt_canvas_get_window_x(void *canvas) {
+    (void)canvas;
+    RT_GRAPHICS_TRAP_RET("Canvas.GetWindowX: graphics support not compiled in", 0);
+}
+
+/// @brief Stub for `Canvas.GetWindowY`.
+int64_t rt_canvas_get_window_y(void *canvas) {
+    (void)canvas;
+    RT_GRAPHICS_TRAP_RET("Canvas.GetWindowY: graphics support not compiled in", 0);
+}
+
 /// @brief Stub for `Canvas.GetPosition` — would normally write the
 ///        window's current screen-relative top-left corner to `*x` and
 ///        `*y`.
@@ -1845,6 +1857,18 @@ void rt_canvas_get_monitor_size(void *canvas, int64_t *w, int64_t *h) {
     (void)w;
     (void)h;
     RT_GRAPHICS_TRAP_VOID("Canvas.GetMonitorSize: graphics support not compiled in");
+}
+
+/// @brief Stub for `Canvas.GetMonitorWidth`.
+int64_t rt_canvas_get_monitor_width(void *canvas) {
+    (void)canvas;
+    RT_GRAPHICS_TRAP_RET("Canvas.GetMonitorWidth: graphics support not compiled in", 0);
+}
+
+/// @brief Stub for `Canvas.GetMonitorHeight`.
+int64_t rt_canvas_get_monitor_height(void *canvas) {
+    (void)canvas;
+    RT_GRAPHICS_TRAP_RET("Canvas.GetMonitorHeight: graphics support not compiled in", 0);
 }
 
 //=============================================================================

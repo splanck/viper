@@ -64,6 +64,10 @@ static vg_widget_vtable_t g_commandpalette_vtable = {.destroy = commandpalette_d
 // Fuzzy Matching
 //=============================================================================
 
+/// @brief Decode the next UTF-8 codepoint at @p *cursor, advancing it past
+///        the consumed bytes. Returns 0 at end of string, U+FFFD on a
+///        malformed/overlong/surrogate sequence (advancing one byte so the
+///        fuzzy matcher always makes forward progress).
 static uint32_t commandpalette_decode_utf8(const char **cursor) {
     const unsigned char *s = (const unsigned char *)*cursor;
     if (!s || !*s)
@@ -96,12 +100,16 @@ static uint32_t commandpalette_decode_utf8(const char **cursor) {
     return 0xFFFD;
 }
 
+/// @brief ASCII case-fold a codepoint (A-Z → a-z) for case-insensitive
+///        fuzzy matching; non-ASCII passes through unchanged.
 static uint32_t commandpalette_fold_codepoint(uint32_t cp) {
     if (cp >= 'A' && cp <= 'Z')
         return cp + ('a' - 'A');
     return cp;
 }
 
+/// @brief True if @p cp starts a new word (NUL, space, '_' or '-'); used to
+///        award the fuzzy matcher a bonus for word-initial character hits.
 static bool commandpalette_is_word_boundary(uint32_t cp) {
     return cp == 0 || cp == ' ' || cp == '_' || cp == '-';
 }

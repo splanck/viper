@@ -57,5 +57,6 @@ rig.Update()
 
 ## Notes
 
-- `ParticleSystem2D` and `Emitter2D` share the same implementation as `Viper.Game.ParticleEmitter`, including `DrawToPixels`.
+- `ParticleSystem2D` and `Emitter2D` share the same implementation as `Viper.Game.ParticleEmitter`, including `Destroy()` and `DrawToPixels`.
+- `Lighting2D` exposes the same lifecycle as `Viper.Game.Lighting2D`, including `Destroy()`.
 - `Lighting2D.AddTileLight` adds a screen-space light for the next `Draw` call and then consumes it, so add tile lights after `Update()` and before `Draw()` each frame.

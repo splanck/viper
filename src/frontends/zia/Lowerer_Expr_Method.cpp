@@ -82,6 +82,9 @@ std::string toLowerStr(const std::string &name) {
     return lower;
 }
 
+/// @brief Append @p typeName's field declarations (base-class fields first,
+///        then this class's) to @p out — gives the in-memory field order used
+///        when lowering method receivers / field access.
 void appendClassFieldDecls(Sema &sema,
                            const std::string &typeName,
                            std::vector<const FieldDecl *> &out) {

@@ -209,6 +209,9 @@ static bool extractDottedName(Expr *expr, std::string &out) {
     return false;
 }
 
+/// @brief Walk a `range.step(n).rev()`-style modifier chain back to its base
+///        Range, tallying `.step` calls in @p stepCount.
+/// @return true if @p expr is a (possibly modified) range expression.
 static bool inspectRangeModifierChain(const Expr *expr, unsigned &stepCount) {
     if (!expr)
         return false;
@@ -231,6 +234,8 @@ static bool inspectRangeModifierChain(const Expr *expr, unsigned &stepCount) {
     return false;
 }
 
+/// @brief Public wrapper over @ref inspectRangeModifierChain; optionally
+///        reports the number of `.step` modifiers via @p stepCountOut.
 static bool isRangeModifierChain(const Expr *expr, unsigned *stepCountOut = nullptr) {
     unsigned stepCount = 0;
     bool ok = inspectRangeModifierChain(expr, stepCount);
@@ -239,6 +244,9 @@ static bool isRangeModifierChain(const Expr *expr, unsigned *stepCountOut = null
     return ok;
 }
 
+/// @brief Flatten an identifier / dotted-field expression into its dotted
+///        type-name string (e.g. `Viper.GUI.Canvas`) in @p out.
+/// @return false if @p expr is not a pure name/field chain.
 static bool exprToTypeName(const Expr *expr, std::string &out) {
     if (!expr)
         return false;
@@ -259,6 +267,8 @@ static bool exprToTypeName(const Expr *expr, std::string &out) {
 
 static TypePtr exprToTypeNode(const Expr *expr);
 
+/// @brief Collect generic type-argument nodes from @p expr into @p out,
+///        flattening a tuple of args (`Foo[(A, B)]`) into separate entries.
 static void collectTypeArgNodes(const Expr *expr, std::vector<TypePtr> &out) {
     if (!expr)
         return;
@@ -275,6 +285,9 @@ static void collectTypeArgNodes(const Expr *expr, std::vector<TypePtr> &out) {
         out.push_back(std::move(typeNode));
 }
 
+/// @brief Reinterpret an expression that is syntactically a type (a name, a
+///        dotted name, or `Name[Args]`) as a TypeNode, for explicit
+///        type-argument syntax at call sites. Returns nullptr if not a type.
 static TypePtr exprToTypeNode(const Expr *expr) {
     if (!expr)
         return nullptr;
@@ -299,6 +312,9 @@ static TypePtr exprToTypeNode(const Expr *expr) {
     return nullptr;
 }
 
+/// @brief Bind generic @p typeParamName to @p argType during inference;
+///        an unknown arg is ignored. If already bound, succeeds only when the
+///        new binding is consistent with the existing one.
 static bool bindInferredType(const std::string &typeParamName,
                              TypeRef argType,
                              std::map<std::string, TypeRef> &inferredTypes) {
@@ -314,6 +330,10 @@ static bool bindInferredType(const std::string &typeParamName,
     return it->second && it->second->equals(*argType);
 }
 
+/// @brief Structurally match a generic parameter's declared type pattern
+///        @p paramNode against the concrete @p argType, binding any type
+///        parameters in @p typeParamNames into @p inferredTypes.
+/// @return false on a structural conflict that defeats inference.
 static bool inferTypeParamsFromPattern(const TypeNode *paramNode,
                                        TypeRef argType,
                                        const std::set<std::string> &typeParamNames,
@@ -417,10 +437,14 @@ static bool inferTypeParamsFromPattern(const TypeNode *paramNode,
     return true;
 }
 
+/// @brief True if @p calleeName is a Terminal text-output runtime (Say/Print)
+///        whose argument may be auto-stringified.
 bool isTerminalTextRuntime(std::string_view calleeName) {
     return calleeName == runtime::kTerminalSay || calleeName == runtime::kTerminalPrint;
 }
 
+/// @brief True if @p type can be implicitly converted to text for a Terminal
+///        Say/Print call (string and the scalar kinds with a string form).
 bool canAutoStringifyForTerminal(TypeRef type) {
     if (!type)
         return false;

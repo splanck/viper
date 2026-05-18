@@ -23,6 +23,8 @@ using il::core::Value;
 
 namespace {
 
+/// @brief True if @p type is stored inline by value (struct, fixed array, or
+///        tuple) rather than behind a heap pointer — affects copy/load lowering.
 bool isInlineAggregateType(TypeRef type) {
     return type && (type->kind == TypeKindSem::Struct || type->kind == TypeKindSem::FixedArray ||
                     type->kind == TypeKindSem::Tuple);

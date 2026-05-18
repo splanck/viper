@@ -509,11 +509,14 @@ class Lowerer {
     ///          where class A's methods reference class B declared later.
     void registerAllTypeLayouts(std::vector<DeclPtr> &declarations);
 
+    /// @brief Pre-register every enum's variant values before the main
+    ///        lowering pass, so methods can reference enum members defined
+    ///        later in the same file.
+    void registerAllEnumValues(std::vector<DeclPtr> &declarations);
     /// @brief Pre-register all `final` constant declarations before the main lowering pass.
     /// @details Ensures that `final` constants are available in globalConstants_ before any
     ///          class/function method bodies are lowered, fixing forward-reference issues
     ///          where an class method references a `final` defined later in the same file.
-    void registerAllEnumValues(std::vector<DeclPtr> &declarations);
     void registerAllFinalConstants(std::vector<DeclPtr> &declarations);
 
     /// @brief Register a single class type's field layout without lowering methods.

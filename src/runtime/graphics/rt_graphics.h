@@ -701,6 +701,12 @@ void rt_canvas_gradient_v(
 /// @brief Get the display scale factor (1.0 on standard, 2.0 on HiDPI/Retina).
 double rt_canvas_get_scale(void *canvas);
 
+/// @brief Get the window X position in screen coordinates.
+int64_t rt_canvas_get_window_x(void *canvas);
+
+/// @brief Get the window Y position in screen coordinates.
+int64_t rt_canvas_get_window_y(void *canvas);
+
 /// @brief Get the window position in screen coordinates.
 /// @param canvas Canvas handle.
 /// @param out_x Receives X coordinate.
@@ -761,6 +767,12 @@ void rt_canvas_prevent_close(void *canvas, int64_t prevent);
 
 /// @brief Get the monitor size in pixels.
 void rt_canvas_get_monitor_size(void *canvas, int64_t *out_w, int64_t *out_h);
+
+/// @brief Get the monitor width in pixels.
+int64_t rt_canvas_get_monitor_width(void *canvas);
+
+/// @brief Get the monitor height in pixels.
+int64_t rt_canvas_get_monitor_height(void *canvas);
 
 #ifdef __cplusplus
 }

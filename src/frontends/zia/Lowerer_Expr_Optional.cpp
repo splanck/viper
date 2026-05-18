@@ -28,6 +28,8 @@ using namespace runtime;
 
 namespace {
 
+/// @brief True if @p name is one of the size/length property spellings
+///        (Length/Len/Count/size, any case) treated as a count accessor.
 bool isCountLikeProperty(const std::string &name) {
     return name == "Length" || name == "length" || name == "Len" || name == "Count" ||
            name == "count" || name == "size";

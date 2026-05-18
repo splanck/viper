@@ -313,6 +313,7 @@ typedef struct {
     int64_t should_close;    ///< Close request flag
     vgfx_event_t last_event; ///< Last polled event for retrieval
     char *title;             ///< Cached window title (heap-allocated, freed in finalizer)
+    size_t title_len;        ///< Byte length of cached title; permits embedded NULs in GetTitle()
     int64_t last_flip_us;    ///< Monotonic time (microseconds) of last Flip()
     int64_t delta_time_ms;   ///< Milliseconds elapsed between the last two Flip() calls
     int64_t dt_max_ms;       ///< Maximum delta time clamp (0 = no clamping)

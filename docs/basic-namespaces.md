@@ -1049,6 +1049,9 @@ The Graphics namespace provides 2D rendering, image manipulation, and game devel
     - `BlitRegion(I64 x, I64 y, PIXELS src, I64 sx, I64 sy, I64 sw, I64 sh) -> VOID` — Draw region
     - `GradientH(I64 x, I64 y, I64 w, I64 h, I64 c1, I64 c2) -> VOID` — Horizontal gradient
     - `GradientV(I64 x, I64 y, I64 w, I64 h, I64 c1, I64 c2) -> VOID` — Vertical gradient
+    - `GetWindowX() -> I64`, `GetWindowY() -> I64` — Current window position in screen coordinates
+    - `SetPosition(I64 x, I64 y) -> VOID` — Move the window
+    - `GetMonitorWidth() -> I64`, `GetMonitorHeight() -> I64` — Current monitor size in pixels
     - `Poll() -> I64` — Process events, return event type
     - `KeyHeld(I64 keycode) -> I64` — Check if key is held down
     - `Flip() -> VOID` — Present frame and limit FPS
@@ -1061,7 +1064,7 @@ The Graphics namespace provides 2D rendering, image manipulation, and game devel
     - `GetR(I64 color) -> I64` — Extract red component
     - `GetG(I64 color) -> I64` — Extract green component
     - `GetB(I64 color) -> I64` — Extract blue component
-    - `GetA(I64 color) -> I64` — Extract alpha component
+    - `GetA(I64 color) -> I64` — Extract stored alpha byte. `Color.RGB()` has no stored alpha, so this returns `0`; drawing APIs treat RGB colors as opaque.
     - `Lerp(I64 c1, I64 c2, I64 t) -> I64` — Linear interpolation (t:0-100)
     - `Brighten(I64 color, I64 amount) -> I64` — Increase brightness
     - `Darken(I64 color, I64 amount) -> I64` — Decrease brightness
@@ -1097,9 +1100,15 @@ The Graphics namespace provides 2D rendering, image manipulation, and game devel
     - `Blur(I64 radius) -> PIXELS` — Apply box blur (radius 1-10)
     - `SaveBmp(STRING path) -> I64` — Save as BMP file
     - `ToBytes() -> BYTES` — Get raw pixel data
+- Static methods:
+    - `FromBytes(I64 width, I64 height, BYTES bytes) -> PIXELS` — Create from row-major RGBA bytes
+    - `Load(STRING path) -> PIXELS` — Load PNG/JPEG/BMP/GIF by extension
+    - `LoadBmp(STRING path) -> PIXELS`, `LoadPng(STRING path) -> PIXELS`, `LoadJpeg(STRING path) -> PIXELS`, `LoadGif(STRING path) -> PIXELS` — Format-specific loaders
 
 **Viper.Graphics.Sprite** — Animated sprite for 2D games:
 - Ctor: `NEW(PIXELS pixels)` — Create sprite from image
+- Static methods:
+    - `FromFile(STRING path) -> SPRITE` — Load a sprite from BMP, PNG, JPEG, or GIF
 - Properties:
     - `X -> I64` — X position
     - `Y -> I64` — Y position
@@ -1140,6 +1149,12 @@ The Graphics namespace provides 2D rendering, image manipulation, and game devel
     - `FillRect(I64 x, I64 y, I64 w, I64 h, I64 tileIndex) -> VOID` — Fill region
     - `Draw(CANVAS canvas, I64 offsetX, I64 offsetY) -> VOID` — Draw entire map
     - `DrawRegion(CANVAS c, I64 ox, I64 oy, I64 vx, I64 vy, I64 vw, I64 vh) -> VOID` — Draw visible region
+    - `LoadFromFile(STRING path) -> TILEMAP` — Load JSON tilemap data
+    - `LoadCSV(STRING path, I64 tileWidth, I64 tileHeight) -> TILEMAP` — Load a CSV tile layer
+    - `SetTileAnim(I64 baseTile, I64 startTile, I64 frameCount) -> VOID` — Register sequential tile animation
+    - `SetTileAnimFrame(I64 baseTile, I64 frame, I64 tileId) -> VOID` — Override one animation frame
+    - `UpdateAnims(I64 deltaMs) -> VOID` — Advance tile animation state
+    - `ResolveAnimTile(I64 tileId) -> I64` — Resolve current visible tile for an animated base tile
     - `ToTileX(I64 pixelX) -> I64` — Convert pixel X to tile X
     - `ToTileY(I64 pixelY) -> I64` — Convert pixel Y to tile Y
     - `ToPixelX(I64 tileX) -> I64` — Convert tile X to pixel X

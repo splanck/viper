@@ -524,6 +524,13 @@ static void test_from_bytes() {
     printf("test_from_bytes: PASSED\n");
 }
 
+static void test_from_bytes_rejects_wrong_object() {
+    void *not_bytes = rt_pixels_new(1, 1);
+    assert(not_bytes != nullptr);
+    EXPECT_TRAP((void)rt_pixels_from_bytes(1, 1, not_bytes));
+    printf("test_from_bytes_rejects_wrong_object: PASSED\n");
+}
+
 static void test_round_trip() {
     void *original = rt_pixels_new(10, 10);
 
@@ -723,6 +730,36 @@ static void test_bmp_odd_dimensions() {
     unlink(bmppath);
 
     printf("test_bmp_odd_dimensions: PASSED\n");
+}
+
+static void test_bmp_load_rejects_invalid_header_extents() {
+    void *p = rt_pixels_new(1, 1);
+    assert(p != nullptr);
+    rt_pixels_set(p, 0, 0, 0x123456FF);
+
+    const char *bmppath = "/tmp/viper_test_bad_bmp_header.bmp";
+    rt_string path = rt_string_from_bytes(bmppath, strlen(bmppath));
+    assert(rt_pixels_save_bmp(p, path) == 1);
+
+    std::vector<uint8_t> data;
+    assert(test_read_file(bmppath, data));
+    assert(data.size() >= 54);
+
+    data[10] = data[11] = data[12] = data[13] = 0; // data_offset before headers
+    assert(test_write_file(bmppath, data));
+    assert(rt_pixels_load_bmp(path) == nullptr);
+
+    assert(rt_pixels_save_bmp(p, path) == 1);
+    assert(test_read_file(bmppath, data));
+    assert(data.size() >= 54);
+    data[2] = 54;
+    data[3] = data[4] = data[5] = 0; // declared file_size too small for pixel row
+    assert(test_write_file(bmppath, data));
+    assert(rt_pixels_load_bmp(path) == nullptr);
+
+    unlink(bmppath);
+    rt_string_unref(path);
+    printf("test_bmp_load_rejects_invalid_header_extents: PASSED\n");
 }
 
 static void test_png_load_rejects_bad_chunk_crc() {
@@ -1584,6 +1621,7 @@ int main() {
     // Byte conversion
     test_to_bytes();
     test_from_bytes();
+    test_from_bytes_rejects_wrong_object();
     test_round_trip();
 
     // Edge cases
@@ -1595,6 +1633,7 @@ int main() {
     test_bmp_load_invalid_path();
     test_bmp_save_null_inputs();
     test_bmp_odd_dimensions();
+    test_bmp_load_rejects_invalid_header_extents();
     test_png_load_rejects_bad_chunk_crc();
     test_png_load_rejects_bad_zlib_adler();
     test_png_truecolor_trns_transparency();

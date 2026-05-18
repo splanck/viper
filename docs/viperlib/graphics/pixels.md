@@ -66,7 +66,7 @@ Creates a new pixel buffer initialized to transparent black (0x00000000). Negati
 
 | Method                            | Signature                         | Description                                           |
 |-----------------------------------|-----------------------------------|-------------------------------------------------------|
-| `FromBytes(width, height, bytes)` | `Pixels(Integer, Integer, Bytes)` | Create from raw bytes (RGBA, row-major); returns NULL on invalid dimensions or byte count |
+| `FromBytes(width, height, bytes)` | `Pixels(Integer, Integer, Bytes)` | Create from raw bytes (RGBA, row-major); traps on non-Bytes input or insufficient byte count |
 | `LoadBmp(path)`                   | `Pixels(String)`                  | Load from a 24-bit BMP file. Returns null on failure  |
 | `LoadPng(path)`                   | `Pixels(String)`                  | Load from a PNG file. Returns null on failure          |
 | `LoadJpeg(path)`                  | `Pixels(String)`                  | Load from a JPEG file. Returns null on failure         |
@@ -74,7 +74,7 @@ Creates a new pixel buffer initialized to transparent black (0x00000000). Negati
 | `Load(path)`                      | `Pixels(String)`                  | Auto-detect format (PNG/JPEG/BMP/GIF) and load. Returns null on failure |
 
 `LoadPng` rejects malformed chunk order, invalid IHDR compression/filter/interlace methods, indexed images without a palette, palette transparency entries that exceed the palette size, and PNG files without IEND. Sub-byte grayscale transparency compares the raw sample value from `tRNS`. `LoadBmp` uses checked file offsets when seeking to pixel data.
-`ToBytes()` and `FromBytes()` always use canonical `RR GG BB AA` bytes for each pixel, independent of CPU endianness.
+`ToBytes()` and `FromBytes()` always use canonical `RR GG BB AA` bytes for each pixel, independent of CPU endianness. `FromBytes` requires an actual `Viper.Collections.Bytes` object.
 JPEG loading validates component, quantization, Huffman, scan, and chroma sampling tables before decode, and applies EXIF orientation without leaking the pre-rotated image.
 
 ### Drawing Primitives
@@ -644,13 +644,19 @@ Efficient tile-based 2D map rendering for platformers, RPGs, and strategy games.
 | `GetCollision(tileId)`                         | `Integer(Integer)`                           | Get collision type for a tile ID; tile `0` always reports `0` |
 | `GetTile(x, y)`                                | `Integer(Integer, Integer)`                  | Get tile index at position                            |
 | `IsSolidAt(pixelX, pixelY)`                    | `Integer(Integer, Integer)`                  | Check if a pixel position is on a solid tile          |
+| `LoadCSV(path, tileWidth, tileHeight)`          | `Tilemap(String, Integer, Integer)`          | Load a CSV tile layer into a new tilemap              |
+| `LoadFromFile(path)`                           | `Tilemap(String)`                            | Load a saved JSON tilemap                             |
+| `ResolveAnimTile(tileId)`                      | `Integer(Integer)`                           | Return the current visible tile for an animated base tile |
 | `SetCollision(tileId, collType)`               | `Void(Integer, Integer)`                     | Set collision type for a tile ID (0=none, 1=solid, 2=one_way_up); tile `0` remains empty |
+| `SetTileAnim(baseTile, startTile, frameCount)`  | `Void(Integer, Integer, Integer)`            | Register a sequential tile animation                  |
+| `SetTileAnimFrame(baseTile, frame, tileId)`     | `Void(Integer, Integer, Integer)`            | Override one frame in a tile animation                |
 | `SetTile(x, y, index)`                         | `Void(Integer, Integer, Integer)`            | Set tile at position (0 = empty)                      |
 | `SetTileset(pixels)`                           | `Void(Pixels)`                               | Set the tileset image (tiles arranged in grid); invalid non-Pixels handles are ignored |
 | `ToPixelX(tileX)`                              | `Integer(Integer)`                           | Convert tile X to pixel X                             |
 | `ToPixelY(tileY)`                              | `Integer(Integer)`                           | Convert tile Y to pixel Y                             |
 | `ToTileX(pixelX)`                              | `Integer(Integer)`                           | Convert pixel X to tile X                             |
 | `ToTileY(pixelY)`                              | `Integer(Integer)`                           | Convert pixel Y to tile Y                             |
+| `UpdateAnims(deltaMs)`                         | `Void(Integer)`                              | Advance tile animation timers                         |
 
 Advanced runtime support also includes multi-layer tilemaps, per-layer tilesets, JSON save/load, auto-tiling rules, per-tile properties, and tile animation state. Layer names are limited to the fixed runtime name slot (31 bytes); overlong names are rejected without adding a layer. Tileset assignment requires real `Pixels` handles for both map-level and per-layer tilesets. `SaveToFile` / `LoadFromFile` preserve layer visibility, collision-layer selection, collision types, tile properties, auto-tile rules, and animation progress. Saves report failure on write or close errors. JSON loading ignores layers beyond the runtime layer cap, normalizes negative saved animation frames, rejects overlong CSV rows instead of truncating them, clamps CSV tile values that exceed the int64 range, and applies duplicate animation records to the matching base tile instead of the last parsed animation.
 

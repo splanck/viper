@@ -181,6 +181,7 @@ class BytecodeCompiler {
 
     [[noreturn]] void failCurrent(std::string code, std::string message);
 
+    /// @brief Fail the compile unless @p instr has at least @p minCount operands.
     void requireOperandCount(const il::core::Instr &instr, size_t minCount);
 
     /// @brief Emit bytecode to push an IL value onto the operand stack.
@@ -197,6 +198,8 @@ class BytecodeCompiler {
     /// @param instr The pre-encoded 32-bit instruction word.
     void emit(uint32_t instr);
 
+    /// @brief Intern @p loc's source file; returns a 1-based table index
+    ///        (0 = no file).
     uint32_t sourceFileTableEntry(il::support::SourceLoc loc);
 
     /// @brief Emit a zero-argument bytecode instruction.
@@ -223,6 +226,8 @@ class BytecodeCompiler {
     /// @param arg The signed 16-bit argument.
     void emitI16(BCOpcode op, int16_t arg);
 
+    /// @brief Emit a constant-pool load (16-bit @p index); fails if the pool
+    ///        named @p poolName exceeds 65535 entries.
     void emitPoolLoad(BCOpcode op, uint32_t index, std::string_view poolName);
 
     /// @brief Emit a bytecode instruction with two unsigned 8-bit arguments.

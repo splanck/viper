@@ -93,6 +93,10 @@
 
 namespace il::frontends::zia {
 
+/// @brief Heuristic: should a plain-object runtime @p method be treated as
+///        returning the owner type? Accessor-style names (Get*/Keys/Values/
+///        Pop/Peek/First/Last/Find/…) return an element instead, so they are
+///        excluded; everything else infers an owner-typed return.
 static bool shouldInferOwnerReturnForPlainObject(const il::runtime::RuntimeMethod &method) {
     if (!method.name)
         return true;
@@ -111,6 +115,8 @@ static bool shouldInferOwnerReturnForPlainObject(const il::runtime::RuntimeMetho
     return true;
 }
 
+/// @brief True if runtime @p method's target function belongs to runtime
+///        class @p className (matches the "<class>." prefix on the target).
 static bool methodTargetBelongsToClass(const il::runtime::RuntimeMethod &method,
                                        const char *className) {
     if (!method.target || !className)

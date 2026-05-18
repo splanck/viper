@@ -104,6 +104,9 @@ bool vg_statusbar_item_is_live(const vg_statusbar_item_t *item) {
     return item && item->magic == VG_STATUSBAR_ITEM_MAGIC && item->owner != NULL;
 }
 
+/// @brief Tear down @p item's owned strings and park it on @p sb's retired
+///        list for deferred freeing (so removal during event dispatch can't
+///        free memory still referenced up the call stack).
 static void retire_item(vg_statusbar_t *sb, vg_statusbar_item_t *item) {
     if (!sb || !item)
         return;
@@ -119,6 +122,7 @@ static void retire_item(vg_statusbar_t *sb, vg_statusbar_item_t *item) {
     sb->retired_items = item;
 }
 
+/// @brief Drain and free every status-bar item on @p sb's retired list.
 static void free_retired_items(vg_statusbar_t *sb) {
     if (!sb)
         return;

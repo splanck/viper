@@ -83,6 +83,7 @@ static void rt_canvas_finalize(void *obj) {
         free(canvas->title);
         canvas->title = NULL;
     }
+    canvas->title_len = 0;
 }
 
 /// @brief Convert a physical pixel position from a vgfx event into logical mouse coords.
@@ -129,6 +130,7 @@ void *rt_canvas_new(rt_string title, int64_t width, int64_t height) {
     canvas->gfx_win = NULL;
     canvas->should_close = 0;
     canvas->title = NULL;
+    canvas->title_len = 0;
     canvas->last_event.type = VGFX_EVENT_NONE;
     canvas->last_flip_us = 0;
     canvas->delta_time_ms = 0;
@@ -144,10 +146,17 @@ void *rt_canvas_new(rt_string title, int64_t width, int64_t height) {
     params.width = win_width;
     params.height = win_height;
     if (title) {
-        size_t title_len = (size_t)rt_str_len(title);
+        int64_t raw_title_len = rt_str_len(title);
         const char *cstr = rt_string_cstr(title);
+        if (raw_title_len < 0 || !cstr || (uint64_t)raw_title_len > (uint64_t)SIZE_MAX - 1u) {
+            if (rt_obj_release_check0(canvas))
+                rt_obj_free(canvas);
+            rt_trap("Canvas.New: invalid title");
+            return NULL;
+        }
+        size_t title_len = (size_t)raw_title_len;
         canvas->title = (char *)malloc(title_len + 1);
-        if (!canvas->title || !cstr) {
+        if (!canvas->title) {
             free(canvas->title);
             canvas->title = NULL;
             if (rt_obj_release_check0(canvas))
@@ -157,6 +166,7 @@ void *rt_canvas_new(rt_string title, int64_t width, int64_t height) {
         }
         memcpy(canvas->title, cstr, title_len);
         canvas->title[title_len] = '\0';
+        canvas->title_len = title_len;
         params.title = canvas->title;
     }
 
@@ -503,15 +513,20 @@ void rt_canvas_clear_clip_rect(void *canvas_ptr) {
 void rt_canvas_set_title(void *canvas_ptr, rt_string title) {
     rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
     if (canvas && canvas->gfx_win && title) {
+        int64_t raw_title_len = rt_str_len(title);
         const char *cstr = rt_string_cstr(title);
-        if (!cstr)
+        if (raw_title_len < 0 || !cstr || (uint64_t)raw_title_len > (uint64_t)SIZE_MAX - 1u)
             return;
-        char *new_title = strdup(cstr);
+        size_t title_len = (size_t)raw_title_len;
+        char *new_title = (char *)malloc(title_len + 1);
         if (!new_title)
             return;
+        memcpy(new_title, cstr, title_len);
+        new_title[title_len] = '\0';
         vgfx_set_title(canvas->gfx_win, new_title);
         free(canvas->title);
         canvas->title = new_title;
+        canvas->title_len = title_len;
     }
 }
 
@@ -521,7 +536,7 @@ void rt_canvas_set_title(void *canvas_ptr, rt_string title) {
 rt_string rt_canvas_get_title(void *canvas_ptr) {
     rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
     if (canvas && canvas->title)
-        return rt_string_from_bytes(canvas->title, strlen(canvas->title));
+        return rt_string_from_bytes(canvas->title, canvas->title_len);
     return rt_string_from_bytes("", 0);
 }
 
@@ -666,6 +681,20 @@ double rt_canvas_get_scale(void *canvas_ptr) {
     return (double)vgfx_window_get_scale(canvas->gfx_win);
 }
 
+/// @brief Get the window X position as a runtime-callable scalar.
+int64_t rt_canvas_get_window_x(void *canvas_ptr) {
+    int64_t x = 0;
+    rt_canvas_get_position(canvas_ptr, &x, NULL);
+    return x;
+}
+
+/// @brief Get the window Y position as a runtime-callable scalar.
+int64_t rt_canvas_get_window_y(void *canvas_ptr) {
+    int64_t y = 0;
+    rt_canvas_get_position(canvas_ptr, NULL, &y);
+    return y;
+}
+
 /// @brief Get the window position on screen in desktop coordinates.
 /// @param canvas_ptr Canvas handle. NULL-safe.
 /// @param out_x Pointer to receive X position. NULL-safe (ignored if NULL).
@@ -802,6 +831,20 @@ void rt_canvas_get_monitor_size(void *canvas_ptr, int64_t *out_w, int64_t *out_h
         *out_w = (int64_t)w;
     if (out_h)
         *out_h = (int64_t)h;
+}
+
+/// @brief Get the current monitor width as a runtime-callable scalar.
+int64_t rt_canvas_get_monitor_width(void *canvas_ptr) {
+    int64_t w = 0;
+    rt_canvas_get_monitor_size(canvas_ptr, &w, NULL);
+    return w;
+}
+
+/// @brief Get the current monitor height as a runtime-callable scalar.
+int64_t rt_canvas_get_monitor_height(void *canvas_ptr) {
+    int64_t h = 0;
+    rt_canvas_get_monitor_size(canvas_ptr, NULL, &h);
+    return h;
 }
 
 #else

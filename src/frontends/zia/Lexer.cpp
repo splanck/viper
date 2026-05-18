@@ -366,10 +366,15 @@ inline bool isIdentifierContinue(char c) {
     return isLetter(c) || isDigit(c) || c == '_';
 }
 
+/// @brief True if @p c is the digit-group separator ('_') allowed in numeric
+///        literals (e.g. 1_000_000).
 inline bool isNumericSeparator(char c) {
     return c == '_';
 }
 
+/// @brief Validate '_' placement in a decimal literal: each separator must sit
+///        between two digits (no leading/trailing/double underscore).
+/// @return true if all separators are well-placed.
 bool validateNumericSeparators(std::string_view text, size_t start = 0) {
     for (size_t i = start; i < text.size(); ++i) {
         if (text[i] != '_')
@@ -382,6 +387,8 @@ bool validateNumericSeparators(std::string_view text, size_t start = 0) {
     return true;
 }
 
+/// @brief Return @p text (from @p start) with all '_' digit separators
+///        stripped, yielding the bare numeric string for value parsing.
 std::string removeNumericSeparators(std::string_view text, size_t start = 0) {
     std::string result;
     result.reserve(text.size() - start);
@@ -392,6 +399,10 @@ std::string removeNumericSeparators(std::string_view text, size_t start = 0) {
     return result;
 }
 
+/// @brief Validate '_' placement in a based integer literal (0x.., 0b.., 0o..).
+/// @param digitStart      Index of the first digit after the base prefix.
+/// @param isDigitForBase  Predicate identifying a valid digit for the base.
+/// @return true if every separator is between two base-valid digits.
 bool validateBasedIntegerSeparators(std::string_view text,
                                     size_t digitStart,
                                     bool (*isDigitForBase)(char)) {

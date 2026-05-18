@@ -13,6 +13,7 @@ last-verified: 2026-04-17
 ## Contents
 
 - [Viper.Graphics.BitmapFont](#vipergraphicsbitmapfont)
+- [Viper.Graphics.SpriteFont](#vipergraphicsspritefont)
 - [Canvas Text Methods](#canvas-text-methods-with-custom-font)
 - [Supported Formats](#supported-formats)
 - [Usage Example](#usage-example)
@@ -51,6 +52,12 @@ Measurement and Canvas text helpers validate that the supplied handle is a `Bitm
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `TextWidth(text)` | `Integer(String)` | Measure rendered pixel width of a UTF-8 string, including glyph overhangs |
+
+---
+
+## Viper.Graphics.SpriteFont
+
+`SpriteFont` is the game-facing alias for `BitmapFont`. It exposes the same loaders, properties, and `TextWidth(text)` method, but `SpriteFont.LoadBDF(path)` and `SpriteFont.LoadPSF(path)` are typed as returning `SpriteFont`.
 
 ---
 

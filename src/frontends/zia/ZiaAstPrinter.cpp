@@ -72,6 +72,8 @@ static std::string locStr(const SourceLoc &loc) {
 // Operator name helpers
 // ---------------------------------------------------------------------------
 
+/// @brief Source spelling of a binary operator (e.g. Add → "+"); "?" if
+///        unknown. Used to render BinaryExpr nodes in the AST dump.
 static const char *binaryOpName(BinaryOp op) {
     switch (op) {
         case BinaryOp::Add:
@@ -116,6 +118,8 @@ static const char *binaryOpName(BinaryOp op) {
     return "?";
 }
 
+/// @brief Source spelling of a unary operator (e.g. Neg → "-"); "?" if
+///        unknown. Used to render UnaryExpr nodes in the AST dump.
 static const char *unaryOpName(UnaryOp op) {
     switch (op) {
         case UnaryOp::Neg:
@@ -134,6 +138,8 @@ static const char *unaryOpName(UnaryOp op) {
 // Type printing
 // ---------------------------------------------------------------------------
 
+/// @brief Recursively print a type node (named/generic/optional/…) to the
+///        AST dump via @p p, one indented line per structural part.
 static void printType(const TypeNode &type, Printer &p) {
     switch (type.kind) {
         case TypeKind::Named: {
@@ -220,6 +226,7 @@ static void printType(const TypeNode &type, Printer &p) {
 // Pattern printing (for match arms)
 // ---------------------------------------------------------------------------
 
+/// @brief Print a match-arm pattern (literal/binding/tuple/enum/…) to the dump.
 static void printPattern(const MatchArm::Pattern &pat, Printer &p) {
     switch (pat.kind) {
         case MatchArm::Pattern::Kind::Wildcard:
@@ -284,6 +291,7 @@ static void printPattern(const MatchArm::Pattern &pat, Printer &p) {
     }
 }
 
+/// @brief Print all arms of a `match` (pattern, optional guard, body) to the dump.
 static void printMatchArms(const std::vector<MatchArm> &arms, Printer &p) {
     p.line("Arms:");
     p.push();
@@ -310,6 +318,7 @@ static void printMatchArms(const std::vector<MatchArm> &arms, Printer &p) {
 // Expression printing
 // ---------------------------------------------------------------------------
 
+/// @brief Recursively print an expression subtree to the AST dump.
 static void printExpr(const Expr &expr, Printer &p) {
     switch (expr.kind) {
         // -- Literals -------------------------------------------------------
@@ -849,6 +858,7 @@ static void printExpr(const Expr &expr, Printer &p) {
 // Statement printing
 // ---------------------------------------------------------------------------
 
+/// @brief Recursively print a statement subtree to the AST dump.
 static void printStmt(const Stmt &stmt, Printer &p) {
     switch (stmt.kind) {
         case StmtKind::Block: {
@@ -1117,6 +1127,7 @@ static void printStmt(const Stmt &stmt, Printer &p) {
 // Helpers for printing common declaration parts
 // ---------------------------------------------------------------------------
 
+/// @brief Print a function/method parameter list (name, type, default) to the dump.
 static void printParams(const std::vector<Param> &params, Printer &p) {
     if (params.empty())
         return;
@@ -1143,6 +1154,7 @@ static void printParams(const std::vector<Param> &params, Printer &p) {
     p.pop();
 }
 
+/// @brief Print a declaration's generic type-parameter names to the dump.
 static void printGenericParams(const std::vector<std::string> &genericParams, Printer &p) {
     if (genericParams.empty())
         return;
@@ -1156,6 +1168,8 @@ static void printGenericParams(const std::vector<std::string> &genericParams, Pr
     p.line(gp);
 }
 
+/// @brief Print generic type parameters with their `: Constraint` bounds to
+///        the dump.
 static void printGenericParamsWithConstraints(const std::vector<std::string> &genericParams,
                                               const std::vector<std::string> &constraints,
                                               Printer &p) {
@@ -1173,6 +1187,7 @@ static void printGenericParamsWithConstraints(const std::vector<std::string> &ge
     p.line(gp);
 }
 
+/// @brief Print a type's implemented-interface list to the dump.
 static void printInterfaces(const std::vector<std::string> &interfaces, Printer &p) {
     if (interfaces.empty())
         return;
@@ -1186,10 +1201,12 @@ static void printInterfaces(const std::vector<std::string> &interfaces, Printer 
     p.line(ifaces);
 }
 
+/// @brief Print a declaration's public/private visibility to the dump.
 static void printVisibility(Visibility vis, Printer &p) {
     p.line(vis == Visibility::Public ? "Visibility: public" : "Visibility: private");
 }
 
+/// @brief Print a function/method body block (if present) to the dump.
 static void printBody(const StmtPtr &body, Printer &p) {
     if (body) {
         p.line("Body:");
@@ -1199,6 +1216,7 @@ static void printBody(const StmtPtr &body, Printer &p) {
     }
 }
 
+/// @brief Print a function/method declared return type (if present) to the dump.
 static void printReturnType(const TypePtr &retType, Printer &p) {
     if (retType) {
         p.line("ReturnType:");
@@ -1208,6 +1226,7 @@ static void printReturnType(const TypePtr &retType, Printer &p) {
     }
 }
 
+/// @brief Print a type's member declarations (fields/methods) to the dump.
 static void printMembers(const std::vector<DeclPtr> &members, Printer &p) {
     if (members.empty())
         return;
@@ -1226,6 +1245,8 @@ static void printMembers(const std::vector<DeclPtr> &members, Printer &p) {
 // Declaration printing
 // ---------------------------------------------------------------------------
 
+/// @brief Recursively print a declaration (function/type/global/…) and its
+///        children to the AST dump.
 static void printDecl(const Decl &decl, Printer &p) {
     switch (decl.kind) {
         case DeclKind::Module: {

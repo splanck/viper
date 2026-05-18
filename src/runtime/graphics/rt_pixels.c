@@ -457,6 +457,10 @@ void *rt_pixels_from_bytes(int64_t width, int64_t height, void *bytes) {
         rt_trap("Pixels.FromBytes: null bytes");
         return NULL;
     }
+    if (!rt_bytes_is_bytes(bytes)) {
+        rt_trap("Pixels.FromBytes: invalid bytes");
+        return NULL;
+    }
 
     if (width < 0 || height < 0)
         return NULL;
@@ -479,6 +483,12 @@ void *rt_pixels_from_bytes(int64_t width, int64_t height, void *bytes) {
 
     if (required_bytes > 0 && p->data) {
         const uint8_t *src = rt_bytes_data_const(bytes);
+        if (!src) {
+            if (rt_obj_release_check0(p))
+                rt_obj_free(p);
+            rt_trap("Pixels.FromBytes: invalid bytes");
+            return NULL;
+        }
         int64_t count = width * height;
         for (int64_t i = 0; i < count; ++i) {
             p->data[i] = ((uint32_t)src[i * 4 + 0] << 24) | ((uint32_t)src[i * 4 + 1] << 16) |

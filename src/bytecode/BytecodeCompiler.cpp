@@ -40,6 +40,9 @@ class BytecodeCompileFailure final : public std::exception {
     il::support::Diag diag_;
 };
 
+/// @brief Byte size reserved for a global of the given IL type kind.
+/// @details I1→1, I16→2, I32→4, Void→0; all 64-bit kinds (I64/F64/Ptr/Str/
+///          Error/ResumeTok) and any unknown kind reserve 8 bytes.
 uint32_t bytecodeGlobalSize(il::core::Type::Kind kind) {
     using Kind = il::core::Type::Kind;
     switch (kind) {
@@ -62,6 +65,8 @@ uint32_t bytecodeGlobalSize(il::core::Type::Kind kind) {
     return 8;
 }
 
+/// @brief Natural alignment (bytes) for a global of the given IL type kind;
+///        I1→1, I16→2, I32→4, everything else 8.
 uint32_t bytecodeGlobalAlign(il::core::Type::Kind kind) {
     using Kind = il::core::Type::Kind;
     switch (kind) {
@@ -76,12 +81,18 @@ uint32_t bytecodeGlobalAlign(il::core::Type::Kind kind) {
     }
 }
 
+/// @brief Serialize @p value into @p dst as its raw little-endian-on-host
+///        byte image (sizes @p dst to sizeof(T) first). Used to bake a
+///        scalar global's compile-time initializer into the module.
 template <typename T>
 void storeGlobalInitializer(std::vector<uint8_t> &dst, T value) {
     dst.resize(sizeof(T));
     std::memcpy(dst.data(), &value, sizeof(T));
 }
 
+/// @brief Parse a global's textual integer initializer (auto-base: 0x/0/dec).
+/// @throws std::invalid_argument if the whole string is not consumed (trailing
+///         junk), so a malformed initializer becomes a clean compile failure.
 int64_t parseI64Initializer(const il::core::Global &global) {
     size_t consumed = 0;
     int64_t value = std::stoll(global.init, &consumed, 0);
@@ -90,6 +101,9 @@ int64_t parseI64Initializer(const il::core::Global &global) {
     return value;
 }
 
+/// @brief Parse a global's textual floating-point initializer.
+/// @throws std::invalid_argument on trailing characters (see
+///         @ref parseI64Initializer).
 double parseF64Initializer(const il::core::Global &global) {
     size_t consumed = 0;
     double value = std::stod(global.init, &consumed);
@@ -104,6 +118,11 @@ struct ArrayFastOpcode {
     bool hasReturn;
 };
 
+/// @brief Map a runtime array-accessor callee name to its fast-path bytecode
+///        opcode (operand count + whether it returns a value), or nullopt if
+///        @p callee is not one of the recognized rt_arr_*_fast helpers.
+/// @details Lets the compiler replace a generic CALL_NATIVE to a hot array
+///          getter/setter with a single dedicated opcode the VM inlines.
 std::optional<ArrayFastOpcode> arrayFastOpcodeFor(std::string_view callee) {
     if (callee == "rt_arr_i32_get_fast")
         return ArrayFastOpcode{BCOpcode::ARR_I32_GET_FAST, 2, true};
@@ -121,7 +140,10 @@ std::optional<ArrayFastOpcode> arrayFastOpcodeFor(std::string_view callee) {
 }
 } // namespace
 
-/// @brief Compile.
+/// @brief Compile an IL module to a bytecode module (throwing wrapper).
+/// @details Convenience over @ref compileChecked; turns a failure diagnostic
+///          into a std::runtime_error. Prefer compileChecked when the caller
+///          wants to report the diagnostic instead of unwinding.
 BytecodeModule BytecodeCompiler::compile(const il::core::Module &ilModule) {
     auto result = compileChecked(ilModule);
     if (!result) {
@@ -130,6 +152,18 @@ BytecodeModule BytecodeCompiler::compile(const il::core::Module &ilModule) {
     return std::move(result.value());
 }
 
+/// @brief Compile an IL module to bytecode, returning a diagnostic on failure.
+/// @param ilModule       The IL module to lower.
+/// @param sourceManager  Optional; supplies source file/line for diagnostics
+///                        and emitted LINE opcodes.
+/// @param assumeVerified When false, the IL is run through the Verifier first
+///                        and any failure is wrapped as a "bytecode preflight
+///                        failed" diagnostic. Pass true only when the caller
+///                        has already verified the module.
+/// @details Function names are pre-registered before lowering so recursive and
+///          forward calls resolve; globals are registered, then each function
+///          is compiled. Compile failures unwind via BytecodeCompileFailure
+///          and are returned as the Expected's error.
 il::support::Expected<BytecodeModule> BytecodeCompiler::compileChecked(
     const il::core::Module &ilModule,
     const il::support::SourceManager *sourceManager,
@@ -176,6 +210,11 @@ il::support::Expected<BytecodeModule> BytecodeCompiler::compileChecked(
     return il::support::Expected<BytecodeModule>(std::move(module_));
 }
 
+/// @brief Assign every IL global a slot and bake its compile-time initializer.
+/// @details Enforces the 65535-global limit and rejects duplicates and void
+///          globals. String globals keep their text init; scalar globals get
+///          their initializer parsed and stored as a raw byte image (an
+///          invalid initializer is a clean V-BC-GLOBAL-INIT compile failure).
 void BytecodeCompiler::registerGlobals(const il::core::Module &module) {
     if (module.globals.size() > std::numeric_limits<uint16_t>::max()) {
         fail({}, "V-BC-GLOBAL-TABLE", "bytecode supports at most 65535 globals");
@@ -249,6 +288,9 @@ void BytecodeCompiler::registerGlobals(const il::core::Module &module) {
     }
 }
 
+/// @brief Emit LOAD_GLOBAL_ADDR for global @p name and push its address.
+/// @details Fails the compile (V-BC-UNKNOWN-GLOBAL) if the name is unknown, or
+///          V-BC-GLOBAL-TABLE if its index exceeds the 16-bit operand width.
 void BytecodeCompiler::emitGlobalAddress(std::string_view name, il::support::SourceLoc loc) {
     auto it = module_.globalIndex.find(std::string(name));
     if (it == module_.globalIndex.end()) {
@@ -262,7 +304,11 @@ void BytecodeCompiler::emitGlobalAddress(std::string_view name, il::support::Sou
     pushStack();
 }
 
-/// @brief Compile Function.
+/// @brief Lower one IL function to a BytecodeFunction and add it to the module.
+/// @details Resets per-function state, pre-scans eh.push targets so real
+///          handler blocks can be told apart from forwarding blocks, builds
+///          the SSA→locals map, linearizes the CFG, compiles each block,
+///          back-patches branch offsets, and records the max stack depth.
 void BytecodeCompiler::compileFunction(const il::core::Function &fn) {
     // Create new bytecode function
     BytecodeFunction bcFunc;
@@ -318,7 +364,12 @@ void BytecodeCompiler::compileFunction(const il::core::Function &fn) {
     currentBlockLabel_.clear();
 }
 
-/// @brief Build SSA To Locals Map.
+/// @brief Assign every SSA value (params, block params, instruction results)
+///        a flat local-slot index, and flag which locals hold strings.
+/// @details Function parameters get slots 0..N first; entry-block params alias
+///          those same slots; all other block params and instruction results
+///          get fresh slots. The string flags drive STR_RETAIN/RELEASE so
+///          string locals are reference-counted correctly.
 void BytecodeCompiler::buildSSAToLocalsMap(const il::core::Function &fn) {
     nextLocal_ = 0;
     localIsString_.clear();
@@ -384,7 +435,11 @@ void BytecodeCompiler::buildSSAToLocalsMap(const il::core::Function &fn) {
         localIsString_.resize(nextLocal_, 0);
 }
 
-/// @brief Linearize Blocks.
+/// @brief Order the function's basic blocks for sequential code emission.
+/// @details Depth-first from the entry block following terminator successors
+///          (reversed so the DFS visits them in source order), then appends
+///          any unreached blocks — notably exception-handler blocks, which
+///          are entered via eh.push/dispatchTrap rather than normal edges.
 std::vector<const il::core::BasicBlock *> BytecodeCompiler::linearizeBlocks(
     const il::core::Function &fn) {
     // Simple depth-first ordering
@@ -436,7 +491,13 @@ std::vector<const il::core::BasicBlock *> BytecodeCompiler::linearizeBlocks(
     return result;
 }
 
-/// @brief Compile Block.
+/// @brief Emit code for one basic block, recording its byte offset for
+///        branch resolution.
+/// @details A true handler block (first instr is eh.entry AND it is a direct
+///          eh.push target) receives its params on the operand stack from
+///          dispatchTrap and pops them LIFO into locals; ordinary blocks get
+///          their params via normal branch-argument stores. Then each
+///          instruction is compiled in order.
 void BytecodeCompiler::compileBlock(const il::core::BasicBlock &block) {
     // Record block offset
     blockOffsets_[block.label] = static_cast<uint32_t>(currentFunc_->code.size());
@@ -481,7 +542,9 @@ void BytecodeCompiler::compileBlock(const il::core::BasicBlock &block) {
     currentBlockLabel_.clear();
 }
 
-/// @brief Compile Instr.
+/// @brief Dispatch one IL instruction to the matching category compiler
+///        (arithmetic / comparison / conversion / bitwise / memory / call /
+///        branch / return / …), updating the current source location first.
 void BytecodeCompiler::compileInstr(const il::core::Instr &instr) {
     using Opcode = il::core::Opcode;
 
@@ -752,6 +815,10 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr) {
     }
 }
 
+/// @brief Abort the current compile by throwing BytecodeCompileFailure.
+/// @details Prefixes the message with the current function name and packages
+///          @p code / @p loc into an error Diag; never returns. Caught at the
+///          compileChecked boundary and surfaced as the Expected error.
 void BytecodeCompiler::fail(il::support::SourceLoc loc,
                             std::string code,
                             std::string message) {
@@ -761,10 +828,14 @@ void BytecodeCompiler::fail(il::support::SourceLoc loc,
         il::support::Diag{il::support::Severity::Error, std::move(message), loc, std::move(code)});
 }
 
+/// @brief @ref fail using the instruction currently being compiled as the
+///        source location.
 void BytecodeCompiler::failCurrent(std::string code, std::string message) {
     fail(currentLoc_, std::move(code), std::move(message));
 }
 
+/// @brief Fail (V-BC-MALFORMED-INSTR) unless @p instr has at least @p minCount
+///        operands — a guard against malformed IL reaching a category compiler.
 void BytecodeCompiler::requireOperandCount(const il::core::Instr &instr, size_t minCount) {
     if (instr.operands.size() < minCount) {
         std::ostringstream oss;
@@ -777,7 +848,12 @@ void BytecodeCompiler::requireOperandCount(const il::core::Instr &instr, size_t 
     }
 }
 
-/// @brief Push Value.
+/// @brief Emit code that pushes one IL operand value onto the operand stack.
+/// @details Temps load from their local slot; small int constants use the
+///          compact LOAD_ZERO/ONE/I8/I16 forms, larger ones go through the
+///          constant pool; floats/strings go through the pool; a GlobalAddr
+///          that names a function becomes a high-bit-tagged function pointer
+///          (so CALL_INDIRECT can recognize it); null becomes LOAD_NULL.
 void BytecodeCompiler::pushValue(const il::core::Value &val) {
     switch (val.kind) {
         case il::core::Value::Kind::Temp: {
@@ -843,7 +919,8 @@ void BytecodeCompiler::pushValue(const il::core::Value &val) {
     }
 }
 
-/// @brief Store Result.
+/// @brief Pop the top of the operand stack into the instruction result's
+///        local slot; a no-op for value-less instructions (e.g. stores).
 void BytecodeCompiler::storeResult(const il::core::Instr &instr) {
     if (instr.result) {
         uint32_t local = getLocal(*instr.result);
@@ -855,6 +932,10 @@ void BytecodeCompiler::storeResult(const il::core::Instr &instr) {
     }
 }
 
+/// @brief Intern @p loc's source file into the module's file table.
+/// @return A 1-based table index (0 means "no file"), so callers can store
+///         0 as a sentinel and subtract 1 to recover the real index. Paths
+///         are resolved via the SourceManager, falling back to "file#<id>".
 uint32_t BytecodeCompiler::sourceFileTableEntry(il::support::SourceLoc loc) {
     if (loc.file_id == 0)
         return 0;
@@ -877,7 +958,10 @@ uint32_t BytecodeCompiler::sourceFileTableEntry(il::support::SourceLoc loc) {
     return index + 1;
 }
 
-/// @brief Emit.
+/// @brief Append one encoded 32-bit instruction word to the current function
+///        and record its parallel debug metadata (line, source-file index,
+///        block label). Latches the function's primary source file on the
+///        first instruction that carries one.
 void BytecodeCompiler::emit(uint32_t instr) {
     const uint32_t pc = static_cast<uint32_t>(currentFunc_->code.size());
     currentFunc_->code.push_back(instr);
@@ -891,31 +975,34 @@ void BytecodeCompiler::emit(uint32_t instr) {
     }
 }
 
-/// @brief Emit.
+/// @brief Emit an opcode with no inline operand.
 void BytecodeCompiler::emit(BCOpcode op) {
     emit(encodeOp(op));
 }
 
-/// @brief Emit8.
+/// @brief Emit an opcode with an unsigned 8-bit inline operand.
 void BytecodeCompiler::emit8(BCOpcode op, uint8_t arg) {
     emit(encodeOp8(op, arg));
 }
 
-/// @brief Emit I8.
+/// @brief Emit an opcode with a signed 8-bit inline operand.
 void BytecodeCompiler::emitI8(BCOpcode op, int8_t arg) {
     emit(encodeOpI8(op, arg));
 }
 
-/// @brief Emit16.
+/// @brief Emit an opcode with an unsigned 16-bit inline operand.
 void BytecodeCompiler::emit16(BCOpcode op, uint16_t arg) {
     emit(encodeOp16(op, arg));
 }
 
-/// @brief Emit I16.
+/// @brief Emit an opcode with a signed 16-bit inline operand.
 void BytecodeCompiler::emitI16(BCOpcode op, int16_t arg) {
     emit(encodeOpI16(op, arg));
 }
 
+/// @brief Emit a constant-pool load (@p op with a 16-bit pool @p index),
+///        failing the compile if the pool exceeds the 65535-entry operand
+///        limit. @p poolName names the pool in the diagnostic.
 void BytecodeCompiler::emitPoolLoad(BCOpcode op, uint32_t index, std::string_view poolName) {
     if (index > 0xFFFFu) {
         failCurrent("V-BC-POOL-OVERFLOW",
@@ -925,12 +1012,14 @@ void BytecodeCompiler::emitPoolLoad(BCOpcode op, uint32_t index, std::string_vie
     emit16(op, static_cast<uint16_t>(index));
 }
 
-/// @brief Emit88.
+/// @brief Emit an opcode with two packed unsigned 8-bit inline operands.
 void BytecodeCompiler::emit88(BCOpcode op, uint8_t arg0, uint8_t arg1) {
     emit(encodeOp88(op, arg0, arg1));
 }
 
-/// @brief Emit Branch.
+/// @brief Emit a short (16-bit relative) branch to @p label, recording a
+///        pending fixup so @ref resolveBranches can back-patch the offset
+///        once every block's byte offset is known.
 void BytecodeCompiler::emitBranch(BCOpcode op, const std::string &label) {
     pendingBranches_.push_back({
         static_cast<uint32_t>(currentFunc_->code.size()),
@@ -942,7 +1031,8 @@ void BytecodeCompiler::emitBranch(BCOpcode op, const std::string &label) {
     emit(encodeOp16(op, 0)); // Placeholder offset
 }
 
-/// @brief Emit Branch Long.
+/// @brief Emit a long (24-bit relative) branch to @p label for targets out
+///        of 16-bit range, recording a pending fixup for @ref resolveBranches.
 void BytecodeCompiler::emitBranchLong(BCOpcode op, const std::string &label) {
     pendingBranches_.push_back({
         static_cast<uint32_t>(currentFunc_->code.size()),
@@ -954,7 +1044,12 @@ void BytecodeCompiler::emitBranchLong(BCOpcode op, const std::string &label) {
     emit(encodeOp24(op, 0)); // Placeholder offset
 }
 
-/// @brief Resolve Branches.
+/// @brief Back-patch every pending branch now that all block offsets are known.
+/// @details Computes each target's relative offset (regular branches subtract
+///          1 because dispatch advances pc past the instruction; raw-offset
+///          words do not), re-encodes the placeholder in place as a 16- or
+///          24-bit signed displacement, and fails on an unresolved label or a
+///          displacement out of the opcode's range.
 void BytecodeCompiler::resolveBranches() {
     for (const auto &fixup : pendingBranches_) {
         auto it = blockOffsets_.find(fixup.targetLabel);
@@ -999,7 +1094,8 @@ void BytecodeCompiler::resolveBranches() {
     }
 }
 
-/// @brief Push Stack.
+/// @brief Account for @p count slots pushed onto the operand stack at compile
+///        time, tracking the high-water mark used to size the VM frame.
 void BytecodeCompiler::pushStack(int32_t count) {
     currentStackDepth_ += count;
     if (currentStackDepth_ > maxStackDepth_) {
@@ -1007,7 +1103,8 @@ void BytecodeCompiler::pushStack(int32_t count) {
     }
 }
 
-/// @brief Pop Stack.
+/// @brief Account for @p count slots popped from the operand stack at compile
+///        time (clamped at 0 defensively).
 void BytecodeCompiler::popStack(int32_t count) {
     currentStackDepth_ -= count;
     if (currentStackDepth_ < 0) {
@@ -1015,7 +1112,8 @@ void BytecodeCompiler::popStack(int32_t count) {
     }
 }
 
-/// @brief Get Local.
+/// @brief Resolve an SSA value id to its assigned local slot; fails the
+///        compile if unknown (IL verification should have rejected use-before-def).
 uint32_t BytecodeCompiler::getLocal(uint32_t ssaId) {
     auto it = ssaToLocal_.find(ssaId);
     if (it != ssaToLocal_.end()) {
@@ -1026,7 +1124,9 @@ uint32_t BytecodeCompiler::getLocal(uint32_t ssaId) {
                     " reached bytecode lowering; IL verification should reject use before def");
 }
 
-/// @brief Emit Load Local.
+/// @brief Emit a load of local slot @p local, choosing the compact 8-bit
+///        form for slots < 256 and the 16-bit wide form otherwise (fails
+///        past the 65535-local limit).
 void BytecodeCompiler::emitLoadLocal(uint32_t local) {
     if (local < 256) {
         emit8(BCOpcode::LOAD_LOCAL, static_cast<uint8_t>(local));
@@ -1038,7 +1138,9 @@ void BytecodeCompiler::emitLoadLocal(uint32_t local) {
     }
 }
 
-/// @brief Emit Store Local.
+/// @brief Emit a store to local slot @p local, choosing the compact 8-bit
+///        form for slots < 256 and the 16-bit wide form otherwise (fails
+///        past the 65535-local limit).
 void BytecodeCompiler::emitStoreLocal(uint32_t local) {
     if (local < 256) {
         emit8(BCOpcode::STORE_LOCAL, static_cast<uint8_t>(local));
@@ -1050,7 +1152,9 @@ void BytecodeCompiler::emitStoreLocal(uint32_t local) {
     }
 }
 
-/// @brief Compile Arithmetic.
+/// @brief Lower a binary integer/float arithmetic instruction: push both
+///        operands, emit the matching ADD/SUB/MUL/DIV/REM/NEG bytecode
+///        (including the .ovf / .chk checked variants), and store the result.
 void BytecodeCompiler::compileArithmetic(const il::core::Instr &instr) {
     using Opcode = il::core::Opcode;
 
@@ -1149,7 +1253,9 @@ void BytecodeCompiler::compileArithmetic(const il::core::Instr &instr) {
     storeResult(instr);
 }
 
-/// @brief Compile Comparison.
+/// @brief Lower a comparison instruction: push both operands and emit the
+///        matching CMP_* opcode (signed/unsigned integer or float predicate),
+///        leaving a 0/1 boolean result.
 void BytecodeCompiler::compileComparison(const il::core::Instr &instr) {
     using Opcode = il::core::Opcode;
 
@@ -1222,7 +1328,9 @@ void BytecodeCompiler::compileComparison(const il::core::Instr &instr) {
     storeResult(instr);
 }
 
-/// @brief Compile Conversion.
+/// @brief Lower a type-conversion instruction: push the source operand and
+///        emit the matching widen/narrow/int↔float/bool opcode, including the
+///        .chk variants that trap on range loss.
 void BytecodeCompiler::compileConversion(const il::core::Instr &instr) {
     using Opcode = il::core::Opcode;
 
@@ -1291,7 +1399,8 @@ void BytecodeCompiler::compileConversion(const il::core::Instr &instr) {
     storeResult(instr);
 }
 
-/// @brief Compile Bitwise.
+/// @brief Lower a bitwise instruction: push both operands and emit the
+///        matching AND/OR/XOR/NOT/SHL/LSHR/ASHR opcode.
 void BytecodeCompiler::compileBitwise(const il::core::Instr &instr) {
     using Opcode = il::core::Opcode;
 
@@ -1334,7 +1443,9 @@ void BytecodeCompiler::compileBitwise(const il::core::Instr &instr) {
     storeResult(instr);
 }
 
-/// @brief Compile Memory.
+/// @brief Lower memory/pointer instructions: null/alloca, GEP address
+///        computation, and the typed load/store family, emitting the
+///        width- and type-specific *_MEM opcode for each.
 void BytecodeCompiler::compileMemory(const il::core::Instr &instr) {
     using Opcode = il::core::Opcode;
 
@@ -1495,7 +1606,12 @@ void BytecodeCompiler::compileMemory(const il::core::Instr &instr) {
     }
 }
 
-/// @brief Compile Call.
+/// @brief Lower a call instruction.
+/// @details Indirect calls push the callee function pointer plus arguments
+///          and emit CALL_INDIRECT; direct calls resolve the callee to a
+///          module function index or a native runtime helper (recognizing
+///          rt_arr_*_fast accessors and substituting their dedicated fast
+///          opcode), pushing the result when the callee returns a value.
 void BytecodeCompiler::compileCall(const il::core::Instr &instr) {
     using Opcode = il::core::Opcode;
 
@@ -1601,7 +1717,9 @@ void BytecodeCompiler::compileCall(const il::core::Instr &instr) {
     }
 }
 
-/// @brief Compile Branch.
+/// @brief Lower an (un)conditional branch: store branch arguments into the
+///        target block's parameter locals, then emit JUMP / JUMP_IF_* (or
+///        SWITCH), recording fixups so @ref resolveBranches patches offsets.
 void BytecodeCompiler::compileBranch(const il::core::Instr &instr) {
     using Opcode = il::core::Opcode;
 
@@ -1757,7 +1875,8 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr) {
     }
 }
 
-/// @brief Compile Return.
+/// @brief Lower a return: push the value and emit RETURN, or emit
+///        RETURN_VOID when the function returns nothing.
 void BytecodeCompiler::compileReturn(const il::core::Instr &instr) {
     if (!instr.operands.empty()) {
         pushValue(instr.operands[0]);

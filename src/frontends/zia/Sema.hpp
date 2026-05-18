@@ -896,7 +896,11 @@ class Sema {
     /// @brief Check whether a name has multiple user-defined overloads.
     bool hasOverloadedFunctionName(const std::string &name) const;
 
+    /// @brief Find the ClassDecl for a type name, or nullptr if @p typeName
+    ///        is not a known user class.
     ClassDecl *lookupClassDeclForType(const std::string &typeName) const;
+    /// @brief Find the StructDecl for a type name, or nullptr if @p typeName
+    ///        is not a known user struct.
     StructDecl *lookupStructDeclForType(const std::string &typeName) const;
 
     /// @brief Initialize all runtime function type mappings.
@@ -1902,12 +1906,22 @@ class Sema {
                                          bool includeInherited,
                                          CallArgBinding *bindingOut);
 
+    /// @brief Build the call-argument parameter specs (name/type/default) for
+    ///        a Zia function or method from its params and resolved types.
     std::vector<CallParamSpec> makeParamSpecs(const std::vector<Param> &params,
                                               const std::vector<TypeRef> &paramTypes) const;
+    /// @brief Build parameter specs for an extern symbol, optionally skipping
+    ///        the first @p skipLeadingParams (e.g. an implicit receiver).
     std::vector<CallParamSpec> makeExternParamSpecs(const Symbol &sym,
                                                     size_t skipLeadingParams = 0) const;
+    /// @brief Build parameter specs from a struct type's fields, used to
+    ///        check positional/named struct construction calls.
     std::vector<CallParamSpec> makeStructFieldSpecs(const std::string &typeName) const;
+    /// @brief Build parameter specs from a class type's fields (including
+    ///        inherited fields), used to check class construction calls.
     std::vector<CallParamSpec> makeClassFieldSpecs(const std::string &typeName) const;
+    /// @brief Append @p typeName's class field specs (recursing into base
+    ///        classes) onto @p out — the recursive helper for makeClassFieldSpecs.
     void appendClassFieldSpecs(const std::string &typeName, std::vector<CallParamSpec> &out) const;
 
     /// @}

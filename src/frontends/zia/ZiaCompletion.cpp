@@ -25,6 +25,8 @@ namespace il::frontends::zia {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/// @brief True if @p c can appear in an identifier (alphanumeric or '_') —
+///        used to scan the identifier under the completion cursor.
 static bool isIdentChar(char c) {
     return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
 }

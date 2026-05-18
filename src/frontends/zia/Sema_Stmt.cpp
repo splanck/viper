@@ -16,15 +16,20 @@ namespace il::frontends::zia {
 
 namespace {
 
+/// @brief True if @p type may not appear as a statement-level value
+///        (Void, Never, or Module).
 bool isForbiddenValueType(TypeRef type) {
     return type && (type->kind == TypeKindSem::Void || type->kind == TypeKindSem::Never ||
                     type->kind == TypeKindSem::Module);
 }
 
+/// @brief Display name for a forbidden value type, for the diagnostic message.
 std::string forbiddenValueTypeName(TypeRef type) {
     return type ? type->toString() : "unknown";
 }
 
+/// @brief True if @p type is a typed runtime sequence/collection pointer
+///        (Seq/Queue/Stack/…) that supports element-typed for-iteration.
 bool isTypedRuntimeSequence(TypeRef type) {
     return type && type->kind == TypeKindSem::Ptr && type->elementType() &&
            (type->name == "Viper.Collections.Seq" ||

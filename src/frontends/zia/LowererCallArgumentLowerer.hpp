@@ -24,6 +24,8 @@ class CallArgumentLowerer final {
   public:
     explicit CallArgumentLowerer(Lowerer &lowerer) : lowerer_(lowerer) {}
 
+    /// @brief Lower each call argument expression in source order, returning
+    ///        one LowerResult per argument (before parameter reordering).
     std::vector<LowerResult> lowerSourceArgs(const std::vector<CallArg> &args);
     static std::vector<int> orderedArgSources(const std::vector<CallArg> &args,
                                               const Sema::CallArgBinding *binding);

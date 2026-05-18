@@ -1708,13 +1708,14 @@ int64_t rt_color_get_b(int64_t color) {
     return color & 0xFF;
 }
 
-/// @brief Get the a value.
+/// @brief Get the stored alpha byte.
+/// @details Plain RGB colors have no stored alpha, so this returns 0 for
+///          Color.RGB values. Drawing and transform helpers still treat plain
+///          RGB as opaque through rt_color_split_rgba().
 /// @param color
 /// @return Result value.
 int64_t rt_color_get_a(int64_t color) {
-    int64_t a = 255;
-    rt_color_split_rgba(color, NULL, NULL, NULL, &a, NULL);
-    return a;
+    return (color >> 24) & 0xFF;
 }
 
 /// @brief Brighten operation.

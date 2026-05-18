@@ -246,6 +246,9 @@ bool vg_toolbar_item_is_live(const vg_toolbar_item_t *item) {
     return item && item->magic == VG_TOOLBAR_ITEM_MAGIC && item->owner != NULL;
 }
 
+/// @brief Tear down @p item's owned strings/icon and park it on @p tb's
+///        retired list for deferred freeing (use-after-free defense when an
+///        item is removed during event dispatch).
 static void retire_item(vg_toolbar_t *tb, vg_toolbar_item_t *item) {
     if (!tb || !item)
         return;
@@ -268,6 +271,7 @@ static void retire_item(vg_toolbar_t *tb, vg_toolbar_item_t *item) {
     tb->retired_items = item;
 }
 
+/// @brief Drain and free every toolbar item on @p tb's retired list.
 static void free_retired_items(vg_toolbar_t *tb) {
     if (!tb)
         return;
@@ -1916,6 +1920,9 @@ vg_toolbar_item_t *vg_toolbar_add_widget(vg_toolbar_t *tb, const char *id, vg_wi
     return item;
 }
 
+/// @brief Remove the item at @p index: clear any hover/press/focus/dropdown
+///        state referencing it, compact the items array, and retire the item
+///        for deferred freeing.
 static void toolbar_remove_item_at(vg_toolbar_t *tb, size_t index) {
     if (!tb || index >= tb->item_count)
         return;

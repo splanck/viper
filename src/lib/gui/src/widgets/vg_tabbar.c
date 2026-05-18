@@ -80,6 +80,7 @@ bool vg_tab_is_live(const vg_tab_t *tab) {
     return tab && tab->magic == VG_TAB_MAGIC && tab->owner != NULL;
 }
 
+/// @brief Free a tab and its owned title/tooltip strings (NULL-safe).
 static void free_tab(vg_tab_t *tab) {
     if (!tab)
         return;
@@ -88,6 +89,9 @@ static void free_tab(vg_tab_t *tab) {
     free(tab);
 }
 
+/// @brief Tear down @p tab's owned strings/links and park it on @p tabbar's
+///        retired list for deferred freeing (use-after-free defense when a
+///        tab is closed during event dispatch).
 static void retire_tab(vg_tabbar_t *tabbar, vg_tab_t *tab) {
     if (!tabbar || !tab)
         return;
@@ -104,6 +108,7 @@ static void retire_tab(vg_tabbar_t *tabbar, vg_tab_t *tab) {
     tabbar->retired_tabs = tab;
 }
 
+/// @brief Drain and free every tab on @p tabbar's retired list.
 static void free_retired_tabs(vg_tabbar_t *tabbar) {
     if (!tabbar)
         return;
@@ -164,6 +169,8 @@ static char *make_tab_title(const vg_tab_t *tab) {
     return title;
 }
 
+/// @brief Back @p len up to the nearest UTF-8 codepoint boundary so title
+///        truncation never splits a multi-byte character.
 static size_t utf8_prev_boundary(const char *text, size_t len) {
     while (len > 0 && (((unsigned char)text[len] & 0xC0u) == 0x80u))
         len--;

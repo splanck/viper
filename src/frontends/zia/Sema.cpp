@@ -38,6 +38,8 @@ namespace il::frontends::zia {
 
 namespace {
 
+/// @brief Three-way compare two source locations by (file, line, column).
+/// @return -1 if @p a precedes @p b, +1 if it follows, 0 if identical.
 int compareLoc(const SourceLoc &a, const SourceLoc &b) {
     if (a.file_id != b.file_id)
         return (a.file_id < b.file_id) ? -1 : 1;
@@ -70,6 +72,9 @@ std::string classifySemanticError(const std::string &message) {
     return "V-ZIA-SEMA";
 }
 
+/// @brief True if @p kind is a declaration that lives at module scope
+///        (function/struct/class/interface/enum/global/type-alias) and thus
+///        participates in cross-module name resolution.
 bool isTopLevelModuleScopedDeclKind(DeclKind kind) {
     switch (kind) {
         case DeclKind::Function:
@@ -106,6 +111,8 @@ std::string topLevelModuleScopedDeclName(const Decl &decl) {
     }
 }
 
+/// @brief Levenshtein edit distance between @p lhs and @p rhs (two-row DP).
+///        Used to suggest "did you mean…" alternatives for unknown names.
 size_t editDistance(std::string_view lhs, std::string_view rhs) {
     std::vector<size_t> previous(rhs.size() + 1);
     std::vector<size_t> current(rhs.size() + 1);
@@ -149,6 +156,8 @@ std::string joinTypeKeys(const std::vector<TypeRef> &types) {
     return result;
 }
 
+/// @brief Count the parameters that must be supplied at a call site
+///        (excludes those with a default value or the variadic param).
 size_t requiredParamCount(const std::vector<Param> &params) {
     size_t required = 0;
     for (const auto &param : params) {
@@ -158,6 +167,9 @@ size_t requiredParamCount(const std::vector<Param> &params) {
     return required;
 }
 
+/// @brief True if @p argType may be implicitly coerced to a runtime object
+///        pointer at a call boundary (excludes void/optional/function/tuple/
+///        fixed-array/unknown/never/type-param/module, which never coerce).
 bool canRuntimeObjectCoerce(TypeRef argType) {
     if (!argType)
         return false;
@@ -178,6 +190,9 @@ bool canRuntimeObjectCoerce(TypeRef argType) {
     }
 }
 
+/// @brief Heuristic: does parameter @p name look like a callback slot
+///        (fn/func/handler/callback/predicate/comparator/…)? Used to permit
+///        a function-pointer argument where the signature is otherwise opaque.
 bool allowsFunctionPointerParam(std::string_view name) {
     std::string lower;
     lower.reserve(name.size());
@@ -196,6 +211,9 @@ bool allowsFunctionPointerParam(std::string_view name) {
            lower.find("comparator") != std::string::npos;
 }
 
+/// @brief True if @p type is safe to pass across the function bridge: bare
+///        function types are rejected, and an unnamed (opaque) pointer is
+///        rejected; everything else is allowed.
 bool isSafeFunctionBridgePayload(TypeRef type) {
     if (!type)
         return true;
@@ -206,6 +224,9 @@ bool isSafeFunctionBridgePayload(TypeRef type) {
     return true;
 }
 
+/// @brief Suggest a memory-safe replacement for a runtime call that returns a
+///        raw pointer/buffer (e.g. Dir.List → Dir.ListSeq), for use in the
+///        diagnostic when such a call is rejected. Empty if none is known.
 std::string saferRuntimePointerAlternative(std::string_view calleeName) {
     static const std::unordered_map<std::string_view, std::string_view> alternatives = {
         {"Viper.IO.Dir.List", "Viper.IO.Dir.ListSeq"},
@@ -256,6 +277,10 @@ std::string saferRuntimePointerAlternative(std::string_view calleeName) {
     return it == alternatives.end() ? std::string{} : std::string(it->second);
 }
 
+/// @brief Score how well @p argType converts to @p paramType for overload
+///        ranking: 0 = exact, small positive = an implicit conversion
+///        (optional-wrap, runtime-object coercion, …), 1000 = incompatible.
+///        Lower is preferred; @ref resolveFunctionOverload sums these.
 int conversionCost(TypeRef paramType, TypeRef argType, bool allowRuntimeObjectCoercion) {
     if (!paramType || !argType)
         return 1000;

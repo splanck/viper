@@ -94,6 +94,9 @@ static bool ensure_capacity(vg_textinput_t *input, size_t needed) {
     return true;
 }
 
+/// @brief True if a key event should produce literal text input — i.e. it
+///        carries no command modifier (Super/Ctrl) that would make it a
+///        shortcut rather than a character.
 static bool textinput_key_char_allows_text(const vg_event_t *event) {
     if (!event)
         return false;

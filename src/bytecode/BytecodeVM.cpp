@@ -38,6 +38,8 @@ namespace bytecode {
 
 namespace {
 
+/// @brief True if parameter @p index of runtime signature @p sig is a string,
+///        so the caller knows that argument participates in string ownership.
 bool runtimeParamIsString(const il::runtime::RuntimeSignature *sig, size_t index) {
     return sig && index < sig->paramTypes.size() &&
            sig->paramTypes[index].kind == il::core::Type::Kind::Str;
@@ -45,8 +47,12 @@ bool runtimeParamIsString(const il::runtime::RuntimeSignature *sig, size_t index
 
 void registerUnifiedVmRuntimeHandlers();
 
+/// @brief No-op runtime trap observer; installed so the runtime's trap-signal
+///        hook has a valid target while the bytecode VM handles traps itself.
 void bytecodeRuntimeTrapPassthrough(const il::vm::RuntimeTrapSignal &, void *) {}
 
+/// @brief Default numeric error code for a trap kind when none is supplied
+///        (DivideByZero→0, Overflow→4, Bounds→7, NullPointer→91, else 0).
 int32_t defaultBytecodeTrapErrorCode(TrapKind trapKind) {
     switch (trapKind) {
         case TrapKind::DivideByZero:
@@ -62,6 +68,8 @@ int32_t defaultBytecodeTrapErrorCode(TrapKind trapKind) {
     }
 }
 
+/// @brief Stable human-readable name for a trap kind (for diagnostics/traces);
+///        returns "Unknown" for any value outside the enum.
 const char *bytecodeTrapKindName(TrapKind trapKind) {
     switch (trapKind) {
         case TrapKind::DivideByZero:
@@ -124,23 +132,37 @@ thread_local BytecodeVM *tlsActiveBytecodeVM = nullptr;
 /// Thread-local pointer to the current BytecodeModule (for thread spawning).
 thread_local const BytecodeModule *tlsActiveBytecodeModule = nullptr;
 
+/// @brief The BytecodeVM executing on the current thread, or NULL — lets
+///        runtime handlers detect a bytecode caller and adapt accordingly.
 BytecodeVM *activeBytecodeVMInstance() {
     return tlsActiveBytecodeVM;
 }
 
+/// @brief The BytecodeModule active on the current thread (used when spawning
+///        worker threads that must run bytecode entry points).
 const BytecodeModule *activeBytecodeModule() {
     return tlsActiveBytecodeModule;
 }
 
+/// @brief RAII: make @p vm the thread-active VM for the guard's lifetime,
+///        restoring the previous one on scope exit (supports re-entrant
+///        bytecode execution, e.g. a runtime callback into bytecode).
 ActiveBytecodeVMGuard::ActiveBytecodeVMGuard(BytecodeVM *vm)
     : previous_(tlsActiveBytecodeVM), current_(vm) {
     tlsActiveBytecodeVM = vm;
 }
 
+/// @brief Restore the previously-active thread VM.
 ActiveBytecodeVMGuard::~ActiveBytecodeVMGuard() {
     tlsActiveBytecodeVM = previous_;
 }
 
+/// @brief Construct an idle VM with pre-allocated execution buffers.
+/// @details The value stack and per-slot string-ownership bitmap are sized for
+///          the worst case up front, and the alloca arena reserves its full
+///          16 MiB so it never reallocates mid-run — alloca pointers live in
+///          registers/operand slots and must stay valid for the function's
+///          lifetime. Threaded dispatch is the default.
 BytecodeVM::BytecodeVM()
     : module_(nullptr), state_(VMState::Ready), trapKind_(TrapKind::None), currentErrorCode_(0),
       sp_(nullptr), fp_(nullptr), instrCount_(0), runtimeBridgeEnabled_(false),
@@ -161,6 +183,8 @@ BytecodeVM::BytecodeVM()
     allocaBuffer_.resize(64 * 1024);
 }
 
+/// @brief Tear down the VM: unwind execution state, release owned globals and
+///        the trap record, and unref every cached rt_string literal.
 BytecodeVM::~BytecodeVM() {
     resetExecutionState();
     releaseOwnedGlobals();
@@ -194,6 +218,10 @@ void BytecodeVM::initStringCache() {
     stringCache_.assign(module_->stringPool.size(), nullptr);
 }
 
+/// @brief Lazily materialize and cache the rt_string for string-pool entry
+///        @p idx; returns NULL if there is no module or @p idx is out of range.
+/// @details Handles are created on first use so a worker VM only allocates the
+///          literals it actually executes.
 rt_string BytecodeVM::getStringLiteral(uint16_t idx) {
     if (!module_ || idx >= module_->stringPool.size())
         return nullptr;
@@ -206,16 +234,25 @@ rt_string BytecodeVM::getStringLiteral(uint16_t idx) {
     return cached;
 }
 
+/// @brief True if runtime function @p name takes ownership of string args via
+///        a *clone* (caller keeps its reference). Must mirror rtgen's
+///        needsConsumingStringHandler() — e.g. rt_str_concat.
 bool BytecodeVM::runtimeCallConsumesClonedStringArgs(std::string_view name) {
     // Keep this list aligned with rtgen's needsConsumingStringHandler().
     return name == "rt_str_concat" || name == "Viper.String.Concat" ||
            name == "Viper.String.ConcatSelf";
 }
 
+/// @brief True if runtime function @p name consumes the *caller's owned*
+///        string reference (e.g. rt_str_release_maybe) — the slot's ownership
+///        flag must be cleared after the call.
 bool BytecodeVM::runtimeCallConsumesOwnedStringArgs(std::string_view name) {
     return name == "rt_str_release_maybe";
 }
 
+/// @brief For a clone-consuming runtime call, return a copy of @p args with an
+///        extra retain on each string parameter, so the callee can consume its
+///        reference while the VM's originals stay valid. Empty if N/A.
 std::vector<BCSlot> BytecodeVM::cloneRuntimeStringArgs(const NativeFuncRef &ref,
                                                        const BCSlot *args,
                                                        size_t argCount) const {
@@ -236,6 +273,8 @@ std::vector<BCSlot> BytecodeVM::cloneRuntimeStringArgs(const NativeFuncRef &ref,
     return cloned;
 }
 
+/// @brief Drop the extra retains added by @ref cloneRuntimeStringArgs once the
+///        runtime call has returned (balances the clone's reference counts).
 void BytecodeVM::releaseRuntimeStringArgs(const NativeFuncRef &ref,
                                           std::vector<BCSlot> &args) const {
     if (args.empty())
@@ -252,6 +291,12 @@ void BytecodeVM::releaseRuntimeStringArgs(const NativeFuncRef &ref,
     }
 }
 
+/// @brief Call a native runtime function through the VM RuntimeBridge.
+/// @details Clones string args when the callee consumes them, reinterprets
+///          BCSlots as VM Slots, and dispatches by descriptor or by name. A
+///          RuntimeTrapSignal is converted to a VM trap (via dispatchTrap, or
+///          a hard trap if unhandled) and the call reports failure.
+/// @return true on normal return (@p result set); false if the call trapped.
 bool BytecodeVM::invokeRuntimeBridgeNative(const NativeFuncRef &ref,
                                            BCSlot *args,
                                            uint8_t argCount,
@@ -291,6 +336,9 @@ bool BytecodeVM::invokeRuntimeBridgeNative(const NativeFuncRef &ref,
     return true;
 }
 
+/// @brief After an owned-consuming runtime call, clear the VM-side ownership
+///        flag on each string arg so the VM won't double-release a handle the
+///        callee already took ownership of.
 void BytecodeVM::dismissConsumedStringArgs(const NativeFuncRef &ref, BCSlot *args, uint8_t argCount) {
     if (!args || argCount == 0)
         return;
@@ -307,10 +355,14 @@ void BytecodeVM::dismissConsumedStringArgs(const NativeFuncRef &ref, BCSlot *arg
     }
 }
 
+/// @brief Register a C++ handler for native function @p name, overriding any
+///        prior handler of that name (used for builtins not in the bridge).
 void BytecodeVM::registerNativeHandler(const std::string &name, NativeHandler handler) {
     nativeHandlers_[name] = std::move(handler);
 }
 
+/// @brief Snapshot the tunable execution settings (bridge enabled, dispatch
+///        mode, trusted flag, native handler table) for transfer to a worker VM.
 BytecodeVM::ExecutionEnvironment BytecodeVM::captureExecutionEnvironment() const {
     ExecutionEnvironment env;
     env.runtimeBridgeEnabled = runtimeBridgeEnabled_;
@@ -320,6 +372,7 @@ BytecodeVM::ExecutionEnvironment BytecodeVM::captureExecutionEnvironment() const
     return env;
 }
 
+/// @brief Apply a previously captured execution environment onto this VM.
 void BytecodeVM::applyExecutionEnvironment(const ExecutionEnvironment &env) {
     runtimeBridgeEnabled_ = env.runtimeBridgeEnabled;
     useThreadedDispatch_ = env.useThreadedDispatch;
@@ -327,10 +380,17 @@ void BytecodeVM::applyExecutionEnvironment(const ExecutionEnvironment &env) {
     nativeHandlers_ = env.nativeHandlers;
 }
 
+/// @brief Convenience: copy @p other's execution environment onto this VM
+///        (used when a spawned worker VM should mirror its parent's config).
 void BytecodeVM::copyExecutionEnvironmentFrom(const BytecodeVM &other) {
     applyExecutionEnvironment(other.captureExecutionEnvironment());
 }
 
+/// @brief Bind @p module for execution: install unified runtime handlers,
+///        reset state, and allocate + initialize global storage (string
+///        globals get an owned rt_string from their init bytes; scalar
+///        globals are memcpy'd from their baked init image) plus the string
+///        literal cache. Safe to call again to re-load a different module.
 void BytecodeVM::load(const BytecodeModule *module) {
     registerUnifiedVmRuntimeHandlers();
     resetExecutionState();
@@ -367,24 +427,35 @@ void BytecodeVM::load(const BytecodeModule *module) {
     initStringCache();
 }
 
+/// @brief Index of @p slot within the value stack (the key into the parallel
+///        string-ownership bitmap). Asserts the pointer is in range.
 size_t BytecodeVM::slotIndex(const BCSlot *slot) const {
     assert(slot >= valueStack_.data());
     assert(slot < valueStack_.data() + valueStack_.size());
     return static_cast<size_t>(slot - valueStack_.data());
 }
 
+/// @brief True if @p slot currently holds an owned string reference (the VM
+///        is responsible for releasing it).
 bool BytecodeVM::slotOwnsString(const BCSlot *slot) const {
     return valueStackStringOwned_[slotIndex(slot)] != 0;
 }
 
+/// @brief Set/clear @p slot's "owns string reference" flag.
 void BytecodeVM::setSlotOwnsString(const BCSlot *slot, bool owns) {
     valueStackStringOwned_[slotIndex(slot)] = owns ? 1 : 0;
 }
 
+/// @brief True if local slot @p idx of @p frame is typed as a string (so its
+///        contents are reference-counted).
 bool BytecodeVM::localIsString(const BCFrame &frame, uint32_t idx) const {
     return idx < frame.func->localIsString.size() && frame.func->localIsString[idx] != 0;
 }
 
+/// @brief Defensive check that @p ptr is a live rt_string handle.
+/// @return true if NULL or a valid handle; otherwise traps (RuntimeError,
+///         naming @p site) and returns false. Guards against type-confused
+///         slots corrupting the runtime string heap.
 bool BytecodeVM::validateStringHandle(const void *ptr, const char *site) {
     if (!ptr || rt_string_is_handle(ptr))
         return true;
@@ -398,6 +469,9 @@ bool BytecodeVM::validateStringHandle(const void *ptr, const char *site) {
     return false;
 }
 
+/// @brief If @p slot owns a string, release that reference and clear both the
+///        pointer and the ownership flag (idempotent; tolerates a bad handle
+///        by just dropping it).
 void BytecodeVM::releaseOwnedString(BCSlot *slot) {
     if (!slotOwnsString(slot))
         return;
@@ -411,6 +485,8 @@ void BytecodeVM::releaseOwnedString(BCSlot *slot) {
     setSlotOwnsString(slot, false);
 }
 
+/// @brief Push local slot @p idx onto the operand stack; if the local is a
+///        string, retain the reference and mark the new slot as owning it.
 void BytecodeVM::pushLocal(uint32_t idx) {
     BCSlot *dst = sp_++;
     *dst = fp_->locals[idx];
@@ -426,6 +502,10 @@ void BytecodeVM::pushLocal(uint32_t idx) {
     }
 }
 
+/// @brief Pop the operand stack into local slot @p idx. For string locals,
+///        releases the old value, then transfers the stack slot's reference
+///        (retaining only if the source did not already own it) so the net
+///        reference count stays balanced.
 void BytecodeVM::storeLocal(uint32_t idx) {
     BCSlot *src = --sp_;
     BCSlot *dst = fp_->locals + idx;
@@ -455,11 +535,14 @@ void BytecodeVM::storeLocal(uint32_t idx) {
     setSlotOwnsString(src, false);
 }
 
+/// @brief Release any owned string references held in a call's argument slots.
 void BytecodeVM::releaseCallArgs(BCSlot *args, uint8_t argCount) {
     for (uint8_t i = 0; i < argCount; ++i)
         releaseOwnedString(args + i);
 }
 
+/// @brief Release owned string references in every local of @p frame and clear
+///        the ownership flags — called when a frame is torn down.
 void BytecodeVM::releaseFrameLocals(const BCFrame &frame) {
     for (uint32_t i = 0; i < frame.func->numLocals; ++i) {
         if (localIsString(frame, i))
@@ -469,6 +552,8 @@ void BytecodeVM::releaseFrameLocals(const BCFrame &frame) {
     }
 }
 
+/// @brief Release every owned string still sitting on the value stack — used
+///        during teardown/unwind so a trap can't leak operand-stack strings.
 void BytecodeVM::releaseOwnedValueStack() {
     for (size_t i = 0; i < valueStack_.size(); ++i) {
         if (valueStackStringOwned_[i] == 0)
@@ -477,12 +562,16 @@ void BytecodeVM::releaseOwnedValueStack() {
     }
 }
 
+/// @brief Release every owned string global (module teardown / re-load).
 void BytecodeVM::releaseOwnedGlobals() {
     for (size_t i = 0; i < globals_.size(); ++i) {
         releaseOwnedGlobalString(i);
     }
 }
 
+/// @brief Reverse-map a raw pointer to a global slot to its global index, or
+///        SIZE_MAX if @p ptr is not the address of a global (lets GEP/store
+///        opcodes detect writes that target a string global).
 size_t BytecodeVM::globalIndexForAddress(const void *ptr) const {
     if (!ptr)
         return SIZE_MAX;
@@ -493,6 +582,8 @@ size_t BytecodeVM::globalIndexForAddress(const void *ptr) const {
     return SIZE_MAX;
 }
 
+/// @brief Release the string reference owned by global @p idx (no-op if the
+///        global is not an owned string), clearing pointer and ownership flag.
 void BytecodeVM::releaseOwnedGlobalString(size_t idx) {
     if (idx >= globals_.size() || idx >= globalsStringOwned_.size() || globalsStringOwned_[idx] == 0)
         return;
@@ -503,6 +594,8 @@ void BytecodeVM::releaseOwnedGlobalString(size_t idx) {
     globalsStringOwned_[idx] = 0;
 }
 
+/// @brief Before a raw (untyped) store through a pointer that aliases a string
+///        global, release the global's old reference so it isn't leaked.
 void BytecodeVM::clearGlobalStringOwnershipForRawStore(void *ptr) {
     const size_t idx = globalIndexForAddress(ptr);
     if (idx == SIZE_MAX)
@@ -510,6 +603,8 @@ void BytecodeVM::clearGlobalStringOwnershipForRawStore(void *ptr) {
     releaseOwnedGlobalString(idx);
 }
 
+/// @brief Mark the string global aliased by @p ptr as owned/not-owned after a
+///        typed store transferred a reference into it.
 void BytecodeVM::setGlobalStringOwnershipForAddress(void *ptr, bool owns) {
     const size_t idx = globalIndexForAddress(ptr);
     if (idx == SIZE_MAX || idx >= globalsStringOwned_.size())
@@ -517,6 +612,8 @@ void BytecodeVM::setGlobalStringOwnershipForAddress(void *ptr, bool owns) {
     globalsStringOwned_[idx] = owns ? 1 : 0;
 }
 
+/// @brief Release any owned strings captured in the pending trap record and
+///        reset it — called once the trap has been delivered or discarded.
 void BytecodeVM::clearTrapRecord() {
     for (size_t i = 0; i < trapRecord_.valueSlots.size() && i < trapRecord_.valueOwned.size(); ++i) {
         if (trapRecord_.valueOwned[i] == 0)
@@ -529,6 +626,10 @@ void BytecodeVM::clearTrapRecord() {
     trapRecord_ = TrapRecord{};
 }
 
+/// @brief Return the VM to a clean pre-execution state: release stack/trap
+///        strings, clear the call and EH stacks, rewind sp/fp/alloca, and
+///        zero the string-ownership bitmap. (Globals are kept — see
+///        @ref releaseOwnedGlobals.)
 void BytecodeVM::resetExecutionState() {
     releaseOwnedValueStack();
     clearTrapRecord();
@@ -541,10 +642,14 @@ void BytecodeVM::resetExecutionState() {
     std::fill(valueStackStringOwned_.begin(), valueStackStringOwned_.end(), 0);
 }
 
+/// @brief Current operand-stack depth of @p frame given stack pointer @p sp
+///        (slots pushed since the frame's stack base).
 uint32_t BytecodeVM::operandDepth(const BCFrame &frame, const BCSlot *sp) const {
     return static_cast<uint32_t>(sp - frame.stackBase);
 }
 
+/// @brief Verifier guard: trap (InvalidOpcode) unless @p pc is within @p func's
+///        code. Part of the untrusted-bytecode safety net.
 bool BytecodeVM::ensurePcInRange(const BytecodeFunction &func, uint32_t pc, const char *site) {
     if (pc < func.code.size())
         return true;
@@ -552,6 +657,8 @@ bool BytecodeVM::ensurePcInRange(const BytecodeFunction &func, uint32_t pc, cons
     return false;
 }
 
+/// @brief Verifier guard: trap unless @p words instruction words starting at
+///        @p pc lie within @p func's code (overflow-safe in 64-bit).
 bool BytecodeVM::ensureWordsAvailable(const BytecodeFunction &func,
                                       uint32_t pc,
                                       uint32_t words,
@@ -563,6 +670,8 @@ bool BytecodeVM::ensureWordsAvailable(const BytecodeFunction &func,
     return false;
 }
 
+/// @brief Verifier guard: trap unless branch @p target is a valid code offset
+///        in @p func.
 bool BytecodeVM::ensureBranchTarget(const BytecodeFunction &func,
                                     uint32_t target,
                                     const char *site) {
@@ -572,6 +681,10 @@ bool BytecodeVM::ensureBranchTarget(const BytecodeFunction &func,
     return false;
 }
 
+/// @brief Verifier guard: decode @p instr's stack effect and trap if the
+///        operand stack would underflow (too few inputs) or overflow the
+///        frame's reserved depth. Run before executing each instruction in
+///        untrusted mode so malformed bytecode cannot corrupt the stack.
 bool BytecodeVM::ensureStackForInstruction(const BCFrame &frame,
                                            const BCSlot *sp,
                                            uint32_t instr,
@@ -798,6 +911,8 @@ bool BytecodeVM::ensureStackForInstruction(const BCFrame &frame,
     return true;
 }
 
+/// @brief Verifier guard: trap unless the operand-stack depth at a call site
+///        exactly equals the callee's declared parameter count.
 bool BytecodeVM::ensureCallArity(const BytecodeFunction *func,
                                  const BCFrame *caller,
                                  const BCSlot *sp,
@@ -817,6 +932,9 @@ bool BytecodeVM::ensureCallArity(const BytecodeFunction *func,
     return true;
 }
 
+/// @brief Verifier guard: validate the callee's frame metadata (locals ≥
+///        params) and that pushing its frame won't exceed stack limits,
+///        before a new BCFrame is created.
 bool BytecodeVM::ensureFrameFootprint(const BytecodeFunction *func,
                                       const BCSlot *sp,
                                       const char *site) {
@@ -838,6 +956,9 @@ bool BytecodeVM::ensureFrameFootprint(const BytecodeFunction *func,
     return true;
 }
 
+/// @brief Execute the named function with @p args; traps if no module is
+///        loaded or the name is unknown. Convenience over the pointer overload.
+/// @return The function's return slot (default-constructed on trap).
 BCSlot BytecodeVM::exec(const std::string &funcName, const std::vector<BCSlot> &args) {
     if (!module_) {
         trap(TrapKind::RuntimeError, "No module loaded");
@@ -853,6 +974,12 @@ BCSlot BytecodeVM::exec(const std::string &funcName, const std::vector<BCSlot> &
     return exec(func, args);
 }
 
+/// @brief Execute @p func as a fresh top-level invocation.
+/// @details Validates module/function/arity, installs the thread-local
+///          active-VM and active-module context (so Thread.Start and other
+///          runtime handlers can re-enter bytecode), resets execution state,
+///          pushes @p args as the entry frame's initial locals, runs to
+///          completion, and returns the result slot (default on trap).
 BCSlot BytecodeVM::exec(const BytecodeFunction *func, const std::vector<BCSlot> &args) {
     registerUnifiedVmRuntimeHandlers();
     if (!module_) {
@@ -920,6 +1047,12 @@ BCSlot BytecodeVM::exec(const BytecodeFunction *func, const std::vector<BCSlot> 
     return BCSlot{};
 }
 
+/// @brief Portable interpreter loop: the `switch`-based fallback executed when
+///        threaded dispatch is unavailable or disabled.
+/// @details Fetches/decodes/executes one instruction per iteration until the
+///          VM leaves the Running state (Halted on return from the entry
+///          frame, or Trapped). @ref runThreaded is the faster path with
+///          identical semantics.
 void BytecodeVM::run() {
     state_ = VMState::Running;
 
@@ -2517,6 +2650,9 @@ bool BytecodeVM::mulOverflow(int64_t a, int64_t b, int64_t &result) {
 #endif
 }
 
+/// @brief Signed 64-bit division with trap detection.
+/// @return true and sets @p result; false and sets @p fault to DivideByZero
+///         (b==0) or Overflow (INT64_MIN / -1). Backs SDIV_I64[_CHK].
 bool BytecodeVM::safeSignedDiv(int64_t a,
                                int64_t b,
                                int64_t &result,
@@ -2533,6 +2669,8 @@ bool BytecodeVM::safeSignedDiv(int64_t a,
     return true;
 }
 
+/// @brief Unsigned 64-bit division (operands reinterpreted as uint64).
+/// @return false with @p fault = DivideByZero when b==0, else true.
 bool BytecodeVM::safeUnsignedDiv(int64_t a,
                                  int64_t b,
                                  int64_t &result,
@@ -2545,6 +2683,8 @@ bool BytecodeVM::safeUnsignedDiv(int64_t a,
     return true;
 }
 
+/// @brief Signed 64-bit remainder; traps DivideByZero on b==0 and defines the
+///        INT64_MIN % -1 corner as 0 (where the hardware op would fault).
 bool BytecodeVM::safeSignedRem(int64_t a,
                                int64_t b,
                                int64_t &result,
@@ -2561,6 +2701,7 @@ bool BytecodeVM::safeSignedRem(int64_t a,
     return true;
 }
 
+/// @brief Unsigned 64-bit remainder; traps DivideByZero on b==0.
 bool BytecodeVM::safeUnsignedRem(int64_t a,
                                  int64_t b,
                                  int64_t &result,
@@ -2573,6 +2714,7 @@ bool BytecodeVM::safeUnsignedRem(int64_t a,
     return true;
 }
 
+/// @brief Checked signed negation; traps Overflow on -INT64_MIN.
 bool BytecodeVM::safeNegate(int64_t value, int64_t &result, TrapKind &fault) const {
     if (value == std::numeric_limits<int64_t>::min()) {
         fault = TrapKind::Overflow;
@@ -2582,6 +2724,8 @@ bool BytecodeVM::safeNegate(int64_t value, int64_t &result, TrapKind &fault) con
     return true;
 }
 
+/// @brief Two's-complement wrapping add (no UB): computes in uint64 and
+///        bit-copies back. Backs the non-checked ADD_I64.
 int64_t BytecodeVM::wrappingAdd(int64_t a, int64_t b) noexcept {
     const uint64_t result = static_cast<uint64_t>(a) + static_cast<uint64_t>(b);
     int64_t out = 0;
@@ -2589,6 +2733,7 @@ int64_t BytecodeVM::wrappingAdd(int64_t a, int64_t b) noexcept {
     return out;
 }
 
+/// @brief Two's-complement wrapping subtract (no UB).
 int64_t BytecodeVM::wrappingSub(int64_t a, int64_t b) noexcept {
     const uint64_t result = static_cast<uint64_t>(a) - static_cast<uint64_t>(b);
     int64_t out = 0;
@@ -2596,6 +2741,7 @@ int64_t BytecodeVM::wrappingSub(int64_t a, int64_t b) noexcept {
     return out;
 }
 
+/// @brief Two's-complement wrapping multiply (no UB).
 int64_t BytecodeVM::wrappingMul(int64_t a, int64_t b) noexcept {
     const uint64_t result = static_cast<uint64_t>(a) * static_cast<uint64_t>(b);
     int64_t out = 0;
@@ -2603,6 +2749,8 @@ int64_t BytecodeVM::wrappingMul(int64_t a, int64_t b) noexcept {
     return out;
 }
 
+/// @brief Logical left shift with the shift amount masked to 0–63 (defined
+///        for any shift; no UB from over-shift).
 int64_t BytecodeVM::wrappingShl(int64_t value, int64_t shift) noexcept {
     const uint64_t result = static_cast<uint64_t>(value) << (static_cast<uint64_t>(shift) & 63u);
     int64_t out = 0;
@@ -2610,6 +2758,8 @@ int64_t BytecodeVM::wrappingShl(int64_t value, int64_t shift) noexcept {
     return out;
 }
 
+/// @brief Arithmetic (sign-extending) right shift, amount masked to 0–63 and
+///        sign replication done manually so behavior is portable/defined.
 int64_t BytecodeVM::arithmeticShr(int64_t value, int64_t shift) noexcept {
     const uint32_t amount = static_cast<uint32_t>(static_cast<uint64_t>(shift) & 63u);
     if (amount == 0)
@@ -2624,6 +2774,9 @@ int64_t BytecodeVM::arithmeticShr(int64_t value, int64_t shift) noexcept {
     return out;
 }
 
+/// @brief Convert a double to i64 by truncation toward zero (F64_TO_I64_CHK).
+/// @return false with @p fault = InvalidCast (NaN/Inf) or Overflow (outside
+///         [-2^63, 2^63)); otherwise true.
 bool BytecodeVM::truncF64ToI64(double value, int64_t &result, TrapKind &fault) noexcept {
     fault = TrapKind::None;
     if (!std::isfinite(value)) {
@@ -2640,6 +2793,8 @@ bool BytecodeVM::truncF64ToI64(double value, int64_t &result, TrapKind &fault) n
     return true;
 }
 
+/// @brief Convert a double to i64 with round-to-nearest (std::rint), same
+///        InvalidCast/Overflow trapping as @ref truncF64ToI64.
 bool BytecodeVM::roundF64ToI64(double value, int64_t &result, TrapKind &fault) noexcept {
     fault = TrapKind::None;
     if (!std::isfinite(value)) {
@@ -2657,6 +2812,9 @@ bool BytecodeVM::roundF64ToI64(double value, int64_t &result, TrapKind &fault) n
     return true;
 }
 
+/// @brief Convert a double to u64 (round-to-nearest), returning the bit
+///        pattern in @p result. Traps InvalidCast on NaN/Inf or a negative
+///        value, Overflow at/above 2^64 (F64_TO_U64_CHK).
 bool BytecodeVM::roundF64ToU64Bits(double value, int64_t &result, TrapKind &fault) noexcept {
     fault = TrapKind::None;
     if (!std::isfinite(value)) {
@@ -2678,6 +2836,10 @@ bool BytecodeVM::roundF64ToU64Bits(double value, int64_t &result, TrapKind &faul
     return true;
 }
 
+/// @brief Raise a trap, preferring an in-bytecode handler: try dispatchTrap
+///        (transfer to an EH handler block) and, if none catches it, fall
+///        back to a hard @ref trap that unwinds the VM.
+/// @return true if a handler took over (execution continues), else false.
 bool BytecodeVM::trapOrDispatch(TrapKind kind, const char *message, int32_t errorCode) {
     if (dispatchTrap(kind, errorCode, message))
         return true;
@@ -2685,6 +2847,8 @@ bool BytecodeVM::trapOrDispatch(TrapKind kind, const char *message, int32_t erro
     return false;
 }
 
+/// @brief Bounds-check a local-slot index against the current frame; on
+///        failure raises InvalidOpcode via @ref trapOrDispatch.
 bool BytecodeVM::ensureLocalIndex(uint32_t idx, const char *site) {
     if (fp_ && fp_->func && idx < fp_->func->numLocals)
         return true;
@@ -2693,6 +2857,8 @@ bool BytecodeVM::ensureLocalIndex(uint32_t idx, const char *site) {
     return false;
 }
 
+/// @brief Reject a null or low (< first 4 KiB page) pointer before a
+///        load/store; raises NullPointer via @ref trapOrDispatch on failure.
 bool BytecodeVM::ensureMemoryAddress(const void *ptr, const char *site) {
     if (ptr && reinterpret_cast<uintptr_t>(ptr) >= 4096)
         return true;
@@ -2701,6 +2867,12 @@ bool BytecodeVM::ensureMemoryAddress(const void *ptr, const char *site) {
     return false;
 }
 
+/// @brief Bump-allocate @p requestedSize bytes (8-byte aligned) from the
+///        function-lifetime alloca arena, returning the block in @p ptr.
+/// @details Traps DomainError on a negative size and StackOverflow on size
+///          overflow or arena exhaustion (16 MiB cap). The arena was reserved
+///          at construction so it never reallocates — see the ctor note —
+///          keeping previously handed-out alloca pointers valid.
 bool BytecodeVM::allocateAlloca(int64_t requestedSize, void *&ptr, const char *site) {
     ptr = nullptr;
     if (requestedSize < 0) {
@@ -2768,16 +2940,22 @@ uint32_t BytecodeVM::getSourceLine(const BytecodeFunction *func, uint32_t pc) {
     return func->lineTable[pc];
 }
 
+/// @brief PC of the faulting instruction (pc-1, since the fetch already
+///        advanced past it); 0 if there is no frame.
 uint32_t BytecodeVM::currentFaultPc() const {
     return (fp_ && fp_->pc > 0) ? (fp_->pc - 1) : 0;
 }
 
+/// @brief Block label associated with @p pc via the function's label table
+///        (empty if unavailable) — used in trap diagnostics.
 std::string BytecodeVM::currentBlockLabelForPc(const BytecodeFunction *func, uint32_t pc) const {
     if (!func || pc >= func->blockLabelTable.size())
         return {};
     return func->blockLabelTable[pc];
 }
 
+/// @brief Resolve the source file path for @p pc from the function's
+///        source-file table (empty if unknown) — used in trap diagnostics.
 std::string BytecodeVM::currentSourcePathForPc(const BytecodeFunction *func, uint32_t pc) const {
     if (!module_ || !func)
         return {};
@@ -2798,6 +2976,9 @@ std::string BytecodeVM::currentSourcePathForPc(const BytecodeFunction *func, uin
     return {};
 }
 
+/// @brief Build the human-readable trap report string: trap kind name,
+///        optional error code and message, and the faulting function /
+///        block / source location resolved from the current frame.
 std::string BytecodeVM::formatTrapMessage(TrapKind kind,
                                           int32_t errorCode,
                                           const char *message) const {
@@ -2962,6 +3143,12 @@ bool BytecodeVM::dispatchTrap(TrapKind kind, int32_t errorCode, const char *mess
     return false;
 }
 
+/// @brief Implement the RESUME_* opcodes: validate the resume token against
+///        the saved trap record, restore the captured value stack / call /
+///        EH state, and continue at the faulting instruction (@p useNextPc
+///        false) or the one after it (RESUME_NEXT).
+/// @return false if the token does not match a valid trap record (the caller
+///         then treats it as a hard error).
 bool BytecodeVM::resumeTrap(bool useNextPc) {
     BCSlot token = *--sp_;
     setSlotOwnsString(sp_, false);
@@ -3084,6 +3271,8 @@ struct BytecodeAsyncPayload {
     void *promise;
 };
 
+/// @brief Drop a worker thread/async payload's owned argument object (no-op
+///        if not owned or null).
 static void releaseWorkerArg(void *arg, bool ownsArg) {
     if (!ownsArg || !arg)
         return;
@@ -3091,6 +3280,10 @@ static void releaseWorkerArg(void *arg, bool ownsArg) {
         rt_obj_free(arg);
 }
 
+/// @brief Settle an Async.Run promise with a successful @p result.
+/// @details If the worker returned its own owned argument object, ownership is
+///          transferred to the promise (no double free); otherwise the owned
+///          argument is released and the result is set as owned.
 static void completeAsyncPromiseWithResult(void *promise,
                                            void *result,
                                            void **ownedArg,
@@ -3109,6 +3302,8 @@ static void completeAsyncPromiseWithResult(void *promise,
     rt_promise_set_owned(promise, result);
 }
 
+/// @brief Settle an Async.Run promise with an @p error, first releasing any
+///        owned worker argument so a failed task cannot leak it.
 static void completeAsyncPromiseWithError(void *promise,
                                           rt_string error,
                                           void **ownedArg,
@@ -3121,6 +3316,12 @@ static void completeAsyncPromiseWithError(void *promise,
     rt_promise_set_error(promise, error);
 }
 
+/// @brief Run a spawned bytecode thread's entry function on a fresh worker VM.
+/// @details Builds a worker BytecodeVM, mirrors the parent's execution
+///          environment, installs the active-VM/module thread context, and
+///          invokes @c payload->entry with its argument. On failure writes a
+///          message into @p errorBuf.
+/// @return true on clean completion, false on error (message in @p errorBuf).
 static bool runBytecodeThreadPayload(BytecodeThreadPayload *payload,
                                      char *errorBuf,
                                      size_t errorBufSize) {
@@ -3380,6 +3581,8 @@ static void validateEntrySignature(const il::core::Function &fn) {
     rt_trap("Thread.Start: invalid entry signature");
 }
 
+/// @brief Trap unless IL function @p fn matches the Async.Run entry shape
+///        (ptr return, single ptr parameter).
 static void validateAsyncEntrySignature(const il::core::Function &fn) {
     using Kind = il::core::Type::Kind;
     if (fn.retType.kind != Kind::Ptr)
@@ -3389,6 +3592,8 @@ static void validateAsyncEntrySignature(const il::core::Function &fn) {
     rt_trap("Async.Run: invalid entry signature");
 }
 
+/// @brief Trap unless IL function @p fn matches the HttpServer.BindHandler
+///        entry shape (void return, two ptr parameters).
 static void validateHttpHandlerSignature(const il::core::Function &fn) {
     using Kind = il::core::Type::Kind;
     if (fn.retType.kind != Kind::Void || fn.params.size() != 2 ||
@@ -3397,6 +3602,8 @@ static void validateHttpHandlerSignature(const il::core::Function &fn) {
     }
 }
 
+/// @brief Trap unless bytecode function @p fn is a valid Thread.Start entry
+///        (no return value; zero or one parameter).
 static void validateBytecodeThreadEntrySignature(const BytecodeFunction &fn) {
     if (fn.hasReturn)
         rt_trap("Thread.Start: invalid bytecode entry signature");
@@ -3405,11 +3612,15 @@ static void validateBytecodeThreadEntrySignature(const BytecodeFunction &fn) {
     rt_trap("Thread.Start: invalid bytecode entry signature");
 }
 
+/// @brief Trap unless bytecode function @p fn is a valid Async.Run entry
+///        (returns a value; exactly one parameter).
 static void validateBytecodeAsyncEntrySignature(const BytecodeFunction &fn) {
     if (!fn.hasReturn || fn.numParams != 1)
         rt_trap("Async.Run: invalid bytecode entry signature");
 }
 
+/// @brief Trap unless bytecode function @p fn is a valid HttpServer
+///        BindHandler entry (no return value; exactly two parameters).
 static void validateBytecodeHttpHandlerSignature(const BytecodeFunction &fn) {
     if (fn.hasReturn || fn.numParams != 2)
         rt_trap("HttpServer.BindHandler: invalid bytecode entry signature");
@@ -3736,6 +3947,9 @@ static void unified_thread_start_safe_owned_handler(void **args, void *result) {
         *reinterpret_cast<void **>(result) = thread;
 }
 
+/// @brief C ABI trampoline: run a standard-VM Async.Run entry from a bytecode
+///        context. Decodes the payload, executes the entry, settles the
+///        promise with the result or error, and frees the payload + owned arg.
 extern "C" void vm_async_run_entry_trampoline_bc(void *raw) {
     VmAsyncRunPayload *payload = static_cast<VmAsyncRunPayload *>(raw);
     if (!payload || !payload->module || !payload->entry || !payload->promise) {
@@ -3788,6 +4002,9 @@ extern "C" void vm_async_run_entry_trampoline_bc(void *raw) {
     delete payload;
 }
 
+/// @brief C ABI trampoline: run a bytecode Async.Run entry on a worker VM,
+///        settling its promise with the returned result or an error and
+///        releasing the payload.
 extern "C" void bytecode_async_entry_trampoline(void *raw) {
     BytecodeAsyncPayload *payload = static_cast<BytecodeAsyncPayload *>(raw);
     if (!payload || !payload->module || !payload->entry || !payload->promise) {
@@ -3834,6 +4051,9 @@ extern "C" void bytecode_async_entry_trampoline(void *raw) {
     delete payload;
 }
 
+/// @brief C ABI trampoline: dispatch one HTTP request to a standard-VM
+///        bind-handler from a bytecode context (@p req/@p res are the
+///        request/response objects).
 extern "C" void vm_http_handler_dispatch_bc(void *raw, void *req, void *res) {
     auto *payload = static_cast<VmHttpHandlerPayload *>(raw);
     if (!payload || !payload->module || !payload->entry) {
@@ -3857,6 +4077,9 @@ extern "C" void vm_http_handler_dispatch_bc(void *raw, void *req, void *res) {
     }
 }
 
+/// @brief C ABI trampoline: dispatch one HTTP request to a bytecode
+///        bind-handler, invoking its entry on the active VM with the
+///        request/response pair.
 extern "C" void bytecode_http_handler_dispatch(void *raw, void *req, void *res) {
     auto *payload = static_cast<BytecodeHttpHandlerPayload *>(raw);
     if (!payload || !payload->module || !payload->entry) {
@@ -3883,6 +4106,8 @@ extern "C" void bytecode_http_handler_dispatch(void *raw, void *req, void *res) 
     }
 }
 
+/// @brief C ABI destructor for a standard-VM HTTP handler payload (called by
+///        the runtime when the bound handler is torn down).
 extern "C" void destroy_vm_http_handler_payload_bc(void *raw) {
     auto *payload = static_cast<VmHttpHandlerPayload *>(raw);
     if (!payload)
@@ -3891,10 +4116,15 @@ extern "C" void destroy_vm_http_handler_payload_bc(void *raw) {
     delete payload;
 }
 
+/// @brief C ABI destructor for a bytecode HTTP handler payload.
 extern "C" void destroy_bytecode_http_handler_payload(void *raw) {
     delete static_cast<BytecodeHttpHandlerPayload *>(raw);
 }
 
+/// @brief Runtime handler for HttpServer.BindHandler that works for both the
+///        standard VM and the bytecode VM: detects which engine the entry
+///        belongs to, validates its signature, and registers the matching
+///        dispatch + payload-destructor trampolines.
 static void unified_http_server_bind_handler(void **args, void *result) {
     (void)result;
 
@@ -3961,6 +4191,8 @@ static void unified_http_server_bind_handler(void **args, void *result) {
     rt_http_server_bind_handler(server, tag, entry);
 }
 
+/// @brief HTTPS counterpart of @ref unified_http_server_bind_handler (same
+///        dual-engine dispatch over a TLS server).
 static void unified_https_server_bind_handler(void **args, void *result) {
     (void)result;
 
@@ -4027,6 +4259,9 @@ static void unified_https_server_bind_handler(void **args, void *result) {
     rt_https_server_bind_handler(server, tag, entry);
 }
 
+/// @brief Runtime handler for Async.Run usable from both engines: validates
+///        the entry signature, builds the appropriate async payload, and
+///        schedules it on a worker, returning the promise.
 static void unified_async_run_handler(void **args, void *result) {
     void *entry = nullptr;
     void *arg = nullptr;
@@ -4150,6 +4385,11 @@ static void unified_async_run_handler(void **args, void *result) {
         *reinterpret_cast<void **>(result) = future;
 }
 
+/// @brief Install the dual-engine runtime handlers (Thread.Start, Async.Run,
+///        Http/Https BindHandler) exactly once per process, chaining to any
+///        previously registered handlers. Idempotent via std::call_once;
+///        invoked from load()/exec() so bytecode programs get correct
+///        threading/async/HTTP behavior.
 void registerUnifiedVmRuntimeHandlers() {
     std::call_once(gUnifiedRuntimeHandlersOnce, []() {
         using il::runtime::signatures::make_signature;

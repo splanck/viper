@@ -93,7 +93,8 @@ int main() {
 
     const il::runtime::RuntimeClass *spriteFontCls = findClass("Viper.Graphics.SpriteFont");
     assert(spriteFontCls != nullptr && "Viper.Graphics.SpriteFont not found in catalog");
-    assert(hasMethod(*spriteFontCls, "LoadPSF", "obj<Viper.Graphics.BitmapFont>(str)"));
+    assert(hasMethod(*spriteFontCls, "LoadBDF", "obj<Viper.Graphics.SpriteFont>(str)"));
+    assert(hasMethod(*spriteFontCls, "LoadPSF", "obj<Viper.Graphics.SpriteFont>(str)"));
 
     constexpr std::array<std::string_view, 44> graphics2DClasses = {
         "Viper.Graphics.RenderTarget2D", "Viper.Graphics.Surface2D",

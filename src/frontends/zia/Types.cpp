@@ -48,6 +48,10 @@ std::unordered_map<std::string, InterfaceSet> g_interface_impls;
 // BUG-VL-007 fix: Track class inheritance (child -> parent)
 std::unordered_map<std::string, std::string> g_class_parents;
 
+/// @brief Recursively append a human-readable spelling of @p type to @p ss.
+/// @param developerFacing When true, emit internal/developer detail; when
+///        false, the user-facing form. Type arguments render as `[A, B]`,
+///        with `?` for an unresolved argument.
 void appendTypeString(std::ostringstream &ss, const ViperType &type, bool developerFacing) {
     auto appendArgs = [&](const std::vector<TypeRef> &args) {
         ss << "[";
@@ -436,12 +440,15 @@ struct TypeCache {
     TypeRef neverType;
     TypeRef anyType;
 
+    /// @brief Access the process-wide primitive-type cache (Meyers singleton).
     static TypeCache &instance() {
         static TypeCache cache;
         return cache;
     }
 
   private:
+    /// @brief Eagerly construct the shared TypeRef instance for every
+    ///        primitive kind so factory accessors return stable identities.
     TypeCache() {
         integerType = std::make_shared<ViperType>(TypeKindSem::Integer);
         numberType = std::make_shared<ViperType>(TypeKindSem::Number);

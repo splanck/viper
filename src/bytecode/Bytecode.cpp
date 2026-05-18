@@ -8,6 +8,11 @@
 
 namespace viper::bytecode {
 
+/// @brief Return a stable, human-readable mnemonic for a bytecode opcode.
+/// @param op The opcode to name.
+/// @return A static string literal (never NULL); "UNKNOWN" for any value
+///         outside the defined BCOpcode set. Used by the disassembler and
+///         trace/diagnostic output, so the names are part of the debug ABI.
 const char *opcodeName(BCOpcode op) {
     switch (op) {
         // Stack Operations

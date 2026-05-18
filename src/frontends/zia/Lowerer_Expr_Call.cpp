@@ -30,11 +30,14 @@ using namespace runtime;
 
 namespace {
 
+/// @brief True if @p callee is an HttpServer route registration runtime call
+///        (Get/Post/Put/Delete) needing handler-binding lowering.
 bool isHttpServerRouteRuntime(std::string_view callee) {
     return callee == "Viper.Network.HttpServer.Get" || callee == "Viper.Network.HttpServer.Post" ||
            callee == "Viper.Network.HttpServer.Put" || callee == "Viper.Network.HttpServer.Delete";
 }
 
+/// @brief True if @p callee is an HttpsServer route registration runtime call.
 bool isHttpsServerRouteRuntime(std::string_view callee) {
     return callee == "Viper.Network.HttpsServer.Get" ||
            callee == "Viper.Network.HttpsServer.Post" ||
@@ -42,21 +45,30 @@ bool isHttpsServerRouteRuntime(std::string_view callee) {
            callee == "Viper.Network.HttpsServer.Delete";
 }
 
+/// @brief Runtime BindHandler callee matching @p callee's server flavor
+///        (HTTPS vs HTTP).
 const char *httpServerBindHandlerTarget(std::string_view callee) {
     return isHttpsServerRouteRuntime(callee) ? "Viper.Network.HttpsServer.BindHandler"
                                              : "Viper.Network.HttpServer.BindHandler";
 }
 
+/// @brief True if @p callee is a Terminal text-output runtime (Say/Print).
 bool isTerminalTextRuntime(std::string_view callee) {
     return callee == kTerminalSay || callee == kTerminalPrint;
 }
 
+/// @brief Peel `Optional` wrappers off @p type to get the underlying surface
+///        type used to pick a type-specialized runtime callee.
 TypeRef unwrapSurfaceType(TypeRef type) {
     while (type && type->kind == TypeKindSem::Optional && type->innerType())
         type = type->innerType();
     return type;
 }
 
+/// @brief Map a generic collection runtime call to a type-specialized variant
+///        based on the expected result @p surfaceType (e.g. Seq.Get →
+///        Seq.GetStr for a String result, Map.Get → Map.GetInt). Empty when
+///        no specialization applies.
 std::string specializedRuntimeReturnCallee(std::string_view callee, TypeRef surfaceType) {
     surfaceType = unwrapSurfaceType(surfaceType);
     if (!surfaceType)
@@ -92,10 +104,15 @@ std::string specializedRuntimeReturnCallee(std::string_view callee, TypeRef surf
     return {};
 }
 
+/// @brief True if @p type is a pointer type (the shape expected for an HTTP
+///        handler's request/response parameters).
 bool isHttpHandlerPtrType(TypeRef type) {
     return type && type->kind == TypeKindSem::Ptr;
 }
 
+/// @brief Resolve the user function bound as an HTTP route handler for @p tag,
+///        requiring the `void(ptr, ptr)` request/response signature; returns
+///        nullptr if no uniquely matching declaration exists.
 FunctionDecl *resolveHttpHandlerDecl(Sema &sema, const std::string &tag) {
     if (FunctionDecl *decl = sema.getFunctionDecl(tag)) {
         TypeRef fnType = sema.getFunctionType(decl);

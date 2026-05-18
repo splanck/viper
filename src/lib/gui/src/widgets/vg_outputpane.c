@@ -343,6 +343,8 @@ vg_outputpane_t *vg_outputpane_create(void) {
     return pane;
 }
 
+/// @brief Widget-vtable destroy hook: free every output line (and its
+///        segment buffers) and the line array.
 static void outputpane_destroy(vg_widget_t *widget) {
     vg_outputpane_t *pane = (vg_outputpane_t *)widget;
 
@@ -361,6 +363,8 @@ void vg_outputpane_destroy(vg_outputpane_t *pane) {
     vg_widget_destroy(&pane->base);
 }
 
+/// @brief Widget-vtable measure hook: the output pane fills the available
+///        space (no intrinsic size).
 static void outputpane_measure(vg_widget_t *widget, float available_width, float available_height) {
     (void)available_width;
     (void)available_height;
@@ -370,6 +374,8 @@ static void outputpane_measure(vg_widget_t *widget, float available_width, float
     widget->measured_height = available_height;
 }
 
+/// @brief Widget-vtable paint hook: draw the visible lines with per-segment
+///        colors, the selection highlight, and the border.
 static void outputpane_paint(vg_widget_t *widget, void *canvas) {
     vg_outputpane_t *pane = (vg_outputpane_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -490,6 +496,8 @@ static void outputpane_paint(vg_widget_t *widget, void *canvas) {
     vgfx_clear_clip(win);
 }
 
+/// @brief Widget-vtable event hook: handle scrolling, click/drag text
+///        selection, and copy. Returns true if the event was consumed.
 static bool outputpane_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_outputpane_t *pane = (vg_outputpane_t *)widget;
 

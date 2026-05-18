@@ -35,6 +35,17 @@ namespace bytecode {
 
 #if defined(__GNUC__) || defined(__clang__)
 
+/// @brief Execute the loaded function using computed-goto ("threaded")
+///        dispatch — the fast interpreter path on GCC/Clang.
+/// @details Builds a 256-entry table of label addresses (labels-as-values
+///          GNU extension) and jumps directly opcode→handler→next-opcode,
+///          eliminating the switch range check and branch-predictor penalty
+///          of the portable loop. The table is a local (not static): GCC's
+///          C++ frontend rejects label addresses in designated initializers
+///          and a static table would race on first-call init. Working copies
+///          of pc/sp/locals are kept in registers and flushed back to member
+///          state via SYNC_STATE before any call that may observe or unwind
+///          the VM. Unmapped opcodes fall through to L_DEFAULT (trap).
 void BytecodeVM::runThreaded() {
     // Dispatch table for computed goto. Keep it local: GCC C++ rejects label
     // addresses in designated initializers, and static post-init mutation races.

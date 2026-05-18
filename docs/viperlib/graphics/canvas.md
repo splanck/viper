@@ -56,8 +56,12 @@ last-verified: 2026-05-17
 | `Frame(x, y, w, h, color)`            | `Void(Integer...)`                    | Draws a rectangle outline                                  |
 | `Fullscreen()`                        | `Void()`                              | Enters fullscreen mode                                     |
 | `GetFps()`                            | `Integer()`                           | Returns the current target FPS (-1 = unlimited)            |
+| `GetMonitorHeight()`                  | `Integer()`                           | Returns the height of the monitor containing this window   |
+| `GetMonitorWidth()`                   | `Integer()`                           | Returns the width of the monitor containing this window    |
 | `GetPixel(x, y)`                      | `Integer(Integer, Integer)`           | Gets pixel color at (x, y)                                 |
 | `GetScale()`                          | `Double()`                            | Returns the HiDPI display scale factor (1.0 normal, 2.0 on Retina) |
+| `GetWindowX()`                        | `Integer()`                           | Returns the window X position in screen coordinates        |
+| `GetWindowY()`                        | `Integer()`                           | Returns the window Y position in screen coordinates        |
 | `GradientH(x, y, w, h, c1, c2)`      | `Void(Integer...)`                    | Draws a horizontal gradient (left c1 to right c2), honoring the active clip rect |
 | `GradientV(x, y, w, h, c1, c2)`      | `Void(Integer...)`                    | Draws a vertical gradient (top c1 to bottom c2), honoring the active clip rect |
 | `IsFocused()`                         | `Boolean()`                           | Returns true if the window has keyboard focus              |
@@ -83,6 +87,7 @@ last-verified: 2026-05-17
 | `SetClipRect(x, y, w, h)`             | `Void(Integer...)`                    | Sets clipping rectangle; all drawing is constrained to it  |
 | `SetDTMax(max)`                        | `Void(Integer)`                       | Set maximum DeltaTime clamp in ms. After startup, `DeltaTime`/`DeltaTimeMs` auto-clamp to `[1, max]`; `DeltaTimeSec` reports the clamped value divided by 1000 |
 | `SetFps(fps)`                         | `Void(Integer)`                       | Set the target frame rate (-1 = unlimited)                 |
+| `SetPosition(x, y)`                   | `Void(Integer, Integer)`              | Move the window to screen coordinates                      |
 | `SetTitle(title)`                     | `Void(String)`                        | Changes the window title at runtime                        |
 | `Text(x, y, text, color)`             | `Void(Integer, Integer, String, Integer)` | Draws text at (x, y) with the specified color          |
 | `TextBg(x, y, text, fg, bg)`          | `Void(Integer, Integer, String, Integer, Integer)` | Draws text with foreground and background colors |
@@ -106,7 +111,7 @@ Colors are specified as 32-bit integers in `0x00RRGGBB` format or with `Viper.Gr
 - White: `0x00FFFFFF`
 - Black: `0x00000000`
 
-Use `Viper.Graphics.Color.RGB()` or `Viper.Graphics.Color.RGBA()` to create colors from components. RGB-only drawing calls use the RGB channels from either form. Alpha-aware calls such as `BoxAlpha`, `DiscAlpha`, `EllipseAlpha`, and `BlitAlpha` use straight-alpha source-over compositing; the explicit alpha parameter controls shape opacity. `FloodFill` compares and writes alpha as part of the filled region when given a tagged RGBA color. `Color.RGBA()` values carry an internal explicit-alpha tag; use `Color.Get*` or `Color.ToHex()` instead of raw integer equality for RGBA colors.
+Use `Viper.Graphics.Color.RGB()` or `Viper.Graphics.Color.RGBA()` to create colors from components. RGB-only drawing calls use the RGB channels from either form. Alpha-aware calls such as `BoxAlpha`, `DiscAlpha`, `EllipseAlpha`, and `BlitAlpha` use straight-alpha source-over compositing; the explicit alpha parameter controls shape opacity. `FloodFill` compares and writes alpha as part of the filled region when given a tagged RGBA color. `Color.RGBA()` values carry an internal explicit-alpha tag; use `Color.Get*` or `Color.ToHex()` instead of raw integer equality for RGBA colors. `Color.GetA(Color.RGB(...))` returns `0` because plain RGB stores no alpha byte; drawing helpers still treat plain RGB colors as opaque.
 
 ### Zia Example
 
@@ -458,7 +463,7 @@ Color utility functions for graphics operations.
 | `Desaturate(color, amount)` | `Integer(Integer, Integer)`               | Decreases saturation of a color (0-100)                                         |
 | `FromHex(hex)`           | `Integer(String)`                             | Parses `#RRGGBB` or `#RRGGBBAA`; invalid input returns `0`                      |
 | `FromHSL(h, s, l)`       | `Integer(Integer, Integer, Integer)`          | Creates a color from hue, saturation (0-100), lightness (0-100); hue wraps modulo 360 |
-| `GetA(color)`            | `Integer(Integer)`                            | Extracts alpha component (0-255) from a packed color                            |
+| `GetA(color)`            | `Integer(Integer)`                            | Extracts the stored alpha byte (plain `Color.RGB` returns 0)                    |
 | `GetB(color)`            | `Integer(Integer)`                            | Extracts blue component (0-255) from a packed color                             |
 | `GetG(color)`            | `Integer(Integer)`                            | Extracts green component (0-255) from a packed color                            |
 | `GetH(color)`            | `Integer(Integer)`                            | Extracts hue (0-360) from a packed color                                        |

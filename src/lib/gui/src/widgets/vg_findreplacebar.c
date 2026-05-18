@@ -141,6 +141,8 @@ static bool fr_utf8_is_continuation(unsigned char c) {
     return (c & 0xC0u) == 0x80u;
 }
 
+/// @brief Advance @p p past one UTF-8 codepoint (stops at NUL); NULL/empty
+///        input returns @p p unchanged.
 static const char *fr_utf8_next(const char *p) {
     if (!p || !*p)
         return p;
@@ -150,6 +152,8 @@ static const char *fr_utf8_next(const char *p) {
     return p;
 }
 
+/// @brief Walk back from @p p to the start of the previous UTF-8 codepoint
+///        within @p text; returns NULL if @p p is already at the start.
 static const char *fr_utf8_prev_start(const char *text, const char *p) {
     if (!text || !p || p <= text)
         return NULL;
@@ -159,6 +163,8 @@ static const char *fr_utf8_prev_start(const char *text, const char *p) {
     return p;
 }
 
+/// @brief Decode the UTF-8 codepoint at @p p, reading at most @p max_len bytes.
+///        Returns 0 on empty input, U+FFFD on a malformed/truncated sequence.
 static uint32_t fr_utf8_decode_at(const char *p, size_t max_len) {
     const unsigned char *s = (const unsigned char *)p;
     if (!s || max_len == 0)
@@ -178,6 +184,9 @@ static uint32_t fr_utf8_decode_at(const char *p, size_t max_len) {
     return 0xFFFD;
 }
 
+/// @brief True if @p cp is a word boundary (NUL, or an ASCII non-alphanumeric
+///        that is not '_'); non-ASCII is treated as a word character so
+///        whole-word search keeps accented words intact.
 static bool is_word_boundary_codepoint(uint32_t cp) {
     if (cp == 0)
         return true;
@@ -208,6 +217,10 @@ static bool check_whole_word(const char *text, const char *match, size_t match_l
 // Search Implementation
 //=============================================================================
 
+/// @brief Find the first occurrence of @p query in @p text, honoring the
+///        case-sensitive and whole-word flags in @p options.
+/// @param match_len Receives the matched byte length on success.
+/// @return Pointer into @p text at the match, or NULL if not found.
 static const char *find_in_line(const char *text,
                                 const char *query,
                                 vg_search_options_t *options,
@@ -245,6 +258,11 @@ static const char *find_in_line(const char *text,
 }
 
 #ifndef _WIN32
+/// @brief Find the next POSIX-regex match of @p regex in @p text at or after
+///        @p start, honoring the whole-word flag in @p options.
+/// @param match_len Receives the matched byte length on success.
+/// @return Pointer into @p text at the match, or NULL if none. (POSIX-only;
+///         Windows builds use a non-regex fallback.)
 static const char *find_regex_in_line(const char *text,
                                       const char *start,
                                       regex_t *regex,

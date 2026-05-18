@@ -49,6 +49,7 @@ class LowererTypeLayout {
         return structTypes_.count(name) > 0;
     }
 
+    /// @brief Record the field layout for value (struct) type @p name.
     void registerValueType(const std::string &name, StructTypeInfo info);
 
     std::unordered_map<std::string, StructTypeInfo> &valueTypes() {
@@ -73,6 +74,7 @@ class LowererTypeLayout {
         return classTypes_.count(name) > 0;
     }
 
+    /// @brief Record the field layout for class type @p name.
     void registerEntityType(const std::string &name, ClassTypeInfo info);
 
     std::unordered_map<std::string, ClassTypeInfo> &entityTypes() {
@@ -93,6 +95,7 @@ class LowererTypeLayout {
         return it != interfaceTypes_.end() ? &it->second : nullptr;
     }
 
+    /// @brief Record the method/slot layout for interface type @p name.
     void registerInterfaceType(const std::string &name, InterfaceTypeInfo info);
 
     std::unordered_map<std::string, InterfaceTypeInfo> &interfaceTypes() {

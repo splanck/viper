@@ -113,6 +113,9 @@ bool vg_menu_item_is_live(const vg_menu_item_t *item) {
            (item->parent_menu != NULL || item->owner_contextmenu != NULL);
 }
 
+/// @brief Free every menu item parked on @p menu's deferred-deletion list.
+/// @details Items are "retired" (not freed immediately) while a menu may
+///          still be referenced mid-event; this drains that list safely.
 static void free_retired_menu_items(vg_menu_t *menu) {
     if (!menu)
         return;
@@ -126,6 +129,9 @@ static void free_retired_menu_items(vg_menu_t *menu) {
     menu->retired_items = NULL;
 }
 
+/// @brief Close @p menu (or the currently open menu if @p menu is NULL):
+///        clears the open/highlight state, releases input capture, and
+///        requests a repaint.
 static void close_menubar_menu(vg_menubar_t *menubar, vg_menu_t *menu) {
     if (!menubar)
         return;
@@ -146,6 +152,9 @@ static void close_menubar_menu(vg_menubar_t *menubar, vg_menu_t *menu) {
     }
 }
 
+/// @brief Move @p item (and its submenu items) onto @p menu's retired list
+///        for deferred freeing, so a removal during event handling does not
+///        free memory still referenced up the call stack.
 static void retire_menu_item(vg_menu_t *menu, vg_menu_item_t *item) {
     if (!menu || !item)
         return;

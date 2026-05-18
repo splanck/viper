@@ -176,7 +176,9 @@ class CompletionEngine {
     /// @{
     //=========================================================================
 
+    /// @brief Completion items for language keywords matching @p prefix.
     std::vector<CompletionItem> provideKeywords(const std::string &prefix) const;
+    /// @brief Completion items for code snippets/templates matching @p prefix.
     std::vector<CompletionItem> provideSnippets(const std::string &prefix) const;
 
     std::vector<CompletionItem> provideScopeSymbols(const Sema &sema,
@@ -185,6 +187,7 @@ class CompletionEngine {
     std::vector<CompletionItem> provideMemberCompletions(const Sema &sema,
                                                          const Context &ctx) const;
 
+    /// @brief Completion items for known type names matching @p prefix.
     std::vector<CompletionItem> provideTypeNames(const Sema &sema, const std::string &prefix) const;
 
     std::vector<CompletionItem> provideModuleMembers(const Sema &sema,
@@ -227,10 +230,13 @@ class CompletionEngine {
     /// @{
     //=========================================================================
 
+    /// @brief Drop items whose label does not match @p prefix (case-insensitive).
     void filterByPrefix(std::vector<CompletionItem> &items, const std::string &prefix) const;
 
+    /// @brief Sort @p items by relevance to @p prefix (exact/prefix/fuzzy).
     void rank(std::vector<CompletionItem> &items, const std::string &prefix) const;
 
+    /// @brief Remove duplicate completion entries (same label/kind).
     void deduplicate(std::vector<CompletionItem> &items) const;
 
     /// @}

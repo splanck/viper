@@ -277,6 +277,58 @@ TEST(RuntimeMethodIndexBasic, SoundFactoriesPreserveConcreteReturnClass) {
     EXPECT_EQ(compatTone->returnClassQName, std::string("Viper.Audio.Sound"));
 }
 
+TEST(RuntimeMethodIndexBasic, GraphicsSurfaceBindingsAreCataloged) {
+    runtimeMethodIndex().seed();
+
+    auto spriteFontBdf = runtimeMethodIndex().find("Viper.Graphics.SpriteFont", "LoadBDF", 1);
+    ASSERT_TRUE(spriteFontBdf.has_value());
+    EXPECT_EQ(spriteFontBdf->ret, BasicType::Object);
+    EXPECT_EQ(spriteFontBdf->returnClassQName, std::string("Viper.Graphics.SpriteFont"));
+    EXPECT_FALSE(spriteFontBdf->hasReceiver);
+
+    auto pixelsFromBytes = runtimeMethodIndex().find("Viper.Graphics.Pixels", "FromBytes", 3);
+    ASSERT_TRUE(pixelsFromBytes.has_value());
+    EXPECT_EQ(pixelsFromBytes->ret, BasicType::Object);
+    EXPECT_EQ(pixelsFromBytes->returnClassQName, std::string("Viper.Graphics.Pixels"));
+    EXPECT_FALSE(pixelsFromBytes->hasReceiver);
+
+    auto spriteFromFile = runtimeMethodIndex().find("Viper.Graphics.Sprite", "FromFile", 1);
+    ASSERT_TRUE(spriteFromFile.has_value());
+    EXPECT_EQ(spriteFromFile->returnClassQName, std::string("Viper.Graphics.Sprite"));
+    EXPECT_FALSE(spriteFromFile->hasReceiver);
+
+    auto sheetFromGrid = runtimeMethodIndex().find("Viper.Graphics.SpriteSheet", "FromGrid", 3);
+    ASSERT_TRUE(sheetFromGrid.has_value());
+    EXPECT_EQ(sheetFromGrid->returnClassQName, std::string("Viper.Graphics.SpriteSheet"));
+    EXPECT_FALSE(sheetFromGrid->hasReceiver);
+
+    auto tilemapLoad = runtimeMethodIndex().find("Viper.Graphics.Tilemap", "LoadFromFile", 1);
+    ASSERT_TRUE(tilemapLoad.has_value());
+    EXPECT_EQ(tilemapLoad->returnClassQName, std::string("Viper.Graphics.Tilemap"));
+    EXPECT_FALSE(tilemapLoad->hasReceiver);
+
+    EXPECT_TRUE(runtimeMethodIndex().find("Viper.Graphics.Tilemap", "LoadCSV", 3).has_value());
+    EXPECT_TRUE(runtimeMethodIndex().find("Viper.Graphics.Tilemap", "SetTileAnim", 3).has_value());
+    EXPECT_TRUE(
+        runtimeMethodIndex().find("Viper.Graphics.Tilemap", "SetTileAnimFrame", 3).has_value());
+    EXPECT_TRUE(runtimeMethodIndex().find("Viper.Graphics.Tilemap", "UpdateAnims", 1).has_value());
+    EXPECT_TRUE(
+        runtimeMethodIndex().find("Viper.Graphics.Tilemap", "ResolveAnimTile", 1).has_value());
+
+    EXPECT_TRUE(
+        runtimeMethodIndex().find("Viper.Graphics.ParticleSystem2D", "Destroy", 0).has_value());
+    EXPECT_TRUE(runtimeMethodIndex().find("Viper.Graphics.Emitter2D", "Destroy", 0).has_value());
+    EXPECT_TRUE(runtimeMethodIndex().find("Viper.Graphics.Lighting2D", "Destroy", 0).has_value());
+
+    EXPECT_TRUE(runtimeMethodIndex().find("Viper.Graphics.Canvas", "GetWindowX", 0).has_value());
+    EXPECT_TRUE(runtimeMethodIndex().find("Viper.Graphics.Canvas", "GetWindowY", 0).has_value());
+    EXPECT_TRUE(runtimeMethodIndex().find("Viper.Graphics.Canvas", "SetPosition", 2).has_value());
+    EXPECT_TRUE(
+        runtimeMethodIndex().find("Viper.Graphics.Canvas", "GetMonitorWidth", 0).has_value());
+    EXPECT_TRUE(
+        runtimeMethodIndex().find("Viper.Graphics.Canvas", "GetMonitorHeight", 0).has_value());
+}
+
 TEST(RuntimeMethodIndexBasic, JsonStreamInstanceMethodsDoNotRequireExplicitReceiver) {
     runtimeMethodIndex().seed();
 

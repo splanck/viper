@@ -255,6 +255,7 @@ static void image_blend_pixel(uint8_t *dst, const uint8_t *src, uint8_t alpha) {
     dst[3] = (uint8_t)(alpha + (((uint32_t)dst[3] * inv + 127u) / 255u));
 }
 
+/// @brief Widget-vtable destroy hook: free the decoded pixel buffer.
 static void image_destroy(vg_widget_t *widget) {
     vg_image_t *image = (vg_image_t *)widget;
     free(image->pixels);
@@ -263,6 +264,8 @@ static void image_destroy(vg_widget_t *widget) {
     image->img_height = 0;
 }
 
+/// @brief Widget-vtable measure hook: size to the preferred constraint, else
+///        the intrinsic image dimensions, else the available space.
 static void image_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_image_t *image = (vg_image_t *)widget;
 
@@ -281,6 +284,8 @@ static void image_measure(vg_widget_t *widget, float available_width, float avai
     vg_widget_apply_constraints(widget);
 }
 
+/// @brief Widget-vtable paint hook: blit the image's pixels into the canvas
+///        framebuffer at the widget's resolved rect.
 static void image_paint(vg_widget_t *widget, void *canvas) {
     vg_image_t *image = (vg_image_t *)widget;
     vgfx_framebuffer_t fb;

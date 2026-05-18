@@ -21,11 +21,16 @@ namespace il::frontends::zia {
 
 namespace {
 
+/// @brief True if @p expr is an integer literal whose value fits 0–255,
+///        i.e. can be narrowed to a Byte without loss.
 bool integerLiteralFitsByte(Expr *expr) {
     auto *lit = dynamic_cast<IntLiteralExpr *>(expr);
     return lit && lit->value >= 0 && lit->value <= 255;
 }
 
+/// @brief Refine an integer-literal initializer's type to match a declared
+///        `Byte` when the literal fits, so `var b: Byte = 5` types as Byte
+///        rather than Integer. Returns @p initType unchanged otherwise.
 TypeRef contextualizeIntegerLiteralForDeclaredType(TypeRef declaredType,
                                                    TypeRef initType,
                                                    Expr *initializer) {
@@ -36,6 +41,8 @@ TypeRef contextualizeIntegerLiteralForDeclaredType(TypeRef declaredType,
     return initType;
 }
 
+/// @brief True if @p type may not be used as a stored value/field type
+///        (Void, Never, or Module).
 bool isForbiddenValueType(TypeRef type) {
     return type && (type->kind == TypeKindSem::Void || type->kind == TypeKindSem::Never ||
                     type->kind == TypeKindSem::Module);

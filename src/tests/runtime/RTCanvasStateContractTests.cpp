@@ -32,8 +32,17 @@ struct FakeWindow {
     int update_calls;
     int close_requested;
     int fps;
+    int32_t pos_x;
+    int32_t pos_y;
+    int32_t monitor_w;
+    int32_t monitor_h;
     int32_t mouse_x;
     int32_t mouse_y;
+};
+
+struct FakeString {
+    const char *data;
+    size_t len;
 };
 
 static float g_initial_scale = 1.0f;
@@ -45,6 +54,8 @@ static int g_destroyed_windows = 0;
 static void *g_object_payloads[16];
 static int64_t g_object_class_ids[16];
 static size_t g_object_count = 0;
+static FakeString g_returned_string{nullptr, 0};
+static char g_returned_string_data[128];
 
 static FakeWindow *window_from(vgfx_window_t window) {
     return reinterpret_cast<FakeWindow *>(window);
@@ -130,6 +141,37 @@ static void test_poll_tears_down_window_when_event_pump_fails() {
     g_pump_events_result = 1;
 }
 
+static void test_window_position_and_monitor_scalar_wrappers() {
+    g_initial_scale = 1.0f;
+    rt_canvas *canvas = new_canvas();
+    assert(canvas != nullptr);
+
+    rt_canvas_set_position(canvas, 123, -45);
+    assert(rt_canvas_get_window_x(canvas) == 123);
+    assert(rt_canvas_get_window_y(canvas) == -45);
+
+    auto *window = window_from(canvas->gfx_win);
+    assert(window != nullptr);
+    window->monitor_w = 2560;
+    window->monitor_h = 1440;
+    assert(rt_canvas_get_monitor_width(canvas) == 2560);
+    assert(rt_canvas_get_monitor_height(canvas) == 1440);
+}
+
+static void test_title_cache_preserves_embedded_nul_bytes() {
+    g_initial_scale = 1.0f;
+    rt_canvas *canvas = new_canvas();
+    assert(canvas != nullptr);
+
+    const char raw[] = {'A', 'B', '\0', 'C', 'D'};
+    FakeString title{raw, sizeof(raw)};
+    rt_canvas_set_title(canvas, reinterpret_cast<rt_string>(&title));
+
+    rt_string got = rt_canvas_get_title(canvas);
+    assert(rt_str_len(got) == (int64_t)sizeof(raw));
+    assert(std::memcmp(rt_string_cstr(got), raw, sizeof(raw)) == 0);
+}
+
 } // namespace
 
 extern "C" void *rt_obj_new_i64(int64_t class_id, int64_t byte_size) {
@@ -177,16 +219,24 @@ extern "C" void rt_trap(const char *) {
     std::abort();
 }
 
-extern "C" int64_t rt_str_len(rt_string) {
-    return 0;
+extern "C" int64_t rt_str_len(rt_string s) {
+    auto *fake = reinterpret_cast<FakeString *>(s);
+    return fake ? (int64_t)fake->len : 0;
 }
 
-extern "C" const char *rt_string_cstr(rt_string) {
-    return "";
+extern "C" const char *rt_string_cstr(rt_string s) {
+    auto *fake = reinterpret_cast<FakeString *>(s);
+    return fake && fake->data ? fake->data : "";
 }
 
-extern "C" rt_string rt_string_from_bytes(const char *, size_t) {
-    return nullptr;
+extern "C" rt_string rt_string_from_bytes(const char *bytes, size_t len) {
+    assert(len < sizeof(g_returned_string_data));
+    if (len > 0)
+        std::memcpy(g_returned_string_data, bytes, len);
+    g_returned_string_data[len] = '\0';
+    g_returned_string.data = g_returned_string_data;
+    g_returned_string.len = len;
+    return reinterpret_cast<rt_string>(&g_returned_string);
 }
 
 extern "C" void rt_keyboard_clear_canvas_if_matches(void *) {}
@@ -241,6 +291,8 @@ extern "C" vgfx_window_t vgfx_create_window(const vgfx_window_params_t *params) 
     window->physical_width = (int32_t)rtg_scale_up_i64(logical_w, window->scale_factor);
     window->physical_height = (int32_t)rtg_scale_up_i64(logical_h, window->scale_factor);
     window->fps = -1;
+    window->monitor_w = 1920;
+    window->monitor_h = 1080;
     return reinterpret_cast<vgfx_window_t>(window);
 }
 
@@ -344,18 +396,25 @@ extern "C" int32_t vgfx_get_fps(vgfx_window_t window) {
 extern "C" int32_t vgfx_key_down(vgfx_window_t, vgfx_key_t) {
     return 0;
 }
-extern "C" void vgfx_get_position(vgfx_window_t, int32_t *x, int32_t *y) {
+extern "C" void vgfx_get_position(vgfx_window_t window, int32_t *x, int32_t *y) {
+    auto *fake = window_from(window);
     if (x)
-        *x = 0;
+        *x = fake ? fake->pos_x : 0;
     if (y)
-        *y = 0;
+        *y = fake ? fake->pos_y : 0;
 }
-extern "C" void vgfx_set_position(vgfx_window_t, int32_t, int32_t) {}
-extern "C" void vgfx_get_monitor_size(vgfx_window_t, int32_t *w, int32_t *h) {
+extern "C" void vgfx_set_position(vgfx_window_t window, int32_t x, int32_t y) {
+    auto *fake = window_from(window);
+    assert(fake != nullptr);
+    fake->pos_x = x;
+    fake->pos_y = y;
+}
+extern "C" void vgfx_get_monitor_size(vgfx_window_t window, int32_t *w, int32_t *h) {
+    auto *fake = window_from(window);
     if (w)
-        *w = 1920;
+        *w = fake ? fake->monitor_w : 0;
     if (h)
-        *h = 1080;
+        *h = fake ? fake->monitor_h : 0;
 }
 extern "C" int32_t vgfx_is_focused(vgfx_window_t) {
     return 1;
@@ -376,5 +435,7 @@ int main() {
     test_poll_reapplies_clip_after_scale_change();
     test_flip_rounds_positive_submillisecond_delta_up_to_one_ms();
     test_poll_tears_down_window_when_event_pump_fails();
+    test_window_position_and_monitor_scalar_wrappers();
+    test_title_cache_preserves_embedded_nul_bytes();
     return 0;
 }

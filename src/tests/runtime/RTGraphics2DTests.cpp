@@ -109,7 +109,7 @@ static void test_graphics2d_handles_have_unique_classes_and_reject_wrong_types()
     assert(rt_viewport2d_world_to_screen_x(sprite, 123) == 123);
     assert(rt_shader2d_apply(post, pixels) == nullptr);
     assert(rt_postprocess2d_apply(shader, pixels) == nullptr);
-    assert(rt_color_get_a(rt_color_rgb(1, 2, 3)) == 255);
+    assert(rt_color_get_a(rt_color_rgb(1, 2, 3)) == 0);
     assert(rt_color_get_a(rt_color_rgba(1, 2, 3, 0)) == 0);
     printf("test_graphics2d_handles_have_unique_classes_and_reject_wrong_types: PASSED\n");
 }
