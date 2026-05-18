@@ -29,6 +29,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
@@ -157,6 +158,8 @@ static void videowidget_dispose(rt_videowidget *w, int destroy_widget_tree) {
 /// @details Values outside [0, 1] are undefined behavior in most audio backends.
 ///   Clamping here shields the player from invalid values supplied by user code.
 static double clamp_volume(double vol) {
+    if (!isfinite(vol))
+        return 0.0;
     if (vol < 0.0)
         return 0.0;
     if (vol > 1.0)
@@ -309,7 +312,7 @@ void rt_videowidget_update(void *obj, double dt) {
         rt_videoplayer_stop(w->player);
 
     /* Advance video playback */
-    if (dt > 0.0)
+    if (isfinite(dt) && dt > 0.0)
         rt_videoplayer_update(w->player, dt);
 
     /* Check for loop */
@@ -330,8 +333,10 @@ void rt_videowidget_update(void *obj, double dt) {
 
     if (w->position_slider) {
         double duration = rt_videoplayer_get_duration(w->player);
-        if (duration > 0.0) {
+        if (isfinite(duration) && duration > 0.0) {
             double slider_value = rt_slider_get_value(w->position_slider);
+            if (!isfinite(slider_value))
+                slider_value = 0.0;
             if (slider_value < 0.0)
                 slider_value = 0.0;
             if (slider_value > 1.0)
@@ -341,6 +346,8 @@ void rt_videowidget_update(void *obj, double dt) {
                 w->slider_last_value = slider_value;
             }
             double playback_value = rt_videoplayer_get_position(w->player) / duration;
+            if (!isfinite(playback_value))
+                playback_value = 0.0;
             if (playback_value < 0.0)
                 playback_value = 0.0;
             if (playback_value > 1.0)

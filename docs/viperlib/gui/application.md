@@ -90,13 +90,16 @@ Removed toolbar item handles become inert until the toolbar is destroyed, and re
 
 **Constructor:** `NEW Viper.GUI.Toolbar(parent)`
 
+**Vertical constructor:** `Viper.GUI.Toolbar.NewVertical(parent)`
+
 | Method                              | Signature                      | Description                              |
 |-------------------------------------|--------------------------------|------------------------------------------|
 | `AddButton(icon, tooltip)`          | `Object(String, String)`       | Add icon button, returns item handle     |
 | `AddButtonWithText(icon, text, tooltip)` | `Object(String,String,String)` | Add button with text and optional icon   |
 | `AddSeparator()`                    | `Object()`                     | Add separator                            |
+| `NewVertical(parent)`               | `Object(Object)`               | Create a vertical toolbar                |
 | `SetIconSize(size)`                 | `Void(Integer)`                | Set icon size in pixels                  |
-| `SetStyle(style)`                   | `Void(Integer)`                | Set toolbar style                        |
+| `SetStyle(style)`                   | `Void(Integer)`                | Set toolbar style; unknown values are ignored |
 | `SetVisible(visible)`               | `Void(Integer)`                | Show/hide toolbar                        |
 
 ### ToolbarItem
@@ -134,12 +137,14 @@ Application status bar widget.
 
 Text, visibility, progress, and tooltip updates invalidate the owning bar immediately, so layout and paint stay in sync with runtime changes.
 Removed status-bar item handles become inert until the status bar is destroyed, and removing a clicked item clears the runtime click cache.
+Buttons added with `AddButton()` are wired into `StatusBarItem.WasClicked()` for edge-triggered polling.
 
 **Constructor:** `NEW Viper.GUI.StatusBar(parent)`
 
 | Method                     | Signature                 | Description                              |
 |----------------------------|---------------------------|------------------------------------------|
 | `AddText(text, alignment)` | `Object(String, Integer)` | Add text item, returns item handle       |
+| `AddButton(text, alignment)` | `Object(String, Integer)` | Add clickable button item, returns handle |
 | `SetCenterText(text)`      | `Void(String)`            | Set center-aligned text                  |
 | `SetLeftText(text)`        | `Void(String)`            | Set left-aligned text                    |
 | `SetRightText(text)`       | `Void(String)`            | Set right-aligned text                   |
@@ -153,8 +158,8 @@ Status bar item (returned by `StatusBar.AddText()`).
 |-----------------------|-----------------|--------------------------------|
 | `SetText(text)`       | `Void(String)`  | Set item text                  |
 | `SetTooltip(text)`    | `Void(String)`  | Set tooltip text               |
+| `WasClicked()`        | `Integer()`     | 1 once after a button item was clicked |
 | `SetVisible(visible)` | `Void(Integer)` | Show/hide item                 |
-| `WasClicked()`        | `Integer()`     | 1 if item was clicked          |
 
 ### Example
 
@@ -483,7 +488,7 @@ dlg.Destroy();
 
 Toast notification system.
 
-Toasts now render as wrapped card-style notifications with animated slide/fade entry and exit. Manual dismissals and auto-expiry both honor the exit animation before the toast is removed, and long message/action text is wrapped instead of overflowing off the card. Custom toast durations are clamped to the supported `uint32` millisecond range; negative durations become `0`, which means sticky/no auto-dismiss.
+Toasts now render as wrapped card-style notifications with animated slide/fade entry and exit. Manual dismissals and auto-expiry both honor the exit animation before the toast is removed, and long message/action text is wrapped instead of overflowing off the card. Custom toast durations are clamped to the supported `uint32` millisecond range; negative durations become `0`, which means sticky/no auto-dismiss. `WasDismissed()` is edge-triggered and also reports stale toast handles once after their owning app notification manager has been cleaned up.
 
 | Method                                  | Signature                  | Description                              |
 |-----------------------------------------|----------------------------|------------------------------------------|
@@ -503,7 +508,7 @@ Toast handle methods:
 | `toast.Dismiss()`          | `Void()`        | Dismiss this toast             |
 | `toast.SetAction(text)`    | `Void(String)`  | Add action button              |
 | `toast.WasActionClicked()` | `Integer()`     | 1 if action was clicked        |
-| `toast.WasDismissed()`     | `Integer()`     | 1 if toast was dismissed       |
+| `toast.WasDismissed()`     | `Integer()`     | 1 once after toast dismissal   |
 
 ### Example
 
@@ -738,8 +743,8 @@ Embedded video player widget that renders decoded frames inside a GUI layout. Wr
 | `Play()` | `Void()` | Start or resume playback |
 | `Pause()` | `Void()` | Pause at the current frame |
 | `Stop()` | `Void()` | Stop and reset to the start |
-| `Update(deltaSeconds)` | `Void(Double)` | Advance the video decoder; call once per frame |
-| `SetVolume(volume)` | `Void(Double)` | Set playback volume `[0.0–1.0]` |
+| `Update(deltaSeconds)` | `Void(Double)` | Advance the video decoder; finite positive values only |
+| `SetVolume(volume)` | `Void(Double)` | Set playback volume `[0.0–1.0]`; non-finite values become `0.0` |
 | `Destroy()` | `Void()` | Release decoder resources |
 
 ```rust

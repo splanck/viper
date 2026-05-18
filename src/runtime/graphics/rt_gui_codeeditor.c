@@ -75,7 +75,16 @@ static uint32_t syn_color(vg_codeeditor_t *ce, int token_type, uint32_t fallback
 /// @brief Safe-cast an opaque handle to a live CodeEditor widget.
 /// @return The code editor, or NULL if @p editor is not a live one.
 static vg_codeeditor_t *rt_codeeditor_handle_checked(void *editor) {
+    RT_ASSERT_MAIN_THREAD();
     return (vg_codeeditor_t *)rt_gui_widget_handle_checked_type(editor, VG_WIDGET_CODEEDITOR);
+}
+
+static int rt_codeeditor_gutter_slot_checked(int64_t slot, int *out_type) {
+    if (slot < 0 || slot > 3)
+        return 0;
+    if (out_type)
+        *out_type = (int)slot;
+    return 1;
 }
 
 /// @brief Linear-scan the editor's user-supplied keyword list for an exact match.
@@ -744,9 +753,10 @@ void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int
     vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
     if (!ce)
         return;
+    int type = 0;
+    if (!rt_codeeditor_gutter_slot_checked(slot, &type))
+        return;
     int line_i = rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX);
-    /* slot maps to icon type: 0=breakpoint, 1=warning, 2=error, 3=info */
-    int type = (int)(slot & 3);
     /* Update existing icon on same line+type if present */
     for (int i = 0; i < ce->gutter_icon_count; i++) {
         if (ce->gutter_icons[i].line == line_i && ce->gutter_icons[i].type == type) {
@@ -774,7 +784,7 @@ void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int
     struct vg_gutter_icon *icon = &ce->gutter_icons[ce->gutter_icon_count++];
     icon->line = line_i;
     icon->type = type;
-    icon->color = s_type_colors[type < 0 || type >= 4 ? 0 : type];
+    icon->color = s_type_colors[type];
     icon->image = rt_codeeditor_icon_from_pixels(pixels);
     ce->base.needs_paint = true;
 }
@@ -786,8 +796,10 @@ void rt_codeeditor_clear_gutter_icon(void *editor, int64_t line, int64_t slot) {
     vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
     if (!ce)
         return;
+    int type = 0;
+    if (!rt_codeeditor_gutter_slot_checked(slot, &type))
+        return;
     int line_i = rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX);
-    int type = (int)(slot & 3);
     for (int i = 0; i < ce->gutter_icon_count; i++) {
         if (ce->gutter_icons[i].line == line_i && ce->gutter_icons[i].type == type) {
             int last = --ce->gutter_icon_count;
@@ -810,7 +822,9 @@ void rt_codeeditor_clear_all_gutter_icons(void *editor, int64_t slot) {
     vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
     if (!ce)
         return;
-    int type = (int)(slot & 3);
+    int type = 0;
+    if (!rt_codeeditor_gutter_slot_checked(slot, &type))
+        return;
     int w = 0;
     int original_count = ce->gutter_icon_count;
     for (int i = 0; i < ce->gutter_icon_count; i++) {
@@ -836,6 +850,7 @@ void rt_codeeditor_clear_all_gutter_icons(void *editor, int64_t slot) {
 /// future refactor would pass the editor through; until then, gutter
 /// state is per-editor and updated directly inside the widget code.
 void rt_gui_set_gutter_click(int64_t line, int64_t slot) {
+    RT_ASSERT_MAIN_THREAD();
     // Legacy global entry point — forwards to a per-editor setter.
     // The vg layer paint callback doesn't know which editor was clicked,
     // so we broadcast to the most-recently-focused editor via s_current_app.
@@ -846,6 +861,7 @@ void rt_gui_set_gutter_click(int64_t line, int64_t slot) {
 
 /// @brief Legacy global clear — currently a no-op (state lives per-editor).
 void rt_gui_clear_gutter_click(void) {
+    RT_ASSERT_MAIN_THREAD();
     // No-op: per-editor state is cleared after read in the getter functions.
 }
 
@@ -859,7 +875,11 @@ int64_t rt_codeeditor_was_gutter_clicked(void *editor) {
     if (!ce)
         return 0;
     int64_t result = ce->gutter_clicked ? 1 : 0;
-    ce->gutter_clicked = false; // Edge-triggered: clear after read
+    if (result) {
+        ce->gutter_clicked = false; // Edge-triggered: clear after read
+        ce->gutter_clicked_line = -1;
+        ce->gutter_clicked_slot = -1;
+    }
     return result;
 }
 
@@ -869,7 +889,7 @@ int64_t rt_codeeditor_was_gutter_clicked(void *editor) {
 /// reads/clears the flag.
 int64_t rt_codeeditor_get_gutter_clicked_line(void *editor) {
     vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
-    if (!ce)
+    if (!ce || !ce->gutter_clicked)
         return -1;
     return ce->gutter_clicked_line;
 }
@@ -877,7 +897,7 @@ int64_t rt_codeeditor_get_gutter_clicked_line(void *editor) {
 /// @brief `CodeEditor.GetGutterClickedSlot` — slot index of the most recent click.
 int64_t rt_codeeditor_get_gutter_clicked_slot(void *editor) {
     vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
-    if (!ce)
+    if (!ce || !ce->gutter_clicked)
         return -1;
     return ce->gutter_clicked_slot;
 }

@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 
 namespace {
 
@@ -379,6 +380,27 @@ static void test_visibility_and_volume_are_clamped() {
     assert(player->volume == 0.0);
     rt_videowidget_set_volume(widget, 2.0);
     assert(player->volume == 1.0);
+    rt_videowidget_set_volume(widget, std::numeric_limits<double>::quiet_NaN());
+    assert(player->volume == 0.0);
+    rt_videowidget_set_volume(widget, std::numeric_limits<double>::infinity());
+    assert(player->volume == 0.0);
+}
+
+static void test_nonfinite_update_delta_is_ignored() {
+    StubWidget parent{};
+    reset_open_state();
+
+    auto *widget = static_cast<rt_videowidget_view *>(
+        rt_videowidget_new(&parent, reinterpret_cast<void *>(1)));
+    auto *player = static_cast<StubPlayer *>(widget->player);
+    int before = player->update_calls;
+
+    rt_videowidget_update(widget, std::numeric_limits<double>::quiet_NaN());
+    rt_videowidget_update(widget, std::numeric_limits<double>::infinity());
+    assert(player->update_calls == before);
+
+    rt_videowidget_update(widget, 0.25);
+    assert(player->update_calls == before + 1);
 }
 
 static void test_destroy_releases_player_and_widget_tree() {
@@ -410,6 +432,7 @@ int main() {
     test_controls_drive_player_state();
     test_slider_seek_and_looping();
     test_visibility_and_volume_are_clamped();
+    test_nonfinite_update_delta_is_ignored();
     test_destroy_releases_player_and_widget_tree();
     std::printf("RTVideoWidgetContractTests passed.\n");
     return 0;

@@ -66,6 +66,14 @@ typedef struct {
     int64_t was_selected;
 } rt_commandpalette_data_t;
 
+static void rt_commandpalette_clear_selection(rt_commandpalette_data_t *data) {
+    if (!data)
+        return;
+    free(data->selected_command);
+    data->selected_command = NULL;
+    data->was_selected = 0;
+}
+
 /// @brief Authenticate a CommandPalette handle via its magic tag (NULL if not).
 static rt_commandpalette_data_t *rt_commandpalette_checked(void *palette) {
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
@@ -249,6 +257,8 @@ void rt_commandpalette_remove_command(void *palette, rt_string id) {
         return;
     char *cid = rt_string_to_cstr(id);
     vg_commandpalette_remove_command(data->palette, cid);
+    if (cid && data->selected_command && strcmp(data->selected_command, cid) == 0)
+        rt_commandpalette_clear_selection(data);
     if (cid)
         free(cid);
 }
@@ -262,6 +272,7 @@ void rt_commandpalette_clear(void *palette) {
     if (!data || !data->palette)
         return;
     vg_commandpalette_clear(data->palette);
+    rt_commandpalette_clear_selection(data);
 }
 
 /// @brief Show the commandpalette.
@@ -272,7 +283,7 @@ void rt_commandpalette_show(void *palette) {
     rt_commandpalette_data_t *data = rt_commandpalette_checked(palette);
     if (!data || !data->palette)
         return;
-    data->was_selected = 0; // Reset selection state when showing
+    rt_commandpalette_clear_selection(data);
     vg_commandpalette_show(data->palette);
 }
 
@@ -507,6 +518,7 @@ typedef struct rt_toast_data {
     uint32_t id;
     int64_t was_action_clicked;
     int64_t was_dismissed;
+    int64_t dismissal_reported;
     char *action_label; ///< Optional action button label (owned, may be NULL)
 } rt_toast_data_t;
 
@@ -723,6 +735,7 @@ void *rt_toast_new(rt_string message, int64_t type, int64_t duration_ms) {
         vg_notification_show(mgr, rt_toast_type_to_vg(type), NULL, cmsg, clamped_duration);
     data->was_action_clicked = 0;
     data->was_dismissed = 0;
+    data->dismissal_reported = 0;
     for (size_t i = 0; i < mgr->notification_count; i++) {
         if (mgr->notifications[i] && mgr->notifications[i]->id == data->id) {
             mgr->notifications[i]->created_at = rt_gui_feature_now_ms(app);
@@ -777,12 +790,21 @@ int64_t rt_toast_was_dismissed(void *toast) {
     if (!data)
         return 0;
 
-    // Return cached result if already known dismissed
-    if (data->was_dismissed)
+    if (data->dismissal_reported)
+        return 0;
+
+    if (data->was_dismissed) {
+        data->dismissal_reported = 1;
         return 1;
+    }
 
     // Check with the notification manager for auto-timeout dismissal
     vg_notification_manager_t *mgr = rt_get_notification_manager(rt_toast_live_app(data));
+    if (!mgr) {
+        data->was_dismissed = 1;
+        data->dismissal_reported = 1;
+        return 1;
+    }
     if (mgr) {
         bool found = false;
         for (size_t i = 0; i < mgr->notification_count; i++) {
@@ -790,6 +812,7 @@ int64_t rt_toast_was_dismissed(void *toast) {
                 found = true;
                 if (mgr->notifications[i]->dismissed) {
                     data->was_dismissed = 1;
+                    data->dismissal_reported = 1;
                     return 1;
                 }
                 break;
@@ -798,6 +821,7 @@ int64_t rt_toast_was_dismissed(void *toast) {
         // If notification is no longer tracked by the manager, it was dismissed
         if (!found) {
             data->was_dismissed = 1;
+            data->dismissal_reported = 1;
             return 1;
         }
     }
@@ -814,6 +838,7 @@ void rt_toast_dismiss(void *toast) {
     if (mgr) {
         vg_notification_dismiss(mgr, data->id);
         data->was_dismissed = 1;
+        data->dismissal_reported = 0;
     }
 }
 
@@ -1641,6 +1666,7 @@ void rt_gui_features_cleanup(rt_gui_app_t *app) {
             rt_commandpalette_data_t *data =
                 (rt_commandpalette_data_t *)app->command_palettes[i]->base.user_data;
             if (data && data->palette == app->command_palettes[i]) {
+                rt_commandpalette_clear_selection(data);
                 data->palette = NULL;
                 data->app = NULL;
             }

@@ -270,6 +270,7 @@ When word wrap is enabled, the editor uses wrapped visual rows for painting, cur
 Hiding line numbers fully collapses the line-number gutter. `SetLineNumberWidth(width)` is measured in character cells, so the gutter scales with the active font metrics instead of staying pinned to stale pixels. Fold regions now render in the gutter and hide folded body lines from cursor movement, scrolling, and pixel-position helpers.
 Syntax-colored text now renders in contiguous same-color runs instead of issuing one draw call per byte, which keeps large highlighted files responsive.
 Keyboard text input and pasted text preserve valid multi-byte UTF-8 sequences as complete byte ranges. Document replacement builds the new line array before swapping it into the editor, so allocation failure leaves the previous document intact instead of installing partially initialized lines.
+Gutter icon slots are validated as `0..3`; invalid slots are ignored. Read `GetGutterClickLine()` and `GetGutterClickSlot()` before consuming the event with `WasGutterClicked()`.
 
 **Constructor:** `NEW Viper.GUI.CodeEditor(parent)`
 
@@ -299,6 +300,7 @@ Keyboard text input and pasted text preserve valid multi-byte UTF-8 sequences as
 | `GetCursorCount()`                         | `Integer()`                      | Get number of cursors (multi-cursor)     |
 | `GetColAtPixel(x, y)`                     | `Integer(Integer, Integer)`      | Map a screen-space pixel to a logical column using the current wrap/scroll geometry |
 | `GetGutterClickLine()`                     | `Integer()`                      | Get line of gutter click                 |
+| `GetGutterClickSlot()`                     | `Integer()`                      | Get gutter icon slot of the current click |
 | `GetLineAtPixel(y)`                       | `Integer(Integer)`               | Map a screen-space pixel to a logical line using the current wrap/scroll geometry |
 | `GetSelectedText()`                        | `String()`                       | Get currently selected text (empty string if no selection) |
 | `IsFolded(line)`                           | `Integer(Integer)`               | Check if line is folded                  |

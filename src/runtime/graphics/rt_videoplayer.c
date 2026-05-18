@@ -1059,7 +1059,7 @@ void rt_videoplayer_seek(void *obj, double seconds) {
 /// running below the video's framerate (drops decode time but
 /// keeps audio in sync). At end-of-stream, sets `playing = 0`.
 void rt_videoplayer_update(void *obj, double dt) {
-    if (!obj || dt <= 0.0)
+    if (!obj || !isfinite(dt) || dt <= 0.0)
         return;
     rt_videoplayer *vp = (rt_videoplayer *)obj;
     if (!vp->playing)
@@ -1126,6 +1126,8 @@ void rt_videoplayer_update(void *obj, double dt) {
 void rt_videoplayer_set_volume(void *obj, double vol) {
     if (!obj)
         return;
+    if (!isfinite(vol))
+        vol = 0.0;
     if (vol < 0.0)
         vol = 0.0;
     if (vol > 1.0)

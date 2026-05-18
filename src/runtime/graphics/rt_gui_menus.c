@@ -42,6 +42,8 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+void rt_gui_set_clicked_statusbar_item(void *item);
+
 //=============================================================================
 // MenuBar Widget (Phase 2)
 //=============================================================================
@@ -106,6 +108,11 @@ static int rt_statusbar_zone_checked(int64_t zone, vg_statusbar_zone_t *out_zone
     if (out_zone)
         *out_zone = (vg_statusbar_zone_t)zone;
     return 1;
+}
+
+static void rt_statusbar_button_clicked(vg_statusbar_item_t *item, void *user_data) {
+    (void)user_data;
+    rt_gui_set_clicked_statusbar_item(item);
 }
 
 /// @brief Convert a runtime Pixels object (0xRRGGBBAA) into a `vg_icon_t` (RGBA).
@@ -685,8 +692,12 @@ void *rt_contextmenu_add_submenu(void *menu, rt_string title) {
         free(ctitle);
         return NULL;
     }
-    vg_contextmenu_add_submenu(cm, ctitle, submenu);
+    vg_menu_item_t *item = vg_contextmenu_add_submenu(cm, ctitle, submenu);
     free(ctitle);
+    if (!item) {
+        vg_contextmenu_destroy(submenu);
+        return NULL;
+    }
     return submenu;
 }
 
@@ -928,7 +939,8 @@ void *rt_statusbar_add_button(void *bar, rt_string text, int64_t zone) {
     if (!sb || !rt_statusbar_zone_checked(zone, &checked_zone))
         return NULL;
     char *ctext = rt_string_to_cstr(text);
-    vg_statusbar_item_t *item = vg_statusbar_add_button(sb, checked_zone, ctext, NULL, NULL);
+    vg_statusbar_item_t *item =
+        vg_statusbar_add_button(sb, checked_zone, ctext, rt_statusbar_button_clicked, NULL);
     free(ctext);
     return item;
 }
@@ -1300,6 +1312,8 @@ void rt_toolbar_set_style(void *toolbar, int64_t style) {
     RT_ASSERT_MAIN_THREAD();
     vg_toolbar_t *tb = rt_toolbar_checked(toolbar);
     if (!tb)
+        return;
+    if (style < RT_TOOLBAR_STYLE_ICON_ONLY || style > RT_TOOLBAR_STYLE_ICON_TEXT)
         return;
     vg_toolbar_set_show_labels(tb, style != RT_TOOLBAR_STYLE_ICON_ONLY);
 }

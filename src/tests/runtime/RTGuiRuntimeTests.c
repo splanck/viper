@@ -71,6 +71,22 @@ typedef struct {
     size_t custom_button_cap;
 } rt_messagebox_data_view_t;
 
+typedef struct {
+    uint64_t magic;
+    rt_gui_app_t *app;
+    vg_commandpalette_t *palette;
+    char *selected_command;
+    int64_t was_selected;
+} rt_commandpalette_data_view_t;
+
+static char *test_strdup_local(const char *s) {
+    size_t len = strlen(s) + 1;
+    char *copy = (char *)malloc(len);
+    if (copy)
+        memcpy(copy, s, len);
+    return copy;
+}
+
 void vm_trap(const char *msg) {
     (void)msg;
     assert(0 && "unexpected vm_trap");
@@ -185,6 +201,29 @@ static void test_statusbar_click_is_edge_triggered(void) {
 
     cleanup_fake_app(&app);
     printf("test_statusbar_click_is_edge_triggered: PASSED\n");
+}
+
+static void test_statusbar_runtime_button_wires_click_polling(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    vg_statusbar_t *statusbar = (vg_statusbar_t *)rt_statusbar_new(app.root);
+    assert(statusbar);
+    vg_statusbar_item_t *button =
+        (vg_statusbar_item_t *)rt_statusbar_add_button(statusbar, rt_const_cstr("Build"), 0);
+    assert(button);
+    assert(button->on_click != NULL);
+
+    button->on_click(button, button->user_data);
+    assert(rt_statusbaritem_was_clicked(button) == 1);
+    assert(rt_statusbaritem_was_clicked(button) == 0);
+
+    cleanup_fake_app(&app);
+    printf("test_statusbar_runtime_button_wires_click_polling: PASSED\n");
 }
 
 static void test_default_font_is_applied_to_text_widgets(void) {
@@ -757,6 +796,26 @@ static void test_widget_destroy_refuses_app_root_and_app_handle(void) {
     printf("test_widget_destroy_refuses_app_root_and_app_handle: PASSED\n");
 }
 
+static void test_widget_set_size_refuses_app_root(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    rt_widget_set_size(app.root, 320, 200);
+    assert(app.root->constraints.min_width == 0.0f);
+    assert(app.root->constraints.max_width == 0.0f);
+    assert(app.root->constraints.preferred_width == 0.0f);
+    assert(app.root->constraints.min_height == 0.0f);
+    assert(app.root->constraints.max_height == 0.0f);
+    assert(app.root->constraints.preferred_height == 0.0f);
+
+    cleanup_fake_app(&app);
+    printf("test_widget_set_size_refuses_app_root: PASSED\n");
+}
+
 static void test_widget_base_apis_reject_app_handles_and_invalid_children(void) {
     rt_gui_app_t app;
     reset_fake_app(&app);
@@ -940,6 +999,43 @@ static void test_removed_listbox_and_treeview_handles_are_inert(void) {
     printf("test_removed_listbox_and_treeview_handles_are_inert: PASSED\n");
 }
 
+static void test_listbox_and_treeview_reject_foreign_child_handles(void) {
+    vg_listbox_t *list_a = vg_listbox_create(NULL);
+    vg_listbox_t *list_b = vg_listbox_create(NULL);
+    assert(list_a && list_b);
+    vg_listbox_item_t *item_b = (vg_listbox_item_t *)rt_listbox_add_item(list_b, rt_const_cstr("b"));
+    assert(item_b);
+
+    rt_listbox_select(list_a, item_b);
+    assert(rt_listbox_get_selected(list_a) == NULL);
+    rt_listbox_remove_item(list_a, item_b);
+    assert(vg_listbox_item_is_live(item_b));
+    assert(item_b->owner == list_b);
+    assert(rt_listbox_get_count(list_b) == 1);
+
+    vg_treeview_t *tree_a = vg_treeview_create(NULL);
+    vg_treeview_t *tree_b = vg_treeview_create(NULL);
+    assert(tree_a && tree_b);
+    vg_tree_node_t *node_b = (vg_tree_node_t *)rt_treeview_add_node(
+        tree_b, NULL, rt_const_cstr("b"));
+    assert(node_b);
+
+    assert(rt_treeview_add_node(tree_a, node_b, rt_const_cstr("bad child")) == NULL);
+    rt_treeview_expand(tree_a, node_b);
+    assert(node_b->expanded == false);
+    rt_treeview_select(tree_a, node_b);
+    assert(rt_treeview_get_selected(tree_a) == NULL);
+    rt_treeview_remove_node(tree_a, node_b);
+    assert(vg_tree_node_is_live(node_b));
+    assert(node_b->owner == tree_b);
+
+    vg_widget_destroy(&tree_b->base);
+    vg_widget_destroy(&tree_a->base);
+    vg_widget_destroy(&list_b->base);
+    vg_widget_destroy(&list_a->base);
+    printf("test_listbox_and_treeview_reject_foreign_child_handles: PASSED\n");
+}
+
 static void test_contextmenu_separator_returns_item_handle(void) {
     void *menu = rt_contextmenu_new();
     assert(menu);
@@ -949,6 +1045,24 @@ static void test_contextmenu_separator_returns_item_handle(void) {
 
     rt_contextmenu_destroy(menu);
     printf("test_contextmenu_separator_returns_item_handle: PASSED\n");
+}
+
+static void test_contextmenu_item_click_updates_menuitem_was_clicked(void) {
+    vg_contextmenu_t *menu = (vg_contextmenu_t *)rt_contextmenu_new();
+    assert(menu);
+    vg_menu_item_t *item = (vg_menu_item_t *)rt_contextmenu_add_item(menu, rt_const_cstr("Open"));
+    assert(item);
+
+    rt_contextmenu_show(menu, 0, 0);
+    vg_event_t down = vg_event_mouse(VG_EVENT_MOUSE_DOWN, 4.0f, 4.0f, VG_MOUSE_LEFT, 0);
+    assert(menu->base.vtable->handle_event(&menu->base, &down));
+
+    assert(rt_contextmenu_get_clicked_item(menu) == item);
+    assert(rt_menuitem_was_clicked(item) == 1);
+    assert(rt_menuitem_was_clicked(item) == 0);
+
+    rt_contextmenu_destroy(menu);
+    printf("test_contextmenu_item_click_updates_menuitem_was_clicked: PASSED\n");
 }
 
 static void test_filedialog_show_without_active_window_returns_zero(void) {
@@ -1009,6 +1123,49 @@ static void test_commandpalette_methods_after_destroy_are_inert(void) {
 
     cleanup_fake_app(&app);
     printf("test_commandpalette_methods_after_destroy_are_inert: PASSED\n");
+}
+
+static void test_commandpalette_show_clear_remove_drop_stale_selection(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    void *palette = rt_commandpalette_new(&app);
+    assert(palette);
+    rt_commandpalette_add_command(
+        palette, rt_const_cstr("old"), rt_const_cstr("Old"), rt_const_cstr("File"));
+    rt_commandpalette_add_command(
+        palette, rt_const_cstr("keep"), rt_const_cstr("Keep"), rt_const_cstr("File"));
+
+    rt_commandpalette_data_view_t *data = (rt_commandpalette_data_view_t *)palette;
+    data->selected_command = test_strdup_local("old");
+    assert(data->selected_command);
+    data->was_selected = 1;
+
+    rt_commandpalette_show(palette);
+    assert(rt_commandpalette_was_command_selected(palette) == 0);
+    assert(rt_str_len(rt_commandpalette_get_selected_command(palette)) == 0);
+
+    data->selected_command = test_strdup_local("old");
+    assert(data->selected_command);
+    data->was_selected = 1;
+    rt_commandpalette_remove_command(palette, rt_const_cstr("old"));
+    assert(rt_commandpalette_was_command_selected(palette) == 0);
+    assert(rt_str_len(rt_commandpalette_get_selected_command(palette)) == 0);
+
+    data->selected_command = test_strdup_local("keep");
+    assert(data->selected_command);
+    data->was_selected = 1;
+    rt_commandpalette_clear(palette);
+    assert(rt_commandpalette_was_command_selected(palette) == 0);
+    assert(rt_str_len(rt_commandpalette_get_selected_command(palette)) == 0);
+
+    rt_commandpalette_destroy(palette);
+    cleanup_fake_app(&app);
+    printf("test_commandpalette_show_clear_remove_drop_stale_selection: PASSED\n");
 }
 
 static void test_numeric_setters_sanitize_invalid_values(void) {
@@ -1164,6 +1321,27 @@ static void test_toast_duration_is_clamped(void) {
     printf("test_toast_duration_is_clamped: PASSED\n");
 }
 
+static void test_toast_dismissal_is_edge_triggered_and_survives_cleanup(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    rt_gui_activate_app(&app);
+
+    void *toast = rt_toast_new(rt_const_cstr("dismiss"), RT_TOAST_INFO, 0);
+    assert(toast);
+    rt_toast_dismiss(toast);
+    assert(rt_toast_was_dismissed(toast) == 1);
+    assert(rt_toast_was_dismissed(toast) == 0);
+
+    void *stale = rt_toast_new(rt_const_cstr("cleanup"), RT_TOAST_INFO, 0);
+    assert(stale);
+    rt_gui_features_cleanup(&app);
+    assert(rt_toast_was_dismissed(stale) == 1);
+    assert(rt_toast_was_dismissed(stale) == 0);
+
+    rt_gui_activate_app(NULL);
+    printf("test_toast_dismissal_is_edge_triggered_and_survives_cleanup: PASSED\n");
+}
+
 static void test_breadcrumb_set_path_uses_literal_separator(void) {
     rt_gui_app_t app;
     reset_fake_app(&app);
@@ -1259,6 +1437,29 @@ static void test_menu_context_toolbar_statusbar_handles_are_type_checked(void) {
 
     cleanup_fake_app(&app);
     printf("test_menu_context_toolbar_statusbar_handles_are_type_checked: PASSED\n");
+}
+
+static void test_toolbar_set_style_rejects_unknown_values(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    vg_toolbar_t *toolbar = (vg_toolbar_t *)rt_toolbar_new(app.root);
+    assert(toolbar);
+    rt_toolbar_set_style(toolbar, RT_TOOLBAR_STYLE_ICON_ONLY);
+    assert(toolbar->show_labels == false);
+    rt_toolbar_set_style(toolbar, 99);
+    assert(toolbar->show_labels == false);
+    rt_toolbar_set_style(toolbar, RT_TOOLBAR_STYLE_ICON_TEXT);
+    assert(toolbar->show_labels == true);
+    rt_toolbar_set_style(toolbar, -1);
+    assert(toolbar->show_labels == true);
+
+    cleanup_fake_app(&app);
+    printf("test_toolbar_set_style_rejects_unknown_values: PASSED\n");
 }
 
 static void test_floatingpanel_and_tabbar_reject_wrong_or_out_of_range_handles(void) {
@@ -1642,12 +1843,51 @@ static void test_codeeditor_add_highlight_rejects_empty_and_inverted_spans(void)
     printf("test_codeeditor_add_highlight_rejects_empty_and_inverted_spans: PASSED\n");
 }
 
+static void test_codeeditor_gutter_slots_are_validated_and_click_coords_are_fresh(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    vg_codeeditor_t *editor = (vg_codeeditor_t *)rt_codeeditor_new(app.root);
+    assert(editor);
+
+    rt_codeeditor_set_gutter_icon(editor, 0, NULL, 4);
+    rt_codeeditor_set_gutter_icon(editor, 0, NULL, -1);
+    assert(editor->gutter_icon_count == 0);
+
+    rt_codeeditor_set_gutter_icon(editor, 0, NULL, 3);
+    assert(editor->gutter_icon_count == 1);
+    rt_codeeditor_clear_gutter_icon(editor, 0, -1);
+    assert(editor->gutter_icon_count == 1);
+    rt_codeeditor_clear_all_gutter_icons(editor, 4);
+    assert(editor->gutter_icon_count == 1);
+    rt_codeeditor_clear_gutter_icon(editor, 0, 3);
+    assert(editor->gutter_icon_count == 0);
+
+    editor->gutter_clicked = true;
+    editor->gutter_clicked_line = 7;
+    editor->gutter_clicked_slot = 2;
+    assert(rt_codeeditor_get_gutter_clicked_line(editor) == 7);
+    assert(rt_codeeditor_get_gutter_clicked_slot(editor) == 2);
+    assert(rt_codeeditor_was_gutter_clicked(editor) == 1);
+    assert(rt_codeeditor_was_gutter_clicked(editor) == 0);
+    assert(rt_codeeditor_get_gutter_clicked_line(editor) == -1);
+    assert(rt_codeeditor_get_gutter_clicked_slot(editor) == -1);
+
+    cleanup_fake_app(&app);
+    printf("test_codeeditor_gutter_slots_are_validated_and_click_coords_are_fresh: PASSED\n");
+}
+
 int main(void) {
     printf("=== GUI Runtime Regression Tests ===\n\n");
 
     test_shortcuts_are_app_scoped();
     test_file_drop_is_app_scoped();
     test_statusbar_click_is_edge_triggered();
+    test_statusbar_runtime_button_wires_click_polling();
     test_default_font_is_applied_to_text_widgets();
     test_default_font_is_applied_to_complex_text_widgets();
     test_dropdown_placeholder_is_copied();
@@ -1670,6 +1910,7 @@ int main(void) {
     test_findbar_runtime_reads_live_text_and_reports_noop_replace();
     test_menu_and_toolbar_pixel_icons_become_image_icons();
     test_widget_destroy_refuses_app_root_and_app_handle();
+    test_widget_set_size_refuses_app_root();
     test_widget_base_apis_reject_app_handles_and_invalid_children();
     test_widget_destroy_clears_nested_toolbar_statusbar_runtime_refs();
     test_widget_focus_null_is_noop();
@@ -1677,18 +1918,23 @@ int main(void) {
     test_treeview_and_listbox_data_preserve_embedded_nuls();
     test_listbox_selection_changed_is_edge_triggered();
     test_removed_listbox_and_treeview_handles_are_inert();
+    test_listbox_and_treeview_reject_foreign_child_handles();
     test_contextmenu_separator_returns_item_handle();
+    test_contextmenu_item_click_updates_menuitem_was_clicked();
     test_filedialog_show_without_active_window_returns_zero();
     test_commandpalette_methods_after_destroy_are_inert();
+    test_commandpalette_show_clear_remove_drop_stale_selection();
     test_numeric_setters_sanitize_invalid_values();
     test_font_destroy_defers_live_app_font();
     test_detached_widgets_do_not_inherit_current_app_font();
     test_app_font_size_and_late_attach_reapply_default_font();
     test_messagebox_show_after_destroy_returns_minus_one();
     test_toast_duration_is_clamped();
+    test_toast_dismissal_is_edge_triggered_and_survives_cleanup();
     test_breadcrumb_set_path_uses_literal_separator();
     test_shortcuts_reject_invalid_bindings_atomically();
     test_menu_context_toolbar_statusbar_handles_are_type_checked();
+    test_toolbar_set_style_rejects_unknown_values();
     test_floatingpanel_and_tabbar_reject_wrong_or_out_of_range_handles();
     test_breadcrumb_minimap_methods_after_destroy_are_inert();
     test_type_specific_widget_apis_reject_wrong_types();
@@ -1703,6 +1949,7 @@ int main(void) {
     test_toolbar_remove_item_removes_runtime_null_id_items();
     test_toolbar_statusbar_remove_clears_runtime_click_caches();
     test_codeeditor_add_highlight_rejects_empty_and_inverted_spans();
+    test_codeeditor_gutter_slots_are_validated_and_click_coords_are_fresh();
 
     printf("\nAll GUI runtime regression tests passed!\n");
     return 0;

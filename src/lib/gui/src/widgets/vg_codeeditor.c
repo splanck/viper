@@ -1529,6 +1529,8 @@ vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent) {
     editor->line_number_width_override = 0.0f;
     editor->gutter_bg = theme->colors.bg_secondary;
     editor->line_number_color = theme->colors.fg_tertiary;
+    editor->gutter_clicked_line = -1;
+    editor->gutter_clicked_slot = -1;
 
     // Appearance
     editor->bg_color = theme->colors.bg_primary;

@@ -1074,9 +1074,9 @@ void *rt_listbox_add_item(void *listbox, rt_string text) {
 void rt_listbox_remove_item(void *listbox, void *item) {
     RT_ASSERT_MAIN_THREAD();
     vg_listbox_t *lb = rt_listbox_checked(listbox);
-    if (lb && item) {
-        vg_listbox_remove_item(lb, (vg_listbox_item_t *)item);
-    }
+    vg_listbox_item_t *it = (vg_listbox_item_t *)item;
+    if (lb && it && vg_listbox_item_is_live(it) && it->owner == lb)
+        vg_listbox_remove_item(lb, it);
 }
 
 /// @brief Remove all entries from the listbox.
@@ -1092,9 +1092,12 @@ void rt_listbox_clear(void *listbox) {
 void rt_listbox_select(void *listbox, void *item) {
     RT_ASSERT_MAIN_THREAD();
     vg_listbox_t *lb = rt_listbox_checked(listbox);
-    if (lb) {
-        vg_listbox_select(lb, (vg_listbox_item_t *)item);
-    }
+    vg_listbox_item_t *it = (vg_listbox_item_t *)item;
+    if (!lb)
+        return;
+    if (it && (!vg_listbox_item_is_live(it) || it->owner != lb))
+        return;
+    vg_listbox_select(lb, it);
 }
 
 /// @brief Return the currently-selected listbox item handle (NULL when none).

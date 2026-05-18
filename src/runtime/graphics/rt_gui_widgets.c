@@ -230,6 +230,9 @@ void rt_widget_set_size(void *widget, int64_t width, int64_t height) {
     RT_ASSERT_MAIN_THREAD();
     vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (w) {
+        rt_gui_app_t *app = rt_gui_app_from_widget(w);
+        if (app && app->root == w)
+            return;
         vg_widget_set_fixed_size(
             w,
             rt_gui_sanitize_nonnegative_float((double)width, RT_GUI_MAX_LAYOUT_VALUE),
@@ -841,7 +844,8 @@ void *rt_treeview_add_node(void *tree, void *parent_node, rt_string text) {
         (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
     if (!tv)
         return NULL;
-    if (parent_node && !vg_tree_node_is_live((vg_tree_node_t *)parent_node))
+    if (parent_node && (!vg_tree_node_is_live((vg_tree_node_t *)parent_node) ||
+                        ((vg_tree_node_t *)parent_node)->owner != tv))
         return NULL;
     char *ctext = rt_string_to_gui_cstr(text);
     vg_tree_node_t *node = vg_treeview_add_node(tv, (vg_tree_node_t *)parent_node, ctext);
@@ -854,7 +858,8 @@ void rt_treeview_remove_node(void *tree, void *node) {
     RT_ASSERT_MAIN_THREAD();
     vg_treeview_t *tv =
         (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
-    if (tv && node && vg_tree_node_is_live((vg_tree_node_t *)node))
+    if (tv && node && vg_tree_node_is_live((vg_tree_node_t *)node) &&
+        ((vg_tree_node_t *)node)->owner == tv)
         vg_treeview_remove_node(tv, (vg_tree_node_t *)node);
 }
 
@@ -872,7 +877,8 @@ void rt_treeview_expand(void *tree, void *node) {
     RT_ASSERT_MAIN_THREAD();
     vg_treeview_t *tv =
         (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
-    if (tv && node && vg_tree_node_is_live((vg_tree_node_t *)node))
+    if (tv && node && vg_tree_node_is_live((vg_tree_node_t *)node) &&
+        ((vg_tree_node_t *)node)->owner == tv)
         vg_treeview_expand(tv, (vg_tree_node_t *)node);
 }
 
@@ -881,7 +887,8 @@ void rt_treeview_collapse(void *tree, void *node) {
     RT_ASSERT_MAIN_THREAD();
     vg_treeview_t *tv =
         (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
-    if (tv && node && vg_tree_node_is_live((vg_tree_node_t *)node))
+    if (tv && node && vg_tree_node_is_live((vg_tree_node_t *)node) &&
+        ((vg_tree_node_t *)node)->owner == tv)
         vg_treeview_collapse(tv, (vg_tree_node_t *)node);
 }
 
@@ -892,7 +899,8 @@ void rt_treeview_select(void *tree, void *node) {
         (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
     if (!tv)
         return;
-    if (node && !vg_tree_node_is_live((vg_tree_node_t *)node))
+    if (node && (!vg_tree_node_is_live((vg_tree_node_t *)node) ||
+                 ((vg_tree_node_t *)node)->owner != tv))
         return;
     vg_treeview_select(tv, (vg_tree_node_t *)node);
 }

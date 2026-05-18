@@ -785,6 +785,7 @@ static bool contextmenu_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     if (!item->separator && item->enabled && !item->submenu) {
                         // Record clicked index for rt_contextmenu_get_clicked_item
                         menu->clicked_index = clicked;
+                        item->was_clicked = true;
 
                         // Invoke action
                         if (item->action) {
@@ -858,6 +859,8 @@ static bool contextmenu_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 if (menu->hovered_index >= 0 && (size_t)menu->hovered_index < menu->item_count) {
                     vg_menu_item_t *item = menu->items[menu->hovered_index];
                     if (!item->separator && item->enabled && !item->submenu) {
+                        menu->clicked_index = menu->hovered_index;
+                        item->was_clicked = true;
                         if (item->action) {
                             item->action(item->action_data);
                         }

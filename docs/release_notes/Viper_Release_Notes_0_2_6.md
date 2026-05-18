@@ -24,13 +24,13 @@ An alpha-quality hardening cycle, not a feature release. No new public namespace
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 132 | +132 |
+| Commits | — | 134 | +134 |
 | Source files | 2,996 | 3,022 | +26 |
-| Production SLOC | 552K | 591K | +39K |
+| Production SLOC | 552K | 592K | +40K |
 | Test SLOC | 228K | 251K | +23K |
 | Demo SLOC | 188K | 189K | +1K |
 
-Counts via `scripts/count_sloc.sh` (production 591,495 / test 250,917 / demo 189,187 / source files 3,022).
+Counts via `scripts/count_sloc.sh` (production 592,483 / test 251,085 / demo 189,187 / source files 3,022).
 
 ---
 
@@ -98,6 +98,8 @@ Counts via `scripts/count_sloc.sh` (production 591,495 / test 250,917 / demo 189
 - HTTP/2: independent encode/decode HPACK tables, `pthread_once`-guarded Huffman init, length-aware decode preserves embedded NULs. HTTP/1.1: strict RFC 7230 §3.3.1 `Transfer-Encoding` token-list parse (closes the smuggling avenue). HTTP server reuses a per-connection request buffer through keep-alive; URL parser validates IPv6 brackets, empty hosts, and out-of-range ports; cookie `Max-Age` is saturating; HTTPS server and HTTP client per-route pools release pool slots before closing dead sockets.
 - WebSocket: servers reject non-minimal-length frames per §5.2; clients validate close codes per §7.4. SSE host/target validators reject control bytes, `0x7F`, and non-leading-`/` targets. SMTP caps response-line accumulation at 64 KiB. UDP detects truncation via `MSG_TRUNC` / `WSAEMSGSIZE`. TLS `ServerHello` `key_share` exact-length validated. Retry `base_delay_ms` validation fixes a negative-ceiling backoff.
 - GUI: widget handles route through `rt_gui_widget_handle_checked` so every public entry rejects NULL / destroyed / wrong-type before casting. Context-menu submenu ownership is bidirectional, and `Clear()` now retires stale item handles after dismissing active submenus. Menubar, context-menu, statusbar, toolbar, floating-panel, MessageBox, FindBar, CommandPalette, Breadcrumb, Minimap, Toast, and VideoWidget runtime handles now reject stale or wrong-type wrapper pointers consistently. Code-editor Zia syntax derives block-comment nesting from a forward buffer scan and handles trailing string escapes in bounds; manual highlight ranges reject zero-length and inverted spans. App font-size changes reflow existing widgets, late-attached subtrees inherit the app font, FileDialog show treats selection-copy failure as cancel, shortcut parsing rejects unknown tokens and preserves Cmd/Ctrl intent, drag/drop starts after a movement threshold and completes after normal mouse-up dispatch, and GUI pixel-upload docs now state the raw `0xRRGGBBAA` Pixels contract. Progressbar circular style, breadcrumb / file-dialog memory safety, file-dialog modal-stack cleanup on destroy, full-width message-box custom button IDs, slider step re-snap, toast duration clamping, keyboard shortcuts through the focus chain.
+- GUI event and layout correctness: a non-shifting `VG_EVENT_NONE` sentinel filters unknown platform events so unsupported VGFX events can't be misrouted as mouse movement; focus and modifier state survive the VGFX→GUI translation on every backend; `VGFX_KEY_UNKNOWN` maps to `VG_KEY_UNKNOWN` rather than leaking the sentinel; a handled mouse-up suppresses synthetic click/double-click; focus is refused when an ancestor is hidden/disabled/dead; and non-wrapped flex-grow sizes from each child's measured basis plus margins before distributing the remainder. Widget state/storage hardening: clamped button-style/icon-position inputs, CodeEditor trailing-newline round-trip, overflow-guarded dropdown growth, explicit listbox/tree text-length tracking, listbox virtual-selection logical-vs-capacity split, and versioned edge-triggered tabbar close with allocation-safe title/tooltip mutation.
+- GUI runtime surface: `App` file-drop methods, base `Widget` tooltip/drag-drop methods, `Toolbar.NewVertical`, and `CodeEditor.GetGutterClickSlot` are now bound in the class catalog. Status-bar buttons now report `WasClicked()`, context-menu item activation updates `MenuItem.WasClicked()`, command palette reopen/clear/remove drops stale selections, toast dismissal is edge-triggered and stale-manager aware, root-widget fixed sizing is ignored, foreign list/tree item handles are rejected at the runtime boundary, and VideoWidget rejects non-finite volume/update inputs.
 
 ### Compiler, IL, codegen, native toolchain
 
@@ -149,6 +151,6 @@ Demos and docs were updated to track the runtime work above; stale Windows debug
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 132-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 134-commit history since v0.2.5.
 
 <!-- END DRAFT -->

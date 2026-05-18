@@ -96,6 +96,28 @@ int main() {
     assert(hasMethod(*spriteFontCls, "LoadBDF", "obj<Viper.Graphics.SpriteFont>(str)"));
     assert(hasMethod(*spriteFontCls, "LoadPSF", "obj<Viper.Graphics.SpriteFont>(str)"));
 
+    const il::runtime::RuntimeClass *guiAppCls = findClass("Viper.GUI.App");
+    assert(guiAppCls != nullptr && "Viper.GUI.App not found in catalog");
+    assert(hasMethod(*guiAppCls, "WasFileDropped", "i64()"));
+    assert(hasMethod(*guiAppCls, "GetDroppedFileCount", "i64()"));
+    assert(hasMethod(*guiAppCls, "GetDroppedFile", "str(i64)"));
+
+    const il::runtime::RuntimeClass *guiWidgetCls = findClass("Viper.GUI.Widget");
+    assert(guiWidgetCls != nullptr && "Viper.GUI.Widget not found in catalog");
+    assert(hasMethod(*guiWidgetCls, "SetTooltip", "void(str)"));
+    assert(hasMethod(*guiWidgetCls, "SetDraggable", "void(i64)"));
+    assert(hasMethod(*guiWidgetCls, "SetDragData", "void(str,str)"));
+    assert(hasMethod(*guiWidgetCls, "WasDropped", "i64()"));
+    assert(hasMethod(*guiWidgetCls, "GetDropData", "str()"));
+
+    const il::runtime::RuntimeClass *guiCodeEditorCls = findClass("Viper.GUI.CodeEditor");
+    assert(guiCodeEditorCls != nullptr && "Viper.GUI.CodeEditor not found in catalog");
+    assert(hasMethod(*guiCodeEditorCls, "GetGutterClickSlot", "i64()"));
+
+    const il::runtime::RuntimeClass *guiToolbarCls = findClass("Viper.GUI.Toolbar");
+    assert(guiToolbarCls != nullptr && "Viper.GUI.Toolbar not found in catalog");
+    assert(hasMethod(*guiToolbarCls, "NewVertical", "obj(obj)"));
+
     constexpr std::array<std::string_view, 44> graphics2DClasses = {
         "Viper.Graphics.RenderTarget2D", "Viper.Graphics.Surface2D",
         "Viper.Graphics.Texture2D",      "Viper.Graphics.GpuTexture2D",
