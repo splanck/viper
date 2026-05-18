@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="${VIPER_BUILD_DIR:-$ROOT_DIR/build}"
-BUILD_TYPE="${VIPER_BUILD_TYPE:-Debug}"
+BUILD_TYPE="${VIPER_BUILD_TYPE:-Release}"
 
 case "$(uname -s 2>/dev/null)" in
     Darwin)
@@ -42,7 +42,7 @@ if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
     cmake "${CONFIGURE_ARGS[@]}"
 fi
 
-cmake --build "$BUILD_DIR" -j"$JOBS" --target viper
+cmake --build "$BUILD_DIR" -j"$JOBS"
 
 FORWARD_ARGS=("$@")
 HAS_STAGE_MODE=0

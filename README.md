@@ -88,7 +88,7 @@ zia> Say(Fmt.Int(2 + 3))
 | **[VM](docs/vm.md)** | Bytecode interpreter with switch, table, and threaded dispatch |
 | **[AArch64](docs/codegen/aarch64.md) · [x86-64](docs/codegen/x86_64.md)** | Native code generators |
 | **[Assembler](docs/codegen/native-assembler.md) · [Linker](docs/codegen/native-linker.md)** | Built-in ELF/Mach-O/PE toolchain — zero external dependencies |
-| **[Runtime](docs/viperlib/README.md)** | 385 classes across 21 modules (graphics, 3D, GUI, game engine, networking, localization, and more) |
+| **[Runtime](docs/viperlib/README.md)** | 393 classes across 21 modules (graphics, 3D, GUI, game engine, networking, localization, and more) |
 | **[Language Servers](docs/zia-server.md)** | Dual-protocol (LSP + MCP) servers for Zia and BASIC |
 | **[Tools](docs/tools.md)** | Compiler drivers, verifier, disassembler, [REPL](docs/repl.md), packager |
 
@@ -98,13 +98,13 @@ zia> Say(Fmt.Int(2 + 3))
 - **IL-centric** — A readable, typed IR makes semantics explicit and frontends interchangeable
 - **Self-contained** — Built-in [assembler](docs/codegen/native-assembler.md) and [linker](docs/codegen/native-linker.md) with ELF/Mach-O/PE support and dynamic linking — zero external tool dependencies for native compilation
 - **Memory-safe surface** — [Zia](docs/zia-reference.md) and [BASIC](docs/basic-reference.md) expose no raw pointer types or pointer-signature runtime APIs; the typed, lifetime-validated surface is the only surface
-- **Full runtime** — 385 classes covering [graphics](docs/viperlib/graphics/README.md), [3D](docs/graphics3d-guide.md), [networking](docs/viperlib/network.md), [GUI](docs/viperlib/gui/README.md), [threading](docs/viperlib/threads.md), [localization](docs/viperlib/localization/README.md), and more
+- **Full runtime** — 393 classes covering [graphics](docs/viperlib/graphics/README.md), [3D](docs/graphics3d-guide.md), [networking](docs/viperlib/network.md), [GUI](docs/viperlib/gui/README.md), [threading](docs/viperlib/threads.md), [localization](docs/viperlib/localization/README.md), and more
 
 ---
 
 ## Project Status
 
-Viper is in **early development**. All components are functional but evolving:
+Viper is in **active development**. All components are functional but evolving:
 
 | Component | Notes |
 |-----------|-------|
@@ -116,7 +116,7 @@ Viper is in **early development**. All components are functional but evolving:
 | [AArch64 Backend](docs/codegen/aarch64.md) | Apple Silicon and Windows ARM64 with register coalescing and post-RA scheduling |
 | [x86-64 Backend](docs/codegen/x86_64.md) | Windows and Linux, IEEE-754 NaN-safe, 300+ stress tests |
 | [Native Toolchain](docs/codegen/native-assembler.md) | In-tree assembler and linker for ELF / Mach-O / PE with DWARF v5 and dynamic linking |
-| [Runtime](docs/viperlib/README.md) | 385 classes across 21 modules |
+| [Runtime](docs/viperlib/README.md) | 393 classes across 21 modules |
 | [3D Graphics](docs/graphics3d-guide.md) | 46 classes covering meshes, materials, lighting, skeletal animation, terrain, water, physics, asset import (glTF / FBX), and post-processing across Metal / D3D11 / OpenGL / software backends |
 | [Game Engine](docs/viperlib/game/README.md) | Collision, pathfinding, physics, tweening, particles, state machines, AI behaviors, level loading, asset embedding |
 | [GUI](docs/viperlib/gui/README.md) | 47 widgets for cross-platform desktop apps |
@@ -233,7 +233,7 @@ entry_0:
 
 ## Runtime Library
 
-All frontends share the **[Viper Runtime](docs/viperlib/README.md)** — 385 classes across 21 modules:
+All frontends share the **[Viper Runtime](docs/viperlib/README.md)** — 393 classes across 21 modules:
 
 | Module | Classes | Description |
 |--------|:-------:|-------------|
@@ -257,7 +257,7 @@ All frontends share the **[Viper Runtime](docs/viperlib/README.md)** — 385 cla
 | [Text](docs/viperlib/text) | 20 | Structured-text parsing, templates, regex |
 | [Threads](docs/viperlib/threads.md) | 18 | Async primitives, channels, futures, pools |
 | [Time](docs/viperlib/time.md) | 8 | Clocks, dates, durations, timers |
-| [Utilities](docs/viperlib/README.md) | 15 | Formatting, logging, option / result helpers |
+| [Utilities](docs/viperlib/README.md) | 23 | Formatting, logging, option / result helpers |
 
 > See the **[Runtime Library Reference](docs/viperlib/README.md)** for complete API documentation.
 
@@ -270,7 +270,7 @@ All frontends share the **[Viper Runtime](docs/viperlib/README.md)** — 385 cla
 | `viper` | Unified driver — [run, build, compile, package](docs/tools.md) |
 | `viper repl` | [Interactive REPL](docs/repl.md) for Zia and BASIC |
 | `viper package` | Generate installers (.app, .deb, .exe, .tar.gz) |
-| `viper install-package` | Generate staged toolchain installers (.exe, .pkg, .deb, .rpm, .tar.gz) |
+| `viper install-package` | Generate staged toolchain installers (.exe, .pkg, .deb, .rpm, self-installing .tar.gz) |
 | `zia` / `vbasic` | Standalone language compilers |
 | `zia-server` | [Language server](docs/zia-server.md) (LSP + MCP) |
 | `viper -run` | Execute IL programs directly |
@@ -335,7 +335,7 @@ This configures, builds, tests, and installs Viper in one step.
 
 ## Contributing
 
-Viper is in early development and the architecture is stabilizing. We welcome:
+Viper is in active development and the architecture is stabilizing. We welcome:
 
 - Bug reports and issues
 - Small fixes and documentation improvements

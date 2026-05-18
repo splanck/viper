@@ -32,6 +32,8 @@ else ()
     set(VGFX_BUILD_EXAMPLES ${BUILD_EXAMPLES})
 endif ()
 
+include(GNUInstallDirs)
+
 # Core source files (platform-independent)
 set(VGFX_CORE_SOURCES
         src/vgfx.c
@@ -143,16 +145,15 @@ endif ()
 if (VGFX_STANDALONE)
     # Install library
     install(TARGETS vipergfx
-            ARCHIVE DESTINATION lib
-            LIBRARY DESTINATION lib
-    )
-
-    # Install public headers
-    install(DIRECTORY include/
-            DESTINATION include
-            FILES_MATCHING PATTERN "*.h"
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     )
 endif ()
+
+install(DIRECTORY include/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        FILES_MATCHING PATTERN "*.h"
+)
 
 # Summary
 message(STATUS "ViperGFX Configuration:")

@@ -44,6 +44,7 @@
 #include <limits>
 #include <set>
 #include <sstream>
+#include <string_view>
 #include <utility>
 
 #if defined(_WIN32)
@@ -266,9 +267,205 @@ void requireLinuxToolchainManifest(const ToolchainInstallManifest &manifest,
     }
 }
 
-/// @brief Return the Debian Depends line for a toolchain .deb (minimal C/C++ runtime).
-std::string toolchainDebDepends() {
-    return "libc6, libstdc++6 | libc++1";
+std::string joinCommaSeparated(const std::vector<std::string> &items) {
+    std::ostringstream out;
+    for (size_t i = 0; i < items.size(); ++i) {
+        if (i > 0)
+            out << ", ";
+        out << items[i];
+    }
+    return out.str();
+}
+
+bool manifestHasSupportLibrary(const ToolchainInstallManifest &manifest, std::string_view name) {
+    for (const auto &file : manifest.files) {
+        if (file.kind != ToolchainFileKind::SupportLibrary &&
+            file.kind != ToolchainFileKind::Library)
+            continue;
+        std::string filename = fs::path(file.stagedRelativePath).filename().string();
+        filename = lowerAscii(std::move(filename));
+        if (filename.find(name) != std::string::npos)
+            return true;
+    }
+    return false;
+}
+
+bool manifestNeedsX11(const ToolchainInstallManifest &manifest) {
+    return manifestHasSupportLibrary(manifest, "vipergfx") ||
+           manifestHasSupportLibrary(manifest, "vipergui");
+}
+
+bool manifestNeedsAlsa(const ToolchainInstallManifest &manifest) {
+    return manifestHasSupportLibrary(manifest, "viperaud");
+}
+
+/// @brief Return the Debian Depends line for a toolchain .deb.
+std::string toolchainDebDepends(const ToolchainInstallManifest &manifest) {
+    std::vector<std::string> deps = {
+        "libc6",
+        "libstdc++6 | libc++1",
+        "libgcc-s1",
+    };
+    if (manifestNeedsX11(manifest))
+        deps.push_back("libx11-6");
+    if (manifestNeedsAlsa(manifest))
+        deps.push_back("libasound2 | libasound2t64");
+    return joinCommaSeparated(deps);
+}
+
+std::string toolchainDebRecommends() {
+    return "cmake, g++ | clang++";
+}
+
+std::vector<std::string> toolchainRpmRequires(const ToolchainInstallManifest &manifest) {
+    std::vector<std::string> deps = {
+        "glibc",
+        "libstdc++",
+        "libgcc",
+    };
+    if (manifestNeedsX11(manifest))
+        deps.push_back("libX11");
+    if (manifestNeedsAlsa(manifest))
+        deps.push_back("alsa-lib");
+    return deps;
+}
+
+std::vector<std::string> sortedUniquePaths(std::vector<std::string> paths) {
+    std::sort(paths.begin(), paths.end());
+    paths.erase(std::unique(paths.begin(), paths.end()), paths.end());
+    return paths;
+}
+
+std::string renderInstallManifest(std::vector<std::string> paths) {
+    paths = sortedUniquePaths(std::move(paths));
+    std::ostringstream out;
+    out << "# Viper toolchain installed files, relative to PREFIX.\n";
+    for (const auto &path : paths)
+        out << path << "\n";
+    return out.str();
+}
+
+std::string linuxTarballInstallScript() {
+    return R"VIPER_SCRIPT(#!/bin/sh
+set -eu
+
+prefix=${PREFIX:-/usr/local}
+destdir=${DESTDIR:-}
+
+case "$prefix" in
+    /*) ;;
+    *) echo "PREFIX must be an absolute path" >&2; exit 2 ;;
+esac
+
+root=$(CDPATH= cd "$(dirname "$0")" && pwd)
+install_root=${destdir%/}$prefix
+
+set --
+for dir in bin include lib share; do
+    if [ -e "$root/$dir" ]; then
+        set -- "$@" "$dir"
+    fi
+done
+
+if [ "$#" -eq 0 ]; then
+    echo "No installable Viper payload directories were found" >&2
+    exit 1
+fi
+
+mkdir -p "$install_root"
+(cd "$root" && tar cf - "$@") | (cd "$install_root" && tar xpf -)
+
+if [ -z "$destdir" ]; then
+    if command -v mandb >/dev/null 2>&1; then
+        mandb >/dev/null 2>&1 || true
+    fi
+    if [ -d "$install_root/share/mime" ] && command -v update-mime-database >/dev/null 2>&1; then
+        update-mime-database "$install_root/share/mime" || true
+    fi
+    if [ -d "$install_root/share/applications" ] && command -v update-desktop-database >/dev/null 2>&1; then
+        update-desktop-database "$install_root/share/applications" || true
+    fi
+fi
+
+echo "Installed Viper toolchain under $install_root"
+)VIPER_SCRIPT";
+}
+
+std::string linuxTarballUninstallScript() {
+    return R"VIPER_SCRIPT(#!/bin/sh
+set -eu
+
+prefix=${PREFIX:-/usr/local}
+destdir=${DESTDIR:-}
+
+case "$prefix" in
+    /*) ;;
+    *) echo "PREFIX must be an absolute path" >&2; exit 2 ;;
+esac
+
+install_root=${destdir%/}$prefix
+manifest="$install_root/share/viper/install_manifest.txt"
+
+if [ ! -f "$manifest" ]; then
+    echo "Viper install manifest not found: $manifest" >&2
+    exit 1
+fi
+
+while IFS= read -r rel || [ -n "$rel" ]; do
+    case "$rel" in
+        ""|\#*) continue ;;
+        /*|..|../*|*/../*|*/..) echo "Unsafe manifest path: $rel" >&2; exit 2 ;;
+    esac
+    rm -f "$install_root/$rel"
+done < "$manifest"
+
+rm -f "$manifest"
+
+for dir in \
+    share/viper \
+    share/applications \
+    share/mime/packages \
+    share/mime \
+    share/doc/viper \
+    lib/cmake/Viper \
+    lib/cmake \
+    bin lib include share/doc share; do
+    rmdir "$install_root/$dir" 2>/dev/null || true
+done
+
+if [ -z "$destdir" ]; then
+    if command -v mandb >/dev/null 2>&1; then
+        mandb >/dev/null 2>&1 || true
+    fi
+    if [ -d "$install_root/share/mime" ] && command -v update-mime-database >/dev/null 2>&1; then
+        update-mime-database "$install_root/share/mime" || true
+    fi
+    if [ -d "$install_root/share/applications" ] && command -v update-desktop-database >/dev/null 2>&1; then
+        update-desktop-database "$install_root/share/applications" || true
+    fi
+fi
+
+echo "Removed Viper toolchain files listed in $manifest"
+)VIPER_SCRIPT";
+}
+
+std::string linuxTarballReadme() {
+    return R"VIPER_TEXT(Viper Toolchain Tarball
+
+Install:
+  sudo ./install.sh
+
+Install under a custom prefix:
+  PREFIX=/opt/viper sudo ./install.sh
+
+Stage into a package root without refreshing system caches:
+  DESTDIR=/tmp/viper-root PREFIX=/usr ./install.sh
+
+Uninstall:
+  sudo ./uninstall.sh
+
+The uninstaller removes only files listed in share/viper/install_manifest.txt.
+)VIPER_TEXT";
 }
 
 /// @brief Return true if the `rpmbuild` tool is available on PATH (exit code 0).
@@ -922,7 +1119,8 @@ void buildToolchainDebPackage(const LinuxToolchainBuildParams &params) {
         ctl << "Priority: optional\n";
         ctl << "Architecture: " << archStr << "\n";
         ctl << "Maintainer: Viper Project <noreply@example.invalid>\n";
-        ctl << "Depends: " << toolchainDebDepends() << "\n";
+        ctl << "Depends: " << toolchainDebDepends(manifest) << "\n";
+        ctl << "Recommends: " << toolchainDebRecommends() << "\n";
         uint64_t totalBytes = 0;
         for (const auto &df : dataFiles) {
             if (df.data.size() > std::numeric_limits<uint64_t>::max() - totalBytes)
@@ -1013,9 +1211,12 @@ void buildToolchainTarball(const LinuxToolchainBuildParams &params) {
 
     TarWriter tar;
     tar.addDirectory(topDir, 0755);
+    std::vector<std::string> installManifestPaths;
     for (const auto &file : manifest.files) {
         const std::string relPath = mapInstallPath(file, InstallPathPolicy::PortableArchive);
         validatePortableArchivePath(relPath, "toolchain tarball path");
+        if (platform == "linux")
+            installManifestPaths.push_back(relPath);
         if (file.symlink) {
             tar.addSymlink(topDir + relPath, file.symlinkTarget);
         } else {
@@ -1035,8 +1236,33 @@ void buildToolchainTarball(const LinuxToolchainBuildParams &params) {
                                                 ? df.installPath.substr(4)
                                                 : df.installPath,
                                             "toolchain tarball generated metadata path");
+            installManifestPaths.push_back(portablePath);
             tar.addFile(topDir + portablePath, df.data.data(), df.data.size(), df.mode);
         }
+    }
+    if (platform == "linux") {
+        installManifestPaths.push_back("share/viper/install_manifest.txt");
+        const std::string manifestText = renderInstallManifest(installManifestPaths);
+        tar.addFile(topDir + "share/viper/install_manifest.txt",
+                    reinterpret_cast<const uint8_t *>(manifestText.data()),
+                    manifestText.size(),
+                    0644);
+
+        const std::string installScript = linuxTarballInstallScript();
+        tar.addFile(topDir + "install.sh",
+                    reinterpret_cast<const uint8_t *>(installScript.data()),
+                    installScript.size(),
+                    0755);
+        const std::string uninstallScript = linuxTarballUninstallScript();
+        tar.addFile(topDir + "uninstall.sh",
+                    reinterpret_cast<const uint8_t *>(uninstallScript.data()),
+                    uninstallScript.size(),
+                    0755);
+        const std::string readme = linuxTarballReadme();
+        tar.addFile(topDir + "README.install",
+                    reinterpret_cast<const uint8_t *>(readme.data()),
+                    readme.size(),
+                    0644);
     }
 
     const auto tarBytes = tar.finish();
@@ -1120,7 +1346,11 @@ void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params) {
     spec << "Summary: Viper compiler toolchain\n";
     spec << "License: GPL-3.0-only\n";
     spec << "BuildArch: " << arch << "\n";
-    spec << "Source0: %{name}-%{version}.tar.gz\n\n";
+    spec << "Source0: %{name}-%{version}.tar.gz\n";
+    for (const auto &dep : toolchainRpmRequires(manifest))
+        spec << "Requires: " << dep << "\n";
+    spec << "Recommends: cmake\n";
+    spec << "Recommends: gcc-c++\n\n";
     spec << "%description\nViper compiler toolchain\n\n";
     spec << "%prep\n%setup -q\n\n";
     spec << "%build\n:\n\n";

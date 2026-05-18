@@ -2,6 +2,8 @@
 
 cmake_minimum_required(VERSION 3.16)
 
+include(GNUInstallDirs)
+
 # GUI library sources
 set(VG_GUI_FONT_SOURCES
         src/font/vg_ttf.c
@@ -74,7 +76,7 @@ add_library(vipergui STATIC ${VG_GUI_SOURCES})
 target_include_directories(vipergui
         PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
         PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_CURRENT_SOURCE_DIR}/src/font
@@ -225,4 +227,9 @@ target_include_directories(viperide_menu_test PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/../graphics/include
         ${CMAKE_CURRENT_SOURCE_DIR}/../../runtime
+)
+
+install(DIRECTORY include/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        FILES_MATCHING PATTERN "*.h"
 )

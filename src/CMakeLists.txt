@@ -279,10 +279,13 @@ target_link_libraries(il_tools_common PUBLIC il_api viper_bytecode PRIVATE viper
 # Packaging library — self-contained C++, no runtime (viper_rt_*) dependencies.
 # Only links rt_crc32.o directly (no GC dependency, pure function).
 add_library(viper_packaging STATIC
+        tools/common/packaging/CpioWriter.cpp
         tools/common/packaging/PkgDeflate.cpp
         tools/common/packaging/PkgGzip.cpp
+        tools/common/packaging/PkgHash.cpp
         tools/common/packaging/PkgMD5.cpp
         tools/common/packaging/PkgPNG.cpp
+        tools/common/packaging/PkgZlib.cpp
         tools/common/packaging/ZipWriter.cpp
         tools/common/packaging/ArWriter.cpp
         tools/common/packaging/TarWriter.cpp
@@ -299,6 +302,7 @@ add_library(viper_packaging STATIC
         tools/common/packaging/ZipReader.cpp
         tools/common/packaging/InstallerStubGen.cpp
         tools/common/packaging/InstallerStub.cpp
+        tools/common/packaging/XarWriter.cpp
         tools/common/asset/VpaWriter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/runtime/core/rt_crc32.c
 )

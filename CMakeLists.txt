@@ -629,7 +629,7 @@ endif()
 install(FILES
   ${CMAKE_SOURCE_DIR}/LICENSE
   ${CMAKE_SOURCE_DIR}/README.md
-  DESTINATION ${CMAKE_INSTALL_DOCDIR}/viper
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/viper
 )
 
 if(EXISTS ${CMAKE_SOURCE_DIR}/misc/editors/vscode/zia/zia-language-0.1.0.vsix)
