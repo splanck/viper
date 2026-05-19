@@ -717,6 +717,7 @@ int main() {
         gotEntry.name = "__got_puts";
         gotEntry.binding = GlobalSymEntry::Global;
         gotEntry.resolvedAddr = 0x102040;
+        gotEntry.resolvedAddrValid = true;
         layout.globalSyms["__got_puts"] = gotEntry;
 
         std::ostringstream err;
@@ -762,6 +763,7 @@ int main() {
         gotEntry.name = "__got_ZTISt9exception";
         gotEntry.binding = GlobalSymEntry::Global;
         gotEntry.resolvedAddr = 0x102040;
+        gotEntry.resolvedAddrValid = true;
         layout.globalSyms["__got_ZTISt9exception"] = gotEntry;
 
         std::ostringstream err;
@@ -801,6 +803,7 @@ int main() {
         gotEntry.name = "__got_puts";
         gotEntry.binding = GlobalSymEntry::Global;
         gotEntry.resolvedAddr = 0x102042;
+        gotEntry.resolvedAddrValid = true;
         layout.globalSyms["__got_puts"] = gotEntry;
 
         std::ostringstream err;

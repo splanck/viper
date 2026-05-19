@@ -169,17 +169,29 @@ static bool extractRelAddend(uint16_t machine,
             out = static_cast<int64_t>(readLE64(sectionData.data() + offset));
             return true;
         }
-        if (checkedRange(offset, 4, sectionData.size())) {
-            int32_t val = 0;
-            std::memcpy(&val, sectionData.data() + offset, 4);
-            out = val;
-            return true;
+        switch (relocType) {
+            case elf_x64::kPC32:
+            case elf_x64::kPLT32:
+            case elf_x64::kGotPcRel:
+            case elf_x64::kAbs32:
+            case elf_x64::kTpoff32:
+            case elf_x64::kGotPcRelX:
+            case elf_x64::kRexGotPcRelX:
+                if (!checkedRange(offset, 4, sectionData.size()))
+                    return false;
+                {
+                    int32_t val = 0;
+                    std::memcpy(&val, sectionData.data() + offset, 4);
+                    out = val;
+                }
+                return true;
+            default:
+                return false;
         }
-        return false;
     }
 
     if (machine != elf::EM_AARCH64)
-        return true;
+        return false;
 
     if (relocType == elf_a64::kAbs64) {
         if (!checkedRange(offset, 8, sectionData.size()))
@@ -199,7 +211,7 @@ static bool extractRelAddend(uint16_t machine,
                            relocType == elf_a64::kLd64GotLo12Nc ||
                            relocType == elf_a64::kLdSt128Lo12Nc;
     if (!needsInsn)
-        return true;
+        return false;
     if (!checkedRange(offset, 4, sectionData.size()))
         return false;
 

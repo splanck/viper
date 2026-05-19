@@ -283,7 +283,7 @@ The native assembler validates object metadata before serialization:
 - ELF, Mach-O, and COFF writers validate that every relocation kind matches the target architecture and that the
   fixup width fits inside the section contents.
 - AArch64 relocation shape is validated against the instruction word before object serialization: `A64Call26` must
-  sit on `BL`, `A64Jump26` on `B`, `A64AdrpPage21` on `ADRP`, page-offset ADD relocations on ADD/SUB-immediate, and
+  sit on `BL`, `A64Jump26` on `B`, `A64AdrpPage21` on `ADRP`, page-offset ADD relocations on ADD-immediate, and
   scaled load/store relocations on an unsigned-offset load/store of the matching width.
 - Undefined external symbols are only coalesced with defined global symbols of the same name. Local same-name
   symbols remain local, and local cross-section references must use an explicit relocation target-section hint.
@@ -291,6 +291,9 @@ The native assembler validates object metadata before serialization:
   relocations where the format supports them, which lets native object output represent duplicate local labels
   without guessing by name. Mach-O AArch64 creates synthetic local anchors for section offsets whose effective
   addend cannot fit in `ARM64_RELOC_ADDEND`'s signed 24-bit payload.
+- When one `CodeSection` is appended into another, explicit section-offset relocations must carry the source
+  section identity. This prevents copied text sections with duplicate local labels from being resolved by whichever
+  same-name symbol happens to appear first.
 - Standard COFF output is rejected before section indexes exceed the signed 16-bit section-number range used in
   symbol table entries. BigObj emission is not currently implemented.
 - COFF emits unwind sections for both supported Windows ABIs: x86-64 uses Win64 `.pdata` records with begin/end/xdata relocations, while AArch64 emits ARM64 `.pdata` begin/xdata records plus packed `.xdata` unwind opcodes.

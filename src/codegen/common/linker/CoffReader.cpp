@@ -325,8 +325,6 @@ static int64_t extractCoffAddend(uint16_t machine,
         if (relocType != coff_x64::kSection && checkedRange(offset, 4, sectionData.size())) {
             int32_t val = 0;
             std::memcpy(&val, sectionData.data() + offset, 4);
-            if (relocType >= coff_x64::kRel32 && relocType <= coff_x64::kRel32_5)
-                return static_cast<int64_t>(val) - 4 - (relocType - coff_x64::kRel32);
             return val;
         }
         return 0;
@@ -755,6 +753,7 @@ bool readCoffObj(
                     }
                     const auto *aux = coffAt<coff::CoffAuxWeakExternal>(data, size, auxOffset);
                     if (aux && aux->TagIndex < numberOfSymbols) {
+                        os.weakExternalCharacteristics = aux->Characteristics;
                         CoffSymbolView fallback{};
                         if (!readCoffSymbolView(data,
                                                 size,

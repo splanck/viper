@@ -506,14 +506,14 @@ bool ElfWriter::write(const std::string &path,
                         << rel.targetOffset << " beyond section contents\n";
                     return false;
                 }
-                if (rel.targetOffset > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
-                    rel.addend > std::numeric_limits<int64_t>::max() -
-                                     static_cast<int64_t>(rel.targetOffset)) {
-                    err << "ElfWriter: relocation in " << sectionName
-                        << " has a section-offset addend outside int64 range\n";
+                if (!checkedSectionOffsetAddend(rel.addend,
+                                                rel.targetOffset,
+                                                "ElfWriter",
+                                                sectionName,
+                                                rel.offset,
+                                                err,
+                                                effectiveAddend))
                     return false;
-                }
-                effectiveAddend = rel.addend + static_cast<int64_t>(rel.targetOffset);
                 elfSymIdx = (rel.targetSection == SymbolSection::Text) ? 1u : 2u;
                 return true;
             }
@@ -766,12 +766,8 @@ bool ElfWriter::write(const std::string &path,
         err << "ElfWriter: cannot open " << path << " for writing\n";
         return false;
     }
-    ofs.write(reinterpret_cast<const char *>(file.data()),
-              static_cast<std::streamsize>(file.size()));
-    if (!ofs) {
-        err << "ElfWriter: write failed for " << path << "\n";
+    if (!checkedWriteAll(ofs, file, "ElfWriter", path, err))
         return false;
-    }
     return true;
     } catch (const std::exception &ex) {
         err << "ElfWriter: " << ex.what() << "\n";
@@ -1058,11 +1054,17 @@ bool ElfWriter::write(const std::string &path,
                     size_t textIdx = sourceTextIndex;
                     if (rel.targetSectionIdentityValid) {
                         textIdx = SIZE_MAX;
+                        size_t matches = 0;
                         for (size_t ti = 0; ti < N; ++ti) {
                             if (textSections[ti].sectionIdentity() == rel.targetSectionIdentity) {
                                 textIdx = ti;
-                                break;
+                                ++matches;
                             }
+                        }
+                        if (matches > 1) {
+                            err << "ElfWriter: relocation in " << sectionName << " at offset "
+                                << rel.offset << " references duplicate .text section identity\n";
+                            return false;
                         }
                     } else if (textIdx == SIZE_MAX || textIdx >= N ||
                                rel.targetOffset > textSections[textIdx].bytes().size()) {
@@ -1146,13 +1148,14 @@ bool ElfWriter::write(const std::string &path,
                 return false;
             int64_t effectiveAddend = rel.addend;
             if (rel.targetOffsetValid) {
-                if (rel.targetOffset > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
-                    rel.addend > std::numeric_limits<int64_t>::max() -
-                                     static_cast<int64_t>(rel.targetOffset)) {
-                    err << "ElfWriter: relocation in .text has a section-offset addend outside int64 range\n";
+                if (!checkedSectionOffsetAddend(rel.addend,
+                                                rel.targetOffset,
+                                                "ElfWriter",
+                                                ".text",
+                                                rel.offset,
+                                                err,
+                                                effectiveAddend))
                     return false;
-                }
-                effectiveAddend += static_cast<int64_t>(rel.targetOffset);
             }
             const size_t physicalRelOffset = rel.offset - textSections[ti].logicalOffsetBias();
             uint32_t relocType = elfRelocType(rel.kind, arch_);
@@ -1172,13 +1175,14 @@ bool ElfWriter::write(const std::string &path,
             return false;
         int64_t effectiveAddend = rel.addend;
         if (rel.targetOffsetValid) {
-            if (rel.targetOffset > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
-                rel.addend > std::numeric_limits<int64_t>::max() -
-                                 static_cast<int64_t>(rel.targetOffset)) {
-                err << "ElfWriter: relocation in .rodata has a section-offset addend outside int64 range\n";
+            if (!checkedSectionOffsetAddend(rel.addend,
+                                            rel.targetOffset,
+                                            "ElfWriter",
+                                            ".rodata",
+                                            rel.offset,
+                                            err,
+                                            effectiveAddend))
                 return false;
-            }
-            effectiveAddend += static_cast<int64_t>(rel.targetOffset);
         }
         const size_t physicalRelOffset = rel.offset - rodata.logicalOffsetBias();
         uint32_t relocType = elfRelocType(rel.kind, arch_);
@@ -1379,12 +1383,8 @@ bool ElfWriter::write(const std::string &path,
         err << "ElfWriter: cannot open " << path << " for writing\n";
         return false;
     }
-    ofs.write(reinterpret_cast<const char *>(file.data()),
-              static_cast<std::streamsize>(file.size()));
-    if (!ofs) {
-        err << "ElfWriter: write failed for " << path << "\n";
+    if (!checkedWriteAll(ofs, file, "ElfWriter", path, err))
         return false;
-    }
     return true;
     } catch (const std::exception &ex) {
         err << "ElfWriter: " << ex.what() << "\n";

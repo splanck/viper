@@ -38,19 +38,22 @@ inline uint32_t readRelocLE32(const CodeSection &section, size_t logicalOffset) 
            (static_cast<uint32_t>(bytes[physicalOffset + 3]) << 24);
 }
 
-inline bool isA64AddSubImmediate(uint32_t insn) {
-    return (insn & 0x1F000000u) == 0x11000000u;
+inline bool isA64AddImmediate(uint32_t insn) {
+    return (insn & 0x7F000000u) == 0x11000000u;
 }
 
-inline bool isA64UnsignedLdStOffset(uint32_t insn) {
-    return (insn & 0x3B000000u) == 0x39000000u;
-}
-
-inline uint32_t a64LdStOffsetShift(uint32_t insn) {
-    uint32_t shift = insn >> 30;
+inline bool a64UnsignedLdStOffsetShift(uint32_t insn, uint32_t &shift) {
+    if ((insn & 0x3B000000u) != 0x39000000u)
+        return false;
+    shift = insn >> 30;
     if ((insn & 0x04800000u) == 0x04800000u)
         shift = 4;
-    return shift;
+    return true;
+}
+
+inline bool isA64UnsignedLdStOffsetWithShift(uint32_t insn, uint32_t expectedShift) {
+    uint32_t shift = 0;
+    return a64UnsignedLdStOffsetShift(insn, shift) && shift == expectedShift;
 }
 
 /// @brief Return the canonical short name for a RelocKind enum value.
@@ -187,19 +190,19 @@ inline bool validateRelocationShape(const char *writerName,
                     return badInstruction();
                 break;
             case RelocKind::A64AddPageOff12:
-                if (!isA64AddSubImmediate(insn))
+                if (!isA64AddImmediate(insn))
                     return badInstruction();
                 break;
             case RelocKind::A64LdSt32Off12:
-                if (!isA64UnsignedLdStOffset(insn) || a64LdStOffsetShift(insn) != 2)
+                if (!isA64UnsignedLdStOffsetWithShift(insn, 2))
                     return badInstruction();
                 break;
             case RelocKind::A64LdSt64Off12:
-                if (!isA64UnsignedLdStOffset(insn) || a64LdStOffsetShift(insn) != 3)
+                if (!isA64UnsignedLdStOffsetWithShift(insn, 3))
                     return badInstruction();
                 break;
             case RelocKind::A64LdSt128Off12:
-                if (!isA64UnsignedLdStOffset(insn) || a64LdStOffsetShift(insn) != 4)
+                if (!isA64UnsignedLdStOffsetWithShift(insn, 4))
                     return badInstruction();
                 break;
             default:

@@ -555,6 +555,37 @@ static void testA64AddendRangeValidation() {
     }
 }
 
+static void testA64LargeSectionOffsetUsesSyntheticAnchor() {
+    CodeSection text, rodata;
+    constexpr size_t kLargeOffset = 0x800000;
+    rodata.emitZeros(kLargeOffset + 4);
+
+    text.addSectionOffsetRelocation(RelocKind::A64AdrpPage21,
+                                    rodata,
+                                    SymbolSection::Rodata,
+                                    kLargeOffset);
+    text.emit32LE(0x90000000); // ADRP X0, #0
+
+    const std::string path = "/tmp/viper_test_macho_a64_large_section_offset.o";
+    std::ostringstream errStream;
+    MachOWriter writer(ObjArch::AArch64);
+    CHECK(writer.write(path, text, rodata, errStream));
+
+    ObjFile obj;
+    std::ostringstream readErr;
+    CHECK(readObjFile(path, obj, readErr));
+    bool sawAnchor = false;
+    for (const auto &sym : obj.symbols) {
+        if (sym.sectionIndex == 0 || sym.offset != kLargeOffset)
+            continue;
+        if (sym.sectionIndex < obj.sections.size() &&
+            obj.sections[sym.sectionIndex].name.find("__const") != std::string::npos)
+            sawAnchor = true;
+    }
+    CHECK(sawAnchor);
+    std::remove(path.c_str());
+}
+
 // =============================================================================
 // Test: Relocation Descending Order
 // =============================================================================
@@ -1165,6 +1196,7 @@ int main() {
     testA64Relocations();
     testA64AddendRelocationPair();
     testA64AddendRangeValidation();
+    testA64LargeSectionOffsetUsesSyntheticAnchor();
     testRelocDescendingOrder();
     testFactory();
     testRodataSection();

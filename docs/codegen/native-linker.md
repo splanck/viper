@@ -193,8 +193,8 @@ ObjFile
   Executable and writable flags are inferred from both section attributes and data-like segment names. Read-only
   Mach-O data segments such as `__DATA_CONST` and `__AUTH_CONST` remain data-segment sections without being treated
   as ordinary writable data.
-- **COFF**: Addends are extracted per relocation kind. AMD64 `REL32[_n]` addends are normalized to Viper's internal
-  `S + A - P` convention, so a raw displacement field of zero becomes internal addend `-4 - n`. AMD64/ARM64
+- **COFF**: Addends are extracted per relocation kind. AMD64 `REL32[_n]` addends keep the raw 32-bit displacement
+  field as the internal addend; the relocation applier owns the COFF end-of-field bias when patching. AMD64/ARM64
   `ADDR64` uses an 8-byte addend; ARM64 branch, ADRP page, and page-offset relocations decode their instruction
   fields so writer-emitted placeholders do not become bogus addends. Common symbols are preserved as tentative
   definitions with COFF-size-derived alignment.
@@ -244,8 +244,10 @@ Missing extra objects, unreadable archives, format mismatches, and machine misma
 Symbol resolution uses an iterative fixed-point algorithm:
 
 1. **Seed**: Add the user's `.o` file. All its globals → defined, all its extern refs → undefined.
-2. **Scan archives**: For each undefined symbol, including a COFF weak-external fallback name, check each archive's
-   symbol index. If found, extract that member, parse it, add its definitions and new undefined refs.
+2. **Scan archives**: For each undefined symbol, including COFF weak-external fallback names that request library
+   search, check each archive's symbol index. If found, extract that member, parse it, add its definitions and new
+   undefined refs. `IMAGE_WEAK_EXTERN_SEARCH_NOLIBRARY` fallbacks are kept as weak aliases but do not force archive
+   extraction.
    Duplicate index entries are tried in archive order across fixed-point iterations.
 3. **Repeat** until no new definitions are found (handles cross-archive dependencies).
 4. **Classify remaining**: Unresolved symbols are marked as dynamic (expected from shared libraries).
@@ -264,8 +266,9 @@ Symbol resolution uses an iterative fixed-point algorithm:
 | Weak | Common(Global) | Common strong tentative definition wins |
 
 Duplicate strong definitions in matching ELF/COFF COMDAT groups are resolved by their selection policy: `ANY` keeps
-the first definition, `SAME_SIZE` requires equal section sizes, `EXACT_MATCH` requires equal bytes, `LARGEST` selects
-the largest contribution, and `NODUPLICATES` remains an error. Non-COMDAT strong definitions still use normal
+the first definition, `SAME_SIZE` requires equal section sizes, `EXACT_MATCH` requires equal section bytes,
+attributes, memory size, alignment, associative-section identity, and relocation signatures, `LARGEST` selects the
+largest contribution, and `NODUPLICATES` remains an error. Non-COMDAT strong definitions still use normal
 multiply-defined diagnostics.
 
 ### Runtime Archive Order
@@ -386,8 +389,8 @@ Weak undefined symbols without a fallback may resolve to address zero only for a
 `Abs32`); branch, PC-relative, page, GOT, TLS, and instruction-field relocations must still resolve to a real target.
 
 AArch64 instruction-field relocations validate the opcode before patching: branch26 requires `B`/`BL`, page21 and
-GOT page21 require `ADRP`, page-offset relocations require the matching ADD/SUB-immediate or unsigned-offset
-load/store form, and branch19 requires `B.cond`/`CBZ`/`CBNZ`.
+GOT page21 require `ADRP`, ADD page-offset relocations require ADD-immediate, load/store page-offset relocations
+require an unsigned-offset load/store of the exact relocated width, and branch19 requires `B.cond`/`CBZ`/`CBNZ`.
 
 ### Range Checking
 
@@ -403,6 +406,8 @@ load/store form, and branch19 requires `B.cond`/`CBZ`/`CBNZ`.
   validate GOT-slot alignment before patching. Local GOT relaxation is only applied to adjacent matching
   ADRP/LDR pairs, and the LDR base register must match the preceding ADRP destination. Mach-O TLVP page/pageoff
   pairs use the same register validation while keeping TLV descriptor-address semantics.
+- GOT relocations that use a synthetic GOT slot require that slot to have a resolved output address. A stale
+  placeholder symbol is diagnosed instead of being treated as address zero.
 - x86_64 ELF `GOTPCRELX`/`REX_GOTPCRELX` local relaxation requires the exact RIP-relative `MOV r*, disp32(%rip)`
   encoding before rewriting it to `LEA`.
 - `Abs32` relocations must fit in the unsigned 32-bit range.
@@ -412,17 +417,19 @@ load/store form, and branch19 requires `B.cond`/`CBZ`/`CBNZ`.
 - COFF `SECTION` uses a 2-byte patch width, while `SECREL` uses 4 bytes; both can appear near the end of an input
   chunk as long as their actual field width fits.
 - COFF ARM64 `SECREL_LOW12L`, page-offset, and GOT page-offset relocations validate that the instruction at the
-  patch site is the expected ADD/SUB-immediate or unsigned-offset load/store form before rewriting its immediate
-  field.
-- COFF ARM64 `SECREL_LOW12A`/`SECREL_HIGH12A` require ADD/SUB-immediate instructions. `PAGEOFFSET_12A` requires an
-  arithmetic instruction, while `PAGEOFFSET_12L` requires an unsigned-offset load/store; the linker rejects swapped
-  forms instead of guessing the scale.
+  patch site is the expected ADD-immediate or unsigned-offset load/store form before rewriting its immediate field.
+- COFF ARM64 `SECREL_LOW12A`/`SECREL_HIGH12A` require ADD-immediate instructions. `PAGEOFFSET_12A` requires an ADD
+  instruction, while `PAGEOFFSET_12L` requires an unsigned-offset load/store of the matching scale; the linker
+  rejects swapped forms instead of guessing the scale.
 - A live alloc input section that still has relocations must appear in the output layout. Missing placement is a hard
   error because otherwise the linker would silently skip fixups for live bytes.
 - Each live input section may appear in only one output chunk. Duplicate chunk provenance is rejected before
   relocation patching so the linker never has to choose between two final addresses for the same input section.
-- Dynamic symbol bindings requested by symbol resolution are honored directly during relocation application, even
-  when no synthetic GOT symbol has been inserted yet.
+- Dynamic symbol bindings requested by symbol resolution are honored directly during absolute relocation
+  application, even when no synthetic GOT symbol has been inserted yet. Runtime PC-relative, page, branch, GOT, and
+  TLS relocations still require a concrete target or a resolved GOT slot.
+- Non-alloc debug sections may carry absolute data relocations for preserved metadata, but runtime PC-relative,
+  page, branch, and GOT relocations from non-alloc sections to alloc sections are rejected.
 - Symbol address, relocation-place, trampoline, and file-offset arithmetic is checked before narrowing or patching.
   Overflow is a hard link error instead of wrapping through `uint64_t` or packed map keys.
 

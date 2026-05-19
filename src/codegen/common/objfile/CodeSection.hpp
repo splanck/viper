@@ -353,7 +353,7 @@ class CodeSection {
         return offsetBias_;
     }
 
-    /// Stable logical section identity, preserved by copy/move.
+    /// Stable logical section identity for section-offset relocations.
     uint64_t sectionIdentity() const {
         return sectionIdentity_;
     }
@@ -389,15 +389,6 @@ class CodeSection {
             throw std::length_error("CodeSection relocation reservation exceeds addressable size");
         reserveRelocations(relocations_.size() + other.relocations().size());
         std::vector<uint32_t> symbolRemap(other.symbols().count(), 0);
-        SymbolSection legacyAppendedSection = SymbolSection::Undefined;
-        for (uint32_t i = 1; i < other.symbols().count(); ++i) {
-            const Symbol &sym = other.symbols().at(i);
-            if (sym.binding != SymbolBinding::External && sym.section != SymbolSection::Undefined) {
-                legacyAppendedSection = sym.section;
-                break;
-            }
-        }
-
         auto rebaseLogicalOffset = [&](size_t logicalOffset) -> size_t {
             if (logicalOffset < other.offsetBias_)
                 throw std::out_of_range("CodeSection append source offset is before logical bias");
@@ -441,16 +432,11 @@ class CodeSection {
             const bool targetsAppendedIdentity =
                 rebased.targetSectionIdentityValid &&
                 rebased.targetSectionIdentity == other.sectionIdentity();
-            const bool legacyTargetsAppendedSection =
-                !rebased.targetSectionIdentityValid && rebased.targetOffsetValid &&
-                rebased.targetSection == legacyAppendedSection;
-            if (rebased.targetOffsetValid && !rebased.targetSectionIdentityValid &&
-                legacyAppendedSection == SymbolSection::Undefined) {
+            if (rebased.targetOffsetValid && !rebased.targetSectionIdentityValid) {
                 throw std::logic_error(
                     "CodeSection append requires section identity for section-offset relocation");
             }
-            if (rebased.targetOffsetValid &&
-                (targetsAppendedIdentity || legacyTargetsAppendedSection)) {
+            if (rebased.targetOffsetValid && targetsAppendedIdentity) {
                 rebased.targetOffset = rebaseLogicalOffset(reloc.targetOffset);
                 rebased.targetSectionIdentityValid = true;
                 rebased.targetSectionIdentity = sectionIdentity_;

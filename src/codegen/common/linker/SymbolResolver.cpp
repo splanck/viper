@@ -93,6 +93,85 @@ static uint64_t hashBytes(const std::vector<uint8_t> &bytes) {
     return h;
 }
 
+static void hashU64(uint64_t value, uint64_t &h) {
+    for (unsigned i = 0; i < 8; ++i) {
+        h ^= static_cast<uint8_t>(value >> (i * 8));
+        h *= 1099511628211ULL;
+    }
+}
+
+static void hashString(const std::string &value, uint64_t &h) {
+    hashU64(value.size(), h);
+    for (unsigned char ch : value) {
+        h ^= ch;
+        h *= 1099511628211ULL;
+    }
+}
+
+static void hashRelocTarget(const ObjFile &obj, const ObjReloc &rel, uint64_t &h) {
+    if (rel.symIndex >= obj.symbols.size()) {
+        hashU64(rel.symIndex, h);
+        return;
+    }
+
+    const auto &sym = obj.symbols[rel.symIndex];
+    hashString(sym.name, h);
+    hashU64(sym.binding, h);
+    hashU64(sym.offset, h);
+    hashU64(sym.size, h);
+    hashU64(sym.absolute ? 1 : 0, h);
+    hashU64(sym.common ? 1 : 0, h);
+    hashU64(sym.commonAlignment, h);
+
+    if (sym.sectionIndex == 0 || sym.absolute || sym.common) {
+        hashU64(sym.sectionIndex, h);
+        return;
+    }
+    if (sym.sectionIndex >= obj.sections.size()) {
+        hashU64(sym.sectionIndex, h);
+        return;
+    }
+
+    const auto &targetSec = obj.sections[sym.sectionIndex];
+    hashString(targetSec.name, h);
+    hashString(targetSec.comdatKey, h);
+    hashU64(static_cast<uint64_t>(targetSec.comdatSelection), h);
+    hashU64(targetSec.associativeSection, h);
+}
+
+static uint64_t hashComdatSection(const ObjFile &obj, const ObjSection &sec) {
+    uint64_t h = hashBytes(sec.data);
+    hashU64(objSectionMemSize(sec), h);
+    hashU64(sec.memSize, h);
+    hashU64(sec.alignment, h);
+    hashU64(sec.executable ? 1 : 0, h);
+    hashU64(sec.writable ? 1 : 0, h);
+    hashU64(sec.alloc ? 1 : 0, h);
+    hashU64(sec.tls ? 1 : 0, h);
+    hashU64(sec.zeroFill ? 1 : 0, h);
+    hashU64(sec.dataSegment ? 1 : 0, h);
+    hashU64(sec.associativeSection, h);
+    hashU64(sec.relocs.size(), h);
+    for (const auto &rel : sec.relocs) {
+        hashU64(rel.offset, h);
+        hashU64(rel.type, h);
+        hashU64(static_cast<uint64_t>(rel.addend), h);
+        hashU64(rel.pcrel ? 1 : 0, h);
+        hashU64(rel.length, h);
+        hashU64(rel.sectionRelative ? 1 : 0, h);
+        hashRelocTarget(obj, rel, h);
+    }
+    return h;
+}
+
+static bool weakExternalSearchesFallbackLibrary(const ObjSymbol &sym) {
+    // COFF values: 1=NOLIBRARY, 2=LIBRARY, 3=ALIAS. Viper-created tests and
+    // older readers used 0; keep that legacy value as "search fallback".
+    if (!sym.weakExternal || sym.weakDefaultName.empty())
+        return false;
+    return sym.weakExternalCharacteristics == 0 || sym.weakExternalCharacteristics == 2;
+}
+
 static bool getComdatDefinition(const ObjFile &obj,
                                 size_t objIdx,
                                 const ObjSymbol &sym,
@@ -109,7 +188,7 @@ static bool getComdatDefinition(const ObjFile &obj,
     out.objIdx = objIdx;
     out.secIdx = sym.sectionIndex;
     out.size = objSectionMemSize(sec);
-    out.hash = hashBytes(sec.data);
+    out.hash = hashComdatSection(obj, sec);
     return true;
 }
 
@@ -204,7 +283,7 @@ static bool addObjSymbols(const ObjFile &obj,
             };
 
             if (sym.weakExternal) {
-                if (!sym.weakDefaultName.empty())
+                if (weakExternalSearchesFallbackLibrary(sym))
                     addUndefined(sym.weakDefaultName);
                 continue;
             }
@@ -405,12 +484,24 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
 
     // Iteratively resolve from archives until fixed point.
     std::unordered_set<InputSectionKey, InputSectionKeyHash> extractedMembers;
-    constexpr size_t kMaxResolveIterations = 1000;
+    size_t maxArchiveExtractions = 0;
+    for (const auto &ar : archives) {
+        if (ar.members.size() > std::numeric_limits<size_t>::max() - maxArchiveExtractions) {
+            err << "error: archive member count exceeds addressable size\n";
+            return false;
+        }
+        maxArchiveExtractions += ar.members.size();
+    }
+    if (maxArchiveExtractions == std::numeric_limits<size_t>::max()) {
+        err << "error: archive member count exceeds addressable size\n";
+        return false;
+    }
+    const size_t maxResolveIterations = maxArchiveExtractions + 1;
     size_t iteration = 0;
     bool changed = true;
     while (changed) {
-        if (++iteration > kMaxResolveIterations) {
-            err << "error: symbol resolution exceeded " << kMaxResolveIterations << " iterations\n";
+        if (++iteration > maxResolveIterations) {
+            err << "error: symbol resolution exceeded archive extraction bound\n";
             return false;
         }
         changed = false;

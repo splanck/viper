@@ -566,6 +566,16 @@ int main() {
         CHECK(err.str().find("image base plus page size") != std::string::npos);
     }
 
+    // --- Read-only data names containing ".text" are not executable text ---
+    {
+        CHECK(classifySection(".rodata.textual_metadata",
+                              false,
+                              false,
+                              false,
+                              false) == SectionClass::Rodata);
+        CHECK(classifySection(".text.hot", false, false, false, false) == SectionClass::Text);
+    }
+
     // --- Result ---
     if (gFail == 0) {
         std::cout << "All SectionMerger tests passed.\n";

@@ -221,8 +221,11 @@ inline SectionClass classifySection(const std::string &name,
             return SectionClass::Bss;
         return SectionClass::Data;
     }
-    // Read-only: could be .rodata, .rdata, __TEXT,__const, etc.
-    if (name.find(".text") != std::string::npos || name.find("__text") != std::string::npos)
+    // Read-only: only known text-section spellings are code when producer flags
+    // failed to mark them executable. Do not classify arbitrary names containing
+    // ".text" as executable code.
+    if (name == ".text" || name.rfind(".text.", 0) == 0 || name.rfind(".text$", 0) == 0 ||
+        name == "__TEXT,__text")
         return SectionClass::Text;
     return SectionClass::Rodata;
 }

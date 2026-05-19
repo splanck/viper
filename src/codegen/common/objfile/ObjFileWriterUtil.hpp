@@ -22,8 +22,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <ios>
 #include <ostream>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace viper::codegen::objfile {
@@ -178,6 +180,52 @@ inline bool checkedSizeTFromU64(uint64_t value,
         return false;
     }
     out = static_cast<size_t>(value);
+    return true;
+}
+
+/// @brief Add a signed relocation addend to an unsigned section offset.
+inline bool checkedSectionOffsetAddend(int64_t addend,
+                                       size_t targetOffset,
+                                       const char *writerName,
+                                       const char *sectionName,
+                                       size_t relocOffset,
+                                       std::ostream &err,
+                                       int64_t &out) {
+    if (targetOffset > static_cast<size_t>(std::numeric_limits<int64_t>::max())) {
+        err << writerName << ": relocation in " << sectionName << " at offset "
+            << relocOffset << " has a section-offset addend outside int64 range\n";
+        return false;
+    }
+    const int64_t signedOffset = static_cast<int64_t>(targetOffset);
+    if ((addend > 0 && signedOffset > std::numeric_limits<int64_t>::max() - addend) ||
+        (addend < 0 && signedOffset < std::numeric_limits<int64_t>::min() - addend)) {
+        err << writerName << ": relocation in " << sectionName << " at offset "
+            << relocOffset << " has a section-offset addend outside int64 range\n";
+        return false;
+    }
+    out = signedOffset + addend;
+    return true;
+}
+
+/// @brief Write a complete byte buffer after checking streamsize can represent it.
+inline bool checkedWriteAll(std::ostream &os,
+                            const std::vector<uint8_t> &data,
+                            const char *writerName,
+                            const std::string &path,
+                            std::ostream &err) {
+    if (data.size() >
+        static_cast<size_t>(std::numeric_limits<std::streamsize>::max())) {
+        err << writerName << ": output file '" << path
+            << "' exceeds stream write size limit\n";
+        return false;
+    }
+    if (!data.empty())
+        os.write(reinterpret_cast<const char *>(data.data()),
+                 static_cast<std::streamsize>(data.size()));
+    if (!os) {
+        err << writerName << ": write failed for " << path << "\n";
+        return false;
+    }
     return true;
 }
 

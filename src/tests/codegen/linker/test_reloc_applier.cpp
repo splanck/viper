@@ -991,6 +991,7 @@ int main() {
         gotEntry.name = "__got_stderr";
         gotEntry.binding = GlobalSymEntry::Global;
         gotEntry.resolvedAddr = 0x402000;
+        gotEntry.resolvedAddrValid = true;
         layout.globalSyms["__got_stderr"] = gotEntry;
 
         std::ostringstream err;
@@ -1663,7 +1664,7 @@ int main() {
         std::unordered_set<std::string> dynSyms;
         CHECK(!applyRelocations(
             objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::AArch64, err));
-        CHECK(err.str().find("PAGEOFFSET_12L relocation targets an add/sub instruction") !=
+        CHECK(err.str().find("PAGEOFFSET_12L relocation targets an ADD instruction") !=
               std::string::npos);
     }
 
@@ -1774,7 +1775,7 @@ int main() {
         std::unordered_set<std::string> dynSyms;
         CHECK(!applyRelocations(
             objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::AArch64, err));
-        CHECK(err.str().find("SECREL_LOW/HIGH12A relocation is not applied to an AArch64 add/sub") !=
+        CHECK(err.str().find("SECREL_LOW/HIGH12A relocation is not applied to an AArch64 ADD") !=
               std::string::npos);
     }
 

@@ -924,6 +924,42 @@ static void testA64RelocationShapeValidationFails() {
     std::remove("/tmp/viper_test_elf_bad_a64_shape.o");
 }
 
+static void testA64PageOffsetShapeValidationRejectsSubAndWrongScale() {
+    {
+        CodeSection text, rodata;
+        const uint32_t target = text.findOrDeclareSymbol("target");
+        text.addRelocation(RelocKind::A64AddPageOff12, target, 0);
+        text.emit32LE(0xD1000000); // SUB X0, X0, #0, not ADD.
+
+        std::ostringstream errStream;
+        ElfWriter writer(ObjArch::AArch64);
+        CHECK(!writer.write("/tmp/viper_test_elf_bad_a64_sub_pageoff.o",
+                            text,
+                            rodata,
+                            errStream));
+        CHECK(errStream.str().find("does not match the AArch64 instruction") !=
+              std::string::npos);
+        std::remove("/tmp/viper_test_elf_bad_a64_sub_pageoff.o");
+    }
+
+    {
+        CodeSection text, rodata;
+        const uint32_t target = text.findOrDeclareSymbol("target");
+        text.addRelocation(RelocKind::A64LdSt64Off12, target, 0);
+        text.emit32LE(0xB9400000); // LDR W0, [X0], 32-bit scale, not 64-bit.
+
+        std::ostringstream errStream;
+        ElfWriter writer(ObjArch::AArch64);
+        CHECK(!writer.write("/tmp/viper_test_elf_bad_a64_ldst_scale.o",
+                            text,
+                            rodata,
+                            errStream));
+        CHECK(errStream.str().find("does not match the AArch64 instruction") !=
+              std::string::npos);
+        std::remove("/tmp/viper_test_elf_bad_a64_ldst_scale.o");
+    }
+}
+
 int main() {
     testMinimalX64Elf();
     testMinimalA64Elf();
@@ -948,6 +984,7 @@ int main() {
     testMissingCrossSectionRelocationFails();
     testWrongArchRelocationFails();
     testA64RelocationShapeValidationFails();
+    testA64PageOffsetShapeValidationRejectsSubAndWrongScale();
     testRelocationOffsetBoundsFails();
     testLogicalBiasSymbolsArePhysical();
 

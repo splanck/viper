@@ -292,6 +292,36 @@ int main() {
         CHECK(err.str().find("EXACT_MATCH") != std::string::npos);
     }
 
+    // --- COMDAT EXACT_MATCH includes relocation identity, not just raw bytes ---
+    {
+        auto obj1 =
+            makeComdatObj("a.o", "exact_reloc", ComdatSelection::ExactMatch, {0xE8, 0, 0, 0, 0});
+        addSymbol(obj1, "target_a", 0, ObjSymbol::Undefined);
+        ObjReloc rel1;
+        rel1.offset = 1;
+        rel1.type = 4;
+        rel1.symIndex = static_cast<uint32_t>(obj1.symbols.size() - 1);
+        obj1.sections[1].relocs.push_back(rel1);
+
+        auto obj2 =
+            makeComdatObj("b.o", "exact_reloc", ComdatSelection::ExactMatch, {0xE8, 0, 0, 0, 0});
+        addSymbol(obj2, "target_b", 0, ObjSymbol::Undefined);
+        ObjReloc rel2 = rel1;
+        rel2.symIndex = static_cast<uint32_t>(obj2.symbols.size() - 1);
+        obj2.sections[1].relocs.push_back(rel2);
+
+        std::vector<ObjFile> initObjs = {obj1, obj2};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(initObjs, archives, globalSyms, allObjects, dynamicSyms, err);
+        CHECK(!ok);
+        CHECK(err.str().find("EXACT_MATCH") != std::string::npos);
+    }
+
     // --- COMDAT LARGEST selects the largest section contribution ---
     {
         auto obj1 = makeComdatObj("a.o", "largest_func", ComdatSelection::Largest, {0xC3});
@@ -668,6 +698,48 @@ int main() {
         CHECK(globalSyms.count("fallback_func") == 1);
         CHECK(globalSyms["fallback_func"].binding == GlobalSymEntry::Global);
         CHECK(globalSyms["fallback_func"].objIndex == 1);
+    }
+
+    // --- COFF weak external NOLIBRARY fallback does not extract archives ---
+    {
+        auto user = makeObj("weak_nolib_user.obj", {".text"});
+        addSymbol(user, "main", 1, ObjSymbol::Global);
+        ObjSymbol weak;
+        weak.name = "maybe_func";
+        weak.binding = ObjSymbol::Undefined;
+        weak.weakExternal = true;
+        weak.weakDefaultName = "fallback_func";
+        weak.weakExternalCharacteristics = 1; // IMAGE_WEAK_EXTERN_SEARCH_NOLIBRARY.
+        user.symbols.push_back(std::move(weak));
+
+        CodeSection providerText;
+        CodeSection providerRodata;
+        providerText.defineSymbol("fallback_func", SymbolBinding::Global, SymbolSection::Text);
+        providerText.emit8(0xC3);
+
+        std::ostringstream writeErr;
+        const std::string providerPath = "build/test-out/weak_nolib_provider.o";
+        ElfWriter writer(ObjArch::X86_64);
+        CHECK(writer.write(providerPath, providerText, providerRodata, writeErr));
+
+        Archive archive;
+        archive.path = "synthetic_weak_nolib.a";
+        archive.data = readBinaryFile(providerPath);
+        archive.members.push_back({"fallback.o", 0, archive.data.size()});
+        archive.symbolIndex["fallback_func"] = 0;
+
+        std::vector<ObjFile> initObjs = {user};
+        std::vector<Archive> archives = {archive};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(initObjs, archives, globalSyms, allObjects, dynamicSyms, err);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(allObjects.size() == 1);
+        CHECK(globalSyms.count("fallback_func") == 0);
     }
 
     // --- Archive duplicate symbol candidates are retried after stale entries ---
