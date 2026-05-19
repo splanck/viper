@@ -3133,6 +3133,88 @@ TEST(textinput_ignores_command_modified_character_events) {
     vg_widget_destroy(&input->base);
 }
 
+TEST(codeeditor_ignores_command_modified_character_events) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    ASSERT_NOT_NULL(editor);
+
+    vg_event_t ev = vg_event_key(VG_EVENT_KEY_CHAR, VG_KEY_UNKNOWN, 'x', VG_MOD_CTRL);
+    ASSERT_FALSE(vg_event_send(&editor->base, &ev));
+    char *text = vg_codeeditor_get_text(editor);
+    ASSERT_NOT_NULL(text);
+    ASSERT(strcmp(text, "") == 0);
+    free(text);
+
+    ev = vg_event_key(VG_EVENT_KEY_CHAR, VG_KEY_UNKNOWN, 'y', VG_MOD_SUPER);
+    ASSERT_FALSE(vg_event_send(&editor->base, &ev));
+    text = vg_codeeditor_get_text(editor);
+    ASSERT_NOT_NULL(text);
+    ASSERT(strcmp(text, "") == 0);
+    free(text);
+
+    ev = vg_event_key(VG_EVENT_KEY_CHAR, VG_KEY_UNKNOWN, '@', VG_MOD_CTRL | VG_MOD_ALT);
+    ASSERT_TRUE(vg_event_send(&editor->base, &ev));
+    text = vg_codeeditor_get_text(editor);
+    ASSERT_NOT_NULL(text);
+    ASSERT(strcmp(text, "@") == 0);
+    free(text);
+
+    vg_widget_destroy(&editor->base);
+}
+
+TEST(text_widgets_reject_private_use_function_key_codepoints) {
+    vg_textinput_t *input = vg_textinput_create(NULL);
+    ASSERT_NOT_NULL(input);
+
+    vg_event_t ev = vg_event_key(VG_EVENT_KEY_CHAR, VG_KEY_UNKNOWN, 0xF700u, 0);
+    ASSERT_TRUE(vg_event_send(&input->base, &ev));
+    ASSERT(strcmp(vg_textinput_get_text(input), "") == 0);
+
+    ev = vg_event_key(VG_EVENT_KEY_CHAR, VG_KEY_UNKNOWN, 'x', 0);
+    ASSERT_TRUE(vg_event_send(&input->base, &ev));
+    ASSERT(strcmp(vg_textinput_get_text(input), "x") == 0);
+
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    ASSERT_NOT_NULL(editor);
+
+    ev = vg_event_key(VG_EVENT_KEY_CHAR, VG_KEY_UNKNOWN, 0xF703u, 0);
+    ASSERT_TRUE(vg_event_send(&editor->base, &ev));
+    char *text = vg_codeeditor_get_text(editor);
+    ASSERT_NOT_NULL(text);
+    ASSERT(strcmp(text, "") == 0);
+    free(text);
+
+    ev = vg_event_key(VG_EVENT_KEY_CHAR, VG_KEY_UNKNOWN, 'y', 0);
+    ASSERT_TRUE(vg_event_send(&editor->base, &ev));
+    text = vg_codeeditor_get_text(editor);
+    ASSERT_NOT_NULL(text);
+    ASSERT(strcmp(text, "y") == 0);
+    free(text);
+
+    vg_widget_destroy(&editor->base);
+    vg_widget_destroy(&input->base);
+}
+
+TEST(codeeditor_printable_keydown_preserves_selection_for_character_input) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    ASSERT_NOT_NULL(editor);
+
+    vg_codeeditor_set_text(editor, "abc");
+    vg_codeeditor_set_selection(editor, 0, 1, 0, 2);
+
+    vg_event_t key = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_X, 0, VG_MOD_NONE);
+    ASSERT_FALSE(vg_event_send(&editor->base, &key));
+
+    vg_event_t ch = vg_event_key(VG_EVENT_KEY_CHAR, VG_KEY_UNKNOWN, 'x', VG_MOD_NONE);
+    ASSERT_TRUE(vg_event_send(&editor->base, &ch));
+
+    char *text = vg_codeeditor_get_text(editor);
+    ASSERT_NOT_NULL(text);
+    ASSERT(strcmp(text, "axc") == 0);
+    free(text);
+
+    vg_widget_destroy(&editor->base);
+}
+
 TEST(listbox_virtual_keyboard_navigation_handles_large_counts) {
     vg_listbox_t *listbox = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(listbox);
@@ -3885,6 +3967,9 @@ int main(void) {
     RUN(widget_capture_and_modal_reject_non_live_pointers);
     RUN(event_dispatch_keeps_state_for_more_than_legacy_root_cap);
     RUN(textinput_ignores_command_modified_character_events);
+    RUN(codeeditor_ignores_command_modified_character_events);
+    RUN(text_widgets_reject_private_use_function_key_codepoints);
+    RUN(codeeditor_printable_keydown_preserves_selection_for_character_input);
     RUN(listbox_virtual_keyboard_navigation_handles_large_counts);
     RUN(tabbar_removed_tab_handles_are_inert);
     RUN(menubar_clear_remove_and_accelerators_drop_stale_items);

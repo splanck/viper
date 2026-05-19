@@ -664,9 +664,22 @@ static inline void vgfx_internal_init_resize_event(vgfx_event_t *event,
         vgfx_internal_scale_down_i32(framebuffer_height, coord_scale);
 }
 
+static inline int vgfx_internal_codepoint_is_private_use(uint32_t codepoint) {
+    return (codepoint >= 0xE000 && codepoint <= 0xF8FF) ||
+           (codepoint >= 0xF0000 && codepoint <= 0xFFFFD) ||
+           (codepoint >= 0x100000 && codepoint <= 0x10FFFD);
+}
+
 static inline int vgfx_internal_codepoint_is_text(uint32_t codepoint) {
-    return codepoint >= 0x20 && codepoint != 0x7F && codepoint <= 0x10FFFF &&
-           !(codepoint >= 0xD800 && codepoint <= 0xDFFF);
+    if (codepoint < 0x20 || codepoint == 0x7F || codepoint > 0x10FFFF)
+        return 0;
+    if (codepoint >= 0x80 && codepoint <= 0x9F)
+        return 0;
+    if (codepoint >= 0xD800 && codepoint <= 0xDFFF)
+        return 0;
+    if (vgfx_internal_codepoint_is_private_use(codepoint))
+        return 0;
+    return 1;
 }
 
 static inline int vgfx_internal_text_modifiers_allow_text(int modifiers) {

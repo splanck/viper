@@ -2806,6 +2806,13 @@ rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col);
 /// @brief Run Zia code completion with a source path for relative bind resolution.
 rt_string rt_zia_complete_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
 
+/// @brief Return call signature help for the invocation active at the source position.
+rt_string rt_zia_signature_help(rt_string source, int64_t line, int64_t col);
+
+/// @brief Return call signature help with a source path for relative bind resolution.
+rt_string rt_zia_signature_help_for_file(
+    rt_string source, rt_string file_path, int64_t line, int64_t col);
+
 /// @brief Run semantic analysis and return serialized diagnostics for editor tooling.
 rt_string rt_zia_check(rt_string source);
 

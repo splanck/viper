@@ -63,6 +63,31 @@ static void test_key_constants() {
     printf("test_key_constants: PASSED\n");
 }
 
+static void test_vgfx_special_key_translation() {
+    rt_keyboard_init();
+    rt_keyboard_begin_frame();
+
+    // vgfx special-key values differ from the public Viper.Input key constants.
+    rt_keyboard_on_vgfx_key_down(264); // VGFX_KEY_TAB
+    assert(rt_keyboard_was_pressed(rt_keyboard_key_tab()) == 1);
+    assert(rt_keyboard_was_pressed(rt_keyboard_key_down()) == 0);
+
+    rt_keyboard_on_vgfx_key_down(262); // VGFX_KEY_BACKSPACE
+    assert(rt_keyboard_was_pressed(rt_keyboard_key_backspace()) == 1);
+    assert(rt_keyboard_was_pressed(rt_keyboard_key_right()) == 0);
+
+    rt_keyboard_on_vgfx_key_down(263); // VGFX_KEY_DELETE
+    assert(rt_keyboard_was_pressed(rt_keyboard_key_delete()) == 1);
+    assert(rt_keyboard_was_pressed(rt_keyboard_key_left()) == 0);
+
+    rt_keyboard_on_vgfx_key_up(264);
+    assert(rt_keyboard_was_released(rt_keyboard_key_tab()) == 1);
+    rt_keyboard_on_vgfx_key_up(262);
+    rt_keyboard_on_vgfx_key_up(263);
+
+    printf("test_vgfx_special_key_translation: PASSED\n");
+}
+
 // ============================================================================
 // Keyboard State - Initial State
 // ============================================================================
@@ -266,6 +291,31 @@ static void test_text_input_utf8() {
     printf("test_text_input_utf8: PASSED\n");
 }
 
+static void test_text_input_rejects_private_use_function_keys() {
+    rt_keyboard_init();
+    rt_keyboard_begin_frame();
+    rt_keyboard_enable_text_input();
+
+    rt_keyboard_text_input(0xF700); // macOS NSUpArrowFunctionKey
+    rt_keyboard_text_input(0xF703); // macOS NSRightArrowFunctionKey
+    rt_keyboard_text_input(0xE000); // Unicode private-use area
+    rt_keyboard_text_input(0x0085); // C1 control
+
+    rt_string text = rt_keyboard_get_text();
+    assert(text != nullptr);
+    assert(rt_str_len(text) == 0);
+
+    rt_keyboard_text_input('x');
+    text = rt_keyboard_get_text();
+    assert(text != nullptr);
+    assert(rt_str_len(text) == 1);
+    assert(std::strcmp(rt_string_cstr(text), "x") == 0);
+
+    rt_keyboard_disable_text_input();
+
+    printf("test_text_input_rejects_private_use_function_keys: PASSED\n");
+}
+
 // ============================================================================
 // Boundary Cases
 // ============================================================================
@@ -292,6 +342,7 @@ int main() {
     printf("=== Viper.Input.Keyboard Tests ===\n\n");
 
     test_key_constants();
+    test_vgfx_special_key_translation();
     test_initial_state();
     test_key_press_release();
     test_frame_events();
@@ -301,6 +352,7 @@ int main() {
     test_canvas_detach();
     test_text_input();
     test_text_input_utf8();
+    test_text_input_rejects_private_use_function_keys();
     test_boundary_cases();
 
     printf("\nAll tests passed!\n");

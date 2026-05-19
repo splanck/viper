@@ -66,6 +66,169 @@ static std::string serializeItem(const CompletionItem &item) {
            std::to_string(static_cast<int>(item.kind)) + '\t' + item.detail + '\n';
 }
 
+static bool equalsIgnoreCase(std::string_view a, std::string_view b) {
+    if (a.size() != b.size())
+        return false;
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (std::tolower(static_cast<unsigned char>(a[i])) !=
+            std::tolower(static_cast<unsigned char>(b[i])))
+            return false;
+    }
+    return true;
+}
+
+static std::vector<std::string> splitDotted(std::string_view expr) {
+    std::vector<std::string> parts;
+    std::string token;
+    for (char c : expr) {
+        if (c == '.') {
+            if (!token.empty())
+                parts.push_back(token);
+            token.clear();
+        } else {
+            token += c;
+        }
+    }
+    if (!token.empty())
+        parts.push_back(token);
+    return parts;
+}
+
+static bool isCallExprChar(char c) {
+    return isIdentChar(c) || c == '.';
+}
+
+static size_t offsetForLineCol(std::string_view src, int line, int col) {
+    if (line < 1)
+        line = 1;
+    if (col < 0)
+        col = 0;
+
+    size_t lineStart = 0;
+    int curLine = 1;
+    for (size_t i = 0; i < src.size() && curLine < line; ++i) {
+        if (src[i] == '\n') {
+            ++curLine;
+            lineStart = i + 1;
+        }
+    }
+
+    size_t lineEnd = lineStart;
+    while (lineEnd < src.size() && src[lineEnd] != '\n')
+        ++lineEnd;
+
+    size_t offset = lineStart + static_cast<size_t>(col);
+    return offset > lineEnd ? lineEnd : offset;
+}
+
+struct SignatureCallContext {
+    bool valid{false};
+    std::string calleeExpr;
+    std::string receiverExpr;
+    std::string name;
+    int activeParameter{0};
+};
+
+static SignatureCallContext extractSignatureCallContext(std::string_view src, int line, int col) {
+    SignatureCallContext ctx;
+    size_t cursor = offsetForLineCol(src, line, col);
+    if (cursor == 0 || cursor > src.size())
+        return ctx;
+
+    int depth = 0;
+    size_t open = std::string_view::npos;
+    for (size_t i = cursor; i > 0; --i) {
+        char c = src[i - 1];
+        if (c == ')') {
+            ++depth;
+        } else if (c == '(') {
+            if (depth == 0) {
+                open = i - 1;
+                break;
+            }
+            --depth;
+        }
+    }
+    if (open == std::string_view::npos)
+        return ctx;
+
+    size_t calleeEnd = open;
+    while (calleeEnd > 0 && std::isspace(static_cast<unsigned char>(src[calleeEnd - 1])))
+        --calleeEnd;
+
+    size_t calleeStart = calleeEnd;
+    while (calleeStart > 0 && isCallExprChar(src[calleeStart - 1]))
+        --calleeStart;
+    if (calleeStart == calleeEnd)
+        return ctx;
+
+    ctx.calleeExpr = std::string(src.substr(calleeStart, calleeEnd - calleeStart));
+    size_t dot = ctx.calleeExpr.rfind('.');
+    if (dot == std::string::npos) {
+        ctx.name = ctx.calleeExpr;
+    } else {
+        ctx.receiverExpr = ctx.calleeExpr.substr(0, dot);
+        ctx.name = ctx.calleeExpr.substr(dot + 1);
+    }
+    if (ctx.name.empty())
+        return ctx;
+
+    int nestedParen = 0;
+    int nestedBracket = 0;
+    int nestedBrace = 0;
+    for (size_t i = open + 1; i < cursor && i < src.size(); ++i) {
+        char c = src[i];
+        if (c == '(') {
+            ++nestedParen;
+        } else if (c == ')' && nestedParen > 0) {
+            --nestedParen;
+        } else if (c == '[') {
+            ++nestedBracket;
+        } else if (c == ']' && nestedBracket > 0) {
+            --nestedBracket;
+        } else if (c == '{') {
+            ++nestedBrace;
+        } else if (c == '}' && nestedBrace > 0) {
+            --nestedBrace;
+        } else if (c == ',' && nestedParen == 0 && nestedBracket == 0 && nestedBrace == 0) {
+            ++ctx.activeParameter;
+        }
+    }
+
+    ctx.valid = true;
+    return ctx;
+}
+
+static std::string formatFunctionSignature(const std::string &name,
+                                           const TypeRef &type,
+                                           int activeParameter) {
+    if (!type || type->kind != TypeKindSem::Function)
+        return {};
+
+    auto params = type->paramTypes();
+    TypeRef ret = type->returnType();
+    std::ostringstream out;
+    out << name << "(";
+    for (size_t i = 0; i < params.size(); ++i) {
+        if (i > 0)
+            out << ", ";
+        out << "arg" << (i + 1) << ": "
+            << (params[i] ? params[i]->toDisplayString() : "Unknown");
+    }
+    out << ")";
+    if (ret)
+        out << " -> " << ret->toDisplayString();
+    if (!params.empty()) {
+        int active = activeParameter;
+        if (active < 0)
+            active = 0;
+        if (active >= static_cast<int>(params.size()))
+            active = static_cast<int>(params.size()) - 1;
+        out << "\nparameter " << (active + 1) << " of " << params.size();
+    }
+    return out.str();
+}
+
 // ---------------------------------------------------------------------------
 // serialize
 // ---------------------------------------------------------------------------
@@ -630,31 +793,34 @@ void CompletionEngine::deduplicate(std::vector<CompletionItem> &items) const {
 // Primary entry point
 // ---------------------------------------------------------------------------
 
+AnalysisResult *CompletionEngine::analyze(std::string_view source, std::string_view filePath) {
+    uint64_t hash = fnv1a(source);
+    if (hash == cache_.hash && cache_.filePath == filePath && cache_.result)
+        return cache_.result.get();
+
+    cache_.hash = 0;
+    cache_.filePath.clear();
+    cache_.result = nullptr;
+    sm_ = std::make_unique<il::support::SourceManager>();
+
+    std::string sourceStr(source);
+    std::string pathStr(filePath);
+    CompilerInput input;
+    input.source = sourceStr;
+    input.path = pathStr;
+    CompilerOptions opts{};
+
+    cache_.result = parseAndAnalyze(input, opts, *sm_);
+    if (cache_.result) {
+        cache_.hash = hash;
+        cache_.filePath = pathStr;
+    }
+    return cache_.result.get();
+}
+
 std::vector<CompletionItem> CompletionEngine::complete(
     std::string_view source, int line, int col, std::string_view filePath, int maxResults) {
-    // ── Cache lookup ─────────────────────────────────────────────────────────
-    uint64_t hash = fnv1a(source);
-    if (hash != cache_.hash || cache_.filePath != filePath || !cache_.result) {
-        cache_.hash = 0;
-        cache_.filePath.clear();
-        cache_.result = nullptr;
-        sm_ = std::make_unique<il::support::SourceManager>();
-
-        // Keep source and path strings alive for the duration of the parse.
-        // CompilerInput holds string_views — the backing strings must outlive it.
-        std::string sourceStr(source);
-        std::string pathStr(filePath);
-        CompilerInput input;
-        input.source = sourceStr;
-        input.path = pathStr;
-        CompilerOptions opts{};
-
-        cache_.result = parseAndAnalyze(input, opts, *sm_);
-        if (cache_.result) {
-            cache_.hash = hash;
-            cache_.filePath = pathStr;
-        }
-    }
+    AnalysisResult *analysis = analyze(source, filePath);
 
     // ── Context extraction ───────────────────────────────────────────────────
     // Always extract context first — does not require a valid sema.
@@ -663,13 +829,13 @@ std::vector<CompletionItem> CompletionEngine::complete(
     // ── Provider dispatch ────────────────────────────────────────────────────
     // Gate sema-dependent providers on hasSema; keywords and snippets always run.
     std::vector<CompletionItem> items;
-    bool hasSema = cache_.result && cache_.result->sema;
+    bool hasSema = analysis && analysis->sema;
 
     switch (ctx.trigger) {
         case TriggerKind::MemberAccess: {
             if (!hasSema)
                 break;
-            const Sema &sema = *cache_.result->sema;
+            const Sema &sema = *analysis->sema;
             // Member access: enumerate members of the LHS type.
             // Also check if triggerExpr is a bound module alias with dot
             // (e.g. "Viper.Math.Pi" — triggerExpr="Viper.Math", prefix="Pi").
@@ -681,7 +847,7 @@ std::vector<CompletionItem> CompletionEngine::complete(
         case TriggerKind::AfterNew: {
             if (!hasSema)
                 break;
-            const Sema &sema = *cache_.result->sema;
+            const Sema &sema = *analysis->sema;
             auto types = provideTypeNames(sema, ctx.prefix);
             items.insert(items.end(), types.begin(), types.end());
             break;
@@ -690,7 +856,7 @@ std::vector<CompletionItem> CompletionEngine::complete(
         case TriggerKind::AfterColon: {
             if (!hasSema)
                 break;
-            const Sema &sema = *cache_.result->sema;
+            const Sema &sema = *analysis->sema;
             auto types = provideTypeNames(sema, ctx.prefix);
             items.insert(items.end(), types.begin(), types.end());
             // Built-in type keywords
@@ -726,7 +892,7 @@ std::vector<CompletionItem> CompletionEngine::complete(
         case TriggerKind::CtrlSpace: {
             // Scope symbols and type names require sema.
             if (hasSema) {
-                const Sema &sema = *cache_.result->sema;
+                const Sema &sema = *analysis->sema;
                 auto scope = provideScopeSymbols(sema, ctx.prefix);
                 items.insert(items.end(), scope.begin(), scope.end());
                 auto types = provideTypeNames(sema, ctx.prefix);
@@ -749,6 +915,99 @@ std::vector<CompletionItem> CompletionEngine::complete(
         items.resize(static_cast<size_t>(maxResults));
 
     return items;
+}
+
+std::string CompletionEngine::signatureHelp(std::string_view source,
+                                            int line,
+                                            int col,
+                                            std::string_view filePath) {
+    AnalysisResult *analysis = analyze(source, filePath);
+    if (!analysis || !analysis->sema)
+        return {};
+
+    SignatureCallContext call = extractSignatureCallContext(source, line, col);
+    if (!call.valid)
+        return {};
+
+    const Sema &sema = *analysis->sema;
+    std::vector<std::string> signatures;
+    std::unordered_set<std::string> seen;
+
+    auto addFunctionType = [&](const TypeRef &type) {
+        std::string formatted = formatFunctionSignature(call.name, type, call.activeParameter);
+        if (!formatted.empty() && seen.insert(formatted).second)
+            signatures.push_back(std::move(formatted));
+    };
+
+    auto addMatchingMembers = [&](const std::vector<Symbol> &members) {
+        for (const auto &sym : members) {
+            if (equalsIgnoreCase(sym.name, call.name))
+                addFunctionType(sym.type);
+        }
+    };
+
+    auto runtimeClassNameFromReceiver = [&](const std::string &receiver) -> std::string {
+        auto parts = splitDotted(receiver);
+        if (parts.empty())
+            return {};
+
+        std::string fullName;
+        std::string resolved = sema.resolveModuleAlias(parts[0]);
+        if (!resolved.empty()) {
+            fullName = resolved;
+            for (size_t i = 1; i < parts.size(); ++i)
+                fullName += "." + parts[i];
+        } else {
+            fullName = receiver;
+        }
+
+        if (!fullName.empty() && !sema.getRuntimeMembers(fullName).empty())
+            return fullName;
+        return {};
+    };
+
+    if (call.receiverExpr.empty()) {
+        if (const ScopedSymbol *scoped = sema.findSymbolAtPosition(
+                call.name,
+                analysis->fileId,
+                static_cast<uint32_t>(line),
+                static_cast<uint32_t>(col + 1))) {
+            addFunctionType(scoped->symbol.type);
+        }
+
+        if (signatures.empty()) {
+            for (const auto &sym : sema.getGlobalSymbols()) {
+                if (equalsIgnoreCase(sym.name, call.name))
+                    addFunctionType(sym.type);
+            }
+        }
+    } else {
+        std::string className = runtimeClassNameFromReceiver(call.receiverExpr);
+        if (!className.empty())
+            addMatchingMembers(sema.getRuntimeMembers(className));
+
+        if (signatures.empty()) {
+            TypeRef receiverType =
+                resolveExprType(sema,
+                                call.receiverExpr,
+                                analysis->fileId,
+                                line,
+                                col + 1);
+            if (receiverType)
+                addMatchingMembers(sema.getMembersOf(receiverType));
+        }
+    }
+
+    if (signatures.empty())
+        return {};
+
+    std::ostringstream out;
+    for (size_t i = 0; i < signatures.size(); ++i) {
+        if (i > 0)
+            out << "\n";
+        out << signatures[i];
+    }
+    return out.str();
 }
 
 } // namespace il::frontends::zia

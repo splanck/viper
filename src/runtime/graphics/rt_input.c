@@ -17,8 +17,9 @@
 //     event queue into the "current frame" snapshot. WasPressed/WasReleased
 //     compare current and previous snapshots (edge detection). IsDown reflects
 //     the current snapshot (level detection).
-//   - Key codes use the platform's native integer key codes (forwarded from
-//     the windowing backend). There is no re-mapping layer here.
+//   - Key state uses the public VIPER_KEY_* constants. Windowing backends that
+//     emit vgfx key codes must route through rt_keyboard_on_vgfx_key_down/up so
+//     ambiguous special-key values are normalized before they enter state.
 //   - Mouse button indices: 1 = left, 2 = right, 3 = middle (matches SDL/X11
 //     conventions). WasClicked is a shorthand for WasPressed && WasReleased
 //     in the same frame (single-frame tap detection for quick presses).
@@ -73,6 +74,13 @@
 #define VGFX_KEY_RIGHT_VG 259
 #define VGFX_KEY_UP_VG 260
 #define VGFX_KEY_DOWN_VG 261
+#define VGFX_KEY_BACKSPACE_VG 262
+#define VGFX_KEY_DELETE_VG 263
+#define VGFX_KEY_TAB_VG 264
+#define VGFX_KEY_HOME_VG 265
+#define VGFX_KEY_END_VG 266
+#define VGFX_KEY_PAGE_UP_VG 267
+#define VGFX_KEY_PAGE_DOWN_VG 268
 
 /// @brief Convert vgfx key code to GLFW-style key code.
 static int64_t vgfx_to_glfw(int64_t vgfx_key) {
@@ -98,9 +106,37 @@ static int64_t vgfx_to_glfw(int64_t vgfx_key) {
             return VIPER_KEY_UP;
         case VGFX_KEY_DOWN_VG:
             return VIPER_KEY_DOWN;
+        case VGFX_KEY_BACKSPACE_VG:
+            return VIPER_KEY_BACKSPACE;
+        case VGFX_KEY_DELETE_VG:
+            return VIPER_KEY_DELETE;
+        case VGFX_KEY_TAB_VG:
+            return VIPER_KEY_TAB;
+        case VGFX_KEY_HOME_VG:
+            return VIPER_KEY_HOME;
+        case VGFX_KEY_END_VG:
+            return VIPER_KEY_END;
+        case VGFX_KEY_PAGE_UP_VG:
+            return VIPER_KEY_PAGEUP;
+        case VGFX_KEY_PAGE_DOWN_VG:
+            return VIPER_KEY_PAGEDOWN;
         default:
             return vgfx_key;
     }
+}
+
+static bool rt_keyboard_codepoint_is_text(int32_t ch) {
+    if (ch < 0x20 || ch == 0x7F || ch > 0x10FFFF)
+        return false;
+    if (ch >= 0x80 && ch <= 0x9F)
+        return false;
+    if (ch >= 0xD800 && ch <= 0xDFFF)
+        return false;
+    if ((ch >= 0xE000 && ch <= 0xF8FF) ||
+        (ch >= 0xF0000 && ch <= 0xFFFFD) ||
+        (ch >= 0x100000 && ch <= 0x10FFFD))
+        return false;
+    return true;
 }
 
 //=============================================================================
@@ -297,41 +333,53 @@ void rt_keyboard_begin_frame(void) {
     g_text_length = 0;
 }
 
-/// @brief Record a key-down event from the platform layer (converts vgfx→GLFW key codes).
-void rt_keyboard_on_key_down(int64_t key) {
+static void rt_keyboard_record_key_down(int64_t key) {
     RT_ASSERT_MAIN_THREAD();
-    // Convert vgfx key to GLFW-style
-    int64_t glfw_key = vgfx_to_glfw(key);
-
-    if (glfw_key <= 0 || glfw_key >= VIPER_KEY_MAX)
+    if (key <= 0 || key >= VIPER_KEY_MAX)
         return;
 
     // Only record press if key wasn't already down
-    if (!g_key_state[glfw_key]) {
-        g_key_state[glfw_key] = true;
+    if (!g_key_state[key]) {
+        g_key_state[key] = true;
 
         if (g_pressed_count < 64)
-            g_pressed_keys[g_pressed_count++] = glfw_key;
+            g_pressed_keys[g_pressed_count++] = key;
     }
 
     // Caps Lock state is queried from the platform on demand.
 }
 
-/// @brief Record a key-up event from the platform layer.
-void rt_keyboard_on_key_up(int64_t key) {
+static void rt_keyboard_record_key_up(int64_t key) {
     RT_ASSERT_MAIN_THREAD();
-    // Convert vgfx key to GLFW-style
-    int64_t glfw_key = vgfx_to_glfw(key);
-
-    if (glfw_key <= 0 || glfw_key >= VIPER_KEY_MAX)
+    if (key <= 0 || key >= VIPER_KEY_MAX)
         return;
 
-    if (g_key_state[glfw_key]) {
-        g_key_state[glfw_key] = false;
+    if (g_key_state[key]) {
+        g_key_state[key] = false;
 
         if (g_released_count < 64)
-            g_released_keys[g_released_count++] = glfw_key;
+            g_released_keys[g_released_count++] = key;
     }
+}
+
+/// @brief Record a key-down event using public VIPER_KEY_* constants.
+void rt_keyboard_on_key_down(int64_t key) {
+    rt_keyboard_record_key_down(key);
+}
+
+/// @brief Record a key-up event using public VIPER_KEY_* constants.
+void rt_keyboard_on_key_up(int64_t key) {
+    rt_keyboard_record_key_up(key);
+}
+
+/// @brief Record a key-down event from a vgfx window event.
+void rt_keyboard_on_vgfx_key_down(int64_t key) {
+    rt_keyboard_record_key_down(vgfx_to_glfw(key));
+}
+
+/// @brief Record a key-up event from a vgfx window event.
+void rt_keyboard_on_vgfx_key_up(int64_t key) {
+    rt_keyboard_record_key_up(vgfx_to_glfw(key));
 }
 
 /// @brief Append a text-input character to the per-frame UTF-8 text buffer.
@@ -340,7 +388,7 @@ void rt_keyboard_text_input(int32_t ch) {
     if (!g_text_input_enabled)
         return;
 
-    if (ch < 32 || ch == 127)
+    if (!rt_keyboard_codepoint_is_text(ch))
         return;
 
     char utf8[4];

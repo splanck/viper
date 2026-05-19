@@ -85,6 +85,26 @@ RT_WEAK rt_string rt_zia_complete_for_file(rt_string source,
     return rt_zia_complete(source, line, col);
 }
 
+/// @brief Weak stub: returns an unavailable signature-help payload.
+RT_WEAK rt_string rt_zia_signature_help(rt_string source, int64_t line, int64_t col) {
+    (void)source;
+    (void)line;
+    (void)col;
+    return zia_completion_unavailable_string(kUnavailableMessage);
+}
+
+/// @brief Weak stub: returns an unavailable signature-help payload.
+RT_WEAK rt_string rt_zia_signature_help_for_file(rt_string source,
+                                                 rt_string file_path,
+                                                 int64_t line,
+                                                 int64_t col) {
+    (void)source;
+    (void)file_path;
+    (void)line;
+    (void)col;
+    return rt_zia_signature_help(source, line, col);
+}
+
 /// @brief Weak stub: diagnostics unavailable means "no diagnostics".
 RT_WEAK rt_string rt_zia_check(rt_string source) {
     (void)source;

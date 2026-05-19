@@ -250,6 +250,8 @@ extern "C" void rt_pad_begin_frame(void) {}
 extern "C" void rt_pad_poll(void) {}
 extern "C" void rt_keyboard_on_key_down(int64_t) {}
 extern "C" void rt_keyboard_on_key_up(int64_t) {}
+extern "C" void rt_keyboard_on_vgfx_key_down(int64_t) {}
+extern "C" void rt_keyboard_on_vgfx_key_up(int64_t) {}
 extern "C" void rt_keyboard_text_input(int32_t) {}
 extern "C" void rt_mouse_update_pos(int64_t, int64_t) {}
 extern "C" void rt_mouse_button_down(int64_t) {}

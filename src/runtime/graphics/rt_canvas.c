@@ -397,9 +397,9 @@ int64_t rt_canvas_poll(void *canvas_ptr) {
 
         // Forward keyboard events to keyboard module
         if (canvas->last_event.type == VGFX_EVENT_KEY_DOWN)
-            rt_keyboard_on_key_down((int64_t)canvas->last_event.data.key.key);
+            rt_keyboard_on_vgfx_key_down((int64_t)canvas->last_event.data.key.key);
         else if (canvas->last_event.type == VGFX_EVENT_KEY_UP)
-            rt_keyboard_on_key_up((int64_t)canvas->last_event.data.key.key);
+            rt_keyboard_on_vgfx_key_up((int64_t)canvas->last_event.data.key.key);
         else if (canvas->last_event.type == VGFX_EVENT_TEXT_INPUT)
             rt_keyboard_text_input((int32_t)canvas->last_event.data.text.codepoint);
 

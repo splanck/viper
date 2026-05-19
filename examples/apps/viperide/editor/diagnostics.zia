@@ -167,7 +167,9 @@ class LiveDiagnostics {
 
             // Add inline highlight span (underline the error location)
             var diagCol = Convert.ToInt(Obj.ToString(Seq.Get(parts, 2)));
-            engine.editor.AddHighlight(diagLine - 1, diagCol, diagLine - 1, diagCol + 10, markerColor);
+            var diagCol0 = diagCol - 1;
+            if diagCol0 < 0 { diagCol0 = 0; }
+            engine.editor.AddHighlight(diagLine - 1, diagCol0, diagLine - 1, diagCol0 + 1, markerColor);
         }
 
         if errorCount > 0 or Seq.get_Length(lines) > 1 {

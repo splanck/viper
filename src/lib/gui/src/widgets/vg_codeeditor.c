@@ -1746,6 +1746,36 @@ static void codeeditor_draw_fold_ellipsis(vg_codeeditor_t *editor,
         canvas, editor->font, editor->font_size, ellipsis_x, baseline_y, "...", editor->line_number_color);
 }
 
+/// @brief Draws an editor highlight span as an underline so diagnostics do not obscure the text.
+static void codeeditor_draw_highlight_underline(void *canvas,
+                                                float x,
+                                                float y,
+                                                float width,
+                                                float line_height,
+                                                uint32_t color) {
+    if (!canvas || width <= 0.0f || line_height <= 0.0f)
+        return;
+
+    float underline_height = line_height >= 8.0f ? 2.0f : 1.0f;
+    float underline_y = y + line_height - underline_height - 1.0f;
+    if (underline_y < y)
+        underline_y = y;
+
+    int32_t draw_width = (int32_t)(width + 0.5f);
+    int32_t draw_height = (int32_t)(underline_height + 0.5f);
+    if (draw_width < 1)
+        draw_width = 1;
+    if (draw_height < 1)
+        draw_height = 1;
+
+    vgfx_fill_rect((vgfx_window_t)canvas,
+                   (int32_t)x,
+                   (int32_t)underline_y,
+                   draw_width,
+                   draw_height,
+                   (vgfx_color_t)color);
+}
+
 /// @brief VTable paint: renders background, gutter, current-line highlight, selection, syntax-coloured text, cursor, and scrollbar.
 static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
     vg_codeeditor_t *editor = (vg_codeeditor_t *)widget;
@@ -1823,12 +1853,8 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                     col_end = col_start + 1;
                 float span_x = content_x + col_start * editor->char_width - editor->scroll_x;
                 float span_w = (col_end - col_start) * editor->char_width;
-                vgfx_fill_rect((vgfx_window_t)canvas,
-                               (int32_t)span_x,
-                               (int32_t)line_y,
-                               (int32_t)span_w,
-                               (int32_t)editor->line_height,
-                               (vgfx_color_t)span->color);
+                codeeditor_draw_highlight_underline(
+                    canvas, span_x, line_y, span_w, editor->line_height, span->color);
             }
 
             if (editor->has_selection && (widget->state & VG_STATE_FOCUSED)) {
@@ -1991,12 +2017,8 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                     float span_x =
                         content_x + (float)(overlap_start - seg_start) * editor->char_width;
                     float span_w = (float)(overlap_end - overlap_start) * editor->char_width;
-                    vgfx_fill_rect((vgfx_window_t)canvas,
-                                   (int32_t)span_x,
-                                   (int32_t)row_y,
-                                   (int32_t)span_w,
-                                   (int32_t)editor->line_height,
-                                   (vgfx_color_t)span->color);
+                    codeeditor_draw_highlight_underline(
+                        canvas, span_x, row_y, span_w, editor->line_height, span->color);
                 }
 
                 if (editor->has_selection && (widget->state & VG_STATE_FOCUSED)) {
@@ -2354,6 +2376,39 @@ static int encode_utf8(uint32_t cp, char *buf) {
         return 4;
     }
     return 0; // Out-of-range
+}
+
+/// @brief True if a character event should insert literal text instead of being treated as a command shortcut.
+static bool codeeditor_key_char_allows_text(const vg_event_t *event) {
+    if (!event)
+        return false;
+
+    uint32_t mods = event->modifiers;
+    bool has_super = (mods & VG_MOD_SUPER) != 0;
+    bool has_ctrl = (mods & VG_MOD_CTRL) != 0;
+    bool has_alt = (mods & VG_MOD_ALT) != 0;
+
+    if (has_super)
+        return false;
+    if (has_ctrl && !has_alt)
+        return false;
+    if (has_alt && !has_ctrl)
+        return false;
+    return true;
+}
+
+static bool codeeditor_codepoint_is_text(uint32_t cp) {
+    if (cp < 0x20 || cp == 0x7F || cp > 0x10FFFF)
+        return false;
+    if (cp >= 0x80 && cp <= 0x9F)
+        return false;
+    if (cp >= 0xD800 && cp <= 0xDFFF)
+        return false;
+    if ((cp >= 0xE000 && cp <= 0xF8FF) ||
+        (cp >= 0xF0000 && cp <= 0xFFFFD) ||
+        (cp >= 0x100000 && cp <= 0x10FFFD))
+        return false;
+    return true;
 }
 
 // Insert n raw bytes at the current cursor position and advance cursor_col by n.
@@ -2786,6 +2841,7 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
             if (editor->read_only) {
                 // Navigation only
+                bool handled_key = true;
                 switch (event->key.key) {
                     case VG_KEY_UP:
                         codeeditor_move_cursor_vertical(editor, widget, -1);
@@ -2816,13 +2872,17 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                         break;
                     }
                     default:
+                        handled_key = false;
                         break;
                 }
+                if (!handled_key)
+                    return false;
                 ensure_cursor_visible(editor);
                 widget->needs_paint = true;
                 return true;
             }
 
+            bool handled_key = true;
             switch (event->key.key) {
                 case VG_KEY_UP:
                     codeeditor_move_cursor_vertical(editor, widget, -1);
@@ -2888,8 +2948,12 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     }
                     break;
                 default:
+                    handled_key = false;
                     break;
             }
+
+            if (!handled_key)
+                return false;
 
             // Ensure cursor stays visible after movement
             ensure_cursor_visible(editor);
@@ -2902,9 +2966,10 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
         }
 
         case VG_EVENT_KEY_CHAR: {
+            if (!codeeditor_key_char_allows_text(event))
+                return false;
             uint32_t cp = event->key.codepoint;
-            // Accept all printable codepoints: U+0020–U+10FFFF excluding surrogates.
-            bool printable = (cp >= 0x20 && !(cp >= 0xD800 && cp <= 0xDFFF) && cp <= 0x10FFFF);
+            bool printable = codeeditor_codepoint_is_text(cp);
             if (!editor->read_only && printable) {
                 if (cp < 0x80) {
                     char text[2] = {(char)cp, '\0'};

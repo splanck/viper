@@ -36,6 +36,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <utility>
 #include <string>
 
 using namespace il::frontends::zia;
@@ -66,6 +67,24 @@ static void writeFile(const fs::path &path, const std::string &contents) {
     fs::create_directories(path.parent_path());
     std::ofstream out(path);
     out << contents;
+}
+
+static std::pair<int, int> lineColAfter(const std::string &source, const std::string &needle) {
+    size_t pos = source.find(needle);
+    EXPECT_NE(pos, std::string::npos);
+    pos += needle.size();
+
+    int line = 1;
+    int col = 0;
+    for (size_t i = 0; i < pos && i < source.size(); ++i) {
+        if (source[i] == '\n') {
+            ++line;
+            col = 0;
+        } else {
+            ++col;
+        }
+    }
+    return {line, col};
 }
 
 // ---------------------------------------------------------------------------
@@ -285,6 +304,44 @@ func compute() -> Number {    var r = Math.Sq
     auto items = engine.complete(source, 7, 19, "<test>", 0);
     // Viper.Math should have at least some members (Sqrt, etc.)
     EXPECT_FALSE(items.empty());
+}
+
+TEST(CompletionEngine, SignatureHelp_UserMethod) {
+    const std::string source = R"(
+module Test;
+
+class Box {
+    expose func Resize(w: Integer, h: Integer) {}
+}
+
+func main() {
+    var box = new Box();
+    box.Resize(1, 2);
+}
+)";
+    auto [line, col] = lineColAfter(source, "box.Resize(");
+    CompletionEngine engine;
+    std::string help = engine.signatureHelp(source, line, col, "<test>");
+
+    EXPECT_TRUE(help.find("Resize(arg1: Integer, arg2: Integer) -> Void") != std::string::npos);
+    EXPECT_TRUE(help.find("parameter 1 of 2") != std::string::npos);
+}
+
+TEST(CompletionEngine, SignatureHelp_RuntimeAliasMethod) {
+    const std::string source = R"(
+module Test;
+
+bind Viper.Terminal as Terminal;
+
+func main() {
+    Terminal.Say("hello");
+}
+)";
+    auto [line, col] = lineColAfter(source, "Terminal.Say(");
+    CompletionEngine engine;
+    std::string help = engine.signatureHelp(source, line, col, "<test>");
+
+    EXPECT_TRUE(help.find("Say(arg1: String) -> Void") != std::string::npos);
 }
 
 } // anonymous namespace

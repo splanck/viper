@@ -3477,9 +3477,9 @@ int64_t rt_canvas3d_poll(void *obj) {
     while (vgfx_poll_event(c->gfx_win, &evt)) {
         last_event_type = (int64_t)evt.type;
         if (evt.type == VGFX_EVENT_KEY_DOWN)
-            rt_keyboard_on_key_down((int64_t)evt.data.key.key);
+            rt_keyboard_on_vgfx_key_down((int64_t)evt.data.key.key);
         else if (evt.type == VGFX_EVENT_KEY_UP)
-            rt_keyboard_on_key_up((int64_t)evt.data.key.key);
+            rt_keyboard_on_vgfx_key_up((int64_t)evt.data.key.key);
         else if (evt.type == VGFX_EVENT_TEXT_INPUT)
             rt_keyboard_text_input((int32_t)evt.data.text.codepoint);
         else if (evt.type == VGFX_EVENT_CLOSE)

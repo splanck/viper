@@ -115,6 +115,20 @@ static bool textinput_key_char_allows_text(const vg_event_t *event) {
     return true;
 }
 
+static bool textinput_codepoint_is_text(uint32_t cp) {
+    if (cp < 0x20 || cp == 0x7F || cp > 0x10FFFF)
+        return false;
+    if (cp >= 0x80 && cp <= 0x9F)
+        return false;
+    if (cp >= 0xD800 && cp <= 0xDFFF)
+        return false;
+    if ((cp >= 0xE000 && cp <= 0xF8FF) ||
+        (cp >= 0xF0000 && cp <= 0xFFFFD) ||
+        (cp >= 0x100000 && cp <= 0x10FFFD))
+        return false;
+    return true;
+}
+
 /// @brief Returns the number of UTF-8 codepoints in the input's text buffer.
 static size_t textinput_char_count(const vg_textinput_t *input) {
     return input && input->text ? (size_t)vg_utf8_strlen(input->text) : 0;
@@ -1629,7 +1643,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 uint32_t cp = event->key.codepoint;
                 if (cp == '\r' || cp == '\n')
                     return true;
-                if (cp == 0 || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF))
+                if (!textinput_codepoint_is_text(cp))
                     return true;
                 if (cp < 0x80) {
                     utf8[0] = (char)cp;

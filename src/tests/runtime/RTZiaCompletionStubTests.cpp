@@ -19,6 +19,9 @@
 extern "C" {
 rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col);
 rt_string rt_zia_complete_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
+rt_string rt_zia_signature_help(rt_string source, int64_t line, int64_t col);
+rt_string rt_zia_signature_help_for_file(
+    rt_string source, rt_string file_path, int64_t line, int64_t col);
 rt_string rt_zia_check(rt_string source);
 rt_string rt_zia_check_for_file(rt_string source, rt_string file_path);
 rt_string rt_zia_hover(rt_string source, int64_t line, int64_t col);
@@ -52,6 +55,8 @@ int main() {
     expect_contains(rt_zia_complete(source, 1, 0), "Zia completion unavailable\t\t8\t");
     expect_contains(
         rt_zia_complete_for_file(source, path, 1, 0), "Zia completion unavailable\t\t8\t");
+    expect_contains(rt_zia_signature_help(source, 1, 0), "link fe_zia");
+    expect_contains(rt_zia_signature_help_for_file(source, path, 1, 0), "link fe_zia");
     expect_empty(rt_zia_check(source));
     expect_empty(rt_zia_check_for_file(source, path));
     expect_contains(rt_zia_hover(source, 1, 0), "link fe_zia");

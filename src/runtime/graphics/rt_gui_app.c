@@ -41,6 +41,7 @@
 
 #include "fonts/embedded_font.h"
 #include "rt_gui_internal.h"
+#include "rt_input.h"
 #include "rt_platform.h"
 #include "rt_time.h"
 
@@ -1729,13 +1730,38 @@ void rt_gui_app_poll(void *app_ptr) {
     rt_shortcuts_clear_triggered(app);
     app->close_requested = 0;
 
+    rt_keyboard_begin_frame();
+    rt_mouse_begin_frame();
+
     // Get mouse position
     vgfx_mouse_pos(app->window, &app->mouse_x, &app->mouse_y);
+    rt_mouse_update_pos(app->mouse_x, app->mouse_y);
 
     // Poll events
     vgfx_event_t event;
     while (vgfx_poll_event(app->window, &event)) {
         app->last_event_time_ms = (uint64_t)event.time_ms;
+        if (event.type == VGFX_EVENT_KEY_DOWN) {
+            rt_keyboard_on_vgfx_key_down((int64_t)event.data.key.key);
+        } else if (event.type == VGFX_EVENT_KEY_UP) {
+            rt_keyboard_on_vgfx_key_up((int64_t)event.data.key.key);
+        } else if (event.type == VGFX_EVENT_TEXT_INPUT) {
+            rt_keyboard_text_input((int32_t)event.data.text.codepoint);
+        } else if (event.type == VGFX_EVENT_MOUSE_MOVE) {
+            rt_mouse_update_pos((int64_t)event.data.mouse_move.x, (int64_t)event.data.mouse_move.y);
+        } else if (event.type == VGFX_EVENT_MOUSE_DOWN) {
+            rt_mouse_update_pos(
+                (int64_t)event.data.mouse_button.x, (int64_t)event.data.mouse_button.y);
+            rt_mouse_button_down((int64_t)event.data.mouse_button.button);
+        } else if (event.type == VGFX_EVENT_MOUSE_UP) {
+            rt_mouse_update_pos(
+                (int64_t)event.data.mouse_button.x, (int64_t)event.data.mouse_button.y);
+            rt_mouse_button_up((int64_t)event.data.mouse_button.button);
+        } else if (event.type == VGFX_EVENT_SCROLL) {
+            rt_mouse_update_pos((int64_t)event.data.scroll.x, (int64_t)event.data.scroll.y);
+            rt_mouse_update_wheel((double)event.data.scroll.delta_x, (double)event.data.scroll.delta_y);
+        }
+
         if (event.type == VGFX_EVENT_CLOSE) {
             app->close_requested = 1;
             if (!app->prevent_close)

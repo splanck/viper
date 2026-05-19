@@ -244,54 +244,55 @@ func main() {
         hoverCtrl.setSourcePath(activeToolPath);
         symbolOutline.setSourcePath(activeToolPath);
 
-        completer.Update();
+        var typedThisFrame = Input.Keyboard.GetText();
+
+        if completer.isVisible {
+            if Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_TAB()) {
+                completer.AcceptSelected();
+                typedThisFrame = "";
+            } else if Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_ENTER()) {
+                completer.AcceptSelected();
+                typedThisFrame = "";
+            } else if Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_ESCAPE()) {
+                completer.Hide();
+                typedThisFrame = "";
+            }
+        }
+
+        if completer.isVisible {
+            completer.Update(typedThisFrame);
+        }
         liveDiag.update(engine, shell);
         hoverCtrl.update(engine);
         symbolOutline.update(engine);
         symbolOutline.handleClicks(engine);
-        if completer.isVisible {
-            if Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_TAB()) {
-                completer.AcceptSelected();
-            } else if Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_ENTER()) {
-                completer.AcceptSelected();
-            } else if Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_ESCAPE()) {
-                completer.Hide();
-            }
-        }
         if Shortcuts.WasTriggered("completion_trigger") != 0 {
             completer.TriggerCompletion();
         }
 
-        // Dot trigger + paren trigger: detect when '.' or '(' is typed
+        // Dot / paren triggers must come from text input, not cursor motion.
         var curCursorLine = engine.GetCursorLine();
         var curCursorCol  = engine.GetCursorCol();
-        if curCursorLine == prevCursorLine and curCursorCol == prevCursorCol + 1 {
-            if curCursorCol >= 2 {
-                var trigLineText = engine.editor.GetLine(curCursorLine - 1);
-                var lastChar = Str.MidLen(trigLineText, curCursorCol - 1, 1);
-                if lastChar == "." {
-                    completer.TriggerCompletion();
-                }
-                // Paren trigger: show signature help via hover on the function name
-                if lastChar == "(" {
-                    var source = engine.GetText();
-                    var sigInfo = Viper.Zia.Completion.HoverForFile(source, activeToolPath, curCursorLine, curCursorCol - 2);
-                    if sigInfo != "" {
-                        hoverCtrl.hideTooltip();
-                        // Reuse hover tooltip to show signature
-                        hoverCtrl.tooltipLabel.SetText(sigInfo);
-                        var px = engine.editor.GetCursorPixelX();
-                        var py = engine.editor.GetCursorPixelY();
-                        hoverCtrl.tooltip.SetPosition(px, py - 25);
-                        hoverCtrl.tooltip.SetVisible(1);
-                        hoverCtrl.isVisible = true;
-                    }
-                }
-                // Close paren: dismiss signature help
-                if lastChar == ")" {
-                    hoverCtrl.hideTooltip();
-                }
+        if Str.IndexOf(typedThisFrame, ".") != 0 {
+            completer.TriggerCompletion();
+        }
+        if Str.IndexOf(typedThisFrame, "(") != 0 {
+            var source = engine.GetText();
+            var qsource = zia_query.WrapForQuery(source);
+            var qline = curCursorLine + zia_query.LineOffset(source);
+            var sigInfo = Viper.Zia.Completion.SignatureHelpForFile(qsource, activeToolPath, qline, engine.editor.CursorCol);
+            if sigInfo != "" {
+                hoverCtrl.hideTooltip();
+                hoverCtrl.tooltipLabel.SetText(sigInfo);
+                var px = engine.editor.GetCursorPixelX();
+                var py = engine.editor.GetCursorPixelY();
+                hoverCtrl.tooltip.SetPosition(px, py - 25);
+                hoverCtrl.tooltip.SetVisible(1);
+                hoverCtrl.isVisible = true;
             }
+        }
+        if Str.IndexOf(typedThisFrame, ")") != 0 {
+            hoverCtrl.hideTooltip();
         }
 
         // ====================================================================

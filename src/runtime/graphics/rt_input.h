@@ -167,12 +167,20 @@ void rt_keyboard_init(void);
 void rt_keyboard_begin_frame(void);
 
 /// @brief Register a key press event.
-/// @param key Key code.
+/// @param key Public VIPER_KEY_* key code.
 void rt_keyboard_on_key_down(int64_t key);
 
 /// @brief Register a key release event.
-/// @param key Key code.
+/// @param key Public VIPER_KEY_* key code.
 void rt_keyboard_on_key_up(int64_t key);
+
+/// @brief Register a key press event from a vgfx window event.
+/// @param key VGFX_KEY_* key code.
+void rt_keyboard_on_vgfx_key_down(int64_t key);
+
+/// @brief Register a key release event from a vgfx window event.
+/// @param key VGFX_KEY_* key code.
+void rt_keyboard_on_vgfx_key_up(int64_t key);
 
 /// @brief Add text input character.
 /// @param ch Unicode codepoint.
