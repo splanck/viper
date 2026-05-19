@@ -102,6 +102,19 @@ static void addCommonSymbol(ObjFile &obj,
     obj.symbols.push_back(sym);
 }
 
+static ObjFile makeComdatObj(const std::string &objName,
+                             const std::string &symName,
+                             ComdatSelection selection,
+                             const std::vector<uint8_t> &bytes,
+                             const std::string &key = "comdat-key") {
+    auto obj = makeObj(objName, {".text$" + symName}, 0);
+    obj.sections[1].data = bytes;
+    obj.sections[1].comdatSelection = selection;
+    obj.sections[1].comdatKey = key;
+    addSymbol(obj, symName, 1, ObjSymbol::Global);
+    return obj;
+}
+
 static std::vector<uint8_t> readBinaryFile(const std::string &path) {
     std::ifstream in(path, std::ios::binary | std::ios::ate);
     if (!in)
@@ -222,6 +235,97 @@ int main() {
         CHECK(!ok);
         CHECK(err.str().find("multiply defined") != std::string::npos);
         CHECK(err.str().find("collide") != std::string::npos);
+    }
+
+    // --- COMDAT ANY duplicate strong definitions pick the first copy ---
+    {
+        auto obj1 = makeComdatObj("a.o", "inline_func", ComdatSelection::Any, {0xC3});
+        auto obj2 = makeComdatObj("b.o", "inline_func", ComdatSelection::Any, {0x90, 0xC3});
+
+        std::vector<ObjFile> initObjs = {obj1, obj2};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(initObjs, archives, globalSyms, allObjects, dynamicSyms, err);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(globalSyms["inline_func"].objIndex == 0);
+    }
+
+    // --- COMDAT SAME_SIZE diagnoses mismatched section sizes ---
+    {
+        auto obj1 = makeComdatObj("a.o", "same_size_func", ComdatSelection::SameSize, {0xC3});
+        auto obj2 =
+            makeComdatObj("b.o", "same_size_func", ComdatSelection::SameSize, {0x90, 0xC3});
+
+        std::vector<ObjFile> initObjs = {obj1, obj2};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(initObjs, archives, globalSyms, allObjects, dynamicSyms, err);
+        CHECK(!ok);
+        CHECK(err.str().find("SAME_SIZE") != std::string::npos);
+    }
+
+    // --- COMDAT EXACT_MATCH diagnoses same-size content mismatches ---
+    {
+        auto obj1 =
+            makeComdatObj("a.o", "exact_func", ComdatSelection::ExactMatch, {0x90, 0xC3});
+        auto obj2 =
+            makeComdatObj("b.o", "exact_func", ComdatSelection::ExactMatch, {0xCC, 0xC3});
+
+        std::vector<ObjFile> initObjs = {obj1, obj2};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(initObjs, archives, globalSyms, allObjects, dynamicSyms, err);
+        CHECK(!ok);
+        CHECK(err.str().find("EXACT_MATCH") != std::string::npos);
+    }
+
+    // --- COMDAT LARGEST selects the largest section contribution ---
+    {
+        auto obj1 = makeComdatObj("a.o", "largest_func", ComdatSelection::Largest, {0xC3});
+        auto obj2 =
+            makeComdatObj("b.o", "largest_func", ComdatSelection::Largest, {0x90, 0x90, 0xC3});
+
+        std::vector<ObjFile> initObjs = {obj1, obj2};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(initObjs, archives, globalSyms, allObjects, dynamicSyms, err);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(globalSyms["largest_func"].objIndex == 1);
+    }
+
+    // --- COMDAT NODUPLICATES remains a hard multiple-definition error ---
+    {
+        auto obj1 = makeComdatObj("a.o", "unique_func", ComdatSelection::NoDuplicates, {0xC3});
+        auto obj2 = makeComdatObj("b.o", "unique_func", ComdatSelection::NoDuplicates, {0xC3});
+
+        std::vector<ObjFile> initObjs = {obj1, obj2};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(initObjs, archives, globalSyms, allObjects, dynamicSyms, err);
+        CHECK(!ok);
+        CHECK(err.str().find("NODUPLICATES") != std::string::npos);
     }
 
     // --- Windows CRT inline stdio option storage is pick-any ---

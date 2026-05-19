@@ -402,6 +402,33 @@ int main() {
         CHECK(layout.sections[0].chunks[4].inputSecIndex == 5); // overflowed priority ignored
     }
 
+    // --- ELF read-only metadata sections keep their original output names ---
+    {
+        auto obj = makeObj("metadata.o",
+                           ObjFileFormat::ELF,
+                           {makeSection(".eh_frame", 8, false, false, false, 8),
+                            makeSection(".note.viper", 12, false, false, false, 4),
+                            makeSection(".rodata", 16, false, false, false, 16)});
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        std::ostringstream err;
+
+        bool ok = mergeSections(objs, LinkPlatform::Linux, LinkArch::X86_64, layout, err);
+        CHECK(ok);
+        bool sawRodata = false;
+        bool sawEhFrame = false;
+        bool sawNote = false;
+        for (const auto &sec : layout.sections) {
+            sawRodata = sawRodata || sec.name == ".rodata";
+            sawEhFrame = sawEhFrame || sec.name == ".eh_frame";
+            sawNote = sawNote || sec.name == ".note.viper";
+        }
+        CHECK(sawRodata);
+        CHECK(sawEhFrame);
+        CHECK(sawNote);
+    }
+
     // --- Mach-O mod-init functions preserve source order instead of alignment order ---
     {
         auto obj = makeObj("modinit.o",

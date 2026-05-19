@@ -155,6 +155,10 @@ static void appendBE32(std::vector<uint8_t> &buf, uint32_t value) {
     buf.push_back(static_cast<uint8_t>(value & 0xFF));
 }
 
+static void appendZeros(std::vector<uint8_t> &buf, size_t count) {
+    buf.insert(buf.end(), count, 0);
+}
+
 static void appendArField(std::vector<uint8_t> &buf, const std::string &value, size_t width) {
     for (size_t i = 0; i < width; ++i)
         buf.push_back(i < value.size() ? static_cast<uint8_t>(value[i]) : static_cast<uint8_t>(' '));
@@ -227,6 +231,163 @@ static std::vector<uint8_t> makeSyntheticCoffBssWithBogusRawData() {
     obj.insert(obj.end(), {0x2E, 0x74, 0x6C, 0x73, 0x24, 0x58, 0x59, 0x5A});
 
     // Empty COFF string table.
+    appendLE32(obj, 4);
+    return obj;
+}
+
+static std::vector<uint8_t> makeSyntheticBigObj() {
+    constexpr uint16_t kMachineAmd64 = 0x8664;
+    constexpr uint32_t kScnCntCode = 0x00000020;
+    constexpr uint32_t kScnMemExecute = 0x20000000;
+    constexpr uint32_t kScnMemRead = 0x40000000;
+    constexpr uint8_t kSymClassExternal = 2;
+
+    constexpr uint32_t headerSize = 56;
+    constexpr uint32_t sectionTableOff = headerSize;
+    constexpr uint32_t rawDataOff = sectionTableOff + 40;
+    constexpr uint32_t symbolTableOff = 100;
+
+    std::vector<uint8_t> obj;
+    obj.reserve(symbolTableOff + 20 + 4);
+
+    // BigObj file header.
+    appendLE16(obj, 0);      // Sig1
+    appendLE16(obj, 0xFFFF); // Sig2
+    appendLE16(obj, 2);      // Version
+    appendLE16(obj, kMachineAmd64);
+    appendLE32(obj, 0); // TimeDateStamp
+    appendZeros(obj, 16);
+    appendLE32(obj, 0); // SizeOfData
+    appendLE32(obj, 0); // Flags
+    appendLE32(obj, 0); // MetaDataSize
+    appendLE32(obj, 0); // MetaDataOffset
+    appendLE32(obj, 1); // NumberOfSections
+    appendLE32(obj, symbolTableOff);
+    appendLE32(obj, 1); // NumberOfSymbols
+    CHECK(obj.size() == headerSize);
+
+    // One .text section.
+    const std::string secName = ".text";
+    for (size_t i = 0; i < 8; ++i)
+        obj.push_back(i < secName.size() ? static_cast<uint8_t>(secName[i]) : 0);
+    appendLE32(obj, 1); // VirtualSize
+    appendLE32(obj, 0); // VirtualAddress
+    appendLE32(obj, 1); // SizeOfRawData
+    appendLE32(obj, rawDataOff);
+    appendLE32(obj, 0); // PointerToRelocations
+    appendLE32(obj, 0); // PointerToLinenumbers
+    appendLE16(obj, 0); // NumberOfRelocations
+    appendLE16(obj, 0); // NumberOfLinenumbers
+    appendLE32(obj, kScnCntCode | kScnMemExecute | kScnMemRead);
+    CHECK(obj.size() == rawDataOff);
+
+    obj.push_back(0xC3);
+    appendZeros(obj, symbolTableOff - obj.size());
+
+    // One BigObj symbol named "func".
+    const std::string symName = "func";
+    for (size_t i = 0; i < 8; ++i)
+        obj.push_back(i < symName.size() ? static_cast<uint8_t>(symName[i]) : 0);
+    appendLE32(obj, 0); // Value
+    appendLE32(obj, 1); // 32-bit SectionNumber in BigObj
+    appendLE16(obj, 0x20);
+    obj.push_back(kSymClassExternal);
+    obj.push_back(0); // Aux count
+
+    appendLE32(obj, 4); // Empty string table.
+    return obj;
+}
+
+static std::vector<uint8_t> makeSyntheticCoffComdat(uint8_t selection) {
+    constexpr uint16_t kMachineAmd64 = 0x8664;
+    constexpr uint32_t kScnCntCode = 0x00000020;
+    constexpr uint32_t kScnLnkComdat = 0x00001000;
+    constexpr uint32_t kScnMemExecute = 0x20000000;
+    constexpr uint32_t kScnMemRead = 0x40000000;
+    constexpr uint8_t kSymClassExternal = 2;
+    constexpr uint8_t kSymClassStatic = 3;
+    constexpr uint32_t rawDataOff = 20 + 40;
+    constexpr uint32_t symbolTableOff = 64;
+
+    std::vector<uint8_t> obj;
+    obj.reserve(symbolTableOff + 18 * 3 + 4);
+
+    appendLE16(obj, kMachineAmd64);
+    appendLE16(obj, 1); // NumberOfSections
+    appendLE32(obj, 0);
+    appendLE32(obj, symbolTableOff);
+    appendLE32(obj, 3); // Section symbol + aux + external symbol
+    appendLE16(obj, 0);
+    appendLE16(obj, 0);
+
+    const std::string secName = ".text$F";
+    for (size_t i = 0; i < 8; ++i)
+        obj.push_back(i < secName.size() ? static_cast<uint8_t>(secName[i]) : 0);
+    appendLE32(obj, 1);
+    appendLE32(obj, 0);
+    appendLE32(obj, 1);
+    appendLE32(obj, rawDataOff);
+    appendLE32(obj, 0);
+    appendLE32(obj, 0);
+    appendLE16(obj, 0);
+    appendLE16(obj, 0);
+    appendLE32(obj, kScnCntCode | kScnLnkComdat | kScnMemExecute | kScnMemRead);
+
+    obj.push_back(0xC3);
+    appendZeros(obj, symbolTableOff - obj.size());
+
+    for (size_t i = 0; i < 8; ++i)
+        obj.push_back(i < secName.size() ? static_cast<uint8_t>(secName[i]) : 0);
+    appendLE32(obj, 0); // Value
+    appendLE16(obj, 1); // SectionNumber
+    appendLE16(obj, 0); // Type
+    obj.push_back(kSymClassStatic);
+    obj.push_back(1); // One section-definition aux record.
+
+    appendLE32(obj, 1); // Aux Length
+    appendLE16(obj, 0);
+    appendLE16(obj, 0);
+    appendLE32(obj, 0);
+    appendLE16(obj, 0); // Associative section number, unused for non-associative selections.
+    obj.push_back(selection);
+    obj.push_back(0);
+    appendLE16(obj, 0);
+
+    const std::string symName = "foo";
+    for (size_t i = 0; i < 8; ++i)
+        obj.push_back(i < symName.size() ? static_cast<uint8_t>(symName[i]) : 0);
+    appendLE32(obj, 0);
+    appendLE16(obj, 1);
+    appendLE16(obj, 0x20);
+    obj.push_back(kSymClassExternal);
+    obj.push_back(0);
+
+    appendLE32(obj, 4);
+    return obj;
+}
+
+static std::vector<uint8_t> makeSyntheticCoffCommon(uint32_t commonSize) {
+    constexpr uint16_t kMachineAmd64 = 0x8664;
+    constexpr uint8_t kSymClassExternal = 2;
+
+    std::vector<uint8_t> obj;
+    obj.reserve(20 + 18 + 4);
+    appendLE16(obj, kMachineAmd64);
+    appendLE16(obj, 0); // NumberOfSections
+    appendLE32(obj, 0);
+    appendLE32(obj, 20); // PointerToSymbolTable
+    appendLE32(obj, 1);  // NumberOfSymbols
+    appendLE16(obj, 0);
+    appendLE16(obj, 0);
+
+    const std::string symName = "common";
+    for (size_t i = 0; i < 8; ++i)
+        obj.push_back(i < symName.size() ? static_cast<uint8_t>(symName[i]) : 0);
+    appendLE32(obj, commonSize);
+    appendLE16(obj, 0); // Undefined section + nonzero value means common.
+    appendLE16(obj, 0);
+    obj.push_back(kSymClassExternal);
+    obj.push_back(0);
     appendLE32(obj, 4);
     return obj;
 }
@@ -318,9 +479,137 @@ static void runPortableArchiveReaderTests() {
         if (ar.symbolCandidates.count("dup") == 1) {
             CHECK(ar.symbolCandidates["dup"].size() == 2);
             CHECK(ar.symbolCandidates["dup"][0] == 0);
-            CHECK(ar.symbolCandidates["dup"][1] == 1);
+        CHECK(ar.symbolCandidates["dup"][1] == 1);
         }
         std::filesystem::remove(path);
+    }
+
+    // --- Malformed archive member headers are hard errors ---
+    {
+        std::vector<uint8_t> bytes{'!', '<', 'a', 'r', 'c', 'h', '>', '\n'};
+        appendArHeader(bytes, "bad.o/", 0);
+        bytes[8 + 58] = '!';
+
+        const auto path = std::filesystem::path("build/test-out/archive_bad_header.a");
+        CHECK(writeBinaryFile(path, bytes));
+
+        Archive ar;
+        std::ostringstream err;
+        CHECK(!readArchive(path.string(), ar, err));
+        CHECK(err.str().find("malformed archive member header") != std::string::npos);
+        std::filesystem::remove(path);
+    }
+
+    // --- Odd-size members must carry the required newline padding byte ---
+    {
+        std::vector<uint8_t> bytes{'!', '<', 'a', 'r', 'c', 'h', '>', '\n'};
+        appendArHeader(bytes, "odd.o/", 1);
+        bytes.push_back(0x01);
+        bytes.push_back('x');
+
+        const auto path = std::filesystem::path("build/test-out/archive_bad_padding.a");
+        CHECK(writeBinaryFile(path, bytes));
+
+        Archive ar;
+        std::ostringstream err;
+        CHECK(!readArchive(path.string(), ar, err));
+        CHECK(err.str().find("missing its padding byte") != std::string::npos);
+        std::filesystem::remove(path);
+    }
+
+    // --- Trailing bytes that cannot hold a header are rejected ---
+    {
+        std::vector<uint8_t> bytes{'!', '<', 'a', 'r', 'c', 'h', '>', '\n', 'x'};
+
+        const auto path = std::filesystem::path("build/test-out/archive_trailing_data.a");
+        CHECK(writeBinaryFile(path, bytes));
+
+        Archive ar;
+        std::ostringstream err;
+        CHECK(!readArchive(path.string(), ar, err));
+        CHECK(err.str().find("trailing malformed archive data") != std::string::npos);
+        std::filesystem::remove(path);
+    }
+
+    // --- Archive symbol indexes must point at real member header offsets ---
+    {
+        std::vector<uint8_t> symtab;
+        appendBE32(symtab, 1);
+        appendBE32(symtab, 999);
+        symtab.insert(symtab.end(), {'m', 'i', 's', 's', 'i', 'n', 'g', '\0'});
+
+        std::vector<uint8_t> bytes{'!', '<', 'a', 'r', 'c', 'h', '>', '\n'};
+        appendArMember(bytes, "/", symtab);
+        appendArMember(bytes, "real.o/", {0x01});
+
+        const auto path = std::filesystem::path("build/test-out/archive_bad_sym_offset.a");
+        CHECK(writeBinaryFile(path, bytes));
+
+        Archive ar;
+        std::ostringstream err;
+        CHECK(!readArchive(path.string(), ar, err));
+        CHECK(err.str().find("references missing member offset 999") != std::string::npos);
+        std::filesystem::remove(path);
+    }
+
+    // --- COFF BigObj section and symbol tables are accepted ---
+    {
+        const auto bytes = makeSyntheticBigObj();
+        ObjFile obj;
+        std::ostringstream err;
+        CHECK(readObjFile(bytes.data(), bytes.size(), "synthetic-bigobj.obj", obj, err));
+        CHECK(err.str().empty());
+        CHECK(obj.format == ObjFileFormat::COFF);
+        CHECK(obj.machine == 0x8664);
+        CHECK(obj.sections.size() == 2);
+        CHECK(obj.sections[1].name == ".text");
+        CHECK(obj.sections[1].data.size() == 1);
+        CHECK(obj.symbols.size() == 2);
+        CHECK(obj.symbols[1].name == "func");
+        CHECK(obj.symbols[1].sectionIndex == 1);
+    }
+
+    // --- COFF COMDAT section-definition aux records set duplicate policy ---
+    {
+        const auto bytes = makeSyntheticCoffComdat(/*IMAGE_COMDAT_SELECT_ANY=*/2);
+        ObjFile obj;
+        std::ostringstream err;
+        CHECK(readObjFile(bytes.data(), bytes.size(), "synthetic-comdat.obj", obj, err));
+        CHECK(err.str().empty());
+        CHECK(obj.sections.size() == 2);
+        CHECK(obj.sections[1].comdatSelection == ComdatSelection::Any);
+        CHECK(obj.sections[1].comdatKey == ".text$F");
+    }
+
+    // --- Unsupported COFF COMDAT selections are diagnosed ---
+    {
+        const auto bytes = makeSyntheticCoffComdat(99);
+        ObjFile obj;
+        std::ostringstream err;
+        CHECK(!readObjFile(bytes.data(), bytes.size(), "synthetic-bad-comdat.obj", obj, err));
+        CHECK(err.str().find("unsupported COFF COMDAT selection") != std::string::npos);
+    }
+
+    // --- COFF common-symbol alignment follows size, capped at 32 bytes ---
+    {
+        {
+            const auto bytes = makeSyntheticCoffCommon(3);
+            ObjFile obj;
+            std::ostringstream err;
+            CHECK(readObjFile(bytes.data(), bytes.size(), "synthetic-common3.obj", obj, err));
+            CHECK(obj.symbols.size() == 2);
+            CHECK(obj.symbols[1].common);
+            CHECK(obj.symbols[1].commonAlignment == 4);
+        }
+        {
+            const auto bytes = makeSyntheticCoffCommon(64);
+            ObjFile obj;
+            std::ostringstream err;
+            CHECK(readObjFile(bytes.data(), bytes.size(), "synthetic-common64.obj", obj, err));
+            CHECK(obj.symbols.size() == 2);
+            CHECK(obj.symbols[1].common);
+            CHECK(obj.symbols[1].commonAlignment == 32);
+        }
     }
 }
 

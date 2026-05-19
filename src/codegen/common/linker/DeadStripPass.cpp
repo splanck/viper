@@ -52,6 +52,8 @@ static bool isAlwaysLiveSection(const std::string &name) {
     if (hasPrefix(name, ".init_array") || hasPrefix(name, ".fini_array") ||
         hasPrefix(name, ".preinit_array"))
         return true;
+    if (hasPrefix(name, ".ctors") || hasPrefix(name, ".dtors"))
+        return true;
     if (name == ".init" || name == ".fini")
         return true;
 

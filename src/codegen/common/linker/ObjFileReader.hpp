@@ -31,6 +31,16 @@
 
 namespace viper::codegen::linker {
 
+enum class ComdatSelection : uint8_t {
+    None,
+    NoDuplicates,
+    Any,
+    SameSize,
+    ExactMatch,
+    Associative,
+    Largest,
+};
+
 /// Relocation in a parsed object file.
 struct ObjReloc {
     size_t offset = 0;     ///< Byte offset within the section.
@@ -71,6 +81,8 @@ struct ObjSection {
     bool zeroFill = false;         ///< Section occupies memory but has no file bytes.
     bool isCStringSection = false; ///< Section contains NUL-terminated C strings only.
     uint32_t associativeSection = 0; ///< COFF associative COMDAT parent section, if any.
+    ComdatSelection comdatSelection = ComdatSelection::None; ///< Duplicate-selection policy.
+    std::string comdatKey; ///< COFF/ELF COMDAT group key/signature.
     bool stripped = false;         ///< Dead-strip removed this section explicitly.
 };
 
@@ -96,7 +108,7 @@ struct ObjFile {
 
 /// Maximum number of sections/symbols accepted from an object file.
 /// Guards against corrupt or malicious inputs causing unbounded allocation.
-inline constexpr uint32_t kMaxObjSections = 65536;
+inline constexpr uint32_t kMaxObjSections = 1 << 20;
 inline constexpr uint32_t kMaxObjSymbols = 1 << 20; // 1M symbols.
 inline constexpr size_t kMaxObjSectionBytes = 2ULL * 1024 * 1024 * 1024;
 inline constexpr size_t kMaxObjMaterializedBytes = 4ULL * 1024 * 1024 * 1024;

@@ -141,6 +141,8 @@ long-name offsets before using them. GNU long-name entries trim both NUL and new
 trailing `/` marker, so member names are canonical before symbol-index matching. Duplicate archive-index entries
 keep the first definition for compatibility and also retain the full candidate list so symbol resolution can retry
 later members when an earlier indexed member has already been extracted or does not satisfy the unresolved name.
+Malformed member trailer bytes, missing odd-member padding, trailing partial headers, and symbol indexes that point
+at no real member are rejected instead of being ignored.
 
 ---
 
@@ -157,6 +159,7 @@ The reader auto-detects format from magic bytes:
 | `7F 45 4C 46` | ELF |
 | `CF FA ED FE` | Mach-O 64-bit (little-endian) |
 | `64 86` or `64 AA` | COFF (AMD64 or ARM64 machine field) |
+| `00 00 FF FF` | COFF BigObj |
 
 ### Unified Representation
 
@@ -173,10 +176,11 @@ ObjFile
 ### Format-Specific Handling
 
 - **ELF**: Explicit addends from `.rela` sections and implicit addends from `.rel` sections are supported. Extended
-  section counts are decoded from section header 0. `SHT_GROUP` COMDAT groups are mapped to associative sections,
-  relocation table byte sizes must be exact multiples of their entry size, `SHN_COMMON` symbols are preserved as
-  tentative definitions for linker-wide coalescing, weak undefined symbols stay undefined/weak-external, and
-  absolute symbols keep their absolute values.
+  section counts are decoded from section header 0. `SHT_GROUP` COMDAT groups carry their signature and member list
+  into the linker object model, relocation table byte sizes must be exact multiples of their entry size,
+  `SHN_COMMON` symbols are preserved as tentative definitions for linker-wide coalescing, weak undefined symbols
+  stay undefined/weak-external, and absolute symbols keep their absolute values. Symbols and relocation sections
+  that reference unsupported or unmapped section indexes are hard errors.
 - **Mach-O**: Addends are extracted from instruction bytes or from ARM64 `ADDEND` relocations. Leading `_` is
   stripped from external symbol names (Mach-O convention). Non-extern section-relative relocations resolve through
   synthetic local section symbols, ARM64 `ADDEND` payloads are sign-extended, consecutive addend records are
@@ -186,17 +190,19 @@ ObjFile
   Executable and writable flags are inferred from both section attributes and data-like segment names.
 - **COFF**: Addends are extracted per relocation kind. AMD64/ARM64 `ADDR64` uses an 8-byte addend; ARM64 branch,
   ADRP page, and page-offset relocations decode their instruction fields so writer-emitted placeholders do not
-  become bogus addends. Common symbols are preserved as tentative definitions. Weak extern fallback records,
-  associative COMDAT section relationships, and COFF relocation overflow records are parsed; unsupported BigObj
-  inputs fail with a specific diagnostic.
+  become bogus addends. Common symbols are preserved as tentative definitions with COFF-size-derived alignment.
+  Weak extern fallback records, BigObj symbol tables, associative COMDAT section relationships, and COFF relocation
+  overflow records are parsed. COMDAT `ANY`, `SAME_SIZE`, `EXACT_MATCH`, `LARGEST`, and `NODUPLICATES` policies are
+  represented explicitly; unsupported selection values are rejected.
 
 ### Reader Validation
 
 Readers reject unsupported file types, wrong machines, unsupported section alignment, oversized materialized
 sections, out-of-bounds section data, unterminated or out-of-range ELF/Mach-O string-table names, invalid COFF
 long-name string-table references, truncated section headers, truncated relocation tables, undersized Mach-O
-load commands, dangling Mach-O ARM64 addend records, scattered Mach-O relocations, and invalid relocation symbol
-indexes. Debug and unwind metadata such as
+load commands, dangling Mach-O ARM64 addend records, scattered Mach-O relocations, invalid relocation symbol
+indexes, and Mach-O relocation addend extraction sites that do not fit inside the target section. Debug and unwind
+metadata such as
 `__compact_unwind`, `__eh_frame`, `.debug_line`, and `__DWARF` sections is preserved in the intermediate object
 model for later passes. Executable links strip non-alloc debug sections by default and keep them only when
 `NativeLinkerOptions::preserveDebugSections` is set.
@@ -248,6 +254,11 @@ Symbol resolution uses an iterative fixed-point algorithm:
 | Common | Common | Largest size/max alignment coalesced |
 | Common | Global | Strong definition wins |
 | Weak | Common(Global) | Common strong tentative definition wins |
+
+Duplicate strong definitions in matching ELF/COFF COMDAT groups are resolved by their selection policy: `ANY` keeps
+the first definition, `SAME_SIZE` requires equal section sizes, `EXACT_MATCH` requires equal bytes, `LARGEST` selects
+the largest contribution, and `NODUPLICATES` remains an error. Non-COMDAT strong definitions still use normal
+multiply-defined diagnostics.
 
 ### Runtime Archive Order
 
@@ -369,7 +380,11 @@ load/store form, and branch19 requires `B.cond`/`CBZ`/`CBNZ`.
 - AArch64 branch targets must be 4-byte aligned.
 - AArch64 page-offset load/store relocations validate scaled alignment for the instruction size.
 - AArch64 ELF GOT relocation types `R_AARCH64_ADR_GOT_PAGE` and `R_AARCH64_LD64_GOT_LO12_NC` are recognized and
-  validate GOT-slot alignment before patching.
+  validate GOT-slot alignment before patching. Local GOT relaxation is only applied to adjacent matching
+  ADRP/LDR pairs, and the LDR base register must match the preceding ADRP destination. Mach-O TLVP page/pageoff
+  pairs use the same register validation while keeping TLV descriptor-address semantics.
+- x86_64 ELF `GOTPCRELX`/`REX_GOTPCRELX` local relaxation requires the exact RIP-relative `MOV r*, disp32(%rip)`
+  encoding before rewriting it to `LEA`.
 - `Abs32` relocations must fit in the unsigned 32-bit range.
 - COFF `ADDR32NB`, `SECREL`, and `SECTION` relocations are range-checked before narrowing; negative RVAs are rejected.
 - COFF `SECTION`/`SECREL` relocations resolve the target output section from the symbol's input-section identity,
@@ -393,14 +408,23 @@ section location map, trampoline reuse is keyed by target identity and addend ra
 duplicate local labels from different objects cannot collide, and generated trampoline symbol names are checked
 against user and global symbols before insertion. After island insertion shifts later chunks, trampoline target
 addresses are resolved again before ADRP/ADD/BR encoding. Trampoline placement and AArch64 page relocations
-validate address arithmetic before encoding branch islands.
+validate address arithmetic before encoding branch islands. Generated island bytes are recorded as synthetic chunks
+so later relocation passes do not confuse linker-owned bytes with input sections.
+
+### String Deduplication
+
+String deduplication only scans allocatable sections marked as C-string sections. Non-alloc debug string tables,
+generic read-only data, symbols with explicit sizes that do not match the full NUL-terminated byte range, and
+sections containing non-local symbols are left un-compacted so aliases cannot invalidate exported or section-level
+references.
 
 ### Dead Strip and ICF
 
 Dead stripping keeps EH/unwind metadata roots alive (`.eh_frame`, `.gcc_except_table`, `__compact_unwind`, and
 `__eh_frame`). Non-alloc debug sections (`.debug*`, `__DWARF`) are rooted only when
 `NativeLinkerOptions::preserveDebugSections` is set. ELF constructor/destructor arrays are live by prefix, including
-priority-suffixed `.preinit_array.*`, `.init_array.*`, and `.fini_array.*` inputs.
+priority-suffixed `.preinit_array.*`, `.init_array.*`, and `.fini_array.*` inputs. Legacy `.ctors*` and `.dtors*`
+sections are rooted as constructor/destructor metadata too.
 Weak COFF external fallback definitions are also marked live when referenced. Identical Code Folding includes local
 relocation identity in function signatures and skips candidates with extra local symbols in the function section,
 preventing folds that would strand non-redirectable local labels. Executable-section relocations that materialize a
@@ -416,7 +440,9 @@ sorting, and Mach-O `__mod_init_func`/`__mod_term_func` inputs preserve source o
 
 Section merging and virtual-address assignment diagnose alignment exceptions, image-base/page-size overflow, merged
 section byte-size overflow, and alloc-section virtual-address overflow instead of truncating arithmetic. Windows
-`.pdata` tables must be an exact multiple of the platform unwind-record size before they are sorted.
+`.pdata` tables must be an exact multiple of the platform unwind-record size before they are sorted. ELF
+`.eh_frame`, `.gcc_except_table*`, and `.note*` metadata keep their original output section names rather than being
+folded into generic `.rodata`.
 
 ---
 

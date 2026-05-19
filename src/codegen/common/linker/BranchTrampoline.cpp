@@ -29,6 +29,7 @@
 #include <cstdint>
 #include <limits>
 #include <map>
+#include <ostream>
 #include <unordered_map>
 
 namespace viper::codegen::linker {
@@ -56,6 +57,39 @@ bool checkedAddU64(uint64_t a, uint64_t b, uint64_t &out) {
     return true;
 }
 
+bool checkedAddSize(size_t a, size_t b, size_t &out) {
+    if (a > std::numeric_limits<size_t>::max() - b)
+        return false;
+    out = a + b;
+    return true;
+}
+
+bool checkedMulSize(size_t a, size_t b, size_t &out) {
+    if (a != 0 && b > std::numeric_limits<size_t>::max() / a)
+        return false;
+    out = a * b;
+    return true;
+}
+
+bool checkedAddressDelta(uint64_t lhs, uint64_t rhs, int64_t &out) {
+    if (lhs >= rhs) {
+        const uint64_t delta = lhs - rhs;
+        if (delta > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()))
+            return false;
+        out = static_cast<int64_t>(delta);
+        return true;
+    }
+
+    const uint64_t delta = rhs - lhs;
+    const uint64_t minMag =
+        static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) + 1ULL;
+    if (delta > minMag)
+        return false;
+    out = (delta == minMag) ? std::numeric_limits<int64_t>::min()
+                            : -static_cast<int64_t>(delta);
+    return true;
+}
+
 bool checkedAddI64(uint64_t base, int64_t addend, uint64_t &out) {
     if (addend >= 0)
         return checkedAddU64(base, static_cast<uint64_t>(addend), out);
@@ -72,8 +106,11 @@ using LocationMap = std::unordered_map<InputSectionKey, std::pair<size_t, size_t
 LocationMap buildLocMap(const LinkLayout &layout) {
     LocationMap map;
     for (size_t si = 0; si < layout.sections.size(); ++si) {
-        for (const auto &chunk : layout.sections[si].chunks)
+        for (const auto &chunk : layout.sections[si].chunks) {
+            if (chunk.synthetic)
+                continue;
             map[InputSectionKey{chunk.inputObjIndex, chunk.inputSecIndex}] = {si, chunk.outputOffset};
+        }
     }
     return map;
 }
@@ -130,25 +167,39 @@ bool resolveRelocSymbol(const ObjSymbol &sym,
 }
 
 constexpr size_t kTrampolineSize = 12;
+constexpr uint64_t kBranch26MaxForward = static_cast<uint64_t>(0x1FFFFFF) << 2;
 
 bool branch26Reachable(uint64_t from, uint64_t to) {
-    const int64_t disp = static_cast<int64_t>(to) - static_cast<int64_t>(from);
+    int64_t disp = 0;
+    if (!checkedAddressDelta(to, from, disp))
+        return false;
     if ((disp & 0x3) != 0)
         return false;
     const int64_t imm26 = disp >> 2;
     return imm26 <= 0x1FFFFFF && imm26 >= -0x2000000;
 }
 
-std::vector<size_t> collectChunkBoundaries(const OutputSection &textSec) {
-    std::vector<size_t> boundaries;
-    boundaries.push_back(0);
+bool collectChunkBoundaries(const OutputSection &textSec,
+                            std::vector<size_t> &boundaries,
+                            std::ostream &err) {
+    boundaries.clear();
+    auto addBoundary = [&](size_t boundary) {
+        if ((boundary & 0x3u) == 0)
+            boundaries.push_back(boundary);
+    };
+    addBoundary(0);
     for (const auto &chunk : textSec.chunks) {
-        boundaries.push_back(chunk.outputOffset);
-        boundaries.push_back(chunk.outputOffset + chunk.size);
+        size_t end = 0;
+        if (!checkedAddSize(chunk.outputOffset, chunk.size, end)) {
+            err << "error: text chunk boundary overflows addressable size\n";
+            return false;
+        }
+        addBoundary(chunk.outputOffset);
+        addBoundary(end);
     }
     std::sort(boundaries.begin(), boundaries.end());
     boundaries.erase(std::unique(boundaries.begin(), boundaries.end()), boundaries.end());
-    return boundaries;
+    return true;
 }
 
 bool chooseReachableBoundary(const std::vector<size_t> &boundaries,
@@ -163,8 +214,7 @@ bool chooseReachableBoundary(const std::vector<size_t> &boundaries,
         if (!branch26Reachable(from, to))
             continue;
         const uint64_t dist = (from > to) ? (from - to) : (to - from);
-        const uint64_t maxReach = static_cast<uint64_t>(0x1FFFFFF) << 2;
-        if (dist + reachSlack > maxReach)
+        if (reachSlack > kBranch26MaxForward || dist > kBranch26MaxForward - reachSlack)
             continue;
         if (!found || dist < bestDistance) {
             found = true;
@@ -338,10 +388,16 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
     }
 
     auto &textSec = layout.sections[textSecIdx];
-    const std::vector<size_t> chunkBoundaries = collectChunkBoundaries(textSec);
+    std::vector<size_t> chunkBoundaries;
+    if (!collectChunkBoundaries(textSec, chunkBoundaries, err))
+        return false;
     std::unordered_map<std::string, TrampolineEntry> trampolines;
     size_t trampolineNameCounter = 0;
-    const size_t reachSlack = outOfRange.size() * kTrampolineSize;
+    size_t reachSlack = 0;
+    if (!checkedMulSize(outOfRange.size(), kTrampolineSize, reachSlack)) {
+        err << "error: trampoline reach slack overflows addressable size\n";
+        return false;
+    }
 
     for (auto &oob : outOfRange) {
         size_t chosenBoundary = 0;
@@ -361,8 +417,7 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
             const uint64_t dist = (sourceOffset > trampoline.islandBoundary)
                                       ? (sourceOffset - trampoline.islandBoundary)
                                       : (trampoline.islandBoundary - sourceOffset);
-            const uint64_t maxReach = static_cast<uint64_t>(0x1FFFFFF) << 2;
-            if (dist + reachSlack > maxReach)
+            if (reachSlack > kBranch26MaxForward || dist > kBranch26MaxForward - reachSlack)
                 continue;
             if (chosenExisting == nullptr || dist < bestExistingDistance) {
                 chosenExisting = &trampoline;
@@ -409,9 +464,20 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
     const std::vector<uint8_t> originalText = textSec.data;
     std::vector<uint8_t> newText;
     size_t totalGrowth = 0;
-    for (const auto &[boundary, entries] : islands)
-        totalGrowth += entries.size() * kTrampolineSize;
-    newText.reserve(originalText.size() + totalGrowth);
+    for (const auto &[boundary, entries] : islands) {
+        size_t islandSize = 0;
+        if (!checkedMulSize(entries.size(), kTrampolineSize, islandSize) ||
+            !checkedAddSize(totalGrowth, islandSize, totalGrowth)) {
+            err << "error: trampoline island growth overflows addressable size\n";
+            return false;
+        }
+    }
+    size_t reservedSize = 0;
+    if (!checkedAddSize(originalText.size(), totalGrowth, reservedSize)) {
+        err << "error: trampoline-expanded text size overflows addressable size\n";
+        return false;
+    }
+    newText.reserve(reservedSize);
 
     struct IslandPlacement {
         size_t boundary = 0;
@@ -432,7 +498,12 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
             entries[i]->actualOffset = islandOffset + i * kTrampolineSize;
             newText.resize(newText.size() + kTrampolineSize, 0);
         }
-        placements.push_back({boundary, entries.size() * kTrampolineSize});
+        size_t islandSize = 0;
+        if (!checkedMulSize(entries.size(), kTrampolineSize, islandSize)) {
+            err << "error: trampoline island size overflows addressable size\n";
+            return false;
+        }
+        placements.push_back({boundary, islandSize});
         cursor = clampedBoundary;
     }
     newText.insert(newText.end(),
@@ -446,8 +517,23 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
             if (chunk.outputOffset >= placement.boundary)
                 shift += placement.size;
         }
-        chunk.outputOffset += shift;
+        if (!checkedAddSize(chunk.outputOffset, shift, chunk.outputOffset)) {
+            err << "error: trampoline chunk shift overflows addressable size\n";
+            return false;
+        }
     }
+    for (const auto &[boundary, entries] : islands) {
+        for (const auto *entry : entries) {
+            textSec.chunks.push_back(InputChunk{std::numeric_limits<size_t>::max(),
+                                                std::numeric_limits<size_t>::max(),
+                                                entry->actualOffset,
+                                                kTrampolineSize,
+                                                true});
+        }
+    }
+    std::stable_sort(textSec.chunks.begin(), textSec.chunks.end(), [](const auto &a, const auto &b) {
+        return a.outputOffset < b.outputOffset;
+    });
 
     if (!assignSectionVirtualAddresses(layout, platform, err))
         return false;
@@ -508,7 +594,12 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
         uint32_t adrpInsn = readLE32At(tramp);
         uint64_t pageS = trampoline.targetAddr & ~0xFFFULL;
         uint64_t pageP = tramVA & ~0xFFFULL;
-        int64_t pageDelta = static_cast<int64_t>(pageS) - static_cast<int64_t>(pageP);
+        int64_t pageDelta = 0;
+        if (!checkedAddressDelta(pageS, pageP, pageDelta)) {
+            err << "error: trampoline ADRP delta out of range for '"
+                << trampoline.targetSymName << "'\n";
+            return false;
+        }
         int64_t immHiLo = pageDelta >> 12;
         if (immHiLo > 0xFFFFF || immHiLo < -0x100000) {
             err << "error: trampoline ADRP out of range for '" << trampoline.targetSymName << "'\n";
@@ -555,7 +646,11 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
             err << "error: trampoline branch address overflow for '" << oob.targetSymName << "'\n";
             return false;
         }
-        const int64_t disp = static_cast<int64_t>(tramVA) - static_cast<int64_t>(P);
+        int64_t disp = 0;
+        if (!checkedAddressDelta(tramVA, P, disp)) {
+            err << "error: trampoline branch delta out of range for '" << oob.targetSymName << "'\n";
+            return false;
+        }
         if ((disp & 0x3) != 0) {
             err << "error: trampoline at offset " << tramOff
                 << " is not instruction-aligned for branch at VA 0x" << std::hex << P << std::dec

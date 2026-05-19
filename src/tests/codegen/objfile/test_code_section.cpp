@@ -354,6 +354,25 @@ int main() {
         CHECK(a.relocations()[0].targetSectionIdentity == a.sectionIdentity());
     }
 
+    // --- appendSection rejects ambiguous section-offset relocations without identity ---
+    {
+        CodeSection a;
+        a.emit8(0x90);
+
+        CodeSection b;
+        b.setLogicalOffsetBias(100);
+        b.addSectionOffsetRelocationAt(100, RelocKind::PCRel32, SymbolSection::Text, 100, -4);
+        b.emit32LE(0);
+
+        bool threw = false;
+        try {
+            a.appendSection(b);
+        } catch (const std::logic_error &) {
+            threw = true;
+        }
+        CHECK(threw);
+    }
+
     // --- appendSection validates unwind symbol indices ---
     {
         CodeSection a;

@@ -542,7 +542,7 @@ bool readMachOObj(
                     const uint32_t relType = (info >> 28) & 0xF;
 
                     // ARM64_RELOC_ADDEND (type 10): stores addend for next relocation.
-                    if (isArm64 && relType == 10) {
+	                    if (isArm64 && relType == 10) {
                         if (hasPendingAddend) {
                             err << "error: " << name
                                 << ": consecutive ARM64_RELOC_ADDEND entries in Mach-O section "
@@ -551,10 +551,17 @@ bool readMachOObj(
                         }
                         pendingAddend = signExtend(symbolNum, 24);
                         hasPendingAddend = true;
-                        continue;
-                    }
+	                        continue;
+	                    }
 
-                    ObjReloc rel;
+	                    const size_t fixupSize = isArm64 ? 4u : (size_t{1} << relLength);
+	                    if (!checkedRange(static_cast<size_t>(ri->r_address), fixupSize, os.data.size())) {
+	                        err << "error: " << name << ": Mach-O relocation at offset "
+	                            << ri->r_address << " extends beyond section " << os.name << "\n";
+	                        return false;
+	                    }
+
+	                    ObjReloc rel;
                     rel.offset = static_cast<size_t>(ri->r_address);
                     rel.symIndex = symbolNum; // nlist index or section ordinal.
                     rel.type = relType;

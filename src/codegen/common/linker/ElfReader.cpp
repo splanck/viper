@@ -21,6 +21,8 @@
 #include <cstring>
 #include <limits>
 #include <optional>
+#include <string>
+#include <vector>
 
 namespace viper::codegen::linker {
 
@@ -297,7 +299,38 @@ bool readElfObj(
         shstrSize = static_cast<size_t>(shdrs[shstrndx].sh_size);
     }
 
-    std::vector<std::vector<uint32_t>> comdatGroups;
+    struct ElfComdatGroup {
+        std::string signature;
+        std::vector<uint32_t> members;
+    };
+    auto readSymbolNameFromTable = [&](uint32_t symtabIndex,
+                                       uint32_t symIndex) -> std::optional<std::string> {
+        if (symtabIndex >= shnum)
+            return std::nullopt;
+        const auto &symtab = shdrs[symtabIndex];
+        if (symtab.sh_type != elf::SHT_SYMTAB || symtab.sh_link >= shnum ||
+            (symtab.sh_entsize != 0 && symtab.sh_entsize != sizeof(elf::Elf64_Sym)) ||
+            (symtab.sh_size % sizeof(elf::Elf64_Sym)) != 0)
+            return std::nullopt;
+        const uint64_t symCount = symtab.sh_size / sizeof(elf::Elf64_Sym);
+        if (symIndex >= symCount || !checkedRange(static_cast<size_t>(symtab.sh_offset),
+                                                  static_cast<size_t>(symtab.sh_size),
+                                                  size))
+            return std::nullopt;
+        const auto sym = readStruct<elf::Elf64_Sym>(
+            data, size, static_cast<size_t>(symtab.sh_offset) +
+                            static_cast<size_t>(symIndex) * sizeof(elf::Elf64_Sym));
+        if (!sym)
+            return std::nullopt;
+        const auto &strtab = shdrs[symtab.sh_link];
+        return readStringOpt(data,
+                             size,
+                             static_cast<size_t>(strtab.sh_offset),
+                             static_cast<size_t>(strtab.sh_size),
+                             sym->st_name);
+    };
+
+    std::vector<ElfComdatGroup> comdatGroups;
     for (size_t i = 1; i < shnum; ++i) {
         const auto *sh = &shdrs[i];
         if (sh->sh_type != elf::SHT_GROUP)
@@ -312,6 +345,11 @@ bool readElfObj(
         const uint32_t flags = readLE32(data + static_cast<size_t>(sh->sh_offset));
         if ((flags & elf::GRP_COMDAT) == 0)
             continue;
+        auto signature = readSymbolNameFromTable(sh->sh_link, sh->sh_info);
+        if (!signature || signature->empty()) {
+            err << "error: " << name << ": ELF COMDAT group has invalid signature symbol\n";
+            return false;
+        }
         std::vector<uint32_t> members;
         const size_t count = static_cast<size_t>(sh->sh_size / 4);
         for (size_t entry = 1; entry < count; ++entry) {
@@ -325,7 +363,7 @@ bool readElfObj(
             members.push_back(member);
         }
         if (!members.empty())
-            comdatGroups.push_back(std::move(members));
+            comdatGroups.push_back(ElfComdatGroup{std::move(*signature), std::move(members)});
     }
 
     // Build sections (index 0 = null).
@@ -369,8 +407,9 @@ bool readElfObj(
         constexpr uint32_t SHF_MERGE = 0x10;
         constexpr uint32_t SHF_STRINGS = 0x20;
         sec.isCStringSection =
-            ((sh->sh_flags & SHF_MERGE) != 0 && (sh->sh_flags & SHF_STRINGS) != 0) ||
-            sec.name.find(".str") != std::string::npos;
+            sec.alloc &&
+            (((sh->sh_flags & SHF_MERGE) != 0 && (sh->sh_flags & SHF_STRINGS) != 0) ||
+             sec.name.rfind(".rodata.str", 0) == 0);
 
         if (sh->sh_type == elf::SHT_NOBITS) {
             sec.zeroFill = true;
@@ -412,7 +451,7 @@ bool readElfObj(
 
     for (const auto &group : comdatGroups) {
         uint32_t leader = 0;
-        for (uint32_t elfSec : group) {
+        for (uint32_t elfSec : group.members) {
             if (elfSec < secMap.size() && secMap[elfSec] != 0) {
                 leader = secMap[elfSec];
                 break;
@@ -420,9 +459,14 @@ bool readElfObj(
         }
         if (leader == 0)
             continue;
-        for (uint32_t elfSec : group) {
-            if (elfSec < secMap.size() && secMap[elfSec] != 0 && secMap[elfSec] != leader)
-                obj.sections[secMap[elfSec]].associativeSection = leader;
+        for (uint32_t elfSec : group.members) {
+            if (elfSec >= secMap.size() || secMap[elfSec] == 0)
+                continue;
+            auto &member = obj.sections[secMap[elfSec]];
+            member.comdatSelection = ComdatSelection::Any;
+            member.comdatKey = group.signature;
+            if (secMap[elfSec] != leader)
+                member.associativeSection = leader;
         }
     }
 
@@ -549,6 +593,15 @@ bool readElfObj(
                 os.sectionIndex = 0;
             } else if (effectiveShndx < shnum && effectiveShndx != elf::SHN_UNDEF) {
                 os.sectionIndex = secMap[effectiveShndx];
+                if (os.sectionIndex == 0) {
+                    err << "error: " << name << ": ELF symbol '" << os.name
+                        << "' references unsupported section index " << effectiveShndx << "\n";
+                    return false;
+                }
+            } else if (effectiveShndx != elf::SHN_UNDEF) {
+                err << "error: " << name << ": ELF symbol '" << os.name
+                    << "' uses unsupported section index " << effectiveShndx << "\n";
+                return false;
             }
 
             os.offset = effectiveShndx == elf::SHN_COMMON ? 0 : static_cast<size_t>(sym->st_value);
@@ -566,8 +619,16 @@ bool readElfObj(
 
         // sh_info points to the section these relocs apply to.
         const uint32_t targetSecElf = shdrs[i].sh_info;
-        if (targetSecElf >= shnum || secMap[targetSecElf] == 0)
-            continue;
+        if (targetSecElf >= shnum) {
+            err << "error: " << name << ": ELF relocation section references invalid target section "
+                << targetSecElf << "\n";
+            return false;
+        }
+        if (secMap[targetSecElf] == 0) {
+            err << "error: " << name << ": ELF relocation section targets unsupported section "
+                << targetSecElf << "\n";
+            return false;
+        }
 
         auto &targetSec = obj.sections[secMap[targetSecElf]];
         if (!checkedRange(static_cast<size_t>(shdrs[i].sh_offset),

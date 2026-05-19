@@ -392,6 +392,21 @@ int main() {
             const size_t baseSize = 4 + 140 * 1024 * 1024 + 4;
             CHECK(layout.sections[0].data.size() >= baseSize + 12);
             CHECK(countInsn(layout.sections[0].data, 0xD61F0200) == 1);
+            bool sawSyntheticChunk = false;
+            bool chunksSorted = true;
+            bool chunksAligned = true;
+            size_t previousOffset = 0;
+            for (size_t i = 0; i < layout.sections[0].chunks.size(); ++i) {
+                const auto &chunk = layout.sections[0].chunks[i];
+                sawSyntheticChunk = sawSyntheticChunk || chunk.synthetic;
+                chunksAligned = chunksAligned && ((chunk.outputOffset & 0x3u) == 0);
+                if (i != 0 && chunk.outputOffset < previousOffset)
+                    chunksSorted = false;
+                previousOffset = chunk.outputOffset;
+            }
+            CHECK(sawSyntheticChunk);
+            CHECK(chunksSorted);
+            CHECK(chunksAligned);
 
             std::unordered_set<std::string> dynamicSyms;
             std::ostringstream relocErr;

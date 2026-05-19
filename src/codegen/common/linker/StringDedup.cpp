@@ -9,7 +9,7 @@
 // Purpose: Implements cross-module string deduplication for the native linker.
 //          Operates between deadStrip() and mergeSections() in the link pipeline.
 // Key invariants:
-//   - Only scans LOCAL symbols at exact offsets with NUL-terminated content
+//   - Only scans loadable C-string sections with symbols at exact string starts
 //   - Non-string rodata (floats, alignment padding) is skipped
 //   - All duplicates share one collision-free synthetic global name
 //   - Canonical copy is first occurrence; others become aliases
@@ -100,7 +100,7 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
             // unsafe: binary data like integer arrays may start with a byte
             // followed by NUL, which would be misidentified as a short string
             // and merged with an unrelated real string, corrupting references.
-            if (!sec.isCStringSection)
+            if (!sec.alloc || !sec.isCStringSection)
                 continue;
             if (sec.data.empty())
                 continue;
@@ -124,6 +124,8 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
             // (bitmap fonts, lookup tables) often starts with 0x00 and would be
             // misidentified as an empty string, causing incorrect merging.
             if (strLen <= 1)
+                continue;
+            if (sym.size != 0 && sym.size != strLen)
                 continue;
 
             // Use the raw bytes (including NUL) as the content key.
@@ -188,6 +190,22 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
         if (!sec.relocs.empty())
             continue;
         if (sectionsWithIncomingRelocs.count(sectionKey))
+            continue;
+        bool hasUnsafeSymbol = false;
+        std::unordered_set<size_t> coveredSymbolIndices;
+        coveredSymbolIndices.reserve(locIndices.size());
+        for (size_t locIdx : locIndices)
+            coveredSymbolIndices.insert(locations[locIdx].symIdx);
+        for (size_t symIdx = 1; symIdx < obj.symbols.size(); ++symIdx) {
+            const auto &sym = obj.symbols[symIdx];
+            if (sym.sectionIndex != firstLoc.secIdx)
+                continue;
+            if (coveredSymbolIndices.count(symIdx) == 0) {
+                hasUnsafeSymbol = true;
+                break;
+            }
+        }
+        if (hasUnsafeSymbol)
             continue;
 
         std::vector<size_t> sortedByOffset = locIndices;

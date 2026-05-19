@@ -24,6 +24,7 @@
 #include <cstdint>
 #include <limits>
 #include <sstream>
+#include <unordered_map>
 #include <vector>
 
 namespace viper::codegen::linker {
@@ -36,6 +37,15 @@ static bool allowDuplicateStrongDefinition(const std::string &name,
 static bool materializeCommonSymbols(std::vector<ObjFile> &allObjects,
                                      std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
                                      std::ostream &err);
+
+struct ComdatDefinition {
+    ComdatSelection selection = ComdatSelection::None;
+    std::string key;
+    size_t objIdx = 0;
+    uint32_t secIdx = 0;
+    size_t size = 0;
+    uint64_t hash = 0;
+};
 
 static bool isSupportedCommonAlignment(size_t alignment) {
     return alignment != 0 && (alignment & (alignment - 1)) == 0 &&
@@ -72,6 +82,82 @@ static void setEntryFromCommon(GlobalSymEntry &entry,
     entry.commonAlignment = std::max(entry.commonAlignment, sym.commonAlignment);
 }
 
+static uint64_t hashBytes(const std::vector<uint8_t> &bytes) {
+    uint64_t h = 1469598103934665603ULL;
+    for (uint8_t b : bytes) {
+        h ^= b;
+        h *= 1099511628211ULL;
+    }
+    return h;
+}
+
+static bool getComdatDefinition(const ObjFile &obj,
+                                size_t objIdx,
+                                const ObjSymbol &sym,
+                                ComdatDefinition &out) {
+    if (sym.sectionIndex == 0 || sym.sectionIndex >= obj.sections.size())
+        return false;
+    const auto &sec = obj.sections[sym.sectionIndex];
+    if (sec.comdatSelection == ComdatSelection::None ||
+        sec.comdatSelection == ComdatSelection::Associative ||
+        sec.comdatKey.empty())
+        return false;
+    out.selection = sec.comdatSelection;
+    out.key = sec.comdatKey;
+    out.objIdx = objIdx;
+    out.secIdx = sym.sectionIndex;
+    out.size = sec.data.size();
+    out.hash = hashBytes(sec.data);
+    return true;
+}
+
+static bool selectComdatDuplicate(const ObjFile &obj,
+                                  const ObjSymbol &sym,
+                                  size_t objIdx,
+                                  const ComdatDefinition &existing,
+                                  const ComdatDefinition &candidate,
+                                  GlobalSymEntry &entry,
+                                  std::ostream &err) {
+    if (existing.key != candidate.key) {
+        err << "error: multiply defined symbol '" << sym.name
+            << "' has mismatched COMDAT keys\n";
+        return false;
+    }
+
+    const ComdatSelection selection =
+        existing.selection != ComdatSelection::None ? existing.selection : candidate.selection;
+    switch (selection) {
+        case ComdatSelection::Any:
+            return true;
+        case ComdatSelection::SameSize:
+            if (existing.size == candidate.size)
+                return true;
+            err << "error: COMDAT SAME_SIZE symbol '" << sym.name
+                << "' has different section sizes\n";
+            return false;
+        case ComdatSelection::ExactMatch:
+            if (existing.size == candidate.size && existing.hash == candidate.hash)
+                return true;
+            err << "error: COMDAT EXACT_MATCH symbol '" << sym.name
+                << "' has different contents\n";
+            return false;
+        case ComdatSelection::Largest:
+            if (candidate.size > existing.size)
+                setEntryFromSymbol(entry, sym, objIdx, GlobalSymEntry::Global);
+            return true;
+        case ComdatSelection::NoDuplicates:
+            err << "error: COMDAT NODUPLICATES symbol '" << sym.name
+                << "' is defined more than once\n";
+            return false;
+        case ComdatSelection::None:
+        case ComdatSelection::Associative:
+            err << "error: multiply defined symbol '" << sym.name << "' in " << obj.name
+                << "\n";
+            return false;
+    }
+    return false;
+}
+
 /// Add symbols from a single object file into the global table.
 /// @param obj        The object file.
 /// @param objIdx     Its index in allObjects.
@@ -82,6 +168,7 @@ static void setEntryFromCommon(GlobalSymEntry &entry,
 static bool addObjSymbols(const ObjFile &obj,
                           size_t objIdx,
                           std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
+                          std::unordered_map<std::string, ComdatDefinition> &comdatDefs,
                           std::unordered_set<std::string> &undefined,
                           LinkPlatform platform,
                           bool allowArchiveDefinitionPreference,
@@ -134,32 +221,44 @@ static bool addObjSymbols(const ObjFile &obj,
         }
 
         auto it = findWithPlatformFallback(globalSyms, sym.name, platform);
+        ComdatDefinition candidateComdat;
+        const bool hasCandidateComdat = getComdatDefinition(obj, objIdx, sym, candidateComdat);
         if (it == globalSyms.end()) {
             // New symbol.
             GlobalSymEntry e;
             e.name = sym.name;
-            if (sym.common)
+            if (sym.common) {
                 setEntryFromCommon(
                     e, sym, objIdx, isWeak ? GlobalSymEntry::Weak : GlobalSymEntry::Global);
-            else
+            } else {
                 setEntryFromSymbol(
                     e, sym, objIdx, isWeak ? GlobalSymEntry::Weak : GlobalSymEntry::Global);
+            }
             globalSyms[sym.name] = std::move(e);
+            if (hasCandidateComdat)
+                comdatDefs[sym.name] = candidateComdat;
+            else
+                comdatDefs.erase(sym.name);
             eraseUndefinedVariants(sym.name);
         } else {
             auto &existing = it->second;
             if (existing.binding == GlobalSymEntry::Undefined) {
                 // Was undefined, now defined.
-                if (sym.common)
+                if (sym.common) {
                     setEntryFromCommon(existing,
                                        sym,
                                        objIdx,
                                        isWeak ? GlobalSymEntry::Weak : GlobalSymEntry::Global);
-                else
+                } else {
                     setEntryFromSymbol(existing,
                                        sym,
                                        objIdx,
                                        isWeak ? GlobalSymEntry::Weak : GlobalSymEntry::Global);
+                }
+                if (hasCandidateComdat)
+                    comdatDefs[sym.name] = candidateComdat;
+                else
+                    comdatDefs.erase(sym.name);
                 eraseUndefinedVariants(sym.name);
             } else if (sym.common) {
                 if (existing.common) {
@@ -170,10 +269,12 @@ static bool addObjSymbols(const ObjFile &obj,
                         existing.binding = GlobalSymEntry::Global;
                         existing.objIndex = objIdx;
                     }
+                    comdatDefs.erase(sym.name);
                     eraseUndefinedVariants(sym.name);
                 } else if (existing.binding == GlobalSymEntry::Weak && !isWeak) {
                     // A strong common definition overrides a weak real definition.
                     setEntryFromCommon(existing, sym, objIdx, GlobalSymEntry::Global);
+                    comdatDefs.erase(sym.name);
                     eraseUndefinedVariants(sym.name);
                 }
                 // Existing strong real definitions override tentative definitions.
@@ -181,22 +282,42 @@ static bool addObjSymbols(const ObjFile &obj,
                 if (!isWeak) {
                     // A strong real definition overrides any tentative definition.
                     setEntryFromSymbol(existing, sym, objIdx, GlobalSymEntry::Global);
+                    if (hasCandidateComdat)
+                        comdatDefs[sym.name] = candidateComdat;
+                    else
+                        comdatDefs.erase(sym.name);
                     eraseUndefinedVariants(sym.name);
                 }
                 // Weak real definitions do not override common definitions.
             } else if (existing.binding == GlobalSymEntry::Weak && !isWeak) {
                 // Strong overrides weak.
                 setEntryFromSymbol(existing, sym, objIdx, GlobalSymEntry::Global);
+                if (hasCandidateComdat)
+                    comdatDefs[sym.name] = candidateComdat;
+                else
+                    comdatDefs.erase(sym.name);
                 eraseUndefinedVariants(sym.name);
             } else if (existing.binding == GlobalSymEntry::Global && !isWeak) {
+                auto comdatIt = findWithPlatformFallback(comdatDefs, sym.name, platform);
+                if (hasCandidateComdat && comdatIt != comdatDefs.end()) {
+                    if (!selectComdatDuplicate(
+                            obj, sym, objIdx, comdatIt->second, candidateComdat, existing, err))
+                        return false;
+                    if (candidateComdat.selection == ComdatSelection::Largest &&
+                        candidateComdat.size > comdatIt->second.size)
+                        comdatIt->second = candidateComdat;
+                    eraseUndefinedVariants(sym.name);
+                    continue;
+                }
                 if (allowDuplicateStrongDefinition(
                         sym.name, platform, allowArchiveDefinitionPreference))
                     continue;
                 err << "error: multiply defined symbol '" << sym.name << "' in " << obj.name
                     << "\n";
                 return false;
+            } else {
+                // Weak doesn't override anything.
             }
-            // Weak doesn't override anything.
         }
     }
     return true;
@@ -273,9 +394,10 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
     // Start with initial objects.
     allObjects = initialObjects;
     std::unordered_set<std::string> undefined;
+    std::unordered_map<std::string, ComdatDefinition> comdatDefs;
 
     for (size_t i = 0; i < allObjects.size(); ++i) {
-        if (!addObjSymbols(allObjects[i], i, globalSyms, undefined, platform, false, err))
+        if (!addObjSymbols(allObjects[i], i, globalSyms, comdatDefs, undefined, platform, false, err))
             return false;
     }
 
@@ -353,6 +475,7 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
                     if (!addObjSymbols(allObjects[newIdx],
                                        newIdx,
                                        globalSyms,
+                                       comdatDefs,
                                        undefined,
                                        platform,
                                        allowArchiveDefinitionPreference,

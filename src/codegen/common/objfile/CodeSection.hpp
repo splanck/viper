@@ -444,6 +444,11 @@ class CodeSection {
             const bool legacyTargetsAppendedSection =
                 !rebased.targetSectionIdentityValid && rebased.targetOffsetValid &&
                 rebased.targetSection == legacyAppendedSection;
+            if (rebased.targetOffsetValid && !rebased.targetSectionIdentityValid &&
+                legacyAppendedSection == SymbolSection::Undefined) {
+                throw std::logic_error(
+                    "CodeSection append requires section identity for section-offset relocation");
+            }
             if (rebased.targetOffsetValid &&
                 (targetsAppendedIdentity || legacyTargetsAppendedSection)) {
                 rebased.targetOffset = rebaseLogicalOffset(reloc.targetOffset);

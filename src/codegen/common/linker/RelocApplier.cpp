@@ -107,6 +107,35 @@ static bool isAArch64LdrXUnsignedOffset(uint32_t insn) {
     return (insn & 0xFFC00000u) == 0xF9400000u;
 }
 
+static bool isX64RexPrefix(uint8_t byte) {
+    return (byte & 0xF0u) == 0x40u;
+}
+
+static bool validateGotPCRelXMov(const ObjFile &obj,
+                                 const ObjReloc &rel,
+                                 const uint8_t *patch,
+                                 size_t patchOff,
+                                 const std::string &symName,
+                                 std::ostream &err) {
+    if (patchOff < 2 || patch[-2] != 0x8B || (patch[-1] & 0xC7u) != 0x05u) {
+        err << "error: " << obj.name
+            << ": local GOTPCRELX relaxation requires MOV r*, disp32(%rip)";
+        if (!symName.empty())
+            err << " for '" << symName << "'";
+        err << "\n";
+        return false;
+    }
+    if (rel.type == elf_x64::kRexGotPcRelX && (patchOff < 3 || !isX64RexPrefix(patch[-3]))) {
+        err << "error: " << obj.name
+            << ": REX_GOTPCRELX relaxation requires a REX-prefixed MOV";
+        if (!symName.empty())
+            err << " for '" << symName << "'";
+        err << "\n";
+        return false;
+    }
+    return true;
+}
+
 static bool isAArch64Branch26Opcode(uint32_t insn) {
     return (insn & 0x7C000000u) == 0x14000000u; // B or BL.
 }
@@ -267,11 +296,37 @@ struct TlsImageInfo {
 static LocationMap buildLocationMap(const LinkLayout &layout) {
     LocationMap map;
     for (size_t si = 0; si < layout.sections.size(); ++si) {
-        for (const auto &chunk : layout.sections[si].chunks)
+        for (const auto &chunk : layout.sections[si].chunks) {
+            if (chunk.synthetic)
+                continue;
             map[InputSectionKey{chunk.inputObjIndex, chunk.inputSecIndex}] =
                 OutputLocation{si, chunk.outputOffset, chunk.size};
+        }
     }
     return map;
+}
+
+static bool hasMatchingAArch64GotPageReloc(const ObjFile &obj,
+                                           LinkArch arch,
+                                           const ObjSection &sec,
+                                           const ObjReloc &pageOffRel) {
+    if (pageOffRel.offset < 4)
+        return false;
+    for (const auto &candidate : sec.relocs) {
+        if (candidate.offset > std::numeric_limits<size_t>::max() - 4)
+            continue;
+        if (candidate.offset + 4 != pageOffRel.offset)
+            continue;
+        if (candidate.symIndex != pageOffRel.symIndex || candidate.addend != pageOffRel.addend)
+            continue;
+        if (classifyReloc(obj.format, arch, candidate.type) == RelocAction::GotPage21)
+            return true;
+        if (obj.format == ObjFileFormat::MachO &&
+            pageOffRel.type == macho_a64::kTlvpLoadPageOff12 &&
+            candidate.type == macho_a64::kTlvpLoadPage21)
+            return true;
+    }
+    return false;
 }
 
 /// Look up the output section and offset for a given (objIndex, secIndex).
@@ -935,14 +990,8 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                             base = git->second.resolvedAddr;
                         } else if (rel.type == elf_x64::kGotPcRelX ||
                                    rel.type == elf_x64::kRexGotPcRelX) {
-                            if (patchOff < 2 || patch[-2] != 0x8B) {
-                                err << "error: " << obj.name
-                                    << ": local GOTPCRELX relaxation requires MOV r*, disp32(%rip)";
-                                if (!symName.empty())
-                                    err << " for '" << symName << "'";
-                                err << "\n";
+                            if (!validateGotPCRelXMov(obj, rel, patch, patchOff, symName, err))
                                 return false;
-                            }
                             patch[-2] = 0x8D; // Relax mov foo@GOTPCRELX(%rip), %reg -> lea foo(%rip), %reg
                         } else {
                             err << "error: " << obj.name << ": missing GOT entry for '" << targetDisplay
@@ -1213,6 +1262,24 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                             }
                             uint32_t rd = insn & 0x1F;
                             uint32_t rn = (insn >> 5) & 0x1F;
+                            if (!hasMatchingAArch64GotPageReloc(obj, arch, sec, rel) ||
+                                patchOff < 4) {
+                                err << "error: " << obj.name
+                                    << ": local GOT relaxation requires an adjacent matching ADRP relocation";
+                                if (!symName.empty())
+                                    err << " for '" << symName << "'";
+                                err << "\n";
+                                return false;
+                            }
+                            uint32_t adrpInsn = readLE32(outSec.data.data() + patchOff - 4);
+                            if (!isAArch64AdrpOpcode(adrpInsn) || (adrpInsn & 0x1F) != rn) {
+                                err << "error: " << obj.name
+                                    << ": local GOT relaxation requires LDR base to match preceding ADRP";
+                                if (!symName.empty())
+                                    err << " for '" << symName << "'";
+                                err << "\n";
+                                return false;
+                            }
                             uint64_t target = 0;
                             if (!checkedRelocTarget(S, A, obj, symName, "GOT page offset", err, target))
                                 return false;

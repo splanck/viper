@@ -229,6 +229,23 @@ int main() {
         CHECK(!objs[1].sections[3].data.empty());
     }
 
+    // --- Always-live legacy ELF constructor/destructor sections include suffixes ---
+    {
+        auto user = makeObj("user.o", {".text"});
+        auto ctorObj = makeObj("ctors.o", {".ctors", ".ctors.101", ".dtors", ".dtors.999"});
+
+        std::vector<ObjFile> objs = {user, ctorObj};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::ostringstream err;
+
+        deadStrip(objs, 1, globalSyms, "main", err);
+
+        CHECK(!objs[1].sections[1].data.empty());
+        CHECK(!objs[1].sections[2].data.empty());
+        CHECK(!objs[1].sections[3].data.empty());
+        CHECK(!objs[1].sections[4].data.empty());
+    }
+
     // --- Always-live sections: ObjC metadata ---
     {
         auto user = makeObj("user.o", {".text"});

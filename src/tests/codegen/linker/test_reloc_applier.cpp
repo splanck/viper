@@ -982,6 +982,374 @@ int main() {
         CHECK(readLE32(layout.sections[0].data.data() + 3) == 0x00000FF9);
     }
 
+    // --- ELF x86_64 GOTPCRELX rejects non-RIP-relative MOV encodings ---
+    {
+        ObjFile obj;
+        obj.name = "test_bad_gotpcrelx_modrm.o";
+        obj.format = ObjFileFormat::ELF;
+        obj.sections.push_back({});
+
+        ObjSection text;
+        text.name = ".text";
+        text.data = {0x48, 0x8B, 0x04, 0x00, 0x00, 0x00, 0x00};
+        text.executable = true;
+        text.alloc = true;
+        ObjReloc rel;
+        rel.offset = 3;
+        rel.type = elf_x64::kRexGotPcRelX;
+        rel.symIndex = 1;
+        rel.addend = -4;
+        text.relocs.push_back(rel);
+        obj.sections.push_back(text);
+
+        ObjSection data;
+        data.name = ".data";
+        data.data.resize(8, 0xAA);
+        data.writable = true;
+        data.alloc = true;
+        obj.sections.push_back(data);
+
+        obj.symbols.push_back({});
+        ObjSymbol local;
+        local.name = "local_data";
+        local.binding = ObjSymbol::Local;
+        local.sectionIndex = 2;
+        obj.symbols.push_back(local);
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        layout.pageSize = 0x1000;
+        OutputSection outText;
+        outText.name = ".text";
+        outText.executable = true;
+        outText.virtualAddr = 0x401000;
+        outText.data = text.data;
+        outText.chunks.push_back({0, 1, 0, text.data.size()});
+        layout.sections.push_back(outText);
+        OutputSection outData;
+        outData.name = ".data";
+        outData.writable = true;
+        outData.virtualAddr = 0x402000;
+        outData.data = data.data;
+        outData.chunks.push_back({0, 2, 0, data.data.size()});
+        layout.sections.push_back(outData);
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(!applyRelocations(
+            objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err));
+        CHECK(err.str().find("requires MOV r*, disp32(%rip)") != std::string::npos);
+    }
+
+    // --- ELF x86_64 REX_GOTPCRELX rejects MOVs without a REX prefix ---
+    {
+        ObjFile obj;
+        obj.name = "test_bad_rex_gotpcrelx.o";
+        obj.format = ObjFileFormat::ELF;
+        obj.sections.push_back({});
+
+        ObjSection text;
+        text.name = ".text";
+        text.data = {0x8B, 0x05, 0x00, 0x00, 0x00, 0x00};
+        text.executable = true;
+        text.alloc = true;
+        ObjReloc rel;
+        rel.offset = 2;
+        rel.type = elf_x64::kRexGotPcRelX;
+        rel.symIndex = 1;
+        rel.addend = -4;
+        text.relocs.push_back(rel);
+        obj.sections.push_back(text);
+
+        ObjSection data;
+        data.name = ".data";
+        data.data.resize(8, 0xAA);
+        data.writable = true;
+        data.alloc = true;
+        obj.sections.push_back(data);
+
+        obj.symbols.push_back({});
+        ObjSymbol local;
+        local.name = "local_data";
+        local.binding = ObjSymbol::Local;
+        local.sectionIndex = 2;
+        obj.symbols.push_back(local);
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        layout.pageSize = 0x1000;
+        OutputSection outText;
+        outText.name = ".text";
+        outText.executable = true;
+        outText.virtualAddr = 0x401000;
+        outText.data = text.data;
+        outText.chunks.push_back({0, 1, 0, text.data.size()});
+        layout.sections.push_back(outText);
+        OutputSection outData;
+        outData.name = ".data";
+        outData.writable = true;
+        outData.virtualAddr = 0x402000;
+        outData.data = data.data;
+        outData.chunks.push_back({0, 2, 0, data.data.size()});
+        layout.sections.push_back(outData);
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(!applyRelocations(
+            objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err));
+        CHECK(err.str().find("requires a REX-prefixed MOV") != std::string::npos);
+    }
+
+    // --- ELF AArch64 local GOT relaxation rewrites a validated ADRP/LDR pair ---
+    {
+        ObjFile obj;
+        obj.name = "test_a64_local_got_pair.o";
+        obj.format = ObjFileFormat::ELF;
+        obj.sections.push_back({});
+
+        ObjSection text;
+        text.name = ".text";
+        text.data = {0x00, 0x00, 0x00, 0x90, 0x01, 0x00, 0x40, 0xF9}; // ADRP x0; LDR x1,[x0]
+        text.executable = true;
+        text.alloc = true;
+        ObjReloc page;
+        page.offset = 0;
+        page.type = elf_a64::kAdrGotPage;
+        page.symIndex = 1;
+        ObjReloc off;
+        off.offset = 4;
+        off.type = elf_a64::kLd64GotLo12Nc;
+        off.symIndex = 1;
+        text.relocs.push_back(page);
+        text.relocs.push_back(off);
+        obj.sections.push_back(text);
+
+        ObjSection data;
+        data.name = ".data";
+        data.data.resize(16, 0xAA);
+        data.writable = true;
+        data.alloc = true;
+        obj.sections.push_back(data);
+
+        obj.symbols.push_back({});
+        ObjSymbol local;
+        local.name = "local_data";
+        local.binding = ObjSymbol::Local;
+        local.sectionIndex = 2;
+        local.offset = 8;
+        obj.symbols.push_back(local);
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        layout.pageSize = 0x1000;
+        OutputSection outText;
+        outText.name = ".text";
+        outText.executable = true;
+        outText.virtualAddr = 0x401000;
+        outText.data = text.data;
+        outText.chunks.push_back({0, 1, 0, text.data.size()});
+        layout.sections.push_back(outText);
+        OutputSection outData;
+        outData.name = ".data";
+        outData.writable = true;
+        outData.virtualAddr = 0x402000;
+        outData.data = data.data;
+        outData.chunks.push_back({0, 2, 0, data.data.size()});
+        layout.sections.push_back(outData);
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::AArch64, err));
+        CHECK(readLE32(layout.sections[0].data.data() + 4) == 0x91002001u);
+    }
+
+    // --- ELF AArch64 local GOT relaxation requires the matching ADRP relocation ---
+    {
+        ObjFile obj;
+        obj.name = "test_a64_local_got_missing_adrp.o";
+        obj.format = ObjFileFormat::ELF;
+        obj.sections.push_back({});
+
+        ObjSection text;
+        text.name = ".text";
+        text.data = {0x00, 0x00, 0x40, 0xF9}; // LDR x0,[x0]
+        text.executable = true;
+        text.alloc = true;
+        ObjReloc rel;
+        rel.offset = 0;
+        rel.type = elf_a64::kLd64GotLo12Nc;
+        rel.symIndex = 1;
+        text.relocs.push_back(rel);
+        obj.sections.push_back(text);
+
+        ObjSection data;
+        data.name = ".data";
+        data.data.resize(8, 0xAA);
+        data.writable = true;
+        data.alloc = true;
+        obj.sections.push_back(data);
+
+        obj.symbols.push_back({});
+        ObjSymbol local;
+        local.name = "local_data";
+        local.binding = ObjSymbol::Local;
+        local.sectionIndex = 2;
+        obj.symbols.push_back(local);
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        layout.pageSize = 0x1000;
+        OutputSection outText;
+        outText.name = ".text";
+        outText.executable = true;
+        outText.virtualAddr = 0x401000;
+        outText.data = text.data;
+        outText.chunks.push_back({0, 1, 0, text.data.size()});
+        layout.sections.push_back(outText);
+        OutputSection outData;
+        outData.name = ".data";
+        outData.writable = true;
+        outData.virtualAddr = 0x402000;
+        outData.data = data.data;
+        outData.chunks.push_back({0, 2, 0, data.data.size()});
+        layout.sections.push_back(outData);
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(!applyRelocations(
+            objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::AArch64, err));
+        CHECK(err.str().find("requires an adjacent matching ADRP relocation") !=
+              std::string::npos);
+    }
+
+    // --- Mach-O AArch64 TLVP page-offset relaxation accepts its PAGE21 pair ---
+    {
+        ObjFile obj;
+        obj.name = "test_macho_tlvp_pair.o";
+        obj.format = ObjFileFormat::MachO;
+        obj.sections.push_back({});
+
+        ObjSection text;
+        text.name = "__TEXT,__text";
+        text.data = {0x00, 0x00, 0x00, 0x90, 0x01, 0x00, 0x40, 0xF9}; // ADRP x0; LDR x1,[x0]
+        text.executable = true;
+        text.alloc = true;
+        ObjReloc page;
+        page.offset = 0;
+        page.type = macho_a64::kTlvpLoadPage21;
+        page.symIndex = 1;
+        ObjReloc off;
+        off.offset = 4;
+        off.type = macho_a64::kTlvpLoadPageOff12;
+        off.symIndex = 1;
+        text.relocs.push_back(page);
+        text.relocs.push_back(off);
+        obj.sections.push_back(text);
+
+        ObjSection data;
+        data.name = "__DATA,__thread_vars";
+        data.data.resize(16, 0xAA);
+        data.writable = true;
+        data.alloc = true;
+        data.tls = true;
+        obj.sections.push_back(data);
+
+        obj.symbols.push_back({});
+        ObjSymbol local;
+        local.name = "tls_descriptor";
+        local.binding = ObjSymbol::Local;
+        local.sectionIndex = 2;
+        local.offset = 8;
+        obj.symbols.push_back(local);
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        layout.pageSize = 0x4000;
+        OutputSection outText;
+        outText.name = ".text";
+        outText.executable = true;
+        outText.virtualAddr = 0x100004000ULL;
+        outText.data = text.data;
+        outText.chunks.push_back({0, 1, 0, text.data.size()});
+        layout.sections.push_back(outText);
+        OutputSection outData;
+        outData.name = ".tdata";
+        outData.writable = true;
+        outData.tls = true;
+        outData.virtualAddr = 0x100008000ULL;
+        outData.data = data.data;
+        outData.chunks.push_back({0, 2, 0, data.data.size()});
+        layout.sections.push_back(outData);
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(applyRelocations(objs, layout, dynSyms, LinkPlatform::macOS, LinkArch::AArch64, err));
+        CHECK(readLE32(layout.sections[0].data.data() + 4) == 0x91002001u);
+    }
+
+    // --- ELF AArch64 local GOT relaxation requires LDR base to match ADRP result ---
+    {
+        ObjFile obj;
+        obj.name = "test_a64_local_got_mismatched_regs.o";
+        obj.format = ObjFileFormat::ELF;
+        obj.sections.push_back({});
+
+        ObjSection text;
+        text.name = ".text";
+        text.data = {0x01, 0x00, 0x00, 0x90, 0x00, 0x00, 0x40, 0xF9}; // ADRP x1; LDR x0,[x0]
+        text.executable = true;
+        text.alloc = true;
+        ObjReloc page;
+        page.offset = 0;
+        page.type = elf_a64::kAdrGotPage;
+        page.symIndex = 1;
+        ObjReloc off;
+        off.offset = 4;
+        off.type = elf_a64::kLd64GotLo12Nc;
+        off.symIndex = 1;
+        text.relocs.push_back(page);
+        text.relocs.push_back(off);
+        obj.sections.push_back(text);
+
+        ObjSection data;
+        data.name = ".data";
+        data.data.resize(8, 0xAA);
+        data.writable = true;
+        data.alloc = true;
+        obj.sections.push_back(data);
+
+        obj.symbols.push_back({});
+        ObjSymbol local;
+        local.name = "local_data";
+        local.binding = ObjSymbol::Local;
+        local.sectionIndex = 2;
+        obj.symbols.push_back(local);
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        layout.pageSize = 0x1000;
+        OutputSection outText;
+        outText.name = ".text";
+        outText.executable = true;
+        outText.virtualAddr = 0x401000;
+        outText.data = text.data;
+        outText.chunks.push_back({0, 1, 0, text.data.size()});
+        layout.sections.push_back(outText);
+        OutputSection outData;
+        outData.name = ".data";
+        outData.writable = true;
+        outData.virtualAddr = 0x402000;
+        outData.data = data.data;
+        outData.chunks.push_back({0, 2, 0, data.data.size()});
+        layout.sections.push_back(outData);
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(!applyRelocations(
+            objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::AArch64, err));
+        CHECK(err.str().find("requires LDR base to match preceding ADRP") != std::string::npos);
+    }
+
     // --- COFF AArch64 BRANCH26 patches BL/B using the Windows relocation kind ---
     {
         std::vector<uint8_t> code(4, 0);

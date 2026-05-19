@@ -81,6 +81,7 @@ struct InputChunk {
     size_t inputSecIndex; ///< Index into that ObjFile's sections.
     size_t outputOffset;  ///< Byte offset within the output section.
     size_t size;          ///< Size in bytes.
+    bool synthetic = false; ///< True when the bytes were created by the linker.
 };
 
 /// Hashable key for maps indexed by an input object/section pair.
@@ -140,6 +141,16 @@ inline bool isWindowsMetadataSection(const std::string &name) {
     return name.rfind(".pdata", 0) == 0 || name.rfind(".xdata", 0) == 0;
 }
 
+inline bool isElfMetadataSection(const std::string &name) {
+    return name == ".eh_frame" || name.rfind(".eh_frame.", 0) == 0 ||
+           name == ".gcc_except_table" || name.rfind(".gcc_except_table.", 0) == 0 ||
+           name.rfind(".note.", 0) == 0 || name == ".note";
+}
+
+inline bool isPreservedNamedSection(const std::string &name) {
+    return isObjCSection(name) || isWindowsMetadataSection(name) || isElfMetadataSection(name);
+}
+
 /// Symbols synthesized by the Windows native linker rather than imported from
 /// a DLL or provided by a runtime archive.
 inline bool isWindowsStdioOptionsStorageSymbol(const std::string &name) {
@@ -186,7 +197,7 @@ inline SectionClass classifySection(const std::string &name,
     // ObjC metadata and PE unwind sections must be preserved with their
     // original names because downstream runtimes/loaders locate them by name
     // or by dedicated data-directory ranges derived from those names.
-    if (isObjCSection(name) || isWindowsMetadataSection(name))
+    if (isPreservedNamedSection(name))
         return SectionClass::ObjC;
     if (executable)
         return SectionClass::Text;

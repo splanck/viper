@@ -327,8 +327,11 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
         const uint8_t *header = ar.data.data() + pos;
 
         // Verify header end magic "'\n".
-        if (header[58] != '`' || header[59] != '\n')
-            break;
+        if (header[58] != '`' || header[59] != '\n') {
+            err << "error: malformed archive member header at offset " << pos << " in '" << path
+                << "'\n";
+            return false;
+        }
 
         size_t memberSize = parseSize(header);
         if (memberSize == SIZE_MAX) {
@@ -456,13 +459,18 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
             return false;
         }
         if (pos & 1) {
-            if (pos == std::numeric_limits<size_t>::max()) {
-                err << "error: archive member alignment exceeds addressable size in '" << path
-                    << "'\n";
+            if (pos >= fileSize || ar.data[pos] != '\n') {
+                err << "error: archive member at offset " << dataStart
+                    << " is missing its padding byte in '" << path << "'\n";
                 return false;
             }
             ++pos;
         }
+    }
+    if (pos != fileSize) {
+        err << "error: trailing malformed archive data at offset " << pos << " in '" << path
+            << "'\n";
+        return false;
     }
 
     // Second pass: build member list (non-special members only).
@@ -494,6 +502,10 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
         if (it != headerOffsetToIdx.end()) {
             ar.symbolIndex.emplace(symName, it->second);
             ar.symbolCandidates[symName].push_back(it->second);
+        } else {
+            err << "error: archive symbol '" << symName
+                << "' references missing member offset " << fileOffset << " in '" << path << "'\n";
+            return false;
         }
     }
 

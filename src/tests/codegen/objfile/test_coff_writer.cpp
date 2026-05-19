@@ -608,7 +608,7 @@ int main() {
         CHECK(commonParsed.symbols[commonIdx].binding == ObjSymbol::Global);
         CHECK(commonParsed.symbols[commonIdx].common);
         CHECK(commonParsed.symbols[commonIdx].size == 16);
-        CHECK(commonParsed.symbols[commonIdx].commonAlignment == 8);
+        CHECK(commonParsed.symbols[commonIdx].commonAlignment == 16);
         CHECK(commonParsed.symbols[commonIdx].sectionIndex == 0);
     }
 
