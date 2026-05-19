@@ -233,6 +233,13 @@ static void splitMachOTextSubsections(ObjFile &obj) {
     if (ranges.empty())
         return;
 
+    // Direct-mapped sections were copied with their original relocation lists
+    // above. Once any __text splitting happens, all relocations are redistributed
+    // below so offsets can be adjusted for split ranges. Clear the copied lists
+    // first to avoid applying direct-mapped section relocations twice.
+    for (size_t si = 1; si < newSections.size(); ++si)
+        newSections[si].relocs.clear();
+
     for (auto &sym : obj.symbols) {
         if (sym.sectionIndex == 0 || sym.sectionIndex >= directMap.size())
             continue;
@@ -529,6 +536,7 @@ bool readMachOObj(
 
                     const uint32_t info = ri->r_info;
                     const uint32_t symbolNum = info & 0x00FFFFFF;
+                    const bool isPcRel = ((info >> 24) & 1) != 0;
                     const bool isExtern = ((info >> 27) & 1) != 0;
                     const uint32_t relLength = (info >> 25) & 0x3;
                     const uint32_t relType = (info >> 28) & 0xF;
@@ -550,6 +558,8 @@ bool readMachOObj(
                     rel.offset = static_cast<size_t>(ri->r_address);
                     rel.symIndex = symbolNum; // nlist index or section ordinal.
                     rel.type = relType;
+                    rel.pcrel = isPcRel;
+                    rel.length = static_cast<uint8_t>(relLength);
                     rel.sectionRelative = !isExtern;
 
                     if (hasPendingAddend) {

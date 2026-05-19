@@ -114,9 +114,11 @@ static void rt_commandpalette_on_execute(vg_commandpalette_t *palette,
                                          void *user_data) {
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)user_data;
     if (data && data->magic == RT_COMMANDPALETTE_DATA_MAGIC && cmd && cmd->id) {
-        if (data->selected_command)
-            free(data->selected_command);
-        data->selected_command = strdup(cmd->id);
+        char *copy = strdup(cmd->id);
+        if (!copy)
+            return;
+        free(data->selected_command);
+        data->selected_command = copy;
         data->was_selected = 1;
     }
     (void)palette;
@@ -137,6 +139,8 @@ void *rt_commandpalette_new(void *parent) {
     rt_gui_app_t *app = rt_gui_app_from_handle(parent);
     if (!app)
         app = s_current_app;
+    if (!app)
+        return NULL;
     vg_commandpalette_t *palette = vg_commandpalette_create();
     if (!palette)
         return NULL;
@@ -185,9 +189,11 @@ void rt_commandpalette_add_command(void *palette,
     rt_commandpalette_data_t *data = rt_commandpalette_checked(palette);
     if (!data || !data->palette)
         return;
+    if (rt_string_contains_nul(id))
+        return;
     char *cid = rt_string_to_cstr(id);
-    char *clabel = rt_string_to_cstr(label);
-    char *ccat = rt_string_to_cstr(category);
+    char *clabel = rt_string_to_gui_cstr(label);
+    char *ccat = rt_string_to_gui_cstr(category);
 
     // Prepend category to label if non-empty (e.g. "[File] Open")
     char *display = clabel;
@@ -223,10 +229,12 @@ void rt_commandpalette_add_command_with_shortcut(
     rt_commandpalette_data_t *data = rt_commandpalette_checked(palette);
     if (!data || !data->palette)
         return;
+    if (rt_string_contains_nul(id))
+        return;
     char *cid = rt_string_to_cstr(id);
-    char *clabel = rt_string_to_cstr(label);
-    char *cshort = rt_string_to_cstr(shortcut);
-    char *ccat = rt_string_to_cstr(category);
+    char *clabel = rt_string_to_gui_cstr(label);
+    char *cshort = rt_string_to_gui_cstr(shortcut);
+    char *ccat = rt_string_to_gui_cstr(category);
 
     // Prepend category to label if non-empty
     char *display = clabel;
@@ -319,7 +327,7 @@ void rt_commandpalette_set_placeholder(void *palette, rt_string text) {
     rt_commandpalette_data_t *data = rt_commandpalette_checked(palette);
     if (!data || !data->palette)
         return;
-    char *ctext = rt_string_to_cstr(text);
+    char *ctext = rt_string_to_gui_cstr(text);
     if (data->palette)
         vg_commandpalette_set_placeholder(data->palette, ctext);
     if (ctext)
@@ -377,7 +385,7 @@ void rt_tooltip_show(rt_string text, int64_t x, int64_t y) {
     rt_gui_app_t *app = rt_gui_get_active_app();
     if (!app)
         return;
-    char *ctext = rt_string_to_cstr(text);
+    char *ctext = rt_string_to_gui_cstr(text);
 
     // Create tooltip if needed
     if (!app->manual_tooltip) {
@@ -406,8 +414,8 @@ void rt_tooltip_show_rich(rt_string title, rt_string body, int64_t x, int64_t y)
     rt_gui_app_t *app = rt_gui_get_active_app();
     if (!app)
         return;
-    char *ctitle = rt_string_to_cstr(title);
-    char *cbody = rt_string_to_cstr(body);
+    char *ctitle = rt_string_to_gui_cstr(title);
+    char *cbody = rt_string_to_gui_cstr(body);
 
     // Create tooltip if needed
     if (!app->manual_tooltip) {
@@ -418,20 +426,21 @@ void rt_tooltip_show_rich(rt_string title, rt_string body, int64_t x, int64_t y)
         // Combines title and body as plain text separated by newline.
         // Rich formatting (bold, colors) would require vg_tooltip_t enhancements.
         char *combined = rt_gui_join_title_body(ctitle, cbody);
-        if (combined) {
-            if (app->default_font) {
-                app->manual_tooltip->font = app->default_font;
-                app->manual_tooltip->font_size = app->default_font_size;
-            }
-            vg_tooltip_set_timing(app->manual_tooltip, app->manual_tooltip_delay_ms, 100, 0);
-            vg_tooltip_set_text(app->manual_tooltip, combined);
-            free(combined);
+        if (!combined)
+            goto tooltip_rich_done;
+        if (app->default_font) {
+            app->manual_tooltip->font = app->default_font;
+            app->manual_tooltip->font_size = app->default_font_size;
         }
+        vg_tooltip_set_timing(app->manual_tooltip, app->manual_tooltip_delay_ms, 100, 0);
+        vg_tooltip_set_text(app->manual_tooltip, combined);
+        free(combined);
         vg_tooltip_show_at(app->manual_tooltip,
                            rt_gui_clamp_i64_to_i32(x, INT32_MIN, INT32_MAX),
                            rt_gui_clamp_i64_to_i32(y, INT32_MIN, INT32_MAX));
     }
 
+tooltip_rich_done:
     if (ctitle)
         free(ctitle);
     if (cbody)
@@ -472,7 +481,7 @@ void rt_widget_set_tooltip(void *widget, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     if (!rt_gui_is_widget_handle(widget))
         return;
-    char *ctext = rt_string_to_cstr(text);
+    char *ctext = rt_string_to_gui_cstr(text);
     vg_widget_set_tooltip_text((vg_widget_t *)widget, ctext);
     if (ctext)
         free(ctext);
@@ -485,8 +494,8 @@ void rt_widget_set_tooltip_rich(void *widget, rt_string title, rt_string body) {
         return;
     // Combines title and body as plain text. Rich formatting would require
     // vg_tooltip_t enhancements.
-    char *ctitle = rt_string_to_cstr(title);
-    char *cbody = rt_string_to_cstr(body);
+    char *ctitle = rt_string_to_gui_cstr(title);
+    char *cbody = rt_string_to_gui_cstr(body);
 
     char *combined = rt_gui_join_title_body(ctitle, cbody);
     if (combined) {
@@ -633,7 +642,7 @@ void rt_toast_info(rt_string message) {
     if (!mgr)
         return;
 
-    char *cmsg = rt_string_to_cstr(message);
+    char *cmsg = rt_string_to_gui_cstr(message);
     uint32_t id = vg_notification_show(mgr, VG_NOTIFICATION_INFO, "Info", cmsg, 3000);
     for (size_t i = 0; i < mgr->notification_count; i++) {
         if (mgr->notifications[i] && mgr->notifications[i]->id == id) {
@@ -653,7 +662,7 @@ void rt_toast_success(rt_string message) {
     if (!mgr)
         return;
 
-    char *cmsg = rt_string_to_cstr(message);
+    char *cmsg = rt_string_to_gui_cstr(message);
     uint32_t id = vg_notification_show(mgr, VG_NOTIFICATION_SUCCESS, "Success", cmsg, 3000);
     for (size_t i = 0; i < mgr->notification_count; i++) {
         if (mgr->notifications[i] && mgr->notifications[i]->id == id) {
@@ -673,7 +682,7 @@ void rt_toast_warning(rt_string message) {
     if (!mgr)
         return;
 
-    char *cmsg = rt_string_to_cstr(message);
+    char *cmsg = rt_string_to_gui_cstr(message);
     uint32_t id = vg_notification_show(mgr, VG_NOTIFICATION_WARNING, "Warning", cmsg, 5000);
     for (size_t i = 0; i < mgr->notification_count; i++) {
         if (mgr->notifications[i] && mgr->notifications[i]->id == id) {
@@ -693,7 +702,7 @@ void rt_toast_error(rt_string message) {
     if (!mgr)
         return;
 
-    char *cmsg = rt_string_to_cstr(message);
+    char *cmsg = rt_string_to_gui_cstr(message);
     uint32_t id = vg_notification_show(mgr, VG_NOTIFICATION_ERROR, "Error", cmsg, 0);
     for (size_t i = 0; i < mgr->notification_count; i++) {
         if (mgr->notifications[i] && mgr->notifications[i]->id == id) {
@@ -718,7 +727,7 @@ void *rt_toast_new(rt_string message, int64_t type, int64_t duration_ms) {
     if (!mgr)
         return NULL;
 
-    char *cmsg = rt_string_to_cstr(message);
+    char *cmsg = rt_string_to_gui_cstr(message);
 
     rt_toast_data_t *data = (rt_toast_data_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_toast_data_t));
     if (!data) {
@@ -735,6 +744,11 @@ void *rt_toast_new(rt_string message, int64_t type, int64_t duration_ms) {
 
     data->id =
         vg_notification_show(mgr, rt_toast_type_to_vg(type), NULL, cmsg, clamped_duration);
+    if (data->id == 0) {
+        free(cmsg);
+        data->magic = 0;
+        return NULL;
+    }
     data->was_action_clicked = 0;
     data->was_dismissed = 0;
     data->dismissal_reported = 0;
@@ -756,22 +770,35 @@ void rt_toast_set_action(void *toast, rt_string label) {
     rt_toast_data_t *data = rt_toast_checked(toast);
     if (!data)
         return;
-    free(data->action_label);
-    data->action_label = rt_string_to_cstr(label);
-    vg_notification_manager_t *mgr = rt_get_notification_manager(rt_toast_live_app(data));
-    if (!mgr)
+    char *new_label = rt_string_to_gui_cstr(label);
+    if (!new_label || !new_label[0]) {
+        free(new_label);
         return;
+    }
+    vg_notification_manager_t *mgr = rt_get_notification_manager(rt_toast_live_app(data));
+    if (!mgr) {
+        free(new_label);
+        return;
+    }
     for (size_t i = 0; i < mgr->notification_count; i++) {
         vg_notification_t *notif = mgr->notifications[i];
         if (!notif || notif->id != data->id)
             continue;
+        char *notif_label = strdup(new_label);
+        if (!notif_label) {
+            free(new_label);
+            return;
+        }
+        free(data->action_label);
+        data->action_label = new_label;
         free(notif->action_label);
-        notif->action_label = data->action_label ? strdup(data->action_label) : NULL;
+        notif->action_label = notif_label;
         notif->action_callback = rt_toast_on_action;
         notif->action_user_data = data;
         mgr->base.needs_paint = true;
-        break;
+        return;
     }
+    free(new_label);
 }
 
 /// @brief Check if the toast's action button was clicked (edge-triggered).
@@ -801,7 +828,8 @@ int64_t rt_toast_was_dismissed(void *toast) {
     }
 
     // Check with the notification manager for auto-timeout dismissal
-    vg_notification_manager_t *mgr = rt_get_notification_manager(rt_toast_live_app(data));
+    rt_gui_app_t *app = rt_toast_live_app(data);
+    vg_notification_manager_t *mgr = app ? app->notification_manager : NULL;
     if (!mgr) {
         data->was_dismissed = 1;
         data->dismissal_reported = 1;
@@ -885,11 +913,12 @@ typedef struct rt_breadcrumb_data {
     uint64_t magic;
     vg_breadcrumb_t *breadcrumb;
     int64_t clicked_index;
-    char *clicked_data;
+    rt_gui_string_data_t *clicked_data;
     int64_t was_clicked;
-    const vg_widget_vtable_t *original_vtable;
-    vg_widget_vtable_t vtable;
 } rt_breadcrumb_data_t;
+
+static const vg_widget_vtable_t *s_breadcrumb_original_vtable = NULL;
+static vg_widget_vtable_t s_breadcrumb_runtime_vtable;
 
 /// @brief Authenticate a Breadcrumb handle via its magic tag (NULL if not).
 static rt_breadcrumb_data_t *rt_breadcrumb_checked(void *crumb) {
@@ -901,10 +930,26 @@ static rt_breadcrumb_data_t *rt_breadcrumb_checked(void *crumb) {
 ///        original vtable's destroy so dangling pointer re-use in the teardown is safe.
 static void rt_breadcrumb_widget_destroy(vg_widget_t *widget) {
     rt_breadcrumb_data_t *data = widget ? (rt_breadcrumb_data_t *)widget->user_data : NULL;
-    if (data && data->breadcrumb == (vg_breadcrumb_t *)widget)
+    if (data && data->breadcrumb == (vg_breadcrumb_t *)widget) {
         data->breadcrumb = NULL;
-    if (data && data->original_vtable && data->original_vtable->destroy)
-        data->original_vtable->destroy(widget);
+        free(data->clicked_data);
+        data->clicked_data = NULL;
+        data->clicked_index = -1;
+        data->was_clicked = 0;
+    }
+    if (s_breadcrumb_original_vtable && s_breadcrumb_original_vtable->destroy)
+        s_breadcrumb_original_vtable->destroy(widget);
+}
+
+static void rt_breadcrumb_detach_wrapper(rt_breadcrumb_data_t *data) {
+    if (!data)
+        return;
+    if (data->breadcrumb && vg_widget_is_live(&data->breadcrumb->base)) {
+        if (data->breadcrumb->base.user_data == data)
+            data->breadcrumb->base.user_data = NULL;
+        vg_breadcrumb_set_on_click(data->breadcrumb, NULL, NULL);
+    }
+    data->breadcrumb = NULL;
 }
 
 /// @brief Release breadcrumb widget and free the clicked-item string buffer.
@@ -924,7 +969,15 @@ static void rt_breadcrumb_dispose(rt_breadcrumb_data_t *data) {
 
 /// @brief GC finalizer — delegates to `rt_breadcrumb_dispose`.
 static void rt_breadcrumb_finalize(void *crumb) {
-    rt_breadcrumb_dispose((rt_breadcrumb_data_t *)crumb);
+    rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
+    if (!data)
+        return;
+    free(data->clicked_data);
+    data->clicked_data = NULL;
+    data->clicked_index = -1;
+    data->was_clicked = 0;
+    rt_breadcrumb_detach_wrapper(data);
+    data->magic = 0;
 }
 
 /// @brief Breadcrumb segment click callback — captures index + per-item data for polling.
@@ -942,15 +995,16 @@ static void rt_breadcrumb_on_click(vg_breadcrumb_t *bc, int index, void *user_da
     data->was_clicked = 1;
 
     // Store the clicked item's data
-    if (data->clicked_data) {
-        free(data->clicked_data);
-        data->clicked_data = NULL;
-    }
+    free(data->clicked_data);
+    data->clicked_data = NULL;
 
     if (index >= 0 && (size_t)index < bc->item_count) {
-        if (bc->items[index].user_data) {
-            data->clicked_data = strdup((const char *)bc->items[index].user_data);
-        }
+        if (bc->items[index].owns_user_data &&
+            rt_gui_string_data_is_owned(bc->items[index].user_data))
+            data->clicked_data =
+                rt_gui_string_data_new_bytes(
+                    ((rt_gui_string_data_t *)bc->items[index].user_data)->bytes,
+                    ((rt_gui_string_data_t *)bc->items[index].user_data)->len);
     }
 }
 
@@ -968,18 +1022,18 @@ static void rt_breadcrumb_push_path_segment(vg_breadcrumb_t *breadcrumb,
     memcpy(label, segment, len);
     label[len] = '\0';
 
-    char *data = strdup(label);
-    if (!data) {
+    rt_gui_string_data_t *payload = rt_gui_string_data_new_bytes(segment, len);
+    if (!payload) {
         free(label);
         return;
     }
 
     size_t prev_count = breadcrumb->item_count;
-    vg_breadcrumb_push(breadcrumb, label, data);
+    vg_breadcrumb_push(breadcrumb, label, payload);
     if (breadcrumb->item_count > prev_count) {
         breadcrumb->items[breadcrumb->item_count - 1].owns_user_data = true;
     } else {
-        free(data);
+        free(payload);
     }
     free(label);
 }
@@ -1009,11 +1063,13 @@ void *rt_breadcrumb_new(void *parent) {
     data->clicked_index = -1;
     data->clicked_data = NULL;
     data->was_clicked = 0;
-    data->original_vtable = bc->base.vtable;
-    if (data->original_vtable) {
-        data->vtable = *data->original_vtable;
-        data->vtable.destroy = rt_breadcrumb_widget_destroy;
-        bc->base.vtable = &data->vtable;
+    if (!s_breadcrumb_original_vtable && bc->base.vtable) {
+        s_breadcrumb_original_vtable = bc->base.vtable;
+        s_breadcrumb_runtime_vtable = *bc->base.vtable;
+        s_breadcrumb_runtime_vtable.destroy = rt_breadcrumb_widget_destroy;
+    }
+    if (s_breadcrumb_original_vtable) {
+        bc->base.vtable = &s_breadcrumb_runtime_vtable;
         bc->base.user_data = data;
     }
     rt_obj_set_finalizer(data, rt_breadcrumb_finalize);
@@ -1048,8 +1104,8 @@ void rt_breadcrumb_set_path(void *crumb, rt_string path, rt_string separator) {
     if (!data || !data->breadcrumb)
         return;
 
-    char *cpath = rt_string_to_cstr(path);
-    char *csep = rt_string_to_cstr(separator);
+    char *cpath = rt_string_to_gui_cstr(path);
+    char *csep = rt_string_to_gui_cstr(separator);
 
     // Clear existing items
     vg_breadcrumb_clear(data->breadcrumb);
@@ -1082,7 +1138,7 @@ void rt_breadcrumb_set_items(void *crumb, rt_string items) {
     if (!data || !data->breadcrumb)
         return;
 
-    char *citems = rt_string_to_cstr(items);
+    char *citems = rt_string_to_gui_cstr(items);
 
     // Clear existing items
     vg_breadcrumb_clear(data->breadcrumb);
@@ -1099,14 +1155,14 @@ void rt_breadcrumb_set_items(void *crumb, rt_string items) {
             while (end > token && end[-1] == ' ')
                 *--end = '\0';
 
-            char *label = strdup(token);
-            if (label) {
+            rt_gui_string_data_t *payload = rt_gui_string_data_new_bytes(token, strlen(token));
+            if (payload) {
                 size_t prev_count = data->breadcrumb->item_count;
-                vg_breadcrumb_push(data->breadcrumb, token, label);
+                vg_breadcrumb_push(data->breadcrumb, token, payload);
                 if (data->breadcrumb->item_count > prev_count) {
                     data->breadcrumb->items[data->breadcrumb->item_count - 1].owns_user_data = true;
                 } else {
-                    free(label);
+                    free(payload);
                 }
             }
             token = rt_strtok_r(NULL, ",", &saveptr);
@@ -1122,11 +1178,10 @@ void rt_breadcrumb_add_item(void *crumb, rt_string text, rt_string item_data) {
     if (!data || !data->breadcrumb)
         return;
 
-    char *ctext = rt_string_to_cstr(text);
-    char *cdata = rt_string_to_cstr(item_data);
+    char *ctext = rt_string_to_gui_cstr(text);
+    rt_gui_string_data_t *payload = item_data ? rt_gui_string_data_new(item_data) : NULL;
 
     if (ctext) {
-        char *payload = cdata ? strdup(cdata) : NULL;
         size_t prev_count = data->breadcrumb->item_count;
         vg_breadcrumb_push(data->breadcrumb, ctext, payload);
         if (data->breadcrumb->item_count > prev_count) {
@@ -1137,9 +1192,9 @@ void rt_breadcrumb_add_item(void *crumb, rt_string text, rt_string item_data) {
             free(payload);
         }
         free(ctext);
+    } else {
+        free(payload);
     }
-    if (cdata)
-        free(cdata);
 }
 
 /// @brief Remove all entries from the breadcrumb.
@@ -1177,10 +1232,7 @@ rt_string rt_breadcrumb_get_clicked_data(void *crumb) {
     rt_breadcrumb_data_t *data = rt_breadcrumb_checked(crumb);
     if (!data)
         return rt_str_empty();
-    if (data->clicked_data) {
-        return rt_string_from_bytes(data->clicked_data, strlen(data->clicked_data));
-    }
-    return rt_str_empty();
+    return rt_gui_string_data_to_rt_string(data->clicked_data);
 }
 
 /// @brief Set the separator of the breadcrumb.
@@ -1189,7 +1241,7 @@ void rt_breadcrumb_set_separator(void *crumb, rt_string sep) {
     rt_breadcrumb_data_t *data = rt_breadcrumb_checked(crumb);
     if (!data || !data->breadcrumb)
         return;
-    char *csep = rt_string_to_cstr(sep);
+    char *csep = rt_string_to_gui_cstr(sep);
     if (csep) {
         vg_breadcrumb_set_separator(data->breadcrumb, csep);
         free(csep);

@@ -37,6 +37,8 @@ struct ObjReloc {
     uint32_t type = 0;     ///< Format-native relocation type (e.g., R_X86_64_PLT32).
     uint32_t symIndex = 0; ///< Index into ObjFile::symbols.
     int64_t addend = 0;    ///< Addend (explicit for ELF; extracted for Mach-O/COFF).
+    bool pcrel = false;    ///< Mach-O r_pcrel bit; unused by ELF/COFF readers.
+    uint8_t length = 0;    ///< Mach-O r_length field (0=byte, 1=word, 2=long, 3=quad).
     bool sectionRelative = false; ///< Reader-internal: raw reloc targeted a section ordinal.
 };
 

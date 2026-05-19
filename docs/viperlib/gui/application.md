@@ -392,6 +392,10 @@ Dialog hit-testing is local to the dialog surface, so button clicks, close click
 ### MessageBox
 
 System message dialog boxes (static methods).
+`Info`, `Warning`, and `Error` return `0` after the only OK-style action, matching
+their runtime `Integer(String, String)` signatures. One-shot dialogs return their
+documented fallback value when no active GUI window is available instead of trying
+to run a modal loop without an owner.
 Stateful message boxes are safe to destroy explicitly; calling `Show()` on a
 destroyed wrapper returns `-1` instead of trying to reuse the freed dialog.
 Object-style `Show()` also returns `-1` when the dialog closes without a button
@@ -402,10 +406,10 @@ Custom button IDs preserve the exact `Integer` passed to `AddButton()`, includin
 | Method                                       | Signature                 | Description                   |
 |----------------------------------------------|---------------------------|-------------------------------|
 | `Viper.GUI.MessageBox.Confirm(title, text)`  | `Integer(String, String)` | Show confirmation dialog      |
-| `Viper.GUI.MessageBox.Error(title, text)`    | `Void(String, String)`    | Show error dialog             |
-| `Viper.GUI.MessageBox.Info(title, text)`     | `Void(String, String)`    | Show info dialog              |
+| `Viper.GUI.MessageBox.Error(title, text)`    | `Integer(String, String)` | Show error dialog; returns 0  |
+| `Viper.GUI.MessageBox.Info(title, text)`     | `Integer(String, String)` | Show info dialog; returns 0   |
 | `Viper.GUI.MessageBox.Question(title, text)` | `Integer(String, String)` | Show yes/no question dialog   |
-| `Viper.GUI.MessageBox.Warning(title, text)`  | `Void(String, String)`    | Show warning dialog           |
+| `Viper.GUI.MessageBox.Warning(title, text)`  | `Integer(String, String)` | Show warning dialog; returns 0 |
 
 ### Example
 
@@ -429,13 +433,15 @@ Save dialogs honor the default filename field, append the configured default ext
 Object-style dialogs snapshot their accepted path list on each `Show()`, so repeated `Show()` / `Destroy()` cycles and multi-select accessors stay valid.
 Destroying an object-style dialog removes it from the app's modal stack before freeing it, and destroyed handles are inert for setters, `Show()`, and path accessors.
 On macOS, one-shot static dialogs use native panels, including native multi-select for `OpenMultiple`. On other GUI builds, static and object-style dialogs use the same in-app modal dialog and therefore require an active `Viper.GUI.App` window; they return an empty string or `0` when no active GUI window is available. The lower-level C convenience API can install a modal runner so `Open`, `Save`, and `SelectFolder` wait for the in-app dialog instead of returning immediately.
-`OpenMultiple()` returns selected paths joined with semicolons. Literal semicolons and backslashes inside paths are escaped as `\;` and `\\` so callers can split the result without ambiguity.
+`OpenMultiple()` returns selected paths joined with semicolons. Literal semicolons and backslashes inside paths are escaped as `\;` and `\\`; use `PathListCount()` and `PathListGet()` to decode the list without truncating paths that contain those characters.
 The in-app dialog implementation now scrolls long file and bookmark lists, keeps the selected row visible during keyboard navigation, clips long path text, and supports caret-aware editing in the save-name field (`Left` / `Right`, `Home`, `End`, `Backspace`, `Delete`).
 
 | Method                                          | Signature                        | Description                              |
 |-------------------------------------------------|----------------------------------|------------------------------------------|
 | `Viper.GUI.FileDialog.Open(title, defaultPath, filter)` | `String(String,String,String)`  | Open file dialog; returns path           |
-| `Viper.GUI.FileDialog.OpenMultiple(title, defaultPath, filter)` | `String(String,String,String)` | Open multi-file dialog; returns semicolon-separated paths |
+| `Viper.GUI.FileDialog.OpenMultiple(title, defaultPath, filter)` | `String(String,String,String)` | Open multi-file dialog; returns escaped path list |
+| `Viper.GUI.FileDialog.PathListCount(paths)` | `Integer(String)` | Count paths in an escaped `OpenMultiple` result |
+| `Viper.GUI.FileDialog.PathListGet(paths, index)` | `String(String,Integer)` | Decode one path from an escaped `OpenMultiple` result |
 | `Viper.GUI.FileDialog.Save(title, defaultPath, filter, defaultName)` | `String(Str,Str,Str,Str)` | Save file dialog; returns path     |
 | `Viper.GUI.FileDialog.SelectFolder(title, dir)` | `String(String, String)`       | Folder selection dialog                  |
 
@@ -468,6 +474,10 @@ if path != "" { /* open file at path */ }
 
 var savePath = FileDialog.Save("Save As", "/home", "*.txt", "untitled.txt");
 var folder = FileDialog.SelectFolder("Choose Folder", "/home");
+
+var paths = FileDialog.OpenMultiple("Open Files", "/home", "*.txt");
+var count = FileDialog.PathListCount(paths);
+var firstSelected = FileDialog.PathListGet(paths, 0);
 
 var dlg = FileDialog.NewSave();
 dlg.SetTitle("Export Image");

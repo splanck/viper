@@ -736,6 +736,47 @@ int main() {
         CHECK(((ldr >> 10) & 0xFFF) == 8); // 0x40 / 8-byte GOT slot scale
     }
 
+    // --- Mach-O AArch64 POINTER_TO_GOT emits a PC-relative offset to a GOT slot ---
+    {
+        std::vector<uint8_t> data(8, 0);
+        auto obj = makeObj("macho_a64_ptr_to_got.o",
+                           ObjFileFormat::MachO,
+                           data,
+                           "ZTISt9exception",
+                           macho_a64::kPointerToGot,
+                           4,
+                           0);
+        obj.sections[1].relocs[0].pcrel = true;
+        obj.sections[1].relocs[0].length = 2;
+
+        std::vector<ObjFile> objs = {obj};
+        auto layout = makeLayout(objs, 0x100000);
+
+        GlobalSymEntry typeinfoEntry;
+        typeinfoEntry.name = "ZTISt9exception";
+        typeinfoEntry.binding = GlobalSymEntry::Dynamic;
+        typeinfoEntry.resolvedAddr = 0x700000;
+        layout.globalSyms["ZTISt9exception"] = typeinfoEntry;
+
+        GlobalSymEntry gotEntry;
+        gotEntry.name = "__got_ZTISt9exception";
+        gotEntry.binding = GlobalSymEntry::Global;
+        gotEntry.resolvedAddr = 0x102040;
+        layout.globalSyms["__got_ZTISt9exception"] = gotEntry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::macOS, LinkArch::AArch64, err);
+        CHECK(ok);
+        if (!err.str().empty())
+            std::cerr << "  Mach-O GOT pointer err: " << err.str() << "\n";
+
+        const int32_t delta =
+            static_cast<int32_t>(readLE32(layout.sections[0].data.data() + 4));
+        CHECK(delta == static_cast<int32_t>(0x102040 - 0x100004));
+    }
+
     // --- AArch64 dynamic GOT LDR pageoff rejects unaligned GOT slots ---
     {
         std::vector<uint8_t> code = {0x00, 0x00, 0x40, 0xF9}; // ldr x0, [x0, #0]

@@ -126,7 +126,7 @@ planner_regex='^(test_linker_platform_import_planners|test_linker_runtime_import
 run_named_tests "$planner_regex"
 
 if [[ $HOST_MACOS -eq 1 && $NATIVE_LINK_A64 -eq 1 ]]; then
-    native_link_regex='^(native_smoke_3dbowling_build_arm64|native_smoke_xenoscape_start_arm64|native_smoke_xenoscape_action_names_arm64)$'
+    native_link_regex='^(native_smoke_3dbowling_build_arm64|native_smoke_xenoscape_start_arm64|native_smoke_xenoscape_action_names_arm64|native_smoke_viperide_completion_arm64)$'
     run_named_tests "$native_link_regex"
 fi
 

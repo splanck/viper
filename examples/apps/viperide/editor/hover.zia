@@ -3,6 +3,7 @@ module hover;
 bind "../editor/editor_engine";
 
 bind ZiaCompletion = Viper.Zia.Completion;
+bind "../editor/zia_query";
 bind Viper.GUI;
 bind Str = Viper.String;
 
@@ -119,10 +120,13 @@ class HoverController {
         var hoverCol = engine.editor.GetColAtPixel(mx, my);
         if hoverLine < 0 or hoverCol < 0 { return; }
 
-        var curLine = hoverLine + 1;  // 1-based
+        // Synthetic-module prefix for buffers without a `module` line; hover
+        // returns a type string (no line number) so only the outbound shift.
+        var qsource = zia_query.WrapForQuery(source);
+        var curLine = hoverLine + 1 + zia_query.LineOffset(source);  // 1-based + shift
         var curCol  = hoverCol;       // 0-based
 
-        var info = ZiaCompletion.HoverForFile(source, sourcePath, curLine, curCol);
+        var info = ZiaCompletion.HoverForFile(qsource, sourcePath, curLine, curCol);
         if info == "" { return; }
 
         // Show tooltip

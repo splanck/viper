@@ -2973,16 +2973,18 @@ void vg_codeeditor_tick(vg_codeeditor_t *editor, float dt) {
     }
 }
 
-/// @brief Replace all editor content with the given text.
+/// @brief Replace all editor content with the given byte span.
 ///
 /// @details Splits text on newlines to populate the line array.  The cursor is
 ///          moved to (0,0), all selections and extra cursors are cleared, scroll
 ///          is reset to 0, and the modified flag is cleared.  NULL or empty text
-///          results in a single empty line.
+///          results in a single empty line. Embedded NUL bytes are preserved in
+///          the line buffers and returned by vg_codeeditor_get_text.
 ///
 /// @param editor The code editor to update.
-/// @param text   Null-terminated UTF-8 source text; may be NULL to clear.
-void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text) {
+/// @param text   UTF-8 source bytes; may be NULL to clear.
+/// @param len    Number of bytes to read from @p text.
+void vg_codeeditor_set_text_bytes(vg_codeeditor_t *editor, const char *text, size_t len) {
     if (!editor)
         return;
 
@@ -2990,7 +2992,7 @@ void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text) {
     int new_capacity = 0;
     int new_count = 0;
 
-    if (!text || !text[0]) {
+    if (!text || len == 0) {
         if (!ensure_line_array_capacity(&new_lines, &new_capacity, 1) ||
             !init_line_text(&new_lines[0], "", 0)) {
             free_line_array(new_lines, new_count);
@@ -2999,18 +3001,20 @@ void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text) {
         new_count = 1;
     } else {
         const char *start = text;
-        for (;;) {
-            const char *end = strchr(start, '\n');
-            size_t len = end ? (size_t)(end - start) : strlen(start);
+        const char *limit = text + len;
+        while (start <= limit) {
+            const void *found = memchr(start, '\n', (size_t)(limit - start));
+            const char *end = found ? (const char *)found : limit;
+            size_t line_len = (size_t)(end - start);
 
             if (!ensure_line_array_capacity(&new_lines, &new_capacity, new_count + 1) ||
-                !init_line_text(&new_lines[new_count], start, len)) {
+                !init_line_text(&new_lines[new_count], start, line_len)) {
                 free_line_array(new_lines, new_count);
                 return;
             }
             new_count++;
 
-            if (!end)
+            if (!found)
                 break;
             start = end + 1;
         }
@@ -3042,6 +3046,10 @@ void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text) {
 
     vg_codeeditor_refresh_layout_state(editor);
     editor->base.needs_paint = true;
+}
+
+void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text) {
+    vg_codeeditor_set_text_bytes(editor, text, text ? strlen(text) : 0);
 }
 
 /// @brief Return the complete editor content as a heap-allocated newline-joined string.

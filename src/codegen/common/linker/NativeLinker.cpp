@@ -145,6 +145,48 @@ ObjFile makeUndefinedRootObject(const ObjFile &userObj, const std::string &symbo
     return root;
 }
 
+/// @brief Synthesize a definition of `__dso_handle` (a pointer-sized data
+///        symbol).
+/// @details Embedding C++ frontend code (fe_zia) drags in libc++'s atexit
+///          machinery, which references `__dso_handle` purely as a unique
+///          per-image identity cookie passed to `__cxa_atexit` — its contents
+///          are never read. A normal crt provides it, but Viper's crt-less
+///          native binaries do not, so we define an 8-byte zero-filled symbol
+///          ourselves. Both the C name and the Mach-O-mangled `_`-prefixed
+///          form are exported so the reference resolves on every format.
+ObjFile makeDsoHandleObject(const ObjFile &userObj) {
+    ObjFile obj;
+    obj.name = "<dso-handle>";
+    obj.format = userObj.format;
+    obj.is64bit = userObj.is64bit;
+    obj.isLittleEndian = userObj.isLittleEndian;
+    obj.machine = userObj.machine;
+    obj.sections.push_back(ObjSection{});
+
+    ObjSection dataSec;
+    dataSec.name = ".data";
+    dataSec.alloc = true;
+    dataSec.writable = true;
+    dataSec.zeroFill = true;
+    dataSec.alignment = 8;
+    dataSec.data.resize(8, 0);
+
+    // A single definition: the resolver's macOS underscore fallback treats
+    // `__dso_handle` / `___dso_handle` as the same symbol, so defining both
+    // here would be a self-collision.
+    obj.symbols.push_back(ObjSymbol{});
+    ObjSymbol sym;
+    sym.name = "__dso_handle";
+    sym.binding = ObjSymbol::Global;
+    sym.sectionIndex = 1;
+    sym.offset = 0;
+    sym.size = 8;
+    obj.symbols.push_back(std::move(sym));
+
+    obj.sections.push_back(std::move(dataSec));
+    return obj;
+}
+
 /// @brief Heuristically detect a debug-flavored Windows CRT in the archive list.
 /// @details Inspects each path for the conventional `\Debug\`, `/debug/`, or
 ///          `*d.lib` suffixes used by MSVC's debug runtime. The result selects
@@ -995,6 +1037,35 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
         extraObjects.push_back(std::move(extraObj));
     }
 
+    // Step 1c: Force-load archives — materialize every member so its strong
+    // definitions participate in resolution unconditionally. Step 3's
+    // demand-driven extraction would otherwise let weak runtime stubs (e.g.
+    // rt_zia_* in viper_rt_base) satisfy the symbols first, so the strong
+    // frontend definitions in fe_zia would never be pulled. Loading them as
+    // initial objects lets SymbolResolver's "Strong overrides Weak" rule make
+    // them win. Special members (symbol/string tables) are already excluded
+    // from Archive::members by the archive reader.
+    for (const auto &arPath : opts.forceLoadArchivePaths) {
+        Archive forceAr;
+        if (!readArchive(arPath, forceAr, err)) {
+            err << "error: failed to read force-load archive '" << arPath << "'\n";
+            return 1;
+        }
+        for (const auto &member : forceAr.members) {
+            const ArchiveMemberView view = memberDataView(forceAr, member);
+            if (view.data == nullptr || view.size == 0)
+                continue;
+            ObjFile memberObj;
+            if (!readObjFile(
+                    view.data, view.size, arPath + "(" + member.name + ")", memberObj, err)) {
+                err << "error: failed to parse force-load member '" << member.name << "' in '"
+                    << arPath << "'\n";
+                return 1;
+            }
+            extraObjects.push_back(std::move(memberObj));
+        }
+    }
+
     // Step 2: Read all archive files.
     std::vector<Archive> archives;
     for (const auto &arPath : opts.archivePaths) {
@@ -1012,6 +1083,11 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
         initialObjects.push_back(std::move(extra));
     if (!opts.entrySymbol.empty())
         initialObjects.push_back(makeUndefinedRootObject(userObj, opts.entrySymbol));
+    // Embedding the C++ frontend (force-loaded fe_zia) pulls in libc++ atexit
+    // code that references `__dso_handle`; crt-less Viper binaries must define
+    // it themselves.
+    if (!opts.forceLoadArchivePaths.empty())
+        initialObjects.push_back(makeDsoHandleObject(userObj));
     std::unordered_map<std::string, GlobalSymEntry> globalSyms;
     std::vector<ObjFile> allObjects;
     std::unordered_set<std::string> dynamicSyms;

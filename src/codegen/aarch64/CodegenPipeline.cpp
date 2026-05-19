@@ -227,6 +227,14 @@ static void collectNativeLinkArchives(const common::LinkContext &ctx,
 
     if (common::hasComponent(ctx, RtComponent::Audio))
         appendIfExists(common::supportLibraryPath(ctx.buildDir, "viperaud"));
+
+    // Embedding the Zia frontend pulls in il_runtime's RuntimeRegistry, which
+    // references the entire rt_* catalog regardless of what the program itself
+    // uses. Link every runtime component so those references resolve.
+    if (ctx.needsZiaFrontend) {
+        for (int i = 0; i < static_cast<int>(RtComponent::Count); ++i)
+            appendComponent(static_cast<RtComponent>(i));
+    }
 }
 
 /// @brief Link a single .o file into a native executable using the Viper native linker.
@@ -271,6 +279,18 @@ static int linkObjToExe(const std::string &objPath,
     linkOpts.windowsDebugRuntime = windowsDebugRuntime;
     linkOpts.extraObjPaths = extraObjects;
     collectNativeLinkArchives(ctx, linkOpts.archivePaths);
+    if (ctx.needsZiaFrontend) {
+        const auto ziaLib = common::supportLibraryPath(ctx.buildDir, "fe_zia");
+        if (common::fileExists(ziaLib))
+            linkOpts.forceLoadArchivePaths.push_back(ziaLib.lexically_normal().string());
+        // fe_zia's static-link closure (IL build/verify/transform/runtime/core/
+        // support). Demand-driven: only referenced members are extracted.
+        for (const auto &lib : common::ziaFrontendClosureLibs()) {
+            const auto p = common::supportLibraryPath(ctx.buildDir, lib);
+            if (common::fileExists(p))
+                linkOpts.archivePaths.push_back(p.lexically_normal().string());
+        }
+    }
 
     return viper::codegen::linker::nativeLink(linkOpts, out, err);
 }

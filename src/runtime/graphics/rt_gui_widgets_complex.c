@@ -575,9 +575,14 @@ void rt_codeeditor_set_text(void *editor, rt_string text) {
     vg_codeeditor_t *ce = rt_codeeditor_checked(editor);
     if (!ce)
         return;
-    char *ctext = rt_string_to_gui_cstr(text);
-    vg_codeeditor_set_text(ce, ctext);
-    free(ctext);
+    int64_t len64 = text ? rt_str_len(text) : 0;
+    if (len64 < 0)
+        return;
+    size_t len = (size_t)len64;
+    const char *bytes = len ? rt_string_cstr(text) : "";
+    if (len && !bytes)
+        return;
+    vg_codeeditor_set_text_bytes(ce, bytes, len);
 }
 
 /// @brief Retrieve the full text content of a code editor (caller frees the C string).
@@ -655,43 +660,32 @@ void rt_codeeditor_set_font(void *editor, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
     vg_codeeditor_t *ce = rt_codeeditor_checked(editor);
     if (ce) {
-        rt_gui_app_t *app = rt_gui_app_from_widget((vg_widget_t *)ce);
-        float _s = (app && app->window) ? vgfx_window_get_scale(app->window) : 1.0f;
-        if (!isfinite(_s) || _s <= 0.0f)
-            _s = 1.0f;
+        vg_font_t *checked_font = rt_gui_font_handle_checked(font);
+        if (!checked_font)
+            return;
         vg_codeeditor_set_font(ce,
-                               (vg_font_t *)font,
-                               (float)rt_gui_sanitize_font_size(size, 14.0) * _s);
+                               checked_font,
+                               (float)rt_gui_sanitize_font_size(size, 14.0));
     }
 }
 
-/// @brief Get or set the font size of the code editor (in logical points).
+/// @brief Get the stored font size of the code editor in the same units used by SetFont.
 double rt_codeeditor_get_font_size(void *editor) {
     RT_ASSERT_MAIN_THREAD();
     vg_codeeditor_t *ed = rt_codeeditor_checked(editor);
     if (!ed)
         return 14.0;
-    rt_gui_app_t *app = rt_gui_app_from_widget((vg_widget_t *)ed);
-    // Return logical pt size — divide stored physical pixels by HiDPI scale.
-    float _s = (app && app->window) ? vgfx_window_get_scale(app->window) : 1.0f;
-    if (!isfinite(_s) || _s <= 0.0f)
-        _s = 1.0f;
-    return (double)(ed->font_size / _s);
+    return (double)ed->font_size;
 }
 
-/// @brief Get or set the font size of the code editor (in logical points).
+/// @brief Set the code editor font size in the same units used by SetFont.
 void rt_codeeditor_set_font_size(void *editor, double size) {
     RT_ASSERT_MAIN_THREAD();
     vg_codeeditor_t *ed = rt_codeeditor_checked(editor);
     if (!ed)
         return;
     if (rt_gui_double_is_finite(size) && size > 0.0) {
-        rt_gui_app_t *app = rt_gui_app_from_widget((vg_widget_t *)ed);
-        // Store physical pixels — multiply logical pt size by HiDPI scale.
-        float _s = (app && app->window) ? vgfx_window_get_scale(app->window) : 1.0f;
-        if (!isfinite(_s) || _s <= 0.0f)
-            _s = 1.0f;
-        vg_codeeditor_set_font(ed, ed->font, (float)rt_gui_sanitize_font_size(size, 14.0) * _s);
+        vg_codeeditor_set_font(ed, ed->font, (float)rt_gui_sanitize_font_size(size, 14.0));
     }
 }
 
@@ -1167,7 +1161,13 @@ void rt_listbox_select_index(void *listbox, int64_t index) {
     vg_listbox_t *lb = rt_listbox_checked(listbox);
     if (!lb || index < 0)
         return;
-    vg_listbox_select_index(lb, (size_t)index);
+    if ((uintmax_t)index > (uintmax_t)SIZE_MAX)
+        return;
+    size_t idx = (size_t)index;
+    size_t count = lb->virtual_mode ? lb->total_item_count : lb->item_count;
+    if (idx >= count)
+        return;
+    vg_listbox_select_index(lb, idx);
 }
 
 /// @brief Check if the listbox selection changed since the last call (edge-triggered).
@@ -1260,8 +1260,11 @@ void rt_listbox_set_font(void *listbox, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
     vg_listbox_t *lb = rt_listbox_checked(listbox);
     if (lb) {
+        vg_font_t *checked_font = rt_gui_font_handle_checked(font);
+        if (!checked_font)
+            return;
         vg_listbox_set_font(lb,
-                            (vg_font_t *)font,
+                            checked_font,
                             (float)rt_gui_sanitize_font_size(size, 14.0));
     }
 }
@@ -1575,7 +1578,10 @@ void *rt_floatingpanel_new(void *root) {
     vg_widget_t *parent_widget = rt_gui_widget_parent_container_from_handle(root);
     if (root && !parent_widget)
         return NULL;
-    return vg_floatingpanel_create(parent_widget);
+    vg_floatingpanel_t *panel = vg_floatingpanel_create(parent_widget);
+    if (panel)
+        rt_gui_apply_default_font(&panel->base);
+    return panel;
 }
 
 /// @brief Validate a handle as a live FloatingPanel (NULL if not).
@@ -1619,8 +1625,15 @@ void rt_floatingpanel_add_child(void *panel, void *child) {
     RT_ASSERT_MAIN_THREAD();
     vg_floatingpanel_t *fp = rt_floatingpanel_checked(panel);
     vg_widget_t *child_widget = rt_gui_widget_handle_checked(child);
-    if (fp && child_widget)
+    if (fp && child_widget) {
+        rt_gui_app_t *old_app = rt_gui_app_from_widget(child_widget);
+        rt_gui_app_t *new_app = rt_gui_app_from_widget(&fp->base);
+        if (old_app && old_app != new_app)
+            rt_widget_forget_runtime_refs(old_app, child_widget);
         vg_floatingpanel_add_child(fp, child_widget);
+        if (new_app && old_app != new_app)
+            rt_gui_apply_default_font(child_widget);
+    }
 }
 
 #else /* !VIPER_ENABLE_GRAPHICS */

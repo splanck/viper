@@ -9,6 +9,7 @@ bind "core/project_manager";
 bind "core/settings";
 bind "editor/editor_engine";
 bind "editor/editor_tabs";
+bind "editor/zia_query";
 bind "editor/completion";
 bind "editor/diagnostics";
 bind "editor/hover";

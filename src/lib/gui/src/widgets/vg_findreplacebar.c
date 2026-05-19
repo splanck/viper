@@ -321,6 +321,17 @@ static void add_match(vg_findreplacebar_t *bar, uint32_t line, uint32_t start, u
     bar->match_count++;
 }
 
+static vg_codeeditor_t *findreplacebar_live_target(vg_findreplacebar_t *bar) {
+    if (!bar || !bar->target_editor)
+        return NULL;
+    if (!vg_widget_is_live(&bar->target_editor->base) ||
+        bar->target_editor->base.type != VG_WIDGET_CODEEDITOR) {
+        bar->target_editor = NULL;
+        return NULL;
+    }
+    return bar->target_editor;
+}
+
 /// @brief Reset match_count and current_match to 0 and clear the result text.
 static void clear_matches(vg_findreplacebar_t *bar) {
     bar->match_count = 0;
@@ -332,7 +343,8 @@ static void clear_matches(vg_findreplacebar_t *bar) {
 static void perform_search(vg_findreplacebar_t *bar) {
     clear_matches(bar);
 
-    if (!bar->target_editor)
+    vg_codeeditor_t *ed = findreplacebar_live_target(bar);
+    if (!ed)
         return;
 
     vg_textinput_t *find_input = (vg_textinput_t *)bar->find_input;
@@ -344,8 +356,6 @@ static void perform_search(vg_findreplacebar_t *bar) {
         update_result_text(bar);
         return;
     }
-
-    vg_codeeditor_t *ed = bar->target_editor;
 
 #ifndef _WIN32
     regex_t regex;
@@ -443,11 +453,11 @@ static void findreplacebar_apply_replace_visibility(vg_findreplacebar_t *bar) {
 
 /// @brief Select the current match in the target editor and scroll it into view.
 static void highlight_current_match(vg_findreplacebar_t *bar) {
-    if (bar->match_count == 0 || !bar->target_editor)
+    vg_codeeditor_t *ed = findreplacebar_live_target(bar);
+    if (bar->match_count == 0 || !ed)
         return;
 
     vg_search_match_t *match = &bar->matches[bar->current_match];
-    vg_codeeditor_t *ed = bar->target_editor;
 
     // Set selection to current match
     vg_codeeditor_set_selection(
@@ -866,7 +876,10 @@ void vg_findreplacebar_destroy(vg_findreplacebar_t *bar) {
 void vg_findreplacebar_set_target(vg_findreplacebar_t *bar, struct vg_codeeditor *editor) {
     if (!bar)
         return;
-    bar->target_editor = editor;
+    bar->target_editor =
+        (editor && vg_widget_is_live(&editor->base) && editor->base.type == VG_WIDGET_CODEEDITOR)
+            ? editor
+            : NULL;
 
     // Re-run search if there's text
     perform_search(bar);
@@ -977,7 +990,8 @@ void vg_findreplacebar_find_prev(vg_findreplacebar_t *bar) {
 ///
 /// @param bar The find/replace bar to use.
 void vg_findreplacebar_replace_current(vg_findreplacebar_t *bar) {
-    if (!bar || bar->match_count == 0 || !bar->target_editor)
+    vg_codeeditor_t *ed = findreplacebar_live_target(bar);
+    if (!bar || bar->match_count == 0 || !ed)
         return;
 
     vg_textinput_t *replace_input = (vg_textinput_t *)bar->replace_input;
@@ -989,8 +1003,6 @@ void vg_findreplacebar_replace_current(vg_findreplacebar_t *bar) {
     const char *find_text = vg_textinput_get_text(find_input);
     if (!replace_text)
         replace_text = "";
-
-    vg_codeeditor_t *ed = bar->target_editor;
 
     // Delete selection (current match) and insert replacement
     vg_codeeditor_delete_selection(ed);
@@ -1012,7 +1024,8 @@ void vg_findreplacebar_replace_current(vg_findreplacebar_t *bar) {
 ///
 /// @param bar The find/replace bar to use.
 void vg_findreplacebar_replace_all(vg_findreplacebar_t *bar) {
-    if (!bar || bar->match_count == 0 || !bar->target_editor)
+    vg_codeeditor_t *ed = findreplacebar_live_target(bar);
+    if (!bar || bar->match_count == 0 || !ed)
         return;
 
     vg_textinput_t *replace_input = (vg_textinput_t *)bar->replace_input;
@@ -1024,8 +1037,6 @@ void vg_findreplacebar_replace_all(vg_findreplacebar_t *bar) {
     const char *find_text = vg_textinput_get_text(find_input);
     if (!replace_text)
         replace_text = "";
-
-    vg_codeeditor_t *ed = bar->target_editor;
 
     // Replace from end to start to preserve positions
     for (size_t i = bar->match_count; i > 0; i--) {

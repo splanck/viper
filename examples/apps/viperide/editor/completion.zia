@@ -5,6 +5,7 @@ bind Viper.String as Str;
 bind Viper.Collections.Seq as Seq;
 bind Viper.Core.Object as Obj;
 bind Viper.Zia.Completion as ZiaCompletion;
+bind "../editor/zia_query";
 
 // ============================================================================
 // MODULE: completion
@@ -119,11 +120,16 @@ class CompletionController {
 
         // Get current source and cursor position
         var text    = editor.Text;
-        var curLine = editor.CursorLine + 1;  // convert to 1-based for engine
-        var curCol  = editor.CursorCol;       // 0-based column
+        // A buffer with no `module` line yields null Sema; query a synthetic-
+        // module-prefixed copy and shift the cursor line by the same amount.
+        var qtext   = zia_query.WrapForQuery(text);
+        var off     = zia_query.LineOffset(text);
+        var curLine = editor.CursorLine + 1 + off;  // 1-based + prefix shift
+        var curCol  = editor.CursorCol;             // 0-based column
 
-        // Ask the Zia completion engine (returns "" on failure/empty)
-        var result = ZiaCompletion.CompleteForFile(text, sourcePath, curLine, curCol);
+        // Ask the Zia completion engine (returns "" on failure/empty).
+        // Completion items carry no line numbers, so no inbound un-shift.
+        var result = ZiaCompletion.CompleteForFile(qtext, sourcePath, curLine, curCol);
         if result == "" {
             Hide();
             return;

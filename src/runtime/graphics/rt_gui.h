@@ -2119,8 +2119,19 @@ rt_string rt_filedialog_open(rt_string title, rt_string default_path, rt_string 
 /// @param title Dialog title.
 /// @param default_path Default directory path.
 /// @param filter File filter.
-/// @return Semicolon-separated list of paths, or empty string if cancelled.
+/// @return Escaped semicolon-separated list of paths, or empty string if cancelled.
 rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, rt_string filter);
+
+/// @brief Count entries in the escaped list returned by rt_filedialog_open_multiple.
+/// @param escaped Escaped path list.
+/// @return Number of paths in the list.
+int64_t rt_filedialog_path_list_count(rt_string escaped);
+
+/// @brief Decode one entry from the escaped list returned by rt_filedialog_open_multiple.
+/// @param escaped Escaped path list.
+/// @param index Zero-based path index.
+/// @return Decoded path, or empty string when out of range.
+rt_string rt_filedialog_path_list_get(rt_string escaped, int64_t index);
 
 /// @brief Show a file save dialog (quick version).
 /// @param title Dialog title.

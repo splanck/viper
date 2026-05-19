@@ -1223,6 +1223,75 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         }
                         break;
                     }
+                    case RelocAction::GotPointer: {
+                        auto git = symName.empty() ? layout.globalSyms.end()
+                                                   : layout.globalSyms.find("__got_" + symName);
+                        if (git == layout.globalSyms.end() || git->second.resolvedAddr == 0) {
+                            err << "error: " << obj.name << ": missing GOT entry for '"
+                                << targetDisplay << "'\n";
+                            return false;
+                        }
+
+                        uint64_t target = 0;
+                        if (!checkedRelocTarget(git->second.resolvedAddr,
+                                                A,
+                                                obj,
+                                                symName,
+                                                "GOT pointer",
+                                                err,
+                                                target))
+                            return false;
+
+                        if (rel.pcrel) {
+                            if (rel.length != 2) {
+                                err << "error: " << obj.name
+                                    << ": unsupported PC-relative GOT pointer relocation length "
+                                    << static_cast<unsigned>(rel.length);
+                                if (!symName.empty())
+                                    err << " for '" << symName << "'";
+                                err << "\n";
+                                return false;
+                            }
+                            if (!requirePatchBytes(4, "GOT pointer"))
+                                return false;
+                            int64_t delta = 0;
+                            if (!checkedRelocDelta(
+                                    target, P, obj, symName, "GOT pointer", err, delta))
+                                return false;
+                            if (!writeCheckedRel32(patch, delta, obj, symName, "GOT pointer", err))
+                                return false;
+                            break;
+                        }
+
+                        if (rel.length == 3) {
+                            if (!requirePatchBytes(8, "GOT pointer"))
+                                return false;
+                            writeLE64(patch, target);
+                            if (platform == LinkPlatform::macOS && outSec.writable && target != 0)
+                                layout.rebaseEntries.push_back({outSecIdx, patchOff});
+                        } else if (rel.length == 2) {
+                            if (!requirePatchBytes(4, "GOT pointer"))
+                                return false;
+                            if (target > std::numeric_limits<uint32_t>::max()) {
+                                err << "error: " << obj.name
+                                    << ": GOT pointer relocation out of 32-bit range";
+                                if (!symName.empty())
+                                    err << " for '" << symName << "'";
+                                err << "\n";
+                                return false;
+                            }
+                            writeLE32(patch, static_cast<uint32_t>(target));
+                        } else {
+                            err << "error: " << obj.name
+                                << ": unsupported GOT pointer relocation length "
+                                << static_cast<unsigned>(rel.length);
+                            if (!symName.empty())
+                                err << " for '" << symName << "'";
+                            err << "\n";
+                            return false;
+                        }
+                        break;
+                    }
                     case RelocAction::Unknown:
                         err << "error: " << obj.name << ": unknown reloc type " << rel.type
                             << " (format=" << static_cast<int>(obj.format) << ") for symbol '"

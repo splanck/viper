@@ -760,6 +760,40 @@ static void testMultiSectionReaderSplitsSubsectionsViaSymbols() {
     std::remove(path.c_str());
 }
 
+static void testSplitSubsectionsDoesNotDuplicateDirectRelocs() {
+    CodeSection textA, textB, rodata;
+    textA.defineSymbol("func_a", SymbolBinding::Global, SymbolSection::Text);
+    textA.emit8(0xC3);
+
+    textB.defineSymbol("func_b", SymbolBinding::Global, SymbolSection::Text);
+    textB.emit8(0xC3);
+
+    const uint32_t funcA = rodata.findOrDeclareSymbol("func_a");
+    rodata.addRelocation(RelocKind::Abs64, funcA, 0, SymbolSection::Text);
+    rodata.emit64LE(0);
+
+    std::string path = "/tmp/viper_test_macho_split_direct_relocs.o";
+    std::ostringstream errStream;
+
+    auto writer = createObjectFileWriter(ObjFormat::MachO, ObjArch::X86_64);
+    CHECK(writer != nullptr);
+    const bool ok = writer != nullptr &&
+                    writer->write(path, std::vector<CodeSection>{textA, textB}, rodata, errStream);
+    CHECK(ok);
+
+    ObjFile obj;
+    CHECK(readObjFile(path, obj, errStream));
+    const ObjSection *constSec = findSection(obj, "__TEXT,__const");
+    CHECK(constSec != nullptr);
+    if (constSec != nullptr) {
+        CHECK(constSec->relocs.size() == 1);
+        if (!constSec->relocs.empty())
+            CHECK(obj.symbols[constSec->relocs[0].symIndex].name == "func_a");
+    }
+
+    std::remove(path.c_str());
+}
+
 static void testMultiSectionMergeUniquifiesDuplicateLocals() {
     CodeSection textA, textB, rodata;
     textA.defineSymbol("func_a", SymbolBinding::Global, SymbolSection::Text);
@@ -1129,6 +1163,7 @@ int main() {
     testRodataRelocation();
     testDysymtabRanges();
     testMultiSectionReaderSplitsSubsectionsViaSymbols();
+    testSplitSubsectionsDoesNotDuplicateDirectRelocs();
     testMultiSectionMergeUniquifiesDuplicateLocals();
     testUnsupportedRelocationFails();
     testWrongArchRelocationFails();

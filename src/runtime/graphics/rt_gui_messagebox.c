@@ -52,9 +52,9 @@ static int rt_messagebox_label_is_cancel(const char *label) {
 
 /// @brief Configure a dialog for modal presentation: enforce minimum width, apply font,
 ///        set modal root, center-show, and push onto the app's dialog stack.
-static void rt_messagebox_prepare_modal(rt_gui_app_t *app, vg_dialog_t *dlg) {
-    if (!app || !dlg)
-        return;
+static int rt_messagebox_prepare_modal(rt_gui_app_t *app, vg_dialog_t *dlg) {
+    if (!app || !app->window || !app->root || !dlg)
+        return 0;
     rt_gui_activate_app(app);
     rt_gui_ensure_default_font();
     rt_gui_apply_default_font((vg_widget_t *)dlg);
@@ -63,6 +63,7 @@ static void rt_messagebox_prepare_modal(rt_gui_app_t *app, vg_dialog_t *dlg) {
     vg_dialog_set_modal(dlg, true, app->root);
     vg_dialog_show_centered(dlg, app->root);
     rt_gui_push_dialog(app, dlg);
+    return 1;
 }
 
 /// @brief Run the event loop until the dialog closes or the app signals shutdown.
@@ -82,8 +83,8 @@ static vg_dialog_result_t rt_messagebox_run_modal(rt_gui_app_t *app, vg_dialog_t
 int64_t rt_messagebox_info(rt_string title, rt_string message) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_messagebox_app();
-    char *ctitle = rt_string_to_cstr(title);
-    char *cmsg = rt_string_to_cstr(message);
+    char *ctitle = rt_string_to_gui_cstr(title);
+    char *cmsg = rt_string_to_gui_cstr(message);
     vg_dialog_t *dlg = vg_dialog_message(ctitle, cmsg, VG_DIALOG_ICON_INFO, VG_DIALOG_BUTTONS_OK);
     if (ctitle)
         free(ctitle);
@@ -91,7 +92,10 @@ int64_t rt_messagebox_info(rt_string title, rt_string message) {
         free(cmsg);
     if (!dlg)
         return 0;
-    rt_messagebox_prepare_modal(app, dlg);
+    if (!rt_messagebox_prepare_modal(app, dlg)) {
+        vg_widget_destroy(&dlg->base);
+        return 0;
+    }
     rt_messagebox_run_modal(app, dlg);
     vg_widget_destroy(&dlg->base);
     return 0;
@@ -102,8 +106,8 @@ int64_t rt_messagebox_info(rt_string title, rt_string message) {
 int64_t rt_messagebox_warning(rt_string title, rt_string message) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_messagebox_app();
-    char *ctitle = rt_string_to_cstr(title);
-    char *cmsg = rt_string_to_cstr(message);
+    char *ctitle = rt_string_to_gui_cstr(title);
+    char *cmsg = rt_string_to_gui_cstr(message);
     vg_dialog_t *dlg =
         vg_dialog_message(ctitle, cmsg, VG_DIALOG_ICON_WARNING, VG_DIALOG_BUTTONS_OK);
     if (ctitle)
@@ -112,7 +116,10 @@ int64_t rt_messagebox_warning(rt_string title, rt_string message) {
         free(cmsg);
     if (!dlg)
         return 0;
-    rt_messagebox_prepare_modal(app, dlg);
+    if (!rt_messagebox_prepare_modal(app, dlg)) {
+        vg_widget_destroy(&dlg->base);
+        return 0;
+    }
     rt_messagebox_run_modal(app, dlg);
     vg_widget_destroy(&dlg->base);
     return 0;
@@ -122,8 +129,8 @@ int64_t rt_messagebox_warning(rt_string title, rt_string message) {
 int64_t rt_messagebox_error(rt_string title, rt_string message) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_messagebox_app();
-    char *ctitle = rt_string_to_cstr(title);
-    char *cmsg = rt_string_to_cstr(message);
+    char *ctitle = rt_string_to_gui_cstr(title);
+    char *cmsg = rt_string_to_gui_cstr(message);
     vg_dialog_t *dlg = vg_dialog_message(ctitle, cmsg, VG_DIALOG_ICON_ERROR, VG_DIALOG_BUTTONS_OK);
     if (ctitle)
         free(ctitle);
@@ -131,7 +138,10 @@ int64_t rt_messagebox_error(rt_string title, rt_string message) {
         free(cmsg);
     if (!dlg)
         return 0;
-    rt_messagebox_prepare_modal(app, dlg);
+    if (!rt_messagebox_prepare_modal(app, dlg)) {
+        vg_widget_destroy(&dlg->base);
+        return 0;
+    }
     rt_messagebox_run_modal(app, dlg);
     vg_widget_destroy(&dlg->base);
     return 0;
@@ -142,8 +152,8 @@ int64_t rt_messagebox_error(rt_string title, rt_string message) {
 int64_t rt_messagebox_question(rt_string title, rt_string message) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_messagebox_app();
-    char *ctitle = rt_string_to_cstr(title);
-    char *cmsg = rt_string_to_cstr(message);
+    char *ctitle = rt_string_to_gui_cstr(title);
+    char *cmsg = rt_string_to_gui_cstr(message);
     vg_dialog_t *dlg =
         vg_dialog_message(ctitle, cmsg, VG_DIALOG_ICON_QUESTION, VG_DIALOG_BUTTONS_YES_NO);
     if (ctitle)
@@ -152,7 +162,10 @@ int64_t rt_messagebox_question(rt_string title, rt_string message) {
         free(cmsg);
     if (!dlg)
         return 0;
-    rt_messagebox_prepare_modal(app, dlg);
+    if (!rt_messagebox_prepare_modal(app, dlg)) {
+        vg_widget_destroy(&dlg->base);
+        return 0;
+    }
     vg_dialog_result_t result = rt_messagebox_run_modal(app, dlg);
     vg_widget_destroy(&dlg->base);
     return (result == VG_DIALOG_RESULT_YES) ? 1 : 0;
@@ -162,8 +175,8 @@ int64_t rt_messagebox_question(rt_string title, rt_string message) {
 int64_t rt_messagebox_confirm(rt_string title, rt_string message) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_messagebox_app();
-    char *ctitle = rt_string_to_cstr(title);
-    char *cmsg = rt_string_to_cstr(message);
+    char *ctitle = rt_string_to_gui_cstr(title);
+    char *cmsg = rt_string_to_gui_cstr(message);
     vg_dialog_t *dlg =
         vg_dialog_message(ctitle, cmsg, VG_DIALOG_ICON_QUESTION, VG_DIALOG_BUTTONS_OK_CANCEL);
     if (ctitle)
@@ -172,7 +185,10 @@ int64_t rt_messagebox_confirm(rt_string title, rt_string message) {
         free(cmsg);
     if (!dlg)
         return 0;
-    rt_messagebox_prepare_modal(app, dlg);
+    if (!rt_messagebox_prepare_modal(app, dlg)) {
+        vg_widget_destroy(&dlg->base);
+        return 0;
+    }
     vg_dialog_result_t result = rt_messagebox_run_modal(app, dlg);
     vg_widget_destroy(&dlg->base);
     return (result == VG_DIALOG_RESULT_OK) ? 1 : 0;
@@ -204,8 +220,8 @@ rt_string rt_messagebox_prompt(rt_string title, rt_string message) {
     rt_gui_activate_app(app);
     rt_gui_ensure_default_font();
 
-    char *ctitle = rt_string_to_cstr(title);
-    char *cmsg = rt_string_to_cstr(message);
+    char *ctitle = rt_string_to_gui_cstr(title);
+    char *cmsg = rt_string_to_gui_cstr(message);
 
     vg_dialog_t *dlg = vg_dialog_create(ctitle);
     if (ctitle)
@@ -247,7 +263,10 @@ rt_string rt_messagebox_prompt(rt_string title, rt_string message) {
     vg_dialog_set_size_constraints(dlg, 420, 190, 760, 420);
 
     // Show and focus the input so the user can type immediately.
-    rt_messagebox_prepare_modal(app, dlg);
+    if (!rt_messagebox_prepare_modal(app, dlg)) {
+        vg_widget_destroy((vg_widget_t *)dlg);
+        return rt_str_empty();
+    }
     vg_widget_set_focus((vg_widget_t *)input);
 
     vg_dialog_result_t result_code = rt_messagebox_run_modal(app, dlg);
@@ -319,14 +338,14 @@ static void rt_messagebox_finalize(void *box) {
 /// the GC-managed handle, or NULL on failure.
 void *rt_messagebox_new(rt_string title, rt_string message, int64_t type) {
     RT_ASSERT_MAIN_THREAD();
-    char *ctitle = rt_string_to_cstr(title);
+    char *ctitle = rt_string_to_gui_cstr(title);
     vg_dialog_t *dlg = vg_dialog_create(ctitle);
     if (ctitle)
         free(ctitle);
     if (!dlg)
         return NULL;
 
-    char *cmsg = rt_string_to_cstr(message);
+    char *cmsg = rt_string_to_gui_cstr(message);
     vg_dialog_set_message(dlg, cmsg);
     if (cmsg)
         free(cmsg);
@@ -434,7 +453,7 @@ void rt_messagebox_add_button(void *box, rt_string text, int64_t id) {
         data->custom_button_cap = new_cap;
     }
 
-    char *clabel = rt_string_to_cstr(text);
+    char *clabel = rt_string_to_gui_cstr(text);
     if (!clabel)
         clabel = strdup("OK");
     if (!clabel)
@@ -487,7 +506,8 @@ int64_t rt_messagebox_show(void *box) {
         vg_dialog_set_custom_buttons(data->dialog, data->custom_buttons, data->custom_button_count);
     }
 
-    rt_messagebox_prepare_modal(app, data->dialog);
+    if (!rt_messagebox_prepare_modal(app, data->dialog))
+        return -1;
     vg_dialog_result_t result = rt_messagebox_run_modal(app, data->dialog);
 
     // For custom buttons, the result code maps directly to the id passed

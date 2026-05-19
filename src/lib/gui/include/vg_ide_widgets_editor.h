@@ -245,6 +245,12 @@ vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent);
 /// @param text   Null-terminated UTF-8 string (copied internally).
 void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text);
 
+/// @brief Replace the entire document with an explicit byte span.
+/// @param editor Code editor widget.
+/// @param text   UTF-8 byte buffer (copied internally, may contain embedded NUL).
+/// @param len    Number of bytes to read from @p text.
+void vg_codeeditor_set_text_bytes(vg_codeeditor_t *editor, const char *text, size_t len);
+
 /// @brief Return the full document text as a newly allocated string.
 /// @param editor Code editor widget.
 /// @return Caller-owned null-terminated string; must be freed with free().

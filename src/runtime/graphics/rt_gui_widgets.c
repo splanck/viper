@@ -84,7 +84,8 @@ void rt_font_destroy(void *font) {
         return;
     if (rt_gui_retire_font_if_in_use((vg_font_t *)font))
         return;
-    vg_font_destroy((vg_font_t *)font);
+    if (vg_font_is_live((vg_font_t *)font))
+        vg_font_destroy((vg_font_t *)font);
 }
 
 //=============================================================================
@@ -156,7 +157,7 @@ static int rt_widget_tree_contains_toolbar_item(vg_widget_t *root, vg_toolbar_it
 ///          raw pointers (last_clicked, drag_source, drag_over_widget,
 ///          last_statusbar_clicked, last_toolbar_clicked) from becoming dangling after
 ///          the widget tree is freed.
-static void rt_widget_forget_runtime_refs(rt_gui_app_t *app, vg_widget_t *widget) {
+void rt_widget_forget_runtime_refs(rt_gui_app_t *app, vg_widget_t *widget) {
     if (!app || !widget)
         return;
     if (rt_widget_tree_contains(widget, app->last_clicked))
@@ -482,7 +483,10 @@ void rt_label_set_font(void *label, void *font, double size) {
     vg_label_t *lbl = (vg_label_t *)rt_gui_widget_handle_checked_type(label, VG_WIDGET_LABEL);
     if (!lbl)
         return;
-    vg_label_set_font(lbl, (vg_font_t *)font, (float)rt_gui_sanitize_font_size(size, 14.0));
+    vg_font_t *checked_font = rt_gui_font_handle_checked(font);
+    if (!checked_font)
+        return;
+    vg_label_set_font(lbl, checked_font, (float)rt_gui_sanitize_font_size(size, 14.0));
 }
 
 /// @brief Set the text color of a label as a packed ARGB integer.
@@ -537,7 +541,10 @@ void rt_button_set_font(void *button, void *font, double size) {
     vg_button_t *btn = (vg_button_t *)rt_gui_widget_handle_checked_type(button, VG_WIDGET_BUTTON);
     if (!btn)
         return;
-    vg_button_set_font(btn, (vg_font_t *)font, (float)rt_gui_sanitize_font_size(size, 14.0));
+    vg_font_t *checked_font = rt_gui_font_handle_checked(font);
+    if (!checked_font)
+        return;
+    vg_button_set_font(btn, checked_font, (float)rt_gui_sanitize_font_size(size, 14.0));
 }
 
 /// @brief Set the visual style preset for a button (primary, secondary, danger, etc.).
@@ -658,7 +665,10 @@ void rt_textinput_set_font(void *input, void *font, double size) {
         (vg_textinput_t *)rt_gui_widget_handle_checked_type(input, VG_WIDGET_TEXTINPUT);
     if (!ti)
         return;
-    vg_textinput_set_font(ti, (vg_font_t *)font, (float)rt_gui_sanitize_font_size(size, 14.0));
+    vg_font_t *checked_font = rt_gui_font_handle_checked(font);
+    if (!checked_font)
+        return;
+    vg_textinput_set_font(ti, checked_font, (float)rt_gui_sanitize_font_size(size, 14.0));
 }
 
 //=============================================================================
@@ -932,7 +942,10 @@ void rt_treeview_set_font(void *tree, void *font, double size) {
         (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
     if (!tv)
         return;
-    vg_treeview_set_font(tv, (vg_font_t *)font, (float)rt_gui_sanitize_font_size(size, 14.0));
+    vg_font_t *checked_font = rt_gui_font_handle_checked(font);
+    if (!checked_font)
+        return;
+    vg_treeview_set_font(tv, checked_font, (float)rt_gui_sanitize_font_size(size, 14.0));
 }
 
 /// @brief Currently-selected tree node handle (NULL if none / null tree).

@@ -1224,6 +1224,17 @@ if (APPLE AND VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "zia;smoke;native-link"
             TIMEOUT 120)
+
+    # Regression gate for the ViperIDE IntelliSense fix: a codegen'd native
+    # binary must force-load fe_zia so rt_zia_* resolve to the real engine
+    # rather than the weak "unavailable" stubs. Fails before the fix.
+    add_test(NAME native_smoke_viperide_completion_arm64
+            COMMAND "${VIPER_BASH_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_viperide_completion_native.sh"
+            $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(native_smoke_viperide_completion_arm64 PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "zia;smoke;native-link"
+            TIMEOUT 180)
 endif ()
 
 # =============================================================================

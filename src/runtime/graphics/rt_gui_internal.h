@@ -163,6 +163,8 @@ void rt_gui_sync_modal_root(rt_gui_app_t *app);
 void rt_gui_apply_default_font(vg_widget_t *widget);
 /// @brief Re-apply @p app's current default font/size to all app-owned GUI surfaces.
 void rt_gui_reapply_default_font(rt_gui_app_t *app);
+/// @brief Clear cached app-level runtime references that point into @p widget's subtree.
+void rt_widget_forget_runtime_refs(rt_gui_app_t *app, vg_widget_t *widget);
 /// @brief Register a command palette so @p app routes its shortcut to it.
 void rt_gui_register_command_palette(rt_gui_app_t *app, vg_commandpalette_t *palette);
 /// @brief Unregister a previously registered command palette.
@@ -204,6 +206,15 @@ static inline vg_widget_t *rt_gui_widget_handle_checked_type(void *handle,
                                                             vg_widget_type_t type) {
     vg_widget_t *widget = rt_gui_widget_handle_checked(handle);
     return widget && widget->type == type ? widget : NULL;
+}
+
+/// @brief Safe-cast @p handle to a live GUI font handle.
+/// @return The font, or NULL if @p handle is NULL, stale, or not a font.
+static inline vg_font_t *rt_gui_font_handle_checked(void *handle) {
+    if (!handle)
+        return NULL;
+    vg_font_t *font = (vg_font_t *)handle;
+    return vg_font_is_live(font) ? font : NULL;
 }
 
 /// @brief Safe-cast @p handle to an App, or NULL if it is not an App handle.
@@ -376,6 +387,25 @@ static inline rt_gui_string_data_t *rt_gui_string_data_new(rt_string value) {
     return data;
 }
 
+/// @brief Allocate an owned runtime string-data block from raw bytes.
+static inline rt_gui_string_data_t *rt_gui_string_data_new_bytes(const char *bytes, size_t len) {
+    if (len > 0 && !bytes)
+        return NULL;
+    const size_t header_size = offsetof(rt_gui_string_data_t, bytes);
+    if (len > SIZE_MAX - header_size - 1)
+        return NULL;
+    rt_gui_string_data_t *data =
+        (rt_gui_string_data_t *)malloc(header_size + len + 1);
+    if (!data)
+        return NULL;
+    data->magic = RT_GUI_STRING_DATA_MAGIC;
+    data->len = len;
+    if (len)
+        memcpy(data->bytes, bytes, len);
+    data->bytes[len] = '\0';
+    return data;
+}
+
 /// @brief True if @p ptr is an rt_gui_string_data_t block (magic matches).
 /// @details Only call this for pointers that an out-of-band ownership flag says
 ///          may be an rt_gui_string_data_t. It is not a safe generic borrowed
@@ -437,6 +467,19 @@ static inline char *rt_string_to_cstr(rt_string str) {
         memcpy(result, bytes, len);
     result[len] = '\0';
     return result;
+}
+
+/// @brief Return non-zero if a runtime string contains an embedded NUL byte.
+static inline int rt_string_contains_nul(rt_string str) {
+    if (!str)
+        return 0;
+    int64_t len64 = rt_str_len(str);
+    if (len64 <= 0)
+        return 0;
+    const char *bytes = rt_string_cstr(str);
+    if (!bytes)
+        return 0;
+    return memchr(bytes, '\0', (size_t)len64) != NULL;
 }
 
 /// @brief Convert a runtime string to GUI-visible UTF-8 text.

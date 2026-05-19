@@ -115,7 +115,9 @@ Main application class that manages the window and widget tree.
 `SetFont()` applies to newly created text-bearing widgets, including
 `Slider` value text, `ProgressBar` percentage labels, and `Spinner` value text. `Font.Destroy()`
 defers release while any active app or registered GUI app still references the
-font.
+font. `SetFont()` and widget-level `SetFont(font, size)` calls accept only live
+handles returned by `Viper.GUI.Font.Load`; stale, destroyed, or arbitrary object
+handles are ignored.
 
 ### Window Management
 
@@ -215,7 +217,7 @@ TrueType outline rasterization preserves separate contour boundaries, so glyphs 
 | `Load(path)` | `Font(String)`   | Load font from TTF file. Returns NULL on failure |
 | `Destroy()`  | `Void()`         | Destroy the font, or defer it while live GUI objects still reference it |
 
-`Font.Destroy()` is safe to call while a live app or widget still references the font. In that case the runtime retires the font in every app that still uses it and frees it during app teardown, preventing dangling GUI font pointers.
+`Font.Destroy()` is safe to call while a live app or widget still references the font. In that case the runtime retires the font in every app that still uses it and frees it during app teardown, preventing dangling GUI font pointers. Repeated destroys or stale handles are ignored.
 
 ### Example
 

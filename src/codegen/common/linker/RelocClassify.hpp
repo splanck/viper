@@ -42,6 +42,7 @@ enum class RelocAction {
     CondBr19,     // AArch64: B.cond 19-bit
     GotPage21,    // AArch64: GOT ADRP (relaxable to Page21 for local symbols)
     GotPageOff12, // AArch64: GOT LDR pageoff (relaxable to ADD for local symbols)
+    GotPointer,   // AArch64 Mach-O: 32-bit PC-rel or 64-bit absolute pointer to a GOT slot
     Unknown,
 };
 
@@ -136,6 +137,8 @@ inline RelocAction machoA64Action(uint32_t type) {
             return RelocAction::GotPage21;
         case macho_a64::kGotLoadPageOff12:
             return RelocAction::GotPageOff12;
+        case macho_a64::kPointerToGot:
+            return RelocAction::GotPointer;
         case macho_a64::kTlvpLoadPage21:
             return RelocAction::Page21;
         case macho_a64::kTlvpLoadPageOff12:

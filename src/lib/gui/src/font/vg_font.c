@@ -35,6 +35,49 @@
 #include <string.h>
 
 //=============================================================================
+// Live Font Registry
+//=============================================================================
+
+#define VG_FONT_MAGIC UINT64_C(0x564750464F4E5431)
+#define VG_FONT_DESTROYED_MAGIC UINT64_C(0x564750464F4E5444)
+
+static vg_font_t *g_live_fonts = NULL;
+
+static void vg_font_register_live(vg_font_t *font) {
+    if (!font)
+        return;
+    font->magic = VG_FONT_MAGIC;
+    font->live_prev = NULL;
+    font->live_next = g_live_fonts;
+    if (g_live_fonts)
+        g_live_fonts->live_prev = font;
+    g_live_fonts = font;
+}
+
+static void vg_font_unregister_live(vg_font_t *font) {
+    if (!font)
+        return;
+    if (font->live_prev)
+        font->live_prev->live_next = font->live_next;
+    else if (g_live_fonts == font)
+        g_live_fonts = font->live_next;
+    if (font->live_next)
+        font->live_next->live_prev = font->live_prev;
+    font->live_prev = NULL;
+    font->live_next = NULL;
+}
+
+bool vg_font_is_live(const vg_font_t *font) {
+    if (!font)
+        return false;
+    for (const vg_font_t *live = g_live_fonts; live; live = live->live_next) {
+        if (live == font)
+            return live->magic == VG_FONT_MAGIC;
+    }
+    return false;
+}
+
+//=============================================================================
 // Font Loading
 //=============================================================================
 
@@ -70,6 +113,7 @@ vg_font_t *vg_font_load(const uint8_t *data, size_t size) {
     vg_font_t *font = calloc(1, sizeof(vg_font_t));
     if (!font)
         return NULL;
+    vg_font_register_live(font);
 
     // Copy data
     font->data = malloc(size);
@@ -162,8 +206,10 @@ vg_font_t *vg_font_load_file(const char *path) {
 ///
 /// @param font The font to destroy (may be NULL).
 void vg_font_destroy(vg_font_t *font) {
-    if (!font)
+    if (!vg_font_is_live(font))
         return;
+    vg_font_unregister_live(font);
+    font->magic = VG_FONT_DESTROYED_MAGIC;
 
     // Free cache
     if (font->cache) {

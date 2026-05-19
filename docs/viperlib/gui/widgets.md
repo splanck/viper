@@ -372,7 +372,7 @@ Scrollable list of selectable items with enhanced item management.
 Hit-testing uses widget-local coordinates, so nested list boxes select the correct row. Measured height also follows the actual item count for short lists instead of reserving five rows unconditionally. In multi-select mode, `Ctrl/Cmd+Click` toggles rows, `Shift+Click` extends the active range, and keyboard navigation with `Shift` extends the current selection. Toggling the current row off now clears or moves the current selection instead of leaving `Selected` / `SelectedIndex` pointed at an unselected row.
 Item text is clipped to the viewport and item add/remove/clear/select operations invalidate the list immediately so the visual state updates on the same frame.
 Virtual list cache invalidation refreshes visible rows on the next paint even when the visible range has not changed.
-`SelectIndex(index)` leaves the current selection unchanged when `index` is outside the non-virtual item range, and `ItemSetText()` preserves the old text if allocation fails.
+`SelectIndex(index)` leaves the current selection unchanged when `index` is negative or outside the current item range, including virtual-list totals, and `ItemSetText()` preserves the old text if allocation fails.
 `ItemSetData()` stores runtime strings with their explicit length, so embedded NUL bytes round-trip through `ItemGetData()`. Runtime-owned item data is freed automatically by `RemoveItem()` and `Clear()`.
 Virtual list selection and cache growth now fail closed if allocation or size
 checks fail; the widget does not publish a larger virtual item count until its

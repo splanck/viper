@@ -96,6 +96,7 @@ static constexpr const char *kMacLibSystemExact[] = {
     "_tlv_atexit",         "_tlv_bootstrap",      "mach_timebase_info", "mach_absolute_time",
     "mach_task_self_",     "mach_host_self",      "task_info",          "host_page_size",
     "_os_unfair_lock_lock","_os_unfair_lock_unlock","os_unfair_lock_lock","os_unfair_lock_unlock",
+    "cxa_atexit",          "cxa_finalize",        "cxa_finalize_ranges","cxa_thread_atexit",
     nullptr,
 };
 static constexpr const char *kMacCoreFoundationPrefixes[] = {"CF", "kCF", nullptr};

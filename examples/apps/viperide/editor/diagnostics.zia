@@ -5,6 +5,7 @@ bind "../editor/editor_engine";
 bind "../build/diagnostic";
 
 bind ZiaCompletion = Viper.Zia.Completion;
+bind "../editor/zia_query";
 bind Str = Viper.String;
 bind Seq = Viper.Collections.Seq;
 bind Obj = Viper.Core.Object;
@@ -114,7 +115,11 @@ class LiveDiagnostics {
         lastCheckedSource = source;
         lastCheckedPath = sourcePath;
 
-        var raw = ZiaCompletion.CheckForFile(source, sourcePath);
+        // Synthetic-module prefix for buffers lacking a `module` line;
+        // diagnostic line numbers come back shifted and are un-shifted below.
+        var qsource = zia_query.WrapForQuery(source);
+        var lineOff = zia_query.LineOffset(source);
+        var raw = ZiaCompletion.CheckForFile(qsource, sourcePath);
         if raw == "" {
             // Clean — clear all markers and highlights
             shell.diagListBox.Clear();
@@ -141,7 +146,8 @@ class LiveDiagnostics {
             if Seq.get_Length(parts) < 5 { continue; }
 
             var sev     = Convert.ToInt(Obj.ToString(Seq.Get(parts, 0)));
-            var diagLine = Convert.ToInt(Obj.ToString(Seq.Get(parts, 1)));
+            var diagLine = Convert.ToInt(Obj.ToString(Seq.Get(parts, 1))) - lineOff;
+            if diagLine < 1 { continue; }  // diagnostic on the synthetic prefix line
             var code    = Obj.ToString(Seq.Get(parts, 3));
             var msg     = Obj.ToString(Seq.Get(parts, 4));
 

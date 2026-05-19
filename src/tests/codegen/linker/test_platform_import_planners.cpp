@@ -140,6 +140,18 @@ TEST(PlatformImportPlanners, MacPlannerMapsLibcxxRuntimeSymbolsToLibcxxDylib) {
     EXPECT_EQ(1u, plan.symOrdinals["_Unwind_Resume"]);
 }
 
+TEST(PlatformImportPlanners, MacPlannerMapsCxaAtexitSymbolsToLibSystem) {
+    MacImportPlan plan;
+    std::ostringstream err;
+    ASSERT_TRUE(planMacImports({"___cxa_atexit", "___cxa_finalize", "___cxa_thread_atexit"},
+                               plan,
+                               err));
+
+    EXPECT_EQ(1u, plan.symOrdinals["___cxa_atexit"]);
+    EXPECT_EQ(1u, plan.symOrdinals["___cxa_finalize"]);
+    EXPECT_EQ(1u, plan.symOrdinals["___cxa_thread_atexit"]);
+}
+
 TEST(PlatformImportPlanners, MacPlannerMapsSecurityConstantsToSecurityFramework) {
     MacImportPlan plan;
     std::ostringstream err;

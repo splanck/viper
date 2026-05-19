@@ -241,7 +241,7 @@ void *rt_menubar_add_menu(void *menubar, rt_string title) {
     vg_menubar_t *mb = rt_menubar_checked(menubar);
     if (!mb)
         return NULL;
-    char *ctitle = rt_string_to_cstr(title);
+    char *ctitle = rt_string_to_gui_cstr(title);
     vg_menu_t *menu = vg_menubar_add_menu(mb, ctitle);
     free(ctitle);
     rt_gui_menu_sync_menubar(mb);
@@ -318,7 +318,7 @@ void *rt_menu_add_item(void *menu, rt_string text) {
     vg_menu_t *m = rt_menu_checked(menu);
     if (!m)
         return NULL;
-    char *ctext = rt_string_to_cstr(text);
+    char *ctext = rt_string_to_gui_cstr(text);
     vg_menu_item_t *item = vg_menu_add_item(m, ctext, NULL, NULL, NULL);
     free(ctext);
     rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu(m));
@@ -332,8 +332,8 @@ void *rt_menu_add_item_with_shortcut(void *menu, rt_string text, rt_string short
     vg_menu_t *m = rt_menu_checked(menu);
     if (!m)
         return NULL;
-    char *ctext = rt_string_to_cstr(text);
-    char *cshortcut = rt_string_to_cstr(shortcut);
+    char *ctext = rt_string_to_gui_cstr(text);
+    char *cshortcut = rt_string_to_gui_cstr(shortcut);
     vg_menu_item_t *item = vg_menu_add_item(m, ctext, cshortcut, NULL, NULL);
     free(ctext);
     free(cshortcut);
@@ -358,7 +358,7 @@ void *rt_menu_add_submenu(void *menu, rt_string title) {
     vg_menu_t *m = rt_menu_checked(menu);
     if (!m)
         return NULL;
-    char *ctitle = rt_string_to_cstr(title);
+    char *ctitle = rt_string_to_gui_cstr(title);
     vg_menu_t *submenu = vg_menu_add_submenu(m, ctitle);
     free(ctitle);
     rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu(m));
@@ -391,7 +391,7 @@ void rt_menu_set_title(void *menu, rt_string title) {
     vg_menu_t *m = rt_menu_checked(menu);
     if (!m)
         return;
-    char *new_title = title ? rt_string_to_cstr(title) : NULL;
+    char *new_title = title ? rt_string_to_gui_cstr(title) : NULL;
     if (title && !new_title)
         return;
     free(m->title);
@@ -461,7 +461,7 @@ void rt_menuitem_set_text(void *item, rt_string text) {
     if (!vg_menu_item_is_live((vg_menu_item_t *)item))
         return;
     vg_menu_item_t *mi = (vg_menu_item_t *)item;
-    char *new_text = text ? rt_string_to_cstr(text) : NULL;
+    char *new_text = text ? rt_string_to_gui_cstr(text) : NULL;
     if (text && !new_text)
         return;
     free(mi->text);
@@ -488,7 +488,7 @@ void rt_menuitem_set_shortcut(void *item, rt_string shortcut) {
     if (!vg_menu_item_is_live((vg_menu_item_t *)item))
         return;
     vg_menu_item_t *mi = (vg_menu_item_t *)item;
-    char *new_shortcut = shortcut ? rt_string_to_cstr(shortcut) : NULL;
+    char *new_shortcut = shortcut ? rt_string_to_gui_cstr(shortcut) : NULL;
     if (shortcut && !new_shortcut)
         return;
     free(mi->shortcut);
@@ -651,7 +651,7 @@ void *rt_contextmenu_add_item(void *menu, rt_string text) {
     vg_contextmenu_t *cm = rt_contextmenu_checked(menu);
     if (!cm)
         return NULL;
-    char *ctext = rt_string_to_cstr(text);
+    char *ctext = rt_string_to_gui_cstr(text);
     vg_menu_item_t *item = vg_contextmenu_add_item(cm, ctext, NULL, NULL, NULL);
     free(ctext);
     return item;
@@ -663,8 +663,8 @@ void *rt_contextmenu_add_item_with_shortcut(void *menu, rt_string text, rt_strin
     vg_contextmenu_t *cm = rt_contextmenu_checked(menu);
     if (!cm)
         return NULL;
-    char *ctext = rt_string_to_cstr(text);
-    char *cshortcut = rt_string_to_cstr(shortcut);
+    char *ctext = rt_string_to_gui_cstr(text);
+    char *cshortcut = rt_string_to_gui_cstr(shortcut);
     vg_menu_item_t *item = vg_contextmenu_add_item(cm, ctext, cshortcut, NULL, NULL);
     free(ctext);
     free(cshortcut);
@@ -686,7 +686,7 @@ void *rt_contextmenu_add_submenu(void *menu, rt_string title) {
     vg_contextmenu_t *cm = rt_contextmenu_checked(menu);
     if (!cm)
         return NULL;
-    char *ctitle = rt_string_to_cstr(title);
+    char *ctitle = rt_string_to_gui_cstr(title);
 
     // Create a child context menu and attach it as a submenu
     vg_contextmenu_t *submenu = vg_contextmenu_create();
@@ -829,12 +829,12 @@ void rt_statusbar_set_left_text(void *bar, rt_string text) {
         return;
     vg_statusbar_item_t *item = get_zone_text_item(sb, VG_STATUSBAR_ZONE_LEFT);
     if (item) {
-        char *ctext = rt_string_to_cstr(text);
+        char *ctext = rt_string_to_gui_cstr(text);
         vg_statusbar_item_set_text(item, ctext);
         free(ctext);
     } else {
         // Create a new text item
-        char *ctext = rt_string_to_cstr(text);
+        char *ctext = rt_string_to_gui_cstr(text);
         vg_statusbar_add_text(sb, VG_STATUSBAR_ZONE_LEFT, ctext);
         free(ctext);
     }
@@ -848,11 +848,11 @@ void rt_statusbar_set_center_text(void *bar, rt_string text) {
         return;
     vg_statusbar_item_t *item = get_zone_text_item(sb, VG_STATUSBAR_ZONE_CENTER);
     if (item) {
-        char *ctext = rt_string_to_cstr(text);
+        char *ctext = rt_string_to_gui_cstr(text);
         vg_statusbar_item_set_text(item, ctext);
         free(ctext);
     } else {
-        char *ctext = rt_string_to_cstr(text);
+        char *ctext = rt_string_to_gui_cstr(text);
         vg_statusbar_add_text(sb, VG_STATUSBAR_ZONE_CENTER, ctext);
         free(ctext);
     }
@@ -866,11 +866,11 @@ void rt_statusbar_set_right_text(void *bar, rt_string text) {
         return;
     vg_statusbar_item_t *item = get_zone_text_item(sb, VG_STATUSBAR_ZONE_RIGHT);
     if (item) {
-        char *ctext = rt_string_to_cstr(text);
+        char *ctext = rt_string_to_gui_cstr(text);
         vg_statusbar_item_set_text(item, ctext);
         free(ctext);
     } else {
-        char *ctext = rt_string_to_cstr(text);
+        char *ctext = rt_string_to_gui_cstr(text);
         vg_statusbar_add_text(sb, VG_STATUSBAR_ZONE_RIGHT, ctext);
         free(ctext);
     }
@@ -929,7 +929,7 @@ void *rt_statusbar_add_text(void *bar, rt_string text, int64_t zone) {
     vg_statusbar_zone_t checked_zone = VG_STATUSBAR_ZONE_LEFT;
     if (!sb || !rt_statusbar_zone_checked(zone, &checked_zone))
         return NULL;
-    char *ctext = rt_string_to_cstr(text);
+    char *ctext = rt_string_to_gui_cstr(text);
     vg_statusbar_item_t *item = vg_statusbar_add_text(sb, checked_zone, ctext);
     free(ctext);
     return item;
@@ -942,7 +942,7 @@ void *rt_statusbar_add_button(void *bar, rt_string text, int64_t zone) {
     vg_statusbar_zone_t checked_zone = VG_STATUSBAR_ZONE_LEFT;
     if (!sb || !rt_statusbar_zone_checked(zone, &checked_zone))
         return NULL;
-    char *ctext = rt_string_to_cstr(text);
+    char *ctext = rt_string_to_gui_cstr(text);
     vg_statusbar_item_t *item =
         vg_statusbar_add_button(sb, checked_zone, ctext, rt_statusbar_button_clicked, NULL);
     free(ctext);
@@ -1033,7 +1033,7 @@ void rt_statusbaritem_set_text(void *item, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     if (!vg_statusbar_item_is_live((vg_statusbar_item_t *)item))
         return;
-    char *ctext = rt_string_to_cstr(text);
+    char *ctext = rt_string_to_gui_cstr(text);
     vg_statusbar_item_set_text((vg_statusbar_item_t *)item, ctext);
     free(ctext);
 }
@@ -1055,7 +1055,7 @@ void rt_statusbaritem_set_tooltip(void *item, rt_string tooltip) {
     RT_ASSERT_MAIN_THREAD();
     if (!vg_statusbar_item_is_live((vg_statusbar_item_t *)item))
         return;
-    char *ctext = rt_string_to_cstr(tooltip);
+    char *ctext = rt_string_to_gui_cstr(tooltip);
     vg_statusbar_item_set_tooltip((vg_statusbar_item_t *)item, ctext);
     free(ctext);
 }
@@ -1176,7 +1176,7 @@ void *rt_toolbar_add_button(void *toolbar, rt_string icon_path, rt_string toolti
     if (!tb)
         return NULL;
     char *cicon = rt_string_to_cstr(icon_path);
-    char *ctooltip = rt_string_to_cstr(tooltip);
+    char *ctooltip = rt_string_to_gui_cstr(tooltip);
 
     vg_icon_t icon = rt_gui_icon_from_path_cstr(cicon);
     free(cicon);
@@ -1205,8 +1205,8 @@ void *rt_toolbar_add_button_with_text(void *toolbar,
     if (!tb)
         return NULL;
     char *cicon = rt_string_to_cstr(icon_path);
-    char *ctext = rt_string_to_cstr(text);
-    char *ctooltip = rt_string_to_cstr(tooltip);
+    char *ctext = rt_string_to_gui_cstr(text);
+    char *ctooltip = rt_string_to_gui_cstr(tooltip);
 
     vg_icon_t icon = rt_gui_icon_from_path_cstr(cicon);
     free(cicon);
@@ -1232,7 +1232,7 @@ void *rt_toolbar_add_toggle(void *toolbar, rt_string icon_path, rt_string toolti
     if (!tb)
         return NULL;
     char *cicon = rt_string_to_cstr(icon_path);
-    char *ctooltip = rt_string_to_cstr(tooltip);
+    char *ctooltip = rt_string_to_gui_cstr(tooltip);
 
     vg_icon_t icon = rt_gui_icon_from_path_cstr(cicon);
     free(cicon);
@@ -1267,7 +1267,7 @@ void *rt_toolbar_add_dropdown(void *toolbar, rt_string tooltip) {
     vg_toolbar_t *tb = rt_toolbar_checked(toolbar);
     if (!tb)
         return NULL;
-    char *ctooltip = rt_string_to_cstr(tooltip);
+    char *ctooltip = rt_string_to_gui_cstr(tooltip);
 
     vg_icon_t icon = {0};
     icon.type = VG_ICON_NONE;
@@ -1388,7 +1388,7 @@ void rt_toolbaritem_set_text(void *item, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     if (!vg_toolbar_item_is_live((vg_toolbar_item_t *)item))
         return;
-    char *ctext = rt_string_to_cstr(text);
+    char *ctext = rt_string_to_gui_cstr(text);
     vg_toolbar_item_set_text((vg_toolbar_item_t *)item, ctext);
     free(ctext);
 }
@@ -1398,7 +1398,7 @@ void rt_toolbaritem_set_tooltip(void *item, rt_string tooltip) {
     RT_ASSERT_MAIN_THREAD();
     if (!vg_toolbar_item_is_live((vg_toolbar_item_t *)item))
         return;
-    char *ctooltip = rt_string_to_cstr(tooltip);
+    char *ctooltip = rt_string_to_gui_cstr(tooltip);
     vg_toolbar_item_set_tooltip((vg_toolbar_item_t *)item, ctooltip);
     free(ctooltip);
 }
