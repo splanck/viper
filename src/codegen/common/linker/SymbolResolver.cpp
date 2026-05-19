@@ -61,6 +61,7 @@ static void setEntryFromSymbol(GlobalSymEntry &entry,
     entry.secIndex = sym.sectionIndex;
     entry.offset = sym.offset;
     entry.resolvedAddr = sym.absolute ? static_cast<uint64_t>(sym.offset) : 0;
+    entry.resolvedAddrValid = sym.absolute;
     entry.absolute = sym.absolute;
     entry.common = false;
     entry.commonSize = 0;
@@ -76,6 +77,7 @@ static void setEntryFromCommon(GlobalSymEntry &entry,
     entry.secIndex = 0;
     entry.offset = 0;
     entry.resolvedAddr = 0;
+    entry.resolvedAddrValid = false;
     entry.absolute = false;
     entry.common = true;
     entry.commonSize = std::max(entry.commonSize, sym.size);
@@ -106,7 +108,7 @@ static bool getComdatDefinition(const ObjFile &obj,
     out.key = sec.comdatKey;
     out.objIdx = objIdx;
     out.secIdx = sym.sectionIndex;
-    out.size = sec.data.size();
+    out.size = objSectionMemSize(sec);
     out.hash = hashBytes(sec.data);
     return true;
 }
@@ -512,8 +514,10 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
         }
 
         dynamicSyms.insert(undef);
-        if (it != globalSyms.end())
+        if (it != globalSyms.end()) {
             it->second.binding = GlobalSymEntry::Dynamic;
+            it->second.resolvedAddrValid = it->second.resolvedAddr != 0;
+        }
     }
 
     if (!unresolvedErrors.empty()) {
@@ -581,18 +585,17 @@ static bool materializeCommonSymbols(std::vector<ObjFile> &allObjects,
             return false;
         }
 
-        const size_t rem = commonSec.data.size() % entry.commonAlignment;
+        const size_t rem = commonSec.memSize % entry.commonAlignment;
         const size_t padding = (rem == 0) ? 0 : entry.commonAlignment - rem;
-        if (padding > kMaxObjSectionBytes - commonSec.data.size() ||
-            entry.commonSize > kMaxObjSectionBytes - commonSec.data.size() - padding) {
+        if (padding > kMaxObjSectionBytes - commonSec.memSize ||
+            entry.commonSize > kMaxObjSectionBytes - commonSec.memSize - padding) {
             err << "error: materialized common section exceeds size limit\n";
             return false;
         }
-        if (padding != 0)
-            commonSec.data.resize(commonSec.data.size() + padding, 0);
 
-        const size_t offset = commonSec.data.size();
-        commonSec.data.resize(offset + entry.commonSize, 0);
+        commonSec.memSize += padding;
+        const size_t offset = commonSec.memSize;
+        commonSec.memSize += entry.commonSize;
         if (entry.commonAlignment > commonSec.alignment)
             commonSec.alignment = static_cast<uint32_t>(entry.commonAlignment);
 
@@ -610,6 +613,7 @@ static bool materializeCommonSymbols(std::vector<ObjFile> &allObjects,
         entry.offset = offset;
         entry.absolute = false;
         entry.resolvedAddr = 0;
+        entry.resolvedAddrValid = false;
         entry.common = false;
     }
 

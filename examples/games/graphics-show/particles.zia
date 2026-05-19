@@ -14,7 +14,7 @@ bind Viper.Graphics;
 bind Viper.Graphics.Color;
 bind Viper.Core.Convert as Convert;
 bind Viper.Math;
-bind Viper.Fmt;
+bind Viper.Text.Fmt;
 bind Viper.Time;
 
 // Single particle with physics properties

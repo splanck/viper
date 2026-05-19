@@ -333,9 +333,9 @@ TEST(ZiaBugFixes, ZeroArgExternFunctionsRemainCallable) {
     const std::string source = R"(
 module Test;
 
-bind Viper.Environment;
+bind Viper.System.Environment;
 
-func start() {    var argc = Viper.Environment.GetArgumentCount();
+func start() {    var argc = Viper.System.Environment.GetArgumentCount();
     Viper.Terminal.SayInt(argc);
 }
 )";
@@ -347,7 +347,7 @@ func start() {    var argc = Viper.Environment.GetArgumentCount();
     ASSERT_TRUE(result.succeeded());
     const auto *mainFn = findFunction(result.module, "main");
     ASSERT_TRUE(mainFn != nullptr);
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.Environment.GetArgumentCount"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.System.Environment.GetArgumentCount"), static_cast<size_t>(1));
 }
 
 /// @brief Range step validation checks positivity without rejecting INT64_MAX.
@@ -1493,12 +1493,12 @@ func start() {
 
 //===----------------------------------------------------------------------===//
 // ZIA-007: Viper.Terminal.Int() — integer-to-string conversion without
-//          requiring a separate `bind Viper.Fmt` import.
+//          requiring a separate `bind Viper.Text.Fmt` import.
 //===----------------------------------------------------------------------===//
 
 /// @brief Viper.Terminal now exposes Int(i64) -> str so that integer-to-string
 /// conversion is available in any module that binds Viper.Terminal, without
-/// also requiring `bind Viper.Fmt`.
+/// also requiring `bind Viper.Text.Fmt`.
 TEST(ZiaBugFixes, ZIA007_TerminalIntConversion) {
     SourceManager sm;
     const std::string source = R"(
@@ -1922,7 +1922,7 @@ TEST(ZiaBugFixes, SeqReturnType_LazySeqToSeqN_UsesSeqLength) {
     const std::string source = R"(
 module Test;
 
-bind Viper.LazySeq;
+bind Viper.Functional.LazySeq;
 
 func start() {
     var seq = Range(1, 5, 1);

@@ -16,5 +16,5 @@ func start() {
             count = count + 5;
         }
     }
-    Viper.Environment.EndProgram(count);
+    Viper.System.Environment.EndProgram(count);
 }

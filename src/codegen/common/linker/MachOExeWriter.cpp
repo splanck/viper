@@ -441,7 +441,7 @@ bool writeMachOExe(const std::string &path,
     for (size_t idx : textSections) {
         uint64_t end = 0;
         if (!checkedAddU64(layout.sections[idx].virtualAddr,
-                           layout.sections[idx].data.size(),
+                           outputSectionMemSize(layout.sections[idx]),
                            "__TEXT section address range",
                            err,
                            end))
@@ -476,7 +476,7 @@ bool writeMachOExe(const std::string &path,
         for (size_t idx : dataSections) {
             uint64_t end = 0;
             if (!checkedAddU64(layout.sections[idx].virtualAddr,
-                               layout.sections[idx].data.size(),
+                               outputSectionMemSize(layout.sections[idx]),
                                "__DATA section address range",
                                err,
                                end))
@@ -634,13 +634,13 @@ bool writeMachOExe(const std::string &path,
             bool foundEntry = false;
             for (size_t idx : textSections) {
                 const auto &sec = layout.sections[idx];
-                if (sec.data.size() >
-                    std::numeric_limits<uint64_t>::max() - sec.virtualAddr) {
-                    err << "error: Mach-O text section '" << sec.name
-                        << "' address range overflows\n";
-                    return false;
-                }
-                const uint64_t secEnd = sec.virtualAddr + sec.data.size();
+            const size_t secMemSize = outputSectionMemSize(sec);
+            if (secMemSize > std::numeric_limits<uint64_t>::max() - sec.virtualAddr) {
+                err << "error: Mach-O text section '" << sec.name
+                    << "' address range overflows\n";
+                return false;
+            }
+            const uint64_t secEnd = sec.virtualAddr + secMemSize;
                 if (entryVA < sec.virtualAddr || entryVA >= secEnd)
                     continue;
                 const uint64_t delta = entryVA - firstTextSecVA;
@@ -730,7 +730,7 @@ bool writeMachOExe(const std::string &path,
         writeStr(file, machoSecName.c_str(), 16);
         writeStr(file, "__TEXT", 16);
         writeLE64(file, sec.virtualAddr); // addr = SectionMerger VA
-        writeLE64(file, sec.data.size());
+        writeLE64(file, outputSectionMemSize(sec));
         writeLE32(file, secFileOff);
         writeLE32(file, machoSectionAlignLog2(sec.alignment));
         writeLE32(file, 0);
@@ -809,7 +809,7 @@ bool writeMachOExe(const std::string &path,
             writeStr(file, machoSecName.c_str(), 16);
             writeStr(file, "__DATA", 16);
             writeLE64(file, sec.virtualAddr); // addr = SectionMerger VA
-            writeLE64(file, sec.data.size());
+            writeLE64(file, outputSectionMemSize(sec));
             writeLE32(file, isZerofill ? 0 : secFileOff);
             writeLE32(file, machoSectionAlignLog2(sec.alignment));
             writeLE32(file, 0);

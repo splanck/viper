@@ -4,11 +4,11 @@ DIM seq AS OBJECT
 DIM out AS OBJECT
 DIM count AS INTEGER
 
-lazy = Viper.Lazy.OfI64(42)
-PRINT Viper.Lazy.GetI64(lazy)
+lazy = Viper.Functional.Lazy.OfI64(42)
+PRINT Viper.Functional.Lazy.GetI64(lazy)
 
-seq = Viper.LazySeq.Range(1, 5, 1)
-out = Viper.LazySeq.ToSeqN(seq, 3)
+seq = Viper.Functional.LazySeq.Range(1, 5, 1)
+out = Viper.Functional.LazySeq.ToSeqN(seq, 3)
 count = out.Length
 PRINT count
 

@@ -9,7 +9,7 @@ module ChannelDemo;
 bind Viper.Threads.Channel as Channel;
 bind Viper.Core.Box as Box;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     Say("=== API Audit: Viper.Threads.Channel ===");

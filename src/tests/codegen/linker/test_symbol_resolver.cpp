@@ -835,7 +835,9 @@ int main() {
         CHECK(allObjects.size() == 3);
         CHECK(allObjects.back().sections.size() == 2);
         CHECK(allObjects.back().sections[1].name == ".common");
-        CHECK(allObjects.back().sections[1].data.size() == 12);
+        CHECK(allObjects.back().sections[1].zeroFill);
+        CHECK(allObjects.back().sections[1].data.empty());
+        CHECK(objSectionMemSize(allObjects.back().sections[1]) == 12);
         CHECK(allObjects.back().sections[1].alignment == 8);
         CHECK(globalSyms["tentative"].binding == GlobalSymEntry::Global);
         CHECK(globalSyms["tentative"].objIndex == 2);

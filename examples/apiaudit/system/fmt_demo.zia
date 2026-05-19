@@ -1,5 +1,5 @@
 // =============================================================================
-// API Audit: Viper.Fmt - Value Formatting
+// API Audit: Viper.Text.Fmt - Value Formatting
 // =============================================================================
 // Tests: Int, IntRadix, IntPad, Num, NumFixed, NumSci, NumPct, Bool, BoolYN,
 //        Size, Hex, HexPad, Bin, Oct, IntGrouped, Currency, ToWords, Ordinal
@@ -7,9 +7,9 @@
 
 module FmtDemo;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 func start() {
-    Say("=== API Audit: Viper.Fmt ===");
+    Say("=== API Audit: Viper.Text.Fmt ===");
 
     // --- Int ---
     Say("--- Int ---");

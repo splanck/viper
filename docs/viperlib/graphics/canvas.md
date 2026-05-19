@@ -490,7 +490,7 @@ module ColorDemo;
 
 bind Viper.Terminal;
 bind Viper.Graphics.Color as Color;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var red = Color.RGB(255, 0, 0);

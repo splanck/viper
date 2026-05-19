@@ -1155,9 +1155,16 @@ struct PendingSym {
                 if (!computeEffectiveAddend(rel, sectionName, effectiveAddend))
                     return false;
                 if (rel.kind == RelocKind::PCRel32 || rel.kind == RelocKind::Branch32) {
-                    if (effectiveAddend < std::numeric_limits<int32_t>::min() ||
-                        effectiveAddend > std::numeric_limits<int32_t>::max()) {
+                    if (effectiveAddend > std::numeric_limits<int64_t>::max() - 4 ||
+                        effectiveAddend < std::numeric_limits<int64_t>::min() + 4) {
                         err << "MachOWriter: x86_64 rel32 addend " << effectiveAddend
+                            << " overflows Mach-O encoded addend adjustment\n";
+                        return false;
+                    }
+                    const int64_t encodedAddend = effectiveAddend + 4;
+                    if (encodedAddend < std::numeric_limits<int32_t>::min() ||
+                        encodedAddend > std::numeric_limits<int32_t>::max()) {
+                        err << "MachOWriter: x86_64 rel32 addend " << encodedAddend
                             << " is outside signed 32-bit range\n";
                         return false;
                     }
@@ -1174,7 +1181,7 @@ struct PendingSym {
                             << " out of bounds (file size=" << file.size() << ")\n";
                         return false;
                     }
-                    auto addend = static_cast<int32_t>(effectiveAddend);
+                    auto addend = static_cast<int32_t>(encodedAddend);
                     file[patchOff + 0] = static_cast<uint8_t>(addend);
                     file[patchOff + 1] = static_cast<uint8_t>(addend >> 8);
                     file[patchOff + 2] = static_cast<uint8_t>(addend >> 16);

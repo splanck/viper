@@ -9,7 +9,7 @@
 module ThreadDemo;
 bind Viper.Threads.Thread as Thread;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     Say("=== API Audit: Viper.Threads.Thread ===");

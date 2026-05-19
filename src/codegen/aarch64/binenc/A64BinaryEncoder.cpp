@@ -92,6 +92,41 @@ static const std::string &getLabel(const MOperand &op) {
     return op.label;
 }
 
+static std::string getSanitizedNonEmptyLabel(const MOperand &op, const char *context) {
+    const std::string &label = getLabel(op);
+    if (label.empty())
+        throw std::runtime_error(std::string(context) + " label must not be empty");
+    const std::string sanitized = sanitizeLabel(label);
+    if (sanitized.empty())
+        throw std::runtime_error(std::string(context) + " label sanitizes to an empty name");
+    return sanitized;
+}
+
+static int64_t checkedAddI64(int64_t lhs, int64_t rhs, const char *context) {
+    if ((rhs > 0 && lhs > std::numeric_limits<int64_t>::max() - rhs) ||
+        (rhs < 0 && lhs < std::numeric_limits<int64_t>::min() - rhs)) {
+        throw std::runtime_error(std::string(context) + " immediate addition overflows int64");
+    }
+    return lhs + rhs;
+}
+
+static int64_t checkedOffsetDelta(size_t target, size_t base, const char *context) {
+    if (target >= base) {
+        const size_t diff = target - base;
+        if (diff > static_cast<size_t>(std::numeric_limits<int64_t>::max()))
+            throw std::runtime_error(std::string(context) + " displacement exceeds int64 range");
+        return static_cast<int64_t>(diff);
+    }
+    const size_t diff = base - target;
+    const uint64_t maxMagnitude =
+        static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) + 1ULL;
+    if (static_cast<uint64_t>(diff) > maxMagnitude)
+        throw std::runtime_error(std::string(context) + " displacement exceeds int64 range");
+    if (static_cast<uint64_t>(diff) == maxMagnitude)
+        return std::numeric_limits<int64_t>::min();
+    return -static_cast<int64_t>(diff);
+}
+
 /// Extract encoded condition value from an operand.
 static uint32_t getCondCode(const MOperand &op) {
     if (op.kind != MOperand::Kind::Cond)
@@ -686,6 +721,8 @@ size_t A64BinaryEncoder::measureInstructionSize(
     validateOperandCount(mi);
 
     auto conditionalBranchSize = [&](const std::string &target) {
+        if (target.empty())
+            throw std::runtime_error("AArch64 binary encoder: conditional branch label must not be empty");
         if (assumedLongConditionalBranches.count(instructionOrdinal) != 0) {
             if (discoveredLongConditionalBranches)
                 discoveredLongConditionalBranches->insert(instructionOrdinal);
@@ -694,8 +731,7 @@ size_t A64BinaryEncoder::measureInstructionSize(
         auto it = knownLabelOffsets.find(sanitizeLabel(target));
         if (it == knownLabelOffsets.end())
             return size_t{4};
-        const int64_t delta =
-            static_cast<int64_t>(it->second) - static_cast<int64_t>(currentOffset);
+        const int64_t delta = checkedOffsetDelta(it->second, currentOffset, "conditional branch");
         if (fitsBranchDispWords(delta, 19))
             return size_t{4};
         if (discoveredLongConditionalBranches)
@@ -778,9 +814,12 @@ size_t A64BinaryEncoder::measureInstructionSize(
             return (scalarLdStSizeForOffset(getImm(mi.ops[2]), 8) != 0
                         ? 4
                         : largeOffsetLdStSize(getImm(mi.ops[2]))) +
-                   (scalarLdStSizeForOffset(getImm(mi.ops[2]) + 8, 8) != 0
+                   (scalarLdStSizeForOffset(
+                        checkedAddI64(getImm(mi.ops[2]), 8, "AArch64 pair fallback offset"),
+                        8) != 0
                         ? 4
-                        : largeOffsetLdStSize(getImm(mi.ops[2]) + 8));
+                        : largeOffsetLdStSize(
+                              checkedAddI64(getImm(mi.ops[2]), 8, "AArch64 pair fallback offset")));
 
         case MOpcode::SubSpImm:
         case MOpcode::AddSpImm:
@@ -838,7 +877,16 @@ A64BinaryEncoder::LabelOffsetMap A64BinaryEncoder::computeFunctionLabelOffsets(c
         next.reserve(estimated.size() + fn.blocks.size());
 
         auto assignLabel = [&](const std::string &name, size_t offset) {
+            if (name.empty())
+                return;
             const std::string sanitized = sanitizeLabel(name);
+            if (sanitized.empty())
+                throw std::runtime_error("AArch64 binary encoder: label '" + name +
+                                         "' sanitizes to an empty name in function '" + fn.name + "'");
+            if (next.find(sanitized) != next.end()) {
+                throw std::runtime_error("AArch64 binary encoder: duplicate/sanitized label '" +
+                                         sanitized + "' in function '" + fn.name + "'");
+            }
             auto prevIt = estimated.find(sanitized);
             if (prevIt == estimated.end() || prevIt->second != offset)
                 changed = true;
@@ -1006,7 +1054,14 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
         for (const auto &bb : fn.blocks) {
             if (!bb.name.empty()) {
                 const std::string label = sanitizeLabel(bb.name);
+                if (label.empty())
+                    throw std::runtime_error("AArch64 binary encoder: block label sanitizes to empty");
                 verifyPredictedLabelOffset(label, text.currentOffset());
+                auto existing = labelOffsets_.find(label);
+                if (existing != labelOffsets_.end() && existing->second != text.currentOffset()) {
+                    throw std::runtime_error("AArch64 binary encoder: duplicate emitted label '" +
+                                             label + "' in function '" + fn.name + "'");
+                }
                 labelOffsets_[label] = text.currentOffset();
             }
 
@@ -1029,7 +1084,7 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
             }
 
             const size_t targetOff = it->second;
-            const int64_t delta = static_cast<int64_t>(targetOff) - static_cast<int64_t>(pb.offset);
+            const int64_t delta = checkedOffsetDelta(targetOff, pb.offset, "internal branch");
 
             uint32_t word = text.read32LE(pb.offset);
 
@@ -1288,8 +1343,12 @@ void A64BinaryEncoder::recordWindowsArm64UnwindEntry(const MFunction &fn,
     objfile::WinArm64UnwindEntry entry{};
     entry.symbolIndex = funcSymIdx;
     entry.functionLength = functionLength;
-    entry.prologueSize = static_cast<uint8_t>(
-        std::min<size_t>(prologueSize(fn), std::numeric_limits<uint8_t>::max()));
+    const size_t prologueBytes = prologueSize(fn);
+    if (prologueBytes > std::numeric_limits<uint8_t>::max()) {
+        throw std::runtime_error("AArch64 binary encoder: Windows ARM64 prologue for '" +
+                                 fn.name + "' exceeds 255 bytes");
+    }
+    entry.prologueSize = static_cast<uint8_t>(prologueBytes);
     entry.unwindCodes = std::move(unwindCodes);
     entry.packedEpilogInHeader = true;
     entry.epilogCodeIndex = 0;
@@ -1384,6 +1443,10 @@ void A64BinaryEncoder::encodeLargeOffsetLdSt(
     bool isFPR,
     unsigned accessBytes,
     objfile::CodeSection &cs) {
+    if (base == hwGPR(PhysReg::SP)) {
+        throw std::runtime_error(
+            "AArch64 binary encoder: large-offset load/store cannot materialize SP base with ADD (register)");
+    }
     const uint32_t scratch = chooseGprScratch(base, (!isLoad && !isFPR) ? std::optional<uint32_t>(rt)
                                                                         : std::nullopt);
     encodeMovImm64(scratch, static_cast<uint64_t>(offset), cs);
@@ -1850,7 +1913,13 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
             uint32_t fp = hwGPR(PhysReg::X29);
             if (!isPairImm7Offset(rawOffset)) {
                 encodeScalarLdSt(rt, fp, rawOffset, true, false, 8, cs);
-                encodeScalarLdSt(rt2, fp, rawOffset + 8, true, false, 8, cs);
+                encodeScalarLdSt(rt2,
+                                 fp,
+                                 checkedAddI64(rawOffset, 8, "AArch64 ldp fallback offset"),
+                                 true,
+                                 false,
+                                 8,
+                                 cs);
                 return;
             }
             auto offset = checkedPairImm7(rawOffset, "ldp");
@@ -1864,7 +1933,13 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
             uint32_t fp = hwGPR(PhysReg::X29);
             if (!isPairImm7Offset(rawOffset)) {
                 encodeScalarLdSt(rt, fp, rawOffset, false, false, 8, cs);
-                encodeScalarLdSt(rt2, fp, rawOffset + 8, false, false, 8, cs);
+                encodeScalarLdSt(rt2,
+                                 fp,
+                                 checkedAddI64(rawOffset, 8, "AArch64 stp fallback offset"),
+                                 false,
+                                 false,
+                                 8,
+                                 cs);
                 return;
             }
             auto offset = checkedPairImm7(rawOffset, "stp");
@@ -1878,7 +1953,13 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
             uint32_t fp = hwGPR(PhysReg::X29);
             if (!isPairImm7Offset(rawOffset)) {
                 encodeScalarLdSt(rt, fp, rawOffset, true, true, 8, cs);
-                encodeScalarLdSt(rt2, fp, rawOffset + 8, true, true, 8, cs);
+                encodeScalarLdSt(rt2,
+                                 fp,
+                                 checkedAddI64(rawOffset, 8, "AArch64 ldp fallback offset"),
+                                 true,
+                                 true,
+                                 8,
+                                 cs);
                 return;
             }
             auto offset = checkedPairImm7(rawOffset, "ldp");
@@ -1892,7 +1973,13 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
             uint32_t fp = hwGPR(PhysReg::X29);
             if (!isPairImm7Offset(rawOffset)) {
                 encodeScalarLdSt(rt, fp, rawOffset, false, true, 8, cs);
-                encodeScalarLdSt(rt2, fp, rawOffset + 8, false, true, 8, cs);
+                encodeScalarLdSt(rt2,
+                                 fp,
+                                 checkedAddI64(rawOffset, 8, "AArch64 stp fallback offset"),
+                                 false,
+                                 true,
+                                 8,
+                                 cs);
                 return;
             }
             auto offset = checkedPairImm7(rawOffset, "stp");
@@ -2076,12 +2163,11 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
 
         // ─── Branch Instructions ───
         case MOpcode::Br: {
-            std::string target = sanitizeLabel(getLabel(mi.ops[0]));
+            std::string target = getSanitizedNonEmptyLabel(mi.ops[0], "AArch64 branch");
             auto it = labelOffsets_.find(target);
             if (it != labelOffsets_.end()) {
                 // Backward branch — resolve immediately.
-                int64_t delta =
-                    static_cast<int64_t>(it->second) - static_cast<int64_t>(cs.currentOffset());
+                int64_t delta = checkedOffsetDelta(it->second, cs.currentOffset(), "branch");
                 const int32_t imm26 =
                     checkedBranchDispWords(delta,
                                            26,
@@ -2098,13 +2184,13 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
         }
         case MOpcode::BCond: {
             uint32_t cc = getCondCode(mi.ops[0]);
-            std::string target = sanitizeLabel(getLabel(mi.ops[1]));
+            std::string target = getSanitizedNonEmptyLabel(mi.ops[1], "AArch64 conditional branch");
             const bool forceLong =
                 longConditionalBranchOrdinals_.count(currentInstructionOrdinal_) != 0;
             auto it = labelOffsets_.find(target);
             if (it != labelOffsets_.end()) {
                 const int64_t delta =
-                    static_cast<int64_t>(it->second) - static_cast<int64_t>(cs.currentOffset());
+                    checkedOffsetDelta(it->second, cs.currentOffset(), "conditional branch");
                 if (!forceLong && fitsBranchDispWords(delta, 19)) {
                     const int32_t imm19 =
                         checkedBranchDispWords(delta,
@@ -2116,8 +2202,8 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
                     emit32(kBCond | ((static_cast<uint32_t>(imm19) & 0x7FFFF) << 5) | cc, cs);
                 } else {
                     emit32(kBCond | (2u << 5) | invertCond(cc), cs);
-                    const int64_t farDelta = static_cast<int64_t>(it->second) -
-                                             static_cast<int64_t>(cs.currentOffset());
+                    const int64_t farDelta =
+                        checkedOffsetDelta(it->second, cs.currentOffset(), "branch");
                     const int32_t imm26 =
                         checkedBranchDispWords(farDelta,
                                                26,
@@ -2141,13 +2227,13 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
         }
         case MOpcode::Cbz: {
             uint32_t rt = hwGPR(getReg(mi.ops[0]));
-            std::string target = sanitizeLabel(getLabel(mi.ops[1]));
+            std::string target = getSanitizedNonEmptyLabel(mi.ops[1], "AArch64 cbz");
             const bool forceLong =
                 longConditionalBranchOrdinals_.count(currentInstructionOrdinal_) != 0;
             auto it = labelOffsets_.find(target);
             if (it != labelOffsets_.end()) {
                 const int64_t delta =
-                    static_cast<int64_t>(it->second) - static_cast<int64_t>(cs.currentOffset());
+                    checkedOffsetDelta(it->second, cs.currentOffset(), "conditional branch");
                 if (!forceLong && fitsBranchDispWords(delta, 19)) {
                     const int32_t imm19 =
                         checkedBranchDispWords(delta,
@@ -2159,8 +2245,8 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
                     emit32(kCbz | ((static_cast<uint32_t>(imm19) & 0x7FFFF) << 5) | rt, cs);
                 } else {
                     emit32(kCbnz | (2u << 5) | rt, cs);
-                    const int64_t farDelta = static_cast<int64_t>(it->second) -
-                                             static_cast<int64_t>(cs.currentOffset());
+                    const int64_t farDelta =
+                        checkedOffsetDelta(it->second, cs.currentOffset(), "branch");
                     const int32_t imm26 =
                         checkedBranchDispWords(farDelta,
                                                26,
@@ -2184,13 +2270,13 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
         }
         case MOpcode::Cbnz: {
             uint32_t rt = hwGPR(getReg(mi.ops[0]));
-            std::string target = sanitizeLabel(getLabel(mi.ops[1]));
+            std::string target = getSanitizedNonEmptyLabel(mi.ops[1], "AArch64 cbnz");
             const bool forceLong =
                 longConditionalBranchOrdinals_.count(currentInstructionOrdinal_) != 0;
             auto it = labelOffsets_.find(target);
             if (it != labelOffsets_.end()) {
                 const int64_t delta =
-                    static_cast<int64_t>(it->second) - static_cast<int64_t>(cs.currentOffset());
+                    checkedOffsetDelta(it->second, cs.currentOffset(), "conditional branch");
                 if (!forceLong && fitsBranchDispWords(delta, 19)) {
                     const int32_t imm19 =
                         checkedBranchDispWords(delta,
@@ -2202,8 +2288,8 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
                     emit32(kCbnz | ((static_cast<uint32_t>(imm19) & 0x7FFFF) << 5) | rt, cs);
                 } else {
                     emit32(kCbz | (2u << 5) | rt, cs);
-                    const int64_t farDelta = static_cast<int64_t>(it->second) -
-                                             static_cast<int64_t>(cs.currentOffset());
+                    const int64_t farDelta =
+                        checkedOffsetDelta(it->second, cs.currentOffset(), "branch");
                     const int32_t imm26 =
                         checkedBranchDispWords(farDelta,
                                                26,
@@ -2228,12 +2314,13 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
         case MOpcode::Bl: {
             // Direct call — always external (generates relocation).
             const std::string &rawLabel = getLabel(mi.ops[0]);
+            if (rawLabel.empty())
+                throw std::runtime_error("AArch64 binary encoder: call label must not be empty");
             std::string sym = mapRuntimeSymbol(rawLabel);
             auto it = labelOffsets_.find(sanitizeLabel(rawLabel));
             if (it != labelOffsets_.end()) {
                 // Internal call (rare but possible for local functions).
-                int64_t delta =
-                    static_cast<int64_t>(it->second) - static_cast<int64_t>(cs.currentOffset());
+                int64_t delta = checkedOffsetDelta(it->second, cs.currentOffset(), "call");
                 const int32_t imm26 =
                     checkedBranchDispWords(delta,
                                            26,

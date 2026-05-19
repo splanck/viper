@@ -192,7 +192,7 @@ Frontends lower to a typed [IL](docs/il-guide.md) that is compact, explicit, and
 module Hello;
 
 bind Viper.Terminal;
-bind Fmt = Viper.Fmt;
+bind Fmt = Viper.Text.Fmt;
 
 func start() {
     var x = 2 + 3;
@@ -206,7 +206,7 @@ func start() {
 
 ```llvm
 il 0.2.0
-extern @Viper.Fmt.Int(i64) -> str
+extern @Viper.Text.Fmt.Int(i64) -> str
 extern @Viper.Terminal.Say(str) -> void
 global const str @.L0 = "HELLO"
 func @main() -> void {
@@ -221,7 +221,7 @@ entry_0:
   %t5 = const_str @.L0
   call @Viper.Terminal.Say(%t5)
   %t6 = load i64, %t4
-  %t7 = call @Viper.Fmt.Int(%t6)
+  %t7 = call @Viper.Text.Fmt.Int(%t6)
   call @Viper.Terminal.Say(%t7)
   ret
 }

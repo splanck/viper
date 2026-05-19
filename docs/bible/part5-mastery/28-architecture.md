@@ -584,7 +584,7 @@ MVC separates user interface applications into three components:
 
 ```rust
 bind Convert = Viper.Core.Convert;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 // Model: Business logic and data
 class TodoList {

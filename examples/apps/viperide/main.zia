@@ -28,7 +28,7 @@ bind IO = Viper.IO;
 bind Path = Viper.IO.Path;
 bind Dir = Viper.IO.Dir;
 bind Input = Viper.Input;
-bind Exec = Viper.Exec;
+bind Exec = Viper.System.Exec;
 bind Convert = Viper.Core.Convert;
 bind Str = Viper.String;
 

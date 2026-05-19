@@ -1,6 +1,6 @@
 module TestConvertFmt;
 bind Viper.Core.Convert;
-bind Viper.Fmt;
+bind Viper.Text.Fmt;
 bind Viper.Terminal;
 
 func start() {

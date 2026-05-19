@@ -86,7 +86,7 @@
 module join;
 
 bind Viper.String as String;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.Math;
 bind Viper.Text.Pattern as Pattern;
 bind "./types";

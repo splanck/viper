@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/system/rt_exec.c
-// Purpose: Implements external command execution for the Viper.Exec class.
+// Purpose: Implements external command execution for the Viper.System.Exec class.
 //          Provides Run (fire-and-forget), Capture (capture stdout),
 //          Shell (via system shell), and ShellFull (capture + exit code)
 //          variants using posix_spawn (Unix) or CreateProcess (Win32).

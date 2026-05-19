@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTMachineTests.cpp
-// Purpose: Tests for Viper.Machine system information queries.
+// Purpose: Tests for Viper.System.Machine system information queries.
 //
 //===----------------------------------------------------------------------===//
 
@@ -159,7 +159,7 @@ static void test_mem_relationship() {
 }
 
 int main() {
-    printf("=== Viper.Machine Tests ===\n\n");
+    printf("=== Viper.System.Machine Tests ===\n\n");
 
     test_os();
     test_os_ver();

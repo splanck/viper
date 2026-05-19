@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_log.c
-// Purpose: Implements the Viper.Log namespace — a lightweight structured
+// Purpose: Implements the Viper.Diagnostics.Log namespace — a lightweight structured
 //          logging system with five severity levels (DEBUG, INFO, WARN, ERROR,
 //          OFF). Log messages are written to stderr with a
 //          "[LEVEL] YYYY-MM-DD HH:MM:SS" timestamp prefix and are filtered by

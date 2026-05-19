@@ -7,7 +7,7 @@ bind Viper.Network as Network;
 bind Viper.String as String;
 bind Viper.IO as IO;
 bind Viper.Time as Time;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 // ============================================================================
 // CONFIGURATION

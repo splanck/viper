@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-05-11
+last-verified: 2026-05-19
 ---
 
 # Native Linker — Object File Linking & Executable Generation
@@ -175,22 +175,29 @@ ObjFile
 
 ### Format-Specific Handling
 
-- **ELF**: Explicit addends from `.rela` sections and implicit addends from `.rel` sections are supported. Extended
-  section counts are decoded from section header 0. `SHT_GROUP` COMDAT groups carry their signature and member list
-  into the linker object model, relocation table byte sizes must be exact multiples of their entry size,
-  `SHN_COMMON` symbols are preserved as tentative definitions for linker-wide coalescing, weak undefined symbols
-  stay undefined/weak-external, and absolute symbols keep their absolute values. Symbols and relocation sections
-  that reference unsupported or unmapped section indexes are hard errors.
-- **Mach-O**: Addends are extracted from instruction bytes or from ARM64 `ADDEND` relocations. Leading `_` is
+- **ELF**: Explicit addends from `.rela` sections and implicit addends from `.rel` sections are supported. Malformed
+  `.rel` addend sites are rejected when the implicit addend would read past the target section. Extended section
+  counts are decoded from section header 0. `SHT_GROUP` COMDAT groups carry their signature and member list into the
+  linker object model, relocation table byte sizes must be exact multiples of their entry size, `SHN_COMMON` symbols
+  are preserved as tentative definitions for linker-wide coalescing, weak undefined symbols stay
+  undefined/weak-external, and absolute symbols keep their absolute values. Symbols and relocation sections that
+  reference unsupported or unmapped section indexes are hard errors.
+- **Mach-O**: Addends are extracted from instruction bytes or from ARM64 `ADDEND` relocations. x86_64 branch/signed
+  PC-relative addends are normalized to Viper's internal `S + A - P` convention, where a raw displacement field of
+  zero becomes internal addend `-4`. Leading `_` is
   stripped from external symbol names (Mach-O convention). Non-extern section-relative relocations resolve through
   synthetic local section symbols, ARM64 `ADDEND` payloads are sign-extended, consecutive addend records are
   rejected, and `__DWARF`/debug sections are decoded as non-alloc sections. `MH_SUBSECTIONS_VIA_SYMBOLS`
   `__TEXT,__text` inputs are split at global function-symbol boundaries for the native linker, preserving
   function-level dead-strip and ICF behavior even when the object writer emitted one Mach-O text section.
-  Executable and writable flags are inferred from both section attributes and data-like segment names.
-- **COFF**: Addends are extracted per relocation kind. AMD64/ARM64 `ADDR64` uses an 8-byte addend; ARM64 branch,
-  ADRP page, and page-offset relocations decode their instruction fields so writer-emitted placeholders do not
-  become bogus addends. Common symbols are preserved as tentative definitions with COFF-size-derived alignment.
+  Executable and writable flags are inferred from both section attributes and data-like segment names. Read-only
+  Mach-O data segments such as `__DATA_CONST` and `__AUTH_CONST` remain data-segment sections without being treated
+  as ordinary writable data.
+- **COFF**: Addends are extracted per relocation kind. AMD64 `REL32[_n]` addends are normalized to Viper's internal
+  `S + A - P` convention, so a raw displacement field of zero becomes internal addend `-4 - n`. AMD64/ARM64
+  `ADDR64` uses an 8-byte addend; ARM64 branch, ADRP page, and page-offset relocations decode their instruction
+  fields so writer-emitted placeholders do not become bogus addends. Common symbols are preserved as tentative
+  definitions with COFF-size-derived alignment.
   Weak extern fallback records, BigObj symbol tables, associative COMDAT section relationships, and COFF relocation
   overflow records are parsed. COMDAT `ANY`, `SAME_SIZE`, `EXACT_MATCH`, `LARGEST`, and `NODUPLICATES` policies are
   represented explicitly; unsupported selection values are rejected.
@@ -201,8 +208,9 @@ Readers reject unsupported file types, wrong machines, unsupported section align
 sections, out-of-bounds section data, unterminated or out-of-range ELF/Mach-O string-table names, invalid COFF
 long-name string-table references, truncated section headers, truncated relocation tables, undersized Mach-O
 load commands, dangling Mach-O ARM64 addend records, scattered Mach-O relocations, invalid relocation symbol
-indexes, and Mach-O relocation addend extraction sites that do not fit inside the target section. Debug and unwind
-metadata such as
+indexes, defined symbols whose offset/size extends past their section, and Mach-O relocation addend extraction sites
+that do not fit inside the target section. Zero-fill sections keep their logical memory size without materializing
+zero bytes into the object model. Debug and unwind metadata such as
 `__compact_unwind`, `__eh_frame`, `.debug_line`, and `__DWARF` sections is preserved in the intermediate object
 model for later passes. Executable links strip non-alloc debug sections by default and keep them only when
 `NativeLinkerOptions::preserveDebugSections` is set.
@@ -298,6 +306,12 @@ Input sections are classified by name and attributes:
 | **TLS Data** | `.tdata`, `__DATA,__thread_data` | RW- (thread-local) |
 | **TLS BSS** | `.tbss`, `__DATA,__thread_bss` | RW- (thread-local, zero-filled) |
 
+Platform metadata sections that loaders or runtimes find by name are preserved instead of being folded into generic
+rodata/data buckets. This includes ObjC metadata, Windows `.pdata`/`.xdata`, ELF EH/note sections, and Mach-O
+`__DATA_CONST`/`__AUTH_CONST` sections. Preserved sections reject incompatible alloc/TLS/zero-fill storage
+attributes, but conservatively merge executable, writable, and data-segment placement flags when same-named metadata
+arrives from a mix of reader-created and linker-synthetic inputs.
+
 ### Layout
 
 Output sections are laid out in order: `.text` → `.rodata` → `.data` → `.tdata` → `.tbss` → `.bss`.
@@ -308,6 +322,10 @@ Each section starts on a page boundary. Within a section, input chunks are conca
 requirements preserved. Empty alloc sections are skipped only when they have no relocations and no live symbols, so
 zero-size labels remain addressable. Chunk sorting uses section class as the primary key and alignment only within
 the same class, so a high-alignment data or rodata contribution cannot move ahead of executable code.
+
+Zero-fill inputs carry a logical memory size separately from file-backed bytes. The merger records chunk sizes using
+that logical size, but does not append zero bytes to the output `data` vector. This keeps `.bss`/`.tbss` compact
+while still giving symbols, TLS layout, segment memory sizes, and relocation bounds the correct address range.
 
 ### Base Addresses
 
@@ -364,6 +382,8 @@ Where: `S` = symbol address, `A` = addend, `P` = patch site address, `Page(X)` =
 Relocation symbol lookup resolves local symbols from the referencing object. For non-local weak/global symbols with
 a same-object definition, the global table is consulted first so a strong definition in another object correctly
 overrides the weak/common definition. This same rule is used by dead-strip liveness propagation.
+Weak undefined symbols without a fallback may resolve to address zero only for absolute data relocations (`Abs64` or
+`Abs32`); branch, PC-relative, page, GOT, TLS, and instruction-field relocations must still resolve to a real target.
 
 AArch64 instruction-field relocations validate the opcode before patching: branch26 requires `B`/`BL`, page21 and
 GOT page21 require `ADRP`, page-offset relocations require the matching ADD/SUB-immediate or unsigned-offset
@@ -394,8 +414,13 @@ load/store form, and branch19 requires `B.cond`/`CBZ`/`CBNZ`.
 - COFF ARM64 `SECREL_LOW12L`, page-offset, and GOT page-offset relocations validate that the instruction at the
   patch site is the expected ADD/SUB-immediate or unsigned-offset load/store form before rewriting its immediate
   field.
+- COFF ARM64 `SECREL_LOW12A`/`SECREL_HIGH12A` require ADD/SUB-immediate instructions. `PAGEOFFSET_12A` requires an
+  arithmetic instruction, while `PAGEOFFSET_12L` requires an unsigned-offset load/store; the linker rejects swapped
+  forms instead of guessing the scale.
 - A live alloc input section that still has relocations must appear in the output layout. Missing placement is a hard
   error because otherwise the linker would silently skip fixups for live bytes.
+- Each live input section may appear in only one output chunk. Duplicate chunk provenance is rejected before
+  relocation patching so the linker never has to choose between two final addresses for the same input section.
 - Dynamic symbol bindings requested by symbol resolution are honored directly during relocation application, even
   when no synthetic GOT symbol has been inserted yet.
 - Symbol address, relocation-place, trampoline, and file-offset arithmetic is checked before narrowing or patching.
@@ -474,6 +499,8 @@ Section Header Table
 - `PT_GNU_STACK` flags = `PF_R | PF_W` (no `PF_X`, non-executable stack)
 - TLS sections carry `SHF_TLS`; TLS images emit a `PT_TLS` program header whose file size covers initialized TLS
   data and whose memory size extends through `.tbss`.
+- Loadable section headers and `PT_LOAD` memory sizes use logical zero-fill sizes while file sizes include only
+  materialized bytes.
 - Dynamic string/symbol table offsets, generated section placement, startup-stub placement, and final section-header
   table offsets are checked before narrowing or allocation.
 - File permissions set to 755 after writing
@@ -538,6 +565,8 @@ Section Data (file-aligned to 0x200)
 - 16 data directory entries; imports, exceptions, base relocations, resources, IAT, and TLS are populated when used
 - TLS directory raw-data bounds exclude `.tbss`; `SizeOfZeroFill` covers the zero-fill tail instead of embedding it
   into the TLS template.
+- PE section `VirtualSize` uses each output section's logical memory size, so `.bss`/`.tbss` occupy memory without
+  being serialized into the file.
 - Import-table sizing is checked before 32-bit RVAs are materialized. When reusing external IAT slots, the slot must
   map to a writable output section before the writer seeds it with the import lookup entry.
 - Stack reserve: 1MB, heap reserve: 1MB
@@ -569,7 +598,8 @@ minimal PE executables with the entry point at `main` and emits the required DLL
 The Viper runtime uses 13 thread-local variables across 9 `.c` files. The linker preserves TLS sections (`.tdata`,
 `.tbss`, `__DATA,__thread_data`) when present in input objects. TLS relocations are handled by the relocation
 applier using the appropriate format-specific types. ELF output emits `PT_TLS`; PE output emits the TLS data
-directory and reports zero-filled TLS separately from initialized template bytes.
+directory and reports zero-filled TLS separately from initialized template bytes. TLS offset calculations use the
+logical memory size of `.tbss`, not the number of bytes materialized in the object model.
 
 ---
 

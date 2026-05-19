@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/system/rt_machine.c
-// Purpose: Implements system information queries for the Viper.Machine class.
+// Purpose: Implements system information queries for the Viper.System.Machine class.
 //          Provides CPU count, hostname, OS name/version, architecture,
 //          total/available memory, and process ID using platform-specific APIs.
 //

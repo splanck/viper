@@ -48,7 +48,7 @@ module sql_client;
 bind Viper.Network as Network;
 bind Viper.Terminal as Terminal;
 bind Viper.String as String;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 //=============================================================================
 // CLIENT CONSTANTS

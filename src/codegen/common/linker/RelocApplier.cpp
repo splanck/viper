@@ -293,17 +293,21 @@ struct TlsImageInfo {
 };
 
 /// Build the reverse-index map from the link layout.
-static LocationMap buildLocationMap(const LinkLayout &layout) {
-    LocationMap map;
+static bool buildLocationMap(const LinkLayout &layout, LocationMap &map, std::ostream &err) {
     for (size_t si = 0; si < layout.sections.size(); ++si) {
         for (const auto &chunk : layout.sections[si].chunks) {
             if (chunk.synthetic)
                 continue;
-            map[InputSectionKey{chunk.inputObjIndex, chunk.inputSecIndex}] =
-                OutputLocation{si, chunk.outputOffset, chunk.size};
+            InputSectionKey key{chunk.inputObjIndex, chunk.inputSecIndex};
+            if (map.find(key) != map.end()) {
+                err << "error: input section (" << chunk.inputObjIndex << ", "
+                    << chunk.inputSecIndex << ") appears in multiple output chunks\n";
+                return false;
+            }
+            map[key] = OutputLocation{si, chunk.outputOffset, chunk.size};
         }
     }
-    return map;
+    return true;
 }
 
 static bool hasMatchingAArch64GotPageReloc(const ObjFile &obj,
@@ -352,7 +356,7 @@ static bool computeTlsImageInfo(const LinkLayout &layout, TlsImageInfo &info, st
             continue;
 
         uint64_t secEnd = 0;
-        if (!checkedAddU64(sec.virtualAddr, static_cast<uint64_t>(sec.data.size()), secEnd)) {
+        if (!checkedAddU64(sec.virtualAddr, static_cast<uint64_t>(outputSectionMemSize(sec)), secEnd)) {
             err << "error: TLS section '" << sec.name << "' exceeds 64-bit address range\n";
             return false;
         }
@@ -392,7 +396,7 @@ static bool resolveLocalSymAddr(const ObjSymbol &sym,
     if (!findOutputLocation(locMap, objIdx, sym.sectionIndex, outSecIdx, chunkOff, &inputSize))
         return false;
     const auto &outSec = layout.sections[outSecIdx];
-    if (chunkOff > outSec.data.size() || sym.offset > inputSize)
+    if (chunkOff > outputSectionMemSize(outSec) || sym.offset > inputSize)
         return false; // Symbol offset exceeds section bounds (malformed .o).
     uint64_t withChunk = 0;
     if (!checkedAddU64(outSec.virtualAddr, static_cast<uint64_t>(chunkOff), withChunk) ||
@@ -426,7 +430,7 @@ static bool resolveGlobalSymLocation(const std::string &symName,
         size_t inputSize = 0;
         if (findOutputLocation(locMap, entry.objIndex, entry.secIndex, outSecIdx, chunkOff, &inputSize)) {
             const auto &outSec = layout.sections[outSecIdx];
-            if (chunkOff > outSec.data.size() || entry.offset > inputSize)
+            if (chunkOff > outputSectionMemSize(outSec) || entry.offset > inputSize)
                 return false;
             uint64_t withChunk = 0;
             if (!checkedAddU64(outSec.virtualAddr, static_cast<uint64_t>(chunkOff), withChunk) ||
@@ -438,7 +442,7 @@ static bool resolveGlobalSymLocation(const std::string &symName,
         }
     }
 
-    if (entry.resolvedAddr == 0 &&
+    if (!entry.resolvedAddrValid && entry.resolvedAddr == 0 &&
         (entry.binding == GlobalSymEntry::Undefined || entry.binding == GlobalSymEntry::Dynamic))
         return false;
     addr = entry.resolvedAddr;
@@ -455,7 +459,9 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                       std::ostream &err) {
     // Build reverse-index map once: (objIdx, secIdx) → (outSecIdx, outputOffset).
     // This replaces the previous O(S×C) linear scan per lookup with O(1) amortized.
-    const LocationMap locMap = buildLocationMap(layout);
+    LocationMap locMap;
+    if (!buildLocationMap(layout, locMap, err))
+        return false;
     TlsImageInfo tlsImage;
     if (!computeTlsImageInfo(layout, tlsImage, err))
         return false;
@@ -466,6 +472,7 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
             continue;
         if (entry.absolute) {
             entry.resolvedAddr = static_cast<uint64_t>(entry.offset);
+            entry.resolvedAddrValid = true;
             continue;
         }
 
@@ -475,13 +482,14 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
         if (findOutputLocation(
                 locMap, entry.objIndex, entry.secIndex, outSecIdx, chunkOffset, &inputSize)) {
             const auto &outSec = layout.sections[outSecIdx];
-            if (chunkOffset <= outSec.data.size() && entry.offset <= inputSize) {
+            if (chunkOffset <= outputSectionMemSize(outSec) && entry.offset <= inputSize) {
                 uint64_t withChunk = 0;
                 if (!checkedAddU64(outSec.virtualAddr, static_cast<uint64_t>(chunkOffset), withChunk) ||
                     !checkedAddU64(withChunk, static_cast<uint64_t>(entry.offset), entry.resolvedAddr)) {
                     err << "error: symbol address overflow while resolving '" << name << "'\n";
                     return false;
                 }
+                entry.resolvedAddrValid = true;
             }
         }
     }
@@ -508,9 +516,9 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
             const uint64_t secVA = outSec.virtualAddr;
 
             for (const auto &rel : sec.relocs) {
-                if (rel.offset >= sec.data.size()) {
+                if (rel.offset >= objSectionMemSize(sec)) {
                     err << "error: relocation offset " << rel.offset << " exceeds section size "
-                        << sec.data.size() << " in '" << obj.name << "'\n";
+                        << objSectionMemSize(sec) << " in '" << obj.name << "'\n";
                     return false;
                 }
 
@@ -527,6 +535,7 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
 
                 uint64_t S = 0;
                 bool symResolved = false;
+                bool weakResolvedToZero = false;
                 size_t symOutSecIdx = SIZE_MAX;
                 bool hasSymOutputSection = false;
                 const bool preferGlobal = !symName.empty() && targetSym.binding != ObjSymbol::Local;
@@ -558,6 +567,7 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                     if (!symResolved) {
                         S = 0;
                         symResolved = true;
+                        weakResolvedToZero = true;
                     }
                 }
                 if (!symResolved && !symName.empty()) {
@@ -603,6 +613,12 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                     return false;
                 }
                 const size_t patchOff = chunkBase + rel.offset;
+
+                if (outSec.zeroFill) {
+                    err << "error: relocation in zero-fill output section '" << outSec.name
+                        << "' has no file-backed bytes to patch\n";
+                    return false;
+                }
 
                 if (patchOff > outSec.data.size()) {
                     err << "error: relocation at offset " << patchOff << " out of bounds in '"
@@ -787,6 +803,18 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         }
 
                         uint32_t insn = readLE32(patch);
+                        if (rel.type == coff_a64::kSecRelLow12A ||
+                            rel.type == coff_a64::kSecRelHigh12A) {
+                            if (!isAArch64AddSubImmediate(insn)) {
+                                err << "error: " << obj.name
+                                    << ": SECREL_LOW/HIGH12A relocation is not applied to an "
+                                       "AArch64 add/sub immediate instruction";
+                                if (!symName.empty())
+                                    err << " for '" << symName << "'";
+                                err << "\n";
+                                return false;
+                            }
+                        }
                         if (rel.type == coff_a64::kSecRelLow12L) {
                             if (!isAArch64UnsignedLdStOffset(insn)) {
                                 err << "error: " << obj.name
@@ -806,6 +834,14 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         writeLE32(patch, insn);
                         continue;
                     }
+                }
+
+                const RelocAction action = classifyReloc(obj.format, arch, rel.type);
+                if (weakResolvedToZero && action != RelocAction::Abs64 &&
+                    action != RelocAction::Abs32) {
+                    err << "error: " << obj.name << ": weak undefined symbol '"
+                        << targetDisplay << "' cannot resolve to address zero for this relocation\n";
+                    return false;
                 }
 
                 if (obj.format == ObjFileFormat::MachO && arch == LinkArch::X86_64) {
@@ -829,8 +865,6 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         continue;
                     }
                 }
-
-                const RelocAction action = classifyReloc(obj.format, arch, rel.type);
 
                 switch (action) {
                     case RelocAction::PCRel32: {
@@ -868,7 +902,7 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
 
                         // Mach-O: writable data pointers to imported symbols are left
                         // for dyld bind opcodes. Code branches use the synthetic stubs.
-                        if (outSec.writable && (isDynamicSym || hasDynamicGot)) {
+                        if ((outSec.writable || outSec.dataSegment) && (isDynamicSym || hasDynamicGot)) {
                             writeLE64(patch, 0);
                             layout.bindEntries.push_back({symName, outSecIdx, patchOff});
                             break;
@@ -904,7 +938,7 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                                     continue; // Skip the descriptor section itself.
                                 uint64_t tlsEnd = 0;
                                 if (!checkedAddU64(ls.virtualAddr,
-                                                   static_cast<uint64_t>(ls.data.size()),
+                                                   static_cast<uint64_t>(outputSectionMemSize(ls)),
                                                    tlsEnd))
                                     return false;
                                 if (val >= ls.virtualAddr && val < tlsEnd) {
@@ -928,7 +962,7 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         // entries use separate dyld mechanisms there.
                         if (platform == LinkPlatform::Windows && outSec.alloc && val != 0)
                             layout.rebaseEntries.push_back({outSecIdx, patchOff});
-                        else if (platform == LinkPlatform::macOS && outSec.writable &&
+                        else if (platform == LinkPlatform::macOS && (outSec.writable || outSec.dataSegment) &&
                                  !outSec.tls && val != 0)
                             layout.rebaseEntries.push_back({outSecIdx, patchOff});
 
@@ -1069,7 +1103,9 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         writeLE32(patch, insn);
                         break;
                     }
-                    case RelocAction::PageOff12: {
+                    case RelocAction::PageOff12:
+                    case RelocAction::PageOff12A:
+                    case RelocAction::PageOff12L: {
                         if (!requirePatchBytes(4, "page offset"))
                             return false;
                         uint32_t insn = readLE32(patch);
@@ -1077,6 +1113,8 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         if (!checkedRelocTarget(S, A, obj, symName, "page offset", err, target))
                             return false;
                         uint32_t pageOff = static_cast<uint32_t>(target) & 0xFFF;
+                        const bool requireArithmetic = action == RelocAction::PageOff12A;
+                        const bool requireLdSt = action == RelocAction::PageOff12L;
 
                         // Mach-O ARM64_RELOC_PAGEOFF12 is used for both ADD (unscaled)
                         // and LDR/STR (scaled by access size). The linker must inspect the
@@ -1086,11 +1124,28 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         // bits [29:24] = 11100x. Test: (insn & 0x3B000000) == 0x39000000.
                         // Scale = 1 << size, except 128-bit SIMD where scale = 16.
                         if (isAArch64UnsignedLdStOffset(insn)) {
+                            if (requireArithmetic) {
+                                err << "error: " << obj.name
+                                    << ": COFF PAGEOFFSET_12A relocation targets a load/store instruction";
+                                if (!symName.empty())
+                                    err << " for '" << symName << "'";
+                                err << "\n";
+                                return false;
+                            }
                             uint32_t shift = aarch64LdStOffsetShift(insn);
                             if (!checkPageOffsetAlignment(pageOff, shift, obj, symName, err))
                                 return false;
                             pageOff >>= shift;
-                        } else if (!isAArch64AddSubImmediate(insn)) {
+                        } else if (isAArch64AddSubImmediate(insn)) {
+                            if (requireLdSt) {
+                                err << "error: " << obj.name
+                                    << ": COFF PAGEOFFSET_12L relocation targets an add/sub instruction";
+                                if (!symName.empty())
+                                    err << " for '" << symName << "'";
+                                err << "\n";
+                                return false;
+                            }
+                        } else {
                             err << "error: " << obj.name
                                 << ": AArch64 page offset relocation for '" << symName
                                 << "' targets an unsupported instruction\n";

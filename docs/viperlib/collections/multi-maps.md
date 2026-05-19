@@ -58,7 +58,7 @@ module BiMapDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var bm = BiMap.New();
@@ -166,7 +166,7 @@ module MultiMapDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var mm = MultiMap.New();
@@ -307,7 +307,7 @@ module CountMapDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var cm = CountMap.New();
@@ -435,7 +435,7 @@ module IntMapDemo;
 bind Viper.Terminal;
 bind Viper.Collections;
 bind Viper.Core;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var m = IntMap.New();
@@ -545,7 +545,7 @@ module DefaultMapDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Create with string default
@@ -670,7 +670,7 @@ module LruCacheDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var cache = LruCache.New(3);
@@ -897,7 +897,7 @@ module SparseArrayDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var sa = SparseArray.New();

@@ -60,9 +60,9 @@ The `Viper.Terminal` module (`Say`, `Print`, `ReadKey`, etc.) is functionally eq
 
 **User-visible difference:** On older Windows terminals (pre-Windows 10 1607), ANSI escape sequences may not render correctly. The runtime enables VT processing automatically, but third-party terminal emulators may behave differently.
 
-### 1.2 System Information (Viper.Machine)
+### 1.2 System Information (Viper.System.Machine)
 
-The `Viper.Machine` module returns platform-specific values for several queries.
+The `Viper.System.Machine` module returns platform-specific values for several queries.
 
 | Function | Windows | macOS | Linux |
 |----------|---------|-------|-------|
@@ -115,7 +115,7 @@ Both paths produce cryptographically unpredictable temp filenames. The fallback 
 | Environment set | `SetEnvironmentVariableA()` | Not exposed (process-local `setenv()` only) |
 | `fork()` | Not available — test infra uses `CreateProcess` self-relaunch instead | Available |
 
-**User-visible difference:** Shell commands passed to `Viper.Exec.Shell()` are interpreted by `cmd.exe` on Windows and `/bin/sh` on Unix. Shell syntax (pipes, redirects, quoting rules) differs between these interpreters.
+**User-visible difference:** Shell commands passed to `Viper.System.Exec.Shell()` are interpreted by `cmd.exe` on Windows and `/bin/sh` on Unix. Shell syntax (pipes, redirects, quoting rules) differs between these interpreters.
 
 ### 1.6 Networking and TLS
 
@@ -186,7 +186,7 @@ Float-to-string and string-to-float conversions use locale-independent formattin
 | macOS | `strtod()` / `vsnprintf()` with per-thread `uselocale()` guards |
 | Linux | `strtod()` / `vsnprintf()` with per-thread `uselocale()` guards |
 
-**User-visible difference:** None — all three paths produce identical results for well-formed numeric strings. The runtime guarantees that `Viper.Fmt.Num()` and the `Viper.Parse` numeric helpers are locale-independent and round-trip consistent for finite values emitted by `Fmt.Num`.
+**User-visible difference:** None — all three paths produce identical results for well-formed numeric strings. The runtime guarantees that `Viper.Text.Fmt.Num()` and the `Viper.Parse` numeric helpers are locale-independent and round-trip consistent for finite values emitted by `Fmt.Num`.
 
 ---
 

@@ -90,7 +90,7 @@ The vision is to create a professional-grade development environment that rivals
 │                              │                                  │
 │  ┌───────────────────────────┴───────────────────────────────┐  │
 │  │                   Viper Runtime                            │  │
-│  │   Viper.GUI.*  │  Viper.File.*  │  Viper.Exec.*  │  ...   │  │
+│  │   Viper.GUI.*  │  Viper.File.*  │  Viper.System.Exec.*  │  ...   │  │
 │  └───────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -852,11 +852,11 @@ These exist in C++ (`vg_ide_widgets.h`) but need runtime bindings:
 
 | Module | Feature | Use Case |
 |--------|---------|----------|
-| Viper.Exec | Process spawn with I/O | Compiler integration |
-| Viper.Exec | Kill process | Stop running program |
+| Viper.System.Exec | Process spawn with I/O | Compiler integration |
+| Viper.System.Exec | Kill process | Stop running program |
 | Viper.File | Watch for changes | External file edits |
 | Viper.Path | Path manipulation | Project navigation |
-| Viper.Environment | Env variables | Build configuration |
+| Viper.System.Environment | Env variables | Build configuration |
 
 ---
 
@@ -938,7 +938,7 @@ These exist in C++ (`vg_ide_widgets.h`) but need runtime bindings:
 - [ ] Stop running process
 
 **Dependencies:**
-- Viper.Exec with I/O capture
+- Viper.System.Exec with I/O capture
 - Output parsing
 
 ---

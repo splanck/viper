@@ -847,9 +847,9 @@ first‑class and tested:
         - `NextInt(I64 n) -> I64` — Return next random integer in [0, n)
         - `Seed(I64) -> VOID` — Seed the random number generator
 
-#### Viper.Environment
+#### Viper.System.Environment
 
-- `Viper.Environment` — Command-line and environment (static utility)
+- `Viper.System.Environment` — Command-line and environment (static utility)
     - Methods (static):
         - `GetArgumentCount() -> I64` — Number of program arguments
         - `GetArgument(I64 index) -> STRING` — Get program argument by zero-based index
@@ -984,7 +984,7 @@ r = rng.Next()               ' Returns value in [0, 1)
 PRINT r
 ```
 
-Command-line arguments with Viper.Environment:
+Command-line arguments with Viper.System.Environment:
 
 ```basic
 USING Viper

@@ -70,7 +70,7 @@
 
 module session;
 
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.String as String;
 bind "./executor";
 bind "./server";

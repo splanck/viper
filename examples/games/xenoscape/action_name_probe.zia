@@ -33,7 +33,7 @@
 module action_name_probe;
 
 bind Viper.Terminal as Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.String as String;
 bind Viper.Input.Action as Action;
 bind "./config";

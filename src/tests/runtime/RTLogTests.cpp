@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTLogTests.cpp
-// Purpose: Tests for Viper.Log simple logging functions.
+// Purpose: Tests for Viper.Diagnostics.Log simple logging functions.
 //
 //===----------------------------------------------------------------------===//
 
@@ -312,7 +312,7 @@ static void test_default_level() {
 // ============================================================================
 
 int main() {
-    printf("=== Viper.Log Tests ===\n\n");
+    printf("=== Viper.Diagnostics.Log Tests ===\n\n");
 
     // Level constants
     test_level_constants();

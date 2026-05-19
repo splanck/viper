@@ -46,7 +46,7 @@ func main() {
     Viper.Terminal.Say("");
     Viper.Terminal.Say("=== Lambda Test ===");
     var addLambda = (a: Integer, b: Integer) => a + b;
-    Viper.Terminal.Say("Lambda add(3,5) = " + Viper.Fmt.Int(addLambda(3, 5)));
+    Viper.Terminal.Say("Lambda add(3,5) = " + Viper.Text.Fmt.Int(addLambda(3, 5)));
 
     Viper.Terminal.Say("=== Functions test complete ===");
 }

@@ -89,7 +89,7 @@
 
 module token;
 
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 //=============================================================================
 // TOKEN KINDS

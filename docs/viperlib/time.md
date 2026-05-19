@@ -53,7 +53,7 @@ module ClockDemo;
 
 bind Viper.Terminal;
 bind Viper.Time.Clock as Clock;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var t1 = Clock.Ticks();
@@ -246,7 +246,7 @@ module DateTimeDemo;
 
 bind Viper.Terminal;
 bind Viper.Time.DateTime as DateTime;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var now = DateTime.Now();
@@ -462,7 +462,7 @@ module DateOnlyDemo;
 
 bind Viper.Terminal;
 bind Viper.Time.DateOnly as DateOnly;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var d = DateOnly.Create(2025, 6, 15);
@@ -591,7 +591,7 @@ module DurationDemo;
 
 bind Viper.Terminal;
 bind Viper.Time.Duration as Duration;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var d = Duration.FromHours(2);
@@ -678,7 +678,7 @@ module DateRangeDemo;
 
 bind Viper.Terminal;
 bind Viper.Time.DateRange as DateRange;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var r = DateRange.New(1000, 5000);

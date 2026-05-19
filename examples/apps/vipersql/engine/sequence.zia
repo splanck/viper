@@ -69,7 +69,7 @@
 
 module sequence;
 
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 //=============================================================================
 // SEQUENCE

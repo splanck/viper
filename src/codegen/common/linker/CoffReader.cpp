@@ -325,6 +325,8 @@ static int64_t extractCoffAddend(uint16_t machine,
         if (relocType != coff_x64::kSection && checkedRange(offset, 4, sectionData.size())) {
             int32_t val = 0;
             std::memcpy(&val, sectionData.data() + offset, 4);
+            if (relocType >= coff_x64::kRel32 && relocType <= coff_x64::kRel32_5)
+                return static_cast<int64_t>(val) - 4 - (relocType - coff_x64::kRel32);
             return val;
         }
         return 0;
@@ -556,13 +558,11 @@ bool readCoffObj(
         if (sh->Characteristics & coff::IMAGE_SCN_CNT_UNINITIALIZED_DATA) {
             sec.zeroFill = true;
             const uint32_t zeroSize = sh->VirtualSize != 0 ? sh->VirtualSize : sh->SizeOfRawData;
-            if (zeroSize > kMaxObjSectionBytes ||
-                zeroSize > kMaxObjMaterializedBytes - materializedBytes) {
+            if (zeroSize > kMaxObjSectionBytes) {
                 err << "error: " << name << ": COFF section '" << sec.name << "' is too large\n";
                 return false;
             }
-            sec.data.resize(zeroSize, 0);
-            materializedBytes += zeroSize;
+            sec.memSize = zeroSize;
         } else if (sh->SizeOfRawData > 0 &&
                    checkedRange(sh->PointerToRawData, sh->SizeOfRawData, size)) {
             if (sh->SizeOfRawData > kMaxObjSectionBytes ||
@@ -572,6 +572,7 @@ bool readCoffObj(
             }
             sec.data.assign(data + sh->PointerToRawData,
                             data + sh->PointerToRawData + sh->SizeOfRawData);
+            sec.memSize = sec.data.size();
             materializedBytes += sh->SizeOfRawData;
         } else if (sh->SizeOfRawData > 0) {
             err << "error: " << name << ": COFF section '" << sec.name

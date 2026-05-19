@@ -8,5 +8,5 @@ END FUNCTION
 
 DIM result AS LONG
 result = Fib(40)
-Viper.Environment.EndProgram(result)
+Viper.System.Environment.EndProgram(result)
 END

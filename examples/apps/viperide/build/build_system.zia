@@ -2,7 +2,7 @@ module build_system;
 
 bind "diagnostic";
 bind Viper.String as Str;
-bind Viper.Exec as Exec;
+bind Viper.System.Exec as Exec;
 bind Viper.Core.Convert as Convert;
 bind Viper.Text.CompiledPattern as CP;
 bind Viper.Collections.Seq as Seq;

@@ -7,7 +7,7 @@ bind "../editor/diagnostics";
 
 bind Viper.GUI;
 bind Convert = Viper.Core.Convert;
-bind Machine = Viper.Machine;
+bind Machine = Viper.System.Machine;
 
 // ============================================================================
 // MODULE: view_commands

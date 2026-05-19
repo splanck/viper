@@ -64,7 +64,7 @@ module ParticleDemo;
 
 bind Viper.Terminal;
 bind Viper.Game.ParticleEmitter as PE;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var pe = PE.New(200);
@@ -205,7 +205,7 @@ module ScreenFXDemo;
 
 bind Viper.Terminal;
 bind Viper.Game.ScreenFX as FX;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var fx = FX.New();
@@ -265,7 +265,7 @@ module TransitionDemo;
 bind Viper.Game.ScreenFX as FX;
 bind Viper.Graphics.Canvas as Canvas;
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var screenW = 800;

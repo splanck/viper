@@ -1,6 +1,6 @@
 module AnimController3DDemo;
 
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.Graphics3D;
 bind Viper.Math;
 bind Viper.Terminal;

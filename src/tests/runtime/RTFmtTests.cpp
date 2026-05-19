@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTFmtTests.cpp
-// Purpose: Tests for Viper.Fmt value formatting functions.
+// Purpose: Tests for Viper.Text.Fmt value formatting functions.
 //
 //===----------------------------------------------------------------------===//
 
@@ -314,7 +314,7 @@ static void test_fmt_oct() {
 // ============================================================================
 
 int main() {
-    printf("=== Viper.Fmt Tests ===\n\n");
+    printf("=== Viper.Text.Fmt Tests ===\n\n");
 
     // Int formatting
     test_fmt_int();

@@ -238,7 +238,7 @@ TEST(ReplBinds, DefaultBinds) {
     auto binds = adapter.listBinds();
     EXPECT_EQ(binds.size(), 3u);
     EXPECT_EQ(binds[0], "bind Viper.Terminal");
-    EXPECT_EQ(binds[1], "bind Viper.Fmt as Fmt");
+    EXPECT_EQ(binds[1], "bind Viper.Text.Fmt as Fmt");
     EXPECT_EQ(binds[2], "bind Viper.Core.Object as Obj");
 }
 

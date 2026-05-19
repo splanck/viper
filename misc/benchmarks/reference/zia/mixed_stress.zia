@@ -21,5 +21,5 @@ func start() {
         }
         sum = sum + tmp;
     }
-    Viper.Environment.EndProgram(sum);
+    Viper.System.Environment.EndProgram(sum);
 }

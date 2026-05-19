@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTFmtExtTests.cpp
-// Purpose: Tests for extended Viper.Fmt functions (IntGrouped, Currency,
+// Purpose: Tests for extended Viper.Text.Fmt functions (IntGrouped, Currency,
 //          ToWords, Ordinal).
 //
 //===----------------------------------------------------------------------===//

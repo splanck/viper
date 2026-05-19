@@ -10,7 +10,7 @@ bind Viper.Graphics;
 bind Viper.Graphics.Canvas;
 bind Viper.Graphics.Color;
 bind Viper.Game.ScreenFX as FX;
-bind Viper.Fmt;
+bind Viper.Text.Fmt;
 bind Viper.Input;
 
 final W = 640;

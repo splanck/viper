@@ -458,6 +458,88 @@ int main() {
         CHECK(readLE64(layout.sections[0].data.data()) == 0x401008);
     }
 
+    // --- Weak undefined references may resolve to zero only for absolute data fixups ---
+    {
+        auto makeWeakRef = [](uint32_t relocType, size_t width) {
+            ObjFile obj;
+            obj.name = "weak_undef.o";
+            obj.format = ObjFileFormat::ELF;
+            obj.sections.push_back({});
+
+            ObjSection text;
+            text.name = ".text";
+            text.data.resize(width, 0);
+            text.executable = true;
+            text.alloc = true;
+            ObjReloc rel;
+            rel.offset = 0;
+            rel.type = relocType;
+            rel.symIndex = 1;
+            rel.addend = relocType == elf_x64::kPC32 ? -4 : 0;
+            text.relocs.push_back(rel);
+            obj.sections.push_back(text);
+
+            obj.symbols.push_back({});
+            ObjSymbol weak;
+            weak.name = "maybe_missing";
+            weak.binding = ObjSymbol::Undefined;
+            weak.weakExternal = true;
+            obj.symbols.push_back(weak);
+            return obj;
+        };
+
+        std::vector<ObjFile> absObjs = {makeWeakRef(elf_x64::kAbs64, 8)};
+        auto absLayout = makeLayout(absObjs, 0x401000);
+        std::ostringstream absErr;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(applyRelocations(
+            absObjs, absLayout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, absErr));
+        CHECK(readLE64(absLayout.sections[0].data.data()) == 0);
+
+        std::vector<ObjFile> branchObjs = {makeWeakRef(elf_x64::kPC32, 4)};
+        auto branchLayout = makeLayout(branchObjs, 0x401000);
+        std::ostringstream branchErr;
+        CHECK(!applyRelocations(
+            branchObjs, branchLayout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, branchErr));
+        CHECK(branchErr.str().find("weak undefined symbol 'maybe_missing' cannot resolve to address zero") !=
+              std::string::npos);
+    }
+
+    // --- Duplicate input-section chunks are rejected before relocation patching ---
+    {
+        ObjFile obj;
+        obj.name = "duplicate_chunk.o";
+        obj.format = ObjFileFormat::ELF;
+        obj.sections.push_back({});
+        ObjSection text;
+        text.name = ".text";
+        text.data = {0xC3};
+        text.executable = true;
+        text.alloc = true;
+        obj.sections.push_back(text);
+        obj.symbols.push_back({});
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        OutputSection a;
+        a.name = ".text.a";
+        a.executable = true;
+        a.data = text.data;
+        a.chunks.push_back({0, 1, 0, text.data.size()});
+        layout.sections.push_back(a);
+        OutputSection b;
+        b.name = ".text.b";
+        b.executable = true;
+        b.data = text.data;
+        b.chunks.push_back({0, 1, 0, text.data.size()});
+        layout.sections.push_back(b);
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(!applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err));
+        CHECK(err.str().find("appears in multiple output chunks") != std::string::npos);
+    }
+
     // --- COFF x86_64 ADDR32NB writes an RVA (S + A - ImageBase) ---
     {
         std::vector<uint8_t> code(8, 0);
@@ -831,7 +913,7 @@ int main() {
 
         ObjSection tbss;
         tbss.name = ".tbss";
-        tbss.data.resize(16, 0);
+        tbss.memSize = 16;
         tbss.writable = true;
         tbss.alloc = true;
         tbss.tls = true;
@@ -875,8 +957,8 @@ int main() {
         outTbss.tls = true;
         outTbss.zeroFill = true;
         outTbss.virtualAddr = 0x403000;
-        outTbss.data = tbss.data;
-        outTbss.chunks.push_back({0, 3, 0, tbss.data.size()});
+        outTbss.memSize = tbss.memSize;
+        outTbss.chunks.push_back({0, 3, 0, tbss.memSize});
         layout.sections.push_back(outTbss);
 
         std::ostringstream err;
@@ -1561,6 +1643,54 @@ int main() {
         CHECK(((patched >> 10) & 0xFFFu) == 1u);
     }
 
+    // --- COFF AArch64 PAGEOFFSET_12L rejects add/sub opcodes ---
+    {
+        std::vector<uint8_t> code = {0x00, 0x00, 0x00, 0x91}; // add x0, x0, #0
+        auto caller = makeObj("test_bad_pageoff12l_add.obj",
+                              ObjFileFormat::COFF,
+                              code,
+                              "target_data",
+                              coff_a64::kPageOff12L,
+                              /*relocOff=*/0,
+                              /*addend=*/0);
+
+        std::vector<ObjFile> objs = {caller};
+        auto layout = makeLayout(objs, 0x140001000ULL);
+        layout.globalSyms["target_data"] =
+            {"target_data", GlobalSymEntry::Dynamic, 0, 0, 0, 0x140002008ULL};
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(!applyRelocations(
+            objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::AArch64, err));
+        CHECK(err.str().find("PAGEOFFSET_12L relocation targets an add/sub instruction") !=
+              std::string::npos);
+    }
+
+    // --- COFF AArch64 PAGEOFFSET_12A rejects load/store opcodes ---
+    {
+        std::vector<uint8_t> code = {0x00, 0x00, 0x40, 0xB9}; // ldr w0, [x0, #0]
+        auto caller = makeObj("test_bad_pageoff12a_ldr.obj",
+                              ObjFileFormat::COFF,
+                              code,
+                              "target_data",
+                              coff_a64::kPageOff12A,
+                              /*relocOff=*/0,
+                              /*addend=*/0);
+
+        std::vector<ObjFile> objs = {caller};
+        auto layout = makeLayout(objs, 0x140001000ULL);
+        layout.globalSyms["target_data"] =
+            {"target_data", GlobalSymEntry::Dynamic, 0, 0, 0, 0x140002008ULL};
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(!applyRelocations(
+            objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::AArch64, err));
+        CHECK(err.str().find("PAGEOFFSET_12A relocation targets a load/store instruction") !=
+              std::string::npos);
+    }
+
     // --- COFF AArch64 SECREL_LOW12L rejects non-load/store opcodes ---
     {
         std::vector<uint8_t> code(4, 0);
@@ -1604,6 +1734,47 @@ int main() {
         CHECK(!applyRelocations(
             objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::AArch64, err));
         CHECK(err.str().find("not applied to an AArch64 unsigned-offset load/store") !=
+              std::string::npos);
+    }
+
+    // --- COFF AArch64 SECREL_LOW12A rejects non-add/sub opcodes ---
+    {
+        std::vector<uint8_t> code = {0x00, 0x00, 0x40, 0xB9}; // ldr w0, [x0, #0]
+        auto caller = makeObj("test_bad_secrel_low12a.obj",
+                              ObjFileFormat::COFF,
+                              code,
+                              "target_data",
+                              coff_a64::kSecRelLow12A,
+                              /*relocOff=*/0,
+                              /*addend=*/0);
+
+        ObjFile target;
+        target.name = "target_data.obj";
+        target.format = ObjFileFormat::COFF;
+        target.sections.push_back({});
+        ObjSection targetData;
+        targetData.name = ".data";
+        targetData.data.resize(4, 0xAB);
+        targetData.writable = true;
+        targetData.alloc = true;
+        target.sections.push_back(targetData);
+        target.symbols.push_back({});
+        ObjSymbol targetSym;
+        targetSym.name = "target_data";
+        targetSym.binding = ObjSymbol::Global;
+        targetSym.sectionIndex = 1;
+        target.symbols.push_back(targetSym);
+
+        std::vector<ObjFile> objs = {caller, target};
+        auto layout = makeLayout(objs, 0x140001000ULL);
+        layout.globalSyms["target_data"] =
+            {"target_data", GlobalSymEntry::Global, 1, 1, 0, 0};
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(!applyRelocations(
+            objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::AArch64, err));
+        CHECK(err.str().find("SECREL_LOW/HIGH12A relocation is not applied to an AArch64 add/sub") !=
               std::string::npos);
     }
 

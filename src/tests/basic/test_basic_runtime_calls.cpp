@@ -142,8 +142,8 @@ TEST(BasicRuntimeCalls, LazyOfI64) {
     ASSERT_TRUE(compileOk(R"(
 DIM lazy AS OBJECT
 DIM v AS INTEGER
-lazy = Viper.Lazy.OfI64(42)
-v = Viper.Lazy.GetI64(lazy)
+lazy = Viper.Functional.Lazy.OfI64(42)
+v = Viper.Functional.Lazy.GetI64(lazy)
 PRINT v
 )"));
 }
@@ -720,8 +720,8 @@ TEST(BasicRuntimeCalls, LazySeqToSeqNObjectResultKeepsSeqSurface) {
 DIM seq AS OBJECT
 DIM out AS OBJECT
 DIM count AS INTEGER
-seq = Viper.LazySeq.Range(1, 5, 1)
-out = Viper.LazySeq.ToSeqN(seq, 3)
+seq = Viper.Functional.LazySeq.Range(1, 5, 1)
+out = Viper.Functional.LazySeq.ToSeqN(seq, 3)
 count = out.Length
 PRINT count
 )");

@@ -35,7 +35,7 @@
 
 module main;
 
-bind Viper.Environment as Env;
+bind Viper.System.Environment as Env;
 bind Viper.IO.File as File;
 bind Viper.IO.Path as Path;
 bind Viper.Terminal as Terminal;

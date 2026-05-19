@@ -28,7 +28,7 @@ module progression;
 bind Viper.IO;
 bind Viper.Game;
 bind Viper.Graphics;
-bind Viper.Fmt;
+bind Viper.Text.Fmt;
 
 bind "./config";
 

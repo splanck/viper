@@ -90,7 +90,7 @@ static void appendAutoSemicolon(std::string &src, const std::string &input) {
 
 ZiaReplAdapter::ZiaReplAdapter() {
     bindStatements_.push_back("bind Viper.Terminal");
-    bindStatements_.push_back("bind Viper.Fmt as Fmt");
+    bindStatements_.push_back("bind Viper.Text.Fmt as Fmt");
     bindStatements_.push_back("bind Viper.Core.Object as Obj");
 }
 
@@ -106,7 +106,7 @@ void ZiaReplAdapter::reset() {
     globalVarDecls_.clear();
 
     bindStatements_.push_back("bind Viper.Terminal");
-    bindStatements_.push_back("bind Viper.Fmt as Fmt");
+    bindStatements_.push_back("bind Viper.Text.Fmt as Fmt");
     bindStatements_.push_back("bind Viper.Core.Object as Obj");
 }
 

@@ -730,11 +730,16 @@ int main() {
     }
 
     // ================================================================
-    // 25. PX_COPY (should emit zero bytes)
+    // 25. PX_COPY must be lowered before binary encoding
     // ================================================================
     {
-        auto bytes = encodeOne(MOpcode::PX_COPY, {});
-        CHECK(bytes.empty());
+        bool threw = false;
+        try {
+            (void)encodeOne(MOpcode::PX_COPY, {});
+        } catch (const std::runtime_error &ex) {
+            threw = std::string(ex.what()).find("parallel-copy pseudo") != std::string::npos;
+        }
+        CHECK(threw);
     }
 
     // ================================================================
@@ -1137,6 +1142,48 @@ int main() {
                             {gpr(PhysReg::RAX), imm(static_cast<int64_t>(1) << 40)});
         } catch (const std::runtime_error &ex) {
             threw = std::string(ex.what()).find("32-bit encoding range") != std::string::npos;
+        }
+        CHECK(threw);
+    }
+
+    // LABEL pseudos require exactly one label operand.
+    {
+        MFunction fn;
+        fn.name = "bad_label_arity";
+        MBasicBlock bb;
+        bb.label = ".Lbad_label_arity";
+        bb.append(MInstr::make(MOpcode::LABEL, {}));
+        fn.addBlock(std::move(bb));
+
+        bool threw = false;
+        try {
+            X64BinaryEncoder enc;
+            CodeSection text, rodata;
+            enc.encodeFunction(fn, text, rodata, false);
+        } catch (const std::runtime_error &ex) {
+            threw = std::string(ex.what()).find("requires exactly one label operand") !=
+                    std::string::npos;
+        }
+        CHECK(threw);
+    }
+
+    // Duplicate block/in-block labels are rejected during the sizing pass.
+    {
+        MFunction fn;
+        fn.name = "duplicate_label";
+        MBasicBlock bb;
+        bb.label = ".Ldup";
+        bb.append(MInstr::make(MOpcode::LABEL, {label(".Ldup")}));
+        bb.append(MInstr::make(MOpcode::RET, {}));
+        fn.addBlock(std::move(bb));
+
+        bool threw = false;
+        try {
+            X64BinaryEncoder enc;
+            CodeSection text, rodata;
+            enc.encodeFunction(fn, text, rodata, false);
+        } catch (const std::runtime_error &ex) {
+            threw = std::string(ex.what()).find("duplicate label '.Ldup'") != std::string::npos;
         }
         CHECK(threw);
     }

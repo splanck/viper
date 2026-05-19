@@ -19,19 +19,20 @@ An alpha-quality hardening cycle, not a feature release. The Zia frontend reache
 - **Backends & native toolchain.** x86-64 cross-block fold liveness + AT&T operand-class validation; AArch64 sub-word transfers, terminator/CFG, and def-operand fixes; bytecode-VM two's-complement wrapping arithmetic and checked float→int traps; bounds-checked object readers/writers with new reloc kinds.
 - **Windows & HiDPI.** Physical-pixel sizing via `AdjustWindowRectExForDpi`; waitable-timer frame pacing replaces `Sleep` quantization; hardened VAPS Windows installer.
 - **Game-engine surface (plan 24, the one additive piece).** New `Viper.Game.UI` widgets, `AnimTimeline` + multi-event `AnimStateMachine`, `Projectile2D`, rotated-texture `Renderer2D` draws, named audio mixer groups, and a `Viper.System.Clipboard` text surface — alongside a deep boundary-arithmetic and lifetime pass across the existing `Viper.Game` modules.
-- **Runtime API conformance.** Documented-but-missing surface wired through (`Keys`/`Values`/`Indices`, `Map` bool helpers, `Seq` constructors, `Crypto.Rand.Bytes`, `Viper.Machine`) plus typed alternatives to every raw-pointer ABI.
+- **Runtime API conformance.** Documented-but-missing surface wired through (`Keys`/`Values`/`Indices`, `Map` bool helpers, `Seq` constructors, `Crypto.Rand.Bytes`, `Viper.System.Machine`) plus typed alternatives to every raw-pointer ABI.
+- **Standard-library namespace de-clutter (breaking).** Seven root-level modules moved under their documented homes — `Lazy`/`LazySeq` → `Viper.Functional`, `Machine`/`Environment`/`Exec` → `Viper.System`, `Log` → `Viper.Diagnostics`, `Fmt` → `Viper.Text`. Old root paths are removed with no compatibility aliases; `Math`, `String`, `Terminal`, and the intrinsic `Option`/`Result`/`Error` deliberately remain at root.
 
 ### By the Numbers
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 143 | +143 |
+| Commits | — | 144 | +144 |
 | Source files | 2,996 | 3,031 | +35 |
-| Production SLOC | 552K | 597K | +45K |
-| Test SLOC | 228K | 252K | +24K |
+| Production SLOC | 552K | 598K | +46K |
+| Test SLOC | 228K | 253K | +25K |
 | Demo SLOC | 188K | 189K | +1K |
 
-Counts via `scripts/count_sloc.sh` (production 597,541 / test 252,336 / demo 189,273 / source files 3,031).
+Counts via `scripts/count_sloc.sh` (production 598,123 / test 253,221 / demo 189,273 / source files 3,031).
 
 ---
 
@@ -119,9 +120,9 @@ Counts via `scripts/count_sloc.sh` (production 597,541 / test 252,336 / demo 189
 - x86-64: cross-block fold-liveness guards on SIB and IMUL→LEA so address-strength reductions can't erase virtual registers still consumed in another block; compare/branch fold-safety routed through shared operand-role metadata; IMUL→LEA refusal under live flags; block-DCE preserves physical registers at exits; fixed-physical-register spill-before-clobber; switch-edge default-first ordering; integer-cast width / label-operand / frame-slot / overflow-pseudo lowering repairs; AT&T `AsmEmitter` rejects invalid `CALL` / `JMP` / `JCC` / `LEA` / `SETcc` / `MOVZX` operand classes and non-`RCX` shift counts before printing.
 - Bytecode VM: arithmetic uses explicit two's-complement wrapping helpers (add / sub / mul, left and arithmetic shift, local inc/dec) instead of host signed-overflow behaviour; checked float→int conversions raise consistent `InvalidCast` / `Overflow` traps for NaN, negative-unsigned, and out-of-range values; local indexes, memory pointers, and alloca sizes are validated (null GEP / load / store handled) before host state is touched; threaded-dispatch table setup no longer mutates static state post-initialization or relies on compiler-sensitive designated label initializers.
 - Optimizer ownership-effect model gains an `ownedOutArgMask` for pointer args that receive an owned reference; plumbed through `RuntimeOwnership.hpp` for `Memory.*` / Box / `Object.ToString` / `Parse.*Option` / `Convert.ToString_*` / MessageBus. The retain-on-return contract is captured via `returnsOwned` on all collection accessors so optimizer-side defensive retains are gone.
-- Native assembler / linker — readers and writers: all four object-file readers (ELF / COFF / Mach-O / Archive) and three writers received bounds-checking and alignment-UB fixes; per-file caps reject crafted inputs; `ArchiveReader::parseSize` rejects empty / padded / trailing-garbage fields. New typed `InputSectionKey{objIndex, secIndex}` replaces ad-hoc bit-packing.
-- Native assembler / linker — relocations and symbols: COFF writer patches relocation addends into instruction bytes per kind with explicit alignment and range checks (x86-64 rel32, AArch64 branch26/branch19, ADRP page21, page-offset, Abs64); three new reloc kinds (`A64LdSt32Off12`, `A64LdSt128Off12`, corrected `IMAGE_REL_ARM64_BRANCH19`); `RelocApplier` validates AArch64 instruction class per reloc kind; COMMON-symbol coalescing across mixed alignments; branch trampolines key dedup on `symName + addend` and resolve targets after placement.
-- Native assembler / linker — executables: ELF emits `PT_TLS` for TLS segments; Mach-O `MH_SUBSECTIONS_VIA_SYMBOLS` splits `__TEXT,__text` per atom; PE writer narrows through `checkedU32` / `checkedRva` overflow-checked helpers; dead-strip preserves EH / unwind and `.debug*` roots.
+- Native assembler / linker — readers and writers: all four object-file readers (ELF / COFF / Mach-O / Archive) and three writers received bounds-checking and alignment-UB fixes; per-file caps reject crafted inputs; ELF `.rel` implicit addends, symbol section offsets, and zero-fill logical sizes are validated; Mach-O/COFF x86-64 PC-relative addends normalize to the internal `S + A - P` convention. `ArchiveReader::parseSize` rejects empty / padded / trailing-garbage fields. New typed `InputSectionKey{objIndex, secIndex}` replaces ad-hoc bit-packing.
+- Native assembler / linker — relocations and symbols: COFF writer patches relocation addends into instruction bytes per kind with explicit alignment and range checks (x86-64 rel32, AArch64 branch26/branch19, ADRP page21, page-offset, Abs64); three new reloc kinds (`A64LdSt32Off12`, `A64LdSt128Off12`, corrected `IMAGE_REL_ARM64_BRANCH19`); `RelocApplier` validates AArch64 instruction class per reloc kind, rejects swapped COFF ARM64 `PAGEOFFSET_12A/L` and `SECREL_*12A/L` forms, forbids duplicate input-section chunks, and allows weak undefined zero only for absolute data relocations; COMMON-symbol coalescing across mixed alignments; branch trampolines key dedup on `symName + addend` and resolve targets after placement.
+- Native assembler / linker — executables: ELF emits `PT_TLS` for TLS segments; TLS and `.bss`/`.tbss` use logical memory sizes without serializing zero-fill bytes; Mach-O `MH_SUBSECTIONS_VIA_SYMBOLS` splits `__TEXT,__text` per atom, preserves `__DATA_CONST`/`__AUTH_CONST` metadata, and merges same-named ObjC metadata from reader-created and linker-synthetic inputs with conservative section placement; PE writer narrows through `checkedU32` / `checkedRva` overflow-checked helpers; dead-strip preserves EH / unwind and `.debug*` roots.
 
 ### Windows / MSVC / HiDPI
 
@@ -162,6 +163,6 @@ Demos and docs were updated to track the runtime work above; stale Windows debug
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 143-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 144-commit history since v0.2.5.
 
 <!-- END DRAFT -->

@@ -30,7 +30,7 @@
 module prompts;
 
 bind Viper.Terminal as Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.Core.Parse as Parse;
 bind "../model/game_state";
 bind "../model/lineup_card";

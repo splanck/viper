@@ -80,7 +80,7 @@ Classes define the OOP interface exposed to Viper languages. Method signatures o
 | `Viper.Core.Box`              | Boxing primitives for generic collections                   |
 | `Viper.Core.Diagnostics`      | Runtime assertions and traps                                |
 | `Viper.Crypto.Hash`           | MD5, SHA1, SHA256, CRC32 hashing                            |
-| `Viper.Environment`           | Command-line args, environment variables, process exit      |
+| `Viper.System.Environment`           | Command-line args, environment variables, process exit      |
 | `Viper.Graphics.Canvas`       | Window and 2D drawing                                       |
 | `Viper.Graphics.Color`        | RGB/RGBA color creation                                     |
 | `Viper.Graphics.Pixels`       | Software image buffer for pixel manipulation                |

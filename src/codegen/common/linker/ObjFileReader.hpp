@@ -72,6 +72,7 @@ struct ObjSymbol {
 struct ObjSection {
     std::string name;
     std::vector<uint8_t> data;
+    size_t memSize = 0;            ///< Logical in-memory size. For non-zero-fill sections this is data.size().
     std::vector<ObjReloc> relocs;
     uint32_t alignment = 1;
     bool executable = false;
@@ -79,12 +80,17 @@ struct ObjSection {
     bool alloc = true;             ///< Section contributes to memory image.
     bool tls = false;              ///< Thread-local storage section.
     bool zeroFill = false;         ///< Section occupies memory but has no file bytes.
+    bool dataSegment = false;      ///< Must be emitted in a data segment even if final read-only.
     bool isCStringSection = false; ///< Section contains NUL-terminated C strings only.
     uint32_t associativeSection = 0; ///< COFF associative COMDAT parent section, if any.
     ComdatSelection comdatSelection = ComdatSelection::None; ///< Duplicate-selection policy.
     std::string comdatKey; ///< COFF/ELF COMDAT group key/signature.
     bool stripped = false;         ///< Dead-strip removed this section explicitly.
 };
+
+inline size_t objSectionMemSize(const ObjSection &sec) {
+    return sec.zeroFill ? (sec.memSize != 0 ? sec.memSize : sec.data.size()) : sec.data.size();
+}
 
 /// Detected object file format.
 enum class ObjFileFormat : uint8_t {

@@ -106,7 +106,7 @@ module game;
 
 bind Viper.Graphics;
 bind Viper.Input;
-bind Viper.Fmt;
+bind Viper.Text.Fmt;
 bind Viper.Game;
 bind Viper.Game.DebugOverlay as Debug;
 bind Viper.IO.File as File;

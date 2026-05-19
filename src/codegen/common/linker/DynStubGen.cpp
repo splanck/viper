@@ -84,6 +84,7 @@ ObjFile generateObjcSelectorStubsAArch64(std::unordered_set<std::string> &dynami
     dataSec.executable = false;
     dataSec.writable = true;
     dataSec.alloc = true;
+    dataSec.dataSegment = true;
     dataSec.alignment = 8;
 
     // Section 3: .rodata (selector strings).

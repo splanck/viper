@@ -1,5 +1,5 @@
 // =============================================================================
-// API Audit: Viper.Exec - Process Execution
+// API Audit: Viper.System.Exec - Process Execution
 // =============================================================================
 // Tests: Run, Capture, Shell, ShellCapture
 // NOTE: Use safe commands only
@@ -7,9 +7,9 @@
 
 module ExecDemo;
 bind Viper.Terminal;
-bind Viper.Exec as Exec;
+bind Viper.System.Exec as Exec;
 func start() {
-    Say("=== API Audit: Viper.Exec ===");
+    Say("=== API Audit: Viper.System.Exec ===");
 
     // --- Run ---
     Say("--- Run ---");

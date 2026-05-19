@@ -419,12 +419,20 @@ static void testX64Relocations() {
     CHECK(rLength == 2);
     CHECK(rExtern == 1);
 
-    // Verify addend is patched into instruction bytes (-4 = FC FF FF FF)
+    // Mach-O stores x86-64 PC-relative addends relative to the end of the
+    // 4-byte displacement. The reader normalizes this back to the internal -4.
     uint32_t textOff = readLE32(data, kOffTextSect + 48);
-    CHECK(data[textOff + 1] == 0xFC);
-    CHECK(data[textOff + 2] == 0xFF);
-    CHECK(data[textOff + 3] == 0xFF);
-    CHECK(data[textOff + 4] == 0xFF);
+    CHECK(readLE32(data, textOff + 1) == 0);
+
+    ObjFile obj;
+    CHECK(readObjFile(path, obj, errStream));
+    const ObjSection *textSec = findSection(obj, "__TEXT,__text");
+    CHECK(textSec != nullptr);
+    if (textSec != nullptr) {
+        CHECK(textSec->relocs.size() == 1);
+        if (!textSec->relocs.empty())
+            CHECK(textSec->relocs[0].addend == -4);
+    }
 
     std::remove(path.c_str());
 }

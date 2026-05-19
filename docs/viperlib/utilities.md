@@ -13,8 +13,8 @@ last-verified: 2026-05-13
 ## Contents
 
 - [Viper.Convert](#viperconvert)
-- [Viper.Fmt](#viperfmt)
-- [Viper.Log](#viperlog)
+- [Viper.Text.Fmt](#viperfmt)
+- [Viper.Diagnostics.Log](#viperlog)
 - [Viper.Parse](#viperparse)
 
 ---
@@ -89,7 +89,7 @@ PRINT Viper.Convert.ToString_Double(2.5)  ' Output: "2.5"
 
 ---
 
-## Viper.Fmt
+## Viper.Text.Fmt
 
 String formatting utilities for converting values to formatted strings.
 
@@ -136,7 +136,7 @@ String formatting utilities for converting values to formatted strings.
 module FmtDemo;
 
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Integer formatting
@@ -163,35 +163,35 @@ func start() {
 
 ```basic
 ' Integer formatting
-PRINT Viper.Fmt.Int(12345)              ' Output: "12345"
-PRINT Viper.Fmt.IntRadix(255, 16)       ' Output: "ff"
-PRINT Viper.Fmt.IntPad(42, 5, "0")      ' Output: "00042"
+PRINT Viper.Text.Fmt.Int(12345)              ' Output: "12345"
+PRINT Viper.Text.Fmt.IntRadix(255, 16)       ' Output: "ff"
+PRINT Viper.Text.Fmt.IntPad(42, 5, "0")      ' Output: "00042"
 
 ' Number formatting
-PRINT Viper.Fmt.Num(2.5)                ' Output: "2.5"
-PRINT Viper.Fmt.NumFixed(3.14159, 2)    ' Output: "3.14"
-PRINT Viper.Fmt.NumSci(1234.5, 2)       ' Output: "1.23e+03"
-PRINT Viper.Fmt.NumPct(0.756, 1)        ' Output: "75.6%"
+PRINT Viper.Text.Fmt.Num(2.5)                ' Output: "2.5"
+PRINT Viper.Text.Fmt.NumFixed(3.14159, 2)    ' Output: "3.14"
+PRINT Viper.Text.Fmt.NumSci(1234.5, 2)       ' Output: "1.23e+03"
+PRINT Viper.Text.Fmt.NumPct(0.756, 1)        ' Output: "75.6%"
 
 ' Boolean formatting
-PRINT Viper.Fmt.Bool(TRUE)              ' Output: "true"
-PRINT Viper.Fmt.BoolYN(FALSE)           ' Output: "No"
+PRINT Viper.Text.Fmt.Bool(TRUE)              ' Output: "true"
+PRINT Viper.Text.Fmt.BoolYN(FALSE)           ' Output: "No"
 
 ' Size formatting (auto-scales to KB, MB, GB, etc.)
-PRINT Viper.Fmt.Size(1024)              ' Output: "1.0 KB"
-PRINT Viper.Fmt.Size(1048576)           ' Output: "1.0 MB"
-PRINT Viper.Fmt.Size(1234567890)        ' Output: "1.1 GB"
+PRINT Viper.Text.Fmt.Size(1024)              ' Output: "1.0 KB"
+PRINT Viper.Text.Fmt.Size(1048576)           ' Output: "1.0 MB"
+PRINT Viper.Text.Fmt.Size(1234567890)        ' Output: "1.1 GB"
 
 ' Radix formatting
-PRINT Viper.Fmt.Hex(255)                ' Output: "ff"
-PRINT Viper.Fmt.HexPad(255, 4)          ' Output: "00ff"
-PRINT Viper.Fmt.Bin(10)                 ' Output: "1010"
-PRINT Viper.Fmt.Oct(64)                 ' Output: "100"
+PRINT Viper.Text.Fmt.Hex(255)                ' Output: "ff"
+PRINT Viper.Text.Fmt.HexPad(255, 4)          ' Output: "00ff"
+PRINT Viper.Text.Fmt.Bin(10)                 ' Output: "1010"
+PRINT Viper.Text.Fmt.Oct(64)                 ' Output: "100"
 ```
 
 ---
 
-## Viper.Log
+## Viper.Diagnostics.Log
 
 Structured logging with configurable log levels.
 
@@ -230,7 +230,7 @@ Structured logging with configurable log levels.
 - Format: `[LEVEL] YYYY-MM-DD HH:MM:SS message`
 - Message output is length-aware. Embedded NUL bytes and control characters such as newline, carriage return, and tab are escaped so one log call produces one physical log line, even when multiple threads log concurrently. If heap allocation for the full line fails, the logger falls back to serialized streaming instead of dropping the message.
 - Log level reads and writes are atomic and safe to call concurrently.
-- Set `Level = Viper.Log.OFF` to disable all logging
+- Set `Level = Viper.Diagnostics.Log.OFF` to disable all logging
 
 ### Zia Example
 
@@ -238,7 +238,7 @@ Structured logging with configurable log levels.
 module LogDemo;
 
 bind Viper.Terminal;
-bind Viper.Log;
+bind Viper.Diagnostics.Log;
 
 func start() {
     // Log at various levels (output goes to stderr)
@@ -257,24 +257,24 @@ func start() {
 
 ```basic
 ' Basic logging
-Viper.Log.Info("Application started")
-Viper.Log.Warn("Configuration file not found, using defaults")
-Viper.Log.Error("Failed to connect to database")
+Viper.Diagnostics.Log.Info("Application started")
+Viper.Diagnostics.Log.Warn("Configuration file not found, using defaults")
+Viper.Diagnostics.Log.Error("Failed to connect to database")
 
 ' Debug logging (suppressed by default)
-Viper.Log.Debug("Entering function processData")
+Viper.Diagnostics.Log.Debug("Entering function processData")
 
 ' Enable debug logging
-Viper.Log.Level = Viper.Log.DEBUG
-Viper.Log.Debug("Now this message appears")
+Viper.Diagnostics.Log.Level = Viper.Diagnostics.Log.DEBUG
+Viper.Diagnostics.Log.Debug("Now this message appears")
 
 ' Check if level is enabled before expensive formatting
-IF Viper.Log.Enabled(Viper.Log.DEBUG) THEN
-    Viper.Log.Debug("User count: " + Viper.Fmt.Int(userCount))
+IF Viper.Diagnostics.Log.Enabled(Viper.Diagnostics.Log.DEBUG) THEN
+    Viper.Diagnostics.Log.Debug("User count: " + Viper.Text.Fmt.Int(userCount))
 END IF
 
 ' Suppress all logging
-Viper.Log.Level = Viper.Log.OFF
+Viper.Diagnostics.Log.Level = Viper.Diagnostics.Log.OFF
 ```
 
 ---
@@ -313,7 +313,7 @@ graceful error handling.
     - False: `"false"`, `"no"`, `"0"`, `"off"`
 - `IsInt` and `IsNum` accept optional leading `+` or `-`
 - Null input is treated as parse failure: `Try*` returns `None`, `Is*` returns false, and `*Or`/`IntRadix` returns the supplied default.
-- `IntRadix` supports radix 2-36 (digits 0-9, letters a-z). Radix 10 accepts leading `+` and `-`; other radices parse unsigned 64-bit bit patterns so `Viper.Fmt.Hex(-1)` and `Viper.Fmt.Bin(-1)` round-trip to `-1`. Prefixes such as `0x` and non-decimal signs are rejected.
+- `IntRadix` supports radix 2-36 (digits 0-9, letters a-z). Radix 10 accepts leading `+` and `-`; other radices parse unsigned 64-bit bit patterns so `Viper.Text.Fmt.Hex(-1)` and `Viper.Text.Fmt.Bin(-1)` round-trip to `-1`. Prefixes such as `0x` and non-decimal signs are rejected.
 - Leading/trailing whitespace is trimmed before parsing
 - Numeric parsing is locale-independent, uses `.` as the decimal separator, and accepts only decimal float syntax. C-style hexadecimal floats such as `0x1p4` are rejected.
 - Embedded NUL bytes are rejected, even when the bytes before the NUL form a valid value.
@@ -325,7 +325,7 @@ graceful error handling.
 module ParseDemo;
 
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Parse with default fallback

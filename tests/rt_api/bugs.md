@@ -154,7 +154,7 @@ All files now use GC-managed allocation with proper finalizers for internal sub-
 1. `mapILToken()` didn't recognize `bool`/`i32` tokens → constructor signatures failed to parse (fixed in BUG-009/010)
 2. Some reported failures used wrong class names (e.g., `ObjPool` vs `ObjectPool`)
 3. `Viper.Math.Random` had no constructor (fixed in BUG-011)
-4. Classes with `none` constructor in runtime.def are genuinely static-only by design (e.g., `Viper.Fmt`, `Viper.Terminal`, `Viper.Math`)
+4. Classes with `none` constructor in runtime.def are genuinely static-only by design (e.g., `Viper.Text.Fmt`, `Viper.Terminal`, `Viper.Math`)
 **Fix:** Combination of BUG-009/010 (mapILToken), BUG-011 (Random constructor), and documentation of static-only classes. 127 of 194 runtime classes have constructors and are now fully constructible via `new`.
 **Regression Test:** `tests/runtime/test_bugfix_zia_new.zia` — verifies `new` works for List, Map, Seq, StringBuilder, Random, PerlinNoise, UnionFind, and BitSet.
 
@@ -182,7 +182,7 @@ All files now use GC-managed allocation with proper finalizers for internal sub-
 
 ---
 
-## BUG-015: Viper.Fmt.BoolYN returns "Yes"/"No" with capital Y/N
+## BUG-015: Viper.Text.Fmt.BoolYN returns "Yes"/"No" with capital Y/N
 
 **Layer:** Runtime
 **Severity:** Low

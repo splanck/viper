@@ -130,7 +130,8 @@ bool resolveLocalSymbol(const ObjSymbol &sym,
     if (it == locMap.end())
         return false;
     const auto &outSec = layout.sections[it->second.first];
-    if (it->second.second > outSec.data.size() || sym.offset > outSec.data.size() - it->second.second)
+    const size_t outSize = outputSectionMemSize(outSec);
+    if (it->second.second > outSize || sym.offset > outSize - it->second.second)
         return false;
     uint64_t withChunk = 0;
     if (!checkedAddU64(outSec.virtualAddr, static_cast<uint64_t>(it->second.second), withChunk) ||
@@ -145,7 +146,7 @@ bool resolveGlobalSymbol(const std::string &name,
     auto it = layout.globalSyms.find(name);
     if (it == layout.globalSyms.end())
         return false;
-    if (it->second.resolvedAddr == 0 &&
+    if (!it->second.resolvedAddrValid && it->second.resolvedAddr == 0 &&
         (it->second.binding == GlobalSymEntry::Undefined ||
          it->second.binding == GlobalSymEntry::Dynamic))
         return false;
@@ -293,6 +294,7 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
             continue;
         if (entry.absolute) {
             entry.resolvedAddr = static_cast<uint64_t>(entry.offset);
+            entry.resolvedAddrValid = true;
             continue;
         }
         auto it = locMap.find(InputSectionKey{entry.objIndex, entry.secIndex});
@@ -305,6 +307,7 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
                 err << "error: symbol address overflow while resolving '" << name << "'\n";
                 return false;
             }
+            entry.resolvedAddrValid = true;
         }
     }
 
@@ -510,6 +513,7 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
                    originalText.begin() + static_cast<std::ptrdiff_t>(cursor),
                    originalText.end());
     textSec.data = std::move(newText);
+    textSec.memSize = textSec.data.size();
 
     for (auto &chunk : textSec.chunks) {
         size_t shift = 0;
@@ -544,6 +548,7 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
             continue;
         if (entry.absolute) {
             entry.resolvedAddr = static_cast<uint64_t>(entry.offset);
+            entry.resolvedAddrValid = true;
             continue;
         }
         auto it = locMap.find(InputSectionKey{entry.objIndex, entry.secIndex});
@@ -556,6 +561,7 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
                 err << "error: symbol address overflow while resolving '" << name << "'\n";
                 return false;
             }
+            entry.resolvedAddrValid = true;
         }
     }
 
@@ -584,6 +590,7 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
         entry.name = trampoline.symbolName;
         entry.binding = GlobalSymEntry::Global;
         entry.resolvedAddr = tramVA;
+        entry.resolvedAddrValid = true;
         layout.globalSyms[trampoline.symbolName] = std::move(entry);
 
         uint8_t *tramp = textSec.data.data() + trampoline.actualOffset;

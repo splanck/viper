@@ -63,7 +63,7 @@ module pg_client;
 bind Viper.Collections;
 bind Viper.Network as Network;
 bind Viper.String as String;
-bind Viper.Fmt as Fmt;//=============================================================================
+bind Viper.Text.Fmt as Fmt;//=============================================================================
 // PROTOCOL CONSTANTS (must match server/pg_wire.zia)
 //=============================================================================
 

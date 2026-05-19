@@ -19,8 +19,8 @@
 module Main;
 
 bind Viper.Terminal;
-bind Viper.Fmt as Fmt;
-bind Viper.Environment as Env;
+bind Viper.Text.Fmt as Fmt;
+bind Viper.System.Environment as Env;
 bind "./season/demo/default_franchise";
 bind "./season/season_engine";
 bind "./season/output/season_writer";

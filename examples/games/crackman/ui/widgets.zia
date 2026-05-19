@@ -16,7 +16,7 @@ module widgets;
 
 bind Viper.Graphics;
 bind Color = Viper.Graphics.Color;
-bind Viper.Fmt;
+bind Viper.Text.Fmt;
 bind "./theme";
 bind "./layout";
 

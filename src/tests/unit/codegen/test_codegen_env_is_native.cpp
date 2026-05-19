@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/codegen/test_codegen_env_is_native.cpp
-// Purpose: Ensure Viper.Environment.IsNative reports VM vs native execution.
+// Purpose: Ensure Viper.System.Environment.IsNative reports VM vs native execution.
 // Key invariants: VM path must return 0, native AArch64 path returns 1.
 // Ownership/Lifetime: Tests generate ephemeral IL modules and files.
 // Links: docs/devdocs/runtime-vm.md
@@ -33,11 +33,11 @@ namespace {
 
 constexpr const char kIlSource[] = R"(il 0.2.0
 
-extern @Viper.Environment.IsNative() -> i1
+extern @Viper.System.Environment.IsNative() -> i1
 
 func @main() -> i64 {
 entry:
-  %flag = call @Viper.Environment.IsNative()
+  %flag = call @Viper.System.Environment.IsNative()
   %wide = zext1 %flag
   ret %wide
 }

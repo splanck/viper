@@ -633,7 +633,7 @@ module DnsDemo;
 
 bind Viper.Terminal;
 bind Viper.Network.Dns as Dns;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // IP validation (no network required)
@@ -1072,7 +1072,7 @@ module UrlDemo;
 
 bind Viper.Terminal;
 bind Viper.Network.Url as Url;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Parse a URL

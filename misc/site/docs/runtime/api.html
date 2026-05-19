@@ -39,11 +39,11 @@
         <li><a href="#viper-core-convert">Viper.Core.Convert</a></li>
         <li><a href="#viper-time-datetime">Viper.Time.DateTime</a></li>
         <li><a href="#viper-core-diagnostics">Viper.Core.Diagnostics</a></li>
-        <li><a href="#viper-exec">Viper.Exec</a></li>
-        <li><a href="#viper-fmt">Viper.Fmt</a></li>
+        <li><a href="#viper-exec">Viper.System.Exec</a></li>
+        <li><a href="#viper-fmt">Viper.Text.Fmt</a></li>
         <li><a href="#viper-io">Viper.IO</a></li>
-        <li><a href="#viper-log">Viper.Log</a></li>
-        <li><a href="#viper-machine">Viper.Machine</a></li>
+        <li><a href="#viper-log">Viper.Diagnostics.Log</a></li>
+        <li><a href="#viper-machine">Viper.System.Machine</a></li>
         <li><a href="#viper-core-parse">Viper.Core.Parse</a></li>
         <li><a href="#viper-math-random">Viper.Math.Random</a></li>
         <li><a href="#viper-sound">Viper.Sound</a></li>
@@ -76,11 +76,11 @@
 <li>[Viper.Core.Convert](#vipercoreconvert) - Type conversions</li>
 <li>[Viper.Core.Diagnostics](#vipercorediagnostics) - Assertions and debugging</li>
 <li>[Viper.Core.Parse](#vipercoreparse) - String parsing</li>
-<li>[Viper.Exec](#viperexec) - Process execution</li>
-<li>[Viper.Fmt](#viperfmt) - Number formatting</li>
+<li>[Viper.System.Exec](#viperexec) - Process execution</li>
+<li>[Viper.Text.Fmt](#viperfmt) - Number formatting</li>
 <li>[Viper.IO](#viperio) - File and directory operations</li>
-<li>[Viper.Log](#viperlog) - Logging utilities</li>
-<li>[Viper.Machine](#vipermachine) - System information</li>
+<li>[Viper.Diagnostics.Log](#viperlog) - Logging utilities</li>
+<li>[Viper.System.Machine](#vipermachine) - System information</li>
 <li>[Viper.Math.Bits](#vipermathbits) - Bitwise operations</li>
 <li>[Viper.Math.Random](#vipermathrandom) - Random number generation</li>
 <li>[Viper.Math.Vec2](#vipermathvec2) - 2D vector math</li>
@@ -563,7 +563,7 @@ Viper.Core.Diagnostics.AssertNotNull(obj, &quot;object is null&quot;);
 Viper.Core.Diagnostics.Trap(&quot;unreachable code reached&quot;);
 </code></pre>
 <p>---</p>
-<h2 id="viper-exec">Viper.Exec</h2>
+<h2 id="viper-exec">Viper.System.Exec</h2>
 <p>Execute external processes and capture output.</p>
 <h3 id="functions">Functions</h3>
 <table><thead><tr>
@@ -605,23 +605,23 @@ Viper.Core.Diagnostics.Trap(&quot;unreachable code reached&quot;);
 <h3 id="examples">Examples</h3>
 <pre><code data-lang="rust">
 // Run command
-var exitCode = Viper.Exec.Run(&quot;ls&quot;);
+var exitCode = Viper.System.Exec.Run(&quot;ls&quot;);
 
 // Capture output
-var output = Viper.Exec.Capture(&quot;date&quot;);
+var output = Viper.System.Exec.Capture(&quot;date&quot;);
 Viper.Terminal.Say(&quot;Date: &quot; + output);
 
 // With arguments
 var args = Viper.Collections.List.New();
 Viper.Collections.List.Push(args, &quot;-l&quot;);
 Viper.Collections.List.Push(args, &quot;-a&quot;);
-var listing = Viper.Exec.CaptureArgs(&quot;ls&quot;, args);
+var listing = Viper.System.Exec.CaptureArgs(&quot;ls&quot;, args);
 
 // Shell command (supports pipes, redirects)
-var result = Viper.Exec.ShellCapture(&quot;cat /etc/passwd | grep root&quot;);
+var result = Viper.System.Exec.ShellCapture(&quot;cat /etc/passwd | grep root&quot;);
 </code></pre>
 <p>---</p>
-<h2 id="viper-fmt">Viper.Fmt</h2>
+<h2 id="viper-fmt">Viper.Text.Fmt</h2>
 <p>Number formatting utilities.</p>
 <h3 id="functions">Functions</h3>
 <table><thead><tr>
@@ -722,13 +722,13 @@ var result = Viper.Exec.ShellCapture(&quot;cat /etc/passwd | grep root&quot;);
 </tbody></table>
 <h3 id="examples">Examples</h3>
 <pre><code data-lang="rust">
-var hex = Viper.Fmt.IntRadix(255, 16);      // &quot;ff&quot;
-var bin = Viper.Fmt.IntRadix(10, 2);        // &quot;1010&quot;
-var padded = Viper.Fmt.IntPad(42, 5, &quot;0&quot;);  // &quot;00042&quot;
-var fixed = Viper.Fmt.NumFixed(3.14159, 2); // &quot;3.14&quot;
-var size = Viper.Fmt.Size(1536);            // &quot;1.5 KB&quot;
-var grp = Viper.Fmt.IntGrouped(1234567, &quot;,&quot;); // &quot;1,234,567&quot;
-var words = Viper.Fmt.ToWords(42);          // &quot;forty-two&quot;
+var hex = Viper.Text.Fmt.IntRadix(255, 16);      // &quot;ff&quot;
+var bin = Viper.Text.Fmt.IntRadix(10, 2);        // &quot;1010&quot;
+var padded = Viper.Text.Fmt.IntPad(42, 5, &quot;0&quot;);  // &quot;00042&quot;
+var fixed = Viper.Text.Fmt.NumFixed(3.14159, 2); // &quot;3.14&quot;
+var size = Viper.Text.Fmt.Size(1536);            // &quot;1.5 KB&quot;
+var grp = Viper.Text.Fmt.IntGrouped(1234567, &quot;,&quot;); // &quot;1,234,567&quot;
+var words = Viper.Text.Fmt.ToWords(42);          // &quot;forty-two&quot;
 </code></pre>
 <p>---</p>
 <h2 id="viper-io">Viper.IO</h2>
@@ -1012,7 +1012,7 @@ var stem = Viper.IO.Path.Stem(full); // &quot;file&quot;
 var ext = Viper.IO.Path.Ext(full);   // &quot;.txt&quot;
 </code></pre>
 <p>---</p>
-<h2 id="viper-log">Viper.Log</h2>
+<h2 id="viper-log">Viper.Diagnostics.Log</h2>
 <p>Logging utilities with configurable log levels.</p>
 <h3 id="log-levels">Log Levels</h3>
 <table><thead><tr>
@@ -1091,16 +1091,16 @@ var ext = Viper.IO.Path.Ext(full);   // &quot;.txt&quot;
 <h3 id="examples">Examples</h3>
 <pre><code data-lang="rust">
 // Set log level
-Viper.Log.set_Level(Viper.Log.get_DEBUG);
+Viper.Diagnostics.Log.set_Level(Viper.Diagnostics.Log.get_DEBUG);
 
 // Log messages
-Viper.Log.Debug(&quot;Processing item &quot; + Viper.Core.Convert.ToString_Int(i));
-Viper.Log.Info(&quot;Server started on port 8080&quot;);
-Viper.Log.Warn(&quot;Connection pool running low&quot;);
-Viper.Log.Error(&quot;Failed to connect to database&quot;);
+Viper.Diagnostics.Log.Debug(&quot;Processing item &quot; + Viper.Core.Convert.ToString_Int(i));
+Viper.Diagnostics.Log.Info(&quot;Server started on port 8080&quot;);
+Viper.Diagnostics.Log.Warn(&quot;Connection pool running low&quot;);
+Viper.Diagnostics.Log.Error(&quot;Failed to connect to database&quot;);
 </code></pre>
 <p>---</p>
-<h2 id="viper-machine">Viper.Machine</h2>
+<h2 id="viper-machine">Viper.System.Machine</h2>
 <p>System and hardware information.</p>
 <h3 id="properties">Properties</h3>
 <table><thead><tr>
@@ -1161,9 +1161,9 @@ Viper.Log.Error(&quot;Failed to connect to database&quot;);
 </tbody></table>
 <h3 id="examples">Examples</h3>
 <pre><code data-lang="rust">
-Viper.Terminal.Say(&quot;OS: &quot; + Viper.Machine.get_OS);
-Viper.Terminal.Say(&quot;Cores: &quot; + Viper.Core.Convert.ToString_Int(Viper.Machine.get_Cores));
-Viper.Terminal.Say(&quot;Memory: &quot; + Viper.Core.Convert.ToString_Int(Viper.Machine.get_MemTotal / 1048576) + &quot; MB&quot;);
+Viper.Terminal.Say(&quot;OS: &quot; + Viper.System.Machine.get_OS);
+Viper.Terminal.Say(&quot;Cores: &quot; + Viper.Core.Convert.ToString_Int(Viper.System.Machine.get_Cores));
+Viper.Terminal.Say(&quot;Memory: &quot; + Viper.Core.Convert.ToString_Int(Viper.System.Machine.get_MemTotal / 1048576) + &quot; MB&quot;);
 </code></pre>
 <p>---</p>
 <h2 id="viper-core-parse">Viper.Core.Parse</h2>

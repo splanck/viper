@@ -34,7 +34,7 @@
 module start_probe;
 
 bind Viper.Terminal as Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind "./config";
 bind "./palette";
 bind "./player";

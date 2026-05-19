@@ -231,7 +231,7 @@ std::optional<LowerResult> Lowerer::lowerBuiltinCall(const std::string &name, Ca
                     return LowerResult{strVal, Type(Type::Kind::Str)};
                 }
                 case TypeKindSem::Boolean: {
-                    Value strVal = emitCallRet(Type(Type::Kind::Str), kFmtBool, {arg.value});
+                    Value strVal = emitCallRet(Type(Type::Kind::Str), kTextFmtBool, {arg.value});
                     return LowerResult{strVal, Type(Type::Kind::Str)};
                 }
                 default:

@@ -42,8 +42,8 @@ inline constexpr std::string_view RTCLASS_MATH = "Viper.Math";
 inline constexpr std::string_view RTCLASS_CONVERT = "Viper.Core.Convert";
 /// @brief Canonical runtime class name for Viper.Math.Random.
 inline constexpr std::string_view RTCLASS_RANDOM = "Viper.Math.Random";
-/// @brief Canonical runtime class name for Viper.Environment.
-inline constexpr std::string_view RTCLASS_ENVIRONMENT = "Viper.Environment";
+/// @brief Canonical runtime class name for Viper.System.Environment.
+inline constexpr std::string_view RTCLASS_ENVIRONMENT = "Viper.System.Environment";
 /// @brief Canonical runtime class name for Viper.DateTime.
 inline constexpr std::string_view RTCLASS_DATETIME = "Viper.DateTime";
 /// @brief Canonical runtime class name for Viper.Graphics.Window.

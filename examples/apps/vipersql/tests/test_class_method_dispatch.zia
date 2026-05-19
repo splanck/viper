@@ -11,7 +11,7 @@
 module test_entity_method_dispatch;
 
 bind Viper.Terminal as Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.String as String;
 bind Viper.IO as IO;
 bind "./test_common";

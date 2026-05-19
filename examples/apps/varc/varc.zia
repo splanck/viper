@@ -10,7 +10,7 @@ bind Viper.Core.Convert as Convert;
 bind Viper.Collections as Collections;
 bind Viper.IO as IO;
 bind Viper.Crypto as Crypto;
-bind Viper.Environment as Environment;
+bind Viper.System.Environment as Environment;
 
 // Magic bytes for .varc format: "VARC" + version byte
 var MAGIC_0: Integer = 86;   // 'V'

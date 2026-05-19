@@ -6,7 +6,7 @@ bind Viper.Terminal as Terminal;
 bind Viper.Time as Time;
 bind Viper.Threads as Threads;
 bind Viper.Collections as Collections;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 // ============================================================================
 // LOG LEVELS

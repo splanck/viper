@@ -1,16 +1,16 @@
 ' test_log_exec.bas — Log, Exec, NumberFormat
-PRINT "log debug level: "; Viper.Log.DEBUG
-PRINT "log info level: "; Viper.Log.INFO
-PRINT "log warn level: "; Viper.Log.WARN
-PRINT "log error level: "; Viper.Log.ERROR
-PRINT "log off level: "; Viper.Log.OFF
-PRINT "log level: "; Viper.Log.Level
-PRINT "log enabled debug: "; Viper.Log.Enabled(Viper.Log.DEBUG)
-Viper.Log.Info("test info message")
-Viper.Log.Warn("test warn message")
-Viper.Log.Error("test error message")
+PRINT "log debug level: "; Viper.Diagnostics.Log.DEBUG
+PRINT "log info level: "; Viper.Diagnostics.Log.INFO
+PRINT "log warn level: "; Viper.Diagnostics.Log.WARN
+PRINT "log error level: "; Viper.Diagnostics.Log.ERROR
+PRINT "log off level: "; Viper.Diagnostics.Log.OFF
+PRINT "log level: "; Viper.Diagnostics.Log.Level
+PRINT "log enabled debug: "; Viper.Diagnostics.Log.Enabled(Viper.Diagnostics.Log.DEBUG)
+Viper.Diagnostics.Log.Info("test info message")
+Viper.Diagnostics.Log.Warn("test warn message")
+Viper.Diagnostics.Log.Error("test error message")
 
-PRINT "exec echo: "; Viper.Exec.ShellCapture("echo hello")
+PRINT "exec echo: "; Viper.System.Exec.ShellCapture("echo hello")
 
 PRINT "numfmt bytes: "; Viper.Text.NumberFormat.Bytes(1048576)
 PRINT "numfmt ordinal 1: "; Viper.Text.NumberFormat.Ordinal(1)

@@ -94,7 +94,7 @@ implemented in C and exposed through the IL runtime system.
 | [`Heap`](collections/README.md#vipercollectionsheap)                 | Instance | Priority queue (min/max heap)              |
 | [`IntMap`](collections/README.md#vipercollectionsintmap)             | Instance | Integer-keyed hash map                     |
 | [`Iterator`](collections/README.md#vipercollectionsiterator)         | Instance | Generic forward iterator                   |
-| [`LazySeq`](collections/README.md#viperlazyseq)                      | Instance | Lazy on-demand sequence (`Viper.LazySeq`)  |
+| [`LazySeq`](collections/README.md#viperlazyseq)                      | Instance | Lazy on-demand sequence (`Viper.Functional.LazySeq`)  |
 | [`List`](collections/README.md#vipercollectionslist)                 | Instance | Dynamic array of objects                   |
 | [`LruCache`](collections/README.md#vipercollectionslrucache)         | Instance | Least-recently-used cache                  |
 | [`Map`](collections/README.md#vipercollectionsmap)                   | Instance | String-keyed hash map                      |

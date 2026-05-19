@@ -70,7 +70,7 @@ postBytes = Viper.Network.Http.PostBytes(baseUrl, payload)
 Viper.Core.Diagnostics.Assert(postBytes.Length > 0, "http.postbytes")
 
 DIM tmpDir AS STRING
-tmpDir = Viper.IO.Path.Join(Viper.Machine.Temp, "viper_http")
+tmpDir = Viper.IO.Path.Join(Viper.System.Machine.Temp, "viper_http")
 Viper.IO.Dir.MakeAll(tmpDir)
 DIM outPath AS STRING
 outPath = Viper.IO.Path.Join(tmpDir, "example.html")

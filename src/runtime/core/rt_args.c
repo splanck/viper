@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_args.c
-// Purpose: Implements the Viper.Environment class - access to command-line
+// Purpose: Implements the Viper.System.Environment class - access to command-line
 //          arguments (argc/argv) and environment variables. Provides argument
 //          count/value queries, full command-line reconstruction, and
 //          getenv/setenv/hasenv wrappers for the BASIC runtime ABI.
@@ -566,11 +566,11 @@ static const char *rt_env_require_name(rt_string name, const char *context) {
 /// @return Newly allocated runtime string containing the value or empty when missing.
 rt_string rt_env_get_var(rt_string name) {
     const char *cname =
-        rt_env_require_name(name, "Viper.Environment.GetVariable: name must not be empty");
+        rt_env_require_name(name, "Viper.System.Environment.GetVariable: name must not be empty");
 
 #ifdef _WIN32
     wchar_t *wname = rt_env_utf8_to_wide_or_trap(
-        cname, "Viper.Environment.GetVariable: invalid UTF-8 variable name");
+        cname, "Viper.System.Environment.GetVariable: invalid UTF-8 variable name");
     SetLastError(ERROR_SUCCESS);
     DWORD required = GetEnvironmentVariableW(wname, NULL, 0);
     if (required == 0) {
@@ -579,7 +579,7 @@ rt_string rt_env_get_var(rt_string name) {
         if (err == ERROR_ENVVAR_NOT_FOUND || err == ERROR_SUCCESS) {
             return rt_str_empty();
         }
-        rt_trap("Viper.Environment.GetVariable: failed to query variable");
+        rt_trap("Viper.System.Environment.GetVariable: failed to query variable");
     }
 
     if (required <= 1) {
@@ -590,7 +590,7 @@ rt_string rt_env_get_var(rt_string name) {
     wchar_t *buffer = (wchar_t *)malloc((size_t)required * sizeof(wchar_t));
     if (!buffer) {
         free(wname);
-        rt_trap("Viper.Environment.GetVariable: allocation failed");
+        rt_trap("Viper.System.Environment.GetVariable: allocation failed");
     }
 
     SetLastError(ERROR_SUCCESS);
@@ -602,11 +602,11 @@ rt_string rt_env_get_var(rt_string name) {
         if (err == ERROR_ENVVAR_NOT_FOUND || err == ERROR_SUCCESS) {
             return rt_str_empty();
         }
-        rt_trap("Viper.Environment.GetVariable: failed to read variable");
+        rt_trap("Viper.System.Environment.GetVariable: failed to read variable");
     }
 
     rt_string out = rt_env_wide_to_string_or_trap(
-        buffer, (int)written, "Viper.Environment.GetVariable: invalid UTF-16 value");
+        buffer, (int)written, "Viper.System.Environment.GetVariable: invalid UTF-16 value");
     free(buffer);
     return out;
 #else
@@ -625,11 +625,11 @@ rt_string rt_env_get_var(rt_string name) {
 /// @return 1 if present, 0 if missing.
 int64_t rt_env_has_var(rt_string name) {
     const char *cname =
-        rt_env_require_name(name, "Viper.Environment.HasVariable: name must not be empty");
+        rt_env_require_name(name, "Viper.System.Environment.HasVariable: name must not be empty");
 
 #ifdef _WIN32
     wchar_t *wname = rt_env_utf8_to_wide_or_trap(
-        cname, "Viper.Environment.HasVariable: invalid UTF-8 variable name");
+        cname, "Viper.System.Environment.HasVariable: invalid UTF-8 variable name");
     SetLastError(ERROR_SUCCESS);
     DWORD required = GetEnvironmentVariableW(wname, NULL, 0);
     DWORD err = GetLastError();
@@ -651,30 +651,30 @@ int64_t rt_env_has_var(rt_string name) {
 /// @param value New value (NULL treated as empty string).
 void rt_env_set_var(rt_string name, rt_string value) {
     const char *cname =
-        rt_env_require_name(name, "Viper.Environment.SetVariable: name must not be empty");
+        rt_env_require_name(name, "Viper.System.Environment.SetVariable: name must not be empty");
     const char *cvalue = value ? rt_string_cstr(value) : "";
 
     // Reject embedded null bytes: setenv/SetEnvironmentVariableA terminate at the
     // first '\0', so a Viper String with internal nulls would be silently truncated.
     if (strlen(cname) != (size_t)rt_str_len(name))
-        rt_trap("Viper.Environment.SetVariable: name must not contain null bytes");
+        rt_trap("Viper.System.Environment.SetVariable: name must not contain null bytes");
     if (value && strlen(cvalue) != (size_t)rt_str_len(value))
-        rt_trap("Viper.Environment.SetVariable: value must not contain null bytes");
+        rt_trap("Viper.System.Environment.SetVariable: value must not contain null bytes");
 
 #ifdef _WIN32
     wchar_t *wname = rt_env_utf8_to_wide_or_trap(
-        cname, "Viper.Environment.SetVariable: invalid UTF-8 variable name");
+        cname, "Viper.System.Environment.SetVariable: invalid UTF-8 variable name");
     wchar_t *wvalue = rt_env_utf8_to_wide_or_trap(
-        cvalue, "Viper.Environment.SetVariable: invalid UTF-8 variable value");
+        cvalue, "Viper.System.Environment.SetVariable: invalid UTF-8 variable value");
     int ok = SetEnvironmentVariableW(wname, wvalue) ? 1 : 0;
     free(wname);
     free(wvalue);
     if (!ok) {
-        rt_trap("Viper.Environment.SetVariable: failed to set variable");
+        rt_trap("Viper.System.Environment.SetVariable: failed to set variable");
     }
 #else
     if (setenv(cname, cvalue, 1) != 0) {
-        rt_trap("Viper.Environment.SetVariable: failed to set variable");
+        rt_trap("Viper.System.Environment.SetVariable: failed to set variable");
     }
 #endif
 }

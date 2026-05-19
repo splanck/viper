@@ -54,7 +54,7 @@
 // ============================================================================
 module season_engine;
 
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind "../model/constants";
 bind "../model/game_state";
 bind "../sim/game_engine";

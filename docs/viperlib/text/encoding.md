@@ -130,7 +130,7 @@ module UuidDemo;
 
 bind Viper.Terminal;
 bind Viper.Text.Uuid as Uuid;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var id = Uuid.New();

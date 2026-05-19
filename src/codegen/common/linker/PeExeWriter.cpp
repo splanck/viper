@@ -621,13 +621,14 @@ TlsLayout buildTlsDirectory(uint64_t imageBase,
     uint32_t tlsAlignment = 1;
     bool sawRawTemplateBytes = false;
     for (const auto &sec : layout.sections) {
-        if (!sec.alloc || !sec.tls || sec.data.empty())
+        const size_t secMemSize = outputSectionMemSize(sec);
+        if (!sec.alloc || !sec.tls || secMemSize == 0)
             continue;
         uint32_t secRva = 0;
         if (!checkedRva(imageBase, sec.virtualAddr, sec.name, err, secRva))
             return {};
         uint32_t secSize = 0;
-        if (!checkedSizeU32(sec.data.size(), "TLS section size", err, secSize))
+        if (!checkedSizeU32(secMemSize, "TLS section size", err, secSize))
             return {};
         uint32_t secEnd = 0;
         if (!checkedAddU32(secRva, secSize, "TLS section RVA range", err, secEnd))
@@ -824,7 +825,7 @@ bool writePeExe(const std::string &path,
         ps.zeroFill = sec.zeroFill;
         if (!checkedRva(imageBase, sec.virtualAddr, sec.name, err, ps.virtualAddress))
             return false;
-        if (!checkedSizeU32(ownedSectionData.back().size(), "section virtual size", err, ps.virtualSize))
+        if (!checkedSizeU32(outputSectionMemSize(sec), "section virtual size", err, ps.virtualSize))
             return false;
         ps.characteristics = sectionChars(sec.executable, sec.writable, sec.alloc, sec.zeroFill);
         sections.push_back(ps);

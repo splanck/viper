@@ -157,7 +157,7 @@
 
 ### A-007: BASIC — Fmt.Bool rejects integer argument
 
-**Repro:** `PRINT Viper.Fmt.Bool(-1)` → `argument type mismatch`
+**Repro:** `PRINT Viper.Text.Fmt.Bool(-1)` → `argument type mismatch`
 **Root cause:** `Fmt.Bool` expects `i1` but BASIC represents booleans as integers (-1/0).
 
 ### A-008: BASIC — Parse.BoolOr rejects integer default
@@ -455,15 +455,15 @@
 
 ### A-052: Both — Lazy static methods undefined
 
-**Repro:** `Viper.Lazy.OfI64(42)` in both frontends
+**Repro:** `Viper.Functional.Lazy.OfI64(42)` in both frontends
 **Zia Error:** `Undefined identifier: Viper` (A-019 pattern)
 **BASIC Error:** `unknown procedure 'viper.lazy.ofi64'`
-**Note:** Viper.Lazy is a top-level class without standard namespace prefix pattern. Both frontends fail to resolve.
-**Root cause:** `Viper.Lazy` is a top-level class (only 2 levels deep, not the typical 3+ like `Viper.Collections.List`). Both frontends' namespace resolution expects at least 3 levels (Viper.Namespace.Class). The qualified name resolution in Zia's `lookupSymbol()` and BASIC's `findRuntimeClassByQName()` may not handle 2-level paths. Additionally, Lazy's functions are factory methods (OfI64, OfStr, etc.) that create instances — they may need different dispatch than instance methods.
+**Note:** Viper.Functional.Lazy is a top-level class without standard namespace prefix pattern. Both frontends fail to resolve.
+**Root cause:** `Viper.Functional.Lazy` is a top-level class (only 2 levels deep, not the typical 3+ like `Viper.Collections.List`). Both frontends' namespace resolution expects at least 3 levels (Viper.Namespace.Class). The qualified name resolution in Zia's `lookupSymbol()` and BASIC's `findRuntimeClassByQName()` may not handle 2-level paths. Additionally, Lazy's functions are factory methods (OfI64, OfStr, etc.) that create instances — they may need different dispatch than instance methods.
 
 ### A-053: Both — LazySeq static methods undefined ✅ FIXED
 
-**Repro:** `Viper.LazySeq.Range(1, 10, 1)` in both frontends
+**Repro:** `Viper.Functional.LazySeq.Range(1, 10, 1)` in both frontends
 **Zia Error:** `Undefined identifier: Viper` / **BASIC Error:** `unknown procedure 'viper.lazyseq.range'`
 **Root cause:** No RT_FUNC entries existed for LazySeq methods. The RT_CLASS had methods defined but no corresponding standalone RT_FUNC entries that the frontends could resolve. Additionally, the C functions use typed `rt_lazyseq` pointers incompatible with the IL's `void*` (obj) convention.
 **Fix:** Added 13 RT_FUNC entries in runtime.def. Created void* wrapper functions (`rt_lazyseq_w_*`) in rt_lazyseq.c that cast between `void*` and `rt_lazyseq` types. Also created `_next_simple`/`_peek_simple` wrappers that drop the `has_more` output parameter. Added IL wrapper ctests in RTLazySeqTests.cpp.
@@ -551,9 +551,9 @@ All RT_MAGIC crashes in BASIC (A-026 Deque, A-027 SortedSet, A-037 StringBuilder
 
 ### String & Formatting (4 classes)
 - [x] Viper.String
-- [x] Viper.Fmt
+- [x] Viper.Text.Fmt
 - [x] Viper.Terminal
-- [x] Viper.Environment
+- [x] Viper.System.Environment
 
 ### Collections (28 classes)
 - [x] Viper.Collections.Bag — PASS both
@@ -672,11 +672,11 @@ All RT_MAGIC crashes in BASIC (A-026 Deque, A-027 SortedSet, A-037 StringBuilder
 - [ ] Viper.Network.WebSocket — skip (needs network)
 
 ### Misc (11 classes)
-- [x] Viper.Exec — PASS both (Capture returns empty in VM — expected?)
-- [x] Viper.Lazy — BOTH FAIL (A-052)
-- [x] Viper.LazySeq — BOTH FAIL (A-053)
-- [x] Viper.Log — PASS both
-- [x] Viper.Machine — PASS both
+- [x] Viper.System.Exec — PASS both (Capture returns empty in VM — expected?)
+- [x] Viper.Functional.Lazy — BOTH FAIL (A-052)
+- [x] Viper.Functional.LazySeq — BOTH FAIL (A-053)
+- [x] Viper.Diagnostics.Log — PASS both
+- [x] Viper.System.Machine — PASS both
 - [x] Viper.Option — BOTH FAIL (A-043/A-044)
 - [x] Viper.Result — BOTH FAIL (A-043/A-044)
 - [N/A] Viper.Memory.GC — not in runtime.def
@@ -893,7 +893,7 @@ void *rt_timer_new(void) {
 
 **Sub-patterns:**
 - A-014/A-019: Functions in namespace-only modules (Easing, TextWrapper) — no RT_CLASS_BEGIN, just RT_FUNCs
-- A-052/A-053: Top-level classes (Viper.Lazy, Viper.LazySeq) — only 2 levels deep instead of typical 3+
+- A-052/A-053: Top-level classes (Viper.Functional.Lazy, Viper.Functional.LazySeq) — only 2 levels deep instead of typical 3+
 - A-043/A-044: Newer classes (Result, Option) — static factory methods not in symbol table
 
 **Source:** `src/frontends/zia/Sema_Expr_Call.cpp:422-506`, `src/frontends/zia/Lowerer_Expr_Call.cpp:510-549`
@@ -1159,7 +1159,7 @@ These classes have no section in any viperlib doc file — no description, no me
 | A-086 | Viper.Collections.UnionFind | Collections | Medium | collections.md |
 | A-087 | Viper.Core.MessageBus | Core | Medium | core.md |
 | A-088 | Viper.Crypto.Password | Crypto | Medium | crypto.md |
-| A-089 | Viper.Lazy | Functional | Medium | (none) |
+| A-089 | Viper.Functional.Lazy | Functional | Medium | (none) |
 | A-090 | Viper.Option | Functional | Medium | (none) |
 | A-091 | Viper.Result | Functional | Medium | (none) |
 | A-092 | Viper.IO.Glob | IO | Medium | io.md |

@@ -22,7 +22,7 @@
 // ============================================================================
 module season_writer;
 
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind "../season_model";
 bind "../date_utils";
 

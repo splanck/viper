@@ -660,9 +660,9 @@ func test(val: Integer) -> Integer {    if val >= 0 {
     return 0;
 }
 
-func start() {    Viper.Terminal.Say(Viper.Fmt.Int(test(1)));
-    Viper.Terminal.Say(Viper.Fmt.Int(test(2)));
-    Viper.Terminal.Say(Viper.Fmt.Int(test(3)));
+func start() {    Viper.Terminal.Say(Viper.Text.Fmt.Int(test(1)));
+    Viper.Terminal.Say(Viper.Text.Fmt.Int(test(2)));
+    Viper.Terminal.Say(Viper.Text.Fmt.Int(test(3)));
 }
 )";
     CompilerInput input{.source = source, .path = "match_as_var.zia"};

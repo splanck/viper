@@ -69,6 +69,9 @@ bool installSyntheticGlobal(const ObjSymbol &sym,
     e.objIndex = objIdx;
     e.secIndex = sym.sectionIndex;
     e.offset = sym.offset;
+    e.resolvedAddr = sym.absolute ? static_cast<uint64_t>(sym.offset) : 0;
+    e.resolvedAddrValid = sym.absolute;
+    e.absolute = sym.absolute;
     globalSyms[sym.name] = std::move(e);
     return true;
 }
@@ -169,7 +172,7 @@ ObjFile makeDsoHandleObject(const ObjFile &userObj) {
     dataSec.writable = true;
     dataSec.zeroFill = true;
     dataSec.alignment = 8;
-    dataSec.data.resize(8, 0);
+    dataSec.memSize = 8;
 
     // A single definition: the resolver's macOS underscore fallback treats
     // `__dso_handle` / `___dso_handle` as the same symbol, so defining both
@@ -233,11 +236,12 @@ const char *archName(LinkArch arch) {
 
 bool addressInExecutableSection(const LinkLayout &layout, uint64_t addr) {
     for (const auto &sec : layout.sections) {
-        if (!sec.alloc || !sec.executable || sec.data.empty())
+        const size_t memSize = outputSectionMemSize(sec);
+        if (!sec.alloc || !sec.executable || memSize == 0)
             continue;
-        if (sec.data.size() > std::numeric_limits<uint64_t>::max() - sec.virtualAddr)
+        if (memSize > std::numeric_limits<uint64_t>::max() - sec.virtualAddr)
             continue;
-        const uint64_t end = sec.virtualAddr + sec.data.size();
+        const uint64_t end = sec.virtualAddr + memSize;
         if (addr >= sec.virtualAddr && addr < end)
             return true;
     }
@@ -1284,7 +1288,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     // Step 6.25: Resolve the final entry point after symbol addresses are known.
     {
         auto it = findWithPlatformFallback(layout.globalSyms, opts.entrySymbol, opts.platform);
-        if (it == layout.globalSyms.end() || it->second.resolvedAddr == 0) {
+        if (it == layout.globalSyms.end() || !it->second.resolvedAddrValid) {
             err << "error: entry symbol '" << opts.entrySymbol << "' was not resolved\n";
             return 1;
         }

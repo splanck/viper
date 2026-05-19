@@ -12,17 +12,17 @@ last-verified: 2026-05-15
 
 ## Contents
 
-- [Viper.Environment](#viperenvironment)
+- [Viper.System.Environment](#viperenvironment)
 - [Viper.System.Clipboard](#vipersystemclipboard)
-- [Viper.Exec](#viperexec)
-- [Viper.Machine](#vipermachine)
+- [Viper.System.Exec](#viperexec)
+- [Viper.System.Machine](#vipermachine)
 - [Viper.Memory](#vipermemory)
 - [Viper.Memory.GC](#vipermemory-gc)
 - [Viper.Terminal](#viperterminal)
 
 ---
 
-## Viper.Environment
+## Viper.System.Environment
 
 Command-line arguments and environment access.
 
@@ -47,8 +47,8 @@ Command-line arguments and environment access.
 module EnvDemo;
 
 bind Viper.Terminal;
-bind Viper.Environment as Env;
-bind Viper.Fmt as Fmt;
+bind Viper.System.Environment as Env;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     Say("Args: " + Fmt.Int(Env.GetArgumentCount()));
@@ -67,18 +67,18 @@ func start() {
 ' Program invoked as: viper front basic -run app.bas -- arg1 arg2 arg3
 
 DIM count AS INTEGER
-count = Viper.Environment.GetArgumentCount()
+count = Viper.System.Environment.GetArgumentCount()
 PRINT "Argument count: "; count  ' Output: 3
 
 FOR i = 0 TO count - 1
-    PRINT "Arg "; i; ": "; Viper.Environment.GetArgument(i)
+    PRINT "Arg "; i; ": "; Viper.System.Environment.GetArgument(i)
 NEXT i
 ' Output:
 ' Arg 0: arg1
 ' Arg 1: arg2
 ' Arg 2: arg3
 
-PRINT "Full command: "; Viper.Environment.GetCommandLine()
+PRINT "Full command: "; Viper.System.Environment.GetCommandLine()
 
 ' Arguments before -- belong to the viper tool. GetArgument(0) is the first
 ' argument after --, not the tool or executable name.
@@ -87,22 +87,22 @@ PRINT "Full command: "; Viper.Environment.GetCommandLine()
 DIM name AS STRING
 DIM value AS STRING
 name = "VIPER_SAMPLE_ENV"
-value = Viper.Environment.GetVariable(name)
-IF Viper.Environment.HasVariable(name) THEN
+value = Viper.System.Environment.GetVariable(name)
+IF Viper.System.Environment.HasVariable(name) THEN
     PRINT name; " is set to "; value
 ELSE
     PRINT name; " is not set"
 END IF
 
-Viper.Environment.SetVariable(name, "abc")
-PRINT "Updated value: "; Viper.Environment.GetVariable(name)
+Viper.System.Environment.SetVariable(name, "abc")
+PRINT "Updated value: "; Viper.System.Environment.GetVariable(name)
 
 ' Values round-trip as UTF-8 across platforms.
-Viper.Environment.SetVariable("VIPER_UTF8_SAMPLE", "café")
-PRINT Viper.Environment.GetVariable("VIPER_UTF8_SAMPLE")
+Viper.System.Environment.SetVariable("VIPER_UTF8_SAMPLE", "café")
+PRINT Viper.System.Environment.GetVariable("VIPER_UTF8_SAMPLE")
 
 ' Process exit
-' Viper.Environment.EndProgram(7)
+' Viper.System.Environment.EndProgram(7)
 ```
 
 ---
@@ -145,7 +145,7 @@ The clipboard helpers are available on desktop graphics backends. In headless or
 
 ---
 
-## Viper.Exec
+## Viper.System.Exec
 
 External command execution for running system commands and capturing output.
 
@@ -172,12 +172,12 @@ interpretation.
 ```basic
 ' DANGEROUS - shell injection risk:
 userInput = "file.txt; rm -rf /"
-Viper.Exec.Shell("cat " + userInput)  ' DO NOT DO THIS
+Viper.System.Exec.Shell("cat " + userInput)  ' DO NOT DO THIS
 
 ' SAFE - use RunArgs with explicit arguments:
 DIM args AS OBJECT = Viper.Collections.Seq.New()
 args.Push(userInput)
-Viper.Exec.RunArgs("/bin/cat", args)  ' Arguments are passed directly
+Viper.System.Exec.RunArgs("/bin/cat", args)  ' Arguments are passed directly
 ```
 
 ### Zia Example
@@ -186,8 +186,8 @@ Viper.Exec.RunArgs("/bin/cat", args)  ' Arguments are passed directly
 module ExecDemo;
 
 bind Viper.Terminal;
-bind Viper.Exec as Exec;
-bind Viper.Fmt as Fmt;
+bind Viper.System.Exec as Exec;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     // Capture shell command output
@@ -209,36 +209,36 @@ func start() {
 ```basic
 ' Simple command execution
 DIM exitCode AS INTEGER
-exitCode = Viper.Exec.Shell("echo Hello World")
+exitCode = Viper.System.Exec.Shell("echo Hello World")
 PRINT "Exit code: "; exitCode
 
 ' Capture command output
 DIM output AS STRING
-output = Viper.Exec.ShellCapture("date")
+output = Viper.System.Exec.ShellCapture("date")
 PRINT "Current date: "; output
 
 ' Execute program with arguments
 DIM args AS OBJECT = Viper.Collections.Seq.New()
 args.Push("-l")
 args.Push("-a")
-exitCode = Viper.Exec.RunArgs("/bin/ls", args)
+exitCode = Viper.System.Exec.RunArgs("/bin/ls", args)
 
 ' Capture output with arguments
 DIM result AS STRING
 args = Viper.Collections.Seq.New()
 args.Push("--version")
-result = Viper.Exec.CaptureArgs("/usr/bin/python3", args)
+result = Viper.System.Exec.CaptureArgs("/usr/bin/python3", args)
 PRINT "Python version: "; result
 
 ' Check if command succeeded
-IF Viper.Exec.Shell("test -f /etc/passwd") = 0 THEN
+IF Viper.System.Exec.Shell("test -f /etc/passwd") = 0 THEN
     PRINT "File exists"
 ELSE
     PRINT "File does not exist"
 END IF
 
 ' Run a script and check result
-exitCode = Viper.Exec.Shell("./myscript.sh")
+exitCode = Viper.System.Exec.Shell("./myscript.sh")
 IF exitCode <> 0 THEN
     PRINT "Script failed with exit code: "; exitCode
 END IF
@@ -255,7 +255,7 @@ END IF
 
 ---
 
-## Viper.Machine
+## Viper.System.Machine
 
 System information queries providing read-only access to machine properties.
 
@@ -282,8 +282,8 @@ System information queries providing read-only access to machine properties.
 module MachineDemo;
 
 bind Viper.Terminal;
-bind Viper.Machine as Machine;
-bind Viper.Fmt as Fmt;
+bind Viper.System.Machine as Machine;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     Say("OS: " + Machine.get_OS());
@@ -298,37 +298,37 @@ func start() {
 
 ```basic
 ' Operating system information
-PRINT "OS: "; Viper.Machine.OS
-PRINT "Version: "; Viper.Machine.OSVer
+PRINT "OS: "; Viper.System.Machine.OS
+PRINT "Version: "; Viper.System.Machine.OSVer
 
 ' User and host
-PRINT "User: "; Viper.Machine.User
-PRINT "Host: "; Viper.Machine.Host
+PRINT "User: "; Viper.System.Machine.User
+PRINT "Host: "; Viper.System.Machine.Host
 
 ' Directory paths
-PRINT "Home: "; Viper.Machine.Home
-PRINT "Temp: "; Viper.Machine.Temp
+PRINT "Home: "; Viper.System.Machine.Home
+PRINT "Temp: "; Viper.System.Machine.Temp
 
 ' Hardware information
-PRINT "CPU Cores: "; Viper.Machine.Cores
-PRINT "Total RAM: "; Viper.Machine.MemTotal / 1073741824; " GB"
-PRINT "Free RAM: "; Viper.Machine.MemFree / 1073741824; " GB"
+PRINT "CPU Cores: "; Viper.System.Machine.Cores
+PRINT "Total RAM: "; Viper.System.Machine.MemTotal / 1073741824; " GB"
+PRINT "Free RAM: "; Viper.System.Machine.MemFree / 1073741824; " GB"
 
 ' System characteristics
-PRINT "Byte Order: "; Viper.Machine.Endian
+PRINT "Byte Order: "; Viper.System.Machine.Endian
 
 ' Conditional behavior based on OS
-IF Viper.Machine.OS = "macos" THEN
+IF Viper.System.Machine.OS = "macos" THEN
     PRINT "Running on macOS"
-ELSEIF Viper.Machine.OS = "linux" THEN
+ELSEIF Viper.System.Machine.OS = "linux" THEN
     PRINT "Running on Linux"
-ELSEIF Viper.Machine.OS = "windows" THEN
+ELSEIF Viper.System.Machine.OS = "windows" THEN
     PRINT "Running on Windows"
 END IF
 
 ' Check available memory before large allocation
 DIM requiredMem AS INTEGER = 1073741824  ' 1 GB
-IF Viper.Machine.MemFree > requiredMem THEN
+IF Viper.System.Machine.MemFree > requiredMem THEN
     PRINT "Sufficient memory available"
 ELSE
     PRINT "Warning: Low memory"
@@ -413,7 +413,7 @@ module GCDemo;
 
 bind Viper.Terminal;
 bind Viper.Memory.GC as GC;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     Say("Tracked: " + Fmt.Int(GC.TrackedCount()));

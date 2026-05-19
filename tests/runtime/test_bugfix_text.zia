@@ -9,7 +9,7 @@ bind Viper.Text.Json as Json;
 bind Viper.Text.Toml as Toml;
 bind Viper.Collections.Seq as Seq;
 bind Viper.Core.Box as Box;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 // EXPECT_OUT: RESULT: ok
 // COVER: Bug #8  - Csv.ParseLine count via Seq.get_Count

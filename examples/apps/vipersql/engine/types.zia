@@ -108,7 +108,7 @@
 module types;
 
 bind Viper.String as String;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.Time.DateTime as DateTime;
 
 //=============================================================================

@@ -106,6 +106,7 @@ struct InputSectionKeyHash {
 struct OutputSection {
     std::string name;
     std::vector<uint8_t> data;      ///< Concatenated section bytes.
+    size_t memSize = 0;             ///< Logical in-memory size, including zero-fill bytes.
     std::vector<InputChunk> chunks; ///< Provenance info for each chunk.
     uint64_t virtualAddr = 0;       ///< Virtual address after layout.
     uint32_t alignment = 1;         ///< Required alignment.
@@ -114,7 +115,12 @@ struct OutputSection {
     bool tls = false;
     bool zeroFill = false; ///< Occupies memory but has no file backing.
     bool alloc = true; ///< Section is loadable (false for debug sections).
+    bool dataSegment = false; ///< Emit in data segment even when final protections are read-only.
 };
+
+inline size_t outputSectionMemSize(const OutputSection &sec) {
+    return sec.zeroFill ? (sec.memSize != 0 ? sec.memSize : sec.data.size()) : sec.data.size();
+}
 
 /// Section classification for merging.
 enum class SectionClass : uint8_t {
@@ -125,6 +131,7 @@ enum class SectionClass : uint8_t {
     TlsData, ///< Thread-local initialized data.
     TlsBss,  ///< Thread-local uninitialized data.
     ObjC,    ///< ObjC metadata — preserved with original section name.
+    Preserved, ///< Platform metadata preserved with its original section name.
     Other,   ///< Non-allocatable, debug, etc.
 };
 
@@ -147,8 +154,13 @@ inline bool isElfMetadataSection(const std::string &name) {
            name.rfind(".note.", 0) == 0 || name == ".note";
 }
 
+inline bool isMachOConstDataSection(const std::string &name) {
+    return name.rfind("__DATA_CONST,", 0) == 0 || name.rfind("__AUTH_CONST,", 0) == 0;
+}
+
 inline bool isPreservedNamedSection(const std::string &name) {
-    return isObjCSection(name) || isWindowsMetadataSection(name) || isElfMetadataSection(name);
+    return isObjCSection(name) || isWindowsMetadataSection(name) || isElfMetadataSection(name) ||
+           isMachOConstDataSection(name);
 }
 
 /// Symbols synthesized by the Windows native linker rather than imported from
@@ -194,11 +206,13 @@ inline SectionClass classifySection(const std::string &name,
             return SectionClass::TlsBss;
         return SectionClass::TlsData;
     }
-    // ObjC metadata and PE unwind sections must be preserved with their
-    // original names because downstream runtimes/loaders locate them by name
-    // or by dedicated data-directory ranges derived from those names.
-    if (isPreservedNamedSection(name))
+    if (isObjCSection(name))
         return SectionClass::ObjC;
+    // Platform metadata must be preserved with its original name because
+    // runtimes/loaders locate it by name or dedicated data-directory ranges.
+    if (isWindowsMetadataSection(name) || isElfMetadataSection(name) ||
+        isMachOConstDataSection(name))
+        return SectionClass::Preserved;
     if (executable)
         return SectionClass::Text;
     if (writable) {
@@ -228,6 +242,7 @@ struct GlobalSymEntry {
     uint32_t secIndex = 0;     ///< Section within that ObjFile.
     size_t offset = 0;         ///< Offset within the section.
     uint64_t resolvedAddr = 0; ///< Final virtual address after layout.
+    bool resolvedAddrValid = false; ///< True when resolvedAddr is an intentional address, including zero.
     bool absolute = false;     ///< Symbol resolves to offset/resolvedAddr directly.
     bool common = false;       ///< Tentative/common symbol awaiting materialization.
     size_t commonSize = 0;     ///< Largest requested tentative definition size.

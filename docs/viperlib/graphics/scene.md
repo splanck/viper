@@ -60,7 +60,7 @@ module CameraDemo;
 
 bind Viper.Terminal;
 bind Viper.Graphics.Camera as Camera;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var cam = Camera.New(800, 600);

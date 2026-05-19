@@ -25,7 +25,7 @@ PRINT "Completed "; FILE_ITERS; " file reads"
 
 ' Write many times
 FOR i = 1 TO FILE_ITERS
-    Viper.IO.File.WriteAllText(testFile, "iteration " + Viper.Fmt.Int(i))
+    Viper.IO.File.WriteAllText(testFile, "iteration " + Viper.Text.Fmt.Int(i))
     IF i MOD 200 = 0 THEN
         PRINT "  Write iteration "; i
     END IF

@@ -34,7 +34,7 @@ bind Viper.GUI.HBox as HBox;
 bind Viper.GUI.Label as Label;
 bind Viper.GUI.Button as Button;
 bind Viper.GUI.CodeEditor as CodeEditor;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var app = App.New("Note Editor", 800, 600);

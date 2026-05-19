@@ -11,7 +11,7 @@
 module er_probe;
 
 bind Viper.Terminal as Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind "./src/demo/default_game";
 bind "./src/sim/game_engine";
 bind "./src/model/game_state";

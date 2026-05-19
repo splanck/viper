@@ -146,6 +146,34 @@ int main() {
     CHECK(pdataSec->relocs[2].symIndex == xdataIdx);
 
     {
+        CodeSection callText;
+        CodeSection callRodata;
+        callText.defineSymbol("caller", SymbolBinding::Global, SymbolSection::Text);
+        callText.emit8(0xE8);
+        const size_t dispOff = callText.currentOffset();
+        callText.emit32LE(0);
+        const uint32_t calleeIdx = callText.findOrDeclareSymbol("callee");
+        callText.addRelocationAt(dispOff, RelocKind::Branch32, calleeIdx, -4);
+        callText.emit8(0xC3);
+
+        std::ostringstream callErr;
+        CoffWriter callWriter(ObjArch::X86_64);
+        const std::string callPath = "build/test-out/coff_x64_call.obj";
+        ASSERT(callWriter.write(callPath, callText, callRodata, callErr));
+
+        ObjFile callObj;
+        ASSERT(readObjFile(callPath, callObj, callErr));
+        const ObjSection *callTextSec = findSection(callObj, ".text");
+        ASSERT(callTextSec != nullptr);
+        CHECK(callTextSec->relocs.size() == 1);
+        if (!callTextSec->relocs.empty()) {
+            CHECK(callTextSec->relocs[0].type == 4);
+            CHECK(callTextSec->relocs[0].addend == -4);
+        }
+        CHECK(readLE32(callTextSec->data, dispOff) == 0);
+    }
+
+    {
         CodeSection armText;
         CodeSection armRodata;
         armText.defineSymbol("caller", SymbolBinding::Global, SymbolSection::Text);

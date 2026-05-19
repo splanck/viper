@@ -1292,7 +1292,7 @@ Save the highest score to a file so players can compete with themselves:
 
 ```rust
 bind Convert = Viper.Core.Convert;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func loadHighScore() -> Integer {
     var file = File.open("highscore.txt", "r");

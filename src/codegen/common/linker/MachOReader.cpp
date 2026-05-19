@@ -223,6 +223,7 @@ static void splitMachOTextSubsections(ObjFile &obj) {
             }
             part.data.assign(sec.data.begin() + static_cast<std::ptrdiff_t>(start),
                              sec.data.begin() + static_cast<std::ptrdiff_t>(end));
+            part.memSize = part.data.size();
             part.relocs.clear();
             const uint32_t newSecIdx = static_cast<uint32_t>(newSections.size());
             ranges.push_back({si, newSecIdx, start, end});
@@ -320,24 +321,36 @@ static int64_t extractMachOAddend(const uint8_t *sectionData,
     } else {
         const size_t fieldSize = size_t{1} << relocLength;
         if (checkedRange(offset, fieldSize, sectionSize)) {
+            auto normalizeX64Addend = [&](int64_t val) {
+                switch (relocType) {
+                    case macho_x64::kSigned:
+                    case macho_x64::kSigned1:
+                    case macho_x64::kSigned2:
+                    case macho_x64::kSigned4:
+                    case macho_x64::kBranch:
+                        return val - 4;
+                    default:
+                        return val;
+                }
+            };
             if (fieldSize == 1) {
                 int8_t val = 0;
                 std::memcpy(&val, sectionData + offset, 1);
-                return val;
+                return normalizeX64Addend(val);
             }
             if (fieldSize == 2) {
                 int16_t val = 0;
                 std::memcpy(&val, sectionData + offset, 2);
-                return val;
+                return normalizeX64Addend(val);
             }
             if (fieldSize == 4) {
                 int32_t val = 0;
                 std::memcpy(&val, sectionData + offset, 4);
-                return val;
+                return normalizeX64Addend(val);
             }
             int64_t val = 0;
             std::memcpy(&val, sectionData + offset, 8);
-            return val;
+            return normalizeX64Addend(val);
         }
         return 0;
     }
@@ -456,12 +469,15 @@ bool readMachOObj(
                 // .o files don't have segment permission bits, but each section header
                 // carries the intended segment name (__TEXT vs __DATA).
                 const uint32_t secType = sec->flags & 0xFF;
-                const bool dataLikeSegment =
+                const bool dataSegment =
                     segName == "__DATA" || segName == "__DATA_CONST" ||
                     segName == "__DATA_DIRTY" || segName == "__AUTH" ||
                     segName == "__AUTH_CONST";
+                const bool writableDataSegment =
+                    segName == "__DATA" || segName == "__DATA_DIRTY" || segName == "__AUTH";
+                os.dataSegment = !isDebugSection && dataSegment;
                 os.writable = !isDebugSection &&
-                              (dataLikeSegment || (secType == macho::S_ZEROFILL) ||
+                              (writableDataSegment || (secType == macho::S_ZEROFILL) ||
                                (secType == macho::S_THREAD_LOCAL_REGULAR) ||
                                (secType == macho::S_THREAD_LOCAL_ZEROFILL) ||
                                (secType == macho::S_THREAD_LOCAL_VARIABLES) ||
@@ -488,15 +504,15 @@ bool readMachOObj(
                     err << "error: " << name << ": Mach-O section is too large\n";
                     return false;
                 }
-                if (sec->size > kMaxObjMaterializedBytes - materializedBytes) {
+                if (!isZerofill && sec->size > kMaxObjMaterializedBytes - materializedBytes) {
                     err << "error: " << name << ": Mach-O materialized section data exceeds limit\n";
                     return false;
                 }
                 if (isZerofill && sec->size > 0) {
-                    os.data.resize(static_cast<size_t>(sec->size), 0);
-                    materializedBytes += static_cast<size_t>(sec->size);
+                    os.memSize = static_cast<size_t>(sec->size);
                 } else if (sec->size > 0 && checkedRange(sec->offset, static_cast<size_t>(sec->size), size)) {
                     os.data.assign(data + sec->offset, data + sec->offset + sec->size);
+                    os.memSize = os.data.size();
                     materializedBytes += static_cast<size_t>(sec->size);
                 } else if (sec->size > 0) {
                     err << "error: " << name << ": Mach-O section '" << os.name
@@ -708,6 +724,12 @@ bool readMachOObj(
                 if (relValue > static_cast<uint64_t>(SIZE_MAX)) {
                     err << "error: " << name << ": Mach-O symbol '" << os.name
                         << "' offset exceeds addressable size\n";
+                    return false;
+                }
+                const size_t secSize = objSectionMemSize(obj.sections[os.sectionIndex]);
+                if (relValue > static_cast<uint64_t>(secSize)) {
+                    err << "error: " << name << ": Mach-O symbol '" << os.name
+                        << "' is outside section '" << obj.sections[os.sectionIndex].name << "'\n";
                     return false;
                 }
                 os.offset = static_cast<size_t>(relValue);

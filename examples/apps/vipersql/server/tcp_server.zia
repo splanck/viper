@@ -52,7 +52,7 @@ module tcp_server;
 
 bind Viper.Terminal as Terminal;
 bind Viper.Network as Network;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.Threads as Threads;
 bind "../engine/server";
 bind "./threadpool";

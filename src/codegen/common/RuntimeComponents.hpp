@@ -181,7 +181,7 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
     // become assembly symbols like _Viper.String.Left.
     // -------------------------------------------------------------------------
     if (starts("Viper.Terminal.") || starts("Viper.String.") || starts("Viper.Math.") ||
-        starts("Viper.Core.") || starts("Viper.Environment."))
+        starts("Viper.Core.") || starts("Viper.System.Environment."))
         return RtComponent::Base;
     if (starts("Viper.Collections."))
         return RtComponent::Collections;
@@ -201,7 +201,7 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         return RtComponent::Audio;
     if (starts("Viper.Thread.") || starts("Viper.Channel.") || starts("Viper.Future."))
         return RtComponent::Threads;
-    if (starts("Viper.Exec.") || starts("Viper.Machine."))
+    if (starts("Viper.System.Exec.") || starts("Viper.System.Machine."))
         return RtComponent::Exec;
     if (starts("Viper.Localization."))
         return RtComponent::Localization;

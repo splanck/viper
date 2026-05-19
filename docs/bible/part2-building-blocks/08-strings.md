@@ -1235,7 +1235,7 @@ var result = builder.ToString();
 ```rust
 bind Viper.Text.StringBuilder as SB;
 bind Viper.Time;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 func generateReport(data: List[Record]) -> String {
     var sb = new SB();
@@ -1301,7 +1301,7 @@ var pi = Convert.ToDouble("3.14");   // 3.14 (float)
 
 **Number to string:**
 ```rust
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 
 var num = 42;
 var text = Fmt.Int(num);  // "42"
@@ -1459,11 +1459,11 @@ When mixing strings and numbers, the `+` operator automatically converts numbers
 
 ### Padding and Alignment
 
-For formatted number output, use `Viper.Fmt`:
+For formatted number output, use `Viper.Text.Fmt`:
 
 ```rust
 bind Viper.Terminal;
-bind Viper.Fmt;
+bind Viper.Text.Fmt;
 
 // Pad with zeros
 Say(Fmt.IntPad(42, 5, "0"));     // "00042"
@@ -2043,7 +2043,7 @@ if input.Trim() == "yes" {  // Works
 - `split` breaks into arrays; `join` combines arrays
 - String comparison is case-sensitive and uses character codes
 - `Viper.Core.Convert.ToInt64/ToDouble` convert strings to numbers
-- `Viper.Fmt.Int/IntPad` format numbers as strings
+- `Viper.Text.Fmt.Int/IntPad` format numbers as strings
 - Always check for empty strings and off-by-one errors
 - Use `trim()` on user input before processing
 

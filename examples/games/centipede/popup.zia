@@ -11,7 +11,7 @@ bind "./config";
 bind "./utils";
 
 bind Viper.Graphics;
-bind Viper.Fmt;
+bind Viper.Text.Fmt;
 
 // =============================================================================
 // SCORE POPUP ENTITY - Floating score text

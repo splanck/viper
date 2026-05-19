@@ -247,7 +247,7 @@ zia> Math.Sqrt(16.0)
 4
 ```
 
-The default binds (`Viper.Terminal`, `Fmt = Viper.Fmt`, and `Obj = Viper.Core.Object`) are available automatically.
+The default binds (`Viper.Terminal`, `Fmt = Viper.Text.Fmt`, and `Obj = Viper.Core.Object`) are available automatically.
 
 ## Meta-Commands
 
@@ -296,7 +296,7 @@ il 0.2.0
 func @main() -> void {
 entry_0:
   %t0 = iadd.ovf 2, 3
-  %t1 = call @Viper.Fmt.Int(%t0)
+  %t1 = call @Viper.Text.Fmt.Int(%t0)
   call @Viper.Terminal.Say(%t1)
   ...
 }

@@ -138,17 +138,18 @@ inline uint64_t resolveMainAddress(const LinkLayout &layout) {
     return 0;
 }
 
-/// Partition layout section indices into non-writable (text/rodata) and writable (data) groups.
-/// Only includes sections with non-empty data.
+/// Partition layout section indices into text/rodata and data-segment groups.
+/// Only includes allocatable sections with a non-zero memory footprint.
 inline void classifySections(const LinkLayout &layout,
                              std::vector<size_t> &textIndices,
                              std::vector<size_t> &dataIndices) {
     for (size_t i = 0; i < layout.sections.size(); ++i) {
-        if (layout.sections[i].data.empty())
+        if (outputSectionMemSize(layout.sections[i]) == 0)
             continue;
         if (!layout.sections[i].alloc)
             continue; // Skip non-alloc sections (e.g., .debug_line).
-        if (layout.sections[i].writable)
+        if (layout.sections[i].writable || layout.sections[i].dataSegment ||
+            layout.sections[i].zeroFill || layout.sections[i].tls)
             dataIndices.push_back(i);
         else
             textIndices.push_back(i);
@@ -168,9 +169,10 @@ inline size_t computeSegmentSpan(const LinkLayout &layout, const std::vector<siz
         const auto &sec = layout.sections[idx];
         if (sec.virtualAddr < firstVA)
             throw std::length_error("section virtual address precedes segment base");
-        if (sec.data.size() > std::numeric_limits<uint64_t>::max() - sec.virtualAddr)
+        const size_t memSize = outputSectionMemSize(sec);
+        if (memSize > std::numeric_limits<uint64_t>::max() - sec.virtualAddr)
             throw std::length_error("section virtual address range overflows");
-        const uint64_t endVA = sec.virtualAddr + sec.data.size();
+        const uint64_t endVA = sec.virtualAddr + memSize;
         const uint64_t endOff64 = endVA - firstVA;
         if (endOff64 > std::numeric_limits<size_t>::max())
             throw std::length_error("segment span exceeds addressable size");

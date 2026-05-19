@@ -364,13 +364,13 @@ Trap @processRow:L3#2 line 145: Bounds (code=0)
 <p>Use <code>--dump-trap</code> to ensure trap messages are printed to stderr even when the program handles them internally.</p>
 <p>---</p>
 <h2 id="7-runtime-logging">7. Runtime Logging</h2>
-<h3 id="viper-log-api-zia-basic">Viper.Log API (Zia / BASIC)</h3>
+<h3 id="viper-log-api-zia-basic">Viper.Diagnostics.Log API (Zia / BASIC)</h3>
 <p>The runtime provides a leveled logging system accessible from both Zia and BASIC:</p>
 <pre><code data-lang="rust">
-Viper.Log.Debug(&quot;detailed info&quot;)
-Viper.Log.Info(&quot;normal info&quot;)
-Viper.Log.Warn(&quot;potential issue&quot;)
-Viper.Log.Error(&quot;something failed&quot;)
+Viper.Diagnostics.Log.Debug(&quot;detailed info&quot;)
+Viper.Diagnostics.Log.Info(&quot;normal info&quot;)
+Viper.Diagnostics.Log.Warn(&quot;potential issue&quot;)
+Viper.Diagnostics.Log.Error(&quot;something failed&quot;)
 </code></pre>
 <p>Output format:</p>
 <pre><code data-lang="text">
@@ -903,7 +903,7 @@ std::cout &lt;&lt; &quot;Instructions: &quot; &lt;&lt; runner.instructionCount()
 <tr>
 <td>Subsystem log filtering</td>
 <td>Not implemented</td>
-<td>VM trace and Viper.Log are all-or-nothing</td>
+<td>VM trace and Viper.Diagnostics.Log are all-or-nothing</td>
 </tr>
 </tbody></table>
   </main>

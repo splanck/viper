@@ -70,7 +70,7 @@ module result;
 // `StringBuilder` lets us concatenate row rendering output without creating
 // O(N²) intermediate strings — important when a SELECT returns thousands of
 // rows.  Every file in this demo uses `SB` as the short alias for it.
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.Text.StringBuilder as SB;
 
 // `Row` (and transitively `Value`) live in `schema.zia`.  We import the

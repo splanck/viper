@@ -206,7 +206,7 @@ If you're writing software that might run on different operating systems, keep t
 To get standard locations portably:
 
 ```rust
-bind Viper.Machine as Machine;
+bind Viper.System.Machine as Machine;
 bind Viper.IO.Dir as Dir;
 
 var home = Machine.Home;        // User's home directory
@@ -1592,7 +1592,7 @@ File.Append("log.txt", "Entry 2\n");  // Both entries preserved
 
 **Hardcoding paths:**
 ```rust
-bind Viper.Machine as Machine;
+bind Viper.System.Machine as Machine;
 bind Viper.IO.Path as Path;
 
 // Bad: only works on your machine

@@ -68,7 +68,7 @@
 module hud;
 
 bind Viper.Graphics;
-bind Viper.Fmt;
+bind Viper.Text.Fmt;
 bind Viper.Game;
 bind Viper.Game.UI;
 bind "./config";

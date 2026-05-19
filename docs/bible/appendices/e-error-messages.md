@@ -370,7 +370,7 @@ greet(42);  // Error: expected String, got Integer
 
 // Solution: Pass correct type
 greet("Alice");
-// Convert if needed: bind Viper.Fmt as Fmt; greet(Fmt.Int(42));
+// Convert if needed: bind Viper.Text.Fmt as Fmt; greet(Fmt.Int(42));
 ```
 
 ```rust
@@ -455,7 +455,7 @@ Error: TypeError at main.zia:8:20
 var result = "Value: " + 42;  // May error depending on context
 
 // Solution 1: Convert number to String explicitly
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 var result = "Value: " + Fmt.Int(42);
 
 // Solution 2: Use String interpolation
@@ -1026,7 +1026,7 @@ greet(42);  // Error: expected String, got Integer
 
 // Solution: Pass correct type
 greet("Alice");  // OK
-// bind Viper.Fmt as Fmt; greet(Fmt.Int(42));  // convert Integer to String if needed
+// bind Viper.Text.Fmt as Fmt; greet(Fmt.Int(42));  // convert Integer to String if needed
 ```
 
 ---
@@ -1584,7 +1584,7 @@ Error: FileError at main.zia:10:5
 ```rust
 // Problem: Writing to protected location
 bind File = Viper.IO.File;
-bind Viper.Machine as Machine;
+bind Viper.System.Machine as Machine;
 
 File.WriteAllText("/etc/config.txt", data);  // Permission denied
 

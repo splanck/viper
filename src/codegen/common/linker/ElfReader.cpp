@@ -156,54 +156,84 @@ static int64_t signExtend(uint64_t value, unsigned bits) {
 ///          documents for each relocation type. ELF x86_64 uses a literal
 ///          32/64-bit slot read; AArch64 BR/B.cond/ADRP/ADD-imm decode their
 ///          immediate fields and rescale by their natural shift.
-static int64_t extractRelAddend(uint16_t machine,
-                                uint32_t relocType,
-                                const std::vector<uint8_t> &sectionData,
-                                size_t offset) {
+static bool extractRelAddend(uint16_t machine,
+                             uint32_t relocType,
+                             const std::vector<uint8_t> &sectionData,
+                             size_t offset,
+                             int64_t &out) {
+    out = 0;
     if (machine == elf::EM_X86_64) {
-        if (relocType == elf_x64::kAbs64 && checkedRange(offset, 8, sectionData.size()))
-            return static_cast<int64_t>(readLE64(sectionData.data() + offset));
+        if (relocType == elf_x64::kAbs64) {
+            if (!checkedRange(offset, 8, sectionData.size()))
+                return false;
+            out = static_cast<int64_t>(readLE64(sectionData.data() + offset));
+            return true;
+        }
         if (checkedRange(offset, 4, sectionData.size())) {
             int32_t val = 0;
             std::memcpy(&val, sectionData.data() + offset, 4);
-            return val;
+            out = val;
+            return true;
         }
-        return 0;
+        return false;
     }
 
-    if (machine != elf::EM_AARCH64 || !checkedRange(offset, 4, sectionData.size()))
-        return 0;
+    if (machine != elf::EM_AARCH64)
+        return true;
 
     if (relocType == elf_a64::kAbs64) {
-        if (checkedRange(offset, 8, sectionData.size()))
-            return static_cast<int64_t>(readLE64(sectionData.data() + offset));
-        return 0;
+        if (!checkedRange(offset, 8, sectionData.size()))
+            return false;
+        out = static_cast<int64_t>(readLE64(sectionData.data() + offset));
+        return true;
     }
+
+    const bool needsInsn = relocType == elf_a64::kCall26 ||
+                           relocType == elf_a64::kJump26 ||
+                           relocType == elf_a64::kCondBr19 ||
+                           relocType == elf_a64::kAdrPrelPgHi21 ||
+                           relocType == elf_a64::kAdrGotPage ||
+                           relocType == elf_a64::kAddAbsLo12Nc ||
+                           relocType == elf_a64::kLdSt32Lo12Nc ||
+                           relocType == elf_a64::kLdSt64Lo12Nc ||
+                           relocType == elf_a64::kLd64GotLo12Nc ||
+                           relocType == elf_a64::kLdSt128Lo12Nc;
+    if (!needsInsn)
+        return true;
+    if (!checkedRange(offset, 4, sectionData.size()))
+        return false;
 
     const uint32_t insn = readLE32(sectionData.data() + offset);
     switch (relocType) {
         case elf_a64::kCall26:
         case elf_a64::kJump26:
-            return signExtend(insn & 0x03FFFFFFu, 26) << 2;
+            out = signExtend(insn & 0x03FFFFFFu, 26) << 2;
+            return true;
         case elf_a64::kCondBr19:
-            return signExtend((insn >> 5) & 0x7FFFFu, 19) << 2;
+            out = signExtend((insn >> 5) & 0x7FFFFu, 19) << 2;
+            return true;
         case elf_a64::kAdrPrelPgHi21:
         case elf_a64::kAdrGotPage: {
             const uint32_t immlo = (insn >> 29) & 0x3u;
             const uint32_t immhi = (insn >> 5) & 0x7FFFFu;
-            return signExtend((immhi << 2) | immlo, 21) << 12;
+            out = signExtend((immhi << 2) | immlo, 21) << 12;
+            return true;
         }
         case elf_a64::kAddAbsLo12Nc:
-            return static_cast<int64_t>((insn >> 10) & 0xFFFu);
+            out = static_cast<int64_t>((insn >> 10) & 0xFFFu);
+            return true;
         case elf_a64::kLdSt32Lo12Nc:
-            return static_cast<int64_t>(((insn >> 10) & 0xFFFu) << 2);
+            out = static_cast<int64_t>(((insn >> 10) & 0xFFFu) << 2);
+            return true;
         case elf_a64::kLdSt64Lo12Nc:
         case elf_a64::kLd64GotLo12Nc:
-            return static_cast<int64_t>(((insn >> 10) & 0xFFFu) << 3);
+            out = static_cast<int64_t>(((insn >> 10) & 0xFFFu) << 3);
+            return true;
         case elf_a64::kLdSt128Lo12Nc:
-            return static_cast<int64_t>(((insn >> 10) & 0xFFFu) << 4);
+            out = static_cast<int64_t>(((insn >> 10) & 0xFFFu) << 4);
+            return true;
         default:
-            return 0;
+            return true;
     }
 }
 
@@ -417,12 +447,7 @@ bool readElfObj(
                 err << "error: " << name << ": ELF section '" << sec.name << "' is too large\n";
                 return false;
             }
-            if (sh->sh_size > kMaxObjMaterializedBytes - materializedBytes) {
-                err << "error: " << name << ": ELF materialized section data exceeds limit\n";
-                return false;
-            }
-            materializedBytes += static_cast<size_t>(sh->sh_size);
-            sec.data.resize(static_cast<size_t>(sh->sh_size), 0);
+            sec.memSize = static_cast<size_t>(sh->sh_size);
         } else if (sh->sh_size > 0 &&
                    checkedRange(static_cast<size_t>(sh->sh_offset),
                                 static_cast<size_t>(sh->sh_size),
@@ -439,6 +464,7 @@ bool readElfObj(
             }
             materializedBytes += sz;
             sec.data.assign(data + off, data + off + sz);
+            sec.memSize = sec.data.size();
         } else if (sh->sh_size > 0) {
             err << "error: " << name << ": ELF section '" << sec.name
                 << "' contents are out of bounds\n";
@@ -604,8 +630,24 @@ bool readElfObj(
                 return false;
             }
 
+            if (sym->st_value > static_cast<uint64_t>(SIZE_MAX) ||
+                sym->st_size > static_cast<uint64_t>(SIZE_MAX)) {
+                err << "error: " << name << ": ELF symbol '" << os.name
+                    << "' offset/size exceeds addressable size\n";
+                return false;
+            }
             os.offset = effectiveShndx == elf::SHN_COMMON ? 0 : static_cast<size_t>(sym->st_value);
             os.size = static_cast<size_t>(sym->st_size);
+            if (effectiveShndx != elf::SHN_COMMON && os.sectionIndex > 0 &&
+                os.sectionIndex < obj.sections.size()) {
+                const size_t secSize = objSectionMemSize(obj.sections[os.sectionIndex]);
+                if (os.offset > secSize || os.size > secSize - os.offset) {
+                    err << "error: " << name << ": ELF symbol '" << os.name
+                        << "' extends beyond section '" << obj.sections[os.sectionIndex].name
+                        << "'\n";
+                    return false;
+                }
+            }
 
             symMap[i] = static_cast<uint32_t>(obj.symbols.size());
             obj.symbols.push_back(std::move(os));
@@ -688,8 +730,12 @@ bool readElfObj(
                 return false;
             }
             rel.symIndex = symMap[elfSymIdx];
-            if (!isRela)
-                rel.addend = extractRelAddend(ehdr->e_machine, rel.type, targetSec.data, rel.offset);
+            if (!isRela &&
+                !extractRelAddend(ehdr->e_machine, rel.type, targetSec.data, rel.offset, rel.addend)) {
+                err << "error: " << name << ": ELF REL relocation addend at offset "
+                    << rel.offset << " is out of bounds in section '" << targetSec.name << "'\n";
+                return false;
+            }
 
             targetSec.relocs.push_back(rel);
         }

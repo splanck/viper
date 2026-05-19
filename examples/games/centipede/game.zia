@@ -24,7 +24,7 @@ bind Viper.Graphics;
 bind Viper.Input;
 bind Viper.Math.Random;
 bind Viper.Time;
-bind Viper.Fmt;
+bind Viper.Text.Fmt;
 
 // =============================================================================
 // GAME ENTITY - Main game controller

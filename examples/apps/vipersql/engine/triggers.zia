@@ -82,7 +82,7 @@
 module triggers;
 
 bind Viper.String as String;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind "./types";
 bind "./schema";
 bind "../parser/stmt";

@@ -8,7 +8,7 @@
 module test_join_expr_parity;
 
 bind Viper.Terminal as Terminal;
-bind Viper.Fmt as Fmt;
+bind Viper.Text.Fmt as Fmt;
 bind Viper.String as String;
 bind "../engine/executor";
 bind "../engine/types";

@@ -4,17 +4,17 @@ bind "./_support";
 
 // EXPECT_OUT: RESULT: ok
 // EXPECT_ARGS: alpha beta
-// COVER: Viper.Environment.GetArgumentCount
-// COVER: Viper.Environment.GetArgument
-// COVER: Viper.Environment.GetCommandLine
+// COVER: Viper.System.Environment.GetArgumentCount
+// COVER: Viper.System.Environment.GetArgument
+// COVER: Viper.System.Environment.GetCommandLine
 
-func start() {    var count = Viper.Environment.GetArgumentCount();
+func start() {    var count = Viper.System.Environment.GetArgumentCount();
     assertTrue(count >= 1, "argc");
     if (count >= 3) {
-        assertEqStr(Viper.Environment.GetArgument(1), "alpha", "arg1");
-        assertEqStr(Viper.Environment.GetArgument(2), "beta", "arg2");
+        assertEqStr(Viper.System.Environment.GetArgument(1), "alpha", "arg1");
+        assertEqStr(Viper.System.Environment.GetArgument(2), "beta", "arg2");
     }
-    var cmd = Viper.Environment.GetCommandLine();
+    var cmd = Viper.System.Environment.GetCommandLine();
     assertNotEmpty(cmd, "cmdline");
     report();
 }
