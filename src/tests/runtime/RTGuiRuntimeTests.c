@@ -274,6 +274,7 @@ static void test_default_font_is_applied_to_complex_text_widgets(void) {
     vg_treeview_t *tree = (vg_treeview_t *)rt_treeview_new(app.root);
     vg_tabbar_t *tabbar = (vg_tabbar_t *)rt_tabbar_new(app.root);
     vg_codeeditor_t *editor = (vg_codeeditor_t *)rt_codeeditor_new(app.root);
+    vg_slider_t *slider = (vg_slider_t *)rt_slider_new(app.root, 1);
     vg_progressbar_t *progress = (vg_progressbar_t *)rt_progressbar_new(app.root);
     vg_spinner_t *spinner = (vg_spinner_t *)rt_spinner_new(app.root);
 
@@ -282,6 +283,8 @@ static void test_default_font_is_applied_to_complex_text_widgets(void) {
            tabbar->font_size == app.default_font_size);
     assert(editor && editor->font == app.default_font &&
            editor->font_size == app.default_font_size);
+    assert(slider && slider->font == app.default_font &&
+           slider->font_size == app.default_font_size);
     assert(progress && progress->font == app.default_font &&
            progress->font_size == app.default_font_size);
     assert(spinner && spinner->font == app.default_font &&
@@ -731,7 +734,8 @@ static void test_widget_set_position_marks_widget_dirty(void) {
     rt_widget_set_position(widget, 12, 34);
     assert(widget->x == 12.0f);
     assert(widget->y == 34.0f);
-    assert(widget->needs_layout);
+    assert(widget->manual_position);
+    assert(!widget->needs_layout);
     assert(widget->needs_paint);
 
     vg_widget_destroy(widget);
@@ -844,6 +848,43 @@ static void test_widget_base_apis_reject_app_handles_and_invalid_children(void) 
 
     cleanup_fake_app(&app);
     printf("test_widget_base_apis_reject_app_handles_and_invalid_children: PASSED\n");
+}
+
+static void test_runtime_widget_parent_validation_rejects_leaf_and_invalid_handles(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    vg_button_t *leaf_parent = (vg_button_t *)rt_button_new(app.root, rt_const_cstr("button"));
+    assert(leaf_parent);
+    vg_label_t *app_parented = (vg_label_t *)rt_label_new(&app, rt_const_cstr("app parent"));
+    assert(app_parented && app_parented->base.parent == app.root);
+    assert(rt_label_new(leaf_parent, rt_const_cstr("bad leaf parent")) == NULL);
+    assert(rt_slider_new(leaf_parent, 1) == NULL);
+    assert(rt_menubar_new(leaf_parent) == NULL);
+    assert(rt_toolbar_new(leaf_parent) == NULL);
+    assert(rt_statusbar_new(leaf_parent) == NULL);
+    assert(rt_findbar_new(leaf_parent) == NULL);
+    assert(rt_breadcrumb_new(leaf_parent) == NULL);
+    assert(rt_minimap_new(leaf_parent) == NULL);
+    assert(rt_floatingpanel_new(leaf_parent) == NULL);
+
+    int invalid_handle = 0;
+    assert(rt_button_new(&invalid_handle, rt_const_cstr("bad invalid parent")) == NULL);
+
+    vg_label_t *detached = (vg_label_t *)rt_label_new(NULL, rt_const_cstr("detached"));
+    assert(detached);
+    assert(detached->base.parent == NULL);
+    rt_widget_add_child(leaf_parent, detached);
+    assert(detached->base.parent == NULL);
+    rt_widget_add_child(app.root, detached);
+    assert(detached->base.parent == app.root);
+
+    cleanup_fake_app(&app);
+    printf("test_runtime_widget_parent_validation_rejects_leaf_and_invalid_handles: PASSED\n");
 }
 
 static void test_widget_destroy_clears_nested_toolbar_statusbar_runtime_refs(void) {
@@ -1375,6 +1416,8 @@ static void test_shortcuts_reject_invalid_bindings_atomically(void) {
     assert(app.shortcut_count == 0);
     rt_shortcuts_register(rt_const_cstr("bad2"), rt_const_cstr("Ctrl+Bogus+S"), rt_const_cstr(""));
     assert(app.shortcut_count == 0);
+    rt_shortcuts_register(rt_const_cstr("bad3"), rt_const_cstr("F1x"), rt_const_cstr(""));
+    assert(app.shortcut_count == 0);
 
     rt_shortcuts_register(rt_const_cstr("save"), rt_const_cstr("Ctrl+S"), rt_const_cstr("save"));
     assert(app.shortcut_count == 1);
@@ -1385,9 +1428,35 @@ static void test_shortcuts_reject_invalid_bindings_atomically(void) {
     assert(strcmp(app.shortcuts[0].keys, "Ctrl+S") == 0);
     assert(app.shortcuts[0].parsed_key == 'S');
 
+    rt_shortcuts_register(rt_const_cstr("help"), rt_const_cstr("f5"), rt_const_cstr("help"));
+    assert(app.shortcut_count == 2);
+    assert(app.shortcuts[1].parsed_key == VG_KEY_F5);
+    assert(rt_shortcuts_check_key(&app, VG_KEY_F5, 0) == 1);
+    app.shortcuts_global_enabled = 0;
+    assert(rt_shortcuts_was_triggered(rt_const_cstr("help")) == 1);
+    assert(rt_shortcuts_check_key(&app, 'S', VG_MOD_CTRL) == 0);
+
     rt_shortcuts_clear();
     s_current_app = NULL;
     printf("test_shortcuts_reject_invalid_bindings_atomically: PASSED\n");
+}
+
+static void test_close_prevention_tracks_request_without_closing(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    rt_gui_activate_app(&app);
+
+    rt_app_set_prevent_close(&app, 1);
+    assert(app.prevent_close == 1);
+    app.close_requested = 1;
+    app.should_close = 0;
+    assert(rt_app_was_close_requested(&app) == 1);
+    assert(rt_gui_app_should_close(&app) == 0);
+
+    rt_app_set_prevent_close(&app, 0);
+    assert(app.prevent_close == 0);
+    rt_gui_activate_app(NULL);
+    printf("test_close_prevention_tracks_request_without_closing: PASSED\n");
 }
 
 static void test_menu_context_toolbar_statusbar_handles_are_type_checked(void) {
@@ -1912,6 +1981,7 @@ int main(void) {
     test_widget_destroy_refuses_app_root_and_app_handle();
     test_widget_set_size_refuses_app_root();
     test_widget_base_apis_reject_app_handles_and_invalid_children();
+    test_runtime_widget_parent_validation_rejects_leaf_and_invalid_handles();
     test_widget_destroy_clears_nested_toolbar_statusbar_runtime_refs();
     test_widget_focus_null_is_noop();
     test_image_set_pixels_converts_viper_pixels_to_rgba();
@@ -1933,6 +2003,7 @@ int main(void) {
     test_toast_dismissal_is_edge_triggered_and_survives_cleanup();
     test_breadcrumb_set_path_uses_literal_separator();
     test_shortcuts_reject_invalid_bindings_atomically();
+    test_close_prevention_tracks_request_without_closing();
     test_menu_context_toolbar_statusbar_handles_are_type_checked();
     test_toolbar_set_style_rejects_unknown_values();
     test_floatingpanel_and_tabbar_reject_wrong_or_out_of_range_handles();

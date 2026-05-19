@@ -42,6 +42,13 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+static vg_widget_t *rt_widget_parent_or_null_if_invalid(void *parent) {
+    vg_widget_t *parent_widget = rt_gui_widget_parent_container_from_handle(parent);
+    if (parent && !parent_widget)
+        return NULL;
+    return parent_widget;
+}
+
 //=============================================================================
 // Font Functions
 //=============================================================================
@@ -304,7 +311,7 @@ void rt_widget_set_flex(void *widget, double flex) {
 void rt_widget_add_child(void *parent, void *child) {
     RT_ASSERT_MAIN_THREAD();
     if (parent && child) {
-        vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
+        vg_widget_t *parent_widget = rt_gui_widget_parent_container_from_handle(parent);
         vg_widget_t *child_widget = rt_gui_widget_handle_checked(child);
         if (parent_widget && child_widget) {
             rt_gui_app_t *old_app = rt_gui_app_from_widget(child_widget);
@@ -437,7 +444,9 @@ double rt_widget_get_flex(void *widget) {
 /// @return Opaque label widget handle, or NULL on failure.
 void *rt_label_new(void *parent, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
-    vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
+    vg_widget_t *parent_widget = rt_widget_parent_or_null_if_invalid(parent);
+    if (parent && !parent_widget)
+        return NULL;
     char *ctext = rt_string_to_gui_cstr(text);
     vg_label_t *label = vg_label_create(parent_widget, ctext ? ctext : "");
     free(ctext);
@@ -498,7 +507,9 @@ void rt_label_set_color(void *label, int64_t color) {
 /// @return Opaque button widget handle, or NULL on failure.
 void *rt_button_new(void *parent, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
-    vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
+    vg_widget_t *parent_widget = rt_widget_parent_or_null_if_invalid(parent);
+    if (parent && !parent_widget)
+        return NULL;
     char *ctext = rt_string_to_gui_cstr(text);
     vg_button_t *button = vg_button_create(parent_widget, ctext);
     free(ctext);
@@ -585,7 +596,9 @@ void rt_button_set_icon_pos(void *button, int64_t pos) {
 /// @return Opaque text input widget handle, or NULL on failure.
 void *rt_textinput_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
-    vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
+    vg_widget_t *parent_widget = rt_widget_parent_or_null_if_invalid(parent);
+    if (parent && !parent_widget)
+        return NULL;
     vg_textinput_t *input = vg_textinput_create(parent_widget);
     rt_gui_apply_default_font((vg_widget_t *)input);
     return input;
@@ -661,7 +674,9 @@ void rt_textinput_set_font(void *input, void *font, double size) {
 /// @return Opaque checkbox widget handle, or NULL on failure.
 void *rt_checkbox_new(void *parent, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
-    vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
+    vg_widget_t *parent_widget = rt_widget_parent_or_null_if_invalid(parent);
+    if (parent && !parent_widget)
+        return NULL;
     char *ctext = rt_string_to_gui_cstr(text);
     vg_checkbox_t *checkbox = vg_checkbox_create(parent_widget, ctext);
     free(ctext);
@@ -747,7 +762,10 @@ int64_t rt_checkbox_is_indeterminate(void *checkbox) {
 /// @return Opaque scroll view widget handle, or NULL on failure.
 void *rt_scrollview_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
-    return vg_scrollview_create(rt_gui_widget_parent_from_handle(parent));
+    vg_widget_t *parent_widget = rt_widget_parent_or_null_if_invalid(parent);
+    if (parent && !parent_widget)
+        return NULL;
+    return vg_scrollview_create(parent_widget);
 }
 
 /// @brief Programmatically set the scroll position of a scroll view.
@@ -823,7 +841,9 @@ double rt_scrollview_get_scroll_y(void *scroll) {
 /// @return Opaque tree view widget handle, or NULL on failure.
 void *rt_treeview_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
-    vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
+    vg_widget_t *parent_widget = rt_widget_parent_or_null_if_invalid(parent);
+    if (parent && !parent_widget)
+        return NULL;
     vg_treeview_t *tv = vg_treeview_create(parent_widget);
     if (tv)
         rt_gui_apply_default_font((vg_widget_t *)tv);

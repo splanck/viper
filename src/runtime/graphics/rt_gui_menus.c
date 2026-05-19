@@ -199,7 +199,9 @@ static vg_icon_t rt_gui_icon_from_path_cstr(const char *path) {
 void *rt_menubar_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_gui_app_from_handle(parent);
-    vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
+    vg_widget_t *parent_widget = rt_gui_widget_parent_container_from_handle(parent);
+    if (parent && !parent_widget)
+        return NULL;
     vg_menubar_t *mb = vg_menubar_create(parent_widget);
     if (mb) {
         if (app)
@@ -766,7 +768,9 @@ void *rt_contextmenu_get_clicked_item(void *menu) {
 void *rt_statusbar_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_gui_app_from_handle(parent);
-    vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
+    vg_widget_t *parent_widget = rt_gui_widget_parent_container_from_handle(parent);
+    if (parent && !parent_widget)
+        return NULL;
     vg_statusbar_t *sb = vg_statusbar_create(parent_widget);
     if (sb) {
         if (app)
@@ -1120,7 +1124,9 @@ int64_t rt_statusbaritem_was_clicked(void *item) {
 void *rt_toolbar_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_gui_app_from_handle(parent);
-    vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
+    vg_widget_t *parent_widget = rt_gui_widget_parent_container_from_handle(parent);
+    if (parent && !parent_widget)
+        return NULL;
     vg_toolbar_t *tb = vg_toolbar_create(parent_widget, VG_TOOLBAR_HORIZONTAL);
     if (tb) {
         if (app)
@@ -1139,7 +1145,9 @@ void *rt_toolbar_new(void *parent) {
 void *rt_toolbar_new_vertical(void *parent) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_gui_app_from_handle(parent);
-    vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
+    vg_widget_t *parent_widget = rt_gui_widget_parent_container_from_handle(parent);
+    if (parent && !parent_widget)
+        return NULL;
     vg_toolbar_t *tb = vg_toolbar_create(parent_widget, VG_TOOLBAR_VERTICAL);
     if (tb) {
         if (app)

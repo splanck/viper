@@ -3547,6 +3547,195 @@ TEST(dropdown_rejects_capacity_growth_overflow) {
     vg_widget_destroy(&dropdown->base);
 }
 
+static bool nonfocusable_custom_event(vg_widget_t *widget, vg_event_t *event) {
+    (void)widget;
+    (void)event;
+    return false;
+}
+
+static vg_widget_vtable_t g_nonfocusable_custom_vtable = {
+    .handle_event = nonfocusable_custom_event,
+};
+
+TEST(focus_rejects_widgets_without_focus_capability) {
+    vg_widget_set_focus(NULL);
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *custom = vg_widget_create(VG_WIDGET_CUSTOM);
+    ASSERT_NOT_NULL(root);
+    ASSERT_NOT_NULL(custom);
+    custom->vtable = &g_nonfocusable_custom_vtable;
+    vg_widget_add_child(root, custom);
+
+    vg_widget_set_focus(custom);
+    ASSERT_NULL(vg_widget_get_focused(root));
+
+    vg_widget_destroy(root);
+}
+
+TEST(widget_contains_point_rejects_hidden_and_disabled_chains) {
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *child = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+    ASSERT_NOT_NULL(child);
+    vg_widget_add_child(root, child);
+    vg_widget_arrange(root, 0.0f, 0.0f, 100.0f, 100.0f);
+    vg_widget_arrange(child, 10.0f, 10.0f, 30.0f, 30.0f);
+
+    ASSERT_TRUE(vg_widget_contains_point(child, 20.0f, 20.0f));
+    vg_widget_set_visible(root, false);
+    ASSERT_FALSE(vg_widget_contains_point(child, 20.0f, 20.0f));
+    vg_widget_set_visible(root, true);
+    vg_widget_set_enabled(child, false);
+    ASSERT_FALSE(vg_widget_contains_point(child, 20.0f, 20.0f));
+
+    vg_widget_destroy(root);
+}
+
+TEST(widget_add_child_rejects_non_live_handles) {
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t fake;
+    memset(&fake, 0, sizeof(fake));
+    ASSERT_NOT_NULL(root);
+
+    vg_widget_add_child(root, &fake);
+    ASSERT_EQ(root->child_count, 0);
+    vg_widget_insert_child(root, &fake, 0);
+    ASSERT_EQ(root->child_count, 0);
+
+    vg_widget_destroy(root);
+}
+
+TEST(manual_position_children_are_not_overwritten_by_layout) {
+    vg_widget_t *vbox = vg_vbox_create(0.0f);
+    vg_widget_t *manual = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *flow = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(vbox);
+    ASSERT_NOT_NULL(manual);
+    ASSERT_NOT_NULL(flow);
+
+    vg_widget_set_preferred_size(manual, 20.0f, 20.0f);
+    vg_widget_set_preferred_size(flow, 40.0f, 10.0f);
+    manual->x = 70.0f;
+    manual->y = 80.0f;
+    manual->manual_position = true;
+    vg_widget_add_child(vbox, manual);
+    vg_widget_add_child(vbox, flow);
+
+    vg_widget_measure(vbox, 200.0f, 200.0f);
+    vg_widget_arrange(vbox, 0.0f, 0.0f, 200.0f, 200.0f);
+
+    ASSERT_NEAR(manual->x, 70.0f, 0.001f);
+    ASSERT_NEAR(manual->y, 80.0f, 0.001f);
+    ASSERT_NEAR(manual->width, 20.0f, 0.001f);
+    ASSERT_NEAR(manual->height, 20.0f, 0.001f);
+    ASSERT_NEAR(flow->y, 0.0f, 0.001f);
+
+    vg_widget_destroy(vbox);
+}
+
+TEST(box_layout_center_alignment_accounts_for_margins) {
+    vg_widget_t *vbox = vg_vbox_create(0.0f);
+    vg_widget_t *child = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(vbox);
+    ASSERT_NOT_NULL(child);
+    vg_vbox_set_align(vbox, VG_ALIGN_CENTER);
+    vg_widget_set_preferred_size(child, 20.0f, 10.0f);
+    vg_widget_set_margins(child, 10.0f, 0.0f, 30.0f, 0.0f);
+    vg_widget_add_child(vbox, child);
+
+    vg_widget_measure(vbox, 100.0f, 50.0f);
+    vg_widget_arrange(vbox, 0.0f, 0.0f, 100.0f, 50.0f);
+    ASSERT_NEAR(child->x, 30.0f, 0.001f);
+
+    vg_widget_t *hbox = vg_hbox_create(0.0f);
+    vg_widget_t *hchild = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(hbox);
+    ASSERT_NOT_NULL(hchild);
+    vg_hbox_set_align(hbox, VG_ALIGN_CENTER);
+    vg_widget_set_preferred_size(hchild, 10.0f, 20.0f);
+    vg_widget_set_margins(hchild, 0.0f, 10.0f, 0.0f, 30.0f);
+    vg_widget_add_child(hbox, hchild);
+
+    vg_widget_measure(hbox, 50.0f, 100.0f);
+    vg_widget_arrange(hbox, 0.0f, 0.0f, 50.0f, 100.0f);
+    ASSERT_NEAR(hchild->y, 30.0f, 0.001f);
+
+    vg_widget_destroy(vbox);
+    vg_widget_destroy(hbox);
+}
+
+static int g_capture_hold_clicks = 0;
+static int g_capture_hold_ups = 0;
+
+static bool capture_hold_handle_event(vg_widget_t *widget, vg_event_t *event) {
+    if (event->type == VG_EVENT_MOUSE_DOWN) {
+        vg_widget_set_input_capture(widget);
+        return true;
+    }
+    if (event->type == VG_EVENT_MOUSE_UP) {
+        g_capture_hold_ups++;
+        return true;
+    }
+    if (event->type == VG_EVENT_CLICK) {
+        g_capture_hold_clicks++;
+        return true;
+    }
+    return false;
+}
+
+static vg_widget_vtable_t g_capture_hold_vtable = {
+    .handle_event = capture_hold_handle_event,
+};
+
+TEST(non_dropdown_capture_does_not_synthesize_outside_click) {
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *child = vg_widget_create(VG_WIDGET_CUSTOM);
+    ASSERT_NOT_NULL(root);
+    ASSERT_NOT_NULL(child);
+    child->vtable = &g_capture_hold_vtable;
+    vg_widget_add_child(root, child);
+    vg_widget_arrange(root, 0.0f, 0.0f, 200.0f, 200.0f);
+    vg_widget_arrange(child, 0.0f, 0.0f, 20.0f, 20.0f);
+
+    g_capture_hold_clicks = 0;
+    g_capture_hold_ups = 0;
+    vg_event_t down = vg_event_mouse(VG_EVENT_MOUSE_DOWN, 5.0f, 5.0f, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(vg_event_dispatch(root, &down));
+    vg_event_t up = vg_event_mouse(VG_EVENT_MOUSE_UP, 120.0f, 120.0f, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(vg_event_dispatch(root, &up));
+
+    ASSERT_EQ(g_capture_hold_ups, 1);
+    ASSERT_EQ(g_capture_hold_clicks, 0);
+    vg_widget_release_input_capture();
+    vg_widget_destroy(root);
+}
+
+static bool filedialog_modal_test_runner(vg_filedialog_t *dialog, void *user_data) {
+    const char *path = (const char *)user_data;
+    dialog->selected_files = (char **)calloc(1, sizeof(char *));
+    if (!dialog->selected_files)
+        return false;
+    dialog->selected_files[0] = test_strdup_local(path);
+    if (!dialog->selected_files[0]) {
+        free(dialog->selected_files);
+        dialog->selected_files = NULL;
+        return false;
+    }
+    dialog->selected_file_count = 1;
+    dialog->base.is_open = false;
+    return true;
+}
+
+TEST(filedialog_convenience_uses_installed_modal_runner) {
+    const char *expected = "/tmp/viper-gui-test.txt";
+    vg_filedialog_set_modal_runner(filedialog_modal_test_runner, (void *)expected);
+    char *result = vg_filedialog_open_file("Open", NULL, "Text", "*.txt");
+    ASSERT_NOT_NULL(result);
+    ASSERT(strcmp(result, expected) == 0);
+    free(result);
+    vg_filedialog_set_modal_runner(NULL, NULL);
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -3716,6 +3905,13 @@ int main(void) {
     RUN(tabbar_close_click_uses_monotonic_version);
     RUN(button_invalid_style_and_icon_position_are_clamped);
     RUN(dropdown_rejects_capacity_growth_overflow);
+    RUN(focus_rejects_widgets_without_focus_capability);
+    RUN(widget_contains_point_rejects_hidden_and_disabled_chains);
+    RUN(widget_add_child_rejects_non_live_handles);
+    RUN(manual_position_children_are_not_overwritten_by_layout);
+    RUN(box_layout_center_alignment_accounts_for_margins);
+    RUN(non_dropdown_capture_does_not_synthesize_outside_click);
+    RUN(filedialog_convenience_uses_installed_modal_runner);
 
     printf("\n=== Results: %d passed, %d failed ===\n", g_passed, g_failed);
     return g_failed > 0 ? 1 : 0;

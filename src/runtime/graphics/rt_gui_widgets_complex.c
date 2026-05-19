@@ -228,6 +228,13 @@ static vg_image_t *rt_image_checked(void *handle) {
     return (vg_image_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_IMAGE);
 }
 
+static vg_widget_t *rt_widget_parent_or_null_if_invalid(void *parent) {
+    vg_widget_t *parent_widget = rt_gui_widget_parent_container_from_handle(parent);
+    if (parent && !parent_widget)
+        return NULL;
+    return parent_widget;
+}
+
 #define RT_RADIOGROUP_MAGIC UINT64_C(0x52474452554E544D)          // "RGDRUNTM"
 #define RT_RADIOGROUP_DESTROYED_MAGIC UINT64_C(0x5247444445414444) // "RGDDEAD"
 
@@ -324,7 +331,9 @@ static void rt_radiogroup_finalize(void *handle) {
 /// @return Opaque tab bar widget handle, or NULL on failure.
 void *rt_tabbar_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
-    vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
+    vg_widget_t *parent_widget = rt_widget_parent_or_null_if_invalid(parent);
+    if (parent && !parent_widget)
+        return NULL;
     vg_tabbar_t *tabbar = vg_tabbar_create(parent_widget);
     if (tabbar)
         rt_gui_apply_default_font((vg_widget_t *)tabbar);
@@ -493,7 +502,10 @@ void rt_tabbar_set_auto_close(void *tabbar, int64_t auto_close) {
 void *rt_splitpane_new(void *parent, int64_t horizontal) {
     RT_ASSERT_MAIN_THREAD();
     vg_split_direction_t direction = horizontal ? VG_SPLIT_HORIZONTAL : VG_SPLIT_VERTICAL;
-    return vg_splitpane_create(rt_gui_widget_parent_from_handle(parent), direction);
+    vg_widget_t *parent_widget = rt_widget_parent_or_null_if_invalid(parent);
+    if (parent && !parent_widget)
+        return NULL;
+    return vg_splitpane_create(parent_widget, direction);
 }
 
 /// @brief Set the divider position as a fraction of the split pane's size.
@@ -548,7 +560,9 @@ void *rt_splitpane_get_second(void *split) {
 /// @return Opaque code editor widget handle, or NULL on failure.
 void *rt_codeeditor_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
-    vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
+    vg_widget_t *parent_widget = rt_widget_parent_or_null_if_invalid(parent);
+    if (parent && !parent_widget)
+        return NULL;
     vg_codeeditor_t *editor = vg_codeeditor_create(parent_widget);
     if (editor)
         rt_gui_apply_default_font((vg_widget_t *)editor);
@@ -836,7 +850,7 @@ void rt_widget_set_position(void *widget, int64_t x, int64_t y) {
     if (w) {
         w->x = rt_gui_sanitize_signed_float((double)x, RT_GUI_MAX_LAYOUT_VALUE);
         w->y = rt_gui_sanitize_signed_float((double)y, RT_GUI_MAX_LAYOUT_VALUE);
-        vg_widget_invalidate_layout(w);
+        w->manual_position = true;
         vg_widget_invalidate(w);
     }
 }
@@ -848,7 +862,10 @@ void rt_widget_set_position(void *widget, int64_t x, int64_t y) {
 /// @brief Create a dropdown (combo box) widget — a button that pops a list of choices.
 void *rt_dropdown_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
-    vg_dropdown_t *dropdown = vg_dropdown_create(rt_gui_widget_parent_from_handle(parent));
+    vg_widget_t *parent_widget = rt_widget_parent_or_null_if_invalid(parent);
+    if (parent && !parent_widget)
+        return NULL;
+    vg_dropdown_t *dropdown = vg_dropdown_create(parent_widget);
     rt_gui_apply_default_font((vg_widget_t *)dropdown);
     return dropdown;
 }
@@ -935,7 +952,13 @@ void rt_dropdown_set_placeholder(void *dropdown, rt_string placeholder) {
 void *rt_slider_new(void *parent, int64_t horizontal) {
     RT_ASSERT_MAIN_THREAD();
     vg_slider_orientation_t orient = horizontal ? VG_SLIDER_HORIZONTAL : VG_SLIDER_VERTICAL;
-    return vg_slider_create(rt_gui_widget_parent_from_handle(parent), orient);
+    vg_widget_t *parent_widget = rt_widget_parent_or_null_if_invalid(parent);
+    if (parent && !parent_widget)
+        return NULL;
+    vg_slider_t *slider = vg_slider_create(parent_widget, orient);
+    if (slider)
+        rt_gui_apply_default_font((vg_widget_t *)slider);
+    return slider;
 }
 
 /// @brief Set the value of the slider.
@@ -994,7 +1017,10 @@ void rt_slider_set_step(void *slider, double step) {
 /// @brief Create a horizontal progress bar (0.0–1.0 fill range).
 void *rt_progressbar_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
-    vg_progressbar_t *pb = vg_progressbar_create(rt_gui_widget_parent_from_handle(parent));
+    vg_widget_t *parent_widget = rt_widget_parent_or_null_if_invalid(parent);
+    if (parent && !parent_widget)
+        return NULL;
+    vg_progressbar_t *pb = vg_progressbar_create(parent_widget);
     if (pb)
         rt_gui_apply_default_font((vg_widget_t *)pb);
     return pb;
@@ -1053,7 +1079,10 @@ void rt_progressbar_show_percentage(void *progress, int64_t show) {
 /// @brief Create an empty scrollable list-box widget.
 void *rt_listbox_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
-    vg_listbox_t *listbox = vg_listbox_create(rt_gui_widget_parent_from_handle(parent));
+    vg_widget_t *parent_widget = rt_widget_parent_or_null_if_invalid(parent);
+    if (parent && !parent_widget)
+        return NULL;
+    vg_listbox_t *listbox = vg_listbox_create(parent_widget);
     rt_gui_apply_default_font((vg_widget_t *)listbox);
     return listbox;
 }
@@ -1275,7 +1304,9 @@ void rt_radiogroup_destroy(void *group) {
 /// Selecting one radio in the group automatically deselects the others.
 void *rt_radiobutton_new(void *parent, rt_string text, void *group) {
     RT_ASSERT_MAIN_THREAD();
-    vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
+    vg_widget_t *parent_widget = rt_widget_parent_or_null_if_invalid(parent);
+    if (parent && !parent_widget)
+        return NULL;
     rt_radiogroup_data_t *group_data = NULL;
     if (group) {
         group_data = rt_radiogroup_handle_checked(group);
@@ -1316,7 +1347,10 @@ void rt_radiobutton_set_selected(void *radio, int64_t selected) {
 /// @brief Create a numeric spinner widget (text field with up/down increment buttons).
 void *rt_spinner_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
-    vg_spinner_t *spinner = vg_spinner_create(rt_gui_widget_parent_from_handle(parent));
+    vg_widget_t *parent_widget = rt_widget_parent_or_null_if_invalid(parent);
+    if (parent && !parent_widget)
+        return NULL;
+    vg_spinner_t *spinner = vg_spinner_create(parent_widget);
     if (spinner)
         rt_gui_apply_default_font((vg_widget_t *)spinner);
     return spinner;
@@ -1389,7 +1423,10 @@ void rt_spinner_set_decimals(void *spinner, int64_t decimals) {
 /// @brief Create an image widget — displays a Pixels object as a static image.
 void *rt_image_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
-    return vg_image_create(rt_gui_widget_parent_from_handle(parent));
+    vg_widget_t *parent_widget = rt_widget_parent_or_null_if_invalid(parent);
+    if (parent && !parent_widget)
+        return NULL;
+    return vg_image_create(parent_widget);
 }
 
 /// @brief Convert a Viper Pixels object to byte-order RGBA and upload to an image widget.
@@ -1535,7 +1572,10 @@ int64_t rt_image_load_file(void *image, void *path) {
 /// owns the panel's draw layer.
 void *rt_floatingpanel_new(void *root) {
     RT_ASSERT_MAIN_THREAD();
-    return vg_floatingpanel_create(rt_gui_widget_parent_from_handle(root));
+    vg_widget_t *parent_widget = rt_gui_widget_parent_container_from_handle(root);
+    if (root && !parent_widget)
+        return NULL;
+    return vg_floatingpanel_create(parent_widget);
 }
 
 /// @brief Validate a handle as a live FloatingPanel (NULL if not).

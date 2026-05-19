@@ -657,6 +657,8 @@ void *vg_widget_take_impl_data(vg_widget_t *widget) {
 void vg_widget_add_child(vg_widget_t *parent, vg_widget_t *child) {
     if (!parent || !child)
         return;
+    if (!vg_widget_is_live(parent) || !vg_widget_is_live(child))
+        return;
     if (parent == child || widget_is_ancestor(child, parent))
         return;
 
@@ -684,6 +686,8 @@ void vg_widget_add_child(vg_widget_t *parent, vg_widget_t *child) {
 /// @brief Inserts @p child into @p parent at the given @p index (0 = before first); appends at end if index >= child_count.
 void vg_widget_insert_child(vg_widget_t *parent, vg_widget_t *child, int index) {
     if (!parent || !child)
+        return;
+    if (!vg_widget_is_live(parent) || !vg_widget_is_live(child))
         return;
     if (parent == child || widget_is_ancestor(child, parent))
         return;
@@ -1139,14 +1143,15 @@ void vg_widget_set_name(vg_widget_t *widget, const char *name) {
     if (!widget)
         return;
 
-    if (widget->name) {
-        free(widget->name);
-        widget->name = NULL;
+    char *copy = NULL;
+    if (name) {
+        copy = strdup(name);
+        if (!copy)
+            return;
     }
 
-    if (name) {
-        widget->name = strdup(name);
-    }
+    free(widget->name);
+    widget->name = copy;
 }
 
 /// @brief Returns the widget's debug name, or NULL if none was set.
@@ -1302,6 +1307,10 @@ vg_widget_t *vg_widget_hit_test(vg_widget_t *root, float x, float y) {
 bool vg_widget_contains_point(vg_widget_t *widget, float x, float y) {
     if (!widget)
         return false;
+    for (vg_widget_t *w = widget; w; w = w->parent) {
+        if (!w->visible || !w->enabled)
+            return false;
+    }
 
     float sx, sy, sw, sh;
     vg_widget_get_screen_bounds(widget, &sx, &sy, &sw, &sh);
@@ -1437,7 +1446,7 @@ void vg_widget_set_focus(vg_widget_t *widget) {
     }
     if (!widget_chain_accepts_focus(widget))
         return;
-    if (widget->vtable && widget->vtable->can_focus && !widget->vtable->can_focus(widget)) {
+    if (!widget->vtable || !widget->vtable->can_focus || !widget->vtable->can_focus(widget)) {
         return;
     }
 

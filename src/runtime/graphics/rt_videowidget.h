@@ -41,8 +41,12 @@ void rt_videowidget_stop(void *vw);
 void rt_videowidget_update(void *vw, double dt);
 /// @brief Show or hide the play/pause/stop transport controls and timeline slider.
 void rt_videowidget_set_show_controls(void *vw, int8_t show);
+/// @brief Return 1 when transport controls are visible.
+int64_t rt_videowidget_get_show_controls(void *vw);
 /// @brief Toggle automatic restart when the video reaches its end.
 void rt_videowidget_set_loop(void *vw, int8_t loop);
+/// @brief Return 1 when automatic looping is enabled.
+int64_t rt_videowidget_get_loop(void *vw);
 /// @brief Set audio playback volume (0.0 = mute, 1.0 = full).
 void rt_videowidget_set_volume(void *vw, double vol);
 /// @brief 1 if currently playing, 0 if paused/stopped.

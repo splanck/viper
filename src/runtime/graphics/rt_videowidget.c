@@ -369,6 +369,14 @@ void rt_videowidget_set_show_controls(void *obj, int8_t show) {
         rt_widget_set_visible(w->controls_widget, show != 0);
 }
 
+int64_t rt_videowidget_get_show_controls(void *obj) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    if (!w)
+        return 0;
+    return w->show_controls ? 1 : 0;
+}
+
 /// @brief Enable auto-loop. When enabled, the widget restarts playback on natural end-of-video.
 void rt_videowidget_set_loop(void *obj, int8_t loop) {
     RT_ASSERT_MAIN_THREAD();
@@ -376,6 +384,14 @@ void rt_videowidget_set_loop(void *obj, int8_t loop) {
     if (!w)
         return;
     w->looping = loop;
+}
+
+int64_t rt_videowidget_get_loop(void *obj) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_videowidget *w = videowidget_checked(obj);
+    if (!w)
+        return 0;
+    return w->looping ? 1 : 0;
 }
 
 /// @brief Set audio output level [0.0, 1.0]. Clamped via `clamp_volume`. Forwarded to player.

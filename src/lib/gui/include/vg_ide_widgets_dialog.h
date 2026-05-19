@@ -468,6 +468,14 @@ void vg_filedialog_set_on_cancel(vg_filedialog_t *dialog,
                                  void (*callback)(vg_filedialog_t *, void *),
                                  void *user_data);
 
+/// @brief Host callback used by blocking convenience wrappers to run a file dialog.
+/// @details The callback must dispatch/render until @p dialog closes and return
+///          true when a selection was confirmed.
+typedef bool (*vg_filedialog_modal_runner_t)(vg_filedialog_t *dialog, void *user_data);
+
+/// @brief Install the modal runner used by the blocking convenience wrappers.
+void vg_filedialog_set_modal_runner(vg_filedialog_modal_runner_t runner, void *user_data);
+
 /// @brief Convenience: show a blocking open-file dialog and return the chosen path.
 /// @param title          Dialog title.
 /// @param initial_path   Starting directory (may be NULL for the current directory).
