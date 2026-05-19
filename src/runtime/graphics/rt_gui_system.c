@@ -158,15 +158,16 @@ static int parse_shortcut_keys(
             // Single character key
             *key = toupper((unsigned char)token[0]);
             recognized = 1;
-        } else if (token[0] == 'F' && strlen(token) <= 3) {
+        } else if ((token[0] == 'F' || token[0] == 'f') && strlen(token) <= 3) {
             // Function key (F1-F12)
-            int fnum = atoi(token + 1);
-            if (fnum >= 1 && fnum <= 12) {
+            char *parse_end = NULL;
+            long fnum = strtol(token + 1, &parse_end, 10);
+            if (parse_end && *parse_end == '\0' && fnum >= 1 && fnum <= 12) {
                 if (*key != 0) {
                     free(copy);
                     return 0;
                 }
-                *key = VG_KEY_F1 + (fnum - 1);
+                *key = VG_KEY_F1 + ((int)fnum - 1);
                 recognized = 1;
             }
         } else if (strcasecmp(token, "Enter") == 0 || strcasecmp(token, "Return") == 0) {
@@ -412,7 +413,7 @@ void rt_shortcuts_clear(void) {
 int64_t rt_shortcuts_was_triggered(rt_string id) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_shortcuts_app();
-    if (!app || !app->shortcuts_global_enabled)
+    if (!app)
         return 0;
 
     char *cid = rt_string_to_cstr(id);
@@ -847,6 +848,7 @@ void rt_app_set_prevent_close(void *app, int64_t prevent) {
         return;
     if (gui_app->window)
         vgfx_set_prevent_close(gui_app->window, (int32_t)(prevent != 0));
+    gui_app->prevent_close = (prevent != 0);
 }
 
 /// @brief Check whether the window close was requested this frame.
@@ -855,7 +857,7 @@ int64_t rt_app_was_close_requested(void *app) {
     rt_gui_app_t *gui_app = rt_app_checked(app);
     if (!gui_app)
         return 0;
-    return gui_app->should_close;
+    return gui_app->close_requested;
 }
 
 /// @brief Get the monitor width of the app.
@@ -939,8 +941,11 @@ void rt_app_set_font_size(void *app, double size) {
 void rt_cursor_set(int64_t type) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_shortcuts_app();
-    if (app && app->window)
-        vgfx_set_cursor(app->window, (int32_t)type);
+    if (!app || !app->window)
+        return;
+    if (type < VGFX_CURSOR_DEFAULT || type > VGFX_CURSOR_WAIT)
+        type = VGFX_CURSOR_DEFAULT;
+    vgfx_set_cursor(app->window, (int32_t)type);
 }
 
 /// @brief Restore the mouse cursor to the default arrow shape.

@@ -10799,6 +10799,11 @@ void rt_videowidget_set_show_controls(void *v, int8_t s) {
     (void)s;
 }
 
+int64_t rt_videowidget_get_show_controls(void *v) {
+    (void)v;
+    return 0;
+}
+
 /// @brief Stub for `VideoWidget.SetLoop` — when enabled, the widget
 ///        seeks back to frame 0 on EOF and continues playback (no
 ///        explicit `Play` call needed).
@@ -10810,6 +10815,11 @@ void rt_videowidget_set_show_controls(void *v, int8_t s) {
 void rt_videowidget_set_loop(void *v, int8_t l) {
     (void)v;
     (void)l;
+}
+
+int64_t rt_videowidget_get_loop(void *v) {
+    (void)v;
+    return 0;
 }
 
 /// @brief Stub for `VideoWidget.SetVolume` — set the audio track's

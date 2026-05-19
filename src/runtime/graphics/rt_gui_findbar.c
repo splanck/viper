@@ -111,7 +111,9 @@ static void rt_findbar_finalize(void *bar) {
 /// @return Opaque find bar handle, or NULL on failure.
 void *rt_findbar_new(void *parent) {
     rt_gui_app_t *app = rt_gui_app_from_handle(parent);
-    vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
+    vg_widget_t *parent_widget = rt_gui_widget_parent_container_from_handle(parent);
+    if (parent && !parent_widget)
+        return NULL;
     vg_findreplacebar_t *bar = vg_findreplacebar_create();
     if (!bar)
         return NULL;

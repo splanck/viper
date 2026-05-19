@@ -698,7 +698,9 @@ static void rt_gui_macos_rebuild_main_menu(void) {
     }
 
     if (s_current_app) {
-        s_current_app->should_close = 1;
+        s_current_app->close_requested = 1;
+        if (!s_current_app->prevent_close)
+            s_current_app->should_close = 1;
         return;
     }
 

@@ -132,6 +132,8 @@ static void rt_commandpalette_on_execute(vg_commandpalette_t *palette,
 /// `rt_commandpalette_get_selected_id`.
 void *rt_commandpalette_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
+    if (parent && !rt_gui_app_from_handle(parent) && !rt_gui_widget_parent_from_handle(parent))
+        return NULL;
     rt_gui_app_t *app = rt_gui_app_from_handle(parent);
     if (!app)
         app = s_current_app;
@@ -989,7 +991,9 @@ static void rt_breadcrumb_push_path_segment(vg_breadcrumb_t *breadcrumb,
 void *rt_breadcrumb_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_gui_app_from_handle(parent);
-    vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
+    vg_widget_t *parent_widget = rt_gui_widget_parent_container_from_handle(parent);
+    if (parent && !parent_widget)
+        return NULL;
     vg_breadcrumb_t *bc = vg_breadcrumb_create();
     if (!bc)
         return NULL;
@@ -1273,7 +1277,9 @@ static void rt_minimap_finalize(void *minimap) {
 /// and reflects the visible viewport as an overlay rectangle.
 void *rt_minimap_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
-    vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
+    vg_widget_t *parent_widget = rt_gui_widget_parent_container_from_handle(parent);
+    if (parent && !parent_widget)
+        return NULL;
     vg_minimap_t *minimap = vg_minimap_create(NULL);
     if (!minimap)
         return NULL;

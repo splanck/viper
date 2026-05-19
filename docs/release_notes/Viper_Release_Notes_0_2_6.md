@@ -8,7 +8,7 @@
 
 ### What this release is about
 
-An alpha-quality hardening cycle, not a feature release. No new public namespaces; the Zia frontend reached alpha quality, raw pointers were removed from both source languages, and a broad runtime correctness/ownership pass — extending through 2D graphics, the bytecode VM, and VAPS packaging — landed under code that already shipped.
+An alpha-quality hardening cycle, not a feature release. The Zia frontend reached alpha quality, raw pointers were removed from both source languages, and a broad runtime correctness/ownership pass — extending through 2D graphics, the bytecode VM, and VAPS packaging — landed under code that already shipped. The one additive exception is a targeted set of game-engine helpers (plan 24).
 
 - **Zia frontend → alpha quality.** `defer`; typed `Queue`/`Stack`/`Deque` + collection generics; structured `try`/`catch`/`finally`, multi-catch, bare rethrow, tuple destructuring; `Result[T]` with `?` propagation; weak fields, function references, constrained generics, default interface methods; declaration-order independence; module-scoped and file-bound name-collision disambiguation.
 - **Pointer-safety gate (the biggest user-visible change).** Zia and BASIC source reject raw `Ptr` types and pointer-signature runtime APIs; the `--unsafe-pointers` escape hatch was added then removed — the typed surface is now the only surface.
@@ -18,19 +18,20 @@ An alpha-quality hardening cycle, not a feature release. No new public namespace
 - **Network protocol correctness.** Independent HPACK encode/decode tables, strict RFC 7230 `Transfer-Encoding` parsing (closes a request-smuggling avenue), WebSocket frame/close-code validation.
 - **Backends & native toolchain.** x86-64 cross-block fold liveness + AT&T operand-class validation; AArch64 sub-word transfers, terminator/CFG, and def-operand fixes; bytecode-VM two's-complement wrapping arithmetic and checked float→int traps; bounds-checked object readers/writers with new reloc kinds.
 - **Windows & HiDPI.** Physical-pixel sizing via `AdjustWindowRectExForDpi`; waitable-timer frame pacing replaces `Sleep` quantization; hardened VAPS Windows installer.
+- **Game-engine surface (plan 24, the one additive piece).** New `Viper.Game.UI` widgets, `AnimTimeline` + multi-event `AnimStateMachine`, `Projectile2D`, rotated-texture `Renderer2D` draws, named audio mixer groups, and a `Viper.System.Clipboard` text surface — alongside a deep boundary-arithmetic and lifetime pass across the existing `Viper.Game` modules.
 - **Runtime API conformance.** Documented-but-missing surface wired through (`Keys`/`Values`/`Indices`, `Map` bool helpers, `Seq` constructors, `Crypto.Rand.Bytes`, `Viper.Machine`) plus typed alternatives to every raw-pointer ABI.
 
 ### By the Numbers
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 139 | +139 |
-| Source files | 2,996 | 3,030 | +34 |
-| Production SLOC | 552K | 595K | +43K |
+| Commits | — | 140 | +140 |
+| Source files | 2,996 | 3,031 | +35 |
+| Production SLOC | 552K | 596K | +44K |
 | Test SLOC | 228K | 252K | +24K |
 | Demo SLOC | 188K | 189K | +1K |
 
-Counts via `scripts/count_sloc.sh` (production 595,414 / test 251,788 / demo 189,187 / source files 3,030).
+Counts via `scripts/count_sloc.sh` (production 595,875 / test 251,827 / demo 189,187 / source files 3,031).
 
 ---
 
@@ -96,6 +97,13 @@ Counts via `scripts/count_sloc.sh` (production 595,414 / test 251,788 / demo 189
 - Image IO hardening: PNG chunk validation, BMP pixel-offset/size checks (no partial output on save failure), JPEG table/orientation handling, GIF frame decode with normalized per-frame delays, multi-frame sprite loading. Fixed Sprite frame limits removed, per-frame delays retained, and Canvas titles round-trip embedded NULs via an independently tracked byte length.
 - Graphics3D: Canvas3D gains `DrawMeshSkinned` / `DrawMeshMorphed` / `DrawMeshBlended` plus HUD / overlay draws; pending-splat state cleared on every early-return. `Mesh3D.SetSkeleton` retain/release integration; `Mesh3D.Clone` rejects build-failed sources and preserves `bone_count` only when skinning data exists. `Skeleton3D` validates bind-pose Mat4 finiteness. `Physics3D` deduplicates joints, raycast surfaces `started_penetrating`, AABB uses slab-test rays. `Scene3D` reparent is atomic and `count_subtree` is NULL-safe. `Terrain3D.GeneratePerlin` clamps NaN/inf inputs. New `Viper.Graphics3D.GLTF` runtime class plus `Scene3D.Load`.
 
+### Game runtime
+
+- **Plan-24 additions (the one additive surface).** New `Viper.Game.UI` widgets — TextInput, Table, Modal, Slider, Dropdown, Tooltip — with GC-managed handles and keyboard/mouse handling; `AnimTimeline` plus multi-event `AnimStateMachine`; `Projectile2D` ballistic helpers; `Renderer2D.DrawTextureRotated` / `DrawTextureRotatedAt`; string-keyed named audio mixer groups (legacy Music/SFX IDs preserved); a `Viper.System.Clipboard` UTF-8 text surface with graphics-disabled fallback; and `Camera.SmoothFollow` / `SetDeadzone` exposed through the class catalog. All registered in `runtime.def` / RuntimeClasses with dedicated class IDs.
+- **Boundary arithmetic.** Behavior gravity/patrol/chase/animation, Entity gravity and collision sweeps, Lighting2D glow/fade, Game-UI hit-testing and slider/table/tooltip math, and ScreenFX shake all saturate at int64 limits instead of wrapping; `Collision.LineRect` rejects non-finite/negative rects before Liang-Barsky; tilemap raycast DDA checks both side-touched tiles so corner-crossing rays cannot skip solids.
+- **Lifetime & ownership.** `Config` / `LevelData` release input text and parsed JSON roots across every success/failure path and gain finalizers; Quadtree, Pathfinder, ButtonGroup, AchievementTracker, and SpriteAnimation receive dedicated class IDs plus destroy-time release; `ParticleEmitter` allocation-failure cleanup releases before free.
+- **Behavior correctness.** Timer one-shot expiry uses an explicit latch (no stale `IsExpired`); `Tween.Pause` only affects running tweens; Typewriter reveals by UTF-8 codepoint and completes immediately on empty/NULL text; SpriteAnimation reports exact frame counts near INT64_MAX; SceneManager preserves long scene names; ParticleEmitter ages particles before continuous emission so lifetime-one particles survive their spawn frame.
+
 ### Network and GUI
 
 - HTTP/2: independent encode/decode HPACK tables, `pthread_once`-guarded Huffman init, length-aware decode preserves embedded NULs. HTTP/1.1: strict RFC 7230 §3.3.1 `Transfer-Encoding` token-list parse (closes the smuggling avenue). HTTP server reuses a per-connection request buffer through keep-alive; URL parser validates IPv6 brackets, empty hosts, and out-of-range ports; cookie `Max-Age` is saturating; HTTPS server and HTTP client per-route pools release pool slots before closing dead sockets.
@@ -154,6 +162,6 @@ Demos and docs were updated to track the runtime work above; stale Windows debug
 
 ### Commits
 
-See `git log v0.2.5-dev..HEAD -- .` for the full 139-commit history since v0.2.5.
+See `git log v0.2.5-dev..HEAD -- .` for the full 140-commit history since v0.2.5.
 
 <!-- END DRAFT -->

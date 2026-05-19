@@ -84,6 +84,9 @@ static bool filedialog_handle_event(vg_widget_t *widget, vg_event_t *event);
 #define FILEDIALOG_BOTTOM_HEIGHT 54.0f
 #define FILEDIALOG_SAVE_EXTRA_HEIGHT 34.0f
 
+static vg_filedialog_modal_runner_t g_modal_runner = NULL;
+static void *g_modal_runner_user_data = NULL;
+
 //=============================================================================
 // FileDialog VTable
 //=============================================================================
@@ -2298,6 +2301,20 @@ void vg_filedialog_set_on_cancel(vg_filedialog_t *dialog,
     dialog->user_data = user_data;
 }
 
+void vg_filedialog_set_modal_runner(vg_filedialog_modal_runner_t runner, void *user_data) {
+    g_modal_runner = runner;
+    g_modal_runner_user_data = user_data;
+}
+
+static bool filedialog_run_modal(vg_filedialog_t *dialog) {
+    if (!dialog)
+        return false;
+    vg_filedialog_show(dialog);
+    if (!g_modal_runner)
+        return dialog->selected_file_count > 0;
+    return g_modal_runner(dialog, g_modal_runner_user_data) && dialog->selected_file_count > 0;
+}
+
 //=============================================================================
 // Convenience Functions
 //=============================================================================
@@ -2305,11 +2322,8 @@ void vg_filedialog_set_on_cancel(vg_filedialog_t *dialog,
 /// @brief Convenience: create, configure, show, and destroy an open-file dialog.
 ///
 /// @details Creates a VG_FILEDIALOG_OPEN dialog, optionally sets a title, initial
-///          path, and one filter, then adds default bookmarks and shows the dialog.
-///          Returns a heap-allocated copy of the first selected path (caller must
-///          free) or NULL if cancelled. This wrapper returns immediately after
-///          show without entering an event loop, so it is only suitable for
-///          headless or pre-populated test scenarios.
+///          path, and one filter, then adds default bookmarks and runs the
+///          installed modal runner until the dialog closes.
 ///
 /// @param title          Dialog window title, or NULL for the default.
 /// @param initial_path   Directory to open at, or NULL for the home directory.
@@ -2333,12 +2347,9 @@ char *vg_filedialog_open_file(const char *title,
     }
     vg_filedialog_add_default_bookmarks(dialog);
 
-    vg_filedialog_show(dialog);
-
-    // Note: In a real implementation, this would block and wait for the dialog
-    // For now, we just return NULL - proper modal dialog requires event loop integration
     char *result = NULL;
-    if (dialog->selected_file_count > 0 && dialog->selected_files[0]) {
+    if (filedialog_run_modal(dialog) && dialog->selected_file_count > 0 &&
+        dialog->selected_files[0]) {
 #ifdef _WIN32
         result = _strdup(dialog->selected_files[0]);
 #else
@@ -2354,10 +2365,9 @@ char *vg_filedialog_open_file(const char *title,
 ///
 /// @details Creates a VG_FILEDIALOG_SAVE dialog, optionally sets a title, initial
 ///          path, a default filename, and one filter, then adds default bookmarks
-///          and shows the dialog. Returns a heap-allocated copy of the first
-///          selected path (caller must free) or NULL if cancelled. Like
-///          vg_filedialog_open_file, this wrapper returns immediately without
-///          processing an event loop iteration.
+///          and runs the installed modal runner until the dialog closes. Returns
+///          a heap-allocated copy of the first selected path (caller must free)
+///          or NULL if cancelled.
 ///
 /// @param title          Dialog window title, or NULL for the default.
 /// @param initial_path   Directory to open at, or NULL for the home directory.
@@ -2385,10 +2395,9 @@ char *vg_filedialog_save_file(const char *title,
     }
     vg_filedialog_add_default_bookmarks(dialog);
 
-    vg_filedialog_show(dialog);
-
     char *result = NULL;
-    if (dialog->selected_file_count > 0 && dialog->selected_files[0]) {
+    if (filedialog_run_modal(dialog) && dialog->selected_file_count > 0 &&
+        dialog->selected_files[0]) {
 #ifdef _WIN32
         result = _strdup(dialog->selected_files[0]);
 #else
@@ -2421,10 +2430,9 @@ char *vg_filedialog_select_folder(const char *title, const char *initial_path) {
         vg_filedialog_set_initial_path(dialog, initial_path);
     vg_filedialog_add_default_bookmarks(dialog);
 
-    vg_filedialog_show(dialog);
-
     char *result = NULL;
-    if (dialog->selected_file_count > 0 && dialog->selected_files[0]) {
+    if (filedialog_run_modal(dialog) && dialog->selected_file_count > 0 &&
+        dialog->selected_files[0]) {
 #ifdef _WIN32
         result = _strdup(dialog->selected_files[0]);
 #else

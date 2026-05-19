@@ -483,38 +483,34 @@ vg_key_t vg_key_from_vgfx_key(int32_t vgfx_key) {
         return (vg_key_t)vgfx_key;
     }
 
-    // Special keys need translation (vgfx codes -> vg codes)
-    // VGFX: ESCAPE=256, ENTER=257, LEFT=258, RIGHT=259, UP=260, DOWN=261, BACKSPACE=262,
-    // DELETE=263, TAB=264, HOME=265, END=266, PAGE_UP=267, PAGE_DOWN=268.
-    // VG:   ESCAPE=256, ENTER=257, TAB=258, BACKSPACE=259, DELETE=261, RIGHT=262,
-    // LEFT=263, DOWN=264, UP=265, PAGE_UP=266, PAGE_DOWN=267, HOME=268, END=269.
+    // Special keys need translation (vgfx codes -> vg codes).
     switch (vgfx_key) {
-        case 256:
-            return VG_KEY_ESCAPE; // VGFX_KEY_ESCAPE
-        case 257:
-            return VG_KEY_ENTER; // VGFX_KEY_ENTER
-        case 258:
-            return VG_KEY_LEFT; // VGFX_KEY_LEFT
-        case 259:
-            return VG_KEY_RIGHT; // VGFX_KEY_RIGHT
-        case 260:
-            return VG_KEY_UP; // VGFX_KEY_UP
-        case 261:
-            return VG_KEY_DOWN; // VGFX_KEY_DOWN
-        case 262:
-            return VG_KEY_BACKSPACE; // VGFX_KEY_BACKSPACE
-        case 263:
-            return VG_KEY_DELETE; // VGFX_KEY_DELETE
-        case 264:
-            return VG_KEY_TAB; // VGFX_KEY_TAB
-        case 265:
-            return VG_KEY_HOME; // VGFX_KEY_HOME
-        case 266:
-            return VG_KEY_END; // VGFX_KEY_END
-        case 267:
-            return VG_KEY_PAGE_UP; // VGFX_KEY_PAGE_UP
-        case 268:
-            return VG_KEY_PAGE_DOWN; // VGFX_KEY_PAGE_DOWN
+        case VGFX_KEY_ESCAPE:
+            return VG_KEY_ESCAPE;
+        case VGFX_KEY_ENTER:
+            return VG_KEY_ENTER;
+        case VGFX_KEY_LEFT:
+            return VG_KEY_LEFT;
+        case VGFX_KEY_RIGHT:
+            return VG_KEY_RIGHT;
+        case VGFX_KEY_UP:
+            return VG_KEY_UP;
+        case VGFX_KEY_DOWN:
+            return VG_KEY_DOWN;
+        case VGFX_KEY_BACKSPACE:
+            return VG_KEY_BACKSPACE;
+        case VGFX_KEY_DELETE:
+            return VG_KEY_DELETE;
+        case VGFX_KEY_TAB:
+            return VG_KEY_TAB;
+        case VGFX_KEY_HOME:
+            return VG_KEY_HOME;
+        case VGFX_KEY_END:
+            return VG_KEY_END;
+        case VGFX_KEY_PAGE_UP:
+            return VG_KEY_PAGE_UP;
+        case VGFX_KEY_PAGE_DOWN:
+            return VG_KEY_PAGE_DOWN;
         default:
             return (vg_key_t)vgfx_key;
     }
@@ -668,7 +664,8 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
             // which fails for dropdown clicks outside the widget bounds.
             if (event->type == VG_EVENT_MOUSE_UP) {
                 bool handled = vg_event_send(capture, event);
-                if (vg_widget_get_input_capture() == capture && !vg_widget_contains_point(
+                if (capture->type == VG_WIDGET_DROPDOWN &&
+                    vg_widget_get_input_capture() == capture && !vg_widget_contains_point(
                         capture, event_screen_x(event), event_screen_y(event))) {
                     vg_event_t click_event = *event;
                     click_event.type = VG_EVENT_CLICK;

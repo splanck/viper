@@ -87,6 +87,20 @@ static float layout_nonnegative(float value) {
     return (isfinite(value) && value > 0.0f) ? value : 0.0f;
 }
 
+static void layout_measure_child(vg_widget_t *child, float available_width, float available_height) {
+    vg_widget_measure(child, layout_nonnegative(available_width), layout_nonnegative(available_height));
+}
+
+static void layout_arrange_manual_child(vg_widget_t *child) {
+    if (!child)
+        return;
+    vg_widget_arrange(child,
+                      child->x,
+                      child->y,
+                      layout_nonnegative(child->measured_width),
+                      layout_nonnegative(child->measured_height));
+}
+
 /// @brief Applies min/max size constraints to @p widget's measured_width/height after measure.
 static void layout_apply_constraints(vg_widget_t *widget) {
     vg_widget_apply_constraints(widget);
@@ -177,9 +191,11 @@ static void vbox_measure(vg_widget_t *self, float available_width, float availab
 
     // First pass: measure children
     VG_FOREACH_VISIBLE_CHILD(self, child) {
-        vg_widget_measure(child,
-                          layout_nonnegative(available_width - padding_h),
-                          layout_nonnegative(available_height - padding_v));
+        if (child->manual_position) {
+            layout_measure_child(child, available_width - padding_h, available_height - padding_v);
+            continue;
+        }
+        layout_measure_child(child, available_width - padding_h, available_height - padding_v);
 
         float child_width =
             child->measured_width + child->layout.margin_left + child->layout.margin_right;
@@ -227,6 +243,8 @@ static void vbox_arrange(vg_widget_t *self, float x, float y, float width, float
     int visible_count = 0;
 
     VG_FOREACH_VISIBLE_CHILD(self, child) {
+        if (child->manual_position)
+            continue;
         total_fixed += child->layout.margin_top + child->layout.margin_bottom;
         if (child->layout.flex > 0) {
             total_flex += child->layout.flex;
@@ -251,6 +269,10 @@ static void vbox_arrange(vg_widget_t *self, float x, float y, float width, float
     float child_y = content_y + justify_offset;
 
     VG_FOREACH_VISIBLE_CHILD(self, child) {
+        if (child->manual_position) {
+            layout_arrange_manual_child(child);
+            continue;
+        }
         float child_height;
         if (child->layout.flex > 0) {
             child_height = flex_unit * child->layout.flex;
@@ -268,7 +290,10 @@ static void vbox_arrange(vg_widget_t *self, float x, float y, float width, float
                 child_width = child->measured_width;
                 break;
             case VG_ALIGN_CENTER:
-                child_x = content_x + (content_width - child->measured_width) / 2;
+                child_x = content_x + child->layout.margin_left +
+                          (content_width - child->layout.margin_left -
+                           child->layout.margin_right - child->measured_width) /
+                              2.0f;
                 child_width = child->measured_width;
                 break;
             case VG_ALIGN_END:
@@ -362,9 +387,11 @@ static void hbox_measure(vg_widget_t *self, float available_width, float availab
     int visible_count = 0;
 
     VG_FOREACH_VISIBLE_CHILD(self, child) {
-        vg_widget_measure(child,
-                          layout_nonnegative(available_width - padding_h),
-                          layout_nonnegative(available_height - padding_v));
+        if (child->manual_position) {
+            layout_measure_child(child, available_width - padding_h, available_height - padding_v);
+            continue;
+        }
+        layout_measure_child(child, available_width - padding_h, available_height - padding_v);
 
         float child_width =
             child->measured_width + child->layout.margin_left + child->layout.margin_right;
@@ -410,6 +437,8 @@ static void hbox_arrange(vg_widget_t *self, float x, float y, float width, float
     int visible_count = 0;
 
     VG_FOREACH_VISIBLE_CHILD(self, child) {
+        if (child->manual_position)
+            continue;
         total_fixed += child->layout.margin_left + child->layout.margin_right;
         if (child->layout.flex > 0) {
             total_flex += child->layout.flex;
@@ -432,6 +461,10 @@ static void hbox_arrange(vg_widget_t *self, float x, float y, float width, float
     float child_x = content_x + justify_offset;
 
     VG_FOREACH_VISIBLE_CHILD(self, child) {
+        if (child->manual_position) {
+            layout_arrange_manual_child(child);
+            continue;
+        }
         float child_width;
         if (child->layout.flex > 0) {
             child_width = flex_unit * child->layout.flex;
@@ -448,7 +481,10 @@ static void hbox_arrange(vg_widget_t *self, float x, float y, float width, float
                 child_height = child->measured_height;
                 break;
             case VG_ALIGN_CENTER:
-                child_y = content_y + (content_height - child->measured_height) / 2;
+                child_y = content_y + child->layout.margin_top +
+                          (content_height - child->layout.margin_top -
+                           child->layout.margin_bottom - child->measured_height) /
+                              2.0f;
                 child_height = child->measured_height;
                 break;
             case VG_ALIGN_END:
@@ -610,6 +646,8 @@ static float flex_child_cross_outer(vg_widget_t *child, bool is_row) {
 static int flex_collect_visible_children(vg_widget_t *self, vg_widget_t ***out_children) {
     int count = 0;
     VG_FOREACH_VISIBLE_CHILD(self, child) {
+        if (child->manual_position)
+            continue;
         count++;
     }
 
@@ -625,6 +663,8 @@ static int flex_collect_visible_children(vg_widget_t *self, vg_widget_t ***out_c
 
     int index = 0;
     VG_FOREACH_VISIBLE_CHILD(self, child) {
+        if (child->manual_position)
+            continue;
         children[index++] = child;
     }
     *out_children = children;
@@ -698,9 +738,11 @@ static void flex_measure(vg_widget_t *self, float available_width, float availab
     int visible_count = 0;
 
     VG_FOREACH_VISIBLE_CHILD(self, child) {
-        vg_widget_measure(child,
-                          layout_nonnegative(available_width - padding_h),
-                          layout_nonnegative(available_height - padding_v));
+        if (child->manual_position) {
+            layout_measure_child(child, available_width - padding_h, available_height - padding_v);
+            continue;
+        }
+        layout_measure_child(child, available_width - padding_h, available_height - padding_v);
 
         float child_main =
             is_row
@@ -950,6 +992,8 @@ static void flex_arrange(vg_widget_t *self, float x, float y, float width, float
     int visible_count = 0;
 
     VG_FOREACH_VISIBLE_CHILD(self, child) {
+        if (child->manual_position)
+            continue;
         float child_main =
             is_row
                 ? child->measured_width + child->layout.margin_left + child->layout.margin_right
@@ -978,6 +1022,10 @@ static void flex_arrange(vg_widget_t *self, float x, float y, float width, float
     float main_pos = is_reverse ? (main_size - justify_offset) : justify_offset;
 
     VG_FOREACH_VISIBLE_CHILD(self, child) {
+        if (child->manual_position) {
+            layout_arrange_manual_child(child);
+            continue;
+        }
         float child_main_size;
         if (child->layout.flex > 0) {
             child_main_size = (is_row ? child->measured_width : child->measured_height) +
@@ -1168,6 +1216,8 @@ static int grid_effective_rows(grid_impl_t *g, vg_widget_t *self, int cols) {
     int auto_count = 0;
 
     VG_FOREACH_VISIBLE_CHILD(self, child) {
+        if (child->manual_position)
+            continue;
         grid_placement_t *p = grid_find_placement(g, child);
         if (!p) {
             if (auto_count < VG_GRID_MAX_TRACKS)
@@ -1237,6 +1287,10 @@ static void grid_measure(vg_widget_t *self, float available_width, float availab
 
     /* Measure each child at its cell size */
     VG_FOREACH_VISIBLE_CHILD(self, child) {
+        if (child->manual_position) {
+            layout_measure_child(child, content_w, content_h);
+            continue;
+        }
         grid_placement_t *p = grid_find_placement(g, child);
         int col = p ? ((p->item.column >= 0 && p->item.column < cols) ? p->item.column : 0) : 0;
         int row = p ? grid_clamp_track_index(p->item.row) : 0;
@@ -1252,7 +1306,7 @@ static void grid_measure(vg_widget_t *self, float available_width, float availab
         float cell_w = auto_col_w * cs + g->layout.column_gap * (cs - 1);
         float cell_h = auto_row_h * rs + g->layout.row_gap * (rs - 1);
 
-        vg_widget_measure(child, layout_nonnegative(cell_w), layout_nonnegative(cell_h));
+        layout_measure_child(child, cell_w, cell_h);
     }
 
     /* Measured size: full grid including gaps */
@@ -1350,6 +1404,10 @@ static void grid_arrange(vg_widget_t *self, float x, float y, float width, float
     /* Arrange each child at its cell */
     int auto_idx = 0; /* sequential auto-placement counter */
     VG_FOREACH_VISIBLE_CHILD(self, child) {
+        if (child->manual_position) {
+            layout_arrange_manual_child(child);
+            continue;
+        }
         grid_placement_t *p = grid_find_placement(g, child);
 
         int col, row, cs, rs;
@@ -1608,6 +1666,11 @@ static void dock_arrange(vg_widget_t *self, float x, float y, float width, float
 
     /* Process children in order; each docked child takes from the remaining area */
     VG_FOREACH_VISIBLE_CHILD(self, child) {
+        if (child->manual_position) {
+            layout_measure_child(child, rem_w, rem_h);
+            layout_arrange_manual_child(child);
+            continue;
+        }
         /* Look up this child's dock position */
         vg_dock_t pos = VG_DOCK_FILL;
         for (int i = 0; i < d->entry_count; i++) {
@@ -1618,7 +1681,7 @@ static void dock_arrange(vg_widget_t *self, float x, float y, float width, float
         }
 
         /* Measure child in the remaining area */
-        vg_widget_measure(child, layout_nonnegative(rem_w), layout_nonnegative(rem_h));
+        layout_measure_child(child, rem_w, rem_h);
 
         switch (pos) {
             case VG_DOCK_LEFT: {

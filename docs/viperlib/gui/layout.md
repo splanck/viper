@@ -27,6 +27,10 @@ Horizontal box layout - arranges children left to right.
 
 HBox and VBox spacing/alignment account for child margins when centering or end-aligning content.
 VBox, HBox, Flex, Grid, and Dock containers apply preferred, minimum, and maximum size constraints during measurement. Arrange passes clamp content and child dimensions at zero, so excessive padding or margins cannot produce negative child sizes. Spacing, gaps, and explicit Grid track sizes also sanitize non-finite or negative values to zero.
+Children positioned with `Widget.SetPosition(x, y)` are treated as manual children
+and are skipped by parent layout passes. Use manual positioning for overlays or
+absolute placement, and use preferred sizes, flex, margins, spacing, and padding
+for children that should be arranged by a layout container.
 
 Grid layouts keep declared row and column counts within a bounded runtime range and grow an effective implicit row count for auto-flow or explicit placements beyond the declared rows. Extra children are placed into real rows with nonzero cell bounds instead of falling back to the top-left cell.
 

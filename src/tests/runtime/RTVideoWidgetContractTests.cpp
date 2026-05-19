@@ -373,8 +373,15 @@ static void test_visibility_and_volume_are_clamped() {
 
     rt_videowidget_set_show_controls(widget, 0);
     assert(controls->visible == 0);
+    assert(rt_videowidget_get_show_controls(widget) == 0);
     rt_videowidget_set_show_controls(widget, 1);
     assert(controls->visible == 1);
+    assert(rt_videowidget_get_show_controls(widget) == 1);
+    assert(rt_videowidget_get_loop(widget) == 0);
+    rt_videowidget_set_loop(widget, 1);
+    assert(rt_videowidget_get_loop(widget) == 1);
+    rt_videowidget_set_loop(widget, 0);
+    assert(rt_videowidget_get_loop(widget) == 0);
 
     rt_videowidget_set_volume(widget, -1.0);
     assert(player->volume == 0.0);

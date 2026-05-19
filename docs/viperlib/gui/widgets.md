@@ -197,7 +197,7 @@ optA.SetSelected(1);
 ### Slider
 
 Draggable value slider.
-Non-finite values are rejected or replaced with bounded defaults; ranges are normalized so the minimum is never greater than the maximum. Step snapping is clamped after rounding, so a stepped value cannot overshoot the range. Changing `SetStep()` immediately re-snaps the current value to the new grid, so a slider cannot remain between valid step positions.
+Non-finite values are rejected or replaced with bounded defaults; ranges are normalized so the minimum is never greater than the maximum. Step snapping is clamped after rounding, so a stepped value cannot overshoot the range. Changing `SetStep()` immediately re-snaps the current value to the new grid, so a slider cannot remain between valid step positions. Runtime-created sliders inherit the app default font and size like other text-bearing controls, so value labels stay consistent after `App.SetFont()` or `App.SetFontSize()`.
 
 **Constructor:** `NEW Viper.GUI.Slider(parent, horizontal)`
 

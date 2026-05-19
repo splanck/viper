@@ -113,7 +113,7 @@ Main application class that manages the window and widget tree.
 | `WasFileDropped()`      | `Integer()`          | 1 if a file was dropped on the window    |
 
 `SetFont()` applies to newly created text-bearing widgets, including
-`ProgressBar` percentage labels and `Spinner` value text. `Font.Destroy()`
+`Slider` value text, `ProgressBar` percentage labels, and `Spinner` value text. `Font.Destroy()`
 defers release while any active app or registered GUI app still references the
 font.
 
@@ -141,12 +141,16 @@ font.
 | `SetWindowSize(w, h)`     | `Void(Integer, Integer)` | Resize the window                           |
 | `GetFontSize()`           | `Number()`        | Get current UI font size                             |
 | `SetFontSize(size)`       | `Void(Number)`    | Set UI font size                                     |
+| `WasCloseRequested()`     | `Integer()`       | 1 when the window received a close request this frame |
 
 ### Lifecycle And Validation
 
 `Destroy()` is idempotent. After an app is destroyed, app methods reject the stale handle without dereferencing it. The `Root` widget is owned by the app, so destroy the application with `app.Destroy()`; calling widget `Destroy()` on `app.Root` is ignored.
 
 `SetSize()` and `SetWindowSize()` share the same window-size validation. Width and height are clamped to at least one pixel and to the platform `int32` range, and invalid font sizes, scale factors, and non-finite numeric values fall back to bounded defaults.
+When `SetPreventClose(1)` is active, a window close request no longer sets
+`ShouldClose`; poll `WasCloseRequested()` after `Poll()` to decide whether to
+save, confirm, or close manually.
 
 Low-level widget dispatch keeps focus, hover, modal, click, and capture state
 separate for each recently dispatched root. When a subtree is hidden, detached,
@@ -240,6 +244,14 @@ Focusable widgets now participate in standard desktop keyboard traversal: `Tab` 
 Passing `NULL` to `Focus()` is a no-op. Detached widgets no longer inherit the current app's font or theme until they are attached to an app-owned tree or explicitly configured.
 Common numeric setters clamp invalid input: negative sizes, margins, padding, flex factors, and layout gaps become zero, very large layout values are bounded, and non-finite doubles use safe defaults. Widget identifiers are generated from a 64-bit counter for long-running GUI sessions.
 `SetSize()` is ignored on `App.Root`; use `App.SetWindowSize()` to resize the window while the root remains controlled by the app layout pass.
+`AddChild()` and widget constructors accept `App.Root`, an app handle, or a
+container-like parent such as `VBox`, `HBox`, `ScrollView`, `SplitPane`,
+`Dialog`, or a custom container. Leaf controls such as buttons, labels, sliders,
+dropdowns, tree views, toolbars, and menus reject runtime children.
+`SetPosition()` marks the widget as manually positioned. Parent layout managers
+leave manually positioned children at their assigned coordinates, so use
+preferred size, flex, and margins for children that should remain managed by
+VBox/HBox/Flex/Grid/Dock layout.
 
 | Method                        | Signature                | Description                              |
 |-------------------------------|--------------------------|------------------------------------------|

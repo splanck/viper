@@ -136,6 +136,10 @@ static void test_probe_paint_overlay(vg_widget_t *widget, void *canvas) {
     ((test_probe_widget_t *)widget)->overlay_count++;
 }
 
+static bool test_probe_can_focus(vg_widget_t *widget) {
+    return widget != NULL && widget->visible && widget->enabled;
+}
+
 static const vg_widget_vtable_t g_probe_vtable = {
     .destroy = NULL,
     .measure = NULL,
@@ -144,6 +148,17 @@ static const vg_widget_vtable_t g_probe_vtable = {
     .paint_overlay = NULL,
     .handle_event = test_probe_handle,
     .can_focus = NULL,
+    .on_focus = NULL,
+};
+
+static const vg_widget_vtable_t g_focus_probe_vtable = {
+    .destroy = NULL,
+    .measure = NULL,
+    .arrange = NULL,
+    .paint = test_probe_paint,
+    .paint_overlay = NULL,
+    .handle_event = test_probe_handle,
+    .can_focus = test_probe_can_focus,
     .on_focus = NULL,
 };
 
@@ -1287,7 +1302,7 @@ TEST(widget_paint_runs_overlay_second_pass) {
 }
 
 TEST(widget_set_focus_null_clears_focus) {
-    test_probe_widget_t *probe = make_probe_widget(&g_probe_vtable);
+    test_probe_widget_t *probe = make_probe_widget(&g_focus_probe_vtable);
     ASSERT_NOT_NULL(probe);
     probe->base.enabled = true;
     probe->base.visible = true;

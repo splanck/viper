@@ -818,6 +818,12 @@ static void rt_gui_apply_font_to_widget(vg_widget_t *widget, vg_font_t *font, fl
         case VG_WIDGET_DROPDOWN:
             vg_dropdown_set_font((vg_dropdown_t *)widget, font, size);
             break;
+        case VG_WIDGET_SLIDER: {
+            vg_slider_t *slider = (vg_slider_t *)widget;
+            slider->font = font;
+            slider->font_size = size;
+            break;
+        }
         case VG_WIDGET_PROGRESS:
             vg_progressbar_set_font((vg_progressbar_t *)widget, font, size);
             break;
@@ -1005,6 +1011,13 @@ static void rt_gui_inherit_font_to_widget(vg_widget_t *widget, vg_font_t *font, 
             dropdown->font = font;
             dropdown->font_size =
                 size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
+            break;
+        }
+        case VG_WIDGET_SLIDER: {
+            vg_slider_t *slider = (vg_slider_t *)widget;
+            slider->font = font;
+            slider->font_size =
+                size > 0 ? size : (theme ? theme->typography.size_small : 12.0f);
             break;
         }
         case VG_WIDGET_PROGRESS: {
@@ -1346,6 +1359,10 @@ void rt_gui_app_destroy(void *app_ptr) {
 
     free(app->title);
     app->title = NULL;
+    if (app->root) {
+        vg_widget_destroy(app->root);
+        app->root = NULL;
+    }
     if (app->theme) {
         if (vg_theme_get_current() == app->theme)
             vg_theme_set_current(vg_theme_dark());
@@ -1375,10 +1392,6 @@ void rt_gui_app_destroy(void *app_ptr) {
     app->retired_fonts = NULL;
     app->retired_font_count = 0;
     app->retired_font_cap = 0;
-    if (app->root) {
-        vg_widget_destroy(app->root);
-        app->root = NULL;
-    }
     if (app->window) {
         vgfx_destroy_window(app->window);
         app->window = NULL;
@@ -1580,8 +1593,8 @@ static void rt_gui_cancel_drag_candidate(rt_gui_app_t *app) {
 static void rt_gui_maybe_start_drag(rt_gui_app_t *app, vg_widget_t *event_root) {
     if (!app || app->drag_source || !app->drag_candidate)
         return;
-    int32_t dx = app->mouse_x - app->drag_start_x;
-    int32_t dy = app->mouse_y - app->drag_start_y;
+    double dx = (double)app->mouse_x - (double)app->drag_start_x;
+    double dy = (double)app->mouse_y - (double)app->drag_start_y;
     if (dx * dx + dy * dy < 16)
         return;
     if (!event_root || !vg_widget_is_live(app->drag_candidate)) {
@@ -1702,6 +1715,7 @@ void rt_gui_app_poll(void *app_ptr) {
 
     // Clear shortcut triggered flags from previous frame
     rt_shortcuts_clear_triggered(app);
+    app->close_requested = 0;
 
     // Get mouse position
     vgfx_mouse_pos(app->window, &app->mouse_x, &app->mouse_y);
@@ -1711,7 +1725,9 @@ void rt_gui_app_poll(void *app_ptr) {
     while (vgfx_poll_event(app->window, &event)) {
         app->last_event_time_ms = (uint64_t)event.time_ms;
         if (event.type == VGFX_EVENT_CLOSE) {
-            app->should_close = 1;
+            app->close_requested = 1;
+            if (!app->prevent_close)
+                app->should_close = 1;
             continue;
         }
 
@@ -2103,7 +2119,10 @@ static void render_widget_tree(vgfx_window_t window,
     // (Label, Button, MenuBar, Toolbar, StatusBar, etc.) have vtable paint.
     // Paint functions use widget->x/y directly (now absolute).
     if (widget->vtable && widget->vtable->paint) {
+        bool was_screen_space = widget->_paint_screen_space;
+        widget->_paint_screen_space = true;
         widget->vtable->paint(widget, (void *)window);
+        widget->_paint_screen_space = was_screen_space;
     }
 
     // Restore relative coords immediately after painting
@@ -2147,7 +2166,10 @@ static void render_widget_overlay_tree(vgfx_window_t window,
     widget->y = abs_y;
 
     if (widget->vtable && widget->vtable->paint_overlay) {
+        bool was_screen_space = widget->_paint_screen_space;
+        widget->_paint_screen_space = true;
         widget->vtable->paint_overlay(widget, (void *)window);
+        widget->_paint_screen_space = was_screen_space;
     }
 
     widget->x = rel_x;

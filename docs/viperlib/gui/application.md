@@ -428,7 +428,7 @@ Native or in-app file dialog boxes (static methods).
 Save dialogs honor the default filename field, append the configured default extension when needed, and keep buttons/bookmarks/file-list hit-testing correct after the window is repositioned.
 Object-style dialogs snapshot their accepted path list on each `Show()`, so repeated `Show()` / `Destroy()` cycles and multi-select accessors stay valid.
 Destroying an object-style dialog removes it from the app's modal stack before freeing it, and destroyed handles are inert for setters, `Show()`, and path accessors.
-On macOS, one-shot static dialogs use native panels, including native multi-select for `OpenMultiple`. On other GUI builds, static and object-style dialogs use the same in-app modal dialog and therefore require an active `Viper.GUI.App` window; they return an empty string or `0` when no active GUI window is available.
+On macOS, one-shot static dialogs use native panels, including native multi-select for `OpenMultiple`. On other GUI builds, static and object-style dialogs use the same in-app modal dialog and therefore require an active `Viper.GUI.App` window; they return an empty string or `0` when no active GUI window is available. The lower-level C convenience API can install a modal runner so `Open`, `Save`, and `SelectFolder` wait for the in-app dialog instead of returning immediately.
 `OpenMultiple()` returns selected paths joined with semicolons. Literal semicolons and backslashes inside paths are escaped as `\;` and `\\` so callers can split the result without ambiguity.
 The in-app dialog implementation now scrolls long file and bookmark lists, keeps the selected row visible during keyboard navigation, clips long path text, and supports caret-aware editing in the save-name field (`Left` / `Right`, `Home`, `End`, `Backspace`, `Delete`).
 
@@ -586,19 +586,19 @@ Clipboard.Clear();
 
 ### Container
 
-Static utility for setting layout properties on any container widget (VBox, HBox, ScrollView, etc.).
+Receiver class for setting layout properties on any container widget (VBox, HBox, ScrollView, etc.).
 
-**Type:** Static utility class
+**Type:** Instance receiver over a container handle
 
 | Method                       | Signature              | Description                                      |
 |------------------------------|------------------------|--------------------------------------------------|
-| `Viper.GUI.Container.SetSpacing(widget, value)` | `Void(Object, Double)` | Set spacing between children of the container    |
-| `Viper.GUI.Container.SetPadding(widget, value)` | `Void(Object, Double)` | Set internal padding around the container's edge |
+| `container.SetSpacing(value)` | `Void(Double)` | Set spacing between children of the container    |
+| `container.SetPadding(value)` | `Void(Double)` | Set internal padding around the container's edge |
 
 ### Notes
 
-- These methods accept any layout container widget (VBox, HBox, or others) as the first argument.
-- They are equivalent to calling `widget.SetSpacing(value)` / `widget.SetPadding(value)` directly on VBox or HBox instances, but are useful when the widget type is held as a generic `Object` reference.
+- These methods accept any layout container widget (VBox, HBox, or others) as the receiver.
+- They are equivalent to calling `SetSpacing(value)` / `SetPadding(value)` directly on VBox or HBox instances, but are useful when the widget type is held through a generic container reference.
 
 ### Zia Example
 
@@ -608,17 +608,16 @@ module ContainerDemo;
 bind Viper.Terminal;
 bind Viper.GUI.App as App;
 bind Viper.GUI.VBox as VBox;
-bind Viper.GUI.Container as Container;
 bind Viper.GUI.Widget as Widget;
 
 func start() {
     var app = App.New("Container Demo", 400, 300);
     var root = app.get_Root();
 
-    // Create a VBox and configure via the static utility
+    // Create a VBox and configure through the container receiver
     var vbox = VBox.New();
-    Container.SetSpacing(vbox, 12.0);
-    Container.SetPadding(vbox, 16.0);
+    vbox.SetSpacing(12.0);
+    vbox.SetPadding(16.0);
     Widget.AddChild(root, vbox);
 }
 ```
@@ -629,13 +628,9 @@ func start() {
 DIM vbox AS OBJECT = NEW Viper.GUI.VBox()
 app.Root.AddChild(vbox)
 
-' Configure via static utility (useful when widget is an Object reference)
-Viper.GUI.Container.SetSpacing(vbox, 10.0)
-Viper.GUI.Container.SetPadding(vbox, 20.0)
-
-' Equivalent direct call on a known VBox:
-' vbox.SetSpacing(10)
-' vbox.SetPadding(20)
+' Configure through the container receiver
+vbox.SetSpacing(10.0)
+vbox.SetPadding(20.0)
 ```
 
 ---
@@ -644,8 +639,8 @@ Viper.GUI.Container.SetPadding(vbox, 20.0)
 
 Keyboard shortcut registration system (static methods).
 
-Shortcut matching uses the translated `VG_KEY_*` key space, so function keys, arrows, `Home`/`End`, `PageUp`/`PageDown`, and other named keys match the same strings accepted by `Register()`. Focused widgets receive key-down events first; a global shortcut only fires when the widget tree leaves the key unhandled. While a modal dialog is open, global shortcuts are suppressed so accelerators cannot leak through the modal.
-Invalid shortcut strings are rejected without registering a new shortcut or replacing an existing one.
+Shortcut matching uses the translated `VG_KEY_*` key space, so function keys, arrows, `Home`/`End`, `PageUp`/`PageDown`, and other named keys match the same strings accepted by `Register()`. Function keys are case-insensitive (`F5` and `f5` are equivalent), and malformed tokens such as `F1x` are rejected. Focused widgets receive key-down events first; a global shortcut only fires when the widget tree leaves the key unhandled. While a modal dialog is open, global shortcuts are suppressed so accelerators cannot leak through the modal.
+Invalid shortcut strings are rejected without registering a new shortcut or replacing an existing one. `SetGlobalEnabled(0)` stops new shortcut matches, but `WasTriggered(id)` still reports a shortcut that was already triggered earlier in the same frame.
 
 | Method                                          | Signature               | Description                              |
 |-------------------------------------------------|-------------------------|------------------------------------------|
@@ -688,7 +683,7 @@ Mouse cursor control (static methods).
 
 ```rust
 // Zia
-Cursor.Set(2);       // Hand cursor
+Cursor.Set(1);       // Pointer cursor
 Cursor.SetVisible(1);
 Cursor.Reset();       // Default cursor
 ```
@@ -733,8 +728,8 @@ Embedded video player widget that renders decoded frames inside a GUI layout. Wr
 | `IsPlaying`    | Integer | Read   | Non-zero while the video is playing |
 | `Position`     | Double  | Read   | Current playback position in seconds |
 | `Duration`     | Double  | Read   | Total duration in seconds |
-| `ShowControls` | Boolean | Write  | Show or hide built-in play/pause controls |
-| `Loop`         | Boolean | Write  | Loop the video when it ends |
+| `ShowControls` | Boolean | Read/Write | Show or hide built-in play/pause controls |
+| `Loop`         | Boolean | Read/Write | Loop the video when it ends |
 
 #### Methods
 

@@ -491,6 +491,25 @@ TEST(RuntimeSurfaceAudit, ExpectedRuntimePropertiesExistInCatalog) {
     }
 }
 
+TEST(RuntimeSurfaceAudit, GuiVideoWidgetReadWritePropertiesHaveGetterAndSetterTargets) {
+    const auto *cls = findClass("Viper.GUI.VideoWidget");
+    ASSERT_TRUE(cls != nullptr);
+
+    for (std::string_view name : {"ShowControls", "Loop"}) {
+        const il::runtime::RuntimeProperty *found = nullptr;
+        for (const auto &prop : cls->properties) {
+            if (std::string_view(prop.name) == name) {
+                found = &prop;
+                break;
+            }
+        }
+        ASSERT_TRUE(found != nullptr);
+        EXPECT_TRUE(found->getter != nullptr);
+        EXPECT_TRUE(found->setter != nullptr);
+        EXPECT_FALSE(found->readonly);
+    }
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();

@@ -100,6 +100,8 @@ typedef struct {
     int retired_font_count;
     int retired_font_cap;
     int64_t should_close;      ///< Non-zero when the application should exit.
+    int64_t close_requested;   ///< Non-zero when a close request arrived this frame.
+    int32_t prevent_close;     ///< Non-zero when close requests should not set should_close.
     vg_widget_t *last_clicked; ///< Widget clicked during the current frame.
     vg_statusbar_item_t *last_statusbar_clicked;
     vg_toolbar_item_t *last_toolbar_clicked;
@@ -235,6 +237,54 @@ static inline vg_widget_t *rt_gui_widget_parent_from_handle(void *handle) {
     if (rt_gui_is_destroyed_app_handle(handle))
         return NULL;
     return rt_gui_is_widget_handle(handle) ? (vg_widget_t *)handle : NULL;
+}
+
+/// @brief True if widgets of @p type can safely own arbitrary runtime children.
+static inline int rt_gui_widget_type_accepts_runtime_children(vg_widget_type_t type) {
+    switch (type) {
+        case VG_WIDGET_CONTAINER:
+        case VG_WIDGET_SCROLLVIEW:
+        case VG_WIDGET_SPLITPANE:
+        case VG_WIDGET_DIALOG:
+        case VG_WIDGET_LISTVIEW:
+        case VG_WIDGET_CUSTOM:
+            return 1;
+        case VG_WIDGET_LABEL:
+        case VG_WIDGET_BUTTON:
+        case VG_WIDGET_TEXTINPUT:
+        case VG_WIDGET_CHECKBOX:
+        case VG_WIDGET_RADIO:
+        case VG_WIDGET_SLIDER:
+        case VG_WIDGET_PROGRESS:
+        case VG_WIDGET_LISTBOX:
+        case VG_WIDGET_DROPDOWN:
+        case VG_WIDGET_TREEVIEW:
+        case VG_WIDGET_TABBAR:
+        case VG_WIDGET_MENUBAR:
+        case VG_WIDGET_MENU:
+        case VG_WIDGET_MENUITEM:
+        case VG_WIDGET_TOOLBAR:
+        case VG_WIDGET_STATUSBAR:
+        case VG_WIDGET_CODEEDITOR:
+        case VG_WIDGET_IMAGE:
+        case VG_WIDGET_SPINNER:
+        case VG_WIDGET_COLORSWATCH:
+        case VG_WIDGET_COLORPALETTE:
+        case VG_WIDGET_COLORPICKER:
+        default:
+            return 0;
+    }
+}
+
+/// @brief Resolve a parent handle only when it can own arbitrary runtime children.
+/// @details NULL is valid for detached widget creation and returns NULL. Non-NULL
+///          invalid handles and leaf widgets both return NULL; callers that need
+///          to distinguish explicit NULL should check their original argument.
+static inline vg_widget_t *rt_gui_widget_parent_container_from_handle(void *handle) {
+    vg_widget_t *parent = rt_gui_widget_parent_from_handle(handle);
+    if (!parent)
+        return NULL;
+    return rt_gui_widget_type_accepts_runtime_children(parent->type) ? parent : NULL;
 }
 
 #define RT_GUI_MAX_LAYOUT_VALUE 1000000.0
