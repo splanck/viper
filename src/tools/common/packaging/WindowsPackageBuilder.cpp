@@ -9,7 +9,8 @@
 // Purpose: Assemble a Windows self-extracting installer .exe.
 //
 // Key invariants:
-//   - Overlay is a structurally valid ZIP archive using stored entries only.
+//   - Overlay is a structurally valid ZIP archive using stored bootstrap entries.
+//     The main payload is a DEFLATE-compressed inner ZIP expanded at install time.
 //   - Installer/uninstaller behavior is driven by an explicit package layout,
 //     not by parsing installer metadata at runtime.
 //   - All package construction happens inside Viper; no external tools are used.
@@ -333,7 +334,7 @@ std::string readPeAsciiZ(const std::vector<uint8_t> &data, size_t off) {
     return off < data.size() ? out : std::string{};
 }
 
-std::vector<std::string> importedDllNamesFromPe(const std::vector<uint8_t> &data) {
+std::vector<std::string> importedDllNamesFromPeImpl(const std::vector<uint8_t> &data) {
     if (!hasBytes(data, 0, 64) || data[0] != 'M' || data[1] != 'Z')
         return {};
     const size_t peOff = rd32(data, 60);
@@ -468,7 +469,7 @@ std::vector<fs::path> discoverAdjacentDllDependencies(const fs::path &exePath) {
     std::vector<fs::path> queue{exePath};
     for (size_t index = 0; index < queue.size(); ++index) {
         const fs::path current = queue[index];
-        const auto imports = importedDllNamesFromPe(readFile(current.string()));
+        const auto imports = importedDllNamesFromPeImpl(readFile(current.string()));
         for (const auto &dll : imports) {
             if (!seen.insert(dll).second)
                 continue;
@@ -557,6 +558,20 @@ std::string toolchainVSCodeInstallScript() {
            "code --install-extension \"%VSIX%\" --force\r\n";
 }
 
+std::string toolchainWindowsPrerequisitesReadme() {
+    return "Viper Windows toolchain installer prerequisites\r\n"
+           "\r\n"
+           "- Windows PowerShell 5 or newer must be available under System32. The setup "
+           "bootstrap uses it to expand the compressed payload.\r\n"
+           "- Release builds produced with the MSVC dynamic runtime require the Microsoft "
+           "Visual C++ Redistributable for Visual Studio 2015-2022 unless the staged "
+           "toolchain includes the required runtime DLLs next to bin\\viper.exe or the "
+           "toolchain was built with a static MSVC runtime.\r\n"
+           "- Native code generation requires the normal Windows developer prerequisites "
+           "for the selected backend, including a C++ compiler/linker toolchain when "
+           "linking native executables.\r\n";
+}
+
 /// @brief Return a YYYYMMDD date for Add/Remove Programs InstallDate metadata.
 std::string currentInstallDate() {
     const std::time_t now = std::time(nullptr);
@@ -574,7 +589,8 @@ std::string currentInstallDate() {
 /// @brief Estimate Add/Remove Programs installed size from files installed on disk.
 uint32_t estimatedInstalledSizeKb(const WindowsPackageLayout &layout) {
     uint64_t total = 0;
-    for (const auto &file : layout.installFiles) {
+    const auto &files = layout.installedFiles.empty() ? layout.installFiles : layout.installedFiles;
+    for (const auto &file : files) {
         if (file.root == WindowsInstallRoot::InstallDir)
             total += file.sizeBytes;
     }
@@ -693,16 +709,27 @@ void appendPayloadManifestEntry(std::ostringstream *payloadManifest,
                      << "\n";
 }
 
-void addOverlayFile(ZipWriter &zip,
-                    const std::string &overlayName,
-                    const uint8_t *data,
-                    size_t len,
-                    uint32_t unixMode,
-                    WindowsPackageLayout &layout,
-                    WindowsInstallRoot root,
-                    const std::string &installRelativePath,
-                    bool deleteOnUninstall,
-                    std::ostringstream *payloadManifest = nullptr) {
+void registerInstalledFile(WindowsPackageLayout &layout,
+                           WindowsInstallRoot root,
+                           const std::string &installRelativePath,
+                           uint64_t sizeBytes,
+                           bool deleteOnUninstall) {
+    if (deleteOnUninstall) {
+        layout.uninstallFiles.push_back(
+            WindowsPackageFileEntry{root, installRelativePath, 0, sizeBytes, 0});
+    }
+}
+
+void addStoredOverlayFile(ZipWriter &zip,
+                          const std::string &overlayName,
+                          const uint8_t *data,
+                          size_t len,
+                          uint32_t unixMode,
+                          WindowsPackageLayout &layout,
+                          WindowsInstallRoot root,
+                          const std::string &installRelativePath,
+                          bool deleteOnUninstall,
+                          std::ostringstream *payloadManifest = nullptr) {
     zip.addFile(overlayName, data, len, unixMode);
     const auto &entry = zip.layoutEntries().back();
     if (entry.method != 0 || entry.compressedSize != entry.uncompressedSize) {
@@ -713,10 +740,45 @@ void addOverlayFile(ZipWriter &zip,
     layout.installFiles.push_back(WindowsPackageFileEntry{
         root, installRelativePath, entry.localDataOffset, entry.uncompressedSize, entry.crc32});
     appendPayloadManifestEntry(payloadManifest, overlayName, data, len);
-    if (deleteOnUninstall) {
-        layout.uninstallFiles.push_back(
-            WindowsPackageFileEntry{root, installRelativePath, 0, entry.uncompressedSize, 0});
+    registerInstalledFile(layout, root, installRelativePath, entry.uncompressedSize, deleteOnUninstall);
+}
+
+void addCompressedPayloadFile(ZipWriter &payloadZip,
+                              const std::string &payloadName,
+                              const uint8_t *data,
+                              size_t len,
+                              uint32_t unixMode,
+                              WindowsPackageLayout &layout,
+                              WindowsInstallRoot root,
+                              const std::string &installRelativePath,
+                              bool deleteOnUninstall,
+                              std::vector<std::string> *installManifestPaths = nullptr) {
+    payloadZip.addFile(payloadName, data, len, unixMode);
+    layout.installedFiles.push_back(
+        WindowsPackageFileEntry{root, installRelativePath, 0, len, 0});
+    registerInstalledFile(layout, root, installRelativePath, len, deleteOnUninstall);
+    if (installManifestPaths != nullptr && root == WindowsInstallRoot::InstallDir) {
+        installManifestPaths->push_back(
+            sanitizePackageRelativePath(installRelativePath, "Windows installed manifest path"));
     }
+}
+
+std::string buildWindowsInstalledManifest(std::vector<std::string> paths,
+                                          const std::string &manifestRelativePath) {
+    paths.push_back(
+        sanitizePackageRelativePath(manifestRelativePath, "Windows installed manifest path"));
+    std::sort(paths.begin(), paths.end(), [](const std::string &a, const std::string &b) {
+        return lowerAscii(a) < lowerAscii(b);
+    });
+    paths.erase(std::unique(paths.begin(), paths.end(), [](const std::string &a,
+                                                           const std::string &b) {
+                    return lowerAscii(a) == lowerAscii(b);
+                }),
+                paths.end());
+    std::ostringstream os;
+    for (const auto &path : paths)
+        os << path << "\n";
+    return os.str();
 }
 
 /// @brief Populate uninstallDirectories from installDirectories, then sort deepest-first
@@ -739,6 +801,10 @@ void finalizeUninstallDirs(WindowsPackageLayout &layout) {
 }
 
 } // namespace
+
+std::vector<std::string> importedDllNamesFromPe(const std::vector<uint8_t> &data) {
+    return importedDllNamesFromPeImpl(data);
+}
 
 /// @brief Build a Windows self-extracting installer for a single application binary.
 /// Assembly is a two-pass process: Pass 1 measures the exact overlay offset with
@@ -793,6 +859,12 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     zip.setCompressionEnabled(false);
     zip.addDirectory("app/");
     zip.addDirectory("meta/");
+    ZipWriter payloadZip;
+    payloadZip.setCompressionEnabled(true);
+    std::vector<std::string> installedManifestPaths;
+    layout.compressedPayloadRelativePath = ".viper-payload.zip";
+    layout.compressedPayloadManifestRelativePath = ".viper-install-manifest.next";
+    layout.installedManifestRelativePath = ".viper-install-manifest.txt";
     std::ostringstream payloadManifest;
 
     std::vector<uint8_t> icoData;
@@ -805,44 +877,44 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     }
 
     const auto execData = readFile(params.executablePath);
-    addOverlayFile(zip,
-                   "app/" + exec + ".exe",
-                   execData.data(),
-                   execData.size(),
-                   0100755,
-                   layout,
-                   WindowsInstallRoot::InstallDir,
-                   exec + ".exe",
-                   true,
-                   &payloadManifest);
+    addCompressedPayloadFile(payloadZip,
+                             exec + ".exe",
+                             execData.data(),
+                             execData.size(),
+                             0100755,
+                             layout,
+                             WindowsInstallRoot::InstallDir,
+                             exec + ".exe",
+                             true,
+                             &installedManifestPaths);
 
     for (const auto &dllPath : discoverAdjacentDllDependencies(params.executablePath)) {
         const std::string dllName = dllPath.filename().generic_string();
         validateWindowsRelativePath(dllName, "Windows DLL dependency path");
         const auto dllData = readFile(dllPath.string());
-        addOverlayFile(zip,
-                       "app/" + dllName,
-                       dllData.data(),
-                       dllData.size(),
-                       0100644,
-                       layout,
-                       WindowsInstallRoot::InstallDir,
-                       dllName,
-                       true,
-                       &payloadManifest);
+        addCompressedPayloadFile(payloadZip,
+                                 dllName,
+                                 dllData.data(),
+                                 dllData.size(),
+                                 0100644,
+                                 layout,
+                                 WindowsInstallRoot::InstallDir,
+                                 dllName,
+                                 true,
+                                 &installedManifestPaths);
     }
 
     if (!icoData.empty()) {
-        addOverlayFile(zip,
-                       "app/" + exec + ".ico",
-                       icoData.data(),
-                       icoData.size(),
-                       0100644,
-                       layout,
-                       WindowsInstallRoot::InstallDir,
-                       exec + ".ico",
-                       true,
-                       &payloadManifest);
+        addCompressedPayloadFile(payloadZip,
+                                 exec + ".ico",
+                                 icoData.data(),
+                                 icoData.size(),
+                                 0100644,
+                                 layout,
+                                 WindowsInstallRoot::InstallDir,
+                                 exec + ".ico",
+                                 true,
+                                 &installedManifestPaths);
     }
     layout.displayIconRelativePath = !icoData.empty() ? exec + ".ico" : exec + ".exe";
 
@@ -889,16 +961,16 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
                                   WindowsInstallRoot::InstallDir,
                                   relInstall);
                     const auto data = readFile(entry.resolvedPath.string());
-                    addOverlayFile(zip,
-                                   "app/" + relInstall,
-                                   data.data(),
-                                   data.size(),
-                                   0100644,
-                                   layout,
-                                   WindowsInstallRoot::InstallDir,
-                                   relInstall,
-                                   true,
-                                   &payloadManifest);
+                    addCompressedPayloadFile(payloadZip,
+                                             relInstall,
+                                             data.data(),
+                                             data.size(),
+                                             0100644,
+                                             layout,
+                                             WindowsInstallRoot::InstallDir,
+                                             relInstall,
+                                             true,
+                                             &installedManifestPaths);
                 });
         } else if (fs::is_regular_file(srcPath)) {
             const std::string relInstall = joinPackageRelativePath(
@@ -908,16 +980,16 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
                           WindowsInstallRoot::InstallDir,
                           relInstall);
             const auto data = readFile(srcPath.string());
-            addOverlayFile(zip,
-                           "app/" + relInstall,
-                           data.data(),
-                           data.size(),
-                           0100644,
-                           layout,
-                           WindowsInstallRoot::InstallDir,
-                           relInstall,
-                           true,
-                           &payloadManifest);
+            addCompressedPayloadFile(payloadZip,
+                                     relInstall,
+                                     data.data(),
+                                     data.size(),
+                                     0100644,
+                                     layout,
+                                     WindowsInstallRoot::InstallDir,
+                                     relInstall,
+                                     true,
+                                     &installedManifestPaths);
         } else {
             throw std::runtime_error("asset is not a regular file or directory: " +
                                      asset.sourcePath);
@@ -932,7 +1004,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
         if (!icoData.empty())
             lnk.iconPath = windowsInstallEnvPath(installDir, layout.perUserInstall, exec + ".ico");
         const auto lnkData = generateLnk(lnk);
-        addOverlayFile(zip,
+        addStoredOverlayFile(zip,
                        "meta/start_menu.lnk",
                        lnkData.data(),
                        lnkData.size(),
@@ -952,7 +1024,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
         if (!icoData.empty())
             lnk.iconPath = windowsInstallEnvPath(installDir, layout.perUserInstall, exec + ".ico");
         const auto lnkData = generateLnk(lnk);
-        addOverlayFile(zip,
+        addStoredOverlayFile(zip,
                        "meta/desktop.lnk",
                        lnkData.data(),
                        lnkData.size(),
@@ -964,8 +1036,12 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
                        &payloadManifest);
     }
 
+    registerInstalledFile(layout,
+                          WindowsInstallRoot::InstallDir,
+                          layout.installedManifestRelativePath,
+                          0,
+                          true);
     finalizeUninstallDirs(layout);
-    validateWindowsLayoutFitsStub(layout);
 
     auto uninstStub = buildUninstallerStub(layout, params.archStr);
     PEBuildParams uninstPe;
@@ -978,17 +1054,52 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     uninstPe.versionInfo = windowsVersionInfoForLayout(layout, "uninstall.exe", "Uninstaller");
     configureInstallerStack(uninstPe);
     auto uninstBytes = buildPE(uninstPe);
-    addOverlayFile(zip,
-                   "app/uninstall.exe",
-                   uninstBytes.data(),
-                   uninstBytes.size(),
-                   0100755,
-                   layout,
-                   WindowsInstallRoot::InstallDir,
-                   "uninstall.exe",
-                   false,
-                   &payloadManifest);
+    addCompressedPayloadFile(payloadZip,
+                             "uninstall.exe",
+                             uninstBytes.data(),
+                             uninstBytes.size(),
+                             0100755,
+                             layout,
+                             WindowsInstallRoot::InstallDir,
+                             "uninstall.exe",
+                             false,
+                             &installedManifestPaths);
+
+    const std::string installedManifestText =
+        buildWindowsInstalledManifest(installedManifestPaths, layout.installedManifestRelativePath);
+    addCompressedPayloadFile(payloadZip,
+                             layout.installedManifestRelativePath,
+                             reinterpret_cast<const uint8_t *>(installedManifestText.data()),
+                             installedManifestText.size(),
+                             0100644,
+                             layout,
+                             WindowsInstallRoot::InstallDir,
+                             layout.installedManifestRelativePath,
+                             false,
+                             nullptr);
+    const auto compressedPayload = payloadZip.finishToVector();
+    addStoredOverlayFile(zip,
+                         "meta/payload.zip",
+                         compressedPayload.data(),
+                         compressedPayload.size(),
+                         0100644,
+                         layout,
+                         WindowsInstallRoot::InstallDir,
+                         layout.compressedPayloadRelativePath,
+                         true,
+                         &payloadManifest);
+    addStoredOverlayFile(zip,
+                         "meta/install_manifest.next",
+                         reinterpret_cast<const uint8_t *>(installedManifestText.data()),
+                         installedManifestText.size(),
+                         0100644,
+                         layout,
+                         WindowsInstallRoot::InstallDir,
+                         layout.compressedPayloadManifestRelativePath,
+                         true,
+                         &payloadManifest);
     layout.estimatedSizeKb = estimatedInstalledSizeKb(layout);
+    validateWindowsLayoutFitsStub(layout);
     const std::string manifestText = payloadManifest.str();
     zip.addFile("meta/manifest.sha256",
                 reinterpret_cast<const uint8_t *>(manifestText.data()),
@@ -1084,6 +1195,12 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     zip.setCompressionEnabled(false);
     zip.addDirectory("app/");
     zip.addDirectory("meta/");
+    ZipWriter payloadZip;
+    payloadZip.setCompressionEnabled(true);
+    std::vector<std::string> installedManifestPaths;
+    layout.compressedPayloadRelativePath = ".viper-payload.zip";
+    layout.compressedPayloadManifestRelativePath = ".viper-install-manifest.next";
+    layout.installedManifestRelativePath = ".viper-install-manifest.txt";
     std::ostringstream payloadManifest;
 
     for (const auto &file : params.manifest.files) {
@@ -1100,16 +1217,16 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
                       WindowsInstallRoot::InstallDir,
                       relInstall);
         const auto data = readFile(file.stagedAbsolutePath.string());
-        addOverlayFile(zip,
-                       "app/" + relInstall,
-                       data.data(),
-                       data.size(),
-                       file.executable ? 0100755 : 0100644,
-                       layout,
-                       WindowsInstallRoot::InstallDir,
-                       relInstall,
-                       true,
-                       &payloadManifest);
+        addCompressedPayloadFile(payloadZip,
+                                 relInstall,
+                                 data.data(),
+                                 data.size(),
+                                 file.executable ? 0100755 : 0100644,
+                                 layout,
+                                 WindowsInstallRoot::InstallDir,
+                                 relInstall,
+                                 true,
+                                 &installedManifestPaths);
 
         const std::string lowerName = lowerAscii(fs::path(relInstall).filename().generic_string());
         if (lowerName == "license" || lowerName == "readme.md") {
@@ -1126,29 +1243,46 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
                  "bin");
     {
         const std::string script = toolchainDeveloperPromptScript();
-        addOverlayFile(zip,
-                       "app/bin/viper-dev.cmd",
-                       reinterpret_cast<const uint8_t *>(script.data()),
-                       script.size(),
-                       0100644,
-                       layout,
-                       WindowsInstallRoot::InstallDir,
-                       "bin/viper-dev.cmd",
-                       true,
-                       &payloadManifest);
+        addCompressedPayloadFile(payloadZip,
+                                 "bin/viper-dev.cmd",
+                                 reinterpret_cast<const uint8_t *>(script.data()),
+                                 script.size(),
+                                 0100644,
+                                 layout,
+                                 WindowsInstallRoot::InstallDir,
+                                 "bin/viper-dev.cmd",
+                                 true,
+                                 &installedManifestPaths);
     }
     {
         const std::string script = toolchainVSCodeInstallScript();
-        addOverlayFile(zip,
-                       "app/bin/viper-install-vscode-extension.cmd",
-                       reinterpret_cast<const uint8_t *>(script.data()),
-                       script.size(),
-                       0100644,
-                       layout,
-                       WindowsInstallRoot::InstallDir,
-                       "bin/viper-install-vscode-extension.cmd",
-                       true,
-                       &payloadManifest);
+        addCompressedPayloadFile(payloadZip,
+                                 "bin/viper-install-vscode-extension.cmd",
+                                 reinterpret_cast<const uint8_t *>(script.data()),
+                                 script.size(),
+                                 0100644,
+                                 layout,
+                                 WindowsInstallRoot::InstallDir,
+                                 "bin/viper-install-vscode-extension.cmd",
+                                 true,
+                                 &installedManifestPaths);
+    }
+    {
+        addUniqueDir(layout.installDirectories,
+                     installDirSet,
+                     WindowsInstallRoot::InstallDir,
+                     "share/viper");
+        const std::string readme = toolchainWindowsPrerequisitesReadme();
+        addCompressedPayloadFile(payloadZip,
+                                 "share/viper/README.windows-prerequisites.txt",
+                                 reinterpret_cast<const uint8_t *>(readme.data()),
+                                 readme.size(),
+                                 0100644,
+                                 layout,
+                                 WindowsInstallRoot::InstallDir,
+                                 "share/viper/README.windows-prerequisites.txt",
+                                 true,
+                                 &installedManifestPaths);
     }
 
     if (params.createStartMenuShortcuts) {
@@ -1163,7 +1297,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
         promptLnk.iconPath =
             windowsInstallEnvPath(params.installDirName, layout.perUserInstall, "bin\\viper.exe");
         const auto promptData = generateLnk(promptLnk);
-        addOverlayFile(zip,
+        addStoredOverlayFile(zip,
                        "meta/viper_developer_prompt.lnk",
                        promptData.data(),
                        promptData.size(),
@@ -1185,7 +1319,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
         vscodeLnk.iconPath =
             windowsInstallEnvPath(params.installDirName, layout.perUserInstall, "bin\\viper.exe");
         const auto vscodeData = generateLnk(vscodeLnk);
-        addOverlayFile(zip,
+        addStoredOverlayFile(zip,
                        "meta/viper_vscode_extension.lnk",
                        vscodeData.data(),
                        vscodeData.size(),
@@ -1197,8 +1331,12 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
                        &payloadManifest);
     }
 
+    registerInstalledFile(layout,
+                          WindowsInstallRoot::InstallDir,
+                          layout.installedManifestRelativePath,
+                          0,
+                          true);
     finalizeUninstallDirs(layout);
-    validateWindowsLayoutFitsStub(layout);
 
     auto uninstStub = buildUninstallerStub(layout, params.archStr);
     PEBuildParams uninstPe;
@@ -1210,17 +1348,51 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     uninstPe.versionInfo = windowsVersionInfoForLayout(layout, "uninstall.exe", "Uninstaller");
     configureInstallerStack(uninstPe);
     const auto uninstBytes = buildPE(uninstPe);
-    addOverlayFile(zip,
-                   "app/uninstall.exe",
-                   uninstBytes.data(),
-                   uninstBytes.size(),
-                   0100755,
-                   layout,
-                   WindowsInstallRoot::InstallDir,
-                   "uninstall.exe",
-                   false,
-                   &payloadManifest);
+    addCompressedPayloadFile(payloadZip,
+                             "uninstall.exe",
+                             uninstBytes.data(),
+                             uninstBytes.size(),
+                             0100755,
+                             layout,
+                             WindowsInstallRoot::InstallDir,
+                             "uninstall.exe",
+                             false,
+                             &installedManifestPaths);
+    const std::string installedManifestText =
+        buildWindowsInstalledManifest(installedManifestPaths, layout.installedManifestRelativePath);
+    addCompressedPayloadFile(payloadZip,
+                             layout.installedManifestRelativePath,
+                             reinterpret_cast<const uint8_t *>(installedManifestText.data()),
+                             installedManifestText.size(),
+                             0100644,
+                             layout,
+                             WindowsInstallRoot::InstallDir,
+                             layout.installedManifestRelativePath,
+                             false,
+                             nullptr);
+    const auto compressedPayload = payloadZip.finishToVector();
+    addStoredOverlayFile(zip,
+                         "meta/payload.zip",
+                         compressedPayload.data(),
+                         compressedPayload.size(),
+                         0100644,
+                         layout,
+                         WindowsInstallRoot::InstallDir,
+                         layout.compressedPayloadRelativePath,
+                         true,
+                         &payloadManifest);
+    addStoredOverlayFile(zip,
+                         "meta/install_manifest.next",
+                         reinterpret_cast<const uint8_t *>(installedManifestText.data()),
+                         installedManifestText.size(),
+                         0100644,
+                         layout,
+                         WindowsInstallRoot::InstallDir,
+                         layout.compressedPayloadManifestRelativePath,
+                         true,
+                         &payloadManifest);
     layout.estimatedSizeKb = estimatedInstalledSizeKb(layout);
+    validateWindowsLayoutFitsStub(layout);
     const std::string manifestText = payloadManifest.str();
     zip.addFile("meta/manifest.sha256",
                 reinterpret_cast<const uint8_t *>(manifestText.data()),

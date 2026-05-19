@@ -128,4 +128,11 @@ bool verifyPEZipOverlayPayload(const std::vector<uint8_t> &data,
                                const std::vector<std::string> &requiredEntries,
                                std::ostream &err);
 
+/// @brief Verify a PE ZIP overlay plus a nested ZIP entry payload.
+bool verifyPEZipOverlayNestedPayload(const std::vector<uint8_t> &data,
+                                     const std::vector<std::string> &requiredOuterEntries,
+                                     const std::string &innerZipEntry,
+                                     const std::vector<std::string> &requiredInnerEntries,
+                                     std::ostream &err);
+
 } // namespace viper::pkg

@@ -197,6 +197,35 @@ static std::vector<uint8_t> extractFirstZipOverlay(const std::vector<uint8_t> &p
     return std::vector<uint8_t>(it, pe.end());
 }
 
+static std::vector<uint8_t> extractPeOverlayZipEntry(const std::vector<uint8_t> &pe,
+                                                     const std::string &name) {
+    const auto overlay = extractFirstZipOverlay(pe);
+    if (overlay.empty())
+        return {};
+    ZipReader reader(overlay.data(), overlay.size());
+    const ZipEntry *entry = reader.find(name);
+    if (entry == nullptr)
+        return {};
+    return reader.extract(*entry);
+}
+
+static bool zipContainsEntries(const std::vector<uint8_t> &zipData,
+                               const std::vector<std::string> &requiredEntries) {
+    ZipReader reader(zipData.data(), zipData.size());
+    for (const auto &required : requiredEntries) {
+        if (reader.find(required) == nullptr)
+            return false;
+    }
+    return true;
+}
+
+static bool zipEntryUsesDeflate(const std::vector<uint8_t> &zipData,
+                                const std::string &name) {
+    ZipReader reader(zipData.data(), zipData.size());
+    const ZipEntry *entry = reader.find(name);
+    return entry != nullptr && entry->method == 8;
+}
+
 static uint32_t alignUpTest(uint32_t value, uint32_t alignment) {
     return (value + alignment - 1u) & ~(alignment - 1u);
 }
@@ -2786,7 +2815,7 @@ TEST(InstallerStub, AllowsZeroBytePayloadFile) {
     EXPECT_GT(stub.textSection.size(), static_cast<size_t>(10));
 }
 
-TEST(WindowsPackageBuilder, BuildsInstallerWithStoredZipOverlay) {
+TEST(WindowsPackageBuilder, BuildsInstallerWithCompressedPayloadOverlay) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_windows_builder_test";
     fs::remove_all(tmpRoot);
@@ -2796,6 +2825,10 @@ TEST(WindowsPackageBuilder, BuildsInstallerWithStoredZipOverlay) {
     {
         std::ofstream asset(tmpRoot / "assets" / "themes" / "dark.json", std::ios::binary);
         asset << "{\"theme\":\"dark\"}";
+    }
+    {
+        std::ofstream asset(tmpRoot / "assets" / "themes" / "repeat.txt", std::ios::binary);
+        asset << std::string(4096, 'A');
     }
     {
         PkgImage img;
@@ -2834,7 +2867,11 @@ TEST(WindowsPackageBuilder, BuildsInstallerWithStoredZipOverlay) {
     std::ostringstream err;
     const bool overlayOk = verifyPEZipOverlayPayload(
         pe,
-        {"app/testapp.exe", "app/uninstall.exe", "app/testapp.ico", "meta/manifest.sha256"},
+        {"meta/payload.zip",
+         "meta/install_manifest.next",
+         "meta/start_menu.lnk",
+         "meta/desktop.lnk",
+         "meta/manifest.sha256"},
         err);
     if (!overlayOk)
         std::cerr << err.str();
@@ -2851,8 +2888,42 @@ TEST(WindowsPackageBuilder, BuildsInstallerWithStoredZipOverlay) {
                             pe.end(),
                             deleteValueImport.begin(),
                             deleteValueImport.end()) != pe.end());
+    const std::string createProcessImport = "CreateProcessW";
+    EXPECT_TRUE(std::search(pe.begin(),
+                            pe.end(),
+                            createProcessImport.begin(),
+                            createProcessImport.end()) != pe.end());
+    const auto payloadZip = extractPeOverlayZipEntry(pe, "meta/payload.zip");
+    ASSERT_FALSE(payloadZip.empty());
+    EXPECT_TRUE(zipContainsEntries(payloadZip,
+                                   {"testapp.exe",
+                                    "testapp.ico",
+                                    "data/themes/dark.json",
+                                    "data/themes/repeat.txt",
+                                    "uninstall.exe",
+                                    ".viper-install-manifest.txt"}));
+    EXPECT_TRUE(zipEntryUsesDeflate(payloadZip, "data/themes/repeat.txt"));
+    const auto nextManifest = extractPeOverlayZipEntry(pe, "meta/install_manifest.next");
+    ASSERT_FALSE(nextManifest.empty());
+    const std::string nextManifestText(nextManifest.begin(), nextManifest.end());
+    EXPECT_CONTAINS(nextManifestText, "testapp.exe\n");
+    EXPECT_CONTAINS(nextManifestText, "data/themes/repeat.txt\n");
+    EXPECT_CONTAINS(nextManifestText, ".viper-install-manifest.txt\n");
 
     fs::remove_all(tmpRoot);
+}
+
+TEST(WindowsPackageBuilder, ImportedDllNamesFromPeReadsImportTableOnly) {
+    PEBuildParams pe;
+    pe.textSection = {0xC3};
+    pe.imports = {{"kernel32.dll", {"ExitProcess"}}};
+    const std::string decoy = "ucrtbased.dll";
+    pe.rdataSection.assign(decoy.begin(), decoy.end());
+    pe.rdataSection.push_back(0);
+
+    const auto dlls = importedDllNamesFromPe(buildPE(pe));
+    EXPECT_TRUE(std::find(dlls.begin(), dlls.end(), "kernel32.dll") != dlls.end());
+    EXPECT_TRUE(std::find(dlls.begin(), dlls.end(), "ucrtbased.dll") == dlls.end());
 }
 
 TEST(WindowsPackageBuilder, PerUserInstallerUsesLocalAppDataAndBundlesAdjacentDlls) {
@@ -2891,7 +2962,13 @@ TEST(WindowsPackageBuilder, PerUserInstallerUsesLocalAppDataAndBundlesAdjacentDl
     auto pe = readFile(outPath.string());
     std::ostringstream err;
     const bool overlayOk = verifyPEZipOverlayPayload(
-        pe, {"app/userapp.exe", "app/helper.dll", "app/uninstall.exe", "meta/manifest.sha256"}, err);
+        pe,
+        {"meta/payload.zip",
+         "meta/install_manifest.next",
+         "meta/start_menu.lnk",
+         "meta/desktop.lnk",
+         "meta/manifest.sha256"},
+        err);
     if (!overlayOk)
         std::cerr << err.str();
     EXPECT_TRUE(overlayOk);
@@ -2900,6 +2977,10 @@ TEST(WindowsPackageBuilder, PerUserInstallerUsesLocalAppDataAndBundlesAdjacentDl
     EXPECT_FALSE(containsUtf16LE(pe,
                                  "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment"));
     EXPECT_TRUE(containsUtf16LE(pe, "https://example.invalid/userapp"));
+    const auto payloadZip = extractPeOverlayZipEntry(pe, "meta/payload.zip");
+    ASSERT_FALSE(payloadZip.empty());
+    EXPECT_TRUE(zipContainsEntries(
+        payloadZip, {"userapp.exe", "helper.dll", "uninstall.exe", ".viper-install-manifest.txt"}));
 
     fs::remove_all(tmpRoot);
 }
@@ -2936,7 +3017,9 @@ TEST(WindowsPackageBuilder, UsesCustomInstallDirOpenArgsManifestAndVersionInfo) 
     auto pe = readFile(params.outputPath);
     std::ostringstream err;
     EXPECT_TRUE(verifyPEZipOverlayPayload(
-        pe, {"app/displayapp.exe", "app/uninstall.exe", "meta/manifest.sha256"}, err));
+        pe,
+        {"meta/payload.zip", "meta/install_manifest.next", "meta/manifest.sha256"},
+        err));
     EXPECT_TRUE(containsUtf16LE(pe, "%ProgramFiles%\\DisplayAppCustom\\displayapp.exe"));
     EXPECT_FALSE(containsUtf16LE(pe, "%ProgramFiles%\\Display App\\displayapp.exe"));
     EXPECT_TRUE(containsUtf16LE(pe, " --open-project"));
@@ -2945,6 +3028,10 @@ TEST(WindowsPackageBuilder, UsesCustomInstallDirOpenArgsManifestAndVersionInfo) 
     EXPECT_TRUE(containsUtf16LE(pe, "Display App Setup"));
     EXPECT_TRUE(containsUtf16LE(pe, "1.2.3-beta"));
     EXPECT_TRUE(containsAscii(pe, "{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"));
+    const auto payloadZip = extractPeOverlayZipEntry(pe, "meta/payload.zip");
+    ASSERT_FALSE(payloadZip.empty());
+    EXPECT_TRUE(zipContainsEntries(
+        payloadZip, {"displayapp.exe", "uninstall.exe", ".viper-install-manifest.txt"}));
 
     fs::remove_all(tmpRoot);
 }
@@ -2980,18 +3067,17 @@ TEST(WindowsPackageBuilder, BundlesRecursiveDllsAndSkipsSystemNamedLocals) {
     std::ostringstream err;
     EXPECT_TRUE(verifyPEZipOverlayPayload(
         pe,
-        {"app/recursivedll.exe",
-         "app/helper.dll",
-         "app/plugin.dll",
-         "app/uninstall.exe",
+        {"meta/payload.zip",
+         "meta/install_manifest.next",
          "meta/manifest.sha256"},
         err));
-    const auto overlay = extractFirstZipOverlay(pe);
-    ASSERT_FALSE(overlay.empty());
-    ZipReader reader(overlay.data(), overlay.size());
-    EXPECT_TRUE(reader.find("app/helper.dll") != nullptr);
-    EXPECT_TRUE(reader.find("app/plugin.dll") != nullptr);
-    EXPECT_TRUE(reader.find("app/kernel32.dll") == nullptr);
+    const auto payloadZip = extractPeOverlayZipEntry(pe, "meta/payload.zip");
+    ASSERT_FALSE(payloadZip.empty());
+    ZipReader reader(payloadZip.data(), payloadZip.size());
+    EXPECT_TRUE(reader.find("recursivedll.exe") != nullptr);
+    EXPECT_TRUE(reader.find("helper.dll") != nullptr);
+    EXPECT_TRUE(reader.find("plugin.dll") != nullptr);
+    EXPECT_TRUE(reader.find("kernel32.dll") == nullptr);
 
     fs::remove_all(tmpRoot);
 }
@@ -3029,14 +3115,16 @@ TEST(WindowsPackageBuilder, SkipsKnownWindowsGameRuntimeDlls) {
     const auto pe = readFile(params.outputPath);
     std::ostringstream err;
     EXPECT_TRUE(verifyPEZipOverlayPayload(
-        pe, {"app/gameruntime.exe", "app/uninstall.exe", "meta/manifest.sha256"}, err));
-    const auto overlay = extractFirstZipOverlay(pe);
-    ASSERT_FALSE(overlay.empty());
-    ZipReader reader(overlay.data(), overlay.size());
-    EXPECT_TRUE(reader.find("app/gameruntime.exe") != nullptr);
-    EXPECT_TRUE(reader.find("app/xinput1_4.dll") == nullptr);
-    EXPECT_TRUE(reader.find("app/iphlpapi.dll") == nullptr);
-    EXPECT_TRUE(reader.find("app/d3dcompiler_47.dll") == nullptr);
+        pe,
+        {"meta/payload.zip", "meta/install_manifest.next", "meta/manifest.sha256"},
+        err));
+    const auto payloadZip = extractPeOverlayZipEntry(pe, "meta/payload.zip");
+    ASSERT_FALSE(payloadZip.empty());
+    ZipReader reader(payloadZip.data(), payloadZip.size());
+    EXPECT_TRUE(reader.find("gameruntime.exe") != nullptr);
+    EXPECT_TRUE(reader.find("xinput1_4.dll") == nullptr);
+    EXPECT_TRUE(reader.find("iphlpapi.dll") == nullptr);
+    EXPECT_TRUE(reader.find("d3dcompiler_47.dll") == nullptr);
 
     fs::remove_all(tmpRoot);
 }
@@ -3864,12 +3952,10 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
     std::ostringstream payloadErr;
     EXPECT_TRUE(verifyPEZipOverlayPayload(
         pe,
-        {"app/bin/viper.exe",
-         "app/bin/viper-dev.cmd",
-         "app/bin/viper-install-vscode-extension.cmd",
+        {"meta/payload.zip",
+         "meta/install_manifest.next",
          "meta/viper_developer_prompt.lnk",
          "meta/viper_vscode_extension.lnk",
-         "app/uninstall.exe",
          "meta/manifest.sha256"},
         payloadErr));
     EXPECT_GE(peOptionalHeaderField64(pe, 72), static_cast<uint64_t>(0x200000));
@@ -3892,6 +3978,15 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
                             pe.end(),
                             shellFileOperationImport.begin(),
                             shellFileOperationImport.end()) != pe.end());
+    const auto payloadZip = extractPeOverlayZipEntry(pe, "meta/payload.zip");
+    ASSERT_FALSE(payloadZip.empty());
+    EXPECT_TRUE(zipContainsEntries(payloadZip,
+                                   {"bin/viper.exe",
+                                    "bin/viper-dev.cmd",
+                                    "bin/viper-install-vscode-extension.cmd",
+                                    "share/viper/README.windows-prerequisites.txt",
+                                    "uninstall.exe",
+                                    ".viper-install-manifest.txt"}));
     fs::remove_all(tmpRoot);
 }
 

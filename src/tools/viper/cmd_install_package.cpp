@@ -451,28 +451,6 @@ std::optional<NativeExecutableInfo> detectManifestToolchainExecutableInfo(
     return std::nullopt;
 }
 
-bool bytesContainAsciiCaseInsensitive(const std::vector<uint8_t> &data,
-                                      std::string needleLower) {
-    if (needleLower.empty() || data.size() < needleLower.size())
-        return false;
-    for (char &ch : needleLower)
-        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-    for (size_t i = 0; i <= data.size() - needleLower.size(); ++i) {
-        bool match = true;
-        for (size_t j = 0; j < needleLower.size(); ++j) {
-            const char got =
-                static_cast<char>(std::tolower(static_cast<unsigned char>(data[i + j])));
-            if (got != needleLower[j]) {
-                match = false;
-                break;
-            }
-        }
-        if (match)
-            return true;
-    }
-    return false;
-}
-
 std::optional<std::string> firstWindowsDebugRuntimeReference(
     const viper::pkg::ToolchainInstallManifest &manifest) {
     static const char *debugDlls[] = {
@@ -484,8 +462,9 @@ std::optional<std::string> firstWindowsDebugRuntimeReference(
         if (ext != ".exe" && ext != ".dll")
             continue;
         const auto data = viper::pkg::readFile(file.stagedAbsolutePath.string());
+        const auto imports = viper::pkg::importedDllNamesFromPe(data);
         for (const char *dll : debugDlls) {
-            if (bytesContainAsciiCaseInsensitive(data, dll))
+            if (std::find(imports.begin(), imports.end(), dll) != imports.end())
                 return file.stagedRelativePath + " imports " + dll;
         }
     }
@@ -699,11 +678,14 @@ std::vector<std::string> requiredPayloadPaths(
     switch (target) {
         case InstallPackageTarget::Windows:
             for (const auto &file : manifest.files) {
-                paths.push_back("app/" + viper::pkg::sanitizePackageRelativePath(
-                                             file.stagedRelativePath, "windows toolchain path"));
+                paths.push_back(viper::pkg::sanitizePackageRelativePath(
+                    file.stagedRelativePath, "windows toolchain path"));
             }
-            paths.push_back("app/uninstall.exe");
-            paths.push_back("meta/manifest.sha256");
+            paths.push_back("bin/viper-dev.cmd");
+            paths.push_back("bin/viper-install-vscode-extension.cmd");
+            paths.push_back("share/viper/README.windows-prerequisites.txt");
+            paths.push_back("uninstall.exe");
+            paths.push_back(".viper-install-manifest.txt");
             break;
         case InstallPackageTarget::LinuxDeb:
         case InstallPackageTarget::LinuxRpm:
@@ -809,8 +791,12 @@ bool verifyArtifact(const fs::path &artifact,
     switch (target) {
         case InstallPackageTarget::Windows:
             if (manifest) {
-                return viper::pkg::verifyPEZipOverlayPayload(
-                    data, requiredPayloadPaths(target, *manifest), err);
+                return viper::pkg::verifyPEZipOverlayNestedPayload(
+                    data,
+                    {"meta/payload.zip", "meta/install_manifest.next", "meta/manifest.sha256"},
+                    "meta/payload.zip",
+                    requiredPayloadPaths(target, *manifest),
+                    err);
             }
             return viper::pkg::verifyPEZipOverlay(data, err);
         case InstallPackageTarget::LinuxDeb:

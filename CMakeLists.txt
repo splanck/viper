@@ -89,6 +89,7 @@ endfunction()
 option(VIPER_INSTALL_TUI "Install TUI apps/libraries" OFF)
 option(VIPER_BUILD_TESTING "Enable CTest-based tests" ON)
 option(VIPER_ENABLE_WINDOWS_INSTALLER_E2E "Run the generated Windows toolchain installer end-to-end smoke test" OFF)
+option(VIPER_BUILD_VSCODE_VSIX "Build and install the packaged Zia VS Code extension" OFF)
 option(VIPER_VM_THREADED "Enable threaded VM dispatch (faster on GCC/Clang)" ON)
 option(VIPER_VM_TAILCALL "Enable tailcall" ON)
 option(VIPER_VM_OPCOUNTS "Enable op counters" ON)
@@ -633,14 +634,45 @@ install(FILES
   DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/viper
 )
 
-if(EXISTS ${CMAKE_SOURCE_DIR}/misc/editors/vscode/zia/zia-language-0.1.0.vsix)
+set(_VIPER_ZIA_VSCODE_DIR ${CMAKE_SOURCE_DIR}/misc/editors/vscode/zia)
+set(_VIPER_ZIA_VSCODE_VSIX ${_VIPER_ZIA_VSCODE_DIR}/zia-language-0.1.0.vsix)
+if(VIPER_BUILD_VSCODE_VSIX)
+  if(WIN32)
+    find_program(NPM_EXECUTABLE NAMES npm.cmd npm)
+    set(_VIPER_NPM_COMMAND cmd /c call "${NPM_EXECUTABLE}")
+  else()
+    find_program(NPM_EXECUTABLE NAMES npm)
+    set(_VIPER_NPM_COMMAND "${NPM_EXECUTABLE}")
+  endif()
+  if(NOT NPM_EXECUTABLE)
+    message(FATAL_ERROR "VIPER_BUILD_VSCODE_VSIX requires npm on PATH")
+  endif()
+  set(_VIPER_BUILT_ZIA_VSIX ${CMAKE_BINARY_DIR}/vscode/zia-language-0.1.0.vsix)
+  add_custom_command(
+    OUTPUT ${_VIPER_BUILT_ZIA_VSIX}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/vscode
+    COMMAND ${_VIPER_NPM_COMMAND} ci
+    COMMAND ${_VIPER_NPM_COMMAND} run package:vsix -- --out ${_VIPER_BUILT_ZIA_VSIX}
+    WORKING_DIRECTORY ${_VIPER_ZIA_VSCODE_DIR}
+    DEPENDS
+      ${_VIPER_ZIA_VSCODE_DIR}/package.json
+      ${_VIPER_ZIA_VSCODE_DIR}/package-lock.json
+      ${_VIPER_ZIA_VSCODE_DIR}/extension.js
+      ${_VIPER_ZIA_VSCODE_DIR}/language-configuration.json
+      ${_VIPER_ZIA_VSCODE_DIR}/syntaxes/zia.tmLanguage.json
+    COMMENT "Building Zia VS Code extension VSIX"
+    VERBATIM)
+  add_custom_target(vscode_zia_vsix ALL DEPENDS ${_VIPER_BUILT_ZIA_VSIX})
+  install(FILES ${_VIPER_BUILT_ZIA_VSIX}
+          DESTINATION ${CMAKE_INSTALL_DATADIR}/viper/vscode)
+elseif(EXISTS ${_VIPER_ZIA_VSCODE_VSIX})
   install(FILES
-    ${CMAKE_SOURCE_DIR}/misc/editors/vscode/zia/zia-language-0.1.0.vsix
+    ${_VIPER_ZIA_VSCODE_VSIX}
     DESTINATION ${CMAKE_INSTALL_DATADIR}/viper/vscode
   )
 endif()
-if(EXISTS ${CMAKE_SOURCE_DIR}/misc/editors/vscode/zia/package.json)
-  install(DIRECTORY ${CMAKE_SOURCE_DIR}/misc/editors/vscode/zia/
+if(EXISTS ${_VIPER_ZIA_VSCODE_DIR}/package.json)
+  install(DIRECTORY ${_VIPER_ZIA_VSCODE_DIR}/
           DESTINATION ${CMAKE_INSTALL_DATADIR}/viper/vscode/zia
           PATTERN "node_modules" EXCLUDE
           PATTERN "*.vsix" EXCLUDE)

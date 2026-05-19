@@ -145,3 +145,46 @@ jobs:
           path: |
             build/Testing/Temporary/LastTest.log
             build/CMakeCache.txt
+
+  windows-release-installer:
+    name: windows Release installer E2E
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: misc/editors/vscode/zia/package-lock.json
+      - name: Print tool versions
+        shell: pwsh
+        run: |
+          cmake --version
+          node --version
+          npm --version
+      - name: Configure Release installer lane
+        run: >
+          cmake -S . -B build
+          -DIL_WARN_AS_ERROR=ON
+          -DVIPER_BUILD_VSCODE_VSIX=ON
+          -DVIPER_ENABLE_WINDOWS_INSTALLER_E2E=ON
+          -DCMAKE_BUILD_TYPE=Release
+      - name: Build Release installer prerequisites
+        run: >
+          cmake --build build --config Release --target
+          viper vbasic zia zia-server vbasic-server
+          ilrun il-verify il-dis basic-ast-dump basic-lex-dump
+          test_packaging vscode_zia_vsix
+      - name: Run packaging unit tests
+        run: ctest --test-dir build -C Release --output-on-failure -R "test_packaging"
+      - name: Run Windows toolchain installer E2E
+        run: ctest --test-dir build -C Release --output-on-failure -R "^installer_windows_toolchain_e2e$"
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-windows-release-installer
+          path: |
+            build/Testing/Temporary/LastTest.log
+            build/CMakeCache.txt
+            build/tests/windows-toolchain-installer-e2e

@@ -17,7 +17,8 @@ endif ()
 set(_tmp_root "${VIPER_BUILD_DIR}/tests/windows-toolchain-installer-e2e")
 set(_stage_dir "${_tmp_root}/stage")
 set(_installer "${_tmp_root}/viper-toolchain-e2e.exe")
-set(_install_root "$ENV{LOCALAPPDATA}/Viper")
+set(_install_dir_name "ViperInstallerE2E")
+set(_install_root "$ENV{LOCALAPPDATA}/${_install_dir_name}")
 set(_installed_viper "${_install_root}/bin/viper.exe")
 set(_uninstaller "${_install_root}/uninstall.exe")
 set(_src_dir "${_tmp_root}/consumer-src")
@@ -45,6 +46,7 @@ set(_package_cmd
         --stage-dir "${_stage_dir}"
         --target windows
         --windows-install-scope user
+        --windows-install-dir "${_install_dir_name}"
         --windows-file-associations off
         --windows-shortcuts off
         -o "${_installer}")
@@ -92,6 +94,79 @@ execute_process(COMMAND "${_installed_viper}" --version
 if (NOT _version_rv EQUAL 0)
     message(FATAL_ERROR
             "installed viper --version failed\nstdout:\n${_version_out}\nstderr:\n${_version_err}")
+endif ()
+
+set(_path_probe_ps [=[$machine=[Environment]::GetEnvironmentVariable('Path','Machine'); $user=[Environment]::GetEnvironmentVariable('Path','User'); $env:Path=($machine + ';' + $user); viper --version]=])
+execute_process(COMMAND powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass
+                        -Command "${_path_probe_ps}"
+                RESULT_VARIABLE _path_rv
+                OUTPUT_VARIABLE _path_out
+                ERROR_VARIABLE _path_err)
+if (NOT _path_rv EQUAL 0)
+    message(FATAL_ERROR
+            "installed viper was not discoverable through a fresh registry PATH projection\nstdout:\n${_path_out}\nstderr:\n${_path_err}")
+endif ()
+
+set(_run_bas "${_tmp_root}/installer-run-smoke.bas")
+file(WRITE "${_run_bas}" "10 PRINT \"INSTALLER-RUN-SMOKE\"\n")
+execute_process(COMMAND "${_installed_viper}" run "${_run_bas}"
+                RESULT_VARIABLE _run_rv
+                OUTPUT_VARIABLE _run_out
+                ERROR_VARIABLE _run_err)
+if (NOT _run_rv EQUAL 0)
+    message(FATAL_ERROR
+            "installed viper run failed\nstdout:\n${_run_out}\nstderr:\n${_run_err}")
+endif ()
+if (NOT _run_out MATCHES "INSTALLER-RUN-SMOKE")
+    message(FATAL_ERROR
+            "installed viper run produced unexpected output\nstdout:\n${_run_out}\nstderr:\n${_run_err}")
+endif ()
+
+if (DEFINED ENV{PROCESSOR_ARCHITECTURE} AND "$ENV{PROCESSOR_ARCHITECTURE}" MATCHES "^(ARM64|arm64)$")
+    set(_installed_codegen_arch arm64)
+else ()
+    set(_installed_codegen_arch x64)
+endif ()
+set(_installed_il "${_tmp_root}/installer-native-smoke.il")
+set(_installed_exe "${_tmp_root}/installer-native-smoke.exe")
+file(WRITE "${_installed_il}" [=[
+il 0.2.0
+
+extern @Viper.Terminal.PrintStr(str) -> void
+global const str @.msg = "INSTALLER-NATIVE-SMOKE"
+
+func @main() -> i64 {
+entry:
+  %msg = const_str @.msg
+  call @Viper.Terminal.PrintStr(%msg)
+  ret 0
+}
+]=])
+execute_process(
+        COMMAND "${CMAKE_BIN}" -E env --unset=VIPER_LIB_PATH "${_installed_viper}" codegen "${_installed_codegen_arch}" "${_installed_il}" -o "${_installed_exe}"
+        WORKING_DIRECTORY "${_tmp_root}"
+        RESULT_VARIABLE _codegen_rv
+        OUTPUT_VARIABLE _codegen_out
+        ERROR_VARIABLE _codegen_err)
+if (NOT _codegen_rv EQUAL 0)
+    message(FATAL_ERROR
+            "installed viper native codegen failed\nstdout:\n${_codegen_out}\nstderr:\n${_codegen_err}")
+endif ()
+if (NOT EXISTS "${_installed_exe}")
+    message(FATAL_ERROR "installed viper did not produce native smoke executable: ${_installed_exe}")
+endif ()
+execute_process(COMMAND "${_installed_exe}"
+                WORKING_DIRECTORY "${_tmp_root}"
+                RESULT_VARIABLE _native_rv
+                OUTPUT_VARIABLE _native_out
+                ERROR_VARIABLE _native_err)
+if (NOT _native_rv EQUAL 0)
+    message(FATAL_ERROR
+            "native executable built by installed viper failed\nstdout:\n${_native_out}\nstderr:\n${_native_err}")
+endif ()
+if (NOT _native_out MATCHES "INSTALLER-NATIVE-SMOKE")
+    message(FATAL_ERROR
+            "native executable built by installed viper produced unexpected output\nstdout:\n${_native_out}\nstderr:\n${_native_err}")
 endif ()
 
 file(WRITE "${_src_dir}/CMakeLists.txt" [=[
@@ -155,3 +230,5 @@ endif ()
 if (EXISTS "${_installed_viper}")
     message(FATAL_ERROR "uninstaller left viper.exe behind: ${_installed_viper}")
 endif ()
+file(REMOVE "${_uninstaller}")
+file(REMOVE_RECURSE "${_install_root}")

@@ -10,9 +10,11 @@
 //          native binary and package assets.
 //
 // Key invariants:
-//   - Output is a valid PE32+ executable with a stored-only ZIP payload as overlay.
-//   - ZIP payload contains the application binary, assets, shortcuts, and a
-//     packaged uninstaller PE.
+//   - Output is a valid PE32+ executable with a stored ZIP bootstrap overlay.
+//   - The main application/toolchain payload is a DEFLATE-compressed inner ZIP,
+//     while small bootstrap files are stored for direct extraction by the stub.
+//   - Overlay data contains the compressed payload, shortcuts, and a packaged
+//     uninstaller PE.
 //   - PE .text section contains a real x64 installer stub that extracts files,
 //     writes uninstall metadata, and installs shortcuts. ARM64 payload packages
 //     reuse the same bootstrap so the installer can run under Windows-on-ARM
@@ -32,7 +34,9 @@
 #include "PackageConfig.hpp"
 #include "ToolchainInstallManifest.hpp"
 
+#include <cstdint>
 #include <string>
+#include <vector>
 
 namespace viper::pkg {
 
@@ -52,20 +56,24 @@ struct WindowsBuildParams {
 /// Creates a PE32+ executable containing:
 /// 1. PE headers with RT_MANIFEST resource (UAC elevation).
 /// 2. x64 .text stub implementing installation logic.
-/// 3. ZIP overlay containing the application binary, assets, icon files,
-///    shortcuts, and the generated uninstaller.
+/// 3. ZIP overlay containing a compressed inner payload, shortcuts, and the
+///    generated uninstaller.
 ///
-/// The ZIP payload is structured as:
-///   app/<name>.exe          — The application binary
-///   app/<name>.ico          — Application shortcut icon (if source PNG exists)
-///   app/uninstall.exe       — Uninstaller PE
-///   app/<assets>/           — Asset files
-///   meta/start_menu.lnk     — Start Menu shortcut (if enabled)
-///   meta/desktop.lnk        — Desktop shortcut (if enabled)
+/// The outer ZIP bootstrap is structured as:
+///   meta/payload.zip           - compressed install-root payload
+///   meta/install_manifest.next - next installed-file manifest for upgrades
+///   meta/start_menu.lnk        - Start Menu shortcut (if enabled)
+///   meta/desktop.lnk           - Desktop shortcut (if enabled)
 ///
 /// @param params Build parameters.
 /// @throws std::runtime_error on failure.
 void buildWindowsPackage(const WindowsBuildParams &params);
+
+/// @brief Return imported DLL names from a PE32+ import table.
+///
+/// Returns an empty vector when the input is not a supported PE32+ image or the
+/// import directory cannot be parsed safely.
+std::vector<std::string> importedDllNamesFromPe(const std::vector<uint8_t> &data);
 
 /// @brief Parameters for building a Windows toolchain installer from a staged manifest.
 struct WindowsToolchainBuildParams {
@@ -85,11 +93,12 @@ struct WindowsToolchainBuildParams {
 
 /// @brief Build a Windows toolchain installer .exe from a staged install manifest.
 ///
-/// Packages every file in params.manifest into a ZIP overlay appended to a PE32+
-/// self-extracting stub. The stub installs files under %ProgramFiles%\Viper, writes
-/// an uninstall registry key, and creates Start Menu shortcuts. All required toolchain
-/// components (viper binary, CMake config, runtime archives) must already be validated
-/// in the manifest by validateToolchainInstallManifest before calling this function.
+/// Packages every staged file into a compressed inner ZIP carried by a PE32+
+/// self-extracting stub. The stub installs files under the selected Viper install
+/// root, writes an uninstall registry key, updates PATH, and creates Start Menu
+/// shortcuts when requested. All required toolchain components (viper binary,
+/// CMake config, runtime archives) must already be validated in the manifest by
+/// validateToolchainInstallManifest before calling this function.
 ///
 /// @param params Build parameters.
 /// @throws std::runtime_error on any I/O, validation, or PE assembly failure.

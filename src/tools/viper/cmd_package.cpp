@@ -1245,9 +1245,11 @@ int cmdPackage(int argc, char **argv) {
             valid = viper::pkg::verifyDebPayload(pkgData, {"usr/bin/" + execName}, verifyErr);
             break;
         case PackageTarget::Windows:
-            valid = viper::pkg::verifyPEZipOverlayPayload(
+            valid = viper::pkg::verifyPEZipOverlayNestedPayload(
                 pkgData,
-                {"app/" + execName + ".exe", "app/uninstall.exe", "meta/manifest.sha256"},
+                {"meta/payload.zip", "meta/install_manifest.next", "meta/manifest.sha256"},
+                "meta/payload.zip",
+                {execName + ".exe", "uninstall.exe", ".viper-install-manifest.txt"},
                 verifyErr);
             break;
         case PackageTarget::Tarball: {

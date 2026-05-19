@@ -54,6 +54,10 @@ set(ZIA_SOURCES
 
 add_library(fe_zia ${ZIA_SOURCES})
 
+target_compile_options(fe_zia PRIVATE
+        $<$<CXX_COMPILER_ID:MSVC>:/bigobj>
+)
+
 target_include_directories(fe_zia PUBLIC
         ${CMAKE_BINARY_DIR}/generated
         ${PROJECT_SOURCE_DIR}/src

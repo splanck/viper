@@ -12,7 +12,10 @@
 //
 // Key invariants:
 //   - Installer uses precomputed layout metadata and stored-overlay offsets to
-//     extract files directly from the packaged ZIP overlay.
+//     extract bootstrap files directly from the packaged ZIP overlay.
+//   - When compressedPayloadRelativePath is set, the installer extracts a
+//     stored inner ZIP to disk and expands its DEFLATE-compressed entries with
+//     Windows PowerShell's native archive support.
 //   - Uninstaller uses the same layout metadata to delete installed files,
 //     remove shortcuts, and unregister the app.
 //   - Both stubs use Win32 APIs via IAT (no dynamic LoadLibrary).
@@ -80,6 +83,9 @@ struct WindowsPackageLayout {
     bool createStartMenuShortcut{false};        ///< Create a .lnk in the Start Menu Programs folder
     bool addToPath{false};                      ///< Add installDir\pathRelativePath to the system Path
     bool cleanInstallRootBeforeInstall{false};  ///< Remove the install root before extracting (upgrade path)
+    std::string compressedPayloadRelativePath;  ///< Optional stored inner ZIP expanded into installDir.
+    std::string compressedPayloadManifestRelativePath; ///< Optional next manifest used for stale cleanup.
+    std::string installedManifestRelativePath;  ///< Current installed-file manifest path under installDir.
     std::string pathRelativePath;               ///< Subdir within installDir to add to Path (e.g. "bin")
     std::string fileAssociationExecutableRelativePath; ///< Exe used for Open commands (relative to installDir)
     bool perUserInstall{false};                 ///< Install under the current user profile and HKCU.
@@ -90,6 +96,7 @@ struct WindowsPackageLayout {
     std::vector<WindowsPackageDirEntry> installDirectories;   ///< Directories to create on install
     std::vector<WindowsPackageDirEntry> uninstallDirectories; ///< Directories to remove on uninstall
     std::vector<WindowsPackageFileEntry> installFiles;         ///< Files to extract on install
+    std::vector<WindowsPackageFileEntry> installedFiles;       ///< Files left on disk after install
     std::vector<WindowsPackageFileEntry> uninstallFiles;       ///< Files to delete on uninstall
     std::vector<WindowsFileAssociationEntry> fileAssociations; ///< File associations to register/deregister
 };
