@@ -561,6 +561,20 @@ static std::filesystem::path createMockToolchainStage(const std::filesystem::pat
     return stage;
 }
 
+static void addMockMacOSFileHandler(const std::filesystem::path &stage) {
+    namespace fs = std::filesystem;
+    fs::create_directories(stage / "libexec" / "viper");
+    const fs::path handlerPath = stage / "libexec" / "viper" / "viper-file-handler";
+    std::ofstream out(handlerPath, std::ios::binary);
+    out << "handler";
+    out.close();
+    fs::permissions(handlerPath,
+                    fs::perms::owner_read | fs::perms::owner_write | fs::perms::owner_exec |
+                        fs::perms::group_read | fs::perms::group_exec | fs::perms::others_read |
+                        fs::perms::others_exec,
+                    fs::perm_options::replace);
+}
+
 // ============================================================================
 // DEFLATE Tests
 // ============================================================================
@@ -3699,8 +3713,9 @@ TEST(ToolchainLinuxPackageBuilder, BuildsDebFromManifest) {
                                   "usr/share/mime/packages/viper.xml"},
                                  payloadErr));
     const std::string control = debControlText(debBytes);
-    EXPECT_CONTAINS(control, "Depends: libc6, libstdc++6 | libc++1, libgcc-s1");
-    EXPECT_CONTAINS(control, "Recommends: cmake, g++ | clang++");
+    EXPECT_CONTAINS(control,
+                    "Depends: libc6, libstdc++6 | libc++1, libgcc-s1, cmake, "
+                    "g++ | clang++, make");
 #if VIPER_BUILD_HAS_GRAPHICS || VIPER_BUILD_HAS_GUI
     EXPECT_CONTAINS(control, "libx11-6");
 #endif
@@ -3760,6 +3775,8 @@ TEST(ToolchainLinuxPackageBuilder, BuildsTarballFromManifest) {
     ASSERT_TRUE(tarEntryData(tarBytes, topDir + "install.sh", installScript));
     EXPECT_CONTAINS(std::string(installScript.begin(), installScript.end()),
                     "DESTDIR");
+    EXPECT_CONTAINS(std::string(installScript.begin(), installScript.end()),
+                    "Unsafe old manifest path");
     uint32_t installMode = 0;
     EXPECT_TRUE(tarEntryMode(tarBytes, topDir + "install.sh", installMode));
     EXPECT_EQ(installMode, static_cast<uint32_t>(0755));
@@ -3936,6 +3953,7 @@ TEST(ToolchainMacOSPackageBuilder, RejectsLossyManifestVersionWithoutOverride) {
     const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_pkg_version_lossy";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
+    addMockMacOSFileHandler(stage);
     auto manifest = gatherToolchainInstallManifest(stage);
     manifest.platform = "macos";
     manifest.arch = "x64";
@@ -3954,12 +3972,29 @@ TEST(ToolchainMacOSPackageBuilder, RejectsLossyManifestVersionWithoutOverride) {
     fs::remove_all(tmpRoot);
 }
 
+TEST(ToolchainMacOSPackageBuilder, RequiresFileHandlerForAssociations) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_pkg_missing_handler";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    auto manifest = gatherToolchainInstallManifest(stage);
+    manifest.platform = "macos";
+    manifest.arch = "x64";
+
+    MacOSToolchainBuildParams params;
+    params.manifest = manifest;
+    params.outputPath = (tmpRoot / "viper-toolchain.pkg").string();
+    EXPECT_THROWS(buildMacOSToolchainPackage(params), std::runtime_error);
+    fs::remove_all(tmpRoot);
+}
+
 #if defined(__APPLE__)
 TEST(ToolchainMacOSPackageBuilder, BuildsPkgFromManifest) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_pkg_stage";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
+    addMockMacOSFileHandler(stage);
     const auto manifest = gatherToolchainInstallManifest(stage);
 
     MacOSToolchainBuildParams params;
@@ -3983,8 +4018,12 @@ TEST(ToolchainMacOSPackageBuilder, BuildsPkgFromManifest) {
                                "usr/local/viper/share/man/man7/viper.7",
                                "usr/local/share/man/man7/viper.7",
                                "usr/local/viper/share/viper/install_manifest.txt",
+                               "usr/local/viper/share/viper/uninstall.sh",
                                "usr/local/lib/cmake/Viper/ViperConfig.cmake",
-                               "usr/local/lib/cmake/Viper/ViperConfigVersion.cmake"},
+                               "usr/local/lib/cmake/Viper/ViperConfigVersion.cmake",
+                               "Applications/Viper Toolchain.app/Contents/Info.plist",
+                               "Applications/Viper Toolchain.app/Contents/PkgInfo",
+                               "Applications/Viper Toolchain.app/Contents/MacOS/viper-file-handler"},
                               err);
     if (!verified)
         std::cerr << err.str();

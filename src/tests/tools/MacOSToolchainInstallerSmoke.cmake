@@ -6,6 +6,8 @@ foreach (_required CMAKE_BIN VIPER_BIN VIPER_BUILD_DIR)
     endif ()
 endforeach ()
 
+include("${CMAKE_CURRENT_LIST_DIR}/ToolchainInstallerSmokeHelpers.cmake")
+
 if (NOT "$ENV{VIPER_RUN_MACOS_INSTALLER_SMOKE}" STREQUAL "1")
     message(STATUS "Skipping macOS installer smoke; set VIPER_RUN_MACOS_INSTALLER_SMOKE=1 to install into /usr/local")
     return()
@@ -69,47 +71,14 @@ if (NOT _version_rv EQUAL 0)
     message(FATAL_ERROR "installed viper --version failed\nstdout:\n${_version_out}\nstderr:\n${_version_err}")
 endif ()
 
-file(WRITE "${_src_dir}/CMakeLists.txt" [=[
-cmake_minimum_required(VERSION 3.20)
-project(viper_macos_installed_config_smoke LANGUAGES CXX)
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-find_package(Viper CONFIG REQUIRED)
-add_executable(viper_macos_installed_config_smoke main.cpp)
-target_link_libraries(viper_macos_installed_config_smoke PRIVATE viper::il_core viper::il_io)
-]=])
-
-file(WRITE "${_src_dir}/main.cpp" [=[
-#include <sstream>
-#include <viper/il/core/Module.hpp>
-#include <viper/il/io/Serializer.hpp>
-
-int main() {
-    il::core::Module module;
-    std::ostringstream out;
-    il::io::Serializer::write(module, out);
-    return out.str().empty() ? 1 : 0;
-}
-]=])
-
-execute_process(
-        COMMAND "${CMAKE_BIN}" -S "${_src_dir}" -B "${_build_dir}"
-        RESULT_VARIABLE _cfg_rv
-        OUTPUT_VARIABLE _cfg_out
-        ERROR_VARIABLE _cfg_err)
-if (NOT _cfg_rv EQUAL 0)
-    message(FATAL_ERROR "installed /usr/local Viper config was not discoverable by CMake\nstdout:\n${_cfg_out}\nstderr:\n${_cfg_err}")
-endif ()
-
-set(_consumer_build_cmd "${CMAKE_BIN}" --build "${_build_dir}")
-if (DEFINED VIPER_CONFIG AND NOT "${VIPER_CONFIG}" STREQUAL "")
-    list(APPEND _consumer_build_cmd --config "${VIPER_CONFIG}")
-endif ()
-execute_process(
-        COMMAND ${_consumer_build_cmd}
-        RESULT_VARIABLE _build_rv
-        OUTPUT_VARIABLE _build_out
-        ERROR_VARIABLE _build_err)
-if (NOT _build_rv EQUAL 0)
-    message(FATAL_ERROR "installed Viper consumer build failed\nstdout:\n${_build_out}\nstderr:\n${_build_err}")
-endif ()
+viper_installer_smoke_verify_cmake_consumer(
+        "${CMAKE_BIN}"
+        "${_src_dir}"
+        "${_build_dir}"
+        "${VIPER_CONFIG}"
+        "macOS installer smoke")
+viper_installer_smoke_verify_native_codegen(
+        "${CMAKE_BIN}"
+        /usr/local/bin/viper
+        "${_tmp_root}"
+        "macOS installer smoke")

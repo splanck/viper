@@ -1,10 +1,12 @@
 cmake_minimum_required(VERSION 3.20)
 
-foreach (_required VIPER_BIN VIPER_BUILD_DIR)
+foreach (_required CMAKE_BIN VIPER_BIN VIPER_BUILD_DIR)
     if (NOT DEFINED ${_required} OR "${${_required}}" STREQUAL "")
         message(FATAL_ERROR "${_required} must be provided to LinuxToolchainDebInstallerSmoke.cmake")
     endif ()
 endforeach ()
+
+include("${CMAKE_CURRENT_LIST_DIR}/ToolchainInstallerSmokeHelpers.cmake")
 
 if (NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
     message(STATUS "Skipping Linux installer smoke; host is not Linux")
@@ -19,6 +21,8 @@ endif ()
 
 set(_tmp_root "${VIPER_BUILD_DIR}/tests/linux-toolchain-deb-installer-smoke")
 set(_artifact "${_tmp_root}/viper-toolchain.deb")
+set(_src_dir "${_tmp_root}/consumer-src")
+set(_build_dir "${_tmp_root}/consumer-build")
 file(REMOVE_RECURSE "${_tmp_root}")
 file(MAKE_DIRECTORY "${_tmp_root}")
 
@@ -70,7 +74,6 @@ endif ()
 foreach (_needle IN ITEMS
         "Package: viper"
         "Depends:"
-        "Recommends:"
         "Viper compiler toolchain")
     if (NOT _info_out MATCHES "${_needle}")
         message(FATAL_ERROR "dpkg-deb -I output did not contain '${_needle}'\n${_info_out}")
@@ -137,6 +140,18 @@ execute_process(
 if (NOT _run_rv EQUAL 0)
     message(FATAL_ERROR "installed /usr/bin/viper --version failed\nstdout:\n${_run_out}\nstderr:\n${_run_err}")
 endif ()
+
+viper_installer_smoke_verify_cmake_consumer(
+        "${CMAKE_BIN}"
+        "${_src_dir}"
+        "${_build_dir}"
+        "${VIPER_CONFIG}"
+        "Debian installer smoke")
+viper_installer_smoke_verify_native_codegen(
+        "${CMAKE_BIN}"
+        /usr/bin/viper
+        "${_tmp_root}"
+        "Debian installer smoke")
 
 execute_process(
         COMMAND "${DPKG_BIN}" -r viper
